@@ -1,4 +1,4 @@
-import RLSWSimulator from "./rlsw-simulator-V3_5_9";
+import RLSWSimulator from "./rlsw-simulator-V3_6_0";
 export default function App() {
   return <RLSWSimulator />;
 }

@@ -320,8 +320,8 @@ function MockNoteTrack({ notes, rootNote, noteTypes }) {
 }
 
 function MockDiceTier({ tier }) {
-  const labels = ["D6","D8","D10","D12","D20"];
-  const colors  = ["#aaccff","#88ffcc","#ffcc44","#ff8844","#ff44cc"];
+  const labels = ["d6","d8","d10","d12"];
+  const colors  = ["#aaccff","#88ffcc","#ffcc44","#ff8844"];
   return (
     <div style={{display:"flex", gap:4, alignItems:"center"}}>
       {labels.map((l,i) => (
@@ -377,12 +377,12 @@ function TutSection_Overview() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        Rock Legends: Spirit Wars is a hex-grid battle game driven by music theory.
-        Each turn you move your Spirit across the board, build a sequence of notes called
-        a <span style={{color:"#aa88ff"}}>Note Track</span>, then unleash a
+        Rock Legends: Spirit Wars is a hex-grid battle game powered by music theory.
+        Each turn you build a sequence of notes called a <span style={{color:"#aa88ff"}}>Note Track</span>,
+        lock it in, move your Spirit across the board, then unleash a
         <span style={{color:"#f6ad55"}}> Sonic Attack</span> on any enemy in range.
-        The patterns you build with your notes determine how powerful your attacks are —
-        and what special effects trigger.
+        The notes you pick — and the patterns they spell out — decide how hard you hit
+        and which special effects fire.
       </p>
       {/* Turn flow diagram */}
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
@@ -409,55 +409,55 @@ function TutSection_Overview() {
         <MockSpiritCard name="Glamarchy" style="Flair" drive={5} sustain={8} vibe={4} maxVibe={4} color="#ff6600"/>
       </div>
       <p style={{fontSize:10, color:"#6a8a9a", lineHeight:1.6, margin:0}}>
-        Each Spirit has <span style={{color:"#44cc66"}}>Vibe</span> (health),
+        Every Spirit has three stats: <span style={{color:"#44cc66"}}>Vibe</span> (health),
         <span style={{color:"#ff6644"}}> Drive</span> (attack) and
-        <span style={{color:"#44aaff"}}> Feedback</span> (defence) stats.
-        Lose all Vibe and you're Knocked Down. Run out of stands — KO'd!
-        Winning battles earns <span style={{color:"#ffd700"}}>⭐ Fame Points</span> —
-        the bigger your winning margin, the more Fame you take. Losers get
-        <span style={{color:"#ff8866"}}> knocked back</span>: 1 hex from a Swing,
-        up to 3 from a big Sonic defeat.
+        <span style={{color:"#44aaff"}}> Feedback</span> (defence).
+        Drop to zero Vibe and you're Knocked Down; run out of stands and you're KO'd for good.
+        Winning a clash earns <span style={{color:"#ffd700"}}>⭐ Fame Points</span> —
+        the wider your margin of victory, the more Fame you walk away with — while the
+        loser gets <span style={{color:"#ff8866"}}>knocked back</span> across the board:
+        one hex from a glancing Swing, up to three from a crushing Sonic defeat.
       </p>
       <div style={{background:"#14110a", border:"1px solid #ffd70044", borderRadius:6, padding:"8px 12px"}}>
         <div style={{fontSize:8, color:"#ffd700", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>⭐ FAME — THE WIN CONDITION</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          First spirit to reach the Fame target wins the game. Earn Fame by winning
-          battles (bigger margin, bigger Fame), playing legendary riffs, grabbing
-          ✨ Fame Sparks scattered across the board (4 sparks forge 1 FP — keep
-          moving!), and resolving 🎯 Cadence Objectives: end consecutive turns on
-          the right scale degrees (like C → F → G → C for THE FULL RESOLVE) in any
-          key. You can still win by holding the Limelight or being the last spirit
-          standing — but Fame is the path of legends.
+          The first Spirit to hit the Fame target wins. Fame comes from four places:
+          winning clashes (bigger margin, bigger payout), playing legendary riffs,
+          collecting ✨ Fame Sparks scattered across the board (four sparks forge one
+          Fame Point — so keep moving), and resolving 🎯 Cadence Objectives — ending
+          consecutive turns on the right scale degrees (C → F → G → C for THE FULL
+          RESOLVE, in any key). Holding the Limelight or being the last Spirit standing
+          can also win it for you, but Fame is the path of legends.
         </p>
       </div>
       <div style={{background:"#0c0a18", border:"1px solid #aa88ff44", borderRadius:6, padding:"8px 12px"}}>
         <div style={{fontSize:8, color:"#ccaaff", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>🎼 THE RIFFBOOK</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          Hidden in the note system are legendary riffs — from Beethoven's fateful
-          knocks to the slyest jazz lick. Place a riff's opening intervals on your
-          track (any key works, only the spacing between notes matters) and hit
-          CONFIRM: the full riff plays out with its real rhythm and earns bonus Fame.
-          First discovery scores big; the Riffbook (📖 in the header) tracks what's
-          been found and hints at what hasn't.
+          Hidden in the note system are legendary riffs — everything from Beethoven's
+          four fateful knocks to the slyest jazz lick. Lay a riff's opening intervals
+          on your track (any key works; only the spacing between notes matters) and hit
+          CONFIRM — the full riff plays out in its real rhythm and pays bonus Fame.
+          Being first to discover one scores big. The Riffbook (📖 in the header) logs
+          what's been found and hints at what's still out there.
         </p>
       </div>
       <div style={{background:"#0c0818", border:"1px solid #ff44dd44", borderRadius:6, padding:"8px 12px"}}>
         <div style={{fontSize:8, color:"#ff88ee", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>✨ EVENT SPACES</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          A pink marquee hex pulses somewhere on the board. Step on it to rip a card
-          straight from rock history — flaming disc riots, dubious bat snacks, séances,
-          payola, stage dives and more. Events can reshape the board, buff or curse
-          spirits, or drag <em>everyone</em> into a community dice roll. A triggered
-          marquee burns out — a new one lights up elsewhere a few turns later.
+          A pink marquee hex pulses somewhere on the board. Step onto it to draw a card
+          ripped straight from rock history — flaming disc riots, dubious bat snacks,
+          séances, payola, stage dives and more. Events can reshape the board, buff or
+          curse Spirits, or drag <em>everyone</em> into a community dice roll. Once
+          triggered, a marquee burns out — and a new one lights up elsewhere a few turns later.
         </p>
       </div>
       <div style={{background:"#08140e", border:"1px solid #44cc8844", borderRadius:6, padding:"8px 12px"}}>
         <div style={{fontSize:8, color:"#44cc88", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>🎉 CREW &amp; GEAR</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          Skills you unlock — Amps, Roadies, Groupie crews and your Ultimate — appear as
-          deployable chips on your Spirit card. Tap a glowing chip to send the crew out:
-          heal up, sabotage rival amps, arm a junkyard weapon, or raise a fan wall.
-          Deployed crews recharge after a few turns.
+          The skills you unlock — Amps, Roadies, Groupie crews and your Ultimate — show up
+          as deployable chips on your Spirit card. Tap a glowing chip to send a crew out:
+          patch up your Vibe, sabotage a rival's amp, arm a junkyard weapon, or throw up a
+          fan wall. Spent crews recharge after a few turns.
         </p>
       </div>
     </div>
@@ -468,9 +468,9 @@ function TutSection_Board() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        The arena is a hex grid. Spirits move across it each turn.
-        Position matters — being on an <span style={{color:"#ff4400"}}>edge hex</span> makes
-        you vulnerable to being knocked clean off the board.
+        The arena is a grid of hexes, and your Spirit travels across it every turn.
+        Position is everything: linger on an <span style={{color:"#ff4400"}}>edge hex</span> and
+        a hard enough hit can knock you clean off the board.
       </p>
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
         <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>HEX TYPES</div>
@@ -493,8 +493,9 @@ function TutSection_Board() {
           </div>
         </div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"10px 0 0", lineHeight:1.6}}>
-          After you commit your Note Track, you gain movement equal to the number of notes placed.
-          Click a lit hex to move there. Confirm your track before moving.
+          Once you commit your Note Track, you get one hex of movement per note you placed.
+          Lit hexes show where you can go — click one to move there. You'll need to lock in
+          your track before you can move.
         </p>
       </div>
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
@@ -506,7 +507,7 @@ function TutSection_Board() {
             return <MockHex key={i} edge={isEdge} active={isHome} small/>;
           })}
         </div>
-        <p style={{fontSize:8, color:"#3a5a7a", margin:"6px 0 0"}}>Simplified. ⚠ = edge hexes. Coloured = home hexes.</p>
+        <p style={{fontSize:8, color:"#3a5a7a", margin:"6px 0 0"}}>Simplified view. ⚠ = edge hexes · coloured = home hexes.</p>
       </div>
     </div>
   );
@@ -516,9 +517,9 @@ function TutSection_NoteTrack() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        Before attacking, you build a <span style={{color:"#aa55ff"}}>Note Track</span> — a
-        sequence of musical notes drawn from your Note Stock. The notes you choose
-        and the patterns they form determine your combat power and special effects.
+        Before you attack, you assemble a <span style={{color:"#aa55ff"}}>Note Track</span> — a
+        sequence of notes pulled from your Note Stock. Which notes you pick, and the
+        patterns they spell out, set both your combat power and any special effects you trigger.
       </p>
 
       {/* Note Stock */}
@@ -550,12 +551,23 @@ function TutSection_NoteTrack() {
         </div>
       </div>
 
+      {/* Root & pivot */}
+      <div style={{background:"#14110a", border:"1px solid #ffcc4444", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:8, color:"#ffcc44", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:6}}>⚡ THE PIVOT — set your key first</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          Before you can build, you pivot: pick your <span style={{color:"#ffcc44"}}>Root note</span> and
+          declare <span style={{color:"#aaccff"}}>Major</span> or <span style={{color:"#ff88aa"}}>Minor</span>.
+          That choice sets your scale — which notes count as in-scale, and how every interval is
+          measured from the Root. Mod Cards can bend this on the fly.
+        </p>
+      </div>
+
       {/* Assembled track */}
       <MockNoteTrack notes={["C","D","E","F","G"]} rootNote="C"
         noteTypes={["inScale","inScale","majorThird","fourth","fifth"]}/>
       <p style={{fontSize:9, color:"#6a8a9a", lineHeight:1.6, margin:0}}>
-        ↑ A clean 5-note track — all in scale. After pressing <span style={{color:"#44ff88"}}>✓ Commit</span>,
-        every effect triggers and you gain 5 movement hexes.
+        ↑ A clean five-note track, every note in scale. Hit <span style={{color:"#44ff88"}}>✓ Commit</span> and
+        every effect fires — plus you bank 5 hexes of movement.
       </p>
 
       {/* Commit button mockup */}
@@ -575,34 +587,34 @@ function TutSection_HarmonicCharge() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        <span style={{color:"#ffcc44"}}>Harmonic Charge</span> (HC) is your die tier —
-        the size of the dice you roll when attacking. Start at D6 and build up by
-        playing clean, in-scale patterns. Include Dischord and you'll drop a level.
+        <span style={{color:"#ffcc44"}}>Harmonic Charge</span> (HC) is what clean playing
+        earns you — the currency you bank toward <span style={{color:"#44ffaa"}}>upgrades</span>.
+        End your tracks on strong intervals and string together tidy, in-scale patterns to
+        rack up points; slip in a Dischord note and you score nothing. Fill the meter and you
+        cash it in for a new skill. (Your attack <em>die</em> comes from Amps, not HC — see the next tab.)
       </p>
 
-      {/* Tier ladder */}
+      {/* Upgrade threshold */}
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:10}}>HARMONIC CHARGE TIERS</div>
-        <div style={{display:"flex", flexDirection:"column", gap:6}}>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:10}}>HOW HC BECOMES POWER</div>
+        <div style={{display:"flex", flexDirection:"column", gap:7}}>
           {[
-            {die:"D6",  pts:"Start",  color:"#aaccff", desc:"Base tier. Roll 1-6."},
-            {die:"D8",  pts:"10 pts", color:"#88ffcc", desc:"Clean tracks. Roll 1-8."},
-            {die:"D10", pts:"25 pts", color:"#ffcc44", desc:"Strong harmony. Roll 1-10."},
-            {die:"D12", pts:"50 pts", color:"#ff8844", desc:"Sustained mastery. Roll 1-12."},
-            {die:"D20", pts:"MAX",    color:"#ff44cc", desc:"Peak Harmonic Charge. Roll 1-20!"},
-          ].map((t,i)=>(
-            <div key={i} style={{display:"flex", alignItems:"center", gap:10,
-              padding:"5px 8px", borderRadius:4,
-              background: i===2 ? "#141000" : "#080f1e",
-              border: `1px solid ${i===2 ? t.color+"44" : "#1a2a4033"}`}}>
-              <div style={{minWidth:36, fontFamily:"'Orbitron',sans-serif", fontSize:12, fontWeight:700,
-                color:t.color, textShadow: i===2 ? `0 0 8px ${t.color}` : "none"}}>{t.die}</div>
-              <div style={{fontSize:8, color:"#3a5a7a", minWidth:40}}>{t.pts}</div>
-              <div style={{fontSize:9, color: i===2 ? "#c0d0e0" : "#5a7a8a"}}>{t.desc}</div>
-              {i===2 && <span style={{marginLeft:"auto",fontSize:8,color:t.color}}>← you are here</span>}
+            {step:"1", color:"#88ffcc", text:"Earn HC points from clean, in-scale play (see below)."},
+            {step:"2", color:"#ffcc44", text:"Set a target skill in the upgrade tree — each costs 8 to 20 HC."},
+            {step:"3", color:"#ff8844", text:"When your meter reaches that cost, the skill unlocks."},
+            {step:"4", color:"#44ffaa", text:"Leftover points carry over toward your next pick."},
+          ].map((r,i)=>(
+            <div key={i} style={{display:"flex", alignItems:"flex-start", gap:8}}>
+              <div style={{minWidth:16, height:16, borderRadius:"50%", background:r.color+"22",
+                border:`1px solid ${r.color}88`, color:r.color, fontSize:8, fontWeight:700,
+                display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0}}>{r.step}</div>
+              <div style={{fontSize:9, color:"#a0b8cc", lineHeight:1.5}}>{r.text}</div>
             </div>
           ))}
         </div>
+        <p style={{fontSize:8.5, color:"#6a8a9a", margin:"9px 0 0", lineHeight:1.5}}>
+          A Dischord note breaks your harmony and stalls the meter — so timing your risky notes matters.
+        </p>
       </div>
 
       {/* What earns points */}
@@ -623,14 +635,13 @@ function TutSection_HarmonicCharge() {
         ))}
       </div>
 
-      <div style={{display:"flex", flexDirection:"column", gap:6}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2}}>CURRENT TIER DISPLAY (top of Note Track panel)</div>
-        <div style={{background:"#050c18", padding:"8px 12px", borderRadius:5, border:"1px solid #1a2a40"}}>
-          <div style={{display:"flex", alignItems:"center", gap:8}}>
-            <span style={{fontSize:8, color:"#aa88ff", letterSpacing:1}}>HC</span>
-            <MockDiceTier tier={2}/>
-          </div>
-        </div>
+      <div style={{background:"#0c0a18", border:"1px solid #aa88ff44", borderRadius:6, padding:"8px 12px"}}>
+        <div style={{fontSize:8, color:"#ccaaff", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>🌳 WHERE IT GOES</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          Your HC meter sits at the top of the Note Track panel. Spend it across the Skill
+          Tree — Groupie crews, close-combat moves, Amps and the PA system, stage effects, and
+          your Spirit's exclusive arsenal. (More on those next.)
+        </p>
       </div>
     </div>
   );
@@ -650,11 +661,12 @@ function TutSection_DriveSustain() {
           noteTypes={["inScale","inScale","majorThird","fourth","fifth"]}/>
         <div style={{marginTop:8, display:"flex", gap:6, alignItems:"center"}}>
           <MockFlashBadge text="⚔️ Drive +2" color="#ffaa44"/>
-          <div style={{fontSize:9, color:"#6a8a9a"}}>← 5 steps in a row = +3, but 4 here shows +2</div>
+          <div style={{fontSize:9, color:"#6a8a9a"}}>← five steps = +3; the four shown here give +2</div>
         </div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"8px 0 0", lineHeight:1.6}}>
-          Play notes that step <em>consecutively up or down your scale</em> (C→D→E→F…).
-          3 in a row = +1 Drive. 4 = +2. 5 = +3. Bonus is consumed when you next attack.
+          String together notes that step straight up or down the scale (C→D→E→F…).
+          Three in a row earns +1 Drive, four earns +2, five earns +3. The bonus is
+          spent the next time you attack.
         </p>
       </div>
 
@@ -676,8 +688,9 @@ function TutSection_DriveSustain() {
           <MockFlashBadge text="🛡️ Feedback +2" color="#88ccff"/>
         </div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"8px 0 0", lineHeight:1.6}}>
-          Both patterns must use <em>in-scale notes only</em>. 3 = +1, 4 = +2, 5 = +3.
-          Boost is consumed when you're next hit by an attack.
+          Both patterns count only when every note is in-scale. Three notes = +1,
+          four = +2, five = +3. The boost holds until the next attack lands on you,
+          then it's spent.
         </p>
       </div>
 
@@ -693,7 +706,8 @@ function TutSection_DriveSustain() {
           <span style={{color:"#ffaa44"}}>keep +2</span>
         </div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"6px 0 0"}}>
-          Boosts don't stack — the higher value always wins, and the lower one feeds into Harmonic Charge.
+          Boosts never stack — the higher value always wins, and the one it replaces is
+          converted into Harmonic Charge.
         </p>
       </div>
     </div>
@@ -702,18 +716,19 @@ function TutSection_DriveSustain() {
 
 function TutSection_Intervals() {
   const intervals = [
-    { note:"F",  label:"4th",      color:"#cc55ff", effect:"HC points",         icon:"💜", desc:"Stable interval — scores HC points when ending your track here." },
-    { note:"G",  label:"5th",      color:"#ff55aa", effect:"HC points",         icon:"💗", desc:"Strong perfect 5th — also scores HC points at track end." },
-    { note:"E",  label:"Maj 3rd",  color:"#44ffaa", effect:"Cleanse status",    icon:"✨", desc:"End on the major 3rd to remove your oldest negative status effect." },
-    { note:"Bb", label:"Min 7th",  color:"#4499ff", effect:"Mojo Drain ready",  icon:"🎷", desc:"End here to prepare a Mojo Drain debuff against your next target." },
-    { note:"F#", label:"Tritone",  color:"#ff3300", effect:"Feedback ×2",       icon:"🔥", desc:"The devil's interval. Put it anywhere in your track to double attack damage." },
-    { note:"C",  label:"Octave",   color:"#44aaff", effect:"Die Floor +2",      icon:"🎶", desc:"Start and end on the same note. Raises the minimum value of your attack die." },
+    { note:"F",  label:"4th",      color:"#cc55ff", effect:"HC points",         icon:"💜", desc:"A stable, consonant interval — score HC points by ending your track here." },
+    { note:"G",  label:"5th",      color:"#ff55aa", effect:"HC points",         icon:"💗", desc:"The strong perfect fifth — also banks HC points when it ends your track." },
+    { note:"E",  label:"Maj 3rd",  color:"#44ffaa", effect:"Cleanse status",    icon:"✨", desc:"End on the major third to shed your oldest negative status effect." },
+    { note:"Bb", label:"Min 7th",  color:"#4499ff", effect:"Mojo Drain ready",  icon:"🎷", desc:"End here to arm a Mojo Drain debuff for your next target." },
+    { note:"F#", label:"Tritone",  color:"#ff3300", effect:"Feedback ×2",       icon:"🔥", desc:"The devil's interval. Drop it anywhere in your track to double your attack's damage." },
+    { note:"C",  label:"Octave",   color:"#44aaff", effect:"Die Floor +2",      icon:"🎶", desc:"Open and close on the same note to raise your attack die's floor — no more low rolls." },
   ];
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        Certain <span style={{color:"#aa88ff"}}>intervals</span> — the musical distance between your
-        Root Note and the notes you play — trigger special effects when they appear in (or end) your track.
+        An <span style={{color:"#aa88ff"}}>interval</span> is the musical distance between your
+        Root Note and a note you play — and certain intervals trigger special effects when they
+        land in your track (or finish it).
       </p>
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
         <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>INTERVAL REFERENCE (Root = C)</div>
@@ -754,9 +769,9 @@ function TutSection_Dischord() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        <span style={{color:"#ff6600"}}>Dischord</span> notes are out-of-scale — they don't
-        earn Harmonic Charge points. But they're not useless: they can trigger brutal
-        combat effects of their own.
+        <span style={{color:"#ff6600"}}>Dischord</span> notes sit outside your scale, so they
+        earn no Harmonic Charge — but they're far from dead weight. Played right, they
+        unleash brutal combat effects all their own.
       </p>
 
       {/* Dischord track */}
@@ -771,8 +786,8 @@ function TutSection_Dischord() {
           <MockFlashBadge text="⚡ Chromatic ×3 — Stagger 2t" color="#ff8800"/>
         </div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"8px 0 0", lineHeight:1.6}}>
-          Three or more consecutive semitone steps triggers <span style={{color:"#ff8800"}}>Stagger</span> on your target —
-          hiding 2 of their Note Stock slots for several turns.
+          Three or more semitone steps in a row hits your target with <span style={{color:"#ff8800"}}>Stagger</span>,
+          hiding two of their Note Stock slots for several turns.
         </p>
       </div>
 
@@ -785,12 +800,13 @@ function TutSection_Dischord() {
         <div style={{fontSize:8, color:"#4499ff", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>MOJO DRAIN</div>
         <div style={{display:"flex", gap:8, alignItems:"center", marginBottom:6}}>
           <MockNoteHex note="Bb" type="minorSeventh"/>
-          <div style={{fontSize:9, color:"#a0b8cc"}}>End your track on the Minor 7th — then attack to apply Mojo Drain to your enemy.</div>
+          <div style={{fontSize:9, color:"#a0b8cc"}}>Finish your track on the minor 7th, then attack to slap Mojo Drain on your enemy.</div>
         </div>
         <div style={{fontSize:8, color:"#4499ff", padding:"4px 8px", background:"#05101a", border:"1px solid #1155ff66",
           borderRadius:3, display:"inline-block"}}>💧 MOJO DRAIN 3t</div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"8px 0 0"}}>
-          A Mojo Drained Spirit has all their bonuses (Drive, Feedback, etc.) blocked for several turns.
+          While Mojo Drained, a Spirit can't benefit from any of its bonuses — Drive,
+          Feedback and the rest are all locked out for several turns.
         </p>
       </div>
     </div>
@@ -811,7 +827,8 @@ function TutSection_Spirits() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:10}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        Four Spirits, each with a distinct musical identity, combat style, and stat balance. Choose wisely.
+        Four Spirits, each with its own musical identity, combat style and stat balance.
+        Pick the one that fits how you want to fight.
       </p>
       {spirits.map(s => (
         <div key={s.id} style={{background:"#050c18", border:`1px solid ${s.color}33`,
@@ -829,7 +846,7 @@ function TutSection_Spirits() {
                 <span style={{fontSize:8, color:"#ff6644", width:14, textAlign:"right"}}>{s.drive}</span>
               </div>
               <div style={{display:"flex", alignItems:"center", gap:4}}>
-                <span style={{fontSize:8, color:"#44aaff", width:40}}>🛡️ Sust</span>
+                <span style={{fontSize:8, color:"#44aaff", width:40}}>🛡️ Fbk</span>
                 <MockBar value={s.sustain} max={10} color="#2266aa"/>
                 <span style={{fontSize:8, color:"#44aaff", width:14, textAlign:"right"}}>{s.sustain}</span>
               </div>
@@ -846,6 +863,255 @@ function TutSection_Spirits() {
   );
 }
 
+function TutSection_Attacks() {
+  return (
+    <div style={{display:"flex", flexDirection:"column", gap:14}}>
+      <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
+        You get one attack per turn — your <span style={{color:"#f6ad55"}}>Action Token</span> —
+        and two ways to spend it. <span style={{color:"#f6ad55"}}>Sonic</span> hits from range;
+        <span style={{color:"#ff6644"}}> Swing</span> gets up close. Either way the clash pits your
+        <span style={{color:"#ff6644"}}> Drive</span> against the defender's
+        <span style={{color:"#44aaff"}}> Feedback</span> — roll high, win, and deal damage scaled to your margin.
+      </p>
+
+      <div style={{background:"#14100a", border:"1px solid #f6ad5544", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:8, color:"#f6ad55", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>🔊 SONIC ATTACK — ranged</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          Your main weapon, powered by the Note Track you just committed. It fires a narrow
+          three-hex beam straight ahead, so facing matters. Sonic needs at least one connected
+          <span style={{color:"#ffcc44"}}> Amp</span> — and the more amps in range, the bigger your
+          attack die (d8 → d10 → d12). A defender whose amps are unplugged can't fire back.
+        </p>
+      </div>
+
+      <div style={{background:"#140a0a", border:"1px solid #ff664444", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:8, color:"#ff6644", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>🥊 SWING ATTACK — close combat</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:"0 0 8px"}}>
+          Step next to a rival and swing — no amp required. A plain swing still lands (and flashes
+          a vintage dance-craze name), but the CQC skill route bolts on nasty riders:
+        </p>
+        {[
+          {icon:"🌀", name:"Trip",            desc:"target's movement is halved next turn"},
+          {icon:"💥", name:"Drop Instrument", desc:"target loses Drive until they recover it"},
+          {icon:"😵", name:"Dazed",           desc:"target's next move lurches off in a random direction"},
+        ].map((s,i)=>(
+          <div key={i} style={{display:"flex", gap:8, alignItems:"baseline", marginBottom:4}}>
+            <span style={{fontSize:11}}>{s.icon}</span>
+            <span style={{fontSize:9, color:"#ffaa88", fontWeight:700, minWidth:104}}>{s.name}</span>
+            <span style={{fontSize:9, color:"#6a8a9a"}}>{s.desc}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{background:"#0a0e18", border:"1px solid #ff886644", borderRadius:6, padding:"8px 12px"}}>
+        <div style={{fontSize:8, color:"#ff8866", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>💥 KNOCKBACK</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          Lose a clash and you're shoved back — one hex from a Swing, up to three from a big Sonic
+          hit. Near an <span style={{color:"#ff4400"}}>edge</span>, that shove can launch you clean off the board.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function TutSection_Amps() {
+  return (
+    <div style={{display:"flex", flexDirection:"column", gap:14}}>
+      <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
+        <span style={{color:"#ffcc44"}}>Amps</span> are how you plug in. You can't fire a Sonic
+        Attack without one — and the number of your own amps within range sets how big your attack die is.
+      </p>
+
+      <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:10}}>AMPS IN RANGE → YOUR DIE</div>
+        <MockDiceTier tier={1}/>
+        <div style={{display:"flex", flexDirection:"column", gap:3, marginTop:10}}>
+          {[
+            {n:"0 amps", d:"no Sonic Attack — get plugged in first", c:"#5a7a8a"},
+            {n:"1 amp",  d:"d8",                                     c:"#88ffcc"},
+            {n:"2 amps", d:"d10",                                    c:"#ffcc44"},
+            {n:"3 amps", d:"d12 — fully wired",                      c:"#ff8844"},
+          ].map((r,i)=>(
+            <div key={i} style={{display:"flex", gap:8, alignItems:"baseline"}}>
+              <span style={{fontSize:9, color:"#a0b8cc", minWidth:48}}>{r.n}</span>
+              <span style={{fontSize:9, color:r.c}}>{r.d}</span>
+            </div>
+          ))}
+        </div>
+        <p style={{fontSize:9, color:"#6a8a9a", margin:"10px 0 0", lineHeight:1.6}}>
+          You place amps on adjacent hexes through the Electric skill route. Stay within about four
+          hexes of an amp to keep it connected — wander too far and it unplugs.
+        </p>
+      </div>
+
+      <div style={{background:"#050c18", border:"1px solid #44cc8833", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:8, color:"#44cc88", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:6}}>🔧 ROADIES</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          Amps don't move on their own. Hire Roadies and they'll haul an amp a couple of hexes every
+          so often, so your rig follows you around the board instead of pinning you in one corner.
+        </p>
+      </div>
+
+      <div style={{background:"#0a0a18", border:"1px solid #aa55ff44", borderRadius:6, padding:"8px 12px"}}>
+        <div style={{fontSize:8, color:"#aa88ff", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>🪤 GETTING UNPLUGGED</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          Cables cut both ways. Rivals can yank yours — the Pranksta crew disconnects nearby amps — and
+          a Spirit with no connected amp can neither fire a Sonic Attack nor retaliate against one. Guard your rig.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function TutSection_Crowd() {
+  return (
+    <div style={{display:"flex", flexDirection:"column", gap:14}}>
+      <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
+        Fans never hand you Fame directly — they <span style={{color:"#ff66aa"}}>multiply</span> it.
+        Every Fame-earning deed is scaled by your crowd, from ×1 in an empty house up to a ×3 ceiling
+        when the place is packed.
+      </p>
+
+      <div style={{background:"#160a12", border:"1px solid #ff66aa44", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:8, color:"#ff66aa", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>TWO KINDS OF FAN</div>
+        <div style={{display:"flex", gap:8, alignItems:"baseline", marginBottom:5}}>
+          <span style={{fontSize:9, color:"#ffcc44", fontWeight:700, minWidth:72}}>♥ Diehards</span>
+          <span style={{fontSize:9, color:"#6a8a9a"}}>your loyal core — each adds a lot to the multiplier and almost never leaves.</span>
+        </div>
+        <div style={{display:"flex", gap:8, alignItems:"baseline"}}>
+          <span style={{fontSize:9, color:"#66ccff", fontWeight:700, minWidth:72}}>👥 Casuals</span>
+          <span style={{fontSize:9, color:"#6a8a9a"}}>the fickle fringe — they pile in fast, add a little each, and bail the moment you go cold.</span>
+        </div>
+      </div>
+
+      <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>WORK THE ROOM — gain by zone</div>
+        {[
+          {zone:"🌟 Mainstage (centre)", note:"biggest gain · hardens Diehards · wins over Unsure fans · demolition risk", c:"#ff66aa"},
+          {zone:"🔥 The Pit (ring 1)",   note:"still a heavy draw, just a touch less than centre",                       c:"#ff8844"},
+          {zone:"👣 The Floor (mid)",    note:"a small, safe trickle — but no hardening or recruiting",                  c:"#88aacc"},
+          {zone:"🚪 Backstage (edges)",  note:"no gain; linger out here and bored Casuals drift off",                   c:"#5a7a8a"},
+        ].map((r,i)=>(
+          <div key={i} style={{marginBottom:6}}>
+            <div style={{fontSize:9, color:r.c, fontWeight:700, marginBottom:1}}>{r.zone}</div>
+            <div style={{fontSize:8.5, color:"#6a8a9a", lineHeight:1.5}}>{r.note}</div>
+          </div>
+        ))}
+        <p style={{fontSize:9, color:"#6a8a9a", margin:"6px 0 0", lineHeight:1.6}}>
+          You grow the crowd by committing <em>clean</em> tracks in the inner zones. Perform
+          centre-stage several turns running and Casuals harden into permanent Diehards.
+        </p>
+      </div>
+
+      <div style={{background:"#160808", border:"1px solid #ff444444", borderRadius:6, padding:"8px 12px"}}>
+        <div style={{fontSize:8, color:"#ff5544", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>💔 GETTING DEMOLISHED</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          Take a beating in the spotlight and the magic curdles: a wave of Casuals scatters — some
+          defecting straight to whoever beat you — and you're locked out of crowd gain for a few turns
+          while you regroup.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function TutSection_ModCards() {
+  const cards = [
+    {icon:"🎼", name:"Chromatic Shift", color:"#44ffaa", when:"after the pivot",  desc:"Rewrites every discord note on your track into an in-scale note — an instant clean-up."},
+    {icon:"🔄", name:"Transpose",       color:"#ffcc44", when:"during the pivot",  desc:"Pick any note in your stock and make it your new Root, re-spelling the whole scale around it."},
+    {icon:"⚡", name:"Overdrive",       color:"#ff8844", when:"before you commit", desc:"Lets one discord note count as in-scale, so it scores instead of breaking your harmony."},
+  ];
+  return (
+    <div style={{display:"flex", flexDirection:"column", gap:14}}>
+      <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
+        <span style={{color:"#aa88ff"}}>Mod Cards</span> are one-shot rule-benders for your Note Track.
+        Play one per turn; they recharge by your next turn. Each fires at a specific moment around the
+        <span style={{color:"#ffcc44"}}> pivot</span> — where you lock in your Root and declare Major or Minor.
+      </p>
+      {cards.map((c,i)=>(
+        <div key={i} style={{background:"#050c18", border:`1px solid ${c.color}44`,
+          borderLeft:`3px solid ${c.color}`, borderRadius:6, padding:"10px 12px"}}>
+          <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:4}}>
+            <span style={{fontSize:16}}>{c.icon}</span>
+            <span style={{fontSize:11, color:c.color, fontWeight:700, fontFamily:"'Orbitron',sans-serif", letterSpacing:1}}>{c.name}</span>
+            <span style={{marginLeft:"auto", fontSize:7.5, color:c.color, padding:"1px 6px", borderRadius:3,
+              background:c.color+"22", border:`1px solid ${c.color}44`}}>{c.when}</span>
+          </div>
+          <div style={{fontSize:9, color:"#8a9aaa", lineHeight:1.55}}>{c.desc}</div>
+        </div>
+      ))}
+      <p style={{fontSize:9, color:"#6a8a9a", lineHeight:1.6, margin:0}}>
+        Played at the right moment, a card can rescue a track that would otherwise count as Dischord —
+        turning wasted notes into Harmonic Charge and a clean, fan-pleasing performance.
+      </p>
+    </div>
+  );
+}
+
+function TutSection_Winning() {
+  const cadences = [
+    {icon:"🙏", name:"Amen Cadence",         formula:"I → IV → I",         fp:"2 FP"},
+    {icon:"🎭", name:"Deceptive Cadence",    formula:"I → V → vi",         fp:"3 FP"},
+    {icon:"👑", name:"The Full Resolve",     formula:"I → IV → V → I",     fp:"4 FP"},
+    {icon:"🌀", name:"Circle of Resolution", formula:"I → vi → ii → V → I", fp:"6 FP"},
+  ];
+  return (
+    <div style={{display:"flex", flexDirection:"column", gap:14}}>
+      <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
+        Three roads lead to victory — pick the one that suits your playstyle.
+      </p>
+
+      <div style={{background:"#14110a", border:"1px solid #ffd70044", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:9, color:"#ffd700", fontFamily:"'Orbitron',sans-serif", letterSpacing:1, marginBottom:5}}>⭐ FAME LEGEND</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          The headline route: be first to <span style={{color:"#ffd700"}}>25 Fame Points</span>. Fame pours
+          in from winning clashes (multiplied by your crowd), discovering riffs, collecting ✨ Fame Sparks
+          (four sparks forge one point), and resolving the Cadence Objectives below.
+        </p>
+      </div>
+
+      <div style={{background:"#100a16", border:"1px solid #cc66ff44", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:9, color:"#cc88ff", fontFamily:"'Orbitron',sans-serif", letterSpacing:1, marginBottom:5}}>🌟 HOLD THE LIMELIGHT</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          Seize the centre stage and strike a pose. Hold the Limelight for the required pose turns without
+          being knocked off and you win outright — no Fame required. It paints a target on your back, but
+          the crowd loves a showboat.
+        </p>
+      </div>
+
+      <div style={{background:"#160a0a", border:"1px solid #ff664444", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:9, color:"#ff6644", fontFamily:"'Orbitron',sans-serif", letterSpacing:1, marginBottom:5}}>💥 LAST SPIRIT STANDING</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          The brute-force option: knock down every rival's stands until you're the only act left on the bill.
+        </p>
+      </div>
+
+      <div style={{background:"#08140e", border:"1px solid #44cc8844", borderRadius:6, padding:"8px 12px"}}>
+        <div style={{fontSize:8, color:"#44cc88", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>🔦 THE SPOTLIGHT</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          A roaming searchlight drifts across the board, moving once each round. End your turn standing in it
+          and you heal +1 Vibe — a handy patch-up if you can read where it's headed next.
+        </p>
+      </div>
+
+      <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>🎯 CADENCE OBJECTIVES — end turns on these scale degrees, any key</div>
+        {cadences.map((c,i)=>(
+          <div key={i} style={{display:"flex", alignItems:"center", gap:8, marginBottom:5}}>
+            <span style={{fontSize:12}}>{c.icon}</span>
+            <span style={{fontSize:9, color:"#c0d0e0", fontWeight:700, minWidth:132}}>{c.name}</span>
+            <span style={{fontSize:9, color:"#8a9aaa", flex:1}}>{c.formula}</span>
+            <span style={{fontSize:9, color:"#ffd700", fontWeight:700}}>{c.fp}</span>
+          </div>
+        ))}
+        <p style={{fontSize:8.5, color:"#6a8a9a", margin:"6px 0 0", lineHeight:1.5}}>
+          Finish consecutive turns on the right degrees — the root, then the 4th, then home — to bank the bonus.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 const TUTORIAL_SECTION_COMPONENTS = {
   overview:         TutSection_Overview,
   board:            TutSection_Board,
@@ -854,6 +1120,11 @@ const TUTORIAL_SECTION_COMPONENTS = {
   drive_sustain:    TutSection_DriveSustain,
   intervals:        TutSection_Intervals,
   dischord:         TutSection_Dischord,
+  attacks:          TutSection_Attacks,
+  amps:             TutSection_Amps,
+  crowd:            TutSection_Crowd,
+  mod_cards:        TutSection_ModCards,
+  winning:          TutSection_Winning,
   spirits:          TutSection_Spirits,
 };
 
@@ -865,6 +1136,11 @@ const TUTORIAL_SECTIONS = [
   { id:"drive_sustain",   title:"Drive & Feedback",      icon:"⚔️", color:"#ff6644" },
   { id:"intervals",       title:"Interval Effects",     icon:"🎶", color:"#44aaff" },
   { id:"dischord",        title:"Dischord & Status",    icon:"⚡", color:"#ff8800" },
+  { id:"attacks",         title:"Swing & Sonic",        icon:"🥊", color:"#ff6644" },
+  { id:"amps",            title:"Amps & Your Die",      icon:"🔊", color:"#ffcc44" },
+  { id:"crowd",           title:"The Crowd",            icon:"🎤", color:"#ff66aa" },
+  { id:"mod_cards",       title:"Mod Cards",            icon:"🎼", color:"#aa88ff" },
+  { id:"winning",         title:"Winning the Game",     icon:"🏆", color:"#ffd700" },
   { id:"spirits",         title:"The Spirits",          icon:"🌟", color:"#cc55ff" },
 ];
 
@@ -2910,6 +3186,8 @@ function Game({ gameState, onReturnToLobby }) {
   const bttpModeRef = useRef({ view: 'piano', winMult: 1 });
   // 🎸⏰ Back to the Past — overlay state (declared here, before its input effect)
   const [bttpChallenge, setBttpChallenge] = useState(null);
+  // 🎹/🎸 instrument used to read notes in riff-off battles (toggle on the countdown card)
+  const [riffView, setRiffView] = useState('piano');
 
   // RIFF-OFF keyboard listener — only armed while a note is flashing.
   // e.key gives 'a' for plain press, 'A' for Shift+A — exactly our sharp rule.
@@ -5691,6 +5969,73 @@ function Game({ gameState, onReturnToLobby }) {
     if (stageKey === 'angel') {
       setTimeout(() => bttpStartStage(spiritId, 'goode'), 1600); // Stage 2 always runs
     }
+  }
+
+  // ─── 🎹🎸 Shared instrument diagram ────────────────────────────────────────
+  // Renders a chord/notes on a piano or vertical fretboard. Used by BOTH the Back
+  // to the Past challenge and riff-off battles. Note keys: lowercase = natural
+  // (white key / open-ish fret), UPPERCASE = sharp (black key / +1 fret). `got` =
+  // notes already hit (drawn green). `accent` colours the lit-but-unhit notes.
+  function renderInstrument(view, noteKeys, gotKeys, accent) {
+    const lit = new Set(noteKeys || []);
+    const done = new Set(gotKeys || []);
+    if (view === 'guitar') {
+      const names = ['E','A','D','G','B','e'];
+      const gauge = [3.2, 2.6, 2.0, 1.6, 1.2, 0.8];
+      const GPOS = { e:[0,0], f:[0,1], a:[1,0], b:[1,2], c:[1,3], d:[2,0], g:[3,0] };
+      const N = 6, FRETS = 7, colW = 30, fh = 24, side = 20, topPad = 20;
+      const W = (N - 1) * colW + side * 2, H = topPad + FRETS * fh + 14;
+      const sx = i => side + i * colW, nutY = topPad, fy = f => nutY + f * fh;
+      const posOf = k => {
+        const nat = k.toLowerCase(); const base = GPOS[nat]; if (!base) return null;
+        return k === k.toUpperCase() && k !== nat ? [base[0], base[1] + 1] : base; // sharp = +1 fret
+      };
+      const blips = [...lit].map(k => ({ k, pos: posOf(k), dn: done.has(k) })).filter(b => b.pos);
+      return (
+        <svg width={W} height={H} style={{maxWidth:'100%'}}>
+          {names.map((nm, i) => (
+            <text key={`n${i}`} x={sx(i)} y={topPad - 6} textAnchor="middle" fontSize={9} fontWeight="bold" fill={`${accent}cc`} fontFamily="monospace">{nm}</text>
+          ))}
+          {[3,5,7].filter(f => f <= FRETS).map(f => (
+            <circle key={`in${f}`} cx={(sx(2) + sx(3)) / 2} cy={nutY + (f - 0.5) * fh} r={3.5} fill={`${accent}33`}/>
+          ))}
+          {Array.from({ length: FRETS + 1 }).map((_, f) => (
+            <line key={`f${f}`} x1={sx(0)} y1={fy(f)} x2={sx(N - 1)} y2={fy(f)} stroke={f === 0 ? '#dbe4f0' : `${accent}44`} strokeWidth={f === 0 ? 3.5 : 1}/>
+          ))}
+          {names.map((_, i) => (
+            <line key={`s${i}`} x1={sx(i)} y1={fy(0)} x2={sx(i)} y2={fy(FRETS)} stroke="#aab8cc" strokeWidth={gauge[i]} strokeLinecap="round"/>
+          ))}
+          {blips.map(({ k, pos, dn }) => {
+            const [s, f] = pos, cx = sx(s);
+            if (f === 0) return <circle key={k} cx={cx} cy={nutY - 9} r={5} fill={dn ? '#2bd66b' : 'none'} stroke={dn ? '#2bd66b' : accent} strokeWidth={2}/>;
+            return <circle key={k} cx={cx} cy={nutY + (f - 0.5) * fh} r={7.5} fill={dn ? '#2bd66b' : accent} stroke="#06111f" strokeWidth={1} style={dn ? {} : { filter:`drop-shadow(0 0 5px ${accent})` }}/>;
+          })}
+        </svg>
+      );
+    }
+    // piano — one octave, C–B, with black keys. Naturals light the whites; sharps
+    // light the black between the right pair.
+    const whites = ['c','d','e','f','g','a','b'];
+    const blackAfter = [0, 1, 3, 4, 5];
+    const blackForSharp = { C:0, D:1, F:3, G:4, A:5 }; // uppercase sharp → white index it sits right of
+    const W = 26, H = 84, bw = 16, bh = 52, svgW = whites.length * W;
+    return (
+      <svg width={svgW} height={H} style={{maxWidth:'100%'}}>
+        {whites.map((l, i) => {
+          const isLit = lit.has(l), dn = done.has(l);
+          const fill = dn ? '#2bd66b' : isLit ? accent : '#e6ecf6';
+          return <rect key={l} x={i * W} y={0} width={W - 1} height={H} rx={3} fill={fill} stroke="#0a0e16" strokeWidth={1}
+            style={isLit && !dn ? { filter:`drop-shadow(0 0 7px ${accent})` } : {}}/>;
+        })}
+        {blackAfter.map(i => {
+          const sharp = Object.keys(blackForSharp).find(s => blackForSharp[s] === i);
+          const isLit = sharp && lit.has(sharp), dn = sharp && done.has(sharp);
+          const fill = dn ? '#2bd66b' : isLit ? accent : '#0c1018';
+          return <rect key={`b${i}`} x={(i + 1) * W - bw / 2} y={0} width={bw} height={bh} rx={2} fill={fill} stroke="#000" strokeWidth={1}
+            style={isLit && !dn ? { filter:`drop-shadow(0 0 6px ${accent})` } : {}}/>;
+        })}
+      </svg>
+    );
   }
 
   // ─── 🧪 TESTING GROUNDS — dev helpers ──────────────────────────────────────
@@ -8540,6 +8885,17 @@ function Game({ gameState, onReturnToLobby }) {
                     textShadow:`0 0 30px ${noteColor}`, animation:'riffpulse 0.3s ease-out', lineHeight:1.1}}>
                     {battleState.countdown}
                   </div>
+                  <div style={{display:'flex', gap:6, justifyContent:'center', margin:'8px 0 2px'}}>
+                    {['piano','guitar'].map(v => (
+                      <button key={v} onClick={() => setRiffView(v)} style={{
+                        cursor:'pointer', fontFamily:"'Orbitron',sans-serif", fontSize:9, letterSpacing:1, padding:'4px 10px', borderRadius:6,
+                        color: riffView === v ? '#06111f' : noteColor,
+                        background: riffView === v ? noteColor : 'transparent',
+                        border:`1px solid ${noteColor}`}}>
+                        {v === 'piano' ? '🎹 PIANO' : '🎸 GUITAR'}
+                      </button>
+                    ))}
+                  </div>
                   {progressRow(rRiff.notes, rResults, -1, noteColor)}
                 </div>
               )}
@@ -8554,36 +8910,17 @@ function Game({ gameState, onReturnToLobby }) {
                     const glitched = battleState.glitchAt === rNoteIdx;
                     const ghostKey = (!isAtkTurn && battleState.defGhosts) ? battleState.defGhosts[rNoteIdx] : null;
                     const gh = (battleState.ghostHit && battleState.ghostHit.idx === rNoteIdx) ? battleState.ghostHit : null;
-                    if (ghostKey) {
-                      // 🎴 E-RUSH — real note + its ghost; BOTH keys must be hit
-                      const mainHit  = gh?.main;
-                      const ghostDone = gh?.ghost;
-                      return (
-                        <div key={`${rTurn}-${rNoteIdx}-erush`} style={{display:'flex', alignItems:'center',
-                          justifyContent:'center', gap:18, margin:'4px 0 0', animation:'riffpulse 0.18s ease-out'}}>
-                          <div style={{fontSize:80, fontWeight:900,
-                            color: mainHit ? '#55ffaa' : '#fff',
-                            textShadow: mainHit ? '0 0 30px #55ffaa' : `0 0 34px ${noteColor}`, lineHeight:1.1}}>
-                            {curNote ? noteGlyph(curNote) : ''}
-                          </div>
-                          <div style={{fontSize:30, fontWeight:900, color:'#9a7adf'}}>+</div>
-                          <div style={{fontSize:66, fontWeight:900, fontStyle:'italic',
-                            color: ghostDone ? '#55ffaa' : '#b899ff',
-                            opacity: ghostDone ? 1 : 0.62,
-                            textShadow: ghostDone ? '0 0 26px #55ffaa' : '0 0 22px #7a4ddf, 2px 2px 0 #2a1a4a',
-                            lineHeight:1.1}}>
-                            {noteGlyph(ghostKey)}
-                          </div>
-                        </div>
-                      );
-                    }
+                    // Read the note(s) off the chosen instrument — same system as Back to the Past.
+                    const notes = curNote ? (ghostKey ? [curNote, ghostKey] : [curNote]) : [];
+                    const got = [];
+                    if (gh?.main && curNote) got.push(curNote);
+                    if (gh?.ghost && ghostKey) got.push(ghostKey);
+                    const accentCol = glitched ? '#ff3355' : noteColor;
                     return (
-                      <div key={`${rTurn}-${rNoteIdx}-${glitched ? 'g' : 'n'}`} style={{fontSize:80, fontWeight:900,
-                        color: glitched ? '#ff3355' : '#fff',
-                        textShadow: glitched ? '0 0 34px #ff3355, 2px 0 0 #00e5ff, -2px 0 0 #ff00aa' : `0 0 34px ${noteColor}`,
-                        animation: glitched ? 'riffglitch 0.4s ease-in-out' : 'riffpulse 0.18s ease-out',
-                        lineHeight:1.1, margin:'4px 0 0'}}>
-                        {curNote ? noteGlyph(curNote) : ''}
+                      <div key={`${rTurn}-${rNoteIdx}-${ghostKey ? 'gh' : glitched ? 'g' : 'n'}`}
+                        style={{display:'flex', justifyContent:'center', margin:'6px 0 2px',
+                          animation: glitched ? 'riffglitch 0.4s ease-in-out' : 'riffpulse 0.18s ease-out'}}>
+                        {renderInstrument(riffView, notes, got, accentCol)}
                       </div>
                     );
                   })()}
@@ -10368,81 +10705,7 @@ function Game({ gameState, onReturnToLobby }) {
           : ch.lastGrade === 'clam' ? 'CLAMS!'
           : ch.lastGrade === 'miss' ? 'MISSED!' : '';
         const view = ch.view || st.view;
-        // Fretboard position for each keystroke: [stringIndex 0=low E … 5=high E, fret].
-        const GUITAR_POS = { e:[0,0], f:[0,1], a:[1,0], b:[1,2], c:[1,3], d:[2,0], g:[3,0] };
-        // Render the chord on a piano or a vertical fretboard. `chord` = letters to
-        // play; `got` = letters already pressed correctly (shown in green).
-        const renderDiagram = (chord, got) => {
-          const lit = new Set(chord || []);
-          const done = new Set(got || []);
-          if (view === 'guitar') {
-            // Vertical fretboard, headstock up. Strings run top→bottom; low E on the
-            // LEFT (thick) through high E on the RIGHT (thin). Blips sit on a string at
-            // a fret; open notes show as a ring above the nut.
-            const names = ['E','A','D','G','B','e'];        // low → high (low E vs high e)
-            const gauge = [3.0, 2.4, 1.9, 1.5, 1.1, 0.8];   // string thickness, low → high
-            const N = 6, FRETS = 4, colW = 24, fh = 24, side = 16, topPad = 18;
-            const W = (N - 1) * colW + side * 2, H = topPad + FRETS * fh + 14;
-            const sx = i => side + i * colW;
-            const nutY = topPad, fy = f => nutY + f * fh;
-            return (
-              <svg width={W} height={H} style={{maxWidth:'100%'}}>
-                {names.map((nm, i) => (
-                  <text key={`n${i}`} x={sx(i)} y={topPad - 6} textAnchor="middle" fontSize={9}
-                    fontWeight="bold" fill={`${accent}cc`} fontFamily="monospace">{nm}</text>
-                ))}
-                {/* fret-marker inlay at the 3rd fret */}
-                {3 <= FRETS && (
-                  <circle cx={(sx(2) + sx(3)) / 2} cy={nutY + 2.5 * fh} r={3.5} fill={`${accent}33`}/>
-                )}
-                {/* frets (horizontal) — the nut (fret 0) is thick */}
-                {Array.from({ length: FRETS + 1 }).map((_, f) => (
-                  <line key={`f${f}`} x1={sx(0)} y1={fy(f)} x2={sx(N - 1)} y2={fy(f)}
-                    stroke={f === 0 ? '#dbe4f0' : `${accent}44`} strokeWidth={f === 0 ? 3.5 : 1}/>
-                ))}
-                {/* strings (vertical) — width = gauge, so low/high E read at a glance */}
-                {names.map((_, i) => (
-                  <line key={`s${i}`} x1={sx(i)} y1={fy(0)} x2={sx(i)} y2={fy(FRETS)}
-                    stroke="#aab8cc" strokeWidth={gauge[i]} strokeLinecap="round"/>
-                ))}
-                {/* blips on string + fret (open = ring above the nut) */}
-                {pads.filter(l => lit.has(l) && GUITAR_POS[l]).map(l => {
-                  const [s, f] = GUITAR_POS[l], dn = done.has(l), cx = sx(s);
-                  if (f === 0) {
-                    return <circle key={l} cx={cx} cy={nutY - 9} r={5}
-                      fill={dn ? '#2bd66b' : 'none'} stroke={dn ? '#2bd66b' : accent} strokeWidth={2}/>;
-                  }
-                  return <circle key={l} cx={cx} cy={nutY + (f - 0.5) * fh} r={7.5}
-                    fill={dn ? '#2bd66b' : accent} stroke="#06111f" strokeWidth={1}
-                    style={dn ? {} : { filter:`drop-shadow(0 0 5px ${accent})` }}/>;
-                })}
-              </svg>
-            );
-          }
-          // piano — one octave in real key order (C D E F G A B) with black keys
-          // as calibration landmarks. No labels: read the position, press the key.
-          const whites = ['c','d','e','f','g','a','b'];   // left→right, true piano order
-          const blackAfter = [0, 1, 3, 4, 5];             // a black key sits to the right of these whites (the 2-and-3 groups)
-          const W = 26, H = 84, bw = 16, bh = 52;
-          const svgW = whites.length * W;
-          return (
-            <svg width={svgW} height={H} style={{maxWidth:'100%'}}>
-              {whites.map((l, i) => {
-                const x = i * W, isLit = lit.has(l), dn = done.has(l);
-                const fill = dn ? '#2bd66b' : isLit ? accent : '#e6ecf6';
-                return (
-                  <rect key={l} x={x} y={0} width={W - 1} height={H} rx={3} fill={fill}
-                    stroke="#0a0e16" strokeWidth={1}
-                    style={isLit && !dn ? { filter:`drop-shadow(0 0 7px ${accent})` } : {}}/>
-                );
-              })}
-              {blackAfter.map(i => (
-                <rect key={`b${i}`} x={(i + 1) * W - bw / 2} y={0} width={bw} height={bh} rx={2}
-                  fill="#0c1018" stroke="#000" strokeWidth={1}/>
-              ))}
-            </svg>
-          );
-        };
+        const renderDiagram = (chord, got) => renderInstrument(view, chord, got, accent);
         return (
           <div style={{position:'fixed',inset:0,background:'#000000e0',zIndex:9995,display:'flex',alignItems:'center',justifyContent:'center'}}>
             <div style={{background:'linear-gradient(165deg,#0c0818,#08101e 60%,#050810)',border:`2px solid ${accent}`,borderRadius:12,padding:'18px 22px 20px',maxWidth:400,width:'94%',textAlign:'center',boxShadow:`0 0 44px ${accent}55`}}>
@@ -10490,7 +10753,7 @@ function Game({ gameState, onReturnToLobby }) {
                   <div style={{fontSize:9,color:'#ffd98a',fontFamily:"'Orbitron',sans-serif",letterSpacing:2,marginBottom:6}}>
                     {view === 'guitar' ? '🎸' : '🎹'} PLAY THE CHORD
                   </div>
-                  <div style={{height:104,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
+                  <div style={{height: view === 'guitar' ? 206 : 104,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
                     {ch.flash ? renderDiagram(ch.flash.chord, ch.flash.got)
                       : <div style={{fontSize:12,color:gradeColor,fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>{gradeText || '…'}</div>}
                   </div>
@@ -10521,7 +10784,7 @@ function Game({ gameState, onReturnToLobby }) {
               {ch.phase === 'playback' && (
                 <>
                   <div style={{fontSize:9,color:accent,fontFamily:"'Orbitron',sans-serif",letterSpacing:2,marginBottom:6}}>🎵 HOW IT GOES…</div>
-                  <div style={{height:104,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <div style={{height: view === 'guitar' ? 206 : 104,display:'flex',alignItems:'center',justifyContent:'center'}}>
                     {ch.flash ? renderDiagram(ch.flash.chord, ch.flash.chord) : <div style={{height:84}}/>}
                   </div>
                   <div style={{fontSize:8,color:'#5a7a9a'}}>Here's the progression, in rhythm.</div>
