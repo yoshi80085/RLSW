@@ -52,7 +52,7 @@ export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId
                         return (
                           <button key={sk.id} disabled={!inGame}
                             onClick={()=> sk.fire ? devFireSignature(sid, sk) : devUnlockSkill(sid, sk.id, sk.pre)}
-                            title={sk.fire === 'hydra' ? 'Unlock + deploy 3 amps' : sk.fire === 'thousand' ? 'Unlock + fire the masher' : (on ? 'Already unlocked' : 'Unlock')}
+                            title={sk.fire === 'hydra' ? 'Unlock + deploy 3 amps' : (on ? 'Already unlocked' : 'Unlock')}
                             style={{background: on && !sk.fire ? '#16331e' : '#0a0814',
                               border:`1px solid ${on && !sk.fire ? '#44cc66' : (sk.fire ? route.color : '#4a2a60')}`,
                               color: on && !sk.fire ? '#88ffaa' : (sk.fire ? route.color : '#d0c0e0'),

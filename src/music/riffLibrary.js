@@ -184,12 +184,12 @@ export function riffTriggerDiffs(riff) {
   return d;
 }
 
-// Scan a note track for any riff trigger. Key-agnostic: only the interval
+// Scan a melody line for any riff trigger. Key-agnostic: only the interval
 // pattern matters. Returns { riff, rootPc } of the best match (longest trigger,
 // ties broken by FP) or null.
-export function detectRiff(noteTrack) {
-  if (!noteTrack || noteTrack.length < 3) return null;
-  const pcs = noteTrack.map(n => pitchIndex(n)).filter(p => p >= 0);
+export function detectRiff(melodyLine) {
+  if (!melodyLine || melodyLine.length < 3) return null;
+  const pcs = melodyLine.map(n => pitchIndex(n)).filter(p => p >= 0);
   if (pcs.length < 3) return null;
   const diffs = [];
   for (let i = 0; i < pcs.length - 1; i++) diffs.push(((pcs[i + 1] - pcs[i]) % 12 + 12) % 12);

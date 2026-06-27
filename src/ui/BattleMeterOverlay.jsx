@@ -1056,8 +1056,10 @@ export function BattleMeterOverlay({
              'def_die_settling','pick_def_slide'].includes(phase) ? 'charge'
           : null;
         const beamPower   = beamPhase === 'blast' ? (atkTotal ?? atkStat ?? 6) : (atkStat ?? 6);
-        const beamH       = beamPhase === 'charge' ? 8 : Math.min(96, Math.round(10 + beamPower * 3.2)); // px
-        const beamColor   = attacker?.color ?? '#aa66ff';
+        // ☀️ SUNBEAM — Intergalactic 0's capstone fires a fatter, golden, extra-lit beam.
+        const sunLit      = !!battleState.sunbeam;
+        const beamH       = (beamPhase === 'charge' ? 8 : Math.min(96, Math.round(10 + beamPower * 3.2))) * (sunLit ? 1.6 : 1); // px
+        const beamColor   = sunLit ? '#ffcc44' : (attacker?.color ?? '#aa66ff');
 
         // ── MOVE-NAME NEON CALLOUT (CQC only, fires at result) ──────────────
         let moveFlash = null;
@@ -1483,18 +1485,28 @@ export function BattleMeterOverlay({
                       zIndex:6, userSelect:'none',
 
                     }}>
-                    {battleState.hydra ? (
+                    {battleState.dicePool ? (
                       <div style={{display:'flex', gap:`${DIE_SIZE*0.06}px`, alignItems:'center', justifyContent:'center'}}>
-                        {[0,1,2].map(i => {
+                        {battleState.dicePool.map((sides, i) => {
                           const v = atkSpinning
-                            ? (battleState.hydraSpin?.[i] ?? 1)
-                            : (battleState.hydraDice?.[i] ?? 1);
-                          return <NeonDie key={i} value={v} spinning={atkSpinning}
-                            color={attacker?.color ?? '#4488ff'} size={DIE_SIZE*0.56} sides={6}/>;
+                            ? (battleState.diceSpin?.[i] ?? 1)
+                            : (battleState.diceVals?.[i] ?? 1);
+                          // Once landed, spotlight the KEPT (highest) die and dim the rest.
+                          const kept = !atkSpinning && i === battleState.keptIdx;
+                          return (
+                            <div key={i} style={{
+                              opacity: (atkSpinning || kept) ? 1 : 0.4,
+                              transform: kept ? 'scale(1.12)' : 'none',
+                              filter: kept ? `drop-shadow(0 0 7px ${attacker?.color ?? '#4488ff'})` : 'none',
+                              transition:'all .2s'}}>
+                              <NeonDie value={v} spinning={atkSpinning}
+                                color={attacker?.color ?? '#4488ff'} size={DIE_SIZE*0.56} sides={sides}/>
+                            </div>
+                          );
                         })}
                       </div>
                     ) : (
-                      <NeonDie value={atkFace} spinning={atkSpinning} color={attacker?.color ?? '#ff4444'} size={DIE_SIZE} sides={battleState.sonicAttack ? (battleState.dieSides ?? 6) : 6}/>
+                      <NeonDie value={atkFace} spinning={atkSpinning} color={attacker?.color ?? '#ff4444'} size={DIE_SIZE} sides={6}/>
                     )}
                     {atkSpinning && (
                       <div style={{
@@ -1634,7 +1646,7 @@ export function BattleMeterOverlay({
               const highestTier = ['swing_3','swing_2','swing_1'].find(t => swingUpgrades.includes(t));
               const tierDef = highestTier ? SWING_UPGRADE_TIERS.find(t => t.id === highestTier) : null;
               const attackLabel = battleState.sonicAttack
-                ? `🔊 Sonic Attack (d${battleState.dieSides})`
+                ? `🔊 Sonic Attack (${battleState.diceLabel ?? 'd6'}, keep best)`
                 : cqcDef ? `${cqcDef.icon} ${cqcDef.label}`
                 : tierDef ? `${tierDef.icon} ${tierDef.label}` : '⚔️ Swing';
               const mods = battleState.skillMods ?? {};

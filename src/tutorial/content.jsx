@@ -91,7 +91,7 @@ function MockNoteTrack({ notes, rootNote, noteTypes }) {
   return (
     <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:5, padding:"6px 8px"}}>
       <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:1, marginBottom:4}}>
-        NOTE TRACK <span style={{color:"#ffcc44", marginLeft:6}}>RN: {rootNote}</span>
+        MELODY LINE <span style={{color:"#ffcc44", marginLeft:6}}>RN: {rootNote}</span>
       </div>
       <div style={{display:"flex", gap:3, flexWrap:"wrap", marginBottom:4}}>
         {notes.map((n, i) => (
@@ -161,7 +161,7 @@ function TutSection_Overview() {
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
         Rock Legends: Spirit Wars is a hex-grid battle game powered by music theory.
-        Each turn you build a sequence of notes called a <span style={{color:"#aa88ff"}}>Note Track</span>,
+        Each turn you build a sequence of notes called a <span style={{color:"#aa88ff"}}>Melody Line</span>,
         lock it in, move your Spirit across the board, then unleash a
         <span style={{color:"#f6ad55"}}> Sonic Attack</span> on any enemy in range.
         The notes you pick — and the patterns they spell out — decide how hard you hit
@@ -172,7 +172,7 @@ function TutSection_Overview() {
         <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:10}}>TURN FLOW</div>
         <div style={{display:"flex", alignItems:"center", gap:6, flexWrap:"wrap"}}>
           {[
-            { label:"Build Note Track", icon:"🎵", color:"#aa55ff" },
+            { label:"Build Melody Line", icon:"🎵", color:"#aa55ff" },
             { label:"Commit", icon:"✓", color:"#44ff88" },
             { label:"Move", icon:"🚶", color:"#44cc88" },
             { label:"Sonic Attack", icon:"⚡", color:"#f6ad55" },
@@ -206,11 +206,10 @@ function TutSection_Overview() {
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           The first Spirit to hit the Fame target wins. Fame comes from four places:
           winning clashes (bigger margin, bigger payout), playing legendary riffs,
-          collecting ✨ Fame Sparks scattered across the board (four sparks forge one
-          Fame Point — so keep moving), and resolving 🎯 Cadence Objectives — ending
-          consecutive turns on the right scale degrees (C → F → G → C for THE FULL
-          RESOLVE, in any key). Holding the Limelight or being the last Spirit standing
-          can also win it for you, but Fame is the path of legends.
+          grabbing 🕯️ Lighters scattered across the board, and resolving 🎯 Cadence
+          Objectives — ending consecutive turns on the right scale degrees (C → F → G → C
+          for THE FULL RESOLVE, in any key). Holding the Limelight or being the last
+          Spirit standing can also win it for you, but Fame is the path of legends.
         </p>
       </div>
       <div style={{background:"#0c0a18", border:"1px solid #aa88ff44", borderRadius:6, padding:"8px 12px"}}>
@@ -276,7 +275,7 @@ function TutSection_Board() {
           </div>
         </div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"10px 0 0", lineHeight:1.6}}>
-          Once you commit your Note Track, you get one hex of movement per note you placed.
+          Once you commit your Melody Line, you get one hex of movement per note you placed.
           Lit hexes show where you can go — click one to move there. You'll need to lock in
           your track before you can move.
         </p>
@@ -300,7 +299,7 @@ function TutSection_NoteTrack() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        Before you attack, you assemble a <span style={{color:"#aa55ff"}}>Note Track</span> — a
+        Before you attack, you assemble a <span style={{color:"#aa55ff"}}>Melody Line</span> — a
         sequence of notes pulled from your Note Stock. Which notes you pick, and the
         patterns they spell out, set both your combat power and any special effects you trigger.
       </p>
@@ -421,7 +420,7 @@ function TutSection_HarmonicCharge() {
       <div style={{background:"#0c0a18", border:"1px solid #aa88ff44", borderRadius:6, padding:"8px 12px"}}>
         <div style={{fontSize:8, color:"#ccaaff", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>🌳 WHERE IT GOES</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          Your HC meter sits at the top of the Note Track panel. Spend it across the Skill
+          Your HC meter sits at the top of the Melody Line panel. Spend it across the Skill
           Tree — Groupie crews, close-combat moves, Amps and the PA system, stage effects, and
           your Spirit's exclusive arsenal. (More on those next.)
         </p>
@@ -501,17 +500,18 @@ function TutSection_Intervals() {
   const intervals = [
     { note:"F",  label:"4th",      color:"#cc55ff", effect:"HC points",         icon:"💜", desc:"A stable, consonant interval — score HC points by ending your track here." },
     { note:"G",  label:"5th",      color:"#ff55aa", effect:"HC points",         icon:"💗", desc:"The strong perfect fifth — also banks HC points when it ends your track." },
-    { note:"E",  label:"Maj 3rd",  color:"#44ffaa", effect:"Cleanse / Shield", icon:"✨", desc:"End on the major third to cleanse a status effect — or, if you're clean, raise a shield that blocks the next one." },
-    { note:"Bb", label:"Min 7th",  color:"#4499ff", effect:"Mojo Drain ready",  icon:"🎷", desc:"End here to arm a Mojo Drain debuff for your next target." },
-    { note:"F#", label:"Tritone",  color:"#ff3300", effect:"Damage ×2",       icon:"🔥", desc:"The devil's interval. Drop it anywhere in your track to double your attack's damage." },
+    { note:"E",  label:"Maj 3rd",  color:"#44ffaa", effect:"🔒 Cleanse / Shield", icon:"✨", desc:"EARNED (Borrowed Chord, Minor key only): end on the major third to cleanse a status — or, if you're clean, raise a shield that blocks the next one." },
+    { note:"Bb", label:"Min 7th",  color:"#4499ff", effect:"🔒 Mojo Drain",  icon:"🎷", desc:"EARNED (Blues Lick): end here to arm a Mojo Drain debuff on your next target." },
+    { note:"F#", label:"Tritone",  color:"#ff3300", effect:"🔒 Burn",       icon:"🔥", desc:"The devil's interval. EARNED (Devil's Interval): end your track on it to arm a Burn — your next hit sets the rival alight for 2 turns." },
     { note:"C",  label:"Octave",   color:"#44aaff", effect:"Die Floor +2",      icon:"🎶", desc:"Open and close on the same note to raise your attack die's floor — no more low rolls." },
   ];
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
         An <span style={{color:"#aa88ff"}}>interval</span> is the musical distance between your
-        Root Note and a note you play — and certain intervals trigger special effects when they
-        land in your track (or finish it).
+        Root Note and a note you play. The <span style={{color:"#cc55ff"}}>4th</span>, <span style={{color:"#ff55aa"}}>5th</span> and <span style={{color:"#44aaff"}}>octave</span> endings
+        work from your very first turn. The <span style={{color:"#44ffaa"}}>Maj 3rd</span>, <span style={{color:"#4499ff"}}>Min 7th</span> and <span style={{color:"#ff3300"}}>Tritone</span> effects
+        (marked 🔒) are <span style={{color:"#66ccff"}}>earned</span> — they come online as you climb the Music Theory ladder.
       </p>
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
         <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>INTERVAL REFERENCE (Root = C)</div>
@@ -660,7 +660,7 @@ function TutSection_Attacks() {
       <div style={{background:"#14100a", border:"1px solid #f6ad5544", borderRadius:6, padding:"10px 14px"}}>
         <div style={{fontSize:8, color:"#f6ad55", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>🔊 SONIC ATTACK — ranged</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          Your main weapon, powered by the Note Track you just committed. It fires a narrow
+          Your main weapon, powered by the Melody Line you just committed. It fires a narrow
           three-hex beam straight ahead, so facing matters. Sonic needs at least one connected
           <span style={{color:"#ffcc44"}}> Amp</span> — and the more amps in range, the bigger your
           attack die (d8 → d10 → d12). A defender whose amps are unplugged can't fire back.
@@ -809,7 +809,7 @@ function TutSection_ModCards() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        <span style={{color:"#aa88ff"}}>Mod Cards</span> are one-shot rule-benders for your Note Track.
+        <span style={{color:"#aa88ff"}}>Mod Cards</span> are one-shot rule-benders for your Melody Line.
         Play one per turn; they recharge by your next turn. Each fires at a specific moment around the
         <span style={{color:"#ffcc44"}}> pivot</span> — where you lock in your Root and declare Major or Minor.
       </p>
@@ -843,15 +843,15 @@ function TutSection_Winning() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        Two roads lead to victory — pick the one that suits your playstyle.
+        Two roads lead to victory — Fame and force. Between them sits the Limelight: not a win on its own, but a contested Fame faucet that feeds the first.
       </p>
 
       <div style={{background:"#14110a", border:"1px solid #ffd70044", borderRadius:6, padding:"10px 14px"}}>
         <div style={{fontSize:9, color:"#ffd700", fontFamily:"'Orbitron',sans-serif", letterSpacing:1, marginBottom:5}}>⭐ FAME LEGEND</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           The headline route: be first to <span style={{color:"#ffd700"}}>25 Fame Points</span>. Fame pours
-          in from winning clashes (multiplied by your crowd), discovering riffs, collecting ✨ Fame Sparks
-          (four sparks forge one point), and resolving the Cadence Objectives below.
+          in from winning clashes (multiplied by your crowd), discovering riffs, holding the Limelight,
+          and resolving the Cadence Objectives below.
         </p>
       </div>
 
@@ -916,7 +916,7 @@ const TUTORIAL_SECTION_COMPONENTS = {
 const TUTORIAL_SECTIONS = [
   { id:"overview",        title:"What Is RLSW?",        icon:"⚡", color:"#f6ad55" },
   { id:"board",           title:"The Board",            icon:"🗺️", color:"#44cc88" },
-  { id:"note_track",      title:"The Note Track",       icon:"🎵", color:"#aa55ff" },
+  { id:"note_track",      title:"The Melody Line",       icon:"🎵", color:"#aa55ff" },
   { id:"harmonic_charge", title:"Harmonic Charge",      icon:"🎲", color:"#ffcc44" },
   { id:"drive_sustain",   title:"Drive & Sustain",      icon:"⚔️", color:"#ff6644" },
   { id:"intervals",       title:"Interval Effects",     icon:"🎶", color:"#44aaff" },

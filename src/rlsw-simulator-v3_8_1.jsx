@@ -31,7 +31,6 @@ import { RiffBanner } from "./ui/RiffBanner.jsx";
 import { CadenceToast } from "./ui/CadenceToast.jsx";
 import { BattleMeterOverlay } from "./ui/BattleMeterOverlay.jsx";
 import { UpgradeModal } from "./ui/UpgradeModal.jsx";
-import { RightPanel } from "./ui/RightPanel.jsx";
 import { SignatureAbilities } from "./ui/SignatureAbilities.jsx";
 import { TestingGrounds } from "./ui/TestingGrounds.jsx";
 import { EventModal } from "./ui/EventModal.jsx";
@@ -811,6 +810,11 @@ import { NOTE_POOL, PITCH_INDEX, FLAT_ROOTS, SPLIT_ROOT_SPELLING, ENHARMONIC_RES
 // Points carry over after crossing a threshold.
 const HC_UPGRADE_THRESHOLD = 8;
 
+// 🎵 STOCK ECONOMY — stock is a reservoir, not a fresh hand. Unused notes carry
+// over; only this many spent slots recharge per turn, so a heavy turn (big melody
+// + chord + Smash) leaves you short for a round or two. Tune for ebb/flow.
+const STOCK_REFILL_RATE = 4;
+
 // ── AMP / DICE SYSTEM ────────────────────────────────────────────────────────
 // Dice tier is determined dynamically by how many amps the acting Spirit is
 // within range of (<=4 hexes). Owning an amp upgrade places a physical amp token.
@@ -839,7 +843,6 @@ function makeBoardToken(num) {
   if (Math.random() < LIGHTER_RATIO) return { num, kind: 'lighter' };
   return { num, kind: 'chord', note: NOTE_POOL[Math.floor(Math.random() * NOTE_POOL.length)] };
 }
-const SPARKS_PER_FP    = 4;    // (legacy; dormant Thousand Beats code — removed in cleanup)
 
 // ── FAN ECONOMY ──────────────────────────────────────────────────────────────
 // Fans never convert to Fame — they MULTIPLY the Fame every deed is worth.
@@ -1013,6 +1016,11 @@ const SIGNATURE_TESTS = {
     { id:'paranoia',        label:'🌀 Paranoia',           pre:['discord_1'] },
     { id:'azrael',          label:'💀 Azrael',             pre:[] },
   ]},
+  intergalactic_0: { name: 'Intergalactic 0', color: '#aa55ff', skills: [
+    { id:'blaster_of_ra', label:'🌀 Blaster of Ra', pre:[] },
+    { id:'displace',      label:'🌌 Displace',       pre:[] },
+    { id:'sunbeam',       label:'☀️ Sunbeam',         pre:['amp_1','amp_2','amp_3'] },
+  ]},
 };
 const FLAMING_DISC_COUNT  = 6;
 const FLAMING_DISC_ROUNDS = 2;
@@ -1027,6 +1035,7 @@ import { RIFF_LIBRARY, RIFF_BY_ID, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, r
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
 import { CADENCE_OBJECTIVES, CADENCE_BY_ID, cadenceHints, detectCadence, detectChromaticRun, staggerDuration, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackHC, analyseTrack, randomNote, refillStock, detectMotifRepeat } from "./music/cadence.js";
+import { evaluateChord } from "./music/chords.js";
 // CADENCE OBJECTIVES data moved to ./music/cadence.js
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -1405,7 +1414,7 @@ const SKILL_TREE = {
         { id:'psycho_bushido', label:'Psycho Bushido', icon:'🌀', hcCost:10, gated:false,
           desc:'In CQC, when your swing die lands 5 or 6 the rival freezes — their die is forced to a 1.' },
         { id:'e_rush',         label:'いいラッシュ (E-Rush)', icon:'🎴', hcCost:12, gated:false,
-          desc:'End a note track on an E, then face a rival in a riff-off that turn: every answer note spawns a ghost note — both keys must be hit or the note misses.' },
+          desc:'End a melody line on an E, then face a rival in a riff-off that turn: every answer note spawns a ghost note — both keys must be hit or the note misses.' },
         { id:'hydra',          label:'Hydra',          icon:'🐉', hcCost:16, gated:true, prereq:'amp_3',
           desc:'CAPSTONE — requires Amp III. With 3 amps in range, your Sonic Attack rolls 3d6 instead of d12, firing three beams.' },
       ],
@@ -1426,6 +1435,22 @@ const SKILL_TREE = {
           desc:"Supercharges your Mojo Drain (from the Blues 7th): now lasts 3 turns AND freezes 2 of the rival's note slots." },
         { id:'azrael',          label:'Azrael',             icon:'💀', hcCost:16, gated:false,
           desc:'Each rival you knock down feeds Fame equal to your knockdown streak (1st→1, 2nd→2…). Resets when YOU go down.' },
+      ],
+    },
+    {
+      id: 'intergalactic',
+      label: 'Intergalactic 0',
+      icon: '🌀',
+      color: '#aa55ff',
+      desc: 'Cosmic groove and weaponized sound. An exclusive arsenal only Intergalactic 0 can wield.',
+      spiritOnly: 'intergalactic_0',
+      skills: [
+        { id:'blaster_of_ra', label:'Blaster of Ra', icon:'🌀', hcCost:12, gated:false,
+          desc:'REPLACES the Smash. A ranged, PIERCING bass-drop: hurl your unused stock down the forward beam, hammering EVERY rival in line — undefendable, scattering their stock and knocking them back. Leaves you Exposed.' },
+        { id:'displace', label:'Displace', icon:'🌌', hcCost:10, gated:false,
+          desc:"He can't run — he warps. Teleport to an open hex beside your amp rig (costs 3 AP, 2-turn cooldown). The slow zoner's get-out-of-jail. Needs at least one amp to warp to." },
+        { id:'sunbeam', label:'Sunbeam', icon:'☀️', hcCost:16, gated:true, prereq:'amp_3',
+          desc:'CAPSTONE — requires Amp III. Your Sonic beam reaches +2 hexes AND scorches the hexes it crosses into burning ground (2 rounds) — area denial down the whole line.' },
       ],
     },
   ],
@@ -1952,11 +1977,6 @@ function Game({ gameState, onReturnToLobby }) {
   // swarm that rival's hex on the board and "rock" them. Cleared after a beat.
   const [moshpitTargets, setMoshpitTargets] = useState({});
 
-  // ⚡ THOUSAND BEATS — the spacebar-mash minigame overlay.
-  // { phase:'mash'|'result', spiritId, secondsLeft, clicks, sparksAwarded, fpForged }
-  const [thousandBeats, setThousandBeats] = useState(null);
-  const thousandClicksRef = useRef(0);
-
   // RIFF-OFF engine ref — timing-critical bookkeeping for the currently
   // flashing note lives here (not in React state) so reaction times are
   // measured against the real flash timestamp, not a render cycle.
@@ -2031,7 +2051,7 @@ function Game({ gameState, onReturnToLobby }) {
         : rt <= RIFF_GOOD_MS    ? 'good'
         : 'ok';
       // ── the note RINGS through the player's own amp — same distorted
-      //    guitar voice (and 🎛️ knob settings) as the Note Track. A wrong
+      //    guitar voice (and 🎛️ knob settings) as the Melody Line. A wrong
       //    key plays the sour bent note they actually hit.
       if (hit) playNoteSound(null, {
         freq: side.freqs?.[eng.idx],
@@ -2048,22 +2068,6 @@ function Game({ gameState, onReturnToLobby }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [battleState?.riffOff, battleState?.phase, battleState?.turn, battleState?.noteIdx]);
-
-  // ⚡ THOUSAND BEATS — spacebar masher. Distinct presses only (no auto-repeat).
-  useEffect(() => {
-    if (!thousandBeats || thousandBeats.phase !== 'mash') return;
-    const onKey = (e) => {
-      if (e.repeat) return;
-      if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') {
-        e.preventDefault();
-        thousandClicksRef.current += 1;
-        const c = thousandClicksRef.current;
-        setThousandBeats(p => (p && p.phase === 'mash') ? { ...p, clicks: c } : p);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [thousandBeats?.phase]);
 
   // 🎸⏰ BACK TO THE PAST — note input listener (armed only while a note flashes).
   useEffect(() => {
@@ -2084,6 +2088,8 @@ function Game({ gameState, onReturnToLobby }) {
   // retaliationTimer: countdown seconds remaining
   const [retaliationTimer, setRetaliationTimer] = useState(null);
   const [moveStepsLeft, setMoveStepsLeft] = useState(0);
+  const [chordMode, setChordMode] = useState(false); // 🎸 taps build the combat chord instead of the melody
+  const [hoverScale, setHoverScale] = useState(null); // 🎼 stock note being hovered → scale-peek popup
   const [movedThisTurn, setMovedThisTurn] = useState(false);
   const [turnQueue, setTurnQueue] = useState(() => gameState.spirits.map(s => s.id));
   // 🧪 TESTING GROUNDS — dev panel (only when the sandbox was launched from the menu)
@@ -2102,19 +2108,25 @@ function Game({ gameState, onReturnToLobby }) {
   } = useTransientFx();
   const [cameraView, setCameraView]   = useState(null);
   const [manualZoomActive, setManualZoomActive] = useState(false);
-  const [log, setLog] = useState(["⚡ RLSW v3.0 — Note Track System", "🎵 Build your Note Track → Confirm → Move"]);
+  const [log, setLog] = useState(["⚡ RLSW v3.0 — Melody Line System", "🎵 Build your Melody Line → Confirm → Move"]);
 
   // ─── NOTE SYSTEM STATE (per-character) ─────────────────────────────────────
-  function makeInitialNoteState() {
+  function makeInitialNoteState(spiritId) {
     // Pick a random raw note, respell to a canonical root in major context first
     const rawRoot = NOTE_POOL[Math.floor(Math.random() * NOTE_POOL.length)];
     // Default to major for initial respelling; split roots default to major spelling
     const initMode = 'major';
     const root = canonicalRoot(rawRoot, initMode);
+    // 🗡️ SHREDDING RONIN — the resource-rich composer carries a deeper well: 10 stock
+    // slots instead of 8, more material to shape virtuosic shows (and a fatter target
+    // for the double-scatter when he's Smashed).
+    const stockSize = spiritId === 'cosmic_ronin' ? 10 : 8;
     // All roots are pivot candidates — always prompt for major/minor on first turn
     return {
-      noteStock:       refillStock(root, initMode),
-      noteTrack:       [],
+      noteStock:       refillStock(root, initMode, stockSize),
+      melodyLine:       [],
+      chordStack:      [root, semitonesUp(root, 7)],  // 🎸 the CHORD STACK — starts a Power Chord (R+5); persists across turns
+      revoiceUsedThisTurn: false,  // 🎸 one chord revoice (add OR drop a note) per turn
       usedStockIdx:    new Set(),
       rootNote:        root,
       scaleMode:       initMode,
@@ -2134,6 +2146,8 @@ function Game({ gameState, onReturnToLobby }) {
       tempDrive:       0,
       tempSustain:     0,
       swingExposed:    false,
+      smashExposed:    false,  // 🎸💥 left wide open after a Smash — next hit ignores your Sustain
+      displaceCd:      0,      // 🌌 Displace (Intergalactic 0) — turns until the warp is ready again
       hcPoints:        0,
       totalHC:         0,
       upgradesPending: 0,      // 1 = needs to pick next target skill
@@ -2149,14 +2163,13 @@ function Game({ gameState, onReturnToLobby }) {
       riffSlayerArmed: false, // 🗡️ Riff Slayer — skip-climb committed this turn
       pendingParanoia: false, // 🌀 Paranoia — next Mojo Drain is supercharged
       eRushArmed:      false, // 🎴 いいラッシュ — track ended on E this turn
-      thousandBeatsCd: 0,     // ⚡ Thousand Beats — turns remaining on cooldown
       discordUnlocks:  [],    // discord tier ids unlocked: 'discord_1','discord_2','discord_3'
       swingUpgrades:   [],    // swing tier ids unlocked: 'swing_1','swing_2','swing_3'
       // Physical combat debuffs (from swing effects)
       tripped:         false, // movement halved this turn
       instrumentDropped: false, // Drive reduced by 1 until recovered (roadie or start of own turn)
       dazed:           false, // next move goes to a random neighbour instead of chosen hex
-      modCards:        [],
+      modCards:        [{ id: 'starter-transpose', type: 'transpose', exhausted: false, oneShot: true }], // 🔄 rescue a bad opening hand — one use, your call when
       // ── Crew & Gear deployables ──
       groupieCooldowns: {},    // skillId → own-turns until ready again (0/undefined = ready)
       junkyardArmed:    false, // Junkyard Dog weapon armed — +2 on next Swing roll
@@ -2164,7 +2177,6 @@ function Game({ gameState, onReturnToLobby }) {
       mixerUsedThisTurn: false,// Mixer doubles one stock note per turn
       elevenTurns:      0,     // "goes to eleven" — dice tier counts +1 amp for N of your turns
       fame:             0,     // ⭐ Fame Points — earned by winning battles, scaled by margin
-      sparks:           0,     // ✨ Fame Sparks toward the next forged FP
       finalsTrail:      [],    // 🎯 pitch classes of recent turn-ending notes (cadence objectives)
       cadenceCooldowns: {},    // objectiveId → own-turns before it can be completed again
       // ── 🎤 FAN ECONOMY ──
@@ -2186,7 +2198,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   const { noteStates, setNoteStates } = useNoteSystem(() => {
     const map = {};
-    gameState.spirits.forEach(s => { map[s.id] = makeInitialNoteState(); });
+    gameState.spirits.forEach(s => { map[s.id] = makeInitialNoteState(s.id); });
     return map;
   });
 
@@ -2366,9 +2378,9 @@ function Game({ gameState, onReturnToLobby }) {
   }, [acting?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Convenience: pull the acting character's note state (falls back to empty defaults)
-  const actingNoteState = acting ? (noteStates[acting.id] ?? makeInitialNoteState()) : null;
+  const actingNoteState = acting ? (noteStates[acting.id] ?? makeInitialNoteState(acting.id)) : null;
   const noteStock    = actingNoteState?.noteStock    ?? [];
-  const noteTrack    = actingNoteState?.noteTrack    ?? [];
+  const melodyLine    = actingNoteState?.melodyLine    ?? [];
   const usedStockIdx = actingNoteState?.usedStockIdx ?? new Set();
   const rootNote     = actingNoteState?.rootNote     ?? 'C';
   const scaleMode    = actingNoteState?.scaleMode    ?? 'major';
@@ -2711,6 +2723,25 @@ function Game({ gameState, onReturnToLobby }) {
     } catch (_) { /* audio unavailable — silent fail */ }
   }
 
+  // 🎵 AUTO VOICE-LEADING — render `note` in the octave whose pitch is nearest the
+  // previously played frequency, so a melody flows by small steps instead of bouncing
+  // around one fixed octave. Pure pitch/contour layer: chords, cadences, riffs and runs
+  // stay pitch-class based and are untouched. (A deliberate WIDE LEAP for Flair could
+  // later opt out of this — see the Sticky Notes backlog in DESIGN_AUDIT_v2.)
+  function voiceLeadFreq(note, prevFreq) {
+    const idx = NOTE_FREQS[note];
+    if (idx === undefined) return null;
+    const base = PC_FREQ_BASE[idx];
+    if (!prevFreq) return base;
+    let best = base, bestDist = Infinity;
+    for (let k = -1; k <= 1; k++) {
+      const f = base * Math.pow(2, k);
+      const d = Math.abs(Math.log2(f / prevFreq));
+      if (d < bestDist) { bestDist = d; best = f; }
+    }
+    return best;
+  }
+
   function playTrackSequence(track) {
     // The committed track plays as a real MELODY, not a slop of evenly
     // spaced notes. Each commit rolls a fresh groove: a mix of eighths,
@@ -2718,6 +2749,7 @@ function Game({ gameState, onReturnToLobby }) {
     // a couple of random accents — and the final note rings out long,
     // because every phrase deserves a resolution.
     let tMs = 60;
+    let prevFreq = null; // 🎵 auto voice-leading — each note in the octave nearest the last
     track.forEach((note, i) => {
       const last = i === track.length - 1;
       const roll = Math.random();
@@ -2727,10 +2759,12 @@ function Game({ gameState, onReturnToLobby }) {
         : 0.62;                // dotted — leans on the note
       const breath = !last && Math.random() < 0.18 ? 150 : 0; // phrase break
       const accent = last || Math.random() < 0.22;
+      const vlf = voiceLeadFreq(note, prevFreq); if (vlf) prevFreq = vlf;
       setTimeout(() => playNoteSound(note, {
         holdTime: dur,
         fadeTime: last ? 0.9 : 0.35,
         volume: accent ? 0.19 : 0.14,
+        freq: vlf ?? undefined,
       }), tMs);
       tMs += dur * 580 + 90 + breath; // longer notes breathe longer before the next
     });
@@ -2740,6 +2774,17 @@ function Game({ gameState, onReturnToLobby }) {
   // Plays a riff with its real rhythm — durations and rests, not a slop of
   // evenly spaced notes. Transposed to whatever pitch the player started on.
   // Returns total playback length in ms.
+  // 🎸 Play a CHORD — its notes strummed in a quick voice-led roll (used when a
+  // Sonic Attack projects the chord you prepared for battle).
+  function playChord(notes) {
+    if (!notes || !notes.length) return;
+    let prev = null;
+    notes.forEach((note, i) => {
+      const f = voiceLeadFreq(note, prev); if (f) prev = f;
+      setTimeout(() => playNoteSound(note, { holdTime: 1.0, fadeTime: 0.8, volume: 0.16, freq: f ?? undefined }), i * 55);
+    });
+  }
+
   function playRiffSequence(riff, rootPc) {
     const spb = 60 / (riff.bpm ?? 110); // seconds per beat
     let t = 0.08;
@@ -2757,21 +2802,21 @@ function Game({ gameState, onReturnToLobby }) {
     return t * 1000;
   }
 
-  // ─── NOTE TRACK FUNCTIONS ─────────────────────────────────────────────────────
+  // ─── MELODY LINE FUNCTIONS ─────────────────────────────────────────────────────
   function clickNoteStock(idx) {
     if (!acting) return;
     // ── 🎚️ MIXER — once per turn, tap an already-played note to layer it again ──
     if (usedStockIdx.has(idx)) {
       const hasMixer  = (actingNoteState?.unlockedSkills ?? []).includes('mixer');
       const mixerUsed = actingNoteState?.mixerUsedThisTurn ?? false;
-      if (!hasMixer || mixerUsed || hasConfirmed || noteTrack.length >= 8 || pivotPending) return;
+      if (!hasMixer || mixerUsed || hasConfirmed || melodyLine.length >= 8 || pivotPending) return;
       if (staggeredSlots.includes(idx)) { addLog('⚡ Staggered — that slot is unavailable this turn.'); return; }
       const note     = noteStock[idx];
       const playable = isNotePlayable(note);
-      const newTrack = [...noteTrack, note];
+      const newTrack = [...melodyLine, note];
       playNoteSound(note);
       setNoteField(acting.id, {
-        noteTrack:         newTrack,
+        melodyLine:         newTrack,
         discordCount:      playable ? discordCount : discordCount + 1,
         mixerUsedThisTurn: true,
       });
@@ -2780,7 +2825,26 @@ function Game({ gameState, onReturnToLobby }) {
     }
     // Transpose card intercept: clicking a note picks the new root
     if (actingNoteState?.transposeCardPending) { resolveTransposeCard(idx); return; }
-    if (noteTrack.length >= 8) return;
+    // 🎸 CHORD MODE — lift this note into your combat chord instead of the melody.
+    // A note spent on the chord is NOT in the track, so it doesn't carry you forward
+    // (harmony vs. movement). Consumes the stock slot.
+    if (chordMode) {
+      if (hasConfirmed) { addLog('✓ Already confirmed this turn.'); return; }
+      if (pivotPending) { addLog('⚡ Declare Major or Minor first!'); return; }
+      if (actingNoteState?.revoiceUsedThisTurn) { addLog('🎸 You\'ve already revoiced your chord this turn.'); return; }
+      const chord = actingNoteState?.chordStack ?? [];
+      if (chord.length >= 5) { addLog('🎸 Chord is full (5 notes) — drop one to revoice.'); return; }
+      const note = noteStock[idx];
+      playNoteSound(note);
+      setNoteField(acting.id, {
+        chordStack:   [...chord, note],
+        usedStockIdx: new Set([...usedStockIdx, idx]),
+        revoiceUsedThisTurn: true,
+      });
+      addLog(`🎸 ${note} → chord (revoiced to ${chord.length + 1} notes)`);
+      return;
+    }
+    if (melodyLine.length >= 8) return;
     if (hasConfirmed) { addLog('✓ Already confirmed this turn — end your turn to continue.'); return; }
     if (staggeredSlots.includes(idx)) { addLog('⚡ Staggered — that slot is unavailable this turn.'); return; }
     // Pivot must be declared before building can start (if Root Note is A/E/B)
@@ -2790,11 +2854,11 @@ function Game({ gameState, onReturnToLobby }) {
     const intervalKey    = getIntervalKey(note);
     const isUnlocked     = intervalKey ? unlockedIntervalKeys.has(intervalKey) : false;
     const playable       = isNotePlayable(note);
-    const newTrack       = [...noteTrack, note];
+    const newTrack       = [...melodyLine, note];
     const newDiscord     = playable ? discordCount : discordCount + 1;
     playNoteSound(note);
     setNoteField(acting.id, {
-      noteTrack:    newTrack,
+      melodyLine:    newTrack,
       usedStockIdx: new Set([...usedStockIdx, idx]),
       discordCount: newDiscord,
     });
@@ -2804,6 +2868,19 @@ function Game({ gameState, onReturnToLobby }) {
                     : intervalKey && !isUnlocked ? `🔒 ${intervalKey} — locked (discord)`
                     : '⚡ discord';
     addLog(`🎵 ${note} → track (${noteLabel}) · ${newTrack.length} notes`);
+  }
+
+  // 🎸 Drop one note from your Chord Stack — costs your single revoice for the turn.
+  // Floored at 1 note so your stance is never empty (you always have SOME chord).
+  function removeChordNote(i) {
+    if (!acting || hasConfirmed || pivotPending) return;
+    if (actingNoteState?.revoiceUsedThisTurn) { addLog('🎸 You\'ve already revoiced this turn.'); return; }
+    const chord = actingNoteState?.chordStack ?? [];
+    if (chord.length <= 1) { addLog('🎸 Can\'t drop your last note — your stance needs at least one.'); return; }
+    if (i < 0 || i >= chord.length) return;
+    const dropped = chord[i];
+    setNoteField(acting.id, { chordStack: chord.filter((_, k) => k !== i), revoiceUsedThisTurn: true });
+    addLog(`🎸 Dropped ${dropped} from the chord (revoiced).`);
   }
 
   function declarePivot(newMode) {
@@ -2867,12 +2944,12 @@ function Game({ gameState, onReturnToLobby }) {
   function clearNoteTrack() {
     if (!acting) return;
     setNoteField(acting.id, {
-      noteTrack: [],
+      melodyLine: [],
       usedStockIdx: new Set(),
       discordCount: 0,
       // pivotPending intentionally NOT cleared — must still be resolved if active
     });
-    addLog('✕ Note track cleared');
+    addLog('✕ Melody Line cleared');
   }
 
   // Player taps "Use Bank" — adds banked note to track as a free extra note
@@ -2882,10 +2959,10 @@ function Game({ gameState, onReturnToLobby }) {
     if (pivotPending) { addLog('⚡ Declare Major/Minor before using the banked note.'); return; }
     const note = bankedNote.note;
     const playable = isNotePlayable(note);
-    const newTrack = [...noteTrack, note];
+    const newTrack = [...melodyLine, note];
     const newDiscord = playable ? discordCount : discordCount + 1;
     setNoteField(acting.id, {
-      noteTrack:    newTrack,
+      melodyLine:    newTrack,
       discordCount: newDiscord,
       bankedNote:   null,  // consumed
     });
@@ -2894,11 +2971,11 @@ function Game({ gameState, onReturnToLobby }) {
 
   function confirmNoteTrack() {
     if (!acting) return;
-    const baseTrack = actingNoteState?.noteTrack ?? [];
+    const baseTrack = actingNoteState?.melodyLine ?? [];
     if (baseTrack.length === 0) { addLog('❌ No notes in track!'); return; }
     // ── 🎤 MIC — voice roll: d6, on 4+ a bonus in-scale note joins the track ──
-    // (shadows the outer derived noteTrack so all scoring below includes the bonus)
-    let noteTrack = baseTrack;
+    // (shadows the outer derived melodyLine so all scoring below includes the bonus)
+    let melodyLine = baseTrack;
     if ((actingNoteState?.unlockedSkills ?? []).includes('mic')) {
       const voiceRoll = Math.floor(Math.random() * 6) + 1;
       // 🎤 Show the roll as a spinning-then-settling d6 so the player SEES it land.
@@ -2908,7 +2985,7 @@ function Game({ gameState, onReturnToLobby }) {
       if (voiceRoll >= 4) {
         const scaleNotes = buildScale(rootNote, scaleMode);
         const bonusNote  = scaleNotes[Math.floor(Math.random() * scaleNotes.length)];
-        noteTrack = [...baseTrack, bonusNote];
+        melodyLine = [...baseTrack, bonusNote];
         addLog(`🎤 Voice roll ${voiceRoll} — your vocals land! Bonus note ${bonusNote} joins the track.`);
       } else {
         addLog(`🎤 Voice roll ${voiceRoll} — the crowd drowns you out. No bonus note.`);
@@ -2917,7 +2994,7 @@ function Game({ gameState, onReturnToLobby }) {
     // ── 🎼 RIFF DETECTION — does this track hide a legendary riff? ──
     // If the opening intervals of a riff are on the track (any key), the FULL
     // riff plays out with real rhythm instead of the plain arpeggio.
-    const riffMatch = detectRiff(noteTrack);
+    const riffMatch = detectRiff(melodyLine);
     if (riffMatch) {
       const { riff, rootPc } = riffMatch;
       const isNew = !riffBook[riff.id];
@@ -2933,7 +3010,7 @@ function Game({ gameState, onReturnToLobby }) {
       setTimeout(() => setRiffBanner(prev => (prev && prev.riffId === riff.id ? null : prev)), 5600);
       setTimeout(() => grantFame(acting.id, fp, `🎼 ${riff.name}`), 500);
     } else {
-      playTrackSequence(noteTrack);
+      playTrackSequence(melodyLine);
     }
 
     // ── 🎯 CADENCE OBJECTIVES — your track's FINAL note is this turn's "final" ──
@@ -2941,7 +3018,7 @@ function Game({ gameState, onReturnToLobby }) {
     // cadence for Fame. e.g. THE FULL RESOLVE: end on C, then F, then G, then C.
     let cadenceResolved = false;  // 🎭 set when a cadence completes this commit (feeds P)
     {
-      const lastPc = pitchIndex(noteTrack[noteTrack.length - 1]);
+      const lastPc = pitchIndex(melodyLine[melodyLine.length - 1]);
       if (lastPc >= 0) {
         const newTrail = [...(actingNoteState?.finalsTrail ?? []), lastPc].slice(-6);
         const cooldowns = actingNoteState?.cadenceCooldowns ?? {};
@@ -2963,14 +3040,17 @@ function Game({ gameState, onReturnToLobby }) {
     }
     // Overdrive card: pardon one discord note (reduce effective discord by 1)
     const overdriveActive = actingNoteState?.overdriveActive ?? false;
-    const effectiveDiscord = overdriveActive ? Math.max(0, discordCount - 1) : discordCount;
+    // 🌀 FREESTYLE — Intergalactic 0's first wrong note each turn lands intentional, not wrong:
+    // it's pardoned from the discord penalty (and, below, doesn't drag the crowd + earns Flair).
+    const freestylePardon = acting?.id === 'intergalactic_0';
+    const effectiveDiscord = Math.max(0, discordCount - (overdriveActive ? 1 : 0) - (freestylePardon ? 1 : 0));
     // chromClimbActive: if discord_4 unlocked and a chromatic run of 3+ is present,
     // treat the track as non-discord for scoring (individual grey notes are cosmetic only)
     // Note: chromClimbActive is set after the discord upgrade flags below — forward ref is fine
     // because we only use it after those lines. We declare it here as a let and assign below.
     let allInScale     = effectiveDiscord === 0;
-    const lastNote     = noteTrack[noteTrack.length - 1];
-    const firstNote    = noteTrack[0];
+    const lastNote     = melodyLine[melodyLine.length - 1];
+    const firstNote    = melodyLine[0];
     // pivotPending is now set at the START of the next turn (in startNewTurnNotes),
     // not here at the end of scoring — so the key choice is a start-of-round decision.
     const newPivotPending = false; // will be set true when next turn begins
@@ -2981,13 +3061,13 @@ function Game({ gameState, onReturnToLobby }) {
 
     // ── SPEED & BANKING ───────────────────────────────────────────────────────
     // Total notes placed = movement potential, capped at Spirit's Speed
-    const totalNotes    = noteTrack.length;
+    const totalNotes    = melodyLine.length;
     const usableMoves   = Math.min(totalNotes, actingSpeed);
     const overflow      = totalNotes - usableMoves; // notes beyond speed cap
     // If overflow >= 1 AND bank is empty, auto-bank the last overflow note
     const existingBank  = actingNoteState?.bankedNote ?? null;
     const canBank       = overflow >= 1 && !existingBank;
-    const newBankedNote = canBank ? { note: noteTrack[totalNotes - 1] } : existingBank;
+    const newBankedNote = canBank ? { note: melodyLine[totalNotes - 1] } : existingBank;
 
     const hexes    = usableMoves;
     const intervals = getIntervalNotes(rootNote, scaleMode);
@@ -2995,7 +3075,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     // ── INTERVAL EFFECTS ──────────────────────────────────────────────────────
     // Tritone: anywhere in track → feedbackBoost (works even with Dischord)
-    const trackHasTritone   = noteTrack.includes(intervals.tritone);
+    const trackHasTritone   = melodyLine.includes(intervals.tritone);
     // Octave resolution: first and last note identical
     const isOctaveResolution = hexes >= 2 && firstNote === lastNote;
     // Major 3rd end: clean only
@@ -3011,7 +3091,7 @@ function Game({ gameState, onReturnToLobby }) {
     // Tritone end — only fires if Devil's Interval (discord_3) is unlocked
     const isTritoneEnd       = hasTritoneUp && lastNote === intervals.tritone;
     // Chromatic run: detect longest run; discord only if discord_4 not unlocked
-    const chromRunLen        = detectChromaticRun(noteTrack);
+    const chromRunLen        = detectChromaticRun(melodyLine);
     const chromStagger       = hasChromClimb ? staggerDuration(chromRunLen) : 0;
     // If discord_4 unlocked and a chrom run of 3+ exists, the whole track is treated as non-discord
     const chromClimbActive   = hasChromClimb && chromRunLen >= 3;
@@ -3031,13 +3111,13 @@ function Game({ gameState, onReturnToLobby }) {
     }
 
     // ── DRIVE BOOST: diatonic step runs (scale-only, blocked by Mojo Drain) ──
-    const diatonicRunLen   = detectDiatonicRun(noteTrack, currentScale);
+    const diatonicRunLen   = detectDiatonicRun(melodyLine, currentScale);
 
     // ── 🗡️ RIFF SLAYER (Metalness) — a skip-climb (3+ notes leaping by thirds,
     // one direction) ARMS the intimidation for this turn. If a riff-off breaks
     // out before the turn ends, the rival's notes will glitch.
     const ownsRiffSlayer = (actingNoteState?.unlockedSkills ?? []).includes('riff_slayer');
-    const skipClimbLen   = detectSkipClimb(noteTrack, currentScale);
+    const skipClimbLen   = detectSkipClimb(melodyLine, currentScale);
     const riffSlayerArm  = ownsRiffSlayer && skipClimbLen >= 3;
 
     // ── 🌀 PARANOIA (Metalness) — supercharges Mojo Drain (Blues Lick). When the
@@ -3050,11 +3130,6 @@ function Game({ gameState, onReturnToLobby }) {
     const ownsERush      = (actingNoteState?.unlockedSkills ?? []).includes('e_rush');
     const eRushArm       = ownsERush && lastNote === 'E';
 
-    // ── ⚡ THOUSAND BEATS (Shredding Ronin) — committing a full 8-note track
-    // unleashes the Fame-Spark mash (unless on cooldown).
-    const ownsThousand   = (actingNoteState?.unlockedSkills ?? []).includes('thousand_beats');
-    const thousandCd     = actingNoteState?.thousandBeatsCd ?? 0;
-    const thousandFire    = ownsThousand && totalNotes >= 8 && thousandCd <= 0;
     const rawDriveBoost    = !isMojoDrained ? driveBoostFromRun(diatonicRunLen) : 0;
     const prevTempDrive    = actingNoteState?.tempDrive ?? 0;
     let newTempDrive       = prevTempDrive;
@@ -3070,7 +3145,7 @@ function Game({ gameState, onReturnToLobby }) {
     }
 
     // ── FEEDBACK BOOST: repeat patterns (scale-only, blocked by Mojo Drain) ───
-    const repeatPatLen      = detectRepeatPattern(noteTrack, currentScale);
+    const repeatPatLen      = detectRepeatPattern(melodyLine, currentScale);
     const rawSustainBoost   = !isMojoDrained ? sustainBoostFromPattern(repeatPatLen) : 0;
     const prevTempSustain   = actingNoteState?.tempSustain ?? 0;
     let newTempSustain      = prevTempSustain;
@@ -3126,7 +3201,7 @@ function Game({ gameState, onReturnToLobby }) {
     const hasChromMastery = (actingNoteState?.unlockedSkills ?? []).includes('theory_chromatic');
     const discordFlat    = effectiveDiscord > 0 ? 1 : 0;
     const discordPenalty = chromClimbActive ? 0 : (hasChromMastery ? Math.floor(discordFlat / 2) : discordFlat);
-    const baseScore = scoreTrackHC(noteTrack, fourthNote, fifthNote);
+    const baseScore = scoreTrackHC(melodyLine, fourthNote, fifthNote);
     let breakdown = [...baseScore.breakdown];
     let earned = Math.max(0, baseScore.points - discordPenalty);
     if (discordPenalty > 0 && baseScore.points > 0) {
@@ -3137,7 +3212,7 @@ function Game({ gameState, onReturnToLobby }) {
     // melodic shape (contour, leaps, interval variety) + palette + recognized
     // gestures + repeated motifs, with track length only a small nudge. 0–10,
     // every weight tunable. Routed to crowd / HC / intimidation in Stages B/C.
-    const perfPc   = noteTrack.map(pitchIndex).filter(p => p >= 0);
+    const perfPc   = melodyLine.map(pitchIndex).filter(p => p >= 0);
     const perfDiff = [];
     for (let i = 1; i < perfPc.length; i++) {
       let d = ((perfPc[i] - perfPc[i - 1]) % 12 + 12) % 12;   // fold to nearest direction (−6..6)
@@ -3151,8 +3226,8 @@ function Game({ gameState, onReturnToLobby }) {
     const perfIntDiv     = new Set(perfDiff.filter(d => d).map(d => Math.abs(d))).size;
     const perfDistinctPc = new Set(perfPc).size;
     let perfHas3Repeat   = false;
-    for (let i = 2; i < noteTrack.length; i++) {
-      if (noteTrack[i] === noteTrack[i - 1] && noteTrack[i - 1] === noteTrack[i - 2]) { perfHas3Repeat = true; break; }
+    for (let i = 2; i < melodyLine.length; i++) {
+      if (melodyLine[i] === melodyLine[i - 1] && melodyLine[i - 1] === melodyLine[i - 2]) { perfHas3Repeat = true; break; }
     }
     const perfShape   = Math.min(2, perfDirChg) + Math.min(2, perfLeaps) + (perfIntDiv >= 2 ? 1 : 0) + (perfIntDiv >= 3 ? 1 : 0);
     const perfPalette = (perfDistinctPc >= 3 && !perfHas3Repeat ? 1 : 0) + (perfDistinctPc >= 5 ? 1 : 0);
@@ -3167,16 +3242,16 @@ function Game({ gameState, onReturnToLobby }) {
       + ((isMinorSeventhEnd || isMajorThirdEnd || isTritoneEnd) ? 1 : 0)
     );
     // repeated motif (NEW) — a 3+ note phrase played, then repeated
-    const perfMotif0 = detectMotifRepeat(noteTrack);
+    const perfMotif0 = detectMotifRepeat(melodyLine);
     const perfMotif  = (perfMotif0.period >= 3 ? 2 : 0) + (perfMotif0.reps >= 3 ? 1 : 0);
     // tension→resolution — wired but gated behind a future Theory upgrade (off until unlocked)
     const perfHasResolve = (actingNoteState?.unlockedSkills ?? []).includes('tension_release');
     let perfTR = 0;
     if (perfHasResolve) {
       const chordTones = new Set([currentScale[0], currentScale[2], currentScale[4]]);
-      for (let i = 0; i < noteTrack.length - 1; i++) {
-        const spicy = !currentScale.includes(noteTrack[i]) || noteTrack[i] === intervals.tritone;
-        if (spicy && Math.abs(perfDiff[i] ?? 9) <= 2 && chordTones.has(noteTrack[i + 1])) perfTR++;
+      for (let i = 0; i < melodyLine.length - 1; i++) {
+        const spicy = !currentScale.includes(melodyLine[i]) || melodyLine[i] === intervals.tritone;
+        if (spicy && Math.abs(perfDiff[i] ?? 9) <= 2 && chordTones.has(melodyLine[i + 1])) perfTR++;
       }
     }
     const perfBig      = (riffMatch ? 3 : 0) + (cadenceResolved ? 1 : 0);  // a landed riff is peak flair
@@ -3184,8 +3259,12 @@ function Game({ gameState, onReturnToLobby }) {
     // theory_sus — a suspended ending (the 2nd or 4th) earns a small "hang" flair once unlocked
     const perfSusEnd = (actingNoteState?.unlockedSkills ?? []).includes('theory_sus')
       && (lastNote === semitonesUpSpelled(rootNote, scaleMode, 2) || lastNote === intervals.fourth);
+    // 🌀 FREESTYLE — the pardoned wrong note doesn't drag the crowd, and making dissonance
+    // sound intentional is itself a flourish (+1 Flair on a turn he freestyles a wrong note).
+    const perfDiscord   = freestylePardon ? Math.max(0, discordCount - 1) : discordCount;
+    const perfFreestyle = (freestylePardon && discordCount >= 1) ? 1 : 0;
     const perfScore = Math.max(0, Math.min(10,
-      perfShape + perfPalette + perfGest + perfMotif + perfBig + perfLenNudge + perfTR * 2 + (perfSusEnd ? 1 : 0) - discordCount
+      perfShape + perfPalette + perfGest + perfMotif + perfBig + perfLenNudge + perfTR * 2 + (perfSusEnd ? 1 : 0) + perfFreestyle - perfDiscord
     ));
 
     // ── 🎭 STAGE B ROUTING: Performance Score P → HC top-up (§5b) + crowd excitement (§5a) ──
@@ -3194,13 +3273,25 @@ function Game({ gameState, onReturnToLobby }) {
     // §5a — fans NEVER hand out Fame directly (they only multiply earned FP via grantFame).
     // A strong performance instead SLOWLY grows the crowd and hardens casuals into diehards.
     const perfVibeFactor = (acting?.maxVibe ?? 5) / 5;
+    // 🗡️ SHREDDING RONIN — the fans came for a masterpiece. A virtuosic show (P≥5) wins him
+    // ~double the crowd of a normal Spirit; a show that falls short BORES them — the meter
+    // cools (negative), and sustained mediocrity sheds a casual. His Fame engine swings on
+    // sheer quality: dazzle and they swarm, coast and they drift. (Other Spirits: P<5 = no
+    // change, as before.) Reuses the existing Performance Score → excitement pipeline.
+    const isRonin = acting?.id === 'cosmic_ronin';
     // Deliberately NOT crowd-amplified — a bigger crowd must not snowball into faster growth.
-    const perfExciteGain = Math.max(0, perfScore - 4) * perfVibeFactor;
+    const perfExciteGain = isRonin
+      ? (perfScore >= 5 ? (perfScore - 4) * perfVibeFactor * 2        // virtuoso: crowd swarms
+                        : (perfScore - 5) * perfVibeFactor * 0.5)     // short of it: crowd cools (gentle)
+      : Math.max(0, perfScore - 4) * perfVibeFactor;
     let perfExcitement = (actingNoteState?.excitement ?? 0) + perfExciteGain;  // → new casual fans (slow)
-    let perfLoyalty    = (actingNoteState?.loyalty ?? 0)    + perfExciteGain;  // → harden casual→diehard (slower)
-    let perfFansGained = 0, perfPromotions = 0;
+    let perfLoyalty    = Math.max(0, (actingNoteState?.loyalty ?? 0) + perfExciteGain);  // → harden casual→diehard
+    let perfFansGained = 0, perfPromotions = 0, perfFansLost = 0;
     while (perfExcitement >= EXCITE_PER_CASUAL)   { perfExcitement -= EXCITE_PER_CASUAL;   perfFansGained += 1; }
     while (perfLoyalty    >= LOYALTY_PER_DIEHARD) { perfLoyalty    -= LOYALTY_PER_DIEHARD; perfPromotions += 1; }
+    // 🗡️ Bored crowd (only reachable when the meter has cooled below empty — i.e. Ronin
+    // stringing together weak shows): one casual drifts off, then the meter resets up.
+    while (perfExcitement <= -EXCITE_PER_CASUAL)  { perfExcitement += EXCITE_PER_CASUAL;   perfFansLost  += 1; }
 
     // Drive/Sustain overflow feeds HC points (non-stacking rule)
     const earnedTotal = earned + hcOverflow + perfHcBonus;
@@ -3228,11 +3319,10 @@ function Game({ gameState, onReturnToLobby }) {
     if (isMinorSeventhEnd)    flashLines.push(ownsParanoia ? '🌀 PARANOIA — drain 3t + 2 slots frozen!' : '🎷 Blues Lick — Mojo Drain!');
     if (riffSlayerArm)        flashLines.push(`🗡️ RIFF SLAYER ARMED — skip-climb ×${skipClimbLen}!`);
     if (eRushArm)             flashLines.push('🎴 いいラッシュ ARMED — ghost barrage ready!');
-    if (thousandFire)         flashLines.push('⚡ THOUSAND BEATS — mash for Fame Sparks!');
-    if (ownsThousand && totalNotes >= 8 && thousandCd > 0) flashLines.push(`⚡ Thousand Beats on cooldown (${thousandCd})`);
     if (isTritoneEnd)         flashLines.push('🔥 Devil\u2019s Interval — Burn armed!');
     if (chromStagger > 0)     flashLines.push(`⚡ Chromatic Climb ×${chromRunLen} — Stagger ${chromStagger}t`);
     if (chromClimbActive && discordCount > 0) flashLines.push(`⚡ Chromatic Climb — discord pardoned`);
+    if (perfFreestyle > 0)    flashLines.push('🌀 Freestyle — first wrong note landed perfect!');
     if (canBank)              flashLines.push(`💾 Banked: ${newBankedNote.note}`);
     if (totalNotes > actingSpeed && !canBank) flashLines.push(`⚠️ ${totalNotes - actingSpeed} note(s) discarded (bank full)`);
     if (discordPenalty > 0)   flashLines.push(`⚡ ${discordCount} Dischord — −${discordPenalty} HC`);
@@ -3263,8 +3353,11 @@ function Game({ gameState, onReturnToLobby }) {
       : ` · SPD ${hexes}/${actingSpeed}`;
     addLog(`✓ Committed · ${hexes} hexes${scoreStr}${driveMsg}${sustMsg}${triMsg}${octMsg}${majorThirdMsg}${m7Msg}${tritoneEndMsg}${chrMsg}${chromClimbMsg}${feedbackOverloadMsg}${rsMsg}${speedMsg} · Next RN: ${newRootRaw} (pick Major/Minor)`);
 
+    // 🎸 Your chord is a STANDING stance — it persists across turns and is only
+    // changed by a revoice (one note add/drop per turn), so we don't touch it here.
+    setChordMode(false);
     setNoteField(acting.id, {
-      noteTrack:       [],
+      melodyLine:       [],
       discordCount:    0,
       pivotPending:    newPivotPending,
       rootNote:        newRootRaw,
@@ -3290,8 +3383,6 @@ function Game({ gameState, onReturnToLobby }) {
       riffSlayerArmed: riffSlayerArm ? true : (actingNoteState?.riffSlayerArmed ?? false),
       burnArmed:       burnArm ? true : (actingNoteState?.burnArmed ?? false),
       eRushArmed:      eRushArm ? true : (actingNoteState?.eRushArmed ?? false),
-      // Thousand Beats fires now → start its 2-turn cooldown (counts the Ronin's own turns)
-      thousandBeatsCd: thousandFire ? 2 : Math.max(0, thousandCd),
       overdriveActive: false,
       transposeCardPending: null,
       ...cleansePatch, // Borrowed Chord (Maj3 end) — clears one active debuff
@@ -3316,21 +3407,18 @@ function Game({ gameState, onReturnToLobby }) {
     // 🎭 §5a — a strong performance slowly grows the crowd (new casuals) and hardens casuals
     // into diehards. NO Fame is granted here: fans only ever MULTIPLY earned FP (grantFame).
     // Applied after gainFans via a functional update so it stacks with position-based gains.
-    if (perfFansGained > 0 || perfPromotions > 0) {
+    if (perfFansGained > 0 || perfPromotions > 0 || perfFansLost > 0) {
       setNoteStates(prev => {
         const ns0 = prev[acting.id]; if (!ns0) return prev;
         let cas = ns0.casuals ?? FAN_CASUAL_START, die = ns0.diehards ?? FAN_DIEHARD_START;
         cas = Math.min(FAN_CASUAL_CAP, cas + perfFansGained);
         for (let i = 0; i < perfPromotions; i++) { if (cas > 0 && die < FAN_DIEHARD_CAP) { cas -= 1; die += 1; } }
+        cas = Math.max(0, cas - perfFansLost);     // 🗡️ bored fans walk (Ronin's weak shows)
         return { ...prev, [acting.id]: { ...ns0, casuals: cas, diehards: die } };
       });
       if (perfFansGained > 0) addLog(`🎤 ${acting.name}'s performance wins over ${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''}!`);
       if (perfPromotions > 0) addLog(`💜 ${perfPromotions} of ${acting.name}'s casuals harden into Diehards!`);
-    }
-    // ⚡ THOUSAND BEATS — a full 8-note commit unleashes the Fame-Spark barrage.
-    if (thousandFire) {
-      addLog(`⚡🗡️ THOUSAND BEATS! ${acting.name} unleashes the barrage — MASH SPACE!`);
-      setTimeout(() => launchThousandBeats(acting.id), 600);
+      if (perfFansLost > 0)   addLog(`😴 ${acting.name}'s show falls flat — ${perfFansLost} bored fan${perfFansLost !== 1 ? 's' : ''} drift off.`);
     }
   }
 
@@ -3350,11 +3438,14 @@ function Game({ gameState, onReturnToLobby }) {
       const ns = prev[spiritId];
       if (!ns) return prev;
 
-      // Replenish only used slots, spelled correctly for current root+mode
-      const newStock = ns.noteStock.map((note, idx) => {
-        if (!ns.usedStockIdx.has(idx)) return note;
-        return randomNote(ns.rootNote, ns.scaleMode);
-      });
+      // 🎵 GRADUAL REFILL — unused notes carry over; only up to STOCK_REFILL_RATE
+      // spent slots recharge this turn. Spend big one turn, run short the next.
+      const usedIdxs   = [...ns.usedStockIdx];
+      const refreshing = new Set(usedIdxs.slice(0, STOCK_REFILL_RATE));
+      const newStock = ns.noteStock.map((note, idx) =>
+        refreshing.has(idx) ? randomNote(ns.rootNote, ns.scaleMode) : note
+      );
+      const carriedUsed = new Set(usedIdxs.filter(i => !refreshing.has(i)));
 
       // NOTE: mojoDrain / stagger / tripped / dazed / instrumentDropped are NO
       // LONGER ticked or cleared here. Clearing them at the start of your own
@@ -3367,11 +3458,16 @@ function Game({ gameState, onReturnToLobby }) {
         [spiritId]: {
           ...ns,
           noteStock:    newStock,
-          noteTrack:    [],
-          usedStockIdx: new Set(),
+          melodyLine:    [],
+          revoiceUsedThisTurn: false,  // 🎸 fresh revoice each turn — your chord PERSISTS
+          usedStockIdx: carriedUsed,
           discordCount: 0,
           hasConfirmed: false,
           dieFloorBoost: 0,
+          smashExposed: false,   // 🎸💥 exposure clears at the start of your own turn
+          // 🌌 Displace cooldown ticks down on Intergalactic 0's own turns
+          displaceCd: Math.max(0, (ns.displaceCd ?? 0) - 1),
+
           // Tick down roadie cooldowns
           roadies: (ns.roadies ?? []).map(r =>
             r.cooldownTurns > 0 ? { ...r, cooldownTurns: r.cooldownTurns - 1 } : r
@@ -3390,8 +3486,11 @@ function Game({ gameState, onReturnToLobby }) {
           mixerUsedThisTurn: false,
           // 🥊 CQC swing exposure clears at the start of your next turn
           swingExposed: false,
-          // Refresh modulation cards (exhausted resets each turn)
-          modCards: (ns.modCards ?? []).map(c => ({ ...c, exhausted: false })),
+          // Refresh modulation cards (exhausted resets each turn) — but spent
+          // one-shots (e.g. the starter Transpose) fall away instead of recharging.
+          modCards: (ns.modCards ?? [])
+            .filter(c => !(c.oneShot && c.exhausted))
+            .map(c => ({ ...c, exhausted: false })),
           // Prompt major/minor choice at the START of this spirit's turn
           pivotPending: true,
           // 🗡️ Riff Slayer only lives for the turn it was armed — disarm on next turn
@@ -3400,8 +3499,6 @@ function Game({ gameState, onReturnToLobby }) {
           burnArmed: false,
           // 🎴 E-Rush likewise only lives for the turn it was armed
           eRushArmed: false,
-          // ⚡ Thousand Beats cooldown ticks down on the Ronin's own turns
-          thousandBeatsCd: Math.max(0, (ns.thousandBeatsCd ?? 0) - 1),
         },
       };
     });
@@ -3583,7 +3680,6 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
     if (skillId === 'psycho_bushido') addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! A CQC swing of 5–6 forces the rival's die to a 1.`);
     if (skillId === 'e_rush')       addLog(`🎴 ${spirit?.name} — いいラッシュ unlocked! End on an E, then a riff-off that turn buries the rival under ghost notes.`);
-    if (skillId === 'thousand_beats') addLog(`⚡ ${spirit?.name} — THOUSAND BEATS! Commit 8 notes to mash for Fame Sparks. 2-turn cooldown.`);
     if (skillId === 'theory_major')     addLog(`🎼 ${spirit?.name} — THE FULL SCALE! The 4th & 7th are now Discord-free — your Major scale is complete.`);
     if (skillId === 'theory_minor')     addLog(`🌑 ${spirit?.name} — MINOR TONALITY! You can now declare Minor at the pivot and play a minor key, clean.`);
     if (skillId === 'theory_sus')       addLog(`🕊️ ${spirit?.name} — SUSPENSIONS! Ending on the 2nd or 4th now rings out for bonus Flair.`);
@@ -3609,6 +3705,9 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`🎨 ${spirit?.name} — colour notes online: ${grants.map(g => DISCORD_UPGRADE_TIERS.find(t => t.id === g)?.label ?? g).join(', ')}.`);
     }
     if (skillId === 'hydra')        addLog(`🐉 ${spirit?.name} — HYDRA! With 3 amps, your Sonic Attack rolls 3d6 and fires three beams.`);
+    if (skillId === 'blaster_of_ra') addLog(`🌀 ${spirit?.name} — BLASTER OF RA! Your Smash becomes a ranged, piercing bass-drop down the beam — undefendable, scatters & knocks back every rival in line.`);
+    if (skillId === 'displace')      addLog(`🌌 ${spirit?.name} — DISPLACE! Warp to your amp rig for 3 AP (2-turn cooldown). He doesn't run — he transcends space.`);
+    if (skillId === 'sunbeam')       addLog(`☀️ ${spirit?.name} — SUNBEAM! With 3 amps, your Sonic beam reaches +2 hexes and leaves burning ground in its wake.`);
 
     const CQC_SWING_MAP = { shank_skank:'swing_1', cosmic_boogaloo:'swing_2', moon_shuffle:'swing_3', baki_gravity:'swing_3' };
     if (CQC_SWING_MAP[skillId]) {
@@ -3754,6 +3853,30 @@ function Game({ gameState, onReturnToLobby }) {
     setSkillTarget(spiritId, legacyMap[categoryId] ?? categoryId);
   }
 
+  // 🔊 Valid hexes for a spirit's NEXT amp. The FIRST amp sits beside the spirit; every
+  // amp after must EXTEND the rig — placed touching one of that spirit's existing amps —
+  // so the rig grows outward as one connected mass you commit to (and must defend).
+  // Occupied hexes (spirits/amps) are excluded.
+  function ampPlaceCandidates(spiritId) {
+    const occupied = new Set([
+      ...spirits.filter(s => !s.knockedOut).map(s => s.num),
+      ...amps.map(a => a.hexNum),
+    ]);
+    const owned = amps.filter(a => a.ownerId === spiritId);
+    const out = new Set();
+    const addOpenNeighbors = (hexNum) => {
+      const h = HEX_BY_NUM[hexNum]; if (!h) return;
+      getFlatTopNeighborSlots(h).forEach(n => { if (!occupied.has(n.num)) out.add(n.num); });
+    };
+    if (owned.length === 0) {
+      const sp = spirits.find(s => s.id === spiritId);
+      if (sp) addOpenNeighbors(sp.num);
+    } else {
+      owned.forEach(a => addOpenNeighbors(a.hexNum));
+    }
+    return out;
+  }
+
   // Player clicked a hex while ampPlacing — drop the amp there if valid
   function placeAmp(hexNum) {
     if (!ampPlacing) return;
@@ -3762,14 +3885,12 @@ function Game({ gameState, onReturnToLobby }) {
     if (!spirit) { setAmpPlacing(null); return; }
     const spiritHex = HEX_BY_NUM[spirit.num];
     if (!spiritHex) { setAmpPlacing(null); return; }
-    // Must be an immediate neighbor
-    const isNeighbor = getFlatTopNeighborSlots(spiritHex).some(n => n.num === hexNum);
-    if (!isNeighbor) { addLog('🔊 Place the Amp on an adjacent hex.'); return; }
-    // Cannot place on occupied hex
-    const occupiedBySpirit = spirits.some(s => s.num === hexNum && !s.knockedOut);
-    const occupiedByAmp    = amps.some(a => a.hexNum === hexNum);
-    if (occupiedBySpirit || occupiedByAmp) {
-      addLog('🔊 That hex is occupied — choose a different adjacent hex.');
+    // First amp drops beside you; later amps must extend the connected rig.
+    const hasRig = amps.some(a => a.ownerId === spiritId);
+    if (!ampPlaceCandidates(spiritId).has(hexNum)) {
+      addLog(hasRig
+        ? '🔊 Amps must EXTEND your rig — place on an open hex touching one of your amps.'
+        : '🔊 Place your first Amp on an open hex beside you.');
       return;
     }
     const newAmp = {
@@ -3940,7 +4061,7 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
     if (!hasConfirmed) {
-      addLog(`🎤 Build and confirm your Note Track before posing.`);
+      addLog(`🎤 Build and confirm your Melody Line before posing.`);
       return;
     }
     setPosing(prev => {
@@ -3981,7 +4102,7 @@ function Game({ gameState, onReturnToLobby }) {
       name: 'Overdrive',
       desc: 'One discord note in your track counts as in-scale for HC scoring this turn.',
       color: '#ff8844',
-      usableWhen: 'before-commit', // before committing the note track
+      usableWhen: 'before-commit', // before committing the melody line
     },
   };
 
@@ -4471,57 +4592,25 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
     // Lost Chord — slot the found note into an unused stock slot (ready next turn).
+    // 🗡️ SHREDDING RONIN — the virtuoso finds more music in it: ~50% of the time he
+    // pockets a SECOND (fresh in-scale) note from the same find. Roll once, here.
+    const roninGreed = spiritId === 'cosmic_ronin' && Math.random() < 0.5;
     setNoteStates(prev => {
       const ns = prev[spiritId]; if (!ns) return prev;
       const stock = [...(ns.noteStock ?? [])];
       const used  = ns.usedStockIdx instanceof Set ? ns.usedStockIdx : new Set(ns.usedStockIdx ?? []);
-      const slot  = stock.findIndex((_, i) => !used.has(i));
-      if (slot === -1) stock.push(tok.note); else stock[slot] = tok.note;
+      const placed = new Set();
+      const place = (note) => {
+        const slot = stock.findIndex((_, i) => !used.has(i) && !placed.has(i));
+        if (slot === -1) { stock.push(note); placed.add(stock.length - 1); }
+        else { stock[slot] = note; placed.add(slot); }
+      };
+      place(tok.note);
+      if (roninGreed) place(randomNote(ns.rootNote, ns.scaleMode));
       return { ...prev, [spiritId]: { ...ns, noteStock: stock } };
     });
     addLog(`🎵 ${sp?.name} picks up a Lost Chord (${tok.note}) — it lands in your stock!`);
-  }
-
-  // ✨ Award N Fame Sparks at once (used by Thousand Beats). Forges 1 FP for
-  // every SPARKS_PER_FP collected and carries the remainder, mirroring pickup.
-  function awardSparks(spiritId, n) {
-    if (n <= 0) return { fp: 0, carry: (noteStates[spiritId]?.sparks ?? 0) };
-    const start = noteStates[spiritId]?.sparks ?? 0;
-    const total = start + n;
-    const fp    = Math.floor(total / SPARKS_PER_FP);
-    const carry = total % SPARKS_PER_FP;
-    setNoteStates(prev => ({ ...prev, [spiritId]: { ...prev[spiritId], sparks: carry } }));
-    if (fp > 0) setTimeout(() => grantFame(spiritId, fp, `✨ Thousand Beats — ${fp} FP forged`), 80);
-    return { fp, carry };
-  }
-
-  // ⚡ THOUSAND BEATS — open the 5-second mash overlay. Clicks are tallied in a
-  // ref (timing-critical), then converted to Fame Sparks on resolve.
-  function launchThousandBeats(spiritId) {
-    thousandClicksRef.current = 0;
-    setThousandBeats({ phase: 'mash', spiritId, secondsLeft: 5, clicks: 0 });
-    // Countdown — tick the visible seconds; resolve at zero.
-    let s = 5;
-    const iv = setInterval(() => {
-      s -= 1;
-      if (s > 0) {
-        setThousandBeats(p => p && p.phase === 'mash' ? { ...p, secondsLeft: s } : p);
-      } else {
-        clearInterval(iv);
-        resolveThousandBeats(spiritId);
-      }
-    }, 1000);
-  }
-
-  function resolveThousandBeats(spiritId) {
-    const clicks = thousandClicksRef.current;
-    // Curve (playtest dial): 1 spark per ~10 clicks, capped at 4 (one full FP).
-    const sparks = Math.max(0, Math.min(4, Math.floor(clicks / 10)));
-    const sp = spirits.find(s => s.id === spiritId);
-    const { fp } = awardSparks(spiritId, sparks);
-    addLog(`⚡ ${sp?.name} hammered ${clicks} beats → ${sparks} Fame Spark${sparks !== 1 ? 's' : ''}${fp > 0 ? ` · forged ${fp} FP!` : ''}`);
-    setThousandBeats({ phase: 'result', spiritId, secondsLeft: 0, clicks, sparksAwarded: sparks, fpForged: fp });
-    setTimeout(() => setThousandBeats(null), 2600);
+    if (roninGreed) addLog(`🗡️ ${sp?.name} hears a second note in it — an extra lands in the stock!`);
   }
 
   // Resolve the active event (fired by the modal's ROLL / RESOLVE button)
@@ -5086,11 +5175,7 @@ function Game({ gameState, onReturnToLobby }) {
   // Some signature skills have a self-contained trigger we can fire for testing.
   function devFireSignature(spiritId, skill) {
     devUnlockSkill(spiritId, skill.id, skill.pre);
-    if (skill.fire === 'thousand') {
-      if (!spirits.some(s => s.id === spiritId)) { addLog('🧪 Ronin is not in this game.'); return; }
-      setTimeout(() => launchThousandBeats(spiritId), 60);
-      setDevOpen(false);
-    } else if (skill.fire === 'hydra') {
+    if (skill.fire === 'hydra') {
       devSetupHydra();
     }
   }
@@ -5402,6 +5487,12 @@ function Game({ gameState, onReturnToLobby }) {
     const fromSp = spirits.find(s => s.id === fromId);
     const target = spirits.find(s => s.id === targetId);
     if (!fromSp || !target || target.knockedOut || spaces <= 0) return;
+    // 🌀 ROLLS HARD — Intergalactic 0 plants like a boulder: shrug off 1 hex of any shove.
+    // Still pushable (and edge-able) on a committed hit — just sturdier.
+    if (targetId === 'intergalactic_0') {
+      spaces -= 1;
+      if (spaces <= 0) { addLog(`🌀 ${target.name} Rolls Hard — the push barely budges him.`); return; }
+    }
     const fromHex = HEX_BY_NUM[fromSp.num];
     const tgtHex  = HEX_BY_NUM[target.num];
     if (!fromHex || !tgtHex) return;
@@ -5456,6 +5547,22 @@ function Game({ gameState, onReturnToLobby }) {
   // Roll a d12
   function rollD12() { return Math.floor(Math.random() * 12) + 1; }
 
+  // 🌀 Per-spirit chord read — evaluateChord plus a spirit's innate harmony tweaks. Use this
+  // (not raw evaluateChord) anywhere combat or the HUD reads a spirit's Drive/Sustain.
+  // INTERGALACTIC 0 — "Rolls Hard": +1 Sustain on every voicing. "Freestyle": a tone cluster
+  // (pure chaos) drives 7→8, so even a random string of notes hits dangerously hard (8/2).
+  function spiritChord(spiritId, notes) {
+    const ch = evaluateChord(notes);
+    if (spiritId === 'intergalactic_0') {
+      return {
+        ...ch,
+        drive:   ch.id === 'cluster' ? ch.drive + 1 : ch.drive,
+        sustain: ch.sustain + 1,
+      };
+    }
+    return ch;
+  }
+
   // Returns hex nums in the forward attack cone of a spirit
   // Cone = forward hex + 2 diagonal-forward hexes (120° arc)
   function getSwingCone(spirit) {
@@ -5493,9 +5600,13 @@ function Game({ gameState, onReturnToLobby }) {
     if (!first) return new Set();
     const dq = first.q - originHex.q;
     const dr = first.r - originHex.r;
+    // ☀️ SUNBEAM (Intergalactic 0, Amp-3 capstone) — the beam reaches +2 hexes farther.
+    const hasSunbeam = spirit.id === 'intergalactic_0'
+      && ((noteStates[spirit.id]?.unlockedSkills) ?? []).includes('sunbeam');
+    const reach = hasSunbeam ? 5 : 3;
     const beam = new Set();
     let q = originHex.q, r = originHex.r;
-    for (let depth = 0; depth < 3; depth++) {
+    for (let depth = 0; depth < reach; depth++) {
       q += dq; r += dr;
       const hex = HEX_BY_QR[`${q},${r}`];
       if (!hex) break; // beam runs off the edge of the stage
@@ -5675,12 +5786,13 @@ function Game({ gameState, onReturnToLobby }) {
     const defender = spirits.find(s => s.id === targetId);
     if (!attacker || !defender) return;
 
-    if (moveStepsLeft < 2) {
-      addLog(`⚔️ Not enough Action Points — Swing costs 2 AP. Move steps left: ${moveStepsLeft}`);
+    if (moveStepsLeft < 1) {
+      addLog(`⚔️ Not enough Action Points — Swing costs 1 AP. Move steps left: ${moveStepsLeft}`);
       return;
     }
 
-    setMoveStepsLeft(prev => Math.max(0, prev - 2));
+    // 🥊 The jab: cheap (1 AP) and chord-driven, but still your one Action this turn.
+    setMoveStepsLeft(prev => Math.max(0, prev - 1));
     setActionTokenUsed(true);
     setAction(null);
 
@@ -5703,10 +5815,28 @@ function Game({ gameState, onReturnToLobby }) {
       }));
     }
 
-    const atkBase  = (attacker.drive ?? 6) + (nsA.instrumentDropped ? -1 : 0) + skillMods.pyroBonus + junkBonus;
+    // 🎸 Harmony → combat: Drive/Sustain are read from the chord you committed
+    // (falls back to the static spirit stat until a chord has been played).
+    const atkChord = (nsA.chordStack?.length) ? spiritChord(attacker.id, nsA.chordStack) : null;
+    const defChord = (nsD.chordStack?.length) ? spiritChord(targetId, nsD.chordStack) : null;
+    const atkChordDrive   = atkChord ? atkChord.drive   : (attacker.drive ?? 6);
+    let   defChordSustain = defChord ? defChord.sustain : (defender.sustain ?? 5);
+    // 💥 SMASH EXPOSURE — a Smashed rival is wide open: this blow ignores their Sustain, then clears.
+    if (nsD.smashExposed) { defChordSustain = 0; setNoteField(targetId, { smashExposed: false }); addLog(`💥 ${defender.name} is Exposed — the hit lands clean!`); }
+    if (atkChord) addLog(`🎸 ${attacker.name}'s chord: ${atkChord.name} (⚔️${atkChord.drive})${defChord ? ` vs ${defender.name}'s ${defChord.name} (🛡️${defChord.sustain})` : ''}`);
+    // 🛡️ Defending frays your chord — each blow absorbed costs a note (floored at 1
+    // remaining, so you're never bled to nothing). It rebuilds on your next turn.
+    if (defChord && !posing[targetId] && (nsD.chordStack?.length ?? 0) > 1) {
+      const frayedNotes = nsD.chordStack.slice(0, -1);
+      const frayed = spiritChord(targetId, frayedNotes);
+      setNoteField(targetId, { chordStack: frayedNotes });
+      addLog(`🛡️ ${defender.name}'s chord frays under the blow — ${defChord.name} → ${frayed.name} (🛡️${frayed.sustain})`);
+    }
+
+    const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0) + skillMods.pyroBonus + junkBonus;
     const atkBonus = nsA.tempDrive ?? 0;
     const atkStat  = atkBase + atkBonus;
-    const defBase  = (defender.sustain ?? 5) - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
+    const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
     const defBonus = nsD.tempSustain ?? 0;
     const defStat  = defBase + defBonus;
     const defenderPosing = posing[targetId];
@@ -5736,9 +5866,17 @@ function Game({ gameState, onReturnToLobby }) {
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on a dropped instrument — Drive -1!`);
     addLog(`⚔️ ${attacker.name} SWINGS at ${defender.name}!${defenderPosing ? ' — caught posing!' : ''}`);
+    // 🎸 The jab spends your harmony: the swing plays out the FIRST 2 committed notes
+    // of your Chord Stack (Drive was already read above, from the full chord).
+    // The chord shrinks from the front; revoice rebuilds it 1 note/turn.
+    const swingChordLeft = (nsA.chordStack ?? []).slice(2);
+    const swingChordSpent = (nsA.chordStack ?? []).slice(0, 2);
+    if (swingChordSpent.length) {
+      addLog(`🎸 ${attacker.name} burns ${swingChordSpent.join('+')} from the chord — ${swingChordLeft.length ? spiritChord(attacker.id, swingChordLeft).name : 'chord exhausted (base stats until revoiced)'}.`);
+    }
     // 🥊 CQC EXPOSURE — committing to a swing drops your guard: −1 Sustain until your
     // next turn (melee-only risk; ranged Sonic keeps you safe).
-    setNoteStates(prev => ({ ...prev, [acting.id]: { ...prev[acting.id], swingExposed: true } }));
+    setNoteStates(prev => ({ ...prev, [acting.id]: { ...prev[acting.id], swingExposed: true, chordStack: swingChordLeft } }));
 
     // pickPos: 0 = center. Negative = toward attacker (left). Positive = toward defender (right).
     setBattleState({
@@ -5824,9 +5962,152 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ── SONIC ATTACK ─────────────────────────────────────────────────────────────
   // Available when attacker is connected to ≥1 amp.
-  // Die: 1 amp = d8, 2 amps = d10, 3 amps = d12.
+  // KEEP-HIGHEST dice pool — amps buy reliability, not a bigger ceiling, so your Chord
+  // Stack stats stay the deciding term (the pool caps at the rival's d6 ceiling until
+  // the 3rd amp). 1 amp = 2d6 · 2 amps = 3d6 · 3 amps = 2d6 + 1d8 (the 3rd amp can finally
+  // punch past a 6) · 🐉 Hydra overdrives the whole rig to 3d8. Defender still rolls a flat d6.
   // Range: narrow 3-hex forward beam. Unplugged defender cannot retaliate.
-  const SONIC_DICE = { 1: 8, 2: 10, 3: 12 };
+  function sonicDicePool(ampCount, hasHydra) {
+    if (ampCount >= 3) return hasHydra ? [8, 8, 8] : [6, 6, 8];
+    if (ampCount === 2) return [6, 6, 6];
+    return [6, 6]; // 1 amp
+  }
+  // Pretty label for a pool: [6,6]→"2d6", [6,6,8]→"2d6+d8", [8,8,8]→"3d8".
+  function dicePoolLabel(pool) {
+    const counts = {};
+    pool.forEach(s => { counts[s] = (counts[s] || 0) + 1; });
+    return Object.keys(counts).sort((a, b) => a - b)
+      .map(s => `${counts[s] > 1 ? counts[s] : ''}d${s}`).join('+');
+  }
+
+  // 🎸💥 THE SMASH — primal, undefendable melee. Hurl your unused RAW stock as pure
+  // force: it bypasses the rival's Sustain, scales with how many notes you throw,
+  // scatters their stock, and leaves YOU Exposed (your next hit taken lands clean).
+  // Draws from stock only — never your chord or cadence. Outside tonal structure.
+  function resolveSmash(targetId) {
+    if (!acting) return;
+    const target = spirits.find(s => s.id === targetId);
+    if (!target || target.knockedOut) return;
+    if (moveStepsLeft < 2) { addLog('🎸 Not enough Action Points — the Smash costs 2 AP.'); return; }
+    const ns    = actingNoteState ?? {};
+    const stock = ns.noteStock ?? [];
+    const used  = ns.usedStockIdx ?? new Set();
+    const unusedIdxs = stock.map((_, i) => i).filter(i => !used.has(i));
+    const thrown = unusedIdxs.length;
+    if (thrown < 2) { addLog('🎸 Nothing to throw — you need at least 2 unused notes to Smash.'); return; }
+
+    // 🎸💥 The haymaker: the all-in wind-up roots you to the spot. Smash costs 2 AP
+    // AND ends ALL remaining movement this turn — you commit everything to the blow.
+    const stepsBeforeSmash = moveStepsLeft;
+    setMoveStepsLeft(0);
+    setActionTokenUsed(true);
+    setAction(null);
+
+    // 🗡️ SHREDDING RONIN — brute force isn't his art. His own Smash lands SOFT (≈half),
+    // so for the full Smash cost (all stock, no movement, Exposed) it's a bad trade he
+    // should almost never take. And he's WEAK TO it: a Smash on Ronin scatters DOUBLE his
+    // stock — his carefully arranged arsenal blown across the board.
+    const roninSmasher = acting.id === 'cosmic_ronin';
+    const roninTarget  = target.id === 'cosmic_ronin';
+    const baseDmg   = Math.min(5, Math.max(1, Math.ceil(thrown / 2)));
+    const damage    = roninSmasher ? Math.max(1, Math.floor(baseDmg / 2)) : baseDmg;
+    const knockback = Math.min(3, Math.ceil(thrown / 3));
+    const scatterN  = Math.floor(thrown / 2) * (roninTarget ? 2 : 1);
+
+    // You hurl ALL your unused stock and go Exposed.
+    setNoteField(acting.id, {
+      usedStockIdx: new Set([...used, ...unusedIdxs]),
+      smashExposed: true,
+    });
+
+    // Scatter the rival's raw stock — knock a few of their unused notes loose.
+    setNoteStates(prev => {
+      const tns = prev[targetId]; if (!tns) return prev;
+      const tUsed   = tns.usedStockIdx ?? new Set();
+      const tUnused = (tns.noteStock ?? []).map((_, i) => i).filter(i => !tUsed.has(i));
+      const toScatter = tUnused.slice(0, scatterN);
+      return { ...prev, [targetId]: { ...tns, usedStockIdx: new Set([...tUsed, ...toScatter]) } };
+    });
+
+    addLog(`🎸💥 ${acting.name} brings the instrument DOWN — THE SMASH! ${thrown} notes hurled, UNDEFENDABLE — −${damage} Vibe${scatterN > 0 ? `, ${scatterN} of ${target.name}'s notes scatter loose` : ''}.`);
+    if (roninSmasher) addLog(`🗡️ The windmill is not the Ronin's way — the blow lands clumsy.`);
+    if (roninTarget)  addLog(`🗡️ ${target.name}'s arsenal scatters wide — brute chaos shatters the precise.`);
+    triggerEffectFlash(targetId, '🎸', 'SMASH!', '#ff3344');
+    resolveWinDamage(acting.id, targetId, damage, 'The Smash');
+    battleKnockback(acting.id, targetId, knockback);
+    if (stepsBeforeSmash > 2) addLog(`🦶 ${acting.name} is rooted by the wind-up — no movement left this turn.`);
+    addLog(`💢 ${acting.name} is left wide open — Exposed until their next turn.`);
+  }
+
+  // 🌀💥 BLASTER OF RA — Intergalactic 0's signature; REPLACES the Smash once unlocked.
+  // A ranged, PIERCING bass-drop: hurl your unused stock down the forward beam and hammer
+  // EVERY rival in line — undefendable (ignores Sustain), scattering their stock and knocking
+  // them back. Same fuel/commitment as the Smash (all stock, movement locked, Exposed), but
+  // reach + multi-hit instead of melee. The slow zoner's get-off-me artillery.
+  function resolveBlasterOfRa() {
+    if (!acting) return;
+    if (moveStepsLeft < 2) { addLog('🌀 Not enough Action Points — Blaster of Ra costs 2 AP.'); return; }
+    const ns    = actingNoteState ?? {};
+    const stock = ns.noteStock ?? [];
+    const used  = ns.usedStockIdx ?? new Set();
+    const unusedIdxs = stock.map((_, i) => i).filter(i => !used.has(i));
+    const thrown = unusedIdxs.length;
+    if (thrown < 2) { addLog('🌀 Nothing to blast — you need at least 2 unused notes to fire.'); return; }
+    const targets = getRivalsInBeam(acting);
+    if (!targets.length) { addLog('🌀 No rivals in the beam — line up the shot.'); return; }
+
+    const stepsBefore = moveStepsLeft;
+    setMoveStepsLeft(0);
+    setActionTokenUsed(true);
+    setAction(null);
+
+    const damage      = Math.min(5, Math.max(1, Math.ceil(thrown / 2)));
+    const knockback   = Math.min(3, Math.ceil(thrown / 3));
+    const scatterEach = Math.floor(thrown / 2);
+
+    // Hurl ALL unused stock down the beam; ride the recoil into Exposed.
+    setNoteField(acting.id, { usedStockIdx: new Set([...used, ...unusedIdxs]), smashExposed: true });
+
+    addLog(`🌀💥 ${acting.name} drops the BLASTER OF RA — a bass-drop shockwave screams down the beam, UNDEFENDABLE, piercing ${targets.length} rival${targets.length > 1 ? 's' : ''}!`);
+    triggerEffectFlash(acting.id, '🌀', 'RA!', '#aa55ff');
+
+    targets.forEach(t => {
+      const sc = scatterEach * (t.id === 'cosmic_ronin' ? 2 : 1); // 🗡️ Ronin still weak to the blast
+      setNoteStates(prev => {
+        const tns = prev[t.id]; if (!tns) return prev;
+        const tUsed   = tns.usedStockIdx ?? new Set();
+        const tUnused = (tns.noteStock ?? []).map((_, i) => i).filter(i => !tUsed.has(i));
+        const toScatter = tUnused.slice(0, sc);
+        return { ...prev, [t.id]: { ...tns, usedStockIdx: new Set([...tUsed, ...toScatter]) } };
+      });
+      triggerEffectFlash(t.id, '💥', 'BLAST!', '#aa55ff');
+      resolveWinDamage(acting.id, t.id, damage, 'Blaster of Ra');
+      battleKnockback(acting.id, t.id, knockback);
+      addLog(`💥 ${t.name} — −${damage} Vibe${sc > 0 ? `, ${sc} note${sc > 1 ? 's' : ''} scatter loose` : ''}.`);
+    });
+    if (stepsBefore > 2) addLog(`🦶 ${acting.name} rides the recoil — no movement left this turn.`);
+    addLog(`💢 ${acting.name} is left wide open — Exposed until their next turn.`);
+  }
+
+  // 🌌 DISPLACE — Intergalactic 0's signature. He can't run; he WARPS. Teleport to an open
+  // hex beside his amp rig for 3 AP, then a 2-turn cooldown. A deliberate get-out-of-jail
+  // (the AP cost rules out a same-turn Sonic follow-up), not a kite tool. Needs ≥1 amp.
+  const DISPLACE_AP = 3;
+  function resolveDisplace(hexNum) {
+    if (!acting) return;
+    const ns = actingNoteState ?? {};
+    if ((ns.displaceCd ?? 0) > 0) { addLog(`🌌 Displace is recharging — ${ns.displaceCd} turn${ns.displaceCd > 1 ? 's' : ''} left.`); return; }
+    if (moveStepsLeft < DISPLACE_AP) { addLog(`🌌 Displace needs ${DISPLACE_AP} AP.`); return; }
+    if (!amps.some(a => a.ownerId === acting.id)) { addLog('🌌 No rig to warp to — place an amp first.'); return; }
+    if (!ampPlaceCandidates(acting.id).has(hexNum)) { addLog('🌌 Warp to an open hex beside your amp rig.'); return; }
+
+    triggerEffectFlash(acting.id, '🌌', 'WARP', '#aa55ff');
+    setSpirits(prev => prev.map(s => s.id === acting.id ? { ...s, num: hexNum } : s));
+    setMoveStepsLeft(prev => Math.max(0, prev - DISPLACE_AP));
+    setNoteField(acting.id, { displaceCd: 2 });
+    setAction(null);
+    addLog(`🌌 ${acting.name} folds space and WARPS to hex #${hexNum} — Space is the place.`);
+  }
 
   function initiateSonicAttack(targetId) {
     if (!acting) return;
@@ -5845,6 +6126,9 @@ function Game({ gameState, onReturnToLobby }) {
     setMoveStepsLeft(prev => Math.max(0, prev - 2));
     setActionTokenUsed(true);
     setAction(null);
+
+    // 🔊 Sonic projects your prepared CHORD — strum it out as the beam fires.
+    playChord(actingNoteState?.chordStack ?? []);
 
     // ── RIFF-OFF TRIGGER ─────────────────────────────────────────────────────
     // If the defender is ALSO plugged in (their own live amp in range) and the
@@ -5875,7 +6159,6 @@ function Game({ gameState, onReturnToLobby }) {
     // Amp count caps at 3 ("goes to eleven" event boost counts as +1 amp)
     // NOTE: declared BEFORE powerBonus below — referencing it earlier crashed the game
     const ampCount    = Math.min(ampsInRange + elevenBoost, 3);
-    const dieSides    = SONIC_DICE[ampCount];
 
     // PA skill bonuses for Sonic Attack
     const atkSkills    = nsA.unlockedSkills ?? [];
@@ -5884,11 +6167,40 @@ function Game({ gameState, onReturnToLobby }) {
     if (pedalBonus)  addLog(`🎛️ Pedal Distortion! +1 Drive on Sonic Attack.`);
     if (powerBonus)  addLog(`🤘 Power Chords! +2 Drive (${ampCount} amps in range).`);
 
-    const atkBase  = (attacker.drive ?? 6) + (nsA.instrumentDropped ? -1 : 0)
+    // 🎸 Harmony → combat: Drive/Sustain are read from the chord you committed
+    // (falls back to the static spirit stat until a chord has been played).
+    const atkChord = (nsA.chordStack?.length) ? spiritChord(attacker.id, nsA.chordStack) : null;
+    const defChord = (nsD.chordStack?.length) ? spiritChord(targetId, nsD.chordStack) : null;
+    const atkChordDrive   = atkChord ? atkChord.drive   : (attacker.drive ?? 6);
+    let   defChordSustain = defChord ? defChord.sustain : (defender.sustain ?? 5);
+    // 💥 SMASH EXPOSURE — a Smashed rival is wide open: this blow ignores their Sustain, then clears.
+    if (nsD.smashExposed) { defChordSustain = 0; setNoteField(targetId, { smashExposed: false }); addLog(`💥 ${defender.name} is Exposed — the hit lands clean!`); }
+    if (atkChord) addLog(`🎸 ${attacker.name}'s chord: ${atkChord.name} (⚔️${atkChord.drive})${defChord ? ` vs ${defender.name}'s ${defChord.name} (🛡️${defChord.sustain})` : ''}`);
+    // 🛡️ Defending frays your chord — each blow absorbed costs a note (floored at 1
+    // remaining, so you're never bled to nothing). It rebuilds on your next turn.
+    if (defChord && !posing[targetId] && (nsD.chordStack?.length ?? 0) > 1) {
+      const frayedNotes = nsD.chordStack.slice(0, -1);
+      const frayed = spiritChord(targetId, frayedNotes);
+      setNoteField(targetId, { chordStack: frayedNotes });
+      addLog(`🛡️ ${defender.name}'s chord frays under the blow — ${defChord.name} → ${frayed.name} (🛡️${frayed.sustain})`);
+    }
+    // 🔊 Projecting the chord down the beam spends its FIRST committed note (Drive was
+    // read above, from the full chord). Lighter touch than the melee jab's 2 notes.
+    // 🐉 HYDRA costs more energy than a normal Sonic — three beams scream out, so it
+    // burns the first 2 Chord Stack notes instead of 1. (Normal Sonic spends 1.)
+    const sonicSpendN     = (ampCount === 3 && atkSkills.includes('hydra')) ? 2 : 1;
+    const sonicChordLeft  = (nsA.chordStack ?? []).slice(sonicSpendN);
+    const sonicChordSpent = (nsA.chordStack ?? []).slice(0, sonicSpendN);
+    if (sonicChordSpent.length) {
+      setNoteField(attacker.id, { chordStack: sonicChordLeft });
+      addLog(`🎸 ${attacker.name} projects ${sonicChordSpent.join('')} from the chord — ${sonicChordLeft.length ? spiritChord(attacker.id, sonicChordLeft).name : 'chord exhausted (base stats until revoiced)'}.`);
+    }
+
+    const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0)
                    + skillMods.pyroBonus + pedalBonus + powerBonus;
     const atkBonus = nsA.tempDrive ?? 0;
     const atkStat  = atkBase + atkBonus;
-    const defBase  = (defender.sustain ?? 5) - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
+    const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
     const defBonus = nsD.tempSustain ?? 0;
     const defStat  = defBase + defBonus;
     const defenderPosing = posing[targetId];
@@ -5910,15 +6222,17 @@ function Game({ gameState, onReturnToLobby }) {
     // Unplugged defender cannot retaliate against a plugged-in ranged attacker
     const retaliationBlocked = isAtRange && !defenderPluggedIn;
 
-    // Roll — attacker uses d-dieSides, defender uses d6 as normal
-    // 🐉 HYDRA (Shredding Ronin capstone) — at 3 amps, the three heads roar:
-    // roll 3d6 (summed) instead of a single d12, and fire three beams.
-    const hydraActive = ampCount === 3 && (atkSkills.includes('hydra'));
-    const hydraDice   = hydraActive ? [randD6(), randD6(), randD6()] : null;
-    const atkRoll  = hydraActive
-      ? hydraDice[0] + hydraDice[1] + hydraDice[2]
-      : Math.floor(Math.random() * dieSides) + 1;
-    if (hydraActive) addLog(`🐉 HYDRA AWAKENS! ${attacker.name} rolls 3d6 [${hydraDice.join(' + ')}] = ${atkRoll} — three beams scream out!`);
+    // Roll — attacker rolls a KEEP-HIGHEST pool from amps; defender uses a flat d6.
+    // 🐉 HYDRA (Shredding Ronin capstone) — at 3 amps the rig overdrives to 3d8.
+    const hasHydra    = atkSkills.includes('hydra');
+    const hydraActive = ampCount === 3 && hasHydra;
+    const dicePool    = sonicDicePool(ampCount, hasHydra);
+    const diceLabel   = dicePoolLabel(dicePool);
+    const diceVals    = dicePool.map(s => Math.floor(Math.random() * s) + 1);
+    const atkRoll     = Math.max(...diceVals);
+    const keptIdx     = diceVals.indexOf(atkRoll);
+    const dieSides    = Math.max(...dicePool); // fallback for single-die animation paths
+    if (hydraActive) addLog(`🐉 HYDRA AWAKENS! ${attacker.name} overdrives the rig — ${diceLabel}, keep best [${diceVals.join(', ')}] → ${atkRoll}, three beams scream out!`);
     const rawDefRoll = defenderPosing ? 0 : randD6();
     const defRoll  = defenderPosing ? 0
       : skillMods.halveDef ? Math.max(1, Math.floor(rawDefRoll / 2)) : rawDefRoll;
@@ -5929,7 +6243,18 @@ function Game({ gameState, onReturnToLobby }) {
     const damage  = marginToDamage(margin);
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on dropped instrument — Drive -1!`);
-    addLog(`🔊 ${attacker.name} launches SONIC ATTACK at ${defender.name}! (d${dieSides} — ${ampCount} amp${ampCount > 1 ? 's' : ''})${retaliationBlocked ? ' — UNPLUGGED TARGET CANNOT RETALIATE!' : ''}`);
+    addLog(`🔊 ${attacker.name} launches SONIC ATTACK at ${defender.name}! (${diceLabel} keep best — ${ampCount} amp${ampCount > 1 ? 's' : ''})${retaliationBlocked ? ' — UNPLUGGED TARGET CANNOT RETALIATE!' : ''}`);
+    // ☀️🔥 SUNBEAM — the beam scorches every hex it crosses into burning ground (reuses the
+    // Disco Inferno flaming-hex hazard: entering one costs 1 Vibe). Area denial down the line.
+    const hasSunbeam = attacker.id === 'intergalactic_0' && atkSkills.includes('sunbeam');
+    if (hasSunbeam) {
+      const scorched = [...getSonicBeam(attacker)];
+      setFlamingHexes(prev => ({
+        hexes: [...new Set([...(prev.hexes ?? []), ...scorched])],
+        roundsLeft: Math.max(prev.roundsLeft ?? 0, 2),
+      }));
+      addLog(`☀️🔥 SUNBEAM scorches the stage — ${scorched.length} hex${scorched.length !== 1 ? 'es' : ''} burn for 2 rounds!`);
+    }
 
     setBattleState({
       phase: 'enter_attacker',
@@ -5943,9 +6268,14 @@ function Game({ gameState, onReturnToLobby }) {
       atkDieReady: false, defDieReady: false,
       sonicAttack: true,
       ampCount,
-      dieSides,
-      hydra: hydraActive,        // 🐉 three-head Sonic Attack
-      hydraDice,                 // [d6,d6,d6] for the 3-dice display
+      dieSides,                  // = max(dicePool); fallback for single-die anim paths
+      dicePool,                  // 🔊 keep-highest pool: die sizes, e.g. [6,6,8]
+      diceVals,                  // rolled values (length === dicePool.length)
+      diceSpin: diceVals,        // animated faces while spinning (seeded to the result)
+      keptIdx,                   // index of the kept (max) die
+      diceLabel,                 // "2d6" / "2d6+d8" / "3d8"
+      hydra: hydraActive,        // 🐉 overdriven rig (art/loom)
+      sunbeam: hasSunbeam,       // ☀️ extra-lit beam (Intergalactic 0 capstone)
       retaliationBlocked,
       skillMods,
       pedalBonus,
@@ -5969,11 +6299,8 @@ function Game({ gameState, onReturnToLobby }) {
       const spinI = setInterval(() => {
         setBattleState(p => {
           if (!p || p.phase !== 'atk_die_spin') { clearInterval(spinI); return p; }
-          if (p.hydra) {
-            return { ...p, spinFaceAtk: Math.floor(Math.random() * dieSides) + 1,
-              hydraSpin: [randD6(), randD6(), randD6()] };
-          }
-          return { ...p, spinFaceAtk: Math.floor(Math.random() * dieSides) + 1 };
+          return { ...p, spinFaceAtk: Math.floor(Math.random() * dieSides) + 1,
+            diceSpin: dicePool.map(s => Math.floor(Math.random() * s) + 1) };
         });
       }, 80);
     }, 10400);
@@ -6306,7 +6633,7 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   // Zero out tempDrive/tempSustain for both combatants once a battle resolves.
-  // Bonuses from note track patterns last only for the turn they were built —
+  // Bonuses from melody line patterns last only for the turn they were built —
   // they should not compound across multiple battles.
   function clearBattleBuffs(attackerId, defenderId) {
     setNoteStates(prev => {
@@ -7146,16 +7473,13 @@ function Game({ gameState, onReturnToLobby }) {
   // A free adjacent hex to drop an amp on, biased toward centre stage so the rig
   // sits where the fighting is. Returns a hex num, or null if hemmed in.
   function botNeighborForAmp(self) {
-    const myHex = HEX_BY_NUM[self.num];
-    if (!myHex) return null;
-    const live = spiritsRef.current ?? spirits;
-    const occSpirit = new Set(live.filter(s => !s.knockedOut).map(s => s.num));
-    const occAmp = new Set(amps.map(a => a.hexNum));
+    // Build outward: first amp beside the bot, later amps extend its rig. Among valid
+    // hexes, prefer the one nearest centre stage (keeps the rig central / in beam play).
+    const cands = [...ampPlaceCandidates(self.id)];
+    if (!cands.length) return null;
     const hub = HEX_BY_NUM[LIMELIGHT_HEX];
-    const slots = getFlatTopNeighborSlots(myHex).filter(h => !occSpirit.has(h.num) && !occAmp.has(h.num));
-    if (!slots.length) return null;
-    return slots
-      .map(h => ({ num: h.num, d: hub ? axialDist(h.q, h.r, hub.q, hub.r) : 0 }))
+    return cands
+      .map(num => { const h = HEX_BY_NUM[num]; return { num, d: (hub && h) ? axialDist(h.q, h.r, hub.q, hub.r) : 0 }; })
       .sort((a, b) => a.d - b.d)[0].num;
   }
 
@@ -7186,7 +7510,7 @@ function Game({ gameState, onReturnToLobby }) {
   function botPlanNoteStep(self) {
     const ns = noteStatesRef.current?.[self.id] ?? {};
     const stock = ns.noteStock ?? [];
-    const track = ns.noteTrack ?? [];
+    const track = ns.melodyLine ?? [];
     const used  = ns.usedStockIdx;
     const NOTE_CAP = 8;                                   // hard track-length cap
     if (track.length >= NOTE_CAP) return { commit: true };
@@ -7237,6 +7561,46 @@ function Game({ gameState, onReturnToLobby }) {
     if (endIdx != null) return { slot: endIdx };          // then the saved ending, last
     if (track.length === 0 && discord.length) return { slot: discord[0] }; // last-resort
     return { commit: true };
+  }
+
+  // 🎸 CHORD STACK — the bot's combat power lives here now (Drive/Sustain come from
+  // evaluateChord, attacking spends it, defending frays it). Each turn the bot may
+  // revoice ONE note: pick the single stock pitch whose addition most improves the
+  // chord by persona (combat/disrupt chase Drive, clean/Flair chase Sustain, musical
+  // stays balanced). Returns the note string to voice, or null to keep the stance.
+  function botPlanRevoice(self) {
+    const ns = noteStatesRef.current?.[self.id] ?? {};
+    if (ns.revoiceUsedThisTurn) return null;
+    const chord = ns.chordStack ?? [];
+    if (chord.length >= 5) return null;                  // full — v1 bot doesn't churn/drop
+    const stock = ns.noteStock ?? [];
+    const style = botPersona(self).note;                 // musical | combat | disrupt | clean
+    const have  = new Set(chord.map(pitchIndex));
+    const cands = [...new Set(stock.filter(n => !have.has(pitchIndex(n))))]; // new pitch classes only
+    if (!cands.length) return null;
+    const weight = (c) => {
+      if (style === 'combat' || style === 'disrupt')     return c.drive * 2 + c.sustain;
+      if (style === 'clean'  || self.style === 'Flair')  return c.sustain * 2 + c.drive;
+      return c.drive + c.sustain;                         // musical / balanced
+    };
+    const cur = weight(spiritChord(self.id, chord));
+    let best = null, bestW = cur;
+    for (const note of cands) {
+      const w = weight(spiritChord(self.id, [...chord, note]));
+      if (w > bestW) { bestW = w; best = note; }
+    }
+    // Always replenish a fragile chord (depleted by attacking) even on a tie.
+    if (best == null && chord.length < 2) best = cands[0];
+    return best;
+  }
+
+  function botRevoiceChord(self, note) {
+    const ns = noteStatesRef.current?.[self.id] ?? {};
+    if (ns.revoiceUsedThisTurn || (ns.chordStack ?? []).length >= 5) return;
+    const next = [...(ns.chordStack ?? []), note];
+    setNoteField(self.id, { chordStack: next, revoiceUsedThisTurn: true });
+    const ch = spiritChord(self.id, next);
+    addLog(`🎸 ${self.name} voices ${note} into the Chord Stack — ${ch.name} (⚔️${ch.drive} 🛡️${ch.sustain}).`);
   }
 
   // 🎸 SYNTHETIC RIFF-OFF — a bot doesn't mash keys. When a riff-off involves a
@@ -7323,7 +7687,14 @@ function Game({ gameState, onReturnToLobby }) {
         return;
       }
 
-      const track = ns.noteTrack ?? [];
+      // 1b.5) CHORD STACK — voice one note/turn toward a stronger combat chord and
+      //       rebuild what last turn's attacks/defends drained. Free (no AP), once/turn.
+      if (!ns.revoiceUsedThisTurn) {
+        const voice = botPlanRevoice(self);
+        if (voice != null) { schedule(guard(() => botRevoiceChord(self, voice))); return; }
+      }
+
+      const track = ns.melodyLine ?? [];
       const stock = ns.noteStock ?? [];
       const used  = ns.usedStockIdx ?? new Set();
       const scale = buildScale(ns.rootNote ?? 'C', ns.scaleMode ?? 'major');
@@ -7353,7 +7724,7 @@ function Game({ gameState, onReturnToLobby }) {
         }
       }
 
-      // 1d/1e) NOTE TRACK — plan-driven: clean notes ascending (Drive), all the way
+      // 1d/1e) MELODY LINE — plan-driven: clean notes ascending (Drive), all the way
       //        up to the 8-note cap (more notes = more HC), saving a 5th/4th for the
       //        final note (+5/+4), padding for movement only. See botPlanNoteStep.
       const plan = botPlanNoteStep(self);
@@ -7442,6 +7813,23 @@ function Game({ gameState, onReturnToLobby }) {
       // beating one ahead of us triggers the underdog comeback Fame. Attacking
       // doesn't move us, so a shot taken from the spotlight still banks the heal.
       if (!usedToken) {
+        const coneNow0 = getRivalsInCone(self);
+        // 🎸💥 SMASH a turtle: a high-Sustain rival in melee would shrug off a normal
+        // swing, so bring the instrument down — undefendable, ignores their Sustain.
+        // Needs 2 AP + at least 2 unused stock notes to hurl (leaves us Exposed).
+        // 🗡️ Ronin never Smashes — brute force isn't his art (his Smash lands soft).
+        if (coneNow0.length && steps >= 2 && self.id !== 'cosmic_ronin') {
+          const usedSet  = ns.usedStockIdx;
+          const isUsed    = (i) => usedSet?.has?.(i) || (Array.isArray(usedSet) && usedSet.includes(i));
+          const unused   = (ns.noteStock ?? []).filter((_, i) => !isUsed(i)).length;
+          const t        = botPickTarget(coneNow0, self);
+          const tSustain = spiritChord(t.id, noteStatesRef.current?.[t.id]?.chordStack ?? []).sustain;
+          if (unused >= 2 && tSustain >= 6) {
+            botStepRef.current = 'ending';
+            schedule(guard(() => resolveSmash(t.id)));
+            return;
+          }
+        }
         const beamNow = ampsInRangeRef.current >= 1 ? getRivalsInBeam(self) : [];
         if (beamNow.length && steps >= 2) {
           const t = botPickTarget(beamNow, self);
@@ -7450,7 +7838,7 @@ function Game({ gameState, onReturnToLobby }) {
           return;
         }
         const coneNow = getRivalsInCone(self);
-        if (coneNow.length && steps >= 2) {
+        if (coneNow.length && steps >= 1) {   // jab now costs 1 AP
           const t = botPickTarget(coneNow, self);
           botStepRef.current = 'ending';
           schedule(guard(() => initiateSwing(t.id)));
@@ -7480,7 +7868,7 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
   }, [acting?.id, battleState?.phase, moveStepsLeft, actionTokenUsed,
-      noteStates[acting?.id]?.noteTrack?.length, winner, botNudge]); // eslint-disable-line react-hooks/exhaustive-deps
+      noteStates[acting?.id]?.melodyLine?.length, winner, botNudge]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── BOT WATCHDOG — a safety net. If a bot turn somehow stalls (an edge case the
   //    step-machine didn't anticipate), force it to end rather than freezing the
@@ -7739,6 +8127,25 @@ function Game({ gameState, onReturnToLobby }) {
       else addLog("🔊 That spirit is not in your sonic beam!");
       return;
     }
+    if (action === "smash") {
+      const rivals = acting ? getRivalsInCone(acting) : [];
+      const target = rivals.find(r => r.num === num);
+      if (target) { resolveSmash(target.id); setAction(null); }
+      else addLog("🎸 That spirit is not in melee range to Smash!");
+      return;
+    }
+    if (action === "blaster") {
+      // 🌀 Ranged & piercing — clicking any rival in the beam fires at ALL of them.
+      const rivals = acting ? getRivalsInBeam(acting) : [];
+      if (rivals.some(r => r.num === num)) { resolveBlasterOfRa(); setAction(null); }
+      else addLog("🌀 Click a rival in your beam to fire the Blaster of Ra!");
+      return;
+    }
+    if (action === "displace") {
+      if (acting && ampPlaceCandidates(acting.id).has(num)) resolveDisplace(num);
+      else addLog("🌌 Warp to an open hex beside your amp rig.");
+      return;
+    }
     if (action === "move") {
       if (reachable.has(num)) move(num);
       else addLog("❌ Can't reach that hex!");
@@ -7753,19 +8160,17 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Neighbours of acting spirit (used for amp placement highlights)
   const actingNeighbors = useMemo(() => {
-    if (!ampPlacing || !acting) return new Set();
-    const hex = HEX_BY_NUM[acting.num];
-    if (!hex) return new Set();
-    const occupied = new Set([
-      ...spirits.filter(s => !s.knockedOut).map(s => s.num),
-      ...amps.map(a => a.hexNum),
-    ]);
-    return new Set(
-      getFlatTopNeighborSlots(hex)
-        .filter(n => !occupied.has(n.num))
-        .map(n => n.num)
-    );
+    if (!ampPlacing) return new Set();
+    // Highlight valid drop hexes for the placing spirit: beside it (first amp) or
+    // touching its rig (extensions).
+    return ampPlaceCandidates(ampPlacing);
   }, [ampPlacing, acting, spirits, amps]);
+
+  // 🌌 Valid warp landing hexes while aiming Displace (open hexes beside the rig).
+  const displaceTargets = useMemo(() => {
+    if (action !== 'displace' || !acting) return new Set();
+    return ampPlaceCandidates(acting.id);
+  }, [action, acting, spirits, amps]);
 
   function hexFill(hex) {
     if (hex.num === LIMELIGHT_HEX) return "#ff44ff18";
@@ -7773,6 +8178,7 @@ function Game({ gameState, onReturnToLobby }) {
     const sp = spiritByNum[hex.num];
     if (sp) return sp.color + "44";
     if (ampPlacing && actingNeighbors.has(hex.num)) return "#ffcc4422";
+    if (action === 'displace' && displaceTargets.has(hex.num)) return "#aa55ff33";
     if (reachable.has(hex.num)) return "#ffffff18";
     // Swing cone highlight
     if (action === 'swing' && acting) {
@@ -7783,7 +8189,7 @@ function Game({ gameState, onReturnToLobby }) {
       }
     }
     // Sonic beam highlight
-    if (action === 'sonic' && acting) {
+    if ((action === 'sonic' || action === 'blaster') && acting) {
       const beam = getSonicBeam(acting);
       if (beam.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num);
@@ -7832,6 +8238,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (sp && acting?.id === sp.id) return sp.color;
     if (sp) return sp.color;
     if (ampPlacing && actingNeighbors.has(hex.num)) return "#ffcc44cc";
+    if (action === 'displace' && displaceTargets.has(hex.num)) return "#cc88ffcc";
     if (reachable.has(hex.num)) return "#ffffff88";
     // Swing cone stroke
     if (action === 'swing' && acting) {
@@ -7842,7 +8249,7 @@ function Game({ gameState, onReturnToLobby }) {
       }
     }
     // Sonic beam stroke
-    if (action === 'sonic' && acting) {
+    if ((action === 'sonic' || action === 'blaster') && acting) {
       const beam = getSonicBeam(acting);
       if (beam.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num);
@@ -7891,6 +8298,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (sp && acting?.id === sp.id) return Math.round(3 / SCALE * 0.13);
     if (sp || reachable.has(hex.num) || hex.stage) return 1.5;
     if (ampPlacing && actingNeighbors.has(hex.num)) return 2;
+    if (action === 'displace' && displaceTargets.has(hex.num)) return 2;
     return 0.8;
   }
 
@@ -8198,6 +8606,19 @@ function Game({ gameState, onReturnToLobby }) {
           <span style={{fontSize:10,padding:"2px 10px",background:"#0a1020",border:"1px solid #f6ad55",borderRadius:10,color:"#f6ad55"}}>
             ▶ {acting?.name}
           </span>
+          {/* 🎤 CROWD blip — relocated from the old right panel: Fame multiplier + fan counts */}
+          {acting && (() => {
+            const ns = noteStates[acting.id] ?? {};
+            const D = ns.diehards ?? FAN_DIEHARD_START, C = ns.casuals ?? 0;
+            const m = crowdMultiplier(D, C);
+            return (
+              <span title="Crowd — Fame multiplier · ♥ diehards · 👥 casuals"
+                style={{fontSize:9,padding:"2px 9px",background:"#160a12",border:"1px solid #ff66aa66",borderRadius:10,
+                  color:"#ff66aa",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+                🎤 ×{m.toFixed(2)} <span style={{color:'#ffcc44'}}>♥{D}</span> <span style={{color:'#66ccff'}}>👥{C}</span>
+              </span>
+            );
+          })()}
           {/* BGM Controls */}
           <div style={{display:"flex",alignItems:"center",gap:4,background:"#0a1020",border:"1px solid #1e3a5f",borderRadius:4,padding:"2px 6px"}}>
             <span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>BGM</span>
@@ -8236,7 +8657,7 @@ function Game({ gameState, onReturnToLobby }) {
           columns always sit side-by-side (never wrap onto the portrait); max
           620px lets it stretch toward full-screen on wide monitors. The board
           column flexes and the board SVG scales to whatever remains. */}
-      <div style={{display:"grid",gridTemplateColumns:"minmax(430px,620px) 1fr minmax(232px,310px)",gap:12,alignItems:"start",flex:1}}>
+      <div style={{display:"grid",gridTemplateColumns:"minmax(430px,480px) minmax(0,1fr)",gap:12,alignItems:"start",flex:1,minWidth:0}}>
 
       {/* ── BATTLE METER OVERLAY ── */}
       <BattleMeterOverlay
@@ -8396,7 +8817,7 @@ function Game({ gameState, onReturnToLobby }) {
 
                 {/* CONTENT — floats over the art */}
                 <div style={{position:"relative", display:"flex", flexDirection:"column", height:"100%"}}>
-                {/* Header: name / style · NOW / Fame / Sparks */}
+                {/* Header: name / style · NOW / Fame */}
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",
                   gap:6, padding:"6px 8px 5px"}}>
                   <div style={{minWidth:0}}>
@@ -8451,10 +8872,10 @@ function Game({ gameState, onReturnToLobby }) {
                     </div>
                     <span style={{fontSize:8,width:22,textAlign:"right",color:"#ffd700",fontWeight:700}}>{ns.fame ?? 0}</span>
                   </div>
-                  {/* 🎛️ Drive & Sustain as amp-knob gauges; Vibe (cap) & Speed stay compact bars */}
+                  {/* 🎛️ Drive & Sustain come from the player's Chord Stack now (not a static sheet) */}
                   <div style={{display:"flex",gap:9,marginTop:5,alignItems:"center"}}>
-                    <StatKnob label="DRIVE"   value={s.drive   ?? 6} boost={ns.tempDrive   ?? 0} color="#ff6644"/>
-                    <StatKnob label="SUSTAIN" value={s.sustain ?? 5} boost={ns.tempSustain ?? 0} color="#44aaff"/>
+                    <StatKnob label="DRIVE"   value={spiritChord(s.id, ns.chordStack ?? []).drive}   boost={ns.tempDrive   ?? 0} color="#ff6644"/>
+                    <StatKnob label="SUSTAIN" value={spiritChord(s.id, ns.chordStack ?? []).sustain} boost={ns.tempSustain ?? 0} color="#44aaff"/>
                     <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
                       <div>
                         <div style={{display:"flex",justifyContent:"space-between",marginBottom:1}}>
@@ -8540,6 +8961,48 @@ function Game({ gameState, onReturnToLobby }) {
                       </span>)}
                   </div>
                 )}
+                {/* ── 🎴 MOD CARDS — relocated from the old right panel; a banner of
+                    ability-like chips alongside Crew & Gear. Still played via playModCard. ── */}
+                {(() => {
+                  const cards = ns.modCards ?? [];
+                  if (!cards.length) return null;
+                  const MDEF = {
+                    chromatic_shift: { icon:'🎼', name:'Chromatic Shift', color:'#44ffaa', desc:'Rewrite all discord notes → in-scale (after pivot)' },
+                    transpose:       { icon:'🔄', name:'Transpose',       color:'#ffcc44', desc:'Pick any stock note as your new Root (during pivot)' },
+                    overdrive:       { icon:'⚡', name:'Overdrive',       color:'#ff8844', desc:'1 discord note counts as in-scale (before commit)' },
+                  };
+                  return (
+                    <div style={{padding:'5px 8px',borderTop:`1px solid ${s.color}22`}}>
+                      <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:4}}>
+                        <span style={{fontSize:7,color:'#3a5a7a',letterSpacing:2}}>MOD CARDS</span>
+                        <span style={{flex:1,height:1,background:`linear-gradient(90deg, ${s.color}33, transparent)`}}/>
+                      </div>
+                      <div style={{display:'flex',gap:3,flexWrap:'wrap'}}>
+                        {cards.map(card => {
+                          const d = MDEF[card.type] ?? { icon:'🎴', name:card.type, color:'#8899aa', desc:'' };
+                          const pend = ns.transposeCardPending === card.id;
+                          return (
+                            <button key={card.id} disabled={card.exhausted} title={d.desc}
+                              onClick={() => !card.exhausted && playModCard(card.id)}
+                              style={{display:'flex',alignItems:'center',gap:5,fontFamily:'inherit',
+                                cursor:card.exhausted?'default':'pointer',textAlign:'left',
+                                background:card.exhausted?'#0a0e16':`${d.color}14`,borderRadius:4,padding:'3px 7px',
+                                border:`1px solid ${card.exhausted?'#26303f':d.color+'88'}`,
+                                color:card.exhausted?'#3a4658':d.color,opacity:card.exhausted?0.6:1}}>
+                              <span style={{fontSize:12,lineHeight:1}}>{d.icon}</span>
+                              <span style={{display:'flex',flexDirection:'column',alignItems:'flex-start',lineHeight:1.15}}>
+                                <span style={{fontSize:8,fontWeight:700}}>{d.name}</span>
+                                <span style={{fontSize:6.5,color:card.exhausted?'#33415a':(pend?'#ffcc44':'#7090a0')}}>
+                                  {card.exhausted?'used · back next turn':pend?'◂ pick a note':'▶ tap to play'}
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {/* ── CREW & GEAR — deployable amps, roadies, groupies, ultimate ── */}
                 {(() => {
                   const unlocked = ns.unlockedSkills ?? [];
@@ -8844,67 +9307,7 @@ function Game({ gameState, onReturnToLobby }) {
                   </div>
                 </div>
               </div>
-              {/* 🎛️ AMP TONE PANEL — knobs shape how clicked notes sound */}
-              <div style={{display:"flex",alignItems:"flex-end",gap:9,marginBottom:5,
-                background:"linear-gradient(180deg,#161d30,#0a0e1c)",border:"1px solid #283850",
-                borderRadius:6,padding:"5px 10px 4px 10px",
-                boxShadow:"inset 0 1px 0 #ffffff14, 0 2px 4px #00000055"}}>
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginRight:1,paddingBottom:1}}>
-                  <span style={{fontSize:13,lineHeight:1}}>🎛️</span>
-                  <span style={{fontSize:5.5,color:"#5a7090",letterSpacing:1.5,marginTop:3,fontFamily:"'Orbitron',sans-serif"}}>AMP</span>
-                </div>
-                {/* 🎙️ VOICE — click to cycle the oscillator waveform/character */}
-                {(() => {
-                  const cur = toneKnobs.voice ?? 'saw';
-                  const V = TONE_VOICES[cur] ?? TONE_VOICES.saw;
-                  const cycle = () => {
-                    const i = TONE_VOICE_ORDER.indexOf(cur);
-                    const next = TONE_VOICE_ORDER[(i + 1) % TONE_VOICE_ORDER.length];
-                    setToneKnobs(k => ({ ...k, voice: next }));
-                    const aid = acting?.id;
-                    if (aid) toneBySpiritRef.current = { ...toneBySpiritRef.current, [aid]: { ...(toneBySpiritRef.current[aid] ?? TONE_KNOB_DEFAULTS), voice: next } }; // sync ref so preview uses new voice
-                    playNoteSound(rootNote, { holdTime: 0.3, fadeTime: 0.35, volume: 0.16 });
-                  };
-                  return (
-                    <button onClick={cycle}
-                      title="VOICE — the wave/character: LEAD (saw), BUZZ (square), MELLOW (triangle), CLEAN (sine), FUZZ (octave-stacked square). Click to cycle."
-                      style={{fontFamily:"'Orbitron',sans-serif", cursor:"pointer",
-                        display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-                        width:46, height:46, borderRadius:9, flexShrink:0,
-                        background:"linear-gradient(135deg,#1c1230,#0e0a1e)",
-                        border:"2px solid #aa66ff",
-                        boxShadow:"0 0 12px #aa66ff55, inset 0 0 8px #aa66ff22"}}>
-                      <span style={{fontSize:5.5,letterSpacing:1.5,color:"#b98aff",fontWeight:700}}>VOICE</span>
-                      <span style={{fontSize:9.5,fontWeight:900,color:"#ffffff",lineHeight:1.1,marginTop:2,
-                        textShadow:"0 0 10px #aa66ff"}}>{V.label}</span>
-                      <span style={{fontSize:5,letterSpacing:1,marginTop:2,color:"#7a6aaa"}}>▶ cycle</span>
-                    </button>
-                  );
-                })()}
-                <ToneFader label="GAIN" color="#ff6644"
-                  value={toneKnobs.drive} defaultValue={TONE_KNOB_DEFAULTS.drive}
-                  onChange={v=>setToneKnobs(k=>({...k,drive:v}))}
-                  onCommit={()=>playNoteSound(rootNote,{holdTime:0.3,fadeTime:0.35,volume:0.16})}
-                  title="GAIN — distortion. Slide up for filth, down for clean. Double-click to reset."/>
-                <ToneFader label="TONE" color="#ffcc44"
-                  value={toneKnobs.tone} defaultValue={TONE_KNOB_DEFAULTS.tone}
-                  onChange={v=>setToneKnobs(k=>({...k,tone:v}))}
-                  onCommit={()=>playNoteSound(rootNote,{holdTime:0.3,fadeTime:0.35,volume:0.16})}
-                  title="TONE — brightness. Down = dark and woolly, up = cutting treble. Double-click to reset."/>
-                <ToneFader label="ECHO" color="#44ddff"
-                  value={toneKnobs.echo} defaultValue={TONE_KNOB_DEFAULTS.echo}
-                  onChange={v=>setToneKnobs(k=>({...k,echo:v}))}
-                  onCommit={()=>playNoteSound(rootNote,{holdTime:0.3,fadeTime:0.35,volume:0.16})}
-                  title="ECHO — slapback delay. Higher = louder, longer repeats. Double-click to reset."/>
-                <ToneFader label="VERB" color="#aa88ff"
-                  value={toneKnobs.verb} defaultValue={TONE_KNOB_DEFAULTS.verb}
-                  onChange={v=>setToneKnobs(k=>({...k,verb:v}))}
-                  onCommit={()=>playNoteSound(rootNote,{holdTime:0.3,fadeTime:0.35,volume:0.16})}
-                  title="VERB — reverb. From dry club stage to stadium wash. Double-click to reset."/>
-                <span style={{marginLeft:"auto",fontSize:6,color:"#3a5a7a",lineHeight:1.5,textAlign:"right",paddingBottom:4}}>
-                  drag or scroll<br/>shift = fine · 2×click resets
-                </span>
-              </div>
+              {/* 🎛️ AMP TONE PANEL relocated → now flanks the Commit Track above the board. */}
               {/* Active effect badges */}
               {(feedbackBoost || dieFloorBoost > 0 || statusEffects.length > 0
                 || (actingNoteState?.finalsTrail?.length ?? 0) > 0
@@ -8978,8 +9381,11 @@ function Game({ gameState, onReturnToLobby }) {
                   {(() => {
                     const majRoot  = canonicalRoot(rootNote, 'major');
                     const minRoot  = canonicalRoot(rootNote, 'minor');
-                    const majScale = buildScale(majRoot, 'major');
-                    const minScale = buildScale(minRoot, 'minor');
+                    // Only light notes the player can actually play Discord-free given their
+                    // Theory unlocks (everyone starts on the pentatonic) — not the full scale.
+                    const unlocks  = actingNoteState?.unlockedSkills ?? [];
+                    const majScale = playableScale(majRoot, 'major', unlocks);
+                    const minScale = playableScale(minRoot, 'minor', unlocks);
                     const majIntervals = getIntervalNotes(majRoot, 'major');
                     const minIntervals = getIntervalNotes(minRoot, 'minor');
                     const stock = actingNoteState?.noteStock ?? [];
@@ -9188,11 +9594,12 @@ function Game({ gameState, onReturnToLobby }) {
                     const mixerReady = used && !isStaggered
                       && (actingNoteState?.unlockedSkills ?? []).includes('mixer')
                       && !actingNoteState?.mixerUsedThisTurn
-                      && !hasConfirmed && !pivotPending && noteTrack.length < 8;
+                      && !hasConfirmed && !pivotPending && melodyLine.length < 8;
                     // 🎯 This note's pitch would resolve a cadence if it ends the track
                     const resolvesCadence = resolvePcs.has(notePC) && !used && !isStaggered;
                     return (
                       <div key={idx} onClick={()=>{ if (isStaggered) return; if (!used || mixerReady) clickNoteStock(idx); }}
+                        onMouseEnter={()=>setHoverScale(note)} onMouseLeave={()=>setHoverScale(cur=>cur===note?null:cur)}
                         title={isStaggered ? "⚡ Staggered — unavailable"
                              : mixerReady ? "🎚️ Mixer — tap to layer this note again"
                              : resolvesCadence ? `🎯 End your track on this note to RESOLVE a cadence — Fame!${lockTip}`
@@ -9217,6 +9624,73 @@ function Game({ gameState, onReturnToLobby }) {
                     );
                   })}
                 </div>
+                  );
+                })()}
+                {/* 🎼 SCALE PEEK (default) / 🎸 CHORD PREVIEW (in Revoice mode) — hover-a-note guidance */}
+                {!hasConfirmed && (() => {
+                  if (chordMode) {
+                    // 🎸 Chord-building help: show what adding the hovered note does to your chord.
+                    const chord = actingNoteState?.chordStack ?? [];
+                    const full  = chord.length >= 5;
+                    const next  = hoverScale ? spiritChord(acting?.id, [...chord, hoverScale]) : null;
+                    return (
+                      <div style={{marginBottom:5,minHeight:34,background:"#140a18",border:"1px solid #ff66cc44",borderRadius:4,padding:"4px 7px"}}>
+                        {hoverScale && next ? (
+                          <>
+                            <div style={{fontSize:8,color:"#ff99dd",fontWeight:700,marginBottom:2}}>🎸 Add {hoverScale} → {next.name}</div>
+                            <div style={{fontSize:8}}>
+                              <span style={{color:"#ff6644",fontWeight:700}}>⚔️{next.drive}</span>{'   '}
+                              <span style={{color:"#44aaff",fontWeight:700}}>🛡️{next.sustain}</span>
+                              {full && <span style={{color:"#ff6666",marginLeft:8}}>chord full — drop one to revoice</span>}
+                            </div>
+                          </>
+                        ) : (
+                          <span style={{fontSize:7.5,color:"#aa6688"}}>🎸 Revoice on — hover a note to preview what it adds to your chord</span>
+                        )}
+                      </div>
+                    );
+                  }
+                  const maj = hoverScale ? buildScale(hoverScale, 'major') : null;
+                  const min = hoverScale ? buildScale(hoverScale, 'minor') : null;
+                  return (
+                    <div style={{marginBottom:5,minHeight:34,background:"#0a1018",border:"1px solid #2a4a6a",borderRadius:4,padding:"4px 7px"}}>
+                      {hoverScale ? (
+                        <>
+                          <div style={{fontSize:8,color:"#66ccff",fontWeight:700,marginBottom:2}}>🎼 {hoverScale} scale</div>
+                          <div style={{fontSize:8,color:"#a0b8cc"}}><span style={{color:"#5a7a8a",marginRight:3}}>Maj</span>{maj.join('  ')}</div>
+                          <div style={{fontSize:8,color:"#a0b8cc"}}><span style={{color:"#5a7a8a",marginRight:3}}>min</span>{min.join('  ')}</div>
+                        </>
+                      ) : (
+                        <span style={{fontSize:7.5,color:"#3a5a6a"}}>🎼 hover a stock note to see its scale</span>
+                      )}
+                    </div>
+                  );
+                })()}
+                {/* 🎸 CHORD STACK — your persistent combat stance (Drive/Sustain). Revoice 1 note/turn. */}
+                {!hasConfirmed && !pivotPending && (() => {
+                  const chord = actingNoteState?.chordStack ?? [];
+                  const ch = spiritChord(acting?.id, chord);
+                  const revoiced = !!actingNoteState?.revoiceUsedThisTurn;
+                  return (
+                    <div style={{marginBottom:5,background:"#0c0a18",border:`1px solid ${chordMode?'#ff66cc':'#aa55ff44'}`,borderRadius:4,padding:"5px 7px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                        <button className="btn"
+                          style={{fontSize:7,padding:"2px 7px",borderColor:chordMode?'#ff66cc':'#aa55ff',color:chordMode?'#ff66cc':'#aa55ff',background:chordMode?'#2a0c22':'transparent'}}
+                          onClick={()=>setChordMode(m=>!m)}>🎸 Revoice {chordMode?'ON':'OFF'}{revoiced?' ✓':''}</button>
+                        <span style={{fontSize:7,color:"#6a8a9a"}}>
+                          {revoiced ? '✓ revoiced this turn (1/turn)' : chordMode ? 'tap a stock note to ADD · tap a chip to DROP' : 'your Chord Stack — carries between turns'}
+                        </span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:4}}>
+                        <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
+                          {chord.map((n,i)=>(
+                            <span key={i} onClick={()=>removeChordNote(i)} title={revoiced?'':'tap to drop (revoice)'}
+                              style={{fontSize:9,fontWeight:700,color:"#ff99dd",background:"#1a0c1a",border:"1px solid #ff66cc66",borderRadius:3,padding:"1px 5px",cursor:revoiced?'default':'pointer'}}>{n}</span>
+                          ))}
+                        </div>
+                        <span style={{marginLeft:"auto",fontSize:8,fontWeight:700,color:"#ffcc44"}}>{ch.name} · ⚔️{ch.drive} 🛡️{ch.sustain}</span>
+                      </div>
+                    </div>
                   );
                 })()}
                 {/* Transpose card — pick-a-note banner */}
@@ -9255,8 +9729,8 @@ function Game({ gameState, onReturnToLobby }) {
                 <div style={{display:"flex",gap:3}}>
                   <button className="btn" style={{flex:1,borderColor:"#44ff88",color:"#44ff88",fontSize:8}}
                     onClick={confirmNoteTrack}
-                    disabled={noteTrack.length===0}>
-                    ✓ Commit ({noteTrack.length} notes → {Math.min(noteTrack.length, actingSpeed)} hex · SPD {actingSpeed})
+                    disabled={melodyLine.length===0}>
+                    ✓ Commit ({melodyLine.length} notes → {Math.min(melodyLine.length, actingSpeed)} hex · SPD {actingSpeed})
                   </button>
                   <button className="btn" style={{borderColor:"#ff4444",color:"#ff4444",fontSize:8}}
                     onClick={clearNoteTrack}>✕</button>
@@ -9300,7 +9774,7 @@ function Game({ gameState, onReturnToLobby }) {
                     ⭐{ns.fame ?? 0}
                   </span>
                   <span style={{fontSize:7,color:"#44aaff",whiteSpace:"nowrap",marginLeft:2}} title="Sustain">
-                    🛡️{s.sustain}{(ns.tempSustain??0)>0&&<span style={{color:"#88ccff"}}>+{ns.tempSustain}</span>}
+                    🛡️{spiritChord(s.id, ns.chordStack ?? []).sustain}{(ns.tempSustain??0)>0&&<span style={{color:"#88ccff"}}>+{ns.tempSustain}</span>}
                   </span>
                   {(ns.mojoDrain??0)>0&&<span style={{fontSize:7,color:"#4499ff"}}>💧</span>}
                   {ns.stagger&&<span style={{fontSize:7,color:"#ff8800"}}>⚡</span>}
@@ -9383,7 +9857,7 @@ function Game({ gameState, onReturnToLobby }) {
               onClick={() => {
                 if (action === "move") { setAction(null); }
                 else if (moveStepsLeft > 0) { setAction("move"); addLog(`🚶 ${acting?.name} enters move mode — ${moveStepsLeft} hex${moveStepsLeft!==1?"es":""} available`); }
-                else addLog(`🎵 Build and confirm your Note Track first.`);
+                else addLog(`🎵 Build and confirm your Melody Line first.`);
               }}
               disabled={!acting}>Move {moveStepsLeft>0?`(${moveStepsLeft} hex)`:""}</button>
             {action === "move" && (
@@ -9423,7 +9897,7 @@ function Game({ gameState, onReturnToLobby }) {
             {hasConfirmed && !actionTokenUsed && (() => {
               const cone = acting ? getSwingCone(acting) : new Set();
               const rivals = acting ? getRivalsInCone(acting) : [];
-              const canSwing = rivals.length > 0 && moveStepsLeft >= 2;
+              const canSwing = rivals.length > 0 && moveStepsLeft >= 1;
               return (
                 <div style={{position:'relative',display:'inline-block'}}>
                   <button className={canSwing ? 'btn active' : 'btn'}
@@ -9431,19 +9905,55 @@ function Game({ gameState, onReturnToLobby }) {
                       color: canSwing ? '#ff6666' : '#441111',
                       position:'relative'}}
                     disabled={!canSwing}
+                    title="The jab — cheap (1 AP) & defended. Drives your chord into them and can land CQC statuses."
                     onClick={() => {
                       if (action === 'swing') { setAction(null); }
                       else if (canSwing) {
                         setAction('swing');
-                        addLog('⚔️ SWING — click a rival in your cone to attack!');
+                        addLog('⚔️ SWING — click a rival in your cone to attack! (1 AP)');
                       }
                     }}>
-                    ⚔️ Swing{rivals.length > 0 ? ` (${rivals.length})` : ''} {!canSwing && moveStepsLeft < 2 ? '(2AP)' : ''}
+                    ⚔️ Swing{rivals.length > 0 ? ` (${rivals.length})` : ''} {!canSwing && moveStepsLeft < 1 ? '(1AP)' : ''}
                   </button>
                 </div>
               );
             })()}
             {action === 'swing' && (
+              <button className="btn" style={{borderColor:'#888',color:'#888'}}
+                onClick={() => setAction(null)}>Cancel</button>
+            )}
+            {/* 🎸 THE SMASH (melee) — or 🌀 BLASTER OF RA (ranged, piercing) for Intergalactic 0 */}
+            {hasConfirmed && !actionTokenUsed && (() => {
+              const ns = actingNoteState ?? {};
+              // 🌀 Once Blaster of Ra is unlocked, it REPLACES the Smash: ranged beam, pierces all.
+              const hasBlaster = acting?.id === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
+              const rivals = acting ? (hasBlaster ? getRivalsInBeam(acting) : getRivalsInCone(acting)) : [];
+              const unused = (ns.noteStock ?? []).filter((_, i) => !(ns.usedStockIdx ?? new Set()).has(i)).length;
+              const canFire = rivals.length > 0 && moveStepsLeft >= 2 && unused >= 2;
+              const mode    = hasBlaster ? 'blaster' : 'smash';
+              return (
+                <div style={{position:'relative',display:'inline-block'}}>
+                  <button className={canFire ? 'btn active' : 'btn'}
+                    style={{borderColor: canFire ? '#ff33aa' : '#330022', color: canFire ? '#ff66cc' : '#330022'}}
+                    disabled={!canFire}
+                    title={hasBlaster
+                      ? "Blaster of Ra (2 AP) — a ranged, piercing bass-drop down the beam: undefendable, scatters & knocks back EVERY rival in line. Ends your movement, leaves you Exposed. Hurls your unused stock."
+                      : "The haymaker (2 AP) — primal & undefendable: ignores their Sustain, scatters their notes. But it ends all your movement this turn and leaves you Exposed. Hurls your unused stock."}
+                    onClick={() => {
+                      if (action === mode) { setAction(null); }
+                      else if (canFire) {
+                        setAction(mode);
+                        addLog(hasBlaster
+                          ? `🌀💥 BLASTER OF RA — click a rival in your beam to fire down the line! (${unused} notes to hurl)`
+                          : `🎸💥 THE SMASH — click an adjacent rival to bring it down! (${unused} notes to hurl)`);
+                      }
+                    }}>
+                    {hasBlaster ? '🌀 Blaster of Ra' : '🎸 Smash'}{rivals.length > 0 ? ` (${unused})` : ''} {!canFire && moveStepsLeft < 2 ? '(2AP)' : ''}
+                  </button>
+                </div>
+              );
+            })()}
+            {(action === 'smash' || action === 'blaster') && (
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
@@ -9453,7 +9963,8 @@ function Game({ gameState, onReturnToLobby }) {
               const targets = acting ? getRivalsInBeam(acting) : [];
               const plugged = ampsInRange >= 1;
               const ampCount = Math.min(ampsInRange + elevenBoost, 3);
-              const dieSides = SONIC_DICE[ampCount] ?? 8;
+              const hasHydra = (actingNoteState?.unlockedSkills ?? []).includes('hydra');
+              const diceLabel = dicePoolLabel(sonicDicePool(ampCount, hasHydra));
               const canSonic = plugged && targets.length > 0 && moveStepsLeft >= 2;
               if (!plugged) return null; // hide entirely when not plugged in
               return (
@@ -9466,10 +9977,10 @@ function Game({ gameState, onReturnToLobby }) {
                       if (action === 'sonic') { setAction(null); }
                       else if (canSonic) {
                         setAction('sonic');
-                        addLog(`🔊 SONIC ATTACK — click a target in your beam! (d${dieSides}, ${ampCount} amp${ampCount>1?'s':''})`);
+                        addLog(`🔊 SONIC ATTACK — click a target in your beam! (${diceLabel} keep best, ${ampCount} amp${ampCount>1?'s':''})`);
                       }
                     }}>
-                    🔊 Sonic{targets.length > 0 ? ` (${targets.length})` : ''} d{dieSides}
+                    🔊 Sonic{targets.length > 0 ? ` (${targets.length})` : ''} {diceLabel}
                     {!canSonic && moveStepsLeft < 2 ? ' (2AP)' : ''}
                   </button>
                 </div>
@@ -9479,6 +9990,31 @@ function Game({ gameState, onReturnToLobby }) {
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
+            {/* 🌌 DISPLACE — Intergalactic 0 warps to his amp rig (3 AP, 2-turn cooldown) */}
+            {hasConfirmed && acting?.id === 'intergalactic_0'
+              && (actingNoteState?.unlockedSkills ?? []).includes('displace') && (() => {
+              const cd      = actingNoteState?.displaceCd ?? 0;
+              const hasRig  = amps.some(a => a.ownerId === acting.id);
+              const canWarp = cd <= 0 && hasRig && moveStepsLeft >= DISPLACE_AP;
+              return (
+                <>
+                  <button className={canWarp ? 'btn active' : 'btn'}
+                    style={{borderColor: canWarp ? '#aa55ff' : '#2a1840', color: canWarp ? '#cc88ff' : '#2a1840'}}
+                    disabled={!canWarp}
+                    title="Displace — warp to an open hex beside your amp rig (3 AP, 2-turn cooldown). He doesn't run; he transcends space."
+                    onClick={() => {
+                      if (action === 'displace') { setAction(null); }
+                      else if (canWarp) { setAction('displace'); addLog('🌌 DISPLACE — click an open hex beside your rig to warp there.'); }
+                    }}>
+                    🌌 Displace{cd > 0 ? ` (${cd})` : ''}{!hasRig ? ' — need amp' : (moveStepsLeft < DISPLACE_AP && cd <= 0 ? ` (${DISPLACE_AP}AP)` : '')}
+                  </button>
+                  {action === 'displace' && (
+                    <button className="btn" style={{borderColor:'#888',color:'#888'}}
+                      onClick={() => setAction(null)}>Cancel</button>
+                  )}
+                </>
+              );
+            })()}
             {/* UNPLUG RIVAL AMP — shown when adjacent to an unplugged-able rival amp */}
             {hasConfirmed && !actionTokenUsed && (() => {
               const actingHex = acting ? HEX_BY_NUM[acting.num] : null;
@@ -9600,16 +10136,12 @@ function Game({ gameState, onReturnToLobby }) {
           {voiceRollFx && <VoiceRollDie key={voiceRollFx.key} fx={voiceRollFx} />}
 
           {/* ── COMMIT TRACK ── */}
-          <div style={{width:"100%",background:"#080f1e",border:"1px solid #1a2a40",borderRadius:6,padding:"7px 10px",marginBottom:6}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:5}}>
+          <div style={{width:"100%",background:"#080f1e",border:"1px solid #1a2a40",borderRadius:6,padding:"4px 10px",marginBottom:5}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
               <div className="stitle" style={{marginBottom:0,color:"#aa88ff"}}>Commit Track</div>
               {acting && (
                 <>
-                  <span style={{fontSize:8,color:"#3a5a7a"}}>Root:</span>
-                  <span style={{fontSize:11,fontWeight:700,color:"#44ff88",background:"#0d1f10",border:"1px solid #44ff8866",borderRadius:3,padding:"1px 7px"}}>{rootNote}</span>
-                  <span style={{fontSize:9,color:"#4488ff"}}>{scaleMode}</span>
-                  <span style={{fontSize:8,color:"#cc88ff",marginLeft:2}}>4th=<b style={{color:"#cc55ff"}}>{fourthNote}</b></span>
-                  <span style={{fontSize:8,color:"#ff88cc",marginLeft:2}}>5th=<b style={{color:"#ff55aa"}}>{fifthNote}</b></span>
+                  {/* Root / scale / 4th / 5th omitted here — already shown in the left-rail Note Stock header. */}
                   {/* Harmonic Charge — current die + points bar */}
                   <span style={{fontSize:8,color:"#aa88ff",marginLeft:4,letterSpacing:1}}>HC</span>
                   <span style={{fontSize:11,fontWeight:700,color:"#ffcc44",background:"#1a1200",border:"1px solid #ffcc4466",borderRadius:3,padding:"1px 7px"}}
@@ -9652,10 +10184,58 @@ function Game({ gameState, onReturnToLobby }) {
                 </div>
               )}
             </div>
-            {/* Committed note slots — larger than the side panel track */}
-            <div style={{display:"flex",gap:4,justifyContent:"center",background:"#060a10",border:"1px dashed #2a1a50",borderRadius:8,padding:"6px 5px",minHeight:42}}>
+            {/* Committed note slots (the "Commit Track") — condensed AMP TONE panel sits
+                in the empty space to its left; the hex slots stay centred via flex. */}
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {acting && (
+                <div style={{display:"flex",alignItems:"flex-end",gap:5,flexShrink:0,
+                  background:"linear-gradient(180deg,#161d30,#0a0e1c)",border:"1px solid #283850",
+                  borderRadius:6,padding:"4px 7px",boxShadow:"inset 0 1px 0 #ffffff14, 0 2px 4px #00000055"}}>
+                  {(() => {
+                    const cur = toneKnobs.voice ?? 'saw';
+                    const V = TONE_VOICES[cur] ?? TONE_VOICES.saw;
+                    const cycle = () => {
+                      const i = TONE_VOICE_ORDER.indexOf(cur);
+                      const next = TONE_VOICE_ORDER[(i + 1) % TONE_VOICE_ORDER.length];
+                      setToneKnobs(k => ({ ...k, voice: next }));
+                      const aid = acting?.id;
+                      if (aid) toneBySpiritRef.current = { ...toneBySpiritRef.current, [aid]: { ...(toneBySpiritRef.current[aid] ?? TONE_KNOB_DEFAULTS), voice: next } };
+                      playNoteSound(rootNote, { holdTime: 0.3, fadeTime: 0.35, volume: 0.16 });
+                    };
+                    return (
+                      <button onClick={cycle}
+                        title="VOICE — wave/character: LEAD (saw), BUZZ (square), MELLOW (triangle), CLEAN (sine), FUZZ. Click to cycle."
+                        style={{fontFamily:"'Orbitron',sans-serif", cursor:"pointer",
+                          display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+                          width:40, height:52, borderRadius:8, flexShrink:0,
+                          background:"linear-gradient(135deg,#1c1230,#0e0a1e)", border:"2px solid #aa66ff",
+                          boxShadow:"0 0 10px #aa66ff44, inset 0 0 6px #aa66ff22"}}>
+                        <span style={{fontSize:5,letterSpacing:1,color:"#b98aff",fontWeight:700}}>VOICE</span>
+                        <span style={{fontSize:8.5,fontWeight:900,color:"#fff",lineHeight:1.1,marginTop:1,textShadow:"0 0 8px #aa66ff"}}>{V.label}</span>
+                      </button>
+                    );
+                  })()}
+                  <ToneFader label="GAIN" color="#ff6644" value={toneKnobs.drive} defaultValue={TONE_KNOB_DEFAULTS.drive}
+                    onChange={v=>setToneKnobs(k=>({...k,drive:v}))}
+                    onCommit={()=>playNoteSound(rootNote,{holdTime:0.3,fadeTime:0.35,volume:0.16})}
+                    title="GAIN — distortion. Double-click resets."/>
+                  <ToneFader label="TONE" color="#ffcc44" value={toneKnobs.tone} defaultValue={TONE_KNOB_DEFAULTS.tone}
+                    onChange={v=>setToneKnobs(k=>({...k,tone:v}))}
+                    onCommit={()=>playNoteSound(rootNote,{holdTime:0.3,fadeTime:0.35,volume:0.16})}
+                    title="TONE — brightness. Double-click resets."/>
+                  <ToneFader label="ECHO" color="#44ddff" value={toneKnobs.echo} defaultValue={TONE_KNOB_DEFAULTS.echo}
+                    onChange={v=>setToneKnobs(k=>({...k,echo:v}))}
+                    onCommit={()=>playNoteSound(rootNote,{holdTime:0.3,fadeTime:0.35,volume:0.16})}
+                    title="ECHO — slapback. Double-click resets."/>
+                  <ToneFader label="VERB" color="#aa88ff" value={toneKnobs.verb} defaultValue={TONE_KNOB_DEFAULTS.verb}
+                    onChange={v=>setToneKnobs(k=>({...k,verb:v}))}
+                    onCommit={()=>playNoteSound(rootNote,{holdTime:0.3,fadeTime:0.35,volume:0.16})}
+                    title="VERB — reverb. Double-click resets."/>
+                </div>
+              )}
+            <div style={{flex:1,display:"flex",gap:4,justifyContent:"center",background:"#060a10",border:"1px dashed #2a1a50",borderRadius:8,padding:"6px 5px",minHeight:42}}>
               {Array.from({length:8}).map((_,i)=>{
-                const note = noteTrack[i];
+                const note = melodyLine[i];
                 const isRoot   = i === 0 && note;
                 const isTritone      = note && note === tritoneNote;
                 const isMajorThird   = note && note === majorThirdNote;
@@ -9715,6 +10295,7 @@ function Game({ gameState, onReturnToLobby }) {
                 );
               })}
             </div>
+            </div>
             {noteScaleTip && (() => {
               const maj = buildScale(canonicalRoot(noteScaleTip.note, 'major'), 'major');
               const min = buildScale(canonicalRoot(noteScaleTip.note, 'minor'), 'minor');
@@ -9735,7 +10316,7 @@ function Game({ gameState, onReturnToLobby }) {
 
           <div
             ref={boardDivRef}
-            style={{position:"relative",width:SVG_W,maxWidth:"100%",overflow:"visible",borderRadius:8,border:"1px solid #1a2a40",cursor:isPanningRef.current?"grabbing":"default"}}
+            style={{position:"relative",width:"100%",maxWidth:1040,overflow:"visible",borderRadius:8,border:"1px solid #1a2a40",cursor:isPanningRef.current?"grabbing":"default"}}
             onMouseDown={handleBoardMouseDown}
             onMouseMove={handleBoardMouseMove}
             onMouseUp={handleBoardMouseUp}
@@ -9747,7 +10328,7 @@ function Game({ gameState, onReturnToLobby }) {
               width={SVG_W}
               height={SVG_H}
               viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-              style={{display:"block",borderRadius:8}}
+              style={{display:"block",borderRadius:8,width:"100%",height:"auto"}}
             >
               <image href={boardImg} x={0} y={0} width={SVG_W} height={SVG_H} preserveAspectRatio="xMidYMid slice"/>
               <BoardFX />
@@ -11035,21 +11616,7 @@ function Game({ gameState, onReturnToLobby }) {
           </div>
         </div>
 
-        {/* ── RIGHT PANEL ── */}
-        <RightPanel
-          FAN_CASUAL_CAP={FAN_CASUAL_CAP}
-          FAN_DIEHARD_CAP={FAN_DIEHARD_CAP}
-          FAN_DIEHARD_START={FAN_DIEHARD_START}
-          FAN_MULT_CAP={FAN_MULT_CAP}
-          NeonStrikeFX={NeonStrikeFX}
-          acting={acting}
-          crowdMultiplier={crowdMultiplier}
-          log={log}
-          noteStates={noteStates}
-          playModCard={playModCard}
-          queuedSpirits={queuedSpirits}
-          rlCardImg={rlCardImg}
-        />
+        {/* Right panel removed — Crowd → header blip · Mod Cards → spirit card banner · Turn Order/Log dropped. */}
       </div>
     </div>
   );

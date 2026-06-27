@@ -249,8 +249,8 @@ export function randomNote(rootNote, mode) {
   const pool = rootNote ? getSpelledPool(rootNote, mode) : NOTE_POOL;
   return pool[Math.floor(Math.random() * pool.length)];
 }
-export function refillStock(rootNote, mode) {
-  return Array.from({length: 8}, () => randomNote(rootNote, mode));
+export function refillStock(rootNote, mode, size = 8) {
+  return Array.from({length: size}, () => randomNote(rootNote, mode));
 }
 
 

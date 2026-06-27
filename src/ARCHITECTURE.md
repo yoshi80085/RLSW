@@ -54,7 +54,7 @@ Asset imports and re-imports from the extracted modules sit at the top (lines ~1
 - **Tunable game constants & tables** (this is where most balance/content lives that hasn't moved to `data/`):
   - `HC_UPGRADE_THRESHOLD` (harmonic-charge cost) · `AMP_RANGE`, `AMP_LINK_DIST`, `AMP_UNPLUG_DIST`
   - `LIMELIGHT_HEX`, `LIMELIGHT_TO_WIN`, `FAME_TO_WIN` (win conditions)
-  - `SPARK_MAX`, `SPARKS_PER_FP`, `FAN_MULT_CAP`, `FAN_DIEHARD_CAP/START`, `FAN_CASUAL_CAP/START` (fan economy)
+  - `FAN_MULT_CAP`, `FAN_DIEHARD_CAP/START`, `FAN_CASUAL_CAP/START` (fan economy)
   - `SPOTLIGHT_POOL`, `EVENT_DECK` / `EVENT_BY_ID`, `BTTP_STAGES`, `SIGNATURE_TESTS`
   - `SWING_UPGRADE_TIERS`, `SWING_EFFECT_CHANCES`, `DISCORD_UPGRADE_TIERS`, `SKILL_TREE` / `SKILL_BY_ID`
   - `RIFF_LEN`, `RIFF_NOTE_WINDOW`, `RIFF_CONTOUR_LABELS` (riff-off timing/labels)
@@ -71,12 +71,12 @@ The big component (~9,000 lines). Still contains the majority of the game's stat
 | Banner (inside `Game`) | Responsibility |
 |---|---|
 | `BATTLE STATE` | Core combat state + the many `useRef` mirrors used by async combat/bot callbacks. |
-| `NOTE SYSTEM STATE` | `makeInitialNoteState()` — the per-spirit state shape (note track, harmonic charge, fame, fan sub-state). |
-| `POINTS FLASH` / `EVENT SPACES STATE` / `FAME SPARKS` | Transient board state. |
+| `NOTE SYSTEM STATE` | `makeInitialNoteState()` — the per-spirit state shape (`melodyLine`, the standing `chordStack`, harmonic charge, fame, fan sub-state). |
+| `POINTS FLASH` / `EVENT SPACES STATE` | Transient board state. |
 | `BGM SETUP` | Background-music playback effects. |
 | `DERIVED STATE` | Computed values (acting spirit, current scale, amps in range, etc.). |
 | `NOTE SOUND` / `AMP KNOBS` | Web-Audio synth for note playback + player-tunable tone (`TONE_KNOB_DEFAULTS`, `TONE_VOICES`). |
-| `RIFF PLAYBACK` / `NOTE TRACK FUNCTIONS` | `playRiffSequence`, and `confirmNoteTrack()` — the turn's note-track scoring pipeline (mixer, mode bonus, mic roll, riff detection, cadence check, interval effects, HC scoring). |
+| `RIFF PLAYBACK` / `MELODY LINE FUNCTIONS` | `playRiffSequence`, and `confirmNoteTrack()` — the turn's melody-line scoring pipeline (mixer, mode bonus, mic roll, riff detection, cadence check, interval effects, HC scoring). The standing `chordStack` (combat Drive/Sustain) is revoiced separately, one note/turn. |
 | `SKILL TREE …` / `CREW & GEAR` / `MODULATION CARDS` | Upgrade selection, deployables, mod cards. |
 | `SWING EFFECTS` / `AMP UNPLUG` / `BOARD CARD SYSTEM` / `EVENT SPACES SYSTEM` | Per-system handlers. |
 | `BACK TO THE PAST` / `TESTING GROUNDS` | Mini play-challenge engine + dev helpers. |
@@ -124,12 +124,11 @@ Each was lifted verbatim from `Game`'s render and takes everything it needs via 
 | `BackToThePast.jsx` | The play-challenge overlay. |
 | `TestingGrounds.jsx` | In-game dev panel. |
 | `SignatureAbilities.jsx` | Per-spirit signature-route reference. |
-| `ThousandBeats.jsx` | Fame-spark spacebar-mash overlay. |
 | `CardPickupModal.jsx` | Keep/replace/discard board-card choice. |
 | `UpgradeModal.jsx` | Harmonic-charge upgrade picker. |
 | `RightPanel.jsx` | HUD right column (rival spirits, fan counts, mod cards). |
 
-> The HUD **left** column (loadout / note track) and **center** column (the board itself) are still inline in `Game`'s render — they have the largest coupling to `Game` state and are the natural next extraction once state is grouped further.
+> The HUD **left** column (loadout / Melody Line / Chord Stack) and **center** column (the board itself) are still inline in `Game`'s render — they have the largest coupling to `Game` state and are the natural next extraction once state is grouped further.
 
 ---
 
@@ -152,9 +151,10 @@ Each hook owns a cohesive group of `useState` and returns the values + setters. 
 
 ## Systems map — how the big systems relate
 
-- **Notes / music (the turn engine).** A turn is built around the **note track**. `Game.confirmNoteTrack()` is the pipeline: it reads scales/intervals from `music/notes.js`, detects legendary riffs via `music/riffLibrary.js`, checks cadence objectives and runs the pattern/HC scoring from `music/cadence.js`, applies interval effects, and updates `noteStates` (owned by `useNoteSystem`). Audio is synthesized in `Game`'s `NOTE SOUND` section, tuned by the amp-knob state.
-- **Battle.** Triggered from board actions. Lives in `Game`'s `BATTLE SYSTEM` → `KNOCKBACK` → `SONIC ATTACK` → `RIFF-OFF ENGINE` → `BEAM CLASH` → `RETALIATION` sections. All of its on-screen UI is the `ui/BattleMeterOverlay.jsx` component; combat constants (`RIFF_LEN`, timing, swing tiers) are module-level in main.
-- **Fan economy.** State in `useFanEconomy`; per-turn logic in `Game`'s `FAN ECONOMY HELPERS` and the end-of-turn tick; tuning constants (`FAN_*`, `SPARKS_PER_FP`) are module-level. Drives the crowd multiplier and limelight victory path.
+- **Notes / music (the turn engine).** A turn is built around the **Melody Line** (`melodyLine`). `Game.confirmNoteTrack()` is the pipeline: it reads scales/intervals from `music/notes.js`, detects legendary riffs via `music/riffLibrary.js`, checks cadence objectives and runs the pattern/HC scoring from `music/cadence.js`, applies interval effects, and updates `noteStates` (owned by `useNoteSystem`). Audio is synthesized in `Game`'s `NOTE SOUND` section, tuned by the amp-knob state.
+- **Chord Stack (combat harmony).** The persistent `chordStack` (starts a Power Chord, carries between turns) is the combat stance: `music/chords.js`'s `evaluateChord()` maps it to Drive/Sustain. The player revoices one note/turn (`addChordNote`/`removeChordNote`); **attacking spends it from the front** (Swing 2 notes, Sonic 1) and **defending frays it from the back** (1/blow). Bots maintain it via `botPlanRevoice`/`botRevoiceChord`.
+- **Battle.** Triggered from board actions. Lives in `Game`'s `BATTLE SYSTEM` → `KNOCKBACK` → `SONIC ATTACK` → `RIFF-OFF ENGINE` → `BEAM CLASH` → `RETALIATION` sections, plus the chord-spending **Smash** (`resolveSmash`). All of its on-screen UI is the `ui/BattleMeterOverlay.jsx` component; combat constants (`RIFF_LEN`, timing, swing tiers) are module-level in main.
+- **Fan economy.** State in `useFanEconomy`; per-turn logic in `Game`'s `FAN ECONOMY HELPERS` and the end-of-turn tick; tuning constants (`FAN_*`) are module-level. Drives the crowd multiplier and limelight victory path.
 - **Board.** Geometry/map from `board/`; on-board deployables state in `useBoardState`; placement/interaction handlers + the rendered board are in `Game` (`HEX CLICK`, `BOARD CARD SYSTEM`, `CAMERA/ZOOM`, and the inline CENTER render column).
 - **Events / spaces.** `EVENT_DECK` table is module-level; `EVENT SPACES SYSTEM` logic and `eventHexes`/`activeEvent` state in `Game`; the popup is `ui/EventModal.jsx`.
 - **Skill tree & upgrades.** `SKILL_TREE`/`SKILL_BY_ID` and the swing/discord tier tables are module-level data; selection/award logic is in `Game`; the picker UI is `ui/UpgradeModal.jsx`.
@@ -170,8 +170,9 @@ Each hook owns a cohesive group of `useState` and returns the values + setters. 
 | Scales, note spelling, intervals | `music/notes.js` |
 | Legendary riffs (add/edit) | `music/riffLibrary.js` |
 | Cadence objectives | `music/cadence.js` (`CADENCE_OBJECTIVES`) |
-| Note-track scoring numbers | `music/cadence.js` (scoring fns) + `Game.confirmNoteTrack` |
-| Fan-economy tuning | `FAN_*`, `SPARKS_PER_FP`, `FAN_MULT_CAP` (main, `FAN ECONOMY` banner) |
+| Melody-line scoring numbers | `music/cadence.js` (scoring fns) + `Game.confirmNoteTrack` |
+| Chord → Drive/Sustain table | `music/chords.js` (`CHORD_TEMPLATES` / `evaluateChord`) |
+| Fan-economy tuning | `FAN_*`, `FAN_MULT_CAP` (main, `FAN ECONOMY` banner) |
 | Harmonic-charge cost | `HC_UPGRADE_THRESHOLD` (main) |
 | Skill tree / upgrades | `SKILL_TREE`, `DISCORD_UPGRADE_TIERS`, `SWING_UPGRADE_TIERS` (main) |
 | Event spaces | `EVENT_DECK` (main) + `EVENT SPACES SYSTEM` in `Game` |
