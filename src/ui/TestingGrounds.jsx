@@ -4,7 +4,8 @@
 // =============================================================================
 import React from "react";
 
-export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId, devEventId, devFireEvent, devFireSignature, devGrant, devOpen, devUnlockSkill, noteStates, setDevEventId, setDevOpen, spiritById, spirits, testMode }) {
+export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId, devEventId, devFireEvent, devFireSignature, devGrant, devOpen, devUnlockSkill, noteStates, setDevEventId, setDevOpen, spiritById, spirits, testMode, devSummonGod, devHurtGod, devGodAct, rockGod, bossOutcome }) {
+  const godAlive = !!(rockGod && rockGod.hp > 0 && !bossOutcome);
   return (<>
       {testMode && (
         <>
@@ -33,45 +34,37 @@ export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId
 
               <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,marginBottom:4}}>GRANT TO ACTING SPIRIT</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-                {[['hc','+3 HC'],['cas','+5 Casuals'],['die','+1 Diehard'],['uns','+5 Unsure'],['vup','+1 Vibe'],['vdn','−1 Vibe']].map(([k,lbl])=>(
+                {[['hc','+3 HC'],['cas','+5 Casuals'],['die','+1 Diehard'],['uns','+5 Unsure'],['vup','+1 Vibe'],['vdn','−1 Vibe'],['fp','+3 FP']].map(([k,lbl])=>(
                   <button key={k} onClick={()=>devGrant(k)}
                     style={{background:'#0a0814',border:'1px solid #4a2a60',color:'#d0c0e0',borderRadius:5,fontSize:9,padding:'5px 8px',cursor:'pointer',fontFamily:'inherit'}}>{lbl}</button>
                 ))}
               </div>
 
-              <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,margin:'12px 0 4px'}}>SIGNATURE SKILLS</div>
-              {Object.entries(SIGNATURE_TESTS).map(([sid, route]) => {
-                const inGame = spirits.some(s => s.id === sid);
-                const unlocked = noteStates[sid]?.unlockedSkills ?? [];
-                return (
-                  <div key={sid} style={{marginBottom:8,opacity:inGame?1:0.5}}>
-                    <div style={{fontSize:8,color:route.color,marginBottom:3}}>{route.name}{!inGame && ' (not in game)'}</div>
-                    <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-                      {route.skills.map(sk => {
-                        const on = unlocked.includes(sk.id);
-                        return (
-                          <button key={sk.id} disabled={!inGame}
-                            onClick={()=> sk.fire ? devFireSignature(sid, sk) : devUnlockSkill(sid, sk.id, sk.pre)}
-                            title={sk.fire === 'hydra' ? 'Unlock + deploy 3 amps' : (on ? 'Already unlocked' : 'Unlock')}
-                            style={{background: on && !sk.fire ? '#16331e' : '#0a0814',
-                              border:`1px solid ${on && !sk.fire ? '#44cc66' : (sk.fire ? route.color : '#4a2a60')}`,
-                              color: on && !sk.fire ? '#88ffaa' : (sk.fire ? route.color : '#d0c0e0'),
-                              borderRadius:5,fontSize:8.5,padding:'4px 7px',cursor:inGame?'pointer':'default',fontFamily:'inherit'}}>
-                            {sk.label}{sk.fire ? ' ▶' : (on ? ' ✓' : '')}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-              <div style={{fontSize:7,color:'#6a5a85',marginTop:11,lineHeight:1.45}}>
-                Add tests: a new entry in <span style={{color:'#cc99ff'}}>EVENT_DECK</span> auto-appears above; a new lever goes in <span style={{color:'#cc99ff'}}>devGrant</span>.
+              <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,margin:'12px 0 4px'}}>🤘 ROCK GOD (BOSS)</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:4}}>
+                <button onClick={devSummonGod} disabled={!!rockGod}
+                  title={rockGod ? 'One god per game — already summoned' : "Summon the boss now (picked from the acting spirit's playstyle — Bardbarian for now)"}
+                  style={{background: rockGod ? '#0a0814' : '#332208', border:`1px solid ${rockGod ? '#4a2a60' : '#ffcc22'}`,
+                    color: rockGod ? '#6a5a85' : '#ffcc22', borderRadius:5, fontSize:9, padding:'5px 9px',
+                    cursor: rockGod ? 'default' : 'pointer', fontFamily:'inherit'}}>
+                  ⚡ SUMMON{rockGod ? 'ED ✓' : ''}
+                </button>
+                <button onClick={devHurtGod} disabled={!godAlive}
+                  title="Deal 10 damage to the god (no FP) — exercises the winded/kill flows"
+                  style={{background:'#0a0814', border:'1px solid #4a2a60', color:'#d0c0e0',
+                    borderRadius:5, fontSize:9, padding:'5px 9px', opacity: godAlive ? 1 : 0.5,
+                    cursor: godAlive ? 'pointer' : 'default', fontFamily:'inherit'}}>
+                  🗡️ −10 HP
+                </button>
+                <button onClick={devGodAct} disabled={!godAlive}
+                  title="Force the god's end-of-turn action now (telegraph → resolve)"
+                  style={{background:'#0a0814', border:'1px solid #4a2a60', color:'#d0c0e0',
+                    borderRadius:5, fontSize:9, padding:'5px 9px', opacity: godAlive ? 1 : 0.5,
+                    cursor: godAlive ? 'pointer' : 'default', fontFamily:'inherit'}}>
+                  🎬 ACT
+                </button>
               </div>
-            </div>
-          )}
-        </>
-      )}
-
-  </>);
-}
+              {rockGod && (
+                <div style={{fontSize:8,color:'#9a7ab5',marginBottom:8}}>
+                  {godAlive
+                  

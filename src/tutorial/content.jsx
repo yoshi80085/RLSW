@@ -204,12 +204,14 @@ function TutSection_Overview() {
       <div style={{background:"#14110a", border:"1px solid #ffd70044", borderRadius:6, padding:"8px 12px"}}>
         <div style={{fontSize:8, color:"#ffd700", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>⭐ FAME — THE WIN CONDITION</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          The first Spirit to hit the Fame target wins. Fame comes from four places:
-          winning clashes (bigger margin, bigger payout), playing legendary riffs,
-          grabbing 🕯️ Lighters scattered across the board, and resolving 🎯 Cadence
-          Objectives — ending consecutive turns on the right scale degrees (C → F → G → C
-          for THE FULL RESOLVE, in any key). Holding the Limelight or being the last
-          Spirit standing can also win it for you, but Fame is the path of legends.
+          The first Spirit to hit the Fame target wins. Fame comes from winning
+          clashes (bigger margin, bigger payout) and playing legendary riffs — and
+          every FP you earn is multiplied by your fan crowd, so building an audience
+          (clean performances, holding centre stage, resolving 🎯 Cadence Objectives —
+          ending consecutive turns on the right scale degrees, C → F → G → C for THE
+          FULL RESOLVE — and acing rock trivia) pays off indirectly. Holding the
+          Limelight or being the last Spirit standing can also win it for you, but
+          Fame is the path of legends.
         </p>
       </div>
       <div style={{background:"#0c0a18", border:"1px solid #aa88ff44", borderRadius:6, padding:"8px 12px"}}>

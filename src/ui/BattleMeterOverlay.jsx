@@ -1,16 +1,18 @@
 // =============================================================================
 // ui/BattleMeterOverlay.jsx  —  full battle / riff-off duel overlay
-// Presentational: every value & handler arrives via props (35), zero app imports.
-// Internal helpers (NeonDie, spiritGlow, crowd fan-fare) live inside this block.
-// Extracted verbatim from the Game render (BATTLE METER OVERLAY block).
+// Presentational: every value & handler arrives via props, zero app-STATE
+// imports (RiffHighway + the pure fallingNotes data module are the only
+// imports). Internal helpers (NeonDie, spiritGlow, crowd fan-fare) live inside
+// this block. Extracted from the Game render (BATTLE METER OVERLAY block).
 // =============================================================================
 import React from "react";
+import { RiffHighway } from "./RiffHighway.jsx";
+import { RIFF_FALL_DIFFICULTY } from "../riff/fallingNotes.js";
 
 export function BattleMeterOverlay({
   RIFF_ANSWER_LABELS,
   RIFF_CONTOUR_LABELS,
   RIFF_LEN,
-  RIFF_NOTE_WINDOW,
   SKILL_BY_ID,
   SWING_FX_INFO,
   SWING_UPGRADE_TIERS,
@@ -34,10 +36,13 @@ export function BattleMeterOverlay({
   resolveRetaliation,
   retaliationTimer,
   riffBeginTurn,
+  riffDifficulty,
+  riffPressKey,
   riffStats,
   riffView,
   setBattleState,
   setDiceDisplay,
+  setRiffDifficulty,
   setRiffView,
   setSkipBattleIntros,
   skipBattleIntro,
@@ -64,13 +69,10 @@ export function BattleMeterOverlay({
           const activeSp  = isAtkTurn ? attacker : defender;
           const rRiff     = isAtkTurn ? battleState.atkRiff : battleState.defRiff;
           const rResults  = isAtkTurn ? battleState.atkResults : battleState.defResults;
-          const rNoteIdx  = battleState.noteIdx;
-          const curNote   = rRiff?.notes?.[rNoteIdx];
-          const curSharp  = curNote ? curNote === curNote.toUpperCase() : false;
-          // Only show judgment for the note it belongs to (visible during the
-          // gap after resolving, cleared when the next note flashes)
+          const rNoteIdx  = battleState.noteIdx; // last-judged gem (progress-row highlight)
+          // Show the latest judgment for this performer's run.
           const fbRaw     = battleState.feedback;
-          const fb        = (fbRaw && fbRaw.turn === rTurn && fbRaw.noteIdx === rNoteIdx) ? fbRaw : null;
+          const fb        = (fbRaw && fbRaw.turn === rTurn) ? fbRaw : null;
           const answerInfo = RIFF_ANSWER_LABELS[battleState.defRiff?.kind] ?? {};
           const noteColor  = activeSp?.color ?? '#f6ad55';
           const GRADE_COLORS = { perfect:'#44ff99', good:'#aaff44', ok:'#ffcc44', miss:'#ff4455', wrong:'#ff4455' };
@@ -146,11 +148,15 @@ export function BattleMeterOverlay({
           const defSurge = isBreak && clashWinner === 'defender';
 
           const noteGlyph = (n) => n === n.toUpperCase() ? `${n}♯` : n.toUpperCase();
+          // Falling-notes runs judge gems in whatever order they cross the line,
+          // so results carry a noteIdx — look each slot up by it. (Bot-filled
+          // results also carry noteIdx; a plain positional array still works.)
           const progressRow = (notes, res, current, accent) => (
             <div style={{display:'flex', gap:8, justifyContent:'center', marginTop:16}}>
               {notes.map((n, i) => {
-                const r = res[i];
-                const played = i < res.length;
+                const hasIdx = (res ?? []).some(x => x.noteIdx != null);
+                const r = hasIdx ? res.find(x => x.noteIdx === i) : res?.[i];
+                const played = !!r;
                 const isCur  = i === current;
                 const col = played ? GRADE_COLORS[r.grade] : isCur ? '#ffffff' : '#2a3a55';
                 return (
@@ -377,6 +383,19 @@ export function BattleMeterOverlay({
                       </button>
                     ))}
                   </div>
+                  {/* 🎚️ fall-speed / window presets — locked in once the riff drops */}
+                  <div style={{display:'flex', gap:6, justifyContent:'center', margin:'6px 0 2px'}}>
+                    {Object.entries(RIFF_FALL_DIFFICULTY).map(([k, d]) => (
+                      <button key={k} onClick={() => setRiffDifficulty?.(k)}
+                        title={d.blurb} style={{
+                        cursor:'pointer', fontFamily:"'Orbitron',sans-serif", fontSize:8, letterSpacing:1, padding:'3px 8px', borderRadius:6,
+                        color: riffDifficulty === k ? '#06111f' : '#8aa5c5',
+                        background: riffDifficulty === k ? '#8aa5c5' : 'transparent',
+                        border:'1px solid #4a5f80'}}>
+                        {d.icon} {d.label}
+                      </button>
+                    ))}
+                  </div>
                   {progressRow(rRiff.notes, rResults, -1, noteColor)}
                   <label style={{marginTop:8, fontSize:8, color:'#6a8aaa', cursor:'pointer',
                     display:'flex', gap:5, alignItems:'center', justifyContent:'center'}}>
@@ -388,53 +407,38 @@ export function BattleMeterOverlay({
                 </div>
               )}
 
-              {/* ── PLAY — the flashing note ── */}
+              {/* ── PLAY — the falling-notes highway (Guitar Hero style) ── */}
               {phase === 'riff_play' && (
                 <div style={cardBase(noteColor)}>
-                  <div style={{fontSize:10, color:noteColor, letterSpacing:2, marginBottom:4}}>
+                  <div style={{fontSize:10, color:noteColor, letterSpacing:2, marginBottom:6}}>
                     {isAtkTurn ? '🎤 THE CALL' : '🎸 THE ANSWER'} — {activeSp?.name}
                   </div>
-                  {(() => {
-                    const glitched = battleState.glitchAt === rNoteIdx;
-                    const ghostKey = (!isAtkTurn && battleState.defGhosts) ? battleState.defGhosts[rNoteIdx] : null;
-                    const gh = (battleState.ghostHit && battleState.ghostHit.idx === rNoteIdx) ? battleState.ghostHit : null;
-                    // Read the note(s) off the chosen instrument — same system as Back to the Past.
-                    const notes = curNote ? (ghostKey ? [curNote, ghostKey] : [curNote]) : [];
-                    const got = [];
-                    if (gh?.main && curNote) got.push(curNote);
-                    if (gh?.ghost && ghostKey) got.push(ghostKey);
-                    const accentCol = glitched ? '#ff3355' : noteColor;
-                    return (
-                      <div key={`${rTurn}-${rNoteIdx}-${ghostKey ? 'gh' : glitched ? 'g' : 'n'}`}
-                        style={{display:'flex', justifyContent:'center', margin:'6px 0 2px',
-                          animation: glitched ? 'riffglitch 0.4s ease-in-out' : 'riffpulse 0.18s ease-out'}}>
-                        {renderInstrument(riffView, notes, got, accentCol)}
-                      </div>
-                    );
-                  })()}
-                  <div style={{fontSize:9, letterSpacing:2, height:14,
-                    color: (!isAtkTurn && battleState.defGhosts && battleState.defGhosts[rNoteIdx]) ? '#b899ff'
-                         : curSharp ? '#ffcc44' : '#1f2f4a'}}>
-                    {(!isAtkTurn && battleState.defGhosts && battleState.defGhosts[rNoteIdx]) ? '🎴 GHOST BARRAGE — HIT BOTH KEYS'
-                     : curSharp ? '⬆ SHARP — HOLD SHIFT' : '​'}
+                  {battleState.riffRun ? (
+                    <div style={{display:'flex', justifyContent:'center', margin:'2px 0'}}>
+                      <RiffHighway
+                        run={battleState.riffRun}
+                        results={rResults}
+                        ghostHit={battleState.ghostHit}
+                        view={riffView}
+                        accent={noteColor}
+                        onPressKey={riffPressKey}
+                      />
+                    </div>
+                  ) : (
+                    /* bot performer — no live run to render, just the rip-through beat */
+                    <div style={{fontSize:11, color:'#8aa5c5', margin:'18px 0', letterSpacing:1}}>
+                      🤖 shredding…
+                    </div>
+                  )}
+                  <div style={{fontSize:9, letterSpacing:2, height:14, marginTop:6,
+                    color: (!isAtkTurn && battleState.defGhosts) ? '#b899ff' : '#4a5f80'}}>
+                    {(!isAtkTurn && battleState.defGhosts) ? '🎴 GHOST BARRAGE — EVERY NOTE DEMANDS BOTH KEYS'
+                     : 'HIT THE LETTER AS THE GEM CROSSES THE LINE — ⬆ GOLD RING = SHARP, HOLD SHIFT'}
                   </div>
-                  {/* Window timer — rushed notes burn hot and fast */}
-                  {(() => {
-                    const beat   = rRiff?.rhythm?.[rNoteIdx] ?? {};
-                    const ghostKey = (!isAtkTurn && battleState.defGhosts) ? battleState.defGhosts[rNoteIdx] : null;
-                    const curWin = (beat.window ?? RIFF_NOTE_WINDOW) * (ghostKey ? 1.5 : 1);
-                    const barCol = ghostKey ? '#b899ff' : (beat.feel === 'rushed' ? '#ff6633' : noteColor);
-                    return (
-                      <div style={{height:5, background:'#1a2a40', borderRadius:3, margin:'12px auto 0', width:260, overflow:'hidden'}}>
-                        <div key={`bar-${rTurn}-${rNoteIdx}`} style={{height:'100%', background:barCol,
-                          borderRadius:3, animation:`riffwin ${curWin}ms linear forwards`}}/>
-                      </div>
-                    );
-                  })()}
-                  {/* Hit/miss feedback */}
-                  <div style={{height:18, marginTop:10, fontSize:12, fontWeight:800, letterSpacing:2,
+                  {/* Timing feedback — how tight to the line the press landed */}
+                  <div style={{height:18, marginTop:8, fontSize:12, fontWeight:800, letterSpacing:2,
                     color: fb ? GRADE_COLORS[fb.grade] : 'transparent'}}>
-                    {fb ? `${GRADE_TEXT[fb.grade]}${fb.rt != null ? ` · ${fb.rt}ms` : ''}` : '·'}
+                    {fb ? `${GRADE_TEXT[fb.grade]}${fb.rt != null ? ` · ${fb.early ? '−' : '+'}${fb.rt}ms` : ''}` : '·'}
                   </div>
                   {progressRow(rRiff.notes, rResults, rNoteIdx, noteColor)}
                 </div>
@@ -450,7 +454,7 @@ export function BattleMeterOverlay({
                     </div>
                     <div style={{fontSize:9, color:'#8aa5c5', marginBottom:10}}>
                       {attacker?.name} laid down the call: <b style={{color:'#fff'}}>{aS.hits}/{RIFF_LEN} notes</b>
-                      {aS.avgRt != null ? <> · <b style={{color:'#fff'}}>{aS.avgRt}ms</b> avg reaction</> : <> · no clean hits</>}
+                      {aS.avgRt != null ? <> · <b style={{color:'#fff'}}>±{aS.avgRt}ms</b> off the line</> : <> · no clean hits</>}
                     </div>
                     {progressRow(battleState.atkRiff.notes, battleState.atkResults, -1, attacker?.color ?? '#ff8866')}
                     <div style={{fontSize:8.5, color:'#6a8aaa', lineHeight:1.7, margin:'14px 0 0'}}>
@@ -549,11 +553,11 @@ export function BattleMeterOverlay({
                       {st.quality}% clean{st.perfects > 0 ? ` · ${st.perfects}✦` : ''}
                     </div>
                     <div style={{fontSize:8, color:'#6a8aaa', marginBottom:4}}>
-                      {st.avgRt != null ? `${st.avgRt}ms avg reaction` : 'no clean hits'}
+                      {st.avgRt != null ? `±${st.avgRt}ms off the line` : 'no clean hits'}
                     </div>
                     <div style={{display:'flex', gap:4, justifyContent:'center'}}>
                       {riffObj.notes.map((n, i) => {
-                        const r = res[i];
+                        const r = (res ?? []).find(x => x.noteIdx === i) ?? res?.[i];
                         return <span key={i} style={{fontSize:10, fontWeight:700,
                           color: r ? GRADE_COLORS[r.grade] : '#2a3a55'}}>{noteGlyph(n)}</span>;
                       })}
@@ -1870,3 +1874,4 @@ export function BattleMeterOverlay({
         );
   })();
 }
+                                                       

@@ -35,7 +35,7 @@ export function CadenceToast({ cadenceToast, spirits, setCadenceToast, riffBanne
         </div>
         <div style={{fontSize:9, color:'#9eb3c8', fontStyle:'italic', marginTop:2}}>{cad.desc}</div>
         <div style={{fontSize:9, color:'#44ffaa', marginTop:3, fontWeight:700}}>
-          <span style={{color: sp?.color}}>{sp?.name}</span> +{cadenceToast.fp} Fame Points ⭐
+          <span style={{color: sp?.color}}>{sp?.name}</span> +{cadenceToast.fans} Fans 🎤
         </div>
       </div>
     </div>

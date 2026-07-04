@@ -17,7 +17,8 @@ export function useRiffState() {
   // 'discoveries' = player view (hidden riffs stay ???) · 'legacy' = full designer codex
   const [riffbookTab, setRiffbookTab] = useState('discoveries');
   const [legacyPlayingId, setLegacyPlayingId] = useState(null); // riff currently auditioning in the codex
-  // cadenceToast: { cadenceId, spiritId, fp } — toast after resolving a cadence objective
+  // cadenceToast: { cadenceId, spiritId, fans } — toast after resolving a cadence objective
+  // (pays fans, not FP — cadences are a melody-line feat; see ECONOMY_HANDOFF.md)
   const [cadenceToast, setCadenceToast] = useState(null);
 
   return {

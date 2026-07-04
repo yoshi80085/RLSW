@@ -57,14 +57,11 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
         // Helper: can this skill be set as the next target?
         function canTarget(sk) {
           if (unlocked.includes(sk.id) || sk.id === pendingId) return false;
-          if (sk.prereq && sk.prereq !== '__all_pa__' && sk.prereq !== '__all_stage_3__') {
+          if (sk.prereq && sk.prereq !== '__all_pa__') {
             if (!unlocked.includes(sk.prereq) && sk.prereq !== pendingId) return false;
           }
           if (sk.prereq === '__all_pa__') {
             return ['mic','pedal_dist','amp_1','mixer'].every(id => unlocked.includes(id) || id === pendingId);
-          }
-          if (sk.prereq === '__all_stage_3__') {
-            return ['laser_show','stage_light','fog_machine'].every(id => unlocked.includes(id) || id === pendingId);
           }
           if (sk.chainId === 'pa' && sk.id !== 'amp_1'
               && !unlocked.includes('amp_1') && pendingId !== 'amp_1') return false;
@@ -209,7 +206,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                     const owned     = unlocked.includes(sk.id);
                     const isPending = sk.id === pendingId;
                     const targetable = canTarget(sk);
-                    const prereqDef = sk.prereq && sk.prereq !== '__all_pa__' && sk.prereq !== '__all_stage_3__'
+                    const prereqDef = sk.prereq && sk.prereq !== '__all_pa__'
                       ? SKILL_BY_ID[sk.prereq] : null;
                     const locked = !owned && !isPending && !targetable
                       && prereqDef && !unlocked.includes(sk.prereq);

@@ -30,6 +30,23 @@ export function GameStyles() {
         .bar-f{height:5px;border-radius:2px;transition:width .3s}
         .pip{display:inline-block;width:9px;height:9px;border-radius:50%;margin:1px;border:1px solid #1e3a5f}
         .card{position:relative;background:linear-gradient(180deg,#091020 0%,#070d1a 100%);border-radius:8px;padding:7px 9px;border:1px solid #1a2a40;margin-bottom:6px;box-shadow:inset 0 1px 0 #ffffff08}
+        /* 🎓 BEGINNER-MODE STEP SPOTLIGHT — lights up whichever HUD panel the player
+           needs to engage with next. Panels opt in by setting className="step-active"
+           plus a --step-glow-color custom property; this only renders while the game
+           root carries .beginner-glow (i.e. beginner mode is on), so experienced
+           players get a quiet HUD. */
+        .beginner-glow .step-active {
+          border-radius: 8px;
+          animation: step-glow-pulse 3.2s ease-in-out infinite;
+        }
+        /* Same box-shadow layer count at every stop (browsers can't tween a
+           shadow list smoothly across a differing number of layers — that's
+           what made this read as an on/off snap instead of a breathe). Only
+           the blur/spread numbers move. */
+        @keyframes step-glow-pulse {
+          0%, 100% { box-shadow: 0 0 5px var(--step-glow-color, #4488ff), 0 0 9px var(--step-glow-color, #4488ff), inset 0 0 4px var(--step-glow-color, #4488ff); }
+          50%      { box-shadow: 0 0 9px var(--step-glow-color, #4488ff), 0 0 18px var(--step-glow-color, #4488ff), inset 0 0 7px var(--step-glow-color, #4488ff); }
+        }
         /* ── HUD NEON GLOW ── (see NeonStrikeFX) — gentle fade in, hold, fade out */
         @keyframes hud-neon-pulse {
           0%   { opacity: 0; }
@@ -43,6 +60,13 @@ export function GameStyles() {
            .hexw = outer shell (background acts as the border), .hexi = inner fill */
         .hexw{clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);display:flex;align-items:center;justify-content:center;padding:1.5px;flex-shrink:0;box-sizing:border-box}
         .hexi{clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+        /* 🎵 Note fly chip — animates from source (Note Stock) to target (commit track / chord stack) */
+        .note-fly-chip{position:fixed;z-index:999;pointer-events:none;animation:note-fly .4s cubic-bezier(.22,1,.36,1) forwards}
+        @keyframes note-fly {
+          0%   { transform: translate(var(--fly-dx), var(--fly-dy)) scale(1.2); opacity: 1; }
+          80%  { transform: translate(0, 0) scale(1.05); opacity: 1; }
+          100% { transform: translate(0, 0) scale(1); opacity: 0; }
+        }
         *::-webkit-scrollbar{width:7px;height:7px}
         *::-webkit-scrollbar-track{background:#070d18}
         *::-webkit-scrollbar-thumb{background:#1e3a5f;border-radius:4px}
@@ -191,6 +215,14 @@ export function GameStyles() {
           55%  { opacity: 1; transform: translateY(0)    scale(1.3); }
           75%  { transform: scale(0.9); }
           100% { opacity: 1; transform: scale(1); }
+        }
+        /* 🎵 A freshly-refilled Note Stock slot POPS in at the start of your turn —
+           same grammar as fan-pop-in, applied to the note economy instead of the crowd. */
+        @keyframes note-pop-in {
+          0%   { opacity: 0; transform: scale(0.2); filter: drop-shadow(0 0 0px #7fe0ff); }
+          55%  { opacity: 1; transform: scale(1.35); filter: drop-shadow(0 0 6px #7fe0ffcc); }
+          75%  { transform: scale(0.92); }
+          100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 0px #7fe0ff00); }
         }
         /* 🎤 A departing fan WALKS off the board, then fades */
         @keyframes fan-walk-off {

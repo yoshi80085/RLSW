@@ -1,7 +1,7 @@
 // =============================================================================
 // music/riffLibrary.js  —  RIFF LIBRARY data + detection
 // =============================================================================
-import { PITCH_INDEX, pitchIndex } from "./notes.js";
+import { pitchIndex } from "./notes.js";
 
 // ─── RIFF LIBRARY ─────────────────────────────────────────────────────────────
 // Legendary riffs hidden in the note system. Place the riff's opening interval

@@ -114,7 +114,7 @@ export function EventModal({ activeEvent, answerTrivia, setActiveEvent, spirits 
                 color: correct ? "#44cc88" : "#ff7766", marginBottom: 10,
                 textShadow: `0 0 12px ${correct ? "#44cc88" : "#ff7766"}77`,
               }}>
-                {correct ? `✓ CORRECT — +${reward} Harmonic Charge` : "✕ NO BONUS — the crowd forgives you"}
+                {correct ? `✓ CORRECT — +${reward} Fans` : "✕ NO BONUS — the crowd forgives you"}
               </div>
               <div style={{
                 fontSize: 9.5, color: "#bcd0e4", lineHeight: 1.55, textAlign: "left",

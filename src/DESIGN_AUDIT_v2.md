@@ -117,11 +117,9 @@ which the Theory ladder already does).
 **Change:** flatten the non-stacking Drive/Sustain conversion; rename "Feedback Boost"
 → "Sustain Boost"; give all four spirits a signature; reduce combat modifier stacking.
 
-**Add (next level):** a visible **Tension meter** that fills with dissonance and
-discharges for a payout on resolution (surfaces your core arc as a watchable dial);
-**live risk on dissonance** so a committed dischord that fails to resolve costs *you*
-something (every risky note becomes a real bet, Deceptive-Cadence-style); **per-spirit
-modal identity** so the Major/Minor pivot carries character flavor.
+**Add (next level):** ✅ **Dissonance Edge — built** (replaces the earlier Tension
+meter — see §9 for why and the STIC writeup). Still open: **per-spirit modal identity**
+so the Major/Minor pivot carries character flavor.
 
 ---
 
@@ -304,13 +302,108 @@ vs **the Melody Line** (`melodyLine`, melody/movement).
 
 - **Wide leap = Flair.** Voice-leading smooths contour by default. Let a player *deliberately*
   opt out with a wide octave jump — a dramatic leap that the auto-smoother would have hidden —
-  and score it (Flair / a small payout, or feed the Tension meter). Turns "register" from pure
-  polish into an expressive, scorable choice. Especially fits the Flair style (Glamarchy).
+  and score it (Flair / a small payout, or count as reinforcing the Dissonance Edge — see §9).
+  Turns "register" from pure polish into an expressive, scorable choice. Especially fits
+  Flair (Glamarchy).
 - **Octave-accurate riff playback.** `playRiffSequence` currently collapses riff offsets to one
   octave (`pc = (root+off)%12`); using the real offset (`base * 2^(off/12)`) would restore each
   legendary riff's intended contour. Same idea as voice-leading, applied to riffs.
-- **Tension meter** (from §5) — surface the consonance→dissonance arc as a visible dial.
 - **Scattered notes land on the board.** When a Smash scatters the rival's stock, spawn loose-note
   tokens on hexes around them; a spirit that moves onto one picks it up into their stock. Turns the
   Smash's chaos into a contested scramble and ties into the refill economy. (Designed, not yet built —
   it's a small board-pickup subsystem: loose-note board state + token render + pickup check in `move`.)
+
+---
+
+## 9. Dissonance Edge — built (v2, replaces the Tension meter)
+
+### 9.0 Why the Tension meter got replaced
+
+The Tension meter (v1 of this section) banked off-scale play into a hidden 0–10
+number that discharged for bonus HC on a clean resolution. It passed STIC on paper,
+but a code-level audit surfaced two exploits neither STIC nor Earned caught on their
+own:
+
+1. **The discord tax is flat (`effectiveDiscord > 0 ? 1 : 0`), but Tension gain was
+   per-note.** The first off-scale note in a track cost −1 HC; every note after that
+   was free tension. Rational play was "cram one track full of garbage notes," not
+   "take a real risk" — the opposite of what Earned is supposed to certify.
+2. **Nothing cost you anything below the cap.** A player could sit at 9/10 forever,
+   with zero pressure, and cash in whenever convenient. Real musical tension is
+   *uncomfortable while unresolved* — this modeled a savings account, not tension.
+
+**The fix wasn't to patch the meter — it was to stop banking a number at all.** The
+new version puts the risk directly on the two stats that already exist for exactly
+this job: ending a track on a Discord note trades Sustain for Drive, live, visible
+on the spirit's own card and readable by rivals. The discomfort is now a fight you
+can lose while it's active, not a number that waits patiently to be cashed in.
+
+**The rule (one paragraph, matches the in-game tip):** end a track on a Discord
+(off-scale) note and you step **ON THE EDGE** — Drive up, Sustain down, paid for
+up front in HC and fans. Stay out another turn without landing on your Root, 3rd,
+or 5th and it escalates — bigger swing, steeper cost — but that's the last turn to
+resolve. Land the resolve any time you're riding it and you get Sustain back, a
++1 temp Drive flourish, and an HC bonus scaled to how deep you were in. Miss the
+resolve on the final stage and it collapses: stance gone, fans walk, a self-inflicted
+Vibe hit, nothing to show for it. Fighting while you're on the Edge burns the stance
+either way, win or lose — you don't get to bank the risk past a battle you chose to
+take it into.
+
+**STICs + Earned:**
+
+- **Simplicity — strong, and actually simpler than v1.** Zero new HUD numbers. Drive
+  and Sustain already exist, already render as knobs and ⚔️/🛡️ badges, and already
+  feed both combat resolvers via `tempDrive`/`tempSustain` — this only adds a second,
+  parallel read (`edgeStage` → `EDGE_DRIVE_BY_STAGE`/`EDGE_SUSTAIN_PENALTY_BY_STAGE`)
+  into math that was already being read. No new bar to learn; the existing stat
+  knobs just move.
+- **Thematic — stronger than v1.** v1's "feedback squeals if you never resolve" was
+  a flavor line bolted onto a hidden accumulator. This version *is* the Deceptive
+  Cadence, mechanically: you are audibly, visibly unresolved, and it costs you
+  defense while you're in it — exactly the discomfort the musical term describes,
+  not just a name for a bank-and-payout loop.
+- **Intuitive — the main risk, same as v1, mitigated the same way.** Base from turn
+  1, no skill gate, `BEGINNER_TIPS.edge` fires on first entry, and the Note Stock
+  live-preview bar tells the player *before they confirm* whether ending here will
+  START/ESCALATE, RESOLVE, or COLLAPSE the stance. New this version: the escalation
+  is a hard 2-stage climb with a named deadline ("RESOLVE NEXT TURN OR LOSE IT"),
+  not an open-ended cap — deliberately more legible than v1's "pinned at max"
+  condition, which required the player to notice a number stop moving.
+- **Coherent — strong.** HC costs/bonuses run through the same `earned`/`earnedTotal`
+  pipeline as every other HC number (still strictly performance currency, per
+  `ECONOMY_HANDOFF.md`); fan costs run through the same floor-at-0 `perfFansLost`
+  path as boredom decay; the collapse Vibe hit reuses `applyVibeDamage`. The one
+  new seam — `tempDrive`/`tempSustain` are non-stacking and zero on battle-resolve,
+  but the Edge stance needs to *escalate* and *survive until resolved* — was solved
+  by giving it its own field (`edgeStage`) and its own combat-read helper
+  (`edgeCombatMods`) instead of overloading `tempDrive`/`tempSustain`'s existing
+  meaning. `clearBattleBuffs` zeroes `edgeStage` for **both** combatants on any
+  battle resolution, matching the "burns either way" decision — no double-dip with
+  the collapse penalty, since a battle interruption is its own consequence.
+- **Earned — strong, and the actual fix over v1.** The exploit that killed v1 was a
+  mismatch between a flat cost and a per-note reward. Here, cost and reward are both
+  stage-indexed off the *same* number (`edgeStage`), so there's no daylight between
+  "how much risk you're carrying" and "what it costs to carry it." The escalation
+  is deliberate (you kept not resolving), the resolve is deliberate (you steered the
+  last note home), and the collapse is deliberate too — you had two full turns of
+  warning and a HUD label that says exactly what's about to happen.
+
+**Where it lives:** `data/gameConstants.js` (`EDGE_MAX_STAGE`, `EDGE_DRIVE_BY_STAGE`,
+`EDGE_SUSTAIN_PENALTY_BY_STAGE`, `EDGE_HC_COST_BY_STAGE`, `EDGE_FAN_COST_BY_STAGE`,
+`EDGE_RESOLVE_HC_BONUS_BY_STAGE`, `EDGE_COLLAPSE_FAN_LOSS`, `EDGE_COLLAPSE_VIBE`) ·
+`Game.confirmNoteTrack` (start/escalate/resolve/collapse state machine, replacing the
+old Tension block) · `Game.edgeCombatMods` (pure stage→mods lookup, read by both the
+Swing and Sonic resolvers alongside `tempDrive`/`tempSustain`) · `Game.clearBattleBuffs`
+(zeroes `edgeStage` for both combatants on any battle resolution) ·
+`makeInitialNoteState` (`edgeStage` field) · the Note Stock panel header (2-segment
+live preview) and the spirit-card status badge in the render layer ·
+`BEGINNER_TIPS.edge`.
+
+**Untested by this session** (same verification quirk as every other handoff doc — no
+`npm run dev` access here): whether the stage-2 Drive/Sustain swing (±2, on top of
+chord-derived Drive/Sustain that's often only 3-8 to begin with) is proportionate in
+practice or swings fights too hard; whether the HC/fan costs (1/2 HC, 1/1 fans per
+stage) feel like a real sacrifice or a rounding error next to a normal turn's HC;
+and whether the 2-segment preview bar reads clearly next to the Chord Stack's own
+Drive/Sustain knobs, which are right above it. Worth a real playtest, and likely a
+numbers pass, before calling this fully settled.

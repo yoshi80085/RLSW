@@ -1,7 +1,8 @@
 // =============================================================================
 // data/trivia.js — Event-space TRIVIA (replaces the dice-roll event deck).
-// Land on an Event hex -> draw a question. Correct = bonus HC (by difficulty),
+// Land on an Event hex -> draw a question. Correct = bonus fans (by difficulty),
 // wrong = nothing (no penalty). The 'sauce' reveal shows either way.
+// Reward pays fans, not HC -- knowing rock trivia is crowd cred, not musicianship.
 // =============================================================================
 
 export const TRIVIA_QUESTIONS = [
@@ -2109,7 +2110,7 @@ export const TRIVIA_QUESTIONS = [
 
 export const TRIVIA_BY_ID = Object.fromEntries(TRIVIA_QUESTIONS.map(q => [q.id, q]));
 
-// Harmonic Charge granted for a correct answer, by difficulty.
+// Fans granted for a correct answer, by difficulty.
 export const TRIVIA_REWARD = { easy: 2, medium: 3, hard: 4 };
 
 // AI opponents can't 'know' trivia — fair fixed odds of a correct answer, by difficulty.
