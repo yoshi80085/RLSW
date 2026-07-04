@@ -39,6 +39,16 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
     turnQueue: spirits.map(s => s.id),
     acting: spirits[0]?.id ?? null,
 
+    // ── Phase 2: turn & movement (authoritative) ──
+    turn: {
+      count: 0,               // total turns ended (round check: count % alive)
+      moveStepsLeft: 0,       // beats/AP — granted by melody commit, spent by moves & combat
+      actionTokenUsed: false, // one Action per turn
+      startedOnLimelight: {}, // spiritId → began its turn on the Limelight hex
+      lastMove: null,         // report of the latest MOVE_STEP (null if refused)
+      lastReport: null,       // report of the latest TURN_ENDED / TURN_SKIPPED
+    },
+
     // ── Slices below land in later phases (null = still React-owned) ──
     fame: null,        // Phase 5 — fame points / score track
     noteStates: null,  // Phase 5 — per-spirit note tracks, chords, skills

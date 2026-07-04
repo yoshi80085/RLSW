@@ -10,10 +10,12 @@ const RIFF_SHARPABLE    = new Set(['a','c','d','f','g']);
 
 // The riff's GROOVE: each note gets a feel — steady, rushed (short heads-up,
 // tighter window), or preceded by a rest. The first note is always steady.
-export function generateRiffRhythm() {
+// All generators take an optional `rand` (0..1 fn, default Math.random) so the
+// engine can thread its seeded rng through for deterministic multiplayer riffs.
+export function generateRiffRhythm(rand = Math.random) {
   return Array.from({ length: RIFF_LEN }, (_, i) => {
     if (i === 0) return { window: RIFF_NOTE_WINDOW, gapBefore: 0, feel: 'steady' };
-    const roll = Math.random();
+    const roll = rand();
     if (roll < 0.28) return { window: RIFF_QUICK_WINDOW, gapBefore: RIFF_GAP_QUICK, feel: 'rushed' };
     if (roll < 0.48) return { window: RIFF_NOTE_WINDOW,  gapBefore: RIFF_GAP_REST,  feel: 'rest' };
     return { window: RIFF_NOTE_WINDOW, gapBefore: RIFF_GAP_NORMAL, feel: 'steady' };
@@ -56,12 +58,12 @@ export function riffDegreesToNotes(degrees, sharps) {
 
 // Attacker riff: walk the scale along a melodic contour, then sprinkle
 // 1-2 sharps on sharpable notes for spice.
-export function generateAttackerRiff() {
+export function generateAttackerRiff(rand = Math.random) {
   const contours = Object.keys(RIFF_CONTOUR_LABELS);
-  const contour  = contours[Math.floor(Math.random() * contours.length)];
-  const degrees  = [Math.floor(Math.random() * 7)];
+  const contour  = contours[Math.floor(rand() * contours.length)];
+  const degrees  = [Math.floor(rand() * 7)];
   for (let i = 1; i < RIFF_LEN; i++) {
-    const step = 1 + Math.floor(Math.random() * 2); // move 1-2 scale steps
+    const step = 1 + Math.floor(rand() * 2); // move 1-2 scale steps
     let dir = 1;
     if (contour === 'descent')      dir = -1;
     else if (contour === 'arch')    dir = i < RIFF_LEN / 2 ?  1 : -1;
@@ -70,20 +72,20 @@ export function generateAttackerRiff() {
     degrees.push(degrees[i - 1] + dir * step);
   }
   const sharps  = new Array(RIFF_LEN).fill(false);
-  let toPlace   = 1 + Math.floor(Math.random() * 2);
-  const order   = degrees.map((_, i) => i).sort(() => Math.random() - 0.5);
+  let toPlace   = 1 + Math.floor(rand() * 2);
+  const order   = degrees.map((_, i) => i).sort(() => rand() - 0.5);
   for (const i of order) {
     if (toPlace <= 0) break;
     const letter = RIFF_NATURALS[((degrees[i] % 7) + 7) % 7];
     if (RIFF_SHARPABLE.has(letter)) { sharps[i] = true; toPlace--; }
   }
-  return { degrees, sharps, contour, rhythm: generateRiffRhythm() };
+  return { degrees, sharps, contour, rhythm: generateRiffRhythm(rand) };
 }
 
 // Defender riff: a musical ANSWER built from the attacker's call.
-export function generateDefenderRiff(atk) {
+export function generateDefenderRiff(atk, rand = Math.random) {
   const kinds   = Object.keys(RIFF_ANSWER_LABELS);
-  const kind    = kinds[Math.floor(Math.random() * kinds.length)];
+  const kind    = kinds[Math.floor(rand() * kinds.length)];
   const degrees = [...atk.degrees];
   const sharps  = [...atk.sharps];
   const rhythm  = atk.rhythm.map(r => ({ ...r }));  // the answer keeps the call's groove
@@ -94,14 +96,14 @@ export function generateDefenderRiff(atk) {
   } else if (kind === 'modulation') {
     // Shift the whole phrase to a new key — same shape, new notes
     const shifts = [1, 2, -1, -2];
-    const shift  = shifts[Math.floor(Math.random() * shifts.length)];
+    const shift  = shifts[Math.floor(rand() * shifts.length)];
     for (let i = 0; i < degrees.length; i++) degrees[i] += shift;
   } else if (kind === 'variation') {
     // Bend 2 notes out of place: nudge a degree or flip its sharp
-    const order = degrees.map((_, i) => i).filter(i => i > 0).sort(() => Math.random() - 0.5);
+    const order = degrees.map((_, i) => i).filter(i => i > 0).sort(() => rand() - 0.5);
     order.slice(0, 2).forEach(i => {
-      if (Math.random() < 0.5) sharps[i] = !sharps[i];
-      else degrees[i] += Math.random() < 0.5 ? 1 : -1;
+      if (rand() < 0.5) sharps[i] = !sharps[i];
+      else degrees[i] += rand() < 0.5 ? 1 : -1;
     });
   } else {
     // resolution — keep the first half, walk the back half home to the root
@@ -111,7 +113,7 @@ export function generateDefenderRiff(atk) {
     for (let i = half; i < RIFF_LEN; i++) {
       const remaining = RIFF_LEN - i;
       const dist = root - cur;
-      if (dist === 0)           cur += remaining > 1 ? (Math.random() < 0.5 ? 1 : -1) : 0;
+      if (dist === 0)           cur += remaining > 1 ? (rand() < 0.5 ? 1 : -1) : 0;
       else if (remaining === 1) cur += dist; // land the phrase on the root
       else cur += Math.sign(dist) * Math.min(2, Math.max(1, Math.ceil(Math.abs(dist) / remaining)));
       degrees[i] = cur;

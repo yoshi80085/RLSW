@@ -212,7 +212,7 @@ preview arrows).
 
 | File | Exports | Purpose |
 |------|---------|---------|
-| `riffGeneration.js` | `generateRiffRhythm`, `speedUpRiffRhythm`, `RIFF_CONTOUR_LABELS`, `RIFF_ANSWER_LABELS`, `riffDegreesToNotes`, `generateAttackerRiff`, `generateDefenderRiff` | Riff-off note sequence generation. |
+| `riffGeneration.js` | `generateRiffRhythm`, `speedUpRiffRhythm`, `RIFF_CONTOUR_LABELS`, `RIFF_ANSWER_LABELS`, `riffDegreesToNotes`, `generateAttackerRiff`, `generateDefenderRiff` | Riff-off note sequence generation. Generators take an optional `rand` (default `Math.random`) — the engine passes its seeded rng; only the engine should generate riffs now. |
 | `fallingNotes.js` | `RIFF_FALL_DIFFICULTY`, `RIFF_FALL_DEFAULT`, `buildRiffTimeline`, `riffOkWindow`, `gradeRiffOffset` | Falling-notes (Guitar Hero) riff-off timing: difficulty presets (fall lead-time + grade windows), rhythm→hit-time timeline, |press−hitTime| grading. Pure module — **tune riff-off feel here.** |
 
 ### `engine/` — the authoritative game core (in extraction)
@@ -224,7 +224,12 @@ preview arrows).
 | `actions.js` | `GAME_INIT`, creators | Serializable action types; grows per phase. |
 | `reduce.js` | `applyAction` | `(state, action, rng) → state`, the one door for rule changes; persists rng position into the returned state. |
 | `serialize.js` | `snapshot`, `restore`, `replay` | Save/load + action-log replay (determinism proof). |
+| `systems/turn.js` | `applyTurnStarted/Ended/Skipped`, `applyMoveBudgetSet`, `applyBeatsSpent`, `applySpiritEliminated`, `applySpiritsSynced` | 🎯 Phase 2: turn queue, beats/AP, limelight-start flags, turn/round counters. `TURN_ENDED` returns a `lastReport` the client uses to run not-yet-extracted ticks. |
+| `systems/movement.js` | `applyMoveStep`, `applySpiritFaced`, `applySpiritWarped` | 🎯 Phase 2: movement + facing rules incl. the dazed 33% redirect (engine rng). |
+| `systems/riffOff.js` | `applyRiffOffStarted/ResultsSubmitted/Resolved/Round2Started/Closed`, `riffStats`, `RIFF_GRADE_WEIGHT/MARGIN_SCALE/TIE_EPS` | 🎸 Phase 4: riff data + verdict. Generates riffs/glitches/ghosts on engine rng; clients submit results arrays; verdict math incl. Round-2 fallback. `Game` imports `riffStats` from here (single source of truth). |
 | `selftest.mjs` | — | Headless test: `node src/engine/selftest.mjs`. Extend each phase. |
+
+**Phase 2 state ownership:** the engine owns `turnQueue`, `turn.{count, moveStepsLeft, actionTokenUsed, startedOnLimelight}`, and movement/facing *rules*. `Game` reads them via derived consts (`const moveStepsLeft = engineState.turn.moveStepsLeft`) and mutates them ONLY via `dispatch(...)`. React still owns the `spirits` array (combat writes vibe/KO/knockback); `dispatch(spiritsSynced(spirits))` bridges positions into the engine before `move`/`endTurn`/skip — the bridge dies in Phase 3.
 
 ### `tutorial/`
 

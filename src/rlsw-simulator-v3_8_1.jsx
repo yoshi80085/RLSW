@@ -10,7 +10,7 @@ import { SPIRIT_DEFS, SPIRIT_OPTIONS } from "./data/spirits.js";
 import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "./data/corners.js";
 import { HEX_SIZE, SCALE, SVG_W, SVG_H } from "./board/constants.js";
 import { HEX_BY_NUM, HEX_BY_QR, ALL_HEXES } from "./board/hexMap.js";
-import { pointyCorners, fanGesture, axialDist, axialNeighbors, facingAngle, getFlatTopNeighborSlots, angleTo, angleDiff, neighborInDirection } from "./board/hexGeometry.js";
+import { pointyCorners, fanGesture, axialDist, axialNeighbors, getFlatTopNeighborSlots, angleTo, angleDiff, neighborInDirection } from "./board/hexGeometry.js";
 import { Tutorial } from "./tutorial/content.jsx";
 import { useRiffState } from "./hooks/useRiffState.js";
 import { useFanEconomy } from "./hooks/useFanEconomy.js";
@@ -39,9 +39,9 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import React from "react";
 import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
 import { ampLinked, ampMstEdges, computeAmpRigs } from "./board/ampRigs.js";
-import { cornerFacing, advanceTurnQueue, makeBoardToken, hexRingFromCenter, crowdMultiplier, advanceHC } from "./board/boardHelpers.js";
+import { cornerFacing, makeBoardToken, hexRingFromCenter, crowdMultiplier, advanceHC } from "./board/boardHelpers.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRiffMiss, playBeamClash, playBeamSurge, playBeamBreak, playFanPop } from "./audio/riffSfx.js";
-import { generateRiffRhythm, speedUpRiffRhythm, RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes, generateAttackerRiff, generateDefenderRiff } from "./riff/riffGeneration.js";
+import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./riff/riffGeneration.js";
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset } from "./riff/fallingNotes.js";
 import { Lobby } from "./ui/Lobby.jsx";
 import { isMirrorFacing, MIRROR_SPRITES, mobileColorStyle, GameErrorBoundary } from "./ui/GameErrorBoundary.jsx";
@@ -54,6 +54,9 @@ import { STAGE_FX_THRESHOLDS, STAGE_FX_META, SMOKE_START_RADIUS, SMOKE_ROUNDS, L
 import { hexInSmoke, hexInBeams, rollLaserBeams, rollPyroHexes, spawnAnimatronics, animatronicStep } from "./board/stageFx.js";
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
+import { applyAction } from "./engine/reduce.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed } from "./engine/actions.js";
+import { riffStats } from "./engine/systems/riffOff.js";
 
 
 // 🎟️ A fan = a sleek "pawn": a detached round head above a rounded-triangle body.
@@ -583,11 +586,8 @@ const RIFF_GAP_NORMAL   = 470;   // ms breath before a steady note (groove spaci
 // performances: nailing the groove tight beats lazily catching the same notes
 // inside the window. A hit is not just a hit — how cleanly you played it is
 // the whole point. (Grade thresholds live in RIFF_FALL_DIFFICULTY presets.)
-const RIFF_GRADE_WEIGHT = { perfect: 1.0, good: 0.7, ok: 0.45, miss: 0, wrong: 0 };
-// Score gap → battle margin. A flawless 6/6 over a sloppy answer reads as a
-// stage-sweeping blowout; a near-mirror falls through to the reaction tiebreak.
-const RIFF_MARGIN_SCALE = 2.6;   // margin = round(scoreGap × this)
-const RIFF_TIE_EPS      = 0.4;   // score gaps below this count as "too close to call"
+// Riff scoring weights/margins + riffStats now live in the engine —
+// src/engine/systems/riffOff.js (Phase 4). riffStats is imported above.
 export default function RLSWSimulator() {
   const [gameState, setGameState] = useState(null);
   const [showTutorial, setShowTutorial] = useState(false);
@@ -614,19 +614,26 @@ function Game({ gameState, onReturnToLobby }) {
   const [spirits, setSpirits] = useState(() =>
     gameState.spirits.map(s => ({ ...s, lives: startingLives }))
   );
-  // ── ENGINE STATE (Phase 1 scaffold — see src/MULTIPLAYER_HANDOFF.md) ──────
-  // The single object that becomes the authoritative, serializable game state.
-  // Each extraction phase moves a rules slice out of the useStates/hooks below
-  // and into it via applyAction. Until Phase 2 lands it only captures the
-  // initial config/spirits and is not yet read by the render.
-  // eslint-disable-next-line no-unused-vars
+  // ── ENGINE STATE (see src/MULTIPLAYER_HANDOFF.md) ─────────────────────────
+  // The authoritative, serializable game state. Phase 2: the engine owns the
+  // turn queue, beats/AP, movement/facing rules, limelight-start flags, and
+  // the turn counter. React still owns everything else; `spiritsSynced`
+  // bridges combat-era spirit writes in until Phase 3.
   const [engineState, setEngineState] = useState(() => makeInitialState(gameState));
+  const engineRef = useRef(engineState); // live mirror so dispatch works inside timeout chains
+  // Dispatch through the engine reducer. Synchronous: returns the next state
+  // so callers can read results (turn.lastMove / turn.lastReport) immediately.
+  function dispatch(engineAction) {
+    const next = applyAction(engineRef.current, engineAction);
+    engineRef.current = next;
+    setEngineState(next);
+    return next;
+  }
   const [action, setAction]   = useState(null); // "move" | "swing" | null
   // ── BATTLE STATE ─────────────────────────────────────────────────────────────
   // actionTokenUsed: has the acting spirit used their action token this turn
-  const [actionTokenUsed, setActionTokenUsed] = useState(false);
-  // startedOnLimelight: tracks which spirits began their turn on the limelight hex
-  const [startedOnLimelight, setStartedOnLimelight] = useState({});
+  const actionTokenUsed = engineState.turn.actionTokenUsed; // engine-owned (Phase 2)
+  // startedOnLimelight lives in the engine now (engineState.turn.startedOnLimelight)
   // battleState: the full in-progress battle, null when no battle
   // { phase: 'rolling_attack'|'rolling_defense'|'result'
   //          |'retaliation_prompt'|'retaliation_spin'|'retaliation_settling'|'retaliation_result'
@@ -730,7 +737,7 @@ function Game({ gameState, onReturnToLobby }) {
   const [diceDisplay, setDiceDisplay] = useState(null);
   // retaliationTimer: countdown seconds remaining
   const [retaliationTimer, setRetaliationTimer] = useState(null);
-  const [moveStepsLeft, setMoveStepsLeft] = useState(0);
+  const moveStepsLeft = engineState.turn.moveStepsLeft; // engine-owned (Phase 2)
   const [chordMode, setChordMode] = useState(false); // 🎸 taps build the combat chord instead of the melody
   // 🎯 TURN STEP — progressive HUD flow: pivot → chord → melody → move_act
   const [turnStep, setTurnStep] = useState('pivot');
@@ -751,7 +758,7 @@ function Game({ gameState, onReturnToLobby }) {
   const [activeTip, setActiveTip] = useState(null); // { id, title, body } or null
   // The very first tip (skill_tree) is triggered by the initial skill pick useEffect.
   // The pivot tip fires naturally from endTurn → setTurnStep('pivot') → showTip('pivot').
-  const [turnQueue, setTurnQueue] = useState(() => gameState.spirits.map(s => s.id));
+  const turnQueue = engineState.turnQueue; // engine-owned (Phase 2)
   // 🧪 TESTING GROUNDS — dev panel (only when the sandbox was launched from the menu)
   const testMode = !!gameState.testMode;
   const [devOpen, setDevOpen] = useState(false);
@@ -914,7 +921,7 @@ function Game({ gameState, onReturnToLobby }) {
   } = useFanEconomy(SPOTLIGHT_POOL);
   // 💥 Floating combat numbers (e.g. −2 ❤️) that drift up over an affected hex.
   const [damageFx, setDamageFx] = useState([]); // [{ key, hexNum, text, color }]
-  const [turnCount, setTurnCount] = useState(0);
+  // turnCount lives in the engine now (engineState.turn.count)
 
   // ─── EVENT SPACES STATE ──────────────────────────────────────────────────────
   // eventHexes: hex numbers currently lit as marquee event spaces
@@ -1170,16 +1177,15 @@ function Game({ gameState, onReturnToLobby }) {
       ? { ...prev, [acting.id]: { ...prev[acting.id], recovering: false } }
       : prev);
     addLog(`😵 ${recoveringName} is still recovering from the Knock Down — turn skipped!`);
-    setTurnQueue(q => {
-      const newQ = advanceTurnQueue(q, spirits, mode, teams);
-      const nextId = newQ[0];
+    dispatch(spiritsSynced(spirits)); // bridge (Phase 2): engine hears combat-era writes
+    {
+      const nextId = dispatch(turnSkipped()).turn.lastReport?.nextId;
       if (nextId) {
         startNewTurnNotes(nextId);
         const nextSpirit = spirits.find(s => s.id === nextId);
         if (nextSpirit) { setPulsingHex(nextSpirit.num); setTimeout(() => setPulsingHex(null), 1800); }
       }
-      return newQ;
-    });
+    }
   }, [acting?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Convenience: pull the acting character's note state (falls back to empty defaults)
@@ -2314,13 +2320,11 @@ function Game({ gameState, onReturnToLobby }) {
     }
     setTurnStep('move_act'); // advance HUD flow → movement & actions
     setTimeout(() => showTip('move_act'), 300);
-    setMoveStepsLeft(hexes);
-    // Apply trip debuff — halve movement if the spirit was tripped last turn.
+    // Grant the movement budget — the engine applies the tripped-halving rule.
     // (tripped is still true at commit time; it clears at the START of this spirit's NEXT turn)
+    const grantedSteps = dispatch(moveBudgetSet(hexes, !!actingNoteState?.tripped)).turn.moveStepsLeft;
     if (actingNoteState?.tripped) {
-      const halved = Math.max(1, Math.floor(hexes / 2));
-      setMoveStepsLeft(halved);
-      addLog(`🌀 ${acting?.name} is TRIPPED — movement halved this turn! (${halved} hex${halved !== 1 ? 'es' : ''})`);
+      addLog(`🌀 ${acting?.name} is TRIPPED — movement halved this turn! (${grantedSteps} hex${grantedSteps !== 1 ? 'es' : ''})`);
     }
     setMovedThisTurn(false);
     setAction('move');
@@ -2348,14 +2352,9 @@ function Game({ gameState, onReturnToLobby }) {
   // pivotPending is preserved so the Major/Minor prompt appears before building starts.
   // Also clears per-turn debuffs: tripped (movement halved), dazed, instrumentDropped.
   function startNewTurnNotes(spiritId) {
-    // Record whether this spirit starts their turn on the limelight hex
-    const nextSpirit = spirits.find(s => s.id === spiritId);
-    if (nextSpirit) {
-      setStartedOnLimelight(prev => ({
-        ...prev,
-        [spiritId]: nextSpirit.num === LIMELIGHT_HEX,
-      }));
-    }
+    // Record whether this spirit starts their turn on the limelight hex.
+    // (The engine reads its own synced spirit positions.)
+    dispatch(turnStarted(spiritId));
     setNoteStates(prev => {
       const ns = prev[spiritId];
       if (!ns) return prev;
@@ -2564,28 +2563,21 @@ function Game({ gameState, onReturnToLobby }) {
     const s = spirits.find(sp => sp.id === acting.id);
     const ns = noteStates[acting.id] ?? {};
 
-    // Dazed: each move step has a 33% chance to be redirected to a random
-    // *different* neighbour (matches CQC desc: "33% chance moves go wrong
-    // direction"). Dazed persists for the whole turn — cleared in endTurn().
-    let actualTarget = toNum;
-    if (ns.dazed && Math.random() < 0.33) {
-      const fromHex = HEX_BY_NUM[s.num];
-      const neighbours = fromHex ? getFlatTopNeighborSlots(fromHex).filter(n => n.num !== toNum) : [];
-      if (neighbours.length > 0) {
-        const wrongHex = neighbours[Math.floor(Math.random() * neighbours.length)];
-        actualTarget = wrongHex.num;
-        addLog(`😵 ${s.name} is DAZED & CONFUSED — stumbles to #${actualTarget} instead of #${toNum}!`);
-      }
+    // Movement rules — including the dazed 33% redirect roll — live in the
+    // engine now (src/engine/systems/movement.js). Sync spirits first so the
+    // engine sees combat-era position changes (bridge until Phase 3).
+    dispatch(spiritsSynced(spirits));
+    const mv = dispatch(engineMoveStep(acting.id, toNum, !!ns.dazed)).turn.lastMove;
+    if (!mv) return; // safety: off-board redirect — the engine refused the step
+    const actualTarget = mv.to;
+    if (mv.redirected) {
+      addLog(`😵 ${s.name} is DAZED & CONFUSED — stumbles to #${actualTarget} instead of #${toNum}!`);
     }
-
-    const from = HEX_BY_NUM[s.num], to = HEX_BY_NUM[actualTarget];
-    if (!to) return; // safety: off-board redirect
-    const newFacing = facingAngle(from, to);
-    const newSteps = moveStepsLeft - 1;
+    const to = HEX_BY_NUM[actualTarget];
+    const newSteps = mv.stepsLeft;
     setSpirits(p => p.map(sp => sp.id !== acting.id ? sp : {
-      ...sp, num: actualTarget, facing: newFacing,
+      ...sp, num: actualTarget, facing: mv.facing,
     }));
-    setMoveStepsLeft(newSteps);
     if (!ns.dazed) addLog(`🚶 ${s.name} → #${actualTarget} (${newSteps} step${newSteps !== 1 ? "s" : ""} left)`);
     else addLog(`🚶 ${s.name} → #${actualTarget} (${newSteps} step${newSteps !== 1 ? "s" : ""} left)`);
     if (to.edge) addLog(`⚠️ ${s.name} is on the EDGE — knockback risk!`);
@@ -4600,8 +4592,7 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`${via === 'melee' ? '⚔️' : '🔊'} ${sp.name} ${via === 'melee' ? 'smashes into' : 'blasts'} ${def.name}${chord ? ` — ${chord.name} rings out (⚔️${chord.drive})` : ''}${winded ? ' — HE’S WINDED, DOUBLE DAMAGE' : ''}: ${dmg} damage!`);
     triggerDamageNumber(god.num, `−${dmg}`, def.color);
     focusOnHex(god.num, 850, 0.4, true);
-    setMoveStepsLeft(p => Math.max(0, p - cost));
-    setActionTokenUsed(true);
+    dispatch(beatsSpent(cost, true));
     grantFame(spiritId, dmg, `${def.icon} rocked ${def.name}`, false);
 
     const newHp = god.hp - dmg;
@@ -5359,8 +5350,7 @@ function Game({ gameState, onReturnToLobby }) {
     }
 
     // 🥊 The jab: cheap (1 AP) and chord-driven, but still your one Action this turn.
-    setMoveStepsLeft(prev => Math.max(0, prev - 1));
-    setActionTokenUsed(true);
+    dispatch(beatsSpent(1, true));
     setAction(null);
 
     const nsA = noteStates[attacker.id] ?? {};
@@ -5570,8 +5560,7 @@ function Game({ gameState, onReturnToLobby }) {
     // 🎸💥 The haymaker: the all-in wind-up roots you to the spot. Smash costs 2 AP
     // AND ends ALL remaining movement this turn — you commit everything to the blow.
     const stepsBeforeSmash = moveStepsLeft;
-    setMoveStepsLeft(0);
-    setActionTokenUsed(true);
+    dispatch(beatsSpent(0, true, { all: true }));
     setAction(null);
 
     // 🗡️ SHREDDING RONIN — brute force isn't his art. His own Smash lands SOFT (≈half),
@@ -5628,8 +5617,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (!targets.length) { addLog('🌀 No rivals in the beam — line up the shot.'); return; }
 
     const stepsBefore = moveStepsLeft;
-    setMoveStepsLeft(0);
-    setActionTokenUsed(true);
+    dispatch(beatsSpent(0, true, { all: true }));
     setAction(null);
 
     const damage      = Math.min(5, Math.max(1, Math.ceil(thrown / 2)));
@@ -5674,7 +5662,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     triggerEffectFlash(acting.id, '🌌', 'WARP', '#aa55ff');
     setSpirits(prev => prev.map(s => s.id === acting.id ? { ...s, num: hexNum } : s));
-    setMoveStepsLeft(prev => Math.max(0, prev - DISPLACE_AP));
+    dispatch(spiritWarped(acting.id, hexNum, DISPLACE_AP));
     setNoteField(acting.id, { displaceCd: 2 });
     setAction(null);
     addLog(`🌌 ${acting.name} folds space and WARPS to hex #${hexNum} — Space is the place.`);
@@ -5695,8 +5683,7 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
 
-    setMoveStepsLeft(prev => Math.max(0, prev - 2));
-    setActionTokenUsed(true);
+    dispatch(beatsSpent(2, true));
     setAction(null);
 
     // 🔊 Sonic projects your prepared CHORD — strum it out as the beam fires.
@@ -5886,36 +5873,28 @@ function Game({ gameState, onReturnToLobby }) {
   // defender answers with a transformed riff. Accuracy decides the winner;
   // average reaction time breaks ties.
   function startRiffOff(attacker, defender) {
-    const atk = generateAttackerRiff();
-    const def = generateDefenderRiff(atk);
+    // The engine generates both riffs + skill modifiers on its seeded rng and
+    // stores them in engineState.battle — this client just renders that data.
+    // (slayer/eRush flags are client-supplied until noteStates joins in Ph 5.)
+    const atkNs = noteStates[attacker.id] ?? {};
+    const slayer = (atkNs.unlockedSkills ?? []).includes('riff_slayer') && !!atkNs.riffSlayerArmed;
+    const eRush  = (atkNs.unlockedSkills ?? []).includes('e_rush') && !!atkNs.eRushArmed;
+    const eb = dispatch(riffOffStarted(attacker.id, defender.id, { slayer, eRush })).battle;
+    const atk = eb.atkRiff, def = eb.defRiff;
+    const defGlitch = eb.defGlitch, defGhosts = eb.defGhosts;
+    const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
     addLog(`🎸🔥 RIFF-OFF! ${attacker.name} and ${defender.name} lock eyes — both plugged in, beams crossed!`);
     addLog(`🎶 ${attacker.name} calls a ${RIFF_CONTOUR_LABELS[atk.contour]} — ${defender.name} must answer with a ${RIFF_ANSWER_LABELS[def.kind].name}.`);
 
-    // 🗡️ RIFF SLAYER — if the attacker armed a skip-climb this turn, the rival
-    // cracks under pressure: pick 2–3 of their answer notes to glitch mid-flight.
-    const atkNs = noteStates[attacker.id] ?? {};
-    let defGlitch = [];
-    if ((atkNs.unlockedSkills ?? []).includes('riff_slayer') && atkNs.riffSlayerArmed) {
-      const defLen   = def.degrees.length;
-      const glitchN  = 2 + Math.floor(Math.random() * 2); // 2 or 3
-      const idxPool  = Array.from({ length: defLen }, (_, i) => i);
-      for (let i = idxPool.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [idxPool[i], idxPool[j]] = [idxPool[j], idxPool[i]];
-      }
-      defGlitch = idxPool.slice(0, Math.min(glitchN, defLen)).sort((a, b) => a - b);
+    // 🗡️ RIFF SLAYER — the rival cracks under pressure: 2–3 answer notes lurch
+    if (slayer) {
       addLog(`🗡️ RIFF SLAYER! ${attacker.name}'s menace rattles ${defender.name} — ${defGlitch.length} of their notes will LURCH mid-riff. They're on edge!`);
       // consume the arm so it can't carry into another riff-off
       setNoteStates(prev => ({ ...prev, [attacker.id]: { ...prev[attacker.id], riffSlayerArmed: false } }));
     }
 
-    // 🎴 いいラッシュ / E-RUSH — if the Ronin ended on an E this turn, every one
-    // of the rival's answer notes spawns a GHOST (a distinct second key). Both
-    // must be hit in the window or the note misses.
-    const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
-    let defGhosts = null;
-    if ((atkNs.unlockedSkills ?? []).includes('e_rush') && atkNs.eRushArmed) {
-      defGhosts = defNotesArr.map(n => pickGlitchRiffNote(n).letter);
+    // 🎴 いいラッシュ / E-RUSH — every answer note spawns a ghost second key
+    if (eRush) {
       addLog(`🎴 いいラッシュ! ${attacker.name}'s E-Rush buries ${defender.name} under a ghost barrage — every answer note now demands TWO keys!`);
       setNoteStates(prev => ({ ...prev, [attacker.id]: { ...prev[attacker.id], eRushArmed: false } }));
     }
@@ -6126,57 +6105,17 @@ function Game({ gameState, onReturnToLobby }) {
     });
   }
 
-  function riffStats(results) {
-    const hits  = results.filter(r => r.hit).length;
-    const rts   = results.filter(r => r.hit).map(r => r.rt);
-    const avgRt = rts.length ? Math.round(rts.reduce((a, b) => a + b, 0) / rts.length) : null;
-    // Grade-weighted performance score — a perfect note is worth more than a
-    // last-millisecond "ok" catch. This is what now decides the riff-off.
-    const score = results.reduce((a, r) => a + (RIFF_GRADE_WEIGHT[r.grade] ?? 0), 0);
-    const perfects = results.filter(r => r.grade === 'perfect').length;
-    const quality  = results.length ? Math.round((score / results.length) * 100) : 0;
-    return { hits, avgRt, score: Math.round(score * 100) / 100, perfects, quality };
-  }
-
   function riffResolve() {
     const bs = battleStateRef.current;
     if (!bs?.riffOff) return;
-    const round = bs.round ?? 1;
-    const A = riffStats(bs.atkResults);
-    const D = riffStats(bs.defResults);
-    let attackerWon = false, margin = 0, tie = false, decidedBy = 'performance';
-    const scoreGap = Math.abs(A.score - D.score);
-    if (scoreGap >= RIFF_TIE_EPS) {
-      // Clear quality difference — the cleaner-played riff takes it, and the
-      // wider the gap the harder the beam clash lands.
-      attackerWon = A.score > D.score;
-      margin = Math.max(1, Math.round(scoreGap * RIFF_MARGIN_SCALE));
-    } else if (A.score === 0 && D.score === 0) {
-      tie = true;                                          // both whiffed everything
-    } else if (A.avgRt != null && D.avgRt != null && A.avgRt !== D.avgRt) {
-      // Performances were a near-mirror — fastest hands break the deadlock.
-      decidedBy   = 'reaction';
-      attackerWon = A.avgRt < D.avgRt;
-      margin      = Math.abs(A.avgRt - D.avgRt) >= 150 ? 2 : 1; // big speed gap = margin 2
-    } else if (A.score !== D.score) {
-      // Sub-epsilon gap but not identical, and no reaction data to split it —
-      // award the edge to the better score at minimum stakes.
-      attackerWon = A.score > D.score;
-      margin = 1;
-    } else {
-      tie = true;
-    }
-    // Round 2 is sudden death — it settles the duel. A dead-even Round 2 falls
-    // back to whoever had the edge in Round 1; only a double dead-heat ties.
-    if (round >= 2) {
-      if (tie && !bs.r1Tie) {
-        tie = false;
-        attackerWon = bs.r1Won;
-        decidedBy = 'Round 1 edge';
-        margin = Math.max(1, bs.r1Margin ?? 1);
-      }
-      if (!tie) { margin += 1; decidedBy += ' · Round 2'; } // stakes climbed
-    }
+    // Submit both performances to the engine and let it rule the duel — the
+    // multiplayer seam: networked clients will each submit their own results
+    // array and every peer computes the identical verdict.
+    dispatch(riffResultsSubmitted('attacker', bs.atkResults));
+    dispatch(riffResultsSubmitted('defender', bs.defResults));
+    const verdict = dispatch(riffResolved()).battle.verdict;
+    const { round, attackerWon, margin, tie, decidedBy } = verdict;
+    const A = verdict.atkStats, D = verdict.defStats;
     const damage  = tie ? 0 : marginToDamage(margin + (round >= 2 ? 1 : 0));
     const atkName = spirits.find(s => s.id === bs.attackerId)?.name;
     const defName = spirits.find(s => s.id === bs.defenderId)?.name;
@@ -6222,34 +6161,24 @@ function Game({ gameState, onReturnToLobby }) {
         setTimeout(() => {
           const s2 = battleStateRef.current;
           if (!s2?.riffOff) return;
-          const atk = generateAttackerRiff();
-          const def = generateDefenderRiff(atk);
+          // Engine: fresh riffs at 0.58× speed, skill mods rerolled on its rng
+          const eb2 = dispatch(riffRound2Started()).battle;
+          const atk = eb2.atkRiff, def = eb2.defRiff;
           const mk = (r, extra) => ({
             notes: riffDegreesToNotes(r.degrees, r.sharps),
             freqs: r.degrees.map((d, i) => riffDegreeFreq(d, r.sharps[i])),
-            rhythm: speedUpRiffRhythm(r.rhythm, 0.58),
+            rhythm: r.rhythm, // already sped up by the engine
             ...extra,
           });
           addLog(`🎸🔥 ROUND 2! New riffs — faster, meaner, sudden death!`);
-          // 🗡️ RIFF SLAYER carries into Round 2 if it was active in Round 1 —
-          // the rival is still rattled. Re-roll a fresh 2–3 note glitch set.
-          let r2Glitch = [];
-          if ((s2.defGlitch?.length ?? 0) > 0) {
-            const defLen  = def.degrees.length;
-            const glitchN = 2 + Math.floor(Math.random() * 2);
-            const idxPool = Array.from({ length: defLen }, (_, i) => i);
-            for (let i = idxPool.length - 1; i > 0; i--) {
-              const j = Math.floor(Math.random() * (i + 1));
-              [idxPool[i], idxPool[j]] = [idxPool[j], idxPool[i]];
-            }
-            r2Glitch = idxPool.slice(0, Math.min(glitchN, defLen)).sort((a, b) => a - b);
+          // 🗡️ RIFF SLAYER carries into Round 2 if it was active in Round 1
+          const r2Glitch = eb2.defGlitch;
+          if (r2Glitch.length > 0) {
             addLog(`🗡️ Still rattled — Riff Slayer lurches ${r2Glitch.length} of their Round 2 notes!`);
           }
           // 🎴 E-Rush ghost barrage also carries into Round 2 if it was active
-          let r2Ghosts = null;
-          if (s2.defGhosts) {
-            const r2Notes = riffDegreesToNotes(def.degrees, def.sharps);
-            r2Ghosts = r2Notes.map(n => pickGlitchRiffNote(n).letter);
+          const r2Ghosts = eb2.defGhosts;
+          if (r2Ghosts) {
             addLog(`🎴 The ghost barrage rages on — Round 2 answer notes still demand TWO keys!`);
           }
           setBattleState(p => p?.riffOff ? {
@@ -6274,6 +6203,7 @@ function Game({ gameState, onReturnToLobby }) {
   // battle pipeline: knockback, Vibe damage, Fame. The duel is symmetric —
   // whoever loses takes the hit, attacker or defender alike.
   function closeRiffOff() {
+    dispatch(riffClosed()); // engine: clear the battle slice
     const s = battleStateRef.current;
     if (!s?.riffOff) { setBattleState(null); setDiceDisplay(null); return; }
     const { attackerWon, margin, damage, tie, attackerId, defenderId } = s;
@@ -6755,21 +6685,24 @@ function Game({ gameState, onReturnToLobby }) {
   function endTurn() {
     const s = spirits.find(sp => sp.id === acting.id);
 
+    // The engine resolves the turn end: limelight verdict, turn counter,
+    // beat/token resets, queue advance. React then runs the not-yet-extracted
+    // ticks below using the engine's report.
+    dispatch(spiritsSynced(spirits)); // bridge (Phase 2): sync combat-era writes
+    const report = dispatch(turnEnded()).turn.lastReport;
+
     // ── 🌟 LIMELIGHT FAME FAUCET ───────────────────────────────────────────────
     // Hold the centre stage — start AND end your turn on the Limelight hex — and the
     // spotlight pays a little Fame (× crowd). No instant win; just a contested
     // objective that feeds the one goal. Camping it is risky: you're the most visible
     // target on the board and the centre carries demolition risk.
-    const lostLimelightStart = !startedOnLimelight[acting.id];
-    if (acting.num === LIMELIGHT_HEX && !lostLimelightStart) {
+    if (report.limelightHeld) {
       addLog(`🌟 ${s.name} holds the Limelight — the spotlight pays out!`);
       setTimeout(() => grantFame(acting.id, LIMELIGHT_FAME, `🌟 held the Limelight`), 80);
     }
 
-    setMoveStepsLeft(0);
     setMovedThisTurn(false);
     setAction(null);
-    setActionTokenUsed(false);
     setBattleState(null);
     setDiceDisplay(null);
     setRetaliationTimer(null);
@@ -6846,10 +6779,8 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`💡 ${s.name} steps into the spotlight — +1 Vibe!`);
     }
 
-    // ── SPOTLIGHT MOVE: advance every full round ───────────────────────────
-    const newTurnCount = turnCount + 1;
-    setTurnCount(newTurnCount);
-    if (newTurnCount % spirits.filter(sp => !sp.knockedOut).length === 0) {
+    // ── SPOTLIGHT MOVE: advance every full round (engine counts the turns) ──
+    if (report.roundCompleted) {
       setSpotlightHex(prev => {
         const occupied = new Set(spirits.map(sp => sp.num));
         const pool = SPOTLIGHT_POOL.filter(n => n !== prev && !occupied.has(n));
@@ -6894,9 +6825,8 @@ function Game({ gameState, onReturnToLobby }) {
     // Advance queue first so we know who acts next, then replenish their used slots
     setTurnStep('pivot'); // reset HUD flow for next spirit's turn
     setTimeout(() => showTip('pivot'), 500);
-    setTurnQueue(q => {
-      const newQ = advanceTurnQueue(q, spirits, mode, teams);
-      const nextId = newQ[0];
+    {
+      const nextId = report.nextId; // the engine already advanced the queue
       if (nextId) {
         startNewTurnNotes(nextId);
         // Pulse the next spirit's current hex briefly
@@ -6906,8 +6836,7 @@ function Game({ gameState, onReturnToLobby }) {
           setTimeout(() => setPulsingHex(null), 1800);
         }
       }
-      return newQ;
-    });
+    }
     addLog(`⏭ ${s.name} ends turn`);
 
     // Event marquee respawn countdown
@@ -7502,7 +7431,7 @@ function Game({ gameState, onReturnToLobby }) {
       // can aim a beam/cone instead of only attacking whatever it stumbled into.
       const aimFace = (angle) => guard(() => {
         setSpirits(prev => prev.map(s => s.id === self.id ? { ...s, facing: angle } : s));
-        setMoveStepsLeft(p => Math.max(0, p - 1));
+        dispatch(spiritFaced(self.id, angle));
         addLog(`🤖 ${self.name} takes aim.`);
       });
 
@@ -7759,7 +7688,7 @@ function Game({ gameState, onReturnToLobby }) {
         const dy = flyDy * slideAmount;
         const cx2 = Math.round(tgtHex.px * SCALE);
         const cy2 = Math.round(tgtHex.py * SCALE);
-        if (!willRespawn) setTurnQueue(q => q.filter(id => id !== tgtId));
+        if (!willRespawn) dispatch(spiritEliminated(tgtId));
         setSlideOffAnimations(prev => ({
           ...prev,
           [tgtId]: { cx: cx2, cy: cy2, dx, dy, color: tgt.color, imageSrc: tgt.imageSrc, name: tgt.name, id: tgtId, corner: tgt.corner },
@@ -7787,7 +7716,7 @@ function Game({ gameState, onReturnToLobby }) {
         return;
       }
     }
-    if (!willRespawn) setTurnQueue(q => q.filter(id => id !== tgtId));
+    if (!willRespawn) dispatch(spiritEliminated(tgtId));
     setSpirits(p => {
       const updated = applyKnockOut(p);
       if (!willRespawn) checkWinner(updated);
@@ -7846,7 +7775,7 @@ function Game({ gameState, onReturnToLobby }) {
       if (!targetHex) return;
       const newFacing = angleTo(actingHex, targetHex);
       setSpirits(prev => prev.map(s => s.id === acting.id ? { ...s, facing: newFacing } : s));
-      setMoveStepsLeft(prev => Math.max(0, prev - 1));
+      dispatch(spiritFaced(acting.id, newFacing));
       setAction(null);
       addLog(`🔄 ${acting.name} turns to face hex #${num} (costs 1 step)`);
       return;
@@ -9930,7 +9859,7 @@ function Game({ gameState, onReturnToLobby }) {
               disabled={!acting}>Move {moveStepsLeft>0?`(${moveStepsLeft} hex)`:""}</button>
             {action === "move" && (
               <button className="btn" style={{borderColor:"#44cc88",color:"#44cc88"}}
-                onClick={() => { setAction(null); setMoveStepsLeft(0); addLog(`🚶 ${acting.name} stops moving.`); }}>
+                onClick={() => { setAction(null); dispatch(beatsSpent(0, false, { all: true })); addLog(`🚶 ${acting.name} stops moving.`); }}>
                 ✓ End Move</button>
             )}
             {/* FACE TURN — costs 1 move step */}
@@ -10101,7 +10030,7 @@ function Game({ gameState, onReturnToLobby }) {
                 return (
                   <button key={amp.id} className="btn"
                     style={{borderColor:'#ff8800',color:'#ff8800'}}
-                    onClick={() => { unplugRivalAmp(amp.id); setActionTokenUsed(true); }}>
+                    onClick={() => { unplugRivalAmp(amp.id); dispatch(beatsSpent(0, true)); }}>
                     🔌 Unplug {owner?.name?.split(' ')[0] ?? 'rival'}'s Amp
                   </button>
                 );
