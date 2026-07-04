@@ -286,4 +286,33 @@ export function RiffHighway({ run, results, ghostHit, view, accent, onPressKey }
       <div style={{
         position: 'relative', width: W, height: HWY_H, margin: '0 auto', overflow: 'hidden',
         background: 'linear-gradient(180deg, #050a14 0%, #0a1224 70%, #101c33 100%)',
-    
+        borderLeft: '1px solid #1a2a45', borderRight: '1px solid #1a2a45',
+        borderRadius: '8px 8px 0 0',
+      }}>
+        {/* lane guides — one faint rail per distinct lane in this riff */}
+        {[...new Set(run.notes.flatMap(n => [n.key, n.ghostKey].filter(Boolean)).map(k => laneX(view, k)))].map(x => (
+          <div key={`lane${x}`} style={{
+            position: 'absolute', left: x, top: 0, bottom: 0, width: 1,
+            background: `linear-gradient(180deg, transparent, ${accent}33 60%, ${accent}66)`,
+          }} />
+        ))}
+        {/* gems (real + E-Rush ghosts) */}
+        {run.notes.map(n => gem(n, n.key, false))}
+        {run.notes.map(n => (n.ghostKey ? gem(n, n.ghostKey, true) : null))}
+        {/* the strike line */}
+        <div style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0, height: 3,
+          background: accent, boxShadow: `0 0 14px ${accent}, 0 0 30px ${accent}88`,
+          animation: 'riffline-pulse 1.1s ease-in-out infinite',
+        }} />
+      </div>
+
+      {/* ── The strike zone — hit the key as the gem lands on it ── */}
+      <div style={{ width: W, margin: '0 auto', filter: `drop-shadow(0 0 10px ${accent}44)` }}>
+        {view === 'guitar'
+          ? <GuitarStrike litKeys={litKeys} accent={accent} onPress={onPressKey} resolveStringKey={resolveStringKey} />
+          : <PianoStrike litKeys={litKeys} accent={accent} onPress={onPressKey} />}
+      </div>
+    </div>
+  );
+}

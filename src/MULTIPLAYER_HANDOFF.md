@@ -36,6 +36,13 @@ Done means:
   binaries) and the file mount goes stale after edits — verify by copying
   changed files to `/tmp`, linting with `npx eslint --no-config-lookup` plus a
   minimal flat config, and running pure-logic tests in node. (Proven workflow.)
+- **Never commit from the sandbox.** The stale mount can feed git *truncated*
+  file contents — checkpoint `34cd776` stored the main file cut off at ~11.4k
+  of 11.8k lines. The OWNER commits from Windows (GitHub Desktop). Sandbox git
+  is for reading (`log`/`show`) only. Corollary: the sandbox cannot
+  compile-check the main file after editing it (its mount copy is stale);
+  newly *created* files propagate fine — lint/test those in `/tmp`, and rely
+  on the owner's `npm run dev` to validate main-file edits.
 - Update `ARCHITECTURE.md` in the same session as structural changes.
 
 ## 3. Current reality (what you'd otherwise spend tokens rediscovering)
@@ -129,7 +136,7 @@ still leaves the repo better than today.
 
 | Phase | Status |
 |---|---|
-| 1. Scaffold + RNG | ☐ |
+| 1. Scaffold + RNG | ☑ engine/ created (state, actions, rng, reduce, serialize + selftest.mjs); `Game` holds `engineState`; selftest green, engine lint clean. Owner: smoke-test + commit from Windows. |
 | 2. Turn & movement | ☐ |
 | 3. Combat | ☐ |
 | 4. Riff-off | ☐ |

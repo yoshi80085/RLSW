@@ -53,6 +53,7 @@ import { RockGodBoardLayer, RockGodHUD, GodVictoryOverlay } from "./ui/RockGodLa
 import { STAGE_FX_THRESHOLDS, STAGE_FX_META, SMOKE_START_RADIUS, SMOKE_ROUNDS, LASER_ROUNDS, LASER_BEAM_COUNT, LASER_DAMAGE, PYRO_WAVES, PYRO_WAVE_HEXES, PYRO_DAMAGE, PYRO_BURN_TURNS, ANIMATRONIC_COUNT, ANIMATRONIC_TURNS, ANIMATRONIC_DAMAGE } from "./data/stageEffects.js";
 import { hexInSmoke, hexInBeams, rollLaserBeams, rollPyroHexes, spawnAnimatronics, animatronicStep } from "./board/stageFx.js";
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
+import { makeInitialState } from "./engine/state.js";
 
 
 // 🎟️ A fan = a sleek "pawn": a detached round head above a rounded-triangle body.
@@ -613,6 +614,13 @@ function Game({ gameState, onReturnToLobby }) {
   const [spirits, setSpirits] = useState(() =>
     gameState.spirits.map(s => ({ ...s, lives: startingLives }))
   );
+  // ── ENGINE STATE (Phase 1 scaffold — see src/MULTIPLAYER_HANDOFF.md) ──────
+  // The single object that becomes the authoritative, serializable game state.
+  // Each extraction phase moves a rules slice out of the useStates/hooks below
+  // and into it via applyAction. Until Phase 2 lands it only captures the
+  // initial config/spirits and is not yet read by the render.
+  // eslint-disable-next-line no-unused-vars
+  const [engineState, setEngineState] = useState(() => makeInitialState(gameState));
   const [action, setAction]   = useState(null); // "move" | "swing" | null
   // ── BATTLE STATE ─────────────────────────────────────────────────────────────
   // actionTokenUsed: has the acting spirit used their action token this turn
@@ -11380,4 +11388,413 @@ function Game({ gameState, onReturnToLobby }) {
                     {/* Scorch glow on the hex */}
                     <polygon
                       points={pointyCorners(cx, cy, HS * 0.96)}
-                      fill="#ff440
+                      fill="#ff440018" stroke="#ff6622" strokeWidth={1}
+                      style={{filter:'drop-shadow(0 0 5px #ff662288)'}}/>
+                    {/* Vinyl disc */}
+                    <circle cx={cx} cy={cy + r*0.18} r={r*0.62} fill="#120a08" stroke="#ff8844" strokeWidth={1}/>
+                    <circle cx={cx} cy={cy + r*0.18} r={r*0.36} fill="none" stroke="#ff884466" strokeWidth={0.7}/>
+                    <circle cx={cx} cy={cy + r*0.18} r={r*0.12} fill="#ffaa55"/>
+                    {/* Flames */}
+                    <g style={{animation:'flame-flicker 0.55s ease-in-out infinite',
+                      animationDelay:`${(num % 4) * 0.13}s`, transformOrigin:`${cx}px ${cy}px`}}>
+                      <text x={cx} y={cy - r*0.12} textAnchor="middle" fontSize={r*1.05}
+                        style={{filter:'drop-shadow(0 0 4px #ff6622)'}}>🔥</text>
+                    </g>
+                  </g>
+                );
+              })}
+
+              {/* ── BOARD TOKENS — Lost Chords (free notes into your stock) ── */}
+              {boardTokens.map(tok => {
+                const hex = HEX_BY_NUM[tok.num];
+                if (!hex) return null;
+                const cx = Math.round(hex.px * SCALE);
+                const cy = Math.round(hex.py * SCALE);
+                const r  = HS * 0.32;
+                return (
+                  <g key={`tok-${tok.num}`} style={{pointerEvents:'none',
+                    animation:'event-hex-pulse 1.6s ease-in-out infinite',
+                    animationDelay:`${(tok.num % 7) * 0.18}s`}}>
+                    <circle cx={cx} cy={cy} r={r} fill="#0a1828" stroke="#44ccff" strokeWidth={1} opacity={0.96}/>
+                    <text x={cx} y={cy + r*0.34} textAnchor="middle" fontSize={r*1.05}
+                      fontFamily="'Share Tech Mono',monospace" fontWeight="700" fill="#7fe0ff">{tok.note}</text>
+                  </g>
+                );
+              })}
+
+              {/* ── CHARGE ZONES — fixed lightning hexes (⚡ die-tier boost / Overcharge) ── */}
+              {chargeZones.map(zone => {
+                const hex = HEX_BY_NUM[zone.num];
+                if (!hex) return null;
+                const cx = Math.round(hex.px * SCALE);
+                const cy = Math.round(hex.py * SCALE);
+                const r  = HS * 0.5;
+                const ready = (zone.cooldown ?? 0) <= 0;
+                const col = ready ? '#44aaff' : '#284866';
+                return (
+                  <g key={`charge-${zone.num}`} style={{pointerEvents:'none',
+                    animation: ready ? 'event-hex-pulse 1.5s ease-in-out infinite' : undefined,
+                    animationDelay:`${(zone.num % 6) * 0.2}s`, opacity: ready ? 1 : 0.55}}>
+                    <polygon points={pointyCorners(cx, cy, HS * 0.9)}
+                      fill={ready ? '#0a1830' : '#0a1220'} stroke={col} strokeWidth={ready ? 1.4 : 1}
+                      strokeDasharray={ready ? undefined : '4 3'}
+                      style={ready ? {filter:'drop-shadow(0 0 6px #2266ff88)'} : undefined}/>
+                    <text x={cx} y={cy + r*0.32} textAnchor="middle" fontSize={r*1.05}
+                      style={ready ? {filter:'drop-shadow(0 0 4px #44aaff)'} : undefined}>⚡</text>
+                    {!ready && (
+                      <text x={cx} y={cy + HS*0.72} textAnchor="middle" fontSize={6.5} fill="#3a5a7a"
+                        fontFamily="'Orbitron',sans-serif">{zone.cooldown}t</text>
+                    )}
+                  </g>
+                );
+              })}
+
+              {/* ── BOARD CARDS — floating face-down card icons ── */}
+              {boardCards.map(bc => {
+                const hex = HEX_BY_NUM[bc.hexNum];
+                if (!hex) return null;
+                const cx = Math.round(hex.px * SCALE);
+                const cy = Math.round(hex.py * SCALE);
+                const r  = HS * 0.42;
+                return (
+                  <g key={bc.id} style={{pointerEvents:'none',
+                    animation:`card-float 2.4s ease-in-out infinite`,
+                    animationDelay:`${(bc.hexNum % 7) * 0.3}s`}}>
+                    {/* Card body */}
+                    <rect x={cx - r*0.62} y={cy - r*0.9} width={r*1.24} height={r*1.7}
+                      rx={r*0.16} ry={r*0.16}
+                      fill="#0d1530" stroke="#aa88ff" strokeWidth={1.2}
+                      style={{filter:'drop-shadow(0 0 4px #aa88ff88)'}}/>
+                    {/* Card back pattern — subtle cross */}
+                    <line x1={cx - r*0.4} y1={cy - r*0.7} x2={cx + r*0.4} y2={cy + r*0.7}
+                      stroke="#aa88ff33" strokeWidth={0.8}/>
+                    <line x1={cx + r*0.4} y1={cy - r*0.7} x2={cx - r*0.4} y2={cy + r*0.7}
+                      stroke="#aa88ff33" strokeWidth={0.8}/>
+                    {/* Question mark */}
+                    <text x={cx} y={cy + r*0.18} textAnchor="middle"
+                      fontSize={r*0.82} fill="#aa88ff" style={{pointerEvents:'none',fontWeight:700}}>?</text>
+                    {/* Subtle glow ring */}
+                    <ellipse cx={cx} cy={cy + r*0.9} rx={r*0.55} ry={r*0.12}
+                      fill="#aa88ff22"/>
+                  </g>
+                );
+              })}
+
+              {/* ── ROADIE direction-target highlights ── */}
+              {roadieAction?.phase === 'selectDir' && (() => {
+                const adjHex = HEX_BY_NUM[roadieAction.adjHexNum];
+                if (!adjHex) return null;
+                return getFlatTopNeighborSlots(adjHex).map(nb => {
+                  const cx = Math.round(nb.px * SCALE);
+                  const cy = Math.round(nb.py * SCALE);
+                  return (
+                    <g key={nb.num} style={{cursor:"pointer"}} onClick={() => roadieMoveAmp(nb.num)}>
+                      <polygon points={pointyCorners(cx, cy, HS * 0.85)}
+                        fill="#ffcc4422" stroke="#ffcc44" strokeWidth={1.5}
+                        style={{animation:"hex-turn-pulse 1s ease-in-out infinite"}}/>
+                      <text x={cx} y={cy+4} textAnchor="middle" fontSize={HS*0.35}
+                        fill="#ffcc44" style={{pointerEvents:"none"}}>→</text>
+                    </g>
+                  );
+                });
+              })()}
+              {/* ── ROADIE: cooldown ghost tokens on amps ── */}
+              {amps.map(amp => {
+                // Find any spirit whose roadie is on cooldown and owns this amp
+                const ghostRoadie = spirits.find(sp => {
+                  const ns = noteStates[sp.id];
+                  return (ns?.roadies ?? []).some(r => r.cooldownTurns > 0 && sp.id === amp.ownerId);
+                });
+                if (!ghostRoadie) return null;
+                const ns = noteStates[ghostRoadie.id];
+                const roadie = (ns?.roadies ?? []).find(r => r.cooldownTurns > 0);
+                if (!roadie) return null;
+                const hex = HEX_BY_NUM[amp.hexNum];
+                if (!hex) return null;
+                const cx = Math.round(hex.px * SCALE);
+                const cy = Math.round(hex.py * SCALE);
+                return (
+                  <g key={`ghost-${amp.id}`} style={{pointerEvents:'none'}}>
+                    {/* Small wrench ghost sitting on amp */}
+                    <circle cx={cx + HS * 0.55} cy={cy - HS * 0.55} r={HS * 0.28}
+                      fill="#0a1020cc" stroke={ghostRoadie.color + '88'} strokeWidth={0.8}/>
+                    <text x={cx + HS * 0.55} y={cy - HS * 0.55 + 4}
+                      textAnchor="middle" fontSize={HS * 0.3}
+                      fill={ghostRoadie.color + 'aa'} style={{pointerEvents:'none'}}>🔧</text>
+                    <text x={cx + HS * 0.55} y={cy - HS * 0.22}
+                      textAnchor="middle" fontSize={HS * 0.22}
+                      fill={ghostRoadie.color + '99'} style={{pointerEvents:'none',fontFamily:'monospace'}}>
+                      {roadie.cooldownTurns}t
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* ── ROADIE: animated token sliding from spirit → amp → destination ── */}
+              {roadieAnimations.map(anim => {
+                const fromCx = Math.round(anim.fromHex.px * SCALE);
+                const fromCy = Math.round(anim.fromHex.py * SCALE);
+                const ampCx  = Math.round(anim.toAmpHex.px * SCALE);
+                const ampCy  = Math.round(anim.toAmpHex.py * SCALE);
+                const toCx   = Math.round(anim.toFinalHex.px * SCALE);
+                const toCy   = Math.round(anim.toFinalHex.py * SCALE);
+                // Midpoint: interpolate from→amp→final via animateMotion
+                const pathD = `M ${fromCx} ${fromCy} L ${ampCx} ${ampCy} L ${toCx} ${toCy}`;
+                return (
+                  <g key={anim.id} style={{pointerEvents:'none'}}>
+                    {/* Token */}
+                    <g style={{animation:'roadie-run 2.8s ease-in-out forwards'}}>
+                      <animateMotion dur="2.4s" fill="freeze" path={pathD}
+                        keyTimes="0;0.45;1" calcMode="spline"
+                        keySplines="0.4 0 0.6 1; 0.4 0 0.6 1"/>
+                      <circle r={HS * 0.32} fill={anim.spiritColor + '33'}
+                        stroke={anim.spiritColor} strokeWidth={1.2}/>
+                      <text textAnchor="middle" dominantBaseline="central"
+                        fontSize={HS * 0.35} style={{pointerEvents:'none'}}>{anim.icon ?? '🔧'}</text>
+                    </g>
+                    {/* "En route…" label that fades in near the destination */}
+                    <text
+                      x={ampCx} y={ampCy - HS * 1.4}
+                      textAnchor="middle" fontSize={HS * 0.32}
+                      fill={anim.spiritColor}
+                      stroke="#000" strokeWidth={0.3}
+                      style={{
+                        pointerEvents:'none',
+                        animation:'roadie-label-fade 2.8s ease-in-out forwards',
+                        fontFamily:'monospace',
+                      }}>
+                      {anim.labelText ?? '🔧 Roadie en route…'}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* 💥 Floating combat numbers — drift up over the affected hex */}
+              {damageFx.map(d => {
+                const h = HEX_BY_NUM[d.hexNum];
+                if (!h) return null;
+                const cx = Math.round(h.px * SCALE);
+                const cy = Math.round(h.py * SCALE);
+                return (
+                  <text key={d.key} x={cx} y={cy - HS * 1.5} textAnchor="middle"
+                    fontSize={HS * 0.7} fontWeight="bold" fill={d.color}
+                    stroke="#000" strokeWidth={0.6}
+                    style={{pointerEvents:'none', animation:'floatUp 1.2s ease-out forwards',
+                      filter:`drop-shadow(0 0 5px ${d.color})`, fontFamily:"'Orbitron',sans-serif"}}>
+                    {d.text}
+                  </text>
+                );
+              })}
+
+              <ScoreTrackOverlay spirits={spirits} startingLives={startingLives} />
+
+              {/* ── NEON FACING ARROW — top layer, hover only ── */}
+              {(() => {
+                if (hovered === null) return null;
+                const hovHex = HEX_BY_NUM[hovered];
+                if (!hovHex) return null;
+                const sp = spirits.find(s => s.num === hovered && !s.knockedOut);
+                if (!sp) return null;
+                const cx  = Math.round(hovHex.px * SCALE);
+                const cy  = Math.round(hovHex.py * SCALE);
+                const f   = sp.facing ?? 0;
+                const sc  = sp.corner ? (CORNER_LABELS[sp.corner]?.color ?? sp.color) : sp.color;
+                // Arrow starts at edge of hex, tip reaches ~1.6 hexes out
+                const tailR = HS * 0.72;
+                const tipR  = HS * 2.6;
+                const x1 = cx + Math.cos(f) * tailR;
+                const y1 = cy + Math.sin(f) * tailR;
+                const x2 = cx + Math.cos(f) * tipR;
+                const y2 = cy + Math.sin(f) * tipR;
+                // Arrowhead
+                const wingAngle = 0.45;
+                const wingLen   = HS * 0.55;
+                const wx1 = x2 + Math.cos(f + Math.PI - wingAngle) * wingLen;
+                const wy1 = y2 + Math.sin(f + Math.PI - wingAngle) * wingLen;
+                const wx2 = x2 + Math.cos(f + Math.PI + wingAngle) * wingLen;
+                const wy2 = y2 + Math.sin(f + Math.PI + wingAngle) * wingLen;
+                const filterId = `neon-arrow-${sp.id}`;
+                return (
+                  <g style={{pointerEvents:"none"}}>
+                    <defs>
+                      <filter id={filterId} x="-60%" y="-60%" width="220%" height="220%">
+                        <feGaussianBlur stdDeviation="2.8" result="blur"/>
+                        <feMerge>
+                          <feMergeNode in="blur"/>
+                          <feMergeNode in="blur"/>
+                          <feMergeNode in="SourceGraphic"/>
+                        </feMerge>
+                      </filter>
+                    </defs>
+                    {/* Glow layer */}
+                    <line x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke={sc} strokeWidth={7} strokeLinecap="round" opacity={0.35}
+                      filter={`url(#${filterId})`}/>
+                    {/* Shaft */}
+                    <line x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke={sc} strokeWidth={2.8} strokeLinecap="round"
+                      filter={`url(#${filterId})`}/>
+                    {/* Bright core */}
+                    <line x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke="#ffffff" strokeWidth={1.0} strokeLinecap="round" opacity={0.75}/>
+                    {/* Arrowhead wings — glow */}
+                    <line x1={x2} y1={y2} x2={wx1} y2={wy1}
+                      stroke={sc} strokeWidth={7} strokeLinecap="round" opacity={0.35}
+                      filter={`url(#${filterId})`}/>
+                    <line x1={x2} y1={y2} x2={wx2} y2={wy2}
+                      stroke={sc} strokeWidth={7} strokeLinecap="round" opacity={0.35}
+                      filter={`url(#${filterId})`}/>
+                    {/* Arrowhead wings — solid */}
+                    <line x1={x2} y1={y2} x2={wx1} y2={wy1}
+                      stroke={sc} strokeWidth={2.8} strokeLinecap="round"
+                      filter={`url(#${filterId})`}/>
+                    <line x1={x2} y1={y2} x2={wx2} y2={wy2}
+                      stroke={sc} strokeWidth={2.8} strokeLinecap="round"
+                      filter={`url(#${filterId})`}/>
+                    {/* Arrowhead wings — bright core */}
+                    <line x1={x2} y1={y2} x2={wx1} y2={wy1}
+                      stroke="#ffffff" strokeWidth={1.0} strokeLinecap="round" opacity={0.75}/>
+                    <line x1={x2} y1={y2} x2={wx2} y2={wy2}
+                      stroke="#ffffff" strokeWidth={1.0} strokeLinecap="round" opacity={0.75}/>
+                  </g>
+                );
+              })()}
+
+              {/* ── 🤘 ROCK GOD — telegraphs + the God's standee + HP bar ── */}
+              <RockGodBoardLayer god={rockGod} HS={HS} SCALE={SCALE} />
+
+              {/* ── 🎇 STAGE EFFECTS — smoke cloud / lasers / pyro / animatronics.
+                  Mounted late so the smoke draws OVER the standees. ── */}
+              <StageFXBoardLayer smokeFx={smokeFx} laserFx={laserFx} pyroFx={pyroFx}
+                animatronics={animatronics} HS={HS} SCALE={SCALE} />
+
+              {/* ── ❓ THE UNSURE CROWD — a neutral audience watching from the foreground, below
+                  the stage. When a Spirit wins them over they light up, cheer, and stream home. ── */}
+              {(() => {
+                const shown = Math.min(unsurePool, 18);
+                if (shown <= 0 && !unsureFx) return null;
+                const centerX = SVG_W / 2;
+                const baseY   = SVG_H - HS * 0.95;     // sit at the very front, below the octagon
+                const colGap  = HS * 0.62;
+                const perRow  = 9;
+                const u       = HS * 0.48;             // bigger than home fans → reads as foreground
+                const winning = !!unsureFx;
+                const neutral = '#9a86c0';
+                const winColor = unsureFx?.color ?? neutral;
+
+                // one audience pawn (hollow when undecided, fills with colour once won over)
+                const member = (x, y, scale, col, excited, i) => {
+                  const r = u * scale * 1.3;
+                  const dur = (3.0 + (i % 4) * 0.35).toFixed(2);
+                  const delay = ((i % 7) * 0.12).toFixed(2);
+                  return (
+                    <g key={`uns-${i}`} style={{transformBox:'fill-box', transformOrigin:'center',
+                      animation: excited ? 'unsure-excited 0.45s ease-in-out infinite'
+                                         : `fan-bob ${dur}s ease-in-out infinite`,
+                      animationDelay: `${delay}s`}}>
+                      {fanPawnShape(x, y, r, col, excited, 1.2, 1, i % 4, i % 2 === 1, excited ? 'wave' : fanGesture(i))}
+                    </g>
+                  );
+                };
+
+                const members = [];
+                for (let i = 0; i < shown; i++) {
+                  const row = Math.floor(i / perRow);
+                  const rowN = Math.min(perRow, shown - row * perRow);
+                  const col = i % perRow;
+                  const x = centerX + (col - (rowN - 1) / 2) * colGap + (row % 2 ? colGap * 0.4 : 0);
+                  const y = baseY - row * (u * 1.45);
+                  const scale = 1 - row * 0.16;        // back rows smaller → depth
+                  members.push(member(x, y, scale, winning ? winColor : neutral, winning, i));
+                }
+
+                // won-over defectors streaming up to the Spirit's home corner
+                let flyers = null;
+                if (unsureFx) {
+                  const homeHex = HEX_BY_NUM[CORNERS[spirits.find(s => s.id === unsureFx.spiritId)?.corner]?.homeNum];
+                  if (homeHex) {
+                    const hx = homeHex.px * SCALE, hy = homeHex.py * SCALE;
+                    const nFly = Math.min(unsureFx.n, 10);
+                    const arr = [];
+                    for (let k = 0; k < nFly; k++) {
+                      const sxk = centerX + (k - (nFly - 1) / 2) * colGap * 0.7;
+                      const syk = baseY - u * 0.4;
+                      const dx = hx - sxk, dy = hy - syk;
+                      arr.push(
+                        <g key={`fly-${unsureFx.key}-${k}`}
+                           style={{animation:'unsure-fly 1.5s ease-in-out both',
+                             animationDelay:`${(k * 0.05).toFixed(2)}s`,
+                             ['--tx']:`${dx.toFixed(1)}px`, ['--ty']:`${dy.toFixed(1)}px`}}>
+                          <g style={{transform:`translate(${sxk}px, ${syk}px)`}}>
+                            <g style={{transformBox:'fill-box', transformOrigin:'center',
+                              animation:'unsure-excited 0.4s ease-in-out infinite'}}>
+                              {fanPawnShape(0, 0, u * 1.3, winColor, true, 1.0, 1, 1, false, 'wave')}
+                            </g>
+                          </g>
+                        </g>
+                      );
+                    }
+                    flyers = <g>{arr}</g>;
+                  }
+                }
+
+                return (
+                  <g style={{pointerEvents:'none'}}>
+                    <defs>
+                      <linearGradient id="unsure-floor" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%"   stopColor="#140b26" stopOpacity={0}/>
+                        <stop offset="100%" stopColor="#140b26" stopOpacity={0.85}/>
+                      </linearGradient>
+                    </defs>
+                    {/* a soft floor so the row reads as a front-row audience */}
+                    <rect x={0} y={baseY - u * 2.4} width={SVG_W} height={u * 3.6} fill="url(#unsure-floor)"/>
+                    {members}
+                    {flyers}
+                    {shown > 0 && !unsureFx && (
+                      <text x={centerX} y={baseY + u * 1.0} textAnchor="middle" fontSize={HS * 0.32}
+                        fill={neutral} opacity={0.85} fontFamily="monospace"
+                        style={{filter:'drop-shadow(0 0 2px #000)'}}>
+                        ❓ {unsurePool} UNSURE — win them over centre-stage
+                      </text>
+                    )}
+                    {unsureFx && (
+                      <text x={centerX} y={baseY + u * 1.0} textAnchor="middle" fontSize={HS * 0.4} fontWeight="bold"
+                        fill={winColor} fontFamily="'Orbitron',sans-serif"
+                        style={{filter:`drop-shadow(0 0 5px ${winColor})`}}>
+                        🎉 WON OVER!
+                      </text>
+                    )}
+                  </g>
+                );
+              })()}
+            </svg>
+            {/* 🎇 Stage Effect activation marquee + active-effect status pills */}
+            <StageFXBanner banner={stageFxBanner} smokeFx={smokeFx} laserFx={laserFx}
+              pyroFx={pyroFx} animatronics={animatronics} />
+            {/* 🤘 Rock God descent marquee + HP / clock / telegraph warnings */}
+            <RockGodHUD god={rockGod} banner={godBanner} timer={bossTimer}
+              bossOutcome={bossOutcome} />
+          </div>
+        </div>
+
+        {/* Right panel removed — Crowd → header blip · Mod Cards → spirit card banner · Turn Order/Log dropped. */}
+      </div>
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

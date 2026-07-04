@@ -60,6 +60,7 @@ index.html
 | `audio/` | Web-Audio SFX and BGM track management. | ~240 |
 | `board/` | Board geometry, hex map, amp-rig graph, board helpers. | ~300 |
 | `data/` | Pure game data — spirits, corners, events, trivia, tuning constants. | ~2,280 |
+| `engine/` | 🎮 The multiplayer-ready game core (Phase 1 scaffold): plain-JSON `GameState`, `applyAction` reducer, seeded rng, snapshot/replay. See `MULTIPLAYER_HANDOFF.md`. | ~300 |
 | `hooks/` | Custom React hooks that own slices of `Game` state. | ~6 files |
 | `music/` | Music theory, riff library, cadence scoring, chord evaluation. | ~730 |
 | `riff/` | Riff generation engine (contours, rhythms, attacker/defender riffs) + falling-notes timing/difficulty (`fallingNotes.js`). | ~200 |
@@ -214,6 +215,17 @@ preview arrows).
 | `riffGeneration.js` | `generateRiffRhythm`, `speedUpRiffRhythm`, `RIFF_CONTOUR_LABELS`, `RIFF_ANSWER_LABELS`, `riffDegreesToNotes`, `generateAttackerRiff`, `generateDefenderRiff` | Riff-off note sequence generation. |
 | `fallingNotes.js` | `RIFF_FALL_DIFFICULTY`, `RIFF_FALL_DEFAULT`, `buildRiffTimeline`, `riffOkWindow`, `gradeRiffOffset` | Falling-notes (Guitar Hero) riff-off timing: difficulty presets (fall lead-time + grade windows), rhythm→hit-time timeline, |press−hitTime| grading. Pure module — **tune riff-off feel here.** |
 
+### `engine/` — the authoritative game core (in extraction)
+
+| File | Exports | Purpose |
+|------|---------|---------|
+| `rng.js` | `makeRng`, `restoreRng`, `hashSeed` | Seeded mulberry32 PRNG, serializable as `{seed, cursor}`; `fork(label)` per subsystem. Game rules must draw from this, never `Math.random()`. |
+| `state.js` | `makeInitialState` | Lobby config → plain-JSON `GameState`. Slices still `null` are React-owned until their phase lands. |
+| `actions.js` | `GAME_INIT`, creators | Serializable action types; grows per phase. |
+| `reduce.js` | `applyAction` | `(state, action, rng) → state`, the one door for rule changes; persists rng position into the returned state. |
+| `serialize.js` | `snapshot`, `restore`, `replay` | Save/load + action-log replay (determinism proof). |
+| `selftest.mjs` | — | Headless test: `node src/engine/selftest.mjs`. Extend each phase. |
+
 ### `tutorial/`
 
 | File | Exports | Purpose |
@@ -289,4 +301,24 @@ Each takes everything via props. They hold **no game logic**.
 | Amp range / chaining | `data/gameConstants.js` → `AMP_RANGE`, `AMP_LINK_DIST` |
 | Skill tree / upgrades | `SKILL_TREE`, `DISCORD_UPGRADE_TIERS`, `SWING_UPGRADE_TIERS` (main file, module-level) |
 | 🎇 Stage Effects (thresholds, damage, durations) | `data/stageEffects.js` (tuning) + `STAGE EFFECTS SYSTEM` in `Game` (logic) + `board/stageFx.js` (geometry) + `ui/StageFXLayer.jsx` (visuals). NOTE: the old skill-based stage effects (laser_show/stage_light/fog_machine/pyrotechnics) are RETIRED — `getBattleSkillMods` now returns permanently-false flags so downstream battle/overlay code stays inert. |
-| 🤘 Rock God boss (trigger margin, HP, timer, attacks, taunts) | `data/rockGods.js` (all tuning) + `ROCK GOD SYSTEM` in `Game` (engine) + `board/rockGodFx.js` (geometry) + `ui/RockGodLayer.jsx` (visuals). New gods: add a full def to `ROCK_GODS`, list it in `ROCK_GOD_IMPLEMEN
+| 🤘 Rock God boss (trigger margin, HP, timer, attacks, taunts) | `data/rockGods.js` (all tuning) + `ROCK GOD SYSTEM` in `Game` (engine) + `board/rockGodFx.js` (geometry) + `ui/RockGodLayer.jsx` (visuals). New gods: add a full def to `ROCK_GODS`, list it in `ROCK_GOD_IMPLEMENTED`, and extend `rockGodAct` with its attack ids. |
+| Event spaces | `data/events.js` + `EVENT SPACES SYSTEM` in `Game` |
+| Trivia questions | `data/trivia.js` |
+| Riff-off feel (length, timing window) | `RIFF_LEN`, `RIFF_NOTE_WINDOW` (main file, module-level) |
+| Board overlay: Commit Track | Main file, `RENDER` banner → search `COMMIT TRACK` |
+| Board overlay: Chord Stack | Main file, `RENDER` banner → search `CHORD STACK` |
+| Board overlay: Voicing Panel | Main file, `RENDER` banner → search `FLOATING VOICING PANEL` |
+| A specific overlay/modal's look | The matching file in `ui/` |
+| Tutorial content | `tutorial/content.jsx` |
+| Board map / hex layout | `board/hexMap.js`, `board/constants.js` |
+| CSS keyframes / global styles | `ui/GameStyles.jsx` |
+
+---
+
+## Conventions
+
+- **Navigate by banner comments, not line numbers** — lines shift with every edit.
+- **`Game` is still a "God component."** It holds most state, all system logic, async-combat refs, and the left/center render columns. The `hooks/` and `ui/` files are the seams; further reduction means moving *logic* (effects/handlers) into hooks.
+- **Filename case:** `App.jsx` imports `./rlsw-simulator-V3_8_1` while the file is lowercase `v3_8_1`. Line 7 imports `./groupie_fans.png` for a file named `.PNG`. Both work on case-insensitive filesystems but would break on Linux.
+- **No behavior was changed during extraction** — every module was moved verbatim with imports/exports wired and verified.
+- **Keep this file updated** — if you add a file, move a section, or create a new board overlay, update this doc before ending your session.

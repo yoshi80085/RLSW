@@ -67,4 +67,45 @@ export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId
               {rockGod && (
                 <div style={{fontSize:8,color:'#9a7ab5',marginBottom:8}}>
                   {godAlive
-                  
+                    ? <>HP <span style={{color:'#ffcc22'}}>{rockGod.hp}/{rockGod.maxHp}</span>
+                        {rockGod.winded ? ' · 😵 winded' : ''}{rockGod.telegraph ? ` · ⚠️ ${rockGod.telegraph.label} armed` : ''}</>
+                    : <>fight over — {bossOutcome === 'god' ? 'the God kept the crown' : 'the God fell'}</>}
+                </div>
+              )}
+
+              <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,margin:'12px 0 4px'}}>SIGNATURE SKILLS</div>
+              {Object.entries(SIGNATURE_TESTS).map(([sid, route]) => {
+                const inGame = spirits.some(s => s.id === sid);
+                const unlocked = noteStates[sid]?.unlockedSkills ?? [];
+                return (
+                  <div key={sid} style={{marginBottom:8,opacity:inGame?1:0.5}}>
+                    <div style={{fontSize:8,color:route.color,marginBottom:3}}>{route.name}{!inGame && ' (not in game)'}</div>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                      {route.skills.map(sk => {
+                        const on = unlocked.includes(sk.id);
+                        return (
+                          <button key={sk.id} disabled={!inGame}
+                            onClick={()=> sk.fire ? devFireSignature(sid, sk) : devUnlockSkill(sid, sk.id, sk.pre)}
+                            title={sk.fire === 'hydra' ? 'Unlock + deploy 3 amps' : (on ? 'Already unlocked' : 'Unlock')}
+                            style={{background: on && !sk.fire ? '#16331e' : '#0a0814',
+                              border:`1px solid ${on && !sk.fire ? '#44cc66' : (sk.fire ? route.color : '#4a2a60')}`,
+                              color: on && !sk.fire ? '#88ffaa' : (sk.fire ? route.color : '#d0c0e0'),
+                              borderRadius:5,fontSize:8.5,padding:'4px 7px',cursor:inGame?'pointer':'default',fontFamily:'inherit'}}>
+                            {sk.label}{sk.fire ? ' ▶' : (on ? ' ✓' : '')}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{fontSize:7,color:'#6a5a85',marginTop:11,lineHeight:1.45}}>
+                Add tests: a new entry in <span style={{color:'#cc99ff'}}>EVENT_DECK</span> auto-appears above; a new lever goes in <span style={{color:'#cc99ff'}}>devGrant</span>.
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+  </>);
+}

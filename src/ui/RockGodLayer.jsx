@@ -209,4 +209,44 @@ export function RockGodHUD({ god, banner, timer, bossOutcome }) {
               fontFamily: "'Share Tech Mono',monospace",
               animation: 'rockgod-clock-hot 0.9s ease-in-out infinite' }}>
               ⚠️ {god.telegraph.label} INCOMING — clear the glowing hexes!
-    
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function GodVictoryOverlay({ god, bossOutcome, spirits, noteStates, onReturnToLobby }) {
+  if (bossOutcome !== 'god' || !god) return null;
+  const def = ROCK_GODS[god.id];
+  const board = [...spirits]
+    .map(sp => ({ sp, fame: noteStates[sp.id]?.fame ?? 0 }))
+    .sort((a, b) => b.fame - a.fame);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#050200ee', zIndex: 9999,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18 }}>
+      <div style={{ fontSize: 64, filter: `drop-shadow(0 0 30px ${def.color})` }}>{def.icon}</div>
+      <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: 22, color: def.color,
+        letterSpacing: 5, textTransform: 'uppercase',
+        textShadow: `0 0 24px ${def.color}, 0 0 48px ${def.color}66` }}>
+        THE GODS KEEP THE CROWN
+      </div>
+      <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: 13, color: '#c8bfa8' }}>
+        {def.name} silences every Spirit on the stage. The Legend remains a myth.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+        {board.map(({ sp, fame }, i) => (
+          <div key={sp.id} style={{ fontSize: 11, color: i === 0 ? '#ffd700' : '#8a94a8',
+            fontFamily: "'Share Tech Mono',monospace" }}>
+            {i + 1}. {sp.name} — ⭐{fame}{i === 0 ? '  (closest to glory)' : ''}
+          </div>
+        ))}
+      </div>
+      <button className="btn" style={{ marginTop: 14, fontSize: 12, padding: '8px 22px',
+        borderColor: def.color, color: def.color }} onClick={onReturnToLobby}>
+        ⟵ BACK TO THE LOBBY
+      </button>
+    </div>
+  );
+}
