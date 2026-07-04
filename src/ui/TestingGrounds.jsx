@@ -4,7 +4,7 @@
 // =============================================================================
 import React from "react";
 
-export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId, devEventId, devFireEvent, devFireSignature, devGrant, devOpen, devUnlockSkill, noteStates, setDevEventId, setDevOpen, spiritById, spirits, testMode, devSummonGod, devHurtGod, devGodAct, rockGod, bossOutcome }) {
+export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId, devEventId, devFireEvent, devFireSignature, devGrant, devDamage, devOpen, devUnlockSkill, noteStates, setDevEventId, setDevOpen, spiritById, spirits, testMode, devSummonGod, devHurtGod, devGodAct, rockGod, bossOutcome }) {
   const godAlive = !!(rockGod && rockGod.hp > 0 && !bossOutcome);
   return (<>
       {testMode && (
@@ -39,6 +39,23 @@ export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId
                     style={{background:'#0a0814',border:'1px solid #4a2a60',color:'#d0c0e0',borderRadius:5,fontSize:9,padding:'5px 8px',cursor:'pointer',fontFamily:'inherit'}}>{lbl}</button>
                 ))}
               </div>
+
+              <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,margin:'12px 0 4px'}}>💥 DEAL DAMAGE</div>
+              <div style={{fontSize:7,color:'#6a5a85',marginBottom:5,lineHeight:1.4}}>Real combat damage — drives knockdown → respawn → KO → win.</div>
+              {spirits.map(s => {
+                const dead = !!s.knockedOut;
+                return (
+                  <div key={s.id} style={{display:'flex',alignItems:'center',gap:5,marginBottom:4,opacity:dead?0.45:1}}>
+                    <span style={{flex:1,fontSize:8.5,color:s.color ?? '#d0c0e0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {s.name} <span style={{color:'#7a6a95'}}>{dead ? 'KO’d' : `❤️${s.vibe}/${s.maxVibe}·${s.lives}L`}</span>
+                    </span>
+                    <button disabled={dead} onClick={()=>devDamage(s.id, 3)} title="Deal 3 Vibe damage"
+                      style={{background:'#0a0814',border:'1px solid #4a2a60',color:dead?'#6a5a85':'#ff8899',borderRadius:5,fontSize:9,padding:'4px 7px',cursor:dead?'default':'pointer',fontFamily:'inherit'}}>−3</button>
+                    <button disabled={dead} onClick={()=>devDamage(s.id, 'ko')} title="Zero their Vibe — instant knockdown (spends a life)"
+                      style={{background:'#0a0814',border:`1px solid ${dead?'#4a2a60':'#cc3344'}`,color:dead?'#6a5a85':'#ff5566',borderRadius:5,fontSize:9,padding:'4px 7px',cursor:dead?'default':'pointer',fontFamily:'inherit'}}>💀</button>
+                  </div>
+                );
+              })}
 
               <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,margin:'12px 0 4px'}}>🤘 ROCK GOD (BOSS)</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:4}}>

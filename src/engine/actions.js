@@ -26,7 +26,10 @@ export const RIFF_RESOLVED          = "RIFF_RESOLVED";
 export const RIFF_ROUND2_STARTED    = "RIFF_ROUND2_STARTED";
 export const RIFF_CLOSED            = "RIFF_CLOSED";
 
-// Phase 3 (combat):           SWING, SONIC_ATTACK, SMASH, ROLL_RESOLVED, …
+// ── Phase 3b: combat rolls ──────────────────────────────────────────────────
+export const ATTACK_ROLLED = "ATTACK_ROLLED";
+
+// Phase 3 (combat, remaining):  DAMAGE_APPLIED, KNOCKBACK_MOVED, KNOCKED_OUT, RETALIATION_*
 // Phase 5 (economy/skills):   COMMIT_TRACK, VOICE_CHORD, PLAY_MOD_CARD, …
 // Phase 6 (events/FX/god):    EVENT_DRAWN, STAGE_FX_TICK, GOD_ATTACK, …
 
@@ -115,4 +118,30 @@ export function riffRound2Started() {
 /** The duel is over (or aborted) — clear the battle slice. */
 export function riffClosed() {
   return { type: RIFF_CLOSED };
+}
+
+/**
+ * Phase 3b — an attack's dice are rolled in the engine (seeded rng) and the
+ * verdict (rolls + margin + damage) is stored in `state.battle`. The client
+ * pre-computes the stat modifiers (they read `noteStates`, which joins the
+ * engine in Phase 5) and passes them as payload; the spin overlay then just
+ * displays the already-decided face. Shared by the human and bot swing paths.
+ *
+ * @param {"swing"} kind          attack type (only 'swing' in this pass)
+ * @param {object}  p
+ * @param {number}  p.atkStat         attacker's pre-roll total (chord+edge+mods)
+ * @param {number}  p.defStat         defender's pre-roll total
+ * @param {boolean} [p.posing]        defender is posing → rolls no die (0)
+ * @param {boolean} [p.halveDef]      Laser Show → defender's die halved (min 1)
+ * @param {boolean} [p.psychoEligible] attacker owns Psycho Bushido (5/6 → def die → 1)
+ * @param {number[]} [p.dicePool]     SONIC keep-highest pool of die sizes
+ *                                     (e.g. [6,6], [6,6,8], [8,8,8]); omit for a
+ *                                     plain swing (single d6).
+ */
+export function attackRolled(kind, attackerId, defenderId,
+  { atkStat, defStat, posing = false, halveDef = false, psychoEligible = false, dicePool = null }) {
+  return {
+    type: ATTACK_ROLLED, kind, attackerId, defenderId,
+    atkStat, defStat, posing, halveDef, psychoEligible, dicePool,
+  };
 }

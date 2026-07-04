@@ -127,6 +127,82 @@ actions later), skip-intro prefs, `riffView`/`riffDifficulty`.
 Phases 2–4 are the heart; if budget runs short, stopping after any green phase
 still leaves the repo better than today.
 
+## 5b. Phase 3 (combat) — surgical plan, pre-analyzed
+
+Written by the session that landed Phases 1/2/4, after mapping the combat
+code. Execute in order; each sub-phase ends green (game plays identically).
+Combat is a WEB of setTimeout cinematics — the iron rule: **a cinematic waits,
+then dispatches; the reducer never waits.** All `Math.random()` in rolls/spins
+becomes engine rng; dice *animation* faces stay client.
+
+Function map (navigate by name, not line): `marginToDamage`, `awardFame`,
+`knockbackSpaces`, `battleKnockback`, `applyVibeDamage`, `resolveWinDamage`,
+`initiateSwing` (~1 AP jab), `resolveSmash` (all-in), `initiateSonicAttack`
+(amp-scaled dice), the retaliation chain (`retaliation_prompt/spin/settling/
+result` phases + `retaliationTimer` countdown + `ownsCQC` gate +
+`retaliationBlocked` for unplugged targets), `applyKnockOut`/respawn, and the
+`checkWinner` boss-aware win check.
+
+- **3a — damage & fame math (pure, no wiring risk).** ☑ DONE. `marginToDamage`,
+  `fameFromMargin`, `knockbackSpaces`, `underdogBonus` now live in
+  `engine/systems/combat.js`; main imports them (same trick as `riffStats`),
+  local defs deleted. `underdogBonus` is pure over the two Fame totals — the
+  `!loserId`/self guard + `noteStates` reads stay in `Game`'s thin wrapper. No
+  actions yet. selftest covers the tables + an exact regression grid vs the old
+  `Game` math.
+- **3b — rolls as actions. ☑ COMPLETE (swing d6 + sonic keep-highest as
+  `ATTACK_ROLLED`; smash as pure `smashOutcome`).** `ATTACK_ROLLED { kind, attackerId, defenderId,
+  atkStat, defStat, posing, halveDef, psychoEligible }` → engine rolls via rng,
+  stores the verdict in `state.battle` (`atkRoll/defRoll/atkTotal/defTotal/
+  attackerWon/margin/damage/psychoBushido`). The spin overlay reads the
+  already-decided face; timing stays client. Bot + human paths share it (both
+  go through `initiateSwing`). ◑ **SWING done** (owner-chosen incremental
+  checkpoint): `applyAttackRolled` in `systems/combat.js`; `initiateSwing`
+  dispatches it and reads the verdict off the synchronous `dispatch` return; the
+  client still pre-computes `atkStat`/`defStat` (they read `noteStates`, Phase
+  5) and passes the mod flags. selftest covers determinism, posing, Laser halve,
+  Psycho Bushido, and an exact verdict-regression vs the old `Game` math.
+  ◑ **SONIC done** too: `applyAttackRolled` takes an optional `dicePool` — when
+  present it rolls each die and KEEPS THE HIGHEST (records `diceVals`+`keptIdx`
+  for the overlay), else a single swing d6. `initiateSonicAttack` computes the
+  amp-scaled pool client-side (`sonicDicePool`, still reads amp/skill state) and
+  dispatches it; defender d6 / posing / Laser are the shared path. selftest adds
+  keep-highest correctness across [6,6]/[6,6,6]/[6,6,8]/[8,8,8], the 3d8-beats-d6
+  case, and a sonic verdict regression. ☑ **SMASH done** — the Smash has NO dice
+  roll, so it's a pure-math extraction (not an rng action): `smashOutcome(thrown,
+  {roninSmasher, roninTarget}) → {damage, knockback, scatterN}` in
+  `systems/combat.js`, used by both `resolveSmash` and `resolveBlasterOfRa`
+  (single source, kills their formula-drift risk). selftest = exact regression
+  grid over thrown 2–14 × Ronin flags + caps + Blaster parity. **3b COMPLETE.**
+- **3c — damage/knockback/KO as actions.** `DAMAGE_APPLIED`, `KNOCKBACK_MOVED
+  { path }`, `KNOCKED_OUT`, `RESPAWNED`, `WINNER_DECLARED`. Engine owns spirit
+  vibe/lives/knockedOut — this is the moment the Phase-2 `SPIRITS_SYNCED`
+  bridge dies. Remove every `spiritsSynced` dispatch and the ref mirrors that
+  only served combat (`spiritsRef`, `battleStateRef` reads inside rules).
+  Biggest sub-phase; do swing first, then sonic, then smash, green after each.
+  ◑ **KERNELS DONE** (owner-chosen: pure cores first, no ownership flip yet):
+  `decideWinner` (boss-aware win check) + `resolveKnockdown` (respawn/KO
+  transform) extracted to `systems/combat.js` and wired single-source into
+  `knockOut.checkWinner`, `knockOut.applyKnockOut`, and `applyVibeDamage`'s
+  inline respawn. selftest covers both; game plays identically. **STILL TO DO —
+  the ownership flip:** make the engine `spirits` the source of truth (client
+  reads `engineState.spirits` everywhere, ~25 `setSpirits` sites incl. non-combat
+  become dispatches), add `DAMAGE_APPLIED/KNOCKED_OUT/RESPAWNED/WINNER_DECLARED`
+  actions that mutate engine spirits, and delete the `spiritsSynced` bridge. This
+  is a big-bang best done in a session that can RUN the app (build + test the
+  flip as it lands), not compile-check only — see the note below.
+- **3d — retaliation chain.** `RETALIATION_OFFERED/ROLLED/EXPIRED` actions;
+  the ’prompt→spin→settling→result’ phases become engine `battle.phase`
+  transitions; the countdown timer stays client and dispatches EXPIRED.
+- **3e — riff-off damage hookup.** `closeRiffOff` currently applies damage
+  client-side from the Phase-4 verdict; route it through the same 3c actions
+  and delete `marginToDamage` double-call drift risk.
+
+Landmine: `resolveWinDamage`/`battleKnockback` fire inside timeout chains that
+read `battleStateRef`/`spiritsRef` — port them to read the engine state
+snapshot returned by `dispatch` instead (the Phase-2 `dispatch` already
+returns next state synchronously for exactly this).
+
 ## 6. First-session kickoff checklist
 
 1. Confirm the working tree is committed (owner does this).
@@ -138,7 +214,7 @@ still leaves the repo better than today.
 |---|---|
 | 1. Scaffold + RNG | ☑ engine/ created (state, actions, rng, reduce, serialize + selftest.mjs); `Game` holds `engineState`; selftest green, engine lint clean. Owner: smoke-test + commit from Windows. |
 | 2. Turn & movement | ☑ engine owns turnQueue/beats/facing/limelight-flags/counters via 10 actions; `Game` wired through `dispatch` (24 call sites); `spiritsSynced` bridge until Phase 3; selftest extended, `/tmp` esbuild compile green. TIP: `git show HEAD:path` beats the stale mount for reading true file bytes; verify main-file edits by replaying the same string replacements onto a `/tmp` copy and compiling with `npx esbuild --loader:.jsx=jsx`. |
-| 3. Combat | ☐ |
+| 3. Combat | ◑ **3a + 3b COMPLETE, 3c kernels done** — pure combat math (`marginToDamage`, `fameFromMargin`, `knockbackSpaces`, `underdogBonus`) extracted to `engine/systems/combat.js`; `Game` imports all four (locals deleted; `underdogBonus` now takes the two Fame totals, keeping the spirit-identity guard in `Game`). selftest extended (bands, sonic caps, underdog ramp + exact regression grid vs old math) — full suite green; engine lint clean; HEAD+edits esbuild-compile clean. **3b complete** — swing (d6) + sonic (keep-highest `dicePool`) via `ATTACK_ROLLED`/`applyAttackRolled` on engine rng; smash via pure `smashOutcome` (no roll), shared by `resolveSmash` + `resolveBlasterOfRa`. Human + bot share all three. selftest + esbuild + engine lint green. **3c kernels done** — `decideWinner` + `resolveKnockdown` extracted (pure, single-source) and wired into the win-check + respawn/KO paths; game identical. selftest + esbuild + engine lint green. **Remaining:** the 3c ownership flip (engine `spirits` becomes source of truth, `DAMAGE_APPLIED/KNOCKED_OUT/...` actions, kill `spiritsSynced`) — a big-bang across ~25 sites best done where the app can be RUN — then 3d retaliation + 3e riff-off damage hookup. Owner: `npm run dev` smoke-test + commit from Windows. |
 | 4. Riff-off | ☑ done BEFORE Phase 3 (cleanest seam, budget call). Engine owns riff generation (rng threaded through `riff/riffGeneration.js` via optional `rand` param), Riff Slayer glitch sets, E-Rush ghosts, results submission, verdict math incl. Round-2 sudden-death fallback (`systems/riffOff.js`). Client submits `[{hit, rt, grade, noteIdx}]` per performer — the exact networked flow. Timing/gems/beam cinematics stay client. `riffStats` + scoring constants moved to engine; main imports `riffStats` from there. Damage application still client (waits on Phase 3). |
 | 5. Economy & skills | ☐ |
 | 6. Events / FX / Rock God | ☐ |

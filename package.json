@@ -6,6 +6,7 @@
   "homepage": "https://yoshi80085.github.io/RLSW",
   "scripts": {
     "dev": "vite",
+    "test:engine": "node src/engine/selftest.mjs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",

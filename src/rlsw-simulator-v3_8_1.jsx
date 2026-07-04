@@ -39,7 +39,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import React from "react";
 import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
 import { ampLinked, ampMstEdges, computeAmpRigs } from "./board/ampRigs.js";
-import { cornerFacing, makeBoardToken, hexRingFromCenter, crowdMultiplier, advanceHC } from "./board/boardHelpers.js";
+import { makeBoardToken, hexRingFromCenter, crowdMultiplier, advanceHC } from "./board/boardHelpers.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRiffMiss, playBeamClash, playBeamSurge, playBeamBreak, playFanPop } from "./audio/riffSfx.js";
 import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./riff/riffGeneration.js";
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset } from "./riff/fallingNotes.js";
@@ -55,8 +55,9 @@ import { hexInSmoke, hexInBeams, rollLaserBeams, rollPyroHexes, spawnAnimatronic
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
+import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, resolveKnockdown } from "./engine/systems/combat.js";
 
 
 // 🎟️ A fan = a sleek "pawn": a detached round head above a rounded-triangle body.
@@ -238,7 +239,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
 
 import { NOTE_POOL, ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, semitonesUp, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, UNDERDOG_MIN_DEFICIT, UNDERDOG_DEFICIT_PER_STEP, UNDERDOG_MAX_MULT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_HC_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_HC_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE } from "./data/gameConstants.js";
+import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_HC_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_HC_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -4233,6 +4234,20 @@ function Game({ gameState, onReturnToLobby }) {
     else if (kind === 'fp')  { grantFame(id, 3, '🧪 test grant', false); }
   }
 
+  // 🧪💥 Deal REAL combat damage to any spirit — routes through applyVibeDamage so
+  // it exercises the full knockdown → respawn (resolveKnockdown) → KO → win
+  // (decideWinner) chain the way a battle would. `amount` is a number, or 'ko' to
+  // zero their current Vibe for an instant knockdown (spends one life per click).
+  function devDamage(targetId, amount) {
+    const t = spiritById[targetId];
+    if (!t || t.knockedOut) { addLog('🧪 Nothing to hit there.'); return; }
+    const dmg = amount === 'ko' ? Math.max(1, t.vibe ?? 1) : amount;
+    addLog(`🧪 TEST → ${dmg} damage to ${t.name}${amount === 'ko' ? ' (instant knockdown)' : ''}.`);
+    // attacker = acting spirit (drives Azrael/moshpit hooks realistically); a
+    // self-hit is fine — those hooks already guard attacker !== target.
+    applyVibeDamage(targetId, dmg, '🧪 test damage', devCurrentSpiritId());
+  }
+
   // 🧪🤘 ROCK GOD test levers — summon the boss on demand (skipping the Fame
   // trigger entirely) and poke his HP to exercise the winded/kill flows.
   function devSummonGod() {
@@ -4323,14 +4338,10 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── BATTLE SYSTEM ───────────────────────────────────────────────────────────
 
-  // Damage table: margin → Vibe damage (softened — wider bands, lower ceiling)
-  function marginToDamage(margin) {
-    if (margin <= 3)  return 1;
-    if (margin <= 6)  return 2;
-    if (margin <= 9)  return 3;
-    if (margin <= 12) return 4;
-    return 5;
-  }
+  // Damage table (margin → Vibe damage), knockback distance, and the Fame
+  // tables now live in the engine — src/engine/systems/combat.js (Phase 3a).
+  // marginToDamage / fameFromMargin / knockbackSpaces / underdogBonus are
+  // imported at the top of this file (single source of truth for the tables).
 
   // ─── 🎇 STAGE EFFECTS SYSTEM ─────────────────────────────────────────────────
   // The production escalates with the show: the FIRST time ANY Spirit crosses
@@ -4757,12 +4768,10 @@ function Game({ gameState, onReturnToLobby }) {
   }, [bossTimerExpired]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── FAME POINTS ──────────────────────────────────────────────────────────────
-  // Winning a battle earns Fame. Bigger margins, bigger legend.
-  function fameFromMargin(margin) {
-    if (margin <= 3) return 1;
-    if (margin <= 6) return 2;
-    return 3;
-  }
+  // Winning a battle earns Fame. Bigger margins, bigger legend. fameFromMargin
+  // (and the underdog ramp math) now live in the engine —
+  // src/engine/systems/combat.js (Phase 3a); imported at the top of this file.
+
   // Core Fame grant — every FP in the game flows through here.
   // Hitting FAME_TO_WIN triggers the Fame Legend victory.
   function grantFame(spiritId, fp, reason, amplify = true) {
@@ -4808,20 +4817,13 @@ function Game({ gameState, onReturnToLobby }) {
   // band: it only rewards punching UP (beating someone ahead of you), it scales
   // with the gap you're climbing out of, and it's capped so a single win closes
   // the gap rather than inverting it — you still have to keep performing to pass them.
+  // Spirit-identity guard stays here (Game owns spirit/noteStates); the ramp
+  // math delegates to the engine (src/engine/systems/combat.js, Phase 3a).
   function underdogBonus(winnerId, loserId, baseFp) {
     if (!loserId || winnerId === loserId) return { fp: baseFp, deficit: 0, mult: 1 };
     const wFame = noteStates[winnerId]?.fame ?? 0;
     const lFame = noteStates[loserId]?.fame ?? 0;
-    const deficit = lFame - wFame;                 // how far the winner was trailing the loser
-    if (deficit < UNDERDOG_MIN_DEFICIT) return { fp: baseFp, deficit: 0, mult: 1 };
-    // Ramp the multiplier with the deficit, capped. e.g. 6→×1.5, 12→×2, 18+→×2.5.
-    const mult = Math.min(UNDERDOG_MAX_MULT, 1 + (deficit / UNDERDOG_DEFICIT_PER_STEP) * 0.5);
-    let fp = Math.round(baseFp * mult);
-    // Safety band: never let one comeback win vault the winner clean PAST the
-    // loser — close the gap to at most level, leaving the lead to be earned.
-    const maxFp = Math.max(baseFp, deficit);
-    fp = Math.min(fp, maxFp);
-    return { fp, deficit, mult };
+    return engineUnderdogBonus(wFame, lFame, baseFp);
   }
   function awardFame(spiritId, margin, loserId) {
     const base = fameFromMargin(margin);
@@ -5019,10 +5021,8 @@ function Game({ gameState, onReturnToLobby }) {
   // The loser is sent skidding away from the winner, one hex at a time
   // (animated steps). Stops early at occupied hexes or the stage edge.
   // Swing defeats: 1 hex. Sonic defeats: margin 1-2 = 1, 3-4 = 2, 5+ = 3.
-  function knockbackSpaces(bs, margin) {
-    const m = margin ?? bs?.margin ?? 1;
-    return bs?.sonicAttack ? Math.min(3, Math.max(1, Math.ceil(m / 2))) : 1;
-  }
+  // knockbackSpaces now lives in the engine — src/engine/systems/combat.js
+  // (Phase 3a); imported at the top of this file.
   function battleKnockback(fromId, targetId, spaces) {
     const fromSp = spirits.find(s => s.id === fromId);
     const target = spirits.find(s => s.id === targetId);
@@ -5235,9 +5235,8 @@ function Game({ gameState, onReturnToLobby }) {
           setTimeout(() => knockOut(targetId, null, undefined), 200);
           return prev;
         }
-        // Respawn at corner with full Vibe
-        const homeNum = tgt.corner ? CORNERS[tgt.corner]?.homeNum : tgt.num;
-        const newFacing = tgt.corner ? cornerFacing(homeNum) : tgt.facing;
+        // Respawn at corner with full Vibe — position/facing/vibe via the engine
+        // resolveKnockdown kernel (Phase 3c); applied in the return below.
         // Knock Down penalty: lose 1 FP (never below 0). The Spirit gets straight
         // back up in their home corner with full Vibe — no turn is skipped.
         // 💀 AZRAEL — if MetalNess himself is downed, his streak resets to zero.
@@ -5254,9 +5253,7 @@ function Game({ gameState, onReturnToLobby }) {
         // Flash respawn
         setRespawnFlashes(rf => ({ ...rf, [targetId]: true }));
         setTimeout(() => setRespawnFlashes(rf => ({ ...rf, [targetId]: false })), 1200);
-        return prev.map(s => s.id !== targetId ? s : {
-          ...s, lives: newLives, num: homeNum, facing: newFacing, vibe: s.maxVibe,
-        });
+        return prev.map(s => s.id !== targetId ? s : resolveKnockdown(tgt).next);
       });
     }, 80);
   }
@@ -5400,28 +5397,26 @@ function Game({ gameState, onReturnToLobby }) {
     const defStat  = defBase + defBonus;
     const defenderPosing = posing[targetId];
 
-    // Pre-roll dice (d6 — matches the d6 die faces shown in the overlay)
-    const atkRoll = randD6();
-    const rawDefRoll = defenderPosing ? 0 : randD6();
-    let defRoll = defenderPosing ? 0
-      : skillMods.halveDef ? Math.max(1, Math.floor(rawDefRoll / 2)) : rawDefRoll;
+    // 🎲 Roll the swing on the engine's seeded rng (Phase 3b). The client passes
+    // the pre-computed stats + mod flags (they read noteStates — Phase 5); the
+    // engine owns the dice + verdict. `atkStat`/`defStat` already bake in fog's
+    // -1 Sustain, edge mods, junkyard, etc. The spin overlay below just displays
+    // the already-decided faces (battle.atkRoll / battle.defRoll).
+    const rollState = dispatch(attackRolled('swing', attacker.id, targetId, {
+      atkStat, defStat,
+      posing: defenderPosing,
+      halveDef: skillMods.halveDef,
+      psychoEligible: (nsA.unlockedSkills ?? []).includes('psycho_bushido'),
+    }));
+    const {
+      atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, damage, psychoBushido,
+    } = rollState.battle;
 
-    // 🌀 PSYCHO BUSHIDO (Shredding Ronin) — attacker-only. A blistering 5 or 6
-    // stuns the rival into giving up: their die collapses to a 1.
-    const psychoBushido = (nsA.unlockedSkills ?? []).includes('psycho_bushido')
-      && !defenderPosing && atkRoll >= 5;
+    // 🌀 PSYCHO BUSHIDO (Shredding Ronin) — a blistering 5 or 6 stuns the rival
+    // into folding: the engine already dropped their die to 1; announce it.
     if (psychoBushido) {
-      defRoll = 1;
       addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} explodes with a ${atkRoll} — ${defender.name} is stunned by the pure speed and folds. Their die drops to a 1!`);
     }
-
-    // NOTE: fog's -1 Sustain is already baked into defBase above — do NOT
-    // subtract it again here (it used to, making the displayed equation off by 1)
-    const atkTotal = atkStat + atkRoll;
-    const defTotal = defenderPosing ? 0 : defStat + defRoll;
-    const attackerWon = atkTotal > defTotal;
-    const margin = Math.abs(atkTotal - defTotal);
-    const damage = marginToDamage(margin);
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on a dropped instrument — Drive -1!`);
     addLog(`⚔️ ${attacker.name} SWINGS at ${defender.name}!${defenderPosing ? ' — caught posing!' : ''}`);
@@ -5569,10 +5564,8 @@ function Game({ gameState, onReturnToLobby }) {
     // stock — his carefully arranged arsenal blown across the board.
     const roninSmasher = acting.id === 'cosmic_ronin';
     const roninTarget  = target.id === 'cosmic_ronin';
-    const baseDmg   = Math.min(5, Math.max(1, Math.ceil(thrown / 2)));
-    const damage    = roninSmasher ? Math.max(1, Math.floor(baseDmg / 2)) : baseDmg;
-    const knockback = Math.min(3, Math.ceil(thrown / 3));
-    const scatterN  = Math.floor(thrown / 2) * (roninTarget ? 2 : 1);
+    // 🎸💥 Smash outcome is deterministic (no roll) — pure math in the engine (Phase 3b).
+    const { damage, knockback, scatterN } = smashOutcome(thrown, { roninSmasher, roninTarget });
 
     // You hurl ALL your unused stock and go Exposed.
     setNoteField(acting.id, {
@@ -5620,9 +5613,9 @@ function Game({ gameState, onReturnToLobby }) {
     dispatch(beatsSpent(0, true, { all: true }));
     setAction(null);
 
-    const damage      = Math.min(5, Math.max(1, Math.ceil(thrown / 2)));
-    const knockback   = Math.min(3, Math.ceil(thrown / 3));
-    const scatterEach = Math.floor(thrown / 2);
+    // 🌀 Same fuel/formula as the Smash — single source (Phase 3b). Base values
+    // (non-Ronin); per-target Ronin ×2 scatter is applied in the loop below.
+    const { damage, knockback, scatterN: scatterEach } = smashOutcome(thrown);
 
     // Hurl ALL unused stock down the beam; ride the recoil into Exposed.
     setNoteField(acting.id, { usedStockIdx: new Set([...used, ...unusedIdxs]), smashExposed: true });
@@ -5785,23 +5778,23 @@ function Game({ gameState, onReturnToLobby }) {
 
     // Roll — attacker rolls a KEEP-HIGHEST pool from amps; defender uses a flat d6.
     // 🐉 HYDRA (Shredding Ronin capstone) — at 3 amps the rig overdrives to 3d8.
+    // The pool sizing stays client (reads amp/skill state); the DICE roll on the
+    // engine's seeded rng (Phase 3b) — keep-highest + defender d6 + verdict.
     const hasHydra    = atkSkills.includes('hydra');
     const hydraActive = ampCount === 3 && hasHydra;
     const dicePool    = sonicDicePool(ampCount, hasHydra);
     const diceLabel   = dicePoolLabel(dicePool);
-    const diceVals    = dicePool.map(s => Math.floor(Math.random() * s) + 1);
-    const atkRoll     = Math.max(...diceVals);
-    const keptIdx     = diceVals.indexOf(atkRoll);
     const dieSides    = Math.max(...dicePool); // fallback for single-die animation paths
+    const rollState = dispatch(attackRolled('sonic', attacker.id, targetId, {
+      atkStat, defStat,
+      posing: defenderPosing,
+      halveDef: skillMods.halveDef,
+      dicePool,
+    }));
+    const {
+      atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, damage, diceVals, keptIdx,
+    } = rollState.battle;
     if (hydraActive) addLog(`🐉 HYDRA AWAKENS! ${attacker.name} overdrives the rig — ${diceLabel}, keep best [${diceVals.join(', ')}] → ${atkRoll}, three beams scream out!`);
-    const rawDefRoll = defenderPosing ? 0 : randD6();
-    const defRoll  = defenderPosing ? 0
-      : skillMods.halveDef ? Math.max(1, Math.floor(rawDefRoll / 2)) : rawDefRoll;
-    const atkTotal = atkStat + atkRoll;
-    const defTotal = defenderPosing ? 0 : defStat + defRoll;
-    const attackerWon = atkTotal > defTotal;
-    const margin  = Math.abs(atkTotal - defTotal);
-    const damage  = marginToDamage(margin);
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on dropped instrument — Drive -1!`);
     addLog(`🔊 ${attacker.name} launches SONIC ATTACK at ${defender.name}! (${diceLabel} keep best — ${ampCount} amp${ampCount > 1 ? 's' : ''})${retaliationBlocked ? ' — UNPLUGGED TARGET CANNOT RETALIATE!' : ''}`);
@@ -7641,30 +7634,21 @@ function Game({ gameState, onReturnToLobby }) {
     const willRespawn = livesLeft > 0;
 
     function applyKnockOut(p) {
-      if (willRespawn) {
-        const homeNum = tgt.corner ? CORNERS[tgt.corner]?.homeNum : tgt.num;
-        const newFacing = tgt.corner ? cornerFacing(homeNum) : tgt.facing;
-        return p.map(s => s.id !== tgtId ? s : {
-          ...s, lives: livesLeft, num: homeNum, facing: newFacing,
-          vibe: s.maxVibe,
-        });
-      }
-      return p.map(s => s.id === tgtId ? { ...s, lives: 0, knockedOut: true } : s);
+      // 💥 Respawn/KO transform is the engine's resolveKnockdown kernel (Phase 3c).
+      return p.map(s => s.id !== tgtId ? s : resolveKnockdown(tgt).next);
     }
 
     function checkWinner(updated) {
-      const survivors = updated.filter(s => !s.knockedOut);
-      // 🤘 Boss fight: last-Spirit-standing does NOT win — the God must fall.
-      // Only a total wipe resolves it, and the God keeps the crown.
+      // 🏆 The boss-aware decision now lives in the engine (Phase 3c kernel);
+      // the client just runs the resulting timers.
+      const { winnerId, godTriumphs: godWins } = decideWinner(updated, {
+        godSummoned: godSummonedRef.current, hasWinner: !!winner, attackerId: atkId,
+      });
       if (godSummonedRef.current && !winner) {
-        if (survivors.length === 0) setTimeout(() => godTriumphs(), 400);
+        if (godWins) setTimeout(() => godTriumphs(), 400);
         return;
       }
-      if (survivors.length === 1) setTimeout(() => setWinner(survivors[0].id), 0);
-      else if (survivors.length === 0 && atkId) {
-        const atk = updated.find(s => s.id === atkId && !s.knockedOut);
-        if (atk) setTimeout(() => setWinner(atk.id), 0);
-      }
+      if (winnerId) setTimeout(() => setWinner(winnerId), 0);
     }
 
     if (tgt) {
@@ -8529,6 +8513,7 @@ function Game({ gameState, onReturnToLobby }) {
         devFireEvent={devFireEvent}
         devFireSignature={devFireSignature}
         devGrant={devGrant}
+        devDamage={devDamage}
         devOpen={devOpen}
         devUnlockSkill={devUnlockSkill}
         noteStates={noteStates}

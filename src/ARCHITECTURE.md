@@ -226,6 +226,7 @@ preview arrows).
 | `serialize.js` | `snapshot`, `restore`, `replay` | Save/load + action-log replay (determinism proof). |
 | `systems/turn.js` | `applyTurnStarted/Ended/Skipped`, `applyMoveBudgetSet`, `applyBeatsSpent`, `applySpiritEliminated`, `applySpiritsSynced` | 🎯 Phase 2: turn queue, beats/AP, limelight-start flags, turn/round counters. `TURN_ENDED` returns a `lastReport` the client uses to run not-yet-extracted ticks. |
 | `systems/movement.js` | `applyMoveStep`, `applySpiritFaced`, `applySpiritWarped` | 🎯 Phase 2: movement + facing rules incl. the dazed 33% redirect (engine rng). |
+| `systems/combat.js` | `marginToDamage`, `fameFromMargin`, `knockbackSpaces`, `underdogBonus`, `smashOutcome`, `decideWinner`, `resolveKnockdown`, `applyAttackRolled` | 🥊 Phase 3a: the pure combat MATH (damage/knockback/Fame tables + underdog ramp) — `Game` imports these (single source, like `riffStats`); `underdogBonus` takes the two resolved Fame totals so it stays pure. 🥊 Phase 3b: `applyAttackRolled` — `ATTACK_ROLLED` rolls the SWING dice on engine rng and stores the verdict in `state.battle` (`{kind:'attack', attackKind:'swing', atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, damage, psychoBushido}`). The client passes pre-computed `atkStat`/`defStat` + mod flags (posing/halveDef/psychoEligible — they read `noteStates`, Phase 5); the spin overlay displays the decided face. Sonic uses the same action with an optional `dicePool` (keep-highest, amp-scaled — records `diceVals`/`keptIdx`). The Smash has NO roll — `smashOutcome(thrown, {roninSmasher, roninTarget}) → {damage, knockback, scatterN}` is pure deterministic math (like the 3a tables), shared by `resolveSmash` and `resolveBlasterOfRa`. 🏆 Phase 3c (kernels): `decideWinner(spirits, {godSummoned, attackerId, hasWinner})` (boss-aware win check, from `knockOut.checkWinner`) and `resolveKnockdown(spirit, corners)` (respawn-to-home / KO transform, shared by `knockOut` + `applyVibeDamage`). Pure, wired single-source; the cinematics/state-application stay client. The full spirit-ownership flip (DAMAGE_APPLIED/KNOCKED_OUT actions, killing `spiritsSynced`) is the remaining 3c work. |
 | `systems/riffOff.js` | `applyRiffOffStarted/ResultsSubmitted/Resolved/Round2Started/Closed`, `riffStats`, `RIFF_GRADE_WEIGHT/MARGIN_SCALE/TIE_EPS` | 🎸 Phase 4: riff data + verdict. Generates riffs/glitches/ghosts on engine rng; clients submit results arrays; verdict math incl. Round-2 fallback. `Game` imports `riffStats` from here (single source of truth). |
 | `selftest.mjs` | — | Headless test: `node src/engine/selftest.mjs`. Extend each phase. |
 
@@ -287,6 +288,7 @@ Each takes everything via props. They hold **no game logic**.
 
 | I want to change… | Go to |
 |---|---|
+| Combat damage / knockback / Fame tables (margin→dmg, underdog ramp) | `engine/systems/combat.js` (Phase 3a — single source; `Game` imports them) |
 | Character stats / balance | `data/spirits.js` |
 | Gameplay tuning constants (fan caps, amp range, fame target, etc.) | `data/gameConstants.js` |
 | Win conditions (fame target, limelight turns) | `data/gameConstants.js` → `FAME_TO_WIN`, `LIMELIGHT_TO_WIN` |
