@@ -25,6 +25,7 @@ import { pitchIndex } from "../music/notes.js";
 import { detectMotifRepeat } from "../music/cadence.js";
 import { CORNERS } from "../data/corners.js";
 import { pickGodAttack, godTauntLine, pickRockGod, ROCK_GODS } from "../data/rockGods.js";
+import { shuffledStageFxDeck, STAGE_FX_IDS } from "../data/stageEffects.js";
 import {
   LIMELIGHT_HEX, UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT,
 } from "../data/gameConstants.js";
@@ -970,6 +971,37 @@ const config = {
   assert.equal(pickRockGod({ livesLost: 10 }), "bardbarian",
     "Glam Reaper would score highest but isn't implemented → Bardbarian fallback");
   assert.equal(pickRockGod({}), "bardbarian", "empty profile → default Bardbarian");
+}
+
+// -- Phase 6b prep: stage-FX deck shuffle determinism -------------------------
+// shuffledStageFxDeck now takes an injectable `rand` (default Math.random). At
+// the 6b flip the engine builds the deck once on the seeded rng so its order is
+// replay-deterministic GameState instead of a per-client draw. Lock: exact
+// Fisher-Yates output for two controlled rands, permutation invariants, and
+// determinism.
+{
+  const IDS = STAGE_FX_IDS;   // [smoke_machine, laser_show, pyrotechnics, animatronics]
+
+  // exact Fisher-Yates results for the two boundary rands
+  assert.deepEqual(shuffledStageFxDeck(() => 0),
+    ["laser_show", "pyrotechnics", "animatronics", "smoke_machine"],
+    "rand→0 rotates the deck deterministically");
+  assert.deepEqual(shuffledStageFxDeck(() => 0.99), IDS.slice(),
+    "rand→~1 leaves the deck in identity order");
+
+  // always a permutation of the ids (all present, no dupes, same length)
+  const feed = (() => { const seq = [0.3, 0.8, 0.1, 0.6, 0.5]; let i = 0; return () => seq[i++ % seq.length]; });
+  const deck = shuffledStageFxDeck(feed());
+  assert.equal(deck.length, IDS.length, "deck keeps every effect");
+  assert.deepEqual([...deck].sort(), [...IDS].sort(), "deck is a permutation of the ids");
+
+  // deterministic: same rand stream → identical deck
+  assert.deepEqual(shuffledStageFxDeck(feed()), shuffledStageFxDeck(feed()),
+    "same rand stream → same deck order");
+
+  // default arg still yields a valid permutation (live client behavior)
+  assert.deepEqual([...shuffledStageFxDeck()].sort(), [...IDS].sort(),
+    "default Math.random path stays a valid permutation");
 }
 
 console.log("engine selftest: all assertions passed ✔");

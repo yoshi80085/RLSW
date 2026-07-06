@@ -56,10 +56,16 @@ export const ANIMATRONIC_TURNS  = 5;  // player-turns before they power down
 export const ANIMATRONIC_DAMAGE = 1;  // Vibe dealt slamming a Spirit in the way
 
 // Fisher–Yates shuffle of the effect ids — drawn top-down, one per threshold.
-export function shuffledStageFxDeck() {
+// `rand` is an injectable 0..1 PRNG (Phase 6b prep — same treatment as the Rock
+// God / economy rng threading): defaults to Math.random so the still-live
+// `useStageEffects` mount-shuffle behaves exactly as before. At the 6b flip the
+// engine builds the deck ONCE at makeInitialState on the seeded rng, so the deck
+// order becomes replay-deterministic GameState instead of a per-client Math.random
+// draw. Pure otherwise.
+export function shuffledStageFxDeck(rand = Math.random) {
   const d = [...STAGE_FX_IDS];
   for (let i = d.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [d[i], d[j]] = [d[j], d[i]];
   }
   return d;
