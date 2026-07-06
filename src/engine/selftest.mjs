@@ -24,6 +24,7 @@ import { skillEligibility, ULTIMATE_PREREQS, THEORY_DISCORD_GRANTS, CQC_SWING_MA
 import { pitchIndex } from "../music/notes.js";
 import { detectMotifRepeat } from "../music/cadence.js";
 import { CORNERS } from "../data/corners.js";
+import { pickGodAttack, godTauntLine, pickRockGod, ROCK_GODS } from "../data/rockGods.js";
 import {
   LIMELIGHT_HEX, UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT,
 } from "../data/gameConstants.js";
@@ -908,18 +909,68 @@ const config = {
   ].reduce((st, a) => applyAction(st, a), s0);
   assert.equal(assertJsonSafe(played), true, "replayed final state is JSON-safe");
 
-  // 3) the guard actually BITES — each known offender throws, at the right path.
-  const throws = (mutate, re) => {
+  // 3) the guard actually BITES — each known offender throws, naming the path.
+  //    `want` (label first) is a substring of the expected message.
+  function bites(want, mutate) {
     const bad = JSON.parse(snapshot(s0));   // deep plain-JSON clone
     mutate(bad);
-    assert.throws(() => assertJsonSafe(bad), re);
-  };
-  throws(b => { b.spirits[0].tag = new Set([1, 2]); }, /Set at state\.spirits\[0\]\.tag/);
-  throws(b => { b.turn.moveStepsLeft = Infinity; },    /non-finite number at state\.turn\.moveStepsLeft/);
-  throws(b => { b.turn.moveStepsLeft = NaN; },         /non-finite number/);
-  throws(b => { b.acting = undefined; },               /undefined at state\.acting/);
-  throws(b => { b.rng.at = new Date(); },              /Date at state\.rng\.at/);
-  throws(b => { b.config.f = () => 1; },               /non-JSON function at state\.config\.f/);
+    assert.throws(() => assertJsonSafe(bad), (err) => err.message.includes(want));
+  }
+  bites("Set at state.spirits[0].tag", (b) => { b.spirits[0].tag = new Set([1, 2]); });
+  bites("non-finite number at state.turn.moveStepsLeft", (b) => { b.turn.moveStepsLeft = Infinity; });
+  bites("non-finite number", (b) => { b.turn.moveStepsLeft = NaN; });
+  bites("undefined at state.acting", (b) => { b.acting = undefined; });
+  bites("Date at state.rng.at", (b) => { b.rng.at = new Date(); });
+  bites("non-JSON function at state.config.fn", (b) => { b.config.fn = Math.max; });
+}
+
+// -- Phase 6c prep: Rock God rng determinism ----------------------------------
+// pickGodAttack / godTauntLine now take an injectable `rand` (default
+// Math.random). These lock the weighted-draw math, the no-immediate-repeat rule,
+// and determinism so the eventual GOD_ATTACKED action replays byte-identically.
+{
+  const bard = ROCK_GODS.bardbarian;   // attacks: thunderclap/power_slide (w3) + face_melter/mosh_command (w2); total 10
+
+  // exact weighted-draw boundaries at cumulative weight 3 / 6 / 8 / 10
+  const at = v => pickGodAttack(bard, undefined, () => v).id;
+  assert.equal(at(0.00), "thunderclap",  "roll 0.0 → first bucket");
+  assert.equal(at(0.29), "thunderclap",  "just below the 3/10 edge");
+  assert.equal(at(0.31), "power_slide",  "just above the 3/10 edge");
+  assert.equal(at(0.59), "power_slide",  "just below the 6/10 edge");
+  assert.equal(at(0.61), "face_melter",  "just above the 6/10 edge");
+  assert.equal(at(0.79), "face_melter",  "just below the 8/10 edge");
+  assert.equal(at(0.81), "mosh_command", "top bucket");
+
+  // no immediate repeat: excluding the last id draws from the rest
+  assert.equal(pickGodAttack(bard, "thunderclap", () => 0).id, "power_slide",
+    "lastId is excluded from the pool");
+  // ...unless it's the ONLY attack — then repeats are unavoidable (never null)
+  assert.equal(pickGodAttack({ attacks: [{ id: "solo", weight: 1 }] }, "solo", () => 0).id, "solo",
+    "single-attack deck falls back to the only attack");
+
+  // determinism: same rand stream → identical sequence
+  const mkFeed = () => { const seq = [0.1, 0.7, 0.9, 0.4, 0.05]; let i = 0; return () => seq[i++ % seq.length]; };
+  let last1 = null;
+  const run = feed => Array.from({ length: 5 }, () => (last1 = pickGodAttack(bard, last1, feed)?.id));
+  const seqA = run(mkFeed()); last1 = null;
+  const seqB = run(mkFeed());
+  assert.deepEqual(seqA, seqB, "same rand stream → same attack sequence");
+
+  // empty deck → null (unimplemented gods)
+  assert.equal(pickGodAttack(ROCK_GODS.glam_reaper, undefined, () => 0.5), null, "empty deck → null");
+
+  // taunt selection is rng-indexed + deterministic
+  assert.equal(godTauntLine(bard, "summon", () => 0),    bard.taunts.summon[0], "taunt idx floor(0)");
+  assert.equal(godTauntLine(bard, "summon", () => 0.99), bard.taunts.summon[1], "taunt idx floor(0.99·2)=1");
+  assert.equal(godTauntLine(bard, "nonexistent", () => 0), null, "missing taunt kind → null");
+
+  // pickRockGod (pure): playstyle scores pick a god; unimplemented falls back
+  assert.equal(pickRockGod({ unlockedSkills: ["shank_skank", "cosmic_boogaloo"] }), "bardbarian",
+    "brawler skills → Bardbarian");
+  assert.equal(pickRockGod({ livesLost: 10 }), "bardbarian",
+    "Glam Reaper would score highest but isn't implemented → Bardbarian fallback");
+  assert.equal(pickRockGod({}), "bardbarian", "empty profile → default Bardbarian");
 }
 
 console.log("engine selftest: all assertions passed ✔");
+// end of selftest

@@ -117,17 +117,24 @@ export function pickRockGod(profile) {
 }
 
 // Weighted draw from a god's attack deck, avoiding an immediate repeat.
-export function pickGodAttack(godDef, lastId) {
+// `rand` is an injectable 0..1 PRNG (Phase 6c prep — same treatment as the
+// Phase-4 riffGeneration / Phase-5a economy rng threading): it defaults to
+// Math.random so the still-live client behaves exactly as before, and the
+// engine passes its seeded rng at the flip so a GOD_ATTACKED action replays
+// deterministically. Pure otherwise.
+export function pickGodAttack(godDef, lastId, rand = Math.random) {
   const pool = (godDef.attacks ?? []).filter(a => a.id !== lastId);
   const list = pool.length ? pool : (godDef.attacks ?? []);
   const total = list.reduce((s, a) => s + a.weight, 0);
-  let roll = Math.random() * total;
+  let roll = rand() * total;
   for (const a of list) { roll -= a.weight; if (roll <= 0) return a; }
   return list[list.length - 1] ?? null;
 }
 
-export function godTauntLine(godDef, kind) {
+// `rand` injectable (see pickGodAttack) — taunt flavor is cosmetic, but routing
+// it through the seeded rng keeps replays byte-identical once the God speaks.
+export function godTauntLine(godDef, kind, rand = Math.random) {
   const lines = godDef.taunts?.[kind];
   if (!lines?.length) return null;
-  return lines[Math.floor(Math.random() * lines.length)];
+  return lines[Math.floor(rand() * lines.length)];
 }
