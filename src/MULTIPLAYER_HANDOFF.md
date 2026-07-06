@@ -425,11 +425,21 @@ fan economy — `gainFans`, `tickFans`, `demolishFans`, `gainFansFromDeed`,
   note track, buy a skill, deploy crew, play a mod card, gain/lose fans, take a
   knockdown (FP −1), and confirm a full match to a Fame win. Starting hands looking
   different is expected.**
+  ◑ **noteStates SLICE 2 DONE (compile-clean), pending smoke-test.** Dropped the
+  `noteStatesRef` mirror: all 21 `noteStatesRef.current` rule-reads (burn-armed,
+  unlocked-skills, fame sorts, chordStack, bot planning) now read
+  `engineRef.current.noteStates` — the authoritative store, synchronously fresh,
+  so strictly fresher than the render-lagged ref. Declaration + its sync
+  `useEffect` deleted (only the descriptive comment keeps the name). Engine
+  untouched (the `NOTE_STATES_SYNCED` bridge is already committed → selftest still
+  green); main file esbuild-transforms clean (replay-onto-HEAD `8aebb20`).
+  **⚠️ Owner: `npm run dev` — verify bot skill/fame decisions + the burn-armed
+  swing bonus still behave (these read the note map in async callbacks).**
   **Remaining noteStates work:** migrate the ~60 `setNoteStates` sites to semantic
   actions (`NOTE_TRACK_CONFIRMED`, `SKILL_AWARDED`, `MOD_CARD_PLAYED`,
-  `CREW_DEPLOYED`, `FAME_GRANTED`, `FANS_CHANGED`), drop the 21 `noteStatesRef`
-  rule-reads (→ `engineRef.current.noteStates`), and delete the client
-  `makeInitialNoteState` duplicate (now dead except the `actingNoteState` fallback).
+  `CREW_DEPLOYED`, `FAME_GRANTED`, `FANS_CHANGED`), and delete the client
+  `makeInitialNoteState` duplicate (now dead except the `actingNoteState`
+  fallback). After that the `noteStatesSynced` bridge can retire.
 - **5d — fan economy tick as action.** `FANS_TICKED` inside `END_TURN`
   processing (see §5d tick-order note below); `demolishFans` folds into
   `DAMAGE_APPLIED`/`KNOCKED_OUT` handling.

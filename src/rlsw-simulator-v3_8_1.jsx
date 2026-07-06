@@ -691,7 +691,7 @@ function Game({ gameState, onReturnToLobby }) {
   //    reads stale closures. (acting / noteStates / moveStepsLeft / etc. are
   //    declared further down; these effects still capture their live values
   //    because effects run after every render.) ──
-  const noteStatesRef     = useRef(null);
+  // noteStatesRef removed (Phase 5c) — rule reads use engineRef.current.noteStates.
   const moveStepsLeftRef  = useRef(0);
   const actionTokenUsedRef= useRef(false);
   const actingRef         = useRef(null);
@@ -1251,7 +1251,6 @@ function Game({ gameState, onReturnToLobby }) {
   const ampRigs = computeAmpRigs(amps, spirits);
   const ampsInRange = acting ? (ampRigs.rigByOwner[acting.id]?.amps.length ?? 0) : 0;
   // 🤖 keep the bot's live-state mirrors fresh
-  useEffect(() => { noteStatesRef.current = noteStates; }, [noteStates]);
   useEffect(() => { moveStepsLeftRef.current = moveStepsLeft; }, [moveStepsLeft]);
   useEffect(() => { actionTokenUsedRef.current = actionTokenUsed; }, [actionTokenUsed]);
   useEffect(() => { actingRef.current = acting; }, [acting]);
@@ -2542,7 +2541,7 @@ function Game({ gameState, onReturnToLobby }) {
     });
 
     // 🔥 BURN — Devil's Interval armed this attack; the struck rival catches fire.
-    const atkBurnArmed = (noteStatesRef.current?.[attackerId] ?? noteStates[attackerId] ?? {}).burnArmed;
+    const atkBurnArmed = (engineRef.current.noteStates?.[attackerId] ?? noteStates[attackerId] ?? {}).burnArmed;
     if (atkBurnArmed) {
       // The charge is spent on this hit either way — disarm now.
       setNoteStates(prev => ({ ...prev, [attackerId]: { ...(prev[attackerId] ?? {}), burnArmed: false } }));
@@ -3246,7 +3245,7 @@ function Game({ gameState, onReturnToLobby }) {
   // event (CQC procs, Mojo Drain, Stagger, Burn). Loud feedback so it's never
   // ambiguous whether it fired.
   function consumeStatusShield(spiritId) {
-    const ns = noteStatesRef.current?.[spiritId] ?? noteStates[spiritId] ?? {};
+    const ns = engineRef.current.noteStates?.[spiritId] ?? noteStates[spiritId] ?? {};
     if (!ns.statusShield) return false;
     setNoteStates(prev => ({ ...prev, [spiritId]: { ...(prev[spiritId] ?? {}), statusShield: false } }));
     const sp = spirits.find(s => s.id === spiritId);
@@ -4552,7 +4551,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (godSummonedRef.current) return;
     godSummonedRef.current = true;
     const leader = spirits.find(s => s.id === leaderId);
-    const ns = noteStatesRef.current?.[leaderId] ?? {};
+    const ns = engineRef.current.noteStates?.[leaderId] ?? {};
     const godId = pickRockGod({
       unlockedSkills: ns.unlockedSkills ?? [],
       ampsOwned: amps.filter(a => a.ownerId === leaderId).length,
@@ -4594,7 +4593,7 @@ function Game({ gameState, onReturnToLobby }) {
     const spHex = HEX_BY_NUM[sp.num], godHex = HEX_BY_NUM[god.num];
     if (!spHex || !godHex) return;
     const adjacent = axialDist(spHex.q, spHex.r, godHex.q, godHex.r) <= 1;
-    const hasAmp1  = ((noteStatesRef.current?.[spiritId]?.unlockedSkills) ?? []).includes('amp_1');
+    const hasAmp1  = ((engineRef.current.noteStates?.[spiritId]?.unlockedSkills) ?? []).includes('amp_1');
     const inBeam   = hasAmp1 && getSonicBeam(sp).has(god.num);
     const steps    = moveStepsLeftRef.current ?? 0;
 
@@ -4605,7 +4604,7 @@ function Game({ gameState, onReturnToLobby }) {
     else { addLog(`🤘 Get in his face, or line your Sonic beam up on him!`); return; }
 
     const def = ROCK_GODS[god.id];
-    const ns = noteStatesRef.current?.[spiritId] ?? {};
+    const ns = engineRef.current.noteStates?.[spiritId] ?? {};
     const chord = ns.chordStack?.length ? spiritChord(spiritId, ns.chordStack) : null;
     let dmg = (chord ? chord.drive : (sp.drive ?? 6)) + (ns.tempDrive ?? 0);
     const winded = god.winded;
@@ -4637,7 +4636,7 @@ function Game({ gameState, onReturnToLobby }) {
     setBossOutcome('spirits');
     // Crown the FP leader once the kill-blow fame settles.
     setTimeout(() => {
-      const board = spirits.map(sp => ({ id: sp.id, fame: noteStatesRef.current?.[sp.id]?.fame ?? 0 }))
+      const board = spirits.map(sp => ({ id: sp.id, fame: engineRef.current.noteStates?.[sp.id]?.fame ?? 0 }))
         .sort((a, b) => b.fame - a.fame);
       const champ = board[0];
       const champName = spirits.find(s => s.id === champ.id)?.name;
@@ -4710,7 +4709,7 @@ function Game({ gameState, onReturnToLobby }) {
     } else if (atk.id === 'power_slide') {
       // Aim the slide at the FP leader — the Gods punish success.
       const target = [...live].sort((a, b) =>
-        (noteStatesRef.current?.[b.id]?.fame ?? 0) - (noteStatesRef.current?.[a.id]?.fame ?? 0))[0];
+        (engineRef.current.noteStates?.[b.id]?.fame ?? 0) - (engineRef.current.noteStates?.[a.id]?.fame ?? 0))[0];
       const { path, end } = slideLine(god.num, target.num);
       if (!path.length) { setRockGod({ ...god, lastAttack: 'power_slide' }); return; }
       setRockGod({ ...god, telegraph: { attackId: 'power_slide', label: atk.label, warn: atk.warn, hexes: path, end, dmg: atk.dmg } });
@@ -4812,7 +4811,7 @@ function Game({ gameState, onReturnToLobby }) {
         // 🤘 THE RULE OF THE GODS — a runaway lead is crowned outright; a close
         // race summons a Rock God to settle it (data/rockGods.js).
         const rivalBest = Math.max(0, ...spirits.filter(s => s.id !== spiritId && !s.knockedOut)
-          .map(s => noteStatesRef.current?.[s.id]?.fame ?? 0));
+          .map(s => engineRef.current.noteStates?.[s.id]?.fame ?? 0));
         if (newFame - rivalBest >= ROCK_GOD_RUNAWAY_LEAD) {
           addLog(`🌟🌟🌟 ${sp?.name} reaches ${FAME_TO_WIN} Fame — A LEGEND IS BORN! 🌟🌟🌟`);
           setTimeout(() => setWinner(spiritId), 600);
@@ -6249,7 +6248,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // 🥊 Countering (the retaliation roll) is a CQC perk — gated behind owning any CQC skill.
   function ownsCQC(spiritId) {
-    const u = noteStatesRef.current?.[spiritId]?.unlockedSkills ?? noteStates[spiritId]?.unlockedSkills ?? [];
+    const u = engineRef.current.noteStates?.[spiritId]?.unlockedSkills ?? noteStates[spiritId]?.unlockedSkills ?? [];
     return ['shank_skank', 'cosmic_boogaloo', 'moon_shuffle'].some(id => u.includes(id));
   }
 
@@ -6748,7 +6747,7 @@ function Game({ gameState, onReturnToLobby }) {
     // At the end of the burned spirit's OWN turn: 50% chance to lose 1 Vibe,
     // then the burn counts down. Loud log + flash so it's obvious it fired.
     {
-      const bns = noteStatesRef.current?.[acting.id] ?? noteStates[acting.id] ?? {};
+      const bns = engineRef.current.noteStates?.[acting.id] ?? noteStates[acting.id] ?? {};
       const burnLeft = bns.burn?.turnsLeft ?? 0;
       if (burnLeft > 0) {
         const nextLeft = burnLeft - 1;
@@ -6953,8 +6952,8 @@ function Game({ gameState, onReturnToLobby }) {
       const kb = (b.vibe ?? 99) <= 2 ? 1 : 0;
       if (ka !== kb) return kb - ka;
       if (ka && kb)  return (a.vibe ?? 99) - (b.vibe ?? 99);
-      const fa = noteStatesRef.current?.[a.id]?.fame ?? 0;
-      const fb = noteStatesRef.current?.[b.id]?.fame ?? 0;
+      const fa = engineRef.current.noteStates?.[a.id]?.fame ?? 0;
+      const fb = engineRef.current.noteStates?.[b.id]?.fame ?? 0;
       if (fb !== fa) return fb - fa;
       return (a.vibe ?? 99) - (b.vibe ?? 99);
     })[0];
@@ -7028,12 +7027,12 @@ function Game({ gameState, onReturnToLobby }) {
       p:      botPersona(self),
       center: HEX_BY_NUM[LIMELIGHT_HEX],
       hurt:   (me.vibe ?? 9) <= Math.ceil((me.maxVibe ?? 5) * 0.4),
-      myFame: noteStatesRef.current?.[self.id]?.fame ?? 0,
+      myFame: engineRef.current.noteStates?.[self.id]?.fame ?? 0,
       spot:   (typeof spotlightHex === 'number') ? HEX_BY_NUM[spotlightHex] : null,
       tokens: (boardTokens ?? []).map(t => HEX_BY_NUM[t.num]).filter(Boolean),
       events: (eventHexes ?? []).map(n => HEX_BY_NUM[n]).filter(Boolean),
       rivals: live.filter(s => !s.knockedOut && s.id !== self.id)
-        .map(r => ({ r, h: HEX_BY_NUM[r.num], fame: noteStatesRef.current?.[r.id]?.fame ?? 0 }))
+        .map(r => ({ r, h: HEX_BY_NUM[r.num], fame: engineRef.current.noteStates?.[r.id]?.fame ?? 0 }))
         .filter(x => x.h),
     };
     const here = botHexScore(self, from, ctx);
@@ -7072,7 +7071,7 @@ function Game({ gameState, onReturnToLobby }) {
     }).ok;
   }
   function botPickSkillTarget(self) {
-    const unlocked = (noteStatesRef.current?.[self.id]?.unlockedSkills) ?? [];
+    const unlocked = (engineRef.current.noteStates?.[self.id]?.unlockedSkills) ?? [];
     const order = [...(BOT_SPIRIT_SKILLS[self.id] ?? []), ...(botPersona(self).skillOrder ?? []), ...BOT_SKILL_PRIORITY_BASE];
     for (const id of order) if (botSkillEligible(id, unlocked, self.id)) return id;
     return null;
@@ -7135,7 +7134,7 @@ function Game({ gameState, onReturnToLobby }) {
   //     (so the turn isn't wasted on an uncommittable track).
   // Returns { slot } to play that stock index, or { commit: true } to lock it in.
   function botPlanNoteStep(self) {
-    const ns = noteStatesRef.current?.[self.id] ?? {};
+    const ns = engineRef.current.noteStates?.[self.id] ?? {};
     const stock = ns.noteStock ?? [];
     const track = ns.melodyLine ?? [];
     const used  = ns.usedStockIdx;
@@ -7196,7 +7195,7 @@ function Game({ gameState, onReturnToLobby }) {
   // chord by persona (combat/disrupt chase Drive, clean/Flair chase Sustain, musical
   // stays balanced). Returns the note string to voice, or null to keep the stance.
   function botPlanRevoice(self) {
-    const ns = noteStatesRef.current?.[self.id] ?? {};
+    const ns = engineRef.current.noteStates?.[self.id] ?? {};
     if (ns.revoiceUsedThisTurn) return null;
     const chord = ns.chordStack ?? [];
     if (chord.length >= 5) return null;                  // full — v1 bot doesn't churn/drop
@@ -7222,7 +7221,7 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   function botRevoiceChord(self, note) {
-    const ns = noteStatesRef.current?.[self.id] ?? {};
+    const ns = engineRef.current.noteStates?.[self.id] ?? {};
     if (ns.revoiceUsedThisTurn || (ns.chordStack ?? []).length >= 5) return;
     const next = [...(ns.chordStack ?? []), note];
     setNoteField(self.id, { chordStack: next, revoiceUsedThisTurn: true });
@@ -7287,7 +7286,7 @@ function Game({ gameState, onReturnToLobby }) {
     };
 
     // Shared per-cycle reads (fresh every fire — the nudge re-runs this effect).
-    const ns        = noteStatesRef.current?.[self.id] ?? {};
+    const ns        = engineRef.current.noteStates?.[self.id] ?? {};
     const unlocked  = ns.unlockedSkills ?? [];
     const liveSelf  = engineRef.current.spirits.find(s => s.id === self.id) ?? self;
     const hasSkill  = (id) => unlocked.includes(id);
@@ -7478,7 +7477,7 @@ function Game({ gameState, onReturnToLobby }) {
           const isUsed    = (i) => usedHas(usedSet, i);
           const unused   = (ns.noteStock ?? []).filter((_, i) => !isUsed(i)).length;
           const t        = botPickTarget(coneNow0, self);
-          const tSustain = spiritChord(t.id, noteStatesRef.current?.[t.id]?.chordStack ?? []).sustain;
+          const tSustain = spiritChord(t.id, engineRef.current.noteStates?.[t.id]?.chordStack ?? []).sustain;
           if (unused >= 2 && tSustain >= 6) {
             botStepRef.current = 'ending';
             schedule(guard(() => resolveSmash(t.id)));
