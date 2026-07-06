@@ -42,6 +42,14 @@ export const DAMAGE_APPLIED     = "DAMAGE_APPLIED";
 export const KNOCKDOWN_RESOLVED = "KNOCKDOWN_RESOLVED";
 export const WINNER_DECLARED    = "WINNER_DECLARED";
 
+// ── Phase 5c: noteStates ownership bridge (mirrors SPIRITS_SYNCED) ────────────
+// TEMP full-replace bridge so the client can flip `noteStates` to a view of
+// `engineState.noteStates` cheaply (engine becomes source of truth), keeping all
+// ~60 setNoteStates sites working. Individual sites migrate to semantic actions
+// (NOTE_TRACK_CONFIRMED, SKILL_AWARDED, FANS_CHANGED, …) later; this bridge dies
+// with them, exactly as SPIRITS_SYNCED does for spirits.
+export const NOTE_STATES_SYNCED = "NOTE_STATES_SYNCED";
+
 // Phase 5c (economy/skills flip): NOTE_TRACK_CONFIRMED, SKILL_AWARDED, FANS_CHANGED, …
 // Phase 6 (events/FX/god):        EVENT_DRAWN, STAGE_FX_TICK, GOD_ATTACK, …
 
@@ -199,4 +207,11 @@ export function knockdownResolved(targetId) {
  */
 export function winnerDeclared(winnerId) {
   return { type: WINNER_DECLARED, winnerId };
+}
+
+/** TEMP Phase 5c bridge — push React-owned noteStates mutations into the engine
+ *  (full map replace). Mirrors `spiritsSynced`; retired as sites migrate to the
+ *  semantic noteStates actions. */
+export function noteStatesSynced(noteStates) {
+  return { type: NOTE_STATES_SYNCED, noteStates };
 }

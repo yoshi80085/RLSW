@@ -13,6 +13,7 @@ import {
   riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed,
   attackRolled, counterRolled,
   damageApplied, knockdownResolved, winnerDeclared,
+  noteStatesSynced,
 } from "./actions.js";
 import { snapshot, restore, replay, assertJsonSafe } from "./serialize.js";
 import {
@@ -805,6 +806,13 @@ const config = {
 
   // still plain-JSON (no Set/Map/function slipped in) — the Phase-8 contract
   assert.deepEqual(JSON.parse(JSON.stringify(s.noteStates)), s.noteStates, "note sheets are plain JSON");
+
+  // NOTE_STATES_SYNCED bridge (client-flip): full-map replace, engine authoritative.
+  const bumped = { ...s.noteStates, wildaxe: { ...s.noteStates.wildaxe, fame: 42 } };
+  const s2 = applyAction(s, noteStatesSynced(bumped));
+  assert.equal(s2.noteStates.wildaxe.fame, 42, "NOTE_STATES_SYNCED replaces the note map");
+  assert.equal(s2.noteStates.vera, s.noteStates.vera, "untouched sheets carry over by reference");
+  assert.equal(s2.rng.cursor, s.rng.cursor, "the bridge consumes no rng");
 }
 
 // -- Phase 8 (partial): cross-system determinism / replay proof ----------------

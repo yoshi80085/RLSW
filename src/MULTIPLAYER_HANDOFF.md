@@ -405,6 +405,31 @@ fan economy — `gainFans`, `tickFans`, `demolishFans`, `gainFansFromDeed`,
   `setNoteStates` sites → dispatches; delete `noteStatesRef` reads inside rules.
   Do the spirit flip first (smaller, unblocks combat), green + smoke-test, THEN
   the noteStates flip.
+  ◑ **noteStates SLICE 1 DONE (compile-clean + engine-selftest green), pending
+  smoke-test.** The source-of-truth shim (mirrors the spirits slice-1 flip):
+  engine side adds a `NOTE_STATES_SYNCED` full-replace bridge action
+  (`noteStatesSynced` creator, `applyNoteStatesSynced` reducer in
+  `systems/economy.js`, wired in `reduce.js`) — selftest-covered (map replace,
+  untouched sheets by-ref, consumes no rng). Client side: `useNoteSystem` retired;
+  `noteStates` is now a view of `engineState.noteStates` (built + owned by
+  `makeInitialState` on the forked seeded rng), and `setNoteStates(updater)` is a
+  compat shim that applies the update to the live engine map and writes it back via
+  `noteStatesSynced`. All ~60 `setNoteStates` sites keep working unchanged.
+  **⚠️ BEHAVIOR DELTA (intended):** starting hands are now SEEDED per game seed
+  instead of `Math.random` — the replay-determinism payoff, but the opening
+  roots/stock a given match deals will differ from before. Verified: engine
+  `selftest.mjs` green (reconstructed edited engine, dodging the stale mount — the
+  mount served a stale `economy.js`); main file esbuild-transforms clean
+  (replay-onto-HEAD `6df9561`). **⚠️ Owner: `npm run dev` — thorough smoke-test,
+  this touches EVERY note-track / skill / fan / fame interaction: build & confirm a
+  note track, buy a skill, deploy crew, play a mod card, gain/lose fans, take a
+  knockdown (FP −1), and confirm a full match to a Fame win. Starting hands looking
+  different is expected.**
+  **Remaining noteStates work:** migrate the ~60 `setNoteStates` sites to semantic
+  actions (`NOTE_TRACK_CONFIRMED`, `SKILL_AWARDED`, `MOD_CARD_PLAYED`,
+  `CREW_DEPLOYED`, `FAME_GRANTED`, `FANS_CHANGED`), drop the 21 `noteStatesRef`
+  rule-reads (→ `engineRef.current.noteStates`), and delete the client
+  `makeInitialNoteState` duplicate (now dead except the `actingNoteState` fallback).
 - **5d — fan economy tick as action.** `FANS_TICKED` inside `END_TURN`
   processing (see §5d tick-order note below); `demolishFans` folds into
   `DAMAGE_APPLIED`/`KNOCKED_OUT` handling.

@@ -17,7 +17,8 @@ import { useFanEconomy } from "./hooks/useFanEconomy.js";
 import { useBgmState } from "./hooks/useBgmState.js";
 import { useBoardState } from "./hooks/useBoardState.js";
 import { useTransientFx } from "./hooks/useTransientFx.js";
-import { useNoteSystem } from "./hooks/useNoteSystem.js";
+// Phase 5c: noteStates moved into the engine — useNoteSystem retired (the client
+// now reads engineState.noteStates via a setNoteStates compat shim).
 import { GameOverOverlay } from "./ui/GameOverOverlay.jsx";
 import { GameStyles } from "./ui/GameStyles.jsx";
 import { RiffBanner } from "./ui/RiffBanner.jsx";
@@ -55,7 +56,7 @@ import { hexInSmoke, hexInBeams, rollLaserBeams, rollPyroHexes, spawnAnimatronic
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore } from "./engine/systems/economy.js";
@@ -901,11 +902,24 @@ function Game({ gameState, onReturnToLobby }) {
     };
   }
 
-  const { noteStates, setNoteStates } = useNoteSystem(() => {
-    const map = {};
-    gameState.spirits.forEach(s => { map[s.id] = makeInitialNoteState(s.id); });
-    return map;
-  });
+  // ── NOTESTATES — engine is the source of truth (Phase 5c ownership flip) ──────
+  // `noteStates` is now a live view of engineState.noteStates (built + OWNED by
+  // makeInitialState on a seeded FORKED rng). `setNoteStates(updater)` is a
+  // compatibility shim: it applies the (functional or plain-value) update against
+  // the CURRENT engine map (engineRef is always live) and writes the result back
+  // through the reducer (NOTE_STATES_SYNCED = full map replace). Every legacy
+  // setNoteStates call keeps working unchanged; individual sites migrate to
+  // semantic actions (NOTE_TRACK_CONFIRMED, SKILL_AWARDED, FANS_CHANGED, …) later.
+  // ⚠️ Behavior delta: starting hands are now SEEDED (deterministic per game seed)
+  // rather than Math.random — the intended replay-determinism change. The client's
+  // makeInitialNoteState duplicate is now dead for init (kept only as the
+  // actingNoteState fallback) and can be deleted in cleanup.
+  const noteStates = engineState.noteStates;
+  const setNoteStates = (updater) => {
+    const cur = engineRef.current.noteStates;
+    const next = typeof updater === "function" ? updater(cur) : updater;
+    dispatch(noteStatesSynced(next));
+  };
 
 
   // ─── BGM ── (state moved to ./hooks/useBgmState.js)

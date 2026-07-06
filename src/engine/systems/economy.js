@@ -207,3 +207,14 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     intimidation: null,
   };
 }
+
+/**
+ * NOTE_STATES_SYNCED (Phase 5c) — full-map replace of the engine's noteStates.
+ * The client-flip compat bridge (mirrors applySpiritsSynced): the React shim
+ * applies its functional/plain update to the live engine noteStates and writes
+ * the whole map back through here, making the engine authoritative while every
+ * legacy setNoteStates site keeps working unchanged.
+ */
+export function applyNoteStatesSynced(state, { noteStates }) {
+  return { ...state, noteStates };
+}
