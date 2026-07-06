@@ -16,6 +16,7 @@ import {
   RIFF_OFF_STARTED, RIFF_RESULTS_SUBMITTED, RIFF_RESOLVED,
   RIFF_ROUND2_STARTED, RIFF_CLOSED,
   ATTACK_ROLLED, COUNTER_ROLLED,
+  DAMAGE_APPLIED, KNOCKDOWN_RESOLVED, WINNER_DECLARED,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
 import {
@@ -24,7 +25,10 @@ import {
   applySpiritEliminated,
 } from "./systems/turn.js";
 import { applyMoveStep, applySpiritWarped, applySpiritFaced } from "./systems/movement.js";
-import { applyAttackRolled, applyCounterRolled } from "./systems/combat.js";
+import {
+  applyAttackRolled, applyCounterRolled,
+  applyDamageApplied, applyKnockdownResolved, applyWinnerDeclared,
+} from "./systems/combat.js";
 import {
   applyRiffOffStarted, applyRiffResultsSubmitted, applyRiffResolved,
   applyRiffRound2Started, applyRiffClosed,
@@ -70,6 +74,11 @@ function reduce(state, action, rng) {
 
     // ── Phase 3d: retaliation (counter) roll ──
     case COUNTER_ROLLED:         return applyCounterRolled(state, action, rng);
+
+    // ── Phase 5c: spirit combat-ownership (deferred 3c flip, engine side) ──
+    case DAMAGE_APPLIED:         return applyDamageApplied(state, action);
+    case KNOCKDOWN_RESOLVED:     return applyKnockdownResolved(state, action);
+    case WINNER_DECLARED:        return applyWinnerDeclared(state, action);
 
     default:
       // Unknown action = a bug (client/server version skew or a typo).

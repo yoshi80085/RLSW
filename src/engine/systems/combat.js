@@ -143,6 +143,46 @@ export function resolveKnockdown(spirit, corners = CORNERS) {
 }
 
 /**
+ * DAMAGE_APPLIED (Phase 5c) — subtract Vibe from the target on the engine's
+ * spirits, floored at 0. Pure; the KO/respawn check is a separate action. Mirrors
+ * the core of Game.applyVibeDamage (`vibe = max(0, vibe − dmg)`), minus the FX.
+ */
+export function applyDamageApplied(state, action) {
+  const { targetId, dmg = 0 } = action;
+  return {
+    ...state,
+    spirits: state.spirits.map(s =>
+      s.id === targetId ? { ...s, vibe: Math.max(0, (s.vibe ?? 0) - dmg) } : s),
+  };
+}
+
+/**
+ * KNOCKDOWN_RESOLVED (Phase 5c) — apply the `resolveKnockdown` transform to the
+ * downed spirit: respawn to the home corner with full Vibe (a life spent), or KO
+ * for good when out of lives. Mirrors Game.knockOut.applyKnockOut, which already
+ * uses the same kernel — this just makes the engine spirits authoritative for it.
+ * @param {object} [corners=CORNERS] injectable corner map (tests)
+ */
+export function applyKnockdownResolved(state, action, corners = CORNERS) {
+  const { targetId } = action;
+  const spirit = state.spirits.find(s => s.id === targetId);
+  if (!spirit) return state;
+  const { next } = resolveKnockdown(spirit, corners);
+  return {
+    ...state,
+    spirits: state.spirits.map(s => (s.id === targetId ? next : s)),
+  };
+}
+
+/**
+ * WINNER_DECLARED (Phase 5c) — lock in the match `winner` slice. The boss-aware
+ * decision is `decideWinner` (run by the caller); this records its result.
+ */
+export function applyWinnerDeclared(state, action) {
+  return { ...state, winner: action.winnerId ?? null };
+}
+
+/**
  * 🎸💥 THE SMASH (Phase 3b) — deterministic, undefendable melee: no dice roll.
  * Outcome scales purely with `thrown` (the count of unused stock notes hurled):
  *   • damage    — ⌈thrown/2⌉, floored at 1, capped at 5. Shredding Ronin's own

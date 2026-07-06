@@ -32,9 +32,18 @@ export const ATTACK_ROLLED = "ATTACK_ROLLED";
 // ── Phase 3d: retaliation (counter) roll ────────────────────────────────────
 export const COUNTER_ROLLED = "COUNTER_ROLLED";
 
-// Phase 3 (combat, remaining):  DAMAGE_APPLIED, KNOCKBACK_MOVED, KNOCKED_OUT, RETALIATION_*
-// Phase 5 (economy/skills):   COMMIT_TRACK, VOICE_CHORD, PLAY_MOD_CARD, …
-// Phase 6 (events/FX/god):    EVENT_DRAWN, STAGE_FX_TICK, GOD_ATTACK, …
+// ── Phase 5c: spirit combat-ownership (the deferred 3c flip, engine side) ────
+// The engine's `spirits` becomes the source of truth for Vibe / lives / KO.
+// These reducers own the rule transitions; the client keeps the cinematics
+// (damage numbers, slide-off, respawn flash) and dispatches the action at the
+// beat the rule fires. Wired into `Game` in the client-flip step; until then
+// they're dormant and the SPIRITS_SYNCED bridge still carries spirit state.
+export const DAMAGE_APPLIED     = "DAMAGE_APPLIED";
+export const KNOCKDOWN_RESOLVED = "KNOCKDOWN_RESOLVED";
+export const WINNER_DECLARED    = "WINNER_DECLARED";
+
+// Phase 5c (economy/skills flip): NOTE_TRACK_CONFIRMED, SKILL_AWARDED, FANS_CHANGED, …
+// Phase 6 (events/FX/god):        EVENT_DRAWN, STAGE_FX_TICK, GOD_ATTACK, …
 
 /** Mark the state as initialized (a no-op record for the replay log's head). */
 export function gameInit() {
@@ -159,4 +168,35 @@ export function attackRolled(kind, attackerId, defenderId,
  */
 export function counterRolled(defenderId, { vibe = 1, maxVibe = 1, target = 1 }) {
   return { type: COUNTER_ROLLED, defenderId, vibe, maxVibe, target };
+}
+
+/**
+ * Phase 5c — a landed hit subtracts Vibe from the target on the engine spirits
+ * (floored at 0). The KO/respawn decision is a SEPARATE action so the client can
+ * play its cinematic beat between the hit and the fall (as `applyVibeDamage` does
+ * today). Damage magnitude is decided upstream (`marginToDamage`, riff verdict,
+ * `counterOutcome`); this just applies it.
+ */
+export function damageApplied(targetId, dmg) {
+  return { type: DAMAGE_APPLIED, targetId, dmg };
+}
+
+/**
+ * Phase 5c — a spirit at 0 Vibe falls. The engine runs the `resolveKnockdown`
+ * kernel: respawn at the home corner with full Vibe (a life spent), or, out of
+ * lives, KO for good. One action subsumes the doc's RESPAWNED / KNOCKED_OUT — the
+ * reducer owns the branch so client & server can never disagree on when a life is
+ * spent. (The client still fires `spiritEliminated` + the slide-off on a true KO.)
+ */
+export function knockdownResolved(targetId) {
+  return { type: KNOCKDOWN_RESOLVED, targetId };
+}
+
+/**
+ * Phase 5c — record the match winner. The boss-aware decision is the pure
+ * `decideWinner` kernel (which the client/server runs to get the id); this action
+ * just locks the resulting `winner` slice.
+ */
+export function winnerDeclared(winnerId) {
+  return { type: WINNER_DECLARED, winnerId };
 }

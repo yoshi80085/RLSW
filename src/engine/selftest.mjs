@@ -12,6 +12,7 @@ import {
   spiritFaced, spiritEliminated,
   riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed,
   attackRolled, counterRolled,
+  damageApplied, knockdownResolved, winnerDeclared,
 } from "./actions.js";
 import { snapshot, restore, replay } from "./serialize.js";
 import {
@@ -734,6 +735,46 @@ const config = {
   assert.deepEqual(THEORY_DISCORD_GRANTS.theory_chromatic, ["discord_2", "discord_4"]);
   assert.equal(CQC_SWING_MAP.baki_gravity, "swing_3");
   assert.deepEqual(ULTIMATE_PREREQS, ["mic", "pedal_dist", "amp_1", "mixer"]);
+}
+
+// -- Phase 5c foundation: combat-ownership actions on engine spirits ------------
+{
+  const cornerId = Object.keys(CORNERS)[0];
+  const home = CORNERS[cornerId].homeNum;
+  // Seed a full spirit shape (Vibe/lives/corner) via the Phase-2 sync bridge.
+  const seed = applyAction(makeInitialState(config, 314), spiritsSynced([
+    { id: "wildaxe", num: 42, facing: 3, corner: cornerId, color: "#fff", cpu: false, lives: 3, vibe: 10, maxVibe: 10, knockedOut: false },
+    { id: "vera",    num: 77, facing: 1, corner: cornerId, color: "#f00", cpu: true,  lives: 1, vibe: 2,  maxVibe: 8,  knockedOut: false },
+  ]));
+
+  // DAMAGE_APPLIED — subtract Vibe, floor at 0, only the target, never mutate input
+  const d = applyAction(seed, damageApplied("wildaxe", 4));
+  assert.equal(d.spirits.find(s => s.id === "wildaxe").vibe, 6, "damage subtracts Vibe");
+  assert.equal(d.spirits.find(s => s.id === "vera").vibe, 2, "other spirit untouched");
+  assert.equal(applyAction(seed, damageApplied("wildaxe", 999)).spirits.find(s => s.id === "wildaxe").vibe, 0, "Vibe floors at 0");
+  assert.equal(seed.spirits.find(s => s.id === "wildaxe").vibe, 10, "applyAction never mutates input");
+  assert.equal(applyAction(seed, damageApplied("ghost", 3)).spirits.length, 2, "damage to an unknown id is a no-op");
+
+  // KNOCKDOWN_RESOLVED — respawn (lives > 1): life spent, home corner, full Vibe, still in
+  const w = applyAction(seed, knockdownResolved("wildaxe")).spirits.find(s => s.id === "wildaxe");
+  assert.deepEqual([w.lives, w.num, w.vibe, w.knockedOut ?? false], [2, home, 10, false], "respawn: home corner, full Vibe, one life spent");
+  // KNOCKDOWN_RESOLVED — KO (last life): knockedOut, lives 0, body stays where it fell
+  const koState = applyAction(seed, knockdownResolved("vera"));
+  const v = koState.spirits.find(s => s.id === "vera");
+  assert.deepEqual([v.lives, v.knockedOut, v.num], [0, true, 77], "out of lives → KO in place");
+  // reducer branch == the resolveKnockdown kernel directly (single source)
+  assert.deepEqual(v, resolveKnockdown(seed.spirits.find(s => s.id === "vera")).next,
+    "KNOCKDOWN_RESOLVED == resolveKnockdown kernel");
+
+  // WINNER_DECLARED — records the winner slice
+  assert.equal(seed.winner, null, "winner starts null");
+  assert.equal(applyAction(seed, winnerDeclared("wildaxe")).winner, "wildaxe", "winner locked in");
+
+  // all three are plain-JSON + replay-deterministic (the multiplayer contract)
+  const log = [damageApplied("vera", 5), knockdownResolved("vera"), winnerDeclared("wildaxe")];
+  const live = log.reduce((st, a) => applyAction(st, a), seed);
+  assert.deepEqual(replay(restore(snapshot(seed)), log), live, "5c-foundation actions replay identically");
+  assert.deepEqual(JSON.parse(snapshot(live)), live, "post-flip state is plain JSON");
 }
 
 console.log("engine selftest: all assertions passed ✔");

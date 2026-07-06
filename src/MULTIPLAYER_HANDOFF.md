@@ -310,15 +310,29 @@ fan economy — `gainFans`, `tickFans`, `demolishFans`, `gainFansFromDeed`,
   are now the single-source pure exports above, so 5c just routes them through a
   `SKILL_AWARDED` reducer. Audio/FX/log stay client.
 - **5c — THE OWNERSHIP FLIP** (spirits + noteStates into engine state,
-  one sub-phase, big-bang by necessity — this is the deferred Phase-3 3c):
-  actions `NOTE_TRACK_CONFIRMED`, `SKILL_PURCHASED`, `SKILL_AWARDED`,
-  `MOD_CARD_PLAYED`, `CREW_DEPLOYED`, `DAMAGE_APPLIED`, `KNOCKED_OUT`,
-  `RESPAWNED`, `WINNER_DECLARED`, `FAME_GRANTED`, `FANS_CHANGED`. Client
-  reads `engineState.spirits`/`engineState.noteStates` everywhere
-  (~25 `setSpirits` + ~dozens `setNoteStates` sites become dispatches);
-  delete `spiritsSynced`, `spiritsRef`, `noteStatesRef` reads inside rules.
-  Route the parked Phase-3 damage applications (`resolveWinDamage`,
-  riff-off + counter damage) through `DAMAGE_APPLIED` here.
+  big-bang by necessity — this is the deferred Phase-3 3c). Split into an
+  engine-reducer layer (sandbox-safe, selftest-verifiable) and a client-flip
+  layer (needs `npm run dev`, done in owner-smoke-tested increments).
+  ◑ **ENGINE FOUNDATION DONE (spirit combat-ownership):** `DAMAGE_APPLIED`
+  (Vibe −, floored), `KNOCKDOWN_RESOLVED` (respawn/KO via the `resolveKnockdown`
+  kernel — subsumes RESPAWNED/KNOCKED_OUT), `WINNER_DECLARED` (locks the `winner`
+  slice; decision = the `decideWinner` kernel) now exist in `actions.js`/
+  `combat.js`/`reduce.js` and are selftest-covered (damage floor, respawn-vs-KO,
+  winner, replay determinism). They are **dormant** — the client doesn't dispatch
+  them yet, so the game plays identically and the `SPIRITS_SYNCED` bridge still
+  carries spirit state. **STILL TO DO — the client flip (owner-run):** make the
+  client read `engineState.spirits` for Vibe/lives/knockedOut everywhere
+  (~25 `setSpirits` sites → `dispatch` + read-back), route the parked Phase-3
+  damage applications (`resolveWinDamage`, riff-off + counter damage) and
+  `applyVibeDamage`/`knockOut` through the three actions above, then delete
+  `spiritsSynced` + the `spiritsRef` rule-reads. **Then the noteStates half:**
+  actions `NOTE_TRACK_CONFIRMED`, `SKILL_AWARDED`, `MOD_CARD_PLAYED`,
+  `CREW_DEPLOYED`, `FAME_GRANTED`, `FANS_CHANGED`; move `makeInitialNoteState`
+  into the engine (it needs `NOTE_POOL`/`canonicalRoot`/`refillStock` + the seeded
+  `rand` from 5a) so `engineState.noteStates` can be built + owned; ~dozens of
+  `setNoteStates` sites → dispatches; delete `noteStatesRef` reads inside rules.
+  Do the spirit flip first (smaller, unblocks combat), green + smoke-test, THEN
+  the noteStates flip.
 - **5d — fan economy tick as action.** `FANS_TICKED` inside `END_TURN`
   processing (see §5d tick-order note below); `demolishFans` folds into
   `DAMAGE_APPLIED`/`KNOCKED_OUT` handling.
@@ -429,7 +443,7 @@ separate, cheaper project.
 | 2. Turn & movement | ☑ engine owns turnQueue/beats/facing/limelight-flags/counters via 10 actions; `Game` wired through `dispatch` (24 call sites); `spiritsSynced` bridge until Phase 3; selftest extended, `/tmp` esbuild compile green. TIP: `git show HEAD:path` beats the stale mount for reading true file bytes; verify main-file edits by replaying the same string replacements onto a `/tmp` copy and compiling with `npx esbuild --loader:.jsx=jsx`. |
 | 3. Combat | ◑ **3a + 3b COMPLETE; 3c kernels, 3d counter-roll, 3e verdict-damage done** — pure combat math (`marginToDamage`, `fameFromMargin`, `knockbackSpaces`, `underdogBonus`) extracted to `engine/systems/combat.js`; `Game` imports all four (locals deleted; `underdogBonus` now takes the two Fame totals, keeping the spirit-identity guard in `Game`). selftest extended (bands, sonic caps, underdog ramp + exact regression grid vs old math) — full suite green; engine lint clean; HEAD+edits esbuild-compile clean. **3b complete** — swing (d6) + sonic (keep-highest `dicePool`) via `ATTACK_ROLLED`/`applyAttackRolled` on engine rng; smash via pure `smashOutcome` (no roll), shared by `resolveSmash` + `resolveBlasterOfRa`. Human + bot share all three. selftest + esbuild + engine lint green. **3c kernels done** — `decideWinner` + `resolveKnockdown` extracted (pure, single-source) and wired into the win-check + respawn/KO paths; game identical. selftest + esbuild + engine lint green. 3d counter-roll (`COUNTER_ROLLED`/`counterOutcome`) and 3e verdict-damage (riff `verdict.damage`) also done + verified. **Remaining:** the 3c ownership flip (engine `spirits` becomes source of truth, `DAMAGE_APPLIED/KNOCKED_OUT/...` actions, kill `spiritsSynced`, route riff + counter damage application through it) — a big-bang across ~25 sites best done where the app can be RUN. Owner: `npm run dev` smoke-test + commit from Windows. |
 | 4. Riff-off | ☑ done BEFORE Phase 3 (cleanest seam, budget call). Engine owns riff generation (rng threaded through `riff/riffGeneration.js` via optional `rand` param), Riff Slayer glitch sets, E-Rush ghosts, results submission, verdict math incl. Round-2 sudden-death fallback (`systems/riffOff.js`). Client submits `[{hit, rt, grade, noteIdx}]` per performer — the exact networked flow. Timing/gems/beam cinematics stay client. `riffStats` + scoring constants moved to engine; main imports `riffStats` from there. Damage application still client (waits on Phase 3). |
-| 5. Economy & skills | ◑ **5a + 5b DONE** (sandbox-safe slices). **5a:** `usedStockIdx` Set→**insertion-ordered array** via `usedHas`/`usedList`/`usedAdd` (new `engine/systems/economy.js`, ~29 sites rewired); optional `rand` param on `randomNote`/`refillStock`/`makeInitialNoteState` (full rng-thread deferred to 5c); **Performance Score P** → pure `performanceScore()`. **5b:** pure `skillEligibility()` + tables (`ULTIMATE_PREREQS`/`THEORY_DISCORD_GRANTS`/`CQC_SWING_MAP`) in `engine/systems/skills.js`; `botSkillEligible` + `setSkillTarget` now share ONE gate (they had drifted on owner-only routes). selftest extended (usedAdd ≡ old Set ×200; performanceScore ≡ old inline ×3000; skillEligibility ≡ old bot+human ×4000). **Remaining 5c–5d** pre-analyzed in §5c; 5c (ownership flip, incl. deferred 3c) needs a run-capable session. Owner: `npm run dev` smoke-test + commit from Windows. |
+| 5. Economy & skills | ◑ **5a + 5b DONE** (sandbox-safe slices). **5a:** `usedStockIdx` Set→**insertion-ordered array** via `usedHas`/`usedList`/`usedAdd` (new `engine/systems/economy.js`, ~29 sites rewired); optional `rand` param on `randomNote`/`refillStock`/`makeInitialNoteState` (full rng-thread deferred to 5c); **Performance Score P** → pure `performanceScore()`. **5b:** pure `skillEligibility()` + tables (`ULTIMATE_PREREQS`/`THEORY_DISCORD_GRANTS`/`CQC_SWING_MAP`) in `engine/systems/skills.js`; `botSkillEligible` + `setSkillTarget` now share ONE gate (they had drifted on owner-only routes). selftest extended (usedAdd ≡ old Set ×200; performanceScore ≡ old inline ×3000; skillEligibility ≡ old bot+human ×4000). **5c ENGINE FOUNDATION DONE** — `DAMAGE_APPLIED`/`KNOCKDOWN_RESOLVED`/`WINNER_DECLARED` reducers on engine spirits (reuse `resolveKnockdown`/`decideWinner`), selftest-covered, **dormant** (client unchanged → game identical, `SPIRITS_SYNCED` bridge stays). **Remaining 5c** = the client flip (read `engineState.spirits`, route damage/KO through the new actions, delete `spiritsSynced`) then the noteStates half — owner-run incremental (`npm run dev`). **5d** pre-analyzed §5c. Owner: `npm run test:engine` (verifies the foundation) + commit from Windows. |
 | 6. Events / FX / Rock God | ☐ pre-analyzed plan ready — §5d. END-TURN tick order documented there is rule-critical. |
 | 7. Bot policies | ☐ pre-analyzed plan ready — §5e. Blocked until 5+6 land (bots must read engine state). |
 | 8. Serialize + replay | ☐ pre-analyzed plan ready — §5f. serialize.js/replay skeleton already in repo. |
