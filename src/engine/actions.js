@@ -29,6 +29,9 @@ export const RIFF_CLOSED            = "RIFF_CLOSED";
 // ── Phase 3b: combat rolls ──────────────────────────────────────────────────
 export const ATTACK_ROLLED = "ATTACK_ROLLED";
 
+// ── Phase 3d: retaliation (counter) roll ────────────────────────────────────
+export const COUNTER_ROLLED = "COUNTER_ROLLED";
+
 // Phase 3 (combat, remaining):  DAMAGE_APPLIED, KNOCKBACK_MOVED, KNOCKED_OUT, RETALIATION_*
 // Phase 5 (economy/skills):   COMMIT_TRACK, VOICE_CHORD, PLAY_MOD_CARD, …
 // Phase 6 (events/FX/god):    EVENT_DRAWN, STAGE_FX_TICK, GOD_ATTACK, …
@@ -144,4 +147,16 @@ export function attackRolled(kind, attackerId, defenderId,
     type: ATTACK_ROLLED, kind, attackerId, defenderId,
     atkStat, defStat, posing, halveDef, psychoEligible, dicePool,
   };
+}
+
+/**
+ * Phase 3d — a glanced defender (CQC, margin ≤ 2) swings BACK: the engine rolls
+ * the counter d6 on seeded rng, adds the Vibe bonus, and decides success vs the
+ * attacker's winning die. Merged into the existing `battle` slice; the spin
+ * overlay reads `battle.counterRoll`. Damage application stays client (3c flip).
+ * @param {number} vibe/maxVibe  defender's Vibe (drives the bonus) — Phase 5 slice
+ * @param {number} target        the attacker's winning die to out-swing (bs.atkRoll)
+ */
+export function counterRolled(defenderId, { vibe = 1, maxVibe = 1, target = 1 }) {
+  return { type: COUNTER_ROLLED, defenderId, vibe, maxVibe, target };
 }

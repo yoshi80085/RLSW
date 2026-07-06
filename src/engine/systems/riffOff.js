@@ -9,6 +9,7 @@ import {
   generateAttackerRiff, generateDefenderRiff, speedUpRiffRhythm,
   riffDegreesToNotes,
 } from "../../riff/riffGeneration.js";
+import { marginToDamage } from "./combat.js";
 
 // Grade → weight for the performance score (single source of truth; the
 // client imports riffStats from here for its live overlay too).
@@ -123,7 +124,11 @@ export function applyRiffResolved(state) {
     }
     if (!tie) { margin += 1; decidedBy += " · Round 2"; }
   }
-  const verdict = { round, attackerWon, margin, tie, decidedBy, atkStats: A, defStats: D };
+  // Damage the winning riff deals — computed HERE (single source) so the client
+  // reads verdict.damage instead of re-deriving it (Phase 3e). A tie deals none;
+  // Round 2 hits one band harder (verbatim from the old Game.riffResolve).
+  const damage = tie ? 0 : marginToDamage(margin + (round >= 2 ? 1 : 0));
+  const verdict = { round, attackerWon, margin, tie, decidedBy, damage, atkStats: A, defStats: D };
   return {
     ...state,
     battle: {

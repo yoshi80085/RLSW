@@ -62,6 +62,41 @@ export function underdogBonus(winnerFame, loserFame, baseFp) {
 }
 
 /**
+ * 🥊 COUNTER_ROLLED (Phase 3d) — a glanced defender swings back. The engine
+ * rolls a counter d6, adds a Vibe bonus (`round(vibe/maxVibe × 3)`), and the
+ * counter LANDS when the total clears the attacker's winning die (`target`).
+ * Verbatim from Game.resolveRetaliation; merged into the live `battle` slice so
+ * the spin overlay can read the already-decided `counterRoll`.
+ */
+export function applyCounterRolled(state, action, rng) {
+  const { defenderId, vibe = 1, maxVibe = 1, target = 1 } = action;
+  const vibeBonus      = Math.round((vibe / maxVibe) * 3);
+  const counterRoll    = rng.int(6) + 1;
+  const counterTotal   = counterRoll + vibeBonus;
+  const counterSuccess = counterTotal >= target;
+  return {
+    ...state,
+    battle: {
+      ...(state.battle ?? {}),
+      defenderId,
+      counterRoll, vibeBonus, counterTotal,
+      counterTarget: target, counterSuccess,
+    },
+  };
+}
+
+/**
+ * 🥊 counterOutcome (Phase 3d) — a LANDED counter's margin → damage, verbatim
+ * from Game.finishCounter: `counterMargin = max(1, total − target + 1)`, then
+ * the shared `marginToDamage` table. (A failed counter uses the attacker's
+ * `margin + 2` back through `marginToDamage` and stays inline in the client.)
+ */
+export function counterOutcome(counterTotal, counterTarget) {
+  const counterMargin = Math.max(1, counterTotal - counterTarget + 1);
+  return { counterMargin, counterDmg: marginToDamage(counterMargin) };
+}
+
+/**
  * 🏆 decideWinner (Phase 3c kernel) — the boss-aware win check, verbatim from
  * Game.knockOut.checkWinner. Pure predicate over the (already post-KO) spirits:
  *   • A Rock God on the board changes the rule: last-Spirit-standing does NOT

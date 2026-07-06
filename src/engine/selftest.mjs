@@ -11,13 +11,16 @@ import {
   moveBudgetSet, moveStep, beatsSpent, spiritWarped, spiritsSynced,
   spiritFaced, spiritEliminated,
   riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed,
-  attackRolled,
+  attackRolled, counterRolled,
 } from "./actions.js";
 import { snapshot, restore, replay } from "./serialize.js";
 import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus, smashOutcome,
-  decideWinner, resolveKnockdown,
+  decideWinner, resolveKnockdown, counterOutcome,
 } from "./systems/combat.js";
+import { usedHas, usedList, usedAdd, performanceScore } from "./systems/economy.js";
+import { pitchIndex } from "../music/notes.js";
+import { detectMotifRepeat } from "../music/cadence.js";
 import { CORNERS } from "../data/corners.js";
 import {
   LIMELIGHT_HEX, UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT,
@@ -206,12 +209,16 @@ const config = {
   assert.ok(v.margin >= 1);
   assert.equal(v.tie, false);
   assert.equal(v.decidedBy, "performance");
+  // 🎸 Phase 3e: damage is decided in the verdict (round 1 → no round bonus).
+  assert.equal(v.damage, marginToDamage(v.margin), "round-1 verdict damage = marginToDamage(margin)");
   assert.deepEqual(s.battle.r1, { won: true, tie: false, margin: v.margin }, "round-1 edge remembered");
 
-  // double whiff = tie
+  // double whiff = tie → zero damage
   let t = applyAction(started, riffResultsSubmitted("attacker", mkResults(["miss","miss","miss","miss","miss","miss"])));
   t = applyAction(t, riffResultsSubmitted("defender", mkResults(["miss","miss","miss","miss","miss","miss"])));
-  assert.equal(applyAction(t, riffResolved()).battle.verdict.tie, true);
+  const tv = applyAction(t, riffResolved()).battle.verdict;
+  assert.equal(tv.tie, true);
+  assert.equal(tv.damage, 0, "a tie deals no damage");
 
   // round 2: fresh faster riffs, mods rerolled, r1 kept, results cleared
   const r2 = applyAction(s, riffRound2Started());
@@ -230,6 +237,8 @@ const config = {
   assert.equal(fv.tie, false, "round-1 edge breaks the round-2 dead heat");
   assert.equal(fv.attackerWon, true);
   assert.equal(fv.decidedBy, "Round 1 edge · Round 2");
+  // 🎸 Phase 3e: round-2 damage takes the extra band (margin + 1).
+  assert.equal(fv.damage, marginToDamage(fv.margin + 1), "round-2 verdict damage adds the round bonus");
 
   // close clears the slice
   assert.equal(applyAction(f, riffClosed()).battle, null);
@@ -500,6 +509,148 @@ const config = {
   // corner-less fallback: respawn in place (num/facing unchanged)
   const nc = resolveKnockdown({ id: "x", lives: 2, num: 5, facing: 4, corner: null, maxVibe: 9, vibe: 0 }, CORNERS);
   assert.deepEqual([nc.next.num, nc.next.facing, nc.next.vibe], [5, 4, 9]);
+}
+
+// -- Phase 3d: COUNTER_ROLLED + counterOutcome ----------------------------------
+{
+  // an attack must be on the slice first (counter merges into it)
+  const withAttack = seed => applyAction(makeInitialState(config, seed),
+    attackRolled("swing", "wildaxe", "vera", { atkStat: 7, defStat: 5 }));
+  const counter = (seed, over = {}) => applyAction(withAttack(seed),
+    counterRolled("vera", { vibe: 6, maxVibe: 10, target: 4, ...over })).battle;
+
+  // determinism + preserves the attack fields it merges into
+  const a = counter(4242), b = counter(4242);
+  assert.deepEqual(a, b, "same seed → identical counter");
+  assert.equal(a.kind, "attack", "counter merges into the live battle slice");
+  assert.equal(a.attackKind, "swing");
+
+  for (let seed = 1; seed <= 300; seed++) {
+    const c = counter(seed);
+    assert.ok(c.counterRoll >= 1 && c.counterRoll <= 6, "counter d6 in range");
+    assert.equal(c.vibeBonus, Math.round((6 / 10) * 3), "vibe bonus = round(6/10*3)=2");
+    assert.equal(c.counterTotal, c.counterRoll + c.vibeBonus, "total = roll + bonus");
+    assert.equal(c.counterTarget, 4);
+    assert.equal(c.counterSuccess, c.counterTotal >= 4, "success clears the target die");
+  }
+
+  // vibe bonus scales 0..3 with the Vibe fraction
+  assert.equal(counter(1, { vibe: 0, maxVibe: 10 }).vibeBonus, 0, "empty Vibe → +0");
+  assert.equal(counter(1, { vibe: 10, maxVibe: 10 }).vibeBonus, 3, "full Vibe → +3");
+  assert.equal(counter(1, { vibe: 5, maxVibe: 10 }).vibeBonus, 2, "half Vibe → round(1.5)=2");
+
+  // a trivially-low target is always cleared; an impossible one never is
+  assert.equal(counter(7, { vibe: 10, maxVibe: 10, target: 1 }).counterSuccess, true);
+  assert.equal(counter(7, { vibe: 0, maxVibe: 10, target: 99 }).counterSuccess, false);
+
+  // counterOutcome: landed-counter margin/damage vs the old Game math
+  for (let total = 1; total <= 12; total++)
+    for (let tgt = 1; tgt <= 6; tgt++) {
+      const m = Math.max(1, total - tgt + 1);
+      assert.deepEqual(counterOutcome(total, tgt),
+        { counterMargin: m, counterDmg: marginToDamage(m) },
+        `counterOutcome(${total},${tgt})`);
+    }
+}
+
+// -- Phase 5a: usedStockIdx Set→array contract helpers --------------------------
+{
+  // These reproduce the OLD JS-Set semantics exactly, but on a plain JSON array.
+  // The reference is the literal old code: `new Set([...used, ...idxs])` spread
+  // back to an array — i.e. insertion order + dedup. Sorting is deliberately NOT
+  // used (startNewTurnNotes recharges spent slots in insertion order).
+
+  // membership — array, legacy Set, and empty/undefined
+  assert.equal(usedHas([3, 1, 5], 5), true);
+  assert.equal(usedHas([3, 1, 5], 9), false);
+  assert.equal(usedHas(new Set([4, 2]), 2), true, "accepts a legacy Set defensively");
+  assert.equal(usedHas(undefined, 0), false, "undefined → not a member");
+
+  // usedList — fresh array copy, insertion order preserved, never the same ref
+  const srcArr = [2, 0, 7];
+  const listed = usedList(srcArr);
+  assert.deepEqual(listed, [2, 0, 7], "usedList preserves order");
+  assert.notEqual(listed, srcArr, "usedList returns a copy (mutating it can't corrupt state)");
+  assert.deepEqual(usedList(new Set([2, 0, 7])), [2, 0, 7], "usedList from a legacy Set (insertion order)");
+  assert.deepEqual(usedList(undefined), [], "usedList(undefined) → []");
+
+  // usedAdd — insertion-ordered dedup, returns a NEW array, source untouched
+  const base = [];
+  assert.deepEqual(usedAdd(base, 3), [3]);
+  assert.deepEqual(usedAdd([3], 3), [3], "adding an existing index is a no-op (dedup)");
+  assert.deepEqual(usedAdd([3, 1, 5], 1, 8, 3), [3, 1, 5, 8], "keeps first-seen order, drops dups");
+  assert.deepEqual(usedAdd([3, 1, 5], [8, 1]), [3, 1, 5, 8], "accepts an array arg (…unusedIdxs path)");
+  assert.deepEqual(base, [], "usedAdd never mutates its input");
+
+  // equivalence to the exact old expression it replaces, over a fuzz grid
+  for (let trial = 0; trial < 200; trial++) {
+    const start = Array.from({ length: (trial * 7) % 6 }, (_, k) => (trial * 3 + k * 5) % 9);
+    const adds  = Array.from({ length: (trial * 5) % 5 }, (_, k) => (trial + k * 4) % 9);
+    const oldWay = [...new Set([...start, ...adds])];              // literal old code
+    const newWay = usedAdd(usedList(start), adds);                 // helper path
+    assert.deepEqual(newWay, oldWay, `usedAdd ≡ new Set([...used, ...idxs]) (trial ${trial})`);
+  }
+
+  // the field is plain JSON now (survives snapshot/replay — the Phase-8 contract)
+  assert.deepEqual(JSON.parse(JSON.stringify(usedAdd([], 2, 5))), [2, 5],
+    "usedStockIdx is plain-JSON serializable");
+}
+
+// -- Phase 5a: performanceScore kernel ≡ old inline confirmNoteTrack math --------
+{
+  // The reference is the ORIGINAL inline P formula, verbatim. Extraction is a
+  // no-op on behavior iff the kernel matches it for every track+flag combo.
+  const POOL = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  const oldP = (ml, f) => {
+    const pc = ml.map(pitchIndex).filter(p => p >= 0);
+    const diff = [];
+    for (let i = 1; i < pc.length; i++) { let d = ((pc[i]-pc[i-1])%12+12)%12; if (d>6) d-=12; diff.push(d); }
+    let dc = 0, pd = 0;
+    for (const d of diff) { const s = Math.sign(d); if (s && pd && s !== pd) dc++; if (s) pd = s; }
+    const leaps = diff.filter(d => Math.abs(d) >= 3).length;
+    const intdiv = new Set(diff.filter(d => d).map(d => Math.abs(d))).size;
+    const dpc = new Set(pc).size;
+    let r3 = false;
+    for (let i = 2; i < ml.length; i++) if (ml[i]===ml[i-1] && ml[i-1]===ml[i-2]) { r3 = true; break; }
+    const shape = Math.min(2,dc) + Math.min(2,leaps) + (intdiv>=2?1:0) + (intdiv>=3?1:0);
+    const pal = (dpc>=3 && !r3 ? 1:0) + (dpc>=5?1:0);
+    const gest = Math.min(3, (f.tri?1:0)+(f.oct?1:0)+(f.dia>=3?1:0)+(f.rep>=3?1:0)+(f.skip>=3?1:0)+(f.gated?1:0));
+    const m0 = detectMotifRepeat(ml); const motif = (m0.period>=3?2:0) + (m0.reps>=3?1:0);
+    const big = (f.riff?3:0) + (f.cad?1:0);
+    const len = Math.floor(f.earned/3);
+    const pdisc = f.free ? Math.max(0, f.disc-1) : f.disc;
+    const pfree = (f.free && f.disc>=1) ? 1 : 0;
+    const score = Math.max(0, Math.min(10, shape+pal+gest+motif+big+len+(f.edge?2:0)+(f.sus?1:0)+pfree-pdisc));
+    return { score, freestyle: pfree };
+  };
+  let seed = 12345; const rnd = () => { seed = (seed*1103515245+12345) & 0x7fffffff; return seed/0x7fffffff; };
+  for (let t = 0; t < 3000; t++) {
+    const len = Math.floor(rnd()*9);
+    const ml = Array.from({ length: len }, () => POOL[Math.floor(rnd()*12)]);
+    const f = {
+      tri: rnd()<.4, oct: rnd()<.3, dia: Math.floor(rnd()*6), rep: Math.floor(rnd()*6), skip: Math.floor(rnd()*6),
+      gated: rnd()<.5, riff: rnd()<.15, cad: rnd()<.3, earned: Math.floor(rnd()*12),
+      edge: rnd()<.25, sus: rnd()<.2, disc: Math.floor(rnd()*4), free: rnd()<.3,
+    };
+    assert.deepEqual(
+      performanceScore({ melodyLine: ml, trackHasTritone: f.tri, isOctaveResolution: f.oct,
+        diatonicRunLen: f.dia, repeatPatLen: f.rep, skipClimbLen: f.skip, hasGatedEnding: f.gated,
+        hasRiff: f.riff, cadenceResolved: f.cad, earned: f.earned, edgeResolved: f.edge,
+        susEnd: f.sus, discordCount: f.disc, freestylePardon: f.free }),
+      oldP(ml, f), `performanceScore matches old inline math (trial ${t})`);
+  }
+  // clamp + freestyle spot checks
+  assert.equal(performanceScore({ melodyLine: [], trackHasTritone: false, isOctaveResolution: false,
+    diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0, hasGatedEnding: false, hasRiff: false,
+    cadenceResolved: false, earned: 0, edgeResolved: false, susEnd: false, discordCount: 5,
+    freestylePardon: false }).score, 0, "P floors at 0 under heavy discord");
+  assert.deepEqual(performanceScore({ melodyLine: ["C","D"], trackHasTritone: false, isOctaveResolution: false,
+    diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0, hasGatedEnding: false, hasRiff: false,
+    cadenceResolved: false, earned: 0, edgeResolved: false, susEnd: false, discordCount: 2,
+    freestylePardon: true }), performanceScore({ melodyLine: ["C","D"], trackHasTritone: false,
+    isOctaveResolution: false, diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0, hasGatedEnding: false,
+    hasRiff: false, cadenceResolved: false, earned: 0, edgeResolved: false, susEnd: false, discordCount: 2,
+    freestylePardon: true }), "deterministic (pure)");
 }
 
 console.log("engine selftest: all assertions passed ✔");

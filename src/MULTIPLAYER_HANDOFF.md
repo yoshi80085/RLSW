@@ -191,17 +191,218 @@ result` phases + `retaliationTimer` countdown + `ownsCQC` gate +
   actions that mutate engine spirits, and delete the `spiritsSynced` bridge. This
   is a big-bang best done in a session that can RUN the app (build + test the
   flip as it lands), not compile-check only — see the note below.
-- **3d — retaliation chain.** `RETALIATION_OFFERED/ROLLED/EXPIRED` actions;
-  the ’prompt→spin→settling→result’ phases become engine `battle.phase`
-  transitions; the countdown timer stays client and dispatches EXPIRED.
-- **3e — riff-off damage hookup.** `closeRiffOff` currently applies damage
-  client-side from the Phase-4 verdict; route it through the same 3c actions
-  and delete `marginToDamage` double-call drift risk.
+- **3d — retaliation chain.** ◑ **COUNTER ROLL DONE:** `COUNTER_ROLLED`
+  (`applyCounterRolled`) rolls the counter d6 on engine rng, adds the Vibe bonus
+  (`round(vibe/maxVibe × 3)`), and decides success vs the attacker's winning die
+  — merged into the live `battle` slice; `resolveRetaliation` dispatches it and
+  reads the verdict. Landed-counter margin/damage is pure `counterOutcome`
+  (`finishCounter`). selftest covers both. **Remaining 3d:** the
+  `prompt→spin→settling→result` phases as engine `battle.phase` transitions +
+  `RETALIATION_OFFERED/EXPIRED` (the countdown timer stays client and dispatches
+  EXPIRED) — lands with the 3c ownership flip, since the damage application it
+  gates (`resolveWinDamage`/`awardFame`/`battleKnockback`) is still client.
+- **3e — riff-off damage hookup.** ◑ **DRIFT KILLED:** the riff-off `verdict`
+  now carries `damage` (computed once in `applyRiffResolved` via the shared
+  `marginToDamage`); `riffResolve` reads `verdict.damage` instead of re-deriving
+  the round-bonus formula client-side. **Remaining:** route the *application* of
+  that damage (still `resolveWinDamage` inside `riffResolve`/`closeRiffOff`)
+  through the same `DAMAGE_APPLIED` action combat will use — lands with the 3c
+  ownership flip.
+
+> **Phase 3 status — LOGIC-COMPLETE (deliberate stop, owner's call).** All
+> combat *rules* are engine-owned and verified: damage/knockback/fame math (3a),
+> every roll (3b — swing d6, sonic keep-highest, smash pure math), the win-check
+> + knockdown/respawn kernels (3c), the counter roll + outcome (3d), and the
+> riff-off verdict damage (3e). What's intentionally NOT done is the **spirit
+> ownership flip** (engine `spirits` as source of truth, `DAMAGE_APPLIED/
+> KNOCKED_OUT/RESPAWNED/WINNER_DECLARED` actions, deleting `spiritsSynced`).
+> That flip reaches into events / stage FX / Rock God / skills (their `setSpirits`
+> writes + their not-yet-extracted state), so it's really cross-phase, and it's
+> the one change that can only be *compile-checked* here, never run. **Recommended
+> next step:** do it in a session that can run `npm run dev`, bundled with Phase 5
+> (when `noteStates` and `spirits` move into the engine together). Until then the
+> `spiritsSynced` bridge stays and the game plays identically to before Phase 3.
 
 Landmine: `resolveWinDamage`/`battleKnockback` fire inside timeout chains that
 read `battleStateRef`/`spiritsRef` — port them to read the engine state
 snapshot returned by `dispatch` instead (the Phase-2 `dispatch` already
 returns next state synchronously for exactly this).
+
+## 5c. Phase 5 (economy & skills) — pre-analyzed plan
+
+Written after mapping the code (banners + function names below are verified
+against the live file). Phase 5 is the biggest remaining phase because it
+absorbs the **deferred 3c ownership flip** — `spirits` and `noteStates` become
+engine-owned *together* (they're read/written by the same functions). **Do
+this in a session where the owner can run `npm run dev` between sub-phases.**
+
+**The state.** `noteStates` (one object per spirit, built by
+`makeInitialNoteState`, ~60 fields) is the whole per-spirit economy: note
+stock/melody/chord stack, HC + tier points, skill tree progress
+(`unlockedSkills`/`targetSkillId`/`discordUnlocks`/`swingUpgrades`), statuses
+(burn/stagger/mojoDrain/intimidation/…), crew & gear cooldowns, mod cards,
+fame, and the fan economy block (diehards/casuals/streaks/excitement/loyalty).
+
+**Two serialization landmines, fix in 5a:**
+1. `usedStockIdx` is a **JS `Set`** — violates the plain-JSON GameState
+   contract. ☑ DONE (5a). Converted to a plain **insertion-ordered array** of
+   spent-slot indices via three pure helpers in `systems/economy.js`
+   (`usedHas`/`usedList`/`usedAdd`); all ~29 sites in the main file now go
+   through them. **NOTE: insertion order, NOT sorted** — `startNewTurnNotes`
+   recharges the slots spent *first* (`[...usedStockIdx].slice(0,
+   STOCK_REFILL_RATE)`); sorting would silently change which slots refill.
+   Insertion order is still JSON-safe + replay-deterministic. selftest fuzzes
+   `usedAdd` ≡ the old `new Set([...used, ...idxs])` over 200 cases.
+2. `makeInitialNoteState` calls `Math.random()` for the starting root — must
+   take `rng`. Same for `refillStock` if it randomizes. ◑ **HALF DONE (5a):**
+   `randomNote`/`refillStock` (music/cadence.js) and `makeInitialNoteState` now
+   accept an **optional `rand` param** (defaults to `Math.random`, so behavior is
+   unchanged), same treatment as Phase-4 `riffGeneration`. The actual *threading*
+   of the engine rng into the init-hook call site is deferred to **5c**, where
+   `noteStates` becomes engine-owned and the seeded rng is naturally in scope.
+
+**Function map** (navigate by name): note track — `clickNoteStock`,
+`declarePivot`, `clearNoteTrack`, `useBankedNote`, `confirmNoteTrack`,
+`startNewTurnNotes`, `applyPendingCombatEffects`; skills —
+`applySkillEffects`, `setSkillTarget`, `awardTargetSkill`, `purchaseSkill`,
+`chooseUpgrade`, `grantHC`; crew/gear — `deployGroupie`, `fireUltimate`,
+`startRoadieAction`, `roadieReplugAmp`, `placeAmp`, `unplugRivalAmp`; mod
+cards — `playModCard`, `resolveTransposeCard`; fame — `grantFame`,
+`awardFame` (margin path already engine: `fameFromMargin`/`underdogBonus`);
+fan economy — `gainFans`, `tickFans`, `demolishFans`, `gainFansFromDeed`,
+`triggerUnsureWin`, `arenaFans`. `music/` is already pure — reuse, don't move.
+
+**Sub-phases (kernels → actions → flip, the proven Phase-3 shape):**
+
+- **5a — contract fixes + scoring kernel. ☑ DONE (sandbox-safe slice).**
+  (1) `usedStockIdx` Set→array via `usedHas`/`usedList`/`usedAdd` (see landmines
+  above). (2) optional `rand` param on `randomNote`/`refillStock`/
+  `makeInitialNoteState` (full rng threading deferred to 5c). (3) **Performance
+  Score P extracted** — the pure flair kernel (melodic shape + palette +
+  gestures + motif + length nudge + edge/sus/freestyle) is now
+  `performanceScore({...}) → {score, freestyle}` in `systems/economy.js`;
+  `confirmNoteTrack` calls it at one site. selftest fuzzes it ≡ the old inline
+  math over 3000 random tracks. Verified: full main file esbuild-transforms
+  clean; engine selftest + economy lint green.
+  **NOT extracted (deliberate):** the rest of `confirmNoteTrack`'s "scoring core"
+  is mostly *orchestration* over already-pure `music/` helpers (`scoreTrackHC`,
+  `detectChromaticRun`, `driveBoostFromRun`, `sustainBoostFromPattern`,
+  `detectDiatonicRun`, `detectRepeatPattern`, `detectMotifRepeat`, `advanceHC`)
+  interleaved with React setters / FX / `addLog` / a live voice-roll rng and the
+  Dissonance-Edge side effects (`applyVibeDamage`, `showTip`). There is no large
+  additional *pure* block to lift without running the app — a `trackOutcome`
+  that returns all the `setNoteField` effects is really the 5c flip. So P (the
+  one clean, self-contained numeric kernel) is the right 5a extraction; the rest
+  lands with 5c. Audio/FX/log stay client.
+- **5b — skills as pure kernels.** `skillEffectsOutcome(ns, skillId)` +
+  HC-cost/eligibility tables into `systems/skills.js`; `applySkillEffects`
+  becomes a thin wrapper. selftest regression per skill id.
+- **5c — THE OWNERSHIP FLIP** (spirits + noteStates into engine state,
+  one sub-phase, big-bang by necessity — this is the deferred Phase-3 3c):
+  actions `NOTE_TRACK_CONFIRMED`, `SKILL_PURCHASED`, `SKILL_AWARDED`,
+  `MOD_CARD_PLAYED`, `CREW_DEPLOYED`, `DAMAGE_APPLIED`, `KNOCKED_OUT`,
+  `RESPAWNED`, `WINNER_DECLARED`, `FAME_GRANTED`, `FANS_CHANGED`. Client
+  reads `engineState.spirits`/`engineState.noteStates` everywhere
+  (~25 `setSpirits` + ~dozens `setNoteStates` sites become dispatches);
+  delete `spiritsSynced`, `spiritsRef`, `noteStatesRef` reads inside rules.
+  Route the parked Phase-3 damage applications (`resolveWinDamage`,
+  riff-off + counter damage) through `DAMAGE_APPLIED` here.
+- **5d — fan economy tick as action.** `FANS_TICKED` inside `END_TURN`
+  processing (see §5d tick-order note below); `demolishFans` folds into
+  `DAMAGE_APPLIED`/`KNOCKED_OUT` handling.
+
+## 5d. Phase 6 (events, stage FX, Rock God) — pre-analyzed plan
+
+**Function map:** events/board — `spawnEventHex`, `pickTrivia` (rng in
+`data/trivia.js`), `answerTrivia`, `checkEventTrigger`, `resolveActiveEvent`
+(inline `d6()` — rng), `checkFlamingDisc`, `checkTokenPickup`, Lost Chords
+(`bankLostChordNote`/`resolveLostChordPickup`), charge zones
+(`grantChargeBoost`/`curatedChordNote`/`grantChargeChordAssist`/
+`checkChargeZonePickup`/`resolveChargeChoice`), board cards
+(`pickRandomCardType`/`spawnBoardCards`/`checkCardPickup`/`resolveCardPickup`);
+stage FX — `checkStageFxThresholds`, `activateStageFx`, `zapSpiritsInBeams`,
+`checkStageFxHex`, `tickStageFxTurn`, `tickStageFxRound`, `isHiddenBySmoke`;
+Rock God — `summonRockGod`, `attackRockGod`, `godDefeated`, `godTriumphs`,
+`rockGodAct`, `pickGodAttack` (rng in `data/rockGods.js`).
+
+**Landmines:**
+- `useStageEffects` shuffles `stageFxDeck` at mount with `Math.random()` and
+  guards fired thresholds in a `firedRef` **Set** — deck order becomes
+  engine state (seeded shuffle at `makeInitialState`), fired-set becomes a
+  plain array in state.
+- `useRockGod` keeps `godSummonedRef`/`rockGodRef` mirrors — same dissolve-
+  into-reducer treatment as combat. `bossTimer`/`bossTimerExpired` are the
+  retaliation-countdown pattern: timer is CLIENT, expiry dispatches
+  `GOD_TIMER_EXPIRED`. Telegraph = state; the wait before it resolves =
+  client.
+- **END TURN tick order is rule-critical.** Today (inside `endTurn`):
+  limelight fame faucet → end-of-turn debuff tick → burn tick → stage FX
+  tick → god answers (telegraph resolves / new attack opens) → fan economy
+  tick → spotlight heal check → Disco Inferno flame decay. The engine's
+  `END_TURN` handler must replicate this exact order or games diverge.
+  Write the order as a selftest (fixture state → END_TURN → assert each
+  system saw the right pre-state).
+
+**Sub-phases:** 6a event/card/charge picks as rng actions (`EVENT_SPAWNED`,
+`CARD_SPAWNED`, `TRIVIA_DRAWN`, pickup resolutions as choice actions);
+6b stage FX (seeded deck + thresholds + both ticks); 6c Rock God (summon/
+attack/act/defeat + timer-expiry seam); 6d fold all ticks into `END_TURN`
+in the verified order. Green after each; boss cinematics stay client.
+
+## 5e. Phase 7 (bots as policies) — pre-analyzed plan
+
+**Precondition: Phases 5–6 landed.** Bot code reads `noteStatesRef`/
+`spiritsRef` everywhere; policies must read *engine state* instead — porting
+them before the flips just doubles the work.
+
+**Function map:** step-machine — `botStepRef` (`idle → building → committed →
+moving → acting → ending`), `schedule()` pacing, `botBusyRef`; decisions —
+`botPersona`, `botPickTarget`, `botHexScore`, `botPlanMove`,
+`botSkillEligible`, `botPickSkillTarget`, `botBestFacing`,
+`botNeighborForAmp`, `botRivalsWithin`, `botPlanNoteStep`, `botPlanRevoice`,
+`botRevoiceChord`, `botRiffResults` (already the clean riff seam).
+
+**Target shape:** `engine/policies/bot.js` (policies are *players*, not
+rules — keep them out of `systems/`): `botPolicy(state, spiritId, rng) →
+action | null` (null = end turn). The React step-machine survives only as a
+*pacer*: take next policy action → dispatch → wait cinematic → repeat.
+`botRiffResults` already synthesizes the `RIFF_RESULTS_SUBMITTED` payload —
+use it as the template for the whole port.
+
+**Sub-phases:** 7a pure scorers (`botHexScore`, `botPickTarget`,
+`botPersona` weights) into `policies/` + selftest fixtures; 7b plan
+functions → `policy(state, rng)` returning engine actions (rng-thread every
+`Math.random()` pick); 7c step-machine slims to dispatch pacing — delete
+`botBusyRef` rule-reads. Determinism test: same seed + same state ⇒ same
+action sequence (this is what makes bots replayable in Phase 8 and
+host-runnable in multiplayer).
+
+## 5f. Phase 8 (serialize + replay) — pre-analyzed plan
+
+**Skeleton already exists:** `engine/serialize.js` has `snapshot`/`restore`
+(schema-versioned) and a `replay(initialState, actionLog)` loop;
+`engine/rng.js` has `restoreRng({seed, cursor})`; selftest already does one
+snapshot→restore round-trip. Phase 8 turns this into the determinism PROOF:
+
+- **8a — action log.** `dispatch` (in `Game`) appends `{action, cursorBefore}`
+  to a dev-flag log; add `EXPORT LOG` to the Testing Grounds dev panel.
+- **8b — full-state audit.** Grep the engine for anything non-JSON that
+  crept in: `Set`/`Map`, `Date.now`, `Infinity`, `undefined`-holes, function
+  refs. Fix + bump schema. (Known offenders fixed in 5a/6b: `usedStockIdx`,
+  stage-FX fired set.)
+- **8c — replay test.** Headless: `makeInitialState(seed)` → scripted
+  ~50-action log spanning every system (move/attack/track/skill/event/god/
+  riff via `botRiffResults`-style payloads) → assert
+  `snapshot(replay(s0, log)) === snapshot(liveFinal)` **byte for byte**.
+  Then the round-trip variant: snapshot mid-log, restore, replay the tail,
+  same assert. Both land in `selftest.mjs` (runs in node, sandbox-safe).
+- **8d — divergence hunt.** If bytes differ, bisect the log (replay halves)
+  — the first diverging action names the system still calling
+  `Math.random()` or mutating shared state. Fix, re-run, done.
+
+Exit criterion = the §1 mission: a server replaying the log gets the same
+game. When 8c is green, the multiplayer foundation is DONE; netcode is a
+separate, cheaper project.
 
 ## 6. First-session kickoff checklist
 
@@ -214,9 +415,9 @@ returns next state synchronously for exactly this).
 |---|---|
 | 1. Scaffold + RNG | ☑ engine/ created (state, actions, rng, reduce, serialize + selftest.mjs); `Game` holds `engineState`; selftest green, engine lint clean. Owner: smoke-test + commit from Windows. |
 | 2. Turn & movement | ☑ engine owns turnQueue/beats/facing/limelight-flags/counters via 10 actions; `Game` wired through `dispatch` (24 call sites); `spiritsSynced` bridge until Phase 3; selftest extended, `/tmp` esbuild compile green. TIP: `git show HEAD:path` beats the stale mount for reading true file bytes; verify main-file edits by replaying the same string replacements onto a `/tmp` copy and compiling with `npx esbuild --loader:.jsx=jsx`. |
-| 3. Combat | ◑ **3a + 3b COMPLETE, 3c kernels done** — pure combat math (`marginToDamage`, `fameFromMargin`, `knockbackSpaces`, `underdogBonus`) extracted to `engine/systems/combat.js`; `Game` imports all four (locals deleted; `underdogBonus` now takes the two Fame totals, keeping the spirit-identity guard in `Game`). selftest extended (bands, sonic caps, underdog ramp + exact regression grid vs old math) — full suite green; engine lint clean; HEAD+edits esbuild-compile clean. **3b complete** — swing (d6) + sonic (keep-highest `dicePool`) via `ATTACK_ROLLED`/`applyAttackRolled` on engine rng; smash via pure `smashOutcome` (no roll), shared by `resolveSmash` + `resolveBlasterOfRa`. Human + bot share all three. selftest + esbuild + engine lint green. **3c kernels done** — `decideWinner` + `resolveKnockdown` extracted (pure, single-source) and wired into the win-check + respawn/KO paths; game identical. selftest + esbuild + engine lint green. **Remaining:** the 3c ownership flip (engine `spirits` becomes source of truth, `DAMAGE_APPLIED/KNOCKED_OUT/...` actions, kill `spiritsSynced`) — a big-bang across ~25 sites best done where the app can be RUN — then 3d retaliation + 3e riff-off damage hookup. Owner: `npm run dev` smoke-test + commit from Windows. |
+| 3. Combat | ◑ **3a + 3b COMPLETE; 3c kernels, 3d counter-roll, 3e verdict-damage done** — pure combat math (`marginToDamage`, `fameFromMargin`, `knockbackSpaces`, `underdogBonus`) extracted to `engine/systems/combat.js`; `Game` imports all four (locals deleted; `underdogBonus` now takes the two Fame totals, keeping the spirit-identity guard in `Game`). selftest extended (bands, sonic caps, underdog ramp + exact regression grid vs old math) — full suite green; engine lint clean; HEAD+edits esbuild-compile clean. **3b complete** — swing (d6) + sonic (keep-highest `dicePool`) via `ATTACK_ROLLED`/`applyAttackRolled` on engine rng; smash via pure `smashOutcome` (no roll), shared by `resolveSmash` + `resolveBlasterOfRa`. Human + bot share all three. selftest + esbuild + engine lint green. **3c kernels done** — `decideWinner` + `resolveKnockdown` extracted (pure, single-source) and wired into the win-check + respawn/KO paths; game identical. selftest + esbuild + engine lint green. 3d counter-roll (`COUNTER_ROLLED`/`counterOutcome`) and 3e verdict-damage (riff `verdict.damage`) also done + verified. **Remaining:** the 3c ownership flip (engine `spirits` becomes source of truth, `DAMAGE_APPLIED/KNOCKED_OUT/...` actions, kill `spiritsSynced`, route riff + counter damage application through it) — a big-bang across ~25 sites best done where the app can be RUN. Owner: `npm run dev` smoke-test + commit from Windows. |
 | 4. Riff-off | ☑ done BEFORE Phase 3 (cleanest seam, budget call). Engine owns riff generation (rng threaded through `riff/riffGeneration.js` via optional `rand` param), Riff Slayer glitch sets, E-Rush ghosts, results submission, verdict math incl. Round-2 sudden-death fallback (`systems/riffOff.js`). Client submits `[{hit, rt, grade, noteIdx}]` per performer — the exact networked flow. Timing/gems/beam cinematics stay client. `riffStats` + scoring constants moved to engine; main imports `riffStats` from there. Damage application still client (waits on Phase 3). |
-| 5. Economy & skills | ☐ |
-| 6. Events / FX / Rock God | ☐ |
-| 7. Bot policies | ☐ |
-| 8. Serialize + replay | ☐ |
+| 5. Economy & skills | ◑ **5a DONE** (sandbox-safe slice): `usedStockIdx` Set→**insertion-ordered array** via `usedHas`/`usedList`/`usedAdd` (new `engine/systems/economy.js`, all ~29 sites rewired); optional `rand` param added to `randomNote`/`refillStock`/`makeInitialNoteState` (full rng-thread deferred to 5c); **Performance Score P** extracted to pure `performanceScore()` (single call site in `confirmNoteTrack`). selftest extended (usedAdd ≡ old Set fuzz ×200; performanceScore ≡ old inline math ×3000); full main esbuild-transforms clean; engine selftest + economy lint green. **Remaining 5b–5d** pre-analyzed in §5c; 5c (ownership flip, incl. deferred 3c) needs a run-capable session. Owner: `npm run dev` smoke-test + commit from Windows. |
+| 6. Events / FX / Rock God | ☐ pre-analyzed plan ready — §5d. END-TURN tick order documented there is rule-critical. |
+| 7. Bot policies | ☐ pre-analyzed plan ready — §5e. Blocked until 5+6 land (bots must read engine state). |
+| 8. Serialize + replay | ☐ pre-analyzed plan ready — §5f. serialize.js/replay skeleton already in repo. |

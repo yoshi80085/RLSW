@@ -245,12 +245,16 @@ export function analyseTrack(track, currentScale, fourthNote, fifthNote) {
   return { points: 0, breakdown: [] };
 }
 
-export function randomNote(rootNote, mode) {
+// `rand` is an optional injectable PRNG (a 0..1 function) — Phase 5a prep for the
+// seeded engine. Defaults to Math.random so every existing caller is unchanged;
+// the Phase-5c flip will pass the engine rng so note stock is replay-deterministic
+// (same treatment as riff/riffGeneration.js's optional `rand` param in Phase 4).
+export function randomNote(rootNote, mode, rand = Math.random) {
   const pool = rootNote ? getSpelledPool(rootNote, mode) : NOTE_POOL;
-  return pool[Math.floor(Math.random() * pool.length)];
+  return pool[Math.floor(rand() * pool.length)];
 }
-export function refillStock(rootNote, mode, size = 8) {
-  return Array.from({length: size}, () => randomNote(rootNote, mode));
+export function refillStock(rootNote, mode, size = 8, rand = Math.random) {
+  return Array.from({length: size}, () => randomNote(rootNote, mode, rand));
 }
 
 

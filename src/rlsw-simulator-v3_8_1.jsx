@@ -55,9 +55,10 @@ import { hexInSmoke, hexInBeams, rollLaserBeams, rollPyroHexes, spawnAnimatronic
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
-import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, resolveKnockdown } from "./engine/systems/combat.js";
+import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, resolveKnockdown, counterOutcome } from "./engine/systems/combat.js";
+import { usedHas, usedList, usedAdd, performanceScore } from "./engine/systems/economy.js";
 
 
 // 🎟️ A fan = a sleek "pawn": a detached round head above a rounded-triangle body.
@@ -314,7 +315,7 @@ import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } 
 // turn is your "final". String the right finals together across consecutive
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
-import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, staggerDuration, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackHC, randomNote, refillStock, detectMotifRepeat } from "./music/cadence.js";
+import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, staggerDuration, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackHC, randomNote, refillStock } from "./music/cadence.js";
 import { evaluateChord } from "./music/chords.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -779,9 +780,12 @@ function Game({ gameState, onReturnToLobby }) {
   const [log, setLog] = useState(["⚡ RLSW v3.0 — Melody Line System", "🎵 Build your Melody Line → Confirm → Move"]);
 
   // ─── NOTE SYSTEM STATE (per-character) ─────────────────────────────────────
-  function makeInitialNoteState(spiritId) {
-    // Pick a random raw note, respell to a canonical root in major context first
-    const rawRoot = NOTE_POOL[Math.floor(Math.random() * NOTE_POOL.length)];
+  function makeInitialNoteState(spiritId, rand = Math.random) {
+    // Pick a random raw note, respell to a canonical root in major context first.
+    // `rand` is an optional injectable PRNG (Phase 5a prep) — defaults to
+    // Math.random so behavior is unchanged; the Phase-5c flip passes the engine
+    // rng so the opening stock is replay-deterministic.
+    const rawRoot = NOTE_POOL[Math.floor(rand() * NOTE_POOL.length)];
     // Default to major for initial respelling; split roots default to major spelling
     const initMode = 'major';
     const root = canonicalRoot(rawRoot, initMode);
@@ -791,12 +795,12 @@ function Game({ gameState, onReturnToLobby }) {
     const stockSize = spiritId === 'cosmic_ronin' ? 10 : 8;
     // All roots are pivot candidates — always prompt for major/minor on first turn
     return {
-      noteStock:       refillStock(root, initMode, stockSize),
+      noteStock:       refillStock(root, initMode, stockSize, rand),
       melodyLine:       [],
       chordStack:      [root, semitonesUp(root, 7)],  // 🎸 the CHORD STACK — starts a Power Chord (R+5); persists across turns
       revoiceUsedThisTurn: false,  // 🎸 one chord revoice (add OR drop a note) per turn
       bonusRevoiceAvailable: false, // ⚡ Overcharge chord-assist — ONE extra revoice, separate from the budget above
-      usedStockIdx:    new Set(),
+      usedStockIdx:    [],   // insertion-ordered array of spent stock-slot indices (JSON-safe; was a Set)
       rootNote:        root,
       scaleMode:       initMode,
       pivotPending:    true, // always prompt major/minor at start
@@ -1193,7 +1197,7 @@ function Game({ gameState, onReturnToLobby }) {
   const actingNoteState = acting ? (noteStates[acting.id] ?? makeInitialNoteState(acting.id)) : null;
   const noteStock    = actingNoteState?.noteStock    ?? [];
   const melodyLine    = actingNoteState?.melodyLine    ?? [];
-  const usedStockIdx = actingNoteState?.usedStockIdx ?? new Set();
+  const usedStockIdx = actingNoteState?.usedStockIdx ?? [];
   const rootNote     = actingNoteState?.rootNote     ?? 'C';
   const scaleMode    = actingNoteState?.scaleMode    ?? 'major';
   const pivotPending  = actingNoteState?.pivotPending ?? false;
@@ -1618,7 +1622,7 @@ function Game({ gameState, onReturnToLobby }) {
   function clickNoteStock(idx, _flyEvent, _forceChordMode) {
     if (!acting) return;
     // ── 🎚️ MIXER — once per turn, tap an already-played note to layer it again ──
-    if (usedStockIdx.has(idx)) {
+    if (usedHas(usedStockIdx, idx)) {
       const hasMixer  = (actingNoteState?.unlockedSkills ?? []).includes('mixer');
       const mixerUsed = actingNoteState?.mixerUsedThisTurn ?? false;
       if (!hasMixer || mixerUsed || hasConfirmed || melodyLine.length >= 8 || pivotPending) return;
@@ -1667,7 +1671,7 @@ function Game({ gameState, onReturnToLobby }) {
       }
       setNoteField(acting.id, {
         chordStack:   [...chord, note],
-        usedStockIdx: new Set([...usedStockIdx, idx]),
+        usedStockIdx: usedAdd(usedStockIdx, idx),
         revoiceUsedThisTurn: true,
       });
       addLog(`🎸 ${note} → chord (revoiced to ${chord.length + 1} notes)`);
@@ -1705,7 +1709,7 @@ function Game({ gameState, onReturnToLobby }) {
     }
     setNoteField(acting.id, {
       melodyLine:    newTrack,
-      usedStockIdx: new Set([...usedStockIdx, idx]),
+      usedStockIdx: usedAdd(usedStockIdx, idx),
       discordCount: newDiscord,
     });
     const noteLabel = isTritone && !isUnlocked ? '🔥 TRITONE — discord'
@@ -1793,7 +1797,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (!acting) return;
     setNoteField(acting.id, {
       melodyLine: [],
-      usedStockIdx: new Set(),
+      usedStockIdx: [],
       discordCount: 0,
       // pivotPending intentionally NOT cleared — must still be resolved if active
     });
@@ -2061,40 +2065,10 @@ function Game({ gameState, onReturnToLobby }) {
     // ── 🎭 PERFORMANCE SCORE P — FLAIR (Crowd & Intimidation layer, §4) ──
     // P measures how INTERESTING the placement was, not how long the track is:
     // melodic shape (contour, leaps, interval variety) + palette + recognized
-    // gestures + repeated motifs, with track length only a small nudge. 0–10,
-    // every weight tunable. Routed to crowd / HC / intimidation in Stages B/C.
-    const perfPc   = melodyLine.map(pitchIndex).filter(p => p >= 0);
-    const perfDiff = [];
-    for (let i = 1; i < perfPc.length; i++) {
-      let d = ((perfPc[i] - perfPc[i - 1]) % 12 + 12) % 12;   // fold to nearest direction (−6..6)
-      if (d > 6) d -= 12;
-      perfDiff.push(d);
-    }
-    // melodic shape — contour direction changes, leaps (≥3 semitones), interval variety
-    let perfDirChg = 0, perfPrevDir = 0;
-    for (const d of perfDiff) { const sgn = Math.sign(d); if (sgn && perfPrevDir && sgn !== perfPrevDir) perfDirChg++; if (sgn) perfPrevDir = sgn; }
-    const perfLeaps      = perfDiff.filter(d => Math.abs(d) >= 3).length;
-    const perfIntDiv     = new Set(perfDiff.filter(d => d).map(d => Math.abs(d))).size;
-    const perfDistinctPc = new Set(perfPc).size;
-    let perfHas3Repeat   = false;
-    for (let i = 2; i < melodyLine.length; i++) {
-      if (melodyLine[i] === melodyLine[i - 1] && melodyLine[i - 1] === melodyLine[i - 2]) { perfHas3Repeat = true; break; }
-    }
-    const perfShape   = Math.min(2, perfDirChg) + Math.min(2, perfLeaps) + (perfIntDiv >= 2 ? 1 : 0) + (perfIntDiv >= 3 ? 1 : 0);
-    const perfPalette = (perfDistinctPc >= 3 && !perfHas3Repeat ? 1 : 0) + (perfDistinctPc >= 5 ? 1 : 0);
-    // recognized gestures — the discord-tier endings are already unlock-gated, so
-    // those flair rows only count once their Theory upgrade has been earned.
-    const perfGest = Math.min(3,
-        (trackHasTritone ? 1 : 0)
-      + (isOctaveResolution ? 1 : 0)
-      + (diatonicRunLen >= 3 ? 1 : 0)
-      + (repeatPatLen   >= 3 ? 1 : 0)
-      + (skipClimbLen   >= 3 ? 1 : 0)
-      + ((isMinorSeventhEnd || isMajorThirdEnd || isTritoneEnd) ? 1 : 0)
-    );
-    // repeated motif (NEW) — a 3+ note phrase played, then repeated
-    const perfMotif0 = detectMotifRepeat(melodyLine);
-    const perfMotif  = (perfMotif0.period >= 3 ? 2 : 0) + (perfMotif0.reps >= 3 ? 1 : 0);
+    // gestures + repeated motifs, with track length only a small nudge. 0–10.
+    // The pure kernel now lives in engine/systems/economy.js (`performanceScore`,
+    // Phase 5a — single source of truth); it's invoked below once its remaining
+    // inputs (Edge resolve, suspended ending) are known.
 
     // ── ⚡ DISSONANCE EDGE — dissonance as a combat stance, not a banked meter ──
     // (DESIGN_AUDIT_v2.md §9 v2. Replaces the Tension meter, which banked
@@ -2160,19 +2134,21 @@ function Game({ gameState, onReturnToLobby }) {
     // it's exactly that kind of reward, so it reuses the rail instead of adding one.
     if (edgeResolvedThisTurn) newTempDrive = Math.max(newTempDrive, 1);
 
-    const perfBig      = (riffMatch ? 3 : 0) + (cadenceResolved ? 1 : 0);  // a landed riff is peak flair
-    const perfLenNudge = Math.floor(earned / 3);                            // length is only a small nudge
     // theory_sus — a suspended ending (the 2nd or 4th) earns a small "hang" flair once unlocked
     const perfSusEnd = (actingNoteState?.unlockedSkills ?? []).includes('theory_sus')
       && (lastNote === semitonesUpSpelled(rootNote, scaleMode, 2) || lastNote === intervals.fourth);
-    // 🌀 FREESTYLE — the pardoned wrong note doesn't drag the crowd, and making dissonance
-    // sound intentional is itself a flourish (+1 Flair on a turn he freestyles a wrong note).
-    const perfDiscord   = freestylePardon ? Math.max(0, discordCount - 1) : discordCount;
-    const perfFreestyle = (freestylePardon && discordCount >= 1) ? 1 : 0;
-    const perfScore = Math.max(0, Math.min(10,
-      perfShape + perfPalette + perfGest + perfMotif + perfBig + perfLenNudge
-        + (edgeResolvedThisTurn ? 2 : 0) + (perfSusEnd ? 1 : 0) + perfFreestyle - perfDiscord
-    ));
+    // 🎭 Performance Score P — pure kernel (engine/systems/economy.js). `freestyle`
+    // (Intergalactic 0's pardoned first wrong note) comes back too, since the flash/
+    // log below need it and its arithmetic must not drift from the score's.
+    const { score: perfScore, freestyle: perfFreestyle } = performanceScore({
+      melodyLine,
+      trackHasTritone, isOctaveResolution,
+      diatonicRunLen, repeatPatLen, skipClimbLen,
+      hasGatedEnding: isMinorSeventhEnd || isMajorThirdEnd || isTritoneEnd,
+      hasRiff: !!riffMatch, cadenceResolved,
+      earned, edgeResolved: edgeResolvedThisTurn, susEnd: perfSusEnd,
+      discordCount, freestylePardon,
+    });
 
     // ── 🎭 STAGE B ROUTING: Performance Score P → HC top-up (§5b) + crowd excitement (§5a) ──
     // Baseline-on for now (no skill gate yet — will later sit behind Crowd Read / Stage Presence).
@@ -2362,12 +2338,12 @@ function Game({ gameState, onReturnToLobby }) {
 
       // 🎵 GRADUAL REFILL — unused notes carry over; only up to STOCK_REFILL_RATE
       // spent slots recharge this turn. Spend big one turn, run short the next.
-      const usedIdxs   = [...ns.usedStockIdx];
+      const usedIdxs   = usedList(ns.usedStockIdx);
       const refreshing = new Set(usedIdxs.slice(0, STOCK_REFILL_RATE));
       const newStock = ns.noteStock.map((note, idx) =>
         refreshing.has(idx) ? randomNote(ns.rootNote, ns.scaleMode) : note
       );
-      const carriedUsed = new Set(usedIdxs.filter(i => !refreshing.has(i)));
+      const carriedUsed = usedIdxs.filter(i => !refreshing.has(i)); // insertion order preserved (was a Set)
 
       // 🎵 Announce the refill instead of letting it happen silently — same
       // "pop in like fans do" treatment as flashFanFx, deferred via setTimeout
@@ -3058,7 +3034,7 @@ function Game({ gameState, onReturnToLobby }) {
       if (pivotPending) { addLog('🎼 Declare Major or Minor first, then play Chromatic Shift.'); return; }
       // Replace all out-of-scale notes in stock with random in-scale notes
       const newStock = (ns.noteStock ?? []).map((note, idx) => {
-        if (ns.usedStockIdx?.has(idx)) return note; // already used — leave it
+        if (usedHas(ns.usedStockIdx, idx)) return note; // already used — leave it
         if (currentScale.includes(note)) return note; // already in scale — leave it
         // Out of scale — replace with a random in-scale note
         const inScalePool = currentScale;
@@ -3535,10 +3511,10 @@ function Game({ gameState, onReturnToLobby }) {
     setNoteStates(prev => {
       const ns = prev[spiritId]; if (!ns) return prev;
       const stock = [...(ns.noteStock ?? [])];
-      const used  = ns.usedStockIdx instanceof Set ? ns.usedStockIdx : new Set(ns.usedStockIdx ?? []);
+      const used  = usedList(ns.usedStockIdx);
       const placed = new Set();
       const place = (n) => {
-        const slot = stock.findIndex((_, i) => !used.has(i) && !placed.has(i));
+        const slot = stock.findIndex((_, i) => !usedHas(used, i) && !placed.has(i));
         if (slot === -1) { stock.push(n); placed.add(stock.length - 1); }
         else { stock[slot] = n; placed.add(slot); }
       };
@@ -3667,10 +3643,10 @@ function Game({ gameState, onReturnToLobby }) {
     if (chord.length >= 5) { addLog('🎸 Chord Stack is full — drop a note first.'); return; }
     const note = actingNoteState.noteStock?.[idx];
     if (note == null) return;
-    const used = actingNoteState.usedStockIdx instanceof Set ? actingNoteState.usedStockIdx : new Set(actingNoteState.usedStockIdx ?? []);
+    const used = actingNoteState.usedStockIdx ?? [];
     setNoteField(acting.id, {
       chordStack: [...chord, note],
-      usedStockIdx: new Set([...used, idx]),
+      usedStockIdx: usedAdd(used, idx),
       bonusRevoiceAvailable: false,
     });
     addLog(`⚡ ${acting.name} spends the bonus revoice — ${note} joins the Chord Stack!`);
@@ -5547,8 +5523,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (moveStepsLeft < 2) { addLog('🎸 Not enough Action Points — the Smash costs 2 AP.'); return; }
     const ns    = actingNoteState ?? {};
     const stock = ns.noteStock ?? [];
-    const used  = ns.usedStockIdx ?? new Set();
-    const unusedIdxs = stock.map((_, i) => i).filter(i => !used.has(i));
+    const used  = ns.usedStockIdx ?? [];
+    const unusedIdxs = stock.map((_, i) => i).filter(i => !usedHas(used, i));
     const thrown = unusedIdxs.length;
     if (thrown < 2) { addLog('🎸 Nothing to throw — you need at least 2 unused notes to Smash.'); return; }
 
@@ -5569,17 +5545,17 @@ function Game({ gameState, onReturnToLobby }) {
 
     // You hurl ALL your unused stock and go Exposed.
     setNoteField(acting.id, {
-      usedStockIdx: new Set([...used, ...unusedIdxs]),
+      usedStockIdx: usedAdd(used, unusedIdxs),
       smashExposed: true,
     });
 
     // Scatter the rival's raw stock — knock a few of their unused notes loose.
     setNoteStates(prev => {
       const tns = prev[targetId]; if (!tns) return prev;
-      const tUsed   = tns.usedStockIdx ?? new Set();
-      const tUnused = (tns.noteStock ?? []).map((_, i) => i).filter(i => !tUsed.has(i));
+      const tUsed   = tns.usedStockIdx ?? [];
+      const tUnused = (tns.noteStock ?? []).map((_, i) => i).filter(i => !usedHas(tUsed, i));
       const toScatter = tUnused.slice(0, scatterN);
-      return { ...prev, [targetId]: { ...tns, usedStockIdx: new Set([...tUsed, ...toScatter]) } };
+      return { ...prev, [targetId]: { ...tns, usedStockIdx: usedAdd(tUsed, toScatter) } };
     });
 
     addLog(`🎸💥 ${acting.name} brings the instrument DOWN — THE SMASH! ${thrown} notes hurled, UNDEFENDABLE — −${damage} Vibe${scatterN > 0 ? `, ${scatterN} of ${target.name}'s notes scatter loose` : ''}.`);
@@ -5602,8 +5578,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (moveStepsLeft < 2) { addLog('🌀 Not enough Action Points — Blaster of Ra costs 2 AP.'); return; }
     const ns    = actingNoteState ?? {};
     const stock = ns.noteStock ?? [];
-    const used  = ns.usedStockIdx ?? new Set();
-    const unusedIdxs = stock.map((_, i) => i).filter(i => !used.has(i));
+    const used  = ns.usedStockIdx ?? [];
+    const unusedIdxs = stock.map((_, i) => i).filter(i => !usedHas(used, i));
     const thrown = unusedIdxs.length;
     if (thrown < 2) { addLog('🌀 Nothing to blast — you need at least 2 unused notes to fire.'); return; }
     const targets = getRivalsInBeam(acting);
@@ -5618,7 +5594,7 @@ function Game({ gameState, onReturnToLobby }) {
     const { damage, knockback, scatterN: scatterEach } = smashOutcome(thrown);
 
     // Hurl ALL unused stock down the beam; ride the recoil into Exposed.
-    setNoteField(acting.id, { usedStockIdx: new Set([...used, ...unusedIdxs]), smashExposed: true });
+    setNoteField(acting.id, { usedStockIdx: usedAdd(used, unusedIdxs), smashExposed: true });
 
     addLog(`🌀💥 ${acting.name} drops the BLASTER OF RA — a bass-drop shockwave screams down the beam, UNDEFENDABLE, piercing ${targets.length} rival${targets.length > 1 ? 's' : ''}!`);
     triggerEffectFlash(acting.id, '🌀', 'RA!', '#aa55ff');
@@ -5627,10 +5603,10 @@ function Game({ gameState, onReturnToLobby }) {
       const sc = scatterEach * (t.id === 'cosmic_ronin' ? 2 : 1); // 🗡️ Ronin still weak to the blast
       setNoteStates(prev => {
         const tns = prev[t.id]; if (!tns) return prev;
-        const tUsed   = tns.usedStockIdx ?? new Set();
-        const tUnused = (tns.noteStock ?? []).map((_, i) => i).filter(i => !tUsed.has(i));
+        const tUsed   = tns.usedStockIdx ?? [];
+        const tUnused = (tns.noteStock ?? []).map((_, i) => i).filter(i => !usedHas(tUsed, i));
         const toScatter = tUnused.slice(0, sc);
-        return { ...prev, [t.id]: { ...tns, usedStockIdx: new Set([...tUsed, ...toScatter]) } };
+        return { ...prev, [t.id]: { ...tns, usedStockIdx: usedAdd(tUsed, toScatter) } };
       });
       triggerEffectFlash(t.id, '💥', 'BLAST!', '#aa55ff');
       resolveWinDamage(acting.id, t.id, damage, 'Blaster of Ra');
@@ -6107,9 +6083,9 @@ function Game({ gameState, onReturnToLobby }) {
     dispatch(riffResultsSubmitted('attacker', bs.atkResults));
     dispatch(riffResultsSubmitted('defender', bs.defResults));
     const verdict = dispatch(riffResolved()).battle.verdict;
-    const { round, attackerWon, margin, tie, decidedBy } = verdict;
+    // damage is decided in the engine verdict now (Phase 3e) — no client re-derive.
+    const { round, attackerWon, margin, tie, decidedBy, damage } = verdict;
     const A = verdict.atkStats, D = verdict.defStats;
-    const damage  = tie ? 0 : marginToDamage(margin + (round >= 2 ? 1 : 0));
     const atkName = spirits.find(s => s.id === bs.attackerId)?.name;
     const defName = spirits.find(s => s.id === bs.defenderId)?.name;
     if (tie) addLog(`🎸 RIFF-OFF R${round}: dead heat — both nailed ${A.hits}/${RIFF_LEN} at the same quality. The crowd can't pick a winner!`);
@@ -6471,11 +6447,14 @@ function Game({ gameState, onReturnToLobby }) {
     // winning swing die (atkRoll): a glancing hit (margin ≤ 2) means it's a
     // genuine, viable swing-back rather than a near-impossible stat wall.
     const defender   = spirits.find(s => s.id === bs.defenderId);
-    const vibeBonus  = Math.round(((defender?.vibe ?? 1) / (defender?.maxVibe ?? 1)) * 3);
-    const counterRoll  = randD6();
-    const counterTotal = counterRoll + vibeBonus;
     const target       = bs.atkRoll ?? Math.max(1, (bs.atkTotal ?? 6) - (bs.atkStat ?? 0));
-    const counterSuccess = counterTotal >= target;
+    // 🎲 Counter die rolls on the engine's seeded rng (Phase 3d). The client
+    // passes the defender's Vibe (bonus source) + the die to beat; the engine
+    // decides the roll and success. The spin overlay reads the decided face.
+    const { counterRoll, vibeBonus, counterTotal, counterSuccess } = dispatch(
+      counterRolled(bs.defenderId, {
+        vibe: defender?.vibe ?? 1, maxVibe: defender?.maxVibe ?? 1, target,
+      })).battle;
 
     addLog(`🥊 ${defender?.name} winds up for a COUNTER — needs to out-swing a ${target}!`);
     setBattleState(prev => prev ? {
@@ -6530,8 +6509,8 @@ function Game({ gameState, onReturnToLobby }) {
     const defName = spirits.find(s => s.id === bs.defenderId)?.name;
 
     if (bs.counterSuccess) {
-      const counterMargin = Math.max(1, bs.counterTotal - bs.counterTarget + 1);
-      const counterDmg = marginToDamage(counterMargin);
+      // 🥊 Landed-counter margin/damage via the engine kernel (Phase 3d).
+      const { counterMargin, counterDmg } = counterOutcome(bs.counterTotal, bs.counterTarget);
       addLog(`💥 COUNTER LANDS! ${defName} swings back — ${counterDmg} Vibe dmg to ${atkName}!`);
       resolveWinDamage(bs.defenderId, bs.attackerId, counterDmg, 'counter');
       awardFame(bs.defenderId, counterMargin, bs.attackerId);
@@ -7127,7 +7106,7 @@ function Game({ gameState, onReturnToLobby }) {
     const NOTE_CAP = 8;                                   // hard track-length cap
     if (track.length >= NOTE_CAP) return { commit: true };
 
-    const isU   = (i) => used?.has?.(i) || (Array.isArray(used) && used.includes(i));
+    const isU   = (i) => usedHas(used, i);
     const root  = ns.rootNote ?? 'C', mode = ns.scaleMode ?? 'major';
     const scale = buildScale(root, mode);
     const iv    = getIntervalNotes(root, mode);
@@ -7309,9 +7288,9 @@ function Game({ gameState, onReturnToLobby }) {
 
       const track = ns.melodyLine ?? [];
       const stock = ns.noteStock ?? [];
-      const used  = ns.usedStockIdx ?? new Set();
+      const used  = ns.usedStockIdx ?? [];
       const scale = buildScale(ns.rootNote ?? 'C', ns.scaleMode ?? 'major');
-      const isUsed = (i) => used.has?.(i) || (Array.isArray(used) && used.includes(i));
+      const isUsed = (i) => usedHas(used, i);
 
       // 1c) Pre-build setup — only while the track is still empty:
       if (track.length === 0) {
@@ -7460,7 +7439,7 @@ function Game({ gameState, onReturnToLobby }) {
         // 🗡️ Ronin never Smashes — brute force isn't his art (his Smash lands soft).
         if (coneNow0.length && steps >= 2 && self.id !== 'cosmic_ronin') {
           const usedSet  = ns.usedStockIdx;
-          const isUsed    = (i) => usedSet?.has?.(i) || (Array.isArray(usedSet) && usedSet.includes(i));
+          const isUsed    = (i) => usedHas(usedSet, i);
           const unused   = (ns.noteStock ?? []).filter((_, i) => !isUsed(i)).length;
           const t        = botPickTarget(coneNow0, self);
           const tSustain = spiritChord(t.id, noteStatesRef.current?.[t.id]?.chordStack ?? []).sustain;
@@ -9405,7 +9384,7 @@ function Game({ gameState, onReturnToLobby }) {
                           <div style={{marginBottom:6,padding:"4px 7px",background:"#140a18",border:"1px solid #ff66cc33",borderRadius:4}}>
                             <div style={{display:"flex",flexWrap:"wrap",gap:2}}>
                               {noteStock.map((note,idx)=>{
-                                const used = usedStockIdx.has(idx);
+                                const used = usedHas(usedStockIdx, idx);
                                 /* Interval-based colors — same as melody step */
                                 const notePC         = pitchIndex(note);
                                 const isTritone      = notePC === pitchIndex(tritoneNote);
@@ -9488,7 +9467,7 @@ function Game({ gameState, onReturnToLobby }) {
                     const isUnlocked     = isIntervalNote && unlockedIntervalKeys.has(intervalKey);
                     const inScaleNote    = currentScale.includes(note);
                     const inScale        = inScaleNote;
-                    const used           = usedStockIdx.has(idx);
+                    const used           = usedHas(usedStockIdx, idx);
                     const isStaggered    = staggeredSlots.includes(idx);
                     // Special color rules mirror the Discord unlock gates:
                     // - tritone: needs discord_3 (out-of-scale until then → gray)
@@ -9813,9 +9792,7 @@ function Game({ gameState, onReturnToLobby }) {
               {(actingNoteState.chordStack?.length ?? 0) < 5 && (
                 <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
                   {(actingNoteState.noteStock ?? []).map((n, i) => {
-                    const used = actingNoteState.usedStockIdx instanceof Set
-                      ? actingNoteState.usedStockIdx.has(i)
-                      : (actingNoteState.usedStockIdx ?? []).includes(i);
+                    const used = usedHas(actingNoteState.usedStockIdx, i);
                     if (used) return null;
                     return (
                       <span key={i} onClick={() => spendBonusRevoiceAdd(i)} title="tap to add (spends the bonus revoice)"
@@ -9910,7 +9887,7 @@ function Game({ gameState, onReturnToLobby }) {
               // 🌀 Once Blaster of Ra is unlocked, it REPLACES the Smash: ranged beam, pierces all.
               const hasBlaster = acting?.id === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
               const rivals = acting ? (hasBlaster ? getRivalsInBeam(acting) : getRivalsInCone(acting)) : [];
-              const unused = (ns.noteStock ?? []).filter((_, i) => !(ns.usedStockIdx ?? new Set()).has(i)).length;
+              const unused = (ns.noteStock ?? []).filter((_, i) => !usedHas(ns.usedStockIdx, i)).length;
               const canFire = rivals.length > 0 && moveStepsLeft >= 2 && unused >= 2;
               const mode    = hasBlaster ? 'blaster' : 'smash';
               return (
