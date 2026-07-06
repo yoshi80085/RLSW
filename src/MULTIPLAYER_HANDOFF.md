@@ -347,10 +347,35 @@ fan economy — `gainFans`, `tickFans`, `demolishFans`, `gainFansFromDeed`,
   position). Lesson: once `spirits` derives from the engine, any `dispatch(spiritsSynced(spirits))`
   is a stale self-write — the bridge must die WITH the shim, not after. `spiritsRef`
   rule-reads are still fine (they read the rendered value, same as before).
-  **Remaining:** migrate individual sites to the semantic actions
-  (`DAMAGE_APPLIED`/`KNOCKDOWN_RESOLVED`/`WINNER_DECLARED`) — each a no-op — route the
-  parked Phase-3 damage applications (`resolveWinDamage`, riff-off + counter damage)
-  through them, then drop the `spiritsRef` rule-reads. **Then the noteStates half:**
+  ◑ **Slice 2a DONE (compile-clean + engine-selftest green), pending smoke-test.**
+  `applyVibeDamage`'s Vibe subtraction (the central hit-application, reached by
+  swing/sonic/smash/riff/counter via `resolveWinDamage`) now dispatches
+  `damageApplied(targetId, dmg)` instead of a `setSpirits` full-replace — a
+  behavioral no-op (`applyDamageApplied` does the identical `max(0, vibe−dmg)`
+  floor). `damageApplied` imported from `engine/actions.js`. The 80ms knockdown
+  check below it still reads the freshly-reduced engine spirits (dispatch updates
+  `engineRef` synchronously). Verified: full main file esbuild-transforms clean
+  (via the replay-onto-HEAD trick — the mount `cp` truncates); `node selftest.mjs`
+  green. ✔ **Owner smoke-tested OK.**
+  ◑ **Slice 2b DONE (compile-clean + engine-selftest green), pending smoke-test.**
+  `applyVibeDamage`'s post-damage knockdown check (the +80ms `setTimeout`) was a
+  `setSpirits(prev => …)` used purely as a *synchronous reader* (`prev` was always
+  `engineRef.current.spirits`). Rewrote it to read `engineRef.current.spirits`
+  directly and dispatch `knockdownResolved(targetId)` for the respawn transform
+  (same `resolveKnockdown` kernel the reducer runs). No-KD / KO-branch early
+  returns just bail now (the old `return prev` self-write of an unchanged array
+  was a harmless no-op). Zero staleness — the read + dispatch are same-tick.
+  `knockdownResolved` imported. Verified: full main file esbuild-transforms clean
+  (replay-onto-HEAD; both 2a+2b applied since HEAD is still pre-2a here), selftest
+  green. **⚠️ Owner: `npm run dev` smoke-test a RESPAWN — knock a multi-life spirit
+  to 0 Vibe; it should pop back at its home corner with full Vibe, −1 FP, respawn
+  flash. (True KO still uses the old `knockOut` path — that's slice 2c.)**
+  **Remaining:** slice 2c = `knockOut`'s two `applyKnockOut` sites →
+  `KNOCKDOWN_RESOLVED` (careful: they apply the transform to a `tgt` captured 4s
+  earlier across the slide-off cinematic — preserve that, don't re-read current)
+  + `checkWinner`'s `setWinner` → also `WINNER_DECLARED` (engine `winner` slice is
+  a separate dormant React `winner` at line 784; shadow-write it for replay), then
+  drop the `spiritsRef` rule-reads. **Then the noteStates half:**
   actions `NOTE_TRACK_CONFIRMED`, `SKILL_AWARDED`, `MOD_CARD_PLAYED`,
   `CREW_DEPLOYED`, `FAME_GRANTED`, `FANS_CHANGED`; move `makeInitialNoteState`
   into the engine (it needs `NOTE_POOL`/`canonicalRoot`/`refillStock` + the seeded

@@ -55,7 +55,7 @@ import { hexInSmoke, hexInBeams, rollLaserBeams, rollPyroHexes, spawnAnimatronic
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, resolveKnockdown, counterOutcome } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore } from "./engine/systems/economy.js";
@@ -5173,70 +5173,75 @@ function Game({ gameState, onReturnToLobby }) {
         focusOnHex(tgtNow.num, 950, 0.42, true);   // rumble fires as the push-in settles
       }
     }
-    setSpirits(prev => prev.map(s => {
-      if (s.id !== targetId) return s;
-      const newVibe = Math.max(0, s.vibe - dmg);
-      return { ...s, vibe: newVibe };
-    }));
+    // Phase 5c slice 2a: the Vibe subtraction is now a semantic engine action.
+    // Behavioral no-op vs the old setSpirits full-replace — applyDamageApplied
+    // does the identical max(0, vibe−dmg) floor on the engine spirits (now the
+    // source of truth). The knockdown check below reads the freshly-reduced
+    // engine spirits (engineRef is updated synchronously by dispatch).
+    dispatch(damageApplied(targetId, dmg));
     // Check for knock-down after state settles
     setTimeout(() => {
-      setSpirits(prev => {
-        const tgt = prev.find(s => s.id === targetId);
-        if (!tgt || tgt.vibe > 0) return prev;
-        // Vibe is 0 — KD
-        const newLives = (tgt.lives ?? 1) - 1;
-        addLog(`💥 ${tgt.name} is KNOCKED DOWN! (${newLives} life${newLives !== 1 ? 's' : ''} left)`);
-        showTip('knockdown');
+      // Phase 5c slice 2b: read the freshly-reduced engine spirits directly
+      // (this was `setSpirits(prev => …)` used purely as a synchronous reader —
+      // `prev` was always `engineRef.current.spirits`). The respawn transform now
+      // dispatches KNOCKDOWN_RESOLVED (same resolveKnockdown kernel) instead of a
+      // setSpirits full-replace; no-KD / KO paths just bail (the old self-write of
+      // an unchanged array was a harmless no-op).
+      const tgt = engineRef.current.spirits.find(s => s.id === targetId);
+      if (!tgt || tgt.vibe > 0) return;
+      // Vibe is 0 — KD
+      const newLives = (tgt.lives ?? 1) - 1;
+      addLog(`💥 ${tgt.name} is KNOCKED DOWN! (${newLives} life${newLives !== 1 ? 's' : ''} left)`);
+      showTip('knockdown');
 
-        // 🎤 FAN ECONOMY — a knockdown in the spotlight scatters the crowd. tgt.num
-        // is still the hex they fell on (respawn moves them after this).
-        setTimeout(() => demolishFans(targetId, attackerId, tgt.num), 0);
+      // 🎤 FAN ECONOMY — a knockdown in the spotlight scatters the crowd. tgt.num
+      // is still the hex they fell on (respawn moves them after this).
+      setTimeout(() => demolishFans(targetId, attackerId, tgt.num), 0);
 
-        // 💀 AZRAEL — credit the attacker's knockdown streak (Metalness only).
-        // A rival going down feeds Metalness Fame equal to his running streak.
-        if (attackerId && attackerId !== targetId) {
-          setTimeout(() => {
-            setNoteStates(nsPrev => {
-              const atkNs = nsPrev[attackerId] ?? {};
-              if (!(atkNs.unlockedSkills ?? []).includes('azrael')) return nsPrev;
-              const newStreak = (atkNs.knockStreak ?? 0) + 1;
-              const atkName = spirits.find(s => s.id === attackerId)?.name;
-              // Grant Fame + log AFTER this updater settles (grantFame also setstates)
-              setTimeout(() => {
-                addLog(`💀 AZRAEL — ${atkName} feeds on the fallen! Knockdown streak ${newStreak} → +${newStreak} FP.`);
-                triggerEffectFlash(attackerId, '💀', `AZRAEL ×${newStreak}`, '#ff2244');
-                grantFame(attackerId, newStreak, `Azrael streak ${newStreak}`);
-              }, 0);
-              return { ...nsPrev, [attackerId]: { ...atkNs, knockStreak: newStreak } };
-            });
-          }, 120);
-        }
+      // 💀 AZRAEL — credit the attacker's knockdown streak (Metalness only).
+      // A rival going down feeds Metalness Fame equal to his running streak.
+      if (attackerId && attackerId !== targetId) {
+        setTimeout(() => {
+          setNoteStates(nsPrev => {
+            const atkNs = nsPrev[attackerId] ?? {};
+            if (!(atkNs.unlockedSkills ?? []).includes('azrael')) return nsPrev;
+            const newStreak = (atkNs.knockStreak ?? 0) + 1;
+            const atkName = spirits.find(s => s.id === attackerId)?.name;
+            // Grant Fame + log AFTER this updater settles (grantFame also setstates)
+            setTimeout(() => {
+              addLog(`💀 AZRAEL — ${atkName} feeds on the fallen! Knockdown streak ${newStreak} → +${newStreak} FP.`);
+              triggerEffectFlash(attackerId, '💀', `AZRAEL ×${newStreak}`, '#ff2244');
+              grantFame(attackerId, newStreak, `Azrael streak ${newStreak}`);
+            }, 0);
+            return { ...nsPrev, [attackerId]: { ...atkNs, knockStreak: newStreak } };
+          });
+        }, 120);
+      }
 
-        if (newLives <= 0) {
-          // True KO
-          setTimeout(() => knockOut(targetId, null, undefined), 200);
-          return prev;
-        }
-        // Respawn at corner with full Vibe — position/facing/vibe via the engine
-        // resolveKnockdown kernel (Phase 3c); applied in the return below.
-        // Knock Down penalty: lose 1 FP (never below 0). The Spirit gets straight
-        // back up in their home corner with full Vibe — no turn is skipped.
-        // 💀 AZRAEL — if MetalNess himself is downed, his streak resets to zero.
-        setNoteStates(nsPrev => {
-          const ns = nsPrev[targetId] ?? {};
-          return { ...nsPrev, [targetId]: {
-            ...ns,
-            fame:       Math.max(0, (ns.fame ?? 0) - 1),
-            recovering: false,
-            knockStreak: 0,
-          }};
-        });
-        addLog(`💸 ${tgt.name} loses 1 FP and gets straight back up in their home corner!`);
-        // Flash respawn
-        setRespawnFlashes(rf => ({ ...rf, [targetId]: true }));
-        setTimeout(() => setRespawnFlashes(rf => ({ ...rf, [targetId]: false })), 1200);
-        return prev.map(s => s.id !== targetId ? s : resolveKnockdown(tgt).next);
+      if (newLives <= 0) {
+        // True KO
+        setTimeout(() => knockOut(targetId, null, undefined), 200);
+        return;
+      }
+      // Respawn at corner with full Vibe — position/facing/vibe via the engine
+      // KNOCKDOWN_RESOLVED action (runs the resolveKnockdown kernel — Phase 5c).
+      // Knock Down penalty: lose 1 FP (never below 0). The Spirit gets straight
+      // back up in their home corner with full Vibe — no turn is skipped.
+      // 💀 AZRAEL — if MetalNess himself is downed, his streak resets to zero.
+      setNoteStates(nsPrev => {
+        const ns = nsPrev[targetId] ?? {};
+        return { ...nsPrev, [targetId]: {
+          ...ns,
+          fame:       Math.max(0, (ns.fame ?? 0) - 1),
+          recovering: false,
+          knockStreak: 0,
+        }};
       });
+      addLog(`💸 ${tgt.name} loses 1 FP and gets straight back up in their home corner!`);
+      // Flash respawn
+      setRespawnFlashes(rf => ({ ...rf, [targetId]: true }));
+      setTimeout(() => setRespawnFlashes(rf => ({ ...rf, [targetId]: false })), 1200);
+      dispatch(knockdownResolved(targetId));
     }, 80);
   }
 
