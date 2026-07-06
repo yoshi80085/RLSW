@@ -55,9 +55,9 @@ import { hexInSmoke, hexInBeams, rollLaserBeams, rollPyroHexes, spawnAnimatronic
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
-import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, resolveKnockdown, counterOutcome } from "./engine/systems/combat.js";
+import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore } from "./engine/systems/economy.js";
 import { skillEligibility, THEORY_DISCORD_GRANTS, CQC_SWING_MAP } from "./engine/systems/skills.js";
 
@@ -7619,10 +7619,12 @@ function Game({ gameState, onReturnToLobby }) {
     const livesLeft = (tgt?.lives ?? 1) - 1;
     const willRespawn = livesLeft > 0;
 
-    function applyKnockOut(p) {
-      // 💥 Respawn/KO transform is the engine's resolveKnockdown kernel (Phase 3c).
-      return p.map(s => s.id !== tgtId ? s : resolveKnockdown(tgt).next);
-    }
+    // Phase 5c slice 2c: the respawn/KO transform is now the engine's
+    // KNOCKDOWN_RESOLVED action (runs the same resolveKnockdown kernel on the
+    // engine spirits — the authoritative store). `spiritEliminated` (dispatched
+    // above for a true KO) only touches turnQueue/acting, so the engine spirit
+    // still carries the fields resolveKnockdown reads → identical to the old
+    // captured-`tgt` transform, with no stale-closure risk.
 
     function checkWinner(updated) {
       // 🏆 The boss-aware decision now lives in the engine (Phase 3c kernel);
@@ -7634,7 +7636,9 @@ function Game({ gameState, onReturnToLobby }) {
         if (godWins) setTimeout(() => godTriumphs(), 400);
         return;
       }
-      if (winnerId) setTimeout(() => setWinner(winnerId), 0);
+      // Phase 5c slice 2c: shadow-write the engine `winner` slice (dormant, for
+      // replay) alongside the React `winner` the UI still reads.
+      if (winnerId) setTimeout(() => { dispatch(winnerDeclared(winnerId)); setWinner(winnerId); }, 0);
     }
 
     if (tgt) {
@@ -7667,11 +7671,8 @@ function Game({ gameState, onReturnToLobby }) {
           setSlideOffAnimations(prev => { const n = { ...prev }; delete n[tgtId]; return n; });
           if (willRespawn) addLog(`💥 ${tgt.name} KNOCKED DOWN! ${livesLeft} ${livesLeft === 1 ? "life" : "lives"} left — respawning!`);
           else addLog(`💀 ${tgt.name} is KO'd!`);
-          setSpirits(p => {
-            const updated = applyKnockOut(p);
-            if (!willRespawn) checkWinner(updated);
-            return updated;
-          });
+          const updated = dispatch(knockdownResolved(tgtId)).spirits;
+          if (!willRespawn) checkWinner(updated);
           if (willRespawn) {
             // Same Knock Down penalty as a Vibe-loss knockdown: -1 FP, but they
             // pop straight back up in their home corner — no turn is skipped.
@@ -7687,11 +7688,8 @@ function Game({ gameState, onReturnToLobby }) {
       }
     }
     if (!willRespawn) dispatch(spiritEliminated(tgtId));
-    setSpirits(p => {
-      const updated = applyKnockOut(p);
-      if (!willRespawn) checkWinner(updated);
-      return updated;
-    });
+    const updated = dispatch(knockdownResolved(tgtId)).spirits;
+    if (!willRespawn) checkWinner(updated);
     if (willRespawn) addLog(`💫 ${tgt?.name} respawns with ${livesLeft} ${livesLeft === 1 ? "life" : "lives"} left!`);
   }
 

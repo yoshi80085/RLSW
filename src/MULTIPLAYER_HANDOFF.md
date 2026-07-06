@@ -365,17 +365,28 @@ fan economy — `gainFans`, `tickFans`, `demolishFans`, `gainFansFromDeed`,
   (same `resolveKnockdown` kernel the reducer runs). No-KD / KO-branch early
   returns just bail now (the old `return prev` self-write of an unchanged array
   was a harmless no-op). Zero staleness — the read + dispatch are same-tick.
-  `knockdownResolved` imported. Verified: full main file esbuild-transforms clean
-  (replay-onto-HEAD; both 2a+2b applied since HEAD is still pre-2a here), selftest
-  green. **⚠️ Owner: `npm run dev` smoke-test a RESPAWN — knock a multi-life spirit
-  to 0 Vibe; it should pop back at its home corner with full Vibe, −1 FP, respawn
-  flash. (True KO still uses the old `knockOut` path — that's slice 2c.)**
-  **Remaining:** slice 2c = `knockOut`'s two `applyKnockOut` sites →
-  `KNOCKDOWN_RESOLVED` (careful: they apply the transform to a `tgt` captured 4s
-  earlier across the slide-off cinematic — preserve that, don't re-read current)
-  + `checkWinner`'s `setWinner` → also `WINNER_DECLARED` (engine `winner` slice is
-  a separate dormant React `winner` at line 784; shadow-write it for replay), then
-  drop the `spiritsRef` rule-reads. **Then the noteStates half:**
+  `knockdownResolved` imported. ✔ **Owner smoke-tested OK + committed (`9064442`).**
+  ◑ **Slice 2c DONE (compile-clean + engine-selftest green), pending smoke-test.**
+  `knockOut`'s two `applyKnockOut` sites (the +4s slide-off timeout path and the
+  no-hex fallback) now `dispatch(knockdownResolved(tgtId))` and read `.spirits`
+  off the return for `checkWinner`. Deleted the `applyKnockOut` helper and dropped
+  `resolveKnockdown` from the combat import (no code refs left — only comments).
+  Reconfirmed the captured-`tgt` concern is a non-issue: `spiritEliminated`
+  (dispatched before the transform for a true KO) only edits `turnQueue`/`acting`,
+  so the engine spirit still carries the `lives/num/corner/facing/maxVibe`
+  `resolveKnockdown` reads → identical result, no stale-closure risk. `checkWinner`
+  now also shadow-writes the engine `winner` slice via `dispatch(winnerDeclared(
+  winnerId))` alongside the React `setWinner` (engine slice stays dormant — UI
+  still reads React `winner` at line 784 — but is now populated for replay).
+  `winnerDeclared` imported. Verified: replay-onto-HEAD (now `9064442`, has 2a+2b)
+  esbuild-transforms clean; `node selftest.mjs` green. **⚠️ Owner: `npm run dev`
+  smoke-test a TRUE KO — knock a spirit out of its last life; it should slide off,
+  be removed from the turn order, and the match should end / declare the winner
+  correctly (incl. the boss-aware case). Also re-check a respawn still works.**
+  **Remaining:** the two non-combat `setWinner` sites (Rock God champion crowning
+  ~L4616, Fame-runaway victory ~L4789) still don't shadow `WINNER_DECLARED` — fold
+  those in when Phase 6 (Rock God) / the fame system flip lands. Then drop the
+  `spiritsRef` rule-reads. **Then the noteStates half:**
   actions `NOTE_TRACK_CONFIRMED`, `SKILL_AWARDED`, `MOD_CARD_PLAYED`,
   `CREW_DEPLOYED`, `FAME_GRANTED`, `FANS_CHANGED`; move `makeInitialNoteState`
   into the engine (it needs `NOTE_POOL`/`canonicalRoot`/`refillStock` + the seeded
