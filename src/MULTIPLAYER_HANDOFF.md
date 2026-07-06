@@ -378,15 +378,26 @@ fan economy — `gainFans`, `tickFans`, `demolishFans`, `gainFansFromDeed`,
   now also shadow-writes the engine `winner` slice via `dispatch(winnerDeclared(
   winnerId))` alongside the React `setWinner` (engine slice stays dormant — UI
   still reads React `winner` at line 784 — but is now populated for replay).
-  `winnerDeclared` imported. Verified: replay-onto-HEAD (now `9064442`, has 2a+2b)
-  esbuild-transforms clean; `node selftest.mjs` green. **⚠️ Owner: `npm run dev`
-  smoke-test a TRUE KO — knock a spirit out of its last life; it should slide off,
-  be removed from the turn order, and the match should end / declare the winner
-  correctly (incl. the boss-aware case). Also re-check a respawn still works.**
-  **Remaining:** the two non-combat `setWinner` sites (Rock God champion crowning
-  ~L4616, Fame-runaway victory ~L4789) still don't shadow `WINNER_DECLARED` — fold
-  those in when Phase 6 (Rock God) / the fame system flip lands. Then drop the
-  `spiritsRef` rule-reads. **Then the noteStates half:**
+  `winnerDeclared` imported. ✔ **Owner smoke-tested OK + committed (`9d11c37`).**
+  ◑ **Slice 2d DONE (compile-clean + engine-selftest green), pending smoke-test.**
+  The `spiritsRef` mirror is GONE. Its 4 async rule-reads (`triggerMoshpit` loser
+  lookup, `botPlanMove`/`botRivalsWithin` occupancy, the bot step-machine
+  `liveSelf`) now read `engineRef.current.spirits` — the authoritative store,
+  updated synchronously by `dispatch`, so strictly fresher than the render-lagged
+  ref ever was (the old `?? spirits` fallbacks are dropped; `engineRef.current`
+  is always a valid state). Declaration + its `useEffect` sync deleted. No code
+  references to `spiritsRef` remain (only the descriptive comment). Verified:
+  replay-onto-HEAD (`9d11c37`, has 2a–2c) esbuild-transforms clean; `node
+  selftest.mjs` green. **⚠️ Owner: `npm run dev` — play a full-ish match (bot
+  movement/targeting + a moshpit-skill KO if reachable) to confirm bot pathing and
+  the Master-of-Moshpits crowd FX still behave.**
+  **Remaining spirit-flip cleanup:** the two non-combat `setWinner` sites (Rock God
+  champion crowning ~L4616, Fame-runaway victory ~L4789) still don't shadow
+  `WINNER_DECLARED` — fold those in when Phase 6 (Rock God) / the fame flip lands.
+  The spirit half of the flip is otherwise COMPLETE (all combat spirit writes are
+  engine actions; `spiritsSynced` now only carries the remaining non-combat
+  `setSpirits` sites — movement/facing/drive/position — which already have Phase-2
+  actions and can migrate later). **Next major work — the noteStates half:**
   actions `NOTE_TRACK_CONFIRMED`, `SKILL_AWARDED`, `MOD_CARD_PLAYED`,
   `CREW_DEPLOYED`, `FAME_GRANTED`, `FANS_CHANGED`; move `makeInitialNoteState`
   into the engine (it needs `NOTE_POOL`/`canonicalRoot`/`refillStock` + the seeded

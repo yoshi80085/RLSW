@@ -647,6 +647,21 @@ function Game({ gameState, onReturnToLobby }) {
     dispatch(spiritsSynced(next));
   };
 
+  // ── ⏩ FAST-FORWARD (client presentation only) ─────────────────────────────
+  // A global speed multiplier (1× / 2× / 4×) that divides every presentation
+  // timer — bot pacing, battle/riff cinematics, FX, and camera. The engine and
+  // all game RULES are untouched; only the display clock scales. At 1× the
+  // arithmetic is identity, so default play is byte-for-byte unchanged. Read via
+  // a ref so async timeout chains always see the LIVE speed, never a stale
+  // closure.
+  const [gameSpeed, setGameSpeed] = useState(1);   // 1 | 2 | 4
+  const gameSpeedRef = useRef(1);
+  useEffect(() => { gameSpeedRef.current = gameSpeed; }, [gameSpeed]);
+  const cycleGameSpeed = () => setGameSpeed(s => (s === 1 ? 2 : s === 2 ? 4 : 1));
+  // Scaled setTimeout — every presentation delay flows through here. Drop-in for
+  // setTimeout(fn, ms): returns the timer id, clamps to ≥0, rounds to an int.
+  const gt = (fn, ms = 0) => setTimeout(fn, Math.max(0, Math.round((Number(ms) || 0) / (gameSpeedRef.current || 1))));
+
   const [action, setAction]   = useState(null); // "move" | "swing" | null
   // ── BATTLE STATE ─────────────────────────────────────────────────────────────
   // actionTokenUsed: has the acting spirit used their action token this turn
@@ -666,10 +681,10 @@ function Game({ gameState, onReturnToLobby }) {
   // Keep ref in sync so async callbacks can read latest state without closure issues
   useEffect(() => { battleStateRef.current = battleState; }, [battleState]);
 
-  // Fresh-state mirrors for async combat callbacks (Master of Moshpits crowd
-  // mob & Azrael streak both fire on timeouts AFTER damage/knockdown settle).
-  const spiritsRef = useRef(null);
-  useEffect(() => { spiritsRef.current = spirits; }, [spirits]);
+  // Phase 5c slice 2d: the `spiritsRef` mirror is gone — async rule callbacks now
+  // read `engineRef.current.spirits` (the authoritative store, updated
+  // synchronously by dispatch), which is strictly fresher than the render-lagged
+  // ref mirror was.
 
   // ── 🤖 BOT ORCHESTRATION — live-state mirrors so the async bot loop never
   //    reads stale closures. (acting / noteStates / moveStepsLeft / etc. are
@@ -5268,7 +5283,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Flood the board around a battered rival with moshing fans for a few seconds.
   function triggerMoshpit(loserId) {
-    const loser = (spiritsRef.current ?? spirits).find(s => s.id === loserId);
+    const loser = engineRef.current.spirits.find(s => s.id === loserId);
     if (!loser || loser.knockedOut || (loser.vibe ?? 0) <= 0) return; // nobody left to rock
     const key = Date.now();
     setMoshpitTargets(m => ({ ...m, [loserId]: key }));
@@ -5449,7 +5464,7 @@ function Game({ gameState, onReturnToLobby }) {
     // never skipped — that's the player's moment.
     const skipCine = skipBattleIntrosRef.current;
     battleTimersRef.current = [];
-    const T = (fn, ms) => { const id = setTimeout(fn, skipCine ? Math.round(ms * 0.1) : ms); battleTimersRef.current.push(id); return id; };
+    const T = (fn, ms) => { const id = gt(fn, skipCine ? ms * 0.1 : ms); battleTimersRef.current.push(id); return id; };
 
     // 1.2s: Flash Drive stat
     T(() => setBattleState(p => p ? { ...p, phase: 'flash_drive' } : p), 1200);
@@ -5829,7 +5844,7 @@ function Game({ gameState, onReturnToLobby }) {
     // order; only the die-click stays full-speed).
     const skipCine = skipBattleIntrosRef.current;
     battleTimersRef.current = [];
-    const T = (fn, ms) => { const id = setTimeout(fn, skipCine ? Math.round(ms * 0.1) : ms); battleTimersRef.current.push(id); return id; };
+    const T = (fn, ms) => { const id = gt(fn, skipCine ? ms * 0.1 : ms); battleTimersRef.current.push(id); return id; };
     T(() => setBattleState(p => p ? { ...p, phase: 'flash_drive' }                                         : p), 1200);
     T(() => setBattleState(p => p ? { ...p, phase: 'pick_drive_slide', pickPos: -atkStat }                 : p), 2600);
     T(() => setBattleState(p => p ? { ...p, phase: 'enter_defender' }                                      : p), 5200);
@@ -6973,7 +6988,7 @@ function Game({ gameState, onReturnToLobby }) {
   function botPlanMove(self) {
     const from = HEX_BY_NUM[self.num];
     if (!from) return null;
-    const live = spiritsRef.current ?? spirits;
+    const live = engineRef.current.spirits;
     const occupied = new Set(live.filter(s => !s.knockedOut && s.id !== self.id).map(s => s.num));
     const ampHexes = new Set(amps.map(a => a.hexNum));
     const neighbors = axialNeighbors(from.q, from.r)
@@ -7085,7 +7100,7 @@ function Game({ gameState, onReturnToLobby }) {
   function botRivalsWithin(self, dist) {
     const myHex = HEX_BY_NUM[self.num];
     if (!myHex) return [];
-    const live = spiritsRef.current ?? spirits;
+    const live = engineRef.current.spirits;
     return live.filter(s => {
       if (s.knockedOut || s.id === self.id) return false;
       const h = HEX_BY_NUM[s.num];
@@ -7254,13 +7269,13 @@ function Game({ gameState, onReturnToLobby }) {
         // watches (e.g. declarePivot, or the empty "beat" between move→act), this
         // guarantees one fresh evaluation so the bot never stalls mid-turn.
         setBotNudge(n => n + 1);
-      }, BOT_TICK);
+      }, Math.max(0, Math.round(BOT_TICK / (gameSpeedRef.current || 1))));
     };
 
     // Shared per-cycle reads (fresh every fire — the nudge re-runs this effect).
     const ns        = noteStatesRef.current?.[self.id] ?? {};
     const unlocked  = ns.unlockedSkills ?? [];
-    const liveSelf  = (spiritsRef.current ?? spirits).find(s => s.id === self.id) ?? self;
+    const liveSelf  = engineRef.current.spirits.find(s => s.id === self.id) ?? self;
     const hasSkill  = (id) => unlocked.includes(id);
     const crewReady = (id) => hasSkill(id) && (ns.groupieCooldowns?.[id] ?? 0) === 0;
     const guard     = (fn) => () => { if (actingRef.current?.id === self.id) fn(); };
@@ -7933,7 +7948,7 @@ function Game({ gameState, onReturnToLobby }) {
   // ─── RUMBLE & DAMAGE FLOAT ────────────────────────────────────────────────────
   function triggerRumble(spiritId, durationMs = 500) {
     setRumblingIds(prev => new Set([...prev, spiritId]));
-    setTimeout(() => setRumblingIds(prev => {
+    gt(() => setRumblingIds(prev => {
       const next = new Set(prev); next.delete(spiritId); return next;
     }), durationMs);
   }
@@ -7942,7 +7957,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (!amount || amount <= 0) return;
     const key = `${spiritId}-${Date.now()}-${Math.random()}`;
     setFloatingDmg(prev => [...prev, { spiritId, amount, key }]);
-    setTimeout(() => setFloatingDmg(prev => prev.filter(f => f.key !== key)), 1200);
+    gt(() => setFloatingDmg(prev => prev.filter(f => f.key !== key)), 1200);
   }
 
   // 💥 STATUS-EFFECT BOARD VFX ─────────────────────────────────────────────────
@@ -7952,7 +7967,7 @@ function Game({ gameState, onReturnToLobby }) {
     const key = `fx-${spiritId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setEffectFlashes(prev => [...prev, { key, spiritId, icon, label, color }]);
     triggerRumble(spiritId, 350);
-    setTimeout(() => setEffectFlashes(prev => prev.filter(f => f.key !== key)), durationMs);
+    gt(() => setEffectFlashes(prev => prev.filter(f => f.key !== key)), durationMs);
   }
 
   // 🎥 Brief cinematic push-in on a board hex, easing back out after a hold.
@@ -7966,10 +7981,10 @@ function Game({ gameState, onReturnToLobby }) {
     if (!h) return;
     setCameraView({ cx: h.px, cy: h.py, padW: (SVG_W / SCALE) * frac, padH: (SVG_H / SCALE) * frac });
     if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
-    focusTimerRef.current = setTimeout(() => setCameraView(null), holdMs);
+    focusTimerRef.current = gt(() => setCameraView(null), holdMs);
     if (rumbleAtEnd) {
       if (zoomRumbleRef.current) clearTimeout(zoomRumbleRef.current);
-      zoomRumbleRef.current = setTimeout(() => {
+      zoomRumbleRef.current = gt(() => {
         const sp = spirits.find(s => s.num === hexNum && !s.knockedOut);
         if (sp) triggerRumble(sp.id, 560);
       }, CAMERA_ZOOM_MS);
@@ -7981,7 +7996,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (hexNum == null) return;
     const key = `dmg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setDamageFx(prev => [...prev, { key, hexNum, text, color }]);
-    setTimeout(() => setDamageFx(prev => prev.filter(d => d.key !== key)), 1300);
+    gt(() => setDamageFx(prev => prev.filter(d => d.key !== key)), 1300);
   }
 
   // 🏃 Send a crew token (Roadie/Groupie) travelling from one hex to another.
@@ -7996,7 +8011,7 @@ function Game({ gameState, onReturnToLobby }) {
       spiritColor: color, spiritName: label ?? 'Crew',
       icon, labelText: label, startTime: Date.now(),
     }]);
-    setTimeout(() => setRoadieAnimations(prev => prev.filter(a => a.id !== id)), 2800);
+    gt(() => setRoadieAnimations(prev => prev.filter(a => a.id !== id)), 2800);
   }
 
   // ─── CAMERA ZOOM ──────────────────────────────────────────────────────────────
@@ -8028,7 +8043,7 @@ function Game({ gameState, onReturnToLobby }) {
     const format = v => v.map(n => n.toFixed(2)).join(" ");
     if (vbAnimRef.current) cancelAnimationFrame(vbAnimRef.current);
     const start = performance.now();
-    const duration = CAMERA_ZOOM_MS;
+    const duration = CAMERA_ZOOM_MS / (gameSpeedRef.current || 1);
     const fromVB = parse(animatedVBRef.current);
     const toVB = parse(targetVB);
     function tick(now) {
@@ -8053,7 +8068,7 @@ function Game({ gameState, onReturnToLobby }) {
   }, [cameraView]);
 
   function zoomReset(delay = 0) {
-    setTimeout(() => setCameraView(null), delay);
+    gt(() => setCameraView(null), delay);
   }
 
   // ─── MANUAL ZOOM/PAN ─────────────────────────────────────────────────────────
@@ -8173,6 +8188,18 @@ function Game({ gameState, onReturnToLobby }) {
       background:"radial-gradient(ellipse at 50% -10%, #0a1226 0%, #050810 55%)",
       color:"#e2e8f0", minHeight:"100vh", display:"flex", flexDirection:"column", padding:10, boxSizing:"border-box" }}>
       <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap" rel="stylesheet"/>
+
+      {/* ⏩ FAST-FORWARD — cycle 1× / 2× / 4× presentation speed (rules untouched) */}
+      <button onClick={cycleGameSpeed}
+        title="Fast-forward: cycle game speed 1× → 2× → 4×"
+        style={{position:'fixed', top:8, right:8, zIndex:99998,
+          background: gameSpeed === 1 ? '#1a2438' : 'linear-gradient(180deg,#2d6cdf,#1b3f8f)',
+          color:'#e2e8f0', border:'1.5px solid '+(gameSpeed===1?'#33415580':'#7db0ff'),
+          borderRadius:8, padding:'6px 10px', font:"700 13px 'Share Tech Mono',monospace",
+          letterSpacing:0.5, cursor:'pointer',
+          boxShadow: gameSpeed===1?'none':'0 0 10px #2d6cdf88'}}>
+        ⏩ {gameSpeed}×
+      </button>
 
       {/* ── GAME OVER OVERLAY ── */}
       <GameOverOverlay
