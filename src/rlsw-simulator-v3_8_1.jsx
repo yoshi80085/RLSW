@@ -59,6 +59,7 @@ import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineM
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, resolveKnockdown, counterOutcome } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore } from "./engine/systems/economy.js";
+import { skillEligibility, THEORY_DISCORD_GRANTS, CQC_SWING_MAP } from "./engine/systems/skills.js";
 
 
 // 🎟️ A fan = a sleek "pawn": a detached round head above a rounded-triangle body.
@@ -2607,11 +2608,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'theory_chromatic') addLog(`⚡ ${spirit?.name} — CHROMATIC MASTERY! All Discord penalties are halved.`);
     // THE LADDER absorbs the old Discord path: climbing Theory grants the colour-note
     // capabilities the combat logic checks for (discordUnlocks + unlockedSkills flags).
-    const THEORY_DISCORD_GRANTS = {
-      theory_dom7:      ['discord_1'],             // ♭7 clean + Mojo Drain (Blues Lick)
-      theory_modes:     ['discord_3'],             // tritone clean + Burn (Devil's Interval)
-      theory_chromatic: ['discord_2', 'discord_4'],// maj3 cleanse (Borrowed Chord) + chromatic/Stagger
-    };
+    // Table is now the pure `THEORY_DISCORD_GRANTS` from engine/systems/skills.js.
     if (THEORY_DISCORD_GRANTS[skillId]) {
       const grants = THEORY_DISCORD_GRANTS[skillId];
       setNoteStates(prev => {
@@ -2628,7 +2625,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'displace')      addLog(`🌌 ${spirit?.name} — DISPLACE! Warp to your amp rig for 3 AP (2-turn cooldown). He doesn't run — he transcends space.`);
     if (skillId === 'sunbeam')       addLog(`☀️ ${spirit?.name} — SUNBEAM! With 3 amps, your Sonic beam reaches +2 hexes and leaves burning ground in its wake.`);
 
-    const CQC_SWING_MAP = { shank_skank:'swing_1', cosmic_boogaloo:'swing_2', moon_shuffle:'swing_3', baki_gravity:'swing_3' };
+    // CQC skill → swing tier; pure `CQC_SWING_MAP` from engine/systems/skills.js.
     if (CQC_SWING_MAP[skillId]) {
       const tier = SWING_UPGRADE_TIERS.find(t => t.id === CQC_SWING_MAP[skillId]);
       addLog(`🥊 ${spirit?.name} unlocks ${skill?.label}! ${tier?.desc ?? ''}`);
@@ -2693,19 +2690,15 @@ function Game({ gameState, onReturnToLobby }) {
     const unlocked = ns.unlockedSkills ?? [];
     if (unlocked.includes(skillId)) return;
 
-    // Prereq checks
-    if (skill.prereq && skill.prereq !== '__all_pa__') {
-      if (!unlocked.includes(skill.prereq)) {
-        addLog(`❌ Requires ${SKILL_BY_ID[skill.prereq]?.label} first.`); return;
-      }
-    }
-    if (skill.prereq === '__all_pa__') {
-      const need = ['mic','pedal_dist','amp_1','mixer'];
-      const missing = need.filter(id => !unlocked.includes(id));
-      if (missing.length) { addLog(`❌ Ultimate requires: ${missing.join(', ')}`); return; }
-    }
-    if (skill.chainId === 'pa' && skill.id !== 'amp_1' && !unlocked.includes('amp_1')) {
-      addLog(`❌ PA system requires Amp I first.`); return;
+    // Prereq / chain gating — shared pure kernel (engine/systems/skills.js), the
+    // same gate the bot uses. Human path passes no owner-route (the overlay only
+    // ever offers the player their own skills), preserving prior behavior.
+    const elig = skillEligibility(skill, unlocked);
+    if (!elig.ok) {
+      if (elig.reason === 'prereq')        addLog(`❌ Requires ${SKILL_BY_ID[skill.prereq]?.label} first.`);
+      else if (elig.reason === 'ultimate') addLog(`❌ Ultimate requires: ${elig.missing.join(', ')}`);
+      else if (elig.reason === 'pa')       addLog(`❌ PA system requires Amp I first.`);
+      return;
     }
 
     setNoteStates(prev => ({
@@ -7025,15 +7018,12 @@ function Game({ gameState, onReturnToLobby }) {
   // Mirror setSkillTarget's gating so a pick is never silently rejected (which
   // would leave upgradesPending stuck and the bot spinning its wheels).
   function botSkillEligible(skillId, unlocked, selfId) {
+    // Shared pure gate (engine/systems/skills.js) — same source the human overlay
+    // uses, so bot & player can never drift again.
     const sk = SKILL_BY_ID[skillId];
-    if (!sk || unlocked.includes(skillId)) return false;
-    const ownerOnly = SPIRIT_ONLY_ROUTE[sk.routeId];
-    if (ownerOnly && ownerOnly !== selfId) return false;
-    if (sk.prereq === '__all_pa__')
-      return ['mic','pedal_dist','amp_1','mixer'].every(id => unlocked.includes(id));
-    if (sk.prereq && !unlocked.includes(sk.prereq)) return false;
-    if (sk.chainId === 'pa' && sk.id !== 'amp_1' && !unlocked.includes('amp_1')) return false;
-    return true;
+    return skillEligibility(sk, unlocked, {
+      ownerRoute: sk ? SPIRIT_ONLY_ROUTE[sk.routeId] : null, selfId,
+    }).ok;
   }
   function botPickSkillTarget(self) {
     const unlocked = (noteStatesRef.current?.[self.id]?.unlockedSkills) ?? [];

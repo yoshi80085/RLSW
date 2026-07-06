@@ -19,6 +19,7 @@ import {
   decideWinner, resolveKnockdown, counterOutcome,
 } from "./systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore } from "./systems/economy.js";
+import { skillEligibility, ULTIMATE_PREREQS, THEORY_DISCORD_GRANTS, CQC_SWING_MAP } from "./systems/skills.js";
 import { pitchIndex } from "../music/notes.js";
 import { detectMotifRepeat } from "../music/cadence.js";
 import { CORNERS } from "../data/corners.js";
@@ -651,6 +652,88 @@ const config = {
     isOctaveResolution: false, diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0, hasGatedEnding: false,
     hasRiff: false, cadenceResolved: false, earned: 0, edgeResolved: false, susEnd: false, discordCount: 2,
     freestylePardon: true }), "deterministic (pure)");
+}
+
+// -- Phase 5b: skillEligibility ≡ old bot + human gating ------------------------
+{
+  // References = the ORIGINAL two implementations, verbatim.
+  const botOld = (sk, unlocked, selfId, ownerRoute) => {
+    if (!sk || unlocked.includes(sk.id)) return false;
+    if (ownerRoute && ownerRoute !== selfId) return false;
+    if (sk.prereq === "__all_pa__")
+      return ["mic", "pedal_dist", "amp_1", "mixer"].every(id => unlocked.includes(id));
+    if (sk.prereq && !unlocked.includes(sk.prereq)) return false;
+    if (sk.chainId === "pa" && sk.id !== "amp_1" && !unlocked.includes("amp_1")) return false;
+    return true;
+  };
+  // old human path (no owner check): returns the toast it would have shown, or "" to proceed.
+  const humanOld = (sk, unlocked) => {
+    if (unlocked.includes(sk.id)) return "already";
+    if (sk.prereq && sk.prereq !== "__all_pa__") {
+      if (!unlocked.includes(sk.prereq)) return `❌ Requires ${sk.prereq} first.`;
+    }
+    if (sk.prereq === "__all_pa__") {
+      const missing = ["mic", "pedal_dist", "amp_1", "mixer"].filter(id => !unlocked.includes(id));
+      if (missing.length) return `❌ Ultimate requires: ${missing.join(", ")}`;
+    }
+    if (sk.chainId === "pa" && sk.id !== "amp_1" && !unlocked.includes("amp_1")) return `❌ PA system requires Amp I first.`;
+    return "";
+  };
+  // new human wrapper reproduced from Game.setSkillTarget's reason mapping
+  const humanNew = (sk, unlocked) => {
+    const e = skillEligibility(sk, unlocked);
+    if (e.ok) return "";
+    if (e.reason === "prereq")        return `❌ Requires ${sk.prereq} first.`;
+    if (e.reason === "ultimate")      return `❌ Ultimate requires: ${e.missing.join(", ")}`;
+    if (e.reason === "pa")            return `❌ PA system requires Amp I first.`;
+    return "already"; // already-unlocked is filtered before this block in Game; matches humanOld
+  };
+
+  // synthetic skills covering every branch
+  const SK = {
+    a:      { id: "a" },
+    b:      { id: "b", prereq: "a" },
+    ult:    { id: "ult", prereq: "__all_pa__" },
+    pa2:    { id: "pa2", chainId: "pa" },
+    amp_1:  { id: "amp_1", chainId: "pa" },
+    ronin:  { id: "ronin", routeId: "shredding_ronin" },
+  };
+  const ROUTE = { shredding_ronin: "cosmic_ronin", metalness: "Metalness_Monster" };
+  const POOL = ["a", "b", "mic", "pedal_dist", "amp_1", "mixer", "pa2", "ult", "ronin"];
+  const selves = [null, "cosmic_ronin", "vera"];
+
+  let seed = 999; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  for (let t = 0; t < 4000; t++) {
+    const unlocked = POOL.filter(() => rnd() < 0.5);
+    const sk = SK[Object.keys(SK)[Math.floor(rnd() * Object.keys(SK).length)]];
+    const selfId = selves[Math.floor(rnd() * selves.length)];
+    const ownerRoute = sk.routeId ? ROUTE[sk.routeId] : null;
+    // bot equivalence
+    assert.equal(
+      skillEligibility(sk, unlocked, { ownerRoute, selfId }).ok,
+      botOld(sk, unlocked, selfId, ownerRoute),
+      `skillEligibility.ok ≡ botSkillEligible (t${t})`);
+    // human equivalence (no owner route)
+    assert.equal(humanNew(sk, unlocked), humanOld(sk, unlocked),
+      `human toast ≡ old setSkillTarget (t${t})`);
+  }
+
+  // spot checks on reasons + missing list
+  assert.deepEqual(skillEligibility(SK.ult, ["mic", "amp_1"]),
+    { ok: false, reason: "ultimate", missing: ["pedal_dist", "mixer"] }, "ultimate reports missing PA parts");
+  assert.deepEqual(skillEligibility(SK.ult, ["mic", "pedal_dist", "amp_1", "mixer"]), { ok: true }, "full PA → Ultimate opens");
+  assert.deepEqual(skillEligibility(SK.pa2, []), { ok: false, reason: "pa" }, "pa chain needs amp_1");
+  assert.deepEqual(skillEligibility(SK.amp_1, []), { ok: true }, "amp_1 itself is exempt from the pa gate");
+  assert.deepEqual(skillEligibility(SK.b, ["b"]), { ok: false, reason: "already" }, "already-unlocked");
+  assert.deepEqual(skillEligibility(SK.ronin, [], { ownerRoute: "cosmic_ronin", selfId: "vera" }),
+    { ok: false, reason: "owner" }, "owner-only route blocks non-owner");
+  assert.deepEqual(skillEligibility(SK.ronin, [], { ownerRoute: "cosmic_ronin", selfId: "cosmic_ronin" }),
+    { ok: true }, "owner may take their signature skill");
+
+  // grant tables intact
+  assert.deepEqual(THEORY_DISCORD_GRANTS.theory_chromatic, ["discord_2", "discord_4"]);
+  assert.equal(CQC_SWING_MAP.baki_gravity, "swing_3");
+  assert.deepEqual(ULTIMATE_PREREQS, ["mic", "pedal_dist", "amp_1", "mixer"]);
 }
 
 console.log("engine selftest: all assertions passed ✔");

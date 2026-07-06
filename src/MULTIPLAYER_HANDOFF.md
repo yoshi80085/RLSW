@@ -294,9 +294,21 @@ fan economy — `gainFans`, `tickFans`, `demolishFans`, `gainFansFromDeed`,
   that returns all the `setNoteField` effects is really the 5c flip. So P (the
   one clean, self-contained numeric kernel) is the right 5a extraction; the rest
   lands with 5c. Audio/FX/log stay client.
-- **5b — skills as pure kernels.** `skillEffectsOutcome(ns, skillId)` +
-  HC-cost/eligibility tables into `systems/skills.js`; `applySkillEffects`
-  becomes a thin wrapper. selftest regression per skill id.
+- **5b — skills as pure kernels. ☑ DONE (eligibility + tables; effects deferred).**
+  The pure skill-tree **gating** is now `skillEligibility(skill, unlocked,
+  {ownerRoute, selfId}) → {ok, reason, missing?}` in `engine/systems/skills.js`,
+  plus the pure tables `ULTIMATE_PREREQS`, `THEORY_DISCORD_GRANTS`,
+  `CQC_SWING_MAP`. Both call sites now share it: `botSkillEligible` is a one-line
+  wrapper, and `setSkillTarget` maps `reason`→its exact toast (they had DRIFTED —
+  the bot enforced owner-only routes, the human didn't; the human keeps its
+  no-owner behavior by passing no `ownerRoute`). selftest fuzzes
+  `skillEligibility` ≡ BOTH old implementations over 4000 combos + reason/missing
+  spot-checks. **NOT extracted (deliberate):** `applySkillEffects` is ~95%
+  side-effects — `addLog`, `setSpirits` (+1 CQC Drive), `setNoteStates` (discord
+  grants, roadie hire), `showTip`. There's no pure `skillEffectsOutcome` to lift
+  without turning the writes into the 5c dispatches; the grant *tables* it reads
+  are now the single-source pure exports above, so 5c just routes them through a
+  `SKILL_AWARDED` reducer. Audio/FX/log stay client.
 - **5c — THE OWNERSHIP FLIP** (spirits + noteStates into engine state,
   one sub-phase, big-bang by necessity — this is the deferred Phase-3 3c):
   actions `NOTE_TRACK_CONFIRMED`, `SKILL_PURCHASED`, `SKILL_AWARDED`,
@@ -417,7 +429,7 @@ separate, cheaper project.
 | 2. Turn & movement | ☑ engine owns turnQueue/beats/facing/limelight-flags/counters via 10 actions; `Game` wired through `dispatch` (24 call sites); `spiritsSynced` bridge until Phase 3; selftest extended, `/tmp` esbuild compile green. TIP: `git show HEAD:path` beats the stale mount for reading true file bytes; verify main-file edits by replaying the same string replacements onto a `/tmp` copy and compiling with `npx esbuild --loader:.jsx=jsx`. |
 | 3. Combat | ◑ **3a + 3b COMPLETE; 3c kernels, 3d counter-roll, 3e verdict-damage done** — pure combat math (`marginToDamage`, `fameFromMargin`, `knockbackSpaces`, `underdogBonus`) extracted to `engine/systems/combat.js`; `Game` imports all four (locals deleted; `underdogBonus` now takes the two Fame totals, keeping the spirit-identity guard in `Game`). selftest extended (bands, sonic caps, underdog ramp + exact regression grid vs old math) — full suite green; engine lint clean; HEAD+edits esbuild-compile clean. **3b complete** — swing (d6) + sonic (keep-highest `dicePool`) via `ATTACK_ROLLED`/`applyAttackRolled` on engine rng; smash via pure `smashOutcome` (no roll), shared by `resolveSmash` + `resolveBlasterOfRa`. Human + bot share all three. selftest + esbuild + engine lint green. **3c kernels done** — `decideWinner` + `resolveKnockdown` extracted (pure, single-source) and wired into the win-check + respawn/KO paths; game identical. selftest + esbuild + engine lint green. 3d counter-roll (`COUNTER_ROLLED`/`counterOutcome`) and 3e verdict-damage (riff `verdict.damage`) also done + verified. **Remaining:** the 3c ownership flip (engine `spirits` becomes source of truth, `DAMAGE_APPLIED/KNOCKED_OUT/...` actions, kill `spiritsSynced`, route riff + counter damage application through it) — a big-bang across ~25 sites best done where the app can be RUN. Owner: `npm run dev` smoke-test + commit from Windows. |
 | 4. Riff-off | ☑ done BEFORE Phase 3 (cleanest seam, budget call). Engine owns riff generation (rng threaded through `riff/riffGeneration.js` via optional `rand` param), Riff Slayer glitch sets, E-Rush ghosts, results submission, verdict math incl. Round-2 sudden-death fallback (`systems/riffOff.js`). Client submits `[{hit, rt, grade, noteIdx}]` per performer — the exact networked flow. Timing/gems/beam cinematics stay client. `riffStats` + scoring constants moved to engine; main imports `riffStats` from there. Damage application still client (waits on Phase 3). |
-| 5. Economy & skills | ◑ **5a DONE** (sandbox-safe slice): `usedStockIdx` Set→**insertion-ordered array** via `usedHas`/`usedList`/`usedAdd` (new `engine/systems/economy.js`, all ~29 sites rewired); optional `rand` param added to `randomNote`/`refillStock`/`makeInitialNoteState` (full rng-thread deferred to 5c); **Performance Score P** extracted to pure `performanceScore()` (single call site in `confirmNoteTrack`). selftest extended (usedAdd ≡ old Set fuzz ×200; performanceScore ≡ old inline math ×3000); full main esbuild-transforms clean; engine selftest + economy lint green. **Remaining 5b–5d** pre-analyzed in §5c; 5c (ownership flip, incl. deferred 3c) needs a run-capable session. Owner: `npm run dev` smoke-test + commit from Windows. |
+| 5. Economy & skills | ◑ **5a + 5b DONE** (sandbox-safe slices). **5a:** `usedStockIdx` Set→**insertion-ordered array** via `usedHas`/`usedList`/`usedAdd` (new `engine/systems/economy.js`, ~29 sites rewired); optional `rand` param on `randomNote`/`refillStock`/`makeInitialNoteState` (full rng-thread deferred to 5c); **Performance Score P** → pure `performanceScore()`. **5b:** pure `skillEligibility()` + tables (`ULTIMATE_PREREQS`/`THEORY_DISCORD_GRANTS`/`CQC_SWING_MAP`) in `engine/systems/skills.js`; `botSkillEligible` + `setSkillTarget` now share ONE gate (they had drifted on owner-only routes). selftest extended (usedAdd ≡ old Set ×200; performanceScore ≡ old inline ×3000; skillEligibility ≡ old bot+human ×4000). **Remaining 5c–5d** pre-analyzed in §5c; 5c (ownership flip, incl. deferred 3c) needs a run-capable session. Owner: `npm run dev` smoke-test + commit from Windows. |
 | 6. Events / FX / Rock God | ☐ pre-analyzed plan ready — §5d. END-TURN tick order documented there is rule-critical. |
 | 7. Bot policies | ☐ pre-analyzed plan ready — §5e. Blocked until 5+6 land (bots must read engine state). |
 | 8. Serialize + replay | ☐ pre-analyzed plan ready — §5f. serialize.js/replay skeleton already in repo. |
