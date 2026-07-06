@@ -332,12 +332,25 @@ fan economy — `gainFans`, `tickFans`, `demolishFans`, `gainFansFromDeed`,
   ⚠️ The client's `Game.makeInitialNoteState` is now a temporary DUPLICATE of the
   engine one (byte-identical) — the flip deletes the client copy and reads
   `engineState.noteStates`.
-  **STILL TO DO — the client flip (owner-run):** make the
-  client read `engineState.spirits` for Vibe/lives/knockedOut everywhere
-  (~25 `setSpirits` sites → `dispatch` + read-back), route the parked Phase-3
-  damage applications (`resolveWinDamage`, riff-off + counter damage) and
-  `applyVibeDamage`/`knockOut` through the three actions above, then delete
-  `spiritsSynced` + the `spiritsRef` rule-reads. **Then the noteStates half:**
+  **CLIENT FLIP — IN PROGRESS (owner-run):**
+  ◑ **Slice 1 DONE (source-of-truth shim), pending smoke-test.** `spirits` is now
+  a view of `engineState.spirits`; `setSpirits(updater)` is a compat shim that
+  applies the update to the live engine spirits and writes back via
+  `spiritsSynced` (full replace). Engine is now the single source of truth and all
+  ~30 `setSpirits` sites keep working unchanged (behavior-identical). Main file
+  esbuild-transforms clean.
+  ⚠️ **Bug found + fixed in smoke-test:** the 3 `spiritsSynced(spirits)` bridge
+  dispatches (turn-skip, pre-move, end-turn) had to be removed immediately, not in
+  "cleanup" — post-flip `spirits` is the render-lagged `engineState.spirits`, so
+  re-dispatching it clobbered engine state that had advanced via timeout chains
+  (knockback slides settle over ~600ms; `endTurn`'s bridge reverted the knocked-back
+  position). Lesson: once `spirits` derives from the engine, any `dispatch(spiritsSynced(spirits))`
+  is a stale self-write — the bridge must die WITH the shim, not after. `spiritsRef`
+  rule-reads are still fine (they read the rendered value, same as before).
+  **Remaining:** migrate individual sites to the semantic actions
+  (`DAMAGE_APPLIED`/`KNOCKDOWN_RESOLVED`/`WINNER_DECLARED`) — each a no-op — route the
+  parked Phase-3 damage applications (`resolveWinDamage`, riff-off + counter damage)
+  through them, then drop the `spiritsRef` rule-reads. **Then the noteStates half:**
   actions `NOTE_TRACK_CONFIRMED`, `SKILL_AWARDED`, `MOD_CARD_PLAYED`,
   `CREW_DEPLOYED`, `FAME_GRANTED`, `FANS_CHANGED`; move `makeInitialNoteState`
   into the engine (it needs `NOTE_POOL`/`canonicalRoot`/`refillStock` + the seeded

@@ -614,14 +614,11 @@ function Game({ gameState, onReturnToLobby }) {
   const { mode, teams } = gameState;
   const startingLives = gameState.startingLives ?? 3;
 
-  const [spirits, setSpirits] = useState(() =>
-    gameState.spirits.map(s => ({ ...s, lives: startingLives }))
-  );
   // ── ENGINE STATE (see src/MULTIPLAYER_HANDOFF.md) ─────────────────────────
-  // The authoritative, serializable game state. Phase 2: the engine owns the
-  // turn queue, beats/AP, movement/facing rules, limelight-start flags, and
-  // the turn counter. React still owns everything else; `spiritsSynced`
-  // bridges combat-era spirit writes in until Phase 3.
+  // The authoritative, serializable game state. The engine owns the turn queue,
+  // beats/AP, movement/facing rules, limelight-start flags, the turn counter,
+  // the seeded note sheets, AND (Phase 5c) the spirits array — see the SPIRITS
+  // shim just below.
   const [engineState, setEngineState] = useState(() => makeInitialState(gameState));
   const engineRef = useRef(engineState); // live mirror so dispatch works inside timeout chains
   // Dispatch through the engine reducer. Synchronous: returns the next state
@@ -632,6 +629,24 @@ function Game({ gameState, onReturnToLobby }) {
     setEngineState(next);
     return next;
   }
+
+  // ── SPIRITS — engine is the source of truth (Phase 5c ownership flip) ──────
+  // `spirits` is now a live view of engineState.spirits (built + owned by
+  // makeInitialState on the seeded rng). `setSpirits(updater)` is a
+  // compatibility shim: it applies the (functional or plain-value) update
+  // against the CURRENT engine spirits (engineRef is always live) and writes the
+  // result back through the reducer (SPIRITS_SYNCED = full array replace). Every
+  // legacy setSpirits call keeps working unchanged; individual sites migrate to
+  // semantic actions (DAMAGE_APPLIED, KNOCKDOWN_RESOLVED, …) incrementally, each
+  // a behavioral no-op. The old `spiritsSynced(spirits)` bridge dispatches are
+  // now self-syncs (harmless) and get removed in cleanup.
+  const spirits = engineState.spirits;
+  const setSpirits = (updater) => {
+    const cur = engineRef.current.spirits;
+    const next = typeof updater === "function" ? updater(cur) : updater;
+    dispatch(spiritsSynced(next));
+  };
+
   const [action, setAction]   = useState(null); // "move" | "swing" | null
   // ── BATTLE STATE ─────────────────────────────────────────────────────────────
   // actionTokenUsed: has the acting spirit used their action token this turn
@@ -1183,7 +1198,6 @@ function Game({ gameState, onReturnToLobby }) {
       ? { ...prev, [acting.id]: { ...prev[acting.id], recovering: false } }
       : prev);
     addLog(`😵 ${recoveringName} is still recovering from the Knock Down — turn skipped!`);
-    dispatch(spiritsSynced(spirits)); // bridge (Phase 2): engine hears combat-era writes
     {
       const nextId = dispatch(turnSkipped()).turn.lastReport?.nextId;
       if (nextId) {
@@ -2542,9 +2556,8 @@ function Game({ gameState, onReturnToLobby }) {
     const ns = noteStates[acting.id] ?? {};
 
     // Movement rules — including the dazed 33% redirect roll — live in the
-    // engine now (src/engine/systems/movement.js). Sync spirits first so the
-    // engine sees combat-era position changes (bridge until Phase 3).
-    dispatch(spiritsSynced(spirits));
+    // engine now (src/engine/systems/movement.js). Spirits are engine-owned
+    // (Phase 5c), so no bridge sync is needed before the move.
     const mv = dispatch(engineMoveStep(acting.id, toNum, !!ns.dazed)).turn.lastMove;
     if (!mv) return; // safety: off-board redirect — the engine refused the step
     const actualTarget = mv.to;
@@ -6653,7 +6666,6 @@ function Game({ gameState, onReturnToLobby }) {
     // The engine resolves the turn end: limelight verdict, turn counter,
     // beat/token resets, queue advance. React then runs the not-yet-extracted
     // ticks below using the engine's report.
-    dispatch(spiritsSynced(spirits)); // bridge (Phase 2): sync combat-era writes
     const report = dispatch(turnEnded()).turn.lastReport;
 
     // ── 🌟 LIMELIGHT FAME FAUCET ───────────────────────────────────────────────
