@@ -424,10 +424,22 @@ snapshot→restore round-trip. Phase 8 turns this into the determinism PROOF:
 
 - **8a — action log.** `dispatch` (in `Game`) appends `{action, cursorBefore}`
   to a dev-flag log; add `EXPORT LOG` to the Testing Grounds dev panel.
-- **8b — full-state audit.** Grep the engine for anything non-JSON that
-  crept in: `Set`/`Map`, `Date.now`, `Infinity`, `undefined`-holes, function
-  refs. Fix + bump schema. (Known offenders fixed in 5a/6b: `usedStockIdx`,
-  stage-FX fired set.)
+- **8b — full-state audit. ☑ DONE (engine-only, sandbox-safe).** Grepped the
+  whole engine: no `Set`/`Map`/`Date`/function/class-instance is *stored* in any
+  GameState slice, and no `Infinity`/`NaN`/`undefined` reaches a stored field
+  (the `new Set(...)` in `performanceScore` are transient `.size` locals; the one
+  `Date.now()` is only `makeInitialState`'s default seed, captured into
+  `state.rng.seed`). Known offenders stay fixed (`usedStockIdx` array; stage-FX
+  fired set lands as an array in 6b). **Institutionalized:** added
+  `assertJsonSafe(value)` to `serialize.js` — a dev/test walker that throws (with
+  the exact path) on the first value that wouldn't round-trip through JSON. This
+  closes a real hole in the proof: `snapshot(a) === snapshot(b)` compares two
+  LOSSY `JSON.stringify` outputs, so a Set/Infinity/undefined could pass it while
+  a live object and its restored twin diverge. selftest now walks a fresh
+  `makeInitialState` and a replayed multi-system final state (both must be
+  JSON-safe) and asserts the guard BITES on each injected offender (Set, Infinity,
+  NaN, undefined, Date, function). No schema bump (nothing had to change).
+  ⚠️ VM was down when this landed — `npm run test:engine` is the authoritative check.
 - **8c — replay test.** Headless: `makeInitialState(seed)` → scripted
   ~50-action log spanning every system (move/attack/track/skill/event/god/
   riff via `botRiffResults`-style payloads) → assert
@@ -458,4 +470,4 @@ separate, cheaper project.
 | 5. Economy & skills | ◑ **5a + 5b DONE** (sandbox-safe slices). **5a:** `usedStockIdx` Set→**insertion-ordered array** via `usedHas`/`usedList`/`usedAdd` (new `engine/systems/economy.js`, ~29 sites rewired); optional `rand` param on `randomNote`/`refillStock`/`makeInitialNoteState` (full rng-thread deferred to 5c); **Performance Score P** → pure `performanceScore()`. **5b:** pure `skillEligibility()` + tables (`ULTIMATE_PREREQS`/`THEORY_DISCORD_GRANTS`/`CQC_SWING_MAP`) in `engine/systems/skills.js`; `botSkillEligible` + `setSkillTarget` now share ONE gate (they had drifted on owner-only routes). selftest extended (usedAdd ≡ old Set ×200; performanceScore ≡ old inline ×3000; skillEligibility ≡ old bot+human ×4000). **5c ENGINE FOUNDATION DONE** (both halves). Spirit combat-ownership: `DAMAGE_APPLIED`/`KNOCKDOWN_RESOLVED`/`WINNER_DECLARED` reducers on engine spirits (reuse `resolveKnockdown`/`decideWinner`). noteStates: `makeInitialNoteState` moved to `engine/systems/economy.js` (seeded), `makeInitialState` builds+owns `engineState.noteStates` on a forked rng (main `rng.cursor` untouched). All selftest-covered, all **dormant** (client unchanged → game identical, `SPIRITS_SYNCED` bridge + client's own `noteStates` stay; client `makeInitialNoteState` is a temp duplicate). **Remaining 5c = the client flip (owner-run, `npm run dev`):** read `engineState.spirits`/`noteStates`, route damage/KO/track/skill writes through the new actions, delete `spiritsSynced` + the client noteState duplicate. **5d** pre-analyzed §5c. Owner: `npm run test:engine` (verifies both foundations) + commit from Windows. |
 | 6. Events / FX / Rock God | ☐ pre-analyzed plan ready — §5d. END-TURN tick order documented there is rule-critical. |
 | 7. Bot policies | ☐ pre-analyzed plan ready — §5e. Blocked until 5+6 land (bots must read engine state). |
-| 8. Serialize + replay | ◑ **PARTIAL PROOF LANDED** (8c over today's engine-owned systems). selftest replays a scripted multi-system log (turn → move → attack → counter → damage → knockdown → winner → riff-off) and asserts `snapshot(replay(restore(snapshot(s0)), log)) === snapshot(live)` **byte-for-byte**, plus mid-game snapshot/restore/replay-tail and same-seed determinism. Widens to note-track/skill/event/god actions as those land (post-flip). Remaining 8a (client action-log export) + 8b (full-state audit) + 8d pre-analyzed §5f. |
+| 8. Serialize + replay | ◑ **PARTIAL PROOF LANDED** (8c over today's engine-owned systems). selftest replays a scripted multi-system log (turn → move → attack → counter → damage → knockdown → winner → riff-off) and asserts `snapshot(replay(restore(snapshot(s0)), log)) === snapshot(live)` **byte-for-byte**, plus mid-game snapshot/restore/replay-tail and same-seed determinism. Widens to note-track/skill/event/god actions as those land (post-flip). **8b DONE** — full-state audit clean (nothing non-JSON stored) + `assertJsonSafe()` guard added to `serialize.js` and enforced in selftest (walks real + replayed state; asserts it bites on Set/Infinity/NaN/undefined/Date/function). Remaining 8a (client action-log export) + 8d pre-analyzed §5f. Owner: `npm run test:engine` (VM down at write time) + commit from Windows. |

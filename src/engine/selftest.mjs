@@ -14,7 +14,7 @@ import {
   attackRolled, counterRolled,
   damageApplied, knockdownResolved, winnerDeclared,
 } from "./actions.js";
-import { snapshot, restore, replay } from "./serialize.js";
+import { snapshot, restore, replay, assertJsonSafe } from "./serialize.js";
 import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus, smashOutcome,
   decideWinner, resolveKnockdown, counterOutcome,
@@ -865,6 +865,61 @@ const config = {
     snapshot(log.reduce((st, a) => applyAction(st, a), makeInitialState(config, 20260706))),
     snapshot(live),
     "same seed + same log is fully deterministic");
+}
+
+// -- Phase 8b: JSON-safety guard ----------------------------------------------
+// The determinism proof compares snapshot(a) === snapshot(b), i.e. two LOSSY
+// JSON.stringify outputs — so a Set/Infinity/undefined that crept into state
+// could pass it while a live object and its restored twin actually diverge.
+// assertJsonSafe walks real state and rejects anything that wouldn't round-trip.
+{
+  const config = {
+    mode: "ffa",
+    spirits: [
+      { id: "wildaxe", name: "Wildaxe", num: 7, facing: 0 },
+      { id: "vera",    name: "Vera",    num: 40, facing: 3 },
+    ],
+    startingLives: 3,
+  };
+
+  // 1) a fresh, seeded initial state is fully JSON-safe (all ~60 noteState
+  //    fields per spirit + every Phase-2/5c slice).
+  assert.equal(assertJsonSafe(makeInitialState(config, 8080)), true,
+    "makeInitialState output is JSON-safe");
+
+  // 2) a REPLAYED multi-system final state stays JSON-safe (nothing the
+  //    reducers write introduces a Set/Infinity/undefined). Inject the full
+  //    spirit shape (Vibe/lives/corner) via the client bridge so knockdown can
+  //    respawn to a real home corner with full Vibe.
+  const cornerId = Object.keys(CORNERS)[0];
+  const s0 = makeInitialState(config, 8080);
+  const played = [
+    spiritsSynced([
+      { id: "wildaxe", num: 7,  facing: 2, corner: cornerId, lives: 3, vibe: 10, maxVibe: 10, knockedOut: false },
+      { id: "vera",    num: 40, facing: 5, corner: cornerId, lives: 2, vibe: 8,  maxVibe: 8,  knockedOut: false },
+    ]),
+    moveBudgetSet(4),
+    attackRolled("swing", "wildaxe", "vera", { atkStat: 7, defStat: 5 }),
+    counterRolled("vera", { vibe: 6, maxVibe: 10, target: 4 }),
+    damageApplied("vera", 3),
+    knockdownResolved("vera"),   // lives 2 → respawns at home corner, full Vibe
+    winnerDeclared("wildaxe"),
+    turnEnded(),
+  ].reduce((st, a) => applyAction(st, a), s0);
+  assert.equal(assertJsonSafe(played), true, "replayed final state is JSON-safe");
+
+  // 3) the guard actually BITES — each known offender throws, at the right path.
+  const throws = (mutate, re) => {
+    const bad = JSON.parse(snapshot(s0));   // deep plain-JSON clone
+    mutate(bad);
+    assert.throws(() => assertJsonSafe(bad), re);
+  };
+  throws(b => { b.spirits[0].tag = new Set([1, 2]); }, /Set at state\.spirits\[0\]\.tag/);
+  throws(b => { b.turn.moveStepsLeft = Infinity; },    /non-finite number at state\.turn\.moveStepsLeft/);
+  throws(b => { b.turn.moveStepsLeft = NaN; },         /non-finite number/);
+  throws(b => { b.acting = undefined; },               /undefined at state\.acting/);
+  throws(b => { b.rng.at = new Date(); },              /Date at state\.rng\.at/);
+  throws(b => { b.config.f = () => 1; },               /non-JSON function at state\.config\.f/);
 }
 
 console.log("engine selftest: all assertions passed ✔");
