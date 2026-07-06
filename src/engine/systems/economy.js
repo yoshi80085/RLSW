@@ -1,8 +1,9 @@
 // ─── ENGINE SYSTEM: ECONOMY (note-track / skills) ────────────────────────────
 // Phase 5a: contract fixes ahead of the full economy extraction (Phase 5c flip).
 
-import { pitchIndex } from "../../music/notes.js";
-import { detectMotifRepeat } from "../../music/cadence.js";
+import { pitchIndex, NOTE_POOL, canonicalRoot, semitonesUp } from "../../music/notes.js";
+import { detectMotifRepeat, refillStock } from "../../music/cadence.js";
+import { FAN_DIEHARD_START, FAN_CASUAL_START } from "../../data/gameConstants.js";
 //
 // `usedStockIdx` — the per-spirit set of spent stock-slot indices — used to be a
 // JS `Set`, which violates the plain-JSON GameState contract (a Set doesn't
@@ -114,4 +115,95 @@ export function performanceScore({
       + (edgeResolved ? 2 : 0) + (susEnd ? 1 : 0) + perfFreestyle - perfDiscord
   ));
   return { score, freestyle: perfFreestyle };
+}
+
+// ─── INITIAL NOTE STATE (per-spirit economy sheet) ───────────────────────────
+// Phase 5c foundation: the per-spirit note/skill/fan sheet builder, moved here
+// verbatim from Game so `makeInitialState` can build + OWN `engineState.noteStates`
+// on the seeded rng (replay-deterministic — this is why 5a threaded the `rand`
+// param through `randomNote`/`refillStock`). ~60 plain-JSON fields; no Set (5a),
+// no React, no FX.
+//
+// ⚠️ KEEP IN SYNC with Game.makeInitialNoteState until the 5c client flip. Both
+// are byte-identical today; the client's copy is deleted when the client reads
+// `engineState.noteStates` (then this becomes the single source). `rand` is a
+// 0..1 PRNG — the engine passes its seeded rng; it defaults to Math.random so the
+// (still-live) client copy behaves exactly as before.
+export function makeInitialNoteState(spiritId, rand = Math.random) {
+  const rawRoot = NOTE_POOL[Math.floor(rand() * NOTE_POOL.length)];
+  const initMode = "major";
+  const root = canonicalRoot(rawRoot, initMode);
+  // 🗡️ SHREDDING RONIN carries a deeper well: 10 stock slots instead of 8.
+  const stockSize = spiritId === "cosmic_ronin" ? 10 : 8;
+  return {
+    noteStock:       refillStock(root, initMode, stockSize, rand),
+    melodyLine:      [],
+    chordStack:      [root, semitonesUp(root, 7)], // 🎸 Power Chord (R+5); persists across turns
+    revoiceUsedThisTurn: false,
+    bonusRevoiceAvailable: false,
+    usedStockIdx:    [], // insertion-ordered array of spent stock-slot indices (JSON-safe; was a Set)
+    rootNote:        root,
+    scaleMode:       initMode,
+    pivotPending:    true,
+    diceTier:        0,
+    tierPoints:      0,
+    discordCount:    0,
+    hasConfirmed:    false,
+    feedbackBoost:   false,
+    dieFloorBoost:   0,
+    statusEffects:   [],
+    stagger:         null,
+    mojoDrain:       0,
+    burn:            null,
+    burnArmed:       false,
+    statusShield:    false,
+    tempDrive:       0,
+    tempSustain:     0,
+    swingExposed:    false,
+    smashExposed:    false,
+    displaceCd:      0,
+    hcPoints:        0,
+    totalHC:         0,
+    upgradesPending: 0,
+    skillRoute:      null,
+    unlockedSkills:  [],
+    targetSkillId:   null,
+    diceLevel:       0,
+    ampOwned:        false,
+    roadies:         [],
+    bankedNote:      null,
+    knockStreak:     0,
+    riffSlayerArmed: false,
+    pendingParanoia: false,
+    eRushArmed:      false,
+    discordUnlocks:  [],
+    swingUpgrades:   [],
+    tripped:         false,
+    instrumentDropped: false,
+    dazed:           false,
+    modCards:        [{ id: "starter-transpose", type: "transpose", exhausted: false, oneShot: true }],
+    groupieCooldowns: {},
+    junkyardArmed:    false,
+    ultimateUsed:     false,
+    mixerUsedThisTurn: false,
+    elevenTurns:      0,
+    edgeStage:        0,
+    fame:             0,
+    finalsTrail:      [],
+    cadenceCooldowns: {},
+    // ── 🎤 FAN ECONOMY ──
+    diehards:         FAN_DIEHARD_START,
+    casuals:          FAN_CASUAL_START,
+    centerStreak:     0,
+    outerStreak:      0,
+    fanLag:           0,
+    fanActedThisTurn: false,
+    // ── 🎭 CROWD & INTIMIDATION LAYER ──
+    perfScore:    0,
+    recentP:      [],
+    excitement:   0,
+    loyalty:      0,
+    intimArmed:   null,
+    intimidation: null,
+  };
 }

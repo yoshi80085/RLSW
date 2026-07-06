@@ -11,6 +11,9 @@
 //   - No client-only state (hover/zoom, FX queues, riff timers, BGM, dice
 //     spin faces, log strings — those stay in React).
 
+import { makeRng } from "./rng.js";
+import { makeInitialNoteState } from "./systems/economy.js";
+
 /**
  * @param {object} gameConfig  Lobby's onStart payload:
  *   { spirits, mode, teams, startingLives, beginnerMode, testMode? }
@@ -23,6 +26,15 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
   //   spirits: lobby spirits + lives   (Game ~line 611)
   //   turnQueue: lobby order of ids    (Game "const [turnQueue] = useState(...)")
   const spirits = gameConfig.spirits.map(s => ({ ...s, lives: startingLives }));
+
+  // ── Phase 5c foundation: engine builds + OWNS the per-spirit note sheets ──
+  // Built on a FORKED rng ("noteStatesInit") so the opening roots/stock are
+  // seeded-deterministic (replay-safe) WITHOUT consuming the main rng stream —
+  // forking never advances the parent, so `rng.cursor` below stays 0 and every
+  // existing roll is byte-unchanged. Dormant until the client flip reads it.
+  const noteRng = makeRng(seed >>> 0).fork("noteStatesInit");
+  const noteStates = {};
+  for (const s of spirits) noteStates[s.id] = makeInitialNoteState(s.id, noteRng);
 
   return {
     schema: 1, // bump when the GameState shape changes incompatibly
@@ -49,9 +61,13 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       lastReport: null,       // report of the latest TURN_ENDED / TURN_SKIPPED
     },
 
+    // ── Phase 5c: per-spirit note/skill/fan sheets (engine-owned, seeded) ──
+    // Dormant until the client flip: the client still builds + reads its own
+    // React `noteStates`; this is the authoritative seeded copy the flip adopts.
+    noteStates,
+
     // ── Slices below land in later phases (null = still React-owned) ──
     fame: null,        // Phase 5 — fame points / score track
-    noteStates: null,  // Phase 5 — per-spirit note tracks, chords, skills
     amps: null,        // Phase 2/5 — board deployables
     boardTokens: null, // Phase 5
     boardCards: null,  // Phase 5

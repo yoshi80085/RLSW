@@ -19,7 +19,7 @@ import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus, smashOutcome,
   decideWinner, resolveKnockdown, counterOutcome,
 } from "./systems/combat.js";
-import { usedHas, usedList, usedAdd, performanceScore } from "./systems/economy.js";
+import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./systems/economy.js";
 import { skillEligibility, ULTIMATE_PREREQS, THEORY_DISCORD_GRANTS, CQC_SWING_MAP } from "./systems/skills.js";
 import { pitchIndex } from "../music/notes.js";
 import { detectMotifRepeat } from "../music/cadence.js";
@@ -775,6 +775,34 @@ const config = {
   const live = log.reduce((st, a) => applyAction(st, a), seed);
   assert.deepEqual(replay(restore(snapshot(seed)), log), live, "5c-foundation actions replay identically");
   assert.deepEqual(JSON.parse(snapshot(live)), live, "post-flip state is plain JSON");
+}
+
+// -- Phase 5c foundation: engine builds + owns noteStates (seeded, dormant) -----
+{
+  const s = makeInitialState(config, 4242);
+  assert.deepEqual(Object.keys(s.noteStates).sort(), ["vera", "wildaxe"], "a note sheet per spirit");
+  const ns = s.noteStates.wildaxe;
+  assert.equal(typeof ns.rootNote, "string", "root note built");
+  assert.equal(ns.noteStock.length, 8, "default stock size 8");
+  assert.deepEqual(ns.usedStockIdx, [], "usedStockIdx is a JSON array (5a)");
+  assert.equal(ns.chordStack.length, 2, "opens on a power chord");
+  assert.equal(ns.scaleMode, "major");
+  assert.equal(ns.pivotPending, true);
+
+  // building note sheets must NOT consume the main rng stream (it forks) → cursor 0,
+  // so every existing roll downstream is byte-identical to before this landed.
+  assert.equal(s.rng.cursor, 0, "note-sheet build does not advance the main rng");
+
+  // seeded + deterministic: same seed → identical sheets (the replay contract)
+  assert.deepEqual(makeInitialState(config, 4242).noteStates, s.noteStates, "same seed → identical note sheets");
+  // matches an independent rebuild on the same forked stream (single source of truth)
+  const rebuilt = {};
+  const frng = makeRng(4242 >>> 0).fork("noteStatesInit");
+  for (const sp of s.spirits) rebuilt[sp.id] = makeInitialNoteState(sp.id, frng);
+  assert.deepEqual(rebuilt, s.noteStates, "makeInitialState builds via makeInitialNoteState on the forked rng");
+
+  // still plain-JSON (no Set/Map/function slipped in) — the Phase-8 contract
+  assert.deepEqual(JSON.parse(JSON.stringify(s.noteStates)), s.noteStates, "note sheets are plain JSON");
 }
 
 console.log("engine selftest: all assertions passed ✔");
