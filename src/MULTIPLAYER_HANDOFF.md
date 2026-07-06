@@ -460,6 +460,18 @@ snapshot→restore round-trip. Phase 8 turns this into the determinism PROOF:
   JSON-safe) and asserts the guard BITES on each injected offender (Set, Infinity,
   NaN, undefined, Date, function). No schema bump (nothing had to change).
   ⚠️ VM was down when this landed — `npm run test:engine` is the authoritative check.
+  ✔ **Follow-up session verified (2026-07-06):** HEAD engine selftest runs green in
+  the sandbox (`git archive HEAD` → /tmp → node, dodging the stale mount); the
+  Windows files are intact — `serialize.js` has `assertJsonSafe` (line 49),
+  `selftest.mjs` has the 8b guard tests (lines 876–918), and the main file ends
+  cleanly at 11,694 lines (no truncation). ⚠️ NOTE: sandbox `git status` reports
+  PHANTOM modifications — stale mount copies of committed files (truncated
+  `selftest.mjs`, old `serialize.js`) differ from their committed content, so
+  they show as "M" when the Windows tree is actually clean. Everything through
+  5c slice 1 + 8b IS committed (verified via the real Windows reflog, readable
+  with file tools at `.git/logs/HEAD` — that beats sandbox git for repo truth).
+  Trust file tools (Windows paths), never the mount/sandbox-git, for "what
+  changed".
 - **8c — replay test.** Headless: `makeInitialState(seed)` → scripted
   ~50-action log spanning every system (move/attack/track/skill/event/god/
   riff via `botRiffResults`-style payloads) → assert
