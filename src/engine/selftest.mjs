@@ -805,4 +805,66 @@ const config = {
   assert.deepEqual(JSON.parse(JSON.stringify(s.noteStates)), s.noteStates, "note sheets are plain JSON");
 }
 
+// -- Phase 8 (partial): cross-system determinism / replay proof ----------------
+// The mission's exit criterion, over every system that's engine-owned today:
+// a scripted log spanning turn → move → attack (rng) → counter (rng) → damage →
+// knockdown → winner → riff-off (rng-heavy generation) must reproduce identically
+// when replayed from a SERIALIZED start, and must be resumable mid-game. This is
+// the real "a server replays the log and gets the same game" guarantee — it will
+// widen to note-track/skill/event/god actions as those systems land.
+{
+  const s0 = makeInitialState(config, 20260706);
+  const cornerId = Object.keys(CORNERS)[0];
+  const neighbor = getFlatTopNeighborSlots(HEX_BY_NUM[7])[0].num;
+  const mkResults = grades => grades.map((g, i) =>
+    ({ hit: g !== "miss" && g !== "wrong", rt: 200 + i, grade: g, noteIdx: i }));
+
+  const log = [
+    gameInit(),
+    // inject full spirit shape (Vibe/lives/corner) the way the client bridge does
+    spiritsSynced([
+      { id: "wildaxe", num: 7,   facing: 2, corner: cornerId, color: "#4aa3ff", cpu: false, lives: 3, vibe: 10, maxVibe: 10, knockedOut: false },
+      { id: "vera",    num: 105, facing: 5, corner: cornerId, color: "#ff4a6a", cpu: true,  lives: 2, vibe: 8,  maxVibe: 8,  knockedOut: false },
+    ]),
+    turnStarted("wildaxe"),
+    moveBudgetSet(4),
+    moveStep("wildaxe", neighbor),
+    beatsSpent(1, true),
+    attackRolled("swing", "wildaxe", "vera", { atkStat: 7, defStat: 5 }),
+    counterRolled("vera", { vibe: 6, maxVibe: 10, target: 4 }),
+    damageApplied("vera", 3),
+    knockdownResolved("vera"),      // lives 2 → respawns at home corner, full Vibe
+    winnerDeclared("wildaxe"),
+    turnEnded(),
+    // rng-heavy riff-off generation across the serialization boundary
+    riffOffStarted("wildaxe", "vera", { slayer: true, eRush: true }),
+    riffResultsSubmitted("attacker", mkResults(["perfect", "good", "perfect", "good", "perfect", "good"])),
+    riffResultsSubmitted("defender", mkResults(["ok", "miss", "good", "miss", "ok", "miss"])),
+    riffResolved(),
+    riffClosed(),
+  ];
+
+  const live = log.reduce((st, a) => applyAction(st, a), s0);
+
+  // 1) replay from a SERIALIZED start reproduces live play byte-for-byte
+  assert.equal(
+    snapshot(replay(restore(snapshot(s0)), log)),
+    snapshot(live),
+    "replay from a restored snapshot == live play, byte for byte");
+
+  // 2) mid-game save/resume: snapshot after N actions, restore, replay the tail
+  const half = Math.floor(log.length / 2);
+  const mid = log.slice(0, half).reduce((st, a) => applyAction(st, a), s0);
+  assert.equal(
+    snapshot(replay(restore(snapshot(mid)), log.slice(half))),
+    snapshot(live),
+    "snapshot mid-game + replay the tail == uninterrupted play");
+
+  // 3) determinism from scratch: same seed + same log → identical state
+  assert.equal(
+    snapshot(log.reduce((st, a) => applyAction(st, a), makeInitialState(config, 20260706))),
+    snapshot(live),
+    "same seed + same log is fully deterministic");
+}
+
 console.log("engine selftest: all assertions passed ✔");
