@@ -17,7 +17,8 @@ import {
   RIFF_ROUND2_STARTED, RIFF_CLOSED,
   ATTACK_ROLLED, COUNTER_ROLLED,
   DAMAGE_APPLIED, KNOCKDOWN_RESOLVED, WINNER_DECLARED,
-  NOTE_STATES_SYNCED, FAME_CHANGED,
+  NOTE_STATES_SYNCED, FAME_CHANGED, FANS_CHANGED, NOTE_SHEET_PATCHED, FANS_TICKED,
+  STAGE_FX_DRAWN, GOD_ATTACK_PICKED,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
 import {
@@ -34,7 +35,9 @@ import {
   applyRiffOffStarted, applyRiffResultsSubmitted, applyRiffResolved,
   applyRiffRound2Started, applyRiffClosed,
 } from "./systems/riffOff.js";
-import { applyNoteStatesSynced, applyFameChanged } from "./systems/economy.js";
+import { applyNoteStatesSynced, applyFameChanged, applyFansChanged, applyNoteSheetPatched, applyFansTicked } from "./systems/economy.js";
+import { applyStageFxDrawn } from "./systems/stageFx.js";
+import { applyGodAttackPicked } from "./systems/rockGod.js";
 
 /**
  * @param {object} state   plain-JSON GameState (never mutated)
@@ -85,6 +88,15 @@ function reduce(state, action, rng) {
     // ── Phase 5c: noteStates ownership bridge ──
     case NOTE_STATES_SYNCED:     return applyNoteStatesSynced(state, action);
     case FAME_CHANGED:           return applyFameChanged(state, action);
+    case FANS_CHANGED:           return applyFansChanged(state, action);
+    case NOTE_SHEET_PATCHED:     return applyNoteSheetPatched(state, action);
+    case FANS_TICKED:            return applyFansTicked(state, action);
+
+    // ── Phase 6b: stage FX ──
+    case STAGE_FX_DRAWN:         return applyStageFxDrawn(state, action);
+
+    // ── Phase 6c: Rock God ──
+    case GOD_ATTACK_PICKED:      return applyGodAttackPicked(state, action, rng);
 
     default:
       // Unknown action = a bug (client/server version skew or a typo).

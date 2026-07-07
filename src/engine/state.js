@@ -13,6 +13,7 @@
 
 import { makeRng } from "./rng.js";
 import { makeInitialNoteState } from "./systems/economy.js";
+import { shuffledStageFxDeck } from "../data/stageEffects.js";
 
 /**
  * @param {object} gameConfig  Lobby's onStart payload:
@@ -35,6 +36,12 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
   const noteRng = makeRng(seed >>> 0).fork("noteStatesInit");
   const noteStates = {};
   for (const s of spirits) noteStates[s.id] = makeInitialNoteState(s.id, noteRng);
+
+  // ── Phase 6b: stage-FX draw order (engine-owned, seeded) ──
+  // Shuffled ONCE on its own fork (cursor stays 0 — same trick as noteStatesInit)
+  // — replaces the client's Math.random mount shuffle, so the show order is
+  // replay-deterministic.
+  const stageFxDeck = shuffledStageFxDeck(makeRng(seed >>> 0).fork("stageFxDeck"));
 
   return {
     schema: 1, // bump when the GameState shape changes incompatibly
@@ -76,7 +83,14 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
     unsurePool: null,  // Phase 5 — fan economy
     battle: null,      // Phase 3/4 — combat + riff-off (results only, no timers)
     rockGod: null,     // Phase 6
-    stageFx: null,     // Phase 6
+    // ── Phase 6b: stage FX (deck + fired thresholds authoritative) ──
+    // Active-effect state (smoke/laser/pyro/animatronics) is still React-owned
+    // and folds in with the remaining 6b/6d slices.
+    stageFx: {
+      deck: stageFxDeck, // seeded draw order
+      fired: [],         // thresholds fired, in firing order (was the client firedRef Set)
+      lastDraw: null,    // report of the latest STAGE_FX_DRAWN { threshold, fxId } (null on a dup)
+    },
     winner: null,      // Phase 3 — set by KO/win check
   };
 }

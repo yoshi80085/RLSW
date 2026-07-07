@@ -53,6 +53,15 @@ export const NOTE_STATES_SYNCED = "NOTE_STATES_SYNCED";
 // ── Phase 5c: noteStates SEMANTIC actions (retire the full-replace bridge site
 // by site, exactly as the combat actions retired SPIRITS_SYNCED). ─────────────
 export const FAME_CHANGED = "FAME_CHANGED";
+export const FANS_CHANGED = "FANS_CHANGED";
+export const NOTE_SHEET_PATCHED = "NOTE_SHEET_PATCHED";
+export const FANS_TICKED = "FANS_TICKED";
+
+// ── Phase 6b: stage FX ───────────────────────────────────────────────────────
+export const STAGE_FX_DRAWN = "STAGE_FX_DRAWN";
+
+// ── Phase 6c: Rock God ───────────────────────────────────────────────────────
+export const GOD_ATTACK_PICKED = "GOD_ATTACK_PICKED";
 
 // Phase 5c (economy/skills flip): NOTE_TRACK_CONFIRMED, SKILL_AWARDED, FANS_CHANGED, …
 // Phase 6 (events/FX/god):        EVENT_DRAWN, STAGE_FX_TICK, GOD_ATTACK, …
@@ -228,4 +237,64 @@ export function noteStatesSynced(noteStates) {
  */
 export function fameChanged(spiritId, amount) {
   return { type: FAME_CHANGED, spiritId, amount };
+}
+
+/**
+ * Phase 5c — patch one spirit's FAN block (diehards/casuals/streaks/lag/acted/
+ * divineShield). The zone rules, promotion cadence, demolition scatter (incl.
+ * its flee roll — an OUTCOME payload, like RIFF_RESULTS_SUBMITTED) and the
+ * Unsure pool stay client orchestration for now; the reducer merges ONLY
+ * whitelisted fan fields (see FAN_FIELDS in systems/economy.js), so a stray
+ * payload can never clobber skills/notes/fame. No-op if the spirit has no sheet.
+ */
+export function fansChanged(spiritId, fans) {
+  return { type: FANS_CHANGED, spiritId, fans };
+}
+
+/**
+ * Phase 5c — merge a client-computed field patch into ONE spirit's note sheet.
+ * This is the generic migration action the `setNoteStates` shim emits (it diffs
+ * the updater's result per spirit) in place of full-map NOTE_STATES_SYNCED
+ * replaces: same final state, but the replay log carries small, per-spirit,
+ * inspectable writes. Sites still graduate to true semantic actions
+ * (NOTE_TRACK_CONFIRMED, SKILL_AWARDED, …) as the rules move into reducers;
+ * until then every remaining legacy write is at least scoped and serialized.
+ */
+export function noteSheetPatched(spiritId, patch) {
+  return { type: NOTE_SHEET_PATCHED, spiritId, patch };
+}
+
+/**
+ * Phase 5d — the end-of-turn fan tick is an ENGINE RULE (the first noteStates
+ * rule to fully move server-side): positional boredom (outer-ring streak →
+ * casuals drift), centre-streak upkeep, demolition-lag recovery, and the
+ * per-turn fanActedThisTurn reset. The reducer derives the zone from its own
+ * spirit position; the client just dispatches at the end-of-turn beat it always
+ * did (tick ORDER relative to the other — still client — END_TURN ticks is
+ * unchanged; those fold in at Phase 6d). Report rides in `state.turn.lastFanTick
+ * { spiritId, zone, lost }` for the client's log/FX.
+ */
+export function fansTicked(spiritId) {
+  return { type: FANS_TICKED, spiritId };
+}
+
+/**
+ * Phase 6b — a Fame threshold (⭐8/16/24) was crossed: the engine records the
+ * fired threshold (exactly-once, replacing the client firedRef Set) and draws
+ * the next effect off the SEEDED deck. The client reads the report off
+ * `state.stageFx.lastDraw` and runs the activation cinematic; the crossing
+ * detection itself stays in grantFame until fame thresholds move engine-side.
+ */
+export function stageFxDrawn(threshold) {
+  return { type: STAGE_FX_DRAWN, threshold };
+}
+
+/**
+ * Phase 6c — the Rock God opens a new attack: a weighted draw over its deck
+ * (no immediate repeat) on ENGINE rng. The client passes the context it still
+ * owns (godId + the last attack id — the ATTACK_ROLLED pattern) and reads the
+ * decided id off `state.rockGod.lastPick`; telegraphs/cinematics stay client.
+ */
+export function godAttackPicked(godId, lastAttackId = null) {
+  return { type: GOD_ATTACK_PICKED, godId, lastAttackId };
 }

@@ -13,7 +13,8 @@ import {
   riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed,
   attackRolled, counterRolled,
   damageApplied, knockdownResolved, winnerDeclared,
-  noteStatesSynced, fameChanged,
+  noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked,
+  stageFxDrawn, godAttackPicked,
 } from "./actions.js";
 import { snapshot, restore, replay, assertJsonSafe } from "./serialize.js";
 import {
@@ -29,7 +30,9 @@ import { pickGodAttack, godTauntLine, pickRockGod, ROCK_GODS } from "../data/roc
 import { shuffledStageFxDeck, STAGE_FX_IDS } from "../data/stageEffects.js";
 import {
   LIMELIGHT_HEX, UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT,
+  FAN_BORED_AFTER, FAN_DECAY,
 } from "../data/gameConstants.js";
+import { hexRingFromCenter } from "../board/boardHelpers.js";
 import { HEX_BY_NUM } from "../board/hexMap.js";
 import { getFlatTopNeighborSlots } from "../board/hexGeometry.js";
 
@@ -821,6 +824,153 @@ const config = {
   const fDn = applyAction(fUp, fameChanged("wildaxe", -100));
   assert.equal(fDn.noteStates.wildaxe.fame, 0, "FAME_CHANGED floors Fame at 0");
   assert.equal(applyAction(s, fameChanged("nobody", 5)).noteStates, s.noteStates, "no sheet → no-op");
+
+  // FANS_CHANGED — whitelisted fan-field patch
+  const fanPatch = { casuals: 7, diehards: 3, centerStreak: 2, outerStreak: 1, fanLag: 4,
+                     fanActedThisTurn: true, divineShield: 1, fame: 999, unlockedSkills: ["hax"] };
+  const fFan = applyAction(s, fansChanged("wildaxe", fanPatch));
+  assert.equal(fFan.noteStates.wildaxe.casuals, 7,  "FANS_CHANGED patches casuals");
+  assert.equal(fFan.noteStates.wildaxe.diehards, 3, "FANS_CHANGED patches diehards");
+  assert.equal(fFan.noteStates.wildaxe.centerStreak, 2, "FANS_CHANGED patches centerStreak");
+  assert.equal(fFan.noteStates.wildaxe.outerStreak, 1,  "FANS_CHANGED patches outerStreak");
+  assert.equal(fFan.noteStates.wildaxe.fanLag, 4,       "FANS_CHANGED patches fanLag");
+  assert.equal(fFan.noteStates.wildaxe.fanActedThisTurn, true, "FANS_CHANGED patches fanActedThisTurn");
+  assert.equal(fFan.noteStates.wildaxe.divineShield, 1, "FANS_CHANGED patches divineShield");
+  assert.equal(fFan.noteStates.wildaxe.fame, s.noteStates.wildaxe.fame,
+    "FANS_CHANGED can NOT touch fame (whitelist filter)");
+  assert.deepEqual(fFan.noteStates.wildaxe.unlockedSkills, s.noteStates.wildaxe.unlockedSkills,
+    "FANS_CHANGED can NOT touch skills (whitelist filter)");
+  assert.equal(fFan.noteStates.vera, s.noteStates.vera, "untouched sheets carry over by reference");
+  assert.equal(fFan.rng.cursor, s.rng.cursor, "FANS_CHANGED consumes no rng");
+  assert.equal(applyAction(s, fansChanged("nobody", { casuals: 1 })).noteStates, s.noteStates,
+    "FANS_CHANGED: no sheet → no-op");
+
+  // NOTE_SHEET_PATCHED — the shim's generic per-spirit diff action
+  const p1 = applyAction(s, noteSheetPatched("wildaxe",
+    { hcPoints: 4, unlockedSkills: ["mic"], burn: { turnsLeft: 2 }, fame: 6 }));
+  assert.equal(p1.noteStates.wildaxe.hcPoints, 4, "NOTE_SHEET_PATCHED merges scalar fields");
+  assert.deepEqual(p1.noteStates.wildaxe.unlockedSkills, ["mic"], "…and array fields");
+  assert.deepEqual(p1.noteStates.wildaxe.burn, { turnsLeft: 2 }, "…and object fields");
+  assert.equal(p1.noteStates.wildaxe.fame, 6, "no whitelist — any sheet field may ride");
+  assert.equal(p1.noteStates.wildaxe.rootNote, s.noteStates.wildaxe.rootNote,
+    "unpatched fields carry over");
+  assert.equal(p1.noteStates.vera, s.noteStates.vera, "untouched sheets carry over by reference");
+  assert.equal(p1.rng.cursor, s.rng.cursor, "NOTE_SHEET_PATCHED consumes no rng");
+  assert.equal(applyAction(s, noteSheetPatched("nobody", { hcPoints: 1 })).noteStates, s.noteStates,
+    "NOTE_SHEET_PATCHED: no sheet → no-op (the shim falls back to the full replace)");
+}
+
+// -- Phase 5d: FANS_TICKED — the end-of-turn fan tick as an engine rule ---------
+{
+  const nums = Object.values(HEX_BY_NUM).map(h => h.num);
+  const hexIn = ring => nums.find(n => hexRingFromCenter(n) === ring);
+  const backHex = hexIn("back"), floorHex = hexIn("floor"), pitHex = hexIn("pit");
+  assert.ok(backHex != null && floorHex != null && pitHex != null, "fixture hexes exist");
+
+  const base = makeInitialState(config, 616);
+  // place wildaxe + shape its fan block, then tick
+  const tick = (num, fanOver) => {
+    let st = applyAction(base, spiritsSynced(base.spirits.map(x => x.id === "wildaxe" ? { ...x, num } : x)));
+    st = applyAction(st, noteStatesSynced({ ...st.noteStates,
+      wildaxe: { ...st.noteStates.wildaxe, ...fanOver } }));
+    const pre = st.rng.cursor;
+    const out = applyAction(st, fansTicked("wildaxe"));
+    assert.equal(out.rng.cursor, pre, "FANS_TICKED consumes no rng");
+    return out;
+  };
+
+  // centre (acted): streaks kept, outer reset, acted-flag cleared, lag recovers
+  let t = tick(LIMELIGHT_HEX, { centerStreak: 2, outerStreak: 2, fanLag: 3, fanActedThisTurn: true, casuals: 6 });
+  let w = t.noteStates.wildaxe;
+  assert.deepEqual(
+    [w.centerStreak, w.outerStreak, w.fanLag, w.fanActedThisTurn, w.casuals], [2, 0, 2, false, 6],
+    "main+acted: centre streak survives, outer resets, lag −1, acted clears, crowd kept");
+  assert.deepEqual(t.turn.lastFanTick, { spiritId: "wildaxe", zone: "main", lost: 0 }, "report rides in turn.lastFanTick");
+
+  // centre (idle): the promote streak breaks
+  w = tick(pitHex, { centerStreak: 4, fanActedThisTurn: false }).noteStates.wildaxe;
+  assert.equal(w.centerStreak, 0, "pit+idle: idle in the spotlight breaks the streak");
+
+  // floor: neutral — no boredom, no loyalty
+  w = tick(floorHex, { centerStreak: 3, outerStreak: 2, casuals: 6 }).noteStates.wildaxe;
+  assert.deepEqual([w.centerStreak, w.outerStreak, w.casuals], [0, 0, 6], "floor resets both streaks, keeps the crowd");
+
+  // outer edge: streak builds; decay bites only once it reaches FAN_BORED_AFTER
+  w = tick(backHex, { outerStreak: 0, casuals: 6 }).noteStates.wildaxe;
+  assert.deepEqual([w.outerStreak, w.casuals], [1, 6], "first outer turn: no decay yet");
+  t = tick(backHex, { outerStreak: FAN_BORED_AFTER - 1, casuals: 6 });
+  w = t.noteStates.wildaxe;
+  assert.deepEqual([w.outerStreak, w.casuals], [FAN_BORED_AFTER, 6 - FAN_DECAY], "grace exhausted: casuals drift");
+  assert.equal(t.turn.lastFanTick.lost, FAN_DECAY, "report carries the loss");
+  w = tick(backHex, { outerStreak: FAN_BORED_AFTER, casuals: 1 }).noteStates.wildaxe;
+  assert.equal(w.casuals, 0, "decay floors at 0");
+
+  // no sheet → no-op; deterministic + replayable
+  assert.equal(applyAction(base, fansTicked("nobody")).noteStates, base.noteStates, "no sheet → no-op");
+  const logT = [fansTicked("wildaxe"), turnEnded(), fansTicked("vera")];
+  const liveT = logT.reduce((st, a) => applyAction(st, a), base);
+  assert.equal(snapshot(replay(restore(snapshot(base)), logT)), snapshot(liveT), "FANS_TICKED replays byte-identically");
+}
+
+// -- Phase 6b: stage-FX deck + threshold draws (engine-owned) -------------------
+{
+  const s0 = makeInitialState(config, 909);
+  // seeded deck: a permutation, deterministic per seed, main rng untouched
+  assert.deepEqual([...s0.stageFx.deck].sort(), [...STAGE_FX_IDS].sort(), "deck is a permutation of the effects");
+  assert.deepEqual(makeInitialState(config, 909).stageFx.deck, s0.stageFx.deck, "same seed → same deck order");
+  assert.equal(s0.rng.cursor, 0, "deck build does not advance the main rng (forked)");
+  assert.deepEqual(s0.stageFx.fired, [], "no thresholds fired at start");
+
+  // draws follow the deck in firing order
+  const d1 = applyAction(s0, stageFxDrawn(8));
+  assert.deepEqual(d1.stageFx.lastDraw, { threshold: 8, fxId: s0.stageFx.deck[0] }, "first draw = deck[0]");
+  assert.deepEqual(d1.stageFx.fired, [8], "threshold recorded");
+  const d2 = applyAction(d1, stageFxDrawn(16));
+  assert.deepEqual(d2.stageFx.lastDraw, { threshold: 16, fxId: s0.stageFx.deck[1] }, "second draw = deck[1]");
+
+  // exactly-once: a duplicate threshold is a dead draw (the old firedRef guarantee)
+  const dup = applyAction(d2, stageFxDrawn(8));
+  assert.equal(dup.stageFx.lastDraw, null, "duplicate threshold → lastDraw null");
+  assert.deepEqual(dup.stageFx.fired, [8, 16], "duplicate does not re-fire");
+
+  // deterministic + serializable + rng-free
+  assert.equal(d2.rng.cursor, s0.rng.cursor, "draws consume no rng");
+  const logF = [stageFxDrawn(8), stageFxDrawn(16), stageFxDrawn(8), stageFxDrawn(24)];
+  const liveF = logF.reduce((st, a) => applyAction(st, a), s0);
+  assert.equal(snapshot(replay(restore(snapshot(s0)), logF)), snapshot(liveF), "STAGE_FX_DRAWN replays byte-identically");
+  assert.equal(assertJsonSafe(liveF), true, "stageFx slice is JSON-safe");
+}
+
+// -- Phase 6c: GOD_ATTACK_PICKED — the boss's attack pick on engine rng ---------
+{
+  const s0 = makeInitialState(config, 1717);
+
+  // determinism: same state+seed → same pick; picks are valid deck entries
+  const p1 = applyAction(s0, godAttackPicked("bardbarian"));
+  const p2 = applyAction(s0, godAttackPicked("bardbarian"));
+  assert.deepEqual(p1.rockGod.lastPick, p2.rockGod.lastPick, "same seed → same pick");
+  assert.ok(ROCK_GODS.bardbarian.attacks.some(a => a.id === p1.rockGod.lastPick.attackId),
+    "pick is a real attack of the god");
+  assert.equal(p1.rockGod.lastPick.godId, "bardbarian");
+  assert.ok(p1.rng.cursor > s0.rng.cursor, "the pick consumes engine rng");
+
+  // no immediate repeat across many seeds
+  for (let seed = 1; seed <= 120; seed++) {
+    const last = ROCK_GODS.bardbarian.attacks[seed % ROCK_GODS.bardbarian.attacks.length].id;
+    const pick = applyAction(makeInitialState(config, seed), godAttackPicked("bardbarian", last))
+      .rockGod.lastPick.attackId;
+    assert.notEqual(pick, last, `no immediate repeat (seed ${seed})`);
+  }
+
+  // unknown god / empty deck → null pick
+  assert.equal(applyAction(s0, godAttackPicked("nobody")).rockGod.lastPick, null, "unknown god → null");
+  assert.equal(applyAction(s0, godAttackPicked("glam_reaper")).rockGod.lastPick, null, "empty deck → null");
+
+  // replayable byte-for-byte (rng cursor rides in state)
+  const logG = [godAttackPicked("bardbarian"), godAttackPicked("bardbarian", "thunderclap")];
+  const liveG = logG.reduce((st, a) => applyAction(st, a), s0);
+  assert.equal(snapshot(replay(restore(snapshot(s0)), logG)), snapshot(liveG), "GOD_ATTACK_PICKED replays byte-identically");
+  assert.equal(assertJsonSafe(liveG), true, "rockGod pick slice is JSON-safe");
 }
 
 // -- Phase 8 (partial): cross-system determinism / replay proof ----------------
@@ -852,6 +1002,13 @@ const config = {
     counterRolled("vera", { vibe: 6, maxVibe: 10, target: 4 }),
     damageApplied("vera", 3),
     knockdownResolved("vera"),      // lives 2 → respawns at home corner, full Vibe
+    // Phase 5c economy actions — widen the proof over the noteStates writes
+    fameChanged("wildaxe", 3),
+    fameChanged("vera", -1),        // knockdown penalty path (floors at 0)
+    fansChanged("wildaxe", { casuals: 9, diehards: 4, centerStreak: 1, fanActedThisTurn: true }),
+    fansChanged("vera", { fanLag: 3, centerStreak: 0 }),
+    noteSheetPatched("wildaxe", { hcPoints: 2, unlockedSkills: ["mic"], burnArmed: true }),
+    noteSheetPatched("vera", { stagger: { turnsLeft: 1 }, modCards: [] }),
     winnerDeclared("wildaxe"),
     turnEnded(),
     // rng-heavy riff-off generation across the serialization boundary

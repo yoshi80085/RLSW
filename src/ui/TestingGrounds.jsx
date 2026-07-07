@@ -4,7 +4,7 @@
 // =============================================================================
 import React from "react";
 
-export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId, devEventId, devFireEvent, devFireSignature, devGrant, devDamage, devOpen, devUnlockSkill, noteStates, setDevEventId, setDevOpen, spiritById, spirits, testMode, devSummonGod, devHurtGod, devGodAct, rockGod, bossOutcome }) {
+export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId, devEventId, devFireEvent, devFireSignature, devGrant, devDamage, devOpen, devUnlockSkill, noteStates, setDevEventId, setDevOpen, spiritById, spirits, testMode, devSummonGod, devHurtGod, devGodAct, rockGod, bossOutcome, devExportLog }) {
   const godAlive = !!(rockGod && rockGod.hp > 0 && !bossOutcome);
   return (<>
       {testMode && (
@@ -17,6 +17,7 @@ export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId
           </button>
           {devOpen && (
             <div style={{position:'fixed',bottom:54,left:14,zIndex:9996,width:252,
+              maxHeight:'calc(100vh - 80px)',overflowY:'auto',overscrollBehavior:'contain',
               background:'linear-gradient(165deg,#140a20,#0a0814)',border:'1.5px solid #cc66ff',borderRadius:10,
               padding:'12px 14px',boxShadow:'0 0 30px #cc66ff44',fontFamily:"'Share Tech Mono',monospace"}}>
               <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:'#e0a0ff',letterSpacing:2,marginBottom:8}}>🧪 TESTING GROUNDS</div>
@@ -116,6 +117,13 @@ export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId
                   </div>
                 );
               })}
+              <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,margin:'12px 0 4px'}}>📼 REPLAY (Phase 8a)</div>
+              <button onClick={devExportLog}
+                title="Download the full action log (seed + config + every dispatched action) — replaying it through the engine reproduces this game"
+                style={{background:'#0a0814',border:'1px solid #4a2a60',color:'#d0c0e0',borderRadius:5,fontSize:9,padding:'5px 9px',cursor:'pointer',fontFamily:'inherit'}}>
+                💾 EXPORT ACTION LOG
+              </button>
+
               <div style={{fontSize:7,color:'#6a5a85',marginTop:11,lineHeight:1.45}}>
                 Add tests: a new entry in <span style={{color:'#cc99ff'}}>EVENT_DECK</span> auto-appears above; a new lever goes in <span style={{color:'#cc99ff'}}>devGrant</span>.
               </div>

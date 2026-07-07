@@ -1,15 +1,11 @@
-import { useState, useRef } from "react";
-import { shuffledStageFxDeck } from "../data/stageEffects.js";
+import { useState } from "react";
 
 // ─── 🎇 STAGE EFFECTS STATE ──────────────────────────────────────────────────
 // Board-level show hazards fired at Fame thresholds (see data/stageEffects.js).
-// Pure state slice — activation / ticking / damage live in Game. The deck is
-// shuffled once per game; firedRef guarantees each threshold fires exactly once
-// even inside async grantFame chains.
+// Pure state slice — activation / ticking / damage live in Game. Phase 6b: the
+// deck (seeded shuffle) and the fired-thresholds guard moved into the ENGINE
+// (state.stageFx + STAGE_FX_DRAWN); only the live-effect visuals remain here.
 export function useStageEffects() {
-  const [stageFxDeck] = useState(() => shuffledStageFxDeck());
-  const firedRef = useRef(new Set());          // thresholds already fired (sync guard)
-
   // 💨 { radius, roundsLeft } — cloud around the Limelight, +1 ring per round
   const [smokeFx, setSmokeFx] = useState(null);
   // 🔺 { beams:[{axis,val,hexes}], roundsLeft, key } — re-patterns every round
@@ -22,7 +18,6 @@ export function useStageEffects() {
   const [stageFxBanner, setStageFxBanner] = useState(null);
 
   return {
-    stageFxDeck, stageFxFiredRef: firedRef,
     smokeFx, setSmokeFx,
     laserFx, setLaserFx,
     pyroFx, setPyroFx,

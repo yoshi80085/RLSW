@@ -48,7 +48,7 @@ import { Lobby } from "./ui/Lobby.jsx";
 import { isMirrorFacing, MIRROR_SPRITES, mobileColorStyle, GameErrorBoundary } from "./ui/GameErrorBoundary.jsx";
 import { useStageEffects } from "./hooks/useStageEffects.js";
 import { useRockGod } from "./hooks/useRockGod.js";
-import { ROCK_GODS, ROCK_GOD_RUNAWAY_LEAD, ROCK_GOD_HP_PER_SPIRIT, ROCK_GOD_TIMER_SECONDS, ROCK_GOD_VENGEANCE_DMG, ROCK_GOD_KILL_BLOW_FP, pickRockGod, pickGodAttack, godTauntLine } from "./data/rockGods.js";
+import { ROCK_GODS, ROCK_GOD_RUNAWAY_LEAD, ROCK_GOD_HP_PER_SPIRIT, ROCK_GOD_TIMER_SECONDS, ROCK_GOD_VENGEANCE_DMG, ROCK_GOD_KILL_BLOW_FP, pickRockGod, godTauntLine } from "./data/rockGods.js";
 import { hexesWithin, slideLine, shoveAwayHex, nearestSpiritTo, freeNeighborHex } from "./board/rockGodFx.js";
 import { RockGodBoardLayer, RockGodHUD, GodVictoryOverlay } from "./ui/RockGodLayer.jsx";
 import { STAGE_FX_THRESHOLDS, STAGE_FX_META, SMOKE_START_RADIUS, SMOKE_ROUNDS, LASER_ROUNDS, LASER_BEAM_COUNT, LASER_DAMAGE, PYRO_WAVES, PYRO_WAVE_HEXES, PYRO_DAMAGE, PYRO_BURN_TURNS, ANIMATRONIC_COUNT, ANIMATRONIC_TURNS, ANIMATRONIC_DAMAGE } from "./data/stageEffects.js";
@@ -56,10 +56,10 @@ import { hexInSmoke, hexInBeams, rollLaserBeams, rollPyroHexes, spawnAnimatronic
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, stageFxDrawn, godAttackPicked } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome } from "./engine/systems/combat.js";
-import { usedHas, usedList, usedAdd, performanceScore } from "./engine/systems/economy.js";
+import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
 import { skillEligibility, THEORY_DISCORD_GRANTS, CQC_SWING_MAP } from "./engine/systems/skills.js";
 
 
@@ -240,7 +240,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
 }
 
 
-import { NOTE_POOL, ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, semitonesUp, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
+import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
 import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_HC_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_HC_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
@@ -317,7 +317,7 @@ import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } 
 // turn is your "final". String the right finals together across consecutive
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
-import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, staggerDuration, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackHC, randomNote, refillStock } from "./music/cadence.js";
+import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, staggerDuration, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackHC, randomNote } from "./music/cadence.js";
 import { evaluateChord } from "./music/chords.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -624,7 +624,13 @@ function Game({ gameState, onReturnToLobby }) {
   const engineRef = useRef(engineState); // live mirror so dispatch works inside timeout chains
   // Dispatch through the engine reducer. Synchronous: returns the next state
   // so callers can read results (turn.lastMove / turn.lastReport) immediately.
+  // Phase 8a — ACTION LOG: every dispatch is recorded with the rng cursor it
+  // applied at. seed + config + this log IS the multiplayer replay contract
+  // (the engine selftest proves byte-identical reproduction). Ref — the log
+  // never triggers a render; export it from the Testing Grounds panel.
+  const actionLogRef = useRef([]);
   function dispatch(engineAction) {
+    actionLogRef.current.push({ action: engineAction, cursorBefore: engineRef.current.rng.cursor });
     const next = applyAction(engineRef.current, engineAction);
     engineRef.current = next;
     setEngineState(next);
@@ -812,113 +818,40 @@ function Game({ gameState, onReturnToLobby }) {
   const [log, setLog] = useState(["⚡ RLSW v3.0 — Melody Line System", "🎵 Build your Melody Line → Confirm → Move"]);
 
   // ─── NOTE SYSTEM STATE (per-character) ─────────────────────────────────────
-  function makeInitialNoteState(spiritId, rand = Math.random) {
-    // Pick a random raw note, respell to a canonical root in major context first.
-    // `rand` is an optional injectable PRNG (Phase 5a prep) — defaults to
-    // Math.random so behavior is unchanged; the Phase-5c flip passes the engine
-    // rng so the opening stock is replay-deterministic.
-    const rawRoot = NOTE_POOL[Math.floor(rand() * NOTE_POOL.length)];
-    // Default to major for initial respelling; split roots default to major spelling
-    const initMode = 'major';
-    const root = canonicalRoot(rawRoot, initMode);
-    // 🗡️ SHREDDING RONIN — the resource-rich composer carries a deeper well: 10 stock
-    // slots instead of 8, more material to shape virtuosic shows (and a fatter target
-    // for the double-scatter when he's Smashed).
-    const stockSize = spiritId === 'cosmic_ronin' ? 10 : 8;
-    // All roots are pivot candidates — always prompt for major/minor on first turn
-    return {
-      noteStock:       refillStock(root, initMode, stockSize, rand),
-      melodyLine:       [],
-      chordStack:      [root, semitonesUp(root, 7)],  // 🎸 the CHORD STACK — starts a Power Chord (R+5); persists across turns
-      revoiceUsedThisTurn: false,  // 🎸 one chord revoice (add OR drop a note) per turn
-      bonusRevoiceAvailable: false, // ⚡ Overcharge chord-assist — ONE extra revoice, separate from the budget above
-      usedStockIdx:    [],   // insertion-ordered array of spent stock-slot indices (JSON-safe; was a Set)
-      rootNote:        root,
-      scaleMode:       initMode,
-      pivotPending:    true, // always prompt major/minor at start
-      diceTier:        0,
-      tierPoints:      0,
-      discordCount:    0,
-      hasConfirmed:    false,
-      feedbackBoost:   false,
-      dieFloorBoost:   0,
-      statusEffects:   [],
-      stagger:         null,
-      mojoDrain:       0,
-      burn:            null,  // 🔥 Devil's Interval Burn — { turnsLeft } ; 50%/turn to lose 1 Vibe
-      burnArmed:       false, // 🔥 ending a track on the tritone arms the next attack to Burn
-      statusShield:    false, // ✨ Borrowed Chord shield — blocks the next incoming status
-      tempDrive:       0,
-      tempSustain:     0,
-      swingExposed:    false,
-      smashExposed:    false,  // 🎸💥 left wide open after a Smash — next hit ignores your Sustain
-      displaceCd:      0,      // 🌌 Displace (Intergalactic 0) — turns until the warp is ready again
-      hcPoints:        0,
-      totalHC:         0,
-      upgradesPending: 0,      // 1 = needs to pick next target skill
-      skillRoute:      null,
-      unlockedSkills:  [],
-      targetSkillId:   null,   // skill currently being saved toward
-      diceLevel:       0,
-      ampOwned:        false,
-      roadies:         [],
-      bankedNote:      null,  // { note } — 1 note max banked from overflow
-      // 🤘 Metalness Monster exclusive-tree bookkeeping
-      knockStreak:     0,     // 💀 Azrael — rivals knocked down since he last fell
-      riffSlayerArmed: false, // 🗡️ Riff Slayer — skip-climb committed this turn
-      pendingParanoia: false, // 🌀 Paranoia — next Mojo Drain is supercharged
-      eRushArmed:      false, // 🎴 いいラッシュ — track ended on E this turn
-      discordUnlocks:  [],    // discord tier ids unlocked: 'discord_1','discord_2','discord_3'
-      swingUpgrades:   [],    // swing tier ids unlocked: 'swing_1','swing_2','swing_3'
-      // Physical combat debuffs (from swing effects)
-      tripped:         false, // movement halved this turn
-      instrumentDropped: false, // Drive reduced by 1 until recovered (roadie or start of own turn)
-      dazed:           false, // next move goes to a random neighbour instead of chosen hex
-      modCards:        [{ id: 'starter-transpose', type: 'transpose', exhausted: false, oneShot: true }], // 🔄 rescue a bad opening hand — one use, your call when
-      // ── Crew & Gear deployables ──
-      groupieCooldowns: {},    // skillId → own-turns until ready again (0/undefined = ready)
-      junkyardArmed:    false, // Junkyard Dog weapon armed — +2 on next Swing roll
-      ultimateUsed:     false, // once-per-game Ultimate fired
-      mixerUsedThisTurn: false,// Mixer doubles one stock note per turn
-      elevenTurns:      0,     // "goes to eleven" — dice tier counts +1 amp for N of your turns
-      edgeStage:        0,     // ⚡ Dissonance Edge — 0 inactive, 1-2 riding (Drive up/Sustain down); resolve on root/3rd/5th or it collapses
-      fame:             0,     // ⭐ Fame Points — earned by winning battles, scaled by margin
-      finalsTrail:      [],    // 🎯 pitch classes of recent turn-ending notes (cadence objectives)
-      cadenceCooldowns: {},    // objectiveId → own-turns before it can be completed again
-      // ── 🎤 FAN ECONOMY ──
-      diehards:         FAN_DIEHARD_START, // loyal core (stable, amplifies hard)
-      casuals:          FAN_CASUAL_START,  // fickle fringe (volatile, plentiful)
-      centerStreak:     0,     // consecutive centre-perform turns (drives promotion)
-      outerStreak:      0,     // consecutive turns ended on the outer edge (drives delayed boredom)
-      fanLag:           0,     // turns locked out of crowd-gain after a demolition
-      fanActedThisTurn: false, // performed a clean centre track this turn? (keeps the promote streak alive)
-      // ── 🎭 CROWD & INTIMIDATION LAYER (Performance Score P → excitement / HC / intimidation) ──
-      perfScore:    0,      // last Performance Score P (0–10) this spirit produced
-      recentP:      [],     // last 2 P scores — Poise basis for intimidation (§6)
-      excitement:   0,      // performance excitement toward winning new casual fans (§5a)
-      loyalty:      0,      // performance loyalty toward hardening casuals → diehards (§5a)
-      intimArmed:   null,   // { drop } — a high-P track armed an intimidation hit (consumed on next attack)
-      intimidation: null,   // { drop, turnsLeft } — active Sustain debuff ON this spirit (§6)
-    };
-  }
+  // makeInitialNoteState now lives in the ENGINE (src/engine/systems/economy.js)
+  // and is imported at the top of this file — the temporary client duplicate is
+  // gone (it was dead for init since the 5c flip; the engine builds every sheet
+  // in makeInitialState on the seeded forked rng). Single source, no drift.
 
   // ── NOTESTATES — engine is the source of truth (Phase 5c ownership flip) ──────
-  // `noteStates` is now a live view of engineState.noteStates (built + OWNED by
+  // `noteStates` is a live view of engineState.noteStates (built + OWNED by
   // makeInitialState on a seeded FORKED rng). `setNoteStates(updater)` is a
   // compatibility shim: it applies the (functional or plain-value) update against
-  // the CURRENT engine map (engineRef is always live) and writes the result back
-  // through the reducer (NOTE_STATES_SYNCED = full map replace). Every legacy
-  // setNoteStates call keeps working unchanged; individual sites migrate to
-  // semantic actions (NOTE_TRACK_CONFIRMED, SKILL_AWARDED, FANS_CHANGED, …) later.
-  // ⚠️ Behavior delta: starting hands are now SEEDED (deterministic per game seed)
-  // rather than Math.random — the intended replay-determinism change. The client's
-  // makeInitialNoteState duplicate is now dead for init (kept only as the
-  // actingNoteState fallback) and can be deleted in cleanup.
+  // the CURRENT engine map (engineRef is always live), then DIFFS the result per
+  // spirit and dispatches NOTE_SHEET_PATCHED for each changed sheet — so the
+  // action log carries small, per-spirit writes instead of full-map replaces.
+  // Anything a merge can't express (sheet-key removal, added/removed spirit ids)
+  // falls back to the NOTE_STATES_SYNCED full replace; final state is identical
+  // either way. Sites still graduate to true semantic actions (FAME_CHANGED,
+  // FANS_CHANGED, …) as their rules move into reducers.
   const noteStates = engineState.noteStates;
   const setNoteStates = (updater) => {
     const cur = engineRef.current.noteStates;
     const next = typeof updater === "function" ? updater(cur) : updater;
-    dispatch(noteStatesSynced(next));
+    if (next === cur) return; // no-op update (e.g. a guard returned prev)
+    const nextIds = Object.keys(next);
+    let fallback = nextIds.length !== Object.keys(cur).length || nextIds.some(id => !(id in cur));
+    if (!fallback) {
+      for (const id of nextIds) {
+        const a = cur[id], b = next[id];
+        if (a === b) continue;
+        if (Object.keys(a).some(k => !(k in b))) { fallback = true; break; } // key removal → full replace
+        const patch = {};
+        for (const k of Object.keys(b)) if (a[k] !== b[k]) patch[k] = b[k];
+        dispatch(noteSheetPatched(id, patch));
+      }
+    }
+    if (fallback) dispatch(noteStatesSynced(next));
   };
 
 
@@ -998,7 +931,6 @@ function Game({ gameState, onReturnToLobby }) {
   // Board hazards fired once each at ⭐8/16/24 — deck shuffled per game, no
   // repeats. Activation/tick/damage logic: see STAGE EFFECTS SYSTEM below.
   const {
-    stageFxDeck, stageFxFiredRef,
     smokeFx, setSmokeFx,
     laserFx, setLaserFx,
     pyroFx, setPyroFx,
@@ -2354,14 +2286,14 @@ function Game({ gameState, onReturnToLobby }) {
     // into diehards. NO Fame is granted here: fans only ever MULTIPLY earned FP (grantFame).
     // Applied after gainFans via a functional update so it stacks with position-based gains.
     if (perfFansGained > 0 || perfPromotions > 0 || perfFansLost > 0) {
-      setNoteStates(prev => {
-        const ns0 = prev[acting.id]; if (!ns0) return prev;
+      const ns0 = engineRef.current.noteStates[acting.id];
+      if (ns0) {
         let cas = ns0.casuals ?? FAN_CASUAL_START, die = ns0.diehards ?? FAN_DIEHARD_START;
         cas = Math.min(FAN_CASUAL_CAP, cas + perfFansGained);
         for (let i = 0; i < perfPromotions; i++) { if (cas > 0 && die < FAN_DIEHARD_CAP) { cas -= 1; die += 1; } }
         cas = Math.max(0, cas - perfFansLost);     // 🗡️ bored fans walk (Ronin's weak shows)
-        return { ...prev, [acting.id]: { ...ns0, casuals: cas, diehards: die } };
-      });
+        dispatch(fansChanged(acting.id, { casuals: cas, diehards: die }));
+      }
       if (perfFansGained > 0) { addLog(`🎤 ${acting.name}'s performance wins over ${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''}!`); showTip('fans'); }
       if (perfPromotions > 0) addLog(`💜 ${perfPromotions} of ${acting.name}'s casuals harden into Diehards!`);
       if (perfFansLost > 0)   addLog(`😴 ${acting.name}'s show falls flat — ${perfFansLost} bored fan${perfFansLost !== 1 ? 's' : ''} drift off.`);
@@ -3508,7 +3440,7 @@ function Game({ gameState, onReturnToLobby }) {
     const spirit = spirits.find(s => s.id === spiritId);
     // 😎 DIVINE MISSION blessing — the flames part. Blessing is then spent.
     if (noteStates[spiritId]?.divineShield) {
-      setNoteField(spiritId, { divineShield: 0 });
+      dispatch(fansChanged(spiritId, { divineShield: 0 }));
       addLog(`🛡️ The flaming disc fizzles at ${spirit?.name}'s feet — divine blessing spent.`);
       return;
     }
@@ -3946,19 +3878,16 @@ function Game({ gameState, onReturnToLobby }) {
       const recalled = unsurePool;
       if (recalled > 0) {
         setUnsurePool(0);
-        setNoteStates(prev => {
-          const cur = prev[spiritId] ?? {};
-          return { ...prev, [spiritId]: {
-            ...cur,
-            casuals: Math.min(FAN_CASUAL_CAP, (cur.casuals ?? 0) + recalled),
-            fanLag: 0,
-            divineShield: 1,
-          } };
-        });
+        const cur = engineRef.current.noteStates[spiritId] ?? {};
+        dispatch(fansChanged(spiritId, {
+          casuals: Math.min(FAN_CASUAL_CAP, (cur.casuals ?? 0) + recalled),
+          fanLag: 0,
+          divineShield: 1,
+        }));
         flashFanFx(spiritId, 'gain', recalled);
         triggerUnsureWin(spiritId, recalled);
       } else {
-        setNoteField(spiritId, { fanLag: 0, divineShield: 1 });
+        dispatch(fansChanged(spiritId, { fanLag: 0, divineShield: 1 }));
       }
       setSpirits(prev => prev.map(s => s.id === spiritId
         ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + 1) } : s));
@@ -4127,13 +4056,13 @@ function Game({ gameState, onReturnToLobby }) {
       } else {
         const gain = passed ? 5 : 2;
         tally.casuals += gain;
-        setNoteStates(nsAll => {
-          const cur = nsAll[spiritId] ?? {};
+        {
+          const cur = engineRef.current.noteStates[spiritId] ?? {};
           let casuals  = Math.min(FAN_CASUAL_CAP, (cur.casuals ?? 0) + gain);
           let diehards = cur.diehards ?? FAN_DIEHARD_START;
           if (passed && casuals > 0 && diehards < FAN_DIEHARD_CAP) { casuals -= 1; diehards += 1; }
-          return { ...nsAll, [spiritId]: { ...cur, casuals, diehards } };
-        });
+          dispatch(fansChanged(spiritId, { casuals, diehards }));
+        }
         flashFanFx(spiritId, 'gain', gain);
         lines.push(passed
           ? `🦆 DUCKWALK DYNAMO — ${prev.hits}/${total} chords clean. The kids go wild! +${gain} Casuals (one hardens into a Diehard).`
@@ -4236,12 +4165,33 @@ function Game({ gameState, onReturnToLobby }) {
     const id = devCurrentSpiritId(); if (!id) return;
     const nm = spiritById[id]?.name;
     if (kind === 'hc')       { grantHC(id, 3); addLog(`🧪 +3 HC → ${nm}`); }
-    else if (kind === 'cas') { setNoteStates(ns => ({ ...ns, [id]: { ...ns[id], casuals: Math.min(FAN_CASUAL_CAP, (ns[id]?.casuals ?? 0) + 5) } })); flashFanFx(id, 'gain', 5); addLog(`🧪 +5 Casuals → ${nm}`); }
-    else if (kind === 'die') { setNoteStates(ns => ({ ...ns, [id]: { ...ns[id], diehards: Math.min(FAN_DIEHARD_CAP, (ns[id]?.diehards ?? FAN_DIEHARD_START) + 1) } })); addLog(`🧪 +1 Diehard → ${nm}`); }
+    else if (kind === 'cas') { dispatch(fansChanged(id, { casuals: Math.min(FAN_CASUAL_CAP, (engineRef.current.noteStates[id]?.casuals ?? 0) + 5) })); flashFanFx(id, 'gain', 5); addLog(`🧪 +5 Casuals → ${nm}`); }
+    else if (kind === 'die') { dispatch(fansChanged(id, { diehards: Math.min(FAN_DIEHARD_CAP, (engineRef.current.noteStates[id]?.diehards ?? FAN_DIEHARD_START) + 1) })); addLog(`🧪 +1 Diehard → ${nm}`); }
     else if (kind === 'uns') { setUnsurePool(p => p + 5); addLog('🧪 +5 to the Unsure pool'); }
     else if (kind === 'vup') { setSpirits(prev => prev.map(s => s.id === id ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + 1) } : s)); addLog(`🧪 +1 Vibe → ${nm}`); }
     else if (kind === 'vdn') { setSpirits(prev => prev.map(s => s.id === id ? { ...s, vibe: Math.max(0, (s.vibe ?? 0) - 1) } : s)); addLog(`🧪 −1 Vibe → ${nm}`); }
     else if (kind === 'fp')  { grantFame(id, 3, '🧪 test grant', false); }
+  }
+
+  // 🧪📼 Phase 8a — download the action log as JSON. `{seed, config} → makeInitialState`
+  // plus `log` replayed through `applyAction` reproduces this exact game (the
+  // engine selftest proves the byte-for-byte guarantee for engine-owned systems).
+  function devExportLog() {
+    const eng = engineRef.current;
+    const payload = {
+      schema: eng.schema,
+      seed: eng.rng.seed,
+      config: eng.config ?? null,
+      actionCount: actionLogRef.current.length,
+      log: actionLogRef.current,
+    };
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `rlsw-action-log-${eng.rng.seed}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    addLog(`🧪📼 Action log exported — ${actionLogRef.current.length} actions (seed ${eng.rng.seed}).`);
   }
 
   // 🧪💥 Deal REAL combat damage to any spirit — routes through applyVibeDamage so
@@ -4365,12 +4315,14 @@ function Game({ gameState, onReturnToLobby }) {
   // Called from grantFame with the spirit's fame before/after the grant.
   function checkStageFxThresholds(oldFame, newFame) {
     for (const t of STAGE_FX_THRESHOLDS) {
-      if (oldFame < t && newFame >= t && !stageFxFiredRef.current.has(t)) {
-        stageFxFiredRef.current.add(t);
-        const idx = [...STAGE_FX_THRESHOLDS].filter(x => stageFxFiredRef.current.has(x)).length - 1;
-        const fxId = stageFxDeck[idx % stageFxDeck.length];
-        // Let the fame log land first, then hit the lights.
-        setTimeout(() => activateStageFx(fxId, t), 650);
+      if (oldFame < t && newFame >= t) {
+        // Phase 6b — the engine records the threshold (exactly-once) and draws
+        // from the SEEDED deck; a duplicate crossing reports lastDraw = null.
+        const draw = dispatch(stageFxDrawn(t)).stageFx.lastDraw;
+        if (draw?.threshold === t) {
+          // Let the fame log land first, then hit the lights.
+          setTimeout(() => activateStageFx(draw.fxId, t), 650);
+        }
       }
     }
   }
@@ -4428,7 +4380,7 @@ function Game({ gameState, onReturnToLobby }) {
     const sp = spirits.find(s => s.id === spiritId);
     // 😎 DIVINE MISSION blessing — one hazard parts around them, then it's spent.
     if (noteStates[spiritId]?.divineShield) {
-      setNoteField(spiritId, { divineShield: 0 });
+      dispatch(fansChanged(spiritId, { divineShield: 0 }));
       addLog(`🛡️ The stage hazards part around ${sp?.name} — divine blessing spent.`);
       return;
     }
@@ -4700,7 +4652,10 @@ function Game({ gameState, onReturnToLobby }) {
     }
 
     // 3) Open a new attack.
-    const atk = pickGodAttack(def, god.lastAttack);
+    // Phase 6c — the pick rolls on ENGINE rng (deterministic, replay-logged);
+    // the client re-derives the full attack def from the decided id.
+    const pickedId = dispatch(godAttackPicked(god.id, god.lastAttack ?? null)).rockGod?.lastPick?.attackId;
+    const atk = def.attacks?.find(a => a.id === pickedId) ?? null;
     if (!atk) return;
     if (atk.id === 'thunderclap') {
       const hexes = hexesWithin(god.num, atk.radius);
@@ -4879,7 +4834,7 @@ function Game({ gameState, onReturnToLobby }) {
         casuals -= 1; diehards += 1; promoted = true;
       }
     }
-    setNoteField(spiritId, { casuals, diehards, centerStreak: streak, fanActedThisTurn: inCentre });
+    dispatch(fansChanged(spiritId, { casuals, diehards, centerStreak: streak, fanActedThisTurn: inCentre }));
     flashFanFx(spiritId, 'gain', base + recruit);
     const nm = spirits.find(s => s.id === spiritId)?.name;
     const gainedStr = recruit > 0 ? `+${base} (+${recruit} won over)` : `+${base}`;
@@ -4911,38 +4866,17 @@ function Game({ gameState, onReturnToLobby }) {
   // spirit has lingered in the outer ring for FAN_BORED_AFTER turns in a row. The
   // inner zones (and the neutral floor) keep the crowd; only the centre keeps the
   // hardening streak alive.
-  function tickFans(spiritId, hexNum) {
-    const spirit = spirits.find(s => s.id === spiritId);
-    const zone = (hexNum != null) ? hexRingFromCenter(hexNum)
-               : (spirit ? hexRingFromCenter(spirit.num) : 'back');
-    setNoteStates(prev => {
-      const ns = prev[spiritId]; if (!ns) return prev;
-      let casuals      = ns.casuals ?? 0;
-      let centerStreak = ns.centerStreak ?? 0;
-      let outerStreak  = ns.outerStreak ?? 0;
-      const lag        = Math.max(0, (ns.fanLag ?? 0) - 1);
-
-      if (zone === 'main' || zone === 'pit') {
-        outerStreak = 0;
-        if (!ns.fanActedThisTurn) centerStreak = 0; // idle in the spotlight breaks the streak
-      } else if (zone === 'floor') {
-        outerStreak = 0;      // neutral ground — no boredom
-        centerStreak = 0;     // ...but you're not building loyalty out here
-      } else {
-        // Outer edge — patience runs out only after several turns in a row.
-        outerStreak += 1;
-        centerStreak = 0;
-        if (outerStreak >= FAN_BORED_AFTER && casuals > 0) {
-          const before = casuals;
-          casuals = Math.max(0, casuals - FAN_DECAY);
-          const lost = before - casuals;
-          const nm = spirit?.name;
-          setTimeout(() => addLog(`💤 ${nm} has been out in the cheap seats too long — ${lost} casual fan${lost !== 1 ? 's' : ''} drift off.`), 0);
-          if (lost > 0) setTimeout(() => flashFanFx(spiritId, 'scatter', lost), 0);
-        }
-      }
-      return { ...prev, [spiritId]: { ...ns, casuals, centerStreak, outerStreak, fanLag: lag, fanActedThisTurn: false } };
-    });
+  function tickFans(spiritId) {
+    // Phase 5d — the boredom/lag rule LIVES IN THE ENGINE now (applyFansTicked);
+    // it derives the zone from its own spirit position (the old hexNum arg is
+    // retired — it was always the same position). The client dispatches at the
+    // same end-of-turn beat as before and renders the report.
+    const report = dispatch(fansTicked(spiritId)).turn.lastFanTick;
+    if (report?.spiritId === spiritId && report.lost > 0) {
+      const nm = spirits.find(s => s.id === spiritId)?.name;
+      addLog(`💤 ${nm} has been out in the cheap seats too long — ${report.lost} casual fan${report.lost !== 1 ? 's' : ''} drift off.`);
+      flashFanFx(spiritId, 'scatter', report.lost);
+    }
   }
 
   // Demolition — a public beating in the centre scatters the crowd.
@@ -4953,7 +4887,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (!ns) return;
     // 😎 DIVINE MISSION blessing — shrug off this demolition, then the blessing is spent.
     if (ns.divineShield) {
-      setNoteField(targetId, { divineShield: 0 });
+      dispatch(fansChanged(targetId, { divineShield: 0 }));
       const blessed = spirits.find(s => s.id === targetId)?.name;
       addLog(`🛡️ ${blessed} is on a mission from God — the demolition just bounces off. Blessing spent.`);
       flashFanFx(targetId, 'gain', 0);
@@ -4970,13 +4904,13 @@ function Game({ gameState, onReturnToLobby }) {
     // Some defect straight to the demolisher; the rest pool as Unsure on the centre.
     const toVictor = (attackerId && attackerId !== targetId) ? Math.min(FAN_DEFECT_TO_VICTOR, flee) : 0;
     const toUnsure = flee - toVictor;
-    setNoteStates(prev => {
-      const next = { ...prev, [targetId]: { ...prev[targetId], diehards, casuals, centerStreak: 0, fanLag: FAN_RECOVERY_LAG } };
-      if (toVictor > 0 && prev[attackerId]) {
-        next[attackerId] = { ...prev[attackerId], casuals: Math.min(FAN_CASUAL_CAP, (prev[attackerId].casuals ?? 0) + toVictor) };
+    dispatch(fansChanged(targetId, { diehards, casuals, centerStreak: 0, fanLag: FAN_RECOVERY_LAG }));
+    {
+      const atkNs = engineRef.current.noteStates[attackerId];
+      if (toVictor > 0 && atkNs) {
+        dispatch(fansChanged(attackerId, { casuals: Math.min(FAN_CASUAL_CAP, (atkNs.casuals ?? 0) + toVictor) }));
       }
-      return next;
-    });
+    }
     if (toUnsure > 0) setUnsurePool(p => p + toUnsure);
     const tgtName = spirits.find(s => s.id === targetId)?.name;
     addLog(`💔 ${tgtName} is humiliated centre-stage! ${flee} fans bail (${shaken}♥ shaken) — ${toUnsure} go Unsure${toVictor ? `, ${toVictor} defect to the victor` : ''}.`);
@@ -5000,21 +4934,23 @@ function Game({ gameState, onReturnToLobby }) {
     const inCentre = ring === 'main' || ring === 'pit';
     const centreBonus = ring === 'main' ? 2 : ring === 'pit' ? 1 : ring === 'floor' ? 1 : 0;
     const gain = baseAmount + centreBonus;
-    setNoteStates(prev => {
-      const ns = prev[spiritId]; if (!ns) return prev;
-      let casuals  = Math.min(FAN_CASUAL_CAP, (ns.casuals ?? 0) + gain);
-      let diehards = ns.diehards ?? FAN_DIEHARD_START;
-      let streak   = ns.centerStreak ?? 0;
-      let promoted = false;
-      if (inCentre) {
-        streak += 1;
-        if (streak % FAN_PROMOTE_EVERY === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
-          casuals -= 1; diehards += 1; promoted = true;
+    {
+      const ns = engineRef.current.noteStates[spiritId];
+      if (ns) {
+        let casuals  = Math.min(FAN_CASUAL_CAP, (ns.casuals ?? 0) + gain);
+        let diehards = ns.diehards ?? FAN_DIEHARD_START;
+        let streak   = ns.centerStreak ?? 0;
+        let promoted = false;
+        if (inCentre) {
+          streak += 1;
+          if (streak % FAN_PROMOTE_EVERY === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
+            casuals -= 1; diehards += 1; promoted = true;
+          }
         }
+        if (promoted) setTimeout(() => addLog(`🎤 A casual hardens into a Diehard for ${spirit.name}! (${diehards}♥)`), 0);
+        dispatch(fansChanged(spiritId, { casuals, diehards, centerStreak: streak, fanActedThisTurn: true, fanLag: 0 }));
       }
-      if (promoted) setTimeout(() => addLog(`🎤 A casual hardens into a Diehard for ${spirit.name}! (${diehards}♥)`), 0);
-      return { ...prev, [spiritId]: { ...ns, casuals, diehards, centerStreak: streak, fanActedThisTurn: true, fanLag: 0 } };
-    });
+    }
     const where = ring === 'main' ? ' on the Mainstage' : ring === 'pit' ? ' in the Pit' : ring === 'floor' ? ' on the floor' : '';
     addLog(`🎤 ${spirit.name} wins the crowd${where}${label ? ` — ${label}` : ''} — +${gain} casual fan${gain !== 1 ? 's' : ''}!`);
     flashFanFx(spiritId, 'gain', gain);
@@ -5256,11 +5192,11 @@ function Game({ gameState, onReturnToLobby }) {
       // Knock Down penalty: lose 1 FP (never below 0). The Spirit gets straight
       // back up in their home corner with full Vibe — no turn is skipped.
       // 💀 AZRAEL — if MetalNess himself is downed, his streak resets to zero.
+      dispatch(fameChanged(targetId, -1)); // Knock Down penalty: −1 FP (engine floors at 0)
       setNoteStates(nsPrev => {
         const ns = nsPrev[targetId] ?? {};
         return { ...nsPrev, [targetId]: {
           ...ns,
-          fame:       Math.max(0, (ns.fame ?? 0) - 1),
           recovering: false,
           knockStreak: 0,
         }};
@@ -7704,8 +7640,9 @@ function Game({ gameState, onReturnToLobby }) {
           if (willRespawn) {
             // Same Knock Down penalty as a Vibe-loss knockdown: -1 FP, but they
             // pop straight back up in their home corner — no turn is skipped.
+            dispatch(fameChanged(tgtId, -1)); // Knock Down penalty: −1 FP (engine floors at 0; no-op if no sheet)
             setNoteStates(nsPrev => nsPrev[tgtId]
-              ? { ...nsPrev, [tgtId]: { ...nsPrev[tgtId], fame: Math.max(0, (nsPrev[tgtId].fame ?? 0) - 1), recovering: false } }
+              ? { ...nsPrev, [tgtId]: { ...nsPrev[tgtId], recovering: false } }
               : nsPrev);
             addLog(`💸 ${tgt.name} loses 1 FP and gets straight back up in their home corner!`);
             setRespawnFlashes(prev => ({ ...prev, [tgtId]: true }));
@@ -8537,6 +8474,7 @@ function Game({ gameState, onReturnToLobby }) {
         devFireEvent={devFireEvent}
         devFireSignature={devFireSignature}
         devGrant={devGrant}
+        devExportLog={devExportLog}
         devDamage={devDamage}
         devOpen={devOpen}
         devUnlockSkill={devUnlockSkill}

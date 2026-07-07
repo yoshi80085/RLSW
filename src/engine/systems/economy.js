@@ -3,7 +3,8 @@
 
 import { pitchIndex, NOTE_POOL, canonicalRoot, semitonesUp } from "../../music/notes.js";
 import { detectMotifRepeat, refillStock } from "../../music/cadence.js";
-import { FAN_DIEHARD_START, FAN_CASUAL_START } from "../../data/gameConstants.js";
+import { FAN_DIEHARD_START, FAN_CASUAL_START, FAN_BORED_AFTER, FAN_DECAY } from "../../data/gameConstants.js";
+import { hexRingFromCenter } from "../../board/boardHelpers.js";
 //
 // `usedStockIdx` — the per-spirit set of spent stock-slot indices — used to be a
 // JS `Set`, which violates the plain-JSON GameState contract (a Set doesn't
@@ -230,5 +231,89 @@ export function applyFameChanged(state, { spiritId, amount = 0 }) {
   return {
     ...state,
     noteStates: { ...state.noteStates, [spiritId]: { ...ns, fame: Math.max(0, (ns.fame ?? 0) + amount) } },
+  };
+}
+
+/**
+ * FANS_CHANGED (Phase 5c) — merge a patch into one spirit's FAN block. Only the
+ * whitelisted fields below can change (a malformed payload can't touch fame,
+ * skills, or the note track). The client still computes the values (zone rules,
+ * promotion, demolition scatter + its flee roll — carried as action payload, the
+ * RIFF_RESULTS_SUBMITTED pattern), so this is a scoped, semantic write — not a
+ * rules engine yet; those rules land with the 5d END_TURN tick. No-op if the
+ * spirit has no sheet.
+ */
+export const FAN_FIELDS = [
+  "diehards", "casuals", "centerStreak", "outerStreak",
+  "fanLag", "fanActedThisTurn", "divineShield",
+];
+export function applyFansChanged(state, { spiritId, fans = {} }) {
+  const ns = state.noteStates[spiritId];
+  if (!ns) return state;
+  const patch = {};
+  for (const k of FAN_FIELDS) if (k in fans) patch[k] = fans[k];
+  return {
+    ...state,
+    noteStates: { ...state.noteStates, [spiritId]: { ...ns, ...patch } },
+  };
+}
+
+/**
+ * NOTE_SHEET_PATCHED (Phase 5c) — merge a client-computed field patch into one
+ * spirit's sheet (no whitelist: this is the shim's generic diff action, so it
+ * must be able to carry any sheet field). No-op if the spirit has no sheet —
+ * the shim only emits patches for ids already in the map (anything else falls
+ * back to the NOTE_STATES_SYNCED full replace). Consumes no rng.
+ */
+export function applyNoteSheetPatched(state, { spiritId, patch = {} }) {
+  const ns = state.noteStates[spiritId];
+  if (!ns) return state;
+  return {
+    ...state,
+    noteStates: { ...state.noteStates, [spiritId]: { ...ns, ...patch } },
+  };
+}
+
+/**
+ * FANS_TICKED (Phase 5d) — the end-of-turn fan tick, extracted verbatim from
+ * Game.tickFans. Zone comes from the ENGINE's spirit position (single source;
+ * the old client arg is retired). Rules: centre keeps the crowd (idle in the
+ * spotlight breaks the promote streak), the floor is neutral (no boredom, no
+ * loyalty), the outer edge builds an `outerStreak` that sheds FAN_DECAY casuals
+ * per turn once it reaches FAN_BORED_AFTER; demolition `fanLag` recovers by 1;
+ * `fanActedThisTurn` always resets. Deterministic — consumes no rng. The
+ * client-facing report lands in `state.turn.lastFanTick { spiritId, zone, lost }`.
+ */
+export function applyFansTicked(state, { spiritId }) {
+  const ns = state.noteStates[spiritId];
+  if (!ns) return state;
+  const sp = state.spirits.find(x => x.id === spiritId);
+  const zone = sp ? hexRingFromCenter(sp.num) : "back";
+  let casuals      = ns.casuals ?? 0;
+  let centerStreak = ns.centerStreak ?? 0;
+  let outerStreak  = ns.outerStreak ?? 0;
+  const fanLag     = Math.max(0, (ns.fanLag ?? 0) - 1);
+  let lost = 0;
+  if (zone === "main" || zone === "pit") {
+    outerStreak = 0;
+    if (!ns.fanActedThisTurn) centerStreak = 0; // idle in the spotlight breaks the streak
+  } else if (zone === "floor") {
+    outerStreak = 0;      // neutral ground — no boredom
+    centerStreak = 0;     // ...but no loyalty built out here either
+  } else {
+    // Outer edge — patience runs out only after several turns in a row.
+    outerStreak += 1;
+    centerStreak = 0;
+    if (outerStreak >= FAN_BORED_AFTER && casuals > 0) {
+      const before = casuals;
+      casuals = Math.max(0, casuals - FAN_DECAY);
+      lost = before - casuals;
+    }
+  }
+  return {
+    ...state,
+    noteStates: { ...state.noteStates, [spiritId]: {
+      ...ns, casuals, centerStreak, outerStreak, fanLag, fanActedThisTurn: false } },
+    turn: { ...state.turn, lastFanTick: { spiritId, zone, lost } },
   };
 }
