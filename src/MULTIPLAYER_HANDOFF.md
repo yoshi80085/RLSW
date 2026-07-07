@@ -435,11 +435,25 @@ fan economy — `gainFans`, `tickFans`, `demolishFans`, `gainFansFromDeed`,
   green); main file esbuild-transforms clean (replay-onto-HEAD `8aebb20`).
   **⚠️ Owner: `npm run dev` — verify bot skill/fame decisions + the burn-armed
   swing bonus still behave (these read the note map in async callbacks).**
-  **Remaining noteStates work:** migrate the ~60 `setNoteStates` sites to semantic
-  actions (`NOTE_TRACK_CONFIRMED`, `SKILL_AWARDED`, `MOD_CARD_PLAYED`,
-  `CREW_DEPLOYED`, `FAME_GRANTED`, `FANS_CHANGED`), and delete the client
-  `makeInitialNoteState` duplicate (now dead except the `actingNoteState`
-  fallback). After that the `noteStatesSynced` bridge can retire.
+  ◑ **noteStates 3a DONE (compile-clean + engine-selftest green), pending
+  smoke-test.** First semantic-action migration: `FAME_CHANGED { spiritId, amount }`
+  — a SIGNED delta floored at 0 (`applyFameChanged` in `systems/economy.js`, wired
+  in `reduce.js`, selftest-covered: +delta, floor-at-0, no-sheet no-op). `grantFame`
+  now `dispatch(fameChanged(spiritId, finalFp))` instead of a `setNoteStates`
+  full-replace — a no-op there (finalFp>0 so the floor never bites); the crowd
+  multiplier / stage-FX thresholds / Fame-win check stay client. One action
+  intentionally covers the whole fame economy so the two knockdown −1 penalties
+  (currently multi-field `setNoteStates` writes, still on the bridge) can route
+  through it later. Verified: engine `selftest.mjs` green (reconstructed edited
+  engine); main esbuild-transforms clean (replay-onto-HEAD `2cc0c19`). **⚠️ Owner:
+  `npm run dev` — win a battle / land a riff / trigger an Azrael or underdog bonus
+  and confirm Fame ticks up correctly and a Fame win still fires.**
+  **Remaining noteStates work:** migrate the rest of the ~60 `setNoteStates` sites
+  to semantic actions (`NOTE_TRACK_CONFIRMED`, `SKILL_AWARDED`, `MOD_CARD_PLAYED`,
+  `CREW_DEPLOYED`, `FANS_CHANGED`; fold the knockdown −1 penalties into
+  `FAME_CHANGED`), and delete the client `makeInitialNoteState` duplicate (now dead
+  except the `actingNoteState` fallback). After that the `noteStatesSynced` bridge
+  can retire.
 - **5d — fan economy tick as action.** `FANS_TICKED` inside `END_TURN`
   processing (see §5d tick-order note below); `demolishFans` folds into
   `DAMAGE_APPLIED`/`KNOCKED_OUT` handling.

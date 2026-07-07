@@ -56,7 +56,7 @@ import { hexInSmoke, hexInBeams, rollLaserBeams, rollPyroHexes, spawnAnimatronic
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore } from "./engine/systems/economy.js";
@@ -4794,10 +4794,10 @@ function Game({ gameState, onReturnToLobby }) {
     const mult    = amplify ? crowdMultiplier(ns.diehards ?? FAN_DIEHARD_START, ns.casuals ?? 0) : 1;
     const finalFp = amplify ? Math.max(fp, Math.round(fp * mult)) : fp;
     const newFame = (ns.fame ?? 0) + finalFp;
-    setNoteStates(prev => ({
-      ...prev,
-      [spiritId]: { ...prev[spiritId], fame: (prev[spiritId]?.fame ?? 0) + finalFp },
-    }));
+    // Phase 5c: fame write is now a semantic engine action (no-op vs the old
+    // setNoteStates full-replace — finalFp>0 so applyFameChanged's floor never
+    // bites here). The crowd mult / thresholds / win-check below stay client.
+    dispatch(fameChanged(spiritId, finalFp));
     const crowdStr = (amplify && finalFp !== fp) ? ` (${fp} ×🎤${mult.toFixed(2)} crowd)` : '';
     addLog(`⭐ ${sp?.name} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${reason ? ` — ${reason}` : ''}! (${Math.min(newFame, FAME_TO_WIN)}/${FAME_TO_WIN})`);
     showTip('fame');
@@ -10420,67 +10420,127 @@ function Game({ gameState, onReturnToLobby }) {
                 style={{ mixBlendMode:"screen", filter:"url(#outline-crush)" }}
               />
 
-              {/* ── ROAMING SEARCHLIGHT ── */}
+              {/* ── ROAMING SEARCHLIGHT ── a proper followspot: swaying volumetric beam,
+                  dust motes caught in the light, hot pool with ripples, drawn lamp rig ── */}
               {(() => {
                 const sh = HEX_BY_NUM[spotlightHex];
                 if (!sh) return null;
                 const cx  = Math.round(sh.px * SCALE);
                 const cy  = Math.round(sh.py * SCALE);
                 const r   = HS * 1.1;
-                // Beam origin: top-centre of the SVG, offset slightly for angle
+                // Beam origin: top of the rig, offset for a raking angle
                 const bx  = cx + HS * 1.2;
                 const by  = 0;
-                // Beam half-width at the target pool
-                const bw  = r * 1.6;
-                // The four corners of the cone
-                const coneL1 = { x: bx - 6,  y: by };
-                const coneR1 = { x: bx + 6,  y: by };
-                const coneL2 = { x: cx - bw, y: cy };
-                const coneR2 = { x: cx + bw, y: cy };
-                const conePoints = `${coneL1.x},${coneL1.y} ${coneR1.x},${coneR1.y} ${coneR2.x},${coneR2.y} ${coneL2.x},${coneL2.y}`;
+                // Beam geometry — unit vectors along / across the beam
+                const len = Math.hypot(cx - bx, cy - by) || 1;
+                const ux  = (cx - bx) / len, uy = (cy - by) / len;
+                const pxv = -uy, pyv = ux;
+                const bw     = r * 1.6;   // haze half-width at the pool
+                const bwCore = r * 0.85;  // hot-core half-width at the pool
+                const cone = (hw, srcW) =>
+                  `${bx - srcW},${by} ${bx + srcW},${by} ${cx + hw},${cy} ${cx - hw},${cy}`;
+                // Dust motes drifting through the beam
+                const motes = [0.26, 0.38, 0.52, 0.63, 0.77, 0.88].map((t, i) => {
+                  const k = (i % 2 ? 1 : -1) * bw * t * (0.22 + (i % 3) * 0.16);
+                  return {
+                    x: bx + ux * len * t + pxv * k,
+                    y: by + uy * len * t + pyv * k,
+                    r: 0.9 + (i % 3) * 0.6, d: 2.6 + (i % 4) * 0.9, delay: i * 0.53,
+                  };
+                });
                 const healingSpirit = spirits.find(s => s.num === spotlightHex && !s.knockedOut);
                 return (
                   <g style={{pointerEvents:"none"}}>
                     <defs>
-                      <linearGradient id="searchbeam-grad" x1={bx} y1={by} x2={cx} y2={cy} gradientUnits="userSpaceOnUse">
-                        <stop offset="0%"   stopColor="#ffffcc" stopOpacity={0.0}/>
-                        <stop offset="60%"  stopColor="#ffffcc" stopOpacity={0.08}/>
-                        <stop offset="100%" stopColor="#ffffff" stopOpacity={0.18}/>
+                      <linearGradient id="srch-beam-haze" x1={bx} y1={by} x2={cx} y2={cy} gradientUnits="userSpaceOnUse">
+                        <stop offset="0%"   stopColor="#fff6d8" stopOpacity={0.02}/>
+                        <stop offset="55%"  stopColor="#fff2c4" stopOpacity={0.10}/>
+                        <stop offset="100%" stopColor="#ffefb8" stopOpacity={0.20}/>
                       </linearGradient>
-                      <radialGradient id="searchpool-grad" cx="50%" cy="50%" r="50%">
-                        <stop offset="0%"   stopColor="#ffffff" stopOpacity={0.55}/>
-                        <stop offset="40%"  stopColor="#ffffaa" stopOpacity={0.28}/>
-                        <stop offset="100%" stopColor="#ffff88" stopOpacity={0}/>
+                      <linearGradient id="srch-beam-core" x1={bx} y1={by} x2={cx} y2={cy} gradientUnits="userSpaceOnUse">
+                        <stop offset="0%"   stopColor="#ffffff" stopOpacity={0.10}/>
+                        <stop offset="60%"  stopColor="#fffbe6" stopOpacity={0.16}/>
+                        <stop offset="100%" stopColor="#ffffff" stopOpacity={0.30}/>
+                      </linearGradient>
+                      <radialGradient id="srch-pool" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%"   stopColor="#ffffff" stopOpacity={0.65}/>
+                        <stop offset="30%"  stopColor="#fff7c8" stopOpacity={0.34}/>
+                        <stop offset="70%"  stopColor="#ffe98a" stopOpacity={0.12}/>
+                        <stop offset="100%" stopColor="#ffe98a" stopOpacity={0}/>
                       </radialGradient>
+                      <filter id="srch-soft" x="-60%" y="-60%" width="220%" height="220%">
+                        <feGaussianBlur stdDeviation={HS * 0.18}/>
+                      </filter>
                     </defs>
-                    {/* Cone beam */}
-                    <polygon points={conePoints}
-                      fill="url(#searchbeam-grad)"
-                      style={{animation:"spotlight-pulse 2.2s ease-in-out infinite alternate"}}/>
-                    {/* Light pool on hex */}
-                    <ellipse cx={cx} cy={cy} rx={r * 1.5} ry={r * 0.9}
-                      fill="url(#searchpool-grad)"
-                      style={{animation:"spotlight-pulse 1.6s ease-in-out infinite alternate"}}/>
-                    {/* Bright centre dot */}
-                    <ellipse cx={cx} cy={cy} rx={r * 0.55} ry={r * 0.38}
-                      fill="#ffffff" opacity={0.22}
-                      style={{animation:"spotlight-pulse 1.2s ease-in-out infinite alternate"}}/>
+                    <style>{`
+                      @keyframes srch-sway    { 0%,100%{transform:rotate(-2.2deg)} 50%{transform:rotate(2.2deg)} }
+                      @keyframes srch-flick   { 0%,100%{opacity:1} 47%{opacity:.82} 53%{opacity:.95} 71%{opacity:.88} }
+                      @keyframes srch-shimmer { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
+                      @keyframes srch-mote    { 0%,100%{opacity:.05} 40%{opacity:.75} 60%{opacity:.55} }
+                      @keyframes srch-ripple  { 0%{transform:scale(.55); opacity:.5} 100%{transform:scale(1.45); opacity:0} }
+                    `}</style>
+
+                    {/* Volumetric beam — swaying gently from the rig */}
+                    <g style={{animation:"srch-sway 7.5s ease-in-out infinite",
+                        transformOrigin:`${bx}px ${by}px`}}>
+                      <g style={{animation:"srch-flick 3.1s linear infinite"}}>
+                        <polygon points={cone(bw, 9)} fill="url(#srch-beam-haze)" filter="url(#srch-soft)"/>
+                        <polygon points={cone(bwCore, 4)} fill="url(#srch-beam-core)"/>
+                        {/* crisp beam edges */}
+                        <line x1={bx - 4} y1={by} x2={cx - bwCore} y2={cy}
+                          stroke="#fffbe6" strokeWidth={0.8} opacity={0.28}/>
+                        <line x1={bx + 4} y1={by} x2={cx + bwCore} y2={cy}
+                          stroke="#fffbe6" strokeWidth={0.8} opacity={0.28}/>
+                      </g>
+                      {/* Dust motes caught in the light */}
+                      {motes.map((m, i) => (
+                        <circle key={i} cx={m.x} cy={m.y} r={m.r} fill="#fffdf0"
+                          style={{animation:`srch-mote ${m.d}s ease-in-out ${m.delay}s infinite`}}/>
+                      ))}
+                    </g>
+
+                    {/* Light pool — layered hot centre, soft skirt, expanding ripples */}
+                    <ellipse cx={cx} cy={cy} rx={r * 1.7} ry={r * 1.05}
+                      fill="url(#srch-pool)" filter="url(#srch-soft)"
+                      style={{animation:"srch-shimmer 2.8s ease-in-out infinite",
+                        transformOrigin:`${cx}px ${cy}px`}}/>
+                    <ellipse cx={cx} cy={cy} rx={r * 0.8} ry={r * 0.5}
+                      fill="url(#srch-pool)"
+                      style={{animation:"srch-shimmer 1.9s ease-in-out 0.4s infinite",
+                        transformOrigin:`${cx}px ${cy}px`}}/>
+                    {[0, 1].map(i => (
+                      <polygon key={`rip-${i}`} points={pointyCorners(cx, cy, HS * 1.05)}
+                        fill="none" stroke="#ffedaa" strokeWidth={1}
+                        style={{animation:`srch-ripple 2.6s ease-out ${i * 1.3}s infinite`,
+                          transformOrigin:`${cx}px ${cy}px`}}/>
+                    ))}
                     {/* Hex border ring */}
                     <polygon points={pointyCorners(cx, cy, HS * 1.08)}
-                      fill="none" stroke="#ffffaa" strokeWidth={1.2}
-                      opacity={0.55}
-                      style={{animation:"spotlight-pulse 1.8s ease-in-out infinite alternate"}}/>
-                    {/* Source lamp dot at top */}
-                    <circle cx={bx} cy={by + 4} r={5}
-                      fill="#ffffee" opacity={0.7}
-                      style={{filter:"blur(2px)"}}/>
+                      fill="none" stroke="#ffe98a" strokeWidth={1.3} opacity={0.6}
+                      style={{animation:"spotlight-pulse 1.8s ease-in-out infinite alternate",
+                        filter:"drop-shadow(0 0 4px #ffe98a88)"}}/>
+
+                    {/* The rig — lamp housing, hot lens, cross flare */}
+                    <g>
+                      <rect x={bx - 8} y={by} width={16} height={7} rx={2.5}
+                        fill="#1a1626" stroke="#443d5e" strokeWidth={1}/>
+                      <circle cx={bx} cy={by + 7} r={4.4} fill="#fffef2" opacity={0.95}
+                        style={{filter:"blur(1px) drop-shadow(0 0 8px #fff7c8)"}}/>
+                      <line x1={bx - 13} y1={by + 7} x2={bx + 13} y2={by + 7}
+                        stroke="#fffdf0" strokeWidth={0.9} opacity={0.5}
+                        style={{animation:"srch-flick 2.3s linear infinite"}}/>
+                      <line x1={bx} y1={by} x2={bx} y2={by + 18}
+                        stroke="#fffdf0" strokeWidth={0.9} opacity={0.4}
+                        style={{animation:"srch-flick 2.9s linear infinite"}}/>
+                    </g>
+
                     {/* Heal label */}
                     <text x={cx} y={cy - HS * 1.25}
                       textAnchor="middle" fontSize={HS * 0.42}
-                      fontWeight="bold" fill="#ffffaa"
+                      fontWeight="bold" fill="#fff3b8"
                       stroke="#000" strokeWidth={0.3}
                       style={{pointerEvents:"none",
-                        filter:"drop-shadow(0 0 3px #ffff44)",
+                        filter:"drop-shadow(0 0 3px #ffe066)",
                         animation:"spotlight-pulse 1.4s ease-in-out infinite alternate"}}>
                       💡 +1 Vibe
                     </text>
@@ -10513,8 +10573,34 @@ function Game({ gameState, onReturnToLobby }) {
                         <stop offset="100%" stopColor="#ff3399" stopOpacity={0}/>
                       </radialGradient>
                     </defs>
-                    {/* Radial bloom filling the dead centre (static; intensity = energy) */}
-                    <ellipse cx={cx} cy={cy} rx={HS * 3.4} ry={HS * 3.0} fill="url(#stage-glow-grad)"/>
+                    <style>{`
+                      @keyframes stage-breathe   { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
+                      @keyframes stage-rays-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+                      @keyframes stage-halo-spin { from{transform:rotate(0deg)} to{transform:rotate(-360deg)} }
+                    `}</style>
+                    {/* Breathing bloom — two layers pulsing out of phase (intensity = energy) */}
+                    <ellipse cx={cx} cy={cy} rx={HS * 3.4} ry={HS * 3.0} fill="url(#stage-glow-grad)"
+                      style={{animation:"stage-breathe 4.2s ease-in-out infinite",
+                        transformOrigin:`${cx}px ${cy}px`}}/>
+                    <ellipse cx={cx} cy={cy} rx={HS * 1.9} ry={HS * 1.65} fill="url(#stage-glow-grad)"
+                      style={{animation:"stage-breathe 2.7s ease-in-out 0.6s infinite",
+                        transformOrigin:`${cx}px ${cy}px`}}/>
+                    {/* Rotating light rays — the house rig wakes up as the crowd swells */}
+                    <g opacity={0.10 + 0.30 * energy}
+                      style={{animation:"stage-rays-spin 26s linear infinite",
+                        transformOrigin:`${cx}px ${cy}px`}}>
+                      {[0, 1, 2, 3, 4, 5].map(k => {
+                        const a  = (Math.PI * 2 * k) / 6;
+                        const rx = Math.cos(a), ry = Math.sin(a);
+                        const R1 = HS * 1.1, R2 = HS * 3.6, W = HS * 0.5;
+                        const qx = -ry, qy = rx;
+                        return (
+                          <polygon key={k}
+                            points={`${cx + rx * R1},${cy + ry * R1} ${cx + rx * R2 + qx * W},${cy + ry * R2 + qy * W} ${cx + rx * R2 - qx * W},${cy + ry * R2 - qy * W}`}
+                            fill="#ff66cc" opacity={0.35} style={{mixBlendMode:"screen"}}/>
+                        );
+                      })}
+                    </g>
                     {/* The Pit — contested apron around the stage */}
                     {pit.map(h => (
                       <polygon key={`pit-${h.num}`}
@@ -10522,10 +10608,16 @@ function Game({ gameState, onReturnToLobby }) {
                         fill="none" stroke="#ff66cc" strokeWidth={1.1} opacity={ringO * 0.7}
                         style={{animation:`stage-throb ${3.0 + (h.num % 3) * 0.4}s ease-in-out infinite`}}/>
                     ))}
-                    {/* The Mainstage hex itself */}
+                    {/* The Mainstage hex itself — neon ring + counter-rotating dashed halo */}
                     <polygon points={pointyCorners(cx, cy, HS * 1.02)}
                       fill="none" stroke="#ff99dd" strokeWidth={1.6} opacity={ringO}
-                      style={{animation:"stage-throb 2.4s ease-in-out infinite"}}/>
+                      style={{animation:"stage-throb 2.4s ease-in-out infinite",
+                        filter:"drop-shadow(0 0 5px #ff66cc)"}}/>
+                    <g style={{animation:"stage-halo-spin 14s linear infinite",
+                        transformOrigin:`${cx}px ${cy}px`}}>
+                      <circle cx={cx} cy={cy} r={HS * 1.35} fill="none" stroke="#ff99dd"
+                        strokeWidth={1} strokeDasharray="10 14" opacity={ringO * 0.55}/>
+                    </g>
                   </g>
                 );
               })()}

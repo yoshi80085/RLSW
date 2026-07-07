@@ -50,6 +50,10 @@ export const WINNER_DECLARED    = "WINNER_DECLARED";
 // with them, exactly as SPIRITS_SYNCED does for spirits.
 export const NOTE_STATES_SYNCED = "NOTE_STATES_SYNCED";
 
+// ── Phase 5c: noteStates SEMANTIC actions (retire the full-replace bridge site
+// by site, exactly as the combat actions retired SPIRITS_SYNCED). ─────────────
+export const FAME_CHANGED = "FAME_CHANGED";
+
 // Phase 5c (economy/skills flip): NOTE_TRACK_CONFIRMED, SKILL_AWARDED, FANS_CHANGED, …
 // Phase 6 (events/FX/god):        EVENT_DRAWN, STAGE_FX_TICK, GOD_ATTACK, …
 
@@ -214,4 +218,14 @@ export function winnerDeclared(winnerId) {
  *  semantic noteStates actions. */
 export function noteStatesSynced(noteStates) {
   return { type: NOTE_STATES_SYNCED, noteStates };
+}
+
+/**
+ * Phase 5c — a spirit's Fame changes by `amount` (signed), floored at 0. One
+ * action for the whole fame economy: grants (grantFame, always positive) and the
+ * knockdown penalty (−1). The crowd multiplier / underdog ramp / win-check are
+ * client orchestration that decide the amount; this just applies it.
+ */
+export function fameChanged(spiritId, amount) {
+  return { type: FAME_CHANGED, spiritId, amount };
 }

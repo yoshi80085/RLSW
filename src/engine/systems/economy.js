@@ -218,3 +218,17 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
 export function applyNoteStatesSynced(state, { noteStates }) {
   return { ...state, noteStates };
 }
+
+/**
+ * FAME_CHANGED (Phase 5c) — add a signed delta to one spirit's Fame, floored at
+ * 0. Mirrors grantFame's `fame + finalFp` (finalFp>0 → floor is a no-op) and the
+ * knockdown −1 penalty. No-op if the spirit has no sheet.
+ */
+export function applyFameChanged(state, { spiritId, amount = 0 }) {
+  const ns = state.noteStates[spiritId];
+  if (!ns) return state;
+  return {
+    ...state,
+    noteStates: { ...state.noteStates, [spiritId]: { ...ns, fame: Math.max(0, (ns.fame ?? 0) + amount) } },
+  };
+}

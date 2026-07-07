@@ -13,7 +13,7 @@ import {
   riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed,
   attackRolled, counterRolled,
   damageApplied, knockdownResolved, winnerDeclared,
-  noteStatesSynced,
+  noteStatesSynced, fameChanged,
 } from "./actions.js";
 import { snapshot, restore, replay, assertJsonSafe } from "./serialize.js";
 import {
@@ -813,6 +813,14 @@ const config = {
   assert.equal(s2.noteStates.wildaxe.fame, 42, "NOTE_STATES_SYNCED replaces the note map");
   assert.equal(s2.noteStates.vera, s.noteStates.vera, "untouched sheets carry over by reference");
   assert.equal(s2.rng.cursor, s.rng.cursor, "the bridge consumes no rng");
+
+  // FAME_CHANGED — signed delta, floored at 0
+  const f0 = s.noteStates.wildaxe.fame ?? 0;
+  const fUp = applyAction(s, fameChanged("wildaxe", 5));
+  assert.equal(fUp.noteStates.wildaxe.fame, f0 + 5, "FAME_CHANGED adds a positive delta");
+  const fDn = applyAction(fUp, fameChanged("wildaxe", -100));
+  assert.equal(fDn.noteStates.wildaxe.fame, 0, "FAME_CHANGED floors Fame at 0");
+  assert.equal(applyAction(s, fameChanged("nobody", 5)).noteStates, s.noteStates, "no sheet → no-op");
 }
 
 // -- Phase 8 (partial): cross-system determinism / replay proof ----------------

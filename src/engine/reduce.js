@@ -17,7 +17,7 @@ import {
   RIFF_ROUND2_STARTED, RIFF_CLOSED,
   ATTACK_ROLLED, COUNTER_ROLLED,
   DAMAGE_APPLIED, KNOCKDOWN_RESOLVED, WINNER_DECLARED,
-  NOTE_STATES_SYNCED,
+  NOTE_STATES_SYNCED, FAME_CHANGED,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
 import {
@@ -34,7 +34,7 @@ import {
   applyRiffOffStarted, applyRiffResultsSubmitted, applyRiffResolved,
   applyRiffRound2Started, applyRiffClosed,
 } from "./systems/riffOff.js";
-import { applyNoteStatesSynced } from "./systems/economy.js";
+import { applyNoteStatesSynced, applyFameChanged } from "./systems/economy.js";
 
 /**
  * @param {object} state   plain-JSON GameState (never mutated)
@@ -84,6 +84,7 @@ function reduce(state, action, rng) {
 
     // ── Phase 5c: noteStates ownership bridge ──
     case NOTE_STATES_SYNCED:     return applyNoteStatesSynced(state, action);
+    case FAME_CHANGED:           return applyFameChanged(state, action);
 
     default:
       // Unknown action = a bug (client/server version skew or a typo).
