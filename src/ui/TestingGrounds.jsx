@@ -4,7 +4,7 @@
 // =============================================================================
 import React from "react";
 
-export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId, devEventId, devFireEvent, devFireSignature, devGrant, devDamage, devOpen, devUnlockSkill, noteStates, setDevEventId, setDevOpen, spiritById, spirits, testMode, devSummonGod, devHurtGod, devGodAct, rockGod, bossOutcome, devExportLog }) {
+export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiritId, devFireStageFx, devFireSignature, devGrant, devDamage, devOpen, devUnlockSkill, noteStates, setDevOpen, spiritById, spirits, testMode, devSummonGod, devHurtGod, devGodAct, rockGod, bossOutcome, devExportLog }) {
   const godAlive = !!(rockGod && rockGod.hp > 0 && !bossOutcome);
   return (<>
       {testMode && (
@@ -23,14 +23,14 @@ export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId
               <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:'#e0a0ff',letterSpacing:2,marginBottom:8}}>🧪 TESTING GROUNDS</div>
               <div style={{fontSize:8,color:'#9a7ab5',marginBottom:10}}>Acting spirit: <span style={{color:'#e0a0ff'}}>{spiritById[devCurrentSpiritId()]?.name ?? '—'}</span></div>
 
-              <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,marginBottom:4}}>FIRE EVENT</div>
-              <div style={{display:'flex',gap:5,marginBottom:11}}>
-                <select value={devEventId} onChange={e=>setDevEventId(e.target.value)}
-                  style={{flex:1,background:'#0a0814',color:'#d0c0e0',border:'1px solid #4a2a60',borderRadius:5,fontSize:9,padding:'5px',fontFamily:'inherit'}}>
-                  {EVENT_DECK.map(ev => <option key={ev.id} value={ev.id}>{ev.icon} {ev.title}</option>)}
-                </select>
-                <button onClick={()=>devFireEvent(devEventId)}
-                  style={{background:'#3a1550',border:'1px solid #cc66ff',color:'#e0a0ff',borderRadius:5,fontSize:9,padding:'5px 10px',cursor:'pointer',fontFamily:'inherit'}}>FIRE</button>
+              <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,marginBottom:4}}>🎇 STAGE EFFECTS</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:11}}>
+                {Object.entries(STAGE_FX_META).map(([fxId, meta]) => (
+                  <button key={fxId} onClick={()=>devFireStageFx(fxId)}
+                    style={{background:'#0a0814',border:`1px solid ${meta.color}`,color:meta.color,borderRadius:5,fontSize:9,padding:'5px 8px',cursor:'pointer',fontFamily:'inherit'}}>
+                    {meta.icon} {meta.name}
+                  </button>
+                ))}
               </div>
 
               <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,marginBottom:4}}>GRANT TO ACTING SPIRIT</div>
@@ -125,7 +125,7 @@ export function TestingGrounds({ EVENT_DECK, SIGNATURE_TESTS, devCurrentSpiritId
               </button>
 
               <div style={{fontSize:7,color:'#6a5a85',marginTop:11,lineHeight:1.45}}>
-                Add tests: a new entry in <span style={{color:'#cc99ff'}}>EVENT_DECK</span> auto-appears above; a new lever goes in <span style={{color:'#cc99ff'}}>devGrant</span>.
+                Stage FX fire via the engine (seeded rng). A new lever goes in <span style={{color:'#cc99ff'}}>devGrant</span>.
               </div>
             </div>
           )}

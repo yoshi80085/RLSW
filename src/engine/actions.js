@@ -57,6 +57,10 @@ export const FANS_CHANGED = "FANS_CHANGED";
 export const NOTE_SHEET_PATCHED = "NOTE_SHEET_PATCHED";
 export const FANS_TICKED = "FANS_TICKED";
 
+// ── Phase 6d: end-of-turn ticks ─────────────────────────────────────────────
+export const DEBUFFS_TICKED = "DEBUFFS_TICKED";
+export const BURN_TICKED    = "BURN_TICKED";
+
 // ── Phase 6b: stage FX ───────────────────────────────────────────────────────
 export const STAGE_FX_DRAWN        = "STAGE_FX_DRAWN";
 export const STAGE_FX_ACTIVATED    = "STAGE_FX_ACTIVATED";
@@ -285,6 +289,27 @@ export function noteSheetPatched(spiritId, patch) {
  */
 export function fansTicked(spiritId) {
   return { type: FANS_TICKED, spiritId };
+}
+
+/**
+ * Phase 6d — end-of-turn debuff countdown. Clears tripped/dazed/instrumentDropped,
+ * decrements mojoDrain, and ticks stagger's turnsLeft. Pure — no rng. The report
+ * in `state.turn.lastDebuffTick` lets the client log what cleared.
+ */
+export function debuffsTicked(spiritId) {
+  return { type: DEBUFFS_TICKED, spiritId };
+}
+
+/**
+ * Phase 6d — end-of-turn burn tick. The engine flips a 50/50 rng coin: heads →
+ * 1 Vibe damage (applied directly to engine spirits, like DAMAGE_APPLIED); always
+ * decrements burn.turnsLeft. The report in `state.turn.lastBurnTick` carries
+ * `{ spiritId, burnDamage, turnsLeft, expired }` for the client's log/FX.
+ * If the burn damage reduces Vibe to 0 the client dispatches KNOCKDOWN_RESOLVED
+ * after its 80ms cinematic delay (same pattern as combat damage).
+ */
+export function burnTicked(spiritId) {
+  return { type: BURN_TICKED, spiritId };
 }
 
 /**

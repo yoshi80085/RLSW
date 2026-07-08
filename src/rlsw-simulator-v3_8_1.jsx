@@ -56,7 +56,7 @@ import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn ro
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
@@ -802,7 +802,7 @@ function Game({ gameState, onReturnToLobby }) {
   // 🧪 TESTING GROUNDS — dev panel (only when the sandbox was launched from the menu)
   const testMode = !!gameState.testMode;
   const [devOpen, setDevOpen] = useState(false);
-  const [devEventId, setDevEventId] = useState('disco_inferno');
+  // (devEventId removed — Testing Grounds now fires stage FX directly)
   const [winner, setWinner]   = useState(null);
   const [hovered, setHovered] = useState(null);
   // ─── TRANSIENT BOARD FX ── (moved to ./hooks/useTransientFx.js)
@@ -4159,6 +4159,14 @@ function Game({ gameState, onReturnToLobby }) {
     setActiveEvent({ spiritId, eventId, phase: 'reveal', resultLines: [], rolls: null });
     setDevOpen(false);
   }
+  // 🧪 Fire a stage effect from Testing Grounds — reuses the real activation
+  // flow (banner, engine dispatch, cinematic logs). Threshold 0 signals "test".
+  function devFireStageFx(fxId) {
+    const meta = STAGE_FX_META[fxId];
+    if (!meta) { addLog(`🧪 Unknown stage FX: ${fxId}`); return; }
+    addLog(`🧪 TEST → ${meta.icon} ${meta.name.toUpperCase()}`);
+    activateStageFx(fxId, 0);
+  }
   // Quick resource grants to the acting spirit. Add a case here + a button below
   // to expose a new lever for testing.
   function devGrant(kind) {
@@ -6617,54 +6625,43 @@ function Game({ gameState, onReturnToLobby }) {
     setDiceDisplay(null);
     setRetaliationTimer(null);
 
-    // ── END-OF-TURN DEBUFF TICK ──────────────────────────────────────────────
+    // ── END-OF-TURN DEBUFF TICK (Phase 6d — engine rule) ─────────────────────
     // Physical debuffs (tripped / dazed / dropped instrument) and timed effects
     // (Mojo Drain, Stagger) wear off at the END of your own turn — after you've
-    // actually suffered them for a turn. (They used to be cleared at the START
-    // of your turn, which meant they never did anything.)
-    setNoteStates(prev => {
-      const ns = prev[acting.id];
-      if (!ns) return prev;
-      const hadDebuff = ns.tripped || ns.dazed || ns.instrumentDropped
-        || (ns.mojoDrain ?? 0) > 0 || ns.stagger;
-      if (!hadDebuff) return prev;
-      const newMojoDrain = Math.max(0, (ns.mojoDrain ?? 0) - 1);
-      let newStagger = null;
-      if (ns.stagger && ns.stagger.turnsLeft > 1) {
-        newStagger = { ...ns.stagger, turnsLeft: ns.stagger.turnsLeft - 1 };
-      }
-      return { ...prev, [acting.id]: {
-        ...ns,
-        tripped:           false,
-        dazed:             false,
-        instrumentDropped: false,
-        mojoDrain:         newMojoDrain,
-        stagger:           newStagger,
-      }};
-    });
+    // actually suffered them for a turn.
+    dispatch(debuffsTicked(acting.id));
 
-    // ── 🔥 BURN TICK ──────────────────────────────────────────────────────────
-    // At the end of the burned spirit's OWN turn: 50% chance to lose 1 Vibe,
-    // then the burn counts down. Loud log + flash so it's obvious it fired.
+    // ── 🔥 BURN TICK (Phase 6d — engine rule) ────────────────────────────────
+    // 50% coin on engine rng: heads → 1 Vibe damage. Always decrements turnsLeft.
+    // The engine handles the coin + damage + countdown; the client reads the report.
     {
-      const bns = engineRef.current.noteStates?.[acting.id] ?? noteStates[acting.id] ?? {};
-      const burnLeft = bns.burn?.turnsLeft ?? 0;
-      if (burnLeft > 0) {
-        const nextLeft = burnLeft - 1;
-        const leftMsg = `${nextLeft} turn${nextLeft !== 1 ? 's' : ''} left`;
-        if (Math.random() < 0.5) {
-          addLog(`🔥 ${s?.name} is BURNING — loses 1 Vibe! (${leftMsg})`);
-          triggerEffectFlash(acting.id, '🔥', 'BURN! −1', '#ff5522');
-          applyVibeDamage(acting.id, 1, 'Burn');
-        } else {
-          addLog(`🔥 ${s?.name}'s Burn crackles but does no damage this turn. (${leftMsg})`);
-          triggerEffectFlash(acting.id, '🔥', 'BURN holds', '#ff8855');
+      const bns = engineRef.current.noteStates?.[acting.id] ?? {};
+      if (bns.burn?.turnsLeft > 0) {
+        const burnReport = dispatch(burnTicked(acting.id)).turn.lastBurnTick;
+        if (burnReport) {
+          const leftMsg = `${burnReport.turnsLeft} turn${burnReport.turnsLeft !== 1 ? 's' : ''} left`;
+          if (burnReport.burnDamage > 0) {
+            addLog(`🔥 ${s?.name} is BURNING — loses 1 Vibe! (${leftMsg})`);
+            triggerEffectFlash(acting.id, '🔥', 'BURN! −1', '#ff5522');
+            // Check knockdown: burn damage may have reduced Vibe to 0
+            const postSpirit = engineRef.current.spirits.find(sp => sp.id === acting.id);
+            if (postSpirit && postSpirit.vibe <= 0 && !postSpirit.knockedOut) {
+              setTimeout(() => {
+                dispatch(knockdownResolved(acting.id));
+                const kd = engineRef.current.spirits.find(sp => sp.id === acting.id);
+                if (kd?.knockedOut) {
+                  dispatch(spiritEliminated(acting.id));
+                  const w = decideWinner(engineRef.current.spirits, engineRef.current.rockGod);
+                  if (w) dispatch(winnerDeclared(w));
+                }
+              }, 80);
+            }
+          } else {
+            addLog(`🔥 ${s?.name}'s Burn crackles but does no damage this turn. (${leftMsg})`);
+            triggerEffectFlash(acting.id, '🔥', 'BURN holds', '#ff8855');
+          }
+          if (burnReport.expired) addLog(`🔥 ${s?.name}'s Burn fizzles out.`);
         }
-        setNoteStates(prev => ({ ...prev, [acting.id]: {
-          ...(prev[acting.id] ?? {}),
-          burn: nextLeft > 0 ? { turnsLeft: nextLeft } : null,
-        }}));
-        if (nextLeft <= 0) addLog(`🔥 ${s?.name}'s Burn fizzles out.`);
       }
     }
 
@@ -8434,11 +8431,10 @@ function Game({ gameState, onReturnToLobby }) {
       />
       {/* ── 🧪 TESTING GROUNDS — in-game dev panel ── */}
       <TestingGrounds
-        EVENT_DECK={EVENT_DECK}
         SIGNATURE_TESTS={SIGNATURE_TESTS}
+        STAGE_FX_META={STAGE_FX_META}
         devCurrentSpiritId={devCurrentSpiritId}
-        devEventId={devEventId}
-        devFireEvent={devFireEvent}
+        devFireStageFx={devFireStageFx}
         devFireSignature={devFireSignature}
         devGrant={devGrant}
         devExportLog={devExportLog}
@@ -8446,7 +8442,6 @@ function Game({ gameState, onReturnToLobby }) {
         devOpen={devOpen}
         devUnlockSkill={devUnlockSkill}
         noteStates={noteStates}
-        setDevEventId={setDevEventId}
         setDevOpen={setDevOpen}
         spiritById={spiritById}
         spirits={spirits}

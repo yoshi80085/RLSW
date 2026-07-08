@@ -14,6 +14,7 @@ import {
   attackRolled, counterRolled,
   damageApplied, knockdownResolved, winnerDeclared,
   noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked,
+  debuffsTicked, burnTicked,
   stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked,
   godAttackPicked, godSummoned, godDamaged, godActed,
   godDefeated, godTriumphed, godTimerExpired,
@@ -1445,6 +1446,150 @@ const config = {
   // default arg still yields a valid permutation (live client behavior)
   assert.deepEqual([...shuffledStageFxDeck()].sort(), [...IDS].sort(),
     "default Math.random path stays a valid permutation");
+}
+
+// -- Phase 6d: DEBUFFS_TICKED ------------------------------------------------
+{
+  const s0 = makeInitialState({
+    spirits: [{ id: "a", name: "A", num: 1, color: "#f00" }],
+    mode: "ffa", startingLives: 3,
+  }, 900);
+
+  // Set up debuffs on the spirit's note sheet
+  let state = applyAction(s0, noteSheetPatched("a", {
+    tripped: true, dazed: true, instrumentDropped: true,
+    mojoDrain: 2, stagger: { slots: [0, 1], turnsLeft: 3 },
+  }));
+
+  // Dispatch debuff tick
+  state = applyAction(state, debuffsTicked("a"));
+  const ns = state.noteStates["a"];
+  assert.equal(ns.tripped, false, "debuff: tripped cleared");
+  assert.equal(ns.dazed, false, "debuff: dazed cleared");
+  assert.equal(ns.instrumentDropped, false, "debuff: instrumentDropped cleared");
+  assert.equal(ns.mojoDrain, 1, "debuff: mojoDrain decremented");
+  assert.deepEqual(ns.stagger, { slots: [0, 1], turnsLeft: 2 }, "debuff: stagger ticked");
+
+  // Report
+  const rep = state.turn.lastDebuffTick;
+  assert.equal(rep.cleared, true, "debuff report: cleared=true");
+  assert.equal(rep.tripped, true, "debuff report: tripped was true");
+  assert.equal(rep.mojoDrainBefore, 2, "debuff report: mojoDrain before");
+
+  // Second tick: mojoDrain goes to 0, stagger ticks down
+  state = applyAction(state, debuffsTicked("a"));
+  assert.equal(state.noteStates["a"].mojoDrain, 0, "debuff: mojoDrain hits 0");
+  assert.deepEqual(state.noteStates["a"].stagger, { slots: [0, 1], turnsLeft: 1 }, "debuff: stagger=1");
+
+  // Third tick: stagger expires
+  state = applyAction(state, debuffsTicked("a"));
+  assert.equal(state.noteStates["a"].stagger, null, "debuff: stagger expired");
+
+  // No debuffs: cleared=false
+  state = applyAction(state, debuffsTicked("a"));
+  assert.equal(state.turn.lastDebuffTick.cleared, false, "debuff: no-op report");
+
+  // Unknown spirit: no-op
+  const s2 = applyAction(s0, debuffsTicked("nonexistent"));
+  assert.deepEqual(s2.noteStates, s0.noteStates, "debuff: unknown id is no-op");
+}
+
+// -- Phase 6d: BURN_TICKED ---------------------------------------------------
+{
+  const s0 = makeInitialState({
+    spirits: [{ id: "a", name: "A", num: 1, color: "#f00", vibe: 5, maxVibe: 8 }],
+    mode: "ffa", startingLives: 3,
+  }, 901);
+
+  // Give the spirit burn (3 turns) and set Vibe
+  let state = applyAction(s0, noteSheetPatched("a", { burn: { turnsLeft: 3 } }));
+  // Set Vibe to a known value via spirits
+  state = { ...state, spirits: state.spirits.map(s => s.id === "a" ? { ...s, vibe: 5 } : s) };
+
+  // Burn tick with rng < 0.5 → damage
+  const { applyBurnTicked } = await import("./systems/economy.js");
+  const rngDmg = () => 0.3;  // < 0.5 → damage
+  const s1 = applyBurnTicked(state, { spiritId: "a" }, rngDmg);
+  assert.equal(s1.turn.lastBurnTick.burnDamage, 1, "burn: coin < 0.5 → 1 damage");
+  assert.equal(s1.turn.lastBurnTick.turnsLeft, 2, "burn: turnsLeft decremented");
+  assert.equal(s1.turn.lastBurnTick.expired, false, "burn: not expired yet");
+  assert.equal(s1.spirits.find(s => s.id === "a").vibe, 4, "burn: vibe reduced by 1");
+  assert.deepEqual(s1.noteStates["a"].burn, { turnsLeft: 2 }, "burn: noteStates burn updated");
+
+  // Burn tick with rng >= 0.5 → no damage
+  const rngNoDmg = () => 0.7;  // >= 0.5 → no damage
+  const s2 = applyBurnTicked(state, { spiritId: "a" }, rngNoDmg);
+  assert.equal(s2.turn.lastBurnTick.burnDamage, 0, "burn: coin >= 0.5 → 0 damage");
+  assert.equal(s2.spirits.find(s => s.id === "a").vibe, 5, "burn: vibe unchanged");
+
+  // Burn expiry: turnsLeft=1 → next tick clears burn
+  let s3 = applyBurnTicked(state, { spiritId: "a" }, rngNoDmg);  // 3→2
+  s3 = applyBurnTicked(s3, { spiritId: "a" }, rngNoDmg);          // 2→1
+  s3 = applyBurnTicked(s3, { spiritId: "a" }, rngNoDmg);          // 1→0 (expired)
+  assert.equal(s3.turn.lastBurnTick.expired, true, "burn: expired on last tick");
+  assert.equal(s3.noteStates["a"].burn, null, "burn: cleared to null on expiry");
+
+  // No burn: report is null
+  const s4 = applyBurnTicked(s3, { spiritId: "a" }, () => 0.5);
+  assert.equal(s4.turn.lastBurnTick, null, "burn: no-burn → null report");
+
+  // Vibe floor at 0
+  let s5 = { ...state, spirits: state.spirits.map(s => s.id === "a" ? { ...s, vibe: 0 } : s) };
+  const s6 = applyBurnTicked(s5, { spiritId: "a" }, rngDmg);
+  assert.equal(s6.spirits.find(s => s.id === "a").vibe, 0, "burn: vibe floored at 0");
+
+  // Determinism: same seed → same coin → same damage via applyAction
+  let sa = applyAction(state, noteSheetPatched("a", { burn: { turnsLeft: 2 } }));
+  let sb = applyAction(state, noteSheetPatched("a", { burn: { turnsLeft: 2 } }));
+  // Force same rng cursor
+  sa = { ...sa, rng: { seed: 5555, cursor: 0 } };
+  sb = { ...sb, rng: { seed: 5555, cursor: 0 } };
+  const ra = applyAction(sa, burnTicked("a"));
+  const rb = applyAction(sb, burnTicked("a"));
+  assert.equal(ra.turn.lastBurnTick.burnDamage, rb.turn.lastBurnTick.burnDamage,
+    "burn: same seed → same coin outcome");
+  assert.equal(
+    snapshot(ra), snapshot(rb),
+    "burn: byte-identical replay"
+  );
+}
+
+// -- Phase 6d: replay proof (debuff + burn in the action log) -----------------
+{
+  const s0 = makeInitialState({
+    spirits: [
+      { id: "a", name: "A", num: 1, color: "#f00", vibe: 6, maxVibe: 8 },
+      { id: "b", name: "B", num: 5, color: "#00f", vibe: 6, maxVibe: 8 },
+    ],
+    mode: "ffa", startingLives: 3,
+  }, 6000);
+
+  const log = [
+    gameInit(),
+    turnStarted("a"),
+    noteSheetPatched("a", { tripped: true, burn: { turnsLeft: 2 } }),
+    debuffsTicked("a"),
+    burnTicked("a"),
+    turnEnded(),
+    turnStarted("b"),
+    debuffsTicked("b"),
+    burnTicked("b"),
+    turnEnded(),
+  ];
+
+  const final = replay(s0, log);
+  // Replay from scratch
+  const replayed = replay(s0, log);
+  assert.equal(snapshot(final), snapshot(replayed), "6d: full-log replay is byte-identical");
+
+  // Mid-log snapshot → restore → replay tail
+  const mid = replay(s0, log.slice(0, 5));
+  const midSnap = snapshot(mid);
+  const tail = replay(restore(midSnap), log.slice(5));
+  assert.equal(snapshot(tail), snapshot(final), "6d: snapshot/restore/replay-tail matches");
+
+  // JSON-safe
+  assertJsonSafe(final);
 }
 
 console.log("engine selftest: all assertions passed ✔");

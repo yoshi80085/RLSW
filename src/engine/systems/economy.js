@@ -275,6 +275,81 @@ export function applyNoteSheetPatched(state, { spiritId, patch = {} }) {
 }
 
 /**
+ * DEBUFFS_TICKED (Phase 6d) — end-of-turn debuff countdown for the acting spirit.
+ * Clears one-turn flags (tripped, dazed, instrumentDropped), decrements mojoDrain
+ * (−1, floored at 0), and ticks stagger.turnsLeft (expiry clears it to null).
+ * Pure — consumes no rng. Report in `state.turn.lastDebuffTick`.
+ */
+export function applyDebuffsTicked(state, { spiritId }) {
+  const ns = state.noteStates[spiritId];
+  if (!ns) return state;
+  const hadDebuff = ns.tripped || ns.dazed || ns.instrumentDropped
+    || (ns.mojoDrain ?? 0) > 0 || ns.stagger;
+  if (!hadDebuff) {
+    return { ...state, turn: { ...state.turn, lastDebuffTick: { spiritId, cleared: false } } };
+  }
+  const newMojoDrain = Math.max(0, (ns.mojoDrain ?? 0) - 1);
+  let newStagger = null;
+  if (ns.stagger && ns.stagger.turnsLeft > 1) {
+    newStagger = { ...ns.stagger, turnsLeft: ns.stagger.turnsLeft - 1 };
+  }
+  return {
+    ...state,
+    noteStates: { ...state.noteStates, [spiritId]: {
+      ...ns,
+      tripped:           false,
+      dazed:             false,
+      instrumentDropped: false,
+      mojoDrain:         newMojoDrain,
+      stagger:           newStagger,
+    }},
+    turn: { ...state.turn, lastDebuffTick: {
+      spiritId, cleared: true,
+      tripped: !!ns.tripped, dazed: !!ns.dazed,
+      instrumentDropped: !!ns.instrumentDropped,
+      mojoDrainBefore: ns.mojoDrain ?? 0,
+      staggerBefore: ns.stagger ? ns.stagger.turnsLeft : 0,
+    }},
+  };
+}
+
+/**
+ * BURN_TICKED (Phase 6d) — end-of-turn burn tick. Flips a 50/50 on the engine rng;
+ * on heads, subtracts 1 Vibe from the spirit (floored at 0 — same as DAMAGE_APPLIED).
+ * Always decrements burn.turnsLeft; on expiry, clears burn to null. Report in
+ * `state.turn.lastBurnTick { spiritId, burnDamage, turnsLeft, expired }`. The
+ * client dispatches KNOCKDOWN_RESOLVED if Vibe reaches 0 (same cinematic pattern).
+ */
+export function applyBurnTicked(state, { spiritId }, rng) {
+  const ns = state.noteStates[spiritId];
+  if (!ns || !(ns.burn?.turnsLeft > 0)) {
+    return { ...state, turn: { ...state.turn, lastBurnTick: null } };
+  }
+  const turnsLeft = ns.burn.turnsLeft - 1;
+  const coin = rng();  // 0..1 — < 0.5 = damage
+  const burnDamage = coin < 0.5 ? 1 : 0;
+
+  // Apply damage to engine spirits (same floor as DAMAGE_APPLIED)
+  let spirits = state.spirits;
+  if (burnDamage > 0) {
+    spirits = spirits.map(s =>
+      s.id === spiritId ? { ...s, vibe: Math.max(0, (s.vibe ?? 0) - burnDamage) } : s
+    );
+  }
+
+  return {
+    ...state,
+    spirits,
+    noteStates: { ...state.noteStates, [spiritId]: {
+      ...ns, burn: turnsLeft > 0 ? { turnsLeft } : null,
+    }},
+    turn: { ...state.turn, lastBurnTick: {
+      spiritId, burnDamage, turnsLeft, expired: turnsLeft <= 0,
+    }},
+  };
+}
+
+/**
  * FANS_TICKED (Phase 5d) — the end-of-turn fan tick, extracted verbatim from
  * Game.tickFans. Zone comes from the ENGINE's spirit position (single source;
  * the old client arg is retired). Rules: centre keeps the crowd (idle in the
