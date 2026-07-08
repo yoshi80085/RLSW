@@ -58,10 +58,19 @@ export const NOTE_SHEET_PATCHED = "NOTE_SHEET_PATCHED";
 export const FANS_TICKED = "FANS_TICKED";
 
 // ── Phase 6b: stage FX ───────────────────────────────────────────────────────
-export const STAGE_FX_DRAWN = "STAGE_FX_DRAWN";
+export const STAGE_FX_DRAWN        = "STAGE_FX_DRAWN";
+export const STAGE_FX_ACTIVATED    = "STAGE_FX_ACTIVATED";
+export const STAGE_FX_TURN_TICKED  = "STAGE_FX_TURN_TICKED";
+export const STAGE_FX_ROUND_TICKED = "STAGE_FX_ROUND_TICKED";
 
 // ── Phase 6c: Rock God ───────────────────────────────────────────────────────
-export const GOD_ATTACK_PICKED = "GOD_ATTACK_PICKED";
+export const GOD_ATTACK_PICKED  = "GOD_ATTACK_PICKED";
+export const GOD_SUMMONED       = "GOD_SUMMONED";
+export const GOD_DAMAGED        = "GOD_DAMAGED";
+export const GOD_ACTED          = "GOD_ACTED";
+export const GOD_DEFEATED       = "GOD_DEFEATED";
+export const GOD_TRIUMPHED      = "GOD_TRIUMPHED";
+export const GOD_TIMER_EXPIRED  = "GOD_TIMER_EXPIRED";
 
 // Phase 5c (economy/skills flip): NOTE_TRACK_CONFIRMED, SKILL_AWARDED, FANS_CHANGED, …
 // Phase 6 (events/FX/god):        EVENT_DRAWN, STAGE_FX_TICK, GOD_ATTACK, …
@@ -290,6 +299,36 @@ export function stageFxDrawn(threshold) {
 }
 
 /**
+ * Phase 6b — the drawn effect goes LIVE: the engine creates the active-effect
+ * state (state.stageFx.smoke/laser/pyro/animatronics), rolling beam patterns /
+ * pyro hexes / animatronic spawns on ENGINE rng. `occupied` = hex nums the
+ * animatronics must avoid (spirits + amps — amps are still client-owned, so
+ * the client passes the list; the RIFF_RESULTS context pattern). The client
+ * plays the activation cinematic off `state.stageFx.lastActivation`.
+ */
+export function stageFxActivated(fxId, occupied = []) {
+  return { type: STAGE_FX_ACTIVATED, fxId, occupied };
+}
+
+/**
+ * Phase 6b — per-TURN stage-FX cadence (pyro arm→erupt→re-arm; animatronic
+ * steps/slams/expiry) as an engine rule. Dispatched at the same end-of-turn
+ * beat the client ticked before; report in `state.stageFx.lastTurnTick`.
+ */
+export function stageFxTurnTicked() {
+  return { type: STAGE_FX_TURN_TICKED };
+}
+
+/**
+ * Phase 6b — per-ROUND stage-FX cadence (smoke spreads/clears; lasers
+ * re-pattern/power down) as an engine rule. Report in
+ * `state.stageFx.lastRoundTick`.
+ */
+export function stageFxRoundTicked() {
+  return { type: STAGE_FX_ROUND_TICKED };
+}
+
+/**
  * Phase 6c — the Rock God opens a new attack: a weighted draw over its deck
  * (no immediate repeat) on ENGINE rng. The client passes the context it still
  * owns (godId + the last attack id — the ATTACK_ROLLED pattern) and reads the
@@ -297,4 +336,51 @@ export function stageFxDrawn(threshold) {
  */
 export function godAttackPicked(godId, lastAttackId = null) {
   return { type: GOD_ATTACK_PICKED, godId, lastAttackId };
+}
+
+/**
+ * Phase 6c — ONE Rock God per game descends to the Limelight. The god pick
+ * (`pickRockGod`) stays client — it reads amps, still React-owned — and rides
+ * in the payload; the engine owns the flag, the god object, and scales HP off
+ * its own living-spirit count. Squatter shove + pageantry stay client.
+ */
+export function godSummoned(leaderId, godId) {
+  return { type: GOD_SUMMONED, leaderId, godId };
+}
+
+/**
+ * Phase 6c — a Spirit's strike lands on the God. `dmg` is RAW chord-drive
+ * damage; the reducer owns the winded ×2 and the HP floor. Read the final
+ * number off `state.rockGod.lastHit` for the log + Fame grant.
+ */
+export function godDamaged(spiritId, dmg) {
+  return { type: GOD_DAMAGED, spiritId, dmg };
+}
+
+/**
+ * Phase 6c — the God's end-of-turn answer: telegraph resolve / winded
+ * recovery / new attack (weighted engine-rng pick; mosh shoves move the
+ * engine spirits). The client renders `state.rockGod.lastAct`.
+ */
+export function godActed() {
+  return { type: GOD_ACTED };
+}
+
+/** Phase 6c — the God falls (locks outcome:'spirits'); crowning stays client. */
+export function godDefeated(killerId) {
+  return { type: GOD_DEFEATED, killerId };
+}
+
+/** Phase 6c — every Spirit is down; the God keeps the crown (outcome:'god'). */
+export function godTriumphed() {
+  return { type: GOD_TRIUMPHED };
+}
+
+/**
+ * Phase 6c — the boss clock died on the acting human. The countdown itself is
+ * CLIENT (the retaliation-timer pattern); this action is the replay-log seam.
+ * The Vengeance damage flows through DAMAGE_APPLIED like any hit.
+ */
+export function godTimerExpired(spiritId) {
+  return { type: GOD_TIMER_EXPIRED, spiritId };
 }

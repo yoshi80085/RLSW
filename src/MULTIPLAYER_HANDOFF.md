@@ -554,27 +554,57 @@ Rock God — `summonRockGod`, `attackRockGod`, `godDefeated`, `godTriumphs`,
 
 **Sub-phases:** 6a event/card/charge picks as rng actions (`EVENT_SPAWNED`,
 `CARD_SPAWNED`, `TRIVIA_DRAWN`, pickup resolutions as choice actions);
-6b stage FX — ◑ **DECK + THRESHOLDS ENGINE-OWNED (2026-07-07), pending
-smoke-test.** `state.stageFx { deck, fired, lastDraw }`: the deck is shuffled
-ONCE at `makeInitialState` on a `"stageFxDeck"` fork (main cursor stays 0;
-⚠️ behavior delta: show order is now SEEDED per game, was a Math.random mount
-shuffle), and `STAGE_FX_DRAWN { threshold }` (`systems/stageFx.js`) records the
-threshold exactly-once (replacing the client `firedRef` Set — dup → `lastDraw:
-null`) and draws deck[fired.length−1]. Client `checkStageFxThresholds` dispatches
-+ reads `lastDraw`; `useStageEffects` lost the deck/ref. selftest: permutation,
-seed-determinism, cursor-0, draw order, dedup, no-rng, byte replay, JSON-safe.
-**Remaining 6b:** the ACTIVE effects (smoke/laser/pyro/animatronics state, their
-rng — `rollLaserBeams`/`rollPyroHexes`/`spawnAnimatronics` — and both ticks).
-6c Rock God — ◑ **GOD_ATTACK_PICKED ENGINE-OWNED (2026-07-07), pending
-smoke-test.** The boss's attack pick (the fight's rules-rng) rolls on engine rng:
-client `rockGodAct` dispatches `godAttackPicked(god.id, god.lastAttack)` (the
-ATTACK_ROLLED context pattern) and re-derives the attack def from
-`state.rockGod.lastPick.attackId`; taunts stay client Math.random (log-only
-flavor, never GameState). selftest: determinism, valid pick, rng consumed,
-no-immediate-repeat ×120 seeds, unknown-god/empty-deck null, byte replay.
-**Remaining 6c:** summon/act/defeat + HP/telegraph/winded state + the
-`GOD_TIMER_EXPIRED` seam. 6d fold all ticks into `END_TURN` in the verified
-order. Green after each; boss cinematics stay client.
+6b stage FX — ☑ **COMPLETE (2026-07-08), pending smoke-test.** Deck +
+thresholds (2026-07-07): `state.stageFx { deck, fired }` — deck shuffled ONCE
+at `makeInitialState` on a `"stageFxDeck"` fork (⚠️ behavior delta: show order
+SEEDED per game); `STAGE_FX_DRAWN` exactly-once per threshold. **ACTIVE
+EFFECTS + TICKS (2026-07-08):** `smoke/laser/pyro/animatronics` moved into
+`state.stageFx`; `STAGE_FX_ACTIVATED { fxId, occupied }` creates the effect
+(beam patterns / pyro hexes / animatronic spawns on ENGINE rng — `board/
+stageFx.js` rollers now take injectable `rand`, and `spawnAnimatronics` a
+`keyBase` so engine keys are deterministic, not Date.now); `STAGE_FX_TURN_
+TICKED` (pyro arm→erupt→re-arm→burnout + animatronic step/slam/expiry) and
+`STAGE_FX_ROUND_TICKED` (smoke spread/clear, laser re-pattern/off) are engine
+rules dispatched at the same end-of-turn/round beats. Reports (`lastActivation/
+lastTurnTick/lastRoundTick` incl. zapped/caught/hit spirit ids, computed from
+ENGINE positions) drive the client logs/FX/damage — damage still flows through
+`applyVibeDamage` → `DAMAGE_APPLIED`. `useStageEffects` is banner-only; the
+`stageFxHazardRef` mirror is DELETED (`checkStageFxHex` reads `engineRef
+.current.stageFx`; divineShield read moved to `engineRef` noteStates — strictly
+fresher). ⚠️ behavior deltas (intended): all pattern/spawn/tie-break rolls are
+seeded now; laser render `key` derives from roundsLeft (was Date.now).
+selftest: full lifecycle per effect (activation shape, spread/clear, re-pattern
+/off, erupt-with-caught, re-arm-excludes-previous, burnout, spawn/step/expiry,
+deterministic keys, planted-spirit zap/caught reports, idle no-op), byte
+replay, JSON-safe.
+6c Rock God — ☑ **COMPLETE (2026-07-08), pending smoke-test.** (Attack pick was
+engine-owned 2026-07-07.) **STATE OWNERSHIP:** `state.rockGod { summoned, god
+{ id num hp maxHp winded telegraph lastAttack }, outcome, lastPick, lastHit,
+lastAct, lastTimerExpiry }`. Actions: `GOD_SUMMONED { leaderId, godId }` (pick
+stays client — `pickRockGod` reads amps; HP scales off ENGINE living-spirit
+count; dedup = one god per game), `GOD_DAMAGED { spiritId, dmg }` (RAW damage
+in, engine owns the winded ×2 + HP floor + kill-blow telegraph clear; report
+`lastHit`), `GOD_ACTED` (the WHOLE end-of-turn answer: telegraph resolve /
+winded recovery / weighted engine-rng open — slide aims at the engine FP
+leader, mosh shoves MOVE the engine spirits, boxed-in crushed ids reported;
+report `lastAct`), `GOD_DEFEATED`/`GOD_TRIUMPHED` (outcome lock, replaces
+`bossOutcome`), `GOD_TIMER_EXPIRED { spiritId }` (the seam: countdown stays
+client, expiry is replay-logged; vengeance damage rides `DAMAGE_APPLIED`).
+Client: `rockGod`/`bossOutcome` are VIEWS of the engine slice; `rockGodRef` +
+`godSummonedRef` mirrors DELETED (async reads → `engineRef.current.rockGod`);
+`useRockGod` keeps only the clock + banner; `rockGodAct`/`attackRockGod`/
+`summonRockGod` are dispatch + report renderers; the two non-combat `setWinner`
+sites (champion crowning, Fame-runaway) now shadow `WINNER_DECLARED` — the
+remaining-cleanup note from the spirit flip is CLOSED. ⚠️ minor test-lever
+delta: 🧪 HURT GOD now routes through `GOD_DAMAGED` (doubles while winded).
+selftest: summon shape/HP-scaling/dedup, raw + winded-doubled + kill-blow
+damage, thunderclap + power-slide resolve (caught from engine positions, god
+moves + winded), recovery beat, all four open buckets via pinned rands
+(telegraph AoE armed, slide targets FP leader, melt nearest, mosh moves engine
+spirits + shove/crush partition), outcome locks + no-flip, timer record,
+no-act-after-outcome, full-lifecycle byte replay, JSON-safe.
+**Remaining Phase 6:** 6a (events/cards/charge picks), 6d fold all ticks into
+`END_TURN` in the verified order. Boss cinematics stay client.
 
 ## 5e. Phase 7 (bots as policies) — pre-analyzed plan
 
@@ -669,6 +699,6 @@ separate, cheaper project.
 | 3. Combat | ◑ **3a + 3b COMPLETE; 3c kernels, 3d counter-roll, 3e verdict-damage done** — pure combat math (`marginToDamage`, `fameFromMargin`, `knockbackSpaces`, `underdogBonus`) extracted to `engine/systems/combat.js`; `Game` imports all four (locals deleted; `underdogBonus` now takes the two Fame totals, keeping the spirit-identity guard in `Game`). selftest extended (bands, sonic caps, underdog ramp + exact regression grid vs old math) — full suite green; engine lint clean; HEAD+edits esbuild-compile clean. **3b complete** — swing (d6) + sonic (keep-highest `dicePool`) via `ATTACK_ROLLED`/`applyAttackRolled` on engine rng; smash via pure `smashOutcome` (no roll), shared by `resolveSmash` + `resolveBlasterOfRa`. Human + bot share all three. selftest + esbuild + engine lint green. **3c kernels done** — `decideWinner` + `resolveKnockdown` extracted (pure, single-source) and wired into the win-check + respawn/KO paths; game identical. selftest + esbuild + engine lint green. 3d counter-roll (`COUNTER_ROLLED`/`counterOutcome`) and 3e verdict-damage (riff `verdict.damage`) also done + verified. **Remaining:** the 3c ownership flip (engine `spirits` becomes source of truth, `DAMAGE_APPLIED/KNOCKED_OUT/...` actions, kill `spiritsSynced`, route riff + counter damage application through it) — a big-bang across ~25 sites best done where the app can be RUN. Owner: `npm run dev` smoke-test + commit from Windows. |
 | 4. Riff-off | ☑ done BEFORE Phase 3 (cleanest seam, budget call). Engine owns riff generation (rng threaded through `riff/riffGeneration.js` via optional `rand` param), Riff Slayer glitch sets, E-Rush ghosts, results submission, verdict math incl. Round-2 sudden-death fallback (`systems/riffOff.js`). Client submits `[{hit, rt, grade, noteIdx}]` per performer — the exact networked flow. Timing/gems/beam cinematics stay client. `riffStats` + scoring constants moved to engine; main imports `riffStats` from there. Damage application still client (waits on Phase 3). |
 | 5. Economy & skills | ◑ **5a + 5b DONE** (sandbox-safe slices). **5a:** `usedStockIdx` Set→**insertion-ordered array** via `usedHas`/`usedList`/`usedAdd` (new `engine/systems/economy.js`, ~29 sites rewired); optional `rand` param on `randomNote`/`refillStock`/`makeInitialNoteState` (full rng-thread deferred to 5c); **Performance Score P** → pure `performanceScore()`. **5b:** pure `skillEligibility()` + tables (`ULTIMATE_PREREQS`/`THEORY_DISCORD_GRANTS`/`CQC_SWING_MAP`) in `engine/systems/skills.js`; `botSkillEligible` + `setSkillTarget` now share ONE gate (they had drifted on owner-only routes). selftest extended (usedAdd ≡ old Set ×200; performanceScore ≡ old inline ×3000; skillEligibility ≡ old bot+human ×4000). **5c ENGINE FOUNDATION DONE** (both halves). Spirit combat-ownership: `DAMAGE_APPLIED`/`KNOCKDOWN_RESOLVED`/`WINNER_DECLARED` reducers on engine spirits (reuse `resolveKnockdown`/`decideWinner`). noteStates: `makeInitialNoteState` moved to `engine/systems/economy.js` (seeded), `makeInitialState` builds+owns `engineState.noteStates` on a forked rng (main `rng.cursor` untouched). All selftest-covered, all **dormant** (client unchanged → game identical, `SPIRITS_SYNCED` bridge + client's own `noteStates` stay; client `makeInitialNoteState` is a temp duplicate). **Remaining 5c = the client flip (owner-run, `npm run dev`):** read `engineState.spirits`/`noteStates`, route damage/KO/track/skill writes through the new actions, delete `spiritsSynced` + the client noteState duplicate. **5d** pre-analyzed §5c. Owner: `npm run test:engine` (verifies both foundations) + commit from Windows. **SESSION 2026-07-07 — 5c CLIENT FLIP ESSENTIALLY COMPLETE + 5d DONE (pending smoke-test, see §5c log):** knockdown −1 FP → `FAME_CHANGED` (3b); all 10 fan sites → whitelisted `FANS_CHANGED` (slice 4); the shim now DIFFS per spirit → `NOTE_SHEET_PATCHED` (full-map `NOTE_STATES_SYNCED` is fallback-only) and the client `makeInitialNoteState` dup is deleted (slice 5); the end-of-turn fan tick is an engine RULE — `FANS_TICKED`, zone from engine position, report in `turn.lastFanTick` (5d). `demolishFans`' flee roll still `Math.random` client-side (outcome rides in the payload — replay-exact; make it engine rng in a later slice if desired). |
-| 6. Events / FX / Rock God | ◑ **STARTED — data-layer rng prep (6b + 6c).** All direct `Math.random()` in `data/` now takes an injectable `rand = Math.random` (default preserves live behavior — dormant; same treatment as Phase-4 riffGeneration / Phase-5a economy). **6c:** `pickGodAttack`/`godTauntLine` (`data/rockGods.js`) — selftest locks weighted-draw boundaries (cum. weight 3/6/8/10), no-immediate-repeat, single-attack + empty-deck edges, taunt indexing, determinism, `pickRockGod` fallback. **6b:** `shuffledStageFxDeck` (`data/stageEffects.js`) — selftest locks exact Fisher-Yates output for two boundary rands, permutation invariants, determinism, default path. At the flips the engine builds each deck ONCE on the seeded rng so order becomes replay-deterministic GameState. Verified green against real modules (VM up). **2026-07-07:** 6b deck+thresholds and 6c attack-pick are now ENGINE-OWNED (`state.stageFx` + `STAGE_FX_DRAWN`; `systems/rockGod.js` + `GOD_ATTACK_PICKED`) — see §5d for details + the seeded-show-order behavior delta. Rest (6a events/cards/charge picks, 6b active effects + ticks, 6c god-state + timer seam, 6d END-TURN tick order) still pre-analyzed. |
+| 6. Events / FX / Rock God | ◑ **STARTED — data-layer rng prep (6b + 6c).** All direct `Math.random()` in `data/` now takes an injectable `rand = Math.random` (default preserves live behavior — dormant; same treatment as Phase-4 riffGeneration / Phase-5a economy). **6c:** `pickGodAttack`/`godTauntLine` (`data/rockGods.js`) — selftest locks weighted-draw boundaries (cum. weight 3/6/8/10), no-immediate-repeat, single-attack + empty-deck edges, taunt indexing, determinism, `pickRockGod` fallback. **6b:** `shuffledStageFxDeck` (`data/stageEffects.js`) — selftest locks exact Fisher-Yates output for two boundary rands, permutation invariants, determinism, default path. At the flips the engine builds each deck ONCE on the seeded rng so order becomes replay-deterministic GameState. Verified green against real modules (VM up). **2026-07-07:** 6b deck+thresholds and 6c attack-pick ENGINE-OWNED (`state.stageFx` + `STAGE_FX_DRAWN`; `systems/rockGod.js` + `GOD_ATTACK_PICKED`). **SESSION 2026-07-08 — 6b COMPLETE + 6c COMPLETE (pending smoke-test, details §5d):** active stage effects (smoke/laser/pyro/animatronics) + both ticks are engine rules (`STAGE_FX_ACTIVATED`/`STAGE_FX_TURN_TICKED`/`STAGE_FX_ROUND_TICKED`, all rng seeded, reports drive client FX; `stageFxHazardRef` deleted, `useStageEffects` banner-only); the Rock God is engine state (`state.rockGod`: `GOD_SUMMONED`/`GOD_DAMAGED` winded×2/`GOD_ACTED` full answer incl. mosh spirit-moves/`GOD_DEFEATED`/`GOD_TRIUMPHED`/`GOD_TIMER_EXPIRED` seam; `rockGodRef`+`godSummonedRef` deleted, `useRockGod` clock+banner only; both non-combat `setWinner` sites now shadow `WINNER_DECLARED`). Verified: engine selftest green, main esbuild clean, engine+board+hooks lint clean (full /tmp reconstruction — the mount was stale BOTH ways this session; trust file tools + git only). **Remaining:** 6a events/cards/charge picks, 6d END-TURN tick order (both pre-analyzed §5d). |
 | 7. Bot policies | ☐ pre-analyzed plan ready — §5e. Blocked until 5+6 land (bots must read engine state). |
-| 8. Serialize + replay | ◑ **PARTIAL PROOF LANDED** (8c over today's engine-owned systems). selftest replays a scripted multi-system log (turn → move → attack → counter → damage → knockdown → winner → riff-off) and asserts `snapshot(replay(restore(snapshot(s0)), log)) === snapshot(live)` **byte-for-byte**, plus mid-game snapshot/restore/replay-tail and same-seed determinism. Widens to note-track/skill/event/god actions as those land (post-flip). **8b DONE** — full-state audit clean (nothing non-JSON stored) + `assertJsonSafe()` guard added to `serialize.js` and enforced in selftest (walks real + replayed state; asserts it bites on Set/Infinity/NaN/undefined/Date/function). **8a DONE (2026-07-07):** `dispatch` records `{action, cursorBefore}`; Testing Grounds → 💾 EXPORT ACTION LOG downloads `{schema, seed, config, actionCount, log}` (the full server-replay bundle). Replay proof widened over FAME_CHANGED/FANS_CHANGED/NOTE_SHEET_PATCHED/FANS_TICKED. Remaining: 8c full-system widening as Phase 6/7 land + 8d divergence hunt (pre-analyzed §5f). Owner: `npm run test:engine` + commit from Windows. |
+| 8. Serialize + replay | ◑ **PARTIAL PROOF LANDED** (8c over today's engine-owned systems). selftest replays a scripted multi-system log (turn → move → attack → counter → damage → knockdown → winner → riff-off) and asserts `snapshot(replay(restore(snapshot(s0)), log)) === snapshot(live)` **byte-for-byte**, plus mid-game snapshot/restore/replay-tail and same-seed determinism. Widens to note-track/skill/event/god actions as those land (post-flip). **8b DONE** — full-state audit clean (nothing non-JSON stored) + `assertJsonSafe()` guard added to `serialize.js` and enforced in selftest (walks real + replayed state; asserts it bites on Set/Infinity/NaN/undefined/Date/function). **8a DONE (2026-07-07):** `dispatch` records `{action, cursorBefore}`; Testing Grounds → 💾 EXPORT ACTION LOG downloads `{schema, seed, config, actionCount, log}` (the full server-replay bundle). Replay proof widened over FAME_CHANGED/FANS_CHANGED/NOTE_SHEET_PATCHED/FANS_TICKED. **2026-07-08:** widened again — the 6b active-FX lifecycle and the 6c boss lifecycle each replay byte-identically in selftest (activation/ticks and summon/act/damage/defeat, all on the logged rng stream). Remaining: 8c full-system widening as 6a/6d/7 land + 8d divergence hunt (pre-analyzed §5f). Owner: `npm run test:engine` + commit from Windows. |

@@ -48,15 +48,15 @@ import { Lobby } from "./ui/Lobby.jsx";
 import { isMirrorFacing, MIRROR_SPRITES, mobileColorStyle, GameErrorBoundary } from "./ui/GameErrorBoundary.jsx";
 import { useStageEffects } from "./hooks/useStageEffects.js";
 import { useRockGod } from "./hooks/useRockGod.js";
-import { ROCK_GODS, ROCK_GOD_RUNAWAY_LEAD, ROCK_GOD_HP_PER_SPIRIT, ROCK_GOD_TIMER_SECONDS, ROCK_GOD_VENGEANCE_DMG, ROCK_GOD_KILL_BLOW_FP, pickRockGod, godTauntLine } from "./data/rockGods.js";
-import { hexesWithin, slideLine, shoveAwayHex, nearestSpiritTo, freeNeighborHex } from "./board/rockGodFx.js";
+import { ROCK_GODS, ROCK_GOD_RUNAWAY_LEAD, ROCK_GOD_TIMER_SECONDS, ROCK_GOD_VENGEANCE_DMG, ROCK_GOD_KILL_BLOW_FP, pickRockGod, godTauntLine } from "./data/rockGods.js"; // HP scaling moved into the engine (Phase 6c)
+import { freeNeighborHex } from "./board/rockGodFx.js"; // AoE/slide/shove geometry moved into the engine (Phase 6c)
 import { RockGodBoardLayer, RockGodHUD, GodVictoryOverlay } from "./ui/RockGodLayer.jsx";
-import { STAGE_FX_THRESHOLDS, STAGE_FX_META, SMOKE_START_RADIUS, SMOKE_ROUNDS, LASER_ROUNDS, LASER_BEAM_COUNT, LASER_DAMAGE, PYRO_WAVES, PYRO_WAVE_HEXES, PYRO_DAMAGE, PYRO_BURN_TURNS, ANIMATRONIC_COUNT, ANIMATRONIC_TURNS, ANIMATRONIC_DAMAGE } from "./data/stageEffects.js";
-import { hexInSmoke, hexInBeams, rollLaserBeams, rollPyroHexes, spawnAnimatronics, animatronicStep } from "./board/stageFx.js";
+import { STAGE_FX_THRESHOLDS, STAGE_FX_META, SMOKE_ROUNDS, LASER_ROUNDS, LASER_DAMAGE, PYRO_WAVES, PYRO_DAMAGE, PYRO_BURN_TURNS, ANIMATRONIC_TURNS, ANIMATRONIC_DAMAGE } from "./data/stageEffects.js"; // tuning the engine consumes directly (counts/radii/waves) moved with the 6b flip
+import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn rolls moved into the engine (Phase 6b)
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, stageFxDrawn, godAttackPicked } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
@@ -927,33 +927,33 @@ function Game({ gameState, onReturnToLobby }) {
   // flamingHexes: { hexes:[nums], roundsLeft } — Disco Inferno board hazard
   const [flamingHexes, setFlamingHexes] = useState({ hexes: [], roundsLeft: 0 });
 
-  // ─── 🎇 STAGE EFFECTS ── (state in ./hooks/useStageEffects.js) ─────────────
-  // Board hazards fired once each at ⭐8/16/24 — deck shuffled per game, no
-  // repeats. Activation/tick/damage logic: see STAGE EFFECTS SYSTEM below.
-  const {
-    smokeFx, setSmokeFx,
-    laserFx, setLaserFx,
-    pyroFx, setPyroFx,
-    animatronics, setAnimatronics,
-    stageFxBanner, setStageFxBanner,
-  } = useStageEffects();
-  // Ref mirror — hazard checks fire inside knockback setTimeout chains where
-  // closure state can be stale (same caveat checkFlamingDisc lives with).
-  const stageFxHazardRef = useRef({ laserFx: null, pyroFx: null, animatronics: [] });
-  useEffect(() => {
-    stageFxHazardRef.current = { laserFx, pyroFx, animatronics };
-  }, [laserFx, pyroFx, animatronics]);
+  // ─── 🎇 STAGE EFFECTS ── (ENGINE-owned — Phase 6b full flip) ────────────────
+  // Board hazards fired once each at ⭐8/16/24 — seeded deck, no repeats. The
+  // active effects (smoke/laser/pyro/animatronics) now live in
+  // engineState.stageFx; these are render views. Hazard checks inside timeout
+  // chains read engineRef.current.stageFx (synchronously fresh — the old
+  // stageFxHazardRef mirror is gone). Only the activation marquee stays React.
+  const { stageFxBanner, setStageFxBanner } = useStageEffects();
+  const smokeFx = engineState.stageFx.smoke;
+  const pyroFx = engineState.stageFx.pyro;
+  const animatronics = engineState.stageFx.animatronics;
+  // `key` re-arms the beam CSS animation per pattern; roundsLeft is unique per
+  // pattern within the one laser show a game can have (deck never repeats).
+  const laserFx = engineState.stageFx.laser
+    ? { ...engineState.stageFx.laser, key: engineState.stageFx.laser.roundsLeft } : null;
 
-  // ─── 🤘 ROCK GOD ── (state in ./hooks/useRockGod.js) ────────────────────────
+  // ─── 🤘 ROCK GOD ── (ENGINE-owned — Phase 6c flip; clock stays React) ───────
   // Endgame boss: summoned from grantFame when 25 FP is reached WITHOUT a
-  // runaway lead. Engine: see ROCK GOD SYSTEM below.
+  // runaway lead. The god object + outcome live in engineState.rockGod (views
+  // below; async/timeout reads use engineRef.current.rockGod — the old
+  // rockGodRef/godSummonedRef mirrors are gone). Rules: engine/systems/rockGod.js.
   const {
-    rockGod, setRockGod, rockGodRef, godSummonedRef,
-    bossOutcome, setBossOutcome,
     bossTimer, setBossTimer,
     bossTimerExpired, setBossTimerExpired,
     godBanner, setGodBanner,
   } = useRockGod();
+  const rockGod = engineState.rockGod.god;
+  const bossOutcome = engineState.rockGod.outcome;
   // The fight is LIVE while the god stands and neither side has won.
   const rockGodActive = !!(rockGod && rockGod.hp > 0 && !bossOutcome && !winner);
 
@@ -4211,21 +4211,22 @@ function Game({ gameState, onReturnToLobby }) {
   // 🧪🤘 ROCK GOD test levers — summon the boss on demand (skipping the Fame
   // trigger entirely) and poke his HP to exercise the winded/kill flows.
   function devSummonGod() {
-    if (godSummonedRef.current) { addLog('🧪 A Rock God has already been summoned this game.'); return; }
+    if (engineRef.current.rockGod.summoned) { addLog('🧪 A Rock God has already been summoned this game.'); return; }
     const id = devCurrentSpiritId(); if (!id) return;
     addLog(`🧪 TEST → summoning a Rock God (keyed off ${spiritById[id]?.name}'s playstyle)…`);
     summonRockGod(id);
   }
   function devHurtGod() {
-    const god = rockGodRef.current;
-    if (!god || god.hp <= 0 || bossOutcome) { addLog('🧪 No living Rock God to hurt.'); return; }
+    const god = engineRef.current.rockGod.god;
+    if (!god || god.hp <= 0 || engineRef.current.rockGod.outcome) { addLog('🧪 No living Rock God to hurt.'); return; }
     const id = devCurrentSpiritId(); if (!id) return;
     const def = ROCK_GODS[god.id];
     const dmg = Math.min(10, god.hp);
     addLog(`🧪 TEST → ${dmg} damage to ${def.name} (no FP granted).`);
     triggerDamageNumber(god.num, `−${dmg}`, def.color);
-    if (god.hp - dmg <= 0) { setRockGod({ ...god, hp: 0, telegraph: null }); godDefeated(id); }
-    else setRockGod({ ...god, hp: god.hp - dmg });
+    // NOTE: raw damage — the engine doubles it if he's winded (same as a real hit).
+    const hit = dispatch(godDamagedAction(id, dmg)).rockGod.lastHit;
+    if (hit?.defeated) godDefeated(id);
   }
   function devGodAct() {
     if (!rockGodActive) { addLog('🧪 No living Rock God — summon one first.'); return; }
@@ -4334,52 +4335,54 @@ function Game({ gameState, onReturnToLobby }) {
     setStageFxBanner({ id: fxId, threshold, key: Date.now() });
     setTimeout(() => setStageFxBanner(prev => (prev?.id === fxId ? null : prev)), 5300);
 
+    // Phase 6b — the ENGINE creates the active effect (beam patterns / pyro
+    // hexes / animatronic spawns roll on its seeded rng); the client plays the
+    // cinematic off the fresh slice + report. `occupied` is passed because
+    // amps are still React-owned.
+    const occupied = [...spirits.map(s => s.num), ...amps.map(a => a.hexNum)];
+    const st = dispatch(stageFxActivated(fxId, occupied)).stageFx;
     if (fxId === 'smoke_machine') {
-      setSmokeFx({ radius: SMOKE_START_RADIUS, roundsLeft: SMOKE_ROUNDS });
       addLog(`💨 Smoke floods the centre stage — Spirits in the cloud vanish from view! It spreads each round (${SMOKE_ROUNDS} rounds).`);
     }
     if (fxId === 'laser_show') {
-      const beams = rollLaserBeams(LASER_BEAM_COUNT);
-      setLaserFx({ beams, roundsLeft: LASER_ROUNDS, key: Date.now() });
       addLog(`🔺 Lasers rake the stage — crossing a beam costs ${LASER_DAMAGE} Vibe! New pattern every round (${LASER_ROUNDS} rounds).`);
-      zapSpiritsInBeams(beams);
+      zapReportedSpirits(st.lastActivation?.zapped);
     }
     if (fxId === 'pyrotechnics') {
-      const hexes = rollPyroHexes(PYRO_WAVE_HEXES[0] ?? 5, []);
-      setPyroFx({ phase: 'arming', hexes, wave: 1 });
-      addLog(`🎆 Pyro charges prime under ${hexes.length} hexes — they glow red and BLOW next turn! (${PYRO_WAVES} waves)`);
+      addLog(`🎆 Pyro charges prime under ${st.pyro?.hexes.length ?? 0} hexes — they glow red and BLOW next turn! (${PYRO_WAVES} waves)`);
     }
     if (fxId === 'animatronics') {
-      const occupied = [...spirits.map(s => s.num), ...amps.map(a => a.hexNum)];
-      const bots = spawnAnimatronics(ANIMATRONIC_COUNT, ANIMATRONIC_TURNS, occupied);
-      setAnimatronics(bots);
-      addLog(`🤖 ${bots.length} animatronics wake on the stage edge — they stalk the nearest Spirit at the end of every turn (${ANIMATRONIC_TURNS} turns)!`);
+      addLog(`🤖 ${st.animatronics.length} animatronics wake on the stage edge — they stalk the nearest Spirit at the end of every turn (${ANIMATRONIC_TURNS} turns)!`);
     }
   }
 
   // Beams appearing / re-patterning hit anyone already standing in the path.
-  function zapSpiritsInBeams(beams) {
-    spirits.filter(sp => !sp.knockedOut && hexInBeams(sp.num, beams)).forEach((sp, i) => {
+  // The engine reports WHO (lastActivation/lastRoundTick .zapped); this plays
+  // the flash and applies the damage on the same beat as before.
+  function zapReportedSpirits(ids) {
+    (ids ?? []).forEach((id, i) => {
+      const sp = engineRef.current.spirits.find(s => s.id === id);
       setTimeout(() => {
-        addLog(`🔺 ${sp.name} is caught in a laser beam — ${LASER_DAMAGE} Vibe!`);
-        triggerEffectFlash(sp.id, '🔺', 'LASER!', '#ff2266');
-        applyVibeDamage(sp.id, LASER_DAMAGE, 'Laser Show');
+        addLog(`🔺 ${sp?.name} is caught in a laser beam — ${LASER_DAMAGE} Vibe!`);
+        triggerEffectFlash(id, '🔺', 'LASER!', '#ff2266');
+        applyVibeDamage(id, LASER_DAMAGE, 'Laser Show');
       }, 500 + i * 450);
     });
   }
 
   // Stage-hazard entry check — called whenever a Spirit ENTERS a hex (move or
-  // push), right beside checkFlamingDisc. Reads the ref mirror because pushes
-  // resolve inside setTimeout chains.
+  // push), right beside checkFlamingDisc. Reads the ENGINE slice directly
+  // (synchronously fresh) because pushes resolve inside setTimeout chains —
+  // Phase 6b retired the stageFxHazardRef mirror.
   function checkStageFxHex(spiritId, hexNum) {
-    const { laserFx: lf, pyroFx: pf, animatronics: bots } = stageFxHazardRef.current;
+    const { laser: lf, pyro: pf, animatronics: bots } = engineRef.current.stageFx;
     const inBeam = lf && hexInBeams(hexNum, lf.beams);
     const inFlames = pf?.phase === 'erupting' && pf.hexes.includes(hexNum);
     const onBot = bots?.some(b => b.num === hexNum);
     if (!inBeam && !inFlames && !onBot) return;
     const sp = spirits.find(s => s.id === spiritId);
     // 😎 DIVINE MISSION blessing — one hazard parts around them, then it's spent.
-    if (noteStates[spiritId]?.divineShield) {
+    if (engineRef.current.noteStates?.[spiritId]?.divineShield) {
       dispatch(fansChanged(spiritId, { divineShield: 0 }));
       addLog(`🛡️ The stage hazards part around ${sp?.name} — divine blessing spent.`);
       return;
@@ -4402,80 +4405,61 @@ function Game({ gameState, onReturnToLobby }) {
     }
   }
 
-  // Per-TURN tick (end of every player's turn): pyro cadence + animatronic steps.
+  // Per-TURN tick (end of every player's turn): pyro cadence + animatronic
+  // steps. Phase 6b — the RULES run in the engine (STAGE_FX_TURN_TICKED, rng
+  // included); this renders the report: logs, flashes, damage, burn status.
   function tickStageFxTurn() {
-    // 🎆 PYRO — armed hexes blow; spent flames re-arm the next wave (finale bigger).
-    if (pyroFx) {
-      if (pyroFx.phase === 'arming') {
-        addLog(`🎆 The pyro charges BLOW — wave ${pyroFx.wave}${pyroFx.wave >= PYRO_WAVES ? ', the FINALE' : ''}!`);
-        spirits.filter(sp => !sp.knockedOut && pyroFx.hexes.includes(sp.num)).forEach((sp, i) => {
-          setTimeout(() => {
-            addLog(`🔥 ${sp.name} is caught in the eruption — ${PYRO_DAMAGE} Vibe + BURN!`);
-            triggerEffectFlash(sp.id, '🔥', 'PYRO!', '#ff7722');
-            applyVibeDamage(sp.id, PYRO_DAMAGE, 'Pyrotechnics');
-            setNoteField(sp.id, { burn: { turnsLeft: PYRO_BURN_TURNS } });
-          }, 350 + i * 450);
-        });
-        setPyroFx({ ...pyroFx, phase: 'erupting' });
-      } else if (pyroFx.wave >= PYRO_WAVES) {
-        setPyroFx(null);
-        addLog(`🎆 The pyrotechnics show burns out. The stage cools.`);
-      } else {
-        const wave = pyroFx.wave + 1;
-        const hexes = rollPyroHexes(PYRO_WAVE_HEXES[wave - 1] ?? 5, pyroFx.hexes);
-        setPyroFx({ phase: 'arming', hexes, wave });
-        addLog(`🎆 Fresh pyro charges prime under ${hexes.length} hexes${wave >= PYRO_WAVES ? ' — the FINALE' : ''}! They glow red…`);
-      }
-    }
-    // 🤖 ANIMATRONICS — each takes one step toward the nearest Spirit, slamming
-    // anything in the way, then its clock ticks down.
-    if (animatronics.length) {
-      const alive = spirits.filter(sp => !sp.knockedOut);
-      const taken = new Set(animatronics.map(b => b.num));
-      const next = [];
-      animatronics.forEach(bot => {
-        taken.delete(bot.num);
-        const { move, hitId } = animatronicStep(bot.num, alive, [...taken]);
-        if (hitId) {
-          const victim = alive.find(sp => sp.id === hitId);
-          addLog(`🤖 An animatronic slams into ${victim?.name} — ${ANIMATRONIC_DAMAGE} Vibe!`);
-          triggerEffectFlash(hitId, '🤖', 'CLANG!', '#88ffcc');
-          setTimeout(() => applyVibeDamage(hitId, ANIMATRONIC_DAMAGE, 'Animatronic'), 250);
-        }
-        const num = move ?? bot.num;
-        taken.add(num);
-        const turnsLeft = bot.turnsLeft - 1;
-        if (turnsLeft > 0) next.push({ ...bot, num, turnsLeft });
-        else addLog(`🤖 An animatronic winds down and is hauled offstage.`);
+    const report = dispatch(stageFxTurnTicked()).stageFx.lastTurnTick;
+    if (!report) return;
+    const pr = report.pyro;
+    // 🎆 PYRO — armed hexes blew; spent flames re-arm the next wave (finale bigger).
+    if (pr?.event === 'erupted') {
+      addLog(`🎆 The pyro charges BLOW — wave ${pr.wave}${pr.wave >= PYRO_WAVES ? ', the FINALE' : ''}!`);
+      pr.caught.forEach((id, i) => {
+        const sp = engineRef.current.spirits.find(s => s.id === id);
+        setTimeout(() => {
+          addLog(`🔥 ${sp?.name} is caught in the eruption — ${PYRO_DAMAGE} Vibe + BURN!`);
+          triggerEffectFlash(id, '🔥', 'PYRO!', '#ff7722');
+          applyVibeDamage(id, PYRO_DAMAGE, 'Pyrotechnics');
+          setNoteField(id, { burn: { turnsLeft: PYRO_BURN_TURNS } });
+        }, 350 + i * 450);
       });
-      setAnimatronics(next);
+    } else if (pr?.event === 'burnout') {
+      addLog(`🎆 The pyrotechnics show burns out. The stage cools.`);
+    } else if (pr?.event === 'rearmed') {
+      addLog(`🎆 Fresh pyro charges prime under ${pr.hexes.length} hexes${pr.wave >= PYRO_WAVES ? ' — the FINALE' : ''}! They glow red…`);
+    }
+    // 🤖 ANIMATRONICS — each took one step toward the nearest Spirit (slams
+    // reported), clocks ticked down, expired bots hauled offstage.
+    if (report.anim) {
+      report.anim.hits.forEach(({ victimId }) => {
+        const victim = engineRef.current.spirits.find(sp => sp.id === victimId);
+        addLog(`🤖 An animatronic slams into ${victim?.name} — ${ANIMATRONIC_DAMAGE} Vibe!`);
+        triggerEffectFlash(victimId, '🤖', 'CLANG!', '#88ffcc');
+        setTimeout(() => applyVibeDamage(victimId, ANIMATRONIC_DAMAGE, 'Animatronic'), 250);
+      });
+      for (let i = 0; i < report.anim.expired; i++) {
+        addLog(`🤖 An animatronic winds down and is hauled offstage.`);
+      }
     }
   }
 
   // Per-ROUND tick (once per full round, alongside the Disco Inferno tick):
   // smoke spreads then clears; the laser show re-patterns then powers down.
+  // Phase 6b — rules in the engine (STAGE_FX_ROUND_TICKED); report rendered here.
   function tickStageFxRound() {
-    if (smokeFx) {
-      const left = smokeFx.roundsLeft - 1;
-      if (left <= 0) {
-        setSmokeFx(null);
-        addLog(`💨 The smoke finally clears — every Spirit is visible again.`);
-      } else {
-        setSmokeFx({ radius: smokeFx.radius + 1, roundsLeft: left });
-        addLog(`💨 The smoke rolls further out across the stage… (${left} round${left !== 1 ? 's' : ''} left)`);
-      }
+    const report = dispatch(stageFxRoundTicked()).stageFx.lastRoundTick;
+    if (!report) return;
+    if (report.smoke?.event === 'cleared') {
+      addLog(`💨 The smoke finally clears — every Spirit is visible again.`);
+    } else if (report.smoke?.event === 'spread') {
+      addLog(`💨 The smoke rolls further out across the stage… (${report.smoke.left} round${report.smoke.left !== 1 ? 's' : ''} left)`);
     }
-    if (laserFx) {
-      const left = laserFx.roundsLeft - 1;
-      if (left <= 0) {
-        setLaserFx(null);
-        addLog(`🔺 The laser rig powers down. The stage is safe to cross.`);
-      } else {
-        const beams = rollLaserBeams(LASER_BEAM_COUNT);
-        setLaserFx({ beams, roundsLeft: left, key: Date.now() });
-        addLog(`🔺 The laser show re-patterns — new beams rake the stage! (${left} round${left !== 1 ? 's' : ''} left)`);
-        zapSpiritsInBeams(beams);
-      }
+    if (report.laser?.event === 'off') {
+      addLog(`🔺 The laser rig powers down. The stage is safe to cross.`);
+    } else if (report.laser?.event === 'repatterned') {
+      addLog(`🔺 The laser show re-patterns — new beams rake the stage! (${report.laser.left} round${report.laser.left !== 1 ? 's' : ''} left)`);
+      zapReportedSpirits(report.laser.zapped);
     }
   }
 
@@ -4494,16 +4478,18 @@ function Game({ gameState, onReturnToLobby }) {
   // wiped → the God keeps the crown. Tuning: data/rockGods.js.
 
   function godTaunt(kind) {
-    const def = ROCK_GODS[rockGodRef.current?.id];
+    const def = ROCK_GODS[engineRef.current.rockGod.god?.id];
     const line = def ? godTauntLine(def, kind) : null;
     if (line) addLog(`${def.icon} ${line}`);
   }
 
   function summonRockGod(leaderId) {
-    if (godSummonedRef.current) return;
-    godSummonedRef.current = true;
+    if (engineRef.current.rockGod.summoned) return;
     const leader = spirits.find(s => s.id === leaderId);
     const ns = engineRef.current.noteStates?.[leaderId] ?? {};
+    // The god pick reads amps (still React-owned) — computed here, carried in
+    // the GOD_SUMMONED payload; the engine owns the flag/god object and scales
+    // HP off its own living-spirit count (Phase 6c).
     const godId = pickRockGod({
       unlockedSkills: ns.unlockedSkills ?? [],
       ampsOwned: amps.filter(a => a.ownerId === leaderId).length,
@@ -4511,7 +4497,7 @@ function Game({ gameState, onReturnToLobby }) {
     });
     const def = ROCK_GODS[godId];
     const alive = spirits.filter(sp => !sp.knockedOut);
-    const hp = ROCK_GOD_HP_PER_SPIRIT * Math.max(1, alive.length);
+    dispatch(godSummonedAction(leaderId, godId));
 
     // Clear the Limelight — anyone standing there is blasted to a neighbour hex.
     const squatter = alive.find(sp => sp.num === LIMELIGHT_HEX);
@@ -4526,7 +4512,6 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`🌩️🌩️🌩️ ${leader?.name} reaches ${FAME_TO_WIN} Fame — but the race is TOO CLOSE. The sky splits open…`);
     addLog(`${def.icon} ${def.name.toUpperCase()} — ${def.title} — DESCENDS TO THE LIMELIGHT!`);
     addLog(`🤝 The Spirits stand united! Drive = damage = Fame. Watch the clock — ${ROCK_GOD_TIMER_SECONDS}s a turn, or face his VENGEANCE.`);
-    setRockGod({ id: godId, num: LIMELIGHT_HEX, hp, maxHp: hp, winded: false, telegraph: null, lastAttack: null });
     setGodBanner({ key: Date.now() });
     setTimeout(() => setGodBanner(null), 6500);
     setTimeout(() => godTaunt('summon'), 900);
@@ -4536,8 +4521,8 @@ function Game({ gameState, onReturnToLobby }) {
   // A Spirit strikes the God — melee (adjacent) or Sonic beam (needs Amp I,
   // facing him, ≤ beam reach). Chord Drive = damage, dealt straight, no dice.
   function attackRockGod(spiritId) {
-    const god = rockGodRef.current;
-    if (!god || god.hp <= 0 || bossOutcome || winner) return;
+    const god = engineRef.current.rockGod.god;
+    if (!god || god.hp <= 0 || engineRef.current.rockGod.outcome || winner) return;
     const sp = spirits.find(s => s.id === spiritId);
     if (!sp || sp.knockedOut) return;
     if (actionTokenUsedRef.current) { addLog(`⚔️ ${sp.name} has already taken their shot this turn!`); return; }
@@ -4558,9 +4543,12 @@ function Game({ gameState, onReturnToLobby }) {
     const def = ROCK_GODS[god.id];
     const ns = engineRef.current.noteStates?.[spiritId] ?? {};
     const chord = ns.chordStack?.length ? spiritChord(spiritId, ns.chordStack) : null;
-    let dmg = (chord ? chord.drive : (sp.drive ?? 6)) + (ns.tempDrive ?? 0);
+    const raw = (chord ? chord.drive : (sp.drive ?? 6)) + (ns.tempDrive ?? 0);
     const winded = god.winded;
-    if (winded) dmg *= 2;
+    // Phase 6c — the hit lands in the ENGINE (it owns the winded ×2 + HP floor);
+    // the report carries the final number for the log/FP.
+    const hit = dispatch(godDamagedAction(spiritId, raw)).rockGod.lastHit;
+    const dmg = hit?.dmg ?? raw;
 
     addLog(`${via === 'melee' ? '⚔️' : '🔊'} ${sp.name} ${via === 'melee' ? 'smashes into' : 'blasts'} ${def.name}${chord ? ` — ${chord.name} rings out (⚔️${chord.drive})` : ''}${winded ? ' — HE’S WINDED, DOUBLE DAMAGE' : ''}: ${dmg} damage!`);
     triggerDamageNumber(god.num, `−${dmg}`, def.color);
@@ -4568,24 +4556,21 @@ function Game({ gameState, onReturnToLobby }) {
     dispatch(beatsSpent(cost, true));
     grantFame(spiritId, dmg, `${def.icon} rocked ${def.name}`, false);
 
-    const newHp = god.hp - dmg;
-    if (newHp <= 0) {
-      setRockGod({ ...god, hp: 0, telegraph: null });
+    if (hit?.defeated) {
       godDefeated(spiritId);
     } else {
-      setRockGod({ ...god, hp: newHp });
       if (Math.random() < 0.5) setTimeout(() => godTaunt(dmg >= 9 ? 'bigHit' : 'hit'), 500);
     }
   }
 
   function godDefeated(killerId) {
-    const def = ROCK_GODS[rockGodRef.current?.id] ?? {};
+    const def = ROCK_GODS[engineRef.current.rockGod.god?.id] ?? {};
     const killer = spirits.find(s => s.id === killerId);
     addLog(`🌩️💥 ${def.name} STAGGERS… drops to one knee… and POWERSLIDES INTO LEGEND.`);
     godTaunt('defeat');
     addLog(`⭐ ${killer?.name} lands the KILLING BLOW — +${ROCK_GOD_KILL_BLOW_FP} Fame flourish!`);
     grantFame(killerId, ROCK_GOD_KILL_BLOW_FP, 'the killing blow', false);
-    setBossOutcome('spirits');
+    dispatch(godDefeatedAction(killerId)); // Phase 6c — outcome locks in the engine
     // Crown the FP leader once the kill-blow fame settles.
     setTimeout(() => {
       const board = spirits.map(sp => ({ id: sp.id, fame: engineRef.current.noteStates?.[sp.id]?.fame ?? 0 }))
@@ -4593,111 +4578,86 @@ function Game({ gameState, onReturnToLobby }) {
       const champ = board[0];
       const champName = spirits.find(s => s.id === champ.id)?.name;
       addLog(`👑 The Gods are satisfied. ${champName} stands tallest at ⭐${champ.fame} — A LEGEND IS BORN!`);
-      setTimeout(() => setWinner(champ.id), 700);
+      setTimeout(() => {
+        setWinner(champ.id);
+        dispatch(winnerDeclared(champ.id)); // shadow the engine winner slice (Phase 5c leftover, folded in with 6c)
+      }, 700);
     }, 600);
   }
 
   function godTriumphs() {
-    if (bossOutcome) return;
+    if (engineRef.current.rockGod.outcome) return;
     godTaunt('victory');
     addLog(`💀 Every Spirit lies silent. The crown stays with the GODS.`);
-    setBossOutcome('god');
+    dispatch(godTriumphedAction()); // Phase 6c — outcome locks in the engine
   }
 
   // The God answers at the end of EVERY player turn: resolve an armed telegraph,
-  // shake off the winded window, or open a new attack.
+  // shake off the winded window, or open a new attack. Phase 6c — the whole
+  // answer is an ENGINE rule (GOD_ACTED: the weighted pick rolls on engine rng,
+  // telegraphs/winded/mosh shoves mutate engine state); this renders the report:
+  // logs, flashes, damage timing, camera, hazard checks on shoved Spirits.
   function rockGodAct() {
-    const god = rockGodRef.current;
-    if (!god || god.hp <= 0 || bossOutcome || winner) return;
+    const rgBefore = engineRef.current.rockGod;
+    if (!rgBefore.god || rgBefore.god.hp <= 0 || rgBefore.outcome || winner) return;
+    const st = dispatch(godActedAction()).rockGod;
+    const act = st.lastAct;
+    if (!act) return;
+    const god = st.god;
     const def = ROCK_GODS[god.id];
-    const live = spirits.filter(sp => !sp.knockedOut);
-    if (!live.length) return;
+    const nameOf = id => engineRef.current.spirits.find(s => s.id === id)?.name;
 
-    // 1) An armed telegraph RESOLVES.
-    if (god.telegraph) {
-      const t = god.telegraph;
-      if (t.attackId === 'thunderclap') {
-        addLog(`${def.icon}⚡ ${def.name} SLAMS the stage — ${t.label}!`);
-        const caught = live.filter(sp => t.hexes.includes(sp.num));
-        if (!caught.length) addLog(`💨 …and hits nothing but stage. The Spirits scattered in time!`);
-        caught.forEach((sp, i) => setTimeout(() => {
-          addLog(`⚡ ${sp.name} is caught in the shockwave — ${t.dmg} Vibe!`);
-          triggerEffectFlash(sp.id, '⚡', 'THUNDERCLAP!', def.color);
-          applyVibeDamage(sp.id, t.dmg, t.label);
+    // 1) An armed telegraph RESOLVED.
+    if (act.kind === 'resolved') {
+      if (act.attackId === 'thunderclap') {
+        addLog(`${def.icon}⚡ ${def.name} SLAMS the stage — ${act.label}!`);
+        if (!act.caught.length) addLog(`💨 …and hits nothing but stage. The Spirits scattered in time!`);
+        act.caught.forEach((id, i) => setTimeout(() => {
+          addLog(`⚡ ${nameOf(id)} is caught in the shockwave — ${act.dmg} Vibe!`);
+          triggerEffectFlash(id, '⚡', 'THUNDERCLAP!', def.color);
+          applyVibeDamage(id, act.dmg, act.label);
         }, 350 + i * 400));
         focusOnHex(god.num, 1100, 0.5, true);
-        setRockGod({ ...god, telegraph: null, lastAttack: 'thunderclap' });
-      } else if (t.attackId === 'power_slide') {
-        addLog(`${def.icon}🛝 ${def.name} DROPS AND SLIDES — ${t.label}!`);
-        const caught = live.filter(sp => t.hexes.includes(sp.num));
-        if (!caught.length) addLog(`💨 …the line was clear. He glides to a stop, striking a pose.`);
-        caught.forEach((sp, i) => setTimeout(() => {
-          addLog(`🛝 ${sp.name} is bowled over — ${t.dmg} Vibe!`);
-          triggerEffectFlash(sp.id, '🛝', 'POWER SLIDE!', def.color);
-          applyVibeDamage(sp.id, t.dmg, t.label);
+      } else if (act.attackId === 'power_slide') {
+        addLog(`${def.icon}🛝 ${def.name} DROPS AND SLIDES — ${act.label}!`);
+        if (!act.caught.length) addLog(`💨 …the line was clear. He glides to a stop, striking a pose.`);
+        act.caught.forEach((id, i) => setTimeout(() => {
+          addLog(`🛝 ${nameOf(id)} is bowled over — ${act.dmg} Vibe!`);
+          triggerEffectFlash(id, '🛝', 'POWER SLIDE!', def.color);
+          applyVibeDamage(id, act.dmg, act.label);
         }, 350 + i * 400));
-        setRockGod({ ...god, num: t.end, telegraph: null, winded: true, lastAttack: 'power_slide' });
         addLog(`😵 ${def.name} is WINDED from the slide — he takes DOUBLE DAMAGE until he acts again!`);
-        focusOnHex(t.end, 1100, 0.5, true);
+        focusOnHex(act.end, 1100, 0.5, true);
       }
       return;
     }
 
-    // 2) Winded → he spends the beat recovering (this is your punish window closing).
-    if (god.winded) {
-      setRockGod({ ...god, winded: false });
+    // 2) Winded → he spent the beat recovering (the punish window closed).
+    if (act.kind === 'recovered') {
       godTaunt('winded');
       addLog(`🤘 ${def.name} hauls himself upright. The window closes.`);
       return;
     }
 
-    // 3) Open a new attack.
-    // Phase 6c — the pick rolls on ENGINE rng (deterministic, replay-logged);
-    // the client re-derives the full attack def from the decided id.
-    const pickedId = dispatch(godAttackPicked(god.id, god.lastAttack ?? null)).rockGod?.lastPick?.attackId;
-    const atk = def.attacks?.find(a => a.id === pickedId) ?? null;
-    if (!atk) return;
-    if (atk.id === 'thunderclap') {
-      const hexes = hexesWithin(god.num, atk.radius);
-      setRockGod({ ...god, telegraph: { attackId: 'thunderclap', label: atk.label, warn: atk.warn, hexes, dmg: atk.dmg } });
-      addLog(`${def.icon}⚡ ${atk.warn}`);
-    } else if (atk.id === 'power_slide') {
-      // Aim the slide at the FP leader — the Gods punish success.
-      const target = [...live].sort((a, b) =>
-        (engineRef.current.noteStates?.[b.id]?.fame ?? 0) - (engineRef.current.noteStates?.[a.id]?.fame ?? 0))[0];
-      const { path, end } = slideLine(god.num, target.num);
-      if (!path.length) { setRockGod({ ...god, lastAttack: 'power_slide' }); return; }
-      setRockGod({ ...god, telegraph: { attackId: 'power_slide', label: atk.label, warn: atk.warn, hexes: path, end, dmg: atk.dmg } });
-      addLog(`${def.icon}🛝 ${atk.warn} (he's eyeing ${target.name}…)`);
-    } else if (atk.id === 'face_melter') {
-      const target = nearestSpiritTo(god.num, live);
-      if (!target) return;
-      addLog(`${def.icon}🎸 ${def.name} rips a FACE-MELTER SOLO straight at ${target.name} — ${atk.dmg} Vibe!`);
-      triggerEffectFlash(target.id, '🎸', 'FACE-MELTER!', def.color);
-      setTimeout(() => applyVibeDamage(target.id, atk.dmg, atk.label), 350);
-      setRockGod({ ...god, lastAttack: 'face_melter' });
-    } else if (atk.id === 'mosh_command') {
+    // 3) A new attack OPENED.
+    if (act.kind === 'telegraph') {
+      if (act.attackId === 'thunderclap') addLog(`${def.icon}⚡ ${act.warn}`);
+      else addLog(`${def.icon}🛝 ${act.warn} (he's eyeing ${nameOf(act.targetId)}…)`);
+    } else if (act.kind === 'melted') {
+      addLog(`${def.icon}🎸 ${def.name} rips a FACE-MELTER SOLO straight at ${nameOf(act.targetId)} — ${act.dmg} Vibe!`);
+      triggerEffectFlash(act.targetId, '🎸', 'FACE-MELTER!', def.color);
+      setTimeout(() => applyVibeDamage(act.targetId, act.dmg, act.label), 350);
+    } else if (act.kind === 'moshed') {
       addLog(`${def.icon}🌊 ${def.name} bellows "MOSH!" — the whole stage SURGES outward!`);
-      const occupied = [...live.map(sp => sp.num), god.num];
-      const moves = [];
-      live.forEach(sp => {
-        const dest = shoveAwayHex(sp.num, god.num, occupied);
-        if (dest) { moves.push({ id: sp.id, to: dest }); occupied.push(dest); }
-        else setTimeout(() => {
-          addLog(`🌊 ${sp.name} is crushed against the crowd — ${atk.dmg} Vibe!`);
-          applyVibeDamage(sp.id, atk.dmg, atk.label);
-        }, 400);
-      });
-      if (moves.length) {
-        setSpirits(prev => prev.map(sp => {
-          const mv = moves.find(m => m.id === sp.id);
-          return mv ? { ...sp, num: mv.to } : sp;
-        }));
-        // Shoved Spirits can land in stage hazards — same rule as any push.
-        moves.forEach((mv, i) => setTimeout(() => checkStageFxHex(mv.id, mv.to), 450 + i * 120));
-      }
-      setRockGod({ ...god, lastAttack: 'mosh_command' });
+      act.crushed.forEach(id => setTimeout(() => {
+        addLog(`🌊 ${nameOf(id)} is crushed against the crowd — ${act.dmg} Vibe!`);
+        applyVibeDamage(id, act.dmg, act.label);
+      }, 400));
+      // Positions already moved in the engine; shoved Spirits can land in
+      // stage hazards — same rule as any push.
+      act.moves.forEach((mv, i) => setTimeout(() => checkStageFxHex(mv.id, mv.to), 450 + i * 120));
     }
+    // (act.kind === 'fizzled' — the slide had no line; he shrugs it off silently.)
   }
 
   // ── ⏰ THE GOD'S CLOCK — human turns are timed while the fight is live.
@@ -4722,7 +4682,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (!bossTimerExpired) return;
     setBossTimerExpired(false);
     if (!rockGodActive || !acting || winner) return;
-    const def = ROCK_GODS[rockGodRef.current?.id] ?? {};
+    dispatch(godTimerExpiredAction(acting.id)); // replay-log seam — the countdown itself stays client
+    const def = ROCK_GODS[engineRef.current.rockGod.god?.id] ?? {};
     addLog(`⏰ TOO SLOW! ${def.name ?? 'The God'}'s attention snaps to ${acting.name} — VENGEANCE! ${ROCK_GOD_VENGEANCE_DMG} Vibe!`);
     triggerEffectFlash(acting.id, '⚡', 'VENGEANCE!', def.color ?? '#ffcc22');
     applyVibeDamage(acting.id, ROCK_GOD_VENGEANCE_DMG, 'Divine Vengeance');
@@ -4759,7 +4720,7 @@ function Game({ gameState, onReturnToLobby }) {
     // 🎇 The show grows with the legend — Stage Effects fire at ⭐8/16/24.
     checkStageFxThresholds(ns.fame ?? 0, newFame);
     if (newFame >= FAME_TO_WIN) {
-      if (godSummonedRef.current) {
+      if (engineRef.current.rockGod.summoned) {
         // 🤘 A Rock God holds the gate — Fame alone can't end it now. Victory
         // flows only through the boss fight (godDefeated crowns the FP leader).
       } else {
@@ -4769,7 +4730,10 @@ function Game({ gameState, onReturnToLobby }) {
           .map(s => engineRef.current.noteStates?.[s.id]?.fame ?? 0));
         if (newFame - rivalBest >= ROCK_GOD_RUNAWAY_LEAD) {
           addLog(`🌟🌟🌟 ${sp?.name} reaches ${FAME_TO_WIN} Fame — A LEGEND IS BORN! 🌟🌟🌟`);
-          setTimeout(() => setWinner(spiritId), 600);
+          setTimeout(() => {
+            setWinner(spiritId);
+            dispatch(winnerDeclared(spiritId)); // shadow the engine winner slice (folded in with 6c)
+          }, 600);
         } else {
           summonRockGod(spiritId);
         }
@@ -6946,11 +6910,13 @@ function Game({ gameState, onReturnToLobby }) {
     if (!neighbors.length) return null;
 
     // 🤘 Boss fight: forget tokens and spotlights — converge on the God.
-    if (rockGodActive && rockGodRef.current) {
-      const gh = HEX_BY_NUM[rockGodRef.current.num];
+    // (engineRef.current.rockGod.god — the authoritative slice, sync-fresh.)
+    const bossGod = engineRef.current.rockGod.god;
+    if (rockGodActive && bossGod) {
+      const gh = HEX_BY_NUM[bossGod.num];
       if (gh) {
         const toward = neighbors
-          .filter(h => h.num !== rockGodRef.current.num)
+          .filter(h => h.num !== bossGod.num)
           .map(h => ({ num: h.num, d: axialDist(h.q, h.r, gh.q, gh.r) }))
           .sort((a, b) => a.d - b.d)[0];
         const hereD = axialDist(from.q, from.r, gh.q, gh.r);
@@ -7339,10 +7305,11 @@ function Game({ gameState, onReturnToLobby }) {
       const hurt = (liveSelf.vibe ?? 9) <= Math.ceil((liveSelf.maxVibe ?? 5) * 0.4);
       const onHealHex = hurt && typeof spotlightHex === 'number' && self.num === spotlightHex;
       // 🤘 Boss fight: "in range" means the GOD is in reach (adjacent or beamed).
-      const godHex = rockGodActive ? HEX_BY_NUM[rockGodRef.current?.num] : null;
+      const bossGod = engineRef.current.rockGod.god;
+      const godHex = rockGodActive ? HEX_BY_NUM[bossGod?.num] : null;
       const godInReach = !!(godHex && myHex && (
         axialDist(myHex.q, myHex.r, godHex.q, godHex.r) <= 1
-        || (ampsInRangeRef.current >= 1 && getSonicBeam(self).has(rockGodRef.current.num))
+        || (ampsInRangeRef.current >= 1 && getSonicBeam(self).has(bossGod.num))
       ));
       const rivalInRange = godInReach || getRivalsInCone(self).length > 0
         || (ampsInRangeRef.current >= 1 && getRivalsInBeam(self).length > 0);
@@ -7383,8 +7350,8 @@ function Game({ gameState, onReturnToLobby }) {
       // doesn't move us, so a shot taken from the spotlight still banks the heal.
       if (!usedToken) {
         // 🤘 Boss fight — strike the God if lined up, re-aim if close, else march on.
-        if (rockGodActive && rockGodRef.current) {
-          const god = rockGodRef.current;
+        if (rockGodActive && engineRef.current.rockGod.god) {
+          const god = engineRef.current.rockGod.god;
           const gh = HEX_BY_NUM[god.num], mh = HEX_BY_NUM[self.num];
           const adjacent = gh && mh && axialDist(mh.q, mh.r, gh.q, gh.r) <= 1;
           const inBeam = ampsInRangeRef.current >= 1 && getSonicBeam(self).has(god.num);
@@ -7594,9 +7561,9 @@ function Game({ gameState, onReturnToLobby }) {
       // 🏆 The boss-aware decision now lives in the engine (Phase 3c kernel);
       // the client just runs the resulting timers.
       const { winnerId, godTriumphs: godWins } = decideWinner(updated, {
-        godSummoned: godSummonedRef.current, hasWinner: !!winner, attackerId: atkId,
+        godSummoned: engineRef.current.rockGod.summoned, hasWinner: !!winner, attackerId: atkId,
       });
-      if (godSummonedRef.current && !winner) {
+      if (engineRef.current.rockGod.summoned && !winner) {
         if (godWins) setTimeout(() => godTriumphs(), 400);
         return;
       }
@@ -7663,7 +7630,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (!acting) return;
     // 🤘 ROCK GOD — clicking the God IS the attack (melee if adjacent, Sonic
     // beam if lined up). Overrides every other action; commit fast, hit hard.
-    if (rockGodActive && rockGodRef.current && num === rockGodRef.current.num) {
+    if (rockGodActive && rockGod && num === rockGod.num) {
       attackRockGod(acting.id);
       return;
     }

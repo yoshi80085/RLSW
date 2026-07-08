@@ -14,7 +14,9 @@ import {
   attackRolled, counterRolled,
   damageApplied, knockdownResolved, winnerDeclared,
   noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked,
-  stageFxDrawn, godAttackPicked,
+  stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked,
+  godAttackPicked, godSummoned, godDamaged, godActed,
+  godDefeated, godTriumphed, godTimerExpired,
 } from "./actions.js";
 import { snapshot, restore, replay, assertJsonSafe } from "./serialize.js";
 import {
@@ -26,14 +28,19 @@ import { skillEligibility, ULTIMATE_PREREQS, THEORY_DISCORD_GRANTS, CQC_SWING_MA
 import { pitchIndex } from "../music/notes.js";
 import { detectMotifRepeat } from "../music/cadence.js";
 import { CORNERS } from "../data/corners.js";
-import { pickGodAttack, godTauntLine, pickRockGod, ROCK_GODS } from "../data/rockGods.js";
-import { shuffledStageFxDeck, STAGE_FX_IDS } from "../data/stageEffects.js";
+import { pickGodAttack, godTauntLine, pickRockGod, ROCK_GODS, ROCK_GOD_HP_PER_SPIRIT } from "../data/rockGods.js";
+import { applyGodActed } from "./systems/rockGod.js";
+import {
+  shuffledStageFxDeck, STAGE_FX_IDS,
+  SMOKE_START_RADIUS, SMOKE_ROUNDS, LASER_ROUNDS, LASER_BEAM_COUNT,
+  PYRO_WAVES, PYRO_WAVE_HEXES, ANIMATRONIC_COUNT, ANIMATRONIC_TURNS,
+} from "../data/stageEffects.js";
 import {
   LIMELIGHT_HEX, UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT,
   FAN_BORED_AFTER, FAN_DECAY,
 } from "../data/gameConstants.js";
 import { hexRingFromCenter } from "../board/boardHelpers.js";
-import { HEX_BY_NUM } from "../board/hexMap.js";
+import { HEX_BY_NUM, EDGE_HEX_NUMS } from "../board/hexMap.js";
 import { getFlatTopNeighborSlots } from "../board/hexGeometry.js";
 
 // -- rng determinism ----------------------------------------------------------
@@ -941,6 +948,151 @@ const config = {
   assert.equal(assertJsonSafe(liveF), true, "stageFx slice is JSON-safe");
 }
 
+// -- Phase 6b: ACTIVE stage effects + ticks (engine-owned) ----------------------
+// STAGE_FX_ACTIVATED creates the live effect (patterns/spawns on engine rng);
+// STAGE_FX_TURN_TICKED runs the pyro cadence + animatronic steps;
+// STAGE_FX_ROUND_TICKED spreads/clears smoke and re-patterns/kills the lasers.
+// Rules ported verbatim from the client tickStageFxTurn/tickStageFxRound.
+{
+  const cornerId = Object.keys(CORNERS)[0];
+  const seed = (base, positions) => applyAction(base, spiritsSynced([
+    { id: "wildaxe", num: positions.wildaxe, facing: 2, corner: cornerId, lives: 3, vibe: 10, maxVibe: 10, knockedOut: false },
+    { id: "vera",    num: positions.vera,    facing: 5, corner: cornerId, lives: 3, vibe: 8,  maxVibe: 8,  knockedOut: false },
+  ]));
+  const s0 = seed(makeInitialState(config, 4242), { wildaxe: 7, vera: 40 });
+
+  // 💨 SMOKE — activation shape; spreads per round; clears at the end
+  {
+    const on = applyAction(s0, stageFxActivated("smoke_machine"));
+    assert.deepEqual(on.stageFx.smoke, { radius: SMOKE_START_RADIUS, roundsLeft: SMOKE_ROUNDS },
+      "smoke activates at the start radius");
+    assert.equal(on.rng.cursor, s0.rng.cursor, "smoke activation consumes no rng");
+    let st = on;
+    for (let r = 1; r < SMOKE_ROUNDS; r++) {
+      st = applyAction(st, stageFxRoundTicked());
+      assert.deepEqual(st.stageFx.lastRoundTick.smoke,
+        { event: "spread", radius: SMOKE_START_RADIUS + r, left: SMOKE_ROUNDS - r },
+        `round ${r}: smoke spreads one ring`);
+    }
+    st = applyAction(st, stageFxRoundTicked());
+    assert.equal(st.stageFx.smoke, null, "smoke clears after its rounds");
+    assert.deepEqual(st.stageFx.lastRoundTick.smoke, { event: "cleared" }, "clear reported");
+  }
+
+  // 🔺 LASERS — seeded pattern; zap report lists spirits standing in beams;
+  // re-patterns per round then powers down
+  {
+    const on = applyAction(s0, stageFxActivated("laser_show"));
+    const lz = on.stageFx.laser;
+    assert.equal(lz.beams.length, LASER_BEAM_COUNT, "beam count");
+    assert.equal(lz.roundsLeft, LASER_ROUNDS, "laser round clock");
+    assert.ok(on.rng.cursor > s0.rng.cursor, "beam pattern rolls on engine rng");
+    assert.deepEqual(applyAction(s0, stageFxActivated("laser_show")).stageFx.laser, lz,
+      "same seed → same pattern");
+    // plant a spirit ON a beam hex → the fresh-pattern zap must report them
+    const beamHex = lz.beams[0].hexes[0];
+    const planted = applyAction(seed(makeInitialState(config, 4242), { wildaxe: beamHex, vera: 40 }),
+      stageFxActivated("laser_show"));
+    assert.ok(planted.stageFx.lastActivation.zapped.includes("wildaxe"),
+      "spirit standing in a fresh beam is reported zapped");
+    // re-pattern: new beams, one less round, zap re-checked; then off
+    let st = on;
+    for (let r = 1; r < LASER_ROUNDS; r++) {
+      st = applyAction(st, stageFxRoundTicked());
+      assert.equal(st.stageFx.lastRoundTick.laser.event, "repatterned", `round ${r}: re-patterns`);
+      assert.equal(st.stageFx.laser.roundsLeft, LASER_ROUNDS - r, "clock ticks down");
+    }
+    st = applyAction(st, stageFxRoundTicked());
+    assert.equal(st.stageFx.laser, null, "laser rig powers down");
+    assert.deepEqual(st.stageFx.lastRoundTick.laser, { event: "off" }, "power-down reported");
+  }
+
+  // 🎆 PYRO — arm → erupt (caught computed from engine spirits) → re-arm
+  // excluding the spent wave → finale → burnout
+  {
+    const on = applyAction(s0, stageFxActivated("pyrotechnics"));
+    assert.equal(on.stageFx.pyro.phase, "arming", "pyro arms first");
+    assert.equal(on.stageFx.pyro.wave, 1, "wave 1");
+    assert.equal(on.stageFx.pyro.hexes.length, PYRO_WAVE_HEXES[0], "wave-1 hex count");
+    // plant a spirit on an armed hex → eruption catches them
+    const hot = on.stageFx.pyro.hexes[0];
+    let st = seed(on, { wildaxe: hot, vera: 40 });
+    st = applyAction(st, stageFxTurnTicked());
+    assert.equal(st.stageFx.pyro.phase, "erupting", "armed charges blow");
+    assert.deepEqual(st.stageFx.lastTurnTick.pyro,
+      { event: "erupted", wave: 1, hexes: on.stageFx.pyro.hexes, caught: ["wildaxe"] },
+      "eruption reports the caught spirit");
+    // re-arm: next wave's hexes avoid the spent wave
+    st = applyAction(st, stageFxTurnTicked());
+    assert.equal(st.stageFx.pyro.phase, "arming", "next wave arms");
+    assert.equal(st.stageFx.pyro.wave, 2, "wave 2");
+    assert.ok(st.stageFx.pyro.hexes.every(h => !on.stageFx.pyro.hexes.includes(h)),
+      "fresh charges avoid the previous wave");
+    // run out the remaining waves → burnout
+    for (let w = 2; w <= PYRO_WAVES; w++) {
+      st = applyAction(st, stageFxTurnTicked());               // erupt wave w
+      if (w < PYRO_WAVES) st = applyAction(st, stageFxTurnTicked()); // re-arm w+1
+    }
+    st = applyAction(st, stageFxTurnTicked());
+    assert.equal(st.stageFx.pyro, null, "show burns out after the finale");
+    assert.deepEqual(st.stageFx.lastTurnTick.pyro, { event: "burnout" }, "burnout reported");
+  }
+
+  // 🤖 ANIMATRONICS — deterministic-keyed spawn on free edge hexes; steps
+  // toward the nearest spirit each turn; slams get reported; clock expiry
+  {
+    const occupied = [7, 40];
+    const on = applyAction(s0, stageFxActivated("animatronics", occupied));
+    const bots = on.stageFx.animatronics;
+    assert.equal(bots.length, ANIMATRONIC_COUNT, "spawn count");
+    assert.ok(bots.every(b => /^anim-t\d+-\d+$/.test(b.key)), "keys are deterministic (no Date.now)");
+    assert.ok(bots.every(b => EDGE_HEX_NUMS.has(b.num) && !occupied.includes(b.num)),
+      "bots spawn on free edge hexes");   // EDGE_HEX_NUMS is a Set
+    assert.ok(bots.every(b => b.turnsLeft === ANIMATRONIC_TURNS), "full clocks");
+    assert.deepEqual(applyAction(s0, stageFxActivated("animatronics", occupied)).stageFx.animatronics,
+      bots, "same seed → same spawn");
+    // one tick: every surviving bot moved-or-lunged and its clock ticked down
+    const t1 = applyAction(on, stageFxTurnTicked());
+    assert.equal(t1.stageFx.animatronics.length, ANIMATRONIC_COUNT, "no expiry yet");
+    assert.ok(t1.stageFx.animatronics.every(b => b.turnsLeft === ANIMATRONIC_TURNS - 1),
+      "clocks tick");
+    // run the clock out — bots expire and are removed
+    let st = on;
+    for (let i = 0; i < ANIMATRONIC_TURNS; i++) st = applyAction(st, stageFxTurnTicked());
+    assert.equal(st.stageFx.animatronics.length, 0, "bots wind down after their turns");
+    assert.equal(st.stageFx.lastTurnTick.anim.expired, ANIMATRONIC_COUNT, "expiry reported");
+    // a bot adjacent to a spirit lunges: plant vera next to a bot's spawn hex
+    const bHex = HEX_BY_NUM[bots[0].num];
+    const nHex = getFlatTopNeighborSlots(bHex)[0]?.num;
+    if (nHex != null) {
+      const near = seed(on, { wildaxe: 7, vera: nHex });
+      const hit = applyAction(near, stageFxTurnTicked()).stageFx.lastTurnTick.anim.hits;
+      assert.ok(hit.some(h => h.victimId === "vera"), "adjacent spirit gets slammed");
+    }
+  }
+
+  // idle ticks are cheap no-ops with null-field reports; everything replays +
+  // stays JSON-safe end to end
+  {
+    const idle = applyAction(s0, stageFxTurnTicked());
+    assert.deepEqual(idle.stageFx.lastTurnTick, { pyro: null, anim: null }, "no active FX → null report");
+    const log = [
+      stageFxActivated("pyrotechnics"),
+      stageFxTurnTicked(),
+      stageFxActivated("laser_show"),
+      stageFxRoundTicked(),
+      stageFxActivated("animatronics", [7, 40]),
+      stageFxTurnTicked(),
+      stageFxActivated("smoke_machine"),
+      stageFxRoundTicked(),
+    ];
+    const live = log.reduce((st, a) => applyAction(st, a), s0);
+    assert.equal(snapshot(replay(restore(snapshot(s0)), log)), snapshot(live),
+      "active-FX lifecycle replays byte-identically");
+    assert.equal(assertJsonSafe(live), true, "active-FX state is JSON-safe");
+  }
+}
+
 // -- Phase 6c: GOD_ATTACK_PICKED — the boss's attack pick on engine rng ---------
 {
   const s0 = makeInitialState(config, 1717);
@@ -971,6 +1123,124 @@ const config = {
   const liveG = logG.reduce((st, a) => applyAction(st, a), s0);
   assert.equal(snapshot(replay(restore(snapshot(s0)), logG)), snapshot(liveG), "GOD_ATTACK_PICKED replays byte-identically");
   assert.equal(assertJsonSafe(liveG), true, "rockGod pick slice is JSON-safe");
+}
+
+// -- Phase 6c: Rock God state ownership (summon / damage / act / outcome) -------
+// The boss is engine state now: GOD_SUMMONED / GOD_DAMAGED (winded ×2 + HP
+// floor) / GOD_ACTED (telegraph resolve → winded recovery → weighted open;
+// mosh moves the engine spirits) / GOD_DEFEATED / GOD_TRIUMPHED /
+// GOD_TIMER_EXPIRED. Rules ported verbatim from the client ROCK GOD SYSTEM.
+{
+  const cornerId = Object.keys(CORNERS)[0];
+  const seedSpirits = (base, positions) => applyAction(base, spiritsSynced([
+    { id: "wildaxe", num: positions.wildaxe, facing: 2, corner: cornerId, lives: 3, vibe: 10, maxVibe: 10, knockedOut: false },
+    { id: "vera",    num: positions.vera,    facing: 5, corner: cornerId, lives: 3, vibe: 8,  maxVibe: 8,  knockedOut: false },
+  ]));
+  const s0 = seedSpirits(makeInitialState(config, 6606), { wildaxe: 40, vera: 105 });
+
+  // 🌩️ SUMMON — one god per game; HP scales with the engine's living spirits
+  const up = applyAction(s0, godSummoned("wildaxe", "bardbarian"));
+  assert.equal(up.rockGod.summoned, true, "summoned flag set");
+  assert.equal(up.rockGod.god.id, "bardbarian");
+  assert.equal(up.rockGod.god.num, LIMELIGHT_HEX, "god descends to the Limelight");
+  assert.equal(up.rockGod.god.hp, ROCK_GOD_HP_PER_SPIRIT * 2, "HP = per-spirit × living spirits");
+  assert.equal(up.rockGod.god.hp, up.rockGod.god.maxHp);
+  assert.deepEqual(
+    { winded: up.rockGod.god.winded, telegraph: up.rockGod.god.telegraph, lastAttack: up.rockGod.god.lastAttack },
+    { winded: false, telegraph: null, lastAttack: null }, "fresh god state");
+  assert.equal(up.rng.cursor, s0.rng.cursor, "summon consumes no rng");
+  const dup = applyAction(up, godSummoned("vera", "glam_reaper"));
+  assert.equal(dup.rockGod.god.id, "bardbarian", "second summon is a no-op — one god per game, ever");
+
+  // ⚔️ DAMAGE — raw subtract; winded doubles; floor at 0 clears the telegraph
+  const hit1 = applyAction(up, godDamaged("wildaxe", 7));
+  assert.equal(hit1.rockGod.god.hp, up.rockGod.god.hp - 7, "raw damage lands");
+  assert.deepEqual(hit1.rockGod.lastHit, { spiritId: "wildaxe", dmg: 7, defeated: false }, "hit reported");
+  const windedUp = { ...hit1, rockGod: { ...hit1.rockGod, god: { ...hit1.rockGod.god, winded: true, telegraph: { attackId: "thunderclap", label: "T", warn: "w", hexes: [], dmg: 2 } } } };
+  const hit2 = applyAction(windedUp, godDamaged("vera", 5));
+  assert.equal(hit2.rockGod.god.hp, windedUp.rockGod.god.hp - 10, "winded → double damage");
+  assert.equal(hit2.rockGod.lastHit.dmg, 10, "report carries the doubled number");
+  const kill = applyAction(windedUp, godDamaged("vera", 999));
+  assert.deepEqual(
+    { hp: kill.rockGod.god.hp, telegraph: kill.rockGod.god.telegraph, defeated: kill.rockGod.lastHit.defeated },
+    { hp: 0, telegraph: null, defeated: true }, "killing blow floors HP + clears the telegraph");
+  assert.equal(hit1.rng.cursor, up.rng.cursor, "damage consumes no rng");
+
+  // 🤘 ACT 1 — an armed THUNDERCLAP resolves: caught from engine positions
+  const armed = { ...up, rockGod: { ...up.rockGod, god: { ...up.rockGod.god, telegraph: { attackId: "thunderclap", label: "THUNDERCLAP", warn: "w", hexes: [40, 41], dmg: 2 } } } };
+  const clap = applyAction(armed, godActed());
+  assert.deepEqual(clap.rockGod.lastAct,
+    { kind: "resolved", attackId: "thunderclap", label: "THUNDERCLAP", dmg: 2, caught: ["wildaxe"] },
+    "thunderclap resolve reports who's caught");
+  assert.equal(clap.rockGod.god.telegraph, null, "telegraph cleared");
+  assert.equal(clap.rockGod.god.lastAttack, "thunderclap");
+  assert.equal(clap.rng.cursor, armed.rng.cursor, "telegraph resolve consumes no rng");
+
+  // 🛝 ACT 1b — an armed POWER SLIDE resolves: god moves to `end`, WINDED
+  const slideArmed = { ...up, rockGod: { ...up.rockGod, god: { ...up.rockGod.god, telegraph: { attackId: "power_slide", label: "POWER SLIDE", warn: "w", hexes: [105], end: 99, dmg: 3 } } } };
+  const slid = applyAction(slideArmed, godActed());
+  assert.deepEqual(
+    { num: slid.rockGod.god.num, winded: slid.rockGod.god.winded, last: slid.rockGod.god.lastAttack },
+    { num: 99, winded: true, last: "power_slide" }, "slide moves the god + leaves him winded");
+  assert.deepEqual(slid.rockGod.lastAct.caught, ["vera"], "spirit on the line is bowled over");
+  assert.equal(slid.rockGod.lastAct.end, 99, "report carries the stop hex");
+
+  // 😵 ACT 2 — winded god recovers instead of attacking
+  const recovered = applyAction(slid, godActed());
+  assert.deepEqual(recovered.rockGod.lastAct, { kind: "recovered" }, "recovery beat");
+  assert.equal(recovered.rockGod.god.winded, false, "window closes");
+
+  // 🎲 ACT 3 — a new attack OPENS on engine rng (weighted, no immediate repeat).
+  // Direct-call the reducer with pinned rands to hit each bucket (w 3/3/2/2).
+  const open = v => applyGodActed(up, {}, () => v).rockGod;
+  assert.equal(open(0.0).lastAct.attackId, "thunderclap", "bucket 1 → thunderclap telegraph");
+  assert.equal(open(0.0).lastAct.kind, "telegraph");
+  assert.ok(open(0.0).god.telegraph.hexes.length > 0, "AoE hexes armed");
+  const ps = open(0.4);
+  assert.equal(ps.lastAct.attackId, "power_slide", "bucket 2 → power slide telegraph");
+  assert.equal(ps.lastAct.targetId, "wildaxe", "slide aims at a live spirit");
+  assert.ok(ps.god.telegraph.end != null, "slide line armed with a stop hex");
+  const fm = open(0.65);
+  assert.equal(fm.lastAct.kind, "melted", "bucket 3 → face-melter (no telegraph)");
+  assert.ok(["wildaxe", "vera"].includes(fm.lastAct.targetId), "melts the nearest spirit");
+  assert.equal(fm.god.lastAttack, "face_melter");
+  const mosh = applyGodActed(up, {}, () => 0.85);
+  assert.equal(mosh.rockGod.lastAct.kind, "moshed", "bucket 4 → mosh command");
+  const { moves, crushed } = mosh.rockGod.lastAct;
+  assert.deepEqual([...moves.map(m => m.id), ...crushed].sort(), ["vera", "wildaxe"],
+    "every living spirit is either shoved or crushed");
+  for (const mv of moves) {
+    assert.equal(mosh.spirits.find(sp => sp.id === mv.id).num, mv.to,
+      "mosh shove moves the ENGINE spirit");
+  }
+  // via applyAction the open consumes the main rng stream
+  const opened = applyAction(up, godActed());
+  assert.ok(opened.rng.cursor > up.rng.cursor, "opening an attack consumes engine rng");
+  assert.deepEqual(applyAction(up, godActed()).rockGod.lastAct, opened.rockGod.lastAct,
+    "same seed → same answer");
+
+  // 🏁 OUTCOME + timer seam
+  const won = applyAction(up, godDefeated("wildaxe"));
+  assert.equal(won.rockGod.outcome, "spirits", "defeat locks outcome");
+  assert.equal(applyAction(won, godTriumphed()).rockGod.outcome, "spirits", "outcome can't flip");
+  assert.equal(applyAction(up, godTriumphed()).rockGod.outcome, "god", "wipe → the God keeps the crown");
+  assert.deepEqual(applyAction(up, godTimerExpired("wildaxe")).rockGod.lastTimerExpiry,
+    { spiritId: "wildaxe" }, "timer expiry is recorded for the replay log");
+  assert.equal(applyAction(won, godActed()).rockGod.lastAct, null, "no act once the fight is decided");
+
+  // 📼 the whole boss lifecycle replays byte-for-byte + stays JSON-safe
+  const logB = [
+    godSummoned("wildaxe", "bardbarian"),
+    godActed(), godActed(), godActed(),       // open/resolve a few beats (rng)
+    godDamaged("wildaxe", 6), godDamaged("vera", 9),
+    godTimerExpired("wildaxe"),
+    godDamaged("wildaxe", 999),
+    godDefeated("wildaxe"),
+  ];
+  const liveB = logB.reduce((st, a) => applyAction(st, a), s0);
+  assert.equal(snapshot(replay(restore(snapshot(s0)), logB)), snapshot(liveB),
+    "boss lifecycle replays byte-identically");
+  assert.equal(assertJsonSafe(liveB), true, "rockGod slice is JSON-safe");
 }
 
 // -- Phase 8 (partial): cross-system determinism / replay proof ----------------

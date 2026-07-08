@@ -82,14 +82,28 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
     eventSpaces: null, // Phase 6
     unsurePool: null,  // Phase 5 — fan economy
     battle: null,      // Phase 3/4 — combat + riff-off (results only, no timers)
-    rockGod: null,     // Phase 6
-    // ── Phase 6b: stage FX (deck + fired thresholds authoritative) ──
-    // Active-effect state (smoke/laser/pyro/animatronics) is still React-owned
-    // and folds in with the remaining 6b/6d slices.
+    // ── Phase 6c: Rock God (engine-owned) ──
+    rockGod: {
+      summoned: false,      // one god per game, ever (was the client godSummonedRef)
+      god: null,            // { id, num, hp, maxHp, winded, telegraph, lastAttack }
+      outcome: null,        // null | 'spirits' | 'god' (was the client bossOutcome)
+      lastPick: null,       // report: GOD_ATTACK_PICKED { godId, attackId }
+      lastHit: null,        // report: GOD_DAMAGED { spiritId, dmg, defeated }
+      lastAct: null,        // report: GOD_ACTED (see systems/rockGod.js)
+      lastTimerExpiry: null,// report: GOD_TIMER_EXPIRED { spiritId }
+    },
+    // ── Phase 6b: stage FX (fully engine-owned) ──
     stageFx: {
-      deck: stageFxDeck, // seeded draw order
-      fired: [],         // thresholds fired, in firing order (was the client firedRef Set)
-      lastDraw: null,    // report of the latest STAGE_FX_DRAWN { threshold, fxId } (null on a dup)
+      deck: stageFxDeck,  // seeded draw order
+      fired: [],          // thresholds fired, in firing order (was the client firedRef Set)
+      smoke: null,        // 💨 { radius, roundsLeft } — cloud around the Limelight
+      laser: null,        // 🔺 { beams:[{axis,val,hexes}], roundsLeft } — re-patterns per round
+      pyro: null,         // 🎆 { phase:'arming'|'erupting', hexes:[nums], wave }
+      animatronics: [],   // 🤖 [{ key, num, turnsLeft }] — deterministic keys
+      lastDraw: null,       // report: STAGE_FX_DRAWN { threshold, fxId } (null on a dup)
+      lastActivation: null, // report: STAGE_FX_ACTIVATED { fxId, zapped }
+      lastTurnTick: null,   // report: STAGE_FX_TURN_TICKED { pyro, anim }
+      lastRoundTick: null,  // report: STAGE_FX_ROUND_TICKED { smoke, laser }
     },
     winner: null,      // Phase 3 — set by KO/win check
   };

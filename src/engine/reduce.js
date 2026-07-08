@@ -18,7 +18,9 @@ import {
   ATTACK_ROLLED, COUNTER_ROLLED,
   DAMAGE_APPLIED, KNOCKDOWN_RESOLVED, WINNER_DECLARED,
   NOTE_STATES_SYNCED, FAME_CHANGED, FANS_CHANGED, NOTE_SHEET_PATCHED, FANS_TICKED,
-  STAGE_FX_DRAWN, GOD_ATTACK_PICKED,
+  STAGE_FX_DRAWN, STAGE_FX_ACTIVATED, STAGE_FX_TURN_TICKED, STAGE_FX_ROUND_TICKED,
+  GOD_ATTACK_PICKED, GOD_SUMMONED, GOD_DAMAGED, GOD_ACTED,
+  GOD_DEFEATED, GOD_TRIUMPHED, GOD_TIMER_EXPIRED,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
 import {
@@ -36,8 +38,14 @@ import {
   applyRiffRound2Started, applyRiffClosed,
 } from "./systems/riffOff.js";
 import { applyNoteStatesSynced, applyFameChanged, applyFansChanged, applyNoteSheetPatched, applyFansTicked } from "./systems/economy.js";
-import { applyStageFxDrawn } from "./systems/stageFx.js";
-import { applyGodAttackPicked } from "./systems/rockGod.js";
+import {
+  applyStageFxDrawn, applyStageFxActivated,
+  applyStageFxTurnTicked, applyStageFxRoundTicked,
+} from "./systems/stageFx.js";
+import {
+  applyGodAttackPicked, applyGodSummoned, applyGodDamaged, applyGodActed,
+  applyGodDefeated, applyGodTriumphed, applyGodTimerExpired,
+} from "./systems/rockGod.js";
 
 /**
  * @param {object} state   plain-JSON GameState (never mutated)
@@ -94,9 +102,18 @@ function reduce(state, action, rng) {
 
     // ── Phase 6b: stage FX ──
     case STAGE_FX_DRAWN:         return applyStageFxDrawn(state, action);
+    case STAGE_FX_ACTIVATED:     return applyStageFxActivated(state, action, rng);
+    case STAGE_FX_TURN_TICKED:   return applyStageFxTurnTicked(state, action, rng);
+    case STAGE_FX_ROUND_TICKED:  return applyStageFxRoundTicked(state, action, rng);
 
     // ── Phase 6c: Rock God ──
     case GOD_ATTACK_PICKED:      return applyGodAttackPicked(state, action, rng);
+    case GOD_SUMMONED:           return applyGodSummoned(state, action);
+    case GOD_DAMAGED:            return applyGodDamaged(state, action);
+    case GOD_ACTED:              return applyGodActed(state, action, rng);
+    case GOD_DEFEATED:           return applyGodDefeated(state, action);
+    case GOD_TRIUMPHED:          return applyGodTriumphed(state);
+    case GOD_TIMER_EXPIRED:      return applyGodTimerExpired(state, action);
 
     default:
       // Unknown action = a bug (client/server version skew or a typo).

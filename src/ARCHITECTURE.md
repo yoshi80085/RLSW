@@ -107,7 +107,7 @@ The big component. Its internal sections (by banner):
 | `POINTS FLASH STATE` | 912 | Transient scoring flash. |
 | `BOARD DEPLOYABLES` | 919 | (Delegated to `hooks/useBoardState.js`.) |
 | `FAN ECONOMY` | 929 | (Delegated to `hooks/useFanEconomy.js`.) |
-| `EVENT SPACES STATE` | 942 | Event hex tracking + `STAGE EFFECTS` state (delegated to `hooks/useStageEffects.js`; ref mirror for async hazard checks). |
+| `EVENT SPACES STATE` | 942 | Event hex tracking + `STAGE EFFECTS` views (Phase 6b: active effects live in `engineState.stageFx`; only the banner remains in `hooks/useStageEffects.js` — the hazard ref mirror is gone, async checks read `engineRef`). |
 | `BOARD MINI-GOALS` | 963 | Lost Chords (Lighters were cut — see `ECONOMY_HANDOFF.md`). |
 | `RIFF STATE` | 982 | (Delegated to `hooks/useRiffState.js`.) |
 | `BGM SETUP` | 993 | Background-music playback effects. |
@@ -125,8 +125,8 @@ The big component. Its internal sections (by banner):
 | `EVENT SPACES SYSTEM` | 3315 | Event space resolution. |
 | `BACK TO THE PAST` | 3713 | Play-challenge mini-engine. |
 | `BATTLE SYSTEM` | 4040 | Combat entry point. |
-| `STAGE EFFECTS SYSTEM` | ~4330 | 🎇 Board Stage Effects: threshold check (called from `grantFame`), activation, per-turn/per-round ticks, `checkStageFxHex` hazard-entry damage, `isHiddenBySmoke`. |
-| `ROCK GOD SYSTEM` | ~4530 | 🤘 Endgame boss: `summonRockGod` (from `grantFame` when 25 FP is reached with a lead < `ROCK_GOD_RUNAWAY_LEAD`), `attackRockGod` (Drive = damage = FP 1:1, unamplified), `rockGodAct` end-of-turn AI (telegraph→resolve), the 45s turn-clock effects, `godDefeated`/`godTriumphs`. PvP is guarded off in `initiateSwing`/`initiateSonicAttack`/`resolveSmash`; `knockOut.checkWinner` is boss-aware (total wipe → God wins). Bots converge on the God via branches in `botPlanMove` + the acting step. |
+| `STAGE EFFECTS SYSTEM` | ~4330 | 🎇 Board Stage Effects — Phase 6b: the RULES (activation, per-turn/per-round ticks) are engine reducers; these functions dispatch and render the reports (logs/FX/damage timing). `checkStageFxHex` hazard-entry damage reads `engineRef.current.stageFx`; `isHiddenBySmoke` reads the view. |
+| `ROCK GOD SYSTEM` | ~4530 | 🤘 Endgame boss — Phase 6c: the god/outcome are ENGINE state; `summonRockGod` computes the god pick (amps are client) and dispatches `GOD_SUMMONED`; `attackRockGod` dispatches `GOD_DAMAGED` (engine owns winded ×2 + floor); `rockGodAct` dispatches `GOD_ACTED` and renders the report; the 45s clock stays client (expiry dispatches `GOD_TIMER_EXPIRED`); `godDefeated`/`godTriumphs` lock the engine outcome (+ `WINNER_DECLARED` shadow on the crowning). PvP is guarded off in `initiateSwing`/`initiateSonicAttack`/`resolveSmash`; `knockOut.checkWinner` is boss-aware (total wipe → God wins). Bots converge on the God via branches in `botPlanMove` + the acting step (reading `engineRef.current.rockGod.god`). |
 | `FAME POINTS` | 4051 | Fame award pipeline (`grantFame` also fires Stage Effect thresholds). |
 | `FAN ECONOMY HELPERS` | 4117 | Per-turn fan logic. |
 | `BATTLE KNOCKBACK` | 4294 | Knockback + Swing/Sonic attack. |
@@ -184,7 +184,7 @@ preview arrows).
 | `hexGeometry.js` | `pointyCorners`, `fanGesture`, `axialDist`, `axialNeighbors`, `facingAngle`, `getFlatTopNeighborSlots`, `angleTo`, `angleDiff`, `neighborInDirection` | Pure hex math. |
 | `ampRigs.js` | `ampLinked`, `ampMstEdges`, `computeAmpRigs` | Amp connectivity graph (MST + rig grouping). |
 | `boardHelpers.js` | `cornerFacing`, `advanceTurnQueue`, `makeBoardToken`, `hexRingFromCenter`, `crowdMultiplier`, `advanceHC` | Board utility functions. |
-| `stageFx.js` | `smokeHexNums`, `hexInSmoke`, `rollLaserBeams`, `hexInBeams`, `rollPyroHexes`, `spawnAnimatronics`, `animatronicStep` | 🎇 Stage Effects geometry: smoke rings, diagonal laser lines (constant r / constant s axes), pyro rolls, animatronic chase-step. |
+| `stageFx.js` | `smokeHexNums`, `hexInSmoke`, `rollLaserBeams`, `hexInBeams`, `rollPyroHexes`, `spawnAnimatronics`, `animatronicStep` | 🎇 Stage Effects geometry: smoke rings, diagonal laser lines (constant r / constant s axes), pyro rolls, animatronic chase-step. Phase 6b: the rollers take an injectable `rand` (engine passes its seeded rng); `spawnAnimatronics` takes a `keyBase` for deterministic keys. |
 | `rockGodFx.js` | `hexesWithin`, `slideLine`, `shoveAwayHex`, `nearestSpiritTo`, `freeNeighborHex` | 🤘 Rock God boss geometry: AoE rings, Power Slide line, Mosh shove, spawn displacement. |
 
 ### `data/` — pure game data
@@ -230,8 +230,8 @@ preview arrows).
 | `systems/riffOff.js` | `applyRiffOffStarted/ResultsSubmitted/Resolved/Round2Started/Closed`, `riffStats`, `RIFF_GRADE_WEIGHT/MARGIN_SCALE/TIE_EPS` | 🎸 Phase 4: riff data + verdict. Generates riffs/glitches/ghosts on engine rng; clients submit results arrays; verdict math incl. Round-2 fallback. `Game` imports `riffStats` from here (single source of truth). 🎸 Phase 3e: the verdict now carries `damage` (`tie?0:marginToDamage(margin+round2bonus)`, imported from `systems/combat.js`) so the client reads it instead of re-deriving — one source, no drift. Damage *application* still client until the 3c ownership flip. |
 | `systems/economy.js` | `usedHas/usedList/usedAdd`, `performanceScore`, `makeInitialNoteState`, `applyNoteStatesSynced`, `applyFameChanged`, `applyFansChanged` (+`FAN_FIELDS`), `applyNoteSheetPatched`, `applyFansTicked` | 💰 Phase 5a: `usedStockIdx` Set→array helpers + the pure Performance-Score-P kernel. Phase 5c: the engine BUILDS + OWNS `noteStates` (seeded `"noteStatesInit"` fork; single-source `makeInitialNoteState`), and the semantic write layer: `FAME_CHANGED` (signed delta, floored at 0), `FANS_CHANGED` (whitelisted fan-field patch — `FAN_FIELDS` guards fame/skills/notes), `NOTE_SHEET_PATCHED` (the shim's generic per-spirit diff action). Phase 5d: `FANS_TICKED` — the end-of-turn fan tick as an engine RULE (zone derived from the engine's spirit position; boredom/lag/streaks; client report in `turn.lastFanTick`). |
 | `systems/skills.js` | `skillEligibility`, `ULTIMATE_PREREQS`, `THEORY_DISCORD_GRANTS`, `CQC_SWING_MAP` | 🎓 Phase 5b: pure skill-tree gating + grant tables — `botSkillEligible` and `setSkillTarget` share ONE gate. |
-| `systems/stageFx.js` | `applyStageFxDrawn` | 🎇 Phase 6b: `state.stageFx { deck, fired, lastDraw }` — deck seeded ONCE at init (`"stageFxDeck"` fork), `STAGE_FX_DRAWN` records each Fame threshold exactly-once and draws the next show (replaces the client deck + `firedRef` Set). Active effects still client. |
-| `systems/rockGod.js` | `applyGodAttackPicked` | 🤘 Phase 6c: `GOD_ATTACK_PICKED { godId, lastAttackId }` — the boss's weighted attack draw (no immediate repeat) on engine rng; report in `state.rockGod.lastPick`. God HP/telegraph/timer still client. |
+| `systems/stageFx.js` | `applyStageFxDrawn`, `applyStageFxActivated`, `applyStageFxTurnTicked`, `applyStageFxRoundTicked` | 🎇 Phase 6b (FULL): `state.stageFx { deck, fired, smoke, laser, pyro, animatronics, lastDraw, lastActivation, lastTurnTick, lastRoundTick }` — deck seeded ONCE at init (`"stageFxDeck"` fork); `STAGE_FX_DRAWN` fires each threshold exactly-once; `STAGE_FX_ACTIVATED` creates the live effect (patterns/spawns on engine rng; deterministic animatronic keys); the TURN tick (pyro cadence + animatronic steps) and ROUND tick (smoke spread, laser re-pattern) are engine rules. Client renders the slices + plays cinematics/damage off the reports. |
+| `systems/rockGod.js` | `applyGodAttackPicked`, `applyGodSummoned`, `applyGodDamaged`, `applyGodActed`, `applyGodDefeated`, `applyGodTriumphed`, `applyGodTimerExpired` | 🤘 Phase 6c (FULL): `state.rockGod { summoned, god, outcome, lastPick, lastHit, lastAct, lastTimerExpiry }` — the boss IS engine state. `GOD_DAMAGED` owns the winded ×2 + HP floor; `GOD_ACTED` is the whole end-of-turn answer (telegraph resolve / winded recovery / weighted engine-rng open; mosh shoves move engine spirits). Boss clock stays client; expiry dispatches `GOD_TIMER_EXPIRED`. |
 | `selftest.mjs` | — | Headless test: `node src/engine/selftest.mjs`. Extend each phase. |
 
 **Phase 2 state ownership:** the engine owns `turnQueue`, `turn.{count, moveStepsLeft, actionTokenUsed, startedOnLimelight}`, and movement/facing *rules*. `Game` reads them via derived consts (`const moveStepsLeft = engineState.turn.moveStepsLeft`) and mutates them ONLY via `dispatch(...)`. React still owns the `spirits` array (combat writes vibe/KO/knockback); `dispatch(spiritsSynced(spirits))` bridges positions into the engine before `move`/`endTurn`/skip — the bridge dies in Phase 3.
@@ -255,8 +255,8 @@ They are pure state containers sharing `Game`'s component instance.
 | `useBoardState.js` | Amps, board cards + respawn counter, pending pickup, roadie actions. |
 | `useTransientFx.js` | Knockback slides, respawn flashes, rumble, floating damage, status VFX. |
 | `useNoteSystem.js` | `noteStates` — the core per-spirit note-track map. |
-| `useStageEffects.js` | 🎇 Stage Effects slice: shuffled effect deck, fired-threshold ref, `smokeFx`/`laserFx`/`pyroFx`/`animatronics` state, activation banner. |
-| `useRockGod.js` | 🤘 Rock God slice: `rockGod` (hp/telegraph/winded), `bossOutcome`, boss turn-clock state, descent banner, summoned-once + async ref mirrors. |
+| `useStageEffects.js` | 🎇 Stage Effects slice — Phase 6b flip: ONLY the activation banner remains; deck/fired/active effects live in `engineState.stageFx`. |
+| `useRockGod.js` | 🤘 Rock God slice — Phase 6c flip: ONLY the boss turn-clock + descent banner remain; god/outcome/summoned live in `engineState.rockGod` (ref mirrors dissolved). |
 
 ### `ui/` — presentational components
 
@@ -312,7 +312,7 @@ Each takes everything via props. They hold **no game logic**.
 | Amp range / chaining | `data/gameConstants.js` → `AMP_RANGE`, `AMP_LINK_DIST` |
 | Skill tree / upgrades | `SKILL_TREE`, `DISCORD_UPGRADE_TIERS`, `SWING_UPGRADE_TIERS` (main file, module-level) |
 | 🎇 Stage Effects (thresholds, damage, durations) | `data/stageEffects.js` (tuning) + `STAGE EFFECTS SYSTEM` in `Game` (logic) + `board/stageFx.js` (geometry) + `ui/StageFXLayer.jsx` (visuals). NOTE: the old skill-based stage effects (laser_show/stage_light/fog_machine/pyrotechnics) are RETIRED — `getBattleSkillMods` now returns permanently-false flags so downstream battle/overlay code stays inert. |
-| 🤘 Rock God boss (trigger margin, HP, timer, attacks, taunts) | `data/rockGods.js` (all tuning) + `ROCK GOD SYSTEM` in `Game` (engine) + `board/rockGodFx.js` (geometry) + `ui/RockGodLayer.jsx` (visuals). New gods: add a full def to `ROCK_GODS`, list it in `ROCK_GOD_IMPLEMENTED`, and extend `rockGodAct` with its attack ids. |
+| 🤘 Rock God boss (trigger margin, HP, timer, attacks, taunts) | `data/rockGods.js` (all tuning) + `ROCK GOD SYSTEM` in `Game` (engine) + `board/rockGodFx.js` (geometry) + `ui/RockGodLayer.jsx` (visuals). New gods: add a full def to `ROCK_GODS`, list it in `ROCK_GOD_IMPLEMENTED`, and extend `applyGodActed` (engine/systems/rockGod.js) + the `rockGodAct` report renderer with its attack ids. |
 | Event spaces | `data/events.js` + `EVENT SPACES SYSTEM` in `Game` |
 | Trivia questions | `data/trivia.js` |
 | Riff-off feel (length, timing window) | `RIFF_LEN`, `RIFF_NOTE_WINDOW` (main file, module-level) |
