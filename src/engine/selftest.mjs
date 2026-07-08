@@ -18,6 +18,9 @@ import {
   stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked,
   godAttackPicked, godSummoned, godDamaged, godActed,
   godDefeated, godTriumphed, godTimerExpired,
+  spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed,
+  eventRespawnTicked, eventHexSpawned, chargeZonesTicked,
+  eventHexTriggered, tokenPickedUp, chargeZoneUsed, flamingHexesSet,
 } from "./actions.js";
 import { snapshot, restore, replay, assertJsonSafe } from "./serialize.js";
 import {
@@ -39,6 +42,7 @@ import {
 import {
   LIMELIGHT_HEX, UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT,
   FAN_BORED_AFTER, FAN_DECAY,
+  TOKEN_MAX, EVENT_RESPAWN_TURNS, CHARGE_ZONE_COOLDOWN,
 } from "../data/gameConstants.js";
 import { hexRingFromCenter } from "../board/boardHelpers.js";
 import { HEX_BY_NUM, EDGE_HEX_NUMS } from "../board/hexMap.js";
@@ -1588,6 +1592,126 @@ const config = {
   const tail = replay(restore(midSnap), log.slice(5));
   assert.equal(snapshot(tail), snapshot(final), "6d: snapshot/restore/replay-tail matches");
 
+  // JSON-safe
+  assertJsonSafe(final);
+}
+
+// -- Phase 6a: board semantic actions -------------------------------------------
+{
+  const s0 = makeInitialState(config, 7070);
+
+  // SPOTLIGHT_HEALED — spirit on the spotlight hex gets +1 Vibe
+  const spotHex = s0.board.spotlightHex;
+  const onSpot = applyAction(s0, spiritsSynced(
+    s0.spirits.map(x => x.id === "wildaxe" ? { ...x, num: spotHex, vibe: 3, maxVibe: 8, knockedOut: false } : x)));
+  const healed = applyAction(onSpot, spotlightHealed("wildaxe"));
+  assert.equal(healed.spirits.find(s => s.id === "wildaxe").vibe, 4, "SPOTLIGHT_HEALED: +1 Vibe");
+  assert.deepEqual(healed.board.lastSpotlightHeal, { spiritId: "wildaxe" }, "report written");
+  // Off-spotlight: no heal
+  const offSpot = applyAction(s0, spotlightHealed("wildaxe"));
+  assert.equal(offSpot.board.lastSpotlightHeal, null, "off-spotlight → null report");
+  assert.equal(offSpot.rng.cursor, s0.rng.cursor, "SPOTLIGHT_HEALED consumes no rng");
+
+  // SPOTLIGHT_MOVED — moves to a new hex on engine rng
+  const moved = applyAction(s0, spotlightMoved([]));
+  assert.notEqual(moved.board.spotlightHex, s0.board.spotlightHex, "spotlight moved");
+  assert.ok(moved.board.lastSpotlightMove, "report written");
+  assert.equal(moved.board.lastSpotlightMove.from, s0.board.spotlightHex, "report.from correct");
+  assert.ok(moved.rng.cursor > s0.rng.cursor, "SPOTLIGHT_MOVED consumes rng");
+
+  // TOKENS_SCATTERED — adds tokens on engine rng (up to TOKEN_MAX)
+  // Deplete some tokens first so the scatter has room to add
+  const depleted1 = applyAction(applyAction(s0,
+    tokenPickedUp("wildaxe", s0.board.boardTokens[0].num)),
+    tokenPickedUp("wildaxe", s0.board.boardTokens[1].num));
+  const scattered = applyAction(depleted1, tokensScattered([]));
+  assert.ok(scattered.board.boardTokens.length > depleted1.board.boardTokens.length, "tokens added");
+  assert.ok(scattered.rng.cursor > depleted1.rng.cursor, "TOKENS_SCATTERED consumes rng");
+
+  // TOKEN_PICKED_UP — removes the token
+  const tok0 = s0.board.boardTokens[0];
+  const picked = applyAction(s0, tokenPickedUp("wildaxe", tok0.num));
+  assert.equal(picked.board.boardTokens.length, s0.board.boardTokens.length - 1, "one token removed");
+  assert.ok(!picked.board.boardTokens.find(t => t.num === tok0.num), "correct token gone");
+  assert.equal(picked.rng.cursor, s0.rng.cursor, "TOKEN_PICKED_UP consumes no rng");
+
+  // EVENT_HEX_TRIGGERED — removes hex, sets respawn timer
+  const evHex = s0.board.eventHexes[0];
+  const triggered = applyAction(s0, eventHexTriggered("wildaxe", evHex));
+  assert.ok(!triggered.board.eventHexes.includes(evHex), "event hex consumed");
+  assert.equal(triggered.board.eventRespawnIn, EVENT_RESPAWN_TURNS, "respawn timer set");
+
+  // EVENT_RESPAWN_TICKED — decrements counter
+  const withTimer = applyAction(s0, eventHexTriggered("wildaxe", evHex));
+  const ticked = applyAction(withTimer, eventRespawnTicked());
+  assert.equal(ticked.board.eventRespawnIn, EVENT_RESPAWN_TURNS - 1, "counter decremented");
+  // No-op when already 0
+  assert.equal(applyAction(s0, eventRespawnTicked()).board.eventRespawnIn, 0, "0 stays 0");
+
+  // EVENT_HEX_SPAWNED — adds a new event hex on engine rng
+  const depleted = applyAction(applyAction(s0,
+    eventHexTriggered("wildaxe", s0.board.eventHexes[0])),
+    eventHexTriggered("wildaxe", s0.board.eventHexes[1] ?? s0.board.eventHexes[0]));
+  const spawned = applyAction(depleted, eventHexSpawned([]));
+  assert.ok(spawned.board.eventHexes.length > 0, "new event hex spawned");
+  assert.ok(spawned.board.lastEventRespawn, "report written");
+
+  // CHARGE_ZONE_USED — sets cooldown
+  const cz = s0.board.chargeZones[0];
+  const used = applyAction(s0, chargeZoneUsed("wildaxe", cz.num));
+  assert.equal(used.board.chargeZones.find(z => z.num === cz.num).cooldown, CHARGE_ZONE_COOLDOWN, "cooldown set");
+
+  // CHARGE_ZONES_TICKED — decrements cooldowns
+  const czTicked = applyAction(used, chargeZonesTicked());
+  assert.equal(czTicked.board.chargeZones.find(z => z.num === cz.num).cooldown, CHARGE_ZONE_COOLDOWN - 1, "cooldown decremented");
+
+  // FLAMING_HEXES_SET + FLAMING_DECAYED
+  const flamed = applyAction(s0, flamingHexesSet([10, 11, 12], 3));
+  assert.deepEqual(flamed.board.flamingHexes, { hexes: [10, 11, 12], roundsLeft: 3 }, "flames set");
+  const decayed = applyAction(flamed, flamingDecayed());
+  assert.equal(decayed.board.flamingHexes.roundsLeft, 2, "flames decay one round");
+  const expired = applyAction(applyAction(applyAction(flamed, flamingDecayed()), flamingDecayed()), flamingDecayed());
+  assert.deepEqual(expired.board.flamingHexes, { hexes: [], roundsLeft: 0 }, "flames expire and clear");
+  assert.ok(expired.board.lastFlamingDecay.expired, "expiry reported");
+}
+
+// -- Phase 6a: board action replay proof ----------------------------------------
+{
+  const s0 = makeInitialState({
+    spirits: [
+      { id: "a", name: "A", num: 1, color: "#f00", vibe: 6, maxVibe: 8 },
+      { id: "b", name: "B", num: 5, color: "#00f", vibe: 6, maxVibe: 8 },
+    ],
+    mode: "ffa", startingLives: 3,
+  }, 7777);
+
+  const log = [
+    gameInit(),
+    turnStarted("a"),
+    spotlightHealed("a"),
+    chargeZoneUsed("a", s0.board.chargeZones[0]?.num ?? 1),
+    tokenPickedUp("a", s0.board.boardTokens[0]?.num ?? 1),
+    eventHexTriggered("a", s0.board.eventHexes[0] ?? 1),
+    eventRespawnTicked(),
+    chargeZonesTicked(),
+    flamingHexesSet([10, 11], 2),
+    turnEnded(),
+    spotlightMoved([]),
+    tokensScattered([]),
+    flamingDecayed(),
+    eventHexSpawned([]),
+    turnStarted("b"),
+    debuffsTicked("b"),
+    turnEnded(),
+  ];
+
+  const final = replay(s0, log);
+  // Full replay
+  assert.equal(snapshot(replay(s0, log)), snapshot(final), "6a: full-log replay is byte-identical");
+  // Mid-log snapshot → restore → tail
+  const mid = replay(s0, log.slice(0, 8));
+  const tail = replay(restore(snapshot(mid)), log.slice(8));
+  assert.equal(snapshot(tail), snapshot(final), "6a: snapshot/restore/replay-tail matches");
   // JSON-safe
   assertJsonSafe(final);
 }

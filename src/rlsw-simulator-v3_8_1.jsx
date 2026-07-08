@@ -40,7 +40,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import React from "react";
 import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
 import { ampLinked, ampMstEdges, computeAmpRigs } from "./board/ampRigs.js";
-import { makeBoardToken, hexRingFromCenter, crowdMultiplier, advanceHC, SPOTLIGHT_POOL, EVENT_HEX_POOL } from "./board/boardHelpers.js";
+import { hexRingFromCenter, crowdMultiplier, advanceHC, SPOTLIGHT_POOL } from "./board/boardHelpers.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRiffMiss, playBeamClash, playBeamSurge, playBeamBreak, playFanPop } from "./audio/riffSfx.js";
 import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./riff/riffGeneration.js";
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset } from "./riff/fallingNotes.js";
@@ -56,7 +56,7 @@ import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn ro
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, boardSynced } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, tokenPickedUp, chargeZoneUsed, flamingHexesSet } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
@@ -246,7 +246,7 @@ import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
-// SPOTLIGHT_POOL + EVENT_HEX_POOL are now imported from board/boardHelpers.js
+// SPOTLIGHT_POOL is imported from board/boardHelpers.js (EVENT_HEX_POOL moved to engine)
 // (shared with the engine's makeInitialState for seeded placement).
 
 import { EVENT_DECK, EVENT_BY_ID } from "./data/events.js";
@@ -892,45 +892,20 @@ function Game({ gameState, onReturnToLobby }) {
     unsureFx, setUnsureFx,
     fanFx, setFanFx,
   } = useFanEconomy(SPOTLIGHT_POOL);
-  // ── SPOTLIGHT ── (ENGINE-owned — Phase 6a ownership flip) ──────────────────
-  // Engine owns spotlightHex (seeded init). Compat shim dispatches BOARD_SYNCED;
-  // sites migrate to SPOTLIGHT_HEALED / SPOTLIGHT_MOVED incrementally.
+  // ── SPOTLIGHT ── (ENGINE-owned — Phase 6a, fully migrated) ─────────────────
   const spotlightHex = engineState.board.spotlightHex;
-  const setSpotlightHex = (updater) => {
-    const cur = engineRef.current.board.spotlightHex;
-    const next = typeof updater === "function" ? updater(cur) : updater;
-    dispatch(boardSynced({ spotlightHex: next }));
-  };
   // 💥 Floating combat numbers (e.g. −2 ❤️) that drift up over an affected hex.
   const [damageFx, setDamageFx] = useState([]); // [{ key, hexNum, text, color }]
   // turnCount lives in the engine now (engineState.turn.count)
 
-  // ─── EVENT SPACES STATE ── (ENGINE-owned — Phase 6a ownership flip) ─────────
-  // Engine owns eventHexes, eventRespawnIn, flamingHexes (seeded init in
-  // makeInitialState → board slice). Compat shims dispatch BOARD_SYNCED; each
-  // site migrates to a semantic action (EVENT_HEX_TRIGGERED, …) incrementally.
+  // ─── EVENT SPACES STATE ── (ENGINE-owned — Phase 6a, fully migrated) ───────
   const eventHexes = engineState.board.eventHexes;
-  const setEventHexes = (updater) => {
-    const cur = engineRef.current.board.eventHexes;
-    const next = typeof updater === "function" ? updater(cur) : updater;
-    dispatch(boardSynced({ eventHexes: next }));
-  };
   // activeEvent: { spiritId, eventId, phase:'reveal'|'result', resultLines:[], rolls? }
   const [activeEvent, setActiveEvent] = useState(null);
   // 🧠 Trivia: questions already asked this game (no repeats until the pool is exhausted).
   const usedTriviaRef = useRef(new Set());
   const eventRespawnIn = engineState.board.eventRespawnIn;
-  const setEventRespawnIn = (updater) => {
-    const cur = engineRef.current.board.eventRespawnIn;
-    const next = typeof updater === "function" ? updater(cur) : updater;
-    dispatch(boardSynced({ eventRespawnIn: next }));
-  };
   const flamingHexes = engineState.board.flamingHexes;
-  const setFlamingHexes = (updater) => {
-    const cur = engineRef.current.board.flamingHexes;
-    const next = typeof updater === "function" ? updater(cur) : updater;
-    dispatch(boardSynced({ flamingHexes: next }));
-  };
 
   // ─── 🎇 STAGE EFFECTS ── (ENGINE-owned — Phase 6b full flip) ────────────────
   // Board hazards fired once each at ⭐8/16/24 — seeded deck, no repeats. The
@@ -962,30 +937,16 @@ function Game({ gameState, onReturnToLobby }) {
   // The fight is LIVE while the god stands and neither side has won.
   const rockGodActive = !!(rockGod && rockGod.hp > 0 && !bossOutcome && !winner);
 
-  // ─── BOARD MINI-GOALS — Lost Chords ── (ENGINE-owned — Phase 6a) ────────────
-  // Engine owns boardTokens (seeded init). Compat shim dispatches BOARD_SYNCED;
-  // sites migrate to TOKEN_PICKED_UP / TOKENS_SCATTERED incrementally.
+  // ─── BOARD MINI-GOALS — Lost Chords ── (ENGINE-owned — Phase 6a, migrated) ──
   const boardTokens = engineState.board.boardTokens;
-  const setBoardTokens = (updater) => {
-    const cur = engineRef.current.board.boardTokens;
-    const next = typeof updater === "function" ? updater(cur) : updater;
-    dispatch(boardSynced({ boardTokens: next }));
-  };
 
   // 🎵 pendingLostChordPickup: { spiritId, note, roninGreed } — waiting on the
   // add-to-Chord-Stack vs bank-it choice (skipped/auto-banked if the revoice's
   // already spent this turn). See ECONOMY_HANDOFF.md.
   const [pendingLostChordPickup, setPendingLostChordPickup] = useState(null);
 
-  // ─── CHARGE ZONES ── (ENGINE-owned — Phase 6a) ──────────────────────────────
-  // Engine owns chargeZones (seeded init). Compat shim dispatches BOARD_SYNCED;
-  // sites migrate to CHARGE_ZONE_USED / CHARGE_ZONES_TICKED incrementally.
+  // ─── CHARGE ZONES ── (ENGINE-owned — Phase 6a, fully migrated) ─────────────
   const chargeZones = engineState.board.chargeZones;
-  const setChargeZones = (updater) => {
-    const cur = engineRef.current.board.chargeZones;
-    const next = typeof updater === "function" ? updater(cur) : updater;
-    dispatch(boardSynced({ chargeZones: next }));
-  };
   // chargeChoicePending: { spiritId, num } — Overcharge unlocked, waiting on the
   // die-tier-boost vs chord-assist choice.
   const [chargeChoicePending, setChargeChoicePending] = useState(null);
@@ -3354,25 +3315,6 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   // ─── EVENT SPACES SYSTEM ─────────────────────────────────────────────────────
-  // Spawn a fresh marquee hex at a random unoccupied spot
-  function spawnEventHex() {
-    setEventHexes(prev => {
-      if (prev.length >= 2) return prev;   // max 2 marquee hexes lit at once — no pile-up
-      const occupied = new Set([
-        ...spirits.filter(s => !s.knockedOut).map(s => s.num),
-        ...amps.map(a => a.hexNum),
-        ...boardCards.map(c => c.hexNum),
-        ...chargeZones.map(z => z.num),
-        ...prev,
-        spotlightHex,
-      ]);
-      const pool = EVENT_HEX_POOL.filter(n => !occupied.has(n));
-      if (pool.length === 0) return prev;
-      const pick = pool[Math.floor(Math.random() * pool.length)];
-      addLog(`🎪 A new marquee hex lights up at #${pick}!`);
-      return [...prev, pick];
-    });
-  }
 
   // 🧠 Pick a fresh trivia question — no repeats until the whole pool is used.
   function pickTrivia() {
@@ -3405,8 +3347,7 @@ function Game({ gameState, onReturnToLobby }) {
     const q = pickTrivia();
     if (!q) return;
     // Marquee burns out — a new one lights up after the cooldown
-    setEventHexes(prev => prev.filter(n => n !== hexNum));
-    setEventRespawnIn(EVENT_RESPAWN_TURNS);
+    dispatch(eventHexTriggered(spiritId, hexNum));
     addLog(`🎪 ${spirit?.name} steps on a marquee hex — 🎤 ROCK TRIVIA! (${q.era})`);
     if (isBot(spirit)) {
       // Bots can't "know" trivia — fair fixed odds, resolved instantly, no modal.
@@ -3447,7 +3388,7 @@ function Game({ gameState, onReturnToLobby }) {
   function checkTokenPickup(spiritId, hexNum) {
     const tok = boardTokens.find(t => t.num === hexNum);
     if (!tok) return;
-    setBoardTokens(prev => prev.filter(t => t.num !== hexNum));
+    dispatch(tokenPickedUp(spiritId, hexNum));
     // 🗡️ SHREDDING RONIN — the virtuoso finds more music in it: ~50% of the time he
     // pockets a SECOND (fresh in-scale) note from the same find. Roll once, here.
     const roninGreed = spiritId === 'cosmic_ronin' && Math.random() < 0.5;
@@ -3569,7 +3510,7 @@ function Game({ gameState, onReturnToLobby }) {
   function checkChargeZonePickup(spiritId, hexNum) {
     const zone = chargeZones.find(z => z.num === hexNum && (z.cooldown ?? 0) <= 0);
     if (!zone) return;
-    setChargeZones(prev => prev.map(z => z.num === hexNum ? { ...z, cooldown: CHARGE_ZONE_COOLDOWN } : z));
+    dispatch(chargeZoneUsed(spiritId, hexNum));
     const overcharged = (noteStates[spiritId]?.unlockedSkills ?? []).includes('overcharge');
     if (overcharged) {
       const sp = spirits.find(s => s.id === spiritId);
@@ -3638,7 +3579,7 @@ function Game({ gameState, onReturnToLobby }) {
         const idx = Math.floor(Math.random() * pool.length);
         discs.push(pool.splice(idx, 1)[0]);
       }
-      setFlamingHexes({ hexes: discs, roundsLeft: FLAMING_DISC_ROUNDS });
+      dispatch(flamingHexesSet(discs, FLAMING_DISC_ROUNDS));
       lines.push(`🔥 ${discs.length} flaming discs crash down on hexes ${discs.map(n => '#' + n).join(', ')}.`);
       lines.push(`They burn for ${FLAMING_DISC_ROUNDS} full rounds — entering one costs 1 Vibe.`);
       addLog(`🔥💿 DISCO INFERNO — ${discs.length} flaming discs litter the board for ${FLAMING_DISC_ROUNDS} rounds!`);
@@ -5715,10 +5656,11 @@ function Game({ gameState, onReturnToLobby }) {
     const hasSunbeam = attacker.id === 'intergalactic_0' && atkSkills.includes('sunbeam');
     if (hasSunbeam) {
       const scorched = [...getSonicBeam(attacker)];
-      setFlamingHexes(prev => ({
-        hexes: [...new Set([...(prev.hexes ?? []), ...scorched])],
-        roundsLeft: Math.max(prev.roundsLeft ?? 0, 2),
-      }));
+      {
+        const prev = engineRef.current.board.flamingHexes;
+        const merged = [...new Set([...(prev.hexes ?? []), ...scorched])];
+        dispatch(flamingHexesSet(merged, Math.max(prev.roundsLeft ?? 0, 2)));
+      }
       addLog(`☀️🔥 SUNBEAM scorches the stage — ${scorched.length} hex${scorched.length !== 1 ? 'es' : ''} burn for 2 rounds!`);
     }
 
@@ -6665,55 +6607,49 @@ function Game({ gameState, onReturnToLobby }) {
     // Positional boredom: fans drift only after lingering on the outer edge; tick recovery lag.
     tickFans(acting.id, acting.num);
 
-    // ── SPOTLIGHT HEAL CHECK ──────────────────────────────────────────────────
-    if (acting.num === spotlightHex && !acting.knockedOut) {
-      setSpirits(prev => prev.map(sp =>
-        sp.id === acting.id
-          ? { ...sp, vibe: Math.min(sp.maxVibe, (sp.vibe ?? 0) + 1) }
-          : sp
-      ));
-      addLog(`💡 ${s.name} steps into the spotlight — +1 Vibe!`);
+    // ── SPOTLIGHT HEAL CHECK (engine rule — Phase 6a) ──────────────────────────
+    // Engine owns the +1 Vibe heal (applySpotlightHealed checks position + KO).
+    {
+      dispatch(spotlightHealed(acting.id));
+      const healReport = engineRef.current.board.lastSpotlightHeal;
+      if (healReport) addLog(`💡 ${s.name} steps into the spotlight — +1 Vibe!`);
     }
 
-    // ── SPOTLIGHT MOVE: advance every full round (engine counts the turns) ──
+    // ── SPOTLIGHT MOVE: advance every full round (engine rng — Phase 6a) ─────
     if (report.roundCompleted) {
-      setSpotlightHex(prev => {
-        const occupied = new Set(spirits.map(sp => sp.num));
-        const pool = SPOTLIGHT_POOL.filter(n => n !== prev && !occupied.has(n));
-        const pick = pool[Math.floor(Math.random() * pool.length)];
-        addLog(`💡 The spotlight shifts to hex #${pick}!`);
-        return pick;
-      });
-      // ── BOARD TOKENS: scatter fresh Lost Chords each round (up to TOKEN_MAX) ──
-      setBoardTokens(prev => {
-        if (prev.length >= TOKEN_MAX) return prev;
-        const occupied = new Set([
+      {
+        const occupied = spirits.map(sp => sp.num);
+        dispatch(spotlightMoved(occupied));
+        const moveReport = engineRef.current.board.lastSpotlightMove;
+        if (moveReport) addLog(`💡 The spotlight shifts to hex #${moveReport.to}!`);
+      }
+      // ── BOARD TOKENS: scatter fresh Lost Chords each round (engine rng) ───
+      {
+        const occupied = [
           ...spirits.filter(sp => !sp.knockedOut).map(sp => sp.num),
           ...amps.map(a => a.hexNum),
           ...boardCards.map(c => c.hexNum),
           ...chargeZones.map(z => z.num),
-          ...eventHexes, ...prev.map(t => t.num), spotlightHex, LIMELIGHT_HEX,
-        ]);
-        const pool = ALL_HEXES.filter(h => !occupied.has(h.num)).map(h => h.num);
-        const out = [...prev];
-        for (let i = 0; i < 2 && out.length < TOKEN_MAX && pool.length > 0; i++) {
-          const k = Math.floor(Math.random() * pool.length);
-          out.push(makeBoardToken(pool.splice(k, 1)[0]));
+          ...eventHexes,
+          ...boardTokens.map(t => t.num),
+          spotlightHex, LIMELIGHT_HEX,
+        ];
+        dispatch(tokensScattered(occupied));
+        const scatterReport = engineRef.current.board.lastTokensScattered;
+        if (scatterReport) addLog(`🎵 Fresh Lost Chords appear across the stage!`);
+      }
+      // ── DISCO INFERNO: flames die down one round per full round (engine) ──
+      {
+        dispatch(flamingDecayed());
+        const flReport = engineRef.current.board.lastFlamingDecay;
+        if (flReport) {
+          if (flReport.expired) {
+            addLog(`🔥💿 The flaming discs finally burn out. The stage is clear!`);
+          } else {
+            addLog(`🔥💿 The discs still burn — ${flReport.roundsLeft} round${flReport.roundsLeft !== 1 ? 's' : ''} left.`);
+          }
         }
-        if (out.length > prev.length) addLog(`🎵 Fresh Lost Chords appear across the stage!`);
-        return out;
-      });
-      // ── DISCO INFERNO: flames die down one round per full round ──────────
-      setFlamingHexes(prev => {
-        if (prev.roundsLeft <= 0) return prev;
-        const left = prev.roundsLeft - 1;
-        if (left <= 0) {
-          addLog(`🔥💿 The flaming discs finally burn out. The stage is clear!`);
-          return { hexes: [], roundsLeft: 0 };
-        }
-        addLog(`🔥💿 The discs still burn — ${left} round${left !== 1 ? 's' : ''} left.`);
-        return { ...prev, roundsLeft: left };
-      });
+      }
       // ── 🎇 STAGE EFFECTS (per round): smoke spreads, lasers re-pattern ────
       tickStageFxRound();
     }
@@ -6735,16 +6671,24 @@ function Game({ gameState, onReturnToLobby }) {
     }
     addLog(`⏭ ${s.name} ends turn`);
 
-    // Event marquee respawn countdown
-    setEventRespawnIn(prev => {
-      if (prev <= 0) return 0;
-      const next = prev - 1;
-      if (next <= 0) {
-        setTimeout(() => spawnEventHex(), 60);
-        return 0;
-      }
-      return next;
-    });
+    // Event marquee respawn countdown (engine rule — Phase 6a)
+    dispatch(eventRespawnTicked());
+    if (engineRef.current.board.eventRespawnIn <= 0 && eventRespawnIn > 0) {
+      // Counter just hit 0 — spawn a new marquee hex (engine rng)
+      setTimeout(() => {
+        const occupied = [
+          ...engineRef.current.spirits.filter(sp => !sp.knockedOut).map(sp => sp.num),
+          ...amps.map(a => a.hexNum),
+          ...boardCards.map(c => c.hexNum),
+          ...engineRef.current.board.chargeZones.map(z => z.num),
+          ...engineRef.current.board.eventHexes,
+          engineRef.current.board.spotlightHex,
+        ];
+        dispatch(eventHexSpawned(occupied));
+        const evReport = engineRef.current.board.lastEventRespawn;
+        if (evReport) addLog(`🎪 A new marquee hex lights up at #${evReport.hexNum}!`);
+      }, 60);
+    }
 
     // Board card respawn countdown
     setCardRespawnIn(prev => {
@@ -6759,8 +6703,8 @@ function Game({ gameState, onReturnToLobby }) {
       return next;
     });
 
-    // ⚡ Charge zone cooldowns — tick down on any spirit's turn ending
-    setChargeZones(prev => prev.map(z => (z.cooldown ?? 0) > 0 ? { ...z, cooldown: z.cooldown - 1 } : z));
+    // ⚡ Charge zone cooldowns — engine rule (Phase 6a)
+    dispatch(chargeZonesTicked());
   }
 
   // ════════════════════════════════════════════════════════════════════════════
