@@ -1717,6 +1717,87 @@ const config = {
   assertJsonSafe(final);
 }
 
+// -- Phase 7a: bot policy pure functions ----------------------------------------
+{
+  // Import the policy module
+  const botMod = await import("./policies/bot.js");
+
+  // ── botAssignPersona ──
+  // First 4 bots get distinct personas
+  assert.equal(botMod.botAssignPersona([], 0.5), "maestro", "first bot gets maestro");
+  assert.equal(botMod.botAssignPersona(["maestro"], 0.5), "moshlord", "second gets moshlord");
+  assert.equal(botMod.botAssignPersona(["maestro","moshlord"], 0.5), "diva", "third gets diva");
+  assert.equal(botMod.botAssignPersona(["maestro","moshlord","diva"], 0.5), "saboteur", "fourth gets saboteur");
+  // 5th+ falls back to rng
+  const fifth = botMod.botAssignPersona(["maestro","moshlord","diva","saboteur"], 0.0);
+  assert.equal(fifth, "maestro", "5th bot picks by rng (floor(0.0 * 4) = 0 → maestro)");
+  const fifth2 = botMod.botAssignPersona(["maestro","moshlord","diva","saboteur"], 0.99);
+  assert.equal(fifth2, "saboteur", "5th bot picks by rng (floor(0.99 * 4) = 3 → saboteur)");
+
+  // ── botPickTarget ──
+  const ns = {
+    a: { fame: 10 }, b: { fame: 5 }, c: { fame: 15 },
+  };
+  const mkR = (id, vibe) => ({ id, vibe });
+  // Fame leader targeted first
+  assert.equal(botMod.botPickTarget([mkR("a",6), mkR("b",6), mkR("c",6)], ns).id, "c",
+    "targets highest-fame rival");
+  // Low-vibe kill priority over fame
+  assert.equal(botMod.botPickTarget([mkR("a",1), mkR("c",6)], ns).id, "a",
+    "targets low-vibe rival for the kill over fame leader");
+  // Empty → null
+  assert.equal(botMod.botPickTarget([], ns), null, "empty candidates → null");
+
+  // ── botHexScore ──
+  const fakeHex = { num: 10, q: 0, r: 0, edge: false };
+  const fakeCtx = {
+    p: botMod.BOT_PERSONALITIES.maestro,
+    center: { q: 0, r: 0 }, hurt: false, myFame: 0,
+    spot: null, tokens: [], events: [], rivals: [],
+  };
+  const score = botMod.botHexScore(fakeHex, fakeCtx);
+  assert.ok(typeof score === "number" && isFinite(score), "botHexScore returns a finite number");
+
+  // ── botSkillEligible ──
+  const fakeSkillById = {
+    fans_4eva: { id: "fans_4eva", routeId: "common", prereq: null },
+    theory_minor: { id: "theory_minor", routeId: "common", prereq: "theory_major" },
+  };
+  assert.ok(botMod.botSkillEligible("fans_4eva", [], "wildaxe", fakeSkillById),
+    "fans_4eva eligible with no prereqs");
+  assert.ok(!botMod.botSkillEligible("theory_minor", [], "wildaxe", fakeSkillById),
+    "theory_minor NOT eligible without theory_major");
+  assert.ok(botMod.botSkillEligible("theory_minor", ["theory_major"], "wildaxe", fakeSkillById),
+    "theory_minor eligible WITH theory_major");
+
+  // ── botPickSkillTarget ──
+  const pick = botMod.botPickSkillTarget("wildaxe", [], "maestro", fakeSkillById);
+  assert.equal(pick, "fans_4eva", "maestro's first eligible skill is fans_4eva");
+
+  // ── botRiffResults ──
+  // determinism: same rng sequence → same results
+  let cursor1 = 0, cursor2 = 0;
+  const s = makeInitialState(config, 4242);
+  const s1 = applyAction(s, randomBatchDrawn(30));
+  const batch1 = s1.lastRandomBatch;
+  const s2 = applyAction(s, randomBatchDrawn(30));
+  const batch2 = s2.lastRandomBatch;
+  const r1 = botMod.botRiffResults(10, () => batch1[cursor1++]);
+  const r2 = botMod.botRiffResults(10, () => batch2[cursor2++]);
+  assert.deepEqual(r1, r2, "botRiffResults: same rng → same results");
+  assert.equal(r1.length, 10, "botRiffResults: correct length");
+  for (const entry of r1) {
+    assert.ok(["hit","rt","grade","noteIdx"].every(k => k in entry),
+      "botRiffResults: entry has all required fields");
+    if (entry.hit) {
+      assert.ok(["perfect","good","ok"].includes(entry.grade), "grade ∈ {perfect,good,ok}");
+      assert.ok(typeof entry.rt === "number", "rt is a number for hits");
+    } else {
+      assert.equal(entry.grade, "miss", "non-hit grade is miss");
+    }
+  }
+}
+
 // -- Phase 6 remaining: RANDOM_BATCH_DRAWN — engine-sourced event rng ----------
 {
   const s = makeInitialState(config, 5050);

@@ -61,6 +61,13 @@ import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
 import { skillEligibility, THEORY_DISCORD_GRANTS, CQC_SWING_MAP } from "./engine/systems/skills.js";
+import {
+  BOT_PERSONALITIES, BOT_PERSONA_KEYS, BOT_SKILL_PRIORITY_BASE, BOT_SPIRIT_SKILLS,
+  SPIRIT_ONLY_ROUTE, BOT_RIFF_PROFILE,
+  botAssignPersona, botPickTarget as _botPickTarget, botHexScore as _botHexScore,
+  botSkillEligible as _botSkillEligible, botPickSkillTarget as _botPickSkillTarget,
+  botRiffResults as _botRiffResults,
+} from "./engine/policies/bot.js";
 
 
 // 🎟️ A fan = a sleek "pawn": a detached round head above a rounded-triangle body.
@@ -6750,42 +6757,15 @@ function Game({ gameState, onReturnToLobby }) {
   // and the turn keeps flowing (pivot → build → commit → move → act → end).
   const [botNudge, setBotNudge] = useState(0);
 
-  // ── 🤖 BOT PERSONALITIES ───────────────────────────────────────────────────
-  // Every bot plays to WIN — but via a different route, which also makes them a
-  // built-in way to test each strategy. A persona biases the build order, board
-  // movement and note strategy. move.* are weight multipliers (1.0 = neutral):
-  //   center   — pull toward centre-stage rings   rival — pull toward a fight
-  //   token    — pull toward Lost Chords/trivia
-  //   spotlight— pull toward the roaming spotlight  edgeFear — avoid the board edge
-  // note: 'musical' chases cadences, 'combat' welcomes a tritone, 'disrupt' arms
-  //   debuff endings (m7/tritone), 'clean' banks safe HC. All reserve a 5th/4th end.
-  const BOT_PERSONALITIES = {
-    maestro:  { name:'The Maestro',  emoji:'🎼', note:'musical',
-      blurb:'wins on pure musicianship — Theory, clean tracks, cadences & riffs.',
-      move:{ center:1.2, rival:0.4, token:1.4, spotlight:1.1, edgeFear:1.6 },
-      skillOrder:['theory_major','fans_4eva','theory_minor','amp_1','theory_dom7','fandom_army','theory_modes','amp_2','theory_chromatic','amp_3'] },
-    moshlord: { name:'The Mosh Lord', emoji:'🤘', note:'combat',
-      blurb:'pure aggression — CQC, hunts the wounded and the leader, swings for knockouts.',
-      move:{ center:1.0, rival:1.9, token:0.6, spotlight:0.8, edgeFear:0.5 },
-      skillOrder:['shank_skank','junkyard_dog','cosmic_boogaloo','fandom_army','moon_shuffle','amp_1','fans_4eva','amp_2','amp_3'] },
-    diva:     { name:'The Diva',     emoji:'✨', note:'clean',
-      blurb:'owns the spotlight — holds centre stage, works the crowd, grabs Lost Chords.',
-      move:{ center:1.9, rival:0.7, token:1.2, spotlight:1.4, edgeFear:1.2 },
-      skillOrder:['fans_4eva','fandom_army','amp_1','junkyard_dog','theory_major','pranksta','amp_2','theory_minor','amp_3'] },
-    saboteur: { name:'The Saboteur', emoji:'🪤', note:'disrupt', targetLeader:true,
-      blurb:'controls the board — amps & ranged Sonic, unplugs rivals, drains & staggers the leader.',
-      move:{ center:0.9, rival:1.1, token:0.8, spotlight:0.9, edgeFear:1.0 },
-      skillOrder:['amp_1','pranksta','theory_major','amp_2','theory_minor','fandom_army','theory_dom7','amp_3','theory_modes'] },
-  };
-  const BOT_PERSONA_KEYS = ['maestro','moshlord','diva','saboteur'];
+  // ── 🤖 BOT PERSONALITIES (moved to engine/policies/bot.js) ─────────────────
   const botPersonaRef = useRef({});
   // Assign each CPU a distinct persona on first sight and announce it in the log.
+  // Pure pick logic in engine/policies/bot.js; presentation + ref persist here.
   function botPersona(self) {
     const r = botPersonaRef.current;
     if (r[self.id]) return BOT_PERSONALITIES[r[self.id]];
-    const taken = new Set(Object.values(r));
-    const pick = BOT_PERSONA_KEYS.find(k => !taken.has(k))
-              ?? BOT_PERSONA_KEYS[Math.floor(Math.random() * BOT_PERSONA_KEYS.length)];
+    dispatch(randomBatchDrawn(1));
+    const pick = botAssignPersona(Object.values(r), engineRef.current.lastRandomBatch[0]);
     r[self.id] = pick;
     const P = BOT_PERSONALITIES[pick];
     addLog(`🤖 ${self.name} takes the stage as ${P.emoji} ${P.name} — ${P.blurb}`);
@@ -6794,58 +6774,13 @@ function Game({ gameState, onReturnToLobby }) {
 
   function isBot(sp) { return !!sp?.cpu; }
 
-  // Pick the juiciest rival to hit from a candidate list (already filtered to
-  // those it can actually reach). Priority: close a knockdown first, then lean on
-  // the Fame front-runner, then break ties on lowest Vibe. "Plays to win."
+  // Thin wrapper → pure policy function (engine/policies/bot.js)
   function botPickTarget(candidates, self) {
-    if (!candidates.length) return null;
-    return [...candidates].sort((a, b) => {
-      const ka = (a.vibe ?? 99) <= 2 ? 1 : 0;   // a finish is on the table
-      const kb = (b.vibe ?? 99) <= 2 ? 1 : 0;
-      if (ka !== kb) return kb - ka;
-      if (ka && kb)  return (a.vibe ?? 99) - (b.vibe ?? 99);
-      const fa = engineRef.current.noteStates?.[a.id]?.fame ?? 0;
-      const fb = engineRef.current.noteStates?.[b.id]?.fame ?? 0;
-      if (fb !== fa) return fb - fa;
-      return (a.vibe ?? 99) - (b.vibe ?? 99);
-    })[0];
+    return _botPickTarget(candidates, engineRef.current.noteStates);
   }
 
-  // Score a destination hex by everything that actually wins the game from a weak
-  // position: the roaming spotlight (+1 Vibe if you END your turn on it), Fame
-  // Sparks, marquee events, staying central (the outer ring bores fans off), and
-  // closing on a rival to fight for their crowd — extra for punching UP at the
-  // Fame leader (the underdog payoff) or finishing a wounded one.
-  function botHexScore(self, h, ctx) {
-    const m = ctx.p.move;                                   // persona movement weights
-    let s = 0;
-    const ring = hexRingFromCenter(h.num);
-    s += (ring === 'main' ? 16 : ring === 'pit' ? 12 : ring === 'floor' ? 3 : -14) * m.center;
-    // Smooth pull toward centre-stage: every step inward scores a little better, so a bot
-    // deep in a corner always has a downhill out — no more dead bots parked in the back ring.
-    if (ctx.center) s -= axialDist(h.q, h.r, ctx.center.q, ctx.center.r) * 0.8 * m.center;
-    if (h.edge) s -= 8 * m.edgeFear;                        // edges = knockback risk (deterrent, not a wall)
-    if (ctx.spot) {
-      if (h.num === ctx.spot.num) s += (ctx.hurt ? 80 : 14) * m.spotlight;
-      else s -= axialDist(h.q, h.r, ctx.spot.q, ctx.spot.r) * (ctx.hurt ? 9 : 1.5) * m.spotlight;
-    }
-    if (ctx.tokens.some(t => t.num === h.num)) s += 22 * m.token;
-    else if (ctx.tokens.length) s -= Math.min(...ctx.tokens.map(t => axialDist(h.q, h.r, t.q, t.r))) * 2 * m.token;
-    if (ctx.events.some(t => t.num === h.num)) s += 18 * m.token;
-    else if (ctx.events.length) s -= Math.min(...ctx.events.map(t => axialDist(h.q, h.r, t.q, t.r))) * 1.2 * m.token;
-    if (ctx.rivals.length) {
-      let best = -Infinity;
-      for (const rv of ctx.rivals) {
-        let w = 2.2 * m.rival;
-        if (rv.fame > ctx.myFame + 5) w += 1.6; // beat the leader → big underdog Fame
-        if ((rv.r.vibe ?? 9) <= 2)    w += 1.4; // finish a wounded rival → steal fans
-        if (ctx.hurt)                 w *= 0.5; // a little less reckless when low
-        best = Math.max(best, -axialDist(h.q, h.r, rv.h.q, rv.h.r) * w);
-      }
-      s += best;
-    }
-    return s;
-  }
+  // Thin wrapper → pure policy function (engine/policies/bot.js)
+  function botHexScore(self, h, ctx) { return _botHexScore(h, ctx); }
 
   // Decide the next step. Returns an adjacent free hex num to move to, or null to
   // HOLD position (when standing put already scores as well as any neighbour — e.g.
@@ -6897,38 +6832,14 @@ function Game({ gameState, onReturnToLobby }) {
     return best && best.s > here + 0.5 ? best.num : null;
   }
 
-  // ── SKILL-TREE PLANNING ───────────────────────────────────────────────────
-  // The build order the bot saves toward. Cheap, high-impact, easy-to-use skills
-  // come first: heal/disrupt crews, a permanent-Drive CQC opener, a Sonic amp,
-  // then passive battle edges, then deeper damage. Without this the bot never
-  // unlocks anything and stays a defenceless rookie all game.
-  const BOT_SKILL_PRIORITY_BASE = [
-    'fans_4eva', 'shank_skank', 'amp_1', 'junkyard_dog', 'fandom_army',
-    'theory_major', 'cosmic_boogaloo', 'amp_2', 'theory_minor', 'pranksta',
-    'moon_shuffle', 'theory_dom7', 'amp_3', 'theory_modes', 'theory_chromatic',
-  ];
-  // Exclusive-route passives, slotted in up front for the spirit that owns them.
-  const BOT_SPIRIT_SKILLS = {
-    cosmic_ronin:      ['psycho_bushido', 'e_rush'],
-    Metalness_Monster: ['azrael', 'master_moshpits', 'paranoia'],
-  };
-  const SPIRIT_ONLY_ROUTE = { shredding_ronin: 'cosmic_ronin', metalness: 'Metalness_Monster' };
-
-  // Mirror setSkillTarget's gating so a pick is never silently rejected (which
-  // would leave upgradesPending stuck and the bot spinning its wheels).
+  // ── SKILL-TREE PLANNING (constants + pure logic in engine/policies/bot.js) ──
   function botSkillEligible(skillId, unlocked, selfId) {
-    // Shared pure gate (engine/systems/skills.js) — same source the human overlay
-    // uses, so bot & player can never drift again.
-    const sk = SKILL_BY_ID[skillId];
-    return skillEligibility(sk, unlocked, {
-      ownerRoute: sk ? SPIRIT_ONLY_ROUTE[sk.routeId] : null, selfId,
-    }).ok;
+    return _botSkillEligible(skillId, unlocked, selfId, SKILL_BY_ID);
   }
   function botPickSkillTarget(self) {
     const unlocked = (engineRef.current.noteStates?.[self.id]?.unlockedSkills) ?? [];
-    const order = [...(BOT_SPIRIT_SKILLS[self.id] ?? []), ...(botPersona(self).skillOrder ?? []), ...BOT_SKILL_PRIORITY_BASE];
-    for (const id of order) if (botSkillEligible(id, unlocked, self.id)) return id;
-    return null;
+    const key = botPersonaRef.current[self.id] ?? (botPersona(self), botPersonaRef.current[self.id]);
+    return _botPickSkillTarget(self.id, unlocked, key, SKILL_BY_ID);
   }
 
   // Of the 6 facing directions, find the one that lands the most/juiciest rivals
@@ -7083,25 +6994,13 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`🎸 ${self.name} voices ${note} into the Chord Stack — ${ch.name} (⚔️${ch.drive} 🛡️${ch.sustain}).`);
   }
 
-  // 🎸 SYNTHETIC RIFF-OFF — a bot doesn't mash keys. When a riff-off involves a
-  // bot side, we generate that side's results array directly (the same shape
-  // riffStats consumes), drawn from a skill profile. `rt` is timing TIGHTNESS
-  // (ms off the strike line, like a human's falling-notes offset — lower is
-  // tighter), so the reaction tiebreak compares like against like.
-  const BOT_RIFF_PROFILE = { hitRate: 0.78, perfectRate: 0.30, goodRate: 0.40, rtPerfect: 45, rtGood: 170, rtOk: 330 };
+  // 🎸 SYNTHETIC RIFF-OFF — pure logic in engine/policies/bot.js; this wrapper
+  // threads engine rng via RANDOM_BATCH_DRAWN for replay determinism.
   function botRiffResults(len) {
-    const P = BOT_RIFF_PROFILE;
-    const out = [];
-    for (let i = 0; i < len; i++) {
-      if (Math.random() > P.hitRate) { out.push({ hit: false, rt: null, grade: 'miss', noteIdx: i }); continue; }
-      const r = Math.random();
-      let grade, rt;
-      if (r < P.perfectRate)            { grade = 'perfect'; rt = P.rtPerfect + Math.random() * 80; }
-      else if (r < P.perfectRate + P.goodRate) { grade = 'good'; rt = P.rtGood + Math.random() * 120; }
-      else                             { grade = 'ok';      rt = P.rtOk + Math.random() * 180; }
-      out.push({ hit: true, rt: Math.round(rt), grade, noteIdx: i });
-    }
-    return out;
+    dispatch(randomBatchDrawn(3 * len));
+    const batch = engineRef.current.lastRandomBatch;
+    let rC = 0;
+    return _botRiffResults(len, () => batch[rC++]);
   }
 
   // Reset the bot step-machine whenever a new spirit takes the turn.
