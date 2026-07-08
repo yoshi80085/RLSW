@@ -26,6 +26,7 @@ import {
   SPOTLIGHT_HEALED, SPOTLIGHT_MOVED, TOKENS_SCATTERED, FLAMING_DECAYED,
   EVENT_RESPAWN_TICKED, EVENT_HEX_SPAWNED, CHARGE_ZONES_TICKED,
   EVENT_HEX_TRIGGERED, TOKEN_PICKED_UP, CHARGE_ZONE_USED, FLAMING_HEXES_SET,
+  RANDOM_BATCH_DRAWN,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
 import {
@@ -146,6 +147,13 @@ function reduce(state, action, rng) {
     case CHARGE_ZONES_TICKED:    return applyChargeZonesTicked(state);
     case FLAMING_HEXES_SET:      return applyFlamingHexesSet(state, action);
     case FLAMING_DECAYED:        return applyFlamingDecayed(state);
+
+    // ── Phase 6 remaining: event resolution rng ──
+    case RANDOM_BATCH_DRAWN: {
+      const values = [];
+      for (let i = 0; i < action.count; i++) values.push(rng());
+      return { ...state, lastRandomBatch: values };
+    }
 
     default:
       // Unknown action = a bug (client/server version skew or a typo).

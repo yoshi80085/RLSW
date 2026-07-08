@@ -21,6 +21,7 @@ import {
   spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed,
   eventRespawnTicked, eventHexSpawned, chargeZonesTicked,
   eventHexTriggered, tokenPickedUp, chargeZoneUsed, flamingHexesSet,
+  randomBatchDrawn,
 } from "./actions.js";
 import { snapshot, restore, replay, assertJsonSafe } from "./serialize.js";
 import {
@@ -1713,6 +1714,71 @@ const config = {
   const tail = replay(restore(snapshot(mid)), log.slice(8));
   assert.equal(snapshot(tail), snapshot(final), "6a: snapshot/restore/replay-tail matches");
   // JSON-safe
+  assertJsonSafe(final);
+}
+
+// -- Phase 6 remaining: RANDOM_BATCH_DRAWN — engine-sourced event rng ----------
+{
+  const s = makeInitialState(config, 5050);
+  const c0 = s.rng.cursor;
+
+  // Drawing 0 values = no-op on rng
+  const s0 = applyAction(s, randomBatchDrawn(0));
+  assert.deepEqual(s0.lastRandomBatch, [], "0-draw yields empty array");
+  assert.equal(s0.rng.cursor, c0, "0-draw does not advance rng");
+
+  // Drawing 5 values → 5 floats in [0,1), rng cursor advances by 5
+  const s5 = applyAction(s, randomBatchDrawn(5));
+  assert.equal(s5.lastRandomBatch.length, 5, "5-draw yields 5 values");
+  assert.equal(s5.rng.cursor, c0 + 5, "5-draw advances rng by 5");
+  for (const v of s5.lastRandomBatch) {
+    assert.ok(typeof v === 'number' && v >= 0 && v < 1, `value ${v} is a [0,1) float`);
+  }
+
+  // Same seed + same count = same values (determinism)
+  const s5b = applyAction(s, randomBatchDrawn(5));
+  assert.deepEqual(s5b.lastRandomBatch, s5.lastRandomBatch, "same seed → same draw");
+
+  // Chained draws advance the cursor cumulatively
+  const s2 = applyAction(s5, randomBatchDrawn(3));
+  assert.equal(s2.rng.cursor, c0 + 5 + 3, "chained draws stack cursor");
+  // second batch differs from the first 3 of the first batch (different rng position)
+  const overlap = s2.lastRandomBatch.every((v, i) => v === s5.lastRandomBatch[i]);
+  assert.ok(!overlap, "subsequent draw produces different values");
+
+  // d6 usage: Math.floor(val * 6) + 1 ∈ [1,6]
+  const sDice = applyAction(s, randomBatchDrawn(100));
+  const dice = sDice.lastRandomBatch.map(v => Math.floor(v * 6) + 1);
+  assert.ok(dice.every(d => d >= 1 && d <= 6), "all d6 conversions ∈ [1,6]");
+
+  // Replay proof: RANDOM_BATCH_DRAWN in the action log replays identically
+  const s0r = makeInitialState({
+    spirits: [
+      { id: "a", name: "A", num: 1, color: "#f00", vibe: 6, maxVibe: 8 },
+      { id: "b", name: "B", num: 5, color: "#00f", vibe: 6, maxVibe: 8 },
+    ],
+    mode: "ffa", startingLives: 3,
+  }, 9090);
+
+  const log = [
+    gameInit(),
+    randomBatchDrawn(4),
+    turnStarted("a"),
+    randomBatchDrawn(6),
+    spotlightHealed("a"),
+    turnEnded(),
+    spotlightMoved([]),
+    tokensScattered([]),
+    randomBatchDrawn(2),
+    turnStarted("b"),
+    turnEnded(),
+  ];
+
+  const final = replay(s0r, log);
+  assert.equal(snapshot(replay(s0r, log)), snapshot(final), "event rng: full-log replay is byte-identical");
+  const mid = replay(s0r, log.slice(0, 5));
+  const tail = replay(restore(snapshot(mid)), log.slice(5));
+  assert.equal(snapshot(tail), snapshot(final), "event rng: snapshot/restore/replay-tail matches");
   assertJsonSafe(final);
 }
 

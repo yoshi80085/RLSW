@@ -56,7 +56,7 @@ import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn ro
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, tokenPickedUp, chargeZoneUsed, flamingHexesSet } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
@@ -3317,11 +3317,12 @@ function Game({ gameState, onReturnToLobby }) {
   // ─── EVENT SPACES SYSTEM ─────────────────────────────────────────────────────
 
   // 🧠 Pick a fresh trivia question — no repeats until the whole pool is used.
-  function pickTrivia() {
+  // `rngVal` is a pre-drawn [0,1) engine rng value for deterministic selection.
+  function pickTrivia(rngVal) {
     const used = usedTriviaRef.current;
     let pool = TRIVIA_QUESTIONS.filter(q => !used.has(q.id));
     if (pool.length === 0) { used.clear(); pool = TRIVIA_QUESTIONS; }
-    const q = pool[Math.floor(Math.random() * pool.length)];
+    const q = pool[Math.floor(rngVal * pool.length)];
     used.add(q.id);
     return q;
   }
@@ -3344,14 +3345,17 @@ function Game({ gameState, onReturnToLobby }) {
     if (!eventHexes.includes(hexNum)) return;
     if (activeEvent) return; // one at a time
     const spirit = spirits.find(s => s.id === spiritId);
-    const q = pickTrivia();
+    // Pre-draw engine rng: [0] for trivia pick, [1] for bot odds (wasted for humans)
+    dispatch(randomBatchDrawn(2));
+    const triviaRng = engineRef.current.lastRandomBatch;
+    const q = pickTrivia(triviaRng[0]);
     if (!q) return;
     // Marquee burns out — a new one lights up after the cooldown
     dispatch(eventHexTriggered(spiritId, hexNum));
     addLog(`🎪 ${spirit?.name} steps on a marquee hex — 🎤 ROCK TRIVIA! (${q.era})`);
     if (isBot(spirit)) {
       // Bots can't "know" trivia — fair fixed odds, resolved instantly, no modal.
-      const got = Math.random() < (TRIVIA_BOT_ODDS[q.difficulty] ?? 0.5);
+      const got = triviaRng[1] < (TRIVIA_BOT_ODDS[q.difficulty] ?? 0.5);
       if (got) {
         const reward = TRIVIA_REWARD[q.difficulty] ?? 3;
         gainFansFromDeed(spiritId, reward, '🧠 Trivia');
@@ -3565,7 +3569,22 @@ function Game({ gameState, onReturnToLobby }) {
     const ns     = noteStates[spiritId] ?? {};
     const lines  = [];
     let rolls    = null;
-    const d6 = () => Math.floor(Math.random() * 6) + 1;
+    // ── Pre-draw engine rng for deterministic event resolution ──
+    const alive = spirits.filter(s => !s.knockedOut);
+    const rngNeeded = eventId === 'disco_inferno' ? FLAMING_DISC_COUNT
+      : eventId === 'satanic_panic' ? alive.length
+      : eventId === 'seance_27' ? 8   // 1 d6 + up to 7 shuffle values
+      : eventId === 'stage_dive' ? 2
+      : (eventId === 'bat_snack' || eventId === 'payola') ? 1
+      : 0;
+    let rCursor = 0;
+    let batch = [];
+    if (rngNeeded > 0) {
+      dispatch(randomBatchDrawn(rngNeeded));
+      batch = engineRef.current.lastRandomBatch;
+    }
+    const rng01 = () => batch[rCursor++];
+    const d6 = () => Math.floor(rng01() * 6) + 1;
 
     if (eventId === 'disco_inferno') {
       const occupied = new Set([
@@ -3576,7 +3595,7 @@ function Game({ gameState, onReturnToLobby }) {
       const pool = ALL_HEXES.filter(h => !occupied.has(h.num)).map(h => h.num);
       const discs = [];
       for (let i = 0; i < FLAMING_DISC_COUNT && pool.length > 0; i++) {
-        const idx = Math.floor(Math.random() * pool.length);
+        const idx = Math.floor(rng01() * pool.length);
         discs.push(pool.splice(idx, 1)[0]);
       }
       dispatch(flamingHexesSet(discs, FLAMING_DISC_ROUNDS));
@@ -3668,12 +3687,15 @@ function Game({ gameState, onReturnToLobby }) {
         lines.push(`+3 Harmonic Charge.`);
         addLog(`🕯️ The 27 Club answers ${spirit?.name}'s séance — +3 HC!`);
       } else if (roll === 1) {
+        // Pre-read shuffle values from the batch (drawn above; rCursor already past the d6)
+        const shuffleVals = batch.slice(rCursor, rCursor + 7);
+        rCursor += 7;
         setNoteStates(prev => {
           const cur = prev[spiritId] ?? {};
           if (cur.stagger) return prev;
           const slots = Array.from({ length: 8 }, (_, i) => i);
           for (let i = slots.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
+            const j = Math.floor(shuffleVals[slots.length - 1 - i] * (i + 1));
             [slots[i], slots[j]] = [slots[j], slots[i]];
           }
           // turnsLeft: 2 — this stagger is applied mid-way through the spirit's

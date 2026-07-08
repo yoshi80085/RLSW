@@ -488,3 +488,14 @@ export const FLAMING_HEXES_SET = "FLAMING_HEXES_SET";
 export function flamingHexesSet(hexes, rounds) {
   return { type: FLAMING_HEXES_SET, hexes, rounds };
 }
+
+// ── Phase 6 remaining: event resolution rng ─────────────────────────────────
+// Generic "draw N raw random values from the engine rng" action. The client
+// dispatches this BEFORE event resolution (resolveActiveEvent / pickTrivia / bot
+// trivia odds) and reads the drawn [0,1) floats off `state.lastRandomBatch`.
+// Every draw is in the action log → replay-deterministic. The client turns them
+// into d6 / pool-picks / odds checks as needed.
+export const RANDOM_BATCH_DRAWN = "RANDOM_BATCH_DRAWN";
+export function randomBatchDrawn(count) {
+  return { type: RANDOM_BATCH_DRAWN, count };
+}
