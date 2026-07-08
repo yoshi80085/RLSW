@@ -40,7 +40,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import React from "react";
 import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
 import { ampLinked, ampMstEdges, computeAmpRigs } from "./board/ampRigs.js";
-import { makeBoardToken, hexRingFromCenter, crowdMultiplier, advanceHC } from "./board/boardHelpers.js";
+import { makeBoardToken, hexRingFromCenter, crowdMultiplier, advanceHC, SPOTLIGHT_POOL, EVENT_HEX_POOL } from "./board/boardHelpers.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRiffMiss, playBeamClash, playBeamSurge, playBeamBreak, playFanPop } from "./audio/riffSfx.js";
 import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./riff/riffGeneration.js";
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset } from "./riff/fallingNotes.js";
@@ -56,7 +56,7 @@ import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn ro
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, boardSynced } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
@@ -246,17 +246,8 @@ import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
-const SPOTLIGHT_POOL = ALL_HEXES
-  .filter(h => !h.edge && h.num !== 56)
-  .map(h => h.num);
-
-// ── EVENT SPACES ─────────────────────────────────────────────────────────────
-// Marquee hexes scattered on the board. Step on one to rip a card from rock
-// history — board chaos, buffs, curses, dice duels, and community rolls.
-// A triggered event hex burns out and a new one lights up elsewhere.
-const EVENT_HEX_POOL  = ALL_HEXES
-  .filter(h => !h.edge && h.num !== LIMELIGHT_HEX)
-  .map(h => h.num);
+// SPOTLIGHT_POOL + EVENT_HEX_POOL are now imported from board/boardHelpers.js
+// (shared with the engine's makeInitialState for seeded placement).
 
 import { EVENT_DECK, EVENT_BY_ID } from "./data/events.js";
 
@@ -900,32 +891,46 @@ function Game({ gameState, onReturnToLobby }) {
     unsurePool, setUnsurePool,
     unsureFx, setUnsureFx,
     fanFx, setFanFx,
-    spotlightHex, setSpotlightHex,
   } = useFanEconomy(SPOTLIGHT_POOL);
+  // ── SPOTLIGHT ── (ENGINE-owned — Phase 6a ownership flip) ──────────────────
+  // Engine owns spotlightHex (seeded init). Compat shim dispatches BOARD_SYNCED;
+  // sites migrate to SPOTLIGHT_HEALED / SPOTLIGHT_MOVED incrementally.
+  const spotlightHex = engineState.board.spotlightHex;
+  const setSpotlightHex = (updater) => {
+    const cur = engineRef.current.board.spotlightHex;
+    const next = typeof updater === "function" ? updater(cur) : updater;
+    dispatch(boardSynced({ spotlightHex: next }));
+  };
   // 💥 Floating combat numbers (e.g. −2 ❤️) that drift up over an affected hex.
   const [damageFx, setDamageFx] = useState([]); // [{ key, hexNum, text, color }]
   // turnCount lives in the engine now (engineState.turn.count)
 
-  // ─── EVENT SPACES STATE ──────────────────────────────────────────────────────
-  // eventHexes: hex numbers currently lit as marquee event spaces
-  const [eventHexes, setEventHexes] = useState(() => {
-    const startHexes = new Set(gameState.spirits.map(s => s.num));
-    const pool = EVENT_HEX_POOL.filter(n => !startHexes.has(n));
-    const picked = [];
-    for (let i = 0; i < EVENT_HEX_COUNT && pool.length > 0; i++) {
-      const idx = Math.floor(Math.random() * pool.length);
-      picked.push(pool.splice(idx, 1)[0]);
-    }
-    return picked;
-  });
+  // ─── EVENT SPACES STATE ── (ENGINE-owned — Phase 6a ownership flip) ─────────
+  // Engine owns eventHexes, eventRespawnIn, flamingHexes (seeded init in
+  // makeInitialState → board slice). Compat shims dispatch BOARD_SYNCED; each
+  // site migrates to a semantic action (EVENT_HEX_TRIGGERED, …) incrementally.
+  const eventHexes = engineState.board.eventHexes;
+  const setEventHexes = (updater) => {
+    const cur = engineRef.current.board.eventHexes;
+    const next = typeof updater === "function" ? updater(cur) : updater;
+    dispatch(boardSynced({ eventHexes: next }));
+  };
   // activeEvent: { spiritId, eventId, phase:'reveal'|'result', resultLines:[], rolls? }
   const [activeEvent, setActiveEvent] = useState(null);
   // 🧠 Trivia: questions already asked this game (no repeats until the pool is exhausted).
   const usedTriviaRef = useRef(new Set());
-  // eventRespawnIn: turns until a new marquee hex lights up after one is triggered (0 = none pending)
-  const [eventRespawnIn, setEventRespawnIn] = useState(0);
-  // flamingHexes: { hexes:[nums], roundsLeft } — Disco Inferno board hazard
-  const [flamingHexes, setFlamingHexes] = useState({ hexes: [], roundsLeft: 0 });
+  const eventRespawnIn = engineState.board.eventRespawnIn;
+  const setEventRespawnIn = (updater) => {
+    const cur = engineRef.current.board.eventRespawnIn;
+    const next = typeof updater === "function" ? updater(cur) : updater;
+    dispatch(boardSynced({ eventRespawnIn: next }));
+  };
+  const flamingHexes = engineState.board.flamingHexes;
+  const setFlamingHexes = (updater) => {
+    const cur = engineRef.current.board.flamingHexes;
+    const next = typeof updater === "function" ? updater(cur) : updater;
+    dispatch(boardSynced({ flamingHexes: next }));
+  };
 
   // ─── 🎇 STAGE EFFECTS ── (ENGINE-owned — Phase 6b full flip) ────────────────
   // Board hazards fired once each at ⭐8/16/24 — seeded deck, no repeats. The
@@ -957,46 +962,30 @@ function Game({ gameState, onReturnToLobby }) {
   // The fight is LIVE while the god stands and neither side has won.
   const rockGodActive = !!(rockGod && rockGod.hp > 0 && !bossOutcome && !winner);
 
-  // ─── BOARD MINI-GOALS — Lost Chords ───────────────────────────────────────────
-  // 🎵 Scattered tokens that give you a reason to roam: a Lost Chord drops a note
-  // into your stock (or, on pickup, straight into your Chord Stack — see
-  // resolveLostChordPickup). Lighters -- direct, unearned Fame -- were cut; see
-  // ECONOMY_HANDOFF.md. Charge zones (below) are their fixed-hex sibling objective.
-  const [boardTokens, setBoardTokens] = useState(() => {
-    const startHexes = new Set(gameState.spirits.map(s => s.num));
-    const pool = ALL_HEXES.filter(h => !startHexes.has(h.num) && h.num !== LIMELIGHT_HEX).map(h => h.num);
-    const picked = [];
-    for (let i = 0; i < TOKEN_MAX && pool.length > 0; i++) {
-      const idx = Math.floor(Math.random() * pool.length);
-      picked.push(makeBoardToken(pool.splice(idx, 1)[0]));
-    }
-    return picked;
-  });
+  // ─── BOARD MINI-GOALS — Lost Chords ── (ENGINE-owned — Phase 6a) ────────────
+  // Engine owns boardTokens (seeded init). Compat shim dispatches BOARD_SYNCED;
+  // sites migrate to TOKEN_PICKED_UP / TOKENS_SCATTERED incrementally.
+  const boardTokens = engineState.board.boardTokens;
+  const setBoardTokens = (updater) => {
+    const cur = engineRef.current.board.boardTokens;
+    const next = typeof updater === "function" ? updater(cur) : updater;
+    dispatch(boardSynced({ boardTokens: next }));
+  };
 
   // 🎵 pendingLostChordPickup: { spiritId, note, roninGreed } — waiting on the
   // add-to-Chord-Stack vs bank-it choice (skipped/auto-banked if the revoice's
   // already spent this turn). See ECONOMY_HANDOFF.md.
   const [pendingLostChordPickup, setPendingLostChordPickup] = useState(null);
 
-  // ─── CHARGE ZONES ───────────────────────────────────────────────────────────
-  // ⚡ Fixed lightning hexes, picked once at setup (unlike roaming Lost Chords —
-  // these don't move or disappear, they just cool down after use). Base pickup:
-  // a temporary die-tier boost (reuses "Goes to Eleven"/elevenTurns). With the
-  // Overcharge skill, the player instead gets a choice between that boost and a
-  // curated Chord Stack note + bonus revoice. See ECONOMY_HANDOFF.md.
-  const [chargeZones, setChargeZones] = useState(() => {
-    const startHexes = new Set(gameState.spirits.map(s => s.num));
-    const tokenHexes  = new Set(boardTokens.map(t => t.num));
-    const pool = ALL_HEXES
-      .filter(h => !startHexes.has(h.num) && h.num !== LIMELIGHT_HEX && !tokenHexes.has(h.num))
-      .map(h => h.num);
-    const picked = [];
-    for (let i = 0; i < CHARGE_ZONE_COUNT && pool.length > 0; i++) {
-      const idx = Math.floor(Math.random() * pool.length);
-      picked.push({ num: pool.splice(idx, 1)[0], cooldown: 0 });
-    }
-    return picked;
-  });
+  // ─── CHARGE ZONES ── (ENGINE-owned — Phase 6a) ──────────────────────────────
+  // Engine owns chargeZones (seeded init). Compat shim dispatches BOARD_SYNCED;
+  // sites migrate to CHARGE_ZONE_USED / CHARGE_ZONES_TICKED incrementally.
+  const chargeZones = engineState.board.chargeZones;
+  const setChargeZones = (updater) => {
+    const cur = engineRef.current.board.chargeZones;
+    const next = typeof updater === "function" ? updater(cur) : updater;
+    dispatch(boardSynced({ chargeZones: next }));
+  };
   // chargeChoicePending: { spiritId, num } — Overcharge unlocked, waiting on the
   // die-tier-boost vs chord-assist choice.
   const [chargeChoicePending, setChargeChoicePending] = useState(null);

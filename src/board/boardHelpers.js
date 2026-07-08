@@ -1,7 +1,13 @@
-import { HEX_BY_NUM } from "./hexMap.js";
+import { HEX_BY_NUM, ALL_HEXES } from "./hexMap.js";
 import { axialDist, getFlatTopNeighborSlots, angleTo, angleDiff } from "./hexGeometry.js";
 import { NOTE_POOL } from "../music/notes.js";
 import { LIMELIGHT_HEX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_START, HC_UPGRADE_THRESHOLD } from "../data/gameConstants.js";
+
+// ── Hex pools for board placement (engine + client) ──
+// Non-edge hexes minus the Limelight — where the spotlight roams.
+export const SPOTLIGHT_POOL = ALL_HEXES.filter(h => !h.edge && h.num !== 56).map(h => h.num);
+// Non-Limelight interior hexes — where marquee event spaces can appear.
+export const EVENT_HEX_POOL = ALL_HEXES.filter(h => !h.edge && h.num !== LIMELIGHT_HEX).map(h => h.num);
 
 export function cornerFacing(homeNum) {
   const home   = HEX_BY_NUM[homeNum];
@@ -47,8 +53,8 @@ export function advanceTurnQueue(queue, spirits, mode, teams) {
 // 🎵 A board mini-goal token: a Lost Chord (grants a note to your stock). Lighters
 // (direct Fame, no performance required) were cut -- unearned FP, per the STICs +
 // Earned checklist in ARCHITECTURE.md. See ECONOMY_HANDOFF.md for the full history.
-export function makeBoardToken(num) {
-  return { num, kind: 'chord', note: NOTE_POOL[Math.floor(Math.random() * NOTE_POOL.length)] };
+export function makeBoardToken(num, rand = Math.random) {
+  return { num, kind: 'chord', note: NOTE_POOL[Math.floor(rand() * NOTE_POOL.length)] };
 }
 
 // Which centre ring a hex sits in, measured from the Limelight (hex 56).

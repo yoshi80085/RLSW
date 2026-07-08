@@ -14,6 +14,9 @@
 import { makeRng } from "./rng.js";
 import { makeInitialNoteState } from "./systems/economy.js";
 import { shuffledStageFxDeck } from "../data/stageEffects.js";
+import { makeBoardToken, SPOTLIGHT_POOL, EVENT_HEX_POOL } from "../board/boardHelpers.js";
+import { ALL_HEXES } from "../board/hexMap.js";
+import { TOKEN_MAX, EVENT_HEX_COUNT, CHARGE_ZONE_COUNT, LIMELIGHT_HEX } from "../data/gameConstants.js";
 
 /**
  * @param {object} gameConfig  Lobby's onStart payload:
@@ -42,6 +45,43 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
   // — replaces the client's Math.random mount shuffle, so the show order is
   // replay-deterministic.
   const stageFxDeck = shuffledStageFxDeck(makeRng(seed >>> 0).fork("stageFxDeck"));
+
+  // ── Phase 6a: board state (engine-owned, seeded) ──
+  // Spotlight, event hexes, Lost Chord tokens, and charge zones are placed
+  // on a forked rng so the board layout is replay-deterministic. Same trick
+  // as noteStatesInit — cursor stays 0.
+  const boardRng = makeRng(seed >>> 0).fork("boardInit");
+  const startHexNums = new Set(spirits.map(s => s.num));
+
+  // Spotlight: random interior hex
+  const spotlightHex = SPOTLIGHT_POOL[Math.floor(boardRng() * SPOTLIGHT_POOL.length)];
+
+  // Event hexes: avoid spirit start positions
+  const eventPool = EVENT_HEX_POOL.filter(n => !startHexNums.has(n));
+  const eventHexes = [];
+  for (let i = 0; i < EVENT_HEX_COUNT && eventPool.length > 0; i++) {
+    const idx = Math.floor(boardRng() * eventPool.length);
+    eventHexes.push(eventPool.splice(idx, 1)[0]);
+  }
+
+  // Lost Chord tokens: avoid spirit starts + Limelight
+  const tokenPool = ALL_HEXES.filter(h => !startHexNums.has(h.num) && h.num !== LIMELIGHT_HEX).map(h => h.num);
+  const boardTokens = [];
+  for (let i = 0; i < TOKEN_MAX && tokenPool.length > 0; i++) {
+    const idx = Math.floor(boardRng() * tokenPool.length);
+    boardTokens.push(makeBoardToken(tokenPool.splice(idx, 1)[0], boardRng));
+  }
+
+  // Charge zones: avoid spirit starts + tokens + Limelight
+  const tokenHexSet = new Set(boardTokens.map(t => t.num));
+  const chargePool = ALL_HEXES
+    .filter(h => !startHexNums.has(h.num) && h.num !== LIMELIGHT_HEX && !tokenHexSet.has(h.num))
+    .map(h => h.num);
+  const chargeZones = [];
+  for (let i = 0; i < CHARGE_ZONE_COUNT && chargePool.length > 0; i++) {
+    const idx = Math.floor(boardRng() * chargePool.length);
+    chargeZones.push({ num: chargePool.splice(idx, 1)[0], cooldown: 0 });
+  }
 
   return {
     schema: 1, // bump when the GameState shape changes incompatibly
@@ -73,13 +113,26 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
     // React `noteStates`; this is the authoritative seeded copy the flip adopts.
     noteStates,
 
+    // ── Phase 6a: board state (engine-owned, seeded) ──
+    board: {
+      spotlightHex,                          // roaming searchlight position
+      eventHexes,                            // marquee event space positions
+      eventRespawnIn: 0,                     // turns until next marquee respawn
+      boardTokens,                           // [{ num, kind, note }] Lost Chord tokens
+      chargeZones,                           // [{ num, cooldown }] fixed charge hexes
+      flamingHexes: { hexes: [], roundsLeft: 0 }, // Disco Inferno board hazard
+      // reports — ticks/pickups write here for the client to read for logs/FX
+      lastSpotlightHeal: null,               // { spiritId } or null
+      lastSpotlightMove: null,               // { from, to } or null
+      lastTokensScattered: null,             // { added: [nums] } or null
+      lastFlamingDecay: null,                // { roundsLeft } or null
+      lastEventRespawn: null,                // { hexNum } or null
+    },
+
     // ── Slices below land in later phases (null = still React-owned) ──
     fame: null,        // Phase 5 — fame points / score track
     amps: null,        // Phase 2/5 — board deployables
-    boardTokens: null, // Phase 5
-    boardCards: null,  // Phase 5
-    chargeZones: null, // Phase 5
-    eventSpaces: null, // Phase 6
+    boardCards: null,  // Phase 5 (spawnBoardCards is currently a no-op)
     unsurePool: null,  // Phase 5 — fan economy
     battle: null,      // Phase 3/4 — combat + riff-off (results only, no timers)
     // ── Phase 6c: Rock God (engine-owned) ──

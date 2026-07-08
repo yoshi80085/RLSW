@@ -409,3 +409,82 @@ export function godTriumphed() {
 export function godTimerExpired(spiritId) {
   return { type: GOD_TIMER_EXPIRED, spiritId };
 }
+
+// ── Phase 6a: board state ───────────────────────────────────────────────────
+// TEMP full-replace bridge so the client can flip board state (spotlight, events,
+// tokens, charges, flaming hexes) to an engine view cheaply. Semantic actions
+// below retire each bridge site; this bridge dies with them.
+export const BOARD_SYNCED = "BOARD_SYNCED";
+
+export function boardSynced(board) {
+  return { type: BOARD_SYNCED, board };
+}
+
+// ── Phase 6a: board SEMANTIC actions (retire the bridge site by site) ────────
+
+/** Spotlight heal: acting spirit ends turn on the spotlight hex → +1 Vibe. */
+export const SPOTLIGHT_HEALED = "SPOTLIGHT_HEALED";
+export function spotlightHealed(spiritId) {
+  return { type: SPOTLIGHT_HEALED, spiritId };
+}
+
+/** Spotlight moves to a new hex at round end. `occupied` = spirit+amp hexes. */
+export const SPOTLIGHT_MOVED = "SPOTLIGHT_MOVED";
+export function spotlightMoved(occupied = []) {
+  return { type: SPOTLIGHT_MOVED, occupied };
+}
+
+/** Scatter fresh Lost Chord tokens at round end. `occupied` = everything. */
+export const TOKENS_SCATTERED = "TOKENS_SCATTERED";
+export function tokensScattered(occupied = []) {
+  return { type: TOKENS_SCATTERED, occupied };
+}
+
+/** Disco Inferno flames decay one round. */
+export const FLAMING_DECAYED = "FLAMING_DECAYED";
+export function flamingDecayed() {
+  return { type: FLAMING_DECAYED };
+}
+
+/** Event marquee respawn countdown ticks once per spirit turn. */
+export const EVENT_RESPAWN_TICKED = "EVENT_RESPAWN_TICKED";
+export function eventRespawnTicked() {
+  return { type: EVENT_RESPAWN_TICKED };
+}
+
+/** A new marquee event hex spawns (when respawn counter hits 0). `occupied` =
+ *  everything that should be avoided. */
+export const EVENT_HEX_SPAWNED = "EVENT_HEX_SPAWNED";
+export function eventHexSpawned(occupied = []) {
+  return { type: EVENT_HEX_SPAWNED, occupied };
+}
+
+/** Charge zone cooldowns tick once per spirit turn. */
+export const CHARGE_ZONES_TICKED = "CHARGE_ZONES_TICKED";
+export function chargeZonesTicked() {
+  return { type: CHARGE_ZONES_TICKED };
+}
+
+/** A spirit steps on a marquee event hex — hex is consumed, respawn timer set. */
+export const EVENT_HEX_TRIGGERED = "EVENT_HEX_TRIGGERED";
+export function eventHexTriggered(spiritId, hexNum) {
+  return { type: EVENT_HEX_TRIGGERED, spiritId, hexNum };
+}
+
+/** A spirit picks up a Lost Chord token — token is removed from the board. */
+export const TOKEN_PICKED_UP = "TOKEN_PICKED_UP";
+export function tokenPickedUp(spiritId, hexNum) {
+  return { type: TOKEN_PICKED_UP, spiritId, hexNum };
+}
+
+/** A spirit taps a charge zone — cooldown is set. */
+export const CHARGE_ZONE_USED = "CHARGE_ZONE_USED";
+export function chargeZoneUsed(spiritId, hexNum) {
+  return { type: CHARGE_ZONE_USED, spiritId, hexNum };
+}
+
+/** Disco Inferno event fires — places flaming discs on random hexes. */
+export const FLAMING_HEXES_SET = "FLAMING_HEXES_SET";
+export function flamingHexesSet(hexes, rounds) {
+  return { type: FLAMING_HEXES_SET, hexes, rounds };
+}

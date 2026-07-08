@@ -22,6 +22,10 @@ import {
   STAGE_FX_DRAWN, STAGE_FX_ACTIVATED, STAGE_FX_TURN_TICKED, STAGE_FX_ROUND_TICKED,
   GOD_ATTACK_PICKED, GOD_SUMMONED, GOD_DAMAGED, GOD_ACTED,
   GOD_DEFEATED, GOD_TRIUMPHED, GOD_TIMER_EXPIRED,
+  BOARD_SYNCED,
+  SPOTLIGHT_HEALED, SPOTLIGHT_MOVED, TOKENS_SCATTERED, FLAMING_DECAYED,
+  EVENT_RESPAWN_TICKED, EVENT_HEX_SPAWNED, CHARGE_ZONES_TICKED,
+  EVENT_HEX_TRIGGERED, TOKEN_PICKED_UP, CHARGE_ZONE_USED, FLAMING_HEXES_SET,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
 import {
@@ -50,6 +54,14 @@ import {
   applyGodAttackPicked, applyGodSummoned, applyGodDamaged, applyGodActed,
   applyGodDefeated, applyGodTriumphed, applyGodTimerExpired,
 } from "./systems/rockGod.js";
+import {
+  applyBoardSynced,
+  applySpotlightHealed, applySpotlightMoved,
+  applyTokensScattered, applyTokenPickedUp,
+  applyEventHexTriggered, applyEventRespawnTicked, applyEventHexSpawned,
+  applyChargeZoneUsed, applyChargeZonesTicked,
+  applyFlamingHexesSet, applyFlamingDecayed,
+} from "./systems/board.js";
 
 /**
  * @param {object} state   plain-JSON GameState (never mutated)
@@ -120,6 +132,20 @@ function reduce(state, action, rng) {
     case GOD_DEFEATED:           return applyGodDefeated(state, action);
     case GOD_TRIUMPHED:          return applyGodTriumphed(state);
     case GOD_TIMER_EXPIRED:      return applyGodTimerExpired(state, action);
+
+    // ── Phase 6a: board state ──
+    case BOARD_SYNCED:           return applyBoardSynced(state, action);
+    case SPOTLIGHT_HEALED:       return applySpotlightHealed(state, action);
+    case SPOTLIGHT_MOVED:        return applySpotlightMoved(state, action, rng);
+    case TOKENS_SCATTERED:       return applyTokensScattered(state, action, rng);
+    case TOKEN_PICKED_UP:        return applyTokenPickedUp(state, action);
+    case EVENT_HEX_TRIGGERED:    return applyEventHexTriggered(state, action);
+    case EVENT_RESPAWN_TICKED:   return applyEventRespawnTicked(state);
+    case EVENT_HEX_SPAWNED:      return applyEventHexSpawned(state, action, rng);
+    case CHARGE_ZONE_USED:       return applyChargeZoneUsed(state, action);
+    case CHARGE_ZONES_TICKED:    return applyChargeZonesTicked(state);
+    case FLAMING_HEXES_SET:      return applyFlamingHexesSet(state, action);
+    case FLAMING_DECAYED:        return applyFlamingDecayed(state);
 
     default:
       // Unknown action = a bug (client/server version skew or a typo).
