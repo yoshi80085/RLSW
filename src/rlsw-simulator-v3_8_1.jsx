@@ -67,6 +67,9 @@ import {
   botAssignPersona, botPickTarget as _botPickTarget, botHexScore as _botHexScore,
   botSkillEligible as _botSkillEligible, botPickSkillTarget as _botPickSkillTarget,
   botRiffResults as _botRiffResults,
+  botPlanNoteStep as _botPlanNoteStep, botSpiritChord,
+  botPlanRevoice as _botPlanRevoice,
+  botPlanMove as _botPlanMove, botRivalsWithin as _botRivalsWithin,
 } from "./engine/policies/bot.js";
 
 
@@ -701,7 +704,7 @@ function Game({ gameState, onReturnToLobby }) {
   const actingRef         = useRef(null);
   const winnerRef         = useRef(null);
   const ampsInRangeRef    = useRef(0);
-  const botBusyRef        = useRef(false);  // re-entrancy guard for runBotTurn
+  // botBusyRef removed (Phase 7c) — debounce folded into botStepRef ('pending').
 
   // 🤘 MASTER OF MOSHPITS — spiritId → mob key. While set, the crowd PNGs
   // swarm that rival's hex on the board and "rock" them. Cleared after a beat.
@@ -6745,7 +6748,7 @@ function Game({ gameState, onReturnToLobby }) {
   // Architecture: a step-machine, not one long async function. A useEffect watches
   // game state and performs exactly ONE synchronous action per fire, then lets
   // React re-render so the next fire reads fresh state (no stale closures). A
-  // botStepRef tracks where we are in the turn; botBusyRef de-bounces re-entry.
+  // botStepRef tracks where we are in the turn ('pending' = action in flight).
   // ════════════════════════════════════════════════════════════════════════════
   const botStepRef    = useRef('idle');   // idle → building → committed → moving → acting → ending
   const botLastTurnRef= useRef(null);     // which spirit id we last reset the step for
@@ -6782,54 +6785,9 @@ function Game({ gameState, onReturnToLobby }) {
   // Thin wrapper → pure policy function (engine/policies/bot.js)
   function botHexScore(self, h, ctx) { return _botHexScore(h, ctx); }
 
-  // Decide the next step. Returns an adjacent free hex num to move to, or null to
-  // HOLD position (when standing put already scores as well as any neighbour — e.g.
-  // sitting on the spotlight to bank the heal, or already in a prime central spot).
+  // Thin wrapper → pure policy function (engine/policies/bot.js)
   function botPlanMove(self) {
-    const from = HEX_BY_NUM[self.num];
-    if (!from) return null;
-    const live = engineRef.current.spirits;
-    const occupied = new Set(live.filter(s => !s.knockedOut && s.id !== self.id).map(s => s.num));
-    const ampHexes = new Set(amps.map(a => a.hexNum));
-    const neighbors = axialNeighbors(from.q, from.r)
-      .map(({ q, r }) => HEX_BY_QR[`${q},${r}`])
-      .filter(h => h && !occupied.has(h.num) && !ampHexes.has(h.num));
-    if (!neighbors.length) return null;
-
-    // 🤘 Boss fight: forget tokens and spotlights — converge on the God.
-    // (engineRef.current.rockGod.god — the authoritative slice, sync-fresh.)
-    const bossGod = engineRef.current.rockGod.god;
-    if (rockGodActive && bossGod) {
-      const gh = HEX_BY_NUM[bossGod.num];
-      if (gh) {
-        const toward = neighbors
-          .filter(h => h.num !== bossGod.num)
-          .map(h => ({ num: h.num, d: axialDist(h.q, h.r, gh.q, gh.r) }))
-          .sort((a, b) => a.d - b.d)[0];
-        const hereD = axialDist(from.q, from.r, gh.q, gh.r);
-        return toward && toward.d < hereD ? toward.num : null;
-      }
-    }
-
-    const me = live.find(s => s.id === self.id) ?? self;
-    const ctx = {
-      p:      botPersona(self),
-      center: HEX_BY_NUM[LIMELIGHT_HEX],
-      hurt:   (me.vibe ?? 9) <= Math.ceil((me.maxVibe ?? 5) * 0.4),
-      myFame: engineRef.current.noteStates?.[self.id]?.fame ?? 0,
-      spot:   (typeof spotlightHex === 'number') ? HEX_BY_NUM[spotlightHex] : null,
-      tokens: (boardTokens ?? []).map(t => HEX_BY_NUM[t.num]).filter(Boolean),
-      events: (eventHexes ?? []).map(n => HEX_BY_NUM[n]).filter(Boolean),
-      rivals: live.filter(s => !s.knockedOut && s.id !== self.id)
-        .map(r => ({ r, h: HEX_BY_NUM[r.num], fame: engineRef.current.noteStates?.[r.id]?.fame ?? 0 }))
-        .filter(x => x.h),
-    };
-    const here = botHexScore(self, from, ctx);
-    const best = neighbors
-      .map(h => ({ num: h.num, s: botHexScore(self, h, ctx) }))
-      .sort((a, b) => b.s - a.s)[0];
-    // Only move if a neighbour is meaningfully better than holding still.
-    return best && best.s > here + 0.5 ? best.num : null;
+    return _botPlanMove(engineRef.current, self, botPersona(self), amps);
   }
 
   // ── SKILL-TREE PLANNING (constants + pure logic in engine/policies/bot.js) ──
@@ -6874,115 +6832,19 @@ function Game({ gameState, onReturnToLobby }) {
       .sort((a, b) => a.d - b.d)[0].num;
   }
 
-  // Live rivals within `dist` hexes of the bot.
+  // Thin wrapper → pure policy function (engine/policies/bot.js)
   function botRivalsWithin(self, dist) {
-    const myHex = HEX_BY_NUM[self.num];
-    if (!myHex) return [];
-    const live = engineRef.current.spirits;
-    return live.filter(s => {
-      if (s.knockedOut || s.id === self.id) return false;
-      const h = HEX_BY_NUM[s.num];
-      return h && axialDist(myHex.q, myHex.r, h.q, h.r) <= dist;
-    });
+    return _botRivalsWithin(engineRef.current.spirits, self.id, self.num, dist);
   }
 
-  // ── NOTE-TRACK PLANNER ─────────────────────────────────────────────────────
-  // Decide the bot's next note (or to commit). Strategy, in priority order:
-  //   • Play every CLEAN note it has — more notes = more placement HC, up to the
-  //     8-note cap — ordered ASCENDING by scale degree so a diatonic step-run
-  //     builds Drive (and any repeated note lands adjacent for a Sustain boost).
-  //   • SAVE a 5th (pink, +5 end) or 4th (purple, +4 end) to play LAST for the
-  //     big ending bonus, rather than spending it mid-track.
-  //   • Avoid Dischord entirely — it now costs −1 HC each (floored at 0) AND a
-  //     discordant track recruits no fans. Only touch a Dischord note as a last
-  //     resort, when the stock has nothing clean and the track is still empty
-  //     (so the turn isn't wasted on an uncommittable track).
-  // Returns { slot } to play that stock index, or { commit: true } to lock it in.
+  // Thin wrapper → pure policy function (engine/policies/bot.js)
   function botPlanNoteStep(self) {
-    const ns = engineRef.current.noteStates?.[self.id] ?? {};
-    const stock = ns.noteStock ?? [];
-    const track = ns.melodyLine ?? [];
-    const used  = ns.usedStockIdx;
-    const NOTE_CAP = 8;                                   // hard track-length cap
-    if (track.length >= NOTE_CAP) return { commit: true };
-
-    const isU   = (i) => usedHas(used, i);
-    const root  = ns.rootNote ?? 'C', mode = ns.scaleMode ?? 'major';
-    const scale = buildScale(root, mode);
-    const iv    = getIntervalNotes(root, mode);
-    const style = botPersona(self).note;                 // musical | combat | disrupt | clean
-
-    const avail = [];
-    for (let i = 0; i < stock.length; i++) if (!isU(i)) avail.push(i);
-    const clean   = avail.filter(i => isNotePlayable(stock[i]));
-    const discord = avail.filter(i => !isNotePlayable(stock[i]));
-
-    // Choose which note to RESERVE for the big ending, by persona.
-    let endIdx = null;
-    if (style === 'musical') {
-      // 🎼 Chase a cadence: if ending on a given pitch would advance/resolve one,
-      // reserve a clean stock note of that pitch class.
-      const hints = cadenceHints(ns.finalsTrail ?? [], ns.cadenceCooldowns ?? {});
-      for (const hint of hints) {
-        const idx = clean.find(i => pitchIndex(stock[i]) === hint.nextPc);
-        if (idx != null) { endIdx = idx; break; }
-      }
-    } else if (style === 'disrupt') {
-      // 🪤 Arm a debuff on the ending: minor-7th (Mojo Drain) > tritone (Burn).
-      endIdx = clean.find(i => stock[i] === iv.minorSeventh)
-            ?? clean.find(i => stock[i] === iv.tritone) ?? null;
-    }
-    // Fall back to the classic strong ending (5th, then 4th).
-    if (endIdx == null) {
-      endIdx = clean.find(i => stock[i] === iv.fifth)
-            ?? clean.find(i => stock[i] === iv.fourth) ?? null;
-    }
-
-    // Body = the rest of the clean notes, ascending by scale degree (builds Drive).
-    const deg  = (i) => { const d = scale.indexOf(stock[i]); return d === -1 ? 99 : d; };
-    let body = clean.filter(i => i !== endIdx).sort((a, b) => deg(a) - deg(b));
-
-    // 🤘 A Brawler welcomes ONE tritone in the body — the Damage×2 is worth the −1 HC.
-    if (style === 'combat') {
-      const tri = discord.find(i => stock[i] === iv.tritone);
-      if (tri != null && track.length < NOTE_CAP - 1 && !body.includes(tri)) body = [...body, tri];
-    }
-
-    if (body.length) return { slot: body[0] };           // clean ascending body first
-    if (endIdx != null) return { slot: endIdx };          // then the saved ending, last
-    if (track.length === 0 && discord.length) return { slot: discord[0] }; // last-resort
-    return { commit: true };
+    return _botPlanNoteStep(engineRef.current.noteStates?.[self.id], botPersona(self));
   }
 
-  // 🎸 CHORD STACK — the bot's combat power lives here now (Drive/Sustain come from
-  // evaluateChord, attacking spends it, defending frays it). Each turn the bot may
-  // revoice ONE note: pick the single stock pitch whose addition most improves the
-  // chord by persona (combat/disrupt chase Drive, clean/Flair chase Sustain, musical
-  // stays balanced). Returns the note string to voice, or null to keep the stance.
+  // Thin wrapper → pure policy function (engine/policies/bot.js)
   function botPlanRevoice(self) {
-    const ns = engineRef.current.noteStates?.[self.id] ?? {};
-    if (ns.revoiceUsedThisTurn) return null;
-    const chord = ns.chordStack ?? [];
-    if (chord.length >= 5) return null;                  // full — v1 bot doesn't churn/drop
-    const stock = ns.noteStock ?? [];
-    const style = botPersona(self).note;                 // musical | combat | disrupt | clean
-    const have  = new Set(chord.map(pitchIndex));
-    const cands = [...new Set(stock.filter(n => !have.has(pitchIndex(n))))]; // new pitch classes only
-    if (!cands.length) return null;
-    const weight = (c) => {
-      if (style === 'combat' || style === 'disrupt')     return c.drive * 2 + c.sustain;
-      if (style === 'clean'  || self.style === 'Flair')  return c.sustain * 2 + c.drive;
-      return c.drive + c.sustain;                         // musical / balanced
-    };
-    const cur = weight(spiritChord(self.id, chord));
-    let best = null, bestW = cur;
-    for (const note of cands) {
-      const w = weight(spiritChord(self.id, [...chord, note]));
-      if (w > bestW) { bestW = w; best = note; }
-    }
-    // Always replenish a fragile chord (depleted by attacking) even on a tie.
-    if (best == null && chord.length < 2) best = cands[0];
-    return best;
+    return _botPlanRevoice(engineRef.current.noteStates?.[self.id], self.id, botPersona(self));
   }
 
   function botRevoiceChord(self, note) {
@@ -6990,7 +6852,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (ns.revoiceUsedThisTurn || (ns.chordStack ?? []).length >= 5) return;
     const next = [...(ns.chordStack ?? []), note];
     setNoteField(self.id, { chordStack: next, revoiceUsedThisTurn: true });
-    const ch = spiritChord(self.id, next);
+    const ch = botSpiritChord(self.id, next);
     addLog(`🎸 ${self.name} voices ${note} into the Chord Stack — ${ch.name} (⚔️${ch.drive} 🛡️${ch.sustain}).`);
   }
 
@@ -7008,7 +6870,6 @@ function Game({ gameState, onReturnToLobby }) {
     if (acting?.id && botLastTurnRef.current !== acting.id) {
       botLastTurnRef.current = acting.id;
       botStepRef.current = 'idle';
-      botBusyRef.current = false;
     }
   }, [acting?.id]);
 
@@ -7020,20 +6881,21 @@ function Game({ gameState, onReturnToLobby }) {
     if (!self || !isBot(self)) return;
     if (winner) return;                          // game's over
     if (noteStates[self.id]?.recovering) return; // recovery skip handled elsewhere
-    if (botBusyRef.current) return;              // an action is already scheduled
     // Never act in the middle of a battle/riff-off cinematic — those resolve via
     // their own bot hooks (auto-die-click / synthetic riff-off) below.
     if (battleState) return;
 
     const step = botStepRef.current;
+    if (step === 'pending') return;              // an action is already scheduled
     const schedule = (fn) => {
-      botBusyRef.current = true;
+      const prevStep = botStepRef.current;
+      botStepRef.current = 'pending';
       setTimeout(() => {
-        botBusyRef.current = false;
         fn();
-        // Always re-drive the machine. Even if fn() changed nothing the effect
-        // watches (e.g. declarePivot, or the empty "beat" between move→act), this
-        // guarantees one fresh evaluation so the bot never stalls mid-turn.
+        // If fn() didn't advance the step itself, restore it so the effect
+        // re-evaluates at the same phase (e.g. the empty "beat" between
+        // move→act, or declarePivot which changes no dep-array value).
+        if (botStepRef.current === 'pending') botStepRef.current = prevStep;
         setBotNudge(n => n + 1);
       }, Math.max(0, Math.round(BOT_TICK / (gameSpeedRef.current || 1))));
     };
@@ -7291,7 +7153,6 @@ function Game({ gameState, onReturnToLobby }) {
       if (actingRef.current?.id === myId && !battleStateRef.current && !winnerRef.current) {
         addLog(`🤖 ${acting.name}'s turn timed out — wrapping up.`);
         botStepRef.current = 'idle';
-        botBusyRef.current = false;
         endTurn();
       }
     }, 15000);

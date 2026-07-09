@@ -1863,5 +1863,188 @@ const config = {
   assertJsonSafe(final);
 }
 
+// -- Phase 7b: bot plan functions -----------------------------------------------
+{
+  const botMod = await import("./policies/bot.js");
+
+  // ── botPlanNoteStep ──
+  // Build a minimal noteState with a C-major stock
+  const fakeNS = {
+    rootNote: 'C', scaleMode: 'major',
+    noteStock: ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'F#4'],
+    // F#4 is a tritone — discord in C major
+    melodyLine: [],
+    usedStockIdx: [],
+    discordUnlocks: [],
+    finalsTrail: [],
+    cadenceCooldowns: {},
+  };
+  const maestroP = botMod.BOT_PERSONALITIES.maestro;
+  const step1 = botMod.botPlanNoteStep(fakeNS, maestroP);
+  assert.ok('slot' in step1, "botPlanNoteStep returns a slot to play");
+  assert.ok(step1.slot >= 0 && step1.slot < 8, "slot is a valid stock index");
+  // The tritone (index 7) should NOT be played by a musical persona (not combat)
+  assert.ok(step1.slot !== 7, "musical persona avoids tritone");
+
+  // Combat persona welcomes one tritone
+  const moshlordP = botMod.BOT_PERSONALITIES.moshlord;
+  // Play all clean notes first, then check if tritone appears
+  const usedAll = [0, 1, 2, 3, 4, 5, 6]; // all clean used, only tritone left
+  const fakeNS2 = { ...fakeNS, usedStockIdx: usedAll, melodyLine: ['C4'] };
+  const stepCombat = botMod.botPlanNoteStep(fakeNS2, moshlordP);
+  // With only tritone left and track has notes, combat persona commits
+  // (tritone body trick only works if track.length < NOTE_CAP - 1 and discord not empty)
+  assert.ok(stepCombat.commit || stepCombat.slot === 7,
+    "combat persona either commits or takes the tritone");
+
+  // Full track → commit
+  const fullNS = { ...fakeNS, melodyLine: ['C4','D4','E4','F4','G4','A4','B4','C5'] };
+  assert.deepEqual(botMod.botPlanNoteStep(fullNS, maestroP), { commit: true },
+    "full track → commit");
+
+  // Empty stock → commit
+  const emptyNS = { ...fakeNS, usedStockIdx: [0,1,2,3,4,5,6,7] };
+  assert.deepEqual(botMod.botPlanNoteStep(emptyNS, maestroP), { commit: true },
+    "all stock used → commit");
+
+  // ── botSpiritChord ──
+  const ch = botMod.botSpiritChord('wildaxe', ['C4', 'E4', 'G4']);
+  assert.ok(typeof ch.drive === 'number', "botSpiritChord returns drive");
+  assert.ok(typeof ch.sustain === 'number', "botSpiritChord returns sustain");
+  // Intergalactic 0 gets +1 sustain
+  const chI = botMod.botSpiritChord('intergalactic_0', ['C4', 'E4', 'G4']);
+  assert.equal(chI.sustain, ch.sustain + 1, "intergalactic_0 gets +1 sustain");
+
+  // ── botPlanRevoice ──
+  const revoiceNS = {
+    revoiceUsedThisTurn: false,
+    chordStack: ['C4'],
+    noteStock: ['E4', 'G4', 'B4'],
+  };
+  const revoice = botMod.botPlanRevoice(revoiceNS, 'wildaxe', maestroP);
+  assert.ok(revoice === null || typeof revoice === 'string',
+    "botPlanRevoice returns a note or null");
+  // Already used → null
+  const usedRevoiceNS = { ...revoiceNS, revoiceUsedThisTurn: true };
+  assert.equal(botMod.botPlanRevoice(usedRevoiceNS, 'wildaxe', maestroP), null,
+    "revoice already used → null");
+  // Full chord → null
+  const fullChordNS = { ...revoiceNS, chordStack: ['C4','D4','E4','F4','G4'] };
+  assert.equal(botMod.botPlanRevoice(fullChordNS, 'wildaxe', maestroP), null,
+    "full chord → null");
+
+  // ── botRivalsWithin ──
+  const testSpirits = [
+    { id: 'a', num: 1, knockedOut: false },
+    { id: 'b', num: 2, knockedOut: false },
+    { id: 'c', num: 10, knockedOut: false },
+    { id: 'd', num: 3, knockedOut: true },
+  ];
+  const near = botMod.botRivalsWithin(testSpirits, 'a', 1, 2);
+  assert.ok(Array.isArray(near), "botRivalsWithin returns array");
+  // 'd' is knocked out → excluded
+  assert.ok(!near.find(s => s.id === 'd'), "KO'd spirits excluded");
+  // 'a' is self → excluded
+  assert.ok(!near.find(s => s.id === 'a'), "self excluded");
+
+  // ── botPlanMove ──
+  const moveState = makeInitialState(config, 7777);
+  // Give a spirit a position and test movement
+  const moveResult = botMod.botPlanMove(
+    moveState, moveState.spirits[0], maestroP, []
+  );
+  assert.ok(moveResult === null || typeof moveResult === 'number',
+    "botPlanMove returns hex num or null");
+}
+
+// -- Phase 7c: bot determinism proof ---------------------------------------------
+// Same seed + same state ⇒ same action sequence. This is the property that makes
+// bots replayable in Phase 8 and host-runnable in multiplayer.
+{
+  const botMod = await import("./policies/bot.js");
+
+  // Build a rich game state with varied noteStates for a multi-step bot turn.
+  const detState = makeInitialState(config, 42424242);
+  // Give spirit 0 a non-trivial noteState for the build phase:
+  const sid = detState.spirits[0].id;
+  detState.noteStates[sid] = {
+    ...detState.noteStates[sid],
+    melodyLine: [],
+    usedStockIdx: [],
+    discordUnlocks: [],
+    revoiceUsedThisTurn: false,
+    chordStack: ['C4'],
+    finalsTrail: [],
+    cadenceCooldowns: {},
+    pivotPending: false,
+    upgradesPending: 0,
+    targetSkillId: null,
+    unlockedSkills: [],
+    modCards: [],
+  };
+  const persona = botMod.BOT_PERSONALITIES.maestro;
+
+  // ── Sequence determinism: run the entire build-phase decision loop twice ──
+  function simulateBuildPhase(state, spiritId, p) {
+    const ns = state.noteStates[spiritId];
+    const actions = [];
+    // Clone noteState so we can simulate stock consumption
+    const simNS = { ...ns, usedStockIdx: [...(ns.usedStockIdx ?? [])],
+                    melodyLine: [...(ns.melodyLine ?? [])] };
+    for (let i = 0; i < 20; i++) { // safety cap
+      const plan = botMod.botPlanNoteStep(simNS, p);
+      actions.push(JSON.parse(JSON.stringify(plan)));
+      if (plan.commit) break;
+      // Simulate the stock consumption
+      simNS.usedStockIdx = [...simNS.usedStockIdx, plan.slot];
+      simNS.melodyLine = [...simNS.melodyLine, simNS.noteStock[plan.slot]];
+    }
+    return actions;
+  }
+
+  const seq1 = simulateBuildPhase(detState, sid, persona);
+  const seq2 = simulateBuildPhase(detState, sid, persona);
+  assert.deepEqual(seq1, seq2, "bot build-phase: identical action sequence on identical state");
+  assert.ok(seq1.length >= 2, "bot build-phase: produced at least 2 actions (notes + commit)");
+  assert.ok(seq1[seq1.length - 1].commit, "bot build-phase: sequence ends with commit");
+
+  // ── Movement determinism ──
+  const mv1 = botMod.botPlanMove(detState, detState.spirits[0], persona, []);
+  const mv2 = botMod.botPlanMove(detState, detState.spirits[0], persona, []);
+  assert.strictEqual(mv1, mv2, "bot movement: identical result on identical state");
+
+  // ── Revoice determinism ──
+  const rvNS = { revoiceUsedThisTurn: false, chordStack: ['C4'],
+                 noteStock: ['E4', 'G4', 'B4', 'D5'] };
+  const rv1 = botMod.botPlanRevoice(rvNS, sid, persona);
+  const rv2 = botMod.botPlanRevoice(rvNS, sid, persona);
+  assert.strictEqual(rv1, rv2, "bot revoice: identical result on identical state");
+
+  // ── Target picking determinism ──
+  const cands = detState.spirits.filter(s => s.id !== sid);
+  const ns4tgt = Object.fromEntries(detState.spirits.map(s =>
+    [s.id, detState.noteStates[s.id]]));
+  const tgt1 = botMod.botPickTarget(cands, ns4tgt);
+  const tgt2 = botMod.botPickTarget(cands, ns4tgt);
+  assert.strictEqual(tgt1?.id, tgt2?.id, "bot target: identical result on identical state");
+
+  // ── Riff results determinism (rng-seeded) ──
+  const rng1 = makeRng(99999);
+  const batch = [];
+  for (let i = 0; i < 30; i++) batch.push(rng1());
+  let c1 = 0, c2 = 0;
+  const rr1 = botMod.botRiffResults(10, () => batch[c1++]);
+  const rr2 = botMod.botRiffResults(10, () => batch[c2++]);
+  assert.deepEqual(rr1, rr2, "bot riff: identical results on same rng stream");
+
+  // ── Cross-persona determinism (different persona, same inputs, still deterministic) ──
+  for (const key of botMod.BOT_PERSONA_KEYS) {
+    const p = botMod.BOT_PERSONALITIES[key];
+    const a = simulateBuildPhase(detState, sid, p);
+    const b = simulateBuildPhase(detState, sid, p);
+    assert.deepEqual(a, b, `bot determinism: ${key} build-phase identical`);
+  }
+}
+
 console.log("engine selftest: all assertions passed ✔");
 // end of selftest
