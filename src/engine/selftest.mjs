@@ -2046,5 +2046,133 @@ const config = {
   }
 }
 
+// -- Phase 8c: COMPREHENSIVE cross-system replay proof ---------------------------
+// The mission's exit criterion (§1): "a server replaying the log gets the same
+// game." One scripted log spanning EVERY engine-owned system — turn/move, combat
+// (swing + counter + damage + knockdown), riff-off, economy (fame/fans/noteSheet/
+// fanTick), stage FX (draw + activate + ticks), Rock God (summon + damage + act),
+// debuffs, burn, board (spotlight/tokens/events/charge/flaming), and random-batch
+// draws — replayed from a SERIALIZED start, resumable mid-game, JSON-safe.
+{
+  const s0 = makeInitialState(config, 20260709);
+  const cornerId = Object.keys(CORNERS)[0];
+  const neighbor = getFlatTopNeighborSlots(HEX_BY_NUM[7])[0].num;
+  const mkResults = grades => grades.map((g, i) =>
+    ({ hit: g !== "miss" && g !== "wrong", rt: 200 + i, grade: g, noteIdx: i }));
+
+  const log = [
+    // ── SETUP ──
+    gameInit(),
+    spiritsSynced([
+      { id: "wildaxe", num: 7,   facing: 2, corner: cornerId, color: "#4aa3ff", cpu: false,
+        lives: 3, vibe: 10, maxVibe: 10, knockedOut: false },
+      { id: "vera",    num: 105, facing: 5, corner: cornerId, color: "#ff4a6a", cpu: true,
+        lives: 2, vibe: 8,  maxVibe: 8,  knockedOut: false },
+    ]),
+
+    // ── TURN 1: movement + combat ──
+    turnStarted("wildaxe"),
+    moveBudgetSet(4),
+    moveStep("wildaxe", neighbor),
+    spiritFaced("wildaxe", 4),
+    beatsSpent(1, true),
+    attackRolled("swing", "wildaxe", "vera", { atkStat: 7, defStat: 5 }),
+    counterRolled("vera", { vibe: 6, maxVibe: 10, target: 4 }),
+    damageApplied("vera", 3),
+    knockdownResolved("vera"),
+
+    // ── ECONOMY ──
+    fameChanged("wildaxe", 3),
+    fameChanged("vera", -1),
+    fansChanged("wildaxe", { casuals: 9, diehards: 4, centerStreak: 1, fanActedThisTurn: true }),
+    fansChanged("vera", { fanLag: 3, centerStreak: 0 }),
+    noteSheetPatched("wildaxe", { hcPoints: 2, unlockedSkills: ["mic"], burnArmed: true }),
+    noteSheetPatched("vera", { stagger: { turnsLeft: 2 }, modCards: [] }),
+
+    // ── BOARD ──
+    spotlightHealed("wildaxe"),
+    spotlightMoved(),
+    tokensScattered(),
+    tokenPickedUp("wildaxe", 0),
+    eventHexTriggered(0),
+    eventRespawnTicked(),
+    eventHexSpawned(),
+    chargeZoneUsed(0),
+    chargeZonesTicked(),
+    flamingHexesSet([40, 41, 42], 3),
+    flamingDecayed(),
+
+    // ── STAGE FX ──
+    stageFxDrawn(8),
+    stageFxActivated("pyrotechnics"),
+    stageFxTurnTicked(),
+    stageFxDrawn(16),
+    stageFxActivated("smoke_machine"),
+    stageFxRoundTicked(),
+
+    // ── ROCK GOD ──
+    godSummoned("wildaxe", "bardbarian"),
+    godDamaged("wildaxe", 5),
+    godActed(),
+
+    // ── DEBUFFS + BURN ──
+    debuffsTicked("vera"),
+    burnTicked("wildaxe"),
+
+    // ── RIFF-OFF ──
+    riffOffStarted("wildaxe", "vera", { slayer: true, eRush: true }),
+    riffResultsSubmitted("attacker",
+      mkResults(["perfect", "good", "perfect", "good", "perfect", "good"])),
+    riffResultsSubmitted("defender",
+      mkResults(["ok", "miss", "good", "miss", "ok", "miss"])),
+    riffResolved(),
+    riffRound2Started(),
+    riffResultsSubmitted("attacker",
+      mkResults(["perfect", "perfect", "perfect", "perfect", "perfect", "perfect"])),
+    riffResultsSubmitted("defender",
+      mkResults(["good", "good", "good", "ok", "miss", "miss"])),
+    riffResolved(),
+    riffClosed(),
+
+    // ── FAN TICK + RANDOM BATCH ──
+    fansTicked("wildaxe"),
+    fansTicked("vera"),
+    randomBatchDrawn(5),
+
+    // ── CLOSE ──
+    winnerDeclared("wildaxe"),
+    turnEnded(),
+  ];
+
+  const live = log.reduce((st, a) => applyAction(st, a), s0);
+
+  // 1) replay from a SERIALIZED start reproduces live play byte-for-byte
+  const replayedFull = replay(restore(snapshot(s0)), log);
+  assert.equal(snapshot(replayedFull), snapshot(live),
+    "8c COMPREHENSIVE: replay from restored snapshot == live play, byte for byte");
+
+  // 2) mid-game save/resume at several cut points
+  for (const cut of [10, 20, 30, 40]) {
+    const mid = log.slice(0, cut).reduce((st, a) => applyAction(st, a), s0);
+    const tail = replay(restore(snapshot(mid)), log.slice(cut));
+    assert.equal(snapshot(tail), snapshot(live),
+      `8c COMPREHENSIVE: snapshot at action ${cut} + replay tail == uninterrupted play`);
+  }
+
+  // 3) determinism from scratch: same seed + same log → identical state
+  const scratch = log.reduce((st, a) => applyAction(st, a), makeInitialState(config, 20260709));
+  assert.equal(snapshot(scratch), snapshot(live),
+    "8c COMPREHENSIVE: same seed + same log is fully deterministic");
+
+  // 4) JSON-safe: the final state survives JSON round-trip without data loss
+  assert.equal(assertJsonSafe(live), true,
+    "8c COMPREHENSIVE: final state is JSON-safe");
+
+  // Count: verify the test spans enough systems
+  const actionTypes = new Set(log.map(a => a.type));
+  assert.ok(actionTypes.size >= 30,
+    `8c COMPREHENSIVE: log spans ${actionTypes.size} distinct action types (target ≥ 30)`);
+}
+
 console.log("engine selftest: all assertions passed ✔");
 // end of selftest
