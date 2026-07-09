@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "test": "node smoke.mjs"
+    "test": "node smoke.mjs && node n2-client-smoke.mjs && node n3-start-smoke.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"

@@ -621,8 +621,13 @@ function Game({ gameState, onReturnToLobby }) {
   // beats/AP, movement/facing rules, limelight-start flags, the turn counter,
   // the seeded note sheets, AND (Phase 5c) the spirits array — see the SPIRITS
   // shim just below.
-  const [engineState, setEngineState] = useState(() => makeInitialState(gameState));
+  // N0 (netcode): thread the lobby/server seed through. Offline `gameState.seed`
+  // is undefined → makeInitialState keeps its time-derived default (byte-
+  // unchanged). Online, GAME_STARTED.seed rides into gameState and lands here.
+  const [engineState, setEngineState] = useState(() => makeInitialState(gameState, gameState.seed));
   const engineRef = useRef(engineState); // live mirror so dispatch works inside timeout chains
+  // N3: net context — stash the client reference for N4 action relay
+  const netRef = useRef(gameState.net ?? null);
   // Dispatch through the engine reducer. Synchronous: returns the next state
   // so callers can read results (turn.lastMove / turn.lastReport) immediately.
   // Phase 8a — ACTION LOG: every dispatch is recorded with the rng cursor it
@@ -637,6 +642,11 @@ function Game({ gameState, onReturnToLobby }) {
     setEngineState(next);
     return next;
   }
+
+  // N3: log seed + cursor on mount so both tabs can confirm identical engine boot
+  useEffect(() => {
+    console.log(`[RLSW NET] engine booted — seed: ${engineState.rng.seed}, cursor: ${engineState.rng.cursor}, spirits: ${engineState.spirits.map(s=>s.id).join(",")}`);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── SPIRITS — engine is the source of truth (Phase 5c ownership flip) ──────
   // `spirits` is now a live view of engineState.spirits (built + owned by

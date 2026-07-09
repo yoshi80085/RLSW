@@ -62,10 +62,10 @@ logLines[], seq }`. Rooms die 10 min after the last socket drops.
 
 | # | Phase | Exit criterion | Status |
 |---|-------|----------------|--------|
-| N0 | Seed threading | `gameState.seed` reaches `makeInitialState`; offline unchanged | ☐ |
-| N1 | Room server skeleton | node smoke script: create/join/relay/catch-up green | ◑ scaffolded |
-| N2 | Net client + lobby UI | two tabs see each other in a room | ☐ |
-| N3 | Start handshake | both tabs boot the SAME game (seed+config from server) | ☐ |
+| N0 | Seed threading | `gameState.seed` reaches `makeInitialState`; offline unchanged | ☑ |
+| N1 | Room server skeleton | node smoke script: create/join/relay/catch-up green | ☑ |
+| N2 | Net client + lobby UI | two tabs see each other in a room | ☑ |
+| N3 | Start handshake | both tabs boot the SAME game (seed+config from server) | ☑ |
 | N4 | Action relay | full 2-human match across two tabs | ☐ |
 | N5 | Presentation relay | remote log lines + acceptable remote visuals | ☐ |
 | N6 | Spectate + reconnect | spectator joins mid-game; player F5s and resumes | ☐ |

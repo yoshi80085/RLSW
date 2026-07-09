@@ -8,7 +8,8 @@ the `{ seed, config, log }` catch-up bundle to spectators and rejoiners.
 ```
 cd server
 npm install     # just `ws`
-npm test        # smoke test: create/join/start/relay/spectate/rejoin
+npm test        # N1 smoke (create/join/start/relay/spectate/rejoin)
+                # + N2 client smoke (src/net/client.js: two tabs, reconnect)
 npm start       # listens on :8787 (PORT env to override)
 ```
 
