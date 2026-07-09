@@ -112,3 +112,19 @@ export function applySpiritEliminated(state, { spiritId }) {
 export function applySpiritsSynced(state, { spirits }) {
   return { ...state, spirits };
 }
+
+/**
+ * SPIRIT_PATCHED (Phase 5c) — merge a client-computed field patch into ONE
+ * spirit (no whitelist: this is the `setSpirits` shim's generic diff action, so
+ * it must be able to carry any spirit field). No-op if the spirit id is unknown
+ * — the shim only emits patches for the current roster (roster changes fall
+ * back to the SPIRITS_SYNCED full replace). Consumes no rng.
+ */
+export function applySpiritPatched(state, { spiritId, patch = {} }) {
+  const sp = state.spirits.find(s => s.id === spiritId);
+  if (!sp) return state;
+  return {
+    ...state,
+    spirits: state.spirits.map(s => s.id !== spiritId ? s : { ...s, ...patch }),
+  };
+}

@@ -516,6 +516,35 @@ fan economy — `gainFans`, `tickFans`, `demolishFans`, `gainFansFromDeed`,
   `FAME_CHANGED` / `FANS_CHANGED` / `NOTE_SHEET_PATCHED` (and 5d's `FANS_TICKED`
   block proves its own replay) — the byte-for-byte proof now spans the whole
   economy write layer.
+  ◑ **SPIRITS DIFFING SHIM DONE (SPIRIT_PATCHED — the flip's finish line),
+  pending smoke-test.** The spirits half now ends where the noteStates half did
+  (slice 5): engine adds `SPIRIT_PATCHED { spiritId, patch }` (`spiritPatched`
+  creator; `applySpiritPatched` in `systems/turn.js` next to the bridge it
+  retires — no-whitelist merge, unknown-id no-op, consumes no rng; wired in
+  `reduce.js`; selftest covers merge/carry-over/by-ref/no-rng/no-op + two
+  patches in the Phase-8c comprehensive replay). Client: the `setSpirits` shim
+  now DIFFS — applies the updater against live engine spirits, dispatches a
+  per-spirit field patch; roster changes / field removals fall back to the
+  `SPIRITS_SYNCED` full replace (final state identical — likely never fires:
+  no site adds/removes spirits or deletes fields). All 16 remaining legacy
+  writes (event vibe heals, BTTP drain, stage-lighting heal, dev ±vibe, CQC
+  drive buff, TV-toss/CQC push, shockwave blast, knockback slide) are now
+  small replayable actions. Also DELETED the 4 redundant dual-writes where the
+  engine reducer already owned the write: `move()`'s mirror (MOVE_STEP sets
+  num+facing), displace warp (SPIRIT_WARPED), and both facing sites
+  (SPIRIT_FACED — human + bot aimFace). The knockback-slide fresh-state guard's
+  `return prev` abort now exits the shim on the `next === cur` fast path (no
+  dispatch), same as before. Verified: engine `selftest.mjs` green + main file
+  esbuild-transforms clean (both via replay-onto-HEAD — the mount served stale
+  files again). **⚠️ Owner: `npm run dev` — move + face + displace-warp a
+  spirit (deleted dual-writes); play an event with a vibe heal (bat snack /
+  stage dive / TV toss); trigger a CQC push or knockback slide; buy a CQC
+  skill (+1 Drive); check the dev panel ±Vibe buttons. Then EXPORT ACTION LOG
+  and eyeball that spirit writes show as `SPIRIT_PATCHED` entries, not
+  `SPIRITS_SYNCED`.** With this, BOTH halves of the 5c client flip are at the
+  same endpoint: engine-owned state, per-field replayable writes, full-replace
+  bridges as dead-code fallbacks. True semantic actions (VIBE_CHANGED,
+  SPIRIT_MOVED, …) graduate with the netcode/server-authority project.
 - **5d — fan economy tick as action.** `FANS_TICKED` inside `END_TURN`
   processing (see §5d tick-order note below); `demolishFans` folds into
   `DAMAGE_APPLIED`/`KNOCKED_OUT` handling.

@@ -12,7 +12,7 @@ import {
   GAME_INIT,
   TURN_STARTED, TURN_ENDED, TURN_SKIPPED,
   MOVE_BUDGET_SET, MOVE_STEP, BEATS_SPENT, SPIRIT_WARPED, SPIRITS_SYNCED,
-  SPIRIT_FACED, SPIRIT_ELIMINATED,
+  SPIRIT_FACED, SPIRIT_ELIMINATED, SPIRIT_PATCHED,
   RIFF_OFF_STARTED, RIFF_RESULTS_SUBMITTED, RIFF_RESOLVED,
   RIFF_ROUND2_STARTED, RIFF_CLOSED,
   ATTACK_ROLLED, COUNTER_ROLLED,
@@ -32,7 +32,7 @@ import { restoreRng } from "./rng.js";
 import {
   applyTurnStarted, applyTurnEnded, applyTurnSkipped,
   applyMoveBudgetSet, applyBeatsSpent, applySpiritsSynced,
-  applySpiritEliminated,
+  applySpiritEliminated, applySpiritPatched,
 } from "./systems/turn.js";
 import { applyMoveStep, applySpiritWarped, applySpiritFaced } from "./systems/movement.js";
 import {
@@ -91,6 +91,7 @@ function reduce(state, action, rng) {
     case SPIRIT_FACED:    return applySpiritFaced(state, action);
     case SPIRIT_ELIMINATED: return applySpiritEliminated(state, action);
     case SPIRITS_SYNCED:  return applySpiritsSynced(state, action);
+    case SPIRIT_PATCHED:  return applySpiritPatched(state, action);
 
     // ── Phase 4: riff-off ──
     case RIFF_OFF_STARTED:       return applyRiffOffStarted(state, action, rng);

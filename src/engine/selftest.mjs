@@ -9,7 +9,7 @@ import { applyAction } from "./reduce.js";
 import {
   gameInit, turnStarted, turnEnded, turnSkipped,
   moveBudgetSet, moveStep, beatsSpent, spiritWarped, spiritsSynced,
-  spiritFaced, spiritEliminated,
+  spiritFaced, spiritEliminated, spiritPatched,
   riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed,
   attackRolled, counterRolled,
   damageApplied, knockdownResolved, winnerDeclared,
@@ -871,6 +871,25 @@ const config = {
   assert.equal(p1.rng.cursor, s.rng.cursor, "NOTE_SHEET_PATCHED consumes no rng");
   assert.equal(applyAction(s, noteSheetPatched("nobody", { hcPoints: 1 })).noteStates, s.noteStates,
     "NOTE_SHEET_PATCHED: no sheet → no-op (the shim falls back to the full replace)");
+
+  // SPIRIT_PATCHED — the setSpirits shim's generic per-spirit diff action
+  const waBefore = s.spirits.find(x => x.id === "wildaxe");
+  const veraBefore = s.spirits.find(x => x.id === "vera");
+  const sp1 = applyAction(s, spiritPatched("wildaxe",
+    { vibe: 2, num: 42, facing: 3, drive: 7, customFlag: true }));
+  const wa1 = sp1.spirits.find(x => x.id === "wildaxe");
+  assert.equal(wa1.vibe, 2,   "SPIRIT_PATCHED merges vibe");
+  assert.equal(wa1.num, 42,   "…and position");
+  assert.equal(wa1.facing, 3, "…and facing");
+  assert.equal(wa1.drive, 7,  "…and drive");
+  assert.equal(wa1.customFlag, true, "no whitelist — any spirit field may ride");
+  assert.equal(wa1.corner, waBefore.corner, "unpatched fields carry over");
+  assert.equal(wa1.lives, waBefore.lives, "unpatched fields carry over (lives)");
+  assert.equal(sp1.spirits.find(x => x.id === "vera"), veraBefore,
+    "untouched spirits carry over by reference");
+  assert.equal(sp1.rng.cursor, s.rng.cursor, "SPIRIT_PATCHED consumes no rng");
+  assert.equal(applyAction(s, spiritPatched("nobody", { vibe: 1 })).spirits, s.spirits,
+    "SPIRIT_PATCHED: unknown id → no-op (the shim falls back to the full replace)");
 }
 
 // -- Phase 5d: FANS_TICKED — the end-of-turn fan tick as an engine rule ---------
@@ -2088,6 +2107,8 @@ const config = {
     fansChanged("vera", { fanLag: 3, centerStreak: 0 }),
     noteSheetPatched("wildaxe", { hcPoints: 2, unlockedSkills: ["mic"], burnArmed: true }),
     noteSheetPatched("vera", { stagger: { turnsLeft: 2 }, modCards: [] }),
+    spiritPatched("wildaxe", { vibe: 5, drive: 7 }),
+    spiritPatched("vera", { num: 63, facing: 1 }),
 
     // ── BOARD ──
     spotlightHealed("wildaxe"),

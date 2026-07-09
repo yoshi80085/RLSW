@@ -42,6 +42,12 @@ export const DAMAGE_APPLIED     = "DAMAGE_APPLIED";
 export const KNOCKDOWN_RESOLVED = "KNOCKDOWN_RESOLVED";
 export const WINNER_DECLARED    = "WINNER_DECLARED";
 
+// ── Phase 5c: spirit generic patch (mirrors NOTE_SHEET_PATCHED) ──────────────
+// The `setSpirits` shim's diff action — merges a client-computed field patch
+// into ONE spirit. Retires SPIRITS_SYNCED from normal play (the full-replace
+// bridge becomes roster-change fallback only, exactly as NOTE_STATES_SYNCED did).
+export const SPIRIT_PATCHED = "SPIRIT_PATCHED";
+
 // ── Phase 5c: noteStates ownership bridge (mirrors SPIRITS_SYNCED) ────────────
 // TEMP full-replace bridge so the client can flip `noteStates` to a view of
 // `engineState.noteStates` cheaply (engine becomes source of truth), keeping all
@@ -275,6 +281,19 @@ export function fansChanged(spiritId, fans) {
  */
 export function noteSheetPatched(spiritId, patch) {
   return { type: NOTE_SHEET_PATCHED, spiritId, patch };
+}
+
+/**
+ * Phase 5c — merge a client-computed field patch into ONE spirit (the spirits
+ * twin of NOTE_SHEET_PATCHED). Emitted by the `setSpirits` shim's per-spirit
+ * diff in place of SPIRITS_SYNCED full replaces: same final state, but the
+ * replay log carries small, per-spirit, inspectable writes. Sites still
+ * graduate to true semantic actions (VIBE_CHANGED, SPIRIT_MOVED, …) as rules
+ * move into reducers; until then every remaining legacy write is scoped and
+ * serialized.
+ */
+export function spiritPatched(spiritId, patch) {
+  return { type: SPIRIT_PATCHED, spiritId, patch };
 }
 
 /**

@@ -56,7 +56,7 @@ import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn ro
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
@@ -640,19 +640,35 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ── SPIRITS — engine is the source of truth (Phase 5c ownership flip) ──────
   // `spirits` is now a live view of engineState.spirits (built + owned by
-  // makeInitialState on the seeded rng). `setSpirits(updater)` is a
-  // compatibility shim: it applies the (functional or plain-value) update
-  // against the CURRENT engine spirits (engineRef is always live) and writes the
-  // result back through the reducer (SPIRITS_SYNCED = full array replace). Every
-  // legacy setSpirits call keeps working unchanged; individual sites migrate to
-  // semantic actions (DAMAGE_APPLIED, KNOCKDOWN_RESOLVED, …) incrementally, each
-  // a behavioral no-op. The old `spiritsSynced(spirits)` bridge dispatches are
-  // now self-syncs (harmless) and get removed in cleanup.
+  // makeInitialState on the seeded rng). `setSpirits(updater)` is a DIFFING
+  // compatibility shim (mirrors the noteStates slice-5 shim): it applies the
+  // (functional or plain-value) update against the CURRENT engine spirits
+  // (engineRef is always live), field-diffs each spirit, and dispatches
+  // SPIRIT_PATCHED { spiritId, patch } per changed spirit — small, per-spirit,
+  // replayable writes. Anything a merge can't express (roster change, field
+  // removal) falls back to the SPIRITS_SYNCED full replace — final state
+  // identical either way, so the fallback likely never fires in normal play.
+  // Sites still graduate to true semantic actions (VIBE_CHANGED, SPIRIT_MOVED,
+  // …) when their rules move into reducers.
   const spirits = engineState.spirits;
   const setSpirits = (updater) => {
     const cur = engineRef.current.spirits;
     const next = typeof updater === "function" ? updater(cur) : updater;
-    dispatch(spiritsSynced(next));
+    if (next === cur) return; // pure-reader / no-op updaters
+    const expressible = Array.isArray(next) && next.length === cur.length
+      && next.every((sp, i) => sp && sp.id === cur[i].id
+        && Object.keys(cur[i]).every(k => k in sp));
+    if (!expressible) { dispatch(spiritsSynced(next)); return; }
+    next.forEach((sp, i) => {
+      const old = cur[i];
+      if (sp === old) return;
+      const patch = {};
+      let changed = 0;
+      for (const k of Object.keys(sp)) {
+        if (sp[k] !== old[k]) { patch[k] = sp[k]; changed++; }
+      }
+      if (changed) dispatch(spiritPatched(sp.id, patch));
+    });
   };
 
   // ── ⏩ FAST-FORWARD (client presentation only) ─────────────────────────────
@@ -2486,9 +2502,8 @@ function Game({ gameState, onReturnToLobby }) {
     }
     const to = HEX_BY_NUM[actualTarget];
     const newSteps = mv.stepsLeft;
-    setSpirits(p => p.map(sp => sp.id !== acting.id ? sp : {
-      ...sp, num: actualTarget, facing: mv.facing,
-    }));
+    // (position + facing already applied by the MOVE_STEP reducer — the old
+    // setSpirits mirror write was a diff-empty no-op and is gone.)
     if (!ns.dazed) addLog(`🚶 ${s.name} → #${actualTarget} (${newSteps} step${newSteps !== 1 ? "s" : ""} left)`);
     else addLog(`🚶 ${s.name} → #${actualTarget} (${newSteps} step${newSteps !== 1 ? "s" : ""} left)`);
     if (to.edge) addLog(`⚠️ ${s.name} is on the EDGE — knockback risk!`);
@@ -5539,8 +5554,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (!ampPlaceCandidates(acting.id).has(hexNum)) { addLog('🌌 Warp to an open hex beside your amp rig.'); return; }
 
     triggerEffectFlash(acting.id, '🌌', 'WARP', '#aa55ff');
-    setSpirits(prev => prev.map(s => s.id === acting.id ? { ...s, num: hexNum } : s));
-    dispatch(spiritWarped(acting.id, hexNum, DISPLACE_AP));
+    dispatch(spiritWarped(acting.id, hexNum, DISPLACE_AP)); // reducer owns the position write
     setNoteField(acting.id, { displaceCd: 2 });
     setAction(null);
     addLog(`🌌 ${acting.name} folds space and WARPS to hex #${hexNum} — Space is the place.`);
@@ -7053,8 +7067,7 @@ function Game({ gameState, onReturnToLobby }) {
       // Spend 1 step to turn in place (mirrors the human "face" action) so the bot
       // can aim a beam/cone instead of only attacking whatever it stumbled into.
       const aimFace = (angle) => guard(() => {
-        setSpirits(prev => prev.map(s => s.id === self.id ? { ...s, facing: angle } : s));
-        dispatch(spiritFaced(self.id, angle));
+        dispatch(spiritFaced(self.id, angle)); // reducer owns the facing write
         addLog(`🤖 ${self.name} takes aim.`);
       });
 
@@ -7386,8 +7399,7 @@ function Game({ gameState, onReturnToLobby }) {
       const targetHex = HEX_BY_NUM[num];
       if (!targetHex) return;
       const newFacing = angleTo(actingHex, targetHex);
-      setSpirits(prev => prev.map(s => s.id === acting.id ? { ...s, facing: newFacing } : s));
-      dispatch(spiritFaced(acting.id, newFacing));
+      dispatch(spiritFaced(acting.id, newFacing)); // reducer owns the facing write
       setAction(null);
       addLog(`🔄 ${acting.name} turns to face hex #${num} (costs 1 step)`);
       return;
