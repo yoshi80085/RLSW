@@ -10,6 +10,14 @@
 const SESSION_KEY = "rlsw.net.session"; // { code, rejoinToken, name }
 const BACKOFF_MIN = 500, BACKOFF_MAX = 8000;
 
+// N8: version handshake — refused at the room door, never a mid-game desync.
+// CLIENT_SCHEMA must match the server's SCHEMA (engine/protocol shape).
+// APP_VERSION is the build stamp: vite injects __APP_VERSION__ (package.json
+// version) at build time; under plain node (smokes) it falls back to "dev".
+export const CLIENT_SCHEMA = 1;
+/* eslint-disable-next-line no-undef */
+const BUILD_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+
 export function defaultServerUrl() {
   if (typeof location === "undefined") return "ws://127.0.0.1:8787";
   const qs = new URLSearchParams(location.search).get("server");
@@ -18,9 +26,10 @@ export function defaultServerUrl() {
   return `${proto}//${location.hostname}:8787`;
 }
 
-export function makeNetClient({ url, WebSocketImpl, storage } = {}) {
+export function makeNetClient({ url, WebSocketImpl, storage, appVersion } = {}) {
   const WS = WebSocketImpl ?? globalThis.WebSocket;
   const store = storage ?? (typeof localStorage !== "undefined" ? localStorage : null);
+  const version = appVersion ?? BUILD_VERSION; // test hook: smokes can fake builds
 
   let ws = null;
   let closedByUs = false;
@@ -101,14 +110,15 @@ export function makeNetClient({ url, WebSocketImpl, storage } = {}) {
       if (ws && ws.readyState === 1 /* OPEN */) ws.send(JSON.stringify(frame));
     },
 
-    createRoom(name) { client.name = name; client.send({ t: "CREATE_ROOM", name }); },
+    createRoom(name) { client.name = name; client.send({ t: "CREATE_ROOM", name, schema: CLIENT_SCHEMA, appVersion: version }); }, // N8: versioned handshake
     joinRoom(code, { name, spectator, rejoinToken } = {}) {
       client.name = name ?? client.name;
-      client.send({ t: "JOIN_ROOM", code, name: client.name, spectator, rejoinToken });
+      client.send({ t: "JOIN_ROOM", code, name: client.name, spectator, rejoinToken, schema: CLIENT_SCHEMA, appVersion: version });
     },
     startGame(config, { seatMap, botSeats } = {}) { client.send({ t: "START_GAME", config, seatMap, botSeats }); }, // N3
     sendAction(action, cursorBefore) { client.send({ t: "ACTION", action, cursorBefore }); },                       // N4
     sendLogLine(text) { client.send({ t: "LOG_LINE", text }); },                                                    // N5
+    requestCatchUp() { client.send({ t: "REQUEST_CATCHUP" }); },                                                    // N8: desync recovery
 
     /** leave the room for good — forget the seat, close the socket */
     leave() {

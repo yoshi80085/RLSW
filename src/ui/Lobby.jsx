@@ -317,12 +317,15 @@ export function Lobby({ onStart, onTutorial }) {
       justifyContent:"center", fontFamily:"'Share Tech Mono','Courier New',monospace"}}>
       <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap" rel="stylesheet"/>
       <style>{`*{box-sizing:border-box} ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-thumb{background:#2d3748}`}</style>
+      {/* N8: Testing Grounds is OFFLINE-ONLY — dev grants would relay real actions */}
+      {netStatus !== "in-room" && (
       <button onClick={startTestingGrounds} title="Skip setup"
         style={{position:'fixed',bottom:14,right:14,zIndex:50,fontFamily:"'Orbitron',sans-serif",fontSize:10,letterSpacing:1,
           cursor:'pointer',padding:'9px 14px',borderRadius:7,background:'#2a1030',border:'1.5px solid #cc66ff',color:'#e0a0ff',
           boxShadow:'0 0 18px #cc66ff55'}}>
         TESTING GROUNDS
       </button>
+      )}
 
       {/* N6: auto-rejoin overlay */}
       {autoRejoining && (

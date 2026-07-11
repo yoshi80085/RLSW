@@ -665,6 +665,30 @@ function Game({ gameState, onReturnToLobby }) {
     console.log(`[RLSW NET] engine booted — seed: ${engineState.rng.seed}, cursor: ${engineState.rng.cursor}, spirits: ${engineState.spirits.map(s=>s.id).join(",")}`);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── N8: HARDENING — desync recovery + connection status ────────────────────
+  // netSync: null = in sync · 'resyncing' = a cursor mismatch or seq gap froze
+  // input and a CATCH_UP was requested; cleared when the rebuilt state lands.
+  const [netSync, setNetSync] = useState(null);
+  const netSyncRef = useRef(null); // live mirror — frame handlers run outside render
+  // Monotonic server sequence — every ACTION frame (echoes included: our own
+  // actions advance the room seq too) must arrive at lastSeq+1, or we missed
+  // frames and must resync. Catch-up log entries carry their seq.
+  const lastSeqRef = useRef(
+    gameState.catchUp?.log?.length
+      ? (gameState.catchUp.log[gameState.catchUp.log.length - 1].seq ?? null)
+      : null
+  );
+  const [selfConn, setSelfConn] = useState("ok");                       // ok | reconnecting
+  const [netSeatsLive, setNetSeatsLive] = useState(gameState.net?.seats ?? null); // ROOM_STATE presence
+
+  function startResync(reason) {
+    if (netSyncRef.current) return; // already frozen — one CATCH_UP is enough
+    console.error(`[RLSW NET] ${reason} — freezing input, requesting CATCH_UP`);
+    netSyncRef.current = "resyncing";
+    setNetSync("resyncing");
+    netRef.current?.client.requestCatchUp();
+  }
+
   // N4: input gating — only the acting player can trigger user actions
   const isMyTurn = !netRef.current || engineState.acting === netRef.current.mySpiritId;
   // N7: the host also controls bot seats — bot step machine + gated functions
@@ -676,19 +700,29 @@ function Game({ gameState, onReturnToLobby }) {
     const actId = engineState.acting;
     return !!net.seats?.find(s => s.isBot && s.spiritId === actId);
   })();
-  // canAct: true when this client should process actions (human turn OR host-run bot)
-  const canAct = isMyTurn || amIBotController;
+  // canAct: true when this client should process actions (human turn OR host-run
+  // bot). N8: a resyncing client is frozen — its local state can't be trusted.
+  const canAct = (isMyTurn || amIBotController) && !netSync;
 
   // N4: listen for remote ACTION frames — apply to engine, skip orchestration
   useEffect(() => {
     const net = netRef.current;
     if (!net) return;
     return net.client.on("ACTION", frame => {
+      // N8: seq-gap tripwire — runs on EVERY frame, echoes included
+      if (frame.seq != null) {
+        const expected = lastSeqRef.current != null ? lastSeqRef.current + 1 : frame.seq;
+        const gap = frame.seq !== expected;
+        lastSeqRef.current = frame.seq;
+        if (gap) return startResync(`SEQ GAP — got ${frame.seq}, expected ${expected}`);
+      }
+      // N8: frozen while resyncing — these frames are inside the CATCH_UP bundle
+      if (netSyncRef.current) return;
       // Skip echoes — we already applied locally (spectators never send, never skip)
       if (net.seatId != null && frame.seatId === net.seatId) return;
-      // Desync tripwire (landmine #1)
+      // N8: desync tripwire (landmine #1) — was console-only, now freeze + auto-recover
       if (frame.cursorBefore != null && engineRef.current.rng.cursor !== frame.cursorBefore) {
-        console.error(`[RLSW NET] DESYNC! local cursor=${engineRef.current.rng.cursor} remote=${frame.cursorBefore}`, frame.action);
+        return startResync(`DESYNC — local cursor=${engineRef.current.rng.cursor} ≠ sender's ${frame.cursorBefore} (${frame.action?.type})`);
       }
       // Apply the action — engine state only, no orchestration (addLog / FX / timeouts)
       actionLogRef.current.push({ action: frame.action, cursorBefore: frame.cursorBefore });
@@ -696,6 +730,51 @@ function Game({ gameState, onReturnToLobby }) {
       engineRef.current = next;
       setEngineState(next);
     });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // N8: mid-game CATCH_UP — desync recovery AND wifi-blip rejoin both land here
+  // (the client auto-rejoins after a drop; the server answers WELCOME+CATCH_UP).
+  // Rebuild the engine from scratch: seed + config are immutable for the match,
+  // so makeInitialState + the server's authoritative log IS the current state —
+  // the same machinery as the N6 mount-time replay (engine replay is cheap).
+  // Presentation state (open cinematics, camera) is NOT rebuilt — accepted v1;
+  // the engine converges and the next turn renders normally. No remount
+  // (landmine #2): gameState is untouched, only engine state is replaced.
+  useEffect(() => {
+    const net = netRef.current;
+    if (!net) return;
+    return net.client.on("CATCH_UP", f => {
+      let s = makeInitialState(gameState, gameState.seed);
+      for (const entry of f.log) s = applyAction(s, entry.action);
+      engineRef.current = s;
+      setEngineState(s);
+      actionLogRef.current = f.log.map(e => ({ action: e.action, cursorBefore: e.cursorBefore }));
+      lastSeqRef.current = f.log.length ? (f.log[f.log.length - 1].seq ?? null) : 0;
+      netSyncRef.current = null;
+      setNetSync(null);
+      console.log(`[RLSW NET] resynced — ${f.log.length} actions replayed, cursor=${s.rng.cursor}`);
+      setLog(p => ["🔄 Resynced with the room server.", ...p].slice(0, 40)); // local-only, don't relay
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // N8: presence — the server broadcasts ROOM_STATE on every connect/disconnect;
+  // seats carry `connected` so we can hang "X disconnected" banners off it.
+  useEffect(() => {
+    const net = netRef.current;
+    if (!net) return;
+    return net.client.on("ROOM_STATE", f => setNetSeatsLive(f.seats));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // N8: own-socket status — the client auto-reconnects with backoff (N2);
+  // surface the gap so the player knows their inputs aren't going anywhere.
+  useEffect(() => {
+    const net = netRef.current;
+    if (!net) return;
+    const offs = [
+      net.client.on("net:close", () => setSelfConn("reconnecting")),
+      net.client.on("net:open",  () => setSelfConn("ok")),
+    ];
+    return () => offs.forEach(o => o());
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // N5: listen for remote LOG_LINE frames — display the acting client's narrative
@@ -727,7 +806,16 @@ function Game({ gameState, onReturnToLobby }) {
     const expressible = Array.isArray(next) && next.length === cur.length
       && next.every((sp, i) => sp && sp.id === cur[i].id
         && Object.keys(cur[i]).every(k => k in sp));
-    if (!expressible) { dispatch(spiritsSynced(next)); return; }
+    if (!expressible) {
+      // N8 TRIPWIRE: the full-replace fallback must NEVER fire online — a SYNC
+      // from one client would relay and stomp every other client's engine state
+      // wholesale (handoff landmine #3). Loud console + log line for the report.
+      if (netRef.current) {
+        console.error("[RLSW NET] TRIPWIRE: SPIRITS_SYNCED fallback fired ONLINE — inexpressible spirits write; report this", next);
+        setLog(p => ["🚨 NET TRIPWIRE: SPIRITS_SYNCED fired online — please report (see console).", ...p].slice(0, 40));
+      }
+      dispatch(spiritsSynced(next)); return;
+    }
     next.forEach((sp, i) => {
       const old = cur[i];
       if (sp === old) return;
@@ -885,8 +973,10 @@ function Game({ gameState, onReturnToLobby }) {
   // The very first tip (skill_tree) is triggered by the initial skill pick useEffect.
   // The pivot tip fires naturally from endTurn → setTurnStep('pivot') → showTip('pivot').
   const turnQueue = engineState.turnQueue; // engine-owned (Phase 2)
-  // 🧪 TESTING GROUNDS — dev panel (only when the sandbox was launched from the menu)
-  const testMode = !!gameState.testMode;
+  // 🧪 TESTING GROUNDS — dev panel (only when the sandbox was launched from the
+  // menu). N8: hard-disabled online — dev grants dispatch real actions and the
+  // config rides over the wire, so a testMode flag must never enable it in a room.
+  const testMode = !!gameState.testMode && !gameState.net;
   const [devOpen, setDevOpen] = useState(false);
   // (devEventId removed — Testing Grounds now fires stage FX directly)
   // N5: winner derives from engine state so remote clients see it via N4 relay
@@ -944,7 +1034,15 @@ function Game({ gameState, onReturnToLobby }) {
         dispatch(noteSheetPatched(id, patch));
       }
     }
-    if (fallback) dispatch(noteStatesSynced(next));
+    if (fallback) {
+      // N8 TRIPWIRE: same contract as the spirits shim — the full-map replace
+      // must never fire online (handoff landmine #3). Loud console + log line.
+      if (netRef.current) {
+        console.error("[RLSW NET] TRIPWIRE: NOTE_STATES_SYNCED fallback fired ONLINE — inexpressible noteStates write; report this", next);
+        setLog(p => ["🚨 NET TRIPWIRE: NOTE_STATES_SYNCED fired online — please report (see console).", ...p].slice(0, 40));
+      }
+      dispatch(noteStatesSynced(next));
+    }
   };
 
 
@@ -2548,6 +2646,11 @@ function Game({ gameState, onReturnToLobby }) {
   // Triggers once per spirit when they have never chosen a skill target.
   useEffect(() => {
     if (!acting) return;
+    // OWNERSHIP: only the client that controls the acting spirit may open the
+    // pick and write to its tree — remote clients would otherwise dispatch a
+    // duplicate NOTE_SHEET_PATCHED and relay it (desync). They receive the
+    // acting client's write via the ACTION relay instead.
+    if (!canAct) return;
     const ns = noteStates[acting.id] ?? {};
     const hasTarget   = !!ns.targetSkillId;
     const hasSkills   = (ns.unlockedSkills?.length ?? 0) > 0;
@@ -2711,6 +2814,7 @@ function Game({ gameState, onReturnToLobby }) {
   // Called when player selects a skill to target (from the overlay).
   // The previously awarded skill is already in unlockedSkills — just set the new target.
   function setSkillTarget(spiritId, skillId) {
+    if (!canAct) return; // OWNERSHIP: only the controlling client sets skill targets
     const ns    = noteStates[spiritId] ?? {};
     const skill = SKILL_BY_ID[skillId];
     if (!skill) return;
@@ -2815,6 +2919,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Player clicked a hex while ampPlacing — drop the amp there if valid
   function placeAmp(hexNum) {
+    if (!canAct) return; // OWNERSHIP: only the controlling client places amps
     if (!ampPlacing) return;
     const spiritId = ampPlacing;
     const spirit = spirits.find(s => s.id === spiritId);
@@ -6979,6 +7084,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (!self || !isBot(self)) return;
     // N7: online — only the host runs bots; other clients just see relayed actions
     if (netRef.current && !amIBotController) return;
+    // N8: frozen while resyncing — a bot driving a stale engine would fork reality
+    if (netSyncRef.current) return;
     if (winner) return;                          // game's over
     if (noteStates[self.id]?.recovering) return; // recovery skip handled elsewhere
     // Never act in the middle of a battle/riff-off cinematic — those resolve via
@@ -8170,6 +8277,38 @@ function Game({ gameState, onReturnToLobby }) {
           column flexes and the board SVG scales to whatever remains. */}
       <div style={{display:"grid",gridTemplateColumns:"minmax(430px,480px) minmax(0,1fr)",gap:12,alignItems:"start",flex:1,minWidth:0}}>
 
+      {/* ── N8: NET STATUS BANNERS — desync, own socket, rival disconnects ── */}
+      {netRef.current && (() => {
+        const gone = (netSeatsLive ?? []).filter(s => !s.isBot && s.connected === false);
+        if (!gone.length && selfConn === "ok" && !netSync) return null;
+        const pill = (bg, border, color) => ({
+          fontFamily:"'Orbitron',sans-serif", fontSize:10, letterSpacing:1.5,
+          padding:"6px 16px", borderRadius:6, background:bg,
+          border:`1px solid ${border}`, color, boxShadow:`0 0 14px ${border}55`,
+        });
+        return (
+          <div style={{position:"fixed", top:8, left:"50%", transform:"translateX(-50%)",
+            zIndex:9500, display:"flex", flexDirection:"column", gap:6,
+            alignItems:"center", pointerEvents:"none"}}>
+            {netSync && (
+              <div style={pill("#301500", "#ffaa00", "#ffcc44")}>
+                ⚠️ OUT OF SYNC — resyncing with the room…
+              </div>
+            )}
+            {selfConn !== "ok" && (
+              <div style={pill("#300a15", "#ff4488", "#ff88bb")}>
+                📡 CONNECTION LOST — reconnecting…
+              </div>
+            )}
+            {gone.map(s => (
+              <div key={s.seatId} style={pill("#0a1530", "#4488ff", "#88bbff")}>
+                🔌 {s.name} disconnected (reconnecting…)
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* ── BATTLE METER OVERLAY ── */}
       <BattleMeterOverlay
         RIFF_ANSWER_LABELS={RIFF_ANSWER_LABELS}
@@ -8281,8 +8420,12 @@ function Game({ gameState, onReturnToLobby }) {
         signatureSpirit={signatureSpirit}
         spirits={spirits}
       />
-      {/* ── UPGRADE MODAL — blocks all action until resolved ── */}
-      <UpgradeModal
+      {/* ── UPGRADE MODAL — blocks all action until resolved ──
+          OWNERSHIP: rendered ONLY on the client that controls the acting
+          spirit (canAct). Remote players/spectators must never see — let
+          alone drive — another player's skill tree; its buttons write
+          noteStates, which would relay duplicate actions and desync. */}
+      {canAct && <UpgradeModal
         SKILL_BY_ID={SKILL_BY_ID}
         SKILL_TREE={SKILL_TREE}
         acting={acting}
@@ -8292,7 +8435,7 @@ function Game({ gameState, onReturnToLobby }) {
         setNoteStates={setNoteStates}
         setSkillTarget={setSkillTarget}
         upgradesPending={upgradesPending}
-      />
+      />}
       {/* ── LEFT PANEL ── */}
         <div style={{display:"flex",flexDirection:"column",gap:0}}>
 
@@ -8570,7 +8713,7 @@ function Game({ gameState, onReturnToLobby }) {
                               🔊 #{a.hexNum}{a.unplugged?' ⚡✕':''}
                             </span>
                           ))}
-                          {canPlaceAmp && !ampPlacing && (
+                          {canPlaceAmp && !ampPlacing && canAct && (
                             <button style={{...chipBase, background:'#0a1020',
                                 border:'1px dashed #ffcc44aa', color:'#ffcc44',
                                 animation:'crew-ready-glow 2s ease-in-out infinite'}}

@@ -43,10 +43,14 @@
 ## Protocol (JSON frames over ws)
 
 Client → server:
-`CREATE_ROOM { name }` · `JOIN_ROOM { code, name, spectator? , rejoinToken? }`
+`CREATE_ROOM { name, schema, appVersion }` · `JOIN_ROOM { code, name,
+spectator?, rejoinToken?, schema, appVersion }` (N8: schema must match the
+server's, appVersion must match the room creator's — explicit mismatch =
+`VERSION_MISMATCH`, refused at the door; version-less frames are tolerated)
 · `START_GAME { config }` (host only; server injects `seed`) · `ACTION
 { action, cursorBefore }` (acting seat only) · `LOG_LINE { text }`
-(presentation side-channel) · `PING`.
+(presentation side-channel) · `REQUEST_CATCHUP {}` (N8: desync recovery —
+answered with the same CATCH_UP bundle a late joiner gets) · `PING`.
 
 Server → client:
 `ROOM_STATE { code, you, seats[], spectators, phase }` · `GAME_STARTED { seed,
@@ -70,7 +74,7 @@ logLines[], seq }`. Rooms die 10 min after the last socket drops.
 | N5 | Presentation relay | remote log lines + acceptable remote visuals | ☑ |
 | N6 | Spectate + reconnect | spectator joins mid-game; player F5s and resumes | ☑ |
 | N7 | Bot seats | 1 human + bots online; bot actions relay like human ones | ☑ |
-| N8 | Hardening | version check, heartbeats, dev-panel gating, desync UX | ☐ |
+| N8 | Hardening | version check, heartbeats, dev-panel gating, desync UX | ☑ |
 | N9 | Deploy | play over the internet | ☐ |
 
 - **N0 — seed threading (one line + lobby plumbing).**
@@ -120,16 +124,51 @@ logLines[], seq }`. Rooms die 10 min after the last socket drops.
   actions relay like any other. (Bot decisions read engine state and bot rolls
   use engine rng, so replay stays exact — the step machine's setTimeout pacing
   is presentation, sequenced by the server like everything else.)
-- **N8 — hardening.** Handshake carries `{ schema, appVersion (git hash or
-  package version) }` — mismatch = refuse room, not mid-game desync. Heartbeat
-  + "X disconnected (reconnecting…)" banners. Desync UX: on cursor mismatch,
-  freeze input + auto-CATCH-UP + toast. Disable Testing Grounds / dev grants
-  online (or host-only). The SPIRITS_SYNCED / NOTE_STATES_SYNCED fallbacks
-  must NEVER fire online — console.error tripwire + auto-report.
+- **N8 — hardening. ☑ Shipped 2026-07-12** (smoke: `server/n8-hardening-smoke.mjs`):
+  - **Version handshake:** CREATE/JOIN carry `{ schema, appVersion }`
+    (`CLIENT_SCHEMA` in net/client.js; `__APP_VERSION__` injected by vite from
+    package.json, "dev" under node). Server refuses explicit mismatches with
+    `VERSION_MISMATCH`; the room pins the creator's appVersion.
+  - **Desync UX:** cursor mismatch OR a seq gap (every ACTION frame, echoes
+    included, must arrive at lastSeq+1) → freeze input (`canAct` false, bot
+    step machine halted), send REQUEST_CATCHUP, banner "⚠️ OUT OF SYNC".
+    The Game-level CATCH_UP handler rebuilds the engine from seed+config+log
+    (same machinery as the N6 mount replay) and unfreezes. This also heals
+    wifi blips: the client auto-rejoins and the server's WELCOME+CATCH_UP now
+    lands in-game, not just in the lobby.
+  - **Presence banners:** in-game ROOM_STATE listener → "🔌 X disconnected
+    (reconnecting…)" per dropped human seat; own-socket net:close/net:open →
+    "📡 CONNECTION LOST". Server heartbeat sweep (15s ping/pong) was already
+    killing zombies so seats flip `connected` promptly.
+  - **Dev gating:** Testing Grounds launch button hidden while in a room;
+    in-game `testMode` is hard-false when `gameState.net` exists (config rides
+    the wire — a flag must not enable dev grants online).
+  - **SYNC tripwires:** the SPIRITS_SYNCED / NOTE_STATES_SYNCED full-replace
+    fallbacks console.error + post a 🚨 log line if they ever fire online.
+  - **Ownership fix (same day):** the skill/upgrade tree is now controllable
+    ONLY by the client that controls the acting spirit — UpgradeModal renders
+    behind `canAct`, and the initial-pick effect, `setSkillTarget`, `placeAmp`
+    + the Place-Amp chip are `canAct`-gated (remote clients previously drove
+    other players' trees AND relayed duplicate NOTE_SHEET_PATCHED writes).
 - **N9 — deploy.** LAN: `vite --host` + server on :8787 (one command each).
   Internet: server on a small host (Fly.io / Railway / any $5 VPS) behind
   `wss://`; client stays on gh-pages with the server URL in an env/config.
   CORS is a non-issue for pure websockets; just get TLS right (wss).
+  Gotchas a cold start WILL hit:
+  1. **Mixed content — wss is mandatory, not optional.** gh-pages serves over
+     https, so browsers hard-block `ws://` connections from it. The production
+     server URL must be `wss://…`; plain `ws://` only works on localhost/LAN.
+  2. **`defaultServerUrl()` is LAN-only.** It falls back to
+     `location.hostname:8787`, which is meaningless on gh-pages. Either bake a
+     production default via vite `define` (add `__SERVER_URL__` in
+     vite.config.js — same pattern as the existing `__APP_VERSION__` — and
+     prefer it in net/client.js when set), or require `?server=wss://…` in the
+     shared link. The `?server=` query override already works today.
+  3. **Sleeping hosts kill rooms.** Rooms are RAM (landmine #5): a free-tier
+     instance that auto-stops on idle (Fly autostop, Railway sleep) wipes every
+     game the moment it spins down. Use an always-on instance, or accept
+     mid-session room loss. The 15s server-side ping keeps ACTIVE sockets alive
+     through proxies, but it does not keep a sleeping host awake forever.
 
 ## Landmines (read before each phase)
 

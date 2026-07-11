@@ -12,6 +12,22 @@ const PORT = Number(process.env.PORT ?? 8787);
 const ROOM_TTL_MS = 10 * 60 * 1000; // empty-room grave timer
 const SCHEMA = 1;                   // must match engine state schema
 
+// N8: version gate — a mismatched client is refused at the door (clean error
+// in the lobby) instead of desyncing mid-game. `schema` is the engine/protocol
+// schema (server-owned); `appVersion` is the client build — the CREATOR's
+// version is pinned on the room and every joiner must match it exactly.
+// Both checks are null-tolerant: clients that don't send versions (old smokes,
+// dev tools) are let through — the gate only refuses EXPLICIT mismatches.
+function versionMismatch(f, room = null) {
+  if (f.schema != null && f.schema !== SCHEMA) {
+    return `schema ${f.schema} ≠ server schema ${SCHEMA} — update your client`;
+  }
+  if (room && room.appVersion && f.appVersion && f.appVersion !== room.appVersion) {
+    return `app version ${f.appVersion} ≠ room version ${room.appVersion} — everyone needs the same build`;
+  }
+  return null;
+}
+
 /** rooms: code → room. All state is RAM (landmine #5 in the handoff doc). */
 const rooms = new Map();
 
@@ -30,6 +46,7 @@ const newToken = () => randomBytes(12).toString("hex");
 function makeRoom(code) {
   return {
     code,
+    appVersion: null,        // N8: creator's build — joiners must match
     phase: "lobby",          // lobby | playing
     seats: [],               // { seatId, name, ws|null, rejoinToken, isBot, spiritId|null }
     spectators: new Set(),   // ws
@@ -107,7 +124,10 @@ wss.on("connection", (ws) => {
 
       case "CREATE_ROOM": {
         if (room) return err("ALREADY_IN_ROOM", "leave first");
+        const mismatch = versionMismatch(f);
+        if (mismatch) return err("VERSION_MISMATCH", mismatch);
         room = makeRoom(newRoomCode());
+        room.appVersion = f.appVersion ?? null; // N8: pin the creator's build
         rooms.set(room.code, room);
         seat = { seatId: 1, name: String(f.name ?? "Player"), ws, rejoinToken: newToken(), isBot: false, spiritId: null };
         room.seats.push(seat);
@@ -120,6 +140,8 @@ wss.on("connection", (ws) => {
         if (room) return err("ALREADY_IN_ROOM", "leave first");
         const r = rooms.get(String(f.code ?? "").toUpperCase());
         if (!r) return err("NO_SUCH_ROOM", "bad code");
+        const mismatch = versionMismatch(f, r);
+        if (mismatch) return err("VERSION_MISMATCH", mismatch);
 
         // rejoin: token matches a disconnected seat → reclaim it (works mid-game)
         if (f.rejoinToken) {
@@ -196,6 +218,14 @@ wss.on("connection", (ws) => {
         const entry = { seq: room.seq, seatId: seat.seatId, text: String(f.text ?? "").slice(0, 500) };
         room.logLines.push(entry);
         return broadcast(room, { t: "LOG_LINE", ...entry }, { except: ws });
+      }
+
+      // N8: desync recovery — a client that detects a cursor mismatch or a seq
+      // gap freezes its input and asks for the authoritative log; the server
+      // answers with the same CATCH_UP bundle a late joiner gets.
+      case "REQUEST_CATCHUP": {
+        if (!room || room.phase !== "playing") return err("NOT_PLAYING", "no game in progress");
+        return send(ws, catchUp(room));
       }
 
       case "LEAVE": {
