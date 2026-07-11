@@ -69,7 +69,7 @@ logLines[], seq }`. Rooms die 10 min after the last socket drops.
 | N4 | Action relay | full 2-human match across two tabs | ☑ |
 | N5 | Presentation relay | remote log lines + acceptable remote visuals | ☑ |
 | N6 | Spectate + reconnect | spectator joins mid-game; player F5s and resumes | ☑ |
-| N7 | Bot seats | 1 human + bots online; bot actions relay like human ones | ☐ |
+| N7 | Bot seats | 1 human + bots online; bot actions relay like human ones | ☑ |
 | N8 | Hardening | version check, heartbeats, dev-panel gating, desync UX | ☐ |
 | N9 | Deploy | play over the internet | ☐ |
 

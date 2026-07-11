@@ -35,7 +35,8 @@ export function Lobby({ onStart, onTutorial }) {
       onStart({
         ...f.config,
         seed: f.seed,
-        net: { client: netClient, seatId: netClient.seatId, seats: f.seats, mySpiritId: mySeat?.spiritId ?? null },
+        net: { client: netClient, seatId: netClient.seatId, seats: f.seats,
+          mySpiritId: mySeat?.spiritId ?? null, isHost: netClient.seatId === netRoom?.hostSeatId },
       });
     });
   }, [netClient, onStart]);
@@ -52,6 +53,7 @@ export function Lobby({ onStart, onTutorial }) {
         net: {
           client: netClient, seatId: netClient.seatId, seats: f.seats,
           mySpiritId: mySeat?.spiritId ?? null, spectator: netClient.spectator,
+          isHost: netClient.seatId === netRoom?.hostSeatId,
         },
         catchUp: { log: f.log, logLines: f.logLines },
       });
@@ -163,24 +165,31 @@ export function Lobby({ onStart, onTutorial }) {
     onStart({ spirits, mode, teams, startingLives, beginnerMode });
   }
 
-  // N3: online start
+  // N3/N7: online start — includes bot seats
   function handleStartOnline() {
-    const spirits = activeCorners.map(corner => {
+    const humanSeats = netRoom.seats.filter(s => !s.isBot);
+    const spirits = activeCorners.map((corner, ci) => {
       const def = SPIRIT_DEFS[assignments[corner]];
       const { homeNum } = CORNERS[corner];
       const facing = cornerFacing(homeNum);
       const { color: cornerColor } = CORNER_LABELS[corner];
-      return { ...def, num: homeNum, facing, corner, color: cornerColor, cpu: false };
+      const isBot = ci >= humanSeats.length;
+      return { ...def, num: homeNum, facing, corner, color: cornerColor, cpu: isBot };
     });
     const teams = mode === "team"
       ? { a: activeCorners.slice(0,2), b: activeCorners.slice(2,4) }
       : null;
     const config = { spirits, mode, teams, startingLives, beginnerMode };
-    const seatMap = netRoom.seats.filter(s => !s.isBot).map((s, i) => ({
+    const seatMap = humanSeats.map((s, i) => ({
       seatId: s.seatId,
       spiritId: activeCorners[i] ? assignments[activeCorners[i]] : null,
     }));
-    netClient.startGame(config, { seatMap });
+    // N7: bot corners beyond the human seats become server-side bot seats
+    const botSeats = activeCorners.slice(humanSeats.length).map(corner => ({
+      name: SPIRIT_DEFS[assignments[corner]]?.name ?? "Bot",
+      spiritId: assignments[corner],
+    }));
+    netClient.startGame(config, { seatMap, botSeats: botSeats.length ? botSeats : undefined });
   }
 
   function startTestingGrounds() {
@@ -436,16 +445,34 @@ export function Lobby({ onStart, onTutorial }) {
           {modeAndLives("03", handleStart, "START GAME")}
         </>)}
 
-        {/* N3: ONLINE HOST CONFIG */}
+        {/* N3/N7: ONLINE HOST CONFIG — assign spirits + add bots */}
         {netStatus === "in-room" && isHost && playerCount && (<>
           <div style={{marginBottom:24}}>
-            <div style={{fontSize:9, color:"#3a5a7a", letterSpacing:2, textTransform:"uppercase", marginBottom:10,
-              fontFamily:"'Orbitron',sans-serif"}}>
-              {"01 — Assign Spirits (" + netRoom.seats.filter(s => !s.isBot).length + " seats)"}
+            <div style={{display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:10}}>
+              <div style={{fontSize:9, color:"#3a5a7a", letterSpacing:2, textTransform:"uppercase",
+                fontFamily:"'Orbitron',sans-serif"}}>
+                {"01 — Assign Spirits (" + playerCount + " total)"}
+              </div>
+              <div style={{display:"flex", gap:6}}>
+                {playerCount < 4 && (
+                  <button onClick={() => { setPlayerCount(p => Math.min(4, p + 1)); setAssignments({}); setMode(null); }}
+                    style={{...btnBase, padding:"3px 10px", fontSize:9, background:"#1a2a10", borderColor:"#44cc66", color:"#44ff88"}}>
+                    + Add Bot
+                  </button>
+                )}
+                {playerCount > netRoom.seats.filter(s => !s.isBot).length && (
+                  <button onClick={() => { setPlayerCount(p => Math.max(netRoom.seats.filter(s => !s.isBot).length, p - 1)); setAssignments({}); setMode(null); }}
+                    style={{...btnBase, padding:"3px 10px", fontSize:9, background:"#301520", borderColor:"#ff4488", color:"#ff88bb"}}>
+                    − Remove Bot
+                  </button>
+                )}
+              </div>
             </div>
             {activeCorners.map((corner, ci) => {
-              const seat = netRoom.seats.filter(s => !s.isBot)[ci];
-              return spiritPicker(corner, seat ? ("— " + seat.name) : null);
+              const humanSeats = netRoom.seats.filter(s => !s.isBot);
+              const seat = humanSeats[ci];
+              const isBot = ci >= humanSeats.length;
+              return spiritPicker(corner, isBot ? "— 🤖 BOT" : seat ? ("— " + seat.name) : null);
             })}
           </div>
           {modeAndLives("02", handleStartOnline, "START ONLINE GAME")}

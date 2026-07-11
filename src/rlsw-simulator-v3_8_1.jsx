@@ -667,6 +667,17 @@ function Game({ gameState, onReturnToLobby }) {
 
   // N4: input gating — only the acting player can trigger user actions
   const isMyTurn = !netRef.current || engineState.acting === netRef.current.mySpiritId;
+  // N7: the host also controls bot seats — bot step machine + gated functions
+  // need to know when this client should drive a bot's turn.
+  const amIBotController = (() => {
+    const net = netRef.current;
+    if (!net) return false; // offline: bots run via isBot(acting) already
+    if (!net.isHost) return false; // only the host runs bots
+    const actId = engineState.acting;
+    return !!net.seats?.find(s => s.isBot && s.spiritId === actId);
+  })();
+  // canAct: true when this client should process actions (human turn OR host-run bot)
+  const canAct = isMyTurn || amIBotController;
 
   // N4: listen for remote ACTION frames — apply to engine, skip orchestration
   useEffect(() => {
@@ -1640,7 +1651,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── MELODY LINE FUNCTIONS ─────────────────────────────────────────────────────
   function clickNoteStock(idx, _flyEvent, _forceChordMode) {
-    if (!acting) return;
+    if (!acting || !canAct) return; // N4/N7: gate
     // ── 🎚️ MIXER — once per turn, tap an already-played note to layer it again ──
     if (usedHas(usedStockIdx, idx)) {
       const hasMixer  = (actingNoteState?.unlockedSkills ?? []).includes('mixer');
@@ -1743,7 +1754,7 @@ function Game({ gameState, onReturnToLobby }) {
   // 🎸 Drop one note from your Chord Stack — costs your single revoice for the turn.
   // Floored at 1 note so your stance is never empty (you always have SOME chord).
   function removeChordNote(i) {
-    if (!acting || hasConfirmed || pivotPending) return;
+    if (!acting || !canAct || hasConfirmed || pivotPending) return; // N4/N7: gate
     if (actingNoteState?.revoiceUsedThisTurn) { addLog('🎸 You\'ve already revoiced this turn.'); return; }
     const chord = actingNoteState?.chordStack ?? [];
     if (chord.length <= 1) { addLog('🎸 Can\'t drop your last note — your stance needs at least one.'); return; }
@@ -1754,7 +1765,7 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   function declarePivot(newMode) {
-    if (!acting) return;
+    if (!acting || !canAct) return; // N4/N7: gate
     if (newMode === 'minor' && !(actingNoteState?.unlockedSkills ?? []).includes('theory_minor')) {
       addLog('🔒 Minor Tonality is locked — unlock it in the Theory tree to play in a minor key.');
       return;
@@ -1814,7 +1825,7 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   function clearNoteTrack() {
-    if (!acting) return;
+    if (!acting || !canAct) return; // N4/N7: gate
     setNoteField(acting.id, {
       melodyLine: [],
       usedStockIdx: [],
@@ -1826,7 +1837,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Player taps "Use Bank" — adds banked note to track as a free extra note
   function useBankedNote() {
-    if (!acting || !bankedNote) return;
+    if (!acting || !canAct || !bankedNote) return; // N4/N7: gate
     if (hasConfirmed) { addLog('✓ Already confirmed — cannot use bank this turn.'); return; }
     if (pivotPending) { addLog('⚡ Declare Major/Minor before using the banked note.'); return; }
     const note = bankedNote.note;
@@ -1842,7 +1853,7 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   function confirmNoteTrack() {
-    if (!acting || !isMyTurn) return; // N4: gate
+    if (!acting || !canAct) return; // N4/N7: gate
     const baseTrack = actingNoteState?.melodyLine ?? [];
     if (baseTrack.length === 0) { addLog('❌ No notes in track!'); return; }
     // ── 🎤 MIC — voice roll: d6, on 4+ a bonus in-scale note joins the track ──
@@ -2852,6 +2863,7 @@ function Game({ gameState, onReturnToLobby }) {
   // Groupie crews are one-tap abilities in the HUD. Each deployment puts that
   // crew on a GROUPIE_COOLDOWN (own turns) before it can be sent out again.
   function deployGroupie(spiritId, skillId) {
+    if (!canAct) return; // N4/N7: gate
     const spirit = spirits.find(s => s.id === spiritId);
     const ns     = noteStates[spiritId] ?? {};
     if (!spirit || spirit.knockedOut) return;
@@ -2939,6 +2951,7 @@ function Game({ gameState, onReturnToLobby }) {
   // ENCORE APOCALYPSE — the Ultimate. Once per game: 2 Vibe damage + 1-turn
   // Stagger to every rival within 4 hexes.
   function fireUltimate(spiritId) {
+    if (!canAct) return; // N4/N7: gate
     const spirit = spirits.find(s => s.id === spiritId);
     const ns     = noteStates[spiritId] ?? {};
     if (!spirit || spirit.knockedOut) return;
@@ -2977,7 +2990,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ── LIMELIGHT / POSE ─────────────────────────────────────────────────────────
   function togglePose() {
-    if (!acting) return;
+    if (!acting || !canAct) return; // N4/N7: gate
     if (!(noteStates[acting.id]?.unlockedSkills ?? []).includes('hero_pose')) {
       addLog(`🌟 Unlock HERO POSE (CQC route) before striking a winning pose!`);
       return;
@@ -3001,6 +3014,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Roadie action flow
   function startRoadieAction(spiritId, roadieId) {
+    if (!canAct) return; // N4/N7: gate
     setRoadieAction({ spiritId, roadieId, phase: 'selectHex' });
     addLog(`🔧 Roadie activated — click a hex adjacent to your Amp`);
   }
@@ -3033,7 +3047,7 @@ function Game({ gameState, onReturnToLobby }) {
   };
 
   function playModCard(cardId) {
-    if (!acting) return;
+    if (!acting || !canAct) return; // N4/N7: gate
     const ns = actingNoteState;
     const card = (ns?.modCards ?? []).find(c => c.id === cardId);
     if (!card || card.exhausted) return;
@@ -3318,6 +3332,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Unplug a rival's amp — must be adjacent to the amp hex
   function unplugRivalAmp(ampId) {
+    if (!canAct) return; // N4/N7: gate
     const spirit = spirits.find(s => s.id === acting?.id);
     if (!spirit) return;
     const spiritHex = HEX_BY_NUM[spirit.num];
@@ -3528,7 +3543,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Modal resolver for the Lost Chord pickup choice.
   function resolveLostChordPickup(choice) {
-    if (!pendingLostChordPickup) return;
+    if (!canAct || !pendingLostChordPickup) return; // N4/N7: gate
     const { spiritId, note, roninGreed } = pendingLostChordPickup;
     setPendingLostChordPickup(null);
     if (choice === 'bank') { bankLostChordNote(spiritId, note, roninGreed); return; }
@@ -3621,7 +3636,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Modal resolver for the Overcharge choice.
   function resolveChargeChoice(choice) {
-    if (!chargeChoicePending) return;
+    if (!canAct || !chargeChoicePending) return; // N4/N7: gate
     const { spiritId } = chargeChoicePending;
     setChargeChoicePending(null);
     if (choice === 'boost') grantChargeBoost(spiritId);
@@ -3632,7 +3647,7 @@ function Game({ gameState, onReturnToLobby }) {
   // Chord Stack, or drop one, spending the ONE bonus revoice the charge granted.
   // Separate guard from the normal revoiceUsedThisTurn budget by design.
   function spendBonusRevoiceAdd(idx) {
-    if (!acting || !actingNoteState?.bonusRevoiceAvailable) return;
+    if (!acting || !canAct || !actingNoteState?.bonusRevoiceAvailable) return; // N4/N7: gate
     const chord = actingNoteState.chordStack ?? [];
     if (chord.length >= 5) { addLog('🎸 Chord Stack is full — drop a note first.'); return; }
     const note = actingNoteState.noteStock?.[idx];
@@ -3646,7 +3661,7 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`⚡ ${acting.name} spends the bonus revoice — ${note} joins the Chord Stack!`);
   }
   function spendBonusRevoiceDrop(i) {
-    if (!acting || !actingNoteState?.bonusRevoiceAvailable) return;
+    if (!acting || !canAct || !actingNoteState?.bonusRevoiceAvailable) return; // N4/N7: gate
     const chord = actingNoteState.chordStack ?? [];
     if (chord.length <= 1) { addLog("🎸 Can't drop your last note — your stance needs at least one."); return; }
     if (i < 0 || i >= chord.length) return;
@@ -6536,6 +6551,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // roadieStartFix — used for FIX CABLE flow: player picks which unplugged amp to fix
   function roadieStartFix(spiritId, roadieId) {
+    if (!canAct) return; // N4/N7: gate
     const unpluggedAmps = amps.filter(a => a.ownerId === spiritId && a.unplugged);
     if (unpluggedAmps.length === 0) {
       addLog('🔧 No unplugged amps to fix!');
@@ -6553,7 +6569,7 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   function confirmRoadieReplug() {
-    if (!roadieAction || roadieAction.phase !== 'replug') return;
+    if (!canAct || !roadieAction || roadieAction.phase !== 'replug') return; // N4/N7: gate
     const { spiritId, roadieId, ampId } = roadieAction;
     roadieReplugAmp(spiritId, ampId);
     // Put roadie on cooldown
@@ -6575,7 +6591,7 @@ function Game({ gameState, onReturnToLobby }) {
 
 
   function roadieMoveAmp(dirHexNum) {
-    if (!roadieAction || roadieAction.phase !== 'selectDir') return;
+    if (!canAct || !roadieAction || roadieAction.phase !== 'selectDir') return; // N4/N7: gate
     const { spiritId, roadieId } = roadieAction;
     // Find amp adjacent to adjHexNum
     const adjHex = HEX_BY_NUM[roadieAction.adjHexNum];
@@ -6646,7 +6662,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── END TURN ────────────────────────────────────────────────────────────────
   function endTurn() {
-    if (!isMyTurn) return; // N4: only the acting client ends its own turn
+    if (!canAct) return; // N4/N7: only the controlling client ends the turn
     const s = spirits.find(sp => sp.id === acting.id);
 
     // The engine resolves the turn end: limelight verdict, turn counter,
@@ -6961,6 +6977,8 @@ function Game({ gameState, onReturnToLobby }) {
   useEffect(() => {
     const self = acting;
     if (!self || !isBot(self)) return;
+    // N7: online — only the host runs bots; other clients just see relayed actions
+    if (netRef.current && !amIBotController) return;
     if (winner) return;                          // game's over
     if (noteStates[self.id]?.recovering) return; // recovery skip handled elsewhere
     // Never act in the middle of a battle/riff-off cinematic — those resolve via
@@ -7419,7 +7437,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── HEX CLICK ───────────────────────────────────────────────────────────────
   function onHexClick(num) {
-    if (!acting || !isMyTurn) return; // N4: gate — only the acting client drives moves
+    if (!acting || !canAct) return; // N4/N7: gate — only the acting client drives moves
     // 🤘 ROCK GOD — clicking the God IS the attack (melee if adjacent, Sonic
     // beam if lined up). Overrides every other action; commit fast, hit hard.
     if (rockGodActive && rockGod && num === rockGod.num) {
@@ -9567,7 +9585,7 @@ function Game({ gameState, onReturnToLobby }) {
               disabled={!acting}>Move {moveStepsLeft>0?`(${moveStepsLeft} hex)`:""}</button>
             {action === "move" && (
               <button className="btn" style={{borderColor:"#44cc88",color:"#44cc88"}}
-                onClick={() => { setAction(null); dispatch(beatsSpent(0, false, { all: true })); addLog(`🚶 ${acting.name} stops moving.`); }}>
+                onClick={() => { if (!canAct) return; setAction(null); dispatch(beatsSpent(0, false, { all: true })); addLog(`🚶 ${acting.name} stops moving.`); }}>
                 ✓ End Move</button>
             )}
             {/* FACE TURN — costs 1 move step */}
@@ -9738,7 +9756,7 @@ function Game({ gameState, onReturnToLobby }) {
                 return (
                   <button key={amp.id} className="btn"
                     style={{borderColor:'#ff8800',color:'#ff8800'}}
-                    onClick={() => { unplugRivalAmp(amp.id); dispatch(beatsSpent(0, true)); }}>
+                    onClick={() => { if (!canAct) return; unplugRivalAmp(amp.id); dispatch(beatsSpent(0, true)); }}>
                     🔌 Unplug {owner?.name?.split(' ')[0] ?? 'rival'}'s Amp
                   </button>
                 );
