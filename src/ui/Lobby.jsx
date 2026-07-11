@@ -40,6 +40,61 @@ export function Lobby({ onStart, onTutorial }) {
     });
   }, [netClient, onStart]);
 
+  // N6: listen for CATCH_UP — spectator mid-join OR player reconnect (F5 / wifi blip)
+  useEffect(() => {
+    if (!netClient) return;
+    return netClient.on("CATCH_UP", f => {
+      transitioningRef.current = true;
+      const mySeat = f.seats.find(s => s.seatId === netClient.seatId);
+      onStart({
+        ...f.config,
+        seed: f.seed,
+        net: {
+          client: netClient, seatId: netClient.seatId, seats: f.seats,
+          mySpiritId: mySeat?.spiritId ?? null, spectator: netClient.spectator,
+        },
+        catchUp: { log: f.log, logLines: f.logLines },
+      });
+    });
+  }, [netClient, onStart]);
+
+  // N6: auto-rejoin on mount — if a saved session exists (F5 / tab restore),
+  // reconnect and reclaim the seat. The server sends CATCH_UP which the
+  // listener above handles.
+  const [autoRejoining, setAutoRejoining] = useState(false);
+  useEffect(() => {
+    if (netClient) return; // already connected
+    const probe = makeNetClient();
+    const saved = probe.savedSession();
+    if (!saved) return;
+    setAutoRejoining(true);
+    setNetStatus("connecting");
+    const c = makeNetClient();
+    c.on("ROOM_STATE", f => setNetRoom(f));
+    c.on("ERROR", f => {
+      // room gone or token invalid — clear stale session and go back to lobby
+      setNetError(f.code + ": " + f.msg);
+      setAutoRejoining(false); setNetStatus("idle");
+      c.leave(); // clears the saved session
+    });
+    c.on("net:close", () => setNetDropped(true));
+    c.on("net:open", () => setNetDropped(false));
+    c.connect().then(() => {
+      c.joinRoom(saved.code, { name: saved.name, rejoinToken: saved.rejoinToken });
+      return c.waitFor("WELCOME", { ms: 5000 });
+    }).then(() => {
+      setNetClient(c); setNetStatus("in-room"); setAutoRejoining(false);
+      // If the game is already playing, CATCH_UP arrives right after WELCOME
+      // and the CATCH_UP listener above transitions us into the Game.
+      // If the room is back in lobby, we just land in the room normally.
+    }).catch(() => {
+      c.close();
+      setAutoRejoining(false); setNetStatus("idle");
+      // Can't reach server — stale session, clear it
+      try { localStorage.removeItem("rlsw.net.session"); } catch {}
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // N3: auto-set playerCount from room seat count when online
   const isHost = netClient?.seatId === netRoom?.hostSeatId;
   useEffect(() => {
@@ -259,6 +314,15 @@ export function Lobby({ onStart, onTutorial }) {
           boxShadow:'0 0 18px #cc66ff55'}}>
         TESTING GROUNDS
       </button>
+
+      {/* N6: auto-rejoin overlay */}
+      {autoRejoining && (
+        <div style={{position:"fixed", inset:0, zIndex:100, background:"#050810ee", display:"flex",
+          alignItems:"center", justifyContent:"center", flexDirection:"column", gap:12}}>
+          <div style={{fontFamily:"'Orbitron',sans-serif", fontSize:16, color:"#f6ad55", letterSpacing:4}}>RECONNECTING</div>
+          <div style={{fontSize:10, color:"#3a5a7a", letterSpacing:1}}>Reclaiming your seat...</div>
+        </div>
+      )}
 
       <div style={{width:520, background:"#080f1e", border:"1px solid #1a2a40", borderRadius:10, padding:32}}>
         <div style={{textAlign:"center", marginBottom:28}}>

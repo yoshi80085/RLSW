@@ -624,7 +624,19 @@ function Game({ gameState, onReturnToLobby }) {
   // N0 (netcode): thread the lobby/server seed through. Offline `gameState.seed`
   // is undefined → makeInitialState keeps its time-derived default (byte-
   // unchanged). Online, GAME_STARTED.seed rides into gameState and lands here.
-  const [engineState, setEngineState] = useState(() => makeInitialState(gameState, gameState.seed));
+  // N6: when gameState.catchUp is present (spectator join or reconnect), replay
+  // the full action log at init — no presentation, just engine state. The
+  // selftest proves this produces byte-identical state.
+  const [engineState, setEngineState] = useState(() => {
+    let state = makeInitialState(gameState, gameState.seed);
+    if (gameState.catchUp) {
+      for (const entry of gameState.catchUp.log) {
+        state = applyAction(state, entry.action);
+      }
+      console.log(`[RLSW NET] catch-up replay: ${gameState.catchUp.log.length} actions, cursor=${state.rng.cursor}`);
+    }
+    return state;
+  });
   const engineRef = useRef(engineState); // live mirror so dispatch works inside timeout chains
   // N3: net context — stash the client reference for N4 action relay
   const netRef = useRef(gameState.net ?? null);
@@ -634,15 +646,15 @@ function Game({ gameState, onReturnToLobby }) {
   // applied at. seed + config + this log IS the multiplayer replay contract
   // (the engine selftest proves byte-identical reproduction). Ref — the log
   // never triggers a render; export it from the Testing Grounds panel.
-  const actionLogRef = useRef([]);
+  const actionLogRef = useRef(gameState.catchUp ? [...gameState.catchUp.log] : []);
   function dispatch(engineAction) {
     const cursorBefore = engineRef.current.rng.cursor;
     actionLogRef.current.push({ action: engineAction, cursorBefore });
     const next = applyAction(engineRef.current, engineAction);
     engineRef.current = next;
     setEngineState(next);
-    // N4: relay to server when online
-    if (netRef.current) {
+    // N4: relay to server when online (N6: spectators never send actions)
+    if (netRef.current && !netRef.current.spectator) {
       netRef.current.client.sendAction(engineAction, cursorBefore);
     }
     return next;
@@ -661,8 +673,8 @@ function Game({ gameState, onReturnToLobby }) {
     const net = netRef.current;
     if (!net) return;
     return net.client.on("ACTION", frame => {
-      // Skip echoes — we already applied locally
-      if (frame.seatId === net.seatId) return;
+      // Skip echoes — we already applied locally (spectators never send, never skip)
+      if (net.seatId != null && frame.seatId === net.seatId) return;
       // Desync tripwire (landmine #1)
       if (frame.cursorBefore != null && engineRef.current.rng.cursor !== frame.cursorBefore) {
         console.error(`[RLSW NET] DESYNC! local cursor=${engineRef.current.rng.cursor} remote=${frame.cursorBefore}`, frame.action);
@@ -879,7 +891,13 @@ function Game({ gameState, onReturnToLobby }) {
   } = useTransientFx();
   const [cameraView, setCameraView]   = useState(null);
   const [manualZoomActive, setManualZoomActive] = useState(false);
-  const [log, setLog] = useState(["⚡ RLSW v3.0 — Melody Line System", "🎵 Build your Melody Line → Confirm → Move"]);
+  // N6: pre-populate the display log from catch-up logLines (most recent first)
+  const [log, setLog] = useState(() => {
+    if (gameState.catchUp?.logLines?.length) {
+      return gameState.catchUp.logLines.map(e => e.text).reverse().slice(0, 40);
+    }
+    return ["⚡ RLSW v3.0 — Melody Line System", "🎵 Build your Melody Line → Confirm → Move"];
+  });
 
   // ─── NOTE SYSTEM STATE (per-character) ─────────────────────────────────────
   // makeInitialNoteState now lives in the ENGINE (src/engine/systems/economy.js)
@@ -931,8 +949,8 @@ function Game({ gameState, onReturnToLobby }) {
 
   const addLog = useCallback(m => {
     setLog(p => [m, ...p].slice(0, 40));
-    // N5: relay log lines so remote clients read the same story
-    if (netRef.current) netRef.current.client.sendLogLine(m);
+    // N5: relay log lines so remote clients read the same story (N6: spectators don't send)
+    if (netRef.current && !netRef.current.spectator) netRef.current.client.sendLogLine(m);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Spawn initial board cards on game start
@@ -8117,6 +8135,13 @@ function Game({ gameState, onReturnToLobby }) {
             style={{fontFamily:"inherit",fontSize:9,padding:"3px 8px",background:"#0a1020",border:"1px solid #1e3a5f",borderRadius:4,color:"#3a5a7a",cursor:"pointer"}}>
             ↩ Lobby
           </button>
+          {/* N6: spectator badge */}
+          {netRef.current?.spectator && (
+            <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:9,padding:"3px 10px",background:"#301520",
+              border:"1px solid #ff4488",borderRadius:4,color:"#ff88bb",letterSpacing:2}}>
+              SPECTATING
+            </span>
+          )}
         </div>
       </div>
 
