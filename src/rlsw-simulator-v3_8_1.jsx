@@ -636,16 +636,43 @@ function Game({ gameState, onReturnToLobby }) {
   // never triggers a render; export it from the Testing Grounds panel.
   const actionLogRef = useRef([]);
   function dispatch(engineAction) {
-    actionLogRef.current.push({ action: engineAction, cursorBefore: engineRef.current.rng.cursor });
+    const cursorBefore = engineRef.current.rng.cursor;
+    actionLogRef.current.push({ action: engineAction, cursorBefore });
     const next = applyAction(engineRef.current, engineAction);
     engineRef.current = next;
     setEngineState(next);
+    // N4: relay to server when online
+    if (netRef.current) {
+      netRef.current.client.sendAction(engineAction, cursorBefore);
+    }
     return next;
   }
 
   // N3: log seed + cursor on mount so both tabs can confirm identical engine boot
   useEffect(() => {
     console.log(`[RLSW NET] engine booted — seed: ${engineState.rng.seed}, cursor: ${engineState.rng.cursor}, spirits: ${engineState.spirits.map(s=>s.id).join(",")}`);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // N4: input gating — only the acting player can trigger user actions
+  const isMyTurn = !netRef.current || engineState.acting === netRef.current.mySpiritId;
+
+  // N4: listen for remote ACTION frames — apply to engine, skip orchestration
+  useEffect(() => {
+    const net = netRef.current;
+    if (!net) return;
+    return net.client.on("ACTION", frame => {
+      // Skip echoes — we already applied locally
+      if (frame.seatId === net.seatId) return;
+      // Desync tripwire (landmine #1)
+      if (frame.cursorBefore != null && engineRef.current.rng.cursor !== frame.cursorBefore) {
+        console.error(`[RLSW NET] DESYNC! local cursor=${engineRef.current.rng.cursor} remote=${frame.cursorBefore}`, frame.action);
+      }
+      // Apply the action — engine state only, no orchestration (addLog / FX / timeouts)
+      actionLogRef.current.push({ action: frame.action, cursorBefore: frame.cursorBefore });
+      const next = applyAction(engineRef.current, frame.action);
+      engineRef.current = next;
+      setEngineState(next);
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── SPIRITS — engine is the source of truth (Phase 5c ownership flip) ──────
@@ -1783,7 +1810,7 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   function confirmNoteTrack() {
-    if (!acting) return;
+    if (!acting || !isMyTurn) return; // N4: gate
     const baseTrack = actingNoteState?.melodyLine ?? [];
     if (baseTrack.length === 0) { addLog('❌ No notes in track!'); return; }
     // ── 🎤 MIC — voice roll: d6, on 4+ a bonus in-scale note joins the track ──
@@ -6589,6 +6616,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── END TURN ────────────────────────────────────────────────────────────────
   function endTurn() {
+    if (!isMyTurn) return; // N4: only the acting client ends its own turn
     const s = spirits.find(sp => sp.id === acting.id);
 
     // The engine resolves the turn end: limelight verdict, turn counter,
@@ -7362,7 +7390,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── HEX CLICK ───────────────────────────────────────────────────────────────
   function onHexClick(num) {
-    if (!acting) return;
+    if (!acting || !isMyTurn) return; // N4: gate — only the acting client drives moves
     // 🤘 ROCK GOD — clicking the God IS the attack (melee if adjacent, Sonic
     // beam if lined up). Overrides every other action; commit fast, hit hard.
     if (rockGodActive && rockGod && num === rockGod.num) {
@@ -11447,19 +11475,3 @@ function Game({ gameState, onReturnToLobby }) {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
