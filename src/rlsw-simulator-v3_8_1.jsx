@@ -675,6 +675,15 @@ function Game({ gameState, onReturnToLobby }) {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // N5: listen for remote LOG_LINE frames — display the acting client's narrative
+  useEffect(() => {
+    const net = netRef.current;
+    if (!net) return;
+    return net.client.on("LOG_LINE", frame => {
+      setLog(p => [frame.text, ...p].slice(0, 40));
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── SPIRITS — engine is the source of truth (Phase 5c ownership flip) ──────
   // `spirits` is now a live view of engineState.spirits (built + owned by
   // makeInitialState on the seeded rng). `setSpirits(updater)` is a DIFFING
@@ -857,7 +866,8 @@ function Game({ gameState, onReturnToLobby }) {
   const testMode = !!gameState.testMode;
   const [devOpen, setDevOpen] = useState(false);
   // (devEventId removed — Testing Grounds now fires stage FX directly)
-  const [winner, setWinner]   = useState(null);
+  // N5: winner derives from engine state so remote clients see it via N4 relay
+  const winner = engineState.winner;
   const [hovered, setHovered] = useState(null);
   // ─── TRANSIENT BOARD FX ── (moved to ./hooks/useTransientFx.js)
   const {
@@ -919,7 +929,11 @@ function Game({ gameState, onReturnToLobby }) {
   const svgRef       = useRef(null);
   const boardDivRef  = useRef(null);
 
-  const addLog = useCallback(m => setLog(p => [m, ...p].slice(0, 40)), []);
+  const addLog = useCallback(m => {
+    setLog(p => [m, ...p].slice(0, 40));
+    // N5: relay log lines so remote clients read the same story
+    if (netRef.current) netRef.current.client.sendLogLine(m);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Spawn initial board cards on game start
   useEffect(() => {
@@ -4601,8 +4615,7 @@ function Game({ gameState, onReturnToLobby }) {
       const champName = spirits.find(s => s.id === champ.id)?.name;
       addLog(`👑 The Gods are satisfied. ${champName} stands tallest at ⭐${champ.fame} — A LEGEND IS BORN!`);
       setTimeout(() => {
-        setWinner(champ.id);
-        dispatch(winnerDeclared(champ.id)); // shadow the engine winner slice (Phase 5c leftover, folded in with 6c)
+        dispatch(winnerDeclared(champ.id)); // N5: engine winner slice → derived `winner` renders on all clients
       }, 700);
     }, 600);
   }
@@ -4753,8 +4766,7 @@ function Game({ gameState, onReturnToLobby }) {
         if (newFame - rivalBest >= ROCK_GOD_RUNAWAY_LEAD) {
           addLog(`🌟🌟🌟 ${sp?.name} reaches ${FAME_TO_WIN} Fame — A LEGEND IS BORN! 🌟🌟🌟`);
           setTimeout(() => {
-            setWinner(spiritId);
-            dispatch(winnerDeclared(spiritId)); // shadow the engine winner slice (folded in with 6c)
+            dispatch(winnerDeclared(spiritId)); // N5: engine winner slice → derived `winner` renders on all clients
           }, 600);
         } else {
           summonRockGod(spiritId);
@@ -7330,9 +7342,8 @@ function Game({ gameState, onReturnToLobby }) {
         if (godWins) setTimeout(() => godTriumphs(), 400);
         return;
       }
-      // Phase 5c slice 2c: shadow-write the engine `winner` slice (dormant, for
-      // replay) alongside the React `winner` the UI still reads.
-      if (winnerId) setTimeout(() => { dispatch(winnerDeclared(winnerId)); setWinner(winnerId); }, 0);
+      // N5: engine winner slice → derived `winner` renders on all clients
+      if (winnerId) setTimeout(() => { dispatch(winnerDeclared(winnerId)); }, 0);
     }
 
     if (tgt) {
