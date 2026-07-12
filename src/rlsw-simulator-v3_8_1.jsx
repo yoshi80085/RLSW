@@ -1713,7 +1713,20 @@ function Game({ gameState, onReturnToLobby }) {
     return best;
   }
 
-  function playTrackSequence(track) {
+  // 🎸 Signature commit builds — each Spirit plays their committed track in
+  // their OWN voiceprint. Unknown ids fall through to the classic groove.
+  const COMMIT_STYLES = {
+    cosmic_ronin:      'shred',      // 🗡️ lightning passes + climax run
+    Metalness_Monster: 'breakdown',  // 🤘 chug gallops + slam clusters
+    intergalactic_0:   'pocket',     // 👽 swung 808 bassline
+    Glamarchy:         'strut',      // 👑 stomp-clap swagger + glitter gliss
+  };
+
+  function playTrackSequence(track, opts = {}) {
+    if (opts.style === 'shred')     { playShredSequence(track); return; }
+    if (opts.style === 'breakdown') { playBreakdownSequence(track); return; }
+    if (opts.style === 'pocket')    { playPocketSequence(track); return; }
+    if (opts.style === 'strut')     { playStrutSequence(track); return; }
     // The committed track plays as a real MELODY, not a slop of evenly
     // spaced notes. Each commit rolls a fresh groove: a mix of eighths,
     // quarters and dotted notes, the occasional breath between phrases,
@@ -1739,6 +1752,254 @@ function Game({ gameState, onReturnToLobby }) {
       }), tMs);
       tMs += dur * 580 + 90 + breath; // longer notes breathe longer before the next
     });
+  }
+
+  // 🗡️ SHREDDING RONIN — he doesn't play the committed track, he SHREDS it.
+  // Same notes, ripped as 2–3 lightning passes: the statement, a mutated
+  // variation, and (4+ note tracks) an accelerating ascending run capped by
+  // the money note. Scheduling is budgeted to ≈2.5s so turn pacing matches
+  // the normal groove. Math.random() here is audio flavour only — never a
+  // rule — so it needs no engine rng. His amp voice is already 'saw'; this
+  // only changes the PHRASING.
+  function playShredSequence(track) {
+    const n = track.length;
+    if (!n) return;
+    const jitter = () => (Math.random() - 0.5) * 18;   // human, not quantised
+    let tMs = 60;
+
+    // Spacing shrinks as the track grows so all passes always fit the budget.
+    const sp1 = Math.max(58, Math.min(105, Math.round(640 / n)));
+
+    // ── PASS 1 — the statement: the track in order, brutally fast ──
+    let prev = null;
+    track.forEach((note, i) => {
+      const f = voiceLeadFreq(note, prev); if (f) prev = f;
+      setTimeout(() => playNoteSound(note, {
+        holdTime: 0.12, fadeTime: 0.08,
+        volume: i % 2 === 0 ? 0.16 : 0.13,             // alternate-picked accents
+        freq: f ?? undefined,
+      }), tMs + jitter());
+      tMs += sp1;
+    });
+    tMs += 120;                                        // breath
+
+    // ── PASS 2 — the variation: ONE mutation, dealt fresh every commit ──
+    const varTrack = [...track];
+    const roll = Math.random();
+    let octIdx = -1;
+    if (roll < 0.34 && n >= 2) {                       // swap two adjacent notes
+      const k = Math.floor(Math.random() * (n - 1));
+      [varTrack[k], varTrack[k + 1]] = [varTrack[k + 1], varTrack[k]];
+    } else if (roll < 0.67) {                          // stutter-double one note
+      const k = Math.floor(Math.random() * n);
+      varTrack.splice(k, 0, varTrack[k]);
+    } else {                                           // one note leaps an octave
+      octIdx = Math.floor(Math.random() * n);
+    }
+    const sp2 = Math.max(50, Math.round(sp1 * 0.85));  // a hair faster — he's warm now
+    prev = null;
+    varTrack.forEach((note, i) => {
+      let f = voiceLeadFreq(note, prev); if (f) prev = f;
+      if (i === octIdx && f) f *= 2;
+      setTimeout(() => playNoteSound(note, {
+        holdTime: 0.11, fadeTime: 0.08,
+        volume: i % 2 === 0 ? 0.17 : 0.14,
+        freq: f ?? undefined,
+      }), tMs + jitter());
+      tMs += sp2;
+    });
+
+    // Short tracks stop here — two fast passes IS the shred…
+    if (n < 4) {
+      const last = track[n - 1];                       // …but the ending still rings.
+      setTimeout(() => playNoteSound(last, {
+        holdTime: 1.0, fadeTime: 0.9, volume: 0.19,
+      }), tMs + 90);
+      return;
+    }
+    tMs += 130;                                        // gather for the climax
+
+    // ── PASS 3 — the climax: ascending run, accelerating, then the money note ──
+    const run = [...track].sort((a, b) => pitchIndex(a) - pitchIndex(b));
+    prev = null;
+    run.forEach((note, i) => {
+      let f = voiceLeadFreq(note, prev);
+      // Force the climb (duplicate pitches would voice-lead flat), but cap it
+      // below screech territory.
+      if (f && prev && f <= prev && f < 900) f *= 2;
+      if (f) prev = f;
+      const sp = Math.round(90 - (35 * i) / Math.max(1, run.length - 1)); // 90→55ms accelerando
+      setTimeout(() => playNoteSound(note, {
+        holdTime: 0.10, fadeTime: 0.07,
+        volume: 0.14 + (0.05 * i) / run.length,        // swelling into the peak
+        freq: f ?? undefined,
+      }), tMs + jitter());
+      tMs += sp;
+    });
+    // 🎸 The money note — the track's real final note, octave up, ringing long.
+    const last = track[n - 1];
+    const lastF = voiceLeadFreq(last, prev);
+    setTimeout(() => playNoteSound(last, {
+      holdTime: 1.1, fadeTime: 1.0, volume: 0.2,
+      freq: lastF ? lastF * 2 : undefined,
+    }), tMs + 40);
+  }
+
+  // 🤘 METALNESS MONSTER — the commit is a BREAKDOWN: the track dropped two
+  // octaves into chug register and played in GALLOPS (da-da-DUM palm mutes),
+  // trashed up with dissonant slam clusters on the offbeats, capped by a full
+  // power-chord SLAM. His fuzz voice supplies the distortion; this supplies
+  // the violence.
+  function playBreakdownSequence(track) {
+    const n = track.length;
+    if (!n) return;
+    let tMs = 60;
+    const jitter = () => (Math.random() - 0.5) * 14;      // tight but human
+    const unit = Math.max(72, Math.min(110, Math.round(560 / n)));
+
+    let prev = null;
+    track.forEach((note, i) => {
+      const f = voiceLeadFreq(note, prev); if (f) prev = f;
+      // Two octaves down = the chug register. If laptop speakers swallow it,
+      // owner's first knob: / 4 → / 2.
+      const low = f ? f / 4 : undefined;
+      if (i === n - 1) return;                            // finale is the SLAM
+      // GALLOP — chug, chug, HIT.
+      [0, 1, 2].forEach(k => {
+        const accent = k === 2;
+        setTimeout(() => playNoteSound(note, {
+          holdTime: accent ? 0.16 : 0.08, fadeTime: 0.06,
+          volume: accent ? 0.20 : 0.13,
+          freq: low,
+        }), tMs + jitter());
+        tMs += accent ? unit * 1.6 : unit * 0.7;
+      });
+      // Every third note: a trashing CLUSTER — the chug note smeared against
+      // its own detuned neighbours, struck together. Pure noise-wall.
+      if (i % 3 === 2 && low) {
+        setTimeout(() => {
+          playNoteSound(note, { holdTime: 0.10, fadeTime: 0.08, volume: 0.13, freq: low * 1.06 });
+          playNoteSound(note, { holdTime: 0.10, fadeTime: 0.08, volume: 0.13, freq: low * 0.94 });
+        }, tMs + jitter());
+        tMs += unit * 0.9;
+      }
+    });
+
+    // ── THE SLAM — final note as a power chord (root + fifth + sub-octave),
+    // struck once after a half-beat of dead air, left to ring ugly and long.
+    const lastNote = track[n - 1];
+    const lf = voiceLeadFreq(lastNote, prev);
+    const root = lf ? lf / 2 : undefined;
+    tMs += 90;
+    setTimeout(() => {
+      playNoteSound(lastNote, { holdTime: 1.2, fadeTime: 1.1, volume: 0.22, freq: root });
+      playNoteSound(lastNote, { holdTime: 1.2, fadeTime: 1.1, volume: 0.15, freq: root ? root * 1.5 : undefined });
+      playNoteSound(lastNote, { holdTime: 1.2, fadeTime: 1.1, volume: 0.17, freq: root ? root / 2 : undefined });
+    }, tMs);
+  }
+
+  // 👽 INTERGALACTIC 0 — the commit drops into THE POCKET: an 808-deep swung
+  // bassline on a fixed head-nod grid. Ronin's shred is chaos; this is a
+  // metronome with swagger — the groove lives in the SPACE between hits
+  // (ghost notes, rests, downbeats that THUMP), and it ends on an octave POP
+  // into a long 808 boom.
+  function playPocketSequence(track) {
+    const n = track.length;
+    if (!n) return;
+    const SIXTEENTH = 150;                                // ~100 BPM head-nod
+    const SWING = 0.64;                                   // long-short pairs
+    const longS  = Math.round(SIXTEENTH * 2 * SWING);
+    const shortS = SIXTEENTH * 2 - longS;
+    let tMs = 80, step = 0;
+    let prev = null;
+    track.forEach((note, i) => {
+      const f = voiceLeadFreq(note, prev); if (f) prev = f;
+      const sub = f ? f / 4 : undefined;                  // the 808 register
+      const downbeat = i % 2 === 0;
+      if (i === n - 1) {
+        // Octave POP — the funk flourish…
+        setTimeout(() => playNoteSound(note, {
+          holdTime: 0.08, fadeTime: 0.06, volume: 0.12, freq: f ?? undefined,
+        }), tMs);
+        tMs += shortS;
+        // …then the BOOM. Nod.
+        setTimeout(() => playNoteSound(note, {
+          holdTime: 0.9, fadeTime: 1.3, volume: 0.24, freq: sub,
+        }), tMs);
+        return;
+      }
+      setTimeout(() => playNoteSound(note, {
+        holdTime: downbeat ? 0.30 : 0.16, fadeTime: 0.22,
+        volume: downbeat ? 0.22 : 0.15,                   // downbeats THUMP
+        freq: sub,
+      }), tMs);
+      tMs += step % 2 === 0 ? longS : shortS; step++;
+      // Ghost note tucked in the gap — felt more than heard.
+      if (downbeat && Math.random() < 0.6) {
+        setTimeout(() => playNoteSound(note, {
+          holdTime: 0.05, fadeTime: 0.05, volume: 0.06,
+          freq: sub ? sub * 2 : undefined,
+        }), tMs - Math.round(shortS * 0.45));
+      }
+      // A full breath of SPACE every four hits — the pocket IS the rests.
+      if (i % 4 === 3) tMs += SIXTEENTH;
+    });
+  }
+
+  // 👑 GLAMARCHY — the commit STRUTS: stomp-stomp-CLAP stadium swagger. Each
+  // note stomps low then answers itself an octave UP (the wide theatrical
+  // leap — the Flair idea from the DESIGN_AUDIT backlog, landed here); every
+  // third pair throws a bright CLAP stab that the echo knob (0.62) turns into
+  // slapback for free. Finish: a glitter glissando up the track's own notes
+  // into a held two-octave chord — the pose, the bow.
+  function playStrutSequence(track) {
+    const n = track.length;
+    if (!n) return;
+    let tMs = 60;
+    const unit = Math.max(120, Math.min(170, Math.round(920 / n))); // half-time swagger
+    let prev = null;
+    track.forEach((note, i) => {
+      const f = voiceLeadFreq(note, prev); if (f) prev = f;
+      if (i === n - 1) return;                            // finale below
+      // STOMP — low and fat…
+      setTimeout(() => playNoteSound(note, {
+        holdTime: 0.22, fadeTime: 0.14, volume: 0.19, freq: f ? f / 2 : undefined,
+      }), tMs);
+      tMs += unit;
+      // …answered an octave up on the offbeat — the hip-swing.
+      setTimeout(() => playNoteSound(note, {
+        holdTime: 0.12, fadeTime: 0.10, volume: 0.13, freq: f ?? undefined,
+      }), tMs);
+      tMs += Math.round(unit * 0.55);
+      // Every third pair: the CLAP — two octaves up, short and bright.
+      if (i % 3 === 2) {
+        setTimeout(() => playNoteSound(note, {
+          holdTime: 0.07, fadeTime: 0.08, volume: 0.15, freq: f ? f * 2 : undefined,
+        }), tMs);
+        tMs += Math.round(unit * 0.6);
+      }
+    });
+    // ── GLITTER GLISS — fast run up the track's own notes into the finale.
+    const run = [...track].sort((a, b) => pitchIndex(a) - pitchIndex(b));
+    prev = null;
+    run.forEach((note, i) => {
+      let f = voiceLeadFreq(note, prev);
+      if (f && prev && f <= prev && f < 1200) f *= 2;     // force the climb, capped
+      if (f) prev = f;
+      setTimeout(() => playNoteSound(note, {
+        holdTime: 0.07, fadeTime: 0.06,
+        volume: 0.10 + (0.05 * i) / run.length,
+        freq: f ?? undefined,
+      }), tMs);
+      tMs += 55;
+    });
+    // ── THE POSE — final note as a wide two-octave chord, held like a bow.
+    const lastNote = track[n - 1];
+    const lf = voiceLeadFreq(lastNote, prev);
+    setTimeout(() => {
+      playNoteSound(lastNote, { holdTime: 1.1, fadeTime: 1.0, volume: 0.18, freq: lf ?? undefined });
+      playNoteSound(lastNote, { holdTime: 1.1, fadeTime: 1.0, volume: 0.14, freq: lf ? lf / 2 : undefined });
+    }, tMs + 60);
   }
 
   // ─── RIFF PLAYBACK ───────────────────────────────────────────────────────────
@@ -2018,7 +2279,7 @@ function Game({ gameState, onReturnToLobby }) {
       setTimeout(() => setRiffBanner(prev => (prev && prev.riffId === riff.id ? null : prev)), 5600);
       setTimeout(() => grantFame(acting.id, fp, `🎼 ${riff.name}`), 500);
     } else {
-      playTrackSequence(melodyLine);
+      playTrackSequence(melodyLine, { style: COMMIT_STYLES[acting?.id] });
     }
 
     // ── 🎯 CADENCE OBJECTIVES — your track's FINAL note is this turn's "final" ──
