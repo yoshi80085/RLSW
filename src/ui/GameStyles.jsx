@@ -165,6 +165,13 @@ export function GameStyles() {
           72%           { transform: translateY(-2.6px); }
           86%           { transform: translateY(-0.9px); }
         }
+        /* 🤘 Headbanging — a hard nod about the hips, for the committed 20% */
+        @keyframes fan-headbang {
+          0%, 100% { transform: rotate(0deg); }
+          30%      { transform: rotate(-9deg); }
+          45%      { transform: rotate(2deg); }
+          70%      { transform: rotate(8deg); }
+        }
         /* 🎤 A fan's mouth opening and closing — singing / cheering along */
         @keyframes fan-sing {
           0%, 100% { transform: scaleY(0.32); }

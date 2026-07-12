@@ -10,10 +10,9 @@ export function pointyCorners(cx, cy, size) {
   }).join(" ");
 }
 
-// Deterministic per-fan gesture so the crowd is mostly relaxed, a fair few wave or
-// pump fists, and only the odd fan sparks up a lighter (1 in 9). Index-keyed so it
-// stays stable across re-renders instead of flickering.
-export const FAN_GESTURES = ['rest','wave','fist','rest','wave','rest','fist','rest','lighter'];
+// Deterministic per-fan gesture: mostly rest/wave, a fair few horns, the odd
+// phone-light (1 in 9) and lighter (1 in 9). Index-keyed so it never flickers.
+export const FAN_GESTURES = ['rest','wave','fist','rest','phone','wave','fist','rest','lighter'];
 export function fanGesture(i) {
   const n = FAN_GESTURES.length;
   return FAN_GESTURES[((i % n) + n) % n];

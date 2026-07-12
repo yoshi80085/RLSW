@@ -73,32 +73,85 @@ import {
 } from "./engine/policies/bot.js";
 
 
-// 🎟️ A fan = a sleek "pawn": a detached round head above a rounded-triangle body.
-// Deliberately plain — fans are the crowd, not characters. `filled` marks a diehard
-// (solid) vs a casual (hollow outline). Centred vertically on (x, y).
-// `face` (0..3, or null) picks an animated expression so the crowd reads as a sea
-// of cheering, singing-along faces rather than blank pawns.
-// `bodyFlip` mirrors the body silhouette upside-down (broad shoulders → tapered) so
-// the crowd isn't all the same outline. `hands` adds animated circle hands:
-// 'rest' (down by the sides), 'wave' (both up, swaying), 'fist' (one pumping), or
-// 'lighter' (one raised holding a flickering flame).
+// 🎟️ A fan = a little rocker: haircut, jacketed body, legs, busy hands.
+// Still deliberately generic — fans are the crowd, not characters — but they
+// read as PEOPLE now, matching the upgraded standees. `filled` = diehard
+// (solid, owner colour) vs casual (hollow outline). `face` (0..3) picks the
+// expression AND the haircut; `bodyFlip` picks the cut: broad biker jacket
+// vs slim tee. `hands`: 'rest'|'wave'|'fist' (devil horns)|'lighter'|'phone'.
+// Everything derives from the caller's index params — NO Math.random() in
+// here, or the crowd reshuffles on every re-render.
 function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bodyFlip = false, hands = null) {
   const headR = r * 0.42, headCy = y - r * 0.86;
   const apexY = y - r * 0.30, baseY = y + r * 0.74, halfW = r * 0.66;
+  const ink    = filled ? '#0a0e18' : color;  // detail: dark on solid, glow on hollow
+  const detail = headR > 2.4;                 // tiny fans stay simple — the perf valve
+
+  // ── BODY — neck → shoulders → waist pinch → hem. Two cuts by bodyFlip. ──
+  const biker = !bodyFlip;
+  const shW  = halfW * (biker ? 1.04 : 0.86); // shoulder half-width
+  const wW   = halfW * (biker ? 0.74 : 0.60); // waist pinch
+  const hemW = halfW * (biker ? 0.84 : 0.64); // jacket flares, tee tapers
+  const shY  = apexY + r * 0.14;
+  const wY   = y + r * 0.26;
+  const hemY = y + r * 0.52;
   const body =
-    `M ${x} ${apexY}` +
-    ` C ${x - halfW * 0.5} ${apexY + r * 0.16}, ${x - halfW} ${baseY - r * 0.42}, ${x - halfW} ${baseY - r * 0.12}` +
-    ` Q ${x - halfW} ${baseY}, ${x - halfW * 0.55} ${baseY}` +
-    ` L ${x + halfW * 0.55} ${baseY}` +
-    ` Q ${x + halfW} ${baseY}, ${x + halfW} ${baseY - r * 0.12}` +
-    ` C ${x + halfW} ${baseY - r * 0.42}, ${x + halfW * 0.5} ${apexY + r * 0.16}, ${x} ${apexY} Z`;
+    `M ${x - r * 0.15} ${apexY}` +
+    ` C ${x - shW * 0.85} ${apexY + r * 0.02}, ${x - shW} ${shY}, ${x - shW * 0.96} ${shY + r * 0.10}` +
+    ` C ${x - shW * 0.90} ${wY - r * 0.12}, ${x - wW} ${wY}, ${x - hemW} ${hemY}` +
+    ` L ${x + hemW} ${hemY}` +
+    ` C ${x + wW} ${wY}, ${x + shW * 0.90} ${wY - r * 0.12}, ${x + shW * 0.96} ${shY + r * 0.10}` +
+    ` C ${x + shW} ${shY}, ${x + shW * 0.85} ${apexY + r * 0.02}, ${x + r * 0.15} ${apexY} Z`;
+
+  // ── LEGS — two short strokes under the hem; stance follows the cut ──
+  const stance = halfW * (biker ? 0.44 : 0.30);
+  const legW   = Math.max(sw, r * 0.20);
+  const legs = detail ? (
+    <g stroke={color} strokeWidth={legW} strokeLinecap="round" opacity={op}>
+      <line x1={x - stance * 0.8} y1={hemY} x2={x - stance} y2={baseY}/>
+      <line x1={x + stance * 0.8} y1={hemY} x2={x + stance} y2={baseY}/>
+    </g>
+  ) : null;
+
+  // ── HAIR — dealt by the face variant so heads vary with expressions ──
+  let hairEls = null;
+  if (detail && face !== null) {
+    const hv = ((face % 4) + 4) % 4;
+    const topY = headCy - headR;
+    if (hv === 0) {
+      // Punk spike crown
+      hairEls = <path d={
+        `M ${x - headR * 0.85} ${headCy - headR * 0.35}` +
+        ` L ${x - headR * 0.72} ${topY - headR * 0.42} L ${x - headR * 0.38} ${headCy - headR * 0.72}` +
+        ` L ${x - headR * 0.18} ${topY - headR * 0.62} L ${x + headR * 0.12} ${headCy - headR * 0.80}` +
+        ` L ${x + headR * 0.40} ${topY - headR * 0.50} L ${x + headR * 0.62} ${headCy - headR * 0.55}` +
+        ` L ${x + headR * 0.85} ${topY - headR * 0.10} L ${x + headR * 0.88} ${headCy - headR * 0.30} Z`}
+        fill={ink} opacity={op}/>;
+    } else if (hv === 1) {
+      // Mohawk fin
+      hairEls = <path d={
+        `M ${x - headR * 0.22} ${headCy - headR * 0.80}` +
+        ` Q ${x} ${topY - headR * 0.95} ${x + headR * 0.22} ${headCy - headR * 0.80}` +
+        ` Q ${x} ${headCy - headR * 1.05} ${x - headR * 0.22} ${headCy - headR * 0.80} Z`}
+        fill={ink} opacity={op}/>;
+    } else if (hv === 2) {
+      // Long headbanger curtains, draping past the jaw toward the shoulders
+      hairEls = (
+        <g fill={ink} opacity={op}>
+          <path d={`M ${x - headR * 0.95} ${headCy - headR * 0.25} Q ${x - headR * 1.05} ${headCy + headR * 1.3} ${x - headR * 0.72} ${shY + r * 0.06} L ${x - headR * 0.55} ${headCy + headR * 0.55} Z`}/>
+          <path d={`M ${x + headR * 0.95} ${headCy - headR * 0.25} Q ${x + headR * 1.05} ${headCy + headR * 1.3} ${x + headR * 0.72} ${shY + r * 0.06} L ${x + headR * 0.55} ${headCy + headR * 0.55} Z`}/>
+          <path d={`M ${x - headR * 0.9} ${headCy - headR * 0.4} A ${headR} ${headR} 0 0 1 ${x + headR * 0.9} ${headCy - headR * 0.4} L ${x + headR * 0.7} ${headCy - headR * 0.15} A ${headR * 0.75} ${headR * 0.75} 0 0 0 ${x - headR * 0.7} ${headCy - headR * 0.15} Z`}/>
+        </g>
+      );
+    }
+    // hv === 3 → shaved. The bald head IS the haircut.
+  }
 
   // ── FACE — only drawn when a variant is requested and the head is big enough
   // to carry detail. Features sit in a contrasting ink so they read on solid
   // (diehard) and hollow (casual) heads alike.
   let faceEls = null;
   if (face !== null && headR > 2.4) {
-    const ink     = filled ? '#0a0e18' : color;   // dark ink on solid heads, glow on hollow
     const v       = ((face % 4) + 4) % 4;
     const eyeY    = headCy - headR * 0.10;
     const eyeDX   = headR * 0.42;
@@ -162,57 +215,63 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
     );
   }
 
-  // ── HANDS — small circle hands. Most fans rest; some wave, pump a fist, or
-  // hold up a lighter (rare). Hands float (no arm lines) so they read cleanly at
-  // crowd scale, and ride the parent's bob.
+  // ── HANDS & ARMS — circle hands now get forearms; 'fist' throws HORNS ──
   let handsEls = null;
   if (hands && headR > 2.0) {
-    const handR  = headR * 0.46;
-    const hf     = filled ? color : 'none';
-    const restY  = y + r * 0.12;
-    const restDX = halfW * 0.94;
+    const handR = headR * 0.46;
+    const hf    = filled ? color : 'none';
+    const armW  = Math.max(sw * 0.9, r * 0.14);
+    const shoulderY = shY + r * 0.04;
+    const arm = (sx, sy, hx2, hy2, key) => (
+      <line key={key} x1={sx} y1={sy} x2={hx2} y2={hy2}
+        stroke={color} strokeWidth={armW} strokeLinecap="round" opacity={op * 0.9}/>
+    );
+    const restY = y + r * 0.12, restDX = halfW * 0.94;
     const restHand = (side, key) => (
-      <circle key={key} cx={x + side * restDX} cy={restY} r={handR}
-        fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
+      <g key={key}>
+        {detail && arm(x + side * shW * 0.9, shoulderY, x + side * restDX, restY - handR * 0.4)}
+        <circle cx={x + side * restDX} cy={restY} r={handR}
+          fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
+      </g>
     );
 
     if (hands === 'wave') {
-      // Both hands up, swaying side-to-side in opposite phase = a waving crowd.
-      const wy   = headCy - headR * 0.7;
-      const wdx  = halfW * 1.02;
-      const sway = headR * 0.55;
-      handsEls = (
-        <g>
-          <g style={{animation:'fan-wave 1.05s ease-in-out infinite',
-            ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
-            <circle cx={x - wdx} cy={wy} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
-          </g>
-          <g style={{animation:'fan-wave 1.05s ease-in-out infinite', animationDelay:'-0.525s',
-            ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
-            <circle cx={x + wdx} cy={wy} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
-          </g>
+      // Both hands up, swaying in opposite phase — arms ride inside the
+      // animated group so they stay attached (the slight shoulder drift is
+      // invisible at crowd scale).
+      const wy = headCy - headR * 0.7, wdx = halfW * 1.02, sway = headR * 0.55;
+      const waver = (side, delay) => (
+        <g style={{animation:'fan-wave 1.05s ease-in-out infinite', animationDelay: delay,
+          ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
+          {detail && arm(x + side * shW * 0.9, shoulderY, x + side * wdx, wy + handR)}
+          <circle cx={x + side * wdx} cy={wy} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
         </g>
       );
+      handsEls = <g>{waver(-1, '0s')}{waver(1, '-0.525s')}</g>;
     } else if (hands === 'fist') {
-      // One raised fist pumping the air; the other hand rests.
-      const fy = headCy - headR * 1.05;
-      const fx = x + halfW * 0.35;
+      // 🤘 One arm thrown up in DEVIL HORNS, pumping; the other rests.
+      const fy = headCy - headR * 1.05, fx = x + halfW * 0.35;
       handsEls = (
         <g>
           {restHand(-1, 'rest')}
           <g style={{animation:'fan-fist 0.7s ease-in-out infinite', ['--pump']:`${-(headR * 1.4)}px`}}>
-            <circle cx={fx} cy={fy} r={handR * 1.05} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
+            {detail && arm(x + shW * 0.9, shoulderY, fx, fy + handR)}
+            <circle cx={fx} cy={fy} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
+            {detail && <g stroke={color} strokeWidth={armW} strokeLinecap="round" opacity={op}>
+              <line x1={fx - handR * 0.55} y1={fy - handR * 0.3} x2={fx - handR * 0.85} y2={fy - handR * 1.5}/>
+              <line x1={fx + handR * 0.55} y1={fy - handR * 0.3} x2={fx + handR * 0.85} y2={fy - handR * 1.5}/>
+            </g>}
           </g>
         </g>
       );
     } else if (hands === 'lighter') {
-      // One hand raised holding a flickering lighter flame; the other rests.
-      const ly = headCy - headR * 0.85;
-      const lx = x - halfW * 0.28;
+      // One hand holds a flickering flame aloft; the other rests.
+      const ly = headCy - headR * 0.85, lx = x - halfW * 0.28;
       const flameY = ly - handR * 1.5;
       handsEls = (
         <g>
           {restHand(1, 'rest')}
+          {detail && arm(x - shW * 0.9, shoulderY, lx, ly + handR)}
           <circle cx={lx} cy={ly} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
           <g style={{animation:'fan-flame 0.5s ease-in-out infinite',
             transformBox:'fill-box', transformOrigin:'center bottom',
@@ -222,27 +281,34 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
           </g>
         </g>
       );
+    } else if (hands === 'phone') {
+      // 📱 A phone-light held high, swaying slow — the modern lighter.
+      const py2 = headCy - headR * 1.1, px2 = x - halfW * 0.3;
+      handsEls = (
+        <g>
+          {restHand(1, 'rest')}
+          <g style={{animation:'fan-wave 2.2s ease-in-out infinite',
+            ['--swA']:`${-headR * 0.3}px`, ['--swB']:`${headR * 0.3}px`}}>
+            {detail && arm(x - shW * 0.9, shoulderY, px2, py2 + handR)}
+            <rect x={px2 - handR * 0.42} y={py2 - handR * 0.9}
+              width={handR * 0.84} height={handR * 1.3} rx={handR * 0.2}
+              fill="#cfe0ff" opacity={op} style={{filter:'drop-shadow(0 0 2px #cfe0ff)'}}/>
+          </g>
+        </g>
+      );
     } else {
-      // rest — both hands down by the sides
       handsEls = <g>{restHand(-1, 'l')}{restHand(1, 'r')}</g>;
     }
   }
 
-  // Body silhouette — optionally mirrored upside-down about its own centre so the
-  // crowd shows a mix of two outlines.
-  const bodyCenterY = (apexY + baseY) / 2;
-  const bodyPath = (
-    <path d={body} fill={filled ? color : 'none'} stroke={color} strokeWidth={sw}
-      strokeLinejoin="round" strokeLinecap="round" opacity={op}/>
-  );
-
   return (
     <>
-      {bodyFlip
-        ? <g transform={`matrix(1,0,0,-1,0,${(2 * bodyCenterY).toFixed(2)})`}>{bodyPath}</g>
-        : bodyPath}
+      <path d={body} fill={filled ? color : 'none'} stroke={color} strokeWidth={sw}
+        strokeLinejoin="round" strokeLinecap="round" opacity={op}/>
+      {legs}
       <circle cx={x} cy={headCy} r={headR} fill={filled ? color : '#0a0e18'}
         stroke={color} strokeWidth={sw} opacity={op}/>
+      {hairEls}
       {faceEls}
       {handsEls}
     </>
@@ -10825,11 +10891,17 @@ function Game({ gameState, onReturnToLobby }) {
                       const op  = isDie ? 0.95 : 0.6;
                       const dur = 3.4 + (i % 5) * 0.35;
                       const delay = -(((i * 0.37) % dur)).toFixed(2);
+                      const bang = i % 5 === 2;   // ~20% of the crowd headbangs instead of bobbing
                       return (
-                        <g key={i} style={{animation:`fan-bob ${dur}s ease-in-out infinite`, animationDelay:`${delay}s`}}>
+                        <g key={i} style={{
+                          animation: bang
+                            ? `fan-headbang ${(0.62 + (i % 3) * 0.07).toFixed(2)}s ease-in-out infinite`
+                            : `fan-bob ${dur}s ease-in-out infinite`,
+                          animationDelay: `${delay}s`,
+                          transformBox: 'fill-box', transformOrigin: '50% 85%'}}>
                           {/* soft glow — the crowd reads as a sea of lights */}
                           <circle cx={px} cy={py} r={r * 1.5} fill={sc}
-                            opacity={isDie ? 0.20 : 0.10} style={{filter:`blur(${r * 0.9}px)`}}/>
+                            opacity={isDie ? 0.26 : 0.10} style={{filter:`blur(${r * 0.9}px)`}}/>
                           {fanPawnShape(px, py, r, col, isDie, sww, op, i % 4, i % 2 === 1, fanGesture(i))}
                         </g>
                       );
