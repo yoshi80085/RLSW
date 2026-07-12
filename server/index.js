@@ -11,6 +11,11 @@ import { randomBytes } from "node:crypto";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const ROOM_TTL_MS = 10 * 60 * 1000; // empty-room grave timer
+// Lobby ghosts: a seat whose socket dropped IN THE LOBBY is kept briefly (so a
+// refresh can reclaim it by token), then removed — no lingering phantom
+// players. Mid-game seats survive indefinitely (reclaimable all match).
+// Env override exists for the smoke tests.
+const LOBBY_LINGER_MS = Number(process.env.LOBBY_LINGER_MS ?? 45_000);
 const SCHEMA = 1;                   // must match engine state schema
 
 // N8: version gate — a mismatched client is refused at the door (clean error
@@ -96,6 +101,29 @@ function catchUp(room) {
   };
 }
 
+// Drop a seat for good (leave / boot / lobby-linger expiry). Migrates hostship
+// to the first remaining human if the host left.
+function removeSeat(room, s) {
+  clearTimeout(s.lingerTimer);
+  room.seats = room.seats.filter(x => x !== s);
+  if (room.hostSeatId === s.seatId) {
+    room.hostSeatId = room.seats.find(x => !x.isBot)?.seatId ?? null;
+  }
+}
+
+// next free seatId — seats can be removed in the lobby, so length+1 can collide
+const nextSeatId = (room) => room.seats.reduce((m, s) => Math.max(m, s.seatId), 0) + 1;
+
+function startLobbyLinger(room, s) {
+  clearTimeout(s.lingerTimer);
+  s.lingerTimer = setTimeout(() => {
+    if (!s.ws && room.seats.includes(s)) {
+      removeSeat(room, s);
+      broadcast(room, roomState(room));
+    }
+  }, LOBBY_LINGER_MS);
+}
+
 function scheduleGrave(room) {
   clearTimeout(room.graveTimer);
   room.graveTimer = setTimeout(() => {
@@ -166,6 +194,7 @@ wss.on("connection", (ws) => {
           if (back) {
             if (back.ws && back.ws !== ws) { try { back.ws.terminate(); } catch { /* already dead */ } back.ws = null; }
             room = r; seat = back; seat.ws = ws;
+            clearTimeout(back.lingerTimer); // back before the lobby ghost expired
             clearTimeout(room.graveTimer);
             send(ws, { t: "WELCOME", code: room.code, seatId: seat.seatId, rejoinToken: seat.rejoinToken, schema: SCHEMA, rejoined: true });
             if (room.phase === "playing") send(ws, catchUp(room));
@@ -187,8 +216,9 @@ wss.on("connection", (ws) => {
 
         if (r.seats.length >= 4) return err("ROOM_FULL", "4 seats max");
         room = r;
-        seat = { seatId: r.seats.length + 1, name: String(f.name ?? "Player"), ws, rejoinToken: newToken(), isBot: false, spiritId: null };
+        seat = { seatId: nextSeatId(r), name: String(f.name ?? "Player"), ws, rejoinToken: newToken(), isBot: false, spiritId: null };
         r.seats.push(seat);
+        if (r.hostSeatId == null) r.hostSeatId = seat.seatId; // room had emptied of humans
         clearTimeout(room.graveTimer);
         send(ws, { t: "WELCOME", code: room.code, seatId: seat.seatId, rejoinToken: seat.rejoinToken, schema: SCHEMA });
         return broadcast(room, roomState(room));
@@ -211,7 +241,7 @@ wss.on("connection", (ws) => {
         }
         if (Array.isArray(f.botSeats)) {
           for (const b of f.botSeats) {
-            room.seats.push({ seatId: room.seats.length + 1, name: b.name ?? "Bot", ws: null, rejoinToken: null, isBot: true, spiritId: b.spiritId ?? null });
+            room.seats.push({ seatId: nextSeatId(room), name: b.name ?? "Bot", ws: null, rejoinToken: null, isBot: true, spiritId: b.spiritId ?? null });
           }
         }
         return broadcast(room, {
@@ -260,11 +290,41 @@ wss.on("connection", (ws) => {
         room.seq = 0; room.log = []; room.logLines = [];
         room.seats = room.seats.filter(s => !s.isBot); // bots were per-match
         for (const s of room.seats) s.spiritId = null;
+        // seats that were already disconnected mid-game won't get a close event
+        // now that we're back in the lobby — start their ghost timers here
+        for (const s of room.seats) if (!s.ws) startLobbyLinger(room, s);
         broadcast(room, { t: "RETURNED_TO_LOBBY" });
         return broadcast(room, roomState(room));
       }
 
+      // Host removes a player from the lobby (ghost seat or unwanted guest).
+      // Lobby-only: booting a seat mid-game would break lockstep. The booted
+      // player's token dies with the seat; a live socket is told, then closed.
+      case "BOOT_PLAYER": {
+        if (!room || !seat) return err("NOT_IN_ROOM", "join first");
+        if (seat.seatId !== room.hostSeatId) return err("NOT_HOST", "host boots players");
+        if (room.phase !== "lobby") return err("PLAYING", "can't boot mid-game");
+        const target = room.seats.find(s => s.seatId === f.seatId && !s.isBot);
+        if (!target) return err("NO_SUCH_SEAT", "no such player");
+        if (target === seat) return err("SELF_BOOT", "you can't boot yourself — use LEAVE");
+        const targetWs = target.ws;
+        removeSeat(room, target);
+        if (targetWs) {
+          send(targetWs, { t: "BOOTED", msg: "the host removed you from the room" });
+          try { targetWs.close(); } catch { /* already dead */ }
+        }
+        return broadcast(room, roomState(room));
+      }
+
       case "LEAVE": {
+        // an explicit lobby leave frees the seat immediately — no ghost.
+        // Mid-game the seat survives (disconnected) so the token could still
+        // reclaim it; a LEAVE-ing client wiped its token, so it just idles.
+        if (room && seat && room.phase === "lobby") {
+          removeSeat(room, seat);
+          seat = null;
+          broadcast(room, roomState(room));
+        }
         ws.close();
         return;
       }
@@ -275,7 +335,11 @@ wss.on("connection", (ws) => {
 
   ws.on("close", () => {
     if (!room) return;
-    if (seat && seat.ws === ws) seat.ws = null; // seat survives — reclaimable by token (guard: a rejoin may have already replaced this socket)
+    if (seat && seat.ws === ws) {
+      seat.ws = null; // seat survives — reclaimable by token (guard: a rejoin may have already replaced this socket)
+      // in the lobby, a dropped seat only survives the linger window (F5 grace)
+      if (room.phase === "lobby") startLobbyLinger(room, seat);
+    }
     room.spectators.delete(ws);
     broadcast(room, roomState(room));
     const anyLive = room.seats.some(s => s.ws) || room.spectators.size > 0;

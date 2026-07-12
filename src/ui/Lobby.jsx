@@ -97,6 +97,17 @@ export function Lobby({ onStart, onTutorial }) {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Booted by the host — clear the session (or the auto-reconnect machinery
+  // would sneak us right back in) and drop to the plain lobby with a note.
+  useEffect(() => {
+    if (!netClient) return;
+    return netClient.on("BOOTED", () => {
+      netClient.leave(); // clears rlsw.net.session + closes the socket
+      setNetClient(null); setNetRoom(null); setNetStatus("idle"); setNetDropped(false);
+      setNetError("You were removed from the room by the host.");
+    });
+  }, [netClient]);
+
   // N3: auto-set playerCount from room seat count when online
   const isHost = netClient?.seatId === netRoom?.hostSeatId;
   useEffect(() => {
@@ -409,6 +420,14 @@ export function Lobby({ onStart, onTutorial }) {
                   <span style={{color:"#c0d0e0", flex:1}}>{s.name}</span>
                   {s.seatId === netRoom.hostSeatId && <span style={{fontSize:8, color:"#f6ad55", letterSpacing:1}}>HOST</span>}
                   {s.seatId === netClient?.seatId && <span style={{fontSize:8, color:"#4488ff", letterSpacing:1}}>YOU</span>}
+                  {isHost && s.seatId !== netClient?.seatId && !s.isBot && (
+                    <button onClick={() => netClient.send({ t: "BOOT_PLAYER", seatId: s.seatId })}
+                      title="Remove this player from the room"
+                      style={{...btnBase, padding:"2px 8px", fontSize:8, background:"#301520",
+                        borderColor:"#ff4488", color:"#ff88bb"}}>
+                      ✕ BOOT
+                    </button>
+                  )}
                 </div>
               ))}
               <div style={{marginTop:8, fontSize:9, color: netDropped ? "#ff6688" : "#3a5a7a"}}>

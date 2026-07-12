@@ -53,13 +53,26 @@ server's, appVersion must match the room creator's — explicit mismatch =
 answered with the same CATCH_UP bundle a late joiner gets) · `RETURN_TO_LOBBY {}`
 (N10: any seated player; resets the room to phase:lobby — wipes log/seed/config,
 drops bot seats, keeps human seats + rejoin tokens — and broadcasts
-RETURNED_TO_LOBBY so every client drops back to the lobby together) · `PING`.
+RETURNED_TO_LOBBY so every client drops back to the lobby together) ·
+`BOOT_PLAYER { seatId }` (N11: host-only, lobby-only — removes the seat and its
+token; a live target gets `BOOTED` and its socket closed) · `LEAVE` (in the
+lobby this now frees the seat immediately; mid-game the seat survives
+disconnected for token rejoin) · `PING`.
 
 Server → client:
 `ROOM_STATE { code, you, seats[], spectators, phase }` · `GAME_STARTED { seed,
 config, seats }` · `ACTION { seq, seatId, action, cursorBefore }` · `LOG_LINE
 { seq, seatId, text }` · `CATCH_UP { seed, config, seats, log, logLines }` ·
-`RETURNED_TO_LOBBY {}` (N10) · `ERROR { code, msg }` · `PONG`.
+`RETURNED_TO_LOBBY {}` (N10) · `BOOTED { msg }` (N11: you were removed — the
+client must clear its session or auto-reconnect sneaks it back in) ·
+`ERROR { code, msg }` · `PONG`.
+
+N11 seat lifecycle: lobby seats are no longer immortal. Explicit LEAVE removes
+the seat instantly; a silent disconnect in the lobby starts a linger timer
+(`LOBBY_LINGER_MS`, default 45s — F5 grace window, token rejoin cancels it)
+after which the ghost seat is dropped and broadcast. Host leaving migrates
+hostship to the next human seat. seatIds are allocated max+1 (removals leave
+gaps, so length+1 would collide). Mid-game seats still survive indefinitely.
 
 N10 client contract: leaving the Game closes the socket WITHOUT clearing the
 saved session (`client.close()`, not `leave()`), so the Lobby's auto-rejoin
