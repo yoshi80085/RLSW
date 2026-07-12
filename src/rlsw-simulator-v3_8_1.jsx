@@ -10,7 +10,7 @@ import { SPIRIT_DEFS, SPIRIT_OPTIONS } from "./data/spirits.js";
 import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "./data/corners.js";
 import { HEX_SIZE, SCALE, SVG_W, SVG_H } from "./board/constants.js";
 import { HEX_BY_NUM, HEX_BY_QR, ALL_HEXES } from "./board/hexMap.js";
-import { pointyCorners, fanGesture, axialDist, axialNeighbors, getFlatTopNeighborSlots, angleTo, angleDiff, neighborInDirection } from "./board/hexGeometry.js";
+import { pointyCorners, fanGesture, axialDist, axialNeighbors, getFlatTopNeighborSlots, angleTo, angleDiff, neighborInDirection, grandstandSeat, grandstandTier } from "./board/hexGeometry.js";
 import { Tutorial } from "./tutorial/content.jsx";
 import { useRiffState } from "./hooks/useRiffState.js";
 import { useFanEconomy } from "./hooks/useFanEconomy.js";
@@ -73,86 +73,37 @@ import {
 } from "./engine/policies/bot.js";
 
 
-// 🎟️ A fan = a little rocker: haircut, jacketed body, legs, busy hands.
-// Still deliberately generic — fans are the crowd, not characters — but they
-// read as PEOPLE now, matching the upgraded standees. `filled` = diehard
-// (solid, owner colour) vs casual (hollow outline). `face` (0..3) picks the
-// expression AND the haircut; `bodyFlip` picks the cut: broad biker jacket
-// vs slim tee. `hands`: 'rest'|'wave'|'fist' (devil horns)|'lighter'|'phone'.
-// Everything derives from the caller's index params — NO Math.random() in
-// here, or the crowd reshuffles on every re-render.
+// 🎟️ A fan = a sleek "pawn": a detached round head above a rounded-triangle body.
+// Deliberately plain — fans are the crowd, not characters. `filled` marks a diehard
+// (solid, owner colour) vs a casual (hollow outline). Centred vertically on (x, y).
+// `face` (0..5, or null) picks an animated expression so the crowd reads as a sea
+// of cheering, singing-along faces rather than blank pawns.
+// `bodyFlip` mirrors the body silhouette upside-down (broad shoulders → tapered) so
+// the crowd isn't all the same outline. `hands` adds floating circle hands (no arm
+// lines — they read cleanly at crowd scale): 'rest' | 'wave' | 'fist' (devil horns) |
+// 'lighter' | 'phone'. NO Math.random() in here, or the crowd reshuffles on re-render.
 function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bodyFlip = false, hands = null) {
+  r = r * 1.15; // a tad bigger — the crowd earns its presence
   const headR = r * 0.42, headCy = y - r * 0.86;
   const apexY = y - r * 0.30, baseY = y + r * 0.74, halfW = r * 0.66;
-  const ink    = filled ? '#0a0e18' : color;  // detail: dark on solid, glow on hollow
   const detail = headR > 2.4;                 // tiny fans stay simple — the perf valve
 
-  // ── BODY — neck → shoulders → waist pinch → hem. Two cuts by bodyFlip. ──
-  const biker = !bodyFlip;
-  const shW  = halfW * (biker ? 1.04 : 0.86); // shoulder half-width
-  const wW   = halfW * (biker ? 0.74 : 0.60); // waist pinch
-  const hemW = halfW * (biker ? 0.84 : 0.64); // jacket flares, tee tapers
-  const shY  = apexY + r * 0.14;
-  const wY   = y + r * 0.26;
-  const hemY = y + r * 0.52;
+  // ── BODY — the classic rounded triangle ──
   const body =
-    `M ${x - r * 0.15} ${apexY}` +
-    ` C ${x - shW * 0.85} ${apexY + r * 0.02}, ${x - shW} ${shY}, ${x - shW * 0.96} ${shY + r * 0.10}` +
-    ` C ${x - shW * 0.90} ${wY - r * 0.12}, ${x - wW} ${wY}, ${x - hemW} ${hemY}` +
-    ` L ${x + hemW} ${hemY}` +
-    ` C ${x + wW} ${wY}, ${x + shW * 0.90} ${wY - r * 0.12}, ${x + shW * 0.96} ${shY + r * 0.10}` +
-    ` C ${x + shW} ${shY}, ${x + shW * 0.85} ${apexY + r * 0.02}, ${x + r * 0.15} ${apexY} Z`;
-
-  // ── LEGS — two short strokes under the hem; stance follows the cut ──
-  const stance = halfW * (biker ? 0.44 : 0.30);
-  const legW   = Math.max(sw, r * 0.20);
-  const legs = detail ? (
-    <g stroke={color} strokeWidth={legW} strokeLinecap="round" opacity={op}>
-      <line x1={x - stance * 0.8} y1={hemY} x2={x - stance} y2={baseY}/>
-      <line x1={x + stance * 0.8} y1={hemY} x2={x + stance} y2={baseY}/>
-    </g>
-  ) : null;
-
-  // ── HAIR — dealt by the face variant so heads vary with expressions ──
-  let hairEls = null;
-  if (detail && face !== null) {
-    const hv = ((face % 4) + 4) % 4;
-    const topY = headCy - headR;
-    if (hv === 0) {
-      // Punk spike crown
-      hairEls = <path d={
-        `M ${x - headR * 0.85} ${headCy - headR * 0.35}` +
-        ` L ${x - headR * 0.72} ${topY - headR * 0.42} L ${x - headR * 0.38} ${headCy - headR * 0.72}` +
-        ` L ${x - headR * 0.18} ${topY - headR * 0.62} L ${x + headR * 0.12} ${headCy - headR * 0.80}` +
-        ` L ${x + headR * 0.40} ${topY - headR * 0.50} L ${x + headR * 0.62} ${headCy - headR * 0.55}` +
-        ` L ${x + headR * 0.85} ${topY - headR * 0.10} L ${x + headR * 0.88} ${headCy - headR * 0.30} Z`}
-        fill={ink} opacity={op}/>;
-    } else if (hv === 1) {
-      // Mohawk fin
-      hairEls = <path d={
-        `M ${x - headR * 0.22} ${headCy - headR * 0.80}` +
-        ` Q ${x} ${topY - headR * 0.95} ${x + headR * 0.22} ${headCy - headR * 0.80}` +
-        ` Q ${x} ${headCy - headR * 1.05} ${x - headR * 0.22} ${headCy - headR * 0.80} Z`}
-        fill={ink} opacity={op}/>;
-    } else if (hv === 2) {
-      // Long headbanger curtains, draping past the jaw toward the shoulders
-      hairEls = (
-        <g fill={ink} opacity={op}>
-          <path d={`M ${x - headR * 0.95} ${headCy - headR * 0.25} Q ${x - headR * 1.05} ${headCy + headR * 1.3} ${x - headR * 0.72} ${shY + r * 0.06} L ${x - headR * 0.55} ${headCy + headR * 0.55} Z`}/>
-          <path d={`M ${x + headR * 0.95} ${headCy - headR * 0.25} Q ${x + headR * 1.05} ${headCy + headR * 1.3} ${x + headR * 0.72} ${shY + r * 0.06} L ${x + headR * 0.55} ${headCy + headR * 0.55} Z`}/>
-          <path d={`M ${x - headR * 0.9} ${headCy - headR * 0.4} A ${headR} ${headR} 0 0 1 ${x + headR * 0.9} ${headCy - headR * 0.4} L ${x + headR * 0.7} ${headCy - headR * 0.15} A ${headR * 0.75} ${headR * 0.75} 0 0 0 ${x - headR * 0.7} ${headCy - headR * 0.15} Z`}/>
-        </g>
-      );
-    }
-    // hv === 3 → shaved. The bald head IS the haircut.
-  }
+    `M ${x} ${apexY}` +
+    ` C ${x - halfW * 0.5} ${apexY + r * 0.16}, ${x - halfW} ${baseY - r * 0.42}, ${x - halfW} ${baseY - r * 0.12}` +
+    ` Q ${x - halfW} ${baseY}, ${x - halfW * 0.55} ${baseY}` +
+    ` L ${x + halfW * 0.55} ${baseY}` +
+    ` Q ${x + halfW} ${baseY}, ${x + halfW} ${baseY - r * 0.12}` +
+    ` C ${x + halfW} ${baseY - r * 0.42}, ${x + halfW * 0.5} ${apexY + r * 0.16}, ${x} ${apexY} Z`;
 
   // ── FACE — only drawn when a variant is requested and the head is big enough
   // to carry detail. Features sit in a contrasting ink so they read on solid
-  // (diehard) and hollow (casual) heads alike.
+  // (diehard) and hollow (casual) heads alike. Six variants now — twice the moods.
   let faceEls = null;
   if (face !== null && headR > 2.4) {
-    const v       = ((face % 4) + 4) % 4;
+    const ink     = filled ? '#0a0e18' : color;   // dark ink on solid heads, glow on hollow
+    const v       = ((face % 6) + 6) % 6;
     const eyeY    = headCy - headR * 0.10;
     const eyeDX   = headR * 0.42;
     const eyeR    = headR * 0.20;
@@ -180,6 +131,23 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
           fill="none" stroke={ink} strokeWidth={fsw} strokeLinecap="round"/>
       </g>
     );
+    // Blissed-out closed eyes — lids drawn as gentle downward arcs (lost in the music)
+    const closedEyes = (
+      <g>
+        <path d={`M ${x - eyeDX - headR*0.24} ${eyeY - headR*0.06} Q ${x - eyeDX} ${eyeY + headR*0.22} ${x - eyeDX + headR*0.24} ${eyeY - headR*0.06}`}
+          fill="none" stroke={ink} strokeWidth={fsw} strokeLinecap="round"/>
+        <path d={`M ${x + eyeDX - headR*0.24} ${eyeY - headR*0.06} Q ${x + eyeDX} ${eyeY + headR*0.22} ${x + eyeDX + headR*0.24} ${eyeY - headR*0.06}`}
+          fill="none" stroke={ink} strokeWidth={fsw} strokeLinecap="round"/>
+      </g>
+    );
+    // A cheeky wink — one open dot eye, one flat closed lid
+    const winkEyes = (
+      <g>
+        <circle cx={x - eyeDX} cy={eyeY} r={eyeR} fill={ink}/>
+        <line x1={x + eyeDX - headR*0.24} y1={eyeY} x2={x + eyeDX + headR*0.24} y2={eyeY}
+          stroke={ink} strokeWidth={fsw} strokeLinecap="round"/>
+      </g>
+    );
 
     // Mouths: an open "cheer" ellipse that pulses (variants 0,1), a grin-with-tongue (3),
     // and a chatty smile arc (2). All wrapped so they animate open/closed in place.
@@ -199,6 +167,12 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
           <ellipse cx={x} cy={mouthY + headR*0.14} rx={headR*0.16} ry={headR*0.12} fill={color} opacity={filled ? 0.55 : 0.9}/>
         </g>
       );
+    } else if (v === 4) {
+      // Belting it out — tall open singer's mouth, eyes closed in bliss
+      mouth = <ellipse cx={x} cy={mouthY + headR*0.06} rx={headR*0.22} ry={headR*0.38} fill={ink}/>;
+    } else if (v === 5) {
+      // Whistling — a tight little "o", with the wink
+      mouth = <circle cx={x} cy={mouthY} r={headR*0.15} fill={ink}/>;
     } else {
       // Classic open "whoa" mouth
       mouth = <ellipse cx={x} cy={mouthY} rx={headR*0.26} ry={headR*0.24} fill={ink}/>;
@@ -206,7 +180,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
 
     faceEls = (
       <g opacity={op}>
-        {v === 2 ? happyEyes : dotEyes}
+        {v === 2 ? happyEyes : v === 4 ? closedEyes : v === 5 ? winkEyes : dotEyes}
         <g style={{animation:`fan-sing ${singDur}s ease-in-out infinite`, animationDelay:`${singDelay}s`,
           transformBox:'fill-box', transformOrigin:'center'}}>
           {mouth}
@@ -215,49 +189,48 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
     );
   }
 
-  // ── HANDS & ARMS — circle hands now get forearms; 'fist' throws HORNS ──
+  // ── HANDS — small floating circle hands (no arm lines — they read cleanly at
+  // crowd scale, and ride the parent's bob). Most fans rest; some wave, throw
+  // devil horns, hold up a lighter, or raise a phone-light.
   let handsEls = null;
   if (hands && headR > 2.0) {
-    const handR = headR * 0.46;
-    const hf    = filled ? color : 'none';
-    const armW  = Math.max(sw * 0.9, r * 0.14);
-    const shoulderY = shY + r * 0.04;
-    const arm = (sx, sy, hx2, hy2, key) => (
-      <line key={key} x1={sx} y1={sy} x2={hx2} y2={hy2}
-        stroke={color} strokeWidth={armW} strokeLinecap="round" opacity={op * 0.9}/>
-    );
-    const restY = y + r * 0.12, restDX = halfW * 0.94;
+    const handR  = headR * 0.46;
+    const hf     = filled ? color : 'none';
+    const hornW  = Math.max(sw * 0.9, r * 0.14);
+    const restY  = y + r * 0.12;
+    const restDX = halfW * 0.94;
     const restHand = (side, key) => (
-      <g key={key}>
-        {detail && arm(x + side * shW * 0.9, shoulderY, x + side * restDX, restY - handR * 0.4)}
-        <circle cx={x + side * restDX} cy={restY} r={handR}
-          fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
-      </g>
+      <circle key={key} cx={x + side * restDX} cy={restY} r={handR}
+        fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
     );
 
     if (hands === 'wave') {
-      // Both hands up, swaying in opposite phase — arms ride inside the
-      // animated group so they stay attached (the slight shoulder drift is
-      // invisible at crowd scale).
-      const wy = headCy - headR * 0.7, wdx = halfW * 1.02, sway = headR * 0.55;
-      const waver = (side, delay) => (
-        <g style={{animation:'fan-wave 1.05s ease-in-out infinite', animationDelay: delay,
-          ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
-          {detail && arm(x + side * shW * 0.9, shoulderY, x + side * wdx, wy + handR)}
-          <circle cx={x + side * wdx} cy={wy} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
+      // Both hands up, swaying side-to-side in opposite phase = a waving crowd.
+      const wy   = headCy - headR * 0.7;
+      const wdx  = halfW * 1.02;
+      const sway = headR * 0.55;
+      handsEls = (
+        <g>
+          <g style={{animation:'fan-wave 1.05s ease-in-out infinite',
+            ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
+            <circle cx={x - wdx} cy={wy} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
+          </g>
+          <g style={{animation:'fan-wave 1.05s ease-in-out infinite', animationDelay:'-0.525s',
+            ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
+            <circle cx={x + wdx} cy={wy} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
+          </g>
         </g>
       );
-      handsEls = <g>{waver(-1, '0s')}{waver(1, '-0.525s')}</g>;
     } else if (hands === 'fist') {
-      // 🤘 One arm thrown up in DEVIL HORNS, pumping; the other rests.
-      const fy = headCy - headR * 1.05, fx = x + halfW * 0.35;
+      // 🤘 One raised hand pumping DEVIL HORNS; the other rests.
+      const fy = headCy - headR * 1.05;
+      const fx = x + halfW * 0.35;
       handsEls = (
         <g>
           {restHand(-1, 'rest')}
           <g style={{animation:'fan-fist 0.7s ease-in-out infinite', ['--pump']:`${-(headR * 1.4)}px`}}>
-            {detail && arm(x + shW * 0.9, shoulderY, fx, fy + handR)}
             <circle cx={fx} cy={fy} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
-            {detail && <g stroke={color} strokeWidth={armW} strokeLinecap="round" opacity={op}>
+            {detail && <g stroke={color} strokeWidth={hornW} strokeLinecap="round" opacity={op}>
               <line x1={fx - handR * 0.55} y1={fy - handR * 0.3} x2={fx - handR * 0.85} y2={fy - handR * 1.5}/>
               <line x1={fx + handR * 0.55} y1={fy - handR * 0.3} x2={fx + handR * 0.85} y2={fy - handR * 1.5}/>
             </g>}
@@ -265,13 +238,13 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
         </g>
       );
     } else if (hands === 'lighter') {
-      // One hand holds a flickering flame aloft; the other rests.
-      const ly = headCy - headR * 0.85, lx = x - halfW * 0.28;
+      // One hand raised holding a flickering lighter flame; the other rests.
+      const ly = headCy - headR * 0.85;
+      const lx = x - halfW * 0.28;
       const flameY = ly - handR * 1.5;
       handsEls = (
         <g>
           {restHand(1, 'rest')}
-          {detail && arm(x - shW * 0.9, shoulderY, lx, ly + handR)}
           <circle cx={lx} cy={ly} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
           <g style={{animation:'fan-flame 0.5s ease-in-out infinite',
             transformBox:'fill-box', transformOrigin:'center bottom',
@@ -283,13 +256,13 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
       );
     } else if (hands === 'phone') {
       // 📱 A phone-light held high, swaying slow — the modern lighter.
-      const py2 = headCy - headR * 1.1, px2 = x - halfW * 0.3;
+      const py2 = headCy - headR * 1.1;
+      const px2 = x - halfW * 0.3;
       handsEls = (
         <g>
           {restHand(1, 'rest')}
           <g style={{animation:'fan-wave 2.2s ease-in-out infinite',
             ['--swA']:`${-headR * 0.3}px`, ['--swB']:`${headR * 0.3}px`}}>
-            {detail && arm(x - shW * 0.9, shoulderY, px2, py2 + handR)}
             <rect x={px2 - handR * 0.42} y={py2 - handR * 0.9}
               width={handR * 0.84} height={handR * 1.3} rx={handR * 0.2}
               fill="#cfe0ff" opacity={op} style={{filter:'drop-shadow(0 0 2px #cfe0ff)'}}/>
@@ -297,18 +270,26 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
         </g>
       );
     } else {
+      // rest — both hands down by the sides
       handsEls = <g>{restHand(-1, 'l')}{restHand(1, 'r')}</g>;
     }
   }
 
+  // Body silhouette — optionally mirrored upside-down about its own centre so the
+  // crowd shows a mix of two outlines.
+  const bodyCenterY = (apexY + baseY) / 2;
+  const bodyPath = (
+    <path d={body} fill={filled ? color : 'none'} stroke={color} strokeWidth={sw}
+      strokeLinejoin="round" strokeLinecap="round" opacity={op}/>
+  );
+
   return (
     <>
-      <path d={body} fill={filled ? color : 'none'} stroke={color} strokeWidth={sw}
-        strokeLinejoin="round" strokeLinecap="round" opacity={op}/>
-      {legs}
+      {bodyFlip
+        ? <g transform={`matrix(1,0,0,-1,0,${(2 * bodyCenterY).toFixed(2)})`}>{bodyPath}</g>
+        : bodyPath}
       <circle cx={x} cy={headCy} r={headR} fill={filled ? color : '#0a0e18'}
         stroke={color} strokeWidth={sw} opacity={op}/>
-      {hairEls}
       {faceEls}
       {handsEls}
     </>
@@ -10868,23 +10849,36 @@ function Game({ gameState, onReturnToLobby }) {
                 // steady cluster so they read as a distinct pop-in (rendered below).
                 const popN = (fanEvt?.kind === 'gain') ? Math.min(fanEvt.n, 12) : 0;
                 const visibleTotal = Math.max(0, total - popN);
+                // ── 🏟️ GRANDSTAND — the caps become visible capacity: 4 rows × 5 seats,
+                // diehards filling the front rail first, dashed markers for empty seats.
+                // Row 0 sits at the anchor (already past MIN_R by construction).
+                const CAPACITY = FAN_DIEHARD_CAP + FAN_CASUAL_CAP;      // 20 — 4 rows × 5
+                const seatGap = HS * 0.62, rowGap = HS * 0.72;
                 const fans = [];
-                for (let i = 0; i < visibleTotal; i++) {
-                  const isDie = i < D;                 // diehards fill the front row, casuals fan out behind
-                  const ang = i * 2.39996;             // golden-angle phyllotaxis = natural crowd packing
-                  const rad = Math.sqrt(i + 0.6) * dot * 1.4;
-                  let fx = anchorX + Math.cos(ang) * rad        + ox * rad * 0.15;
-                  let fy = anchorY + Math.sin(ang) * rad * 0.85 + oy * rad * 0.15;
-                  // Any fan that landed inside the field gets pushed back out along the radius.
-                  let dx = fx - cxC, dy = fy - cyC;
-                  const dist = Math.hypot(dx, dy) || 1;
-                  if (dist < MIN_R) { fx = cxC + (dx / dist) * MIN_R; fy = cyC + (dy / dist) * MIN_R; }
-                  fx = clamp(fx, 4, SVG_W - 4); fy = clamp(fy, 4, SVG_H - 4);
-                  fans.push({ i, isDie, fx, fy });
+                for (let i = 0; i < Math.min(visibleTotal, CAPACITY); i++) {
+                  const isDie = i < D;                 // diehards fill the seat sequence first → front rail
+                  const seat = grandstandSeat(i, anchorX, anchorY, ox, oy, seatGap, rowGap);
+                  fans.push({ i, isDie,
+                    fx: clamp(seat.x, 4, SVG_W - 4),
+                    fy: clamp(seat.y, 4, SVG_H - 4) });
                 }
                 return (
                   <g key={`fans-${s.id}`} style={{pointerEvents:"none"}}>
-                    {fans.map(({ i, isDie, fx: px, fy: py }) => {
+                    {/* tiers, back to front */}
+                    {[3, 2, 1, 0].map(rw => (
+                      <polygon key={`tier-${rw}`}
+                        points={grandstandTier(rw, anchorX, anchorY, ox, oy, seatGap, rowGap)}
+                        fill={rw % 2 ? '#101d3a' : '#0d1830'} stroke="#24406a" strokeWidth={1}/>
+                    ))}
+                    {/* empty seats — dashed capacity markers (static + cheap: 1 node each) */}
+                    {Array.from({ length: Math.max(0, CAPACITY - visibleTotal) }, (_, k) => {
+                      const seat = grandstandSeat(visibleTotal + k, anchorX, anchorY, ox, oy, seatGap, rowGap);
+                      return <circle key={`seat-${k}`} cx={clamp(seat.x, 4, SVG_W - 4)} cy={clamp(seat.y, 4, SVG_H - 4)}
+                        r={dot * 0.5} fill="none" stroke="#1e3a5f" strokeWidth={1}
+                        strokeDasharray="2 2" opacity={0.4}/>;
+                    })}
+                    {/* fans, deepest row first so front-row pawns overlap the row behind */}
+                    {[...fans].reverse().map(({ i, isDie, fx: px, fy: py }) => {
                       const r   = isDie ? dot * 1.5 : dot * 1.15;   // pawns sized to read cleanly
                       const col = isDie ? sc : '#cfe0ff';
                       const sww = isDie ? 1.3 : 0.9;
@@ -10902,17 +10896,36 @@ function Game({ gameState, onReturnToLobby }) {
                           {/* soft glow — the crowd reads as a sea of lights */}
                           <circle cx={px} cy={py} r={r * 1.5} fill={sc}
                             opacity={isDie ? 0.26 : 0.10} style={{filter:`blur(${r * 0.9}px)`}}/>
-                          {fanPawnShape(px, py, r, col, isDie, sww, op, i % 4, i % 2 === 1, fanGesture(i))}
+                          {fanPawnShape(px, py, r, col, isDie, sww, op, i % 6, i % 2 === 1, fanGesture(i))}
                         </g>
                       );
                     })}
-                    {/* Crowd-size tag */}
+                    {/* 🚧 barricade rail — owner colour, in front of row 0 */}
+                    {(() => {
+                      const pxv = -oy, pyv = ox;
+                      const halfL = (5 / 2 + 0.6) * seatGap;
+                      const d = -rowGap * 0.55;
+                      const rx1 = anchorX - pxv * halfL + ox * d, ry1 = anchorY - pyv * halfL + oy * d;
+                      const rx2 = anchorX + pxv * halfL + ox * d, ry2 = anchorY + pyv * halfL + oy * d;
+                      return (
+                        <g stroke={sc} strokeWidth={1.6} opacity={0.85}
+                           style={{filter:`drop-shadow(0 0 3px ${sc})`}}>
+                          <line x1={rx1} y1={ry1} x2={rx2} y2={ry2}/>
+                          {[0.12, 0.3, 0.5, 0.7, 0.88].map(t => {
+                            const px2 = rx1 + (rx2 - rx1) * t, py2 = ry1 + (ry2 - ry1) * t;
+                            return <line key={t} x1={px2} y1={py2}
+                              x2={px2 + ox * dot * 0.9} y2={py2 + oy * dot * 0.9}/>;
+                          })}
+                        </g>
+                      );
+                    })()}
+                    {/* Crowd-size tag — seats filled / capacity, past the back row */}
                     {total > 0 && (
-                      <text x={anchorX} y={anchorY + (oy > 0 ? HS * 1.7 : -HS * 1.4)}
+                      <text x={anchorX} y={anchorY + oy * rowGap * 4.6}
                         textAnchor="middle" fontSize={HS * 0.4} fontWeight="bold"
                         fill={sc} opacity={0.85} stroke="#000" strokeWidth={0.3}
                         style={{filter:`drop-shadow(0 0 3px ${sc})`}}>
-                        🎤 {total}
+                        🎤 {total} / {CAPACITY}
                       </text>
                     )}
                     {/* Transient reaction burst */}
@@ -10975,20 +10988,16 @@ function Game({ gameState, onReturnToLobby }) {
                     {/* 🎤 POP-IN — fresh fans burst into the crowd, one after another */}
                     {fanEvt && fanEvt.kind === 'gain' && popN > 0 && (() => {
                       const items = [];
-                      for (let i = visibleTotal; i < total; i++) {
-                        const ang = i * 2.39996;
-                        const rad = Math.sqrt(i + 0.6) * dot * 1.4;
-                        let px = anchorX + Math.cos(ang) * rad        + ox * rad * 0.15;
-                        let py = anchorY + Math.sin(ang) * rad * 0.85 + oy * rad * 0.15;
-                        let dx = px - cxC, dy = py - cyC; const dist = Math.hypot(dx, dy) || 1;
-                        if (dist < MIN_R) { px = cxC + (dx / dist) * MIN_R; py = cyC + (dy / dist) * MIN_R; }
-                        px = clamp(px, 4, SVG_W - 4); py = clamp(py, 4, SVG_H - 4);
+                      for (let i = visibleTotal; i < Math.min(total, CAPACITY); i++) {
+                        const seat = grandstandSeat(i, anchorX, anchorY, ox, oy, seatGap, rowGap);
+                        const px = clamp(seat.x, 4, SVG_W - 4);
+                        const py = clamp(seat.y, 4, SVG_H - 4);
                         const r = dot * 1.35;
                         items.push(
                           <g key={`pi-${i}`} style={{animation:"fan-pop-in 0.6s cubic-bezier(.5,1.6,.6,1) both",
                             animationDelay:`${((i - visibleTotal) * 0.07).toFixed(2)}s`,
                             transformBox:'fill-box', transformOrigin:'center'}}>
-                            {fanPawnShape(px, py, r, sc, true, 1.25, 1, i % 4, i % 2 === 1, 'wave')}
+                            {fanPawnShape(px, py, r, sc, true, 1.25, 1, i % 6, i % 2 === 1, 'wave')}
                           </g>
                         );
                       }
@@ -11941,7 +11950,7 @@ function Game({ gameState, onReturnToLobby }) {
                       animation: excited ? 'unsure-excited 0.45s ease-in-out infinite'
                                          : `fan-bob ${dur}s ease-in-out infinite`,
                       animationDelay: `${delay}s`}}>
-                      {fanPawnShape(x, y, r, col, excited, 1.2, 1, i % 4, i % 2 === 1, excited ? 'wave' : fanGesture(i))}
+                      {fanPawnShape(x, y, r, col, excited, 1.2, 1, i % 6, i % 2 === 1, excited ? 'wave' : fanGesture(i))}
                     </g>
                   );
                 };

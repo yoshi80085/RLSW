@@ -18,6 +18,35 @@ export function fanGesture(i) {
   return FAN_GESTURES[((i % n) + n) % n];
 }
 
+// ── 🏟️ GRANDSTAND — seat + tier geometry for the corner fan stands ──────────
+// The stand faces the board hub. (ox, oy) is the outward unit vector from hub
+// through the home corner (the FAN CROWDS block already computes it); the
+// perpendicular (-oy, ox) runs along the rows. Row 0 is the front (nearest
+// the board); deeper rows step outward by rowGap. Seats fill CENTRE-OUT
+// (slot order 0, -1, +1, -2, +2) so a thin crowd huddles mid-stand instead
+// of queueing from one end. Pure math, index-keyed — stable across renders.
+export function grandstandSeat(i, anchorX, anchorY, ox, oy, seatGap, rowGap, rowLen = 5) {
+  const row = Math.floor(i / rowLen), col = i % rowLen;
+  const slot = (col % 2 ? -1 : 1) * Math.ceil(col / 2);   // 0,-1,+1,-2,+2
+  const pxv = -oy, pyv = ox;
+  const along = slot * seatGap, depth = row * rowGap;
+  return { row,
+    x: anchorX + pxv * along + ox * depth,
+    y: anchorY + pyv * along + oy * depth };
+}
+
+// One tier platform as an SVG polygon points string. Slight taper with depth
+// fakes perspective; the 0.6-seat overhang past the end seats reads as the
+// platform edge.
+export function grandstandTier(row, anchorX, anchorY, ox, oy, seatGap, rowGap, rowLen = 5) {
+  const pxv = -oy, pyv = ox;
+  const halfL = (rowLen / 2 + 0.6) * seatGap * (1 - row * 0.04);
+  const d0 = row * rowGap - rowGap * 0.42, d1 = row * rowGap + rowGap * 0.42;
+  const pt = (along, depth) =>
+    `${(anchorX + pxv * along + ox * depth).toFixed(1)},${(anchorY + pyv * along + oy * depth).toFixed(1)}`;
+  return `${pt(-halfL, d0)} ${pt(halfL, d0)} ${pt(halfL * 0.96, d1)} ${pt(-halfL * 0.96, d1)}`;
+}
+
 export function axialDist(q1, r1, q2, r2) {
   return (Math.abs(q1-q2) + Math.abs(q1+r1-q2-r2) + Math.abs(r1-r2)) / 2;
 }
