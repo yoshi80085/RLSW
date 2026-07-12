@@ -8048,18 +8048,6 @@ function Game({ gameState, onReturnToLobby }) {
       color:"#e2e8f0", minHeight:"100vh", display:"flex", flexDirection:"column", padding:10, boxSizing:"border-box" }}>
       <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap" rel="stylesheet"/>
 
-      {/* ⏩ FAST-FORWARD — cycle 1× / 2× / 4× presentation speed (rules untouched) */}
-      <button onClick={cycleGameSpeed}
-        title="Fast-forward: cycle game speed 1× → 2× → 4×"
-        style={{position:'fixed', top:8, right:8, zIndex:99998,
-          background: gameSpeed === 1 ? '#1a2438' : 'linear-gradient(180deg,#2d6cdf,#1b3f8f)',
-          color:'#e2e8f0', border:'1.5px solid '+(gameSpeed===1?'#33415580':'#7db0ff'),
-          borderRadius:8, padding:'6px 10px', font:"700 13px 'Share Tech Mono',monospace",
-          letterSpacing:0.5, cursor:'pointer',
-          boxShadow: gameSpeed===1?'none':'0 0 10px #2d6cdf88'}}>
-        ⏩ {gameSpeed}×
-      </button>
-
       {/* ── GAME OVER OVERLAY ── */}
       <GameOverOverlay
         winner={winner}
@@ -8265,6 +8253,18 @@ function Game({ gameState, onReturnToLobby }) {
               ⏭
             </button>
           </div>
+          {/* ⏩ FAST-FORWARD — cycle 1× / 2× / 4× presentation speed (rules
+              untouched). Lives IN the HUD row — it used to be position:fixed
+              at top-right, where it sat on top of the ↩ Lobby button. */}
+          <button onClick={cycleGameSpeed}
+            title="Fast-forward: cycle game speed 1× → 2× → 4×"
+            style={{fontFamily:"inherit",fontSize:9,padding:"3px 8px",borderRadius:4,cursor:"pointer",fontWeight:700,
+              background: gameSpeed === 1 ? "#0a1020" : "linear-gradient(180deg,#2d6cdf,#1b3f8f)",
+              border:`1px solid ${gameSpeed === 1 ? "#1e3a5f" : "#7db0ff"}`,
+              color: gameSpeed === 1 ? "#3a5a7a" : "#e2e8f0",
+              boxShadow: gameSpeed === 1 ? "none" : "0 0 10px #2d6cdf88"}}>
+            ⏩ {gameSpeed}×
+          </button>
           {/* ⏭ Skip-cinematics toggle — reachable from any game, governs swings,
               sonics & riff-off intros. Same state the riff-off countdown card uses. */}
           <button onClick={() => setSkipBattleIntros(v => !v)}
