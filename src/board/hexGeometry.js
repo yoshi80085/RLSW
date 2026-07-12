@@ -18,33 +18,58 @@ export function fanGesture(i) {
   return FAN_GESTURES[((i % n) + n) % n];
 }
 
-// ── 🏟️ GRANDSTAND — seat + tier geometry for the corner fan stands ──────────
-// The stand faces the board hub. (ox, oy) is the outward unit vector from hub
-// through the home corner (the FAN CROWDS block already computes it); the
-// perpendicular (-oy, ox) runs along the rows. Row 0 is the front (nearest
-// the board); deeper rows step outward by rowGap. Seats fill CENTRE-OUT
-// (slot order 0, -1, +1, -2, +2) so a thin crowd huddles mid-stand instead
-// of queueing from one end. Pure math, index-keyed — stable across renders.
-export function grandstandSeat(i, anchorX, anchorY, ox, oy, seatGap, rowGap, rowLen = 5) {
-  const row = Math.floor(i / rowLen), col = i % rowLen;
-  const slot = (col % 2 ? -1 : 1) * Math.ceil(col / 2);   // 0,-1,+1,-2,+2
-  const pxv = -oy, pyv = ox;
-  const along = slot * seatGap, depth = row * rowGap;
-  return { row,
-    x: anchorX + pxv * along + ox * depth,
-    y: anchorY + pyv * along + oy * depth };
+// ── 🏟️ GRANDSTAND — polar seat + tier geometry for the corner fan stands ────
+// The stand is an amphitheater wedge CURVED AROUND THE BOARD HUB: every row is
+// an arc centred on the hub, so the front rail keeps a constant gap from the
+// board's edge no matter the corner. The square window corner is handled by
+// TAPER, not curve — rows shrink 6·5·5·4 into the dead wedge (deepest along
+// the corner diagonal, tightest toward the flat window edges). (ox, oy) is
+// the outward unit vector hub → home corner; its angle is the stand's
+// centreline. Seats fill CENTRE-OUT within each row so a thin crowd huddles
+// mid-stand. Pure math, index-keyed — stable across renders.
+export const STAND_ROWS = [6, 5, 5, 4];   // seats per row, front rail → back
+
+function standRowCol(i) {
+  let row = 0, start = 0;
+  for (const n of STAND_ROWS) {
+    if (i < start + n) return { row, col: i - start, n };
+    start += n; row++;
+  }
+  return null;
 }
 
-// One tier platform as an SVG polygon points string. Slight taper with depth
-// fakes perspective; the 0.6-seat overhang past the end seats reads as the
-// platform edge.
-export function grandstandTier(row, anchorX, anchorY, ox, oy, seatGap, rowGap, rowLen = 5) {
-  const pxv = -oy, pyv = ox;
-  const halfL = (rowLen / 2 + 0.6) * seatGap * (1 - row * 0.04);
-  const d0 = row * rowGap - rowGap * 0.42, d1 = row * rowGap + rowGap * 0.42;
-  const pt = (along, depth) =>
-    `${(anchorX + pxv * along + ox * depth).toFixed(1)},${(anchorY + pyv * along + oy * depth).toFixed(1)}`;
-  return `${pt(-halfL, d0)} ${pt(halfL, d0)} ${pt(halfL * 0.96, d1)} ${pt(-halfL * 0.96, d1)}`;
+// Seat i → { row, x, y }. frontR = radius of row 0 from the hub; seatGap is
+// an ARC length (converted per-row to an angle, so seats stay evenly spaced
+// even as deeper rows ride bigger radii); rowGap steps rows outward.
+export function grandstandSeat(i, hubX, hubY, ox, oy, frontR, seatGap, rowGap) {
+  const rc = standRowCol(i);
+  if (!rc) return null;
+  const { row, col, n } = rc;
+  const R = frontR + row * rowGap;
+  // Centre-out deal: odd rows 0,-1,+1,-2,+2 — even rows ±0.5,±1.5,±2.5.
+  const slot = n % 2
+    ? (col % 2 ? -1 : 1) * Math.ceil(col / 2)
+    : (col % 2 ? -1 : 1) * (Math.floor(col / 2) + 0.5);
+  const a = Math.atan2(oy, ox) + slot * (seatGap / R);
+  return { row, x: hubX + R * Math.cos(a), y: hubY + R * Math.sin(a) };
+}
+
+// Half angular span of a row's platform (seats + a 0.7-seat overhang).
+export function grandstandRowSpan(row, frontR, seatGap, rowGap) {
+  const n = STAND_ROWS[row] ?? STAND_ROWS[STAND_ROWS.length - 1];
+  const R = frontR + row * rowGap;
+  const maxAbs = n % 2 ? Math.floor(n / 2) : (n - 1) / 2;
+  return (maxAbs + 0.7) * (seatGap / R);
+}
+
+// Arc path (SVG `d`) centred on the hub at radius R, spanning midA ± halfSpan.
+// Callers stroke it: wide for tier platforms, thin for edges, glowing for the
+// barricade rail. halfSpan < π/2 always → large-arc 0, sweep 1.
+export function grandstandArc(hubX, hubY, R, midA, halfSpan) {
+  const a0 = midA - halfSpan, a1 = midA + halfSpan;
+  const x0 = hubX + R * Math.cos(a0), y0 = hubY + R * Math.sin(a0);
+  const x1 = hubX + R * Math.cos(a1), y1 = hubY + R * Math.sin(a1);
+  return `M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${R.toFixed(1)} ${R.toFixed(1)} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`;
 }
 
 export function axialDist(q1, r1, q2, r2) {

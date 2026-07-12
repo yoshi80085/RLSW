@@ -10,7 +10,7 @@ import { SPIRIT_DEFS, SPIRIT_OPTIONS } from "./data/spirits.js";
 import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "./data/corners.js";
 import { HEX_SIZE, SCALE, SVG_W, SVG_H } from "./board/constants.js";
 import { HEX_BY_NUM, HEX_BY_QR, ALL_HEXES } from "./board/hexMap.js";
-import { pointyCorners, fanGesture, axialDist, axialNeighbors, getFlatTopNeighborSlots, angleTo, angleDiff, neighborInDirection, grandstandSeat, grandstandTier } from "./board/hexGeometry.js";
+import { pointyCorners, fanGesture, axialDist, axialNeighbors, getFlatTopNeighborSlots, angleTo, angleDiff, neighborInDirection, grandstandSeat, grandstandArc, grandstandRowSpan } from "./board/hexGeometry.js";
 import { Tutorial } from "./tutorial/content.jsx";
 import { useRiffState } from "./hooks/useRiffState.js";
 import { useFanEconomy } from "./hooks/useFanEconomy.js";
@@ -10849,37 +10849,46 @@ function Game({ gameState, onReturnToLobby }) {
                 // steady cluster so they read as a distinct pop-in (rendered below).
                 const popN = (fanEvt?.kind === 'gain') ? Math.min(fanEvt.n, 12) : 0;
                 const visibleTotal = Math.max(0, total - popN);
-                // ── 🏟️ GRANDSTAND — the caps become visible capacity: 4 rows × 5 seats,
-                // diehards filling the front rail first, dashed markers for empty seats.
-                // Row 0 sits at the anchor (already past MIN_R by construction).
-                const CAPACITY = FAN_DIEHARD_CAP + FAN_CASUAL_CAP;      // 20 — 4 rows × 5
-                const seatGap = HS * 0.62, rowGap = HS * 0.72;
+                // ── 🏟️ GRANDSTAND — an amphitheater wedge curved AROUND THE HUB, so the
+                // front rail keeps a constant gap from the board edge; the square window
+                // corner is handled by taper (rows shrink 6·5·5·4 into the dead wedge).
+                // The caps become visible capacity: diehards fill the front arc exactly.
+                const CAPACITY = FAN_DIEHARD_CAP + FAN_CASUAL_CAP;      // 20 = 6+5+5+4
+                const seatGap = HS * 0.68, rowGap = HS * 0.78;
+                const frontR = homeR + FAN_OUT;      // front row rides where the anchor sits
+                const midA = Math.atan2(oy, ox);     // the stand's centreline angle
                 const fans = [];
                 for (let i = 0; i < Math.min(visibleTotal, CAPACITY); i++) {
                   const isDie = i < D;                 // diehards fill the seat sequence first → front rail
-                  const seat = grandstandSeat(i, anchorX, anchorY, ox, oy, seatGap, rowGap);
+                  const seat = grandstandSeat(i, cxC, cyC, ox, oy, frontR, seatGap, rowGap);
                   fans.push({ i, isDie,
                     fx: clamp(seat.x, 4, SVG_W - 4),
                     fy: clamp(seat.y, 4, SVG_H - 4) });
                 }
                 return (
                   <g key={`fans-${s.id}`} style={{pointerEvents:"none"}}>
-                    {/* tiers, back to front */}
+                    {/* tiers — curved platform bands, back to front, tapering into the corner */}
                     {[3, 2, 1, 0].map(rw => (
-                      <polygon key={`tier-${rw}`}
-                        points={grandstandTier(rw, anchorX, anchorY, ox, oy, seatGap, rowGap)}
-                        fill={rw % 2 ? '#101d3a' : '#0d1830'} stroke="#24406a" strokeWidth={1}/>
+                      <path key={`tier-${rw}`}
+                        d={grandstandArc(cxC, cyC, frontR + rw * rowGap, midA, grandstandRowSpan(rw, frontR, seatGap, rowGap))}
+                        fill="none" stroke={rw % 2 ? '#101d3a' : '#0d1830'} strokeWidth={rowGap * 0.8}/>
+                    ))}
+                    {/* tier lips — a thin bright edge along each platform's outer rim */}
+                    {[3, 2, 1, 0].map(rw => (
+                      <path key={`tedge-${rw}`}
+                        d={grandstandArc(cxC, cyC, frontR + rw * rowGap + rowGap * 0.4, midA, grandstandRowSpan(rw, frontR, seatGap, rowGap))}
+                        fill="none" stroke="#24406a" strokeWidth={1}/>
                     ))}
                     {/* empty seats — dashed capacity markers (static + cheap: 1 node each) */}
                     {Array.from({ length: Math.max(0, CAPACITY - visibleTotal) }, (_, k) => {
-                      const seat = grandstandSeat(visibleTotal + k, anchorX, anchorY, ox, oy, seatGap, rowGap);
+                      const seat = grandstandSeat(visibleTotal + k, cxC, cyC, ox, oy, frontR, seatGap, rowGap);
                       return <circle key={`seat-${k}`} cx={clamp(seat.x, 4, SVG_W - 4)} cy={clamp(seat.y, 4, SVG_H - 4)}
                         r={dot * 0.5} fill="none" stroke="#1e3a5f" strokeWidth={1}
                         strokeDasharray="2 2" opacity={0.4}/>;
                     })}
                     {/* fans, deepest row first so front-row pawns overlap the row behind */}
                     {[...fans].reverse().map(({ i, isDie, fx: px, fy: py }) => {
-                      const r   = isDie ? dot * 1.5 : dot * 1.15;   // pawns sized to read cleanly
+                      const r   = isDie ? dot * 1.6 : dot * 1.25;   // pawns sized to read cleanly
                       const col = isDie ? sc : '#cfe0ff';
                       const sww = isDie ? 1.3 : 0.9;
                       const op  = isDie ? 0.95 : 0.6;
@@ -10900,28 +10909,29 @@ function Game({ gameState, onReturnToLobby }) {
                         </g>
                       );
                     })}
-                    {/* 🚧 barricade rail — owner colour, in front of row 0 */}
+                    {/* 🚧 barricade rail — owner colour, a curved arc tracking the board
+                        edge at a constant gap, in front of the front row */}
                     {(() => {
-                      const pxv = -oy, pyv = ox;
-                      const halfL = (5 / 2 + 0.6) * seatGap;
-                      const d = -rowGap * 0.55;
-                      const rx1 = anchorX - pxv * halfL + ox * d, ry1 = anchorY - pyv * halfL + oy * d;
-                      const rx2 = anchorX + pxv * halfL + ox * d, ry2 = anchorY + pyv * halfL + oy * d;
+                      const railR = frontR - rowGap * 0.6;
+                      const span = grandstandRowSpan(0, frontR, seatGap, rowGap);
                       return (
                         <g stroke={sc} strokeWidth={1.6} opacity={0.85}
                            style={{filter:`drop-shadow(0 0 3px ${sc})`}}>
-                          <line x1={rx1} y1={ry1} x2={rx2} y2={ry2}/>
-                          {[0.12, 0.3, 0.5, 0.7, 0.88].map(t => {
-                            const px2 = rx1 + (rx2 - rx1) * t, py2 = ry1 + (ry2 - ry1) * t;
+                          <path d={grandstandArc(cxC, cyC, railR, midA, span)} fill="none"/>
+                          {[-0.76, -0.4, 0, 0.4, 0.76].map(t => {
+                            const a = midA + t * span;
+                            const px2 = cxC + railR * Math.cos(a), py2 = cyC + railR * Math.sin(a);
                             return <line key={t} x1={px2} y1={py2}
-                              x2={px2 + ox * dot * 0.9} y2={py2 + oy * dot * 0.9}/>;
+                              x2={px2 + Math.cos(a) * dot * 0.9} y2={py2 + Math.sin(a) * dot * 0.9}/>;
                           })}
                         </g>
                       );
                     })()}
-                    {/* Crowd-size tag — seats filled / capacity, past the back row */}
+                    {/* Crowd-size tag — seats filled / capacity, tucked in the corner tip
+                        past the back row along the diagonal */}
                     {total > 0 && (
-                      <text x={anchorX} y={anchorY + oy * rowGap * 4.6}
+                      <text x={clamp(cxC + ox * (frontR + rowGap * 3.9), 30, SVG_W - 30)}
+                        y={clamp(cyC + oy * (frontR + rowGap * 3.9), 14, SVG_H - 8)}
                         textAnchor="middle" fontSize={HS * 0.4} fontWeight="bold"
                         fill={sc} opacity={0.85} stroke="#000" strokeWidth={0.3}
                         style={{filter:`drop-shadow(0 0 3px ${sc})`}}>
@@ -10989,7 +10999,7 @@ function Game({ gameState, onReturnToLobby }) {
                     {fanEvt && fanEvt.kind === 'gain' && popN > 0 && (() => {
                       const items = [];
                       for (let i = visibleTotal; i < Math.min(total, CAPACITY); i++) {
-                        const seat = grandstandSeat(i, anchorX, anchorY, ox, oy, seatGap, rowGap);
+                        const seat = grandstandSeat(i, cxC, cyC, ox, oy, frontR, seatGap, rowGap);
                         const px = clamp(seat.x, 4, SVG_W - 4);
                         const py = clamp(seat.y, 4, SVG_H - 4);
                         const r = dot * 1.35;
