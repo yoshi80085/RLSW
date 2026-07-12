@@ -75,7 +75,7 @@ logLines[], seq }`. Rooms die 10 min after the last socket drops.
 | N6 | Spectate + reconnect | spectator joins mid-game; player F5s and resumes | ☑ |
 | N7 | Bot seats | 1 human + bots online; bot actions relay like human ones | ☑ |
 | N8 | Hardening | version check, heartbeats, dev-panel gating, desync UX | ☑ |
-| N9 | Deploy | play over the internet | ☐ |
+| N9 | Deploy | play over the internet | ☑ |
 
 - **N0 — seed threading (one line + lobby plumbing).**
   `makeInitialState(gameState)` currently defaults `seed = Date.now()>>>0`
@@ -150,25 +150,45 @@ logLines[], seq }`. Rooms die 10 min after the last socket drops.
     behind `canAct`, and the initial-pick effect, `setSkillTarget`, `placeAmp`
     + the Place-Amp chip are `canAct`-gated (remote clients previously drove
     other players' trees AND relayed duplicate NOTE_SHEET_PATCHED writes).
-- **N9 — deploy.** LAN: `vite --host` + server on :8787 (one command each).
-  Internet: server on a small host (Fly.io / Railway / any $5 VPS) behind
-  `wss://`; client stays on gh-pages with the server URL in an env/config.
-  CORS is a non-issue for pure websockets; just get TLS right (wss).
-  Gotchas a cold start WILL hit:
-  1. **Mixed content — wss is mandatory, not optional.** gh-pages serves over
-     https, so browsers hard-block `ws://` connections from it. The production
-     server URL must be `wss://…`; plain `ws://` only works on localhost/LAN.
-  2. **`defaultServerUrl()` is LAN-only.** It falls back to
-     `location.hostname:8787`, which is meaningless on gh-pages. Either bake a
-     production default via vite `define` (add `__SERVER_URL__` in
-     vite.config.js — same pattern as the existing `__APP_VERSION__` — and
-     prefer it in net/client.js when set), or require `?server=wss://…` in the
-     shared link. The `?server=` query override already works today.
-  3. **Sleeping hosts kill rooms.** Rooms are RAM (landmine #5): a free-tier
-     instance that auto-stops on idle (Fly autostop, Railway sleep) wipes every
-     game the moment it spins down. Use an always-on instance, or accept
-     mid-session room loss. The 15s server-side ping keeps ACTIVE sockets alive
-     through proxies, but it does not keep a sleeping host awake forever.
+- **N9 — deploy. ☑ Shipped 2026-07-12.**
+  **What was done:**
+  - `__SERVER_URL__` wired into vite.config.js (`process.env.SERVER_URL`) and
+    net/client.js (`BAKED_SERVER_URL`). Priority: `?server=` query > baked URL >
+    LAN fallback. Build with
+    `SERVER_URL=wss://rlsw-server.onrender.com npm run build` to bake a
+    production default; `?server=` still overrides for testing.
+  - Dockerfile + render.yaml + .dockerignore in `server/` — Render deployment:
+    free tier, no credit card, auto-TLS on `*.onrender.com`.
+  - Server upgraded to HTTP+WebSocket (N9): `http.createServer` handles health
+    checks at `/health`; WebSocket upgrades on the same port. Required by
+    Render (and most PaaS) which route all traffic through one HTTP port.
+  **Deploy commands:**
+  ```
+  # 1. Server — push to GitHub, then in Render Dashboard:
+  #    New → Web Service → connect repo → set Root Directory to "server"
+  #    → pick Free plan → Deploy.
+  #    Or use the render.yaml blueprint: New → Blueprint → connect repo.
+  #
+  # 2. Client (gh-pages, baking the server URL into the build):
+  #    (Windows)
+  set SERVER_URL=wss://rlsw-server.onrender.com&& npm run build && npm run deploy
+  #    (macOS/Linux)
+  SERVER_URL=wss://rlsw-server.onrender.com npm run build && npm run deploy
+  ```
+  **LAN (no deploy needed):** `npx vite --host` + `cd server && node index.js`.
+  Gotchas addressed:
+  1. **Mixed content (wss mandatory):** `*.onrender.com` gets TLS automatically.
+     `defaultServerUrl()` already picks `wss:` when the page is served over
+     https.
+  2. **LAN-only default:** `BAKED_SERVER_URL` replaces the hostname fallback
+     when set. Build without `SERVER_URL` and the old LAN behavior is unchanged.
+  3. **Sleeping hosts:** Render free tier sleeps after 15 min of zero inbound
+     traffic. Active WebSocket connections (heartbeat pings) count as traffic,
+     so the server stays awake during games. First connection after idle has a
+     ~30s cold start — rooms from before the sleep are gone (RAM), but the
+     grave timer already kills them 10 min after the last disconnect anyway.
+     No credit card, no surprise charges — if you exceed the 750 hr/mo free
+     cap, service is suspended, not billed.
 
 ## Landmines (read before each phase)
 

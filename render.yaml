@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: rlsw-server
+    runtime: docker
+    dockerfilePath: server/Dockerfile
+    dockerContext: server
+    plan: free
+    # Render injects PORT automatically (default 10000).
+    # The server reads process.env.PORT, falling back to 8787 for LAN use.

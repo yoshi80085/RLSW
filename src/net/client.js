@@ -18,10 +18,17 @@ export const CLIENT_SCHEMA = 1;
 /* eslint-disable-next-line no-undef */
 const BUILD_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
 
+// N9: vite injects __SERVER_URL__ at build time (set SERVER_URL env when
+// building, e.g. SERVER_URL=wss://rlsw-server.fly.dev npm run build).
+// Falls back to "" under plain node (smokes).
+/* eslint-disable-next-line no-undef */
+const BAKED_SERVER_URL = typeof __SERVER_URL__ !== "undefined" ? __SERVER_URL__ : "";
+
 export function defaultServerUrl() {
   if (typeof location === "undefined") return "ws://127.0.0.1:8787";
   const qs = new URLSearchParams(location.search).get("server");
-  if (qs) return qs; // ?server=wss://host — N9 deploy override
+  if (qs) return qs; // ?server=wss://host — always wins (share links)
+  if (BAKED_SERVER_URL) return BAKED_SERVER_URL; // N9: production default
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${location.hostname}:8787`;
 }

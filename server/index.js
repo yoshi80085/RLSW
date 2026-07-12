@@ -6,6 +6,7 @@
 //   node index.js          (PORT env to override, default 8787)
 
 import { WebSocketServer } from "ws";
+import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -103,8 +104,22 @@ function scheduleGrave(room) {
   }, ROOM_TTL_MS);
 }
 
-// ─── connection handling ─────────────────────────────────────────────────────
-const wss = new WebSocketServer({ port: PORT });
+// ─── HTTP server + WebSocket upgrade ────────────────────────────────────────
+// N9: Render (and most PaaS) routes all traffic through a single HTTP port and
+// health-checks via GET. We serve a tiny HTTP handler for that, and upgrade
+// WebSocket connections on the same port.
+const httpServer = createServer((req, res) => {
+  if (req.url === "/health" || req.url === "/") {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    return res.end(`RLSW room server OK — ${rooms.size} room(s)`);
+  }
+  res.writeHead(404); res.end();
+});
+
+const wss = new WebSocketServer({ noServer: true });
+httpServer.on("upgrade", (req, socket, head) => {
+  wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+});
 
 wss.on("connection", (ws) => {
   // per-connection context
@@ -257,4 +272,6 @@ const sweep = setInterval(() => {
 }, 15000);
 wss.on("close", () => clearInterval(sweep));
 
-console.log(`RLSW room server listening on :${PORT} (schema ${SCHEMA})`);
+httpServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`RLSW room server listening on :${PORT} (schema ${SCHEMA})`);
+});
