@@ -158,10 +158,13 @@ wss.on("connection", (ws) => {
         const mismatch = versionMismatch(f, r);
         if (mismatch) return err("VERSION_MISMATCH", mismatch);
 
-        // rejoin: token matches a disconnected seat → reclaim it (works mid-game)
+        // rejoin: token matches a seat → reclaim it (works mid-game). If a stale
+        // socket is still attached (fast F5, return-to-lobby race), kick it —
+        // the token proves this connection is the same player.
         if (f.rejoinToken) {
-          const back = r.seats.find(s => !s.ws && !s.isBot && s.rejoinToken === f.rejoinToken);
+          const back = r.seats.find(s => !s.isBot && s.rejoinToken === f.rejoinToken);
           if (back) {
+            if (back.ws && back.ws !== ws) { try { back.ws.terminate(); } catch { /* already dead */ } back.ws = null; }
             room = r; seat = back; seat.ws = ws;
             clearTimeout(room.graveTimer);
             send(ws, { t: "WELCOME", code: room.code, seatId: seat.seatId, rejoinToken: seat.rejoinToken, schema: SCHEMA, rejoined: true });
@@ -243,6 +246,24 @@ wss.on("connection", (ws) => {
         return send(ws, catchUp(room));
       }
 
+      // Return the whole room to the lobby (game over → play again). Any seated
+      // player may trigger it — lockstep can't continue without them anyway.
+      // Wipes the match (log/seed/config/bots) but keeps human seats + tokens,
+      // so everyone's auto-rejoin lands back in the room's lobby, not as a
+      // spectator of a dead game.
+      case "RETURN_TO_LOBBY": {
+        if (!room) return err("NOT_IN_ROOM", "join first");
+        if (!seat) return err("SPECTATOR", "spectators can't reset the room");
+        if (room.phase !== "playing") return; // already in lobby — idempotent
+        room.phase = "lobby";
+        room.seed = null; room.config = null;
+        room.seq = 0; room.log = []; room.logLines = [];
+        room.seats = room.seats.filter(s => !s.isBot); // bots were per-match
+        for (const s of room.seats) s.spiritId = null;
+        broadcast(room, { t: "RETURNED_TO_LOBBY" });
+        return broadcast(room, roomState(room));
+      }
+
       case "LEAVE": {
         ws.close();
         return;
@@ -254,7 +275,7 @@ wss.on("connection", (ws) => {
 
   ws.on("close", () => {
     if (!room) return;
-    if (seat) seat.ws = null;           // seat survives — reclaimable by token
+    if (seat && seat.ws === ws) seat.ws = null; // seat survives — reclaimable by token (guard: a rejoin may have already replaced this socket)
     room.spectators.delete(ws);
     broadcast(room, roomState(room));
     const anyLive = room.seats.some(s => s.ws) || room.spectators.size > 0;

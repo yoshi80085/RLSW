@@ -604,9 +604,23 @@ export default function RLSWSimulator() {
   if (!gameState) {
     return <div style={isMobile ? mobileColorStyle : {}}><Lobby onStart={gs => setGameState(gs)} onTutorial={() => setShowTutorial(true)} /></div>;
   }
+  // Netcode: leaving the Game must CLOSE the socket (keeping the saved session),
+  // or the old connection keeps holding the seat and the Lobby's auto-rejoin
+  // falls through to spectator-of-a-dead-game. `resetRoom` also flips the room
+  // back to phase:lobby server-side so everyone can start a fresh match.
+  // Error-boundary resets DON'T reset the room — rejoining a live game via
+  // CATCH_UP is the correct recovery there.
+  const returnToLobby = ({ resetRoom = true } = {}) => {
+    const net = gameState.net;
+    if (net?.client) {
+      if (resetRoom && !net.spectator) net.client.send({ t: "RETURN_TO_LOBBY" });
+      net.client.close(); // keeps rlsw.net.session — Lobby auto-rejoin reclaims the seat
+    }
+    setGameState(null);
+  };
   return (
-    <GameErrorBoundary onReset={() => setGameState(null)}>
-      <div style={isMobile ? mobileColorStyle : {}}><Game key={JSON.stringify(gameState.spirits.map(s=>s.num))} gameState={gameState} onReturnToLobby={() => setGameState(null)} /></div>
+    <GameErrorBoundary onReset={() => returnToLobby({ resetRoom: false })}>
+      <div style={isMobile ? mobileColorStyle : {}}><Game key={JSON.stringify(gameState.spirits.map(s=>s.num))} gameState={gameState} onReturnToLobby={returnToLobby} /></div>
     </GameErrorBoundary>
   );
 }
@@ -763,6 +777,18 @@ function Game({ gameState, onReturnToLobby }) {
     const net = netRef.current;
     if (!net) return;
     return net.client.on("ROOM_STATE", f => setNetSeatsLive(f.seats));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Another player pressed "back to lobby" — the server reset the room. Follow
+  // them out: close our socket (session survives, so the Lobby's auto-rejoin
+  // reclaims our seat in the room's lobby) and unmount the Game.
+  useEffect(() => {
+    const net = netRef.current;
+    if (!net) return;
+    return net.client.on("RETURNED_TO_LOBBY", () => {
+      net.client.close(); // keep session — auto-rejoin lands in the room lobby
+      onReturnToLobby({ resetRoom: false });
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // N8: own-socket status — the client auto-reconnects with backoff (N2);

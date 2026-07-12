@@ -50,13 +50,23 @@ server's, appVersion must match the room creator's — explicit mismatch =
 · `START_GAME { config }` (host only; server injects `seed`) · `ACTION
 { action, cursorBefore }` (acting seat only) · `LOG_LINE { text }`
 (presentation side-channel) · `REQUEST_CATCHUP {}` (N8: desync recovery —
-answered with the same CATCH_UP bundle a late joiner gets) · `PING`.
+answered with the same CATCH_UP bundle a late joiner gets) · `RETURN_TO_LOBBY {}`
+(N10: any seated player; resets the room to phase:lobby — wipes log/seed/config,
+drops bot seats, keeps human seats + rejoin tokens — and broadcasts
+RETURNED_TO_LOBBY so every client drops back to the lobby together) · `PING`.
 
 Server → client:
 `ROOM_STATE { code, you, seats[], spectators, phase }` · `GAME_STARTED { seed,
 config, seats }` · `ACTION { seq, seatId, action, cursorBefore }` · `LOG_LINE
 { seq, seatId, text }` · `CATCH_UP { seed, config, seats, log, logLines }` ·
-`ERROR { code, msg }` · `PONG`.
+`RETURNED_TO_LOBBY {}` (N10) · `ERROR { code, msg }` · `PONG`.
+
+N10 client contract: leaving the Game closes the socket WITHOUT clearing the
+saved session (`client.close()`, not `leave()`), so the Lobby's auto-rejoin
+reclaims the seat in the room's now-reset lobby. Server-side, a rejoin token
+reclaims its seat even if a stale socket is still attached (the old socket is
+terminated) — without this, a return-to-lobby or fast F5 raced the old
+connection and dumped the player into spectator mode of a dead game.
 
 Server state per room: `{ code, phase: lobby|playing, seats[{ seatId, name,
 spiritId?, connected, rejoinToken, isBot }], spectators, seed, config, log[],
