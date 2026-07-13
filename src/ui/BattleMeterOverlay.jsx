@@ -1510,7 +1510,7 @@ export function BattleMeterOverlay({
                         })}
                       </div>
                     ) : (
-                      <NeonDie value={atkFace} spinning={atkSpinning} color={attacker?.color ?? '#ff4444'} size={DIE_SIZE} sides={6}/>
+                      <NeonDie value={atkFace} spinning={atkSpinning} color={attacker?.color ?? '#ff4444'} size={DIE_SIZE} sides={battleState.dieSides ?? 6}/>
                     )}
                     {atkSpinning && (
                       <div style={{

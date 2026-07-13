@@ -159,6 +159,11 @@ export function GameStyles() {
           0%,100% { opacity: 0.30; }
           50%     { opacity: 0.85; }
         }
+        /* ⚡ Charge Zone aura — a charged Spirit crackles until it's spent */
+        @keyframes charge-aura-pulse {
+          0%,100% { opacity: 0.45; }
+          50%     { opacity: 1; }
+        }
         /* 🎤 Fans bobbing at a Spirit's home turf — holds still, then a gentle sway */
         @keyframes fan-bob {
           0%, 55%, 100% { transform: translateY(0px); }

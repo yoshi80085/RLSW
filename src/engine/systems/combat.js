@@ -223,17 +223,23 @@ export function applyAttackRolled(state, action, rng) {
   const {
     kind, attackerId, defenderId,
     atkStat = 0, defStat = 0, posing = false, halveDef = false, psychoEligible = false,
-    dicePool = null,
+    dicePool = null, atkFloor = 0, atkDie = 6,
   } = action;
 
-  // Attacker roll: keep-highest sonic pool, or a plain swing d6.
+  // ⚡ Floor charge (and the octave-resolution dieFloorBoost): every attacker
+  // die result reads as at least 1+atkFloor. Applied per-die so the recorded
+  // pool faces match what the keep-highest verdict actually used.
+  const clampFloor = v => Math.max(v, 1 + atkFloor);
+
+  // Attacker roll: keep-highest sonic pool, or a plain thrash die (d6, or d8
+  // under a ⚡ ceiling charge — the client passes the size via atkDie).
   let atkRoll, diceVals = null, keptIdx = null;
   if (dicePool && dicePool.length) {
-    diceVals = dicePool.map(sides => rng.int(sides) + 1);
+    diceVals = dicePool.map(sides => clampFloor(rng.int(sides) + 1));
     atkRoll  = Math.max(...diceVals);
     keptIdx  = diceVals.indexOf(atkRoll);
   } else {
-    atkRoll  = rng.int(6) + 1; // d6, 1–6
+    atkRoll  = clampFloor(rng.int(atkDie) + 1);
   }
 
   const rawDefRoll = posing ? 0 : rng.int(6) + 1;    // posing defender rolls nothing

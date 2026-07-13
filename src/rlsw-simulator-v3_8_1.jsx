@@ -299,7 +299,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_HC_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_HC_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE } from "./data/gameConstants.js";
+import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_HC_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_HC_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -511,15 +511,15 @@ const SKILL_TREE = {
         { id:'amp_3',    label:'Amp III', icon:'🔊', hcCost:18, gated:true, prereq:'roadie_1',
           desc:'Place Amp 3. Within range of all three: d10→d12 — fully wired.' },
         { id:'overcharge', label:'Overcharge', icon:'🎸', hcCost:14, gated:true, prereq:'amp_2',
-          desc:'Charge Zones no longer just bump your dice tier — tapping one now lets you choose: the usual die-tier boost, OR one curated Chord Stack note plus a bonus revoice to spend on it.' },
+          desc:'Charge Zones no longer just spark your dice — tapping one now lets you choose: the usual charge (random die floor/ceiling boost), OR one curated Chord Stack note plus a bonus revoice to spend on it.' },
       ],
     },
     {
-      id: 'cqc',
-      label: 'CQC',
+      id: 'cqc', // internal id stays 'cqc' — player-facing name is THRASH
+      label: 'Thrash',
       icon: '🥊',
       color: '#ff6644',
-      desc: 'Close Quarters Combat — brutal melee. Each tier also trains a permanent +1 Drive.',
+      desc: 'Thrash — brutal melee. Each tier also trains a permanent +1 Drive.',
       skills: [
         { id:'shank_skank',     label:'Shank Skank',     icon:'🗡️', hcCost:8,  gated:true, prereq:null,
           desc:"On hit: 20% TRIP — rival's movement halved next turn. (+1 permanent Drive.)" },
@@ -556,7 +556,7 @@ const SKILL_TREE = {
       spiritOnly: 'cosmic_ronin',
       skills: [
         { id:'psycho_bushido', label:'Psycho Bushido', icon:'🌀', hcCost:10, gated:false,
-          desc:'In CQC, when your swing die lands 5 or 6 the rival freezes — their die is forced to a 1.' },
+          desc:'In Thrash, when your swing die lands 5 or 6 the rival freezes — their die is forced to a 1.' },
         { id:'e_rush',         label:'いいラッシュ (E-Rush)', icon:'🎴', hcCost:12, gated:false,
           desc:'End a melody line on an E, then face a rival in a riff-off that turn: every answer note spawns a ghost note — both keys must be hit or the note misses.' },
         { id:'hydra',          label:'Hydra',          icon:'🐉', hcCost:16, gated:true, prereq:'amp_3',
@@ -2857,6 +2857,10 @@ function Game({ gameState, onReturnToLobby }) {
           ),
           // Tick down "goes to eleven" boost
           elevenTurns: Math.max(0, (ns.elevenTurns ?? 0) - 1),
+          // ⚡ Charge Zone charges tick down on the holder's own turns (2 ≈ 2 rounds);
+          // battles burn them early via burnChargesAfterBattle.
+          chargeFloorTurns: Math.max(0, (ns.chargeFloorTurns ?? 0) - 1),
+          chargeCeilTurns:  Math.max(0, (ns.chargeCeilTurns  ?? 0) - 1),
           // ⚡ Overcharge bonus revoice expires unspent — it's a one-shot, not a
           // recurring budget like revoiceUsedThisTurn.
           bonusRevoiceAvailable: false,
@@ -3063,7 +3067,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'riff_slayer')  addLog(`🗡️ ${spirit?.name} — RIFF SLAYER! Commit a skip-climb (notes leaping by thirds) to rattle a rival in any riff-off that turn.`);
     if (skillId === 'paranoia')     addLog(`🌀 ${spirit?.name} — PARANOIA! Your Mojo Drain now lasts 3 turns AND freezes 2 of the rival's note slots.`);
     if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
-    if (skillId === 'psycho_bushido') addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! A CQC swing of 5–6 forces the rival's die to a 1.`);
+    if (skillId === 'psycho_bushido') addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! A Thrash swing of 5–6 forces the rival's die to a 1.`);
     if (skillId === 'e_rush')       addLog(`🎴 ${spirit?.name} — いいラッシュ unlocked! End on an E, then a riff-off that turn buries the rival under ghost notes.`);
     if (skillId === 'theory_major')     addLog(`🎼 ${spirit?.name} — THE FULL SCALE! The 4th & 7th are now Discord-free — your Major scale is complete.`);
     if (skillId === 'theory_minor')     addLog(`🌑 ${spirit?.name} — MINOR TONALITY! You can now declare Minor at the pivot and play a minor key, clean.`);
@@ -3105,7 +3109,7 @@ function Game({ gameState, onReturnToLobby }) {
             ...ns2, driveBuffsApplied: [...(ns2.driveBuffsApplied ?? []), skillId]
           }};
         });
-        addLog(`💪 ${spirit?.name}'s CQC training pays off — permanent +1 Drive! (now ${(spirit?.drive ?? 6) + 1})`);
+        addLog(`💪 ${spirit?.name}'s Thrash training pays off — permanent +1 Drive! (now ${(spirit?.drive ?? 6) + 1})`);
       }
     }
     if (['amp_1','amp_2','amp_3'].includes(skillId)) {
@@ -3431,7 +3435,7 @@ function Game({ gameState, onReturnToLobby }) {
   function togglePose() {
     if (!acting || !canAct) return; // N4/N7: gate
     if (!(noteStates[acting.id]?.unlockedSkills ?? []).includes('hero_pose')) {
-      addLog(`🌟 Unlock HERO POSE (CQC route) before striking a winning pose!`);
+      addLog(`🌟 Unlock HERO POSE (Thrash route) before striking a winning pose!`);
       return;
     }
     if (acting.num !== LIMELIGHT_HEX) {
@@ -4001,17 +4005,62 @@ function Game({ gameState, onReturnToLobby }) {
     }
   }
 
-  // ─── CHARGE ZONES — pickup ── (fixed hexes; see state comment above) ─────────
-  // Base effect: temporary die-tier boost — reuses the "Goes to Eleven" field so
-  // it's a proven, already-balanced payout rather than a new number to tune.
-  function grantChargeBoost(spiritId) {
+  // ─── CHARGE ZONES — pickup ── (lightning-track hexes; see state comment above) ─
+  // Base effect: the zone CHARGES the Spirit — a random 50/50 grant of either a
+  // die FLOOR charge (attack dice can't roll below 1+CHARGE_FLOOR_BONUS) or a die
+  // CEILING charge (attack dice upgrade one size: Thrash d6→d8; every Sonic pool
+  // die bumps a step). Floor + ceiling stack with EACH OTHER but never double:
+  // a duplicate draw flips to the other type; already holding both refreshes
+  // both. Lasts CHARGE_ZONE_BOOST_TURNS of the holder's turns (≈2 rounds) or
+  // until a battle ensues — fighting burns the charge, win or lose.
+  function grantChargeSpark(spiritId) {
     const sp = spirits.find(s => s.id === spiritId);
-    setNoteStates(prev => {
-      const cur = prev[spiritId]; if (!cur) return prev;
-      return { ...prev, [spiritId]: { ...cur, elevenTurns: Math.max(cur.elevenTurns ?? 0, CHARGE_ZONE_BOOST_TURNS) } };
+    const ns = noteStates[spiritId] ?? {};
+    const hasFloor = (ns.chargeFloorTurns ?? 0) > 0;
+    const hasCeil  = (ns.chargeCeilTurns  ?? 0) > 0;
+    // 50/50 draw on the engine's seeded rng — deterministic for replays/netplay.
+    dispatch(randomBatchDrawn(1));
+    const draw = engineRef.current.lastRandomBatch?.[0] ?? Math.random();
+    let kind = draw < 0.5 ? 'floor' : 'ceil';
+    if (hasFloor && hasCeil)                kind = 'both';   // full — refresh both
+    else if (kind === 'floor' && hasFloor)  kind = 'ceil';   // dupe flips to the other type
+    else if (kind === 'ceil'  && hasCeil)   kind = 'floor';
+    const patch = {};
+    if (kind === 'floor' || kind === 'both') patch.chargeFloorTurns = CHARGE_ZONE_BOOST_TURNS;
+    if (kind === 'ceil'  || kind === 'both') patch.chargeCeilTurns  = CHARGE_ZONE_BOOST_TURNS;
+    setNoteField(spiritId, patch);
+    if (kind === 'floor') {
+      triggerEffectFlash(spiritId, '⚡', 'FLOOR CHARGED!', '#ffcc44');
+      addLog(`⚡ ${sp?.name} is CHARGED — die floor +${CHARGE_FLOOR_BONUS}! Attack dice can't roll below ${1 + CHARGE_FLOOR_BONUS} (2 rounds or until a battle).`);
+    } else if (kind === 'ceil') {
+      triggerEffectFlash(spiritId, '⚡', 'CEILING CHARGED!', '#44aaff');
+      addLog(`⚡ ${sp?.name} is CHARGED — die ceiling up! Attack dice grow a size, d6→d8 (2 rounds or until a battle).`);
+    } else {
+      triggerEffectFlash(spiritId, '⚡', 'FULLY CHARGED!', '#cceeff');
+      addLog(`⚡ ${sp?.name} is FULLY CHARGED — floor AND ceiling refreshed to ${CHARGE_ZONE_BOOST_TURNS} rounds!`);
+    }
+  }
+
+  // ⚡ A battle ensued — both combatants' charges burn off (the charged side got
+  // its boost applied to this fight's dice first; the other side just loses it).
+  function burnChargesAfterBattle(ids, reason) {
+    const burned = ids.filter(id => {
+      const ns = noteStates[id] ?? {};
+      return (ns.chargeFloorTurns ?? 0) > 0 || (ns.chargeCeilTurns ?? 0) > 0;
     });
-    triggerEffectFlash(spiritId, '⚡', 'CHARGED UP!', '#4488ff');
-    addLog(`⚡ ${sp?.name} taps a Charge Zone — dice tier +1 amp for ${CHARGE_ZONE_BOOST_TURNS} turns!`);
+    if (!burned.length) return;
+    setNoteStates(prev => {
+      const next = { ...prev };
+      for (const id of burned) {
+        if (!next[id]) continue;
+        next[id] = { ...next[id], chargeFloorTurns: 0, chargeCeilTurns: 0 };
+      }
+      return next;
+    });
+    for (const id of burned) {
+      const sp = spirits.find(s => s.id === id);
+      addLog(`⚡ ${sp?.name}'s charge burns off — ${reason}.`);
+    }
   }
 
   // 🎸 Pick the note the Overcharge chord-assist grants — biased toward whichever
@@ -4045,8 +4094,8 @@ function Game({ gameState, onReturnToLobby }) {
     const sp = spirits.find(s => s.id === spiritId);
     const ns = noteStates[spiritId] ?? {};
     if ((ns.chordStack ?? []).length >= 5) {
-      addLog(`🎸 ${sp?.name}'s Chord Stack is already full — the charge fizzles into a die-tier boost instead.`);
-      grantChargeBoost(spiritId);
+      addLog(`🎸 ${sp?.name}'s Chord Stack is already full — the charge sparks into the dice instead.`);
+      grantChargeSpark(spiritId);
       return;
     }
     const note = curatedChordNote(spiritId);
@@ -4070,7 +4119,7 @@ function Game({ gameState, onReturnToLobby }) {
       setChargeChoicePending({ spiritId, num: hexNum });
       return;
     }
-    grantChargeBoost(spiritId);
+    grantChargeSpark(spiritId);
   }
 
   // Modal resolver for the Overcharge choice.
@@ -4078,7 +4127,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (!canAct || !chargeChoicePending) return; // N4/N7: gate
     const { spiritId } = chargeChoicePending;
     setChargeChoicePending(null);
-    if (choice === 'boost') grantChargeBoost(spiritId);
+    if (choice === 'boost') grantChargeSpark(spiritId);
     else if (choice === 'chord') grantChargeChordAssist(spiritId);
   }
 
@@ -5818,6 +5867,17 @@ function Game({ gameState, onReturnToLobby }) {
     const defStat  = defBase + defBonus;
     const defenderPosing = posing[targetId];
 
+    // ⚡ CHARGE ZONE charges — attacks only. Ceiling grows the Thrash die
+    // d6→d8; floor clamps every result to at least 1+CHARGE_FLOOR_BONUS. The
+    // dormant dieFloorBoost (octave resolution / Spinal Tap) finally wires in
+    // here too — strongest floor wins, they don't stack.
+    const chargeFloorA = (nsA.chargeFloorTurns ?? 0) > 0;
+    const chargeCeilA  = (nsA.chargeCeilTurns  ?? 0) > 0;
+    const atkFloor = Math.max(chargeFloorA ? CHARGE_FLOOR_BONUS : 0, nsA.dieFloorBoost ?? 0);
+    const atkDie   = chargeCeilA ? 8 : 6;
+    if (chargeFloorA) addLog(`⚡ ${attacker.name}'s floor charge crackles — this die can't roll below ${1 + CHARGE_FLOOR_BONUS}!`);
+    if (chargeCeilA)  addLog(`⚡ ${attacker.name}'s ceiling charge surges — the Thrash die grows to a d8!`);
+
     // 🎲 Roll the swing on the engine's seeded rng (Phase 3b). The client passes
     // the pre-computed stats + mod flags (they read noteStates — Phase 5); the
     // engine owns the dice + verdict. `atkStat`/`defStat` already bake in fog's
@@ -5828,6 +5888,7 @@ function Game({ gameState, onReturnToLobby }) {
       posing: defenderPosing,
       halveDef: skillMods.halveDef,
       psychoEligible: (nsA.unlockedSkills ?? []).includes('psycho_bushido'),
+      atkFloor, atkDie,
     }));
     const {
       atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, damage, psychoBushido,
@@ -5841,6 +5902,8 @@ function Game({ gameState, onReturnToLobby }) {
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on a dropped instrument — Drive -1!`);
     addLog(`⚔️ ${attacker.name} SWINGS at ${defender.name}!${defenderPosing ? ' — caught posing!' : ''}`);
+    // ⚡ A battle ensued — Charge Zone charges burn off for BOTH combatants.
+    burnChargesAfterBattle([attacker.id, targetId], 'the Thrash battle spent it');
     // 🎸 The jab spends your harmony: the swing plays out the FIRST 2 committed notes
     // of your Chord Stack (Drive was already read above, from the full chord).
     // The chord shrinks from the front; revoice rebuilds it 1 note/turn.
@@ -5865,6 +5928,7 @@ function Game({ gameState, onReturnToLobby }) {
       pickPos: 0,
       spinFaceAtk: 1, spinFaceDef: 1,
       atkDieReady: false, defDieReady: false,
+      dieSides: atkDie, // ⚡ ceiling charge grows the Thrash die to a d8
       skillMods, // stage effects, pyro, laser, fog flags
       // Freeze the swing/CQC status-effect roll now so the result overlay can
       // tell the player exactly what lands before they close it (melee only).
@@ -5907,7 +5971,7 @@ function Game({ gameState, onReturnToLobby }) {
       const spinI = setInterval(() => {
         setBattleState(p => {
           if (!p || p.phase !== 'atk_die_spin') { clearInterval(spinI); return p; }
-          return { ...p, spinFaceAtk: Math.floor(Math.random() * 6) + 1 };
+          return { ...p, spinFaceAtk: Math.floor(Math.random() * atkDie) + 1 };
         });
       }, 80);
     }, 10400);
@@ -5926,7 +5990,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (!bs || bs.riffOff || !introPhases.includes(bs.phase)) return;
     battleTimersRef.current.forEach(clearTimeout);
     battleTimersRef.current = [];
-    const sides = (bs.sonicAttack && bs.dieSides) ? bs.dieSides : 6;
+    const sides = bs.dieSides ?? 6;
     setBattleState(p => p ? { ...p, phase: 'atk_die_spin', pickPos: -(p.atkStat ?? 0) + (p.defStat ?? 0) } : p);
     const spinI = setInterval(() => {
       setBattleState(p => {
@@ -6115,6 +6179,8 @@ function Game({ gameState, onReturnToLobby }) {
         axialDist(riffDefHex.q, riffDefHex.r, ampHex.q, ampHex.r) <= AMP_RANGE;
     }) : false;
     if (riffDefPlugged && !posing[targetId] && getSonicBeam(defender).has(attacker.num)) {
+      // ⚡ A riff-off is still a battle — charges burn off (no dice to boost here).
+      burnChargesAfterBattle([attacker.id, targetId], 'the riff-off spent it');
       startRiffOff(attacker, defender);
       return;
     }
@@ -6202,14 +6268,24 @@ function Game({ gameState, onReturnToLobby }) {
     // engine's seeded rng (Phase 3b) — keep-highest + defender d6 + verdict.
     const hasHydra    = atkSkills.includes('hydra');
     const hydraActive = ampCount === 3 && hasHydra;
-    const dicePool    = sonicDicePool(ampCount, hasHydra);
+    let   dicePool    = sonicDicePool(ampCount, hasHydra);
+    // ⚡ CHARGE ZONE charges — attacks only. Ceiling grows EVERY die in the pool
+    // one size (d6→d8, d8→d10, capped d12); floor clamps every die's result to
+    // at least 1+CHARGE_FLOOR_BONUS. The dormant dieFloorBoost (octave
+    // resolution / Spinal Tap) wires in too — strongest floor wins, no stacking.
+    const chargeFloorA = (nsA.chargeFloorTurns ?? 0) > 0;
+    const chargeCeilA  = (nsA.chargeCeilTurns  ?? 0) > 0;
+    if (chargeCeilA) dicePool = dicePool.map(s => Math.min(12, s + 2));
+    const atkFloor    = Math.max(chargeFloorA ? CHARGE_FLOOR_BONUS : 0, nsA.dieFloorBoost ?? 0);
+    if (chargeFloorA) addLog(`⚡ ${attacker.name}'s floor charge crackles — no die reads below ${1 + CHARGE_FLOOR_BONUS}!`);
+    if (chargeCeilA)  addLog(`⚡ ${attacker.name}'s ceiling charge surges — every die in the pool grows a size!`);
     const diceLabel   = dicePoolLabel(dicePool);
     const dieSides    = Math.max(...dicePool); // fallback for single-die animation paths
     const rollState = dispatch(attackRolled('sonic', attacker.id, targetId, {
       atkStat, defStat,
       posing: defenderPosing,
       halveDef: skillMods.halveDef,
-      dicePool,
+      dicePool, atkFloor,
     }));
     const {
       atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, damage, diceVals, keptIdx,
@@ -6218,6 +6294,8 @@ function Game({ gameState, onReturnToLobby }) {
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on dropped instrument — Drive -1!`);
     addLog(`🔊 ${attacker.name} launches SONIC ATTACK at ${defender.name}! (${diceLabel} keep best — ${ampCount} amp${ampCount > 1 ? 's' : ''})${retaliationBlocked ? ' — UNPLUGGED TARGET CANNOT RETALIATE!' : ''}`);
+    // ⚡ A battle ensued — Charge Zone charges burn off for BOTH combatants.
+    burnChargesAfterBattle([attacker.id, targetId], 'the Sonic battle spent it');
     // ☀️🔥 SUNBEAM — the beam scorches every hex it crosses into burning ground (reuses the
     // Disco Inferno flaming-hex hazard: entering one costs 1 Vibe). Area denial down the line.
     const hasSunbeam = attacker.id === 'intergalactic_0' && atkSkills.includes('sunbeam');
@@ -6705,7 +6783,7 @@ function Game({ gameState, onReturnToLobby }) {
       setBattleState(p => {
         if (!p || p.phase !== 'atk_die_settling') return p;
         // Last 2 steps: show adjacent face then land
-        const sides = (p.sonicAttack && p.dieSides) ? p.dieSides : 6;
+        const sides = p.dieSides ?? 6;
         const face = steps >= maxSteps ? p.atkRoll
           : steps >= maxSteps - 2
             ? ((p.atkRoll % sides) + 1)
@@ -8442,7 +8520,7 @@ function Game({ gameState, onReturnToLobby }) {
         );
       })()}
 
-      {/* ⚡ CHARGE ZONE — OVERCHARGE CHOICE — die-tier boost vs chord assist */}
+      {/* ⚡ CHARGE ZONE — OVERCHARGE CHOICE — dice charge vs chord assist */}
       {chargeChoicePending && (() => {
         const sp = spirits.find(s => s.id === chargeChoicePending.spiritId);
         return (
@@ -8462,7 +8540,7 @@ function Game({ gameState, onReturnToLobby }) {
                   style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,cursor:'pointer',
                     background:'#0a1828',border:'1.5px solid #44aaff',borderRadius:5,
                     color:'#88ccff',padding:'8px 16px',letterSpacing:1,textAlign:'left'}}>
-                  🎚️ Die-Tier Boost — +1 amp tier for {CHARGE_ZONE_BOOST_TURNS} turns
+                  ⚡ Dice Charge — random Floor +{CHARGE_FLOOR_BONUS} or die-size up ({CHARGE_ZONE_BOOST_TURNS} rounds / until battle)
                 </button>
                 <button onClick={() => resolveChargeChoice('chord')}
                   style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,cursor:'pointer',
@@ -9357,6 +9435,7 @@ function Game({ gameState, onReturnToLobby }) {
               {/* 🎛️ AMP TONE PANEL relocated → now flanks the Commit Track above the board. */}
               {/* Active effect badges — only show during melody step */}
               {(turnStep === 'melody' || turnStep === 'move_act') && (feedbackBoost || dieFloorBoost > 0 || statusEffects.length > 0
+                || (actingNoteState?.chargeFloorTurns ?? 0) > 0 || (actingNoteState?.chargeCeilTurns ?? 0) > 0
                 || (actingNoteState?.finalsTrail?.length ?? 0) > 0
                 || ((actingNoteState?.unlockedSkills ?? []).includes('mixer') && !actingNoteState?.mixerUsedThisTurn && !hasConfirmed && !pivotPending)) && (
                 <div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:4}}>
@@ -9407,6 +9486,22 @@ function Game({ gameState, onReturnToLobby }) {
                     <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,
                       background:"#0a1a2a",border:"1px solid #44aaff",color:"#44aaff"}}>
                       🎶 Floor +{dieFloorBoost}
+                    </span>
+                  )}
+                  {(actingNoteState?.chargeFloorTurns ?? 0) > 0 && (
+                    <span title={`Charge Zone floor charge — attack dice can't roll below ${1 + CHARGE_FLOOR_BONUS}. Lasts ${actingNoteState.chargeFloorTurns} more round${actingNoteState.chargeFloorTurns !== 1 ? 's' : ''} or until a battle.`}
+                      style={{fontSize:7,padding:"1px 5px",borderRadius:3,
+                      background:"#1a1408",border:"1px solid #ffcc44",color:"#ffcc44",
+                      animation:"crew-ready-glow 2.4s ease-in-out infinite"}}>
+                      ⚡ FLOOR +{CHARGE_FLOOR_BONUS} ({actingNoteState.chargeFloorTurns})
+                    </span>
+                  )}
+                  {(actingNoteState?.chargeCeilTurns ?? 0) > 0 && (
+                    <span title={`Charge Zone ceiling charge — attack dice grow a size (d6→d8). Lasts ${actingNoteState.chargeCeilTurns} more round${actingNoteState.chargeCeilTurns !== 1 ? 's' : ''} or until a battle.`}
+                      style={{fontSize:7,padding:"1px 5px",borderRadius:3,
+                      background:"#0a141f",border:"1px solid #44aaff",color:"#88ccff",
+                      animation:"crew-ready-glow 2.4s ease-in-out infinite"}}>
+                      ⚡ DIE SIZE ▲ ({actingNoteState.chargeCeilTurns})
                     </span>
                   )}
                   {statusEffects.map((fx,i) => (
@@ -10105,7 +10200,7 @@ function Game({ gameState, onReturnToLobby }) {
                       color: canSwing ? '#ff6666' : '#441111',
                       position:'relative'}}
                     disabled={!canSwing}
-                    title="The jab — cheap (1 AP) & defended. Drives your chord into them and can land CQC statuses."
+                    title="The jab — cheap (1 AP) & defended. Drives your chord into them and can land Thrash statuses."
                     onClick={() => {
                       if (action === 'swing') { setAction(null); }
                       else if (canSwing) {
@@ -11229,6 +11324,32 @@ function Game({ gameState, onReturnToLobby }) {
                             strokeWidth={isActing ? 2.2 : 1.4}
                             style={{pointerEvents:"none"}}
                             filter={isActing ? `drop-shadow(0 0 4px ${sc})` : undefined}/>
+                          {/* ⚡ CHARGED — Charge Zone aura: floor=amber, ceiling=blue, both=white-hot */}
+                          {(() => {
+                            const nsQ = noteStates[sp.id] ?? {};
+                            const qF = (nsQ.chargeFloorTurns ?? 0) > 0;
+                            const qC = (nsQ.chargeCeilTurns  ?? 0) > 0;
+                            if (!qF && !qC) return null;
+                            const qCol = qF && qC ? '#cceeff' : qF ? '#ffcc44' : '#44aaff';
+                            const qTip = qF && qC ? 'Fully charged — floor +2 AND dice up a size'
+                              : qF ? `Floor charged — attack dice can't roll below ${1 + CHARGE_FLOOR_BONUS}`
+                              : 'Ceiling charged — attack dice grow a size (d6→d8)';
+                            return (
+                              <g style={{pointerEvents:'none'}}>
+                                <title>{qTip}</title>
+                                <circle cx={cx} cy={cy} r={baseR * 1.5} fill={qCol + '1c'}
+                                  style={{animation:'charge-aura-pulse 1.5s ease-in-out infinite'}}/>
+                                <circle cx={cx} cy={cy} r={baseR * 1.22} fill="none"
+                                  stroke={qCol} strokeWidth={2.2}
+                                  style={{animation:'charge-aura-pulse 1.5s ease-in-out infinite',
+                                    filter:`drop-shadow(0 0 5px ${qCol}) drop-shadow(0 0 12px ${qCol})`}}/>
+                                <text x={cx + baseR * 1.05} y={cy - baseR * 0.95}
+                                  fontSize={HS * 0.52} textAnchor="middle"
+                                  style={{animation:'charge-aura-pulse 1.5s ease-in-out infinite',
+                                    filter:`drop-shadow(0 0 4px ${qCol})`}}>⚡</text>
+                              </g>
+                            );
+                          })()}
                           {/* Facing arrow now rendered as a top-layer hover overlay — see below */}
                           {/* 🌀 Persistent affliction aura — while ANY debuff is active,
                               a slow-pulsing dashed ring + status icons mark the victim */}

@@ -64,11 +64,23 @@ export const AMP_UNPLUG_DIST = 3;
 // -- CHARGE ZONES -- (ECONOMY_HANDOFF.md — the Lighters replacement objective)
 // Fixed (non-roaming) board hexes, picked once at setup — unlike Lost Chords,
 // they don't move or vanish, they just go dormant for a bit after use.
-// Base effect reuses the "Goes to Eleven" elevenTurns die-tier boost. The
-// Overcharge skill (Electric route) unlocks an alternative payout instead.
+// Zones only spawn on hexes the lightning bolt overlay actually touches
+// (LIGHTNING_TRACK_HEXES). Tapping one CHARGES the Spirit: a random 50/50
+// grant of either a die FLOOR charge (attack dice can't roll below 3) or a
+// die CEILING charge (attack dice upgrade one size — d6→d8, etc.). Floor and
+// ceiling STACK with each other but never with themselves: a duplicate draw
+// flips to the other type; holding both refreshes both. A charge lasts
+// CHARGE_ZONE_BOOST_TURNS of the holder's turns (≈2 rounds) or until a battle
+// ensues — fighting burns the charge, win or lose. The Overcharge skill
+// (Electric route) unlocks an alternative chord-assist payout instead.
 export const CHARGE_ZONE_COUNT       = 3;  // fixed lightning hexes on the board
-export const CHARGE_ZONE_BOOST_TURNS = 2;  // die-tier boost duration on pickup
+export const CHARGE_ZONE_BOOST_TURNS = 2;  // charge duration (holder's turns) on pickup
 export const CHARGE_ZONE_COOLDOWN    = 4;  // turns (any spirit's) before a drained zone relights
+export const CHARGE_FLOOR_BONUS      = 2;  // floor charge: attack die results below 1+2 read as 3
+// Hexes crossed by the animated lightning bolt on the board art (measured from
+// board_lightning_animated.png against the hex grid; #56 Limelight also under
+// the bolt but stays excluded from the spawn pool).
+export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
 
 // -- DISSONANCE EDGE -- (DESIGN_AUDIT_v2.md §9 v2 — replaces the Tension meter.
 // Ending a track on a Discord (off-scale) note puts you ON THE EDGE: Drive up,

@@ -189,12 +189,20 @@ export function riffClosed() {
  * @param {number[]} [p.dicePool]     SONIC keep-highest pool of die sizes
  *                                     (e.g. [6,6], [6,6,8], [8,8,8]); omit for a
  *                                     plain swing (single d6).
+ * @param {number}  [p.atkFloor]      ⚡ attacker die floor — every attacker die
+ *                                     result reads as at least 1+atkFloor (Charge
+ *                                     Zone floor charge / octave-resolution boost).
+ * @param {number}  [p.atkDie]        THRASH die size for the attacker (default 6;
+ *                                     a Charge Zone ceiling charge bumps it to 8).
+ *                                     Ignored when dicePool is provided — Sonic
+ *                                     ceilings are baked into the pool client-side.
  */
 export function attackRolled(kind, attackerId, defenderId,
-  { atkStat, defStat, posing = false, halveDef = false, psychoEligible = false, dicePool = null }) {
+  { atkStat, defStat, posing = false, halveDef = false, psychoEligible = false, dicePool = null,
+    atkFloor = 0, atkDie = 6 }) {
   return {
     type: ATTACK_ROLLED, kind, attackerId, defenderId,
-    atkStat, defStat, posing, halveDef, psychoEligible, dicePool,
+    atkStat, defStat, posing, halveDef, psychoEligible, dicePool, atkFloor, atkDie,
   };
 }
 

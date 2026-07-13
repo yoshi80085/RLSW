@@ -152,6 +152,8 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     hasConfirmed:    false,
     feedbackBoost:   false,
     dieFloorBoost:   0,
+    chargeFloorTurns: 0,   // ⚡ Charge Zone floor charge (attack dice can't roll below 3)
+    chargeCeilTurns:  0,   // ⚡ Charge Zone ceiling charge (attack dice +1 die size)
     statusEffects:   [],
     stagger:         null,
     mojoDrain:       0,

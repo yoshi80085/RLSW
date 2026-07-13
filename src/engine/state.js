@@ -16,7 +16,7 @@ import { makeInitialNoteState } from "./systems/economy.js";
 import { shuffledStageFxDeck } from "../data/stageEffects.js";
 import { makeBoardToken, SPOTLIGHT_POOL, EVENT_HEX_POOL } from "../board/boardHelpers.js";
 import { ALL_HEXES } from "../board/hexMap.js";
-import { TOKEN_MAX, EVENT_HEX_COUNT, CHARGE_ZONE_COUNT, LIMELIGHT_HEX } from "../data/gameConstants.js";
+import { TOKEN_MAX, EVENT_HEX_COUNT, CHARGE_ZONE_COUNT, LIMELIGHT_HEX, LIGHTNING_TRACK_HEXES } from "../data/gameConstants.js";
 
 /**
  * @param {object} gameConfig  Lobby's onStart payload:
@@ -72,11 +72,11 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
     boardTokens.push(makeBoardToken(tokenPool.splice(idx, 1)[0], boardRng));
   }
 
-  // Charge zones: avoid spirit starts + tokens + Limelight
+  // Charge zones: ONLY hexes the lightning bolt touches (LIGHTNING_TRACK_HEXES),
+  // still avoiding spirit starts + tokens + Limelight.
   const tokenHexSet = new Set(boardTokens.map(t => t.num));
-  const chargePool = ALL_HEXES
-    .filter(h => !startHexNums.has(h.num) && h.num !== LIMELIGHT_HEX && !tokenHexSet.has(h.num))
-    .map(h => h.num);
+  const chargePool = LIGHTNING_TRACK_HEXES
+    .filter(n => !startHexNums.has(n) && n !== LIMELIGHT_HEX && !tokenHexSet.has(n));
   const chargeZones = [];
   for (let i = 0; i < CHARGE_ZONE_COUNT && chargePool.length > 0; i++) {
     const idx = Math.floor(boardRng() * chargePool.length);
@@ -158,6 +158,6 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       lastTurnTick: null,   // report: STAGE_FX_TURN_TICKED { pyro, anim }
       lastRoundTick: null,  // report: STAGE_FX_ROUND_TICKED { smoke, laser }
     },
-    winner: null,      // Phase 3 — set by KO/win check
+    winner: null,     // Phase 3 — set by KO/win check
   };
 }

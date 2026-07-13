@@ -26,7 +26,7 @@ export const BOT_PERSONALITIES = {
     move:{ center:1.2, rival:0.4, token:1.4, spotlight:1.1, edgeFear:1.6 },
     skillOrder:['theory_major','fans_4eva','theory_minor','amp_1','theory_dom7','fandom_army','theory_modes','amp_2','theory_chromatic','amp_3'] },
   moshlord: { name:'The Mosh Lord', emoji:'🤘', note:'combat',
-    blurb:'pure aggression — CQC, hunts the wounded and the leader, swings for knockouts.',
+    blurb:'pure aggression — Thrash, hunts the wounded and the leader, swings for knockouts.',
     move:{ center:1.0, rival:1.9, token:0.6, spotlight:0.8, edgeFear:0.5 },
     skillOrder:['shank_skank','junkyard_dog','cosmic_boogaloo','fandom_army','moon_shuffle','amp_1','fans_4eva','amp_2','amp_3'] },
   diva:     { name:'The Diva',     emoji:'✨', note:'clean',
