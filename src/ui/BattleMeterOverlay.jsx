@@ -1106,6 +1106,7 @@ export function BattleMeterOverlay({
             justifyContent:'safe center', overflowY:'auto', overflowX:'hidden',
             padding:'24px 0',
             fontFamily:"'Orbitron',sans-serif",
+            animation:'battle-divebomb 1.1s cubic-bezier(0.22,1,0.36,1) both',
           }}>
             {/* ⏭ Skip the pre-die intro straight to the dice roll */}
             {skipBattleIntro && ['enter_attacker','flash_drive','pick_drive_slide','enter_defender','flash_sustain','pick_sustain_slide'].includes(phase) && (
@@ -1118,6 +1119,12 @@ export function BattleMeterOverlay({
               </button>
             )}
             <style>{`
+              @keyframes battle-divebomb {
+                0%   { opacity:0; transform:scale(0.15) rotate(-540deg); filter:blur(10px); }
+                55%  { opacity:1; transform:scale(1.06) rotate(-12deg); filter:blur(0px); }
+                75%  { opacity:1; transform:scale(0.97) rotate(4deg); }
+                100% { opacity:1; transform:scale(1) rotate(0deg); filter:blur(0); }
+              }
               @keyframes battle-spirit-left {
                 from { transform:translateX(-130%); opacity:0; }
                 to   { transform:translateX(0);    opacity:1; }
@@ -1483,7 +1490,7 @@ export function BattleMeterOverlay({
                 {/* ── SONIC BEAM LAYER ── */}
                 {beamPhase && (
                   <div style={{
-                    position:'absolute', left:'12%', right:'12%',
+                    position:'absolute', left:'30%', right:'12%',
                     top:'50%', height:beamH, transform:'translateY(-50%)',
                     zIndex:4, pointerEvents:'none', transformOrigin:'left center',
                     animation: beamPhase === 'blast'  ? 'battle-beam-blast 0.45s cubic-bezier(0.2,0,0.2,1) both'
@@ -1531,7 +1538,7 @@ export function BattleMeterOverlay({
                 <div style={{
                   width: sonicAttack ? 180 : 200, height:SPIRIT_H, flexShrink:0, position:'relative', overflow:'visible',
                   zIndex:5,
-                  marginRight: sonicAttack ? 60 : 10,
+                  marginRight: sonicAttack ? 120 : 10,
                   animation: atkCrashAnim ? atkCrashAnim
                             : atkIn ? 'battle-spirit-left 1.1s cubic-bezier(0.22,1,0.36,1) both' : 'none',
                   opacity: atkIn ? 1 : 0,
@@ -1587,7 +1594,7 @@ export function BattleMeterOverlay({
                 <div style={{
                   width: sonicAttack ? 180 : 200, height:SPIRIT_H, flexShrink:0, position:'relative', overflow:'visible',
                   zIndex:5,
-                  marginLeft: sonicAttack ? 60 : 10,
+                  marginLeft: sonicAttack ? 120 : 10,
                   animation: defRecoilAnim ? defRecoilAnim
                             : defIn ? 'battle-spirit-right 1.1s cubic-bezier(0.22,1,0.36,1) both' : 'none',
                   opacity: defIn ? 1 : 0,
