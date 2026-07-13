@@ -1331,8 +1331,8 @@ export function BattleMeterOverlay({
 
             {/* ── CROPPED METER TRACK — shows only the number track strip ── */}
             {(() => {
-              const CROP_TOP = 285;
-              const CROP_H = 115;
+              const CROP_TOP = 250;
+              const CROP_H = 145;
               const trackInCrop = TRACK_Y - CROP_TOP;
               return (
                 <div style={{
@@ -1340,6 +1340,9 @@ export function BattleMeterOverlay({
                   overflow:'hidden', flexShrink:0, zIndex:6, borderRadius:8,
                   boxShadow:'0 0 40px #ff44ff22, 0 0 20px #00ccff11',
                 }}>
+                  {/* Black strips to hide the PNG's left/right border edges */}
+                  <div style={{position:'absolute',left:0,top:0,bottom:0,width:'2.8%',background:'#000',zIndex:3}}/>
+                  <div style={{position:'absolute',right:0,top:0,bottom:0,width:'2.8%',background:'#000',zIndex:3}}/>
                   {battleState.hydra && (
                     <img src={hydraImg} alt="" draggable={false}
                       style={{position:'absolute', left:'-14%', top:'-200%', width:'128%',
@@ -1453,24 +1456,24 @@ export function BattleMeterOverlay({
                   transform:'translateX(-50%) perspective(500px) rotateX(55deg)',
                   transformOrigin:'center bottom', zIndex:0, pointerEvents:'none', opacity:0.7,
                 }}>
-                  <svg width={460} height={260} viewBox="0 0 460 260" style={{display:'block'}}>
-                    {Array.from({length:5}).flatMap((_r, row) =>
-                      Array.from({length:8}).map((_c, col) => {
-                        const sz = 28;
+                  <svg width={620} height={340} viewBox="0 0 620 340" style={{display:'block'}}>
+                    {Array.from({length:4}).flatMap((_r, row) =>
+                      Array.from({length:6}).map((_c, col) => {
+                        const sz = 52;
                         const colSp = sz * 2 * 0.75;
                         const rowH = sz * 1.732;
-                        const cx = 30 + col * colSp;
-                        const cy = 20 + row * rowH + (col % 2 ? rowH / 2 : 0);
+                        const cx = 52 + col * colSp;
+                        const cy = 46 + row * rowH + (col % 2 ? rowH / 2 : 0);
                         const pts = Array.from({length:6}).map((_p, k) => {
                           const ang = (Math.PI / 180) * (60 * k);
                           return `${cx + sz * Math.cos(ang)},${cy + sz * Math.sin(ang)}`;
                         }).join(' ');
-                        const dist = Math.abs(col - 3.5) + Math.abs(row - 2);
-                        const br = Math.max(0.15, 0.5 - dist * 0.06);
+                        const dist = Math.abs(col - 2.5) + Math.abs(row - 1.5);
+                        const br = Math.max(0.12, 0.45 - dist * 0.07);
                         return (
                           <polygon key={`${row}-${col}`} points={pts}
                             fill="none" stroke={`rgba(120, 80, 200, ${br})`}
-                            strokeWidth={1.2}/>
+                            strokeWidth={1.5}/>
                         );
                       })
                     )}
@@ -1528,7 +1531,7 @@ export function BattleMeterOverlay({
                 <div style={{
                   width: sonicAttack ? 180 : 200, height:SPIRIT_H, flexShrink:0, position:'relative', overflow:'visible',
                   zIndex:5,
-                  marginRight: sonicAttack ? 60 : -20,
+                  marginRight: sonicAttack ? 60 : 10,
                   animation: atkCrashAnim ? atkCrashAnim
                             : atkIn ? 'battle-spirit-left 1.1s cubic-bezier(0.22,1,0.36,1) both' : 'none',
                   opacity: atkIn ? 1 : 0,
@@ -1584,7 +1587,7 @@ export function BattleMeterOverlay({
                 <div style={{
                   width: sonicAttack ? 180 : 200, height:SPIRIT_H, flexShrink:0, position:'relative', overflow:'visible',
                   zIndex:5,
-                  marginLeft: sonicAttack ? 60 : -20,
+                  marginLeft: sonicAttack ? 60 : 10,
                   animation: defRecoilAnim ? defRecoilAnim
                             : defIn ? 'battle-spirit-right 1.1s cubic-bezier(0.22,1,0.36,1) both' : 'none',
                   opacity: defIn ? 1 : 0,
@@ -1933,6 +1936,7 @@ export function BattleMeterOverlay({
                     boxShadow:`0 0 12px ${attackerWon ? (attacker?.color ?? '#ff4444') : (defender?.color ?? '#00ccff')}44`,
                     transition:'all 0.2s',
                   }}
+ 
                   onMouseOver={e => e.currentTarget.style.background = '#ffffff18'}
                   onMouseOut={e => e.currentTarget.style.background = 'transparent'}
                 >

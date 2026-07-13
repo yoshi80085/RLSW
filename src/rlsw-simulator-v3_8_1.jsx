@@ -2086,6 +2086,22 @@ function Game({ gameState, onReturnToLobby }) {
     });
   }
 
+  // 🤘 Smash chord — chaotic burst of random notes like smashing hands on
+  // an instrument. Fires when a Thrash (CQC) attack lands a hit.
+  function playSmashChord() {
+    const ALL_NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const count = 8 + Math.floor(Math.random() * 5); // 8-12 notes
+    for (let i = 0; i < count; i++) {
+      const note = ALL_NOTES[Math.floor(Math.random() * 12)];
+      const stagger = i * (20 + Math.random() * 25); // rapid fire 20-45ms apart
+      setTimeout(() => playNoteSound(note, {
+        holdTime: 0.04 + Math.random() * 0.08,   // very percussive
+        fadeTime: 0.15 + Math.random() * 0.15,
+        volume: 0.10 + Math.random() * 0.10,
+      }), stagger);
+    }
+  }
+
   function playRiffSequence(riff, rootPc) {
     const spb = 60 / (riff.bpm ?? 110); // seconds per beat
     let t = 0.08;
@@ -6948,8 +6964,9 @@ function Game({ gameState, onReturnToLobby }) {
             }
             setBattleState(p => p ? { ...p, phase: 'result' } : p);
 
-            // 🔊 Sonic chord sound — fires at the RESULT moment (beam blast/fizzle)
+            // 🔊 Battle sounds at the RESULT moment
             if (isSonic) {
+              // Sonic: play the stored chord (clean hit) or whiff (twangy miss)
               const chordNotes = snap.sonicChordNotes;
               if (chordNotes?.length) {
                 if (attackerWon) {
@@ -6958,6 +6975,9 @@ function Game({ gameState, onReturnToLobby }) {
                   playWhiffChord(chordNotes);
                 }
               }
+            } else if (attackerWon) {
+              // Thrash CQC hit: smash a burst of random notes like crashing on the strings
+              playSmashChord();
             }
 
             // Apply effects after player reads — values captured in closure above, no ref needed
@@ -12077,7 +12097,7 @@ function Game({ gameState, onReturnToLobby }) {
                           <g style={{transform:`translate(${sxk}px, ${syk}px)`}}>
                             <g style={{transformBox:'fill-box', transformOrigin:'center',
                               animation:'unsure-excited 0.4s ease-in-out infinite'}}>
-                              {fanPawnShape(0, 0, u * 1.3, winColor, true, 1.0, 1, 1, false, 'wave')}
+                                                            {fanPawnShape(0, 0, u * 1.3, winColor, true, 1.0, 1, 1, false, 'wave')}
                             </g>
                           </g>
                         </g>
