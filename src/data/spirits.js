@@ -16,3 +16,8 @@ export const SPIRIT_DEFS = {
 };
 
 export const SPIRIT_OPTIONS = Object.values(SPIRIT_DEFS);
+
+// Roster order + lock state for the select screen. Spirits not in
+// UNLOCKED_DEFAULT render as "?" tiles until unlocked at runtime.
+export const ROSTER_ORDER = Object.keys(SPIRIT_DEFS);
+export const UNLOCKED_DEFAULT = [...ROSTER_ORDER]; // all 4 launch spirits
