@@ -26,15 +26,16 @@ export function BattleMeterOverlay({
   fameFromMargin,
   fireBeamClash,
   handleAtkDieClick,
-  handleCounterDieClick,
   handleDefDieClick,
   hydraImg,
   knockbackSpaces,
+  sonicKnockback,
+  thrashKnockback,
+  sonicFame,
+  thrashFame,
   noteStates,
   playRiffOffPlayback,
   renderInstrument,
-  resolveRetaliation,
-  retaliationTimer,
   riffBeginTurn,
   riffDifficulty,
   riffPressKey,
@@ -856,13 +857,10 @@ export function BattleMeterOverlay({
         const atkFans = crowdCheer(atkCheer, '#ff3ad0', atkSurge); // pink fanfare
         const defFans = crowdCheer(defCheer, '#34d6ff', defSurge); // blue fanfare
 
-        // ── RETALIATION — "PART 2" of the battle, fully played out ────────────
-        // A glancing hit (margin ≤ 2) earns the defender a real counter round:
-        // they choose to swing back, then CLICK to roll their own die and try to
-        // out-swing the attacker. Reuses NeonDie, spiritGlow and the fan-fare so
-        // it reads as a continuation of the main battle rather than a side popup.
-        if (phase === 'retaliation_prompt' || phase === 'retaliation_spin'
-            || phase === 'retaliation_settling' || phase === 'retaliation_result') {
+        // ── RETALIATION — DISABLED (pending redesign for Sonic/Thrash split) ──
+        // Counter mechanic temporarily removed. The UI is kept but unreachable.
+        if (false && (phase === 'retaliation_prompt' || phase === 'retaliation_spin'
+            || phase === 'retaliation_settling' || phase === 'retaliation_result')) {
           const bs2        = battleState;
           const target     = bs2.counterTarget ?? bs2.atkRoll ?? 0;
           const vibeBonus  = bs2.vibeBonus ?? Math.round(((defender?.vibe ?? 1) / (defender?.maxVibe ?? 1)) * 3);
@@ -1649,10 +1647,11 @@ export function BattleMeterOverlay({
               const swingUpgrades = nsA.swingUpgrades ?? [];
               const highestTier = ['swing_3','swing_2','swing_1'].find(t => swingUpgrades.includes(t));
               const tierDef = highestTier ? SWING_UPGRADE_TIERS.find(t => t.id === highestTier) : null;
+              const thrashDieLabel = `d${battleState.dieSides ?? 4}`;
               const attackLabel = battleState.sonicAttack
                 ? `🔊 Sonic Attack (${battleState.diceLabel ?? 'd6'}, keep best)`
-                : cqcDef ? `${cqcDef.icon} ${cqcDef.label}`
-                : tierDef ? `${tierDef.icon} ${tierDef.label}` : '⚔️ Swing';
+                : cqcDef ? `${cqcDef.icon} ${cqcDef.label} (${thrashDieLabel})`
+                : tierDef ? `${tierDef.icon} ${tierDef.label} (${thrashDieLabel})` : `⚔️ Thrash (${thrashDieLabel})`;
               const mods = battleState.skillMods ?? {};
               const activeMods = [
                 mods.laserActive      && { icon:'🔴', label:'Laser Show',     color:'#ff4444', desc:"Defender's die halved" },
@@ -1763,17 +1762,23 @@ export function BattleMeterOverlay({
                     <div style={{fontSize:10, color:'#6a8aaa', marginBottom:6}}>
                       Attack {atkTotal} vs Defense {defTotal} — margin {margin}
                     </div>
-                    <div style={{display:'flex', justifyContent:'center', gap:10, marginBottom:2}}>
-                      <span style={{fontSize:10, color:'#ffd700'}}>
-                        ⭐ +{fameFromMargin(margin)} Fame
-                      </span>
-                      <span style={{fontSize:10, color:'#ff8866'}}>
-                        💢 Knockback {knockbackSpaces(battleState, margin)} hex{knockbackSpaces(battleState, margin) !== 1 ? 'es' : ''}
-                      </span>
-                    </div>
-                    {margin <= 2 && (
-                      <div style={{fontSize:10, color:'#ffcc44'}}>⚡ Barely landed — counter window!</div>
-                    )}
+                    {(() => {
+                      const isSonic = !!battleState?.sonicAttack;
+                      const fp = isSonic ? sonicFame(margin) : thrashFame();
+                      const kb = isSonic
+                        ? sonicKnockback(margin, defender?.vibe ?? 1, defender?.maxVibe ?? 1)
+                        : thrashKnockback(margin);
+                      return (
+                        <div style={{display:'flex', justifyContent:'center', gap:10, marginBottom:2}}>
+                          <span style={{fontSize:10, color:'#ffd700'}}>
+                            ⭐ +{fp} Fame
+                          </span>
+                          <span style={{fontSize:10, color:'#ff8866'}}>
+                            💢 {kb > 0 ? `Knockback ${kb} hex${kb !== 1 ? 'es' : ''}` : 'No push'}
+                          </span>
+                        </div>
+                      );
+                    })()}
                     {/* ── SWING / CQC STATUS-EFFECT PREVIEW ── */}
                     {/* Shows whether the attacker's upgrade (e.g. Shank Skank) */}
                     {/* triggered, and exactly what happens once this overlay     */}
@@ -1827,20 +1832,30 @@ export function BattleMeterOverlay({
                       textShadow:'0 0 24px #0088ff'}}>
                       💨 WHIFF!
                     </div>
-                    <div style={{fontSize:15, color:'#88ccff', marginBottom:4}}>
-                      {attacker?.name} swings wide — <strong style={{color:'#4488ff'}}>{Math.max(1,Math.ceil(margin/2))} Vibe self-damage!</strong>
-                    </div>
-                    <div style={{fontSize:10, color:'#6a8aaa', marginBottom:4}}>
-                      Attack {atkTotal} vs Defense {defTotal} — margin {margin}
-                    </div>
-                    <div style={{display:'flex', justifyContent:'center', gap:10}}>
-                      <span style={{fontSize:10, color:'#ffd700'}}>
-                        ⭐ {defender?.name} +{fameFromMargin(margin)} Fame
-                      </span>
-                      <span style={{fontSize:10, color:'#88aaff'}}>
-                        💢 Staggered back {knockbackSpaces(battleState, margin)} hex{knockbackSpaces(battleState, margin) !== 1 ? 'es' : ''}
-                      </span>
-                    </div>
+                    {(() => {
+                      const isSonic = !!battleState?.sonicAttack;
+                      const selfDmg = isSonic ? Math.max(1,Math.ceil(margin/2)) : damage;
+                      const fp = isSonic ? sonicFame(margin) : thrashFame();
+                      const kb = isSonic ? 1 : thrashKnockback(margin);
+                      return (
+                        <>
+                          <div style={{fontSize:15, color:'#88ccff', marginBottom:4}}>
+                            {attacker?.name} {isSonic ? 'misfires' : 'swings wide'} — <strong style={{color:'#4488ff'}}>{selfDmg} Vibe self-damage!</strong>
+                          </div>
+                          <div style={{fontSize:10, color:'#6a8aaa', marginBottom:4}}>
+                            Attack {atkTotal} vs Defense {defTotal} — margin {margin}
+                          </div>
+                          <div style={{display:'flex', justifyContent:'center', gap:10}}>
+                            <span style={{fontSize:10, color:'#ffd700'}}>
+                              ⭐ {defender?.name} +{fp} Fame
+                            </span>
+                            <span style={{fontSize:10, color:'#88aaff'}}>
+                              💢 {kb > 0 ? `Staggered back ${kb} hex${kb !== 1 ? 'es' : ''}` : 'No push'}
+                            </span>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </>
                 )}
                 <div style={{marginTop:10, fontSize:15, letterSpacing:4,

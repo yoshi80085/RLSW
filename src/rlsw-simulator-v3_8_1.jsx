@@ -56,9 +56,9 @@ import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn ro
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, counterRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
-import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome } from "./engine/systems/combat.js";
+import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome, thrashDamage, thrashKnockback, thrashFame, sonicDamage, sonicKnockback, sonicFame } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
 import { skillEligibility, THEORY_DISCORD_GRANTS, CQC_SWING_MAP } from "./engine/systems/skills.js";
 import {
@@ -299,7 +299,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_HC_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_HC_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE } from "./data/gameConstants.js";
+import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_HC_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_HC_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -1036,7 +1036,8 @@ function Game({ gameState, onReturnToLobby }) {
   const chordStackRef = useRef(null); // ref on the vertical chord stack for target coords
   // 🎛️ FLOATING VOICING PANEL — toggle show/hide
   const [voicingOpen, setVoicingOpen] = useState(false);
-  const [hoverScale, setHoverScale] = useState(null); // 🎼 stock note being hovered → scale-peek popup
+  const [hoverScale, setHoverScale] = useState(null); // 🎼 { note, x, y } | null — stock note hover → scale-peek popup
+  const hoverScaleTimerRef = useRef(null); // 1.5s delay before showing scale peek
   const [movedThisTurn, setMovedThisTurn] = useState(false);
 
   // 🎓 BEGINNER MODE — tutorial tip popups that fire once per event type
@@ -5324,6 +5325,34 @@ function Game({ gameState, onReturnToLobby }) {
     // and stage position (gainFans / perfExciteGain), not handed out on a win.
   }
 
+  // ── SONIC FAME — the primary FP engine. Margin-scaled + center-stage bonus. ──
+  function awardSonicFame(spiritId, margin, loserId, centerBonus = 0) {
+    const base = sonicFame(margin) + centerBonus;
+    const { fp, deficit, mult } = underdogBonus(spiritId, loserId, base);
+    if (deficit >= UNDERDOG_MIN_DEFICIT && fp > base) {
+      const nm = spirits.find(s => s.id === spiritId)?.name;
+      addLog(`🔥 UNDERDOG! ${nm} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
+      triggerEffectFlash(spiritId, '🔥', 'UNDERDOG!', '#ffaa22');
+      grantFame(spiritId, fp, `sonic win by ${margin}`);
+    } else {
+      grantFame(spiritId, base, `sonic win by ${margin}${centerBonus ? ' +spotlight' : ''}`);
+    }
+  }
+
+  // ── THRASH FAME — flat 1 FP. You fight to hurt, not to shine. ──
+  function awardThrashFame(spiritId, loserId) {
+    const base = thrashFame();
+    const { fp, deficit, mult } = underdogBonus(spiritId, loserId, base);
+    if (deficit >= UNDERDOG_MIN_DEFICIT && fp > base) {
+      const nm = spirits.find(s => s.id === spiritId)?.name;
+      addLog(`🔥 UNDERDOG! ${nm} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
+      triggerEffectFlash(spiritId, '🔥', 'UNDERDOG!', '#ffaa22');
+      grantFame(spiritId, fp, `thrash win`);
+    } else {
+      grantFame(spiritId, base, `thrash win`);
+    }
+  }
+
   // ─── 🎤 FAN ECONOMY HELPERS ───────────────────────────────────────────────
   // Grow a crowd by committing a CLEAN track in the centre rings. Recruits from
   // the Unsure pool first (fans a fallen rival left behind), then organic gain.
@@ -5868,15 +5897,16 @@ function Game({ gameState, onReturnToLobby }) {
     const defenderPosing = posing[targetId];
 
     // ⚡ CHARGE ZONE charges — attacks only. Ceiling grows the Thrash die
-    // d6→d8; floor clamps every result to at least 1+CHARGE_FLOOR_BONUS. The
+    // d4→d6; floor clamps every result to at least 1+CHARGE_FLOOR_BONUS. The
     // dormant dieFloorBoost (octave resolution / Spinal Tap) finally wires in
     // here too — strongest floor wins, they don't stack.
     const chargeFloorA = (nsA.chargeFloorTurns ?? 0) > 0;
     const chargeCeilA  = (nsA.chargeCeilTurns  ?? 0) > 0;
     const atkFloor = Math.max(chargeFloorA ? CHARGE_FLOOR_BONUS : 0, nsA.dieFloorBoost ?? 0);
-    const atkDie   = chargeCeilA ? 8 : 6;
+    const atkDie   = chargeCeilA ? THRASH_CEIL_DIE : THRASH_DIE;   // d4 base, ceiling → d6
+    const defDie   = THRASH_DIE;                                    // defender always d4 in Thrash
     if (chargeFloorA) addLog(`⚡ ${attacker.name}'s floor charge crackles — this die can't roll below ${1 + CHARGE_FLOOR_BONUS}!`);
-    if (chargeCeilA)  addLog(`⚡ ${attacker.name}'s ceiling charge surges — the Thrash die grows to a d8!`);
+    if (chargeCeilA)  addLog(`⚡ ${attacker.name}'s ceiling charge surges — the Thrash die grows to a d${THRASH_CEIL_DIE}!`);
 
     // 🎲 Roll the swing on the engine's seeded rng (Phase 3b). The client passes
     // the pre-computed stats + mod flags (they read noteStates — Phase 5); the
@@ -5888,7 +5918,7 @@ function Game({ gameState, onReturnToLobby }) {
       posing: defenderPosing,
       halveDef: skillMods.halveDef,
       psychoEligible: (nsA.unlockedSkills ?? []).includes('psycho_bushido'),
-      atkFloor, atkDie,
+      atkFloor, atkDie, defDie,
     }));
     const {
       atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, damage, psychoBushido,
@@ -5928,7 +5958,8 @@ function Game({ gameState, onReturnToLobby }) {
       pickPos: 0,
       spinFaceAtk: 1, spinFaceDef: 1,
       atkDieReady: false, defDieReady: false,
-      dieSides: atkDie, // ⚡ ceiling charge grows the Thrash die to a d8
+      dieSides: atkDie, // ⚡ ceiling charge grows the Thrash die (d4 base, d6 with charge)
+      defDieSides: defDie, // Thrash: defender rolls d4
       skillMods, // stage effects, pyro, laser, fog flags
       // Freeze the swing/CQC status-effect roll now so the result overlay can
       // tell the player exactly what lands before they close it (melee only).
@@ -5980,6 +6011,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Random d6 face (1-6) — used during spin animation
   function randD6() { return Math.floor(Math.random() * 6) + 1; }
+  function randDie(sides = 6) { return Math.floor(Math.random() * sides) + 1; }
 
   // ⏭ Skip the pre-die cinematic (standee slides + pick swings) straight to the
   // attacker's die spin. Only fires during the intro phases; the die-click itself
@@ -6322,6 +6354,7 @@ function Game({ gameState, onReturnToLobby }) {
       sonicAttack: true,
       ampCount,
       dieSides,                  // = max(dicePool); fallback for single-die anim paths
+      defDieSides: 6,            // Sonic: defender always rolls d6
       dicePool,                  // 🔊 keep-highest pool: die sizes, e.g. [6,6,8]
       diceVals,                  // rolled values (length === dicePool.length)
       diceSpin: diceVals,        // animated faces while spinning (seeded to the result)
@@ -6702,9 +6735,13 @@ function Game({ gameState, onReturnToLobby }) {
     if (!tie) {
       const winnerId = attackerWon ? attackerId : defenderId;
       const loserId  = attackerWon ? defenderId : attackerId;
-      battleKnockback(winnerId, loserId, knockbackSpaces(s, margin));
+      // Riff-off is a Sonic-class encounter — use Sonic push/FP rules.
+      const loser = spirits.find(x => x.id === loserId);
+      battleKnockback(winnerId, loserId, sonicKnockback(margin, loser?.vibe ?? 1, loser?.maxVibe ?? 1));
       resolveWinDamage(winnerId, loserId, damage, spirits.find(x => x.id === winnerId)?.name);
-      awardFame(winnerId, margin, loserId);
+      const ring = hexRingFromCenter(spirits.find(x => x.id === winnerId)?.num ?? -1);
+      const centerBonus = (ring === 'main' || ring === 'pit') ? SONIC_LIMELIGHT_FP : 0;
+      awardSonicFame(winnerId, margin, loserId, centerBonus);
       if (attackerWon) applyPendingCombatEffects(attackerId, defenderId);
     }
     clearBattleBuffs(attackerId, defenderId);
@@ -6740,26 +6777,42 @@ function Game({ gameState, onReturnToLobby }) {
   function closeBattleOverlay() {
     const s = battleStateRef.current;
     if (!s || s.phase !== 'result') { setBattleState(null); setDiceDisplay(null); return; }
-    const { attackerWon, damage, margin, attackerId, defenderId } = s;
+    const { attackerWon, damage, margin, attackerId, defenderId, sonicAttack } = s;
     if (attackerWon) {
-      if (margin <= 2 && ownsCQC(defenderId)) {
-        setBattleState(prev2 => prev2 ? { ...prev2, pendingPush: true, phase: 'retaliation_prompt' } : prev2);
-        setRetaliationTimer(3);
+      // ── KNOCKBACK — route by attack kind ──
+      if (sonicAttack) {
+        const def = spirits.find(x => x.id === defenderId);
+        battleKnockback(attackerId, defenderId, sonicKnockback(margin, def?.vibe ?? 1, def?.maxVibe ?? 1));
       } else {
-        battleKnockback(attackerId, defenderId, knockbackSpaces(s));
-        resolveWinDamage(attackerId, defenderId, damage, spirits.find(s2 => s2.id === attackerId)?.name);
-        awardFame(attackerId, margin, defenderId);
-        if (!s.sonicAttack) applySwingEffects(attackerId, defenderId, s.swingEffectRoll); // CQC = melee only
-        applyPendingCombatEffects(attackerId, defenderId); // Mojo Drain / Stagger land on any hit
-        clearBattleBuffs(attackerId, defenderId);
-        setBattleState(null);
-        setDiceDisplay(null);
+        battleKnockback(attackerId, defenderId, thrashKnockback(margin));
       }
+      resolveWinDamage(attackerId, defenderId, damage, spirits.find(s2 => s2.id === attackerId)?.name);
+      // ── FP — Sonic is the Fame engine; Thrash earns a flat 1 ──
+      if (sonicAttack) {
+        const ring = hexRingFromCenter(spirits.find(x => x.id === attackerId)?.num ?? -1);
+        const centerBonus = (ring === 'main' || ring === 'pit') ? SONIC_LIMELIGHT_FP : 0;
+        awardSonicFame(attackerId, margin, defenderId, centerBonus);
+      } else {
+        awardThrashFame(attackerId, defenderId);
+      }
+      if (!sonicAttack) applySwingEffects(attackerId, defenderId, s.swingEffectRoll); // CQC = melee only
+      applyPendingCombatEffects(attackerId, defenderId); // Mojo Drain / Stagger land on any hit
+      clearBattleBuffs(attackerId, defenderId);
+      setBattleState(null);
+      setDiceDisplay(null);
     } else {
-      const selfDmg = Math.max(1, Math.ceil(margin / 2));
+      // ── ATTACKER LOST — damage depends on attack kind ──
+      // Thrash whiff = THRASH_WHIFF_DMG (1). Sonic whiff = old formula.
+      const selfDmg = sonicAttack ? Math.max(1, Math.ceil(margin / 2)) : damage; // damage already = thrashDamage(margin, true) = 1
       resolveWinDamage(defenderId, attackerId, selfDmg, 'whiff');
-      awardFame(defenderId, margin, attackerId);
-      battleKnockback(defenderId, attackerId, knockbackSpaces(s));
+      // Defender earns FP for successfully defending
+      if (sonicAttack) {
+        awardSonicFame(defenderId, margin, attackerId, 0);
+      } else {
+        awardThrashFame(defenderId, attackerId);
+      }
+      const defKB = sonicAttack ? 1 : thrashKnockback(margin);
+      battleKnockback(defenderId, attackerId, defKB);
       clearBattleBuffs(attackerId, defenderId);
       setBattleState(null);
       setDiceDisplay(null);
@@ -6804,13 +6857,15 @@ function Game({ gameState, onReturnToLobby }) {
             setBattleState(p => {
               if (!p) return p;
               if (p.posing) return { ...p, phase: 'result' };
-              return { ...p, phase: 'def_die_spin', spinFaceDef: randD6() };
+              const dds = p.defDieSides ?? 6;
+              return { ...p, phase: 'def_die_spin', spinFaceDef: randDie(dds) };
             });
             // Spin defender die faces randomly
             const spinI2 = setInterval(() => {
               setBattleState(p => {
                 if (!p || p.phase !== 'def_die_spin') { clearInterval(spinI2); return p; }
-                return { ...p, spinFaceDef: randD6() };
+                const dds = p.defDieSides ?? 6;
+                return { ...p, spinFaceDef: randDie(dds) };
               });
             }, 90);
           }, 2400);
@@ -6835,11 +6890,12 @@ function Game({ gameState, onReturnToLobby }) {
       interval = 60 + progress * 340;
       setBattleState(p => {
         if (!p || p.phase !== 'def_die_settling') return p;
+        const dds = p.defDieSides ?? 6;
         const face = steps >= maxSteps ? p.defRoll
           : steps >= maxSteps - 2
-            ? ((p.defRoll % 6) + 1)
-            : randD6();
-        return { ...p, spinFaceDef: Math.max(1,Math.min(6,face)), defDieReady: steps >= maxSteps };
+            ? ((p.defRoll % dds) + 1)
+            : randDie(dds);
+        return { ...p, spinFaceDef: Math.max(1,Math.min(dds,face)), defDieReady: steps >= maxSteps };
       });
       if (steps < maxSteps) {
         setTimeout(tick, interval);
@@ -6858,11 +6914,13 @@ function Game({ gameState, onReturnToLobby }) {
             const { attackerWon, damage, margin, attackerId, defenderId, atkTotal, defTotal } = snap;
             const atk = spirits.find(s => s.id === attackerId);
 
+            const isSonic = !!snap.sonicAttack;
+
             // Log result
             if (attackerWon) {
-              addLog(`⚔️ ${atk?.name} HITS! (${atkTotal} vs ${defTotal}) — ${damage} Vibe dmg + pushed`);
+              addLog(`⚔️ ${atk?.name} HITS! (${atkTotal} vs ${defTotal}) — ${damage} Vibe dmg${isSonic ? ' + PUSHED' : (margin >= 3 ? ' + nudged' : '')}`);
             } else {
-              const selfDmg = Math.max(1, Math.ceil(margin / 2));
+              const selfDmg = isSonic ? Math.max(1, Math.ceil(margin / 2)) : damage; // damage already = thrashDamage(m,true) = 1
               addLog(`💨 ${atk?.name} WHIFFS! (${atkTotal} vs ${defTotal}) — ${selfDmg} Vibe self-damage`);
             }
             setBattleState(p => p ? { ...p, phase: 'result' } : p);
@@ -6882,27 +6940,37 @@ function Game({ gameState, onReturnToLobby }) {
                     ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + heal) } : s));
                   addLog(`💡 Stage Lighting pays off! ${spirits.find(s=>s.id===attackerId)?.name} +${heal} Vibe saved.`);
                 }
-                if (margin <= 2 && !snap.retaliationBlocked && ownsCQC(snap.defenderId)) {
-                  setBattleState(prev2 => prev2 ? { ...prev2, pendingPush: true, phase: 'retaliation_prompt' } : prev2);
-                  setRetaliationTimer(3);
+                // ── KNOCKBACK — route by attack kind ──
+                if (isSonic) {
+                  const def = spirits.find(x => x.id === defenderId);
+                  battleKnockback(attackerId, defenderId, sonicKnockback(margin, def?.vibe ?? 1, def?.maxVibe ?? 1));
                 } else {
-                  if (snap.retaliationBlocked && margin <= 2) {
-                    addLog(`🔇 ${spirits.find(s=>s.id===snap.defenderId)?.name} is unplugged — cannot retaliate against a ranged Sonic Attack!`);
-                  }
-                  battleKnockback(attackerId, defenderId, knockbackSpaces(snap, margin));
-                  resolveWinDamage(attackerId, defenderId, damage, spirits.find(s2 => s2.id === attackerId)?.name);
-                  awardFame(attackerId, margin, defenderId);
-                  if (!snap.sonicAttack) applySwingEffects(attackerId, defenderId, snap.swingEffectRoll); // CQC = melee only
-                  applyPendingCombatEffects(attackerId, defenderId); // Mojo Drain / Stagger land on any hit
-                  clearBattleBuffs(attackerId, defenderId);
-                  setBattleState(null);
-                  setDiceDisplay(null);
+                  battleKnockback(attackerId, defenderId, thrashKnockback(margin));
                 }
+                resolveWinDamage(attackerId, defenderId, damage, spirits.find(s2 => s2.id === attackerId)?.name);
+                // ── FP — route by attack kind ──
+                if (isSonic) {
+                  const ring = hexRingFromCenter(spirits.find(x => x.id === attackerId)?.num ?? -1);
+                  const centerBonus = (ring === 'main' || ring === 'pit') ? SONIC_LIMELIGHT_FP : 0;
+                  awardSonicFame(attackerId, margin, defenderId, centerBonus);
+                } else {
+                  awardThrashFame(attackerId, defenderId);
+                }
+                if (!isSonic) applySwingEffects(attackerId, defenderId, snap.swingEffectRoll); // CQC = melee only
+                applyPendingCombatEffects(attackerId, defenderId); // Mojo Drain / Stagger land on any hit
+                clearBattleBuffs(attackerId, defenderId);
+                setBattleState(null);
+                setDiceDisplay(null);
               } else {
-                const selfDmg = Math.max(1, Math.ceil(margin / 2));
+                const selfDmg = isSonic ? Math.max(1, Math.ceil(margin / 2)) : damage;
                 resolveWinDamage(defenderId, attackerId, selfDmg, 'whiff');
-                awardFame(defenderId, margin, attackerId);
-                battleKnockback(defenderId, attackerId, knockbackSpaces(snap, margin));
+                if (isSonic) {
+                  awardSonicFame(defenderId, margin, attackerId, 0);
+                } else {
+                  awardThrashFame(defenderId, attackerId);
+                }
+                const defKB = isSonic ? 1 : thrashKnockback(margin);
+                battleKnockback(defenderId, attackerId, defKB);
                 clearBattleBuffs(attackerId, defenderId);
                 setBattleState(null);
                 setDiceDisplay(null);
@@ -6916,148 +6984,11 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
 
-  // Retaliation timer tick
-  useEffect(() => {
-    if (retaliationTimer === null) return;
-    if (retaliationTimer <= 0) {
-      // Timed out — apply original damage + push, no counter
-      const bs = battleState;
-      if (bs) {
-        if (bs.pendingPush) battleKnockback(bs.attackerId, bs.defenderId, knockbackSpaces(bs));
-        resolveWinDamage(bs.attackerId, bs.defenderId, bs.damage, 'swing');
-        awardFame(bs.attackerId, bs.margin, bs.defenderId);
-        addLog(`⏰ ${spirits.find(s=>s.id===bs.defenderId)?.name} held back — took ${bs.damage} Vibe dmg`);
-        if (!bs.sonicAttack) applySwingEffects(bs.attackerId, bs.defenderId, bs.swingEffectRoll); // CQC = melee only
-        applyPendingCombatEffects(bs.attackerId, bs.defenderId);
-        clearBattleBuffs(bs.attackerId, bs.defenderId);
-      }
-      setBattleState(null);
-      setDiceDisplay(null);
-      setRetaliationTimer(null);
-      return;
-    }
-    const t = setTimeout(() => setRetaliationTimer(prev => (prev ?? 1) - 1), 1000);
-    return () => clearTimeout(t);
-  }, [retaliationTimer]); // eslint-disable-line
-
-  // ── RETALIATION — "PART 2" of the battle ──────────────────────────────────
-  // The defender's choice at the prompt. ABSORB resolves the original hit.
-  // COUNTER no longer rolls invisibly — it sets up an interactive counter
-  // round (retaliation_spin) where the defender CLICKS to roll their own die
-  // and tries to out-swing the attacker. Damage is applied later, in
-  // finishCounter, once the die has settled and the result is on screen.
-  function resolveRetaliation(chosen) {
-    const bs = battleStateRef.current;
-    if (!bs) return;
-    setRetaliationTimer(null);
-
-    if (!chosen) {
-      // Declined — take original damage + push
-      if (bs.pendingPush) battleKnockback(bs.attackerId, bs.defenderId, knockbackSpaces(bs));
-      resolveWinDamage(bs.attackerId, bs.defenderId, bs.damage, 'swing');
-      awardFame(bs.attackerId, bs.margin, bs.defenderId);
-      addLog(`🛡️ ${spirits.find(s=>s.id===bs.defenderId)?.name} absorbs the hit — ${bs.damage} Vibe dmg`);
-      if (!bs.sonicAttack) applySwingEffects(bs.attackerId, bs.defenderId, bs.swingEffectRoll); // CQC = melee only
-      applyPendingCombatEffects(bs.attackerId, bs.defenderId);
-      clearBattleBuffs(bs.attackerId, bs.defenderId);
-      setBattleState(null);
-      setDiceDisplay(null);
-      return;
-    }
-
-    // Defender chose to COUNTER — pre-roll the result, then hand the die to
-    // the player to fire it off. The threshold to beat is the attacker's
-    // winning swing die (atkRoll): a glancing hit (margin ≤ 2) means it's a
-    // genuine, viable swing-back rather than a near-impossible stat wall.
-    const defender   = spirits.find(s => s.id === bs.defenderId);
-    const target       = bs.atkRoll ?? Math.max(1, (bs.atkTotal ?? 6) - (bs.atkStat ?? 0));
-    // 🎲 Counter die rolls on the engine's seeded rng (Phase 3d). The client
-    // passes the defender's Vibe (bonus source) + the die to beat; the engine
-    // decides the roll and success. The spin overlay reads the decided face.
-    const { counterRoll, vibeBonus, counterTotal, counterSuccess } = dispatch(
-      counterRolled(bs.defenderId, {
-        vibe: defender?.vibe ?? 1, maxVibe: defender?.maxVibe ?? 1, target,
-      })).battle;
-
-    addLog(`🥊 ${defender?.name} winds up for a COUNTER — needs to out-swing a ${target}!`);
-    setBattleState(prev => prev ? {
-      ...prev,
-      phase: 'retaliation_spin',
-      counterRoll, vibeBonus, counterTotal, counterTarget: target, counterSuccess,
-      counterFace: randD6(), counterReady: false,
-    } : prev);
-
-    // Spin the counter die's face until the player clicks it (mirrors def_die_spin)
-    const spinIv = setInterval(() => {
-      setBattleState(p => {
-        if (!p || p.phase !== 'retaliation_spin') { clearInterval(spinIv); return p; }
-        return { ...p, counterFace: randD6() };
-      });
-    }, 90);
-  }
-
-  // Player clicked the counter die — decelerate it onto the pre-rolled value,
-  // then reveal the result. Mirrors handleAtkDieClick / handleDefDieClick.
-  function handleCounterDieClick() {
-    setBattleState(prev => {
-      if (!prev || prev.phase !== 'retaliation_spin') return prev;
-      return { ...prev, phase: 'retaliation_settling' };
-    });
-    let steps = 0;
-    const maxSteps = 10;
-    function tick() {
-      steps++;
-      const progress = steps / maxSteps;
-      const interval = 60 + progress * 340; // 60ms → 400ms
-      setBattleState(p => {
-        if (!p || p.phase !== 'retaliation_settling') return p;
-        const target = p.counterRoll ?? 1;
-        const face = steps >= maxSteps ? target
-          : steps >= maxSteps - 2 ? ((target % 6) + 1)
-          : randD6();
-        return { ...p, counterFace: Math.max(1, Math.min(6, face)), counterReady: steps >= maxSteps };
-      });
-      if (steps < maxSteps) setTimeout(tick, interval);
-      else setTimeout(finishCounter, 700); // beat to read the total, then resolve
-    }
-    setTimeout(tick, 60);
-  }
-
-  // Apply the counter outcome and surface the result banner. Effects land once
-  // here; the overlay then auto-closes (or the player taps ROCK ON).
-  function finishCounter() {
-    const bs = battleStateRef.current;
-    if (!bs || bs.phase !== 'retaliation_settling') return;
-    const atkName = spirits.find(s => s.id === bs.attackerId)?.name;
-    const defName = spirits.find(s => s.id === bs.defenderId)?.name;
-
-    if (bs.counterSuccess) {
-      // 🥊 Landed-counter margin/damage via the engine kernel (Phase 3d).
-      const { counterMargin, counterDmg } = counterOutcome(bs.counterTotal, bs.counterTarget);
-      addLog(`💥 COUNTER LANDS! ${defName} swings back — ${counterDmg} Vibe dmg to ${atkName}!`);
-      resolveWinDamage(bs.defenderId, bs.attackerId, counterDmg, 'counter');
-      awardFame(bs.defenderId, counterMargin, bs.attackerId);
-      battleKnockback(bs.defenderId, bs.attackerId, 1);
-      setBattleState(prev => prev ? { ...prev, phase: 'retaliation_result', counterDmg, counterMargin } : prev);
-    } else {
-      // Whiffed the counter — caught worse than if they'd just absorbed it
-      const extraDmg = marginToDamage(bs.margin + 2);
-      addLog(`💔 COUNTER FAILS! ${defName} is caught swinging — ${extraDmg} Vibe dmg!`);
-      if (bs.pendingPush) battleKnockback(bs.attackerId, bs.defenderId, knockbackSpaces(bs));
-      resolveWinDamage(bs.attackerId, bs.defenderId, extraDmg, 'failed_counter');
-      awardFame(bs.attackerId, bs.margin + 2, bs.defenderId);
-      if (!bs.sonicAttack) applySwingEffects(bs.attackerId, bs.defenderId, bs.swingEffectRoll); // CQC = melee only
-      applyPendingCombatEffects(bs.attackerId, bs.defenderId);
-      setBattleState(prev => prev ? { ...prev, phase: 'retaliation_result', counterDmg: extraDmg, counterMargin: 0 } : prev);
-    }
-    clearBattleBuffs(bs.attackerId, bs.defenderId);
-
-    // Auto-close after the player reads the result (guarded against double-close)
-    setTimeout(() => {
-      const cur = battleStateRef.current;
-      if (cur && cur.phase === 'retaliation_result') { setBattleState(null); setDiceDisplay(null); }
-    }, 4200);
-  }
+  // ── COUNTER / RETALIATION — DISABLED ────────────────────────────────────────
+  // Counter mechanic is temporarily removed pending a redesign that accounts for
+  // the Sonic/Thrash split. The functions and state (retaliationTimer, ownsCQC,
+  // resolveRetaliation, handleCounterDieClick, finishCounter) are commented out.
+  // The battle flow now resolves immediately on result — no retaliation prompt.
 
   // roadieSelectHex — used for MOVE AMP flow: player clicks a hex, then a direction
   function roadieSelectHex(hexNum) {
@@ -7797,12 +7728,7 @@ function Game({ gameState, onReturnToLobby }) {
       const t = setTimeout(() => { if (battleStateRef.current?.phase === 'result') closeBattleOverlay(); }, 1400);
       return () => clearTimeout(t);
     }
-    // Retaliation prompt aimed at a BOT defender — bots decline (Phase 1: keep it
-    // simple and predictable; smarter counter logic is a later phase).
-    if (bs.phase === 'retaliation_prompt' && defBot) {
-      const t = setTimeout(() => { if (battleStateRef.current?.phase === 'retaliation_prompt') resolveRetaliation(false); }, 900);
-      return () => clearTimeout(t);
-    }
+    // (Counter/retaliation prompt removed — pending redesign for Sonic/Thrash split.)
   }, [battleState?.phase, acting?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── BOT RIFF-OFF HOOK — synthesize a bot side's performance ──────────────────
@@ -8739,15 +8665,16 @@ function Game({ gameState, onReturnToLobby }) {
         fameFromMargin={fameFromMargin}
         fireBeamClash={fireBeamClash}
         handleAtkDieClick={handleAtkDieClick}
-        handleCounterDieClick={handleCounterDieClick}
         handleDefDieClick={handleDefDieClick}
         hydraImg={hydraImg}
         knockbackSpaces={knockbackSpaces}
+        sonicKnockback={sonicKnockback}
+        thrashKnockback={thrashKnockback}
+        sonicFame={sonicFame}
+        thrashFame={thrashFame}
         noteStates={noteStates}
         playRiffOffPlayback={playRiffOffPlayback}
         renderInstrument={renderInstrument}
-        resolveRetaliation={resolveRetaliation}
-        retaliationTimer={retaliationTimer}
         riffBeginTurn={riffBeginTurn}
         riffDifficulty={riffDifficulty}
         riffPressKey={riffPressKey}
@@ -9702,8 +9629,8 @@ function Game({ gameState, onReturnToLobby }) {
                           </div>
                           <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:"#ffcc44"}}>{ch.name} · ⚔️{ch.drive} 🛡️{ch.sustain}</span>
                           {/* Hover preview — shows projected stats when hovering a stock note */}
-                          {hoverScale && !revoiced && !full && (() => {
-                            const preview = spiritChord(acting?.id, [...chord, hoverScale]);
+                          {hoverScale?.note && !revoiced && !full && (() => {
+                            const preview = spiritChord(acting?.id, [...chord, hoverScale.note]);
                             const dd = preview.drive - ch.drive;
                             const ds = preview.sustain - ch.sustain;
                             return (
@@ -9748,8 +9675,8 @@ function Game({ gameState, onReturnToLobby }) {
                                 // discord note (which stays fully opaque in its own dim palette).
                                 return (
                                   <div key={idx} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:0}}
-                                    onMouseEnter={()=>{ if (!used) setHoverScale(note); }}
-                                    onMouseLeave={()=>setHoverScale(cur=>cur===note?null:cur)}>
+                                    onMouseEnter={(e)=>{ if (!used) { const x=e.clientX, y=e.clientY; clearTimeout(hoverScaleTimerRef.current); hoverScaleTimerRef.current=setTimeout(()=>setHoverScale({note,x,y}),1500); }}}
+                                    onMouseLeave={()=>{ clearTimeout(hoverScaleTimerRef.current); setHoverScale(cur=>cur?.note===note?null:cur); }}>
                                     <div onClick={()=>{ if (!used) clickNoteStock(idx, undefined, true); }}
                                       className="hexw" style={{width:26,height:29,cursor:used?"default":"pointer",
                                         background:used?"#232b3a":hexBorder,transition:"all .1s"}}>
@@ -9865,7 +9792,8 @@ function Game({ gameState, onReturnToLobby }) {
                     const isFresh = freshNoteIdx?.spiritId === acting?.id && freshNoteIdx.indices.has(idx);
                     return (
                       <div key={idx} onClick={(e)=>{ if (isStaggered) return; if (!used || mixerReady) clickNoteStock(idx, e); }}
-                        onMouseEnter={()=>setHoverScale(note)} onMouseLeave={()=>setHoverScale(cur=>cur===note?null:cur)}
+                        onMouseEnter={(e)=>{ const x=e.clientX, y=e.clientY; clearTimeout(hoverScaleTimerRef.current); hoverScaleTimerRef.current=setTimeout(()=>setHoverScale({note,x,y}),1500); }}
+                        onMouseLeave={()=>{ clearTimeout(hoverScaleTimerRef.current); setHoverScale(cur=>cur?.note===note?null:cur); }}
                         title={isStaggered ? "⚡ Staggered — unavailable"
                              : mixerReady ? "🎚️ Mixer — tap to layer this note again"
                              : resolvesCadence ? `🎯 End your track on this note to RESOLVE a cadence — Fame!${lockTip}`
@@ -9893,43 +9821,40 @@ function Game({ gameState, onReturnToLobby }) {
                 </div>
                   );
                 })()}
-                {/* 🎼 SCALE PEEK (default) / 🎸 CHORD PREVIEW (in Revoice mode) — hover-a-note guidance */}
-                {!hasConfirmed && (() => {
-                  if (chordMode) {
-                    // 🎸 Chord-building help: show what adding the hovered note does to your chord.
-                    const chord = actingNoteState?.chordStack ?? [];
-                    const full  = chord.length >= 5;
-                    const next  = hoverScale ? spiritChord(acting?.id, [...chord, hoverScale]) : null;
-                    return (
-                      <div style={{marginBottom:5,minHeight:34,background:"#140a18",border:"1px solid #ff66cc44",borderRadius:4,padding:"4px 7px"}}>
-                        {hoverScale && next ? (
-                          <>
-                            <div style={{fontSize:8,color:"#ff99dd",fontWeight:700,marginBottom:2}}>🎸 Add {hoverScale} → {next.name}</div>
-                            <div style={{fontSize:8}}>
-                              <span style={{color:"#ff6644",fontWeight:700}}>⚔️{next.drive}</span>{'   '}
-                              <span style={{color:"#44aaff",fontWeight:700}}>🛡️{next.sustain}</span>
-                              {full && <span style={{color:"#ff6666",marginLeft:8}}>chord full — drop one to revoice</span>}
-                            </div>
-                          </>
-                        ) : (
-                          <span style={{fontSize:7.5,color:"#aa6688"}}>🎸 Revoice on — hover a note to preview what it adds to your chord</span>
-                        )}
-                      </div>
-                    );
-                  }
-                  const maj = hoverScale ? buildScale(hoverScale, 'major') : null;
-                  const min = hoverScale ? buildScale(hoverScale, 'minor') : null;
+                {/* 🎸 CHORD PREVIEW (in Revoice mode) — hover-a-note guidance (inline, instant via hoverScale) */}
+                {!hasConfirmed && chordMode && (() => {
+                  const chord = actingNoteState?.chordStack ?? [];
+                  const full  = chord.length >= 5;
+                  const hn    = hoverScale?.note;
+                  const next  = hn ? spiritChord(acting?.id, [...chord, hn]) : null;
                   return (
-                    <div style={{marginBottom:5,minHeight:34,background:"#0a1018",border:"1px solid #2a4a6a",borderRadius:4,padding:"4px 7px"}}>
-                      {hoverScale ? (
+                    <div style={{marginBottom:5,minHeight:34,background:"#140a18",border:"1px solid #ff66cc44",borderRadius:4,padding:"4px 7px"}}>
+                      {hn && next ? (
                         <>
-                          <div style={{fontSize:8,color:"#66ccff",fontWeight:700,marginBottom:2}}>🎼 {hoverScale} scale</div>
-                          <div style={{fontSize:8,color:"#a0b8cc"}}><span style={{color:"#5a7a8a",marginRight:3}}>Maj</span>{maj.join('  ')}</div>
-                          <div style={{fontSize:8,color:"#a0b8cc"}}><span style={{color:"#5a7a8a",marginRight:3}}>min</span>{min.join('  ')}</div>
+                          <div style={{fontSize:8,color:"#ff99dd",fontWeight:700,marginBottom:2}}>🎸 Add {hn} → {next.name}</div>
+                          <div style={{fontSize:8}}>
+                            <span style={{color:"#ff6644",fontWeight:700}}>⚔️{next.drive}</span>{'   '}
+                            <span style={{color:"#44aaff",fontWeight:700}}>🛡️{next.sustain}</span>
+                            {full && <span style={{color:"#ff6666",marginLeft:8}}>chord full — drop one to revoice</span>}
+                          </div>
                         </>
                       ) : (
-                        <span style={{fontSize:7.5,color:"#3a5a6a"}}>🎼 hover a stock note to see its scale</span>
+                        <span style={{fontSize:7.5,color:"#aa6688"}}>🎸 Revoice on — hover a note to preview what it adds to your chord</span>
                       )}
+                    </div>
+                  );
+                })()}
+                {/* 🎼 SCALE PEEK — fixed popup, 1.5s hover delay (no longer inline to avoid HUD jitter) */}
+                {hoverScale && !chordMode && (() => {
+                  const maj = buildScale(hoverScale.note, 'major');
+                  const min = buildScale(hoverScale.note, 'minor');
+                  return (
+                    <div style={{position:'fixed', left:hoverScale.x+14, top:hoverScale.y-8, zIndex:9999, pointerEvents:'none',
+                      background:'#0a1424', border:'1px solid #44aaff', borderRadius:6, padding:'7px 10px',
+                      boxShadow:'0 6px 20px #000a, 0 0 10px #44aaff44', fontFamily:"'Share Tech Mono',monospace", maxWidth:250}}>
+                      <div style={{fontSize:9, color:'#ffcc44', fontWeight:700, marginBottom:4, letterSpacing:1}}>🎼 {hoverScale.note} — its scales</div>
+                      <div style={{fontSize:8, color:'#9fc8ff', marginBottom:2}}><span style={{color:'#4488ff', fontWeight:700}}>Major:</span> {maj.join(' · ')}</div>
+                      <div style={{fontSize:8, color:'#c79bff'}}><span style={{color:'#aa55ff', fontWeight:700}}>Minor:</span> {min.join(' · ')}</div>
                     </div>
                   );
                 })()}

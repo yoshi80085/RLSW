@@ -27,6 +27,7 @@ import { snapshot, restore, replay, assertJsonSafe } from "./serialize.js";
 import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus, smashOutcome,
   decideWinner, resolveKnockdown, counterOutcome,
+  thrashDamage, sonicDamage,
 } from "./systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./systems/economy.js";
 import { skillEligibility, ULTIMATE_PREREQS, THEORY_DISCORD_GRANTS, CQC_SWING_MAP } from "./systems/skills.js";
@@ -349,7 +350,7 @@ const config = {
     assert.equal(b.defTotal, 5 + b.defRoll, "defTotal = stat + roll");
     assert.equal(b.attackerWon, b.atkTotal > b.defTotal);
     assert.equal(b.margin, Math.abs(b.atkTotal - b.defTotal));
-    assert.equal(b.damage, marginToDamage(b.margin));
+    assert.equal(b.damage, thrashDamage(b.margin, !b.attackerWon), "swing damage = thrashDamage(margin, isAttackerLoss)");
   }
 
   // posing defender rolls nothing → defRoll 0, defTotal 0, attacker always wins
@@ -389,8 +390,8 @@ const config = {
     assert.deepEqual(
       [b.defRoll, b.atkTotal, b.defTotal, b.attackerWon, b.margin, b.damage, b.psychoBushido],
       [defRoll, atkTotal, defTotal, atkTotal > defTotal, Math.abs(atkTotal - defTotal),
-        marginToDamage(Math.abs(atkTotal - defTotal)), bushido],
-      "swing verdict matches old Game math given identical rolls");
+        thrashDamage(Math.abs(atkTotal - defTotal), !(atkTotal > defTotal)), bushido],
+      "swing verdict matches thrashDamage given identical rolls");
   }
 
   // battle slice is JSON-serializable (crosses the network / replay log)
@@ -418,7 +419,7 @@ const config = {
       assert.equal(b.atkTotal, 6 + b.atkRoll);
       assert.equal(b.defTotal, 4 + b.defRoll);
       assert.equal(b.margin, Math.abs(b.atkTotal - b.defTotal));
-      assert.equal(b.damage, marginToDamage(b.margin));
+      assert.equal(b.damage, sonicDamage(b.margin), "sonic damage = sonicDamage(margin)");
     }
   }
 
@@ -448,8 +449,8 @@ const config = {
     const at = 6 + atkRoll, dt = 4 + defRoll;
     assert.deepEqual(
       [b.atkRoll, b.defRoll, b.atkTotal, b.defTotal, b.attackerWon, b.margin, b.damage],
-      [atkRoll, defRoll, at, dt, at > dt, Math.abs(at - dt), marginToDamage(Math.abs(at - dt))],
-      "sonic verdict matches old Game math");
+      [atkRoll, defRoll, at, dt, at > dt, Math.abs(at - dt), sonicDamage(Math.abs(at - dt))],
+      "sonic verdict matches sonicDamage");
   }
 }
 

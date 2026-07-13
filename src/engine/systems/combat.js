@@ -7,13 +7,15 @@
 
 import {
   UNDERDOG_MIN_DEFICIT, UNDERDOG_DEFICIT_PER_STEP, UNDERDOG_MAX_MULT,
+  THRASH_DAMAGE_CAP, THRASH_WHIFF_DMG, THRASH_PUSH_THRESHOLD,
+  SONIC_VIBE_CAP,
 } from "../../data/gameConstants.js";
 import { CORNERS } from "../../data/corners.js";
 import { cornerFacing } from "../../board/boardHelpers.js";
 
 /**
- * Damage table: battle margin → Vibe damage (softened — wider bands, low
- * ceiling). Used by swing, sonic, smash and the riff-off damage hookup.
+ * LEGACY damage table — still used by Smash, riff-off, and any call site that
+ * hasn't been split yet. New code should use thrashDamage / sonicDamage.
  */
 export function marginToDamage(margin) {
   if (margin <= 3)  return 1;
@@ -23,18 +25,72 @@ export function marginToDamage(margin) {
   return 5;
 }
 
+// ─── THRASH (melee) ──────────────────────────────────────────────────────────
 /**
- * Knockback distance in hexes. A Swing defeat always shoves 1; a Sonic defeat
- * scales with margin (1–2 → 1, 3–4 → 2, 5+ → 3, capped at 3).
- * `bs` is the battle-state-shaped object (`{ sonicAttack, margin }`); `margin`
- * may be passed explicitly to override `bs.margin` (matches Game's call sites).
+ * Thrash Vibe damage — the heavy hitter. Drive/Sustain is the real driver;
+ * a Spirit who's burned their chord stack and dropped Sustain will eat it bad.
+ * Clean 2-wide bands keep the curve readable, capped at THRASH_DAMAGE_CAP (4).
+ *   margin 1-2 = 1,  3-4 = 2,  5-6 = 3,  7+ = 4 (cap)
+ * @param {boolean} isAttackerLoss  true when the ATTACKER lost — caps at THRASH_WHIFF_DMG (1).
  */
+export function thrashDamage(margin, isAttackerLoss = false) {
+  if (isAttackerLoss) return THRASH_WHIFF_DMG;
+  if (margin <= 2) return 1;
+  if (margin <= 4) return 2;
+  if (margin <= 6) return 3;
+  return THRASH_DAMAGE_CAP;
+}
+
+/**
+ * Thrash knockback — minimal positional displacement.
+ * 0 hexes on small wins, 1 hex only when margin >= THRASH_PUSH_THRESHOLD (3).
+ */
+export function thrashKnockback(margin) {
+  return margin >= THRASH_PUSH_THRESHOLD ? 1 : 0;
+}
+
+/** Thrash FP — fighting earns almost no Fame; you fight to hurt, not to shine. */
+export function thrashFame() {
+  return 1;
+}
+
+// ─── SONIC (ranged) ──────────────────────────────────────────────────────────
+/**
+ * Sonic Vibe damage — the beam stings but doesn't destroy. Capped at
+ * SONIC_VIBE_CAP (2). Most hits deal 1.
+ */
+export function sonicDamage(margin) {
+  if (margin <= 4) return 1;
+  return Math.min(SONIC_VIBE_CAP, 2);
+}
+
+/**
+ * Sonic knockback — the main positional weapon. Base push from margin (1-3),
+ * plus a Vibe-deficit bonus: a battered rival gets launched further.
+ */
+export function sonicKnockback(margin, vibe, maxVibe) {
+  vibe = vibe ?? 1;
+  maxVibe = maxVibe ?? 1;
+  const baseKB   = Math.min(3, Math.max(1, Math.ceil(margin / 2)));
+  const vibeRatio = Math.max(0, 1 - (vibe / Math.max(1, maxVibe)));
+  const vibeKB    = Math.floor(vibeRatio * 2);
+  return Math.min(5, baseKB + vibeKB);
+}
+
+/**
+ * Sonic FP — the primary Fame engine. Scales directly with margin so the
+ * Drive/Sustain gap you built matters. Bigger wins = bigger legend.
+ */
+export function sonicFame(margin) {
+  return Math.max(1, Math.ceil(margin / 2));
+}
+
+// ─── LEGACY knockback / fame (kept for Smash, riff-off, etc.) ────────────────
 export function knockbackSpaces(bs, margin) {
   const m = margin ?? bs?.margin ?? 1;
   return bs?.sonicAttack ? Math.min(3, Math.max(1, Math.ceil(m / 2))) : 1;
 }
 
-/** Base Fame earned for a win, by margin. Bigger margin, bigger legend. */
 export function fameFromMargin(margin) {
   if (margin <= 3) return 1;
   if (margin <= 6) return 2;
@@ -42,31 +98,20 @@ export function fameFromMargin(margin) {
 }
 
 /**
- * 🔥 Underdog / comeback amplifier — pure over the two Fame totals.
- * When the winner was TRAILING the loser by ≥ UNDERDOG_MIN_DEFICIT, the base
- * payout is ramped by the deficit (capped by UNDERDOG_MAX_MULT) and then
- * clamped so a single comeback win never vaults the winner clean PAST the
- * loser — it closes the gap to at most level. Returns `{ fp, deficit, mult }`.
- *
- * The `!loserId`/self-hit guard stays in Game (it owns spirit identity); this
- * fn takes the resolved Fame numbers so it can live in the engine unchanged.
+ * Underdog / comeback amplifier — pure over the two Fame totals.
  */
 export function underdogBonus(winnerFame, loserFame, baseFp) {
-  const deficit = loserFame - winnerFame;      // how far the winner was trailing
+  const deficit = loserFame - winnerFame;
   if (deficit < UNDERDOG_MIN_DEFICIT) return { fp: baseFp, deficit: 0, mult: 1 };
   const mult = Math.min(UNDERDOG_MAX_MULT, 1 + (deficit / UNDERDOG_DEFICIT_PER_STEP) * 0.5);
   let fp = Math.round(baseFp * mult);
-  const maxFp = Math.max(baseFp, deficit); // never overshoot past the loser
+  const maxFp = Math.max(baseFp, deficit);
   fp = Math.min(fp, maxFp);
   return { fp, deficit, mult };
 }
 
 /**
- * 🥊 COUNTER_ROLLED (Phase 3d) — a glanced defender swings back. The engine
- * rolls a counter d6, adds a Vibe bonus (`round(vibe/maxVibe × 3)`), and the
- * counter LANDS when the total clears the attacker's winning die (`target`).
- * Verbatim from Game.resolveRetaliation; merged into the live `battle` slice so
- * the spin overlay can read the already-decided `counterRoll`.
+ * COUNTER_ROLLED (Phase 3d) — kept for selftest/future use, not called by Game.
  */
 export function applyCounterRolled(state, action, rng) {
   const { defenderId, vibe = 1, maxVibe = 1, target = 1 } = action;
@@ -86,10 +131,7 @@ export function applyCounterRolled(state, action, rng) {
 }
 
 /**
- * 🥊 counterOutcome (Phase 3d) — a LANDED counter's margin → damage, verbatim
- * from Game.finishCounter: `counterMargin = max(1, total − target + 1)`, then
- * the shared `marginToDamage` table. (A failed counter uses the attacker's
- * `margin + 2` back through `marginToDamage` and stays inline in the client.)
+ * counterOutcome (Phase 3d) — kept for selftest/future use.
  */
 export function counterOutcome(counterTotal, counterTarget) {
   const counterMargin = Math.max(1, counterTotal - counterTarget + 1);
@@ -97,15 +139,7 @@ export function counterOutcome(counterTotal, counterTarget) {
 }
 
 /**
- * 🏆 decideWinner (Phase 3c kernel) — the boss-aware win check, verbatim from
- * Game.knockOut.checkWinner. Pure predicate over the (already post-KO) spirits:
- *   • A Rock God on the board changes the rule: last-Spirit-standing does NOT
- *     win — only a TOTAL wipe resolves it, and the God keeps the crown
- *     (`godTriumphs`). While a God holds the gate no PvP winner is declared.
- *   • Otherwise: one survivor wins; a mutual wipe credits a still-standing
- *     attacker (a faithful port — with 0 survivors the attacker is down too, so
- *     this branch is effectively unreachable, kept for exactness).
- * Returns `{ winnerId, godTriumphs }`; the client runs the timers/setWinner.
+ * decideWinner (Phase 3c kernel) — boss-aware win check.
  */
 export function decideWinner(spirits, { godSummoned = false, attackerId = null, hasWinner = false } = {}) {
   const survivors = spirits.filter(s => !s.knockedOut);
@@ -121,13 +155,7 @@ export function decideWinner(spirits, { godSummoned = false, attackerId = null, 
 }
 
 /**
- * 💥 resolveKnockdown (Phase 3c kernel) — the respawn/KO state transform,
- * verbatim from Game.knockOut / applyVibeDamage. A downed Spirit either pops
- * back up at its home corner with full Vibe (a life spent), or, out of lives, is
- * knocked out for good. Returns the flag + the spirit's `next` shape; the client
- * applies it and runs the Fame penalty, flashes, and slide-off cinematic.
- * @param {object} spirit  the downed spirit (pre-transform)
- * @param {object} [corners=CORNERS]  corner → { homeNum } map (injectable for tests)
+ * resolveKnockdown (Phase 3c kernel) — respawn/KO state transform.
  */
 export function resolveKnockdown(spirit, corners = CORNERS) {
   const livesLeft = (spirit.lives ?? 1) - 1;
@@ -143,9 +171,7 @@ export function resolveKnockdown(spirit, corners = CORNERS) {
 }
 
 /**
- * DAMAGE_APPLIED (Phase 5c) — subtract Vibe from the target on the engine's
- * spirits, floored at 0. Pure; the KO/respawn check is a separate action. Mirrors
- * the core of Game.applyVibeDamage (`vibe = max(0, vibe − dmg)`), minus the FX.
+ * DAMAGE_APPLIED (Phase 5c) — subtract Vibe from target, floored at 0.
  */
 export function applyDamageApplied(state, action) {
   const { targetId, dmg = 0 } = action;
@@ -157,11 +183,7 @@ export function applyDamageApplied(state, action) {
 }
 
 /**
- * KNOCKDOWN_RESOLVED (Phase 5c) — apply the `resolveKnockdown` transform to the
- * downed spirit: respawn to the home corner with full Vibe (a life spent), or KO
- * for good when out of lives. Mirrors Game.knockOut.applyKnockOut, which already
- * uses the same kernel — this just makes the engine spirits authoritative for it.
- * @param {object} [corners=CORNERS] injectable corner map (tests)
+ * KNOCKDOWN_RESOLVED (Phase 5c) — apply resolveKnockdown transform.
  */
 export function applyKnockdownResolved(state, action, corners = CORNERS) {
   const { targetId } = action;
@@ -175,24 +197,14 @@ export function applyKnockdownResolved(state, action, corners = CORNERS) {
 }
 
 /**
- * WINNER_DECLARED (Phase 5c) — lock in the match `winner` slice. The boss-aware
- * decision is `decideWinner` (run by the caller); this records its result.
+ * WINNER_DECLARED (Phase 5c) — lock in the match winner.
  */
 export function applyWinnerDeclared(state, action) {
   return { ...state, winner: action.winnerId ?? null };
 }
 
 /**
- * 🎸💥 THE SMASH (Phase 3b) — deterministic, undefendable melee: no dice roll.
- * Outcome scales purely with `thrown` (the count of unused stock notes hurled):
- *   • damage    — ⌈thrown/2⌉, floored at 1, capped at 5. Shredding Ronin's own
- *                 Smash lands SOFT (≈half, min 1) — brute force isn't his art.
- *   • knockback — ⌈thrown/3⌉, capped at 3 hexes.
- *   • scatterN  — ⌊thrown/2⌋ of the rival's unused notes knocked loose; DOUBLED
- *                 when the target is Shredding Ronin (weak to the windmill).
- * Same formula backs Blaster of Ra (Intergalactic 0's ranged replacement), so
- * this is the single source of truth. The state changes (Exposed, stock scatter,
- * damage application) stay in Game until noteStates/combat join in Phases 3c/5.
+ * THE SMASH (Phase 3b) — deterministic, undefendable melee.
  */
 export function smashOutcome(thrown, { roninSmasher = false, roninTarget = false } = {}) {
   const baseDmg   = Math.min(5, Math.max(1, Math.ceil(thrown / 2)));
@@ -203,36 +215,19 @@ export function smashOutcome(thrown, { roninSmasher = false, roninTarget = false
 }
 
 /**
- * ATTACK_ROLLED (Phase 3b) — roll the attack's dice on the engine's seeded rng
- * and store the verdict in `state.battle`. Verbatim math from Game.initiateSwing
- * / initiateSonicAttack:
- *   • SWING (no `dicePool`) — the attacker rolls a single d6.
- *   • SONIC (`dicePool` = amp-scaled sizes, e.g. [6,6], [6,6,8], [8,8,8]) — roll
- *     each die and KEEP THE HIGHEST; `diceVals` + `keptIdx` record the pool for
- *     the overlay.
- * The defender path is shared: a posing defender rolls nothing (0); otherwise a
- * d6, halved (min 1) under Laser Show; Psycho Bushido (swing only) collapses the
- * defender's die to 1 when the attacker rolls a 5/6. Totals add the pre-computed
- * stats, the higher total wins, and the margin maps to damage via `marginToDamage`.
- *
- * The client passes `atkStat`/`defStat`, the mod flags, and (for sonic) the
- * `dicePool` — all depend on noteStates/board state (Phase 5). The engine owns
- * the dice and the verdict; the spin overlay reads the already-decided faces.
+ * ATTACK_ROLLED (Phase 3b) — roll attack dice on the engine's seeded rng.
+ * Swing = single die (d4 base for Thrash, or atkDie). Sonic = keep-highest pool.
+ * Defender rolls defDie (d4 for Thrash, d6 for Sonic).
  */
 export function applyAttackRolled(state, action, rng) {
   const {
     kind, attackerId, defenderId,
     atkStat = 0, defStat = 0, posing = false, halveDef = false, psychoEligible = false,
-    dicePool = null, atkFloor = 0, atkDie = 6,
+    dicePool = null, atkFloor = 0, atkDie = 6, defDie = 6,
   } = action;
 
-  // ⚡ Floor charge (and the octave-resolution dieFloorBoost): every attacker
-  // die result reads as at least 1+atkFloor. Applied per-die so the recorded
-  // pool faces match what the keep-highest verdict actually used.
   const clampFloor = v => Math.max(v, 1 + atkFloor);
 
-  // Attacker roll: keep-highest sonic pool, or a plain thrash die (d6, or d8
-  // under a ⚡ ceiling charge — the client passes the size via atkDie).
   let atkRoll, diceVals = null, keptIdx = null;
   if (dicePool && dicePool.length) {
     diceVals = dicePool.map(sides => clampFloor(rng.int(sides) + 1));
@@ -242,12 +237,11 @@ export function applyAttackRolled(state, action, rng) {
     atkRoll  = clampFloor(rng.int(atkDie) + 1);
   }
 
-  const rawDefRoll = posing ? 0 : rng.int(6) + 1;    // posing defender rolls nothing
+  const rawDefRoll = posing ? 0 : rng.int(defDie) + 1;
   let   defRoll    = posing
     ? 0
     : (halveDef ? Math.max(1, Math.floor(rawDefRoll / 2)) : rawDefRoll);
 
-  // 🌀 Psycho Bushido — a 5/6 stuns the rival into folding: their die drops to 1.
   const psychoBushido = !!psychoEligible && !posing && atkRoll >= 5;
   if (psychoBushido) defRoll = 1;
 
@@ -255,18 +249,21 @@ export function applyAttackRolled(state, action, rng) {
   const defTotal    = posing ? 0 : defStat + defRoll;
   const attackerWon = atkTotal > defTotal;
   const margin      = Math.abs(atkTotal - defTotal);
-  const damage      = marginToDamage(margin);
+
+  // Damage splits by attack kind
+  const damage = kind === 'sonic'
+    ? sonicDamage(margin)
+    : kind === 'swing'
+      ? thrashDamage(margin, !attackerWon)
+      : marginToDamage(margin);
 
   return {
     ...state,
     battle: {
       kind: "attack", attackKind: kind,
-      attackerId, defenderId,
-      atkStat, defStat,
-      atkRoll, diceVals, keptIdx, rawDefRoll, defRoll,
-      atkTotal, defTotal,
-      attackerWon, margin, damage,
-      psychoBushido,
+      attackerId, defenderId, atkStat, defStat,
+      atkRoll, diceVals, keptIdx, rawDefRoll, defRoll, defDie,
+      atkTotal, defTotal, attackerWon, margin, damage, psychoBushido,
     },
   };
 }

@@ -77,6 +77,17 @@ export const CHARGE_ZONE_COUNT       = 3;  // fixed lightning hexes on the board
 export const CHARGE_ZONE_BOOST_TURNS = 2;  // charge duration (holder's turns) on pickup
 export const CHARGE_ZONE_COOLDOWN    = 4;  // turns (any spirit's) before a drained zone relights
 export const CHARGE_FLOOR_BONUS      = 2;  // floor charge: attack die results below 1+2 read as 3
+
+// -- THRASH / SONIC ATTACK SPLIT --
+// Thrash (melee) — d4-based, Vibe-focused, minimal push/FP.
+export const THRASH_DIE              = 4;   // base die for both attacker and defender in Thrash
+export const THRASH_CEIL_DIE         = 6;   // ceiling charge upgrades d4 → d6
+export const THRASH_DAMAGE_CAP       = 4;   // max Vibe damage from a single Thrash hit
+export const THRASH_WHIFF_DMG        = 1;   // losing attacker only takes this much Vibe (humiliation tap)
+export const THRASH_PUSH_THRESHOLD   = 3;   // margin needed before Thrash pushes 1 hex
+// Sonic (ranged) — keep-highest pool, FP/push focused, minimal Vibe damage.
+export const SONIC_VIBE_CAP          = 2;   // max Vibe damage from a Sonic hit
+export const SONIC_LIMELIGHT_FP      = 1;   // bonus FP when Sonic fires from main/pit ring
 // Hexes crossed by the animated lightning bolt on the board art (measured from
 // board_lightning_animated.png against the hex grid; #56 Limelight also under
 // the bolt but stays excluded from the spawn pool).
