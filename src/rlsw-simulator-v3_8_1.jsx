@@ -2065,6 +2065,27 @@ function Game({ gameState, onReturnToLobby }) {
     });
   }
 
+  // 🔊 Whiff chord — a dissonant, twangy pluck: notes are detuned sharp/flat,
+  // staggered with awkward timing, and cut short like botched strings snapping.
+  function playWhiffChord(notes) {
+    if (!notes || !notes.length) return;
+    let prev = null;
+    notes.forEach((note, i) => {
+      const f = voiceLeadFreq(note, prev); if (f) prev = f;
+      // Detune each note randomly ±5-12% to sound "wrong" / out of tune
+      const detune = 1 + (Math.random() * 0.14 - 0.07) * (i % 2 === 0 ? 1 : -1);
+      const wrongFreq = f ? f * detune : undefined;
+      // Stagger unevenly and cut short — a clumsy pluck, not a clean strum
+      const stagger = i * 90 + Math.random() * 60;
+      setTimeout(() => playNoteSound(note, {
+        holdTime: 0.12 + Math.random() * 0.1, // very short — twangy snap
+        fadeTime: 0.3 + Math.random() * 0.2,
+        volume: 0.12 + Math.random() * 0.06,
+        freq: wrongFreq,
+      }), stagger);
+    });
+  }
+
   function playRiffSequence(riff, rootPc) {
     const spb = 60 / (riff.bpm ?? 110); // seconds per beat
     let t = 0.08;
@@ -5980,22 +6001,22 @@ function Game({ gameState, onReturnToLobby }) {
     battleTimersRef.current = [];
     const T = (fn, ms) => { const id = gt(fn, skipCine ? ms * 0.1 : ms); battleTimersRef.current.push(id); return id; };
 
-    // 1.2s: Flash Drive stat
-    T(() => setBattleState(p => p ? { ...p, phase: 'flash_drive' } : p), 1200);
+    // 0.7s: Flash Drive stat
+    T(() => setBattleState(p => p ? { ...p, phase: 'flash_drive' } : p), 700);
 
-    // 2.6s: Pick slides toward attacker by atkStat slots
-    T(() => setBattleState(p => p ? { ...p, phase: 'pick_drive_slide', pickPos: -atkStat } : p), 2600);
+    // 1.4s: Pick slides toward attacker by atkStat slots
+    T(() => setBattleState(p => p ? { ...p, phase: 'pick_drive_slide', pickPos: -atkStat } : p), 1400);
 
-    // 5.2s: Defender slides in (pick slide takes ~2.2s to feel weighty)
-    T(() => setBattleState(p => p ? { ...p, phase: 'enter_defender' } : p), 5200);
+    // 2.8s: Defender slides in
+    T(() => setBattleState(p => p ? { ...p, phase: 'enter_defender' } : p), 2800);
 
-    // 6.4s: Flash Sustain stat
-    T(() => setBattleState(p => p ? { ...p, phase: 'flash_sustain' } : p), 6400);
+    // 3.5s: Flash Sustain stat
+    T(() => setBattleState(p => p ? { ...p, phase: 'flash_sustain' } : p), 3500);
 
-    // 7.8s: Pick slides right by defStat from where it landed
-    T(() => setBattleState(p => p ? { ...p, phase: 'pick_sustain_slide', pickPos: -atkStat + defStat } : p), 7800);
+    // 4.2s: Pick slides right by defStat from where it landed
+    T(() => setBattleState(p => p ? { ...p, phase: 'pick_sustain_slide', pickPos: -atkStat + defStat } : p), 4200);
 
-    // 10.4s: Attacker die appears spinning — waits for click
+    // 5.6s: Attacker die appears spinning — waits for click
     T(() => {
       setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p);
       // Spin random d6 faces
@@ -6005,7 +6026,7 @@ function Game({ gameState, onReturnToLobby }) {
           return { ...p, spinFaceAtk: Math.floor(Math.random() * atkDie) + 1 };
         });
       }, 80);
-    }, 10400);
+    }, 5600);
     // Note: clicking the die triggers handleAtkDieClick (defined below)
   }
 
@@ -6195,8 +6216,9 @@ function Game({ gameState, onReturnToLobby }) {
     dispatch(beatsSpent(2, true));
     setAction(null);
 
-    // 🔊 Sonic projects your prepared CHORD — strum it out as the beam fires.
-    playChord(actingNoteState?.chordStack ?? []);
+    // 🔊 Sonic chord is saved for playback at the RESULT moment (beam blast/fizzle).
+    // Moved from here to the result phase so the chord rings when the beam fires.
+    const sonicChordNotes = [...(actingNoteState?.chordStack ?? [])];
 
     // ── RIFF-OFF TRIGGER ─────────────────────────────────────────────────────
     // If the defender is ALSO plugged in (their own live amp in range) and the
@@ -6367,6 +6389,7 @@ function Game({ gameState, onReturnToLobby }) {
       pedalBonus,
       powerBonus,
       swingEffectRoll: null, // Sonic = ranged, no CQC status effects
+      sonicChordNotes, // 🔊 chord notes saved for playback at beam fire
     });
     setDiceDisplay({ atk: null, def: null, rolling: null });
 
@@ -6375,11 +6398,11 @@ function Game({ gameState, onReturnToLobby }) {
     const skipCine = skipBattleIntrosRef.current;
     battleTimersRef.current = [];
     const T = (fn, ms) => { const id = gt(fn, skipCine ? ms * 0.1 : ms); battleTimersRef.current.push(id); return id; };
-    T(() => setBattleState(p => p ? { ...p, phase: 'flash_drive' }                                         : p), 1200);
-    T(() => setBattleState(p => p ? { ...p, phase: 'pick_drive_slide', pickPos: -atkStat }                 : p), 2600);
-    T(() => setBattleState(p => p ? { ...p, phase: 'enter_defender' }                                      : p), 5200);
-    T(() => setBattleState(p => p ? { ...p, phase: 'flash_sustain' }                                       : p), 6400);
-    T(() => setBattleState(p => p ? { ...p, phase: 'pick_sustain_slide', pickPos: -atkStat + defStat }      : p), 7800);
+    T(() => setBattleState(p => p ? { ...p, phase: 'flash_drive' }                                         : p), 700);
+    T(() => setBattleState(p => p ? { ...p, phase: 'pick_drive_slide', pickPos: -atkStat }                 : p), 1400);
+    T(() => setBattleState(p => p ? { ...p, phase: 'enter_defender' }                                      : p), 2800);
+    T(() => setBattleState(p => p ? { ...p, phase: 'flash_sustain' }                                       : p), 3500);
+    T(() => setBattleState(p => p ? { ...p, phase: 'pick_sustain_slide', pickPos: -atkStat + defStat }      : p), 4200);
     T(() => {
       setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p);
       const spinI = setInterval(() => {
@@ -6389,7 +6412,7 @@ function Game({ gameState, onReturnToLobby }) {
             diceSpin: dicePool.map(s => Math.floor(Math.random() * s) + 1) };
         });
       }, 80);
-    }, 10400);
+    }, 5600);
   }
 
   // ── RIFF-OFF ENGINE ──────────────────────────────────────────────────────────
@@ -6868,8 +6891,8 @@ function Game({ gameState, onReturnToLobby }) {
                 return { ...p, spinFaceDef: randDie(dds) };
               });
             }, 90);
-          }, 2400);
-        }, 800);
+          }, 1400);
+        }, 500);
       }
     }
     setTimeout(tick, interval);
@@ -6925,6 +6948,18 @@ function Game({ gameState, onReturnToLobby }) {
             }
             setBattleState(p => p ? { ...p, phase: 'result' } : p);
 
+            // 🔊 Sonic chord sound — fires at the RESULT moment (beam blast/fizzle)
+            if (isSonic) {
+              const chordNotes = snap.sonicChordNotes;
+              if (chordNotes?.length) {
+                if (attackerWon) {
+                  playChord(chordNotes);
+                } else {
+                  playWhiffChord(chordNotes);
+                }
+              }
+            }
+
             // Apply effects after player reads — values captured in closure above, no ref needed
             setTimeout(() => {
               // Guard: if the player already clicked BACK TO GAME (closeBattleOverlay
@@ -6975,9 +7010,9 @@ function Game({ gameState, onReturnToLobby }) {
                 setBattleState(null);
                 setDiceDisplay(null);
               }
-            }, 5000); // 5s on screen, then auto-close
-          }, 2400);
-        }, 800);
+            }, 3000); // 3s on screen, then auto-close
+          }, 1400);
+        }, 500);
       }
     }
     setTimeout(tick, interval);

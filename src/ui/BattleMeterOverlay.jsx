@@ -641,7 +641,7 @@ export function BattleMeterOverlay({
 
         // Sliding pick uses CSS transition only during slide phases
         const isSliding = ['pick_drive_slide','pick_sustain_slide','pick_atk_slide','pick_def_slide'].includes(phase);
-        const pickTransition = isSliding ? 'left 2.0s cubic-bezier(0.25,0.46,0.45,0.94)' : 'left 0s';
+        const pickTransition = isSliding ? 'left 1.2s cubic-bezier(0.25,0.46,0.45,0.94)' : 'left 0s';
 
         // D6 pip layouts: [value] → array of [cx,cy] offsets from die center (in a 0-1 space, scaled)
         const PIPS = {
@@ -1199,16 +1199,16 @@ export function BattleMeterOverlay({
                 100% { opacity:0; transform:translate(-50%,4%) scale(0.8) rotate(-8deg); }
               }
               /* ── CQC crash: attacker lunge (right) + defender recoil ── */
-              /* ── CQC crash: attacker charges the full gap INTO the defender ──
-                 min(62vw,980px) closes the meter gap on desktop, scales on mobile. */
-              @keyframes battle-crash-light  { 0%{transform:translateX(0)} 46%{transform:translateX(calc(min(62vw,980px) - 70px))} 62%{transform:translateX(calc(min(62vw,980px) - 100px))} 100%{transform:translateX(0)} }
-              @keyframes battle-crash-medium { 0%{transform:translateX(0)} 42%{transform:translateX(min(62vw,980px))} 58%{transform:translateX(calc(min(62vw,980px) - 30px))} 100%{transform:translateX(0)} }
-              @keyframes battle-crash-heavy  { 0%{transform:translateX(0)} 36%{transform:translateX(min(62vw,980px))} 52%{transform:translateX(calc(min(62vw,980px) - 45px))} 100%{transform:translateX(0)} }
-              @keyframes battle-crash-whiff  { 0%{transform:translateX(0) rotate(0)} 40%{transform:translateX(min(62vw,980px)) rotate(6deg)} 58%{transform:translateX(calc(min(62vw,980px) + 60px)) rotate(13deg)} 100%{transform:translateX(0) rotate(0)} }
-              /* ── Defender knockback on impact (wrapper isn't mirrored; +X = driven back right) ── */
-              @keyframes battle-recoil-light  { 0%{transform:translateX(0)} 48%{transform:translateX(0)} 58%{transform:translateX(min(10vw,150px))} 76%{transform:translateX(min(5vw,80px))} 100%{transform:translateX(0)} }
-              @keyframes battle-recoil-medium { 0%{transform:translateX(0)} 44%{transform:translateX(0)} 56%{transform:translateX(min(16vw,240px))} 74%{transform:translateX(min(8vw,130px))} 100%{transform:translateX(0)} }
-              @keyframes battle-recoil-heavy  { 0%{transform:translateX(0) rotate(0)} 40%{transform:translateX(0)} 52%{transform:translateX(min(22vw,330px)) rotate(7deg)} 70%{transform:translateX(min(12vw,190px)) rotate(3deg)} 100%{transform:translateX(0) rotate(0)} }
+              /* ── CQC crash: attacker lunges a short distance INTO the adjacent defender ──
+                 Thrash stage has Spirits close together — just a quick, punchy lunge. */
+              @keyframes battle-crash-light  { 0%{transform:translateX(0)} 46%{transform:translateX(60px)} 62%{transform:translateX(30px)} 100%{transform:translateX(0)} }
+              @keyframes battle-crash-medium { 0%{transform:translateX(0)} 42%{transform:translateX(100px)} 58%{transform:translateX(70px)} 100%{transform:translateX(0)} }
+              @keyframes battle-crash-heavy  { 0%{transform:translateX(0)} 36%{transform:translateX(130px)} 52%{transform:translateX(85px)} 100%{transform:translateX(0)} }
+              @keyframes battle-crash-whiff  { 0%{transform:translateX(0) rotate(0)} 40%{transform:translateX(110px) rotate(6deg)} 58%{transform:translateX(150px) rotate(13deg)} 100%{transform:translateX(0) rotate(0)} }
+              /* ── Defender knockback on impact (+X = driven back right) ── */
+              @keyframes battle-recoil-light  { 0%{transform:translateX(0)} 48%{transform:translateX(0)} 58%{transform:translateX(80px)} 76%{transform:translateX(40px)} 100%{transform:translateX(0)} }
+              @keyframes battle-recoil-medium { 0%{transform:translateX(0)} 44%{transform:translateX(0)} 56%{transform:translateX(140px)} 74%{transform:translateX(70px)} 100%{transform:translateX(0)} }
+              @keyframes battle-recoil-heavy  { 0%{transform:translateX(0) rotate(0)} 40%{transform:translateX(0)} 52%{transform:translateX(200px) rotate(7deg)} 70%{transform:translateX(110px) rotate(3deg)} 100%{transform:translateX(0) rotate(0)} }
               @keyframes battle-row-shake-soft { 0%,100%{transform:translate(0,0)} 20%{transform:translate(-3px,2px)} 40%{transform:translate(3px,-2px)} 60%{transform:translate(-2px,1px)} 80%{transform:translate(2px,-1px)} }
               @keyframes battle-row-shake-hard { 0%,100%{transform:translate(0,0)} 15%{transform:translate(-9px,5px)} 30%{transform:translate(8px,-6px)} 45%{transform:translate(-7px,4px)} 60%{transform:translate(6px,-3px)} 75%{transform:translate(-4px,2px)} 90%{transform:translate(3px,-1px)} }
               /* ── Sonic beam ── */
@@ -1306,9 +1306,11 @@ export function BattleMeterOverlay({
                 defender (right). They bob harder the further the battle pick
                 slides onto their half (atkCheer / defCheer) and pop on each
                 confirmed number. The PNGs are neon-on-black, so screen blend
-                drops the black background and leaves only the glowing fans. */}
-            <div style={{position:'absolute', left:0, right:0, bottom:0, height:'34%',
-                         zIndex:1, pointerEvents:'none', overflow:'hidden'}}>
+                drops the black background and leaves only the glowing fans.
+                The container spans the full overlay height so the fan-fare
+                images can extend upward over the battle content (no clipping). */}
+            <div style={{position:'absolute', left:0, right:0, bottom:0, top:0,
+                         zIndex:10, pointerEvents:'none'}}>
               {/* pink fanfare — attacker, fades in with their Spirit */}
               <div style={{position:'absolute', left:'-3%', bottom:'-2%',
                            width:'54%', maxWidth:720,
@@ -1328,8 +1330,10 @@ export function BattleMeterOverlay({
             </div>
 
             {/* ── Spirit + Meter + Spirit row ── */}
+            {/* Thrash (CQC) stages the Spirits close together, center-stage;
+                Sonic spreads them apart with the meter filling the gap. */}
             <div style={{display:'flex', alignItems:'flex-end', justifyContent:'center',
-                         width:'100%', maxWidth:1300, gap:0,
+                         width:'100%', maxWidth: sonicAttack ? 1300 : 1100, gap:0,
                          position:'relative',
                          animation: rowShakeAnim ?? 'none'}}>
 
@@ -1371,7 +1375,10 @@ export function BattleMeterOverlay({
               {/* ── IMPACT BURST where they collide (sonic blast or melee crash) ── */}
               {phase === 'result' && attackerWon && (
                 <div style={{
-                  position:'absolute', right:'20%', top: sonicAttack ? '54%' : '48%',
+                  position:'absolute',
+                  ...(sonicAttack
+                    ? { right:'20%', top:'54%' }
+                    : { left:'54%', top:'48%', transform:'translateX(-50%)' }),
                   width:sonicAttack ? 160 : (crashTier === 'heavy' ? 220 : crashTier === 'medium' ? 170 : 120),
                   height:sonicAttack ? 160 : (crashTier === 'heavy' ? 220 : crashTier === 'medium' ? 170 : 120),
                   zIndex:6, pointerEvents:'none',
@@ -1382,8 +1389,8 @@ export function BattleMeterOverlay({
 
               {/* ATTACKER SPIRIT */}
               <div style={{
-                width:200, height:SPIRIT_H, flexShrink:0, position:'relative', overflow:'visible',
-                marginRight:-50, zIndex:3,
+                width: sonicAttack ? 200 : 220, height:SPIRIT_H, flexShrink:0, position:'relative', overflow:'visible',
+                marginRight: sonicAttack ? -50 : -260, zIndex: sonicAttack ? 3 : 5,
                 animation: atkCrashAnim ? atkCrashAnim
                           : atkIn ? 'battle-spirit-left 1.1s cubic-bezier(0.22,1,0.36,1) both' : 'none',
                 opacity: atkIn ? 1 : 0,
@@ -1576,8 +1583,8 @@ export function BattleMeterOverlay({
 
               {/* DEFENDER SPIRIT */}
               <div style={{
-                width:200, height:SPIRIT_H, flexShrink:0, position:'relative', overflow:'visible',
-                marginLeft:-50, zIndex:3,
+                width: sonicAttack ? 200 : 220, height:SPIRIT_H, flexShrink:0, position:'relative', overflow:'visible',
+                marginLeft: sonicAttack ? -50 : -260, zIndex: sonicAttack ? 3 : 5,
                 animation: defRecoilAnim ? defRecoilAnim
                           : defIn ? 'battle-spirit-right 1.1s cubic-bezier(0.22,1,0.36,1) both' : 'none',
                 opacity: defIn ? 1 : 0,
