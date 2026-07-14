@@ -461,10 +461,11 @@ export function spotlightMoved(occupied = []) {
   return { type: SPOTLIGHT_MOVED, occupied };
 }
 
-/** Scatter fresh Lost Chord tokens at round end. `occupied` = everything. */
+/** Scatter fresh Lost Chord tokens at round end. `occupied` = everything.
+ *  `aliveCount` / `totalPlayers` drive the resonance-scaling formula. */
 export const TOKENS_SCATTERED = "TOKENS_SCATTERED";
-export function tokensScattered(occupied = []) {
-  return { type: TOKENS_SCATTERED, occupied };
+export function tokensScattered(occupied = [], aliveCount, totalPlayers) {
+  return { type: TOKENS_SCATTERED, occupied, aliveCount, totalPlayers };
 }
 
 /** Disco Inferno flames decay one round. */
@@ -498,6 +499,12 @@ export function eventHexTriggered(spiritId, hexNum) {
   return { type: EVENT_HEX_TRIGGERED, spiritId, hexNum };
 }
 
+/** A successful Thrash hit knocks Lost Chords loose around the defender. */
+export const THRASH_TOKENS_SPAWNED = "THRASH_TOKENS_SPAWNED";
+export function thrashTokensSpawned(defenderHex, occupied, crashTier) {
+  return { type: THRASH_TOKENS_SPAWNED, defenderHex, occupied, crashTier };
+}
+
 /** A spirit picks up a Lost Chord token — token is removed from the board. */
 export const TOKEN_PICKED_UP = "TOKEN_PICKED_UP";
 export function tokenPickedUp(spiritId, hexNum) {
@@ -520,9 +527,10 @@ export function flamingHexesSet(hexes, rounds) {
 // Generic "draw N raw random values from the engine rng" action. The client
 // dispatches this BEFORE event resolution (resolveActiveEvent / pickTrivia / bot
 // trivia odds) and reads the drawn [0,1) floats off `state.lastRandomBatch`.
-// Every draw is in the action log → replay-deterministic. The client turns them
+// Every draw is in the action log -> replay-deterministic. The client turns them
 // into d6 / pool-picks / odds checks as needed.
 export const RANDOM_BATCH_DRAWN = "RANDOM_BATCH_DRAWN";
 export function randomBatchDrawn(count) {
   return { type: RANDOM_BATCH_DRAWN, count };
 }
+

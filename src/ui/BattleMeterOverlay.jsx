@@ -1106,7 +1106,6 @@ export function BattleMeterOverlay({
             justifyContent:'safe center', overflowY:'auto', overflowX:'hidden',
             padding:'24px 0',
             fontFamily:"'Orbitron',sans-serif",
-            animation:'battle-divebomb 1.1s cubic-bezier(0.22,1,0.36,1) both',
           }}>
             {/* ⏭ Skip the pre-die intro straight to the dice roll */}
             {skipBattleIntro && ['enter_attacker','flash_drive','pick_drive_slide','enter_defender','flash_sustain','pick_sustain_slide'].includes(phase) && (
@@ -1119,12 +1118,6 @@ export function BattleMeterOverlay({
               </button>
             )}
             <style>{`
-              @keyframes battle-divebomb {
-                0%   { opacity:0; transform:scale(0.15) rotate(-540deg); filter:blur(10px); }
-                55%  { opacity:1; transform:scale(1.06) rotate(-12deg); filter:blur(0px); }
-                75%  { opacity:1; transform:scale(0.97) rotate(4deg); }
-                100% { opacity:1; transform:scale(1) rotate(0deg); filter:blur(0); }
-              }
               @keyframes battle-spirit-left {
                 from { transform:translateX(-130%); opacity:0; }
                 to   { transform:translateX(0);    opacity:1; }
@@ -1236,6 +1229,19 @@ export function BattleMeterOverlay({
               @keyframes gear-mic-bob { 0%,100%{transform:translateY(0) rotate(-3deg)} 50%{transform:translateY(-4px) rotate(3deg)} }
               @keyframes gear-pedal-stomp { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(0.8)} }
               @keyframes gear-mixer-shimmer { 0%,100%{filter:drop-shadow(0 0 3px #44ffaa)} 50%{filter:drop-shadow(0 0 9px #44ffaa)} }
+              /* ── 🎵 NOTE SCATTER — notes fly off defender on Thrash hit (Sonic-loses-rings style) ── */
+              @keyframes note-scatter {
+                0%   { opacity:1; transform:translate(0,0) rotate(0deg) scale(1); }
+                20%  { opacity:1; }
+                70%  { opacity:0.7; }
+                100% { opacity:0; transform:translate(var(--ns-dx), var(--ns-dy)) rotate(var(--ns-rot)) scale(0.5); }
+              }
+              @keyframes note-scatter-bounce {
+                0%   { opacity:1; transform:translate(0,0) scale(1.2); }
+                40%  { transform:translate(calc(var(--ns-dx)*0.6), calc(var(--ns-dy)*0.6)) scale(0.9); }
+                60%  { transform:translate(calc(var(--ns-dx)*0.7), calc(var(--ns-dy)*0.5 - 30px)) scale(1.0); }
+                100% { opacity:0; transform:translate(var(--ns-dx), var(--ns-dy)) scale(0.4); }
+              }
             `}</style>
 
             {/* ── 🎆 STAGE EFFECTS — fire behind the performers when rolled ── */}
@@ -1533,6 +1539,43 @@ export function BattleMeterOverlay({
                     animation:'battle-impact 0.6s ease-out both',
                   }}/>
                 )}
+
+                {/* ── 🎵 NOTE SCATTER — notes fly off defender on Thrash hit ── */}
+                {phase === 'result' && attackerWon && !sonicAttack && (() => {
+                  const NOTE_GLYPHS = ['♪','♫','♩','♬','𝅘𝅥𝅮','𝅗𝅥','♯','♭'];
+                  const noteCount = crashTier === 'heavy' ? 16 : crashTier === 'medium' ? 12 : 8;
+                  const defC = defender?.color ?? '#00ccff';
+                  return (
+                    <div style={{position:'absolute', right:'22%', top:'38%', width:0, height:0,
+                      zIndex:8, pointerEvents:'none'}}>
+                      {Array.from({length:noteCount}).map((_,i) => {
+                        // Deterministic scatter directions based on index
+                        const angle = (i / noteCount) * 360 + (i * 37) % 60 - 30;
+                        const dist = 80 + (i * 31) % 120;
+                        const rad = angle * Math.PI / 180;
+                        const dx = Math.round(Math.cos(rad) * dist);
+                        const dy = Math.round(Math.sin(rad) * dist);
+                        const rot = ((i * 47) % 360) - 180;
+                        const delay = (i * 0.04).toFixed(2);
+                        const dur = (0.8 + (i * 17) % 6 * 0.1).toFixed(2);
+                        const glyph = NOTE_GLYPHS[i % NOTE_GLYPHS.length];
+                        const usesBounce = i % 3 === 0;
+                        return (
+                          <div key={i} style={{
+                            position:'absolute',
+                            fontSize: 18 + (i * 7) % 14,
+                            color: i % 4 === 0 ? '#ffffff' : i % 4 === 1 ? defC : i % 4 === 2 ? '#ffd700' : '#ff66aa',
+                            textShadow: `0 0 8px ${defC}, 0 0 16px ${defC}88`,
+                            '--ns-dx': `${dx}px`, '--ns-dy': `${dy}px`, '--ns-rot': `${rot}deg`,
+                            animation: `${usesBounce ? 'note-scatter-bounce' : 'note-scatter'} ${dur}s cubic-bezier(0.2,0,0.3,1) ${delay}s both`,
+                          }}>
+                            {glyph}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
 
                 {/* ATTACKER SPIRIT */}
                 <div style={{

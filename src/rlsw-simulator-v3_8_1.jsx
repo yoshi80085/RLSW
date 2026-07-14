@@ -56,7 +56,7 @@ import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn ro
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome, thrashDamage, thrashKnockback, thrashFame, sonicDamage, sonicKnockback, sonicFame } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
@@ -932,8 +932,19 @@ function Game({ gameState, onReturnToLobby }) {
   const [battleState, setBattleState] = useState(null);
   const battleStateRef = useRef(null); // mirrors battleState for use in async callbacks
   const battleTimersRef = useRef([]);   // intro-cinematic setTimeout ids (so a Skip can cancel them)
+  // 🎬 Board dive-bomb: triggers when a battle opens, clears after anim finishes
+  const [boardDiveBomb, setBoardDiveBomb] = useState(false);
+  const prevBattleRef = useRef(null);
   // Keep ref in sync so async callbacks can read latest state without closure issues
-  useEffect(() => { battleStateRef.current = battleState; }, [battleState]);
+  useEffect(() => {
+    battleStateRef.current = battleState;
+    // Trigger dive-bomb when battleState goes from null → non-null
+    if (battleState && !prevBattleRef.current) {
+      setBoardDiveBomb(true);
+      setTimeout(() => setBoardDiveBomb(false), 1200);
+    }
+    prevBattleRef.current = battleState;
+  }, [battleState]);
 
   // Phase 5c slice 2d: the `spiritsRef` mirror is gone — async rule callbacks now
   // read `engineRef.current.spirits` (the authoritative store, updated
@@ -6834,7 +6845,26 @@ function Game({ gameState, onReturnToLobby }) {
       } else {
         awardThrashFame(attackerId, defenderId);
       }
-      if (!sonicAttack) applySwingEffects(attackerId, defenderId, s.swingEffectRoll); // CQC = melee only
+      // ── Thrash impact knocks Lost Chords loose near the defender ──
+      if (!sonicAttack) {
+        const defSpirit = spirits.find(x => x.id === defenderId);
+        if (defSpirit) {
+          const tier = margin >= 6 ? 'heavy' : margin >= 3 ? 'medium' : 'light';
+          const occupied = [
+            ...spirits.filter(sp => !sp.knockedOut).map(sp => sp.num),
+            ...amps.map(a => a.hexNum),
+            ...boardCards.map(c => c.hexNum),
+            ...chargeZones.map(z => z.num),
+            ...eventHexes,
+            ...boardTokens.map(t => t.num),
+            spotlightHex, LIMELIGHT_HEX,
+          ];
+          dispatch(thrashTokensSpawned(defSpirit.num, occupied, tier));
+          const report = engineRef.current.board.lastThrashTokens;
+          if (report) addLog(`🎵 ${report.added.length} Lost Chord${report.added.length !== 1 ? 's' : ''} knocked loose from the impact!`);
+        }
+        applySwingEffects(attackerId, defenderId, s.swingEffectRoll); // CQC = melee only
+      }
       applyPendingCombatEffects(attackerId, defenderId); // Mojo Drain / Stagger land on any hit
       clearBattleBuffs(attackerId, defenderId);
       setBattleState(null);
@@ -7257,9 +7287,12 @@ function Game({ gameState, onReturnToLobby }) {
         if (moveReport) addLog(`💡 The spotlight shifts to hex #${moveReport.to}!`);
       }
       // ── BOARD TOKENS: scatter fresh Lost Chords each round (engine rng) ───
+      // The stage resonates with overlapping frequencies — harmonic interference
+      // crystallises stray notes. Fewer Spirits = thinner resonance = more fragments.
       {
+        const aliveSpirits = spirits.filter(sp => !sp.knockedOut);
         const occupied = [
-          ...spirits.filter(sp => !sp.knockedOut).map(sp => sp.num),
+          ...aliveSpirits.map(sp => sp.num),
           ...amps.map(a => a.hexNum),
           ...boardCards.map(c => c.hexNum),
           ...chargeZones.map(z => z.num),
@@ -7267,9 +7300,9 @@ function Game({ gameState, onReturnToLobby }) {
           ...boardTokens.map(t => t.num),
           spotlightHex, LIMELIGHT_HEX,
         ];
-        dispatch(tokensScattered(occupied));
+        dispatch(tokensScattered(occupied, aliveSpirits.length, spirits.length));
         const scatterReport = engineRef.current.board.lastTokensScattered;
-        if (scatterReport) addLog(`🎵 Fresh Lost Chords appear across the stage!`);
+        if (scatterReport) addLog(`🎵 The stage resonates — ${scatterReport.added.length} Lost Chord${scatterReport.added.length !== 1 ? 's' : ''} crystallise from the harmonic interference!`);
       }
       // ── DISCO INFERNO: flames die down one round per full round (engine) ──
       {
@@ -10413,7 +10446,9 @@ function Game({ gameState, onReturnToLobby }) {
 
           <div
             ref={boardDivRef}
-            style={{position:"relative",width:"100%",maxWidth:1040,overflow:"visible",borderRadius:8,border:"1px solid #1a2a40",cursor:isPanningRef.current?"grabbing":"default"}}
+            style={{position:"relative",width:"100%",maxWidth:1040,overflow:"visible",borderRadius:8,border:"1px solid #1a2a40",cursor:isPanningRef.current?"grabbing":"default",
+              ...(boardDiveBomb ? {animation:'board-divebomb 1.1s cubic-bezier(0.22,1,0.36,1) forwards', transformOrigin:'center center'} : {}),
+            }}
             onMouseDown={handleBoardMouseDown}
             onMouseMove={handleBoardMouseMove}
             onMouseUp={handleBoardMouseUp}

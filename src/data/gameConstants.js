@@ -27,6 +27,8 @@ export const UNDERDOG_MIN_DEFICIT    = 6;    // must be trailing the loser by at
 export const UNDERDOG_DEFICIT_PER_STEP = 6;  // every 6 Fame of deficit adds +0.5 to the multiplier
 export const UNDERDOG_MAX_MULT       = 2.5;  // hard ceiling on the comeback multiplier
 export const TOKEN_MAX        = 6;    // max board mini-goal tokens on the board at once (all Lost Chords now)
+export const TOKEN_BASE_POOL  = 10;   // target total tokens regardless of player count — fewer players → more starting tokens
+export const TOKEN_PER_ROUND_BASE = 2; // tokens scattered per round with a full roster (scales up as players drop)
 
 // -- FAN ECONOMY --
 // Fans never convert to Fame -- they MULTIPLY the Fame every deed is worth.

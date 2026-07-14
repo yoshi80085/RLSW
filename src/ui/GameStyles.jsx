@@ -280,6 +280,14 @@ export function GameStyles() {
           50%     { transform: translate(2px,-1px); }
           75%     { transform: translate(-1px,2px); }
         }
+        /* ── 🎬 Board dive-bomb: camera spirals into the battle ── */
+        @keyframes board-divebomb {
+          0%   { transform: scale(1) rotate(0deg); filter: blur(0); }
+          20%  { transform: scale(1.8) rotate(-90deg); filter: blur(2px); }
+          50%  { transform: scale(3.2) rotate(-270deg); filter: blur(5px); }
+          75%  { transform: scale(5.0) rotate(-450deg); filter: blur(8px); opacity: 0.4; }
+          100% { transform: scale(7.0) rotate(-540deg); filter: blur(12px); opacity: 0; }
+        }
       `}</style>
   );
 }
