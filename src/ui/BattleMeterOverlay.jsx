@@ -21,6 +21,9 @@ export function BattleMeterOverlay({
   battleState,
   closeBattleOverlay,
   closeRiffOff,
+  enterRiffAnte,
+  pickRiffAnte,
+  respondRiffAnte,
   crowdBlueImg,
   crowdPinkImg,
   fameFromMargin,
@@ -88,7 +91,7 @@ export function BattleMeterOverlay({
           const isBreak     = clashing && clashStage === 'break';
           // Round-2 riff phases (the new sudden-death round playing out)
           const r2intro     = phase === 'riff_r2intro';
-          const inRiffPlay  = ['riff_countdown','riff_play','riff_handoff'].includes(phase) || r2intro;
+          const inRiffPlay  = ['riff_countdown','riff_play','riff_handoff','riff_ante','riff_ante_respond'].includes(phase) || r2intro;
           const bgBeams     = round >= 2 && inRiffPlay; // round-1 beams linger behind round 2
           // Lean: how far off-center the beams meet. Pushed toward the WEAKER
           // side (the one losing the push). attacker stronger → meet point right.
@@ -116,10 +119,12 @@ export function BattleMeterOverlay({
             : undefined;
 
           // Highlight logic: who's "live" right now
-          const atkLive = phase === 'riff_intro' || (['riff_countdown','riff_play'].includes(phase) && isAtkTurn)
+          const atkLive = phase === 'riff_intro' || phase === 'riff_ante'
+            || (['riff_countdown','riff_play'].includes(phase) && isAtkTurn)
             || (phase === 'riff_result' && !battleState.tie && battleState.attackerWon)
             || (clashing && (!isBreak || clashWinner === 'attacker'));
           const defLive = phase === 'riff_intro' || phase === 'riff_handoff'
+            || phase === 'riff_ante_respond'
             || (['riff_countdown','riff_play'].includes(phase) && !isAtkTurn)
             || (phase === 'riff_result' && !battleState.tie && !battleState.attackerWon)
             || (clashing && (!isBreak || clashWinner === 'defender'));
@@ -355,15 +360,102 @@ export function BattleMeterOverlay({
                     {attacker?.name} calls a <span style={{color:attacker?.color ?? '#ff8866'}}>{RIFF_CONTOUR_LABELS[battleState.atkRiff?.contour]}</span><br/>
                     {defender?.name} answers with a <span style={{color:defender?.color ?? '#66ccff'}}>{answerInfo.name}</span> — {answerInfo.desc}
                   </div>
-                  <button onClick={() => riffBeginTurn('attacker')} style={bigBtn('#ffd700')}>
+                  <button onClick={() => enterRiffAnte()} style={bigBtn('#ffd700')}>
                     🎤 {attacker?.name} — DROP THE RIFF
                   </button>
                   <div style={{marginTop:7, fontSize:8.5, color:'#6a8aaa'}}>
-                    <span onClick={() => riffBeginTurn('attacker')}
+                    <span onClick={() => enterRiffAnte()}
                       style={{cursor:'pointer', textDecoration:'underline', color:'#9ab'}}>Skip intro ▸</span>
                   </div>
                 </div>
               )}
+
+              {/* ── ANTE — attacker picks a stake (Phase R5.2 Throw Down) ── */}
+              {phase === 'riff_ante' && (() => {
+                const atkNs = noteStates?.[battleState.attackerId] ?? {};
+                const atkFame = atkNs.fame ?? 0;
+                const atkCas  = atkNs.casuals ?? 0;
+                const anteBtn = (label, type, amount, disabled) => (
+                  <button key={`${type}-${amount}`} disabled={disabled}
+                    onClick={() => pickRiffAnte(type, amount)}
+                    style={{cursor: disabled ? 'not-allowed' : 'pointer', fontFamily:"'Orbitron',sans-serif",
+                      fontSize:9, letterSpacing:1, padding:'6px 12px', borderRadius:6,
+                      color: disabled ? '#4a5f80' : '#fff',
+                      background: disabled ? '#0a1020' : (type === 'fp' ? '#cc442288' : '#2288cc44'),
+                      border:`1px solid ${disabled ? '#2a3a55' : (type === 'fp' ? '#ff6655' : '#55aaff')}`,
+                      opacity: disabled ? 0.5 : 1}}>
+                    {label}
+                  </button>
+                );
+                return (
+                  <div style={cardBase('#ffaa44')}>
+                    <div style={{fontSize:13, fontWeight:900, letterSpacing:3, color:'#ffaa44',
+                      textShadow:'0 0 18px #ff882244', marginBottom:6}}>
+                      🎲 THROW DOWN
+                    </div>
+                    <div style={{fontSize:9, color:'#8aa5c5', marginBottom:12}}>
+                      {attacker?.name} — stake something on this duel? The defender must match or back down.
+                    </div>
+                    <div style={{display:'flex', gap:6, justifyContent:'center', flexWrap:'wrap', marginBottom:8}}>
+                      {anteBtn('⭐ 1 FP', 'fp', 1, atkFame < 1)}
+                      {anteBtn('⭐⭐ 2 FP', 'fp', 2, atkFame < 2)}
+                      {anteBtn('⭐⭐⭐ 3 FP', 'fp', 3, atkFame < 3)}
+                    </div>
+                    <div style={{display:'flex', gap:6, justifyContent:'center', flexWrap:'wrap', marginBottom:12}}>
+                      {anteBtn('👥 3 Fans', 'fans', 3, atkCas < 3)}
+                      {anteBtn('👥👥 5 Fans', 'fans', 5, atkCas < 5)}
+                    </div>
+                    <button onClick={() => pickRiffAnte(null)} style={{...bigBtn('#6a8aaa'), fontSize:10}}>
+                      🤘 No Stakes — Just Play
+                    </button>
+                  </div>
+                );
+              })()}
+
+              {/* ── ANTE RESPOND — defender accepts or declines ── */}
+              {phase === 'riff_ante_respond' && (() => {
+                const ante = battleState.ante;
+                if (!ante) return null;
+                const label = ante.type === 'fp'
+                  ? `${ante.amount} Fame Point${ante.amount > 1 ? 's' : ''}`
+                  : `${ante.amount} casual fan${ante.amount > 1 ? 's' : ''}`;
+                const defNs = noteStates?.[battleState.defenderId] ?? {};
+                const canMatch = ante.type === 'fp'
+                  ? (defNs.fame ?? 0) >= ante.amount
+                  : (defNs.casuals ?? 0) >= ante.amount;
+                return (
+                  <div style={cardBase('#ffd700')}>
+                    <div style={{fontSize:13, fontWeight:900, letterSpacing:3, color:'#ffd700',
+                      textShadow:'0 0 18px #ffd70044', marginBottom:6}}>
+                      🎲 THROW DOWN!
+                    </div>
+                    <div style={{fontSize:10, color:'#fff', marginBottom:4}}>
+                      <span style={{color:attacker?.color ?? '#ff8866'}}>{attacker?.name}</span> stakes{' '}
+                      <span style={{color: ante.type === 'fp' ? '#ffd700' : '#55aaff', fontWeight:700}}>{label}</span>!
+                    </div>
+                    <div style={{fontSize:9, color:'#8aa5c5', marginBottom:14}}>
+                      {defender?.name} — match it, or back down? Declining costs casual fans.
+                    </div>
+                    <div style={{display:'flex', gap:10, justifyContent:'center'}}>
+                      <button onClick={() => respondRiffAnte(true)}
+                        disabled={!canMatch}
+                        style={{...bigBtn(canMatch ? '#44cc66' : '#4a5f80'), fontSize:10,
+                          opacity: canMatch ? 1 : 0.5, cursor: canMatch ? 'pointer' : 'not-allowed'}}>
+                        ✅ MATCH — {label} in the pot
+                      </button>
+                      <button onClick={() => respondRiffAnte(false)}
+                        style={{...bigBtn('#cc4444'), fontSize:10}}>
+                        ❌ DECLINE
+                      </button>
+                    </div>
+                    {!canMatch && (
+                      <div style={{fontSize:8, color:'#ff6655', marginTop:6}}>
+                        Not enough {ante.type === 'fp' ? 'Fame' : 'fans'} to match — must decline
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* ── COUNTDOWN ── */}
               {phase === 'riff_countdown' && (
@@ -586,6 +678,18 @@ export function BattleMeterOverlay({
                       {statCard(attacker, A, battleState.atkRiff, battleState.atkResults, !tie && won)}
                       {statCard(defender, D, battleState.defRiff, battleState.defResults, !tie && !won)}
                     </div>
+                    {/* Pot summary for Throw Down antes */}
+                    {battleState.ante?.status === 'accepted' && (
+                      <div style={{fontSize:9, fontWeight:700, color:'#ffaa44', marginBottom:8, letterSpacing:1}}>
+                        🎲 POT: {battleState.ante.amount} {battleState.ante.type === 'fp' ? 'FP' : 'fans'} each
+                        {tie ? ' — returned to both sides' : ` — ${winSp?.name} takes it all`}
+                      </div>
+                    )}
+                    {battleState.ante?.status === 'declined' && (
+                      <div style={{fontSize:8, color:'#6a8aaa', marginBottom:6, fontStyle:'italic'}}>
+                        🎲 Ante was declined — no pot
+                      </div>
+                    )}
                     <div style={{fontSize:8.5, color:'#6a8aaa', lineHeight:1.7}}>
                       {tie
                         ? (battleState.riffTier === 'acoustic'

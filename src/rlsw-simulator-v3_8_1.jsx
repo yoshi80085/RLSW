@@ -1000,10 +1000,15 @@ function Game({ gameState, onReturnToLobby }) {
   useEffect(() => { skipBattleIntrosRef.current = skipBattleIntros; }, [skipBattleIntros]);
 
   // ⏭ Auto-skip: when the toggle is on, jump straight from a battle intro card into the
-  // count-in. (The handoff card stays — it shows the live score, not lore.)
+  // ante (or countdown for R2 intros). The ante is a gameplay decision, not a cinematic,
+  // so it still appears even with skip-intros on.
   useEffect(() => {
     if (!battleState?.riffOff || !skipBattleIntrosRef.current) return;
-    if (battleState.phase === 'riff_intro' || battleState.phase === 'riff_r2intro') {
+    if (battleState.phase === 'riff_intro') {
+      const t = setTimeout(() => enterRiffAnte(), 60);
+      return () => clearTimeout(t);
+    }
+    if (battleState.phase === 'riff_r2intro') {
       const t = setTimeout(() => riffBeginTurn('attacker'), 60);
       return () => clearTimeout(t);
     }
@@ -5556,7 +5561,7 @@ function Game({ gameState, onReturnToLobby }) {
   // sonic (this is the big show), style pay rewards HOW you played, tier mult
   // shapes the acoustic-vs-stadium split, and loser consolation softens the
   // dexterity gap for close duels. All numbers are first-pass — tune in playtest.
-  function awardRiffFame(winnerId, loserId, battleS, tier) {
+  function awardRiffFame(winnerId, loserId, battleS, tier, pot = 0) {
     const round   = battleS.round ?? 1;
     const verdict = battleS;
     const margin  = verdict.margin ?? 0;
@@ -5575,6 +5580,9 @@ function Game({ gameState, onReturnToLobby }) {
     }
     // Round-2 stadium flat bonus
     if (round >= 2 && tier !== 'acoustic') base += 2;
+    // ── Pot (Phase R5.2 Throw Down) — added before underdog calc so the
+    //    full stake amplifies through the comeback ramp + crowd multiplier. ──
+    if (pot > 0) base += pot;
     // ── Headliner rider ──
     const rider = headlinerRider(winnerId);
     base += rider;
@@ -6738,6 +6746,7 @@ function Game({ gameState, onReturnToLobby }) {
     setBattleState({
       riffOff: true, sonicAttack: true,   // sonicAttack → sonic-scale knockback
       riffTier: tier,                     // Phase R4: 'acoustic' | 'stadium'
+      ante: null,                         // Phase R5.2: { type:'fp'|'fans', amount:N, status:'offered'|'accepted'|'declined' }
       phase: 'riff_intro',
       attackerId: attacker.id, defenderId: defender.id,
       atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
@@ -7054,6 +7063,8 @@ function Game({ gameState, onReturnToLobby }) {
     const s = battleStateRef.current;
     if (!s?.riffOff) { setBattleState(null); setDiceDisplay(null); return; }
     const { attackerWon, margin, damage, tie, attackerId, defenderId } = s;
+    // ── 🎲 Ante pot resolution (Phase R5.2 Throw Down) ──
+    const ante = s.ante;
     if (!tie) {
       const winnerId = attackerWon ? attackerId : defenderId;
       const loserId  = attackerWon ? defenderId : attackerId;
@@ -7062,7 +7073,37 @@ function Game({ gameState, onReturnToLobby }) {
       battleKnockback(winnerId, loserId, sonicKnockback(margin, loser?.vibe ?? 1, loser?.maxVibe ?? 1));
       resolveWinDamage(winnerId, loserId, damage, spirits.find(x => x.id === winnerId)?.name);
       // Phase R6: dedicated riff-off FP engine (replaces awardSonicFame).
-      awardRiffFame(winnerId, loserId, s, s.riffTier);
+      // FP ante pot feeds into the base before underdog ramp (R5.2 design).
+      const fpPot = (ante?.status === 'accepted' && ante.type === 'fp') ? ante.amount : 0;
+      awardRiffFame(winnerId, loserId, s, s.riffTier, fpPot);
+      // FP ante: loser loses their staked FP
+      if (fpPot > 0) {
+        const loserFame = engineRef.current.noteStates?.[loserId]?.fame ?? noteStates[loserId]?.fame ?? 0;
+        const fpLoss = Math.min(ante.amount, loserFame);
+        if (fpLoss > 0) {
+          dispatch(fameChanged(loserId, -fpLoss));
+          addLog(`🎲 ${spirits.find(x => x.id === loserId)?.name} loses ${fpLoss} staked FP!`);
+        }
+      }
+      // Fan ante: loser's casuals → Unsure pool, winner recruits
+      if (ante?.status === 'accepted' && ante.type === 'fans') {
+        const loserNs = engineRef.current.noteStates?.[loserId] ?? noteStates[loserId] ?? {};
+        const fanLoss = Math.min(ante.amount, loserNs.casuals ?? 0);
+        if (fanLoss > 0) {
+          dispatch(fansChanged(loserId, { casuals: Math.max(0, (loserNs.casuals ?? 0) - fanLoss) }));
+          setUnsurePool(p => p + fanLoss);
+          addLog(`🎲 ${spirits.find(x => x.id === loserId)?.name} loses ${fanLoss} fans to the Unsure pool!`);
+          flashFanFx(loserId, 'scatter', fanLoss);
+        }
+        const winnerNs = engineRef.current.noteStates?.[winnerId] ?? noteStates[winnerId] ?? {};
+        const recruit = Math.min(ante.amount, (unsurePool + fanLoss));
+        if (recruit > 0) {
+          dispatch(fansChanged(winnerId, { casuals: Math.min(FAN_CASUAL_CAP, (winnerNs.casuals ?? 0) + recruit) }));
+          setUnsurePool(p => Math.max(0, p - recruit));
+          addLog(`🎲 ${spirits.find(x => x.id === winnerId)?.name} wins over ${recruit} fans from the crowd!`);
+          triggerUnsureWin(winnerId, recruit);
+        }
+      }
       // 👑 HEADLINER — winner of any riff-off claims the title
       const prevHeadliner = engineRef.current.headliner;
       dispatch(headlinerChanged(winnerId));
@@ -7076,12 +7117,87 @@ function Game({ gameState, onReturnToLobby }) {
         triggerEffectFlash(winnerId, '👑', 'HEADLINER!', '#ffd700');
       }
       if (attackerWon) applyPendingCombatEffects(attackerId, defenderId);
+    } else if (ante?.status === 'accepted') {
+      addLog(`🎲 Dead heat — both sides get their stakes back.`);
     }
     clearBattleBuffs(attackerId, defenderId);
     riffEngineRef.current?.timers?.forEach(clearTimeout);
     riffEngineRef.current = null;
     setBattleState(null);
     setDiceDisplay(null);
+  }
+
+  // ── 🎲 THROW DOWN — riff-off ante system (Phase R5.2) ────────────────────────
+  // Challenger stakes FP or fans; defender matches to accept or declines (crowd
+  // boos, loses casuals → Unsure pool). Winner takes the pot. Fan stakes flow
+  // through the Unsure pool so no diehard theft can snowball.
+  const ANTE_DECLINE_PENALTY = 3; // casuals the declining defender loses
+
+  function enterRiffAnte() {
+    setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_ante' } : p);
+  }
+
+  function pickRiffAnte(stakeType, amount) {
+    if (!stakeType) {
+      // No stake — skip ante, straight to countdown
+      riffBeginTurn('attacker');
+      return;
+    }
+    const bs = battleStateRef.current;
+    if (!bs?.riffOff) return;
+    const atkId = bs.attackerId;
+    const atkNs = engineRef.current.noteStates?.[atkId] ?? noteStates[atkId] ?? {};
+    if (stakeType === 'fp' && (atkNs.fame ?? 0) < amount) {
+      addLog(`🎲 Not enough Fame to stake ${amount} FP!`); return;
+    }
+    if (stakeType === 'fans' && (atkNs.casuals ?? 0) < amount) {
+      addLog(`🎲 Not enough casual fans to stake ${amount}!`); return;
+    }
+    const atkName = spirits.find(s => s.id === atkId)?.name;
+    const label = stakeType === 'fp'
+      ? `${amount} Fame Point${amount > 1 ? 's' : ''}`
+      : `${amount} casual fan${amount > 1 ? 's' : ''}`;
+    addLog(`🎲 THROW DOWN! ${atkName} stakes ${label}!`);
+    setBattleState(p => p?.riffOff ? {
+      ...p,
+      ante: { type: stakeType, amount, status: 'offered' },
+      phase: 'riff_ante_respond',
+    } : p);
+  }
+
+  function respondRiffAnte(accept) {
+    const bs = battleStateRef.current;
+    if (!bs?.riffOff || !bs.ante) return;
+    const defId = bs.defenderId;
+    const defName = spirits.find(s => s.id === defId)?.name;
+    if (accept) {
+      const defNs = engineRef.current.noteStates?.[defId] ?? noteStates[defId] ?? {};
+      if (bs.ante.type === 'fp' && (defNs.fame ?? 0) < bs.ante.amount) {
+        addLog(`🎲 ${defName} can't match — not enough Fame!`);
+        respondRiffAnte(false); return;
+      }
+      if (bs.ante.type === 'fans' && (defNs.casuals ?? 0) < bs.ante.amount) {
+        addLog(`🎲 ${defName} can't match — not enough fans!`);
+        respondRiffAnte(false); return;
+      }
+      const label = bs.ante.type === 'fp' ? 'FP' : 'fans';
+      addLog(`🎲 ${defName} MATCHES the ante — ${bs.ante.amount} ${label} in the pot!`);
+      triggerEffectFlash(defId, '🎲', 'MATCHED!', '#ffd700');
+      setBattleState(p => p?.riffOff ? { ...p, ante: { ...p.ante, status: 'accepted' } } : p);
+    } else {
+      // Decline: crowd boos, defender loses casuals → Unsure
+      const defNs = engineRef.current.noteStates?.[defId] ?? noteStates[defId] ?? {};
+      const casLoss = Math.min(ANTE_DECLINE_PENALTY, defNs.casuals ?? 0);
+      if (casLoss > 0) {
+        dispatch(fansChanged(defId, { casuals: Math.max(0, (defNs.casuals ?? 0) - casLoss) }));
+        setUnsurePool(p => p + casLoss);
+        flashFanFx(defId, 'scatter', casLoss);
+      }
+      addLog(`😤 ${defName} DECLINES the challenge — the crowd boos!${casLoss > 0 ? ` ${casLoss} fans drift away.` : ''}`);
+      setBattleState(p => p?.riffOff ? { ...p, ante: { ...p.ante, status: 'declined' } } : p);
+    }
+    // Either way, proceed to the countdown after a brief pause
+    setTimeout(() => riffBeginTurn('attacker'), accept ? 400 : 800);
   }
 
   // Zero out tempDrive/tempSustain for both combatants once a battle resolves.
@@ -8177,10 +8293,33 @@ function Game({ gameState, onReturnToLobby }) {
     if (!bs?.riffOff) return;
     const atkBot = isBot(spirits.find(s => s.id === bs.attackerId));
     const defBot = isBot(spirits.find(s => s.id === bs.defenderId));
-    // Intro → start the attacker's call, but only if the ATTACKER is a bot (a
-    // human attacker taps "DROP THE RIFF" themselves).
+    // Intro → enter ante (now flows through riff_ante), but only if the ATTACKER
+    // is a bot (a human attacker taps "DROP THE RIFF" themselves).
     if ((bs.phase === 'riff_intro' || bs.phase === 'riff_r2intro') && atkBot) {
-      const t = setTimeout(() => { if (battleStateRef.current?.phase === bs.phase) riffBeginTurn('attacker'); }, 800);
+      const t = setTimeout(() => {
+        const cur = battleStateRef.current;
+        if (cur?.phase === 'riff_intro') enterRiffAnte();
+        else if (cur?.phase === 'riff_r2intro') riffBeginTurn('attacker');
+      }, 800);
+      return () => clearTimeout(t);
+    }
+    // Ante phase: bot attacker always skips ante (no stakes)
+    if (bs.phase === 'riff_ante' && atkBot) {
+      const t = setTimeout(() => { if (battleStateRef.current?.phase === 'riff_ante') pickRiffAnte(null); }, 500);
+      return () => clearTimeout(t);
+    }
+    // Ante respond: bot defender always accepts if they can, otherwise declines
+    if (bs.phase === 'riff_ante_respond' && defBot) {
+      const t = setTimeout(() => {
+        if (battleStateRef.current?.phase !== 'riff_ante_respond') return;
+        const ante = battleStateRef.current.ante;
+        if (!ante) { riffBeginTurn('attacker'); return; }
+        const defNs = engineRef.current.noteStates?.[bs.defenderId] ?? noteStates[bs.defenderId] ?? {};
+        const canMatch = ante.type === 'fp'
+          ? (defNs.fame ?? 0) >= ante.amount
+          : (defNs.casuals ?? 0) >= ante.amount;
+        respondRiffAnte(canMatch);
+      }, 600);
       return () => clearTimeout(t);
     }
     // Handoff → start the defender's answer, but only if the DEFENDER is a bot (a
@@ -9059,6 +9198,9 @@ function Game({ gameState, onReturnToLobby }) {
         battleState={battleState}
         closeBattleOverlay={closeBattleOverlay}
         closeRiffOff={closeRiffOff}
+        enterRiffAnte={enterRiffAnte}
+        pickRiffAnte={pickRiffAnte}
+        respondRiffAnte={respondRiffAnte}
         crowdBlueImg={crowdBlueImg}
         crowdPinkImg={crowdPinkImg}
         fameFromMargin={fameFromMargin}

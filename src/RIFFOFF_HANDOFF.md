@@ -253,10 +253,10 @@ dodge the marquee event forever by staying unplugged.
    in `awardSonicFame` / `awardThrashFame` / `awardRiffFame` (not in
    `grantFame`, so riff discoveries/cadences/trivia are unaffected).
    Engine state: `headliner: spiritId | null`.
-2. **THROW DOWN (ante)** — challenger stakes FP/HC/fans; defender matches to
-   accept or declines and the crowd boos (loses casual fans — routed through
-   the Unsure pool, never diehards). Winner takes the pot. Small stakes card
-   in the UI before the countdown.
+2. ✅ **THROW DOWN (ante)** — challenger stakes FP/HC/fans; defender matches
+   to accept or declines and the crowd boos (loses casual fans — routed
+   through the Unsure pool, never diehards). Winner takes the pot. Small
+   stakes card in the UI before the countdown.
 3. **GRUDGE MATCH** — a riff-off loser may re-challenge the same rival
    within 2 turns at ×2 stakes. Once per rivalry. Comeback canon.
 4. **CALL YOUR SHOT** — declare a quality bar pre-duel ("flawless or
@@ -276,8 +276,9 @@ New `awardRiffFame(winnerId, loserId, verdict, tier, pot)`:
 - ✅ **Style pay**: +1 per 3 perfects (pay for *how* you played, not just that
   you won — `verdict.atkStats/defStats` already carry `perfects`/`quality`).
 - ✅ **Tier mult**: acoustic ×0.6, stadium ×1, Round-2 stadium +2 flat.
-- **Pot**: stakes winnings added after base (underdog/crowd mults then apply
-  via the normal `grantFame` path). *(wired when THROW DOWN ante lands)*
+- ✅ **Pot**: stakes winnings added after base (underdog/crowd mults then
+  apply via the normal `grantFame` path). Wired in R5.2 — `awardRiffFame`
+  accepts `pot` param, `closeRiffOff` passes accepted FP ante as `fpPot`.
 - ✅ **Loser consolation**: quality ≥ 80% → 1 FP, "the crowd salutes a worthy
   set." Softens the dexterity gap; the crowd loves a close duel.
 - All numbers are first-pass — tune in playtest, keep the *structure*.
@@ -298,6 +299,45 @@ New `awardRiffFame(winnerId, loserId, verdict, tier, pot)`:
   mult (acoustic ×0.6, stadium ×1, Round-2 +2), loser consolation (quality
   ≥80% → 1 FP "worthy set"), headliner rider, underdog ramp.
 - **HUD**: 👑 shown next to headliner's name in the spirit card.
+
+### R5.2 Throw Down ante build notes (2026-07-14)
+
+- **Flow**: `riff_intro` → `riff_ante` (NEW) → `riff_ante_respond` (NEW) →
+  `riff_countdown` → ... → `closeRiffOff`. Ante phases are client
+  orchestration — no new engine actions needed.
+- **`enterRiffAnte()`**: transitions battleState to `riff_ante` phase.
+- **`pickRiffAnte(stakeType, amount)`**: attacker picks FP or fan stake.
+  Validates attacker has enough resources. Null stakeType = "no stakes, just
+  play" — skips straight to `riffBeginTurn('attacker')`.
+  Stakes offered: ⭐1/⭐⭐2/⭐⭐⭐3 FP, 👥3/👥👥5 fans. Each disabled
+  when attacker lacks resources.
+- **`respondRiffAnte(accept)`**: defender accepts (match) or declines.
+  - **Accept**: validates defender can match the stake amount, sets
+    `ante.status = 'accepted'`.
+  - **Decline**: defender loses `ANTE_DECLINE_PENALTY` (3) casuals → Unsure
+    pool via `fansChanged` dispatch. Sets `ante.status = 'declined'`.
+  - Either path → `riffBeginTurn('attacker')` after 300ms.
+- **Ante state**: `battleState.ante = { type:'fp'|'fans', amount:N,
+  status:'offered'|'accepted'|'declined' }`. Initialized `null` in
+  `startRiffOff`.
+- **FP pot payout**: `closeRiffOff` extracts `fpPot` from accepted FP ante.
+  Fed into `awardRiffFame(winnerId, loserId, s, tier, fpPot)` — added to
+  base **before** underdog ramp + crowd multiplier, per design spec. Loser's
+  staked FP deducted via `fameChanged(loserId, -fpLoss)`.
+- **Fan pot payout**: accepted fan ante → loser's casuals moved to Unsure
+  pool via `fansChanged`; winner recruits same count from Unsure via
+  `fansChanged`. No diehard theft.
+- **Tie with ante**: stakes returned, no penalty. Log: "Dead heat — both
+  sides get their stakes back."
+- **Bot policy**: bot attackers skip ante (`pickRiffAnte(null)`). Bot
+  defenders accept if they can match the stake amount, decline otherwise.
+- **skipBattleIntros**: skips cinematic intro but still shows the ante card
+  (gameplay decision, not cinematic). `riff_intro` → `enterRiffAnte()`.
+- **BattleMeterOverlay**: ante phase cards added. `riff_ante` = attacker
+  stake picker (FP/fan buttons, disabled when lacking resources, "No
+  Stakes — Just Play" fallback). `riff_ante_respond` = defender accept/
+  decline with match validation + "not enough" warning. Result card shows
+  pot summary: winner takes all / returned on tie / declined.
 
 ---
 
@@ -359,7 +399,9 @@ stay signature exclusives.
 | R2 | ✅ `showLabels`/`maxLen` presets, VIRTUOSO, diamond sharp-cue | `riff/fallingNotes.js`, `ui/RiffHighway.jsx`, `ui/BattleMeterOverlay.jsx`, `engine/actions.js`, `engine/systems/riffOff.js`, main file (`startRiffOff`) |
 | R3 | ✅ Neon instrument + highway | `ui/RiffHighway.jsx`, main-file `renderInstrument` (keyframes inline in component `<style>`, no `index.css` changes needed) |
 | R4 | ✅ Acoustic duel action + cooldowns | `engine/actions.js` (tier param), `engine/systems/riffOff.js` (tier in battle slice), main file (`initiateAcousticDuel`, `startRiffOff` tier, `riffResolve` acoustic path, action button, hex highlight, bot policy), `ui/BattleMeterOverlay.jsx` (tier labels) |
-| R5 | Headliner, then Ante | engine state slice, main file, HUD, `ui/BattleMeterOverlay.jsx` |
+| R5.1 | ✅ Headliner (+1 FP rider) | `engine/state.js`, `engine/actions.js`, `engine/systems/economy.js`, `engine/reduce.js`, main file (`closeRiffOff`, `awardSonicFame`, `awardThrashFame`, `awardRiffFame`, HUD) |
+| R5.2 | ✅ Throw Down ante | main file (`enterRiffAnte`, `pickRiffAnte`, `respondRiffAnte`, `closeRiffOff` pot, bot hooks), `ui/BattleMeterOverlay.jsx` (ante cards, result pot summary) |
+| R5.3–5.4 | Grudge Match, Call Your Shot | main file, `ui/BattleMeterOverlay.jsx` |
 | R6 | `awardRiffFame` | `engine/systems/combat.js` or `riffOff.js`, main file `closeRiffOff` |
 | R7 | Sabotage skills | `SKILL_TREE`, `engine/systems/riffOff.js`, `ui/RiffHighway.jsx` |
 
