@@ -2966,6 +2966,12 @@ function Game({ gameState, onReturnToLobby }) {
           setTimeout(() => setFreshNoteIdx(prev => (prev?.spiritId === spiritId ? null : prev)), 700);
         }, 0);
       }
+      // Phase R5.3: log grudge expiry
+      if (ns.grudge && ns.grudge.turnsLeft <= 1) {
+        const nm = spirits.find(s => s.id === spiritId)?.name;
+        const rivalNm = spirits.find(s => s.id === ns.grudge.rivalId)?.name;
+        setTimeout(() => addLog(`🔥 ${nm}'s grudge against ${rivalNm} fades — the moment has passed.`), 0);
+      }
 
       // NOTE: mojoDrain / stagger / tripped / dazed / instrumentDropped are NO
       // LONGER ticked or cleared here. Clearing them at the start of your own
@@ -3006,6 +3012,10 @@ function Game({ gameState, onReturnToLobby }) {
           acousticDuelCds: Object.fromEntries(
             Object.entries(ns.acousticDuelCds ?? {}).filter(([, v]) => v > 1).map(([k, v]) => [k, v - 1])
           ),
+          // Phase R5.3: tick down grudge match timer
+          grudge: ns.grudge
+            ? (ns.grudge.turnsLeft <= 1 ? null : { ...ns.grudge, turnsLeft: ns.grudge.turnsLeft - 1 })
+            : null,
           // Tick down "goes to eleven" boost
           elevenTurns: Math.max(0, (ns.elevenTurns ?? 0) - 1),
           // ⚡ Charge Zone charges tick down on the holder's own turns (2 ≈ 2 rounds);
@@ -6699,6 +6709,9 @@ function Game({ gameState, onReturnToLobby }) {
     // stores them in engineState.battle — this client just renders that data.
     // (slayer/eRush flags are client-supplied until noteStates joins in Ph 5.)
     const atkNs = noteStates[attacker.id] ?? {};
+    // Phase R5.3: detect active grudge against this defender
+    const atkGrudge = atkNs.grudge;
+    const isGrudge = !!(atkGrudge && atkGrudge.rivalId === defender.id);
     const slayer = (atkNs.unlockedSkills ?? []).includes('riff_slayer') && !!atkNs.riffSlayerArmed;
     const eRush  = (atkNs.unlockedSkills ?? []).includes('e_rush') && !!atkNs.eRushArmed;
     // Phase R1: pass the attacker's committed melody line so the engine builds
@@ -6717,15 +6730,16 @@ function Game({ gameState, onReturnToLobby }) {
     const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
     // Log: show whether the riff came from the player's melody or was random
     const isAcoustic = tier === 'acoustic';
+    const grudgeTag = isGrudge ? '🔥 GRUDGE ' : '';
     if (eb.fromMelody) {
       addLog(isAcoustic
-        ? `🎸🎶 ACOUSTIC DUEL! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`
-        : `🎸🔥 RIFF-OFF! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`);
+        ? `🎸🎶 ${grudgeTag}ACOUSTIC DUEL! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`
+        : `🎸🔥 ${grudgeTag}RIFF-OFF! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`);
       if (eb.hasRiff) addLog(`✨ Legendary riff woven into the call — the crowd leans in!`);
     } else {
       addLog(isAcoustic
-        ? `🎸🎶 ACOUSTIC DUEL! ${attacker.name} and ${defender.name} square off — no amps, no beams, just chops!`
-        : `🎸🔥 RIFF-OFF! ${attacker.name} and ${defender.name} lock eyes — both plugged in, beams crossed!`);
+        ? `🎸🎶 ${grudgeTag}ACOUSTIC DUEL! ${attacker.name} and ${defender.name} square off — no amps, no beams, just chops!`
+        : `🎸🔥 ${grudgeTag}RIFF-OFF! ${attacker.name} and ${defender.name} lock eyes — both plugged in, beams crossed!`);
     }
     addLog(`🎶 ${attacker.name} calls a ${RIFF_CONTOUR_LABELS[atk.contour]} — ${defender.name} must answer with a ${RIFF_ANSWER_LABELS[def.kind].name}.`);
 
@@ -6747,6 +6761,9 @@ function Game({ gameState, onReturnToLobby }) {
       riffOff: true, sonicAttack: true,   // sonicAttack → sonic-scale knockback
       riffTier: tier,                     // Phase R4: 'acoustic' | 'stadium'
       ante: null,                         // Phase R5.2: { type:'fp'|'fans', amount:N, status:'offered'|'accepted'|'declined' }
+      grudge: isGrudge                    // Phase R5.3: grudge match info (×2 stakes, no decline)
+        ? { anteType: atkGrudge.anteType, anteAmount: atkGrudge.anteAmount }
+        : null,
       phase: 'riff_intro',
       attackerId: attacker.id, defenderId: defender.id,
       atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
@@ -7117,8 +7134,44 @@ function Game({ gameState, onReturnToLobby }) {
         triggerEffectFlash(winnerId, '👑', 'HEADLINER!', '#ffd700');
       }
       if (attackerWon) applyPendingCombatEffects(attackerId, defenderId);
+      // 🔥 GRUDGE MATCH (Phase R5.3) — loser earns a grudge (once per rivalry)
+      const grudgePairKey = acousticDuelPairKey(winnerId, loserId);
+      if (s.grudge) {
+        // This WAS a grudge match — mark it consumed for both sides
+        setNoteStates(prev => {
+          const next = { ...prev };
+          [winnerId, loserId].forEach(sid => {
+            next[sid] = { ...next[sid], grudge: null, grudgesUsed: { ...(next[sid]?.grudgesUsed ?? {}), [grudgePairKey]: true } };
+          });
+          return next;
+        });
+        addLog(`🔥 The grudge is settled!`);
+      } else if (!(noteStates[loserId]?.grudgesUsed ?? {})[grudgePairKey]) {
+        // Set grudge on loser — they get 2 turns to demand a rematch
+        const gAnteType = ante?.status === 'accepted' ? ante.type : null;
+        const gAnteAmount = ante?.status === 'accepted' ? ante.amount : 0;
+        setNoteStates(prev => ({
+          ...prev,
+          [loserId]: { ...prev[loserId], grudge: { rivalId: winnerId, turnsLeft: 2, tier: s.riffTier, anteType: gAnteType, anteAmount: gAnteAmount } },
+        }));
+        const loserName = spirits.find(x => x.id === loserId)?.name;
+        const wName = spirits.find(x => x.id === winnerId)?.name;
+        addLog(`🔥 ${loserName} burns for revenge — GRUDGE MATCH vs ${wName} available for 2 turns!`);
+      }
     } else if (ante?.status === 'accepted') {
       addLog(`🎲 Dead heat — both sides get their stakes back.`);
+      // Tie in a grudge match: grudge consumed, no rematch
+      if (s.grudge) {
+        const tieGrudgeKey = acousticDuelPairKey(attackerId, defenderId);
+        setNoteStates(prev => {
+          const next = { ...prev };
+          [attackerId, defenderId].forEach(sid => {
+            next[sid] = { ...next[sid], grudge: null, grudgesUsed: { ...(next[sid]?.grudgesUsed ?? {}), [tieGrudgeKey]: true } };
+          });
+          return next;
+        });
+        addLog(`🔥 Dead heat — the grudge dies here. No rematch.`);
+      }
     }
     clearBattleBuffs(attackerId, defenderId);
     riffEngineRef.current?.timers?.forEach(clearTimeout);
@@ -7134,6 +7187,31 @@ function Game({ gameState, onReturnToLobby }) {
   const ANTE_DECLINE_PENALTY = 3; // casuals the declining defender loses
 
   function enterRiffAnte() {
+    const bs = battleStateRef.current;
+    // Phase R5.3: grudge match — auto-lock ×2 stakes, skip ante picking
+    if (bs?.grudge) {
+      const origType = bs.grudge.anteType;
+      const origAmount = bs.grudge.anteAmount || 0;
+      // ×2 the original ante; minimum 2 FP if original had none
+      let gType = origAmount > 0 ? origType : 'fp';
+      let gAmount = origAmount > 0 ? origAmount * 2 : 2;
+      // Cap to what both sides can afford
+      const atkNs = engineRef.current.noteStates?.[bs.attackerId] ?? noteStates[bs.attackerId] ?? {};
+      const defNs = engineRef.current.noteStates?.[bs.defenderId] ?? noteStates[bs.defenderId] ?? {};
+      const atkHas = gType === 'fp' ? (atkNs.fame ?? 0) : (atkNs.casuals ?? 0);
+      const defHas = gType === 'fp' ? (defNs.fame ?? 0) : (defNs.casuals ?? 0);
+      gAmount = Math.min(gAmount, atkHas, defHas);
+      if (gAmount <= 0) { gType = 'fp'; gAmount = 1; } // absolute floor
+      const label = gType === 'fp' ? `${gAmount} FP` : `${gAmount} fans`;
+      addLog(`🔥 GRUDGE MATCH! Stakes locked at ×2 — ${label} each side! No backing down!`);
+      triggerEffectFlash(bs.attackerId, '🔥', 'GRUDGE!', '#ff4400');
+      setBattleState(p => p?.riffOff ? {
+        ...p,
+        ante: { type: gType, amount: gAmount, status: 'accepted' },
+      } : p);
+      setTimeout(() => riffBeginTurn('attacker'), 600);
+      return;
+    }
     setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_ante' } : p);
   }
 
@@ -8144,6 +8222,32 @@ function Game({ gameState, onReturnToLobby }) {
             botStepRef.current = 'ending';
             schedule(guard(() => resolveSmash(t.id)));
             return;
+          }
+        }
+        // Phase R5.3: GRUDGE MATCH — bots prioritize challenging their grudge rival
+        const botGrudge = noteStates[self.id]?.grudge;
+        if (botGrudge && steps >= 2) {
+          const grudgeRival = spirits.find(s => s.id === botGrudge.rivalId && !s.knockedOut);
+          if (grudgeRival) {
+            const selfHex0 = HEX_BY_NUM[self.num], rivalHex0 = HEX_BY_NUM[grudgeRival.num];
+            // For stadium grudges: check if rival is in beam (triggers riff-off via sonic)
+            if (botGrudge.tier === 'stadium' && ampsInRangeRef.current >= 1) {
+              const beamRivals = getRivalsInBeam(self);
+              if (beamRivals.some(r => r.id === grudgeRival.id)) {
+                botStepRef.current = 'ending';
+                schedule(guard(() => initiateSonicAttack(grudgeRival.id)));
+                return;
+              }
+            }
+            // For acoustic grudges (or stadium fallback): check adjacency
+            if (selfHex0 && rivalHex0 && axialDist(selfHex0.q, selfHex0.r, rivalHex0.q, rivalHex0.r) === 1) {
+              const gCd = (noteStates[self.id]?.acousticDuelCds ?? {})[acousticDuelPairKey(self.id, grudgeRival.id)] ?? 0;
+              if (gCd <= 0) {
+                botStepRef.current = 'ending';
+                schedule(guard(() => initiateAcousticDuel(grudgeRival.id)));
+                return;
+              }
+            }
           }
         }
         const beamNow = ampsInRangeRef.current >= 1 ? getRivalsInBeam(self) : [];

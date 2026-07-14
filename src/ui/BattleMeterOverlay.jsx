@@ -343,13 +343,27 @@ export function BattleMeterOverlay({
               )}
 
               {/* ── INTRO ── */}
-              {phase === 'riff_intro' && (
-                <div style={cardBase(battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700')}>
-                  <div style={{fontSize:11, color: battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700', letterSpacing:2, marginBottom:10}}>
+              {phase === 'riff_intro' && (() => {
+                const isGrudge = !!battleState.grudge;
+                const introAccent = isGrudge ? '#ff4400' : battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700';
+                return (
+                <div style={cardBase(introAccent)}>
+                  {isGrudge && (
+                    <div style={{fontSize:13, color:'#ff4400', letterSpacing:3, marginBottom:4, fontWeight:'bold',
+                      textShadow:'0 0 12px #ff440088, 0 0 24px #ff220044'}}>
+                      🔥 GRUDGE MATCH 🔥
+                    </div>
+                  )}
+                  <div style={{fontSize:11, color: introAccent, letterSpacing:2, marginBottom:isGrudge ? 4 : 10}}>
                     {battleState.riffTier === 'acoustic'
                       ? '🎸 ACOUSTIC DUEL · NO AMPS · JUST CHOPS'
                       : '🔊 PLUGGED IN · FACE TO FACE · BEAMS CROSSED'}
                   </div>
+                  {isGrudge && (
+                    <div style={{fontSize:9.5, color:'#ff6633', marginBottom:8, lineHeight:1.6}}>
+                      {attacker?.name} demands revenge! Stakes locked at ×2 — no backing down.
+                    </div>
+                  )}
                   <div style={{fontSize:9, color:'#8aa5c5', lineHeight:1.8, marginBottom:8}}>
                     {battleState.atkRiff?.notes?.length ?? RIFF_LEN} notes flash one by one — hit the matching key the INSTANT it appears.<br/>
                     <span style={{color:'#ffcc44'}}>CAPITAL letters are SHARPS — hold SHIFT.</span><br/>
@@ -360,15 +374,16 @@ export function BattleMeterOverlay({
                     {attacker?.name} calls a <span style={{color:attacker?.color ?? '#ff8866'}}>{RIFF_CONTOUR_LABELS[battleState.atkRiff?.contour]}</span><br/>
                     {defender?.name} answers with a <span style={{color:defender?.color ?? '#66ccff'}}>{answerInfo.name}</span> — {answerInfo.desc}
                   </div>
-                  <button onClick={() => enterRiffAnte()} style={bigBtn('#ffd700')}>
-                    🎤 {attacker?.name} — DROP THE RIFF
+                  <button onClick={() => enterRiffAnte()} style={bigBtn(introAccent)}>
+                    {isGrudge ? `🔥 ${attacker?.name} — SETTLE THE SCORE` : `🎤 ${attacker?.name} — DROP THE RIFF`}
                   </button>
                   <div style={{marginTop:7, fontSize:8.5, color:'#6a8aaa'}}>
                     <span onClick={() => enterRiffAnte()}
                       style={{cursor:'pointer', textDecoration:'underline', color:'#9ab'}}>Skip intro ▸</span>
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               {/* ── ANTE — attacker picks a stake (Phase R5.2 Throw Down) ── */}
               {phase === 'riff_ante' && (() => {
@@ -667,21 +682,25 @@ export function BattleMeterOverlay({
                   </div>
                 );
                 return (
-                  <div style={cardBase(tie ? '#8aa5c5' : (winSp?.color ?? '#ffd700'))}>
+                  <div style={cardBase(tie ? '#8aa5c5' : battleState.grudge ? '#ff4400' : (winSp?.color ?? '#ffd700'))}>
+                    {battleState.grudge && !tie && (
+                      <div style={{fontSize:10, color:'#ff4400', letterSpacing:2, marginBottom:2,
+                        textShadow:'0 0 10px #ff440066'}}>🔥 GRUDGE SETTLED 🔥</div>
+                    )}
                     <div style={{fontSize:13, fontWeight:900, letterSpacing:3, marginBottom:12,
-                      color: tie ? '#8aa5c5' : (winSp?.color ?? '#ffd700'),
-                      textShadow: tie ? 'none' : `0 0 20px ${(winSp?.color ?? '#ffd700')}88`}}>
-                      {tie ? '🤝 DEAD HEAT — CROWD CAN\'T DECIDE'
-                        : `🏆 ${winSp?.name} WINS THE ${battleState.riffTier === 'acoustic' ? 'ACOUSTIC DUEL' : 'RIFF-OFF'}!`}
+                      color: tie ? '#8aa5c5' : battleState.grudge ? '#ff6633' : (winSp?.color ?? '#ffd700'),
+                      textShadow: tie ? 'none' : `0 0 20px ${battleState.grudge ? '#ff440088' : (winSp?.color ?? '#ffd700') + '88'}`}}>
+                      {tie ? (battleState.grudge ? '🤝 DEAD HEAT — THE GRUDGE DIES HERE' : '🤝 DEAD HEAT — CROWD CAN\'T DECIDE')
+                        : `🏆 ${winSp?.name} WINS THE ${battleState.grudge ? 'GRUDGE MATCH' : battleState.riffTier === 'acoustic' ? 'ACOUSTIC DUEL' : 'RIFF-OFF'}!`}
                     </div>
                     <div style={{display:'flex', gap:12, marginBottom:12}}>
                       {statCard(attacker, A, battleState.atkRiff, battleState.atkResults, !tie && won)}
                       {statCard(defender, D, battleState.defRiff, battleState.defResults, !tie && !won)}
                     </div>
-                    {/* Pot summary for Throw Down antes */}
+                    {/* Pot summary for Throw Down antes / Grudge ×2 */}
                     {battleState.ante?.status === 'accepted' && (
-                      <div style={{fontSize:9, fontWeight:700, color:'#ffaa44', marginBottom:8, letterSpacing:1}}>
-                        🎲 POT: {battleState.ante.amount} {battleState.ante.type === 'fp' ? 'FP' : 'fans'} each
+                      <div style={{fontSize:9, fontWeight:700, color: battleState.grudge ? '#ff6633' : '#ffaa44', marginBottom:8, letterSpacing:1}}>
+                        {battleState.grudge ? '🔥' : '🎲'} {battleState.grudge ? '×2 GRUDGE ' : ''}POT: {battleState.ante.amount} {battleState.ante.type === 'fp' ? 'FP' : 'fans'} each
                         {tie ? ' — returned to both sides' : ` — ${winSp?.name} takes it all`}
                       </div>
                     )}

@@ -257,7 +257,7 @@ dodge the marquee event forever by staying unplugged.
    to accept or declines and the crowd boos (loses casual fans — routed
    through the Unsure pool, never diehards). Winner takes the pot. Small
    stakes card in the UI before the countdown.
-3. **GRUDGE MATCH** — a riff-off loser may re-challenge the same rival
+3. ✅ **GRUDGE MATCH** — a riff-off loser may re-challenge the same rival
    within 2 turns at ×2 stakes. Once per rivalry. Comeback canon.
 4. **CALL YOUR SHOT** — declare a quality bar pre-duel ("flawless or
    nothing") for a multiplier if met, a penalty if missed. Self-imposed
@@ -339,6 +339,39 @@ New `awardRiffFame(winnerId, loserId, verdict, tier, pot)`:
   decline with match validation + "not enough" warning. Result card shows
   pot summary: winner takes all / returned on tie / declined.
 
+### R5.3 Grudge Match build notes (2026-07-14)
+
+- **Grudge state**: `noteStates[sid].grudge = { rivalId, turnsLeft: 2,
+  tier, anteType, anteAmount } | null`. Set in `closeRiffOff` on the loser
+  after every non-tie, non-grudge riff-off (if the pair hasn't already used
+  their grudge). `grudgesUsed: { [pairKey]: true }` — once per rivalry per
+  game, enforced on both sides.
+- **Timer**: `grudge.turnsLeft` ticks down in `startNewTurnNotes` alongside
+  acoustic duel cooldowns. When it expires, log: "the moment has passed."
+- **Detection**: `startRiffOff` checks `noteStates[attacker.id].grudge`
+  for a match against the defender. Sets `battleState.grudge =
+  { anteType, anteAmount }` when active.
+- **Auto-stakes**: `enterRiffAnte` detects `battleState.grudge` and
+  auto-locks ×2 the original ante (minimum 2 FP if original had none).
+  Stakes capped to what both sides can afford; absolute floor 1 FP. No
+  ante-picking phase, no decline. Effect flash 🔥 GRUDGE! in #ff4400.
+  Proceeds directly to `riffBeginTurn('attacker')` after 600ms.
+- **Payout**: Normal `closeRiffOff` pot logic handles it — the ante is
+  pre-set to `{ type, amount, status: 'accepted' }`, so FP/fan pot paths
+  fire as usual. Tie returns stakes.
+- **Consumption**: `closeRiffOff` marks `grudgesUsed[pairKey]` on both
+  combatants and clears `grudge` after any grudge match (win, lose, or
+  tie). No infinite grudge loops.
+- **Bot policy**: Bots with an active grudge prioritize challenging their
+  grudge rival — checked before normal beam/cone/swing attacks. Stadium
+  grudges try sonic attack if rival is in beam; acoustic grudges (and
+  stadium fallback) try acoustic duel if adjacent and off cooldown.
+- **BattleMeterOverlay**: Intro card shows "🔥 GRUDGE MATCH 🔥" header
+  in #ff4400, "{attacker} demands revenge! Stakes locked at ×2", and
+  "SETTLE THE SCORE" button. Result card: "🔥 GRUDGE SETTLED 🔥" banner,
+  "WINS THE GRUDGE MATCH" title, "×2 GRUDGE POT" in the ante summary.
+  Tie: "THE GRUDGE DIES HERE".
+
 ---
 
 ## 7. Phase R7 — sabotage (shared tree, later)
@@ -401,7 +434,8 @@ stay signature exclusives.
 | R4 | ✅ Acoustic duel action + cooldowns | `engine/actions.js` (tier param), `engine/systems/riffOff.js` (tier in battle slice), main file (`initiateAcousticDuel`, `startRiffOff` tier, `riffResolve` acoustic path, action button, hex highlight, bot policy), `ui/BattleMeterOverlay.jsx` (tier labels) |
 | R5.1 | ✅ Headliner (+1 FP rider) | `engine/state.js`, `engine/actions.js`, `engine/systems/economy.js`, `engine/reduce.js`, main file (`closeRiffOff`, `awardSonicFame`, `awardThrashFame`, `awardRiffFame`, HUD) |
 | R5.2 | ✅ Throw Down ante | main file (`enterRiffAnte`, `pickRiffAnte`, `respondRiffAnte`, `closeRiffOff` pot, bot hooks), `ui/BattleMeterOverlay.jsx` (ante cards, result pot summary) |
-| R5.3–5.4 | Grudge Match, Call Your Shot | main file, `ui/BattleMeterOverlay.jsx` |
+| R5.3 | ✅ Grudge Match (×2 stakes, once per rivalry, 2-turn window) | main file (`startRiffOff` grudge detect, `enterRiffAnte` auto-stakes, `closeRiffOff` grudge set/consume, `startNewTurnNotes` tick, bot grudge priority), `ui/BattleMeterOverlay.jsx` (grudge intro/result cards) |
+| R5.4 | Call Your Shot | main file, `ui/BattleMeterOverlay.jsx` |
 | R6 | `awardRiffFame` | `engine/systems/combat.js` or `riffOff.js`, main file `closeRiffOff` |
 | R7 | Sabotage skills | `SKILL_TREE`, `engine/systems/riffOff.js`, `ui/RiffHighway.jsx` |
 
