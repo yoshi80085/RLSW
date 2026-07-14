@@ -45,6 +45,7 @@ import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRi
 import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./riff/riffGeneration.js";
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset } from "./riff/fallingNotes.js";
 import { Lobby } from "./ui/Lobby.jsx";
+import OpeningMovie from "./ui/OpeningMovie.jsx";
 import { isMirrorFacing, MIRROR_SPRITES, mobileColorStyle, GameErrorBoundary } from "./ui/GameErrorBoundary.jsx";
 import { useStageEffects } from "./hooks/useStageEffects.js";
 import { useRockGod } from "./hooks/useRockGod.js";
@@ -643,8 +644,13 @@ const RIFF_GAP_NORMAL   = 470;   // ms breath before a steady note (groove spaci
 export default function RLSWSimulator() {
   const [gameState, setGameState] = useState(null);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [introDone, setIntroDone] = useState(false);
   const isMobile = /Mobi|Android/i.test(navigator.userAgent);
 
+  // 🎬 Opening movie — plays on every launch, any input skips (attract style).
+  if (!introDone) {
+    return <div style={isMobile ? mobileColorStyle : {}}><OpeningMovie onDone={() => setIntroDone(true)} /></div>;
+  }
   if (showTutorial) {
     return <div style={isMobile ? mobileColorStyle : {}}><Tutorial onBack={() => setShowTutorial(false)} /></div>;
   }
