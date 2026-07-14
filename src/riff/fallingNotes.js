@@ -19,12 +19,18 @@
 // Players are reading real notes (finding the key, not just a lane), so even
 // SHREDDER stays gentler than an arcade rhythm game.
 export const RIFF_FALL_DIFFICULTY = {
-  rookie:   { label: 'ROOKIE',   icon: '🎸', leadTime: 2500, perfect: 150, good: 320, ok: 520,
+  rookie:   { label: 'SOCIAL MEDIA INFLUENCER', icon: '📱', leadTime: 2500, perfect: 150, good: 320, ok: 520,
+              showLabels: true, maxLen: 6,
               blurb: 'slow fall, wide windows — learn the keys' },
   gigging:  { label: 'GIGGING',  icon: '🔥', leadTime: 2000, perfect: 120, good: 250, ok: 420,
+              showLabels: true, maxLen: 7,
               blurb: 'working musician tempo' },
   shredder: { label: 'SHREDDER', icon: '⚡', leadTime: 1500, perfect: 90,  good: 190, ok: 340,
-              blurb: 'fast drop, tight groove' },
+              showLabels: false, maxLen: 8,
+              blurb: 'fast drop, tight groove — read the POSITION' },
+  virtuoso: { label: 'VIRTUOSO', icon: '🌟', leadTime: 1150, perfect: 75,  good: 160, ok: 280,
+              showLabels: false, maxLen: 15,
+              blurb: 'denser, not longer — sight-read or die' },
 };
 export const RIFF_FALL_DEFAULT = 'rookie';
 

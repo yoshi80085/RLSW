@@ -344,7 +344,7 @@ export function BattleMeterOverlay({
                     🔊 PLUGGED IN · FACE TO FACE · BEAMS CROSSED
                   </div>
                   <div style={{fontSize:9, color:'#8aa5c5', lineHeight:1.8, marginBottom:8}}>
-                    {RIFF_LEN} notes flash one by one — hit the matching key the INSTANT it appears.<br/>
+                    {battleState.atkRiff?.notes?.length ?? RIFF_LEN} notes flash one by one — hit the matching key the INSTANT it appears.<br/>
                     <span style={{color:'#ffcc44'}}>CAPITAL letters are SHARPS — hold SHIFT.</span><br/>
                     <span style={{color:'#ff8855'}}>The riff has a GROOVE — some notes rush in with no warning, some sit behind a rest.</span><br/>
                     Accuracy wins · reaction time breaks ties · loser eats the feedback.
@@ -423,6 +423,7 @@ export function BattleMeterOverlay({
                         view={riffView}
                         accent={noteColor}
                         onPressKey={riffPressKey}
+                        showLabels={RIFF_FALL_DIFFICULTY[riffDifficulty]?.showLabels ?? true}
                       />
                     </div>
                   ) : (
@@ -454,7 +455,7 @@ export function BattleMeterOverlay({
                       🔁 PASS THE KEYBOARD!
                     </div>
                     <div style={{fontSize:9, color:'#8aa5c5', marginBottom:10}}>
-                      {attacker?.name} laid down the call: <b style={{color:'#fff'}}>{aS.hits}/{RIFF_LEN} notes</b>
+                      {attacker?.name} laid down the call: <b style={{color:'#fff'}}>{aS.hits}/{battleState.atkRiff?.notes?.length ?? RIFF_LEN} notes</b>
                       {aS.avgRt != null ? <> · <b style={{color:'#fff'}}>±{aS.avgRt}ms</b> off the line</> : <> · no clean hits</>}
                     </div>
                     {progressRow(battleState.atkRiff.notes, battleState.atkResults, -1, attacker?.color ?? '#ff8866')}
@@ -549,7 +550,7 @@ export function BattleMeterOverlay({
                     background: highlight ? '#101a30' : '#0a1020',
                     boxShadow: highlight ? `0 0 18px ${(sp?.color ?? '#ffd700')}44` : 'none'}}>
                     <div style={{fontSize:9, color:sp?.color ?? '#8aa5c5', letterSpacing:1, marginBottom:6}}>{sp?.name}</div>
-                    <div style={{fontSize:16, fontWeight:900, color:'#fff'}}>{st.hits}/{RIFF_LEN}</div>
+                    <div style={{fontSize:16, fontWeight:900, color:'#fff'}}>{st.hits}/{riffObj?.notes?.length ?? RIFF_LEN}</div>
                     <div style={{fontSize:9, fontWeight:700, color: highlight ? (sp?.color ?? '#ffd700') : '#8aa5c5', marginBottom:2}}>
                       {st.quality}% clean{st.perfects > 0 ? ` · ${st.perfects}✦` : ''}
                     </div>

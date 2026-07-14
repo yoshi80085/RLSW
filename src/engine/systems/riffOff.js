@@ -7,8 +7,9 @@
 
 import {
   generateAttackerRiff, generateDefenderRiff, speedUpRiffRhythm,
-  riffDegreesToNotes,
+  riffDegreesToNotes, RIFF_LEN_DEFAULT,
 } from "../../riff/riffGeneration.js";
+import { melodyToRiff } from "../../riff/melodyRiff.js";
 import { marginToDamage } from "./combat.js";
 
 // Grade → weight for the performance score (single source of truth; the
@@ -57,9 +58,24 @@ function pickGhostLetters(notes, rng) {
   });
 }
 
-/** RIFF_OFF_STARTED — generate both riffs + skill modifiers on engine rng. */
-export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRush }, rng) {
-  const atk = generateAttackerRiff(rng);
+/** RIFF_OFF_STARTED — generate both riffs + skill modifiers on engine rng.
+ *  When melodyLine is provided (Phase R1), the attacker's riff is built from
+ *  their committed melody instead of randomly generated. If the melody is too
+ *  short (<4 notes), falls back to a random riff (reduced-pot flag set). */
+export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRush, melodyLine, hasRiff, maxLen }, rng) {
+  const len = Math.max(4, maxLen ?? RIFF_LEN_DEFAULT);
+  let atk;
+  let fromMelody = false;
+  if (melodyLine && melodyLine.length >= 4) {
+    // targetLen: the melody's natural length capped by the difficulty tier
+    atk = melodyToRiff(melodyLine, { rand: rng, targetLen: Math.min(melodyLine.length, len) });
+  }
+  if (atk) {
+    fromMelody = true;
+  } else {
+    // No melody or minimum-material rule failed — random riff at tier length
+    atk = generateAttackerRiff(rng, len);
+  }
   const def = generateDefenderRiff(atk, rng);
   const defNotes = riffDegreesToNotes(def.degrees, def.sharps);
   return {
@@ -68,8 +84,10 @@ export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRu
       kind: "riffOff",
       attackerId, defenderId,
       round: 1,
-      atkRiff: atk,                    // {degrees, sharps, contour, rhythm}
+      atkRiff: atk,                    // {degrees, sharps, contour, rhythm[, fromMelody]}
       defRiff: def,                    // {degrees, sharps, kind, rhythm}
+      fromMelody,                      // true when the riff came from the player's melody
+      hasRiff: !!hasRiff,              // legendary riff detected on the melody — bonus pot
       defGlitch: slayer ? pickGlitchIndexes(def.degrees.length, rng) : [],
       defGhosts: eRush ? pickGhostLetters(defNotes, rng) : null,
       atkResults: null, defResults: null,

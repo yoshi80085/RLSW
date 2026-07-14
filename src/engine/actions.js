@@ -147,9 +147,13 @@ export function spiritsSynced(spirits) {
 }
 
 /** A riff-off begins — engine generates both riffs + skill mods on its rng.
- *  slayer/eRush are client-supplied until noteStates joins the engine (Ph 5). */
-export function riffOffStarted(attackerId, defenderId, { slayer = false, eRush = false } = {}) {
-  return { type: RIFF_OFF_STARTED, attackerId, defenderId, slayer, eRush };
+ *  slayer/eRush are client-supplied until noteStates joins the engine (Ph 5).
+ *  melodyLine (optional): attacker's committed melody (NOTE_POOL format) —
+ *  when present the engine builds the riff from it (Phase R1: Rhythm Creation
+ *  Device). hasRiff flags a legendary-riff bonus on the melody.
+ *  maxLen (Phase R2): difficulty-tier cap on riff length. */
+export function riffOffStarted(attackerId, defenderId, { slayer = false, eRush = false, melodyLine = null, hasRiff = false, maxLen = 6 } = {}) {
+  return { type: RIFF_OFF_STARTED, attackerId, defenderId, slayer, eRush, melodyLine, hasRiff, maxLen };
 }
 
 /** A performer submits their results array [{hit, rt, grade, noteIdx}]. */
@@ -533,4 +537,3 @@ export const RANDOM_BATCH_DRAWN = "RANDOM_BATCH_DRAWN";
 export function randomBatchDrawn(count) {
   return { type: RANDOM_BATCH_DRAWN, count };
 }
-

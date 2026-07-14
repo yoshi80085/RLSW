@@ -150,7 +150,7 @@ function GuitarStrike({ litKeys, accent, onPress, resolveStringKey }) {
 // results:  the performer's results array (entries carry noteIdx)
 // ghostHit: battleState.ghostHit ({ idx, main, ghost }) — half-landed E-Rush pair
 // accent:   the performing spirit's color; onPressKey: the engine's judge fn
-export function RiffHighway({ run, results, ghostHit, view, accent, onPressKey }) {
+export function RiffHighway({ run, results, ghostHit, view, accent, onPressKey, showLabels = true }) {
   // Latest run + judged set live on refs so the rAF loop (bound once per run)
   // always reads fresh data without re-subscribing on every judgment.
   const runRef    = useRef(run);
@@ -236,10 +236,16 @@ export function RiffHighway({ run, results, ghostHit, view, accent, onPressKey }
     // Judged → burst at the strike line (grade-colored), then gone.
     if (r) {
       const col = GRADE_COLORS[r.grade] ?? accent;
+      const sharp = isSharp(key);
+      // Keep diamond shape on burst when labels are off so the player
+      // can tell which gem just resolved
+      const burstDiamond = !showLabels && sharp;
       return (
         <div key={`b${id}-${r.grade}`} style={{
           position: 'absolute', left: x, top: HWY_H, width: GEM_R * 2, height: GEM_R * 2,
-          marginLeft: -GEM_R, marginTop: -GEM_R, borderRadius: '50%',
+          marginLeft: -GEM_R, marginTop: -GEM_R,
+          borderRadius: burstDiamond ? '3px' : '50%',
+          transform: burstDiamond ? 'rotate(45deg)' : undefined,
           border: `3px solid ${col}`, background: r.hit ? `${col}44` : 'transparent',
           boxShadow: `0 0 18px ${col}`, pointerEvents: 'none',
           animation: 'riffgem-burst 0.45s ease-out forwards',
@@ -250,12 +256,17 @@ export function RiffHighway({ run, results, ghostHit, view, accent, onPressKey }
     const ghost   = isGhost || !!n.ghostKey;
     const baseCol = isGhost ? '#b899ff' : n.glitched ? '#ff3355' : n.feel === 'rushed' ? '#ff9944' : accent;
     const sharp   = isSharp(key);
+    // Phase R2: when labels are off, sharps become DIAMOND gems (rotated
+    // square), naturals stay round — shape cue, colorblind-safe.
+    const diamond = !showLabels && sharp;
     return (
       <div key={`g${id}-${key}`} ref={gemRef(`g${id}-${key}`)}
         data-idx={n.idx} data-hitat={n.hitAt}
         style={{
           position: 'absolute', left: x, top: -SPAWN_PAD, width: GEM_R * 2, height: GEM_R * 2,
-          marginLeft: -GEM_R, marginTop: -GEM_R, borderRadius: '50%',
+          marginLeft: -GEM_R, marginTop: -GEM_R,
+          borderRadius: diamond ? '3px' : '50%',
+          transform: diamond ? 'rotate(45deg)' : undefined,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontFamily: "'Orbitron',sans-serif", fontSize: sharp ? 11 : 13, fontWeight: 900,
           color: '#06111f', background: half ? '#2bd66b' : baseCol,
@@ -264,7 +275,7 @@ export function RiffHighway({ run, results, ghostHit, view, accent, onPressKey }
           opacity: 0,                      // hidden until the rAF loop places it
           pointerEvents: 'none', willChange: 'transform, opacity',
         }}>
-        {noteGlyph(key)}
+        {showLabels ? noteGlyph(key) : null}
       </div>
     );
   };

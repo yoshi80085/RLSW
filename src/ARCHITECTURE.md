@@ -63,7 +63,7 @@ index.html
 | `engine/` | 🎮 The multiplayer-ready game core (Phase 1 scaffold): plain-JSON `GameState`, `applyAction` reducer, seeded rng, snapshot/replay. See `MULTIPLAYER_HANDOFF.md`. | ~300 |
 | `hooks/` | Custom React hooks that own slices of `Game` state. | ~6 files |
 | `music/` | Music theory, riff library, cadence scoring, chord evaluation. | ~730 |
-| `riff/` | Riff generation engine (contours, rhythms, attacker/defender riffs) + falling-notes timing/difficulty (`fallingNotes.js`). | ~200 |
+| `riff/` | Riff generation engine (contours, rhythms, attacker/defender riffs), melody-to-riff converter (`melodyRiff.js` — Phase R1), + falling-notes timing/difficulty (`fallingNotes.js`). | ~280 |
 | `tutorial/` | Illustrated in-game tutorial. | ~1,030 |
 | `ui/` | Presentational React components extracted from `Game`'s render. | ~18 files |
 | `standees/` | Character standee PNGs (normal + `_mirror`). | — |
@@ -212,8 +212,9 @@ preview arrows).
 
 | File | Exports | Purpose |
 |------|---------|---------|
-| `riffGeneration.js` | `generateRiffRhythm`, `speedUpRiffRhythm`, `RIFF_CONTOUR_LABELS`, `RIFF_ANSWER_LABELS`, `riffDegreesToNotes`, `generateAttackerRiff`, `generateDefenderRiff` | Riff-off note sequence generation. Generators take an optional `rand` (default `Math.random`) — the engine passes its seeded rng; only the engine should generate riffs now. |
-| `fallingNotes.js` | `RIFF_FALL_DIFFICULTY`, `RIFF_FALL_DEFAULT`, `buildRiffTimeline`, `riffOkWindow`, `gradeRiffOffset` | Falling-notes (Guitar Hero) riff-off timing: difficulty presets (fall lead-time + grade windows), rhythm→hit-time timeline, |press−hitTime| grading. Pure module — **tune riff-off feel here.** |
+| `riffGeneration.js` | `generateRiffRhythm`, `speedUpRiffRhythm`, `RIFF_CONTOUR_LABELS`, `RIFF_ANSWER_LABELS`, `riffDegreesToNotes`, `generateAttackerRiff`, `generateDefenderRiff`, `RIFF_LEN_DEFAULT` | Riff-off note sequence generation. Generators take an optional `rand` (default `Math.random`) and `len` (default `RIFF_LEN_DEFAULT=6`) — the engine passes its seeded rng; only the engine should generate riffs now. |
+| `melodyRiff.js` | `melodyToRiff` | 🎸 Phase R1: converts a committed melody line (NOTE_POOL format) into a riff-off riff. Maps notes → degrees/sharps, detects contour, pads/trims to target length, applies generated rhythm. Returns same shape as `generateAttackerRiff` + `fromMelody` flag. Returns `null` when melody < 4 notes (minimum-material rule). |
+| `fallingNotes.js` | `RIFF_FALL_DIFFICULTY`, `RIFF_FALL_DEFAULT`, `buildRiffTimeline`, `riffOkWindow`, `gradeRiffOffset` | Falling-notes (Guitar Hero) riff-off timing: difficulty presets (fall lead-time + grade windows), rhythm→hit-time timeline, |press−hitTime| grading. Pure module — **tune riff-off feel here.** 🎸 Phase R2: each preset now carries `showLabels: boolean` (labels hidden at Shredder+) and `maxLen: number` (tier-caps riff length). VIRTUOSO tier added (`leadTime:1150`, `maxLen:15`, `showLabels:false`). ROOKIE label renamed to SOCIAL MEDIA INFLUENCER (internal id unchanged). |
 
 ### `engine/` — the authoritative game core (in extraction)
 
@@ -269,7 +270,7 @@ Each takes everything via props. They hold **no game logic**.
 | `RiffBanner.jsx` | "Legendary riff detected" toast. |
 | `CadenceToast.jsx` | "Cadence resolved" toast. |
 | `BattleMeterOverlay.jsx` | Full battle/riff-off duel overlay (~1,870 lines, largest component). |
-| `RiffHighway.jsx` | Falling-notes highway for the riff-off: gems fall down neon lanes onto a scaled, tappable piano/guitar strike zone. Gem motion is a rAF loop writing transforms from the engine clock each frame — NOT CSS animations (React re-renders rewrite a running animation's delay without restarting it, which teleports gems; see file header). Renders `battleState.riffRun`; presses route to `Game.riffPressKey`. |
+| `RiffHighway.jsx` | Falling-notes highway for the riff-off: gems fall down neon lanes onto a scaled, tappable piano/guitar strike zone. Gem motion is a rAF loop writing transforms from the engine clock each frame — NOT CSS animations (React re-renders rewrite a running animation's delay without restarting it, which teleports gems; see file header). Renders `battleState.riffRun`; presses route to `Game.riffPressKey`. 🎸 Phase R2: accepts `showLabels` prop — when `false`, `noteGlyph` text is suppressed; sharps render as diamond-shaped gems (`rotate(45deg)`, `borderRadius:3px`), naturals stay round. Diamond shape preserved through burst animations. |
 | `Riffbook.jsx` | Discovery codex / cadence list. |
 | `EventModal.jsx` | Event-space marquee ticket. |
 | `UpgradeModal.jsx` | Harmonic-charge upgrade picker. |

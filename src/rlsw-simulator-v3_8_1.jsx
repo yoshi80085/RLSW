@@ -2858,6 +2858,10 @@ function Game({ gameState, onReturnToLobby }) {
     setChordMode(false);
     setNoteField(acting.id, {
       melodyLine:       [],
+      // Phase R1: stash the committed melody + riff-match for riff-off use.
+      // startRiffOff reads these; cleared at turn start (startNewTurnNotes).
+      committedMelody:  melodyLine,
+      committedHasRiff: !!riffMatch,
       discordCount:    0,
       pivotPending:    newPivotPending,
       rootNote:        newRootRaw,
@@ -2970,6 +2974,8 @@ function Game({ gameState, onReturnToLobby }) {
           ...ns,
           noteStock:    newStock,
           melodyLine:    [],
+          committedMelody:  null,   // Phase R1: clear stashed melody from last turn
+          committedHasRiff: false,
           revoiceUsedThisTurn: false,  // 🎸 fresh revoice each turn — your chord PERSISTS
           usedStockIdx: carriedUsed,
           discordCount: 0,
@@ -6543,11 +6549,26 @@ function Game({ gameState, onReturnToLobby }) {
     const atkNs = noteStates[attacker.id] ?? {};
     const slayer = (atkNs.unlockedSkills ?? []).includes('riff_slayer') && !!atkNs.riffSlayerArmed;
     const eRush  = (atkNs.unlockedSkills ?? []).includes('e_rush') && !!atkNs.eRushArmed;
-    const eb = dispatch(riffOffStarted(attacker.id, defender.id, { slayer, eRush })).battle;
+    // Phase R1: pass the attacker's committed melody line so the engine builds
+    // the riff from it (Rhythm Creation Device). hasRiff flags riffbook synergy.
+    // The commit path stashes these in committedMelody/committedHasRiff since
+    // melodyLine is cleared to [] after commit.
+    const melodyLine = atkNs.committedMelody ?? null;
+    const hasRiff    = !!atkNs.committedHasRiff;
+    // Phase R2: difficulty tier caps riff length
+    const activePreset = RIFF_FALL_DIFFICULTY[riffDifficultyRef.current] ?? RIFF_FALL_DIFFICULTY[RIFF_FALL_DEFAULT];
+    const maxLen = activePreset.maxLen ?? RIFF_LEN;
+    const eb = dispatch(riffOffStarted(attacker.id, defender.id, { slayer, eRush, melodyLine, hasRiff, maxLen })).battle;
     const atk = eb.atkRiff, def = eb.defRiff;
     const defGlitch = eb.defGlitch, defGhosts = eb.defGhosts;
     const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
-    addLog(`🎸🔥 RIFF-OFF! ${attacker.name} and ${defender.name} lock eyes — both plugged in, beams crossed!`);
+    // Log: show whether the riff came from the player's melody or was random
+    if (eb.fromMelody) {
+      addLog(`🎸🔥 RIFF-OFF! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`);
+      if (eb.hasRiff) addLog(`✨ Legendary riff woven into the call — the crowd leans in!`);
+    } else {
+      addLog(`🎸🔥 RIFF-OFF! ${attacker.name} and ${defender.name} lock eyes — both plugged in, beams crossed!`);
+    }
     addLog(`🎶 ${attacker.name} calls a ${RIFF_CONTOUR_LABELS[atk.contour]} — ${defender.name} must answer with a ${RIFF_ANSWER_LABELS[def.kind].name}.`);
 
     // 🗡️ RIFF SLAYER — the rival cracks under pressure: 2–3 answer notes lurch
@@ -6783,8 +6804,10 @@ function Game({ gameState, onReturnToLobby }) {
     const A = verdict.atkStats, D = verdict.defStats;
     const atkName = spirits.find(s => s.id === bs.attackerId)?.name;
     const defName = spirits.find(s => s.id === bs.defenderId)?.name;
-    if (tie) addLog(`🎸 RIFF-OFF R${round}: dead heat — both nailed ${A.hits}/${RIFF_LEN} at the same quality. The crowd can't pick a winner!`);
-    else addLog(`🎸 RIFF-OFF R${round}: ${attackerWon ? atkName : defName} takes it on ${decidedBy}! (${A.hits}/${RIFF_LEN}·${A.perfects}✦·${A.quality}%${A.avgRt != null ? ` · ${A.avgRt}ms` : ''} vs ${D.hits}/${RIFF_LEN}·${D.perfects}✦·${D.quality}%${D.avgRt != null ? ` · ${D.avgRt}ms` : ''})`);
+    const atkLen = bs.atkRiff?.notes?.length ?? RIFF_LEN;
+    const defLen = bs.defRiff?.notes?.length ?? RIFF_LEN;
+    if (tie) addLog(`🎸 RIFF-OFF R${round}: dead heat — both nailed ${A.hits}/${atkLen} at the same quality. The crowd can't pick a winner!`);
+    else addLog(`🎸 RIFF-OFF R${round}: ${attackerWon ? atkName : defName} takes it on ${decidedBy}! (${A.hits}/${atkLen}·${A.perfects}✦·${A.quality}%${A.avgRt != null ? ` · ${A.avgRt}ms` : ''} vs ${D.hits}/${defLen}·${D.perfects}✦·${D.quality}%${D.avgRt != null ? ` · ${D.avgRt}ms` : ''})`);
     setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_clash', round, clashStage: 'charge',
       clashWinner: null, attackerWon, margin, damage, tie, decidedBy, atkStats: A, defStats: D } : p);
   }
