@@ -339,9 +339,11 @@ export function BattleMeterOverlay({
 
               {/* ── INTRO ── */}
               {phase === 'riff_intro' && (
-                <div style={cardBase('#ffd700')}>
-                  <div style={{fontSize:11, color:'#ffd700', letterSpacing:2, marginBottom:10}}>
-                    🔊 PLUGGED IN · FACE TO FACE · BEAMS CROSSED
+                <div style={cardBase(battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700')}>
+                  <div style={{fontSize:11, color: battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700', letterSpacing:2, marginBottom:10}}>
+                    {battleState.riffTier === 'acoustic'
+                      ? '🎸 ACOUSTIC DUEL · NO AMPS · JUST CHOPS'
+                      : '🔊 PLUGGED IN · FACE TO FACE · BEAMS CROSSED'}
                   </div>
                   <div style={{fontSize:9, color:'#8aa5c5', lineHeight:1.8, marginBottom:8}}>
                     {battleState.atkRiff?.notes?.length ?? RIFF_LEN} notes flash one by one — hit the matching key the INSTANT it appears.<br/>
@@ -577,7 +579,8 @@ export function BattleMeterOverlay({
                     <div style={{fontSize:13, fontWeight:900, letterSpacing:3, marginBottom:12,
                       color: tie ? '#8aa5c5' : (winSp?.color ?? '#ffd700'),
                       textShadow: tie ? 'none' : `0 0 20px ${(winSp?.color ?? '#ffd700')}88`}}>
-                      {tie ? '🤝 DEAD HEAT — CROWD CAN\'T DECIDE' : `🏆 ${winSp?.name} WINS THE RIFF-OFF!`}
+                      {tie ? '🤝 DEAD HEAT — CROWD CAN\'T DECIDE'
+                        : `🏆 ${winSp?.name} WINS THE ${battleState.riffTier === 'acoustic' ? 'ACOUSTIC DUEL' : 'RIFF-OFF'}!`}
                     </div>
                     <div style={{display:'flex', gap:12, marginBottom:12}}>
                       {statCard(attacker, A, battleState.atkRiff, battleState.atkResults, !tie && won)}
@@ -585,11 +588,18 @@ export function BattleMeterOverlay({
                     </div>
                     <div style={{fontSize:8.5, color:'#6a8aaa', lineHeight:1.7}}>
                       {tie
-                        ? 'Beams cancelled out after 2 rounds — no damage, no Fame, both Spirits walk away with their pride.'
-                        : <>Won on <span style={{color:'#ffcc44'}}>{decidedBy}</span> · sealed by beam clash{(battleState.round ?? 1) >= 2 ? ' (Round 2!)' : ''} · margin {m} →
-                          <span style={{color:'#ff6677'}}> {dmg} Vibe damage</span> +
-                          <span style={{color:'#88bbff'}}> knockback</span> ·
-                          <span style={{color:'#ffd700'}}> ⭐ Fame to the winner</span></>}
+                        ? (battleState.riffTier === 'acoustic'
+                          ? 'The crowd goes quiet — neither could break through. No damage, no Fame.'
+                          : 'Beams cancelled out after 2 rounds — no damage, no Fame, both Spirits walk away with their pride.')
+                        : battleState.riffTier === 'acoustic'
+                          ? <>Won on <span style={{color:'#ffcc44'}}>{decidedBy}</span> · the busker circle roars · margin {m} →
+                            <span style={{color:'#ff6677'}}> {dmg} Vibe damage</span> +
+                            <span style={{color:'#88bbff'}}> knockback</span> ·
+                            <span style={{color:'#ffd700'}}> ⭐ Fame to the winner</span></>
+                          : <>Won on <span style={{color:'#ffcc44'}}>{decidedBy}</span> · sealed by beam clash{(battleState.round ?? 1) >= 2 ? ' (Round 2!)' : ''} · margin {m} →
+                            <span style={{color:'#ff6677'}}> {dmg} Vibe damage</span> +
+                            <span style={{color:'#88bbff'}}> knockback</span> ·
+                            <span style={{color:'#ffd700'}}> ⭐ Fame to the winner</span></>}
                     </div>
                     <button onClick={closeRiffOff} style={bigBtn(tie ? '#8aa5c5' : (winSp?.color ?? '#ffd700'))}>
                       🤘 ROCK ON →

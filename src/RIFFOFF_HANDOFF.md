@@ -142,44 +142,101 @@ spawn stagger if so).
 
 ---
 
-## 4. Phase R3 — the neon pass (fantasy '80s outline instrument)
+## 4. Phase R3 — the neon pass (fantasy '80s outline instrument) ✅ BUILT
 
 Kill the skeuomorphic piano. The instrument becomes a **neon outline** —
 outrun/synthwave: dark void, glowing wireframes, chrome-sunset accents.
 
-- **Piano:** white keys → transparent fill, 2px glowing cyan outline
-  (`filter: drop-shadow` stacked ×2 for bloom, no new deps). Black keys →
-  filled hot-magenta glow. Key-press lights the whole key interior.
-- **Guitar:** strings as glowing neon lines (cyan → magenta gradient down the
-  string order), fret markers as glow dots, headstock/nut as outline only.
-- **Highway:** perspective grid (horizontal lines scrolling toward the strike
-  line), sunset-gradient strike line, gems trail short neon tails.
-- **Judgment flashes:** perfect = white-hot burst, good = cyan, ok = violet,
-  miss = the gem grays out and tumbles (keep current tumble).
-- Palette: magenta `#ff2d95`, cyan `#19e6ff`, violet `#8a5cff`, sunset
-  orange `#ff8a2a`. Keep gem-vs-background contrast ≥ WCAG-ish; the shape
-  cue from §3 carries sharp info, never color alone.
-- Touch points: `ui/RiffHighway.jsx` (strike zones ~L90–150, gem ~L229,
-  highway container ~L285) **and** the main file's `renderInstrument`
-  (the board-side instrument mirror) so the two stay visually consistent.
+**What was built (2026-07-14):**
+
+- ✅ **Neon palette constants.** `NEON_CYAN` (`#19e6ff`), `NEON_MAGENTA`
+  (`#ff2d95`), `NEON_VIOLET` (`#8a5cff`), `NEON_ORANGE` (`#ff8a2a`),
+  `NEON_WHITE` (`#ffffee`). Defined at module scope in both
+  `ui/RiffHighway.jsx` and mirrored in the main file (`NEON_CYAN_I` etc.).
+- ✅ **Neon piano (PianoStrike).** White keys: transparent fill, 2px glowing
+  cyan outline with SVG `<filter>` bloom (stacked `feGaussianBlur` ×2 merged
+  — no new deps). Black keys: filled hot-magenta with bloom filter. Key-press
+  flood-fills the interior to white-hot (`NEON_WHITE`). Labels glow cyan,
+  brighten to white on press.
+- ✅ **Neon guitar (GuitarStrike).** Strings rendered as glowing neon lines
+  via `NEON_STRING_COLORS` array (cyan at low E → magenta at high e) with
+  bloom filter. Fret inlay dots are glowing violet. Nut is outline-only
+  (cyan, bloom-filtered, no fill). Fret lines dim cyan. Lit blips white-hot.
+- ✅ **Neon highway.** Background `#030810` (near-black void). Scrolling
+  perspective grid via CSS `repeating-linear-gradient` + `riff-grid-scroll`
+  animation (40px period, 1.2s loop). Lane guides fade from transparent →
+  cyan → magenta. Strike line is a sunset gradient (`NEON_ORANGE` →
+  `NEON_MAGENTA`) with pulsing `box-shadow`.
+- ✅ **Gem neon treatment.** Gems now have translucent fill (`baseCol` at 22%
+  opacity) with solid neon border + glow. Color assignments: ghost gems =
+  violet, glitched = magenta, rushed = orange, default = cyan. Each gem
+  trails a short neon tail via `.riff-gem-tail::before` pseudo-element using
+  `--gem-color` CSS variable (3px wide, 18px tall gradient). Half-landed
+  E-Rush gems flash white-hot.
+- ✅ **Judgment burst overhaul.** Perfect = white-hot (`NEON_WHITE`),
+  good = cyan, ok = violet, miss/wrong = gray (#555566) + new
+  `riffgem-miss-tumble` animation (grayscale, shrink + rotate + drop).
+  Diamond burst preserved via `riffgem-burst-diamond` keyframe (maintains
+  `rotate(45deg)` through scale).
+- ✅ **Board-side `renderInstrument` mirror.** Both piano and guitar views in
+  the main file match the neon treatment: transparent cyan-outlined whites,
+  magenta-filled blacks, gradient-colored strings with bloom, violet inlays,
+  white-hot lit blips. SVG `<filter>` IDs namespaced (`neonBrdBloom`,
+  `neonPnBloom`) to avoid collisions with the highway's filters.
+- Contrast preserved: gem shape cue from Phase R2 carries sharp/natural info
+  independent of color. Neon palette keeps adequate contrast against the
+  near-black highway background.
 
 ---
 
-## 5. Phase R4 — initiation ladder (fixing the double-gate)
+## 5. Phase R4 — initiation ladder (fixing the double-gate) ✅ BUILT
 
 Today's trigger (attacker amped + beam + defender plugged in) stays — it
 becomes the **stadium tier**. Problems it leaves: a no-amp Thrash build is
 locked out of the top FP faucet (the hero_pose mistake), and a defender can
 dodge the marquee event forever by staying unplugged.
 
-**The floor: ACOUSTIC DUEL.** Baseline-or-cheap challenge (§7 open Q):
-challenge an **adjacent** rival to an unamped riff-off. Smaller pot, no beam
-clash — a tight crowd-circle instead (busker energy). Once per turn,
-cooldown 2–3 turns per rival pair so it can't be farmed.
+**What was built (2026-07-14):**
 
-Ladder: acoustic duel (early, small pot) → amped stadium riff-off (late,
-big pot, beam clash). Frequency scales with the game arc; the finale energy
-of the full version is preserved.
+- ✅ **Engine `tier` parameter.** `riffOffStarted` action accepts `tier`
+  (`'acoustic'` | `'stadium'`), stored in `state.battle.tier`.
+  `applyRiffOffStarted` passes it through to the battle slice unchanged.
+  Default is `'stadium'` — all existing riff-off triggers unchanged.
+- ✅ **`initiateAcousticDuel(targetId)`.** New function in the main file:
+  - Requires **adjacency** (axialDist = 1).
+  - Costs **2 AP** + action token (same as other attacks).
+  - **Cooldown**: 2-turn per rival pair. Pair key = sorted IDs joined with
+    `:`. Tracked in `noteStates[sid].acousticDuelCds` map (set on BOTH
+    combatants). Ticked down in `startNewTurnNotes` alongside other cooldowns.
+  - Burns charges via `burnChargesAfterBattle` (same as stadium).
+  - No amp requirement. No beam requirement. No plugged-in check.
+  - Calls `startRiffOff(attacker, defender, 'acoustic')`.
+- ✅ **`startRiffOff` takes `tier` param.** Stored in `battleState.riffTier`.
+  Log messages differentiate: acoustic = "no amps, no beams, just chops";
+  stadium = "both plugged in, beams crossed".
+- ✅ **`riffResolve` acoustic path.** When `riffTier === 'acoustic'`, resolve
+  skips the beam clash entirely — sets phase directly to `riff_result` (no
+  `riff_clash` phase, no Round 2, no escalation). Stadium retains the full
+  beam clash → potential Round 2 escalation flow.
+- ✅ **Action button.** "🎸 Acoustic" button in the actions bar. Shown when:
+  adjacent rivals exist, 2+ AP, action token available, at least one adjacent
+  rival off cooldown. Orange accent (`#ffaa44`). Click → `setAction('acoustic')`
+  → click adjacent rival hex → `initiateAcousticDuel(target.id)`.
+- ✅ **Hex highlighting.** Acoustic mode highlights adjacent hexes with orange
+  tint; adjacent rivals glow bright orange.
+- ✅ **Bot policy.** Bots try acoustic duel as a fallback after beam/cone
+  attacks fail — if adjacent to an off-cooldown rival and 2+ AP remain.
+  Lower priority than sonic/swing (smaller pot), higher priority than "do
+  nothing and end turn." Uses `botPickTarget` for target selection.
+- ✅ **`BattleMeterOverlay` tier awareness.** Intro card shows "ACOUSTIC DUEL
+  · NO AMPS · JUST CHOPS" (orange) vs "PLUGGED IN · FACE TO FACE · BEAMS
+  CROSSED" (gold). Result card: "WINS THE ACOUSTIC DUEL" vs "WINS THE
+  RIFF-OFF". Tie text: "neither could break through" (acoustic) vs "beams
+  cancelled out" (stadium). Result flavor: "busker circle roars" (acoustic)
+  vs "sealed by beam clash" (stadium).
+- Bot auto-advance hooks unchanged — the `riff_clash` phase never triggers
+  for acoustic, so the clash auto-advance code is naturally skipped. The
+  `riff_result` auto-close at 1600ms still fires.
 
 ---
 
@@ -283,8 +340,8 @@ stay signature exclusives.
 |---|---|---|
 | R1 | ✅ `melodyRiff.js`, variable `RIFF_LEN` refactor, riffbook hook | `riff/melodyRiff.js` (new), `riff/riffGeneration.js`, `engine/systems/riffOff.js`, `engine/actions.js`, main file (`startRiffOff`, `confirmNoteTrack`, `startNewTurnNotes`), `ui/BattleMeterOverlay.jsx` |
 | R2 | ✅ `showLabels`/`maxLen` presets, VIRTUOSO, diamond sharp-cue | `riff/fallingNotes.js`, `ui/RiffHighway.jsx`, `ui/BattleMeterOverlay.jsx`, `engine/actions.js`, `engine/systems/riffOff.js`, main file (`startRiffOff`) |
-| R3 | Neon instrument + highway | `ui/RiffHighway.jsx`, main-file `renderInstrument`, `index.css` if shared keyframes |
-| R4 | Acoustic duel action + cooldowns | main file (actions bar, `startRiffOff` tier param), `engine/systems/riffOff.js`, bot policy |
+| R3 | ✅ Neon instrument + highway | `ui/RiffHighway.jsx`, main-file `renderInstrument` (keyframes inline in component `<style>`, no `index.css` changes needed) |
+| R4 | ✅ Acoustic duel action + cooldowns | `engine/actions.js` (tier param), `engine/systems/riffOff.js` (tier in battle slice), main file (`initiateAcousticDuel`, `startRiffOff` tier, `riffResolve` acoustic path, action button, hex highlight, bot policy), `ui/BattleMeterOverlay.jsx` (tier labels) |
 | R5 | Headliner, then Ante | engine state slice, main file, HUD, `ui/BattleMeterOverlay.jsx` |
 | R6 | `awardRiffFame` | `engine/systems/combat.js` or `riffOff.js`, main file `closeRiffOff` |
 | R7 | Sabotage skills | `SKILL_TREE`, `engine/systems/riffOff.js`, `ui/RiffHighway.jsx` |

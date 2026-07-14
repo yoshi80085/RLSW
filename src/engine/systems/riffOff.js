@@ -62,7 +62,7 @@ function pickGhostLetters(notes, rng) {
  *  When melodyLine is provided (Phase R1), the attacker's riff is built from
  *  their committed melody instead of randomly generated. If the melody is too
  *  short (<4 notes), falls back to a random riff (reduced-pot flag set). */
-export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRush, melodyLine, hasRiff, maxLen }, rng) {
+export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRush, melodyLine, hasRiff, maxLen, tier }, rng) {
   const len = Math.max(4, maxLen ?? RIFF_LEN_DEFAULT);
   let atk;
   let fromMelody = false;
@@ -82,6 +82,7 @@ export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRu
     ...state,
     battle: {
       kind: "riffOff",
+      tier: tier ?? 'stadium',         // Phase R4: 'acoustic' | 'stadium'
       attackerId, defenderId,
       round: 1,
       atkRiff: atk,                    // {degrees, sharps, contour, rhythm[, fromMelody]}

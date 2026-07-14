@@ -2997,6 +2997,10 @@ function Game({ gameState, onReturnToLobby }) {
           cadenceCooldowns: Object.fromEntries(
             Object.entries(ns.cadenceCooldowns ?? {}).map(([k, v]) => [k, Math.max(0, v - 1)])
           ),
+          // Phase R4: tick down acoustic duel per-pair cooldowns
+          acousticDuelCds: Object.fromEntries(
+            Object.entries(ns.acousticDuelCds ?? {}).filter(([, v]) => v > 1).map(([k, v]) => [k, v - 1])
+          ),
           // Tick down "goes to eleven" boost
           elevenTurns: Math.max(0, (ns.elevenTurns ?? 0) - 1),
           // ⚡ Charge Zone charges tick down on the holder's own turns (2 ≈ 2 rounds);
@@ -4772,6 +4776,13 @@ function Game({ gameState, onReturnToLobby }) {
   // to the Past challenge and riff-off battles. Note keys: lowercase = natural
   // (white key / open-ish fret), UPPERCASE = sharp (black key / +1 fret). `got` =
   // notes already hit (drawn green). `accent` colours the lit-but-unhit notes.
+  // ── Neon palette (must match ui/RiffHighway.jsx) ──────────────────────────
+  const NEON_CYAN_I    = '#19e6ff';
+  const NEON_MAGENTA_I = '#ff2d95';
+  const NEON_VIOLET_I  = '#8a5cff';
+  const NEON_WHITE_I   = '#ffffee';
+  const NEON_STR_COLS  = [NEON_CYAN_I, '#33ccff', '#6699ff', NEON_VIOLET_I, '#cc44dd', NEON_MAGENTA_I];
+
   function renderInstrument(view, noteKeys, gotKeys, accent) {
     const lit = new Set(noteKeys || []);
     const done = new Set(gotKeys || []);
@@ -4784,51 +4795,86 @@ function Game({ gameState, onReturnToLobby }) {
       const sx = i => side + i * colW, nutY = topPad, fy = f => nutY + f * fh;
       const posOf = k => {
         const nat = k.toLowerCase(); const base = GPOS[nat]; if (!base) return null;
-        return k === k.toUpperCase() && k !== nat ? [base[0], base[1] + 1] : base; // sharp = +1 fret
+        return k === k.toUpperCase() && k !== nat ? [base[0], base[1] + 1] : base;
       };
       const blips = [...lit].map(k => ({ k, pos: posOf(k), dn: done.has(k) })).filter(b => b.pos);
       return (
         <svg width={W} height={H} style={{maxWidth:'100%'}}>
+          <defs>
+            <filter id="neonBrdBloom" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b1"/>
+              <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b2"/>
+              <feMerge><feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          {/* string names — neon per string */}
           {names.map((nm, i) => (
-            <text key={`n${i}`} x={sx(i)} y={topPad - 6} textAnchor="middle" fontSize={9} fontWeight="bold" fill={`${accent}cc`} fontFamily="monospace">{nm}</text>
+            <text key={`n${i}`} x={sx(i)} y={topPad - 6} textAnchor="middle" fontSize={9} fontWeight="bold" fill={NEON_STR_COLS[i]} fontFamily="monospace">{nm}</text>
           ))}
+          {/* fret inlays — violet glow */}
           {[3,5,7].filter(f => f <= FRETS).map(f => (
-            <circle key={`in${f}`} cx={(sx(2) + sx(3)) / 2} cy={nutY + (f - 0.5) * fh} r={3.5} fill={`${accent}33`}/>
+            <circle key={`in${f}`} cx={(sx(2) + sx(3)) / 2} cy={nutY + (f - 0.5) * fh} r={3.5}
+              fill={`${NEON_VIOLET_I}55`} stroke={`${NEON_VIOLET_I}44`} strokeWidth={1}
+              filter="url(#neonBrdBloom)"/>
           ))}
+          {/* frets — dim cyan; nut = outline only */}
           {Array.from({ length: FRETS + 1 }).map((_, f) => (
-            <line key={`f${f}`} x1={sx(0)} y1={fy(f)} x2={sx(N - 1)} y2={fy(f)} stroke={f === 0 ? '#dbe4f0' : `${accent}44`} strokeWidth={f === 0 ? 3.5 : 1}/>
+            <line key={`f${f}`} x1={sx(0)} y1={fy(f)} x2={sx(N - 1)} y2={fy(f)}
+              stroke={f === 0 ? NEON_CYAN_I : `${NEON_CYAN_I}22`}
+              strokeWidth={f === 0 ? 2 : 0.8}
+              filter={f === 0 ? 'url(#neonBrdBloom)' : undefined}/>
           ))}
+          {/* strings — neon glow, cyan→magenta */}
           {names.map((_, i) => (
-            <line key={`s${i}`} x1={sx(i)} y1={fy(0)} x2={sx(i)} y2={fy(FRETS)} stroke="#aab8cc" strokeWidth={gauge[i]} strokeLinecap="round"/>
+            <line key={`s${i}`} x1={sx(i)} y1={fy(0)} x2={sx(i)} y2={fy(FRETS)}
+              stroke={NEON_STR_COLS[i]} strokeWidth={gauge[i] * 0.8}
+              strokeLinecap="round" filter="url(#neonBrdBloom)"/>
           ))}
+          {/* note blips — white-hot on done, neon outline on lit */}
           {blips.map(({ k, pos, dn }) => {
             const [s, f] = pos, cx = sx(s);
-            if (f === 0) return <circle key={k} cx={cx} cy={nutY - 9} r={5} fill={dn ? '#2bd66b' : 'none'} stroke={dn ? '#2bd66b' : accent} strokeWidth={2}/>;
-            return <circle key={k} cx={cx} cy={nutY + (f - 0.5) * fh} r={7.5} fill={dn ? '#2bd66b' : accent} stroke="#06111f" strokeWidth={1} style={dn ? {} : { filter:`drop-shadow(0 0 5px ${accent})` }}/>;
+            if (f === 0) return <circle key={k} cx={cx} cy={nutY - 9} r={5}
+              fill={dn ? NEON_WHITE_I : 'none'} stroke={dn ? NEON_CYAN_I : NEON_STR_COLS[s]}
+              strokeWidth={1.5} filter="url(#neonBrdBloom)"/>;
+            return <circle key={k} cx={cx} cy={nutY + (f - 0.5) * fh} r={7.5}
+              fill={dn ? NEON_WHITE_I : `${NEON_STR_COLS[s]}44`}
+              stroke={NEON_STR_COLS[s]} strokeWidth={1.5}
+              filter="url(#neonBrdBloom)"/>;
           })}
         </svg>
       );
     }
-    // piano — one octave, C–B, with black keys. Naturals light the whites; sharps
-    // light the black between the right pair.
+    // Neon piano — transparent whites with cyan outlines, magenta-filled blacks.
     const whites = ['c','d','e','f','g','a','b'];
     const blackAfter = [0, 1, 3, 4, 5];
-    const blackForSharp = { C:0, D:1, F:3, G:4, A:5 }; // uppercase sharp → white index it sits right of
+    const blackForSharp = { C:0, D:1, F:3, G:4, A:5 };
     const W = 26, H = 84, bw = 16, bh = 52, svgW = whites.length * W;
     return (
       <svg width={svgW} height={H} style={{maxWidth:'100%'}}>
+        <defs>
+          <filter id="neonPnBloom" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="b1"/>
+            <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b2"/>
+            <feMerge><feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        {/* white keys — transparent with cyan outline */}
         {whites.map((l, i) => {
           const isLit = lit.has(l), dn = done.has(l);
-          const fill = dn ? '#2bd66b' : isLit ? accent : '#e6ecf6';
-          return <rect key={l} x={i * W} y={0} width={W - 1} height={H} rx={3} fill={fill} stroke="#0a0e16" strokeWidth={1}
-            style={isLit && !dn ? { filter:`drop-shadow(0 0 7px ${accent})` } : {}}/>;
+          const fill = dn ? NEON_WHITE_I : isLit ? `${NEON_CYAN_I}33` : 'transparent';
+          const stroke = dn ? NEON_WHITE_I : isLit ? NEON_WHITE_I : NEON_CYAN_I;
+          return <rect key={l} x={i * W + 1} y={1} width={W - 3} height={H - 2} rx={3}
+            fill={fill} stroke={stroke} strokeWidth={1.5}
+            filter={(isLit || dn) ? 'url(#neonPnBloom)' : undefined}/>;
         })}
+        {/* black keys — filled magenta */}
         {blackAfter.map(i => {
           const sharp = Object.keys(blackForSharp).find(s => blackForSharp[s] === i);
           const isLit = sharp && lit.has(sharp), dn = sharp && done.has(sharp);
-          const fill = dn ? '#2bd66b' : isLit ? accent : '#0c1018';
-          return <rect key={`b${i}`} x={(i + 1) * W - bw / 2} y={0} width={bw} height={bh} rx={2} fill={fill} stroke="#000" strokeWidth={1}
-            style={isLit && !dn ? { filter:`drop-shadow(0 0 6px ${accent})` } : {}}/>;
+          const fill = dn ? NEON_WHITE_I : isLit ? NEON_WHITE_I : NEON_MAGENTA_I;
+          return <rect key={`b${i}`} x={(i + 1) * W - bw / 2} y={0} width={bw} height={bh} rx={2}
+            fill={fill} stroke={`${NEON_MAGENTA_I}cc`} strokeWidth={1}
+            filter="url(#neonPnBloom)"/>;
         })}
       </svg>
     );
@@ -6537,12 +6583,50 @@ function Game({ gameState, onReturnToLobby }) {
     }, 5600);
   }
 
+  // ── ACOUSTIC DUEL — Phase R4 ────────────────────────────────────────────────
+  // The baseline riff-off: no amp requirement, just adjacency. Smaller pot
+  // (handled in R6), no beam clash, no Round 2. Once per turn, 2-turn cooldown
+  // per rival pair so it can't be farmed.
+  const ACOUSTIC_DUEL_CD = 2;
+  function acousticDuelPairKey(a, b) { return [a, b].sort().join(':'); }
+  function initiateAcousticDuel(targetId) {
+    if (!acting) return;
+    if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
+    if (actionTokenUsed) { addLog('🎸 Already used your Action Token this turn!'); return; }
+    if (moveStepsLeft < 2) { addLog('🎸 Not enough Action Points — Acoustic Duel costs 2 AP.'); return; }
+    const attacker = spirits.find(s => s.id === acting.id);
+    const defender = spirits.find(s => s.id === targetId);
+    if (!attacker || !defender) return;
+    // Adjacency check
+    const aHex = HEX_BY_NUM[attacker.num], dHex = HEX_BY_NUM[defender.num];
+    if (!aHex || !dHex || axialDist(aHex.q, aHex.r, dHex.q, dHex.r) > 1) {
+      addLog('🎸 Acoustic Duel requires an adjacent rival!'); return;
+    }
+    // Cooldown check
+    const pairKey = acousticDuelPairKey(attacker.id, targetId);
+    const cd = (noteStates[attacker.id]?.acousticDuelCds ?? {})[pairKey] ?? 0;
+    if (cd > 0) { addLog(`🎸 Too soon — ${defender.name} needs ${cd} more turn(s) before another acoustic duel.`); return; }
+    dispatch(beatsSpent(2, true));
+    setAction(null);
+    burnChargesAfterBattle([attacker.id, targetId], 'the acoustic duel spent it');
+    // Set cooldown on BOTH combatants for this pair
+    setNoteStates(prev => {
+      const next = { ...prev };
+      [attacker.id, targetId].forEach(sid => {
+        const ns = next[sid] ?? {};
+        next[sid] = { ...ns, acousticDuelCds: { ...(ns.acousticDuelCds ?? {}), [pairKey]: ACOUSTIC_DUEL_CD } };
+      });
+      return next;
+    });
+    startRiffOff(attacker, defender, 'acoustic');
+  }
+
   // ── RIFF-OFF ENGINE ──────────────────────────────────────────────────────────
   // Sequential call-and-response on a shared keyboard: the attacker plays
   // their riff first, results are logged, the keyboard is passed, and the
   // defender answers with a transformed riff. Accuracy decides the winner;
   // average reaction time breaks ties.
-  function startRiffOff(attacker, defender) {
+  function startRiffOff(attacker, defender, tier = 'stadium') {
     // The engine generates both riffs + skill modifiers on its seeded rng and
     // stores them in engineState.battle — this client just renders that data.
     // (slayer/eRush flags are client-supplied until noteStates joins in Ph 5.)
@@ -6558,16 +6642,22 @@ function Game({ gameState, onReturnToLobby }) {
     // Phase R2: difficulty tier caps riff length
     const activePreset = RIFF_FALL_DIFFICULTY[riffDifficultyRef.current] ?? RIFF_FALL_DIFFICULTY[RIFF_FALL_DEFAULT];
     const maxLen = activePreset.maxLen ?? RIFF_LEN;
-    const eb = dispatch(riffOffStarted(attacker.id, defender.id, { slayer, eRush, melodyLine, hasRiff, maxLen })).battle;
+    // Phase R4: tier ('acoustic' | 'stadium') flows into the engine battle slice
+    const eb = dispatch(riffOffStarted(attacker.id, defender.id, { slayer, eRush, melodyLine, hasRiff, maxLen, tier })).battle;
     const atk = eb.atkRiff, def = eb.defRiff;
     const defGlitch = eb.defGlitch, defGhosts = eb.defGhosts;
     const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
     // Log: show whether the riff came from the player's melody or was random
+    const isAcoustic = tier === 'acoustic';
     if (eb.fromMelody) {
-      addLog(`🎸🔥 RIFF-OFF! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`);
+      addLog(isAcoustic
+        ? `🎸🎶 ACOUSTIC DUEL! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`
+        : `🎸🔥 RIFF-OFF! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`);
       if (eb.hasRiff) addLog(`✨ Legendary riff woven into the call — the crowd leans in!`);
     } else {
-      addLog(`🎸🔥 RIFF-OFF! ${attacker.name} and ${defender.name} lock eyes — both plugged in, beams crossed!`);
+      addLog(isAcoustic
+        ? `🎸🎶 ACOUSTIC DUEL! ${attacker.name} and ${defender.name} square off — no amps, no beams, just chops!`
+        : `🎸🔥 RIFF-OFF! ${attacker.name} and ${defender.name} lock eyes — both plugged in, beams crossed!`);
     }
     addLog(`🎶 ${attacker.name} calls a ${RIFF_CONTOUR_LABELS[atk.contour]} — ${defender.name} must answer with a ${RIFF_ANSWER_LABELS[def.kind].name}.`);
 
@@ -6587,6 +6677,7 @@ function Game({ gameState, onReturnToLobby }) {
     riffEngineRef.current = null;
     setBattleState({
       riffOff: true, sonicAttack: true,   // sonicAttack → sonic-scale knockback
+      riffTier: tier,                     // Phase R4: 'acoustic' | 'stadium'
       phase: 'riff_intro',
       attackerId: attacker.id, defenderId: defender.id,
       atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
@@ -6806,10 +6897,19 @@ function Game({ gameState, onReturnToLobby }) {
     const defName = spirits.find(s => s.id === bs.defenderId)?.name;
     const atkLen = bs.atkRiff?.notes?.length ?? RIFF_LEN;
     const defLen = bs.defRiff?.notes?.length ?? RIFF_LEN;
-    if (tie) addLog(`🎸 RIFF-OFF R${round}: dead heat — both nailed ${A.hits}/${atkLen} at the same quality. The crowd can't pick a winner!`);
-    else addLog(`🎸 RIFF-OFF R${round}: ${attackerWon ? atkName : defName} takes it on ${decidedBy}! (${A.hits}/${atkLen}·${A.perfects}✦·${A.quality}%${A.avgRt != null ? ` · ${A.avgRt}ms` : ''} vs ${D.hits}/${defLen}·${D.perfects}✦·${D.quality}%${D.avgRt != null ? ` · ${D.avgRt}ms` : ''})`);
-    setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_clash', round, clashStage: 'charge',
-      clashWinner: null, attackerWon, margin, damage, tie, decidedBy, atkStats: A, defStats: D } : p);
+    const tierLabel = bs.riffTier === 'acoustic' ? 'ACOUSTIC DUEL' : 'RIFF-OFF';
+    if (tie) addLog(`🎸 ${tierLabel} R${round}: dead heat — both nailed ${A.hits}/${atkLen} at the same quality. The crowd can't pick a winner!`);
+    else addLog(`🎸 ${tierLabel} R${round}: ${attackerWon ? atkName : defName} takes it on ${decidedBy}! (${A.hits}/${atkLen}·${A.perfects}✦·${A.quality}%${A.avgRt != null ? ` · ${A.avgRt}ms` : ''} vs ${D.hits}/${defLen}·${D.perfects}✦·${D.quality}%${D.avgRt != null ? ` · ${D.avgRt}ms` : ''})`);
+    // Phase R4: acoustic duels skip the beam clash entirely — no Round 2, no
+    // escalation. The crowd circles up, the riff decides, move on.
+    if (bs.riffTier === 'acoustic') {
+      const winner = tie ? null : (attackerWon ? 'attacker' : 'defender');
+      setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_result', round,
+        clashStage: null, clashWinner: winner, attackerWon, margin, damage, tie, decidedBy, atkStats: A, defStats: D } : p);
+    } else {
+      setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_clash', round, clashStage: 'charge',
+        clashWinner: null, attackerWon, margin, damage, tie, decidedBy, atkStats: A, defStats: D } : p);
+    }
   }
 
   // ── BEAM CLASH ("Kamehameha") — DBZ-style finale to the riff-off ──────────
@@ -7873,6 +7973,26 @@ function Game({ gameState, onReturnToLobby }) {
           schedule(guard(() => initiateSwing(t.id)));
           return;
         }
+        // Phase R4: Acoustic Duel — fallback when no beam/cone available.
+        // Challenge an adjacent rival if off cooldown. Lower priority than sonic/swing
+        // since the pot is smaller, but better than doing nothing.
+        if (steps >= 2) {
+          const selfHex = HEX_BY_NUM[self.num];
+          if (selfHex) {
+            const botCds = (noteStates[self.id]?.acousticDuelCds ?? {});
+            const adjRivals = spirits.filter(s => s.id !== self.id && !s.knockedOut && (() => {
+              const h = HEX_BY_NUM[s.num];
+              if (!h || axialDist(selfHex.q, selfHex.r, h.q, h.r) !== 1) return false;
+              return (botCds[acousticDuelPairKey(self.id, s.id)] ?? 0) <= 0;
+            })());
+            if (adjRivals.length) {
+              const t = botPickTarget(adjRivals, self);
+              botStepRef.current = 'ending';
+              schedule(guard(() => initiateAcousticDuel(t.id)));
+              return;
+            }
+          }
+        }
         // Not lined up — re-face toward the best shot (1 step to turn + 2 to fire).
         if (steps >= 3) {
           const bf = ampsInRangeRef.current >= 1 ? botBestFacing(self, 'beam') : null;
@@ -8151,6 +8271,17 @@ function Game({ gameState, onReturnToLobby }) {
       else addLog("🔊 That spirit is not in your sonic beam!");
       return;
     }
+    if (action === "acoustic") {
+      // Phase R4: Acoustic Duel targets adjacent rivals
+      const actHex = HEX_BY_NUM[acting.num];
+      const target = actHex ? spirits.filter(s => s.id !== acting.id && !s.knockedOut).find(s => {
+        const h = HEX_BY_NUM[s.num];
+        return h && axialDist(actHex.q, actHex.r, h.q, h.r) === 1 && s.num === num;
+      }) : null;
+      if (target) { initiateAcousticDuel(target.id); setAction(null); }
+      else addLog("🎸 That spirit is not adjacent — move closer for an acoustic duel!");
+      return;
+    }
     if (action === "smash") {
       const rivals = acting ? getRivalsInCone(acting) : [];
       const target = rivals.find(r => r.num === num);
@@ -8278,6 +8409,14 @@ function Game({ gameState, onReturnToLobby }) {
       if (beam.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num);
         return isRival ? '#44aaffee' : '#2244ff44';
+      }
+    }
+    // Phase R4: Acoustic duel — highlight adjacent rivals
+    if (action === 'acoustic' && acting) {
+      const actHex = HEX_BY_NUM[acting.num];
+      if (actHex && axialDist(actHex.q, actHex.r, hex.q, hex.r) === 1) {
+        const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num);
+        return isRival ? '#ffaa44ee' : '#ff882233';
       }
     }
     // Face mode: adjacent hex stroke
@@ -10397,6 +10536,46 @@ function Game({ gameState, onReturnToLobby }) {
               );
             })()}
             {action === 'sonic' && (
+              <button className="btn" style={{borderColor:'#888',color:'#888'}}
+                onClick={() => setAction(null)}>Cancel</button>
+            )}
+            {/* 🎸 ACOUSTIC DUEL — Phase R4: baseline riff-off, no amp needed, just adjacency */}
+            {hasConfirmed && !actionTokenUsed && (() => {
+              const actHex = acting ? HEX_BY_NUM[acting.num] : null;
+              if (!actHex) return null;
+              const adjacentRivals = spirits.filter(s =>
+                s.id !== acting.id && !s.knockedOut &&
+                HEX_BY_NUM[s.num] && axialDist(actHex.q, actHex.r, HEX_BY_NUM[s.num].q, HEX_BY_NUM[s.num].r) === 1
+              );
+              if (adjacentRivals.length === 0) return null;
+              const aNs = actingNoteState ?? {};
+              const cds = aNs.acousticDuelCds ?? {};
+              // Any adjacent rival off cooldown?
+              const available = adjacentRivals.filter(r => {
+                const pk = acousticDuelPairKey(acting.id, r.id);
+                return (cds[pk] ?? 0) <= 0;
+              });
+              const canDuel = available.length > 0 && moveStepsLeft >= 2;
+              return (
+                <div style={{position:'relative',display:'inline-block'}}>
+                  <button className={canDuel ? 'btn active' : 'btn'}
+                    style={{borderColor: canDuel ? '#ffaa44' : '#332200',
+                      color: canDuel ? '#ffcc66' : '#332200'}}
+                    disabled={!canDuel}
+                    title="Acoustic Duel (2 AP) — challenge an adjacent rival to an unamped riff-off. No beam, no amps — just chops. 2-turn cooldown per rival."
+                    onClick={() => {
+                      if (action === 'acoustic') { setAction(null); }
+                      else if (canDuel) {
+                        setAction('acoustic');
+                        addLog(`🎸 ACOUSTIC DUEL — click an adjacent rival to challenge! No amps needed.`);
+                      }
+                    }}>
+                    🎸 Acoustic{available.length > 0 ? ` (${available.length})` : ''} {!canDuel && moveStepsLeft < 2 ? '(2AP)' : ''}
+                  </button>
+                </div>
+              );
+            })()}
+            {action === 'acoustic' && (
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
