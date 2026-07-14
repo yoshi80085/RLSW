@@ -82,6 +82,9 @@ export const GOD_DEFEATED       = "GOD_DEFEATED";
 export const GOD_TRIUMPHED      = "GOD_TRIUMPHED";
 export const GOD_TIMER_EXPIRED  = "GOD_TIMER_EXPIRED";
 
+// ── Phase R5: headliner ─────────────────────────────────────────────────────
+export const HEADLINER_CHANGED = "HEADLINER_CHANGED";
+
 // Phase 5c (economy/skills flip): NOTE_TRACK_CONFIRMED, SKILL_AWARDED, FANS_CHANGED, …
 // Phase 6 (events/FX/god):        EVENT_DRAWN, STAGE_FX_TICK, GOD_ATTACK, …
 
@@ -537,4 +540,11 @@ export function flamingHexesSet(hexes, rounds) {
 export const RANDOM_BATCH_DRAWN = "RANDOM_BATCH_DRAWN";
 export function randomBatchDrawn(count) {
   return { type: RANDOM_BATCH_DRAWN, count };
+}
+
+// ── Phase R5: headliner ─────────────────────────────────────────────────────
+/** The Headliner title transfers to a new spirit (riff-off winner) or is
+ *  vacated (null). Engine-owned so it replays deterministically. */
+export function headlinerChanged(spiritId) {
+  return { type: HEADLINER_CHANGED, spiritId };
 }

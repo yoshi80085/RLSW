@@ -58,7 +58,7 @@ import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn ro
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome, thrashDamage, thrashKnockback, thrashFame, sonicDamage, sonicKnockback, sonicFame } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
@@ -5512,31 +5512,91 @@ function Game({ gameState, onReturnToLobby }) {
     // and stage position (gainFans / perfExciteGain), not handed out on a win.
   }
 
+  // ── 👑 HEADLINER RIDER — +1 FP on win-FP when you hold the title. ──
+  // Applied in awardSonicFame / awardThrashFame / awardRiffFame (NOT in
+  // grantFame, so riff discoveries / cadences / trivia are unaffected).
+  function headlinerRider(spiritId) {
+    return engineRef.current.headliner === spiritId ? 1 : 0;
+  }
+
   // ── SONIC FAME — the primary FP engine. Margin-scaled + center-stage bonus. ──
   function awardSonicFame(spiritId, margin, loserId, centerBonus = 0) {
-    const base = sonicFame(margin) + centerBonus;
+    const rider = headlinerRider(spiritId);
+    const base = sonicFame(margin) + centerBonus + rider;
     const { fp, deficit, mult } = underdogBonus(spiritId, loserId, base);
+    const riderTag = rider ? ' +👑' : '';
     if (deficit >= UNDERDOG_MIN_DEFICIT && fp > base) {
       const nm = spirits.find(s => s.id === spiritId)?.name;
       addLog(`🔥 UNDERDOG! ${nm} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
       triggerEffectFlash(spiritId, '🔥', 'UNDERDOG!', '#ffaa22');
-      grantFame(spiritId, fp, `sonic win by ${margin}`);
+      grantFame(spiritId, fp, `sonic win by ${margin}${riderTag}`);
     } else {
-      grantFame(spiritId, base, `sonic win by ${margin}${centerBonus ? ' +spotlight' : ''}`);
+      grantFame(spiritId, base, `sonic win by ${margin}${centerBonus ? ' +spotlight' : ''}${riderTag}`);
     }
   }
 
   // ── THRASH FAME — flat 1 FP. You fight to hurt, not to shine. ──
   function awardThrashFame(spiritId, loserId) {
-    const base = thrashFame();
+    const rider = headlinerRider(spiritId);
+    const base = thrashFame() + rider;
     const { fp, deficit, mult } = underdogBonus(spiritId, loserId, base);
+    const riderTag = rider ? ' +👑' : '';
     if (deficit >= UNDERDOG_MIN_DEFICIT && fp > base) {
       const nm = spirits.find(s => s.id === spiritId)?.name;
       addLog(`🔥 UNDERDOG! ${nm} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
       triggerEffectFlash(spiritId, '🔥', 'UNDERDOG!', '#ffaa22');
-      grantFame(spiritId, fp, `thrash win`);
+      grantFame(spiritId, fp, `thrash win${riderTag}`);
     } else {
-      grantFame(spiritId, base, `thrash win`);
+      grantFame(spiritId, base, `thrash win${riderTag}`);
+    }
+  }
+
+  // ── RIFF-OFF FAME (Phase R6) — the marquee event's dedicated FP engine. ──
+  // Replaces the old awardSonicFame call in closeRiffOff. Higher floor than
+  // sonic (this is the big show), style pay rewards HOW you played, tier mult
+  // shapes the acoustic-vs-stadium split, and loser consolation softens the
+  // dexterity gap for close duels. All numbers are first-pass — tune in playtest.
+  function awardRiffFame(winnerId, loserId, battleS, tier) {
+    const round   = battleS.round ?? 1;
+    const verdict = battleS;
+    const margin  = verdict.margin ?? 0;
+    const atkStats = verdict.atkStats ?? {};
+    const defStats = verdict.defStats ?? {};
+    const winStats = verdict.attackerWon ? atkStats : defStats;
+    const loseStats = verdict.attackerWon ? defStats : atkStats;
+
+    // ── Base: higher floor than sonic ──
+    let base = 2 + Math.ceil(margin / 2);
+    // ── Style pay: +1 per 3 perfects ──
+    base += Math.floor((winStats.perfects ?? 0) / 3);
+    // ── Tier multiplier ──
+    if (tier === 'acoustic') {
+      base = Math.max(1, Math.round(base * 0.6));
+    }
+    // Round-2 stadium flat bonus
+    if (round >= 2 && tier !== 'acoustic') base += 2;
+    // ── Headliner rider ──
+    const rider = headlinerRider(winnerId);
+    base += rider;
+    const riderTag = rider ? ' +👑' : '';
+
+    // ── Underdog ramp (applied to winner's total base) ──
+    const { fp, deficit, mult } = underdogBonus(winnerId, loserId, base);
+    const tierTag = tier === 'acoustic' ? ' acoustic' : (round >= 2 ? ' R2 stadium' : ' stadium');
+    if (deficit >= UNDERDOG_MIN_DEFICIT && fp > base) {
+      const nm = spirits.find(s => s.id === winnerId)?.name;
+      addLog(`🔥 UNDERDOG! ${nm} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
+      triggerEffectFlash(winnerId, '🔥', 'UNDERDOG!', '#ffaa22');
+      grantFame(winnerId, fp, `riff-off win by ${margin}${tierTag}${riderTag}`);
+    } else {
+      grantFame(winnerId, base, `riff-off win by ${margin}${tierTag}${riderTag}`);
+    }
+
+    // ── Loser consolation: quality ≥ 80% → 1 FP ──
+    if ((loseStats.quality ?? 0) >= 80) {
+      const loserName = spirits.find(s => s.id === loserId)?.name;
+      addLog(`🎵 ${loserName} played a worthy set — the crowd salutes! (+1 FP consolation)`);
+      grantFame(loserId, 1, 'worthy riff-off set');
     }
   }
 
@@ -6997,13 +7057,24 @@ function Game({ gameState, onReturnToLobby }) {
     if (!tie) {
       const winnerId = attackerWon ? attackerId : defenderId;
       const loserId  = attackerWon ? defenderId : attackerId;
-      // Riff-off is a Sonic-class encounter — use Sonic push/FP rules.
+      // Knockback uses Sonic push rules (stage presence matters).
       const loser = spirits.find(x => x.id === loserId);
       battleKnockback(winnerId, loserId, sonicKnockback(margin, loser?.vibe ?? 1, loser?.maxVibe ?? 1));
       resolveWinDamage(winnerId, loserId, damage, spirits.find(x => x.id === winnerId)?.name);
-      const ring = hexRingFromCenter(spirits.find(x => x.id === winnerId)?.num ?? -1);
-      const centerBonus = (ring === 'main' || ring === 'pit') ? SONIC_LIMELIGHT_FP : 0;
-      awardSonicFame(winnerId, margin, loserId, centerBonus);
+      // Phase R6: dedicated riff-off FP engine (replaces awardSonicFame).
+      awardRiffFame(winnerId, loserId, s, s.riffTier);
+      // 👑 HEADLINER — winner of any riff-off claims the title
+      const prevHeadliner = engineRef.current.headliner;
+      dispatch(headlinerChanged(winnerId));
+      const winnerName = spirits.find(x => x.id === winnerId)?.name;
+      if (prevHeadliner && prevHeadliner !== winnerId) {
+        const prevName = spirits.find(x => x.id === prevHeadliner)?.name;
+        addLog(`👑 ${winnerName} SEIZES the Headliner title from ${prevName}!`);
+        triggerEffectFlash(winnerId, '👑', 'HEADLINER!', '#ffd700');
+      } else if (!prevHeadliner) {
+        addLog(`👑 ${winnerName} claims the Headliner title!`);
+        triggerEffectFlash(winnerId, '👑', 'HEADLINER!', '#ffd700');
+      }
       if (attackerWon) applyPendingCombatEffects(attackerId, defenderId);
     }
     clearBattleBuffs(attackerId, defenderId);
@@ -9150,6 +9221,7 @@ function Game({ gameState, onReturnToLobby }) {
                   <div style={{minWidth:0}}>
                     <div style={{fontSize:11,fontWeight:700,color:s.color,lineHeight:1.2}}>
                       {s.name}
+                      {engineRef.current.headliner === s.id ? " 👑" : ""}
                       {s.knockedOut ? " 💀" : s.vibe===0 ? " ⚠️" : ""}
                     </div>
                     <div style={{fontSize:7,color:"#3a5a7a",marginTop:1,letterSpacing:1}}>{s.style}</div>

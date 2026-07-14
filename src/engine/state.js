@@ -117,6 +117,9 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       lastEventRespawn: null,
     },
 
+    // Phase R5: headliner title (riff-off winner)
+    headliner: null,
+
     fame: null,
     amps: null,
     boardCards: null,

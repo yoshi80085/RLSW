@@ -244,7 +244,7 @@ dodge the marquee event forever by staying unplugged.
 
 ### Stakes (build in this order)
 
-1. **HEADLINER 👑** — winner of any riff-off holds the title, **stealable
+1. ✅ **HEADLINER 👑** — winner of any riff-off holds the title, **stealable
    only via riff-off**, visible on the HUD. Payout (Alex's design, replaces
    the earlier trickle idea): **+1 FP rider on win-FP** — whenever the
    Headliner earns FP from a sonic win, thrash win, or riff-off win, they
@@ -267,20 +267,37 @@ Guardrails: fan stakes go through the Unsure pool (no diehard theft — the
 snowball is real since fans multiply FP); the underdog ramp applies *after*
 the pot so comebacks still read.
 
-### Dedicated riff fame — replace `awardSonicFame` in `closeRiffOff`
+### ✅ Dedicated riff fame — replace `awardSonicFame` in `closeRiffOff`
 
 New `awardRiffFame(winnerId, loserId, verdict, tier, pot)`:
 
-- **Base**: margin-scaled like sonic but with a higher floor (this is the
+- ✅ **Base**: margin-scaled like sonic but with a higher floor (this is the
   marquee event) — first pass: `2 + ceil(margin/2)`.
-- **Style pay**: +1 per 3 perfects (pay for *how* you played, not just that
+- ✅ **Style pay**: +1 per 3 perfects (pay for *how* you played, not just that
   you won — `verdict.atkStats/defStats` already carry `perfects`/`quality`).
-- **Tier mult**: acoustic ×0.6, stadium ×1, Round-2 stadium +2 flat.
+- ✅ **Tier mult**: acoustic ×0.6, stadium ×1, Round-2 stadium +2 flat.
 - **Pot**: stakes winnings added after base (underdog/crowd mults then apply
-  via the normal `grantFame` path).
-- **Loser consolation**: quality ≥ 80% → 1 FP, "the crowd salutes a worthy
+  via the normal `grantFame` path). *(wired when THROW DOWN ante lands)*
+- ✅ **Loser consolation**: quality ≥ 80% → 1 FP, "the crowd salutes a worthy
   set." Softens the dexterity gap; the crowd loves a close duel.
 - All numbers are first-pass — tune in playtest, keep the *structure*.
+
+### R5/R6 build notes (2026-07-14)
+
+- **Engine**: `headliner: null` added to `makeInitialState` (state.js).
+  `HEADLINER_CHANGED` action + `applyHeadlinerChanged` in economy.js,
+  wired through reduce.js.
+- **Transfer**: `closeRiffOff` dispatches `headlinerChanged(winnerId)` after
+  every non-tie riff-off. Log distinguishes "claims" (first) vs "SEIZES"
+  (steal). Effect flash 👑 HEADLINER! in gold.
+- **+1 FP rider**: `headlinerRider(spiritId)` helper added to
+  `awardSonicFame`, `awardThrashFame`, and `awardRiffFame`. Adds +1 to
+  base before underdog calc. Log tags with `+👑`. NOT in `grantFame`.
+- **`awardRiffFame`**: replaces `awardSonicFame` call in `closeRiffOff`.
+  Higher floor (2 + ceil(margin/2)), style pay (+1 per 3 perfects), tier
+  mult (acoustic ×0.6, stadium ×1, Round-2 +2), loser consolation (quality
+  ≥80% → 1 FP "worthy set"), headliner rider, underdog ramp.
+- **HUD**: 👑 shown next to headliner's name in the spirit card.
 
 ---
 

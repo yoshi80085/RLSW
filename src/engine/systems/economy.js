@@ -237,6 +237,14 @@ export function applyFameChanged(state, { spiritId, amount = 0 }) {
 }
 
 /**
+ * HEADLINER_CHANGED (Phase R5) — the riff-off winner claims the Headliner
+ * title (or null to vacate it). Top-level state key, not per-spirit.
+ */
+export function applyHeadlinerChanged(state, { spiritId }) {
+  return { ...state, headliner: spiritId ?? null };
+}
+
+/**
  * FANS_CHANGED (Phase 5c) — merge a patch into one spirit's FAN block. Only the
  * whitelisted fields below can change (a malformed payload can't touch fame,
  * skills, or the note track). The client still computes the values (zone rules,

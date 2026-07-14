@@ -15,6 +15,7 @@ import {
   DAMAGE_APPLIED, KNOCKDOWN_RESOLVED, WINNER_DECLARED,
   NOTE_STATES_SYNCED, FAME_CHANGED, FANS_CHANGED, NOTE_SHEET_PATCHED, FANS_TICKED,
   DEBUFFS_TICKED, BURN_TICKED,
+  HEADLINER_CHANGED,
   STAGE_FX_DRAWN, STAGE_FX_ACTIVATED, STAGE_FX_TURN_TICKED, STAGE_FX_ROUND_TICKED,
   GOD_ATTACK_PICKED, GOD_SUMMONED, GOD_DAMAGED, GOD_ACTED,
   GOD_DEFEATED, GOD_TRIUMPHED, GOD_TIMER_EXPIRED,
@@ -42,6 +43,7 @@ import {
 import {
   applyNoteStatesSynced, applyFameChanged, applyFansChanged, applyNoteSheetPatched,
   applyFansTicked, applyDebuffsTicked, applyBurnTicked,
+  applyHeadlinerChanged,
 } from "./systems/economy.js";
 import {
   applyStageFxDrawn, applyStageFxActivated,
@@ -115,6 +117,9 @@ function reduce(state, action, rng) {
     case FANS_TICKED:            return applyFansTicked(state, action);
     case DEBUFFS_TICKED:         return applyDebuffsTicked(state, action);
     case BURN_TICKED:            return applyBurnTicked(state, action, rng);
+
+    // -- Phase R5: headliner --
+    case HEADLINER_CHANGED:      return applyHeadlinerChanged(state, action);
 
     // -- Phase 6b: stage FX --
     case STAGE_FX_DRAWN:         return applyStageFxDrawn(state, action);
