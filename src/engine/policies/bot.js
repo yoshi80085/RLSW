@@ -24,26 +24,35 @@ export const BOT_PERSONALITIES = {
   maestro:  { name:'The Maestro',  emoji:'🎼', note:'musical',
     blurb:'wins on pure musicianship — Theory, clean tracks, cadences & riffs.',
     move:{ center:1.2, rival:0.4, token:1.4, spotlight:1.1, edgeFear:1.6 },
-    skillOrder:['theory_major','fans_4eva','theory_minor','amp_1','theory_dom7','fandom_army','theory_modes','amp_2','theory_chromatic','amp_3'] },
+    skillOrder:['theory_major','fans_4eva','theory_minor','amp_1','stance_2','stance_encore','theory_dom7','theory_modes','amp_2','theory_chromatic','amp_3'] },
   moshlord: { name:'The Mosh Lord', emoji:'🤘', note:'combat',
     blurb:'pure aggression — Thrash, hunts the wounded and the leader, swings for knockouts.',
     move:{ center:1.0, rival:1.9, token:0.6, spotlight:0.8, edgeFear:0.5 },
-    skillOrder:['shank_skank','junkyard_dog','cosmic_boogaloo','fandom_army','moon_shuffle','amp_1','fans_4eva','amp_2','amp_3'] },
+    skillOrder:['stance_2','stance_demolition','fans_4eva','stance_3','stance_aftershock','amp_1','theory_major','amp_2','theory_minor','amp_3'] },
   diva:     { name:'The Diva',     emoji:'✨', note:'clean',
     blurb:'owns the spotlight — holds centre stage, works the crowd, grabs Lost Chords.',
     move:{ center:1.9, rival:0.7, token:1.2, spotlight:1.4, edgeFear:1.2 },
-    skillOrder:['fans_4eva','fandom_army','amp_1','junkyard_dog','theory_major','pranksta','amp_2','theory_minor','amp_3'] },
+    skillOrder:['fans_4eva','stance_2','stance_ironclad','amp_1','theory_major','pranksta','amp_2','theory_minor','amp_3'] },
   saboteur: { name:'The Saboteur', emoji:'🪤', note:'disrupt', targetLeader:true,
     blurb:'controls the board — amps & ranged Sonic, unplugs rivals, drains & staggers the leader.',
     move:{ center:0.9, rival:1.1, token:0.8, spotlight:0.9, edgeFear:1.0 },
-    skillOrder:['amp_1','pranksta','theory_major','amp_2','theory_minor','fandom_army','theory_dom7','amp_3','theory_modes'] },
+    skillOrder:['amp_1','pranksta','stance_2','stance_resonance','theory_major','amp_2','stance_sustainwave','theory_minor','theory_dom7','amp_3','theory_modes'] },
 };
 export const BOT_PERSONA_KEYS = ['maestro','moshlord','diva','saboteur'];
 
+// 🧍 Stance-learning preference per persona (Stance rework). First unlearned
+// stance in the list is the one a bot picks when a Stance-route tier awards.
+export const BOT_STANCE_PREF = {
+  maestro:  ['soloist', 'cool', 'groove', 'power'],  // showmanship suits pure musicianship
+  moshlord: ['power', 'soloist', 'groove', 'cool'],  // hits harder, dies louder
+  diva:     ['cool', 'soloist', 'groove', 'power'],  // untouchable, builds the loyal core
+  saboteur: ['groove', 'cool', 'power', 'soloist'],  // patient zoner, controls the board
+};
+
 export const BOT_SKILL_PRIORITY_BASE = [
-  'fans_4eva', 'shank_skank', 'amp_1', 'junkyard_dog', 'fandom_army',
-  'theory_major', 'cosmic_boogaloo', 'amp_2', 'theory_minor', 'pranksta',
-  'moon_shuffle', 'theory_dom7', 'amp_3', 'theory_modes', 'theory_chromatic',
+  'fans_4eva', 'amp_1', 'stance_2',
+  'theory_major', 'amp_2', 'theory_minor', 'pranksta',
+  'theory_dom7', 'amp_3', 'stance_3', 'theory_modes', 'theory_chromatic',
 ];
 
 // Exclusive-route passives, slotted in up front for the spirit that owns them.
@@ -133,10 +142,10 @@ export function botHexScore(h, ctx) {
  * Skill eligibility gate — wraps the engine's pure function.
  * `skillById` = { skillId: { id, routeId, prereq, ... } }
  */
-export function botSkillEligible(skillId, unlocked, selfId, skillById) {
+export function botSkillEligible(skillId, unlocked, selfId, skillById, stancesKnown = []) {
   const sk = skillById[skillId];
   return skillEligibility(sk, unlocked, {
-    ownerRoute: sk ? SPIRIT_ONLY_ROUTE[sk.routeId] : null, selfId,
+    ownerRoute: sk ? SPIRIT_ONLY_ROUTE[sk.routeId] : null, selfId, stancesKnown,
   }).ok;
 }
 
@@ -145,14 +154,14 @@ export function botSkillEligible(skillId, unlocked, selfId, skillById) {
  * `personaKey` = the bot's assigned persona key.
  * `skillById` = the SKILL_BY_ID lookup.
  */
-export function botPickSkillTarget(selfId, unlocked, personaKey, skillById) {
+export function botPickSkillTarget(selfId, unlocked, personaKey, skillById, stancesKnown = []) {
   const persona = BOT_PERSONALITIES[personaKey];
   const order = [
     ...(BOT_SPIRIT_SKILLS[selfId] ?? []),
     ...(persona?.skillOrder ?? []),
     ...BOT_SKILL_PRIORITY_BASE,
   ];
-  for (const id of order) if (botSkillEligible(id, unlocked, selfId, skillById)) return id;
+  for (const id of order) if (botSkillEligible(id, unlocked, selfId, skillById, stancesKnown)) return id;
   return null;
 }
 

@@ -253,32 +253,28 @@ dodge the marquee event forever by staying unplugged.
    in `awardSonicFame` / `awardThrashFame` / `awardRiffFame` (not in
    `grantFame`, so riff discoveries/cadences/trivia are unaffected).
    Engine state: `headliner: spiritId | null`.
-2. ✅ **THROW DOWN (ante)** — challenger stakes FP/HC/fans; defender matches
-   to accept or declines and the crowd boos (loses casual fans — routed
-   through the Unsure pool, never diehards). Winner takes the pot. Small
-   stakes card in the UI before the countdown.
-3. ✅ **GRUDGE MATCH** — a riff-off loser may re-challenge the same rival
-   within 2 turns at ×2 stakes. Once per rivalry. Comeback canon.
-4. **CALL YOUR SHOT** — declare a quality bar pre-duel ("flawless or
+2. ✅ **ONE-LINER 🎤** — before the countdown each side is offered a
+   random punny lyric reference (spirit-flavored). "Drop the Mic" to
+   commit it, "Play it Safe" to skip. Back it up (win) = 2 casuals
+   recruit from the Unsure pool. Talk big and lose = 1.5× Vibe damage +
+   3 casuals scatter to Unsure. Tie = no bonus or penalty. The one-liner
+   *is* the ante — no separate resource stake.
+3. **CALL YOUR SHOT** — declare a quality bar pre-duel ("flawless or
    nothing") for a multiplier if met, a penalty if missed. Self-imposed
    risk; latest priority.
 
-Guardrails: fan stakes go through the Unsure pool (no diehard theft — the
-snowball is real since fans multiply FP); the underdog ramp applies *after*
-the pot so comebacks still read.
+Guardrails: fan movement goes through the Unsure pool (no diehard theft);
+the underdog ramp applies normally.
 
 ### ✅ Dedicated riff fame — replace `awardSonicFame` in `closeRiffOff`
 
-New `awardRiffFame(winnerId, loserId, verdict, tier, pot)`:
+New `awardRiffFame(winnerId, loserId, verdict, tier)`:
 
 - ✅ **Base**: margin-scaled like sonic but with a higher floor (this is the
   marquee event) — first pass: `2 + ceil(margin/2)`.
 - ✅ **Style pay**: +1 per 3 perfects (pay for *how* you played, not just that
   you won — `verdict.atkStats/defStats` already carry `perfects`/`quality`).
 - ✅ **Tier mult**: acoustic ×0.6, stadium ×1, Round-2 stadium +2 flat.
-- ✅ **Pot**: stakes winnings added after base (underdog/crowd mults then
-  apply via the normal `grantFame` path). Wired in R5.2 — `awardRiffFame`
-  accepts `pot` param, `closeRiffOff` passes accepted FP ante as `fpPot`.
 - ✅ **Loser consolation**: quality ≥ 80% → 1 FP, "the crowd salutes a worthy
   set." Softens the dexterity gap; the crowd loves a close duel.
 - All numbers are first-pass — tune in playtest, keep the *structure*.
@@ -300,77 +296,42 @@ New `awardRiffFame(winnerId, loserId, verdict, tier, pot)`:
   ≥80% → 1 FP "worthy set"), headliner rider, underdog ramp.
 - **HUD**: 👑 shown next to headliner's name in the spirit card.
 
-### R5.2 Throw Down ante build notes (2026-07-14)
+### R5.2 One-Liner build notes (2026-07-14)
 
-- **Flow**: `riff_intro` → `riff_ante` (NEW) → `riff_ante_respond` (NEW) →
-  `riff_countdown` → ... → `closeRiffOff`. Ante phases are client
-  orchestration — no new engine actions needed.
-- **`enterRiffAnte()`**: transitions battleState to `riff_ante` phase.
-- **`pickRiffAnte(stakeType, amount)`**: attacker picks FP or fan stake.
-  Validates attacker has enough resources. Null stakeType = "no stakes, just
-  play" — skips straight to `riffBeginTurn('attacker')`.
-  Stakes offered: ⭐1/⭐⭐2/⭐⭐⭐3 FP, 👥3/👥👥5 fans. Each disabled
-  when attacker lacks resources.
-- **`respondRiffAnte(accept)`**: defender accepts (match) or declines.
-  - **Accept**: validates defender can match the stake amount, sets
-    `ante.status = 'accepted'`.
-  - **Decline**: defender loses `ANTE_DECLINE_PENALTY` (3) casuals → Unsure
-    pool via `fansChanged` dispatch. Sets `ante.status = 'declined'`.
-  - Either path → `riffBeginTurn('attacker')` after 300ms.
-- **Ante state**: `battleState.ante = { type:'fp'|'fans', amount:N,
-  status:'offered'|'accepted'|'declined' }`. Initialized `null` in
-  `startRiffOff`.
-- **FP pot payout**: `closeRiffOff` extracts `fpPot` from accepted FP ante.
-  Fed into `awardRiffFame(winnerId, loserId, s, tier, fpPot)` — added to
-  base **before** underdog ramp + crowd multiplier, per design spec. Loser's
-  staked FP deducted via `fameChanged(loserId, -fpLoss)`.
-- **Fan pot payout**: accepted fan ante → loser's casuals moved to Unsure
-  pool via `fansChanged`; winner recruits same count from Unsure via
-  `fansChanged`. No diehard theft.
-- **Tie with ante**: stakes returned, no penalty. Log: "Dead heat — both
-  sides get their stakes back."
-- **Bot policy**: bot attackers skip ante (`pickRiffAnte(null)`). Bot
-  defenders accept if they can match the stake amount, decline otherwise.
-- **skipBattleIntros**: skips cinematic intro but still shows the ante card
-  (gameplay decision, not cinematic). `riff_intro` → `enterRiffAnte()`.
-- **BattleMeterOverlay**: ante phase cards added. `riff_ante` = attacker
-  stake picker (FP/fan buttons, disabled when lacking resources, "No
-  Stakes — Just Play" fallback). `riff_ante_respond` = defender accept/
-  decline with match validation + "not enough" warning. Result card shows
-  pot summary: winner takes all / returned on tie / declined.
-
-### R5.3 Grudge Match build notes (2026-07-14)
-
-- **Grudge state**: `noteStates[sid].grudge = { rivalId, turnsLeft: 2,
-  tier, anteType, anteAmount } | null`. Set in `closeRiffOff` on the loser
-  after every non-tie, non-grudge riff-off (if the pair hasn't already used
-  their grudge). `grudgesUsed: { [pairKey]: true }` — once per rivalry per
-  game, enforced on both sides.
-- **Timer**: `grudge.turnsLeft` ticks down in `startNewTurnNotes` alongside
-  acoustic duel cooldowns. When it expires, log: "the moment has passed."
-- **Detection**: `startRiffOff` checks `noteStates[attacker.id].grudge`
-  for a match against the defender. Sets `battleState.grudge =
-  { anteType, anteAmount }` when active.
-- **Auto-stakes**: `enterRiffAnte` detects `battleState.grudge` and
-  auto-locks ×2 the original ante (minimum 2 FP if original had none).
-  Stakes capped to what both sides can afford; absolute floor 1 FP. No
-  ante-picking phase, no decline. Effect flash 🔥 GRUDGE! in #ff4400.
-  Proceeds directly to `riffBeginTurn('attacker')` after 600ms.
-- **Payout**: Normal `closeRiffOff` pot logic handles it — the ante is
-  pre-set to `{ type, amount, status: 'accepted' }`, so FP/fan pot paths
-  fire as usual. Tie returns stakes.
-- **Consumption**: `closeRiffOff` marks `grudgesUsed[pairKey]` on both
-  combatants and clears `grudge` after any grudge match (win, lose, or
-  tie). No infinite grudge loops.
-- **Bot policy**: Bots with an active grudge prioritize challenging their
-  grudge rival — checked before normal beam/cone/swing attacks. Stadium
-  grudges try sonic attack if rival is in beam; acoustic grudges (and
-  stadium fallback) try acoustic duel if adjacent and off cooldown.
-- **BattleMeterOverlay**: Intro card shows "🔥 GRUDGE MATCH 🔥" header
-  in #ff4400, "{attacker} demands revenge! Stakes locked at ×2", and
-  "SETTLE THE SCORE" button. Result card: "🔥 GRUDGE SETTLED 🔥" banner,
-  "WINS THE GRUDGE MATCH" title, "×2 GRUDGE POT" in the ante summary.
-  Tie: "THE GRUDGE DIES HERE".
+- **Replaces** Throw Down ante and Grudge Match (both reverted — too removed
+  from musicality; the one-liner *is* the ante).
+- **Flow**: `riff_intro` → `riff_ante` → `riff_ante_respond` →
+  `riff_countdown` → ... → `closeRiffOff`. Reuses the existing ante phase
+  slots — no new phases. Client orchestration only, no engine actions.
+- **`ONE_LINERS` data object** (main file): 5 punny lyric-reference lines per
+  spirit ID (`cosmic_ronin`, `intergalactic_0`, `Metalness_Monster`,
+  `Glamarchy`). Spirit-flavored easter eggs — close enough to recognize, not
+  direct enough for trouble.
+- **`pickRandomOneLiner(spiritId)`**: picks a random line, avoids repeating
+  the last used line via `noteStates[sid].lastOneLiner`.
+- **`enterRiffAnte()`**: picks candidate line for attacker, sets
+  `battleState.oneLiner = { attacker: { line, dropped: false }, defender: null }`,
+  transitions to `riff_ante`.
+- **`pickOneLiner(drop)`**: attacker decides. If `drop=true`: logs the line +
+  flash effect, sets `dropped: true`. Then picks defender's candidate line,
+  transitions to `riff_ante_respond`.
+- **`respondOneLiner(drop)`**: defender decides. Same logging/flash if dropped.
+  Then proceeds to `riffBeginTurn` after 300ms delay.
+- **Payout in `closeRiffOff`**:
+  - Loser dropped a line → `Math.ceil(damage * 1.5)` Vibe damage + 3 casuals
+    scatter to Unsure pool via `fansChanged`. Log: "talked big and got SERVED."
+  - Winner dropped a line → 2 casuals recruit from Unsure pool via
+    `fansChanged`. Log: "backed it up — crowd goes wild."
+  - Tie → no one-liner bonus or penalty.
+  - `awardRiffFame` signature: `pot` parameter removed.
+- **Bot policy**: attackers drop ~40% (`Math.random() < 0.4`), defenders
+  drop ~35% (`Math.random() < 0.35`). Random, not resource-gated.
+- **BattleMeterOverlay**: `riff_ante` = shows candidate line in quotes,
+  "🎤 Drop the Mic" / "🤘 Play it Safe" buttons. `riff_ante_respond` =
+  shows defender's candidate line + context if attacker dropped, "🎤 Fire
+  Back" / "🤘 Let it Slide" (or "Drop the Mic" / "Play it Safe" if attacker
+  didn't drop). Result card: shows dropped lines with outcome summary
+  (backed it up / talked big and lost / tie fizzle).
 
 ---
 
@@ -399,7 +360,9 @@ stay signature exclusives.
    deriving groove from the track would mean inventing a fake mapping.
    ✅ Confirmed by Alex.
 5. **VIRTUOSO cap = 15 notes** — denser, not longer (see §3 note). ✅
-6. **Ante decline cost: casual fans only** (via the Unsure pool). ✅
+6. **One-liner replaces Throw Down ante + Grudge Match** — both reverted as
+   too removed from musicality. One-liner is the ante: spirit-flavored lyric
+   reference, binary drop/safe choice, fan + Vibe risk/reward. ✅
 7. **Multiplayer difficulty lock: the duel's preset lives in the engine
    battle slice** — a room-level setting; both performers always play the
    same preset. `riffDifficulty` stays as the solo-play default but the
@@ -417,7 +380,7 @@ stay signature exclusives.
 | Neon pass | ✓ | ✓✓ | ✓ | ✓ | n/a | Pure presentation. Contrast + colorblind guardrails noted. |
 | Acoustic duel | ✓ | ✓✓ | ✓ | ✓ | ✓ | Fixes the hero_pose-class lockout AND turtle opt-out. |
 | Headliner | ✓ | ✓✓ | ✓✓ | ✓ | ✓✓ | Self-perpetuating marquee. The +1-on-win rider (Alex's design) pays only on deeds — stronger Earned than the rejected per-turn trickle. |
-| Ante / Grudge / Call-shot | ~ | ✓✓ | ✓ | ✓ | ✓✓ | Each adds a rule (Simplicity cost) — ship Headliner + Ante first, judge appetite before the rest. |
+| One-Liner / Call-shot | ✓ | ✓✓ | ✓ | ✓ | ✓✓ | One-liner is musical (lyric refs) and simple (binary choice). Call Your Shot adds a rule — ship after one-liner settles. |
 | Dedicated riff fame | ✓ | ✓ | ✓ | ✓✓ | ✓ | Fixes the "sonic hand-me-down" incoherence. Style pay traces to performance. |
 | Sabotage (shared) | ✓ | ✓ | ✓ | ✓ | ✓ | Only with the one-per-side cap and loud logging. |
 | ~~Score-modifying skills~~ | — | — | ✗ | ✗ | ✗✗ | **Banned by §0.** Recorded so nobody re-proposes it. |
@@ -433,9 +396,8 @@ stay signature exclusives.
 | R3 | ✅ Neon instrument + highway | `ui/RiffHighway.jsx`, main-file `renderInstrument` (keyframes inline in component `<style>`, no `index.css` changes needed) |
 | R4 | ✅ Acoustic duel action + cooldowns | `engine/actions.js` (tier param), `engine/systems/riffOff.js` (tier in battle slice), main file (`initiateAcousticDuel`, `startRiffOff` tier, `riffResolve` acoustic path, action button, hex highlight, bot policy), `ui/BattleMeterOverlay.jsx` (tier labels) |
 | R5.1 | ✅ Headliner (+1 FP rider) | `engine/state.js`, `engine/actions.js`, `engine/systems/economy.js`, `engine/reduce.js`, main file (`closeRiffOff`, `awardSonicFame`, `awardThrashFame`, `awardRiffFame`, HUD) |
-| R5.2 | ✅ Throw Down ante | main file (`enterRiffAnte`, `pickRiffAnte`, `respondRiffAnte`, `closeRiffOff` pot, bot hooks), `ui/BattleMeterOverlay.jsx` (ante cards, result pot summary) |
-| R5.3 | ✅ Grudge Match (×2 stakes, once per rivalry, 2-turn window) | main file (`startRiffOff` grudge detect, `enterRiffAnte` auto-stakes, `closeRiffOff` grudge set/consume, `startNewTurnNotes` tick, bot grudge priority), `ui/BattleMeterOverlay.jsx` (grudge intro/result cards) |
-| R5.4 | Call Your Shot | main file, `ui/BattleMeterOverlay.jsx` |
+| R5.2 | ✅ One-Liner mic drop | main file (`ONE_LINERS`, `pickRandomOneLiner`, `enterRiffAnte`, `pickOneLiner`, `respondOneLiner`, `closeRiffOff` payout, bot hooks), `ui/BattleMeterOverlay.jsx` (one-liner cards, result summary) |
+| R5.3 | Call Your Shot | main file, `ui/BattleMeterOverlay.jsx` |
 | R6 | `awardRiffFame` | `engine/systems/combat.js` or `riffOff.js`, main file `closeRiffOff` |
 | R7 | Sabotage skills | `SKILL_TREE`, `engine/systems/riffOff.js`, `ui/RiffHighway.jsx` |
 

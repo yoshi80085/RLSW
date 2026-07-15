@@ -14,16 +14,14 @@ export function BattleMeterOverlay({
   RIFF_CONTOUR_LABELS,
   RIFF_LEN,
   SKILL_BY_ID,
-  SWING_FX_INFO,
-  SWING_UPGRADE_TIERS,
   battleMeterImg,
   battlePickImg,
   battleState,
   closeBattleOverlay,
   closeRiffOff,
   enterRiffAnte,
-  pickRiffAnte,
-  respondRiffAnte,
+  pickOneLiner,
+  respondOneLiner,
   crowdBlueImg,
   crowdPinkImg,
   fameFromMargin,
@@ -343,27 +341,13 @@ export function BattleMeterOverlay({
               )}
 
               {/* ── INTRO ── */}
-              {phase === 'riff_intro' && (() => {
-                const isGrudge = !!battleState.grudge;
-                const introAccent = isGrudge ? '#ff4400' : battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700';
-                return (
-                <div style={cardBase(introAccent)}>
-                  {isGrudge && (
-                    <div style={{fontSize:13, color:'#ff4400', letterSpacing:3, marginBottom:4, fontWeight:'bold',
-                      textShadow:'0 0 12px #ff440088, 0 0 24px #ff220044'}}>
-                      🔥 GRUDGE MATCH 🔥
-                    </div>
-                  )}
-                  <div style={{fontSize:11, color: introAccent, letterSpacing:2, marginBottom:isGrudge ? 4 : 10}}>
+              {phase === 'riff_intro' && (
+                <div style={cardBase(battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700')}>
+                  <div style={{fontSize:11, color: battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700', letterSpacing:2, marginBottom:10}}>
                     {battleState.riffTier === 'acoustic'
                       ? '🎸 ACOUSTIC DUEL · NO AMPS · JUST CHOPS'
                       : '🔊 PLUGGED IN · FACE TO FACE · BEAMS CROSSED'}
                   </div>
-                  {isGrudge && (
-                    <div style={{fontSize:9.5, color:'#ff6633', marginBottom:8, lineHeight:1.6}}>
-                      {attacker?.name} demands revenge! Stakes locked at ×2 — no backing down.
-                    </div>
-                  )}
                   <div style={{fontSize:9, color:'#8aa5c5', lineHeight:1.8, marginBottom:8}}>
                     {battleState.atkRiff?.notes?.length ?? RIFF_LEN} notes flash one by one — hit the matching key the INSTANT it appears.<br/>
                     <span style={{color:'#ffcc44'}}>CAPITAL letters are SHARPS — hold SHIFT.</span><br/>
@@ -374,100 +358,77 @@ export function BattleMeterOverlay({
                     {attacker?.name} calls a <span style={{color:attacker?.color ?? '#ff8866'}}>{RIFF_CONTOUR_LABELS[battleState.atkRiff?.contour]}</span><br/>
                     {defender?.name} answers with a <span style={{color:defender?.color ?? '#66ccff'}}>{answerInfo.name}</span> — {answerInfo.desc}
                   </div>
-                  <button onClick={() => enterRiffAnte()} style={bigBtn(introAccent)}>
-                    {isGrudge ? `🔥 ${attacker?.name} — SETTLE THE SCORE` : `🎤 ${attacker?.name} — DROP THE RIFF`}
+                  <button onClick={() => enterRiffAnte()} style={bigBtn('#ffd700')}>
+                    🎤 {attacker?.name} — DROP THE RIFF
                   </button>
                   <div style={{marginTop:7, fontSize:8.5, color:'#6a8aaa'}}>
                     <span onClick={() => enterRiffAnte()}
                       style={{cursor:'pointer', textDecoration:'underline', color:'#9ab'}}>Skip intro ▸</span>
                   </div>
                 </div>
-                );
-              })()}
+              )}
 
-              {/* ── ANTE — attacker picks a stake (Phase R5.2 Throw Down) ── */}
+              {/* ── ONE-LINER — attacker drops the mic or plays safe ── */}
               {phase === 'riff_ante' && (() => {
-                const atkNs = noteStates?.[battleState.attackerId] ?? {};
-                const atkFame = atkNs.fame ?? 0;
-                const atkCas  = atkNs.casuals ?? 0;
-                const anteBtn = (label, type, amount, disabled) => (
-                  <button key={`${type}-${amount}`} disabled={disabled}
-                    onClick={() => pickRiffAnte(type, amount)}
-                    style={{cursor: disabled ? 'not-allowed' : 'pointer', fontFamily:"'Orbitron',sans-serif",
-                      fontSize:9, letterSpacing:1, padding:'6px 12px', borderRadius:6,
-                      color: disabled ? '#4a5f80' : '#fff',
-                      background: disabled ? '#0a1020' : (type === 'fp' ? '#cc442288' : '#2288cc44'),
-                      border:`1px solid ${disabled ? '#2a3a55' : (type === 'fp' ? '#ff6655' : '#55aaff')}`,
-                      opacity: disabled ? 0.5 : 1}}>
-                    {label}
-                  </button>
-                );
+                const line = battleState.oneLiner?.attacker?.line ?? '';
                 return (
-                  <div style={cardBase('#ffaa44')}>
-                    <div style={{fontSize:13, fontWeight:900, letterSpacing:3, color:'#ffaa44',
-                      textShadow:'0 0 18px #ff882244', marginBottom:6}}>
-                      🎲 THROW DOWN
+                  <div style={cardBase('#ff6600')}>
+                    <div style={{fontSize:13, fontWeight:900, letterSpacing:3, color:'#ff6600',
+                      textShadow:'0 0 18px #ff660044', marginBottom:8}}>
+                      🎤 ONE-LINER
                     </div>
-                    <div style={{fontSize:9, color:'#8aa5c5', marginBottom:12}}>
-                      {attacker?.name} — stake something on this duel? The defender must match or back down.
+                    <div style={{fontSize:12, color:'#fff', fontStyle:'italic', marginBottom:6,
+                      lineHeight:1.6, padding:'0 12px', textShadow:'0 0 8px #ff660033'}}>
+                      "{line}"
                     </div>
-                    <div style={{display:'flex', gap:6, justifyContent:'center', flexWrap:'wrap', marginBottom:8}}>
-                      {anteBtn('⭐ 1 FP', 'fp', 1, atkFame < 1)}
-                      {anteBtn('⭐⭐ 2 FP', 'fp', 2, atkFame < 2)}
-                      {anteBtn('⭐⭐⭐ 3 FP', 'fp', 3, atkFame < 3)}
+                    <div style={{fontSize:8.5, color:'#8aa5c5', marginBottom:14, lineHeight:1.6}}>
+                      Drop it and the crowd's watching. Win = they love you.<br/>
+                      <span style={{color:'#ff6655'}}>Lose = 1.5× Vibe damage + fans cringe and walk.</span>
                     </div>
-                    <div style={{display:'flex', gap:6, justifyContent:'center', flexWrap:'wrap', marginBottom:12}}>
-                      {anteBtn('👥 3 Fans', 'fans', 3, atkCas < 3)}
-                      {anteBtn('👥👥 5 Fans', 'fans', 5, atkCas < 5)}
+                    <div style={{display:'flex', gap:10, justifyContent:'center'}}>
+                      <button onClick={() => pickOneLiner(true)} style={bigBtn('#ff6600')}>
+                        🎤 DROP THE MIC
+                      </button>
+                      <button onClick={() => pickOneLiner(false)} style={{...bigBtn('#6a8aaa'), fontSize:10}}>
+                        🤘 Play it Safe
+                      </button>
                     </div>
-                    <button onClick={() => pickRiffAnte(null)} style={{...bigBtn('#6a8aaa'), fontSize:10}}>
-                      🤘 No Stakes — Just Play
-                    </button>
                   </div>
                 );
               })()}
 
-              {/* ── ANTE RESPOND — defender accepts or declines ── */}
+              {/* ── ONE-LINER RESPOND — defender fires back or lets it slide ── */}
               {phase === 'riff_ante_respond' && (() => {
-                const ante = battleState.ante;
-                if (!ante) return null;
-                const label = ante.type === 'fp'
-                  ? `${ante.amount} Fame Point${ante.amount > 1 ? 's' : ''}`
-                  : `${ante.amount} casual fan${ante.amount > 1 ? 's' : ''}`;
-                const defNs = noteStates?.[battleState.defenderId] ?? {};
-                const canMatch = ante.type === 'fp'
-                  ? (defNs.fame ?? 0) >= ante.amount
-                  : (defNs.casuals ?? 0) >= ante.amount;
+                const atkDropped = battleState.oneLiner?.attacker?.dropped;
+                const defLine = battleState.oneLiner?.defender?.line ?? '';
                 return (
-                  <div style={cardBase('#ffd700')}>
-                    <div style={{fontSize:13, fontWeight:900, letterSpacing:3, color:'#ffd700',
-                      textShadow:'0 0 18px #ffd70044', marginBottom:6}}>
-                      🎲 THROW DOWN!
-                    </div>
-                    <div style={{fontSize:10, color:'#fff', marginBottom:4}}>
-                      <span style={{color:attacker?.color ?? '#ff8866'}}>{attacker?.name}</span> stakes{' '}
-                      <span style={{color: ante.type === 'fp' ? '#ffd700' : '#55aaff', fontWeight:700}}>{label}</span>!
-                    </div>
-                    <div style={{fontSize:9, color:'#8aa5c5', marginBottom:14}}>
-                      {defender?.name} — match it, or back down? Declining costs casual fans.
-                    </div>
-                    <div style={{display:'flex', gap:10, justifyContent:'center'}}>
-                      <button onClick={() => respondRiffAnte(true)}
-                        disabled={!canMatch}
-                        style={{...bigBtn(canMatch ? '#44cc66' : '#4a5f80'), fontSize:10,
-                          opacity: canMatch ? 1 : 0.5, cursor: canMatch ? 'pointer' : 'not-allowed'}}>
-                        ✅ MATCH — {label} in the pot
-                      </button>
-                      <button onClick={() => respondRiffAnte(false)}
-                        style={{...bigBtn('#cc4444'), fontSize:10}}>
-                        ❌ DECLINE
-                      </button>
-                    </div>
-                    {!canMatch && (
-                      <div style={{fontSize:8, color:'#ff6655', marginTop:6}}>
-                        Not enough {ante.type === 'fp' ? 'Fame' : 'fans'} to match — must decline
+                  <div style={cardBase(atkDropped ? '#ff4400' : '#ff6600')}>
+                    {atkDropped && (
+                      <div style={{fontSize:10, color:'#ff8844', marginBottom:8, fontStyle:'italic'}}>
+                        <span style={{color:attacker?.color ?? '#ff8866'}}>{attacker?.name}</span> just said:
+                        "{battleState.oneLiner?.attacker?.line}"
                       </div>
                     )}
+                    <div style={{fontSize:13, fontWeight:900, letterSpacing:3, color:'#ff6600',
+                      textShadow:'0 0 18px #ff660044', marginBottom:8}}>
+                      🎤 {atkDropped ? 'FIRE BACK?' : 'YOUR TURN'}
+                    </div>
+                    <div style={{fontSize:12, color:'#fff', fontStyle:'italic', marginBottom:6,
+                      lineHeight:1.6, padding:'0 12px', textShadow:'0 0 8px #ff660033'}}>
+                      "{defLine}"
+                    </div>
+                    <div style={{fontSize:8.5, color:'#8aa5c5', marginBottom:14, lineHeight:1.6}}>
+                      {atkDropped ? `${defender?.name} — fire back, or let it slide?` : `${defender?.name} — drop a line of your own?`}<br/>
+                      <span style={{color:'#ff6655'}}>Same deal: lose with a line out = 1.5× damage + fans walk.</span>
+                    </div>
+                    <div style={{display:'flex', gap:10, justifyContent:'center'}}>
+                      <button onClick={() => respondOneLiner(true)} style={bigBtn('#ff6600')}>
+                        🎤 {atkDropped ? 'FIRE BACK' : 'DROP THE MIC'}
+                      </button>
+                      <button onClick={() => respondOneLiner(false)} style={{...bigBtn('#6a8aaa'), fontSize:10}}>
+                        🤘 {atkDropped ? 'Let it Slide' : 'Play it Safe'}
+                      </button>
+                    </div>
                   </div>
                 );
               })()}
@@ -682,33 +643,38 @@ export function BattleMeterOverlay({
                   </div>
                 );
                 return (
-                  <div style={cardBase(tie ? '#8aa5c5' : battleState.grudge ? '#ff4400' : (winSp?.color ?? '#ffd700'))}>
-                    {battleState.grudge && !tie && (
-                      <div style={{fontSize:10, color:'#ff4400', letterSpacing:2, marginBottom:2,
-                        textShadow:'0 0 10px #ff440066'}}>🔥 GRUDGE SETTLED 🔥</div>
-                    )}
+                  <div style={cardBase(tie ? '#8aa5c5' : (winSp?.color ?? '#ffd700'))}>
                     <div style={{fontSize:13, fontWeight:900, letterSpacing:3, marginBottom:12,
-                      color: tie ? '#8aa5c5' : battleState.grudge ? '#ff6633' : (winSp?.color ?? '#ffd700'),
-                      textShadow: tie ? 'none' : `0 0 20px ${battleState.grudge ? '#ff440088' : (winSp?.color ?? '#ffd700') + '88'}`}}>
-                      {tie ? (battleState.grudge ? '🤝 DEAD HEAT — THE GRUDGE DIES HERE' : '🤝 DEAD HEAT — CROWD CAN\'T DECIDE')
-                        : `🏆 ${winSp?.name} WINS THE ${battleState.grudge ? 'GRUDGE MATCH' : battleState.riffTier === 'acoustic' ? 'ACOUSTIC DUEL' : 'RIFF-OFF'}!`}
+                      color: tie ? '#8aa5c5' : (winSp?.color ?? '#ffd700'),
+                      textShadow: tie ? 'none' : `0 0 20px ${(winSp?.color ?? '#ffd700')}88`}}>
+                      {tie ? '🤝 DEAD HEAT — CROWD CAN\'T DECIDE'
+                        : `🏆 ${winSp?.name} WINS THE ${battleState.riffTier === 'acoustic' ? 'ACOUSTIC DUEL' : 'RIFF-OFF'}!`}
                     </div>
                     <div style={{display:'flex', gap:12, marginBottom:12}}>
                       {statCard(attacker, A, battleState.atkRiff, battleState.atkResults, !tie && won)}
                       {statCard(defender, D, battleState.defRiff, battleState.defResults, !tie && !won)}
                     </div>
-                    {/* Pot summary for Throw Down antes / Grudge ×2 */}
-                    {battleState.ante?.status === 'accepted' && (
-                      <div style={{fontSize:9, fontWeight:700, color: battleState.grudge ? '#ff6633' : '#ffaa44', marginBottom:8, letterSpacing:1}}>
-                        {battleState.grudge ? '🔥' : '🎲'} {battleState.grudge ? '×2 GRUDGE ' : ''}POT: {battleState.ante.amount} {battleState.ante.type === 'fp' ? 'FP' : 'fans'} each
-                        {tie ? ' — returned to both sides' : ` — ${winSp?.name} takes it all`}
-                      </div>
-                    )}
-                    {battleState.ante?.status === 'declined' && (
-                      <div style={{fontSize:8, color:'#6a8aaa', marginBottom:6, fontStyle:'italic'}}>
-                        🎲 Ante was declined — no pot
-                      </div>
-                    )}
+                    {/* One-liner outcome summary */}
+                    {(() => {
+                      const ol = battleState.oneLiner ?? {};
+                      const atkDrop = ol.attacker?.dropped;
+                      const defDrop = ol.defender?.dropped;
+                      if (!atkDrop && !defDrop) return null;
+                      const loserDrop  = won ? defDrop : atkDrop;
+                      const winnerDrop = won ? atkDrop : defDrop;
+                      return (
+                        <div style={{fontSize:9, color:'#ff8844', marginBottom:8, lineHeight:1.8, fontStyle:'italic'}}>
+                          {atkDrop && <div>🎤 {attacker?.name}: "{ol.attacker?.line}"</div>}
+                          {defDrop && <div>🎤 {defender?.name}: "{ol.defender?.line}"</div>}
+                          {tie ? (
+                            <div style={{color:'#8aa5c5', fontStyle:'normal'}}>Tie — one-liners fizzle, no bonus or penalty.</div>
+                          ) : (<>
+                            {winnerDrop && <div style={{color:'#44dd66'}}>🔥 Winner backed it up — 2 casuals join from the crowd!</div>}
+                            {loserDrop && <div style={{color:'#ff5555'}}>😬 Loser talked big — 1.5× Vibe damage + 3 fans cringe and walk!</div>}
+                          </>)}
+                        </div>
+                      );
+                    })()}
                     <div style={{fontSize:8.5, color:'#6a8aaa', lineHeight:1.7}}>
                       {tie
                         ? (battleState.riffTier === 'acoustic'
@@ -991,171 +957,6 @@ export function BattleMeterOverlay({
         const atkFans = crowdCheer(atkCheer, '#ff3ad0', atkSurge); // pink fanfare
         const defFans = crowdCheer(defCheer, '#34d6ff', defSurge); // blue fanfare
 
-        // ── RETALIATION — DISABLED (pending redesign for Sonic/Thrash split) ──
-        // Counter mechanic temporarily removed. The UI is kept but unreachable.
-        if (false && (phase === 'retaliation_prompt' || phase === 'retaliation_spin'
-            || phase === 'retaliation_settling' || phase === 'retaliation_result')) {
-          const bs2        = battleState;
-          const target     = bs2.counterTarget ?? bs2.atkRoll ?? 0;
-          const vibeBonus  = bs2.vibeBonus ?? Math.round(((defender?.vibe ?? 1) / (defender?.maxVibe ?? 1)) * 3);
-          const cFace      = bs2.counterFace ?? bs2.counterRoll ?? 1;
-          const spinning   = phase === 'retaliation_spin';
-          const settling   = phase === 'retaliation_settling';
-          const showResult = phase === 'retaliation_result';
-          const showTotal  = (bs2.counterReady || showResult);
-          const cTotal     = showTotal ? (bs2.counterTotal ?? (cFace + vibeBonus)) : null;
-          const success    = bs2.counterSuccess;
-          const atkColor   = attacker?.color ?? '#ff4444';
-          const defColor   = defender?.color ?? '#00ccff';
-          // Crowd energy for the counter beat: defender's fans drive it, the
-          // attacker's fans only roar back if the counter whiffs.
-          const cAtk = crowdCheer(showResult ? (success ? 0.2 : 0.9) : 0.25, '#ff3ad0', showResult && !success);
-          const cDef = crowdCheer(showResult ? (success ? 1 : 0.25) : 0.7,  '#34d6ff', showResult && success);
-          // Defender is the aggressor now: glow scales up as they wind up / land.
-          const defCounterGlow = spiritGlow(
-            showResult ? (success ? (defStat ?? 6) + 5 : 3) : (defStat ?? 6) + 2,
-            defColor, showResult && success);
-
-          return (
-            <div style={{position:'fixed', inset:0, background:'#000000f2', zIndex:9980,
-              display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-              fontFamily:"'Orbitron',sans-serif", overflow:'hidden'}}>
-              <style>{`
-                @keyframes crowd-cheer { 0%,100%{transform:translateY(0) scaleY(1);} 50%{transform:translateY(var(--cheer-amp,-6px)) scaleY(1.05);} }
-                @keyframes counter-click-bounce { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-5px);} }
-                @keyframes counter-title-pulse { 0%,100%{text-shadow:0 0 20px #ffcc44, 0 0 50px #ff880055;} 50%{text-shadow:0 0 34px #ffee88, 0 0 80px #ffaa44aa;} }
-                @keyframes counter-pop { 0%{opacity:0;transform:scale(0.5);} 55%{opacity:1;transform:scale(1.12);} 100%{opacity:1;transform:scale(1);} }
-                @keyframes counter-spirit-l { from{transform:translateX(-45%);opacity:0;} to{transform:translateX(0);opacity:1;} }
-                @keyframes counter-spirit-r { from{transform:translateX(45%) scaleX(-1);opacity:0;} to{transform:translateX(0) scaleX(-1);opacity:1;} }
-              `}</style>
-
-              {/* Fan-fare — pink (attacker) left, blue (defender) right */}
-              <div style={{position:'absolute', left:0, right:0, bottom:0, height:'32%',
-                           zIndex:1, pointerEvents:'none', overflow:'hidden'}}>
-                <div style={{position:'absolute', left:'-3%', bottom:'-2%', width:'52%', maxWidth:680}}>
-                  <img src={crowdPinkImg} alt="" draggable={false}
-                    style={{width:'100%', display:'block', mixBlendMode:'screen', transformOrigin:'bottom center', ...cAtk}}/>
-                </div>
-                <div style={{position:'absolute', right:'-3%', bottom:'-2%', width:'52%', maxWidth:680}}>
-                  <img src={crowdBlueImg} alt="" draggable={false}
-                    style={{width:'100%', display:'block', mixBlendMode:'screen', transformOrigin:'bottom center', ...cDef}}/>
-                </div>
-              </div>
-
-              {/* Title */}
-              <div style={{position:'relative', zIndex:3, textAlign:'center', marginBottom:4}}>
-                <div style={{fontSize:11, color:'#7a6a3a', letterSpacing:6, marginBottom:4}}>BATTLE · PART 2</div>
-                <div style={{fontSize:30, fontWeight:900, letterSpacing:6, color:'#ffd34d',
-                  animation:'counter-title-pulse 1.6s ease-in-out infinite'}}>🥊 RETALIATION</div>
-              </div>
-
-              {/* Spirits + center stage */}
-              <div style={{position:'relative', zIndex:3, display:'flex', alignItems:'flex-end',
-                           justifyContent:'center', gap:20, marginTop:6}}>
-
-                {/* Attacker — now bracing for the counter */}
-                <div style={{width:168, height:270, position:'relative', flexShrink:0,
-                             animation:'counter-spirit-l 0.5s cubic-bezier(.22,1,.36,1) both'}}>
-                  <img src={attacker?.imageSrc} alt={attacker?.name}
-                    style={{height:'100%', width:'auto', objectFit:'contain', objectPosition:'bottom center', display:'block',
-                      opacity: showResult && success ? 0.55 : 0.85,
-                      filter:`drop-shadow(0 0 ${showResult && success ? 8 : 16}px ${atkColor}${showResult && success ? '55' : 'aa'})`,
-                      transition:'opacity .4s, filter .4s'}}/>
-                  <div style={{position:'absolute', top:4, left:'50%', transform:'translateX(-50%)',
-                    fontSize:9, color:atkColor, letterSpacing:2, whiteSpace:'nowrap'}}>
-                    {showResult && success ? 'TAKES IT' : 'BRACING'}
-                  </div>
-                </div>
-
-                {/* Center: threshold + counter die / result */}
-                <div style={{display:'flex', flexDirection:'column', alignItems:'center',
-                             minWidth:300, paddingBottom:18}}>
-                  <div style={{textAlign:'center', marginBottom:10}}>
-                    <div style={{fontSize:9, color:'#6a8aaa', letterSpacing:3}}>OUT-SWING THE HIT</div>
-                    <div style={{fontSize:32, fontWeight:900, color:atkColor, lineHeight:1.1,
-                      textShadow:`0 0 18px ${atkColor}`}}>{target}</div>
-                    <div style={{fontSize:8.5, color:'#3a5a7a', letterSpacing:1, marginTop:2}}>
-                      {defender?.name}: d6 + Vibe ({vibeBonus}) — meet or beat it
-                    </div>
-                  </div>
-
-                  {phase === 'retaliation_prompt' ? (
-                    <div style={{textAlign:'center'}}>
-                      <div style={{fontSize:11, color:'#ffcc44', letterSpacing:2, marginBottom:10}}>🛡️ SWING BACK?</div>
-                      <div style={{height:4, width:240, background:'#1a2a40', borderRadius:2, marginBottom:14, overflow:'hidden'}}>
-                        <div style={{height:'100%', borderRadius:2, background:'#ffcc44',
-                          width:`${((retaliationTimer ?? 0) / 3) * 100}%`, transition:'width 1s linear'}}/>
-                      </div>
-                      <div style={{display:'flex', gap:12, justifyContent:'center'}}>
-                        <button onClick={() => resolveRetaliation(true)}
-                          style={{fontFamily:'inherit', fontSize:11, padding:'11px 22px', background:'#1a1400',
-                            border:'2px solid #ffcc44', borderRadius:7, color:'#ffcc44', cursor:'pointer',
-                            fontWeight:700, boxShadow:'0 0 14px #ffcc4444'}}>
-                          ⚡ COUNTER! ({retaliationTimer}s)
-                        </button>
-                        <button onClick={() => resolveRetaliation(false)}
-                          style={{fontFamily:'inherit', fontSize:10, padding:'11px 16px', background:'#0a1020',
-                            border:'1px solid #3a5070', borderRadius:7, color:'#6a8099', cursor:'pointer'}}>
-                          Absorb {bs2.damage} dmg
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{display:'flex', flexDirection:'column', alignItems:'center'}}>
-                      <div onClick={spinning ? handleCounterDieClick : undefined}
-                        style={{cursor: spinning ? 'pointer' : 'default', userSelect:'none',
-                          display:'flex', flexDirection:'column', alignItems:'center'}}>
-                        <NeonDie value={cFace} spinning={spinning || settling} color={defColor} size={120} sides={6}/>
-                        {spinning && (
-                          <div style={{marginTop:6, fontSize:10, color:defColor, letterSpacing:3,
-                            animation:'counter-click-bounce 0.6s ease-in-out infinite'}}>CLICK TO COUNTER</div>
-                        )}
-                        {cTotal !== null && (
-                          <div style={{marginTop:6, fontSize:11, color:'#ffcc44', letterSpacing:1}}>
-                            {cFace} + {vibeBonus} = <b>{cTotal}</b>
-                          </div>
-                        )}
-                      </div>
-                      {showResult && (
-                        <div key="cres" style={{marginTop:12, textAlign:'center',
-                          animation:'counter-pop 0.5s cubic-bezier(.22,1,.36,1) both'}}>
-                          <div style={{fontSize:25, fontWeight:900, letterSpacing:3,
-                            color: success ? '#44ff99' : '#ff4455',
-                            textShadow:`0 0 22px ${success ? '#44ff99' : '#ff4455'}`}}>
-                            {success ? '💥 COUNTER LANDS!' : '💔 COUNTER FAILS!'}
-                          </div>
-                          <div style={{fontSize:10, color:'#9ab', marginTop:6, lineHeight:1.6}}>
-                            {success
-                              ? <>{defender?.name} swings back for <span style={{color:'#ff6677'}}>{bs2.counterDmg} Vibe</span> + knockback · <span style={{color:'#ffd700'}}>⭐ Fame</span></>
-                              : <>caught swinging — <span style={{color:'#ff6677'}}>{bs2.counterDmg} Vibe</span>, worse than absorbing</>}
-                          </div>
-                          <button onClick={() => { setBattleState(null); setDiceDisplay(null); }}
-                            style={{marginTop:14, fontFamily:'inherit', fontSize:11, padding:'10px 24px',
-                              background:'#1a1400', border:`2px solid ${success ? '#44ff99' : '#ff4455'}`,
-                              borderRadius:7, color: success ? '#44ff99' : '#ff4455', cursor:'pointer', fontWeight:700}}>
-                            🤘 ROCK ON →
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Defender — the one throwing the counter */}
-                <div style={{width:168, height:270, position:'relative', flexShrink:0,
-                             animation:'counter-spirit-r 0.5s cubic-bezier(.22,1,.36,1) both'}}>
-                  <img src={defender?.imageSrc} alt={defender?.name}
-                    style={{height:'100%', width:'auto', objectFit:'contain', objectPosition:'bottom center', display:'block',
-                      transform:'scaleX(-1)', ...defCounterGlow, transition:'filter .4s'}}/>
-                  <div style={{position:'absolute', top:4, left:'50%', transform:'translateX(-50%)',
-                    fontSize:9, color:defColor, letterSpacing:2, whiteSpace:'nowrap'}}>
-                    {showResult ? (success ? 'COUNTER!' : 'WHIFFED') : spinning ? 'YOUR ROLL' : 'WINDING UP'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        }
 
         // ── CONDITION-SPRITE HOOKS ──────────────────────────────────────────
         // Drop custom art in later by adding a `sprites` map to a SPIRIT_DEF,
@@ -1197,22 +998,12 @@ export function BattleMeterOverlay({
         const beamH       = (beamPhase === 'charge' ? 8 : Math.min(96, Math.round(10 + beamPower * 3.2))) * (sunLit ? 1.6 : 1); // px
         const beamColor   = sunLit ? '#ffcc44' : (attacker?.color ?? '#aa66ff');
 
-        // ── MOVE-NAME NEON CALLOUT (CQC only, fires at result) ──────────────
+        // ── MOVE-NAME NEON CALLOUT (Thrash only, fires at result) ───────────
         let moveFlash = null;
         if (phase === 'result' && !sonicAttack) {
-          if (!attackerWon) {
-            moveFlash = { text:'whiff…', color:'#6688aa', whiff:true };
-          } else {
-            const landed = battleState.swingEffectRoll?.effects ?? [];
-            if (landed.length > 0) {
-              moveFlash = {
-                text: (battleState.swingEffectRoll?.upgradeName ?? 'Swing').toUpperCase(),
-                color: SWING_FX_INFO[landed[0]]?.color ?? '#ff44aa',
-              };
-            } else {
-              moveFlash = { text: battleState.danceName ?? 'SWING', color:'#44ddff' };
-            }
-          }
+          moveFlash = attackerWon
+            ? { text: battleState.danceName ?? 'SWING', color:'#44ddff' }
+            : { text:'whiff…', color:'#6688aa', whiff:true };
         }
 
         // ── 🎆 STAGE EFFECTS + 🎸 GEAR (battle-overlay visuals) ───────────────
@@ -1880,22 +1671,23 @@ export function BattleMeterOverlay({
 
             {/* ── Attack name banner ── */}
             {(() => {
-              const nsA = noteStates[battleState.attackerId] ?? {};
-              // Live CQC chain first (legacy swingUpgrades is never populated)
-              const cqcSkills = nsA.unlockedSkills ?? [];
-              const cqcTop = ['baki_gravity','moon_shuffle','cosmic_boogaloo','shank_skank']
-                .find(id => cqcSkills.includes(id));
-              const cqcDef = cqcTop ? SKILL_BY_ID[cqcTop] : null;
-              const swingUpgrades = nsA.swingUpgrades ?? [];
-              const highestTier = ['swing_3','swing_2','swing_1'].find(t => swingUpgrades.includes(t));
-              const tierDef = highestTier ? SWING_UPGRADE_TIERS.find(t => t.id === highestTier) : null;
               const thrashDieLabel = `d${battleState.dieSides ?? 4}`;
               const attackLabel = battleState.sonicAttack
                 ? `🔊 Sonic Attack (${battleState.diceLabel ?? 'd6'}, keep best)`
-                : cqcDef ? `${cqcDef.icon} ${cqcDef.label} (${thrashDieLabel})`
-                : tierDef ? `${tierDef.icon} ${tierDef.label} (${thrashDieLabel})` : `⚔️ Thrash (${thrashDieLabel})`;
+                : `⚔️ Thrash (${thrashDieLabel})`;
               const mods = battleState.skillMods ?? {};
+              // 🧍 Stance identity pill (Stance rework) — tiny inline map so the
+              // overlay stays prop-free about stance data.
+              const STANCE_PILL = {
+                soloist: { icon:'🌟', label:'Soloist', color:'#ffd700', desc:'P-score → Drive · Fame ×1.5 · frays double' },
+                power:   { icon:'🤘', label:'Power',   color:'#ff4444', desc:'strips +1 note · hits harder · absorbs harder' },
+                cool:    { icon:'🕶️', label:'Cool',    color:'#44aaff', desc:'fray halved · loyal core builds' },
+                groove:  { icon:'🌀', label:'Groove',  color:'#aa55ff', desc:'the wave powers the attack' },
+              };
+              const stancePill = STANCE_PILL[battleState.atkStance];
               const activeMods = [
+                stancePill && { ...stancePill, label:`${stancePill.label} stance` },
+                (battleState.grooveSpent > 0) && { icon:'🌊', label:'Groove Wave', color:'#cc88ff', desc:`+${battleState.grooveSpent} Drive & Fame` },
                 mods.laserActive      && { icon:'🔴', label:'Laser Show',     color:'#ff4444', desc:"Defender's die halved" },
                 mods.stageLightActive && { icon:'💡', label:'Stage Lighting',  color:'#ffcc44', desc:'+1 Vibe on win' },
                 mods.fogActive        && { icon:'🌫️', label:'Fog Machine',     color:'#aaccff', desc:'-1 Drive, -1 Sustain' },
@@ -2018,52 +1810,6 @@ export function BattleMeterOverlay({
                           <span style={{fontSize:10, color:'#ff8866'}}>
                             💢 {kb > 0 ? `Knockback ${kb} hex${kb !== 1 ? 'es' : ''}` : 'No push'}
                           </span>
-                        </div>
-                      );
-                    })()}
-                    {/* ── SWING / CQC STATUS-EFFECT PREVIEW ── */}
-                    {/* Shows whether the attacker's upgrade (e.g. Shank Skank) */}
-                    {/* triggered, and exactly what happens once this overlay     */}
-                    {/* closes and the defender is pushed back.                   */}
-                    {(() => {
-                      const roll = battleState?.swingEffectRoll;
-                      if (!roll) return null; // no swing upgrade / Sonic attack
-                      const landed = roll.effects ?? [];
-                      return (
-                        <div style={{
-                          marginTop:10, padding:'8px 12px', borderRadius:8,
-                          background:'#0a0014aa',
-                          border:`1px solid ${landed.length ? '#ff44aa66' : '#44557766'}`,
-                        }}>
-                          <div style={{fontSize:9, letterSpacing:2, color:'#ff66cc',
-                            marginBottom: landed.length ? 5 : 0}}>
-                            🗡️ {roll.upgradeName}
-                          </div>
-                          {landed.length === 0 ? (
-                            <div style={{fontSize:9, color:'#7a8aa0'}}>
-                              Rolled for a status effect — none landed this time.
-                            </div>
-                          ) : (
-                            <>
-                              {landed.map(fx => {
-                                const info = SWING_FX_INFO[fx];
-                                if (!info) return null;
-                                const dmgNote = fx === 'confused' && roll.confusedDmg
-                                  ? ` (${roll.confusedDmg} Vibe)` : '';
-                                return (
-                                  <div key={fx} style={{fontSize:9, color:info.color, lineHeight:1.5}}>
-                                    {info.icon} <strong>{info.label}!</strong>{' '}
-                                    <span style={{color:'#b8c4d4'}}>
-                                      {defender?.name} {info.after}{dmgNote}.
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                              <div style={{fontSize:8, color:'#5a6a80', marginTop:4}}>
-                                Applies after you close this overlay & the push-back resolves.
-                              </div>
-                            </>
-                          )}
                         </div>
                       );
                     })()}

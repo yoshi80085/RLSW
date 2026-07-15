@@ -82,6 +82,7 @@ export const CHARGE_FLOOR_BONUS      = 2;  // floor charge: attack die results b
 
 // -- THRASH / SONIC ATTACK SPLIT --
 // Thrash (melee) — d4-based, Vibe-focused, minimal push/FP.
+export const ATK_BONUS_CAP           = 5;   // hard ceiling on stacked attack bonuses (tempDrive + Edge + stance) -- keeps the accumulative wave in check
 export const THRASH_DIE              = 4;   // base die for both attacker and defender in Thrash
 export const THRASH_CEIL_DIE         = 6;   // ceiling charge upgrades d4 → d6
 export const THRASH_DAMAGE_CAP       = 4;   // max Vibe damage from a single Thrash hit

@@ -240,8 +240,7 @@ function TutSection_Overview() {
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           The skills you unlock — Amps, Roadies, Groupie crews and your Ultimate — show up
           as deployable chips on your Spirit card. Tap a glowing chip to send a crew out:
-          patch up your Vibe, sabotage a rival's amp, arm a junkyard weapon, or throw up a
-          fan wall. Spent crews recharge after a few turns.
+          patch up your Vibe or sabotage a rival's amp. Spent crews recharge after a few turns.
         </p>
       </div>
     </div>

@@ -29,8 +29,8 @@ export const RIFF_CLOSED            = "RIFF_CLOSED";
 // ── Phase 3b: combat rolls ──────────────────────────────────────────────────
 export const ATTACK_ROLLED = "ATTACK_ROLLED";
 
-// ── Phase 3d: retaliation (counter) roll ────────────────────────────────────
-export const COUNTER_ROLLED = "COUNTER_ROLLED";
+// (Phase 3d COUNTER_ROLLED removed — Stance rework replaces the counter
+// mechanic with natural Thrash-adjacency retaliation.)
 
 // ── Phase 5c: spirit combat-ownership (the deferred 3c flip, engine side) ────
 // The engine's `spirits` becomes the source of truth for Vibe / lives / KO.
@@ -215,23 +215,11 @@ export function attackRolled(kind, attackerId, defenderId,
 }
 
 /**
- * Phase 3d — a glanced defender (CQC, margin ≤ 2) swings BACK: the engine rolls
- * the counter d6 on seeded rng, adds the Vibe bonus, and decides success vs the
- * attacker's winning die. Merged into the existing `battle` slice; the spin
- * overlay reads `battle.counterRoll`. Damage application stays client (3c flip).
- * @param {number} vibe/maxVibe  defender's Vibe (drives the bonus) — Phase 5 slice
- * @param {number} target        the attacker's winning die to out-swing (bs.atkRoll)
- */
-export function counterRolled(defenderId, { vibe = 1, maxVibe = 1, target = 1 }) {
-  return { type: COUNTER_ROLLED, defenderId, vibe, maxVibe, target };
-}
-
-/**
  * Phase 5c — a landed hit subtracts Vibe from the target on the engine spirits
  * (floored at 0). The KO/respawn decision is a SEPARATE action so the client can
  * play its cinematic beat between the hit and the fall (as `applyVibeDamage` does
- * today). Damage magnitude is decided upstream (`marginToDamage`, riff verdict,
- * `counterOutcome`); this just applies it.
+ * today). Damage magnitude is decided upstream (`marginToDamage`, riff verdict);
+ * this just applies it.
  */
 export function damageApplied(targetId, dmg) {
   return { type: DAMAGE_APPLIED, targetId, dmg };
@@ -507,10 +495,12 @@ export function eventHexTriggered(spiritId, hexNum) {
   return { type: EVENT_HEX_TRIGGERED, spiritId, hexNum };
 }
 
-/** A successful Thrash hit knocks Lost Chords loose around the defender. */
+/** A successful Thrash hit knocks Lost Chords loose around the defender.
+ *  `spread` (default 1) — ring distance the chords land at; 🌋 Aftershock
+ *  (Power-stance upgrade) scatters them 1 hex further (spread 2). */
 export const THRASH_TOKENS_SPAWNED = "THRASH_TOKENS_SPAWNED";
-export function thrashTokensSpawned(defenderHex, occupied, crashTier) {
-  return { type: THRASH_TOKENS_SPAWNED, defenderHex, occupied, crashTier };
+export function thrashTokensSpawned(defenderHex, occupied, crashTier, spread = 1) {
+  return { type: THRASH_TOKENS_SPAWNED, defenderHex, occupied, crashTier, spread };
 }
 
 /** A spirit picks up a Lost Chord token — token is removed from the board. */

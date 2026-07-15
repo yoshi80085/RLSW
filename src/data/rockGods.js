@@ -20,7 +20,7 @@
 // =============================================================================
 
 // ── Engine tuning ────────────────────────────────────────────────────────────
-export const ROCK_GOD_RUNAWAY_LEAD   = 5;   // lead at FAME_TO_WIN that skips the boss
+export const ROCK_GOD_RUNAWAY_LEAD   = 3;   // lead at FAME_TO_WIN that skips the boss — the finale is for CLOSE races only (was 5; lowered in the 2026-07-16 balance pass)
 export const ROCK_GOD_HP_PER_SPIRIT  = 20;  // HP pool = this × living Spirits
 export const ROCK_GOD_TIMER_SECONDS  = 45;  // human turn clock during the boss
 export const ROCK_GOD_VENGEANCE_DMG  = 2;   // Vibe cost of letting the clock die
@@ -103,8 +103,10 @@ export function pickRockGod(profile) {
   const sk = profile.unlockedSkills ?? [];
   const has = id => sk.includes(id);
   const scores = {
-    bardbarian:       ['shank_skank', 'cosmic_boogaloo', 'moon_shuffle', 'baki_gravity']
-                        .filter(has).length * 2 + (has('master_moshpits') ? 1 : 0),
+    // Bardbarian answers the brawlers — scored on melee-flavoured signature
+    // skills (the CQC branch it used to read was cut in the Stance rework).
+    bardbarian:       ['master_moshpits', 'riff_slayer', 'azrael', 'psycho_bushido']
+                        .filter(has).length * 2,
     feedback_warlock: (profile.ampsOwned ?? 0)
                         + ['amp_1', 'amp_2', 'amp_3', 'pedal_dist', 'power_chords'].filter(has).length,
     sonic_sorceress:  ['theory_major', 'theory_minor', 'theory_dom7', 'theory_modes', 'theory_chromatic']

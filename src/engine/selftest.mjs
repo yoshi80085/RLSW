@@ -11,7 +11,7 @@ import {
   moveBudgetSet, moveStep, beatsSpent, spiritWarped, spiritsSynced,
   spiritFaced, spiritEliminated, spiritPatched,
   riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed,
-  attackRolled, counterRolled,
+  attackRolled,
   damageApplied, knockdownResolved, winnerDeclared,
   noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked,
   debuffsTicked, burnTicked,
@@ -26,11 +26,11 @@ import {
 import { snapshot, restore, replay, assertJsonSafe } from "./serialize.js";
 import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus, smashOutcome,
-  decideWinner, resolveKnockdown, counterOutcome,
+  decideWinner, resolveKnockdown,
   thrashDamage, sonicDamage,
 } from "./systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./systems/economy.js";
-import { skillEligibility, ULTIMATE_PREREQS, THEORY_DISCORD_GRANTS, CQC_SWING_MAP } from "./systems/skills.js";
+import { skillEligibility, ULTIMATE_PREREQS, THEORY_DISCORD_GRANTS } from "./systems/skills.js";
 import { pitchIndex } from "../music/notes.js";
 import { detectMotifRepeat } from "../music/cadence.js";
 import { CORNERS } from "../data/corners.js";
@@ -533,47 +533,8 @@ const config = {
   assert.deepEqual([nc.next.num, nc.next.facing, nc.next.vibe], [5, 4, 9]);
 }
 
-// -- Phase 3d: COUNTER_ROLLED + counterOutcome ----------------------------------
-{
-  // an attack must be on the slice first (counter merges into it)
-  const withAttack = seed => applyAction(makeInitialState(config, seed),
-    attackRolled("swing", "wildaxe", "vera", { atkStat: 7, defStat: 5 }));
-  const counter = (seed, over = {}) => applyAction(withAttack(seed),
-    counterRolled("vera", { vibe: 6, maxVibe: 10, target: 4, ...over })).battle;
-
-  // determinism + preserves the attack fields it merges into
-  const a = counter(4242), b = counter(4242);
-  assert.deepEqual(a, b, "same seed → identical counter");
-  assert.equal(a.kind, "attack", "counter merges into the live battle slice");
-  assert.equal(a.attackKind, "swing");
-
-  for (let seed = 1; seed <= 300; seed++) {
-    const c = counter(seed);
-    assert.ok(c.counterRoll >= 1 && c.counterRoll <= 6, "counter d6 in range");
-    assert.equal(c.vibeBonus, Math.round((6 / 10) * 3), "vibe bonus = round(6/10*3)=2");
-    assert.equal(c.counterTotal, c.counterRoll + c.vibeBonus, "total = roll + bonus");
-    assert.equal(c.counterTarget, 4);
-    assert.equal(c.counterSuccess, c.counterTotal >= 4, "success clears the target die");
-  }
-
-  // vibe bonus scales 0..3 with the Vibe fraction
-  assert.equal(counter(1, { vibe: 0, maxVibe: 10 }).vibeBonus, 0, "empty Vibe → +0");
-  assert.equal(counter(1, { vibe: 10, maxVibe: 10 }).vibeBonus, 3, "full Vibe → +3");
-  assert.equal(counter(1, { vibe: 5, maxVibe: 10 }).vibeBonus, 2, "half Vibe → round(1.5)=2");
-
-  // a trivially-low target is always cleared; an impossible one never is
-  assert.equal(counter(7, { vibe: 10, maxVibe: 10, target: 1 }).counterSuccess, true);
-  assert.equal(counter(7, { vibe: 0, maxVibe: 10, target: 99 }).counterSuccess, false);
-
-  // counterOutcome: landed-counter margin/damage vs the old Game math
-  for (let total = 1; total <= 12; total++)
-    for (let tgt = 1; tgt <= 6; tgt++) {
-      const m = Math.max(1, total - tgt + 1);
-      assert.deepEqual(counterOutcome(total, tgt),
-        { counterMargin: m, counterDmg: marginToDamage(m) },
-        `counterOutcome(${total},${tgt})`);
-    }
-}
+// (Phase 3d COUNTER_ROLLED + counterOutcome tests removed — the counter system
+// was CUT in the Stance rework; retaliation is now natural Thrash adjacency.)
 
 // -- Phase 5a: usedStockIdx Set→array contract helpers --------------------------
 {
@@ -753,7 +714,6 @@ const config = {
 
   // grant tables intact
   assert.deepEqual(THEORY_DISCORD_GRANTS.theory_chromatic, ["discord_2", "discord_4"]);
-  assert.equal(CQC_SWING_MAP.baki_gravity, "swing_3");
   assert.deepEqual(ULTIMATE_PREREQS, ["mic", "pedal_dist", "amp_1", "mixer"]);
 }
 
@@ -1295,7 +1255,6 @@ const config = {
     moveStep("wildaxe", neighbor),
     beatsSpent(1, true),
     attackRolled("swing", "wildaxe", "vera", { atkStat: 7, defStat: 5 }),
-    counterRolled("vera", { vibe: 6, maxVibe: 10, target: 4 }),
     damageApplied("vera", 3),
     knockdownResolved("vera"),      // lives 2 → respawns at home corner, full Vibe
     // Phase 5c economy actions — widen the proof over the noteStates writes
@@ -1371,7 +1330,6 @@ const config = {
     ]),
     moveBudgetSet(4),
     attackRolled("swing", "wildaxe", "vera", { atkStat: 7, defStat: 5 }),
-    counterRolled("vera", { vibe: 6, maxVibe: 10, target: 4 }),
     damageApplied("vera", 3),
     knockdownResolved("vera"),   // lives 2 → respawns at home corner, full Vibe
     winnerDeclared("wildaxe"),
@@ -1435,8 +1393,8 @@ const config = {
   assert.equal(godTauntLine(bard, "nonexistent", () => 0), null, "missing taunt kind → null");
 
   // pickRockGod (pure): playstyle scores pick a god; unimplemented falls back
-  assert.equal(pickRockGod({ unlockedSkills: ["shank_skank", "cosmic_boogaloo"] }), "bardbarian",
-    "brawler skills → Bardbarian");
+  assert.equal(pickRockGod({ unlockedSkills: ["master_moshpits", "azrael"] }), "bardbarian",
+    "brawler signature skills → Bardbarian");
   assert.equal(pickRockGod({ livesLost: 10 }), "bardbarian",
     "Glam Reaper would score highest but isn't implemented → Bardbarian fallback");
   assert.equal(pickRockGod({}), "bardbarian", "empty profile → default Bardbarian");
@@ -2097,7 +2055,6 @@ const config = {
     spiritFaced("wildaxe", 4),
     beatsSpent(1, true),
     attackRolled("swing", "wildaxe", "vera", { atkStat: 7, defStat: 5 }),
-    counterRolled("vera", { vibe: 6, maxVibe: 10, target: 4 }),
     damageApplied("vera", 3),
     knockdownResolved("vera"),
 
@@ -2194,6 +2151,44 @@ const config = {
   const actionTypes = new Set(log.map(a => a.type));
   assert.ok(actionTypes.size >= 30,
     `8c COMPREHENSIVE: log spans ${actionTypes.size} distinct action types (target ≥ 30)`);
+}
+
+
+// -- Stance rework: initial stance state + fray arithmetic ----------------------
+{
+  const { STARTING_STANCE, stanceFrayAmount, stanceOf, grooveCap } = await import("../data/stances.js");
+  // every spirit boots in its designed stance, knowing only that stance
+  for (const [sid, st] of Object.entries(STARTING_STANCE)) {
+    const ns = makeInitialNoteState(sid, () => 0.5);
+    assert.equal(ns.stance, st, `${sid} starts in ${st}`);
+    assert.deepEqual(ns.stancesKnown, [st], `${sid} knows only its starting stance`);
+    assert.equal(ns.grooveCounter, 0, `${sid} groove counter starts 0`);
+    assert.equal(stanceOf(ns, sid), st);
+  }
+  assert.equal(stanceOf(undefined, "cosmic_ronin"), "soloist", "stanceOf falls back to STARTING_STANCE");
+  assert.equal(grooveCap({}), 3, "base groove cap 3");
+  assert.equal(grooveCap({ unlockedSkills: ["stance_resonance"] }), 5, "Resonance cap 5");
+
+  // fray table: margin-scaled base (1 / 2), attacker Power +1,
+  // defender Soloist x2 / Power +1 / Cool floor(/2)
+  assert.equal(stanceFrayAmount(1, null, null), 1, "graze = 1");
+  assert.equal(stanceFrayAmount(3, null, null), 2, "big hit = 2");
+  assert.equal(stanceFrayAmount(1, "power", null), 2, "Power attacker strips +1");
+  assert.equal(stanceFrayAmount(1, null, "soloist"), 2, "Soloist defender doubles");
+  assert.equal(stanceFrayAmount(3, "power", "soloist"), 6, "(2+1)*2 worst case");
+  assert.equal(stanceFrayAmount(1, null, "cool"), 0, "Cool shrugs off a graze");
+  assert.equal(stanceFrayAmount(3, null, "cool"), 1, "Cool halves a big hit");
+  assert.equal(stanceFrayAmount(3, "power", "cool"), 1, "Cool halves Power: floor(3/2)");
+  assert.equal(stanceFrayAmount(1, null, "power"), 2, "Power defender absorbs +1");
+
+  // requiresStance gate — stance upgrades need the stance KNOWN (reason 'stance')
+  const upg = { id: "stance_encore", prereq: "stance_2", requiresStance: "soloist" };
+  assert.deepEqual(skillEligibility(upg, ["stance_2"], { stancesKnown: ["power"] }),
+    { ok: false, reason: "stance" }, "upgrade blocked without the stance");
+  assert.deepEqual(skillEligibility(upg, ["stance_2"], { stancesKnown: ["soloist"] }),
+    { ok: true }, "upgrade opens once the stance is known");
+  assert.deepEqual(skillEligibility(upg, [], { stancesKnown: ["soloist"] }),
+    { ok: false, reason: "prereq" }, "tier prereq still applies");
 }
 
 console.log("engine selftest: all assertions passed ✔");

@@ -110,33 +110,9 @@ export function underdogBonus(winnerFame, loserFame, baseFp) {
   return { fp, deficit, mult };
 }
 
-/**
- * COUNTER_ROLLED (Phase 3d) — kept for selftest/future use, not called by Game.
- */
-export function applyCounterRolled(state, action, rng) {
-  const { defenderId, vibe = 1, maxVibe = 1, target = 1 } = action;
-  const vibeBonus      = Math.round((vibe / maxVibe) * 3);
-  const counterRoll    = rng.int(6) + 1;
-  const counterTotal   = counterRoll + vibeBonus;
-  const counterSuccess = counterTotal >= target;
-  return {
-    ...state,
-    battle: {
-      ...(state.battle ?? {}),
-      defenderId,
-      counterRoll, vibeBonus, counterTotal,
-      counterTarget: target, counterSuccess,
-    },
-  };
-}
-
-/**
- * counterOutcome (Phase 3d) — kept for selftest/future use.
- */
-export function counterOutcome(counterTotal, counterTarget) {
-  const counterMargin = Math.max(1, counterTotal - counterTarget + 1);
-  return { counterMargin, counterDmg: marginToDamage(counterMargin) };
-}
+// (Phase 3d counter/retaliation rolls REMOVED — the Stance rework replaces the
+// counter mechanic with natural Thrash-adjacency retaliation; §3/§8 of
+// STANCE_SYSTEM_DESIGN.md.)
 
 /**
  * decideWinner (Phase 3c kernel) — boss-aware win check.

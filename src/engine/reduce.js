@@ -11,7 +11,7 @@ import {
   SPIRIT_FACED, SPIRIT_ELIMINATED, SPIRIT_PATCHED,
   RIFF_OFF_STARTED, RIFF_RESULTS_SUBMITTED, RIFF_RESOLVED,
   RIFF_ROUND2_STARTED, RIFF_CLOSED,
-  ATTACK_ROLLED, COUNTER_ROLLED,
+  ATTACK_ROLLED,
   DAMAGE_APPLIED, KNOCKDOWN_RESOLVED, WINNER_DECLARED,
   NOTE_STATES_SYNCED, FAME_CHANGED, FANS_CHANGED, NOTE_SHEET_PATCHED, FANS_TICKED,
   DEBUFFS_TICKED, BURN_TICKED,
@@ -33,7 +33,7 @@ import {
 } from "./systems/turn.js";
 import { applyMoveStep, applySpiritWarped, applySpiritFaced } from "./systems/movement.js";
 import {
-  applyAttackRolled, applyCounterRolled,
+  applyAttackRolled,
   applyDamageApplied, applyKnockdownResolved, applyWinnerDeclared,
 } from "./systems/combat.js";
 import {
@@ -101,8 +101,7 @@ function reduce(state, action, rng) {
     // -- Phase 3b: combat rolls --
     case ATTACK_ROLLED:          return applyAttackRolled(state, action, rng);
 
-    // -- Phase 3d: retaliation (counter) roll --
-    case COUNTER_ROLLED:         return applyCounterRolled(state, action, rng);
+    // (Phase 3d COUNTER_ROLLED removed — Stance rework, natural retaliation.)
 
     // -- Phase 5c: spirit combat-ownership --
     case DAMAGE_APPLIED:         return applyDamageApplied(state, action);

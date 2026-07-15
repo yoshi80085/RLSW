@@ -4,6 +4,7 @@
 import { pitchIndex, NOTE_POOL, canonicalRoot, semitonesUp } from "../../music/notes.js";
 import { detectMotifRepeat, refillStock } from "../../music/cadence.js";
 import { FAN_DIEHARD_START, FAN_CASUAL_START, FAN_BORED_AFTER, FAN_DECAY } from "../../data/gameConstants.js";
+import { STARTING_STANCE } from "../../data/stances.js";
 import { hexRingFromCenter } from "../../board/boardHelpers.js";
 //
 // `usedStockIdx` — the per-spirit set of spent stock-slot indices — used to be a
@@ -136,10 +137,15 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
   const root = canonicalRoot(rawRoot, initMode);
   // 🗡️ SHREDDING RONIN carries a deeper well: 10 stock slots instead of 8.
   const stockSize = spiritId === "cosmic_ronin" ? 10 : 8;
+  const startStance = STARTING_STANCE[spiritId] ?? "cool";
   return {
     noteStock:       refillStock(root, initMode, stockSize, rand),
     melodyLine:      [],
     chordStack:      [root, semitonesUp(root, 7)], // 🎸 Power Chord (R+5); persists across turns
+    // ── 🧍 STANCE (combat/performance identity — STANCE_SYSTEM_DESIGN.md) ──
+    stance:          startStance,        // 'soloist'|'power'|'cool'|'groove'
+    stancesKnown:    [startStance],      // grows via the Stance skill route
+    grooveCounter:   0,                  // Groove stance's banked wave (0..cap)
     revoiceUsedThisTurn: false,
     bonusRevoiceAvailable: false,
     usedStockIdx:    [], // insertion-ordered array of spent stock-slot indices (JSON-safe; was a Set)
@@ -180,13 +186,11 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     pendingParanoia: false,
     eRushArmed:      false,
     discordUnlocks:  [],
-    swingUpgrades:   [],
     tripped:         false,
     instrumentDropped: false,
     dazed:           false,
     modCards:        [{ id: "starter-transpose", type: "transpose", exhausted: false, oneShot: true }],
     groupieCooldowns: {},
-    junkyardArmed:    false,
     ultimateUsed:     false,
     mixerUsedThisTurn: false,
     elevenTurns:      0,

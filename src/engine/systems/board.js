@@ -99,19 +99,20 @@ export function applyTokensScattered(state, { occupied, aliveCount, totalPlayers
  *  defender. Count scales with crash tier: light=1, medium=2, heavy=3.
  *  Tokens land on empty adjacent hexes only -- no cap check (impact bypasses
  *  equilibrium). */
-export function applyThrashTokensSpawned(state, { defenderHex, occupied, crashTier }, rng) {
+export function applyThrashTokensSpawned(state, { defenderHex, occupied, crashTier, spread = 1 }, rng) {
   const count = crashTier === 'heavy' ? 3 : crashTier === 'medium' ? 2 : 1;
   const occ = new Set(occupied);
   state.board.boardTokens.forEach(t => occ.add(t.num));
 
-  // Find adjacent hexes that are empty
+  // Find empty hexes at exactly `spread` ring distance from the defender
+  // (spread 1 = the old adjacency; 🌋 Aftershock scatters at ring 2).
   const defHex = ALL_HEXES.find(h => h.num === defenderHex);
   if (!defHex) return { ...state, board: { ...state.board, lastThrashTokens: null } };
 
-  const DIRS = [[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]];
-  const adjNums = DIRS
-    .map(([dq,dr]) => ALL_HEXES.find(h => h.q === defHex.q + dq && h.r === defHex.r + dr))
-    .filter(Boolean)
+  const hexDist = (a, b) => Math.max(
+    Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs((-a.q - a.r) - (-b.q - b.r)));
+  const adjNums = ALL_HEXES
+    .filter(h => hexDist(h, defHex) === spread)
     .map(h => h.num)
     .filter(n => !occ.has(n));
 

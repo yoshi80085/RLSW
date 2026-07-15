@@ -60,12 +60,13 @@ import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
 import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
-import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, counterOutcome, thrashDamage, thrashKnockback, thrashFame, sonicDamage, sonicKnockback, sonicFame } from "./engine/systems/combat.js";
+import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, thrashDamage, thrashKnockback, thrashFame, sonicDamage, sonicKnockback, sonicFame } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
-import { skillEligibility, THEORY_DISCORD_GRANTS, CQC_SWING_MAP } from "./engine/systems/skills.js";
+import { skillEligibility, THEORY_DISCORD_GRANTS } from "./engine/systems/skills.js";
+import { STANCE_DEFS, STANCE_ORDER, stanceOf, grooveCap, stanceFrayAmount, SOLOIST_FAME_MULT, POWER_SONIC_DMG_CAP, COOL_PROMOTE_EVERY, COOL_LOYALTY_PER_DIEHARD } from "./data/stances.js";
 import {
   BOT_PERSONALITIES, BOT_PERSONA_KEYS, BOT_SKILL_PRIORITY_BASE, BOT_SPIRIT_SKILLS,
-  SPIRIT_ONLY_ROUTE, BOT_RIFF_PROFILE,
+  SPIRIT_ONLY_ROUTE, BOT_RIFF_PROFILE, BOT_STANCE_PREF,
   botAssignPersona, botPickTarget as _botPickTarget, botHexScore as _botHexScore,
   botSkillEligible as _botSkillEligible, botPickSkillTarget as _botPickSkillTarget,
   botRiffResults as _botRiffResults,
@@ -301,7 +302,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_HC_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_HC_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP } from "./data/gameConstants.js";
+import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_HC_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_HC_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -380,41 +381,8 @@ import { evaluateChord } from "./music/chords.js";
 // Check whether the tail of a finals trail completes any cadence (skipping
 // objectives on cooldown). Longest pattern wins.
 
-// Three tiers, each unlocking / boosting random on-hit physical effects.
-// Effects roll independently on a successful swing hit.
-const SWING_UPGRADE_TIERS = [
-  {
-    id: 'swing_1',
-    label: 'Wild Swing',
-    icon: '🌀',
-    desc: 'On hit: 20% chance to TRIP — target\'s movement halved next turn.',
-    maxLevel: 1,
-  },
-  {
-    id: 'swing_2',
-    label: 'Reckless Abandon',
-    icon: '💥',
-    desc: 'Trip chance → 35%. Adds DROP INSTRUMENT (20%) — target loses 1 Drive until recovered.',
-    prereq: 'swing_1',
-    maxLevel: 1,
-  },
-  {
-    id: 'swing_3',
-    label: 'Dazed & Confused',
-    icon: '😵',
-    desc: 'Adds DAZED (15%) — target\'s next move goes to a random wrong hex. All chances bumped.',
-    prereq: 'swing_2',
-    maxLevel: 1,
-  },
-];
-
-// Chance tables per upgrade tier (cumulative unlocks)
-// { trip, drop, dazed } — each 0–1 probability
-const SWING_EFFECT_CHANCES = {
-  swing_1: { trip: 0.20, drop: 0,    dazed: 0    },
-  swing_2: { trip: 0.35, drop: 0.20, dazed: 0    },
-  swing_3: { trip: 0.40, drop: 0.25, dazed: 0.15 },
-};
+// ⚠️ CQC swing-upgrade tiers + %-proc chance tables were CUT with the Stance
+// system rework (see STANCE_SYSTEM_DESIGN.md §8) — no musical connection.
 
 // Vintage dance-craze names flashed on a plain swing (no upgrade effect landed).
 // Picked once per battle (stored on battleState) so it stays stable across renders.
@@ -516,19 +484,38 @@ const SKILL_TREE = {
           desc:'Charge Zones no longer just spark your dice — tapping one now lets you choose: the usual charge (random die floor/ceiling boost), OR one curated Chord Stack note plus a bonus revoice to spend on it.' },
       ],
     },
+    // ── STANCES — combat/performance identity (replaces the CQC/Thrash branch) ──
+    // Learning tiers open the other three stances (pick which on award); the
+    // upgrades deepen a stance you own and only fire while you're IN it.
+    // Mechanics live in STANCE_SYSTEM_DESIGN.md §4/§6; data in data/stances.js.
     {
-      id: 'cqc', // internal id stays 'cqc' — player-facing name is THRASH
-      label: 'Thrash',
-      icon: '🥊',
+      id: 'stance',
+      label: 'Stances',
+      icon: '🧍',
       color: '#ff6644',
-      desc: 'Thrash — brutal melee. Each tier also trains a permanent +1 Drive.',
+      desc: 'Your body and the instrument. Learn new stances — how you deliver the music you built — and deepen the ones you own. Switching costs your Action.',
       skills: [
-        { id:'shank_skank',     label:'Shank Skank',     icon:'🗡️', hcCost:8,  gated:true, prereq:null,
-          desc:"On hit: 20% TRIP — rival's movement halved next turn. (+1 permanent Drive.)" },
-        { id:'cosmic_boogaloo', label:'Cosmic Boogaloo', icon:'🌀', hcCost:12, gated:true, prereq:'shank_skank',
-          desc:'Trip 35% + 15% DAZED (next move lurches the wrong way). (+1 permanent Drive.)' },
-        { id:'moon_shuffle',    label:'Moon Shuffle',    icon:'🌙', hcCost:16, gated:true, prereq:'cosmic_boogaloo',
-          desc:'Trip 40% + Dazed 18% + 12% DROP INSTRUMENT (rival loses Drive until retrieved). (+1 permanent Drive.)' },
+        { id:'stance_2', label:'Second Stance', icon:'🧍', hcCost:8,  gated:true, prereq:null,
+          desc:'Learn any stance you don\'t already know — Soloist, Power, Cool or Groove. You choose on unlock.' },
+        { id:'stance_3', label:'Third Stance',  icon:'🧍', hcCost:12, gated:true, prereq:'stance_2',
+          desc:'Learn a third stance. Your combat identity becomes a toolkit.' },
+        { id:'stance_4', label:'Fourth Stance', icon:'🧍', hcCost:16, gated:true, prereq:'stance_3',
+          desc:'Master the last remaining stance. Every delivery is yours.' },
+        // ── Upgrades — 1–2 per stance, gated on owning the stance + a tier ──
+        { id:'stance_encore',      label:'Encore',       icon:'🎇', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'soloist',
+          desc:'SOLOIST: when a winning attack carries a Performance of 7+, the spectacle converts +1 Diehard fan.' },
+        { id:'stance_demolition',  label:'Demolition',   icon:'💥', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'power',
+          desc:'POWER: a Thrash that frays a rival\'s chord below 2 notes adds the destroyed chord\'s Drive as bonus Vibe damage.' },
+        { id:'stance_aftershock',  label:'Aftershock',   icon:'🌋', hcCost:14, gated:true, prereq:'stance_3', requiresStance:'power',
+          desc:'POWER: Lost Chords knocked loose by your Thrash scatter 1 hex further — board control through violence.' },
+        { id:'stance_ironclad',    label:'Ironclad',     icon:'🛡️', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'cool',
+          desc:'COOL: when a hit is too weak to fray you (margin ≤ 2), you harden — +1 temp Sustain.' },
+        { id:'stance_riposte',     label:'Riposte',      icon:'🤺', hcCost:14, gated:true, prereq:'stance_3', requiresStance:'cool',
+          desc:'COOL: win a Thrash defense and your next Thrash against that rival frays +1 extra note.' },
+        { id:'stance_resonance',   label:'Resonance',    icon:'🌊', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'groove',
+          desc:'GROOVE: the wave builds higher — Groove counter cap raised from 3 to 5.' },
+        { id:'stance_sustainwave', label:'Sustain Wave', icon:'🌀', hcCost:14, gated:true, prereq:'stance_3', requiresStance:'groove',
+          desc:'GROOVE: spending the wave on an attack also banks it as temp Sustain — the wave protects the backswing.' },
       ],
     },
     {
@@ -542,10 +529,8 @@ const SKILL_TREE = {
           desc:'Deployable crew — restore 2 Vibe. Recharges in 3 turns.' },
         { id:'pranksta',     label:'Bust Out Pranksta',   icon:'🪤', hcCost:8, gated:false,
           desc:'Deployable crew — disconnect up to 2 rival amps within 4 hexes. Recharges in 3 turns.' },
-        { id:'junkyard_dog', label:'Junkyard Dog',        icon:'🔩', hcCost:8, gated:false,
-          desc:'Deployable crew — arm a junkyard weapon: +2 on your next Swing roll. Recharges in 3 turns.' },
-        { id:'fandom_army',  label:'Several Fandom Army', icon:'🛡️', hcCost:8, gated:false,
-          desc:'Deployable crew — +2 Sustain for your next battle. Fans form a wall around you. Recharges in 3 turns.' },
+        // junkyard_dog (+2 flat swing) & fandom_army (+2 Sustain) CUT — modifier
+        // soup with no musical connection (STANCE_SYSTEM_DESIGN.md §8/§8.1).
       ],
     },
     // ── SIGNATURE ARSENALS — one compact route per Spirit (hidden from the others) ──
@@ -1046,8 +1031,6 @@ function Game({ gameState, onReturnToLobby }) {
   }, [bttpChallenge?.phase, bttpChallenge?.idx, bttpChallenge?.stageKey]);
   // diceDisplay: { atk: null|number, def: null|number, rolling: 'atk'|'def'|null }
   const [diceDisplay, setDiceDisplay] = useState(null);
-  // retaliationTimer: countdown seconds remaining
-  const [retaliationTimer, setRetaliationTimer] = useState(null);
   const moveStepsLeft = engineState.turn.moveStepsLeft; // engine-owned (Phase 2)
   const [chordMode, setChordMode] = useState(false); // 🎸 taps build the combat chord instead of the melody
   // 🎯 TURN STEP — progressive HUD flow: pivot → chord → melody → move_act
@@ -1181,7 +1164,6 @@ function Game({ gameState, onReturnToLobby }) {
     amps, setAmps,
     boardCards, setBoardCards,
     cardRespawnIn, setCardRespawnIn,
-    pendingCardPickup, setPendingCardPickup,
     roadieAction, setRoadieAction,
     roadieAnimations, setRoadieAnimations,
     ampPlacing, setAmpPlacing,
@@ -2277,6 +2259,7 @@ function Game({ gameState, onReturnToLobby }) {
         chordStack:   [...chord, note],
         usedStockIdx: usedAdd(usedStockIdx, idx),
         revoiceUsedThisTurn: true,
+        grooveCounter: 0, // 🌀 revoicing breaks the groove (§4.4)
       });
       addLog(`🎸 ${note} → chord (revoiced to ${chord.length + 1} notes)`);
       return;
@@ -2333,7 +2316,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (chord.length <= 1) { addLog('🎸 Can\'t drop your last note — your stance needs at least one.'); return; }
     if (i < 0 || i >= chord.length) return;
     const dropped = chord[i];
-    setNoteField(acting.id, { chordStack: chord.filter((_, k) => k !== i), revoiceUsedThisTurn: true });
+    setNoteField(acting.id, { chordStack: chord.filter((_, k) => k !== i), revoiceUsedThisTurn: true, grooveCounter: 0 });
     addLog(`🎸 Dropped ${dropped} from the chord (revoiced).`);
   }
 
@@ -2497,12 +2480,10 @@ function Game({ gameState, onReturnToLobby }) {
         }
       }
     }
-    // Overdrive card: pardon one discord note (reduce effective discord by 1)
-    const overdriveActive = actingNoteState?.overdriveActive ?? false;
     // 🌀 FREESTYLE — Intergalactic 0's first wrong note each turn lands intentional, not wrong:
     // it's pardoned from the discord penalty (and, below, doesn't drag the crowd + earns Flair).
     const freestylePardon = acting?.id === 'intergalactic_0';
-    const effectiveDiscord = Math.max(0, discordCount - (overdriveActive ? 1 : 0) - (freestylePardon ? 1 : 0));
+    const effectiveDiscord = Math.max(0, discordCount - (freestylePardon ? 1 : 0));
     // chromClimbActive: if discord_4 unlocked and a chromatic run of 3+ is present,
     // treat the track as non-discord for scoring (individual grey notes are cosmetic only)
     // Note: chromClimbActive is set after the discord upgrade flags below — forward ref is fine
@@ -2776,8 +2757,10 @@ function Game({ gameState, onReturnToLobby }) {
     // Edge fan costs (stepping onto/escalating the stance, or its collapse) apply
     // through this same bored-fans pipeline — one floor-at-0 path, not a new one.
     let perfFansGained = 0, perfPromotions = 0, perfFansLost = edgeFanCost + edgeCollapseFans;
+    // 🕶️ COOL stance — loyalty threshold lowered: the effortless act builds a loyal core (§4.3).
+    const loyaltyPerDiehard = stanceOf(actingNoteState, acting?.id) === 'cool' ? COOL_LOYALTY_PER_DIEHARD : LOYALTY_PER_DIEHARD;
     while (perfExcitement >= EXCITE_PER_CASUAL)   { perfExcitement -= EXCITE_PER_CASUAL;   perfFansGained += 1; }
-    while (perfLoyalty    >= LOYALTY_PER_DIEHARD) { perfLoyalty    -= LOYALTY_PER_DIEHARD; perfPromotions += 1; }
+    while (perfLoyalty    >= loyaltyPerDiehard)   { perfLoyalty    -= loyaltyPerDiehard;   perfPromotions += 1; }
     // 🗡️ Bored crowd (only reachable when the meter has cooled below empty — i.e. Ronin
     // stringing together weak shows): one casual drifts off, then the meter resets up.
     while (perfExcitement <= -EXCITE_PER_CASUAL)  { perfExcitement += EXCITE_PER_CASUAL;   perfFansLost  += 1; }
@@ -2894,7 +2877,6 @@ function Game({ gameState, onReturnToLobby }) {
       riffSlayerArmed: riffSlayerArm ? true : (actingNoteState?.riffSlayerArmed ?? false),
       burnArmed:       burnArm ? true : (actingNoteState?.burnArmed ?? false),
       eRushArmed:      eRushArm ? true : (actingNoteState?.eRushArmed ?? false),
-      overdriveActive: false,
       transposeCardPending: null,
       ...cleansePatch, // Borrowed Chord (Maj3 end) — clears one active debuff
     });
@@ -2966,12 +2948,6 @@ function Game({ gameState, onReturnToLobby }) {
           setTimeout(() => setFreshNoteIdx(prev => (prev?.spiritId === spiritId ? null : prev)), 700);
         }, 0);
       }
-      // Phase R5.3: log grudge expiry
-      if (ns.grudge && ns.grudge.turnsLeft <= 1) {
-        const nm = spirits.find(s => s.id === spiritId)?.name;
-        const rivalNm = spirits.find(s => s.id === ns.grudge.rivalId)?.name;
-        setTimeout(() => addLog(`🔥 ${nm}'s grudge against ${rivalNm} fades — the moment has passed.`), 0);
-      }
 
       // NOTE: mojoDrain / stagger / tripped / dazed / instrumentDropped are NO
       // LONGER ticked or cleared here. Clearing them at the start of your own
@@ -3012,10 +2988,6 @@ function Game({ gameState, onReturnToLobby }) {
           acousticDuelCds: Object.fromEntries(
             Object.entries(ns.acousticDuelCds ?? {}).filter(([, v]) => v > 1).map(([k, v]) => [k, v - 1])
           ),
-          // Phase R5.3: tick down grudge match timer
-          grudge: ns.grudge
-            ? (ns.grudge.turnsLeft <= 1 ? null : { ...ns.grudge, turnsLeft: ns.grudge.turnsLeft - 1 })
-            : null,
           // Tick down "goes to eleven" boost
           elevenTurns: Math.max(0, (ns.elevenTurns ?? 0) - 1),
           // ⚡ Charge Zone charges tick down on the holder's own turns (2 ≈ 2 rounds);
@@ -3221,9 +3193,33 @@ function Game({ gameState, onReturnToLobby }) {
 
     if (skillId === 'fans_4eva')    addLog(`💚 ${spirit?.name} — Fans 4Eva! Crew ready to deploy from your HUD: restore 2 Vibe.`);
     if (skillId === 'pranksta')     addLog(`🪤 ${spirit?.name} — Bust Out Pranksta! Crew ready to deploy: disconnect up to 2 rival amps.`);
-    if (skillId === 'junkyard_dog') addLog(`🔩 ${spirit?.name} — Junkyard Dog! Crew ready to deploy: arm a junkyard weapon (+2 on next Swing).`);
-    if (skillId === 'fandom_army')  addLog(`🛡️ ${spirit?.name} — Several Fandom Army! Crew ready to deploy: +2 Sustain for your next battle.`);
     if (skillId === 'hero_pose')    addLog(`🌟 ${spirit?.name} — HERO POSE unlocked! Pose on centre hex for 2 turns to win.`);
+
+    // ── 🧍 STANCE ROUTE ──────────────────────────────────────────────────────
+    // Learning tiers open a choice of the remaining stances. Humans get the
+    // picker modal (stancePickPending); bots auto-pick by persona preference.
+    if (['stance_2', 'stance_3', 'stance_4'].includes(skillId)) {
+      const known = ns.stancesKnown ?? [stanceOf(ns, spiritId)];
+      const remaining = STANCE_ORDER.filter(st => !known.includes(st));
+      if (remaining.length === 0) {
+        addLog(`🧍 ${spirit?.name} already knows every stance.`);
+      } else if (spirit?.cpu) {
+        const prefKey = botPersonaRef.current[spiritId];
+        const pref = BOT_STANCE_PREF[prefKey] ?? STANCE_ORDER;
+        const pick = pref.find(st => remaining.includes(st)) ?? remaining[0];
+        learnStance(spiritId, pick);
+      } else {
+        setNoteField(spiritId, { stancePickPending: skillId });
+        addLog(`🧍 ${spirit?.name} can learn a new stance — choose your pose!`);
+      }
+    }
+    if (skillId === 'stance_encore')      addLog(`🎇 ${spirit?.name} — ENCORE! A winning Soloist attack with Performance 7+ now converts a Diehard.`);
+    if (skillId === 'stance_demolition')  addLog(`💥 ${spirit?.name} — DEMOLITION! Fraying a chord below 2 notes adds its Drive as bonus Vibe damage.`);
+    if (skillId === 'stance_aftershock')  addLog(`🌋 ${spirit?.name} — AFTERSHOCK! Lost Chords from your Thrash hits scatter a hex further.`);
+    if (skillId === 'stance_ironclad')    addLog(`🛡️ ${spirit?.name} — IRONCLAD! Grazes that fail to fray you now harden you (+1 temp Sustain).`);
+    if (skillId === 'stance_riposte')     addLog(`🤺 ${spirit?.name} — RIPOSTE! Win a Thrash defense to arm a +1-fray answer against that rival.`);
+    if (skillId === 'stance_resonance')   addLog(`🌊 ${spirit?.name} — RESONANCE! The Groove wave now builds to 5.`);
+    if (skillId === 'stance_sustainwave') addLog(`🌀 ${spirit?.name} — SUSTAIN WAVE! Spending the wave also banks it as temp Sustain.`);
     if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Win a battle with a banked note to burn it for +1 Vibe and flood the pit.`);
     if (skillId === 'riff_slayer')  addLog(`🗡️ ${spirit?.name} — RIFF SLAYER! Commit a skip-climb (notes leaping by thirds) to rattle a rival in any riff-off that turn.`);
     if (skillId === 'paranoia')     addLog(`🌀 ${spirit?.name} — PARANOIA! Your Mojo Drain now lasts 3 turns AND freezes 2 of the rival's note slots.`);
@@ -3255,24 +3251,6 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'displace')      addLog(`🌌 ${spirit?.name} — DISPLACE! Warp to your amp rig for 3 AP (2-turn cooldown). He doesn't run — he transcends space.`);
     if (skillId === 'sunbeam')       addLog(`☀️ ${spirit?.name} — SUNBEAM! With 3 amps, your Sonic beam reaches +2 hexes and leaves burning ground in its wake.`);
 
-    // CQC skill → swing tier; pure `CQC_SWING_MAP` from engine/systems/skills.js.
-    if (CQC_SWING_MAP[skillId]) {
-      const tier = SWING_UPGRADE_TIERS.find(t => t.id === CQC_SWING_MAP[skillId]);
-      addLog(`🥊 ${spirit?.name} unlocks ${skill?.label}! ${tier?.desc ?? ''}`);
-      // PERMANENT +1 DRIVE — practising the CQC arts makes the Spirit stronger
-      // over the game. Idempotent: each CQC skill grants its +1 only once.
-      const alreadyBuffed = (ns.driveBuffsApplied ?? []).includes(skillId);
-      if (!alreadyBuffed) {
-        setSpirits(prev => prev.map(s => s.id === spiritId ? { ...s, drive: (s.drive ?? 6) + 1 } : s));
-        setNoteStates(prev => {
-          const ns2 = prev[spiritId] ?? {};
-          return { ...prev, [spiritId]: {
-            ...ns2, driveBuffsApplied: [...(ns2.driveBuffsApplied ?? []), skillId]
-          }};
-        });
-        addLog(`💪 ${spirit?.name}'s Thrash training pays off — permanent +1 Drive! (now ${(spirit?.drive ?? 6) + 1})`);
-      }
-    }
     if (['amp_1','amp_2','amp_3'].includes(skillId)) {
       const ownedCount = amps.filter(a => a.ownerId === spiritId).length;
       if (ownedCount < AMP_UPGRADE_MAX) {
@@ -3324,11 +3302,12 @@ function Game({ gameState, onReturnToLobby }) {
     // Prereq / chain gating — shared pure kernel (engine/systems/skills.js), the
     // same gate the bot uses. Human path passes no owner-route (the overlay only
     // ever offers the player their own skills), preserving prior behavior.
-    const elig = skillEligibility(skill, unlocked);
+    const elig = skillEligibility(skill, unlocked, { stancesKnown: ns.stancesKnown ?? [] });
     if (!elig.ok) {
       if (elig.reason === 'prereq')        addLog(`❌ Requires ${SKILL_BY_ID[skill.prereq]?.label} first.`);
       else if (elig.reason === 'ultimate') addLog(`❌ Ultimate requires: ${elig.missing.join(', ')}`);
       else if (elig.reason === 'pa')       addLog(`❌ PA system requires Amp I first.`);
+      else if (elig.reason === 'stance')   addLog(`❌ ${skill.label} deepens the ${STANCE_DEFS[skill.requiresStance]?.label} stance — learn that stance first.`);
       return;
     }
 
@@ -3387,7 +3366,7 @@ function Game({ gameState, onReturnToLobby }) {
   // Legacy alias
   function purchaseSkill(spiritId, skillId) { setSkillTarget(spiritId, skillId); }
   function chooseUpgrade(spiritId, categoryId) {
-    const legacyMap = { amp:'amp_1', roadie:'roadie_1', close_combat:'shank_skank',
+    const legacyMap = { amp:'amp_1', roadie:'roadie_1',
       discord_1:'discord_1', discord_2:'discord_2', discord_3:'discord_3', discord_4:'discord_4' };
     setSkillTarget(spiritId, legacyMap[categoryId] ?? categoryId);
   }
@@ -3525,31 +3504,7 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
 
-    if (skillId === 'junkyard_dog') {
-      if (ns.junkyardArmed) { addLog(`🔩 ${spirit.name} is already holding a junkyard weapon!`); return; }
-      flyCrew({ fromHexNum: homeNum, toHexNum: spirit.num, icon:'🎉', color:'#ff66bb', label:'🎉 Junkyard drop!' });
-      setNoteStates(prev => ({
-        ...prev,
-        [spiritId]: { ...prev[spiritId], junkyardArmed: true },
-      }));
-      addLog(`🔩 The fans pass ${spirit.name} something rusty over the barricade — next Swing gets +2!`);
-      startCooldown();
-      return;
-    }
-
-    if (skillId === 'fandom_army') {
-      flyCrew({ fromHexNum: homeNum, toHexNum: spirit.num, icon:'🎉', color:'#ff66bb', label:'🎉 Fan wall!' });
-      setNoteStates(prev => {
-        const cur = prev[spiritId] ?? {};
-        return {
-          ...prev,
-          [spiritId]: { ...cur, tempSustain: Math.max(cur.tempSustain ?? 0, 2) },
-        };
-      });
-      addLog(`🛡️ ${spirit.name}'s fandom forms a human wall — +2 Sustain for the next battle!`);
-      startCooldown();
-      return;
-    }
+    // junkyard_dog / fandom_army deploys CUT with the Stance rework (§8).
   }
 
   // ENCORE APOCALYPSE — the Ultimate. Once per game: 2 Vibe damage + 1-turn
@@ -3624,29 +3579,17 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
 
-  // ─── MODULATION CARDS ────────────────────────────────────────────────────────
-  // MOD_CARD_DEFS: definitions for all card types
+  // ─── MODULATION CARDS — CUT to a single survivor (Stance rework, §8) ─────────
+  // Chromatic Shift + Overdrive are GONE (the Theory ladder rescues bad tracks
+  // now). The starter Transpose one-shot survives as a beginner mercy: re-draw
+  // your Root Note once, then the card falls away.
   const MOD_CARD_DEFS = {
-    chromatic_shift: {
-      icon: '🎼',
-      name: 'Chromatic Shift',
-      desc: 'Rewrite all discord notes in your stock into in-scale notes for your chosen mode.',
-      color: '#44ffaa',
-      usableWhen: 'after-pivot', // after choosing major/minor, before building
-    },
     transpose: {
       icon: '🔄',
       name: 'Transpose',
       desc: 'Re-draw your Root Note from any note in your current stock — you choose.',
       color: '#ffcc44',
       usableWhen: 'during-pivot', // instead of accepting assigned root
-    },
-    overdrive: {
-      icon: '⚡',
-      name: 'Overdrive',
-      desc: 'One discord note in your track counts as in-scale for HC scoring this turn.',
-      color: '#ff8844',
-      usableWhen: 'before-commit', // before committing the melody line
     },
   };
 
@@ -3658,39 +3601,13 @@ function Game({ gameState, onReturnToLobby }) {
     const def = MOD_CARD_DEFS[card.type];
     if (!def) return;
 
-    if (card.type === 'chromatic_shift') {
-      if (pivotPending) { addLog('🎼 Declare Major or Minor first, then play Chromatic Shift.'); return; }
-      // Replace all out-of-scale notes in stock with random in-scale notes
-      const newStock = (ns.noteStock ?? []).map((note, idx) => {
-        if (usedHas(ns.usedStockIdx, idx)) return note; // already used — leave it
-        if (currentScale.includes(note)) return note; // already in scale — leave it
-        // Out of scale — replace with a random in-scale note
-        const inScalePool = currentScale;
-        return inScalePool[Math.floor(Math.random() * inScalePool.length)];
-      });
-      setNoteField(acting.id, {
-        noteStock: newStock,
-        modCards: (ns.modCards ?? []).map(c => c.id === cardId ? { ...c, exhausted: true } : c),
-      });
-      addLog(`🎼 Chromatic Shift — all discord notes rewritten to ${rootNote} ${scaleMode}!`);
-    }
-
-    else if (card.type === 'transpose') {
+    if (card.type === 'transpose') {
       // Open a "pick your new root" overlay — set a pending state
       setNoteField(acting.id, {
         transposeCardPending: cardId,
         modCards: (ns.modCards ?? []).map(c => c.id === cardId ? { ...c, exhausted: true } : c),
       });
       addLog('🔄 Transpose — click any note in your stock to use it as your new Root Note.');
-    }
-
-    else if (card.type === 'overdrive') {
-      if (hasConfirmed) { addLog('⚡ Overdrive must be played before committing your track.'); return; }
-      setNoteField(acting.id, {
-        overdriveActive: true,
-        modCards: (ns.modCards ?? []).map(c => c.id === cardId ? { ...c, exhausted: true } : c),
-      });
-      addLog('⚡ Overdrive active — one discord note will count as in-scale this commit!');
     }
   }
 
@@ -3739,100 +3656,12 @@ function Game({ gameState, onReturnToLobby }) {
     return { halveDef, laserActive, fogActive, pyroBonus, extraAtkDrive, stageLightActive };
   }
 
-  // ─── SWING EFFECTS (extended for full CQC skill chain) ────────────────────────
-  // Builds a chance table from the attacker's unlockedSkills CQC chain.
-  function getCQCChances(atkNs) {
-    const skills = atkNs.unlockedSkills ?? [];
-    // Base chances per CQC skill unlocked (cumulative — later tiers include earlier)
-    if (skills.includes('baki_gravity'))   return { slip:0.35, dazed:0.23, drop:0.18, confused:0.10 };
-    if (skills.includes('moon_shuffle'))   return { slip:0.30, dazed:0.18, drop:0.12, confused:0     };
-    if (skills.includes('cosmic_boogaloo'))return { slip:0.25, dazed:0.15, drop:0,    confused:0     };
-    if (skills.includes('shank_skank'))    return { slip:0.20, dazed:0,    drop:0,    confused:0     };
-    return null;
-  }
-
-  // ─── SWING EFFECT INFO (shared by the roll, the result banner & the apply) ────
-  // Human-readable description of what each status effect does AFTER the battle
-  // (i.e. once the overlay closes and the defender has been pushed back). Keep
-  // the `after` text aligned with what applySwingEffects actually does below.
-  const SWING_FX_INFO = {
-    slip:     { icon:'🌀', label:'Slip',     color:'#44ddff', after:'loses 2 note slots on their next turn' },
-    trip:     { icon:'🌀', label:'Trip',     color:'#aaffaa', after:'movement halved on their next turn' },
-    drop:     { icon:'🎸', label:'Drop',     color:'#ff4444', after:'drops their instrument — −1 Drive until they recover it' },
-    dazed:    { icon:'😵', label:'Dazed',    color:'#ff66ff', after:'33% of their moves go the wrong way next turn' },
-    confused: { icon:'💫', label:'Confused', color:'#ffaa44', after:'hurts itself for Vibe damage right after the push' },
-  };
-  // Friendly name of the highest swing/CQC upgrade the attacker owns.
-  function swingUpgradeName(atkNs) {
-    const skills = atkNs?.unlockedSkills ?? [];
-    if (skills.includes('baki_gravity'))    return 'Baki Gravity';
-    if (skills.includes('moon_shuffle'))    return 'Moon Shuffle';
-    if (skills.includes('cosmic_boogaloo')) return 'Cosmic Boogaloo';
-    if (skills.includes('shank_skank'))     return 'Shank Skank';
-    const up = atkNs?.swingUpgrades ?? [];
-    if (up.includes('swing_3')) return 'Dazed & Confused';
-    if (up.includes('swing_2')) return 'Reckless Abandon';
-    if (up.includes('swing_1')) return 'Dirty Boots';
-    return 'Swing Upgrade';
-  }
-
-  // ─── ROLL SWING EFFECTS (pure — no state changes) ─────────────────────────────
-  // Rolls the attacker's swing/CQC status-effect chances ONCE and freezes the
-  // outcome so the result overlay can tell the player exactly what will happen
-  // before they close it. Returns null when the attacker has no swing upgrade
-  // (or the attack is Sonic — CQC is melee only). When it returns an object,
-  // `effects` is the list that actually landed (empty array = rolled but missed).
-  function rollSwingEffects(attackerId, sonicAttack) {
-    if (sonicAttack) return null; // CQC = melee only
-    const atkNs = noteStates[attackerId] ?? {};
-    const cqcChances = getCQCChances(atkNs);
-    const swingUpgrades = atkNs.swingUpgrades ?? [];
-    if (!cqcChances && swingUpgrades.length === 0) return null;
-
-    const chances = cqcChances ?? (() => {
-      const highestTier = ['swing_3','swing_2','swing_1'].find(t => swingUpgrades.includes(t));
-      return highestTier ? SWING_EFFECT_CHANCES[highestTier] : null;
-    })();
-    if (!chances) return null;
-
-    const effects = [];
-    if (chances.slip  > 0 && Math.random() < chances.slip)        effects.push('slip');
-    if (chances.trip  > 0 && Math.random() < (chances.trip ?? 0)) effects.push('trip');
-    if (chances.drop  > 0 && Math.random() < chances.drop)        effects.push('drop');
-    if (chances.dazed > 0 && Math.random() < chances.dazed)       effects.push('dazed');
-    if (chances.confused > 0 && Math.random() < chances.confused) effects.push('confused');
-
-    // GUARANTEE: an upgraded CQC swing ALWAYS lands at least one effect on a hit.
-    // The per-effect % now decides *which* / *how many* stack; if the independent
-    // rolls all missed, force one in, weighted by this tier's chances.
-    let guaranteed = false;
-    if (effects.length === 0) {
-      const pool = ['slip','trip','drop','dazed','confused']
-        .map(k => [k, chances[k] ?? 0]).filter(([, w]) => w > 0);
-      if (pool.length) {
-        const total = pool.reduce((a, [, w]) => a + w, 0);
-        let r = Math.random() * total, chosen = pool[0][0];
-        for (const [k, w] of pool) { if (r < w) { chosen = k; break; } r -= w; }
-        effects.push(chosen);
-        guaranteed = true;
-      }
-    }
-
-    // Pre-roll the Confused self-damage so the preview number matches what lands.
-    let confusedDmg = 0;
-    if (effects.includes('confused')) {
-      const r = Math.floor(Math.random() * 6) + 1;
-      confusedDmg = r <= 3 ? 1 : r <= 5 ? 2 : 3;
-    }
-
-    return { upgradeName: swingUpgradeName(atkNs), effects, confusedDmg, guaranteed };
-  }
-
-  // ─── SWING EFFECTS ────────────────────────────────────────────────────────────
-  // Applies the status effects of a swing/CQC upgrade to the defender. Pass the
-  // pre-rolled result from rollSwingEffects() so the board does exactly what the
-  // result overlay promised; if omitted, it rolls fresh (legacy fallback).
-  // Fires after the overlay closes — same beat as the knockback / push-back.
+  // ─── SWING EFFECTS — CUT (Stance rework, §8) ──────────────────────────────────
+  // The entire CQC %-proc subsystem (slip/trip/dazed/drop/confused, the chance
+  // tables, the guaranteed-proc roll, and the apply step) is GONE. Melee identity
+  // now lives in the Stance system. The status FIELDS (tripped/dazed/
+  // instrumentDropped) remain in state + engine ticks — nothing sets them from
+  // combat any more, but events/future systems may.
   // ── ✨ BORROWED CHORD SHIELD ──────────────────────────────────────────────
   // Returns true (and consumes the shield) if the spirit is holding a Borrowed
   // Chord shield. One shield blocks the ENTIRE next incoming negative-status
@@ -3846,85 +3675,6 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`✨ ${sp?.name}'s Borrowed Chord shield absorbs the hit — status BLOCKED!`);
     triggerEffectFlash(spiritId, '✨', 'SHIELDED!', '#44ffaa');
     return true;
-  }
-
-  function applySwingEffects(attackerId, defenderId, prerolled) {
-    const roll = prerolled !== undefined ? prerolled : rollSwingEffects(attackerId, false);
-    if (!roll) return; // attacker has no swing upgrade
-
-    const attacker = spirits.find(s => s.id === attackerId);
-    const defender = spirits.find(s => s.id === defenderId);
-    const effects = roll.effects ?? [];
-
-    // Rolled, but nothing landed — tell the player so the upgrade never feels
-    // silently broken.
-    if (effects.length === 0) {
-      addLog(`🗡️ ${attacker?.name}'s ${roll.upgradeName} rolled for a status effect on ${defender?.name} — but none landed this time.`);
-      return;
-    }
-
-    // ✨ Borrowed Chord shield blocks the whole CQC status event.
-    if (consumeStatusShield(defenderId)) {
-      addLog(`✨ ${defender?.name} shrugs off ${attacker?.name}'s ${roll.upgradeName} — shielded!`);
-      return;
-    }
-
-    // 💥 Board VFX — fire a shockwave flash on the victim for each landed
-    // effect, staggered 0.5s apart so multiple procs read clearly. These land
-    // the moment the hit resolves (same beat as the damage number).
-    const FX_DEFS = {
-      slip:     { icon:'🌀', label:'SLIPPED!',  color:'#44ddff' },
-      trip:     { icon:'🌀', label:'TRIPPED!',  color:'#aaffaa' },
-      drop:     { icon:'🎸', label:'DROPPED!',  color:'#ff4444' },
-      dazed:    { icon:'😵', label:'DAZED!',    color:'#ff66ff' },
-      confused: { icon:'💫', label:'CONFUSED!', color:'#ffaa44' },
-    };
-    effects.forEach((fx, i) => {
-      const def = FX_DEFS[fx];
-      if (def) setTimeout(() => triggerEffectFlash(defenderId, def.icon, def.label, def.color), i * 500);
-    });
-
-    setNoteStates(prev => {
-      const tgt = prev[defenderId] ?? {};
-      const updates = {};
-      if (effects.includes('slip')) {
-        // CQC SLIP: rival loses 2 notes next turn — freeze 2 random stock
-        // slots for 1 turn (reuses the Stagger slot-freeze; ticks at the
-        // end of the defender's own turn). Doesn't stack on an existing Stagger.
-        if (!tgt.stagger) {
-          const allSlots = Array.from({ length: 8 }, (_, i) => i);
-          for (let i = allSlots.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [allSlots[i], allSlots[j]] = [allSlots[j], allSlots[i]];
-          }
-          updates.stagger = { slots: allSlots.slice(0, 2), turnsLeft: 1 };
-          addLog(`🌀 ${attacker?.name} SLIPS ${defender?.name}! They lose 2 notes next turn.`);
-        } else {
-          addLog(`🌀 ${attacker?.name} slips ${defender?.name} — but they're already staggered.`);
-        }
-      }
-      if (effects.includes('trip')) {
-        updates.tripped = true;
-        addLog(`🌀 ${attacker?.name} TRIPS ${defender?.name}! Movement halved next turn.`);
-      }
-      if (effects.includes('drop')) {
-        updates.instrumentDropped = true;
-        addLog(`💥 ${defender?.name} DROPS their instrument! -1 Drive until recovered.`);
-      }
-      if (effects.includes('dazed')) {
-        updates.dazed = true;
-        addLog(`😵 ${defender?.name} is DAZED & CONFUSED! Their moves next turn have a 33% chance of going the wrong way!`);
-      }
-      if (effects.includes('confused')) {
-        // Baki Gravity confused: self-damage to defender. Use the value rolled
-        // up-front (and shown in the result overlay) so the board matches.
-        const confDmg = roll.confusedDmg ?? 1;
-        addLog(`💫 ${defender?.name} is CONFUSED — hurts themselves for ${confDmg} Vibe dmg!`);
-        // Apply self-damage after state update
-        setTimeout(() => applyVibeDamage(defenderId, confDmg, 'confusion'), 200);
-      }
-      return { ...prev, [defenderId]: { ...tgt, ...updates } };
-    });
   }
 
   // ─── AMP UNPLUG SYSTEM ────────────────────────────────────────────────────────
@@ -3973,58 +3723,12 @@ function Game({ gameState, onReturnToLobby }) {
 
 
   // ─── BOARD CARD SYSTEM ───────────────────────────────────────────────────────
-  const MOD_CARD_TYPES = ['chromatic_shift', 'transpose', 'overdrive'];
-
-  function pickRandomCardType() {
-    return MOD_CARD_TYPES[Math.floor(Math.random() * MOD_CARD_TYPES.length)];
-  }
-
   function spawnBoardCards(currentCards /* currentSpirits, currentAmps */) {
     // Mod Cards cut (Phase 6): the board no longer spawns 🃏 Mod Cards — that
     // scattered-pickup role is now Lost Chords (Lighters were cut too; see
-    // ECONOMY_HANDOFF.md). No-op keeps callers safe.
+    // ECONOMY_HANDOFF.md). No-op keeps callers safe. The pickup/replace flow
+    // was deleted with the Stance-rework mod-card cut (§8).
     return currentCards ?? [];
-  }
-
-  // Called from move() — check if spirit stepped on a card hex
-  function checkCardPickup(spiritId, hexNum) {
-    const card = boardCards.find(c => c.hexNum === hexNum);
-    if (!card) return;
-    const cardType = pickRandomCardType();
-    // Remove card from board immediately
-    setBoardCards(prev => prev.filter(c => c.id !== card.id));
-    // Open pickup modal
-    setPendingCardPickup({ spiritId, cardType, cardId: card.id });
-    addLog(`🃏 ${spirits.find(s=>s.id===spiritId)?.name} steps on a Mod Card!`);
-  }
-
-  function resolveCardPickup(choice) {
-    // choice: 'take' | 'replace-idx-N' | 'discard'
-    if (!pendingCardPickup) return;
-    const { spiritId, cardType } = pendingCardPickup;
-    const spirit = spirits.find(s => s.id === spiritId);
-    const ns = noteStates[spiritId];
-    const cards = ns?.modCards ?? [];
-    const def = { chromatic_shift:'🎼 Chromatic Shift', transpose:'🔄 Transpose', overdrive:'⚡ Overdrive' }[cardType] ?? cardType;
-
-    if (choice === 'discard') {
-      addLog(`🃏 ${spirit?.name} discards the ${def}.`);
-    } else if (choice === 'take') {
-      // Hand not full — just add
-      const newCard = { id: `card-${Date.now()}`, type: cardType, exhausted: false };
-      setNoteField(spiritId, { modCards: [...cards, newCard] });
-      addLog(`🃏 ${spirit?.name} picks up ${def}!`);
-    } else if (choice.startsWith('replace-')) {
-      const replaceIdx = parseInt(choice.split('-')[1], 10);
-      const replaced = cards[replaceIdx];
-      const replacedDef = { chromatic_shift:'🎼 Chromatic Shift', transpose:'🔄 Transpose', overdrive:'⚡ Overdrive' }[replaced?.type] ?? replaced?.type;
-      const newCards = cards.map((c, i) =>
-        i === replaceIdx ? { id: `card-${Date.now()}`, type: cardType, exhausted: false } : c
-      );
-      setNoteField(spiritId, { modCards: newCards });
-      addLog(`🃏 ${spirit?.name} replaces ${replacedDef} with ${def}!`);
-    }
-    setPendingCardPickup(null);
   }
 
   // ─── EVENT SPACES SYSTEM ─────────────────────────────────────────────────────
@@ -4157,7 +3861,7 @@ function Game({ gameState, onReturnToLobby }) {
       if ((ns.chordStack ?? []).length >= 5) { bankLostChordNote(spiritId, note, roninGreed); return; }
       setNoteStates(prev => {
         const cur = prev[spiritId]; if (!cur) return prev;
-        return { ...prev, [spiritId]: { ...cur, chordStack: [...(cur.chordStack ?? []), note], revoiceUsedThisTurn: true } };
+        return { ...prev, [spiritId]: { ...cur, chordStack: [...(cur.chordStack ?? []), note], revoiceUsedThisTurn: true, grooveCounter: 0 } };
       });
       addLog(`🎸 ${sp?.name} weaves the Lost Chord (${note}) straight into the Chord Stack — revoiced!`);
       // The Ronin's serendipitous second note (if any) still lands in the stock —
@@ -5463,12 +5167,17 @@ function Game({ gameState, onReturnToLobby }) {
     if (fp <= 0) return;
     const sp = spirits.find(s => s.id === spiritId);
     const ns = noteStates[spiritId] ?? {};
+    // 🌟 SOLOIST stance — Fame from ALL sources ×1.5 (§4.1). Applied before the
+    // crowd multiplier: the pose amplifies the deed, the crowd amplifies the pose.
+    const soloist = stanceOf(ns, spiritId) === 'soloist';
+    if (soloist) fp = Math.round(fp * SOLOIST_FAME_MULT);
     // 🎤 Fans amplify the value of every deed (wins, riffs, cadences). The crowd
     // doesn't convert TO Fame — it multiplies the Fame you earn. Pass amplify=false
     // for non-deed awards (e.g. the future Rock Gods finale payout) to skip this.
     const mult    = amplify ? crowdMultiplier(ns.diehards ?? FAN_DIEHARD_START, ns.casuals ?? 0) : 1;
     const finalFp = amplify ? Math.max(fp, Math.round(fp * mult)) : fp;
     const newFame = (ns.fame ?? 0) + finalFp;
+    if (soloist && reason) reason = `${reason} 🌟×${SOLOIST_FAME_MULT}`;
     // Phase 5c: fame write is now a semantic engine action (no-op vs the old
     // setNoteStates full-replace — finalFp>0 so applyFameChanged's floor never
     // bites here). The crowd mult / thresholds / win-check below stay client.
@@ -5478,21 +5187,28 @@ function Game({ gameState, onReturnToLobby }) {
     showTip('fame');
     // 🎇 The show grows with the legend — Stage Effects fire at ⭐8/16/24.
     checkStageFxThresholds(ns.fame ?? 0, newFame);
-    if (newFame >= FAME_TO_WIN) {
+    // 🐛 FIX (2026-07-16): read MY fame from the ENGINE after the dispatch above,
+    // not from the client mirror. Back-to-back grants in one beat (riff-off
+    // payouts, Azrael chains) left `newFame` one-plus grants stale — the runaway
+    // check saw a smaller lead than reality and summoned the God into a blowout.
+    const myFame = engineRef.current.noteStates?.[spiritId]?.fame ?? newFame;
+    if (myFame >= FAME_TO_WIN) {
       if (engineRef.current.rockGod.summoned) {
         // 🤘 A Rock God holds the gate — Fame alone can't end it now. Victory
         // flows only through the boss fight (godDefeated crowns the FP leader).
       } else {
-        // 🤘 THE RULE OF THE GODS — a runaway lead is crowned outright; a close
-        // race summons a Rock God to settle it (data/rockGods.js).
+        // 🤘 THE RULE OF THE GODS — a runaway lead is crowned outright; only a
+        // genuinely close race summons a Rock God to settle it (data/rockGods.js).
         const rivalBest = Math.max(0, ...spirits.filter(s => s.id !== spiritId && !s.knockedOut)
           .map(s => engineRef.current.noteStates?.[s.id]?.fame ?? 0));
-        if (newFame - rivalBest >= ROCK_GOD_RUNAWAY_LEAD) {
-          addLog(`🌟🌟🌟 ${sp?.name} reaches ${FAME_TO_WIN} Fame — A LEGEND IS BORN! 🌟🌟🌟`);
+        const lead = myFame - rivalBest;
+        if (lead >= ROCK_GOD_RUNAWAY_LEAD) {
+          addLog(`🌟🌟🌟 ${sp?.name} reaches ${FAME_TO_WIN} Fame — ⭐${myFame} vs ⭐${rivalBest}, a runaway lead of ${lead}. A LEGEND IS BORN! 🌟🌟🌟`);
           setTimeout(() => {
             dispatch(winnerDeclared(spiritId)); // N5: engine winner slice → derived `winner` renders on all clients
           }, 600);
         } else {
+          addLog(`⭐ ${sp?.name} hits ${FAME_TO_WIN} Fame — but ⭐${myFame} vs ⭐${rivalBest} is only a ${lead}-point lead (needs ${ROCK_GOD_RUNAWAY_LEAD}). The Gods demand a FINALE.`);
           summonRockGod(spiritId);
         }
       }
@@ -5534,10 +5250,29 @@ function Game({ gameState, onReturnToLobby }) {
     return engineRef.current.headliner === spiritId ? 1 : 0;
   }
 
+  // ── 🎇 ENCORE (Soloist upgrade) — spectacle converts loyalty (§6.1) ─────────
+  // When a Soloist wins battle Fame off a Performance of 7+, one watcher becomes
+  // a fan for life: +1 Diehard. Called by both battle-Fame awards below.
+  function stanceEncoreCheck(spiritId) {
+    const ns = noteStates[spiritId] ?? {};
+    if (stanceOf(ns, spiritId) !== 'soloist') return;
+    if (!(ns.unlockedSkills ?? []).includes('stance_encore')) return;
+    if ((ns.perfScore ?? 0) < 7) return;
+    const die = ns.diehards ?? FAN_DIEHARD_START;
+    if (die >= FAN_DIEHARD_CAP) return;
+    dispatch(fansChanged(spiritId, { diehards: die + 1 }));
+    const nm = spirits.find(s => s.id === spiritId)?.name;
+    addLog(`🎇 ENCORE! ${nm}'s spectacle (P${ns.perfScore}) converts a fan for LIFE — +1 Diehard (${die + 1}♥).`);
+    flashFanFx(spiritId, 'gain', 1);
+  }
+
   // ── SONIC FAME — the primary FP engine. Margin-scaled + center-stage bonus. ──
-  function awardSonicFame(spiritId, margin, loserId, centerBonus = 0) {
+  // grooveBonus: the Groove wave spent on the winning attack (§4.4) — patient
+  // play pays out in Fame as well as Drive.
+  function awardSonicFame(spiritId, margin, loserId, centerBonus = 0, grooveBonus = 0) {
+    if (grooveBonus > 0) addLog(`🌀 The crowd rode the wave with ${spirits.find(s => s.id === spiritId)?.name} — +${grooveBonus} Fame from the groove!`);
     const rider = headlinerRider(spiritId);
-    const base = sonicFame(margin) + centerBonus + rider;
+    const base = sonicFame(margin) + centerBonus + rider + grooveBonus;
     const { fp, deficit, mult } = underdogBonus(spiritId, loserId, base);
     const riderTag = rider ? ' +👑' : '';
     if (deficit >= UNDERDOG_MIN_DEFICIT && fp > base) {
@@ -5548,12 +5283,15 @@ function Game({ gameState, onReturnToLobby }) {
     } else {
       grantFame(spiritId, base, `sonic win by ${margin}${centerBonus ? ' +spotlight' : ''}${riderTag}`);
     }
+    stanceEncoreCheck(spiritId); // 🎇 Soloist upgrade — P≥7 spectacle converts a Diehard
   }
 
   // ── THRASH FAME — flat 1 FP. You fight to hurt, not to shine. ──
-  function awardThrashFame(spiritId, loserId) {
+  // grooveBonus: the Groove wave spent on the winning attack (§4.4).
+  function awardThrashFame(spiritId, loserId, grooveBonus = 0) {
+    if (grooveBonus > 0) addLog(`🌀 The crowd rode the wave with ${spirits.find(s => s.id === spiritId)?.name} — +${grooveBonus} Fame from the groove!`);
     const rider = headlinerRider(spiritId);
-    const base = thrashFame() + rider;
+    const base = thrashFame() + rider + grooveBonus;
     const { fp, deficit, mult } = underdogBonus(spiritId, loserId, base);
     const riderTag = rider ? ' +👑' : '';
     if (deficit >= UNDERDOG_MIN_DEFICIT && fp > base) {
@@ -5564,6 +5302,7 @@ function Game({ gameState, onReturnToLobby }) {
     } else {
       grantFame(spiritId, base, `thrash win${riderTag}`);
     }
+    stanceEncoreCheck(spiritId); // 🎇 Soloist upgrade — P≥7 spectacle converts a Diehard
   }
 
   // ── RIFF-OFF FAME (Phase R6) — the marquee event's dedicated FP engine. ──
@@ -5571,7 +5310,7 @@ function Game({ gameState, onReturnToLobby }) {
   // sonic (this is the big show), style pay rewards HOW you played, tier mult
   // shapes the acoustic-vs-stadium split, and loser consolation softens the
   // dexterity gap for close duels. All numbers are first-pass — tune in playtest.
-  function awardRiffFame(winnerId, loserId, battleS, tier, pot = 0) {
+  function awardRiffFame(winnerId, loserId, battleS, tier) {
     const round   = battleS.round ?? 1;
     const verdict = battleS;
     const margin  = verdict.margin ?? 0;
@@ -5590,9 +5329,15 @@ function Game({ gameState, onReturnToLobby }) {
     }
     // Round-2 stadium flat bonus
     if (round >= 2 && tier !== 'acoustic') base += 2;
-    // ── Pot (Phase R5.2 Throw Down) — added before underdog calc so the
-    //    full stake amplifies through the comeback ramp + crowd multiplier. ──
-    if (pot > 0) base += pot;
+    // ── 🌀 Groove wave (§7.3) — a counter built BEFORE the riff-off triggered
+    // adds to the riff-off Fame, then the wave is spent. ──
+    const wNs = noteStates[winnerId] ?? {};
+    if (stanceOf(wNs, winnerId) === 'groove' && (wNs.grooveCounter ?? 0) > 0) {
+      const wave = Math.min(wNs.grooveCounter, grooveCap(wNs));
+      base += wave;
+      setNoteField(winnerId, { grooveCounter: 0 });
+      addLog(`🌀 The riff-off crests on ${spirits.find(s => s.id === winnerId)?.name}'s groove — +${wave} Fame, wave spent!`);
+    }
     // ── Headliner rider ──
     const rider = headlinerRider(winnerId);
     base += rider;
@@ -5643,7 +5388,9 @@ function Game({ gameState, onReturnToLobby }) {
     let promoted = false;
     if (inCentre) {
       streak += 1;
-      if (streak % FAN_PROMOTE_EVERY === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
+      // 🕶️ COOL stance — the loyal core forms faster (§4.3: promote every 2 turns, not 3).
+      const promoteEvery = stanceOf(ns, spiritId) === 'cool' ? COOL_PROMOTE_EVERY : FAN_PROMOTE_EVERY;
+      if (streak % promoteEvery === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
         casuals -= 1; diehards += 1; promoted = true;
       }
     }
@@ -5756,7 +5503,9 @@ function Game({ gameState, onReturnToLobby }) {
         let promoted = false;
         if (inCentre) {
           streak += 1;
-          if (streak % FAN_PROMOTE_EVERY === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
+          // 🕶️ COOL stance — Diehards convert faster (§4.3).
+          const promoteEvery = stanceOf(ns, spiritId) === 'cool' ? COOL_PROMOTE_EVERY : FAN_PROMOTE_EVERY;
+          if (streak % promoteEvery === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
             casuals -= 1; diehards += 1; promoted = true;
           }
         }
@@ -6091,6 +5840,91 @@ function Game({ gameState, onReturnToLobby }) {
     }
   }
 
+  // ── 🧍 LEARN STANCE — resolves a Stance-route tier (human pick or bot auto) ──
+  function learnStance(spiritId, stance) {
+    const sp = spirits.find(s => s.id === spiritId);
+    const def = STANCE_DEFS[stance];
+    setNoteStates(prev => {
+      const cur = prev[spiritId] ?? {};
+      const known = cur.stancesKnown ?? [stanceOf(cur, spiritId)];
+      if (known.includes(stance)) return prev;
+      return { ...prev, [spiritId]: { ...cur, stancesKnown: [...known, stance], stancePickPending: null } };
+    });
+    addLog(`🧍 ${sp?.name} learns the ${def?.icon} ${def?.label} stance ("${def?.pose}") — switch any turn for your Action.`);
+    triggerEffectFlash(spiritId, def?.icon ?? '🧍', `${(def?.label ?? stance).toUpperCase()} LEARNED!`, def?.color ?? '#ffffff');
+  }
+
+  // ── 🧍 STANCE SWITCH — costs your ACTION (§5, decision §10.4) ──────────────
+  // You can still move this turn, but you can't attack: shifting your body into
+  // a new relationship with the instrument takes the moment you'd have struck in.
+  // Sticky enough to be a commitment, cheap enough to adapt mid-game.
+  function switchStance(newStance) {
+    if (!acting || !canAct) return; // N4/N7: gate
+    const ns = actingNoteState ?? {};
+    const cur = stanceOf(ns, acting.id);
+    if (newStance === cur) return;
+    if (!(ns.stancesKnown ?? []).includes(newStance)) {
+      addLog(`🔒 ${STANCE_DEFS[newStance]?.label ?? newStance} stance is unlearned — pick it up on the Stance route of the skill tree.`);
+      return;
+    }
+    if (actionTokenUsed) {
+      addLog(`🧍 Switching stances takes your Action — it's already spent this turn.`);
+      return;
+    }
+    dispatch(beatsSpent(0, true)); // consume the Action Token; movement untouched
+    setAction(null);
+    // Changing how you hold the instrument drops any banked wave.
+    setNoteField(acting.id, { stance: newStance, grooveCounter: 0 });
+    const from = STANCE_DEFS[cur], to = STANCE_DEFS[newStance];
+    addLog(`🧍 ${acting.name} shifts stance — ${from?.icon} ${from?.label} → ${to?.icon} ${to?.label} ("${to?.pose}"). No attack this turn.`);
+    triggerEffectFlash(acting.id, to?.icon ?? '🧍', `${(to?.label ?? newStance).toUpperCase()}!`, to?.color ?? '#ffffff');
+  }
+
+  // ── 🛡️ CHORD FRAY (post-roll — Stance rework) ─────────────────────────────
+  // The defender's chord frays only when the hit actually LANDS, and the wound
+  // scales with the margin: 1 note on a graze (margin ≤ 2), 2 on a big hit
+  // (margin ≥ 3). Stances modify the arithmetic on BOTH sides (Power strips /
+  // absorbs +1, Soloist doubles, Cool halves — see stanceFrayAmount). Floored
+  // at 1 note remaining — you're never bled to nothing.
+  // 🌀 A frayed chord BREAKS THE GROOVE: the defender's Groove counter resets
+  // here and only here (decision §10.5 — hits that don't fray don't reset it).
+  // Returns the number of notes actually frayed (0 when nothing frayed).
+  // extraFray: flat bonus notes (🤺 Riposte), added AFTER the stance arithmetic.
+  // Returns { frayed, destroyed, destroyedDrive, ironclad }:
+  //   destroyed      — the voicing was reduced below 2 notes (💥 Demolition food)
+  //   destroyedDrive — the pre-fray chord's Drive (Demolition's bonus damage)
+  //   ironclad       — a Cool defender shrugged a graze while owning Ironclad
+  function applyChordFray(targetId, margin, attackerStance = null, extraFray = 0) {
+    const none = { frayed: 0, destroyed: false, destroyedDrive: 0, ironclad: false };
+    const defender = spirits.find(s => s.id === targetId);
+    const nsD = noteStates[targetId] ?? {};
+    const defStance = stanceOf(nsD, targetId);
+    const stack = nsD.chordStack ?? [];
+    if (stack.length <= 1 || posing[targetId]) return none;
+    const defChord = spiritChord(targetId, stack);
+    const amount = stanceFrayAmount(margin, attackerStance, defStance) + extraFray;
+    if (amount <= 0) {
+      addLog(`🕶️ ${defender?.name}'s ${defChord.name} doesn't even wobble — too Cool to fray.`);
+      // 🛡️ IRONCLAD — you didn't just survive, you hardened (+1 temp Sustain,
+      // applied by the battle-close path after buffs clear).
+      const ironclad = defStance === 'cool' && (nsD.unlockedSkills ?? []).includes('stance_ironclad');
+      return { ...none, ironclad };
+    }
+    const fray = Math.min(amount, stack.length - 1); // floor: 1 note survives
+    const frayedNotes = stack.slice(0, stack.length - fray);
+    const frayed = spiritChord(targetId, frayedNotes);
+    const grooveBroken = defStance === 'groove' && (nsD.grooveCounter ?? 0) > 0;
+    setNoteField(targetId, { chordStack: frayedNotes, ...(grooveBroken ? { grooveCounter: 0 } : {}) });
+    addLog(`🛡️ ${defender?.name}'s chord frays under the blow — ${defChord.name} → ${frayed.name} (🛡️${frayed.sustain}, −${fray} note${fray !== 1 ? 's' : ''})`);
+    if (grooveBroken) addLog(`🌀 The fray breaks ${defender?.name}'s groove — the wave collapses (counter reset).`);
+    return {
+      frayed: fray,
+      destroyed: stack.length >= 2 && frayedNotes.length <= 1,
+      destroyedDrive: defChord.drive,
+      ironclad: false,
+    };
+  }
+
   // Main entry point — attacker initiates a Swing against target
   // Cinematic sequence:
   // enter_attacker → flash_drive → pick_drive_slide →
@@ -6123,16 +5957,6 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillMods.fogActive)    addLog(`🌫️ Fog Machine fires! Defender -1 Drive, -1 Sustain this battle.`);
     if (skillMods.pyroBonus > 0)addLog(`🔥 Pyrotechnics! +${skillMods.pyroBonus} bonus added to Drive roll.`);
 
-    // ── 🔩 Junkyard weapon — armed by the Junkyard Dog crew, consumed on this swing ──
-    const junkBonus = nsA.junkyardArmed ? 2 : 0;
-    if (junkBonus) {
-      addLog(`🔩 ${attacker.name} swings the junkyard weapon — +2 to the attack!`);
-      setNoteStates(prev => ({
-        ...prev,
-        [attacker.id]: { ...prev[attacker.id], junkyardArmed: false },
-      }));
-    }
-
     // 🎸 Harmony → combat: Drive/Sustain are read from the chord you committed
     // (falls back to the static spirit stat until a chord has been played).
     const atkChord = (nsA.chordStack?.length) ? spiritChord(attacker.id, nsA.chordStack) : null;
@@ -6142,19 +5966,32 @@ function Game({ gameState, onReturnToLobby }) {
     // 💥 SMASH EXPOSURE — a Smashed rival is wide open: this blow ignores their Sustain, then clears.
     if (nsD.smashExposed) { defChordSustain = 0; setNoteField(targetId, { smashExposed: false }); addLog(`💥 ${defender.name} is Exposed — the hit lands clean!`); }
     if (atkChord) addLog(`🎸 ${attacker.name}'s chord: ${atkChord.name} (⚔️${atkChord.drive})${defChord ? ` vs ${defender.name}'s ${defChord.name} (🛡️${defChord.sustain})` : ''}`);
-    // 🛡️ Defending frays your chord — each blow absorbed costs a note (floored at 1
-    // remaining, so you're never bled to nothing). It rebuilds on your next turn.
-    if (defChord && !posing[targetId] && (nsD.chordStack?.length ?? 0) > 1) {
-      const frayedNotes = nsD.chordStack.slice(0, -1);
-      const frayed = spiritChord(targetId, frayedNotes);
-      setNoteField(targetId, { chordStack: frayedNotes });
-      addLog(`🛡️ ${defender.name}'s chord frays under the blow — ${defChord.name} → ${frayed.name} (🛡️${frayed.sustain})`);
-    }
+    // 🛡️ Chord fray moved POST-ROLL (Stance rework): the defender's chord frays
+    // only when the hit actually lands — see the fray step after the verdict.
 
-    const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0) + skillMods.pyroBonus + junkBonus;
+    // ── 🧍 STANCE — how you deliver the chord (STANCE_SYSTEM_DESIGN.md §4) ──
+    // Soloist: performance score powers the attack (+⌈P/2⌉ Drive) — but it
+    // SUBSUMES the track's Drive boost rather than stacking on it: one great
+    // commit pays once, not twice (tempDrive and P both come from the track).
+    // Groove: the banked wave is SPENT on this attack (+counter Drive, +counter
+    // Fame at the award). Power/Cool add no Drive (their edge is fray/damage).
+    const atkStance = stanceOf(nsA, attacker.id);
+    const grooveSpent = atkStance === 'groove' ? Math.min(nsA.grooveCounter ?? 0, grooveCap(nsA)) : 0;
+    const perfDrive = atkStance === 'soloist' ? Math.ceil((nsA.perfScore ?? 0) / 2) : 0;
+    const stanceDrive = atkStance === 'soloist'
+      ? Math.max(0, perfDrive - (nsA.tempDrive ?? 0))
+      : grooveSpent;
+    if (atkStance === 'soloist' && perfDrive > 0) addLog(`🌟 SOLOIST — the showmanship IS the weapon: performance ${nsA.perfScore}/10 → +${perfDrive} Drive${stanceDrive < perfDrive ? ' (subsumes the track Drive boost)' : ''}!`);
+    if (grooveSpent > 0) addLog(`🌀 GROOVE UNLEASHED — ${attacker.name} rides the wave: +${grooveSpent} Drive (and +${grooveSpent} Fame on a win)!`);
+
+    const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0) + skillMods.pyroBonus;
     const atkEdge  = edgeCombatMods(nsA);
     const defEdge   = edgeCombatMods(nsD);
-    const atkBonus = (nsA.tempDrive ?? 0) + atkEdge.drive;
+    // ⚖️ Stacked bonuses cap at ATK_BONUS_CAP — no single turn should assemble
+    // a +6-and-up tower on top of the chord (balance audit, 2026-07-16).
+    const rawAtkBonus = (nsA.tempDrive ?? 0) + atkEdge.drive + stanceDrive;
+    const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
+    if (rawAtkBonus > atkBonus) addLog(`⚖️ The rig can only take so much — attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
     const atkStat  = atkBase + atkBonus;
     const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
     const defBonus = (nsD.tempSustain ?? 0) - defEdge.sustainPenalty;
@@ -6176,7 +6013,7 @@ function Game({ gameState, onReturnToLobby }) {
     // 🎲 Roll the swing on the engine's seeded rng (Phase 3b). The client passes
     // the pre-computed stats + mod flags (they read noteStates — Phase 5); the
     // engine owns the dice + verdict. `atkStat`/`defStat` already bake in fog's
-    // -1 Sustain, edge mods, junkyard, etc. The spin overlay below just displays
+    // -1 Sustain, edge mods, etc. The spin overlay below just displays
     // the already-decided faces (battle.atkRoll / battle.defRoll).
     const rollState = dispatch(attackRolled('swing', attacker.id, targetId, {
       atkStat, defStat,
@@ -6186,13 +6023,36 @@ function Game({ gameState, onReturnToLobby }) {
       atkFloor, atkDie, defDie,
     }));
     const {
-      atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, damage, psychoBushido,
+      atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, psychoBushido,
     } = rollState.battle;
+    let damage = rollState.battle.damage;
 
     // 🌀 PSYCHO BUSHIDO (Shredding Ronin) — a blistering 5 or 6 stuns the rival
     // into folding: the engine already dropped their die to 1; announce it.
     if (psychoBushido) {
       addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} explodes with a ${atkRoll} — ${defender.name} is stunned by the pure speed and folds. Their die drops to a 1!`);
+    }
+
+    // 🤺 RIPOSTE — a read armed on a won defense: this Thrash answers with +1 fray.
+    const riposteArmed = atkStance === 'cool'
+      && nsA.riposteTargetId === targetId
+      && (nsA.unlockedSkills ?? []).includes('stance_riposte');
+    if (riposteArmed) addLog(`🤺 RIPOSTE! ${attacker.name} read this exchange last time — the answer cuts deeper (+1 fray).`);
+
+    // 🛡️ Fray on the verdict — the defender's chord takes real damage only when
+    // the blow lands (margin-scaled + stance-modified; see applyChordFray).
+    const frayResult = attackerWon
+      ? applyChordFray(targetId, margin, atkStance, riposteArmed ? 1 : 0)
+      : { frayed: 0, destroyed: false, destroyedDrive: 0, ironclad: false };
+
+    // 💥 DEMOLITION (Power) — total destruction pays: a voicing frayed below
+    // 2 notes adds its Drive as bonus Vibe damage (capped at THRASH_DAMAGE_CAP —
+    // balance audit 2026-07-16: the uncapped version was a one-shot).
+    if (attackerWon && atkStance === 'power' && frayResult.destroyed
+        && (nsA.unlockedSkills ?? []).includes('stance_demolition')) {
+      const demoBonus = Math.min(frayResult.destroyedDrive, THRASH_DAMAGE_CAP);
+      damage += demoBonus;
+      addLog(`💥 DEMOLITION! ${defender.name}'s voicing is torn apart — +${demoBonus} bonus Vibe damage!`);
     }
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on a dropped instrument — Drive -1!`);
@@ -6209,7 +6069,16 @@ function Game({ gameState, onReturnToLobby }) {
     }
     // 🥊 CQC EXPOSURE — committing to a swing drops your guard: −1 Sustain until your
     // next turn (melee-only risk; ranged Sonic keeps you safe).
-    setNoteStates(prev => ({ ...prev, [acting.id]: { ...prev[acting.id], swingExposed: true, chordStack: swingChordLeft } }));
+    // 🌀 Attacking resets the Groove counter (spent above, if any); a spent
+    // Riposte read is consumed with the swing.
+    // 🌀 SUSTAIN WAVE — the spent wave also banks as temp Sustain for the backswing.
+    const sustainWave = grooveSpent > 0 && (nsA.unlockedSkills ?? []).includes('stance_sustainwave');
+    if (sustainWave) addLog(`🌀 SUSTAIN WAVE — the wave curls back around ${attacker.name}: +${grooveSpent} temp Sustain.`);
+    setNoteStates(prev => ({ ...prev, [acting.id]: { ...prev[acting.id],
+      swingExposed: true, chordStack: swingChordLeft, grooveCounter: 0,
+      ...(riposteArmed ? { riposteTargetId: null } : {}),
+      ...(sustainWave ? { tempSustain: Math.max(prev[acting.id]?.tempSustain ?? 0, grooveSpent) } : {}),
+    } }));
 
     // pickPos: 0 = center. Negative = toward attacker (left). Positive = toward defender (right).
     showTip('combat');
@@ -6227,12 +6096,11 @@ function Game({ gameState, onReturnToLobby }) {
       dieSides: atkDie, // ⚡ ceiling charge grows the Thrash die (d4 base, d6 with charge)
       defDieSides: defDie, // Thrash: defender rolls d4
       skillMods, // stage effects, pyro, laser, fog flags
-      // Freeze the swing/CQC status-effect roll now so the result overlay can
-      // tell the player exactly what lands before they close it (melee only).
-      swingEffectRoll: rollSwingEffects(acting.id, false),
-      // Stable dance-craze name shown when a plain swing connects (no effect).
+      // Stable dance-craze name shown when a plain swing connects.
       danceName: pickDanceName(),
       psychoBushido, // 🌀 forced the rival's die to 1
+      atkStance, grooveSpent, // 🧍 stance identity + the spent Groove wave (feeds the Fame award)
+      ironcladProc: frayResult.ironclad, // 🛡️ Cool hardened on the shrugged graze (applied at close)
     });
     if (psychoBushido) setTimeout(() => triggerEffectFlash(targetId, '🌀', 'BUSHIDO!', '#4488ff'), 200);
     setDiceDisplay({ atk: null, def: null, rolling: null });
@@ -6513,14 +6381,7 @@ function Game({ gameState, onReturnToLobby }) {
     // 💥 SMASH EXPOSURE — a Smashed rival is wide open: this blow ignores their Sustain, then clears.
     if (nsD.smashExposed) { defChordSustain = 0; setNoteField(targetId, { smashExposed: false }); addLog(`💥 ${defender.name} is Exposed — the hit lands clean!`); }
     if (atkChord) addLog(`🎸 ${attacker.name}'s chord: ${atkChord.name} (⚔️${atkChord.drive})${defChord ? ` vs ${defender.name}'s ${defChord.name} (🛡️${defChord.sustain})` : ''}`);
-    // 🛡️ Defending frays your chord — each blow absorbed costs a note (floored at 1
-    // remaining, so you're never bled to nothing). It rebuilds on your next turn.
-    if (defChord && !posing[targetId] && (nsD.chordStack?.length ?? 0) > 1) {
-      const frayedNotes = nsD.chordStack.slice(0, -1);
-      const frayed = spiritChord(targetId, frayedNotes);
-      setNoteField(targetId, { chordStack: frayedNotes });
-      addLog(`🛡️ ${defender.name}'s chord frays under the blow — ${defChord.name} → ${frayed.name} (🛡️${frayed.sustain})`);
-    }
+    // 🛡️ Chord fray moved POST-ROLL (Stance rework) — see after the verdict below.
     // 🔊 Projecting the chord down the beam spends its FIRST committed note (Drive was
     // read above, from the full chord). Lighter touch than the melee jab's 2 notes.
     // 🐉 HYDRA costs more energy than a normal Sonic — three beams scream out, so it
@@ -6529,15 +6390,34 @@ function Game({ gameState, onReturnToLobby }) {
     const sonicChordLeft  = (nsA.chordStack ?? []).slice(sonicSpendN);
     const sonicChordSpent = (nsA.chordStack ?? []).slice(0, sonicSpendN);
     if (sonicChordSpent.length) {
-      setNoteField(attacker.id, { chordStack: sonicChordLeft });
+      // 🌀 Attacking resets the Groove counter (spent into the beam below, if any).
+      setNoteField(attacker.id, { chordStack: sonicChordLeft, grooveCounter: 0 });
       addLog(`🎸 ${attacker.name} projects ${sonicChordSpent.join('')} from the chord — ${sonicChordLeft.length ? spiritChord(attacker.id, sonicChordLeft).name : 'chord exhausted (base stats until revoiced)'}.`);
+    } else {
+      setNoteField(attacker.id, { grooveCounter: 0 }); // attack breaks the groove even chordless
     }
+
+    // ── 🧍 STANCE — Soloist P-score / Groove wave power the beam too (§2:
+    // "the stance is about YOU, not the attack type"). Power's Sonic edge is
+    // +1 Vibe damage on a hit (applied after the verdict below). Soloist's
+    // bonus SUBSUMES the track Drive boost (one commit pays once — see Thrash).
+    const atkStance = stanceOf(nsA, attacker.id);
+    const grooveSpent = atkStance === 'groove' ? Math.min(nsA.grooveCounter ?? 0, grooveCap(nsA)) : 0;
+    const perfDrive = atkStance === 'soloist' ? Math.ceil((nsA.perfScore ?? 0) / 2) : 0;
+    const stanceDrive = atkStance === 'soloist'
+      ? Math.max(0, perfDrive - (nsA.tempDrive ?? 0))
+      : grooveSpent;
+    if (atkStance === 'soloist' && perfDrive > 0) addLog(`🌟 SOLOIST — performance ${nsA.perfScore}/10 rings down the beam: +${perfDrive} Drive${stanceDrive < perfDrive ? ' (subsumes the track Drive boost)' : ''}!`);
+    if (grooveSpent > 0) addLog(`🌀 GROOVE UNLEASHED — the wave rides the beam: +${grooveSpent} Drive (and +${grooveSpent} Fame on a win)!`);
 
     const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0)
                    + skillMods.pyroBonus + pedalBonus + powerBonus;
     const atkEdge  = edgeCombatMods(nsA);
     const defEdge   = edgeCombatMods(nsD);
-    const atkBonus = (nsA.tempDrive ?? 0) + atkEdge.drive;
+    // ⚖️ Same stacked-bonus cap as Thrash (balance audit, 2026-07-16).
+    const rawAtkBonus = (nsA.tempDrive ?? 0) + atkEdge.drive + stanceDrive;
+    const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
+    if (rawAtkBonus > atkBonus) addLog(`⚖️ The rig can only take so much — attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
     const atkStat  = atkBase + atkBonus;
     const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
     const defBonus = (nsD.tempSustain ?? 0) - defEdge.sustainPenalty;
@@ -6587,9 +6467,32 @@ function Game({ gameState, onReturnToLobby }) {
       dicePool, atkFloor,
     }));
     const {
-      atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, damage, diceVals, keptIdx,
+      atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, diceVals, keptIdx,
     } = rollState.battle;
+    let damage = rollState.battle.damage;
     if (hydraActive) addLog(`🐉 HYDRA AWAKENS! ${attacker.name} overdrives the rig — ${diceLabel}, keep best [${diceVals.join(', ')}] → ${atkRoll}, three beams scream out!`);
+
+    // 🤘 POWER stance — the Wide Leg beam hits +1 Vibe harder (cap raised to
+    // POWER_SONIC_DMG_CAP = SONIC_VIBE_CAP + 1). Client-side adjust: damage
+    // application is still client-owned until the 3c flip.
+    if (atkStance === 'power' && attackerWon) {
+      const boosted = Math.min(damage + 1, POWER_SONIC_DMG_CAP);
+      if (boosted > damage) { damage = boosted; addLog(`🤘 POWER — the beam hits like a wall of Marshalls: +1 Vibe damage!`); }
+    }
+
+    // 🛡️ Fray on the verdict — the defender's chord takes real damage only when
+    // the beam lands (margin-scaled + stance-modified; see applyChordFray).
+    // (No Riposte/Demolition here — those are Thrash-only upgrades.)
+    const frayResult = attackerWon
+      ? applyChordFray(targetId, margin, atkStance)
+      : { frayed: 0, destroyed: false, destroyedDrive: 0, ironclad: false };
+
+    // 🌀 SUSTAIN WAVE — the spent wave also banks as temp Sustain for the backswing.
+    if (grooveSpent > 0 && (nsA.unlockedSkills ?? []).includes('stance_sustainwave')) {
+      addLog(`🌀 SUSTAIN WAVE — the wave curls back around ${attacker.name}: +${grooveSpent} temp Sustain.`);
+      setNoteStates(prev => ({ ...prev, [attacker.id]: { ...prev[attacker.id],
+        tempSustain: Math.max(prev[attacker.id]?.tempSustain ?? 0, grooveSpent) } }));
+    }
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on dropped instrument — Drive -1!`);
     addLog(`🔊 ${attacker.name} launches SONIC ATTACK at ${defender.name}! (${diceLabel} keep best — ${ampCount} amp${ampCount > 1 ? 's' : ''})${retaliationBlocked ? ' — UNPLUGGED TARGET CANNOT RETALIATE!' : ''}`);
@@ -6634,7 +6537,8 @@ function Game({ gameState, onReturnToLobby }) {
       skillMods,
       pedalBonus,
       powerBonus,
-      swingEffectRoll: null, // Sonic = ranged, no CQC status effects
+      atkStance, grooveSpent, // 🧍 stance identity + spent Groove wave (feeds the Fame award)
+      ironcladProc: frayResult.ironclad, // 🛡️ Cool hardened on the shrugged graze (applied at close)
       sonicChordNotes, // 🔊 chord notes saved for playback at beam fire
     });
     setDiceDisplay({ atk: null, def: null, rolling: null });
@@ -6709,9 +6613,6 @@ function Game({ gameState, onReturnToLobby }) {
     // stores them in engineState.battle — this client just renders that data.
     // (slayer/eRush flags are client-supplied until noteStates joins in Ph 5.)
     const atkNs = noteStates[attacker.id] ?? {};
-    // Phase R5.3: detect active grudge against this defender
-    const atkGrudge = atkNs.grudge;
-    const isGrudge = !!(atkGrudge && atkGrudge.rivalId === defender.id);
     const slayer = (atkNs.unlockedSkills ?? []).includes('riff_slayer') && !!atkNs.riffSlayerArmed;
     const eRush  = (atkNs.unlockedSkills ?? []).includes('e_rush') && !!atkNs.eRushArmed;
     // Phase R1: pass the attacker's committed melody line so the engine builds
@@ -6730,16 +6631,15 @@ function Game({ gameState, onReturnToLobby }) {
     const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
     // Log: show whether the riff came from the player's melody or was random
     const isAcoustic = tier === 'acoustic';
-    const grudgeTag = isGrudge ? '🔥 GRUDGE ' : '';
     if (eb.fromMelody) {
       addLog(isAcoustic
-        ? `🎸🎶 ${grudgeTag}ACOUSTIC DUEL! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`
-        : `🎸🔥 ${grudgeTag}RIFF-OFF! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`);
+        ? `🎸🎶 ACOUSTIC DUEL! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`
+        : `🎸🔥 RIFF-OFF! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`);
       if (eb.hasRiff) addLog(`✨ Legendary riff woven into the call — the crowd leans in!`);
     } else {
       addLog(isAcoustic
-        ? `🎸🎶 ${grudgeTag}ACOUSTIC DUEL! ${attacker.name} and ${defender.name} square off — no amps, no beams, just chops!`
-        : `🎸🔥 ${grudgeTag}RIFF-OFF! ${attacker.name} and ${defender.name} lock eyes — both plugged in, beams crossed!`);
+        ? `🎸🎶 ACOUSTIC DUEL! ${attacker.name} and ${defender.name} square off — no amps, no beams, just chops!`
+        : `🎸🔥 RIFF-OFF! ${attacker.name} and ${defender.name} lock eyes — both plugged in, beams crossed!`);
     }
     addLog(`🎶 ${attacker.name} calls a ${RIFF_CONTOUR_LABELS[atk.contour]} — ${defender.name} must answer with a ${RIFF_ANSWER_LABELS[def.kind].name}.`);
 
@@ -6760,10 +6660,7 @@ function Game({ gameState, onReturnToLobby }) {
     setBattleState({
       riffOff: true, sonicAttack: true,   // sonicAttack → sonic-scale knockback
       riffTier: tier,                     // Phase R4: 'acoustic' | 'stadium'
-      ante: null,                         // Phase R5.2: { type:'fp'|'fans', amount:N, status:'offered'|'accepted'|'declined' }
-      grudge: isGrudge                    // Phase R5.3: grudge match info (×2 stakes, no decline)
-        ? { anteType: atkGrudge.anteType, anteAmount: atkGrudge.anteAmount }
-        : null,
+      oneLiner: null,                      // Phase R5.2: { attacker: {line,dropped}, defender: {line,dropped} }
       phase: 'riff_intro',
       attackerId: attacker.id, defenderId: defender.id,
       atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
@@ -7080,47 +6977,44 @@ function Game({ gameState, onReturnToLobby }) {
     const s = battleStateRef.current;
     if (!s?.riffOff) { setBattleState(null); setDiceDisplay(null); return; }
     const { attackerWon, margin, damage, tie, attackerId, defenderId } = s;
-    // ── 🎲 Ante pot resolution (Phase R5.2 Throw Down) ──
-    const ante = s.ante;
     if (!tie) {
       const winnerId = attackerWon ? attackerId : defenderId;
       const loserId  = attackerWon ? defenderId : attackerId;
       // Knockback uses Sonic push rules (stage presence matters).
       const loser = spirits.find(x => x.id === loserId);
       battleKnockback(winnerId, loserId, sonicKnockback(margin, loser?.vibe ?? 1, loser?.maxVibe ?? 1));
-      resolveWinDamage(winnerId, loserId, damage, spirits.find(x => x.id === winnerId)?.name);
-      // Phase R6: dedicated riff-off FP engine (replaces awardSonicFame).
-      // FP ante pot feeds into the base before underdog ramp (R5.2 design).
-      const fpPot = (ante?.status === 'accepted' && ante.type === 'fp') ? ante.amount : 0;
-      awardRiffFame(winnerId, loserId, s, s.riffTier, fpPot);
-      // FP ante: loser loses their staked FP
-      if (fpPot > 0) {
-        const loserFame = engineRef.current.noteStates?.[loserId]?.fame ?? noteStates[loserId]?.fame ?? 0;
-        const fpLoss = Math.min(ante.amount, loserFame);
-        if (fpLoss > 0) {
-          dispatch(fameChanged(loserId, -fpLoss));
-          addLog(`🎲 ${spirits.find(x => x.id === loserId)?.name} loses ${fpLoss} staked FP!`);
+      // ── 🎤 ONE-LINER payout (Phase R5.2) ──
+      // If you dropped a line and lost: 1.5× Vibe damage + casuals scatter.
+      // If you dropped a line and won: bonus casuals join.
+      const ol = s.oneLiner ?? {};
+      const loserDropped  = (attackerWon ? ol.defender?.dropped : ol.attacker?.dropped);
+      const winnerDropped = (attackerWon ? ol.attacker?.dropped : ol.defender?.dropped);
+      const vMult = loserDropped ? 1.5 : 1;
+      resolveWinDamage(winnerId, loserId, Math.ceil(damage * vMult), spirits.find(x => x.id === winnerId)?.name);
+      if (loserDropped) {
+        // Crowd cringes — casuals scatter from the loser
+        const loserNs = engineRef.current.noteStates?.[loserId] ?? noteStates[loserId] ?? {};
+        const casLoss = Math.min(3, loserNs.casuals ?? 0);
+        if (casLoss > 0) {
+          dispatch(fansChanged(loserId, { casuals: Math.max(0, (loserNs.casuals ?? 0) - casLoss) }));
+          setUnsurePool(p => p + casLoss);
+          addLog(`😬 ${spirits.find(x => x.id === loserId)?.name} talked big and lost — ${casLoss} fans cringe and walk away!`);
+          flashFanFx(loserId, 'scatter', casLoss);
         }
       }
-      // Fan ante: loser's casuals → Unsure pool, winner recruits
-      if (ante?.status === 'accepted' && ante.type === 'fans') {
-        const loserNs = engineRef.current.noteStates?.[loserId] ?? noteStates[loserId] ?? {};
-        const fanLoss = Math.min(ante.amount, loserNs.casuals ?? 0);
-        if (fanLoss > 0) {
-          dispatch(fansChanged(loserId, { casuals: Math.max(0, (loserNs.casuals ?? 0) - fanLoss) }));
-          setUnsurePool(p => p + fanLoss);
-          addLog(`🎲 ${spirits.find(x => x.id === loserId)?.name} loses ${fanLoss} fans to the Unsure pool!`);
-          flashFanFx(loserId, 'scatter', fanLoss);
-        }
+      if (winnerDropped) {
+        // Crowd loves it — bonus casuals join the winner
         const winnerNs = engineRef.current.noteStates?.[winnerId] ?? noteStates[winnerId] ?? {};
-        const recruit = Math.min(ante.amount, (unsurePool + fanLoss));
+        const recruit = Math.min(2, unsurePool);
         if (recruit > 0) {
           dispatch(fansChanged(winnerId, { casuals: Math.min(FAN_CASUAL_CAP, (winnerNs.casuals ?? 0) + recruit) }));
           setUnsurePool(p => Math.max(0, p - recruit));
-          addLog(`🎲 ${spirits.find(x => x.id === winnerId)?.name} wins over ${recruit} fans from the crowd!`);
+          addLog(`🔥 ${spirits.find(x => x.id === winnerId)?.name} backed it up! ${recruit} fans join the hype!`);
           triggerUnsureWin(winnerId, recruit);
         }
       }
+      // Phase R6: dedicated riff-off FP engine (replaces awardSonicFame).
+      awardRiffFame(winnerId, loserId, s, s.riffTier);
       // 👑 HEADLINER — winner of any riff-off claims the title
       const prevHeadliner = engineRef.current.headliner;
       dispatch(headlinerChanged(winnerId));
@@ -7134,44 +7028,6 @@ function Game({ gameState, onReturnToLobby }) {
         triggerEffectFlash(winnerId, '👑', 'HEADLINER!', '#ffd700');
       }
       if (attackerWon) applyPendingCombatEffects(attackerId, defenderId);
-      // 🔥 GRUDGE MATCH (Phase R5.3) — loser earns a grudge (once per rivalry)
-      const grudgePairKey = acousticDuelPairKey(winnerId, loserId);
-      if (s.grudge) {
-        // This WAS a grudge match — mark it consumed for both sides
-        setNoteStates(prev => {
-          const next = { ...prev };
-          [winnerId, loserId].forEach(sid => {
-            next[sid] = { ...next[sid], grudge: null, grudgesUsed: { ...(next[sid]?.grudgesUsed ?? {}), [grudgePairKey]: true } };
-          });
-          return next;
-        });
-        addLog(`🔥 The grudge is settled!`);
-      } else if (!(noteStates[loserId]?.grudgesUsed ?? {})[grudgePairKey]) {
-        // Set grudge on loser — they get 2 turns to demand a rematch
-        const gAnteType = ante?.status === 'accepted' ? ante.type : null;
-        const gAnteAmount = ante?.status === 'accepted' ? ante.amount : 0;
-        setNoteStates(prev => ({
-          ...prev,
-          [loserId]: { ...prev[loserId], grudge: { rivalId: winnerId, turnsLeft: 2, tier: s.riffTier, anteType: gAnteType, anteAmount: gAnteAmount } },
-        }));
-        const loserName = spirits.find(x => x.id === loserId)?.name;
-        const wName = spirits.find(x => x.id === winnerId)?.name;
-        addLog(`🔥 ${loserName} burns for revenge — GRUDGE MATCH vs ${wName} available for 2 turns!`);
-      }
-    } else if (ante?.status === 'accepted') {
-      addLog(`🎲 Dead heat — both sides get their stakes back.`);
-      // Tie in a grudge match: grudge consumed, no rematch
-      if (s.grudge) {
-        const tieGrudgeKey = acousticDuelPairKey(attackerId, defenderId);
-        setNoteStates(prev => {
-          const next = { ...prev };
-          [attackerId, defenderId].forEach(sid => {
-            next[sid] = { ...next[sid], grudge: null, grudgesUsed: { ...(next[sid]?.grudgesUsed ?? {}), [tieGrudgeKey]: true } };
-          });
-          return next;
-        });
-        addLog(`🔥 Dead heat — the grudge dies here. No rematch.`);
-      }
     }
     clearBattleBuffs(attackerId, defenderId);
     riffEngineRef.current?.timers?.forEach(clearTimeout);
@@ -7180,102 +7036,153 @@ function Game({ gameState, onReturnToLobby }) {
     setDiceDisplay(null);
   }
 
-  // ── 🎲 THROW DOWN — riff-off ante system (Phase R5.2) ────────────────────────
-  // Challenger stakes FP or fans; defender matches to accept or declines (crowd
-  // boos, loses casuals → Unsure pool). Winner takes the pot. Fan stakes flow
-  // through the Unsure pool so no diehard theft can snowball.
-  const ANTE_DECLINE_PENALTY = 3; // casuals the declining defender loses
+  // ── 🎤 ONE-LINER — riff-off mic drop system (Phase R5.2) ─────────────────────
+  // Before the riff, each side can drop a one-liner — a punny lyric reference
+  // that says "I'm so confident I'll put my reputation on it." Back it up and
+  // the crowd loves you (bonus fans). Talk big and lose → 1.5× Vibe damage +
+  // casuals scatter. Pure swagger, pure risk, tied to each Spirit's music.
+  const ONE_LINERS = {
+    cosmic_ronin: [
+      "Draw you pick!",
+      "There can only be one solo",
+      "Play with honor... If you can",
+      "Your encore ends here",
+      "My katana is tuned to D-E-A-D",
+      "A missed note is a broken oath.",
+      "Your fate is already in the key signature",
+      "Hope you practiced your scales",
+      "Try to keep up",
+      "You're about to hear the impossible",
+      "My arm just snapped, and I'm going to...",
+      "If its too difficult, then just stop",
+      "just put your guitar on ebay or something",
+      "Here goes 5 million beats a minute",
+      "Watch closely. You won't understand it.",
+      "Lets see how fast regret sounds",
+      "I'll autograph your broken strings",
+      "Your metronome won't save you",
+      "This won't take long",
+      "The road is lonely because I leave no rivals.",
+      "You're in treble now",
+      "This duel has strings attached",
+      "You're about to lose face... And tempo",
+      "You'll B-flat on your back",
+      "No hard feelings... Only hard riffs",
+    ],
+    intergalactic_0: [
+      "Your planet ain't on my tour",
+      "Gravity can't hold my flow",
+      "I don't drop bars, I drop meteors",
+      "I'm platinum on seven planets",
+      "Hope you packed extra speakers",
+      "Engaging maximum swagger",
+      "Initializing beatdown protocol",
+      "Your defeat has been calculated",
+      "My processor spits hotter verses",
+      "Downloading your defeat",
+      "Error 404: Competition not found",
+      "Time bends around my beat",
+      "Your future remembers losing",
+      "Don't hate the player. Upgrade. It might matter.",
+      "Houston... You got problems",
+      "You're out of your orbit",
+      "Your whole galaxy's gonna hear this L",
+    ],
+    Metalness_Monster: [
+      "Monster hungry. You first",
+      "I'll chew through your solos",
+      "Run while you still hear",
+      "your bones make great drumsticks",
+      "I smell fear... And cheap strings",
+      "No ballads. Only carnage",
+      "Fast! Loud! Die!",
+      "Prepare for Maximum Distortion!!",
+      "Metal never dies. You might.",
+      "Tiny guitar. Tiny courage.",
+      "Monster Strongest!",
+      "Monster always gets encore.",
+      "Monster SMASH. Then solo.",
+      "Monster born heavy.",
+      "No mercy. No clean tone",
+    ],
+    Glamarchy: [
+      "Try not to ruin my entrance",
+      "Watch and learn, sweetheart",
+      "Welcome to the stage baby, you're gonna die!",
+      "Mirror mirror... Still me.",
+      "Great hair. Better solos",
+      "I don't chase fame. Fame follows me!",
+      "Rules are for opening acts. You!",
+      "I don't follow trends - I start riots!",
+      "I'm here for a good time. And your downfall.",
+      "Turn it up and deal with it",
+      "You're cute. For an opponent",
+      "Don't blush",
+      "One more for the fans *winks at the groupies*",
+      "Too glam to give a damn",
+      "Live loud. Die legendary.",
+      "Break hearts. Break amps",
+      "No rules. No regrets",
+      "Lights up, game's over darling!",
+      "I play dirty while looking fabulous!",
+    ],
+  };
 
-  function enterRiffAnte() {
-    const bs = battleStateRef.current;
-    // Phase R5.3: grudge match — auto-lock ×2 stakes, skip ante picking
-    if (bs?.grudge) {
-      const origType = bs.grudge.anteType;
-      const origAmount = bs.grudge.anteAmount || 0;
-      // ×2 the original ante; minimum 2 FP if original had none
-      let gType = origAmount > 0 ? origType : 'fp';
-      let gAmount = origAmount > 0 ? origAmount * 2 : 2;
-      // Cap to what both sides can afford
-      const atkNs = engineRef.current.noteStates?.[bs.attackerId] ?? noteStates[bs.attackerId] ?? {};
-      const defNs = engineRef.current.noteStates?.[bs.defenderId] ?? noteStates[bs.defenderId] ?? {};
-      const atkHas = gType === 'fp' ? (atkNs.fame ?? 0) : (atkNs.casuals ?? 0);
-      const defHas = gType === 'fp' ? (defNs.fame ?? 0) : (defNs.casuals ?? 0);
-      gAmount = Math.min(gAmount, atkHas, defHas);
-      if (gAmount <= 0) { gType = 'fp'; gAmount = 1; } // absolute floor
-      const label = gType === 'fp' ? `${gAmount} FP` : `${gAmount} fans`;
-      addLog(`🔥 GRUDGE MATCH! Stakes locked at ×2 — ${label} each side! No backing down!`);
-      triggerEffectFlash(bs.attackerId, '🔥', 'GRUDGE!', '#ff4400');
-      setBattleState(p => p?.riffOff ? {
-        ...p,
-        ante: { type: gType, amount: gAmount, status: 'accepted' },
-      } : p);
-      setTimeout(() => riffBeginTurn('attacker'), 600);
-      return;
-    }
-    setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_ante' } : p);
+  /** Pick a random one-liner for a spirit, avoiding the last one used. */
+  function pickRandomOneLiner(spiritId) {
+    const pool = ONE_LINERS[spiritId] ?? ONE_LINERS.cosmic_ronin;
+    const last = (noteStates[spiritId] ?? {}).lastOneLiner ?? '';
+    const filtered = pool.filter(l => l !== last);
+    const line = filtered[Math.floor(Math.random() * filtered.length)] ?? pool[0];
+    // Remember the last one used so we don't repeat
+    setNoteStates(prev => ({ ...prev, [spiritId]: { ...prev[spiritId], lastOneLiner: line } }));
+    return line;
   }
 
-  function pickRiffAnte(stakeType, amount) {
-    if (!stakeType) {
-      // No stake — skip ante, straight to countdown
-      riffBeginTurn('attacker');
-      return;
-    }
+  function enterRiffAnte() {
+    // Pick a candidate line for the attacker (they'll see it and decide)
     const bs = battleStateRef.current;
     if (!bs?.riffOff) return;
-    const atkId = bs.attackerId;
-    const atkNs = engineRef.current.noteStates?.[atkId] ?? noteStates[atkId] ?? {};
-    if (stakeType === 'fp' && (atkNs.fame ?? 0) < amount) {
-      addLog(`🎲 Not enough Fame to stake ${amount} FP!`); return;
+    const line = pickRandomOneLiner(bs.attackerId);
+    setBattleState(p => p?.riffOff ? {
+      ...p, phase: 'riff_ante',
+      oneLiner: { attacker: { line, dropped: false }, defender: null },
+    } : p);
+  }
+
+  function pickOneLiner(drop) {
+    const bs = battleStateRef.current;
+    if (!bs?.riffOff) return;
+    const atkName = spirits.find(s => s.id === bs.attackerId)?.name;
+    if (drop) {
+      addLog(`🎤 ${atkName}: "${bs.oneLiner?.attacker?.line}" 🎤🔥`);
+      triggerEffectFlash(bs.attackerId, '🎤', 'MIC DROP!', '#ff6600');
     }
-    if (stakeType === 'fans' && (atkNs.casuals ?? 0) < amount) {
-      addLog(`🎲 Not enough casual fans to stake ${amount}!`); return;
-    }
-    const atkName = spirits.find(s => s.id === atkId)?.name;
-    const label = stakeType === 'fp'
-      ? `${amount} Fame Point${amount > 1 ? 's' : ''}`
-      : `${amount} casual fan${amount > 1 ? 's' : ''}`;
-    addLog(`🎲 THROW DOWN! ${atkName} stakes ${label}!`);
+    // Pick a candidate line for the defender
+    const defLine = pickRandomOneLiner(bs.defenderId);
     setBattleState(p => p?.riffOff ? {
       ...p,
-      ante: { type: stakeType, amount, status: 'offered' },
+      oneLiner: {
+        attacker: { ...p.oneLiner?.attacker, dropped: drop },
+        defender: { line: defLine, dropped: false },
+      },
       phase: 'riff_ante_respond',
     } : p);
   }
 
-  function respondRiffAnte(accept) {
+  function respondOneLiner(drop) {
     const bs = battleStateRef.current;
-    if (!bs?.riffOff || !bs.ante) return;
-    const defId = bs.defenderId;
-    const defName = spirits.find(s => s.id === defId)?.name;
-    if (accept) {
-      const defNs = engineRef.current.noteStates?.[defId] ?? noteStates[defId] ?? {};
-      if (bs.ante.type === 'fp' && (defNs.fame ?? 0) < bs.ante.amount) {
-        addLog(`🎲 ${defName} can't match — not enough Fame!`);
-        respondRiffAnte(false); return;
-      }
-      if (bs.ante.type === 'fans' && (defNs.casuals ?? 0) < bs.ante.amount) {
-        addLog(`🎲 ${defName} can't match — not enough fans!`);
-        respondRiffAnte(false); return;
-      }
-      const label = bs.ante.type === 'fp' ? 'FP' : 'fans';
-      addLog(`🎲 ${defName} MATCHES the ante — ${bs.ante.amount} ${label} in the pot!`);
-      triggerEffectFlash(defId, '🎲', 'MATCHED!', '#ffd700');
-      setBattleState(p => p?.riffOff ? { ...p, ante: { ...p.ante, status: 'accepted' } } : p);
-    } else {
-      // Decline: crowd boos, defender loses casuals → Unsure
-      const defNs = engineRef.current.noteStates?.[defId] ?? noteStates[defId] ?? {};
-      const casLoss = Math.min(ANTE_DECLINE_PENALTY, defNs.casuals ?? 0);
-      if (casLoss > 0) {
-        dispatch(fansChanged(defId, { casuals: Math.max(0, (defNs.casuals ?? 0) - casLoss) }));
-        setUnsurePool(p => p + casLoss);
-        flashFanFx(defId, 'scatter', casLoss);
-      }
-      addLog(`😤 ${defName} DECLINES the challenge — the crowd boos!${casLoss > 0 ? ` ${casLoss} fans drift away.` : ''}`);
-      setBattleState(p => p?.riffOff ? { ...p, ante: { ...p.ante, status: 'declined' } } : p);
+    if (!bs?.riffOff) return;
+    const defName = spirits.find(s => s.id === bs.defenderId)?.name;
+    if (drop) {
+      addLog(`🎤 ${defName}: "${bs.oneLiner?.defender?.line}" 🎤🔥`);
+      triggerEffectFlash(bs.defenderId, '🎤', 'FIRED BACK!', '#ff6600');
     }
-    // Either way, proceed to the countdown after a brief pause
-    setTimeout(() => riffBeginTurn('attacker'), accept ? 400 : 800);
+    setBattleState(p => p?.riffOff ? {
+      ...p,
+      oneLiner: { ...p.oneLiner, defender: { ...p.oneLiner?.defender, dropped: drop } },
+    } : p);
+    setTimeout(() => riffBeginTurn('attacker'), drop ? 600 : 300);
   }
 
   // Zero out tempDrive/tempSustain for both combatants once a battle resolves.
@@ -7294,10 +7201,27 @@ function Game({ gameState, onReturnToLobby }) {
     });
   }
 
-  // 🥊 Countering (the retaliation roll) is a CQC perk — gated behind owning any CQC skill.
-  function ownsCQC(spiritId) {
-    const u = engineRef.current.noteStates?.[spiritId]?.unlockedSkills ?? noteStates[spiritId]?.unlockedSkills ?? [];
-    return ['shank_skank', 'cosmic_boogaloo', 'moon_shuffle'].some(id => u.includes(id));
+  // ── 🧍 STANCE POST-BATTLE — upgrade effects that land as the overlay closes ──
+  // Runs AFTER clearBattleBuffs in both close paths (manual close + auto-close),
+  // so Ironclad's hardening isn't wiped by the same close that grants it.
+  //  🛡️ Ironclad: the Cool defender shrugged a graze (no fray) → +1 temp Sustain.
+  //  🤺 Riposte: the Cool defender WON a Thrash defense → arm +1 fray vs that rival.
+  function applyStancePostBattle(s) {
+    const { attackerWon, attackerId, defenderId, sonicAttack, ironcladProc } = s;
+    const nsD = noteStates[defenderId] ?? {};
+    const defName = spirits.find(x => x.id === defenderId)?.name;
+    if (attackerWon && ironcladProc) {
+      setNoteStates(prev => ({ ...prev, [defenderId]: { ...prev[defenderId],
+        tempSustain: Math.max(prev[defenderId]?.tempSustain ?? 0, 1) } }));
+      addLog(`🛡️ IRONCLAD — ${defName} didn't just survive, they HARDENED: +1 temp Sustain.`);
+      triggerEffectFlash(defenderId, '🛡️', 'IRONCLAD!', '#44aaff');
+    }
+    if (!attackerWon && !sonicAttack
+        && stanceOf(nsD, defenderId) === 'cool'
+        && (nsD.unlockedSkills ?? []).includes('stance_riposte')) {
+      setNoteField(defenderId, { riposteTargetId: attackerId });
+      addLog(`🤺 ${defName} reads the whiff — RIPOSTE armed: their next Thrash on ${spirits.find(x => x.id === attackerId)?.name} frays +1.`);
+    }
   }
 
   // Close the battle overlay and apply any pending effects immediately
@@ -7318,9 +7242,9 @@ function Game({ gameState, onReturnToLobby }) {
       if (sonicAttack) {
         const ring = hexRingFromCenter(spirits.find(x => x.id === attackerId)?.num ?? -1);
         const centerBonus = (ring === 'main' || ring === 'pit') ? SONIC_LIMELIGHT_FP : 0;
-        awardSonicFame(attackerId, margin, defenderId, centerBonus);
+        awardSonicFame(attackerId, margin, defenderId, centerBonus, s.grooveSpent ?? 0);
       } else {
-        awardThrashFame(attackerId, defenderId);
+        awardThrashFame(attackerId, defenderId, s.grooveSpent ?? 0);
       }
       // ── Thrash impact knocks Lost Chords loose near the defender ──
       if (!sonicAttack) {
@@ -7336,14 +7260,18 @@ function Game({ gameState, onReturnToLobby }) {
             ...boardTokens.map(t => t.num),
             spotlightHex, LIMELIGHT_HEX,
           ];
-          dispatch(thrashTokensSpawned(defSpirit.num, occupied, tier));
+          // 🌋 AFTERSHOCK (Power upgrade) — the chords scatter a hex further.
+          const atkNs = noteStates[attackerId] ?? {};
+          const aftershock = s.atkStance === 'power'
+            && (atkNs.unlockedSkills ?? []).includes('stance_aftershock');
+          dispatch(thrashTokensSpawned(defSpirit.num, occupied, tier, aftershock ? 2 : 1));
           const report = engineRef.current.board.lastThrashTokens;
-          if (report) addLog(`🎵 ${report.added.length} Lost Chord${report.added.length !== 1 ? 's' : ''} knocked loose from the impact!`);
+          if (report) addLog(`🎵 ${report.added.length} Lost Chord${report.added.length !== 1 ? 's' : ''} knocked loose from the impact!${aftershock && report.added.length ? ' 🌋 Aftershock hurls them wide!' : ''}`);
         }
-        applySwingEffects(attackerId, defenderId, s.swingEffectRoll); // CQC = melee only
       }
       applyPendingCombatEffects(attackerId, defenderId); // Mojo Drain / Stagger land on any hit
       clearBattleBuffs(attackerId, defenderId);
+      applyStancePostBattle(s); // 🛡️ Ironclad lands after the buff clear
       setBattleState(null);
       setDiceDisplay(null);
     } else {
@@ -7360,6 +7288,7 @@ function Game({ gameState, onReturnToLobby }) {
       const defKB = sonicAttack ? 1 : thrashKnockback(margin);
       battleKnockback(defenderId, attackerId, defKB);
       clearBattleBuffs(attackerId, defenderId);
+      applyStancePostBattle(s); // 🤺 Riposte arms off the won defense
       setBattleState(null);
       setDiceDisplay(null);
     }
@@ -7524,13 +7453,13 @@ function Game({ gameState, onReturnToLobby }) {
                 if (isSonic) {
                   const ring = hexRingFromCenter(spirits.find(x => x.id === attackerId)?.num ?? -1);
                   const centerBonus = (ring === 'main' || ring === 'pit') ? SONIC_LIMELIGHT_FP : 0;
-                  awardSonicFame(attackerId, margin, defenderId, centerBonus);
+                  awardSonicFame(attackerId, margin, defenderId, centerBonus, snap.grooveSpent ?? 0);
                 } else {
-                  awardThrashFame(attackerId, defenderId);
+                  awardThrashFame(attackerId, defenderId, snap.grooveSpent ?? 0);
                 }
-                if (!isSonic) applySwingEffects(attackerId, defenderId, snap.swingEffectRoll); // CQC = melee only
                 applyPendingCombatEffects(attackerId, defenderId); // Mojo Drain / Stagger land on any hit
                 clearBattleBuffs(attackerId, defenderId);
+                applyStancePostBattle(snap); // 🛡️ Ironclad lands after the buff clear
                 setBattleState(null);
                 setDiceDisplay(null);
               } else {
@@ -7544,6 +7473,7 @@ function Game({ gameState, onReturnToLobby }) {
                 const defKB = isSonic ? 1 : thrashKnockback(margin);
                 battleKnockback(defenderId, attackerId, defKB);
                 clearBattleBuffs(attackerId, defenderId);
+                applyStancePostBattle(snap); // 🤺 Riposte arms off the won defense
                 setBattleState(null);
                 setDiceDisplay(null);
               }
@@ -7556,11 +7486,11 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
 
-  // ── COUNTER / RETALIATION — DISABLED ────────────────────────────────────────
-  // Counter mechanic is temporarily removed pending a redesign that accounts for
-  // the Sonic/Thrash split. The functions and state (retaliationTimer, ownsCQC,
-  // resolveRetaliation, handleCounterDieClick, finishCounter) are commented out.
-  // The battle flow now resolves immediately on result — no retaliation prompt.
+  // ── COUNTER / RETALIATION — CUT (Stance rework, §3/§8) ──────────────────────
+  // Retaliation is no longer a separate mechanic. It emerges naturally from
+  // Thrash adjacency: after an exchange the attacker is still adjacent and the
+  // defender still has a chord voiced — on their turn they Thrash back with
+  // whatever survived the fray. No prompt, no timer, no separate dice.
 
   // roadieSelectHex — used for MOVE AMP flow: player clicks a hex, then a direction
   function roadieSelectHex(hexNum) {
@@ -7685,6 +7615,26 @@ function Game({ gameState, onReturnToLobby }) {
     if (!canAct) return; // N4/N7: only the controlling client ends the turn
     const s = spirits.find(sp => sp.id === acting.id);
 
+    // 🌀 GROOVE — a held chord builds the wave (§4.4). Capture the flags BEFORE
+    // the engine resets them: the counter climbs only on a turn where you kept
+    // your voicing (no revoice) and kept your cool (no attack/action). Fray
+    // resets are handled at the fray itself (applyChordFray).
+    {
+      const gNs = engineRef.current.noteStates?.[acting.id] ?? noteStates[acting.id] ?? {};
+      const held = stanceOf(gNs, acting.id) === 'groove'
+        && !engineRef.current.turn.actionTokenUsed
+        && !gNs.revoiceUsedThisTurn
+        && (gNs.chordStack?.length ?? 0) > 0;
+      if (held) {
+        const cap = grooveCap(gNs);
+        const cur = Math.min(gNs.grooveCounter ?? 0, cap);
+        if (cur < cap) {
+          setNoteField(acting.id, { grooveCounter: cur + 1 });
+          addLog(`🌀 ${s?.name} holds the chord — the groove builds! (${cur + 1}/${cap} — next attack +${cur + 1} Drive & Fame)`);
+        }
+      }
+    }
+
     // The engine resolves the turn end: limelight verdict, turn counter,
     // beat/token resets, queue advance. React then runs the not-yet-extracted
     // ticks below using the engine's report.
@@ -7704,7 +7654,6 @@ function Game({ gameState, onReturnToLobby }) {
     setAction(null);
     setBattleState(null);
     setDiceDisplay(null);
-    setRetaliationTimer(null);
 
     // ── END-OF-TURN DEBUFF TICK (Phase 6d — engine rule) ─────────────────────
     // Physical debuffs (tripped / dazed / dropped instrument) and timed effects
@@ -7913,12 +7862,14 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ── SKILL-TREE PLANNING (constants + pure logic in engine/policies/bot.js) ──
   function botSkillEligible(skillId, unlocked, selfId) {
-    return _botSkillEligible(skillId, unlocked, selfId, SKILL_BY_ID);
+    const stancesKnown = (engineRef.current.noteStates?.[selfId]?.stancesKnown) ?? [];
+    return _botSkillEligible(skillId, unlocked, selfId, SKILL_BY_ID, stancesKnown);
   }
   function botPickSkillTarget(self) {
-    const unlocked = (engineRef.current.noteStates?.[self.id]?.unlockedSkills) ?? [];
+    const ns = engineRef.current.noteStates?.[self.id] ?? {};
+    const unlocked = ns.unlockedSkills ?? [];
     const key = botPersonaRef.current[self.id] ?? (botPersona(self), botPersonaRef.current[self.id]);
-    return _botPickSkillTarget(self.id, unlocked, key, SKILL_BY_ID);
+    return _botPickSkillTarget(self.id, unlocked, key, SKILL_BY_ID, ns.stancesKnown ?? []);
   }
 
   // Of the 6 facing directions, find the one that lands the most/juiciest rivals
@@ -7972,7 +7923,7 @@ function Game({ gameState, onReturnToLobby }) {
     const ns = engineRef.current.noteStates?.[self.id] ?? {};
     if (ns.revoiceUsedThisTurn || (ns.chordStack ?? []).length >= 5) return;
     const next = [...(ns.chordStack ?? []), note];
-    setNoteField(self.id, { chordStack: next, revoiceUsedThisTurn: true });
+    setNoteField(self.id, { chordStack: next, revoiceUsedThisTurn: true, grooveCounter: 0 });
     const ch = botSpiritChord(self.id, next);
     addLog(`🎸 ${self.name} voices ${note} into the Chord Stack — ${ch.name} (⚔️${ch.drive} 🛡️${ch.sustain}).`);
   }
@@ -8069,11 +8020,6 @@ function Game({ gameState, onReturnToLobby }) {
 
       // 1c) Pre-build setup — only while the track is still empty:
       if (track.length === 0) {
-        // 🎼 Chromatic Shift — rewrite discord stock to in-scale before building.
-        const csCard = (ns.modCards ?? []).find(c => c.type === 'chromatic_shift' && !c.exhausted);
-        const discordInStock = stock.some((n, i) => !isUsed(i) && !scale.includes(n));
-        if (csCard && discordInStock) { schedule(guard(() => playModCard(csCard.id))); return; }
-
         // 🔊 Deploy any unplaced amp beside us (boosts the Sonic die). Two beats:
         //     arm placement, then (next cycle, with ampPlacing set) drop it.
         const myAmpCount = amps.filter(a => a.ownerId === self.id).length;
@@ -8096,12 +8042,6 @@ function Game({ gameState, onReturnToLobby }) {
       //        final note (+5/+4), padding for movement only. See botPlanNoteStep.
       const plan = botPlanNoteStep(self);
       if (plan.commit) {
-        // Squeeze Overdrive first if a discord note is still in the track (it now
-        // pardons one −1 penalty rather than rescuing a zeroed track).
-        const odCard = (ns.modCards ?? []).find(c => c.type === 'overdrive' && !c.exhausted);
-        if (odCard && (ns.discordCount ?? 0) >= 1 && !ns.overdriveActive) {
-          schedule(guard(() => playModCard(odCard.id))); return;
-        }
         schedule(guard(() => { confirmNoteTrack(); botStepRef.current = 'committed'; }));
         return;
       }
@@ -8128,13 +8068,19 @@ function Game({ gameState, onReturnToLobby }) {
         return ah && axialDist(myHex.q, myHex.r, ah.q, ah.r) <= 4;
       });
       if (crewReady('pranksta') && rivalAmpNear) { schedule(() => deployGroupie(self.id, 'pranksta')); return; }
-      // 🛡️ Fandom Army — wall up (+2 Sustain) when a scrap looks imminent.
-      if (crewReady('fandom_army') && (ns.tempSustain ?? 0) < 2 && botRivalsWithin(self, 2).length > 0) {
-        schedule(() => deployGroupie(self.id, 'fandom_army')); return;
-      }
-      // 🔩 Junkyard Dog — arm a +2 Swing when a rival is in melee range.
-      if (crewReady('junkyard_dog') && !ns.junkyardArmed && botRivalsWithin(self, 1).length > 0) {
-        schedule(() => deployGroupie(self.id, 'junkyard_dog')); return;
+      // 🧍 STANCE — settle into the persona's preferred pose once it's learned.
+      // Switching spends the Action, so only when no rival is close enough to
+      // make attacking the better use of it (self-disables once in the stance).
+      {
+        botPersona(self); // ensure the persona ref is assigned
+        const pref = BOT_STANCE_PREF[botPersonaRef.current[self.id]] ?? [];
+        const curStance = stanceOf(ns, self.id);
+        const wantStance = pref.find(st => (ns.stancesKnown ?? []).includes(st));
+        if (wantStance && wantStance !== curStance
+            && !engineRef.current.turn.actionTokenUsed
+            && botRivalsWithin(self, 2).length === 0) {
+          schedule(guard(() => switchStance(wantStance))); return;
+        }
       }
 
       // 2b) Keep moving, or stop. Standing on the spotlight while hurt is worth
@@ -8222,32 +8168,6 @@ function Game({ gameState, onReturnToLobby }) {
             botStepRef.current = 'ending';
             schedule(guard(() => resolveSmash(t.id)));
             return;
-          }
-        }
-        // Phase R5.3: GRUDGE MATCH — bots prioritize challenging their grudge rival
-        const botGrudge = noteStates[self.id]?.grudge;
-        if (botGrudge && steps >= 2) {
-          const grudgeRival = spirits.find(s => s.id === botGrudge.rivalId && !s.knockedOut);
-          if (grudgeRival) {
-            const selfHex0 = HEX_BY_NUM[self.num], rivalHex0 = HEX_BY_NUM[grudgeRival.num];
-            // For stadium grudges: check if rival is in beam (triggers riff-off via sonic)
-            if (botGrudge.tier === 'stadium' && ampsInRangeRef.current >= 1) {
-              const beamRivals = getRivalsInBeam(self);
-              if (beamRivals.some(r => r.id === grudgeRival.id)) {
-                botStepRef.current = 'ending';
-                schedule(guard(() => initiateSonicAttack(grudgeRival.id)));
-                return;
-              }
-            }
-            // For acoustic grudges (or stadium fallback): check adjacency
-            if (selfHex0 && rivalHex0 && axialDist(selfHex0.q, selfHex0.r, rivalHex0.q, rivalHex0.r) === 1) {
-              const gCd = (noteStates[self.id]?.acousticDuelCds ?? {})[acousticDuelPairKey(self.id, grudgeRival.id)] ?? 0;
-              if (gCd <= 0) {
-                botStepRef.current = 'ending';
-                schedule(guard(() => initiateAcousticDuel(grudgeRival.id)));
-                return;
-              }
-            }
           }
         }
         const beamNow = ampsInRangeRef.current >= 1 ? getRivalsInBeam(self) : [];
@@ -8397,8 +8317,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (!bs?.riffOff) return;
     const atkBot = isBot(spirits.find(s => s.id === bs.attackerId));
     const defBot = isBot(spirits.find(s => s.id === bs.defenderId));
-    // Intro → enter ante (now flows through riff_ante), but only if the ATTACKER
-    // is a bot (a human attacker taps "DROP THE RIFF" themselves).
+    // Intro → enter one-liner phase, but only if the ATTACKER is a bot
     if ((bs.phase === 'riff_intro' || bs.phase === 'riff_r2intro') && atkBot) {
       const t = setTimeout(() => {
         const cur = battleStateRef.current;
@@ -8407,22 +8326,17 @@ function Game({ gameState, onReturnToLobby }) {
       }, 800);
       return () => clearTimeout(t);
     }
-    // Ante phase: bot attacker always skips ante (no stakes)
+    // One-liner phase: bot attacker drops the line ~40% of the time
     if (bs.phase === 'riff_ante' && atkBot) {
-      const t = setTimeout(() => { if (battleStateRef.current?.phase === 'riff_ante') pickRiffAnte(null); }, 500);
+      const t = setTimeout(() => {
+        if (battleStateRef.current?.phase === 'riff_ante') pickOneLiner(Math.random() < 0.4);
+      }, 500);
       return () => clearTimeout(t);
     }
-    // Ante respond: bot defender always accepts if they can, otherwise declines
+    // One-liner respond: bot defender fires back ~35% of the time
     if (bs.phase === 'riff_ante_respond' && defBot) {
       const t = setTimeout(() => {
-        if (battleStateRef.current?.phase !== 'riff_ante_respond') return;
-        const ante = battleStateRef.current.ante;
-        if (!ante) { riffBeginTurn('attacker'); return; }
-        const defNs = engineRef.current.noteStates?.[bs.defenderId] ?? noteStates[bs.defenderId] ?? {};
-        const canMatch = ante.type === 'fp'
-          ? (defNs.fame ?? 0) >= ante.amount
-          : (defNs.casuals ?? 0) >= ante.amount;
-        respondRiffAnte(canMatch);
+        if (battleStateRef.current?.phase === 'riff_ante_respond') respondOneLiner(Math.random() < 0.35);
       }, 600);
       return () => clearTimeout(t);
     }
@@ -9088,6 +9002,42 @@ function Game({ gameState, onReturnToLobby }) {
         );
       })()}
 
+      {/* 🧍 STANCE ROUTE — pick the stance a learning tier just opened */}
+      {acting && !acting.cpu && actingNoteState?.stancePickPending && (() => {
+        const known = actingNoteState.stancesKnown ?? [stanceOf(actingNoteState, acting.id)];
+        const remaining = STANCE_ORDER.filter(st => !known.includes(st));
+        return (
+          <div style={{position:'fixed',inset:0,zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',
+            background:'#000000aa',backdropFilter:'blur(3px)'}}>
+            <div style={{width:420,maxWidth:'92vw',background:'linear-gradient(180deg,#0e1828,#080f1e)',
+              border:'1.5px solid #ff6644',borderRadius:12,padding:'22px 20px 18px',
+              boxShadow:'0 0 40px #ff664433, 0 8px 32px #00000088',
+              fontFamily:"'Share Tech Mono',monospace",textAlign:'center'}}>
+              <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:12,color:'#ff6644',letterSpacing:1,marginBottom:10,
+                textShadow:'0 0 10px #ff664455'}}>🧍 LEARN A NEW STANCE</div>
+              <div style={{fontSize:9,color:'#8aa5c5',marginBottom:14,lineHeight:1.5}}>
+                {acting.name} finds a new relationship with the instrument. Pick the pose —
+                switching between known stances costs your Action.
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                {remaining.map(st => {
+                  const d = STANCE_DEFS[st];
+                  return (
+                    <button key={st} onClick={() => learnStance(acting.id, st)}
+                      style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,cursor:'pointer',textAlign:'left',
+                        background:`${d.color}12`,border:`1.5px solid ${d.color}`,borderRadius:5,
+                        color:d.color,padding:'8px 12px',letterSpacing:1}}>
+                      <div>{d.icon} {d.label.toUpperCase()} — "{d.pose}"</div>
+                      <div style={{fontSize:7.5,color:'#8aa5c5',letterSpacing:0.5,marginTop:3,lineHeight:1.4,textTransform:'none'}}>{d.blurb}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ⚡ CHARGE ZONE — OVERCHARGE CHOICE — dice charge vs chord assist */}
       {chargeChoicePending && (() => {
         const sp = spirits.find(s => s.id === chargeChoicePending.spiritId);
@@ -9295,16 +9245,14 @@ function Game({ gameState, onReturnToLobby }) {
         RIFF_CONTOUR_LABELS={RIFF_CONTOUR_LABELS}
         RIFF_LEN={RIFF_LEN}
         SKILL_BY_ID={SKILL_BY_ID}
-        SWING_FX_INFO={SWING_FX_INFO}
-        SWING_UPGRADE_TIERS={SWING_UPGRADE_TIERS}
         battleMeterImg={battleMeterImg}
         battlePickImg={battlePickImg}
         battleState={battleState}
         closeBattleOverlay={closeBattleOverlay}
         closeRiffOff={closeRiffOff}
         enterRiffAnte={enterRiffAnte}
-        pickRiffAnte={pickRiffAnte}
-        respondRiffAnte={respondRiffAnte}
+        pickOneLiner={pickOneLiner}
+        respondOneLiner={respondOneLiner}
         crowdBlueImg={crowdBlueImg}
         crowdPinkImg={crowdPinkImg}
         fameFromMargin={fameFromMargin}
@@ -9540,8 +9488,13 @@ function Game({ gameState, onReturnToLobby }) {
                 <div style={{flex:1, minWidth:170, order:1, display:"flex", flexDirection:"column",
                   borderRight:`1px solid ${s.color}22`}}>
                 {/* Status badges */}
-                {((ns.tempDrive??0)>0||(ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||ns.statusShield||ns.burnArmed||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0||ns.junkyardArmed||ns.bonusRevoiceAvailable||(ns.edgeStage??0)>0||amps.some(a=>a.ownerId===s.id&&a.unplugged)) && (
+                {((ns.tempDrive??0)>0||(ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||ns.statusShield||ns.burnArmed||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0||ns.bonusRevoiceAvailable||(ns.edgeStage??0)>0||ns.riposteTargetId||amps.some(a=>a.ownerId===s.id&&a.unplugged)) && (
                   <div style={{display:"flex",gap:3,flexWrap:"wrap",padding:"4px 8px",borderTop:`1px solid ${s.color}22`}}>
+                    {ns.riposteTargetId&&(
+                      <span title={`Riposte armed — next Thrash on ${spirits.find(x=>x.id===ns.riposteTargetId)?.name} frays +1 extra note`}
+                        style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#0a1420",border:"1px solid #44aaff",color:"#88ccff"}}>
+                        🤺 RIPOSTE → {spirits.find(x=>x.id===ns.riposteTargetId)?.name}
+                      </span>)}
                     {(ns.elevenTurns??0)>0&&(
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a1400",border:"1px solid #ffcc44",color:"#ffcc44"}}>
                         🎚️ GOES TO 11 — {ns.elevenTurns}t
@@ -9560,10 +9513,6 @@ function Game({ gameState, onReturnToLobby }) {
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a0a18",border:"1px solid #ff66cc",color:"#ff99dd",
                         animation:"crew-ready-glow 2s ease-in-out infinite"}}>
                         ⚡ BONUS REVOICE READY
-                      </span>)}
-                    {ns.junkyardArmed&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a1200",border:"1px solid #ffaa22",color:"#ffaa22"}}>
-                        🔩 WEAPON ARMED — next Swing +2
                       </span>)}
                     {(ns.tempDrive??0)>0&&(
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#2a0e00",border:"1px solid #ff6644",color:"#ffaa44"}}>
@@ -9621,9 +9570,7 @@ function Game({ gameState, onReturnToLobby }) {
                   const cards = ns.modCards ?? [];
                   if (!cards.length) return null;
                   const MDEF = {
-                    chromatic_shift: { icon:'🎼', name:'Chromatic Shift', color:'#44ffaa', desc:'Rewrite all discord notes → in-scale (after pivot)' },
-                    transpose:       { icon:'🔄', name:'Transpose',       color:'#ffcc44', desc:'Pick any stock note as your new Root (during pivot)' },
-                    overdrive:       { icon:'⚡', name:'Overdrive',       color:'#ff8844', desc:'1 discord note counts as in-scale (before commit)' },
+                    transpose:       { icon:'🔄', name:'Transpose',       color:'#ffcc44', desc:'Pick any stock note as your new Root (during pivot) — one shot' },
                   };
                   return (
                     <div style={{padding:'5px 8px',borderTop:`1px solid ${s.color}22`}}>
@@ -9657,11 +9604,65 @@ function Game({ gameState, onReturnToLobby }) {
                     </div>
                   );
                 })()}
+                {/* ── 🧍 STANCE — current pose + switcher (Stance rework) ── */}
+                {(() => {
+                  const cur = stanceOf(ns, s.id);
+                  const curDef = STANCE_DEFS[cur];
+                  const known = ns.stancesKnown ?? [cur];
+                  const isTurn = s.id === acting?.id && canAct;
+                  const canSwitch = isTurn && !actionTokenUsed;
+                  const gCap = grooveCap(ns);
+                  const chip = {
+                    fontFamily:'inherit', borderRadius:4, padding:'3px 7px',
+                    fontSize:8, lineHeight:1.3, whiteSpace:'nowrap',
+                  };
+                  return (
+                    <div style={{padding:'5px 8px', borderTop:`1px solid ${s.color}22`}}>
+                      <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:4}}>
+                        <span style={{fontSize:7,color:'#3a5a7a',letterSpacing:2}}>STANCE</span>
+                        <span style={{flex:1,height:1,background:`linear-gradient(90deg, ${s.color}33, transparent)`}}/>
+                      </div>
+                      <div style={{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}}>
+                        <span title={`"${curDef?.pose}" — ${curDef?.blurb}`}
+                          style={{...chip, cursor:'default', fontWeight:700,
+                            background:`${curDef?.color}22`, border:`1.5px solid ${curDef?.color}`,
+                            color:curDef?.color}}>
+                          {curDef?.icon} {curDef?.label?.toUpperCase()}
+                        </span>
+                        {cur === 'groove' && (
+                          <span title={`Groove wave — hold your chord (no attack, no revoice, no fray) to build it. Your next attack spends it: +${ns.grooveCounter ?? 0} Drive & Fame.`}
+                            style={{...chip, cursor:'default',
+                              background:(ns.grooveCounter ?? 0) >= gCap ? '#2a1040' : '#140a20',
+                              border:`1px solid #aa55ff${(ns.grooveCounter ?? 0) > 0 ? '' : '55'}`,
+                              color:'#cc88ff',
+                              ...((ns.grooveCounter ?? 0) >= gCap ? { animation:'crew-ready-glow 1.6s ease-in-out infinite' } : {})}}>
+                            🌊 {'●'.repeat(ns.grooveCounter ?? 0)}{'○'.repeat(Math.max(0, gCap - (ns.grooveCounter ?? 0)))} {ns.grooveCounter ?? 0}/{gCap}
+                          </span>
+                        )}
+                        {known.filter(st => st !== cur).map(st => {
+                          const d = STANCE_DEFS[st];
+                          return (
+                            <button key={st} disabled={!canSwitch}
+                              title={canSwitch
+                                ? `Switch to ${d?.label} ("${d?.pose}") — costs your Action (you can still move). ${d?.blurb}`
+                                : isTurn ? 'Action already spent this turn.' : `${d?.label} — known stance (switch on your turn)`}
+                              onClick={() => canSwitch && switchStance(st)}
+                              style={{...chip, cursor:canSwitch?'pointer':'default',
+                                opacity:canSwitch?1:0.45,
+                                background:'#0a0e16', border:`1px dashed ${d?.color}88`, color:d?.color}}>
+                              {d?.icon} {d?.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {/* ── CREW & GEAR — deployable amps, roadies, groupies, ultimate ── */}
                 {(() => {
                   const unlocked = ns.unlockedSkills ?? [];
                   const myAmps   = amps.filter(a => a.ownerId === s.id);
-                  const groupieIds = ['fans_4eva','pranksta','junkyard_dog','fandom_army'].filter(id => unlocked.includes(id));
+                  const groupieIds = ['fans_4eva','pranksta'].filter(id => unlocked.includes(id));
                   const hasRoadies = (ns.roadies?.length ?? 0) > 0;
                   const hasUlt     = unlocked.includes('ultimate');
                   const ampUnlockCount = ['amp_1','amp_2','amp_3'].filter(id => unlocked.includes(id)).length;
@@ -9671,8 +9672,6 @@ function Game({ gameState, onReturnToLobby }) {
                   const GROUPIE_DEFS = {
                     fans_4eva:    { icon:'💚', label:'Fans 4Eva',    hint:'+2 Vibe' },
                     pranksta:     { icon:'🪤', label:'Pranksta',     hint:'Unplug 2 rival amps ≤4 hex' },
-                    junkyard_dog: { icon:'🔩', label:'Junkyard',     hint:'+2 next Swing' },
-                    fandom_army:  { icon:'🛡️', label:'Fandom Army',  hint:'+2 Sustain next battle' },
                   };
                   const chipBase = {
                     fontFamily:'inherit', cursor:'pointer', borderRadius:4,
@@ -9756,17 +9755,10 @@ function Game({ gameState, onReturnToLobby }) {
                           {groupieIds.map(id => {
                             const def = GROUPIE_DEFS[id];
                             const cd = ns.groupieCooldowns?.[id] ?? 0;
-                            const armed = id === 'junkyard_dog' && ns.junkyardArmed;
                             if (cd > 0) return (
                               <span key={id} title={def.hint} style={{...chipBase, cursor:'default',
                                 background:'#0a0e16', border:'1px solid #333344', color:'#444455'}}>
                                 {def.icon} {cd}t
-                              </span>
-                            );
-                            if (armed) return (
-                              <span key={id} title="Weapon armed — lands on your next Swing" style={{...chipBase, cursor:'default',
-                                background:'#1a1200', border:'1px solid #ffaa22', color:'#ffaa22'}}>
-                                🔩 ARMED
                               </span>
                             );
                             return (
@@ -10517,16 +10509,6 @@ function Game({ gameState, onReturnToLobby }) {
                     </span>
                   </div>
                 )}
-                {/* Overdrive active banner */}
-                {actingNoteState?.overdriveActive && !hasConfirmed && (
-                  <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,
-                    background:'#1a0c00',border:'1.5px solid #ff8844',borderRadius:4,padding:'4px 8px'}}>
-                    <span style={{fontSize:10}}>⚡</span>
-                    <span style={{fontSize:8,color:'#ff8844',fontWeight:700}}>
-                      Overdrive active — 1 discord note pardoned
-                    </span>
-                  </div>
-                )}
                 {/* Bank note UI */}
                 {bankedNote && !hasConfirmed && (
                   <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4,
@@ -10760,8 +10742,38 @@ function Game({ gameState, onReturnToLobby }) {
                 {posing[acting?.id] ? "✨ Posing!" : "✨ Pose"}
               </button>
             )}
-            {/* SWING — baseline attack, always available */}
-            {hasConfirmed && !actionTokenUsed && (() => {
+            {/* 🤘 STRIKE THE GOD — the ONLY attack while the Rock God stands.
+                Clicking his hex also works; this button makes the affordance
+                impossible to miss (bugfix 2026-07-16: players couldn't find
+                the attack — PvP buttons had no targets and went dark). */}
+            {rockGodActive && rockGod && !actionTokenUsed && (() => {
+              const def = ROCK_GODS[rockGod.id] ?? {};
+              const spHex = acting ? HEX_BY_NUM[acting.num] : null;
+              const godHex = HEX_BY_NUM[rockGod.num];
+              const adjacent = spHex && godHex && axialDist(spHex.q, spHex.r, godHex.q, godHex.r) <= 1;
+              const hasAmp1 = (actingNoteState?.unlockedSkills ?? []).includes('amp_1');
+              const inBeam = hasAmp1 && acting && getSonicBeam(acting).has(rockGod.num);
+              const canMelee = adjacent && moveStepsLeft >= 1;
+              const canBeam  = inBeam && moveStepsLeft >= 2;
+              const canStrike = canMelee || canBeam;
+              const why = canStrike ? ''
+                : (adjacent || inBeam) ? ` (${adjacent ? '1AP' : '2AP'})`
+                : ' — get adjacent or line up your beam';
+              return (
+                <button className={canStrike ? 'btn active' : 'btn'}
+                  style={{borderColor: canStrike ? (def.color ?? '#ffcc22') : '#443300',
+                    color: canStrike ? (def.color ?? '#ffcc22') : '#443300',
+                    fontWeight: 700,
+                    ...(canStrike ? { animation:'crew-ready-glow 1.6s ease-in-out infinite' } : {})}}
+                  disabled={!canStrike}
+                  title={`Strike ${def.name ?? 'the God'} — your chord's Drive lands straight as damage AND Fame (no dice). Melee adjacent (1 AP) or Sonic beam (2 AP, needs Amp I). Clicking his hex works too.`}
+                  onClick={() => canStrike && attackRockGod(acting.id)}>
+                  🤘 STRIKE {def.name ? def.name.toUpperCase() : 'THE GOD'}{canStrike ? ` (${canMelee ? '⚔️ 1AP' : '🔊 2AP'})` : why}
+                </button>
+              );
+            })()}
+            {/* SWING — baseline attack, always available (PvP is off during the God fight) */}
+            {!rockGodActive && hasConfirmed && !actionTokenUsed && (() => {
               const cone = acting ? getSwingCone(acting) : new Set();
               const rivals = acting ? getRivalsInCone(acting) : [];
               const canSwing = rivals.length > 0 && moveStepsLeft >= 1;
@@ -10790,7 +10802,7 @@ function Game({ gameState, onReturnToLobby }) {
                 onClick={() => setAction(null)}>Cancel</button>
             )}
             {/* 🎸 THE SMASH (melee) — or 🌀 BLASTER OF RA (ranged, piercing) for Intergalactic 0 */}
-            {hasConfirmed && !actionTokenUsed && (() => {
+            {!rockGodActive && hasConfirmed && !actionTokenUsed && (() => {
               const ns = actingNoteState ?? {};
               // 🌀 Once Blaster of Ra is unlocked, it REPLACES the Smash: ranged beam, pierces all.
               const hasBlaster = acting?.id === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
@@ -10825,7 +10837,7 @@ function Game({ gameState, onReturnToLobby }) {
                 onClick={() => setAction(null)}>Cancel</button>
             )}
             {/* SONIC ATTACK — available when connected to ≥1 amp */}
-            {hasConfirmed && !actionTokenUsed && (() => {
+            {!rockGodActive && hasConfirmed && !actionTokenUsed && (() => {
               const beam    = acting ? getSonicBeam(acting) : new Set();
               const targets = acting ? getRivalsInBeam(acting) : [];
               const plugged = ampsInRange >= 1;
@@ -10858,7 +10870,7 @@ function Game({ gameState, onReturnToLobby }) {
                 onClick={() => setAction(null)}>Cancel</button>
             )}
             {/* 🎸 ACOUSTIC DUEL — Phase R4: baseline riff-off, no amp needed, just adjacency */}
-            {hasConfirmed && !actionTokenUsed && (() => {
+            {!rockGodActive && hasConfirmed && !actionTokenUsed && (() => {
               const actHex = acting ? HEX_BY_NUM[acting.num] : null;
               if (!actHex) return null;
               const adjacentRivals = spirits.filter(s =>
@@ -11764,7 +11776,7 @@ function Game({ gameState, onReturnToLobby }) {
                 const ns = noteStates[s.id] ?? {};
                 const unlocked   = ns.unlockedSkills ?? [];
                 const roadies    = ns.roadies ?? [];
-                const groupieIds = ['fans_4eva','pranksta','junkyard_dog','fandom_army'].filter(id => unlocked.includes(id));
+                const groupieIds = ['fans_4eva','pranksta'].filter(id => unlocked.includes(id));
                 if (roadies.length === 0 && groupieIds.length === 0) return null;
 
                 const sc = CORNER_LABELS[s.corner]?.color ?? s.color;   // owner colour for the groupie glow
@@ -11989,7 +12001,7 @@ function Game({ gameState, onReturnToLobby }) {
                                 {afflictions.map((a, i) => (
                                   <text key={i}
                                     x={cx - rowW / 2 + iconSize * (i + 0.5)}
-                                    y={cardY - HS * 0.34}
+                                    y={cardY - HS * 0.78 /* one row up — the 🧍 stance tag owns the above-bar slot now */}
                                     textAnchor="middle" fontSize={iconSize}
                                     style={{animation:"affliction-pulse 1.8s ease-in-out infinite",
                                       filter:`drop-shadow(0 0 3px ${a.color})`}}>
@@ -12108,8 +12120,28 @@ function Game({ gameState, onReturnToLobby }) {
                             const barY = cardY - barH - 1;
                             const pct  = sp.vibe / sp.maxVibe;
                             const barColor = pct > 0.5 ? "#44cc66" : pct > 0.25 ? "#ffaa22" : "#ff4444";
+                            // 🧍 STANCE TAG — one artwork per Spirit, so the pose is
+                            // conveyed here: icon + tiny label in the stance's colour,
+                            // sitting right above the Vibe bar. Groove also shows its
+                            // wave pips — rivals can SEE the wave building.
+                            const nsS = noteStates[sp.id] ?? {};
+                            const stDef = STANCE_DEFS[stanceOf(nsS, sp.id)];
+                            const grooving = stDef?.id === 'groove';
+                            const gCapB = grooveCap(nsS);
+                            const gNow = Math.min(nsS.grooveCounter ?? 0, gCapB);
+                            const tagLabel = `${stDef?.label?.toUpperCase() ?? ''}${grooving ? ` ${'●'.repeat(gNow)}${'○'.repeat(gCapB - gNow)}` : ''}`;
                             return (
                               <g style={{pointerEvents:"none"}}>
+                                {/* Stance tag (above the bar) */}
+                                <text x={cx} y={barY - HS * 0.09} textAnchor="middle"
+                                  fontSize={HS * 0.30} fontFamily="'Orbitron',sans-serif"
+                                  fontWeight={700} letterSpacing={HS * 0.03}
+                                  fill={stDef?.color ?? '#ffffff'}
+                                  stroke="#000000cc" strokeWidth={HS * 0.05}
+                                  paintOrder="stroke"
+                                  style={{filter:`drop-shadow(0 0 2px ${stDef?.color ?? '#fff'}66)`}}>
+                                  {stDef?.icon} {tagLabel}
+                                </text>
                                 {/* Track */}
                                 <rect x={barX} y={barY} width={barW} height={barH}
                                   rx={barH/2} fill="#00000055"/>

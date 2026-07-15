@@ -22,13 +22,8 @@ export const THEORY_DISCORD_GRANTS = {
   theory_chromatic: ["discord_2", "discord_4"], // maj3 cleanse (Borrowed Chord) + chromatic/Stagger
 };
 
-// CQC skill → the swing-upgrade tier it unlocks (drives the +1-Drive buff + copy).
-export const CQC_SWING_MAP = {
-  shank_skank:    "swing_1",
-  cosmic_boogaloo: "swing_2",
-  moon_shuffle:   "swing_3",
-  baki_gravity:   "swing_3",
-};
+// (CQC_SWING_MAP removed — the CQC branch + %-proc swing effects were CUT in
+// the Stance rework; see STANCE_SYSTEM_DESIGN.md §8.)
 
 /**
  * Pure skill-tree gating. Returns a structured verdict both callers can consume:
@@ -41,13 +36,18 @@ export const CQC_SWING_MAP = {
  *                         gate the bot enforces; pass null to skip it (human path,
  *                         which only ever offers the player their own skills)
  * @param opts.selfId      the spirit choosing (only used with ownerRoute)
+ * @param opts.stancesKnown  the spirit's `stancesKnown` array — gates stance
+ *                           upgrades (skill.requiresStance) on owning the stance
  * @returns { ok, reason?, missing? }
- *   reason ∈ 'unknown' | 'already' | 'owner' | 'ultimate' | 'prereq' | 'pa'
+ *   reason ∈ 'unknown' | 'already' | 'owner' | 'ultimate' | 'prereq' | 'pa' | 'stance'
  */
-export function skillEligibility(skill, unlocked, { ownerRoute = null, selfId = null } = {}) {
+export function skillEligibility(skill, unlocked, { ownerRoute = null, selfId = null, stancesKnown = [] } = {}) {
   if (!skill) return { ok: false, reason: "unknown" };
   if (unlocked.includes(skill.id)) return { ok: false, reason: "already" };
   if (ownerRoute && ownerRoute !== selfId) return { ok: false, reason: "owner" };
+  if (skill.requiresStance && !stancesKnown.includes(skill.requiresStance)) {
+    return { ok: false, reason: "stance" };
+  }
   if (skill.prereq === "__all_pa__") {
     const missing = ULTIMATE_PREREQS.filter(id => !unlocked.includes(id));
     return missing.length ? { ok: false, reason: "ultimate", missing } : { ok: true };
