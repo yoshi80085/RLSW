@@ -22,6 +22,14 @@ export const LIMELIGHT_TO_WIN = 3;    // (legacy -- instant Limelight win remove
 export const LIMELIGHT_FAME   = 1;    // Fame paid (x crowd) for holding the centre Limelight a full turn
 export const FAME_TO_WIN      = 25;   // Fame Points needed for a Fame Legend victory
 
+// HARD per-turn FP ceiling (2026-07-16 balance pass). Overlapping FP systems
+// (sonic margin + spotlight + rider + groove, riff replays, Azrael, Limelight,
+// boss damage) compounded with the underdog/crowd multipliers into 20+ FP
+// turns. Every grant flows through grantFame, which clamps the TOTAL a spirit
+// can earn inside one turn window (any spirit's turn) to this. Overflow is
+// DISCARDED — the crowd can only scream so loud. Applies to boss-fight FP too.
+export const FAME_PER_TURN_CAP = 4;
+
 // UNDERDOG comeback tuning -- see awardFame/underdogBonus.
 export const UNDERDOG_MIN_DEFICIT    = 6;    // must be trailing the loser by at least this much Fame
 export const UNDERDOG_DEFICIT_PER_STEP = 6;  // every 6 Fame of deficit adds +0.5 to the multiplier

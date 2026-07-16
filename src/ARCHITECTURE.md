@@ -192,7 +192,7 @@ preview arrows).
 | File | Exports | Purpose |
 |------|---------|---------|
 | `spirits.js` | `SPIRIT_DEFS`, `SPIRIT_OPTIONS` | Per-character stats. **Change character balance here.** |
-| `stances.js` | `STANCE_DEFS`, `STANCE_ORDER`, `STARTING_STANCE`, `stanceOf`, `grooveCap`, `stanceFrayAmount`, `SOLOIST_FAME_MULT`, `POWER_SONIC_DMG_CAP`, `COOL_*`, `GROOVE_CAP_*` | 🧍 The STANCE system (replaces CQC — `STANCE_SYSTEM_DESIGN.md`): stance identities, starting stances, fray arithmetic, tuning. **Change stance balance here.** |
+| `stances.js` | `STANCE_DEFS`, `STANCE_ORDER`, `STARTING_STANCE`, `stanceOf`, `grooveCap`, `stanceFrayAmount`, `SOLOIST_FAN_BONUS`, `POWER_SONIC_DMG_CAP`, `COOL_*`, `GROOVE_CAP_*` | 🧍 The STANCE system (replaces CQC — `STANCE_SYSTEM_DESIGN.md`): stance identities, starting stances, fray arithmetic, tuning. **Change stance balance here.** |
 | `corners.js` | `CORNERS`, `CORNER_LABELS`, `CORNERS_ORDER` | Home hexes per corner. |
 | `events.js` | `EVENT_DECK`, `EVENT_BY_ID` | The 10 event-space definitions. |
 | `gameConstants.js` | 39 named constants | All gameplay tuning: `HC_UPGRADE_THRESHOLD`, `AMP_RANGE`, `AMP_LINK_DIST`, `FAME_TO_WIN`, `LIMELIGHT_*`, `FAN_*`, `TOKEN_MAX`, etc. **Change balance numbers here.** |

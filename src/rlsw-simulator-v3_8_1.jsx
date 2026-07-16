@@ -64,7 +64,7 @@ import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, thrashDamage, thrashKnockback, thrashFame, sonicDamage, sonicKnockback, sonicFame } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
 import { skillEligibility, THEORY_DISCORD_GRANTS } from "./engine/systems/skills.js";
-import { STANCE_DEFS, STANCE_ORDER, stanceOf, grooveCap, stanceFrayAmount, SOLOIST_FAME_MULT, POWER_SONIC_DMG_CAP, COOL_PROMOTE_EVERY, COOL_LOYALTY_PER_DIEHARD } from "./data/stances.js";
+import { STANCE_DEFS, STANCE_ORDER, stanceOf, grooveCap, stanceFrayAmount, SOLOIST_FAN_BONUS, POWER_SONIC_DMG_CAP, COOL_PROMOTE_EVERY, COOL_LOYALTY_PER_DIEHARD } from "./data/stances.js";
 import {
   BOT_PERSONALITIES, BOT_PERSONA_KEYS, BOT_SKILL_PRIORITY_BASE, BOT_SPIRIT_SKILLS,
   SPIRIT_ONLY_ROUTE, BOT_RIFF_PROFILE, BOT_STANCE_PREF,
@@ -303,7 +303,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_HC_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_HC_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP } from "./data/gameConstants.js";
+import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_HC_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_HC_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -701,6 +701,10 @@ function Game({ gameState, onReturnToLobby }) {
     return state;
   });
   const engineRef = useRef(engineState); // live mirror so dispatch works inside timeout chains
+  // ⛔ FP banked per spirit inside the CURRENT turn window — grantFame clamps
+  // against FAME_PER_TURN_CAP; startNewTurnNotes resets the whole map. A ref
+  // (not state): it's bookkeeping for timeout-chained grants, never rendered.
+  const fameThisTurnRef = useRef({});
   // N3: net context — stash the client reference for N4 action relay
   const netRef = useRef(gameState.net ?? null);
   // Dispatch through the engine reducer. Synchronous: returns the next state
@@ -1399,7 +1403,7 @@ function Game({ gameState, onReturnToLobby }) {
       title: '⭐ Fame Points (FP)',
       pages: [
         { body: `FP is the win condition: first to ${FAME_TO_WIN} takes the crown. This gold bar is the only bar that truly matters — everything else exists to feed it.`, anchor: 'fame-bar' },
-        { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, 🎼 cadence resolutions, ✨ holding centre-stage Limelight a full turn, 🧠 acing rock trivia at event hexes.', 'EVERY one of those is multiplied by your crowd (up to ×2) — a deed in front of a full house is worth double. And if you\'re trailing badly, the underdog bonus quietly inflates your payouts up to ×2.5. The comeback is canon.'], anchor: 'fan-crowd' },
+        { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, ✨ holding centre-stage Limelight a full turn. (🎼 Cadences and 🧠 trivia win you FANS, not FP — the crowd is how you amplify the rest.)', 'EVERY one of those is multiplied by your crowd (up to ×2) — a deed in front of a full house is worth double. And if you\'re trailing badly, the underdog bonus quietly inflates your payouts up to ×2.5. The comeback is canon.', `But the arena has a volume limit: no matter how the multipliers stack, you can bank at most ${FAME_PER_TURN_CAP} FP in a single turn. Anything past the cap is lost to the noise — spread your legend across the set, not one blowout.`], anchor: 'fan-crowd' },
         { body: `One warning, hotshot: reach ${FAME_TO_WIN} FP without a comfortable lead and the sky splits open — the ROCK GOD descends as a final boss for EVERYONE. Win big or win together.`, anchor: 'fame-bar' },
       ],
     },
@@ -2946,6 +2950,9 @@ function Game({ gameState, onReturnToLobby }) {
     // Record whether this spirit starts their turn on the limelight hex.
     // (The engine reads its own synced spirit positions.)
     dispatch(turnStarted(spiritId));
+    // ⛔ Fresh turn window — everyone's per-turn FP cap meter resets (a
+    // defender who banked capped FP during the last turn gets a clean slate).
+    fameThisTurnRef.current = {};
     setNoteStates(prev => {
       const ns = prev[spiritId];
       if (!ns) return prev;
@@ -5196,27 +5203,41 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Core Fame grant — every FP in the game flows through here.
   // Hitting FAME_TO_WIN triggers the Fame Legend victory.
+  // ⛔ HARD PER-TURN CAP (2026-07-16 balance pass): a spirit can bank at most
+  // FAME_PER_TURN_CAP FP inside one turn window (reset for everyone when any
+  // new turn starts — see startNewTurnNotes). Overflow is DISCARDED. This is
+  // the backstop against the compounding stack (margin FP + spotlight + rider
+  // + groove, then underdog ×2.5 × crowd ×2) and applies to amplify=false
+  // grants (boss damage, kill blow) too.
+  // (🌟 The old SOLOIST ×1.5 all-sources Fame mult was REMOVED here — the
+  // Soloist now earns extra FANS instead; see gainFans / gainFansFromDeed.)
   function grantFame(spiritId, fp, reason, amplify = true) {
     if (fp <= 0) return;
     const sp = spirits.find(s => s.id === spiritId);
     const ns = noteStates[spiritId] ?? {};
-    // 🌟 SOLOIST stance — Fame from ALL sources ×1.5 (§4.1). Applied before the
-    // crowd multiplier: the pose amplifies the deed, the crowd amplifies the pose.
-    const soloist = stanceOf(ns, spiritId) === 'soloist';
-    if (soloist) fp = Math.round(fp * SOLOIST_FAME_MULT);
     // 🎤 Fans amplify the value of every deed (wins, riffs, cadences). The crowd
     // doesn't convert TO Fame — it multiplies the Fame you earn. Pass amplify=false
     // for non-deed awards (e.g. the future Rock Gods finale payout) to skip this.
     const mult    = amplify ? crowdMultiplier(ns.diehards ?? FAN_DIEHARD_START, ns.casuals ?? 0) : 1;
-    const finalFp = amplify ? Math.max(fp, Math.round(fp * mult)) : fp;
+    const uncapped = amplify ? Math.max(fp, Math.round(fp * mult)) : fp;
+    // ⛔ Clamp against what this spirit already banked this turn window.
+    const earnedSoFar = fameThisTurnRef.current[spiritId] ?? 0;
+    const room        = Math.max(0, FAME_PER_TURN_CAP - earnedSoFar);
+    const finalFp     = Math.min(uncapped, room);
+    const clipped     = uncapped - finalFp;
+    if (finalFp <= 0) {
+      addLog(`⭐🚫 ${sp?.name} is already at the ${FAME_PER_TURN_CAP} FP turn cap — the crowd can only scream so loud${reason ? ` (${reason} lost to the noise)` : ''}.`);
+      return;
+    }
+    fameThisTurnRef.current[spiritId] = earnedSoFar + finalFp;
     const newFame = (ns.fame ?? 0) + finalFp;
-    if (soloist && reason) reason = `${reason} 🌟×${SOLOIST_FAME_MULT}`;
     // Phase 5c: fame write is now a semantic engine action (no-op vs the old
     // setNoteStates full-replace — finalFp>0 so applyFameChanged's floor never
     // bites here). The crowd mult / thresholds / win-check below stay client.
     dispatch(fameChanged(spiritId, finalFp));
-    const crowdStr = (amplify && finalFp !== fp) ? ` (${fp} ×🎤${mult.toFixed(2)} crowd)` : '';
-    addLog(`⭐ ${sp?.name} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${reason ? ` — ${reason}` : ''}! (${Math.min(newFame, FAME_TO_WIN)}/${FAME_TO_WIN})`);
+    const crowdStr = (amplify && uncapped !== fp) ? ` (${fp} ×🎤${mult.toFixed(2)} crowd)` : '';
+    const capStr   = clipped > 0 ? ` ⛔ capped at ${FAME_PER_TURN_CAP}/turn (${clipped} lost to the noise)` : '';
+    addLog(`⭐ ${sp?.name} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${capStr}${reason ? ` — ${reason}` : ''}! (${Math.min(newFame, FAME_TO_WIN)}/${FAME_TO_WIN})`);
     showTip('fame');
     // 🎇 The show grows with the legend — Stage Effects fire at ⭐8/16/24.
     checkStageFxThresholds(ns.fame ?? 0, newFame);
@@ -5410,7 +5431,10 @@ function Game({ gameState, onReturnToLobby }) {
     // in tickFans now, not here.)
     if (!clean || !inGainZone || (ns.fanLag ?? 0) > 0) return;
 
-    const base = FAN_GAIN_BY_RING[ring] ?? 0;
+    // 🌟 SOLOIST stance — playing for the crowd draws an extra casual on every
+    // clean gain (§4.1 amended — replaces the old ×1.5 all-sources Fame mult).
+    const soloBonus = stanceOf(ns, spiritId) === 'soloist' ? SOLOIST_FAN_BONUS : 0;
+    const base = (FAN_GAIN_BY_RING[ring] ?? 0) + soloBonus;
     // Only the spotlight (main/pit) wins over the undecided crowd left on the centre.
     const recruit = inCentre ? Math.min(unsurePool, base) : 0;
     if (recruit > 0) { setUnsurePool(p => Math.max(0, p - recruit)); triggerUnsureWin(spiritId, recruit); }
@@ -5526,9 +5550,13 @@ function Game({ gameState, onReturnToLobby }) {
     const ring = hexRingFromCenter(spirit.num);
     const inCentre = ring === 'main' || ring === 'pit';
     const centreBonus = ring === 'main' ? 2 : ring === 'pit' ? 1 : ring === 'floor' ? 1 : 0;
-    const gain = baseAmount + centreBonus;
+    // 🌟 SOLOIST stance — crowd-winning deeds draw an extra casual (§4.1
+    // amended — replaces the old ×1.5 all-sources Fame mult).
+    const deedNs = engineRef.current.noteStates[spiritId];
+    const soloBonus = stanceOf(deedNs, spiritId) === 'soloist' ? SOLOIST_FAN_BONUS : 0;
+    const gain = baseAmount + centreBonus + soloBonus;
     {
-      const ns = engineRef.current.noteStates[spiritId];
+      const ns = deedNs;
       if (ns) {
         let casuals  = Math.min(FAN_CASUAL_CAP, (ns.casuals ?? 0) + gain);
         let diehards = ns.diehards ?? FAN_DIEHARD_START;

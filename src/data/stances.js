@@ -19,7 +19,7 @@
 export const STANCE_DEFS = {
   soloist: {
     id: 'soloist', label: 'Soloist', pose: 'Foot on Monitor', icon: '🌟', color: '#ffd700',
-    blurb: 'Playing for the crowd, not the brawl. Your performance score powers your attack (+⌈P/2⌉ Drive) and all Fame is ×1.5 — but your chord frays DOUBLE when you\'re hit.',
+    blurb: 'Playing for the crowd, not the brawl. Your performance score powers your attack (+⌈P/2⌉ Drive) and every crowd-winning play draws +1 extra casual fan — but your chord frays DOUBLE when you\'re hit.',
   },
   power: {
     id: 'power', label: 'Power', pose: 'Wide Leg', icon: '🤘', color: '#ff4444',
@@ -48,7 +48,12 @@ export const STARTING_STANCE = {
 // ── Tuning ──────────────────────────────────────────────────────────────────
 export const GROOVE_CAP_BASE       = 3;   // Groove counter cap
 export const GROOVE_CAP_RESONANCE  = 5;   // …with the Resonance upgrade
-export const SOLOIST_FAME_MULT     = 1.5; // Fame multiplier, all sources (§4.1)
+// SOLOIST_FAME_MULT (×1.5, all FP sources) RETIRED in the 2026-07-16 balance
+// pass — it compounded with the underdog (×2.5) and crowd (×2) multipliers
+// into runaway Fame. The Soloist plays for the CROWD now: every fan-winning
+// play (clean centre commits, cadences, trivia, riffs) draws extra casuals,
+// which pays into the crowd multiplier instead of raw FP.
+export const SOLOIST_FAN_BONUS     = 1;   // extra casuals on every fan gain (§4.1 amended)
 export const POWER_SONIC_DMG_CAP   = 3;   // SONIC_VIBE_CAP + 1 — Power's Sonic ceiling
 export const COOL_PROMOTE_EVERY    = 2;   // centre-streak turns per Diehard (base 3)
 export const COOL_LOYALTY_PER_DIEHARD = 16; // perf loyalty per Diehard (base 24)

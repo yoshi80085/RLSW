@@ -1679,7 +1679,7 @@ export function BattleMeterOverlay({
               // 🧍 Stance identity pill (Stance rework) — tiny inline map so the
               // overlay stays prop-free about stance data.
               const STANCE_PILL = {
-                soloist: { icon:'🌟', label:'Soloist', color:'#ffd700', desc:'P-score → Drive · Fame ×1.5 · frays double' },
+                soloist: { icon:'🌟', label:'Soloist', color:'#ffd700', desc:'P-score → Drive · +1 fan on crowd gains · frays double' },
                 power:   { icon:'🤘', label:'Power',   color:'#ff4444', desc:'strips +1 note · hits harder · absorbs harder' },
                 cool:    { icon:'🕶️', label:'Cool',    color:'#44aaff', desc:'fray halved · loyal core builds' },
                 groove:  { icon:'🌀', label:'Groove',  color:'#aa55ff', desc:'the wave powers the attack' },
