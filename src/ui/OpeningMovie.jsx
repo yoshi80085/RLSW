@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import rlMovie1 from "../rl_movie_1.m4v";
 
 // ─── 🎬 OPENING MOVIE ────────────────────────────────────────────────────────
 // Skippable cinematic that plays before the Spirit Select on EVERY launch
@@ -11,18 +12,14 @@ import React, { useEffect, useRef, useState } from "react";
 // ── 🎬 STORYBOARD — the owner's editing surface. Each scene is one shot.
 // image: null → renders the blank placeholder frame (dark panel, thin amber
 //         border, faint "IMAGE" watermark). Later: an import or /public URL.
+// video: an imported video asset — plays muted (autoplay policy) and the scene
+//         advances when the clip ENDS (durMs is only a safety fallback).
 // title/caption: empty strings render nothing (layout doesn't jump).
-// motion: ken-burns preset applied to the image layer.
+// motion: ken-burns preset applied to the image layer (ignored for video).
 const STORYBOARD = [
-  { id: 'cold-open', durMs: 4500, motion: 'zoom-in',  image: null,
+  { id: 'rl-movie', durMs: 120000, motion: 'hold', image: null, video: rlMovie1,
     title: '', caption: '' },
-  { id: 'the-world', durMs: 5000, motion: 'pan-right', image: null,
-    title: '', caption: '' },
-  { id: 'the-war',   durMs: 5000, motion: 'pan-left',  image: null,
-    title: '', caption: '' },
-  { id: 'the-call',  durMs: 4500, motion: 'zoom-out', image: null,
-    title: '', caption: '' },
-  { id: 'logo',      durMs: 3500, motion: 'hold',     image: null,
+  { id: 'logo',     durMs: 3500,   motion: 'hold', image: null,
     title: '⚡ RLSW', caption: 'ROCK LEGENDS: SPIRIT WARS' },
 ];
 
@@ -40,8 +37,19 @@ const MOTION_ANIM = {
 // One scene's image layer: real image or the storyboard placeholder frame.
 // The ken-burns motion rides on this layer; opacity crossfade rides on the
 // wrapper so the two never fight over `transform`.
-function SceneLayer({ scene, visible }) {
+function SceneLayer({ scene, visible, onVideoEnd }) {
   const anim = MOTION_ANIM[scene.motion] || 'om-hold';
+  const videoRef = useRef(null);
+
+  // 🎥 Video scenes: play only while visible (double-buffered neighbours stay
+  // mounted but paused). Muted — browsers block audio before a user gesture.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (visible) v.play().catch(() => {});
+    else v.pause();
+  }, [visible]);
+
   return (
     <div style={{
       position: 'absolute', inset: 0,
@@ -50,8 +58,15 @@ function SceneLayer({ scene, visible }) {
       transition: `opacity ${XFADE_MS}ms ease-in-out`,
       pointerEvents: 'none',
     }}>
-      <div style={{ animation: `${anim} ${scene.durMs + XFADE_MS}ms ease-in-out forwards` }}>
-        {scene.image ? (
+      <div style={{ animation: scene.video ? 'none' : `${anim} ${scene.durMs + XFADE_MS}ms ease-in-out forwards` }}>
+        {scene.video ? (
+          <video ref={videoRef} src={scene.video} muted playsInline preload="auto"
+            onEnded={() => { if (visible && onVideoEnd) onVideoEnd(); }}
+            style={{
+              maxWidth: '94vw', maxHeight: '78vh', objectFit: 'contain',
+              display: 'block',
+            }}/>
+        ) : scene.image ? (
           <img src={scene.image} alt="" draggable={false} style={{
             maxWidth: '82vw', maxHeight: '62vh', objectFit: 'contain',
             display: 'block',
@@ -130,6 +145,15 @@ export default function OpeningMovie({ onDone }) {
 
   const scene = STORYBOARD[idx];
 
+  // 🎥 A video scene advances itself when the clip ends (the durMs timer above
+  // is just a safety net in case the video errors or never fires `ended`).
+  const advanceScene = () => {
+    if (doneRef.current || outro) return;
+    clearTimeout(timerRef.current);
+    if (idx < STORYBOARD.length - 1) setIdx(idx + 1);
+    else setOutro(true);
+  };
+
   return (
     <div style={{
       position: 'fixed', inset: 0, background: '#050810',
@@ -153,7 +177,7 @@ export default function OpeningMovie({ onDone }) {
           only the current one is visible (cheap: they're placeholders/imgs) */}
       {STORYBOARD.map((s, i) => (
         (i === idx || i === idx - 1 || i === idx + 1) &&
-          <SceneLayer key={s.id} scene={s} visible={i === idx}/>
+          <SceneLayer key={s.id} scene={s} visible={i === idx} onVideoEnd={advanceScene}/>
       ))}
 
       {/* lower-third text — keyed by scene so the fade-up replays per shot */}

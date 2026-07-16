@@ -5,6 +5,9 @@ import pkg from './package.json'
 export default defineConfig(({ command }) => ({
   base: '/RLSW/',
   plugins: [react()],
+  // 🎬 .m4v isn't in Vite's default asset list — needed so the opening-movie
+  // video (src/rl_movie_1.m4v) can be imported like any other asset.
+  assetsInclude: ['**/*.m4v'],
   // N8: build stamp for the netcode version handshake (src/net/client.js).
   // Clients on different builds are refused at the room door by the server.
   define: {

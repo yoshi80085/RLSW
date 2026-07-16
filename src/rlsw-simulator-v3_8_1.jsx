@@ -46,6 +46,7 @@ import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./r
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset } from "./riff/fallingNotes.js";
 import { Lobby } from "./ui/Lobby.jsx";
 import OpeningMovie from "./ui/OpeningMovie.jsx";
+import HintScreen from "./ui/HintScreen.jsx";
 import { BeginnerTipOverlay } from "./ui/BeginnerTipOverlay.jsx";
 import { isMirrorFacing, MIRROR_SPRITES, mobileColorStyle, GameErrorBoundary } from "./ui/GameErrorBoundary.jsx";
 import { useStageEffects } from "./hooks/useStageEffects.js";
@@ -631,6 +632,10 @@ export default function RLSWSimulator() {
   const [gameState, setGameState] = useState(null);
   const [showTutorial, setShowTutorial] = useState(false);
   const [introDone, setIntroDone] = useState(false);
+  // 💡 HINT SCREEN — an intentional ~5s beat between Lobby and Game so a
+  // random gameplay hint can be read. Reset on return-to-lobby so every match
+  // start gets a fresh hint.
+  const [hintDone, setHintDone] = useState(false);
   const isMobile = /Mobi|Android/i.test(navigator.userAgent);
 
   // 🎬 Opening movie — plays on every launch, any input skips (attract style).
@@ -642,6 +647,10 @@ export default function RLSWSimulator() {
   }
   if (!gameState) {
     return <div style={isMobile ? mobileColorStyle : {}}><Lobby onStart={gs => setGameState(gs)} onTutorial={() => setShowTutorial(true)} /></div>;
+  }
+  // 💡 Match is starting — hold on the hint screen for ~5s before the board mounts.
+  if (!hintDone) {
+    return <div style={isMobile ? mobileColorStyle : {}}><HintScreen onDone={() => setHintDone(true)} /></div>;
   }
   // Netcode: leaving the Game must CLOSE the socket (keeping the saved session),
   // or the old connection keeps holding the seat and the Lobby's auto-rejoin
@@ -656,6 +665,7 @@ export default function RLSWSimulator() {
       net.client.close(); // keeps rlsw.net.session — Lobby auto-rejoin reclaims the seat
     }
     setGameState(null);
+    setHintDone(false); // 💡 next match start shows a fresh hint
   };
   return (
     <GameErrorBoundary onReset={() => returnToLobby({ resetRoom: false })}>
@@ -1051,8 +1061,9 @@ function Game({ gameState, onReturnToLobby }) {
   const [beginnerEnabled, setBeginnerEnabled] = useState(gameState.beginnerMode ?? true);
   const [beginnerTipsSeen, setBeginnerTipsSeen] = useState(new Set());
   const [activeTip, setActiveTip] = useState(null); // { id, title, body } or null
-  // The very first tip (skill_tree) is triggered by the initial skill pick useEffect.
-  // The pivot tip fires naturally from endTurn → setTurnStep('pivot') → showTip('pivot').
+  // The very first tip (welcome) is triggered by the initial Full Scale grant
+  // useEffect, which also queues the pivot tip to follow it. The skill_tree tip
+  // fires the first time the Theory Tree opens (HC bar filled → upgradesPending).
   const turnQueue = engineState.turnQueue; // engine-owned (Phase 2)
   // 🧪 TESTING GROUNDS — dev panel (only when the sandbox was launched from the
   // menu). N8: hard-disabled online — dev grants dispatch real actions and the
@@ -1300,26 +1311,33 @@ function Game({ gameState, onReturnToLobby }) {
   // Content is written against the CURRENT rules — if a system changes, the
   // tip lies until someone updates it. Don't let the tip lie.
   const BEGINNER_TIPS = {
-    skill_tree: {
-      title: '🌳 Welcome — Theory Tree',
+    welcome: {
+      title: '🎸 Welcome to the Stage',
       pages: [
-        { body: 'Welcome to the stage. First order of business: pick a SKILL TARGET from the Theory Tree — the ability you\'re saving toward. New scale tones, amps, crew, combat tricks... choose a route that fits how you want to play. Or panic-pick. Everyone does their first game.' },
-        { body: 'You pay for skills with HC (Harmonic Coverage) points: every in-scale note you play earns HC, and when the bar fills, the skill\'s yours. The mini progress bar lives on your spirit card, so you always know how close you are.', anchor: 'note-stock' },
-        { body: 'One more thing in your back pocket: a 🔄 TRANSPOSE card. One-time use, swaps your Root Note for any note in your stock. If your opening hand looks like it was dealt by an enemy, this is your escape hatch. Save it. Or don\'t — it\'s your funeral.' },
+        { body: 'Welcome to the stage. This glowing badge is your ROOT NOTE — the tonal centre of your turn. And good news: you already know THE FULL SCALE, so every note of your Major scale is clean, 4th and 7th included. No homework — you start ready to play.', anchor: 'root-note' },
+        { body: 'Every in-scale note you play earns HC (Harmonic Coverage) into this bar. When it fills, the THEORY TREE opens and you choose your next ability — new scale tones, amps, crew, combat tricks. Play clean, get paid.', anchor: 'hc-bar' },
+        { body: 'One more thing in your back pocket: a 🔄 TRANSPOSE card, waiting here in MOD CARDS. One-time use, swaps your Root Note for any note in your stock. If your opening hand looks like it was dealt by an enemy, this is your escape hatch. Save it. Or don\'t — it\'s your funeral.', anchor: 'mod-cards' },
+      ],
+    },
+    skill_tree: {
+      title: '🌳 The Theory Tree',
+      pages: [
+        { body: 'Your HC bar is FULL — the Theory Tree is open! Pick a SKILL TARGET: the ability you\'re saving toward. New scale tones, amps, crew, combat tricks... choose a route that fits how you want to play. Or panic-pick. Everyone does their first game.' },
+        { body: 'Every in-scale note keeps feeding HC toward your target — when the bar fills again, the skill is yours automatically and you pick the next one. The mini progress bar lives on your spirit card, so you always know how close you are.', anchor: 'hc-bar' },
       ],
     },
     pivot: {
       title: '🎵 Step 1 — Choose Your Scale',
       pages: [
         { body: 'See that big glowing badge? That\'s your ROOT NOTE — the tonal center of everything you do this turn. Now pick MAJOR (bright, consonant, sunshine) or MINOR (dark, tense, brooding). Together they define your scale.', anchor: 'root-note' },
-        { body: ['Why care? Notes IN your scale are "clean" — they earn HC and keep the crowd happy. Off-scale notes are DISCORD: no HC, and the audience notices. They always notice.', 'Root feeling wrong? Your 🔄 Transpose card can swap it before you commit to a mode. A bad root is a choice; staying on one is a lifestyle.'] },
+        { body: ['Why care? Notes IN your scale are "clean" — they earn HC and keep the crowd happy. Off-scale notes are DISCORD: no HC, and the audience notices. They always notice.', 'Root feeling wrong? Your 🔄 Transpose card can swap it before you commit to a mode. A bad root is a choice; staying on one is a lifestyle.'], anchor: 'note-stock' },
       ],
     },
     chord: {
       title: '🎸 Step 2 — Build Your Chord',
       pages: [
         { body: 'This vertical rack is your CHORD STACK — up to 5 notes that ARE your combat stats. The chord sets your DRIVE (⚔️ attack, red) and SUSTAIN (🛡️ defense, blue). Watch the colored arrows as you add notes: red ▲ = more punch, blue ▲ = more armor.', anchor: 'chord-stack' },
-        { body: ['Your chord is not decoration — it\'s ammo. Every Swing you throw BURNS the first 2 notes off the front of the stack. You rebuild it one note per turn with your revoice. Swing wildly with an empty chord and you\'re fighting with base stats, which is a polite way of saying "losing".', 'Rule of thumb: keep the stack fed. A 5-note chord walking into a fight is a very different conversation than a 1-note one.'] },
+        { body: ['Your chord is not decoration — it\'s ammo. Every Swing you throw BURNS the first 2 notes off the front of the stack. You rebuild it one note per turn with your revoice. Swing wildly with an empty chord and you\'re fighting with base stats, which is a polite way of saying "losing".', 'Rule of thumb: keep the stack fed. A 5-note chord walking into a fight is a very different conversation than a 1-note one.'], anchor: 'chord-stack' },
       ],
     },
     melody: {
@@ -1333,29 +1351,29 @@ function Game({ gameState, onReturnToLobby }) {
       title: '🚶 Step 4 — Move & Act',
       pages: [
         { body: 'Track committed — your notes are now AP. Spend them here: MOVE across hexes, FACE to turn (1 step), and fight. Position matters: attacks fire into the cone or beam you\'re FACING. Sneaking behind someone is not just rude, it\'s tactics.', anchor: 'actions-bar' },
-        { body: ['Three ways to ruin someone\'s set:', '⚔️ SWING (1 AP) — the melee jab. Cheap, defended, drives your chord into them.', '🎸 SMASH (2 AP) — the haymaker. Undefendable, ignores Sustain, hurls your unused stock... and leaves you Exposed. Commit issues, in weapon form.', '🔊 SONIC (2 AP) — the ranged beam. Needs an amp in range. Less damage, way more Fame.'] },
+        { body: ['Three ways to ruin someone\'s set:', '⚔️ SWING (1 AP) — the melee jab. Cheap, defended, drives your chord into them.', '🎸 SMASH (2 AP) — the haymaker. Undefendable, ignores Sustain, hurls your unused stock... and leaves you Exposed. Commit issues, in weapon form.', '🔊 SONIC (2 AP) — the ranged beam. Needs an amp in range. Less damage, way more Fame.'], anchor: 'actions-bar' },
         { body: 'Done? Hit END TURN. Your last committed note becomes next turn\'s Root Note — so that throwaway discord you ended on? That\'s tomorrow\'s tonal center. Plan the ending.', anchor: 'end-turn' },
       ],
     },
     combat: {
       title: '⚔️ Battle!',
       pages: [
-        { body: 'A SWING is a Thrash battle: both sides roll a d4 — attacker adds DRIVE, defender adds SUSTAIN. Win and you deal Vibe damage (up to 4) and might land a status effect. Lose as the attacker and you take a humiliation tap of 1 Vibe. Yes, it stings. It\'s supposed to.' },
-        { body: ['The fine print your rival hopes you skip:', 'Your swing burns the first 2 notes of your Chord Stack — the hit literally plays your chord. And swinging drops your guard: −1 Sustain until your next turn.', 'Thrash pays a flat 1 FP. It\'s for hurting people. If you want FAME, plug into an amp and go Sonic — margin-scaled FP, multiplied by your crowd.'] },
+        { body: 'A SWING is a Thrash battle: both sides roll a d4 — attacker adds DRIVE, defender adds SUSTAIN. Win and you deal Vibe damage (up to 4) and might land a status effect. Lose as the attacker and you take a humiliation tap of 1 Vibe. Yes, it stings. It\'s supposed to.', anchor: 'stat-knobs' },
+        { body: ['The fine print your rival hopes you skip:', 'Your swing burns the first 2 notes of your Chord Stack — the hit literally plays your chord. And swinging drops your guard: −1 Sustain until your next turn.', 'Thrash pays a flat 1 FP. It\'s for hurting people. If you want FAME, plug into an amp and go Sonic — margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
       ],
     },
     fans: {
       title: '🎤 Fans',
       pages: [
-        { body: 'You drew a crowd! Fans never hand you FP directly — they MULTIPLY every FP you earn, up to ×2 with a full house. Diehards (♥, solid) are your loyal core and worth about three Casuals (👥, hollow), who are... let\'s say "emotionally flexible".' },
-        { body: ['Growing the crowd: commit clean tracks near the action — centre rings pay 2 casuals a turn, the back row pays zero. Perform well and casuals harden into Diehards.', 'Losing the crowd: skulk in the outer ring too long and casuals get bored and leave. Get knocked down and 7–10 of them flee on the spot — and a couple defect straight to whoever flattened you. Fans, man.'] },
+        { body: 'You drew a crowd! Fans never hand you FP directly — they MULTIPLY every FP you earn, up to ×2 with a full house. Diehards (♥, solid) are your loyal core and worth about three Casuals (👥, hollow), who are... let\'s say "emotionally flexible".', anchor: 'fan-crowd' },
+        { body: ['Growing the crowd: commit clean tracks near the action — centre rings pay 2 casuals a turn, the back row pays zero. Perform well and casuals harden into Diehards.', 'Losing the crowd: skulk in the outer ring too long and casuals get bored and leave. Get knocked down and 7–10 of them flee on the spot — and a couple defect straight to whoever flattened you. Fans, man.'], anchor: 'fan-crowd' },
       ],
     },
     amp_place: {
       title: '🔊 Amplifiers',
       pages: [
         { body: 'Amp ready to deploy! Place it from CREW & GEAR on your spirit card. Amps project your sound: standing within range of your rig keeps you PLUGGED IN — bigger Harmonic Coverage for HC, and it switches on the Sonic Attack.', anchor: 'crew-gear' },
-        { body: ['More amps in range = a meaner Sonic dice pool: 1 amp rolls 2d6 keep-best, 2 amps roll 3d6, 3 amps roll 2d6+d8. Fully wired is fully loud.', 'Guard the rig: rivals can walk up and UNPLUG your amps (a Roadie replugs them), and wandering too far leaves your rig cold until you come back. An amp far from the fight is an expensive lawn ornament.'] },
+        { body: ['More amps in range = a meaner Sonic dice pool: 1 amp rolls 2d6 keep-best, 2 amps roll 3d6, 3 amps roll 2d6+d8. Fully wired is fully loud.', 'Guard the rig: rivals can walk up and UNPLUG your amps (a Roadie replugs them), and wandering too far leaves your rig cold until you come back. An amp far from the fight is an expensive lawn ornament.'], anchor: 'crew-gear' },
       ],
     },
     cadence: {
@@ -1367,13 +1385,13 @@ function Game({ gameState, onReturnToLobby }) {
     riff: {
       title: '🎸 Riff Discovered!',
       pages: [
-        { body: 'That note pattern you just played? A legendary RIFF. First discovery writes it into the Riffbook and pays FP; replaying known riffs pays too. There are more hidden in the note-space — treat every track as an excavation. Some spirits win with fists; the archaeologists win with licks.' },
+        { body: 'That note pattern you just played? A legendary RIFF. First discovery writes it into the Riffbook and pays FP; replaying known riffs pays too. There are more hidden in the note-space — treat every track as an excavation. Some spirits win with fists; the archaeologists win with licks.', anchor: 'riffbook' },
       ],
     },
     knockdown: {
       title: '😵 Knock Down!',
       pages: [
-        { body: 'A spirit\'s Vibe hit zero — KNOCKED DOWN. The bill: 1 life gone, −1 FP, and the crowd stampedes (a chunk of casuals flee, some straight into the arms of whoever did the flattening). They respawn at their home corner with full Vibe... after sitting out a turn to think about what happened.' },
+        { body: 'A spirit\'s Vibe hit zero — KNOCKED DOWN. The bill: 1 life gone, −1 FP, and the crowd stampedes (a chunk of casuals flee, some straight into the arms of whoever did the flattening). They respawn at their home corner with full Vibe... after sitting out a turn to think about what happened.', anchor: 'vibe-bar' },
         { body: 'Burn through ALL your lives and it\'s a true KO — out of the game, thanks for playing, merch table\'s on the left. Watch your Vibe bar. Retreating to heal isn\'t cowardice, it\'s set management.', anchor: 'vibe-bar' },
       ],
     },
@@ -1381,14 +1399,14 @@ function Game({ gameState, onReturnToLobby }) {
       title: '⭐ Fame Points (FP)',
       pages: [
         { body: `FP is the win condition: first to ${FAME_TO_WIN} takes the crown. This gold bar is the only bar that truly matters — everything else exists to feed it.`, anchor: 'fame-bar' },
-        { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, 🎼 cadence resolutions, ✨ holding centre-stage Limelight a full turn, 🧠 acing rock trivia at event hexes.', 'EVERY one of those is multiplied by your crowd (up to ×2) — a deed in front of a full house is worth double. And if you\'re trailing badly, the underdog bonus quietly inflates your payouts up to ×2.5. The comeback is canon.'] },
-        { body: `One warning, hotshot: reach ${FAME_TO_WIN} FP without a comfortable lead and the sky splits open — the ROCK GOD descends as a final boss for EVERYONE. Win big or win together.` },
+        { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, 🎼 cadence resolutions, ✨ holding centre-stage Limelight a full turn, 🧠 acing rock trivia at event hexes.', 'EVERY one of those is multiplied by your crowd (up to ×2) — a deed in front of a full house is worth double. And if you\'re trailing badly, the underdog bonus quietly inflates your payouts up to ×2.5. The comeback is canon.'], anchor: 'fan-crowd' },
+        { body: `One warning, hotshot: reach ${FAME_TO_WIN} FP without a comfortable lead and the sky splits open — the ROCK GOD descends as a final boss for EVERYONE. Win big or win together.`, anchor: 'fame-bar' },
       ],
     },
     skill_unlock: {
       title: '🌳 Skill Unlocked!',
       pages: [
-        { body: 'New ability unlocked — the HC grind paid off. Skills are permanent: scale tones, amps, crew, combat upgrades, signature moves. Your spirit card wears the new badge; hover it to gloat over the details.' },
+        { body: 'New ability unlocked — the HC grind paid off. Skills are permanent: scale tones, amps, crew, combat upgrades, signature moves. Your spirit card wears the new badge; hover it to gloat over the details.', anchor: 'crew-gear' },
         { body: 'Now pick your NEXT target and keep the loop rolling: in-scale notes → HC → skill → repeat. Spirits who stop building around mid-game tend to become content in other people\'s highlight reels.', anchor: 'hc-bar' },
       ],
     },
@@ -1407,9 +1425,9 @@ function Game({ gameState, onReturnToLobby }) {
     edge: {
       title: '⚡ Dissonance Edge',
       pages: [
-        { body: 'You ended your track on a DISCORD — you\'re on the EDGE now. Drive up, Sustain down: full glass-cannon, and it shows on your card, so every rival can read the opening you just handed them. Bold. Let\'s see if it\'s the good kind of bold.' },
-        { body: 'Stay out another turn without resolving and the ride ESCALATES — more Drive, worse Sustain, and it keeps charging you HC and fans for the privilege. Getting into any fight while riding burns the stance, win or lose. The Edge is a bar tab: fun to run up, less fun to settle.' },
-        { body: 'The exit: end a track on your Root, 3rd, or 5th to RESOLVE — Sustain restored, a temp Drive kicker, and an HC payout scaled to how deep you rode. But the clock is real: miss the final turn\'s resolve and it all COLLAPSES — stance gone, fans walk, and you take a Vibe hit as a parting gift. Land the resolve. Be legend, not cautionary tale.' },
+        { body: 'You ended your track on a DISCORD — you\'re on the EDGE now. Drive up, Sustain down: full glass-cannon, and it shows on your card, so every rival can read the opening you just handed them. Bold. Let\'s see if it\'s the good kind of bold.', anchor: 'stat-knobs' },
+        { body: 'Stay out another turn without resolving and the ride ESCALATES — more Drive, worse Sustain, and it keeps charging you HC and fans for the privilege. Getting into any fight while riding burns the stance, win or lose. The Edge is a bar tab: fun to run up, less fun to settle.', anchor: 'hc-bar' },
+        { body: 'The exit: end a track on your Root, 3rd, or 5th to RESOLVE — Sustain restored, a temp Drive kicker, and an HC payout scaled to how deep you rode. But the clock is real: miss the final turn\'s resolve and it all COLLAPSES — stance gone, fans walk, and you take a Vibe hit as a parting gift. Land the resolve. Be legend, not cautionary tale.', anchor: 'commit-track' },
       ],
     },
   };
@@ -1494,6 +1512,12 @@ function Game({ gameState, onReturnToLobby }) {
   // 🎓 showTip runs from setTimeouts — a ref keeps its view of the Theory Tree
   // modal fresh (the closure's `upgradesPending` can be a render behind).
   useEffect(() => { upgradesPendingRef.current = upgradesPending; }, [upgradesPending]);
+  // 🎓 The Theory Tree first opens when the HC bar fills (the initial pick was
+  // replaced by the free Full Scale grant) — introduce the tree at that moment.
+  useEffect(() => {
+    if (upgradesPending > 0 && canAct && !acting?.cpu) showTip('skill_tree');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upgradesPending]);
   // 🎓 Flush tips that were queued while the Theory Tree modal was up — one at
   // a time (reruns as each closes), after a beat so the modal animates out.
   useEffect(() => {
@@ -3113,31 +3137,40 @@ function Game({ gameState, onReturnToLobby }) {
     }
   }
 
-  // ─── INITIAL SKILL PICK — open skill tree overlay at the very start of a spirit's first turn ───
-  // Triggers once per spirit when they have never chosen a skill target.
+  // ─── INITIAL SKILL — auto-grant THE FULL SCALE at the very start of a spirit's first turn ───
+  // The old flow opened the Theory Tree as the very first thing a player saw —
+  // dull AND confusing. Now every spirit starts with theory_major (the full
+  // Major scale) for free, no modal. The tree first opens when the HC bar
+  // fills (default threshold) — see the upgradesPending → UpgradeModal path.
   useEffect(() => {
     if (!acting) return;
-    // OWNERSHIP: only the client that controls the acting spirit may open the
-    // pick and write to its tree — remote clients would otherwise dispatch a
-    // duplicate NOTE_SHEET_PATCHED and relay it (desync). They receive the
-    // acting client's write via the ACTION relay instead.
+    // OWNERSHIP: only the client that controls the acting spirit may write to
+    // its tree — remote clients would otherwise dispatch a duplicate
+    // NOTE_SHEET_PATCHED and relay it (desync). They receive the acting
+    // client's write via the ACTION relay instead.
     if (!canAct) return;
     const ns = noteStates[acting.id] ?? {};
     const hasTarget   = !!ns.targetSkillId;
     const hasSkills   = (ns.unlockedSkills?.length ?? 0) > 0;
     const hasPending  = (ns.upgradesPending ?? 0) > 0;
     const alreadyPrompted = !!ns.initialPickDone;
-    // Only prompt once, and only if they have nothing yet
+    // Only grant once, and only if they have nothing yet
     if (!hasTarget && !hasSkills && !hasPending && !alreadyPrompted) {
       setNoteStates(prev => ({
         ...prev,
         [acting.id]: {
           ...prev[acting.id],
-          upgradesPending: 1,
+          unlockedSkills: [...(prev[acting.id]?.unlockedSkills ?? []), 'theory_major'],
           initialPickDone: true,
         }
       }));
-      setTimeout(() => showTip('skill_tree'), 400);
+      applySkillEffects(acting.id, 'theory_major'); // logs "THE FULL SCALE!" (no discord grants at this tier)
+      // 🎓 Welcome walkthrough for humans only (bots don't read), then the
+      // pivot tip queued so it appears right after the welcome card closes.
+      if (!acting.cpu) {
+        setTimeout(() => showTip('welcome'), 400);
+        if (!pendingTipsRef.current.includes('pivot')) pendingTipsRef.current.push('pivot');
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acting?.id]);
@@ -9077,7 +9110,7 @@ function Game({ gameState, onReturnToLobby }) {
         <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:17,color:"#f6ad55",letterSpacing:3,
           textShadow:"0 0 12px #f6ad5566, 0 0 28px #f6ad5522"}}>⚡ RLSW</span>
         <span style={{fontSize:10,color:"#3a5a7a"}}>v3.6</span>
-        <button onClick={() => setShowRiffbook(true)} title="The Riffbook — legendary riffs hidden in the note system"
+        <button onClick={() => setShowRiffbook(true)} data-tip-anchor="riffbook" title="The Riffbook — legendary riffs hidden in the note system"
           style={{fontFamily:'inherit', fontSize:9, padding:'2px 9px', cursor:'pointer',
             background:'#14110a', border:'1px solid #ffd70066', borderRadius:10, color:'#ffd700'}}>
           📖 RIFFBOOK {Object.keys(riffBook).length}/{RIFF_LIBRARY.length}
@@ -9457,7 +9490,7 @@ function Game({ gameState, onReturnToLobby }) {
                     <span style={{fontSize:8,width:22,textAlign:"right",color:"#ffd700",fontWeight:700}}>{ns.fame ?? 0}</span>
                   </div>
                   {/* 🎛️ Drive & Sustain come from the player's Chord Stack now (not a static sheet) */}
-                  <div style={{display:"flex",gap:9,marginTop:5,alignItems:"center"}}>
+                  <div data-tip-anchor="stat-knobs" style={{display:"flex",gap:9,marginTop:5,alignItems:"center"}}>
                     {/* boost = every live modifier on this stat, summed — pattern-boost tempDrive/
                         tempSustain PLUS the Dissonance Edge stage delta (edgeCombatMods), so the
                         dial always reflects the stat you'd actually fight with right now. */}
@@ -9573,7 +9606,7 @@ function Game({ gameState, onReturnToLobby }) {
                     transpose:       { icon:'🔄', name:'Transpose',       color:'#ffcc44', desc:'Pick any stock note as your new Root (during pivot) — one shot' },
                   };
                   return (
-                    <div style={{padding:'5px 8px',borderTop:`1px solid ${s.color}22`}}>
+                    <div data-tip-anchor="mod-cards" style={{padding:'5px 8px',borderTop:`1px solid ${s.color}22`}}>
                       <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:4}}>
                         <span style={{fontSize:7,color:'#3a5a7a',letterSpacing:2}}>MOD CARDS</span>
                         <span style={{flex:1,height:1,background:`linear-gradient(90deg, ${s.color}33, transparent)`}}/>
@@ -11587,7 +11620,8 @@ function Game({ gameState, onReturnToLobby }) {
                     fy: clamp(seat.y, 4, SVG_H - 4) });
                 }
                 return (
-                  <g key={`fans-${s.id}`} style={{pointerEvents:"none"}}>
+                  <g key={`fans-${s.id}`} data-tip-anchor={s.id === acting?.id ? 'fan-crowd' : undefined}
+                     style={{pointerEvents:"none"}}>
                     {/* tiers — curved platform bands, back to front, tapering into the corner */}
                     {[3, 2, 1, 0].map(rw => (
                       <path key={`tier-${rw}`}
