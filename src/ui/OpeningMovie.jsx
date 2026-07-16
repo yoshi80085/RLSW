@@ -7,30 +7,41 @@ import metalnessMonster from "../standees/Metalness_Monster.png";
 import crowdBlue from "../crowd_blue.png";
 import crowdPink from "../crowd_pink.png";
 import rlMovieSong from "../rl_movie_song.mp3";
+import thunderSfx from "../thunder.mp3";
+import rumbleSfx from "../rumble.mp3";
 
-/* ─── 🎬 OPENING MOVIE ──────────────────────────────────────────────────────
+/* ─── 🎬 OPENING MOVIE (v2) ─────────────────────────────────────────────────
  * Skippable cinematic before Spirit Select. Any key/click/tap skips.
  * Pure presentation — no engine imports, no game state.
  * Owner tunes the movie by editing the BEATS array.
+ *
+ * STRUCTURE:
+ *   Beats 0–3 (0–30s): blank-screen intro. A sparse trail of hexes reveals
+ *     (~10, receding into the distance), then each Spirit gets a partial
+ *     silhouette reveal — camera panning L/R (alternating), cutting to the
+ *     next. Thunder pulses throughout. Story captions roll the whole time.
+ *   Beat 4 (30s): the floating board island PUNCHES IN as the fans enter
+ *     the story. From here the original island cinematic plays unchanged —
+ *     crowds, mega bolt, rock gods, heartbeat, dissolve, title blast.
  * ────────────────────────────────────────────────────────────────────────── */
 
 // ── BEAT TIMELINE ───────────────────────────────────────────────────────────
-// camFrom/camTo: [scale, translateX%, translateY%]
+// camFrom/camTo: [scale, translateX%, translateY%] (island camera, beat 4+)
 const BEATS = [
   { id: 0, start: 0,     end: 3000,  text: '',
-    camFrom: [1.0, 0, 0], camTo: [1.0, 0, 0], cues: ['reveal'] },
+    camFrom: [1.0, 0, 0], camTo: [1.0, 0, 0], cues: ['hex-reveal'] },
   { id: 1, start: 3000,  end: 16000,
     text: 'From the furthest corners of the Cosmos, Spirits arise — each born from a unique Musical Realm, each Dimension carrying its own Space-Time signature and genre.',
-    camFrom: [1.0, 0, 0], camTo: [1.12, 0, -2], cues: ['clouds-start', 'spirits-enter'] },
+    camFrom: [1.0, 0, 0], camTo: [1.0, 0, 0], cues: ['spirit-intros'] },
   { id: 2, start: 16000, end: 26000,
     text: 'These Spirits have mastered their music completely. Their instruments are their weapons. Their sound is their power.',
-    camFrom: [1.12, 0, -2], camTo: [1.25, 0, -3], cues: ['instruments-flash'] },
+    camFrom: [1.0, 0, 0], camTo: [1.0, 0, 0], cues: ['spirit-intros'] },
   { id: 3, start: 26000, end: 30000,
     text: 'Four realms. Four sounds. One stage.',
-    camFrom: [1.25, 0, -3], camTo: [1.22, 0, -2], cues: ['pulse-unison'] },
+    camFrom: [1.0, 0, 0], camTo: [1.0, 0, 0], cues: ['pulse-unison'] },
   { id: 4, start: 30000, end: 42000,
     text: 'For eons, Genre Gate-keepers and Purists bickered endlessly about whose music was the greatest.',
-    camFrom: [1.22, -4, -2], camTo: [1.22, 4, -2], cues: ['crowds-enter'] },
+    camFrom: [1.22, -4, -2], camTo: [1.22, 4, -2], cues: ['island-punch', 'crowds-enter'] },
   { id: 5, start: 42000, end: 50000,
     text: 'To settle the debate once and for all, The Gods deployed a concert stage at the very edge of the Cosmos.',
     camFrom: [1.08, 0, -1], camTo: [1.12, 0, -2], cues: ['mega-bolt', 'rock-gods-enter'] },
@@ -41,10 +52,64 @@ const BEATS = [
     text: 'The amps are humming. The Cosmos is listening.',
     camFrom: [1.20, 0, -3], camTo: [1.20, 0, -3], cues: ['dissolve', 'shake'] },
   { id: 8, start: 66000, end: 72000, text: '',
-    camFrom: [1.20, 0, 3], camTo: [1.20, 0, 3], cues: ['title-blast'] },
+    camFrom: [1.20, 0, 1], camTo: [1.20, 0, 1], cues: ['title-blast'] },
 ];
 
 const TOTAL_MS = 72000;
+const ISLAND_START_MS = 30000; // beat 4 — island punches in here
+
+// ── SPIRIT INTRO SEGMENTS (beats 1–2, alternating pan direction) ──
+const SPIRIT_INTROS = [
+  { start: 3000,  end: 8750,  panRight: true  },
+  { start: 8750,  end: 14500, panRight: false },
+  { start: 14500, end: 20250, panRight: true  },
+  { start: 20250, end: 26000, panRight: false },
+];
+
+// ── SPIRIT CONFIG (intro reveals + towering silhouettes) ──
+const SPIRITS = [
+  { id: 'ronin', img: cosmicRonin,      color: '#fbbf24', glowColor: '#fbbf2488' },
+  { id: 'glam',  img: glamarchy,         color: '#f472b6', glowColor: '#f472b688' },
+  { id: 'inter', img: intergalactic0,    color: '#2dd4bf', glowColor: '#2dd4bf88' },
+  { id: 'metal', img: metalnessMonster,  color: '#ef4444', glowColor: '#ef444488' },
+];
+
+// ── INTRO HEXES — sparse trail receding into the distance ──
+// Front hexes are big/low/bright; they shrink, rise, and dim "going back".
+// Reveal order is shuffled (deterministic) so they pop in a random pattern.
+const INTRO_HEXES = (() => {
+  const rng = seededRand(7);
+  const hexes = [];
+  const N = 10;
+  for (let i = 0; i < N; i++) {
+    const t = i / (N - 1);                      // 0 = front … 1 = far back
+    const size = 8.5 - t * 6;                   // 8.5% → 2.5%
+    // Rejection-sample the position so hexes never overlap each other
+    let x = 50, y = 50;
+    for (let tries = 0; tries < 80; tries++) {
+      x = 18 + t * 58 + (rng() - 0.5) * 26;     // wanders across the screen
+      y = 76 - t * 44 + (rng() - 0.5) * 10;     // low front → high back
+      const clear = hexes.every(h =>
+        Math.hypot(x - h.x, y - h.y) > (size + h.size) * 1.25);
+      if (clear) break;
+    }
+    hexes.push({ x, y, size, dim: 0.55 - t * 0.35 });
+  }
+  // Shuffled reveal order
+  const order = hexes.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return hexes.map((h, i) => ({ ...h, revealIdx: order.indexOf(i) }));
+})();
+
+function hexCorners(cx, cy, size) {
+  return Array.from({ length: 6 }, (_, i) => {
+    const a = (Math.PI / 180) * (60 * i);
+    return `${(cx + size * Math.cos(a)).toFixed(2)},${(cy + size * 0.86 * Math.sin(a)).toFixed(2)}`;
+  }).join(' ');
+}
 
 // ── CLOUD PULSE REGIONS (% of image) ──
 const CLOUD_REGIONS = [
@@ -57,28 +122,12 @@ const CLOUD_REGIONS = [
   { id: 'br', x: 76, y: 87, color: '#818cf8' },
 ];
 
-// ── SPIRIT CONFIG ──
-const SPIRIT_CONFIG = [
-  { id: 'ronin', img: cosmicRonin,      color: '#fbbf24', x: 18, y: 14, delay: 0 },
-  { id: 'glam',  img: glamarchy,         color: '#f472b6', x: 78, y: 15, delay: 1.2 },
-  { id: 'inter', img: intergalactic0,    color: '#2dd4bf', x: 15, y: 78, delay: 2.4 },
-  { id: 'metal', img: metalnessMonster,  color: '#ef4444', x: 80, y: 80, delay: 3.6 },
-];
-
-// ── INSTRUMENT SVG PATHS (viewBox 0 0 100 100) ──
-const INSTRUMENT_PATHS = [
-  'M50 5L35 40L20 90L30 92L42 52L50 56L58 52L70 92L80 90L65 40ZM48 56L48 98L52 98L52 56ZM44 98L56 98L56 95L44 95Z',
-  'M10 35L10 65L70 65L70 35ZM70 45L90 30L92 35L72 50ZM18 40L18 60L22 60L22 40ZM26 40L26 60L30 60L30 40ZM34 40L34 60L38 60L38 40ZM42 40L42 60L46 60L46 40ZM50 40L50 60L54 60L54 40ZM58 40L58 60L62 60L62 40Z',
-  'M25 55Q25 42 50 42Q75 42 75 55L75 78Q75 88 50 88Q25 88 25 78ZM15 28L42 52M85 28L58 52M15 25L19 22M81 22L85 25M35 48Q35 38 50 38Q65 38 65 48',
-  'M44 8Q44 2 50 2Q56 2 56 8L56 24Q56 30 50 30Q44 30 44 24ZM38 18L34 18M62 18L66 18M48 30L48 36L42 38L58 38L52 36L52 30M49 38L49 94L51 94L51 38M40 94L60 94L60 97L40 97Z',
-];
-
 // ── TOWERING SILHOUETTES (behind island, beat 5–7) ──
 const TOWER_CONFIG = [
-  { id: 'tw-ronin', img: cosmicRonin,      color: '#fbbf24', x: 24, y: 28 },
-  { id: 'tw-glam',  img: glamarchy,         color: '#f472b6', x: 38, y: 26 },
-  { id: 'tw-inter', img: intergalactic0,    color: '#2dd4bf', x: 52, y: 26 },
-  { id: 'tw-metal', img: metalnessMonster,  color: '#ef4444', x: 66, y: 28 },
+  { id: 'tw-ronin', img: cosmicRonin,      color: '#fbbf24', x: 24, y: 28, sc: 1 },
+  { id: 'tw-glam',  img: glamarchy,         color: '#f472b6', x: 38, y: 26, sc: 0.65 },
+  { id: 'tw-inter', img: intergalactic0,    color: '#2dd4bf', x: 52, y: 26, sc: 1 },
+  { id: 'tw-metal', img: metalnessMonster,  color: '#ef4444', x: 66, y: 28, sc: 1 },
 ];
 
 // ── UTILITIES ───────────────────────────────────────────────────────────────
@@ -107,9 +156,33 @@ function generateBoltPoints(x1, y1, x2, y2, segments, jitter, seed) {
 const CINE_STYLES = `
   @keyframes om-cloud-pulse { 0%,100%{opacity:0}50%{opacity:0.45} }
   @keyframes om-bolt-flicker { 0%{opacity:1}20%{opacity:0}40%{opacity:1}60%{opacity:0}100%{opacity:0} }
-  @keyframes om-spirit-enter { from{opacity:0;transform:scale(.7) translateY(20px)}to{opacity:1;transform:scale(1) translateY(0)} }
-  @keyframes om-spirit-bob { 0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)} }
-  @keyframes om-inst-flash { 0%{opacity:0;transform:scale(.5)}30%{opacity:1;transform:scale(1.1)}100%{opacity:1;transform:scale(1)} }
+  @keyframes om-hex-pop {
+    0%   { opacity:0; transform:scale(0.3); }
+    60%  { opacity:1; transform:scale(1.08); }
+    100% { opacity:1; transform:scale(1); }
+  }
+  @keyframes om-spirit-slide-r { 0%{transform:translateX(-16%)}100%{transform:translateX(16%)} }
+  @keyframes om-spirit-slide-l { 0%{transform:translateX(16%)}100%{transform:translateX(-16%)} }
+  @keyframes om-spirit-fade {
+    0%   { opacity:0; }
+    22%  { opacity:0.9; }
+    82%  { opacity:0.9; }
+    100% { opacity:0; }
+  }
+  @keyframes om-unison-pulse {
+    0%   { opacity:0; transform:scale(0.92); }
+    30%  { opacity:0.95; transform:scale(1); }
+    55%  { transform:scale(1.06); filter:brightness(1.4); }
+    75%  { transform:scale(1); filter:brightness(1); }
+    100% { opacity:0.95; transform:scale(1); }
+  }
+  @keyframes om-island-punch {
+    0%   { opacity:0; transform:scale(2.6); filter:brightness(2.2) blur(10px); }
+    35%  { opacity:1; transform:scale(1.06); filter:brightness(1.25) blur(1px); }
+    60%  { transform:scale(0.985); filter:brightness(1) blur(0); }
+    80%  { transform:scale(1.005); }
+    100% { opacity:1; transform:scale(1); filter:brightness(1); }
+  }
   @keyframes om-title-slam { 0%{opacity:0;transform:scale(1.8) translateY(-20px);filter:blur(8px)}15%{opacity:1;transform:scale(1.05) translateY(2px);filter:blur(0)}30%{transform:scale(.98) translateY(-1px)}50%,100%{transform:scale(1)} }
   @keyframes om-subtitle-in { from{opacity:0;letter-spacing:14px}to{opacity:1;letter-spacing:6px} }
   @keyframes om-spark { 0%{opacity:1;transform:scaleX(1)}100%{opacity:0;transform:scaleX(.3)} }
@@ -140,8 +213,6 @@ const CINE_STYLES = `
 const STORYBOARD = [
   { id: 'cinematic', durMs: TOTAL_MS, cinematic: true, motion: 'hold',
     image: null, title: '', caption: '' },
-  { id: 'logo', durMs: 3500, motion: 'hold', image: null,
-    title: '⚡ RLSW', caption: 'ROCK LEGENDS: SPIRIT WARS' },
 ];
 
 const XFADE_MS = 700;
@@ -164,8 +235,20 @@ function CinematicLayer({ visible }) {
   const rafRef = useRef(null);
   const glitchTimerRef = useRef(null);
   const [beat, setBeat] = useState(-1);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [titleBlast, setTitleBlast] = useState(false);
-  const [revealed, setRevealed] = useState(false);
+  const fireThunderRef = useRef(null);  // set by the thunder effect
+  const rumbleRef = useRef(null);
+
+  // ── SFX helper — fire-and-forget, fails silently if autoplay blocked ──
+  const playSfx = (src, vol = 0.6) => {
+    try {
+      const a = new Audio(src);
+      a.volume = vol;
+      a.play().catch(() => {});
+      return a;
+    } catch { return null; }
+  };
 
   // ── BGM: play opening song, fail silently if autoplay blocked ──
   const audioRef = useRef(null);
@@ -176,7 +259,10 @@ function CinematicLayer({ visible }) {
     audio.volume = 0.7;
     audioRef.current = audio;
     audio.play().catch(() => {});
-    return () => { audio.pause(); audio.currentTime = 0; };
+    return () => {
+      audio.pause(); audio.currentTime = 0;
+      if (rumbleRef.current) { rumbleRef.current.pause(); rumbleRef.current = null; }
+    };
   }, [visible]);
 
   // Pre-generate lightning bolt polyline points
@@ -198,6 +284,7 @@ function CinematicLayer({ visible }) {
     const tick = (now) => {
       const elapsed = now - startRef.current;
       if (elapsed > TOTAL_MS) return;
+      setElapsedMs(elapsed);
 
       // Current beat
       let b = 0;
@@ -207,16 +294,27 @@ function CinematicLayer({ visible }) {
       if (b !== prevBeat) {
         prevBeat = b;
         setBeat(b);
-        if (b === 0) setTimeout(() => setRevealed(true), 200);
-        if (b === 8) setTitleBlast(true);
-        // Flash on beat 5 and 8
-        if ((b === 5 || b === 8) && flashRef.current) {
-          flashRef.current.style.opacity = b === 8 ? '0.25' : '0.15';
+        // Beat 8: ROCK LEGENDS reveal — the one and only thunder crack
+        if (b === 8) {
+          setTitleBlast(true);
+          playSfx(thunderSfx, 0.8);
+        }
+        // Intro beats 1–3: words flash on with a silent flash pulse
+        if (b >= 1 && b <= 3 && fireThunderRef.current) {
+          fireThunderRef.current();
+        }
+        // Beat 7: the shake — start the rumble
+        if (b === 7) {
+          rumbleRef.current = playSfx(rumbleSfx, 0.85);
+        }
+        // Flash on beat 4 (island punch), 5 (mega bolt) and 8 (title)
+        if ((b === 4 || b === 5 || b === 8) && flashRef.current) {
+          flashRef.current.style.opacity = b === 8 ? '0.25' : b === 4 ? '0.2' : '0.15';
           setTimeout(() => { if (flashRef.current) flashRef.current.style.opacity = '0'; }, 90);
         }
       }
 
-      // Camera interpolation
+      // Camera interpolation (island layer, beat 4+)
       const bt = BEATS[b];
       const progress = Math.min(1, (elapsed - bt.start) / (bt.end - bt.start));
       const t = b === 8 ? 1 : easeInOut(progress);
@@ -242,7 +340,30 @@ function CinematicLayer({ visible }) {
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [visible]);
 
-  // ── Glitch bursts ──
+  // ── Flash pulses (intro phase, beats 0–3) — silent, visual only ──
+  useEffect(() => {
+    if (!visible) return;
+    const rng = seededRand(Date.now());
+    let timer;
+    const strike = () => {
+      if (flashRef.current) {
+        flashRef.current.style.opacity = '0.1';
+        setTimeout(() => { if (flashRef.current) flashRef.current.style.opacity = '0'; }, 70);
+      }
+    };
+    fireThunderRef.current = strike; // beat changes fire this when words flash on
+    const fire = () => {
+      const elapsed = startRef.current ? performance.now() - startRef.current : 0;
+      if (elapsed < ISLAND_START_MS) {
+        strike();
+        timer = setTimeout(fire, 1600 + rng() * 3200);
+      }
+    };
+    timer = setTimeout(fire, 1400);
+    return () => { clearTimeout(timer); fireThunderRef.current = null; };
+  }, [visible]);
+
+  // ── Glitch bursts (island phase only, beat 4+) ──
   useEffect(() => {
     if (!visible) return;
     const rng = seededRand(Date.now());
@@ -269,34 +390,46 @@ function CinematicLayer({ visible }) {
 
     const schedule = () => {
       const elapsed = startRef.current ? performance.now() - startRef.current : 0;
-      const ramp = elapsed > 50000 ? 0.3 : elapsed > 30000 ? 0.6 : 1;
+      const ramp = elapsed > 50000 ? 0.3 : elapsed > 40000 ? 0.6 : 1;
       glitchTimerRef.current = setTimeout(() => {
-        fireBurst();
+        const el = startRef.current ? performance.now() - startRef.current : 0;
+        if (el >= ISLAND_START_MS) fireBurst(); // only glitch once island is up
         schedule();
       }, (2000 + rng() * 4000) * ramp);
     };
 
-    // Initial reveal: 2 quick bursts
-    setTimeout(() => { fireBurst(); setTimeout(fireBurst, 300); }, 500);
     schedule();
     return () => clearTimeout(glitchTimerRef.current);
   }, [visible]);
 
   // ── Derived visibility ──
-  const showSpirits = beat >= 1 && beat <= 7;
-  const showInstruments = beat >= 2 && beat <= 7;
+  const introPhase = beat >= 0 && beat <= 3;         // blank-screen intro
+  const islandUp = beat >= 4;                        // island cinematic
   const showCrowds = beat >= 4 && beat <= 7;
   const showRockGods = beat >= 5 && beat <= 7;
   const dissolving = beat === 7;
-  const showSkyBolts = beat === 5 || beat === 8;
-  const showIslandBolts = beat >= 1;
+  const showSkyBolts = beat === 8; // lightning strikes only at the title reveal
   const heartbeat = beat === 6;
-  const pulsing = beat >= 1;
   const caption = beat >= 0 && beat < BEATS.length ? BEATS[beat].text : '';
+
+  // Current Spirit intro segment (beats 1–2)
+  let introIdx = -1;
+  for (let i = 0; i < SPIRIT_INTROS.length; i++) {
+    if (elapsedMs >= SPIRIT_INTROS[i].start && elapsedMs < SPIRIT_INTROS[i].end) { introIdx = i; break; }
+  }
+  const intro = introIdx >= 0 ? SPIRIT_INTROS[introIdx] : null;
+  const introSpirit = introIdx >= 0 ? SPIRITS[introIdx] : null;
+
+  // How many intro hexes are revealed (staggered across beat 0, persist after)
+  const hexCount = introPhase
+    ? Math.min(INTRO_HEXES.length, Math.floor((elapsedMs / 2800) * INTRO_HEXES.length) + 1)
+    : 0;
 
   return (
     <div style={{
-      position: 'absolute', inset: 0, overflow: 'hidden', background: '#050810',
+      // #131612 = the exact edge color of opening_island.png, so the image
+      // boundary dissolves into the backdrop with no visible seam.
+      position: 'absolute', inset: 0, overflow: 'hidden', background: '#131612',
     }}>
       {/* ── SVG filter defs ── */}
       <svg width="0" height="0" style={{ position: 'absolute' }}>
@@ -312,10 +445,88 @@ function CinematicLayer({ visible }) {
         </defs>
       </svg>
 
-      {/* ── CAMERA LAYER (Ken Burns) ── */}
+      {/* ═══ INTRO PHASE (beats 0–3): sparse hex trail ═══ */}
+      {introPhase && (
+        <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" style={{
+          position: 'absolute', inset: 0, width: '100%', height: '100%',
+          pointerEvents: 'none',
+        }}>
+          {INTRO_HEXES.map((h, i) => h.revealIdx < hexCount && (
+            <polygon key={i}
+              points={hexCorners(h.x, h.y, h.size)}
+              fill="#ff2fd608"
+              stroke="#ff2fd6"
+              strokeOpacity={h.dim}
+              strokeWidth={0.18}
+              filter="url(#om-glow)"
+              style={{
+                transformOrigin: `${h.x}% ${h.y}%`,
+                animation: 'om-hex-pop 700ms ease-out both',
+              }}
+            />
+          ))}
+        </svg>
+      )}
+
+      {/* ═══ INTRO PHASE: Spirit silhouette pan reveals (beats 1–2) ═══ */}
+      {intro && introSpirit && (
+        <div key={`intro-${introIdx}`} style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+        }}>
+          {/* Atmospheric realm-color glow */}
+          <div style={{
+            position: 'absolute', top: '8%', bottom: '8%',
+            left: intro.panRight ? '38%' : '8%', width: '54%',
+            background: `radial-gradient(ellipse at center, ${introSpirit.glowColor} 0%, transparent 70%)`,
+            mixBlendMode: 'screen', opacity: 0.28,
+            animation: `om-spirit-fade ${intro.end - intro.start}ms ease-in-out both`,
+          }}/>
+          {/* Partial silhouette, panning */}
+          <div style={{
+            position: 'absolute', top: '4%', bottom: '4%',
+            left: intro.panRight ? '52%' : '-8%', width: '56%',
+            animation: `${intro.panRight ? 'om-spirit-slide-r' : 'om-spirit-slide-l'} ${intro.end - intro.start}ms ease-in-out both`,
+          }}>
+            <div style={{
+              width: '100%', height: '100%',
+              animation: `om-spirit-fade ${intro.end - intro.start}ms ease-in-out both`,
+            }}>
+              <img src={introSpirit.img} alt="" draggable={false} style={{
+                width: '100%', height: '100%', objectFit: 'contain',
+                filter: `brightness(0) drop-shadow(0 0 25px ${introSpirit.color}) drop-shadow(0 0 55px ${introSpirit.glowColor})`,
+              }}/>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ INTRO PHASE: unison pulse (beat 3 — "Four realms…") ═══ */}
+      {beat === 3 && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: '3%', pointerEvents: 'none',
+        }}>
+          {SPIRITS.map((sp, i) => (
+            <div key={sp.id} style={{
+              width: '14%', height: '55%',
+              animation: `om-unison-pulse 2.6s ease-out ${i * 0.12}s both`,
+            }}>
+              <img src={sp.img} alt="" draggable={false} style={{
+                width: '100%', height: '100%', objectFit: 'contain',
+                filter: `brightness(0) drop-shadow(0 0 15px ${sp.color})`,
+              }}/>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── ISLAND CAMERA LAYER (Ken Burns, beat 4+) ── */}
       <div style={{
         position: 'absolute', inset: '-25%',
-        opacity: revealed ? 1 : 0, transition: 'opacity 1.5s ease-in',
+        opacity: islandUp ? 1 : 0,
+        pointerEvents: 'none',
+        animation: islandUp ? 'om-island-punch 1.6s cubic-bezier(.16,1,.3,1) both' : 'none',
       }}>
         <div ref={camRef} style={{
           position: 'absolute', inset: 0,
@@ -344,7 +555,7 @@ function CinematicLayer({ visible }) {
           }}/>
 
           {/* ── Cloud pulses ── */}
-          {pulsing && CLOUD_REGIONS.map((c, i) => (
+          {islandUp && CLOUD_REGIONS.map((c, i) => (
             <div key={c.id} style={{
               position: 'absolute',
               left: `${c.x - 8}%`, top: `${c.y - 8}%`,
@@ -357,7 +568,7 @@ function CinematicLayer({ visible }) {
           ))}
 
           {/* ── Island lightning traces ── */}
-          {showIslandBolts && (
+          {islandUp && (
             <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" style={{
               position: 'absolute', inset: 0,
               width: '100%', height: '100%', pointerEvents: 'none',
@@ -371,50 +582,7 @@ function CinematicLayer({ visible }) {
             </svg>
           )}
 
-          {/* ── Spirit silhouettes ── */}
-          {SPIRIT_CONFIG.map((sp, i) => (
-            <div key={sp.id} style={{
-              position: 'absolute',
-              left: `${sp.x - 4}%`, top: `${sp.y - 9}%`,
-              width: '8%', height: '18%',
-              opacity: !showSpirits ? 0 : dissolving ? 0 : 1,
-              transition: dissolving ? 'opacity 2s ease-out, filter 2s ease-out' : 'none',
-              animation: showSpirits && !dissolving
-                ? `om-spirit-enter 1.2s ease-out ${sp.delay}s both, om-spirit-bob 3s ease-in-out ${4 + i * 0.5}s infinite`
-                : 'none',
-              filter: dissolving
-                ? `brightness(0) drop-shadow(0 0 30px ${sp.color}) blur(8px)`
-                : `brightness(0) drop-shadow(0 0 12px ${sp.color})`,
-              pointerEvents: 'none',
-            }}>
-              <img src={sp.img} alt="" style={{
-                width: '100%', height: '100%', objectFit: 'contain',
-              }}/>
-            </div>
-          ))}
-
-          {/* ── Instrument silhouettes ── */}
-          {SPIRIT_CONFIG.map((sp, i) => (
-            <div key={`inst-${sp.id}`} style={{
-              position: 'absolute',
-              left: `${sp.x + (sp.x > 50 ? -8 : 5)}%`,
-              top: `${sp.y - 3}%`,
-              width: '5%', height: '10%',
-              opacity: !showInstruments ? 0 : dissolving ? 0 : 1,
-              transition: dissolving ? 'opacity 2s ease-out' : 'none',
-              animation: showInstruments && !dissolving
-                ? `om-inst-flash 0.6s ease-out ${sp.delay + 0.3}s both`
-                : 'none',
-              pointerEvents: 'none',
-            }}>
-              <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
-                <path d={INSTRUMENT_PATHS[i]} fill={sp.color} opacity="0.9"
-                  filter="url(#om-glow)"/>
-              </svg>
-            </div>
-          ))}
-
-          {/* ── Crowd silhouettes ── */}
+          {/* ── Crowd silhouettes (the fans — beat 4) ── */}
           {[
             { img: crowdBlue, color: '#60a5fa', x: 8,  y: 42, flip: false },
             { img: crowdPink, color: '#f472b6', x: 62, y: 48, flip: true },
@@ -446,6 +614,8 @@ function CinematicLayer({ visible }) {
               opacity: !showRockGods ? 0 : dissolving ? 0 : 0.7,
               transition: dissolving ? 'opacity 2s ease-out' : 'opacity 2s ease-in',
               filter: `brightness(0) drop-shadow(0 0 18px ${tw.color})`,
+              transform: tw.sc !== 1 ? `scale(${tw.sc})` : 'none',
+              transformOrigin: 'bottom center',
               pointerEvents: 'none',
             }}>
               <img src={tw.img} alt="" style={{
@@ -466,35 +636,39 @@ function CinematicLayer({ visible }) {
             }}/>
           )}
 
-          {/* ── Sky lightning bolts (beat 5 & 8) ── */}
+          {/* ── Sky lightning bolts (beat 8 — ROCK LEGENDS reveal only) ── */}
           {showSkyBolts && (
             <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" style={{
               position: 'absolute', inset: 0,
               width: '100%', height: '100%', pointerEvents: 'none',
             }}>
-              <polyline
-                points={beat === 8 ? bolts.current.mega : bolts.current.sky1}
+              <polyline points={bolts.current.mega}
                 fill="none" stroke="white" strokeWidth="0.7"
                 filter="url(#om-glow-lg)"
                 style={{ animation: 'om-bolt-flicker 300ms linear forwards' }}/>
-              {beat === 5 && (<>
-                <polyline points={bolts.current.sky2} fill="none"
-                  stroke="#c084fc" strokeWidth="0.5" filter="url(#om-glow)"
-                  style={{ animation: 'om-bolt-flicker 300ms linear 80ms forwards' }}/>
-                <polyline points={bolts.current.sky3} fill="none"
-                  stroke="#60a5fa" strokeWidth="0.4" filter="url(#om-glow)"
-                  style={{ animation: 'om-bolt-flicker 300ms linear 160ms forwards' }}/>
-              </>)}
+              <polyline points={bolts.current.sky2} fill="none"
+                stroke="#c084fc" strokeWidth="0.5" filter="url(#om-glow)"
+                style={{ animation: 'om-bolt-flicker 300ms linear 80ms forwards' }}/>
+              <polyline points={bolts.current.sky3} fill="none"
+                stroke="#60a5fa" strokeWidth="0.4" filter="url(#om-glow)"
+                style={{ animation: 'om-bolt-flicker 300ms linear 160ms forwards' }}/>
             </svg>
           )}
         </div>{/* end camRef */}
       </div>{/* end camera layer */}
 
+      {/* ── Edge vignette (island phase) — melts the image border into the bg ── */}
+      {islandUp && (
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: 'radial-gradient(ellipse at center, transparent 48%, #131612 96%)',
+        }}/>
+      )}
+
       {/* ── Scanline overlay (always on) ── */}
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
         background: 'repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(0,0,0,0.05) 2px, rgba(0,0,0,0.05) 3px)',
-        opacity: revealed ? 1 : 0, transition: 'opacity 2s ease',
       }}/>
 
       {/* ── Glitch layer A (red) ── */}
@@ -742,7 +916,7 @@ export default function OpeningMovie({ onDone }) {
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, background: '#050810',
+      position: 'fixed', inset: 0, background: '#131612',
       overflow: 'hidden', cursor: 'pointer', zIndex: 50,
       opacity: outro ? 0 : 1, transition: `opacity ${OUTRO_MS}ms ease-in`,
     }}>

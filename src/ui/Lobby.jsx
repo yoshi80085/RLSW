@@ -3,6 +3,11 @@ import { SPIRIT_DEFS, SPIRIT_OPTIONS, ROSTER_ORDER, UNLOCKED_DEFAULT } from "../
 import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "../data/corners.js";
 import { cornerFacing } from "../board/boardHelpers.js";
 import { makeNetClient } from "../net/client.js";
+import menuSong1 from "../Menu_song_1.mp3";
+import menuSong2 from "../Menu_song_2.mp3";
+import menuSong3 from "../Menu_song_3.mp3";
+
+const MENU_SONGS = [menuSong1, menuSong2, menuSong3];
 
 export function Lobby({ onStart, onTutorial }) {
   const [playerCount, setPlayerCount] = useState(null);
@@ -27,6 +32,23 @@ export function Lobby({ onStart, onTutorial }) {
   const [playerName, setPlayerName] = useState(() => { try{return localStorage.getItem("rlsw.net.name")??"";}catch{return"";} });
   const [joinCode, setJoinCode] = useState("");
   const transitioningRef = useRef(false);
+  const menuAudioRef = useRef(null);
+  const menuSongStarted = useRef(false);
+  // ── Menu music: pick a random song when the lobby becomes active ──
+  useEffect(() => {
+    const active = playerCount !== null || netStatus === "in-room";
+    if (!active || menuSongStarted.current) return;
+    menuSongStarted.current = true;
+    const src = MENU_SONGS[Math.floor(Math.random() * MENU_SONGS.length)];
+    const audio = new Audio(src);
+    audio.loop = true;
+    audio.volume = 0.45;
+    audio.play().catch(() => {});
+    menuAudioRef.current = audio;
+  }, [playerCount, netStatus]);
+  useEffect(() => () => {
+    if (menuAudioRef.current) { menuAudioRef.current.pause(); menuAudioRef.current = null; }
+  }, []);
   useEffect(()=>()=>{if(!transitioningRef.current)netClient?.close();},[netClient]);
   useEffect(()=>{if(!netClient)return;return netClient.on("GAME_STARTED",f=>{transitioningRef.current=true;const m=f.seats.find(s=>s.seatId===netClient.seatId);onStart({...f.config,seed:f.seed,net:{client:netClient,seatId:netClient.seatId,seats:f.seats,mySpiritId:m?.spiritId??null,isHost:netClient.seatId===netRoom?.hostSeatId}});});},[netClient,onStart]);
   useEffect(()=>{if(!netClient)return;return netClient.on("CATCH_UP",f=>{transitioningRef.current=true;const m=f.seats.find(s=>s.seatId===netClient.seatId);onStart({...f.config,seed:f.seed,net:{client:netClient,seatId:netClient.seatId,seats:f.seats,mySpiritId:m?.spiritId??null,spectator:netClient.spectator,isHost:netClient.seatId===netRoom?.hostSeatId},catchUp:{log:f.log,logLines:f.logLines}});});},[netClient,onStart]);
