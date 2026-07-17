@@ -128,7 +128,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                       }
                     </div>
                     <div style={{fontSize:8, color:'#3a5a7a', marginTop:2}}>
-                      {acting.name} · pick a skill to work toward — it unlocks AUTOMATICALLY once your Harmonic Charge fills
+                      {acting.name} · pick a skill to work toward — it unlocks AUTOMATICALLY once your Decibills fill
                     </div>
                   </div>
                   <button onClick={() => setNoteStates(prev => ({
@@ -253,7 +253,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                             border:`1px solid ${owned||isPending ? `${routeDef.color}44` : '#ffcc4433'}`,
                             borderRadius:4, padding:'3px 8px', marginTop:1,
                           }}>
-                            {owned||isPending ? '✓' : `${sk.hcCost} HC`}
+                            {owned||isPending ? '✓' : `${sk.dbCost} DB`}
                           </div>
                         </div>
                       </button>
@@ -346,7 +346,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                                   border:`1px solid ${owned||isPending ? `${chainColor}33` : '#ffcc4433'}`,
                                   borderRadius:4, padding:'2px 7px',
                                 }}>
-                                  {owned||isPending ? '✓' : `${sk.hcCost} HC`}
+                                  {owned||isPending ? '✓' : `${sk.dbCost} DB`}
                                 </div>
                               </div>
                             </button>
@@ -362,7 +362,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
         );
       })()}
 
-      {/* (legacy purchase modal removed — skill picks set a target path; HC auto-unlocks) */}
+      {/* (legacy purchase modal removed — skill picks set a target path; DB auto-unlocks) */}
 
   </>);
 }

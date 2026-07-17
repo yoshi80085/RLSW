@@ -370,20 +370,20 @@ function TutSection_HarmonicCharge() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        <span style={{color:"#ffcc44"}}>Harmonic Charge</span> (HC) is what clean playing
+        <span style={{color:"#ffcc44"}}>Decibills</span> (DB) is what clean playing
         earns you — the currency you bank toward <span style={{color:"#44ffaa"}}>upgrades</span>.
         End your tracks on strong intervals and string together tidy, in-scale patterns to
         rack up points; a Dischord note just trims a single point off the track. Fill the meter and you
-        cash it in for a new skill. (Your attack <em>die</em> comes from Amps, not HC — see the next tab.)
+        cash it in for a new skill. (Your attack <em>die</em> comes from Amps, not DB — see the next tab.)
       </p>
 
       {/* Upgrade threshold */}
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:10}}>HOW HC BECOMES POWER</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:10}}>HOW DB BECOMES POWER</div>
         <div style={{display:"flex", flexDirection:"column", gap:7}}>
           {[
-            {step:"1", color:"#88ffcc", text:"Earn HC points from clean, in-scale play (see below)."},
-            {step:"2", color:"#ffcc44", text:"Set a target skill in the upgrade tree — each costs 8 to 20 HC."},
+            {step:"1", color:"#88ffcc", text:"Earn DB from clean, in-scale play (see below)."},
+            {step:"2", color:"#ffcc44", text:"Set a target skill in the upgrade tree — each costs 8 to 20 DB."},
             {step:"3", color:"#ff8844", text:"When your meter reaches that cost, the skill unlocks."},
             {step:"4", color:"#44ffaa", text:"Leftover points carry over toward your next pick."},
           ].map((r,i)=>(
@@ -396,13 +396,13 @@ function TutSection_HarmonicCharge() {
           ))}
         </div>
         <p style={{fontSize:8.5, color:"#6a8a9a", margin:"9px 0 0", lineHeight:1.5}}>
-          A Dischord note costs the track a single HC point — no longer a blanket zero, so a little dissonance is affordable.
+          A Dischord note costs the track a single DB — no longer a blanket zero, so a little dissonance is affordable.
         </p>
       </div>
 
       {/* What earns points */}
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>WHAT EARNS HC POINTS</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>WHAT EARNS DECIBILLS</div>
         {[
           {icon:"🎶", label:"End on 4th or 5th",       pts:"+2 pts", color:"#cc55ff"},
           {icon:"🎶", label:"Octave resolution",        pts:"+3 pts + die floor", color:"#44aaff"},
@@ -421,7 +421,7 @@ function TutSection_HarmonicCharge() {
       <div style={{background:"#0c0a18", border:"1px solid #aa88ff44", borderRadius:6, padding:"8px 12px"}}>
         <div style={{fontSize:8, color:"#ccaaff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>🌳 WHERE IT GOES</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          Your HC meter sits at the top of the Melody Line panel. Spend it across the Skill
+          Your DB meter sits at the top of the Melody Line panel. Spend it across the Skill
           Tree — Groupie crews, close-combat moves, Amps and the PA system, stage effects, and
           your Spirit's exclusive arsenal. (More on those next.)
         </p>
@@ -484,13 +484,13 @@ function TutSection_DriveSustain() {
           <span style={{color:"#3a5a7a"}}>→ earn</span>
           <span style={{color:"#ffaa44"}}>+2 Drive</span>
           <span style={{color:"#3a5a7a"}}>→</span>
-          <span style={{color:"#ffcc44"}}>old +1 → HC points</span>
+          <span style={{color:"#ffcc44"}}>old +1 → DB</span>
           <span style={{color:"#3a5a7a"}}>+</span>
           <span style={{color:"#ffaa44"}}>keep +2</span>
         </div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"6px 0 0"}}>
           Boosts never stack — the higher value always wins, and the one it replaces is
-          converted into Harmonic Charge.
+          converted into Decibills.
         </p>
       </div>
     </div>
@@ -499,8 +499,8 @@ function TutSection_DriveSustain() {
 
 function TutSection_Intervals() {
   const intervals = [
-    { note:"F",  label:"4th",      color:"#cc55ff", effect:"HC points",         icon:"💜", desc:"A stable, consonant interval — score HC points by ending your track here." },
-    { note:"G",  label:"5th",      color:"#ff55aa", effect:"HC points",         icon:"💗", desc:"The strong perfect fifth — also banks HC points when it ends your track." },
+    { note:"F",  label:"4th",      color:"#cc55ff", effect:"DB",         icon:"💜", desc:"A stable, consonant interval — score DB by ending your track here." },
+    { note:"G",  label:"5th",      color:"#ff55aa", effect:"DB",         icon:"💗", desc:"The strong perfect fifth — also banks DB when it ends your track." },
     { note:"E",  label:"Maj 3rd",  color:"#44ffaa", effect:"🔒 Cleanse / Shield", icon:"✨", desc:"EARNED (Borrowed Chord, Minor key only): end on the major third to cleanse a status — or, if you're clean, raise a shield that blocks the next one." },
     { note:"Bb", label:"Min 7th",  color:"#4499ff", effect:"🔒 Mojo Drain",  icon:"🎷", desc:"EARNED (Blues Lick): end here to arm a Mojo Drain debuff on your next target." },
     { note:"F#", label:"Tritone",  color:"#ff3300", effect:"🔒 Burn",       icon:"🔥", desc:"The devil's interval. EARNED (Devil's Interval): end your track on it to arm a Burn — your next hit sets the rival alight for 2 turns." },
@@ -554,7 +554,7 @@ function TutSection_Dischord() {
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
         <span style={{color:"#ff6600"}}>Dischord</span> notes sit outside your scale, so they
-        earn no Harmonic Charge — but they're far from dead weight. Played right, they
+        earn no Decibills — but they're far from dead weight. Played right, they
         unleash brutal combat effects all their own.
       </p>
 
@@ -828,7 +828,7 @@ function TutSection_ModCards() {
       ))}
       <p style={{fontSize:9, color:"#6a8a9a", lineHeight:1.6, margin:0}}>
         Played at the right moment, a card can rescue a track that would otherwise count as Dischord —
-        turning wasted notes into Harmonic Charge and a clean, fan-pleasing performance.
+        turning wasted notes into Decibills and a clean, fan-pleasing performance.
       </p>
     </div>
   );
@@ -918,7 +918,7 @@ const TUTORIAL_SECTIONS = [
   { id:"overview",        title:"What Is RLSW?",        icon:"⚡", color:"#f6ad55" },
   { id:"board",           title:"The Board",            icon:"🗺️", color:"#44cc88" },
   { id:"note_track",      title:"The Melody Line",       icon:"🎵", color:"#aa55ff" },
-  { id:"harmonic_charge", title:"Harmonic Charge",      icon:"🎲", color:"#ffcc44" },
+  { id:"harmonic_charge", title:"Decibills",      icon:"💰", color:"#ffcc44" },
   { id:"drive_sustain",   title:"Drive & Sustain",      icon:"⚔️", color:"#ff6644" },
   { id:"intervals",       title:"Interval Effects",     icon:"🎶", color:"#44aaff" },
   { id:"dischord",        title:"Dischord & Status",    icon:"⚡", color:"#ff8800" },

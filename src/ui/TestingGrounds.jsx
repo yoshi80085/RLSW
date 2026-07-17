@@ -35,7 +35,7 @@ export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiri
 
               <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,marginBottom:4}}>GRANT TO ACTING SPIRIT</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-                {[['hc','+3 HC'],['cas','+5 Casuals'],['die','+1 Diehard'],['uns','+5 Unsure'],['vup','+1 Vibe'],['vdn','−1 Vibe'],['fp','+3 FP']].map(([k,lbl])=>(
+                {[['hc','+3 DB'],['cas','+5 Casuals'],['die','+1 Diehard'],['uns','+5 Unsure'],['vup','+1 Vibe'],['vdn','−1 Vibe'],['fp','+3 FP']].map(([k,lbl])=>(
                   <button key={k} onClick={()=>devGrant(k)}
                     style={{background:'#0a0814',border:'1px solid #4a2a60',color:'#d0c0e0',borderRadius:5,fontSize:9,padding:'5px 8px',cursor:'pointer',fontFamily:'inherit'}}>{lbl}</button>
                 ))}

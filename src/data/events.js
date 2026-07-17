@@ -26,7 +26,7 @@ export const EVENT_DECK = [
   {
     id: 'seance_27', icon: '\u{1F56F}️', title: '27 CLUB SÉANCE', color: '#88ddff',
     flavor: 'The lights dip. A cold wind crosses the stage. Someone left a candle, a crossroads map, and a left-handed guitar...',
-    rules: 'Roll d6. On 6 — the legends answer: +3 Harmonic Charge. On 2–5 — a faint whisper: +1 HC. On 1 — spooked: 2 stock slots frozen for 1 turn.',
+    rules: 'Roll d6. On 6 — the legends answer: +3 Decibills. On 2–5 — a faint whisper: +1 DB. On 1 — spooked: 2 stock slots frozen for 1 turn.',
     kind: 'roll',
   },
   {
@@ -38,7 +38,7 @@ export const EVENT_DECK = [
   {
     id: 'payola', icon: '\u{1F4B0}', title: 'PAYOLA SCANDAL', color: '#ffaa22',
     flavor: 'A brown envelope changes hands at the radio station. Your single is suddenly in heavy rotation... or you are suddenly in the headlines.',
-    rules: 'Roll d6. Even — your single charts: +2 Harmonic Charge. Odd — busted: lose 2 HC progress.',
+    rules: 'Roll d6. Even — your single charts: +2 Decibills. Odd — busted: lose 2 DB progress.',
     kind: 'roll',
   },
   {
@@ -50,7 +50,7 @@ export const EVENT_DECK = [
   {
     id: 'backstage_pass', icon: '\u{1F39F}️', title: 'BACKSTAGE PASS', color: '#44aaff',
     flavor: 'A laminated all-access pass glints on the floor. Whatever is behind that door, it is yours now.',
-    rules: 'Slip backstage and soak up the scene: +3 Harmonic Charge.',
+    rules: 'Slip backstage and soak up the scene: +3 Decibills.',
     kind: 'auto',
   },
   {

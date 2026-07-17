@@ -2,7 +2,7 @@
 // data/trivia.js — Event-space TRIVIA (replaces the dice-roll event deck).
 // Land on an Event hex -> draw a question. Correct = bonus fans (by difficulty),
 // wrong = nothing (no penalty). The 'sauce' reveal shows either way.
-// Reward pays fans, not HC -- knowing rock trivia is crowd cred, not musicianship.
+// Reward pays fans, not DB -- knowing rock trivia is crowd cred, not musicianship.
 // =============================================================================
 
 export const TRIVIA_QUESTIONS = [

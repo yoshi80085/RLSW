@@ -821,8 +821,8 @@ const config = {
 
   // NOTE_SHEET_PATCHED — the shim's generic per-spirit diff action
   const p1 = applyAction(s, noteSheetPatched("wildaxe",
-    { hcPoints: 4, unlockedSkills: ["mic"], burn: { turnsLeft: 2 }, fame: 6 }));
-  assert.equal(p1.noteStates.wildaxe.hcPoints, 4, "NOTE_SHEET_PATCHED merges scalar fields");
+    { dbPoints: 4, unlockedSkills: ["mic"], burn: { turnsLeft: 2 }, fame: 6 }));
+  assert.equal(p1.noteStates.wildaxe.dbPoints, 4, "NOTE_SHEET_PATCHED merges scalar fields");
   assert.deepEqual(p1.noteStates.wildaxe.unlockedSkills, ["mic"], "…and array fields");
   assert.deepEqual(p1.noteStates.wildaxe.burn, { turnsLeft: 2 }, "…and object fields");
   assert.equal(p1.noteStates.wildaxe.fame, 6, "no whitelist — any sheet field may ride");
@@ -830,7 +830,7 @@ const config = {
     "unpatched fields carry over");
   assert.equal(p1.noteStates.vera, s.noteStates.vera, "untouched sheets carry over by reference");
   assert.equal(p1.rng.cursor, s.rng.cursor, "NOTE_SHEET_PATCHED consumes no rng");
-  assert.equal(applyAction(s, noteSheetPatched("nobody", { hcPoints: 1 })).noteStates, s.noteStates,
+  assert.equal(applyAction(s, noteSheetPatched("nobody", { dbPoints: 1 })).noteStates, s.noteStates,
     "NOTE_SHEET_PATCHED: no sheet → no-op (the shim falls back to the full replace)");
 
   // SPIRIT_PATCHED — the setSpirits shim's generic per-spirit diff action
@@ -1262,7 +1262,7 @@ const config = {
     fameChanged("vera", -1),        // knockdown penalty path (floors at 0)
     fansChanged("wildaxe", { casuals: 9, diehards: 4, centerStreak: 1, fanActedThisTurn: true }),
     fansChanged("vera", { fanLag: 3, centerStreak: 0 }),
-    noteSheetPatched("wildaxe", { hcPoints: 2, unlockedSkills: ["mic"], burnArmed: true }),
+    noteSheetPatched("wildaxe", { dbPoints: 2, unlockedSkills: ["mic"], burnArmed: true }),
     noteSheetPatched("vera", { stagger: { turnsLeft: 1 }, modCards: [] }),
     winnerDeclared("wildaxe"),
     turnEnded(),
@@ -2063,7 +2063,7 @@ const config = {
     fameChanged("vera", -1),
     fansChanged("wildaxe", { casuals: 9, diehards: 4, centerStreak: 1, fanActedThisTurn: true }),
     fansChanged("vera", { fanLag: 3, centerStreak: 0 }),
-    noteSheetPatched("wildaxe", { hcPoints: 2, unlockedSkills: ["mic"], burnArmed: true }),
+    noteSheetPatched("wildaxe", { dbPoints: 2, unlockedSkills: ["mic"], burnArmed: true }),
     noteSheetPatched("vera", { stagger: { turnsLeft: 2 }, modCards: [] }),
     spiritPatched("wildaxe", { vibe: 5, drive: 7 }),
     spiritPatched("vera", { num: 63, facing: 1 }),

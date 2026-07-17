@@ -44,7 +44,7 @@ export function SignatureAbilities({ SKILL_BY_ID, SKILL_TREE, SPIRIT_DEFS, noteS
                           background: owned ? '#1c3a22' : '#241a0a',
                           border:`1px solid ${owned ? '#3fae5a' : '#caa24a'}66`,
                           color: owned ? '#7fe39a' : '#e0bd6a'}}>
-                          {owned ? '✓ UNLOCKED' : `🔒 ${sk.hcCost} HC`}
+                          {owned ? '✓ UNLOCKED' : `🔒 ${sk.dbCost} DB`}
                         </span>
                         {prereqLabel && (
                           <span style={{fontSize:8.5, color:'#7a95b5'}}>needs {prereqLabel}</span>

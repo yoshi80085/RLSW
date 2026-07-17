@@ -11,10 +11,10 @@ const HINT_MS = 5000;   // how long the screen holds before the game mounts
 // rules (see BEGINNER_TIPS in the simulator) — if a system changes, update
 // the hint too. Don't let a hint lie.
 export const HINTS = [
-  "Notes IN your scale are clean — they earn HC and keep the crowd happy. Off-scale notes are DISCORD.",
+  "Notes IN your scale are clean — they earn DB and keep the crowd happy. Off-scale notes are DISCORD.",
   "Every melody note you commit = 1 hex of movement. Long tracks travel far, but risk discords.",
   "Your LAST committed note becomes next turn's Root Note. Plan the ending, not just the riff.",
-  "Fill your HC bar to open the Theory Tree and pick new skills — in-scale notes are the fuel.",
+  "Fill your DB bar to open the Theory Tree and pick new skills — in-scale notes are the fuel.",
   "Every Swing burns the first 2 notes off your Chord Stack. Keep the stack fed.",
   "A 5-note chord walking into a fight is a very different conversation than a 1-note one.",
   "SMASH ignores Sustain but leaves you Exposed. Commit issues, in weapon form.",

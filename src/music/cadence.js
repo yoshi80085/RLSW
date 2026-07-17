@@ -208,12 +208,12 @@ export function sustainBoostFromPattern(patLen) {
   return 0;
 }
 
-// ── HC SCORING ───────────────────────────────────────────────────────────────
-// Layer 1 (HC points — feeds upgrade counter):
+// ── DB SCORING ───────────────────────────────────────────────────────────────
+// Layer 1 (DB points — feeds upgrade counter):
 //   Step A: floor(totalNotes / 2)  — all notes including last
 //   Step B: ending bonus — 4th=+4, 5th=+5, Octave=+2
 // Layer 2 (Drive/Sustain patterns) runs in confirmNoteTrack and is untouched.
-export function scoreTrackHC(track, fourthNote, fifthNote) {
+export function scoreTrackDB(track, fourthNote, fifthNote) {
   if (!track || track.length === 0) return { points: 0, breakdown: [] };
   const breakdown = [];
   let points = 0;
@@ -238,7 +238,7 @@ export function scoreTrackHC(track, fourthNote, fifthNote) {
 
 // analyseTrack still exists for Drive/Sustain pattern detection display in log
 // (diatonic run scoring and repeat pattern scoring feed tempDrive/tempSustain only,
-//  they no longer produce HC points directly — overflow from non-stacking still does)
+//  they no longer produce DB points directly — overflow from non-stacking still does)
 export function analyseTrack(track, currentScale, fourthNote, fifthNote) {
   // Kept for log/breakdown compatibility — returns 0 pts, patterns noted
   if (!track || track.length === 0) return { points: 0, breakdown: [] };

@@ -40,7 +40,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import React from "react";
 import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
 import { ampLinked, ampMstEdges, computeAmpRigs } from "./board/ampRigs.js";
-import { hexRingFromCenter, crowdMultiplier, advanceHC, SPOTLIGHT_POOL } from "./board/boardHelpers.js";
+import { hexRingFromCenter, crowdMultiplier, advanceDB, SPOTLIGHT_POOL } from "./board/boardHelpers.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRiffMiss, playBeamClash, playBeamSurge, playBeamBreak, playFanPop } from "./audio/riffSfx.js";
 import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./riff/riffGeneration.js";
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset } from "./riff/fallingNotes.js";
@@ -303,7 +303,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { HC_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_HC_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_HC_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_DB_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_DB_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -369,7 +369,7 @@ import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } 
 // turn is your "final". String the right finals together across consecutive
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
-import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, staggerDuration, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackHC, randomNote } from "./music/cadence.js";
+import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, staggerDuration, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote } from "./music/cadence.js";
 import { evaluateChord } from "./music/chords.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -398,11 +398,11 @@ function pickDanceName() {
 
 
 // ── DISCORD UPGRADE PATH ─────────────────────────────────────────────────────
-// Three tiers unlocked via the HC upgrade system. Once a tier is unlocked,
+// Three tiers unlocked via the DB upgrade system. Once a tier is unlocked,
 // those interval notes:
 //   • Are colored (no longer gray)
 //   • Do NOT count against Harmonic structure (discordCount not incremented)
-//   • CAN contribute to HC points
+//   • CAN contribute to DB points
 //   • Keep all existing special effects (tritone feedback, m7 mojo drain, etc.)
 // Before unlock: grayed out, same rules as any other discord note.
 const DISCORD_UPGRADE_TIERS = [
@@ -453,15 +453,15 @@ const SKILL_TREE = {
       color: '#66ccff',
       desc: 'The spine of the game. Start on the Major Pentatonic; climb to unlock dissonance as power.',
       skills: [
-        { id:'theory_major',     label:'The Full Scale',       icon:'🎼', hcCost:8,  gated:true, prereq:null,
+        { id:'theory_major',     label:'The Full Scale',       icon:'🎼', dbCost:8,  gated:true, prereq:null,
           desc:'Adds the 4th & 7th, completing the Major (Ionian) scale — those two notes stop costing Discord.' },
-        { id:'theory_minor',     label:'Minor Tonality',       icon:'🌑', hcCost:10, gated:true, prereq:'theory_major',
+        { id:'theory_minor',     label:'Minor Tonality',       icon:'🌑', dbCost:10, gated:true, prereq:'theory_major',
           desc:'Unlocks the Minor scale and the Major/Minor pivot. Declare Minor at the pivot for a darker key, Discord-free.' },
-        { id:'theory_dom7',      label:'Blues / Dominant 7th', icon:'🎷', hcCost:12, gated:true, prereq:'theory_minor',
+        { id:'theory_dom7',      label:'Blues / Dominant 7th', icon:'🎷', dbCost:12, gated:true, prereq:'theory_minor',
           desc:'The ♭7 joins your clean palette. BLUES LICK: end a track on the ♭7 to arm Mojo Drain on your next target.' },
-        { id:'theory_modes',     label:'Modal Colour',         icon:'🌀', hcCost:14, gated:true, prereq:'theory_dom7',
+        { id:'theory_modes',     label:'Modal Colour',         icon:'🌀', dbCost:14, gated:true, prereq:'theory_dom7',
           desc:"Lydian ♯4 & Mixolydian ♭7 become clean. DEVIL'S INTERVAL: the tritone never breaks harmony — end on it to arm a Burn (2 turns, 50%/turn to lose 1 Vibe)." },
-        { id:'theory_chromatic', label:'Chromatic Mastery',    icon:'⚡', hcCost:18, gated:true, prereq:'theory_modes',
+        { id:'theory_chromatic', label:'Chromatic Mastery',    icon:'⚡', dbCost:18, gated:true, prereq:'theory_modes',
           desc:'CAPSTONE — every Discord penalty halved; the whole chromatic scale is yours. Chromatic runs of 3+ play clean and STAGGER rivals, and the Major-3rd cleanse (Borrowed Chord) comes online in Minor.' },
       ],
     },
@@ -473,13 +473,13 @@ const SKILL_TREE = {
       color: '#ffcc44',
       desc: 'Your rig. Amps power your Sonic Attack and grow your die.',
       skills: [
-        { id:'amp_1',    label:'Amp I',   icon:'🔊', hcCost:8,  gated:true, prereq:null,
+        { id:'amp_1',    label:'Amp I',   icon:'🔊', dbCost:8,  gated:true, prereq:null,
           desc:'Place Amp 1 on an adjacent hex. Sonic Attack online. Within range: d6→d8.' },
-        { id:'amp_2',    label:'Amp II',  icon:'🔊', hcCost:12, gated:true, prereq:'amp_1',
+        { id:'amp_2',    label:'Amp II',  icon:'🔊', dbCost:12, gated:true, prereq:'amp_1',
           desc:'Place Amp 2. Within range of both: d8→d10.' },
-        { id:'amp_3',    label:'Amp III', icon:'🔊', hcCost:18, gated:true, prereq:'amp_2',
+        { id:'amp_3',    label:'Amp III', icon:'🔊', dbCost:18, gated:true, prereq:'amp_2',
           desc:'Place Amp 3. Within range of all three: d10→d12 — fully wired.' },
-        { id:'overcharge', label:'Overcharge', icon:'🎸', hcCost:14, gated:true, prereq:'amp_2',
+        { id:'overcharge', label:'Overcharge', icon:'🎸', dbCost:14, gated:true, prereq:'amp_2',
           desc:'Charge Zones no longer just spark your dice — tapping one now lets you choose: the usual charge (random die floor/ceiling boost), OR one curated Chord Stack note plus a bonus revoice to spend on it.' },
       ],
     },
@@ -498,34 +498,34 @@ const SKILL_TREE = {
       desc: 'Your body and the instrument. Learn new stances — how you deliver the music you built — and deepen the ones you own. Switching costs your Action.',
       subChains: [
         { id:'stance_learn', label:'🧍 Learn Stances', skills: [
-          { id:'stance_2', label:'Second Stance', icon:'🧍', hcCost:8,  gated:true, prereq:null,
+          { id:'stance_2', label:'Second Stance', icon:'🧍', dbCost:8,  gated:true, prereq:null,
             desc:'Learn any stance you don\'t already know — Soloist, Power, Cool or Groove. You choose on unlock.' },
-          { id:'stance_3', label:'Third Stance',  icon:'🧍', hcCost:12, gated:true, prereq:'stance_2',
+          { id:'stance_3', label:'Third Stance',  icon:'🧍', dbCost:12, gated:true, prereq:'stance_2',
             desc:'Learn a third stance. Your combat identity becomes a toolkit.' },
-          { id:'stance_4', label:'Fourth Stance', icon:'🧍', hcCost:16, gated:true, prereq:'stance_3',
+          { id:'stance_4', label:'Fourth Stance', icon:'🧍', dbCost:16, gated:true, prereq:'stance_3',
             desc:'Master the last remaining stance. Every delivery is yours.' },
         ]},
         // ── Per-stance windows — upgrades gated on owning the stance + a tier ──
         { id:'stance_soloist', label:'🌟 Soloist — Foot on Monitor', color:'#ffd700', stanceId:'soloist', stanceLabel:'Soloist', skills: [
-          { id:'stance_encore',      label:'Encore',       icon:'🎇', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'soloist',
+          { id:'stance_encore',      label:'Encore',       icon:'🎇', dbCost:10, gated:true, prereq:'stance_2', requiresStance:'soloist',
             desc:'SOLOIST: when a winning attack carries a Performance of 7+, the spectacle converts +1 Diehard fan.' },
         ]},
         { id:'stance_power', label:'🤘 Power — Wide Leg', color:'#ff4444', stanceId:'power', stanceLabel:'Power', skills: [
-          { id:'stance_demolition',  label:'Demolition',   icon:'💥', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'power',
+          { id:'stance_demolition',  label:'Demolition',   icon:'💥', dbCost:10, gated:true, prereq:'stance_2', requiresStance:'power',
             desc:'POWER: a Thrash that frays a rival\'s chord below 2 notes adds the destroyed chord\'s Drive as bonus Vibe damage.' },
-          { id:'stance_aftershock',  label:'Aftershock',   icon:'🌋', hcCost:14, gated:true, prereq:'stance_3', requiresStance:'power',
+          { id:'stance_aftershock',  label:'Aftershock',   icon:'🌋', dbCost:14, gated:true, prereq:'stance_3', requiresStance:'power',
             desc:'POWER: Lost Chords knocked loose by your Thrash scatter 1 hex further — board control through violence.' },
         ]},
         { id:'stance_cool', label:'🕶️ Cool — Low Slung', color:'#44aaff', stanceId:'cool', stanceLabel:'Cool', skills: [
-          { id:'stance_ironclad',    label:'Ironclad',     icon:'🛡️', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'cool',
+          { id:'stance_ironclad',    label:'Ironclad',     icon:'🛡️', dbCost:10, gated:true, prereq:'stance_2', requiresStance:'cool',
             desc:'COOL: when a hit is too weak to fray you (margin ≤ 2), you harden — +1 temp Sustain.' },
-          { id:'stance_riposte',     label:'Riposte',      icon:'🤺', hcCost:14, gated:true, prereq:'stance_3', requiresStance:'cool',
+          { id:'stance_riposte',     label:'Riposte',      icon:'🤺', dbCost:14, gated:true, prereq:'stance_3', requiresStance:'cool',
             desc:'COOL: win a Thrash defense and your next Thrash against that rival frays +1 extra note.' },
         ]},
         { id:'stance_groove', label:'🌀 Groove — Behind the Back', color:'#aa55ff', stanceId:'groove', stanceLabel:'Groove', skills: [
-          { id:'stance_resonance',   label:'Resonance',    icon:'🌊', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'groove',
+          { id:'stance_resonance',   label:'Resonance',    icon:'🌊', dbCost:10, gated:true, prereq:'stance_2', requiresStance:'groove',
             desc:'GROOVE: the wave builds higher — Groove counter cap raised from 3 to 5.' },
-          { id:'stance_sustainwave', label:'Sustain Wave', icon:'🌀', hcCost:14, gated:true, prereq:'stance_3', requiresStance:'groove',
+          { id:'stance_sustainwave', label:'Sustain Wave', icon:'🌀', dbCost:14, gated:true, prereq:'stance_3', requiresStance:'groove',
             desc:'GROOVE: spending the wave on an attack also banks it as temp Sustain — the wave protects the backswing.' },
         ]},
       ],
@@ -541,19 +541,19 @@ const SKILL_TREE = {
       desc: 'Your most loyal fans don\'t just cheer — they write letters, haul cabinets, run sabotage, and work the merch line. Each assigned Diehard steps out of the crowd multiplier.',
       subChains: [
         { id:'crew_core', label:'🎫 Crew', skills: [
-          { id:'crew_backstage', label:'Backstage Pass', icon:'🎫', hcCost:8, gated:true, prereq:null,
+          { id:'crew_backstage', label:'Backstage Pass', icon:'🎫', dbCost:8, gated:true, prereq:null,
             desc:'Unlocks the assignment system. Your first task — Fan Mail — comes free: a Diehard pen-pal who writes letters that restore +3 Vibe when picked up on the board.' },
         ]},
         { id:'crew_tasks', label:'🔧 Tasks', skills: [
-          { id:'crew_stagehand',  label:'Stagehand',   icon:'🔧', hcCost:12, gated:true, prereq:'crew_backstage',
+          { id:'crew_stagehand',  label:'Stagehand',   icon:'🔧', dbCost:12, gated:true, prereq:'crew_backstage',
             desc:'Assign a Diehard as a Roadie — moves one of your amps 2 hexes, Fix Cable replugs a sabotaged amp. 2-turn cooldown per job.' },
-          { id:'crew_pranksta',   label:'Pranksta',    icon:'🪤', hcCost:8,  gated:true, prereq:'crew_backstage',
-            desc:'Assign a Diehard as a saboteur — disconnect up to 2 rival amps within 4 hexes. Recharges in 3 turns.' },
-          { id:'crew_streetteam', label:'Street Team', icon:'📣', hcCost:12, gated:true, prereq:'crew_backstage',
-            desc:'Assign a Diehard to work the room — while staffed, outer-ring boredom never ticks. Insurance for the fickle fringe.' },
+          { id:'crew_heckler',    label:'Heckler',     icon:'📢', dbCost:8,  gated:true, prereq:'crew_backstage',
+            desc:'Assign a Diehard as a heckler — deploy them to any rival\'s crowd. Their next crowd-gain from performing is zeroed. Recharges in 3 turns.' },
+          { id:'crew_merch',      label:'Merch Table', icon:'🏪', dbCost:12, gated:true, prereq:'crew_backstage',
+            desc:'Assign a Diehard to run a merch booth at your corner. While staffed, every Fame Point you earn also kicks back +1 Decibill.' },
         ]},
         { id:'crew_capstone', label:'🎩 Management', skills: [
-          { id:'crew_manager', label:'Tour Manager', icon:'🎩', hcCost:16, gated:true, prereq:'crew_stagehand',
+          { id:'crew_manager', label:'Tour Manager', icon:'🎩', dbCost:16, gated:true, prereq:'crew_stagehand',
             desc:'Two concurrent assignments. Your operation has an org chart.' },
         ]},
       ],
@@ -567,11 +567,11 @@ const SKILL_TREE = {
       desc: 'The way of the blade meets the way of the riff. An exclusive arsenal only the Ronin can wield.',
       spiritOnly: 'cosmic_ronin',
       skills: [
-        { id:'psycho_bushido', label:'Psycho Bushido', icon:'🌀', hcCost:10, gated:false,
+        { id:'psycho_bushido', label:'Psycho Bushido', icon:'🌀', dbCost:10, gated:false,
           desc:'In Thrash, when your swing die lands 5 or 6 the rival freezes — their die is forced to a 1.' },
-        { id:'e_rush',         label:'いいラッシュ (E-Rush)', icon:'🎴', hcCost:12, gated:false,
+        { id:'e_rush',         label:'いいラッシュ (E-Rush)', icon:'🎴', dbCost:12, gated:false,
           desc:'End a melody line on an E, then face a rival in a riff-off that turn: every answer note spawns a ghost note — both keys must be hit or the note misses.' },
-        { id:'hydra',          label:'Hydra',          icon:'🐉', hcCost:16, gated:true, prereq:'amp_3',
+        { id:'hydra',          label:'Hydra',          icon:'🐉', dbCost:16, gated:true, prereq:'amp_3',
           desc:'CAPSTONE — requires Amp III. With 3 amps in range, your Sonic Attack rolls 3d6 instead of d12, firing three beams.' },
       ],
     },
@@ -583,13 +583,13 @@ const SKILL_TREE = {
       desc: 'Trash-metal violence. An exclusive arsenal only the Monster can wield.',
       spiritOnly: 'Metalness_Monster',
       skills: [
-        { id:'master_moshpits', label:'Master of Moshpits', icon:'🎸', hcCost:10, gated:false,
+        { id:'master_moshpits', label:'Master of Moshpits', icon:'🎸', dbCost:10, gated:false,
           desc:'On ANY battle win, if you have a banked note: burn it for +1 Vibe damage (can finish a knockdown). The pit floods the board.' },
-        { id:'riff_slayer',     label:'Riff Slayer',        icon:'🗡️', hcCost:12, gated:false,
+        { id:'riff_slayer',     label:'Riff Slayer',        icon:'🗡️', dbCost:12, gated:false,
           desc:"Commit a SKIP-CLIMB (3+ notes leaping by thirds, one direction) to arm it. If a riff-off breaks out that turn, 2–3 of the rival's notes glitch mid-flight." },
-        { id:'paranoia',        label:'Paranoia',           icon:'🌀', hcCost:14, gated:true, prereq:'theory_dom7',
+        { id:'paranoia',        label:'Paranoia',           icon:'🌀', dbCost:14, gated:true, prereq:'theory_dom7',
           desc:"Supercharges your Mojo Drain (from the Blues 7th): now lasts 3 turns AND freezes 2 of the rival's note slots." },
-        { id:'azrael',          label:'Azrael',             icon:'💀', hcCost:16, gated:false,
+        { id:'azrael',          label:'Azrael',             icon:'💀', dbCost:16, gated:false,
           desc:'Each rival you knock down feeds Fame equal to your knockdown streak (1st→1, 2nd→2…). Resets when YOU go down.' },
       ],
     },
@@ -601,11 +601,11 @@ const SKILL_TREE = {
       desc: 'Cosmic groove and weaponized sound. An exclusive arsenal only Intergalactic 0 can wield.',
       spiritOnly: 'intergalactic_0',
       skills: [
-        { id:'blaster_of_ra', label:'Blaster of Ra', icon:'🌀', hcCost:12, gated:false,
+        { id:'blaster_of_ra', label:'Blaster of Ra', icon:'🌀', dbCost:12, gated:false,
           desc:'REPLACES the Smash. A ranged, PIERCING bass-drop: hurl your unused stock down the forward beam, hammering EVERY rival in line — undefendable, scattering their stock and knocking them back. Leaves you Exposed.' },
-        { id:'displace', label:'Displace', icon:'🌌', hcCost:10, gated:false,
+        { id:'displace', label:'Displace', icon:'🌌', dbCost:10, gated:false,
           desc:"He can't run — he warps. Teleport to an open hex beside your amp rig (costs 3 AP, 2-turn cooldown). The slow zoner's get-out-of-jail. Needs at least one amp to warp to." },
-        { id:'sunbeam', label:'Sunbeam', icon:'☀️', hcCost:16, gated:true, prereq:'amp_3',
+        { id:'sunbeam', label:'Sunbeam', icon:'☀️', dbCost:16, gated:true, prereq:'amp_3',
           desc:'CAPSTONE — requires Amp III. Your Sonic beam reaches +2 hexes AND scorches the hexes it crosses into burning ground (2 rounds) — area denial down the whole line.' },
       ],
     },
@@ -1091,7 +1091,7 @@ function Game({ gameState, onReturnToLobby }) {
   const [activeTip, setActiveTip] = useState(null); // { id, title, body } or null
   // The very first tip (welcome) is triggered by the initial Full Scale grant
   // useEffect, which also queues the pivot tip to follow it. The skill_tree tip
-  // fires the first time the Theory Tree opens (HC bar filled → upgradesPending).
+  // fires the first time the Theory Tree opens (DB bar filled → upgradesPending).
   const turnQueue = engineState.turnQueue; // engine-owned (Phase 2)
   // 🧪 TESTING GROUNDS — dev panel (only when the sandbox was launched from the
   // menu). N8: hard-disabled online — dev grants dispatch real actions and the
@@ -1343,22 +1343,22 @@ function Game({ gameState, onReturnToLobby }) {
       title: '🎸 Welcome to the Stage',
       pages: [
         { body: 'Welcome to the stage. This glowing badge is your ROOT NOTE — the tonal centre of your turn. And good news: you already know THE FULL SCALE, so every note of your Major scale is clean, 4th and 7th included. No homework — you start ready to play.', anchor: 'root-note' },
-        { body: 'Every in-scale note you play earns HC (Harmonic Coverage) into this bar. When it fills, the THEORY TREE opens and you choose your next ability — new scale tones, amps, crew, combat tricks. Play clean, get paid.', anchor: 'hc-bar' },
+        { body: 'Every in-scale note you play earns Decibills (DB) into this bar. When it fills, the THEORY TREE opens and you choose your next ability — new scale tones, amps, crew, combat tricks. Play clean, get paid.', anchor: 'db-bar' },
         { body: 'One more thing in your back pocket: a 🔄 TRANSPOSE card, waiting here in MOD CARDS. One-time use, swaps your Root Note for any note in your stock. If your opening hand looks like it was dealt by an enemy, this is your escape hatch. Save it. Or don\'t — it\'s your funeral.', anchor: 'mod-cards' },
       ],
     },
     skill_tree: {
       title: '🌳 The Theory Tree',
       pages: [
-        { body: 'Your HC bar is FULL — the Theory Tree is open! Pick a SKILL TARGET: the ability you\'re saving toward. New scale tones, amps, crew, combat tricks... choose a route that fits how you want to play. Or panic-pick. Everyone does their first game.' },
-        { body: 'Every in-scale note keeps feeding HC toward your target — when the bar fills again, the skill is yours automatically and you pick the next one. The mini progress bar lives on your spirit card, so you always know how close you are.', anchor: 'hc-bar' },
+        { body: 'Your DB bar is FULL — the Theory Tree is open! Pick a SKILL TARGET: the ability you\'re saving toward. New scale tones, amps, crew, combat tricks... choose a route that fits how you want to play. Or panic-pick. Everyone does their first game.' },
+        { body: 'Every in-scale note keeps feeding DB toward your target — when the bar fills again, the skill is yours automatically and you pick the next one. The mini progress bar lives on your spirit card, so you always know how close you are.', anchor: 'db-bar' },
       ],
     },
     pivot: {
       title: '🎵 Step 1 — Choose Your Scale',
       pages: [
         { body: 'See that big glowing badge? That\'s your ROOT NOTE — the tonal center of everything you do this turn. Now pick MAJOR (bright, consonant, sunshine) or MINOR (dark, tense, brooding). Together they define your scale.', anchor: 'root-note' },
-        { body: ['Why care? Notes IN your scale are "clean" — they earn HC and keep the crowd happy. Off-scale notes are DISCORD: no HC, and the audience notices. They always notice.', 'Root feeling wrong? Your 🔄 Transpose card can swap it before you commit to a mode. A bad root is a choice; staying on one is a lifestyle.'], anchor: 'note-stock' },
+        { body: ['Why care? Notes IN your scale are "clean" — they earn DB and keep the crowd happy. Off-scale notes are DISCORD: no DB, and the audience notices. They always notice.', 'Root feeling wrong? Your 🔄 Transpose card can swap it before you commit to a mode. A bad root is a choice; staying on one is a lifestyle.'], anchor: 'note-stock' },
       ],
     },
     chord: {
@@ -1371,7 +1371,7 @@ function Game({ gameState, onReturnToLobby }) {
     melody: {
       title: '🎶 Step 3 — Build Your Melody',
       pages: [
-        { body: 'Now compose your MELODY LINE from your Note Stock. This is the big one: each note you commit = 1 hex of movement (AP) this turn. In-scale notes also bank HC toward your next skill. Short track = safe but slow. Long track = mobile but you might hit discords.', anchor: 'note-stock' },
+        { body: 'Now compose your MELODY LINE from your Note Stock. This is the big one: each note you commit = 1 hex of movement (AP) this turn. In-scale notes also bank DB toward your next skill. Short track = safe but slow. Long track = mobile but you might hit discords.', anchor: 'note-stock' },
         { body: 'Your track builds up here as you tap notes. The colored slots mark special intervals — tritone (red, spicy), 5th (pink) and 4th (purple, sturdy), Major 3rd (green, cleansing), minor 7th (blue, draining). The LAST note matters most: it becomes next turn\'s Root, feeds cadences, and can put you on the Dissonance Edge. When it sounds right, hit COMMIT.', anchor: 'commit-track' },
       ],
     },
@@ -1400,7 +1400,7 @@ function Game({ gameState, onReturnToLobby }) {
     amp_place: {
       title: '🔊 Amplifiers',
       pages: [
-        { body: 'Amp ready to deploy! Place it from CREW & GEAR on your spirit card. Amps project your sound: standing within range of your rig keeps you PLUGGED IN — bigger Harmonic Coverage for HC, and it switches on the Sonic Attack.', anchor: 'crew-gear' },
+        { body: 'Amp ready to deploy! Place it from CREW & GEAR on your spirit card. Amps project your sound: standing within range of your rig keeps you PLUGGED IN — bigger payout in Decibills, and it switches on the Sonic Attack.', anchor: 'crew-gear' },
         { body: ['More amps in range = a meaner Sonic dice pool: 1 amp rolls 2d6 keep-best, 2 amps roll 3d6, 3 amps roll 2d6+d8. Fully wired is fully loud.', 'Guard the rig: rivals can walk up and UNPLUG your amps (a Roadie replugs them), and wandering too far leaves your rig cold until you come back. An amp far from the fight is an expensive lawn ornament.'], anchor: 'crew-gear' },
       ],
     },
@@ -1434,8 +1434,8 @@ function Game({ gameState, onReturnToLobby }) {
     skill_unlock: {
       title: '🌳 Skill Unlocked!',
       pages: [
-        { body: 'New ability unlocked — the HC grind paid off. Skills are permanent: scale tones, amps, crew, combat upgrades, signature moves. Your spirit card wears the new badge; hover it to gloat over the details.', anchor: 'crew-gear' },
-        { body: 'Now pick your NEXT target and keep the loop rolling: in-scale notes → HC → skill → repeat. Spirits who stop building around mid-game tend to become content in other people\'s highlight reels.', anchor: 'hc-bar' },
+        { body: 'New ability unlocked — the DB grind paid off. Skills are permanent: scale tones, amps, crew, combat upgrades, signature moves. Your spirit card wears the new badge; hover it to gloat over the details.', anchor: 'crew-gear' },
+        { body: 'Now pick your NEXT target and keep the loop rolling: in-scale notes → DB → skill → repeat. Spirits who stop building around mid-game tend to become content in other people\'s highlight reels.', anchor: 'db-bar' },
       ],
     },
     status_effect: {
@@ -1447,15 +1447,15 @@ function Game({ gameState, onReturnToLobby }) {
     intervals: {
       title: '🎵 Special Intervals',
       pages: [
-        { body: ['Some notes in your scale moonlight as weapons — the legend up top shows this turn\'s exact notes:', '🔴 TRITONE — maximum dissonance. Drive up, can BURN rivals. The devil\'s interval, and it knows it. 💗 5th / 💜 4th — the load-bearing consonances, your Sustain backbone. 💚 MAJOR 3rd — cleanses status effects. 🔵 MINOR 7th — arms Mojo Drain.', 'All of them pay bonus HC when played in-scale. Free money for good taste.'], anchor: 'interval-legend' },
+        { body: ['Some notes in your scale moonlight as weapons — the legend up top shows this turn\'s exact notes:', '🔴 TRITONE — maximum dissonance. Drive up, can BURN rivals. The devil\'s interval, and it knows it. 💗 5th / 💜 4th — the load-bearing consonances, your Sustain backbone. 💚 MAJOR 3rd — cleanses status effects. 🔵 MINOR 7th — arms Mojo Drain.', 'All of them pay bonus DB when played in-scale. Free money for good taste.'], anchor: 'interval-legend' },
       ],
     },
     edge: {
       title: '⚡ Dissonance Edge',
       pages: [
         { body: 'You ended your track on a DISCORD — you\'re on the EDGE now. Drive up, Sustain down: full glass-cannon, and it shows on your card, so every rival can read the opening you just handed them. Bold. Let\'s see if it\'s the good kind of bold.', anchor: 'stat-knobs' },
-        { body: 'Stay out another turn without resolving and the ride ESCALATES — more Drive, worse Sustain, and it keeps charging you HC and fans for the privilege. Getting into any fight while riding burns the stance, win or lose. The Edge is a bar tab: fun to run up, less fun to settle.', anchor: 'hc-bar' },
-        { body: 'The exit: end a track on your Root, 3rd, or 5th to RESOLVE — Sustain restored, a temp Drive kicker, and an HC payout scaled to how deep you rode. But the clock is real: miss the final turn\'s resolve and it all COLLAPSES — stance gone, fans walk, and you take a Vibe hit as a parting gift. Land the resolve. Be legend, not cautionary tale.', anchor: 'commit-track' },
+        { body: 'Stay out another turn without resolving and the ride ESCALATES — more Drive, worse Sustain, and it keeps charging you DB and fans for the privilege. Getting into any fight while riding burns the stance, win or lose. The Edge is a bar tab: fun to run up, less fun to settle.', anchor: 'db-bar' },
+        { body: 'The exit: end a track on your Root, 3rd, or 5th to RESOLVE — Sustain restored, a temp Drive kicker, and a DB payout scaled to how deep you rode. But the clock is real: miss the final turn\'s resolve and it all COLLAPSES — stance gone, fans walk, and you take a Vibe hit as a parting gift. Land the resolve. Be legend, not cautionary tale.', anchor: 'commit-track' },
       ],
     },
   };
@@ -1535,12 +1535,12 @@ function Game({ gameState, onReturnToLobby }) {
   // "Goes to eleven" event boost — counts as +1 amp in range while active
   const elevenBoost = (actingNoteState?.elevenTurns ?? 0) > 0 ? 1 : 0;
   const diceTier = AMP_DICE[Math.min(ampsInRange + elevenBoost, 3)];
-  const hcPoints      = actingNoteState?.hcPoints      ?? 0;
+  const dbPoints      = actingNoteState?.dbPoints      ?? 0;
   const upgradesPending = actingNoteState?.upgradesPending ?? 0;
   // 🎓 showTip runs from setTimeouts — a ref keeps its view of the Theory Tree
   // modal fresh (the closure's `upgradesPending` can be a render behind).
   useEffect(() => { upgradesPendingRef.current = upgradesPending; }, [upgradesPending]);
-  // 🎓 The Theory Tree first opens when the HC bar fills (the initial pick was
+  // 🎓 The Theory Tree first opens when the DB bar fills (the initial pick was
   // replaced by the free Full Scale grant) — introduce the tree at that moment.
   useEffect(() => {
     if (upgradesPending > 0 && canAct && !acting?.cpu) showTip('skill_tree');
@@ -2388,23 +2388,23 @@ function Game({ gameState, onReturnToLobby }) {
     });
 
     // ── MODE BONUS ────────────────────────────────────────────────────────────
-    // Major → +1 HC point (bright momentum, major scales favour harmonic runs)
+    // Major → +1 DB point (bright momentum, major scales favour harmonic runs)
     // Minor → +1 tempSustain (dark resolve, defensive edge)
     const isMojoDrained = (actingNoteState?.mojoDrain ?? 0) > 0;
     let bonusPatch = {};
     let bonusMsg = '';
     if (newMode === 'major') {
       const targetSkill = actingNoteState?.targetSkillId ? SKILL_BY_ID[actingNoteState.targetSkillId] : null;
-      const targetCost  = targetSkill?.hcCost ?? HC_UPGRADE_THRESHOLD;
-      const { newHCPoints, upgradeTriggered } = advanceHC(actingNoteState?.hcPoints ?? 0, 1, targetCost);
+      const targetCost  = targetSkill?.dbCost ?? DB_UPGRADE_THRESHOLD;
+      const { newDBPoints, upgradeTriggered } = advanceDB(actingNoteState?.dbPoints ?? 0, 1, targetCost);
       const newUpgradesPending = upgradeTriggered
         ? (actingNoteState?.upgradesPending ?? 0) + 1
         : (actingNoteState?.upgradesPending ?? 0);
-      bonusPatch = { hcPoints: newHCPoints, upgradesPending: newUpgradesPending,
-        totalHC: (actingNoteState?.totalHC ?? 0) + 1 };
+      bonusPatch = { dbPoints: newDBPoints, upgradesPending: newUpgradesPending,
+        totalDB: (actingNoteState?.totalDB ?? 0) + 1 };
       bonusMsg = upgradeTriggered
-        ? ` · ☀️ Major bonus: +1 HC → 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!`
-        : ` · ☀️ Major bonus: +1 HC [${newHCPoints}/${targetCost}]`;
+        ? ` · ☀️ Major bonus: +1 DB → 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!`
+        : ` · ☀️ Major bonus: +1 DB [${newDBPoints}/${targetCost}]`;
     } else {
       if (!isMojoDrained) {
         const prevDrive = actingNoteState?.tempDrive ?? 0;
@@ -2625,13 +2625,13 @@ function Game({ gameState, onReturnToLobby }) {
     const rawDriveBoost    = !isMojoDrained ? driveBoostFromRun(diatonicRunLen) : 0;
     const prevTempDrive    = actingNoteState?.tempDrive ?? 0;
     let newTempDrive       = prevTempDrive;
-    let driveOverflowToHC  = 0; // lower-value discard feeds Harmonic Charge
+    let driveOverflowToDB  = 0; // lower-value discard feeds Decibills
     if (rawDriveBoost > 0) {
       if (rawDriveBoost > prevTempDrive) {
-        driveOverflowToHC = prevTempDrive; // discard lower into HC
+        driveOverflowToDB = prevTempDrive; // discard lower into DB
         newTempDrive = rawDriveBoost;
       } else {
-        driveOverflowToHC = rawDriveBoost; // new one is lower — discard it
+        driveOverflowToDB = rawDriveBoost; // new one is lower — discard it
         // prevTempDrive stays
       }
     }
@@ -2641,18 +2641,18 @@ function Game({ gameState, onReturnToLobby }) {
     const rawSustainBoost   = !isMojoDrained ? sustainBoostFromPattern(repeatPatLen) : 0;
     const prevTempSustain   = actingNoteState?.tempSustain ?? 0;
     let newTempSustain      = prevTempSustain;
-    let sustainOverflowToHC = 0;
+    let sustainOverflowToDB = 0;
     if (rawSustainBoost > 0) {
       if (rawSustainBoost > prevTempSustain) {
-        sustainOverflowToHC = prevTempSustain;
+        sustainOverflowToDB = prevTempSustain;
         newTempSustain = rawSustainBoost;
       } else {
-        sustainOverflowToHC = rawSustainBoost;
+        sustainOverflowToDB = rawSustainBoost;
       }
     }
 
-    // Total overflow fed to Harmonic Charge as bonus points
-    const hcOverflow = driveOverflowToHC + sustainOverflowToHC;
+    // Total overflow fed to Decibills as bonus points
+    const dbOverflow = driveOverflowToDB + sustainOverflowToDB;
 
     // ── APPLY SELF EFFECTS (blocked by Mojo Drain) ───────────────────────────
     const newFeedbackBoost = !isMojoDrained && trackHasTritone;
@@ -2685,15 +2685,15 @@ function Game({ gameState, onReturnToLobby }) {
       triggerEffectFlash(acting.id, '✨', shieldUp ? 'SHIELD UP!' : 'CLEANSED!', '#44ffaa');
     }
 
-    // ── HC SCORING ────────────────────────────────────────────────────────────
-    // A track scores its base Harmonic Charge, then a DISCHORD costs a flat 1 point
+    // ── DB SCORING ────────────────────────────────────────────────────────────
+    // A track scores its base Decibills, then a DISCHORD costs a flat 1 point
     // for the whole track (not 1 per note), floored at 0. A dischord note no longer
     // wipes the round to zero — it just trims a point. Chromatic Climb pardons fully;
     // Chromatic Mastery halves the (already small) cost.
     const hasChromMastery = (actingNoteState?.unlockedSkills ?? []).includes('theory_chromatic');
     const discordFlat    = effectiveDiscord > 0 ? 1 : 0;
     const discordPenalty = chromClimbActive ? 0 : (hasChromMastery ? Math.floor(discordFlat / 2) : discordFlat);
-    const baseScore = scoreTrackHC(melodyLine, fourthNote, fifthNote);
+    const baseScore = scoreTrackDB(melodyLine, fourthNote, fifthNote);
     let breakdown = [...baseScore.breakdown];
     let earned = Math.max(0, baseScore.points - discordPenalty);
     if (discordPenalty > 0 && baseScore.points > 0) {
@@ -2716,10 +2716,10 @@ function Game({ gameState, onReturnToLobby }) {
     // swing at, not a savings account nobody can see.)
     //
     // Stage 0 = off. End a track on a Discord (off-scale) note → stage 1: Drive
-    // up, Sustain down, HC + fans paid up front. Stay out another turn without
+    // up, Sustain down, DB + fans paid up front. Stay out another turn without
     // landing on your Root/3rd/5th → stage 2 (stronger buff, steeper cost) —
     // that's the LAST turn to resolve. Land the resolve any time you're riding
-    // and you get Sustain back, a +1 temp Drive flourish, and an HC bonus scaled
+    // and you get Sustain back, a +1 temp Drive flourish, and a DB bonus scaled
     // to the stage you resolved from. Miss the resolve on the stage-2 turn and
     // it collapses: stance gone, fans walk, a self-inflicted Vibe hit — the tune
     // just fell apart. Getting into ANY battle while riding burns the stance
@@ -2730,26 +2730,26 @@ function Game({ gameState, onReturnToLobby }) {
     const edgeEndedOnDiscord = melodyLine.length > 0 && !isNotePlayable(lastNote);
     const prevEdgeStage      = actingNoteState?.edgeStage ?? 0;
     let newEdgeStage           = prevEdgeStage;
-    let edgeHcCost             = 0;
+    let edgeDbCost             = 0;
     let edgeFanCost            = 0;
-    let edgeHcBonus            = 0;
+    let edgeDbBonus            = 0;
     let edgeCollapseFans       = 0;
     let edgeResolvedThisTurn   = false;
     let edgeCollapsedThisTurn  = false;
     if (prevEdgeStage === 0) {
       if (edgeEndedOnDiscord) {
         newEdgeStage = 1;
-        edgeHcCost   = EDGE_HC_COST_BY_STAGE[1];
+        edgeDbCost   = EDGE_DB_COST_BY_STAGE[1];
         edgeFanCost  = EDGE_FAN_COST_BY_STAGE[1];
         showTip('edge');
-        addLog(`⚡ ${acting.name} steps onto the Edge — Drive +${EDGE_DRIVE_BY_STAGE[1]} / Sustain −${EDGE_SUSTAIN_PENALTY_BY_STAGE[1]} (−${edgeHcCost} HC, −${edgeFanCost} fan${edgeFanCost !== 1 ? 's' : ''}).`);
+        addLog(`⚡ ${acting.name} steps onto the Edge — Drive +${EDGE_DRIVE_BY_STAGE[1]} / Sustain −${EDGE_SUSTAIN_PENALTY_BY_STAGE[1]} (−${edgeDbCost} DB, −${edgeFanCost} fan${edgeFanCost !== 1 ? 's' : ''}).`);
         triggerEffectFlash(acting.id, '⚡', 'ON THE EDGE!', '#ff8866');
       }
     } else if (edgeResolvedNow) {
-      edgeHcBonus = EDGE_RESOLVE_HC_BONUS_BY_STAGE[prevEdgeStage];
+      edgeDbBonus = EDGE_RESOLVE_DB_BONUS_BY_STAGE[prevEdgeStage];
       newEdgeStage = 0;
       edgeResolvedThisTurn = true;
-      addLog(`⚡ ${acting.name} resolves the Edge (was stage ${prevEdgeStage}/${EDGE_MAX_STAGE}) — Sustain restored, +1 temp Drive, +${edgeHcBonus} HC!`);
+      addLog(`⚡ ${acting.name} resolves the Edge (was stage ${prevEdgeStage}/${EDGE_MAX_STAGE}) — Sustain restored, +1 temp Drive, +${edgeDbBonus} DB!`);
       triggerEffectFlash(acting.id, '⚡', 'RESOLVED!', '#ffd700');
     } else if (prevEdgeStage >= EDGE_MAX_STAGE) {
       newEdgeStage = 0;
@@ -2760,10 +2760,10 @@ function Game({ gameState, onReturnToLobby }) {
       applyVibeDamage(acting.id, EDGE_COLLAPSE_VIBE, 'Dissonance Collapse');
     } else {
       newEdgeStage = prevEdgeStage + 1;
-      edgeHcCost   = EDGE_HC_COST_BY_STAGE[newEdgeStage];
+      edgeDbCost   = EDGE_DB_COST_BY_STAGE[newEdgeStage];
       edgeFanCost  = EDGE_FAN_COST_BY_STAGE[newEdgeStage];
       const lastChance = newEdgeStage >= EDGE_MAX_STAGE;
-      addLog(`⚡ ${acting.name} rides it out — Edge escalates to stage ${newEdgeStage}/${EDGE_MAX_STAGE} (Drive +${EDGE_DRIVE_BY_STAGE[newEdgeStage]} / Sustain −${EDGE_SUSTAIN_PENALTY_BY_STAGE[newEdgeStage]}, −${edgeHcCost} HC, −${edgeFanCost} fan${edgeFanCost !== 1 ? 's' : ''})${lastChance ? ' — RESOLVE NEXT TURN OR LOSE IT' : ''}.`);
+      addLog(`⚡ ${acting.name} rides it out — Edge escalates to stage ${newEdgeStage}/${EDGE_MAX_STAGE} (Drive +${EDGE_DRIVE_BY_STAGE[newEdgeStage]} / Sustain −${EDGE_SUSTAIN_PENALTY_BY_STAGE[newEdgeStage]}, −${edgeDbCost} DB, −${edgeFanCost} fan${edgeFanCost !== 1 ? 's' : ''})${lastChance ? ' — RESOLVE NEXT TURN OR LOSE IT' : ''}.`);
       triggerEffectFlash(acting.id, '⚡', lastChance ? 'LAST CHANCE!' : 'ESCALATED!', '#ff5566');
     }
     // Resolve pays a one-turn Drive flourish through the existing tempDrive
@@ -2787,9 +2787,9 @@ function Game({ gameState, onReturnToLobby }) {
       discordCount, freestylePardon,
     });
 
-    // ── 🎭 STAGE B ROUTING: Performance Score P → HC top-up (§5b) + crowd excitement (§5a) ──
+    // ── 🎭 STAGE B ROUTING: Performance Score P → DB top-up (§5b) + crowd excitement (§5a) ──
     // Baseline-on for now (no skill gate yet — will later sit behind Crowd Read / Stage Presence).
-    const perfHcBonus = perfScore >= 10 ? 2 : (perfScore >= 7 ? 1 : 0);   // §5b — tiny, capped at +2
+    const perfDbBonus = perfScore >= 10 ? 2 : (perfScore >= 7 ? 1 : 0);   // §5b — tiny, capped at +2
     // §5a — fans NEVER hand out Fame directly (they only multiply earned FP via grantFame).
     // A strong performance instead SLOWLY grows the crowd and hardens casuals into diehards.
     const perfVibeFactor = (acting?.maxVibe ?? 5) / 5;
@@ -2827,15 +2827,15 @@ function Game({ gameState, onReturnToLobby }) {
     const lowPerfStreak = (!isRonin && perfScore < 4) ? prevLowPerfStreak + 1 : 0;
     if (!isRonin && lowPerfStreak >= FAN_BORED_AFTER) perfFansLost += FAN_DECAY;
 
-    // Drive/Sustain overflow feeds HC points (non-stacking rule); Edge HC cost is
+    // Drive/Sustain overflow feeds DB points (non-stacking rule); Edge DB cost is
     // a real sacrifice, not a soft floor — it can eat into points earned this turn.
-    const earnedTotal = earned + hcOverflow + perfHcBonus + edgeHcBonus - edgeHcCost;
+    const earnedTotal = earned + dbOverflow + perfDbBonus + edgeDbBonus - edgeDbCost;
 
     // Check upgrade threshold against target skill cost
     const targetSkill = actingNoteState?.targetSkillId ? SKILL_BY_ID[actingNoteState.targetSkillId] : null;
-    const targetCost  = targetSkill?.hcCost ?? HC_UPGRADE_THRESHOLD;
-    const { newHCPoints: rawHCPoints, upgradeTriggered } = advanceHC(hcPoints, earnedTotal, targetCost);
-    const newHCPoints = Math.max(0, rawHCPoints); // floor — a heavy Edge cost can't drive the bar negative
+    const targetCost  = targetSkill?.dbCost ?? DB_UPGRADE_THRESHOLD;
+    const { newDBPoints: rawDBPoints, upgradeTriggered } = advanceDB(dbPoints, earnedTotal, targetCost);
+    const newDBPoints = Math.max(0, rawDBPoints); // floor — a heavy Edge cost can't drive the bar negative
     const newUpgradesPending = upgradeTriggered
       ? (actingNoteState?.upgradesPending ?? 0) + 1
       : (actingNoteState?.upgradesPending ?? 0);
@@ -2843,14 +2843,14 @@ function Game({ gameState, onReturnToLobby }) {
     // ── POINTS FLASH ─────────────────────────────────────────────────────────
     const flashLines = [];
     if (earned > 0) {
-      flashLines.push(`+${earned} HC pts`);
+      flashLines.push(`+${earned} DB pts`);
       breakdown.forEach(b => flashLines.push(b));
       if (upgradeTriggered) flashLines.push(`🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!`);
     }
-    if (rawDriveBoost > 0)    flashLines.push(`⚔️ Drive +${newTempDrive}${driveOverflowToHC > 0 ? ` (↑HC +${driveOverflowToHC})` : ''}`);
-    if (rawSustainBoost > 0)  flashLines.push(`🛡️ Sustain +${newTempSustain}${sustainOverflowToHC > 0 ? ` (↑HC +${sustainOverflowToHC})` : ''}`);
+    if (rawDriveBoost > 0)    flashLines.push(`⚔️ Drive +${newTempDrive}${driveOverflowToDB > 0 ? ` (↑DB +${driveOverflowToDB})` : ''}`);
+    if (rawSustainBoost > 0)  flashLines.push(`🛡️ Sustain +${newTempSustain}${sustainOverflowToDB > 0 ? ` (↑DB +${sustainOverflowToDB})` : ''}`);
     if (trackHasTritone)      flashLines.push('🔥 Tritone — Damage ×2');
-    if (isOctaveResolution)   flashLines.push('🎶 Octave — HC +2');
+    if (isOctaveResolution)   flashLines.push('🎶 Octave — DB +2');
     if (isMajorThirdEnd)      flashLines.push(cleansePatch.statusShield ? '✨ Borrowed Chord — Shield Up!' : '✨ Borrowed Chord — Cleanse!');
     if (isMinorSeventhEnd)    flashLines.push(ownsParanoia ? '🌀 PARANOIA — drain 3t + 2 slots frozen!' : '🎷 Blues Lick — Mojo Drain!');
     if (riffSlayerArm)        flashLines.push(`🗡️ RIFF SLAYER ARMED — skip-climb ×${skipClimbLen}!`);
@@ -2861,12 +2861,12 @@ function Game({ gameState, onReturnToLobby }) {
     if (perfFreestyle > 0)    flashLines.push('🌀 Freestyle — first wrong note landed perfect!');
     if (canBank)              flashLines.push(`💾 Banked: ${newBankedNote.note}`);
     if (totalNotes > actingSpeed && !canBank) flashLines.push(`⚠️ ${totalNotes - actingSpeed} note(s) discarded (bank full)`);
-    if (discordPenalty > 0)   flashLines.push(`⚡ ${discordCount} Dischord — −${discordPenalty} HC`);
-    if (edgeResolvedThisTurn)    flashLines.push(`⚡ Edge resolved — Sustain back, +1 Drive, +${edgeHcBonus} HC`);
+    if (discordPenalty > 0)   flashLines.push(`⚡ ${discordCount} Dischord — −${discordPenalty} DB`);
+    if (edgeResolvedThisTurn)    flashLines.push(`⚡ Edge resolved — Sustain back, +1 Drive, +${edgeDbBonus} DB`);
     else if (edgeCollapsedThisTurn) flashLines.push(`⚡ Edge collapsed — −${EDGE_COLLAPSE_VIBE} Vibe, −${edgeCollapseFans} fans`);
     else if (newEdgeStage > 0)   flashLines.push(`⚡ Edge ${newEdgeStage}/${EDGE_MAX_STAGE}${newEdgeStage >= EDGE_MAX_STAGE ? ' — resolve next turn!' : ''}`);
     flashLines.push(`🎭 Performance ${perfScore}/10`);
-    if (perfHcBonus > 0)    flashLines.push(`🎸 Flair HC +${perfHcBonus}`);
+    if (perfDbBonus > 0)    flashLines.push(`🎸 Flair DB +${perfDbBonus}`);
     if (perfFansGained > 0) flashLines.push(`🎤 +${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''} won over!`);
     if (perfPromotions > 0) flashLines.push(`💜 ${perfPromotions} fan${perfPromotions !== 1 ? 's' : ''} → Diehard!`);
     if (flashLines.length > 0) {
@@ -2876,12 +2876,12 @@ function Game({ gameState, onReturnToLobby }) {
 
     // ── LOG ───────────────────────────────────────────────────────────────────
     const scoreStr = earned > 0
-      ? ` · 🎯 +${earned}pts (${breakdown.join(', ')})${hcOverflow > 0 ? ` +${hcOverflow}HC overflow` : ''}${upgradeTriggered ? ` · 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!` : ` · HC [${newHCPoints}/${targetCost}]`}`
-      : (discordPenalty > 0 ? ` · ⚡ ${discordCount} Dischord — no points` : ` · HC [${newHCPoints}/${targetCost}]`);
+      ? ` · 🎯 +${earned}pts (${breakdown.join(', ')})${dbOverflow > 0 ? ` +${dbOverflow}DB overflow` : ''}${upgradeTriggered ? ` · 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!` : ` · DB [${newDBPoints}/${targetCost}]`}`
+      : (discordPenalty > 0 ? ` · ⚡ ${discordCount} Dischord — no points` : ` · DB [${newDBPoints}/${targetCost}]`);
     const driveMsg   = rawDriveBoost > 0   ? ` · ⚔️ Drive +${newTempDrive}` : '';
     const sustMsg    = rawSustainBoost > 0  ? ` · 🛡️ Sustain +${newTempSustain}` : '';
     const triMsg     = trackHasTritone      ? ' · 🔥 Damage ×2'          : '';
-    const octMsg     = isOctaveResolution   ? ' · 🎶 Octave HC+2'           : '';
+    const octMsg     = isOctaveResolution   ? ' · 🎶 Octave DB+2'           : '';
     const m7Msg      = isMinorSeventhEnd    ? (ownsParanoia ? ' · 🌀 Paranoia ready (3t + freeze)' : ' · 🎷 Mojo Drain ready') : '';
     const rsMsg      = riffSlayerArm        ? ' · 🗡️ Riff Slayer ARMED' : '';
     const tritoneEndMsg = '';
@@ -2906,8 +2906,8 @@ function Game({ gameState, onReturnToLobby }) {
       pivotPending:    newPivotPending,
       rootNote:        newRootRaw,
       scaleMode:       newMode,
-      hcPoints:        newHCPoints,
-      totalHC:         (actingNoteState?.totalHC ?? 0) + earnedTotal,
+      dbPoints:        newDBPoints,
+      totalDB:         (actingNoteState?.totalDB ?? 0) + earnedTotal,
       edgeStage:       newEdgeStage,
       perfScore:       perfScore,
       recentP:         [...(actingNoteState?.recentP ?? []), perfScore].slice(-2),
@@ -3171,7 +3171,7 @@ function Game({ gameState, onReturnToLobby }) {
   // ─── INITIAL SKILL — auto-grant THE FULL SCALE at the very start of a spirit's first turn ───
   // The old flow opened the Theory Tree as the very first thing a player saw —
   // dull AND confusing. Now every spirit starts with theory_major (the full
-  // Major scale) for free, no modal. The tree first opens when the HC bar
+  // Major scale) for free, no modal. The tree first opens when the DB bar
   // fills (default threshold) — see the upgradesPending → UpgradeModal path.
   useEffect(() => {
     if (!acting) return;
@@ -3243,8 +3243,8 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── SKILL TREE — TARGET SELECTION & AWARD ───────────────────────────────────
   // New flow:
-  //   1. Player picks a target skill → stored as targetSkillId, hcCost stored as target cost
-  //   2. Every HC earned counts toward hcPoints (resets at targetCost, carries overflow)
+  //   1. Player picks a target skill → stored as targetSkillId, dbCost stored as target cost
+  //   2. Every DB earned counts toward dbPoints (resets at targetCost, carries overflow)
   //   3. When threshold hit → upgradesPending=1, skill awarded automatically, overlay opens to pick next
   //   4. Player picks next target → overlay closes, cycle repeats
 
@@ -3267,11 +3267,11 @@ function Game({ gameState, onReturnToLobby }) {
       }}));
       addLog(`🔧 ${spirit?.name} — STAGEHAND! A Diehard picks up a wrench. Assign them to move amps and replug cables.`);
     }
-    if (skillId === 'crew_pranksta') {
-      addLog(`🪤 ${spirit?.name} — PRANKSTA! Assign a Diehard as a saboteur — disconnect up to 2 rival amps within 4 hexes.`);
+    if (skillId === 'crew_heckler') {
+      addLog(`📢 ${spirit?.name} — HECKLER! Assign a Diehard to heckle any rival's crowd — their next crowd-gain is zeroed.`);
     }
-    if (skillId === 'crew_streetteam') {
-      addLog(`📣 ${spirit?.name} — STREET TEAM! Assign a Diehard to work the room — outer-ring boredom never ticks while staffed.`);
+    if (skillId === 'crew_merch') {
+      addLog(`🏪 ${spirit?.name} — MERCH TABLE! Assign a Diehard to run the booth — every FP earned kicks back +1 Decibill.`);
     }
     if (skillId === 'crew_manager') {
       addLog(`🎩 ${spirit?.name} — TOUR MANAGER! Two concurrent assignments. Your operation has an org chart.`);
@@ -3403,16 +3403,16 @@ function Game({ gameState, onReturnToLobby }) {
         pendingAwardSkillId: null,
         upgradesPending:     0,
         skillRoute:          ns.skillRoute,
-        hcPoints:            prev[spiritId]?.hcPoints ?? 0,
+        dbPoints:            prev[spiritId]?.dbPoints ?? 0,
       }
     }));
 
     const spirit = spirits.find(s => s.id === spiritId);
-    addLog(`🎯 ${spirit?.name} is saving toward: ${skill.icon} ${skill.label} (${skill.hcCost} HC)`);
+    addLog(`🎯 ${spirit?.name} is saving toward: ${skill.icon} ${skill.label} (${skill.dbCost} DB)`);
     if (turnStep === 'pivot') setTimeout(() => showTip('pivot'), 400);
   }
 
-  // Called when advanceHC fires upgradeTriggered — awards the target skill & opens overlay.
+  // Called when advanceDB fires upgradeTriggered — awards the target skill & opens overlay.
   function awardTargetSkill(spiritId) {
     let awardedSkillId = null;
     // Functional update reads fresh state even when called from a stale setTimeout closure
@@ -3451,7 +3451,7 @@ function Game({ gameState, onReturnToLobby }) {
   function purchaseSkill(spiritId, skillId) { setSkillTarget(spiritId, skillId); }
   function chooseUpgrade(spiritId, categoryId) {
     const legacyMap = { amp:'amp_1', roadie:'roadie_1', roadie_1:'crew_stagehand',
-      fans_4eva:'crew_backstage', pranksta:'crew_pranksta',
+      fans_4eva:'crew_backstage', pranksta:'crew_heckler',
       discord_1:'discord_1', discord_2:'discord_2', discord_3:'discord_3', discord_4:'discord_4' };
     setSkillTarget(spiritId, legacyMap[categoryId] ?? categoryId);
   }
@@ -3564,29 +3564,29 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
 
-    if (skillId === 'crew_pranksta') {
-      const spiritHex = HEX_BY_NUM[spirit.num];
-      if (!spiritHex) return;
-      // Up to 2 nearest live rival amps within 4 hexes
-      const targets = amps
-        .filter(a => a.ownerId !== spiritId && !a.unplugged)
-        .map(a => {
-          const ah = HEX_BY_NUM[a.hexNum];
-          return ah ? { amp: a, dist: axialDist(spiritHex.q, spiritHex.r, ah.q, ah.r) } : null;
-        })
-        .filter(t => t && t.dist <= 4)
-        .sort((x, y) => x.dist - y.dist)
-        .slice(0, 2);
-      if (targets.length === 0) { addLog(`🪤 No live rival amps within 4 hexes — the pranksters shrug.`); return; }
-      const hitIds = new Set(targets.map(t => t.amp.id));
-      setAmps(prev => prev.map(a => hitIds.has(a.id)
-        ? { ...a, unplugged: true, unpluggerId: spiritId } : a));
-      targets.forEach(t => {
-        const owner = spirits.find(s => s.id === t.amp.ownerId);
-        flyCrew({ fromHexNum: homeNum, toHexNum: t.amp.hexNum, icon:'🎉', color:'#ff66bb', label:'🎉 Pranksta!' });
-        addLog(`🪤 Pranksters yank the cable on ${owner?.name ?? 'a rival'}'s amp at #${t.amp.hexNum}!`);
+    if (skillId === 'crew_heckler') {
+      // Heckler — pick the rival with the most casuals (juiciest target).
+      // Board-wide range: the heckler is a fan in the crowd, not on stage.
+      const rivals = spirits.filter(s => s.id !== spiritId && !s.knockedOut);
+      if (rivals.length === 0) { addLog(`📢 Nobody to heckle — the crowd is all yours.`); return; }
+      // Auto-target: rival with the highest casual count (most crowd to disrupt).
+      // If the caller is a human, a target picker could be added later; for now auto-pick.
+      const ranked = [...rivals].sort((a, b) => {
+        const ca = noteStates[a.id]?.casuals ?? 0;
+        const cb = noteStates[b.id]?.casuals ?? 0;
+        return cb - ca;
       });
-      if (targets[0]) focusOnHex(targets[0].amp.hexNum, 1100, 0.5);
+      const target = ranked[0];
+      const targetCorner = CORNERS[target.corner];
+      const targetHomeNum = targetCorner?.homeNum ?? target.num;
+      // Mark the rival: their next crowd-gain (gainFansFromDeed) is zeroed.
+      setNoteStates(prev => ({
+        ...prev,
+        [target.id]: { ...prev[target.id], heckled: true },
+      }));
+      flyCrew({ fromHexNum: homeNum, toHexNum: targetHomeNum, icon:'📢', color:'#ff4444', label:'📢 Heckler!' });
+      addLog(`📢 ${spirit.name}'s heckler storms into ${target.name}'s crowd — their next fan-gain is zeroed!`);
+      focusOnHex(targetHomeNum, 1100, 0.5);
       startCooldown();
       return;
     }
@@ -3832,7 +3832,7 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   // Player answered the trivia card — grade it, pay fans on a correct answer.
-  // 🎤 Fans, not HC: knowing rock trivia is crowd cred, not musicianship.
+  // 🎤 Fans, not DB: knowing rock trivia is crowd cred, not musicianship.
   function answerTrivia(idx) {
     if (!activeEvent || activeEvent.phase !== 'question') return;
     const q = activeEvent.q;
@@ -4231,10 +4231,10 @@ function Game({ gameState, onReturnToLobby }) {
       const roll = d6();
       rolls = { you: roll };
       if (roll === 6) {
-        grantHC(spiritId, 3);
+        grantDB(spiritId, 3);
         lines.push(`🕯️ Rolled 6 — the legends ANSWER. A chord you've never heard rings out.`);
-        lines.push(`+3 Harmonic Charge.`);
-        addLog(`🕯️ The 27 Club answers ${spirit?.name}'s séance — +3 HC!`);
+        lines.push(`+3 Decibills.`);
+        addLog(`🕯️ The 27 Club answers ${spirit?.name}'s séance — +3 DB!`);
       } else if (roll === 1) {
         // Pre-read shuffle values from the batch (drawn above; rCursor already past the d6)
         const shuffleVals = batch.slice(rCursor, rCursor + 7);
@@ -4257,10 +4257,10 @@ function Game({ gameState, onReturnToLobby }) {
         addLog(`🕯️ ${spirit?.name} is SPOOKED by the séance — 2 slots frozen!`);
         setTimeout(() => triggerEffectFlash(spiritId, '⚡', 'SPOOKED!', '#ff8800'), 200);
       } else {
-        grantHC(spiritId, 1);
+        grantDB(spiritId, 1);
         lines.push(`🕯️ Rolled ${roll} — a faint whisper of a melody drifts through.`);
-        lines.push(`+1 Harmonic Charge.`);
-        addLog(`🕯️ A faint whisper reaches ${spirit?.name} — +1 HC.`);
+        lines.push(`+1 Decibill.`);
+        addLog(`🕯️ A faint whisper reaches ${spirit?.name} — +1 DB.`);
       }
     }
 
@@ -4313,18 +4313,18 @@ function Game({ gameState, onReturnToLobby }) {
       const roll = d6();
       rolls = { you: roll };
       if (roll % 2 === 0) {
-        grantHC(spiritId, 2);
+        grantDB(spiritId, 2);
         lines.push(`💰 Rolled ${roll} — the envelope works. Your single is in HEAVY rotation.`);
-        lines.push(`+2 Harmonic Charge.`);
-        addLog(`💰 Payola pays off for ${spirit?.name} — +2 HC!`);
+        lines.push(`+2 Decibills.`);
+        addLog(`💰 Payola pays off for ${spirit?.name} — +2 DB!`);
       } else {
         setNoteStates(prev => {
           const cur = prev[spiritId] ?? {};
-          return { ...prev, [spiritId]: { ...cur, hcPoints: Math.max(0, (cur.hcPoints ?? 0) - 2) } };
+          return { ...prev, [spiritId]: { ...cur, dbPoints: Math.max(0, (cur.dbPoints ?? 0) - 2) } };
         });
         lines.push(`💰 Rolled ${roll} — BUSTED. Your face is on the evening news next to the word "scandal."`);
-        lines.push(`-2 Harmonic Charge progress.`);
-        addLog(`💰 ${spirit?.name} caught in the Payola Scandal — -2 HC progress!`);
+        lines.push(`-2 Decibills progress.`);
+        addLog(`💰 ${spirit?.name} caught in the Payola Scandal — -2 DB progress!`);
       }
     }
 
@@ -4369,10 +4369,10 @@ function Game({ gameState, onReturnToLobby }) {
     }
 
     else if (eventId === 'backstage_pass') {
-      grantHC(spiritId, 3);
+      grantDB(spiritId, 3);
       lines.push(`🎟️ The pass is real. The door opens onto a room full of legends swapping licks.`);
-      lines.push(`You soak it all in: +3 Harmonic Charge.`);
-      addLog(`🎟️ ${spirit?.name} works the Backstage Pass — +3 HC!`);
+      lines.push(`You soak it all in: +3 Decibills.`);
+      addLog(`🎟️ ${spirit?.name} works the Backstage Pass — +3 DB!`);
     }
 
     else if (eventId === 'divine_mission') {
@@ -4411,7 +4411,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── 🎸⏰ BACK TO THE PAST — engine ─────────────────────────────────────────
   // Self-contained mini riff challenge (never touches battleState). Stage 1 pays
-  // Harmonic Charge, Stage 2 pays fans. Every fumbled note shaves 1 Vibe, but the
+  // Decibills, Stage 2 pays fans. Every fumbled note shaves 1 Vibe, but the
   // fade floors at 1 — it can NEVER knock a spirit out. Stage 2 always runs.
   function launchBackToPast(spiritId) {
     const sp = spirits.find(s => s.id === spiritId);
@@ -4550,10 +4550,10 @@ function Game({ gameState, onReturnToLobby }) {
       if (data.reward === 'hc') {
         const gain = passed ? 3 : 1;
         tally.hc += gain;
-        setTimeout(() => grantHC(spiritId, gain), 60);
+        setTimeout(() => grantDB(spiritId, gain), 60);
         lines.push(passed
-          ? `💫 SLOW-DANCE ANGEL — ${prev.hits}/${total} chords clean. The floor sways. +${gain} Harmonic Charge.`
-          : `💫 SLOW-DANCE ANGEL — ${prev.hits}/${total} clean. Shaky, but you got through it. +${gain} Harmonic Charge.`);
+          ? `💫 SLOW-DANCE ANGEL — ${prev.hits}/${total} chords clean. The floor sways. +${gain} Decibills.`
+          : `💫 SLOW-DANCE ANGEL — ${prev.hits}/${total} clean. Shaky, but you got through it. +${gain} Decibills.`);
       } else {
         const gain = passed ? 5 : 2;
         tally.casuals += gain;
@@ -4715,7 +4715,7 @@ function Game({ gameState, onReturnToLobby }) {
   function devGrant(kind) {
     const id = devCurrentSpiritId(); if (!id) return;
     const nm = spiritById[id]?.name;
-    if (kind === 'hc')       { grantHC(id, 3); addLog(`🧪 +3 HC → ${nm}`); }
+    if (kind === 'hc')       { grantDB(id, 3); addLog(`🧪 +3 DB → ${nm}`); }
     else if (kind === 'cas') { dispatch(fansChanged(id, { casuals: Math.min(FAN_CASUAL_CAP, (engineRef.current.noteStates[id]?.casuals ?? 0) + 5) })); flashFanFx(id, 'gain', 5); addLog(`🧪 +5 Casuals → ${nm}`); }
     else if (kind === 'die') { dispatch(fansChanged(id, { diehards: Math.min(FAN_DIEHARD_CAP, (engineRef.current.noteStates[id]?.diehards ?? FAN_DIEHARD_START) + 1) })); addLog(`🧪 +1 Diehard → ${nm}`); }
     else if (kind === 'uns') { setUnsurePool(p => p + 5); addLog('🧪 +5 to the Unsure pool'); }
@@ -4828,18 +4828,18 @@ function Game({ gameState, onReturnToLobby }) {
     setDevOpen(false);
   }
 
-  // Add raw Harmonic Charge toward the spirit's current target skill.
+  // Add raw Decibills toward the spirit's current target skill.
   // Crossing the threshold awards the skill exactly like a committed track would.
-  function grantHC(spiritId, amount) {
+  function grantDB(spiritId, amount) {
     const ns         = noteStates[spiritId] ?? {};
-    const targetCost = ns.targetSkillId ? (SKILL_BY_ID[ns.targetSkillId]?.hcCost ?? HC_UPGRADE_THRESHOLD) : HC_UPGRADE_THRESHOLD;
-    const { newHCPoints, upgradeTriggered } = advanceHC(ns.hcPoints ?? 0, amount, targetCost);
+    const targetCost = ns.targetSkillId ? (SKILL_BY_ID[ns.targetSkillId]?.dbCost ?? DB_UPGRADE_THRESHOLD) : DB_UPGRADE_THRESHOLD;
+    const { newDBPoints, upgradeTriggered } = advanceDB(ns.dbPoints ?? 0, amount, targetCost);
     setNoteStates(prev => ({
       ...prev,
       [spiritId]: {
         ...prev[spiritId],
-        hcPoints: newHCPoints,
-        totalHC: (prev[spiritId]?.totalHC ?? 0) + amount,
+        dbPoints: newDBPoints,
+        totalDB: (prev[spiritId]?.totalDB ?? 0) + amount,
       },
     }));
     if (upgradeTriggered && ns.targetSkillId) {
@@ -5283,6 +5283,15 @@ function Game({ gameState, onReturnToLobby }) {
     // setNoteStates full-replace — finalFp>0 so applyFameChanged's floor never
     // bites here). The crowd mult / thresholds / win-check below stay client.
     dispatch(fameChanged(spiritId, finalFp));
+    // 🏪 MERCH TABLE — while a Diehard staffs the booth, every FP earned kicks
+    // back Decibills equal to the RAW (pre-multiplier) FP. The merch line grows
+    // with the crowd's excitement (CREW_SYSTEM_DESIGN.md §4.4).
+    if ((ns.assignments ?? []).includes('crew_merch') && fp > 0) {
+      setTimeout(() => {
+        grantDB(spiritId, fp);
+        addLog(`🏪 Merch Table kicks back +${fp} Decibill${fp !== 1 ? 's' : ''} for ${sp?.name}!`);
+      }, 0);
+    }
     const crowdStr = (amplify && uncapped !== fp) ? ` (${fp} ×🎤${mult.toFixed(2)} crowd)` : '';
     const capStr   = clipped > 0 ? ` ⛔ capped at ${FAME_PER_TURN_CAP}/turn (${clipped} lost to the noise)` : '';
     addLog(`⭐ ${sp?.name} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${capStr}${reason ? ` — ${reason}` : ''}! (${Math.min(newFame, FAME_TO_WIN)}/${FAME_TO_WIN})`);
@@ -5478,6 +5487,17 @@ function Game({ gameState, onReturnToLobby }) {
     // still shaken from a recent demolition. (Boredom decay is handled by position
     // in tickFans now, not here.)
     if (!clean || !inGainZone || (ns.fanLag ?? 0) > 0) return;
+
+    // 📢 HECKLER — a rival's heckler is in the crowd, zeroing this gain.
+    if (ns.heckled) {
+      setNoteStates(prev => ({
+        ...prev, [spiritId]: { ...prev[spiritId], heckled: false },
+      }));
+      const nm = spirits.find(s => s.id === spiritId)?.name;
+      addLog(`📢 ${nm}'s crowd is too distracted by the heckler — no fans gained this time!`);
+      flashFanFx(spiritId, 'scatter', 0);
+      return;
+    }
 
     // 🌟 SOLOIST stance — playing for the crowd draws an extra casual on every
     // clean gain (§4.1 amended — replaces the old ×1.5 all-sources Fame mult).
@@ -7304,7 +7324,7 @@ function Game({ gameState, onReturnToLobby }) {
   // they should not compound across multiple battles.
   // ⚡ Also burns any active Dissonance Edge stance for BOTH combatants, win or
   // lose, attacker or defender — stepping into a fight spends the risk you were
-  // carrying either way (DESIGN_AUDIT_v2.md §9 v2). No refund of the HC/fans
+  // carrying either way (DESIGN_AUDIT_v2.md §9 v2). No refund of the DB/fans
   // already paid and no collapse penalty either — the fight itself was the cost.
   function clearBattleBuffs(attackerId, defenderId) {
     setNoteStates(prev => {
@@ -8152,7 +8172,7 @@ function Game({ gameState, onReturnToLobby }) {
       }
 
       // 1d/1e) MELODY LINE — plan-driven: clean notes ascending (Drive), all the way
-      //        up to the 8-note cap (more notes = more HC), saving a 5th/4th for the
+      //        up to the 8-note cap (more notes = more DB), saving a 5th/4th for the
       //        final note (+5/+4), padding for movement only. See botPlanNoteStep.
       const plan = botPlanNoteStep(self);
       if (plan.commit) {
@@ -8175,13 +8195,11 @@ function Game({ gameState, onReturnToLobby }) {
       if (hasSkill('ultimate') && !ns.ultimateUsed && botRivalsWithin(self, 4).length >= 2) {
         schedule(() => fireUltimate(self.id)); return;
       }
-      // 🪤 Pranksta — yank a nearby rival's cable to kill their Sonic die.
-      const rivalAmpNear = myHex && amps.some(a => {
-        if (a.ownerId === self.id || a.unplugged) return false;
-        const ah = HEX_BY_NUM[a.hexNum];
-        return ah && axialDist(myHex.q, myHex.r, ah.q, ah.r) <= 4;
-      });
-      if (crewReady('crew_pranksta') && rivalAmpNear) { schedule(() => deployGroupie(self.id, 'crew_pranksta')); return; }
+      // 📢 Heckler — disrupt a rival's crowd when they have fans worth zeroing.
+      if (crewReady('crew_heckler')) {
+        const rivalWithFans = spirits.some(s => s.id !== self.id && !s.knockedOut && (noteStates[s.id]?.casuals ?? 0) >= 3);
+        if (rivalWithFans) { schedule(() => deployGroupie(self.id, 'crew_heckler')); return; }
+      }
       // 🧍 STANCE — settle into the persona's preferred pose once it's learned.
       // Switching spends the Action, so only when no rival is close enough to
       // make attacking the better use of it (self-disables once in the stance).
@@ -9599,7 +9617,7 @@ function Game({ gameState, onReturnToLobby }) {
                 </div>{/* end overlay content */}
                 </div>{/* end right column */}
 
-                {/* ── LEFT COLUMN — loadout: badges · crew & gear · HC · skills ── */}
+                {/* ── LEFT COLUMN — loadout: badges · crew & gear · DB · skills ── */}
                 <div style={{flex:1, minWidth:170, order:1, display:"flex", flexDirection:"column",
                   borderRight:`1px solid ${s.color}22`}}>
                 {/* Status badges */}
@@ -9777,7 +9795,7 @@ function Game({ gameState, onReturnToLobby }) {
                 {(() => {
                   const unlocked = ns.unlockedSkills ?? [];
                   const myAmps   = amps.filter(a => a.ownerId === s.id);
-                  const groupieIds = ['crew_backstage','crew_pranksta'].filter(id => unlocked.includes(id));
+                  const groupieIds = ['crew_backstage','crew_heckler'].filter(id => unlocked.includes(id));
                   const hasRoadies = (ns.roadies?.length ?? 0) > 0;
                   const hasUlt     = unlocked.includes('ultimate');
                   const ampUnlockCount = ['amp_1','amp_2','amp_3'].filter(id => unlocked.includes(id)).length;
@@ -9786,7 +9804,7 @@ function Game({ gameState, onReturnToLobby }) {
 
                   const GROUPIE_DEFS = {
                     crew_backstage:  { icon:'💌', label:'Fan Mail',    hint:'+3 Vibe (letter pickup)' },
-                    crew_pranksta:   { icon:'🪤', label:'Pranksta',    hint:'Unplug 2 rival amps ≤4 hex' },
+                    crew_heckler:    { icon:'📢', label:'Heckler',     hint:'Zero a rival\'s next fan-gain' },
                   };
                   const chipBase = {
                     fontFamily:'inherit', cursor:'pointer', borderRadius:4,
@@ -9950,19 +9968,19 @@ function Game({ gameState, onReturnToLobby }) {
                   );
                 })()}
 
-                {/* ── HC PROGRESS BAR ── */}
+                {/* ── DB PROGRESS BAR ── */}
                 {(() => {
                   const targetId  = ns.targetSkillId;
                   const targetDef = targetId ? SKILL_BY_ID[targetId] : null;
-                  const hcPts     = ns.hcPoints ?? 0;
-                  const targetCost = targetDef?.hcCost ?? 8;
-                  const pct       = Math.min(1, hcPts / targetCost);
+                  const dbPts     = ns.dbPoints ?? 0;
+                  const targetCost = targetDef?.dbCost ?? 8;
+                  const pct       = Math.min(1, dbPts / targetCost);
                   const routeDef  = targetDef ? SKILL_TREE.routes.find(r => r.id === targetDef.routeId) : null;
                   const barColor  = routeDef?.color ?? '#ffcc44';
                   return (
-                    <div data-tip-anchor="hc-bar" style={{padding:"5px 8px 6px", borderTop:`1px solid ${s.color}22`}}>
+                    <div data-tip-anchor="db-bar" style={{padding:"5px 8px 6px", borderTop:`1px solid ${s.color}22`}}>
                       <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3}}>
-                        <span style={{fontSize:7, color:"#3a5a7a", letterSpacing:1}}>HC PROGRESS</span>
+                        <span style={{fontSize:7, color:"#3a5a7a", letterSpacing:1}}>DB PROGRESS</span>
                         {targetDef
                           ? <span style={{fontSize:7, color:barColor, fontWeight:700}}>
                               {targetDef.icon} {targetDef.label}
@@ -9985,7 +10003,7 @@ function Game({ gameState, onReturnToLobby }) {
                         </div>
                         <span style={{fontSize:8, color: pct>=1 ? barColor : "#4a6a7a",
                           fontWeight: pct>=1 ? 700 : 400, whiteSpace:"nowrap"}}>
-                          {hcPts} / {targetCost}
+                          {dbPts} / {targetCost}
                         </span>
                       </div>
                     </div>
@@ -10092,7 +10110,7 @@ function Game({ gameState, onReturnToLobby }) {
                 const previewColor = wouldResolve ? "#ffd700" : wouldCollapse ? "#ff3344"
                                     : wouldStartOrEscalate ? "#ff5566" : "#ff8866";
                 return (
-                  <div title="Ending a track on a Discord note puts you ON THE EDGE: Drive up, Sustain down, paid for in HC + fans. Escalates if you stay out; land the resolve on Root/3rd/5th for a payout, or lose it all if you're still out at max stage."
+                  <div title="Ending a track on a Discord note puts you ON THE EDGE: Drive up, Sustain down, paid for in DB + fans. Escalates if you stay out; land the resolve on Root/3rd/5th for a payout, or lose it all if you're still out at max stage."
                     style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}>
                     <span style={{fontSize:7,color:"#ff8866",letterSpacing:0.5,flexShrink:0}}>⚡ EDGE</span>
                     <div style={{display:"flex",gap:2,flex:1}}>
@@ -10296,7 +10314,7 @@ function Game({ gameState, onReturnToLobby }) {
                           <div style={{marginTop:4,padding:"3px 6px",borderRadius:3,
                             background:"#0d1830",border:"1px solid #4488ff44",
                             fontSize:7,color:"#88bbff"}}>
-                            ☀️ Bonus: <span style={{color:"#aaccff",fontWeight:700}}>+1 HC point</span>
+                            ☀️ Bonus: <span style={{color:"#aaccff",fontWeight:700}}>+1 DB</span>
                           </div>
                         </div>
 
@@ -10701,14 +10719,14 @@ function Game({ gameState, onReturnToLobby }) {
                   {ns.instrumentDropped&&<span style={{fontSize:7,color:"#ff4444"}} title="Dropped instrument — -1 Drive">🎸💥</span>}
                   {amps.some(a=>a.ownerId===s.id&&a.unplugged)&&<span style={{fontSize:7,color:"#ff8800"}} title="Amp unplugged!">🔌</span>}
                 </div>
-                {/* Owned skills + HC target row */}
+                {/* Owned skills + DB target row */}
                 {(() => {
                   const owned     = ns.unlockedSkills ?? [];
                   const targetDef = ns.targetSkillId ? SKILL_BY_ID[ns.targetSkillId] : null;
                   const targetRoute = targetDef ? SKILL_TREE.routes.find(r => r.id === targetDef.routeId) : null;
-                  const hcPts     = ns.hcPoints ?? 0;
-                  const targetCost = targetDef?.hcCost ?? 8;
-                  const pct       = Math.min(1, hcPts / targetCost);
+                  const dbPts     = ns.dbPoints ?? 0;
+                  const targetCost = targetDef?.dbCost ?? 8;
+                  const pct       = Math.min(1, dbPts / targetCost);
                   if (owned.length === 0 && !targetDef) return null;
                   return (
                     <div style={{marginTop:4, display:"flex", flexDirection:"column", gap:3}}>
@@ -10730,7 +10748,7 @@ function Game({ gameState, onReturnToLobby }) {
                           })}
                         </div>
                       )}
-                      {/* HC target mini-bar */}
+                      {/* DB target mini-bar */}
                       {targetDef && (
                         <div style={{display:"flex", alignItems:"center", gap:5}}>
                           <span style={{fontSize:9}}>{targetDef.icon}</span>
@@ -10743,7 +10761,7 @@ function Game({ gameState, onReturnToLobby }) {
                             }}/>
                           </div>
                           <span style={{fontSize:6, color:"#3a5a7a", whiteSpace:"nowrap"}}>
-                            {hcPts}/{targetCost}
+                            {dbPts}/{targetCost}
                           </span>
                         </div>
                       )}
@@ -11892,7 +11910,7 @@ function Game({ gameState, onReturnToLobby }) {
                 const ns = noteStates[s.id] ?? {};
                 const unlocked   = ns.unlockedSkills ?? [];
                 const roadies    = ns.roadies ?? [];
-                const groupieIds = ['crew_backstage','crew_pranksta'].filter(id => unlocked.includes(id));
+                const groupieIds = ['crew_backstage','crew_heckler'].filter(id => unlocked.includes(id));
                 if (roadies.length === 0 && groupieIds.length === 0) return null;
 
                 const sc = CORNER_LABELS[s.corner]?.color ?? s.color;   // owner colour for the groupie glow

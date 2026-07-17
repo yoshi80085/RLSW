@@ -52,7 +52,7 @@ export function usedAdd(used, ...idxs) {
 // as `smashOutcome`/`riffStats`: a single source of truth a server can score
 // identically. P measures how INTERESTING the note placement was (melodic shape,
 // palette, recognized gestures, repeated motifs) with track length only a small
-// nudge; it routes to crowd growth / HC top-up / intimidation downstream.
+// nudge; it routes to crowd growth / DB top-up / intimidation downstream.
 //
 // Returns { score, freestyle }: `score` is P clamped to 0..10; `freestyle` is the
 // Freestyle flair flag (Intergalactic 0's pardoned first wrong note), which the
@@ -66,7 +66,7 @@ export function usedAdd(used, ...idxs) {
 //   hasGatedEnding      — minor-7th | major-3rd | tritone unlock-gated ending
 //   hasRiff             — a legendary riff was detected on the track
 //   cadenceResolved     — a cadence objective completed this commit
-//   earned              — base HC points earned (feeds the small length nudge)
+//   earned              — base DB points earned (feeds the small length nudge)
 //   edgeResolved        — the Dissonance Edge resolved this turn (+2 flair)
 //   susEnd              — theory_sus suspended ending (+1 flair)
 //   discordCount        — raw off-scale note count this track
@@ -171,8 +171,8 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     swingExposed:    false,
     smashExposed:    false,
     displaceCd:      0,
-    hcPoints:        0,
-    totalHC:         0,
+    dbPoints:        0,
+    totalDB:         0,
     upgradesPending: 0,
     skillRoute:      null,
     unlockedSkills:  [],
@@ -209,6 +209,7 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     // Array of taskIds a Diehard is currently assigned to. Each entry pulls one
     // Diehard out of the crowdMultiplier. Max length = 1 (or 2 with crew_manager).
     assignments:      [],
+    heckled:          false,  // 📢 Heckler flag — next crowd-gain is zeroed, then clears
     // ── 🎭 CROWD & INTIMIDATION LAYER ──
     perfScore:    0,
     recentP:      [],
@@ -397,10 +398,7 @@ export function applyFansTicked(state, { spiritId }) {
     // Outer edge — patience runs out only after several turns in a row.
     outerStreak += 1;
     centerStreak = 0;
-    // Street Team (crew_streetteam assignment) suppresses outer-ring boredom decay —
-    // the assigned Diehard is out there working the room (CREW_SYSTEM_DESIGN.md §4.4).
-    const hasStreetTeam = (ns.assignments ?? []).includes('crew_streetteam');
-    if (!hasStreetTeam && outerStreak >= FAN_BORED_AFTER && casuals > 0) {
+    if (outerStreak >= FAN_BORED_AFTER && casuals > 0) {
       const before = casuals;
       casuals = Math.max(0, casuals - FAN_DECAY);
       lost = before - casuals;

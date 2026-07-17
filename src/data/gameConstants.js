@@ -1,6 +1,6 @@
-// Every 8 HC points -> player chooses one upgrade from up to 3 categories.
+// Every 8 Decibills -> player unlocks their targeted skill.
 // Points carry over after crossing a threshold.
-export const HC_UPGRADE_THRESHOLD = 8;
+export const DB_UPGRADE_THRESHOLD = 8;
 
 // Stock is a reservoir, not a fresh hand. Unused notes carry
 // over; only this many spent slots recharge per turn.
@@ -106,18 +106,18 @@ export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
 
 // -- DISSONANCE EDGE -- (DESIGN_AUDIT_v2.md §9 v2 — replaces the Tension meter.
 // Ending a track on a Discord (off-scale) note puts you ON THE EDGE: Drive up,
-// Sustain down, paid for up front in HC + fans. Staying out costs more and buys
+// Sustain down, paid for up front in DB + fans. Staying out costs more and buys
 // more, but it's a hard 2-stage climb — miss the 3rd turn's resolution (landing
 // on Root/3rd/5th) and the whole thing collapses: you lose the stance AND take
 // a fan/Vibe hit for nothing. Landing the resolve instead refunds Sustain, plus
-// a +1 temp Drive flourish and an HC payout scaled to how deep you were in.
+// a +1 temp Drive flourish and a DB payout scaled to how deep you were in.
 // Every number here is stage-indexed: index 0 = inactive, 1 = first stage
 // (round 1 on a Discord), 2 = max stage (round 2 — round 3 must resolve or fall).
 export const EDGE_MAX_STAGE               = 2;      // stage cap — the 3rd unresolved turn forces a collapse, not stage 3
 export const EDGE_DRIVE_BY_STAGE          = [0, 1, 2]; // temp Drive granted while riding, by stage
 export const EDGE_SUSTAIN_PENALTY_BY_STAGE = [0, 1, 2]; // temp Sustain LOST while riding, by stage
-export const EDGE_HC_COST_BY_STAGE        = [0, 1, 2]; // HC sacrificed to enter/escalate to this stage
+export const EDGE_DB_COST_BY_STAGE        = [0, 1, 2]; // DB sacrificed to enter/escalate to this stage
 export const EDGE_FAN_COST_BY_STAGE       = [0, 1, 1]; // casual fans sacrificed to enter/escalate to this stage
-export const EDGE_RESOLVE_HC_BONUS_BY_STAGE = [0, 2, 4]; // HC payout for landing the resolve FROM this stage
+export const EDGE_RESOLVE_DB_BONUS_BY_STAGE = [0, 2, 4]; // DB payout for landing the resolve FROM this stage
 export const EDGE_COLLAPSE_FAN_LOSS       = 2;      // casual fans who walk when the ride collapses unresolved
 export const EDGE_COLLAPSE_VIBE           = 1;      // self-inflicted Vibe cost on collapse — the feedback squeal

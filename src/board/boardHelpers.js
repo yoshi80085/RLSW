@@ -1,7 +1,7 @@
 import { HEX_BY_NUM, ALL_HEXES } from "./hexMap.js";
 import { axialDist, getFlatTopNeighborSlots, angleTo, angleDiff } from "./hexGeometry.js";
 import { NOTE_POOL } from "../music/notes.js";
-import { LIMELIGHT_HEX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_START, HC_UPGRADE_THRESHOLD } from "../data/gameConstants.js";
+import { LIMELIGHT_HEX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_START, DB_UPGRADE_THRESHOLD } from "../data/gameConstants.js";
 
 // ── Hex pools for board placement (engine + client) ──
 // Non-edge hexes minus the Limelight — where the spotlight roams.
@@ -79,13 +79,13 @@ export function crowdMultiplier(diehards = FAN_DIEHARD_START, casuals = 0, assig
   );
 }
 
-// advanceHC: progress hcPoints toward a dynamic target cost.
+// advanceDB: progress dbPoints toward a dynamic target cost.
 // Returns whether the target was reached this increment.
-export function advanceHC(hcPoints, earned, targetCost) {
-  const cost  = targetCost ?? HC_UPGRADE_THRESHOLD; // default 8 for first pick
-  const total = hcPoints + earned;
+export function advanceDB(dbPoints, earned, targetCost) {
+  const cost  = targetCost ?? DB_UPGRADE_THRESHOLD; // default 8 for first pick
+  const total = dbPoints + earned;
   if (total >= cost) {
-    return { newHCPoints: total - cost, upgradeTriggered: true };
+    return { newDBPoints: total - cost, upgradeTriggered: true };
   }
-  return { newHCPoints: total, upgradeTriggered: false };
+  return { newDBPoints: total, upgradeTriggered: false };
 }

@@ -5,7 +5,7 @@ left desolate — two orphaned deployables (`fans_4eva`, `pranksta`) with no ide
 Emerged from design dialogue (2026-07-17): the Crew route becomes the game's
 **utility branch**, and its currency is the fans you already earned. **Diehard fans
 are a workforce.** Your most loyal fans don't just cheer — they write letters, haul
-cabinets, run sabotage, and work the merch line.
+cabinets, heckle rivals, and work the merch table.
 
 ---
 
@@ -40,8 +40,10 @@ duration. Fame throughput vs. utility, decided turn by turn.
 - The fan economy itself (gain by ring, boredom decay, promotion streaks,
   knockdown flee). Untouched — assignments sit on top of it.
 - Amps, amp range, unplugging. The rig is Electric's identity; Crew just staffs it.
-- `pranksta` keeps its effect (disconnect up to 2 rival amps ≤ 4 hexes) but is
-  reflavored as an assignment (see §4.3).
+- `pranksta` — **cut**, replaced by Heckler (§4.3) — fan-economy attack instead
+  of amp sabotage (overlapped with `AMP_UNPLUG_DIST` auto-unplug).
+- Street Team — **cut**, replaced by Merch Table (§4.4) — DB income instead of
+  invisible boredom suppression.
 
 ---
 
@@ -74,9 +76,9 @@ Plain JSON, replay-safe, one field.
 Post-stance, the four universal routes read: Theory (the spine — what you can play),
 Electric (hardware — how loud), Stances (combat identity — how you deliver), Crew
 (???). This rework gives Crew the missing answer: **logistics**. Everything that
-keeps the show running but isn't the music itself — healing, rig work, sabotage,
-crowd maintenance. Every task is staffed by a fan the player earned, so the route
-scales with performance quality rather than raw HC.
+keeps the show running but isn't the music itself — healing, rig work, heckling,
+merch sales. Every task is staffed by a fan the player earned, so the route
+scales with performance quality rather than raw DB.
 
 ---
 
@@ -133,29 +135,35 @@ only the *source* of the roadie changes (assignment instead of permanent hire).
 **Route synergy:** Electric builds a rig worth staffing; Crew staffs it. An
 amp-less player still gets value from the other tasks, so Crew never dead-ends.
 
-### 4.3 Pranksta — the sabotage run *(locked as assignment 2026-07-17)*
+### 4.3 Heckler — the fan-economy attack *(replaces Pranksta, 2026-07-17)*
 
-*Same prank, new org chart.*
-
-Existing effect unchanged (disconnect up to 2 rival amps within 4 hexes,
-`GROUPIE_COOLDOWN` between runs) but it now requires an assigned Diehard — the
-prankster is one of YOUR people, visibly missing from your crowd while they're out
-causing problems. Deployed by **clicking the prankster at the corner muster** (§7),
-who then visibly sprints to the target amps (`flyCrew` animation, already built).
-
-### 4.4 Street Team — crowd maintenance (optional fourth)
-
-*While you fight, somebody's still working the room.*
+*Your biggest fan storms the other side and shouts them down.*
 
 | Aspect | Rule |
 |---|---|
-| **Passive** | While assigned: **outer-ring boredom never ticks** (the `outerStreak → FAN_DECAY` bleed in `applyFansTicked` is suppressed). |
+| **Trigger** | Click the heckler at the corner muster (§7). Auto-targets the rival with the most Casuals. |
+| **Effect** | Sets `heckled: true` on the target's note sheet. On that rival's **next** `gainFans()` call, the gain is **zeroed** and the flag clears. One-shot, one-turn debuff. |
+| **Cooldown** | `GROUPIE_COOLDOWN = 3` own turns between heckles. |
+| **Animation** | `flyCrew` dash to the target side (existing). |
+
+**Why this replaces Pranksta:** amp sabotage overlapped with the built-in
+`AMP_UNPLUG_DIST` auto-unplug mechanic — walking near a rival's amp already
+disconnects it. Heckler attacks the **fan economy** instead, a vector nothing
+else touches. It's also hilarious.
+
+### 4.4 Merch Table — the DB machine *(replaces Street Team, 2026-07-17)*
+
+*Your fan sets up a stall and hawks T-shirts while you play.*
+
+| Aspect | Rule |
+|---|---|
+| **Passive** | While assigned: every raw FP earned (before crowd multiplier) also grants **+1 DB** via `grantDB(spiritId, fp)`. |
 | **Cost** | The usual: one Diehard off the multiplier. |
 
-Grounded in an existing pain point: `FAN_BORED_AFTER = 3` turns on the edge starts
-shedding 2 casuals/turn. Street Team converts one loyal fan's multiplier into
-insurance for the fickle ones — thematically perfect for a zoner (Intergalactic 0)
-who lives in the back rings.
+**Why this replaces Street Team:** boredom suppression was an "invisible when it
+works" ability — nobody notices fans *not* leaving. Merch Table has visible, tangible
+payoff every turn you earn Fame. The rename from HC to **Decibills** made this
+thematically intuitive: your crew sells merch at the show, you get paid more.
 
 ---
 
@@ -167,15 +175,15 @@ window, tasks in their own windows:
 ```
 ── Crew (utility / labor) ─────────────────────────────────────
 │
-├─ 🎫 Backstage Pass        (8 HC, tier 1)
+├─ 🎫 Backstage Pass        (8 DB, tier 1)
 │    Unlocks the assignment system + the FAN MAIL task.
 │
 ├─ Tasks (each gated on Backstage Pass):
-│    🔧 Stagehand           (12 HC)  — Roadie task (moved from Electric)
-│    🪤 Pranksta            (8 HC)   — sabotage task (reflavored survivor)
-│    📣 Street Team         (12 HC)  — outer-ring decay immunity
+│    🔧 Stagehand           (12 DB)  — Roadie task (moved from Electric)
+│    📢 Heckler             (8 DB)   — zero a rival's next fan-gain
+│    🏪 Merch Table         (12 DB)  — +1 DB per raw FP earned
 │
-└─ 🎩 Tour Manager          (16 HC, prereq: Stagehand)
+└─ 🎩 Tour Manager          (16 DB, prereq: Stagehand)
      Two concurrent assignments. Your operation has an org chart.
 ```
 
@@ -184,9 +192,8 @@ window, tasks in their own windows:
 special case, and one capstone doesn't justify a new gating rule. Locked
 2026-07-17.)*
 
-Skill ids: `crew_backstage`, `crew_stagehand`, `crew_pranksta` (or keep `pranksta`
-for save/legacy continuity — see §8), `crew_streetteam`, `crew_manager`.
-`fans_4eva` and `roadie_1` are retired (legacy-mapped, §9).
+Skill ids: `crew_backstage`, `crew_stagehand`, `crew_heckler`, `crew_merch`,
+`crew_manager`. `fans_4eva`, `roadie_1`, `pranksta` are retired (legacy-mapped, §9).
 
 ---
 
@@ -222,8 +229,8 @@ on the board** to act. The HUD's crew rows shrink to (at most) a status echo.
 |---|---|---|---|
 | Fan Mail | Fan clutching pages, ♥ pulse | 💌 + ♥ bobbing overhead | Arcing letter throw → letter token lands on hex |
 | Stagehand | Hard hat + wrench (existing roadie art) | Wrench glint when off cooldown | Existing sprint/haul animations (`roadieAnimations`) |
-| Pranksta | Crouched sneak pose | 🪤 flash | Existing `flyCrew` dash to the target amps |
-| Street Team | Megaphone up | 📣 ripple while active | Passive — periodic ripple toward the outer rings |
+| Heckler | Cupped hands, shouting pose | 📢 flash when off cooldown | `flyCrew` dash to the rival's side |
+| Merch Table | Fan behind a stall | 🏪 glow while active | Passive — periodic coin sparkle on FP grants |
 
 **Interaction model:**
 
@@ -248,12 +255,14 @@ are already drawn every frame.
 
 ## 8. Bot policy
 
-- `BOT_PERSONAS` skillOrders: swap `fans_4eva` → `crew_backstage`; personas that
-  ran `roadie_1` (rig-focused) add `crew_stagehand` after `amp_2`.
+- `BOT_PERSONAS` skillOrders: swap `fans_4eva` → `crew_backstage`,
+  `pranksta` → `crew_heckler`; personas that ran `roadie_1` (rig-focused) add
+  `crew_stagehand` after `amp_2`.
 - Assignment heuristics (in `botTakeTurn`'s crew block, where `crewReady` lives):
   - Assign Fan Mail when `vibe ≤ maxVibe − 3` and no fight is adjacent; read the
     letter when no attack is available anyway (the Action was going spare).
   - Assign Stagehand when an owned amp is unplugged or > unplug-range behind.
+  - Deploy Heckler when a rival has ≥ 3 Casuals (worth zeroing).
   - Recall everyone when Fame multiplier matters most (bot is in the lead-chase
     endgame, `ROCK_GOD_RUNAWAY_LEAD` logic already reads the fame gap).
 
@@ -263,10 +272,11 @@ are already drawn every frame.
 
 | Item | Fate |
 |---|---|
-| `fans_4eva` | **Cut** — absorbed into Fan Mail (`crew_backstage`). Legacy-map the id in `legacyMap` so old saves resolve. |
-| `roadie_1` (Electric) | **Moved** — becomes `crew_stagehand`. `amp_3.prereq` → `'amp_2'`. Legacy-map `roadie_1 → crew_stagehand`. |
-| `pranksta` | **Kept**, reflavored as a task; gains the assignment requirement. |
-| `groupieCooldowns` | **Kept** — same field drives letter cadence and Pranksta recovery. |
+| `fans_4eva` | **Cut** — absorbed into Fan Mail (`crew_backstage`). Legacy-map: `fans_4eva → crew_backstage`. |
+| `roadie_1` (Electric) | **Moved** — becomes `crew_stagehand`. `amp_3.prereq` → `'amp_2'`. Legacy-map: `roadie_1 → crew_stagehand`. |
+| `pranksta` | **Cut** — replaced by Heckler (`crew_heckler`). Legacy-map: `pranksta → crew_heckler`. |
+| Street Team | **Cut** — replaced by Merch Table (`crew_merch`). No legacy map needed (never shipped). |
+| `groupieCooldowns` | **Kept** — same field drives letter cadence and Heckler recovery. |
 | `ns.roadies` | **Kept** — Stagehand pushes/pops entries in the same array the roadie UI reads. |
 
 ---
@@ -279,7 +289,7 @@ are already drawn every frame.
 1. ~~**Letter magnitude.**~~ **DECIDED: flat +3** ("seems a bit much, running with
    it for now" — first tuning candidate). Not recurring — player-triggered on a
    cooldown, letter must be picked up on the board (§4.1).
-2. ~~**Pranksta as assignment**~~ **DECIDED: yes**, requires an assigned Diehard.
+2. ~~**Pranksta as assignment**~~ **SUPERSEDED:** Pranksta replaced by Heckler (fan-economy attack).
 3. ~~**Tour Manager prereq**~~ **DECIDED: simplify** to `prereq: 'crew_stagehand'`.
    No new gating rule for one capstone.
 4. ~~**Multiplayer read**~~ **DECIDED: visible.** Rivals see which task your
@@ -300,8 +310,8 @@ are already drawn every frame.
 
 - **`crowdMultiplier(diehards, casuals)`** — call sites pass
   `diehards − assignedCount` (or add an `assigned` param). One arithmetic change.
-- **`applyFansTicked`** (engine, `economy.js`) — Street Team suppresses the
-  outer-edge decay branch; needs the assignment field on the sheet it already reads.
+- **`applyFansTicked`** (engine, `economy.js`) — no crew hooks needed here
+  (Street Team boredom suppression was cut when Merch Table replaced it).
 - **Knockdown flee / Demolition shake** — clamp flee/shake pools to *unassigned*
   Diehards. Two call sites.
 - **`makeInitialNoteState`** — add `assignments: []` (plain JSON).
@@ -316,7 +326,8 @@ are already drawn every frame.
   roadie UI/flow already consumes); on recall, remove it.
 - **Skill tree** — Crew route → `subChains` (the Stance-route pattern; the modal
   already renders per-chain windows, colors, and lock badges).
-- **`SKILL_TREE` legacyMap** — `fans_4eva → crew_backstage`, `roadie_1 → crew_stagehand`.
+- **`SKILL_TREE` legacyMap** — `fans_4eva → crew_backstage`, `roadie_1 → crew_stagehand`,
+  `pranksta → crew_heckler`.
 - **Fan-sea + crew-muster renders** — filter assigned Diehards from the rail
   count; append them to the muster row with the task-specific pose/prop (§7).
 - **Board-first interaction (§7)** — move the crew action entry points from the
@@ -336,7 +347,8 @@ board token type (the letter), and skills wired into hooks that all exist today.
 | Letter cadence | **Not recurring.** Player-triggered by clicking the pen-pal fan; `GROUPIE_COOLDOWN = 3` own turns between letters; one in flight at a time. |
 | Letter delivery | Fan throws it (arc animation, 💌 + ♥ tell) → token lands **1 hex from the Spirit** → **must be picked up** (move onto hex) → reading spends the **Action**, grants the Vibe. |
 | Task availability | Requires an **unassigned Diehard in the pool** at assignment time. |
-| Pranksta | **Is an assignment** (requires a staffed Diehard). |
+| Pranksta → Heckler | **Cut and replaced.** Heckler zeroes a rival's next fan-gain; auto-targets rival with most Casuals. |
+| Street Team → Merch Table | **Cut and replaced.** Merch Table grants +1 DB per raw FP earned while assigned. |
 | Tour Manager gate | `prereq: 'crew_stagehand'` — no multi-prereq engine rule. |
 | Assignment visibility | **Visible to rivals** — which task, not just a missing head. |
 | Recall friction | **Next-turn-start**, no extra cooldown. |
