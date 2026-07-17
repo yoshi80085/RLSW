@@ -9,6 +9,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
       {acting && upgradesPending > 0 && (() => {
         const ns           = noteStates[acting.id] ?? {};
         const unlocked     = ns.unlockedSkills ?? [];
+        const stancesKnown = ns.stancesKnown ?? [];
         const pendingId    = ns.pendingAwardSkillId;
         const pendingDef   = pendingId ? SKILL_BY_ID[pendingId] : null;
         const activeRoute  = ns.skillRoute ?? null;
@@ -57,6 +58,8 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
         // Helper: can this skill be set as the next target?
         function canTarget(sk) {
           if (unlocked.includes(sk.id) || sk.id === pendingId) return false;
+          // Stance upgrades only target once the stance itself is known.
+          if (sk.requiresStance && !stancesKnown.includes(sk.requiresStance)) return false;
           if (sk.prereq && sk.prereq !== '__all_pa__') {
             if (!unlocked.includes(sk.prereq) && sk.prereq !== pendingId) return false;
           }
@@ -257,14 +260,35 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                     );
                   })}
 
-                  {/* Sub-chain routes (Electric) */}
-                  {routeDef.subChains && routeDef.subChains.map(chain => (
-                    <div key={chain.id}>
-                      <div style={{fontSize:8, color:'#3a5a7a', letterSpacing:2, marginBottom:5,
-                        borderBottom:'1px solid #1a2a40', paddingBottom:3}}>
-                        {chain.label.toUpperCase()}
+                  {/* Sub-chain routes (Stances; formerly Electric) — each chain is
+                      its own window. Stance chains carry their stance's color and
+                      lock shut until the stance is learned. */}
+                  {routeDef.subChains && routeDef.subChains.map(chain => {
+                    const chainColor  = chain.color ?? routeDef.color;
+                    const stanceKnown = chain.stanceId ? stancesKnown.includes(chain.stanceId) : true;
+                    return (
+                    <div key={chain.id} style={{
+                      border:`1px solid ${chainColor}${stanceKnown ? '55' : '2a'}`,
+                      borderRadius:8, padding:'9px 11px',
+                      background: stanceKnown ? `${chainColor}0a` : '#070c16',
+                    }}>
+                      <div style={{fontSize:8, color: stanceKnown ? chainColor : '#3a5a7a',
+                        letterSpacing:2, marginBottom:6, fontWeight:700,
+                        borderBottom:`1px solid ${chainColor}${stanceKnown ? '33' : '1a'}`, paddingBottom:4,
+                        display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+                        <span>{chain.label.toUpperCase()}</span>
+                        {chain.stanceId && stanceKnown && (
+                          <span style={{fontSize:6, color:chainColor, background:`${chainColor}18`,
+                            border:`1px solid ${chainColor}44`, borderRadius:3, padding:'1px 5px',
+                            letterSpacing:1}}>✓ STANCE KNOWN</span>
+                        )}
+                        {chain.stanceId && !stanceKnown && (
+                          <span style={{fontSize:6, color:'#ff8866', letterSpacing:1}}>
+                            🔒 Learn the {chain.stanceLabel} stance first (Second/Third/Fourth Stance)
+                          </span>
+                        )}
                         {chain.requiresFirst && !unlocked.includes(chain.requiresFirst) && pendingId !== chain.requiresFirst && (
-                          <span style={{color:'#ff4444', marginLeft:8}}>
+                          <span style={{color:'#ff4444'}}>
                             🔒 Requires {SKILL_BY_ID[chain.requiresFirst]?.label}
                           </span>
                         )}
@@ -277,7 +301,10 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                           const targetable = canTarget(skWithChain);
                           const prereqDef  = sk.prereq && sk.prereq !== '__all_pa__'
                             ? SKILL_BY_ID[sk.prereq] : null;
-                          const locked = !owned && !isPending && !targetable && prereqDef;
+                          const stanceLocked = !owned && !isPending
+                            && sk.requiresStance && !stancesKnown.includes(sk.requiresStance);
+                          const locked = stanceLocked
+                            || (!owned && !isPending && !targetable && prereqDef && !unlocked.includes(sk.prereq));
                           return (
                             <button key={sk.id}
                               disabled={owned || isPending || !targetable}
@@ -286,24 +313,27 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                                 fontFamily:'inherit',
                                 cursor: (owned||isPending) ? 'default' : targetable ? 'pointer' : 'default',
                                 textAlign:'left', borderRadius:6, padding:'9px 12px',
-                                background: isPending ? `${routeDef.color}24` : owned ? `${routeDef.color}14` : '#0a1525',
-                                border:`1px solid ${isPending ? routeDef.color : owned ? routeDef.color+'66' : targetable ? routeDef.color+'55' : '#1a2a40'}`,
+                                background: isPending ? `${chainColor}24` : owned ? `${chainColor}14` : '#0a1525',
+                                border:`1px solid ${isPending ? chainColor : owned ? chainColor+'66' : targetable ? chainColor+'55' : '#1a2a40'}`,
                                 opacity: locked ? 0.35 : 1, transition:'all .15s',
                               }}
-                              onMouseEnter={e => { if (targetable) { e.currentTarget.style.background=`${routeDef.color}22`; e.currentTarget.style.borderColor=routeDef.color; }}}
-                              onMouseLeave={e => { if (targetable) { e.currentTarget.style.background='#0a1525'; e.currentTarget.style.borderColor=`${routeDef.color}55`; }}}>
+                              onMouseEnter={e => { if (targetable) { e.currentTarget.style.background=`${chainColor}22`; e.currentTarget.style.borderColor=chainColor; }}}
+                              onMouseLeave={e => { if (targetable) { e.currentTarget.style.background='#0a1525'; e.currentTarget.style.borderColor=`${chainColor}55`; }}}>
                               <div style={{display:'flex', alignItems:'flex-start', gap:9}}>
                                 <span style={{fontSize:16, marginTop:1}}>{sk.icon}</span>
                                 <div style={{flex:1}}>
                                   <div style={{display:'flex', alignItems:'center', gap:7, marginBottom:2}}>
                                     <span style={{fontSize:9, fontWeight:700,
-                                      color: isPending ? '#ffffff' : owned ? routeDef.color : targetable ? '#c0d0e0' : '#3a5a7a'}}>
+                                      color: isPending ? '#ffffff' : owned ? chainColor : targetable ? '#c0d0e0' : '#3a5a7a'}}>
                                       {sk.label}
                                     </span>
                                     {isPending && <span style={{fontSize:6, color:'#ffffff',
-                                      background:routeDef.color, borderRadius:3, padding:'1px 5px'}}>✦ NEW</span>}
-                                    {owned && !isPending && <span style={{fontSize:6, color:routeDef.color}}>✓</span>}
-                                    {locked && prereqDef && (
+                                      background:chainColor, borderRadius:3, padding:'1px 5px'}}>✦ NEW</span>}
+                                    {owned && !isPending && <span style={{fontSize:6, color:chainColor}}>✓</span>}
+                                    {stanceLocked && (
+                                      <span style={{fontSize:6, color:'#3a5a7a'}}>🔒 {chain.stanceLabel ?? 'Stance'} stance</span>
+                                    )}
+                                    {locked && !stanceLocked && prereqDef && (
                                       <span style={{fontSize:6, color:'#3a5a7a'}}>🔒 {prereqDef.label}</span>
                                     )}
                                   </div>
@@ -311,9 +341,9 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                                 </div>
                                 <div style={{
                                   fontSize:8, fontWeight:700, whiteSpace:'nowrap',
-                                  color: owned||isPending ? routeDef.color : '#ffcc44',
+                                  color: owned||isPending ? chainColor : '#ffcc44',
                                   background:'#0a0e18',
-                                  border:`1px solid ${owned||isPending ? `${routeDef.color}33` : '#ffcc4433'}`,
+                                  border:`1px solid ${owned||isPending ? `${chainColor}33` : '#ffcc4433'}`,
                                   borderRadius:4, padding:'2px 7px',
                                 }}>
                                   {owned||isPending ? '✓' : `${sk.hcCost} HC`}
@@ -324,7 +354,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                         })}
                       </div>
                     </div>
-                  ))}
+                  );})}
                 </div>
               )}
             </div>

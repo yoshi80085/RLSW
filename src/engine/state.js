@@ -108,6 +108,10 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       boardTokens,
       chargeZones,
       flamingHexes: { hexes: [], roundsLeft: 0 },
+      // Fan Mail letters on the board (CREW_SYSTEM_DESIGN.md §4.1 / §11)
+      // Each: { ownerId, hexNum } — addressed to one spirit, occupies a hex,
+      // picked up on move-onto-hex (spends Action, grants Vibe).
+      letters: [],
       // reports
       lastSpotlightHeal: null,
       lastSpotlightMove: null,

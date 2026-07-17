@@ -69,10 +69,13 @@ export function hexRingFromCenter(num) {
 }
 
 // Crowd multiplier from a spirit's two fan bands.
-export function crowdMultiplier(diehards = FAN_DIEHARD_START, casuals = 0) {
+// `assigned` = number of Diehards currently on crew assignments (they step out
+// of the crowd while backstage — CREW_SYSTEM_DESIGN.md §2).
+export function crowdMultiplier(diehards = FAN_DIEHARD_START, casuals = 0, assigned = 0) {
+  const activeDiehards = Math.max(0, diehards - assigned);
   return Math.min(
     FAN_MULT_CAP,
-    1 + FAN_DIEHARD_WEIGHT * diehards + FAN_CASUAL_WEIGHT * casuals
+    1 + FAN_DIEHARD_WEIGHT * activeDiehards + FAN_CASUAL_WEIGHT * casuals
   );
 }
 

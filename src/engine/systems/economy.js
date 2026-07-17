@@ -205,6 +205,10 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     outerStreak:      0,
     fanLag:           0,
     fanActedThisTurn: false,
+    // ── 🎫 CREW ASSIGNMENTS (CREW_SYSTEM_DESIGN.md) ──
+    // Array of taskIds a Diehard is currently assigned to. Each entry pulls one
+    // Diehard out of the crowdMultiplier. Max length = 1 (or 2 with crew_manager).
+    assignments:      [],
     // ── 🎭 CROWD & INTIMIDATION LAYER ──
     perfScore:    0,
     recentP:      [],
@@ -393,7 +397,10 @@ export function applyFansTicked(state, { spiritId }) {
     // Outer edge — patience runs out only after several turns in a row.
     outerStreak += 1;
     centerStreak = 0;
-    if (outerStreak >= FAN_BORED_AFTER && casuals > 0) {
+    // Street Team (crew_streetteam assignment) suppresses outer-ring boredom decay —
+    // the assigned Diehard is out there working the room (CREW_SYSTEM_DESIGN.md §4.4).
+    const hasStreetTeam = (ns.assignments ?? []).includes('crew_streetteam');
+    if (!hasStreetTeam && outerStreak >= FAN_BORED_AFTER && casuals > 0) {
       const before = casuals;
       casuals = Math.max(0, casuals - FAN_DECAY);
       lost = before - casuals;

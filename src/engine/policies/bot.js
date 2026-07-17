@@ -24,19 +24,19 @@ export const BOT_PERSONALITIES = {
   maestro:  { name:'The Maestro',  emoji:'🎼', note:'musical',
     blurb:'wins on pure musicianship — Theory, clean tracks, cadences & riffs.',
     move:{ center:1.2, rival:0.4, token:1.4, spotlight:1.1, edgeFear:1.6 },
-    skillOrder:['theory_major','fans_4eva','theory_minor','amp_1','stance_2','stance_encore','theory_dom7','theory_modes','amp_2','theory_chromatic','amp_3'] },
+    skillOrder:['theory_major','crew_backstage','theory_minor','amp_1','stance_2','stance_encore','theory_dom7','theory_modes','amp_2','theory_chromatic','amp_3'] },
   moshlord: { name:'The Mosh Lord', emoji:'🤘', note:'combat',
     blurb:'pure aggression — Thrash, hunts the wounded and the leader, swings for knockouts.',
     move:{ center:1.0, rival:1.9, token:0.6, spotlight:0.8, edgeFear:0.5 },
-    skillOrder:['stance_2','stance_demolition','fans_4eva','stance_3','stance_aftershock','amp_1','theory_major','amp_2','theory_minor','amp_3'] },
+    skillOrder:['stance_2','stance_demolition','crew_backstage','stance_3','stance_aftershock','amp_1','theory_major','amp_2','crew_stagehand','theory_minor','amp_3'] },
   diva:     { name:'The Diva',     emoji:'✨', note:'clean',
     blurb:'owns the spotlight — holds centre stage, works the crowd, grabs Lost Chords.',
     move:{ center:1.9, rival:0.7, token:1.2, spotlight:1.4, edgeFear:1.2 },
-    skillOrder:['fans_4eva','stance_2','stance_ironclad','amp_1','theory_major','pranksta','amp_2','theory_minor','amp_3'] },
+    skillOrder:['crew_backstage','stance_2','stance_ironclad','amp_1','theory_major','crew_pranksta','amp_2','theory_minor','amp_3'] },
   saboteur: { name:'The Saboteur', emoji:'🪤', note:'disrupt', targetLeader:true,
     blurb:'controls the board — amps & ranged Sonic, unplugs rivals, drains & staggers the leader.',
     move:{ center:0.9, rival:1.1, token:0.8, spotlight:0.9, edgeFear:1.0 },
-    skillOrder:['amp_1','pranksta','stance_2','stance_resonance','theory_major','amp_2','stance_sustainwave','theory_minor','theory_dom7','amp_3','theory_modes'] },
+    skillOrder:['amp_1','crew_backstage','crew_pranksta','stance_2','stance_resonance','theory_major','amp_2','crew_stagehand','stance_sustainwave','theory_minor','theory_dom7','amp_3','theory_modes'] },
 };
 export const BOT_PERSONA_KEYS = ['maestro','moshlord','diva','saboteur'];
 
@@ -50,8 +50,8 @@ export const BOT_STANCE_PREF = {
 };
 
 export const BOT_SKILL_PRIORITY_BASE = [
-  'fans_4eva', 'amp_1', 'stance_2',
-  'theory_major', 'amp_2', 'theory_minor', 'pranksta',
+  'crew_backstage', 'amp_1', 'stance_2',
+  'theory_major', 'amp_2', 'theory_minor', 'crew_pranksta',
   'theory_dom7', 'amp_3', 'stance_3', 'theory_modes', 'theory_chromatic',
 ];
 

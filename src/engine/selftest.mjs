@@ -1738,11 +1738,11 @@ const config = {
 
   // ── botSkillEligible ──
   const fakeSkillById = {
-    fans_4eva: { id: "fans_4eva", routeId: "common", prereq: null },
+    crew_backstage: { id: "crew_backstage", routeId: "crew", prereq: null },
     theory_minor: { id: "theory_minor", routeId: "common", prereq: "theory_major" },
   };
-  assert.ok(botMod.botSkillEligible("fans_4eva", [], "wildaxe", fakeSkillById),
-    "fans_4eva eligible with no prereqs");
+  assert.ok(botMod.botSkillEligible("crew_backstage", [], "wildaxe", fakeSkillById),
+    "crew_backstage eligible with no prereqs");
   assert.ok(!botMod.botSkillEligible("theory_minor", [], "wildaxe", fakeSkillById),
     "theory_minor NOT eligible without theory_major");
   assert.ok(botMod.botSkillEligible("theory_minor", ["theory_major"], "wildaxe", fakeSkillById),
@@ -1750,7 +1750,7 @@ const config = {
 
   // ── botPickSkillTarget ──
   const pick = botMod.botPickSkillTarget("wildaxe", [], "maestro", fakeSkillById);
-  assert.equal(pick, "fans_4eva", "maestro's first eligible skill is fans_4eva");
+  assert.equal(pick, "crew_backstage", "maestro's first eligible skill is crew_backstage");
 
   // ── botRiffResults ──
   // determinism: same rng sequence → same results
@@ -2190,6 +2190,4 @@ const config = {
   assert.deepEqual(skillEligibility(upg, [], { stancesKnown: ["soloist"] }),
     { ok: false, reason: "prereq" }, "tier prereq still applies");
 }
-
-console.log("engine selftest: all assertions passed ✔");
-// end of selftest
+console.log("engine selftest: all assertions passed");

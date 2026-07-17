@@ -471,15 +471,13 @@ const SKILL_TREE = {
       label: 'Electric',
       icon: '⚡',
       color: '#ffcc44',
-      desc: 'Your rig. Amps power your Sonic Attack and grow your die; a Roadie keeps the rig following you.',
+      desc: 'Your rig. Amps power your Sonic Attack and grow your die.',
       skills: [
         { id:'amp_1',    label:'Amp I',   icon:'🔊', hcCost:8,  gated:true, prereq:null,
           desc:'Place Amp 1 on an adjacent hex. Sonic Attack online. Within range: d6→d8.' },
         { id:'amp_2',    label:'Amp II',  icon:'🔊', hcCost:12, gated:true, prereq:'amp_1',
           desc:'Place Amp 2. Within range of both: d8→d10.' },
-        { id:'roadie_1', label:'Roadie',  icon:'🔧', hcCost:12, gated:true, prereq:'amp_2',
-          desc:'Hire a Roadie — moves one of your amps 2 hexes every couple of turns, so your rig follows you.' },
-        { id:'amp_3',    label:'Amp III', icon:'🔊', hcCost:18, gated:true, prereq:'roadie_1',
+        { id:'amp_3',    label:'Amp III', icon:'🔊', hcCost:18, gated:true, prereq:'amp_2',
           desc:'Place Amp 3. Within range of all three: d10→d12 — fully wired.' },
         { id:'overcharge', label:'Overcharge', icon:'🎸', hcCost:14, gated:true, prereq:'amp_2',
           desc:'Charge Zones no longer just spark your dice — tapping one now lets you choose: the usual charge (random die floor/ceiling boost), OR one curated Chord Stack note plus a bonus revoice to spend on it.' },
@@ -489,49 +487,75 @@ const SKILL_TREE = {
     // Learning tiers open the other three stances (pick which on award); the
     // upgrades deepen a stance you own and only fire while you're IN it.
     // Mechanics live in STANCE_SYSTEM_DESIGN.md §4/§6; data in data/stances.js.
+    // Structured as subChains so the upgrade modal renders each stance's
+    // upgrades in its OWN window (colored by stance, locked until you know it)
+    // instead of one flat column.
     {
       id: 'stance',
       label: 'Stances',
       icon: '🧍',
       color: '#ff6644',
       desc: 'Your body and the instrument. Learn new stances — how you deliver the music you built — and deepen the ones you own. Switching costs your Action.',
-      skills: [
-        { id:'stance_2', label:'Second Stance', icon:'🧍', hcCost:8,  gated:true, prereq:null,
-          desc:'Learn any stance you don\'t already know — Soloist, Power, Cool or Groove. You choose on unlock.' },
-        { id:'stance_3', label:'Third Stance',  icon:'🧍', hcCost:12, gated:true, prereq:'stance_2',
-          desc:'Learn a third stance. Your combat identity becomes a toolkit.' },
-        { id:'stance_4', label:'Fourth Stance', icon:'🧍', hcCost:16, gated:true, prereq:'stance_3',
-          desc:'Master the last remaining stance. Every delivery is yours.' },
-        // ── Upgrades — 1–2 per stance, gated on owning the stance + a tier ──
-        { id:'stance_encore',      label:'Encore',       icon:'🎇', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'soloist',
-          desc:'SOLOIST: when a winning attack carries a Performance of 7+, the spectacle converts +1 Diehard fan.' },
-        { id:'stance_demolition',  label:'Demolition',   icon:'💥', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'power',
-          desc:'POWER: a Thrash that frays a rival\'s chord below 2 notes adds the destroyed chord\'s Drive as bonus Vibe damage.' },
-        { id:'stance_aftershock',  label:'Aftershock',   icon:'🌋', hcCost:14, gated:true, prereq:'stance_3', requiresStance:'power',
-          desc:'POWER: Lost Chords knocked loose by your Thrash scatter 1 hex further — board control through violence.' },
-        { id:'stance_ironclad',    label:'Ironclad',     icon:'🛡️', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'cool',
-          desc:'COOL: when a hit is too weak to fray you (margin ≤ 2), you harden — +1 temp Sustain.' },
-        { id:'stance_riposte',     label:'Riposte',      icon:'🤺', hcCost:14, gated:true, prereq:'stance_3', requiresStance:'cool',
-          desc:'COOL: win a Thrash defense and your next Thrash against that rival frays +1 extra note.' },
-        { id:'stance_resonance',   label:'Resonance',    icon:'🌊', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'groove',
-          desc:'GROOVE: the wave builds higher — Groove counter cap raised from 3 to 5.' },
-        { id:'stance_sustainwave', label:'Sustain Wave', icon:'🌀', hcCost:14, gated:true, prereq:'stance_3', requiresStance:'groove',
-          desc:'GROOVE: spending the wave on an attack also banks it as temp Sustain — the wave protects the backswing.' },
+      subChains: [
+        { id:'stance_learn', label:'🧍 Learn Stances', skills: [
+          { id:'stance_2', label:'Second Stance', icon:'🧍', hcCost:8,  gated:true, prereq:null,
+            desc:'Learn any stance you don\'t already know — Soloist, Power, Cool or Groove. You choose on unlock.' },
+          { id:'stance_3', label:'Third Stance',  icon:'🧍', hcCost:12, gated:true, prereq:'stance_2',
+            desc:'Learn a third stance. Your combat identity becomes a toolkit.' },
+          { id:'stance_4', label:'Fourth Stance', icon:'🧍', hcCost:16, gated:true, prereq:'stance_3',
+            desc:'Master the last remaining stance. Every delivery is yours.' },
+        ]},
+        // ── Per-stance windows — upgrades gated on owning the stance + a tier ──
+        { id:'stance_soloist', label:'🌟 Soloist — Foot on Monitor', color:'#ffd700', stanceId:'soloist', stanceLabel:'Soloist', skills: [
+          { id:'stance_encore',      label:'Encore',       icon:'🎇', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'soloist',
+            desc:'SOLOIST: when a winning attack carries a Performance of 7+, the spectacle converts +1 Diehard fan.' },
+        ]},
+        { id:'stance_power', label:'🤘 Power — Wide Leg', color:'#ff4444', stanceId:'power', stanceLabel:'Power', skills: [
+          { id:'stance_demolition',  label:'Demolition',   icon:'💥', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'power',
+            desc:'POWER: a Thrash that frays a rival\'s chord below 2 notes adds the destroyed chord\'s Drive as bonus Vibe damage.' },
+          { id:'stance_aftershock',  label:'Aftershock',   icon:'🌋', hcCost:14, gated:true, prereq:'stance_3', requiresStance:'power',
+            desc:'POWER: Lost Chords knocked loose by your Thrash scatter 1 hex further — board control through violence.' },
+        ]},
+        { id:'stance_cool', label:'🕶️ Cool — Low Slung', color:'#44aaff', stanceId:'cool', stanceLabel:'Cool', skills: [
+          { id:'stance_ironclad',    label:'Ironclad',     icon:'🛡️', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'cool',
+            desc:'COOL: when a hit is too weak to fray you (margin ≤ 2), you harden — +1 temp Sustain.' },
+          { id:'stance_riposte',     label:'Riposte',      icon:'🤺', hcCost:14, gated:true, prereq:'stance_3', requiresStance:'cool',
+            desc:'COOL: win a Thrash defense and your next Thrash against that rival frays +1 extra note.' },
+        ]},
+        { id:'stance_groove', label:'🌀 Groove — Behind the Back', color:'#aa55ff', stanceId:'groove', stanceLabel:'Groove', skills: [
+          { id:'stance_resonance',   label:'Resonance',    icon:'🌊', hcCost:10, gated:true, prereq:'stance_2', requiresStance:'groove',
+            desc:'GROOVE: the wave builds higher — Groove counter cap raised from 3 to 5.' },
+          { id:'stance_sustainwave', label:'Sustain Wave', icon:'🌀', hcCost:14, gated:true, prereq:'stance_3', requiresStance:'groove',
+            desc:'GROOVE: spending the wave on an attack also banks it as temp Sustain — the wave protects the backswing.' },
+        ]},
       ],
     },
+    // ── CREW — the utility branch (CREW_SYSTEM_DESIGN.md) ──────────────────
+    // Diehard fans are a workforce. Assigning one to a task pulls them out of
+    // the crowd multiplier — Fame throughput vs. utility, decided turn by turn.
     {
       id: 'crew',
       label: 'Crew',
-      icon: '🎉',
+      icon: '🎫',
       color: '#44cc88',
-      desc: 'Rally your fans. Deployable crews you tap from your Spirit card — support, disruption, protection. Each recharges after a few turns.',
-      skills: [
-        { id:'fans_4eva',    label:'Fans 4Eva',           icon:'💚', hcCost:8, gated:false,
-          desc:'Deployable crew — restore 2 Vibe. Recharges in 3 turns.' },
-        { id:'pranksta',     label:'Bust Out Pranksta',   icon:'🪤', hcCost:8, gated:false,
-          desc:'Deployable crew — disconnect up to 2 rival amps within 4 hexes. Recharges in 3 turns.' },
-        // junkyard_dog (+2 flat swing) & fandom_army (+2 Sustain) CUT — modifier
-        // soup with no musical connection (STANCE_SYSTEM_DESIGN.md §8/§8.1).
+      desc: 'Your most loyal fans don\'t just cheer — they write letters, haul cabinets, run sabotage, and work the merch line. Each assigned Diehard steps out of the crowd multiplier.',
+      subChains: [
+        { id:'crew_core', label:'🎫 Crew', skills: [
+          { id:'crew_backstage', label:'Backstage Pass', icon:'🎫', hcCost:8, gated:true, prereq:null,
+            desc:'Unlocks the assignment system. Your first task — Fan Mail — comes free: a Diehard pen-pal who writes letters that restore +3 Vibe when picked up on the board.' },
+        ]},
+        { id:'crew_tasks', label:'🔧 Tasks', skills: [
+          { id:'crew_stagehand',  label:'Stagehand',   icon:'🔧', hcCost:12, gated:true, prereq:'crew_backstage',
+            desc:'Assign a Diehard as a Roadie — moves one of your amps 2 hexes, Fix Cable replugs a sabotaged amp. 2-turn cooldown per job.' },
+          { id:'crew_pranksta',   label:'Pranksta',    icon:'🪤', hcCost:8,  gated:true, prereq:'crew_backstage',
+            desc:'Assign a Diehard as a saboteur — disconnect up to 2 rival amps within 4 hexes. Recharges in 3 turns.' },
+          { id:'crew_streetteam', label:'Street Team', icon:'📣', hcCost:12, gated:true, prereq:'crew_backstage',
+            desc:'Assign a Diehard to work the room — while staffed, outer-ring boredom never ticks. Insurance for the fickle fringe.' },
+        ]},
+        { id:'crew_capstone', label:'🎩 Management', skills: [
+          { id:'crew_manager', label:'Tour Manager', icon:'🎩', hcCost:16, gated:true, prereq:'crew_stagehand',
+            desc:'Two concurrent assignments. Your operation has an org chart.' },
+        ]},
       ],
     },
     // ── SIGNATURE ARSENALS — one compact route per Spirit (hidden from the others) ──
@@ -3231,8 +3255,27 @@ function Game({ gameState, onReturnToLobby }) {
     const ns     = noteStates[spiritId] ?? {};
     const skill  = SKILL_BY_ID[skillId];
 
-    if (skillId === 'fans_4eva')    addLog(`💚 ${spirit?.name} — Fans 4Eva! Crew ready to deploy from your HUD: restore 2 Vibe.`);
-    if (skillId === 'pranksta')     addLog(`🪤 ${spirit?.name} — Bust Out Pranksta! Crew ready to deploy: disconnect up to 2 rival amps.`);
+    // ── 🎫 CREW ROUTE (CREW_SYSTEM_DESIGN.md) ──────────────────────────────
+    if (skillId === 'crew_backstage') {
+      addLog(`🎫 ${spirit?.name} — BACKSTAGE PASS! Assignment system online. Fan Mail task ready: a Diehard pen-pal writes letters that restore +3 Vibe.`);
+    }
+    if (skillId === 'crew_stagehand') {
+      // Stagehand inherits the roadie plumbing — push a roadie into ns.roadies
+      const newRoadie = { id:`roadie-${spiritId}-${Date.now()}`, cooldownTurns:0, onBoard:false, boardHex:null };
+      setNoteStates(prev => ({ ...prev, [spiritId]: {
+        ...prev[spiritId], roadies: [...(prev[spiritId]?.roadies ?? []), newRoadie]
+      }}));
+      addLog(`🔧 ${spirit?.name} — STAGEHAND! A Diehard picks up a wrench. Assign them to move amps and replug cables.`);
+    }
+    if (skillId === 'crew_pranksta') {
+      addLog(`🪤 ${spirit?.name} — PRANKSTA! Assign a Diehard as a saboteur — disconnect up to 2 rival amps within 4 hexes.`);
+    }
+    if (skillId === 'crew_streetteam') {
+      addLog(`📣 ${spirit?.name} — STREET TEAM! Assign a Diehard to work the room — outer-ring boredom never ticks while staffed.`);
+    }
+    if (skillId === 'crew_manager') {
+      addLog(`🎩 ${spirit?.name} — TOUR MANAGER! Two concurrent assignments. Your operation has an org chart.`);
+    }
     if (skillId === 'hero_pose')    addLog(`🌟 ${spirit?.name} — HERO POSE unlocked! Pose on centre hex for 2 turns to win.`);
 
     // ── 🧍 STANCE ROUTE ──────────────────────────────────────────────────────
@@ -3300,7 +3343,8 @@ function Game({ gameState, onReturnToLobby }) {
         addLog(`🔊 ${spirit?.name} — Amp ${ownedCount + 1} ready! Deploy it from CREW & GEAR on your spirit card.`);
       }
     }
-    if (['roadie_1','roadie_2','roadie_3'].includes(skillId)) {
+    // Legacy roadie_2/roadie_3 (if any saves reference them); crew_stagehand handled above.
+    if (['roadie_2','roadie_3'].includes(skillId)) {
       const newRoadie = { id:`roadie-${spiritId}-${Date.now()}`, cooldownTurns:0, onBoard:false, boardHex:null };
       setNoteStates(prev => ({ ...prev, [spiritId]: {
         ...prev[spiritId], roadies: [...(prev[spiritId]?.roadies ?? []), newRoadie]
@@ -3406,7 +3450,8 @@ function Game({ gameState, onReturnToLobby }) {
   // Legacy alias
   function purchaseSkill(spiritId, skillId) { setSkillTarget(spiritId, skillId); }
   function chooseUpgrade(spiritId, categoryId) {
-    const legacyMap = { amp:'amp_1', roadie:'roadie_1',
+    const legacyMap = { amp:'amp_1', roadie:'roadie_1', roadie_1:'crew_stagehand',
+      fans_4eva:'crew_backstage', pranksta:'crew_pranksta',
       discord_1:'discord_1', discord_2:'discord_2', discord_3:'discord_3', discord_4:'discord_4' };
     setSkillTarget(spiritId, legacyMap[categoryId] ?? categoryId);
   }
@@ -3507,17 +3552,19 @@ function Game({ gameState, onReturnToLobby }) {
     // Groupies stream out from this Spirit's home corner toward whatever they act on.
     const homeNum = CORNERS[spirit.corner]?.homeNum ?? spirit.num;
 
-    if (skillId === 'fans_4eva') {
-      if (spirit.vibe >= spirit.maxVibe) { addLog(`💚 ${spirit.name} is already at full Vibe — save the fans for later!`); return; }
-      flyCrew({ fromHexNum: homeNum, toHexNum: spirit.num, icon:'🎉', color:'#ff66bb', label:'🎉 Crowd-surf!' });
+    if (skillId === 'crew_backstage') {
+      // Fan Mail: letter throw → token lands on the board (full flow in UI layer)
+      // For now the legacy heal is preserved as a fallback until the letter-pickup flow lands.
+      if (spirit.vibe >= spirit.maxVibe) { addLog(`💌 ${spirit.name} is already at full Vibe — save the letter for later!`); return; }
+      flyCrew({ fromHexNum: homeNum, toHexNum: spirit.num, icon:'💌', color:'#ff66bb', label:'💌 Fan Mail!' });
       setSpirits(prev => prev.map(s => s.id === spiritId
-        ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + 2) } : s));
-      addLog(`💚 ${spirit.name} crowd-surfs into their fans — +2 Vibe restored!`);
+        ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + 3) } : s));
+      addLog(`💌 ${spirit.name} reads a fan letter — +3 Vibe restored!`);
       startCooldown();
       return;
     }
 
-    if (skillId === 'pranksta') {
+    if (skillId === 'crew_pranksta') {
       const spiritHex = HEX_BY_NUM[spirit.num];
       if (!spiritHex) return;
       // Up to 2 nearest live rival amps within 4 hexes
@@ -5218,7 +5265,8 @@ function Game({ gameState, onReturnToLobby }) {
     // 🎤 Fans amplify the value of every deed (wins, riffs, cadences). The crowd
     // doesn't convert TO Fame — it multiplies the Fame you earn. Pass amplify=false
     // for non-deed awards (e.g. the future Rock Gods finale payout) to skip this.
-    const mult    = amplify ? crowdMultiplier(ns.diehards ?? FAN_DIEHARD_START, ns.casuals ?? 0) : 1;
+    const assigned = (ns.assignments ?? []).length;
+    const mult    = amplify ? crowdMultiplier(ns.diehards ?? FAN_DIEHARD_START, ns.casuals ?? 0, assigned) : 1;
     const uncapped = amplify ? Math.max(fp, Math.round(fp * mult)) : fp;
     // ⛔ Clamp against what this spirit already banked this turn window.
     const earnedSoFar = fameThisTurnRef.current[spiritId] ?? 0;
@@ -5456,7 +5504,7 @@ function Game({ gameState, onReturnToLobby }) {
     const nm = spirits.find(s => s.id === spiritId)?.name;
     const gainedStr = recruit > 0 ? `+${base} (+${recruit} won over)` : `+${base}`;
     const where = ring === 'main' ? 'the Mainstage' : ring === 'pit' ? 'the Pit' : 'the neutral floor';
-    addLog(`🎤 ${nm} works ${where} — casuals ${gainedStr} → ♥${diehards}·👥${casuals} (×${crowdMultiplier(diehards, casuals).toFixed(2)})`);
+    addLog(`🎤 ${nm} works ${where} — casuals ${gainedStr} → ♥${diehards}·👥${casuals} (×${crowdMultiplier(diehards, casuals, (noteStates[spiritId]?.assignments ?? []).length).toFixed(2)})`);
     if (promoted) addLog(`🎤 A casual hardens into a Diehard for ${nm}! (${diehards}♥)`);
   }
 
@@ -5512,8 +5560,13 @@ function Game({ gameState, onReturnToLobby }) {
     }
     let diehards = ns.diehards ?? FAN_DIEHARD_START;
     let casuals  = ns.casuals ?? 0;
-    // Shake up to 2 Diehards down into Casuals — their faith wavers.
-    const shaken = Math.min(2, diehards);
+    // Assigned Diehards are safe backstage — only unassigned ones can be shaken
+    // (CREW_SYSTEM_DESIGN.md §2: "Knockdown fan-flee and Demolition's Diehard
+    // shake only touch the crowd, never assigned fans").
+    const assignedCount = (ns.assignments ?? []).length;
+    const unassignedDiehards = Math.max(0, diehards - assignedCount);
+    // Shake up to 2 *unassigned* Diehards down into Casuals — their faith wavers.
+    const shaken = Math.min(2, unassignedDiehards);
     diehards -= shaken; casuals += shaken;
     // 7–10 Casuals flee.
     const flee = Math.min(casuals, FAN_FLEE_MIN + Math.floor(Math.random() * (FAN_FLEE_MAX - FAN_FLEE_MIN + 1)));
@@ -8092,9 +8145,9 @@ function Game({ gameState, onReturnToLobby }) {
           schedule(() => setAmpPlacing(null)); return; // nowhere to place — bail cleanly
         }
 
-        // 💚 Patch up early if we're hurting and the fans are ready.
-        if (crewReady('fans_4eva') && (liveSelf.vibe ?? 0) <= (liveSelf.maxVibe ?? 0) - 2) {
-          schedule(() => deployGroupie(self.id, 'fans_4eva')); return;
+        // 💌 Patch up early if we're hurting and Fan Mail is ready.
+        if (crewReady('crew_backstage') && (liveSelf.vibe ?? 0) <= (liveSelf.maxVibe ?? 0) - 3) {
+          schedule(() => deployGroupie(self.id, 'crew_backstage')); return;
         }
       }
 
@@ -8128,7 +8181,7 @@ function Game({ gameState, onReturnToLobby }) {
         const ah = HEX_BY_NUM[a.hexNum];
         return ah && axialDist(myHex.q, myHex.r, ah.q, ah.r) <= 4;
       });
-      if (crewReady('pranksta') && rivalAmpNear) { schedule(() => deployGroupie(self.id, 'pranksta')); return; }
+      if (crewReady('crew_pranksta') && rivalAmpNear) { schedule(() => deployGroupie(self.id, 'crew_pranksta')); return; }
       // 🧍 STANCE — settle into the persona's preferred pose once it's learned.
       // Switching spends the Action, so only when no rival is close enough to
       // make attacking the better use of it (self-disables once in the stance).
@@ -9193,7 +9246,8 @@ function Game({ gameState, onReturnToLobby }) {
           {acting && (() => {
             const ns = noteStates[acting.id] ?? {};
             const D = ns.diehards ?? FAN_DIEHARD_START, C = ns.casuals ?? 0;
-            const m = crowdMultiplier(D, C);
+            const A = (ns.assignments ?? []).length;
+            const m = crowdMultiplier(D, C, A);
             return (
               <span title="Crowd — Fame multiplier · ♥ diehards · 👥 casuals"
                 style={{fontSize:9,padding:"2px 9px",background:"#160a12",border:"1px solid #ff66aa66",borderRadius:10,
@@ -9723,7 +9777,7 @@ function Game({ gameState, onReturnToLobby }) {
                 {(() => {
                   const unlocked = ns.unlockedSkills ?? [];
                   const myAmps   = amps.filter(a => a.ownerId === s.id);
-                  const groupieIds = ['fans_4eva','pranksta'].filter(id => unlocked.includes(id));
+                  const groupieIds = ['crew_backstage','crew_pranksta'].filter(id => unlocked.includes(id));
                   const hasRoadies = (ns.roadies?.length ?? 0) > 0;
                   const hasUlt     = unlocked.includes('ultimate');
                   const ampUnlockCount = ['amp_1','amp_2','amp_3'].filter(id => unlocked.includes(id)).length;
@@ -9731,8 +9785,8 @@ function Game({ gameState, onReturnToLobby }) {
                   if (!hasRoadies && groupieIds.length === 0 && !hasUlt && myAmps.length === 0 && !canPlaceAmp) return null;
 
                   const GROUPIE_DEFS = {
-                    fans_4eva:    { icon:'💚', label:'Fans 4Eva',    hint:'+2 Vibe' },
-                    pranksta:     { icon:'🪤', label:'Pranksta',     hint:'Unplug 2 rival amps ≤4 hex' },
+                    crew_backstage:  { icon:'💌', label:'Fan Mail',    hint:'+3 Vibe (letter pickup)' },
+                    crew_pranksta:   { icon:'🪤', label:'Pranksta',    hint:'Unplug 2 rival amps ≤4 hex' },
                   };
                   const chipBase = {
                     fontFamily:'inherit', cursor:'pointer', borderRadius:4,
@@ -11838,7 +11892,7 @@ function Game({ gameState, onReturnToLobby }) {
                 const ns = noteStates[s.id] ?? {};
                 const unlocked   = ns.unlockedSkills ?? [];
                 const roadies    = ns.roadies ?? [];
-                const groupieIds = ['fans_4eva','pranksta'].filter(id => unlocked.includes(id));
+                const groupieIds = ['crew_backstage','crew_pranksta'].filter(id => unlocked.includes(id));
                 if (roadies.length === 0 && groupieIds.length === 0) return null;
 
                 const sc = CORNER_LABELS[s.corner]?.color ?? s.color;   // owner colour for the groupie glow
