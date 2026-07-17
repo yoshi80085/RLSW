@@ -354,3 +354,41 @@ board token type (the letter), and skills wired into hooks that all exist today.
 | Recall friction | **Next-turn-start**, no extra cooldown. |
 | Crew UI | **Board-first (§7):** crew live at the corner muster, look their part, animate their actions, and are **clicked on the board**, not in the HUD. |
 | Roadie home | **Crew route** (`crew_stagehand`); Electric re-chains `amp_3` → `amp_2`. |
+
+---
+
+## 13. Implementation status (2026-07-17)
+
+**Shipped** — the full §2/§4/§7/§8 system is live in `rlsw-simulator-v3_8_1.jsx`:
+
+- **Assignment model (§2):** `toggleAssignment` writes `ns.pendingAssignments`;
+  `startNewTurnNotes` applies it at turn start (next-turn-start for assign AND
+  recall), enforces nothing retroactively, and pushes/pops the Stagehand roadie
+  in `ns.roadies`. Caps: 1, or 2 with `crew_manager`. Staffing requires an
+  unassigned Diehard.
+- **Fan Mail (§4.1):** click the pen-pal at the muster → `deployGroupie` throws
+  the letter (lands on the first free hex 1 away, 2 if boxed in — implementation
+  pick from §10) → `fanLetters` board token (owner-colour ring) → pickup in
+  `checkLetterPickup` on move-onto-hex, spends the Action (`beatsSpent(0,true)`),
+  heals `FAN_MAIL_VIBE = 3` (constant in `gameConstants.js` — the tuning knob).
+  Unclaimed letters expire when the cooldown finishes.
+- **Heckler / Merch:** both now gated on the assignment being staffed (the
+  effects themselves shipped earlier: `heckled` zero in `gainFans`, +1 DB per
+  raw FP in `grantFame`).
+- **Board-first UI (§7):** assigned Diehards render at the corner muster with
+  task poses/tells (💌+♥ / 📢 / 🏪 stall), generous invisible hitboxes, ready
+  glow, cooldown counters, and ⏳ ghosts for pending assignees; roadies are
+  clickable (auto-picks Fix Cable when an amp is sabotaged). Assigned Diehards
+  leave the grandstand rail count.
+- **HUD:** the CREW & GEAR card's fan row became the **ASSIGN x/cap** manager
+  (chips toggle assign/recall, show ●/○/⏳ + cooldowns). *Deviation from §7's
+  "assignment lives in the skill window": the upgrade modal only opens between
+  unlocks, so assignment needed an always-available home — the HUD card is it.
+  Action buttons are gone from the HUD; using crew is board-only, per §7.*
+- **Bots (§8):** staff/recall heuristics in the build phase (recall-all in the
+  lead-chase endgame at 75% of `FAME_TO_WIN`), letter throw when hurt + staffed,
+  letter pickup when adjacent with a spare Action, Stagehand auto-fix flow.
+  Diva adds `crew_merch`, Saboteur adds `crew_manager` to their skill orders.
+
+**Playtest watchlist** unchanged from §10 (letter +3 first knob; min-zoom
+click targets; rival letter-stomping still parked).

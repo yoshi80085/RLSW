@@ -303,7 +303,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_DB_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_DB_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, FAN_MAIL_VIBE, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_DB_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_DB_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -1267,6 +1267,11 @@ function Game({ gameState, onReturnToLobby }) {
   // add-to-Chord-Stack vs bank-it choice (skipped/auto-banked if the revoice's
   // already spent this turn). See ECONOMY_HANDOFF.md.
   const [pendingLostChordPickup, setPendingLostChordPickup] = useState(null);
+
+  // 💌 FAN MAIL letters in flight — board tokens like Lost Chords, but addressed:
+  // only the owner can pick one up (move onto the hex, spend the Action, +Vibe).
+  // One per owner; a new throw replaces the old (CREW_SYSTEM_DESIGN.md §4.1).
+  const [fanLetters, setFanLetters] = useState([]); // [{ ownerId, hexNum }]
 
   // ─── CHARGE ZONES ── (ENGINE-owned — Phase 6a, fully migrated) ─────────────
   const chargeZones = engineState.board.chargeZones;
@@ -3010,6 +3015,50 @@ function Game({ gameState, onReturnToLobby }) {
       // made CQC slip/daze/drop and Stagger feel like they never fired).
       // They now tick down / clear at the END of your own turn — see endTurn().
 
+      // ── 🎫 CREW ASSIGNMENTS take effect here (CREW_SYSTEM_DESIGN.md §2) ──
+      // The fan had to get backstage overnight: pendingAssignments becomes the
+      // active roster. Stagehand's roadie is pushed/popped alongside (the whole
+      // roadie UI/flow reads ns.roadies — §4.2).
+      let nextRoadies = (ns.roadies ?? []).map(r =>
+        r.cooldownTurns > 0 ? { ...r, cooldownTurns: r.cooldownTurns - 1 } : r
+      );
+      let nextAssignments = ns.assignments ?? [];
+      let nextPending     = ns.pendingAssignments ?? null;
+      if (nextPending) {
+        const added   = nextPending.filter(t => !nextAssignments.includes(t));
+        const removed = nextAssignments.filter(t => !nextPending.includes(t));
+        if (removed.includes('crew_stagehand')) {
+          // The wrench goes down — any in-flight cooldown is forfeit (§4.2).
+          nextRoadies = nextRoadies.filter(r => !r.stagehand);
+        }
+        if (added.includes('crew_stagehand')) {
+          nextRoadies = [...nextRoadies, {
+            id: `roadie-sh-${spiritId}`, cooldownTurns: 0,
+            onBoard: false, boardHex: null, stagehand: true,
+          }];
+        }
+        const nm = spirits.find(s => s.id === spiritId)?.name;
+        const label = (t) => `${({crew_backstage:'💌 Fan Mail',crew_stagehand:'🔧 Stagehand',crew_heckler:'📢 Heckler',crew_merch:'🏪 Merch Table'})[t] ?? t}`;
+        setTimeout(() => {
+          if (added.length)   addLog(`🎫 ${nm}'s crew clocks in: ${added.map(label).join(', ')} — those Diehards step out of the crowd.`);
+          if (removed.length) addLog(`🎫 ${nm}'s crew clocks out: ${removed.map(label).join(', ')} — back on the front rail, cheering.`);
+        }, 0);
+        nextAssignments = nextPending;
+        nextPending = null;
+      }
+
+      // 💌 An unclaimed letter expires when the next one becomes available —
+      // i.e. the moment the Fan Mail cooldown finishes ticking to 0 (§4.1).
+      if ((ns.groupieCooldowns?.crew_backstage ?? 0) === 1) {
+        setTimeout(() => setFanLetters(prevL => {
+          const mine = prevL.find(l => l.ownerId === spiritId);
+          if (!mine) return prevL;
+          const nm = spirits.find(s => s.id === spiritId)?.name;
+          addLog(`💌 ${nm}'s unclaimed fan letter blows away — the pen-pal is already writing the next one.`);
+          return prevL.filter(l => l.ownerId !== spiritId);
+        }), 0);
+      }
+
       return {
         ...prev,
         [spiritId]: {
@@ -3027,10 +3076,11 @@ function Game({ gameState, onReturnToLobby }) {
           // 🌌 Displace cooldown ticks down on Intergalactic 0's own turns
           displaceCd: Math.max(0, (ns.displaceCd ?? 0) - 1),
 
-          // Tick down roadie cooldowns
-          roadies: (ns.roadies ?? []).map(r =>
-            r.cooldownTurns > 0 ? { ...r, cooldownTurns: r.cooldownTurns - 1 } : r
-          ),
+          // Tick down roadie cooldowns (+ Stagehand push/pop, computed above)
+          roadies: nextRoadies,
+          // 🎫 Crew roster — pending assignments applied at turn start (§2)
+          assignments: nextAssignments,
+          pendingAssignments: nextPending,
           // Tick down groupie crew cooldowns
           groupieCooldowns: Object.fromEntries(
             Object.entries(ns.groupieCooldowns ?? {}).map(([k, v]) => [k, Math.max(0, v - 1)])
@@ -3235,6 +3285,8 @@ function Game({ gameState, onReturnToLobby }) {
     checkStageFxHex(acting.id, actualTarget);
     // 🎵 Board mini-goal pickup (Lost Chord)
     checkTokenPickup(acting.id, actualTarget);
+    // 💌 Fan Mail letter pickup (spends the Action — CREW_SYSTEM_DESIGN.md §4.1)
+    checkLetterPickup(acting.id, actualTarget);
     // ⚡ Charge zone pickup
     checkChargeZonePickup(acting.id, actualTarget);
     // Marquee event hex
@@ -3260,12 +3312,9 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`🎫 ${spirit?.name} — BACKSTAGE PASS! Assignment system online. Fan Mail task ready: a Diehard pen-pal writes letters that restore +3 Vibe.`);
     }
     if (skillId === 'crew_stagehand') {
-      // Stagehand inherits the roadie plumbing — push a roadie into ns.roadies
-      const newRoadie = { id:`roadie-${spiritId}-${Date.now()}`, cooldownTurns:0, onBoard:false, boardHex:null };
-      setNoteStates(prev => ({ ...prev, [spiritId]: {
-        ...prev[spiritId], roadies: [...(prev[spiritId]?.roadies ?? []), newRoadie]
-      }}));
-      addLog(`🔧 ${spirit?.name} — STAGEHAND! A Diehard picks up a wrench. Assign them to move amps and replug cables.`);
+      // The roadie is NOT permanent — it's pushed into ns.roadies while the
+      // Stagehand assignment is staffed (startNewTurnNotes) and popped on recall.
+      addLog(`🔧 ${spirit?.name} — STAGEHAND! Assign a Diehard from CREW & GEAR and they pick up a wrench next turn.`);
     }
     if (skillId === 'crew_heckler') {
       addLog(`📢 ${spirit?.name} — HECKLER! Assign a Diehard to heckle any rival's crowd — their next crowd-gain is zeroed.`);
@@ -3530,6 +3579,53 @@ function Game({ gameState, onReturnToLobby }) {
   // ─── CREW & GEAR DEPLOYABLES ─────────────────────────────────────────────────
   // Groupie crews are one-tap abilities in the HUD. Each deployment puts that
   // crew on a GROUPIE_COOLDOWN (own turns) before it can be sent out again.
+  // ── 🎫 CREW ASSIGNMENTS (CREW_SYSTEM_DESIGN.md §2) ─────────────────────────
+  // A Diehard on assignment steps out of the crowd: −0.10× on every FP grant
+  // while assigned. Assign/recall is free but takes effect at the START of your
+  // next turn (applied in startNewTurnNotes) — no same-turn flickering.
+  const CREW_TASK_DEFS = {
+    crew_backstage: { icon:'💌', label:'Fan Mail' },
+    crew_stagehand: { icon:'🔧', label:'Stagehand' },
+    crew_heckler:   { icon:'📢', label:'Heckler' },
+    crew_merch:     { icon:'🏪', label:'Merch Table' },
+  };
+  const crewCapOf    = (ns) => (ns.unlockedSkills ?? []).includes('crew_manager') ? 2 : 1;
+  const crewRosterOf = (ns) => ns.pendingAssignments ?? ns.assignments ?? [];
+
+  // Toggle a task on the NEXT-turn roster. Staffing requires an unassigned
+  // Diehard in the pool; recalls are always allowed.
+  function toggleAssignment(spiritId, taskId) {
+    const spirit = spirits.find(s => s.id === spiritId);
+    const ns     = noteStates[spiritId] ?? {};
+    if (!spirit || !(ns.unlockedSkills ?? []).includes(taskId)) return;
+    if (!(ns.unlockedSkills ?? []).includes('crew_backstage')) return;
+    const roster = crewRosterOf(ns);
+    const def    = CREW_TASK_DEFS[taskId] ?? { icon:'🎫', label:taskId };
+    let next;
+    if (roster.includes(taskId)) {
+      next = roster.filter(t => t !== taskId);
+      addLog(`${def.icon} ${spirit.name} recalls the ${def.label} fan — back in the crowd at the start of ${spirit.name}'s next turn.`);
+    } else {
+      if (roster.length >= crewCapOf(ns)) {
+        addLog(`🎫 ${spirit.name} can only staff ${crewCapOf(ns)} assignment${crewCapOf(ns) !== 1 ? 's' : ''}${crewCapOf(ns) === 1 ? ' — Tour Manager raises it to 2' : ''}.`);
+        return;
+      }
+      if ((ns.diehards ?? 0) - roster.length < 1) {
+        addLog(`🎫 ${spirit.name} has no unassigned Diehards — earn more loyalty first (perform in the centre rings).`);
+        return;
+      }
+      next = [...roster, taskId];
+      addLog(`${def.icon} ${spirit.name} sends a Diehard backstage for ${def.label} duty — on the job at the start of ${spirit.name}'s next turn.`);
+    }
+    // If the new roster matches what's already active, there's nothing pending.
+    const active = ns.assignments ?? [];
+    const same = next.length === active.length && next.every(t => active.includes(t));
+    setNoteStates(prev => ({
+      ...prev,
+      [spiritId]: { ...prev[spiritId], pendingAssignments: same ? null : next },
+    }));
+  }
+
   function deployGroupie(spiritId, skillId) {
     if (!canAct) return; // N4/N7: gate
     const spirit = spirits.find(s => s.id === spiritId);
@@ -3553,18 +3649,45 @@ function Game({ gameState, onReturnToLobby }) {
     const homeNum = CORNERS[spirit.corner]?.homeNum ?? spirit.num;
 
     if (skillId === 'crew_backstage') {
-      // Fan Mail: letter throw → token lands on the board (full flow in UI layer)
-      // For now the legacy heal is preserved as a fallback until the letter-pickup flow lands.
-      if (spirit.vibe >= spirit.maxVibe) { addLog(`💌 ${spirit.name} is already at full Vibe — save the letter for later!`); return; }
-      flyCrew({ fromHexNum: homeNum, toHexNum: spirit.num, icon:'💌', color:'#ff66bb', label:'💌 Fan Mail!' });
-      setSpirits(prev => prev.map(s => s.id === spiritId
-        ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + 3) } : s));
-      addLog(`💌 ${spirit.name} reads a fan letter — +3 Vibe restored!`);
+      // 💌 FAN MAIL (§4.1) — the pen-pal hurls the letter over the crowd. It
+      // lands on a free hex 1 away from the Spirit (2 away if boxed in) and does
+      // NOTHING until the Spirit moves onto it — reading spends the Action.
+      if (!(ns.assignments ?? []).includes('crew_backstage')) {
+        addLog(`💌 Nobody's on Fan Mail duty — assign a Diehard from CREW & GEAR first.`);
+        return;
+      }
+      const myHex = HEX_BY_NUM[spirit.num];
+      if (!myHex) return;
+      const occupied = new Set([
+        ...spirits.filter(sp => !sp.knockedOut).map(sp => sp.num),
+        ...amps.map(a => a.hexNum),
+        ...boardCards.map(c => c.hexNum),
+        ...chargeZones.map(z => z.num),
+        ...eventHexes,
+        ...boardTokens.map(t => t.num),
+        ...fanLetters.map(l => l.hexNum),
+        spotlightHex, LIMELIGHT_HEX,
+      ]);
+      // First free hex 1 away; if the Spirit is fully boxed in, 2 away (§10).
+      const landing = [1, 2].map(d =>
+        Object.values(HEX_BY_NUM)
+          .filter(h => axialDist(myHex.q, myHex.r, h.q, h.r) === d && !occupied.has(h.num))
+          .sort((a, b) => a.num - b.num)[0]
+      ).find(Boolean);
+      if (!landing) { addLog(`💌 No open hex near ${spirit.name} — the letter would be trampled. Move first.`); return; }
+      flyCrew({ fromHexNum: homeNum, toHexNum: landing.num, icon:'💌', color:'#ff66bb', label:'💌 Fan Mail!' });
+      setFanLetters(prev => [...prev.filter(l => l.ownerId !== spiritId),
+        { ownerId: spiritId, hexNum: landing.num }]);
+      addLog(`💌 ${spirit.name}'s pen-pal hurls a letter — it lands on #${landing.num}. Move onto it and spend your Action to read it (+${FAN_MAIL_VIBE} Vibe).`);
       startCooldown();
       return;
     }
 
     if (skillId === 'crew_heckler') {
+      if (!(ns.assignments ?? []).includes('crew_heckler')) {
+        addLog(`📢 Nobody's on Heckler duty — assign a Diehard from CREW & GEAR first.`);
+        return;
+      }
       // Heckler — pick the rival with the most casuals (juiciest target).
       // Board-wide range: the heckler is a fan in the crowd, not on stage.
       const rivals = spirits.filter(s => s.id !== spiritId && !s.knockedOut);
@@ -3906,6 +4029,32 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
     setPendingLostChordPickup({ spiritId, note: tok.note, roninGreed });
+  }
+
+  // 💌 FAN MAIL pickup (§4.1) — the letter does nothing until the owner moves
+  // onto its hex. Reading it spends the Action (move yes, attack no — the
+  // stance-switch cost) and restores FAN_MAIL_VIBE. Letters are addressed:
+  // only the owner can read theirs.
+  function checkLetterPickup(spiritId, hexNum) {
+    const letter = fanLetters.find(l => l.hexNum === hexNum);
+    if (!letter) return;
+    const sp = spirits.find(s => s.id === spiritId);
+    if (letter.ownerId !== spiritId) {
+      const owner = spirits.find(s => s.id === letter.ownerId);
+      addLog(`💌 The letter on #${hexNum} is addressed to ${owner?.name ?? 'someone else'} — ${sp?.name} leaves it be.`);
+      return;
+    }
+    if (engineRef.current.turn.actionTokenUsed) {
+      addLog(`💌 ${sp?.name} has no Action left to read the letter — it waits on this hex.`);
+      return;
+    }
+    dispatch(beatsSpent(0, true)); // consume the Action Token; movement untouched
+    setAction(null);
+    setSpirits(prev => prev.map(s => s.id === spiritId
+      ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + FAN_MAIL_VIBE) } : s));
+    setFanLetters(prev => prev.filter(l => l !== letter));
+    triggerEffectFlash(spiritId, '💌', `+${FAN_MAIL_VIBE} VIBE!`, '#ff66bb');
+    addLog(`💌 ${sp?.name} stops mid-brawl to read the letter — pages of pure loyalty. +${FAN_MAIL_VIBE} Vibe! No attack this turn.`);
   }
 
   // Bank path — slot the found note into an unused stock slot (ready next turn),
@@ -7392,6 +7541,7 @@ function Game({ gameState, onReturnToLobby }) {
             ...chargeZones.map(z => z.num),
             ...eventHexes,
             ...boardTokens.map(t => t.num),
+            ...fanLetters.map(l => l.hexNum),
             spotlightHex, LIMELIGHT_HEX,
           ];
           // 🌋 AFTERSHOCK (Power upgrade) — the chords scatter a hex further.
@@ -7868,6 +8018,7 @@ function Game({ gameState, onReturnToLobby }) {
           ...chargeZones.map(z => z.num),
           ...eventHexes,
           ...boardTokens.map(t => t.num),
+          ...fanLetters.map(l => l.hexNum),
           spotlightHex, LIMELIGHT_HEX,
         ];
         dispatch(tokensScattered(occupied, aliveSpirits.length, spirits.length));
@@ -8114,8 +8265,9 @@ function Game({ gameState, onReturnToLobby }) {
     const ns        = engineRef.current.noteStates?.[self.id] ?? {};
     const unlocked  = ns.unlockedSkills ?? [];
     const liveSelf  = engineRef.current.spirits.find(s => s.id === self.id) ?? self;
-    const hasSkill  = (id) => unlocked.includes(id);
-    const crewReady = (id) => hasSkill(id) && (ns.groupieCooldowns?.[id] ?? 0) === 0;
+    const hasSkill    = (id) => unlocked.includes(id);
+    const crewStaffed = (id) => (ns.assignments ?? []).includes(id);
+    const crewReady   = (id) => hasSkill(id) && crewStaffed(id) && (ns.groupieCooldowns?.[id] ?? 0) === 0;
     const guard     = (fn) => () => { if (actingRef.current?.id === self.id) fn(); };
 
     // 1) BUILD — climb the skill tree, sharpen the stock, build a clean track.
@@ -8127,6 +8279,31 @@ function Game({ gameState, onReturnToLobby }) {
       if ((ns.upgradesPending ?? 0) > 0 && !ns.targetSkillId) {
         const wantId = botPickSkillTarget(self);
         if (wantId) { schedule(() => setSkillTarget(self.id, wantId)); return; }
+      }
+
+      // 1a.5) 🎫 CREW ASSIGNMENTS (§8) — staff the roster (free, lands next turn).
+      //       Recall everyone in the lead-chase endgame: the multiplier matters most.
+      if (hasSkill('crew_backstage')) {
+        const roster = ns.pendingAssignments ?? ns.assignments ?? [];
+        const cap    = hasSkill('crew_manager') ? 2 : 1;
+        const free   = Math.max(0, (ns.diehards ?? 0) - roster.length);
+        const endgame = (ns.fame ?? 0) >= FAME_TO_WIN * 0.75;
+        if (endgame && roster.length > 0) {
+          schedule(() => toggleAssignment(self.id, roster[0])); return;
+        }
+        if (!endgame && roster.length < cap && free >= 1) {
+          const hurt = (liveSelf.vibe ?? 9) <= (liveSelf.maxVibe ?? 5) - 3;
+          const ampDown = amps.some(a => a.ownerId === self.id && a.unplugged);
+          const juicyRival = spirits.some(r => r.id !== self.id && !r.knockedOut
+            && (engineRef.current.noteStates?.[r.id]?.casuals ?? 0) >= 3);
+          const want =
+            (hurt && !roster.includes('crew_backstage')) ? 'crew_backstage'
+            : (hasSkill('crew_stagehand') && ampDown && !roster.includes('crew_stagehand')) ? 'crew_stagehand'
+            : (hasSkill('crew_heckler') && juicyRival && !roster.includes('crew_heckler')) ? 'crew_heckler'
+            : (hasSkill('crew_merch') && (ns.diehards ?? 0) >= 3 && !roster.includes('crew_merch')) ? 'crew_merch'
+            : null;
+          if (want) { schedule(() => toggleAssignment(self.id, want)); return; }
+        }
       }
 
       // 1b) PIVOT — declare a key before any note can be placed.
@@ -8165,8 +8342,10 @@ function Game({ gameState, onReturnToLobby }) {
           schedule(() => setAmpPlacing(null)); return; // nowhere to place — bail cleanly
         }
 
-        // 💌 Patch up early if we're hurting and Fan Mail is ready.
-        if (crewReady('crew_backstage') && (liveSelf.vibe ?? 0) <= (liveSelf.maxVibe ?? 0) - 3) {
+        // 💌 Throw the letter early if we're hurting, the pen-pal is staffed &
+        //    ready, and there isn't already one waiting on the floor.
+        if (crewReady('crew_backstage') && (liveSelf.vibe ?? 0) <= (liveSelf.maxVibe ?? 0) - 3
+            && !fanLetters.some(l => l.ownerId === self.id)) {
           schedule(() => deployGroupie(self.id, 'crew_backstage')); return;
         }
       }
@@ -8195,11 +8374,47 @@ function Game({ gameState, onReturnToLobby }) {
       if (hasSkill('ultimate') && !ns.ultimateUsed && botRivalsWithin(self, 4).length >= 2) {
         schedule(() => fireUltimate(self.id)); return;
       }
+      // 🔧 STAGEHAND (§8) — the rig is sabotaged and the wrench is ready: fix it.
+      {
+        const readyRoadie = (ns.roadies ?? []).find(r => (r.cooldownTurns ?? 0) === 0 && !r.onBoard);
+        const downAmps = amps.filter(a => a.ownerId === self.id && a.unplugged);
+        if (roadieAction?.spiritId === self.id) {
+          if (roadieAction.phase === 'replug') { schedule(guard(() => confirmRoadieReplug())); return; }
+          if (roadieAction.phase === 'pickAmp' && downAmps.length > 0) {
+            schedule(() => setRoadieAction({ spiritId: self.id, roadieId: roadieAction.roadieId,
+              phase: 'replug', ampId: downAmps[0].id }));
+            return;
+          }
+        } else if (readyRoadie && downAmps.length > 0) {
+          schedule(guard(() => roadieStartFix(self.id, readyRoadie.id)));
+          return;
+        }
+      }
       // 📢 Heckler — disrupt a rival's crowd when they have fans worth zeroing.
       if (crewReady('crew_heckler')) {
         const rivalWithFans = spirits.some(s => s.id !== self.id && !s.knockedOut && (noteStates[s.id]?.casuals ?? 0) >= 3);
         if (rivalWithFans) { schedule(() => deployGroupie(self.id, 'crew_heckler')); return; }
       }
+      // 💌 READ THE MAIL (§8) — step onto our letter when the Action was going
+      //    spare anyway: hurt, no rival in melee reach, letter adjacent.
+      {
+        const myLetter = fanLetters.find(l => l.ownerId === self.id);
+        if (myLetter && !actionTokenUsedRef.current && steps >= 1
+            && (liveSelf.vibe ?? 9) < (liveSelf.maxVibe ?? 9)
+            && botRivalsWithin(self, 1).length === 0
+            && !spirits.some(sp => sp.num === myLetter.hexNum && !sp.knockedOut)) {
+          const lh = HEX_BY_NUM[myLetter.hexNum];
+          if (lh && myHex && axialDist(myHex.q, myHex.r, lh.q, lh.r) === 1) {
+            schedule(() => {
+              if (actingRef.current?.id !== self.id) return;
+              setAction('move');
+              setTimeout(() => { if (actingRef.current?.id === self.id) move(myLetter.hexNum); }, 30);
+            });
+            return;
+          }
+        }
+      }
+
       // 🧍 STANCE — settle into the persona's preferred pose once it's learned.
       // Switching spends the Action, so only when no rival is close enough to
       // make attacking the better use of it (self-disables once in the stance).
@@ -9795,16 +10010,26 @@ function Game({ gameState, onReturnToLobby }) {
                 {(() => {
                   const unlocked = ns.unlockedSkills ?? [];
                   const myAmps   = amps.filter(a => a.ownerId === s.id);
-                  const groupieIds = ['crew_backstage','crew_heckler'].filter(id => unlocked.includes(id));
+                  // 🎫 Owned crew tasks — the HUD row is the ASSIGNMENT manager
+                  // (strategic choice); USING staffed crew happens on the board (§7).
+                  const taskIds = ['crew_backstage','crew_stagehand','crew_heckler','crew_merch']
+                    .filter(id => unlocked.includes(id));
+                  const hasBackstage = unlocked.includes('crew_backstage');
+                  const activeTasks  = ns.assignments ?? [];
+                  const rosterTasks  = ns.pendingAssignments ?? activeTasks;
+                  const crewCap      = unlocked.includes('crew_manager') ? 2 : 1;
+                  const freeDiehards = Math.max(0, (ns.diehards ?? 0) - rosterTasks.length);
                   const hasRoadies = (ns.roadies?.length ?? 0) > 0;
                   const hasUlt     = unlocked.includes('ultimate');
                   const ampUnlockCount = ['amp_1','amp_2','amp_3'].filter(id => unlocked.includes(id)).length;
                   const canPlaceAmp    = ampUnlockCount > myAmps.length;
-                  if (!hasRoadies && groupieIds.length === 0 && !hasUlt && myAmps.length === 0 && !canPlaceAmp) return null;
+                  if (!hasRoadies && taskIds.length === 0 && !hasUlt && myAmps.length === 0 && !canPlaceAmp) return null;
 
                   const GROUPIE_DEFS = {
-                    crew_backstage:  { icon:'💌', label:'Fan Mail',    hint:'+3 Vibe (letter pickup)' },
-                    crew_heckler:    { icon:'📢', label:'Heckler',     hint:'Zero a rival\'s next fan-gain' },
+                    crew_backstage:  { icon:'💌', label:'Fan Mail',    hint:`Pen-pal throws a letter — pick it up on the board for +${FAN_MAIL_VIBE} Vibe (costs your Action)` },
+                    crew_stagehand:  { icon:'🔧', label:'Stagehand',   hint:'Staffs a Roadie — move amps / fix cables (click them at your corner)' },
+                    crew_heckler:    { icon:'📢', label:'Heckler',     hint:'Zero a rival\'s next fan-gain (click them at your corner)' },
+                    crew_merch:      { icon:'🏪', label:'Merch Table', hint:'+1 DB per raw FP earned while staffed' },
                   };
                   const chipBase = {
                     fontFamily:'inherit', cursor:'pointer', borderRadius:4,
@@ -9881,26 +10106,33 @@ function Game({ gameState, onReturnToLobby }) {
                         </div>
                       )}
 
-                      {/* GROUPIES row */}
-                      {groupieIds.length > 0 && (
+                      {/* 🎫 ASSIGNMENTS row — toggle who's backstage. Takes effect at the
+                          start of your next turn; staffed crew are USED on the board (§7). */}
+                      {hasBackstage && taskIds.length > 0 && (
                         <div style={{display:'flex',gap:3,flexWrap:'wrap',marginBottom:4,alignItems:'center'}}>
-                          <span style={{fontSize:7,color:'#44cc8888',width:34}}>FANS</span>
-                          {groupieIds.map(id => {
+                          <span style={{fontSize:7,color:'#44cc8888',width:34}}
+                            title={`${rosterTasks.length}/${crewCap} assignment${crewCap !== 1 ? 's' : ''} · ${freeDiehards} unassigned Diehard${freeDiehards !== 1 ? 's' : ''}`}>
+                            ASSIGN {rosterTasks.length}/{crewCap}
+                          </span>
+                          {taskIds.map(id => {
                             const def = GROUPIE_DEFS[id];
+                            const onRoster = rosterTasks.includes(id);
+                            const isActiveTask = activeTasks.includes(id);
+                            const pendingChange = onRoster !== isActiveTask;
                             const cd = ns.groupieCooldowns?.[id] ?? 0;
-                            if (cd > 0) return (
-                              <span key={id} title={def.hint} style={{...chipBase, cursor:'default',
-                                background:'#0a0e16', border:'1px solid #333344', color:'#444455'}}>
-                                {def.icon} {cd}t
-                              </span>
-                            );
+                            const canToggle = canAct && !s.cpu
+                              && (onRoster || (rosterTasks.length < crewCap && freeDiehards >= 1));
+                            const status = pendingChange ? (onRoster ? '⏳→' : '→🎤') : onRoster ? '●' : '○';
+                            const col = onRoster ? '#44cc88' : '#3a5a7a';
                             return (
-                              <button key={id} title={def.hint}
-                                onClick={() => deployGroupie(s.id, id)}
-                                style={{...chipBase, color:'#44cc88',
-                                  background:'#08140e', border:'1px solid #44cc8866',
-                                  animation:'crew-ready-glow 2.4s ease-in-out infinite'}}>
-                                {def.icon} {def.label}
+                              <button key={id} title={`${def.hint}${onRoster ? ' — click to recall' : ' — click to assign'}`}
+                                onClick={() => canToggle && toggleAssignment(s.id, id)}
+                                style={{...chipBase, color:col, cursor: canToggle ? 'pointer' : 'default',
+                                  background: onRoster ? '#08140e' : '#0a0e16',
+                                  border:`1px solid ${col}66`, opacity: canToggle || onRoster ? 1 : 0.55,
+                                  animation: isActiveTask && cd === 0 && (id === 'crew_backstage' || id === 'crew_heckler')
+                                    ? 'crew-ready-glow 2.4s ease-in-out infinite' : undefined}}>
+                                {def.icon} {def.label} {status}{isActiveTask && cd > 0 ? ` ·${cd}t` : ''}
                               </button>
                             );
                           })}
@@ -11679,7 +11911,10 @@ function Game({ gameState, onReturnToLobby }) {
                 const hub  = HEX_BY_NUM[LIMELIGHT_HEX];
                 if (!home || !hub) return null;
                 const ns = noteStates[s.id] ?? {};
-                const D = ns.diehards ?? 0, C = ns.casuals ?? 0;
+                // 🎫 Assigned Diehards step out of the crowd — they're drawn at the
+                // home-corner crew muster instead of the front rail (§6/§7).
+                const assignedN = (ns.assignments ?? []).length;
+                const D = Math.max(0, (ns.diehards ?? 0) - assignedN), C = ns.casuals ?? 0;
                 const total = D + C;
                 const sc = CORNER_LABELS[s.corner]?.color ?? s.color;
                 const hx = home.px * SCALE, hy = home.py * SCALE;
@@ -11908,10 +12143,17 @@ function Game({ gameState, onReturnToLobby }) {
                 const hub  = HEX_BY_NUM[LIMELIGHT_HEX];
                 if (!home || !hub) return null;
                 const ns = noteStates[s.id] ?? {};
-                const unlocked   = ns.unlockedSkills ?? [];
-                const roadies    = ns.roadies ?? [];
-                const groupieIds = ['crew_backstage','crew_heckler'].filter(id => unlocked.includes(id));
+                const roadies = ns.roadies ?? [];
+                // 🎫 Board-first crew (§7): only Diehards WITH JOBS muster here.
+                // Stagehand shows as the roadie (ns.roadies); the rest get a
+                // task-specific actor. Pending assignees ghost in at low opacity.
+                const active  = ns.assignments ?? [];
+                const pending = ns.pendingAssignments ?? null;
+                const roster  = pending ?? active;
+                const groupieIds = roster.filter(id => id !== 'crew_stagehand');
                 if (roadies.length === 0 && groupieIds.length === 0) return null;
+                const isPendingOnly = (id) => !active.includes(id);
+                const clickableCrew = s.id === acting?.id && !s.cpu && canAct;
 
                 const sc = CORNER_LABELS[s.corner]?.color ?? s.color;   // owner colour for the groupie glow
 
@@ -11944,15 +12186,26 @@ function Game({ gameState, onReturnToLobby }) {
 
                 return (
                   <g key={`crew-${s.id}`} style={{pointerEvents:"none"}}>
-                    {/* ROADIES — hard-hatted stagehands with a wrench */}
+                    {/* ROADIES — hard-hatted stagehands with a wrench.
+                        §7: clicked ON THE BOARD to act — Fix Cable if an owned
+                        amp is sabotaged, otherwise the Move Amp flow. */}
                     {roadiePos.map((p, i) => {
                       const r = roadies[i];
                       const resting = (r?.cooldownTurns ?? 0) > 0 || r?.onBoard;
+                      const canClick = clickableCrew && !resting && !roadieAction;
+                      const needsFix = amps.some(a => a.ownerId === s.id && a.unplugged);
                       const dur = 4.2 + (i % 3) * 0.4;
                       const delay = -(((i * 0.5) % dur)).toFixed(2);
                       return (
                         <g key={`rd-${i}`} transform={`translate(${p.x} ${p.y})`} opacity={resting ? 0.4 : 1}
-                           style={{animation:`fan-bob ${dur}s ease-in-out infinite`, animationDelay:`${delay}s`}}>
+                           onClick={canClick ? () => (needsFix ? roadieStartFix(s.id, r.id) : startRoadieAction(s.id, r.id)) : undefined}
+                           style={{animation:`fan-bob ${dur}s ease-in-out infinite`, animationDelay:`${delay}s`,
+                             pointerEvents: canClick ? 'all' : 'none', cursor: canClick ? 'pointer' : 'default'}}>
+                          {/* generous invisible hitbox — corner tokens are small at board scale */}
+                          {canClick && <circle cx={0} cy={0} r={u*2.2} fill="transparent"/>}
+                          {/* ready-state glow */}
+                          {canClick && <circle cx={0} cy={0} r={u*1.3} fill="none" stroke="#ffb347" strokeWidth={1}
+                            opacity={0.7} style={{animation:'event-hex-pulse 1.6s ease-in-out infinite'}}/>}
                           <ellipse cx={0} cy={u*0.95} rx={u*0.95} ry={u*0.26} fill="#000" opacity={0.28}/>
                           {/* body / shoulders */}
                           <path d={`M ${-u*0.8} ${u*0.85} Q 0 ${-u*0.1} ${u*0.8} ${u*0.85} Z`} fill="#7f97b0" stroke="#0a1018" strokeWidth={0.6}/>
@@ -11961,18 +12214,30 @@ function Game({ gameState, onReturnToLobby }) {
                           {/* hard hat — dome + brim (amber = crew) */}
                           <path d={`M ${-u*0.5} ${-u*0.42} A ${u*0.52} ${u*0.52} 0 0 1 ${u*0.5} ${-u*0.42} Z`} fill="#ffb347" stroke="#7a4a00" strokeWidth={0.5}/>
                           <rect x={-u*0.64} y={-u*0.5} width={u*1.28} height={u*0.16} rx={u*0.08} fill="#ffb347" stroke="#7a4a00" strokeWidth={0.4}/>
-                          {/* wrench */}
-                          <line x1={u*0.5} y1={u*0.25} x2={u*0.98} y2={u*0.72} stroke="#cdd8e2" strokeWidth={u*0.16} strokeLinecap="round"/>
-                          <circle cx={u*1.0} cy={u*0.74} r={u*0.16} fill="none" stroke="#cdd8e2" strokeWidth={u*0.12}/>
+                          {/* wrench — glints when off cooldown (§7 ready tell) */}
+                          <line x1={u*0.5} y1={u*0.25} x2={u*0.98} y2={u*0.72} stroke={canClick ? '#ffffff' : '#cdd8e2'} strokeWidth={u*0.16} strokeLinecap="round"/>
+                          <circle cx={u*1.0} cy={u*0.74} r={u*0.16} fill="none" stroke={canClick ? '#ffffff' : '#cdd8e2'} strokeWidth={u*0.12}/>
+                          {/* cooldown counter on the ghost */}
+                          {(r?.cooldownTurns ?? 0) > 0 && (
+                            <text x={0} y={-u*1.1} textAnchor="middle" fontSize={u*0.75} fill="#8899aa"
+                              fontFamily="'Saira Stencil One',sans-serif">{r.cooldownTurns}t</text>
+                          )}
                         </g>
                       );
                     })}
 
-                    {/* GROUPIES — the die-hard superfans, drawn from the neon silhouette
-                        sheet so they read as defined characters, not plain pawns. */}
+                    {/* ASSIGNED DIEHARDS — task actors from the neon silhouette sheet,
+                        each looking the part (§7): pen-pal with 💌+♥, heckler with 📢,
+                        merch fan behind a stall. Clicked on the board to act. */}
                     {groupiePos.map((p, i) => {
                       const id = groupieIds[i];
-                      const resting = (ns.groupieCooldowns?.[id] ?? 0) > 0;
+                      const ghosting = isPendingOnly(id);          // walking backstage — on the job next turn
+                      const cd = ns.groupieCooldowns?.[id] ?? 0;
+                      const resting = cd > 0;
+                      const hasAction = id === 'crew_backstage' || id === 'crew_heckler';
+                      const letterOut = id === 'crew_backstage' && fanLetters.some(l => l.ownerId === s.id);
+                      const canClick = clickableCrew && hasAction && !ghosting && !resting && !letterOut;
+                      const tell = id === 'crew_backstage' ? '💌' : id === 'crew_heckler' ? '📢' : '🏪';
                       const dur = 3.0 + (i % 3) * 0.45;
                       const delay = -(((i * 0.6) % dur)).toFixed(2);
                       const boxS = u * 2.4;                       // bigger + detailed vs the pawn fans
@@ -11980,8 +12245,15 @@ function Game({ gameState, onReturnToLobby }) {
                       const bx = p.x - boxS / 2, by = p.y - boxS * 0.72;
                       const clipId = `gpclip-${s.id}-${i}`;
                       return (
-                        <g key={`gp-${i}`} opacity={resting ? 0.4 : 1}
-                           style={{animation:`fan-bob ${dur}s ease-in-out infinite`, animationDelay:`${delay}s`}}>
+                        <g key={`gp-${id}`} opacity={ghosting ? 0.35 : resting ? 0.4 : 1}
+                           onClick={canClick ? () => deployGroupie(s.id, id) : undefined}
+                           style={{animation:`fan-bob ${dur}s ease-in-out infinite`, animationDelay:`${delay}s`,
+                             pointerEvents: canClick ? 'all' : 'none', cursor: canClick ? 'pointer' : 'default'}}>
+                          {/* generous invisible hitbox (≥2× the sprite) */}
+                          {canClick && <circle cx={p.x} cy={p.y} r={boxS*1.1} fill="transparent"/>}
+                          {/* ready-state glow */}
+                          {canClick && <circle cx={p.x} cy={p.y - boxS*0.1} r={boxS*0.55} fill="none" stroke={sc}
+                            strokeWidth={1.2} opacity={0.8} style={{animation:'event-hex-pulse 1.5s ease-in-out infinite'}}/>}
                           <ellipse cx={p.x} cy={p.y + boxS*0.28} rx={boxS*0.3} ry={boxS*0.09} fill="#000" opacity={0.3}/>
                           {/* owner-colour glow so you can tell whose die-hards these are */}
                           <ellipse cx={p.x} cy={p.y - boxS*0.04} rx={boxS*0.38} ry={boxS*0.5} fill={sc} opacity={0.22}
@@ -11991,6 +12263,24 @@ function Game({ gameState, onReturnToLobby }) {
                             x={bx - cellC*boxS} y={by - cellR*boxS} width={boxS*3} height={boxS*3}
                             clipPath={`url(#${clipId})`} preserveAspectRatio="xMidYMid slice"
                             style={{mixBlendMode:'screen'}}/>
+                          {/* 🏪 merch stall — the fan works a counter, not the rail */}
+                          {id === 'crew_merch' && (
+                            <rect x={p.x - boxS*0.42} y={p.y + boxS*0.06} width={boxS*0.84} height={boxS*0.22}
+                              rx={boxS*0.04} fill="#3a2a10" stroke="#ffb347" strokeWidth={0.7}/>
+                          )}
+                          {/* overhead tell: ready = bobbing task icon; cooldown = counter;
+                              pending = ⏳; letter in flight = it's on the board already */}
+                          <text x={p.x} y={p.y - boxS*0.78} textAnchor="middle" fontSize={boxS*0.34}
+                            style={canClick ? {filter:`drop-shadow(0 0 3px ${sc})`} : undefined}>
+                            {ghosting ? '⏳' : resting ? '' : letterOut ? '' : tell}
+                          </text>
+                          {id === 'crew_backstage' && !ghosting && !resting && !letterOut && (
+                            <text x={p.x + boxS*0.3} y={p.y - boxS*0.98} textAnchor="middle" fontSize={boxS*0.24}>♥</text>
+                          )}
+                          {resting && !ghosting && (
+                            <text x={p.x} y={p.y - boxS*0.78} textAnchor="middle" fontSize={boxS*0.28}
+                              fill="#8899aa" fontFamily="'Saira Stencil One',sans-serif">{cd}t</text>
+                          )}
                         </g>
                       );
                     })}
@@ -12006,7 +12296,7 @@ function Game({ gameState, onReturnToLobby }) {
                       const c = groupiePos[Math.floor(groupiePos.length/2)] ?? {x:baseX,y:baseY};
                       return <text x={c.x} y={c.y + u*1.85} textAnchor="middle" fontSize={u*0.82}
                                 fontWeight="bold" fill="#ff8ace" stroke="#000" strokeWidth={0.3}
-                                style={{filter:"drop-shadow(0 0 2px #000)"}}>🎉 {groupieIds.length}</text>;
+                                style={{filter:"drop-shadow(0 0 2px #000)"}}>🎫 {groupieIds.length}</text>;
                     })()}
                   </g>
                 );
@@ -12587,6 +12877,28 @@ function Game({ gameState, onReturnToLobby }) {
                     <circle cx={cx} cy={cy} r={r} fill="#0a1828" stroke="#44ccff" strokeWidth={1} opacity={0.96}/>
                     <text x={cx} y={cy + r*0.34} textAnchor="middle" fontSize={r*1.05}
                       fontFamily="'Share Tech Mono',monospace" fontWeight="700" fill="#7fe0ff">{tok.note}</text>
+                  </g>
+                );
+              })}
+
+              {/* ── 💌 FAN MAIL LETTERS — addressed board tokens (CREW_SYSTEM_DESIGN.md §4.1):
+                     only the owner can pick one up (move onto the hex, spend the Action) ── */}
+              {fanLetters.map(letter => {
+                const hex = HEX_BY_NUM[letter.hexNum];
+                if (!hex) return null;
+                const owner = spirits.find(s => s.id === letter.ownerId);
+                const oc = owner?.color ?? '#ff66bb';
+                const cx = Math.round(hex.px * SCALE);
+                const cy = Math.round(hex.py * SCALE);
+                const r  = HS * 0.36;
+                return (
+                  <g key={`letter-${letter.ownerId}`} style={{pointerEvents:'none',
+                    animation:'event-hex-pulse 1.4s ease-in-out infinite'}}>
+                    {/* owner-colour ring — rivals see exactly whose heal is on the floor */}
+                    <circle cx={cx} cy={cy} r={r*1.25} fill="none" stroke={oc} strokeWidth={1.2}
+                      opacity={0.75} style={{filter:`drop-shadow(0 0 4px ${oc})`}}/>
+                    <text x={cx} y={cy + r*0.42} textAnchor="middle" fontSize={r*1.5}>💌</text>
+                    <text x={cx} y={cy - r*1.5} textAnchor="middle" fontSize={r*0.9}>♥</text>
                   </g>
                 );
               })}
