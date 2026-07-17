@@ -1272,6 +1272,7 @@ function Game({ gameState, onReturnToLobby }) {
   // only the owner can pick one up (move onto the hex, spend the Action, +Vibe).
   // One per owner; a new throw replaces the old (CREW_SYSTEM_DESIGN.md §4.1).
   const [fanLetters, setFanLetters] = useState([]); // [{ ownerId, hexNum }]
+  const [skillsCollapsed, setSkillsCollapsed] = useState(true); // HUD skills section starts collapsed
 
   // ─── CHARGE ZONES ── (ENGINE-owned — Phase 6a, fully migrated) ─────────────
   const chargeZones = engineState.board.chargeZones;
@@ -3675,7 +3676,10 @@ function Game({ gameState, onReturnToLobby }) {
           .sort((a, b) => a.num - b.num)[0]
       ).find(Boolean);
       if (!landing) { addLog(`💌 No open hex near ${spirit.name} — the letter would be trampled. Move first.`); return; }
-      flyCrew({ fromHexNum: homeNum, toHexNum: landing.num, icon:'💌', color:'#ff66bb', label:'💌 Fan Mail!' });
+      // 💌 Animate the letter FROM the pen-pal groupie's visual position (corner muster)
+      const crewPos = getGroupieScreenPos(spiritId, 'crew_backstage');
+      flyCrew({ fromHexNum: homeNum, toHexNum: landing.num, icon:'💌', color:'#ff66bb', label:'💌 Fan Mail!',
+        ...(crewPos ? { fromPx: crewPos.x, fromPy: crewPos.y } : {}) });
       setFanLetters(prev => [...prev.filter(l => l.ownerId !== spiritId),
         { ownerId: spiritId, hexNum: landing.num }]);
       addLog(`💌 ${spirit.name}'s pen-pal hurls a letter — it lands on #${landing.num}. Move onto it and spend your Action to read it (+${FAN_MAIL_VIBE} Vibe).`);
@@ -3707,7 +3711,9 @@ function Game({ gameState, onReturnToLobby }) {
         ...prev,
         [target.id]: { ...prev[target.id], heckled: true },
       }));
-      flyCrew({ fromHexNum: homeNum, toHexNum: targetHomeNum, icon:'📢', color:'#ff4444', label:'📢 Heckler!' });
+      const heckPos = getGroupieScreenPos(spiritId, 'crew_heckler');
+      flyCrew({ fromHexNum: homeNum, toHexNum: targetHomeNum, icon:'📢', color:'#ff4444', label:'📢 Heckler!',
+        ...(heckPos ? { fromPx: heckPos.x, fromPy: heckPos.y } : {}) });
       addLog(`📢 ${spirit.name}'s heckler storms into ${target.name}'s crowd — their next fan-gain is zeroed!`);
       focusOnHex(targetHomeNum, 1100, 0.5);
       startCooldown();
@@ -4025,6 +4031,29 @@ function Game({ gameState, onReturnToLobby }) {
     const roninGreed = spiritId === 'cosmic_ronin' && Math.random() < 0.5;
     const revoiceSpent = !!noteStates[spiritId]?.revoiceUsedThisTurn;
     if (revoiceSpent) {
+      bankLostChordNote(spiritId, tok.note, roninGreed);
+      return;
+    }
+    // 🤖 Bots auto-decide: chord if it improves their stack, otherwise bank.
+    const pickupSpirit = spirits.find(s => s.id === spiritId);
+    if (pickupSpirit?.cpu) {
+      const ns = noteStates[spiritId] ?? {};
+      const chord = ns.chordStack ?? [];
+      if (chord.length < 5) {
+        const curW = botSpiritChord(spiritId, chord);
+        const newW = botSpiritChord(spiritId, [...chord, tok.note]);
+        if ((newW.drive + newW.sustain) > (curW.drive + curW.sustain)) {
+          // Weave into chord stack directly
+          const sp = spirits.find(s => s.id === spiritId);
+          setNoteStates(prev => {
+            const cur = prev[spiritId]; if (!cur) return prev;
+            return { ...prev, [spiritId]: { ...cur, chordStack: [...(cur.chordStack ?? []), tok.note], revoiceUsedThisTurn: true, grooveCounter: 0 } };
+          });
+          addLog(`🎸 ${sp?.name} weaves the Lost Chord (${tok.note}) straight into the Chord Stack — revoiced!`);
+          if (roninGreed) bankLostChordNote(spiritId, randomNote(ns.rootNote, ns.scaleMode), false);
+          return;
+        }
+      }
       bankLostChordNote(spiritId, tok.note, roninGreed);
       return;
     }
@@ -9096,17 +9125,55 @@ function Game({ gameState, onReturnToLobby }) {
 
   // 🏃 Send a crew token (Roadie/Groupie) travelling from one hex to another.
   // Piggybacks on the roadieAnimations render (generalised to take icon + label).
-  function flyCrew({ fromHexNum, toHexNum, icon = '🔧', color = '#ffcc44', label }) {
+  // Optional `fromPx`/`fromPy` override the start position (SVG-space pixels,
+  // already SCALE'd) so fan mail can originate from the groupie's visual spot
+  // instead of from the hex centre.
+  function flyCrew({ fromHexNum, toHexNum, icon = '🔧', color = '#ffcc44', label, fromPx, fromPy }) {
     const fromHex = HEX_BY_NUM[fromHexNum];
     const toHex   = HEX_BY_NUM[toHexNum];
     if (!fromHex || !toHex) return;
+    // If caller provides explicit pixel coords, wrap them in a synthetic hex-like
+    // object so the render path (`anim.fromHex.px * SCALE`) works unchanged.
+    const effectiveFrom = (fromPx != null && fromPy != null)
+      ? { px: fromPx / SCALE, py: fromPy / SCALE }
+      : fromHex;
     const id = `crew-fly-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setRoadieAnimations(prev => [...prev, {
-      id, fromHex, toAmpHex: toHex, toFinalHex: toHex,
+      id, fromHex: effectiveFrom, toAmpHex: toHex, toFinalHex: toHex,
       spiritColor: color, spiritName: label ?? 'Crew',
       icon, labelText: label, startTime: Date.now(),
     }]);
     gt(() => setRoadieAnimations(prev => prev.filter(a => a.id !== id)), 2800);
+  }
+
+  // 📍 Compute the SVG-pixel position of a specific groupie in the home-corner
+  // muster layout (mirrors the render-time `layout()` helper so the animation
+  // start matches the visual groupie position exactly).
+  function getGroupieScreenPos(spiritId, crewSkillId) {
+    const sp = spirits.find(s => s.id === spiritId);
+    if (!sp) return null;
+    const home = HEX_BY_NUM[CORNERS[sp.corner]?.homeNum];
+    const hub  = HEX_BY_NUM[LIMELIGHT_HEX];
+    if (!home || !hub) return null;
+    const ns = noteStates[spiritId] ?? {};
+    const roster = (ns.pendingAssignments ?? ns.assignments ?? []).filter(id => id !== 'crew_stagehand');
+    const idx = roster.indexOf(crewSkillId);
+    if (idx < 0) return null;
+    const hx = home.px * SCALE, hy = home.py * SCALE;
+    const cxC = hub.px * SCALE, cyC = hub.py * SCALE;
+    let ox = hx - cxC, oy = hy - cyC;
+    const L = Math.hypot(ox, oy) || 1; ox /= L; oy /= L;
+    const pxv = -oy, pyv = ox;
+    const u = HS * 0.34;
+    const n = roster.length, side = +1; // groupies use side +1
+    const gap = u * 1.7;
+    const slot = idx - (n - 1) / 2;
+    const along = side * (u * 2.4) + slot * gap;
+    const CREW_OUT = HS * 1.75;
+    const baseX = hx + ox * CREW_OUT, baseY = hy + oy * CREW_OUT;
+    const x = baseX + pxv * along + ox * (Math.abs(slot) * u * 0.25);
+    const y = baseY + pyv * along + oy * (Math.abs(slot) * u * 0.25);
+    return { x: Math.max(8, Math.min(SVG_W - 8, x)), y: Math.max(8, Math.min(SVG_H - 8, y)) };
   }
 
   // ─── CAMERA ZOOM ──────────────────────────────────────────────────────────────
@@ -9784,15 +9851,7 @@ function Game({ gameState, onReturnToLobby }) {
 
                 {/* Stats — overlaid at the bottom, over the faded art */}
                 <div style={{padding:"6px 8px 7px", textShadow:"0 1px 3px #000c"}}>
-                  {/* Vibe */}
-                  <div data-tip-anchor="vibe-bar" style={{display:"flex",alignItems:"center",gap:4}}>
-                    <span style={{fontSize:7,color:"#3a5a7a",width:22}}>VIBE</span>
-                    <div className="bar" style={{flex:1}}>
-                      <div className="bar-f" style={{width:`${(s.vibe/s.maxVibe)*100}%`,
-                        background:s.vibe>s.maxVibe*.4?"#44cc66":"#ff4444"}}/>
-                    </div>
-                    <span style={{fontSize:8,width:22,textAlign:"right",color:"#c0d0e0"}}>{s.vibe}/{s.maxVibe}</span>
-                  </div>
+                  {/* Vibe bar removed — shown on board standee + purple maxVibe bar below */}
                   {/* ⭐ Fame — the win condition, front and centre */}
                   <div data-tip-anchor="fame-bar" style={{display:"flex",alignItems:"center",gap:4,marginTop:4}}
                     title={`Fame Points — first to ${FAME_TO_WIN} wins the game!`}>
@@ -9807,15 +9866,25 @@ function Game({ gameState, onReturnToLobby }) {
                   {/* 🎛️ Drive & Sustain come from the player's Chord Stack now (not a static sheet) */}
                   <div data-tip-anchor="stat-knobs" style={{display:"flex",gap:9,marginTop:5,alignItems:"center"}}>
                     {/* boost = every live modifier on this stat, summed — pattern-boost tempDrive/
-                        tempSustain PLUS the Dissonance Edge stage delta (edgeCombatMods), so the
-                        dial always reflects the stat you'd actually fight with right now. */}
-                    <StatKnob label="DRIVE"   value={spiritChord(s.id, ns.chordStack ?? []).drive}   boost={(ns.tempDrive   ?? 0) + edgeCombatMods(ns).drive} color="#ff6644"/>
+                        tempSustain PLUS the Dissonance Edge stage delta (edgeCombatMods) PLUS
+                        stance bonuses (Soloist perfDrive, Groove wave), so the dial always
+                        reflects the stat you'd actually fight with right now. */}
+                    {(() => {
+                      const curStance = stanceOf(ns, s.id);
+                      const stanceBoost = curStance === 'soloist'
+                        ? Math.max(0, Math.ceil((ns.perfScore ?? 0) / 2) - (ns.tempDrive ?? 0))
+                        : curStance === 'groove'
+                          ? Math.min(ns.grooveCounter ?? 0, grooveCap(ns))
+                          : 0;
+                      return <StatKnob label="DRIVE" value={spiritChord(s.id, ns.chordStack ?? []).drive}
+                        boost={(ns.tempDrive ?? 0) + edgeCombatMods(ns).drive + stanceBoost} color="#ff6644"/>;
+                    })()}
                     <StatKnob label="SUSTAIN" value={spiritChord(s.id, ns.chordStack ?? []).sustain} boost={(ns.tempSustain ?? 0) - edgeCombatMods(ns).sustainPenalty} color="#44aaff"/>
                     <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
-                      <div>
+                      <div data-tip-anchor="vibe-bar">
                         <div style={{display:"flex",justifyContent:"space-between",marginBottom:1}}>
                           <span style={{fontSize:7,color:"#cc66ff"}}>💗 VIBE</span>
-                          <span style={{fontSize:7,color:"#cc66ff"}}>{s.maxVibe ?? 5}</span>
+                          <span style={{fontSize:7,color:"#cc66ff"}}>{s.vibe}/{s.maxVibe ?? 5}</span>
                         </div>
                         <div className="bar"><div className="bar-f" style={{width:`${((s.maxVibe??5)/8)*100}%`,background:"#8844cc"}}/></div>
                       </div>
@@ -9836,7 +9905,7 @@ function Game({ gameState, onReturnToLobby }) {
                 <div style={{flex:1, minWidth:170, order:1, display:"flex", flexDirection:"column",
                   borderRight:`1px solid ${s.color}22`}}>
                 {/* Status badges */}
-                {((ns.tempDrive??0)>0||(ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||ns.statusShield||ns.burnArmed||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0||ns.bonusRevoiceAvailable||(ns.edgeStage??0)>0||ns.riposteTargetId||amps.some(a=>a.ownerId===s.id&&a.unplugged)) && (
+                {((ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||ns.statusShield||ns.burnArmed||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0||ns.bonusRevoiceAvailable||(ns.edgeStage??0)>0||ns.riposteTargetId||amps.some(a=>a.ownerId===s.id&&a.unplugged)) && (
                   <div style={{display:"flex",gap:3,flexWrap:"wrap",padding:"4px 8px",borderTop:`1px solid ${s.color}22`}}>
                     {ns.riposteTargetId&&(
                       <span title={`Riposte armed — next Thrash on ${spirits.find(x=>x.id===ns.riposteTargetId)?.name} frays +1 extra note`}
@@ -9862,10 +9931,7 @@ function Game({ gameState, onReturnToLobby }) {
                         animation:"crew-ready-glow 2s ease-in-out infinite"}}>
                         ⚡ BONUS REVOICE READY
                       </span>)}
-                    {(ns.tempDrive??0)>0&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#2a0e00",border:"1px solid #ff6644",color:"#ffaa44"}}>
-                        ⚔️ +{ns.tempDrive} atk
-                      </span>)}
+                    {/* +atk removed — already shown on Drive knob boost */}
                     {(ns.tempSustain??0)>0&&(
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#001a2a",border:"1px solid #44aaff",color:"#88ccff"}}>
                         🛡️ +{ns.tempSustain} def
@@ -10242,32 +10308,39 @@ function Game({ gameState, onReturnToLobby }) {
                   );
                 })()}
 
-                {/* ── OWNED SKILLS ── */}
+                {/* ── OWNED SKILLS (collapsible) ── */}
                 {(ns.unlockedSkills?.length ?? 0) > 0 && (() => {
                   return (
                     <div style={{padding:"4px 8px 6px", borderTop:`1px solid ${s.color}22`}}>
-                      <div style={{fontSize:7, color:"#3a5a7a", letterSpacing:1, marginBottom:4}}>SKILLS</div>
-                      <div style={{display:"flex", gap:4, flexWrap:"wrap"}}>
-                        {ns.unlockedSkills.map(skillId => {
-                          const sk       = SKILL_BY_ID[skillId];
-                          if (!sk) return null;
-                          const routeDef = SKILL_TREE.routes.find(r => r.id === sk.routeId);
-                          const col      = routeDef?.color ?? '#88aabb';
-                          return (
-                            <div key={skillId} title={`${sk.label}: ${sk.desc}`} style={{
-                              display:"flex", alignItems:"center", gap:3,
-                              background:`${col}18`, border:`1px solid ${col}55`,
-                              borderRadius:4, padding:"2px 6px",
-                              cursor:"default",
-                            }}>
-                              <span style={{fontSize:11}}>{sk.icon}</span>
-                              <span style={{fontSize:7, color:col, fontWeight:700, lineHeight:1.2}}>
-                                {sk.label}
-                              </span>
-                            </div>
-                          );
-                        })}
+                      <div style={{display:"flex", alignItems:"center", gap:5, marginBottom: skillsCollapsed ? 0 : 4, cursor:"pointer"}}
+                        onClick={() => setSkillsCollapsed(p => !p)}>
+                        <span style={{fontSize:7, color:"#3a5a7a", letterSpacing:1}}>SKILLS ({ns.unlockedSkills.length})</span>
+                        <span style={{flex:1,height:1,background:`linear-gradient(90deg, ${s.color}33, transparent)`}}/>
+                        <span style={{fontSize:8, color:"#3a5a7a"}}>{skillsCollapsed ? '▸' : '▾'}</span>
                       </div>
+                      {!skillsCollapsed && (
+                        <div style={{display:"flex", gap:4, flexWrap:"wrap"}}>
+                          {ns.unlockedSkills.map(skillId => {
+                            const sk       = SKILL_BY_ID[skillId];
+                            if (!sk) return null;
+                            const routeDef = SKILL_TREE.routes.find(r => r.id === sk.routeId);
+                            const col      = routeDef?.color ?? '#88aabb';
+                            return (
+                              <div key={skillId} title={`${sk.label}: ${sk.desc}`} style={{
+                                display:"flex", alignItems:"center", gap:3,
+                                background:`${col}18`, border:`1px solid ${col}55`,
+                                borderRadius:4, padding:"2px 6px",
+                                cursor:"default",
+                              }}>
+                                <span style={{fontSize:11}}>{sk.icon}</span>
+                                <span style={{fontSize:7, color:col, fontWeight:700, lineHeight:1.2}}>
+                                  {sk.label}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -12258,11 +12331,8 @@ function Game({ gameState, onReturnToLobby }) {
                           {/* owner-colour glow so you can tell whose die-hards these are */}
                           <ellipse cx={p.x} cy={p.y - boxS*0.04} rx={boxS*0.38} ry={boxS*0.5} fill={sc} opacity={0.22}
                             style={{filter:`blur(${boxS*0.16}px)`}}/>
-                          <defs><clipPath id={clipId}><rect x={bx} y={by} width={boxS} height={boxS}/></clipPath></defs>
-                          <image href={groupieFansImg}
-                            x={bx - cellC*boxS} y={by - cellR*boxS} width={boxS*3} height={boxS*3}
-                            clipPath={`url(#${clipId})`} preserveAspectRatio="xMidYMid slice"
-                            style={{mixBlendMode:'screen'}}/>
+                          {/* Code-drawn fan pawn instead of PNG sprite sheet */}
+                          {fanPawnShape(p.x, p.y, boxS * 0.42, sc, true, 0.8, 1, i % 6, i % 2 === 1, i % 2 === 0 ? 'fist' : 'wave')}
                           {/* 🏪 merch stall — the fan works a counter, not the rail */}
                           {id === 'crew_merch' && (
                             <rect x={p.x - boxS*0.42} y={p.y + boxS*0.06} width={boxS*0.84} height={boxS*0.22}

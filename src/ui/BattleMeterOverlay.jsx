@@ -2,12 +2,166 @@
 // ui/BattleMeterOverlay.jsx  —  full battle / riff-off duel overlay
 // Presentational: every value & handler arrives via props, zero app-STATE
 // imports (RiffHighway + the pure fallingNotes data module are the only
-// imports). Internal helpers (NeonDie, spiritGlow, crowd fan-fare) live inside
-// this block. Extracted from the Game render (BATTLE METER OVERLAY block).
+// imports). NeonDie + PIPS live at MODULE scope (stable React identity —
+// prevents remount flicker during the 80 ms spin interval). spiritGlow and
+// crowd fan-fare helpers live inside the component block.
 // =============================================================================
 import React from "react";
 import { RiffHighway } from "./RiffHighway.jsx";
 import { RIFF_FALL_DIFFICULTY } from "../riff/fallingNotes.js";
+
+// ── D6 pip layouts ─────────────────────────────────────────────────────────
+// Moved to module scope so NeonDie keeps a stable identity across renders.
+const PIPS = {
+  1: [[0,0]],
+  2: [[-0.28,-0.28],[0.28,0.28]],
+  3: [[-0.28,-0.28],[0,0],[0.28,0.28]],
+  4: [[-0.28,-0.28],[0.28,-0.28],[-0.28,0.28],[0.28,0.28]],
+  5: [[-0.28,-0.28],[0.28,-0.28],[0,0],[-0.28,0.28],[0.28,0.28]],
+  6: [[-0.28,-0.33],[0.28,-0.33],[-0.28,0],[0.28,0],[-0.28,0.33],[0.28,0.33]],
+};
+
+// ── Neon die (SVG) — d6 pips, d8/d10/d12 numerals ─────────────────────────
+// MUST live at module scope. Defining it inside the render function created a
+// new component type every render → React unmounted/remounted the <svg> each
+// frame of the 80 ms spin interval, causing the dice to flicker and vanish.
+function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
+  const glowColor = color ?? '#ff4444';
+  const half = size / 2;
+  const val = value ?? 1;
+
+  // ── D6: classic rounded-rect with pips ──────────────────────────────
+  if (sides === 6) {
+    const face = Math.max(1, Math.min(6, val));
+    const pips = PIPS[face] || PIPS[1];
+    const pipR  = size * 0.09;
+    const spread = size * 0.30;
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
+        <rect x={4} y={4} width={size-8} height={size-8} rx={14}
+          fill="#060810" stroke={glowColor} strokeWidth={spinning ? 3 : 2}
+          style={spinning ? {filter:`drop-shadow(0 0 10px ${glowColor})`} : {}}/>
+        {[[10,10],[size-10,10],[10,size-10],[size-10,size-10]].map(([cx,cy],i) => (
+          <circle key={i} cx={cx} cy={cy} r={2.5} fill={glowColor} opacity={0.25}/>
+        ))}
+        {pips.map(([ox,oy], i) => (
+          <circle key={i}
+            cx={half + ox * spread * 2} cy={half + oy * spread * 2}
+            r={pipR} fill={glowColor}
+            style={spinning ? {filter:`drop-shadow(0 0 5px ${glowColor})`} : {}}/>
+        ))}
+      </svg>
+    );
+  }
+
+  // ── D8: octagon (diamond-ish) ────────────────────────────────────────
+  if (sides === 8) {
+    const r = half - 5;
+    const pts = Array.from({length:8}, (_,i) => {
+      const a = (i * Math.PI / 4) - Math.PI / 8;
+      return `${half + r * Math.cos(a)},${half + r * Math.sin(a)}`;
+    }).join(' ');
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
+        <polygon points={pts} fill="#060810" stroke={glowColor}
+          strokeWidth={spinning ? 3 : 2}
+          style={spinning ? {filter:`drop-shadow(0 0 12px ${glowColor})`} : {}}/>
+        {(() => {
+          const r2 = r * 0.72;
+          const pts2 = Array.from({length:8}, (_,i) => {
+            const a = (i * Math.PI / 4) - Math.PI / 8;
+            return `${half + r2 * Math.cos(a)},${half + r2 * Math.sin(a)}`;
+          }).join(' ');
+          return <polygon points={pts2} fill="none" stroke={glowColor} strokeWidth={0.7} opacity={0.25}/>;
+        })()}
+        <text x={half} y={half + size * 0.13}
+          textAnchor="middle" fontSize={size * 0.38} fontWeight="900"
+          fontFamily="'Saira Stencil One',sans-serif"
+          fill={glowColor}
+          style={spinning ? {filter:`drop-shadow(0 0 8px ${glowColor})`} : {}}>
+          {val}
+        </text>
+        <text x={half} y={size - 10}
+          textAnchor="middle" fontSize={size * 0.13} fontWeight="700"
+          fontFamily="'Saira Stencil One',sans-serif" fill={glowColor} opacity={0.5}>
+          d8
+        </text>
+      </svg>
+    );
+  }
+
+  // ── D10: kite / elongated diamond ───────────────────────────────────
+  if (sides === 10) {
+    const topY    = 5;
+    const botY    = size - 5;
+    const kite = [
+      `${half},${topY}`,
+      `${half + size*0.42},${half - size*0.07}`,
+      `${half + size*0.26},${half + size*0.06}`,
+      `${half},${botY}`,
+      `${half - size*0.26},${half + size*0.06}`,
+      `${half - size*0.42},${half - size*0.07}`,
+    ].join(' ');
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
+        <polygon points={kite} fill="#060810" stroke={glowColor}
+          strokeWidth={spinning ? 3 : 2}
+          style={spinning ? {filter:`drop-shadow(0 0 12px ${glowColor})`} : {}}/>
+        <line x1={half - size*0.38} y1={half - size*0.015}
+              x2={half + size*0.38} y2={half - size*0.015}
+          stroke={glowColor} strokeWidth={0.7} opacity={0.3}/>
+        <text x={half} y={half + size * 0.10}
+          textAnchor="middle" fontSize={size * 0.36} fontWeight="900"
+          fontFamily="'Saira Stencil One',sans-serif"
+          fill={glowColor}
+          style={spinning ? {filter:`drop-shadow(0 0 8px ${glowColor})`} : {}}>
+          {val}
+        </text>
+        <text x={half} y={size - 14}
+          textAnchor="middle" fontSize={size * 0.13} fontWeight="700"
+          fontFamily="'Saira Stencil One',sans-serif" fill={glowColor} opacity={0.5}>
+          d10
+        </text>
+      </svg>
+    );
+  }
+
+  // ── D12: regular pentagon ────────────────────────────────────────────
+  if (sides === 12) {
+    const r = half - 5;
+    const pts = Array.from({length:5}, (_,i) => {
+      const a = (i * 2 * Math.PI / 5) - Math.PI / 2;
+      return `${half + r * Math.cos(a)},${half + r * Math.sin(a)}`;
+    }).join(' ');
+    const r2 = r * 0.65;
+    const pts2 = Array.from({length:5}, (_,i) => {
+      const a = (i * 2 * Math.PI / 5) - Math.PI / 2;
+      return `${half + r2 * Math.cos(a)},${half + r2 * Math.sin(a)}`;
+    }).join(' ');
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
+        <polygon points={pts} fill="#060810" stroke={glowColor}
+          strokeWidth={spinning ? 3 : 2}
+          style={spinning ? {filter:`drop-shadow(0 0 14px ${glowColor})`} : {}}/>
+        <polygon points={pts2} fill="none" stroke={glowColor} strokeWidth={0.7} opacity={0.22}/>
+        <text x={half} y={half + size * 0.14}
+          textAnchor="middle" fontSize={size * 0.36} fontWeight="900"
+          fontFamily="'Saira Stencil One',sans-serif"
+          fill={glowColor}
+          style={spinning ? {filter:`drop-shadow(0 0 10px ${glowColor})`} : {}}>
+          {val}
+        </text>
+        <text x={half} y={half + size * 0.44}
+          textAnchor="middle" fontSize={size * 0.13} fontWeight="700"
+          fontFamily="'Saira Stencil One',sans-serif" fill={glowColor} opacity={0.5}>
+          d12
+        </text>
+      </svg>
+    );
+  }
+
+  return null;
+}
 
 export function BattleMeterOverlay({
   RIFF_ANSWER_LABELS,
@@ -743,167 +897,8 @@ export function BattleMeterOverlay({
         const isSliding = ['pick_drive_slide','pick_sustain_slide','pick_atk_slide','pick_def_slide'].includes(phase);
         const pickTransition = isSliding ? 'left 1.2s cubic-bezier(0.25,0.46,0.45,0.94)' : 'left 0s';
 
-        // D6 pip layouts: [value] → array of [cx,cy] offsets from die center (in a 0-1 space, scaled)
-        const PIPS = {
-          1: [[0,0]],
-          2: [[-0.28,-0.28],[0.28,0.28]],
-          3: [[-0.28,-0.28],[0,0],[0.28,0.28]],
-          4: [[-0.28,-0.28],[0.28,-0.28],[-0.28,0.28],[0.28,0.28]],
-          5: [[-0.28,-0.28],[0.28,-0.28],[0,0],[-0.28,0.28],[0.28,0.28]],
-          6: [[-0.28,-0.33],[0.28,-0.33],[-0.28,0],[0.28,0],[-0.28,0.33],[0.28,0.33]],
-        };
-
-        // Neon die rendered as inline SVG — supports d6 (pips), d8, d10, d12 (numerals)
-        function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
-          const glowColor = color ?? '#ff4444';
-          const half = size / 2;
-          const val = value ?? 1;
-
-          // ── D6: classic rounded-rect with pips ──────────────────────────────
-          if (sides === 6) {
-            const face = Math.max(1, Math.min(6, val));
-            const pips = PIPS[face] || PIPS[1];
-            const pipR  = size * 0.09;
-            const spread = size * 0.30;
-            return (
-              <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
-                <rect x={4} y={4} width={size-8} height={size-8} rx={14}
-                  fill="#060810" stroke={glowColor} strokeWidth={spinning ? 3 : 2}
-                  style={spinning ? {filter:`drop-shadow(0 0 10px ${glowColor})`} : {}}/>
-                {[[10,10],[size-10,10],[10,size-10],[size-10,size-10]].map(([cx,cy],i) => (
-                  <circle key={i} cx={cx} cy={cy} r={2.5} fill={glowColor} opacity={0.25}/>
-                ))}
-                {pips.map(([ox,oy], i) => (
-                  <circle key={i}
-                    cx={half + ox * spread * 2} cy={half + oy * spread * 2}
-                    r={pipR} fill={glowColor}
-                    style={spinning ? {filter:`drop-shadow(0 0 5px ${glowColor})`} : {}}/>
-                ))}
-              </svg>
-            );
-          }
-
-          // ── D8: octagon (diamond-ish) ────────────────────────────────────────
-          if (sides === 8) {
-            const r = half - 5;
-            const pts = Array.from({length:8}, (_,i) => {
-              const a = (i * Math.PI / 4) - Math.PI / 8;
-              return `${half + r * Math.cos(a)},${half + r * Math.sin(a)}`;
-            }).join(' ');
-            return (
-              <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
-                <polygon points={pts} fill="#060810" stroke={glowColor}
-                  strokeWidth={spinning ? 3 : 2}
-                  style={spinning ? {filter:`drop-shadow(0 0 12px ${glowColor})`} : {}}/>
-                {/* Inner octagon decoration */}
-                {(() => {
-                  const r2 = r * 0.72;
-                  const pts2 = Array.from({length:8}, (_,i) => {
-                    const a = (i * Math.PI / 4) - Math.PI / 8;
-                    return `${half + r2 * Math.cos(a)},${half + r2 * Math.sin(a)}`;
-                  }).join(' ');
-                  return <polygon points={pts2} fill="none" stroke={glowColor} strokeWidth={0.7} opacity={0.25}/>;
-                })()}
-                <text x={half} y={half + size * 0.13}
-                  textAnchor="middle" fontSize={size * 0.38} fontWeight="900"
-                  fontFamily="'Saira Stencil One',sans-serif"
-                  fill={glowColor}
-                  style={spinning ? {filter:`drop-shadow(0 0 8px ${glowColor})`} : {}}>
-                  {val}
-                </text>
-                <text x={half} y={size - 10}
-                  textAnchor="middle" fontSize={size * 0.13} fontWeight="700"
-                  fontFamily="'Saira Stencil One',sans-serif" fill={glowColor} opacity={0.5}>
-                  d8
-                </text>
-              </svg>
-            );
-          }
-
-          // ── D10: kite / elongated diamond ───────────────────────────────────
-          if (sides === 10) {
-            const topY    = 5;
-            const botY    = size - 5;
-            const midTopY = half - size * 0.08;
-            const midBotY = half + size * 0.08;
-            const sideX   = half - 4;
-            // 10-point kite: top spike → wide sides → bottom spike
-            const pts = Array.from({length:10}, (_,i) => {
-              const a = (i * 2 * Math.PI / 10) - Math.PI / 2;
-              const rx = (i % 2 === 0) ? half - 6 : half - 22;
-              const ry = (i % 2 === 0) ? half - 6 : half - 22;
-              return `${half + rx * Math.cos(a)},${half + ry * Math.sin(a)}`;
-            }).join(' ');
-            // Simpler clean kite shape
-            const kite = [
-              `${half},${topY}`,
-              `${half + size*0.42},${half - size*0.07}`,
-              `${half + size*0.26},${half + size*0.06}`,
-              `${half},${botY}`,
-              `${half - size*0.26},${half + size*0.06}`,
-              `${half - size*0.42},${half - size*0.07}`,
-            ].join(' ');
-            return (
-              <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
-                <polygon points={kite} fill="#060810" stroke={glowColor}
-                  strokeWidth={spinning ? 3 : 2}
-                  style={spinning ? {filter:`drop-shadow(0 0 12px ${glowColor})`} : {}}/>
-                {/* Horizontal mid line */}
-                <line x1={half - size*0.38} y1={half - size*0.015}
-                      x2={half + size*0.38} y2={half - size*0.015}
-                  stroke={glowColor} strokeWidth={0.7} opacity={0.3}/>
-                <text x={half} y={half + size * 0.10}
-                  textAnchor="middle" fontSize={size * 0.36} fontWeight="900"
-                  fontFamily="'Saira Stencil One',sans-serif"
-                  fill={glowColor}
-                  style={spinning ? {filter:`drop-shadow(0 0 8px ${glowColor})`} : {}}>
-                  {val}
-                </text>
-                <text x={half} y={size - 14}
-                  textAnchor="middle" fontSize={size * 0.13} fontWeight="700"
-                  fontFamily="'Saira Stencil One',sans-serif" fill={glowColor} opacity={0.5}>
-                  d10
-                </text>
-              </svg>
-            );
-          }
-
-          // ── D12: regular pentagon ────────────────────────────────────────────
-          if (sides === 12) {
-            const r = half - 5;
-            const pts = Array.from({length:5}, (_,i) => {
-              const a = (i * 2 * Math.PI / 5) - Math.PI / 2;
-              return `${half + r * Math.cos(a)},${half + r * Math.sin(a)}`;
-            }).join(' ');
-            const r2 = r * 0.65;
-            const pts2 = Array.from({length:5}, (_,i) => {
-              const a = (i * 2 * Math.PI / 5) - Math.PI / 2;
-              return `${half + r2 * Math.cos(a)},${half + r2 * Math.sin(a)}`;
-            }).join(' ');
-            return (
-              <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
-                <polygon points={pts} fill="#060810" stroke={glowColor}
-                  strokeWidth={spinning ? 3 : 2}
-                  style={spinning ? {filter:`drop-shadow(0 0 14px ${glowColor})`} : {}}/>
-                <polygon points={pts2} fill="none" stroke={glowColor} strokeWidth={0.7} opacity={0.22}/>
-                <text x={half} y={half + size * 0.14}
-                  textAnchor="middle" fontSize={size * 0.36} fontWeight="900"
-                  fontFamily="'Saira Stencil One',sans-serif"
-                  fill={glowColor}
-                  style={spinning ? {filter:`drop-shadow(0 0 10px ${glowColor})`} : {}}>
-                  {val}
-                </text>
-                <text x={half} y={half + size * 0.44}
-                  textAnchor="middle" fontSize={size * 0.13} fontWeight="700"
-                  fontFamily="'Saira Stencil One',sans-serif" fill={glowColor} opacity={0.5}>
-                  d12
-                </text>
-              </svg>
-            );
-          }
-
-          return null;
-        }
+        // NeonDie + PIPS now live at module scope (above) to keep a stable
+        // React component identity across renders — fixes dice flicker.
 
         const SPIRIT_H = 340;
 

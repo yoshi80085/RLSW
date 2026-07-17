@@ -121,7 +121,7 @@ export const EDGE_FAN_COST_BY_STAGE       = [0, 1, 1]; // casual fans sacrificed
 export const EDGE_RESOLVE_DB_BONUS_BY_STAGE = [0, 2, 4]; // DB payout for landing the resolve FROM this stage
 export const EDGE_COLLAPSE_FAN_LOSS       = 2;      // casual fans who walk when the ride collapses unresolved
 export const EDGE_COLLAPSE_VIBE           = 1;      // self-inflicted Vibe cost on collapse — the feedback squeal
-                
+
 // -- CREW ASSIGNMENTS -- (CREW_SYSTEM_DESIGN.md) — Fan Mail letter heal.
 // Flagged high by design (§10) — this is the first tuning knob.
 export const FAN_MAIL_VIBE = 3;
