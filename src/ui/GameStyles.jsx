@@ -54,7 +54,7 @@ export function GameStyles() {
           60%  { opacity: 0.8; }
           100% { opacity: 0; }
         }
-        .stitle{font-family:'Orbitron',sans-serif;font-size:8px;color:#5a7a9a;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;display:flex;align-items:center;gap:6}
+        .stitle{font-family:'Saira Stencil One',sans-serif;font-size:8px;color:#5a7a9a;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;display:flex;align-items:center;gap:6}
         .stitle::before{content:'';width:3px;height:9px;border-radius:2px;background:linear-gradient(180deg,#f6ad55,#ff6644);box-shadow:0 0 6px #f6ad5566}
         /* Hexagonal note chips — pointy-top, matching the board.
            .hexw = outer shell (background acts as the border), .hexi = inner fill */

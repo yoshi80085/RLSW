@@ -8996,7 +8996,7 @@ function Game({ gameState, onReturnToLobby }) {
     <div className={beginnerEnabled ? 'beginner-glow' : ''} style={{ fontFamily:"'Share Tech Mono','Courier New',monospace",
       background:"radial-gradient(ellipse at 50% -10%, #0a1226 0%, #050810 55%)",
       color:"#e2e8f0", minHeight:"100vh", display:"flex", flexDirection:"column", padding:10, boxSizing:"border-box" }}>
-      <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap" rel="stylesheet"/>
+      <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Saira+Stencil+One&family=Saira:wght@400;600;700&display=swap" rel="stylesheet"/>
 
       {/* ── GAME OVER OVERLAY ── */}
       <GameOverOverlay
@@ -9035,7 +9035,7 @@ function Game({ gameState, onReturnToLobby }) {
               border:'1.5px solid #7fe0ff',borderRadius:12,padding:'22px 20px 18px',
               boxShadow:'0 0 40px #7fe0ff33, 0 8px 32px #00000088',
               fontFamily:"'Share Tech Mono',monospace",textAlign:'center'}}>
-              <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:12,color:'#7fe0ff',letterSpacing:1,marginBottom:10,
+              <div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:12,color:'#7fe0ff',letterSpacing:1,marginBottom:10,
                 textShadow:'0 0 10px #7fe0ff55'}}>🎵 LOST CHORD FOUND</div>
               <div style={{fontSize:26,fontWeight:900,color:'#fff',marginBottom:4,
                 textShadow:'0 0 12px #7fe0ff'}}>{pendingLostChordPickup.note}</div>
@@ -9045,14 +9045,14 @@ function Game({ gameState, onReturnToLobby }) {
               </div>
               <div style={{display:'flex',flexDirection:'column',gap:8}}>
                 <button onClick={() => resolveLostChordPickup('chord')} disabled={chordFull}
-                  style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,cursor: chordFull?'not-allowed':'pointer',
+                  style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor: chordFull?'not-allowed':'pointer',
                     opacity: chordFull ? 0.4 : 1,
                     background:'#1a0c1a',border:'1.5px solid #ff66cc',borderRadius:5,
                     color:'#ff99dd',padding:'8px 16px',letterSpacing:1}}>
                   🎸 Add to Chord Stack {chordFull ? '(chord full)' : '(spends revoice)'}
                 </button>
                 <button onClick={() => resolveLostChordPickup('bank')}
-                  style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,cursor:'pointer',
+                  style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor:'pointer',
                     background:'#0a1828',border:'1.5px solid #7fe0ff',borderRadius:5,
                     color:'#7fe0ff',padding:'8px 16px',letterSpacing:1}}>
                   🎵 Bank it (Note Stock)
@@ -9074,7 +9074,7 @@ function Game({ gameState, onReturnToLobby }) {
               border:'1.5px solid #ff6644',borderRadius:12,padding:'22px 20px 18px',
               boxShadow:'0 0 40px #ff664433, 0 8px 32px #00000088',
               fontFamily:"'Share Tech Mono',monospace",textAlign:'center'}}>
-              <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:12,color:'#ff6644',letterSpacing:1,marginBottom:10,
+              <div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:12,color:'#ff6644',letterSpacing:1,marginBottom:10,
                 textShadow:'0 0 10px #ff664455'}}>🧍 LEARN A NEW STANCE</div>
               <div style={{fontSize:9,color:'#8aa5c5',marginBottom:14,lineHeight:1.5}}>
                 {acting.name} finds a new relationship with the instrument. Pick the pose —
@@ -9085,7 +9085,7 @@ function Game({ gameState, onReturnToLobby }) {
                   const d = STANCE_DEFS[st];
                   return (
                     <button key={st} onClick={() => learnStance(acting.id, st)}
-                      style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,cursor:'pointer',textAlign:'left',
+                      style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor:'pointer',textAlign:'left',
                         background:`${d.color}12`,border:`1.5px solid ${d.color}`,borderRadius:5,
                         color:d.color,padding:'8px 12px',letterSpacing:1}}>
                       <div>{d.icon} {d.label.toUpperCase()} — "{d.pose}"</div>
@@ -9109,20 +9109,20 @@ function Game({ gameState, onReturnToLobby }) {
               border:'1.5px solid #44aaff',borderRadius:12,padding:'22px 20px 18px',
               boxShadow:'0 0 40px #44aaff33, 0 8px 32px #00000088',
               fontFamily:"'Share Tech Mono',monospace",textAlign:'center'}}>
-              <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:12,color:'#44aaff',letterSpacing:1,marginBottom:10,
+              <div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:12,color:'#44aaff',letterSpacing:1,marginBottom:10,
                 textShadow:'0 0 10px #44aaff55'}}>⚡ CHARGE ZONE — OVERCHARGE</div>
               <div style={{fontSize:9,color:'#8aa5c5',marginBottom:16,lineHeight:1.5}}>
                 {sp?.name} taps into the rig. Pick the payoff:
               </div>
               <div style={{display:'flex',flexDirection:'column',gap:8}}>
                 <button onClick={() => resolveChargeChoice('boost')}
-                  style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,cursor:'pointer',
+                  style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor:'pointer',
                     background:'#0a1828',border:'1.5px solid #44aaff',borderRadius:5,
                     color:'#88ccff',padding:'8px 16px',letterSpacing:1,textAlign:'left'}}>
                   ⚡ Dice Charge — random Floor +{CHARGE_FLOOR_BONUS} or die-size up ({CHARGE_ZONE_BOOST_TURNS} rounds / until battle)
                 </button>
                 <button onClick={() => resolveChargeChoice('chord')}
-                  style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,cursor:'pointer',
+                  style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor:'pointer',
                     background:'#1a0c1a',border:'1.5px solid #ff66cc',borderRadius:5,
                     color:'#ff99dd',padding:'8px 16px',letterSpacing:1,textAlign:'left'}}>
                   🎸 Chord Assist — 1 curated Chord Stack note + a bonus revoice
@@ -9135,7 +9135,7 @@ function Game({ gameState, onReturnToLobby }) {
 
       {/* ── HEADER ── */}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,paddingBottom:7,borderBottom:"1px solid #1a2a40"}}>
-        <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:17,color:"#f6ad55",letterSpacing:3,
+        <span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:17,color:"#f6ad55",letterSpacing:3,
           textShadow:"0 0 12px #f6ad5566, 0 0 28px #f6ad5522"}}>⚡ RLSW</span>
         <span style={{fontSize:10,color:"#3a5a7a"}}>v3.6</span>
         <button onClick={() => setShowRiffbook(true)} data-tip-anchor="riffbook" title="The Riffbook — legendary riffs hidden in the note system"
@@ -9253,7 +9253,7 @@ function Game({ gameState, onReturnToLobby }) {
           </button>
           {/* N6: spectator badge */}
           {netRef.current?.spectator && (
-            <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:9,padding:"3px 10px",background:"#301520",
+            <span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:9,padding:"3px 10px",background:"#301520",
               border:"1px solid #ff4488",borderRadius:4,color:"#ff88bb",letterSpacing:2}}>
               SPECTATING
             </span>
@@ -9273,7 +9273,7 @@ function Game({ gameState, onReturnToLobby }) {
         const gone = (netSeatsLive ?? []).filter(s => !s.isBot && s.connected === false);
         if (!gone.length && selfConn === "ok" && !netSync) return null;
         const pill = (bg, border, color) => ({
-          fontFamily:"'Orbitron',sans-serif", fontSize:10, letterSpacing:1.5,
+          fontFamily:"'Saira Stencil One',sans-serif", fontSize:10, letterSpacing:1.5,
           padding:"6px 16px", borderRadius:6, background:bg,
           border:`1px solid ${border}`, color, boxShadow:`0 0 14px ${border}55`,
         });
@@ -11101,7 +11101,7 @@ function Game({ gameState, onReturnToLobby }) {
                     style={{
                       fontSize: size,
                       fontWeight: 700,
-                      fontFamily: "'Orbitron', sans-serif",
+                      fontFamily: "'Saira Stencil One', sans-serif",
                       color,
                       animationDelay: `${i * 0.12}s`,
                       opacity: 0,
@@ -11334,7 +11334,7 @@ function Game({ gameState, onReturnToLobby }) {
                   return (
                     <button onClick={cycle}
                       title="VOICE — wave/character: LEAD (saw), BUZZ (square), MELLOW (triangle), CLEAN (sine), FUZZ. Click to cycle."
-                      style={{fontFamily:"'Orbitron',sans-serif", cursor:"pointer",
+                      style={{fontFamily:"'Saira Stencil One',sans-serif", cursor:"pointer",
                         display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
                         width:36, height:46, borderRadius:6, flexShrink:0,
                         background:"linear-gradient(135deg,#1c1230,#0e0a1e)", border:"2px solid #aa66ff",
@@ -12154,7 +12154,7 @@ function Game({ gameState, onReturnToLobby }) {
                                 <text x={cx} y={cardY - HS * 0.62 - fi * HS * 0.58}
                                   textAnchor="middle" fontSize={HS * 0.5} fontWeight="900"
                                   fill={f.color} stroke="#000000" strokeWidth={1} paintOrder="stroke"
-                                  style={{fontFamily:"'Orbitron',sans-serif", letterSpacing:1,
+                                  style={{fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:1,
                                     filter:`drop-shadow(0 0 7px ${f.color})`}}>
                                   {f.icon} {f.label}
                                 </text>
@@ -12196,7 +12196,7 @@ function Game({ gameState, onReturnToLobby }) {
                               <g style={{pointerEvents:"none"}}>
                                 {/* Stance tag (above the bar) */}
                                 <text x={cx} y={barY - HS * 0.09} textAnchor="middle"
-                                  fontSize={HS * 0.30} fontFamily="'Orbitron',sans-serif"
+                                  fontSize={HS * 0.30} fontFamily="'Saira Stencil One',sans-serif"
                                   fontWeight={700} letterSpacing={HS * 0.03}
                                   fill={stDef?.color ?? '#ffffff'}
                                   stroke="#000000cc" strokeWidth={HS * 0.05}
@@ -12428,7 +12428,7 @@ function Game({ gameState, onReturnToLobby }) {
                             style={plugged ? {filter:`drop-shadow(0 0 4px ${col}88)`} : undefined}/>
                           <text x={sx} y={by + bh * 0.56} textAnchor="middle" dominantBaseline="central"
                             fontSize={bh * 0.56} fontWeight="bold" fill={col}
-                            fontFamily="'Orbitron',sans-serif">
+                            fontFamily="'Saira Stencil One',sans-serif">
                             {diceTier}
                           </text>
                           {plugged && (
@@ -12468,7 +12468,7 @@ function Game({ gameState, onReturnToLobby }) {
                     {/* EVENT label */}
                     <text x={cx} y={cy + HS * 0.78} textAnchor="middle"
                       fontSize={6.5} fill="#ff88ee" letterSpacing={1.5}
-                      fontFamily="'Orbitron',sans-serif" fontWeight={700}>EVENT</text>
+                      fontFamily="'Saira Stencil One',sans-serif" fontWeight={700}>EVENT</text>
                   </g>
                 );
               })}
@@ -12540,7 +12540,7 @@ function Game({ gameState, onReturnToLobby }) {
                       style={ready ? {filter:'drop-shadow(0 0 4px #44aaff)'} : undefined}>⚡</text>
                     {!ready && (
                       <text x={cx} y={cy + HS*0.72} textAnchor="middle" fontSize={6.5} fill="#3a5a7a"
-                        fontFamily="'Orbitron',sans-serif">{zone.cooldown}t</text>
+                        fontFamily="'Saira Stencil One',sans-serif">{zone.cooldown}t</text>
                     )}
                   </g>
                 );
@@ -12677,7 +12677,7 @@ function Game({ gameState, onReturnToLobby }) {
                     fontSize={HS * 0.7} fontWeight="bold" fill={d.color}
                     stroke="#000" strokeWidth={0.6}
                     style={{pointerEvents:'none', animation:'floatUp 1.2s ease-out forwards',
-                      filter:`drop-shadow(0 0 5px ${d.color})`, fontFamily:"'Orbitron',sans-serif"}}>
+                      filter:`drop-shadow(0 0 5px ${d.color})`, fontFamily:"'Saira Stencil One',sans-serif"}}>
                     {d.text}
                   </text>
                 );
@@ -12856,7 +12856,7 @@ function Game({ gameState, onReturnToLobby }) {
                     )}
                     {unsureFx && (
                       <text x={centerX} y={baseY + u * 1.0} textAnchor="middle" fontSize={HS * 0.4} fontWeight="bold"
-                        fill={winColor} fontFamily="'Orbitron',sans-serif"
+                        fill={winColor} fontFamily="'Saira Stencil One',sans-serif"
                         style={{filter:`drop-shadow(0 0 5px ${winColor})`}}>
                         🎉 WON OVER!
                       </text>

@@ -16,13 +16,14 @@ import rumbleSfx from "../rumble.mp3";
  * Owner tunes the movie by editing the BEATS array.
  *
  * STRUCTURE:
- *   Beats 0–3 (0–30s): blank-screen intro. A sparse trail of hexes reveals
+ *   Beats 0–2 (0–26s): blank-screen intro. A sparse trail of hexes reveals
  *     (~10, receding into the distance), then each Spirit gets a partial
  *     silhouette reveal — camera panning L/R (alternating), cutting to the
- *     next. Thunder pulses throughout. Story captions roll the whole time.
- *   Beat 4 (30s): the floating board island PUNCHES IN as the fans enter
- *     the story. From here the original island cinematic plays unchanged —
- *     crowds, mega bolt, rock gods, heartbeat, dissolve, title blast.
+ *     next. Silent flash pulses throughout. Story captions roll the whole time.
+ *   Beat 3 (26s): right after the 4th Spirit intro, the floating board
+ *     island PUNCHES IN. Beat 4: fans enter. The 4 Spirits only come
+ *     together as towering silhouettes at beat 5 — just before the rumble.
+ *   Beat 8: the one big lightning strike + thunder crack with ROCK LEGENDS.
  * ────────────────────────────────────────────────────────────────────────── */
 
 // ── BEAT TIMELINE ───────────────────────────────────────────────────────────
@@ -38,10 +39,10 @@ const BEATS = [
     camFrom: [1.0, 0, 0], camTo: [1.0, 0, 0], cues: ['spirit-intros'] },
   { id: 3, start: 26000, end: 30000,
     text: 'Four realms. Four sounds. One stage.',
-    camFrom: [1.0, 0, 0], camTo: [1.0, 0, 0], cues: ['pulse-unison'] },
+    camFrom: [1.15, 0, -2], camTo: [1.22, -4, -2], cues: ['island-punch'] },
   { id: 4, start: 30000, end: 42000,
     text: 'For eons, Genre Gate-keepers and Purists bickered endlessly about whose music was the greatest.',
-    camFrom: [1.22, -4, -2], camTo: [1.22, 4, -2], cues: ['island-punch', 'crowds-enter'] },
+    camFrom: [1.22, -4, -2], camTo: [1.22, 4, -2], cues: ['crowds-enter'] },
   { id: 5, start: 42000, end: 50000,
     text: 'To settle the debate once and for all, The Gods deployed a concert stage at the very edge of the Cosmos.',
     camFrom: [1.08, 0, -1], camTo: [1.12, 0, -2], cues: ['mega-bolt', 'rock-gods-enter'] },
@@ -56,7 +57,7 @@ const BEATS = [
 ];
 
 const TOTAL_MS = 72000;
-const ISLAND_START_MS = 30000; // beat 4 — island punches in here
+const ISLAND_START_MS = 26000; // beat 3 — island punches in right after the 4th Spirit intro
 
 // ── SPIRIT INTRO SEGMENTS (beats 1–2, alternating pan direction) ──
 const SPIRIT_INTROS = [
@@ -169,13 +170,6 @@ const CINE_STYLES = `
     82%  { opacity:0.9; }
     100% { opacity:0; }
   }
-  @keyframes om-unison-pulse {
-    0%   { opacity:0; transform:scale(0.92); }
-    30%  { opacity:0.95; transform:scale(1); }
-    55%  { transform:scale(1.06); filter:brightness(1.4); }
-    75%  { transform:scale(1); filter:brightness(1); }
-    100% { opacity:0.95; transform:scale(1); }
-  }
   @keyframes om-island-punch {
     0%   { opacity:0; transform:scale(2.6); filter:brightness(2.2) blur(10px); }
     35%  { opacity:1; transform:scale(1.06); filter:brightness(1.25) blur(1px); }
@@ -273,6 +267,8 @@ function CinematicLayer({ visible }) {
     islandBlue: generateBoltPoints(41, 40, 42, 62, 6, 3, 401),
     islandGreen: generateBoltPoints(58, 37, 57, 55, 6, 3, 502),
     mega: generateBoltPoints(50, 0, 50, 33, 10, 14, 600),
+    megaB1: generateBoltPoints(50, 10, 36, 42, 7, 8, 601),
+    megaB2: generateBoltPoints(50, 16, 64, 46, 7, 9, 602),
   });
 
   // ── rAF loop: camera + beat tracking ──
@@ -294,22 +290,28 @@ function CinematicLayer({ visible }) {
       if (b !== prevBeat) {
         prevBeat = b;
         setBeat(b);
-        // Beat 8: ROCK LEGENDS reveal — the one and only thunder crack
+        // Beat 8: ROCK LEGENDS reveal — the big strike + the one thunder crack
         if (b === 8) {
           setTitleBlast(true);
-          playSfx(thunderSfx, 0.8);
+          playSfx(thunderSfx, 0.9);
+          // Double flash: hard hit, quick dip, echo
+          const fl = (o) => { if (flashRef.current) flashRef.current.style.opacity = o; };
+          fl('0.55');
+          setTimeout(() => fl('0'), 140);
+          setTimeout(() => fl('0.28'), 240);
+          setTimeout(() => fl('0'), 380);
         }
-        // Intro beats 1–3: words flash on with a silent flash pulse
-        if (b >= 1 && b <= 3 && fireThunderRef.current) {
+        // Intro beats 1–2: words flash on with a silent flash pulse
+        if (b >= 1 && b <= 2 && fireThunderRef.current) {
           fireThunderRef.current();
         }
         // Beat 7: the shake — start the rumble
         if (b === 7) {
           rumbleRef.current = playSfx(rumbleSfx, 0.85);
         }
-        // Flash on beat 4 (island punch), 5 (mega bolt) and 8 (title)
-        if ((b === 4 || b === 5 || b === 8) && flashRef.current) {
-          flashRef.current.style.opacity = b === 8 ? '0.25' : b === 4 ? '0.2' : '0.15';
+        // Flash on beat 3 (island punch) and 5 (stage deployed)
+        if ((b === 3 || b === 5) && flashRef.current) {
+          flashRef.current.style.opacity = b === 3 ? '0.2' : '0.15';
           setTimeout(() => { if (flashRef.current) flashRef.current.style.opacity = '0'; }, 90);
         }
       }
@@ -403,8 +405,8 @@ function CinematicLayer({ visible }) {
   }, [visible]);
 
   // ── Derived visibility ──
-  const introPhase = beat >= 0 && beat <= 3;         // blank-screen intro
-  const islandUp = beat >= 4;                        // island cinematic
+  const introPhase = beat >= 0 && beat <= 2;         // blank-screen intro
+  const islandUp = beat >= 3;                        // island cinematic
   const showCrowds = beat >= 4 && beat <= 7;
   const showRockGods = beat >= 5 && beat <= 7;
   const dissolving = beat === 7;
@@ -500,28 +502,7 @@ function CinematicLayer({ visible }) {
         </div>
       )}
 
-      {/* ═══ INTRO PHASE: unison pulse (beat 3 — "Four realms…") ═══ */}
-      {beat === 3 && (
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          gap: '3%', pointerEvents: 'none',
-        }}>
-          {SPIRITS.map((sp, i) => (
-            <div key={sp.id} style={{
-              width: '14%', height: '55%',
-              animation: `om-unison-pulse 2.6s ease-out ${i * 0.12}s both`,
-            }}>
-              <img src={sp.img} alt="" draggable={false} style={{
-                width: '100%', height: '100%', objectFit: 'contain',
-                filter: `brightness(0) drop-shadow(0 0 15px ${sp.color})`,
-              }}/>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── ISLAND CAMERA LAYER (Ken Burns, beat 4+) ── */}
+      {/* ── ISLAND CAMERA LAYER (Ken Burns, beat 3+) ── */}
       <div style={{
         position: 'absolute', inset: '-25%',
         opacity: islandUp ? 1 : 0,
@@ -636,22 +617,30 @@ function CinematicLayer({ visible }) {
             }}/>
           )}
 
-          {/* ── Sky lightning bolts (beat 8 — ROCK LEGENDS reveal only) ── */}
+          {/* ── Sky lightning (beat 8 — the big ROCK LEGENDS strike) ── */}
           {showSkyBolts && (
             <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" style={{
               position: 'absolute', inset: 0,
               width: '100%', height: '100%', pointerEvents: 'none',
             }}>
+              {/* Main strike — thick, white-hot, with two branches */}
               <polyline points={bolts.current.mega}
-                fill="none" stroke="white" strokeWidth="0.7"
+                fill="none" stroke="white" strokeWidth="1.1"
                 filter="url(#om-glow-lg)"
-                style={{ animation: 'om-bolt-flicker 300ms linear forwards' }}/>
+                style={{ animation: 'om-bolt-flicker 420ms linear forwards' }}/>
+              <polyline points={bolts.current.megaB1} fill="none"
+                stroke="#e8e0ff" strokeWidth="0.55" filter="url(#om-glow-lg)"
+                style={{ animation: 'om-bolt-flicker 380ms linear 50ms forwards' }}/>
+              <polyline points={bolts.current.megaB2} fill="none"
+                stroke="#e8e0ff" strokeWidth="0.5" filter="url(#om-glow-lg)"
+                style={{ animation: 'om-bolt-flicker 380ms linear 110ms forwards' }}/>
+              {/* Secondary colored strikes */}
               <polyline points={bolts.current.sky2} fill="none"
                 stroke="#c084fc" strokeWidth="0.5" filter="url(#om-glow)"
-                style={{ animation: 'om-bolt-flicker 300ms linear 80ms forwards' }}/>
+                style={{ animation: 'om-bolt-flicker 300ms linear 170ms forwards' }}/>
               <polyline points={bolts.current.sky3} fill="none"
                 stroke="#60a5fa" strokeWidth="0.4" filter="url(#om-glow)"
-                style={{ animation: 'om-bolt-flicker 300ms linear 160ms forwards' }}/>
+                style={{ animation: 'om-bolt-flicker 300ms linear 240ms forwards' }}/>
             </svg>
           )}
         </div>{/* end camRef */}
@@ -731,7 +720,7 @@ function CinematicLayer({ visible }) {
               filter: 'drop-shadow(0 0 20px #ff2fd6) drop-shadow(0 0 40px #ff2fd688) drop-shadow(0 0 80px #66e0ff44)',
             }}>
               <text x="450" y="70" textAnchor="middle"
-                fontFamily="'Orbitron', sans-serif" fontWeight="700"
+                fontFamily="'Saira Stencil One', sans-serif" fontWeight="700"
                 fontSize="72" letterSpacing="10"
                 fill="#0a0a14" stroke="#ff2fd6" strokeWidth="2.5"
                 style={{ paintOrder: 'stroke fill' }}>
@@ -739,7 +728,7 @@ function CinematicLayer({ visible }) {
               </text>
             </svg>
             <div style={{
-              fontFamily: "'Orbitron', sans-serif", fontWeight: 400,
+              fontFamily: "'Saira Stencil One', sans-serif", fontWeight: 400,
               fontSize: 'clamp(12px, 2vw, 20px)',
               color: '#66e0ff', textShadow: '0 0 12px #66e0ff88',
               marginTop: 14, opacity: 0,
@@ -776,7 +765,7 @@ function CinematicLayer({ visible }) {
         }}>
           <div style={{
             maxWidth: '34rem', padding: '0 24px',
-            fontFamily: "'Orbitron', 'Share Tech Mono', monospace",
+            fontFamily: "'Saira Stencil One', 'Share Tech Mono', monospace",
             fontSize: 'clamp(11px, 1.3vw, 17px)', lineHeight: 1.7,
             color: '#e8e0ff',
             textShadow: '0 0 8px #7c3aed66, 0 1px 3px #000',
@@ -920,7 +909,7 @@ export default function OpeningMovie({ onDone }) {
       overflow: 'hidden', cursor: 'pointer', zIndex: 50,
       opacity: outro ? 0 : 1, transition: `opacity ${OUTRO_MS}ms ease-in`,
     }}>
-      <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap" rel="stylesheet"/>
+      <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Saira+Stencil+One&family=Saira:wght@400;600;700&display=swap" rel="stylesheet"/>
       <style>{CINE_STYLES}</style>
 
       {/* Scene layers — double-buffered crossfade */}
@@ -937,7 +926,7 @@ export default function OpeningMovie({ onDone }) {
         }}>
           {scene.title !== '' && (
             <div style={{
-              fontFamily: "'Orbitron', sans-serif", fontWeight: 700,
+              fontFamily: "'Saira Stencil One', sans-serif", fontWeight: 700,
               fontSize: 'clamp(28px, 5vw, 54px)', letterSpacing: 8,
               color: '#f6ad55', textShadow: '0 0 24px #f6ad5566',
               opacity: 0, animation: 'om-text-up 700ms ease-out 400ms forwards',

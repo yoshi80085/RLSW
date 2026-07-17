@@ -197,7 +197,7 @@ export function BeginnerTipOverlay({ tip, onClose, onDisable }) {
           fontFamily: "'Share Tech Mono',monospace",
           animation: 'tip-card-in 300ms ease-out' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-          <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: 13, color: '#f6ad55',
+          <div style={{ fontFamily: "'Saira Stencil One',sans-serif", fontSize: 13, color: '#f6ad55',
             letterSpacing: 1, textShadow: '0 0 10px #f6ad5555' }}>{tip.title}</div>
           {pages.length > 1 && (
             <div style={{ fontSize: 8, color: '#5a7a9a', letterSpacing: 1, flexShrink: 0, marginLeft: 10 }}>
@@ -229,14 +229,14 @@ export function BeginnerTipOverlay({ tip, onClose, onDisable }) {
             )}
             {page > 0 && (
               <button onClick={() => setPage(p => p - 1)}
-                style={{ fontFamily: "'Orbitron',sans-serif", fontSize: 10, cursor: 'pointer',
+                style={{ fontFamily: "'Saira Stencil One',sans-serif", fontSize: 10, cursor: 'pointer',
                   background: 'none', border: '1px solid #1e3a5f', borderRadius: 5,
                   color: '#5a7a9a', padding: '7px 12px', letterSpacing: 1 }}>
                 ◂
               </button>
             )}
             <button onClick={next}
-              style={{ fontFamily: "'Orbitron',sans-serif", fontSize: 11, cursor: 'pointer',
+              style={{ fontFamily: "'Saira Stencil One',sans-serif", fontSize: 11, cursor: 'pointer',
                 background: '#1a3020', border: '1.5px solid #44cc66', borderRadius: 5,
                 color: '#44ff88', padding: '8px 20px', letterSpacing: 2,
                 boxShadow: '0 0 12px #44cc6644' }}>

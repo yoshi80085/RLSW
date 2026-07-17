@@ -32,7 +32,7 @@ export class GameErrorBoundary extends React.Component {
       const box = { fontFamily: "monospace", color: "#ffb3b3", background: "#0a0e18", whiteSpace: "pre-wrap",
         fontSize: 11, lineHeight: 1.5, padding: 12, borderRadius: 8, border: "1px solid #5a1a1a",
         maxHeight: 240, overflow: "auto", margin: "10px 0" };
-      const btn = { fontFamily: "'Orbitron',sans-serif", fontSize: 12, padding: "8px 16px", borderRadius: 6,
+      const btn = { fontFamily: "'Saira Stencil One',sans-serif", fontSize: 12, padding: "8px 16px", borderRadius: 6,
         border: "1px solid #44aaff", background: "#0a1830", color: "#aad4ff", cursor: "pointer", marginRight: 10 };
       return (
         <div style={{ minHeight: "100vh", background: "#050810", color: "#e2e8f0", display: "flex",

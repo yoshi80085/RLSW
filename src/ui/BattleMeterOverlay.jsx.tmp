@@ -188,7 +188,7 @@ export function BattleMeterOverlay({
             <div style={{
               position:'fixed', inset:0, background:'#000000f2', zIndex:9980,
               display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-              fontFamily:"'Orbitron',sans-serif",
+              fontFamily:"'Saira Stencil One',sans-serif",
               animation: clashing ? containerShake : undefined,
             }}>
               <style>{`
@@ -376,7 +376,7 @@ export function BattleMeterOverlay({
                   <div style={{display:'flex', gap:6, justifyContent:'center', margin:'8px 0 2px'}}>
                     {['piano','guitar'].map(v => (
                       <button key={v} onClick={() => setRiffView(v)} style={{
-                        cursor:'pointer', fontFamily:"'Orbitron',sans-serif", fontSize:9, letterSpacing:1, padding:'4px 10px', borderRadius:6,
+                        cursor:'pointer', fontFamily:"'Saira Stencil One',sans-serif", fontSize:9, letterSpacing:1, padding:'4px 10px', borderRadius:6,
                         color: riffView === v ? '#06111f' : noteColor,
                         background: riffView === v ? noteColor : 'transparent',
                         border:`1px solid ${noteColor}`}}>
@@ -389,7 +389,7 @@ export function BattleMeterOverlay({
                     {Object.entries(RIFF_FALL_DIFFICULTY).map(([k, d]) => (
                       <button key={k} onClick={() => setRiffDifficulty?.(k)}
                         title={d.blurb} style={{
-                        cursor:'pointer', fontFamily:"'Orbitron',sans-serif", fontSize:8, letterSpacing:1, padding:'3px 8px', borderRadius:6,
+                        cursor:'pointer', fontFamily:"'Saira Stencil One',sans-serif", fontSize:8, letterSpacing:1, padding:'3px 8px', borderRadius:6,
                         color: riffDifficulty === k ? '#06111f' : '#8aa5c5',
                         background: riffDifficulty === k ? '#8aa5c5' : 'transparent',
                         border:'1px solid #4a5f80'}}>
@@ -706,14 +706,14 @@ export function BattleMeterOverlay({
                 })()}
                 <text x={half} y={half + size * 0.13}
                   textAnchor="middle" fontSize={size * 0.38} fontWeight="900"
-                  fontFamily="'Orbitron',sans-serif"
+                  fontFamily="'Saira Stencil One',sans-serif"
                   fill={glowColor}
                   style={spinning ? {filter:`drop-shadow(0 0 8px ${glowColor})`} : {}}>
                   {val}
                 </text>
                 <text x={half} y={size - 10}
                   textAnchor="middle" fontSize={size * 0.13} fontWeight="700"
-                  fontFamily="'Orbitron',sans-serif" fill={glowColor} opacity={0.5}>
+                  fontFamily="'Saira Stencil One',sans-serif" fill={glowColor} opacity={0.5}>
                   d8
                 </text>
               </svg>
@@ -754,14 +754,14 @@ export function BattleMeterOverlay({
                   stroke={glowColor} strokeWidth={0.7} opacity={0.3}/>
                 <text x={half} y={half + size * 0.10}
                   textAnchor="middle" fontSize={size * 0.36} fontWeight="900"
-                  fontFamily="'Orbitron',sans-serif"
+                  fontFamily="'Saira Stencil One',sans-serif"
                   fill={glowColor}
                   style={spinning ? {filter:`drop-shadow(0 0 8px ${glowColor})`} : {}}>
                   {val}
                 </text>
                 <text x={half} y={size - 14}
                   textAnchor="middle" fontSize={size * 0.13} fontWeight="700"
-                  fontFamily="'Orbitron',sans-serif" fill={glowColor} opacity={0.5}>
+                  fontFamily="'Saira Stencil One',sans-serif" fill={glowColor} opacity={0.5}>
                   d10
                 </text>
               </svg>
@@ -788,14 +788,14 @@ export function BattleMeterOverlay({
                 <polygon points={pts2} fill="none" stroke={glowColor} strokeWidth={0.7} opacity={0.22}/>
                 <text x={half} y={half + size * 0.14}
                   textAnchor="middle" fontSize={size * 0.36} fontWeight="900"
-                  fontFamily="'Orbitron',sans-serif"
+                  fontFamily="'Saira Stencil One',sans-serif"
                   fill={glowColor}
                   style={spinning ? {filter:`drop-shadow(0 0 10px ${glowColor})`} : {}}>
                   {val}
                 </text>
                 <text x={half} y={half + size * 0.44}
                   textAnchor="middle" fontSize={size * 0.13} fontWeight="700"
-                  fontFamily="'Orbitron',sans-serif" fill={glowColor} opacity={0.5}>
+                  fontFamily="'Saira Stencil One',sans-serif" fill={glowColor} opacity={0.5}>
                   d12
                 </text>
               </svg>
@@ -885,7 +885,7 @@ export function BattleMeterOverlay({
           return (
             <div style={{position:'fixed', inset:0, background:'#000000f2', zIndex:9980,
               display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-              fontFamily:"'Orbitron',sans-serif", overflow:'hidden'}}>
+              fontFamily:"'Saira Stencil One',sans-serif", overflow:'hidden'}}>
               <style>{`
                 @keyframes crowd-cheer { 0%,100%{transform:translateY(0) scaleY(1);} 50%{transform:translateY(var(--cheer-amp,-6px)) scaleY(1.05);} }
                 @keyframes counter-click-bounce { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-5px);} }
@@ -1105,13 +1105,13 @@ export function BattleMeterOverlay({
             // overflowY lets the result banner scroll into view on short screens
             justifyContent:'safe center', overflowY:'auto', overflowX:'hidden',
             padding:'24px 0',
-            fontFamily:"'Orbitron',sans-serif",
+            fontFamily:"'Saira Stencil One',sans-serif",
           }}>
             {/* ⏭ Skip the pre-die intro straight to the dice roll */}
             {skipBattleIntro && ['enter_attacker','flash_drive','pick_drive_slide','enter_defender','flash_sustain','pick_sustain_slide'].includes(phase) && (
               <button onClick={skipBattleIntro}
                 style={{position:'absolute', top:14, right:16, zIndex:20, cursor:'pointer',
-                  fontFamily:"'Orbitron',sans-serif", fontSize:10, letterSpacing:1,
+                  fontFamily:"'Saira Stencil One',sans-serif", fontSize:10, letterSpacing:1,
                   padding:'6px 14px', borderRadius:6, color:'#ccff44',
                   background:'#0a1020', border:'1px solid #aacc00', boxShadow:'0 0 10px #aacc0044'}}>
                 ⏭ SKIP TO ROLL
@@ -1420,13 +1420,13 @@ export function BattleMeterOverlay({
                     {atkSpinning && (
                       <div style={{
                         marginTop:4, fontSize:9, color: attacker?.color ?? '#ff4444',
-                        letterSpacing:3, fontFamily:"'Orbitron',sans-serif",
+                        letterSpacing:3, fontFamily:"'Saira Stencil One',sans-serif",
                         animation:'battle-click-bounce 0.6s ease-in-out infinite',
                       }}>CLICK</div>
                     )}
                     {phase === 'result' && atkFace !== null && (
                       <div style={{marginTop:3, fontSize:8, color:'#ffcc44', letterSpacing:1,
-                        fontFamily:"'Orbitron',sans-serif"}}>
+                        fontFamily:"'Saira Stencil One',sans-serif"}}>
                         +{atkFace} = {atkTotal}
                       </div>
                     )}
@@ -1437,7 +1437,7 @@ export function BattleMeterOverlay({
                     background:'#06060e'}}/>
                 )}
                 <div style={{fontSize:8, color:attacker?.color ?? '#ff4444', letterSpacing:2, marginTop:6,
-                  fontFamily:"'Orbitron',sans-serif", textTransform:'uppercase'}}>{attacker?.name?.split(' ')[0]}</div>
+                  fontFamily:"'Saira Stencil One',sans-serif", textTransform:'uppercase'}}>{attacker?.name?.split(' ')[0]}</div>
               </div>
 
               {/* ── STAGE FLOOR — isometric hex arena + Spirits ── */}
@@ -1645,13 +1645,13 @@ export function BattleMeterOverlay({
                     {defSpinning && (
                       <div style={{
                         marginTop:4, fontSize:9, color: defender?.color ?? '#00ccff',
-                        letterSpacing:3, fontFamily:"'Orbitron',sans-serif",
+                        letterSpacing:3, fontFamily:"'Saira Stencil One',sans-serif",
                         animation:'battle-click-bounce 0.6s ease-in-out infinite',
                       }}>CLICK</div>
                     )}
                     {phase === 'result' && defFace !== null && (
                       <div style={{marginTop:3, fontSize:8, color:'#ffcc44', letterSpacing:1,
-                        fontFamily:"'Orbitron',sans-serif"}}>
+                        fontFamily:"'Saira Stencil One',sans-serif"}}>
                         {battleState?.posing ? '🌟 POSING = 0' : `+${defFace} = ${defTotal}`}
                       </div>
                     )}
@@ -1662,7 +1662,7 @@ export function BattleMeterOverlay({
                     background:'#06060e'}}/>
                 )}
                 <div style={{fontSize:8, color:defender?.color ?? '#00ccff', letterSpacing:2, marginTop:6,
-                  fontFamily:"'Orbitron',sans-serif", textTransform:'uppercase'}}>{defender?.name?.split(' ')[0]}</div>
+                  fontFamily:"'Saira Stencil One',sans-serif", textTransform:'uppercase'}}>{defender?.name?.split(' ')[0]}</div>
               </div>
             </div>
 
@@ -1676,7 +1676,7 @@ export function BattleMeterOverlay({
                   : 'battle-move-flash 1.6s cubic-bezier(0.22,1,0.36,1) forwards',
               }}>
                 <div style={{
-                  fontFamily:"'Orbitron',sans-serif", fontWeight:900,
+                  fontFamily:"'Saira Stencil One',sans-serif", fontWeight:900,
                   fontSize: moveFlash.whiff ? 44 : 76,
                   letterSpacing: moveFlash.whiff ? 4 : 6,
                   color: moveFlash.whiff ? moveFlash.color : '#ffffff',
@@ -1720,7 +1720,7 @@ export function BattleMeterOverlay({
                 <div style={{textAlign:'center'}}>
                   <div style={{
                     marginTop:8,
-                    fontFamily:"'Orbitron',sans-serif",
+                    fontFamily:"'Saira Stencil One',sans-serif",
                     fontSize:22, fontWeight:900, letterSpacing:4,
                     color: attacker?.color ?? '#ff4444',
                     textShadow:`0 0 20px ${attacker?.color ?? '#ff4444'}, 0 0 8px ${attacker?.color ?? '#ff4444'}88`,
@@ -1741,7 +1741,7 @@ export function BattleMeterOverlay({
                           display:'flex', alignItems:'center', gap:4,
                           background:`${m.color}18`, border:`1px solid ${m.color}66`,
                           borderRadius:4, padding:'3px 8px',
-                          fontFamily:"'Orbitron',sans-serif",
+                          fontFamily:"'Saira Stencil One',sans-serif",
                         }}>
                           <span style={{fontSize:11}}>{m.icon}</span>
                           <span style={{fontSize:7, color:m.color, letterSpacing:1}}>{m.label}</span>
@@ -1927,7 +1927,7 @@ export function BattleMeterOverlay({
                     background:'transparent',
                     border:`2px solid ${attackerWon ? (attacker?.color ?? '#ff4444') : (defender?.color ?? '#00ccff')}`,
                     color: attackerWon ? (attacker?.color ?? '#ff4444') : (defender?.color ?? '#00ccff'),
-                    fontSize:11, letterSpacing:3, fontFamily:"'Orbitron',sans-serif",
+                    fontSize:11, letterSpacing:3, fontFamily:"'Saira Stencil One',sans-serif",
                     cursor:'pointer',
                     textShadow:`0 0 8px ${attackerWon ? (attacker?.color ?? '#ff4444') : (defender?.color ?? '#00ccff')}`,
                     boxShadow:`0 0 12px ${attackerWon ? (attacker?.color ?? '#ff4444') : (defender?.color ?? '#00ccff')}44`,

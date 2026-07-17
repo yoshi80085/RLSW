@@ -26,11 +26,11 @@ export function RiffBanner({ riffBanner, spirits, setRiffBanner }) {
         {riffBanner.isNew && (
           <div style={{fontSize:8, color:'#0a0f20', background:'#ffd700', display:'inline-block',
             borderRadius:3, padding:'1px 7px', fontWeight:900, letterSpacing:2, marginBottom:3,
-            fontFamily:"'Orbitron',sans-serif"}}>
+            fontFamily:"'Saira Stencil One',sans-serif"}}>
             ✨ NEW DISCOVERY
           </div>
         )}
-        <div style={{fontFamily:"'Orbitron',sans-serif", fontSize:13, color:'#ffd700',
+        <div style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:13, color:'#ffd700',
           letterSpacing:2, textShadow:'0 0 14px #ffd70088'}}>
           🎼 {riff.name}
         </div>

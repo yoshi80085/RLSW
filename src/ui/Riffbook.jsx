@@ -21,7 +21,7 @@ export function Riffbook({ CADENCE_OBJECTIVES, PC_PLAY_NAMES, RIFF_GENRE, RIFF_G
               display:'flex', alignItems:'center', gap:10, position:'sticky', top:0, backdropFilter:'blur(4px)'}}>
               <span style={{fontSize:22}}>📖</span>
               <div style={{flex:1}}>
-                <div style={{fontFamily:"'Orbitron',sans-serif", fontSize:13, color:'#ffd700', letterSpacing:2, fontWeight:700}}>
+                <div style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:13, color:'#ffd700', letterSpacing:2, fontWeight:700}}>
                   THE RIFFBOOK
                 </div>
                 <div style={{fontSize:8, color:'#6a8aaa', marginTop:2}}>
@@ -32,7 +32,7 @@ export function Riffbook({ CADENCE_OBJECTIVES, PC_PLAY_NAMES, RIFF_GENRE, RIFF_G
                 <div style={{display:'flex', gap:6, marginTop:7}}>
                   {[['discoveries','🎼 DISCOVERIES'],['cadences','🎯 CADENCES'],['legacy','📜 LEGACY CODEX']].map(([tab,label]) => (
                     <button key={tab} onClick={() => setRiffbookTab(tab)}
-                      style={{fontFamily:"'Orbitron',sans-serif", fontSize:8, letterSpacing:1, cursor:'pointer',
+                      style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:8, letterSpacing:1, cursor:'pointer',
                         padding:'4px 12px', borderRadius:4,
                         background: riffbookTab === tab ? '#ffd70022' : 'transparent',
                         border:`1px solid ${riffbookTab === tab ? '#ffd700' : '#ffd70033'}`,
@@ -64,7 +64,7 @@ export function Riffbook({ CADENCE_OBJECTIVES, PC_PLAY_NAMES, RIFF_GENRE, RIFF_G
                         {discovered ? riff.icon : '❓'}
                       </span>
                       <div style={{flex:1, minWidth:0}}>
-                        <div style={{fontFamily:"'Orbitron',sans-serif", fontSize:9, fontWeight:700,
+                        <div style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:9, fontWeight:700,
                           color: discovered ? '#ffd700' : '#3a5a7a', letterSpacing:1}}>
                           {discovered ? riff.name : '? ? ? ? ?'}
                         </div>
@@ -104,7 +104,7 @@ export function Riffbook({ CADENCE_OBJECTIVES, PC_PLAY_NAMES, RIFF_GENRE, RIFF_G
                 return (
                   <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:12,
                     padding:'7px 10px', background:'#0a0e16', border:'1px solid #44ffaa33', borderRadius:6}}>
-                    <span style={{fontSize:8, color:'#44ffaa', letterSpacing:1, fontFamily:"'Orbitron',sans-serif"}}>
+                    <span style={{fontSize:8, color:'#44ffaa', letterSpacing:1, fontFamily:"'Saira Stencil One',sans-serif"}}>
                       {acting.name?.split(' ')[0]?.toUpperCase()}'S RUN
                     </span>
                     {trail.length === 0
@@ -134,7 +134,7 @@ export function Riffbook({ CADENCE_OBJECTIVES, PC_PLAY_NAMES, RIFF_GENRE, RIFF_G
                       opacity: cd > 0 ? 0.6 : 1}}>
                       <div style={{display:'flex', alignItems:'center', gap:8}}>
                         <span style={{fontSize:16}}>{cad.icon}</span>
-                        <span style={{fontFamily:"'Orbitron',sans-serif", fontSize:9.5, fontWeight:700,
+                        <span style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:9.5, fontWeight:700,
                           color:'#44ffaa', letterSpacing:1, flex:1}}>
                           {cad.name} <span style={{color:'#7a9a8a', fontWeight:400}}>· {cad.formula}</span>
                         </span>
@@ -180,7 +180,7 @@ export function Riffbook({ CADENCE_OBJECTIVES, PC_PLAY_NAMES, RIFF_GENRE, RIFF_G
                 return (
                   <div key={genre} style={{marginBottom:14}}>
                     <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
-                      <span style={{fontFamily:"'Orbitron',sans-serif", fontSize:9, letterSpacing:2,
+                      <span style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:9, letterSpacing:2,
                         color: meta.color, fontWeight:700}}>
                         {meta.label} WING — {riffs.length}
                       </span>
@@ -216,7 +216,7 @@ export function Riffbook({ CADENCE_OBJECTIVES, PC_PLAY_NAMES, RIFF_GENRE, RIFF_G
                                 {legacyPlayingId === riff.id ? '♪' : '▶'}
                               </button>
                               <span style={{fontSize:15}}>{riff.icon}</span>
-                              <span style={{fontFamily:"'Orbitron',sans-serif", fontSize:9, fontWeight:700,
+                              <span style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:9, fontWeight:700,
                                 color:'#ffd700', letterSpacing:1, flex:1}}>
                                 {riff.name}
                               </span>

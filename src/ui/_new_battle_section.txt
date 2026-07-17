@@ -89,13 +89,13 @@
                     {atkSpinning && (
                       <div style={{
                         marginTop:4, fontSize:9, color: attacker?.color ?? '#ff4444',
-                        letterSpacing:3, fontFamily:"'Orbitron',sans-serif",
+                        letterSpacing:3, fontFamily:"'Saira Stencil One',sans-serif",
                         animation:'battle-click-bounce 0.6s ease-in-out infinite',
                       }}>CLICK</div>
                     )}
                     {phase === 'result' && atkFace !== null && (
                       <div style={{marginTop:3, fontSize:8, color:'#ffcc44', letterSpacing:1,
-                        fontFamily:"'Orbitron',sans-serif"}}>
+                        fontFamily:"'Saira Stencil One',sans-serif"}}>
                         +{atkFace} = {atkTotal}
                       </div>
                     )}
@@ -106,7 +106,7 @@
                     background:'#06060e'}}/>
                 )}
                 <div style={{fontSize:8, color:attacker?.color ?? '#ff4444', letterSpacing:2, marginTop:6,
-                  fontFamily:"'Orbitron',sans-serif", textTransform:'uppercase'}}>{attacker?.name?.split(' ')[0]}</div>
+                  fontFamily:"'Saira Stencil One',sans-serif", textTransform:'uppercase'}}>{attacker?.name?.split(' ')[0]}</div>
               </div>
 
               {/* ── STAGE FLOOR — isometric hex arena + Spirits ── */}
@@ -314,13 +314,13 @@
                     {defSpinning && (
                       <div style={{
                         marginTop:4, fontSize:9, color: defender?.color ?? '#00ccff',
-                        letterSpacing:3, fontFamily:"'Orbitron',sans-serif",
+                        letterSpacing:3, fontFamily:"'Saira Stencil One',sans-serif",
                         animation:'battle-click-bounce 0.6s ease-in-out infinite',
                       }}>CLICK</div>
                     )}
                     {phase === 'result' && defFace !== null && (
                       <div style={{marginTop:3, fontSize:8, color:'#ffcc44', letterSpacing:1,
-                        fontFamily:"'Orbitron',sans-serif"}}>
+                        fontFamily:"'Saira Stencil One',sans-serif"}}>
                         {battleState?.posing ? '🌟 POSING = 0' : `+${defFace} = ${defTotal}`}
                       </div>
                     )}
@@ -331,6 +331,6 @@
                     background:'#06060e'}}/>
                 )}
                 <div style={{fontSize:8, color:defender?.color ?? '#00ccff', letterSpacing:2, marginTop:6,
-                  fontFamily:"'Orbitron',sans-serif", textTransform:'uppercase'}}>{defender?.name?.split(' ')[0]}</div>
+                  fontFamily:"'Saira Stencil One',sans-serif", textTransform:'uppercase'}}>{defender?.name?.split(' ')[0]}</div>
               </div>
             </div>

@@ -112,14 +112,14 @@ export function RockGodBoardLayer({ god, HS, SCALE }) {
         {/* Winded — the punish window is OPEN */}
         {god.winded && !dead && (
           <text x={0} y={-HS * 1.75} textAnchor="middle" fontSize={HS * 0.42} fontWeight={800}
-            fill="#ffee44" fontFamily="'Orbitron',sans-serif"
+            fill="#ffee44" fontFamily="'Saira Stencil One',sans-serif"
             style={{ filter: 'drop-shadow(0 0 6px #ffaa00)' }}>
             😵 WINDED — ×2 DMG!
           </text>
         )}
         {/* Name plate + HP bar */}
         <text x={0} y={HS * 1.55} textAnchor="middle" fontSize={HS * 0.4} fontWeight={800}
-          fill={def.color} fontFamily="'Orbitron',sans-serif" letterSpacing={1.5}
+          fill={def.color} fontFamily="'Saira Stencil One',sans-serif" letterSpacing={1.5}
           style={{ filter: `drop-shadow(0 0 4px #000) drop-shadow(0 0 6px ${def.color}66)` }}>
           {def.name.toUpperCase()}
         </text>
@@ -168,15 +168,15 @@ export function RockGodHUD({ god, banner, timer, bossOutcome }) {
           textAlign: 'center', boxShadow: `0 0 34px ${def.color}88, 0 8px 30px #000d`,
         }}>
           <div style={{ fontSize: 10, letterSpacing: 4, color: def.color,
-            fontFamily: "'Orbitron',sans-serif" }}>
+            fontFamily: "'Saira Stencil One',sans-serif" }}>
             🌩️ THE RACE IS TOO CLOSE — A ROCK GOD DESCENDS 🌩️
           </div>
           <div style={{ fontSize: 26, fontWeight: 900, color: '#fff', margin: '5px 0 2px',
-            fontFamily: "'Orbitron',sans-serif", textShadow: `0 0 18px ${def.color}` }}>
+            fontFamily: "'Saira Stencil One',sans-serif", textShadow: `0 0 18px ${def.color}` }}>
             {def.icon} {def.name.toUpperCase()}
           </div>
           <div style={{ fontSize: 11, color: def.color, letterSpacing: 2,
-            fontFamily: "'Orbitron',sans-serif" }}>{def.title}</div>
+            fontFamily: "'Saira Stencil One',sans-serif" }}>{def.title}</div>
           <div style={{ fontSize: 10.5, color: '#c8bfa8', maxWidth: 430, marginTop: 5 }}>
             {def.blurb} Stand together: Drive = damage = Fame. Beat the clock or taste his Vengeance.
           </div>
@@ -197,7 +197,7 @@ export function RockGodHUD({ god, banner, timer, bossOutcome }) {
               border: `1.5px solid ${timerHot ? '#ff3322' : '#88ccff'}`,
               borderRadius: 20, padding: '3px 12px', fontSize: 11, fontWeight: 800,
               color: timerHot ? '#ff5544' : '#aaddff',
-              fontFamily: "'Orbitron',sans-serif",
+              fontFamily: "'Saira Stencil One',sans-serif",
               animation: timerHot ? 'rockgod-clock-hot 0.6s ease-in-out infinite' : undefined,
               boxShadow: timerHot ? '0 0 12px #ff332288' : undefined }}>
               ⏰ {timer}s
@@ -227,12 +227,12 @@ export function GodVictoryOverlay({ god, bossOutcome, spirits, noteStates, onRet
     <div style={{ position: 'fixed', inset: 0, background: '#050200ee', zIndex: 9999,
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18 }}>
       <div style={{ fontSize: 64, filter: `drop-shadow(0 0 30px ${def.color})` }}>{def.icon}</div>
-      <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: 22, color: def.color,
+      <div style={{ fontFamily: "'Saira Stencil One',sans-serif", fontSize: 22, color: def.color,
         letterSpacing: 5, textTransform: 'uppercase',
         textShadow: `0 0 24px ${def.color}, 0 0 48px ${def.color}66` }}>
         THE GODS KEEP THE CROWN
       </div>
-      <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: 13, color: '#c8bfa8' }}>
+      <div style={{ fontFamily: "'Saira Stencil One',sans-serif", fontSize: 13, color: '#c8bfa8' }}>
         {def.name} silences every Spirit on the stage. The Legend remains a myth.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>

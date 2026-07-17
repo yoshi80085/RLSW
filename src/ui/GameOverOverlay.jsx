@@ -23,7 +23,7 @@ export function GameOverOverlay({
       position:"fixed",inset:0,background:"#000000dd",zIndex:9999,
       display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20,
     }}>
-      <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:18,
+      <div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:18,
         color: isFameWin ? "#ffd700" : isLimelight ? "#ff88ff" : "#ffcc00",
         letterSpacing:4,textTransform:"uppercase",
         textShadow: isFameWin ? "0 0 24px #ffd700, 0 0 48px #ffd70088"
@@ -32,7 +32,7 @@ export function GameOverOverlay({
       </div>
       {w && (
         <>
-          <div style={{fontSize:13,color:w.color,fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>
+          <div style={{fontSize:13,color:w.color,fontFamily:"'Saira Stencil One',sans-serif",letterSpacing:2}}>
             {isFameWin ? "⭐" : isLimelight ? "🎤" : "🏆"} {w.name}
           </div>
           <div style={{fontSize:10,color:"#3a5a7a"}}>

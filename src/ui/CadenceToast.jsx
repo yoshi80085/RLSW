@@ -26,10 +26,10 @@ export function CadenceToast({ cadenceToast, spirits, setCadenceToast, riffBanne
       <div>
         <div style={{fontSize:8, color:'#06281c', background:'#44ffaa', display:'inline-block',
           borderRadius:3, padding:'1px 7px', fontWeight:900, letterSpacing:2, marginBottom:3,
-          fontFamily:"'Orbitron',sans-serif"}}>
+          fontFamily:"'Saira Stencil One',sans-serif"}}>
           🎯 CADENCE RESOLVED
         </div>
-        <div style={{fontFamily:"'Orbitron',sans-serif", fontSize:13, color:'#44ffaa',
+        <div style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:13, color:'#44ffaa',
           letterSpacing:2, textShadow:'0 0 14px #44ffaa88'}}>
           {cad.name} · {cad.formula}
         </div>

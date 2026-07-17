@@ -90,7 +90,7 @@ function MockNoteTrack({ notes, rootNote, noteTypes }) {
   // noteTypes: array matching notes, each being a type key
   return (
     <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:5, padding:"6px 8px"}}>
-      <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:1, marginBottom:4}}>
+      <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:1, marginBottom:4}}>
         MELODY LINE <span style={{color:"#ffcc44", marginLeft:6}}>RN: {rootNote}</span>
       </div>
       <div style={{display:"flex", gap:3, flexWrap:"wrap", marginBottom:4}}>
@@ -110,7 +110,7 @@ function MockDiceTier({ tier }) {
       {labels.map((l,i) => (
         <div key={i} style={{
           padding:"2px 8px", borderRadius:3, fontSize:10, fontWeight:700,
-          fontFamily:"'Orbitron',sans-serif",
+          fontFamily:"'Saira Stencil One',sans-serif",
           background: i===tier ? "#1a1200" : "#080f1e",
           border: `1px solid ${i===tier ? colors[i]+"88" : "#1a2a4044"}`,
           color: i===tier ? colors[i] : "#1e3a5f",
@@ -147,7 +147,7 @@ function MockFlashBadge({ text, color }) {
   return (
     <div style={{
       display:"inline-block", padding:"4px 12px", borderRadius:4,
-      fontFamily:"'Orbitron',sans-serif", fontSize:13, fontWeight:700,
+      fontFamily:"'Saira Stencil One',sans-serif", fontSize:13, fontWeight:700,
       color, textShadow:`0 0 12px ${color}, 0 0 24px ${color}`,
       background:"#050810", border:`1px solid ${color}44`,
     }}>{text}</div>
@@ -169,7 +169,7 @@ function TutSection_Overview() {
       </p>
       {/* Turn flow diagram */}
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:10}}>TURN FLOW</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:10}}>TURN FLOW</div>
         <div style={{display:"flex", alignItems:"center", gap:6, flexWrap:"wrap"}}>
           {[
             { label:"Build Melody Line", icon:"🎵", color:"#aa55ff" },
@@ -180,7 +180,7 @@ function TutSection_Overview() {
             <React.Fragment key={i}>
               <div style={{display:"flex", flexDirection:"column", alignItems:"center", gap:3}}>
                 <div style={{fontSize:18}}>{step.icon}</div>
-                <div style={{fontSize:8, color:step.color, fontFamily:"'Orbitron',sans-serif", textAlign:"center", maxWidth:60}}>{step.label}</div>
+                <div style={{fontSize:8, color:step.color, fontFamily:"'Saira Stencil One',sans-serif", textAlign:"center", maxWidth:60}}>{step.label}</div>
               </div>
               {i < 3 && <div style={{color:"#1e3a5f", fontSize:16, marginBottom:12}}>→</div>}
             </React.Fragment>
@@ -202,7 +202,7 @@ function TutSection_Overview() {
         one hex from a glancing Swing, up to three from a crushing Sonic defeat.
       </p>
       <div style={{background:"#14110a", border:"1px solid #ffd70044", borderRadius:6, padding:"8px 12px"}}>
-        <div style={{fontSize:8, color:"#ffd700", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>⭐ FAME — THE WIN CONDITION</div>
+        <div style={{fontSize:8, color:"#ffd700", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>⭐ FAME — THE WIN CONDITION</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           The first Spirit to hit the Fame target wins. Fame comes from winning
           clashes (bigger margin, bigger payout) and playing legendary riffs — and
@@ -215,7 +215,7 @@ function TutSection_Overview() {
         </p>
       </div>
       <div style={{background:"#0c0a18", border:"1px solid #aa88ff44", borderRadius:6, padding:"8px 12px"}}>
-        <div style={{fontSize:8, color:"#ccaaff", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>🎼 THE RIFFBOOK</div>
+        <div style={{fontSize:8, color:"#ccaaff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>🎼 THE RIFFBOOK</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           Hidden in the note system are legendary riffs — everything from Beethoven's
           four fateful knocks to the slyest jazz lick. Lay a riff's opening intervals
@@ -226,7 +226,7 @@ function TutSection_Overview() {
         </p>
       </div>
       <div style={{background:"#0c0818", border:"1px solid #ff44dd44", borderRadius:6, padding:"8px 12px"}}>
-        <div style={{fontSize:8, color:"#ff88ee", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>✨ EVENT SPACES</div>
+        <div style={{fontSize:8, color:"#ff88ee", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>✨ EVENT SPACES</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           A pink marquee hex pulses somewhere on the board. Step onto it to draw a card
           ripped straight from rock history — flaming disc riots, dubious bat snacks,
@@ -236,7 +236,7 @@ function TutSection_Overview() {
         </p>
       </div>
       <div style={{background:"#08140e", border:"1px solid #44cc8844", borderRadius:6, padding:"8px 12px"}}>
-        <div style={{fontSize:8, color:"#44cc88", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>🎉 CREW &amp; GEAR</div>
+        <div style={{fontSize:8, color:"#44cc88", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>🎉 CREW &amp; GEAR</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           The skills you unlock — Amps, Roadies, Groupie crews and your Ultimate — show up
           as deployable chips on your Spirit card. Tap a glowing chip to send a crew out:
@@ -256,7 +256,7 @@ function TutSection_Board() {
         a hard enough hit can knock you clean off the board.
       </p>
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>HEX TYPES</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>HEX TYPES</div>
         <div style={{display:"flex", gap:16, alignItems:"flex-start"}}>
           <div style={{display:"flex", flexDirection:"column", alignItems:"center", gap:4}}>
             <MockHex />
@@ -282,7 +282,7 @@ function TutSection_Board() {
         </p>
       </div>
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:6}}>BOARD LAYOUT</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:6}}>BOARD LAYOUT</div>
         <div style={{display:"grid", gridTemplateColumns:"repeat(5,36px)", gap:2, justifyContent:"start"}}>
           {[null,"⚠",null,"⚠",null,"⚠","✦","🟦","✦","⚠",null,"✦","✦","✦",null,"⚠","✦","🟥","✦","⚠",null,"⚠",null,"⚠",null].map((c,i)=>{
             const isEdge = c==="⚠";
@@ -307,7 +307,7 @@ function TutSection_NoteTrack() {
 
       {/* Note Stock */}
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>NOTE STOCK — your available notes</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>NOTE STOCK — your available notes</div>
         <div style={{display:"flex", gap:3, flexWrap:"wrap", marginBottom:8}}>
           {[
             {n:"C", t:"inScale"},{n:"D", t:"inScale"},{n:"E", t:"majorThird"},
@@ -336,7 +336,7 @@ function TutSection_NoteTrack() {
 
       {/* Root & pivot */}
       <div style={{background:"#14110a", border:"1px solid #ffcc4444", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#ffcc44", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:6}}>⚡ THE PIVOT — set your key first</div>
+        <div style={{fontSize:8, color:"#ffcc44", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:6}}>⚡ THE PIVOT — set your key first</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           Before you can build, you pivot: pick your <span style={{color:"#ffcc44"}}>Root note</span> and
           declare <span style={{color:"#aaccff"}}>Major</span> or <span style={{color:"#ff88aa"}}>Minor</span>.
@@ -379,7 +379,7 @@ function TutSection_HarmonicCharge() {
 
       {/* Upgrade threshold */}
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:10}}>HOW HC BECOMES POWER</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:10}}>HOW HC BECOMES POWER</div>
         <div style={{display:"flex", flexDirection:"column", gap:7}}>
           {[
             {step:"1", color:"#88ffcc", text:"Earn HC points from clean, in-scale play (see below)."},
@@ -402,7 +402,7 @@ function TutSection_HarmonicCharge() {
 
       {/* What earns points */}
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>WHAT EARNS HC POINTS</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>WHAT EARNS HC POINTS</div>
         {[
           {icon:"🎶", label:"End on 4th or 5th",       pts:"+2 pts", color:"#cc55ff"},
           {icon:"🎶", label:"Octave resolution",        pts:"+3 pts + die floor", color:"#44aaff"},
@@ -419,7 +419,7 @@ function TutSection_HarmonicCharge() {
       </div>
 
       <div style={{background:"#0c0a18", border:"1px solid #aa88ff44", borderRadius:6, padding:"8px 12px"}}>
-        <div style={{fontSize:8, color:"#ccaaff", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>🌳 WHERE IT GOES</div>
+        <div style={{fontSize:8, color:"#ccaaff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>🌳 WHERE IT GOES</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           Your HC meter sits at the top of the Melody Line panel. Spend it across the Skill
           Tree — Groupie crews, close-combat moves, Amps and the PA system, stage effects, and
@@ -439,7 +439,7 @@ function TutSection_DriveSustain() {
       </div>
 
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:10}}>DRIVE BOOST — diatonic step runs</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:10}}>DRIVE BOOST — diatonic step runs</div>
         <MockNoteTrack notes={["C","D","E","F","G"]} rootNote="C"
           noteTypes={["inScale","inScale","majorThird","fourth","fifth"]}/>
         <div style={{marginTop:8, display:"flex", gap:6, alignItems:"center"}}>
@@ -454,7 +454,7 @@ function TutSection_DriveSustain() {
       </div>
 
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:10}}>FEEDBACK BOOST — repeat patterns</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:10}}>FEEDBACK BOOST — repeat patterns</div>
         <div style={{display:"flex", gap:10}}>
           <div>
             <div style={{fontSize:8, color:"#44aaff", marginBottom:4}}>Type A: Same note</div>
@@ -478,7 +478,7 @@ function TutSection_DriveSustain() {
       </div>
 
       <div style={{background:"#0e0c18", border:"1px solid #aa55ff44", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#aa55ff", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:6}}>NON-STACKING RULE</div>
+        <div style={{fontSize:8, color:"#aa55ff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:6}}>NON-STACKING RULE</div>
         <div style={{display:"flex", gap:8, alignItems:"center", fontSize:9, color:"#a0b8cc"}}>
           <span style={{color:"#ffaa44"}}>+1 Drive active</span>
           <span style={{color:"#3a5a7a"}}>→ earn</span>
@@ -515,7 +515,7 @@ function TutSection_Intervals() {
         (marked 🔒) are <span style={{color:"#66ccff"}}>earned</span> — they come online as you climb the Music Theory ladder.
       </p>
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>INTERVAL REFERENCE (Root = C)</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>INTERVAL REFERENCE (Root = C)</div>
         <div style={{display:"flex", gap:3, marginBottom:10}}>
           {["C","D","E","F","G","A","Bb","B","F#"].map((n,i)=>{
             const iv = intervals.find(x=>x.note===n);
@@ -560,7 +560,7 @@ function TutSection_Dischord() {
 
       {/* Dischord track */}
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>CHROMATIC RUN → STAGGER</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>CHROMATIC RUN → STAGGER</div>
         <MockNoteTrack notes={["C","C#","D","D#","E"]} rootNote="C"
           noteTypes={["inScale","dischord","inScale","dischord","majorThird"]}/>
         <div style={{marginTop:6, display:"flex", gap:6, alignItems:"center", flexWrap:"wrap"}}>
@@ -581,7 +581,7 @@ function TutSection_Dischord() {
 
       {/* Mojo Drain */}
       <div style={{background:"#050c18", border:"1px solid #1155ff33", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#4499ff", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>MOJO DRAIN</div>
+        <div style={{fontSize:8, color:"#4499ff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>MOJO DRAIN</div>
         <div style={{display:"flex", gap:8, alignItems:"center", marginBottom:6}}>
           <MockNoteHex note="Bb" type="minorSeventh"/>
           <div style={{fontSize:9, color:"#a0b8cc"}}>Finish your track on the minor 7th, then attack to slap Mojo Drain on your enemy.</div>
@@ -619,7 +619,7 @@ function TutSection_Spirits() {
           borderLeft:`3px solid ${s.color}`, borderRadius:6, padding:"10px 12px"}}>
           <div style={{display:"flex", gap:10, marginBottom:6}}>
             <div style={{flex:1}}>
-              <div style={{fontFamily:"'Orbitron',sans-serif", fontSize:11, color:s.color, marginBottom:2}}>{s.name}</div>
+              <div style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:11, color:s.color, marginBottom:2}}>{s.name}</div>
               <div style={{fontSize:8, color:"#5a7a8a", marginBottom:6}}>{s.style} Style</div>
               <div style={{fontSize:9, color:"#8a9aaa", lineHeight:1.55}}>{s.lore}</div>
             </div>
@@ -659,7 +659,7 @@ function TutSection_Attacks() {
       </p>
 
       <div style={{background:"#14100a", border:"1px solid #f6ad5544", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#f6ad55", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>🔊 SONIC ATTACK — ranged</div>
+        <div style={{fontSize:8, color:"#f6ad55", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>🔊 SONIC ATTACK — ranged</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           Your main weapon, powered by the Melody Line you just committed. It fires a narrow
           three-hex beam straight ahead, so facing matters. Sonic needs at least one connected
@@ -669,7 +669,7 @@ function TutSection_Attacks() {
       </div>
 
       <div style={{background:"#140a0a", border:"1px solid #ff664444", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#ff6644", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>🥊 SWING ATTACK — close combat</div>
+        <div style={{fontSize:8, color:"#ff6644", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>🥊 SWING ATTACK — close combat</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:"0 0 8px"}}>
           Step next to a rival and swing — no amp required. But committing to a swing drops your guard:
           your Sustain falls 1 until your next turn, so melee is a real risk (ranged Sonic keeps you safe).
@@ -690,7 +690,7 @@ function TutSection_Attacks() {
       </div>
 
       <div style={{background:"#0a0e18", border:"1px solid #ff886644", borderRadius:6, padding:"8px 12px"}}>
-        <div style={{fontSize:8, color:"#ff8866", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>💥 KNOCKBACK</div>
+        <div style={{fontSize:8, color:"#ff8866", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>💥 KNOCKBACK</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           Lose a clash and you're shoved back — one hex from a Swing, up to three from a big Sonic
           hit. Near an <span style={{color:"#ff4400"}}>edge</span>, that shove can launch you clean off the board.
@@ -709,7 +709,7 @@ function TutSection_Amps() {
       </p>
 
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:10}}>AMPS IN RANGE → YOUR DIE</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:10}}>AMPS IN RANGE → YOUR DIE</div>
         <MockDiceTier tier={1}/>
         <div style={{display:"flex", flexDirection:"column", gap:3, marginTop:10}}>
           {[
@@ -731,7 +731,7 @@ function TutSection_Amps() {
       </div>
 
       <div style={{background:"#050c18", border:"1px solid #44cc8833", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#44cc88", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:6}}>🔧 ROADIES</div>
+        <div style={{fontSize:8, color:"#44cc88", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:6}}>🔧 ROADIES</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           Amps don't move on their own. Hire Roadies and they'll haul an amp a couple of hexes every
           so often, so your rig follows you around the board instead of pinning you in one corner.
@@ -739,7 +739,7 @@ function TutSection_Amps() {
       </div>
 
       <div style={{background:"#0a0a18", border:"1px solid #aa55ff44", borderRadius:6, padding:"8px 12px"}}>
-        <div style={{fontSize:8, color:"#aa88ff", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>🪤 GETTING UNPLUGGED</div>
+        <div style={{fontSize:8, color:"#aa88ff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>🪤 GETTING UNPLUGGED</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           Cables cut both ways. Rivals can yank yours — the Pranksta crew disconnects nearby amps — and
           a Spirit with no connected amp can neither fire a Sonic Attack nor retaliate against one. Guard your rig.
@@ -759,7 +759,7 @@ function TutSection_Crowd() {
       </p>
 
       <div style={{background:"#160a12", border:"1px solid #ff66aa44", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#ff66aa", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>TWO KINDS OF FAN</div>
+        <div style={{fontSize:8, color:"#ff66aa", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>TWO KINDS OF FAN</div>
         <div style={{display:"flex", gap:8, alignItems:"baseline", marginBottom:5}}>
           <span style={{fontSize:9, color:"#ffcc44", fontWeight:700, minWidth:72}}>♥ Diehards</span>
           <span style={{fontSize:9, color:"#6a8a9a"}}>your loyal core — each adds a lot to the multiplier and almost never leaves.</span>
@@ -771,7 +771,7 @@ function TutSection_Crowd() {
       </div>
 
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>WORK THE ROOM — gain by zone</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>WORK THE ROOM — gain by zone</div>
         {[
           {zone:"🌟 Mainstage (centre)", note:"biggest gain · hardens Diehards · wins over Unsure fans · demolition risk", c:"#ff66aa"},
           {zone:"🔥 The Pit (ring 1)",   note:"still a heavy draw, just a touch less than centre",                       c:"#ff8844"},
@@ -790,7 +790,7 @@ function TutSection_Crowd() {
       </div>
 
       <div style={{background:"#160808", border:"1px solid #ff444444", borderRadius:6, padding:"8px 12px"}}>
-        <div style={{fontSize:8, color:"#ff5544", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>💔 GETTING DEMOLISHED</div>
+        <div style={{fontSize:8, color:"#ff5544", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>💔 GETTING DEMOLISHED</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           Take a beating in the spotlight and the magic curdles: a wave of Casuals scatters — some
           defecting straight to whoever beat you — and you're locked out of crowd gain for a few turns
@@ -819,7 +819,7 @@ function TutSection_ModCards() {
           borderLeft:`3px solid ${c.color}`, borderRadius:6, padding:"10px 12px"}}>
           <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:4}}>
             <span style={{fontSize:16}}>{c.icon}</span>
-            <span style={{fontSize:11, color:c.color, fontWeight:700, fontFamily:"'Orbitron',sans-serif", letterSpacing:1}}>{c.name}</span>
+            <span style={{fontSize:11, color:c.color, fontWeight:700, fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:1}}>{c.name}</span>
             <span style={{marginLeft:"auto", fontSize:7.5, color:c.color, padding:"1px 6px", borderRadius:3,
               background:c.color+"22", border:`1px solid ${c.color}44`}}>{c.when}</span>
           </div>
@@ -848,7 +848,7 @@ function TutSection_Winning() {
       </p>
 
       <div style={{background:"#14110a", border:"1px solid #ffd70044", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:9, color:"#ffd700", fontFamily:"'Orbitron',sans-serif", letterSpacing:1, marginBottom:5}}>⭐ FAME LEGEND</div>
+        <div style={{fontSize:9, color:"#ffd700", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:1, marginBottom:5}}>⭐ FAME LEGEND</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           The headline route: be first to <span style={{color:"#ffd700"}}>25 Fame Points</span>. Fame pours
           in from winning clashes (multiplied by your crowd), discovering riffs, holding the Limelight,
@@ -857,7 +857,7 @@ function TutSection_Winning() {
       </div>
 
       <div style={{background:"#100a16", border:"1px solid #cc66ff44", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:9, color:"#cc88ff", fontFamily:"'Orbitron',sans-serif", letterSpacing:1, marginBottom:5}}>🌟 HOLD THE LIMELIGHT</div>
+        <div style={{fontSize:9, color:"#cc88ff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:1, marginBottom:5}}>🌟 HOLD THE LIMELIGHT</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           Seize the centre stage and hold it: start and end a turn on the Limelight and the spotlight pays
           out bonus Fame, multiplied by your crowd. No instant win — but it's a contested objective that
@@ -866,14 +866,14 @@ function TutSection_Winning() {
       </div>
 
       <div style={{background:"#160a0a", border:"1px solid #ff664444", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:9, color:"#ff6644", fontFamily:"'Orbitron',sans-serif", letterSpacing:1, marginBottom:5}}>💥 LAST SPIRIT STANDING</div>
+        <div style={{fontSize:9, color:"#ff6644", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:1, marginBottom:5}}>💥 LAST SPIRIT STANDING</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           The brute-force option: knock down every rival's stands until you're the only act left on the bill.
         </p>
       </div>
 
       <div style={{background:"#08140e", border:"1px solid #44cc8844", borderRadius:6, padding:"8px 12px"}}>
-        <div style={{fontSize:8, color:"#44cc88", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:5}}>🔦 THE SPOTLIGHT</div>
+        <div style={{fontSize:8, color:"#44cc88", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>🔦 THE SPOTLIGHT</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           A roaming searchlight drifts across the board, moving once each round. End your turn standing in it
           and you heal +1 Vibe — a handy patch-up if you can read where it's headed next.
@@ -881,7 +881,7 @@ function TutSection_Winning() {
       </div>
 
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, marginBottom:8}}>🎯 CADENCE OBJECTIVES — end turns on these scale degrees, any key</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>🎯 CADENCE OBJECTIVES — end turns on these scale degrees, any key</div>
         {cadences.map((c,i)=>(
           <div key={i} style={{display:"flex", alignItems:"center", gap:8, marginBottom:5}}>
             <span style={{fontSize:12}}>{c.icon}</span>
@@ -939,7 +939,7 @@ export function Tutorial({ onBack }) {
   return (
     <div style={{minHeight:"100vh", background:"#050810", display:"flex", alignItems:"center", justifyContent:"center",
       fontFamily:"'Share Tech Mono','Courier New',monospace", padding:16}}>
-      <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700&display=swap" rel="stylesheet"/>
+      <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Saira+Stencil+One&family=Saira:wght@400;600;700&display=swap" rel="stylesheet"/>
       <style>{`*{box-sizing:border-box} ::-webkit-scrollbar{width:4px} ::-webkit-scrollbar-thumb{background:#2d3748;border-radius:2px}
         .bar{background:#0d1a2a;border-radius:2px;height:5px}
         .bar-f{height:5px;border-radius:2px;transition:width .3s}
@@ -954,7 +954,7 @@ export function Tutorial({ onBack }) {
           background:"linear-gradient(135deg, #0a1428 0%, #0d1a30 100%)", flexShrink:0}}>
           <div style={{display:"flex", alignItems:"center", justifyContent:"space-between"}}>
             <div>
-              <div style={{fontFamily:"'Orbitron',sans-serif", fontSize:16, color:"#f6ad55", letterSpacing:3}}>📖 HOW TO PLAY</div>
+              <div style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:16, color:"#f6ad55", letterSpacing:3}}>📖 HOW TO PLAY</div>
               <div style={{fontSize:8, color:"#3a5a7a", letterSpacing:2, marginTop:2}}>ROCK LEGENDS: SPIRIT WARS</div>
             </div>
             <button onClick={onBack}
@@ -980,7 +980,7 @@ export function Tutorial({ onBack }) {
                 }}>
                 <div style={{fontSize:12, marginBottom:2}}>{sec.icon}</div>
                 <div style={{fontSize:8, color: activeSection===sec.id ? sec.color : "#3a5a7a",
-                  fontFamily:"'Orbitron',sans-serif", letterSpacing:0.5, lineHeight:1.4}}>
+                  fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:0.5, lineHeight:1.4}}>
                   {sec.title}
                 </div>
               </div>
@@ -993,7 +993,7 @@ export function Tutorial({ onBack }) {
               <>
                 <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:14, paddingBottom:10, borderBottom:`1px solid ${section.color}22`}}>
                   <span style={{fontSize:20}}>{section.icon}</span>
-                  <div style={{fontFamily:"'Orbitron',sans-serif", fontSize:13, color:section.color, letterSpacing:2}}>
+                  <div style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:13, color:section.color, letterSpacing:2}}>
                     {section.title}
                   </div>
                 </div>

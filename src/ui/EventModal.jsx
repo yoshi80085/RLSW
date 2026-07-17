@@ -47,7 +47,7 @@ export function EventModal({ activeEvent, answerTrivia, setActiveEvent, spirits 
           <div style={{ textAlign: "center", marginBottom: 12 }}>
             <div style={{ fontSize: 26, marginBottom: 4, filter: `drop-shadow(0 0 12px ${accent})` }}>🎤</div>
             <div style={{
-              fontFamily: "'Orbitron',sans-serif", fontSize: 14, color: accent,
+              fontFamily: "'Saira Stencil One',sans-serif", fontSize: 14, color: accent,
               letterSpacing: 3, textShadow: `0 0 14px ${accent}aa`,
             }}>ROCK TRIVIA</div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 6 }}>
@@ -110,7 +110,7 @@ export function EventModal({ activeEvent, answerTrivia, setActiveEvent, spirits 
           {isResult && (
             <>
               <div style={{
-                textAlign: "center", fontFamily: "'Orbitron',sans-serif", fontSize: 12, letterSpacing: 1,
+                textAlign: "center", fontFamily: "'Saira Stencil One',sans-serif", fontSize: 12, letterSpacing: 1,
                 color: correct ? "#44cc88" : "#ff7766", marginBottom: 10,
                 textShadow: `0 0 12px ${correct ? "#44cc88" : "#ff7766"}77`,
               }}>
@@ -126,7 +126,7 @@ export function EventModal({ activeEvent, answerTrivia, setActiveEvent, spirits 
               <div style={{ textAlign: "center" }}>
                 <button onClick={() => setActiveEvent(null)}
                   style={{
-                    fontFamily: "'Orbitron',sans-serif", fontSize: 11, letterSpacing: 2, cursor: "pointer",
+                    fontFamily: "'Saira Stencil One',sans-serif", fontSize: 11, letterSpacing: 2, cursor: "pointer",
                     padding: "8px 28px", borderRadius: 6, color: accent, fontWeight: 700,
                     background: "transparent", border: `1.5px solid ${accent}`,
                   }}>🤘 ROCK ON</button>

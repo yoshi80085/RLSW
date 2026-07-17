@@ -10,7 +10,7 @@ export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiri
       {testMode && (
         <>
           <button onClick={()=>setDevOpen(o=>!o)} title="Testing Grounds"
-            style={{position:'fixed',bottom:14,left:14,zIndex:9996,fontFamily:"'Orbitron',sans-serif",fontSize:11,letterSpacing:1,
+            style={{position:'fixed',bottom:14,left:14,zIndex:9996,fontFamily:"'Saira Stencil One',sans-serif",fontSize:11,letterSpacing:1,
               cursor:'pointer',padding:'8px 13px',borderRadius:8,background:'#2a1030',border:'1.5px solid #cc66ff',color:'#e0a0ff',
               boxShadow:'0 0 16px #cc66ff55'}}>
             🧪 {devOpen ? 'CLOSE' : 'TEST'}
@@ -20,7 +20,7 @@ export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiri
               maxHeight:'calc(100vh - 80px)',overflowY:'auto',overscrollBehavior:'contain',
               background:'linear-gradient(165deg,#140a20,#0a0814)',border:'1.5px solid #cc66ff',borderRadius:10,
               padding:'12px 14px',boxShadow:'0 0 30px #cc66ff44',fontFamily:"'Share Tech Mono',monospace"}}>
-              <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:'#e0a0ff',letterSpacing:2,marginBottom:8}}>🧪 TESTING GROUNDS</div>
+              <div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,color:'#e0a0ff',letterSpacing:2,marginBottom:8}}>🧪 TESTING GROUNDS</div>
               <div style={{fontSize:8,color:'#9a7ab5',marginBottom:10}}>Acting spirit: <span style={{color:'#e0a0ff'}}>{spiritById[devCurrentSpiritId()]?.name ?? '—'}</span></div>
 
               <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,marginBottom:4}}>🎇 STAGE EFFECTS</div>

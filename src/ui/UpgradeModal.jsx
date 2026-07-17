@@ -22,7 +22,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
             <div style={{
               position:'fixed', inset:0, background:'#000000cc', zIndex:8000,
               display:'flex', alignItems:'center', justifyContent:'center',
-              fontFamily:"'Orbitron',sans-serif", pointerEvents:'none',
+              fontFamily:"'Saira Stencil One',sans-serif", pointerEvents:'none',
             }}>
               <div style={{
                 pointerEvents:'all',
@@ -76,7 +76,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
           <div style={{
             position:'fixed', inset:0, background:'#000000dd', zIndex:8000,
             display:'flex', alignItems:'center', justifyContent:'center',
-            fontFamily:"'Orbitron',sans-serif",
+            fontFamily:"'Saira Stencil One',sans-serif",
           }}>
             <div style={{
               width: activeRoute ? 560 : 480,

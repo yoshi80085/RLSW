@@ -295,11 +295,11 @@ export function StageFXBanner({ banner, smokeFx, laserFx, pyroFx, animatronics }
           textAlign: 'center', boxShadow: `0 0 22px ${meta.color}66, 0 6px 24px #000c`,
         }}>
           <div style={{ fontSize: 10, letterSpacing: 3, color: meta.color,
-            fontFamily: "'Orbitron',sans-serif" }}>
+            fontFamily: "'Saira Stencil One',sans-serif" }}>
             🎇 STAGE EFFECT — THE SHOW HITS ⭐{banner.threshold}
           </div>
           <div style={{ fontSize: 19, fontWeight: 800, color: '#fff', margin: '3px 0 2px',
-            fontFamily: "'Orbitron',sans-serif", textShadow: `0 0 12px ${meta.color}` }}>
+            fontFamily: "'Saira Stencil One',sans-serif", textShadow: `0 0 12px ${meta.color}` }}>
             {meta.icon} {meta.name.toUpperCase()}
           </div>
           <div style={{ fontSize: 10.5, color: '#b8c4d6', maxWidth: 380 }}>{meta.blurb}</div>

@@ -40,7 +40,7 @@ export function StatKnob({ label, value = 0, boost = 0, max = 10, color = "#ffcc
           </span>
         </div>
       </div>
-      <span style={{ fontSize:6, color:"#7a90aa", letterSpacing:1, fontFamily:"'Orbitron',sans-serif" }}>{label}</span>
+      <span style={{ fontSize:6, color:"#7a90aa", letterSpacing:1, fontFamily:"'Saira Stencil One',sans-serif" }}>{label}</span>
     </div>
   );
 }

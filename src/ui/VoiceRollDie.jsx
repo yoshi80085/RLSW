@@ -25,7 +25,7 @@ export function VoiceRollDie({ fx }) {
     <div style={{
       position:'fixed', top:'34%', left:'50%', transform:'translate(-50%,-50%)',
       zIndex:9999, pointerEvents:'none', display:'flex', flexDirection:'column',
-      alignItems:'center', gap:10, fontFamily:"'Orbitron',sans-serif",
+      alignItems:'center', gap:10, fontFamily:"'Saira Stencil One',sans-serif",
     }}>
       <div style={{fontSize:13, fontWeight:700, color:accent, letterSpacing:2,
         textShadow:`0 0 12px ${accent}`}}>🎤 VOICE ROLL</div>

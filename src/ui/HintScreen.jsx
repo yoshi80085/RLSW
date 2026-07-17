@@ -52,7 +52,7 @@ export default function HintScreen({ onDone }) {
       alignItems: 'center', justifyContent: 'center',
       fontFamily: "'Share Tech Mono', monospace",
     }}>
-      <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap" rel="stylesheet"/>
+      <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Saira+Stencil+One&family=Saira:wght@400;600;700&display=swap" rel="stylesheet"/>
       <style>{`
         @keyframes hint-card-in { from { opacity: 0; transform: translateY(10px); }
                                   to   { opacity: 1; transform: none; } }
@@ -62,7 +62,7 @@ export default function HintScreen({ onDone }) {
 
       {/* header */}
       <div style={{
-        fontFamily: "'Orbitron', sans-serif", fontWeight: 700,
+        fontFamily: "'Saira Stencil One', sans-serif", fontWeight: 700,
         fontSize: 'clamp(20px, 3.4vw, 34px)', letterSpacing: 8, color: '#f6ad55',
         textShadow: '0 0 24px #f6ad5566', marginBottom: 8,
         animation: 'hint-card-in 500ms ease-out',
@@ -82,7 +82,7 @@ export default function HintScreen({ onDone }) {
         animation: 'hint-card-in 500ms ease-out 200ms both',
       }}>
         <div style={{
-          fontFamily: "'Orbitron', sans-serif", fontSize: 11, color: '#ff66cc',
+          fontFamily: "'Saira Stencil One', sans-serif", fontSize: 11, color: '#ff66cc',
           letterSpacing: 3, marginBottom: 12, textShadow: '0 0 10px #ff66cc55',
         }}>💡 ROADIE'S HINT</div>
         <div style={{ fontSize: 13, color: '#c0d0e0', lineHeight: 1.75 }}>{hint}</div>

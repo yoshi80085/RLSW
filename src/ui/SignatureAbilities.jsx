@@ -21,7 +21,7 @@ export function SignatureAbilities({ SKILL_BY_ID, SKILL_TREE, SPIRIT_DEFS, noteS
               overflowY:'auto', background:'linear-gradient(180deg,#0a1428,#070d18)', border:`2px solid ${col}`,
               borderRadius:16, boxShadow:`0 0 50px ${col}55`, padding:'22px 24px'}}>
               <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4}}>
-                <div style={{fontFamily:"'Orbitron',sans-serif", fontSize:18, letterSpacing:2, color:col,
+                <div style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:18, letterSpacing:2, color:col,
                   textShadow:`0 0 16px ${col}77`}}>{route.icon} {sp?.name ?? route.label}</div>
                 <button onClick={() => setSignatureSpirit(null)} style={{fontFamily:'inherit', fontSize:10,
                   padding:'3px 10px', cursor:'pointer', background:'#0a1020', border:'1px solid #1e3a5f',
