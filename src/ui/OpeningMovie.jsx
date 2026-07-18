@@ -244,7 +244,7 @@ function CinematicLayer({ visible }) {
     } catch { return null; }
   };
 
-  // ── BGM: play opening song, fail silently if autoplay blocked ──
+  // ── BGM: play opening song — retry on first user gesture if autoplay blocked ──
   const audioRef = useRef(null);
   useEffect(() => {
     if (!visible) return;
@@ -252,9 +252,29 @@ function CinematicLayer({ visible }) {
     audio.loop = false;
     audio.volume = 0.7;
     audioRef.current = audio;
-    audio.play().catch(() => {});
+
+    let unlockCleanup = null;
+    audio.play().catch(() => {
+      // Autoplay blocked — resume on the first user interaction.
+      // stopImmediatePropagation prevents the skip-handler from also
+      // firing, so the first tap starts the music without ending the movie.
+      const unlock = (e) => {
+        e.stopImmediatePropagation();
+        audio.play().catch(() => {});
+        window.removeEventListener('pointerdown', unlock, true);
+        window.removeEventListener('keydown', unlock, true);
+      };
+      window.addEventListener('pointerdown', unlock, { capture: true });
+      window.addEventListener('keydown', unlock, { capture: true });
+      unlockCleanup = () => {
+        window.removeEventListener('pointerdown', unlock, true);
+        window.removeEventListener('keydown', unlock, true);
+      };
+    });
+
     return () => {
       audio.pause(); audio.currentTime = 0;
+      if (unlockCleanup) unlockCleanup();
       if (rumbleRef.current) { rumbleRef.current.pause(); rumbleRef.current = null; }
     };
   }, [visible]);
