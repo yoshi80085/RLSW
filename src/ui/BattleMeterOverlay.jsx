@@ -383,7 +383,7 @@ export function BattleMeterOverlay({
 
           return (
             <div style={{
-              position:'fixed', inset:0, background:'#000000f2', zIndex:9980,
+              position:'fixed', inset:0, background:'#000000', zIndex:9980,
               display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
               fontFamily:"'Saira Stencil One',sans-serif",
               animation: clashing ? containerShake : undefined,

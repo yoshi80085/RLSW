@@ -1745,6 +1745,25 @@ function Game({ gameState, onReturnToLobby }) {
     return audioCtxRef.current;
   }
 
+  // ── SHARED AUDIO BUSES — one master limiter + ONE reverb convolver per
+  // context. Previously every note built its own DynamicsCompressor and
+  // ConvolverNode (the most expensive WebAudio node); a committed track with
+  // overlapping tails ran ~20 of each at once and choked the audio thread on
+  // weaker machines. Notes now SEND to these shared buses instead.
+  function getAudioBuses(ctx) {
+    if (!ctx.__rlswBuses) {
+      const master = ctx.createDynamicsCompressor();
+      master.threshold.value = -16; master.knee.value = 22;
+      master.ratio.value = 5; master.attack.value = 0.003; master.release.value = 0.25;
+      master.connect(ctx.destination);
+      const verbBus = ctx.createConvolver();
+      verbBus.buffer = getReverbImpulse(ctx);
+      verbBus.connect(master);
+      ctx.__rlswBuses = { master, verbBus };
+    }
+    return ctx.__rlswBuses;
+  }
+
   const NOTE_FREQS = {
     'C':3,'C#':4,'Db':4,'D':5,'D#':6,'Eb':6,'E':7,'F':8,'F#':9,'Gb':9,
     'G':10,'G#':11,'Ab':11,'A':0,'A#':1,'Bb':1,'B':2,
@@ -1784,7 +1803,10 @@ function Game({ gameState, onReturnToLobby }) {
         if (pc === undefined) return;
         freq = PC_FREQ_BASE[pc];
       }
-      const now = ctx.currentTime;
+      // opts.when: schedule on the AUDIO clock (sample-accurate, immune to
+      // main-thread jank) — sequence players pass future times so a stressed
+      // render loop can't delay or bunch the notes.
+      const now = Math.max(ctx.currentTime, opts.when ?? 0);
       const holdTime  = opts.holdTime  ?? 1.1;   // how long it stays loud
       const fadeTime  = opts.fadeTime  ?? 0.8;   // release fade duration
       const volume    = opts.volume    ?? 0.18;
@@ -1853,12 +1875,9 @@ function Game({ gameState, onReturnToLobby }) {
       comp.gain.value = 1 - kn.drive * 0.12;
       mid.connect(comp);
 
-      // 🔊 MASTER LIMITER — tames peaks so cranked drive/voices stay punchy
-      // without clipping the output. Everything (dry + echo + verb) feeds it.
-      const master = ctx.createDynamicsCompressor();
-      master.threshold.value = -16; master.knee.value = 22;
-      master.ratio.value = 5; master.attack.value = 0.003; master.release.value = 0.25;
-      master.connect(ctx.destination);
+      // 🔊 MASTER LIMITER — shared bus (see getAudioBuses); tames peaks so
+      // cranked drive/voices stay punchy. Everything (dry + echo + verb) feeds it.
+      const { master, verbBus } = getAudioBuses(ctx);
 
       // Amp envelope: sharp pick → hold at volume → slow fade
       const ampEnv = ctx.createGain();
@@ -1891,15 +1910,12 @@ function Game({ gameState, onReturnToLobby }) {
         delayGain.connect(delayFade);
         delayFade.connect(master);
       }
-      // VERB knob — convolution reverb wet path
+      // VERB knob — send to the SHARED convolver (per-note send level)
       if (kn.verb > 0.02) {
-        const convolver = ctx.createConvolver();
-        convolver.buffer = getReverbImpulse(ctx);
         const revGain = ctx.createGain();
         revGain.gain.value = kn.verb * 0.85;
-        ampEnv.connect(convolver);
-        convolver.connect(revGain);
-        revGain.connect(master);
+        ampEnv.connect(revGain);
+        revGain.connect(verbBus);
       }
 
       osc1.start(now); osc2.start(now); sub.start(now);
@@ -1950,6 +1966,9 @@ function Game({ gameState, onReturnToLobby }) {
     // quarters and dotted notes, the occasional breath between phrases,
     // a couple of random accents — and the final note rings out long,
     // because every phrase deserves a resolution.
+    // ⏱️ All notes are scheduled UP FRONT on the audio clock (`when`) — the
+    // whole phrase plays out sample-accurately even if the main thread jams.
+    const t0 = getAudioCtx().currentTime + 0.06;
     let tMs = 60;
     let prevFreq = null; // 🎵 auto voice-leading — each note in the octave nearest the last
     track.forEach((note, i) => {
@@ -1962,12 +1981,13 @@ function Game({ gameState, onReturnToLobby }) {
       const breath = !last && Math.random() < 0.18 ? 150 : 0; // phrase break
       const accent = last || Math.random() < 0.22;
       const vlf = voiceLeadFreq(note, prevFreq); if (vlf) prevFreq = vlf;
-      setTimeout(() => playNoteSound(note, {
+      playNoteSound(note, {
         holdTime: dur,
         fadeTime: last ? 0.9 : 0.35,
         volume: accent ? 0.19 : 0.14,
         freq: vlf ?? undefined,
-      }), tMs);
+        when: t0 + tMs / 1000,
+      });
       tMs += dur * 580 + 90 + breath; // longer notes breathe longer before the next
     });
   }
@@ -1983,6 +2003,8 @@ function Game({ gameState, onReturnToLobby }) {
     const n = track.length;
     if (!n) return;
     const jitter = () => (Math.random() - 0.5) * 18;   // human, not quantised
+    const t0 = getAudioCtx().currentTime + 0.06;       // audio-clock anchor
+    const at = ms => t0 + ms / 1000;
     let tMs = 60;
 
     // Spacing shrinks as the track grows so all passes always fit the budget.
@@ -1992,11 +2014,12 @@ function Game({ gameState, onReturnToLobby }) {
     let prev = null;
     track.forEach((note, i) => {
       const f = voiceLeadFreq(note, prev); if (f) prev = f;
-      setTimeout(() => playNoteSound(note, {
+      playNoteSound(note, {
         holdTime: 0.12, fadeTime: 0.08,
         volume: i % 2 === 0 ? 0.16 : 0.13,             // alternate-picked accents
         freq: f ?? undefined,
-      }), tMs + jitter());
+        when: at(tMs + jitter()),
+      });
       tMs += sp1;
     });
     tMs += 120;                                        // breath
@@ -2019,20 +2042,22 @@ function Game({ gameState, onReturnToLobby }) {
     varTrack.forEach((note, i) => {
       let f = voiceLeadFreq(note, prev); if (f) prev = f;
       if (i === octIdx && f) f *= 2;
-      setTimeout(() => playNoteSound(note, {
+      playNoteSound(note, {
         holdTime: 0.11, fadeTime: 0.08,
         volume: i % 2 === 0 ? 0.17 : 0.14,
         freq: f ?? undefined,
-      }), tMs + jitter());
+        when: at(tMs + jitter()),
+      });
       tMs += sp2;
     });
 
     // Short tracks stop here — two fast passes IS the shred…
     if (n < 4) {
       const last = track[n - 1];                       // …but the ending still rings.
-      setTimeout(() => playNoteSound(last, {
+      playNoteSound(last, {
         holdTime: 1.0, fadeTime: 0.9, volume: 0.19,
-      }), tMs + 90);
+        when: at(tMs + 90),
+      });
       return;
     }
     tMs += 130;                                        // gather for the climax
@@ -2047,20 +2072,22 @@ function Game({ gameState, onReturnToLobby }) {
       if (f && prev && f <= prev && f < 900) f *= 2;
       if (f) prev = f;
       const sp = Math.round(90 - (35 * i) / Math.max(1, run.length - 1)); // 90→55ms accelerando
-      setTimeout(() => playNoteSound(note, {
+      playNoteSound(note, {
         holdTime: 0.10, fadeTime: 0.07,
         volume: 0.14 + (0.05 * i) / run.length,        // swelling into the peak
         freq: f ?? undefined,
-      }), tMs + jitter());
+        when: at(tMs + jitter()),
+      });
       tMs += sp;
     });
     // 🎸 The money note — the track's real final note, octave up, ringing long.
     const last = track[n - 1];
     const lastF = voiceLeadFreq(last, prev);
-    setTimeout(() => playNoteSound(last, {
+    playNoteSound(last, {
       holdTime: 1.1, fadeTime: 1.0, volume: 0.2,
       freq: lastF ? lastF * 2 : undefined,
-    }), tMs + 40);
+      when: at(tMs + 40),
+    });
   }
 
   // 🤘 METALNESS MONSTER — the commit is a BREAKDOWN: the track dropped two
@@ -2071,6 +2098,8 @@ function Game({ gameState, onReturnToLobby }) {
   function playBreakdownSequence(track) {
     const n = track.length;
     if (!n) return;
+    const t0 = getAudioCtx().currentTime + 0.06;          // audio-clock anchor
+    const at = ms => t0 + ms / 1000;
     let tMs = 60;
     const jitter = () => (Math.random() - 0.5) * 14;      // tight but human
     const unit = Math.max(72, Math.min(110, Math.round(560 / n)));
@@ -2085,20 +2114,20 @@ function Game({ gameState, onReturnToLobby }) {
       // GALLOP — chug, chug, HIT.
       [0, 1, 2].forEach(k => {
         const accent = k === 2;
-        setTimeout(() => playNoteSound(note, {
+        playNoteSound(note, {
           holdTime: accent ? 0.16 : 0.08, fadeTime: 0.06,
           volume: accent ? 0.20 : 0.13,
           freq: low,
-        }), tMs + jitter());
+          when: at(tMs + jitter()),
+        });
         tMs += accent ? unit * 1.6 : unit * 0.7;
       });
       // Every third note: a trashing CLUSTER — the chug note smeared against
       // its own detuned neighbours, struck together. Pure noise-wall.
       if (i % 3 === 2 && low) {
-        setTimeout(() => {
-          playNoteSound(note, { holdTime: 0.10, fadeTime: 0.08, volume: 0.13, freq: low * 1.06 });
-          playNoteSound(note, { holdTime: 0.10, fadeTime: 0.08, volume: 0.13, freq: low * 0.94 });
-        }, tMs + jitter());
+        const w = at(tMs + jitter());
+        playNoteSound(note, { holdTime: 0.10, fadeTime: 0.08, volume: 0.13, freq: low * 1.06, when: w });
+        playNoteSound(note, { holdTime: 0.10, fadeTime: 0.08, volume: 0.13, freq: low * 0.94, when: w });
         tMs += unit * 0.9;
       }
     });
@@ -2109,11 +2138,10 @@ function Game({ gameState, onReturnToLobby }) {
     const lf = voiceLeadFreq(lastNote, prev);
     const root = lf ? lf / 2 : undefined;
     tMs += 90;
-    setTimeout(() => {
-      playNoteSound(lastNote, { holdTime: 1.2, fadeTime: 1.1, volume: 0.22, freq: root });
-      playNoteSound(lastNote, { holdTime: 1.2, fadeTime: 1.1, volume: 0.15, freq: root ? root * 1.5 : undefined });
-      playNoteSound(lastNote, { holdTime: 1.2, fadeTime: 1.1, volume: 0.17, freq: root ? root / 2 : undefined });
-    }, tMs);
+    const wSlam = at(tMs);
+    playNoteSound(lastNote, { holdTime: 1.2, fadeTime: 1.1, volume: 0.22, freq: root, when: wSlam });
+    playNoteSound(lastNote, { holdTime: 1.2, fadeTime: 1.1, volume: 0.15, freq: root ? root * 1.5 : undefined, when: wSlam });
+    playNoteSound(lastNote, { holdTime: 1.2, fadeTime: 1.1, volume: 0.17, freq: root ? root / 2 : undefined, when: wSlam });
   }
 
   // 👽 INTERGALACTIC 0 — the commit is a DJ SCRATCH SESSION: each note becomes
@@ -2131,6 +2159,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (!n) return;
     const BEAT = 270;                                       // ~111 BPM quarter note
     const patterns = ['baby', 'chirp', 'transformer', 'chirp', 'flare', 'baby'];
+    const t0 = getAudioCtx().currentTime + 0.06;            // audio-clock anchor
+    const at = ms => t0 + ms / 1000;
     let tMs = 60;
     let prev = null;
 
@@ -2141,16 +2171,17 @@ function Game({ gameState, onReturnToLobby }) {
 
       if (last) {
         // Finale: scribble scratch → deep sub drop
-        setTimeout(() => playScratchAtom(note, base, 'scribble'), tMs);
+        playScratchAtom(note, base, 'scribble', at(tMs));
         tMs += 380;
-        setTimeout(() => playNoteSound(note, {
+        playNoteSound(note, {
           holdTime: 0.85, fadeTime: 1.1, volume: 0.22, freq: base / 4,
-        }), tMs);
+          when: at(tMs),
+        });
         return;
       }
 
       const pat = patterns[i % patterns.length];
-      setTimeout(() => playScratchAtom(note, base, pat), tMs);
+      playScratchAtom(note, base, pat, at(tMs));
 
       // Swung spacing — long-short pairs with tiny humanisation
       const swing = i % 2 === 0 ? BEAT * 0.62 : BEAT * 0.38;
@@ -2163,10 +2194,10 @@ function Game({ gameState, onReturnToLobby }) {
   // Builds a lightweight audio graph per scratch and schedules frequency +
   // gain automation for the chosen pattern. Routes through the Spirit's tone
   // stack (drive → distortion → lowpass → echo → verb → master limiter).
-  function playScratchAtom(note, baseFreq, pattern) {
+  function playScratchAtom(note, baseFreq, pattern, when) {
     try {
       const ctx = getAudioCtx();
-      const now = ctx.currentTime;
+      const now = Math.max(ctx.currentTime, when ?? 0);
       const kn = toneBySpiritRef.current?.[actingRef.current?.id] ?? TONE_KNOB_DEFAULTS;
       const V  = TONE_VOICES[kn.voice] ?? TONE_VOICES.saw;
 
@@ -2296,11 +2327,8 @@ function Game({ gameState, onReturnToLobby }) {
       comp.gain.value = 1 - kn.drive * 0.12;
       mid.connect(comp);
 
-      // ── Master limiter ──
-      const master = ctx.createDynamicsCompressor();
-      master.threshold.value = -16; master.knee.value = 22;
-      master.ratio.value = 5; master.attack.value = 0.003; master.release.value = 0.25;
-      master.connect(ctx.destination);
+      // ── Master limiter — shared bus (see getAudioBuses) ──
+      const { master, verbBus } = getAudioBuses(ctx);
 
       // Route through envelope
       comp.connect(ampEnv);
@@ -2318,12 +2346,10 @@ function Game({ gameState, onReturnToLobby }) {
         dl.connect(dg); dg.connect(df); df.connect(master);
       }
 
-      // ── Reverb ──
+      // ── Reverb — send to the SHARED convolver ──
       if (kn.verb > 0.02) {
-        const conv = ctx.createConvolver();
-        conv.buffer = getReverbImpulse(ctx);
         const rg = ctx.createGain(); rg.gain.value = kn.verb * 0.85;
-        ampEnv.connect(conv); conv.connect(rg); rg.connect(master);
+        ampEnv.connect(rg); rg.connect(verbBus);
       }
 
       // ── Start / stop ──
@@ -2344,6 +2370,8 @@ function Game({ gameState, onReturnToLobby }) {
   function playStrutSequence(track) {
     const n = track.length;
     if (!n) return;
+    const t0 = getAudioCtx().currentTime + 0.06;          // audio-clock anchor
+    const at = ms => t0 + ms / 1000;
     let tMs = 60;
     const unit = Math.max(120, Math.min(170, Math.round(920 / n))); // half-time swagger
     let prev = null;
@@ -2351,20 +2379,23 @@ function Game({ gameState, onReturnToLobby }) {
       const f = voiceLeadFreq(note, prev); if (f) prev = f;
       if (i === n - 1) return;                            // finale below
       // STOMP — low and fat…
-      setTimeout(() => playNoteSound(note, {
+      playNoteSound(note, {
         holdTime: 0.22, fadeTime: 0.14, volume: 0.19, freq: f ? f / 2 : undefined,
-      }), tMs);
+        when: at(tMs),
+      });
       tMs += unit;
       // …answered an octave up on the offbeat — the hip-swing.
-      setTimeout(() => playNoteSound(note, {
+      playNoteSound(note, {
         holdTime: 0.12, fadeTime: 0.10, volume: 0.13, freq: f ?? undefined,
-      }), tMs);
+        when: at(tMs),
+      });
       tMs += Math.round(unit * 0.55);
       // Every third pair: the CLAP — two octaves up, short and bright.
       if (i % 3 === 2) {
-        setTimeout(() => playNoteSound(note, {
+        playNoteSound(note, {
           holdTime: 0.07, fadeTime: 0.08, volume: 0.15, freq: f ? f * 2 : undefined,
-        }), tMs);
+          when: at(tMs),
+        });
         tMs += Math.round(unit * 0.6);
       }
     });
@@ -2375,20 +2406,20 @@ function Game({ gameState, onReturnToLobby }) {
       let f = voiceLeadFreq(note, prev);
       if (f && prev && f <= prev && f < 1200) f *= 2;     // force the climb, capped
       if (f) prev = f;
-      setTimeout(() => playNoteSound(note, {
+      playNoteSound(note, {
         holdTime: 0.07, fadeTime: 0.06,
         volume: 0.10 + (0.05 * i) / run.length,
         freq: f ?? undefined,
-      }), tMs);
+        when: at(tMs),
+      });
       tMs += 55;
     });
     // ── THE POSE — final note as a wide two-octave chord, held like a bow.
     const lastNote = track[n - 1];
     const lf = voiceLeadFreq(lastNote, prev);
-    setTimeout(() => {
-      playNoteSound(lastNote, { holdTime: 1.1, fadeTime: 1.0, volume: 0.18, freq: lf ?? undefined });
-      playNoteSound(lastNote, { holdTime: 1.1, fadeTime: 1.0, volume: 0.14, freq: lf ? lf / 2 : undefined });
-    }, tMs + 60);
+    const wPose = at(tMs + 60);
+    playNoteSound(lastNote, { holdTime: 1.1, fadeTime: 1.0, volume: 0.18, freq: lf ?? undefined, when: wPose });
+    playNoteSound(lastNote, { holdTime: 1.1, fadeTime: 1.0, volume: 0.14, freq: lf ? lf / 2 : undefined, when: wPose });
   }
 
   // ─── RIFF PLAYBACK ───────────────────────────────────────────────────────────
