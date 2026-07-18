@@ -201,6 +201,7 @@ const CINE_STYLES = `
   @keyframes om-letterbox  { from{transform:scaleY(0)}to{transform:scaleY(1)} }
   @keyframes om-text-up    { from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)} }
   @keyframes om-fade-in    { from{opacity:0}to{opacity:1} }
+  @keyframes om-press-pulse { 0%,100%{opacity:.25} 50%{opacity:.9} }
 `;
 
 // ── STORYBOARD ──────────────────────────────────────────────────────────────
@@ -244,37 +245,11 @@ function CinematicLayer({ visible }) {
     } catch { return null; }
   };
 
-  // ── BGM: play opening song — retry on first user gesture if autoplay blocked ──
-  const audioRef = useRef(null);
+  // BGM lives in OpeningMovie now (gated behind the splash so it's
+  // guaranteed) — this layer only cleans up the looping rumble SFX.
   useEffect(() => {
     if (!visible) return;
-    const audio = new Audio(rlMovieSong);
-    audio.loop = false;
-    audio.volume = 0.7;
-    audioRef.current = audio;
-
-    let unlockCleanup = null;
-    audio.play().catch(() => {
-      // Autoplay blocked — resume on the first user interaction.
-      // stopImmediatePropagation prevents the skip-handler from also
-      // firing, so the first tap starts the music without ending the movie.
-      const unlock = (e) => {
-        e.stopImmediatePropagation();
-        audio.play().catch(() => {});
-        window.removeEventListener('pointerdown', unlock, true);
-        window.removeEventListener('keydown', unlock, true);
-      };
-      window.addEventListener('pointerdown', unlock, { capture: true });
-      window.addEventListener('keydown', unlock, { capture: true });
-      unlockCleanup = () => {
-        window.removeEventListener('pointerdown', unlock, true);
-        window.removeEventListener('keydown', unlock, true);
-      };
-    });
-
     return () => {
-      audio.pause(); audio.currentTime = 0;
-      if (unlockCleanup) unlockCleanup();
       if (rumbleRef.current) { rumbleRef.current.pause(); rumbleRef.current = null; }
     };
   }, [visible]);
@@ -879,10 +854,59 @@ function SceneLayer({ scene, visible, onVideoEnd }) {
 export default function OpeningMovie({ onDone }) {
   const [idx, setIdx] = useState(0);
   const [outro, setOutro] = useState(false);
+  const [started, setStarted] = useState(false);
   const timerRef = useRef(null);
   const doneRef = useRef(false);
+  const bgmRef = useRef(null);
+
+  // ── BGM — guaranteed. Try autoplay immediately; if the browser blocks
+  // it, the splash below holds the movie until a gesture makes play()
+  // actually succeed. The cinematic never rolls without its song.
+  useEffect(() => {
+    const audio = new Audio(rlMovieSong);
+    audio.loop = false;
+    audio.volume = 0.7;
+    bgmRef.current = audio;
+    let disposed = false; // StrictMode guard: promise may settle post-cleanup
+    audio.play()
+      .then(() => { if (!disposed) setStarted(true); })
+      .catch((err) => {
+        // NotAllowedError = autoplay policy → wait on the splash.
+        // Anything else (missing/undecodable file) → don't hold the movie
+        // hostage; start without music rather than soft-locking.
+        if (!disposed && err && err.name !== 'NotAllowedError') setStarted(true);
+      });
+    return () => {
+      disposed = true;
+      audio.pause(); audio.currentTime = 0;
+      bgmRef.current = null;
+    };
+  }, []);
+
+  // ── Splash gate: retry play() on each gesture until it SUCCEEDS, then
+  // start the movie. pointerup matters: on touch, pointerdown carries no
+  // user activation (it's granted at pointerup). Escape/modifier keydowns
+  // grant none either — a failed retry just keeps the splash up.
+  useEffect(() => {
+    if (started) return;
+    const tryStart = (e) => {
+      e.stopImmediatePropagation();
+      const a = bgmRef.current;
+      if (!a) { setStarted(true); return; }
+      a.play().then(() => setStarted(true)).catch(() => {});
+    };
+    window.addEventListener('pointerdown', tryStart, { capture: true });
+    window.addEventListener('pointerup', tryStart, { capture: true });
+    window.addEventListener('keydown', tryStart, { capture: true });
+    return () => {
+      window.removeEventListener('pointerdown', tryStart, true);
+      window.removeEventListener('pointerup', tryStart, true);
+      window.removeEventListener('keydown', tryStart, true);
+    };
+  }, [started]);
 
   useEffect(() => {
+    if (!started) return; // splash gestures must not skip
     const finish = () => {
       if (doneRef.current) return;
       doneRef.current = true;
@@ -897,9 +921,10 @@ export default function OpeningMovie({ onDone }) {
       window.removeEventListener('pointerdown', skip);
       clearTimeout(timerRef.current);
     };
-  }, [onDone]);
+  }, [started, onDone]);
 
   useEffect(() => {
+    if (!started) return; // scene clock starts with the music
     if (outro) {
       timerRef.current = setTimeout(() => {
         if (!doneRef.current) { doneRef.current = true; onDone(); }
@@ -912,9 +937,31 @@ export default function OpeningMovie({ onDone }) {
       else setOutro(true);
     }, scene.durMs);
     return () => clearTimeout(timerRef.current);
-  }, [idx, outro, onDone]);
+  }, [started, idx, outro, onDone]);
 
   const scene = STORYBOARD[idx];
+
+  // ── Splash — shown only while autoplay is blocked. The prompt fades in
+  // after 350ms so it never flashes when autoplay succeeds instantly.
+  if (!started) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, background: '#131612',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', zIndex: 50,
+      }}>
+        <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+        <style>{CINE_STYLES}</style>
+        <div style={{
+          fontFamily: "'Share Tech Mono', monospace",
+          fontSize: 'clamp(12px, 1.6vw, 16px)', letterSpacing: 6,
+          color: '#8aa0c0', textShadow: '0 0 12px #7c3aed66',
+          opacity: 0, animation: 'om-press-pulse 2.2s ease-in-out 350ms infinite',
+          userSelect: 'none',
+        }}>▸ TAP OR PRESS ANY KEY ◂</div>
+      </div>
+    );
+  }
 
   const advanceScene = () => {
     if (doneRef.current || outro) return;
