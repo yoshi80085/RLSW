@@ -39,6 +39,8 @@ import { ToneFader } from "./ui/ToneFader.jsx";
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import React from "react";
 import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
+import riffOffSong from "./Riff_off_song.mp3";
+import battleSong  from "./battle_song.mp3";
 import { ampLinked, ampMstEdges, computeAmpRigs } from "./board/ampRigs.js";
 import { hexRingFromCenter, crowdMultiplier, advanceDB, SPOTLIGHT_POOL } from "./board/boardHelpers.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRiffMiss, playBeamClash, playBeamSurge, playBeamBreak, playFanPop } from "./audio/riffSfx.js";
@@ -1168,6 +1170,28 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── BGM ── (state moved to ./hooks/useBgmState.js)
   const { audioRef, currentTrackIdxRef, bgmMuted, setBgmMuted, bgmVolume, setBgmVolume, bgmTrackNum, setBgmTrackNum } = useBgmState();
+
+  // ─── BATTLE / RIFF-OFF MUSIC ──────────────────────────────────────────────
+  const battleAudioRef = useRef(null);
+  function playBattleMusic(src, volume = 0.5) {
+    stopBattleMusic();
+    const audio = new Audio(src);
+    audio.loop = true;
+    audio.volume = volume;
+    audio.play().catch(() => {});
+    battleAudioRef.current = audio;
+  }
+  function stopBattleMusic() {
+    if (battleAudioRef.current) {
+      battleAudioRef.current.pause();
+      battleAudioRef.current.currentTime = 0;
+      battleAudioRef.current = null;
+    }
+  }
+  // Stop battle/riff-off music whenever the battle closes
+  useEffect(() => {
+    if (!battleState) stopBattleMusic();
+  }, [battleState]);
 
   // Manual zoom/pan
   const manualVBRef  = useRef(null);
@@ -6568,6 +6592,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     // pickPos: 0 = center. Negative = toward attacker (left). Positive = toward defender (right).
     showTip('combat');
+    playBattleMusic(battleSong, 0.7);
     dieSettledRef.current = { atk: false, def: false }; // fresh battle, fresh dice
     setBattleState({
       phase: 'enter_attacker',
@@ -6997,6 +7022,7 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`☀️🔥 SUNBEAM scorches the stage — ${scorched.length} hex${scorched.length !== 1 ? 'es' : ''} burn for 2 rounds!`);
     }
 
+    playBattleMusic(battleSong, 0.7);
     dieSettledRef.current = { atk: false, def: false }; // fresh battle, fresh dice
     setBattleState({
       phase: 'enter_attacker',
@@ -7143,6 +7169,7 @@ function Game({ gameState, onReturnToLobby }) {
     }
 
     riffEngineRef.current = null;
+    playBattleMusic(riffOffSong, 0.7);
     setBattleState({
       riffOff: true, sonicAttack: true,   // sonicAttack → sonic-scale knockback
       riffTier: tier,                     // Phase R4: 'acoustic' | 'stadium'

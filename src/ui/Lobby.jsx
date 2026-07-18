@@ -3,11 +3,9 @@ import { SPIRIT_DEFS, SPIRIT_OPTIONS, ROSTER_ORDER, UNLOCKED_DEFAULT } from "../
 import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "../data/corners.js";
 import { cornerFacing } from "../board/boardHelpers.js";
 import { makeNetClient } from "../net/client.js";
-import menuSong1 from "../Menu_song_1.mp3";
-import menuSong2 from "../Menu_song_2.mp3";
 import menuSong3 from "../Menu_song_3.mp3";
 
-const MENU_SONGS = [menuSong1, menuSong2, menuSong3];
+const MENU_SONGS = [menuSong3];
 
 export function Lobby({ onStart, onTutorial }) {
   const [playerCount, setPlayerCount] = useState(null);

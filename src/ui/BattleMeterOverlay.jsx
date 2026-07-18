@@ -30,6 +30,46 @@ function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
   const half = size / 2;
   const val = value ?? 1;
 
+  // ── D4: equilateral triangle (tetrahedron face) ─────────────────────
+  if (sides === 4) {
+    const pad = 6;
+    const topY = pad;
+    const botY = size - pad;
+    const triH = botY - topY;
+    const halfW = triH * Math.tan(Math.PI / 6);   // ≈ 0.577 × height
+    const pts = `${half},${topY} ${half + halfW},${botY} ${half - halfW},${botY}`;
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
+        <polygon points={pts} fill="#060810" stroke={glowColor}
+          strokeWidth={spinning ? 3 : 2}
+          style={spinning ? {filter:`drop-shadow(0 0 10px ${glowColor})`} : {}}/>
+        {/* inner triangle accent */}
+        {(() => {
+          const r2 = 0.6;
+          const cx = half, cy = topY + triH * 0.42;
+          const p2 = [
+            `${cx},${cy - triH * r2 * 0.38}`,
+            `${cx + halfW * r2},${cy + triH * r2 * 0.22}`,
+            `${cx - halfW * r2},${cy + triH * r2 * 0.22}`,
+          ].join(' ');
+          return <polygon points={p2} fill="none" stroke={glowColor} strokeWidth={0.7} opacity={0.25}/>;
+        })()}
+        <text x={half} y={topY + triH * 0.58}
+          textAnchor="middle" fontSize={size * 0.36} fontWeight="900"
+          fontFamily="'Saira Stencil One',sans-serif"
+          fill={glowColor}
+          style={spinning ? {filter:`drop-shadow(0 0 8px ${glowColor})`} : {}}>
+          {val}
+        </text>
+        <text x={half} y={botY - 4}
+          textAnchor="middle" fontSize={size * 0.13} fontWeight="700"
+          fontFamily="'Saira Stencil One',sans-serif" fill={glowColor} opacity={0.5}>
+          d4
+        </text>
+      </svg>
+    );
+  }
+
   // ── D6: classic rounded-rect with pips ──────────────────────────────
   if (sides === 6) {
     const face = Math.max(1, Math.min(6, val));
