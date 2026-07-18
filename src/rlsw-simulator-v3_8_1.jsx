@@ -1295,39 +1295,42 @@ function Game({ gameState, onReturnToLobby }) {
     cadenceToast, setCadenceToast,
   } = useRiffState();
 
-  // ─── BGM SETUP ───────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const idx = nextBgmTrack();
-    currentTrackIdxRef.current = idx;
-    setBgmTrackNum(idx + 1);
-    const audio = new Audio(BGM_TRACKS[idx]);
-    audio.volume = bgmVolume;
-    audio.loop = false;
-    audioRef.current = audio;
-    audio.play().catch(() => {});
-    function handleEnded() {
-      const next = nextBgmTrack(currentTrackIdxRef.current);
-      currentTrackIdxRef.current = next;
-      setBgmTrackNum(next + 1);
-      audio.src = BGM_TRACKS[next];
-      audio.play().catch(() => {});
-    }
-    audio.addEventListener("ended", handleEnded);
-    return () => { audio.removeEventListener("ended", handleEnded); audio.pause(); };
-  }, []); // eslint-disable-line
-
-  useEffect(() => { if (audioRef.current) audioRef.current.muted = bgmMuted; }, [bgmMuted]);
-  useEffect(() => { if (audioRef.current) audioRef.current.volume = bgmVolume; }, [bgmVolume]);
-
-  const bgmSkip = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const next = nextBgmTrack(currentTrackIdxRef.current);
-    currentTrackIdxRef.current = next;
-    setBgmTrackNum(next + 1);
-    audio.src = BGM_TRACKS[next];
-    if (!bgmMuted) audio.play().catch(() => {});
-  }, [bgmMuted]);
+  // ─── BGM DISABLED ────────────────────────────────────────────────────────────
+  // BGM tracks removed — using custom music only.  Uncomment to re-enable.
+  //
+  // useEffect(() => {
+  //   const idx = nextBgmTrack();
+  //   currentTrackIdxRef.current = idx;
+  //   setBgmTrackNum(idx + 1);
+  //   const audio = new Audio(BGM_TRACKS[idx]);
+  //   audio.volume = bgmVolume;
+  //   audio.loop = false;
+  //   audioRef.current = audio;
+  //   audio.play().catch(() => {});
+  //   function handleEnded() {
+  //     const next = nextBgmTrack(currentTrackIdxRef.current);
+  //     currentTrackIdxRef.current = next;
+  //     setBgmTrackNum(next + 1);
+  //     audio.src = BGM_TRACKS[next];
+  //     audio.play().catch(() => {});
+  //   }
+  //   audio.addEventListener("ended", handleEnded);
+  //   return () => { audio.removeEventListener("ended", handleEnded); audio.pause(); };
+  // }, []); // eslint-disable-line
+  //
+  // useEffect(() => { if (audioRef.current) audioRef.current.muted = bgmMuted; }, [bgmMuted]);
+  // useEffect(() => { if (audioRef.current) audioRef.current.volume = bgmVolume; }, [bgmVolume]);
+  //
+  // const bgmSkip = useCallback(() => {
+  //   const audio = audioRef.current;
+  //   if (!audio) return;
+  //   const next = nextBgmTrack(currentTrackIdxRef.current);
+  //   currentTrackIdxRef.current = next;
+  //   setBgmTrackNum(next + 1);
+  //   audio.src = BGM_TRACKS[next];
+  //   if (!bgmMuted) audio.play().catch(() => {});
+  // }, [bgmMuted]);
+  const bgmSkip = () => {}; // no-op stub
 
   // Attach wheel listener as non-passive
   useEffect(() => {
@@ -1909,14 +1912,14 @@ function Game({ gameState, onReturnToLobby }) {
   const COMMIT_STYLES = {
     cosmic_ronin:      'shred',      // 🗡️ lightning passes + climax run
     Metalness_Monster: 'breakdown',  // 🤘 chug gallops + slam clusters
-    intergalactic_0:   'pocket',     // 👽 swung 808 bassline
+    intergalactic_0:   'scratch',    // 👽 80s DJ vinyl scratching
     Glamarchy:         'strut',      // 👑 stomp-clap swagger + glitter gliss
   };
 
   function playTrackSequence(track, opts = {}) {
     if (opts.style === 'shred')     { playShredSequence(track); return; }
     if (opts.style === 'breakdown') { playBreakdownSequence(track); return; }
-    if (opts.style === 'pocket')    { playPocketSequence(track); return; }
+    if (opts.style === 'scratch')   { playDJScratchSequence(track); return; }
     if (opts.style === 'strut')     { playStrutSequence(track); return; }
     // The committed track plays as a real MELODY, not a slop of evenly
     // spaced notes. Each commit rolls a fresh groove: a mix of eighths,
@@ -2089,52 +2092,223 @@ function Game({ gameState, onReturnToLobby }) {
     }, tMs);
   }
 
-  // 👽 INTERGALACTIC 0 — the commit drops into THE POCKET: an 808-deep swung
-  // bassline on a fixed head-nod grid. Ronin's shred is chaos; this is a
-  // metronome with swagger — the groove lives in the SPACE between hits
-  // (ghost notes, rests, downbeats that THUMP), and it ends on an octave POP
-  // into a long 808 boom.
-  function playPocketSequence(track) {
+  // 👽 INTERGALACTIC 0 — the commit is a DJ SCRATCH SESSION: each note becomes
+  // a vinyl scratch — rapid frequency sweeps (the "wicka-wicka"), transformer
+  // cuts, chirps, and flares — all driven by the Web Audio API's frequency
+  // automation for smooth, continuous sweeps (not discrete note hops).
+  // The sequence cycles through scratch patterns on a swung hip-hop grid,
+  // finishing with a scribble scratch into a deep sub drop.
+  //
+  // Scratching bypasses playNoteSound to get CONTINUOUS frequency sweeps —
+  // each atom builds its own mini audio graph routed through the Spirit's
+  // tone knobs so drive / tone / echo / verb still apply.
+  function playDJScratchSequence(track) {
     const n = track.length;
     if (!n) return;
-    const SIXTEENTH = 150;                                // ~100 BPM head-nod
-    const SWING = 0.64;                                   // long-short pairs
-    const longS  = Math.round(SIXTEENTH * 2 * SWING);
-    const shortS = SIXTEENTH * 2 - longS;
-    let tMs = 80, step = 0;
+    const BEAT = 270;                                       // ~111 BPM quarter note
+    const patterns = ['baby', 'chirp', 'transformer', 'chirp', 'flare', 'baby'];
+    let tMs = 60;
     let prev = null;
+
     track.forEach((note, i) => {
       const f = voiceLeadFreq(note, prev); if (f) prev = f;
-      const sub = f ? f / 4 : undefined;                  // the 808 register
-      const downbeat = i % 2 === 0;
-      if (i === n - 1) {
-        // Octave POP — the funk flourish…
+      const base = f ?? 330;
+      const last = i === n - 1;
+
+      if (last) {
+        // Finale: scribble scratch → deep sub drop
+        setTimeout(() => playScratchAtom(note, base, 'scribble'), tMs);
+        tMs += 380;
         setTimeout(() => playNoteSound(note, {
-          holdTime: 0.08, fadeTime: 0.06, volume: 0.12, freq: f ?? undefined,
-        }), tMs);
-        tMs += shortS;
-        // …then the BOOM. Nod.
-        setTimeout(() => playNoteSound(note, {
-          holdTime: 0.9, fadeTime: 1.3, volume: 0.24, freq: sub,
+          holdTime: 0.85, fadeTime: 1.1, volume: 0.22, freq: base / 4,
         }), tMs);
         return;
       }
-      setTimeout(() => playNoteSound(note, {
-        holdTime: downbeat ? 0.30 : 0.16, fadeTime: 0.22,
-        volume: downbeat ? 0.22 : 0.15,                   // downbeats THUMP
-        freq: sub,
-      }), tMs);
-      tMs += step % 2 === 0 ? longS : shortS; step++;
-      // Ghost note tucked in the gap — felt more than heard.
-      if (downbeat && Math.random() < 0.6) {
-        setTimeout(() => playNoteSound(note, {
-          holdTime: 0.05, fadeTime: 0.05, volume: 0.06,
-          freq: sub ? sub * 2 : undefined,
-        }), tMs - Math.round(shortS * 0.45));
-      }
-      // A full breath of SPACE every four hits — the pocket IS the rests.
-      if (i % 4 === 3) tMs += SIXTEENTH;
+
+      const pat = patterns[i % patterns.length];
+      setTimeout(() => playScratchAtom(note, base, pat), tMs);
+
+      // Swung spacing — long-short pairs with tiny humanisation
+      const swing = i % 2 === 0 ? BEAT * 0.62 : BEAT * 0.38;
+      tMs += Math.round(swing + (Math.random() * 16 - 8));
+      if (i % 4 === 3) tMs += Math.round(BEAT * 0.45);     // phrase breath
     });
+  }
+
+  // ── SCRATCH ATOM — a single vinyl scratch with continuous frequency sweeps ──
+  // Builds a lightweight audio graph per scratch and schedules frequency +
+  // gain automation for the chosen pattern. Routes through the Spirit's tone
+  // stack (drive → distortion → lowpass → echo → verb → master limiter).
+  function playScratchAtom(note, baseFreq, pattern) {
+    try {
+      const ctx = getAudioCtx();
+      const now = ctx.currentTime;
+      const kn = toneBySpiritRef.current?.[actingRef.current?.id] ?? TONE_KNOB_DEFAULTS;
+      const V  = TONE_VOICES[kn.voice] ?? TONE_VOICES.saw;
+
+      // ── Pattern durations & sweep targets ──
+      const hi  = baseFreq * 2;       // octave up
+      const lo  = baseFreq * 0.5;     // octave down
+      const dur = ({ baby: 0.22, chirp: 0.12, transformer: 0.34,
+                     flare: 0.26, scribble: 0.38 })[pattern] ?? 0.22;
+      const vol = 0.17;
+
+      // ── Oscillators (two detuned + sub for thickness) ──
+      const osc1 = ctx.createOscillator(); osc1.type = V.osc1;
+      const osc2 = ctx.createOscillator(); osc2.type = V.osc2;
+      const sub  = ctx.createOscillator(); sub.type  = V.sub;
+      osc1.frequency.setValueAtTime(baseFreq, now);
+      osc2.frequency.setValueAtTime(baseFreq * 1.008, now);
+      sub.frequency.setValueAtTime(baseFreq / 2, now);
+
+      // ── Frequency sweeps — the soul of each scratch ──
+      const f1 = osc1.frequency, f2 = osc2.frequency, fs = sub.frequency;
+      const sweep = (t, v) => {
+        f1.linearRampToValueAtTime(v,         t);
+        f2.linearRampToValueAtTime(v * 1.008, t);
+        fs.linearRampToValueAtTime(v / 2,     t);
+      };
+      const set = (t, v) => {
+        f1.setValueAtTime(v,         t);
+        f2.setValueAtTime(v * 1.008, t);
+        fs.setValueAtTime(v / 2,     t);
+      };
+
+      switch (pattern) {
+        case 'baby': {
+          // Forward (rises) → back (falls)
+          sweep(now + dur * 0.42, hi);
+          sweep(now + dur,        lo * 1.2);
+          break;
+        }
+        case 'chirp': {
+          // Fast rise → instant cut & reset at the peak
+          sweep(now + dur * 0.65, hi * 1.4);
+          set  (now + dur * 0.67, baseFreq);
+          sweep(now + dur,        baseFreq * 0.85);
+          break;
+        }
+        case 'transformer': {
+          // Slow steady rise — the gain cuts (below) create the rhythm
+          sweep(now + dur, hi * 1.2);
+          break;
+        }
+        case 'flare': {
+          // Slow fall — gain flutters slice it up
+          sweep(now + dur, lo * 0.8);
+          break;
+        }
+        case 'scribble': {
+          // Rapid tiny back-and-forth (8 segments)
+          const segs = 8;
+          const segDur = dur / segs;
+          for (let s = 0; s < segs; s++) {
+            const target = s % 2 === 0
+              ? baseFreq * (1.3 + Math.random() * 0.3)
+              : baseFreq * (0.6 + Math.random() * 0.2);
+            sweep(now + segDur * (s + 0.92), target);
+          }
+          break;
+        }
+      }
+
+      // ── Gain envelope — amp envelope + transformer / flare cuts ──
+      const ampEnv = ctx.createGain();
+      ampEnv.gain.setValueAtTime(0, now);
+      ampEnv.gain.linearRampToValueAtTime(vol, now + 0.004);            // near-instant attack
+
+      if (pattern === 'transformer') {
+        // Rapid on/off cuts — the crossfader stutter
+        const cuts = 5;
+        const step = dur / cuts;
+        for (let c = 0; c < cuts; c++) {
+          const on  = now + step * c;
+          const off = on + step * 0.55;
+          ampEnv.gain.setValueAtTime(vol,   on  + 0.004);
+          ampEnv.gain.setValueAtTime(0.005, off);
+        }
+      } else if (pattern === 'flare') {
+        // Two quick gain dips mid-scratch
+        const t1 = now + dur * 0.30, t2 = now + dur * 0.60;
+        ampEnv.gain.setValueAtTime(0.005, t1);
+        ampEnv.gain.setValueAtTime(vol,   t1 + 0.018);
+        ampEnv.gain.setValueAtTime(0.005, t2);
+        ampEnv.gain.setValueAtTime(vol,   t2 + 0.018);
+      }
+
+      // Release tail
+      ampEnv.gain.setValueAtTime(vol * 0.7,  now + dur);
+      ampEnv.gain.exponentialRampToValueAtTime(0.001, now + dur + 0.12);
+
+      // ── Oscillator mix ──
+      const g1 = ctx.createGain(); g1.gain.value = 0.5;
+      const g2 = ctx.createGain(); g2.gain.value = 0.5;
+      const gs = ctx.createGain(); gs.gain.value = 0.18;
+      osc1.connect(g1); osc2.connect(g2); sub.connect(gs);
+
+      // ── Drive → distortion ──
+      const drive = ctx.createGain();
+      drive.gain.value = (1 + kn.drive * 10) * V.driveMul;
+      g1.connect(drive); g2.connect(drive); gs.connect(drive);
+
+      const shaper = ctx.createWaveShaper();
+      shaper.curve = makeDistortionCurve(ctx, 20 + kn.drive * 900 * V.driveMul);
+      shaper.oversample = '4x';
+      drive.connect(shaper);
+
+      // ── Tone stack — lowpass + highpass + mid presence ──
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 1200 + kn.tone * 5300; lp.Q.value = 0.9;
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 120;
+      shaper.connect(lp); lp.connect(hp);
+
+      const mid = ctx.createBiquadFilter();
+      mid.type = 'peaking'; mid.frequency.value = 1800;
+      mid.gain.value = 3 + kn.tone * 4; mid.Q.value = 1.2;
+      hp.connect(mid);
+
+      const comp = ctx.createGain();
+      comp.gain.value = 1 - kn.drive * 0.12;
+      mid.connect(comp);
+
+      // ── Master limiter ──
+      const master = ctx.createDynamicsCompressor();
+      master.threshold.value = -16; master.knee.value = 22;
+      master.ratio.value = 5; master.attack.value = 0.003; master.release.value = 0.25;
+      master.connect(ctx.destination);
+
+      // Route through envelope
+      comp.connect(ampEnv);
+      ampEnv.connect(master);
+
+      // ── Echo (slapback delay) ──
+      if (kn.echo > 0.02) {
+        const dl = ctx.createDelay(0.7); dl.delayTime.value = 0.19;
+        const dg = ctx.createGain(); dg.gain.value = kn.echo * 0.68;
+        const fb = ctx.createGain(); fb.gain.value = Math.min(0.72, kn.echo * 0.7);
+        const df = ctx.createGain();
+        df.gain.setValueAtTime(1, now + 0.19);
+        df.gain.exponentialRampToValueAtTime(0.001, now + dur + 0.8 + kn.echo * 1.4);
+        ampEnv.connect(dl); dl.connect(fb); fb.connect(dl);
+        dl.connect(dg); dg.connect(df); df.connect(master);
+      }
+
+      // ── Reverb ──
+      if (kn.verb > 0.02) {
+        const conv = ctx.createConvolver();
+        conv.buffer = getReverbImpulse(ctx);
+        const rg = ctx.createGain(); rg.gain.value = kn.verb * 0.85;
+        ampEnv.connect(conv); conv.connect(rg); rg.connect(master);
+      }
+
+      // ── Start / stop ──
+      const tail = 0.3 + kn.echo * 1.4;
+      osc1.start(now); osc2.start(now); sub.start(now);
+      osc1.stop(now + dur + tail);
+      osc2.stop(now + dur + tail);
+      sub.stop(now + dur + tail);
+    } catch (_) { /* audio unavailable */ }
   }
 
   // 👑 GLAMARCHY — the commit STRUTS: stomp-stomp-CLAP stadium swagger. Each
@@ -9556,22 +9730,7 @@ function Game({ gameState, onReturnToLobby }) {
               </span>
             );
           })()}
-          {/* BGM Controls */}
-          <div style={{display:"flex",alignItems:"center",gap:4,background:"#0a1020",border:"1px solid #1e3a5f",borderRadius:4,padding:"2px 6px"}}>
-            <span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>BGM</span>
-            <span style={{fontSize:8,color:"#4488ff",minWidth:16,textAlign:"center"}}>{bgmTrackNum}</span>
-            <button onClick={() => setBgmMuted(m => !m)}
-              style={{fontFamily:"inherit",fontSize:10,padding:"1px 4px",background:"none",border:"none",color:bgmMuted?"#ff4444":"#88bbff",cursor:"pointer",lineHeight:1}}>
-              {bgmMuted ? "🔇" : "🔊"}
-            </button>
-            <input type="range" min={0} max={1} step={0.05} value={bgmVolume}
-              onChange={e => setBgmVolume(parseFloat(e.target.value))}
-              style={{width:40,accentColor:"#4488ff",cursor:"pointer"}}/>
-            <button onClick={bgmSkip}
-              style={{fontFamily:"inherit",fontSize:9,padding:"1px 4px",background:"none",border:"none",color:"#3a5a7a",cursor:"pointer",lineHeight:1}}>
-              ⏭
-            </button>
-          </div>
+          {/* BGM Controls — disabled (custom music only) */}
           {/* ⏩ FAST-FORWARD — cycle 1× / 2× / 4× presentation speed (rules
               untouched). Lives IN the HUD row — it used to be position:fixed
               at top-right, where it sat on top of the ↩ Lobby button. */}

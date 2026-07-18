@@ -52,11 +52,11 @@ const BEATS = [
   { id: 7, start: 62000, end: 66000,
     text: 'The amps are humming. The Cosmos is listening.',
     camFrom: [1.20, 0, -3], camTo: [1.20, 0, -3], cues: ['dissolve', 'shake'] },
-  { id: 8, start: 66000, end: 72000, text: '',
+  { id: 8, start: 66000, end: 77000, text: '',
     camFrom: [1.20, 0, 1], camTo: [1.20, 0, 1], cues: ['title-blast'] },
 ];
 
-const TOTAL_MS = 72000;
+const TOTAL_MS = 77000;
 const ISLAND_START_MS = 26000; // beat 3 — island punches in right after the 4th Spirit intro
 
 // ── SPIRIT INTRO SEGMENTS (beats 1–2, alternating pan direction) ──

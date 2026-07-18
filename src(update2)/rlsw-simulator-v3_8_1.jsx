@@ -1035,39 +1035,42 @@ function Game({ gameState, onReturnToLobby }) {
     cadenceToast, setCadenceToast,
   } = useRiffState();
 
-  // ─── BGM SETUP ───────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const idx = nextBgmTrack();
-    currentTrackIdxRef.current = idx;
-    setBgmTrackNum(idx + 1);
-    const audio = new Audio(BGM_TRACKS[idx]);
-    audio.volume = bgmVolume;
-    audio.loop = false;
-    audioRef.current = audio;
-    audio.play().catch(() => {});
-    function handleEnded() {
-      const next = nextBgmTrack(currentTrackIdxRef.current);
-      currentTrackIdxRef.current = next;
-      setBgmTrackNum(next + 1);
-      audio.src = BGM_TRACKS[next];
-      audio.play().catch(() => {});
-    }
-    audio.addEventListener("ended", handleEnded);
-    return () => { audio.removeEventListener("ended", handleEnded); audio.pause(); };
-  }, []); // eslint-disable-line
-
-  useEffect(() => { if (audioRef.current) audioRef.current.muted = bgmMuted; }, [bgmMuted]);
-  useEffect(() => { if (audioRef.current) audioRef.current.volume = bgmVolume; }, [bgmVolume]);
-
-  const bgmSkip = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const next = nextBgmTrack(currentTrackIdxRef.current);
-    currentTrackIdxRef.current = next;
-    setBgmTrackNum(next + 1);
-    audio.src = BGM_TRACKS[next];
-    if (!bgmMuted) audio.play().catch(() => {});
-  }, [bgmMuted]);
+  // ─── BGM DISABLED ────────────────────────────────────────────────────────────
+  // BGM tracks removed — using custom music only.  Uncomment to re-enable.
+  //
+  // useEffect(() => {
+  //   const idx = nextBgmTrack();
+  //   currentTrackIdxRef.current = idx;
+  //   setBgmTrackNum(idx + 1);
+  //   const audio = new Audio(BGM_TRACKS[idx]);
+  //   audio.volume = bgmVolume;
+  //   audio.loop = false;
+  //   audioRef.current = audio;
+  //   audio.play().catch(() => {});
+  //   function handleEnded() {
+  //     const next = nextBgmTrack(currentTrackIdxRef.current);
+  //     currentTrackIdxRef.current = next;
+  //     setBgmTrackNum(next + 1);
+  //     audio.src = BGM_TRACKS[next];
+  //     audio.play().catch(() => {});
+  //   }
+  //   audio.addEventListener("ended", handleEnded);
+  //   return () => { audio.removeEventListener("ended", handleEnded); audio.pause(); };
+  // }, []); // eslint-disable-line
+  //
+  // useEffect(() => { if (audioRef.current) audioRef.current.muted = bgmMuted; }, [bgmMuted]);
+  // useEffect(() => { if (audioRef.current) audioRef.current.volume = bgmVolume; }, [bgmVolume]);
+  //
+  // const bgmSkip = useCallback(() => {
+  //   const audio = audioRef.current;
+  //   if (!audio) return;
+  //   const next = nextBgmTrack(currentTrackIdxRef.current);
+  //   currentTrackIdxRef.current = next;
+  //   setBgmTrackNum(next + 1);
+  //   audio.src = BGM_TRACKS[next];
+  //   if (!bgmMuted) audio.play().catch(() => {});
+  // }, [bgmMuted]);
+  const bgmSkip = () => {}; // no-op stub
 
   // Attach wheel listener as non-passive
   useEffect(() => {
@@ -8381,22 +8384,7 @@ function Game({ gameState, onReturnToLobby }) {
               </span>
             );
           })()}
-          {/* BGM Controls */}
-          <div style={{display:"flex",alignItems:"center",gap:4,background:"#0a1020",border:"1px solid #1e3a5f",borderRadius:4,padding:"2px 6px"}}>
-            <span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>BGM</span>
-            <span style={{fontSize:8,color:"#4488ff",minWidth:16,textAlign:"center"}}>{bgmTrackNum}</span>
-            <button onClick={() => setBgmMuted(m => !m)}
-              style={{fontFamily:"inherit",fontSize:10,padding:"1px 4px",background:"none",border:"none",color:bgmMuted?"#ff4444":"#88bbff",cursor:"pointer",lineHeight:1}}>
-              {bgmMuted ? "🔇" : "🔊"}
-            </button>
-            <input type="range" min={0} max={1} step={0.05} value={bgmVolume}
-              onChange={e => setBgmVolume(parseFloat(e.target.value))}
-              style={{width:40,accentColor:"#4488ff",cursor:"pointer"}}/>
-            <button onClick={bgmSkip}
-              style={{fontFamily:"inherit",fontSize:9,padding:"1px 4px",background:"none",border:"none",color:"#3a5a7a",cursor:"pointer",lineHeight:1}}>
-              ⏭
-            </button>
-          </div>
+          {/* BGM Controls — disabled (custom music only) */}
           {/* ⏭ Skip-cinematics toggle — reachable from any game, governs swings,
               sonics & riff-off intros. Same state the riff-off countdown card uses. */}
           <button onClick={() => setSkipBattleIntros(v => !v)}
