@@ -16,13 +16,16 @@ export function getRiffAudio() {
 }
 
 // Pitch comes from the UNWRAPPED scale degree, so an ascending run truly
-// climbs across octaves instead of wrapping g→a back down. Degree 0 = A3.
+// climbs across octaves instead of wrapping g→a back down. Degree 0 = A2 —
+// dropped a full octave into chug register so riffs land HEAVY through the
+// amp's saw/fuzz voices (the sub oscillator growls at A1 under the root).
 export function riffDegreeFreq(degree, sharp) {
   const idx = ((degree % 7) + 7) % 7;
   const oct = Math.floor(degree / 7);
   let semis = RIFF_NAT_SEMIS[idx] + oct * 12
-    + (sharp && RIFF_SHARPABLE.has(RIFF_NATURALS[idx]) ? 1 : 0);
-  semis = Math.max(-17, Math.min(29, semis)); // ~E2 growl up to ~D6 scream
+    + (sharp && RIFF_SHARPABLE.has(RIFF_NATURALS[idx]) ? 1 : 0)
+    - 12;                                       // 🤘 the octave drop
+  semis = Math.max(-26, Math.min(20, semis));   // ~A1 growl up to ~F5 lead
   return 220 * Math.pow(2, semis / 12);
 }
 

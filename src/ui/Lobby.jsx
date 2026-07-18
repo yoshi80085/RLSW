@@ -3,7 +3,11 @@ import { SPIRIT_DEFS, SPIRIT_OPTIONS, ROSTER_ORDER, UNLOCKED_DEFAULT } from "../
 import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "../data/corners.js";
 import { cornerFacing } from "../board/boardHelpers.js";
 import { makeNetClient } from "../net/client.js";
+import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT } from "../riff/fallingNotes.js";
 import menuSong3 from "../Menu_song_3.mp3";
+
+// Short display names for the riff-off difficulty row (full label in tooltip)
+const RIFF_DIFF_SHORT = { rookie: 'INFLUENCER', gigging: 'GIGGING', shredder: 'SHREDDER', virtuoso: 'VIRTUOSO' };
 
 const MENU_SONGS = [menuSong3];
 
@@ -16,6 +20,16 @@ export function Lobby({ onStart, onTutorial }) {
   const [startingLives, setStartingLives] = useState(3);
   const [beginnerMode, setBeginnerMode] = useState(true);
   const [choosingCorner, setChoosingCorner] = useState(null);
+  // 🎸 Riff-off difficulty — chosen here on the Spirit select screen and
+  // persisted; the Game reads it at mount (localStorage 'rlsw.riffDifficulty').
+  const [riffDiff, setRiffDiff] = useState(() => {
+    try { const v = localStorage.getItem('rlsw.riffDifficulty'); if (v && RIFF_FALL_DIFFICULTY[v]) return v; } catch {}
+    return RIFF_FALL_DEFAULT;
+  });
+  function pickRiffDiff(k) {
+    setRiffDiff(k);
+    try { localStorage.setItem('rlsw.riffDifficulty', k); } catch {}
+  }
   const [announcer, setAnnouncer] = useState(null);
   const announcerTimer = useRef(null);
   const [unlocked] = useState(() => {
@@ -159,6 +173,12 @@ export function Lobby({ onStart, onTutorial }) {
             <div style={{width:1,height:20,background:"#1a2a40"}}/>
             <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>KDs</span>
               {[1,2,3,4,5].map(n=><button key={n} onClick={()=>setStartingLives(n)} style={{...seg(startingLives===n,"#ff4488"),padding:"6px 10px"}}>{n}</button>)}</div>
+            <div style={{width:1,height:20,background:"#1a2a40"}}/>
+            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>🎸 RIFF-OFF</span>
+              {Object.entries(RIFF_FALL_DIFFICULTY).map(([k,p])=>
+                <button key={k} onClick={()=>pickRiffDiff(k)} title={`${p.label} — ${p.blurb}`}
+                  style={{...seg(riffDiff===k,"#f6ad55"),padding:"6px 10px"}}>{p.icon} {RIFF_DIFF_SHORT[k] ?? k.toUpperCase()}</button>)}
+            </div>
             <div style={{width:1,height:20,background:"#1a2a40"}}/>
             <span style={{fontSize:8,color:"#3a5a7a",flex:1,minWidth:100}}>{startingLives===1?"Sudden death":startingLives+" Knock Downs = KO"}</span>
             <button onClick={online?handleStartOnline:handleStart} disabled={!canGo} style={{fontFamily:"'Saira Stencil One',sans-serif",cursor:canGo?"pointer":"not-allowed",borderRadius:6,padding:"10px 28px",fontSize:13,fontWeight:700,letterSpacing:3,transition:"all .2s",border:"2px solid",background:canGo?"#1a3020":"#0a1020",borderColor:canGo?"#44cc66":"#1e3a5f",color:canGo?"#44ff88":"#2a3a4a",boxShadow:canGo?"0 0 20px #44cc6633":"none",opacity:canGo?1:0.5}}>{online?"START ONLINE":"START"}</button>

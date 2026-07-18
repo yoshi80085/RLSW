@@ -1016,9 +1016,16 @@ function Game({ gameState, onReturnToLobby }) {
   // 🎚️ falling-notes difficulty (toggle on the countdown card) — presets tune
   // fall speed + grade windows (riff/fallingNotes.js). Ref mirror so the run
   // builder (fired from timers) never reads a stale closure.
-  const [riffDifficulty, setRiffDifficulty] = useState(RIFF_FALL_DEFAULT);
+  const [riffDifficulty, setRiffDifficulty] = useState(() => {
+    // Chosen on the Spirit select screen (Lobby) — persisted across sessions.
+    try { const v = localStorage.getItem('rlsw.riffDifficulty'); if (v && RIFF_FALL_DIFFICULTY[v]) return v; } catch { /* default */ }
+    return RIFF_FALL_DEFAULT;
+  });
   const riffDifficultyRef = useRef(riffDifficulty);
-  useEffect(() => { riffDifficultyRef.current = riffDifficulty; }, [riffDifficulty]);
+  useEffect(() => {
+    riffDifficultyRef.current = riffDifficulty;
+    try { localStorage.setItem('rlsw.riffDifficulty', riffDifficulty); } catch { /* non-fatal */ }
+  }, [riffDifficulty]);
   // ⏭ when on, the lore/intro cards (riff_intro, round-2 intro) auto-advance to the countdown
   const [skipBattleIntros, setSkipBattleIntros] = useState(false);
   const skipBattleIntrosRef = useRef(false);
@@ -7357,12 +7364,14 @@ function Game({ gameState, onReturnToLobby }) {
     // ── the note RINGS through the player's own amp — same distorted
     //    guitar voice (and 🎛️ knob settings) as the Melody Line. A wrong
     //    key plays the sour bent note they actually hit.
-    if (hit) playNoteSound(null, {
-      freq: side.freqs?.[n.idx],
-      holdTime: grade === 'perfect' ? 0.5 : grade === 'good' ? 0.42 : 0.34,
-      fadeTime: 0.4,
-      volume:   grade === 'perfect' ? 0.22 : grade === 'good' ? 0.18 : 0.14,
-    });
+    if (hit) {
+      const fr   = side.freqs?.[n.idx];
+      const hold = grade === 'perfect' ? 0.5 : grade === 'good' ? 0.42 : 0.34;
+      const vol  = grade === 'perfect' ? 0.22 : grade === 'good' ? 0.18 : 0.14;
+      // 🤘 POWER CHORD — root + fifth on every landed gem, so hits SLAM
+      playNoteSound(null, { freq: fr, holdTime: hold, fadeTime: 0.4, volume: vol });
+      if (fr) playNoteSound(null, { freq: fr * 1.5, holdTime: hold, fadeTime: 0.4, volume: vol * 0.5 });
+    }
     else playRiffWrong(key);
     riffRecordResult(eng.turn, { hit, rt: hit ? Math.abs(offset) : null, grade, noteIdx: n.idx, early: offset < 0 });
     riffCheckRunEnd(eng);
@@ -7401,10 +7410,14 @@ function Game({ gameState, onReturnToLobby }) {
   // player heard while striking, groove (gaps + rests) intact.
   function playRiffOffPlayback(freqs, rhythm) {
     if (!freqs) return;
+    const t0 = getAudioCtx().currentTime + 0.06;   // audio-clock — jank-immune
     let tMs = 0;
     freqs.forEach((fr, i) => {
       tMs += i === 0 ? 0 : 280 + (rhythm?.[i]?.gapBefore ?? RIFF_GAP_NORMAL);
-      setTimeout(() => playNoteSound(null, { freq: fr, holdTime: 0.4, fadeTime: 0.38, volume: 0.17 }), tMs);
+      const w = t0 + tMs / 1000;
+      // 🤘 power-chord replay — root + fifth
+      playNoteSound(null, { freq: fr, holdTime: 0.4, fadeTime: 0.38, volume: 0.17, when: w });
+      playNoteSound(null, { freq: fr * 1.5, holdTime: 0.4, fadeTime: 0.38, volume: 0.085, when: w });
     });
   }
 

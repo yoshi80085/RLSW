@@ -946,22 +946,43 @@ export function BattleMeterOverlay({
         // Effective battle stat → glow intensity. Faint at low Drive/Sustain,
         // brighter + pulsing as it climbs, electric "storm" flicker at the top.
         // `surge` = momentary bright burst during the DRIVE/FEEDBACK reveal beat.
+        // ⚡ PERF: the old tiers ANIMATED filter:drop-shadow keyframes on both
+        // 340px portraits — the GPU re-blurred both images every frame for the
+        // whole battle (the battle-freeze culprit on weak GPUs). The portrait
+        // now keeps a cheap STATIC rim light (`img`), and all pulsing/storming
+        // lives on a separate AURA layer behind it (`aura`) animated with
+        // opacity/transform only — which the GPU composites for free.
         function spiritGlow(stat, color, surge) {
           const gc = color ?? '#ffffff';
-          if (surge) return { '--gc': gc, animation: 'battle-glow-burst 0.9s cubic-bezier(.22,1,.36,1)',
-                              filter:`drop-shadow(0 0 60px #ffffff) drop-shadow(0 0 26px ${gc})` };
           const s = stat ?? 0;
-          if (s <= 4)  return { filter:`drop-shadow(0 0 14px ${gc}66)` };                          // barely there
-          if (s <= 6)  return { filter:`drop-shadow(0 0 26px ${gc}aa)` };                          // soft steady (baseline)
-          if (s <= 8)  return { '--gc': gc, filter:`drop-shadow(0 0 34px ${gc}cc)`,
-                                animation:'battle-glow-pulse 1.9s ease-in-out infinite' };          // bright + slow pulse
-          if (s <= 10) return { '--gc': gc, filter:`drop-shadow(0 0 46px ${gc})`,
-                                animation:'battle-glow-pulse-fast 1.1s ease-in-out infinite' };     // intense + fast pulse
-          return { '--gc': gc, filter:`drop-shadow(0 0 60px ${gc}) drop-shadow(0 0 10px #ffffff)`,
-                   animation:'battle-glow-storm 0.55s steps(6,end) infinite' };                    // electric storm
+          if (surge) return {
+            img:  { filter:`drop-shadow(0 0 26px #ffffff)` },
+            aura: { color:'#ffffff', o:1, anim:'battle-aura-burst 0.9s cubic-bezier(.22,1,.36,1) both' },
+          };
+          if (s <= 4)  return { img:{ filter:`drop-shadow(0 0 14px ${gc}66)` },
+                                aura:{ color:gc, o:0,    anim:'none' } };                            // barely there
+          if (s <= 6)  return { img:{ filter:`drop-shadow(0 0 24px ${gc}aa)` },
+                                aura:{ color:gc, o:0.3,  anim:'none' } };                            // soft steady (baseline)
+          if (s <= 8)  return { img:{ filter:`drop-shadow(0 0 26px ${gc}cc)` },
+                                aura:{ color:gc, o:0.55, anim:'battle-aura-pulse 1.9s ease-in-out infinite' } };  // bright + slow pulse
+          if (s <= 10) return { img:{ filter:`drop-shadow(0 0 26px ${gc})` },
+                                aura:{ color:gc, o:0.75, anim:'battle-aura-pulse 1.1s ease-in-out infinite' } };  // intense + fast pulse
+          return {       img:{ filter:`drop-shadow(0 0 26px ${gc}) drop-shadow(0 0 8px #ffffff)` },
+                                aura:{ color:gc, o:0.9,  anim:'battle-aura-storm 0.55s steps(6,end) infinite' } }; // electric storm
         }
         const atkGlow = spiritGlow(atkStat, attacker?.color, showFlashDrive);
         const defGlow = spiritGlow(defStat, defender?.color, showFlashSustain);
+        // The aura layer itself — sits behind the portrait inside its container.
+        const auraLayer = (aura) => (
+          <div style={{
+            position:'absolute', left:'50%', top:'52%', width:'170%', height:'115%',
+            transform:'translate(-50%,-50%)', pointerEvents:'none',
+            '--aura-o': aura.o,
+            background:`radial-gradient(ellipse 42% 55% at center, ${aura.color}bb 0%, ${aura.color}44 45%, transparent 72%)`,
+            mixBlendMode:'screen', opacity:aura.o,
+            animation:aura.anim, willChange:'opacity, transform',
+          }}/>
+        );
 
         // ── FAN-FARE / CROWD CHEER ──────────────────────────────────────────
         // The battle pick is the crowd's heartbeat. The further it slides toward
@@ -1123,26 +1144,24 @@ export function BattleMeterOverlay({
                 0%,100% { transform:translateY(0) scale(1);     opacity:0.42; }
                 50%     { transform:translateY(-8px) scale(1.03); opacity:0.6; }
               }
-              @keyframes battle-glow-pulse {
-                0%,100% { filter:drop-shadow(0 0 22px var(--gc)) drop-shadow(0 0 8px var(--gc)); }
-                50%     { filter:drop-shadow(0 0 40px var(--gc)) drop-shadow(0 0 16px #ffffff); }
+              /* Aura layers animate opacity/transform ONLY (GPU-composited) —
+                 never filter, which re-rasterizes the layer every frame. */
+              @keyframes battle-aura-pulse {
+                0%,100% { opacity:var(--aura-o,0.6); transform:translate(-50%,-50%) scale(1); }
+                50%     { opacity:1;                 transform:translate(-50%,-50%) scale(1.12); }
               }
-              @keyframes battle-glow-pulse-fast {
-                0%,100% { filter:drop-shadow(0 0 34px var(--gc)) drop-shadow(0 0 12px var(--gc)); }
-                50%     { filter:drop-shadow(0 0 60px var(--gc)) drop-shadow(0 0 24px #ffffff) brightness(1.15); }
+              @keyframes battle-aura-storm {
+                0%   { opacity:0.6;  transform:translate(-50%,-50%) scale(1); }
+                18%  { opacity:1;    transform:translate(-50%,-50%) scale(1.18); }
+                32%  { opacity:0.35; transform:translate(-50%,-50%) scale(0.96); }
+                55%  { opacity:1;    transform:translate(-50%,-50%) scale(1.24); }
+                70%  { opacity:0.45; transform:translate(-50%,-50%) scale(1); }
+                100% { opacity:0.9;  transform:translate(-50%,-50%) scale(1.06); }
               }
-              @keyframes battle-glow-storm {
-                0%   { filter:drop-shadow(0 0 30px var(--gc)) drop-shadow(0 0 6px #ffffff); }
-                18%  { filter:drop-shadow(0 0 64px var(--gc)) drop-shadow(0 0 20px #ffffff) brightness(1.4); }
-                32%  { filter:drop-shadow(0 0 18px var(--gc)) drop-shadow(0 0 4px var(--gc)); }
-                55%  { filter:drop-shadow(0 0 70px #ffffff) drop-shadow(0 0 26px var(--gc)) brightness(1.6); }
-                70%  { filter:drop-shadow(0 0 24px var(--gc)) drop-shadow(0 0 6px var(--gc)); }
-                100% { filter:drop-shadow(0 0 30px var(--gc)) drop-shadow(0 0 6px #ffffff); }
-              }
-              @keyframes battle-glow-burst {
-                0%   { filter:drop-shadow(0 0 20px var(--gc)) drop-shadow(0 0 6px var(--gc)); }
-                40%  { filter:drop-shadow(0 0 70px #ffffff) drop-shadow(0 0 30px var(--gc)) brightness(1.5); }
-                100% { filter:drop-shadow(0 0 34px var(--gc)) drop-shadow(0 0 12px var(--gc)); }
+              @keyframes battle-aura-burst {
+                0%   { opacity:0;   transform:translate(-50%,-50%) scale(0.6); }
+                30%  { opacity:1;   transform:translate(-50%,-50%) scale(1.3); }
+                100% { opacity:0.7; transform:translate(-50%,-50%) scale(1); }
               }
               /* ── Move-name neon callout (CQC) ── */
               @keyframes battle-move-flash {
@@ -1244,8 +1263,9 @@ export function BattleMeterOverlay({
                 {[0,1,2].map(i=>(
                   <div key={i} style={{
                     position:'absolute', bottom:`${-6 + i*7}%`, left:'-10%', width:'120%', height:'72%',
+                    // (blur(15px) removed — the gradient is already soft; the blur
+                    // cost a huge GPU raster on a 120%-wide layer for no visible gain)
                     background:`radial-gradient(ellipse 60% 70% at ${28 + i*22}% 100%, #cdd8ee${i===1?'5e':'44'}, transparent 70%)`,
-                    filter:'blur(15px)',
                     animation:`sfx-fog-drift ${7 + i*2}s ease-in-out ${i*1.3}s infinite`,
                   }}/>
                 ))}
@@ -1546,11 +1566,12 @@ export function BattleMeterOverlay({
                             : atkIn ? 'battle-spirit-left 1.1s cubic-bezier(0.22,1,0.36,1) both' : 'none',
                   opacity: atkIn ? 1 : 0,
                 }}>
+                  {auraLayer(atkGlow.aura)}
                   <img src={atkImg} alt={attacker?.name}
                     style={{
                       height:'100%', width:'auto', maxWidth:240,
                       objectFit:'contain', objectPosition:'bottom center', display:'block',
-                      ...atkGlow,
+                      ...atkGlow.img,
                     }}/>
                   {hasAnyGear && (
                     <div style={{position:'absolute', bottom:'1%', left:'-4%', zIndex:11,
@@ -1602,12 +1623,13 @@ export function BattleMeterOverlay({
                             : defIn ? 'battle-spirit-right 1.1s cubic-bezier(0.22,1,0.36,1) both' : 'none',
                   opacity: defIn ? 1 : 0,
                 }}>
+                  {auraLayer(defGlow.aura)}
                   <img src={defImg} alt={defender?.name}
                     style={{
                       height:'100%', width:'auto', maxWidth:240,
                       objectFit:'contain', objectPosition:'bottom center', display:'block',
                       transform:'scaleX(-1)',
-                      ...defGlow,
+                      ...defGlow.img,
                     }}/>
                   {showFlashSustain && (
                     <div style={{

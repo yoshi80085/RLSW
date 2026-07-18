@@ -18,19 +18,22 @@
 // press doesn't reach the note at all; an un-hit note becomes a MISS at +ok.
 // Players are reading real notes (finding the key, not just a lane), so even
 // SHREDDER stays gentler than an arcade rhythm game.
+// ⚡ EPIC TUNING — riffs are longer and fall faster at EVERY tier: the
+// riff-off is a set-piece, not a jingle. Grade windows are unchanged, so
+// fairness holds — the notes just come at you like a real breakdown.
 export const RIFF_FALL_DIFFICULTY = {
-  rookie:   { label: 'SOCIAL MEDIA INFLUENCER', icon: '📱', leadTime: 2500, perfect: 150, good: 320, ok: 520,
-              showLabels: true, maxLen: 6,
-              blurb: 'slow fall, wide windows — learn the keys' },
-  gigging:  { label: 'GIGGING',  icon: '🔥', leadTime: 2000, perfect: 120, good: 250, ok: 420,
-              showLabels: true, maxLen: 7,
+  rookie:   { label: 'SOCIAL MEDIA INFLUENCER', icon: '📱', leadTime: 2000, perfect: 150, good: 320, ok: 520,
+              showLabels: true, maxLen: 9,
+              blurb: 'learn the keys — but the riff still RIFFS' },
+  gigging:  { label: 'GIGGING',  icon: '🔥', leadTime: 1600, perfect: 120, good: 250, ok: 420,
+              showLabels: true, maxLen: 11,
               blurb: 'working musician tempo' },
-  shredder: { label: 'SHREDDER', icon: '⚡', leadTime: 1500, perfect: 90,  good: 190, ok: 340,
-              showLabels: false, maxLen: 8,
+  shredder: { label: 'SHREDDER', icon: '⚡', leadTime: 1150, perfect: 90,  good: 190, ok: 340,
+              showLabels: false, maxLen: 13,
               blurb: 'fast drop, tight groove — read the POSITION' },
-  virtuoso: { label: 'VIRTUOSO', icon: '🌟', leadTime: 1150, perfect: 75,  good: 160, ok: 280,
-              showLabels: false, maxLen: 15,
-              blurb: 'denser, not longer — sight-read or die' },
+  virtuoso: { label: 'VIRTUOSO', icon: '🌟', leadTime: 900,  perfect: 75,  good: 160, ok: 280,
+              showLabels: false, maxLen: 16,
+              blurb: 'a wall of gems — sight-read or die' },
 };
 export const RIFF_FALL_DEFAULT = 'rookie';
 
@@ -38,9 +41,9 @@ export const RIFF_FALL_DEFAULT = 'rookie';
 // Time between consecutive hit-times = the rhythm's gapBefore (the GROOVE —
 // rushed notes crowd in, rests hold their breath) + a base beat. Round 2 rhythm
 // gaps arrive pre-tightened by speedUpRiffRhythm; the base tightens with them.
-export const RIFF_SPACING_BASE    = 560;   // ms added to every gapBefore
-export const RIFF_SPACING_BASE_R2 = 420;   // round 2 — the riff comes at you harder
-const GAP_FALLBACK = 470;                  // matches RIFF_GAP_NORMAL in the main file
+export const RIFF_SPACING_BASE    = 380;   // ms added to every gapBefore (tightened — drive!)
+export const RIFF_SPACING_BASE_R2 = 280;   // round 2 — the riff comes at you harder
+const GAP_FALLBACK = 300;                  // matches RIFF_GAP_NORMAL in riffGeneration.js
 
 // A rushed note tightens its grade windows — the groove demands you catch it
 // sharp. (It also visually crowds its neighbor via its short gapBefore.)

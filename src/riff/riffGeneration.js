@@ -1,10 +1,10 @@
 // Riff-off constants inlined from the main file
-export const RIFF_LEN_DEFAULT = 6;      // fallback when no length is specified
+export const RIFF_LEN_DEFAULT = 10;     // fallback when no length is specified — riffs are STATEMENTS now
 const RIFF_NOTE_WINDOW  = 1600;
 const RIFF_QUICK_WINDOW = 1280;
-const RIFF_GAP_NORMAL   = 470;
-const RIFF_GAP_QUICK    = 250;
-const RIFF_GAP_REST     = 1000;
+const RIFF_GAP_NORMAL   = 300;          // tightened — the riff drives forward
+const RIFF_GAP_QUICK    = 160;
+const RIFF_GAP_REST     = 650;
 const RIFF_NATURALS     = ['a','b','c','d','e','f','g'];
 const RIFF_SHARPABLE    = new Set(['a','c','d','f','g']);
 
@@ -16,8 +16,9 @@ export function generateRiffRhythm(rand = Math.random, len = RIFF_LEN_DEFAULT) {
   return Array.from({ length: len }, (_, i) => {
     if (i === 0) return { window: RIFF_NOTE_WINDOW, gapBefore: 0, feel: 'steady' };
     const roll = rand();
-    if (roll < 0.28) return { window: RIFF_QUICK_WINDOW, gapBefore: RIFF_GAP_QUICK, feel: 'rushed' };
-    if (roll < 0.48) return { window: RIFF_NOTE_WINDOW,  gapBefore: RIFF_GAP_REST,  feel: 'rest' };
+    // Heavier groove: more gallop (rushed pairs), fewer polite breathers.
+    if (roll < 0.38) return { window: RIFF_QUICK_WINDOW, gapBefore: RIFF_GAP_QUICK, feel: 'rushed' };
+    if (roll < 0.50) return { window: RIFF_NOTE_WINDOW,  gapBefore: RIFF_GAP_REST,  feel: 'rest' };
     return { window: RIFF_NOTE_WINDOW, gapBefore: RIFF_GAP_NORMAL, feel: 'steady' };
   });
 }
@@ -56,26 +57,64 @@ export function riffDegreesToNotes(degrees, sharps) {
   });
 }
 
-// Attacker riff: walk the scale along a melodic contour, then sprinkle
-// 1-2 sharps on sharpable notes for spice.
+// 🤘 HEAVY ATTACKER RIFF — no scale runs. Phrases are built the way metal
+// riffs are: a low ROOT PEDAL punctuated by POWER INTERVALS (b3, 4th, 5th,
+// b6, b7, octave), with the occasional tritone accent (a ♯ on the 4th) as
+// chromatic menace. Roots are restricted to the dark modes of the natural
+// pool — a (aeolian), d (dorian), e (phrygian) — so nothing resolves major.
+// The contour label still describes where the power notes travel; the pedal
+// keeps hammering the root underneath.
 export function generateAttackerRiff(rand = Math.random, len = RIFF_LEN_DEFAULT) {
   const contours = Object.keys(RIFF_CONTOUR_LABELS);
   const contour  = contours[Math.floor(rand() * contours.length)];
-  const degrees  = [Math.floor(rand() * 7)];
+  const HEAVY_ROOTS = [0, 3, 4, 0, 4];          // a, d, e — weighted toward a & e
+  const root  = HEAVY_ROOTS[Math.floor(rand() * HEAVY_ROOTS.length)];
+  const POWER = [2, 3, 4, 5, 6, 7];             // b3, 4th, 5th, b6, b7, octave (scale steps)
+
+  // Target "height" curve (0..7 above root) the power notes follow.
+  const height = (t) => {
+    switch (contour) {
+      case 'climb':   return 2 + t * 5;
+      case 'descent': return 7 - t * 5;
+      case 'arch':    return 2 + Math.sin(Math.PI * t) * 5;
+      case 'valley':  return 7 - Math.sin(Math.PI * t) * 5;
+      default:        return 0;                  // zigzag handled below
+    }
+  };
+
+  const degrees = [root];                        // always open ON the root — the anchor
+  let pedalRun = 1;                              // consecutive root chugs so far
   for (let i = 1; i < len; i++) {
-    const step = 1 + Math.floor(rand() * 2); // move 1-2 scale steps
-    let dir = 1;
-    if (contour === 'descent')      dir = -1;
-    else if (contour === 'arch')    dir = i < len / 2 ?  1 : -1;
-    else if (contour === 'valley')  dir = i < len / 2 ? -1 :  1;
-    else if (contour === 'zigzag')  dir = i % 2 === 1 ? 1 : -1;
-    degrees.push(degrees[i - 1] + dir * step);
+    const t = i / (len - 1);
+    // Pedal chug ~45% of the time, but never 3 roots in a row and never
+    // on the final note (the phrase should END on a power note that rings).
+    const chug = i < len - 1 && pedalRun < 2 && rand() < 0.45;
+    if (chug) { degrees.push(root); pedalRun++; continue; }
+    pedalRun = 0;
+    let target;
+    if (contour === 'zigzag') {
+      target = i % 2 === 1 ? (6 + Math.floor(rand() * 2)) : (2 + Math.floor(rand() * 2)); // high/low slam
+    } else {
+      target = height(t) + (rand() - 0.5) * 1.6;
+    }
+    // Snap to the nearest power interval
+    let best = POWER[0], bestD = Infinity;
+    for (const p of POWER) {
+      const d = Math.abs(p - target);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    degrees.push(root + best);
   }
-  const sharps  = new Array(len).fill(false);
-  let toPlace   = 1 + Math.floor(rand() * 2);
-  const order   = degrees.map((_, i) => i).sort(() => rand() - 0.5);
+
+  // Tritone accents: sharpen 1-3 of the 4ths (root+3) — ♯4 = the devil's
+  // interval. Only the 4th gets a sharp, so the chromatic bite is always
+  // the tritone, never a major color.
+  const sharps = new Array(len).fill(false);
+  let toPlace  = 1 + Math.floor(rand() * 3);
+  const order  = degrees.map((_, i) => i).sort(() => rand() - 0.5);
   for (const i of order) {
     if (toPlace <= 0) break;
+    if (degrees[i] !== root + 3) continue;
     const letter = RIFF_NATURALS[((degrees[i] % 7) + 7) % 7];
     if (RIFF_SHARPABLE.has(letter)) { sharps[i] = true; toPlace--; }
   }

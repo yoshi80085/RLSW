@@ -67,8 +67,9 @@ export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRu
   let atk;
   let fromMelody = false;
   if (melodyLine && melodyLine.length >= 4) {
-    // targetLen: the melody's natural length capped by the difficulty tier
-    atk = melodyToRiff(melodyLine, { rand: rng, targetLen: Math.min(melodyLine.length, len) });
+    // targetLen: full tier length — short melodies get padded with passing
+    // tones (melodyRiff.js) so a melody-built riff is as EPIC as a random one
+    atk = melodyToRiff(melodyLine, { rand: rng, targetLen: len });
   }
   if (atk) {
     fromMelody = true;
@@ -162,7 +163,8 @@ export function applyRiffResolved(state) {
 export function applyRiffRound2Started(state, _action, rng) {
   const b = state.battle;
   if (b?.kind !== "riffOff") return state;
-  const atk = generateAttackerRiff(rng);
+  // Keep the tier's riff length for sudden death (was falling back to default)
+  const atk = generateAttackerRiff(rng, b.atkRiff?.degrees?.length ?? RIFF_LEN_DEFAULT);
   const def = generateDefenderRiff(atk, rng);
   const speed = r => ({ ...r, rhythm: speedUpRiffRhythm(r.rhythm, 0.58) });
   const defNotes = riffDegreesToNotes(def.degrees, def.sharps);
