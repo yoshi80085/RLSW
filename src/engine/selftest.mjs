@@ -2188,7 +2188,7 @@ const config = {
   assert.deepEqual(skillEligibility(upg, ["stance_2"], { stancesKnown: ["soloist"] }),
     { ok: true }, "upgrade opens once the stance is known");
   assert.deepEqual(skillEligibility(upg, [], { stancesKnown: ["soloist"] }),
-    { ok: false, reason: "prereq" }, "tier prereq still applies");
+    { ok: false, reason: "prereq", missing: ["stance_2"] }, "tier prereq still applies");
 }
 // -- sonicRig: tier × distance grid (AMP_DECK_DESIGN.md §2) --------------------
 {

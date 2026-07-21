@@ -4,7 +4,7 @@
 // =============================================================================
 import React from "react";
 
-export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, noteStates, setAmpPlacing, setNoteStates, setSkillTarget, upgradesPending }) {
+export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setNoteStates, setSkillTarget, upgradesPending }) {
   return (<>
       {acting && upgradesPending > 0 && (() => {
         const ns           = noteStates[acting.id] ?? {};
@@ -15,53 +15,14 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
         const activeRoute  = ns.skillRoute ?? null;
         const acColor      = acting.color ?? '#44aaff';
 
-        // If the just-awarded skill is an amp, show the place-amp prompt
-        // and keep the overlay open until the amp is placed (ampPlacing clears on placement).
-        const needsAmpPlacement = ['amp_1','amp_2','amp_3'].includes(pendingId) && ampPlacing === acting.id;
-        if (needsAmpPlacement) {
-          return (
-            <div style={{
-              position:'fixed', inset:0, background:'#000000cc', zIndex:8000,
-              display:'flex', alignItems:'center', justifyContent:'center',
-              fontFamily:"'Saira Stencil One',sans-serif", pointerEvents:'none',
-            }}>
-              <div style={{
-                pointerEvents:'all',
-                background:'#080f1e', border:`2px solid ${acColor}`,
-                borderRadius:12, padding:'24px 28px', maxWidth:400, textAlign:'center',
-                boxShadow:`0 0 50px ${acColor}55`,
-              }}>
-                <div style={{fontSize:28, marginBottom:8}}>🔊</div>
-                <div style={{fontSize:14, color:acColor, fontWeight:700, letterSpacing:2, marginBottom:6}}>
-                  AMP UNLOCKED!
-                </div>
-                <div style={{fontSize:11, color:'#c0d0e0', marginBottom:10}}>
-                  {pendingDef?.label} — {pendingDef?.desc}
-                </div>
-                <div style={{fontSize:10, color:'#ffcc44', background:'#1a1200',
-                  border:'1px solid #ffcc4455', borderRadius:6, padding:'10px 16px', marginBottom:14}}>
-                  Click an adjacent hex on the board to place your Amp
-                </div>
-                <button
-                  onClick={() => { setAmpPlacing(null);
-                    setNoteStates(prev => ({...prev, [acting.id]:
-                      {...prev[acting.id], upgradesPending:0, pendingAwardSkillId:null}})); }}
-                  style={{fontFamily:'inherit', fontSize:8, padding:'5px 14px', cursor:'pointer',
-                    background:'#0a1020', border:'1px solid #3a5070', borderRadius:4, color:'#3a5070'}}>
-                  Skip placement
-                </button>
-              </div>
-            </div>
-          );
-        }
-
         // Helper: can this skill be set as the next target?
+        // Supports both string and array prereqs (multi-prereq: all must be met).
         function canTarget(sk) {
           if (unlocked.includes(sk.id) || sk.id === pendingId) return false;
-          // Stance upgrades only target once the stance itself is known.
           if (sk.requiresStance && !stancesKnown.includes(sk.requiresStance)) return false;
           if (sk.prereq && sk.prereq !== '__all_pa__') {
-            if (!unlocked.includes(sk.prereq) && sk.prereq !== pendingId) return false;
+            const prereqs = Array.isArray(sk.prereq) ? sk.prereq : [sk.prereq];
+            if (prereqs.some(id => !unlocked.includes(id) && id !== pendingId)) return false;
           }
           if (sk.prereq === '__all_pa__') {
             return ['mic','pedal_dist','amp_1','mixer'].every(id => unlocked.includes(id) || id === pendingId);
@@ -209,10 +170,10 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                     const owned     = unlocked.includes(sk.id);
                     const isPending = sk.id === pendingId;
                     const targetable = canTarget(sk);
-                    const prereqDef = sk.prereq && sk.prereq !== '__all_pa__'
-                      ? SKILL_BY_ID[sk.prereq] : null;
-                    const locked = !owned && !isPending && !targetable
-                      && prereqDef && !unlocked.includes(sk.prereq);
+                    const prereqIds = !sk.prereq || sk.prereq === '__all_pa__' ? []
+                      : Array.isArray(sk.prereq) ? sk.prereq : [sk.prereq];
+                    const missingPrereqs = prereqIds.filter(id => !unlocked.includes(id));
+                    const locked = !owned && !isPending && !targetable && missingPrereqs.length > 0;
                     return (
                       <button key={sk.id}
                         disabled={owned || isPending || !targetable}
@@ -240,8 +201,8 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                               {owned && !isPending && <span style={{fontSize:7, color:routeDef.color,
                                 background:`${routeDef.color}22`, border:`1px solid ${routeDef.color}44`,
                                 borderRadius:3, padding:'1px 5px'}}>✓ OWNED</span>}
-                              {locked && prereqDef && (
-                                <span style={{fontSize:7, color:'#3a5a7a'}}>🔒 {prereqDef.label}</span>
+                              {locked && missingPrereqs.length > 0 && (
+                                <span style={{fontSize:7, color:'#3a5a7a'}}>🔒 {missingPrereqs.map(id => SKILL_BY_ID[id]?.label ?? id).join(' + ')}</span>
                               )}
                             </div>
                             <div style={{fontSize:8, color:'#5a7a8a', lineHeight:1.4}}>{sk.desc}</div>
@@ -260,9 +221,10 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                     );
                   })}
 
-                  {/* Sub-chain routes (Stances; formerly Electric) — each chain is
+                  {/* Sub-chain routes (Electric rig + Stances) — each chain is
                       its own window. Stance chains carry their stance's color and
-                      lock shut until the stance is learned. */}
+                      lock shut until the stance is learned. Electric chains are
+                      always open (no stance gate). */}
                   {routeDef.subChains && routeDef.subChains.map(chain => {
                     const chainColor  = chain.color ?? routeDef.color;
                     const stanceKnown = chain.stanceId ? stancesKnown.includes(chain.stanceId) : true;
@@ -299,12 +261,14 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                           const owned      = unlocked.includes(sk.id);
                           const isPending  = sk.id === pendingId;
                           const targetable = canTarget(skWithChain);
-                          const prereqDef  = sk.prereq && sk.prereq !== '__all_pa__'
-                            ? SKILL_BY_ID[sk.prereq] : null;
+                          // Multi-prereq aware: collect all prereq ids for lock display
+                          const prereqIds  = !sk.prereq || sk.prereq === '__all_pa__' ? []
+                            : Array.isArray(sk.prereq) ? sk.prereq : [sk.prereq];
+                          const missingPrereqs = prereqIds.filter(id => !unlocked.includes(id));
                           const stanceLocked = !owned && !isPending
                             && sk.requiresStance && !stancesKnown.includes(sk.requiresStance);
                           const locked = stanceLocked
-                            || (!owned && !isPending && !targetable && prereqDef && !unlocked.includes(sk.prereq));
+                            || (!owned && !isPending && !targetable && missingPrereqs.length > 0);
                           return (
                             <button key={sk.id}
                               disabled={owned || isPending || !targetable}
@@ -333,8 +297,8 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, ampPlacing, note
                                     {stanceLocked && (
                                       <span style={{fontSize:6, color:'#3a5a7a'}}>🔒 {chain.stanceLabel ?? 'Stance'} stance</span>
                                     )}
-                                    {locked && !stanceLocked && prereqDef && (
-                                      <span style={{fontSize:6, color:'#3a5a7a'}}>🔒 {prereqDef.label}</span>
+                                    {locked && !stanceLocked && missingPrereqs.length > 0 && (
+                                      <span style={{fontSize:6, color:'#3a5a7a'}}>🔒 {missingPrereqs.map(id => SKILL_BY_ID[id]?.label ?? id).join(' + ')}</span>
                                     )}
                                   </div>
                                   <div style={{fontSize:7, color:'#4a6a7a', lineHeight:1.4}}>{sk.desc}</div>

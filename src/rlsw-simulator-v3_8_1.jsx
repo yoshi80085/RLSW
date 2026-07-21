@@ -467,22 +467,40 @@ const SKILL_TREE = {
           desc:'CAPSTONE — every Discord penalty halved; the whole chromatic scale is yours. Chromatic runs of 3+ play clean and STAGGER rivals, and the Major-3rd cleanse (Borrowed Chord) comes online in Minor.' },
       ],
     },
-    // ── THE BAND — pick your identity (three short 3-tier paths) ──
+    // ── THE RIG — your amp deck lives at your corner and grows (AMP_DECK_DESIGN.md §4) ──
     {
       id: 'electric',
       label: 'Electric',
       icon: '⚡',
       color: '#ffcc44',
-      desc: 'Your rig. Amps power your Sonic Attack and grow your die.',
-      skills: [
-        { id:'amp_1',    label:'Amp I',   icon:'🔊', dbCost:8,  gated:true, prereq:null,
-          desc:'Place Amp 1 on an adjacent hex. Sonic Attack online. Within range: d6→d8.' },
-        { id:'amp_2',    label:'Amp II',  icon:'🔊', dbCost:12, gated:true, prereq:'amp_1',
-          desc:'Place Amp 2. Within range of both: d8→d10.' },
-        { id:'amp_3',    label:'Amp III', icon:'🔊', dbCost:18, gated:true, prereq:'amp_2',
-          desc:'Place Amp 3. Within range of all three: d10→d12 — fully wired.' },
-        { id:'overcharge', label:'Overcharge', icon:'🎸', dbCost:14, gated:true, prereq:'amp_2',
-          desc:'Charge Zones no longer just spark your dice — tapping one now lets you choose: the usual charge (random die floor/ceiling boost), OR one curated Chord Stack note plus a bonus revoice to spend on it.' },
+      desc: 'Your rig. It lives at your corner and it only gets bigger.',
+      subChains: [
+        { id:'rig_amps', label:'🔊 Amps', skills: [
+          { id:'amp_1', label:'Amp I',  icon:'🔊', dbCost:8,  gated:true, prereq:null,
+            desc:'+1d6 to your Sonic pool (roll 2, keep highest). A second cabinet hits the deck.' },
+          { id:'amp_2', label:'Amp II', icon:'🔊', dbCost:12, gated:true, prereq:'amp_1',
+            desc:'+1d6 (roll 3, keep highest).' },
+          { id:'amp_3', label:'Amp III',icon:'🔊', dbCost:18, gated:true, prereq:'amp_2',
+            desc:'+1d6 (roll 4, keep highest). The wall of sound is complete.' },
+          { id:'overcharge', label:'Overcharge', icon:'🎸', dbCost:14, gated:true, prereq:'amp_2',
+            desc:'Charge Zones no longer just spark your dice — tapping one now lets you choose: the usual charge (random die floor/ceiling boost), OR one curated Chord Stack note plus a bonus revoice to spend on it.' },
+        ]},
+        { id:'rig_power', label:'🎛️ Power', skills: [
+          { id:'power_1', label:'Power I',  icon:'🎛️', dbCost:10, gated:true, prereq:'amp_1',
+            desc:'A real head on the stack — one of your dice becomes a d8.' },
+          { id:'power_2', label:'Power II', icon:'🎛️', dbCost:14, gated:true, prereq:['power_1','amp_2'],
+            desc:'A second die becomes a d8.' },
+          { id:'power_3', label:'Power III',icon:'🎛️', dbCost:18, gated:true, prereq:['power_2','amp_3'],
+            desc:'Three d8s in the pool — maximum wattage.' },
+        ]},
+        { id:'rig_range', label:'📡 Range', skills: [
+          { id:'range_1', label:'Range I',  icon:'📡', dbCost:8,  gated:true, prereq:null,
+            desc:'Full rig reaches 4 hexes from home.' },
+          { id:'range_2', label:'Range II', icon:'📡', dbCost:12, gated:true, prereq:'range_1',
+            desc:'Full rig reaches 7 hexes — the Limelight is inside your field.' },
+          { id:'range_3', label:'Range III',icon:'📡', dbCost:16, gated:true, prereq:'range_2',
+            desc:'Fully wired. The whole venue is your stage.' },
+        ]},
       ],
     },
     // ── STANCES — combat/performance identity (replaces the CQC/Thrash branch) ──
@@ -3557,8 +3575,16 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'sunbeam')       addLog(`☀️ ${spirit?.name} — SUNBEAM! With 3 amps, your Sonic beam reaches +2 hexes and leaves burning ground in its wake.`);
 
     if (['amp_1','amp_2','amp_3'].includes(skillId)) {
-      // Phase 2: board amps removed — amp unlocks now feed the Amp Deck's sonicRig pool.
-      addLog(`🔊 ${spirit?.name} — Amp tier upgraded! Sonic dice pool grows with your Amp Deck.`);
+      const tier = ['amp_1','amp_2','amp_3'].indexOf(skillId) + 1;
+      addLog(`🔊 ${spirit?.name} — Amp ${tier}! +1d6 to the Sonic pool (roll ${tier + 1}, keep highest).`);
+    }
+    if (['power_1','power_2','power_3'].includes(skillId)) {
+      const tier = ['power_1','power_2','power_3'].indexOf(skillId) + 1;
+      addLog(`🎛️ ${spirit?.name} — Power ${tier}! ${tier} ${tier === 1 ? 'die' : 'dice'} in the pool upgraded to d8.`);
+    }
+    if (['range_1','range_2','range_3'].includes(skillId)) {
+      const labels = ['Range I — full rig reaches 4 hexes from home.', 'Range II — the Limelight is inside your field.', 'Range III — fully wired. The whole venue is your stage.'];
+      addLog(`📡 ${spirit?.name} — ${labels[['range_1','range_2','range_3'].indexOf(skillId)]}`);
     }
     // Legacy roadie_2/roadie_3 (if any saves reference them); crew_stagehand handled above.
     if (['roadie_2','roadie_3'].includes(skillId)) {
@@ -3605,7 +3631,10 @@ function Game({ gameState, onReturnToLobby }) {
     // ever offers the player their own skills), preserving prior behavior.
     const elig = skillEligibility(skill, unlocked, { stancesKnown: ns.stancesKnown ?? [] });
     if (!elig.ok) {
-      if (elig.reason === 'prereq')        addLog(`❌ Requires ${SKILL_BY_ID[skill.prereq]?.label} first.`);
+      if (elig.reason === 'prereq') {
+        const names = (elig.missing ?? []).map(id => SKILL_BY_ID[id]?.label ?? id).join(' + ');
+        addLog(`❌ Requires ${names} first.`);
+      }
       else if (elig.reason === 'ultimate') addLog(`❌ Ultimate requires: ${elig.missing.join(', ')}`);
       else if (elig.reason === 'pa')       addLog(`❌ PA system requires Amp I first.`);
       else if (elig.reason === 'stance')   addLog(`❌ ${skill.label} deepens the ${STANCE_DEFS[skill.requiresStance]?.label} stance — learn that stance first.`);

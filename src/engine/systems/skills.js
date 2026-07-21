@@ -52,7 +52,12 @@ export function skillEligibility(skill, unlocked, { ownerRoute = null, selfId = 
     const missing = ULTIMATE_PREREQS.filter(id => !unlocked.includes(id));
     return missing.length ? { ok: false, reason: "ultimate", missing } : { ok: true };
   }
-  if (skill.prereq && !unlocked.includes(skill.prereq)) return { ok: false, reason: "prereq" };
+  // Multi-prereq: prereq can be a string or an array of strings (all must be unlocked).
+  if (skill.prereq && skill.prereq !== '__all_pa__') {
+    const prereqs = Array.isArray(skill.prereq) ? skill.prereq : [skill.prereq];
+    const missing = prereqs.filter(id => !unlocked.includes(id));
+    if (missing.length) return { ok: false, reason: "prereq", missing: missing };
+  }
   if (skill.chainId === "pa" && skill.id !== "amp_1" && !unlocked.includes("amp_1")) {
     return { ok: false, reason: "pa" };
   }
