@@ -102,23 +102,21 @@ function MockNoteTrack({ notes, rootNote, noteTypes }) {
   );
 }
 
-function MockDiceTier({ tier }) {
-  const labels = ["d6","d8","d10","d12"];
-  const colors  = ["#aaccff","#88ffcc","#ffcc44","#ff8844"];
+function MockRigPool({ pool, label }) {
+  // pool: array of die sizes, e.g. [8,8,6,6]; label: e.g. "2d8+2d6"
   return (
     <div style={{display:"flex", gap:4, alignItems:"center"}}>
-      {labels.map((l,i) => (
+      {pool.map((sides,i) => (
         <div key={i} style={{
           padding:"2px 8px", borderRadius:3, fontSize:10, fontWeight:700,
           fontFamily:"'Saira Stencil One',sans-serif",
-          background: i===tier ? "#1a1200" : "#080f1e",
-          border: `1px solid ${i===tier ? colors[i]+"88" : "#1a2a4044"}`,
-          color: i===tier ? colors[i] : "#1e3a5f",
-          boxShadow: i===tier ? `0 0 8px ${colors[i]}44` : "none",
-          transform: i===tier ? "scale(1.12)" : "scale(1)",
-          transition:"all .2s",
-        }}>{l}</div>
+          background: sides===8 ? "#1a1200" : "#080f1e",
+          border: `1px solid ${sides===8 ? "#ff884488" : "#88ffcc88"}`,
+          color: sides===8 ? "#ff8844" : "#88ffcc",
+          boxShadow: sides===8 ? "0 0 8px #ff884444" : "none",
+        }}>d{sides}</div>
       ))}
+      {label && <span style={{fontSize:9, color:"#6a8a9a", marginLeft:4}}>= {label}</span>}
     </div>
   );
 }
@@ -662,9 +660,9 @@ function TutSection_Attacks() {
         <div style={{fontSize:8, color:"#f6ad55", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>🔊 SONIC ATTACK — ranged</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           Your main weapon, powered by the Melody Line you just committed. It fires a narrow
-          three-hex beam straight ahead, so facing matters. Sonic needs at least one connected
-          <span style={{color:"#ffcc44"}}> Amp</span> — and the more amps in range, the bigger your
-          attack die (d8 → d10 → d12). A defender whose amps are unplugged can't fire back.
+          three-hex beam straight ahead, so facing matters. Every Spirit is wired in from turn 1
+          — your <span style={{color:"#ffcc44"}}>Amp Deck</span> at your corner drives the attack.
+          Inside your rig's Range you roll the full dice pool (keep highest); outside it, baseline 1d6.
         </p>
       </div>
 
@@ -704,45 +702,84 @@ function TutSection_Amps() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        <span style={{color:"#ffcc44"}}>Amps</span> are how you plug in. You can't fire a Sonic
-        Attack without one — and the number of your own amps within range sets how big your attack die is.
+        Every Spirit starts wired into a <span style={{color:"#ffcc44"}}>Main Amp</span> at their home
+        corner — you're always electric. Your rig never moves; it grows at your corner as you invest,
+        engine-builder style. Three upgrade axes shape your Sonic Attack.
       </p>
 
+      {/* Amp tiers */}
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:10}}>AMPS IN RANGE → YOUR DIE</div>
-        <MockDiceTier tier={1}/>
-        <div style={{display:"flex", flexDirection:"column", gap:3, marginTop:10}}>
+        <div style={{fontSize:8, color:"#ffcc44", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:10}}>🔊 AMPS — HOW MANY DICE YOU ROLL</div>
+        <div style={{display:"flex", flexDirection:"column", gap:6}}>
           {[
-            {n:"0 amps", d:"no Sonic Attack — get plugged in first", c:"#5a7a8a"},
-            {n:"1 amp",  d:"d8",                                     c:"#88ffcc"},
-            {n:"2 amps", d:"d10",                                    c:"#ffcc44"},
-            {n:"3 amps", d:"d12 — fully wired",                      c:"#ff8844"},
+            {t:"Baseline", pool:[6],       label:"1d6",      desc:"Every Spirit starts here — roll one d6, keep the highest."},
+            {t:"Amp I",     pool:[6,6],     label:"2d6",      desc:"+1d6 to the pool. More dice, more consistency."},
+            {t:"Amp II",    pool:[6,6,6],   label:"3d6",      desc:"+1d6 again. Variance narrows further."},
+            {t:"Amp III",   pool:[6,6,6,6], label:"4d6",      desc:"The wall of sound is complete."},
           ].map((r,i)=>(
-            <div key={i} style={{display:"flex", gap:8, alignItems:"baseline"}}>
-              <span style={{fontSize:9, color:"#a0b8cc", minWidth:48}}>{r.n}</span>
-              <span style={{fontSize:9, color:r.c}}>{r.d}</span>
+            <div key={i} style={{display:"flex", gap:10, alignItems:"center"}}>
+              <span style={{fontSize:9, color:"#ffcc44", fontWeight:700, minWidth:56}}>{r.t}</span>
+              <MockRigPool pool={r.pool} label={r.label}/>
             </div>
           ))}
         </div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"10px 0 0", lineHeight:1.6}}>
-          You place amps on adjacent hexes through the Electric skill route. Stay within about four
-          hexes of an amp to keep it connected — wander too far and it unplugs.
+          The roll is <span style={{color:"#88ffcc"}}>keep-highest</span>: roll the whole pool, the single best die is your result.
+          More dice means fewer bad rolls — Amp buys consistency.
         </p>
       </div>
 
-      <div style={{background:"#050c18", border:"1px solid #44cc8833", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#44cc88", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:6}}>🔧 ROADIES</div>
-        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          Amps don't move on their own. Hire Roadies and they'll haul an amp a couple of hexes every
-          so often, so your rig follows you around the board instead of pinning you in one corner.
+      {/* Power tiers */}
+      <div style={{background:"#050c18", border:"1px solid #ff884444", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:8, color:"#ff8844", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:10}}>🎛️ POWER — HOW STRONG YOUR DICE ARE</div>
+        <div style={{display:"flex", flexDirection:"column", gap:6}}>
+          {[
+            {t:"Power I",   pool:[8,6,6],   label:"d8+2d6",   desc:"One die in the pool upgrades from d6 to d8."},
+            {t:"Power II",  pool:[8,8,6],   label:"2d8+d6",   desc:"A second die upgrades. Requires Amp II."},
+            {t:"Power III", pool:[8,8,8,6], label:"3d8+d6",   desc:"Three d8s — maximum wattage. Requires Amp III."},
+          ].map((r,i)=>(
+            <div key={i} style={{display:"flex", gap:10, alignItems:"center"}}>
+              <span style={{fontSize:9, color:"#ff8844", fontWeight:700, minWidth:56}}>{r.t}</span>
+              <MockRigPool pool={r.pool} label={r.label}/>
+            </div>
+          ))}
+        </div>
+        <p style={{fontSize:9, color:"#6a8a9a", margin:"10px 0 0", lineHeight:1.6}}>
+          Each Power tier needs the matching Amp tier first — the head needs a cabinet to drive.
+          Power buys ceiling: d8s top out at 8, not 6.
         </p>
       </div>
 
-      <div style={{background:"#0a0a18", border:"1px solid #aa55ff44", borderRadius:6, padding:"8px 12px"}}>
-        <div style={{fontSize:8, color:"#aa88ff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>📡 RANGE &amp; TERRITORY</div>
+      {/* Range tiers */}
+      <div style={{background:"#0a0a18", border:"1px solid #aa55ff44", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:8, color:"#aa88ff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>📡 RANGE — HOW FAR YOUR RIG REACHES</div>
+        <div style={{display:"flex", flexDirection:"column", gap:4}}>
+          {[
+            {t:"Start",     r:"2 hexes",  desc:"Your corner pocket only.",              c:"#5a7a8a"},
+            {t:"Range I",   r:"4 hexes",  desc:"The approaches — one hex shy of centre.", c:"#88aacc"},
+            {t:"Range II",  r:"7 hexes",  desc:"The Limelight is inside your field.",    c:"#aa88ff"},
+            {t:"Range III", r:"∞",        desc:"Fully wired. The whole venue is your stage.", c:"#ff88ee"},
+          ].map((r,i)=>(
+            <div key={i} style={{display:"flex", gap:8, alignItems:"baseline"}}>
+              <span style={{fontSize:9, color:r.c, fontWeight:700, minWidth:56}}>{r.t}</span>
+              <span style={{fontSize:9, color:"#a0b8cc", minWidth:48}}>{r.r}</span>
+              <span style={{fontSize:9, color:"#6a8a9a"}}>{r.desc}</span>
+            </div>
+          ))}
+        </div>
+        <p style={{fontSize:9, color:"#6a8a9a", margin:"10px 0 0", lineHeight:1.6}}>
+          Inside your Range radius, the full rig applies — every Amp and Power upgrade counts.
+          Outside it, you fall back to the <span style={{color:"#88ffcc"}}>baseline 1d6</span> (the Main Amp's board-wide floor).
+          While aiming a Sonic Attack, a <span style={{color:"#e648f0"}}>neon radius ring</span> pulses from your corner so you can see exactly where your rig reaches.
+        </p>
+      </div>
+
+      <div style={{background:"#14110a", border:"1px solid #ffcc4444", borderRadius:6, padding:"8px 12px"}}>
+        <div style={{fontSize:8, color:"#ffcc44", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>⚡ THE AMP DECKS</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          Your rig lives at your corner — its full power only reaches so far. Inside your Range radius
-          you roll with every Amp and Power upgrade; outside it you fall back to a single d6. Invest in Range to extend your stage.
+          Your rig is visible as two stacks flanking your home corner — one for Amps, one for Power.
+          They grow physically as you upgrade, readable at a glance across the table. Range shows as
+          lightning arcs crawling over the cabinets: the higher the tier, the brighter the storm.
         </p>
       </div>
     </div>
@@ -923,7 +960,7 @@ const TUTORIAL_SECTIONS = [
   { id:"intervals",       title:"Interval Effects",     icon:"🎶", color:"#44aaff" },
   { id:"dischord",        title:"Dischord & Status",    icon:"⚡", color:"#ff8800" },
   { id:"attacks",         title:"Swing & Sonic",        icon:"🥊", color:"#ff6644" },
-  { id:"amps",            title:"Amps & Your Die",      icon:"🔊", color:"#ffcc44" },
+  { id:"amps",            title:"Your Rig",             icon:"🔊", color:"#ffcc44" },
   { id:"crowd",           title:"The Crowd",            icon:"🎤", color:"#ff66aa" },
   { id:"mod_cards",       title:"Mod Cards",            icon:"🎼", color:"#aa88ff" },
   { id:"winning",         title:"Winning the Game",     icon:"🏆", color:"#ffd700" },
