@@ -1738,11 +1738,11 @@ const config = {
 
   // ── botSkillEligible ──
   const fakeSkillById = {
-    crew_backstage: { id: "crew_backstage", routeId: "crew", prereq: null },
+    amp_1: { id: "amp_1", routeId: "electric", prereq: null },
     theory_minor: { id: "theory_minor", routeId: "common", prereq: "theory_major" },
   };
-  assert.ok(botMod.botSkillEligible("crew_backstage", [], "wildaxe", fakeSkillById),
-    "crew_backstage eligible with no prereqs");
+  assert.ok(botMod.botSkillEligible("amp_1", [], "wildaxe", fakeSkillById),
+    "amp_1 eligible with no prereqs");
   assert.ok(!botMod.botSkillEligible("theory_minor", [], "wildaxe", fakeSkillById),
     "theory_minor NOT eligible without theory_major");
   assert.ok(botMod.botSkillEligible("theory_minor", ["theory_major"], "wildaxe", fakeSkillById),
@@ -1750,7 +1750,7 @@ const config = {
 
   // ── botPickSkillTarget ──
   const pick = botMod.botPickSkillTarget("wildaxe", [], "maestro", fakeSkillById);
-  assert.equal(pick, "crew_backstage", "maestro's first eligible skill is crew_backstage");
+  assert.equal(pick, "amp_1", "maestro's first eligible skill from updated priority is amp_1");
 
   // ── botRiffResults ──
   // determinism: same rng sequence → same results

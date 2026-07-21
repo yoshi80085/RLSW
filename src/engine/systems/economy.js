@@ -190,7 +190,6 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     instrumentDropped: false,
     dazed:           false,
     modCards:        [{ id: "starter-transpose", type: "transpose", exhausted: false, oneShot: true }],
-    groupieCooldowns: {},
     ultimateUsed:     false,
     mixerUsedThisTurn: false,
     elevenTurns:      0,
@@ -205,11 +204,7 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     outerStreak:      0,
     fanLag:           0,
     fanActedThisTurn: false,
-    // ── 🎫 CREW ASSIGNMENTS (CREW_SYSTEM_DESIGN.md) ──
-    // Array of taskIds a Diehard is currently assigned to. Each entry pulls one
-    // Diehard out of the crowdMultiplier. Max length = 1 (or 2 with crew_manager).
-    assignments:      [],
-    heckled:          false,  // 📢 Heckler flag — next crowd-gain is zeroed, then clears
+    assignments:      [],     // legacy — kept for save compat; no longer used by crew
     // ── 🎭 CROWD & INTIMIDATION LAYER ──
     perfScore:    0,
     recentP:      [],

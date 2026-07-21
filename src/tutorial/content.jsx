@@ -236,11 +236,11 @@ function TutSection_Overview() {
         </p>
       </div>
       <div style={{background:"#08140e", border:"1px solid #44cc8844", borderRadius:6, padding:"8px 12px"}}>
-        <div style={{fontSize:8, color:"#44cc88", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>🎉 CREW &amp; GEAR</div>
+        <div style={{fontSize:8, color:"#44cc88", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>⚡ YOUR RIG</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          The skills you unlock — Amps, Roadies, Groupie crews and your Ultimate — show up
-          as deployable chips on your Spirit card. Tap a glowing chip to send a crew out:
-          patch up your Vibe or sabotage a rival's amp. Spent crews recharge after a few turns.
+          Every Spirit starts wired into a Main Amp at their corner — you're always electric.
+          Unlock Amp tiers for more dice, Power tiers for stronger dice, and Range tiers to
+          extend your rig's reach across the board. Your Ultimate charges from Decibills.
         </p>
       </div>
     </div>
@@ -422,7 +422,7 @@ function TutSection_HarmonicCharge() {
         <div style={{fontSize:8, color:"#ccaaff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>🌳 WHERE IT GOES</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           Your DB meter sits at the top of the Melody Line panel. Spend it across the Skill
-          Tree — Groupie crews, close-combat moves, Amps and the PA system, stage effects, and
+          Tree — Amp & Power tiers, Range upgrades, Stances, Theory unlocks, and
           your Spirit's exclusive arsenal. (More on those next.)
         </p>
       </div>
@@ -739,10 +739,10 @@ function TutSection_Amps() {
       </div>
 
       <div style={{background:"#0a0a18", border:"1px solid #aa55ff44", borderRadius:6, padding:"8px 12px"}}>
-        <div style={{fontSize:8, color:"#aa88ff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>🪤 GETTING UNPLUGGED</div>
+        <div style={{fontSize:8, color:"#aa88ff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>📡 RANGE &amp; TERRITORY</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          Cables cut both ways. Rivals can yank yours — the Pranksta crew disconnects nearby amps — and
-          a Spirit with no connected amp can neither fire a Sonic Attack nor retaliate against one. Guard your rig.
+          Your rig lives at your corner — its full power only reaches so far. Inside your Range radius
+          you roll with every Amp and Power upgrade; outside it you fall back to a single d6. Invest in Range to extend your stage.
         </p>
       </div>
     </div>

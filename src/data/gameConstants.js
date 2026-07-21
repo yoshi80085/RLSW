@@ -17,11 +17,6 @@ export const SONIC_UPGRADED_DIE = 8;
 export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
 export const RIG_RADIUS_BY_TIER = [2, 4, 7, Infinity];  // Range 0/I/II/III radii (axial hex distance)
 
-// ── LEGACY AMP CONSTANTS (Phase 2 removes these + ampRigs.js) ──
-export const AMP_RANGE      = 4;
-export const AMP_LINK_DIST  = 3;
-export const AMP_DICE       = ['d6','d8','d9','d12'];
-export const AMP_UPGRADE_MAX = 3;
 export const CAMERA_ZOOM_MS  = 620;          // push-in tween length; impact rumble lands as it settles
 
 // -- LIMELIGHT SYSTEM --
@@ -75,10 +70,7 @@ export const EVENT_RESPAWN_TURNS = 3;  // turns after a trigger before a new mar
 // -- FLAMING DISC / GROUPIE --
 export const FLAMING_DISC_COUNT  = 6;
 export const FLAMING_DISC_ROUNDS = 2;
-export const GROUPIE_COOLDOWN    = 3; // own turns before a deployed groupie crew is ready again
 
-// Hexes away from own amp before it auto-unplugs
-export const AMP_UNPLUG_DIST = 3;
 
 // -- CHARGE ZONES -- (ECONOMY_HANDOFF.md — the Lighters replacement objective)
 // Fixed (non-roaming) board hexes, picked once at setup — unlike Lost Chords,
@@ -131,6 +123,3 @@ export const EDGE_RESOLVE_DB_BONUS_BY_STAGE = [0, 2, 4]; // DB payout for landin
 export const EDGE_COLLAPSE_FAN_LOSS       = 2;      // casual fans who walk when the ride collapses unresolved
 export const EDGE_COLLAPSE_VIBE           = 1;      // self-inflicted Vibe cost on collapse — the feedback squeal
 
-// -- CREW ASSIGNMENTS -- (CREW_SYSTEM_DESIGN.md) — Fan Mail letter heal.
-// Flagged high by design (§10) — this is the first tuning knob.
-export const FAN_MAIL_VIBE = 3;

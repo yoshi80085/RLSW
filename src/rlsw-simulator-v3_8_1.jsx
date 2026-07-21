@@ -4,7 +4,6 @@ import battleMeterImg from "./Battle_Meter.png";
 import battlePickImg from "./battle_pick.png";
 import crowdPinkImg from "./crowd_pink.png";   // fan-fare — attacker (left) cheering section
 import crowdBlueImg from "./crowd_blue.png";   // fan-fare — defender (right) cheering section
-import groupieFansImg from "./groupie_fans.png"; // 3×3 sheet of neon rock-fan silhouettes → groupie icons
 import hydraImg from "./hydra.PNG";            // 🐉 Shredding Ronin — Hydra ability backdrop (3 heads / 3 beams)
 import { SPIRIT_DEFS, SPIRIT_OPTIONS } from "./data/spirits.js";
 import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "./data/corners.js";
@@ -41,7 +40,6 @@ import React from "react";
 import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
 import riffOffSong from "./Riff_off_song.mp3";
 import battleSong  from "./battle_song.mp3";
-import { ampLinked, ampMstEdges, computeAmpRigs } from "./board/ampRigs.js";
 import { sonicRig, rigPoolLabel } from "./engine/systems/sonicRig.js";
 import AmpDecks from "./board/ampDecks.jsx";
 import { hexRingFromCenter, crowdMultiplier, advanceDB, SPOTLIGHT_POOL } from "./board/boardHelpers.js";
@@ -307,7 +305,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bod
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, AMP_RANGE, AMP_LINK_DIST, AMP_DICE, AMP_UPGRADE_MAX, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, GROUPIE_COOLDOWN, AMP_UNPLUG_DIST, FAN_MAIL_VIBE, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_DB_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_DB_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_DB_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_DB_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -531,34 +529,6 @@ const SKILL_TREE = {
             desc:'GROOVE: the wave builds higher — Groove counter cap raised from 3 to 5.' },
           { id:'stance_sustainwave', label:'Sustain Wave', icon:'🌀', dbCost:14, gated:true, prereq:'stance_3', requiresStance:'groove',
             desc:'GROOVE: spending the wave on an attack also banks it as temp Sustain — the wave protects the backswing.' },
-        ]},
-      ],
-    },
-    // ── CREW — the utility branch (CREW_SYSTEM_DESIGN.md) ──────────────────
-    // Diehard fans are a workforce. Assigning one to a task pulls them out of
-    // the crowd multiplier — Fame throughput vs. utility, decided turn by turn.
-    {
-      id: 'crew',
-      label: 'Crew',
-      icon: '🎫',
-      color: '#44cc88',
-      desc: 'Your most loyal fans don\'t just cheer — they write letters, haul cabinets, run sabotage, and work the merch line. Each assigned Diehard steps out of the crowd multiplier.',
-      subChains: [
-        { id:'crew_core', label:'🎫 Crew', skills: [
-          { id:'crew_backstage', label:'Backstage Pass', icon:'🎫', dbCost:8, gated:true, prereq:null,
-            desc:'Unlocks the assignment system. Your first task — Fan Mail — comes free: a Diehard pen-pal who writes letters that restore +3 Vibe when picked up on the board.' },
-        ]},
-        { id:'crew_tasks', label:'🔧 Tasks', skills: [
-          { id:'crew_stagehand',  label:'Stagehand',   icon:'🔧', dbCost:12, gated:true, prereq:'crew_backstage',
-            desc:'Assign a Diehard as a Roadie — moves one of your amps 2 hexes, Fix Cable replugs a sabotaged amp. 2-turn cooldown per job.' },
-          { id:'crew_heckler',    label:'Heckler',     icon:'📢', dbCost:8,  gated:true, prereq:'crew_backstage',
-            desc:'Assign a Diehard as a heckler — deploy them to any rival\'s crowd. Their next crowd-gain from performing is zeroed. Recharges in 3 turns.' },
-          { id:'crew_merch',      label:'Merch Table', icon:'🏪', dbCost:12, gated:true, prereq:'crew_backstage',
-            desc:'Assign a Diehard to run a merch booth at your corner. While staffed, every Fame Point you earn also kicks back +1 Decibill.' },
-        ]},
-        { id:'crew_capstone', label:'🎩 Management', skills: [
-          { id:'crew_manager', label:'Tour Manager', icon:'🎩', dbCost:16, gated:true, prereq:'crew_stagehand',
-            desc:'Two concurrent assignments. Your operation has an org chart.' },
         ]},
       ],
     },
@@ -1236,13 +1206,11 @@ function Game({ gameState, onReturnToLobby }) {
   const [pulsingHex, setPulsingHex] = useState(null); // hex num that glows on turn start
   // ─── BOARD DEPLOYABLES ── (moved to ./hooks/useBoardState.js)
   const {
-    amps, setAmps,
     boardCards, setBoardCards,
     cardRespawnIn, setCardRespawnIn,
-    roadieAction, setRoadieAction,
-    roadieAnimations, setRoadieAnimations,
-    ampPlacing, setAmpPlacing,
   } = useBoardState();
+  // Phase 2 stub: board amps removed — empty array keeps downstream reads safe.
+  const amps = [];
   // ─── FAN ECONOMY ── (moved to ./hooks/useFanEconomy.js)
   const {
     limelightScores, setLimelightScores,
@@ -1304,10 +1272,6 @@ function Game({ gameState, onReturnToLobby }) {
   // already spent this turn). See ECONOMY_HANDOFF.md.
   const [pendingLostChordPickup, setPendingLostChordPickup] = useState(null);
 
-  // 💌 FAN MAIL letters in flight — board tokens like Lost Chords, but addressed:
-  // only the owner can pick one up (move onto the hex, spend the Action, +Vibe).
-  // One per owner; a new throw replaces the old (CREW_SYSTEM_DESIGN.md §4.1).
-  const [fanLetters, setFanLetters] = useState([]); // [{ ownerId, hexNum }]
   const [skillsCollapsed, setSkillsCollapsed] = useState(true); // HUD skills section starts collapsed
 
   // ─── CHARGE ZONES ── (ENGINE-owned — Phase 6a, fully migrated) ─────────────
@@ -1440,13 +1404,6 @@ function Game({ gameState, onReturnToLobby }) {
       pages: [
         { body: 'You drew a crowd! Fans never hand you FP directly — they MULTIPLY every FP you earn, up to ×2 with a full house. Diehards (♥, solid) are your loyal core and worth about three Casuals (👥, hollow), who are... let\'s say "emotionally flexible".', anchor: 'fan-crowd' },
         { body: ['Growing the crowd: commit clean tracks near the action — centre rings pay 2 casuals a turn, the back row pays zero. Perform well and casuals harden into Diehards.', 'Losing the crowd: skulk in the outer ring too long and casuals get bored and leave. Get knocked down and a few of them flee on the spot — and a couple defect straight to whoever flattened you. Fans, man.'], anchor: 'fan-crowd' },
-      ],
-    },
-    amp_place: {
-      title: '🔊 Amplifiers',
-      pages: [
-        { body: 'Amp ready to deploy! Place it from CREW & GEAR on your spirit card. Amps project your sound: standing within range of your rig keeps you PLUGGED IN — bigger payout in Decibills, and it switches on the Sonic Attack.', anchor: 'crew-gear' },
-        { body: ['More amps in range = a meaner Sonic dice pool: 1 amp rolls 2d6 keep-best, 2 amps roll 3d6, 3 amps roll 2d6+d8. Fully wired is fully loud.', 'Guard the rig: rivals can walk up and UNPLUG your amps (a Roadie replugs them), and wandering too far leaves your rig cold until you come back. An amp far from the fight is an expensive lawn ornament.'], anchor: 'crew-gear' },
       ],
     },
     cadence: {
@@ -1582,8 +1539,6 @@ function Game({ gameState, onReturnToLobby }) {
   // Backward compat: ampsInRange ≥ 1 always (Main Amp — unplugged state is gone).
   // Old callers that checked `ampsInRange >= 1` will see "plugged in" universally.
   const ampsInRange = actingRig.pool.length;
-  // Legacy: still compute ampRigs for the old cable/token render (Phase 2 deletes).
-  const ampRigs = computeAmpRigs(amps, spirits);
   // 🤖 keep the bot's live-state mirrors fresh
   useEffect(() => { moveStepsLeftRef.current = moveStepsLeft; }, [moveStepsLeft]);
   useEffect(() => { actionTokenUsedRef.current = actionTokenUsed; }, [actionTokenUsed]);
@@ -3303,45 +3258,9 @@ function Game({ gameState, onReturnToLobby }) {
       // The fan had to get backstage overnight: pendingAssignments becomes the
       // active roster. Stagehand's roadie is pushed/popped alongside (the whole
       // roadie UI/flow reads ns.roadies — §4.2).
-      let nextRoadies = (ns.roadies ?? []).map(r =>
+      const nextRoadies = (ns.roadies ?? []).map(r =>
         r.cooldownTurns > 0 ? { ...r, cooldownTurns: r.cooldownTurns - 1 } : r
       );
-      let nextAssignments = ns.assignments ?? [];
-      let nextPending     = ns.pendingAssignments ?? null;
-      if (nextPending) {
-        const added   = nextPending.filter(t => !nextAssignments.includes(t));
-        const removed = nextAssignments.filter(t => !nextPending.includes(t));
-        if (removed.includes('crew_stagehand')) {
-          // The wrench goes down — any in-flight cooldown is forfeit (§4.2).
-          nextRoadies = nextRoadies.filter(r => !r.stagehand);
-        }
-        if (added.includes('crew_stagehand')) {
-          nextRoadies = [...nextRoadies, {
-            id: `roadie-sh-${spiritId}`, cooldownTurns: 0,
-            onBoard: false, boardHex: null, stagehand: true,
-          }];
-        }
-        const nm = spirits.find(s => s.id === spiritId)?.name;
-        const label = (t) => `${({crew_backstage:'💌 Fan Mail',crew_stagehand:'🔧 Stagehand',crew_heckler:'📢 Heckler',crew_merch:'🏪 Merch Table'})[t] ?? t}`;
-        setTimeout(() => {
-          if (added.length)   addLog(`🎫 ${nm}'s crew clocks in: ${added.map(label).join(', ')} — those Diehards step out of the crowd.`);
-          if (removed.length) addLog(`🎫 ${nm}'s crew clocks out: ${removed.map(label).join(', ')} — back on the front rail, cheering.`);
-        }, 0);
-        nextAssignments = nextPending;
-        nextPending = null;
-      }
-
-      // 💌 An unclaimed letter expires when the next one becomes available —
-      // i.e. the moment the Fan Mail cooldown finishes ticking to 0 (§4.1).
-      if ((ns.groupieCooldowns?.crew_backstage ?? 0) === 1) {
-        setTimeout(() => setFanLetters(prevL => {
-          const mine = prevL.find(l => l.ownerId === spiritId);
-          if (!mine) return prevL;
-          const nm = spirits.find(s => s.id === spiritId)?.name;
-          addLog(`💌 ${nm}'s unclaimed fan letter blows away — the pen-pal is already writing the next one.`);
-          return prevL.filter(l => l.ownerId !== spiritId);
-        }), 0);
-      }
 
       return {
         ...prev,
@@ -3360,15 +3279,8 @@ function Game({ gameState, onReturnToLobby }) {
           // 🌌 Displace cooldown ticks down on Intergalactic 0's own turns
           displaceCd: Math.max(0, (ns.displaceCd ?? 0) - 1),
 
-          // Tick down roadie cooldowns (+ Stagehand push/pop, computed above)
+          // Tick down roadie cooldowns
           roadies: nextRoadies,
-          // 🎫 Crew roster — pending assignments applied at turn start (§2)
-          assignments: nextAssignments,
-          pendingAssignments: nextPending,
-          // Tick down groupie crew cooldowns
-          groupieCooldowns: Object.fromEntries(
-            Object.entries(ns.groupieCooldowns ?? {}).map(([k, v]) => [k, Math.max(0, v - 1)])
-          ),
           // Tick down cadence objective cooldowns
           cadenceCooldowns: Object.fromEntries(
             Object.entries(ns.cadenceCooldowns ?? {}).map(([k, v]) => [k, Math.max(0, v - 1)])
@@ -3560,17 +3472,12 @@ function Game({ gameState, onReturnToLobby }) {
     else addLog(`🚶 ${s.name} → #${actualTarget} (${newSteps} step${newSteps !== 1 ? "s" : ""} left)`);
     if (to.edge) addLog(`⚠️ ${s.name} is on the EDGE — knockback risk!`);
     if (newSteps <= 0) setAction(null);
-    // Amps no longer unplug/replug from movement — distance just makes the rig go
-    // COLD (handled live by computeAmpRigs) and re-powers when you step back in range.
-    // The `unplugged` flag is now strictly sabotage (Pranksta) and only a Roadie clears it.
     // Flaming disc hazard (Disco Inferno)
     checkFlamingDisc(acting.id, actualTarget);
     // 🎇 Stage hazards (lasers / erupting pyro / animatronics)
     checkStageFxHex(acting.id, actualTarget);
     // 🎵 Board mini-goal pickup (Lost Chord)
     checkTokenPickup(acting.id, actualTarget);
-    // 💌 Fan Mail letter pickup (spends the Action — CREW_SYSTEM_DESIGN.md §4.1)
-    checkLetterPickup(acting.id, actualTarget);
     // ⚡ Charge zone pickup
     checkChargeZonePickup(acting.id, actualTarget);
     // Marquee event hex
@@ -3591,24 +3498,6 @@ function Game({ gameState, onReturnToLobby }) {
     const ns     = noteStates[spiritId] ?? {};
     const skill  = SKILL_BY_ID[skillId];
 
-    // ── 🎫 CREW ROUTE (CREW_SYSTEM_DESIGN.md) ──────────────────────────────
-    if (skillId === 'crew_backstage') {
-      addLog(`🎫 ${spirit?.name} — BACKSTAGE PASS! Assignment system online. Fan Mail task ready: a Diehard pen-pal writes letters that restore +3 Vibe.`);
-    }
-    if (skillId === 'crew_stagehand') {
-      // The roadie is NOT permanent — it's pushed into ns.roadies while the
-      // Stagehand assignment is staffed (startNewTurnNotes) and popped on recall.
-      addLog(`🔧 ${spirit?.name} — STAGEHAND! Assign a Diehard from CREW & GEAR and they pick up a wrench next turn.`);
-    }
-    if (skillId === 'crew_heckler') {
-      addLog(`📢 ${spirit?.name} — HECKLER! Assign a Diehard to heckle any rival's crowd — their next crowd-gain is zeroed.`);
-    }
-    if (skillId === 'crew_merch') {
-      addLog(`🏪 ${spirit?.name} — MERCH TABLE! Assign a Diehard to run the booth — every FP earned kicks back +1 Decibill.`);
-    }
-    if (skillId === 'crew_manager') {
-      addLog(`🎩 ${spirit?.name} — TOUR MANAGER! Two concurrent assignments. Your operation has an org chart.`);
-    }
     if (skillId === 'hero_pose')    addLog(`🌟 ${spirit?.name} — HERO POSE unlocked! Pose on centre hex for 2 turns to win.`);
 
     // ── 🧍 STANCE ROUTE ──────────────────────────────────────────────────────
@@ -3668,13 +3557,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'sunbeam')       addLog(`☀️ ${spirit?.name} — SUNBEAM! With 3 amps, your Sonic beam reaches +2 hexes and leaves burning ground in its wake.`);
 
     if (['amp_1','amp_2','amp_3'].includes(skillId)) {
-      const ownedCount = amps.filter(a => a.ownerId === spiritId).length;
-      if (ownedCount < AMP_UPGRADE_MAX) {
-        // Don't enter click-to-place mode here — the skill overlay is open and
-        // swallows board clicks (this is what made placement feel broken).
-        // The glowing "Place Amp" chip in CREW & GEAR handles placement anytime.
-        addLog(`🔊 ${spirit?.name} — Amp ${ownedCount + 1} ready! Deploy it from CREW & GEAR on your spirit card.`);
-      }
+      // Phase 2: board amps removed — amp unlocks now feed the Amp Deck's sonicRig pool.
+      addLog(`🔊 ${spirit?.name} — Amp tier upgraded! Sonic dice pool grows with your Amp Deck.`);
     }
     // Legacy roadie_2/roadie_3 (if any saves reference them); crew_stagehand handled above.
     if (['roadie_2','roadie_3'].includes(skillId)) {
@@ -3783,227 +3667,13 @@ function Game({ gameState, onReturnToLobby }) {
   // Legacy alias
   function purchaseSkill(spiritId, skillId) { setSkillTarget(spiritId, skillId); }
   function chooseUpgrade(spiritId, categoryId) {
-    const legacyMap = { amp:'amp_1', roadie:'roadie_1', roadie_1:'crew_stagehand',
-      fans_4eva:'crew_backstage', pranksta:'crew_heckler',
+    const legacyMap = { amp:'amp_1', roadie:'roadie_1',
       discord_1:'discord_1', discord_2:'discord_2', discord_3:'discord_3', discord_4:'discord_4' };
-    setSkillTarget(spiritId, legacyMap[categoryId] ?? categoryId);
-  }
-
-  // 🔊 Valid hexes for a spirit's NEXT amp. The FIRST amp sits beside the spirit; every
-  // amp after must EXTEND the rig — placed touching one of that spirit's existing amps —
-  // so the rig grows outward as one connected mass you commit to (and must defend).
-  // Occupied hexes (spirits/amps) are excluded.
-  function ampPlaceCandidates(spiritId) {
-    const occupied = new Set([
-      ...spirits.filter(s => !s.knockedOut).map(s => s.num),
-      ...amps.map(a => a.hexNum),
-    ]);
-    const owned = amps.filter(a => a.ownerId === spiritId);
-    const out = new Set();
-    const addOpenNeighbors = (hexNum) => {
-      const h = HEX_BY_NUM[hexNum]; if (!h) return;
-      getFlatTopNeighborSlots(h).forEach(n => { if (!occupied.has(n.num)) out.add(n.num); });
-    };
-    if (owned.length === 0) {
-      const sp = spirits.find(s => s.id === spiritId);
-      if (sp) addOpenNeighbors(sp.num);
-    } else {
-      owned.forEach(a => addOpenNeighbors(a.hexNum));
-    }
-    return out;
-  }
-
-  // Player clicked a hex while ampPlacing — drop the amp there if valid
-  function placeAmp(hexNum) {
-    if (!canAct) return; // OWNERSHIP: only the controlling client places amps
-    if (!ampPlacing) return;
-    const spiritId = ampPlacing;
-    const spirit = spirits.find(s => s.id === spiritId);
-    if (!spirit) { setAmpPlacing(null); return; }
-    const spiritHex = HEX_BY_NUM[spirit.num];
-    if (!spiritHex) { setAmpPlacing(null); return; }
-    // First amp drops beside you; later amps must extend the connected rig.
-    const hasRig = amps.some(a => a.ownerId === spiritId);
-    if (!ampPlaceCandidates(spiritId).has(hexNum)) {
-      addLog(hasRig
-        ? '🔊 Amps must EXTEND your rig — place on an open hex touching one of your amps.'
-        : '🔊 Place your first Amp on an open hex beside you.');
-      return;
-    }
-    const newAmp = {
-      id: `amp-${spiritId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      ownerId: spiritId,
-      ownerColor: spirit.color,
-      hexNum,
-      connected: false,
-    };
-    setAmps(prev => [...prev, newAmp]);
-    setAmpPlacing(null);
-    addLog(`🔊 ${spirit.name} places an Amp on hex #${hexNum}!`);
-    showTip('amp_place');
-    // Only reopen the "pick next target" overlay if this placement came from a skill-award flow
-    setNoteStates(prev => {
-      const ns = prev[spiritId] ?? {};
-      if (!ns.pendingAwardSkillId) return prev; // manual placement — no overlay needed
-      return {
-        ...prev,
-        [spiritId]: {
-          ...ns,
-          upgradesPending:     1,
-          pendingAwardSkillId: null,
-        }
-      };
-    });
-  }
-
-  // Amp connection is now automatic — determined by axialDist at derived-state time.
-  // Kept as a no-op for any residual UI references.
-  function connectAmp() {}
-
-  // ─── CREW & GEAR DEPLOYABLES ─────────────────────────────────────────────────
-  // Groupie crews are one-tap abilities in the HUD. Each deployment puts that
-  // crew on a GROUPIE_COOLDOWN (own turns) before it can be sent out again.
-  // ── 🎫 CREW ASSIGNMENTS (CREW_SYSTEM_DESIGN.md §2) ─────────────────────────
-  // A Diehard on assignment steps out of the crowd: −0.10× on every FP grant
-  // while assigned. Assign/recall is free but takes effect at the START of your
-  // next turn (applied in startNewTurnNotes) — no same-turn flickering.
-  const CREW_TASK_DEFS = {
-    crew_backstage: { icon:'💌', label:'Fan Mail' },
-    crew_stagehand: { icon:'🔧', label:'Stagehand' },
-    crew_heckler:   { icon:'📢', label:'Heckler' },
-    crew_merch:     { icon:'🏪', label:'Merch Table' },
-  };
-  const crewCapOf    = (ns) => (ns.unlockedSkills ?? []).includes('crew_manager') ? 2 : 1;
-  const crewRosterOf = (ns) => ns.pendingAssignments ?? ns.assignments ?? [];
-
-  // Toggle a task on the NEXT-turn roster. Staffing requires an unassigned
-  // Diehard in the pool; recalls are always allowed.
-  function toggleAssignment(spiritId, taskId) {
-    const spirit = spirits.find(s => s.id === spiritId);
-    const ns     = noteStates[spiritId] ?? {};
-    if (!spirit || !(ns.unlockedSkills ?? []).includes(taskId)) return;
-    if (!(ns.unlockedSkills ?? []).includes('crew_backstage')) return;
-    const roster = crewRosterOf(ns);
-    const def    = CREW_TASK_DEFS[taskId] ?? { icon:'🎫', label:taskId };
-    let next;
-    if (roster.includes(taskId)) {
-      next = roster.filter(t => t !== taskId);
-      addLog(`${def.icon} ${spirit.name} recalls the ${def.label} fan — back in the crowd at the start of ${spirit.name}'s next turn.`);
-    } else {
-      if (roster.length >= crewCapOf(ns)) {
-        addLog(`🎫 ${spirit.name} can only staff ${crewCapOf(ns)} assignment${crewCapOf(ns) !== 1 ? 's' : ''}${crewCapOf(ns) === 1 ? ' — Tour Manager raises it to 2' : ''}.`);
-        return;
-      }
-      if ((ns.diehards ?? 0) - roster.length < 1) {
-        addLog(`🎫 ${spirit.name} has no unassigned Diehards — earn more loyalty first (perform in the centre rings).`);
-        return;
-      }
-      next = [...roster, taskId];
-      addLog(`${def.icon} ${spirit.name} sends a Diehard backstage for ${def.label} duty — on the job at the start of ${spirit.name}'s next turn.`);
-    }
-    // If the new roster matches what's already active, there's nothing pending.
-    const active = ns.assignments ?? [];
-    const same = next.length === active.length && next.every(t => active.includes(t));
-    setNoteStates(prev => ({
-      ...prev,
-      [spiritId]: { ...prev[spiritId], pendingAssignments: same ? null : next },
-    }));
-  }
-
-  function deployGroupie(spiritId, skillId) {
-    if (!canAct) return; // N4/N7: gate
-    const spirit = spirits.find(s => s.id === spiritId);
-    const ns     = noteStates[spiritId] ?? {};
-    if (!spirit || spirit.knockedOut) return;
-    if (!(ns.unlockedSkills ?? []).includes(skillId)) return;
-    if ((ns.groupieCooldowns?.[skillId] ?? 0) > 0) {
-      addLog(`🎉 That crew is still recovering — ${ns.groupieCooldowns[skillId]} turn(s) left.`);
-      return;
-    }
-
-    const startCooldown = () => setNoteStates(prev => ({
-      ...prev,
-      [spiritId]: {
-        ...prev[spiritId],
-        groupieCooldowns: { ...(prev[spiritId]?.groupieCooldowns ?? {}), [skillId]: GROUPIE_COOLDOWN },
-      },
-    }));
-
-    // Groupies stream out from this Spirit's home corner toward whatever they act on.
-    const homeNum = CORNERS[spirit.corner]?.homeNum ?? spirit.num;
-
-    if (skillId === 'crew_backstage') {
-      // 💌 FAN MAIL (§4.1) — the pen-pal hurls the letter over the crowd. It
-      // lands on a free hex 1 away from the Spirit (2 away if boxed in) and does
-      // NOTHING until the Spirit moves onto it — reading spends the Action.
-      if (!(ns.assignments ?? []).includes('crew_backstage')) {
-        addLog(`💌 Nobody's on Fan Mail duty — assign a Diehard from CREW & GEAR first.`);
-        return;
-      }
-      const myHex = HEX_BY_NUM[spirit.num];
-      if (!myHex) return;
-      const occupied = new Set([
-        ...spirits.filter(sp => !sp.knockedOut).map(sp => sp.num),
-        ...amps.map(a => a.hexNum),
-        ...boardCards.map(c => c.hexNum),
-        ...chargeZones.map(z => z.num),
-        ...eventHexes,
-        ...boardTokens.map(t => t.num),
-        ...fanLetters.map(l => l.hexNum),
-        spotlightHex, LIMELIGHT_HEX,
-      ]);
-      // First free hex 1 away; if the Spirit is fully boxed in, 2 away (§10).
-      const landing = [1, 2].map(d =>
-        Object.values(HEX_BY_NUM)
-          .filter(h => axialDist(myHex.q, myHex.r, h.q, h.r) === d && !occupied.has(h.num))
-          .sort((a, b) => a.num - b.num)[0]
-      ).find(Boolean);
-      if (!landing) { addLog(`💌 No open hex near ${spirit.name} — the letter would be trampled. Move first.`); return; }
-      // 💌 Animate the letter FROM the pen-pal groupie's visual position (corner muster)
-      const crewPos = getGroupieScreenPos(spiritId, 'crew_backstage');
-      flyCrew({ fromHexNum: homeNum, toHexNum: landing.num, icon:'💌', color:'#ff66bb', label:'💌 Fan Mail!',
-        ...(crewPos ? { fromPx: crewPos.x, fromPy: crewPos.y } : {}) });
-      setFanLetters(prev => [...prev.filter(l => l.ownerId !== spiritId),
-        { ownerId: spiritId, hexNum: landing.num }]);
-      addLog(`💌 ${spirit.name}'s pen-pal hurls a letter — it lands on #${landing.num}. Move onto it and spend your Action to read it (+${FAN_MAIL_VIBE} Vibe).`);
-      startCooldown();
-      return;
-    }
-
-    if (skillId === 'crew_heckler') {
-      if (!(ns.assignments ?? []).includes('crew_heckler')) {
-        addLog(`📢 Nobody's on Heckler duty — assign a Diehard from CREW & GEAR first.`);
-        return;
-      }
-      // Heckler — pick the rival with the most casuals (juiciest target).
-      // Board-wide range: the heckler is a fan in the crowd, not on stage.
-      const rivals = spirits.filter(s => s.id !== spiritId && !s.knockedOut);
-      if (rivals.length === 0) { addLog(`📢 Nobody to heckle — the crowd is all yours.`); return; }
-      // Auto-target: rival with the highest casual count (most crowd to disrupt).
-      // If the caller is a human, a target picker could be added later; for now auto-pick.
-      const ranked = [...rivals].sort((a, b) => {
-        const ca = noteStates[a.id]?.casuals ?? 0;
-        const cb = noteStates[b.id]?.casuals ?? 0;
-        return cb - ca;
-      });
-      const target = ranked[0];
-      const targetCorner = CORNERS[target.corner];
-      const targetHomeNum = targetCorner?.homeNum ?? target.num;
-      // Mark the rival: their next crowd-gain (gainFansFromDeed) is zeroed.
-      setNoteStates(prev => ({
-        ...prev,
-        [target.id]: { ...prev[target.id], heckled: true },
-      }));
-      const heckPos = getGroupieScreenPos(spiritId, 'crew_heckler');
-      flyCrew({ fromHexNum: homeNum, toHexNum: targetHomeNum, icon:'📢', color:'#ff4444', label:'📢 Heckler!',
-        ...(heckPos ? { fromPx: heckPos.x, fromPy: heckPos.y } : {}) });
-      addLog(`📢 ${spirit.name}'s heckler storms into ${target.name}'s crowd — their next fan-gain is zeroed!`);
-      focusOnHex(targetHomeNum, 1100, 0.5);
-      startCooldown();
-      return;
-    }
-
-    // junkyard_dog / fandom_army deploys CUT with the Stance rework (§8).
+    // Old crew ids (roadie_1/crew_stagehand, fans_4eva/crew_backstage, pranksta/crew_heckler, crew_merch, crew_manager) drop silently
+    const DEAD_IDS = new Set(['roadie_1','crew_stagehand','fans_4eva','crew_backstage','pranksta','crew_heckler','crew_merch','crew_manager']);
+    const resolved = legacyMap[categoryId] ?? categoryId;
+    if (DEAD_IDS.has(resolved)) return;
+    setSkillTarget(spiritId, resolved);
   }
 
   // ENCORE APOCALYPSE — the Ultimate. Once per game: 2 Vibe damage + 1-turn
@@ -4070,12 +3740,9 @@ function Game({ gameState, onReturnToLobby }) {
     });
   }
 
-  // Roadie action flow
-  function startRoadieAction(spiritId, roadieId) {
-    if (!canAct) return; // N4/N7: gate
-    setRoadieAction({ spiritId, roadieId, phase: 'selectHex' });
-    addLog(`🔧 Roadie activated — click a hex adjacent to your Amp`);
-  }
+  // Roadie action flow — board amps removed (Phase 2); roadie move is a no-op.
+  function startRoadieAction() {}
+
 
 
   // ─── MODULATION CARDS — CUT to a single survivor (Stance rework, §8) ─────────
@@ -4175,51 +3842,6 @@ function Game({ gameState, onReturnToLobby }) {
     triggerEffectFlash(spiritId, '✨', 'SHIELDED!', '#44ffaa');
     return true;
   }
-
-  // ─── AMP UNPLUG SYSTEM ────────────────────────────────────────────────────────
-  // Amps NEVER unplug from movement — wandering just makes the rig go dead at
-  // range (handled by computeAmpRigs). The `unplugged` flag is strictly sabotage
-  // (Pranksta / an adjacent rival unplug), and the ONLY thing that clears it is a
-  // Roadie's Fix Cable action (roadieStartFix → roadieReplugAmp). There is no
-  // automatic re-plug — you must spend a Roadie to get back in the mix.
-
-  // Unplug a rival's amp — must be adjacent to the amp hex
-  function unplugRivalAmp(ampId) {
-    if (!canAct) return; // N4/N7: gate
-    const spirit = spirits.find(s => s.id === acting?.id);
-    if (!spirit) return;
-    const spiritHex = HEX_BY_NUM[spirit.num];
-    setAmps(prev => prev.map(amp => {
-      if (amp.id !== ampId) return amp;
-      if (amp.ownerId === acting?.id) { addLog(`🔌 That's your own amp!`); return amp; }
-      if (amp.unplugged) { addLog(`🔌 That amp is already unplugged.`); return amp; }
-      const ampHex = HEX_BY_NUM[amp.hexNum];
-      const neighbors = getFlatTopNeighborSlots(spiritHex);
-      const isAdjacent = neighbors.some(n => n.num === amp.hexNum) || spirit.num === amp.hexNum;
-      if (!isAdjacent) { addLog(`🔌 You need to be adjacent to the amp to unplug it!`); return amp; }
-      const owner = spirits.find(s => s.id === amp.ownerId);
-      addLog(`🔌 ${spirit.name} UNPLUGS ${owner?.name ?? 'rival'}'s amp on #${amp.hexNum}! They drop to d6 until a Roadie fixes it.`);
-      return { ...amp, unplugged: true, unpluggerId: acting?.id };
-    }));
-  }
-
-  // Roadie re-plugs an amp — called as part of roadie action
-  function roadieReplugAmp(spiritId, ampId) {
-    const spirit = spirits.find(s => s.id === spiritId);
-    const ampNow = amps.find(a => a.id === ampId);
-    // 🏃 Send a roadie token running from the Spirit to the amp it's fixing.
-    if (spirit && ampNow) {
-      flyCrew({ fromHexNum: spirit.num, toHexNum: ampNow.hexNum,
-        icon: '🔧', color: spirit.color ?? '#ffcc44', label: '🔧 Fixing cable…' });
-      focusOnHex(ampNow.hexNum, 1200, 0.5);
-    }
-    setAmps(prev => prev.map(amp => {
-      if (amp.id !== ampId || !amp.unplugged) return amp;
-      addLog(`🔧 ${spirit?.name}'s Roadie re-plugs the amp on #${amp.hexNum} — back in the mix!`);
-      return { ...amp, unplugged: false, unpluggerId: null };
-    }));
-  }
-
 
   // ─── BOARD CARD SYSTEM ───────────────────────────────────────────────────────
   function spawnBoardCards(currentCards /* currentSpirits, currentAmps */) {
@@ -4343,32 +3965,6 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
     setPendingLostChordPickup({ spiritId, note: tok.note, roninGreed });
-  }
-
-  // 💌 FAN MAIL pickup (§4.1) — the letter does nothing until the owner moves
-  // onto its hex. Reading it spends the Action (move yes, attack no — the
-  // stance-switch cost) and restores FAN_MAIL_VIBE. Letters are addressed:
-  // only the owner can read theirs.
-  function checkLetterPickup(spiritId, hexNum) {
-    const letter = fanLetters.find(l => l.hexNum === hexNum);
-    if (!letter) return;
-    const sp = spirits.find(s => s.id === spiritId);
-    if (letter.ownerId !== spiritId) {
-      const owner = spirits.find(s => s.id === letter.ownerId);
-      addLog(`💌 The letter on #${hexNum} is addressed to ${owner?.name ?? 'someone else'} — ${sp?.name} leaves it be.`);
-      return;
-    }
-    if (engineRef.current.turn.actionTokenUsed) {
-      addLog(`💌 ${sp?.name} has no Action left to read the letter — it waits on this hex.`);
-      return;
-    }
-    dispatch(beatsSpent(0, true)); // consume the Action Token; movement untouched
-    setAction(null);
-    setSpirits(prev => prev.map(s => s.id === spiritId
-      ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + FAN_MAIL_VIBE) } : s));
-    setFanLetters(prev => prev.filter(l => l !== letter));
-    triggerEffectFlash(spiritId, '💌', `+${FAN_MAIL_VIBE} VIBE!`, '#ff66bb');
-    addLog(`💌 ${sp?.name} stops mid-brawl to read the letter — pages of pure loyalty. +${FAN_MAIL_VIBE} Vibe! No attack this turn.`);
   }
 
   // Bank path — slot the found note into an unused stock slot (ready next turn),
@@ -5271,25 +4867,10 @@ function Game({ gameState, onReturnToLobby }) {
     }
   }
 
-  // 🐉 Unlock Hydra and deploy 3 of the Ronin's amps within range, so a Sonic
-  // Attack at range will roll 3d6. (Then attack a rival to see it.)
+  // 🐉 Hydra dev setup — board amps removed (Phase 2); Hydra dice pool
+  // now comes from the Amp Deck's sonicRig system.
   function devSetupHydra() {
-    const id = 'cosmic_ronin';
-    const ronin = spirits.find(s => s.id === id);
-    if (!ronin) { addLog('🧪 Ronin is not in this game.'); return; }
-    const home = HEX_BY_NUM[ronin.num];
-    if (!home) return;
-    const occupied = new Set([...spirits.map(s => s.num), ...amps.map(a => a.hexNum)]);
-    const spots = Object.keys(HEX_BY_NUM).map(Number).filter(num => {
-      const h = HEX_BY_NUM[num];
-      const d = axialDist(home.q, home.r, h.q, h.r);
-      return !occupied.has(num) && d >= 1 && d <= AMP_RANGE;
-    }).slice(0, 3);
-    if (spots.length < 3) { addLog('🧪 Not enough free hexes near the Ronin for 3 amps.'); return; }
-    setAmps(prev => [...prev, ...spots.map((num, i) => ({
-      id: `amp-${id}-dev-${Date.now()}-${i}`, ownerId: id, ownerColor: ronin.color, hexNum: num, connected: false,
-    }))]);
-    addLog('🐉 TEST: Hydra unlocked + 3 amps deployed near the Ronin. Attack a rival at range to see the 3d6!');
+    addLog('🐉 Board amps removed — Hydra triggers via Amp Deck sonicRig.');
     setDevOpen(false);
   }
 
@@ -5748,15 +5329,6 @@ function Game({ gameState, onReturnToLobby }) {
     // setNoteStates full-replace — finalFp>0 so applyFameChanged's floor never
     // bites here). The crowd mult / thresholds / win-check below stay client.
     dispatch(fameChanged(spiritId, finalFp));
-    // 🏪 MERCH TABLE — while a Diehard staffs the booth, every FP earned kicks
-    // back Decibills equal to the RAW (pre-multiplier) FP. The merch line grows
-    // with the crowd's excitement (CREW_SYSTEM_DESIGN.md §4.4).
-    if ((ns.assignments ?? []).includes('crew_merch') && fp > 0) {
-      setTimeout(() => {
-        grantDB(spiritId, fp);
-        addLog(`🏪 Merch Table kicks back +${fp} Decibill${fp !== 1 ? 's' : ''} for ${sp?.name}!`);
-      }, 0);
-    }
     const crowdStr = (amplify && uncapped !== fp) ? ` (${fp} ×🎤${mult.toFixed(2)} crowd)` : '';
     const capStr   = clipped > 0 ? ` ⛔ capped at ${FAME_PER_TURN_CAP}/turn (${clipped} lost to the noise)` : '';
     addLog(`⭐ ${sp?.name} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${capStr}${reason ? ` — ${reason}` : ''}! (${Math.min(newFame, FAME_TO_WIN)}/${FAME_TO_WIN})`);
@@ -5953,15 +5525,12 @@ function Game({ gameState, onReturnToLobby }) {
     // in tickFans now, not here.)
     if (!clean || !inGainZone || (ns.fanLag ?? 0) > 0) return;
 
-    // 📢 HECKLER — a rival's heckler is in the crowd, zeroing this gain.
+    // 📢 HECKLER — removed (crew system purged, AMP_DECK_DESIGN.md §6).
     if (ns.heckled) {
+      // Legacy: clear stale flag from old saves, then proceed normally.
       setNoteStates(prev => ({
         ...prev, [spiritId]: { ...prev[spiritId], heckled: false },
       }));
-      const nm = spirits.find(s => s.id === spiritId)?.name;
-      addLog(`📢 ${nm}'s crowd is too distracted by the heckler — no fans gained this time!`);
-      flashFanFx(spiritId, 'scatter', 0);
-      return;
     }
 
     // 🌟 SOLOIST stance — playing for the crowd draws an extra casual on every
@@ -6901,8 +6470,13 @@ function Game({ gameState, onReturnToLobby }) {
     const ns = actingNoteState ?? {};
     if ((ns.displaceCd ?? 0) > 0) { addLog(`🌌 Displace is recharging — ${ns.displaceCd} turn${ns.displaceCd > 1 ? 's' : ''} left.`); return; }
     if (moveStepsLeft < DISPLACE_AP) { addLog(`🌌 Displace needs ${DISPLACE_AP} AP.`); return; }
-    if (!amps.some(a => a.ownerId === acting.id)) { addLog('🌌 No rig to warp to — place an amp first.'); return; }
-    if (!ampPlaceCandidates(acting.id).has(hexNum)) { addLog('🌌 Warp to an open hex beside your amp rig.'); return; }
+    // Warp target: any open neighbor hex of the spirit
+    const spHex = HEX_BY_NUM[acting.num];
+    if (!spHex) return;
+    const openNeighbors = new Set();
+    const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
+    getFlatTopNeighborSlots(spHex).forEach(n => { if (!occupied.has(n.num)) openNeighbors.add(n.num); });
+    if (!openNeighbors.has(hexNum)) { addLog('🌌 Warp to an open hex beside you.'); return; }
 
     triggerEffectFlash(acting.id, '🌌', 'WARP', '#aa55ff');
     dispatch(spiritWarped(acting.id, hexNum, DISPLACE_AP)); // reducer owns the position write
@@ -7856,12 +7430,10 @@ function Game({ gameState, onReturnToLobby }) {
           const tier = margin >= 6 ? 'heavy' : margin >= 3 ? 'medium' : 'light';
           const occupied = [
             ...spirits.filter(sp => !sp.knockedOut).map(sp => sp.num),
-            ...amps.map(a => a.hexNum),
             ...boardCards.map(c => c.hexNum),
             ...chargeZones.map(z => z.num),
             ...eventHexes,
             ...boardTokens.map(t => t.num),
-            ...fanLetters.map(l => l.hexNum),
             spotlightHex, LIMELIGHT_HEX,
           ];
           // 🌋 AFTERSHOCK (Power upgrade) — the chords scatter a hex further.
@@ -8096,124 +7668,6 @@ function Game({ gameState, onReturnToLobby }) {
   // defender still has a chord voiced — on their turn they Thrash back with
   // whatever survived the fray. No prompt, no timer, no separate dice.
 
-  // roadieSelectHex — used for MOVE AMP flow: player clicks a hex, then a direction
-  function roadieSelectHex(hexNum) {
-    if (!roadieAction || roadieAction.phase !== 'selectHex') return;
-    setRoadieAction(prev => ({ ...prev, phase: 'selectDir', adjHexNum: hexNum }));
-    addLog(`🔧 Roadie at hex #${hexNum} — click a direction hex to move the Amp`);
-  }
-
-  // roadieStartFix — used for FIX CABLE flow: player picks which unplugged amp to fix
-  function roadieStartFix(spiritId, roadieId) {
-    if (!canAct) return; // N4/N7: gate
-    const unpluggedAmps = amps.filter(a => a.ownerId === spiritId && a.unplugged);
-    if (unpluggedAmps.length === 0) {
-      addLog('🔧 No unplugged amps to fix!');
-      return;
-    }
-    if (unpluggedAmps.length === 1) {
-      // Only one — go straight to confirm
-      setRoadieAction({ spiritId, roadieId, phase: 'replug', ampId: unpluggedAmps[0].id });
-      addLog(`🔧 Roadie ready to replug Amp on #${unpluggedAmps[0].hexNum} — confirm!`);
-    } else {
-      // Multiple — let player pick (phase: 'pickAmp')
-      setRoadieAction({ spiritId, roadieId, phase: 'pickAmp' });
-      addLog(`🔧 Multiple unplugged amps — click one to fix`);
-    }
-  }
-
-  function confirmRoadieReplug() {
-    if (!canAct || !roadieAction || roadieAction.phase !== 'replug') return; // N4/N7: gate
-    const { spiritId, roadieId, ampId } = roadieAction;
-    roadieReplugAmp(spiritId, ampId);
-    // Put roadie on cooldown
-    setNoteStates(prev => {
-      const s = prev[spiritId];
-      if (!s) return prev;
-      return {
-        ...prev,
-        [spiritId]: {
-          ...s,
-          roadies: (s.roadies ?? []).map(r =>
-            r.id === roadieId ? { ...r, cooldownTurns: 2 } : r
-          ),
-        },
-      };
-    });
-    setRoadieAction(null);
-  }
-
-
-  function roadieMoveAmp(dirHexNum) {
-    if (!canAct || !roadieAction || roadieAction.phase !== 'selectDir') return; // N4/N7: gate
-    const { spiritId, roadieId } = roadieAction;
-    // Find amp adjacent to adjHexNum
-    const adjHex = HEX_BY_NUM[roadieAction.adjHexNum];
-    if (!adjHex) { setRoadieAction(null); return; }
-    const ampHere = amps.find(a => {
-      const ah = HEX_BY_NUM[a.hexNum];
-      if (!ah) return false;
-      return getFlatTopNeighborSlots(adjHex).some(n => n.num === a.hexNum) || a.hexNum === adjHex.num;
-    });
-    if (!ampHere) { addLog('🔧 No amp found — roadie action cancelled'); setRoadieAction(null); return; }
-
-    // Move amp 2 hexes toward dirHexNum from its current position
-    const ampHex = HEX_BY_NUM[ampHere.hexNum];
-    const dirHex = HEX_BY_NUM[dirHexNum];
-    if (!ampHex || !dirHex) { setRoadieAction(null); return; }
-
-    // Step 1: nearest neighbor toward direction
-    const step1 = neighborInDirection(ampHex, Math.atan2(dirHex.py - ampHex.py, dirHex.px - ampHex.px));
-    // Step 2: another step in same direction from step1
-    const step2 = step1 ? neighborInDirection(step1, Math.atan2(dirHex.py - ampHex.py, dirHex.px - ampHex.px)) : null;
-    const finalHex = step2 ?? step1 ?? ampHex;
-
-    const spirit = spirits.find(s => s.id === spiritId);
-    const spiritHex = spirit ? HEX_BY_NUM[spirit.num] : null;
-
-    // ── Spawn roadie slide animation ──────────────────────────────────────────
-    const animId = `roadie-anim-${Date.now()}`;
-    setRoadieAnimations(prev => [...prev, {
-      id: animId,
-      fromHex: spiritHex ?? ampHex,
-      toAmpHex: ampHex,
-      toFinalHex: finalHex,
-      spiritColor: spirit?.color ?? '#ff8800',
-      spiritName: spirit?.name ?? 'Roadie',
-      startTime: Date.now(),
-    }]);
-    // Clear animation after it completes (2.8s total)
-    setTimeout(() => {
-      setRoadieAnimations(prev => prev.filter(a => a.id !== animId));
-    }, 2800);
-
-    setAmps(prev => prev.map(a => a.id === ampHere.id ? { ...a, hexNum: finalHex.num, connected: false, connectedBy: null } : a));
-
-    // Put roadie on cooldown (2 turns) and remove from board
-    setNoteStates(prev => {
-      const s = prev[spiritId];
-      if (!s) return prev;
-      return {
-        ...prev,
-        [spiritId]: {
-          ...s,
-          roadies: (s.roadies ?? []).map(r =>
-            r.id === roadieId ? { ...r, cooldownTurns: 2, onBoard: false, boardHex: null } : r
-          ),
-        },
-      };
-    });
-
-    // Flavor log
-    const flavorLines = [
-      `🔧 ${spirit?.name}'s Roadie sprints out, grabs the cab, shoves it to hex #${finalHex.num} — gone before anyone noticed! (cooldown 2t)`,
-      `🔧 ${spirit?.name}'s crew member dashes onto stage, kicks the Amp to hex #${finalHex.num}, then vanishes into the wings. (cooldown 2t)`,
-      `🔧 A roadie for ${spirit?.name} hauls the cabinet across the floor to hex #${finalHex.num} — quick work! (cooldown 2t)`,
-    ];
-    addLog(flavorLines[Math.floor(Math.random() * flavorLines.length)]);
-    setRoadieAction(null);
-  }
-
   // ─── END TURN ────────────────────────────────────────────────────────────────
   function endTurn() {
     if (!canAct) return; // N4/N7: only the controlling client ends the turn
@@ -8333,12 +7787,10 @@ function Game({ gameState, onReturnToLobby }) {
         const aliveSpirits = spirits.filter(sp => !sp.knockedOut);
         const occupied = [
           ...aliveSpirits.map(sp => sp.num),
-          ...amps.map(a => a.hexNum),
           ...boardCards.map(c => c.hexNum),
           ...chargeZones.map(z => z.num),
           ...eventHexes,
           ...boardTokens.map(t => t.num),
-          ...fanLetters.map(l => l.hexNum),
           spotlightHex, LIMELIGHT_HEX,
         ];
         dispatch(tokensScattered(occupied, aliveSpirits.length, spirits.length));
@@ -8506,19 +7958,6 @@ function Game({ gameState, onReturnToLobby }) {
     return best;
   }
 
-  // A free adjacent hex to drop an amp on, biased toward centre stage so the rig
-  // sits where the fighting is. Returns a hex num, or null if hemmed in.
-  function botNeighborForAmp(self) {
-    // Build outward: first amp beside the bot, later amps extend its rig. Among valid
-    // hexes, prefer the one nearest centre stage (keeps the rig central / in beam play).
-    const cands = [...ampPlaceCandidates(self.id)];
-    if (!cands.length) return null;
-    const hub = HEX_BY_NUM[LIMELIGHT_HEX];
-    return cands
-      .map(num => { const h = HEX_BY_NUM[num]; return { num, d: (hub && h) ? axialDist(h.q, h.r, hub.q, hub.r) : 0 }; })
-      .sort((a, b) => a.d - b.d)[0].num;
-  }
-
   // Thin wrapper → pure policy function (engine/policies/bot.js)
   function botRivalsWithin(self, dist) {
     return _botRivalsWithin(engineRef.current.spirits, self.id, self.num, dist);
@@ -8596,8 +8035,6 @@ function Game({ gameState, onReturnToLobby }) {
     const unlocked  = ns.unlockedSkills ?? [];
     const liveSelf  = engineRef.current.spirits.find(s => s.id === self.id) ?? self;
     const hasSkill    = (id) => unlocked.includes(id);
-    const crewStaffed = (id) => (ns.assignments ?? []).includes(id);
-    const crewReady   = (id) => hasSkill(id) && crewStaffed(id) && (ns.groupieCooldowns?.[id] ?? 0) === 0;
     const guard     = (fn) => () => { if (actingRef.current?.id === self.id) fn(); };
 
     // 1) BUILD — climb the skill tree, sharpen the stock, build a clean track.
@@ -8609,31 +8046,6 @@ function Game({ gameState, onReturnToLobby }) {
       if ((ns.upgradesPending ?? 0) > 0 && !ns.targetSkillId) {
         const wantId = botPickSkillTarget(self);
         if (wantId) { schedule(() => setSkillTarget(self.id, wantId)); return; }
-      }
-
-      // 1a.5) 🎫 CREW ASSIGNMENTS (§8) — staff the roster (free, lands next turn).
-      //       Recall everyone in the lead-chase endgame: the multiplier matters most.
-      if (hasSkill('crew_backstage')) {
-        const roster = ns.pendingAssignments ?? ns.assignments ?? [];
-        const cap    = hasSkill('crew_manager') ? 2 : 1;
-        const free   = Math.max(0, (ns.diehards ?? 0) - roster.length);
-        const endgame = (ns.fame ?? 0) >= FAME_TO_WIN * 0.75;
-        if (endgame && roster.length > 0) {
-          schedule(() => toggleAssignment(self.id, roster[0])); return;
-        }
-        if (!endgame && roster.length < cap && free >= 1) {
-          const hurt = (liveSelf.vibe ?? 9) <= (liveSelf.maxVibe ?? 5) - 3;
-          const ampDown = amps.some(a => a.ownerId === self.id && a.unplugged);
-          const juicyRival = spirits.some(r => r.id !== self.id && !r.knockedOut
-            && (engineRef.current.noteStates?.[r.id]?.casuals ?? 0) >= 3);
-          const want =
-            (hurt && !roster.includes('crew_backstage')) ? 'crew_backstage'
-            : (hasSkill('crew_stagehand') && ampDown && !roster.includes('crew_stagehand')) ? 'crew_stagehand'
-            : (hasSkill('crew_heckler') && juicyRival && !roster.includes('crew_heckler')) ? 'crew_heckler'
-            : (hasSkill('crew_merch') && (ns.diehards ?? 0) >= 3 && !roster.includes('crew_merch')) ? 'crew_merch'
-            : null;
-          if (want) { schedule(() => toggleAssignment(self.id, want)); return; }
-        }
       }
 
       // 1b) PIVOT — declare a key before any note can be placed.
@@ -8659,27 +8071,6 @@ function Game({ gameState, onReturnToLobby }) {
       const scale = buildScale(ns.rootNote ?? 'C', ns.scaleMode ?? 'major');
       const isUsed = (i) => usedHas(used, i);
 
-      // 1c) Pre-build setup — only while the track is still empty:
-      if (track.length === 0) {
-        // 🔊 Deploy any unplaced amp beside us (boosts the Sonic die). Two beats:
-        //     arm placement, then (next cycle, with ampPlacing set) drop it.
-        const myAmpCount = amps.filter(a => a.ownerId === self.id).length;
-        const ampUnlocks = ['amp_1','amp_2','amp_3'].filter(hasSkill).length;
-        if (ampUnlocks > myAmpCount) {
-          if (ampPlacing !== self.id) { schedule(() => setAmpPlacing(self.id)); return; }
-          const ampHex = botNeighborForAmp(self);
-          if (ampHex != null) { schedule(() => placeAmp(ampHex)); return; }
-          schedule(() => setAmpPlacing(null)); return; // nowhere to place — bail cleanly
-        }
-
-        // 💌 Throw the letter early if we're hurting, the pen-pal is staffed &
-        //    ready, and there isn't already one waiting on the floor.
-        if (crewReady('crew_backstage') && (liveSelf.vibe ?? 0) <= (liveSelf.maxVibe ?? 0) - 3
-            && !fanLetters.some(l => l.ownerId === self.id)) {
-          schedule(() => deployGroupie(self.id, 'crew_backstage')); return;
-        }
-      }
-
       // 1d/1e) MELODY LINE — plan-driven: clean notes ascending (Drive), all the way
       //        up to the 8-note cap (more notes = more DB), saving a 5th/4th for the
       //        final note (+5/+4), padding for movement only. See botPlanNoteStep.
@@ -8704,47 +8095,6 @@ function Game({ gameState, onReturnToLobby }) {
       if (hasSkill('ultimate') && !ns.ultimateUsed && botRivalsWithin(self, 4).length >= 2) {
         schedule(() => fireUltimate(self.id)); return;
       }
-      // 🔧 STAGEHAND (§8) — the rig is sabotaged and the wrench is ready: fix it.
-      {
-        const readyRoadie = (ns.roadies ?? []).find(r => (r.cooldownTurns ?? 0) === 0 && !r.onBoard);
-        const downAmps = amps.filter(a => a.ownerId === self.id && a.unplugged);
-        if (roadieAction?.spiritId === self.id) {
-          if (roadieAction.phase === 'replug') { schedule(guard(() => confirmRoadieReplug())); return; }
-          if (roadieAction.phase === 'pickAmp' && downAmps.length > 0) {
-            schedule(() => setRoadieAction({ spiritId: self.id, roadieId: roadieAction.roadieId,
-              phase: 'replug', ampId: downAmps[0].id }));
-            return;
-          }
-        } else if (readyRoadie && downAmps.length > 0) {
-          schedule(guard(() => roadieStartFix(self.id, readyRoadie.id)));
-          return;
-        }
-      }
-      // 📢 Heckler — disrupt a rival's crowd when they have fans worth zeroing.
-      if (crewReady('crew_heckler')) {
-        const rivalWithFans = spirits.some(s => s.id !== self.id && !s.knockedOut && (noteStates[s.id]?.casuals ?? 0) >= 3);
-        if (rivalWithFans) { schedule(() => deployGroupie(self.id, 'crew_heckler')); return; }
-      }
-      // 💌 READ THE MAIL (§8) — step onto our letter when the Action was going
-      //    spare anyway: hurt, no rival in melee reach, letter adjacent.
-      {
-        const myLetter = fanLetters.find(l => l.ownerId === self.id);
-        if (myLetter && !actionTokenUsedRef.current && steps >= 1
-            && (liveSelf.vibe ?? 9) < (liveSelf.maxVibe ?? 9)
-            && botRivalsWithin(self, 1).length === 0
-            && !spirits.some(sp => sp.num === myLetter.hexNum && !sp.knockedOut)) {
-          const lh = HEX_BY_NUM[myLetter.hexNum];
-          if (lh && myHex && axialDist(myHex.q, myHex.r, lh.q, lh.r) === 1) {
-            schedule(() => {
-              if (actingRef.current?.id !== self.id) return;
-              setAction('move');
-              setTimeout(() => { if (actingRef.current?.id === self.id) move(myLetter.hexNum); }, 30);
-            });
-            return;
-          }
-        }
-      }
-
       // 🧍 STANCE — settle into the persona's preferred pose once it's learned.
       // Switching spends the Action, so only when no rival is close enough to
       // make attacking the better use of it (self-disables once in the stance).
@@ -9124,29 +8474,6 @@ function Game({ gameState, onReturnToLobby }) {
       attackRockGod(acting.id);
       return;
     }
-    // Amp placement mode takes priority
-    if (ampPlacing) {
-      placeAmp(num);
-      return;
-    }
-    // Roadie: phase 1 — player clicks a hex adjacent to (or on) an amp
-    if (roadieAction?.phase === 'selectHex') {
-      const clickedHex = HEX_BY_NUM[num];
-      if (!clickedHex) return;
-      // Valid target: the hex must be occupied by an amp, or be a neighbor of one
-      const hasAmpHere    = amps.some(a => a.hexNum === num);
-      const hasAmpNearby  = amps.some(a => {
-        const ah = HEX_BY_NUM[a.hexNum];
-        if (!ah) return false;
-        return getFlatTopNeighborSlots(clickedHex).some(n => n.num === a.hexNum);
-      });
-      if (hasAmpHere || hasAmpNearby) {
-        roadieSelectHex(num);
-      } else {
-        addLog('🔧 Click a hex next to one of your Amps to send the Roadie there.');
-      }
-      return;
-    }
     if (action === "swing") {
       const rivals = acting ? getRivalsInCone(acting) : [];
       const target = rivals.find(r => r.num === num);
@@ -9202,8 +8529,8 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
     if (action === "displace") {
-      if (acting && ampPlaceCandidates(acting.id).has(num)) resolveDisplace(num);
-      else addLog("🌌 Warp to an open hex beside your amp rig.");
+      if (acting && displaceTargets.has(num)) resolveDisplace(num);
+      else addLog("🌌 Warp to an open hex beside you.");
       return;
     }
     if (action === "move") {
@@ -9218,26 +8545,22 @@ function Game({ gameState, onReturnToLobby }) {
   // ─── HEX VISUAL HELPERS ───────────────────────────────────────────────────────
   const HS = Math.round(HEX_SIZE * SCALE * 0.88);
 
-  // Neighbours of acting spirit (used for amp placement highlights)
-  const actingNeighbors = useMemo(() => {
-    if (!ampPlacing) return new Set();
-    // Highlight valid drop hexes for the placing spirit: beside it (first amp) or
-    // touching its rig (extensions).
-    return ampPlaceCandidates(ampPlacing);
-  }, [ampPlacing, acting, spirits, amps]);
-
-  // 🌌 Valid warp landing hexes while aiming Displace (open hexes beside the rig).
+  // 🌌 Valid warp landing hexes while aiming Displace (open neighbor hexes).
   const displaceTargets = useMemo(() => {
     if (action !== 'displace' || !acting) return new Set();
-    return ampPlaceCandidates(acting.id);
-  }, [action, acting, spirits, amps]);
+    const spHex = HEX_BY_NUM[acting.num];
+    if (!spHex) return new Set();
+    const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
+    const out = new Set();
+    getFlatTopNeighborSlots(spHex).forEach(n => { if (!occupied.has(n.num)) out.add(n.num); });
+    return out;
+  }, [action, acting, spirits]);
 
   function hexFill(hex) {
     if (hex.num === LIMELIGHT_HEX) return "#ff44ff18";
     if (hex.num === spotlightHex)  return "#ffffff14";
     const sp = spiritByNum[hex.num];
     if (sp) return sp.color + "44";
-    if (ampPlacing && actingNeighbors.has(hex.num)) return "#ffcc4422";
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#aa55ff33";
     if (reachable.has(hex.num)) return "#ffffff18";
     // Swing cone highlight
@@ -9264,30 +8587,6 @@ function Game({ gameState, onReturnToLobby }) {
         if (neighbors.some(n => n.num === hex.num)) return '#00ccff22';
       }
     }
-    // Roadie selectHex: highlight hexes adjacent to (or on) any amp
-    if (roadieAction?.phase === 'selectHex') {
-      const hasAmpHere = amps.some(a => a.hexNum === hex.num);
-      const hexObj = HEX_BY_NUM[hex.num];
-      const hasAmpNearby = hexObj && amps.some(a => {
-        const ah = HEX_BY_NUM[a.hexNum];
-        if (!ah) return false;
-        return getFlatTopNeighborSlots(hexObj).some(n => n.num === a.hexNum);
-      });
-      if (hasAmpHere || hasAmpNearby) return "#ff880022";
-    }
-    // Amp range preview on hover: fill hexes within AMP_UNPLUG_DIST of the hovered amp
-    if (hovered !== null) {
-      const hoveredAmp = amps.find(a => a.hexNum === hovered);
-      if (hoveredAmp) {
-        const ampHex = HEX_BY_NUM[hoveredAmp.hexNum];
-        const thisHex = HEX_BY_NUM[hex.num];
-        if (ampHex && thisHex) {
-          const dist = axialDist(ampHex.q, ampHex.r, thisHex.q, thisHex.r);
-          if (dist <= AMP_UNPLUG_DIST && dist > 0)
-            return hoveredAmp.ownerColor + "22";
-        }
-      }
-    }
     return "transparent";
   }
 
@@ -9297,7 +8596,6 @@ function Game({ gameState, onReturnToLobby }) {
     const sp = spiritByNum[hex.num];
     if (sp && acting?.id === sp.id) return sp.color;
     if (sp) return sp.color;
-    if (ampPlacing && actingNeighbors.has(hex.num)) return "#ffcc44cc";
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#cc88ffcc";
     if (reachable.has(hex.num)) return "#ffffff88";
     // Swing cone stroke
@@ -9331,32 +8629,8 @@ function Game({ gameState, onReturnToLobby }) {
         return '#00ccffcc';
       }
     }
-    // Roadie selectHex: highlight hexes adjacent to (or on) any amp
-    if (roadieAction?.phase === 'selectHex') {
-      const hasAmpHere = amps.some(a => a.hexNum === hex.num);
-      const hexObj = HEX_BY_NUM[hex.num];
-      const hasAmpNearby = hexObj && amps.some(a => {
-        const ah = HEX_BY_NUM[a.hexNum];
-        if (!ah) return false;
-        return getFlatTopNeighborSlots(hexObj).some(n => n.num === a.hexNum);
-      });
-      if (hasAmpHere || hasAmpNearby) return "#ff8800bb";
-    }
     if (hovered === hex.num && action) return "#ffffffaa";
     if (hex.stage) return "#ff44ff88";
-    // Amp range preview on hover: stroke hexes within AMP_UNPLUG_DIST of the hovered amp
-    if (hovered !== null) {
-      const hoveredAmp = amps.find(a => a.hexNum === hovered);
-      if (hoveredAmp) {
-        const ampHex = HEX_BY_NUM[hoveredAmp.hexNum];
-        const thisHex = HEX_BY_NUM[hex.num];
-        if (ampHex && thisHex) {
-          const dist = axialDist(ampHex.q, ampHex.r, thisHex.q, thisHex.r);
-          if (dist <= AMP_UNPLUG_DIST && dist > 0)
-            return hoveredAmp.ownerColor + "99";
-        }
-      }
-    }
     return "transparent";
   }
 
@@ -9365,7 +8639,6 @@ function Game({ gameState, onReturnToLobby }) {
     const sp = spiritByNum[hex.num];
     if (sp && acting?.id === sp.id) return Math.round(3 / SCALE * 0.13);
     if (sp || reachable.has(hex.num) || hex.stage) return 1.5;
-    if (ampPlacing && actingNeighbors.has(hex.num)) return 2;
     if (action === 'displace' && displaceTargets.has(hex.num)) return 2;
     return 0.8;
   }
@@ -9422,59 +8695,6 @@ function Game({ gameState, onReturnToLobby }) {
     const key = `dmg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setDamageFx(prev => [...prev, { key, hexNum, text, color }]);
     gt(() => setDamageFx(prev => prev.filter(d => d.key !== key)), 1300);
-  }
-
-  // 🏃 Send a crew token (Roadie/Groupie) travelling from one hex to another.
-  // Piggybacks on the roadieAnimations render (generalised to take icon + label).
-  // Optional `fromPx`/`fromPy` override the start position (SVG-space pixels,
-  // already SCALE'd) so fan mail can originate from the groupie's visual spot
-  // instead of from the hex centre.
-  function flyCrew({ fromHexNum, toHexNum, icon = '🔧', color = '#ffcc44', label, fromPx, fromPy }) {
-    const fromHex = HEX_BY_NUM[fromHexNum];
-    const toHex   = HEX_BY_NUM[toHexNum];
-    if (!fromHex || !toHex) return;
-    // If caller provides explicit pixel coords, wrap them in a synthetic hex-like
-    // object so the render path (`anim.fromHex.px * SCALE`) works unchanged.
-    const effectiveFrom = (fromPx != null && fromPy != null)
-      ? { px: fromPx / SCALE, py: fromPy / SCALE }
-      : fromHex;
-    const id = `crew-fly-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    setRoadieAnimations(prev => [...prev, {
-      id, fromHex: effectiveFrom, toAmpHex: toHex, toFinalHex: toHex,
-      spiritColor: color, spiritName: label ?? 'Crew',
-      icon, labelText: label, startTime: Date.now(),
-    }]);
-    gt(() => setRoadieAnimations(prev => prev.filter(a => a.id !== id)), 2800);
-  }
-
-  // 📍 Compute the SVG-pixel position of a specific groupie in the home-corner
-  // muster layout (mirrors the render-time `layout()` helper so the animation
-  // start matches the visual groupie position exactly).
-  function getGroupieScreenPos(spiritId, crewSkillId) {
-    const sp = spirits.find(s => s.id === spiritId);
-    if (!sp) return null;
-    const home = HEX_BY_NUM[CORNERS[sp.corner]?.homeNum];
-    const hub  = HEX_BY_NUM[LIMELIGHT_HEX];
-    if (!home || !hub) return null;
-    const ns = noteStates[spiritId] ?? {};
-    const roster = (ns.pendingAssignments ?? ns.assignments ?? []).filter(id => id !== 'crew_stagehand');
-    const idx = roster.indexOf(crewSkillId);
-    if (idx < 0) return null;
-    const hx = home.px * SCALE, hy = home.py * SCALE;
-    const cxC = hub.px * SCALE, cyC = hub.py * SCALE;
-    let ox = hx - cxC, oy = hy - cyC;
-    const L = Math.hypot(ox, oy) || 1; ox /= L; oy /= L;
-    const pxv = -oy, pyv = ox;
-    const u = HS * 0.34;
-    const n = roster.length, side = +1; // groupies use side +1
-    const gap = u * 1.7;
-    const slot = idx - (n - 1) / 2;
-    const along = side * (u * 2.4) + slot * gap;
-    const CREW_OUT = HS * 1.75;
-    const baseX = hx + ox * CREW_OUT, baseY = hy + oy * CREW_OUT;
-    const x = baseX + pxv * along + ox * (Math.abs(slot) * u * 0.25);
-    const y = baseY + pyv * along + oy * (Math.abs(slot) * u * 0.25);
-    return { x: Math.max(8, Math.min(SVG_W - 8, x)), y: Math.max(8, Math.min(SVG_H - 8, y)) };
   }
 
   // ─── CAMERA ZOOM ──────────────────────────────────────────────────────────────
@@ -10062,9 +9282,7 @@ function Game({ gameState, onReturnToLobby }) {
         SKILL_BY_ID={SKILL_BY_ID}
         SKILL_TREE={SKILL_TREE}
         acting={acting}
-        ampPlacing={ampPlacing}
         noteStates={noteStates}
-        setAmpPlacing={setAmpPlacing}
         setNoteStates={setNoteStates}
         setSkillTarget={setSkillTarget}
         upgradesPending={upgradesPending}
@@ -10191,7 +9409,7 @@ function Game({ gameState, onReturnToLobby }) {
                 <div style={{flex:1, minWidth:170, order:1, display:"flex", flexDirection:"column",
                   borderRight:`1px solid ${s.color}22`}}>
                 {/* Status badges */}
-                {((ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||ns.statusShield||ns.burnArmed||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0||ns.bonusRevoiceAvailable||(ns.edgeStage??0)>0||ns.riposteTargetId||amps.some(a=>a.ownerId===s.id&&a.unplugged)) && (
+                {((ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||ns.statusShield||ns.burnArmed||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0||ns.bonusRevoiceAvailable||(ns.edgeStage??0)>0||ns.riposteTargetId) && (
                   <div style={{display:"flex",gap:3,flexWrap:"wrap",padding:"4px 8px",borderTop:`1px solid ${s.color}22`}}>
                     {ns.riposteTargetId&&(
                       <span title={`Riposte armed — next Thrash on ${spirits.find(x=>x.id===ns.riposteTargetId)?.name} frays +1 extra note`}
@@ -10253,10 +9471,6 @@ function Game({ gameState, onReturnToLobby }) {
                     {ns.instrumentDropped&&(
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a0808",border:"1px solid #ff444466",color:"#ff6666"}}>
                         🎸💥 DROPPED — Drive -1
-                      </span>)}
-                    {amps.some(a=>a.ownerId===s.id&&a.unplugged)&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a0e00",border:"1px solid #ff880066",color:"#ff8800"}}>
-                        🔌 AMP UNPLUGGED — d6 only
                       </span>)}
                     {respawnFlashes[s.id]&&(
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#0a2a10",border:"1px solid #44ff8866",color:"#44ff88"}}>
@@ -10358,196 +9572,35 @@ function Game({ gameState, onReturnToLobby }) {
                     </div>
                   );
                 })()}
-                {/* ── CREW & GEAR — deployable amps, roadies, groupies, ultimate ── */}
+                {/* ── ULTIMATE — once-per-game ability ── */}
                 {(() => {
                   const unlocked = ns.unlockedSkills ?? [];
-                  const myAmps   = amps.filter(a => a.ownerId === s.id);
-                  // 🎫 Owned crew tasks — the HUD row is the ASSIGNMENT manager
-                  // (strategic choice); USING staffed crew happens on the board (§7).
-                  const taskIds = ['crew_backstage','crew_stagehand','crew_heckler','crew_merch']
-                    .filter(id => unlocked.includes(id));
-                  const hasBackstage = unlocked.includes('crew_backstage');
-                  const activeTasks  = ns.assignments ?? [];
-                  const rosterTasks  = ns.pendingAssignments ?? activeTasks;
-                  const crewCap      = unlocked.includes('crew_manager') ? 2 : 1;
-                  const freeDiehards = Math.max(0, (ns.diehards ?? 0) - rosterTasks.length);
-                  const hasRoadies = (ns.roadies?.length ?? 0) > 0;
-                  const hasUlt     = unlocked.includes('ultimate');
-                  const ampUnlockCount = ['amp_1','amp_2','amp_3'].filter(id => unlocked.includes(id)).length;
-                  const canPlaceAmp    = ampUnlockCount > myAmps.length;
-                  if (!hasRoadies && taskIds.length === 0 && !hasUlt && myAmps.length === 0 && !canPlaceAmp) return null;
-
-                  const GROUPIE_DEFS = {
-                    crew_backstage:  { icon:'💌', label:'Fan Mail',    hint:`Pen-pal throws a letter — pick it up on the board for +${FAN_MAIL_VIBE} Vibe (costs your Action)` },
-                    crew_stagehand:  { icon:'🔧', label:'Stagehand',   hint:'Staffs a Roadie — move amps / fix cables (click them at your corner)' },
-                    crew_heckler:    { icon:'📢', label:'Heckler',     hint:'Zero a rival\'s next fan-gain (click them at your corner)' },
-                    crew_merch:      { icon:'🏪', label:'Merch Table', hint:'+1 DB per raw FP earned while staffed' },
-                  };
+                  const hasUlt   = unlocked.includes('ultimate');
+                  if (!hasUlt) return null;
                   const chipBase = {
                     fontFamily:'inherit', cursor:'pointer', borderRadius:4,
                     padding:'3px 7px', fontSize:8, lineHeight:1.3, whiteSpace:'nowrap',
                   };
                   return (
-                    <div data-tip-anchor="crew-gear" style={{padding:'5px 8px', borderTop:`1px solid ${s.color}22`}}>
-                      <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:4}}>
-                        <span style={{fontSize:7,color:'#3a5a7a',letterSpacing:2}}>CREW &amp; GEAR</span>
-                        <span style={{flex:1,height:1,background:`linear-gradient(90deg, ${s.color}33, transparent)`}}/>
-                      </div>
-
-                      {/* AMPS row */}
-                      {(myAmps.length > 0 || canPlaceAmp) && (
-                        <div style={{display:'flex',gap:3,flexWrap:'wrap',marginBottom:4,alignItems:'center'}}>
-                          <span style={{fontSize:7,color:'#ffcc4488',width:34}}>AMPS</span>
-                          {myAmps.map((a,i) => (
-                            <span key={a.id} title={a.unplugged ? 'Unplugged — send a Roadie or walk back in range' : 'Live'}
-                              style={{...chipBase, cursor:'default',
-                                background:a.unplugged?'#1a0e00':'#141a08',
-                                border:`1px solid ${a.unplugged?'#ff8800':'#ffcc44'}66`,
-                                color:a.unplugged?'#ff8800':'#ffcc44'}}>
-                              🔊 #{a.hexNum}{a.unplugged?' ⚡✕':''}
-                            </span>
-                          ))}
-                          {canPlaceAmp && !ampPlacing && canAct && (
-                            <button style={{...chipBase, background:'#0a1020',
-                                border:'1px dashed #ffcc44aa', color:'#ffcc44',
-                                animation:'crew-ready-glow 2s ease-in-out infinite'}}
-                              onClick={() => {
-                                setAmpPlacing(s.id);
-                                addLog(`🔊 ${s.name} — click an adjacent hex to place Amp ${myAmps.length + 1}`);
-                              }}>
-                              ➕ Place Amp {myAmps.length + 1}/{ampUnlockCount}
-                            </button>
-                          )}
-                        </div>
-                      )}
-
-                      {/* ROADIES row */}
-                      {hasRoadies && (
-                        <div style={{display:'flex',gap:3,flexWrap:'wrap',marginBottom:4,alignItems:'center'}}>
-                          <span style={{fontSize:7,color:'#88bbff88',width:34}}>CREW</span>
-                          {ns.roadies.map((r, i) => {
-                            const onCooldown = r.cooldownTurns > 0;
-                            const isActive = roadieAction?.roadieId === r.id;
-                            if (onCooldown) return (
-                              <span key={r.id} style={{...chipBase, cursor:'default',
-                                background:'#0a0e16', border:'1px solid #333344', color:'#444455'}}>
-                                🔧 R{i+1} · {r.cooldownTurns}t
-                              </span>
-                            );
-                            return (
-                              <React.Fragment key={r.id}>
-                                <button
-                                  onClick={() => !isActive && startRoadieAction(s.id, r.id)}
-                                  style={{...chipBase,
-                                    background: isActive && roadieAction.phase!=='replug' && roadieAction.phase!=='pickAmp' ? s.color+'33' : '#0a1525',
-                                    border:`1px solid ${s.color}66`, color:'#c0d0e0'}}>
-                                  🔧 R{i+1} · Move Amp
-                                </button>
-                                {myAmps.some(a => a.unplugged) && (
-                                  <button
-                                    onClick={() => roadieStartFix(s.id, r.id)}
-                                    style={{...chipBase,
-                                      background: isActive && (roadieAction.phase==='replug'||roadieAction.phase==='pickAmp') ? '#113300' : '#0a1525',
-                                      border:'1px solid #44ff8866', color:'#44ff88'}}>
-                                    🔌 Fix Cable
-                                  </button>
-                                )}
-                              </React.Fragment>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* 🎫 ASSIGNMENTS row — toggle who's backstage. Takes effect at the
-                          start of your next turn; staffed crew are USED on the board (§7). */}
-                      {hasBackstage && taskIds.length > 0 && (
-                        <div style={{display:'flex',gap:3,flexWrap:'wrap',marginBottom:4,alignItems:'center'}}>
-                          <span style={{fontSize:7,color:'#44cc8888',width:34}}
-                            title={`${rosterTasks.length}/${crewCap} assignment${crewCap !== 1 ? 's' : ''} · ${freeDiehards} unassigned Diehard${freeDiehards !== 1 ? 's' : ''}`}>
-                            ASSIGN {rosterTasks.length}/{crewCap}
+                    <div style={{padding:'5px 8px', borderTop:`1px solid ${s.color}22`}}>
+                      <div style={{display:'flex',gap:3,flexWrap:'wrap',marginBottom:2,alignItems:'center'}}>
+                        <span style={{fontSize:7,color:'#ff44aa88',width:34}}>ULT</span>
+                        {ns.ultimateUsed ? (
+                          <span style={{...chipBase, cursor:'default',
+                            background:'#0a0e16', border:'1px solid #333344', color:'#444455'}}>
+                            💀 Encore spent
                           </span>
-                          {taskIds.map(id => {
-                            const def = GROUPIE_DEFS[id];
-                            const onRoster = rosterTasks.includes(id);
-                            const isActiveTask = activeTasks.includes(id);
-                            const pendingChange = onRoster !== isActiveTask;
-                            const cd = ns.groupieCooldowns?.[id] ?? 0;
-                            const canToggle = canAct && !s.cpu
-                              && (onRoster || (rosterTasks.length < crewCap && freeDiehards >= 1));
-                            const status = pendingChange ? (onRoster ? '⏳→' : '→🎤') : onRoster ? '●' : '○';
-                            const col = onRoster ? '#44cc88' : '#3a5a7a';
-                            return (
-                              <button key={id} title={`${def.hint}${onRoster ? ' — click to recall' : ' — click to assign'}`}
-                                onClick={() => canToggle && toggleAssignment(s.id, id)}
-                                style={{...chipBase, color:col, cursor: canToggle ? 'pointer' : 'default',
-                                  background: onRoster ? '#08140e' : '#0a0e16',
-                                  border:`1px solid ${col}66`, opacity: canToggle || onRoster ? 1 : 0.55,
-                                  animation: isActiveTask && cd === 0 && (id === 'crew_backstage' || id === 'crew_heckler')
-                                    ? 'crew-ready-glow 2.4s ease-in-out infinite' : undefined}}>
-                                {def.icon} {def.label} {status}{isActiveTask && cd > 0 ? ` ·${cd}t` : ''}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* ULTIMATE row */}
-                      {hasUlt && (
-                        <div style={{display:'flex',gap:3,flexWrap:'wrap',marginBottom:2,alignItems:'center'}}>
-                          <span style={{fontSize:7,color:'#ff44aa88',width:34}}>ULT</span>
-                          {ns.ultimateUsed ? (
-                            <span style={{...chipBase, cursor:'default',
-                              background:'#0a0e16', border:'1px solid #333344', color:'#444455'}}>
-                              💀 Encore spent
-                            </span>
-                          ) : (
-                            <button title="Once per game: 2 Vibe damage + Stagger to all rivals within 4 hexes"
-                              onClick={() => fireUltimate(s.id)}
-                              style={{...chipBase, color:'#ff44aa', fontWeight:700,
-                                background:'linear-gradient(135deg,#1a0014,#0a0010)',
-                                border:'1px solid #ff44aa',
-                                animation:'crew-ready-glow 1.6s ease-in-out infinite'}}>
-                              💀 ENCORE APOCALYPSE
-                            </button>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Roadie action prompt (unchanged flow) */}
-                      {roadieAction?.spiritId === s.id && (
-                        <div style={{fontSize:8, color:'#ffcc44', marginTop:4,
-                          padding:'3px 6px', background:'#1a1200', borderRadius:3,
-                          border:'1px solid #ffcc4444'}}>
-                          {roadieAction.phase === 'replug'
-                            ? <>🔌 Replug amp on #{amps.find(a=>a.id===roadieAction.ampId)?.hexNum}?{' '}
-                                <button onClick={confirmRoadieReplug}
-                                  style={{fontFamily:'inherit',cursor:'pointer',background:'#113300',
-                                    border:'1px solid #44ff88',borderRadius:3,color:'#44ff88',
-                                    fontSize:9,marginLeft:4,padding:'1px 6px'}}>✓ Fix it!</button>
-                              </>
-                            : roadieAction.phase === 'pickAmp'
-                              ? <>🔌 Click an unplugged amp hex to fix:<br/>
-                                  {amps.filter(a=>a.ownerId===roadieAction.spiritId&&a.unplugged).map(a=>(
-                                    <button key={a.id}
-                                      onClick={()=>{
-                                        setRoadieAction(prev=>({...prev,phase:'replug',ampId:a.id}));
-                                        addLog(`🔌 Roadie targeting amp on #${a.hexNum}`);
-                                      }}
-                                      style={{fontFamily:'inherit',cursor:'pointer',background:'#0a1a0a',
-                                        border:'1px solid #44ff88',borderRadius:3,color:'#44ff88',
-                                        fontSize:9,margin:'2px 3px',padding:'1px 6px'}}>
-                                      Amp #{a.hexNum}
-                                    </button>
-                                  ))}
-                                </>
-                            : roadieAction.phase === 'selectHex'
-                              ? '📦 Click a hex near your Amp to move it'
-                              : '📦 Click a direction hex to push the Amp toward'}
-                          <button onClick={() => setRoadieAction(null)}
-                            style={{fontFamily:'inherit', cursor:'pointer', background:'none', border:'none',
-                              color:'#ff4444', fontSize:9, marginLeft:8, padding:0}}>✕</button>
-                        </div>
-                      )}
+                        ) : (
+                          <button title="Once per game: 2 Vibe damage + Stagger to all rivals within 4 hexes"
+                            onClick={() => fireUltimate(s.id)}
+                            style={{...chipBase, color:'#ff44aa', fontWeight:700,
+                              background:'linear-gradient(135deg,#1a0014,#0a0010)',
+                              border:'1px solid #ff44aa',
+                              animation:'crew-ready-glow 1.6s ease-in-out infinite'}}>
+                            💀 ENCORE APOCALYPSE
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })()}
@@ -11310,7 +10363,6 @@ function Game({ gameState, onReturnToLobby }) {
                   {ns.tripped&&<span style={{fontSize:7,color:"#aaffaa"}} title="Tripped — movement halved">🌀</span>}
                   {ns.dazed&&<span style={{fontSize:7,color:"#ffaaff"}} title="Dazed — next move misdirected">😵</span>}
                   {ns.instrumentDropped&&<span style={{fontSize:7,color:"#ff4444"}} title="Dropped instrument — -1 Drive">🎸💥</span>}
-                  {amps.some(a=>a.ownerId===s.id&&a.unplugged)&&<span style={{fontSize:7,color:"#ff8800"}} title="Amp unplugged!">🔌</span>}
                 </div>
                 {/* Owned skills + DB target row */}
                 {(() => {
@@ -11376,14 +10428,6 @@ function Game({ gameState, onReturnToLobby }) {
           <div className="stitle" style={{marginTop:4}}>
             {turnStep === 'move_act' ? 'Step 4 — Move & Act' : 'Actions'}
           </div>
-          {ampPlacing && (
-            <div style={{fontSize:8,color:"#ffcc44",background:"#1a1200",border:"1px solid #ffcc4466",
-              borderRadius:4,padding:"4px 8px",marginBottom:4}}>
-              🔊 Click an adjacent hex to place your Amp
-              <button className="btn" style={{marginLeft:6,fontSize:7,borderColor:"#ff4444",color:"#ff4444",padding:"1px 5px"}}
-                onClick={() => setAmpPlacing(null)}>Cancel</button>
-            </div>
-          )}
           {/* ⚡ BONUS REVOICE — Overcharge chord-assist. Deliberately its own compact
               widget (not the normal chord editor) so it reads as a separate,
               one-shot budget rather than a second free revoice. */}
@@ -11420,7 +10464,6 @@ function Game({ gameState, onReturnToLobby }) {
               )}
             </div>
           )}
-          {/* Amp placement now lives in the CREW & GEAR panel above */}
           {turnStep !== 'move_act' && (
             <div style={{marginBottom:3}}>
               <button className="btn end" data-tip-anchor="end-turn" onClick={endTurn} style={{width:'100%',fontSize:9,padding:'5px 0'}}>End Turn ⏭</button>
@@ -11639,8 +10682,7 @@ function Game({ gameState, onReturnToLobby }) {
             {hasConfirmed && acting?.id === 'intergalactic_0'
               && (actingNoteState?.unlockedSkills ?? []).includes('displace') && (() => {
               const cd      = actingNoteState?.displaceCd ?? 0;
-              const hasRig  = amps.some(a => a.ownerId === acting.id);
-              const canWarp = cd <= 0 && hasRig && moveStepsLeft >= DISPLACE_AP;
+              const canWarp = cd <= 0 && moveStepsLeft >= DISPLACE_AP;
               return (
                 <>
                   <button className={canWarp ? 'btn active' : 'btn'}
@@ -11659,30 +10701,6 @@ function Game({ gameState, onReturnToLobby }) {
                   )}
                 </>
               );
-            })()}
-            {/* UNPLUG RIVAL AMP — shown when adjacent to an unplugged-able rival amp */}
-            {hasConfirmed && !actionTokenUsed && (() => {
-              const actingHex = acting ? HEX_BY_NUM[acting.num] : null;
-              if (!actingHex) return null;
-              const adjacentRivalAmps = amps.filter(amp => {
-                if (amp.ownerId === acting?.id) return false;
-                if (amp.unplugged) return false;
-                const ampHex = HEX_BY_NUM[amp.hexNum];
-                if (!ampHex) return false;
-                const neighbors = getFlatTopNeighborSlots(actingHex);
-                return neighbors.some(n => n.num === amp.hexNum) || acting?.num === amp.hexNum;
-              });
-              if (adjacentRivalAmps.length === 0) return null;
-              return adjacentRivalAmps.map(amp => {
-                const owner = spirits.find(s => s.id === amp.ownerId);
-                return (
-                  <button key={amp.id} className="btn"
-                    style={{borderColor:'#ff8800',color:'#ff8800'}}
-                    onClick={() => { if (!canAct) return; unplugRivalAmp(amp.id); dispatch(beatsSpent(0, true)); }}>
-                    🔌 Unplug {owner?.name?.split(' ')[0] ?? 'rival'}'s Amp
-                  </button>
-                );
-              });
             })()}
             <button className="btn end" data-tip-anchor="end-turn" onClick={endTurn}>End ⏭</button>
           </div>
@@ -12272,10 +11290,7 @@ function Game({ gameState, onReturnToLobby }) {
                 const hub  = HEX_BY_NUM[LIMELIGHT_HEX];
                 if (!home || !hub) return null;
                 const ns = noteStates[s.id] ?? {};
-                // 🎫 Assigned Diehards step out of the crowd — they're drawn at the
-                // home-corner crew muster instead of the front rail (§6/§7).
-                const assignedN = (ns.assignments ?? []).length;
-                const D = Math.max(0, (ns.diehards ?? 0) - assignedN), C = ns.casuals ?? 0;
+                const D = ns.diehards ?? 0, C = ns.casuals ?? 0;
                 const total = D + C;
                 const sc = CORNER_LABELS[s.corner]?.color ?? s.color;
                 const hx = home.px * SCALE, hy = home.py * SCALE;
@@ -12502,168 +11517,6 @@ function Game({ gameState, onReturnToLobby }) {
               <AmpDecks spirits={spirits} noteStates={noteStates} actingId={acting?.id}
                 aiming={action === 'sonic'} thumpFx={deckThump}/>
 
-              {/* ── 🔧 ROAD CREW & 🎉 GROUPIES ── a Spirit's crew musters by the home corner, apart from the fan sea ── */}
-              {spirits.map(s => {
-                if (!s.corner) return null;
-                const home = HEX_BY_NUM[CORNERS[s.corner]?.homeNum];
-                const hub  = HEX_BY_NUM[LIMELIGHT_HEX];
-                if (!home || !hub) return null;
-                const ns = noteStates[s.id] ?? {};
-                const roadies = ns.roadies ?? [];
-                // 🎫 Board-first crew (§7): only Diehards WITH JOBS muster here.
-                // Stagehand shows as the roadie (ns.roadies); the rest get a
-                // task-specific actor. Pending assignees ghost in at low opacity.
-                const active  = ns.assignments ?? [];
-                const pending = ns.pendingAssignments ?? null;
-                const roster  = pending ?? active;
-                const groupieIds = roster.filter(id => id !== 'crew_stagehand');
-                if (roadies.length === 0 && groupieIds.length === 0) return null;
-                const isPendingOnly = (id) => !active.includes(id);
-                const clickableCrew = s.id === acting?.id && !s.cpu && canAct;
-
-                const sc = CORNER_LABELS[s.corner]?.color ?? s.color;   // owner colour for the groupie glow
-
-                const hx = home.px * SCALE, hy = home.py * SCALE;
-                const cxC = hub.px * SCALE, cyC = hub.py * SCALE;
-                // Outward unit vector (board centre → home corner) and its perpendicular.
-                let ox = hx - cxC, oy = hy - cyC;
-                const L = Math.hypot(ox, oy) || 1; ox /= L; oy /= L;
-                const pxv = -oy, pyv = ox;
-                // Muster point: just outside the home pocket, NEARER in than the fan sea (3.5·HS).
-                const CREW_OUT = HS * 1.75;
-                const baseX = hx + ox * CREW_OUT, baseY = hy + oy * CREW_OUT;
-                const u = HS * 0.34; // crew-token unit — a touch larger than a fan so named crew reads clearly
-                const clampV = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-
-                // A short row centred & pushed onto one flank of the home corner.
-                const layout = (n, side) => {
-                  const out = [], gap = u * 1.7;
-                  for (let i = 0; i < n; i++) {
-                    const slot = i - (n - 1) / 2;
-                    const along = side * (u * 2.4) + slot * gap;
-                    const x = baseX + pxv * along + ox * (Math.abs(slot) * u * 0.25);
-                    const y = baseY + pyv * along + oy * (Math.abs(slot) * u * 0.25);
-                    out.push({ x: clampV(x, 8, SVG_W - 8), y: clampV(y, 8, SVG_H - 8) });
-                  }
-                  return out;
-                };
-                const roadiePos  = layout(roadies.length, -1);    // crew on one flank
-                const groupiePos = layout(groupieIds.length, +1); // groupies on the other
-
-                return (
-                  <g key={`crew-${s.id}`} style={{pointerEvents:"none"}}>
-                    {/* ROADIES — hard-hatted stagehands with a wrench.
-                        §7: clicked ON THE BOARD to act — Fix Cable if an owned
-                        amp is sabotaged, otherwise the Move Amp flow. */}
-                    {roadiePos.map((p, i) => {
-                      const r = roadies[i];
-                      const resting = (r?.cooldownTurns ?? 0) > 0 || r?.onBoard;
-                      const canClick = clickableCrew && !resting && !roadieAction;
-                      const needsFix = amps.some(a => a.ownerId === s.id && a.unplugged);
-                      const dur = 4.2 + (i % 3) * 0.4;
-                      const delay = -(((i * 0.5) % dur)).toFixed(2);
-                      return (
-                        <g key={`rd-${i}`} transform={`translate(${p.x} ${p.y})`} opacity={resting ? 0.4 : 1}
-                           onClick={canClick ? () => (needsFix ? roadieStartFix(s.id, r.id) : startRoadieAction(s.id, r.id)) : undefined}
-                           style={{animation:`fan-bob ${dur}s ease-in-out infinite`, animationDelay:`${delay}s`,
-                             pointerEvents: canClick ? 'all' : 'none', cursor: canClick ? 'pointer' : 'default'}}>
-                          {/* generous invisible hitbox — corner tokens are small at board scale */}
-                          {canClick && <circle cx={0} cy={0} r={u*2.2} fill="transparent"/>}
-                          {/* ready-state glow */}
-                          {canClick && <circle cx={0} cy={0} r={u*1.3} fill="none" stroke="#ffb347" strokeWidth={1}
-                            opacity={0.7} style={{animation:'event-hex-pulse 1.6s ease-in-out infinite'}}/>}
-                          <ellipse cx={0} cy={u*0.95} rx={u*0.95} ry={u*0.26} fill="#000" opacity={0.28}/>
-                          {/* body / shoulders */}
-                          <path d={`M ${-u*0.8} ${u*0.85} Q 0 ${-u*0.1} ${u*0.8} ${u*0.85} Z`} fill="#7f97b0" stroke="#0a1018" strokeWidth={0.6}/>
-                          {/* head */}
-                          <circle cx={0} cy={-u*0.32} r={u*0.42} fill="#b9c9da" stroke="#0a1018" strokeWidth={0.6}/>
-                          {/* hard hat — dome + brim (amber = crew) */}
-                          <path d={`M ${-u*0.5} ${-u*0.42} A ${u*0.52} ${u*0.52} 0 0 1 ${u*0.5} ${-u*0.42} Z`} fill="#ffb347" stroke="#7a4a00" strokeWidth={0.5}/>
-                          <rect x={-u*0.64} y={-u*0.5} width={u*1.28} height={u*0.16} rx={u*0.08} fill="#ffb347" stroke="#7a4a00" strokeWidth={0.4}/>
-                          {/* wrench — glints when off cooldown (§7 ready tell) */}
-                          <line x1={u*0.5} y1={u*0.25} x2={u*0.98} y2={u*0.72} stroke={canClick ? '#ffffff' : '#cdd8e2'} strokeWidth={u*0.16} strokeLinecap="round"/>
-                          <circle cx={u*1.0} cy={u*0.74} r={u*0.16} fill="none" stroke={canClick ? '#ffffff' : '#cdd8e2'} strokeWidth={u*0.12}/>
-                          {/* cooldown counter on the ghost */}
-                          {(r?.cooldownTurns ?? 0) > 0 && (
-                            <text x={0} y={-u*1.1} textAnchor="middle" fontSize={u*0.75} fill="#8899aa"
-                              fontFamily="'Saira Stencil One',sans-serif">{r.cooldownTurns}t</text>
-                          )}
-                        </g>
-                      );
-                    })}
-
-                    {/* ASSIGNED DIEHARDS — task actors from the neon silhouette sheet,
-                        each looking the part (§7): pen-pal with 💌+♥, heckler with 📢,
-                        merch fan behind a stall. Clicked on the board to act. */}
-                    {groupiePos.map((p, i) => {
-                      const id = groupieIds[i];
-                      const ghosting = isPendingOnly(id);          // walking backstage — on the job next turn
-                      const cd = ns.groupieCooldowns?.[id] ?? 0;
-                      const resting = cd > 0;
-                      const hasAction = id === 'crew_backstage' || id === 'crew_heckler';
-                      const letterOut = id === 'crew_backstage' && fanLetters.some(l => l.ownerId === s.id);
-                      const canClick = clickableCrew && hasAction && !ghosting && !resting && !letterOut;
-                      const tell = id === 'crew_backstage' ? '💌' : id === 'crew_heckler' ? '📢' : '🏪';
-                      const dur = 3.0 + (i % 3) * 0.45;
-                      const delay = -(((i * 0.6) % dur)).toFixed(2);
-                      const boxS = u * 2.4;                       // bigger + detailed vs the pawn fans
-                      const cellC = i % 3, cellR = Math.floor(i / 3) % 3; // pick a pose from the 3×3 sheet
-                      const bx = p.x - boxS / 2, by = p.y - boxS * 0.72;
-                      const clipId = `gpclip-${s.id}-${i}`;
-                      return (
-                        <g key={`gp-${id}`} opacity={ghosting ? 0.35 : resting ? 0.4 : 1}
-                           onClick={canClick ? () => deployGroupie(s.id, id) : undefined}
-                           style={{animation:`fan-bob ${dur}s ease-in-out infinite`, animationDelay:`${delay}s`,
-                             pointerEvents: canClick ? 'all' : 'none', cursor: canClick ? 'pointer' : 'default'}}>
-                          {/* generous invisible hitbox (≥2× the sprite) */}
-                          {canClick && <circle cx={p.x} cy={p.y} r={boxS*1.1} fill="transparent"/>}
-                          {/* ready-state glow */}
-                          {canClick && <circle cx={p.x} cy={p.y - boxS*0.1} r={boxS*0.55} fill="none" stroke={sc}
-                            strokeWidth={1.2} opacity={0.8} style={{animation:'event-hex-pulse 1.5s ease-in-out infinite'}}/>}
-                          <ellipse cx={p.x} cy={p.y + boxS*0.28} rx={boxS*0.3} ry={boxS*0.09} fill="#000" opacity={0.3}/>
-                          {/* owner-colour glow so you can tell whose die-hards these are */}
-                          <ellipse cx={p.x} cy={p.y - boxS*0.04} rx={boxS*0.38} ry={boxS*0.5} fill={sc} opacity={0.22}
-                            style={{filter:`blur(${boxS*0.16}px)`}}/>
-                          {/* Code-drawn fan pawn instead of PNG sprite sheet */}
-                          {fanPawnShape(p.x, p.y, boxS * 0.42, sc, true, 0.8, 1, i % 6, i % 2 === 1, i % 2 === 0 ? 'fist' : 'wave')}
-                          {/* 🏪 merch stall — the fan works a counter, not the rail */}
-                          {id === 'crew_merch' && (
-                            <rect x={p.x - boxS*0.42} y={p.y + boxS*0.06} width={boxS*0.84} height={boxS*0.22}
-                              rx={boxS*0.04} fill="#3a2a10" stroke="#ffb347" strokeWidth={0.7}/>
-                          )}
-                          {/* overhead tell: ready = bobbing task icon; cooldown = counter;
-                              pending = ⏳; letter in flight = it's on the board already */}
-                          <text x={p.x} y={p.y - boxS*0.78} textAnchor="middle" fontSize={boxS*0.34}
-                            style={canClick ? {filter:`drop-shadow(0 0 3px ${sc})`} : undefined}>
-                            {ghosting ? '⏳' : resting ? '' : letterOut ? '' : tell}
-                          </text>
-                          {id === 'crew_backstage' && !ghosting && !resting && !letterOut && (
-                            <text x={p.x + boxS*0.3} y={p.y - boxS*0.98} textAnchor="middle" fontSize={boxS*0.24}>♥</text>
-                          )}
-                          {resting && !ghosting && (
-                            <text x={p.x} y={p.y - boxS*0.78} textAnchor="middle" fontSize={boxS*0.28}
-                              fill="#8899aa" fontFamily="'Saira Stencil One',sans-serif">{cd}t</text>
-                          )}
-                        </g>
-                      );
-                    })}
-
-                    {/* compact count tags, echoing the fan crowd's 🎤 tag */}
-                    {roadies.length > 0 && (() => {
-                      const c = roadiePos[Math.floor(roadiePos.length/2)] ?? {x:baseX,y:baseY};
-                      return <text x={c.x} y={c.y + u*1.85} textAnchor="middle" fontSize={u*0.82}
-                                fontWeight="bold" fill="#cdd8e2" stroke="#000" strokeWidth={0.3}
-                                style={{filter:"drop-shadow(0 0 2px #000)"}}>🔧 {roadies.length}</text>;
-                    })()}
-                    {groupieIds.length > 0 && (() => {
-                      const c = groupiePos[Math.floor(groupiePos.length/2)] ?? {x:baseX,y:baseY};
-                      return <text x={c.x} y={c.y + u*1.85} textAnchor="middle" fontSize={u*0.82}
-                                fontWeight="bold" fill="#ff8ace" stroke="#000" strokeWidth={0.3}
-                                style={{filter:"drop-shadow(0 0 2px #000)"}}>🎫 {groupieIds.length}</text>;
-                    })()}
-                  </g>
-                );
-              })}
 
               {/* Hexes */}
               {ALL_HEXES.map(hex => {
@@ -12972,174 +11825,15 @@ function Game({ gameState, onReturnToLobby }) {
                 );
               })}
 
-              {/* ── AMP TOKENS ── */}
-              {amps.map(amp => {
-                const hex = HEX_BY_NUM[amp.hexNum];
-                if (!hex) return null;
-                const cx = Math.round(hex.px * SCALE);
-                const cy = Math.round(hex.py * SCALE);
-                const r  = HS * 0.7;
-                const pts = pointyCorners(cx, cy, r);
-                // Connection now means: part of a chain its OWNER is plugged into.
-                const isUnplugged = !!amp.unplugged;
-                const isConnected = !isUnplugged && ampRigs.poweredAmpIds.has(amp.id);
-                const ownerColor  = amp.ownerColor;
-                const isRoadieTarget =
-                  (roadieAction?.phase === 'selectHex' && (
-                    amp.hexNum === roadieAction?.adjHexNum ||
-                    getFlatTopNeighborSlots(HEX_BY_NUM[roadieAction?.adjHexNum ?? -1] ?? {q:999,r:999})
-                      .some(n => n.num === amp.hexNum)
-                  )) ||
-                  (roadieAction?.phase === 'selectHex' && !roadieAction?.adjHexNum);
-                return (
-                  <g key={amp.id} style={{pointerEvents:"none"}}>
-                    {/* Hover range ring — shown when this amp's hex is hovered */}
-                    {hovered === amp.hexNum && (
-                      <>
-                        <circle cx={cx} cy={cy} r={AMP_UNPLUG_DIST * HS * 1.95}
-                          fill={ownerColor + "0d"} stroke={ownerColor} strokeWidth={1.5}
-                          strokeDasharray="6 4" opacity={0.7}
-                          style={{pointerEvents:"none"}}/>
-                        <text x={cx} y={cy - AMP_UNPLUG_DIST * HS * 1.95 - 5}
-                          textAnchor="middle" fontSize={HS * 0.28}
-                          fill={ownerColor} opacity={0.85}
-                          style={{fontFamily:"monospace", pointerEvents:"none"}}>
-                          range ({AMP_UNPLUG_DIST})
-                        </text>
-                      </>
-                    )}
-                    {/* Range ring (subtle, always visible) */}
-                    {isConnected && (
-                      <circle cx={cx} cy={cy} r={AMP_RANGE * HS * 1.15}
-                        fill="none" stroke={ownerColor} strokeWidth={0.6}
-                        opacity={0.18} strokeDasharray="4 6"/>
-                    )}
-                    {/* Hex body */}
-                    <polygon points={pts}
-                      fill={isUnplugged ? "#110808" : isConnected ? ownerColor+"33" : "#0a1020"}
-                      stroke={isUnplugged ? "#662222" : isConnected ? ownerColor : "#444466"}
-                      strokeWidth={isConnected ? 2 : 1}
-                      strokeDasharray={isUnplugged ? "4 3" : undefined}
-                      style={isConnected ? {
-                        filter:`drop-shadow(0 0 6px ${ownerColor}) drop-shadow(0 0 12px ${ownerColor}88)`,
-                        animation:"outline-pulse-soft 2s ease-in-out infinite",
-                      } : undefined}
-                    />
-                    {/* Speaker circle */}
-                    <circle cx={cx} cy={cy - HS*0.06} r={r*0.38}
-                      fill="none" stroke={isUnplugged ? "#442222" : isConnected ? ownerColor : "#556688"} strokeWidth={1}/>
-                    <circle cx={cx} cy={cy - HS*0.06} r={r*0.18}
-                      fill={isUnplugged ? "#221111" : isConnected ? ownerColor+"88" : "#223344"}
-                      stroke={isUnplugged ? "#442222" : isConnected ? ownerColor : "#556688"} strokeWidth={0.5}/>
-                    {/* Knob row */}
-                    {[-1,0,1].map(k => (
-                      <circle key={k} cx={cx + k * r*0.22} cy={cy + r*0.42} r={r*0.07}
-                        fill={isUnplugged ? "#441111" : isConnected ? ownerColor : "#445566"}/>
-                    ))}
-                    {/* Label */}
-                    <text x={cx} y={cy + r*0.75} textAnchor="middle" fontSize={r*0.28}
-                      fill={isUnplugged ? "#662222" : isConnected ? ownerColor : "#556688"}
-                      style={{fontFamily:"monospace"}}>{isUnplugged ? "DEAD" : "AMP"}</text>
-                    {/* Unplugged icon */}
-                    {isUnplugged && (
-                      <text x={cx} y={cy - r*0.1} textAnchor="middle" fontSize={r*0.55}
-                        style={{pointerEvents:"none"}}>🔌</text>
-                    )}
-                    {isRoadieTarget && (
-                      <polygon points={pts} fill="none" stroke="#ffcc44" strokeWidth={2}
-                        style={{animation:"hex-turn-pulse 1s ease-in-out infinite",pointerEvents:"none"}}/>
-                    )}
-                  </g>
-                );
-              })}
-
-              {/* ── 🔌 AMP RIG CABLING (Option B) — the ACTIVE Spirit runs ONE instrument cord
-                  into its rig; amps then daisy-chain to EACH OTHER, so the whole rig reads as a
-                  single snaking run. Powered chain = bright + flowing; a cold/severed sub-chain
-                  shows dim; wander out of reach and the instrument cord frays red. ── */}
+              {/* ── 🎲 SONIC DIE POOL CHIP — the acting Spirit's pool at their feet ── */}
               {acting && (() => {
                 const spiritHex = HEX_BY_NUM[acting.num];
                 if (!spiritHex) return null;
                 const sc = acting.corner ? (CORNER_LABELS[acting.corner]?.color ?? acting.color) : acting.color;
                 const sx = Math.round(spiritHex.px * SCALE);
                 const sy = Math.round(spiritHex.py * SCALE);
-                const chains = ampRigs.chainsByOwner[acting.id] ?? [];
-                const rig = ampRigs.rigByOwner[acting.id];           // best powered chain (or undefined)
-
-                // one drooping cord between two points (instrument cord OR amp-to-amp patch)
-                const renderCord = (key, ax, ay, bx, by, o) => {
-                  const ddx = bx - ax, ddy = by - ay, len = Math.hypot(ddx, ddy) || 1;
-                  const nx = -ddy / len, sag = len * (o.sagMul ?? 0.22), wob = o.wob ?? HS * 0.3, w = o.w ?? 2.4;
-                  const c1x = ax + ddx * 0.33 + nx * wob, c1y = ay + ddy * 0.30 + sag;
-                  const c2x = ax + ddx * 0.66 - nx * wob, c2y = ay + ddy * 0.66 + sag * 0.85;
-                  const d = `M ${ax} ${ay} C ${c1x} ${c1y} ${c2x} ${c2y} ${bx} ${by}`;
-                  const midX = (c1x + c2x) / 2, midY = (c1y + c2y) / 2 + sag * 0.12;
-                  return (
-                    <g key={key}>
-                      <path d={d} fill="none" stroke={o.col} strokeWidth={w * 2.5} strokeLinecap="round" opacity={o.glow} style={{filter:'blur(2.5px)'}}/>
-                      <path d={d} fill="none" stroke={o.col} strokeWidth={w} strokeLinecap="round" strokeDasharray={o.dash ?? undefined}
-                        style={o.failing ? {animation:'cable-fray 0.5s ease-in-out infinite'} : undefined}/>
-                      {o.flow && <path d={d} fill="none" stroke="#ffffff" strokeWidth={Math.max(0.9, w * 0.45)} strokeLinecap="round"
-                        strokeDasharray="2 10" opacity={0.8} style={{animation:'cable-flow 0.9s linear infinite'}}/>}
-                      {o.glyph && <text x={midX} y={midY} textAnchor="middle" dominantBaseline="central" fontSize={HS * 0.4}
-                        style={{filter:`drop-shadow(0 0 2px ${o.col})`}}>{o.glyph}</text>}
-                    </g>
-                  );
-                };
-
-                // PATCH CORDS — amps daisy-chained to each other inside every chain
-                const patch = [];
-                chains.forEach((ch, ci) => {
-                  const col = ch.powered ? sc : '#5a6a7a';
-                  ch.edges.forEach(([a, b], ei) => {
-                    const ha = HEX_BY_NUM[a.hexNum], hb = HEX_BY_NUM[b.hexNum];
-                    if (!ha || !hb) return;
-                    patch.push(renderCord(`patch-${ci}-${ei}`, ha.px * SCALE, ha.py * SCALE, hb.px * SCALE, hb.py * SCALE, {
-                      col, dash: ch.powered ? null : '4 5', flow: ch.powered, glow: ch.powered ? 0.4 : 0.18,
-                      sagMul: 0.16, wob: ((ei % 2) ? 1 : -1) * HS * 0.25, w: 2.0,
-                    }));
-                  });
-                });
-
-                // INSTRUMENT CORD — the ONE cable from the Spirit into the rig
-                const ownNear = amps
-                  .filter(a => a.ownerId === acting.id)
-                  .map(a => { const ah = HEX_BY_NUM[a.hexNum]; return ah ? { a, ah, dist: axialDist(spiritHex.q, spiritHex.r, ah.q, ah.r) } : null; })
-                  .filter(o => o && o.dist <= AMP_RANGE + 1)
-                  .sort((x, y) => x.dist - y.dist);
-                let anchor = null, state = null;
-                if (rig) {
-                  const rigIds = new Set(rig.amps.map(a => a.id));
-                  anchor = ownNear.find(o => rigIds.has(o.a.id)) ?? null;
-                  if (anchor) state = anchor.dist <= AMP_RANGE - 1 ? 'healthy' : 'stretched';
-                } else if (ownNear.length) {
-                  anchor = ownNear[0];
-                  state = anchor.a.unplugged ? 'snapped' : 'lost';
-                }
-                let instrument = null;
-                if (anchor) {
-                  const ah = anchor.ah, ax = ah.px * SCALE, ay = ah.py * SCALE;
-                  const ddx = sx - ax, ddy = sy - ay, len = Math.hypot(ddx, ddy) || 1;
-                  const px = ax + (ddx / len) * (HS * 0.5), py = ay + (ddy / len) * (HS * 0.5);
-                  const st = {
-                    healthy:   { col: sc,        dash: null,  flow: true,  glow: 0.5,  sagMul: 0.28, glyph: null,  failing: false },
-                    stretched: { col: '#ffcc44', dash: null,  flow: true,  glow: 0.45, sagMul: 0.10, glyph: '⚠️', failing: false },
-                    lost:      { col: '#ff5544', dash: '5 5', flow: false, glow: 0.4,  sagMul: 0.20, glyph: '⚡', failing: true },
-                    snapped:   { col: '#ff3344', dash: '4 6', flow: false, glow: 0.35, sagMul: 0.20, glyph: '🔌', failing: true },
-                  }[state];
-                  instrument = (
-                    <g>
-                      {renderCord('instr', px, py, sx, sy + HS * 0.12, { ...st, wob: HS * 0.35, w: 2.6 })}
-                      <circle cx={px} cy={py} r={HS * 0.12} fill={st.col} stroke="#000" strokeWidth={0.5}/>
-                      <circle cx={sx} cy={sy + HS * 0.12} r={HS * 0.1} fill="none" stroke={st.col} strokeWidth={1.4}/>
-                    </g>
-                  );
-                }
                 return (
                   <g style={{pointerEvents:'none'}}>
-                    {patch}
-                    {instrument}
-
                     {/* 🎲 Die pool chip — the active Spirit's Sonic pool at their feet */}
                     {(() => {
                       const bw = HS * 1.25, bh = HS * 0.6;
@@ -13244,28 +11938,6 @@ function Game({ gameState, onReturnToLobby }) {
                 );
               })}
 
-              {/* ── 💌 FAN MAIL LETTERS — addressed board tokens (CREW_SYSTEM_DESIGN.md §4.1):
-                     only the owner can pick one up (move onto the hex, spend the Action) ── */}
-              {fanLetters.map(letter => {
-                const hex = HEX_BY_NUM[letter.hexNum];
-                if (!hex) return null;
-                const owner = spirits.find(s => s.id === letter.ownerId);
-                const oc = owner?.color ?? '#ff66bb';
-                const cx = Math.round(hex.px * SCALE);
-                const cy = Math.round(hex.py * SCALE);
-                const r  = HS * 0.36;
-                return (
-                  <g key={`letter-${letter.ownerId}`} style={{pointerEvents:'none',
-                    animation:'event-hex-pulse 1.4s ease-in-out infinite'}}>
-                    {/* owner-colour ring — rivals see exactly whose heal is on the floor */}
-                    <circle cx={cx} cy={cy} r={r*1.25} fill="none" stroke={oc} strokeWidth={1.2}
-                      opacity={0.75} style={{filter:`drop-shadow(0 0 4px ${oc})`}}/>
-                    <text x={cx} y={cy + r*0.42} textAnchor="middle" fontSize={r*1.5}>💌</text>
-                    <text x={cx} y={cy - r*1.5} textAnchor="middle" fontSize={r*0.9}>♥</text>
-                  </g>
-                );
-              })}
-
               {/* ── CHARGE ZONES — fixed lightning hexes (⚡ die-tier boost / Overcharge) ── */}
               {chargeZones.map(zone => {
                 const hex = HEX_BY_NUM[zone.num];
@@ -13320,95 +11992,6 @@ function Game({ gameState, onReturnToLobby }) {
                     {/* Subtle glow ring */}
                     <ellipse cx={cx} cy={cy + r*0.9} rx={r*0.55} ry={r*0.12}
                       fill="#aa88ff22"/>
-                  </g>
-                );
-              })}
-
-              {/* ── ROADIE direction-target highlights ── */}
-              {roadieAction?.phase === 'selectDir' && (() => {
-                const adjHex = HEX_BY_NUM[roadieAction.adjHexNum];
-                if (!adjHex) return null;
-                return getFlatTopNeighborSlots(adjHex).map(nb => {
-                  const cx = Math.round(nb.px * SCALE);
-                  const cy = Math.round(nb.py * SCALE);
-                  return (
-                    <g key={nb.num} style={{cursor:"pointer"}} onClick={() => roadieMoveAmp(nb.num)}>
-                      <polygon points={pointyCorners(cx, cy, HS * 0.85)}
-                        fill="#ffcc4422" stroke="#ffcc44" strokeWidth={1.5}
-                        style={{animation:"hex-turn-pulse 1s ease-in-out infinite"}}/>
-                      <text x={cx} y={cy+4} textAnchor="middle" fontSize={HS*0.35}
-                        fill="#ffcc44" style={{pointerEvents:"none"}}>→</text>
-                    </g>
-                  );
-                });
-              })()}
-              {/* ── ROADIE: cooldown ghost tokens on amps ── */}
-              {amps.map(amp => {
-                // Find any spirit whose roadie is on cooldown and owns this amp
-                const ghostRoadie = spirits.find(sp => {
-                  const ns = noteStates[sp.id];
-                  return (ns?.roadies ?? []).some(r => r.cooldownTurns > 0 && sp.id === amp.ownerId);
-                });
-                if (!ghostRoadie) return null;
-                const ns = noteStates[ghostRoadie.id];
-                const roadie = (ns?.roadies ?? []).find(r => r.cooldownTurns > 0);
-                if (!roadie) return null;
-                const hex = HEX_BY_NUM[amp.hexNum];
-                if (!hex) return null;
-                const cx = Math.round(hex.px * SCALE);
-                const cy = Math.round(hex.py * SCALE);
-                return (
-                  <g key={`ghost-${amp.id}`} style={{pointerEvents:'none'}}>
-                    {/* Small wrench ghost sitting on amp */}
-                    <circle cx={cx + HS * 0.55} cy={cy - HS * 0.55} r={HS * 0.28}
-                      fill="#0a1020cc" stroke={ghostRoadie.color + '88'} strokeWidth={0.8}/>
-                    <text x={cx + HS * 0.55} y={cy - HS * 0.55 + 4}
-                      textAnchor="middle" fontSize={HS * 0.3}
-                      fill={ghostRoadie.color + 'aa'} style={{pointerEvents:'none'}}>🔧</text>
-                    <text x={cx + HS * 0.55} y={cy - HS * 0.22}
-                      textAnchor="middle" fontSize={HS * 0.22}
-                      fill={ghostRoadie.color + '99'} style={{pointerEvents:'none',fontFamily:'monospace'}}>
-                      {roadie.cooldownTurns}t
-                    </text>
-                  </g>
-                );
-              })}
-
-              {/* ── ROADIE: animated token sliding from spirit → amp → destination ── */}
-              {roadieAnimations.map(anim => {
-                const fromCx = Math.round(anim.fromHex.px * SCALE);
-                const fromCy = Math.round(anim.fromHex.py * SCALE);
-                const ampCx  = Math.round(anim.toAmpHex.px * SCALE);
-                const ampCy  = Math.round(anim.toAmpHex.py * SCALE);
-                const toCx   = Math.round(anim.toFinalHex.px * SCALE);
-                const toCy   = Math.round(anim.toFinalHex.py * SCALE);
-                // Midpoint: interpolate from→amp→final via animateMotion
-                const pathD = `M ${fromCx} ${fromCy} L ${ampCx} ${ampCy} L ${toCx} ${toCy}`;
-                return (
-                  <g key={anim.id} style={{pointerEvents:'none'}}>
-                    {/* Token */}
-                    <g style={{animation:'roadie-run 2.8s ease-in-out forwards'}}>
-                      <animateMotion dur="2.4s" fill="freeze" path={pathD}
-                        keyTimes="0;0.45;1" calcMode="spline"
-                        keySplines="0.4 0 0.6 1; 0.4 0 0.6 1"/>
-                      <circle r={HS * 0.32} fill={anim.spiritColor + '33'}
-                        stroke={anim.spiritColor} strokeWidth={1.2}/>
-                      <text textAnchor="middle" dominantBaseline="central"
-                        fontSize={HS * 0.35} style={{pointerEvents:'none'}}>{anim.icon ?? '🔧'}</text>
-                    </g>
-                    {/* "En route…" label that fades in near the destination */}
-                    <text
-                      x={ampCx} y={ampCy - HS * 1.4}
-                      textAnchor="middle" fontSize={HS * 0.32}
-                      fill={anim.spiritColor}
-                      stroke="#000" strokeWidth={0.3}
-                      style={{
-                        pointerEvents:'none',
-                        animation:'roadie-label-fade 2.8s ease-in-out forwards',
-                        fontFamily:'monospace',
-                      }}>
-                      {anim.labelText ?? '🔧 Roadie en route…'}
-                    </text>
                   </g>
                 );
               })}
