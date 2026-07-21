@@ -42,6 +42,8 @@ import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
 import riffOffSong from "./Riff_off_song.mp3";
 import battleSong  from "./battle_song.mp3";
 import { ampLinked, ampMstEdges, computeAmpRigs } from "./board/ampRigs.js";
+import { sonicRig, rigPoolLabel } from "./engine/systems/sonicRig.js";
+import AmpDecks from "./board/ampDecks.jsx";
 import { hexRingFromCenter, crowdMultiplier, advanceDB, SPOTLIGHT_POOL } from "./board/boardHelpers.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRiffMiss, playBeamClash, playBeamSurge, playBeamBreak, playFanPop } from "./audio/riffSfx.js";
 import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./riff/riffGeneration.js";
@@ -61,7 +63,7 @@ import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn ro
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import { marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus, smashOutcome, decideWinner, thrashDamage, thrashKnockback, thrashFame, sonicDamage, sonicKnockback, sonicFame } from "./engine/systems/combat.js";
 import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./engine/systems/economy.js";
@@ -1223,6 +1225,9 @@ function Game({ gameState, onReturnToLobby }) {
   const [pointsFlash, setPointsFlash] = useState(null);
   // voiceRollFx: { value:1..6, success:bool, key } — drives the animated Mic d6
   const [voiceRollFx, setVoiceRollFx] = useState(null);
+  // 🔊 Amp deck thump — { id, key } bumps a 300ms speaker-thump on that
+  // Spirit's corner stack when their Sonic beam fires (AMP_DECK_DESIGN.md §3.2)
+  const [deckThump, setDeckThump] = useState(null);
   // pointsFlash: { lines: ['...','...'], key: Date.now() } — clears after animation
   // freshNoteIdx: { spiritId, indices:Set<number>, key } — which Note Stock slots
   // just got refilled at turn start, so they can pop in instead of silently changing.
@@ -1434,7 +1439,7 @@ function Game({ gameState, onReturnToLobby }) {
       title: '🎤 Fans',
       pages: [
         { body: 'You drew a crowd! Fans never hand you FP directly — they MULTIPLY every FP you earn, up to ×2 with a full house. Diehards (♥, solid) are your loyal core and worth about three Casuals (👥, hollow), who are... let\'s say "emotionally flexible".', anchor: 'fan-crowd' },
-        { body: ['Growing the crowd: commit clean tracks near the action — centre rings pay 2 casuals a turn, the back row pays zero. Perform well and casuals harden into Diehards.', 'Losing the crowd: skulk in the outer ring too long and casuals get bored and leave. Get knocked down and 7–10 of them flee on the spot — and a couple defect straight to whoever flattened you. Fans, man.'], anchor: 'fan-crowd' },
+        { body: ['Growing the crowd: commit clean tracks near the action — centre rings pay 2 casuals a turn, the back row pays zero. Perform well and casuals harden into Diehards.', 'Losing the crowd: skulk in the outer ring too long and casuals get bored and leave. Get knocked down and a few of them flee on the spot — and a couple defect straight to whoever flattened you. Fans, man.'], anchor: 'fan-crowd' },
       ],
     },
     amp_place: {
@@ -1561,20 +1566,31 @@ function Game({ gameState, onReturnToLobby }) {
   const rootNote     = actingNoteState?.rootNote     ?? 'C';
   const scaleMode    = actingNoteState?.scaleMode    ?? 'major';
   const pivotPending  = actingNoteState?.pivotPending ?? false;
-  // Sonic die tier — driven by the RIG (connected amp chain) the Spirit is plugged
-  // into, not by counting each amp separately. One cord to the rig; amps daisy-chain
-  // to each other. ampsInRange = size of the chain you're plugged into (0 = unplugged).
+  // ── SONIC RIG (AMP_DECK_DESIGN.md §2) ──────────────────────────────────────
+  // Every Spirit has a Main Amp at their corner from turn 1. Pool size comes
+  // from Amp I–III, die upgrades from Power I–III, effective radius from
+  // Range I–III. "Goes to eleven" charge becomes +1 d8 anywhere.
+  const elevenBoost = (actingNoteState?.elevenTurns ?? 0) > 0 ? 1 : 0;
+  const actingHomeHex = acting ? HEX_BY_NUM[CORNERS[acting.corner]?.homeNum] : null;
+  const actingHexObj  = acting ? HEX_BY_NUM[acting.num] : null;
+  const distFromHome  = (actingHomeHex && actingHexObj)
+    ? axialDist(actingHomeHex.q, actingHomeHex.r, actingHexObj.q, actingHexObj.r)
+    : 0;
+  const actingRig = acting
+    ? sonicRig(actingNoteState?.unlockedSkills ?? [], distFromHome, elevenBoost)
+    : { pool: [6], inRange: true };
+  // Backward compat: ampsInRange ≥ 1 always (Main Amp — unplugged state is gone).
+  // Old callers that checked `ampsInRange >= 1` will see "plugged in" universally.
+  const ampsInRange = actingRig.pool.length;
+  // Legacy: still compute ampRigs for the old cable/token render (Phase 2 deletes).
   const ampRigs = computeAmpRigs(amps, spirits);
-  const ampsInRange = acting ? (ampRigs.rigByOwner[acting.id]?.amps.length ?? 0) : 0;
   // 🤖 keep the bot's live-state mirrors fresh
   useEffect(() => { moveStepsLeftRef.current = moveStepsLeft; }, [moveStepsLeft]);
   useEffect(() => { actionTokenUsedRef.current = actionTokenUsed; }, [actionTokenUsed]);
   useEffect(() => { actingRef.current = acting; }, [acting]);
   useEffect(() => { winnerRef.current = winner; }, [winner]);
   useEffect(() => { ampsInRangeRef.current = ampsInRange; }, [ampsInRange]);
-  // "Goes to eleven" event boost — counts as +1 amp in range while active
-  const elevenBoost = (actingNoteState?.elevenTurns ?? 0) > 0 ? 1 : 0;
-  const diceTier = AMP_DICE[Math.min(ampsInRange + elevenBoost, 3)];
+  const diceTier = rigPoolLabel(actingRig.pool);
   const dbPoints      = actingNoteState?.dbPoints      ?? 0;
   const upgradesPending = actingNoteState?.upgradesPending ?? 0;
   // 🎓 showTip runs from setTimeouts — a ref keeps its view of the Theory Tree
@@ -1933,6 +1949,37 @@ function Game({ gameState, onReturnToLobby }) {
       sub.stop(now + totalTime + tail);
       if (oct) oct.stop(now + totalTime + tail);
     } catch (_) { /* audio unavailable — silent fail */ }
+  }
+
+  // ⚡ CHARGE ZONE SFX — a quick rising electronic sweep that says "powered up!"
+  function playChargeSound() {
+    try {
+      const ctx = getAudioCtx();
+      const now = ctx.currentTime;
+      const { master } = getAudioBuses(ctx);
+      // Rising sine sweep 200→1200 Hz over 0.35s
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(200, now);
+      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.35);
+      // Crackling texture — second oscillator detuned square
+      const osc2 = ctx.createOscillator();
+      osc2.type = 'square';
+      osc2.frequency.setValueAtTime(400, now);
+      osc2.frequency.exponentialRampToValueAtTime(2400, now + 0.35);
+      const g2 = ctx.createGain(); g2.gain.value = 0.04;
+      osc2.connect(g2);
+      // Envelope
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0, now);
+      env.gain.linearRampToValueAtTime(0.18, now + 0.05);
+      env.gain.setValueAtTime(0.18, now + 0.3);
+      env.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+      osc.connect(env); g2.connect(env);
+      env.connect(master);
+      osc.start(now); osc2.start(now);
+      osc.stop(now + 0.7); osc2.stop(now + 0.7);
+    } catch (_) { /* audio unavailable */ }
   }
 
   // 🎵 AUTO VOICE-LEADING — render `note` in the octave whose pitch is nearest the
@@ -4261,6 +4308,8 @@ function Game({ gameState, onReturnToLobby }) {
   function checkTokenPickup(spiritId, hexNum) {
     const tok = boardTokens.find(t => t.num === hexNum);
     if (!tok) return;
+    // 🎵 Play the note's pitch on pickup — the chord rings out
+    playNoteSound(tok.note, { holdTime: 0.6, fadeTime: 0.8, volume: 0.22 });
     dispatch(tokenPickedUp(spiritId, hexNum));
     // 🗡️ SHREDDING RONIN — the virtuoso finds more music in it: ~50% of the time he
     // pockets a SECOND (fresh in-scale) note from the same find. Roll once, here.
@@ -4477,6 +4526,8 @@ function Game({ gameState, onReturnToLobby }) {
   function checkChargeZonePickup(spiritId, hexNum) {
     const zone = chargeZones.find(z => z.num === hexNum && (z.cooldown ?? 0) <= 0);
     if (!zone) return;
+    // ⚡ Charge-up SFX — the lightning crackles
+    playChargeSound();
     dispatch(chargeZoneUsed(spiritId, hexNum));
     const overcharged = (noteStates[spiritId]?.unlockedSkills ?? []).includes('overcharge');
     if (overcharged) {
@@ -6864,7 +6915,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (!acting) return;
     if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
     if (actionTokenUsed) { addLog('🔊 Already used your Action Token this turn!'); return; }
-    if (ampsInRange < 1) { addLog('🔊 Sonic Attack requires at least 1 connected Amp!'); return; }
+    // (Main Amp — every Spirit is always wired from turn 1; no "unplugged" check.)
 
     const attacker = spirits.find(s => s.id === acting.id);
     const defender = spirits.find(s => s.id === targetId);
@@ -6877,24 +6928,18 @@ function Game({ gameState, onReturnToLobby }) {
 
     dispatch(beatsSpent(2, true));
     setAction(null);
+    setDeckThump({ id: attacker.id, key: Date.now() }); // corner stack thumps with the beam
 
     // 🔊 Sonic chord is saved for playback at the RESULT moment (beam blast/fizzle).
     // Moved from here to the result phase so the chord rings when the beam fires.
     const sonicChordNotes = [...(actingNoteState?.chordStack ?? [])];
 
     // ── RIFF-OFF TRIGGER ─────────────────────────────────────────────────────
-    // If the defender is ALSO plugged in (their own live amp in range) and the
-    // attacker stands inside the defender's sonic beam — i.e. the two Spirits
-    // are connected, in line of sight, and facing each other down the same
-    // line — the Sonic Attack escalates into a head-to-head RIFF-OFF.
+    // Every Spirit is wired (Main Amp). If the defender is in the attacker's
+    // beam AND the attacker is in the defender's beam — facing each other down
+    // the same line — the Sonic Attack escalates into a head-to-head RIFF-OFF.
     // (AP + Action Token were already spent above, same cost as a Sonic Attack.)
-    const riffDefHex = HEX_BY_NUM[defender.num];
-    const riffDefPlugged = riffDefHex ? amps.some(amp => {
-      const ampHex = HEX_BY_NUM[amp.hexNum];
-      return ampHex && !amp.unplugged && amp.ownerId === targetId &&
-        axialDist(riffDefHex.q, riffDefHex.r, ampHex.q, ampHex.r) <= AMP_RANGE;
-    }) : false;
-    if (riffDefPlugged && !posing[targetId] && getSonicBeam(defender).has(attacker.num)) {
+    if (!posing[targetId] && getSonicBeam(defender).has(attacker.num)) {
       // ⚡ A riff-off is still a battle — charges burn off (no dice to boost here).
       burnChargesAfterBattle([attacker.id, targetId], 'the riff-off spent it');
       startRiffOff(attacker, defender);
@@ -6910,16 +6955,17 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillMods.fogActive)    addLog(`🌫️ Fog Machine fires! Defender -1 Drive, -1 Sustain this battle.`);
     if (skillMods.pyroBonus > 0)addLog(`🔥 Pyrotechnics! +${skillMods.pyroBonus} bonus added to Drive roll.`);
 
-    // Amp count caps at 3 ("goes to eleven" event boost counts as +1 amp)
-    // NOTE: declared BEFORE powerBonus below — referencing it earlier crashed the game
-    const ampCount    = Math.min(ampsInRange + elevenBoost, 3);
+    // ── Rig pool (AMP_DECK_DESIGN.md §2) ────────────────────────────────────
+    // The pool comes from sonicRig (computed at render); ampTier is derived
+    // from skill IDs so Power Chords / Hydra gates stay readable.
+    const atkSkills    = nsA.unlockedSkills ?? [];
+    const ampTier     = ['amp_1','amp_2','amp_3'].filter(id => atkSkills.includes(id)).length;
 
     // PA skill bonuses for Sonic Attack
-    const atkSkills    = nsA.unlockedSkills ?? [];
     const pedalBonus   = atkSkills.includes('pedal_dist') ? 1 : 0;
-    const powerBonus   = (atkSkills.includes('power_chords') && ampCount >= 2) ? 2 : 0;
+    const powerBonus   = (atkSkills.includes('power_chords') && ampTier >= 2) ? 2 : 0;
     if (pedalBonus)  addLog(`🎛️ Pedal Distortion! +1 Drive on Sonic Attack.`);
-    if (powerBonus)  addLog(`🤘 Power Chords! +2 Drive (${ampCount} amps in range).`);
+    if (powerBonus)  addLog(`🤘 Power Chords! +2 Drive (Amp ${ampTier}).`);
 
     // 🎸 Harmony → combat: Drive/Sustain are read from the chord you committed
     // (falls back to the static spirit stat until a chord has been played).
@@ -6935,7 +6981,7 @@ function Game({ gameState, onReturnToLobby }) {
     // read above, from the full chord). Lighter touch than the melee jab's 2 notes.
     // 🐉 HYDRA costs more energy than a normal Sonic — three beams scream out, so it
     // burns the first 2 Chord Stack notes instead of 1. (Normal Sonic spends 1.)
-    const sonicSpendN     = (ampCount === 3 && atkSkills.includes('hydra')) ? 2 : 1;
+    const sonicSpendN     = (ampTier >= 3 && atkSkills.includes('hydra')) ? 2 : 1;
     const sonicChordLeft  = (nsA.chordStack ?? []).slice(sonicSpendN);
     const sonicChordSpent = (nsA.chordStack ?? []).slice(0, sonicSpendN);
     if (sonicChordSpent.length) {
@@ -6973,13 +7019,8 @@ function Game({ gameState, onReturnToLobby }) {
     const defStat  = defBase + defBonus;
     const defenderPosing = posing[targetId];
 
-    // Check if defender is plugged in (within range of one of THEIR OWN live amps)
+    // Every Spirit is wired (Main Amp) — "plugged in" universally.
     const defHex = HEX_BY_NUM[defender.num];
-    const defenderPluggedIn = defHex ? amps.some(amp => {
-      const ampHex = HEX_BY_NUM[amp.hexNum];
-      return ampHex && !amp.unplugged && amp.ownerId === targetId &&
-        axialDist(defHex.q, defHex.r, ampHex.q, ampHex.r) <= AMP_RANGE;
-    }) : false;
 
     // Is the target at range (not directly adjacent)?
     const atkHex    = HEX_BY_NUM[attacker.num];
@@ -6987,16 +7028,21 @@ function Game({ gameState, onReturnToLobby }) {
       ? axialDist(atkHex.q, atkHex.r, defHex.q, defHex.r) > 1
       : false;
 
-    // Unplugged defender cannot retaliate against a plugged-in ranged attacker
-    const retaliationBlocked = isAtRange && !defenderPluggedIn;
+    // Retaliation: both wired, so only blocked when defender is out of their own
+    // rig range (baseline 1d6 can't project a counter-beam). Check defender's rig.
+    const defNsSkills = (nsD.unlockedSkills ?? []);
+    const defHomeHex  = HEX_BY_NUM[CORNERS[defender.corner]?.homeNum];
+    const defDistHome = (defHomeHex && defHex)
+      ? axialDist(defHomeHex.q, defHomeHex.r, defHex.q, defHex.r) : 0;
+    const defRig = sonicRig(defNsSkills, defDistHome);
+    const retaliationBlocked = isAtRange && defRig.pool.length <= 1;
 
-    // Roll — attacker rolls a KEEP-HIGHEST pool from amps; defender uses a flat d6.
-    // 🐉 HYDRA (Shredding Ronin capstone) — at 3 amps the rig overdrives to 3d8.
-    // The pool sizing stays client (reads amp/skill state); the DICE roll on the
-    // engine's seeded rng (Phase 3b) — keep-highest + defender d6 + verdict.
+    // Roll — attacker's pool from sonicRig (computed at render); Hydra upgrades
+    // remaining d6s → d8 (the old overdrive, now layered on the rig system).
     const hasHydra    = atkSkills.includes('hydra');
-    const hydraActive = ampCount === 3 && hasHydra;
-    let   dicePool    = sonicDicePool(ampCount, hasHydra);
+    const hydraActive = ampTier >= 3 && hasHydra;
+    let   dicePool    = [...actingRig.pool];
+    if (hydraActive) dicePool = dicePool.map(s => s < 8 ? 8 : s);
     // ⚡ CHARGE ZONE charges — attacks only. Ceiling grows EVERY die in the pool
     // one size (d6→d8, d8→d10, capped d12); floor clamps every die's result to
     // at least 1+CHARGE_FLOOR_BONUS. The dormant dieFloorBoost (octave
@@ -7007,7 +7053,7 @@ function Game({ gameState, onReturnToLobby }) {
     const atkFloor    = Math.max(chargeFloorA ? CHARGE_FLOOR_BONUS : 0, nsA.dieFloorBoost ?? 0);
     if (chargeFloorA) addLog(`⚡ ${attacker.name}'s floor charge crackles — no die reads below ${1 + CHARGE_FLOOR_BONUS}!`);
     if (chargeCeilA)  addLog(`⚡ ${attacker.name}'s ceiling charge surges — every die in the pool grows a size!`);
-    const diceLabel   = dicePoolLabel(dicePool);
+    const diceLabel   = rigPoolLabel(dicePool);
     const dieSides    = Math.max(...dicePool); // fallback for single-die animation paths
     const rollState = dispatch(attackRolled('sonic', attacker.id, targetId, {
       atkStat, defStat,
@@ -7044,7 +7090,7 @@ function Game({ gameState, onReturnToLobby }) {
     }
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on dropped instrument — Drive -1!`);
-    addLog(`🔊 ${attacker.name} launches SONIC ATTACK at ${defender.name}! (${diceLabel} keep best — ${ampCount} amp${ampCount > 1 ? 's' : ''})${retaliationBlocked ? ' — UNPLUGGED TARGET CANNOT RETALIATE!' : ''}`);
+    addLog(`🔊 ${attacker.name} launches SONIC ATTACK at ${defender.name}! (${diceLabel} keep best${actingRig.inRange ? '' : ' · baseline'}${retaliationBlocked ? ' — TARGET OUT OF RIG RANGE, CANNOT RETALIATE!' : ''})`);
     // ⚡ A battle ensued — Charge Zone charges burn off for BOTH combatants.
     burnChargesAfterBattle([attacker.id, targetId], 'the Sonic battle spent it');
     // ☀️🔥 SUNBEAM — the beam scorches every hex it crosses into burning ground (reuses the
@@ -7073,7 +7119,7 @@ function Game({ gameState, onReturnToLobby }) {
       spinFaceAtk: 1, spinFaceDef: 1,
       atkDieReady: false, defDieReady: false,
       sonicAttack: true,
-      ampCount,
+      ampCount: ampTier,
       dieSides,                  // = max(dicePool); fallback for single-die anim paths
       defDieSides: 6,            // Sonic: defender always rolls d6
       dicePool,                  // 🔊 keep-highest pool: die sizes, e.g. [6,6,8]
@@ -8366,6 +8412,16 @@ function Game({ gameState, onReturnToLobby }) {
 
     // ⚡ Charge zone cooldowns — engine rule (Phase 6a)
     dispatch(chargeZonesTicked());
+
+    // 🎵 Lost Chord drift — uncollected tokens relocate after TOKEN_DRIFT_TURNS
+    {
+      const occ = spirits.filter(s => !s.knockedOut).map(s => s.num);
+      dispatch(tokensDrifted(occ));
+      const drifted = engineRef.current.board?.lastTokensDrifted;
+      if (drifted?.moved?.length) {
+        addLog(`🎵 ${drifted.moved.length} Lost Chord${drifted.moved.length > 1 ? 's' : ''} drifted to ${drifted.moved.length > 1 ? 'new positions' : 'a new position'} — the stage resonates.`);
+      }
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -10587,7 +10643,9 @@ function Game({ gameState, onReturnToLobby }) {
               className={`card${turnStep === 'pivot' || turnStep === 'melody' ? ' step-active' : turnStep === 'move_act' ? ' step-collapsed' : ''}`}
               style={{'--step-glow-color': turnStep === 'pivot' ? '#ffcc44' : turnStep === 'chord' ? '#ff66cc' : '#4488ff',
                 borderLeft:`2px solid ${turnStep === 'pivot' ? '#ffcc44' : turnStep === 'melody' ? '#4488ff' : '#4488ff66'}`,padding:"6px 8px",marginBottom:4,
-                ...(turnStep === 'move_act' ? {maxHeight:36,overflow:'hidden',transition:'max-height 0.4s ease, opacity 0.3s'} : {})}}>
+                ...(turnStep === 'move_act'
+                  ? {maxHeight:36,overflow:'hidden',transition:'max-height 0.4s ease, opacity 0.3s'}
+                  : {overflow:'visible',flexShrink:0,minHeight:'fit-content'})}}>
               <NeonStrikeFX color={turnStep === 'pivot' ? '#ffcc44' : '#4488ff'}/>
               {/* Header: big Root Note badge + title + interval legend */}
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:5}}>
@@ -11504,16 +11562,16 @@ function Game({ gameState, onReturnToLobby }) {
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
-            {/* SONIC ATTACK — available when connected to ≥1 amp */}
+            {/* SONIC ATTACK — always wired (Main Amp) */}
             {!rockGodActive && hasConfirmed && !actionTokenUsed && (() => {
               const beam    = acting ? getSonicBeam(acting) : new Set();
               const targets = acting ? getRivalsInBeam(acting) : [];
-              const plugged = ampsInRange >= 1;
-              const ampCount = Math.min(ampsInRange + elevenBoost, 3);
+              const poolNow = actingRig.pool;
               const hasHydra = (actingNoteState?.unlockedSkills ?? []).includes('hydra');
-              const diceLabel = dicePoolLabel(sonicDicePool(ampCount, hasHydra));
-              const canSonic = plugged && targets.length > 0 && moveStepsLeft >= 2;
-              if (!plugged) return null; // hide entirely when not plugged in
+              const poolDisplay = hasHydra && ['amp_1','amp_2','amp_3'].filter(id => (actingNoteState?.unlockedSkills ?? []).includes(id)).length >= 3
+                ? poolNow.map(s => s < 8 ? 8 : s) : poolNow;
+              const diceLabel = rigPoolLabel(poolDisplay);
+              const canSonic = targets.length > 0 && moveStepsLeft >= 2;
               return (
                 <div style={{position:'relative',display:'inline-block'}}>
                   <button className={canSonic ? 'btn active' : 'btn'}
@@ -11524,7 +11582,7 @@ function Game({ gameState, onReturnToLobby }) {
                       if (action === 'sonic') { setAction(null); }
                       else if (canSonic) {
                         setAction('sonic');
-                        addLog(`🔊 SONIC ATTACK — click a target in your beam! (${diceLabel} keep best, ${ampCount} amp${ampCount>1?'s':''})`);
+                        addLog(`🔊 SONIC ATTACK — click a target in your beam! (${diceLabel} keep best${actingRig.inRange ? '' : ' · out of rig range'})`);
                       }
                     }}>
                     🔊 Sonic{targets.length > 0 ? ` (${targets.length})` : ''} {diceLabel}
@@ -12439,6 +12497,11 @@ function Game({ gameState, onReturnToLobby }) {
                 );
               })}
 
+              {/* ── 🔊 AMP DECKS ── each Spirit's rig grows at their home corner;
+                  radius ring pulses out while the acting Spirit aims a Sonic Attack ── */}
+              <AmpDecks spirits={spirits} noteStates={noteStates} actingId={acting?.id}
+                aiming={action === 'sonic'} thumpFx={deckThump}/>
+
               {/* ── 🔧 ROAD CREW & 🎉 GROUPIES ── a Spirit's crew musters by the home corner, apart from the fan sea ── */}
               {spirits.map(s => {
                 if (!s.corner) return null;
@@ -13077,25 +13140,25 @@ function Game({ gameState, onReturnToLobby }) {
                     {patch}
                     {instrument}
 
-                    {/* 🎲 Die glyph — the active Spirit's current Sonic die, parked at their feet */}
+                    {/* 🎲 Die pool chip — the active Spirit's Sonic pool at their feet */}
                     {(() => {
-                      const plugged = ampsInRange >= 1;
                       const bw = HS * 1.25, bh = HS * 0.6;
                       const bx = sx - bw / 2, by = sy + HS * 0.5;
-                      const col = plugged ? sc : '#5a6a7a';
+                      const inRig = actingRig.inRange;
+                      const col = inRig ? sc : '#5a6a7a';
                       return (
                         <g>
                           <rect x={bx} y={by} width={bw} height={bh} rx={bh * 0.28}
                             fill="#070d18ee" stroke={col} strokeWidth={1.2}
-                            style={plugged ? {filter:`drop-shadow(0 0 4px ${col}88)`} : undefined}/>
+                            style={inRig ? {filter:`drop-shadow(0 0 4px ${col}88)`} : undefined}/>
                           <text x={sx} y={by + bh * 0.56} textAnchor="middle" dominantBaseline="central"
                             fontSize={bh * 0.56} fontWeight="bold" fill={col}
                             fontFamily="'Saira Stencil One',sans-serif">
                             {diceTier}
                           </text>
-                          {plugged && (
+                          {!inRig && (
                             <text x={bx + bw - HS * 0.04} y={by + HS * 0.03} textAnchor="end" dominantBaseline="hanging"
-                              fontSize={bh * 0.4} fill="#44ff88" fontFamily="monospace">🔊×{ampsInRange}</text>
+                              fontSize={bh * 0.4} fill="#ff8844" fontFamily="monospace">📡</text>
                           )}
                         </g>
                       );

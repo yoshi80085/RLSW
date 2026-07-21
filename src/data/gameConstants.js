@@ -7,13 +7,21 @@ export const DB_UPGRADE_THRESHOLD = 8;
 export const STOCK_REFILL_RATE = 4;
 
 // -- AMP / DICE SYSTEM --
-// Dice tier is determined dynamically by how many amps the acting Spirit is
-// within range of (<=4 hexes). Owning an amp upgrade places a physical amp token.
-// 0 amps in range = d6, 1 = d8, 2 = d9, 3 = d12.
-export const AMP_RANGE      = 4;             // hex distance at which a Spirit is "plugged in"
-export const AMP_LINK_DIST  = 3;             // hex distance at which two amps daisy-chain to each other
-export const AMP_DICE       = ['d6','d8','d9','d12']; // index = amps in the rig you're plugged into (0-3)
-export const AMP_UPGRADE_MAX = 3;            // max amp upgrades (tokens) per spirit
+// ── NEW RIG SYSTEM (AMP_DECK_DESIGN.md) ──
+// Every Spirit starts with a Main Amp at their corner: baseline 1d6, board-wide.
+// Amp I–III add dice to the pool; Power I–III upgrade dice d6→d8 (gated behind
+// matching Amp tier); Range I–III extend the radius where rig bonuses apply.
+// Roll is keep-highest. Outside your Range you fall back to baseline 1d6.
+export const SONIC_BASE_DIE     = 6;
+export const SONIC_UPGRADED_DIE = 8;
+export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
+export const RIG_RADIUS_BY_TIER = [2, 4, 7, Infinity];  // Range 0/I/II/III radii (axial hex distance)
+
+// ── LEGACY AMP CONSTANTS (Phase 2 removes these + ampRigs.js) ──
+export const AMP_RANGE      = 4;
+export const AMP_LINK_DIST  = 3;
+export const AMP_DICE       = ['d6','d8','d9','d12'];
+export const AMP_UPGRADE_MAX = 3;
 export const CAMERA_ZOOM_MS  = 620;          // push-in tween length; impact rumble lands as it settles
 
 // -- LIMELIGHT SYSTEM --
@@ -37,6 +45,7 @@ export const UNDERDOG_MAX_MULT       = 2.5;  // hard ceiling on the comeback mul
 export const TOKEN_MAX        = 6;    // max board mini-goal tokens on the board at once (all Lost Chords now)
 export const TOKEN_BASE_POOL  = 10;   // target total tokens regardless of player count — fewer players → more starting tokens
 export const TOKEN_PER_ROUND_BASE = 2; // tokens scattered per round with a full roster (scales up as players drop)
+export const TOKEN_DRIFT_TURNS   = 3; // uncollected Lost Chords relocate after this many spirit-turns
 
 // -- FAN ECONOMY --
 // Fans never convert to Fame -- they MULTIPLY the Fame every deed is worth.
@@ -55,8 +64,8 @@ export const FAN_DECAY           = 2;     // casuals bored off per turn once the
 export const FAN_BORED_AFTER     = 3;     // consecutive turns in the OUTER ring before fans start drifting off
 export const FAN_PROMOTE_EVERY   = 3;     // consecutive centre-perform turns to harden 1 casual -> diehard
 export const FAN_RECOVERY_LAG    = 3;     // your turns locked out of crowd-gain after a demolition
-export const FAN_FLEE_MIN        = 7;     // casuals that scatter on a demolition (low end)
-export const FAN_FLEE_MAX        = 10;    // (high end)
+export const FAN_FLEE_MIN        = 2;     // casuals that scatter on a knockdown (low end)
+export const FAN_FLEE_MAX        = 3;     // (high end)
 export const FAN_DEFECT_TO_VICTOR = 2;    // of the fled casuals, how many swing straight to the demolisher
 
 // -- EVENT SPACES --

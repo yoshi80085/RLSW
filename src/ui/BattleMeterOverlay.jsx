@@ -1676,7 +1676,7 @@ export function BattleMeterOverlay({
                       display:'flex', flexDirection:'column',
                       alignItems:'center', justifyContent:'center',
                     }}>
-                    <NeonDie value={defFace} spinning={defSpinning} color={defender?.color ?? '#00ccff'} size={80}/>
+                    <NeonDie value={defFace} spinning={defSpinning} color={defender?.color ?? '#00ccff'} size={80} sides={battleState.defDieSides ?? battleState.dieSides ?? 6}/>
                     {defSpinning && (
                       <div style={{
                         marginTop:4, fontSize:9, color: defender?.color ?? '#00ccff',

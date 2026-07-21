@@ -164,6 +164,38 @@ export function GameStyles() {
           0%,100% { opacity: 0.45; }
           50%     { opacity: 1; }
         }
+        /* 🔊 AMP DECKS (AMP_DECK_DESIGN.md §3) — the rig at your corner */
+        /* A fresh cabinet drops onto the stack with a bounce */
+        @keyframes amp-drop-in {
+          0%   { opacity: 0; transform: translateY(-14px) scaleY(1.05); }
+          60%  { opacity: 1; transform: translateY(2px) scaleY(0.96); }
+          100% { opacity: 1; transform: translateY(0) scaleY(1); }
+        }
+        /* Speaker thump synced with the Sonic beam firing */
+        @keyframes amp-thump {
+          0%   { transform: scale(1, 1); }
+          35%  { transform: scale(1.07, 0.93); }
+          70%  { transform: scale(0.98, 1.03); }
+          100% { transform: scale(1, 1); }
+        }
+        /* Power dials / range horn tips smoulder */
+        @keyframes amp-led-pulse {
+          0%,100% { opacity: 0.45; }
+          50%     { opacity: 1; }
+        }
+        /* Lightning arcs crawling over a high-Range rig — mostly off, sharp flashes */
+        @keyframes amp-arc-flicker {
+          0%, 78%, 100% { opacity: 0; }
+          80%           { opacity: 0.95; }
+          84%           { opacity: 0.15; }
+          88%           { opacity: 0.8; }
+          92%           { opacity: 0; }
+        }
+        /* The Range radius ring breathing out from the home corner */
+        @keyframes amp-ring-pulse {
+          0%,100% { opacity: 0.55; transform: scale(0.985); }
+          50%     { opacity: 1;    transform: scale(1.015); }
+        }
         /* 🎤 Fans bobbing at a Spirit's home turf — holds still, then a gentle sway */
         @keyframes fan-bob {
           0%, 55%, 100% { transform: translateY(0px); }

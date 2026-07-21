@@ -22,7 +22,7 @@ import {
   BOARD_SYNCED,
   SPOTLIGHT_HEALED, SPOTLIGHT_MOVED, TOKENS_SCATTERED, THRASH_TOKENS_SPAWNED, FLAMING_DECAYED,
   EVENT_RESPAWN_TICKED, EVENT_HEX_SPAWNED, CHARGE_ZONES_TICKED,
-  EVENT_HEX_TRIGGERED, TOKEN_PICKED_UP, CHARGE_ZONE_USED, FLAMING_HEXES_SET,
+  EVENT_HEX_TRIGGERED, TOKEN_PICKED_UP, TOKENS_DRIFTED, CHARGE_ZONE_USED, FLAMING_HEXES_SET,
   RANDOM_BATCH_DRAWN,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
@@ -57,6 +57,7 @@ import {
   applyBoardSynced,
   applySpotlightHealed, applySpotlightMoved,
   applyTokensScattered, applyThrashTokensSpawned, applyTokenPickedUp,
+  applyTokensDrifted,
   applyEventHexTriggered, applyEventRespawnTicked, applyEventHexSpawned,
   applyChargeZoneUsed, applyChargeZonesTicked,
   applyFlamingHexesSet, applyFlamingDecayed,
@@ -142,6 +143,7 @@ function reduce(state, action, rng) {
     case TOKENS_SCATTERED:       return applyTokensScattered(state, action, rng);
     case THRASH_TOKENS_SPAWNED:  return applyThrashTokensSpawned(state, action, rng);
     case TOKEN_PICKED_UP:        return applyTokenPickedUp(state, action);
+    case TOKENS_DRIFTED:         return applyTokensDrifted(state, action, rng);
     case EVENT_HEX_TRIGGERED:    return applyEventHexTriggered(state, action);
     case EVENT_RESPAWN_TICKED:   return applyEventRespawnTicked(state);
     case EVENT_HEX_SPAWNED:      return applyEventHexSpawned(state, action, rng);

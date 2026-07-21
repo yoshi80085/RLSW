@@ -8,7 +8,7 @@
 
 import { SPOTLIGHT_POOL, EVENT_HEX_POOL, makeBoardToken } from "../../board/boardHelpers.js";
 import { ALL_HEXES } from "../../board/hexMap.js";
-import { TOKEN_MAX, TOKEN_BASE_POOL, TOKEN_PER_ROUND_BASE, EVENT_RESPAWN_TURNS, CHARGE_ZONE_COOLDOWN, LIMELIGHT_HEX } from "../../data/gameConstants.js";
+import { TOKEN_MAX, TOKEN_BASE_POOL, TOKEN_PER_ROUND_BASE, TOKEN_DRIFT_TURNS, EVENT_RESPAWN_TURNS, CHARGE_ZONE_COOLDOWN, LIMELIGHT_HEX } from "../../data/gameConstants.js";
 
 // All valid hex nums for token scatter (exclude nothing -- exclusions come in `occupied`)
 const ALL_HEX_NUMS = ALL_HEXES.filter(h => h.num !== LIMELIGHT_HEX).map(h => h.num);
@@ -142,6 +142,32 @@ export function applyTokenPickedUp(state, { spiritId, hexNum }) {
       ...state.board,
       boardTokens: state.board.boardTokens.filter(t => t.num !== hexNum),
     },
+  };
+}
+
+/** Tick token ages and relocate stale ones.
+ *  Called once per spirit turn. Each token's `turnsOnBoard` increments by 1.
+ *  Tokens that hit TOKEN_DRIFT_TURNS relocate to a new random unoccupied hex
+ *  (same note, reset age). If no free hex exists the token stays put. */
+export function applyTokensDrifted(state, { occupied }, rng) {
+  const tokens = state.board.boardTokens;
+  if (tokens.length === 0) return { ...state, board: { ...state.board, lastTokensDrifted: null } };
+  const occ = new Set(occupied);
+  const moved = [];
+  const out = tokens.map(t => {
+    const age = (t.turnsOnBoard ?? 0) + 1;
+    if (age < TOKEN_DRIFT_TURNS) return { ...t, turnsOnBoard: age };
+    // Time to relocate — find a free hex
+    const usedNums = new Set([...occ, ...tokens.map(tk => tk.num), ...moved.map(m => m.to)]);
+    const pool = ALL_HEX_NUMS.filter(n => !usedNums.has(n));
+    if (pool.length === 0) return { ...t, turnsOnBoard: age }; // nowhere to go
+    const newNum = pool[Math.floor(rng() * pool.length)];
+    moved.push({ from: t.num, to: newNum });
+    return { ...t, num: newNum, turnsOnBoard: 0 };
+  });
+  return {
+    ...state,
+    board: { ...state.board, boardTokens: out, lastTokensDrifted: moved.length > 0 ? { moved } : null },
   };
 }
 

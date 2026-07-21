@@ -54,7 +54,7 @@ export function advanceTurnQueue(queue, spirits, mode, teams) {
 // (direct Fame, no performance required) were cut -- unearned FP, per the STICs +
 // Earned checklist in ARCHITECTURE.md. See ECONOMY_HANDOFF.md for the full history.
 export function makeBoardToken(num, rand = Math.random) {
-  return { num, kind: 'chord', note: NOTE_POOL[Math.floor(rand() * NOTE_POOL.length)] };
+  return { num, kind: 'chord', note: NOTE_POOL[Math.floor(rand() * NOTE_POOL.length)], turnsOnBoard: 0 };
 }
 
 // Which centre ring a hex sits in, measured from the Limelight (hex 56).

@@ -509,6 +509,12 @@ export function tokenPickedUp(spiritId, hexNum) {
   return { type: TOKEN_PICKED_UP, spiritId, hexNum };
 }
 
+/** Tick Lost Chord ages and relocate stale ones (TOKEN_DRIFT_TURNS). */
+export const TOKENS_DRIFTED = "TOKENS_DRIFTED";
+export function tokensDrifted(occupied = []) {
+  return { type: TOKENS_DRIFTED, occupied };
+}
+
 /** A spirit taps a charge zone — cooldown is set. */
 export const CHARGE_ZONE_USED = "CHARGE_ZONE_USED";
 export function chargeZoneUsed(spiritId, hexNum) {

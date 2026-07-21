@@ -2190,4 +2190,97 @@ const config = {
   assert.deepEqual(skillEligibility(upg, [], { stancesKnown: ["soloist"] }),
     { ok: false, reason: "prereq" }, "tier prereq still applies");
 }
+// -- sonicRig: tier × distance grid (AMP_DECK_DESIGN.md §2) --------------------
+{
+  // Import inline — sonicRig is a pure function, no React needed.
+  const { sonicRig, rigPoolLabel } = await import("./systems/sonicRig.js");
+  const { RIG_RADIUS_BY_TIER, SONIC_BASE_DIE, SONIC_UPGRADED_DIE } = await import("../data/gameConstants.js");
+
+  // ── Baseline: no skills, any distance → 1d6 ──
+  {
+    const r = sonicRig([], 0);
+    assert.deepEqual(r.pool, [6], "baseline: 1d6");
+    assert.equal(r.inRange, true, "baseline: always in range (radius 0 ≤ tier-0 radius 2)");
+  }
+  {
+    const r = sonicRig([], 99);
+    assert.deepEqual(r.pool, [6], "baseline far away: still 1d6 (outside range, no amps to lose)");
+    assert.equal(r.inRange, false, "baseline far: out of range");
+  }
+
+  // ── Amp tiers (in range) — pool size grows ──
+  assert.deepEqual(sonicRig(["amp_1"], 0).pool, [6, 6], "Amp I: 2d6");
+  assert.deepEqual(sonicRig(["amp_1", "amp_2"], 0).pool, [6, 6, 6], "Amp II: 3d6");
+  assert.deepEqual(sonicRig(["amp_1", "amp_2", "amp_3"], 0).pool, [6, 6, 6, 6], "Amp III: 4d6");
+
+  // ── Power tiers (gated behind matching Amp) ──
+  // Power without Amp upgrades the baseline die (can't happen in game — prereqs
+  // gate Power behind Amp — but the pure function doesn't enforce prereqs).
+  assert.deepEqual(sonicRig(["power_1"], 0).pool, [8], "Power I alone: baseline die → d8");
+  // Power I + Amp I: one die upgrades
+  assert.deepEqual(sonicRig(["amp_1", "power_1"], 0).pool, [8, 6], "Amp I + Power I: d8+d6");
+  // Power II + Amp II
+  assert.deepEqual(sonicRig(["amp_1", "amp_2", "power_1", "power_2"], 0).pool,
+    [8, 8, 6], "Amp II + Power II: 2d8+d6");
+  // Full rig: Amp III + Power III
+  assert.deepEqual(sonicRig(["amp_1", "amp_2", "amp_3", "power_1", "power_2", "power_3"], 0).pool,
+    [8, 8, 8, 6], "Full rig: 3d8+d6");
+  // Power III can't exceed pool size (3 upgrades on 2-die pool capped at 2)
+  assert.deepEqual(sonicRig(["amp_1", "power_1", "power_2", "power_3"], 0).pool,
+    [8, 8], "Power capped at pool size: Amp I + Power III → 2d8 (not 3)");
+
+  // ── Range tiers — radii from RIG_RADIUS_BY_TIER ──
+  // Tier 0 radius = 2
+  assert.equal(sonicRig(["amp_1"], 2).inRange, true, "Range 0: dist 2 inside");
+  assert.equal(sonicRig(["amp_1"], 3).inRange, false, "Range 0: dist 3 outside");
+  assert.deepEqual(sonicRig(["amp_1"], 3).pool, [6], "out of range → baseline 1d6");
+  // Tier I radius = 4
+  assert.equal(sonicRig(["amp_1", "range_1"], 4).inRange, true, "Range I: dist 4 inside");
+  assert.equal(sonicRig(["amp_1", "range_1"], 5).inRange, false, "Range I: dist 5 outside");
+  // Tier II radius = 7 (requires Range I too — prereqs cumulate in countOf)
+  assert.equal(sonicRig(["amp_1", "range_1", "range_2"], 7).inRange, true, "Range II: dist 7 inside");
+  assert.equal(sonicRig(["amp_1", "range_1", "range_2"], 8).inRange, false, "Range II: dist 8 outside");
+  // Tier III radius = Infinity (requires Range I + II)
+  assert.equal(sonicRig(["amp_1", "range_1", "range_2", "range_3"], 999).inRange, true, "Range III: everywhere");
+  assert.deepEqual(sonicRig(["amp_1", "range_1", "range_2", "range_3"], 999).pool, [6, 6], "Range III far: full pool");
+
+  // ── Out of range: amp/power bonuses stripped, just baseline ──
+  assert.deepEqual(
+    sonicRig(["amp_1", "amp_2", "amp_3", "power_1", "power_2", "power_3"], 99).pool,
+    [6], "full rig, way out of range → baseline 1d6");
+
+  // ── chargeBoost — adds d8 dice that work ANYWHERE ──
+  {
+    const r = sonicRig([], 99, 1);
+    assert.deepEqual(r.pool, [8, 6], "charge boost out of range: +1 d8 + baseline d6");
+    assert.equal(r.inRange, false);
+  }
+  {
+    const r = sonicRig(["amp_1", "power_1"], 0, 1);
+    assert.deepEqual(r.pool, [8, 8, 6], "charge boost in range: d8(power) + d8(charge) + d6");
+  }
+  {
+    const r = sonicRig([], 0, 2);
+    assert.deepEqual(r.pool, [8, 8, 6], "double charge: 2×d8 + baseline d6");
+  }
+
+  // ── Expected values sanity (§2.5) ──
+  // Full rig 3d8+1d6 ≈ 7.1 expected (keep highest). Spot-check: max possible = 8.
+  const fullPool = sonicRig(["amp_1","amp_2","amp_3","power_1","power_2","power_3"], 0).pool;
+  assert.equal(Math.max(...fullPool), 8, "full rig ceiling = 8");
+  assert.equal(fullPool.length, 4, "full rig = 4 dice");
+
+  // ── rigPoolLabel ──
+  assert.equal(rigPoolLabel([6]), "d6");
+  assert.equal(rigPoolLabel([6, 6]), "2d6");
+  assert.equal(rigPoolLabel([8, 6, 6]), "2d6+d8");
+  assert.equal(rigPoolLabel([8, 8, 8]), "3d8");
+  assert.equal(rigPoolLabel([8, 8, 6, 6]), "2d6+2d8");
+
+  // ── Determinism: same inputs → same outputs (pure function contract) ──
+  const skills = ["amp_1", "amp_2", "power_1", "range_1"];
+  assert.deepEqual(sonicRig(skills, 3), sonicRig(skills, 3), "pure: identical calls match");
+  assert.deepEqual(sonicRig(skills, 3, 1), sonicRig(skills, 3, 1), "pure: with chargeBoost");
+}
+
 console.log("engine selftest: all assertions passed");
