@@ -28,8 +28,14 @@ import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus, smashOutcome,
   decideWinner, resolveKnockdown,
   thrashDamage, sonicDamage,
+  finisherOutcome, hammerOnDamage, axeSwingWhiffRefill,
+  pinchHarmonicCondition, powerChordCondition, gallopCondition,
+  pullOffKnockback, feedbackRetaliation, headbangFanOverrides,
 } from "./systems/combat.js";
-import { usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState } from "./systems/economy.js";
+import {
+  usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState,
+  spendDb, detectTrill, detectChug, detectDiveBomb, detectCommitGenerator,
+} from "./systems/economy.js";
 import { skillEligibility, ULTIMATE_PREREQS, THEORY_DISCORD_GRANTS } from "./systems/skills.js";
 import { pitchIndex } from "../music/notes.js";
 import { detectMotifRepeat } from "../music/cadence.js";
@@ -2260,6 +2266,173 @@ const config = {
   const skills = ["amp_1", "amp_2", "power_1", "range_1"];
   assert.deepEqual(sonicRig(skills, 3), sonicRig(skills, 3), "pure: identical calls match");
   assert.deepEqual(sonicRig(skills, 3, 1), sonicRig(skills, 3, 1), "pure: with chargeBoost");
+}
+
+// -- Stance v2: finisher outcome (per stance, fixed damage) ----------------------
+{
+  // Solo — Bend: range 2, 1 damage, scatter
+  const bend = finisherOutcome('solo', 6);
+  assert.equal(bend.damage, 1, "Bend deals 1 Vibe");
+  assert.equal(bend.range, 2, "Bend range 2");
+  assert.equal(bend.stackWipe, 'scatter', "Bend scatters");
+  assert.equal(bend.slideIn, false, "Bend has no slide-in");
+  assert.equal(bend.thrown, 6, "thrown passed through");
+  assert.equal(bend.scatterN, 3, "scatter count = thrown/2");
+
+  // Low Slung — Slide: range 3, 1 damage, scatter, slide-in
+  const slide = finisherOutcome('low_slung', 4);
+  assert.equal(slide.damage, 1, "Slide deals 1 Vibe");
+  assert.equal(slide.range, 3, "Slide range 3");
+  assert.equal(slide.stackWipe, 'scatter');
+  assert.equal(slide.slideIn, true, "Slide has slide-in");
+  assert.equal(slide.scatterN, 2);
+
+  // Wide Leg — Thrash: range 1, 2 damage, obliterate
+  const thrash = finisherOutcome('wide_leg', 8);
+  assert.equal(thrash.damage, 2, "Thrash deals 2 Vibe");
+  assert.equal(thrash.range, 1, "Thrash melee only");
+  assert.equal(thrash.stackWipe, 'obliterate', "Thrash obliterates stack");
+  assert.equal(thrash.slideIn, false);
+  assert.equal(thrash.scatterN, 0, "obliterate mode: no scatter count");
+  assert.equal(thrash.knockback, 0, "finishers don't knock back");
+
+  // Unknown stance falls back to legacy smash
+  const fallback = finisherOutcome('unknown', 4);
+  assert.equal(fallback.damage, 2, "fallback = smashOutcome");
+  assert.equal(fallback.knockback, 2);
+}
+
+// -- Stance v2: physical special modifiers ----------------------------------------
+{
+  // Hammer-On: double damage, capped at 2×THRASH_DAMAGE_CAP (8)
+  assert.equal(hammerOnDamage(2), 4, "2×2=4");
+  assert.equal(hammerOnDamage(4), 8, "2×4=8 (cap)");
+  assert.equal(hammerOnDamage(5), 8, "2×5=10 capped to 8");
+  assert.equal(hammerOnDamage(1), 2, "2×1=2");
+
+  // Axe Swing whiff: halved refill (STOCK_REFILL_RATE=4 → 2)
+  assert.equal(axeSwingWhiffRefill(), 2, "whiff refill = 2");
+}
+
+// -- Stance v2: sonic special conditions ------------------------------------------
+{
+  // Pinch Harmonic: root repeated ≥ 2×
+  assert.equal(pinchHarmonicCondition(['C', 'E', 'G', 'C'], 'C'), true, "root C appears 2×");
+  assert.equal(pinchHarmonicCondition(['C', 'E', 'G'], 'C'), false, "root C appears 1×");
+  assert.equal(pinchHarmonicCondition([], 'C'), false, "empty stack");
+
+  // Power Chord: has the 5th
+  assert.equal(powerChordCondition(['C', 'G'], 'G'), true, "has the 5th");
+  assert.equal(powerChordCondition(['C', 'E'], 'G'), false, "no 5th");
+
+  // Gallop: stack full
+  assert.equal(gallopCondition(['C','D','E','F','G','A'], 6), true, "6/6 = full");
+  assert.equal(gallopCondition(['C','D','E','F','G'], 6), false, "5/6 = not full");
+  assert.equal(gallopCondition(['C','D','E'], 3), true, "3/3 = full (custom cap)");
+}
+
+// -- Stance v2: passive effect helpers --------------------------------------------
+{
+  // Pull-Off: +1 knockback
+  assert.equal(pullOffKnockback(0), 1);
+  assert.equal(pullOffKnockback(1), 2);
+  assert.equal(pullOffKnockback(3), 4);
+
+  // Feedback: retaliation on 0 damage
+  assert.equal(feedbackRetaliation(0), 1, "0 damage → 1 retaliation");
+  assert.equal(feedbackRetaliation(1), 0, "non-zero → no retaliation");
+  assert.equal(feedbackRetaliation(3), 0);
+
+  // Headbang: fan overrides
+  const hb = headbangFanOverrides();
+  assert.equal(hb.promoteEvery, 2);
+  assert.equal(hb.loyaltyPerDiehard, 16);
+}
+
+// -- Stance v2: spendDb -----------------------------------------------------------
+{
+  const ns3 = { dbPoints: 3 };
+  const spent = spendDb(ns3, 1);
+  assert.deepEqual(spent, { dbPoints: 2 }, "spend 1 from 3 → 2");
+
+  const ns0 = { dbPoints: 0 };
+  assert.equal(spendDb(ns0, 1), null, "can't spend at 0");
+
+  const ns1 = { dbPoints: 1 };
+  assert.deepEqual(spendDb(ns1, 1), { dbPoints: 0 }, "spend 1 from 1 → 0");
+
+  // No dbPoints field at all
+  assert.equal(spendDb({}, 1), null, "missing field → can't spend");
+}
+
+// -- Stance v2: commit generators -------------------------------------------------
+{
+  // TRILL: 3+ alternating notes ≤ 2 semitones apart
+  assert.equal(detectTrill(['E', 'F', 'E']), true, "E-F-E is a trill (1 semitone)");
+  assert.equal(detectTrill(['A', 'B', 'A', 'B']), true, "A-B-A-B is a trill (2 semitones)");
+  assert.equal(detectTrill(['C', 'D', 'C']), true, "C-D-C (2 semitones)");
+  assert.equal(detectTrill(['C', 'E', 'C']), false, "C-E-C: 4 semitones, too far");
+  assert.equal(detectTrill(['C', 'C', 'C']), false, "C-C-C: same note, not alternating");
+  assert.equal(detectTrill(['E', 'F']), false, "too short");
+  // Trill embedded in longer line
+  assert.equal(detectTrill(['G', 'A', 'E', 'F', 'E', 'G']), true, "trill in middle");
+
+  // CHUG: 3+ identical notes in a row
+  assert.equal(detectChug(['C', 'C', 'C']), true, "3× C");
+  assert.equal(detectChug(['A', 'C', 'C', 'C', 'D']), true, "chug embedded");
+  assert.equal(detectChug(['C', 'C', 'D']), false, "only 2×");
+  assert.equal(detectChug(['C', 'D']), false, "too short");
+
+  // DIVE BOMB: same pitch start/end + descending overall
+  assert.equal(detectDiveBomb(['C', 'B', 'A', 'G', 'C']), true,
+    "C descends to G, returns to C — net descending");
+  assert.equal(detectDiveBomb(['C', 'D', 'E', 'C']), false,
+    "C-D-E-C: net ascending then back, net=0 (not < 0)");
+  assert.equal(detectDiveBomb(['C', 'D', 'E']), false, "different start/end");
+  assert.equal(detectDiveBomb(['C', 'C']), false, "too short");
+  // All descending steps
+  assert.equal(detectDiveBomb(['G', 'F', 'E', 'D', 'C', 'B', 'A', 'G']), true,
+    "long descent G→G");
+
+  // detectCommitGenerator dispatches by stance
+  const triRes = detectCommitGenerator('solo', ['E', 'F', 'E']);
+  assert.ok(triRes, "solo + trill → match");
+  assert.equal(triRes.id, 'trill');
+  assert.equal(triRes.dbGrant, 1);
+
+  const chugRes = detectCommitGenerator('low_slung', ['C', 'C', 'C']);
+  assert.ok(chugRes, "low_slung + chug → match");
+  assert.equal(chugRes.id, 'chug');
+
+  // Wrong stance for the pattern
+  assert.equal(detectCommitGenerator('solo', ['C', 'C', 'C']), null,
+    "solo doesn't detect chug");
+  assert.equal(detectCommitGenerator('low_slung', ['E', 'F', 'E']), null,
+    "low_slung doesn't detect trill");
+
+  // Unknown stance
+  assert.equal(detectCommitGenerator('unknown', ['C', 'C', 'C']), null);
+}
+
+// -- Stance v2: stanceKit helper --------------------------------------------------
+{
+  const { stanceKit } = await import("../data/stances.js");
+  const soloKit = stanceKit('cosmic_ronin');
+  assert.equal(soloKit.id, 'solo', "Ronin gets solo kit");
+  assert.equal(soloKit.physical.id, 'hammer_on');
+  assert.equal(soloKit.finisher.id, 'bend');
+  assert.equal(soloKit.commitGen.id, 'trill');
+
+  const lsKit = stanceKit('Glamarchy');
+  assert.equal(lsKit.id, 'low_slung');
+  assert.equal(lsKit.physical.id, 'rake');
+
+  const wlKit = stanceKit('Metalness_Monster');
+  assert.equal(wlKit.id, 'wide_leg');
+  assert.equal(wlKit.finisher.id, 'thrash_finisher');
+
+  // Unknown spirit falls back to low_slung
+  assert.equal(stanceKit('unknown').id, 'low_slung');
 }
 
 console.log("engine selftest: all assertions passed");

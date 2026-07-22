@@ -3,7 +3,7 @@
 
 import { pitchIndex, NOTE_POOL, canonicalRoot, semitonesUp } from "../../music/notes.js";
 import { detectMotifRepeat, refillStock } from "../../music/cadence.js";
-import { FAN_DIEHARD_START, FAN_CASUAL_START, FAN_BORED_AFTER, FAN_DECAY } from "../../data/gameConstants.js";
+import { FAN_DIEHARD_START, FAN_CASUAL_START, FAN_BORED_AFTER, FAN_DECAY, STANCE_COMMIT_DB } from "../../data/gameConstants.js";
 import { hexRingFromCenter } from "../../board/boardHelpers.js";
 //
 // `usedStockIdx` — the per-spirit set of spent stock-slot indices — used to be a
@@ -400,4 +400,113 @@ export function applyFansTicked(state, { spiritId }) {
       ...ns, casuals, centerStreak, outerStreak, fanLag, fanActedThisTurn: false } },
     turn: { ...state.turn, lastFanTick: { spiritId, zone, lost } },
   };
+}
+
+// ─── STANCE v2: Db SPENDING ─────────────────────────────────────────────────
+// Pure helper — decrements dbPoints by `amount`, floored at 0. Returns the
+// updated noteState fields (patch). The caller merges.
+export function spendDb(ns, amount = 1) {
+  const cur = ns.dbPoints ?? 0;
+  if (cur < amount) return null;  // can't afford — caller should disable the button
+  return { dbPoints: Math.max(0, cur - amount) };
+}
+
+// ─── STANCE v2: COMMIT GENERATORS ───────────────────────────────────────────
+// Each detector takes a melodyLine (array of pitch-class strings, e.g. ['C','D','C'])
+// and returns true if the pattern qualifies. The caller grants +STANCE_COMMIT_DB
+// on first match (at most one generator fires per commit).
+//
+// These are pure functions — no state, no rng.
+
+/**
+ * TRILL (Solo) — 3+ consecutive notes alternating between two pitches that
+ * are ≤ a whole step (2 semitones) apart. e.g. E–F–E, A–B–A–B.
+ */
+export function detectTrill(melodyLine) {
+  if (melodyLine.length < 3) return false;
+  for (let start = 0; start <= melodyLine.length - 3; start++) {
+    const a = melodyLine[start];
+    const b = melodyLine[start + 1];
+    if (a === b) continue;  // need two different notes
+    // Check interval: ≤ 2 semitones
+    const idxA = pitchIndex(a), idxB = pitchIndex(b);
+    if (idxA < 0 || idxB < 0) continue;
+    const interval = Math.min(Math.abs(idxA - idxB), 12 - Math.abs(idxA - idxB));
+    if (interval > 2) continue;
+    // Check alternation: A–B–A or A–B–A–B...
+    let len = 2;
+    for (let i = start + 2; i < melodyLine.length; i++) {
+      const expected = (i - start) % 2 === 0 ? a : b;
+      if (melodyLine[i] !== expected) break;
+      len++;
+    }
+    if (len >= 3) return true;
+  }
+  return false;
+}
+
+/**
+ * CHUG (Low Slung) — 3+ identical notes in a row.
+ */
+export function detectChug(melodyLine) {
+  if (melodyLine.length < 3) return false;
+  let run = 1;
+  for (let i = 1; i < melodyLine.length; i++) {
+    if (melodyLine[i] === melodyLine[i - 1]) {
+      run++;
+      if (run >= 3) return true;
+    } else {
+      run = 1;
+    }
+  }
+  return false;
+}
+
+/**
+ * DIVE BOMB (Wide Leg) — a committed run that starts and ends on the same
+ * note letter (pitch class) and has an overall descending contour.
+ *
+ * Since the game tracks pitch classes without octave info, "ends an octave
+ * below" maps to the existing octave-resolution condition (same pitch class
+ * at both ends). The descending contour is measured by summing the signed
+ * shortest-path semitone intervals — net must be negative (descending).
+ * Minimum 3 notes to qualify.
+ */
+export function detectDiveBomb(melodyLine) {
+  if (melodyLine.length < 3) return false;
+  // Same pitch class start and end
+  if (melodyLine[0] !== melodyLine[melodyLine.length - 1]) return false;
+  // In pitch-class space (no octave info), the round-trip nets to 0. So we
+  // measure the path EXCLUDING the final return step — if that portion
+  // descends (net < 0), the player dove down before coming back.
+  let netInterval = 0;
+  for (let i = 1; i < melodyLine.length - 1; i++) {
+    const prev = pitchIndex(melodyLine[i - 1]);
+    const curr = pitchIndex(melodyLine[i]);
+    if (prev < 0 || curr < 0) continue;
+    let d = ((curr - prev) % 12 + 12) % 12;
+    if (d > 6) d -= 12;  // fold to −6..+6
+    netInterval += d;
+  }
+  // Must descend overall (net < 0)
+  return netInterval < 0;
+}
+
+/**
+ * Run all three commit generator detectors against a melody line and return
+ * the first match (at most one fires per commit).
+ * Returns { id, label, dbGrant } or null.
+ */
+export function detectCommitGenerator(stanceId, melodyLine) {
+  const detectors = {
+    solo:      { fn: detectTrill,    id: 'trill',     label: 'TRILL' },
+    low_slung: { fn: detectChug,     id: 'chug',      label: 'CHUG' },
+    wide_leg:  { fn: detectDiveBomb, id: 'dive_bomb', label: 'DIVE BOMB' },
+  };
+  const det = detectors[stanceId];
+  if (!det) return null;
+  if (det.fn(melodyLine)) {
+    return { id: det.id, label: det.label, dbGrant: STANCE_COMMIT_DB };
+  }
+  return null;
 }

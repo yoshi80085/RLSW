@@ -9,9 +9,11 @@ import {
   UNDERDOG_MIN_DEFICIT, UNDERDOG_DEFICIT_PER_STEP, UNDERDOG_MAX_MULT,
   THRASH_DAMAGE_CAP, THRASH_WHIFF_DMG, THRASH_PUSH_THRESHOLD,
   SONIC_VIBE_CAP,
+  STOCK_REFILL_RATE,
 } from "../../data/gameConstants.js";
 import { CORNERS } from "../../data/corners.js";
 import { cornerFacing } from "../../board/boardHelpers.js";
+import { STANCE_DEFS } from "../../data/stances.js";
 
 /**
  * LEGACY damage table — still used by Smash, riff-off, and any call site that
@@ -240,5 +242,109 @@ export function applyAttackRolled(state, action, rng) {
       atkRoll, diceVals, keptIdx, rawDefRoll, defRoll, defDie,
       atkTotal, defTotal, attackerWon, margin, damage, psychoBushido,
     },
+  };
+}
+
+// ─── STANCE v2: FINISHER OUTCOME ────────────────────────────────────────────
+// Pure — deterministic finisher math, parameterized per stance. Keeps full
+// Smash DNA: costs 2 AP, requires ≥ 2 unused stock, hurls ALL unused stock,
+// roots you (no movement after), leaves you Exposed. Damage is FIXED per
+// finisher, not derived from thrown-note count.
+//
+// Returns { damage, range, stackWipe, slideIn, thrown }.
+// `stackWipe`:
+//   'scatter'    — Smash-style random scatter (Bend, Slide)
+//   'obliterate' — clear entire chord stack (Thrash finisher)
+// `slideIn`: true for Slide (attacker moves adjacent to target).
+
+export function finisherOutcome(stanceId, thrown) {
+  const def = STANCE_DEFS[stanceId];
+  if (!def) return smashOutcome(thrown);  // fallback to legacy smash
+  const fin = def.finisher;
+  return {
+    damage:    fin.damage,
+    range:     fin.range,
+    stackWipe: fin.stackWipe,
+    slideIn:   !!fin.slideIn,
+    thrown,
+    // Legacy compat — the old smash scatterN for scatter-type wipes
+    scatterN:  fin.stackWipe === 'scatter' ? Math.floor(thrown / 2) : 0,
+    knockback: 0,  // finishers don't knock back (they have other effects)
+  };
+}
+
+// ─── STANCE v2: PHYSICAL SPECIAL MODIFIERS ──────────────────────────────────
+// Pure helpers that compute attack modifiers for each stance's physical special.
+// The caller (Game) applies these to the normal swing pipeline.
+
+/**
+ * Hammer-On (Solo): Drive −1 for the roll. On hit: 2× damage, capped at
+ * 2×THRASH_DAMAGE_CAP.
+ */
+export function hammerOnDamage(baseDamage) {
+  return Math.min(baseDamage * 2, THRASH_DAMAGE_CAP * 2);
+}
+
+/**
+ * Axe Swing whiff penalty: halve next turn's stock refill.
+ * Returns the reduced refill rate.
+ */
+export function axeSwingWhiffRefill() {
+  return Math.floor(STOCK_REFILL_RATE / 2);
+}
+
+// ─── STANCE v2: SONIC SPECIAL CONDITIONS ────────────────────────────────────
+// Pure predicates that check whether a sonic special's +2 Drive condition is met.
+
+/**
+ * Pinch Harmonic (Solo): root note appears ≥ 2× in chord stack.
+ */
+export function pinchHarmonicCondition(chordStack, rootNote) {
+  return chordStack.filter(n => n === rootNote).length >= 2;
+}
+
+/**
+ * Power Chord (Low Slung): chord stack contains the perfect 5th of the root.
+ * Caller passes the fifth note pre-computed (semitonesUp(root, 7)).
+ */
+export function powerChordCondition(chordStack, fifthNote) {
+  return chordStack.includes(fifthNote);
+}
+
+/**
+ * Gallop (Wide Leg): chord stack is at full capacity.
+ * `maxStack` is the spirit's chord stack cap (default 6).
+ */
+export function gallopCondition(chordStack, maxStack = 6) {
+  return chordStack.length >= maxStack;
+}
+
+// ─── STANCE v2: PASSIVE EFFECT HELPERS ──────────────────────────────────────
+
+/**
+ * Pull-Off (Solo passive): +1 knockback when you win a battle.
+ * Returns the adjusted knockback value.
+ */
+export function pullOffKnockback(baseKnockback) {
+  return baseKnockback + 1;
+}
+
+/**
+ * Feedback (Low Slung passive): if an attack on you deals 0 damage,
+ * the attacker takes 1 Vibe damage.
+ * Returns the retaliation damage (0 if not triggered).
+ */
+export function feedbackRetaliation(damageDealt) {
+  return damageDealt === 0 ? 1 : 0;
+}
+
+/**
+ * Headbang (Wide Leg passive): improved fan conversion numbers.
+ * Returns { promoteEvery, loyaltyPerDiehard } overrides.
+ */
+export function headbangFanOverrides() {
+  return {
+    promoteEvery: 2,        // base FAN_PROMOTE_EVERY is 3
+    loyaltyPerDiehard: 16,  // base LOYALTY_PER_DIEHARD is 24
   };
 }
