@@ -2414,9 +2414,9 @@ const config = {
   assert.equal(detectCommitGenerator('unknown', ['C', 'C', 'C']), null);
 }
 
-// -- Stance v2: stanceKit helper --------------------------------------------------
+// -- Stance v2: stanceKit helper + skill gating -----------------------------------
 {
-  const { stanceKit } = await import("../data/stances.js");
+  const { stanceKit, STANCE_PHYSICAL_SKILL, STANCE_SONIC_SKILL } = await import("../data/stances.js");
   const soloKit = stanceKit('cosmic_ronin');
   assert.equal(soloKit.id, 'solo', "Ronin gets solo kit");
   assert.equal(soloKit.physical.id, 'hammer_on');
@@ -2433,6 +2433,28 @@ const config = {
 
   // Unknown spirit falls back to low_slung
   assert.equal(stanceKit('unknown').id, 'low_slung');
+
+  // Skill gate constants
+  assert.equal(STANCE_PHYSICAL_SKILL, 'stance_physical');
+  assert.equal(STANCE_SONIC_SKILL, 'stance_sonic');
+
+  // Skill eligibility for stance skills
+  const noSkills = ['amp_1'];
+  const withPhys = ['amp_1', 'stance_physical'];
+  const withBoth = ['amp_1', 'stance_physical', 'stance_sonic'];
+
+  // stance_physical: no prereq → eligible immediately
+  // (we test against the real SKILL_BY_ID built by the JSX, but since we can't
+  // import the JSX here, we synthesize the skill def matching the route structure)
+  const physDef = { id: 'stance_physical', prereq: null, routeId: 'stance' };
+  const sonicDef = { id: 'stance_sonic', prereq: 'stance_physical', routeId: 'stance', gated: true };
+
+  assert.ok(skillEligibility(physDef, noSkills).ok, "stance_physical eligible with no prereq");
+  assert.ok(!skillEligibility(physDef, withPhys).ok, "already unlocked");
+  assert.ok(!skillEligibility(sonicDef, noSkills).ok, "stance_sonic blocked without physical");
+  assert.equal(skillEligibility(sonicDef, noSkills).reason, "prereq");
+  assert.ok(skillEligibility(sonicDef, withPhys).ok, "stance_sonic eligible after physical");
+  assert.ok(!skillEligibility(sonicDef, withBoth).ok, "already unlocked");
 }
 
 console.log("engine selftest: all assertions passed");

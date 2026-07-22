@@ -42,8 +42,8 @@ export const BOT_PERSONA_KEYS = ['maestro','moshlord','diva','saboteur'];
 
 export const BOT_SKILL_PRIORITY_BASE = [
   'amp_1', 'range_1',
-  'theory_major', 'amp_2', 'power_1', 'theory_minor',
-  'theory_dom7', 'amp_3', 'range_2', 'power_2', 'theory_modes', 'theory_chromatic',
+  'theory_major', 'stance_physical', 'amp_2', 'power_1', 'theory_minor',
+  'stance_sonic', 'theory_dom7', 'amp_3', 'range_2', 'power_2', 'theory_modes', 'theory_chromatic',
   'range_3', 'power_3',
 ];
 

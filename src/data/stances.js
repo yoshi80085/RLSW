@@ -147,6 +147,11 @@ export function stanceKit(spiritId) {
   return STANCE_DEFS[stanceOf(null, spiritId)] ?? STANCE_DEFS.low_slung;
 }
 
+// Skill IDs that gate the stance special attacks (checked against unlockedSkills).
+// The finisher is always available (replaces Smash — no unlock needed).
+export const STANCE_PHYSICAL_SKILL = 'stance_physical';
+export const STANCE_SONIC_SKILL    = 'stance_sonic';
+
 /**
  * Chord-fray arithmetic (pure). Stance-NEUTRAL base fray from the hit margin.
  * Returns the note count to strip (before the "1 note always survives" floor,
