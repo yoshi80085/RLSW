@@ -191,12 +191,22 @@ export function GameStyles() {
           88%           { opacity: 0.8; }
           92%           { opacity: 0; }
         }
+        /* Amp inner glow — screen-blended overlay pulses on the dark speaker face */
+        @keyframes amp-inner-glow {
+          0%, 100% { opacity: 0.06; }
+          50%      { opacity: 0.22; }
+        }
+        /* Amps hover gently — floating island stage in space */
+        @keyframes amp-hover-float {
+          0%, 100% { transform: translateY(0); }
+          50%      { transform: translateY(-2.5px); }
+        }
         /* The Range radius ring breathing out from the home corner */
         @keyframes amp-ring-pulse {
           0%,100% { opacity: 0.55; transform: scale(0.985); }
           50%     { opacity: 1;    transform: scale(1.015); }
         }
-        /* 🎤 Fans bobbing at a Spirit's home turf — holds still, then a gentle sway */
+        /* 🎤 Fans bobbing — whole-body sway applied by the parent wrapper */
         @keyframes fan-bob {
           0%, 55%, 100% { transform: translateY(0px); }
           72%           { transform: translateY(-2.6px); }
@@ -209,31 +219,107 @@ export function GameStyles() {
           45%      { transform: rotate(2deg); }
           70%      { transform: rotate(8deg); }
         }
-        /* 🎤 A fan's mouth opening and closing — singing / cheering along */
-        @keyframes fan-sing {
-          0%, 100% { transform: scaleY(0.32); }
-          50%      { transform: scaleY(1); }
+        /* 🎤 Head-only bob — extra internal head bounce (stacked with parent bob) */
+        @keyframes fan-head-bob {
+          0%, 50%, 100% { transform: translateY(0); }
+          25%           { transform: translateY(var(--hbob, -1.8px)); }
+          75%           { transform: translateY(var(--hbob2, -0.6px)); }
         }
-        /* 🎤 An occasional blink so the faces feel alive */
+        /* 😊 Head tilt — an occasional sideways lean */
+        @keyframes fan-tilt {
+          0%, 78%, 100% { transform: rotate(0deg); }
+          82%, 93%      { transform: rotate(var(--tilt, 10deg)); }
+        }
+        /* 👀 Pupils looking around — translateX shifts the pupil group */
+        @keyframes fan-look {
+          0%, 25%  { transform: translateX(0); }
+          30%, 42% { transform: translateX(var(--look, 1px)); }
+          47%, 60% { transform: translateX(0); }
+          65%, 78% { transform: translateX(calc(-1 * var(--look, 1px))); }
+          83%, 100% { transform: translateX(0); }
+        }
+        /* 👁️ Blink — periodic quick close/open of the eyes */
         @keyframes fan-blink {
-          0%, 90%, 100% { transform: scaleY(1); }
-          95%           { transform: scaleY(0.12); }
+          0%, 88%, 100% { transform: scaleY(1); }
+          92%, 96%      { transform: scaleY(0.08); }
         }
-        /* 🙌 A raised hand swaying side to side — waving in the air */
+        /* 😄 Happy eyes fade in/out — arcs visible during the wave behaviour slice */
+        @keyframes fan-eyes-happy {
+          0%, 74%  { opacity: 0; }
+          75%, 80% { opacity: 1; }
+          81%, 100% { opacity: 0; }
+        }
+        @keyframes fan-eyes-normal {
+          0%, 74%  { opacity: 1; }
+          75%, 80% { opacity: 0; }
+          81%, 100% { opacity: 1; }
+        }
+
+        /* ── BEHAVIOUR CYCLE — rest-heavy, mostly settled ────────────────────
+           Rest dominates (~74%). Actions appear briefly (~5-6% each).
+           Per-fan cycle DURATIONS vary (38–60 s) so they drift out of sync —
+           even though the keyframe percentages are fixed, the actual wall-clock
+           timing differs per fan, making the crowd appear random.
+           Acts: 0 rest → 1 wave → 2 fist → 3 lighter → 4 phone/camera */
+        @keyframes fan-act-0 {
+          0%     { opacity: 1; }
+          73%    { opacity: 1; }
+          74%    { opacity: 0; }
+          98.5%  { opacity: 0; }
+          100%   { opacity: 1; }
+        }
+        @keyframes fan-act-1 {
+          0%     { opacity: 0; }
+          74%    { opacity: 0; }
+          75%    { opacity: 1; }
+          80%    { opacity: 1; }
+          81%    { opacity: 0; }
+          100%   { opacity: 0; }
+        }
+        @keyframes fan-act-2 {
+          0%     { opacity: 0; }
+          81%    { opacity: 0; }
+          82%    { opacity: 1; }
+          87%    { opacity: 1; }
+          88%    { opacity: 0; }
+          100%   { opacity: 0; }
+        }
+        @keyframes fan-act-3 {
+          0%     { opacity: 0; }
+          88%    { opacity: 0; }
+          89%    { opacity: 1; }
+          93%    { opacity: 1; }
+          94%    { opacity: 0; }
+          100%   { opacity: 0; }
+        }
+        @keyframes fan-act-4 {
+          0%     { opacity: 0; }
+          94%    { opacity: 0; }
+          95%    { opacity: 1; }
+          98.5%  { opacity: 1; }
+          99.5%  { opacity: 0; }
+          100%   { opacity: 0; }
+        }
+        /* 🙌 Wave — raised hands sway side to side */
         @keyframes fan-wave {
           0%, 100% { transform: translateX(var(--swA, -2px)); }
           50%      { transform: translateX(var(--swB, 2px)); }
         }
-        /* ✊ A fist pumping the air */
+        /* ✊ Fist pumping the air */
         @keyframes fan-fist {
           0%, 55%, 100% { transform: translateY(0); }
           30%           { transform: translateY(var(--pump, -4px)); }
         }
-        /* 🔥 A lighter flame flickering */
+        /* 🔥 Lighter flame flickering */
         @keyframes fan-flame {
           0%, 100% { transform: scale(0.9) skewX(-4deg);  opacity: 0.85; }
           35%      { transform: scale(1.2) skewX(3deg);   opacity: 1; }
           70%      { transform: scale(0.82) skewX(-2deg); opacity: 0.7; }
+        }
+        /* 📱 Phone swaying slowly */
+        @keyframes fan-phone-sway {
+          0%, 100% { transform: translateX(-1px); }
+          50%      { transform: translateX(1px); }
         }
         /* 🎆 Fireworks when new fans arrive — a bright flash that blooms and fades */
         @keyframes fw-flash {

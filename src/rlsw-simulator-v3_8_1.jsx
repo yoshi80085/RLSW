@@ -9,7 +9,7 @@ import { SPIRIT_DEFS, SPIRIT_OPTIONS } from "./data/spirits.js";
 import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "./data/corners.js";
 import { HEX_SIZE, SCALE, SVG_W, SVG_H } from "./board/constants.js";
 import { HEX_BY_NUM, HEX_BY_QR, ALL_HEXES } from "./board/hexMap.js";
-import { pointyCorners, fanGesture, axialDist, axialNeighbors, getFlatTopNeighborSlots, angleTo, angleDiff, neighborInDirection, grandstandSeat, grandstandArc, grandstandRowSpan } from "./board/hexGeometry.js";
+import { pointyCorners, axialDist, axialNeighbors, getFlatTopNeighborSlots, angleTo, angleDiff, neighborInDirection, grandstandSeat, grandstandArc, grandstandRowSpan } from "./board/hexGeometry.js";
 import { Tutorial } from "./tutorial/content.jsx";
 import { useRiffState } from "./hooks/useRiffState.js";
 import { useFanEconomy } from "./hooks/useFanEconomy.js";
@@ -79,225 +79,209 @@ import {
 } from "./engine/policies/bot.js";
 
 
-// 🎟️ A fan = a sleek "pawn": a detached round head above a rounded-triangle body.
-// Deliberately plain — fans are the crowd, not characters. `filled` marks a diehard
-// (solid, owner colour) vs a casual (hollow outline). Centred vertically on (x, y).
-// `face` (0..5, or null) picks an animated expression so the crowd reads as a sea
-// of cheering, singing-along faces rather than blank pawns.
-// `bodyFlip` mirrors the body silhouette upside-down (broad shoulders → tapered) so
-// the crowd isn't all the same outline. `hands` adds floating circle hands (no arm
-// lines — they read cleanly at crowd scale): 'rest' | 'wave' | 'fist' (devil horns) |
-// 'lighter' | 'phone'. NO Math.random() in here, or the crowd reshuffles on re-render.
-function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, face = null, bodyFlip = false, hands = null) {
-  r = r * 1.15; // a tad bigger — the crowd earns its presence
-  const headR = r * 0.42, headCy = y - r * 0.86;
-  const apexY = y - r * 0.30, baseY = y + r * 0.74, halfW = r * 0.66;
-  const detail = headR > 2.4;                 // tiny fans stay simple — the perf valve
+// 🎟️ A fan = a geometric "pawn": a detached round head above a downward-pointing
+// triangle body. All fans share the same shape; `filled` marks a diehard (solid) vs
+// a casual (hollow outline). Centred vertically on (x, y), owner colour from spirit.
+//
+// BEHAVIOUR CYCLING — every fan has ALL behaviours baked in and cycles through them
+// via CSS. Fans are mostly settled (rest ~74% of the time); actions appear briefly
+// and at pseudo-random intervals. Each fan gets a unique cycle DURATION (38–60 s)
+// and phase offset derived from a seeded hash, so the crowd drifts out of sync and
+// never looks patterned. Pass `forcePose` to pin a fan to one behaviour (walk-off,
+// pop-in, flying); pass null to let it self-animate.
+//
+// NO Math.random() — all timing is hash-derived so the crowd is stable across renders.
+function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unused = false, forcePose = null) {
+  r = r * 1.15;
+  const headR  = r * 0.40;
+  const headCy = y - r * 0.88;
+  const detail = headR > 2.0;
+  const ink    = filled ? '#0a0e18' : color;
 
-  // ── BODY — the classic rounded triangle ──
-  const body =
-    `M ${x} ${apexY}` +
-    ` C ${x - halfW * 0.5} ${apexY + r * 0.16}, ${x - halfW} ${baseY - r * 0.42}, ${x - halfW} ${baseY - r * 0.12}` +
-    ` Q ${x - halfW} ${baseY}, ${x - halfW * 0.55} ${baseY}` +
-    ` L ${x + halfW * 0.55} ${baseY}` +
-    ` Q ${x + halfW} ${baseY}, ${x + halfW} ${baseY - r * 0.12}` +
-    ` C ${x + halfW} ${baseY - r * 0.42}, ${x + halfW * 0.5} ${apexY + r * 0.16}, ${x} ${apexY} Z`;
+  // ── BODY — downward-pointing triangle (wide top, point at bottom) ──
+  const topY = y - r * 0.28, botY = y + r * 0.72, halfW = r * 0.60;
+  const bodyD = `M ${x - halfW} ${topY} L ${x + halfW} ${topY} L ${x} ${botY} Z`;
 
-  // ── FACE — only drawn when a variant is requested and the head is big enough
-  // to carry detail. Features sit in a contrasting ink so they read on solid
-  // (diehard) and hollow (casual) heads alike. Six variants now — twice the moods.
-  let faceEls = null;
-  if (face !== null && headR > 2.4) {
-    const ink     = filled ? '#0a0e18' : color;   // dark ink on solid heads, glow on hollow
-    const v       = ((face % 6) + 6) % 6;
-    const eyeY    = headCy - headR * 0.10;
-    const eyeDX   = headR * 0.42;
-    const eyeR    = headR * 0.20;
-    const mouthY  = headCy + headR * 0.34;
-    const fsw     = Math.max(0.45, headR * 0.16);
-    // Stagger the mouth/blink loops by face index so the crowd never moves in lockstep.
-    const singDur = (0.9 + v * 0.18).toFixed(2);
-    const singDelay = (v * 0.21).toFixed(2);
-    const blinkDur = (4.2 + v * 0.7).toFixed(2);
-    const blinkDelay = (v * 0.9).toFixed(2);
+  // ── SEEDED HASH — stable pseudo-random [0,1) per (seed, offset) pair ──
+  const s = typeof seed === 'number' ? ((seed % 997) + 997) % 997 : 0;
+  const h = (n) => { const v = Math.sin(s * 127.1 + n * 311.7) * 43758.5453; return v - Math.floor(v); };
 
-    // Eyes: dot eyes for most, happy "^ ^" arcs for the stoked variant (2).
-    const dotEyes = (
-      <g style={{animation:`fan-blink ${blinkDur}s ease-in-out infinite`, animationDelay:`${blinkDelay}s`,
-        transformBox:'fill-box', transformOrigin:'center'}}>
-        <circle cx={x - eyeDX} cy={eyeY} r={eyeR} fill={ink}/>
-        <circle cx={x + eyeDX} cy={eyeY} r={eyeR} fill={ink}/>
-      </g>
-    );
-    const happyEyes = (
-      <g>
-        <path d={`M ${x - eyeDX - headR*0.24} ${eyeY + headR*0.08} Q ${x - eyeDX} ${eyeY - headR*0.26} ${x - eyeDX + headR*0.24} ${eyeY + headR*0.08}`}
-          fill="none" stroke={ink} strokeWidth={fsw} strokeLinecap="round"/>
-        <path d={`M ${x + eyeDX - headR*0.24} ${eyeY + headR*0.08} Q ${x + eyeDX} ${eyeY - headR*0.26} ${x + eyeDX + headR*0.24} ${eyeY + headR*0.08}`}
-          fill="none" stroke={ink} strokeWidth={fsw} strokeLinecap="round"/>
-      </g>
-    );
-    // Blissed-out closed eyes — lids drawn as gentle downward arcs (lost in the music)
-    const closedEyes = (
-      <g>
-        <path d={`M ${x - eyeDX - headR*0.24} ${eyeY - headR*0.06} Q ${x - eyeDX} ${eyeY + headR*0.22} ${x - eyeDX + headR*0.24} ${eyeY - headR*0.06}`}
-          fill="none" stroke={ink} strokeWidth={fsw} strokeLinecap="round"/>
-        <path d={`M ${x + eyeDX - headR*0.24} ${eyeY - headR*0.06} Q ${x + eyeDX} ${eyeY + headR*0.22} ${x + eyeDX + headR*0.24} ${eyeY - headR*0.06}`}
-          fill="none" stroke={ink} strokeWidth={fsw} strokeLinecap="round"/>
-      </g>
-    );
-    // A cheeky wink — one open dot eye, one flat closed lid
-    const winkEyes = (
-      <g>
-        <circle cx={x - eyeDX} cy={eyeY} r={eyeR} fill={ink}/>
-        <line x1={x + eyeDX - headR*0.24} y1={eyeY} x2={x + eyeDX + headR*0.24} y2={eyeY}
-          stroke={ink} strokeWidth={fsw} strokeLinecap="round"/>
-      </g>
-    );
+  // ── TIMING — each fan gets its own durations so the crowd drifts apart ──
+  const cycleDur  = (38 + h(0) * 22).toFixed(2);               // 38–60 s full behaviour cycle
+  const cycDelay  = (h(1) * parseFloat(cycleDur)).toFixed(2);   // random phase within cycle
+  const bobDur    = (3.5 + h(2) * 2.0).toFixed(2);             // 3.5–5.5 s head bob
+  const bobDelay  = (h(3) * 3).toFixed(2);
+  const blinkDur  = (4.0 + h(4) * 3.0).toFixed(2);             // 4–7 s blink period
+  const blinkDel  = (h(5) * 4).toFixed(2);
+  const lookDur   = (12 + h(6) * 10).toFixed(2);               // 12–22 s look-around
+  const lookDel   = (h(7) * 8).toFixed(2);
+  const tiltDur   = (20 + h(8) * 18).toFixed(2);               // 20–38 s head tilt
+  const tiltDel   = (h(9) * 12).toFixed(2);
+  const lookRange = (headR * 0.14).toFixed(2);
+  const hbob      = (headR * 0.18).toFixed(2);                  // gentler bob
+  const tiltDeg   = (6 + Math.floor(h(10) * 8)).toFixed(0);
 
-    // Mouths: an open "cheer" ellipse that pulses (variants 0,1), a grin-with-tongue (3),
-    // and a chatty smile arc (2). All wrapped so they animate open/closed in place.
-    let mouth;
-    if (v === 1) {
-      // Big round scream of joy
-      mouth = <ellipse cx={x} cy={mouthY + headR*0.05} rx={headR*0.30} ry={headR*0.34} fill={ink}/>;
-    } else if (v === 2) {
-      // Wide smile arc
-      mouth = <path d={`M ${x - headR*0.34} ${mouthY - headR*0.04} Q ${x} ${mouthY + headR*0.34} ${x + headR*0.34} ${mouthY - headR*0.04}`}
-        fill="none" stroke={ink} strokeWidth={fsw} strokeLinecap="round"/>;
-    } else if (v === 3) {
-      // Open grin with a flash of tongue
-      mouth = (
+  // ── EYE geometry — simple filled circles (no outline/pupil) ──
+  const eyeY   = headCy - headR * 0.05;
+  const eyeDX  = headR * 0.36;
+  const eyeR   = headR * 0.18;
+
+  // ── HAND geometry — positions relative to the wide-top body ──
+  const handR    = headR * 0.42;
+  const hFill    = filled ? color : 'none';
+  const restY    = topY + (botY - topY) * 0.25;      // ¼ down the body (shoulder level)
+  const restDX   = halfW * 0.78;                      // at the body edges
+  const waveY    = headCy - headR * 0.65;
+  const waveDX   = halfW * 1.0;
+  const sway     = headR * 0.5;
+  const fistY    = headCy - headR * 1.05;
+  const fistX    = x + halfW * 0.35;
+  const lighterY = headCy - headR * 0.85;
+  const lighterX = x - halfW * 0.28;
+  const phoneY   = headCy - headR * 1.1;
+  const phoneX   = x - halfW * 0.3;
+  const hornW    = Math.max(sw * 0.9, r * 0.14);
+
+  const animate = !forcePose && detail;
+
+  // ── helper: a single hand circle ──
+  const handCircle = (cx, cy, key) => (
+    <circle key={key} cx={cx} cy={cy} r={handR}
+      fill={hFill} stroke={color} strokeWidth={sw} opacity={op}/>
+  );
+
+  // ── FORCED-POSE HANDS (pop-in / walk-off / flying fans) ──
+  let forcedHands = null;
+  if (forcePose && detail) {
+    if (forcePose === 'wave') {
+      forcedHands = (
         <g>
-          <ellipse cx={x} cy={mouthY + headR*0.04} rx={headR*0.32} ry={headR*0.24} fill={ink}/>
-          <ellipse cx={x} cy={mouthY + headR*0.14} rx={headR*0.16} ry={headR*0.12} fill={color} opacity={filled ? 0.55 : 0.9}/>
+          <g style={{animation:'fan-wave 1.4s ease-in-out infinite',
+            ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
+            {handCircle(x - waveDX, waveY, 'wl')}
+          </g>
+          <g style={{animation:'fan-wave 1.4s ease-in-out infinite', animationDelay:'-0.7s',
+            ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
+            {handCircle(x + waveDX, waveY, 'wr')}
+          </g>
         </g>
       );
-    } else if (v === 4) {
-      // Belting it out — tall open singer's mouth, eyes closed in bliss
-      mouth = <ellipse cx={x} cy={mouthY + headR*0.06} rx={headR*0.22} ry={headR*0.38} fill={ink}/>;
-    } else if (v === 5) {
-      // Whistling — a tight little "o", with the wink
-      mouth = <circle cx={x} cy={mouthY} r={headR*0.15} fill={ink}/>;
-    } else {
-      // Classic open "whoa" mouth
-      mouth = <ellipse cx={x} cy={mouthY} rx={headR*0.26} ry={headR*0.24} fill={ink}/>;
-    }
-
-    faceEls = (
-      <g opacity={op}>
-        {v === 2 ? happyEyes : v === 4 ? closedEyes : v === 5 ? winkEyes : dotEyes}
-        <g style={{animation:`fan-sing ${singDur}s ease-in-out infinite`, animationDelay:`${singDelay}s`,
-          transformBox:'fill-box', transformOrigin:'center'}}>
-          {mouth}
+    } else if (forcePose === 'fist') {
+      forcedHands = (
+        <g>
+          {handCircle(x - restDX, restY, 'rl')}
+          <g style={{animation:'fan-fist 1.0s ease-in-out infinite', ['--pump']:`${-(headR * 1.4)}px`}}>
+            {handCircle(fistX, fistY, 'fh')}
+          </g>
         </g>
-      </g>
-    );
+      );
+    } else {
+      forcedHands = <g>{handCircle(x - restDX, restY, 'rl')}{handCircle(x + restDX, restY, 'rr')}</g>;
+    }
   }
 
-  // ── HANDS — small floating circle hands (no arm lines — they read cleanly at
-  // crowd scale, and ride the parent's bob). Most fans rest; some wave, throw
-  // devil horns, hold up a lighter, or raise a phone-light.
-  let handsEls = null;
-  if (hands && headR > 2.0) {
-    const handR  = headR * 0.46;
-    const hf     = filled ? color : 'none';
-    const hornW  = Math.max(sw * 0.9, r * 0.14);
-    const restY  = y + r * 0.12;
-    const restDX = halfW * 0.94;
-    const restHand = (side, key) => (
-      <circle key={key} cx={x + side * restDX} cy={restY} r={handR}
-        fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
-    );
+  // ── SELF-ANIMATING HANDS — five behaviour groups, CSS cycles opacity ──
+  // Rest is visible ~74% of the time; each action gets ~5–6%. Per-fan cycle
+  // durations (38–60 s) drift apart so actions appear random across the crowd.
+  let cyclingHands = null;
+  if (animate) {
+    // Negative delay = animation starts already in progress at the offset
+    // position, so there's never a gap where all groups default to opacity 1.
+    const actStyle = (idx) => ({
+      animation: `fan-act-${idx} ${cycleDur}s linear infinite`,
+      animationDelay: `-${cycDelay}s`
+    });
 
-    if (hands === 'wave') {
-      // Both hands up, swaying side-to-side in opposite phase = a waving crowd.
-      const wy   = headCy - headR * 0.7;
-      const wdx  = halfW * 1.02;
-      const sway = headR * 0.55;
-      handsEls = (
-        <g>
-          <g style={{animation:'fan-wave 1.05s ease-in-out infinite',
+    cyclingHands = (
+      <g>
+        {/* Act 0: rest — both hands at sides */}
+        <g style={actStyle(0)}>
+          {handCircle(x - restDX, restY, 'r0l')}
+          {handCircle(x + restDX, restY, 'r0r')}
+        </g>
+        {/* Act 1: wave — both hands up, swaying in opposite phase */}
+        <g style={actStyle(1)}>
+          <g style={{animation:'fan-wave 1.4s ease-in-out infinite',
             ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
-            <circle cx={x - wdx} cy={wy} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
+            {handCircle(x - waveDX, waveY, 'w1l')}
           </g>
-          <g style={{animation:'fan-wave 1.05s ease-in-out infinite', animationDelay:'-0.525s',
+          <g style={{animation:'fan-wave 1.4s ease-in-out infinite', animationDelay:'-0.7s',
             ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
-            <circle cx={x + wdx} cy={wy} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
+            {handCircle(x + waveDX, waveY, 'w1r')}
           </g>
         </g>
-      );
-    } else if (hands === 'fist') {
-      // 🤘 One raised hand pumping DEVIL HORNS; the other rests.
-      const fy = headCy - headR * 1.05;
-      const fx = x + halfW * 0.35;
-      handsEls = (
-        <g>
-          {restHand(-1, 'rest')}
-          <g style={{animation:'fan-fist 0.7s ease-in-out infinite', ['--pump']:`${-(headR * 1.4)}px`}}>
-            <circle cx={fx} cy={fy} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
+        {/* Act 2: fist pump — one hand pumping, the other rests */}
+        <g style={actStyle(2)}>
+          {handCircle(x - restDX, restY, 'f2l')}
+          <g style={{animation:'fan-fist 1.0s ease-in-out infinite', ['--pump']:`${-(headR * 1.4)}px`}}>
+            {handCircle(fistX, fistY, 'f2r')}
             {detail && <g stroke={color} strokeWidth={hornW} strokeLinecap="round" opacity={op}>
-              <line x1={fx - handR * 0.55} y1={fy - handR * 0.3} x2={fx - handR * 0.85} y2={fy - handR * 1.5}/>
-              <line x1={fx + handR * 0.55} y1={fy - handR * 0.3} x2={fx + handR * 0.85} y2={fy - handR * 1.5}/>
+              <line x1={fistX - handR * 0.55} y1={fistY - handR * 0.3} x2={fistX - handR * 0.85} y2={fistY - handR * 1.5}/>
+              <line x1={fistX + handR * 0.55} y1={fistY - handR * 0.3} x2={fistX + handR * 0.85} y2={fistY - handR * 1.5}/>
             </g>}
           </g>
         </g>
-      );
-    } else if (hands === 'lighter') {
-      // One hand raised holding a flickering lighter flame; the other rests.
-      const ly = headCy - headR * 0.85;
-      const lx = x - halfW * 0.28;
-      const flameY = ly - handR * 1.5;
-      handsEls = (
-        <g>
-          {restHand(1, 'rest')}
-          <circle cx={lx} cy={ly} r={handR} fill={hf} stroke={color} strokeWidth={sw} opacity={op}/>
-          <g style={{animation:'fan-flame 0.5s ease-in-out infinite',
+        {/* Act 3: lighter — one hand holds a flickering flame */}
+        <g style={actStyle(3)}>
+          {handCircle(x + restDX, restY, 'l3r')}
+          {handCircle(lighterX, lighterY, 'l3h')}
+          <g style={{animation:'fan-flame 0.6s ease-in-out infinite',
             transformBox:'fill-box', transformOrigin:'center bottom',
             filter:'drop-shadow(0 0 2px #ff7a00)'}}>
-            <ellipse cx={lx} cy={flameY} rx={handR * 0.5} ry={handR * 0.95} fill="#ff9a2e"/>
-            <ellipse cx={lx} cy={flameY + handR * 0.2} rx={handR * 0.26} ry={handR * 0.5} fill="#ffe28a"/>
+            <ellipse cx={lighterX} cy={lighterY - handR * 1.5} rx={handR * 0.5} ry={handR * 0.95} fill="#ff9a2e"/>
+            <ellipse cx={lighterX} cy={lighterY - handR * 1.3} rx={handR * 0.26} ry={handR * 0.5} fill="#ffe28a"/>
           </g>
         </g>
-      );
-    } else if (hands === 'phone') {
-      // 📱 A phone-light held high, swaying slow — the modern lighter.
-      const py2 = headCy - headR * 1.1;
-      const px2 = x - halfW * 0.3;
-      handsEls = (
-        <g>
-          {restHand(1, 'rest')}
-          <g style={{animation:'fan-wave 2.2s ease-in-out infinite',
-            ['--swA']:`${-headR * 0.3}px`, ['--swB']:`${headR * 0.3}px`}}>
-            <rect x={px2 - handR * 0.42} y={py2 - handR * 0.9}
+        {/* Act 4: phone — a glowing rectangle held high, swaying slowly */}
+        <g style={actStyle(4)}>
+          {handCircle(x + restDX, restY, 'p4r')}
+          <g style={{animation:'fan-phone-sway 3.0s ease-in-out infinite'}}>
+            <rect x={phoneX - handR * 0.42} y={phoneY - handR * 0.9}
               width={handR * 0.84} height={handR * 1.3} rx={handR * 0.2}
               fill="#cfe0ff" opacity={op} style={{filter:'drop-shadow(0 0 2px #cfe0ff)'}}/>
           </g>
         </g>
-      );
-    } else {
-      // rest — both hands down by the sides
-      handsEls = <g>{restHand(-1, 'l')}{restHand(1, 'r')}</g>;
-    }
+      </g>
+    );
   }
 
-  // Body silhouette — optionally mirrored upside-down about its own centre so the
-  // crowd shows a mix of two outlines.
-  const bodyCenterY = (apexY + baseY) / 2;
-  const bodyPath = (
-    <path d={body} fill={filled ? color : 'none'} stroke={color} strokeWidth={sw}
-      strokeLinejoin="round" strokeLinecap="round" opacity={op}/>
-  );
+  // ── EYES — simple filled circles that blink and look around ──
+  let eyes = null;
+  if (detail) {
+    eyes = (
+      <g style={{
+        animation: `fan-blink ${blinkDur}s ease-in-out infinite`,
+        animationDelay: `-${blinkDel}s`,
+        transformBox: 'fill-box', transformOrigin: 'center'
+      }}>
+        <g style={{animation: `fan-look ${lookDur}s ease-in-out infinite`,
+          animationDelay: `-${lookDel}s`, ['--look']: `${lookRange}px`}}>
+          <circle cx={x - eyeDX} cy={eyeY} r={eyeR} fill={ink} opacity={op}/>
+          <circle cx={x + eyeDX} cy={eyeY} r={eyeR} fill={ink} opacity={op}/>
+        </g>
+      </g>
+    );
+  }
 
   return (
     <>
-      {bodyFlip
-        ? <g transform={`matrix(1,0,0,-1,0,${(2 * bodyCenterY).toFixed(2)})`}>{bodyPath}</g>
-        : bodyPath}
-      <circle cx={x} cy={headCy} r={headR} fill={filled ? color : '#0a0e18'}
-        stroke={color} strokeWidth={sw} opacity={op}/>
-      {faceEls}
-      {handsEls}
+      {/* Body — downward-pointing triangle */}
+      <path d={bodyD} fill={filled ? color : 'none'} stroke={color} strokeWidth={sw}
+        strokeLinejoin="round" opacity={op}/>
+      {/* Head — circle, with slow internal bob + tilt */}
+      <g style={detail ? {
+        animation: `fan-head-bob ${bobDur}s ease-in-out infinite, fan-tilt ${tiltDur}s ease-in-out infinite`,
+        animationDelay: `-${bobDelay}s, -${tiltDel}s`,
+        ['--hbob']: `${-hbob}px`, ['--hbob2']: `${-hbob * 0.35}px`,
+        ['--tilt']: `${h(11) > 0.5 ? '' : '-'}${tiltDeg}deg`,
+        transformBox: 'fill-box', transformOrigin: 'center bottom'
+      } : undefined}>
+        <circle cx={x} cy={headCy} r={headR} fill={filled ? color : '#0a0e18'}
+          stroke={color} strokeWidth={sw} opacity={op}/>
+        {eyes}
+      </g>
+      {/* Hands */}
+      {animate ? cyclingHands : forcedHands}
     </>
   );
 }
@@ -11400,7 +11384,7 @@ function Game({ gameState, onReturnToLobby }) {
                           {/* soft glow — the crowd reads as a sea of lights */}
                           <circle cx={px} cy={py} r={r * 1.5} fill={sc}
                             opacity={isDie ? 0.26 : 0.10} style={{filter:`blur(${r * 0.9}px)`}}/>
-                          {fanPawnShape(px, py, r, col, isDie, sww, op, i % 6, i % 2 === 1, fanGesture(i))}
+                          {fanPawnShape(px, py, r, col, isDie, sww, op, i, false, null)}
                         </g>
                       );
                     })}
@@ -11502,7 +11486,7 @@ function Game({ gameState, onReturnToLobby }) {
                           <g key={`pi-${i}`} style={{animation:"fan-pop-in 0.6s cubic-bezier(.5,1.6,.6,1) both",
                             animationDelay:`${((i - visibleTotal) * 0.07).toFixed(2)}s`,
                             transformBox:'fill-box', transformOrigin:'center'}}>
-                            {fanPawnShape(px, py, r, sc, true, 1.25, 1, i % 6, i % 2 === 1, 'wave')}
+                            {fanPawnShape(px, py, r, sc, true, 1.25, 1, i, false, 'wave')}
                           </g>
                         );
                       }
@@ -12148,7 +12132,7 @@ function Game({ gameState, onReturnToLobby }) {
                       animation: excited ? 'unsure-excited 0.45s ease-in-out infinite'
                                          : `fan-bob ${dur}s ease-in-out infinite`,
                       animationDelay: `${delay}s`}}>
-                      {fanPawnShape(x, y, r, col, excited, 1.2, 1, i % 6, i % 2 === 1, excited ? 'wave' : fanGesture(i))}
+                      {fanPawnShape(x, y, r, col, excited, 1.2, 1, i, false, excited ? 'wave' : null)}
                     </g>
                   );
                 };
@@ -12184,7 +12168,7 @@ function Game({ gameState, onReturnToLobby }) {
                           <g style={{transform:`translate(${sxk}px, ${syk}px)`}}>
                             <g style={{transformBox:'fill-box', transformOrigin:'center',
                               animation:'unsure-excited 0.4s ease-in-out infinite'}}>
-                                                            {fanPawnShape(0, 0, u * 1.3, winColor, true, 1.0, 1, 1, false, 'wave')}
+                                                            {fanPawnShape(0, 0, u * 1.3, winColor, true, 1.0, 1, 0, false, 'wave')}
                             </g>
                           </g>
                         </g>

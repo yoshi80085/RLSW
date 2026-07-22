@@ -121,7 +121,9 @@ function DeckStack({ pos, stage, powT, rangeT, thump, seed }) {
   const arcs = rangeT >= 2 ? rangeT : 0;   // Range II: arcs start crawling
 
   return (
-    <g style={{ pointerEvents: "none" }}>
+    <g style={{ pointerEvents: "none",
+        animation: `amp-hover-float ${3.5 + (seed % 3) * 0.5}s ease-in-out infinite`,
+        animationDelay: `${((seed * 0.4) % 2).toFixed(2)}s` }}>
       <g key={`stack-${stage}`}
          style={{ animation: "amp-drop-in 0.55s cubic-bezier(.5,1.5,.6,1) both",
            transformBox: "fill-box", transformOrigin: `50% ${plantY}` }}>
@@ -138,6 +140,13 @@ function DeckStack({ pos, stage, powT, rangeT, thump, seed }) {
           <image href={sp.src} x={x} y={y} width={W} height={H}
             style={{ filter: `drop-shadow(0 0 ${glow}px ${glowCol})` +
               (rangeT >= 3 ? ` drop-shadow(0 0 ${glow * 2}px ${MAGENTA})` : "") }}/>
+          {/* inner glow — brightened duplicate blended over the dark speaker face */}
+          <image href={sp.src} x={x} y={y} width={W} height={H}
+            style={{ filter: "brightness(3) saturate(1.5)",
+              mixBlendMode: "screen", opacity: 0.06,
+              animation: `amp-inner-glow ${(2.5 + (seed % 2) * 0.5).toFixed(1)}s ease-in-out infinite`,
+              animationDelay: `${((seed * 0.3) % 2).toFixed(2)}s`,
+              pointerEvents: "none" }}/>
           {/* lightning arcs crawling over the cabinets (Range II+) */}
           {Array.from({ length: arcs }, (_, i) => {
             const bx = x + W * (0.22 + 0.28 * i + ((seed + i) % 2) * 0.12);
