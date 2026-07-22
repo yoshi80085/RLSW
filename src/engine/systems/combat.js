@@ -182,11 +182,10 @@ export function applyWinnerDeclared(state, action) {
 /**
  * THE SMASH (Phase 3b) — deterministic, undefendable melee.
  */
-export function smashOutcome(thrown, { roninSmasher = false, roninTarget = false } = {}) {
-  const baseDmg   = Math.min(5, Math.max(1, Math.ceil(thrown / 2)));
-  const damage    = roninSmasher ? Math.max(1, Math.floor(baseDmg / 2)) : baseDmg;
+export function smashOutcome(thrown) {
+  const damage    = Math.min(5, Math.max(1, Math.ceil(thrown / 2)));
   const knockback = Math.min(3, Math.ceil(thrown / 3));
-  const scatterN  = Math.floor(thrown / 2) * (roninTarget ? 2 : 1);
+  const scatterN  = Math.floor(thrown / 2);
   return { damage, knockback, scatterN };
 }
 

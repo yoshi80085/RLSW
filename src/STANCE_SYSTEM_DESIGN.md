@@ -1,4 +1,9 @@
-# Rock Legends: Spirit Wars — Stance System Design
+# Rock Legends: Spirit Wars — Stance System Design (v1 — SUPERSEDED)
+
+> **⚠️ SUPERSEDED** by `STANCE_V2_HANDOFF.md`. All v1 passive effects, the Groove
+> counter, the stance skill route, and stance switching have been CUT. v2 stances
+> are ability kits (specials + passive + commit Db generator). This doc is kept
+> for historical reference only.
 
 Supersedes the CQC/Thrash skill branch (§6.6 of `DESIGN_AUDIT_v2.md`). Emerged from
 design dialogue about how to give players agency over combat identity without adding

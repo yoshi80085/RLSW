@@ -3,7 +3,7 @@
 // overlay (`setSkillTarget`) and the bot (`botSkillEligible`) score eligibility
 // from ONE source instead of two hand-kept-in-sync copies (they had already
 // drifted — the bot checked owner-only routes, the human didn't). Same trick as
-// `smashOutcome`, which `resolveSmash` + `resolveBlasterOfRa` share.
+// `smashOutcome`.
 //
 // Everything here is pure data / pure functions: no React, no FX, no logging.
 // The actual *effects* of unlocking a skill (Vibe restores, amp/roadie deploys,
@@ -36,18 +36,13 @@ export const THEORY_DISCORD_GRANTS = {
  *                         gate the bot enforces; pass null to skip it (human path,
  *                         which only ever offers the player their own skills)
  * @param opts.selfId      the spirit choosing (only used with ownerRoute)
- * @param opts.stancesKnown  the spirit's `stancesKnown` array — gates stance
- *                           upgrades (skill.requiresStance) on owning the stance
  * @returns { ok, reason?, missing? }
- *   reason ∈ 'unknown' | 'already' | 'owner' | 'ultimate' | 'prereq' | 'pa' | 'stance'
+ *   reason ∈ 'unknown' | 'already' | 'owner' | 'ultimate' | 'prereq' | 'pa'
  */
-export function skillEligibility(skill, unlocked, { ownerRoute = null, selfId = null, stancesKnown = [] } = {}) {
+export function skillEligibility(skill, unlocked, { ownerRoute = null, selfId = null } = {}) {
   if (!skill) return { ok: false, reason: "unknown" };
   if (unlocked.includes(skill.id)) return { ok: false, reason: "already" };
   if (ownerRoute && ownerRoute !== selfId) return { ok: false, reason: "owner" };
-  if (skill.requiresStance && !stancesKnown.includes(skill.requiresStance)) {
-    return { ok: false, reason: "stance" };
-  }
   if (skill.prereq === "__all_pa__") {
     const missing = ULTIMATE_PREREQS.filter(id => !unlocked.includes(id));
     return missing.length ? { ok: false, reason: "ultimate", missing } : { ok: true };

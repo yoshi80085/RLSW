@@ -455,33 +455,27 @@ const config = {
 }
 
 // -- Phase 3b: smashOutcome (deterministic, no roll) ----------------------------
+// v2: roninSmasher/roninTarget CUT — smashOutcome(thrown) only.
 {
-  // exact regression vs the old Game math across the whole throw range + flags
-  const old = (thrown, roninSmasher, roninTarget) => {
-    const baseDmg   = Math.min(5, Math.max(1, Math.ceil(thrown / 2)));
-    const damage    = roninSmasher ? Math.max(1, Math.floor(baseDmg / 2)) : baseDmg;
-    const knockback = Math.min(3, Math.ceil(thrown / 3));
-    const scatterN  = Math.floor(thrown / 2) * (roninTarget ? 2 : 1);
-    return { damage, knockback, scatterN };
-  };
-  for (let thrown = 2; thrown <= 14; thrown++)
-    for (const rs of [false, true]) for (const rt of [false, true])
-      assert.deepEqual(
-        smashOutcome(thrown, { roninSmasher: rs, roninTarget: rt }),
-        old(thrown, rs, rt), `smash math (thrown=${thrown}, rs=${rs}, rt=${rt})`);
-
-  // spot checks: caps + Ronin modifiers
+  // spot checks: caps
   assert.deepEqual(smashOutcome(2), { damage: 1, knockback: 1, scatterN: 1 });
   assert.deepEqual(smashOutcome(4), { damage: 2, knockback: 2, scatterN: 2 });
   assert.equal(smashOutcome(99).damage, 5, "damage caps at 5");
   assert.equal(smashOutcome(99).knockback, 3, "knockback caps at 3");
-  assert.equal(smashOutcome(8, { roninSmasher: true }).damage, 2, "Ronin's own Smash lands soft (≈half)");
-  assert.equal(smashOutcome(2, { roninSmasher: true }).damage, 1, "soft Smash floored at 1");
-  assert.equal(smashOutcome(6, { roninTarget: true }).scatterN, 6, "Ronin target scatters double");
 
-  // Blaster of Ra parity: base (non-Ronin) damage/knockback/scatter match a Smash
+  // Blaster of Ra parity: damage/knockback/scatter match a Smash
   const s = smashOutcome(7);
   assert.deepEqual([s.damage, s.knockback, s.scatterN], [4, 3, 3], "Blaster shares the Smash formula");
+
+  // regression: full throw range
+  for (let thrown = 2; thrown <= 14; thrown++) {
+    const expected = {
+      damage: Math.min(5, Math.max(1, Math.ceil(thrown / 2))),
+      knockback: Math.min(3, Math.ceil(thrown / 3)),
+      scatterN: Math.floor(thrown / 2),
+    };
+    assert.deepEqual(smashOutcome(thrown), expected, `smash math (thrown=${thrown})`);
+  }
 }
 
 // -- Phase 3c kernels: decideWinner + resolveKnockdown --------------------------
@@ -2154,41 +2148,26 @@ const config = {
 }
 
 
-// -- Stance rework: initial stance state + fray arithmetic ----------------------
+// -- Stance v2: fixed per spirit, stance-neutral fray ----------------------------
 {
-  const { STARTING_STANCE, stanceFrayAmount, stanceOf, grooveCap } = await import("../data/stances.js");
-  // every spirit boots in its designed stance, knowing only that stance
-  for (const [sid, st] of Object.entries(STARTING_STANCE)) {
-    const ns = makeInitialNoteState(sid, () => 0.5);
-    assert.equal(ns.stance, st, `${sid} starts in ${st}`);
-    assert.deepEqual(ns.stancesKnown, [st], `${sid} knows only its starting stance`);
-    assert.equal(ns.grooveCounter, 0, `${sid} groove counter starts 0`);
-    assert.equal(stanceOf(ns, sid), st);
-  }
-  assert.equal(stanceOf(undefined, "cosmic_ronin"), "soloist", "stanceOf falls back to STARTING_STANCE");
-  assert.equal(grooveCap({}), 3, "base groove cap 3");
-  assert.equal(grooveCap({ unlockedSkills: ["stance_resonance"] }), 5, "Resonance cap 5");
+  const { STARTING_STANCE, stanceFrayAmount, stanceOf } = await import("../data/stances.js");
+  // stanceOf returns the fixed stance from STARTING_STANCE, ignoring noteState
+  assert.equal(stanceOf(undefined, "cosmic_ronin"), "solo", "Ronin is Solo");
+  assert.equal(stanceOf({}, "Glamarchy"), "low_slung", "Glamarchy is Low Slung");
+  assert.equal(stanceOf({}, "intergalactic_0"), "low_slung", "Intergalactic 0 is Low Slung");
+  assert.equal(stanceOf({}, "Metalness_Monster"), "wide_leg", "Monster is Wide Leg");
+  assert.equal(stanceOf({}, "unknown_spirit"), "low_slung", "unknown falls back to low_slung");
 
-  // fray table: margin-scaled base (1 / 2), attacker Power +1,
-  // defender Soloist x2 / Power +1 / Cool floor(/2)
-  assert.equal(stanceFrayAmount(1, null, null), 1, "graze = 1");
-  assert.equal(stanceFrayAmount(3, null, null), 2, "big hit = 2");
-  assert.equal(stanceFrayAmount(1, "power", null), 2, "Power attacker strips +1");
-  assert.equal(stanceFrayAmount(1, null, "soloist"), 2, "Soloist defender doubles");
-  assert.equal(stanceFrayAmount(3, "power", "soloist"), 6, "(2+1)*2 worst case");
-  assert.equal(stanceFrayAmount(1, null, "cool"), 0, "Cool shrugs off a graze");
-  assert.equal(stanceFrayAmount(3, null, "cool"), 1, "Cool halves a big hit");
-  assert.equal(stanceFrayAmount(3, "power", "cool"), 1, "Cool halves Power: floor(3/2)");
-  assert.equal(stanceFrayAmount(1, null, "power"), 2, "Power defender absorbs +1");
+  // makeInitialNoteState no longer sets stancesKnown or grooveCounter
+  const ns = makeInitialNoteState("cosmic_ronin", () => 0.5);
+  assert.equal(ns.stancesKnown, undefined, "stancesKnown removed from note state");
+  assert.equal(ns.grooveCounter, undefined, "grooveCounter removed from note state");
 
-  // requiresStance gate — stance upgrades need the stance KNOWN (reason 'stance')
-  const upg = { id: "stance_encore", prereq: "stance_2", requiresStance: "soloist" };
-  assert.deepEqual(skillEligibility(upg, ["stance_2"], { stancesKnown: ["power"] }),
-    { ok: false, reason: "stance" }, "upgrade blocked without the stance");
-  assert.deepEqual(skillEligibility(upg, ["stance_2"], { stancesKnown: ["soloist"] }),
-    { ok: true }, "upgrade opens once the stance is known");
-  assert.deepEqual(skillEligibility(upg, [], { stancesKnown: ["soloist"] }),
-    { ok: false, reason: "prereq", missing: ["stance_2"] }, "tier prereq still applies");
+  // fray table: stance-neutral, margin-scaled only
+  assert.equal(stanceFrayAmount(1), 1, "graze = 1");
+  assert.equal(stanceFrayAmount(2), 1, "margin 2 = 1");
+  assert.equal(stanceFrayAmount(3), 2, "big hit = 2");
+  assert.equal(stanceFrayAmount(5), 2, "bigger = still 2");
 }
 // -- sonicRig: tier × distance grid (AMP_DECK_DESIGN.md §2) --------------------
 {
