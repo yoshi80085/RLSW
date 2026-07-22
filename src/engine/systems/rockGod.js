@@ -85,16 +85,39 @@ export function applyGodDamaged(state, { spiritId, dmg }) {
 }
 
 /**
- * GOD_ACTED — the God answers at the end of a player turn (rules verbatim from
- * the client rockGodAct):
+ * godPickTarget — unified Rock God targeting priority:
+ *   1) Slowest action taker (last in turnQueue = moves last = slowest)
+ *   2) Highest FP holder
+ *   3) Most Vibe / lives remaining
+ * Returns the best-matching Spirit from `live`.
+ */
+function godPickTarget(live, state) {
+  if (!live.length) return live[0] ?? null;
+  const queue = state.turnQueue ?? [];
+  return [...live].sort((a, b) => {
+    // 1) Slowest = highest index in the turn queue (acts later)
+    const qA = queue.indexOf(a.id), qB = queue.indexOf(b.id);
+    const orderA = qA >= 0 ? qA : 999, orderB = qB >= 0 ? qB : 999;
+    if (orderA !== orderB) return orderB - orderA; // higher index first
+    // 2) Highest FP
+    const fA = state.noteStates?.[a.id]?.fame ?? 0;
+    const fB = state.noteStates?.[b.id]?.fame ?? 0;
+    if (fA !== fB) return fB - fA;
+    // 3) Most Vibe / lives remaining
+    const vA = (a.vibe ?? 0) + (a.lives ?? 0) * 100;
+    const vB = (b.vibe ?? 0) + (b.lives ?? 0) * 100;
+    return vB - vA;
+  })[0];
+}
+
+/**
+ * GOD_ACTED — the God answers at the end of a player turn.
  *   1) an armed telegraph RESOLVES (thunderclap AoE / power slide — the slide
  *      moves the god and leaves him WINDED),
  *   2) else a winded God spends the beat recovering,
  *   3) else a NEW attack opens: weighted pick on engine rng (no immediate
- *      repeat) — thunderclap/power-slide telegraph one turn ahead (the slide
- *      aims at the engine's FP leader), face-melter zaps the nearest Spirit,
- *      mosh command shoves everyone outward (engine spirits move here; boxed-in
- *      Spirits are reported crushed).
+ *      repeat). Targeted attacks use godPickTarget priority:
+ *      slowest → highest FP → most Vibe/lives.
  * Report: `lastAct` — { kind: 'resolved'|'recovered'|'telegraph'|'fizzled'|
  * 'melted'|'moshed', ... } (null when the fight isn't live). Damage
  * application, hazard entry checks on shoved Spirits, logs/FX/camera stay
@@ -160,9 +183,8 @@ export function applyGodActed(state, _action, rng) {
     };
   }
   if (atk.id === "power_slide") {
-    // Aim the slide at the FP leader — the Gods punish success.
-    const target = [...live].sort((a, b) =>
-      (state.noteStates?.[b.id]?.fame ?? 0) - (state.noteStates?.[a.id]?.fame ?? 0))[0];
+    // Aim the slide at the priority target (slowest → highest FP → most Vibe/lives).
+    const target = godPickTarget(live, state);
     const { path, end } = slideLine(god.num, target.num);
     if (!path.length) {
       return {
@@ -184,7 +206,7 @@ export function applyGodActed(state, _action, rng) {
     };
   }
   if (atk.id === "face_melter") {
-    const target = nearestSpiritTo(god.num, live);
+    const target = godPickTarget(live, state);
     if (!target) return noAct();
     return {
       ...state,

@@ -191,6 +191,11 @@ export function GameStyles() {
           88%           { opacity: 0.8; }
           92%           { opacity: 0; }
         }
+        /* Powered knob rings — vibrant pink breathing glow (Power tiers) */
+        @keyframes amp-knob-pulse {
+          0%, 100% { opacity: 0.55; }
+          50%      { opacity: 1; }
+        }
         /* Amp inner glow — screen-blended overlay pulses on the dark speaker face */
         @keyframes amp-inner-glow {
           0%, 100% { opacity: 0.06; }

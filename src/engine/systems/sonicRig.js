@@ -42,8 +42,10 @@ export function sonicRig(unlockedSkills, distFromHome, chargeBoost = 0) {
 
   const inRange = distFromHome <= RIG_RADIUS_BY_TIER[rangeT];
 
-  // Base pool: 1 die + amp tiers (only counted when in range)
-  const size = 1 + (inRange ? ampT : 0);
+  // Base pool: 1 die + amp tiers (only counted when in range).
+  // Amp I is the Main Amp — board-wide, so its die survives out of range
+  // (everyone starts with amp_1: 2d6 is the floor everywhere).
+  const size = 1 + (inRange ? ampT : Math.min(ampT, 1));
 
   // Power upgrades: convert d6 → d8 (only in range), plus charge d8s (anywhere)
   const d8s = (inRange ? Math.min(powT, size) : 0) + chargeBoost;

@@ -15,7 +15,7 @@ export const STOCK_REFILL_RATE = 4;
 export const SONIC_BASE_DIE     = 6;
 export const SONIC_UPGRADED_DIE = 8;
 export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
-export const RIG_RADIUS_BY_TIER = [2, 4, 7, Infinity];  // Range 0/I/II/III radii (axial hex distance)
+export const RIG_RADIUS_BY_TIER = [4, 5, 7, Infinity];  // Range 0/I/II/III radii (axial hex distance)
 
 export const CAMERA_ZOOM_MS  = 620;          // push-in tween length; impact rumble lands as it settles
 
@@ -84,14 +84,14 @@ export const FLAMING_DISC_ROUNDS = 2;
 // CHARGE_ZONE_BOOST_TURNS of the holder's turns (≈2 rounds) or until a battle
 // ensues — fighting burns the charge, win or lose. The Overcharge skill
 // (Electric route) unlocks an alternative chord-assist payout instead.
-export const CHARGE_ZONE_COUNT       = 3;  // fixed lightning hexes on the board
+export const CHARGE_ZONE_COUNT       = 2;  // fixed lightning hexes on the board
 export const CHARGE_ZONE_BOOST_TURNS = 2;  // charge duration (holder's turns) on pickup
 export const CHARGE_ZONE_COOLDOWN    = 4;  // turns (any spirit's) before a drained zone relights
 export const CHARGE_FLOOR_BONUS      = 2;  // floor charge: attack die results below 1+2 read as 3
 
 // -- THRASH / SONIC ATTACK SPLIT --
 // Thrash (melee) — d4-based, Vibe-focused, minimal push/FP.
-export const ATK_BONUS_CAP           = 5;   // hard ceiling on stacked attack bonuses (tempDrive + Edge + stance) -- keeps the accumulative wave in check
+export const ATK_BONUS_CAP           = 5;   // hard ceiling on stacked attack bonuses (tempDrive + stance) -- keeps the accumulative wave in check
 export const THRASH_DIE              = 4;   // base die for both attacker and defender in Thrash
 export const THRASH_CEIL_DIE         = 6;   // ceiling charge upgrades d4 → d6
 export const THRASH_DAMAGE_CAP       = 4;   // max Vibe damage from a single Thrash hit
@@ -105,21 +105,5 @@ export const SONIC_LIMELIGHT_FP      = 1;   // bonus FP when Sonic fires from ma
 // the bolt but stays excluded from the spawn pool).
 export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
 
-// -- DISSONANCE EDGE -- (DESIGN_AUDIT_v2.md §9 v2 — replaces the Tension meter.
-// Ending a track on a Discord (off-scale) note puts you ON THE EDGE: Drive up,
-// Sustain down, paid for up front in DB + fans. Staying out costs more and buys
-// more, but it's a hard 2-stage climb — miss the 3rd turn's resolution (landing
-// on Root/3rd/5th) and the whole thing collapses: you lose the stance AND take
-// a fan/Vibe hit for nothing. Landing the resolve instead refunds Sustain, plus
-// a +1 temp Drive flourish and a DB payout scaled to how deep you were in.
-// Every number here is stage-indexed: index 0 = inactive, 1 = first stage
-// (round 1 on a Discord), 2 = max stage (round 2 — round 3 must resolve or fall).
-export const EDGE_MAX_STAGE               = 2;      // stage cap — the 3rd unresolved turn forces a collapse, not stage 3
-export const EDGE_DRIVE_BY_STAGE          = [0, 1, 2]; // temp Drive granted while riding, by stage
-export const EDGE_SUSTAIN_PENALTY_BY_STAGE = [0, 1, 2]; // temp Sustain LOST while riding, by stage
-export const EDGE_DB_COST_BY_STAGE        = [0, 1, 2]; // DB sacrificed to enter/escalate to this stage
-export const EDGE_FAN_COST_BY_STAGE       = [0, 1, 1]; // casual fans sacrificed to enter/escalate to this stage
-export const EDGE_RESOLVE_DB_BONUS_BY_STAGE = [0, 2, 4]; // DB payout for landing the resolve FROM this stage
-export const EDGE_COLLAPSE_FAN_LOSS       = 2;      // casual fans who walk when the ride collapses unresolved
-export const EDGE_COLLAPSE_VIBE           = 1;      // self-inflicted Vibe cost on collapse — the feedback squeal
+// -- DISSONANCE EDGE -- REMOVED (system cut — Theory learning streamlined).
 

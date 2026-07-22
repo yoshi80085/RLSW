@@ -1,5 +1,16 @@
 # Rock Legends: Spirit Wars — Amp Deck System Design
 
+> **2026-07-22 revisions (implemented):** Amp I is now GRANTED at start — every
+> Spirit begins at 2d6; Amp II/III are the purchases (3d6/4d6) and cabinet count
+> tracks Amp tier (1/2/3 stacks). Power tiers ring the KNOBS of stack N in
+> vibrant pink (cumulative, positions in `board/ampKnobs.js`). Range tiers are a
+> hex glow at the stack base (brighter per tier); hovering a stack shows the
+> radius ring. `RIG_RADIUS_BY_TIER = [3, 4, 7, ∞]` (starting radius bumped 2→3).
+> **Outside the radius the Sonic Attack is OFFLINE entirely** — no 1d6/2d6
+> fallback fire; the HUD button fades (§2.4's "baseline floor" is superseded).
+> HUD attack buttons are always visible: lit when usable, FADED when nothing is
+> in range, GRAYED when AP/Action Token is lacking; hovering previews the range.
+
 Supersedes the on-board amp token system (`board/ampRigs.js`, `AMP_RANGE`/`AMP_LINK_DIST`/
 `AMP_UNPLUG_DIST` in `gameConstants.js`), the unplug/replug sabotage loop, **and the entire
 Crew system (`CREW_SYSTEM_DESIGN.md`)**. Emerged from the fiction fix: electric Spirits

@@ -2,20 +2,23 @@
 // Every Spirit's rig lives just off-board at their home corner: TWO stacks,
 // one hugging each of the two board edges that meet at the pocket (art from
 // the amp_level_1/2/3 sheets — 8 pre-rotated positions, 2 per corner).
-//   • BOTH stacks grow together, level 1→3, as Amp/Power upgrades land
-//   • Power tiers also heat the glow (hotter colour)
-//   • Range tiers make the rig GLOW and arc with lightning — the higher the
-//     tier, the brighter the aura and the more arcs crawl over the cabinets.
-//     While aiming a Sonic Attack, the neon RADIUS RING pulses out from the
-//     home hex, teaching "inside = full rig".
+//   • AMP tier = cabinet count: Amp I (start) 1 cabinet, Amp II 2, Amp III 3.
+//   • POWER tiers ring the KNOBS in vibrant pink, cumulative per cabinet:
+//     Power I lights cabinet 1's knobs, Power II adds cabinet 2's, Power III
+//     lights the whole wall (positions from ampKnobs.js, per sprite).
+//   • RANGE tiers put a hex glow around the base of the stack — slight at
+//     Range I, brighter at II, brightest at III. Hovering a stack shows its
+//     Spirit's RADIUS RING on the board (also pulses while aiming a Sonic
+//     Attack) — inside the ring = full rig.
 // Magenta for all corners (art as-is); ownership reads from position.
 
-import React from "react";
+import React, { useState } from "react";
 import { HEX_BY_NUM } from "./hexMap.js";
 import { SCALE, HEX_SIZE, COL_SPACING, SVG_W, SVG_H } from "./constants.js";
 import { CORNERS } from "../data/corners.js";
 import { LIMELIGHT_HEX, RIG_RADIUS_BY_TIER } from "../data/gameConstants.js";
 import { RIG_AMP_IDS, RIG_POWER_IDS, RIG_RANGE_IDS } from "../engine/systems/sonicRig.js";
+import { AMP_KNOBS } from "./ampKnobs.js";
 
 import ampTl1 from "../amps/amp_tl_lv1.png";
 import ampTl2 from "../amps/amp_tl_lv2.png";
@@ -45,7 +48,7 @@ import ampRl3 from "../amps/amp_r_low_lv3.png";
 const HS = Math.round(HEX_SIZE * SCALE * 0.88);
 const MAGENTA = "#e648f0";
 const MAGENTA_HOT = "#ff66ee";
-const ARC_CORE = "#e8f6ff";     // lightning — white-blue core over magenta glow
+const KNOB_PINK = "#ff2fd6";    // vibrant pink rings around powered knobs
 
 // Sprite sheets: per position, levels 1–3 with natural crop sizes (px).
 const SPRITES = {
@@ -87,25 +90,17 @@ const PX = (HS * 2.7) / 235;    // uniform art scale (diag cabinets ≈ 2.7 hexe
 
 const countOf = (unlocked, ids) => ids.filter((id) => unlocked.includes(id)).length;
 
-// Deterministic jagged lightning bolt path near a stack (seeded, no jitter).
-function boltPath(x0, y0, len, seed) {
-  const rnd = (i) => {
-    const v = Math.sin(seed * 127.1 + i * 311.7) * 43758.5453;
-    return v - Math.floor(v);
-  };
-  const segs = 4, pts = [`M ${x0.toFixed(1)} ${y0.toFixed(1)}`];
-  let x = x0, y = y0;
-  const dir = rnd(0) > 0.5 ? 1 : -1;
-  for (let i = 1; i <= segs; i++) {
-    x += dir * (rnd(i) - 0.3) * len * 0.45;
-    y -= len / segs;
-    pts.push(`L ${x.toFixed(1)} ${y.toFixed(1)}`);
-  }
-  return pts.join(" ");
+// Flat-top hexagon path centered at (cx, cy), radius r, squashed to sy.
+function hexPath(cx, cy, r, sy) {
+  const pts = Array.from({ length: 6 }, (_, i) => {
+    const a = (Math.PI / 3) * i;
+    return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a) * sy).toFixed(1)}`;
+  });
+  return `M ${pts.join(" L ")} Z`;
 }
 
 // One stack (one of the corner's two decks).
-function DeckStack({ pos, stage, powT, rangeT, thump, seed }) {
+function DeckStack({ pos, stage, powT, rangeT, thump, seed, onHover }) {
   const sp = SPRITES[pos][stage - 1];
   const a = ANCHORS[pos];
   const W = sp.w * PX, H = sp.h * PX;
@@ -115,14 +110,14 @@ function DeckStack({ pos, stage, powT, rangeT, thump, seed }) {
     ? Math.min(SVG_H - H - 1, ay)                      // head planted, grows down
     : Math.max(2, Math.min(SVG_H - H - 1, ay - H));    // feet planted, grows up
   const plantY = a.top ? "0%" : "100%";                // squash/bounce from the planted end
-  // Range drives the aura; Power heats the colour.
-  const glow = 1.2 + rangeT * 2.2 + powT * 0.8;
   const glowCol = powT > 0 ? MAGENTA_HOT : MAGENTA;
-  const arcs = rangeT >= 2 ? rangeT : 0;   // Range II: arcs start crawling
+  // Powered knobs: cabinets 1..powT get vibrant pink rings (cumulative).
+  const knobCabs = (AMP_KNOBS[pos]?.[stage] ?? []).slice(0, Math.min(powT, stage));
+  // Range: hex glow around the base of the amp — brighter per tier.
+  const baseY = a.top ? y + H * 0.04 : y + H * 0.96;   // the planted end
 
   return (
-    <g style={{ pointerEvents: "none",
-        animation: `amp-hover-float ${3.5 + (seed % 3) * 0.5}s ease-in-out infinite`,
+    <g style={{ animation: `amp-hover-float ${3.5 + (seed % 3) * 0.5}s ease-in-out infinite`,
         animationDelay: `${((seed * 0.4) % 2).toFixed(2)}s` }}>
       <g key={`stack-${stage}`}
          style={{ animation: "amp-drop-in 0.55s cubic-bezier(.5,1.5,.6,1) both",
@@ -130,16 +125,30 @@ function DeckStack({ pos, stage, powT, rangeT, thump, seed }) {
         <g key={thump ?? "idle"}
            style={thump ? { animation: "amp-thump 0.3s ease-out",
              transformBox: "fill-box", transformOrigin: `50% ${plantY}` } : undefined}>
-          {/* aura pad under the stack so the glow reads on the dark margin */}
+          {/* RANGE — hex glow around the base: slight → brighter → brightest */}
           {rangeT > 0 && (
-            <ellipse cx={ax} cy={y + H * 0.92} rx={W * 0.7} ry={H * 0.18}
-              fill={glowCol} opacity={0.10 + rangeT * 0.07}
-              style={{ filter: `blur(${3 + rangeT * 2}px)`,
-                animation: "amp-led-pulse 2.4s ease-in-out infinite" }}/>
+            <g style={{ pointerEvents: "none",
+                animation: "amp-led-pulse 2.4s ease-in-out infinite" }}>
+              <path d={hexPath(ax, baseY, W * 0.62, 0.42)}
+                fill={MAGENTA} opacity={0.10 + rangeT * 0.11}
+                style={{ filter: `blur(${4 + rangeT * 2}px)` }}/>
+              <path d={hexPath(ax, baseY, W * 0.62, 0.42)}
+                fill="none" stroke={MAGENTA_HOT} strokeWidth={1 + rangeT * 0.6}
+                opacity={0.25 + rangeT * 0.22}
+                style={{ filter: `drop-shadow(0 0 ${2 + rangeT * 3}px ${MAGENTA})` }}/>
+              {rangeT >= 3 && (
+                <path d={hexPath(ax, baseY, W * 0.78, 0.42)}
+                  fill="none" stroke={MAGENTA} strokeWidth={1}
+                  opacity={0.5}
+                  style={{ filter: `drop-shadow(0 0 8px ${MAGENTA_HOT})` }}/>
+              )}
+            </g>
           )}
+          {/* hovering the stack shows this Spirit's range ring on the board */}
           <image href={sp.src} x={x} y={y} width={W} height={H}
-            style={{ filter: `drop-shadow(0 0 ${glow}px ${glowCol})` +
-              (rangeT >= 3 ? ` drop-shadow(0 0 ${glow * 2}px ${MAGENTA})` : "") }}/>
+            onMouseEnter={() => onHover?.(true)} onMouseLeave={() => onHover?.(false)}
+            style={{ pointerEvents: "auto", cursor: "help",
+              filter: `drop-shadow(0 0 2.5px ${glowCol})` }}/>
           {/* inner glow — brightened duplicate blended over the dark speaker face */}
           <image href={sp.src} x={x} y={y} width={W} height={H}
             style={{ filter: "brightness(3) saturate(1.5)",
@@ -147,19 +156,27 @@ function DeckStack({ pos, stage, powT, rangeT, thump, seed }) {
               animation: `amp-inner-glow ${(2.5 + (seed % 2) * 0.5).toFixed(1)}s ease-in-out infinite`,
               animationDelay: `${((seed * 0.3) % 2).toFixed(2)}s`,
               pointerEvents: "none" }}/>
-          {/* lightning arcs crawling over the cabinets (Range II+) */}
-          {Array.from({ length: arcs }, (_, i) => {
-            const bx = x + W * (0.22 + 0.28 * i + ((seed + i) % 2) * 0.12);
-            const by = y + H * (0.25 + 0.5 * (((seed * 3 + i) % 3) / 2));
-            return (
-              <path key={i} d={boltPath(bx, by, H * (0.22 + rangeT * 0.05), seed * 8 + i)}
-                fill="none" stroke={ARC_CORE} strokeWidth={0.9} strokeLinecap="round"
-                opacity={0}
-                style={{ filter: `drop-shadow(0 0 3px ${MAGENTA_HOT})`,
-                  animation: `amp-arc-flicker ${(1.7 + (i % 3) * 0.6).toFixed(1)}s linear infinite`,
-                  animationDelay: `${((seed + i * 7) % 10) / 6}s` }}/>
-            );
-          })}
+          {/* POWER — vibrant pink rings around each powered cabinet's knobs */}
+          {knobCabs.map((cab, ci) => (
+            <g key={`knobs-${ci}`} style={{ pointerEvents: "none" }}>
+              {cab.map(([kx, ky, kMA, kma, kang], ki) => {
+                const cx = x + kx * W, cy = y + ky * H;
+                const rx = (kMA * W) / 2, ry = (kma * W) / 2;
+                return (
+                  <g key={ki} transform={`rotate(${kang} ${cx.toFixed(1)} ${cy.toFixed(1)})`}>
+                    <ellipse cx={cx} cy={cy} rx={rx * 1.15} ry={ry * 1.15}
+                      fill="none" stroke={KNOB_PINK} strokeWidth={2.4} opacity={0.5}
+                      style={{ filter: `blur(1.6px)` }}/>
+                    <ellipse cx={cx} cy={cy} rx={rx} ry={ry}
+                      fill="none" stroke={KNOB_PINK} strokeWidth={1.1}
+                      style={{ filter: `drop-shadow(0 0 3px ${KNOB_PINK})`,
+                        animation: `amp-knob-pulse ${(1.8 + ((seed + ci) % 3) * 0.4).toFixed(1)}s ease-in-out infinite`,
+                        animationDelay: `${(((seed * 5 + ki * 3) % 10) / 8).toFixed(2)}s` }}/>
+                  </g>
+                );
+              })}
+            </g>
+          ))}
         </g>
       </g>
     </g>
@@ -167,16 +184,17 @@ function DeckStack({ pos, stage, powT, rangeT, thump, seed }) {
 }
 
 // Neon radius ring — pulses out from the home hex while its Spirit aims a
-// Sonic Attack. Inside the ring the full rig applies; outside, baseline 1d6.
-// Range III (Infinity) shows no ring: the whole venue is your stage.
+// Sonic Attack, or while anyone hovers that Spirit's amp stacks. Inside the
+// ring the full rig applies; outside, the Main Amp floor (2d6). Range III
+// (Infinity) draws a venue-wide ring: the whole stage is yours.
 function RangeRing({ spirit, unlocked }) {
   const home = HEX_BY_NUM[CORNERS[spirit.corner]?.homeNum];
   if (!home) return null;
   const rangeT = countOf(unlocked, RIG_RANGE_IDS);
   const radius = RIG_RADIUS_BY_TIER[rangeT];
-  if (!Number.isFinite(radius)) return null;
+  const drawR = Number.isFinite(radius) ? radius : 11;  // ∞ → encircle the venue
   const hx = home.px * SCALE, hy = home.py * SCALE;
-  const ringR = (radius + 0.5) * COL_SPACING * SCALE;
+  const ringR = (drawR + 0.5) * COL_SPACING * SCALE;
   return (
     <g style={{ pointerEvents: "none", transformBox: "fill-box", transformOrigin: "center",
         animation: "amp-ring-pulse 2s ease-in-out infinite" }}>
@@ -191,11 +209,13 @@ function RangeRing({ spirit, unlocked }) {
 }
 
 /**
- * The full layer: both stacks at every occupied corner, plus the acting
- * Spirit's radius ring while they line up a Sonic Attack.
+ * The full layer: both stacks at every occupied corner, plus radius rings —
+ * the acting Spirit's while they line up a Sonic Attack, and any Spirit's
+ * while their amp stacks are hovered.
  *
- * Level mapping (tunable): BOTH stacks grow together — every Amp or Power
- * purchase builds the rig out one level, capped at the level-3 art.
+ * Level mapping: cabinet count = Amp tier. Amp I (everyone's start) is the
+ * single Main Amp cabinet; Amp II stacks the second; Amp III completes the
+ * wall at the level-3 art. Power rings the knobs; Range glows the base.
  *
  * @param spirits    spirits array (only those with a corner render)
  * @param noteStates per-spirit note state (unlockedSkills drives the tiers)
@@ -204,9 +224,13 @@ function RangeRing({ spirit, unlocked }) {
  * @param thumpFx    { id, key } — bumps a 300ms thump on that spirit's stacks
  */
 export default function AmpDecks({ spirits, noteStates, actingId, aiming, thumpFx }) {
+  const [hoverId, setHoverId] = useState(null);
+  const ringIds = new Set();
+  if (aiming && actingId) ringIds.add(actingId);
+  if (hoverId) ringIds.add(hoverId);
   return (
     <g>
-      {aiming && spirits.filter((s) => s.corner && s.id === actingId).map((s) => (
+      {spirits.filter((s) => s.corner && ringIds.has(s.id)).map((s) => (
         <RangeRing key={`ring-${s.id}`} spirit={s}
           unlocked={noteStates[s.id]?.unlockedSkills ?? []}/>
       ))}
@@ -215,11 +239,13 @@ export default function AmpDecks({ spirits, noteStates, actingId, aiming, thumpF
         const ampT = countOf(unlocked, RIG_AMP_IDS);
         const powT = countOf(unlocked, RIG_POWER_IDS);
         const rangeT = countOf(unlocked, RIG_RANGE_IDS);
-        const stage = Math.min(1 + ampT + powT, 3);
+        const stage = Math.min(Math.max(ampT, 1), 3);   // cabinets = Amp tier
         const thump = thumpFx?.id === s.id ? thumpFx.key : null;
         return CORNER_DECKS[s.corner]?.map((pos, di) => (
           <DeckStack key={`${s.id}-${pos}`} pos={pos} stage={stage}
-            powT={powT} rangeT={rangeT} thump={thump} seed={si * 2 + di + 1}/>
+            powT={powT} rangeT={rangeT} thump={thump} seed={si * 2 + di + 1}
+            onHover={(on) => setHoverId((prev) =>
+              on ? s.id : (prev === s.id ? null : prev))}/>
         ));
       })}
     </g>

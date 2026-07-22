@@ -289,7 +289,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, EDGE_MAX_STAGE, EDGE_DRIVE_BY_STAGE, EDGE_SUSTAIN_PENALTY_BY_STAGE, EDGE_DB_COST_BY_STAGE, EDGE_FAN_COST_BY_STAGE, EDGE_RESOLVE_DB_BONUS_BY_STAGE, EDGE_COLLAPSE_FAN_LOSS, EDGE_COLLAPSE_VIBE, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -461,11 +461,11 @@ const SKILL_TREE = {
       subChains: [
         { id:'rig_amps', label:'🔊 Amps', skills: [
           { id:'amp_1', label:'Amp I',  icon:'🔊', dbCost:8,  gated:true, prereq:null,
-            desc:'+1d6 to your Sonic pool (roll 2, keep highest). A second cabinet hits the deck.' },
+            desc:'Your starting Main Amp — 2d6, keep highest, board-wide. Every Spirit begins wired in.' },
           { id:'amp_2', label:'Amp II', icon:'🔊', dbCost:12, gated:true, prereq:'amp_1',
-            desc:'+1d6 (roll 3, keep highest).' },
+            desc:'+1d6 (roll 3, keep highest). A second cabinet hits the stack.' },
           { id:'amp_3', label:'Amp III',icon:'🔊', dbCost:18, gated:true, prereq:'amp_2',
-            desc:'+1d6 (roll 4, keep highest). The wall of sound is complete.' },
+            desc:'+1d6 (roll 4, keep highest). Three stacks — the wall of sound is complete.' },
           { id:'overcharge', label:'Overcharge', icon:'🎸', dbCost:14, gated:true, prereq:'amp_2',
             desc:'Charge Zones no longer just spark your dice — tapping one now lets you choose: the usual charge (random die floor/ceiling boost), OR one curated Chord Stack note plus a bonus revoice to spend on it.' },
         ]},
@@ -923,6 +923,9 @@ function Game({ gameState, onReturnToLobby }) {
   const gt = (fn, ms = 0) => setTimeout(fn, Math.max(0, Math.round((Number(ms) || 0) / (gameSpeedRef.current || 1))));
 
   const [action, setAction]   = useState(null); // "move" | "swing" | null
+  // 🎯 Hovering a HUD attack button previews that attack's range on the board
+  // (same highlight the live aiming mode uses). null | 'swing'|'smash'|'blaster'|'sonic'|'acoustic'
+  const [hoverPreview, setHoverPreview] = useState(null);
   // ── BATTLE STATE ─────────────────────────────────────────────────────────────
   // actionTokenUsed: has the acting spirit used their action token this turn
   const actionTokenUsed = engineState.turn.actionTokenUsed; // engine-owned (Phase 2)
@@ -968,6 +971,7 @@ function Game({ gameState, onReturnToLobby }) {
   const actingRef         = useRef(null);
   const winnerRef         = useRef(null);
   const ampsInRangeRef    = useRef(0);
+  const rigInRangeRef     = useRef(true);   // 📡 acting spirit inside their rig radius?
   // botBusyRef removed (Phase 7c) — debounce folded into botStepRef ('pending').
 
   // 🤘 MASTER OF MOSHPITS — spiritId → mob key. While set, the crowd PNGs
@@ -1454,14 +1458,7 @@ function Game({ gameState, onReturnToLobby }) {
         { body: ['Some notes in your scale moonlight as weapons — the legend up top shows this turn\'s exact notes:', '🔴 TRITONE — maximum dissonance. Drive up, can BURN rivals. The devil\'s interval, and it knows it. 💗 5th / 💜 4th — the load-bearing consonances, your Sustain backbone. 💚 MAJOR 3rd — cleanses status effects. 🔵 MINOR 7th — arms Mojo Drain.', 'All of them pay bonus DB when played in-scale. Free money for good taste.'], anchor: 'interval-legend' },
       ],
     },
-    edge: {
-      title: '⚡ Dissonance Edge',
-      pages: [
-        { body: 'You ended your track on a DISCORD — you\'re on the EDGE now. Drive up, Sustain down: full glass-cannon, and it shows on your card, so every rival can read the opening you just handed them. Bold. Let\'s see if it\'s the good kind of bold.', anchor: 'stat-knobs' },
-        { body: 'Stay out another turn without resolving and the ride ESCALATES — more Drive, worse Sustain, and it keeps charging you DB and fans for the privilege. Getting into any fight while riding burns the stance, win or lose. The Edge is a bar tab: fun to run up, less fun to settle.', anchor: 'db-bar' },
-        { body: 'The exit: end a track on your Root, 3rd, or 5th to RESOLVE — Sustain restored, a temp Drive kicker, and a DB payout scaled to how deep you rode. But the clock is real: miss the final turn\'s resolve and it all COLLAPSES — stance gone, fans walk, and you take a Vibe hit as a parting gift. Land the resolve. Be legend, not cautionary tale.', anchor: 'commit-track' },
-      ],
-    },
+    // edge tips — REMOVED (system cut)
   };
 
   const activeTipRef = useRef(null);
@@ -1547,6 +1544,7 @@ function Game({ gameState, onReturnToLobby }) {
   useEffect(() => { actingRef.current = acting; }, [acting]);
   useEffect(() => { winnerRef.current = winner; }, [winner]);
   useEffect(() => { ampsInRangeRef.current = ampsInRange; }, [ampsInRange]);
+  useEffect(() => { rigInRangeRef.current = actingRig.inRange; }, [actingRig.inRange]);
   const diceTier = rigPoolLabel(actingRig.pool);
   const dbPoints      = actingNoteState?.dbPoints      ?? 0;
   const upgradesPending = actingNoteState?.upgradesPending ?? 0;
@@ -2951,71 +2949,16 @@ function Game({ gameState, onReturnToLobby }) {
     // gestures + repeated motifs, with track length only a small nudge. 0–10.
     // The pure kernel now lives in engine/systems/economy.js (`performanceScore`,
     // Phase 5a — single source of truth); it's invoked below once its remaining
-    // inputs (Edge resolve, suspended ending) are known.
+    // inputs (suspended ending) are known.
 
-    // ── ⚡ DISSONANCE EDGE — dissonance as a combat stance, not a banked meter ──
-    // (DESIGN_AUDIT_v2.md §9 v2. Replaces the Tension meter, which banked
-    // off-scale play into a hidden number cashed in later for free — no cost
-    // to sitting on it, no cost that scaled with how much was piled on. This
-    // version puts the risk ON the board: ending a track on a Discord note
-    // trades Sustain for Drive, visibly, so it's a stance a rival can read and
-    // swing at, not a savings account nobody can see.)
-    //
-    // Stage 0 = off. End a track on a Discord (off-scale) note → stage 1: Drive
-    // up, Sustain down, DB + fans paid up front. Stay out another turn without
-    // landing on your Root/3rd/5th → stage 2 (stronger buff, steeper cost) —
-    // that's the LAST turn to resolve. Land the resolve any time you're riding
-    // and you get Sustain back, a +1 temp Drive flourish, and a DB bonus scaled
-    // to the stage you resolved from. Miss the resolve on the stage-2 turn and
-    // it collapses: stance gone, fans walk, a self-inflicted Vibe hit — the tune
-    // just fell apart. Getting into ANY battle while riding burns the stance
-    // either way, win or lose (see `clearBattleBuffs`) — you don't get to bank
-    // the risk past the fight you chose to take it into.
-    const chordTones         = new Set([currentScale[0], currentScale[2], currentScale[4]]);
-    const edgeResolvedNow    = melodyLine.length > 0 && chordTones.has(lastNote);
-    const edgeEndedOnDiscord = melodyLine.length > 0 && !isNotePlayable(lastNote);
-    const prevEdgeStage      = actingNoteState?.edgeStage ?? 0;
-    let newEdgeStage           = prevEdgeStage;
-    let edgeDbCost             = 0;
-    let edgeFanCost            = 0;
-    let edgeDbBonus            = 0;
-    let edgeCollapseFans       = 0;
-    let edgeResolvedThisTurn   = false;
-    let edgeCollapsedThisTurn  = false;
-    if (prevEdgeStage === 0) {
-      if (edgeEndedOnDiscord) {
-        newEdgeStage = 1;
-        edgeDbCost   = EDGE_DB_COST_BY_STAGE[1];
-        edgeFanCost  = EDGE_FAN_COST_BY_STAGE[1];
-        showTip('edge');
-        addLog(`⚡ ${acting.name} steps onto the Edge — Drive +${EDGE_DRIVE_BY_STAGE[1]} / Sustain −${EDGE_SUSTAIN_PENALTY_BY_STAGE[1]} (−${edgeDbCost} DB, −${edgeFanCost} fan${edgeFanCost !== 1 ? 's' : ''}).`);
-        triggerEffectFlash(acting.id, '⚡', 'ON THE EDGE!', '#ff8866');
-      }
-    } else if (edgeResolvedNow) {
-      edgeDbBonus = EDGE_RESOLVE_DB_BONUS_BY_STAGE[prevEdgeStage];
-      newEdgeStage = 0;
-      edgeResolvedThisTurn = true;
-      addLog(`⚡ ${acting.name} resolves the Edge (was stage ${prevEdgeStage}/${EDGE_MAX_STAGE}) — Sustain restored, +1 temp Drive, +${edgeDbBonus} DB!`);
-      triggerEffectFlash(acting.id, '⚡', 'RESOLVED!', '#ffd700');
-    } else if (prevEdgeStage >= EDGE_MAX_STAGE) {
-      newEdgeStage = 0;
-      edgeCollapsedThisTurn = true;
-      edgeCollapseFans = EDGE_COLLAPSE_FAN_LOSS;
-      addLog(`⚡ ${acting.name} never resolved the Edge — it collapses! Stance lost, ${EDGE_COLLAPSE_FAN_LOSS} fans walk, −${EDGE_COLLAPSE_VIBE} Vibe.`);
-      triggerEffectFlash(acting.id, '⚡', 'COLLAPSE!', '#ff3344');
-      applyVibeDamage(acting.id, EDGE_COLLAPSE_VIBE, 'Dissonance Collapse');
-    } else {
-      newEdgeStage = prevEdgeStage + 1;
-      edgeDbCost   = EDGE_DB_COST_BY_STAGE[newEdgeStage];
-      edgeFanCost  = EDGE_FAN_COST_BY_STAGE[newEdgeStage];
-      const lastChance = newEdgeStage >= EDGE_MAX_STAGE;
-      addLog(`⚡ ${acting.name} rides it out — Edge escalates to stage ${newEdgeStage}/${EDGE_MAX_STAGE} (Drive +${EDGE_DRIVE_BY_STAGE[newEdgeStage]} / Sustain −${EDGE_SUSTAIN_PENALTY_BY_STAGE[newEdgeStage]}, −${edgeDbCost} DB, −${edgeFanCost} fan${edgeFanCost !== 1 ? 's' : ''})${lastChance ? ' — RESOLVE NEXT TURN OR LOSE IT' : ''}.`);
-      triggerEffectFlash(acting.id, '⚡', lastChance ? 'LAST CHANCE!' : 'ESCALATED!', '#ff5566');
-    }
-    // Resolve pays a one-turn Drive flourish through the existing tempDrive
-    // pipeline (same field the pattern-boost detectors above already write) —
-    // it's exactly that kind of reward, so it reuses the rail instead of adding one.
-    if (edgeResolvedThisTurn) newTempDrive = Math.max(newTempDrive, 1);
+    // ── ⚡ DISSONANCE EDGE — REMOVED (system cut — Theory streamlined) ──
+    const newEdgeStage          = 0;
+    const edgeDbCost            = 0;
+    const edgeFanCost           = 0;
+    const edgeDbBonus           = 0;
+    const edgeCollapseFans      = 0;
+    const edgeResolvedThisTurn  = false;
+    const edgeCollapsedThisTurn = false;
 
     // theory_sus — a suspended ending (the 2nd or 4th) earns a small "hang" flair once unlocked
     const perfSusEnd = (actingNoteState?.unlockedSkills ?? []).includes('theory_sus')
@@ -3108,9 +3051,6 @@ function Game({ gameState, onReturnToLobby }) {
     if (canBank)              flashLines.push(`💾 Banked: ${newBankedNote.note}`);
     if (totalNotes > actingSpeed && !canBank) flashLines.push(`⚠️ ${totalNotes - actingSpeed} note(s) discarded (bank full)`);
     if (discordPenalty > 0)   flashLines.push(`⚡ ${discordCount} Dischord — −${discordPenalty} DB`);
-    if (edgeResolvedThisTurn)    flashLines.push(`⚡ Edge resolved — Sustain back, +1 Drive, +${edgeDbBonus} DB`);
-    else if (edgeCollapsedThisTurn) flashLines.push(`⚡ Edge collapsed — −${EDGE_COLLAPSE_VIBE} Vibe, −${edgeCollapseFans} fans`);
-    else if (newEdgeStage > 0)   flashLines.push(`⚡ Edge ${newEdgeStage}/${EDGE_MAX_STAGE}${newEdgeStage >= EDGE_MAX_STAGE ? ' — resolve next turn!' : ''}`);
     flashLines.push(`🎭 Performance ${perfScore}/10`);
     if (perfDbBonus > 0)    flashLines.push(`🎸 Flair DB +${perfDbBonus}`);
     if (perfFansGained > 0) flashLines.push(`🎤 +${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''} won over!`);
@@ -5793,17 +5733,9 @@ function Game({ gameState, onReturnToLobby }) {
     return ch;
   }
 
-  // ⚡ Dissonance Edge combat mods — the stage-indexed Drive-up/Sustain-down
-  // read from riding an unresolved Discord ending (gameConstants EDGE_* tables).
-  // Pure lookup off `edgeStage`; called from both the Swing and Sonic resolvers
-  // alongside the existing tempDrive/tempSustain reads, not instead of them —
-  // this is a separate, visible stance, not a re-skin of the pattern-boost bonus.
-  function edgeCombatMods(ns) {
-    const stage = ns?.edgeStage ?? 0;
-    return {
-      drive:          EDGE_DRIVE_BY_STAGE[stage] ?? 0,
-      sustainPenalty: EDGE_SUSTAIN_PENALTY_BY_STAGE[stage] ?? 0,
-    };
+  // ⚡ Dissonance Edge — REMOVED. Returns zero mods for backward compat.
+  function edgeCombatMods() {
+    return { drive: 0, sustainPenalty: 0 };
   }
 
   // Returns hex nums in the forward attack cone of a spirit
@@ -6240,14 +6172,10 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`⚔️ ${attacker.name} SWINGS at ${defender.name}!${defenderPosing ? ' — caught posing!' : ''}`);
     // ⚡ A battle ensued — Charge Zone charges burn off for BOTH combatants.
     burnChargesAfterBattle([attacker.id, targetId], 'the Thrash battle spent it');
-    // 🎸 The jab spends your harmony: the swing plays out the FIRST 2 committed notes
-    // of your Chord Stack (Drive was already read above, from the full chord).
-    // The chord shrinks from the front; revoice rebuilds it 1 note/turn.
+    // 🎸 Chord note spending now deferred to closeBattleOverlay — only on a HIT.
+    // Whiffing no longer burns your chord stack.
     const swingChordLeft = (nsA.chordStack ?? []).slice(2);
     const swingChordSpent = (nsA.chordStack ?? []).slice(0, 2);
-    if (swingChordSpent.length) {
-      addLog(`🎸 ${attacker.name} burns ${swingChordSpent.join('+')} from the chord — ${swingChordLeft.length ? spiritChord(attacker.id, swingChordLeft).name : 'chord exhausted (base stats until revoiced)'}.`);
-    }
     // 🥊 CQC EXPOSURE — committing to a swing drops your guard: −1 Sustain until your
     // next turn (melee-only risk; ranged Sonic keeps you safe).
     // 🌀 Attacking resets the Groove counter (spent above, if any); a spent
@@ -6256,7 +6184,7 @@ function Game({ gameState, onReturnToLobby }) {
     const sustainWave = grooveSpent > 0 && (nsA.unlockedSkills ?? []).includes('stance_sustainwave');
     if (sustainWave) addLog(`🌀 SUSTAIN WAVE — the wave curls back around ${attacker.name}: +${grooveSpent} temp Sustain.`);
     setNoteStates(prev => ({ ...prev, [acting.id]: { ...prev[acting.id],
-      swingExposed: true, chordStack: swingChordLeft, grooveCounter: 0,
+      swingExposed: true, grooveCounter: 0,
       ...(riposteArmed ? { riposteTargetId: null } : {}),
       ...(sustainWave ? { tempSustain: Math.max(prev[acting.id]?.tempSustain ?? 0, grooveSpent) } : {}),
     } }));
@@ -6283,6 +6211,7 @@ function Game({ gameState, onReturnToLobby }) {
       psychoBushido, // 🌀 forced the rival's die to 1
       atkStance, grooveSpent, // 🧍 stance identity + the spent Groove wave (feeds the Fame award)
       ironcladProc: frayResult.ironclad, // 🛡️ Cool hardened on the shrugged graze (applied at close)
+      swingChordLeft, swingChordSpent, // deferred chord burn — only on a hit
     });
     if (psychoBushido) setTimeout(() => triggerEffectFlash(targetId, '🌀', 'BUSHIDO!', '#4488ff'), 200);
     setDiceDisplay({ atk: null, def: null, rolling: null });
@@ -6511,6 +6440,21 @@ function Game({ gameState, onReturnToLobby }) {
     if (moveStepsLeft < 2) {
       addLog(`🔊 Not enough Action Points — Sonic Attack costs 2 AP.`);
       return;
+    }
+
+    // 📡 RANGE GATE — outside your rig's radius the Sonic is OFFLINE entirely.
+    // (Computed fresh from the attacker's position: bot calls arrive via
+    // scheduled closures that may hold a stale render's actingRig.)
+    {
+      const atkHome = HEX_BY_NUM[CORNERS[attacker.corner]?.homeNum];
+      const atkHex  = HEX_BY_NUM[attacker.num];
+      const atkDist = (atkHome && atkHex)
+        ? axialDist(atkHome.q, atkHome.r, atkHex.q, atkHex.r) : 0;
+      const rig = sonicRig(noteStates[attacker.id]?.unlockedSkills ?? [], atkDist);
+      if (!rig.inRange) {
+        addLog(`📡 ${attacker.name} is out of amp range — the rig can't reach this far. Move closer to home or buy Range.`);
+        return;
+      }
     }
 
     dispatch(beatsSpent(2, true));
@@ -7173,36 +7117,8 @@ function Game({ gameState, onReturnToLobby }) {
       // Knockback uses Sonic push rules (stage presence matters).
       const loser = spirits.find(x => x.id === loserId);
       battleKnockback(winnerId, loserId, sonicKnockback(margin, loser?.vibe ?? 1, loser?.maxVibe ?? 1));
-      // ── 🎤 ONE-LINER payout (Phase R5.2) ──
-      // If you dropped a line and lost: 1.5× Vibe damage + casuals scatter.
-      // If you dropped a line and won: bonus casuals join.
-      const ol = s.oneLiner ?? {};
-      const loserDropped  = (attackerWon ? ol.defender?.dropped : ol.attacker?.dropped);
-      const winnerDropped = (attackerWon ? ol.attacker?.dropped : ol.defender?.dropped);
-      const vMult = loserDropped ? 1.5 : 1;
-      resolveWinDamage(winnerId, loserId, Math.ceil(damage * vMult), spirits.find(x => x.id === winnerId)?.name);
-      if (loserDropped) {
-        // Crowd cringes — casuals scatter from the loser
-        const loserNs = engineRef.current.noteStates?.[loserId] ?? noteStates[loserId] ?? {};
-        const casLoss = Math.min(3, loserNs.casuals ?? 0);
-        if (casLoss > 0) {
-          dispatch(fansChanged(loserId, { casuals: Math.max(0, (loserNs.casuals ?? 0) - casLoss) }));
-          setUnsurePool(p => p + casLoss);
-          addLog(`😬 ${spirits.find(x => x.id === loserId)?.name} talked big and lost — ${casLoss} fans cringe and walk away!`);
-          flashFanFx(loserId, 'scatter', casLoss);
-        }
-      }
-      if (winnerDropped) {
-        // Crowd loves it — bonus casuals join the winner
-        const winnerNs = engineRef.current.noteStates?.[winnerId] ?? noteStates[winnerId] ?? {};
-        const recruit = Math.min(2, unsurePool);
-        if (recruit > 0) {
-          dispatch(fansChanged(winnerId, { casuals: Math.min(FAN_CASUAL_CAP, (winnerNs.casuals ?? 0) + recruit) }));
-          setUnsurePool(p => Math.max(0, p - recruit));
-          addLog(`🔥 ${spirits.find(x => x.id === winnerId)?.name} backed it up! ${recruit} fans join the hype!`);
-          triggerUnsureWin(winnerId, recruit);
-        }
-      }
+      // ── 🎤 ONE-LINER — smack talk is automatic, no risk/reward payout ──
+      resolveWinDamage(winnerId, loserId, damage, spirits.find(x => x.id === winnerId)?.name);
       // Phase R6: dedicated riff-off FP engine (replaces awardSonicFame).
       awardRiffFame(winnerId, loserId, s, s.riffTier);
       // 👑 HEADLINER — winner of any riff-off claims the title
@@ -7330,50 +7246,33 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   function enterRiffAnte() {
-    // Pick a candidate line for the attacker (they'll see it and decide)
+    // ── AUTO SMACK TALK — both sides always drop a line, no decision/risk ──
     const bs = battleStateRef.current;
     if (!bs?.riffOff) return;
-    const line = pickRandomOneLiner(bs.attackerId);
-    setBattleState(p => p?.riffOff ? {
-      ...p, phase: 'riff_ante',
-      oneLiner: { attacker: { line, dropped: false }, defender: null },
-    } : p);
-  }
-
-  function pickOneLiner(drop) {
-    const bs = battleStateRef.current;
-    if (!bs?.riffOff) return;
-    const atkName = spirits.find(s => s.id === bs.attackerId)?.name;
-    if (drop) {
-      addLog(`🎤 ${atkName}: "${bs.oneLiner?.attacker?.line}" 🎤🔥`);
-      triggerEffectFlash(bs.attackerId, '🎤', 'MIC DROP!', '#ff6600');
-    }
-    // Pick a candidate line for the defender
+    const atkLine = pickRandomOneLiner(bs.attackerId);
     const defLine = pickRandomOneLiner(bs.defenderId);
+    const atkName = spirits.find(s => s.id === bs.attackerId)?.name;
+    const defName = spirits.find(s => s.id === bs.defenderId)?.name;
+    addLog(`🎤 ${atkName}: "${atkLine}" 🎤🔥`);
+    triggerEffectFlash(bs.attackerId, '🎤', 'MIC DROP!', '#ff6600');
+    setTimeout(() => {
+      addLog(`🎤 ${defName}: "${defLine}" 🎤🔥`);
+      triggerEffectFlash(bs.defenderId, '🎤', 'FIRED BACK!', '#ff6600');
+    }, 400);
     setBattleState(p => p?.riffOff ? {
       ...p,
       oneLiner: {
-        attacker: { ...p.oneLiner?.attacker, dropped: drop },
-        defender: { line: defLine, dropped: false },
+        attacker: { line: atkLine, dropped: true },
+        defender: { line: defLine, dropped: true },
       },
-      phase: 'riff_ante_respond',
     } : p);
+    // Skip directly to the riff countdown after a brief pause
+    setTimeout(() => riffBeginTurn('attacker'), 900);
   }
 
-  function respondOneLiner(drop) {
-    const bs = battleStateRef.current;
-    if (!bs?.riffOff) return;
-    const defName = spirits.find(s => s.id === bs.defenderId)?.name;
-    if (drop) {
-      addLog(`🎤 ${defName}: "${bs.oneLiner?.defender?.line}" 🎤🔥`);
-      triggerEffectFlash(bs.defenderId, '🎤', 'FIRED BACK!', '#ff6600');
-    }
-    setBattleState(p => p?.riffOff ? {
-      ...p,
-      oneLiner: { ...p.oneLiner, defender: { ...p.oneLiner?.defender, dropped: drop } },
-    } : p);
-    setTimeout(() => riffBeginTurn('attacker'), drop ? 600 : 300);
-  }
+  // Legacy stubs — no longer called (auto smack talk replaced the choice)
+  function pickOneLiner(_drop) { enterRiffAnte(); }
+  function respondOneLiner(_drop) {}
 
   // Zero out tempDrive/tempSustain for both combatants once a battle resolves.
   // Bonuses from melody line patterns last only for the turn they were built —
@@ -7420,6 +7319,11 @@ function Game({ gameState, onReturnToLobby }) {
     if (!s || s.phase !== 'result') { setBattleState(null); setDiceDisplay(null); return; }
     const { attackerWon, damage, margin, attackerId, defenderId, sonicAttack } = s;
     if (attackerWon) {
+      // 🎸 Chord notes only burn on a HIT — whiffing keeps your chord intact.
+      if (!sonicAttack && s.swingChordSpent?.length) {
+        addLog(`🎸 ${spirits.find(sp => sp.id === attackerId)?.name} burns ${s.swingChordSpent.join('+')} from the chord — ${s.swingChordLeft?.length ? spiritChord(attackerId, s.swingChordLeft).name : 'chord exhausted (base stats until revoiced)'}.`);
+        setNoteStates(prev => ({ ...prev, [attackerId]: { ...prev[attackerId], chordStack: s.swingChordLeft } }));
+      }
       // ── KNOCKBACK — route by attack kind ──
       if (sonicAttack) {
         const def = spirits.find(x => x.id === defenderId);
@@ -7623,6 +7527,11 @@ function Game({ gameState, onReturnToLobby }) {
               const cur = battleStateRef.current;
               if (!cur || cur.phase !== 'result') return;
               if (attackerWon) {
+                // 🎸 Chord notes only burn on a HIT — whiffing keeps chord intact
+                if (!isSonic && snap.swingChordSpent?.length) {
+                  addLog(`🎸 ${spirits.find(sp => sp.id === attackerId)?.name} burns ${snap.swingChordSpent.join('+')} from the chord — ${snap.swingChordLeft?.length ? spiritChord(attackerId, snap.swingChordLeft).name : 'chord exhausted (base stats until revoiced)'}.`);
+                  setNoteStates(prev => ({ ...prev, [attackerId]: { ...prev[attackerId], chordStack: snap.swingChordLeft } }));
+                }
                 // Stage Lighting: 33% chance heal on win (rolled at battle start, stored in skillMods)
                 if (snap.skillMods?.stageLightActive) {
                   const heal = 1;
@@ -8210,7 +8119,8 @@ function Game({ gameState, onReturnToLobby }) {
             return;
           }
         }
-        const beamNow = ampsInRangeRef.current >= 1 ? getRivalsInBeam(self) : [];
+        // 📡 Sonic is offline outside the rig's radius — don't line up a beam there.
+        const beamNow = rigInRangeRef.current ? getRivalsInBeam(self) : [];
         if (beamNow.length && steps >= 2) {
           const t = botPickTarget(beamNow, self);
           botStepRef.current = 'ending';
@@ -8246,7 +8156,7 @@ function Game({ gameState, onReturnToLobby }) {
         }
         // Not lined up — re-face toward the best shot (1 step to turn + 2 to fire).
         if (steps >= 3) {
-          const bf = ampsInRangeRef.current >= 1 ? botBestFacing(self, 'beam') : null;
+          const bf = rigInRangeRef.current ? botBestFacing(self, 'beam') : null;
           if (bf) { schedule(aimFace(bf.angle)); return; }
           const cf = botBestFacing(self, 'cone');
           if (cf) { schedule(aimFace(cf.angle)); return; }
@@ -8366,20 +8276,7 @@ function Game({ gameState, onReturnToLobby }) {
       }, 800);
       return () => clearTimeout(t);
     }
-    // One-liner phase: bot attacker drops the line ~40% of the time
-    if (bs.phase === 'riff_ante' && atkBot) {
-      const t = setTimeout(() => {
-        if (battleStateRef.current?.phase === 'riff_ante') pickOneLiner(Math.random() < 0.4);
-      }, 500);
-      return () => clearTimeout(t);
-    }
-    // One-liner respond: bot defender fires back ~35% of the time
-    if (bs.phase === 'riff_ante_respond' && defBot) {
-      const t = setTimeout(() => {
-        if (battleStateRef.current?.phase === 'riff_ante_respond') respondOneLiner(Math.random() < 0.35);
-      }, 600);
-      return () => clearTimeout(t);
-    }
+    // One-liner phase: auto smack talk handles everything — no bot decision needed
     // Handoff → start the defender's answer, but only if the DEFENDER is a bot (a
     // human defender taps "DROP THE ANSWER" themselves).
     if (bs.phase === 'riff_handoff' && defBot) {
@@ -8570,27 +8467,35 @@ function Game({ gameState, onReturnToLobby }) {
   }, [action, acting, spirits]);
 
   function hexFill(hex) {
+    // hovering a HUD attack button previews its range like the live mode
+    const previewAction = action ?? hoverPreview;
     if (hex.num === LIMELIGHT_HEX) return "#ff44ff18";
     if (hex.num === spotlightHex)  return "#ffffff14";
     const sp = spiritByNum[hex.num];
-    if (sp) return sp.color + "44";
+    // 💨 Smoke-hidden spirits are invisible — don't colour their hex
+    if (sp && !isHiddenBySmoke(sp)) return sp.color + "44";
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#aa55ff33";
     if (reachable.has(hex.num)) return "#ffffff18";
-    // Swing cone highlight
-    if (action === 'swing' && acting) {
+    // Swing / Smash cone highlight
+    if ((previewAction === 'swing' || previewAction === 'smash') && acting) {
       const cone = getSwingCone(acting);
       if (cone.has(hex.num)) {
-        const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num);
+        const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
         return isRival ? '#ff333344' : '#ff111122';
       }
     }
     // Sonic beam highlight
-    if ((action === 'sonic' || action === 'blaster') && acting) {
+    if ((previewAction === 'sonic' || previewAction === 'blaster') && acting) {
       const beam = getSonicBeam(acting);
       if (beam.has(hex.num)) {
-        const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num);
+        const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
         return isRival ? '#0066ff44' : '#0033ff18';
       }
+    }
+    // Acoustic duel: shade adjacent hexes on preview
+    if (previewAction === 'acoustic' && acting) {
+      const actHex = HEX_BY_NUM[acting.num];
+      if (actHex && axialDist(actHex.q, actHex.r, hex.q, hex.r) === 1) return '#ffaa4418';
     }
     // Face mode: highlight adjacent hexes
     if (action === 'face' && acting) {
@@ -8604,34 +8509,36 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   function hexStroke(hex) {
+    const previewAction = action ?? hoverPreview;
     if (hex.num === LIMELIGHT_HEX) return "#ff44ff";
     if (hex.num === spotlightHex)  return "#ffffaacc";
     const sp = spiritByNum[hex.num];
-    if (sp && acting?.id === sp.id) return sp.color;
-    if (sp) return sp.color;
+    // 💨 Smoke-hidden spirits are invisible — don't stroke their hex
+    if (sp && !isHiddenBySmoke(sp) && acting?.id === sp.id) return sp.color;
+    if (sp && !isHiddenBySmoke(sp)) return sp.color;
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#cc88ffcc";
     if (reachable.has(hex.num)) return "#ffffff88";
-    // Swing cone stroke
-    if (action === 'swing' && acting) {
+    // Swing / Smash cone stroke
+    if ((previewAction === 'swing' || previewAction === 'smash') && acting) {
       const cone = getSwingCone(acting);
       if (cone.has(hex.num)) {
-        const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num);
+        const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
         return isRival ? '#ff4444ee' : '#ff222244';
       }
     }
     // Sonic beam stroke
-    if ((action === 'sonic' || action === 'blaster') && acting) {
+    if ((previewAction === 'sonic' || previewAction === 'blaster') && acting) {
       const beam = getSonicBeam(acting);
       if (beam.has(hex.num)) {
-        const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num);
+        const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
         return isRival ? '#44aaffee' : '#2244ff44';
       }
     }
     // Phase R4: Acoustic duel — highlight adjacent rivals
-    if (action === 'acoustic' && acting) {
+    if (previewAction === 'acoustic' && acting) {
       const actHex = HEX_BY_NUM[acting.num];
       if (actHex && axialDist(actHex.q, actHex.r, hex.q, hex.r) === 1) {
-        const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num);
+        const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
         return isRival ? '#ffaa44ee' : '#ff882233';
       }
     }
@@ -8650,8 +8557,10 @@ function Game({ gameState, onReturnToLobby }) {
   function hexStrokeW(hex) {
     if (hex.num === LIMELIGHT_HEX) return 2;
     const sp = spiritByNum[hex.num];
-    if (sp && acting?.id === sp.id) return Math.round(3 / SCALE * 0.13);
-    if (sp || reachable.has(hex.num) || hex.stage) return 1.5;
+    // 💨 Smoke-hidden spirits don't thicken their hex stroke
+    const spVisible = sp && !isHiddenBySmoke(sp);
+    if (spVisible && acting?.id === sp.id) return Math.round(3 / SCALE * 0.13);
+    if (spVisible || reachable.has(hex.num) || hex.stage) return 1.5;
     if (action === 'displace' && displaceTargets.has(hex.num)) return 2;
     return 0.8;
   }
@@ -9422,7 +9331,7 @@ function Game({ gameState, onReturnToLobby }) {
                 <div style={{flex:1, minWidth:170, order:1, display:"flex", flexDirection:"column",
                   borderRight:`1px solid ${s.color}22`}}>
                 {/* Status badges */}
-                {((ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||ns.statusShield||ns.burnArmed||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0||ns.bonusRevoiceAvailable||(ns.edgeStage??0)>0||ns.riposteTargetId) && (
+                {((ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||ns.statusShield||ns.burnArmed||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0||ns.bonusRevoiceAvailable||ns.riposteTargetId) && (
                   <div style={{display:"flex",gap:3,flexWrap:"wrap",padding:"4px 8px",borderTop:`1px solid ${s.color}22`}}>
                     {ns.riposteTargetId&&(
                       <span title={`Riposte armed — next Thrash on ${spirits.find(x=>x.id===ns.riposteTargetId)?.name} frays +1 extra note`}
@@ -9433,16 +9342,7 @@ function Game({ gameState, onReturnToLobby }) {
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a1400",border:"1px solid #ffcc44",color:"#ffcc44"}}>
                         🎚️ GOES TO 11 — {ns.elevenTurns}t
                       </span>)}
-                    {(ns.edgeStage??0)>0&&(
-                      <span title={ns.edgeStage>=EDGE_MAX_STAGE
-                        ? "On the Edge — resolve on Root/3rd/5th THIS turn or the stance collapses"
-                        : "On the Edge — Drive up, Sustain down. End on Root/3rd/5th to resolve it for a payout."}
-                        style={{fontSize:7,padding:"1px 5px",borderRadius:3,
-                        background: ns.edgeStage>=EDGE_MAX_STAGE ? "#2a0800" : "#1a0e00",
-                        border:`1px solid ${ns.edgeStage>=EDGE_MAX_STAGE ? "#ff3344" : "#ff8866"}`,
-                        color: ns.edgeStage>=EDGE_MAX_STAGE ? "#ff5566" : "#ff8866"}}>
-                        ⚡ EDGE {ns.edgeStage}/{EDGE_MAX_STAGE} (⚔️+{EDGE_DRIVE_BY_STAGE[ns.edgeStage]}/🛡️−{EDGE_SUSTAIN_PENALTY_BY_STAGE[ns.edgeStage]}){ns.edgeStage>=EDGE_MAX_STAGE ? ' RESOLVE!' : ''}
-                      </span>)}
+                    {/* ⚡ EDGE display — REMOVED (system cut) */}
                     {ns.bonusRevoiceAvailable&&(
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a0a18",border:"1px solid #ff66cc",color:"#ff99dd",
                         animation:"crew-ready-glow 2s ease-in-out infinite"}}>
@@ -9753,43 +9653,7 @@ function Game({ gameState, onReturnToLobby }) {
                   )}
                 </div>
               </div>
-              {/* ⚡ DISSONANCE EDGE — current stage (0-2), live-previewed as you build. Shows
-                  what CONFIRMING NOW would do: resolve (gold), escalate/start (red-orange),
-                  or collapse (red) if you're at max stage and haven't landed on Root/3rd/5th. */}
-              {acting && (() => {
-                const stageNow      = actingNoteState?.edgeStage ?? 0;
-                const chordTonesNow = new Set([currentScale[0], currentScale[2], currentScale[4]]);
-                const lastPlaced    = melodyLine[melodyLine.length - 1];
-                const trackEndedYet = !hasConfirmed && melodyLine.length > 0;
-                const wouldResolve  = trackEndedYet && stageNow > 0 && chordTonesNow.has(lastPlaced);
-                const wouldCollapse = trackEndedYet && stageNow >= EDGE_MAX_STAGE && !wouldResolve;
-                const wouldStartOrEscalate = trackEndedYet && !wouldResolve && !wouldCollapse && !isNotePlayable(lastPlaced);
-                const previewLabel = wouldResolve ? 'RESOLVE!' : wouldCollapse ? 'COLLAPSE!'
-                                    : wouldStartOrEscalate ? (stageNow === 0 ? 'START' : 'ESCALATE') : null;
-                const previewColor = wouldResolve ? "#ffd700" : wouldCollapse ? "#ff3344"
-                                    : wouldStartOrEscalate ? "#ff5566" : "#ff8866";
-                return (
-                  <div title="Ending a track on a Discord note puts you ON THE EDGE: Drive up, Sustain down, paid for in DB + fans. Escalates if you stay out; land the resolve on Root/3rd/5th for a payout, or lose it all if you're still out at max stage."
-                    style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}>
-                    <span style={{fontSize:7,color:"#ff8866",letterSpacing:0.5,flexShrink:0}}>⚡ EDGE</span>
-                    <div style={{display:"flex",gap:2,flex:1}}>
-                      {Array.from({length: EDGE_MAX_STAGE}, (_, i) => i + 1).map(stage => (
-                        <div key={stage} className="bar" style={{flex:1,position:"relative",overflow:"hidden"}}>
-                          <div className="bar-f" style={{
-                            width: stage <= stageNow ? "100%" : "0%",
-                            background: previewLabel && stage === Math.max(stageNow, 1) ? previewColor : "#ff8866",
-                            animation: previewLabel && stage === Math.max(stageNow, 1)
-                              ? "cadence-gold-pulse 1.2s ease-in-out infinite" : undefined,
-                          }}/>
-                        </div>
-                      ))}
-                    </div>
-                    <span style={{fontSize:7,color: stageNow>=EDGE_MAX_STAGE ? "#ff5566" : "#ff8866",flexShrink:0}}>
-                      {stageNow}/{EDGE_MAX_STAGE}{previewLabel ? ` · ${previewLabel}` : ''}
-                    </span>
-                  </div>
-                );
-              })()}
+              {/* ⚡ DISSONANCE EDGE — REMOVED (system cut) */}
               {/* 🎛️ AMP TONE PANEL relocated → now flanks the Commit Track above the board. */}
               {/* Active effect badges — only show during melody step */}
               {(turnStep === 'melody' || turnStep === 'move_act') && (feedbackBoost || dieFloorBoost > 0 || statusEffects.length > 0
@@ -10329,6 +10193,18 @@ function Game({ gameState, onReturnToLobby }) {
 
           {/* ── RIVAL SPIRITS — collapsed rows ── */}
           {spirits.filter(s => !s.knockedOut && acting?.id !== s.id).map(s => {
+            // 💨 SMOKE — completely erase any sign of this spirit
+            if (isHiddenBySmoke(s)) return (
+              <div key={s.id} className="card" style={{
+                padding:"4px 7px", marginBottom:3,
+                borderLeft:"2px solid #33445566",
+                opacity:0.4, background:"#080f1e",
+              }}>
+                <div style={{display:"flex",alignItems:"center",gap:5}}>
+                  <span style={{fontSize:8,color:"#334455"}}>💨 Lost in the smoke…</span>
+                </div>
+              </div>
+            );
             const ns = noteStates[s.id] ?? {};
             // Same combined-modifier total as the acting spirit's own dial (tempSustain +
             // Edge stage delta) — this row is exactly the "rivals can read the stance" surface.
@@ -10554,19 +10430,28 @@ function Game({ gameState, onReturnToLobby }) {
                 </button>
               );
             })()}
-            {/* SWING — baseline attack, always available (PvP is off during the God fight) */}
-            {!rockGodActive && hasConfirmed && !actionTokenUsed && (() => {
+            {/* SWING — baseline attack, always visible & lit (PvP is off during the God fight).
+                Hover previews the cone. GRAYED = no AP / token spent; FADED = no rival in range. */}
+            {!rockGodActive && (() => {
               const cone = acting ? getSwingCone(acting) : new Set();
               const rivals = acting ? getRivalsInCone(acting) : [];
-              const canSwing = rivals.length > 0 && moveStepsLeft >= 1;
+              const grayed = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
+              const canSwing = !grayed && rivals.length > 0;
               return (
-                <div style={{position:'relative',display:'inline-block'}}>
+                <div style={{position:'relative',display:'inline-block'}}
+                  onMouseEnter={() => setHoverPreview('swing')}
+                  onMouseLeave={() => setHoverPreview(p => p === 'swing' ? null : p)}>
                   <button className={canSwing ? 'btn active' : 'btn'}
-                    style={{borderColor: canSwing ? '#ff4444' : '#441111',
-                      color: canSwing ? '#ff6666' : '#441111',
-                      position:'relative'}}
+                    style={grayed
+                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6, position:'relative'}
+                      : {borderColor:'#ff4444', color:'#ff6666',
+                          opacity: canSwing ? 1 : 0.4, position:'relative'}}
                     disabled={!canSwing}
-                    title="The jab — cheap (1 AP) & defended. Drives your chord into them and can land Thrash statuses."
+                    title={grayed
+                      ? "The jab (1 AP) — grayed out: needs a confirmed turn, your Action Token, and at least 1 AP."
+                      : canSwing
+                      ? "The jab — cheap (1 AP) & defended. Drives your chord into them and can land Thrash statuses."
+                      : "The jab (1 AP) — no rival in your cone. Hover to see the swing range."}
                     onClick={() => {
                       if (action === 'swing') { setAction(null); }
                       else if (canSwing) {
@@ -10584,22 +10469,33 @@ function Game({ gameState, onReturnToLobby }) {
                 onClick={() => setAction(null)}>Cancel</button>
             )}
             {/* 🎸 THE SMASH (melee) — or 🌀 BLASTER OF RA (ranged, piercing) for Intergalactic 0 */}
-            {!rockGodActive && hasConfirmed && !actionTokenUsed && (() => {
+            {!rockGodActive && (() => {
               const ns = actingNoteState ?? {};
               // 🌀 Once Blaster of Ra is unlocked, it REPLACES the Smash: ranged beam, pierces all.
               const hasBlaster = acting?.id === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
               const rivals = acting ? (hasBlaster ? getRivalsInBeam(acting) : getRivalsInCone(acting)) : [];
               const unused = (ns.noteStock ?? []).filter((_, i) => !usedHas(ns.usedStockIdx, i)).length;
-              const canFire = rivals.length > 0 && moveStepsLeft >= 2 && unused >= 2;
+              const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
+              const canFire = !grayed && rivals.length > 0 && unused >= 2;
               const mode    = hasBlaster ? 'blaster' : 'smash';
+              const baseTitle = hasBlaster
+                ? "Blaster of Ra (2 AP) — a ranged, piercing bass-drop down the beam: undefendable, scatters & knocks back EVERY rival in line. Ends your movement, leaves you Exposed. Hurls your unused stock."
+                : "The haymaker (2 AP) — primal & undefendable: ignores their Sustain, scatters their notes. But it ends all your movement this turn and leaves you Exposed. Hurls your unused stock.";
               return (
-                <div style={{position:'relative',display:'inline-block'}}>
+                <div style={{position:'relative',display:'inline-block'}}
+                  onMouseEnter={() => setHoverPreview(mode)}
+                  onMouseLeave={() => setHoverPreview(p => p === mode ? null : p)}>
                   <button className={canFire ? 'btn active' : 'btn'}
-                    style={{borderColor: canFire ? '#ff33aa' : '#330022', color: canFire ? '#ff66cc' : '#330022'}}
+                    style={grayed
+                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
+                      : {borderColor:'#ff33aa', color:'#ff66cc', opacity: canFire ? 1 : 0.4}}
                     disabled={!canFire}
-                    title={hasBlaster
-                      ? "Blaster of Ra (2 AP) — a ranged, piercing bass-drop down the beam: undefendable, scatters & knocks back EVERY rival in line. Ends your movement, leaves you Exposed. Hurls your unused stock."
-                      : "The haymaker (2 AP) — primal & undefendable: ignores their Sustain, scatters their notes. But it ends all your movement this turn and leaves you Exposed. Hurls your unused stock."}
+                    title={grayed
+                      ? `${baseTitle} — grayed out: needs a confirmed turn, your Action Token, and 2 AP.`
+                      : canFire ? baseTitle
+                      : unused < 2
+                      ? `${baseTitle} — faded: you need at least 2 unused stock notes to hurl.`
+                      : `${baseTitle} — no rival in range. Hover to see the ${hasBlaster ? 'beam' : 'melee'} range.`}
                     onClick={() => {
                       if (action === mode) { setAction(null); }
                       else if (canFire) {
@@ -10618,8 +10514,8 @@ function Game({ gameState, onReturnToLobby }) {
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
-            {/* SONIC ATTACK — always wired (Main Amp) */}
-            {!rockGodActive && hasConfirmed && !actionTokenUsed && (() => {
+            {/* SONIC ATTACK — always wired (Main Amp); hover previews beam + rig range ring */}
+            {!rockGodActive && (() => {
               const beam    = acting ? getSonicBeam(acting) : new Set();
               const targets = acting ? getRivalsInBeam(acting) : [];
               const poolNow = actingRig.pool;
@@ -10627,22 +10523,39 @@ function Game({ gameState, onReturnToLobby }) {
               const poolDisplay = hasHydra && ['amp_1','amp_2','amp_3'].filter(id => (actingNoteState?.unlockedSkills ?? []).includes(id)).length >= 3
                 ? poolNow.map(s => s < 8 ? 8 : s) : poolNow;
               const diceLabel = rigPoolLabel(poolDisplay);
-              const canSonic = targets.length > 0 && moveStepsLeft >= 2;
+              // 📡 Sonic is OFFLINE outside the rig's radius — the button fades.
+              // GRAYED = no AP / token spent (mechanical); FADED = out of amp
+              // range or no rival in the beam (positional). Hover shows both
+              // the beam and the rig's radius ring so the player sees why.
+              const outOfRange = !actingRig.inRange;
+              const grayed   = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
+              const canSonic = !grayed && !outOfRange && targets.length > 0;
               return (
-                <div style={{position:'relative',display:'inline-block'}}>
+                <div style={{position:'relative',display:'inline-block'}}
+                  onMouseEnter={() => setHoverPreview('sonic')}
+                  onMouseLeave={() => setHoverPreview(p => p === 'sonic' ? null : p)}>
                   <button className={canSonic ? 'btn active' : 'btn'}
-                    style={{borderColor: canSonic ? '#44aaff' : '#112244',
-                      color: canSonic ? '#66ccff' : '#112244'}}
+                    style={grayed
+                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
+                      : {borderColor:'#44aaff', color:'#66ccff',
+                          opacity: canSonic ? 1 : (outOfRange ? 0.35 : 0.4)}}
                     disabled={!canSonic}
+                    title={grayed
+                      ? "Sonic Attack (2 AP) — grayed out: needs a confirmed turn, your Action Token, and 2 AP."
+                      : outOfRange
+                      ? "📡 Out of your amp's range — the Sonic is offline out here. Hover to see your rig's radius ring; move back inside it or buy Range tiers."
+                      : canSonic
+                      ? `Sonic Attack (2 AP) — the ranged beam. ${diceLabel}, keep the highest.`
+                      : "Sonic Attack (2 AP) — no rival in your beam. Hover to see the beam and your rig's range ring."}
                     onClick={() => {
                       if (action === 'sonic') { setAction(null); }
                       else if (canSonic) {
                         setAction('sonic');
-                        addLog(`🔊 SONIC ATTACK — click a target in your beam! (${diceLabel} keep best${actingRig.inRange ? '' : ' · out of rig range'})`);
+                        addLog(`🔊 SONIC ATTACK — click a target in your beam! (${diceLabel} keep best)`);
                       }
                     }}>
-                    🔊 Sonic{targets.length > 0 ? ` (${targets.length})` : ''} {diceLabel}
-                    {!canSonic && moveStepsLeft < 2 ? ' (2AP)' : ''}
+                    🔊 Sonic{outOfRange ? ' 📡' : targets.length > 0 ? ` (${targets.length})` : ''} {diceLabel}
+                    {grayed && moveStepsLeft < 2 ? ' (2AP)' : ''}
                   </button>
                 </div>
               );
@@ -10651,15 +10564,14 @@ function Game({ gameState, onReturnToLobby }) {
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
-            {/* 🎸 ACOUSTIC DUEL — Phase R4: baseline riff-off, no amp needed, just adjacency */}
-            {!rockGodActive && hasConfirmed && !actionTokenUsed && (() => {
+            {/* 🎸 ACOUSTIC DUEL — Phase R4: baseline riff-off, no amp needed, just adjacency.
+                Always visible; hover previews the adjacency range. */}
+            {!rockGodActive && (() => {
               const actHex = acting ? HEX_BY_NUM[acting.num] : null;
-              if (!actHex) return null;
-              const adjacentRivals = spirits.filter(s =>
+              const adjacentRivals = actHex ? spirits.filter(s =>
                 s.id !== acting.id && !s.knockedOut &&
                 HEX_BY_NUM[s.num] && axialDist(actHex.q, actHex.r, HEX_BY_NUM[s.num].q, HEX_BY_NUM[s.num].r) === 1
-              );
-              if (adjacentRivals.length === 0) return null;
+              ) : [];
               const aNs = actingNoteState ?? {};
               const cds = aNs.acousticDuelCds ?? {};
               // Any adjacent rival off cooldown?
@@ -10667,14 +10579,24 @@ function Game({ gameState, onReturnToLobby }) {
                 const pk = acousticDuelPairKey(acting.id, r.id);
                 return (cds[pk] ?? 0) <= 0;
               });
-              const canDuel = available.length > 0 && moveStepsLeft >= 2;
+              const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
+              const canDuel = !grayed && available.length > 0;
               return (
-                <div style={{position:'relative',display:'inline-block'}}>
+                <div style={{position:'relative',display:'inline-block'}}
+                  onMouseEnter={() => setHoverPreview('acoustic')}
+                  onMouseLeave={() => setHoverPreview(p => p === 'acoustic' ? null : p)}>
                   <button className={canDuel ? 'btn active' : 'btn'}
-                    style={{borderColor: canDuel ? '#ffaa44' : '#332200',
-                      color: canDuel ? '#ffcc66' : '#332200'}}
+                    style={grayed
+                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
+                      : {borderColor:'#ffaa44', color:'#ffcc66', opacity: canDuel ? 1 : 0.4}}
                     disabled={!canDuel}
-                    title="Acoustic Duel (2 AP) — challenge an adjacent rival to an unamped riff-off. No beam, no amps — just chops. 2-turn cooldown per rival."
+                    title={grayed
+                      ? "Acoustic Duel (2 AP) — grayed out: needs a confirmed turn, your Action Token, and 2 AP."
+                      : canDuel
+                      ? "Acoustic Duel (2 AP) — challenge an adjacent rival to an unamped riff-off. No beam, no amps — just chops. 2-turn cooldown per rival."
+                      : adjacentRivals.length > 0
+                      ? "Acoustic Duel (2 AP) — adjacent rival(s) still on the 2-turn duel cooldown."
+                      : "Acoustic Duel (2 AP) — no adjacent rival. Hover to see the adjacency range."}
                     onClick={() => {
                       if (action === 'acoustic') { setAction(null); }
                       else if (canDuel) {
@@ -11528,7 +11450,7 @@ function Game({ gameState, onReturnToLobby }) {
               {/* ── 🔊 AMP DECKS ── each Spirit's rig grows at their home corner;
                   radius ring pulses out while the acting Spirit aims a Sonic Attack ── */}
               <AmpDecks spirits={spirits} noteStates={noteStates} actingId={acting?.id}
-                aiming={action === 'sonic'} thumpFx={deckThump}/>
+                aiming={action === 'sonic' || hoverPreview === 'sonic'} thumpFx={deckThump}/>
 
 
               {/* Hexes */}
@@ -11584,15 +11506,14 @@ function Game({ gameState, onReturnToLobby }) {
                       // the standee drifts off its hex when facing left (the
                       // Metalness Monster bug).
                       const imgOffX = useMirror ? -imgOffset.x : imgOffset.x;
-                      // 💨 SMOKE MACHINE — Spirits in the cloud fade from view
-                      // (visual only; never hides the acting Spirit).
+                      // 💨 SMOKE MACHINE — Spirits in the cloud are COMPLETELY hidden
+                      // from view (visual only; never hides the acting Spirit).
                       const smokeHidden = isHiddenBySmoke(sp);
+                      if (smokeHidden) return null; // completely erase any sign
                       return (
                         <g key="spirit-token"
                           style={{
                             ...(isRumbling ? {animation:"rumble 0.08s linear infinite"} : {}),
-                            opacity: smokeHidden ? 0.04 : 1,
-                            transition: 'opacity 1.4s ease',
                           }}>
                           {/* Base plate shadow */}
                           <ellipse cx={cx+2} cy={cy+3} rx={baseR} ry={baseR*0.32}
@@ -11859,9 +11780,9 @@ function Game({ gameState, onReturnToLobby }) {
                             fill="#070d18ee" stroke={col} strokeWidth={1.2}
                             style={inRig ? {filter:`drop-shadow(0 0 4px ${col}88)`} : undefined}/>
                           <text x={sx} y={by + bh * 0.56} textAnchor="middle" dominantBaseline="central"
-                            fontSize={bh * 0.56} fontWeight="bold" fill={col}
+                            fontSize={inRig ? bh * 0.56 : bh * 0.42} fontWeight="bold" fill={col}
                             fontFamily="'Saira Stencil One',sans-serif">
-                            {diceTier}
+                            {inRig ? diceTier : 'OFF AIR'}
                           </text>
                           {!inRig && (
                             <text x={bx + bw - HS * 0.04} y={by + HS * 0.03} textAnchor="end" dominantBaseline="hanging"
@@ -12034,7 +11955,7 @@ function Game({ gameState, onReturnToLobby }) {
                 const hovHex = HEX_BY_NUM[hovered];
                 if (!hovHex) return null;
                 const sp = spirits.find(s => s.num === hovered && !s.knockedOut);
-                if (!sp) return null;
+                if (!sp || isHiddenBySmoke(sp)) return null; // 💨 no arrow for smoke-hidden spirits
                 const cx  = Math.round(hovHex.px * SCALE);
                 const cy  = Math.round(hovHex.py * SCALE);
                 const f   = sp.facing ?? 0;

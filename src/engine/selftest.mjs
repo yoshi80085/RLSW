@@ -2230,10 +2230,10 @@ const config = {
     [8, 8], "Power capped at pool size: Amp I + Power III → 2d8 (not 3)");
 
   // ── Range tiers — radii from RIG_RADIUS_BY_TIER ──
-  // Tier 0 radius = 2
-  assert.equal(sonicRig(["amp_1"], 2).inRange, true, "Range 0: dist 2 inside");
-  assert.equal(sonicRig(["amp_1"], 3).inRange, false, "Range 0: dist 3 outside");
-  assert.deepEqual(sonicRig(["amp_1"], 3).pool, [6], "out of range → baseline 1d6");
+  // Tier 0 radius = 3 (starting range)
+  assert.equal(sonicRig(["amp_1"], 3).inRange, true, "Range 0: dist 3 inside (starting radius 3)");
+  assert.equal(sonicRig(["amp_1"], 4).inRange, false, "Range 0: dist 4 outside");
+  assert.deepEqual(sonicRig(["amp_1"], 4).pool, [6, 6], "out of range → Main Amp floor 2d6");
   // Tier I radius = 4
   assert.equal(sonicRig(["amp_1", "range_1"], 4).inRange, true, "Range I: dist 4 inside");
   assert.equal(sonicRig(["amp_1", "range_1"], 5).inRange, false, "Range I: dist 5 outside");
@@ -2247,7 +2247,7 @@ const config = {
   // ── Out of range: amp/power bonuses stripped, just baseline ──
   assert.deepEqual(
     sonicRig(["amp_1", "amp_2", "amp_3", "power_1", "power_2", "power_3"], 99).pool,
-    [6], "full rig, way out of range → baseline 1d6");
+    [6, 6], "full rig, way out of range → Main Amp floor 2d6 (Amp I is board-wide)");
 
   // ── chargeBoost — adds d8 dice that work ANYWHERE ──
   {

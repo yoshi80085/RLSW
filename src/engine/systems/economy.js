@@ -175,7 +175,7 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     totalDB:         0,
     upgradesPending: 0,
     skillRoute:      null,
-    unlockedSkills:  [],
+    unlockedSkills:  ["amp_1"],  // 🔊 Amp I is the starting Main Amp — 2d6 from turn 1
     targetSkillId:   null,
     diceLevel:       0,
     ampOwned:        false,
@@ -193,7 +193,7 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     ultimateUsed:     false,
     mixerUsedThisTurn: false,
     elevenTurns:      0,
-    edgeStage:        0,
+    edgeStage:        0,  // DEPRECATED — Edge system removed; kept for save compat
     fame:             0,
     finalsTrail:      [],
     cadenceCooldowns: {},
