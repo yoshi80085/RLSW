@@ -381,7 +381,7 @@ function TutSection_HarmonicCharge() {
         <div style={{display:"flex", flexDirection:"column", gap:7}}>
           {[
             {step:"1", color:"#88ffcc", text:"Earn DB from clean, in-scale play (see below)."},
-            {step:"2", color:"#ffcc44", text:"Set a target skill in the upgrade tree — each costs 8 to 20 DB."},
+            {step:"2", color:"#ffcc44", text:"Set a target skill in the upgrade tree — each costs 6 to 16 DB."},
             {step:"3", color:"#ff8844", text:"When your meter reaches that cost, the skill unlocks."},
             {step:"4", color:"#44ffaa", text:"Leftover points carry over toward your next pick."},
           ].map((r,i)=>(
@@ -887,7 +887,7 @@ function TutSection_Winning() {
       <div style={{background:"#14110a", border:"1px solid #ffd70044", borderRadius:6, padding:"10px 14px"}}>
         <div style={{fontSize:9, color:"#ffd700", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:1, marginBottom:5}}>⭐ FAME LEGEND</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          The headline route: be first to <span style={{color:"#ffd700"}}>25 Fame Points</span>. Fame pours
+          The headline route: be first to the <span style={{color:"#ffd700"}}>Fame Point target</span> (8 FP per life). Fame pours
           in from winning clashes (multiplied by your crowd), discovering riffs, holding the Limelight,
           and resolving the Cadence Objectives below.
         </p>

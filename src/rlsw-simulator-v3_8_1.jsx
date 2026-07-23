@@ -56,7 +56,7 @@ import { useRockGod } from "./hooks/useRockGod.js";
 import { ROCK_GODS, ROCK_GOD_RUNAWAY_LEAD, ROCK_GOD_TIMER_SECONDS, ROCK_GOD_VENGEANCE_DMG, ROCK_GOD_KILL_BLOW_FP, pickRockGod, godTauntLine } from "./data/rockGods.js"; // HP scaling moved into the engine (Phase 6c)
 import { freeNeighborHex } from "./board/rockGodFx.js"; // AoE/slide/shove geometry moved into the engine (Phase 6c)
 import { RockGodBoardLayer, RockGodHUD, GodVictoryOverlay } from "./ui/RockGodLayer.jsx";
-import { STAGE_FX_THRESHOLDS, STAGE_FX_META, SMOKE_ROUNDS, LASER_ROUNDS, LASER_DAMAGE, PYRO_WAVES, PYRO_DAMAGE, PYRO_BURN_TURNS, ANIMATRONIC_TURNS, ANIMATRONIC_DAMAGE } from "./data/stageEffects.js"; // tuning the engine consumes directly (counts/radii/waves) moved with the 6b flip
+import { STAGE_FX_META, SMOKE_ROUNDS, LASER_ROUNDS, LASER_DAMAGE, PYRO_WAVES, PYRO_DAMAGE, PYRO_BURN_TURNS, ANIMATRONIC_TURNS, ANIMATRONIC_DAMAGE } from "./data/stageEffects.js"; // tuning the engine consumes directly (counts/radii/waves) moved with the 6b flip
 import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn rolls moved into the engine (Phase 6b)
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
@@ -300,7 +300,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STANCE_COMMIT_DB, BOT_DB_SPEND_THRESHOLD, STACK_COMMIT_BUDGET, STACK_CAP } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STANCE_COMMIT_DB, BOT_DB_SPEND_THRESHOLD, STACK_COMMIT_BUDGET, STACK_CAP } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -450,15 +450,15 @@ const SKILL_TREE = {
       color: '#66ccff',
       desc: 'The spine of the game. Start on the Major Pentatonic; climb to unlock dissonance as power.',
       skills: [
-        { id:'theory_major',     label:'The Full Scale',       icon:'🎼', dbCost:8,  gated:true, prereq:null,
+        { id:'theory_major',     label:'The Full Scale',       icon:'🎼', dbCost:6,  gated:true, prereq:null,
           desc:'Adds the 4th & 7th, completing the Major (Ionian) scale — those two notes stop costing Discord.' },
-        { id:'theory_minor',     label:'Minor Tonality',       icon:'🌑', dbCost:10, gated:true, prereq:'theory_major',
+        { id:'theory_minor',     label:'Minor Tonality',       icon:'🌑', dbCost:8,  gated:true, prereq:'theory_major',
           desc:'Unlocks the Minor scale and the Major/Minor pivot. Declare Minor at the pivot for a darker key, Discord-free.' },
-        { id:'theory_dom7',      label:'Blues / Dominant 7th', icon:'🎷', dbCost:12, gated:true, prereq:'theory_minor',
+        { id:'theory_dom7',      label:'Blues / Dominant 7th', icon:'🎷', dbCost:10, gated:true, prereq:'theory_minor',
           desc:'The ♭7 joins your clean palette. BLUES LICK: end a track on the ♭7 to arm Mojo Drain on your next target.' },
-        { id:'theory_modes',     label:'Modal Colour',         icon:'🌀', dbCost:14, gated:true, prereq:'theory_dom7',
+        { id:'theory_modes',     label:'Modal Colour',         icon:'🌀', dbCost:12, gated:true, prereq:'theory_dom7',
           desc:"Lydian ♯4 & Mixolydian ♭7 become clean. DEVIL'S INTERVAL: the tritone never breaks harmony — end on it to arm a Burn (2 turns, 50%/turn to lose 1 Vibe)." },
-        { id:'theory_chromatic', label:'Chromatic Mastery',    icon:'⚡', dbCost:18, gated:true, prereq:'theory_modes',
+        { id:'theory_chromatic', label:'Chromatic Mastery',    icon:'⚡', dbCost:16, gated:true, prereq:'theory_modes',
           desc:'CAPSTONE — every Discord penalty halved; the whole chromatic scale is yours. Chromatic runs of 3+ play clean and STAGGER rivals, and the Major-3rd cleanse (Borrowed Chord) comes online in Minor.' },
       ],
     },
@@ -471,29 +471,29 @@ const SKILL_TREE = {
       desc: 'Your rig. It lives at your corner and it only gets bigger.',
       subChains: [
         { id:'rig_amps', label:'🔊 Amps', skills: [
-          { id:'amp_1', label:'Amp I',  icon:'🔊', dbCost:8,  gated:true, prereq:null,
+          { id:'amp_1', label:'Amp I',  icon:'🔊', dbCost:6,  gated:true, prereq:null,
             desc:'Your starting Main Amp — 2d6, keep highest, board-wide. Every Spirit begins wired in.' },
-          { id:'amp_2', label:'Amp II', icon:'🔊', dbCost:12, gated:true, prereq:'amp_1',
+          { id:'amp_2', label:'Amp II', icon:'🔊', dbCost:10, gated:true, prereq:'amp_1',
             desc:'+1d6 (roll 3, keep highest). A second cabinet hits the stack.' },
-          { id:'amp_3', label:'Amp III',icon:'🔊', dbCost:18, gated:true, prereq:'amp_2',
+          { id:'amp_3', label:'Amp III',icon:'🔊', dbCost:16, gated:true, prereq:'amp_2',
             desc:'+1d6 (roll 4, keep highest). Three stacks — the wall of sound is complete.' },
-          { id:'overcharge', label:'Overcharge', icon:'🎸', dbCost:14, gated:true, prereq:'amp_2',
+          { id:'overcharge', label:'Overcharge', icon:'🎸', dbCost:12, gated:true, prereq:'amp_2',
             desc:'Charge Zones no longer just spark your dice — tapping one now lets you choose: the usual charge (random die floor/ceiling boost), OR one curated Chord Stack note plus a bonus revoice to spend on it.' },
         ]},
         { id:'rig_power', label:'🎛️ Power', skills: [
-          { id:'power_1', label:'Power I',  icon:'🎛️', dbCost:10, gated:true, prereq:'amp_1',
+          { id:'power_1', label:'Power I',  icon:'🎛️', dbCost:8,  gated:true, prereq:'amp_1',
             desc:'A real head on the stack — one of your dice becomes a d8.' },
-          { id:'power_2', label:'Power II', icon:'🎛️', dbCost:14, gated:true, prereq:['power_1','amp_2'],
+          { id:'power_2', label:'Power II', icon:'🎛️', dbCost:12, gated:true, prereq:['power_1','amp_2'],
             desc:'A second die becomes a d8.' },
-          { id:'power_3', label:'Power III',icon:'🎛️', dbCost:18, gated:true, prereq:['power_2','amp_3'],
+          { id:'power_3', label:'Power III',icon:'🎛️', dbCost:16, gated:true, prereq:['power_2','amp_3'],
             desc:'Three d8s in the pool — maximum wattage.' },
         ]},
         { id:'rig_range', label:'📡 Range', skills: [
-          { id:'range_1', label:'Range I',  icon:'📡', dbCost:8,  gated:true, prereq:null,
+          { id:'range_1', label:'Range I',  icon:'📡', dbCost:6,  gated:true, prereq:null,
             desc:'Full rig reaches 4 hexes from home.' },
-          { id:'range_2', label:'Range II', icon:'📡', dbCost:12, gated:true, prereq:'range_1',
+          { id:'range_2', label:'Range II', icon:'📡', dbCost:10, gated:true, prereq:'range_1',
             desc:'Full rig reaches 7 hexes — the Limelight is inside your field.' },
-          { id:'range_3', label:'Range III',icon:'📡', dbCost:16, gated:true, prereq:'range_2',
+          { id:'range_3', label:'Range III',icon:'📡', dbCost:14, gated:true, prereq:'range_2',
             desc:'Fully wired. The whole venue is your stage.' },
         ]},
       ],
@@ -510,9 +510,9 @@ const SKILL_TREE = {
       color: '#ff8800',
       desc: 'Master your fighting style. Unlock stance-specific special attacks fueled by Db.',
       skills: [
-        { id: 'stance_physical', label: 'Physical Special', icon: '🔨', dbCost: 10, gated: false, prereq: null,
+        { id: 'stance_physical', label: 'Physical Special', icon: '🔨', dbCost: 8,  gated: false, prereq: null,
           desc: 'Unlock your stance\'s physical special attack (melee, costs 1 Db per use).' },
-        { id: 'stance_sonic', label: 'Sonic Special', icon: '🔔', dbCost: 14, gated: true, prereq: 'stance_physical',
+        { id: 'stance_sonic', label: 'Sonic Special', icon: '🔔', dbCost: 12, gated: true, prereq: 'stance_physical',
           desc: 'Unlock your stance\'s sonic special attack (ranged, costs 1 Db per use).' },
       ],
     },
@@ -525,11 +525,11 @@ const SKILL_TREE = {
       desc: 'The way of the blade meets the way of the riff. An exclusive arsenal only the Ronin can wield.',
       spiritOnly: 'cosmic_ronin',
       skills: [
-        { id:'psycho_bushido', label:'Psycho Bushido', icon:'🌀', dbCost:10, gated:false,
+        { id:'psycho_bushido', label:'Psycho Bushido', icon:'🌀', dbCost:8,  gated:false,
           desc:'In Thrash, when your swing die lands 5 or 6 the rival freezes — their die is forced to a 1.' },
-        { id:'e_rush',         label:'いいラッシュ (E-Rush)', icon:'🎴', dbCost:12, gated:false,
+        { id:'e_rush',         label:'いいラッシュ (E-Rush)', icon:'🎴', dbCost:10, gated:false,
           desc:'End a melody line on an E, then face a rival in a riff-off that turn: every answer note spawns a ghost note — both keys must be hit or the note misses.' },
-        { id:'hydra',          label:'Hydra',          icon:'🐉', dbCost:16, gated:true, prereq:'amp_3',
+        { id:'hydra',          label:'Hydra',          icon:'🐉', dbCost:14, gated:true, prereq:'amp_3',
           desc:'CAPSTONE — requires Amp III. With 3 amps in range, your Sonic Attack rolls 3d6 instead of d12, firing three beams.' },
       ],
     },
@@ -541,13 +541,13 @@ const SKILL_TREE = {
       desc: 'Trash-metal violence. An exclusive arsenal only the Monster can wield.',
       spiritOnly: 'Metalness_Monster',
       skills: [
-        { id:'master_moshpits', label:'Master of Moshpits', icon:'🎸', dbCost:10, gated:false,
+        { id:'master_moshpits', label:'Master of Moshpits', icon:'🎸', dbCost:8,  gated:false,
           desc:'On ANY battle win, if you have a banked note: burn it for +1 Vibe damage (can finish a knockdown). The pit floods the board.' },
-        { id:'riff_slayer',     label:'Riff Slayer',        icon:'🗡️', dbCost:12, gated:false,
+        { id:'riff_slayer',     label:'Riff Slayer',        icon:'🗡️', dbCost:10, gated:false,
           desc:"Commit a SKIP-CLIMB (3+ notes leaping by thirds, one direction) to arm it. If a riff-off breaks out that turn, 2–3 of the rival's notes glitch mid-flight." },
-        { id:'paranoia',        label:'Paranoia',           icon:'🌀', dbCost:14, gated:true, prereq:'theory_dom7',
+        { id:'paranoia',        label:'Paranoia',           icon:'🌀', dbCost:12, gated:true, prereq:'theory_dom7',
           desc:"Supercharges your Mojo Drain (from the Blues 7th): now lasts 3 turns AND freezes 2 of the rival's note slots." },
-        { id:'azrael',          label:'Azrael',             icon:'💀', dbCost:16, gated:false,
+        { id:'azrael',          label:'Azrael',             icon:'💀', dbCost:14, gated:false,
           desc:'Each rival you knock down feeds Fame equal to your knockdown streak (1st→1, 2nd→2…). Resets when YOU go down.' },
       ],
     },
@@ -559,11 +559,11 @@ const SKILL_TREE = {
       desc: 'Cosmic groove and weaponized sound. An exclusive arsenal only Intergalactic 0 can wield.',
       spiritOnly: 'intergalactic_0',
       skills: [
-        { id:'blaster_of_ra', label:'Blaster of Ra', icon:'🌀', dbCost:12, gated:false,
+        { id:'blaster_of_ra', label:'Blaster of Ra', icon:'🌀', dbCost:10, gated:false,
           desc:'REPLACES the Smash. A ranged, PIERCING bass-drop: hurl your unused stock down the forward beam, hammering EVERY rival in line — undefendable, scattering their stock and knocking them back. Leaves you Exposed.' },
-        { id:'displace', label:'Displace', icon:'🌌', dbCost:10, gated:false,
+        { id:'displace', label:'Displace', icon:'🌌', dbCost:8,  gated:false,
           desc:"He can't run — he warps. Teleport to an open hex beside your amp rig (costs 3 AP, 2-turn cooldown). The slow zoner's get-out-of-jail. Needs at least one amp to warp to." },
-        { id:'sunbeam', label:'Sunbeam', icon:'☀️', dbCost:16, gated:true, prereq:'amp_3',
+        { id:'sunbeam', label:'Sunbeam', icon:'☀️', dbCost:14, gated:true, prereq:'amp_3',
           desc:'CAPSTONE — requires Amp III. Your Sonic beam reaches +2 hexes AND scorches the hexes it crosses into burning ground (2 rounds) — area denial down the whole line.' },
       ],
     },
@@ -660,6 +660,15 @@ export default function RLSWSimulator() {
 function Game({ gameState, onReturnToLobby }) {
   const { mode, teams } = gameState;
   const startingLives = gameState.startingLives ?? 3;
+  const playerCount = gameState.spirits.length;
+  const fameToWin = startingLives * fpPerLife(playerCount);
+
+  // 🎇 Stage FX fires once per life, evenly spaced across the FP target.
+  const stageFxThresholds = (() => {
+    const count = startingLives;
+    const interval = fameToWin / (count + 1);
+    return Array.from({ length: count }, (_, i) => Math.round(interval * (i + 1)));
+  })();
 
   // ── ENGINE STATE (see src/MULTIPLAYER_HANDOFF.md) ─────────────────────────
   // The authoritative, serializable game state. The engine owns the turn queue,
@@ -1416,9 +1425,9 @@ function Game({ gameState, onReturnToLobby }) {
     fame: {
       title: '⭐ Fame Points (FP)',
       pages: [
-        { body: `FP is the win condition: first to ${FAME_TO_WIN} takes the crown. This gold bar is the only bar that truly matters — everything else exists to feed it.`, anchor: 'fame-bar' },
+        { body: `FP is the win condition: first to ${fameToWin} takes the crown. This gold bar is the only bar that truly matters — everything else exists to feed it.`, anchor: 'fame-bar' },
         { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, ✨ holding centre-stage Limelight a full turn. (🎼 Cadences and 🧠 trivia win you FANS, not FP — the crowd is how you amplify the rest.)', 'EVERY one of those is multiplied by your crowd (up to ×2) — a deed in front of a full house is worth double. And if you\'re trailing badly, the underdog bonus quietly inflates your payouts up to ×2.5. The comeback is canon.', `But the arena has a volume limit: no matter how the multipliers stack, you can bank at most ${FAME_PER_TURN_CAP} FP in a single turn. Anything past the cap is lost to the noise — spread your legend across the set, not one blowout.`], anchor: 'fan-crowd' },
-        { body: `One warning, hotshot: reach ${FAME_TO_WIN} FP without a comfortable lead and the sky splits open — the ROCK GOD descends as a final boss for EVERYONE. Win big or win together.`, anchor: 'fame-bar' },
+        { body: `One warning, hotshot: reach ${fameToWin} FP without a comfortable lead and the sky splits open — the ROCK GOD descends as a final boss for EVERYONE. Win big or win together.`, anchor: 'fame-bar' },
       ],
     },
     skill_unlock: {
@@ -4827,7 +4836,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Called from grantFame with the spirit's fame before/after the grant.
   function checkStageFxThresholds(oldFame, newFame) {
-    for (const t of STAGE_FX_THRESHOLDS) {
+    for (const t of stageFxThresholds) {
       if (oldFame < t && newFame >= t) {
         // Phase 6b — the engine records the threshold (exactly-once) and draws
         // from the SEEDED deck; a duplicate crossing reports lastDraw = null.
@@ -4982,7 +4991,7 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   // ─── 🤘 ROCK GOD SYSTEM ──────────────────────────────────────────────────────
-  // The endgame boss. Reaching FAME_TO_WIN with a lead < ROCK_GOD_RUNAWAY_LEAD
+  // The endgame boss. Reaching fameToWin with a lead < ROCK_GOD_RUNAWAY_LEAD
   // summons ONE god (picked from the leader's playstyle) to the Limelight.
   // Rules: no overlays — Drive = damage = FP (1:1, unamplified), the god acts at
   // the end of EVERY turn, big attacks telegraph one turn ahead, human turns are
@@ -5021,7 +5030,7 @@ function Game({ gameState, onReturnToLobby }) {
       setTimeout(() => applyVibeDamage(squatter.id, 1, 'Divine Shockwave'), 300);
     }
 
-    addLog(`🌩️🌩️🌩️ ${leader?.name} reaches ${FAME_TO_WIN} Fame — but the race is TOO CLOSE. The sky splits open…`);
+    addLog(`🌩️🌩️🌩️ ${leader?.name} reaches ${fameToWin} Fame — but the race is TOO CLOSE. The sky splits open…`);
     addLog(`${def.icon} ${def.name.toUpperCase()} — ${def.title} — DESCENDS TO THE LIMELIGHT!`);
     addLog(`🤝 The Spirits stand united! Drive = damage = Fame. Watch the clock — ${ROCK_GOD_TIMER_SECONDS}s a turn, or face his VENGEANCE.`);
     setGodBanner({ key: Date.now() });
@@ -5210,7 +5219,7 @@ function Game({ gameState, onReturnToLobby }) {
   // src/engine/systems/combat.js (Phase 3a); imported at the top of this file.
 
   // Core Fame grant — every FP in the game flows through here.
-  // Hitting FAME_TO_WIN triggers the Fame Legend victory.
+  // Hitting fameToWin triggers the Fame Legend victory.
   // ⛔ HARD PER-TURN CAP (2026-07-16 balance pass): a spirit can bank at most
   // FAME_PER_TURN_CAP FP inside one turn window (reset for everyone when any
   // new turn starts — see startNewTurnNotes). Overflow is DISCARDED. This is
@@ -5246,7 +5255,7 @@ function Game({ gameState, onReturnToLobby }) {
     dispatch(fameChanged(spiritId, finalFp));
     const crowdStr = (amplify && uncapped !== fp) ? ` (${fp} ×🎤${mult.toFixed(2)} crowd)` : '';
     const capStr   = clipped > 0 ? ` ⛔ capped at ${FAME_PER_TURN_CAP}/turn (${clipped} lost to the noise)` : '';
-    addLog(`⭐ ${sp?.name} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${capStr}${reason ? ` — ${reason}` : ''}! (${Math.min(newFame, FAME_TO_WIN)}/${FAME_TO_WIN})`);
+    addLog(`⭐ ${sp?.name} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${capStr}${reason ? ` — ${reason}` : ''}! (${Math.min(newFame, fameToWin)}/${fameToWin})`);
     showTip('fame');
     // 🎇 The show grows with the legend — Stage Effects fire at ⭐8/16/24.
     checkStageFxThresholds(ns.fame ?? 0, newFame);
@@ -5255,7 +5264,7 @@ function Game({ gameState, onReturnToLobby }) {
     // payouts, Azrael chains) left `newFame` one-plus grants stale — the runaway
     // check saw a smaller lead than reality and summoned the God into a blowout.
     const myFame = engineRef.current.noteStates?.[spiritId]?.fame ?? newFame;
-    if (myFame >= FAME_TO_WIN) {
+    if (myFame >= fameToWin) {
       if (engineRef.current.rockGod.summoned) {
         // 🤘 A Rock God holds the gate — Fame alone can't end it now. Victory
         // flows only through the boss fight (godDefeated crowns the FP leader).
@@ -5265,13 +5274,14 @@ function Game({ gameState, onReturnToLobby }) {
         const rivalBest = Math.max(0, ...spirits.filter(s => s.id !== spiritId && !s.knockedOut)
           .map(s => engineRef.current.noteStates?.[s.id]?.fame ?? 0));
         const lead = myFame - rivalBest;
-        if (lead >= ROCK_GOD_RUNAWAY_LEAD) {
-          addLog(`🌟🌟🌟 ${sp?.name} reaches ${FAME_TO_WIN} Fame — ⭐${myFame} vs ⭐${rivalBest}, a runaway lead of ${lead}. A LEGEND IS BORN! 🌟🌟🌟`);
+        if (lead >= ROCK_GOD_RUNAWAY_LEAD || startingLives < 3) {
+          // Rock Gods only descend in games with 3+ lives (≥24 FP). Shorter games crown outright.
+          addLog(`🌟🌟🌟 ${sp?.name} reaches ${fameToWin} Fame — ⭐${myFame} vs ⭐${rivalBest}, a runaway lead of ${lead}. A LEGEND IS BORN! 🌟🌟🌟`);
           setTimeout(() => {
             dispatch(winnerDeclared(spiritId)); // N5: engine winner slice → derived `winner` renders on all clients
           }, 600);
         } else {
-          addLog(`⭐ ${sp?.name} hits ${FAME_TO_WIN} Fame — but ⭐${myFame} vs ⭐${rivalBest} is only a ${lead}-point lead (needs ${ROCK_GOD_RUNAWAY_LEAD}). The Gods demand a FINALE.`);
+          addLog(`⭐ ${sp?.name} hits ${fameToWin} Fame — but ⭐${myFame} vs ⭐${rivalBest} is only a ${lead}-point lead (needs ${ROCK_GOD_RUNAWAY_LEAD}). The Gods demand a FINALE.`);
           summonRockGod(spiritId);
         }
       }
@@ -7935,24 +7945,34 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Drive/Sustain split: plan + execute all stack commits for this bot's turn
   function botPlanStackCommit(self) {
-    const ns = engineRef.current.noteStates?.[self.id] ?? {};
+    // Read from React state (noteStates) — driveStack/sustainStack/stackCommitsThisTurn
+    // are written via setNoteField which only updates React state, not engineRef.
+    const ns = noteStates[self.id] ?? engineRef.current.noteStates?.[self.id] ?? {};
     const sp = self;
     return _botPlanStackCommit(ns, self.id, botPersona(self), sp.vibe ?? 10, sp.maxVibe ?? 10);
   }
 
   function botExecuteStackCommits(self, commits) {
     if (!commits || !commits.length) return;
+    // Read initial state from React (noteStates), NOT engineRef — engineRef
+    // doesn't reflect setNoteField writes and would cause stale reads + overwrites.
+    const ns = noteStates[self.id] ?? engineRef.current.noteStates?.[self.id] ?? {};
+    let dStack = [...(ns.driveStack ?? [])];
+    let sStack = [...(ns.sustainStack ?? [])];
+    let commitsUsed = ns.stackCommitsThisTurn ?? 0;
+
     for (const { note, dest } of commits) {
-      const ns = engineRef.current.noteStates?.[self.id] ?? {};
-      const stackKey = dest === 'sustain' ? 'sustainStack' : 'driveStack';
-      const stack = ns[stackKey] ?? [];
+      const stack = dest === 'sustain' ? sStack : dStack;
       if (stack.length >= STACK_CAP) continue;
-      if ((ns.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET) break;
-      const next = [...stack, note];
-      setNoteField(self.id, { [stackKey]: next, stackCommitsThisTurn: (ns.stackCommitsThisTurn ?? 0) + 1 });
-      const ch = botSpiritChord(self.id, next);
+      if (commitsUsed >= STACK_COMMIT_BUDGET) break;
+      stack.push(note);
+      commitsUsed++;
+      const ch = botSpiritChord(self.id, stack);
       addLog(`🎸 ${self.name} voices ${note} into the ${dest === 'sustain' ? 'Sustain' : 'Drive'} Stack — ${ch.name} (${dest === 'sustain' ? '🛡️' : '⚔️'}${dest === 'sustain' ? ch.sustain : ch.drive}).`);
     }
+
+    // Single write with final accumulated state — no overwrites
+    setNoteField(self.id, { driveStack: dStack, sustainStack: sStack, stackCommitsThisTurn: commitsUsed });
   }
 
   // 🎸 SYNTHETIC RIFF-OFF — pure logic in engine/policies/bot.js; this wrapper
@@ -8005,6 +8025,10 @@ function Game({ gameState, onReturnToLobby }) {
 
     // Shared per-cycle reads (fresh every fire — the nudge re-runs this effect).
     const ns        = engineRef.current.noteStates?.[self.id] ?? {};
+    // React state mirror — fields written via setNoteField (driveStack, sustainStack,
+    // stackCommitsThisTurn) only land here, not in engineRef. Always prefer reactNs
+    // for those fields to avoid stale reads / infinite loops.
+    const reactNs   = noteStates[self.id] ?? {};
     const unlocked  = ns.unlockedSkills ?? [];
     const liveSelf  = engineRef.current.spirits.find(s => s.id === self.id) ?? self;
     const hasSkill    = (id) => unlocked.includes(id);
@@ -8032,7 +8056,8 @@ function Game({ gameState, onReturnToLobby }) {
       }
 
       // 1b.5) STACK COMMITS — voice notes into Drive/Sustain stacks (up to 3/turn budget).
-      if ((ns.stackCommitsThisTurn ?? 0) < STACK_COMMIT_BUDGET) {
+      // Budget check uses reactNs (React state) — see shared reads above.
+      if ((reactNs.stackCommitsThisTurn ?? 0) < STACK_COMMIT_BUDGET) {
         const commits = botPlanStackCommit(self);
         if (commits.length) { schedule(guard(() => botExecuteStackCommits(self, commits))); return; }
       }
@@ -8162,7 +8187,7 @@ function Game({ gameState, onReturnToLobby }) {
         // Needs 2 AP + ≥ 2 unused stock (leaves us Exposed).
         if (finTargets.length && unused >= 2 && steps >= 2) {
           const t = botPickTarget(finTargets, self);
-          const tSustain = spiritChord(t.id, engineRef.current.noteStates?.[t.id]?.sustainStack ?? []).sustain;
+          const tSustain = spiritChord(t.id, (noteStates[t.id] ?? engineRef.current.noteStates?.[t.id])?.sustainStack ?? []).sustain;
           if (tSustain >= 6) {
             botStepRef.current = 'ending';
             schedule(guard(() => hasBlaster ? resolveBlasterOfRa() : resolveFinisher(t.id)));
@@ -8177,7 +8202,7 @@ function Game({ gameState, onReturnToLobby }) {
           const physAp    = kit.physical?.apCost ?? 1;
           const noteCost  = kit.physical?.noteCost ?? 2;
           const conePhys  = getRivalsInCone(self);
-          if (conePhys.length && steps >= physAp && (ns.driveStack ?? []).length >= noteCost) {
+          if (conePhys.length && steps >= physAp && (reactNs.driveStack ?? ns.driveStack ?? []).length >= noteCost) {
             const t = botPickTarget(conePhys, self);
             botStepRef.current = 'ending';
             schedule(guard(() => resolvePhysicalSpecial(t.id)));
@@ -8913,7 +8938,7 @@ function Game({ gameState, onReturnToLobby }) {
         noteStates={noteStates}
         limelightScores={limelightScores}
         onReturnToLobby={onReturnToLobby}
-        FAME_TO_WIN={FAME_TO_WIN}
+        fameToWin={fameToWin}
         LIMELIGHT_TO_WIN={LIMELIGHT_TO_WIN}
       />
       {/* 🤘 Total wipe — the Rock God keeps the crown */}
@@ -9040,7 +9065,7 @@ function Game({ gameState, onReturnToLobby }) {
         })()}
         <span style={{fontSize:9, padding:'2px 9px', background:'#0a1020', border:'1px solid #1e3a5f',
           borderRadius:10, color:'#6a8aaa'}} title="First spirit to reach the Fame target wins">
-          🏆 first to ⭐{FAME_TO_WIN} FP wins
+          🏆 first to ⭐{fameToWin} FP wins
         </span>
         {flamingHexes.roundsLeft > 0 && (
           <span style={{fontSize:9,padding:"2px 8px",background:"#1a0800",border:"1px solid #ff6622",borderRadius:10,color:"#ff8844",
@@ -9366,10 +9391,10 @@ function Game({ gameState, onReturnToLobby }) {
                   {/* Vibe bar removed — shown on board standee + purple maxVibe bar below */}
                   {/* ⭐ Fame — the win condition, front and centre */}
                   <div data-tip-anchor="fame-bar" style={{display:"flex",alignItems:"center",gap:4,marginTop:4}}
-                    title={`Fame Points — first to ${FAME_TO_WIN} wins the game!`}>
+                    title={`Fame Points — first to ${fameToWin} wins the game!`}>
                     <span style={{fontSize:7,color:"#ffd700",width:22,fontWeight:700}}>FAME</span>
                     <div className="bar" style={{flex:1,boxShadow:"0 0 5px #ffd70033"}}>
-                      <div className="bar-f" style={{width:`${Math.min(100,((ns.fame ?? 0)/FAME_TO_WIN)*100)}%`,
+                      <div className="bar-f" style={{width:`${Math.min(100,((ns.fame ?? 0)/fameToWin)*100)}%`,
                         background:"linear-gradient(90deg,#aa7700,#ffd700)",
                         boxShadow:"0 0 6px #ffd70088"}}/>
                     </div>

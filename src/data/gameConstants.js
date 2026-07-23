@@ -1,6 +1,6 @@
 // Every 8 Decibills -> player unlocks their targeted skill.
 // Points carry over after crossing a threshold.
-export const DB_UPGRADE_THRESHOLD = 8;
+export const DB_UPGRADE_THRESHOLD = 6;
 
 // Stock is a reservoir, not a fresh hand. Unused notes carry
 // over; only this many spent slots recharge per turn.
@@ -27,7 +27,10 @@ export const CAMERA_ZOOM_MS  = 620;          // push-in tween length; impact rum
 export const LIMELIGHT_HEX    = 56;   // centre stage hex
 export const LIMELIGHT_TO_WIN = 3;    // (legacy -- instant Limelight win removed; kept for overlay refs)
 export const LIMELIGHT_FAME   = 1;    // Fame paid (x crowd) for holding the centre Limelight a full turn
-export const FAME_TO_WIN      = 25;   // Fame Points needed for a Fame Legend victory
+// FP-per-life scales with player count: fewer players → more FP per life.
+// 2P → 8, 3P → 7, 4P → 6.  fameToWin = startingLives × fpPerLife(playerCount).
+export function fpPerLife(playerCount) { return Math.max(5, 10 - playerCount); }
+export const FAME_TO_WIN      = 24;   // legacy fallback (3 lives × 8) — runtime uses startingLives × fpPerLife(playerCount)
 
 // HARD per-turn FP ceiling (2026-07-16 balance pass). Overlapping FP systems
 // (sonic margin + spotlight + rider + groove, riff replays, Azrael, Limelight,

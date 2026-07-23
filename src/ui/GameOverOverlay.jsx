@@ -11,12 +11,12 @@ export function GameOverOverlay({
   noteStates,
   limelightScores,
   onReturnToLobby,
-  FAME_TO_WIN,
+  fameToWin,
   LIMELIGHT_TO_WIN,
 }) {
   if (!winner) return null;
   const w = spirits.find(s => s.id === winner);
-  const isFameWin   = (noteStates[winner]?.fame ?? 0) >= FAME_TO_WIN;
+  const isFameWin   = (noteStates[winner]?.fame ?? 0) >= fameToWin;
   const isLimelight = !isFameWin && (limelightScores[winner] ?? 0) >= LIMELIGHT_TO_WIN;
   return (
     <div style={{
@@ -37,7 +37,7 @@ export function GameOverOverlay({
           </div>
           <div style={{fontSize:10,color:"#3a5a7a"}}>
             {isFameWin
-              ? `reached ${FAME_TO_WIN} Fame Points — their name is written in lights forever!`
+              ? `reached ${fameToWin} Fame Points — their name is written in lights forever!`
               : isLimelight
                 ? `held the Limelight for ${LIMELIGHT_TO_WIN} turns and DOMINATED the stage!`
                 : "is the last Spirit standing!"}
