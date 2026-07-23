@@ -10184,7 +10184,7 @@ function Game({ gameState, onReturnToLobby }) {
                     <div style={{marginBottom:5,minHeight:34,background:"#140a18",border:"1px solid #ff66cc44",borderRadius:4,padding:"4px 7px"}}>
                       {hn && next ? (
                         <>
-                          <div style={{fontSize:8,color:"#ff99dd",fontWeight:700,marginBottom:2}}>🎸 Add {hn} to {label} -> {next.name}</div>
+                          <div style={{fontSize:8,color:"#ff99dd",fontWeight:700,marginBottom:2}}>🎸 Add {hn} to {label} → {next.name}</div>
                           <div style={{fontSize:8}}>
                             <span style={{color:"#ff6644",fontWeight:700}}>⚔️{next.drive}</span>{'   '}
                             <span style={{color:"#44aaff",fontWeight:700}}>🛡️{next.sustain}</span>
