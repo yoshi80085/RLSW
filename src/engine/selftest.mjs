@@ -31,6 +31,7 @@ import {
   finisherOutcome, hammerOnDamage, axeSwingWhiffRefill,
   pinchHarmonicCondition, powerChordCondition, gallopCondition,
   pullOffKnockback, feedbackRetaliation, headbangFanOverrides,
+  sonicDriveSpend, physicalDriveSpend, sustainChip, frayFromSustain, finisherStackWipe,
 } from "./systems/combat.js";
 import {
   usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState,
@@ -51,6 +52,7 @@ import {
   LIMELIGHT_HEX, UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT,
   FAN_BORED_AFTER, FAN_DECAY,
   TOKEN_MAX, EVENT_RESPAWN_TURNS, CHARGE_ZONE_COOLDOWN,
+  STACK_CAP, STACK_COMMIT_BUDGET,
 } from "../data/gameConstants.js";
 import { hexRingFromCenter } from "../board/boardHelpers.js";
 import { HEX_BY_NUM, EDGE_HEX_NUMS } from "../board/hexMap.js";
@@ -763,9 +765,12 @@ const config = {
   assert.deepEqual(Object.keys(s.noteStates).sort(), ["vera", "wildaxe"], "a note sheet per spirit");
   const ns = s.noteStates.wildaxe;
   assert.equal(typeof ns.rootNote, "string", "root note built");
-  assert.equal(ns.noteStock.length, 8, "default stock size 8");
+  assert.equal(ns.noteStock.length, 10, "default stock size 10 (Drive/Sustain split)");
   assert.deepEqual(ns.usedStockIdx, [], "usedStockIdx is a JSON array (5a)");
-  assert.equal(ns.chordStack.length, 2, "opens on a power chord");
+  assert.equal(ns.driveStack.length, 2, "opens on a power chord in Drive");
+  assert.equal(ns.sustainStack.length, 2, "opens on a power chord in Sustain");
+  assert.deepEqual(ns.driveStack, ns.sustainStack, "both stacks start with the same power chord");
+  assert.equal(ns.stackCommitsThisTurn, 0, "stack commits start at 0");
   assert.equal(ns.scaleMode, "major");
   assert.equal(ns.pivotPending, true);
 
@@ -1893,7 +1898,33 @@ const config = {
   const chI = botMod.botSpiritChord('intergalactic_0', ['C4', 'E4', 'G4']);
   assert.equal(chI.sustain, ch.sustain + 1, "intergalactic_0 gets +1 sustain");
 
-  // ── botPlanRevoice ──
+  // ── botPlanStackCommit (Drive/Sustain split) ──
+  const stackNS = {
+    stackCommitsThisTurn: 0,
+    driveStack: ['C4'],
+    sustainStack: ['C4'],
+    noteStock: ['E4', 'G4', 'B4', 'D5', 'A4', 'F4', 'C4', 'G4', 'E4', 'B4'],
+    usedStockIdx: [],
+  };
+  const commits = botMod.botPlanStackCommit(stackNS, 'wildaxe', maestroP);
+  assert.ok(Array.isArray(commits), "botPlanStackCommit returns an array");
+  assert.ok(commits.length <= 3, "botPlanStackCommit respects budget cap");
+  for (const c of commits) {
+    assert.ok(typeof c.note === 'string', "commit has a note");
+    assert.ok(c.dest === 'drive' || c.dest === 'sustain', "commit dest is drive or sustain");
+  }
+  // Budget exhausted → empty
+  const exhaustedNS = { ...stackNS, stackCommitsThisTurn: 3 };
+  assert.deepEqual(botMod.botPlanStackCommit(exhaustedNS, 'wildaxe', maestroP), [],
+    "budget exhausted → no commits");
+  // Both stacks full → empty
+  const fullStackNS = { ...stackNS,
+    driveStack: ['C4','D4','E4','F4','G4'],
+    sustainStack: ['C4','D4','E4','F4','G4'] };
+  assert.deepEqual(botMod.botPlanStackCommit(fullStackNS, 'wildaxe', maestroP), [],
+    "both stacks full → no commits");
+
+  // ── botPlanRevoice (legacy, still exported) ──
   const revoiceNS = {
     revoiceUsedThisTurn: false,
     chordStack: ['C4'],
@@ -1901,15 +1932,7 @@ const config = {
   };
   const revoice = botMod.botPlanRevoice(revoiceNS, 'wildaxe', maestroP);
   assert.ok(revoice === null || typeof revoice === 'string',
-    "botPlanRevoice returns a note or null");
-  // Already used → null
-  const usedRevoiceNS = { ...revoiceNS, revoiceUsedThisTurn: true };
-  assert.equal(botMod.botPlanRevoice(usedRevoiceNS, 'wildaxe', maestroP), null,
-    "revoice already used → null");
-  // Full chord → null
-  const fullChordNS = { ...revoiceNS, chordStack: ['C4','D4','E4','F4','G4'] };
-  assert.equal(botMod.botPlanRevoice(fullChordNS, 'wildaxe', maestroP), null,
-    "full chord → null");
+    "botPlanRevoice returns a note or null (legacy compat)");
 
   // ── botRivalsWithin ──
   const testSpirits = [
@@ -1950,8 +1973,10 @@ const config = {
     melodyLine: [],
     usedStockIdx: [],
     discordUnlocks: [],
-    revoiceUsedThisTurn: false,
-    chordStack: ['C4'],
+    stackCommitsThisTurn: 0,
+    driveStack: ['C4'],
+    sustainStack: ['C4'],
+    chordStack: ['C4'],  // deprecated compat
     finalsTrail: [],
     cadenceCooldowns: {},
     pivotPending: false,
@@ -1991,12 +2016,13 @@ const config = {
   const mv2 = botMod.botPlanMove(detState, detState.spirits[0], persona, []);
   assert.strictEqual(mv1, mv2, "bot movement: identical result on identical state");
 
-  // ── Revoice determinism ──
-  const rvNS = { revoiceUsedThisTurn: false, chordStack: ['C4'],
-                 noteStock: ['E4', 'G4', 'B4', 'D5'] };
-  const rv1 = botMod.botPlanRevoice(rvNS, sid, persona);
-  const rv2 = botMod.botPlanRevoice(rvNS, sid, persona);
-  assert.strictEqual(rv1, rv2, "bot revoice: identical result on identical state");
+  // ── Stack commit determinism ──
+  const scNS = { stackCommitsThisTurn: 0, driveStack: ['C4'], sustainStack: ['C4'],
+                 noteStock: ['E4', 'G4', 'B4', 'D5', 'A4', 'F4', 'C4', 'G4', 'E4', 'B4'],
+                 usedStockIdx: [] };
+  const sc1 = botMod.botPlanStackCommit(scNS, sid, persona);
+  const sc2 = botMod.botPlanStackCommit(scNS, sid, persona);
+  assert.deepEqual(sc1, sc2, "bot stack commit: identical result on identical state");
 
   // ── Target picking determinism ──
   const cands = detState.spirits.filter(s => s.id !== sid);
@@ -2310,8 +2336,8 @@ const config = {
   assert.equal(hammerOnDamage(5), 8, "2×5=10 capped to 8");
   assert.equal(hammerOnDamage(1), 2, "2×1=2");
 
-  // Axe Swing whiff: halved refill (STOCK_REFILL_RATE=4 → 2)
-  assert.equal(axeSwingWhiffRefill(), 2, "whiff refill = 2");
+  // Axe Swing whiff: halved refill (STOCK_REFILL_RATE=6 → 3)
+  assert.equal(axeSwingWhiffRefill(), 3, "whiff refill = 3");
 }
 
 // -- Stance v2: sonic special conditions ------------------------------------------
@@ -2325,10 +2351,11 @@ const config = {
   assert.equal(powerChordCondition(['C', 'G'], 'G'), true, "has the 5th");
   assert.equal(powerChordCondition(['C', 'E'], 'G'), false, "no 5th");
 
-  // Gallop: stack full
-  assert.equal(gallopCondition(['C','D','E','F','G','A'], 6), true, "6/6 = full");
-  assert.equal(gallopCondition(['C','D','E','F','G'], 6), false, "5/6 = not full");
+  // Gallop: stack full — default cap is now STACK_CAP (5) per Drive/Sustain split
+  assert.equal(gallopCondition(['C','D','E','F','G']), true, "5/5 = full (STACK_CAP default)");
+  assert.equal(gallopCondition(['C','D','E','F']), false, "4/5 = not full");
   assert.equal(gallopCondition(['C','D','E'], 3), true, "3/3 = full (custom cap)");
+  assert.equal(gallopCondition(['C','D','E','F','G','A'], 6), true, "6/6 = full (explicit cap)");
 }
 
 // -- Stance v2: passive effect helpers --------------------------------------------
@@ -2455,6 +2482,74 @@ const config = {
   assert.equal(skillEligibility(sonicDef, noSkills).reason, "prereq");
   assert.ok(skillEligibility(sonicDef, withPhys).ok, "stance_sonic eligible after physical");
   assert.ok(!skillEligibility(sonicDef, withBoth).ok, "already unlocked");
+}
+
+// -- Drive/Sustain stack split: constants + spend helpers -----------------------
+{
+  // Constants are sensible
+  assert.equal(STACK_CAP, 5, "STACK_CAP = 5");
+  assert.equal(STACK_COMMIT_BUDGET, 3, "STACK_COMMIT_BUDGET = 3");
+
+  // ── sonicDriveSpend — always pops 1 from Drive ──
+  assert.deepEqual(sonicDriveSpend(['C', 'E', 'G']), { driveStack: ['C', 'E'] }, "sonic pops last Drive note");
+  assert.deepEqual(sonicDriveSpend(['C']), { driveStack: [] }, "sonic empties a single-note Drive");
+  assert.equal(sonicDriveSpend([]), null, "sonic on empty Drive → null");
+  assert.equal(sonicDriveSpend(null), null, "sonic on null Drive → null");
+
+  // ── physicalDriveSpend — pops 2 on hit ──
+  assert.deepEqual(physicalDriveSpend(['C', 'E', 'G']), { driveStack: ['C'] }, "physical pops 2 from Drive");
+  assert.deepEqual(physicalDriveSpend(['C', 'E']), { driveStack: [] }, "physical empties a 2-note Drive");
+  assert.equal(physicalDriveSpend(['C']), null, "physical needs ≥ 2 notes");
+  assert.equal(physicalDriveSpend([]), null, "physical on empty → null");
+
+  // ── sustainChip — defender loses 1 from Sustain on hit ──
+  assert.deepEqual(sustainChip(['C', 'E', 'G']), { sustainStack: ['C', 'E'] }, "chip pops last Sustain note");
+  assert.equal(sustainChip([]), null, "chip on empty → null");
+
+  // ── frayFromSustain — removes from Sustain, floor at 1 survivor ──
+  assert.deepEqual(frayFromSustain(['C', 'E', 'G'], 1), { sustainStack: ['C', 'E'] }, "fray 1 from 3");
+  assert.deepEqual(frayFromSustain(['C', 'E', 'G'], 2), { sustainStack: ['C'] }, "fray 2 from 3 — 1 survives");
+  assert.deepEqual(frayFromSustain(['C', 'E', 'G'], 99), { sustainStack: ['C'] }, "fray capped — 1 always survives");
+  assert.deepEqual(frayFromSustain(['C'], 1), { sustainStack: ['C'] }, "fray on single note — it survives");
+  assert.deepEqual(frayFromSustain([], 1), { sustainStack: [] }, "fray on empty → empty");
+
+  // ── finisherStackWipe — obliterate clears both ──
+  assert.deepEqual(
+    finisherStackWipe(['C', 'E', 'G'], ['D', 'F'], 'obliterate'),
+    { driveStack: [], sustainStack: [] }, "obliterate clears both stacks");
+
+  // ── finisherStackWipe — scatter removes proportionally ──
+  assert.deepEqual(
+    finisherStackWipe(['C', 'E', 'G'], ['D', 'F', 'A'], 'scatter', 2),
+    { driveStack: ['C'], sustainStack: ['D'] }, "scatter removes 2 from each");
+  assert.deepEqual(
+    finisherStackWipe(['C'], ['D'], 'scatter', 5),
+    { driveStack: [], sustainStack: [] }, "scatter can fully empty short stacks");
+  assert.deepEqual(
+    finisherStackWipe([], [], 'scatter', 3),
+    { driveStack: [], sustainStack: [] }, "scatter on empty → empty");
+
+  // ── conditions use the right stack ──
+  // pinchHarmonic reads Drive Stack
+  assert.equal(pinchHarmonicCondition(['C', 'E', 'G', 'C'], 'C'), true, "pinchHarmonic on Drive: root 2×");
+  // powerChord reads Drive Stack
+  assert.equal(powerChordCondition(['C', 'G'], 'G'), true, "powerChord on Drive: has 5th");
+  // gallop reads Drive Stack with STACK_CAP default
+  assert.equal(gallopCondition(['C', 'D', 'E', 'F', 'G']), true, "gallop: 5/5 full at STACK_CAP");
+  assert.equal(gallopCondition(['C', 'D', 'E', 'F']), false, "gallop: 4/5 not full");
+
+  // ── makeInitialNoteState has dual stacks ──
+  const testNS = makeInitialNoteState("test_spirit");
+  assert.ok(Array.isArray(testNS.driveStack), "driveStack is an array");
+  assert.ok(Array.isArray(testNS.sustainStack), "sustainStack is an array");
+  assert.equal(testNS.driveStack.length, 2, "driveStack starts with power chord");
+  assert.equal(testNS.sustainStack.length, 2, "sustainStack starts with power chord");
+  assert.deepEqual(testNS.driveStack, testNS.sustainStack, "both stacks identical at start");
+  assert.equal(testNS.stackCommitsThisTurn, 0, "stackCommitsThisTurn starts at 0");
+  assert.equal(testNS.noteStock.length, 10, "base stock is 10");
+  // Ronin gets 11
+  const roninNS = makeInitialNoteState("cosmic_ronin");
+  assert.equal(roninNS.noteStock.length, 11, "Ronin stock is 11");
 }
 
 console.log("engine selftest: all assertions passed");

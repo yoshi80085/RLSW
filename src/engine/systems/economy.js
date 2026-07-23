@@ -134,15 +134,18 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
   const rawRoot = NOTE_POOL[Math.floor(rand() * NOTE_POOL.length)];
   const initMode = "major";
   const root = canonicalRoot(rawRoot, initMode);
-  // 🗡️ SHREDDING RONIN carries a deeper well: 10 stock slots instead of 8.
-  const stockSize = spiritId === "cosmic_ronin" ? 10 : 8;
+  // 🗡️ SHREDDING RONIN carries a deeper well: 11 stock slots instead of 10.
+  const stockSize = spiritId === "cosmic_ronin" ? 11 : 10;
+  const fifth = semitonesUp(root, 7);
   return {
     noteStock:       refillStock(root, initMode, stockSize, rand),
     melodyLine:      [],
-    chordStack:      [root, semitonesUp(root, 7)], // 🎸 Power Chord (R+5); persists across turns
-    // ── 🧍 STANCE v2 — fixed per spirit, derived from STARTING_STANCE (no state) ──
-    revoiceUsedThisTurn: false,
-    bonusRevoiceAvailable: false,
+    // ── 🎸 DRIVE / SUSTAIN SPLIT (DRIVE_SUSTAIN_SPLIT_DESIGN.md) ──
+    // Both stacks start with a Power Chord (R+5) — D5/S5, costs no pool notes.
+    driveStack:      [root, fifth],
+    sustainStack:    [root, fifth],
+    chordStack:      [root, fifth],  // DEPRECATED — kept for save compat (like edgeStage)
+    stackCommitsThisTurn: 0,         // 0–STACK_COMMIT_BUDGET per turn, resets at turn start
     usedStockIdx:    [], // insertion-ordered array of spent stock-slot indices (JSON-safe; was a Set)
     rootNote:        root,
     scaleMode:       initMode,

@@ -85,6 +85,7 @@ import {
   botRiffResults as _botRiffResults,
   botPlanNoteStep as _botPlanNoteStep, botSpiritChord,
   botPlanRevoice as _botPlanRevoice,
+  botPlanStackCommit as _botPlanStackCommit,
   botPlanMove as _botPlanMove, botRivalsWithin as _botRivalsWithin,
 } from "./engine/policies/bot.js";
 
@@ -299,7 +300,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STANCE_COMMIT_DB, BOT_DB_SPEND_THRESHOLD } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STANCE_COMMIT_DB, BOT_DB_SPEND_THRESHOLD, STACK_COMMIT_BUDGET, STACK_CAP } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -1038,7 +1039,7 @@ function Game({ gameState, onReturnToLobby }) {
   // diceDisplay: { atk: null|number, def: null|number, rolling: 'atk'|'def'|null }
   const [diceDisplay, setDiceDisplay] = useState(null);
   const moveStepsLeft = engineState.turn.moveStepsLeft; // engine-owned (Phase 2)
-  const [chordMode, setChordMode] = useState(false); // 🎸 taps build the combat chord instead of the melody
+  const [stackCommitDest, setStackCommitDest] = useState(null); // 🎸 null = melody mode, 'drive' | 'sustain' = stack commit mode
   // 🎯 TURN STEP — progressive HUD flow: pivot → chord → melody → move_act
   const [turnStep, setTurnStep] = useState('pivot');
   // 🎵 FLY NOTE — animated chip that flies from Note Stock to the commit track
@@ -2507,12 +2508,13 @@ function Game({ gameState, onReturnToLobby }) {
     // 🎸 CHORD MODE — lift this note into your combat chord instead of the melody.
     // A note spent on the chord is NOT in the track, so it doesn't carry you forward
     // (harmony vs. movement). Consumes the stock slot.
-    if (chordMode || _forceChordMode) {
+    if (stackCommitDest || _forceChordMode) {
       if (hasConfirmed) { addLog('✓ Already confirmed this turn.'); return; }
       if (pivotPending) { addLog('⚡ Declare Major or Minor first!'); return; }
-      if (actingNoteState?.revoiceUsedThisTurn) { addLog('🎸 You\'ve already revoiced your chord this turn.'); return; }
-      const chord = actingNoteState?.chordStack ?? [];
-      if (chord.length >= 5) { addLog('🎸 Chord is full (5 notes) — drop one to revoice.'); return; }
+      if ((actingNoteState?.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET) { addLog('🎸 Stack commit budget spent this turn (3/turn).'); return; }
+      const dest = stackCommitDest || 'drive'; // _forceChordMode fallback
+      const stack = dest === 'sustain' ? (actingNoteState?.sustainStack ?? []) : (actingNoteState?.driveStack ?? []);
+      if (stack.length >= STACK_CAP) { addLog(`🎸 ${dest === 'sustain' ? 'Sustain' : 'Drive'} stack is full (${STACK_CAP} notes).`); return; }
       const note = noteStock[idx];
       playNoteSound(note);
       // 🎸 FLY — launch chord note chip animation toward the chord stack slot
@@ -2522,7 +2524,7 @@ function Game({ gameState, onReturnToLobby }) {
         const stackRect = stackEl.getBoundingClientRect();
         // Target = centre of the slot this note will land in (vertical, top→bottom)
         const slotH = (stackRect.height - 30) / 5; // rough per-slot height
-        const slotIdx = chord.length; // about to become this index
+        const slotIdx = stack.length; // about to become this index
         const tgtX = stackRect.left + stackRect.width / 2;
         const tgtY = stackRect.top + 20 + slotIdx * slotH + slotH / 2;
         if (src) {
@@ -2532,13 +2534,13 @@ function Game({ gameState, onReturnToLobby }) {
           setTimeout(() => setFlyChordNote(null), 500);
         }
       }
+      const stackKey = dest === 'sustain' ? 'sustainStack' : 'driveStack';
       setNoteField(acting.id, {
-        chordStack:   [...chord, note],
+        [stackKey]:   [...stack, note],
         usedStockIdx: usedAdd(usedStockIdx, idx),
-        revoiceUsedThisTurn: true,
-        // (v1 grooveCounter reset removed — v2 stances are ability kits)
+        stackCommitsThisTurn: (actingNoteState?.stackCommitsThisTurn ?? 0) + 1,
       });
-      addLog(`🎸 ${note} → chord (revoiced to ${chord.length + 1} notes)`);
+      addLog(`🎸 ${note} → ${dest} stack (${stack.length + 1} notes, ${STACK_COMMIT_BUDGET - (actingNoteState?.stackCommitsThisTurn ?? 0) - 1} commits left)`);
       return;
     }
     if (melodyLine.length >= 8) return;
@@ -2584,17 +2586,10 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`🎵 ${note} → track (${noteLabel}) · ${newTrack.length} notes`);
   }
 
-  // 🎸 Drop one note from your Chord Stack — costs your single revoice for the turn.
-  // Floored at 1 note so your stance is never empty (you always have SOME chord).
+  // 🎸 Drop not available — use the stack commit system.
+  // Kept as a no-op to avoid breaking any event handler references.
   function removeChordNote(i) {
-    if (!acting || !canAct || hasConfirmed || pivotPending) return; // N4/N7: gate
-    if (actingNoteState?.revoiceUsedThisTurn) { addLog('🎸 You\'ve already revoiced this turn.'); return; }
-    const chord = actingNoteState?.chordStack ?? [];
-    if (chord.length <= 1) { addLog('🎸 Can\'t drop your last note — your stance needs at least one.'); return; }
-    if (i < 0 || i >= chord.length) return;
-    const dropped = chord[i];
-    setNoteField(acting.id, { chordStack: chord.filter((_, k) => k !== i), revoiceUsedThisTurn: true });
-    addLog(`🎸 Dropped ${dropped} from the chord (revoiced).`);
+    addLog('🎸 Drop not available — use the stack commit system.');
   }
 
   function declarePivot(newMode) {
@@ -3074,7 +3069,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     // 🎸 Your chord is a STANDING stance — it persists across turns and is only
     // changed by a revoice (one note add/drop per turn), so we don't touch it here.
-    setChordMode(false);
+    setStackCommitDest(null);
     setNoteField(acting.id, {
       melodyLine:       [],
       // Phase R1: stash the committed melody + riff-match for riff-off use.
@@ -3210,7 +3205,7 @@ function Game({ gameState, onReturnToLobby }) {
           melodyLine:    [],
           committedMelody:  null,   // Phase R1: clear stashed melody from last turn
           committedHasRiff: false,
-          revoiceUsedThisTurn: false,  // 🎸 fresh revoice each turn — your chord PERSISTS
+          stackCommitsThisTurn: 0,  // 🎸 fresh stack commit budget each turn
           usedStockIdx: carriedUsed,
           discordCount: 0,
           hasConfirmed: false,
@@ -3236,9 +3231,7 @@ function Game({ gameState, onReturnToLobby }) {
           // battles burn them early via burnChargesAfterBattle.
           chargeFloorTurns: Math.max(0, (ns.chargeFloorTurns ?? 0) - 1),
           chargeCeilTurns:  Math.max(0, (ns.chargeCeilTurns  ?? 0) - 1),
-          // ⚡ Overcharge bonus revoice expires unspent — it's a one-shot, not a
-          // recurring budget like revoiceUsedThisTurn.
-          bonusRevoiceAvailable: false,
+          // (bonusRevoiceAvailable removed — stack commit system replaces it)
           // Mixer recharges every turn
           mixerUsedThisTurn: false,
           // 🥊 CQC swing exposure clears at the start of your next turn
@@ -3863,32 +3856,48 @@ function Game({ gameState, onReturnToLobby }) {
     // 🗡️ SHREDDING RONIN — the virtuoso finds more music in it: ~50% of the time he
     // pockets a SECOND (fresh in-scale) note from the same find. Roll once, here.
     const roninGreed = spiritId === 'cosmic_ronin' && Math.random() < 0.5;
-    const revoiceSpent = !!noteStates[spiritId]?.revoiceUsedThisTurn;
-    if (revoiceSpent) {
+    const budgetSpent = (noteStates[spiritId]?.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET;
+    if (budgetSpent) {
       bankLostChordNote(spiritId, tok.note, roninGreed);
       return;
     }
-    // 🤖 Bots auto-decide: chord if it improves their stack, otherwise bank.
+    // 🤖 Bots auto-decide: drive/sustain stack if it improves their stats, otherwise bank.
     const pickupSpirit = spirits.find(s => s.id === spiritId);
     if (pickupSpirit?.cpu) {
       const ns = noteStates[spiritId] ?? {};
-      const chord = ns.chordStack ?? [];
-      if (chord.length < 5) {
-        const curW = botSpiritChord(spiritId, chord);
-        const newW = botSpiritChord(spiritId, [...chord, tok.note]);
-        if ((newW.drive + newW.sustain) > (curW.drive + curW.sustain)) {
-          // Weave into chord stack directly
+      const drive = ns.driveStack ?? [];
+      const sustain = ns.sustainStack ?? [];
+      // Try drive stack first
+      let placed = false;
+      if (drive.length < STACK_CAP) {
+        const curW = botSpiritChord(spiritId, drive);
+        const newW = botSpiritChord(spiritId, [...drive, tok.note]);
+        if (newW.drive > curW.drive) {
           const sp = spirits.find(s => s.id === spiritId);
           setNoteStates(prev => {
             const cur = prev[spiritId]; if (!cur) return prev;
-            return { ...prev, [spiritId]: { ...cur, chordStack: [...(cur.chordStack ?? []), tok.note], revoiceUsedThisTurn: true } };
+            return { ...prev, [spiritId]: { ...cur, driveStack: [...(cur.driveStack ?? []), tok.note], stackCommitsThisTurn: (cur.stackCommitsThisTurn ?? 0) + 1 } };
           });
-          addLog(`🎸 ${sp?.name} weaves the Lost Chord (${tok.note}) straight into the Chord Stack — revoiced!`);
+          addLog(`🎸 ${sp?.name} weaves the Lost Chord (${tok.note}) into the Drive Stack!`);
           if (roninGreed) bankLostChordNote(spiritId, randomNote(ns.rootNote, ns.scaleMode), false);
-          return;
+          placed = true;
         }
       }
-      bankLostChordNote(spiritId, tok.note, roninGreed);
+      if (!placed && sustain.length < STACK_CAP) {
+        const curW = botSpiritChord(spiritId, sustain);
+        const newW = botSpiritChord(spiritId, [...sustain, tok.note]);
+        if (newW.sustain > curW.sustain) {
+          const sp = spirits.find(s => s.id === spiritId);
+          setNoteStates(prev => {
+            const cur = prev[spiritId]; if (!cur) return prev;
+            return { ...prev, [spiritId]: { ...cur, sustainStack: [...(cur.sustainStack ?? []), tok.note], stackCommitsThisTurn: (cur.stackCommitsThisTurn ?? 0) + 1 } };
+          });
+          addLog(`🎸 ${sp?.name} weaves the Lost Chord (${tok.note}) into the Sustain Stack!`);
+          if (roninGreed) bankLostChordNote(spiritId, randomNote(ns.rootNote, ns.scaleMode), false);
+          placed = true;
+        }
+      }
+      if (!placed) bankLostChordNote(spiritId, tok.note, roninGreed);
       return;
     }
     setPendingLostChordPickup({ spiritId, note: tok.note, roninGreed });
@@ -3928,17 +3937,19 @@ function Game({ gameState, onReturnToLobby }) {
     const { spiritId, note, roninGreed } = pendingLostChordPickup;
     setPendingLostChordPickup(null);
     if (choice === 'bank') { bankLostChordNote(spiritId, note, roninGreed); return; }
-    if (choice === 'chord') {
+    if (choice === 'drive' || choice === 'sustain') {
       const sp = spirits.find(s => s.id === spiritId);
       const ns = noteStates[spiritId] ?? {};
-      if ((ns.chordStack ?? []).length >= 5) { bankLostChordNote(spiritId, note, roninGreed); return; }
+      const stackKey = choice === 'sustain' ? 'sustainStack' : 'driveStack';
+      const stack = ns[stackKey] ?? [];
+      if (stack.length >= STACK_CAP) { bankLostChordNote(spiritId, note, roninGreed); return; }
       setNoteStates(prev => {
         const cur = prev[spiritId]; if (!cur) return prev;
-        return { ...prev, [spiritId]: { ...cur, chordStack: [...(cur.chordStack ?? []), note], revoiceUsedThisTurn: true } };
+        return { ...prev, [spiritId]: { ...cur, [stackKey]: [...(cur[stackKey] ?? []), note], stackCommitsThisTurn: (cur.stackCommitsThisTurn ?? 0) + 1 } };
       });
-      addLog(`🎸 ${sp?.name} weaves the Lost Chord (${note}) straight into the Chord Stack — revoiced!`);
+      addLog(`🎸 ${sp?.name} weaves the Lost Chord (${note}) into the ${choice === 'sustain' ? 'Sustain' : 'Drive'} Stack!`);
       // The Ronin's serendipitous second note (if any) still lands in the stock —
-      // the "chord" choice only applies to the primary found note.
+      // the chosen stack only applies to the primary found note.
       if (roninGreed) bankLostChordNote(spiritId, randomNote(ns.rootNote, ns.scaleMode), false);
     }
   }
@@ -4002,20 +4013,18 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   // 🎸 Pick the note the Overcharge chord-assist grants — biased toward whichever
-  // available stock pitch improves the current chord the most (same idea as the
-  // bot's revoice planner in botPlanRevoice), falling back to a fresh in-scale
-  // note if the stock has nothing useful. This is what makes it feel "curated"
-  // rather than a blind freebie.
-  function curatedChordNote(spiritId) {
+  // available stock pitch improves the targeted stack the most, falling back to a
+  // fresh in-scale note if the stock has nothing useful.
+  function curatedChordNote(spiritId, stackKey = 'driveStack') {
     const ns = noteStates[spiritId] ?? {};
-    const chord = ns.chordStack ?? [];
-    const have  = new Set(chord.map(pitchIndex));
+    const stack = ns[stackKey] ?? [];
+    const have  = new Set(stack.map(pitchIndex));
     const cands = [...new Set((ns.noteStock ?? []).filter(n => !have.has(pitchIndex(n))))];
     if (cands.length) {
       const weight = (c) => c.drive + c.sustain;
-      let best = cands[0], bestW = weight(spiritChord(spiritId, [...chord, cands[0]]));
+      let best = cands[0], bestW = weight(spiritChord(spiritId, [...stack, cands[0]]));
       for (const note of cands.slice(1)) {
-        const w = weight(spiritChord(spiritId, [...chord, note]));
+        const w = weight(spiritChord(spiritId, [...stack, note]));
         if (w > bestW) { bestW = w; best = note; }
       }
       return best;
@@ -4023,26 +4032,27 @@ function Game({ gameState, onReturnToLobby }) {
     return randomNote(ns.rootNote, ns.scaleMode);
   }
 
-  // Chord-assist alternative (Overcharge only): ONE extra Chord Stack note,
-  // curated toward the current chord, PLUS a bonus revoice to spend on it —
-  // kept as a separate flag from revoiceUsedThisTurn (visibly its own budget,
-  // see the ⚡ BONUS REVOICE widget in the Actions panel) so it can't be
-  // laundered into a second free way to touch Drive/Sustain.
+  // Chord-assist alternative (Overcharge only): ONE extra note into the Drive Stack,
+  // counts against the stack commit budget.
   function grantChargeChordAssist(spiritId) {
     const sp = spirits.find(s => s.id === spiritId);
     const ns = noteStates[spiritId] ?? {};
-    if ((ns.chordStack ?? []).length >= 5) {
-      addLog(`🎸 ${sp?.name}'s Chord Stack is already full — the charge sparks into the dice instead.`);
+    const dStack = ns.driveStack ?? [];
+    const sStack = ns.sustainStack ?? [];
+    if (dStack.length >= STACK_CAP && sStack.length >= STACK_CAP) {
+      addLog(`🎸 ${sp?.name}'s stacks are already full — the charge sparks into the dice instead.`);
       grantChargeSpark(spiritId);
       return;
     }
-    const note = curatedChordNote(spiritId);
+    // Pick the stack with room; prefer drive
+    const stackKey = dStack.length < STACK_CAP ? 'driveStack' : 'sustainStack';
+    const note = curatedChordNote(spiritId, stackKey);
     setNoteStates(prev => {
       const cur = prev[spiritId]; if (!cur) return prev;
-      return { ...prev, [spiritId]: { ...cur, chordStack: [...(cur.chordStack ?? []), note], bonusRevoiceAvailable: true } };
+      return { ...prev, [spiritId]: { ...cur, [stackKey]: [...(cur[stackKey] ?? []), note], stackCommitsThisTurn: (cur.stackCommitsThisTurn ?? 0) + 1 } };
     });
     triggerEffectFlash(spiritId, '🎸', 'OVERCHARGED!', '#ff66cc');
-    addLog(`🎸 ${sp?.name} overcharges — ${note} lands straight in the Chord Stack, plus a bonus revoice this turn!`);
+    addLog(`🎸 ${sp?.name} overcharges — ${note} lands straight in the ${stackKey === 'driveStack' ? 'Drive' : 'Sustain'} Stack!`);
   }
 
   // Called whenever a spirit enters a hex during a move.
@@ -4071,32 +4081,10 @@ function Game({ gameState, onReturnToLobby }) {
     else if (choice === 'chord') grantChargeChordAssist(spiritId);
   }
 
-  // ⚡ Bonus revoice widget (Overcharge chord-assist) — add a stock note to the
-  // Chord Stack, or drop one, spending the ONE bonus revoice the charge granted.
-  // Separate guard from the normal revoiceUsedThisTurn budget by design.
-  function spendBonusRevoiceAdd(idx) {
-    if (!acting || !canAct || !actingNoteState?.bonusRevoiceAvailable) return; // N4/N7: gate
-    const chord = actingNoteState.chordStack ?? [];
-    if (chord.length >= 5) { addLog('🎸 Chord Stack is full — drop a note first.'); return; }
-    const note = actingNoteState.noteStock?.[idx];
-    if (note == null) return;
-    const used = actingNoteState.usedStockIdx ?? [];
-    setNoteField(acting.id, {
-      chordStack: [...chord, note],
-      usedStockIdx: usedAdd(used, idx),
-      bonusRevoiceAvailable: false,
-    });
-    addLog(`⚡ ${acting.name} spends the bonus revoice — ${note} joins the Chord Stack!`);
-  }
-  function spendBonusRevoiceDrop(i) {
-    if (!acting || !canAct || !actingNoteState?.bonusRevoiceAvailable) return; // N4/N7: gate
-    const chord = actingNoteState.chordStack ?? [];
-    if (chord.length <= 1) { addLog("🎸 Can't drop your last note — your stance needs at least one."); return; }
-    if (i < 0 || i >= chord.length) return;
-    const dropped = chord[i];
-    setNoteField(acting.id, { chordStack: chord.filter((_, k) => k !== i), bonusRevoiceAvailable: false });
-    addLog(`⚡ ${acting.name} spends the bonus revoice — drops ${dropped} from the chord.`);
-  }
+  // ⚡ Bonus revoice — DEPRECATED (replaced by stack commit budget system).
+  // Kept as no-ops to avoid breaking any stale event handler references.
+  function spendBonusRevoiceAdd(idx) { /* no-op */ }
+  function spendBonusRevoiceDrop(i) { /* no-op */ }
 
   // Resolve the active event (fired by the modal's ROLL / RESOLVE button)
   function resolveActiveEvent() {
@@ -5066,7 +5054,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     const def = ROCK_GODS[god.id];
     const ns = engineRef.current.noteStates?.[spiritId] ?? {};
-    const chord = ns.chordStack?.length ? spiritChord(spiritId, ns.chordStack) : null;
+    const chord = ns.driveStack?.length ? spiritChord(spiritId, ns.driveStack) : null;
     const raw = (chord ? chord.drive : (sp.drive ?? 6)) + (ns.tempDrive ?? 0);
     const winded = god.winded;
     // Phase 6c — the hit lands in the ENGINE (it owns the winded ×2 + HP floor);
@@ -5902,7 +5890,7 @@ function Game({ gameState, onReturnToLobby }) {
     const none = { frayed: 0, destroyed: false, destroyedDrive: 0 };
     const defender = spirits.find(s => s.id === targetId);
     const nsD = noteStates[targetId] ?? {};
-    const stack = nsD.chordStack ?? [];
+    const stack = nsD.sustainStack ?? [];
     if (stack.length <= 1 || posing[targetId]) return none;
     const defChord = spiritChord(targetId, stack);
     const amount = stanceFrayAmount(margin);
@@ -5912,7 +5900,7 @@ function Game({ gameState, onReturnToLobby }) {
     const fray = Math.min(amount, stack.length - 1); // floor: 1 note survives
     const frayedNotes = stack.slice(0, stack.length - fray);
     const frayed = spiritChord(targetId, frayedNotes);
-    setNoteField(targetId, { chordStack: frayedNotes });
+    setNoteField(targetId, { sustainStack: frayedNotes });
     addLog(`🛡️ ${defender?.name}'s chord frays under the blow — ${defChord.name} → ${frayed.name} (🛡️${frayed.sustain}, −${fray} note${fray !== 1 ? 's' : ''})`);
     return {
       frayed: fray,
@@ -5953,10 +5941,10 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillMods.fogActive)    addLog(`🌫️ Fog Machine fires! Defender -1 Drive, -1 Sustain this battle.`);
     if (skillMods.pyroBonus > 0)addLog(`🔥 Pyrotechnics! +${skillMods.pyroBonus} bonus added to Drive roll.`);
 
-    // 🎸 Harmony → combat: Drive/Sustain are read from the chord you committed
-    // (falls back to the static spirit stat until a chord has been played).
-    const atkChord = (nsA.chordStack?.length) ? spiritChord(attacker.id, nsA.chordStack) : null;
-    const defChord = (nsD.chordStack?.length) ? spiritChord(targetId, nsD.chordStack) : null;
+    // 🎸 Harmony → combat: Drive from driveStack, Sustain from sustainStack
+    // (falls back to the static spirit stat until a stack has been played).
+    const atkChord = (nsA.driveStack?.length) ? spiritChord(attacker.id, nsA.driveStack) : null;
+    const defChord = (nsD.sustainStack?.length) ? spiritChord(targetId, nsD.sustainStack) : null;
     const atkChordDrive   = atkChord ? atkChord.drive   : (attacker.drive ?? 6);
     let   defChordSustain = defChord ? defChord.sustain : (defender.sustain ?? 5);
     // 💥 SMASH EXPOSURE — a Smashed rival is wide open: this blow ignores their Sustain, then clears.
@@ -6032,9 +6020,9 @@ function Game({ gameState, onReturnToLobby }) {
     // ⚡ A battle ensued — Charge Zone charges burn off for BOTH combatants.
     burnChargesAfterBattle([attacker.id, targetId], 'the Thrash battle spent it');
     // 🎸 Chord note spending now deferred to closeBattleOverlay — only on a HIT.
-    // Whiffing no longer burns your chord stack.
-    const swingChordLeft = (nsA.chordStack ?? []).slice(2);
-    const swingChordSpent = (nsA.chordStack ?? []).slice(0, 2);
+    // Whiffing no longer burns your drive stack. Physical spends from driveStack ON HIT ONLY.
+    const swingChordLeft = (nsA.driveStack ?? []).slice(2);
+    const swingChordSpent = (nsA.driveStack ?? []).slice(0, 2);
     // 🥊 CQC EXPOSURE — committing to a swing drops your guard: −1 Sustain until your
     // next turn (melee-only risk; ranged Sonic keeps you safe).
     setNoteStates(prev => ({ ...prev, [acting.id]: { ...prev[acting.id],
@@ -6209,24 +6197,33 @@ function Game({ gameState, onReturnToLobby }) {
       smashExposed: true,
     });
 
-    // Stack wipe — scatter or obliterate the rival's notes
+    // Stack wipe — scatter or obliterate the rival's notes + BOTH combat stacks
     if (outcome.stackWipe === 'obliterate') {
-      // Total obliteration: mark ALL of target's stock as used
+      // Total obliteration: mark ALL of target's stock as used + wipe both stacks
       setNoteStates(prev => {
         const tns = prev[targetId]; if (!tns) return prev;
         const allIdx = (tns.noteStock ?? []).map((_, i) => i);
-        return { ...prev, [targetId]: { ...tns, usedStockIdx: allIdx } };
+        return { ...prev, [targetId]: { ...tns, usedStockIdx: allIdx, driveStack: [], sustainStack: [] } };
       });
-      addLog(`💥 ${target.name}'s chord stack is OBLITERATED — every note destroyed!`);
+      addLog(`💥 ${target.name}'s stacks are OBLITERATED — every note destroyed!`);
     } else {
-      // Scatter: Smash-style partial scatter
+      // Scatter: Smash-style partial scatter from stock + proportional removal from both stacks
       const scatterN = outcome.scatterN;
       setNoteStates(prev => {
         const tns = prev[targetId]; if (!tns) return prev;
         const tUsed   = tns.usedStockIdx ?? [];
         const tUnused = (tns.noteStock ?? []).map((_, i) => i).filter(i => !usedHas(tUsed, i));
         const toScatter = tUnused.slice(0, scatterN);
-        return { ...prev, [targetId]: { ...tns, usedStockIdx: usedAdd(tUsed, toScatter) } };
+        // Remove proportionally from both stacks (half from each, floor 1 remaining)
+        const dStack = tns.driveStack ?? [];
+        const sStack = tns.sustainStack ?? [];
+        const dRemove = Math.min(Math.ceil(scatterN / 2), Math.max(0, dStack.length - 1));
+        const sRemove = Math.min(Math.floor(scatterN / 2), Math.max(0, sStack.length - 1));
+        return { ...prev, [targetId]: { ...tns,
+          usedStockIdx: usedAdd(tUsed, toScatter),
+          driveStack: dStack.slice(0, dStack.length - dRemove),
+          sustainStack: sStack.slice(0, sStack.length - sRemove),
+        } };
       });
       if (outcome.scatterN > 0) addLog(`💥 ${outcome.scatterN} of ${target.name}'s notes scatter loose!`);
     }
@@ -6319,10 +6316,10 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
 
-    // Rake: requires ≥ 3 chord-stack notes
+    // Rake: requires ≥ 3 drive-stack notes
     const noteCost = phys.noteCost ?? 2;
-    if ((ns.chordStack ?? []).length < noteCost) {
-      addLog(`${phys.icon} ${phys.label} needs ${noteCost} chord-stack notes — not enough.`);
+    if ((ns.driveStack ?? []).length < noteCost) {
+      addLog(`${phys.icon} ${phys.label} needs ${noteCost} drive-stack notes — not enough.`);
       return;
     }
 
@@ -6342,8 +6339,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillMods.fogActive)    addLog(`🌫️ Fog Machine fires! Defender -1 Drive, -1 Sustain this battle.`);
     if (skillMods.pyroBonus > 0)addLog(`🔥 Pyrotechnics! +${skillMods.pyroBonus} bonus added to Drive roll.`);
 
-    const atkChord = (nsA.chordStack?.length) ? spiritChord(attacker.id, nsA.chordStack) : null;
-    const defChord = (nsD.chordStack?.length) ? spiritChord(targetId, nsD.chordStack) : null;
+    const atkChord = (nsA.driveStack?.length) ? spiritChord(attacker.id, nsA.driveStack) : null;
+    const defChord = (nsD.sustainStack?.length) ? spiritChord(targetId, nsD.sustainStack) : null;
     const atkChordDrive   = atkChord ? atkChord.drive   : (attacker.drive ?? 6);
     let   defChordSustain = defChord ? defChord.sustain : (defender.sustain ?? 5);
     if (nsD.smashExposed) { defChordSustain = 0; setNoteField(targetId, { smashExposed: false }); addLog(`💥 ${defender.name} is Exposed — the hit lands clean!`); }
@@ -6401,9 +6398,9 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`${phys.icon} ${attacker.name} uses ${phys.label} against ${defender.name}!${defenderPosing ? ' — caught posing!' : ''}`);
 
     burnChargesAfterBattle([attacker.id, targetId], `the ${phys.label} battle spent it`);
-    // Chord spending: physical specials use noteCost notes (Rake=3, others=2)
-    const swingChordLeft = (nsA.chordStack ?? []).slice(noteCost);
-    const swingChordSpent = (nsA.chordStack ?? []).slice(0, noteCost);
+    // Chord spending: physical specials use noteCost notes from driveStack (Rake=3, others=2)
+    const swingChordLeft = (nsA.driveStack ?? []).slice(noteCost);
+    const swingChordSpent = (nsA.driveStack ?? []).slice(0, noteCost);
     setNoteStates(prev => ({ ...prev, [acting.id]: { ...prev[acting.id], swingExposed: true } }));
 
     showTip('combat');
@@ -6499,7 +6496,7 @@ function Game({ gameState, onReturnToLobby }) {
   // Check if a sonic special's condition is met for the acting spirit.
   function checkSonicCondition(spiritId, ns) {
     const stanceId = stanceOf(ns, spiritId);
-    const chord = ns.chordStack ?? [];
+    const chord = ns.driveStack ?? [];
     const root = ns.rootNote ?? 'C';
     if (stanceId === 'solo') {
       return pinchHarmonicCondition(chord, root);
@@ -6573,7 +6570,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     // 🔊 Sonic chord is saved for playback at the RESULT moment (beam blast/fizzle).
     // Moved from here to the result phase so the chord rings when the beam fires.
-    const sonicChordNotes = [...(actingNoteState?.chordStack ?? [])];
+    const sonicChordNotes = [...(actingNoteState?.driveStack ?? [])];
 
     // ── RIFF-OFF TRIGGER ─────────────────────────────────────────────────────
     // Every Spirit is wired (Main Amp). If the defender is in the attacker's
@@ -6608,26 +6605,24 @@ function Game({ gameState, onReturnToLobby }) {
     if (pedalBonus)  addLog(`🎛️ Pedal Distortion! +1 Drive on Sonic Attack.`);
     if (powerBonus)  addLog(`🤘 Power Chords! +2 Drive (Amp ${ampTier}).`);
 
-    // 🎸 Harmony → combat: Drive/Sustain are read from the chord you committed
-    // (falls back to the static spirit stat until a chord has been played).
-    const atkChord = (nsA.chordStack?.length) ? spiritChord(attacker.id, nsA.chordStack) : null;
-    const defChord = (nsD.chordStack?.length) ? spiritChord(targetId, nsD.chordStack) : null;
+    // 🎸 Harmony → combat: Drive from driveStack, Sustain from sustainStack
+    // (falls back to the static spirit stat until a stack has been played).
+    const atkChord = (nsA.driveStack?.length) ? spiritChord(attacker.id, nsA.driveStack) : null;
+    const defChord = (nsD.sustainStack?.length) ? spiritChord(targetId, nsD.sustainStack) : null;
     const atkChordDrive   = atkChord ? atkChord.drive   : (attacker.drive ?? 6);
     let   defChordSustain = defChord ? defChord.sustain : (defender.sustain ?? 5);
     // 💥 SMASH EXPOSURE — a Smashed rival is wide open: this blow ignores their Sustain, then clears.
     if (nsD.smashExposed) { defChordSustain = 0; setNoteField(targetId, { smashExposed: false }); addLog(`💥 ${defender.name} is Exposed — the hit lands clean!`); }
     if (atkChord) addLog(`🎸 ${attacker.name}'s chord: ${atkChord.name} (⚔️${atkChord.drive})${defChord ? ` vs ${defender.name}'s ${defChord.name} (🛡️${defChord.sustain})` : ''}`);
     // 🛡️ Chord fray moved POST-ROLL (Stance rework) — see after the verdict below.
-    // 🔊 Projecting the chord down the beam spends its FIRST committed note (Drive was
-    // read above, from the full chord). Lighter touch than the melee jab's 2 notes.
-    // 🐉 HYDRA costs more energy than a normal Sonic — three beams scream out, so it
-    // burns the first 2 Chord Stack notes instead of 1. (Normal Sonic spends 1.)
-    const sonicSpendN     = (ampTier >= 3 && atkSkills.includes('hydra')) ? 2 : 1;
-    const sonicChordLeft  = (nsA.chordStack ?? []).slice(sonicSpendN);
-    const sonicChordSpent = (nsA.chordStack ?? []).slice(0, sonicSpendN);
+    // 🔊 Sonic attack spends 1 note from driveStack hit-or-miss.
+    // Defender loses 1 from sustainStack on hit (handled by fray).
+    const sonicSpendN     = 1;  // always 1 in the new system
+    const sonicChordLeft  = (nsA.driveStack ?? []).slice(sonicSpendN);
+    const sonicChordSpent = (nsA.driveStack ?? []).slice(0, sonicSpendN);
     if (sonicChordSpent.length) {
-      setNoteField(attacker.id, { chordStack: sonicChordLeft });
-      addLog(`🎸 ${attacker.name} projects ${sonicChordSpent.join('')} from the chord — ${sonicChordLeft.length ? spiritChord(attacker.id, sonicChordLeft).name : 'chord exhausted (base stats until revoiced)'}.`);
+      setNoteField(attacker.id, { driveStack: sonicChordLeft });
+      addLog(`🎸 ${attacker.name} projects ${sonicChordSpent.join('')} from the drive stack — ${sonicChordLeft.length ? spiritChord(attacker.id, sonicChordLeft).name : 'drive exhausted (base stats until committed)'}.`);
     }
 
     const atkStance = stanceOf(nsA, attacker.id);
@@ -7374,10 +7369,10 @@ function Game({ gameState, onReturnToLobby }) {
     if (!s || s.phase !== 'result') { setBattleState(null); setDiceDisplay(null); return; }
     const { attackerWon, damage, margin, attackerId, defenderId, sonicAttack } = s;
     if (attackerWon) {
-      // 🎸 Chord notes only burn on a HIT — whiffing keeps your chord intact.
+      // 🎸 Chord notes only burn on a HIT — whiffing keeps your drive stack intact.
       if (!sonicAttack && s.swingChordSpent?.length) {
-        addLog(`🎸 ${spirits.find(sp => sp.id === attackerId)?.name} burns ${s.swingChordSpent.join('+')} from the chord — ${s.swingChordLeft?.length ? spiritChord(attackerId, s.swingChordLeft).name : 'chord exhausted (base stats until revoiced)'}.`);
-        setNoteStates(prev => ({ ...prev, [attackerId]: { ...prev[attackerId], chordStack: s.swingChordLeft } }));
+        addLog(`🎸 ${spirits.find(sp => sp.id === attackerId)?.name} burns ${s.swingChordSpent.join('+')} from the drive stack — ${s.swingChordLeft?.length ? spiritChord(attackerId, s.swingChordLeft).name : 'drive exhausted (base stats until committed)'}.`);
+        setNoteStates(prev => ({ ...prev, [attackerId]: { ...prev[attackerId], driveStack: s.swingChordLeft } }));
       }
       // ── KNOCKBACK — route by attack kind ──
       // Pull-Off passive (Solo): +1 knockback on any win
@@ -7593,10 +7588,10 @@ function Game({ gameState, onReturnToLobby }) {
               const cur = battleStateRef.current;
               if (!cur || cur.phase !== 'result') return;
               if (attackerWon) {
-                // 🎸 Chord notes only burn on a HIT — whiffing keeps chord intact
+                // 🎸 Chord notes only burn on a HIT — whiffing keeps drive stack intact
                 if (!isSonic && snap.swingChordSpent?.length) {
-                  addLog(`🎸 ${spirits.find(sp => sp.id === attackerId)?.name} burns ${snap.swingChordSpent.join('+')} from the chord — ${snap.swingChordLeft?.length ? spiritChord(attackerId, snap.swingChordLeft).name : 'chord exhausted (base stats until revoiced)'}.`);
-                  setNoteStates(prev => ({ ...prev, [attackerId]: { ...prev[attackerId], chordStack: snap.swingChordLeft } }));
+                  addLog(`🎸 ${spirits.find(sp => sp.id === attackerId)?.name} burns ${snap.swingChordSpent.join('+')} from the drive stack — ${snap.swingChordLeft?.length ? spiritChord(attackerId, snap.swingChordLeft).name : 'drive exhausted (base stats until committed)'}.`);
+                  setNoteStates(prev => ({ ...prev, [attackerId]: { ...prev[attackerId], driveStack: snap.swingChordLeft } }));
                 }
                 // Stage Lighting: 33% chance heal on win (rolled at battle start, stored in skillMods)
                 if (snap.skillMods?.stageLightActive) {
@@ -7938,13 +7933,26 @@ function Game({ gameState, onReturnToLobby }) {
     return _botPlanRevoice(engineRef.current.noteStates?.[self.id], self.id, botPersona(self));
   }
 
-  function botRevoiceChord(self, note) {
+  // Drive/Sustain split: plan + execute all stack commits for this bot's turn
+  function botPlanStackCommit(self) {
     const ns = engineRef.current.noteStates?.[self.id] ?? {};
-    if (ns.revoiceUsedThisTurn || (ns.chordStack ?? []).length >= 5) return;
-    const next = [...(ns.chordStack ?? []), note];
-    setNoteField(self.id, { chordStack: next, revoiceUsedThisTurn: true });
-    const ch = botSpiritChord(self.id, next);
-    addLog(`🎸 ${self.name} voices ${note} into the Chord Stack — ${ch.name} (⚔️${ch.drive} 🛡️${ch.sustain}).`);
+    const sp = self;
+    return _botPlanStackCommit(ns, self.id, botPersona(self), sp.vibe ?? 10, sp.maxVibe ?? 10);
+  }
+
+  function botExecuteStackCommits(self, commits) {
+    if (!commits || !commits.length) return;
+    for (const { note, dest } of commits) {
+      const ns = engineRef.current.noteStates?.[self.id] ?? {};
+      const stackKey = dest === 'sustain' ? 'sustainStack' : 'driveStack';
+      const stack = ns[stackKey] ?? [];
+      if (stack.length >= STACK_CAP) continue;
+      if ((ns.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET) break;
+      const next = [...stack, note];
+      setNoteField(self.id, { [stackKey]: next, stackCommitsThisTurn: (ns.stackCommitsThisTurn ?? 0) + 1 });
+      const ch = botSpiritChord(self.id, next);
+      addLog(`🎸 ${self.name} voices ${note} into the ${dest === 'sustain' ? 'Sustain' : 'Drive'} Stack — ${ch.name} (${dest === 'sustain' ? '🛡️' : '⚔️'}${dest === 'sustain' ? ch.sustain : ch.drive}).`);
+    }
   }
 
   // 🎸 SYNTHETIC RIFF-OFF — pure logic in engine/policies/bot.js; this wrapper
@@ -8023,11 +8031,10 @@ function Game({ gameState, onReturnToLobby }) {
         return;
       }
 
-      // 1b.5) CHORD STACK — voice one note/turn toward a stronger combat chord and
-      //       rebuild what last turn's attacks/defends drained. Free (no AP), once/turn.
-      if (!ns.revoiceUsedThisTurn) {
-        const voice = botPlanRevoice(self);
-        if (voice != null) { schedule(guard(() => botRevoiceChord(self, voice))); return; }
+      // 1b.5) STACK COMMITS — voice notes into Drive/Sustain stacks (up to 3/turn budget).
+      if ((ns.stackCommitsThisTurn ?? 0) < STACK_COMMIT_BUDGET) {
+        const commits = botPlanStackCommit(self);
+        if (commits.length) { schedule(guard(() => botExecuteStackCommits(self, commits))); return; }
       }
 
       const track = ns.melodyLine ?? [];
@@ -8155,7 +8162,7 @@ function Game({ gameState, onReturnToLobby }) {
         // Needs 2 AP + ≥ 2 unused stock (leaves us Exposed).
         if (finTargets.length && unused >= 2 && steps >= 2) {
           const t = botPickTarget(finTargets, self);
-          const tSustain = spiritChord(t.id, engineRef.current.noteStates?.[t.id]?.chordStack ?? []).sustain;
+          const tSustain = spiritChord(t.id, engineRef.current.noteStates?.[t.id]?.sustainStack ?? []).sustain;
           if (tSustain >= 6) {
             botStepRef.current = 'ending';
             schedule(guard(() => hasBlaster ? resolveBlasterOfRa() : resolveFinisher(t.id)));
@@ -8170,7 +8177,7 @@ function Game({ gameState, onReturnToLobby }) {
           const physAp    = kit.physical?.apCost ?? 1;
           const noteCost  = kit.physical?.noteCost ?? 2;
           const conePhys  = getRivalsInCone(self);
-          if (conePhys.length && steps >= physAp && (ns.chordStack ?? []).length >= noteCost) {
+          if (conePhys.length && steps >= physAp && (ns.driveStack ?? []).length >= noteCost) {
             const t = botPickTarget(conePhys, self);
             botStepRef.current = 'ending';
             schedule(guard(() => resolvePhysicalSpecial(t.id)));
@@ -8928,7 +8935,10 @@ function Game({ gameState, onReturnToLobby }) {
       {/* 🎵 LOST CHORD PICKUP — bank it vs weave it into the Chord Stack */}
       {pendingLostChordPickup && (() => {
         const sp = spirits.find(s => s.id === pendingLostChordPickup.spiritId);
-        const chordFull = (noteStates[pendingLostChordPickup.spiritId]?.chordStack?.length ?? 0) >= 5;
+        const ns = noteStates[pendingLostChordPickup.spiritId] ?? {};
+        const driveFull = (ns.driveStack?.length ?? 0) >= STACK_CAP;
+        const sustainFull = (ns.sustainStack?.length ?? 0) >= STACK_CAP;
+        const budgetSpent = (ns.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET;
         return (
           <div style={{position:'fixed',inset:0,zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',
             background:'#000000aa',backdropFilter:'blur(3px)'}}>
@@ -8941,16 +8951,23 @@ function Game({ gameState, onReturnToLobby }) {
               <div style={{fontSize:26,fontWeight:900,color:'#fff',marginBottom:4,
                 textShadow:'0 0 12px #7fe0ff'}}>{pendingLostChordPickup.note}</div>
               <div style={{fontSize:9,color:'#8aa5c5',marginBottom:16,lineHeight:1.5}}>
-                {sp?.name} can bank it into the Note Stock, or weave it straight into the
-                Chord Stack — that spends this turn's one revoice.
+                {sp?.name} can bank it into the Note Stock, or weave it into a stack
+                — costs 1 of your {STACK_COMMIT_BUDGET} stack commits this turn.
               </div>
               <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                <button onClick={() => resolveLostChordPickup('chord')} disabled={chordFull}
-                  style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor: chordFull?'not-allowed':'pointer',
-                    opacity: chordFull ? 0.4 : 1,
-                    background:'#1a0c1a',border:'1.5px solid #ff66cc',borderRadius:5,
-                    color:'#ff99dd',padding:'8px 16px',letterSpacing:1}}>
-                  🎸 Add to Chord Stack {chordFull ? '(chord full)' : '(spends revoice)'}
+                <button onClick={() => resolveLostChordPickup('drive')} disabled={driveFull || budgetSpent}
+                  style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor: (driveFull||budgetSpent)?'not-allowed':'pointer',
+                    opacity: (driveFull||budgetSpent) ? 0.4 : 1,
+                    background:'#1a0c1a',border:'1.5px solid #ff6644',borderRadius:5,
+                    color:'#ff9966',padding:'8px 16px',letterSpacing:1}}>
+                  ⚔️ Add to Drive Stack {driveFull ? '(full)' : budgetSpent ? '(budget spent)' : ''}
+                </button>
+                <button onClick={() => resolveLostChordPickup('sustain')} disabled={sustainFull || budgetSpent}
+                  style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor: (sustainFull||budgetSpent)?'not-allowed':'pointer',
+                    opacity: (sustainFull||budgetSpent) ? 0.4 : 1,
+                    background:'#0a1828',border:'1.5px solid #44aaff',borderRadius:5,
+                    color:'#88ccff',padding:'8px 16px',letterSpacing:1}}>
+                  🛡️ Add to Sustain Stack {sustainFull ? '(full)' : budgetSpent ? '(budget spent)' : ''}
                 </button>
                 <button onClick={() => resolveLostChordPickup('bank')}
                   style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor:'pointer',
@@ -9363,9 +9380,9 @@ function Game({ gameState, onReturnToLobby }) {
                     {/* boost = every live modifier on this stat, summed — pattern-boost tempDrive/
                         tempSustain PLUS the Dissonance Edge stage delta (edgeCombatMods), so the
                         dial always reflects the stat you'd actually fight with right now. */}
-                    <StatKnob label="DRIVE" value={spiritChord(s.id, ns.chordStack ?? []).drive}
+                    <StatKnob label="DRIVE" value={spiritChord(s.id, ns.driveStack ?? []).drive}
                       boost={(ns.tempDrive ?? 0) + edgeCombatMods(ns).drive} color="#ff6644"/>
-                    <StatKnob label="SUSTAIN" value={spiritChord(s.id, ns.chordStack ?? []).sustain} boost={(ns.tempSustain ?? 0) - edgeCombatMods(ns).sustainPenalty} color="#44aaff"/>
+                    <StatKnob label="SUSTAIN" value={spiritChord(s.id, ns.sustainStack ?? []).sustain} boost={(ns.tempSustain ?? 0) - edgeCombatMods(ns).sustainPenalty} color="#44aaff"/>
                     <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
                       <div data-tip-anchor="vibe-bar">
                         <div style={{display:"flex",justifyContent:"space-between",marginBottom:1}}>
@@ -9391,18 +9408,14 @@ function Game({ gameState, onReturnToLobby }) {
                 <div style={{flex:1, minWidth:170, order:1, display:"flex", flexDirection:"column",
                   borderRight:`1px solid ${s.color}22`}}>
                 {/* Status badges */}
-                {((ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||ns.statusShield||ns.burnArmed||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0||ns.bonusRevoiceAvailable) && (
+                {((ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||ns.statusShield||ns.burnArmed||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0) && (
                   <div style={{display:"flex",gap:3,flexWrap:"wrap",padding:"4px 8px",borderTop:`1px solid ${s.color}22`}}>
                     {(ns.elevenTurns??0)>0&&(
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a1400",border:"1px solid #ffcc44",color:"#ffcc44"}}>
                         🎚️ GOES TO 11 — {ns.elevenTurns}t
                       </span>)}
                     {/* ⚡ EDGE display — REMOVED (system cut) */}
-                    {ns.bonusRevoiceAvailable&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a0a18",border:"1px solid #ff66cc",color:"#ff99dd",
-                        animation:"crew-ready-glow 2s ease-in-out infinite"}}>
-                        ⚡ BONUS REVOICE READY
-                      </span>)}
+                    {/* (bonus revoice badge removed — stack commit system) */}
                     {/* +atk removed — already shown on Drive knob boost */}
                     {(ns.tempSustain??0)>0&&(
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#001a2a",border:"1px solid #44aaff",color:"#88ccff"}}>
@@ -9768,12 +9781,14 @@ function Game({ gameState, onReturnToLobby }) {
                 </div>
               )}
               {turnStep !== 'pivot' && turnStep !== 'chord' && !pivotPending && !hasConfirmed && (() => {
-                const chord = actingNoteState?.chordStack ?? [];
-                const ch = spiritChord(acting?.id, chord);
+                const dStack = actingNoteState?.driveStack ?? [];
+                const sStack = actingNoteState?.sustainStack ?? [];
+                const dCh = spiritChord(acting?.id, dStack);
+                const sCh = spiritChord(acting?.id, sStack);
                 return (
                   <div className="step-collapsed" style={{fontSize:8,color:"#ff99dd",marginBottom:4,
                     padding:"3px 7px",background:"#0c0a18",border:"1px solid #ff66cc33",borderRadius:4}}>
-                    ✓ Chord: {chord.join(' ')} — {ch.name} · ⚔️{ch.drive} 🛡️{ch.sustain}
+                    ✓ Drive: {dStack.join(' ')} · ⚔️{dCh.drive} | Sustain: {sStack.join(' ')} · 🛡️{sCh.sustain}
                   </div>
                 );
               })()}
@@ -9924,47 +9939,63 @@ function Game({ gameState, onReturnToLobby }) {
                   ✓ Notes committed — move and use actions below.
                 </div>
               ) : turnStep === 'chord' ? (
-                /* ── STEP 2: CHORD STACK ── shown prominently after scale choice.
-                   No revoice toggle — during chord step, editing is always live. */
+                /* ── STEP 2: STACK COMMIT ── shown prominently after scale choice.
+                   Commit notes to Drive or Sustain stacks (up to 3/turn budget). */
                 (() => {
-                  const chord = actingNoteState?.chordStack ?? [];
-                  const ch = spiritChord(acting?.id, chord);
-                  const revoiced = !!actingNoteState?.revoiceUsedThisTurn;
-                  const full = chord.length >= 5;
+                  const dStack = actingNoteState?.driveStack ?? [];
+                  const sStack = actingNoteState?.sustainStack ?? [];
+                  const dCh = spiritChord(acting?.id, dStack);
+                  const sCh = spiritChord(acting?.id, sStack);
+                  const commitsUsed = actingNoteState?.stackCommitsThisTurn ?? 0;
+                  const budgetLeft = STACK_COMMIT_BUDGET - commitsUsed;
+                  const dFull = dStack.length >= STACK_CAP;
+                  const sFull = sStack.length >= STACK_CAP;
                   return (
                     <div style={{marginBottom:5}}>
                       <div className="step-active" style={{'--step-glow-color':'#ff66cc',background:"#0c0a18",border:"1.5px solid #ff66cc",borderRadius:6,padding:"8px 10px"}}>
                         <div style={{fontSize:9,color:"#ff99dd",fontWeight:700,marginBottom:4,letterSpacing:1}}>
-                          🎸 CHORD STACK — your combat stance
+                          🎸 STACK COMMIT — shape your combat stacks
                         </div>
                         <div style={{fontSize:7,color:"#6a8a9a",marginBottom:6}}>
-                          {revoiced ? '✓ revoiced this turn (1/turn) — review your chord below'
-                           : full ? 'chord full (5) — drop a note to swap' : 'tap a stock note to add · tap a chip to drop'}
+                          {budgetLeft <= 0 ? `✓ budget spent (${STACK_COMMIT_BUDGET}/${STACK_COMMIT_BUDGET}) — continue below`
+                           : `${budgetLeft} commit${budgetLeft !== 1 ? 's' : ''} left — pick a stack then tap a note`}
                         </div>
-                        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
+                        {/* Drive stack display */}
+                        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}>
+                          <button className="btn" onClick={()=>setStackCommitDest('drive')} disabled={dFull || budgetLeft <= 0}
+                            style={{fontSize:7,padding:"2px 6px",borderColor: stackCommitDest === 'drive' ? '#ff6644' : '#aa4422',
+                              color: stackCommitDest === 'drive' ? '#ff6644' : '#aa6644',
+                              background: stackCommitDest === 'drive' ? '#2a0c08' : 'transparent',
+                              opacity: (dFull || budgetLeft <= 0) ? 0.4 : 1}}>
+                            {stackCommitDest === 'drive' ? '> Drive' : '-> Drive'}
+                          </button>
                           <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-                            {chord.map((n,i)=>(
-                              <span key={i} onClick={()=>removeChordNote(i)} title={revoiced?'locked':'tap to drop'}
-                                style={{fontSize:11,fontWeight:700,color:"#ff99dd",background:"#1a0c1a",border:"1px solid #ff66cc66",borderRadius:4,padding:"2px 7px",cursor:revoiced?'default':'pointer'}}>{n}</span>
+                            {dStack.map((n,i)=>(
+                              <span key={i}
+                                style={{fontSize:11,fontWeight:700,color:"#ff9966",background:"#1a0c08",border:"1px solid #ff664466",borderRadius:4,padding:"2px 7px"}}>{n}</span>
                             ))}
                           </div>
-                          <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:"#ffcc44"}}>{ch.name} · ⚔️{ch.drive} 🛡️{ch.sustain}</span>
-                          {/* Hover preview — shows projected stats when hovering a stock note */}
-                          {hoverScale?.note && !revoiced && !full && (() => {
-                            const preview = spiritChord(acting?.id, [...chord, hoverScale.note]);
-                            const dd = preview.drive - ch.drive;
-                            const ds = preview.sustain - ch.sustain;
-                            return (
-                              <span style={{fontSize:8,fontWeight:700,marginLeft:6,whiteSpace:"nowrap"}}>
-                                <span style={{color:"#6a8a9a"}}>→</span>{' '}
-                                <span style={{color:dd>0?"#ff6644":dd<0?"#ff666688":"#8a8a8a"}}>⚔️{preview.drive}{dd!==0&&<span style={{fontSize:6}}>{dd>0?'+':''}{dd}</span>}</span>{' '}
-                                <span style={{color:ds>0?"#44aaff":ds<0?"#44aaff88":"#8a8a8a"}}>🛡️{preview.sustain}{ds!==0&&<span style={{fontSize:6}}>{ds>0?'+':''}{ds}</span>}</span>
-                              </span>
-                            );
-                          })()}
+                          <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:"#ff6644"}}>⚔️{dCh.drive}</span>
                         </div>
-                        {/* Note stock for chord editing — always visible during chord step */}
-                        {!revoiced && (
+                        {/* Sustain stack display */}
+                        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
+                          <button className="btn" onClick={()=>setStackCommitDest('sustain')} disabled={sFull || budgetLeft <= 0}
+                            style={{fontSize:7,padding:"2px 6px",borderColor: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
+                              color: stackCommitDest === 'sustain' ? '#44aaff' : '#4488aa',
+                              background: stackCommitDest === 'sustain' ? '#0a1828' : 'transparent',
+                              opacity: (sFull || budgetLeft <= 0) ? 0.4 : 1}}>
+                            {stackCommitDest === 'sustain' ? '> Sustain' : '-> Sustain'}
+                          </button>
+                          <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+                            {sStack.map((n,i)=>(
+                              <span key={i}
+                                style={{fontSize:11,fontWeight:700,color:"#88ccff",background:"#081828",border:"1px solid #44aaff66",borderRadius:4,padding:"2px 7px"}}>{n}</span>
+                            ))}
+                          </div>
+                          <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:"#44aaff"}}>🛡️{sCh.sustain}</span>
+                        </div>
+                        {/* Note stock for stack editing — visible when a dest is selected and budget remains */}
+                        {stackCommitDest && budgetLeft > 0 && (
                           <div style={{marginBottom:6,padding:"4px 7px",background:"#140a18",border:"1px solid #ff66cc33",borderRadius:4}}>
                             <div style={{display:"flex",flexWrap:"wrap",gap:2}}>
                               {noteStock.map((note,idx)=>{
@@ -9987,13 +10018,13 @@ function Game({ gameState, onReturnToLobby }) {
                                 const hexBorder = showAsDiscord ? "#444455" : showTritoneColor ? "#ff3300" : showMinorSeventhColor ? "#4499ff" : showMajorThirdColor ? "#44ffaa" : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#c0c8d8" : "#444455";
                                 const hexText   = showAsDiscord ? "#555566" : showTritoneColor ? "#ff3300" : showMinorSeventhColor ? "#4499ff" : showMajorThirdColor ? "#44ffaa" : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#e8eef8" : "#555566";
                                 const hexBg     = showAsDiscord ? "#111118" : showTritoneColor ? "#2a0800" : showMinorSeventhColor ? "#051525" : showMajorThirdColor ? "#0a2a1a" : isFifth ? "#2a0f1a" : isFourth ? "#1a0a2a" : inScaleNote ? "#1a2035" : "#111118";
-                                /* Drive/Sustain benefit preview */
-                                const previewChord = !used && !full ? spiritChord(acting?.id, [...chord, note]) : null;
-                                const dDrive   = previewChord ? previewChord.drive   - ch.drive   : 0;
-                                const dSustain = previewChord ? previewChord.sustain - ch.sustain : 0;
-                                // 🕳️ A used slot is genuinely EMPTY -- no note color, no discord
-                                // color, just a bare outline -- so it can never be mistaken for a
-                                // discord note (which stays fully opaque in its own dim palette).
+                                /* Benefit preview for the targeted stack */
+                                const targetStack = stackCommitDest === 'sustain' ? sStack : dStack;
+                                const targetCh = stackCommitDest === 'sustain' ? sCh : dCh;
+                                const targetFull = stackCommitDest === 'sustain' ? sFull : dFull;
+                                const previewChord = !used && !targetFull ? spiritChord(acting?.id, [...targetStack, note]) : null;
+                                const dDrive   = previewChord ? previewChord.drive   - targetCh.drive   : 0;
+                                const dSustain = previewChord ? previewChord.sustain - targetCh.sustain : 0;
                                 return (
                                   <div key={idx} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:0}}
                                     onMouseEnter={(e)=>{ if (!used) { const x=e.clientX, y=e.clientY; clearTimeout(hoverScaleTimerRef.current); hoverScaleTimerRef.current=setTimeout(()=>setHoverScale({note,x,y}),1500); }}}
@@ -10015,10 +10046,10 @@ function Game({ gameState, onReturnToLobby }) {
                             </div>
                           </div>
                         )}
-                        <button className="btn" onClick={()=>{ setChordMode(false); setTurnStep('melody'); setTimeout(() => showTip('melody'), 300); }}
+                        <button className="btn" onClick={()=>{ setStackCommitDest(null); setTurnStep('melody'); setTimeout(() => showTip('melody'), 300); }}
                           style={{width:"100%",fontSize:9,padding:"6px 0",borderColor:"#44ff88",color:"#44ff88",fontWeight:700,
                             background:"#0a1a10",boxShadow:"0 0 8px #44ff8833"}}>
-                          {revoiced ? '✓ Chord set — Continue to Melody →' : 'Continue to Melody →'}
+                          {budgetLeft <= 0 ? '✓ Stacks set — Continue to Melody ->' : 'Continue to Melody ->'}
                         </button>
                       </div>
                     </div>
@@ -10142,31 +10173,32 @@ function Game({ gameState, onReturnToLobby }) {
                 </div>
                   );
                 })()}
-                {/* 🎸 CHORD PREVIEW (in Revoice mode) — hover-a-note guidance (inline, instant via hoverScale) */}
-                {!hasConfirmed && chordMode && (() => {
-                  const chord = actingNoteState?.chordStack ?? [];
-                  const full  = chord.length >= 5;
+                {/* 🎸 STACK COMMIT PREVIEW — hover-a-note guidance (inline, instant via hoverScale) */}
+                {!hasConfirmed && stackCommitDest && (() => {
+                  const stack = stackCommitDest === 'sustain' ? (actingNoteState?.sustainStack ?? []) : (actingNoteState?.driveStack ?? []);
+                  const full  = stack.length >= STACK_CAP;
                   const hn    = hoverScale?.note;
-                  const next  = hn ? spiritChord(acting?.id, [...chord, hn]) : null;
+                  const next  = hn ? spiritChord(acting?.id, [...stack, hn]) : null;
+                  const label = stackCommitDest === 'sustain' ? 'Sustain' : 'Drive';
                   return (
                     <div style={{marginBottom:5,minHeight:34,background:"#140a18",border:"1px solid #ff66cc44",borderRadius:4,padding:"4px 7px"}}>
                       {hn && next ? (
                         <>
-                          <div style={{fontSize:8,color:"#ff99dd",fontWeight:700,marginBottom:2}}>🎸 Add {hn} → {next.name}</div>
+                          <div style={{fontSize:8,color:"#ff99dd",fontWeight:700,marginBottom:2}}>🎸 Add {hn} to {label} -> {next.name}</div>
                           <div style={{fontSize:8}}>
                             <span style={{color:"#ff6644",fontWeight:700}}>⚔️{next.drive}</span>{'   '}
                             <span style={{color:"#44aaff",fontWeight:700}}>🛡️{next.sustain}</span>
-                            {full && <span style={{color:"#ff6666",marginLeft:8}}>chord full — drop one to revoice</span>}
+                            {full && <span style={{color:"#ff6666",marginLeft:8}}>{label} stack full</span>}
                           </div>
                         </>
                       ) : (
-                        <span style={{fontSize:7.5,color:"#aa6688"}}>🎸 Revoice on — hover a note to preview what it adds to your chord</span>
+                        <span style={{fontSize:7.5,color:"#aa6688"}}>🎸 Committing to {label} — hover a note to preview</span>
                       )}
                     </div>
                   );
                 })()}
                 {/* 🎼 SCALE PEEK — fixed popup, 1.5s hover delay (no longer inline to avoid HUD jitter) */}
-                {hoverScale && !chordMode && (() => {
+                {hoverScale && !stackCommitDest && (() => {
                   const maj = buildScale(hoverScale.note, 'major');
                   const min = buildScale(hoverScale.note, 'minor');
                   return (
@@ -10266,7 +10298,7 @@ function Game({ gameState, onReturnToLobby }) {
                     ⭐{ns.fame ?? 0}
                   </span>
                   <span style={{fontSize:7,color:"#44aaff",whiteSpace:"nowrap",marginLeft:2}} title="Sustain">
-                    🛡️{spiritChord(s.id, ns.chordStack ?? []).sustain}
+                    🛡️{spiritChord(s.id, ns.sustainStack ?? []).sustain}
                     {rivalSustainDelta !== 0 && (
                       <span style={{color: rivalSustainDelta > 0 ? "#88ccff" : "#ff5566"}}>
                         {rivalSustainDelta > 0 ? '+' : ''}{rivalSustainDelta}
@@ -10343,42 +10375,7 @@ function Game({ gameState, onReturnToLobby }) {
           <div className="stitle" style={{marginTop:4}}>
             {turnStep === 'move_act' ? 'Step 4 — Move & Act' : 'Actions'}
           </div>
-          {/* ⚡ BONUS REVOICE — Overcharge chord-assist. Deliberately its own compact
-              widget (not the normal chord editor) so it reads as a separate,
-              one-shot budget rather than a second free revoice. */}
-          {acting && actingNoteState?.bonusRevoiceAvailable && (
-            <div className="step-active" style={{'--step-glow-color':'#ff66cc',
-              background:"#140a18",border:"1.5px solid #ff66cc",borderRadius:6,padding:"6px 8px",marginBottom:6}}>
-              <div style={{fontSize:8,color:"#ff99dd",fontWeight:700,marginBottom:4,letterSpacing:0.5}}>
-                ⚡ BONUS REVOICE — Overcharge (separate from your normal 1/turn budget)
-              </div>
-              <div style={{fontSize:7,color:"#c88ad0",marginBottom:5}}>
-                {(actingNoteState.chordStack?.length ?? 0) >= 5
-                  ? 'Chord full — tap a chip below to drop one, freeing a slot.'
-                  : 'Tap a stock note to add it to your Chord Stack.'}
-              </div>
-              <div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:5}}>
-                {(actingNoteState.chordStack ?? []).map((n, i) => (
-                  <span key={i} onClick={() => spendBonusRevoiceDrop(i)} title="tap to drop (spends the bonus revoice)"
-                    style={{fontSize:10,fontWeight:700,color:"#ff99dd",background:"#1a0c1a",
-                      border:"1px solid #ff66cc66",borderRadius:4,padding:"2px 6px",cursor:"pointer"}}>{n}</span>
-                ))}
-              </div>
-              {(actingNoteState.chordStack?.length ?? 0) < 5 && (
-                <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-                  {(actingNoteState.noteStock ?? []).map((n, i) => {
-                    const used = usedHas(actingNoteState.usedStockIdx, i);
-                    if (used) return null;
-                    return (
-                      <span key={i} onClick={() => spendBonusRevoiceAdd(i)} title="tap to add (spends the bonus revoice)"
-                        style={{fontSize:9,fontWeight:700,color:"#ffcc44",background:"#0c0a18",
-                          border:"1px solid #ffcc4466",borderRadius:4,padding:"2px 6px",cursor:"pointer"}}>{n}</span>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+          {/* (bonus revoice UI removed — stack commit budget replaces it) */}
           {turnStep !== 'move_act' && (
             <div style={{marginBottom:3}}>
               <button className="btn end" data-tip-anchor="end-turn" onClick={endTurn} style={{width:'100%',fontSize:9,padding:'5px 0'}}>End Turn ⏭</button>
@@ -10507,7 +10504,7 @@ function Game({ gameState, onReturnToLobby }) {
               const apCost = phys.apCost;
               const noteCost = phys.noteCost ?? 2;
               const hasDb = (ns.dbPoints ?? 0) >= phys.dbCost;
-              const hasNotes = (ns.chordStack ?? []).length >= noteCost;
+              const hasNotes = (ns.driveStack ?? []).length >= noteCost;
               const grayed = !hasConfirmed || actionTokenUsed || moveStepsLeft < apCost;
               const canFire = !grayed && rivals.length > 0 && hasDb && hasNotes;
               return (
@@ -11002,11 +10999,14 @@ function Game({ gameState, onReturnToLobby }) {
                 <div className="hexi" style={{fontSize:10,fontWeight:700,color:"#ffe0f0",background:"#1a0c1a"}}>{flyChordNote.note}</div>
               </div>
             )}
-            {/* 🎸 CHORD STACK — vertical bar on the left side of the board (Drive/Sustain) */}
+            {/* 🎸 DRIVE / SUSTAIN STACKS — vertical bars on the left side of the board */}
             {acting && !hasConfirmed && !pivotPending && (() => {
-              const chord = actingNoteState?.chordStack ?? [];
-              const ch = spiritChord(acting?.id, chord);
-              const revoiced = !!actingNoteState?.revoiceUsedThisTurn;
+              const dStack = actingNoteState?.driveStack ?? [];
+              const sStack = actingNoteState?.sustainStack ?? [];
+              const dCh = spiritChord(acting?.id, dStack);
+              const sCh = spiritChord(acting?.id, sStack);
+              const commitsUsed = actingNoteState?.stackCommitsThisTurn ?? 0;
+              const budgetLeft = STACK_COMMIT_BUDGET - commitsUsed;
               const isChordStep = turnStep === 'chord';
               return (
                 <div ref={chordStackRef} data-tip-anchor="chord-stack"
@@ -11015,54 +11015,81 @@ function Game({ gameState, onReturnToLobby }) {
                     position:"absolute",left:4,top:50,zIndex:10,
                     display:"flex",flexDirection:"column",alignItems:"center",gap:3,
                     background:"#060a10dd",
-                    border:`1px solid ${isChordStep ? '#ff66cc66' : chordMode ? '#ff66cc44' : '#1a2a4044'}`,
+                    border:`1px solid ${isChordStep ? '#ff66cc66' : stackCommitDest ? '#ff66cc44' : '#1a2a4044'}`,
                     borderRadius:6,padding:"6px 5px",
                     backdropFilter:"blur(4px)",
                     boxShadow:"0 2px 12px #00000088",
                     minWidth:44}}>
-                  {/* Label */}
-                  <div className="stitle" style={{marginBottom:0,color:"#ff66cc",fontSize:6,letterSpacing:1.5}}>CHORD</div>
-                  {/* Slots — 5 hex chips, vertical */}
-                  {Array.from({length:5}).map((_,i) => {
-                    const note = chord[i];
+                  {/* Drive Stack */}
+                  <div className="stitle" style={{marginBottom:0,color:"#ff6644",fontSize:6,letterSpacing:1.5}}>DRIVE</div>
+                  {Array.from({length:STACK_CAP}).map((_,i) => {
+                    const note = dStack[i];
                     return (
-                      <div key={i}
-                        onClick={note && !revoiced ? () => removeChordNote(i) : undefined}
-                        title={note ? (revoiced ? 'locked' : 'tap to drop (revoice)') : ''}
+                      <div key={`d${i}`}
                         className="hexw"
                         style={{
                           width:33,height:37,
                           opacity: note ? 1 : 0.25,
-                          background: note ? "#ff66cc" : "#2a1a3055",
-                          cursor: note && !revoiced ? 'pointer' : 'default',
+                          background: note ? "#ff6644" : "#2a1a1055",
+                          cursor: 'default',
                           transition:"all .15s",
                         }}>
                         <div className="hexi" style={{
                           fontSize:10,fontWeight:700,
-                          color: note ? "#ffe0f0" : "#2a1a3040",
-                          background: note ? "#1a0c1a" : "#07091466",
+                          color: note ? "#ffe0d0" : "#2a1a1040",
+                          background: note ? "#1a0c08" : "#07091466",
                         }}>{note || ""}</div>
                       </div>
                     );
                   })}
-                  {/* Drive / Sustain readout */}
-                  <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,marginTop:1}}>
-                    <span style={{fontSize:7,fontWeight:700,color:"#ff6644"}}>⚔️{ch.drive}</span>
-                    <span style={{fontSize:7,fontWeight:700,color:"#4499ff"}}>🛡️{ch.sustain}</span>
-                  </div>
-                  {/* Chord name */}
-                  <div style={{fontSize:6,fontWeight:700,color:"#ffcc44",textAlign:"center",maxWidth:48,lineHeight:1.2}}>{ch.name}</div>
-                  {/* Revoice toggle */}
+                  <span style={{fontSize:7,fontWeight:700,color:"#ff6644"}}>⚔️{dCh.drive}</span>
+                  {/* Sustain Stack */}
+                  <div className="stitle" style={{marginBottom:0,marginTop:4,color:"#44aaff",fontSize:6,letterSpacing:1.5}}>SUSTAIN</div>
+                  {Array.from({length:STACK_CAP}).map((_,i) => {
+                    const note = sStack[i];
+                    return (
+                      <div key={`s${i}`}
+                        className="hexw"
+                        style={{
+                          width:33,height:37,
+                          opacity: note ? 1 : 0.25,
+                          background: note ? "#44aaff" : "#0a1a3055",
+                          cursor: 'default',
+                          transition:"all .15s",
+                        }}>
+                        <div className="hexi" style={{
+                          fontSize:10,fontWeight:700,
+                          color: note ? "#d0e8ff" : "#0a1a3040",
+                          background: note ? "#081828" : "#07091466",
+                        }}>{note || ""}</div>
+                      </div>
+                    );
+                  })}
+                  <span style={{fontSize:7,fontWeight:700,color:"#4499ff"}}>🛡️{sCh.sustain}</span>
+                  {/* Stack commit buttons */}
                   <button className="btn"
                     style={{fontSize:6,padding:"2px 5px",
-                      borderColor:chordMode?'#ff66cc':'#aa55ff',color:chordMode?'#ff66cc':'#aa55ff',
-                      background:chordMode?'#2a0c22':'transparent',whiteSpace:"nowrap"}}
-                    onClick={()=>setChordMode(m=>!m)}>
-                    {chordMode ? '✓ ON' : '🎸 Revoice'}{revoiced?' ✓':''}
+                      borderColor: stackCommitDest === 'drive' ? '#ff6644' : '#aa5533',
+                      color: stackCommitDest === 'drive' ? '#ff6644' : '#aa5533',
+                      background: stackCommitDest === 'drive' ? '#2a0c08' : 'transparent',whiteSpace:"nowrap",
+                      opacity: budgetLeft <= 0 || dStack.length >= STACK_CAP ? 0.4 : 1}}
+                    disabled={budgetLeft <= 0 || dStack.length >= STACK_CAP}
+                    onClick={()=>setStackCommitDest(d => d === 'drive' ? null : 'drive')}>
+                    {stackCommitDest === 'drive' ? '> Drive' : '-> Drive'}
+                  </button>
+                  <button className="btn"
+                    style={{fontSize:6,padding:"2px 5px",
+                      borderColor: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
+                      color: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
+                      background: stackCommitDest === 'sustain' ? '#0a1828' : 'transparent',whiteSpace:"nowrap",
+                      opacity: budgetLeft <= 0 || sStack.length >= STACK_CAP ? 0.4 : 1}}
+                    disabled={budgetLeft <= 0 || sStack.length >= STACK_CAP}
+                    onClick={()=>setStackCommitDest(d => d === 'sustain' ? null : 'sustain')}>
+                    {stackCommitDest === 'sustain' ? '> Sustain' : '-> Sustain'}
                   </button>
                   {/* Status hint */}
                   <div style={{fontSize:5,color:"#6a8a9a",textAlign:"center",maxWidth:48,lineHeight:1.3}}>
-                    {revoiced ? '✓ done' : chordMode ? '+add / −drop' : '1/turn'}
+                    {budgetLeft <= 0 ? '✓ done' : `${budgetLeft}/${STACK_COMMIT_BUDGET} left`}
                   </div>
                 </div>
               );

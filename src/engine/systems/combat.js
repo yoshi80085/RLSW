@@ -10,6 +10,7 @@ import {
   THRASH_DAMAGE_CAP, THRASH_WHIFF_DMG, THRASH_PUSH_THRESHOLD,
   SONIC_VIBE_CAP,
   STOCK_REFILL_RATE,
+  STACK_CAP,
 } from "../../data/gameConstants.js";
 import { CORNERS } from "../../data/corners.js";
 import { cornerFacing } from "../../board/boardHelpers.js";
@@ -312,10 +313,10 @@ export function powerChordCondition(chordStack, fifthNote) {
 }
 
 /**
- * Gallop (Wide Leg): chord stack is at full capacity.
- * `maxStack` is the spirit's chord stack cap (default 6).
+ * Gallop (Wide Leg): Drive Stack is at full capacity.
+ * `maxStack` defaults to STACK_CAP (5) per the Drive/Sustain split.
  */
-export function gallopCondition(chordStack, maxStack = 6) {
+export function gallopCondition(chordStack, maxStack = STACK_CAP) {
   return chordStack.length >= maxStack;
 }
 
@@ -347,4 +348,65 @@ export function headbangFanOverrides() {
     promoteEvery: 2,        // base FAN_PROMOTE_EVERY is 3
     loyaltyPerDiehard: 16,  // base LOYALTY_PER_DIEHARD is 24
   };
+}
+
+// ─── DRIVE / SUSTAIN STACK SPLIT: SPEND HELPERS ─────────────────────────────
+// Pure functions — compute the stack mutations for an attack's note costs.
+// The caller applies the returned patches to the noteStates.
+//
+// Rules (§5 of DRIVE_SUSTAIN_SPLIT_DESIGN.md):
+//   Sonic:    attacker spends 1 from Drive (hit or miss); defender loses 1 from Sustain on hit.
+//   Physical: attacker spends 2 from Drive on hit only;   defender loses 1 from Sustain on hit.
+
+/**
+ * Sonic attack spend — attacker always pays 1 from driveStack.
+ * Returns { driveStack } patch (last note popped) or null if Drive is empty.
+ */
+export function sonicDriveSpend(driveStack) {
+  if (!driveStack || driveStack.length === 0) return null;
+  return { driveStack: driveStack.slice(0, -1) };
+}
+
+/**
+ * Physical (swing) attack spend — attacker pays 2 from driveStack ON HIT ONLY.
+ * Returns { driveStack } patch or null if not enough notes (need ≥ 2).
+ */
+export function physicalDriveSpend(driveStack) {
+  if (!driveStack || driveStack.length < 2) return null;
+  return { driveStack: driveStack.slice(0, -2) };
+}
+
+/**
+ * Defender sustain chip — defender loses 1 note from sustainStack on hit.
+ * Returns { sustainStack } patch or null if Sustain is empty.
+ */
+export function sustainChip(sustainStack) {
+  if (!sustainStack || sustainStack.length === 0) return null;
+  return { sustainStack: sustainStack.slice(0, -1) };
+}
+
+/**
+ * Fray — strips notes from the defender's Sustain Stack (post-roll, on hit).
+ * Returns { sustainStack } patch. At least 1 note always survives.
+ */
+export function frayFromSustain(sustainStack, amount) {
+  if (!sustainStack || sustainStack.length <= 1) return { sustainStack: sustainStack || [] };
+  const fray = Math.min(amount, sustainStack.length - 1);
+  return { sustainStack: sustainStack.slice(0, sustainStack.length - fray) };
+}
+
+/**
+ * Finisher stack-wipe — wipes BOTH stacks on the target.
+ * 'obliterate': clears both completely.
+ * 'scatter': removes `scatterN` notes from each stack (proportionally).
+ * Returns { driveStack, sustainStack } patch.
+ */
+export function finisherStackWipe(driveStack, sustainStack, wipeType, scatterN = 0) {
+  if (wipeType === 'obliterate') {
+    return { driveStack: [], sustainStack: [] };
+  }
+  // scatter: remove up to scatterN from each, keeping at least 0
+  const newDrive   = (driveStack   || []).slice(0, Math.max(0, (driveStack?.length ?? 0)   - scatterN));
+  const newSustain = (sustainStack || []).slice(0, Math.max(0, (sustainStack?.length ?? 0) - scatterN));
+  return { driveStack: newDrive, sustainStack: newSustain };
 }

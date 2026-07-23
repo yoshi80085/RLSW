@@ -57,8 +57,8 @@ export const STANCE_DEFS = {
     physical: {
       id: 'rake', label: 'Rake', icon: '🪒',
       apCost: 1, dbCost: 1,
-      desc: 'Spends 3 chord-stack notes instead of 2, gains +2 Drive. Requires ≥ 3 notes.',
-      noteCost: 3,      // spends 3 chord-stack notes instead of the normal 2
+      desc: 'Spends 3 Drive Stack notes instead of 2, gains +2 Drive. Requires ≥ 3 notes in Drive.',
+      noteCost: 3,      // spends 3 Drive Stack notes instead of the normal 2
       driveMod: 2,
     },
     sonic: {
@@ -98,7 +98,7 @@ export const STANCE_DEFS = {
       apCost: 2, dbCost: 1,    // costs 1 extra AP over Swing
       desc: '+2 Drive. On a whiff, next turn stock recovery is halved.',
       driveMod: 2,
-      whiffPenalty: 'halfRefill',  // STOCK_REFILL_RATE 4 → 2 for one refill
+      whiffPenalty: 'halfRefill',  // STOCK_REFILL_RATE 6 → 3 for one refill
     },
     sonic: {
       id: 'gallop', label: 'Gallop', icon: '🐎',

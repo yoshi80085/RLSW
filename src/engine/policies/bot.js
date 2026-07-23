@@ -283,15 +283,13 @@ export function botSpiritChord(spiritId, notes) {
 }
 
 /**
- * Decide whether to revoice a note into the chord stack this turn.
- * Returns the note string to voice, or null to keep the stance.
- * Pure over noteState + spiritId + persona.
+ * DEPRECATED — kept for save-compat / fallback; replaced by botPlanStackCommit.
  */
 export function botPlanRevoice(noteState, spiritId, persona) {
   const ns = noteState ?? {};
   if (ns.revoiceUsedThisTurn) return null;
   const chord = ns.chordStack ?? [];
-  if (chord.length >= 5) return null;  // full — v1 bot doesn't churn/drop
+  if (chord.length >= 5) return null;
   const stock = ns.noteStock ?? [];
   const style = persona.note;
   const have  = new Set(chord.map(pitchIndex));
@@ -308,9 +306,103 @@ export function botPlanRevoice(noteState, spiritId, persona) {
     const w = weight(botSpiritChord(spiritId, [...chord, note]));
     if (w > bestW) { bestW = w; best = note; }
   }
-  // Always replenish a fragile chord (depleted by attacking) even on a tie.
   if (best == null && chord.length < 2) best = cands[0];
   return best;
+}
+
+/**
+ * DRIVE / SUSTAIN SPLIT — decide how to spend the stack commit budget this turn.
+ * Returns an array of { note, dest } where dest is 'drive' | 'sustain', or []
+ * if no commits are worthwhile. At most STACK_COMMIT_BUDGET entries.
+ *
+ * Heuristic: favor Drive when hunting (persona.note === 'combat'/'disrupt'),
+ * favor Sustain when low Vibe or defensive style. Splits evenly otherwise.
+ * Pure over noteState + spiritId + persona + vibe.
+ */
+export function botPlanStackCommit(noteState, spiritId, persona, vibe = 10, maxVibe = 10) {
+  const ns = noteState ?? {};
+  const budget = 3 - (ns.stackCommitsThisTurn ?? 0);
+  if (budget <= 0) return [];
+
+  const drive   = ns.driveStack   ?? [];
+  const sustain = ns.sustainStack ?? [];
+  const stock   = ns.noteStock ?? [];
+  const used    = ns.usedStockIdx ?? [];
+  const style   = persona.note;
+
+  // available pool notes (unused stock)
+  const avail = stock.filter((_, i) => !used.includes(i));
+  if (!avail.length) return [];
+
+  // weight function — which stat does this persona care about?
+  const driveWeight = (c) => c.drive;
+  const sustWeight  = (c) => c.sustain;
+
+  // decide priority: drive-first vs sustain-first
+  const vibeRatio  = vibe / Math.max(1, maxVibe);
+  const preferSust = vibeRatio < 0.4 || style === 'clean' || style === 'Flair';
+  const preferDrv  = !preferSust && (style === 'combat' || style === 'disrupt');
+
+  const commits = [];
+  let dStack = [...drive], sStack = [...sustain];
+  const usedNotes = new Set();
+
+  for (let i = 0; i < Math.min(budget, avail.length); i++) {
+    // pick the best destination
+    const dFull = dStack.length >= 5;
+    const sFull = sStack.length >= 5;
+    if (dFull && sFull) break;
+
+    let dest;
+    if (dFull)                         dest = 'sustain';
+    else if (sFull)                    dest = 'drive';
+    else if (preferSust && !sFull)     dest = 'sustain';
+    else if (preferDrv  && !dFull)     dest = 'drive';
+    else                               dest = dStack.length <= sStack.length ? 'drive' : 'sustain';
+
+    const stack   = dest === 'drive' ? dStack : sStack;
+    const wFn     = dest === 'drive' ? driveWeight : sustWeight;
+    const have    = new Set(stack.map(pitchIndex));
+    const cands   = avail.filter(n => !usedNotes.has(n) && !have.has(pitchIndex(n)));
+    if (!cands.length) {
+      // try the other stack
+      if (dest === 'drive' && !sFull) { dest = 'sustain'; }
+      else if (dest === 'sustain' && !dFull) { dest = 'drive'; }
+      else break;
+      const s2 = dest === 'drive' ? dStack : sStack;
+      const h2 = new Set(s2.map(pitchIndex));
+      const c2 = avail.filter(n => !usedNotes.has(n) && !h2.has(pitchIndex(n)));
+      if (!c2.length) break;
+      // pick the candidate that maximizes the stat
+      const wFn2 = dest === 'drive' ? driveWeight : sustWeight;
+      let best = c2[0], bestW = wFn2(botSpiritChord(spiritId, [...s2, c2[0]]));
+      for (let j = 1; j < c2.length; j++) {
+        const w = wFn2(botSpiritChord(spiritId, [...s2, c2[j]]));
+        if (w > bestW) { bestW = w; best = c2[j]; }
+      }
+      commits.push({ note: best, dest });
+      usedNotes.add(best);
+      if (dest === 'drive') dStack.push(best); else sStack.push(best);
+      continue;
+    }
+
+    // pick the candidate that maximizes the stat for this stack
+    let best = cands[0], bestW = wFn(botSpiritChord(spiritId, [...stack, cands[0]]));
+    for (let j = 1; j < cands.length; j++) {
+      const w = wFn(botSpiritChord(spiritId, [...stack, cands[j]]));
+      if (w > bestW) { bestW = w; best = cands[j]; }
+    }
+
+    // only commit if it actually improves the stat (or if the stack is fragile)
+    const cur = wFn(botSpiritChord(spiritId, stack));
+    if (bestW <= cur && stack.length >= 2) continue;
+
+    commits.push({ note: best, dest });
+    usedNotes.add(best);
+    if (dest === 'drive') dStack.push(best); else sStack.push(best);
+  }
+
+  return commits;
 }
 
 /**

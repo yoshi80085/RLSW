@@ -4,7 +4,11 @@ export const DB_UPGRADE_THRESHOLD = 8;
 
 // Stock is a reservoir, not a fresh hand. Unused notes carry
 // over; only this many spent slots recharge per turn.
-export const STOCK_REFILL_RATE = 4;
+export const STOCK_REFILL_RATE = 6;
+
+// -- DRIVE / SUSTAIN STACK SPLIT (DRIVE_SUSTAIN_SPLIT_DESIGN.md) --
+export const STACK_COMMIT_BUDGET = 3;   // max notes committed to stacks per turn (split freely between Drive & Sustain)
+export const STACK_CAP           = 5;   // max notes per stack (Drive or Sustain)
 
 // -- AMP / DICE SYSTEM --
 // ── NEW RIG SYSTEM (AMP_DECK_DESIGN.md) ──
