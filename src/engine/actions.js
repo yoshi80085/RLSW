@@ -204,13 +204,19 @@ export function riffClosed() {
  *                                     a Charge Zone ceiling charge bumps it to 8).
  *                                     Ignored when dicePool is provided — Sonic
  *                                     ceilings are baked into the pool client-side.
+ * @param {number}  [p.defDie]        defender die size (default 6; Thrash passes 4).
+ *                                     🐛 This was silently DROPPED before — the
+ *                                     engine always rolled the defender a d6 while
+ *                                     the overlay clamped the shown face to a d4,
+ *                                     so a hidden 5/6 displayed as "4" but scored
+ *                                     as 5/6.
  */
 export function attackRolled(kind, attackerId, defenderId,
   { atkStat, defStat, posing = false, halveDef = false, psychoEligible = false, dicePool = null,
-    atkFloor = 0, atkDie = 6 }) {
+    atkFloor = 0, atkDie = 6, defDie = 6 }) {
   return {
     type: ATTACK_ROLLED, kind, attackerId, defenderId,
-    atkStat, defStat, posing, halveDef, psychoEligible, dicePool, atkFloor, atkDie,
+    atkStat, defStat, posing, halveDef, psychoEligible, dicePool, atkFloor, atkDie, defDie,
   };
 }
 

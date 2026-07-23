@@ -995,6 +995,12 @@ function Game({ gameState, onReturnToLobby }) {
     riffDifficultyRef.current = riffDifficulty;
     try { localStorage.setItem('rlsw.riffDifficulty', riffDifficulty); } catch { /* non-fatal */ }
   }, [riffDifficulty]);
+  // 🎨 Lite FX: strip GPU-heavy filter/shadow animations in the battle overlay
+  const [liteFx, setLiteFx] = useState(() => {
+    try { return localStorage.getItem('rlsw.liteFx') === '1'; } catch { return false; }
+  });
+  useEffect(() => { try { localStorage.setItem('rlsw.liteFx', liteFx ? '1' : '0'); } catch { /* non-fatal */ } }, [liteFx]);
+
   // ⏭ when on, the lore/intro cards (riff_intro, round-2 intro) auto-advance to the countdown
   const [skipBattleIntros, setSkipBattleIntros] = useState(false);
   const skipBattleIntrosRef = useRef(false);
@@ -1150,6 +1156,7 @@ function Game({ gameState, onReturnToLobby }) {
   // ─── BATTLE / RIFF-OFF MUSIC ──────────────────────────────────────────────
   const battleAudioRef = useRef(null);
   function playBattleMusic(src, volume = 0.5) {
+    if (liteFx) return;   // 🎨 lite FX: skip audio decoding to save CPU
     stopBattleMusic();
     const audio = new Audio(src);
     audio.loop = true;
@@ -1168,6 +1175,33 @@ function Game({ gameState, onReturnToLobby }) {
   useEffect(() => {
     if (!battleState) stopBattleMusic();
   }, [battleState]);
+
+  // ─── 📊 MATCH STATS ────────────────────────────────────────────────────────
+  // Cumulative riff-off note grades + battle totals per spirit, shown on the
+  // victory scoreboard. A ref, not state: written during play, read once at
+  // game end (local display only — never enters the engine or the netcode).
+  const matchStatsRef = useRef({});
+  function statsFor(id) {
+    const m = matchStatsRef.current;
+    if (!m[id]) m[id] = {
+      riff: { perfect: 0, good: 0, ok: 0, miss: 0, wrong: 0 },
+      battleFor: 0, battleAgainst: 0, battleW: 0, battleL: 0,
+    };
+    return m[id];
+  }
+  // Every dice battle (Thrash swing, physical special, Sonic): bank both sides'
+  // totals — "your number vs the rival's number" — plus the W/L.
+  function recordBattleTotals(attackerId, defenderId, atkTotal, defTotal, attackerWon) {
+    const a = statsFor(attackerId), d = statsFor(defenderId);
+    a.battleFor += atkTotal; a.battleAgainst += defTotal;
+    d.battleFor += defTotal; d.battleAgainst += atkTotal;
+    if (attackerWon) { a.battleW++; d.battleL++; } else { a.battleL++; d.battleW++; }
+  }
+  // Every riff-off performance: tally each judged note's grade.
+  function recordRiffResults(spiritId, results) {
+    const r = statsFor(spiritId).riff;
+    (results ?? []).forEach(x => { if (x?.grade != null && r[x.grade] != null) r[x.grade]++; });
+  }
 
   // Manual zoom/pan
   const manualVBRef  = useRef(null);
@@ -1348,105 +1382,105 @@ function Game({ gameState, onReturnToLobby }) {
     welcome: {
       title: '🎸 Welcome to the Stage',
       pages: [
-        { body: 'Welcome to the stage. This glowing badge is your ROOT NOTE — the tonal centre of your turn. And good news: you already know THE FULL SCALE, so every note of your Major scale is clean, 4th and 7th included. No homework — you start ready to play.', anchor: 'root-note' },
-        { body: 'Every in-scale note you play earns Decibills (DB) into this bar. When it fills, the THEORY TREE opens and you choose your next ability — new scale tones, amps, crew, combat tricks. Play clean, get paid.', anchor: 'db-bar' },
-        { body: 'One more thing in your back pocket: a 🔄 TRANSPOSE card, waiting here in MOD CARDS. One-time use, swaps your Root Note for any note in your stock. If your opening hand looks like it was dealt by an enemy, this is your escape hatch. Save it. Or don\'t — it\'s your funeral.', anchor: 'mod-cards' },
+        { body: 'This glowing badge is your ROOT NOTE — the tonal centre of your turn. Good news: you already know the FULL SCALE, so every note of your Major scale plays clean. You start ready to rock.', anchor: 'root-note' },
+        { body: 'Clean, in-scale notes earn Decibills (DB) into this bar. Fill it and the THEORY TREE opens — new abilities, your pick. Play clean, get paid.', anchor: 'db-bar' },
+        { body: 'In your back pocket: one 🔄 TRANSPOSE card — a one-time swap of your Root Note for any note in your stock. Bad opening hand? That\'s your escape hatch.', anchor: 'mod-cards' },
       ],
     },
     skill_tree: {
       title: '🌳 The Theory Tree',
       pages: [
-        { body: 'Your DB bar is FULL — the Theory Tree is open! Pick a SKILL TARGET: the ability you\'re saving toward. New scale tones, amps, crew, combat tricks... choose a route that fits how you want to play. Or panic-pick. Everyone does their first game.' },
-        { body: 'Every in-scale note keeps feeding DB toward your target — when the bar fills again, the skill is yours automatically and you pick the next one. The mini progress bar lives on your spirit card, so you always know how close you are.', anchor: 'db-bar' },
+        { body: 'Your DB bar is FULL — the Theory Tree is open! Pick a SKILL TARGET: scale tones, amps, crew, combat tricks. Choose a route that fits how you want to play. Or panic-pick — everyone does, their first game.' },
+        { body: 'In-scale notes keep feeding DB toward your target — when the bar refills, the skill is yours and you pick the next one. The mini progress bar lives on your spirit card.', anchor: 'db-bar' },
       ],
     },
     pivot: {
       title: '🎵 Step 1 — Choose Your Scale',
       pages: [
-        { body: 'See that big glowing badge? That\'s your ROOT NOTE — the tonal center of everything you do this turn. Now pick MAJOR (bright, consonant, sunshine) or MINOR (dark, tense, brooding). Together they define your scale.', anchor: 'root-note' },
-        { body: ['Why care? Notes IN your scale are "clean" — they earn DB and keep the crowd happy. Off-scale notes are DISCORD: no DB, and the audience notices. They always notice.', 'Root feeling wrong? Your 🔄 Transpose card can swap it before you commit to a mode. A bad root is a choice; staying on one is a lifestyle.'], anchor: 'note-stock' },
+        { body: 'Step 1: pick your sound. Your ROOT NOTE plus MAJOR (bright, sunshine) or MINOR (dark, brooding) defines your scale — which notes play clean this turn.', anchor: 'root-note' },
+        { body: ['In-scale notes earn DB and please the crowd. Off-scale notes are DISCORD — no DB, and the audience notices. They always notice.', 'Root feels wrong? Your 🔄 Transpose card can swap it. A bad root is a choice; staying on one is a lifestyle.'], anchor: 'note-stock' },
       ],
     },
     chord: {
-      title: '🎸 Step 2 — Build Your Chord',
+      title: '🎸 Step 2 — Load Your Stacks',
       pages: [
-        { body: 'This vertical rack is your CHORD STACK — up to 5 notes that ARE your combat stats. The chord sets your DRIVE (⚔️ attack, red) and SUSTAIN (🛡️ defense, blue). Watch the colored arrows as you add notes: red ▲ = more punch, blue ▲ = more armor.', anchor: 'chord-stack' },
-        { body: ['Your chord is not decoration — it\'s ammo. Every Swing you throw BURNS the first 2 notes off the front of the stack. You rebuild it one note per turn with your revoice. Swing wildly with an empty chord and you\'re fighting with base stats, which is a polite way of saying "losing".', 'Rule of thumb: keep the stack fed. A 5-note chord walking into a fight is a very different conversation than a 1-note one.'], anchor: 'chord-stack' },
+        { body: 'These racks are your combat stats, spelled in notes. The DRIVE STACK (⚔️ red) powers your attacks; the SUSTAIN STACK (🛡️ blue) is your armor. Each holds 5 notes — the better the chord they spell, the higher the stat.', anchor: 'chord-stack' },
+        { body: ['Stacks are ammo, not decoration. Landing a hit SPENDS notes off your Drive Stack; getting hit CHIPS notes off your Sustain Stack.', 'You can commit up to 3 notes per turn, split between the two however you like. Keep both fed — an empty rack fights on base stats, which is a polite word for "losing".'], anchor: 'chord-stack' },
       ],
     },
     melody: {
       title: '🎶 Step 3 — Build Your Melody',
       pages: [
-        { body: 'Now compose your MELODY LINE from your Note Stock. This is the big one: each note you commit = 1 hex of movement (AP) this turn. In-scale notes also bank DB toward your next skill. Short track = safe but slow. Long track = mobile but you might hit discords.', anchor: 'note-stock' },
-        { body: 'Your track builds up here as you tap notes. The colored slots mark special intervals — tritone (red, spicy), 5th (pink) and 4th (purple, sturdy), Major 3rd (green, cleansing), minor 7th (blue, draining). The LAST note matters most: it becomes next turn\'s Root, feeds cadences, and can put you on the Dissonance Edge. When it sounds right, hit COMMIT.', anchor: 'commit-track' },
+        { body: 'Now spend your remaining notes on the MELODY LINE: each note = 1 hex of movement (AP), up to your Speed — extras bank for later. In-scale notes also earn DB. Short track = safe but slow. Long track = mobile but you risk discords.', anchor: 'note-stock' },
+        { body: 'The colored slots mark special intervals — tritone (red, spicy), 5th (pink) and 4th (purple, sturdy), Major 3rd (green), minor 7th (blue). The LAST note matters most: it becomes next turn\'s Root and feeds cadences. When it sounds right, hit COMMIT.', anchor: 'commit-track' },
       ],
     },
     move_act: {
       title: '🚶 Step 4 — Move & Act',
       pages: [
-        { body: 'Track committed — your notes are now AP. Spend them here: MOVE across hexes, FACE to turn (1 step), and fight. Position matters: attacks fire into the cone or beam you\'re FACING. Sneaking behind someone is not just rude, it\'s tactics.', anchor: 'actions-bar' },
-        { body: ['Three ways to ruin someone\'s set:', '⚔️ SWING (1 AP) — the melee jab. Cheap, defended, drives your chord into them.', '🎸 SMASH (2 AP) — the haymaker. Undefendable, ignores Sustain, hurls your unused stock... and leaves you Exposed. Commit issues, in weapon form.', '🔊 SONIC (2 AP) — the ranged beam. Needs an amp in range. Less damage, way more Fame.'], anchor: 'actions-bar' },
-        { body: 'Done? Hit END TURN. Your last committed note becomes next turn\'s Root Note — so that throwaway discord you ended on? That\'s tomorrow\'s tonal center. Plan the ending.', anchor: 'end-turn' },
+        { body: 'Track committed — your notes are now AP. MOVE across hexes, FACE to turn (1 AP), and fight. Attacks fire into the cone or beam you\'re FACING — sneaking behind someone isn\'t just rude, it\'s tactics.', anchor: 'actions-bar' },
+        { body: ['Two ways to ruin someone\'s set:', '⚔️ SWING (1 AP) — the melee jab. Cheap, defended, drives your chord into them.', '🔊 SONIC (2 AP) — the ranged beam from your amp rig. Less damage, way more Fame.', 'Later, your STANCE adds signature specials and a finisher. Specials burn Db — the same points that buy skills. Choices, choices.'], anchor: 'actions-bar' },
+        { body: 'Done? Hit END TURN. Your last committed note becomes next turn\'s Root Note — that throwaway discord you ended on is tomorrow\'s tonal center. Plan the ending.', anchor: 'end-turn' },
       ],
     },
     combat: {
       title: '⚔️ Battle!',
       pages: [
-        { body: 'A SWING is a Thrash battle: both sides roll a d4 — attacker adds DRIVE, defender adds SUSTAIN. Win and you deal Vibe damage (up to 4) and might land a status effect. Lose as the attacker and you take a humiliation tap of 1 Vibe. Yes, it stings. It\'s supposed to.', anchor: 'stat-knobs' },
-        { body: ['The fine print your rival hopes you skip:', 'Your swing burns the first 2 notes of your Chord Stack — the hit literally plays your chord. And swinging drops your guard: −1 Sustain until your next turn.', 'Thrash pays a flat 1 FP. It\'s for hurting people. If you want FAME, plug into an amp and go Sonic — margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
+        { body: 'A SWING is a Thrash battle: both sides roll a d4 — attacker adds DRIVE, defender adds SUSTAIN. Win and you deal up to 4 Vibe damage. Lose as the attacker and you take a 1-Vibe humiliation tap. It\'s supposed to sting.', anchor: 'stat-knobs' },
+        { body: ['The fine print your rival hopes you skip:', 'A landed hit PLAYS your chord — you spend 2 Drive notes, the rival\'s Sustain Stack frays. A whiff spends nothing. Either way, swinging drops your guard: −1 Sustain until your next turn.', 'Thrash pays a flat 1 FP — it\'s for hurting people. For FAME, go Sonic: margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
       ],
     },
     fans: {
       title: '🎤 Fans',
       pages: [
-        { body: 'You drew a crowd! Fans never hand you FP directly — they MULTIPLY every FP you earn, up to ×2 with a full house. Diehards (♥, solid) are your loyal core and worth about three Casuals (👥, hollow), who are... let\'s say "emotionally flexible".', anchor: 'fan-crowd' },
-        { body: ['Growing the crowd: commit clean tracks near the action — centre rings pay 2 casuals a turn, the back row pays zero. Perform well and casuals harden into Diehards.', 'Losing the crowd: skulk in the outer ring too long and casuals get bored and leave. Get knocked down and a few of them flee on the spot — and a couple defect straight to whoever flattened you. Fans, man.'], anchor: 'fan-crowd' },
+        { body: 'You drew a crowd! Fans never hand you FP directly — they MULTIPLY every FP you earn, up to ×2 with a full house. Diehards (♥) are your loyal core, worth about three Casuals (👥), who are... emotionally flexible.' },
+        { body: ['Grow the crowd: commit clean tracks near centre stage — inner rings pay casuals every turn, the back row pays zero. Perform well and casuals harden into Diehards.', 'Lose the crowd: lurk on the edge and casuals wander off. Get knocked down and some flee on the spot — a couple straight to whoever flattened you. Fans, man.'] },
       ],
     },
     cadence: {
       title: '🎼 Cadences',
       pages: [
-        { body: 'A CADENCE is a harmonic pattern formed by the FINAL notes of your tracks across turns — like V→I, or the full IV→V→I. Land the resolution and it pays bonus FP (crowd-multiplied, naturally). The hints in your Note Stock panel show exactly which final note keeps a sequence alive. The game is literally telling you the answer — take the hint.', anchor: 'note-stock' },
+        { body: 'A CADENCE is a pattern formed by the FINAL notes of your tracks across turns — like V→I, or the full IV→V→I. Land the resolution and the crowd swells: bonus FANS on the spot. The hints in your Note Stock panel show exactly which final note keeps a sequence alive. Take the hint.', anchor: 'note-stock' },
       ],
     },
     riff: {
       title: '🎸 Riff Discovered!',
       pages: [
-        { body: 'That note pattern you just played? A legendary RIFF. First discovery writes it into the Riffbook and pays FP; replaying known riffs pays too. There are more hidden in the note-space — treat every track as an excavation. Some spirits win with fists; the archaeologists win with licks.', anchor: 'riffbook' },
+        { body: 'That pattern you just played? A legendary RIFF. First discovery writes it into the Riffbook and pays FP; replaying known riffs pays too. More are hidden in the note-space — treat every track as an excavation. Some spirits win with fists; the archaeologists win with licks.', anchor: 'riffbook' },
       ],
     },
     knockdown: {
       title: '😵 Knock Down!',
       pages: [
-        { body: 'A spirit\'s Vibe hit zero — KNOCKED DOWN. The bill: 1 life gone, −1 FP, and the crowd stampedes (a chunk of casuals flee, some straight into the arms of whoever did the flattening). They respawn at their home corner with full Vibe... after sitting out a turn to think about what happened.', anchor: 'vibe-bar' },
-        { body: 'Burn through ALL your lives and it\'s a true KO — out of the game, thanks for playing, merch table\'s on the left. Watch your Vibe bar. Retreating to heal isn\'t cowardice, it\'s set management.', anchor: 'vibe-bar' },
+        { body: 'A spirit\'s Vibe hit zero — KNOCKED DOWN. The bill: 1 life gone, −1 FP, and part of the crowd bolts (some straight to whoever did the flattening). They respawn at their home corner with full Vibe... after sitting out one turn to think about it.', anchor: 'vibe-bar' },
+        { body: 'Burn through ALL your lives and it\'s a true KO — out of the game, merch table\'s on the left. Watch your Vibe bar. Retreating to heal isn\'t cowardice, it\'s set management.', anchor: 'vibe-bar' },
       ],
     },
     fame: {
       title: '⭐ Fame Points (FP)',
       pages: [
         { body: `FP is the win condition: first to ${fameToWin} takes the crown. This gold bar is the only bar that truly matters — everything else exists to feed it.`, anchor: 'fame-bar' },
-        { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, ✨ holding centre-stage Limelight a full turn. (🎼 Cadences and 🧠 trivia win you FANS, not FP — the crowd is how you amplify the rest.)', 'EVERY one of those is multiplied by your crowd (up to ×2) — a deed in front of a full house is worth double. And if you\'re trailing badly, the underdog bonus quietly inflates your payouts up to ×2.5. The comeback is canon.', `But the arena has a volume limit: no matter how the multipliers stack, you can bank at most ${FAME_PER_TURN_CAP} FP in a single turn. Anything past the cap is lost to the noise — spread your legend across the set, not one blowout.`], anchor: 'fan-crowd' },
+        { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, ✨ holding centre-stage Limelight a full turn. (🎼 Cadences and 🧠 trivia pay FANS, not FP — the crowd is how you amplify the rest.)', 'Every payout is multiplied by your crowd (up to ×2), and if you\'re trailing badly the underdog bonus inflates it up to ×2.5. The comeback is canon.', `But the arena has a volume limit: at most ${FAME_PER_TURN_CAP} FP banked per turn. Spread your legend across the set, not one blowout.`], anchor: 'fame-bar' },
         { body: `One warning, hotshot: reach ${fameToWin} FP without a comfortable lead and the sky splits open — the ROCK GOD descends as a final boss for EVERYONE. Win big or win together.`, anchor: 'fame-bar' },
       ],
     },
     skill_unlock: {
       title: '🌳 Skill Unlocked!',
       pages: [
-        { body: 'New ability unlocked — the DB grind paid off. Skills are permanent: scale tones, amps, crew, combat upgrades, signature moves. Your spirit card wears the new badge; hover it to gloat over the details.', anchor: 'crew-gear' },
-        { body: 'Now pick your NEXT target and keep the loop rolling: in-scale notes → DB → skill → repeat. Spirits who stop building around mid-game tend to become content in other people\'s highlight reels.', anchor: 'db-bar' },
+        { body: 'New ability unlocked — the DB grind paid off. Skills are permanent: scale tones, amps, crew, combat upgrades, signature moves. Your spirit card wears the new badge; hover it to gloat.' },
+        { body: 'Now pick your NEXT target and keep the loop rolling: in-scale notes → DB → skill → repeat. Spirits who stop building become content in other people\'s highlight reels.', anchor: 'db-bar' },
       ],
     },
     status_effect: {
       title: '⚡ Status Effect!',
       pages: [
-        { body: ['Someone\'s wearing a status effect. The house specials:', '🔥 BURN — Vibe damage over time. 😵 STAGGER — freezes note slots so part of your kit is just... gone. 🧿 MOJO DRAIN — saps your performance and fan draw.', 'They wear off after a few turns, and a Major 3rd cleanses. The badges sit in your Note Stock panel — glance before you plan, not after you commit.'], anchor: 'note-stock' },
+        { body: ['Someone\'s wearing a status effect. The house specials:', '🔥 BURN — Vibe damage over time. 😵 STAGGER — freezes note slots so part of your kit is just... gone. 🧿 MOJO DRAIN — saps your performance and fan draw.', 'They wear off after a few turns — and with the right Theory skill, ending your track on a Major 3rd cleanses one. The badges sit in your Note Stock panel; glance before you plan.'], anchor: 'note-stock' },
       ],
     },
     intervals: {
       title: '🎵 Special Intervals',
       pages: [
-        { body: ['Some notes in your scale moonlight as weapons — the legend up top shows this turn\'s exact notes:', '🔴 TRITONE — maximum dissonance. Drive up, can BURN rivals. The devil\'s interval, and it knows it. 💗 5th / 💜 4th — the load-bearing consonances, your Sustain backbone. 💚 MAJOR 3rd — cleanses status effects. 🔵 MINOR 7th — arms Mojo Drain.', 'All of them pay bonus DB when played in-scale. Free money for good taste.'], anchor: 'interval-legend' },
+        { body: ['Some notes in your scale moonlight as weapons — the legend up top shows this turn\'s exact notes:', '🔴 TRITONE — maximum dissonance, the devil\'s interval. 💗 5th / 💜 4th — the load-bearing consonances, your Sustain backbone. 💚 MAJOR 3rd — the healer. 🔵 MINOR 7th — the drainer.', 'All pay bonus DB when played in-scale. Their combat powers — Burn, cleanse, Mojo Drain — switch on as you unlock Discord skills in the Theory Tree.'], anchor: 'interval-legend' },
       ],
     },
     // edge tips — REMOVED (system cut)
@@ -6014,6 +6048,7 @@ function Game({ gameState, onReturnToLobby }) {
       atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, psychoBushido,
     } = rollState.battle;
     let damage = rollState.battle.damage;
+    recordBattleTotals(attacker.id, targetId, atkTotal, defTotal, attackerWon); // 📊 scoreboard
 
     // 🌀 PSYCHO BUSHIDO (Shredding Ronin) — a blistering 5 or 6 stuns the rival
     // into folding: the engine already dropped their die to 1; announce it.
@@ -6090,16 +6125,9 @@ function Game({ gameState, onReturnToLobby }) {
     T(() => setBattleState(p => p ? { ...p, phase: 'pick_sustain_slide', pickPos: -atkStat + defStat } : p), 4200);
 
     // 5.6s: Attacker die appears spinning — waits for click
-    T(() => {
-      setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p);
-      // Spin random d6 faces
-      const spinI = setInterval(() => {
-        setBattleState(p => {
-          if (!p || p.phase !== 'atk_die_spin') { clearInterval(spinI); return p; }
-          return { ...p, spinFaceAtk: Math.floor(Math.random() * atkDie) + 1 };
-        });
-      }, 80);
-    }, 5600);
+    // ⚡ PERF: spin faces now animate inside NeonDie (local state) — no more
+    // 80 ms setBattleState interval re-rendering the whole app during spins.
+    T(() => setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p), 5600);
     // Note: clicking the die triggers handleAtkDieClick (defined below)
   }
 
@@ -6116,14 +6144,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (!bs || bs.riffOff || !introPhases.includes(bs.phase)) return;
     battleTimersRef.current.forEach(clearTimeout);
     battleTimersRef.current = [];
-    const sides = bs.dieSides ?? 6;
+    // ⚡ PERF: NeonDie self-animates its spin faces — no interval needed here.
     setBattleState(p => p ? { ...p, phase: 'atk_die_spin', pickPos: -(p.atkStat ?? 0) + (p.defStat ?? 0) } : p);
-    const spinI = setInterval(() => {
-      setBattleState(p => {
-        if (!p || p.phase !== 'atk_die_spin') { clearInterval(spinI); return p; }
-        return { ...p, spinFaceAtk: Math.floor(Math.random() * sides) + 1 };
-      });
-    }, 80);
   }
 
   // ── SONIC ATTACK ─────────────────────────────────────────────────────────────
@@ -6386,6 +6408,7 @@ function Game({ gameState, onReturnToLobby }) {
       atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, psychoBushido,
     } = rollState.battle;
     let damage = rollState.battle.damage;
+    recordBattleTotals(attacker.id, targetId, atkTotal, defTotal, attackerWon); // 📊 scoreboard
 
     if (psychoBushido) {
       addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} explodes with a ${atkRoll} — ${defender.name}'s die drops to 1!`);
@@ -6446,15 +6469,8 @@ function Game({ gameState, onReturnToLobby }) {
     T(() => setBattleState(p => p ? { ...p, phase: 'enter_defender' } : p), 2800);
     T(() => setBattleState(p => p ? { ...p, phase: 'flash_sustain' } : p), 3500);
     T(() => setBattleState(p => p ? { ...p, phase: 'pick_sustain_slide', pickPos: -atkStat + defStat } : p), 4200);
-    T(() => {
-      setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p);
-      const spinI = setInterval(() => {
-        setBattleState(p => {
-          if (!p || p.phase !== 'atk_die_spin') { clearInterval(spinI); return p; }
-          return { ...p, spinFaceAtk: Math.floor(Math.random() * atkDie) + 1 };
-        });
-      }, 80);
-    }, 5600);
+    // ⚡ PERF: NeonDie self-animates its spin faces — no interval needed here.
+    T(() => setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p), 5600);
   }
 
   // ── STANCE v2: SONIC SPECIAL ───────────────────────────────────────────────
@@ -6698,6 +6714,7 @@ function Game({ gameState, onReturnToLobby }) {
       atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, diceVals, keptIdx,
     } = rollState.battle;
     let damage = rollState.battle.damage;
+    recordBattleTotals(attacker.id, targetId, atkTotal, defTotal, attackerWon); // 📊 scoreboard
     if (hydraActive) addLog(`🐉 HYDRA AWAKENS! ${attacker.name} overdrives the rig — ${diceLabel}, keep best [${diceVals.join(', ')}] → ${atkRoll}, three beams scream out!`);
 
     // 🛡️ Fray on the verdict — the defender's chord takes real damage only when
@@ -6763,16 +6780,9 @@ function Game({ gameState, onReturnToLobby }) {
     T(() => setBattleState(p => p ? { ...p, phase: 'enter_defender' }                                      : p), 2800);
     T(() => setBattleState(p => p ? { ...p, phase: 'flash_sustain' }                                       : p), 3500);
     T(() => setBattleState(p => p ? { ...p, phase: 'pick_sustain_slide', pickPos: -atkStat + defStat }      : p), 4200);
-    T(() => {
-      setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p);
-      const spinI = setInterval(() => {
-        setBattleState(p => {
-          if (!p || p.phase !== 'atk_die_spin') { clearInterval(spinI); return p; }
-          return { ...p, spinFaceAtk: Math.floor(Math.random() * dieSides) + 1,
-            diceSpin: dicePool.map(s => Math.floor(Math.random() * s) + 1) };
-        });
-      }, 80);
-    }, 5600);
+    // ⚡ PERF: NeonDie self-animates its spin faces (incl. every pool die) —
+    // no more 80 ms whole-app re-render interval during the spin.
+    T(() => setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p), 5600);
   }
 
   // ── ACOUSTIC DUEL — Phase R4 ────────────────────────────────────────────────
@@ -7089,6 +7099,9 @@ function Game({ gameState, onReturnToLobby }) {
     // array and every peer computes the identical verdict.
     dispatch(riffResultsSubmitted('attacker', bs.atkResults));
     dispatch(riffResultsSubmitted('defender', bs.defResults));
+    // 📊 scoreboard — bank each performer's note grades (fires per round)
+    recordRiffResults(bs.attackerId, bs.atkResults);
+    recordRiffResults(bs.defenderId, bs.defResults);
     const verdict = dispatch(riffResolved()).battle.verdict;
     // damage is decided in the engine verdict now (Phase 3e) — no client re-derive.
     const { round, attackerWon, margin, tie, decidedBy, damage } = verdict;
@@ -7499,6 +7512,7 @@ function Game({ gameState, onReturnToLobby }) {
             return { ...p, phase: 'pick_atk_slide', pickPos: p.pickPos - p.atkRoll };
           });
           // Launch defender die after pick settles
+          // ⚡ PERF: NeonDie self-animates its spin faces — no interval needed.
           setTimeout(() => {
             setBattleState(p => {
               if (!p) return p;
@@ -7506,14 +7520,6 @@ function Game({ gameState, onReturnToLobby }) {
               const dds = p.defDieSides ?? 6;
               return { ...p, phase: 'def_die_spin', spinFaceDef: randDie(dds) };
             });
-            // Spin defender die faces randomly
-            const spinI2 = setInterval(() => {
-              setBattleState(p => {
-                if (!p || p.phase !== 'def_die_spin') { clearInterval(spinI2); return p; }
-                const dds = p.defDieSides ?? 6;
-                return { ...p, spinFaceDef: randDie(dds) };
-              });
-            }, 90);
           }, 1400);
         }, 500);
       }
@@ -8937,6 +8943,8 @@ function Game({ gameState, onReturnToLobby }) {
         spirits={spirits}
         noteStates={noteStates}
         limelightScores={limelightScores}
+        headliner={engineRef.current?.headliner ?? null}
+        matchStats={matchStatsRef.current}
         onReturnToLobby={onReturnToLobby}
         fameToWin={fameToWin}
         LIMELIGHT_TO_WIN={LIMELIGHT_TO_WIN}
@@ -9133,6 +9141,14 @@ function Game({ gameState, onReturnToLobby }) {
               color: skipBattleIntros ? "#ccff44" : "#3a5a7a"}}>
             ⏭ {skipBattleIntros ? "fast battles: ON" : "fast battles"}
           </button>
+          <button onClick={() => setLiteFx(v => !v)}
+            title="Reduce GPU-heavy visual effects in battles (filters, shadows, blend modes). Helps if battles stutter or freeze."
+            style={{fontFamily:"inherit",fontSize:9,padding:"3px 8px",borderRadius:4,cursor:"pointer",
+              background: liteFx ? "#2a1a00" : "#0a1020",
+              border:`1px solid ${liteFx ? "#cc8800" : "#1e3a5f"}`,
+              color: liteFx ? "#ffaa22" : "#3a5a7a"}}>
+            🎨 {liteFx ? "lite FX: ON" : "lite FX"}
+          </button>
           <button onClick={() => { setBeginnerEnabled(b => !b); if (!beginnerEnabled) setBeginnerTipsSeen(new Set()); }}
             title={beginnerEnabled ? "Beginner tips are ON — click to turn off" : "Beginner tips are OFF — click to turn on (resets seen tips)"}
             style={{fontFamily:"inherit",fontSize:9,padding:"3px 8px",background: beginnerEnabled ? "#1a2a10" : "#0a1020",
@@ -9215,6 +9231,7 @@ function Game({ gameState, onReturnToLobby }) {
         handleDefDieClick={handleDefDieClick}
         hydraImg={hydraImg}
         knockbackSpaces={knockbackSpaces}
+        liteFx={liteFx}
         sonicKnockback={sonicKnockback}
         thrashKnockback={thrashKnockback}
         sonicFame={sonicFame}
@@ -9747,7 +9764,7 @@ function Game({ gameState, onReturnToLobby }) {
                               <span style={{fontWeight:900, color: h.resolves ? "#ffd700" : "#aaffcc",
                                 textShadow: h.resolves ? "0 0 6px #ffd70088" : "none"}}>{h.nextNote}</span>
                               {h.resolves
-                                ? <span style={{fontWeight:700}}> to RESOLVE! ⭐{h.cadence.fp} FP</span>
+                                ? <span style={{fontWeight:700}}> to RESOLVE! 🎤 +{h.cadence.fp} Fans</span>
                                 : <span style={{opacity:0.6}}> next ({h.cadence.formula})</span>}
                             </span>
                           </div>
@@ -10173,7 +10190,7 @@ function Game({ gameState, onReturnToLobby }) {
                         onMouseLeave={()=>{ clearTimeout(hoverScaleTimerRef.current); setHoverScale(cur=>cur?.note===note?null:cur); }}
                         title={isStaggered ? "⚡ Staggered — unavailable"
                              : mixerReady ? "🎚️ Mixer — tap to layer this note again"
-                             : resolvesCadence ? `🎯 End your track on this note to RESOLVE a cadence — Fame!${lockTip}`
+                             : resolvesCadence ? `🎯 End your track on this note to RESOLVE a cadence — the crowd swells (+Fans)!${lockTip}`
                              : lockTip || undefined}
                         className="hexw"
                         style={{

@@ -38,7 +38,7 @@ const BEATS = [
     text: 'These Spirits have mastered their music completely. Their instruments are their weapons. Their sound is their power.',
     camFrom: [1.0, 0, 0], camTo: [1.0, 0, 0], cues: ['spirit-intros'] },
   { id: 3, start: 26000, end: 30000,
-    text: 'Four realms. Four sounds. One stage.',
+    text: 'Each claimed to be the best. The illest. The littest GOAT maxxing mofo in the Cosmos.',
     camFrom: [1.15, 0, -2], camTo: [1.22, -4, -2], cues: ['island-punch'] },
   { id: 4, start: 30000, end: 42000,
     text: 'For eons, Genre Gate-keepers and Purists bickered endlessly about whose music was the greatest.',

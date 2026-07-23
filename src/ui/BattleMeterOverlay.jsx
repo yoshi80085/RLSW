@@ -25,10 +25,23 @@ const PIPS = {
 // MUST live at module scope. Defining it inside the render function created a
 // new component type every render → React unmounted/remounted the <svg> each
 // frame of the 80 ms spin interval, causing the dice to flicker and vanish.
-function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
+function NeonDie({ value, spinning, color, size = 110, sides = 6, lite = false }) {
   const glowColor = color ?? '#ff4444';
   const half = size / 2;
-  const val = value ?? 1;
+  // ⚡ PERF: the die animates its OWN spin faces with local state. The old
+  // approach ran setInterval(setBattleState) in Game every 80 ms, re-rendering
+  // the entire ~12k-line app tree 12×/sec for the whole spin — a major cause
+  // of battle-overlay freezes on weak machines. Now only this tiny SVG
+  // re-renders while spinning; the parent stays untouched.
+  const [spinFace, setSpinFace] = React.useState(1);
+  React.useEffect(() => {
+    if (!spinning) return;
+    const iv = setInterval(() => setSpinFace(Math.floor(Math.random() * sides) + 1), 80);
+    return () => clearInterval(iv);
+  }, [spinning, sides]);
+  const val = spinning ? spinFace : (value ?? 1);
+  // liteFx: skip drop-shadow filters during the rapid 80ms spin interval
+  const spinGlow = (px) => spinning && !lite ? {filter:`drop-shadow(0 0 ${px}px ${glowColor})`} : {};
 
   // ── D4: equilateral triangle (tetrahedron face) ─────────────────────
   if (sides === 4) {
@@ -42,7 +55,7 @@ function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
         <polygon points={pts} fill="#060810" stroke={glowColor}
           strokeWidth={spinning ? 3 : 2}
-          style={spinning ? {filter:`drop-shadow(0 0 10px ${glowColor})`} : {}}/>
+          style={spinGlow(10)}/>
         {/* inner triangle accent */}
         {(() => {
           const r2 = 0.6;
@@ -58,7 +71,7 @@ function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
           textAnchor="middle" fontSize={size * 0.36} fontWeight="900"
           fontFamily="'Saira Stencil One',sans-serif"
           fill={glowColor}
-          style={spinning ? {filter:`drop-shadow(0 0 8px ${glowColor})`} : {}}>
+          style={spinGlow(8)}>
           {val}
         </text>
         <text x={half} y={botY - 4}
@@ -80,7 +93,7 @@ function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
         <rect x={4} y={4} width={size-8} height={size-8} rx={14}
           fill="#060810" stroke={glowColor} strokeWidth={spinning ? 3 : 2}
-          style={spinning ? {filter:`drop-shadow(0 0 10px ${glowColor})`} : {}}/>
+          style={spinGlow(10)}/>
         {[[10,10],[size-10,10],[10,size-10],[size-10,size-10]].map(([cx,cy],i) => (
           <circle key={i} cx={cx} cy={cy} r={2.5} fill={glowColor} opacity={0.25}/>
         ))}
@@ -88,7 +101,7 @@ function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
           <circle key={i}
             cx={half + ox * spread * 2} cy={half + oy * spread * 2}
             r={pipR} fill={glowColor}
-            style={spinning ? {filter:`drop-shadow(0 0 5px ${glowColor})`} : {}}/>
+            style={spinGlow(5)}/>
         ))}
       </svg>
     );
@@ -105,7 +118,7 @@ function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
         <polygon points={pts} fill="#060810" stroke={glowColor}
           strokeWidth={spinning ? 3 : 2}
-          style={spinning ? {filter:`drop-shadow(0 0 12px ${glowColor})`} : {}}/>
+          style={spinGlow(12)}/>
         {(() => {
           const r2 = r * 0.72;
           const pts2 = Array.from({length:8}, (_,i) => {
@@ -118,7 +131,7 @@ function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
           textAnchor="middle" fontSize={size * 0.38} fontWeight="900"
           fontFamily="'Saira Stencil One',sans-serif"
           fill={glowColor}
-          style={spinning ? {filter:`drop-shadow(0 0 8px ${glowColor})`} : {}}>
+          style={spinGlow(8)}>
           {val}
         </text>
         <text x={half} y={size - 10}
@@ -146,7 +159,7 @@ function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
         <polygon points={kite} fill="#060810" stroke={glowColor}
           strokeWidth={spinning ? 3 : 2}
-          style={spinning ? {filter:`drop-shadow(0 0 12px ${glowColor})`} : {}}/>
+          style={spinGlow(12)}/>
         <line x1={half - size*0.38} y1={half - size*0.015}
               x2={half + size*0.38} y2={half - size*0.015}
           stroke={glowColor} strokeWidth={0.7} opacity={0.3}/>
@@ -154,7 +167,7 @@ function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
           textAnchor="middle" fontSize={size * 0.36} fontWeight="900"
           fontFamily="'Saira Stencil One',sans-serif"
           fill={glowColor}
-          style={spinning ? {filter:`drop-shadow(0 0 8px ${glowColor})`} : {}}>
+          style={spinGlow(8)}>
           {val}
         </text>
         <text x={half} y={size - 14}
@@ -182,13 +195,13 @@ function NeonDie({ value, spinning, color, size = 110, sides = 6 }) {
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{display:'block',overflow:'visible'}}>
         <polygon points={pts} fill="#060810" stroke={glowColor}
           strokeWidth={spinning ? 3 : 2}
-          style={spinning ? {filter:`drop-shadow(0 0 14px ${glowColor})`} : {}}/>
+          style={spinGlow(14)}/>
         <polygon points={pts2} fill="none" stroke={glowColor} strokeWidth={0.7} opacity={0.22}/>
         <text x={half} y={half + size * 0.14}
           textAnchor="middle" fontSize={size * 0.36} fontWeight="900"
           fontFamily="'Saira Stencil One',sans-serif"
           fill={glowColor}
-          style={spinning ? {filter:`drop-shadow(0 0 10px ${glowColor})`} : {}}>
+          style={spinGlow(10)}>
           {val}
         </text>
         <text x={half} y={half + size * 0.44}
@@ -224,6 +237,7 @@ export function BattleMeterOverlay({
   handleDefDieClick,
   hydraImg,
   knockbackSpaces,
+  liteFx,
   sonicKnockback,
   thrashKnockback,
   sonicFame,
@@ -246,6 +260,12 @@ export function BattleMeterOverlay({
   spirits,
 }) {
   if (!battleState) return null;
+
+  // ── LITE FX helpers ─────────────────────────────────────────────────────────
+  // When liteFx is on, strip GPU-punishing blend modes, filter animations and
+  // heavy drop-shadows so the overlay runs smoothly on weaker hardware.
+  const blend = liteFx ? 'normal' : 'screen';
+
   return (() => {
         const attacker = spirits.find(s => s.id === battleState.attackerId);
         const defender = spirits.find(s => s.id === battleState.defenderId);
@@ -328,8 +348,8 @@ export function BattleMeterOverlay({
             const amp = 4 + level * 24, dur = Math.max(0.32, 0.95 - level * 0.55);
             const bright = 0.5 + level * 0.95 + (surge ? 0.5 : 0), glow = 5 + level * 30 + (surge ? 18 : 0);
             return { '--cheer-amp': `-${amp.toFixed(1)}px`,
-              animation: `crowd-cheer ${surge ? '0.34' : dur.toFixed(2)}s ease-in-out infinite`,
-              filter: `drop-shadow(0 0 ${glow.toFixed(0)}px ${color}) brightness(${bright.toFixed(2)})`,
+              animation: liteFx ? 'none' : `crowd-cheer ${surge ? '0.34' : dur.toFixed(2)}s ease-in-out infinite`,
+              filter: liteFx ? 'none' : `drop-shadow(0 0 ${glow.toFixed(0)}px ${color}) brightness(${bright.toFixed(2)})`,
               opacity: 0.4 + level * 0.6 };
           };
           const atkCheerLvl = isBreak ? (clashWinner === 'attacker' ? 1 : 0.15)
@@ -395,7 +415,12 @@ export function BattleMeterOverlay({
                 /* ── Beam clash ── */
                 @keyframes clash-orb-pulse  { 0%,100%{transform:translate(-50%,-50%) scale(1);} 50%{transform:translate(-50%,-50%) scale(1.16);} }
                 @keyframes clash-orb-surge  { 0%,100%{transform:translate(-50%,-50%) scale(1.05);} 50%{transform:translate(-50%,-50%) scale(1.5);} }
-                @keyframes clash-crackle    { 0%,100%{filter:brightness(1);} 25%{filter:brightness(1.55);} 50%{filter:brightness(0.8);} 75%{filter:brightness(1.7);} }
+                /* ⚡ PERF: crackle flickers OPACITY (GPU-composited free) instead of
+                   filter:brightness, which re-rasterized the full beam layer every
+                   frame at 0.16s — a battle-freeze culprit even in full FX. */
+                @keyframes clash-crackle    { ${liteFx
+                  ? '0%,100%{opacity:1} 50%{opacity:0.7}'
+                  : '0%,100%{opacity:1;} 25%{opacity:0.62;} 50%{opacity:1;} 75%{opacity:0.55;}'} }
                 @keyframes clash-charge      { 0%,100%{opacity:0.55; transform:translate(-50%,-50%) scale(0.85);} 50%{opacity:1; transform:translate(-50%,-50%) scale(1.1);} }
                 @keyframes clash-blast-burst { 0%{opacity:0; transform:translate(-50%,-50%) scale(0.2);} 30%{opacity:1; transform:translate(-50%,-50%) scale(1);} 100%{opacity:0; transform:translate(-50%,-50%) scale(2);} }
                 @keyframes clash-blast-left  { 0%{transform:translateX(0) rotate(0); opacity:1;} 100%{transform:translateX(-200px) rotate(-24deg); opacity:0;} }
@@ -412,12 +437,12 @@ export function BattleMeterOverlay({
                            zIndex:-1, pointerEvents:'none', overflow:'hidden'}}>
                 <div style={{position:'absolute', left:'-3%', bottom:'-2%', width:'52%', maxWidth:660}}>
                   <img src={crowdPinkImg} alt="" draggable={false}
-                    style={{width:'100%', display:'block', mixBlendMode:'screen', transformOrigin:'bottom center',
+                    style={{width:'100%', display:'block', mixBlendMode:blend, transformOrigin:'bottom center',
                             ...rfCrowdStyle(atkCheerLvl, '#ff3ad0', atkSurge)}}/>
                 </div>
                 <div style={{position:'absolute', right:'-3%', bottom:'-2%', width:'52%', maxWidth:660}}>
                   <img src={crowdBlueImg} alt="" draggable={false}
-                    style={{width:'100%', display:'block', mixBlendMode:'screen', transformOrigin:'bottom center',
+                    style={{width:'100%', display:'block', mixBlendMode:blend, transformOrigin:'bottom center',
                             ...rfCrowdStyle(defCheerLvl, '#34d6ff', defSurge)}}/>
                 </div>
               </div>
@@ -469,15 +494,15 @@ export function BattleMeterOverlay({
                         height:baseTh, transform:'translateY(-50%)', borderRadius:baseTh, transition:beamTransition,
                         opacity: beamsOut ? 1 : 0,
                         background:`linear-gradient(90deg, ${atkColor} 0%, ${atkColor} 70%, #ffffff 100%)`,
-                        boxShadow:`0 0 ${baseTh*1.4}px ${atkColor}, 0 0 ${baseTh*3}px ${atkColor}aa`,
-                        animation: clashStage === 'clash' || clashStage === 'escalate' ? 'clash-crackle 0.16s steps(2,end) infinite' : 'none'}}/>
+                        boxShadow: liteFx ? 'none' : `0 0 ${baseTh*1.4}px ${atkColor}, 0 0 ${baseTh*3}px ${atkColor}aa`,
+                        animation: clashStage === 'clash' || clashStage === 'escalate' ? `clash-crackle ${liteFx ? '0.5s' : '0.16s'} steps(2,end) infinite` : 'none'}}/>
                       {/* Defender beam (from right) */}
                       <div style={{position:'absolute', top:'50%', right:'10%', width: beamsOut ? rightW : '0%',
                         height:baseTh, transform:'translateY(-50%)', borderRadius:baseTh, transition:beamTransition,
                         opacity: beamsOut ? 1 : 0,
                         background:`linear-gradient(270deg, ${defColor} 0%, ${defColor} 70%, #ffffff 100%)`,
-                        boxShadow:`0 0 ${baseTh*1.4}px ${defColor}, 0 0 ${baseTh*3}px ${defColor}aa`,
-                        animation: clashStage === 'clash' || clashStage === 'escalate' ? 'clash-crackle 0.16s steps(2,end) infinite' : 'none'}}/>
+                        boxShadow: liteFx ? 'none' : `0 0 ${baseTh*1.4}px ${defColor}, 0 0 ${baseTh*3}px ${defColor}aa`,
+                        animation: clashStage === 'clash' || clashStage === 'escalate' ? `clash-crackle ${liteFx ? '0.5s' : '0.16s'} steps(2,end) infinite` : 'none'}}/>
                       {/* Charging orbs at each Spirit while powering up */}
                       {clashStage === 'charge' && [['10%', atkColor], ['90%', defColor]].map(([x,c],i) => (
                         <div key={i} style={{position:'absolute', top:'50%', left:x,
@@ -508,7 +533,7 @@ export function BattleMeterOverlay({
                   <img src={attacker?.imageSrc} alt={attacker?.name}
                     style={{height:190, width:'auto', objectFit:'contain', objectPosition:'bottom center',
                       opacity: atkLive ? 1 : 0.35,
-                      filter:`drop-shadow(0 0 ${atkLive ? (clashing ? 34 : 26) : 8}px ${atkColor}${atkLive ? 'aa' : '44'})`,
+                      filter: liteFx ? 'none' : `drop-shadow(0 0 ${atkLive ? (clashing ? 34 : 26) : 8}px ${atkColor}${atkLive ? 'aa' : '44'})`,
                       transition:'opacity 0.4s, filter 0.4s',
                       animation: atkBlasted ? 'clash-blast-left 0.9s ease-in both' : 'none'}}/>
                   <div style={{fontSize:9, color:attacker?.color ?? '#ff8866', letterSpacing:2, marginTop:4}}>🎤 {attacker?.name}</div>
@@ -520,7 +545,7 @@ export function BattleMeterOverlay({
                     style={{height:190, width:'auto', objectFit:'contain', objectPosition:'bottom center',
                       transform:'scaleX(-1)',
                       opacity: defLive ? 1 : 0.35,
-                      filter:`drop-shadow(0 0 ${defLive ? (clashing ? 34 : 26) : 8}px ${defColor}${defLive ? 'aa' : '44'})`,
+                      filter: liteFx ? 'none' : `drop-shadow(0 0 ${defLive ? (clashing ? 34 : 26) : 8}px ${defColor}${defLive ? 'aa' : '44'})`,
                       transition:'opacity 0.4s, filter 0.4s',
                       animation: defBlasted ? 'clash-blast-right 0.9s ease-in both' : 'none'}}/>
                   <div style={{fontSize:9, color:defender?.color ?? '#66ccff', letterSpacing:2, marginTop:4}}>🎸 {defender?.name}</div>
@@ -783,7 +808,7 @@ export function BattleMeterOverlay({
                     )}
                     {clashStage === 'clash' && (
                       <div style={{fontSize:13, fontWeight:900, letterSpacing:3, color:'#fff',
-                        textShadow:'0 0 20px #ffffff88', animation:'clash-crackle 0.12s steps(2,end) infinite'}}>
+                        textShadow: liteFx ? 'none' : '0 0 20px #ffffff88', animation:`clash-crackle ${liteFx ? '0.5s' : '0.12s'} steps(2,end) infinite`}}>
                         ⚡ BEAMS COLLIDE ⚡
                       </div>
                     )}
@@ -955,6 +980,11 @@ export function BattleMeterOverlay({
         function spiritGlow(stat, color, surge) {
           const gc = color ?? '#ffffff';
           const s = stat ?? 0;
+          // liteFx: flatten all portrait drop-shadows to a single cheap glow
+          if (liteFx) {
+            const o = surge ? 1 : Math.min(1, s / 12);
+            return { img:{}, aura:{ color:gc, o, anim:'none' } };
+          }
           if (surge) return {
             img:  { filter:`drop-shadow(0 0 26px #ffffff)` },
             aura: { color:'#ffffff', o:1, anim:'battle-aura-burst 0.9s cubic-bezier(.22,1,.36,1) both' },
@@ -979,7 +1009,7 @@ export function BattleMeterOverlay({
             transform:'translate(-50%,-50%)', pointerEvents:'none',
             '--aura-o': aura.o,
             background:`radial-gradient(ellipse 42% 55% at center, ${aura.color}bb 0%, ${aura.color}44 45%, transparent 72%)`,
-            mixBlendMode:'screen', opacity:aura.o,
+            mixBlendMode:blend, opacity:aura.o,
             animation:aura.anim, willChange:'opacity, transform',
           }}/>
         );
@@ -1005,8 +1035,8 @@ export function BattleMeterOverlay({
           const glow   = 5 + level * 30 + (surge ? 18 : 0);
           return {
             '--cheer-amp': `-${amp.toFixed(1)}px`,
-            animation: `crowd-cheer ${surge ? '0.34' : dur.toFixed(2)}s ease-in-out infinite`,
-            filter: `drop-shadow(0 0 ${glow.toFixed(0)}px ${color}) brightness(${bright.toFixed(2)})`,
+            animation: liteFx ? 'none' : `crowd-cheer ${surge ? '0.34' : dur.toFixed(2)}s ease-in-out infinite`,
+            filter: liteFx ? 'none' : `drop-shadow(0 0 ${glow.toFixed(0)}px ${color}) brightness(${bright.toFixed(2)})`,
             opacity: 0.45 + level * 0.55,
           };
         }
@@ -1123,9 +1153,10 @@ export function BattleMeterOverlay({
                 55%  { opacity:1; transform:translateY(-6px) scale(1.06); }
                 100% { opacity:1; transform:translateY(0)   scale(1.0); }
               }
+              /* ⚡ PERF: the glow filter is now STATIC on the pick (rasterized once);
+                 the pulse animates opacity only — no per-frame re-blur. */
               @keyframes battle-pick-glow {
-                0%,100% { filter:drop-shadow(0 0 8px #ff44ff) drop-shadow(0 0 4px #ffffff88); }
-                50%     { filter:drop-shadow(0 0 20px #ff88ff) drop-shadow(0 0 8px #ffffff); }
+                0%,100% { opacity:0.8; } 50% { opacity:1; }
               }
               @keyframes battle-die-pulse {
                 0%,100% { opacity:1; }
@@ -1198,7 +1229,10 @@ export function BattleMeterOverlay({
               /* ── Sonic beam ── */
               @keyframes battle-beam-charge { 0%,100%{opacity:0.45} 50%{opacity:0.8} }
               @keyframes battle-beam-blast  { 0%{opacity:0; transform:translateY(-50%) scaleX(0.1)} 30%{opacity:1; transform:translateY(-50%) scaleX(1.05)} 100%{opacity:1; transform:translateY(-50%) scaleX(1)} }
-              @keyframes battle-beam-crackle { 0%,100%{filter:brightness(1)} 25%{filter:brightness(1.5)} 50%{filter:brightness(0.85)} 75%{filter:brightness(1.7)} }
+              /* ⚡ PERF: opacity flicker, not filter:brightness — see clash-crackle. */
+              @keyframes battle-beam-crackle { ${liteFx
+                ? '0%,100%{opacity:1} 50%{opacity:0.7}'
+                : '0%,100%{opacity:1} 25%{opacity:0.62} 50%{opacity:1} 75%{opacity:0.55}'} }
               @keyframes battle-beam-fizzle { 0%{opacity:0.7; transform:translateY(-50%) scaleX(0.6)} 100%{opacity:0; transform:translateY(-30%) scaleX(0.3) rotate(-4deg)} }
               @keyframes battle-impact { 0%{opacity:0; transform:translate(-50%,-50%) scale(0.2)} 25%{opacity:1; transform:translate(-50%,-50%) scale(1.0)} 100%{opacity:0; transform:translate(-50%,-50%) scale(1.6)} }
               @keyframes battle-muzzle { 0%,100%{opacity:0.6; transform:translate(-50%,-50%) scale(0.9)} 50%{opacity:1; transform:translate(-50%,-50%) scale(1.15)} }
@@ -1212,7 +1246,9 @@ export function BattleMeterOverlay({
               /* ── 🎸 GEAR PROPS ── */
               @keyframes gear-mic-bob { 0%,100%{transform:translateY(0) rotate(-3deg)} 50%{transform:translateY(-4px) rotate(3deg)} }
               @keyframes gear-pedal-stomp { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(0.8)} }
-              @keyframes gear-mixer-shimmer { 0%,100%{filter:drop-shadow(0 0 3px #44ffaa)} 50%{filter:drop-shadow(0 0 9px #44ffaa)} }
+              @keyframes gear-mixer-shimmer { ${liteFx
+                ? '0%,100%{opacity:0.85} 50%{opacity:1}'
+                : '0%,100%{filter:drop-shadow(0 0 3px #44ffaa)} 50%{filter:drop-shadow(0 0 9px #44ffaa)}'} }
               /* ── 🎵 NOTE SCATTER — notes fly off defender on Thrash hit (Sonic-loses-rings style) ── */
               @keyframes note-scatter {
                 0%   { opacity:1; transform:translate(0,0) rotate(0deg) scale(1); }
@@ -1237,7 +1273,7 @@ export function BattleMeterOverlay({
                     transformOrigin:'top center',
                     clipPath:'polygon(47% 0, 53% 0, 100% 100%, 0 100%)',
                     backgroundImage:`linear-gradient(180deg, ${s.c}66, ${s.c}10 65%, transparent)`,
-                    filter:'blur(2px)', mixBlendMode:'screen',
+                    ...(liteFx ? {} : {filter:'blur(2px)'}), mixBlendMode:blend,
                     animation:`sfx-light-sweep ${3 + i*0.7}s ease-in-out ${i*0.4}s infinite`,
                   }}/>
                 ))}
@@ -1256,9 +1292,9 @@ export function BattleMeterOverlay({
                     position:'absolute', top:'-25%', left:b.x, width:4, height:'150%',
                     '--a':b.a, transformOrigin:'top center',
                     background:`linear-gradient(${b.c}00, ${b.c} 42%, ${b.c}cc 72%, ${b.c}00)`,
-                    boxShadow:`0 0 12px ${b.c}, 0 0 30px ${b.c}aa`,
-                    mixBlendMode:'screen',
-                    animation:`sfx-laser-sweep ${2.4 + i*0.3}s ease-in-out infinite, sfx-laser-flicker ${0.5 + i*0.13}s linear infinite`,
+                    boxShadow: liteFx ? 'none' : `0 0 12px ${b.c}, 0 0 30px ${b.c}aa`,
+                    mixBlendMode:blend,
+                    animation: liteFx ? 'none' : `sfx-laser-sweep ${2.4 + i*0.3}s ease-in-out infinite, sfx-laser-flicker ${0.5 + i*0.13}s linear infinite`,
                   }}/>
                 ))}
               </div>
@@ -1284,7 +1320,7 @@ export function BattleMeterOverlay({
                     width:48, height:180, transformOrigin:'bottom center',
                     background:'linear-gradient(0deg, #ffee66 0%, #ff8822 45%, #ff3311 76%, transparent 100%)',
                     borderRadius:'50% 50% 42% 42% / 70% 70% 30% 30%',
-                    filter:'blur(3px)', mixBlendMode:'screen',
+                    ...(liteFx ? {} : {filter:'blur(3px)'}), mixBlendMode:blend,
                     animation:`sfx-pyro-flare ${0.5 + i*0.12}s ease-in-out infinite`,
                   }}/>
                 ))}
@@ -1314,7 +1350,7 @@ export function BattleMeterOverlay({
                            width:'54%', maxWidth:720,
                            opacity: atkIn ? 1 : 0, transition:'opacity 0.7s ease'}}>
                 <img src={crowdPinkImg} alt="" draggable={false}
-                  style={{width:'100%', display:'block', mixBlendMode:'screen',
+                  style={{width:'100%', display:'block', mixBlendMode:blend,
                           transformOrigin:'bottom center', ...atkFans}}/>
               </div>
               {/* blue fanfare — defender, fades in with their Spirit */}
@@ -1322,7 +1358,7 @@ export function BattleMeterOverlay({
                            width:'54%', maxWidth:720,
                            opacity: defIn ? 1 : 0, transition:'opacity 0.7s ease'}}>
                 <img src={crowdBlueImg} alt="" draggable={false}
-                  style={{width:'100%', display:'block', mixBlendMode:'screen',
+                  style={{width:'100%', display:'block', mixBlendMode:blend,
                           transformOrigin:'bottom center', ...defFans}}/>
               </div>
             </div>
@@ -1344,9 +1380,9 @@ export function BattleMeterOverlay({
                   {battleState.hydra && (
                     <img src={hydraImg} alt="" draggable={false}
                       style={{position:'absolute', left:'-14%', top:'-200%', width:'128%',
-                        pointerEvents:'none', mixBlendMode:'screen', opacity:0.5,
-                        filter:'drop-shadow(0 0 26px #aa55ff66)', zIndex:1,
-                        animation:'hydra-loom 2.4s ease-in-out infinite'}}/>
+                        pointerEvents:'none', mixBlendMode:blend, opacity:0.5,
+                        filter: liteFx ? 'none' : 'drop-shadow(0 0 26px #aa55ff66)', zIndex:1,
+                        animation: liteFx ? 'none' : 'hydra-loom 2.4s ease-in-out infinite'}}/>
                   )}
                   <img src={battleMeterImg} alt="Battle Meter Track"
                     style={{position:'absolute', top:-CROP_TOP, left:0, width:'100%',
@@ -1359,6 +1395,7 @@ export function BattleMeterOverlay({
                     width:`${(60 / METER_W) * 100}%`,
                     transition: pickTransition,
                     pointerEvents:'none', zIndex:5,
+                    filter: liteFx ? 'none' : 'drop-shadow(0 0 14px #ff66ff) drop-shadow(0 0 5px #ffffffbb)',
                     animation:'battle-pick-glow 1.4s ease-in-out infinite',
                   }}>
                     <img src={battlePickImg} alt="pick" style={{width:'100%', display:'block'}}/>
@@ -1410,13 +1447,13 @@ export function BattleMeterOverlay({
                               filter: kept ? `drop-shadow(0 0 7px ${attacker?.color ?? '#4488ff'})` : 'none',
                               transition:'all .2s'}}>
                               <NeonDie value={v} spinning={atkSpinning}
-                                color={attacker?.color ?? '#4488ff'} size={48} sides={sides}/>
+                                color={attacker?.color ?? '#4488ff'} size={48} sides={sides} lite={liteFx}/>
                             </div>
                           );
                         })}
                       </div>
                     ) : (
-                      <NeonDie value={atkFace} spinning={atkSpinning} color={attacker?.color ?? '#ff4444'} size={80} sides={battleState.dieSides ?? 6}/>
+                      <NeonDie value={atkFace} spinning={atkSpinning} color={attacker?.color ?? '#ff4444'} size={80} sides={battleState.dieSides ?? 6} lite={liteFx}/>
                     )}
                     {atkSpinning && (
                       <div style={{
@@ -1428,7 +1465,7 @@ export function BattleMeterOverlay({
                     {phase === 'result' && atkFace !== null && (
                       <div style={{marginTop:3, fontSize:8, color:'#ffcc44', letterSpacing:1,
                         fontFamily:"'Saira Stencil One',sans-serif"}}>
-                        +{atkFace} = {atkTotal}
+                        {atkStat > 0 ? `⚔️${atkStat} + 🎲${atkFace} = ${atkTotal}` : `🎲${atkFace}`}
                       </div>
                     )}
                   </div>
@@ -1494,8 +1531,8 @@ export function BattleMeterOverlay({
                       <div style={{
                         position:'absolute', inset:0, borderRadius:beamH,
                         background:`linear-gradient(90deg, ${beamColor}00 0%, ${beamColor}cc 12%, ${beamColor} 55%, #ffffff 100%)`,
-                        boxShadow:`0 0 ${beamH}px ${beamColor}, 0 0 ${beamH*2.4}px ${beamColor}88`,
-                        animation: beamPhase === 'blast' ? 'battle-beam-crackle 0.12s steps(2,end) infinite' : 'none',
+                        boxShadow: liteFx ? 'none' : `0 0 ${beamH}px ${beamColor}, 0 0 ${beamH*2.4}px ${beamColor}88`,
+                        animation: beamPhase === 'blast' ? `battle-beam-crackle ${liteFx ? '0.5s' : '0.12s'} steps(2,end) infinite` : 'none',
                       }}>
                         <div style={{position:'absolute', left:'10%', right:0, top:'50%',
                           height:Math.max(2, beamH*0.28), transform:'translateY(-50%)',
@@ -1681,7 +1718,7 @@ export function BattleMeterOverlay({
                       display:'flex', flexDirection:'column',
                       alignItems:'center', justifyContent:'center',
                     }}>
-                    <NeonDie value={defFace} spinning={defSpinning} color={defender?.color ?? '#00ccff'} size={80} sides={battleState.defDieSides ?? battleState.dieSides ?? 6}/>
+                    <NeonDie value={defFace} spinning={defSpinning} color={defender?.color ?? '#00ccff'} size={80} sides={battleState.defDieSides ?? battleState.dieSides ?? 6} lite={liteFx}/>
                     {defSpinning && (
                       <div style={{
                         marginTop:4, fontSize:9, color: defender?.color ?? '#00ccff',
@@ -1692,7 +1729,7 @@ export function BattleMeterOverlay({
                     {phase === 'result' && defFace !== null && (
                       <div style={{marginTop:3, fontSize:8, color:'#ffcc44', letterSpacing:1,
                         fontFamily:"'Saira Stencil One',sans-serif"}}>
-                        {battleState?.posing ? '🌟 POSING = 0' : `+${defFace} = ${defTotal}`}
+                        {battleState?.posing ? '🌟 POSING = 0' : (defStat > 0 ? `🛡️${defStat} + 🎲${defFace} = ${defTotal}` : `🎲${defFace}`)}
                       </div>
                     )}
                   </div>

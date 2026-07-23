@@ -92,7 +92,7 @@ Anchor every effect to these regions of `opening_island.png`:
 > These Spirits have mastered their music completely. Their instruments are
 > their weapons. Their sound is their power.
 >
-> ★ Four realms. Four sounds. One stage.
+> ★ Each claimed to be the best. The illest. The littest GOAT maxxing mofo in the Cosmos.
 >
 > For eons, Genre Gate-keepers and Purists bickered endlessly about whose
 > music was the greatest. To settle the debate once and for all, The Gods
@@ -113,7 +113,7 @@ Anchor every effect to these regions of `opening_island.png`:
 | 0 | 0–3s | — | static wide, scale 1.0 | black → glitch-in reveal (2 tear bursts), scanlines fade in |
 | 1 | 3–16s | "From the furthest corners… genre." | slow zoom 1.0→1.12, centred | cloud pulses begin; 4 Spirit silhouettes rise from the 4 corner clouds (staggered 1.2s), each rimmed in their realm color (Ronin gold, Glamarchy pink, Intergalactic teal, Metalness red) |
 | 2 | 16–26s | "These Spirits have mastered… their power." | 1.12→1.25, drift toward stage | on "instruments are their weapons": 4 instrument silhouettes flash in sequence next to their Spirits, one RGB-split pulse per flash |
-| 3 | 26–30s | ★ "Four realms. Four sounds. One stage." | quick settle, micro zoom-out 1.25→1.22 | all 4 silhouettes pulse once in unison; stage rim brightens |
+| 3 | 26–30s | ★ "Each claimed to be the best. The illest. The littest GOAT maxxing mofo in the Cosmos." | quick settle, micro zoom-out 1.25→1.22 | all 4 silhouettes pulse once in unison; stage rim brightens |
 | 4 | 30–42s | "For eons, Genre Gate-keepers… greatest." | lateral pan L→R across clouds, hold 1.22 | fan-crowd silhouettes fill opposing clouds (blue vs pink, from `crowd_*.png`); alternating flicker glow = the bickering; micro-arcs jump BETWEEN cloud groups |
 | 5 | 42–50s | "To settle the debate… edge of the Cosmos." | punch-in 1.22→1.55 onto the island | biggest lightning burst + white flash on "deployed"; 2 Rock God silhouettes tower BEHIND the island (scale ~2× island height, backlit violet); hex grid ripple (opacity wave across the deck region) |
 | 6 | 50–62s | "This isn't just a battle… await its Victor." | slow push 1.55→1.85 into the Limelight hex | heartbeat sync: clouds, bolts, stage rim all pulse on a shared 1.1s cycle; glitch bursts ramp in frequency |
