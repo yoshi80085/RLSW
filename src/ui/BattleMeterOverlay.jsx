@@ -1054,11 +1054,16 @@ export function BattleMeterOverlay({
         const beamH       = (beamPhase === 'charge' ? 8 : Math.min(96, Math.round(10 + beamPower * 3.2))) * (sunLit ? 1.6 : 1); // px
         const beamColor   = sunLit ? '#ffcc44' : (attacker?.color ?? '#aa66ff');
 
-        // ── MOVE-NAME NEON CALLOUT (Thrash only, fires at result) ───────────
+        // ── MOVE-NAME NEON CALLOUT (melee result) ────────────────────────
+        // Show the stance special label (HAMMER-ON, RAKE, AXE SWING) when
+        // stanceSpecial is set; fall back to the random dance name or SWING.
+        const stanceSpecialLabel = battleState.stanceSpecial
+          ? { hammer_on: '🔨 HAMMER-ON', rake: '🪒 RAKE', axe_swing: '🪓 AXE SWING' }[battleState.stanceSpecial] ?? null
+          : null;
         let moveFlash = null;
         if (phase === 'result' && !sonicAttack) {
           moveFlash = attackerWon
-            ? { text: battleState.danceName ?? 'SWING', color:'#44ddff' }
+            ? { text: stanceSpecialLabel ?? battleState.danceName ?? 'SWING', color: stanceSpecialLabel ? '#ff8800' : '#44ddff' }
             : { text:'whiff…', color:'#6688aa', whiff:true };
         }
 
@@ -1736,15 +1741,13 @@ export function BattleMeterOverlay({
               // 🧍 Stance identity pill (Stance rework) — tiny inline map so the
               // overlay stays prop-free about stance data.
               const STANCE_PILL = {
-                soloist: { icon:'🌟', label:'Soloist', color:'#ffd700', desc:'P-score → Drive · +1 fan on crowd gains · frays double' },
-                power:   { icon:'🤘', label:'Power',   color:'#ff4444', desc:'strips +1 note · hits harder · absorbs harder' },
-                cool:    { icon:'🕶️', label:'Cool',    color:'#44aaff', desc:'fray halved · loyal core builds' },
-                groove:  { icon:'🌀', label:'Groove',  color:'#aa55ff', desc:'the wave powers the attack' },
+                solo:      { icon:'🎸', label:'Solo',      color:'#ffd700', desc:'Hammer-On · Pinch Harmonic · Bend · Pull-Off' },
+                low_slung: { icon:'🕶️', label:'Low Slung', color:'#44aaff', desc:'Rake · Power Chord · Slide · Feedback' },
+                wide_leg:  { icon:'🤘', label:'Wide Leg',  color:'#ff4444', desc:'Axe Swing · Gallop · Thrash · Headbang' },
               };
               const stancePill = STANCE_PILL[battleState.atkStance];
               const activeMods = [
                 stancePill && { ...stancePill, label:`${stancePill.label} stance` },
-                (battleState.grooveSpent > 0) && { icon:'🌊', label:'Groove Wave', color:'#cc88ff', desc:`+${battleState.grooveSpent} Drive & Fame` },
                 mods.laserActive      && { icon:'🔴', label:'Laser Show',     color:'#ff4444', desc:"Defender's die halved" },
                 mods.stageLightActive && { icon:'💡', label:'Stage Lighting',  color:'#ffcc44', desc:'+1 Vibe on win' },
                 mods.fogActive        && { icon:'🌫️', label:'Fog Machine',     color:'#aaccff', desc:'-1 Drive, -1 Sustain' },
@@ -1804,7 +1807,7 @@ export function BattleMeterOverlay({
                 </div>
               </div>
               <div style={{fontSize:10, color:'#6a8aaa', letterSpacing:2, textAlign:'center', minWidth:260}}>
-                {phase==='enter_attacker'     && '⚔️ SWING!'}
+                {phase==='enter_attacker'     && (stanceSpecialLabel ? `${stanceSpecialLabel}!` : '⚔️ SWING!')}
                 {phase==='flash_drive'        && `${attacker?.name?.split(' ')[0]} DRIVE: ${atkStat}`}
                 {phase==='pick_drive_slide'   && `↙ pick slides ${atkStat} toward attacker…`}
                 {phase==='enter_defender'     && `${defender?.name} steps up!`}

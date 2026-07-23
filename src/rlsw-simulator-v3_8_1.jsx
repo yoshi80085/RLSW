@@ -299,7 +299,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STANCE_COMMIT_DB } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, FAME_TO_WIN, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STANCE_COMMIT_DB, BOT_DB_SPEND_THRESHOLD } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -7389,7 +7389,10 @@ function Game({ gameState, onReturnToLobby }) {
       } else {
         battleKnockback(attackerId, defenderId, thrashKnockback(margin) + pullOffExtra);
       }
-      if (pullOffExtra > 0) addLog(`↗️ Pull-Off — extra knockback!`);
+      if (pullOffExtra > 0) {
+        addLog(`↗️ Pull-Off — extra knockback!`);
+        triggerEffectFlash(defenderId, '↗️', 'PULL-OFF!', '#ffd700');
+      }
       resolveWinDamage(attackerId, defenderId, damage, spirits.find(s2 => s2.id === attackerId)?.name);
       // ── FP — Sonic is the Fame engine; Thrash earns a flat 1 ──
       if (sonicAttack) {
@@ -7433,6 +7436,7 @@ function Game({ gameState, onReturnToLobby }) {
         if (retaliationDmg > 0) {
           applyVibeDamage(attackerId, retaliationDmg, 'Feedback', defenderId);
           addLog(`📢 FEEDBACK! ${spirits.find(s => s.id === defenderId)?.name}'s amp squeals — ${spirits.find(s => s.id === attackerId)?.name} takes ${retaliationDmg} retaliation!`);
+          triggerEffectFlash(attackerId, '📢', 'FEEDBACK!', '#44aaff');
         }
       }
       // Defender earns FP for successfully defending
@@ -8126,23 +8130,67 @@ function Game({ gameState, onReturnToLobby }) {
           schedule(guard(() => { endTurn(); botStepRef.current = 'idle'; }));
           return;
         }
-        const coneNow0 = getRivalsInCone(self);
-        // 🎸💥 SMASH a turtle: a high-Sustain rival in melee would shrug off a normal
-        // swing, so bring the instrument down — undefendable, ignores their Sustain.
-        // Needs 2 AP + at least 2 unused stock notes to hurl (leaves us Exposed).
-        if (coneNow0.length && steps >= 2) {
-          const usedSet  = ns.usedStockIdx;
-          const isUsed    = (i) => usedHas(usedSet, i);
-          const unused   = (ns.noteStock ?? []).filter((_, i) => !isUsed(i)).length;
-          const t        = botPickTarget(coneNow0, self);
+        // ── STANCE-AWARE COMBAT DECISIONS ───────────────────────────────
+        // Shared state: Db, unlocked skills, unused stock, stance kit.
+        const unlocked  = ns.unlockedSkills ?? [];
+        const dbPts     = ns.dbPoints ?? 0;
+        const usedSet   = ns.usedStockIdx;
+        const unused    = (ns.noteStock ?? []).filter((_, i) => !usedHas(usedSet, i)).length;
+        const kit       = stanceKit(self.id);
+        const selfHex   = HEX_BY_NUM[self.num];
+
+        // Finisher range varies by stance (Bend: 2, Slide: 3, Thrash: 1).
+        const finRange  = kit.finisher?.range ?? 1;
+        const rivalsInFinRange = selfHex ? spirits.filter(s =>
+          s.id !== self.id && !s.knockedOut && (() => {
+            const sHex = HEX_BY_NUM[s.num];
+            return sHex && axialDist(selfHex.q, selfHex.r, sHex.q, sHex.r) <= finRange;
+          })()
+        ) : [];
+        // Blaster of Ra replaces Slide for Intergalactic 0 when unlocked.
+        const hasBlaster = self.id === 'intergalactic_0' && unlocked.includes('blaster_of_ra');
+        const finTargets = hasBlaster ? getRivalsInBeam(self) : rivalsInFinRange;
+
+        // 1) 🎸💥 FINISHER — turtle-buster: undefendable vs high-Sustain targets.
+        // Needs 2 AP + ≥ 2 unused stock (leaves us Exposed).
+        if (finTargets.length && unused >= 2 && steps >= 2) {
+          const t = botPickTarget(finTargets, self);
           const tSustain = spiritChord(t.id, engineRef.current.noteStates?.[t.id]?.chordStack ?? []).sustain;
-          if (unused >= 2 && tSustain >= 6) {
+          if (tSustain >= 6) {
             botStepRef.current = 'ending';
-            schedule(guard(() => resolveFinisher(t.id)));
+            schedule(guard(() => hasBlaster ? resolveBlasterOfRa() : resolveFinisher(t.id)));
             return;
           }
         }
-        // 📡 Sonic is offline outside the rig's radius — don't line up a beam there.
+
+        // 2) ⚔️ PHYSICAL SPECIAL — spend 1 Db for stance melee attack.
+        // Only when Db ≥ threshold (don't starve upgrades).
+        const hasPhysSkill = unlocked.includes(STANCE_PHYSICAL_SKILL);
+        if (hasPhysSkill && dbPts >= BOT_DB_SPEND_THRESHOLD) {
+          const physAp    = kit.physical?.apCost ?? 1;
+          const noteCost  = kit.physical?.noteCost ?? 2;
+          const conePhys  = getRivalsInCone(self);
+          if (conePhys.length && steps >= physAp && (ns.chordStack ?? []).length >= noteCost) {
+            const t = botPickTarget(conePhys, self);
+            botStepRef.current = 'ending';
+            schedule(guard(() => resolvePhysicalSpecial(t.id)));
+            return;
+          }
+        }
+
+        // 3) 🔊 SONIC SPECIAL — spend 1 Db for +2 Drive sonic when condition met.
+        const hasSonicSkill = unlocked.includes(STANCE_SONIC_SKILL);
+        if (hasSonicSkill && dbPts >= BOT_DB_SPEND_THRESHOLD) {
+          const beamSpec = rigInRangeRef.current ? getRivalsInBeam(self) : [];
+          if (beamSpec.length && steps >= 2 && checkSonicCondition(self.id, ns)) {
+            const t = botPickTarget(beamSpec, self);
+            botStepRef.current = 'ending';
+            schedule(guard(() => resolveSonicSpecial(t.id)));
+            return;
+          }
+        }
+
+        // 4) 📡 Regular Sonic (offline outside rig radius).
         const beamNow = rigInRangeRef.current ? getRivalsInBeam(self) : [];
         if (beamNow.length && steps >= 2) {
           const t = botPickTarget(beamNow, self);
@@ -8150,19 +8198,34 @@ function Game({ gameState, onReturnToLobby }) {
           schedule(guard(() => initiateSonicAttack(t.id)));
           return;
         }
+
+        // 5) ⚔️ Regular Swing.
         const coneNow = getRivalsInCone(self);
-        if (coneNow.length && steps >= 1) {   // jab now costs 1 AP
+        if (coneNow.length && steps >= 1) {
           const t = botPickTarget(coneNow, self);
           botStepRef.current = 'ending';
           schedule(guard(() => initiateSwing(t.id)));
           return;
         }
+
+        // 6) 🎸💥 FINISHER — closer: fire on Exposed or near-death targets
+        // when we have surplus stock. Lower priority than specials since
+        // finisher leaves us Exposed + wrecks our own notes.
+        if (finTargets.length && unused >= 3 && steps >= 2) {
+          const t = botPickTarget(finTargets, self);
+          const tNs = engineRef.current.noteStates?.[t.id] ?? {};
+          const finDamage = kit.finisher?.damage ?? 1;
+          if (tNs.smashExposed || (t.vibe ?? 10) <= finDamage + 1) {
+            botStepRef.current = 'ending';
+            schedule(guard(() => hasBlaster ? resolveBlasterOfRa() : resolveFinisher(t.id)));
+            return;
+          }
+        }
         // Phase R4: Acoustic Duel — fallback when no beam/cone available.
         // Challenge an adjacent rival if off cooldown. Lower priority than sonic/swing
         // since the pot is smaller, but better than doing nothing.
-        if (steps >= 2) {
-          const selfHex = HEX_BY_NUM[self.num];
-          if (selfHex) {
+        if (steps >= 2 && selfHex) {
+          {
             const botCds = (noteStates[self.id]?.acousticDuelCds ?? {});
             const adjRivals = spirits.filter(s => s.id !== self.id && !s.knockedOut && (() => {
               const h = HEX_BY_NUM[s.num];

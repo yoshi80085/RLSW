@@ -110,5 +110,9 @@ export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
 // Once per commit, on top of normal Db earnings. ⚠️ TUNABLE
 export const STANCE_COMMIT_DB = 1;
 
+// Bots only spend Db on stance specials when they have at least this many Db.
+// Prevents bots from starving their own skill upgrades. ⚠️ TUNABLE
+export const BOT_DB_SPEND_THRESHOLD = 3;
+
 // -- DISSONANCE EDGE -- REMOVED (system cut — Theory learning streamlined).
 

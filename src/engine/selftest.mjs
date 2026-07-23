@@ -1184,7 +1184,7 @@ const config = {
   assert.ok(open(0.0).god.telegraph.hexes.length > 0, "AoE hexes armed");
   const ps = open(0.4);
   assert.equal(ps.lastAct.attackId, "power_slide", "bucket 2 → power slide telegraph");
-  assert.equal(ps.lastAct.targetId, "wildaxe", "slide aims at a live spirit");
+  assert.equal(ps.lastAct.targetId, "vera", "slide aims at the slowest spirit (vera = last in turnQueue)");
   assert.ok(ps.god.telegraph.end != null, "slide line armed with a stop hex");
   const fm = open(0.65);
   assert.equal(fm.lastAct.kind, "melted", "bucket 3 → face-melter (no telegraph)");
@@ -2214,14 +2214,14 @@ const config = {
   assert.deepEqual(sonicRig(["amp_1", "power_1", "power_2", "power_3"], 0).pool,
     [8, 8], "Power capped at pool size: Amp I + Power III → 2d8 (not 3)");
 
-  // ── Range tiers — radii from RIG_RADIUS_BY_TIER ──
-  // Tier 0 radius = 3 (starting range)
-  assert.equal(sonicRig(["amp_1"], 3).inRange, true, "Range 0: dist 3 inside (starting radius 3)");
-  assert.equal(sonicRig(["amp_1"], 4).inRange, false, "Range 0: dist 4 outside");
-  assert.deepEqual(sonicRig(["amp_1"], 4).pool, [6, 6], "out of range → Main Amp floor 2d6");
-  // Tier I radius = 4
-  assert.equal(sonicRig(["amp_1", "range_1"], 4).inRange, true, "Range I: dist 4 inside");
-  assert.equal(sonicRig(["amp_1", "range_1"], 5).inRange, false, "Range I: dist 5 outside");
+  // ── Range tiers — radii from RIG_RADIUS_BY_TIER [4, 5, 7, Infinity] ──
+  // Tier 0 radius = 4 (starting range)
+  assert.equal(sonicRig(["amp_1"], 4).inRange, true, "Range 0: dist 4 inside (starting radius 4)");
+  assert.equal(sonicRig(["amp_1"], 5).inRange, false, "Range 0: dist 5 outside");
+  assert.deepEqual(sonicRig(["amp_1"], 5).pool, [6, 6], "out of range → Main Amp floor 2d6");
+  // Tier I radius = 5
+  assert.equal(sonicRig(["amp_1", "range_1"], 5).inRange, true, "Range I: dist 5 inside");
+  assert.equal(sonicRig(["amp_1", "range_1"], 6).inRange, false, "Range I: dist 6 outside");
   // Tier II radius = 7 (requires Range I too — prereqs cumulate in countOf)
   assert.equal(sonicRig(["amp_1", "range_1", "range_2"], 7).inRange, true, "Range II: dist 7 inside");
   assert.equal(sonicRig(["amp_1", "range_1", "range_2"], 8).inRange, false, "Range II: dist 8 outside");
