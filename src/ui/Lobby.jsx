@@ -12,7 +12,7 @@ const RIFF_DIFF_SHORT = { rookie: 'INFLUENCER', gigging: 'GIGGING', shredder: 'S
 
 const MENU_SONGS = [menuSong3];
 
-export function Lobby({ onStart, onTutorial }) {
+export function Lobby({ onStart, onTutorial, onPractice }) {
   const [playerCount, setPlayerCount] = useState(null);
   const [mode, setMode] = useState(null);
   const [assignments, setAssignments] = useState({});
@@ -179,6 +179,7 @@ export function Lobby({ onStart, onTutorial }) {
               {Object.entries(RIFF_FALL_DIFFICULTY).map(([k,p])=>
                 <button key={k} onClick={()=>pickRiffDiff(k)} title={`${p.label} — ${p.blurb}`}
                   style={{...seg(riffDiff===k,"#f6ad55"),padding:"6px 10px"}}>{p.icon} {RIFF_DIFF_SHORT[k] ?? k.toUpperCase()}</button>)}
+              {onPractice && <button onClick={()=>onPractice(riffDiff)} title="Practice riffs solo — endless stream with tier escalation" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:9,letterSpacing:1,cursor:"pointer",padding:"6px 12px",borderRadius:4,background:"#0a1a2a",border:"1px solid #19e6ff44",color:"#19e6ff",marginLeft:4,transition:"all .2s"}}>PRACTICE</button>}
             </div>
             <div style={{width:1,height:20,background:"#1a2a40"}}/>
             <span style={{fontSize:8,color:"#3a5a7a",flex:1,minWidth:100}}>{startingLives===1?`Sudden death — ${fpPerLife(playerCount ?? 2)} FP to win`:`${startingLives} Knock Downs = KO — ${startingLives*fpPerLife(playerCount ?? 2)} FP to win`}{startingLives>=3?" 🤘":""}</span>
