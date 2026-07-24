@@ -63,7 +63,7 @@ index.html
 | `engine/` | 🎮 The multiplayer-ready game core (Phase 1 scaffold): plain-JSON `GameState`, `applyAction` reducer, seeded rng, snapshot/replay. See `MULTIPLAYER_HANDOFF.md`. | ~300 |
 | `hooks/` | Custom React hooks that own slices of `Game` state. | ~6 files |
 | `music/` | Music theory, riff library, cadence scoring, chord evaluation. | ~730 |
-| `riff/` | Riff generation engine (contours, rhythms, attacker/defender riffs), melody-to-riff converter (`melodyRiff.js` — Phase R1), + falling-notes timing/difficulty (`fallingNotes.js`). | ~280 |
+| `riff/` | Riff generation engine (contours, rhythms, attacker/defender riffs), melody-to-riff converter (`melodyRiff.js` — Phase R1), falling-notes timing/difficulty (`fallingNotes.js`), + full-neck guitar voicing (`guitarMap.js` — Rocksmith pass). | ~540 |
 | `tutorial/` | Illustrated in-game tutorial. | ~1,030 |
 | `ui/` | Presentational React components extracted from `Game`'s render. | ~18 files |
 | `standees/` | Character standee PNGs (normal + `_mirror`). | — |
@@ -216,7 +216,7 @@ preview arrows).
 | `riffGeneration.js` | `generateRiffRhythm`, `speedUpRiffRhythm`, `RIFF_CONTOUR_LABELS`, `RIFF_ANSWER_LABELS`, `riffDegreesToNotes`, `generateAttackerRiff`, `generateDefenderRiff`, `RIFF_LEN_DEFAULT` | Riff-off note sequence generation. Generators take an optional `rand` (default `Math.random`) and `len` (default `RIFF_LEN_DEFAULT=6`) — the engine passes its seeded rng; only the engine should generate riffs now. |
 | `melodyRiff.js` | `melodyToRiff` | 🎸 Phase R1: converts a committed melody line (NOTE_POOL format) into a riff-off riff. Maps notes → degrees/sharps, detects contour, pads/trims to target length, applies generated rhythm. Returns same shape as `generateAttackerRiff` + `fromMelody` flag. Returns `null` when melody < 4 notes (minimum-material rule). |
 | `fallingNotes.js` | `RIFF_FALL_DIFFICULTY`, `RIFF_FALL_DEFAULT`, `buildRiffTimeline`, `riffOkWindow`, `gradeRiffOffset` | Falling-notes (Guitar Hero) riff-off timing: difficulty presets (fall lead-time + grade windows), rhythm→hit-time timeline, |press−hitTime| grading. Pure module — **tune riff-off feel here.** 🎸 Phase R2: each preset now carries `showLabels: boolean` (labels hidden at Shredder+) and `maxLen: number` (tier-caps riff length). VIRTUOSO tier added (`leadTime:1150`, `maxLen:15`, `showLabels:false`). ROOKIE label renamed to SOCIAL MEDIA INFLUENCER (internal id unchanged). |
-| `guitarMap.js` | `voiceRiff`, `degreePitch`, `pitchKey`, `cellKey`, `positionsForPitch`, `nearestPositionForKey`, `STRING_NAMES`, `STRING_OPENS`, `MAX_FRET`, `WINDOW`, `NECK_MAX_PITCH` | 🎸 Full-neck guitar map (Rocksmith pass): 6 strings, frets 0–12, deterministic position-anchored riff voicing — phrases sit in 4–5 fret windows that follow the register up/down the neck. Pitch space aligned with `riffDegreeFreq` (degree 0 = open A). Pure module, no RNG. **UI wiring not yet built — see `GUITAR_NECK_HANDOFF.md`.** Test: `node src/riff/guitarMap.test.mjs` (750-riff corpus; re-run after touching this file, `riffGeneration.js`, or `melodyRiff.js`). |
+| `guitarMap.js` | `voiceRiff`, `degreePitch`, `pitchKey`, `cellKey`, `positionsForPitch`, `nearestPositionForKey`, `STRING_NAMES`, `STRING_OPENS`, `MAX_FRET`, `WINDOW`, `NECK_MAX_PITCH` | 🎸 Full-neck guitar map (Rocksmith pass): 6 strings, frets 0–12, deterministic position-anchored riff voicing — phrases sit in 4–5 fret windows that follow the register up/down the neck. Pitch space aligned with `riffDegreeFreq` (degree 0 = open A). Pure module, no RNG. Wired into `startRiffOff` (voicing attached to riff data), `riffStartRun` (pos on each run note, anchors on the run), `RiffHighway.jsx` (string-colored gems, fret glyphs, scrolling camera, fret-cell taps), and `renderInstrument` (board decorative neck). Test: `node src/riff/guitarMap.test.mjs` (750-riff corpus; re-run after touching this file, `riffGeneration.js`, or `melodyRiff.js`). |
 
 ### `engine/` — the authoritative game core (in extraction)
 
@@ -308,7 +308,7 @@ Each takes everything via props. They hold **no game logic**.
 | Riff-off generation (contours, rhythms) | `riff/riffGeneration.js` |
 | Riff-off timing feel (fall speed, difficulty presets, grade windows, note spacing) | `riff/fallingNotes.js` |
 | Riff-off input/judging engine (falling run, miss timers, Riff Slayer lurch, E-Rush ghosts) | `RIFF-OFF ENGINE` banner in `Game` (`riffStartRun` / `riffPressKey`) |
-| Riff-off highway visuals (gems, strike zone, bursts) | `ui/RiffHighway.jsx` |
+| Riff-off highway visuals (gems, strike zone, bursts) | `ui/RiffHighway.jsx` — Rocksmith pass: string-colored gems, fret-number glyphs, scrolling 13-fret neck, fret-cell taps (GPOS deleted) |
 | Riff-off SFX (synth sounds) | `audio/riffSfx.js` |
 | BGM tracks | `audio/bgm.js` |
 | Fan-economy tuning | `data/gameConstants.js` → `FAN_*` constants |

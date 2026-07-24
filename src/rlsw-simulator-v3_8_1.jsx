@@ -46,6 +46,7 @@ import { hexRingFromCenter, crowdMultiplier, advanceDB, SPOTLIGHT_POOL } from ".
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRiffMiss, playBeamClash, playBeamSurge, playBeamBreak, playFanPop } from "./audio/riffSfx.js";
 import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./riff/riffGeneration.js";
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset } from "./riff/fallingNotes.js";
+import { voiceRiff, nearestPositionForKey } from "./riff/guitarMap.js";
 import { Lobby } from "./ui/Lobby.jsx";
 import OpeningMovie from "./ui/OpeningMovie.jsx";
 import HintScreen from "./ui/HintScreen.jsx";
@@ -4614,15 +4615,16 @@ function Game({ gameState, onReturnToLobby }) {
     if (view === 'guitar') {
       const names = ['E','A','D','G','B','e'];
       const gauge = [3.2, 2.6, 2.0, 1.6, 1.2, 0.8];
-      const GPOS = { e:[0,0], f:[0,1], a:[1,0], b:[1,2], c:[1,3], d:[2,0], g:[3,0] };
+      // Decorative — show melody notes at their lowest neck position, clamped
+      // to 7 visible frets. Uses guitarMap.js for real pitch positions.
       const N = 6, FRETS = 7, colW = 30, fh = 24, side = 20, topPad = 20;
       const W = (N - 1) * colW + side * 2, H = topPad + FRETS * fh + 14;
       const sx = i => side + i * colW, nutY = topPad, fy = f => nutY + f * fh;
-      const posOf = k => {
-        const nat = k.toLowerCase(); const base = GPOS[nat]; if (!base) return null;
-        return k === k.toUpperCase() && k !== nat ? [base[0], base[1] + 1] : base;
-      };
-      const blips = [...lit].map(k => ({ k, pos: posOf(k), dn: done.has(k) })).filter(b => b.pos);
+      const blips = [...lit].map(k => {
+        const pos = nearestPositionForKey(k, [1, 2]);
+        if (!pos) return null;
+        return { k, pos: [pos[0], Math.min(pos[1], FRETS)], dn: done.has(k) };
+      }).filter(Boolean);
       return (
         <svg width={W} height={H} style={{maxWidth:'100%'}}>
           <defs>
@@ -6886,10 +6888,12 @@ function Game({ gameState, onReturnToLobby }) {
       attackerId: attacker.id, defenderId: defender.id,
       atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
                  freqs: atk.degrees.map((d, i) => riffDegreeFreq(d, atk.sharps[i])),
-                 rhythm: atk.rhythm, contour: atk.contour },
+                 rhythm: atk.rhythm, contour: atk.contour,
+                 voicing: voiceRiff(atk.degrees, atk.sharps, atk.rhythm) },
       defRiff: { notes: defNotesArr,
                  freqs: def.degrees.map((d, i) => riffDegreeFreq(d, def.sharps[i])),
-                 rhythm: def.rhythm, kind: def.kind },
+                 rhythm: def.rhythm, kind: def.kind,
+                 voicing: voiceRiff(def.degrees, def.sharps, def.rhythm) },
       defGlitch, glitchAt: null,
       defGhosts, ghostHit: null,
       turn: 'attacker', noteIdx: -1, countdown: 3, round: 1,
@@ -6927,6 +6931,7 @@ function Game({ gameState, onReturnToLobby }) {
     const round  = bs.round ?? 1;
     const preset = RIFF_FALL_DIFFICULTY[riffDifficultyRef.current] ?? RIFF_FALL_DIFFICULTY[RIFF_FALL_DEFAULT];
     const timeline = buildRiffTimeline(side.rhythm, round, preset.leadTime);
+    const voicing = side.voicing;  // Guitar-neck voicing (computed once in startRiffOff)
     const eng = {
       turn, preset, t0: performance.now(), timers: [],
       notes: side.notes.map((k, i) => {
@@ -6934,11 +6939,13 @@ function Game({ gameState, onReturnToLobby }) {
         const ghostKey = (turn === 'defender' && bs.defGhosts) ? bs.defGhosts[i] : null;
         return {
           idx: i, key: k, feel, ghostKey,
+          pos: voicing?.positions?.[i] ?? null,             // [string, fret] from voiceRiff
           hitAt: timeline[i]?.hitAt ?? (preset.leadTime + i * 1000),
           okWin: riffOkWindow(preset, feel, !!ghostKey),
           resolved: false, hitMain: false, hitGhost: false,
         };
       }),
+      anchors: voicing?.anchors ?? null,                   // camera script for the guitar view
     };
     riffEngineRef.current = eng;
 
@@ -6967,13 +6974,16 @@ function Game({ gameState, onReturnToLobby }) {
           if (!cur?.riffOff) return;
           const curNote = cur.defRiff?.notes?.[idx];
           const { letter, freq } = pickGlitchRiffNote(curNote);
+          const oldPos = n.pos;
+          const newPos = nearestPositionForKey(letter, oldPos ?? [2, 2]);
           n.key = letter;
+          n.pos = newPos;
           setBattleState(p => {
             if (!p?.riffOff) return p;
             const notes2 = [...p.defRiff.notes]; notes2[idx] = letter;
             const freqs2 = [...(p.defRiff.freqs ?? [])]; freqs2[idx] = freq;
             const run2 = p.riffRun ? { ...p.riffRun,
-              notes: p.riffRun.notes.map(g => g.idx === idx ? { ...g, key: letter, glitched: true } : g) } : p.riffRun;
+              notes: p.riffRun.notes.map(g => g.idx === idx ? { ...g, key: letter, glitched: true, pos: newPos } : g) } : p.riffRun;
             return { ...p, defRiff: { ...p.defRiff, notes: notes2, freqs: freqs2 }, glitchAt: idx, riffRun: run2 };
           });
           playRiffWrong(curNote || 'a'); // a sour stab as the gem lurches
@@ -6986,7 +6996,8 @@ function Game({ gameState, onReturnToLobby }) {
       ...p, phase: 'riff_play', turn, noteIdx: -1, glitchAt: null, ghostHit: null, feedback: null,
       riffRun: {
         turn, round, startedAt: eng.t0, leadTime: preset.leadTime, difficulty: riffDifficultyRef.current,
-        notes: eng.notes.map(n => ({ idx: n.idx, key: n.key, hitAt: n.hitAt, feel: n.feel, ghostKey: n.ghostKey, okWin: n.okWin })),
+        notes: eng.notes.map(n => ({ idx: n.idx, key: n.key, hitAt: n.hitAt, feel: n.feel, ghostKey: n.ghostKey, okWin: n.okWin, pos: n.pos })),
+        anchors: eng.anchors,  // Guitar-neck camera script (phrase windows)
       },
     } : p);
   }
@@ -7168,6 +7179,10 @@ function Game({ gameState, onReturnToLobby }) {
             notes: riffDegreesToNotes(r.degrees, r.sharps),
             freqs: r.degrees.map((d, i) => riffDegreeFreq(d, r.sharps[i])),
             rhythm: r.rhythm, // already sped up by the engine
+            // Voice from the ORIGINAL rhythm (pre-speedup) so phrase boundaries
+            // are correct — speedUpRiffRhythm converts rests to rushes, which
+            // would merge phrases and re-anchor incorrectly.
+            voicing: voiceRiff(r.degrees, r.sharps, r.origRhythm ?? r.rhythm),
             ...extra,
           });
           addLog(`🎸🔥 ROUND 2! New riffs — faster, meaner, sudden death!`);

@@ -106,14 +106,17 @@ same voicing object**; only timing changes.
 
 ## 4. Build phases
 
-### N1 — wire voicing into the run (small, do first)
-- `startRiffOff`: attach `voicing` to `atkRiff`/`defRiff` as above. Import
-  from `./riff/guitarMap.js`.
-- `riffBeginTurn`: copy `positions[i]` onto each run note as `pos`; put
-  `anchors` on the run object.
-- Files: main file only. Nothing visual changes yet — safe to ship alone.
+### N1 — wire voicing into the run ✅ (2026-07-24)
+- `startRiffOff`: `voicing: voiceRiff(...)` attached to both `atkRiff`/`defRiff`.
+- `riffStartRun`: each run note gets `pos: voicing.positions[i]`; run gets
+  `anchors: eng.anchors`.
+- Round 2: engine stores `origRhythm` pre-speedup; client voices from
+  `r.origRhythm ?? r.rhythm` (phrase boundaries preserved).
+- Glitch swap: `pos: nearestPositionForKey(newKey, oldPos)` set alongside
+  the key/freq swap.
+- Files: main file + `engine/systems/riffOff.js` (1-line `origRhythm` add).
 
-### N2 — `RiffHighway.jsx` guitar view rework (the big one)
+### N2 — `RiffHighway.jsx` guitar view rework ✅ (2026-07-24)
 - **Lanes**: 6 fixed string lanes (`laneX` for guitar = string index only —
   delete the `guitarPos`/`GPOS` lookup). Lane guides = all 6 strings, always.
 - **Gem color = string color** (`NEON_STRING_COLORS[n.pos[0]]`) — Rocksmith
@@ -150,19 +153,18 @@ same voicing object**; only timing changes.
 - **Lit blips on hit**: use the judged note's `pos` directly (delete the
   `guitarPos(k)` lookup — a key letter no longer determines a unique cell).
 
-### N3 — main-file mirror + GPOS deletion
-- `renderInstrument` (board-side idle instrument, ~L4617) has its own `GPOS`
-  copy. Delete it; import `nearestPositionForKey` / `positionsForPitch` from
-  `guitarMap.js` and show melody notes at their lowest position (ref
-  `[1, 2]`). The board instrument is decorative — don't over-engineer.
-- Extend the board guitar to 12 frets only if it fits the layout; otherwise
-  keep 7 frets and clamp display positions with `Math.min` — decorative.
-- Grep for any other `GPOS` / `guitarPos` references before declaring done.
+### N3 — main-file mirror + GPOS deletion ✅ (2026-07-24)
+- `renderInstrument`: local `GPOS` + `posOf` deleted; notes now placed via
+  `nearestPositionForKey(k, [1, 2])` with fret clamped to 7 (`Math.min`).
+  Board guitar stays 7 frets (decorative).
+- Grepped `src/`: no remaining `GPOS`/`guitarPos` refs in active code
+  (only doc mentions + `src(update2)` backup snapshot).
 
-### N4 — docs
-- `ARCHITECTURE.md`: add `riff/guitarMap.js` + test to the directory map;
-  note the GPOS deletion in the main-file section if it's called out.
-- This file: mark phases ✅ with build notes, per house style.
+### N4 — docs ✅ (2026-07-24)
+- `ARCHITECTURE.md`: `riff/` dir description updated; `guitarMap.js` entry
+  updated (wiring locations listed, "not yet built" removed); `RiffHighway`
+  reference row annotated with Rocksmith pass changes.
+- This file: all phases marked ✅ with build notes.
 
 ---
 

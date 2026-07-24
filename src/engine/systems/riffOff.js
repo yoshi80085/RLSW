@@ -166,7 +166,7 @@ export function applyRiffRound2Started(state, _action, rng) {
   // Keep the tier's riff length for sudden death (was falling back to default)
   const atk = generateAttackerRiff(rng, b.atkRiff?.degrees?.length ?? RIFF_LEN_DEFAULT);
   const def = generateDefenderRiff(atk, rng);
-  const speed = r => ({ ...r, rhythm: speedUpRiffRhythm(r.rhythm, 0.58) });
+  const speed = r => ({ ...r, origRhythm: r.rhythm, rhythm: speedUpRiffRhythm(r.rhythm, 0.58) });
   const defNotes = riffDegreesToNotes(def.degrees, def.sharps);
   return {
     ...state,
