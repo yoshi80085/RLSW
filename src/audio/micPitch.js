@@ -70,7 +70,9 @@ function detectPitch(buffer, sampleRate) {
   }
 
   // Step 3: Absolute threshold — find first dip below threshold
-  const threshold = 0.15;
+  // 0.25 is permissive enough for acoustic guitar through a laptop mic
+  // (noisier signal = higher d' values than a close-mic'd electric)
+  const threshold = 0.25;
   let tauEst = -1;
   for (let tau = minTau; tau <= maxTau; tau++) {
     if (dn[tau] < threshold) {
@@ -86,7 +88,7 @@ function detectPitch(buffer, sampleRate) {
     for (let tau = minTau; tau <= maxTau; tau++) {
       if (dn[tau] < minVal) { minVal = dn[tau]; tauEst = tau; }
     }
-    if (minVal > 0.4) return { freq: -1, confidence: 0 };
+    if (minVal > 0.5) return { freq: -1, confidence: 0 };
   }
 
   // Step 4: Parabolic interpolation for sub-sample accuracy
@@ -114,43 +116,67 @@ export function micAvailable() {
 
 /**
  * Start listening to the microphone for pitched notes.
- * @param {function} onNote  ({ key, pcAbsolute, freq, confidence }) => void
- * @param {object}   opts    { gateDb, minConfidence, minGapMs }
+ * @param {function} onNote   ({ key, pcAbsolute, freq, confidence }) => void
+ * @param {object}   opts
+ *   gateDb        — dBFS gate threshold (default -50)
+ *   minConfidence — YIN confidence floor (default 0.70)
+ *   minGapMs      — debounce between callbacks (default 100)
+ *   onLevel       — optional ({ db, state }) => void, called every frame.
+ *                   state: 'silent' | 'detecting' | 'low-confidence' | 'note'
+ *                   Use this to drive a signal meter in the UI.
  * @returns {Promise<{ stop: () => void }>}
  * @throws  If getUserMedia is denied or unavailable.
  */
 export async function startMicListening(onNote, opts = {}) {
   const {
-    gateDb        = -38,   // dBFS — ignore signals quieter than this
-    minConfidence = 0.82,  // YIN confidence floor
+    gateDb        = -50,   // dBFS — sensitive enough for acoustic guitar through laptop mic
+    minConfidence = 0.70,  // YIN confidence floor (acoustic + room noise = lower scores)
     minGapMs      = 100,   // minimum ms between callbacks (debounce)
+    onLevel       = null,  // optional signal level callback for UI meters
   } = opts;
 
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: false,  // raw signal — no voice processing
-      noiseSuppression: false,
-      autoGainControl:  false,
-    },
-  });
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+  // ── DEBUG: log stream info ──
+  const tracks = stream.getAudioTracks();
+  console.log('[MIC] stream tracks:', tracks.map(t => ({ label: t.label, readyState: t.readyState, muted: t.muted, enabled: t.enabled })));
 
   const audioCtx = new AudioContext();
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+  console.log('[MIC] AudioContext state:', audioCtx.state, '| sampleRate:', audioCtx.sampleRate);
+
   const source   = audioCtx.createMediaStreamSource(stream);
   const analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 2048;  // ~46ms at 44.1 kHz — enough for 2 cycles of low E
+  analyser.fftSize = 2048;
   source.connect(analyser);
+
+  // Chromium quirk: AnalyserNode may not process audio unless the graph has
+  // a destination. Route through a silent gain node so mic data flows without
+  // outputting any sound to speakers.
+  const silentGain = audioCtx.createGain();
+  silentGain.gain.value = 0;
+  analyser.connect(silentGain);
+  silentGain.connect(audioCtx.destination);
 
   const buffer = new Float32Array(analyser.fftSize);
   let running      = true;
   let lastKey      = null;
   let lastCallTime = 0;
   let wasSilent    = true;
+  let _dbgFrames   = 0;
 
   function loop() {
     if (!running) return;
     requestAnimationFrame(loop);
 
     analyser.getFloatTimeDomainData(buffer);
+
+    // ── DEBUG: log first few frames ──
+    if (_dbgFrames < 5) {
+      const peak = Math.max(...Array.from(buffer.slice(0, 256)).map(Math.abs));
+      console.log(`[MIC] frame ${_dbgFrames}: peak=${peak.toFixed(6)}, buf[0..4]=[${Array.from(buffer.slice(0,5)).map(v=>v.toFixed(6))}]`);
+      _dbgFrames++;
+    }
 
     // ── Gate: RMS level check ──
     let sumSq = 0;
@@ -160,12 +186,20 @@ export async function startMicListening(onNote, opts = {}) {
 
     if (db < gateDb) {
       wasSilent = true;
+      if (onLevel) onLevel({ db, state: 'silent' });
       return;
     }
 
     // ── Detect pitch ──
     const { freq, confidence } = detectPitch(buffer, audioCtx.sampleRate);
-    if (freq <= 0 || confidence < minConfidence) return;
+    if (freq <= 0) {
+      if (onLevel) onLevel({ db, state: 'detecting' });
+      return;
+    }
+    if (confidence < minConfidence) {
+      if (onLevel) onLevel({ db, state: 'low-confidence', freq, confidence });
+      return;
+    }
 
     // ── Map to game's note system ──
     const pitch      = freqToPitch(freq);
@@ -182,9 +216,11 @@ export async function startMicListening(onNote, opts = {}) {
       lastKey      = key;
       lastCallTime = now;
       wasSilent    = false;
+      if (onLevel) onLevel({ db, state: 'note', freq, confidence });
       onNote({ key, pcAbsolute, freq, confidence });
     } else {
       wasSilent = false;
+      if (onLevel) onLevel({ db, state: 'note', freq, confidence });
     }
   }
 
@@ -194,6 +230,8 @@ export async function startMicListening(onNote, opts = {}) {
     stop() {
       running = false;
       source.disconnect();
+      analyser.disconnect();
+      silentGain.disconnect();
       stream.getTracks().forEach(t => t.stop());
       audioCtx.close().catch(() => {});
     },

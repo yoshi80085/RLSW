@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head><title>Mic Test</title></head>
+<body style="background:#111;color:#eee;font-family:monospace;padding:40px;text-align:center">
+  <h2>Mic Test</h2>
+  <button id="start" style="font-size:20px;padding:12px 24px;cursor:pointer">START MIC</button>
+  <div id="status" style="margin:20px;font-size:14px;color:#888">Click start, then make noise</div>
+  <div style="margin:20px auto;width:300px;height:20px;background:#222;border:1px solid #444;border-radius:4px;overflow:hidden">
+    <div id="bar" style="width:0%;height:100%;background:#44ff88;transition:width .05s"></div>
+  </div>
+  <div id="db" style="font-size:24px;color:#19e6ff">—</div>
+  <div id="info" style="margin-top:20px;font-size:11px;color:#666"></div>
+  <script>
+    document.getElementById('start').onclick = async () => {
+      const status = document.getElementById('status');
+      const bar = document.getElementById('bar');
+      const dbEl = document.getElementById('db');
+      const info = document.getElementById('info');
+      try {
+        status.textContent = 'Requesting mic...';
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const tracks = stream.getAudioTracks();
+        info.textContent = `Track: ${tracks[0]?.label || 'unknown'} | State: ${tracks[0]?.readyState} | Muted: ${tracks[0]?.muted}`;
+
+        const ctx = new AudioContext();
+        if (ctx.state === 'suspended') await ctx.resume();
+        status.textContent = `AudioContext: ${ctx.state} | SampleRate: ${ctx.sampleRate}`;
+
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+
+        // Also connect through silent gain to destination (Chromium quirk)
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        analyser.connect(gain);
+        gain.connect(ctx.destination);
+
+        const buf = new Float32Array(analyser.fftSize);
+
+        function loop() {
+          requestAnimationFrame(loop);
+          analyser.getFloatTimeDomainData(buf);
+
+          let sumSq = 0;
+          let peak = 0;
+          for (let i = 0; i < buf.length; i++) {
+            sumSq += buf[i] * buf[i];
+            if (Math.abs(buf[i]) > peak) peak = Math.abs(buf[i]);
+          }
+          const rms = Math.sqrt(sumSq / buf.length);
+          const db = rms > 0 ? 20 * Math.log10(rms) : -100;
+          const pct = Math.max(0, Math.min(100, (db + 60) / 50 * 100));
+
+          bar.style.width = pct + '%';
+          bar.style.background = db > -50 ? '#44ff88' : db > -70 ? '#f6ad55' : '#ff4466';
+          dbEl.textContent = `${db.toFixed(1)} dB | peak: ${peak.toFixed(4)} | rms: ${rms.toFixed(6)}`;
+        }
+        loop();
+      } catch (err) {
+        status.textContent = 'ERROR: ' + err.message;
+        status.style.color = '#ff4466';
+      }
+    };
+  </script>
+</body>
+</html>

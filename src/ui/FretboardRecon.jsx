@@ -174,6 +174,7 @@ export function FretboardRecon({ onBack }) {
   const [tierFlash, setTierFlash]   = useState(null);
   const [micActive, setMicActive]   = useState(false);
   const [micError, setMicError]     = useState(null);
+  const [micLevel, setMicLevel]     = useState(null); // { db, state, freq?, confidence? }
 
   const micHandleRef = useRef(null);
 
@@ -246,11 +247,14 @@ export function FretboardRecon({ onBack }) {
       micHandleRef.current = null;
       setMicActive(false);
       setMicError(null);
+      setMicLevel(null);
       return;
     }
     try {
       setMicError(null);
-      const handle = await startMicListening(handleMicNote);
+      const handle = await startMicListening(handleMicNote, {
+        onLevel: setMicLevel,
+      });
       micHandleRef.current = handle;
       setMicActive(true);
     } catch (err) {
@@ -539,6 +543,34 @@ export function FretboardRecon({ onBack }) {
             </button>
           )}
           {micError && <span style={{ fontSize: 8, color: '#ff4466' }}>{micError}</span>}
+          {/* ── Mic signal meter ── */}
+          {micActive && micLevel && (() => {
+            // Normalize dB to a 0–1 bar (-60 dB = empty, -10 dB = full)
+            const pct = Math.max(0, Math.min(1, (micLevel.db + 60) / 50));
+            const stateColor = {
+              silent: '#1a2a40', detecting: '#f6ad55',
+              'low-confidence': '#ff6644', note: NEON_GREEN,
+            }[micLevel.state] || '#1a2a40';
+            const dbStr = micLevel.db > -100 ? `${Math.round(micLevel.db)}dB` : '—';
+            const stateLabel = {
+              silent: `silent ${dbStr}`, detecting: `hearing... ${dbStr}`,
+              'low-confidence': `weak ${Math.round((micLevel.confidence || 0) * 100)}% ${dbStr}`,
+              note: (() => {
+                if (!micLevel.freq) return `♪ ${dbStr}`;
+                const pitch = Math.round(12 * Math.log2(micLevel.freq / 82.4069));
+                const k = PC_KEYS[(((pitch - 5) % 12) + 12) % 12];
+                return `${DISPLAY[k] || '♪'} ${dbStr}`;
+              })(),
+            }[micLevel.state];
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 48, height: 6, background: '#0a1020', borderRadius: 3, border: '1px solid #1a2a40', overflow: 'hidden' }}>
+                  <div style={{ width: `${pct * 100}%`, height: '100%', background: stateColor, borderRadius: 3, transition: 'width .05s, background .15s' }} />
+                </div>
+                <span style={{ fontSize: 8, color: stateColor, minWidth: 50 }}>{stateLabel}</span>
+              </div>
+            );
+          })()}
         </div>
         <button onClick={onBack} style={S.lobbyBtn}>← LOBBY</button>
       </div>
