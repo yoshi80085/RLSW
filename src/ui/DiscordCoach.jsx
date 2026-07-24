@@ -17,6 +17,7 @@ import { TONE_KNOB_DEFAULTS, TONE_VOICE_ORDER, TONE_VOICES, playAmpNote } from "
 import { getRiffAudio } from "../audio/riffSfx.js";
 import { FretboardFull } from "./FretboardFull.jsx";
 import { ToneFader } from "./ToneFader.jsx";
+import { micAvailable, startMicListening } from "../audio/micPitch.js";
 // RigPicker not used — Discord Coach has its own inline tone panel
 
 // ── Neon palette ────────────────────────────────────────────────────────────
@@ -84,7 +85,10 @@ export function DiscordCoach({ onBack }) {
   const [spiceVariety, setSpiceVariety] = useState(new Set());
   const [flash, setFlash]         = useState(null);
   const [toneOpen, setToneOpen]   = useState(false);    // tone panel visibility
+  const [micActive, setMicActive] = useState(false);
+  const [micError, setMicError]   = useState(null);
 
+  const micHandleRef = useRef(null);
   const toneRef = useRef(tone);
   const historyRef = useRef([]); // { pc, time, classified? }
   const bedTimerRef = useRef(null);
@@ -169,15 +173,17 @@ export function DiscordCoach({ onBack }) {
   // ── End session ─────────────────────────────────────────────────────────
   function endSession() {
     stopBed();
+    stopMic();
     setPhase('complete');
   }
 
   // Cleanup on unmount
-  useEffect(() => () => stopBed(), []);
+  function stopMic() { if (micHandleRef.current) { micHandleRef.current.stop(); micHandleRef.current = null; setMicActive(false); } }
+  useEffect(() => () => { stopBed(); stopMic(); }, []);
 
   // ── ESC to exit ─────────────────────────────────────────────────────────
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') { stopBed(); onBack(); } };
+    const onKey = (e) => { if (e.key === 'Escape') { stopBed(); stopMic(); onBack(); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onBack]);
@@ -232,6 +238,39 @@ export function DiscordCoach({ onBack }) {
 
     // Keep history manageable
     if (hist.length > 20) hist.splice(0, hist.length - 20);
+  }
+
+  // ── Mic input ──────────────────────────────────────────────────────────
+  function handleMicNote({ pcAbsolute }) {
+    if (phaseRef.current !== 'playing' || !chordCtxRef.current) return;
+    // Find any cell on the neck with this pitch class for visual feedback
+    for (let s = 0; s < 6; s++) {
+      for (let f = 0; f <= MAX_FRET; f++) {
+        if (cellPcAbsolute(s, f) === pcAbsolute) {
+          handleTap(s, f);
+          return;
+        }
+      }
+    }
+  }
+
+  async function toggleMic() {
+    if (micHandleRef.current) {
+      micHandleRef.current.stop();
+      micHandleRef.current = null;
+      setMicActive(false);
+      setMicError(null);
+      return;
+    }
+    try {
+      setMicError(null);
+      const handle = await startMicListening(handleMicNote);
+      micHandleRef.current = handle;
+      setMicActive(true);
+    } catch (err) {
+      setMicError('Mic access denied');
+      setMicActive(false);
+    }
   }
 
   // ── Free audition — plays through the player's tone knobs ──────────────
@@ -459,10 +498,22 @@ export function DiscordCoach({ onBack }) {
               color: toneOpen ? '#aa66ff' : '#3a5a7a', transition: 'all .2s' }}>
             🎛️ AMP
           </button>
+          {micAvailable() && (
+            <button onClick={toggleMic} title="Play your real guitar via mic — headphones recommended"
+              style={{ fontFamily: "'Saira Stencil One',sans-serif", fontSize: 10, letterSpacing: 1,
+                cursor: 'pointer', padding: '6px 12px', borderRadius: 6,
+                background: micActive ? '#0a1e10' : '#080f1e',
+                border: `1px solid ${micActive ? '#44ff88' : '#1a2a40'}`,
+                color: micActive ? '#44ff88' : '#3a5a7a', transition: 'all .2s',
+                boxShadow: micActive ? '0 0 10px #44ff8833' : 'none' }}>
+              {micActive ? '🎤 LIVE' : '🎤 MIC'}
+            </button>
+          )}
+          {micError && <span style={{ fontSize: 8, color: '#ff4466' }}>{micError}</span>}
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <button onClick={endSession} style={{ ...S.goBtn, fontSize: 9, padding: '6px 14px' }}>END SET</button>
-          <button onClick={() => { stopBed(); onBack(); }} style={S.lobbyBtn}>← LOBBY</button>
+          <button onClick={() => { stopBed(); stopMic(); onBack(); }} style={S.lobbyBtn}>← LOBBY</button>
         </div>
       </div>
     </div>

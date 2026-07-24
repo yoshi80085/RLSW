@@ -16,6 +16,7 @@ import { playAmpNote } from "../audio/ampVoice.js";
 import { getRiffAudio, playRiffWrong, playRiffMiss } from "../audio/riffSfx.js";
 import { FretboardFull } from "./FretboardFull.jsx";
 import { RIG_ORDER, RIG_LS_KEY, loadRig, rigKnobs, playRigHit, RigPicker } from "./RigPicker.jsx";
+import { micAvailable, startMicListening } from "../audio/micPitch.js";
 
 // ── Neon palette ────────────────────────────────────────────────────────────
 const ACCENT     = '#19e6ff';
@@ -171,6 +172,10 @@ export function FretboardRecon({ onBack }) {
   const [rig, setRig]               = useState(loadRig);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [tierFlash, setTierFlash]   = useState(null);
+  const [micActive, setMicActive]   = useState(false);
+  const [micError, setMicError]     = useState(null);
+
+  const micHandleRef = useRef(null);
 
   // Tracking for current prompt
   const promptRef = useRef(null);
@@ -197,6 +202,65 @@ export function FretboardRecon({ onBack }) {
     try { localStorage.setItem(RIG_LS_KEY, next); } catch {}
     playRigHit(110, 'good', next);
   }
+
+  // ── Mic input ────────────────────────────────────────────────────────────
+  function handleMicNote({ key }) {
+    if (phaseRef.current !== 'active' || !promptRef.current) return;
+    const p = promptRef.current;
+    const cfg = TIER_CONFIG[tierRef.current];
+
+    if (p.findAll) {
+      // VIRTUOSO + mic: verify pitch class, auto-mark all positions
+      if (key !== p.key) {
+        wrongOnTargetRef.current++;
+        playRiffWrong(key);
+        return;
+      }
+      // Correct — mark every position found at once (mic can't distinguish cells)
+      for (let ss = 0; ss < 6; ss++) {
+        for (let ff = 0; ff <= cfg.maxFret; ff++) {
+          if (cellKey(ss, ff) === p.key) foundCellsRef.current.add(`${ss},${ff}`);
+        }
+      }
+      const ms = performance.now() - startTimeRef.current;
+      const g = gradeFind(ms, wrongOnTargetRef.current, 0);
+      finishPrompt(g, ms, [...foundCellsRef.current]);
+      return;
+    }
+
+    // Single-target mode — pitch class match only (string is honor-system)
+    if (key === p.key) {
+      const ms = performance.now() - startTimeRef.current;
+      const g = gradeFind(ms, wrongOnTargetRef.current, offStringRef.current);
+      setFlash({ cellId: `${p.string},${p.fret}`, grade: g });
+      finishPrompt(g, ms, [`${p.string},${p.fret}`]);
+    } else {
+      wrongOnTargetRef.current++;
+      playRiffWrong(key);
+    }
+  }
+
+  async function toggleMic() {
+    if (micHandleRef.current) {
+      micHandleRef.current.stop();
+      micHandleRef.current = null;
+      setMicActive(false);
+      setMicError(null);
+      return;
+    }
+    try {
+      setMicError(null);
+      const handle = await startMicListening(handleMicNote);
+      micHandleRef.current = handle;
+      setMicActive(true);
+    } catch (err) {
+      setMicError('Mic access denied');
+      setMicActive(false);
+    }
+  }
+
+  // Stop mic on unmount
+  useEffect(() => () => { if (micHandleRef.current) { micHandleRef.current.stop(); micHandleRef.current = null; } }, []);
 
   // ── Launch a prompt ─────────────────────────────────────────────────────
   const launchPrompt = useCallback(() => {
@@ -463,6 +527,18 @@ export function FretboardRecon({ onBack }) {
                      color: showHeatmap ? ACCENT : '#3a5a7a' }}>
             {showHeatmap ? 'NECK' : 'HEATMAP'}
           </button>
+          {micAvailable() && (
+            <button onClick={toggleMic} title="Use your real guitar via microphone"
+              style={{ ...S.smallBtn,
+                borderColor: micActive ? NEON_GREEN : '#1a2a40',
+                color: micActive ? NEON_GREEN : '#3a5a7a',
+                background: micActive ? '#0a1e10' : '#080f1e',
+                boxShadow: micActive ? `0 0 10px ${NEON_GREEN}33` : 'none',
+              }}>
+              {micActive ? '🎤 LIVE' : '🎤 MIC'}
+            </button>
+          )}
+          {micError && <span style={{ fontSize: 8, color: '#ff4466' }}>{micError}</span>}
         </div>
         <button onClick={onBack} style={S.lobbyBtn}>← LOBBY</button>
       </div>
