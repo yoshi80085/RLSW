@@ -411,6 +411,24 @@ export function GameStyles() {
           75%  { transform: scale(5.0) rotate(-450deg); filter: blur(8px); opacity: 0.4; }
           100% { transform: scale(7.0) rotate(-540deg); filter: blur(12px); opacity: 0; }
         }
+
+        /* 🎤 Riff-off taunt slam — full-screen text overlay */
+        @keyframes taunt-slam {
+          0%   { opacity: 0; }
+          8%   { opacity: 1; }
+          75%  { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes taunt-text-pop {
+          0%   { opacity: 0; transform: scale(0.5) rotate(-2deg); }
+          100% { opacity: 1; transform: scale(1) rotate(0deg); }
+        }
+
+        /* 🔆 Drive/Sustain button glow for early rounds */
+        @keyframes stack-btn-glow {
+          0%, 100% { box-shadow: 0 0 6px var(--glow-color, #ff6644), 0 0 14px var(--glow-color, #ff6644)44; }
+          50%      { box-shadow: 0 0 12px var(--glow-color, #ff6644), 0 0 28px var(--glow-color, #ff6644)66; }
+        }
       `}</style>
   );
 }

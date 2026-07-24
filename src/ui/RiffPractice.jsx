@@ -25,9 +25,9 @@ import {
 } from "../riff/fallingNotes.js";
 import { voiceRiff } from "../riff/guitarMap.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, playRiffMiss } from "../audio/riffSfx.js";
-import { TONE_KNOB_DEFAULTS, SPIRIT_TONES, playAmpPowerChord } from "../audio/ampVoice.js";
 import { RiffHighway } from "./RiffHighway.jsx";
 import { riffStats } from "../engine/systems/riffOff.js";
+import { RIG_ORDER, RIG_LABEL, RIG_LS_KEY, loadRig, playRigHit, RigPicker } from "./RigPicker.jsx";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const TIER_ORDER = ['rookie', 'gigging', 'shredder', 'virtuoso'];
@@ -51,35 +51,6 @@ function loadStats() {
   catch { return freshStats(); }
 }
 function saveStats(s) { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch {} }
-
-// ── 🎛️ Spirit rig — practice plays through the SAME amp chain as the game ────
-// (ampVoice.js: dual detuned osc + sub → drive → waveshaper → tone stack →
-// echo/verb → shared limiter). The player picks whose rig they're borrowing;
-// hits land as power chords exactly like the duel's riffPressKey path.
-const RIG_ORDER = ['default', 'cosmic_ronin', 'intergalactic_0', 'Metalness_Monster', 'Glamarchy'];
-const RIG_LABEL = {
-  default:           '🎛️ HOUSE',
-  cosmic_ronin:      '⚔️ RONIN',
-  intergalactic_0:   '🛸 IG-0',
-  Metalness_Monster: '🤘 MONSTER',
-  Glamarchy:         '👑 GLAM',
-};
-const RIG_LS_KEY = 'rlsw.practice.rig';
-function loadRig() {
-  try { const r = localStorage.getItem(RIG_LS_KEY); return RIG_ORDER.includes(r) ? r : 'default'; }
-  catch { return 'default'; }
-}
-function rigKnobs(rig) {
-  return rig === 'default'
-    ? TONE_KNOB_DEFAULTS
-    : { ...TONE_KNOB_DEFAULTS, ...(SPIRIT_TONES[rig] ?? {}) };
-}
-
-// Landed gem → power chord through the Spirit amp (root + fifth, grade-scaled)
-function playHit(freq, grade, rig) {
-  const ctx = getRiffAudio(); if (!ctx || !freq) return;
-  playAmpPowerChord(ctx, freq, grade, rigKnobs(rig));
-}
 
 // ── Component ────────────────────────────────────────────────────────────────
 export function RiffPractice({ initialDiff, onBack }) {
@@ -112,7 +83,7 @@ export function RiffPractice({ initialDiff, onBack }) {
     setRig(next);
     try { localStorage.setItem(RIG_LS_KEY, next); } catch {}
     // Audition the new rig immediately — one open-A power chord
-    playHit(110, 'good', next);
+    playRigHit(110, 'good', next);
   }
 
   const preset = RIFF_FALL_DIFFICULTY[diff] || RIFF_FALL_DIFFICULTY[RIFF_FALL_DEFAULT];
@@ -201,7 +172,7 @@ export function RiffPractice({ initialDiff, onBack }) {
     const hit   = key === n.key;
     const grade = hit ? (gradeRiffOffset(offset, eng.preset, n.feel) ?? 'ok') : 'wrong';
     n.hit = hit; n.grade = grade; n.rt = hit ? Math.abs(offset) : null;
-    if (hit) playHit(eng.freqs[n.idx], grade, rigRef.current);
+    if (hit) playRigHit(eng.freqs[n.idx], grade, rigRef.current);
     else     playRiffWrong(key);
     setResults(prev => [...prev, { hit, rt: n.rt, grade, noteIdx: n.idx }]);
     endCheck(eng);
@@ -373,11 +344,7 @@ export function RiffPractice({ initialDiff, onBack }) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button onClick={() => setView('piano')}  style={viewBtn(view === 'piano')}>🎹</button>
           <button onClick={() => setView('guitar')} style={viewBtn(view === 'guitar')}>🎸</button>
-          <button onClick={cycleRig} title="Amp rig — play through a Spirit's signature tone"
-            style={{ ...viewBtn(rig !== 'default'), fontSize: 10, letterSpacing: 1,
-                     fontFamily: "'Saira Stencil One', sans-serif" }}>
-            {RIG_LABEL[rig]}
-          </button>
+          <RigPicker rig={rig} onCycle={cycleRig} accent={ACCENT} />
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <div style={{ fontSize: 9, color: '#3a5a7a', letterSpacing: 1 }}>

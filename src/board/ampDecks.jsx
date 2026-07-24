@@ -44,6 +44,7 @@ import ampRu3 from "../amps/amp_r_up_lv3.png";
 import ampRl1 from "../amps/amp_r_low_lv1.png";
 import ampRl2 from "../amps/amp_r_low_lv2.png";
 import ampRl3 from "../amps/amp_r_low_lv3.png";
+import ampHexRing from "../amp_hex_ring.png";
 
 const HS = Math.round(HEX_SIZE * SCALE * 0.88);
 const MAGENTA = "#e648f0";
@@ -144,6 +145,19 @@ function DeckStack({ pos, stage, powT, rangeT, thump, seed, onHover }) {
               )}
             </g>
           )}
+          {/* UPGRADE HEX RING — glowing purple ring UNDER upgraded amps */}
+          {stage >= 2 && (() => {
+            const ringSize = W * 1.3;
+            const ringX = ax - ringSize / 2;
+            const ringY = baseY - ringSize * 0.45;
+            return (
+              <image href={ampHexRing} x={ringX} y={ringY} width={ringSize} height={ringSize}
+                style={{ pointerEvents: "none", opacity: 0.7 + (stage - 2) * 0.15,
+                  filter: `drop-shadow(0 0 ${4 + stage * 2}px #a040e0)`,
+                  animation: `amp-ring-pulse ${(2.2 + (seed % 2) * 0.4).toFixed(1)}s ease-in-out infinite`,
+                  animationDelay: `${((seed * 0.5) % 2).toFixed(2)}s` }}/>
+            );
+          })()}
           {/* hovering the stack shows this Spirit's range ring on the board */}
           <image href={sp.src} x={x} y={y} width={W} height={H}
             onMouseEnter={() => onHover?.(true)} onMouseLeave={() => onHover?.(false)}

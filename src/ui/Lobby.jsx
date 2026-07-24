@@ -6,6 +6,11 @@ import { makeNetClient } from "../net/client.js";
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT } from "../riff/fallingNotes.js";
 import { fpPerLife } from "../data/gameConstants.js";
 import menuSong3 from "../Menu_song_3.mp3";
+import boardImg from "../board.png";
+import boardOutlineImg from "../board_outline.png";
+import boardStarsImg from "../board_stars_animated.png";
+import boardLightningImg from "../board_lightning_animated.png";
+import { SVG_W, SVG_H } from "../board/constants.js";
 
 // Short display names for the riff-off difficulty row (full label in tooltip)
 const RIFF_DIFF_SHORT = { rookie: 'INFLUENCER', gigging: 'GIGGING', shredder: 'SHREDDER', virtuoso: 'VIRTUOSO' };
@@ -90,11 +95,49 @@ export function Lobby({ onStart, onTutorial, onPractice }) {
       <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Saira+Stencil+One&family=Saira:wght@400;600;700&display=swap" rel="stylesheet"/>
       <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#2d3748}
 @keyframes chooser-pulse{0%,100%{box-shadow:0 0 12px #fff2}50%{box-shadow:0 0 24px #fff4,inset 0 0 12px #fff1}}
-@keyframes announcer-in{0%{opacity:0;letter-spacing:12px;transform:scale(1.3)}30%{opacity:1}100%{opacity:0;letter-spacing:28px;transform:scale(1)}}`}</style>
+@keyframes announcer-in{0%{opacity:0;letter-spacing:12px;transform:scale(1.3)}30%{opacity:1}100%{opacity:0;letter-spacing:28px;transform:scale(1)}}
+@keyframes lobby-lightning-crackle{0%,92%,100%{opacity:.12}93%{opacity:.55}94%{opacity:.15}95.5%{opacity:.65}97%{opacity:.18}98%{opacity:.45}99%{opacity:.10}}
+@keyframes lobby-outline-pulse{0%,100%{opacity:.25;filter:brightness(0.7) drop-shadow(0 0 2px #ff00ee44)}50%{opacity:.45;filter:brightness(1.0) drop-shadow(0 0 6px #ff44ff44) drop-shadow(0 0 14px #aa00aa44)}}
+@keyframes lobby-stars-drift{0%,100%{opacity:.08}50%{opacity:.18}}
+@keyframes lobby-float{0%,100%{transform:translateY(0px)}50%{transform:translateY(-12px)}}`}</style>
+      {/* ── DIMMED FLOATING ISLAND BACKGROUND ── crackles with thunder */}
+      <div style={{position:"fixed",inset:0,zIndex:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",overflow:"hidden"}}>
+        <div style={{animation:"lobby-float 8s ease-in-out infinite",willChange:"transform"}}>
+          <svg width={SVG_W} height={SVG_H} viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+            style={{width:"min(90vw, 800px)",height:"auto",opacity:0.18,filter:"brightness(0.6) saturate(0.4)"}}>
+            <image href={boardImg} x={0} y={0} width={SVG_W} height={SVG_H} preserveAspectRatio="xMidYMid slice"/>
+            {/* Stars — subtle twinkle */}
+            <image href={boardStarsImg} x={0} y={0} width={SVG_W} height={SVG_H}
+              preserveAspectRatio="xMidYMid meet"
+              style={{mixBlendMode:"screen",animation:"lobby-stars-drift 6s ease-in-out infinite"}}/>
+            {/* Lightning — crackle animation */}
+            <image href={boardLightningImg} x={0} y={0} width={SVG_W} height={SVG_H}
+              preserveAspectRatio="xMidYMid slice"
+              style={{mixBlendMode:"screen",animation:"lobby-lightning-crackle 4s ease-in-out infinite"}}/>
+            {/* Outline glow — dim pulsing */}
+            <defs>
+              <filter id="lobby-outline-crush" colorInterpolationFilters="sRGB">
+                <feComponentTransfer>
+                  <feFuncR type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>
+                  <feFuncG type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>
+                  <feFuncB type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>
+                  <feFuncA type="linear" slope="1" intercept="0"/>
+                </feComponentTransfer>
+              </filter>
+            </defs>
+            <image href={boardOutlineImg} x={0} y={0} width={SVG_W} height={SVG_H}
+              preserveAspectRatio="xMidYMid slice"
+              style={{mixBlendMode:"screen",filter:"url(#lobby-outline-crush) blur(3px)",animation:"lobby-outline-pulse 5s ease-in-out infinite"}}/>
+            <image href={boardOutlineImg} x={0} y={0} width={SVG_W} height={SVG_H}
+              preserveAspectRatio="xMidYMid slice"
+              style={{mixBlendMode:"screen",filter:"url(#lobby-outline-crush)",opacity:0.5,animation:"lobby-outline-pulse 5s ease-in-out infinite"}}/>
+          </svg>
+        </div>
+      </div>
       {autoRejoining&&<div style={{position:"fixed",inset:0,zIndex:100,background:"#050810ee",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}><div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:16,color:"#f6ad55",letterSpacing:4}}>RECONNECTING</div><div style={{fontSize:10,color:"#3a5a7a",letterSpacing:1}}>Reclaiming your seat...</div></div>}
       {announcer&&<div style={{position:"fixed",inset:0,zIndex:90,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:48,fontWeight:700,color:announcer.color,textShadow:"0 0 30px "+announcer.color+", 0 0 60px "+announcer.color+"55",animation:"announcer-in 700ms ease-out forwards",whiteSpace:"nowrap"}}>{announcer.name.toUpperCase()}</div></div>}
       {/* HEADER */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 24px",borderBottom:"1px solid #1a2a40",flexShrink:0}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 24px",borderBottom:"1px solid #1a2a40",flexShrink:0,position:"relative",zIndex:1}}>
         <div style={{display:"flex",alignItems:"baseline",gap:12}}>
           <span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:20,color:"#f6ad55",letterSpacing:4,fontWeight:700}}>RLSW</span>
           <span style={{fontSize:10,color:"#3a5a7a",letterSpacing:2}}>SPIRIT WARS</span></div>
@@ -103,7 +146,7 @@ export function Lobby({ onStart, onTutorial, onPractice }) {
           <button onClick={()=>setBeginnerMode(b=>!b)} style={{fontFamily:"inherit",cursor:"pointer",background:beginnerMode?"#1a2a10":"#0a1020",border:"1px solid "+(beginnerMode?"#44cc66":"#2a4a6a"),borderRadius:4,color:beginnerMode?"#44ff88":"#5a8aaa",fontSize:9,padding:"6px 14px",letterSpacing:1,transition:"all .15s"}}>BEGINNER {beginnerMode?'ON':'OFF'}</button></div>
       </div>
       {/* BODY */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"auto",padding:"0 24px"}}>
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"auto",padding:"0 24px",position:"relative",zIndex:1}}>
 {/* ONLINE */}
         <div style={{padding:"12px 0"}}>
           {netStatus!=="in-room"&&<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -179,7 +222,7 @@ export function Lobby({ onStart, onTutorial, onPractice }) {
               {Object.entries(RIFF_FALL_DIFFICULTY).map(([k,p])=>
                 <button key={k} onClick={()=>pickRiffDiff(k)} title={`${p.label} — ${p.blurb}`}
                   style={{...seg(riffDiff===k,"#f6ad55"),padding:"6px 10px"}}>{p.icon} {RIFF_DIFF_SHORT[k] ?? k.toUpperCase()}</button>)}
-              {onPractice && <button onClick={()=>onPractice(riffDiff)} title="Practice riffs solo — endless stream with tier escalation" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:9,letterSpacing:1,cursor:"pointer",padding:"6px 12px",borderRadius:4,background:"#0a1a2a",border:"1px solid #19e6ff44",color:"#19e6ff",marginLeft:4,transition:"all .2s"}}>PRACTICE</button>}
+              {onPractice && <button onClick={()=>onPractice({mode:'riff',diff:riffDiff})} title="Practice riffs solo — endless stream with tier escalation" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:9,letterSpacing:1,cursor:"pointer",padding:"6px 12px",borderRadius:4,background:"#0a1a2a",border:"1px solid #19e6ff44",color:"#19e6ff",marginLeft:4,transition:"all .2s"}}>PRACTICE</button>}
             </div>
             <div style={{width:1,height:20,background:"#1a2a40"}}/>
             <span style={{fontSize:8,color:"#3a5a7a",flex:1,minWidth:100}}>{startingLives===1?`Sudden death — ${fpPerLife(playerCount ?? 2)} FP to win`:`${startingLives} Knock Downs = KO — ${startingLives*fpPerLife(playerCount ?? 2)} FP to win`}{startingLives>=3?" 🤘":""}</span>
@@ -187,7 +230,12 @@ export function Lobby({ onStart, onTutorial, onPractice }) {
           </div>}
         </>}
       </div>
-      {netStatus!=="in-room"&&<button onClick={startTestingGrounds} title="Skip setup" style={{position:'fixed',bottom:14,right:14,zIndex:50,fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer',padding:'9px 14px',borderRadius:7,background:'#2a1030',border:'1.5px solid #cc66ff',color:'#e0a0ff',boxShadow:'0 0 18px #cc66ff55'}}>TESTING GROUNDS</button>}
+      {netStatus!=="in-room"&&<div style={{position:'fixed',bottom:14,right:14,zIndex:50,display:'flex',gap:8,alignItems:'center'}}>
+        {onPractice&&<button onClick={()=>onPractice({mode:'fretboard'})} title="Fretboard Recon — find notes on the neck" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer',padding:'9px 14px',borderRadius:7,background:'#0a1a2a',border:'1.5px solid #19e6ff',color:'#19e6ff',boxShadow:'0 0 18px #19e6ff33'}}>🗺️ RECON</button>}
+        {onPractice&&<button onClick={()=>onPractice({mode:'discord'})} title="Discord Coach — learn tension & resolution" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer',padding:'9px 14px',borderRadius:7,background:'#1a1020',border:'1.5px solid #ff2d95',color:'#ff2d95',boxShadow:'0 0 18px #ff2d9533'}}>🎩 DISCORD</button>}
+        {onPractice&&<button onClick={()=>onPractice({mode:'legend'})} title="Legend Lessons — sound like the greats" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer',padding:'9px 14px',borderRadius:7,background:'#1a1508',border:'1.5px solid #f6ad55',color:'#f6ad55',boxShadow:'0 0 18px #f6ad5533'}}>🎸 LEGENDS</button>}
+        <button onClick={startTestingGrounds} title="Skip setup" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer',padding:'9px 14px',borderRadius:7,background:'#2a1030',border:'1.5px solid #cc66ff',color:'#e0a0ff',boxShadow:'0 0 18px #cc66ff55'}}>TESTING GROUNDS</button>
+      </div>}
     </div>
   );
 }

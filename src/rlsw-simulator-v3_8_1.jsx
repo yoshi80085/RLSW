@@ -50,6 +50,9 @@ import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindo
 import { voiceRiff, nearestPositionForKey } from "./riff/guitarMap.js";
 import { Lobby } from "./ui/Lobby.jsx";
 import { RiffPractice } from "./ui/RiffPractice.jsx";
+import { FretboardRecon } from "./ui/FretboardRecon.jsx";
+import { DiscordCoach } from "./ui/DiscordCoach.jsx";
+import { LegendLessons } from "./ui/LegendLessons.jsx";
 import OpeningMovie from "./ui/OpeningMovie.jsx";
 import HintScreen from "./ui/HintScreen.jsx";
 import { BeginnerTipOverlay } from "./ui/BeginnerTipOverlay.jsx";
@@ -517,6 +520,8 @@ const SKILL_TREE = {
           desc: 'Unlock your stance\'s physical special attack (melee, costs 1 Db per use).' },
         { id: 'stance_sonic', label: 'Sonic Special', icon: '🔔', dbCost: 12, gated: true, prereq: 'stance_physical',
           desc: 'Unlock your stance\'s sonic special attack (ranged, costs 1 Db per use).' },
+        { id: 'stance_passive_up', label: 'Passive+', icon: '⬆️', dbCost: 6,  gated: false, prereq: null,
+          desc: 'Upgrade your stance passive: Solo Pull-Off → +2 knockback; Low Slung Feedback → 2 retaliation damage; Wide Leg Headbang → promote every 1 fan.' },
       ],
     },
     // ── SIGNATURE ARSENALS — one compact route per Spirit (hidden from the others) ──
@@ -616,7 +621,7 @@ const RIFF_GAP_NORMAL   = 470;   // ms breath before a steady note (groove spaci
 export default function RLSWSimulator() {
   const [gameState, setGameState] = useState(null);
   const [showTutorial, setShowTutorial] = useState(false);
-  const [practiceMode, setPracticeMode] = useState(null); // null or riffDiff string
+  const [practiceMode, setPracticeMode] = useState(null); // null | { mode: 'riff'|'fretboard'|'discord', diff? }
   const [introDone, setIntroDone] = useState(false);
   // 💡 HINT SCREEN — an intentional ~5s beat between Lobby and Game so a
   // random gameplay hint can be read. Reset on return-to-lobby so every match
@@ -632,10 +637,15 @@ export default function RLSWSimulator() {
     return <div style={isMobile ? mobileColorStyle : {}}><Tutorial onBack={() => setShowTutorial(false)} /></div>;
   }
   if (practiceMode) {
-    return <div style={isMobile ? mobileColorStyle : {}}><RiffPractice initialDiff={practiceMode} onBack={() => setPracticeMode(null)} /></div>;
+    const pm = practiceMode;
+    const back = () => setPracticeMode(null);
+    if (pm.mode === 'fretboard') return <div style={isMobile ? mobileColorStyle : {}}><FretboardRecon onBack={back} /></div>;
+    if (pm.mode === 'discord')   return <div style={isMobile ? mobileColorStyle : {}}><DiscordCoach onBack={back} /></div>;
+    if (pm.mode === 'legend')    return <div style={isMobile ? mobileColorStyle : {}}><LegendLessons onBack={back} /></div>;
+    return <div style={isMobile ? mobileColorStyle : {}}><RiffPractice initialDiff={pm.diff || pm} onBack={back} /></div>;
   }
   if (!gameState) {
-    return <div style={isMobile ? mobileColorStyle : {}}><Lobby onStart={gs => setGameState(gs)} onTutorial={() => setShowTutorial(true)} onPractice={diff => setPracticeMode(diff)} /></div>;
+    return <div style={isMobile ? mobileColorStyle : {}}><Lobby onStart={gs => setGameState(gs)} onTutorial={() => setShowTutorial(true)} onPractice={p => setPracticeMode(p)} /></div>;
   }
   // 💡 Match is starting — hold on the hint screen for ~5s before the board mounts.
   if (!hintDone) {
@@ -1060,6 +1070,8 @@ function Game({ gameState, onReturnToLobby }) {
   }, [bttpChallenge?.phase, bttpChallenge?.idx, bttpChallenge?.stageKey]);
   // diceDisplay: { atk: null|number, def: null|number, rolling: 'atk'|'def'|null }
   const [diceDisplay, setDiceDisplay] = useState(null);
+  // 🎤 RIFF-OFF TAUNT DISPLAY — big bold screen-wide text for one-liners
+  const [tauntDisplay, setTauntDisplay] = useState(null); // { line, name, color, key }
   const moveStepsLeft = engineState.turn.moveStepsLeft; // engine-owned (Phase 2)
   const [stackCommitDest, setStackCommitDest] = useState(null); // 🎸 null = melody mode, 'drive' | 'sustain' = stack commit mode
   // 🎯 TURN STEP — progressive HUD flow: pivot → chord → melody → move_act
@@ -1286,6 +1298,12 @@ function Game({ gameState, onReturnToLobby }) {
   // pattern within the one laser show a game can have (deck never repeats).
   const laserFx = engineState.stageFx.laser
     ? { ...engineState.stageFx.laser, key: engineState.stageFx.laser.roundsLeft } : null;
+
+  /** 🎇 True when at least one Stage Effect is active on the board. */
+  function anyStageEffectActive() {
+    const fx = engineRef.current.stageFx;
+    return !!(fx?.smoke || fx?.laser || fx?.pyro || fx?.animatronics);
+  }
 
   // ─── 🤘 ROCK GOD ── (ENGINE-owned — Phase 6c flip; clock stays React) ───────
   // Endgame boss: summoned from grantFame when 25 FP is reached WITHOUT a
@@ -2851,9 +2869,10 @@ function Game({ gameState, onReturnToLobby }) {
     // Edge fan costs (stepping onto/escalating the stance, or its collapse) apply
     // through this same bored-fans pipeline — one floor-at-0 path, not a new one.
     let perfFansGained = 0, perfPromotions = 0, perfFansLost = edgeFanCost + edgeCollapseFans;
-    // Headbang passive (Wide Leg): faster casual→diehard promotion
+    // Headbang passive (Wide Leg): faster casual→diehard promotion (+upgrade)
     const hbOverrides = stanceOf(actingNoteState, acting.id) === 'wide_leg' ? headbangFanOverrides() : null;
-    const loyaltyPerDiehard = hbOverrides?.loyaltyPerDiehard ?? LOYALTY_PER_DIEHARD;
+    const hbPassiveUp1 = hbOverrides && (actingNoteState?.unlockedSkills ?? []).includes('stance_passive_up');
+    const loyaltyPerDiehard = hbPassiveUp1 ? 12 : (hbOverrides?.loyaltyPerDiehard ?? LOYALTY_PER_DIEHARD);
     while (perfExcitement >= EXCITE_PER_CASUAL)   { perfExcitement -= EXCITE_PER_CASUAL;   perfFansGained += 1; }
     while (perfLoyalty    >= loyaltyPerDiehard)   { perfLoyalty    -= loyaltyPerDiehard;   perfPromotions += 1; }
     // 🗡️ Bored crowd (only reachable when the meter has cooled below empty — i.e. Ronin
@@ -5195,32 +5214,46 @@ function Game({ gameState, onReturnToLobby }) {
   // ── SONIC FAME — the primary FP engine. Margin-scaled + center-stage bonus. ──
   function awardSonicFame(spiritId, margin, loserId, centerBonus = 0) {
     const rider = headlinerRider(spiritId);
-    const base = sonicFame(margin) + centerBonus + rider;
+    const stageFxBonus = anyStageEffectActive() ? 1 : 0;
+    const base = sonicFame(margin) + centerBonus + rider + stageFxBonus;
     const { fp, deficit, mult } = underdogBonus(spiritId, loserId, base);
     const riderTag = rider ? ' +👑' : '';
+    const fxTag = stageFxBonus ? ' +🎇' : '';
+    if (stageFxBonus) addLog(`🎇 The stage effects amplify the battle — +1 FP!`);
     if (deficit >= UNDERDOG_MIN_DEFICIT && fp > base) {
       const nm = spirits.find(s => s.id === spiritId)?.name;
       addLog(`🔥 UNDERDOG! ${nm} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
       triggerEffectFlash(spiritId, '🔥', 'UNDERDOG!', '#ffaa22');
-      grantFame(spiritId, fp, `sonic win by ${margin}${riderTag}`);
+      grantFame(spiritId, fp, `sonic win by ${margin}${riderTag}${fxTag}`);
     } else {
-      grantFame(spiritId, base, `sonic win by ${margin}${centerBonus ? ' +spotlight' : ''}${riderTag}`);
+      grantFame(spiritId, base, `sonic win by ${margin}${centerBonus ? ' +spotlight' : ''}${riderTag}${fxTag}`);
+    }
+    // 🎇 Stage FX bonus fan
+    if (stageFxBonus) {
+      gainFansFromDeed(spiritId, 1, '🎇 stage effects spectacle');
     }
   }
 
   // ── THRASH FAME — flat 1 FP. You fight to hurt, not to shine. ──
   function awardThrashFame(spiritId, loserId) {
     const rider = headlinerRider(spiritId);
-    const base = thrashFame() + rider;
+    const stageFxBonus = anyStageEffectActive() ? 1 : 0;
+    const base = thrashFame() + rider + stageFxBonus;
     const { fp, deficit, mult } = underdogBonus(spiritId, loserId, base);
     const riderTag = rider ? ' +👑' : '';
+    const fxTag = stageFxBonus ? ' +🎇' : '';
+    if (stageFxBonus) addLog(`🎇 The stage effects amplify the battle — +1 FP!`);
     if (deficit >= UNDERDOG_MIN_DEFICIT && fp > base) {
       const nm = spirits.find(s => s.id === spiritId)?.name;
       addLog(`🔥 UNDERDOG! ${nm} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
       triggerEffectFlash(spiritId, '🔥', 'UNDERDOG!', '#ffaa22');
-      grantFame(spiritId, fp, `thrash win${riderTag}`);
+      grantFame(spiritId, fp, `thrash win${riderTag}${fxTag}`);
     } else {
-      grantFame(spiritId, base, `thrash win${riderTag}`);
+      grantFame(spiritId, base, `thrash win${riderTag}${fxTag}`);
+    }
+    // 🎇 Stage FX bonus fan
+    if (stageFxBonus) {
+      gainFansFromDeed(spiritId, 1, '🎇 stage effects spectacle');
     }
   }
 
@@ -5252,6 +5285,11 @@ function Game({ gameState, onReturnToLobby }) {
     const rider = headlinerRider(winnerId);
     base += rider;
     const riderTag = rider ? ' +👑' : '';
+    // ── 🎇 Stage FX rider ──
+    const stageFxBonus = anyStageEffectActive() ? 1 : 0;
+    base += stageFxBonus;
+    const fxTag = stageFxBonus ? ' +🎇' : '';
+    if (stageFxBonus) addLog(`🎇 The stage effects amplify the riff-off — +1 FP!`);
 
     // ── Underdog ramp (applied to winner's total base) ──
     const { fp, deficit, mult } = underdogBonus(winnerId, loserId, base);
@@ -5260,9 +5298,13 @@ function Game({ gameState, onReturnToLobby }) {
       const nm = spirits.find(s => s.id === winnerId)?.name;
       addLog(`🔥 UNDERDOG! ${nm} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
       triggerEffectFlash(winnerId, '🔥', 'UNDERDOG!', '#ffaa22');
-      grantFame(winnerId, fp, `riff-off win by ${margin}${tierTag}${riderTag}`);
+      grantFame(winnerId, fp, `riff-off win by ${margin}${tierTag}${riderTag}${fxTag}`);
     } else {
-      grantFame(winnerId, base, `riff-off win by ${margin}${tierTag}${riderTag}`);
+      grantFame(winnerId, base, `riff-off win by ${margin}${tierTag}${riderTag}${fxTag}`);
+    }
+    // 🎇 Stage FX bonus fan
+    if (stageFxBonus) {
+      gainFansFromDeed(winnerId, 1, '🎇 stage effects spectacle');
     }
 
     // ── Loser consolation: quality ≥ 80% → 1 FP ──
@@ -5306,9 +5348,10 @@ function Game({ gameState, onReturnToLobby }) {
     let promoted = false;
     if (inCentre) {
       streak += 1;
-      // Headbang passive (Wide Leg): promote every 2 instead of default 3
+      // Headbang passive (Wide Leg): promote every 2 instead of default 3 (1 if upgraded)
       const hbFan = stanceOf(ns, spiritId) === 'wide_leg' ? headbangFanOverrides() : null;
-      const promoteEvery = hbFan?.promoteEvery ?? FAN_PROMOTE_EVERY;
+      const hbUp = hbFan && (ns.unlockedSkills ?? []).includes('stance_passive_up');
+      const promoteEvery = hbUp ? 1 : (hbFan?.promoteEvery ?? FAN_PROMOTE_EVERY);
       if (streak % promoteEvery === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
         casuals -= 1; diehards += 1; promoted = true;
       }
@@ -5429,7 +5472,8 @@ function Game({ gameState, onReturnToLobby }) {
         if (inCentre) {
           streak += 1;
           const hbFan2 = stanceOf(ns, spiritId) === 'wide_leg' ? headbangFanOverrides() : null;
-          const promoteEvery = hbFan2?.promoteEvery ?? FAN_PROMOTE_EVERY;
+          const hbUp2 = hbFan2 && (ns.unlockedSkills ?? []).includes('stance_passive_up');
+          const promoteEvery = hbUp2 ? 1 : (hbFan2?.promoteEvery ?? FAN_PROMOTE_EVERY);
           if (streak % promoteEvery === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
             casuals -= 1; diehards += 1; promoted = true;
           }
@@ -7199,10 +7243,18 @@ function Game({ gameState, onReturnToLobby }) {
     const defName = spirits.find(s => s.id === bs.defenderId)?.name;
     addLog(`🎤 ${atkName}: "${atkLine}" 🎤🔥`);
     triggerEffectFlash(bs.attackerId, '🎤', 'MIC DROP!', '#ff6600');
+    // 🎤 BIG BOLD TAUNT — attacker's line splashes across the screen
+    const atkColor = spirits.find(s => s.id === bs.attackerId)?.color ?? '#ff6600';
+    setTauntDisplay({ line: atkLine, name: atkName, color: atkColor, key: `taunt-atk-${Date.now()}` });
+    setTimeout(() => setTauntDisplay(null), 2200);
     setTimeout(() => {
       addLog(`🎤 ${defName}: "${defLine}" 🎤🔥`);
       triggerEffectFlash(bs.defenderId, '🎤', 'FIRED BACK!', '#ff6600');
-    }, 400);
+      // 🎤 BIG BOLD TAUNT — defender's line splashes across the screen
+      const defColor = spirits.find(s => s.id === bs.defenderId)?.color ?? '#44aaff';
+      setTauntDisplay({ line: defLine, name: defName, color: defColor, key: `taunt-def-${Date.now()}` });
+      setTimeout(() => setTauntDisplay(null), 2200);
+    }, 2400);
     setBattleState(p => p?.riffOff ? {
       ...p,
       oneLiner: {
@@ -7210,8 +7262,8 @@ function Game({ gameState, onReturnToLobby }) {
         defender: { line: defLine, dropped: true },
       },
     } : p);
-    // Skip directly to the riff countdown after a brief pause
-    setTimeout(() => riffBeginTurn('attacker'), 900);
+    // Skip directly to the riff countdown after a brief pause (extended for taunt display)
+    setTimeout(() => riffBeginTurn('attacker'), 5000);
   }
 
   // Legacy stubs — no longer called (auto smack talk replaced the choice)
@@ -7246,9 +7298,10 @@ function Game({ gameState, onReturnToLobby }) {
         setNoteStates(prev => ({ ...prev, [attackerId]: { ...prev[attackerId], driveStack: s.swingChordLeft } }));
       }
       // ── KNOCKBACK — route by attack kind ──
-      // Pull-Off passive (Solo): +1 knockback on any win
+      // Pull-Off passive (Solo): +1 knockback on any win (+2 if upgraded)
       const atkStanceId = stanceOf(noteStates[attackerId], attackerId);
-      const pullOffExtra = atkStanceId === 'solo' ? pullOffKnockback(0) : 0; // pullOffKnockback returns base+1
+      const atkPassiveUp = (noteStates[attackerId]?.unlockedSkills ?? []).includes('stance_passive_up');
+      const pullOffExtra = atkStanceId === 'solo' ? (atkPassiveUp ? 2 : pullOffKnockback(0)) : 0;
       if (sonicAttack) {
         const def = spirits.find(x => x.id === defenderId);
         battleKnockback(attackerId, defenderId, sonicKnockback(margin, def?.vibe ?? 1, def?.maxVibe ?? 1) + pullOffExtra);
@@ -7295,14 +7348,15 @@ function Game({ gameState, onReturnToLobby }) {
       // Thrash whiff = THRASH_WHIFF_DMG (1). Sonic whiff = old formula.
       const selfDmg = sonicAttack ? Math.max(1, Math.ceil(margin / 2)) : damage; // damage already = thrashDamage(margin, true) = 1
       resolveWinDamage(defenderId, attackerId, selfDmg, 'whiff');
-      // Feedback passive (Low Slung): attacker dealt 0 damage to defender → 1 retaliation
+      // Feedback passive (Low Slung): attacker dealt 0 damage to defender → retaliation (1, or 2 if upgraded)
       const defStanceId = stanceOf(noteStates[defenderId], defenderId);
       if (defStanceId === 'low_slung') {
-        const retaliationDmg = feedbackRetaliation(0); // defender took 0, so always fires
+        const defPassiveUp = (noteStates[defenderId]?.unlockedSkills ?? []).includes('stance_passive_up');
+        const retaliationDmg = defPassiveUp ? 2 : feedbackRetaliation(0);
         if (retaliationDmg > 0) {
           applyVibeDamage(attackerId, retaliationDmg, 'Feedback', defenderId);
-          addLog(`📢 FEEDBACK! ${spirits.find(s => s.id === defenderId)?.name}'s amp squeals — ${spirits.find(s => s.id === attackerId)?.name} takes ${retaliationDmg} retaliation!`);
-          triggerEffectFlash(attackerId, '📢', 'FEEDBACK!', '#44aaff');
+          addLog(`📢 FEEDBACK${defPassiveUp ? '+' : ''}! ${spirits.find(s => s.id === defenderId)?.name}'s amp squeals — ${spirits.find(s => s.id === attackerId)?.name} takes ${retaliationDmg} retaliation!`);
+          triggerEffectFlash(attackerId, '📢', defPassiveUp ? 'FEEDBACK+!' : 'FEEDBACK!', '#44aaff');
         }
       }
       // Defender earns FP for successfully defending
@@ -9106,6 +9160,37 @@ function Game({ gameState, onReturnToLobby }) {
 
 
 
+      {/* ── 🎤 RIFF-OFF TAUNT OVERLAY — big bold one-liners across the screen ── */}
+      {tauntDisplay && (
+        <div key={tauntDisplay.key} style={{
+          position:'fixed', inset:0, zIndex:99998, pointerEvents:'none',
+          display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+          animation:'taunt-slam 2.2s ease-out forwards',
+        }}>
+          <div style={{
+            fontSize:'clamp(28px, 6vw, 72px)', fontWeight:900,
+            fontFamily:"'Saira Stencil One','Impact',sans-serif",
+            color: tauntDisplay.color ?? '#ff6600',
+            textShadow:`0 0 40px ${tauntDisplay.color ?? '#ff6600'}, 0 0 80px ${tauntDisplay.color ?? '#ff6600'}66, 0 4px 12px #000`,
+            textAlign:'center', padding:'0 24px', lineHeight:1.2,
+            letterSpacing:3,
+            textTransform:'uppercase',
+            animation:'taunt-text-pop 0.4s cubic-bezier(.3,1.6,.6,1) both',
+          }}>
+            "{tauntDisplay.line}"
+          </div>
+          <div style={{
+            fontSize:'clamp(12px, 2vw, 22px)', fontWeight:700,
+            fontFamily:"'Share Tech Mono',monospace",
+            color:'#ffffff', marginTop:12, letterSpacing:2,
+            textShadow:`0 0 16px ${tauntDisplay.color ?? '#ff6600'}88`,
+            animation:'taunt-text-pop 0.4s cubic-bezier(.3,1.6,.6,1) 0.15s both',
+          }}>
+            — {tauntDisplay.name} 🎤
+          </div>
+        </div>
+      )}
+
       {/* ── RIFF BANNER — legendary riff toast ── */}
       <RiffBanner riffBanner={riffBanner} spirits={spirits} setRiffBanner={setRiffBanner} />
 
@@ -9856,7 +9941,8 @@ function Game({ gameState, onReturnToLobby }) {
                             style={{fontSize:7,padding:"2px 6px",borderColor: stackCommitDest === 'drive' ? '#ff6644' : '#aa4422',
                               color: stackCommitDest === 'drive' ? '#ff6644' : '#aa6644',
                               background: stackCommitDest === 'drive' ? '#2a0c08' : 'transparent',
-                              opacity: (dFull || budgetLeft <= 0) ? 0.4 : 1}}>
+                              opacity: (dFull || budgetLeft <= 0) ? 0.4 : 1,
+                              ...(engineState.turn.count <= 8 && !(dFull || budgetLeft <= 0) ? {'--glow-color':'#ff6644', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}>
                             {stackCommitDest === 'drive' ? '> Drive' : '-> Drive'}
                           </button>
                           <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
@@ -9873,7 +9959,8 @@ function Game({ gameState, onReturnToLobby }) {
                             style={{fontSize:7,padding:"2px 6px",borderColor: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
                               color: stackCommitDest === 'sustain' ? '#44aaff' : '#4488aa',
                               background: stackCommitDest === 'sustain' ? '#0a1828' : 'transparent',
-                              opacity: (sFull || budgetLeft <= 0) ? 0.4 : 1}}>
+                              opacity: (sFull || budgetLeft <= 0) ? 0.4 : 1,
+                              ...(engineState.turn.count <= 8 && !(sFull || budgetLeft <= 0) ? {'--glow-color':'#44aaff', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}>
                             {stackCommitDest === 'sustain' ? '> Sustain' : '-> Sustain'}
                           </button>
                           <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
@@ -10962,7 +11049,8 @@ function Game({ gameState, onReturnToLobby }) {
                       borderColor: stackCommitDest === 'drive' ? '#ff6644' : '#aa5533',
                       color: stackCommitDest === 'drive' ? '#ff6644' : '#aa5533',
                       background: stackCommitDest === 'drive' ? '#2a0c08' : 'transparent',whiteSpace:"nowrap",
-                      opacity: budgetLeft <= 0 || dStack.length >= STACK_CAP ? 0.4 : 1}}
+                      opacity: budgetLeft <= 0 || dStack.length >= STACK_CAP ? 0.4 : 1,
+                      ...(engineState.turn.count <= 8 && !(budgetLeft <= 0 || dStack.length >= STACK_CAP) ? {'--glow-color':'#ff6644', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}
                     disabled={budgetLeft <= 0 || dStack.length >= STACK_CAP}
                     onClick={()=>setStackCommitDest(d => d === 'drive' ? null : 'drive')}>
                     {stackCommitDest === 'drive' ? '> Drive' : '-> Drive'}
@@ -10972,7 +11060,8 @@ function Game({ gameState, onReturnToLobby }) {
                       borderColor: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
                       color: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
                       background: stackCommitDest === 'sustain' ? '#0a1828' : 'transparent',whiteSpace:"nowrap",
-                      opacity: budgetLeft <= 0 || sStack.length >= STACK_CAP ? 0.4 : 1}}
+                      opacity: budgetLeft <= 0 || sStack.length >= STACK_CAP ? 0.4 : 1,
+                      ...(engineState.turn.count <= 8 && !(budgetLeft <= 0 || sStack.length >= STACK_CAP) ? {'--glow-color':'#44aaff', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}
                     disabled={budgetLeft <= 0 || sStack.length >= STACK_CAP}
                     onClick={()=>setStackCommitDest(d => d === 'sustain' ? null : 'sustain')}>
                     {stackCommitDest === 'sustain' ? '> Sustain' : '-> Sustain'}

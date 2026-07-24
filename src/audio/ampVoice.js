@@ -103,6 +103,8 @@ export function playAmpNote(ctx, freq, opts = {}) {
     const holdTime  = opts.holdTime  ?? 1.1;   // how long it stays loud
     const fadeTime  = opts.fadeTime  ?? 0.8;   // release fade duration
     const volume    = opts.volume    ?? 0.18;
+    // attackTime — 8ms default is the pick; ambient beds pass ~1s to SWELL in
+    const attackTime = opts.attackTime ?? 0.008;
     const totalTime = holdTime + fadeTime;
     const kn = { ...TONE_KNOB_DEFAULTS, ...(opts.knobs ?? {}) };
 
@@ -171,13 +173,13 @@ export function playAmpNote(ctx, freq, opts = {}) {
     // punchy. Everything (dry + echo + verb) feeds it.
     const { master, verbBus } = getAmpBuses(ctx);
 
-    // Amp envelope: sharp pick → hold at volume → slow fade
+    // Amp envelope: pick (or slow swell) → hold at volume → slow fade
     const ampEnv = ctx.createGain();
     ampEnv.gain.setValueAtTime(0,              now);
-    ampEnv.gain.linearRampToValueAtTime(volume,            now + 0.008);      // pick attack
-    ampEnv.gain.linearRampToValueAtTime(volume * 0.82,     now + 0.06);       // slight settle
-    ampEnv.gain.setValueAtTime(volume * 0.82,              now + holdTime);   // hold
-    ampEnv.gain.exponentialRampToValueAtTime(0.001,        now + totalTime);  // slow release
+    ampEnv.gain.linearRampToValueAtTime(volume,            now + attackTime); // pick attack / swell
+    ampEnv.gain.linearRampToValueAtTime(volume * 0.82,     now + Math.max(0.06, attackTime + 0.05)); // slight settle
+    ampEnv.gain.setValueAtTime(volume * 0.82,              now + Math.max(holdTime, attackTime + 0.1)); // hold
+    ampEnv.gain.exponentialRampToValueAtTime(0.001,        now + Math.max(totalTime, attackTime + 0.2)); // slow release
 
     // ECHO knob — slapback delay level + regenerating repeats (lusher range)
     const delayNode  = ctx.createDelay(0.7);

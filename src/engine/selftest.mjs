@@ -2552,4 +2552,84 @@ const config = {
   assert.equal(roninNS.noteStock.length, 11, "Ronin stock is 11");
 }
 
+// ── LEGEND LESSONS: style detection primitives ──────────────────────────────
+import { LEGENDS, LEGEND_BY_ID, paletteFit, detectMoves, styleMeter, toneMatch, lickMatch } from "../music/styles.js";
+{
+  // Roster sanity
+  assert.ok(LEGENDS.length >= 3, "at least 3 legends ship v1");
+  for (const leg of LEGENDS) {
+    assert.ok(leg.id, "legend has id");
+    assert.ok(leg.tone && leg.tone.voice, "legend has tone with voice");
+    assert.ok(leg.palette, "legend has palette function");
+    assert.ok(leg.licks.length >= 2, `${leg.id}: at least 2 licks`);
+    assert.ok(leg.moves.length >= 2, `${leg.id}: at least 2 moves`);
+    assert.ok(leg.phraseStat && leg.phraseStat.compute, `${leg.id}: has phraseStat`);
+    // palette returns a Set
+    const pal = leg.palette(leg.bed.rootPc);
+    assert.ok(pal instanceof Set, `${leg.id}: palette returns Set`);
+    assert.ok(pal.size >= 5, `${leg.id}: palette has ≥5 notes`);
+  }
+  assert.ok(LEGEND_BY_ID['voodoo_comet'], "lookup works");
+
+  // paletteFit
+  const vcPal = LEGENDS[0].palette(4); // E root
+  assert.equal(paletteFit([], vcPal), 0, "empty hist = 0");
+  // All-in-palette hist
+  const inNotes = [...vcPal].map(pc => ({ pc }));
+  assert.equal(paletteFit(inNotes, vcPal), 1, "all in palette = 1.0");
+  // All-out hist
+  const outNotes = [1, 2, 8, 9, 11].filter(pc => !vcPal.has(pc)).map(pc => ({ pc }));
+  if (outNotes.length > 0) assert.ok(paletteFit(outNotes, vcPal) < 0.5, "out notes < 0.5");
+
+  // toneMatch
+  const target = { drive: 0.70, tone: 0.45, echo: 0.35, verb: 0.30, voice: 'fuzz' };
+  assert.ok(toneMatch(target, target), "exact match");
+  assert.ok(toneMatch({ drive: 0.75, tone: 0.45, echo: 0.35, verb: 0.30, voice: 'fuzz' }, target), "within tolerance");
+  assert.ok(!toneMatch({ drive: 0.95, tone: 0.45, echo: 0.35, verb: 0.30, voice: 'fuzz' }, target), "out of tolerance");
+  assert.ok(!toneMatch({ drive: 0.70, tone: 0.45, echo: 0.35, verb: 0.30, voice: 'saw' }, target), "wrong voice");
+
+  // lickMatch
+  const lick = [0, 3, 5, 7]; // root → ♯9 → 4th → 5th (relative to E=4)
+  const goodHist = lick.map(iv => ({ pc: (4 + iv) % 12 }));
+  assert.ok(lickMatch(lick, goodHist, 4), "exact lick match");
+  // With extra notes interspersed
+  const noisyHist = [{ pc: 1 }, ...goodHist.flatMap(h => [h, { pc: 11 }])];
+  assert.ok(lickMatch(lick, noisyHist, 4), "lick match with noise");
+  // Wrong order
+  const reversed = [...goodHist].reverse();
+  assert.ok(!lickMatch(lick, reversed, 4), "reversed ≠ match");
+
+  // THE LOOP detection (Iron Rifflord)
+  const loopMove = LEGENDS[2].moves.find(m => m.id === 'the_loop');
+  assert.ok(loopMove, "Iron Rifflord has THE LOOP");
+  // 3-note pattern repeated 3×
+  const loopHist = [];
+  const pattern = [4, 7, 10]; // E G B♭
+  for (let rep = 0; rep < 3; rep++) pattern.forEach(pc => loopHist.push({ pc, time: rep * 900 + pc * 100 }));
+  assert.ok(loopMove.detect(loopHist) > 0, "detects 3× repetition");
+  // No repetition
+  const noLoop = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((pc, i) => ({ pc, time: i * 100 }));
+  assert.equal(loopMove.detect(noLoop), 0, "no repetition = 0");
+
+  // DOOM STEP detection (tritone → 5th)
+  const doomMove = LEGENDS[2].moves.find(m => m.id === 'doom_step');
+  assert.ok(doomMove, "Iron Rifflord has DOOM STEP");
+  const tritone = (4 + 6) % 12; // A♯
+  const fifth = (4 + 7) % 12;   // B
+  const doomHist = [{ pc: tritone, time: 0 }, { pc: fifth, time: 100 }];
+  assert.equal(doomMove.detect(doomHist, 4), 1, "tritone→5th = 1 doom step");
+
+  // DOUBLE-STOP detection (Voodoo Comet)
+  const dsMove = LEGENDS[0].moves.find(m => m.id === 'double_stop');
+  const dsHist = [{ pc: 4, time: 0 }, { pc: 7, time: 80 }, { pc: 0, time: 500 }];
+  assert.equal(dsMove.detect(dsHist), 1, "two taps < 150ms = 1 double-stop");
+
+  // styleMeter returns 0..100 range
+  const testHist = [...vcPal].map((pc, i) => ({ pc, time: i * 300 }));
+  const m = styleMeter(LEGENDS[0], testHist, 4);
+  assert.ok(m >= 0 && m <= 100, `styleMeter in range: ${m}`);
+
+  console.log("  legend lessons: all assertions passed");
+}
+
 console.log("engine selftest: all assertions passed");
