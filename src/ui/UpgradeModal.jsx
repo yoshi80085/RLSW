@@ -4,7 +4,30 @@
 // =============================================================================
 import React from "react";
 
-export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setNoteStates, setSkillTarget, upgradesPending }) {
+export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setNoteStates, setSkillTarget, upgradesPending, stanceKit }) {
+  // Resolve stance-specific descriptions for the acting spirit
+  function stanceDesc(sk) {
+    if (!acting || !stanceKit) return sk.desc;
+    const kit = stanceKit(acting.id);
+    if (!kit) return sk.desc;
+    if (sk.id === 'stance_physical') {
+      const p = kit.physical;
+      return p ? `${p.label}: ${p.desc} (melee, costs ${p.dbCost} Db per use)` : sk.desc;
+    }
+    if (sk.id === 'stance_sonic') {
+      const s = kit.sonic;
+      return s ? `${s.label}: ${s.desc} (ranged, costs ${s.dbCost} Db per use)` : sk.desc;
+    }
+    if (sk.id === 'stance_passive_up') {
+      const p = kit.passive;
+      if (!p) return sk.desc;
+      if (p.id === 'pull_off')  return `Upgrade ${p.label}: rivals you defeat in battle are pushed +2 hexes instead of +1.`;
+      if (p.id === 'feedback')  return `Upgrade ${p.label}: rivals whose attack deals 0 damage take 2 Vibe instead of 1.`;
+      if (p.id === 'headbang') return `Upgrade ${p.label}: Casual → Diehard conversion fires every 1 fan instead of every 2.`;
+      return `Upgrade ${p.label}: ${p.desc}`;
+    }
+    return sk.desc;
+  }
   return (<>
       {acting && upgradesPending > 0 && (() => {
         const ns           = noteStates[acting.id] ?? {};
@@ -74,7 +97,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setN
                         <div style={{fontSize:12, color:'#ffffff', fontWeight:900, marginTop:1}}>
                           {pendingDef.label}
                         </div>
-                        <div style={{fontSize:8, color:'#6a8aaa', marginTop:2}}>{pendingDef.desc}</div>
+                        <div style={{fontSize:8, color:'#6a8aaa', marginTop:2}}>{stanceDesc(pendingDef)}</div>
                       </div>
                     </div>
                   );
@@ -205,7 +228,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setN
                                 <span style={{fontSize:7, color:'#3a5a7a'}}>🔒 {missingPrereqs.map(id => SKILL_BY_ID[id]?.label ?? id).join(' + ')}</span>
                               )}
                             </div>
-                            <div style={{fontSize:8, color:'#5a7a8a', lineHeight:1.4}}>{sk.desc}</div>
+                            <div style={{fontSize:8, color:'#5a7a8a', lineHeight:1.4}}>{stanceDesc(sk)}</div>
                           </div>
                           <div style={{
                             fontSize:9, fontWeight:700, whiteSpace:'nowrap',
@@ -301,7 +324,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setN
                                       <span style={{fontSize:6, color:'#3a5a7a'}}>🔒 {missingPrereqs.map(id => SKILL_BY_ID[id]?.label ?? id).join(' + ')}</span>
                                     )}
                                   </div>
-                                  <div style={{fontSize:7, color:'#4a6a7a', lineHeight:1.4}}>{sk.desc}</div>
+                                  <div style={{fontSize:7, color:'#4a6a7a', lineHeight:1.4}}>{stanceDesc(sk)}</div>
                                 </div>
                                 <div style={{
                                   fontSize:8, fontWeight:700, whiteSpace:'nowrap',

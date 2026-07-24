@@ -593,6 +593,30 @@ const SKILL_BY_ID = (() => {
   return map;
 })();
 
+// Stance-specific skill descriptions — resolves generic stance skill descs for a given spirit.
+function stanceSkillDesc(sk, spiritId) {
+  if (!spiritId) return sk.desc;
+  const kit = stanceKit(spiritId);
+  if (!kit) return sk.desc;
+  if (sk.id === 'stance_physical') {
+    const p = kit.physical;
+    return p ? `${p.label}: ${p.desc} (melee, costs ${p.dbCost} Db per use)` : sk.desc;
+  }
+  if (sk.id === 'stance_sonic') {
+    const s = kit.sonic;
+    return s ? `${s.label}: ${s.desc} (ranged, costs ${s.dbCost} Db per use)` : sk.desc;
+  }
+  if (sk.id === 'stance_passive_up') {
+    const p = kit.passive;
+    if (!p) return sk.desc;
+    if (p.id === 'pull_off')  return `Upgrade ${p.label}: rivals you defeat are pushed +2 hexes instead of +1.`;
+    if (p.id === 'feedback')  return `Upgrade ${p.label}: rivals whose attack deals 0 damage take 2 Vibe instead of 1.`;
+    if (p.id === 'headbang') return `Upgrade ${p.label}: Casual → Diehard conversion fires every 1 fan instead of every 2.`;
+    return `Upgrade ${p.label}: ${p.desc}`;
+  }
+  return sk.desc;
+}
+
 // Returns the note that is N semitones above root (chromatic, sharp-pool default)
 
 // ── CHROMATIC RUN DETECTION ──────────────────────────────────────────────────
@@ -8874,6 +8898,20 @@ function Game({ gameState, onReturnToLobby }) {
         const driveFull = (ns.driveStack?.length ?? 0) >= STACK_CAP;
         const sustainFull = (ns.sustainStack?.length ?? 0) >= STACK_CAP;
         const budgetSpent = (ns.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET;
+        // Compute benefit advice: compare chord stats with the note added to each stack
+        const theNote = pendingLostChordPickup.note;
+        const curDrive   = spiritChord(pendingLostChordPickup.spiritId, ns.driveStack ?? []);
+        const curSustain = spiritChord(pendingLostChordPickup.spiritId, ns.sustainStack ?? []);
+        const withDrive  = !driveFull ? spiritChord(pendingLostChordPickup.spiritId, [...(ns.driveStack ?? []), theNote]) : curDrive;
+        const withSustain = !sustainFull ? spiritChord(pendingLostChordPickup.spiritId, [...(ns.sustainStack ?? []), theNote]) : curSustain;
+        const driveGain   = withDrive.drive - curDrive.drive;
+        const sustainGain = withSustain.sustain - curSustain.sustain;
+        const advice = (driveFull && sustainFull) ? null
+          : (driveFull) ? '🛡️ Drive is full — Sustain is the play.'
+          : (sustainFull) ? '⚔️ Sustain is full — Drive is the play.'
+          : (driveGain > sustainGain) ? `⚔️ Better for Drive (+${driveGain} Drive vs +${sustainGain} Sustain)`
+          : (sustainGain > driveGain) ? `🛡️ Better for Sustain (+${sustainGain} Sustain vs +${driveGain} Drive)`
+          : `⚖️ Equal benefit (+${driveGain} to either stack)`;
         return (
           <div style={{position:'fixed',inset:0,zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',
             background:'#000000aa',backdropFilter:'blur(3px)'}}>
@@ -8885,24 +8923,31 @@ function Game({ gameState, onReturnToLobby }) {
                 textShadow:'0 0 10px #7fe0ff55'}}>🎵 LOST CHORD FOUND</div>
               <div style={{fontSize:26,fontWeight:900,color:'#fff',marginBottom:4,
                 textShadow:'0 0 12px #7fe0ff'}}>{pendingLostChordPickup.note}</div>
-              <div style={{fontSize:9,color:'#8aa5c5',marginBottom:16,lineHeight:1.5}}>
+              <div style={{fontSize:9,color:'#8aa5c5',marginBottom:8,lineHeight:1.5}}>
                 {sp?.name} can bank it into the Note Stock, or weave it into a stack
                 — costs 1 of your {STACK_COMMIT_BUDGET} stack commits this turn.
               </div>
+              {advice && (
+                <div style={{fontSize:9,color:'#ffcc44',marginBottom:12,padding:'5px 10px',
+                  background:'#1a1400',border:'1px solid #ffcc4433',borderRadius:5,
+                  fontWeight:700,letterSpacing:0.5}}>
+                  {advice}
+                </div>
+              )}
               <div style={{display:'flex',flexDirection:'column',gap:8}}>
                 <button onClick={() => resolveLostChordPickup('drive')} disabled={driveFull || budgetSpent}
                   style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor: (driveFull||budgetSpent)?'not-allowed':'pointer',
                     opacity: (driveFull||budgetSpent) ? 0.4 : 1,
                     background:'#1a0c1a',border:'1.5px solid #ff6644',borderRadius:5,
                     color:'#ff9966',padding:'8px 16px',letterSpacing:1}}>
-                  ⚔️ Add to Drive Stack {driveFull ? '(full)' : budgetSpent ? '(budget spent)' : ''}
+                  ⚔️ Add to Drive Stack {driveFull ? '(full)' : budgetSpent ? '(budget spent)' : `(${curDrive.drive} → ${withDrive.drive})`}
                 </button>
                 <button onClick={() => resolveLostChordPickup('sustain')} disabled={sustainFull || budgetSpent}
                   style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor: (sustainFull||budgetSpent)?'not-allowed':'pointer',
                     opacity: (sustainFull||budgetSpent) ? 0.4 : 1,
                     background:'#0a1828',border:'1.5px solid #44aaff',borderRadius:5,
                     color:'#88ccff',padding:'8px 16px',letterSpacing:1}}>
-                  🛡️ Add to Sustain Stack {sustainFull ? '(full)' : budgetSpent ? '(budget spent)' : ''}
+                  🛡️ Add to Sustain Stack {sustainFull ? '(full)' : budgetSpent ? '(budget spent)' : `(${curSustain.sustain} → ${withSustain.sustain})`}
                 </button>
                 <button onClick={() => resolveLostChordPickup('bank')}
                   style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor:'pointer',
@@ -9269,6 +9314,7 @@ function Game({ gameState, onReturnToLobby }) {
         setNoteStates={setNoteStates}
         setSkillTarget={setSkillTarget}
         upgradesPending={upgradesPending}
+        stanceKit={stanceKit}
       />}
       {/* ── LEFT PANEL ── */}
         <div style={{display:"flex",flexDirection:"column",gap:0}}>
@@ -9592,7 +9638,7 @@ function Game({ gameState, onReturnToLobby }) {
                             const routeDef = SKILL_TREE.routes.find(r => r.id === sk.routeId);
                             const col      = routeDef?.color ?? '#88aabb';
                             return (
-                              <div key={skillId} title={`${sk.label}: ${sk.desc}`} style={{
+                              <div key={skillId} title={`${sk.label}: ${stanceSkillDesc(sk, acting?.id)}`} style={{
                                 display:"flex", alignItems:"center", gap:3,
                                 background:`${col}18`, border:`1px solid ${col}55`,
                                 borderRadius:4, padding:"2px 6px",
@@ -9938,12 +9984,12 @@ function Game({ gameState, onReturnToLobby }) {
                         {/* Drive stack display */}
                         <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}>
                           <button className="btn" onClick={()=>setStackCommitDest('drive')} disabled={dFull || budgetLeft <= 0}
-                            style={{fontSize:7,padding:"2px 6px",borderColor: stackCommitDest === 'drive' ? '#ff6644' : '#aa4422',
+                            style={{fontSize:10,padding:"4px 10px",fontWeight:700,borderColor: stackCommitDest === 'drive' ? '#ff6644' : '#aa4422',
                               color: stackCommitDest === 'drive' ? '#ff6644' : '#aa6644',
                               background: stackCommitDest === 'drive' ? '#2a0c08' : 'transparent',
                               opacity: (dFull || budgetLeft <= 0) ? 0.4 : 1,
                               ...(engineState.turn.count <= 8 && !(dFull || budgetLeft <= 0) ? {'--glow-color':'#ff6644', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}>
-                            {stackCommitDest === 'drive' ? '> Drive' : '-> Drive'}
+                            {stackCommitDest === 'drive' ? '⚔️ DRIVE' : '⚔️ Drive'}
                           </button>
                           <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
                             {dStack.map((n,i)=>(
@@ -9956,12 +10002,12 @@ function Game({ gameState, onReturnToLobby }) {
                         {/* Sustain stack display */}
                         <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
                           <button className="btn" onClick={()=>setStackCommitDest('sustain')} disabled={sFull || budgetLeft <= 0}
-                            style={{fontSize:7,padding:"2px 6px",borderColor: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
+                            style={{fontSize:10,padding:"4px 10px",fontWeight:700,borderColor: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
                               color: stackCommitDest === 'sustain' ? '#44aaff' : '#4488aa',
                               background: stackCommitDest === 'sustain' ? '#0a1828' : 'transparent',
                               opacity: (sFull || budgetLeft <= 0) ? 0.4 : 1,
                               ...(engineState.turn.count <= 8 && !(sFull || budgetLeft <= 0) ? {'--glow-color':'#44aaff', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}>
-                            {stackCommitDest === 'sustain' ? '> Sustain' : '-> Sustain'}
+                            {stackCommitDest === 'sustain' ? '🛡️ SUSTAIN' : '🛡️ Sustain'}
                           </button>
                           <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
                             {sStack.map((n,i)=>(
@@ -10307,7 +10353,7 @@ function Game({ gameState, onReturnToLobby }) {
                             if (!sk) return null;
                             const rd = SKILL_TREE.routes.find(r => r.id === sk.routeId);
                             return (
-                              <span key={skillId} title={`${sk.label}: ${sk.desc}`} style={{
+                              <span key={skillId} title={`${sk.label}: ${stanceSkillDesc(sk, s.id)}`} style={{
                                 fontSize:10, cursor:"default",
                                 background:`${rd?.color ?? '#888'}18`,
                                 border:`1px solid ${rd?.color ?? '#888'}44`,
@@ -11045,7 +11091,7 @@ function Game({ gameState, onReturnToLobby }) {
                   <span style={{fontSize:7,fontWeight:700,color:"#4499ff"}}>🛡️{sCh.sustain}</span>
                   {/* Stack commit buttons */}
                   <button className="btn"
-                    style={{fontSize:6,padding:"2px 5px",
+                    style={{fontSize:8,padding:"3px 7px",fontWeight:700,
                       borderColor: stackCommitDest === 'drive' ? '#ff6644' : '#aa5533',
                       color: stackCommitDest === 'drive' ? '#ff6644' : '#aa5533',
                       background: stackCommitDest === 'drive' ? '#2a0c08' : 'transparent',whiteSpace:"nowrap",
@@ -11053,10 +11099,10 @@ function Game({ gameState, onReturnToLobby }) {
                       ...(engineState.turn.count <= 8 && !(budgetLeft <= 0 || dStack.length >= STACK_CAP) ? {'--glow-color':'#ff6644', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}
                     disabled={budgetLeft <= 0 || dStack.length >= STACK_CAP}
                     onClick={()=>setStackCommitDest(d => d === 'drive' ? null : 'drive')}>
-                    {stackCommitDest === 'drive' ? '> Drive' : '-> Drive'}
+                    {stackCommitDest === 'drive' ? '⚔️ DRIVE' : '⚔️ Drive'}
                   </button>
                   <button className="btn"
-                    style={{fontSize:6,padding:"2px 5px",
+                    style={{fontSize:8,padding:"3px 7px",fontWeight:700,
                       borderColor: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
                       color: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
                       background: stackCommitDest === 'sustain' ? '#0a1828' : 'transparent',whiteSpace:"nowrap",
@@ -11064,7 +11110,7 @@ function Game({ gameState, onReturnToLobby }) {
                       ...(engineState.turn.count <= 8 && !(budgetLeft <= 0 || sStack.length >= STACK_CAP) ? {'--glow-color':'#44aaff', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}
                     disabled={budgetLeft <= 0 || sStack.length >= STACK_CAP}
                     onClick={()=>setStackCommitDest(d => d === 'sustain' ? null : 'sustain')}>
-                    {stackCommitDest === 'sustain' ? '> Sustain' : '-> Sustain'}
+                    {stackCommitDest === 'sustain' ? '🛡️ SUSTAIN' : '🛡️ Sustain'}
                   </button>
                   {/* Status hint */}
                   <div style={{fontSize:5,color:"#6a8a9a",textAlign:"center",maxWidth:48,lineHeight:1.3}}>
