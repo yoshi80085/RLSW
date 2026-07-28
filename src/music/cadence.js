@@ -258,6 +258,127 @@ export function refillStock(rootNote, mode, size = 8, rand = Math.random) {
 }
 
 
+// ── STYLE SYSTEM DETECTORS (STYLE_SYSTEM_HANDOFF.md §4) ─────────────────────
+// Pure, Style-only detectors — additive alongside detectDiatonicRun /
+// detectSkipClimb / detectRepeatPattern above, which are untouched and still
+// feed the Drive/Sustain boosts.
+
+// ── SHRED: style run ─────────────────────────────────────────────────────────
+// Generalizes detectDiatonicRun (interval 1) and detectSkipClimb (interval 2)
+// into one detector: the longest run of consecutive notes moving through the
+// scale in ONE consistent direction by ONE consistent interval class (1 =
+// step, 2 = 3rd, 3 = 4th, by default). Out-of-scale notes break the run. Min
+// length 3 to count.
+export function detectStyleRun(track, currentScale, intervals = [1, 2, 3]) {
+  if (!track || track.length < 3) return 0;
+  let maxRun = 0;
+  let i = 0;
+  while (i < track.length) {
+    let runLen = 1;
+    let dir = 0; // signed step (magnitude = interval class, sign = direction)
+    while (i + runLen < track.length) {
+      const a = currentScale.indexOf(track[i + runLen - 1]);
+      const b = currentScale.indexOf(track[i + runLen]);
+      if (a === -1 || b === -1) break;
+      const step = b - a;
+      if (!intervals.includes(Math.abs(step))) break;
+      if (dir === 0) dir = step;
+      else if (step !== dir) break;
+      runLen++;
+    }
+    if (runLen >= 3) maxRun = Math.max(maxRun, runLen);
+    i += Math.max(1, runLen);
+  }
+  return maxRun;
+}
+
+// ── SHRED signature: contour turn ────────────────────────────────────────────
+// True if the track contains two qualifying runs (≥3 notes, one consistent
+// direction + interval class each) in OPPOSITE directions — the "up the neck
+// and back down" shred phrase. They may share a pivot note (the run ending at
+// index i and a new run starting at index i are both examined, so a shared
+// peak/valley note is naturally covered).
+export function detectContourTurn(track, currentScale, intervals = [1, 2, 3]) {
+  if (!track || track.length < 3) return false;
+  let hasUp = false, hasDown = false;
+  for (let i = 0; i < track.length - 1; i++) {
+    let runLen = 1;
+    let dir = 0;
+    for (let j = i + 1; j < track.length; j++) {
+      const a = currentScale.indexOf(track[j - 1]);
+      const b = currentScale.indexOf(track[j]);
+      if (a === -1 || b === -1) break;
+      const step = b - a;
+      if (!intervals.includes(Math.abs(step))) break;
+      if (dir === 0) dir = step;
+      else if (step !== dir) break;
+      runLen++;
+    }
+    if (runLen >= 3) {
+      if (dir > 0) hasUp = true;
+      else if (dir < 0) hasDown = true;
+    }
+    if (hasUp && hasDown) return true;
+  }
+  return false;
+}
+
+// ── GROOVE: repeated cell ────────────────────────────────────────────────────
+// Longest span covered by a 2-to-4-note cell repeated 2+ times consecutively
+// (e.g. C-E-G-C-E-G is a 3-note cell repeated twice — covers 6 notes). All
+// notes in the covered span must be in scale. Returns the total note count
+// covered by the strongest such repetition found anywhere in the track, or 0.
+export function detectCellRepeat(track, currentScale) {
+  if (!track || track.length < 4) return 0;
+  const n = track.length;
+  let best = 0;
+  for (let p = 2; p <= 4; p++) {
+    for (let s = 0; s + 2 * p <= n; s++) {
+      let cellInScale = true;
+      for (let k = s; k < s + p; k++) {
+        if (!currentScale.includes(track[k])) { cellInScale = false; break; }
+      }
+      if (!cellInScale) continue;
+      let reps = 1, k = s + p;
+      while (k + p <= n) {
+        let same = true;
+        for (let j = 0; j < p; j++) {
+          if (track[k + j] !== track[s + j] || !currentScale.includes(track[k + j])) { same = false; break; }
+        }
+        if (!same) break;
+        reps++; k += p;
+      }
+      if (reps >= 2) best = Math.max(best, reps * p);
+    }
+  }
+  return best;
+}
+
+// ── FLAIR: resolved discords ─────────────────────────────────────────────────
+// A "resolved discord" is an out-of-scale note immediately followed by an
+// in-scale note. A discord as the FINAL note of a commit doesn't count (no
+// next note to resolve into). `chromatic` is true if any resolution moves by
+// exactly 1 semitone (wrap-aware) — the classic chromatic passing/leading tone.
+export function detectResolvedDiscords(track, currentScale) {
+  if (!track || track.length < 2) return { count: 0, chromatic: false };
+  let count = 0;
+  let chromatic = false;
+  for (let i = 0; i < track.length - 1; i++) {
+    const note = track[i];
+    const next = track[i + 1];
+    if (currentScale.includes(note)) continue;   // must be out of scale
+    if (!currentScale.includes(next)) continue;  // must resolve INTO the scale
+    count++;
+    const a = pitchIndex(note), b = pitchIndex(next);
+    if (a >= 0 && b >= 0) {
+      const raw = Math.abs(a - b);
+      const wrapped = Math.min(raw, 12 - raw);
+      if (wrapped === 1) chromatic = true;
+    }
+  }
+  return { count, chromatic };
+}
+
 // ─── REPEATED MOTIF (flair) ──────────────────────────────────────────────────
 // Longest immediately-repeated motif: a block of `period` notes (period >= 2)
 // played and then repeated back-to-back at least twice — e.g. C-E-G-C-E-G is

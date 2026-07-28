@@ -73,16 +73,13 @@ import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus,
   smashOutcome, decideWinner, thrashDamage, thrashKnockback, thrashFame,
   sonicDamage, sonicKnockback, sonicFame,
-  finisherOutcome, hammerOnDamage, axeSwingWhiffRefill,
-  pinchHarmonicCondition, powerChordCondition, gallopCondition,
-  pullOffKnockback, feedbackRetaliation, headbangFanOverrides,
+  chordFrayAmount,
 } from "./engine/systems/combat.js";
 import {
-  usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState,
-  spendDb, detectCommitGenerator,
+  usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState, styleCommitDb,
 } from "./engine/systems/economy.js";
 import { skillEligibility, THEORY_DISCORD_GRANTS } from "./engine/systems/skills.js";
-import { STANCE_DEFS, stanceOf, stanceKit, stanceFrayAmount, STANCE_PHYSICAL_SKILL, STANCE_SONIC_SKILL } from "./data/stances.js";
+import { STYLE_DEFS, styleOf, styleDef } from "./data/styles.js";
 import {
   BOT_PERSONALITIES, BOT_PERSONA_KEYS, BOT_SKILL_PRIORITY_BASE, BOT_SPIRIT_SKILLS,
   SPIRIT_ONLY_ROUTE, BOT_RIFF_PROFILE,
@@ -306,7 +303,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STANCE_COMMIT_DB, BOT_DB_SPEND_THRESHOLD, STACK_COMMIT_BUDGET, STACK_CAP } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -372,7 +369,7 @@ import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } 
 // turn is your "final". String the right finals together across consecutive
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
-import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, staggerDuration, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote } from "./music/cadence.js";
+import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, staggerDuration, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote, detectResolvedDiscords } from "./music/cadence.js";
 import { evaluateChord } from "./music/chords.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -504,26 +501,6 @@ const SKILL_TREE = {
         ]},
       ],
     },
-    // ── STANCE v2 — special attack unlocks (physical + sonic) ──
-    // Your stance is fixed, but its special attacks must be unlocked through Db.
-    // The finisher (Smash replacement) is free from the start. Physical special
-    // is the first unlock; sonic special prereqs it. The upgrade modal renders
-    // stance-specific names/descriptions based on the spirit's kit.
-    {
-      id: 'stance',
-      label: 'Stance',
-      icon: '⚔️',
-      color: '#ff8800',
-      desc: 'Master your fighting style. Unlock stance-specific special attacks fueled by Db.',
-      skills: [
-        { id: 'stance_physical', label: 'Physical Special', icon: '🔨', dbCost: 8,  gated: false, prereq: null,
-          desc: 'Unlock your stance\'s physical special attack (melee, costs 1 Db per use).' },
-        { id: 'stance_sonic', label: 'Sonic Special', icon: '🔔', dbCost: 12, gated: true, prereq: 'stance_physical',
-          desc: 'Unlock your stance\'s sonic special attack (ranged, costs 1 Db per use).' },
-        { id: 'stance_passive_up', label: 'Passive+', icon: '⬆️', dbCost: 6,  gated: false, prereq: null,
-          desc: 'Upgrade your stance passive: Solo Pull-Off → +2 knockback; Low Slung Feedback → 2 retaliation damage; Wide Leg Headbang → promote every 1 fan.' },
-      ],
-    },
     // ── SIGNATURE ARSENALS — one compact route per Spirit (hidden from the others) ──
     {
       id: 'shredding_ronin',
@@ -592,30 +569,6 @@ const SKILL_BY_ID = (() => {
   }
   return map;
 })();
-
-// Stance-specific skill descriptions — resolves generic stance skill descs for a given spirit.
-function stanceSkillDesc(sk, spiritId) {
-  if (!spiritId) return sk.desc;
-  const kit = stanceKit(spiritId);
-  if (!kit) return sk.desc;
-  if (sk.id === 'stance_physical') {
-    const p = kit.physical;
-    return p ? `${p.label}: ${p.desc} (melee, costs ${p.dbCost} Db per use)` : sk.desc;
-  }
-  if (sk.id === 'stance_sonic') {
-    const s = kit.sonic;
-    return s ? `${s.label}: ${s.desc} (ranged, costs ${s.dbCost} Db per use)` : sk.desc;
-  }
-  if (sk.id === 'stance_passive_up') {
-    const p = kit.passive;
-    if (!p) return sk.desc;
-    if (p.id === 'pull_off')  return `Upgrade ${p.label}: rivals you defeat are pushed +2 hexes instead of +1.`;
-    if (p.id === 'feedback')  return `Upgrade ${p.label}: rivals whose attack deals 0 damage take 2 Vibe instead of 1.`;
-    if (p.id === 'headbang') return `Upgrade ${p.label}: Casual → Diehard conversion fires every 1 fan instead of every 2.`;
-    return `Upgrade ${p.label}: ${p.desc}`;
-  }
-  return sk.desc;
-}
 
 // Returns the note that is N semitones above root (chromatic, sharp-pool default)
 
@@ -828,6 +781,143 @@ function Game({ gameState, onReturnToLobby }) {
       const next = applyAction(engineRef.current, frame.action);
       engineRef.current = next;
       setEngineState(next);
+
+      // ── N12: REMOTE BATTLE OVERLAY SYNC ─────────────────────────────────────
+      // Battle overlays are presentation-only (React state, not engine state).
+      // The acting client's orchestration sets them; remote clients need to
+      // mirror the overlay so all players see and participate in battles.
+      const aType = frame.action?.type;
+
+      // ── RIFF-OFF: remote client opens the overlay when the engine battle starts
+      if (aType === "RIFF_OFF_STARTED") {
+        const eb = next.battle;
+        if (eb) {
+          const atk = eb.atkRiff, def = eb.defRiff;
+          const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
+          setBattleState({
+            riffOff: true, sonicAttack: true,
+            riffTier: eb.tier ?? 'stadium',
+            oneLiner: null,
+            phase: 'riff_intro',
+            attackerId: eb.attackerId, defenderId: eb.defenderId,
+            atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
+                       freqs: atk.degrees.map((d, i) => riffDegreeFreq(d, atk.sharps[i])),
+                       rhythm: atk.rhythm, contour: atk.contour,
+                       voicing: voiceRiff(atk.degrees, atk.sharps, atk.rhythm) },
+            defRiff: { notes: defNotesArr,
+                       freqs: def.degrees.map((d, i) => riffDegreeFreq(d, def.sharps[i])),
+                       rhythm: def.rhythm, kind: def.kind,
+                       voicing: voiceRiff(def.degrees, def.sharps, def.rhythm) },
+            defGlitch: eb.defGlitch ?? [], glitchAt: null,
+            defGhosts: eb.defGhosts ?? null, ghostHit: null,
+            turn: 'attacker', noteIdx: -1, countdown: 3, round: 1,
+            atkResults: [], defResults: [], feedback: null,
+          });
+          setDiceDisplay(null);
+        }
+      }
+
+      // ── RIFF-OFF: when the remote side submits results, update our overlay
+      if (aType === "RIFF_RESULTS_SUBMITTED") {
+        const { role, results } = frame.action;
+        const key = role === 'attacker' ? 'atkResults' : 'defResults';
+        setBattleState(p => {
+          if (!p?.riffOff) return p;
+          const upd = { ...p, [key]: results };
+          // N12: When the defender's client receives the attacker's results,
+          // advance to the handoff phase so the defender can play their answer.
+          const myId = netRef.current?.mySpiritId;
+          if (role === 'attacker' && myId === p.defenderId) {
+            upd.phase = 'riff_handoff';
+          }
+          return upd;
+        });
+      }
+
+      // ── RIFF-OFF: the remote side resolved — show the verdict
+      if (aType === "RIFF_RESOLVED") {
+        const v = next.battle?.verdict;
+        if (v) {
+          const bs = battleStateRef.current;
+          if (bs?.riffOff) {
+            const { round, attackerWon, margin, tie, decidedBy, damage } = v;
+            if (bs.riffTier === 'acoustic') {
+              const winner = tie ? null : (attackerWon ? 'attacker' : 'defender');
+              setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_result', round,
+                clashStage: null, clashWinner: winner, attackerWon, margin, damage, tie, decidedBy, atkStats: v.atkStats, defStats: v.defStats } : p);
+            } else {
+              setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_clash', round, clashStage: 'charge',
+                clashWinner: null, attackerWon, margin, damage, tie, decidedBy, atkStats: v.atkStats, defStats: v.defStats } : p);
+            }
+          }
+        }
+      }
+
+      // ── RIFF-OFF: Round 2 — update overlay with new riffs
+      if (aType === "RIFF_ROUND2_STARTED") {
+        const eb = next.battle;
+        if (eb) {
+          const atk = eb.atkRiff, def = eb.defRiff;
+          const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
+          setBattleState(p => p?.riffOff ? {
+            ...p, round: 2,
+            atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
+                       freqs: atk.degrees.map((d, i) => riffDegreeFreq(d, atk.sharps[i])),
+                       rhythm: atk.rhythm, contour: atk.contour,
+                       voicing: voiceRiff(atk.degrees, atk.sharps, atk.rhythm) },
+            defRiff: { notes: defNotesArr,
+                       freqs: def.degrees.map((d, i) => riffDegreeFreq(d, def.sharps[i])),
+                       rhythm: def.rhythm, kind: def.kind,
+                       voicing: voiceRiff(def.degrees, def.sharps, def.rhythm) },
+            defGlitch: eb.defGlitch ?? [], glitchAt: null,
+            defGhosts: eb.defGhosts ?? null, ghostHit: null,
+            atkResults: [], defResults: [], feedback: null,
+            phase: 'riff_r2intro',
+          } : p);
+        }
+      }
+
+      // ── RIFF-OFF: closed — tear down the overlay
+      if (aType === "RIFF_CLOSED") {
+        riffEngineRef.current?.timers?.forEach(clearTimeout);
+        riffEngineRef.current = null;
+        setBattleState(null);
+        setDiceDisplay(null);
+      }
+
+      // ── MELEE: remote client opens the battle overlay on a swing/sonic roll
+      if (aType === "ATTACK_ROLLED") {
+        const eb = next.battle;
+        if (eb) {
+          const { attackerId, defenderId } = frame.action;
+          const isSonic = frame.action.kind === 'sonic';
+          playBattleMusic(isSonic ? riffOffSong : battleSong, 0.7);
+          dieSettledRef.current = { atk: false, def: false };
+          setBattleState({
+            phase: 'enter_attacker',
+            attackerId, defenderId,
+            atkStat: eb.atkStat ?? frame.action.atkStat, defStat: eb.defStat ?? frame.action.defStat,
+            atkBase: frame.action.atkStat, atkBonus: 0, defBase: frame.action.defStat, defBonus: 0,
+            atkRoll: eb.atkRoll, defRoll: eb.defRoll, atkTotal: eb.atkTotal, defTotal: eb.defTotal,
+            attackerWon: eb.attackerWon, margin: eb.margin, damage: eb.damage,
+            posing: frame.action.posing,
+            pickPos: 0,
+            spinFaceAtk: null, spinFaceDef: null,
+            atkDieReady: true, defDieReady: true,
+            sonicAttack: isSonic,
+            sunbeam: frame.action.sunbeam,
+          });
+          setDiceDisplay(null);
+          // Run the cinematic timeline (skip the slow enter-attacker intro for remote)
+          const T = (fn, ms) => { const id = setTimeout(fn, ms / (gameSpeedRef.current || 1)); battleTimersRef.current.push(id); };
+          T(() => setBattleState(p => p ? { ...p, phase: 'flash_drive' } : p), 700);
+          T(() => setBattleState(p => p ? { ...p, phase: 'pick_drive_slide', pickPos: -(p.atkStat ?? 0) } : p), 1400);
+          T(() => setBattleState(p => p ? { ...p, phase: 'enter_defender' } : p), 2800);
+          T(() => setBattleState(p => p ? { ...p, phase: 'flash_sustain' } : p), 3500);
+          T(() => setBattleState(p => p ? { ...p, phase: 'pick_sustain_slide', pickPos: -(p.atkStat ?? 0) + (p.defStat ?? 0) } : p), 4200);
+          T(() => setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p), 5600);
+        }
+      }
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -956,7 +1046,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   const [action, setAction]   = useState(null); // "move" | "swing" | null
   // 🎯 Hovering a HUD attack button previews that attack's range on the board
-  // (same highlight the live aiming mode uses). null | 'swing'|'finisher'|'blaster'|'sonic'|'acoustic'
+  // (same highlight the live aiming mode uses). null | 'swing'|'smash'|'blaster'|'sonic'|'acoustic'
   const [hoverPreview, setHoverPreview] = useState(null);
   // ── BATTLE STATE ─────────────────────────────────────────────────────────────
   // actionTokenUsed: has the acting spirit used their action token this turn
@@ -1050,8 +1140,14 @@ function Game({ gameState, onReturnToLobby }) {
   // ⏭ Auto-skip: when the toggle is on, jump straight from a battle intro card into the
   // ante (or countdown for R2 intros). The ante is a gameplay decision, not a cinematic,
   // so it still appears even with skip-intros on.
+  // N12: online — only the acting (attacker) client runs enterRiffAnte() because it calls
+  // addLog / pickRandomOneLiner (Math.random) — the defender's client would produce
+  // different one-liners and relay duplicate log lines.
   useEffect(() => {
     if (!battleState?.riffOff || !skipBattleIntrosRef.current) return;
+    const net = netRef.current;
+    const isDefClient = net && net.mySpiritId === battleState.defenderId;
+    if (isDefClient) return; // N12: defender doesn't drive the intro
     if (battleState.phase === 'riff_intro') {
       const t = setTimeout(() => enterRiffAnte(), 60);
       return () => clearTimeout(t);
@@ -1061,6 +1157,46 @@ function Game({ gameState, onReturnToLobby }) {
       return () => clearTimeout(t);
     }
   }, [battleState?.phase, battleState?.riffOff]);
+
+  // ── N12: ONLINE RIFF-OFF COORDINATION ──────────────────────────────────────
+  // In online play the attacker and defender are on DIFFERENT machines. Each
+  // side plays their own riff run locally and submits results; the acting
+  // client resolves once both are in. This effect handles three jobs:
+  //  1. Attacker's handoff: when the attacker is waiting at the handoff and
+  //     the defender's results arrive (via the relay), trigger resolution.
+  //  2. Defender's riff start: when the defender's client sees the handoff
+  //     phase, auto-start the defender's riff run (they don't need the
+  //     "PASS THE KEYBOARD" button — it's a different screen).
+  //  3. Attacker wait screen: show "waiting" text while the defender plays
+  //     on the other machine (the BattleMeterOverlay handoff button is
+  //     hidden when not on the defender's client).
+  useEffect(() => {
+    const net = netRef.current;
+    if (!net || !battleState?.riffOff) return;
+    const myId = net.mySpiritId;
+    const isDefClient = myId === battleState.defenderId;
+    const isAtkClient = myId === battleState.attackerId;
+
+    // Defender's client: when we see 'riff_handoff' phase, auto-start our riff
+    if (isDefClient && battleState.phase === 'riff_handoff' && !battleState.waitingForResolve) {
+      const t = setTimeout(() => {
+        if (battleStateRef.current?.phase === 'riff_handoff') riffBeginTurn('defender');
+      }, 800);
+      return () => clearTimeout(t);
+    }
+
+    // Attacker's (acting) client: when we're at the handoff and the defender's
+    // results arrive via the relay, both sides are in — resolve.
+    if (isAtkClient && battleState.phase === 'riff_handoff') {
+      const defResults = battleState.defResults;
+      if (defResults && defResults.length > 0) {
+        const t = setTimeout(() => {
+          if (battleStateRef.current?.phase === 'riff_handoff') riffResolve();
+        }, 300);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [battleState?.phase, battleState?.riffOff, battleState?.defResults?.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // RIFF-OFF keyboard listener — armed for the whole falling-notes run.
   // e.key gives 'a' for plain press, 'A' for Shift+A — exactly our sharp rule.
@@ -1468,7 +1604,7 @@ function Game({ gameState, onReturnToLobby }) {
       title: '🚶 Step 4 — Move & Act',
       pages: [
         { body: 'Track committed — your notes are now AP. MOVE across hexes, FACE to turn (1 AP), and fight. Attacks fire into the cone or beam you\'re FACING — sneaking behind someone isn\'t just rude, it\'s tactics.', anchor: 'actions-bar' },
-        { body: ['Two ways to ruin someone\'s set:', '⚔️ SWING (1 AP) — the melee jab. Cheap, defended, drives your chord into them.', '🔊 SONIC (2 AP) — the ranged beam from your amp rig. Less damage, way more Fame.', 'Later, your STANCE adds signature specials and a finisher. Specials burn Db — the same points that buy skills. Choices, choices.'], anchor: 'actions-bar' },
+        { body: ['Three ways to ruin someone\'s set:', '⚔️ SWING (1 AP) — the melee jab. Cheap, defended, drives your chord into them.', '🎸 SMASH (2 AP) — the haymaker. Undefendable, ignores Sustain, hurls your unused stock... and leaves you Exposed. Commit issues, in weapon form.', '🔊 SONIC (2 AP) — the ranged beam from your amp rig. Less damage, way more Fame.'], anchor: 'actions-bar' },
         { body: 'Done? Hit END TURN. Your last committed note becomes next turn\'s Root Note — that throwaway discord you ended on is tomorrow\'s tonal center. Plan the ending.', anchor: 'end-turn' },
       ],
     },
@@ -2861,6 +2997,19 @@ function Game({ gameState, onReturnToLobby }) {
     // 🎭 Performance Score P — pure kernel (engine/systems/economy.js). `freestyle`
     // (Intergalactic 0's pardoned first wrong note) comes back too, since the flash/
     // log below need it and its arithmetic must not drift from the score's.
+    // ✨ FLAIR EXEMPTION (STYLE_SYSTEM_HANDOFF.md §3.3) — Flair spirits are exempt
+    // from the P penalty on RESOLVED discords (an out-of-scale note immediately
+    // followed by an in-scale one), capped at 3. Unresolved/trailing discords still
+    // hurt everyone, Flair included. This stacks independently with Intergalactic 0's
+    // freestylePardon (Groove today, but kept separate on purpose).
+    // NOTE: performanceScore doesn't take a resolvedDiscordCount param (yet) — the
+    // exemption is folded into discordCount here at the call site instead.
+    const actingStyle = acting ? (acting.style ?? styleOf(acting.id)) : null;
+    const resolvedDiscords = actingStyle === 'Flair'
+      ? detectResolvedDiscords(melodyLine, currentScale)
+      : { count: 0, chromatic: false };
+    const flairExemptDiscords = Math.min(3, resolvedDiscords.count);
+    const perfDiscordCount = Math.max(0, discordCount - flairExemptDiscords);
     const { score: perfScore, freestyle: perfFreestyle } = performanceScore({
       melodyLine,
       trackHasTritone, isOctaveResolution,
@@ -2868,7 +3017,7 @@ function Game({ gameState, onReturnToLobby }) {
       hasGatedEnding: isMinorSeventhEnd || isMajorThirdEnd || isTritoneEnd,
       hasRiff: !!riffMatch, cadenceResolved,
       earned, edgeResolved: edgeResolvedThisTurn, susEnd: perfSusEnd,
-      discordCount, freestylePardon,
+      discordCount: perfDiscordCount, freestylePardon,
     });
 
     // ── 🎭 STAGE B ROUTING: Performance Score P → DB top-up (§5b) + crowd excitement (§5a) ──
@@ -2893,10 +3042,7 @@ function Game({ gameState, onReturnToLobby }) {
     // Edge fan costs (stepping onto/escalating the stance, or its collapse) apply
     // through this same bored-fans pipeline — one floor-at-0 path, not a new one.
     let perfFansGained = 0, perfPromotions = 0, perfFansLost = edgeFanCost + edgeCollapseFans;
-    // Headbang passive (Wide Leg): faster casual→diehard promotion (+upgrade)
-    const hbOverrides = stanceOf(actingNoteState, acting.id) === 'wide_leg' ? headbangFanOverrides() : null;
-    const hbPassiveUp1 = hbOverrides && (actingNoteState?.unlockedSkills ?? []).includes('stance_passive_up');
-    const loyaltyPerDiehard = hbPassiveUp1 ? 12 : (hbOverrides?.loyaltyPerDiehard ?? LOYALTY_PER_DIEHARD);
+    const loyaltyPerDiehard = LOYALTY_PER_DIEHARD;
     while (perfExcitement >= EXCITE_PER_CASUAL)   { perfExcitement -= EXCITE_PER_CASUAL;   perfFansGained += 1; }
     while (perfLoyalty    >= loyaltyPerDiehard)   { perfLoyalty    -= loyaltyPerDiehard;   perfPromotions += 1; }
     // 🗡️ Bored crowd (only reachable when the meter has cooled below empty — i.e. Ronin
@@ -2976,15 +3122,19 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`✓ Committed · ${hexes} hexes${scoreStr}${driveMsg}${sustMsg}${triMsg}${octMsg}${majorThirdMsg}${m7Msg}${tritoneEndMsg}${chrMsg}${chromClimbMsg}${feedbackOverloadMsg}${rsMsg}${speedMsg} · Next RN: ${newRootRaw} (pick Major/Minor)`);
     if (trackHasTritone || isMinorSeventhEnd || isMajorThirdEnd || isOctaveResolution) showTip('intervals');
 
-    // ── STANCE v2: COMMIT GENERATOR — pattern detection on committed melody ──
-    // After all scoring, check if the melody line matches the stance's commit generator.
-    const commitStanceId = acting ? stanceOf(actingNoteState, acting.id) : null;
-    const commitGenResult = commitStanceId ? detectCommitGenerator(commitStanceId, melodyLine) : null;
-    if (commitGenResult) {
-      const cgIcon = STANCE_DEFS[commitStanceId]?.commitGen?.icon ?? '🎼';
-      newDBPoints += commitGenResult.dbGrant;
-      addLog(`${cgIcon} ${commitGenResult.label} detected — +${commitGenResult.dbGrant} Db!`);
-      triggerEffectFlash(acting.id, cgIcon, `+${commitGenResult.dbGrant} Db`, '#ffdd44');
+    // ── STYLE — commit Db payout (STYLE_SYSTEM_HANDOFF.md §3/§4) ──────────────
+    // Granted once per commit, after all existing scoring. Additive on top of
+    // scoreTrackDB and the Drive/Sustain overflow. Every style scores the same
+    // shape: a tier (1–3 Db) from its primary pattern + a signature bonus (+1 Db),
+    // capped at STYLE_DB_CAP inside styleCommitDb.
+    const styleResult = acting
+      ? styleCommitDb({ style: actingStyle, track: melodyLine, currentScale, rootNote: newRootRaw })
+      : null;
+    if (styleResult && styleResult.db > 0) {
+      const sDef = STYLE_DEFS[actingStyle];
+      newDBPoints += styleResult.db;
+      addLog(`${sDef?.icon ?? '🎼'} ${styleResult.label} — +${styleResult.db} Db!${styleResult.detail ? ` (${styleResult.detail})` : ''}`);
+      triggerEffectFlash(acting.id, sDef?.icon ?? '🎼', `${styleResult.label} +${styleResult.db} Db`, sDef?.color ?? '#ffdd44');
     }
 
     // 🎸 Your chord is a STANDING stance — it persists across turns and is only
@@ -3665,9 +3815,10 @@ function Game({ gameState, onReturnToLobby }) {
   // ─── SWING EFFECTS — CUT (Stance rework, §8) ──────────────────────────────────
   // The entire CQC %-proc subsystem (slip/trip/dazed/drop/confused, the chance
   // tables, the guaranteed-proc roll, and the apply step) is GONE. Melee identity
-  // now lives in the Stance system. The status FIELDS (tripped/dazed/
-  // instrumentDropped) remain in state + engine ticks — nothing sets them from
-  // combat any more, but events/future systems may.
+  // now lives entirely in per-Spirit innates and Signature arsenals (the Style
+  // rework retired the Stance system that briefly held this). The status FIELDS
+  // (tripped/dazed/instrumentDropped) remain in state + engine ticks — nothing
+  // sets them from combat any more, but events/future systems may.
   // ── ✨ BORROWED CHORD SHIELD ──────────────────────────────────────────────
   // Returns true (and consumes the shield) if the spirit is holding a Borrowed
   // Chord shield. One shield blocks the ENTIRE next incoming negative-status
@@ -5372,10 +5523,7 @@ function Game({ gameState, onReturnToLobby }) {
     let promoted = false;
     if (inCentre) {
       streak += 1;
-      // Headbang passive (Wide Leg): promote every 2 instead of default 3 (1 if upgraded)
-      const hbFan = stanceOf(ns, spiritId) === 'wide_leg' ? headbangFanOverrides() : null;
-      const hbUp = hbFan && (ns.unlockedSkills ?? []).includes('stance_passive_up');
-      const promoteEvery = hbUp ? 1 : (hbFan?.promoteEvery ?? FAN_PROMOTE_EVERY);
+      const promoteEvery = FAN_PROMOTE_EVERY;
       if (streak % promoteEvery === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
         casuals -= 1; diehards += 1; promoted = true;
       }
@@ -5495,9 +5643,7 @@ function Game({ gameState, onReturnToLobby }) {
         let promoted = false;
         if (inCentre) {
           streak += 1;
-          const hbFan2 = stanceOf(ns, spiritId) === 'wide_leg' ? headbangFanOverrides() : null;
-          const hbUp2 = hbFan2 && (ns.unlockedSkills ?? []).includes('stance_passive_up');
-          const promoteEvery = hbUp2 ? 1 : (hbFan2?.promoteEvery ?? FAN_PROMOTE_EVERY);
+          const promoteEvery = FAN_PROMOTE_EVERY;
           if (streak % promoteEvery === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
             casuals -= 1; diehards += 1; promoted = true;
           }
@@ -5828,7 +5974,7 @@ function Game({ gameState, onReturnToLobby }) {
   // ── 🛡️ CHORD FRAY (post-roll) ─────────────────────────────────────────────
   // The defender's chord frays only when the hit actually LANDS, and the wound
   // scales with the margin: 1 note on a graze (margin ≤ 2), 2 on a big hit
-  // (margin ≥ 3) — see stanceFrayAmount. Floored at 1 note remaining — you're
+  // (margin ≥ 3) — see chordFrayAmount. Floored at 1 note remaining — you're
   // never bled to nothing.
   // Returns { frayed, destroyed, destroyedDrive }:
   //   destroyed      — the voicing was reduced below 2 notes
@@ -5840,7 +5986,7 @@ function Game({ gameState, onReturnToLobby }) {
     const stack = nsD.sustainStack ?? [];
     if (stack.length <= 1 || posing[targetId]) return none;
     const defChord = spiritChord(targetId, stack);
-    const amount = stanceFrayAmount(margin);
+    const amount = chordFrayAmount(margin);
     if (amount <= 0) {
       return none;
     }
@@ -5900,21 +6046,12 @@ function Game({ gameState, onReturnToLobby }) {
     // 🛡️ Chord fray moved POST-ROLL (Stance rework): the defender's chord frays
     // only when the hit actually lands — see the fray step after the verdict.
 
-    // ── 🧍 STANCE — how you deliver the chord (STANCE_SYSTEM_DESIGN.md §4) ──
-    // Soloist: performance score powers the attack (+⌈P/2⌉ Drive) — but it
-    // SUBSUMES the track's Drive boost rather than stacking on it: one great
-    // commit pays once, not twice (tempDrive and P both come from the track).
-    // Groove: the banked wave is SPENT on this attack (+counter Drive, +counter
-    // Fame at the award). Power/Cool add no Drive (their edge is fray/damage).
-    const atkStance = stanceOf(nsA, attacker.id);
-    const stanceDrive = 0;
-
     const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0) + skillMods.pyroBonus;
     const atkEdge  = edgeCombatMods(nsA);
     const defEdge   = edgeCombatMods(nsD);
     // ⚖️ Stacked bonuses cap at ATK_BONUS_CAP — no single turn should assemble
     // a +6-and-up tower on top of the chord (balance audit, 2026-07-16).
-    const rawAtkBonus = (nsA.tempDrive ?? 0) + atkEdge.drive + stanceDrive;
+    const rawAtkBonus = (nsA.tempDrive ?? 0) + atkEdge.drive;
     const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
     if (rawAtkBonus > atkBonus) addLog(`⚖️ The rig can only take so much — attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
     const atkStat  = atkBase + atkBonus;
@@ -5997,7 +6134,6 @@ function Game({ gameState, onReturnToLobby }) {
       // Stable dance-craze name shown when a plain swing connects.
       danceName: pickDanceName(),
       psychoBushido, // 🌀 forced the rival's die to 1
-      atkStance, // 🧍 stance identity (display only)
       swingChordLeft, swingChordSpent, // deferred chord burn — only on a hit
     });
     if (psychoBushido) setTimeout(() => triggerEffectFlash(targetId, '🌀', 'BUSHIDO!', '#4488ff'), 200);
@@ -6071,111 +6207,60 @@ function Game({ gameState, onReturnToLobby }) {
       .map(s => `${counts[s] > 1 ? counts[s] : ''}d${s}`).join('+');
   }
 
-  // 🎸💥 STANCE FINISHER — replaces the old Smash. Each stance has its own finisher
-  // (Bend / Slide / Thrash) with fixed damage, range, and stack-wipe mode.
-  // Full Smash DNA: costs 2 AP, requires ≥ 2 unused stock, hurls ALL unused stock,
-  // roots you (no movement after), leaves you Exposed until your next turn.
-  function resolveFinisher(targetId) {
+  // 🎸💥 THE SMASH — primal, undefendable melee. Hurl your unused RAW stock as pure
+  // force: it bypasses the rival's Sustain, scales with how many notes you throw,
+  // scatters their stock, and leaves YOU Exposed (your next hit taken lands clean).
+  // Draws from stock only — never your chord or cadence. Outside tonal structure.
+  // Universal 2-AP finisher (Style rework) — Blaster of Ra replaces it for Intergalactic 0.
+  function resolveSmash(targetId) {
     if (!acting) return;
     if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
     const target = spirits.find(s => s.id === targetId);
     if (!target || target.knockedOut) return;
-    if (moveStepsLeft < 2) { addLog('🎸 Not enough Action Points — the finisher costs 2 AP.'); return; }
+    if (moveStepsLeft < 2) { addLog('🎸 Not enough Action Points — the Smash costs 2 AP.'); return; }
     const ns    = actingNoteState ?? {};
     const stock = ns.noteStock ?? [];
     const used  = ns.usedStockIdx ?? [];
     const unusedIdxs = stock.map((_, i) => i).filter(i => !usedHas(used, i));
     const thrown = unusedIdxs.length;
-    if (thrown < 2) { addLog('🎸 Nothing to throw — you need at least 2 unused notes.'); return; }
+    if (thrown < 2) { addLog('🎸 Nothing to throw — you need at least 2 unused notes to Smash.'); return; }
 
-    const kit = stanceKit(acting.id);
-    const fin = kit.finisher;
-
-    // Range check — Bend (2), Slide (3), Thrash (1 = adjacent)
-    const atkHex = HEX_BY_NUM[acting.num];
-    const defHex = HEX_BY_NUM[target.num];
-    const dist = (atkHex && defHex) ? axialDist(atkHex.q, atkHex.r, defHex.q, defHex.r) : 99;
-    if (dist > fin.range) {
-      addLog(`🎸 ${target.name} is out of range for ${fin.label} — need to be within ${fin.range} hex${fin.range > 1 ? 'es' : ''}.`);
-      return;
-    }
-
-    // The all-in wind-up roots you: 2 AP + end ALL remaining movement.
-    const stepsBefore = moveStepsLeft;
+    // 🎸💥 The haymaker: the all-in wind-up roots you to the spot. Smash costs 2 AP
+    // AND ends ALL remaining movement this turn — you commit everything to the blow.
+    const stepsBeforeSmash = moveStepsLeft;
     dispatch(beatsSpent(0, true, { all: true }));
     setAction(null);
 
-    // Finisher outcome — fixed damage, parameterized per stance (Phase 3b pure math).
-    const stanceId = stanceOf(ns, acting.id);
-    const outcome = finisherOutcome(stanceId, thrown);
+    // 🎸💥 Smash outcome is deterministic (no roll) — pure math in the engine (Phase 3b).
+    const { damage, knockback, scatterN } = smashOutcome(thrown);
 
-    // Slide: attacker slides adjacent to target as part of the attack.
-    if (outcome.slideIn && dist > 1) {
-      // Find the hex adjacent to target that's closest to attacker (along the line)
-      const adjHexes = getFlatTopNeighborSlots(defHex).filter(h => {
-        // Must be walkable and unoccupied by another spirit
-        return h && !spirits.some(s => s.id !== acting.id && !s.knockedOut && s.num === h.num);
-      });
-      if (adjHexes.length > 0) {
-        // Pick the adjacent hex nearest to attacker
-        const best = adjHexes.reduce((a, b) =>
-          axialDist(atkHex.q, atkHex.r, a.q, a.r) < axialDist(atkHex.q, atkHex.r, b.q, b.r) ? a : b
-        );
-        dispatch(spiritWarped(acting.id, best.num, 0));
-        addLog(`🎸 ${acting.name} SLIDES in to ${target.name}!`);
-      }
-    }
-
-    // Hurl ALL unused stock and go Exposed.
+    // You hurl ALL your unused stock and go Exposed.
     setNoteField(acting.id, {
       usedStockIdx: usedAdd(used, unusedIdxs),
       smashExposed: true,
     });
 
-    // Stack wipe — scatter or obliterate the rival's notes + BOTH combat stacks
-    if (outcome.stackWipe === 'obliterate') {
-      // Total obliteration: mark ALL of target's stock as used + wipe both stacks
-      setNoteStates(prev => {
-        const tns = prev[targetId]; if (!tns) return prev;
-        const allIdx = (tns.noteStock ?? []).map((_, i) => i);
-        return { ...prev, [targetId]: { ...tns, usedStockIdx: allIdx, driveStack: [], sustainStack: [] } };
-      });
-      addLog(`💥 ${target.name}'s stacks are OBLITERATED — every note destroyed!`);
-    } else {
-      // Scatter: Smash-style partial scatter from stock + proportional removal from both stacks
-      const scatterN = outcome.scatterN;
-      setNoteStates(prev => {
-        const tns = prev[targetId]; if (!tns) return prev;
-        const tUsed   = tns.usedStockIdx ?? [];
-        const tUnused = (tns.noteStock ?? []).map((_, i) => i).filter(i => !usedHas(tUsed, i));
-        const toScatter = tUnused.slice(0, scatterN);
-        // Remove proportionally from both stacks (half from each, floor 1 remaining)
-        const dStack = tns.driveStack ?? [];
-        const sStack = tns.sustainStack ?? [];
-        const dRemove = Math.min(Math.ceil(scatterN / 2), Math.max(0, dStack.length - 1));
-        const sRemove = Math.min(Math.floor(scatterN / 2), Math.max(0, sStack.length - 1));
-        return { ...prev, [targetId]: { ...tns,
-          usedStockIdx: usedAdd(tUsed, toScatter),
-          driveStack: dStack.slice(0, dStack.length - dRemove),
-          sustainStack: sStack.slice(0, sStack.length - sRemove),
-        } };
-      });
-      if (outcome.scatterN > 0) addLog(`💥 ${outcome.scatterN} of ${target.name}'s notes scatter loose!`);
-    }
+    // Scatter the rival's raw stock — knock a few of their unused notes loose.
+    setNoteStates(prev => {
+      const tns = prev[targetId]; if (!tns) return prev;
+      const tUsed   = tns.usedStockIdx ?? [];
+      const tUnused = (tns.noteStock ?? []).map((_, i) => i).filter(i => !usedHas(tUsed, i));
+      const toScatter = tUnused.slice(0, scatterN);
+      return { ...prev, [targetId]: { ...tns, usedStockIdx: usedAdd(tUsed, toScatter) } };
+    });
 
-    const finIcon = fin.icon ?? '🎸';
-    addLog(`${finIcon}💥 ${acting.name} unleashes ${fin.label.toUpperCase()}! ${thrown} notes hurled, UNDEFENDABLE — −${outcome.damage} Vibe.`);
-    triggerEffectFlash(targetId, finIcon, `${fin.label.toUpperCase()}!`, kit.color);
-    resolveWinDamage(acting.id, targetId, outcome.damage, fin.label);
-    if (outcome.knockback > 0) battleKnockback(acting.id, targetId, outcome.knockback);
-    if (stepsBefore > 2) addLog(`🦶 ${acting.name} is rooted by the wind-up — no movement left this turn.`);
+    addLog(`🎸💥 ${acting.name} brings the instrument DOWN — THE SMASH! ${thrown} notes hurled, UNDEFENDABLE — −${damage} Vibe${scatterN > 0 ? `, ${scatterN} of ${target.name}'s notes scatter loose` : ''}.`);
+    triggerEffectFlash(targetId, '🎸', 'SMASH!', '#ff3344');
+    resolveWinDamage(acting.id, targetId, damage, 'The Smash');
+    battleKnockback(acting.id, targetId, knockback);
+    if (stepsBeforeSmash > 2) addLog(`🦶 ${acting.name} is rooted by the wind-up — no movement left this turn.`);
     addLog(`💢 ${acting.name} is left wide open — Exposed until their next turn.`);
   }
 
-  // 🌀💥 BLASTER OF RA — Intergalactic 0's signature; REPLACES the Slide finisher once unlocked.
+  // 🌀💥 BLASTER OF RA — Intergalactic 0's signature; REPLACES Smash once unlocked.
   // A ranged, PIERCING bass-drop: hurl your unused stock down the forward beam and hammer
   // EVERY rival in line — undefendable (ignores Sustain), scattering their stock and knocking
-  // them back. Same fuel/commitment as the finisher (all stock, movement locked, Exposed), but
+  // them back. Same fuel/commitment as the Smash (all stock, movement locked, Exposed), but
   // reach + multi-hit instead of melee. The slow zoner's get-off-me artillery.
   function resolveBlasterOfRa() {
     if (!acting) return;
@@ -6220,225 +6305,6 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`💢 ${acting.name} is left wide open — Exposed until their next turn.`);
   }
 
-  // ── STANCE v2: PHYSICAL SPECIAL ──────────────────────────────────────────────
-  // Routes through the existing swing pipeline with stance-specific modifiers.
-  // Costs 1 Db per use (on top of AP cost). Gated by stance_physical skill.
-  // Hammer-On (Solo): Drive −1, 2× damage on hit.
-  // Rake (Low Slung): spends 3 chord notes, +2 Drive.
-  // Axe Swing (Wide Leg): costs 2 AP (not 1), +2 Drive, whiff halves next refill.
-  function resolvePhysicalSpecial(targetId) {
-    if (!acting) return;
-    if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
-    if (actionTokenUsed) { addLog('⚔️ Already used your Action Token this turn!'); return; }
-    const attacker = spirits.find(s => s.id === acting.id);
-    const defender = spirits.find(s => s.id === targetId);
-    if (!attacker || !defender) return;
-
-    const ns = noteStates[attacker.id] ?? {};
-    const kit = stanceKit(attacker.id);
-    const phys = kit.physical;
-    const apCost = phys.apCost;
-
-    if (moveStepsLeft < apCost) {
-      addLog(`${phys.icon} Not enough AP — ${phys.label} costs ${apCost} AP.`);
-      return;
-    }
-
-    // Db guard
-    const dbPatch = spendDb(ns, phys.dbCost);
-    if (!dbPatch) {
-      addLog(`${phys.icon} Not enough Db — ${phys.label} costs ${phys.dbCost} Db.`);
-      return;
-    }
-
-    // Rake: requires ≥ 3 drive-stack notes
-    const noteCost = phys.noteCost ?? 2;
-    if ((ns.driveStack ?? []).length < noteCost) {
-      addLog(`${phys.icon} ${phys.label} needs ${noteCost} drive-stack notes — not enough.`);
-      return;
-    }
-
-    // Spend AP + Db
-    dispatch(beatsSpent(apCost, true));
-    setAction(null);
-    setNoteField(attacker.id, dbPatch);
-
-    addLog(`${phys.icon} ${attacker.name} spends 1 Db for ${phys.label}!`);
-
-    // Now run through the swing pipeline with mods. We replicate the key parts
-    // of the swing handler with the stance-specific deltas applied.
-    const nsA = noteStates[attacker.id] ?? {};
-    const nsD = noteStates[targetId]    ?? {};
-    const skillMods = getBattleSkillMods(attacker.id, targetId);
-    if (skillMods.laserActive)  addLog(`🔴 Laser Show fires! Defender's die will be halved.`);
-    if (skillMods.fogActive)    addLog(`🌫️ Fog Machine fires! Defender -1 Drive, -1 Sustain this battle.`);
-    if (skillMods.pyroBonus > 0)addLog(`🔥 Pyrotechnics! +${skillMods.pyroBonus} bonus added to Drive roll.`);
-
-    const atkChord = (nsA.driveStack?.length) ? spiritChord(attacker.id, nsA.driveStack) : null;
-    const defChord = (nsD.sustainStack?.length) ? spiritChord(targetId, nsD.sustainStack) : null;
-    const atkChordDrive   = atkChord ? atkChord.drive   : (attacker.drive ?? 6);
-    let   defChordSustain = defChord ? defChord.sustain : (defender.sustain ?? 5);
-    if (nsD.smashExposed) { defChordSustain = 0; setNoteField(targetId, { smashExposed: false }); addLog(`💥 ${defender.name} is Exposed — the hit lands clean!`); }
-
-    const stanceDrive = phys.driveMod ?? 0;
-
-    const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0) + skillMods.pyroBonus;
-    const atkEdge  = edgeCombatMods(nsA);
-    const defEdge  = edgeCombatMods(nsD);
-    const rawAtkBonus = (nsA.tempDrive ?? 0) + atkEdge.drive + stanceDrive;
-    const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
-    if (rawAtkBonus > atkBonus) addLog(`⚖️ Attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
-    const atkStat  = atkBase + atkBonus;
-    const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
-    const defBonus = (nsD.tempSustain ?? 0) - defEdge.sustainPenalty;
-    const defStat  = defBase + defBonus;
-    const defenderPosing = posing[targetId];
-
-    const chargeFloorA = (nsA.chargeFloorTurns ?? 0) > 0;
-    const chargeCeilA  = (nsA.chargeCeilTurns  ?? 0) > 0;
-    const atkFloor = Math.max(chargeFloorA ? CHARGE_FLOOR_BONUS : 0, nsA.dieFloorBoost ?? 0);
-    const atkDie   = chargeCeilA ? THRASH_CEIL_DIE : THRASH_DIE;
-    const defDie   = THRASH_DIE;
-
-    const rollState = dispatch(attackRolled('swing', attacker.id, targetId, {
-      atkStat, defStat,
-      posing: defenderPosing,
-      halveDef: skillMods.halveDef,
-      psychoEligible: (nsA.unlockedSkills ?? []).includes('psycho_bushido'),
-      atkFloor, atkDie, defDie,
-    }));
-    const {
-      atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, psychoBushido,
-    } = rollState.battle;
-    let damage = rollState.battle.damage;
-    recordBattleTotals(attacker.id, targetId, atkTotal, defTotal, attackerWon); // 📊 scoreboard
-
-    if (psychoBushido) {
-      addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} explodes with a ${atkRoll} — ${defender.name}'s die drops to 1!`);
-    }
-
-    // Hammer-On: double damage on hit
-    if (phys.doubleDamage && attackerWon) {
-      damage = hammerOnDamage(damage);
-      addLog(`🔨 HAMMER-ON strikes TWICE — ${damage} damage!`);
-    }
-
-    // Axe Swing whiff: halve next turn's stock refill
-    if (phys.whiffPenalty === 'halfRefill' && !attackerWon) {
-      setNoteField(attacker.id, { halfRefillNextTurn: true });
-      addLog(`🪓 The wild swing whiffs — stock recovery halved next turn!`);
-    }
-
-    if (attackerWon) applyChordFray(targetId, margin);
-
-    addLog(`${phys.icon} ${attacker.name} uses ${phys.label} against ${defender.name}!${defenderPosing ? ' — caught posing!' : ''}`);
-
-    burnChargesAfterBattle([attacker.id, targetId], `the ${phys.label} battle spent it`);
-    // Chord spending: physical specials use noteCost notes from driveStack (Rake=3, others=2)
-    const swingChordLeft = (nsA.driveStack ?? []).slice(noteCost);
-    const swingChordSpent = (nsA.driveStack ?? []).slice(0, noteCost);
-    setNoteStates(prev => ({ ...prev, [acting.id]: { ...prev[acting.id], swingExposed: true } }));
-
-    showTip('combat');
-    playBattleMusic(battleSong, 0.7);
-    dieSettledRef.current = { atk: false, def: false };
-    const atkStance = stanceOf(nsA, attacker.id);
-    setBattleState({
-      phase: 'enter_attacker',
-      attackerId: acting.id, defenderId: targetId,
-      atkStat, defStat, atkBase, atkBonus, defBase, defBonus,
-      atkRoll, defRoll, atkTotal, defTotal,
-      attackerWon, margin, damage,
-      posing: defenderPosing,
-      pickPos: 0,
-      spinFaceAtk: 1, spinFaceDef: 1,
-      atkDieReady: false, defDieReady: false,
-      dieSides: atkDie, defDieSides: defDie,
-      skillMods,
-      danceName: pickDanceName(),
-      psychoBushido,
-      atkStance,
-      swingChordLeft, swingChordSpent,
-      stanceSpecial: phys.id,  // flag for the battle overlay to show special name
-    });
-    if (psychoBushido) setTimeout(() => triggerEffectFlash(targetId, '🌀', 'BUSHIDO!', '#4488ff'), 200);
-    setDiceDisplay({ atk: null, def: null, rolling: null });
-
-    const skipCine = skipBattleIntrosRef.current;
-    battleTimersRef.current = [];
-    const T = (fn, ms) => { const id = gt(fn, skipCine ? ms * 0.1 : ms); battleTimersRef.current.push(id); return id; };
-    T(() => setBattleState(p => p ? { ...p, phase: 'flash_drive' } : p), 700);
-    T(() => setBattleState(p => p ? { ...p, phase: 'pick_drive_slide', pickPos: -atkStat } : p), 1400);
-    T(() => setBattleState(p => p ? { ...p, phase: 'enter_defender' } : p), 2800);
-    T(() => setBattleState(p => p ? { ...p, phase: 'flash_sustain' } : p), 3500);
-    T(() => setBattleState(p => p ? { ...p, phase: 'pick_sustain_slide', pickPos: -atkStat + defStat } : p), 4200);
-    // ⚡ PERF: NeonDie self-animates its spin faces — no interval needed here.
-    T(() => setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p), 5600);
-  }
-
-  // ── STANCE v2: SONIC SPECIAL ───────────────────────────────────────────────
-  // Routes through the existing sonic pipeline with +2 conditional Drive.
-  // Costs 1 Db per use. Gated by stance_sonic skill + condition met.
-  // Pinch Harmonic (Solo): +2 Drive if root repeated ≥ 2× in chord stack.
-  // Power Chord (Low Slung): +2 Drive if chord stack contains the 5th.
-  // Gallop (Wide Leg): +2 Drive if chord stack is full.
-  function resolveSonicSpecial(targetId) {
-    if (!acting) return;
-    if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
-    if (actionTokenUsed) { addLog('🔊 Already used your Action Token this turn!'); return; }
-    const attacker = spirits.find(s => s.id === acting.id);
-    const defender = spirits.find(s => s.id === targetId);
-    if (!attacker || !defender) return;
-
-    if (moveStepsLeft < 2) {
-      addLog(`🔊 Not enough AP — Sonic Special costs 2 AP.`);
-      return;
-    }
-
-    const ns = noteStates[attacker.id] ?? {};
-    const kit = stanceKit(attacker.id);
-    const sonic = kit.sonic;
-
-    // Db guard
-    const dbPatch = spendDb(ns, sonic.dbCost);
-    if (!dbPatch) {
-      addLog(`${sonic.icon} Not enough Db — ${sonic.label} costs ${sonic.dbCost} Db.`);
-      return;
-    }
-
-    // Check condition
-    const conditionMet = checkSonicCondition(attacker.id, ns);
-    if (!conditionMet) {
-      addLog(`${sonic.icon} ${sonic.label} condition not met — no bonus Drive.`);
-      return;
-    }
-
-    // Spend Db
-    setNoteField(attacker.id, dbPatch);
-    addLog(`${sonic.icon} ${attacker.name} spends 1 Db for ${sonic.label}! +${sonic.conditionalDrive} Drive.`);
-
-    // Route through the standard sonic attack with the Drive bonus passed directly
-    // (avoids React batching issue — setNoteField for tempDrive wouldn't flush in time)
-    initiateSonicAttack(targetId, sonic.conditionalDrive);
-  }
-
-  // Check if a sonic special's condition is met for the acting spirit.
-  function checkSonicCondition(spiritId, ns) {
-    const stanceId = stanceOf(ns, spiritId);
-    const chord = ns.driveStack ?? [];
-    const root = ns.rootNote ?? 'C';
-    if (stanceId === 'solo') {
-      return pinchHarmonicCondition(chord, root);
-    } else if (stanceId === 'low_slung') {
-      const fifth = semitonesUpSpelled(root, ns.scaleMode ?? 'major', 7);
-      return powerChordCondition(chord, fifth);
-    } else if (stanceId === 'wide_leg') {
-      // Stack cap — stock size minus used (approximate max is 6 for most spirits)
-      return gallopCondition(chord, 6);
-    }
-    return false;
-  }
-
   // 🌌 DISPLACE — Intergalactic 0's signature. He can't run; he WARPS. Teleport to an open
   // hex beside his amp rig for 3 AP, then a 2-turn cooldown. A deliberate get-out-of-jail
   // (the AP cost rules out a same-turn Sonic follow-up), not a kite tool. Needs ≥1 amp.
@@ -6463,7 +6329,7 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`🌌 ${acting.name} folds space and WARPS to hex #${hexNum} — Space is the place.`);
   }
 
-  function initiateSonicAttack(targetId, extraDriveBonus = 0) {
+  function initiateSonicAttack(targetId) {
     if (!acting) return;
     if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
     if (actionTokenUsed) { addLog('🔊 Already used your Action Token this turn!'); return; }
@@ -6554,15 +6420,12 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`🎸 ${attacker.name} projects ${sonicChordSpent.join('')} from the drive stack — ${sonicChordLeft.length ? spiritChord(attacker.id, sonicChordLeft).name : 'drive exhausted (base stats until committed)'}.`);
     }
 
-    const atkStance = stanceOf(nsA, attacker.id);
-    const stanceDrive = extraDriveBonus;  // Sonic Special passes +2 here
-
     const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0)
                    + skillMods.pyroBonus + pedalBonus + powerBonus;
     const atkEdge  = edgeCombatMods(nsA);
     const defEdge   = edgeCombatMods(nsD);
     // ⚖️ Same stacked-bonus cap as Thrash (balance audit, 2026-07-16).
-    const rawAtkBonus = (nsA.tempDrive ?? 0) + atkEdge.drive + stanceDrive;
+    const rawAtkBonus = (nsA.tempDrive ?? 0) + atkEdge.drive;
     const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
     if (rawAtkBonus > atkBonus) addLog(`⚖️ The rig can only take so much — attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
     const atkStat  = atkBase + atkBonus;
@@ -6668,7 +6531,6 @@ function Game({ gameState, onReturnToLobby }) {
       skillMods,
       pedalBonus,
       powerBonus,
-      atkStance, // 🧍 stance identity (display only)
       sonicChordNotes, // 🔊 chord notes saved for playback at beam fire
     });
     setDiceDisplay({ atk: null, def: null, rolling: null });
@@ -6981,10 +6843,29 @@ function Game({ gameState, onReturnToLobby }) {
   function riffEndTurn(turn) {
     riffEngineRef.current?.timers?.forEach(clearTimeout);
     riffEngineRef.current = null;
+    // N12: online riff-offs — each side dispatches their own results so the
+    // relay carries them to the other client. The acting client resolves once
+    // both sides are in; the defender's client just submits and waits.
+    const net = netRef.current;
+    if (net && !net.spectator) {
+      const bs = battleStateRef.current;
+      const results = turn === 'attacker' ? bs?.atkResults : bs?.defResults;
+      if (results) dispatch(riffResultsSubmitted(turn, results));
+    }
     if (turn === 'attacker') {
       setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_handoff', feedback: null } : p);
     } else {
-      riffResolve();
+      // Offline / hotseat: resolve immediately. Online acting client: resolve
+      // too (we just dispatched results, engine has both sides now).
+      // Online defender client: the acting client resolves; we just wait.
+      const isDefenderClient = net && !net.spectator && net.mySpiritId === battleStateRef.current?.defenderId;
+      if (isDefenderClient) {
+        // Defender client waits — the attacker (acting client) will resolve
+        // and the RIFF_RESOLVED action will arrive via the relay.
+        setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_handoff', feedback: null, waitingForResolve: true } : p);
+      } else {
+        riffResolve();
+      }
     }
   }
 
@@ -7009,8 +6890,12 @@ function Game({ gameState, onReturnToLobby }) {
     // Submit both performances to the engine and let it rule the duel — the
     // multiplayer seam: networked clients will each submit their own results
     // array and every peer computes the identical verdict.
-    dispatch(riffResultsSubmitted('attacker', bs.atkResults));
-    dispatch(riffResultsSubmitted('defender', bs.defResults));
+    // N12: online — each side already dispatched their results in riffEndTurn;
+    // the engine battle slice has them. Offline/hotseat: still dispatch here.
+    if (!netRef.current) {
+      dispatch(riffResultsSubmitted('attacker', bs.atkResults));
+      dispatch(riffResultsSubmitted('defender', bs.defResults));
+    }
     // 📊 scoreboard — bank each performer's note grades (fires per round)
     recordRiffResults(bs.attackerId, bs.atkResults);
     recordRiffResults(bs.defenderId, bs.defResults);
@@ -7048,6 +6933,11 @@ function Game({ gameState, onReturnToLobby }) {
     const bs = battleStateRef.current;
     if (!bs?.riffOff || bs.phase !== 'riff_clash' || bs.clashStage !== 'charge') return;
     const round = bs.round ?? 1;
+    // N12: online — only the acting client dispatches engine actions + log lines.
+    // The defender's client runs the presentational beam animation but waits for
+    // the RIFF_ROUND2_STARTED relay (if Round 2 triggers) to update riff data.
+    const net = netRef.current;
+    const isActingClient = !net || net.spectator || net.mySpiritId === bs.attackerId;
     setBattleState(p => p?.riffOff ? { ...p, clashStage: 'clash' } : p); // beams shoot + collide
     playBeamClash(round >= 2);
     setTimeout(() => {
@@ -7056,10 +6946,12 @@ function Game({ gameState, onReturnToLobby }) {
       const decisive = !s.tie && s.margin >= 3;        // ≥2-note accuracy gap = total domination
       if (round >= 2 || decisive) {
         const winner = s.tie ? null : (s.attackerWon ? 'attacker' : 'defender');
-        const wName  = winner ? spirits.find(x => x.id === (winner === 'attacker' ? s.attackerId : s.defenderId))?.name : null;
-        addLog(winner
-          ? `🌟 BEAM CLASH${round >= 2 ? ' — FINAL ROUND' : ''}: ${wName}'s beam OVERPOWERS and sweeps the stage!`
-          : `🌟 BEAM CLASH: the beams cancel out — neither Spirit breaks through!`);
+        if (isActingClient) {
+          const wName  = winner ? spirits.find(x => x.id === (winner === 'attacker' ? s.attackerId : s.defenderId))?.name : null;
+          addLog(winner
+            ? `🌟 BEAM CLASH${round >= 2 ? ' — FINAL ROUND' : ''}: ${wName}'s beam OVERPOWERS and sweeps the stage!`
+            : `🌟 BEAM CLASH: the beams cancel out — neither Spirit breaks through!`);
+        }
         playBeamBreak(round >= 2);
         setBattleState(p => p?.riffOff ? { ...p, clashStage: 'break', clashWinner: winner } : p);
         setTimeout(() => setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_result' } : p), 2000);
@@ -7067,50 +6959,51 @@ function Game({ gameState, onReturnToLobby }) {
         // Too close to break — beams lock, SURGE, and we play a real ROUND 2:
         // fresh riffs, faster and meaner, sudden death. The round-1 beams stay
         // locked in the background while the new riffs play out.
-        addLog(`⚡ ROUND 1 TOO CLOSE — the beams LOCK and SURGE! Bring on ROUND 2!`);
+        if (isActingClient) addLog(`⚡ ROUND 1 TOO CLOSE — the beams LOCK and SURGE! Bring on ROUND 2!`);
         playBeamSurge();
         setBattleState(p => p?.riffOff ? { ...p, clashStage: 'escalate' } : p);
-        setTimeout(() => {
-          const s2 = battleStateRef.current;
-          if (!s2?.riffOff) return;
-          // Engine: fresh riffs at 0.58× speed, skill mods rerolled on its rng
-          const eb2 = dispatch(riffRound2Started()).battle;
-          const atk = eb2.atkRiff, def = eb2.defRiff;
-          const mk = (r, extra) => ({
-            notes: riffDegreesToNotes(r.degrees, r.sharps),
-            freqs: r.degrees.map((d, i) => riffDegreeFreq(d, r.sharps[i])),
-            rhythm: r.rhythm, // already sped up by the engine
-            // Voice from the ORIGINAL rhythm (pre-speedup) so phrase boundaries
-            // are correct — speedUpRiffRhythm converts rests to rushes, which
-            // would merge phrases and re-anchor incorrectly.
-            voicing: voiceRiff(r.degrees, r.sharps, r.origRhythm ?? r.rhythm),
-            ...extra,
-          });
-          addLog(`🎸🔥 ROUND 2! New riffs — faster, meaner, sudden death!`);
-          // 🗡️ RIFF SLAYER carries into Round 2 if it was active in Round 1
-          const r2Glitch = eb2.defGlitch;
-          if (r2Glitch.length > 0) {
-            addLog(`🗡️ Still rattled — Riff Slayer lurches ${r2Glitch.length} of their Round 2 notes!`);
-          }
-          // 🎴 E-Rush ghost barrage also carries into Round 2 if it was active
-          const r2Ghosts = eb2.defGhosts;
-          if (r2Ghosts) {
-            addLog(`🎴 The ghost barrage rages on — Round 2 answer notes still demand TWO keys!`);
-          }
-          setBattleState(p => p?.riffOff ? {
-            ...p,
-            round: 2,
-            r1Won: s2.attackerWon, r1Tie: s2.tie, r1Margin: s2.margin, // remember Round 1's edge
-            atkRiff: mk(atk, { contour: atk.contour }),
-            defRiff: mk(def, { kind: def.kind }),
-            defGlitch: r2Glitch, glitchAt: null,
-            defGhosts: r2Ghosts, ghostHit: null,
-            atkResults: [], defResults: [],
-            turn: 'attacker', noteIdx: -1, feedback: null,
-            clashStage: null, clashWinner: null,
-            phase: 'riff_r2intro',
-          } : p);
-        }, 1700);
+        // N12: only the acting client dispatches RIFF_ROUND2_STARTED and builds
+        // the overlay's R2 data — the remote handler does it for the defender.
+        if (isActingClient) {
+          setTimeout(() => {
+            const s2 = battleStateRef.current;
+            if (!s2?.riffOff) return;
+            // Engine: fresh riffs at 0.58× speed, skill mods rerolled on its rng
+            const eb2 = dispatch(riffRound2Started()).battle;
+            const atk = eb2.atkRiff, def = eb2.defRiff;
+            const mk = (r, extra) => ({
+              notes: riffDegreesToNotes(r.degrees, r.sharps),
+              freqs: r.degrees.map((d, i) => riffDegreeFreq(d, r.sharps[i])),
+              rhythm: r.rhythm, // already sped up by the engine
+              voicing: voiceRiff(r.degrees, r.sharps, r.origRhythm ?? r.rhythm),
+              ...extra,
+            });
+            addLog(`🎸🔥 ROUND 2! New riffs — faster, meaner, sudden death!`);
+            const r2Glitch = eb2.defGlitch;
+            if (r2Glitch.length > 0) {
+              addLog(`🗡️ Still rattled — Riff Slayer lurches ${r2Glitch.length} of their Round 2 notes!`);
+            }
+            const r2Ghosts = eb2.defGhosts;
+            if (r2Ghosts) {
+              addLog(`🎴 The ghost barrage rages on — Round 2 answer notes still demand TWO keys!`);
+            }
+            setBattleState(p => p?.riffOff ? {
+              ...p,
+              round: 2,
+              r1Won: s2.attackerWon, r1Tie: s2.tie, r1Margin: s2.margin,
+              atkRiff: mk(atk, { contour: atk.contour }),
+              defRiff: mk(def, { kind: def.kind }),
+              defGlitch: r2Glitch, glitchAt: null,
+              defGhosts: r2Ghosts, ghostHit: null,
+              atkResults: [], defResults: [],
+              turn: 'attacker', noteIdx: -1, feedback: null,
+              clashStage: null, clashWinner: null,
+              phase: 'riff_r2intro',
+            } : p);
+          }, 1700);
+        }
+        // Defender's client: the RIFF_ROUND2_STARTED relay will set phase to
+        // 'riff_r2intro' with the new riff data — no local action needed.
       }
     }, 1600);
   }
@@ -7322,19 +7215,11 @@ function Game({ gameState, onReturnToLobby }) {
         setNoteStates(prev => ({ ...prev, [attackerId]: { ...prev[attackerId], driveStack: s.swingChordLeft } }));
       }
       // ── KNOCKBACK — route by attack kind ──
-      // Pull-Off passive (Solo): +1 knockback on any win (+2 if upgraded)
-      const atkStanceId = stanceOf(noteStates[attackerId], attackerId);
-      const atkPassiveUp = (noteStates[attackerId]?.unlockedSkills ?? []).includes('stance_passive_up');
-      const pullOffExtra = atkStanceId === 'solo' ? (atkPassiveUp ? 2 : pullOffKnockback(0)) : 0;
       if (sonicAttack) {
         const def = spirits.find(x => x.id === defenderId);
-        battleKnockback(attackerId, defenderId, sonicKnockback(margin, def?.vibe ?? 1, def?.maxVibe ?? 1) + pullOffExtra);
+        battleKnockback(attackerId, defenderId, sonicKnockback(margin, def?.vibe ?? 1, def?.maxVibe ?? 1));
       } else {
-        battleKnockback(attackerId, defenderId, thrashKnockback(margin) + pullOffExtra);
-      }
-      if (pullOffExtra > 0) {
-        addLog(`↗️ Pull-Off — extra knockback!`);
-        triggerEffectFlash(defenderId, '↗️', 'PULL-OFF!', '#ffd700');
+        battleKnockback(attackerId, defenderId, thrashKnockback(margin));
       }
       resolveWinDamage(attackerId, defenderId, damage, spirits.find(s2 => s2.id === attackerId)?.name);
       // ── FP — Sonic is the Fame engine; Thrash earns a flat 1 ──
@@ -7372,17 +7257,6 @@ function Game({ gameState, onReturnToLobby }) {
       // Thrash whiff = THRASH_WHIFF_DMG (1). Sonic whiff = old formula.
       const selfDmg = sonicAttack ? Math.max(1, Math.ceil(margin / 2)) : damage; // damage already = thrashDamage(margin, true) = 1
       resolveWinDamage(defenderId, attackerId, selfDmg, 'whiff');
-      // Feedback passive (Low Slung): attacker dealt 0 damage to defender → retaliation (1, or 2 if upgraded)
-      const defStanceId = stanceOf(noteStates[defenderId], defenderId);
-      if (defStanceId === 'low_slung') {
-        const defPassiveUp = (noteStates[defenderId]?.unlockedSkills ?? []).includes('stance_passive_up');
-        const retaliationDmg = defPassiveUp ? 2 : feedbackRetaliation(0);
-        if (retaliationDmg > 0) {
-          applyVibeDamage(attackerId, retaliationDmg, 'Feedback', defenderId);
-          addLog(`📢 FEEDBACK${defPassiveUp ? '+' : ''}! ${spirits.find(s => s.id === defenderId)?.name}'s amp squeals — ${spirits.find(s => s.id === attackerId)?.name} takes ${retaliationDmg} retaliation!`);
-          triggerEffectFlash(attackerId, '📢', defPassiveUp ? 'FEEDBACK+!' : 'FEEDBACK!', '#44aaff');
-        }
-      }
       // Defender earns FP for successfully defending
       if (sonicAttack) {
         awardSonicFame(defenderId, margin, attackerId, 0);
@@ -8094,67 +7968,29 @@ function Game({ gameState, onReturnToLobby }) {
           schedule(guard(() => { endTurn(); botStepRef.current = 'idle'; }));
           return;
         }
-        // ── STANCE-AWARE COMBAT DECISIONS ───────────────────────────────
-        // Shared state: Db, unlocked skills, unused stock, stance kit.
-        const unlocked  = ns.unlockedSkills ?? [];
-        const dbPts     = ns.dbPoints ?? 0;
+        // ── COMBAT DECISIONS ─────────────────────────────────────────────
+        const selfHex   = HEX_BY_NUM[self.num];
         const usedSet   = ns.usedStockIdx;
         const unused    = (ns.noteStock ?? []).filter((_, i) => !usedHas(usedSet, i)).length;
-        const kit       = stanceKit(self.id);
-        const selfHex   = HEX_BY_NUM[self.num];
 
-        // Finisher range varies by stance (Bend: 2, Slide: 3, Thrash: 1).
-        const finRange  = kit.finisher?.range ?? 1;
-        const rivalsInFinRange = selfHex ? spirits.filter(s =>
-          s.id !== self.id && !s.knockedOut && (() => {
-            const sHex = HEX_BY_NUM[s.num];
-            return sHex && axialDist(selfHex.q, selfHex.r, sHex.q, sHex.r) <= finRange;
-          })()
-        ) : [];
-        // Blaster of Ra replaces Slide for Intergalactic 0 when unlocked.
+        // Blaster of Ra replaces Smash for Intergalactic 0 when unlocked.
+        const unlocked  = ns.unlockedSkills ?? [];
         const hasBlaster = self.id === 'intergalactic_0' && unlocked.includes('blaster_of_ra');
-        const finTargets = hasBlaster ? getRivalsInBeam(self) : rivalsInFinRange;
+        const finTargets = hasBlaster ? getRivalsInBeam(self) : getRivalsInCone(self);
 
-        // 1) 🎸💥 FINISHER — turtle-buster: undefendable vs high-Sustain targets.
+        // 1) 🎸💥 SMASH — turtle-buster: undefendable vs high-Sustain targets.
         // Needs 2 AP + ≥ 2 unused stock (leaves us Exposed).
         if (finTargets.length && unused >= 2 && steps >= 2) {
           const t = botPickTarget(finTargets, self);
           const tSustain = spiritChord(t.id, (noteStates[t.id] ?? engineRef.current.noteStates?.[t.id])?.sustainStack ?? []).sustain;
           if (tSustain >= 6) {
             botStepRef.current = 'ending';
-            schedule(guard(() => hasBlaster ? resolveBlasterOfRa() : resolveFinisher(t.id)));
+            schedule(guard(() => hasBlaster ? resolveBlasterOfRa() : resolveSmash(t.id)));
             return;
           }
         }
 
-        // 2) ⚔️ PHYSICAL SPECIAL — spend 1 Db for stance melee attack.
-        // Only when Db ≥ threshold (don't starve upgrades).
-        const hasPhysSkill = unlocked.includes(STANCE_PHYSICAL_SKILL);
-        if (hasPhysSkill && dbPts >= BOT_DB_SPEND_THRESHOLD) {
-          const physAp    = kit.physical?.apCost ?? 1;
-          const noteCost  = kit.physical?.noteCost ?? 2;
-          const conePhys  = getRivalsInCone(self);
-          if (conePhys.length && steps >= physAp && (reactNs.driveStack ?? ns.driveStack ?? []).length >= noteCost) {
-            const t = botPickTarget(conePhys, self);
-            botStepRef.current = 'ending';
-            schedule(guard(() => resolvePhysicalSpecial(t.id)));
-            return;
-          }
-        }
-
-        // 3) 🔊 SONIC SPECIAL — spend 1 Db for +2 Drive sonic when condition met.
-        const hasSonicSkill = unlocked.includes(STANCE_SONIC_SKILL);
-        if (hasSonicSkill && dbPts >= BOT_DB_SPEND_THRESHOLD) {
-          const beamSpec = rigInRangeRef.current ? getRivalsInBeam(self) : [];
-          if (beamSpec.length && steps >= 2 && checkSonicCondition(self.id, ns)) {
-            const t = botPickTarget(beamSpec, self);
-            botStepRef.current = 'ending';
-            schedule(guard(() => resolveSonicSpecial(t.id)));
-            return;
-          }
-        }
-
-        // 4) 📡 Regular Sonic (offline outside rig radius).
+        // 2) 📡 Regular Sonic (offline outside rig radius).
         const beamNow = rigInRangeRef.current ? getRivalsInBeam(self) : [];
         if (beamNow.length && steps >= 2) {
           const t = botPickTarget(beamNow, self);
@@ -8163,7 +7999,7 @@ function Game({ gameState, onReturnToLobby }) {
           return;
         }
 
-        // 5) ⚔️ Regular Swing.
+        // 3) ⚔️ Regular Swing.
         const coneNow = getRivalsInCone(self);
         if (coneNow.length && steps >= 1) {
           const t = botPickTarget(coneNow, self);
@@ -8172,16 +8008,16 @@ function Game({ gameState, onReturnToLobby }) {
           return;
         }
 
-        // 6) 🎸💥 FINISHER — closer: fire on Exposed or near-death targets
-        // when we have surplus stock. Lower priority than specials since
-        // finisher leaves us Exposed + wrecks our own notes.
+        // 4) 🎸💥 SMASH — closer: fire on Exposed or near-death targets when we
+        // have surplus stock. Lower priority than the turtle-buster case above
+        // since the Smash leaves us Exposed + wrecks our own notes.
         if (finTargets.length && unused >= 3 && steps >= 2) {
           const t = botPickTarget(finTargets, self);
           const tNs = engineRef.current.noteStates?.[t.id] ?? {};
-          const finDamage = kit.finisher?.damage ?? 1;
+          const finDamage = smashOutcome(unused).damage;
           if (tNs.smashExposed || (t.vibe ?? 10) <= finDamage + 1) {
             botStepRef.current = 'ending';
-            schedule(guard(() => hasBlaster ? resolveBlasterOfRa() : resolveFinisher(t.id)));
+            schedule(guard(() => hasBlaster ? resolveBlasterOfRa() : resolveSmash(t.id)));
             return;
           }
         }
@@ -8253,13 +8089,16 @@ function Game({ gameState, onReturnToLobby }) {
     if (!bs || bs.riffOff) return;
     const atkBot = isBot(spirits.find(s => s.id === bs.attackerId));
     const defBot = isBot(spirits.find(s => s.id === bs.defenderId));
-    // Attacker die — fired by whoever is attacking; auto only if attacker is a bot.
-    if (bs.phase === 'atk_die_spin' && atkBot) {
+    // N12: online remote viewers auto-advance dice (they're watching, not acting)
+    const net = netRef.current;
+    const isRemoteViewer = net && !net.spectator && net.mySpiritId !== bs.attackerId;
+    // Attacker die — auto if attacker is a bot OR this is a remote viewer
+    if (bs.phase === 'atk_die_spin' && (atkBot || isRemoteViewer)) {
       const t = setTimeout(() => { if (battleStateRef.current?.phase === 'atk_die_spin') handleAtkDieClick(); }, 700);
       return () => clearTimeout(t);
     }
-    // Defender die — auto only if defender is a bot.
-    if (bs.phase === 'def_die_spin' && defBot) {
+    // Defender die — auto if defender is a bot OR this is a remote viewer
+    if (bs.phase === 'def_die_spin' && (defBot || isRemoteViewer)) {
       const t = setTimeout(() => { if (battleStateRef.current?.phase === 'def_die_spin') handleDefDieClick(); }, 700);
       return () => clearTimeout(t);
     }
@@ -8267,6 +8106,17 @@ function Game({ gameState, onReturnToLobby }) {
     // turn can wrap. closeBattleOverlay handles the win/whiff/retaliation branch.
     if (bs.phase === 'result' && isBot(acting)) {
       const t = setTimeout(() => { if (battleStateRef.current?.phase === 'result') closeBattleOverlay(); }, 1400);
+      return () => clearTimeout(t);
+    }
+    // N12: online remote viewer — auto-dismiss the melee result card locally
+    // (the acting client drives closeBattleOverlay which dispatches engine actions)
+    if (bs.phase === 'result' && isRemoteViewer) {
+      const t = setTimeout(() => {
+        if (battleStateRef.current?.phase === 'result') {
+          setBattleState(null);
+          setDiceDisplay(null);
+        }
+      }, 3000);
       return () => clearTimeout(t);
     }
     // (Counter/retaliation prompt removed — pending redesign for Sonic/Thrash split.)
@@ -8317,8 +8167,13 @@ function Game({ gameState, onReturnToLobby }) {
     if (!bs?.riffOff) return;
     const atkBot = isBot(spirits.find(s => s.id === bs.attackerId));
     const defBot = isBot(spirits.find(s => s.id === bs.defenderId));
+    // N12: online defender's client must not run enterRiffAnte (produces different
+    // one-liners and duplicate log lines) — the attacker drives the intro.
+    const net = netRef.current;
+    const isDefClient = net && net.mySpiritId === bs.defenderId;
     // Intro → enter one-liner phase, but only if the ATTACKER is a bot
-    if ((bs.phase === 'riff_intro' || bs.phase === 'riff_r2intro') && atkBot) {
+    // (and we're not the online defender — that client waits for the relay)
+    if ((bs.phase === 'riff_intro' || bs.phase === 'riff_r2intro') && atkBot && !isDefClient) {
       const t = setTimeout(() => {
         const cur = battleStateRef.current;
         if (cur?.phase === 'riff_intro') enterRiffAnte();
@@ -8328,14 +8183,16 @@ function Game({ gameState, onReturnToLobby }) {
     }
     // One-liner phase: auto smack talk handles everything — no bot decision needed
     // Handoff → start the defender's answer, but only if the DEFENDER is a bot (a
-    // human defender taps "DROP THE ANSWER" themselves).
+    // human defender taps "DROP THE ANSWER" themselves — or the N12 coordination
+    // effect auto-starts for online defenders).
     if (bs.phase === 'riff_handoff' && defBot) {
       const t = setTimeout(() => { if (battleStateRef.current?.phase === 'riff_handoff') riffBeginTurn('defender'); }, 800);
       return () => clearTimeout(t);
     }
     // Clash + result are non-interactive spectacle — advance them whenever either
     // combatant is a bot (so a bot-involved duel never waits on a tap nobody owns).
-    if (bs.phase === 'riff_clash' && bs.clashStage === 'charge' && (atkBot || defBot)) {
+    // N12: online defender also auto-advances (they're watching, not driving).
+    if (bs.phase === 'riff_clash' && bs.clashStage === 'charge' && (atkBot || defBot || isDefClient)) {
       const t = setTimeout(() => { if (battleStateRef.current?.clashStage === 'charge') fireBeamClash(); }, 900);
       return () => clearTimeout(t);
     }
@@ -8474,30 +8331,11 @@ function Game({ gameState, onReturnToLobby }) {
       else addLog("🎸 That spirit is not adjacent — move closer for an acoustic duel!");
       return;
     }
-    if (action === "physical_special") {
-      const cone = acting ? getSwingCone(acting) : new Set();
-      const target = spirits.find(s => s.num === num && s.id !== acting.id && !s.knockedOut && cone.has(num));
-      if (target) { resolvePhysicalSpecial(target.id); setAction(null); }
-      else addLog("🔨 That spirit is not in your cone for the physical special!");
-      return;
-    }
-    if (action === "sonic_special") {
-      const rivals = acting ? getRivalsInBeam(acting) : [];
-      if (rivals.some(r => r.num === num)) { resolveSonicSpecial(rivals.find(r => r.num === num).id); setAction(null); }
-      else addLog("🔔 Click a rival in your beam for the sonic special!");
-      return;
-    }
-    if (action === "finisher") {
-      const kit = stanceKit(acting.id);
-      const finRange = kit.finisher.range ?? 1;
-      const atkHex = HEX_BY_NUM[acting.num];
-      const target = spirits.find(s =>
-        s.num === num && s.id !== acting.id && !s.knockedOut &&
-        atkHex && HEX_BY_NUM[s.num] &&
-        axialDist(atkHex.q, atkHex.r, HEX_BY_NUM[s.num].q, HEX_BY_NUM[s.num].r) <= finRange
-      );
-      if (target) { resolveFinisher(target.id); setAction(null); }
-      else addLog(`🎸 That spirit is not within ${finRange} hex${finRange > 1 ? 'es' : ''} for ${kit.finisher.label}!`);
+    if (action === "smash") {
+      const rivals = acting ? getRivalsInCone(acting) : [];
+      const target = rivals.find(r => r.num === num);
+      if (target) { resolveSmash(target.id); setAction(null); }
+      else addLog("🎸 That spirit is not in your melee range for the Smash!");
       return;
     }
     if (action === "blaster") {
@@ -8545,16 +8383,16 @@ function Game({ gameState, onReturnToLobby }) {
     if (sp && !isHiddenBySmoke(sp)) return sp.color + "44";
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#aa55ff33";
     if (reachable.has(hex.num)) return "#ffffff18";
-    // Swing / Finisher / Physical Special cone highlight
-    if ((previewAction === 'swing' || previewAction === 'finisher' || previewAction === 'physical_special') && acting) {
+    // Swing / Smash cone highlight
+    if ((previewAction === 'swing' || previewAction === 'smash') && acting) {
       const cone = getSwingCone(acting);
       if (cone.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
         return isRival ? '#ff333344' : '#ff111122';
       }
     }
-    // Sonic beam highlight (includes sonic special)
-    if ((previewAction === 'sonic' || previewAction === 'blaster' || previewAction === 'sonic_special') && acting) {
+    // Sonic beam highlight
+    if ((previewAction === 'sonic' || previewAction === 'blaster') && acting) {
       const beam = getSonicBeam(acting);
       if (beam.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
@@ -8588,7 +8426,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#cc88ffcc";
     if (reachable.has(hex.num)) return "#ffffff88";
     // Swing / Smash cone stroke
-    if ((previewAction === 'swing' || previewAction === 'finisher') && acting) {
+    if ((previewAction === 'swing' || previewAction === 'smash') && acting) {
       const cone = getSwingCone(acting);
       if (cone.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
@@ -9168,6 +9006,8 @@ function Game({ gameState, onReturnToLobby }) {
         closeBattleOverlay={closeBattleOverlay}
         closeRiffOff={closeRiffOff}
         enterRiffAnte={enterRiffAnte}
+        isOnlineRiff={!!(netRef.current && battleState?.riffOff)}
+        myBattleRole={netRef.current ? (netRef.current.mySpiritId === battleState?.attackerId ? 'attacker' : netRef.current.mySpiritId === battleState?.defenderId ? 'defender' : 'spectator') : null}
         pickOneLiner={pickOneLiner}
         respondOneLiner={respondOneLiner}
         crowdBlueImg={crowdBlueImg}
@@ -9314,7 +9154,6 @@ function Game({ gameState, onReturnToLobby }) {
         setNoteStates={setNoteStates}
         setSkillTarget={setSkillTarget}
         upgradesPending={upgradesPending}
-        stanceKit={stanceKit}
       />}
       {/* ── LEFT PANEL ── */}
         <div style={{display:"flex",flexDirection:"column",gap:0}}>
@@ -9520,10 +9359,10 @@ function Game({ gameState, onReturnToLobby }) {
                     </div>
                   );
                 })()}
-                {/* ── 🧍 STANCE — fixed pose (v2 ability kits land later) ── */}
+                {/* ── ✨ STYLE — how this Spirit earns Db (STYLE_SYSTEM_HANDOFF.md §5) ── */}
                 {(() => {
-                  const cur = stanceOf(ns, s.id);
-                  const curDef = STANCE_DEFS[cur];
+                  const curStyle = s.style ?? styleOf(s.id);
+                  const curDef = STYLE_DEFS[curStyle];
                   const chip = {
                     fontFamily:'inherit', borderRadius:4, padding:'3px 7px',
                     fontSize:8, lineHeight:1.3, whiteSpace:'nowrap',
@@ -9531,11 +9370,11 @@ function Game({ gameState, onReturnToLobby }) {
                   return (
                     <div style={{padding:'5px 8px', borderTop:`1px solid ${s.color}22`}}>
                       <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:4}}>
-                        <span style={{fontSize:7,color:'#3a5a7a',letterSpacing:2}}>STANCE</span>
+                        <span style={{fontSize:7,color:'#3a5a7a',letterSpacing:2}}>STYLE</span>
                         <span style={{flex:1,height:1,background:`linear-gradient(90deg, ${s.color}33, transparent)`}}/>
                       </div>
                       <div style={{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}}>
-                        <span title={`"${curDef?.pose}" — ${curDef?.blurb}`}
+                        <span title={`${curDef?.tagline ?? ''} — earns Db: ${curDef?.earnDesc ?? ''}`}
                           style={{...chip, cursor:'default', fontWeight:700,
                             background:`${curDef?.color}22`, border:`1.5px solid ${curDef?.color}`,
                             color:curDef?.color}}>
@@ -9638,7 +9477,7 @@ function Game({ gameState, onReturnToLobby }) {
                             const routeDef = SKILL_TREE.routes.find(r => r.id === sk.routeId);
                             const col      = routeDef?.color ?? '#88aabb';
                             return (
-                              <div key={skillId} title={`${sk.label}: ${stanceSkillDesc(sk, acting?.id)}`} style={{
+                              <div key={skillId} title={`${sk.label}: ${sk.desc}`} style={{
                                 display:"flex", alignItems:"center", gap:3,
                                 background:`${col}18`, border:`1px solid ${col}55`,
                                 borderRadius:4, padding:"2px 6px",
@@ -9713,6 +9552,24 @@ function Game({ gameState, onReturnToLobby }) {
                   )}
                 </div>
               </div>
+              {/* ✨ STYLE — "how you earn" hint, visible while building the melody
+                  (STYLE_SYSTEM_HANDOFF.md §5 — the intuitiveness fix: never guess your lane). */}
+              {turnStep === 'melody' && acting && (() => {
+                const sDef = styleDef(acting.id);
+                if (!sDef) return null;
+                return (
+                  <div title={sDef.tagline}
+                    style={{display:"flex",alignItems:"center",gap:5,marginBottom:5,
+                      padding:"3px 7px",borderRadius:4,
+                      background:`${sDef.color}14`,border:`1px solid ${sDef.color}44`}}>
+                    <span style={{fontSize:11}}>{sDef.icon}</span>
+                    <span style={{fontSize:7,fontWeight:700,color:sDef.color,letterSpacing:1}}>{sDef.label.toUpperCase()}</span>
+                    <span style={{fontSize:7,color:"#7090a0",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      earns Db: {sDef.earnDesc}
+                    </span>
+                  </div>
+                );
+              })()}
               {/* ⚡ DISSONANCE EDGE — REMOVED (system cut) */}
               {/* 🎛️ AMP TONE PANEL relocated → now flanks the Commit Track above the board. */}
               {/* Active effect badges — only show during melody step */}
@@ -10353,7 +10210,7 @@ function Game({ gameState, onReturnToLobby }) {
                             if (!sk) return null;
                             const rd = SKILL_TREE.routes.find(r => r.id === sk.routeId);
                             return (
-                              <span key={skillId} title={`${sk.label}: ${stanceSkillDesc(sk, s.id)}`} style={{
+                              <span key={skillId} title={`${sk.label}: ${sk.desc}`} style={{
                                 fontSize:10, cursor:"default",
                                 background:`${rd?.color ?? '#888'}18`,
                                 border:`1px solid ${rd?.color ?? '#888'}44`,
@@ -10514,83 +10371,19 @@ function Game({ gameState, onReturnToLobby }) {
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
-            {/* 🔨 PHYSICAL SPECIAL — gated by stance_physical skill + 1 Db.
-                Hammer-On / Rake / Axe Swing. Uses swing cone targeting. */}
+            {/* 🎸 THE SMASH (melee) — or 🌀 BLASTER OF RA (ranged, piercing) for Intergalactic 0 */}
             {!rockGodActive && (() => {
               const ns = actingNoteState ?? {};
-              const kit = acting ? stanceKit(acting.id) : null;
-              const phys = kit?.physical;
-              const hasSkill = (ns.unlockedSkills ?? []).includes(STANCE_PHYSICAL_SKILL);
-              if (!hasSkill || !phys) return null;
-              const cone = acting ? getSwingCone(acting) : new Set();
-              const rivals = acting ? getRivalsInCone(acting) : [];
-              const apCost = phys.apCost;
-              const noteCost = phys.noteCost ?? 2;
-              const hasDb = (ns.dbPoints ?? 0) >= phys.dbCost;
-              const hasNotes = (ns.driveStack ?? []).length >= noteCost;
-              const grayed = !hasConfirmed || actionTokenUsed || moveStepsLeft < apCost;
-              const canFire = !grayed && rivals.length > 0 && hasDb && hasNotes;
-              return (
-                <div style={{position:'relative',display:'inline-block'}}
-                  onMouseEnter={() => setHoverPreview('physical_special')}
-                  onMouseLeave={() => setHoverPreview(p => p === 'physical_special' ? null : p)}>
-                  <button className={canFire ? 'btn active' : 'btn'}
-                    style={grayed
-                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
-                      : {borderColor: kit.color, color: kit.color, opacity: canFire ? 1 : 0.4}}
-                    disabled={!canFire}
-                    title={grayed
-                      ? `${phys.label} (${apCost} AP + ${phys.dbCost} Db) — ${phys.desc} — grayed: needs AP, action token, and confirmed turn.`
-                      : !hasDb
-                      ? `${phys.label} — not enough Db (need ${phys.dbCost}).`
-                      : !hasNotes
-                      ? `${phys.label} — not enough chord notes (need ${noteCost}).`
-                      : canFire
-                      ? `${phys.label} (${apCost} AP + ${phys.dbCost} Db) — ${phys.desc}`
-                      : `${phys.label} — no rival in your cone.`}
-                    onClick={() => {
-                      if (action === 'physical_special') { setAction(null); }
-                      else if (canFire) {
-                        setAction('physical_special');
-                        addLog(`${phys.icon} ${phys.label.toUpperCase()} — click a rival in your cone! (${apCost} AP + ${phys.dbCost} Db)`);
-                      }
-                    }}>
-                    {phys.icon} {phys.label} {!canFire && moveStepsLeft < apCost ? `(${apCost}AP)` : ''}
-                  </button>
-                </div>
-              );
-            })()}
-            {action === 'physical_special' && (
-              <button className="btn" style={{borderColor:'#888',color:'#888'}}
-                onClick={() => setAction(null)}>Cancel</button>
-            )}
-            {/* 🎸 STANCE FINISHER — or 🌀 BLASTER OF RA (replaces Slide for Intergalactic 0) */}
-            {!rockGodActive && (() => {
-              const ns = actingNoteState ?? {};
-              const kit = acting ? stanceKit(acting.id) : null;
-              const fin = kit?.finisher;
-              // 🌀 Once Blaster of Ra is unlocked, it REPLACES the Slide finisher for Zero.
+              // 🌀 Once Blaster of Ra is unlocked, it REPLACES the Smash: ranged beam, pierces all.
               const hasBlaster = acting?.id === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
-              // Range-aware rival check: finisher range varies by stance
-              const finRange = fin?.range ?? 1;
-              const atkHex = acting ? HEX_BY_NUM[acting.num] : null;
-              const rivalsInRange = acting ? spirits.filter(s =>
-                s.id !== acting.id && !s.knockedOut && (() => {
-                  const sHex = HEX_BY_NUM[s.num];
-                  return atkHex && sHex && axialDist(atkHex.q, atkHex.r, sHex.q, sHex.r) <= finRange;
-                })()
-              ) : [];
-              const rivals = hasBlaster ? getRivalsInBeam(acting) : rivalsInRange;
+              const rivals = acting ? (hasBlaster ? getRivalsInBeam(acting) : getRivalsInCone(acting)) : [];
               const unused = (ns.noteStock ?? []).filter((_, i) => !usedHas(ns.usedStockIdx, i)).length;
               const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
               const canFire = !grayed && rivals.length > 0 && unused >= 2;
-              const mode    = hasBlaster ? 'blaster' : 'finisher';
-              const finLabel = hasBlaster ? 'Blaster of Ra' : (fin?.label ?? 'Finisher');
-              const finIcon  = hasBlaster ? '🌀' : (fin?.icon ?? '🎸');
-              const finColor = hasBlaster ? '#aa55ff' : (kit?.color ?? '#ff33aa');
+              const mode    = hasBlaster ? 'blaster' : 'smash';
               const baseTitle = hasBlaster
                 ? "Blaster of Ra (2 AP) — a ranged, piercing bass-drop down the beam: undefendable, scatters & knocks back EVERY rival in line. Ends your movement, leaves you Exposed. Hurls your unused stock."
-                : `${finLabel} (2 AP) — ${fin?.desc ?? 'auto-hit finisher'}. Ends your movement, leaves you Exposed. Hurls your unused stock.`;
+                : "The haymaker (2 AP) — primal & undefendable: ignores their Sustain, scatters their notes. But it ends all your movement this turn and leaves you Exposed. Hurls your unused stock.";
               return (
                 <div style={{position:'relative',display:'inline-block'}}
                   onMouseEnter={() => setHoverPreview(mode)}
@@ -10598,83 +10391,29 @@ function Game({ gameState, onReturnToLobby }) {
                   <button className={canFire ? 'btn active' : 'btn'}
                     style={grayed
                       ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
-                      : {borderColor: finColor, color: finColor, opacity: canFire ? 1 : 0.4}}
+                      : {borderColor:'#ff33aa', color:'#ff66cc', opacity: canFire ? 1 : 0.4}}
                     disabled={!canFire}
                     title={grayed
                       ? `${baseTitle} — grayed out: needs a confirmed turn, your Action Token, and 2 AP.`
                       : canFire ? baseTitle
                       : unused < 2
                       ? `${baseTitle} — faded: you need at least 2 unused stock notes to hurl.`
-                      : `${baseTitle} — no rival in range (${finRange} hex${finRange > 1 ? 'es' : ''}). Hover to see range.`}
+                      : `${baseTitle} — no rival in range. Hover to see the ${hasBlaster ? 'beam' : 'melee'} range.`}
                     onClick={() => {
                       if (action === mode) { setAction(null); }
                       else if (canFire) {
                         setAction(mode);
                         addLog(hasBlaster
                           ? `🌀💥 BLASTER OF RA — click a rival in your beam to fire down the line! (${unused} notes to hurl)`
-                          : `${finIcon}💥 ${finLabel.toUpperCase()} — click a rival within ${finRange} hex${finRange > 1 ? 'es' : ''} to unleash! (${unused} notes to hurl)`);
+                          : `🎸💥 THE SMASH — click an adjacent rival to bring it down! (${unused} notes to hurl)`);
                       }
                     }}>
-                    {finIcon} {finLabel}{rivals.length > 0 ? ` (${unused})` : ''} {!canFire && moveStepsLeft < 2 ? '(2AP)' : ''}
+                    {hasBlaster ? '🌀 Blaster of Ra' : '🎸 Smash'}{rivals.length > 0 ? ` (${unused})` : ''} {!canFire && moveStepsLeft < 2 ? '(2AP)' : ''}
                   </button>
                 </div>
               );
             })()}
-            {(action === 'finisher' || action === 'blaster') && (
-              <button className="btn" style={{borderColor:'#888',color:'#888'}}
-                onClick={() => setAction(null)}>Cancel</button>
-            )}
-            {/* 🔔 SONIC SPECIAL — gated by stance_sonic skill + 1 Db + condition met.
-                Pinch Harmonic / Power Chord / Gallop. Uses sonic beam targeting with +2 Drive. */}
-            {!rockGodActive && (() => {
-              const ns = actingNoteState ?? {};
-              const kit = acting ? stanceKit(acting.id) : null;
-              const sonic = kit?.sonic;
-              const hasSkill = (ns.unlockedSkills ?? []).includes(STANCE_SONIC_SKILL);
-              if (!hasSkill || !sonic) return null;
-              const targets = acting ? getRivalsInBeam(acting) : [];
-              const outOfRange = !actingRig.inRange;
-              const hasDb = (ns.dbPoints ?? 0) >= sonic.dbCost;
-              const condMet = acting ? checkSonicCondition(acting.id, ns) : false;
-              const grayed = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
-              const canFire = !grayed && !outOfRange && targets.length > 0 && hasDb && condMet;
-              const condLabel = sonic.condition === 'rootRepeated' ? 'root ≥2×'
-                : sonic.condition === 'hasFifth' ? 'has 5th'
-                : sonic.condition === 'stackFull' ? 'stack full' : sonic.condition;
-              return (
-                <div style={{position:'relative',display:'inline-block'}}
-                  onMouseEnter={() => setHoverPreview('sonic_special')}
-                  onMouseLeave={() => setHoverPreview(p => p === 'sonic_special' ? null : p)}>
-                  <button className={canFire ? 'btn active' : 'btn'}
-                    style={grayed
-                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
-                      : {borderColor: kit.color, color: kit.color,
-                          opacity: canFire ? 1 : (outOfRange ? 0.35 : 0.4)}}
-                    disabled={!canFire}
-                    title={grayed
-                      ? `${sonic.label} (2 AP + ${sonic.dbCost} Db) — ${sonic.desc} — grayed: needs AP, action token, and confirmed turn.`
-                      : !hasDb
-                      ? `${sonic.label} — not enough Db (need ${sonic.dbCost}).`
-                      : outOfRange
-                      ? `${sonic.label} — out of amp range. Move closer.`
-                      : !condMet
-                      ? `${sonic.label} — condition not met (${condLabel}).`
-                      : canFire
-                      ? `${sonic.label} (2 AP + ${sonic.dbCost} Db) — ${sonic.desc}`
-                      : `${sonic.label} — no rival in your beam.`}
-                    onClick={() => {
-                      if (action === 'sonic_special') { setAction(null); }
-                      else if (canFire) {
-                        setAction('sonic_special');
-                        addLog(`${sonic.icon} ${sonic.label.toUpperCase()} — click a rival in your beam! (2 AP + ${sonic.dbCost} Db, +${sonic.conditionalDrive} Drive)`);
-                      }
-                    }}>
-                    {sonic.icon} {sonic.label}{condMet ? ' ✓' : ''} {!canFire && moveStepsLeft < 2 ? '(2AP)' : ''}
-                  </button>
-                </div>
-              );
-            })()}
-            {action === 'sonic_special' && (
+            {(action === 'smash' || action === 'blaster') && (
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
@@ -11771,7 +11510,7 @@ function Game({ gameState, onReturnToLobby }) {
                                 {afflictions.map((a, i) => (
                                   <text key={i}
                                     x={cx - rowW / 2 + iconSize * (i + 0.5)}
-                                    y={cardY - HS * 0.78 /* one row up — the 🧍 stance tag owns the above-bar slot now */}
+                                    y={cardY - HS * 0.78 /* one row up — the ✨ style tag owns the above-bar slot now */}
                                     textAnchor="middle" fontSize={iconSize}
                                     style={{animation:"affliction-pulse 1.8s ease-in-out infinite",
                                       filter:`drop-shadow(0 0 3px ${a.color})`}}>
@@ -11890,15 +11629,13 @@ function Game({ gameState, onReturnToLobby }) {
                             const barY = cardY - barH - 1;
                             const pct  = sp.vibe / sp.maxVibe;
                             const barColor = pct > 0.5 ? "#44cc66" : pct > 0.25 ? "#ffaa22" : "#ff4444";
-                            // 🧍 STANCE TAG — one artwork per Spirit, so the pose is
-                            // conveyed here: icon + tiny label in the stance's colour,
+                            // ✨ STYLE TAG — icon + tiny label in the Style's colour,
                             // sitting right above the Vibe bar.
-                            const nsS = noteStates[sp.id] ?? {};
-                            const stDef = STANCE_DEFS[stanceOf(nsS, sp.id)];
+                            const stDef = STYLE_DEFS[sp.style ?? styleOf(sp.id)];
                             const tagLabel = stDef?.label?.toUpperCase() ?? '';
                             return (
                               <g style={{pointerEvents:"none"}}>
-                                {/* Stance tag (above the bar) */}
+                                {/* Style tag (above the bar) */}
                                 <text x={cx} y={barY - HS * 0.09} textAnchor="middle"
                                   fontSize={HS * 0.30} fontFamily="'Saira Stencil One',sans-serif"
                                   fontWeight={700} letterSpacing={HS * 0.03}

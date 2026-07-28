@@ -227,6 +227,8 @@ export function BattleMeterOverlay({
   closeBattleOverlay,
   closeRiffOff,
   enterRiffAnte,
+  isOnlineRiff,
+  myBattleRole,
   pickOneLiner,
   respondOneLiner,
   crowdBlueImg,
@@ -409,6 +411,7 @@ export function BattleMeterOverlay({
               animation: clashing ? containerShake : undefined,
             }}>
               <style>{`
+                @keyframes pulse     { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
                 @keyframes riffwin   { from { width:100%; } to { width:0%; } }
                 @keyframes riffpulse { 0%{transform:scale(0.4);opacity:0;} 60%{transform:scale(1.18);opacity:1;} 100%{transform:scale(1);opacity:1;} }
                 @keyframes riffglitch { 0%{transform:translate(0,0) skewX(0);} 15%{transform:translate(-6px,2px) skewX(-9deg);} 30%{transform:translate(7px,-3px) skewX(8deg);} 45%{transform:translate(-5px,1px) skewX(-5deg);} 60%{transform:translate(4px,2px) skewX(4deg);} 80%{transform:translate(-2px,-1px) skewX(-2deg);} 100%{transform:translate(0,0) skewX(0);} }
@@ -561,30 +564,52 @@ export function BattleMeterOverlay({
 
               {/* ── INTRO ── */}
               {phase === 'riff_intro' && (
-                <div style={cardBase(battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700')}>
-                  <div style={{fontSize:11, color: battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700', letterSpacing:2, marginBottom:10}}>
-                    {battleState.riffTier === 'acoustic'
-                      ? '🎸 ACOUSTIC DUEL · NO AMPS · JUST CHOPS'
-                      : '🔊 PLUGGED IN · FACE TO FACE · BEAMS CROSSED'}
+                isOnlineRiff && myBattleRole === 'defender' ? (
+                  /* N12: Defender's client — waiting for attacker to play on their machine */
+                  <div style={cardBase(defender?.color ?? '#00ccff')}>
+                    <div style={{fontSize:11, color: battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700', letterSpacing:2, marginBottom:10}}>
+                      {battleState.riffTier === 'acoustic'
+                        ? '🎸 ACOUSTIC DUEL · NO AMPS · JUST CHOPS'
+                        : '🔊 PLUGGED IN · FACE TO FACE · BEAMS CROSSED'}
+                    </div>
+                    <div style={{fontSize:12, color:'#fff', fontWeight:700, marginBottom:10}}>
+                      ⏳ Waiting for {attacker?.name} to lay down the call…
+                    </div>
+                    <div style={{fontSize:9, color:'#8aa5c5', lineHeight:1.8, marginBottom:8}}>
+                      {battleState.atkRiff?.notes?.length ?? RIFF_LEN} notes — hit the matching key the INSTANT it appears.<br/>
+                      <span style={{color:'#ffcc44'}}>CAPITAL letters are SHARPS — hold SHIFT.</span><br/>
+                      Your answer is a <span style={{color:defender?.color ?? '#66ccff'}}>{answerInfo.name}</span> — {answerInfo.desc}
+                    </div>
+                    <div style={{fontSize:8.5, color:'#6a8aaa', animation:'pulse 1.5s ease-in-out infinite'}}>
+                      You'll play your answer once {attacker?.name} finishes…
+                    </div>
                   </div>
-                  <div style={{fontSize:9, color:'#8aa5c5', lineHeight:1.8, marginBottom:8}}>
-                    {battleState.atkRiff?.notes?.length ?? RIFF_LEN} notes flash one by one — hit the matching key the INSTANT it appears.<br/>
-                    <span style={{color:'#ffcc44'}}>CAPITAL letters are SHARPS — hold SHIFT.</span><br/>
-                    <span style={{color:'#ff8855'}}>The riff has a GROOVE — some notes rush in with no warning, some sit behind a rest.</span><br/>
-                    Accuracy wins · reaction time breaks ties · loser eats the feedback.
+                ) : (
+                  <div style={cardBase(battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700')}>
+                    <div style={{fontSize:11, color: battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700', letterSpacing:2, marginBottom:10}}>
+                      {battleState.riffTier === 'acoustic'
+                        ? '🎸 ACOUSTIC DUEL · NO AMPS · JUST CHOPS'
+                        : '🔊 PLUGGED IN · FACE TO FACE · BEAMS CROSSED'}
+                    </div>
+                    <div style={{fontSize:9, color:'#8aa5c5', lineHeight:1.8, marginBottom:8}}>
+                      {battleState.atkRiff?.notes?.length ?? RIFF_LEN} notes flash one by one — hit the matching key the INSTANT it appears.<br/>
+                      <span style={{color:'#ffcc44'}}>CAPITAL letters are SHARPS — hold SHIFT.</span><br/>
+                      <span style={{color:'#ff8855'}}>The riff has a GROOVE — some notes rush in with no warning, some sit behind a rest.</span><br/>
+                      Accuracy wins · reaction time breaks ties · loser eats the feedback.
+                    </div>
+                    <div style={{fontSize:8.5, color:'#6a8aaa', lineHeight:1.7, marginBottom:6}}>
+                      {attacker?.name} calls a <span style={{color:attacker?.color ?? '#ff8866'}}>{RIFF_CONTOUR_LABELS[battleState.atkRiff?.contour]}</span><br/>
+                      {defender?.name} answers with a <span style={{color:defender?.color ?? '#66ccff'}}>{answerInfo.name}</span> — {answerInfo.desc}
+                    </div>
+                    <button onClick={() => enterRiffAnte()} style={bigBtn('#ffd700')}>
+                      🎤 {attacker?.name} — DROP THE RIFF
+                    </button>
+                    <div style={{marginTop:7, fontSize:8.5, color:'#6a8aaa'}}>
+                      <span onClick={() => enterRiffAnte()}
+                        style={{cursor:'pointer', textDecoration:'underline', color:'#9ab'}}>Skip intro ▸</span>
+                    </div>
                   </div>
-                  <div style={{fontSize:8.5, color:'#6a8aaa', lineHeight:1.7, marginBottom:6}}>
-                    {attacker?.name} calls a <span style={{color:attacker?.color ?? '#ff8866'}}>{RIFF_CONTOUR_LABELS[battleState.atkRiff?.contour]}</span><br/>
-                    {defender?.name} answers with a <span style={{color:defender?.color ?? '#66ccff'}}>{answerInfo.name}</span> — {answerInfo.desc}
-                  </div>
-                  <button onClick={() => enterRiffAnte()} style={bigBtn('#ffd700')}>
-                    🎤 {attacker?.name} — DROP THE RIFF
-                  </button>
-                  <div style={{marginTop:7, fontSize:8.5, color:'#6a8aaa'}}>
-                    <span onClick={() => enterRiffAnte()}
-                      style={{cursor:'pointer', textDecoration:'underline', color:'#9ab'}}>Skip intro ▸</span>
-                  </div>
-                </div>
+                )
               )}
 
               {/* ── ONE-LINER — attacker drops the mic or plays safe ── */}
@@ -735,19 +760,39 @@ export function BattleMeterOverlay({
                 </div>
               )}
 
-              {/* ── HANDOFF — pass the keyboard ── */}
+              {/* ── HANDOFF — pass the keyboard / online: wait or play ── */}
               {phase === 'riff_handoff' && (() => {
-                const aS = riffStats(battleState.atkResults);
+                const aS = battleState.atkResults?.length ? riffStats(battleState.atkResults) : null;
+                // N12: online — attacker waits for the defender on the other machine
+                if (isOnlineRiff && myBattleRole === 'attacker') {
+                  return (
+                    <div style={cardBase(attacker?.color ?? '#ff8866')}>
+                      <div style={{fontSize:11, color:'#ffd700', letterSpacing:2, marginBottom:10}}>
+                        📡 WAITING FOR RIVAL
+                      </div>
+                      {aS && (<div style={{fontSize:9, color:'#8aa5c5', marginBottom:10}}>
+                        You laid down the call: <b style={{color:'#fff'}}>{aS.hits}/{battleState.atkRiff?.notes?.length ?? RIFF_LEN} notes</b>
+                        {aS.avgRt != null ? <> · <b style={{color:'#fff'}}>±{aS.avgRt}ms</b> off the line</> : <> · no clean hits</>}
+                      </div>)}
+                      {battleState.atkResults && progressRow(battleState.atkRiff.notes, battleState.atkResults, -1, attacker?.color ?? '#ff8866')}
+                      <div style={{fontSize:9, color:'#6a8aaa', marginTop:12, animation:'pulse 1.5s ease-in-out infinite'}}>
+                        ⏳ {defender?.name} is answering…
+                      </div>
+                    </div>
+                  );
+                }
+                // N12: online defender — show the answer button (auto-started by the coordination effect)
+                // Offline / hotseat — original "PASS THE KEYBOARD" screen
                 return (
                   <div style={cardBase(defender?.color ?? '#00ccff')}>
                     <div style={{fontSize:11, color:'#ffd700', letterSpacing:2, marginBottom:10}}>
-                      🔁 PASS THE KEYBOARD!
+                      {isOnlineRiff ? '🎸 YOUR TURN TO ANSWER' : '🔁 PASS THE KEYBOARD!'}
                     </div>
-                    <div style={{fontSize:9, color:'#8aa5c5', marginBottom:10}}>
+                    {aS && (<div style={{fontSize:9, color:'#8aa5c5', marginBottom:10}}>
                       {attacker?.name} laid down the call: <b style={{color:'#fff'}}>{aS.hits}/{battleState.atkRiff?.notes?.length ?? RIFF_LEN} notes</b>
                       {aS.avgRt != null ? <> · <b style={{color:'#fff'}}>±{aS.avgRt}ms</b> off the line</> : <> · no clean hits</>}
-                    </div>
-                    {progressRow(battleState.atkRiff.notes, battleState.atkResults, -1, attacker?.color ?? '#ff8866')}
+                    </div>)}
+                    {battleState.atkResults && progressRow(battleState.atkRiff.notes, battleState.atkResults, -1, attacker?.color ?? '#ff8866')}
                     <div style={{fontSize:8.5, color:'#6a8aaa', lineHeight:1.7, margin:'14px 0 0'}}>
                       {defender?.name}, your answer is a <span style={{color:defender?.color ?? '#66ccff'}}>{answerInfo.name}</span> — {answerInfo.desc}
                     </div>
@@ -774,13 +819,20 @@ export function BattleMeterOverlay({
                     {attacker?.name} calls a <span style={{color:attacker?.color ?? '#ff8866'}}>{RIFF_CONTOUR_LABELS[battleState.atkRiff?.contour]}</span> ·
                     {defender?.name} answers with a <span style={{color:defender?.color ?? '#66ccff'}}>{answerInfo.name}</span>
                   </div>
-                  <button onClick={() => riffBeginTurn('attacker')} style={bigBtn('#ff7733')}>
-                    🎤 {attacker?.name} — BRING IT →
-                  </button>
-                  <div style={{marginTop:7, fontSize:8.5, color:'#9a7'}}>
-                    <span onClick={() => riffBeginTurn('attacker')}
-                      style={{cursor:'pointer', textDecoration:'underline', color:'#c98'}}>Skip intro ▸</span>
-                  </div>
+                  {/* N12: online defender waits — attacker starts Round 2 on their machine */}
+                  {isOnlineRiff && myBattleRole === 'defender' ? (
+                    <div style={{fontSize:9, color:'#6a8aaa', marginTop:12, animation:'pulse 1.5s ease-in-out infinite'}}>
+                      ⏳ Waiting for {attacker?.name} to start Round 2…
+                    </div>
+                  ) : (<>
+                    <button onClick={() => riffBeginTurn('attacker')} style={bigBtn('#ff7733')}>
+                      🎤 {attacker?.name} — BRING IT →
+                    </button>
+                    <div style={{marginTop:7, fontSize:8.5, color:'#9a7'}}>
+                      <span onClick={() => riffBeginTurn('attacker')}
+                        style={{cursor:'pointer', textDecoration:'underline', color:'#c98'}}>Skip intro ▸</span>
+                    </div>
+                  </>)}
                 </div>
               )}
 
@@ -909,9 +961,16 @@ export function BattleMeterOverlay({
                             <span style={{color:'#88bbff'}}> knockback</span> ·
                             <span style={{color:'#ffd700'}}> ⭐ Fame to the winner</span></>}
                     </div>
-                    <button onClick={closeRiffOff} style={bigBtn(tie ? '#8aa5c5' : (winSp?.color ?? '#ffd700'))}>
-                      🤘 ROCK ON →
-                    </button>
+                    {/* N12: online defender/spectator — acting client drives the close */}
+                    {isOnlineRiff && myBattleRole !== 'attacker' ? (
+                      <div style={{fontSize:9, color:'#6a8aaa', marginTop:8, animation:'pulse 1.5s ease-in-out infinite'}}>
+                        ⏳ Waiting for {attacker?.name} to continue…
+                      </div>
+                    ) : (
+                      <button onClick={closeRiffOff} style={bigBtn(tie ? '#8aa5c5' : (winSp?.color ?? '#ffd700'))}>
+                        🤘 ROCK ON →
+                      </button>
+                    )}
                   </div>
                 );
               })()}
@@ -1085,15 +1144,11 @@ export function BattleMeterOverlay({
         const beamColor   = sunLit ? '#ffcc44' : (attacker?.color ?? '#aa66ff');
 
         // ── MOVE-NAME NEON CALLOUT (melee result) ────────────────────────
-        // Show the stance special label (HAMMER-ON, RAKE, AXE SWING) when
-        // stanceSpecial is set; fall back to the random dance name or SWING.
-        const stanceSpecialLabel = battleState.stanceSpecial
-          ? { hammer_on: '🔨 HAMMER-ON', rake: '🪒 RAKE', axe_swing: '🪓 AXE SWING' }[battleState.stanceSpecial] ?? null
-          : null;
+        // Fall back to the random dance name or SWING.
         let moveFlash = null;
         if (phase === 'result' && !sonicAttack) {
           moveFlash = attackerWon
-            ? { text: stanceSpecialLabel ?? battleState.danceName ?? 'SWING', color: stanceSpecialLabel ? '#ff8800' : '#44ddff' }
+            ? { text: battleState.danceName ?? 'SWING', color: '#44ddff' }
             : { text:'whiff…', color:'#6688aa', whiff:true };
         }
 
@@ -1775,16 +1830,7 @@ export function BattleMeterOverlay({
                 ? `🔊 Sonic Attack (${battleState.diceLabel ?? 'd6'}, keep best)`
                 : `⚔️ Thrash (${thrashDieLabel})`;
               const mods = battleState.skillMods ?? {};
-              // 🧍 Stance identity pill (Stance rework) — tiny inline map so the
-              // overlay stays prop-free about stance data.
-              const STANCE_PILL = {
-                solo:      { icon:'🎸', label:'Solo',      color:'#ffd700', desc:'Hammer-On · Pinch Harmonic · Bend · Pull-Off' },
-                low_slung: { icon:'🕶️', label:'Low Slung', color:'#44aaff', desc:'Rake · Power Chord · Slide · Feedback' },
-                wide_leg:  { icon:'🤘', label:'Wide Leg',  color:'#ff4444', desc:'Axe Swing · Gallop · Thrash · Headbang' },
-              };
-              const stancePill = STANCE_PILL[battleState.atkStance];
               const activeMods = [
-                stancePill && { ...stancePill, label:`${stancePill.label} stance` },
                 mods.laserActive      && { icon:'🔴', label:'Laser Show',     color:'#ff4444', desc:"Defender's die halved" },
                 mods.stageLightActive && { icon:'💡', label:'Stage Lighting',  color:'#ffcc44', desc:'+1 Vibe on win' },
                 mods.fogActive        && { icon:'🌫️', label:'Fog Machine',     color:'#aaccff', desc:'-1 Drive, -1 Sustain' },
@@ -1844,7 +1890,7 @@ export function BattleMeterOverlay({
                 </div>
               </div>
               <div style={{fontSize:10, color:'#6a8aaa', letterSpacing:2, textAlign:'center', minWidth:260}}>
-                {phase==='enter_attacker'     && (stanceSpecialLabel ? `${stanceSpecialLabel}!` : '⚔️ SWING!')}
+                {phase==='enter_attacker'     && '⚔️ SWING!'}
                 {phase==='flash_drive'        && `${attacker?.name?.split(' ')[0]} DRIVE: ${atkStat}`}
                 {phase==='pick_drive_slide'   && `↙ pick slides ${atkStat} toward attacker…`}
                 {phase==='enter_defender'     && `${defender?.name} steps up!`}

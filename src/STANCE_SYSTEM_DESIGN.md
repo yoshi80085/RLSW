@@ -1,6 +1,10 @@
 # Rock Legends: Spirit Wars — Stance System Design (v1 — SUPERSEDED)
 
-> **⚠️ SUPERSEDED** by `STANCE_V2_HANDOFF.md`. All v1 passive effects, the Groove
+> **⚠️ DOUBLY SUPERSEDED.** First by `STANCE_V2_HANDOFF.md`, and now by
+> `STYLE_SYSTEM_HANDOFF.md` — the entire Stance system is CUT. Current system: three
+> Styles (Shred/Groove/Flair) that dictate Db earning only. Historical reference only.
+>
+> Original v1 notice, kept for context: superseded by `STANCE_V2_HANDOFF.md`. All v1 passive effects, the Groove
 > counter, the stance skill route, and stance switching have been CUT. v2 stances
 > are ability kits (specials + passive + commit Db generator). This doc is kept
 > for historical reference only.

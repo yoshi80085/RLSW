@@ -112,14 +112,11 @@ export const SONIC_LIMELIGHT_FP      = 1;   // bonus FP when Sonic fires from ma
 // the bolt but stays excluded from the spawn pool).
 export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
 
-// -- STANCE v2 ABILITY KITS --
-// Commit generators (Trill / Chug / Dive Bomb) grant this many Db on trigger.
-// Once per commit, on top of normal Db earnings. ⚠️ TUNABLE
-export const STANCE_COMMIT_DB = 1;
-
-// Bots only spend Db on stance specials when they have at least this many Db.
-// Prevents bots from starving their own skill upgrades. ⚠️ TUNABLE
-export const BOT_DB_SPEND_THRESHOLD = 3;
+// -- STYLE SYSTEM (STYLE_SYSTEM_HANDOFF.md §3) --
+// Cap on Style Db per commit (tier 1-3 + signature bonus +1, clamped here).
+// DB_UPGRADE_THRESHOLD is 6, so cap 3 = two perfect commits per upgrade.
+// ⚠️ TUNABLE — raise to 4 only if progression feels slow.
+export const STYLE_DB_CAP = 3;
 
 // -- DISSONANCE EDGE -- REMOVED (system cut — Theory learning streamlined).
 

@@ -4,35 +4,11 @@
 // =============================================================================
 import React from "react";
 
-export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setNoteStates, setSkillTarget, upgradesPending, stanceKit }) {
-  // Resolve stance-specific descriptions for the acting spirit
-  function stanceDesc(sk) {
-    if (!acting || !stanceKit) return sk.desc;
-    const kit = stanceKit(acting.id);
-    if (!kit) return sk.desc;
-    if (sk.id === 'stance_physical') {
-      const p = kit.physical;
-      return p ? `${p.label}: ${p.desc} (melee, costs ${p.dbCost} Db per use)` : sk.desc;
-    }
-    if (sk.id === 'stance_sonic') {
-      const s = kit.sonic;
-      return s ? `${s.label}: ${s.desc} (ranged, costs ${s.dbCost} Db per use)` : sk.desc;
-    }
-    if (sk.id === 'stance_passive_up') {
-      const p = kit.passive;
-      if (!p) return sk.desc;
-      if (p.id === 'pull_off')  return `Upgrade ${p.label}: rivals you defeat in battle are pushed +2 hexes instead of +1.`;
-      if (p.id === 'feedback')  return `Upgrade ${p.label}: rivals whose attack deals 0 damage take 2 Vibe instead of 1.`;
-      if (p.id === 'headbang') return `Upgrade ${p.label}: Casual → Diehard conversion fires every 1 fan instead of every 2.`;
-      return `Upgrade ${p.label}: ${p.desc}`;
-    }
-    return sk.desc;
-  }
+export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setNoteStates, setSkillTarget, upgradesPending }) {
   return (<>
       {acting && upgradesPending > 0 && (() => {
         const ns           = noteStates[acting.id] ?? {};
         const unlocked     = ns.unlockedSkills ?? [];
-        const stancesKnown = ns.stancesKnown ?? [];
         const pendingId    = ns.pendingAwardSkillId;
         const pendingDef   = pendingId ? SKILL_BY_ID[pendingId] : null;
         const activeRoute  = ns.skillRoute ?? null;
@@ -42,7 +18,6 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setN
         // Supports both string and array prereqs (multi-prereq: all must be met).
         function canTarget(sk) {
           if (unlocked.includes(sk.id) || sk.id === pendingId) return false;
-          if (sk.requiresStance && !stancesKnown.includes(sk.requiresStance)) return false;
           if (sk.prereq && sk.prereq !== '__all_pa__') {
             const prereqs = Array.isArray(sk.prereq) ? sk.prereq : [sk.prereq];
             if (prereqs.some(id => !unlocked.includes(id) && id !== pendingId)) return false;
@@ -97,7 +72,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setN
                         <div style={{fontSize:12, color:'#ffffff', fontWeight:900, marginTop:1}}>
                           {pendingDef.label}
                         </div>
-                        <div style={{fontSize:8, color:'#6a8aaa', marginTop:2}}>{stanceDesc(pendingDef)}</div>
+                        <div style={{fontSize:8, color:'#6a8aaa', marginTop:2}}>{pendingDef.desc}</div>
                       </div>
                     </div>
                   );
@@ -228,7 +203,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setN
                                 <span style={{fontSize:7, color:'#3a5a7a'}}>🔒 {missingPrereqs.map(id => SKILL_BY_ID[id]?.label ?? id).join(' + ')}</span>
                               )}
                             </div>
-                            <div style={{fontSize:8, color:'#5a7a8a', lineHeight:1.4}}>{stanceDesc(sk)}</div>
+                            <div style={{fontSize:8, color:'#5a7a8a', lineHeight:1.4}}>{sk.desc}</div>
                           </div>
                           <div style={{
                             fontSize:9, fontWeight:700, whiteSpace:'nowrap',
@@ -244,34 +219,20 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setN
                     );
                   })}
 
-                  {/* Sub-chain routes (Electric rig + Stances) — each chain is
-                      its own window. Stance chains carry their stance's color and
-                      lock shut until the stance is learned. Electric chains are
-                      always open (no stance gate). */}
+                  {/* Sub-chain routes (Electric rig) — each chain is its own window. */}
                   {routeDef.subChains && routeDef.subChains.map(chain => {
                     const chainColor  = chain.color ?? routeDef.color;
-                    const stanceKnown = chain.stanceId ? stancesKnown.includes(chain.stanceId) : true;
                     return (
                     <div key={chain.id} style={{
-                      border:`1px solid ${chainColor}${stanceKnown ? '55' : '2a'}`,
+                      border:`1px solid ${chainColor}55`,
                       borderRadius:8, padding:'9px 11px',
-                      background: stanceKnown ? `${chainColor}0a` : '#070c16',
+                      background: `${chainColor}0a`,
                     }}>
-                      <div style={{fontSize:8, color: stanceKnown ? chainColor : '#3a5a7a',
+                      <div style={{fontSize:8, color: chainColor,
                         letterSpacing:2, marginBottom:6, fontWeight:700,
-                        borderBottom:`1px solid ${chainColor}${stanceKnown ? '33' : '1a'}`, paddingBottom:4,
+                        borderBottom:`1px solid ${chainColor}33`, paddingBottom:4,
                         display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
                         <span>{chain.label.toUpperCase()}</span>
-                        {chain.stanceId && stanceKnown && (
-                          <span style={{fontSize:6, color:chainColor, background:`${chainColor}18`,
-                            border:`1px solid ${chainColor}44`, borderRadius:3, padding:'1px 5px',
-                            letterSpacing:1}}>✓ STANCE KNOWN</span>
-                        )}
-                        {chain.stanceId && !stanceKnown && (
-                          <span style={{fontSize:6, color:'#ff8866', letterSpacing:1}}>
-                            🔒 Learn the {chain.stanceLabel} stance first (Second/Third/Fourth Stance)
-                          </span>
-                        )}
                         {chain.requiresFirst && !unlocked.includes(chain.requiresFirst) && pendingId !== chain.requiresFirst && (
                           <span style={{color:'#ff4444'}}>
                             🔒 Requires {SKILL_BY_ID[chain.requiresFirst]?.label}
@@ -288,10 +249,7 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setN
                           const prereqIds  = !sk.prereq || sk.prereq === '__all_pa__' ? []
                             : Array.isArray(sk.prereq) ? sk.prereq : [sk.prereq];
                           const missingPrereqs = prereqIds.filter(id => !unlocked.includes(id));
-                          const stanceLocked = !owned && !isPending
-                            && sk.requiresStance && !stancesKnown.includes(sk.requiresStance);
-                          const locked = stanceLocked
-                            || (!owned && !isPending && !targetable && missingPrereqs.length > 0);
+                          const locked = !owned && !isPending && !targetable && missingPrereqs.length > 0;
                           return (
                             <button key={sk.id}
                               disabled={owned || isPending || !targetable}
@@ -317,14 +275,11 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setN
                                     {isPending && <span style={{fontSize:6, color:'#ffffff',
                                       background:chainColor, borderRadius:3, padding:'1px 5px'}}>✦ NEW</span>}
                                     {owned && !isPending && <span style={{fontSize:6, color:chainColor}}>✓</span>}
-                                    {stanceLocked && (
-                                      <span style={{fontSize:6, color:'#3a5a7a'}}>🔒 {chain.stanceLabel ?? 'Stance'} stance</span>
-                                    )}
-                                    {locked && !stanceLocked && missingPrereqs.length > 0 && (
+                                    {locked && missingPrereqs.length > 0 && (
                                       <span style={{fontSize:6, color:'#3a5a7a'}}>🔒 {missingPrereqs.map(id => SKILL_BY_ID[id]?.label ?? id).join(' + ')}</span>
                                     )}
                                   </div>
-                                  <div style={{fontSize:7, color:'#4a6a7a', lineHeight:1.4}}>{stanceDesc(sk)}</div>
+                                  <div style={{fontSize:7, color:'#4a6a7a', lineHeight:1.4}}>{sk.desc}</div>
                                 </div>
                                 <div style={{
                                   fontSize:8, fontWeight:700, whiteSpace:'nowrap',

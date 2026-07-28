@@ -84,7 +84,7 @@ index.html
 - **Module-level data still in main** (not yet extracted):
   - `SPOTLIGHT_POOL`, `EVENT_HEX_POOL` (depend on runtime `ALL_HEXES`)
   - `BTTP_STAGES`, `SIGNATURE_TESTS`
-  - `DISCORD_UPGRADE_TIERS` (the CQC `SWING_*` tables were CUT in the Stance rework)
+  - `DISCORD_UPGRADE_TIERS`
   - `SKILL_TREE` / `SKILL_BY_ID`
   - `TONE_VOICES`, `TONE_VOICE_ORDER`, `TONE_KNOB_DEFAULTS`
   - `fanPawnShape()` (returns JSX — can't trivially extract)
@@ -117,9 +117,9 @@ The big component. Its internal sections (by banner):
 | `RIFF PLAYBACK` | 1537 | `playRiffSequence` — the riff-off playback engine. |
 | `MELODY LINE FUNCTIONS` | 1569 | `clickNoteStock`, `confirmNoteTrack`, `clearNoteTrack`, chord revoice (`addChordNote`/`removeChordNote`). |
 | `SKILL TREE` | 2470 | Target selection & skill award. |
-| `CREW & GEAR` | 2740 | Deployable placement handlers (junkyard_dog / fandom_army CUT — Stance rework §8). |
+| `CREW & GEAR` | 2740 | Deployable placement handlers (junkyard_dog / fandom_army CUT with Stance system). |
 | `MODULATION CARDS` | 2898 | 🧍 CUT to one survivor: the starter Transpose one-shot (Chromatic Shift + Overdrive gone). |
-| `SWING EFFECTS` | 3029 | 🧍 CUT — the CQC %-proc chain is gone; melee identity lives in the STANCE system now. |
+| `SWING EFFECTS` | 3029 | 🧍 CUT — the CQC %-proc chain is gone; melee identity lives in per-Spirit innates and Signature arsenals (see CHARACTER_HANDOFF.md). |
 | `AMP UNPLUG` | 3217 | Amp-unplug system. |
 | `BOARD CARD SYSTEM` | 3261 | Board card pickup/replace. |
 | `EVENT SPACES SYSTEM` | 3315 | Event space resolution. |
@@ -192,7 +192,7 @@ preview arrows).
 | File | Exports | Purpose |
 |------|---------|---------|
 | `spirits.js` | `SPIRIT_DEFS`, `SPIRIT_OPTIONS` | Per-character stats. **Change character balance here.** |
-| `stances.js` | `STANCE_DEFS`, `STANCE_ORDER`, `STARTING_STANCE`, `stanceOf`, `grooveCap`, `stanceFrayAmount`, `SOLOIST_FAN_BONUS`, `POWER_SONIC_DMG_CAP`, `COOL_*`, `GROOVE_CAP_*` | 🧍 The STANCE system (replaces CQC — `STANCE_SYSTEM_DESIGN.md`): stance identities, starting stances, fray arithmetic, tuning. **Change stance balance here.** |
+| `styles.js` | `STYLE_DEFS`, `styleOf`, `styleDef` | 🎵 The STYLE system (replaces STANCE — `STYLE_SYSTEM_HANDOFF.md`): three Styles (Shred/Groove/Flair) that dictate how each Spirit earns Db from melody commits. No abilities, no passives, no stat mods. **Change style definitions here.** |
 | `corners.js` | `CORNERS`, `CORNER_LABELS`, `CORNERS_ORDER` | Home hexes per corner. |
 | `events.js` | `EVENT_DECK`, `EVENT_BY_ID` | The 10 event-space definitions. |
 | `gameConstants.js` | 39 named constants | All gameplay tuning: `HC_UPGRADE_THRESHOLD`, `AMP_RANGE`, `AMP_LINK_DIST`, `FAME_TO_WIN`, `LIMELIGHT_*`, `FAN_*`, `TOKEN_MAX`, etc. **Change balance numbers here.** |
@@ -232,7 +232,7 @@ preview arrows).
 | `systems/combat.js` | `marginToDamage`, `fameFromMargin`, `knockbackSpaces`, `underdogBonus`, `smashOutcome`, `decideWinner`, `resolveKnockdown`, `counterOutcome`, `applyAttackRolled`, `applyCounterRolled` | 🥊 Phase 3a: the pure combat MATH (damage/knockback/Fame tables + underdog ramp) — `Game` imports these (single source, like `riffStats`); `underdogBonus` takes the two resolved Fame totals so it stays pure. 🥊 Phase 3b: `applyAttackRolled` — `ATTACK_ROLLED` rolls the SWING dice on engine rng and stores the verdict in `state.battle` (`{kind:'attack', attackKind:'swing', atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, damage, psychoBushido}`). The client passes pre-computed `atkStat`/`defStat` + mod flags (posing/halveDef/psychoEligible — they read `noteStates`, Phase 5); the spin overlay displays the decided face. Sonic uses the same action with an optional `dicePool` (keep-highest, amp-scaled — records `diceVals`/`keptIdx`). The Smash has NO roll — `smashOutcome(thrown, {roninSmasher, roninTarget}) → {damage, knockback, scatterN}` is pure deterministic math (like the 3a tables), shared by `resolveSmash` and `resolveBlasterOfRa`. 🏆 Phase 3c (kernels): `decideWinner(spirits, {godSummoned, attackerId, hasWinner})` (boss-aware win check, from `knockOut.checkWinner`) and `resolveKnockdown(spirit, corners)` (respawn-to-home / KO transform, shared by `knockOut` + `applyVibeDamage`). Pure, wired single-source; the cinematics/state-application stay client. The full spirit-ownership flip (DAMAGE_APPLIED/KNOCKED_OUT actions, killing `spiritsSynced`) is the remaining 3c work. 🥊 Phase 3d (retaliation): `applyCounterRolled` (COUNTER_ROLLED — counter d6 + Vibe bonus + success vs the attacker's die, on engine rng, merged into `battle`) and pure `counterOutcome(total, target)` (landed-counter margin/damage). Wired into `resolveRetaliation`/`finishCounter`; the prompt→spin→result phases, countdown timer, and damage application stay client. |
 | `systems/riffOff.js` | `applyRiffOffStarted/ResultsSubmitted/Resolved/Round2Started/Closed`, `riffStats`, `RIFF_GRADE_WEIGHT/MARGIN_SCALE/TIE_EPS` | 🎸 Phase 4: riff data + verdict. Generates riffs/glitches/ghosts on engine rng; clients submit results arrays; verdict math incl. Round-2 fallback. `Game` imports `riffStats` from here (single source of truth). 🎸 Phase 3e: the verdict now carries `damage` (`tie?0:marginToDamage(margin+round2bonus)`, imported from `systems/combat.js`) so the client reads it instead of re-deriving — one source, no drift. Damage *application* still client until the 3c ownership flip. |
 | `systems/economy.js` | `usedHas/usedList/usedAdd`, `performanceScore`, `makeInitialNoteState`, `applyNoteStatesSynced`, `applyFameChanged`, `applyFansChanged` (+`FAN_FIELDS`), `applyNoteSheetPatched`, `applyFansTicked`, `applyHeadlinerChanged` | 💰 Phase 5a: `usedStockIdx` Set→array helpers + the pure Performance-Score-P kernel. Phase 5c: the engine BUILDS + OWNS `noteStates` (seeded `"noteStatesInit"` fork; single-source `makeInitialNoteState`), and the semantic write layer: `FAME_CHANGED` (signed delta, floored at 0), `FANS_CHANGED` (whitelisted fan-field patch — `FAN_FIELDS` guards fame/skills/notes), `NOTE_SHEET_PATCHED` (the shim's generic per-spirit diff action). Phase 5d: `FANS_TICKED` — the end-of-turn fan tick as an engine RULE (zone derived from the engine's spirit position; boredom/lag/streaks; client report in `turn.lastFanTick`). 👑 Phase R5: `HEADLINER_CHANGED` sets `state.headliner` (spiritId or null); `makeInitialState` inits to null. |
-| `systems/skills.js` | `skillEligibility`, `ULTIMATE_PREREQS`, `THEORY_DISCORD_GRANTS` | 🎓 Phase 5b: pure skill-tree gating + grant tables — `botSkillEligible` and `setSkillTarget` share ONE gate. 🧍 Stance rework: `CQC_SWING_MAP` removed; `skillEligibility` gains a `requiresStance`/`stancesKnown` gate (reason `'stance'`) for the stance upgrades. |
+| `systems/skills.js` | `skillEligibility`, `ULTIMATE_PREREQS`, `THEORY_DISCORD_GRANTS` | 🎓 Phase 5b: pure skill-tree gating + grant tables — `botSkillEligible` and `setSkillTarget` share ONE gate. |
 | `systems/stageFx.js` | `applyStageFxDrawn`, `applyStageFxActivated`, `applyStageFxTurnTicked`, `applyStageFxRoundTicked` | 🎇 Phase 6b (FULL): `state.stageFx { deck, fired, smoke, laser, pyro, animatronics, lastDraw, lastActivation, lastTurnTick, lastRoundTick }` — deck seeded ONCE at init (`"stageFxDeck"` fork); `STAGE_FX_DRAWN` fires each threshold exactly-once; `STAGE_FX_ACTIVATED` creates the live effect (patterns/spawns on engine rng; deterministic animatronic keys); the TURN tick (pyro cadence + animatronic steps) and ROUND tick (smoke spread, laser re-pattern) are engine rules. Client renders the slices + plays cinematics/damage off the reports. |
 | `systems/rockGod.js` | `applyGodAttackPicked`, `applyGodSummoned`, `applyGodDamaged`, `applyGodActed`, `applyGodDefeated`, `applyGodTriumphed`, `applyGodTimerExpired` | 🤘 Phase 6c (FULL): `state.rockGod { summoned, god, outcome, lastPick, lastHit, lastAct, lastTimerExpiry }` — the boss IS engine state. `GOD_DAMAGED` owns the winded ×2 + HP floor; `GOD_ACTED` is the whole end-of-turn answer (telegraph resolve / winded recovery / weighted engine-rng open; mosh shoves move engine spirits). Boss clock stays client; expiry dispatches `GOD_TIMER_EXPIRED`. |
 | `selftest.mjs` | — | Headless test: `node src/engine/selftest.mjs`. Extend each phase. |
@@ -314,7 +314,7 @@ Each takes everything via props. They hold **no game logic**.
 | Fan-economy tuning | `data/gameConstants.js` → `FAN_*` constants |
 | Amp range / chaining | `data/gameConstants.js` → `AMP_RANGE`, `AMP_LINK_DIST` |
 | Skill tree / upgrades | `SKILL_TREE`, `DISCORD_UPGRADE_TIERS` (main file, module-level) |
-| 🧍 Stances (identities, fray math, Groove cap, starting stances) | `data/stances.js` (all tuning) + `Game.switchStance`/`applyChordFray`/`applyStancePostBattle` (mechanics) + the `stance` route in `SKILL_TREE` (learning tiers `stance_2/3/4` + upgrades, gated by `skill.requiresStance` in `engine/systems/skills.js`) |
+| 🎵 Styles (earning lanes: Shred runs / Groove patterns / Flair flavors) | `data/styles.js` (`STYLE_DEFS`, `styleOf`, `styleDef`); `music/cadence.js` (detectors: `detectStyleRun`, `detectContourTurn`, `detectCellRepeat`, `detectResolvedDiscords`); `engine/systems/economy.js` (`styleCommitDb`); `engine/systems/combat.js` (`chordFrayAmount`); see `STYLE_SYSTEM_HANDOFF.md` for the full spec |
 | 🎇 Stage Effects (thresholds, damage, durations) | `data/stageEffects.js` (tuning) + `STAGE EFFECTS SYSTEM` in `Game` (logic) + `board/stageFx.js` (geometry) + `ui/StageFXLayer.jsx` (visuals). NOTE: the old skill-based stage effects (laser_show/stage_light/fog_machine/pyrotechnics) are RETIRED — `getBattleSkillMods` now returns permanently-false flags so downstream battle/overlay code stays inert. |
 | 🤘 Rock God boss (trigger margin, HP, timer, attacks, taunts) | `data/rockGods.js` (all tuning) + `ROCK GOD SYSTEM` in `Game` (engine) + `board/rockGodFx.js` (geometry) + `ui/RockGodLayer.jsx` (visuals). New gods: add a full def to `ROCK_GODS`, list it in `ROCK_GOD_IMPLEMENTED`, and extend `applyGodActed` (engine/systems/rockGod.js) + the `rockGodAct` report renderer with its attack ids. |
 | Event spaces | `data/events.js` + `EVENT SPACES SYSTEM` in `Game` |
@@ -330,35 +330,17 @@ Each takes everything via props. They hold **no game logic**.
 
 ---
 
-## 🧍 The Stance rework (2026-07-16) — what changed where
+## 🎵 The Style system (2026-07-28) — what changed where
 
-`STANCE_SYSTEM_DESIGN.md` §12 has the full decision log. The compact map:
+**See `STYLE_SYSTEM_HANDOFF.md` for the full spec.** The nine stance abilities are preserved in `STANCE_PARTS_BIN.md` as menu options for the upcoming Spirit redraw.
 
-- **CUT:** the CQC skill branch + %-proc status system (`SWING_*` tables,
-  `rollSwingEffects`/`applySwingEffects`/`getCQCChances`), `junkyard_dog`,
-  `fandom_army`, the Phase-3d counter/retaliation actions (`COUNTER_ROLLED`,
-  `counterOutcome`), and Mod Cards (starter Transpose one-shot survives).
-- **Chord fray** is now post-roll, hits-only, margin-scaled, stance-modified —
-  `Game.applyChordFray` + pure `stanceFrayAmount` in `data/stances.js`.
-- **Per-spirit stance state** (`stance`, `stancesKnown`, `grooveCounter`) lives
-  on the engine note sheet (`makeInitialNoteState`). Stance switching costs the
-  Action (`Game.switchStance`); the Groove counter builds in `Game.endTurn`.
-- **Stance route** in `SKILL_TREE` (`stance_2/3/4` learning tiers + 7 upgrades,
-  ids `stance_*`); humans pick new stances via a modal, bots via
-  `BOT_STANCE_PREF` (`engine/policies/bot.js`), and bots settle into their
-  persona's preferred pose in the step-machine FREE GEAR beat.
-- **Upgrade effects:** Encore (`stanceEncoreCheck` in the battle-Fame awards),
-  Demolition + Riposte (in `initiateSwing`), Aftershock (`spread` param on
-  `THRASH_TOKENS_SPAWNED`), Ironclad + Riposte-arm (`applyStancePostBattle`,
-  called after `clearBattleBuffs` in both battle-close paths), Sustain Wave
-  (both attack entry points), Resonance (`grooveCap`).
-- **UI:** STANCE row on the spirit card (current pose chip, Groove wave pips,
-  switch buttons), Riposte badge, stance/groove pills in the battle overlay's
-  attack banner, the stance-pick modal, and an **on-board stance tag** — icon +
-  label in the stance colour just above each standee's Vibe bar (Groove shows
-  its wave pips there too; the affliction icon row moved one row up to make
-  space). One artwork set per Spirit, so this tag IS the board-level stance
-  read.
+In short:
+- **Stances are cut completely** from `data/`, skills, and UI.
+- **Styles are fixed per Spirit**, read directly from `SPIRIT_DEFS[id].style`. Three styles: **Shred** (long directional runs — earn Db), **Groove** (repetition — earn Db), **Flair** (resolved discords — earn Db). No abilities, no passives, no stat mods.
+- **Db payout** happens once per melody commit in `confirmNoteTrack` via `styleCommitDb()`, on top of existing scoring. Tiers 1–3 based on pattern length, +1 signature bonus (contour turn / root resolution / chromatic approach).
+- **New detectors** in `music/cadence.js`: `detectStyleRun`, `detectContourTurn`, `detectCellRepeat`, `detectResolvedDiscords` — pure, unit-tested.
+- **Chord fray** moved to `engine/systems/combat.js` as `chordFrayAmount` (pure margin math, stance-neutral).
+- **Action bar** restored to three buttons: Swing (1 AP) / Sonic (2 AP) / Smash (2 AP). All stance skill routes, `requiresStance` / `stancesKnown` gating, `Game.switchStance`, and the Groove counter are gone.
 
 ## Conventions
 

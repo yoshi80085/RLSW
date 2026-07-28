@@ -420,7 +420,7 @@ function TutSection_HarmonicCharge() {
         <div style={{fontSize:8, color:"#ccaaff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>🌳 WHERE IT GOES</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           Your DB meter sits at the top of the Melody Line panel. Spend it across the Skill
-          Tree — Amp & Power tiers, Range upgrades, Stances, Theory unlocks, and
+          Tree — Amp & Power tiers, Range upgrades, Theory unlocks, and
           your Spirit's exclusive arsenal. (More on those next.)
         </p>
       </div>

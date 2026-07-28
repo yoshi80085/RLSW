@@ -1,4 +1,10 @@
-# Stance System v2 — Implementation Handoff
+# Stance System v2 — Implementation Handoff (SUPERSEDED)
+
+> **⚠️ SUPERSEDED — THE STANCE SYSTEM IS CUT.** Stances failed intuitiveness testing and were
+> replaced by the **Style system** (`STYLE_SYSTEM_HANDOFF.md`): three Styles — Shred, Groove,
+> Flair — whose only job is dictating how each Spirit earns Db from melody commits.
+> The nine abilities specced below are retired but preserved as a design menu in
+> `STANCE_PARTS_BIN.md` for the Spirit redraw. This doc is historical reference only.
 
 Supersedes `STANCE_SYSTEM_DESIGN.md` (v1, the passive-modifier model). v1 is CUT in full.
 This doc is the complete spec for the replacement. All design decisions below are LOCKED

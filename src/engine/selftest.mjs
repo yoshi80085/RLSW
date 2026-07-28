@@ -28,18 +28,20 @@ import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus, smashOutcome,
   decideWinner, resolveKnockdown,
   thrashDamage, sonicDamage,
-  finisherOutcome, hammerOnDamage, axeSwingWhiffRefill,
-  pinchHarmonicCondition, powerChordCondition, gallopCondition,
-  pullOffKnockback, feedbackRetaliation, headbangFanOverrides,
+  chordFrayAmount,
   sonicDriveSpend, physicalDriveSpend, sustainChip, frayFromSustain, finisherStackWipe,
 } from "./systems/combat.js";
 import {
   usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState,
-  spendDb, detectTrill, detectChug, detectDiveBomb, detectCommitGenerator,
+  styleCommitDb,
 } from "./systems/economy.js";
 import { skillEligibility, ULTIMATE_PREREQS, THEORY_DISCORD_GRANTS } from "./systems/skills.js";
-import { pitchIndex } from "../music/notes.js";
-import { detectMotifRepeat } from "../music/cadence.js";
+import { pitchIndex, playableScale } from "../music/notes.js";
+import {
+  detectMotifRepeat, detectStyleRun, detectContourTurn,
+  detectCellRepeat, detectResolvedDiscords,
+} from "../music/cadence.js";
+import { styleOf, styleDef, STYLE_DEFS } from "../data/styles.js";
 import { CORNERS } from "../data/corners.js";
 import { pickGodAttack, godTauntLine, pickRockGod, ROCK_GODS, ROCK_GOD_HP_PER_SPIRIT } from "../data/rockGods.js";
 import { applyGodActed } from "./systems/rockGod.js";
@@ -52,7 +54,7 @@ import {
   LIMELIGHT_HEX, UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT,
   FAN_BORED_AFTER, FAN_DECAY,
   TOKEN_MAX, EVENT_RESPAWN_TURNS, CHARGE_ZONE_COOLDOWN,
-  STACK_CAP, STACK_COMMIT_BUDGET,
+  STACK_CAP, STACK_COMMIT_BUDGET, STYLE_DB_CAP,
 } from "../data/gameConstants.js";
 import { hexRingFromCenter } from "../board/boardHelpers.js";
 import { HEX_BY_NUM, EDGE_HEX_NUMS } from "../board/hexMap.js";
@@ -2180,27 +2182,169 @@ const config = {
 }
 
 
-// -- Stance v2: fixed per spirit, stance-neutral fray ----------------------------
+// -- Style system: fixed per spirit, style-neutral chord fray --------------------
 {
-  const { STARTING_STANCE, stanceFrayAmount, stanceOf } = await import("../data/stances.js");
-  // stanceOf returns the fixed stance from STARTING_STANCE, ignoring noteState
-  assert.equal(stanceOf(undefined, "cosmic_ronin"), "solo", "Ronin is Solo");
-  assert.equal(stanceOf({}, "Glamarchy"), "low_slung", "Glamarchy is Low Slung");
-  assert.equal(stanceOf({}, "intergalactic_0"), "low_slung", "Intergalactic 0 is Low Slung");
-  assert.equal(stanceOf({}, "Metalness_Monster"), "wide_leg", "Monster is Wide Leg");
-  assert.equal(stanceOf({}, "unknown_spirit"), "low_slung", "unknown falls back to low_slung");
+  // styleOf reads straight off SPIRIT_DEFS[id].style, falls back to 'Groove'
+  assert.equal(styleOf("cosmic_ronin"), "Shred", "Ronin is Shred");
+  assert.equal(styleOf("Metalness_Monster"), "Shred", "Monster is Shred");
+  assert.equal(styleOf("intergalactic_0"), "Groove", "Zero is Groove");
+  assert.equal(styleOf("Glamarchy"), "Flair", "Glamarchy is Flair");
+  assert.equal(styleOf("unknown_spirit"), "Groove", "unknown falls back to Groove");
+
+  // styleDef returns the full STYLE_DEFS entry for the spirit's style
+  assert.equal(styleDef("cosmic_ronin").id, "Shred");
+  assert.equal(styleDef("Glamarchy").label, "Flair");
+  assert.equal(styleDef("unknown_spirit").id, "Groove", "unknown falls back to Groove def");
+
+  // STYLE_DEFS shape sanity — no abilities/passives, just identity + flavor text
+  for (const id of ["Shred", "Groove", "Flair"]) {
+    const def = STYLE_DEFS[id];
+    assert.equal(def.id, id);
+    assert.ok(def.label && def.icon && def.color, `${id} has label/icon/color`);
+    assert.ok(def.tagline && def.earnDesc && def.bonusDesc, `${id} has flavor text`);
+  }
 
   // makeInitialNoteState no longer sets stancesKnown or grooveCounter
   const ns = makeInitialNoteState("cosmic_ronin", () => 0.5);
   assert.equal(ns.stancesKnown, undefined, "stancesKnown removed from note state");
   assert.equal(ns.grooveCounter, undefined, "grooveCounter removed from note state");
 
-  // fray table: stance-neutral, margin-scaled only
-  assert.equal(stanceFrayAmount(1), 1, "graze = 1");
-  assert.equal(stanceFrayAmount(2), 1, "margin 2 = 1");
-  assert.equal(stanceFrayAmount(3), 2, "big hit = 2");
-  assert.equal(stanceFrayAmount(5), 2, "bigger = still 2");
+  // chordFrayAmount (moved verbatim from stances.js, math unchanged): style-neutral,
+  // margin-scaled only
+  assert.equal(chordFrayAmount(1), 1, "graze = 1");
+  assert.equal(chordFrayAmount(2), 1, "margin 2 = 1");
+  assert.equal(chordFrayAmount(3), 2, "big hit = 2");
+  assert.equal(chordFrayAmount(5), 2, "bigger = still 2");
 }
+
+// -- Style detectors: detectStyleRun / detectContourTurn / detectCellRepeat /
+//    detectResolvedDiscords (STYLE_SYSTEM_HANDOFF.md §4) ------------------------
+{
+  // Full 7-note major scale (theory_major unlock) so runs up to length 7 fit —
+  // pentatonic (the default) only has 5 degrees, too short for the 5/6/7 tests.
+  const scale = playableScale('C', 'major', ['theory_major']);
+  assert.deepEqual(scale, ['C', 'D', 'E', 'F', 'G', 'A', 'B'], "sanity: full C major scale");
+
+  // ── detectStyleRun ──
+  assert.equal(detectStyleRun(['C', 'D', 'E'], scale), 3, "step run (interval 1)");
+  assert.equal(detectStyleRun(['C', 'E', 'G'], scale), 3, "3rd run (interval 2)");
+  assert.equal(detectStyleRun(['C', 'F', 'B'], scale), 3, "4th run (interval 3)");
+  assert.equal(detectStyleRun(['C', 'D', 'E', 'D'], scale), 3,
+    "direction change breaks the run — doesn't extend past the reversal");
+  assert.equal(detectStyleRun(['C', 'D', 'E', 'G#', 'F', 'G'], scale), 3,
+    "out-of-scale note breaks the run — doesn't extend past the discord");
+  assert.equal(detectStyleRun(['C', 'D'], scale), 0, "below 3 notes returns 0");
+
+  // ── detectContourTurn ──
+  assert.equal(detectContourTurn(['C', 'D', 'E', 'D', 'C'], scale), true,
+    "up-run then down-run (shared pivot E) is a contour turn");
+  assert.equal(detectContourTurn(['C', 'D', 'E', 'F'], scale), false,
+    "single-direction run is not a contour turn");
+
+  // ── detectCellRepeat ──
+  assert.equal(detectCellRepeat(['C', 'E', 'C', 'E'], scale), 4, "2-note cell × 2 reps = 4");
+  assert.equal(detectCellRepeat(['C', 'E', 'G', 'C', 'E', 'G'], scale), 6, "3-note cell × 2 reps = 6");
+  assert.equal(detectCellRepeat(['C', 'D', 'E', 'F'], scale), 0, "no repetition = 0");
+  assert.equal(detectCellRepeat(['C', 'G#', 'C', 'G#'], scale), 0,
+    "out-of-scale notes in the cell disqualify it");
+
+  // ── detectResolvedDiscords ──
+  assert.deepEqual(detectResolvedDiscords(['C', 'G#', 'D'], scale), { count: 1, chromatic: false },
+    "G# (out) → D (in) resolves, 6 semitones — not chromatic");
+  assert.deepEqual(detectResolvedDiscords(['C', 'D', 'G#'], scale), { count: 0, chromatic: false },
+    "trailing discord (track ends on it) does not count");
+  assert.deepEqual(detectResolvedDiscords(['C', 'G#', 'G'], scale), { count: 1, chromatic: true },
+    "G# → G resolves by exactly 1 semitone — chromatic");
+}
+
+// -- styleCommitDb: Db payout per commit (STYLE_SYSTEM_HANDOFF.md §3/§4) --------
+{
+  const scale = playableScale('C', 'major', ['theory_major']); // ['C','D','E','F','G','A','B']
+
+  // ── Shred: tier boundaries by run length 3/4/5/6/7 → db 1/1/2/2/3 ──
+  const shredLens = [3, 4, 5, 6, 7];
+  const shredExpected = [1, 1, 2, 2, 3];
+  shredLens.forEach((len, i) => {
+    const track = scale.slice(0, len); // pure ascending run, no reversal → no bonus
+    const r = styleCommitDb({ style: 'Shred', track, currentScale: scale, rootNote: 'C' });
+    assert.equal(r.db, shredExpected[i], `Shred run len ${len} → ${shredExpected[i]} Db`);
+    assert.equal(r.bonus, 0, `Shred run len ${len}: no contour turn, no bonus`);
+    assert.equal(r.label, 'SHRED RUN');
+  });
+
+  // ── Groove: tier boundaries by repeated-note length 3/4/5/6/7 → db 1/1/2/2/3 ──
+  const grooveExpected = [1, 1, 2, 2, 3];
+  [3, 4, 5, 6, 7].forEach((len, i) => {
+    const track = Array(len).fill('C'); // root is 'G' below, so no accidental resolution bonus
+    const r = styleCommitDb({ style: 'Groove', track, currentScale: scale, rootNote: 'G' });
+    assert.equal(r.db, grooveExpected[i], `Groove pattern len ${len} → ${grooveExpected[i]} Db`);
+    assert.equal(r.bonus, 0, `Groove pattern len ${len}: last note isn't root, no bonus`);
+    assert.equal(r.label, 'GROOVE LOCK');
+  });
+
+  // ── Flair: tier boundaries by resolved-discord count 1/2/3 → db 1/2/3 ──
+  const flairTracks = [
+    ['C', 'G#', 'D'],                              // 1 resolved discord
+    ['C', 'G#', 'D', 'A#', 'E'],                   // 2 resolved discords
+    ['C', 'G#', 'D', 'A#', 'E', 'C#', 'F'],        // 3 resolved discords
+  ];
+  [1, 2, 3].forEach((count, i) => {
+    const r = styleCommitDb({ style: 'Flair', track: flairTracks[i], currentScale: scale, rootNote: 'C' });
+    assert.equal(r.db, count, `Flair ${count} resolved discord(s) → ${count} Db`);
+    assert.equal(r.bonus, 0, `Flair ${count} resolved discord(s): none chromatic, no bonus`);
+    assert.equal(r.label, 'FLAIR');
+  });
+
+  // ── Signature bonus: +1 for each style ──
+  // Shred: contour turn (up then down, tier 1 run) → tier 1 + bonus 1 = 2
+  {
+    const r = styleCommitDb({ style: 'Shred', track: ['C', 'D', 'E', 'D', 'C'], currentScale: scale, rootNote: 'G' });
+    assert.equal(r.tier, 1);
+    assert.equal(r.bonus, 1, "Shred contour-turn signature bonus");
+    assert.equal(r.db, 2);
+  }
+  // Groove: resolution (last note is root, tier 1 pattern) → tier 1 + bonus 1 = 2
+  {
+    const r = styleCommitDb({ style: 'Groove', track: ['C', 'C', 'C', 'G'], currentScale: scale, rootNote: 'G' });
+    assert.equal(r.tier, 1);
+    assert.equal(r.bonus, 1, "Groove root-resolution signature bonus");
+    assert.equal(r.db, 2);
+  }
+  // Flair: chromatic approach (resolves by 1 semitone, tier 1 count) → tier 1 + bonus 1 = 2
+  {
+    const r = styleCommitDb({ style: 'Flair', track: ['C', 'G#', 'G'], currentScale: scale, rootNote: 'C' });
+    assert.equal(r.tier, 1);
+    assert.equal(r.bonus, 1, "Flair chromatic-approach signature bonus");
+    assert.equal(r.db, 2);
+  }
+
+  // ── STYLE_DB_CAP clamping: tier 3 + bonus 1 (=4) must clamp to the cap (3) ──
+  {
+    // Full 7-note ascending run (tier 3) followed by a 3-note descent (contour turn bonus)
+    const track = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'A', 'G', 'F'];
+    const r = styleCommitDb({ style: 'Shred', track, currentScale: scale, rootNote: 'C' });
+    assert.equal(r.tier, 3);
+    assert.equal(r.bonus, 1);
+    assert.equal(r.db, STYLE_DB_CAP, "tier 3 + bonus 1 clamps to STYLE_DB_CAP");
+  }
+
+  // ── Zero case: nothing qualifies → db 0 ──
+  assert.deepEqual(
+    styleCommitDb({ style: 'Shred', track: ['C', 'D'], currentScale: scale, rootNote: 'C' }),
+    { db: 0, tier: 0, bonus: 0, label: '', detail: '' },
+    "too-short track for Shred → zero object");
+  assert.deepEqual(
+    styleCommitDb({ style: 'Groove', track: [], currentScale: scale, rootNote: 'C' }),
+    { db: 0, tier: 0, bonus: 0, label: '', detail: '' },
+    "empty track → zero object");
+
+  // ── Unrecognized style: nothing qualifies → db 0 ──
+  assert.deepEqual(
+    styleCommitDb({ style: 'Mystery', track: ['C', 'D', 'E'], currentScale: scale, rootNote: 'C' }),
+    { db: 0, tier: 0, bonus: 0, label: '', detail: '' },
+    "unrecognized style → zero object");
+}
+
 // -- sonicRig: tier × distance grid (AMP_DECK_DESIGN.md §2) --------------------
 {
   // Import inline — sonicRig is a pure function, no React needed.
@@ -2294,196 +2438,6 @@ const config = {
   assert.deepEqual(sonicRig(skills, 3, 1), sonicRig(skills, 3, 1), "pure: with chargeBoost");
 }
 
-// -- Stance v2: finisher outcome (per stance, fixed damage) ----------------------
-{
-  // Solo — Bend: range 2, 1 damage, scatter
-  const bend = finisherOutcome('solo', 6);
-  assert.equal(bend.damage, 1, "Bend deals 1 Vibe");
-  assert.equal(bend.range, 2, "Bend range 2");
-  assert.equal(bend.stackWipe, 'scatter', "Bend scatters");
-  assert.equal(bend.slideIn, false, "Bend has no slide-in");
-  assert.equal(bend.thrown, 6, "thrown passed through");
-  assert.equal(bend.scatterN, 3, "scatter count = thrown/2");
-
-  // Low Slung — Slide: range 3, 1 damage, scatter, slide-in
-  const slide = finisherOutcome('low_slung', 4);
-  assert.equal(slide.damage, 1, "Slide deals 1 Vibe");
-  assert.equal(slide.range, 3, "Slide range 3");
-  assert.equal(slide.stackWipe, 'scatter');
-  assert.equal(slide.slideIn, true, "Slide has slide-in");
-  assert.equal(slide.scatterN, 2);
-
-  // Wide Leg — Thrash: range 1, 2 damage, obliterate
-  const thrash = finisherOutcome('wide_leg', 8);
-  assert.equal(thrash.damage, 2, "Thrash deals 2 Vibe");
-  assert.equal(thrash.range, 1, "Thrash melee only");
-  assert.equal(thrash.stackWipe, 'obliterate', "Thrash obliterates stack");
-  assert.equal(thrash.slideIn, false);
-  assert.equal(thrash.scatterN, 0, "obliterate mode: no scatter count");
-  assert.equal(thrash.knockback, 0, "finishers don't knock back");
-
-  // Unknown stance falls back to legacy smash
-  const fallback = finisherOutcome('unknown', 4);
-  assert.equal(fallback.damage, 2, "fallback = smashOutcome");
-  assert.equal(fallback.knockback, 2);
-}
-
-// -- Stance v2: physical special modifiers ----------------------------------------
-{
-  // Hammer-On: double damage, capped at 2×THRASH_DAMAGE_CAP (8)
-  assert.equal(hammerOnDamage(2), 4, "2×2=4");
-  assert.equal(hammerOnDamage(4), 8, "2×4=8 (cap)");
-  assert.equal(hammerOnDamage(5), 8, "2×5=10 capped to 8");
-  assert.equal(hammerOnDamage(1), 2, "2×1=2");
-
-  // Axe Swing whiff: halved refill (STOCK_REFILL_RATE=6 → 3)
-  assert.equal(axeSwingWhiffRefill(), 3, "whiff refill = 3");
-}
-
-// -- Stance v2: sonic special conditions ------------------------------------------
-{
-  // Pinch Harmonic: root repeated ≥ 2×
-  assert.equal(pinchHarmonicCondition(['C', 'E', 'G', 'C'], 'C'), true, "root C appears 2×");
-  assert.equal(pinchHarmonicCondition(['C', 'E', 'G'], 'C'), false, "root C appears 1×");
-  assert.equal(pinchHarmonicCondition([], 'C'), false, "empty stack");
-
-  // Power Chord: has the 5th
-  assert.equal(powerChordCondition(['C', 'G'], 'G'), true, "has the 5th");
-  assert.equal(powerChordCondition(['C', 'E'], 'G'), false, "no 5th");
-
-  // Gallop: stack full — default cap is now STACK_CAP (5) per Drive/Sustain split
-  assert.equal(gallopCondition(['C','D','E','F','G']), true, "5/5 = full (STACK_CAP default)");
-  assert.equal(gallopCondition(['C','D','E','F']), false, "4/5 = not full");
-  assert.equal(gallopCondition(['C','D','E'], 3), true, "3/3 = full (custom cap)");
-  assert.equal(gallopCondition(['C','D','E','F','G','A'], 6), true, "6/6 = full (explicit cap)");
-}
-
-// -- Stance v2: passive effect helpers --------------------------------------------
-{
-  // Pull-Off: +1 knockback
-  assert.equal(pullOffKnockback(0), 1);
-  assert.equal(pullOffKnockback(1), 2);
-  assert.equal(pullOffKnockback(3), 4);
-
-  // Feedback: retaliation on 0 damage
-  assert.equal(feedbackRetaliation(0), 1, "0 damage → 1 retaliation");
-  assert.equal(feedbackRetaliation(1), 0, "non-zero → no retaliation");
-  assert.equal(feedbackRetaliation(3), 0);
-
-  // Headbang: fan overrides
-  const hb = headbangFanOverrides();
-  assert.equal(hb.promoteEvery, 2);
-  assert.equal(hb.loyaltyPerDiehard, 16);
-}
-
-// -- Stance v2: spendDb -----------------------------------------------------------
-{
-  const ns3 = { dbPoints: 3 };
-  const spent = spendDb(ns3, 1);
-  assert.deepEqual(spent, { dbPoints: 2 }, "spend 1 from 3 → 2");
-
-  const ns0 = { dbPoints: 0 };
-  assert.equal(spendDb(ns0, 1), null, "can't spend at 0");
-
-  const ns1 = { dbPoints: 1 };
-  assert.deepEqual(spendDb(ns1, 1), { dbPoints: 0 }, "spend 1 from 1 → 0");
-
-  // No dbPoints field at all
-  assert.equal(spendDb({}, 1), null, "missing field → can't spend");
-}
-
-// -- Stance v2: commit generators -------------------------------------------------
-{
-  // TRILL: 3+ alternating notes ≤ 2 semitones apart
-  assert.equal(detectTrill(['E', 'F', 'E']), true, "E-F-E is a trill (1 semitone)");
-  assert.equal(detectTrill(['A', 'B', 'A', 'B']), true, "A-B-A-B is a trill (2 semitones)");
-  assert.equal(detectTrill(['C', 'D', 'C']), true, "C-D-C (2 semitones)");
-  assert.equal(detectTrill(['C', 'E', 'C']), false, "C-E-C: 4 semitones, too far");
-  assert.equal(detectTrill(['C', 'C', 'C']), false, "C-C-C: same note, not alternating");
-  assert.equal(detectTrill(['E', 'F']), false, "too short");
-  // Trill embedded in longer line
-  assert.equal(detectTrill(['G', 'A', 'E', 'F', 'E', 'G']), true, "trill in middle");
-
-  // CHUG: 3+ identical notes in a row
-  assert.equal(detectChug(['C', 'C', 'C']), true, "3× C");
-  assert.equal(detectChug(['A', 'C', 'C', 'C', 'D']), true, "chug embedded");
-  assert.equal(detectChug(['C', 'C', 'D']), false, "only 2×");
-  assert.equal(detectChug(['C', 'D']), false, "too short");
-
-  // DIVE BOMB: same pitch start/end + descending overall
-  assert.equal(detectDiveBomb(['C', 'B', 'A', 'G', 'C']), true,
-    "C descends to G, returns to C — net descending");
-  assert.equal(detectDiveBomb(['C', 'D', 'E', 'C']), false,
-    "C-D-E-C: net ascending then back, net=0 (not < 0)");
-  assert.equal(detectDiveBomb(['C', 'D', 'E']), false, "different start/end");
-  assert.equal(detectDiveBomb(['C', 'C']), false, "too short");
-  // All descending steps
-  assert.equal(detectDiveBomb(['G', 'F', 'E', 'D', 'C', 'B', 'A', 'G']), true,
-    "long descent G→G");
-
-  // detectCommitGenerator dispatches by stance
-  const triRes = detectCommitGenerator('solo', ['E', 'F', 'E']);
-  assert.ok(triRes, "solo + trill → match");
-  assert.equal(triRes.id, 'trill');
-  assert.equal(triRes.dbGrant, 1);
-
-  const chugRes = detectCommitGenerator('low_slung', ['C', 'C', 'C']);
-  assert.ok(chugRes, "low_slung + chug → match");
-  assert.equal(chugRes.id, 'chug');
-
-  // Wrong stance for the pattern
-  assert.equal(detectCommitGenerator('solo', ['C', 'C', 'C']), null,
-    "solo doesn't detect chug");
-  assert.equal(detectCommitGenerator('low_slung', ['E', 'F', 'E']), null,
-    "low_slung doesn't detect trill");
-
-  // Unknown stance
-  assert.equal(detectCommitGenerator('unknown', ['C', 'C', 'C']), null);
-}
-
-// -- Stance v2: stanceKit helper + skill gating -----------------------------------
-{
-  const { stanceKit, STANCE_PHYSICAL_SKILL, STANCE_SONIC_SKILL } = await import("../data/stances.js");
-  const soloKit = stanceKit('cosmic_ronin');
-  assert.equal(soloKit.id, 'solo', "Ronin gets solo kit");
-  assert.equal(soloKit.physical.id, 'hammer_on');
-  assert.equal(soloKit.finisher.id, 'bend');
-  assert.equal(soloKit.commitGen.id, 'trill');
-
-  const lsKit = stanceKit('Glamarchy');
-  assert.equal(lsKit.id, 'low_slung');
-  assert.equal(lsKit.physical.id, 'rake');
-
-  const wlKit = stanceKit('Metalness_Monster');
-  assert.equal(wlKit.id, 'wide_leg');
-  assert.equal(wlKit.finisher.id, 'thrash_finisher');
-
-  // Unknown spirit falls back to low_slung
-  assert.equal(stanceKit('unknown').id, 'low_slung');
-
-  // Skill gate constants
-  assert.equal(STANCE_PHYSICAL_SKILL, 'stance_physical');
-  assert.equal(STANCE_SONIC_SKILL, 'stance_sonic');
-
-  // Skill eligibility for stance skills
-  const noSkills = ['amp_1'];
-  const withPhys = ['amp_1', 'stance_physical'];
-  const withBoth = ['amp_1', 'stance_physical', 'stance_sonic'];
-
-  // stance_physical: no prereq → eligible immediately
-  // (we test against the real SKILL_BY_ID built by the JSX, but since we can't
-  // import the JSX here, we synthesize the skill def matching the route structure)
-  const physDef = { id: 'stance_physical', prereq: null, routeId: 'stance' };
-  const sonicDef = { id: 'stance_sonic', prereq: 'stance_physical', routeId: 'stance', gated: true };
-
-  assert.ok(skillEligibility(physDef, noSkills).ok, "stance_physical eligible with no prereq");
-  assert.ok(!skillEligibility(physDef, withPhys).ok, "already unlocked");
-  assert.ok(!skillEligibility(sonicDef, noSkills).ok, "stance_sonic blocked without physical");
-  assert.equal(skillEligibility(sonicDef, noSkills).reason, "prereq");
-  assert.ok(skillEligibility(sonicDef, withPhys).ok, "stance_sonic eligible after physical");
-  assert.ok(!skillEligibility(sonicDef, withBoth).ok, "already unlocked");
-}
-
 // -- Drive/Sustain stack split: constants + spend helpers -----------------------
 {
   // Constants are sensible
@@ -2528,15 +2482,6 @@ const config = {
   assert.deepEqual(
     finisherStackWipe([], [], 'scatter', 3),
     { driveStack: [], sustainStack: [] }, "scatter on empty → empty");
-
-  // ── conditions use the right stack ──
-  // pinchHarmonic reads Drive Stack
-  assert.equal(pinchHarmonicCondition(['C', 'E', 'G', 'C'], 'C'), true, "pinchHarmonic on Drive: root 2×");
-  // powerChord reads Drive Stack
-  assert.equal(powerChordCondition(['C', 'G'], 'G'), true, "powerChord on Drive: has 5th");
-  // gallop reads Drive Stack with STACK_CAP default
-  assert.equal(gallopCondition(['C', 'D', 'E', 'F', 'G']), true, "gallop: 5/5 full at STACK_CAP");
-  assert.equal(gallopCondition(['C', 'D', 'E', 'F']), false, "gallop: 4/5 not full");
 
   // ── makeInitialNoteState has dual stacks ──
   const testNS = makeInitialNoteState("test_spirit");
