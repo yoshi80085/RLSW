@@ -184,7 +184,11 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     roadies:         [],
     bankedNote:      null,
     knockStreak:     0,
-    eRushArmed:      false,
+    // ── 🗡️ SHREDDING RONIN REWORK ──
+    psychoBushidoCd:  0,       // 🌀 Psycho Bushido cooldown (2 rounds)
+    shadowIllusion:   null,    // 👤 Shadow Illusion decoy: { hex, facing, turnsLeft }
+    cursedShamisen:   null,    // 🎸 Cursed Shamisen: { hex, range, roundsOnBoard, autonomous }
+    waNoKoeBuffs:     [],      // 🎵 Wa no Koe: [{ stat:'drive'|'sustain', turnsLeft }]
     discordUnlocks:  [],
     tripped:         false,
     instrumentDropped: false,

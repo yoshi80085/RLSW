@@ -218,15 +218,15 @@ const config = {
 // -- Phase 4: riff-off seam -------------------------------------------------
 {
   const s0 = makeInitialState(config, 2026);
-  const started = applyAction(s0, riffOffStarted("wildaxe", "vera", { slayer: true, eRush: true }));
+  const started = applyAction(s0, riffOffStarted("wildaxe", "vera", { slayer: true, eRush: false }));
   const b = started.battle;
   assert.equal(b.kind, "riffOff");
   assert.equal(b.atkRiff.degrees.length, 6);
   assert.equal(b.defRiff.degrees.length, 6);
   assert.ok(b.defGlitch.length >= 2 && b.defGlitch.length <= 3, "slayer glitches 2-3 notes");
-  assert.equal(b.defGhosts.length, 6, "eRush ghosts every answer note");
-  assert.deepEqual(started, applyAction(s0, riffOffStarted("wildaxe", "vera", { slayer: true, eRush: true })),
-    "same seed → identical riffs, glitches, ghosts");
+  // (eRush ghosts test removed — Ronin rework)
+  assert.deepEqual(started, applyAction(s0, riffOffStarted("wildaxe", "vera", { slayer: true, eRush: false })),
+    "same seed → identical riffs, glitches");
 
   // score win: clean attacker vs sloppy defender
   const mkResults = grades => grades.map((g, i) =>
@@ -376,31 +376,18 @@ const config = {
     assert.equal(b.defRoll, Math.max(1, Math.floor(b.rawDefRoll / 2)), "laser halves def die");
   }
 
-  // Psycho Bushido: fires iff eligible & not posing & atkRoll ≥ 5, dropping def die to 1
-  let triggered = 0;
-  for (let seed = 1; seed <= 400; seed++) {
-    const b = applyAction(makeInitialState(config, seed), mk({ psychoEligible: true })).battle;
-    assert.equal(b.psychoBushido, b.atkRoll >= 5, "bushido iff 5/6");
-    if (b.psychoBushido) { triggered++; assert.equal(b.defRoll, 1, "bushido drops def die to 1"); }
-  }
-  assert.ok(triggered > 0, "bushido fires on some seed");
-  for (let seed = 1; seed <= 100; seed++) {
-    const b = applyAction(makeInitialState(config, seed), mk()).battle; // not eligible
-    assert.equal(b.psychoBushido, false, "no skill → no bushido even on a 5/6");
-  }
+  // (Psycho Bushido stun tests removed — Ronin rework: now a dash attack, no longer in combat engine)
 
   // verdict regression: recompute the OLD Game math from the SAME engine rolls
   for (let seed = 1; seed <= 200; seed++) {
-    const b = applyAction(makeInitialState(config, seed), mk({ halveDef: true, psychoEligible: true })).battle;
+    const b = applyAction(makeInitialState(config, seed), mk({ halveDef: true })).battle;
     const atkStat = 7, defStat = 5;
     let defRoll = Math.max(1, Math.floor(b.rawDefRoll / 2));
-    const bushido = b.atkRoll >= 5;
-    if (bushido) defRoll = 1;
     const atkTotal = atkStat + b.atkRoll, defTotal = defStat + defRoll;
     assert.deepEqual(
-      [b.defRoll, b.atkTotal, b.defTotal, b.attackerWon, b.margin, b.damage, b.psychoBushido],
+      [b.defRoll, b.atkTotal, b.defTotal, b.attackerWon, b.margin, b.damage],
       [defRoll, atkTotal, defTotal, atkTotal > defTotal, Math.abs(atkTotal - defTotal),
-        thrashDamage(Math.abs(atkTotal - defTotal), !(atkTotal > defTotal)), bushido],
+        thrashDamage(Math.abs(atkTotal - defTotal), !(atkTotal > defTotal))],
       "swing verdict matches thrashDamage given identical rolls");
   }
 
@@ -1274,7 +1261,7 @@ const config = {
     winnerDeclared("wildaxe"),
     turnEnded(),
     // rng-heavy riff-off generation across the serialization boundary
-    riffOffStarted("wildaxe", "vera", { slayer: true, eRush: true }),
+    riffOffStarted("wildaxe", "vera", { slayer: true, eRush: false }),
     riffResultsSubmitted("attacker", mkResults(["perfect", "good", "perfect", "good", "perfect", "good"])),
     riffResultsSubmitted("defender", mkResults(["ok", "miss", "good", "miss", "ok", "miss"])),
     riffResolved(),
@@ -2127,7 +2114,7 @@ const config = {
     burnTicked("wildaxe"),
 
     // ── RIFF-OFF ──
-    riffOffStarted("wildaxe", "vera", { slayer: true, eRush: true }),
+    riffOffStarted("wildaxe", "vera", { slayer: true, eRush: false }),
     riffResultsSubmitted("attacker",
       mkResults(["perfect", "good", "perfect", "good", "perfect", "good"])),
     riffResultsSubmitted("defender",

@@ -30,11 +30,15 @@ Archetype quartet: **Ronin = Burst/virtuoso · Intergalactic 0 = Control/zoner �
 | **Metalness Monster** (`Metalness_Monster`) | 7/6/4/5, Shred | ⚠️ Has arsenal, **no innate identity** |
 | **Glamarchy** (`Glamarchy`) | 5/8/5/4, Flair | ❌ **Not started** (no innate, no arsenal) |
 
-### Ronin — the fragile ranged virtuoso (done)
+### Ronin — the fragile ranged virtuoso (REWORKED)
 - **Innate:** crowd virtuosity (Performance Score ≥5 wins ~2× fans, <5 cools/sheds fans);
   Smash relationship (his own Smash hits soft; a Smash *on* him double-scatters); note-greed
   (~50% second note off a Lost Chord); 10-slot stock.
-- **Arsenal:** Psycho Bushido · E-Rush · Hydra (Sonic now 3d8 keep-highest, costs 2 chord notes).
+- **Arsenal (reworked):**
+  - **Psycho Bushido** (6 Db, 2-round CD) — Iaijutsu dash in a straight line from facing. Remaining AP becomes bonus Drive.
+  - **Shadow Illusion** (6 Db, costs 1 Drive token) — Summon a shadow decoy. Lasts 1 turn. Disappears if attacked, Ronin attacks, or Ronin is attacked. Rivals waste their stack striking it.
+  - **Cursed Shamisen** (8 Db unlock, 2 Db/use) — Drop on board, 4-hex range +1/round, 1 Sustain damage. 1 HP, calmed by walking onto it. After 3 rounds goes autonomous — damages everyone including Ronin.
+  - **Wa no Koe** (12 Db) — Passive: melody commit aligning with chord stack gives +1 Drive or Sustain for 3 rounds.
 
 ### Intergalactic 0 — the slow forgiving cosmic controller (done)
 - **Innate:** speed 4; knockback −1 ("Rolls Hard"); **Freestyle** (first out-of-scale note/turn

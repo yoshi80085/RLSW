@@ -4,7 +4,7 @@ import battleMeterImg from "./Battle_Meter.png";
 import battlePickImg from "./battle_pick.png";
 import crowdPinkImg from "./crowd_pink.png";   // fan-fare — attacker (left) cheering section
 import crowdBlueImg from "./crowd_blue.png";   // fan-fare — defender (right) cheering section
-import hydraImg from "./hydra.PNG";            // 🐉 Shredding Ronin — Hydra ability backdrop (3 heads / 3 beams)
+// (hydraImg removed — Ronin rework)
 import { SPIRIT_DEFS, SPIRIT_OPTIONS } from "./data/spirits.js";
 import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "./data/corners.js";
 import { HEX_SIZE, SCALE, SVG_W, SVG_H } from "./board/constants.js";
@@ -345,9 +345,10 @@ function bttpStageData(key) {
 // marks the ones with a self-contained trigger we can run on the spot.
 const SIGNATURE_TESTS = {
   cosmic_ronin: { name: 'Shredding Ronin', color: '#4488ff', skills: [
-    { id:'psycho_bushido', label:'🌀 Psycho Bushido', pre:[] },
-    { id:'e_rush',         label:'🎴 E-Rush',         pre:[] },
-    { id:'hydra',          label:'🐉 Hydra',           pre:['amp_1','amp_2','amp_3'], fire:'hydra' },
+    { id:'psycho_bushido',   label:'🌀 Psycho Bushido',   pre:[] },
+    { id:'shadow_illusion',  label:'👤 Shadow Illusion',  pre:[] },
+    { id:'cursed_shamisen',  label:'🎸 Cursed Shamisen',  pre:[] },
+    { id:'wa_no_koe',        label:'🎵 Wa no Koe',        pre:[] },
   ]},
   Metalness_Monster: { name: 'Metalness Monster', color: '#ffcc00', skills: [
     { id:'number_of_the_beast', label:'6️⃣ Number of the Beast', pre:[] },
@@ -510,12 +511,14 @@ const SKILL_TREE = {
       desc: 'The way of the blade meets the way of the riff. An exclusive arsenal only the Ronin can wield.',
       spiritOnly: 'cosmic_ronin',
       skills: [
-        { id:'psycho_bushido', label:'Psycho Bushido', icon:'🌀', dbCost:8,  gated:false,
-          desc:'In Thrash, when your swing die lands 5 or 6 the rival freezes — their die is forced to a 1.' },
-        { id:'e_rush',         label:'いいラッシュ (E-Rush)', icon:'🎴', dbCost:10, gated:false,
-          desc:'End a melody line on an E, then face a rival in a riff-off that turn: every answer note spawns a ghost note — both keys must be hit or the note misses.' },
-        { id:'hydra',          label:'Hydra',          icon:'🐉', dbCost:14, gated:true, prereq:'amp_3',
-          desc:'CAPSTONE — requires Amp III. With 3 amps in range, your Sonic Attack rolls 3d6 instead of d12, firing three beams.' },
+        { id:'psycho_bushido',  label:'Psycho Bushido',  icon:'🌀', dbCost:6,  gated:false,
+          desc:'Iaijutsu dash — charge in a straight line from your facing. Remaining AP converts to bonus Drive on top of your Drive stack. 2-round cooldown.' },
+        { id:'shadow_illusion', label:'Shadow Illusion', icon:'👤', dbCost:6,  gated:false,
+          desc:'Summon a shadow decoy (costs 1 Drive token). Moveable for 1 turn. Disappears if attacked, you attack, or you are attacked. Rivals who strike it waste their stack.' },
+        { id:'cursed_shamisen', label:'Cursed Shamisen', icon:'🎸', dbCost:8,  gated:false,
+          desc:'Drop a cursed Shamisen on your hex (2 Db per use). 4-hex range, +1/round, deals 1 Sustain damage. After 3 rounds it goes autonomous — damaging everyone, even you. Calmed by walking onto it.' },
+        { id:'wa_no_koe',       label:'Wa no Koe (和の声)', icon:'🎵', dbCost:12, gated:false,
+          desc:'Voice of Harmony — when your melody commit aligns with your chord stack, melody notes convert to +1 Drive or Sustain for 3 rounds.' },
       ],
     },
     {
@@ -2887,10 +2890,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     // (Riff Slayer + Paranoia removed — replaced by Slime / Number of the Beast)
 
-    // ── 🎴 いいラッシュ / E-RUSH (Shredding Ronin) — ending a track on an E arms
-    // the ghost-note barrage for any riff-off that breaks out this turn.
-    const ownsERush      = (actingNoteState?.unlockedSkills ?? []).includes('e_rush');
-    const eRushArm       = ownsERush && lastNote === 'E';
+    // (E-Rush removed — Ronin rework)
 
     const rawDriveBoost    = !isMojoDrained ? driveBoostFromRun(diatonicRunLen) : 0;
     const prevTempDrive    = actingNoteState?.tempDrive ?? 0;
@@ -3080,7 +3080,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (isOctaveResolution)   flashLines.push('🎶 Octave — DB +2');
     if (isMajorThirdEnd)      flashLines.push(cleansePatch.statusShield ? '✨ Borrowed Chord — Shield Up!' : '✨ Borrowed Chord — Cleanse!');
     if (isMinorSeventhEnd)    flashLines.push('🎷 Blues Lick — Mojo Drain!');
-    if (eRushArm)             flashLines.push('🎴 いいラッシュ ARMED — ghost barrage ready!');
+    // (E-Rush flash removed — Ronin rework)
     if (isTritoneEnd)         flashLines.push('🔥 Devil\u2019s Interval — Burn armed!');
     if (chromStagger > 0)     flashLines.push(`⚡ Chromatic Climb ×${chromRunLen} — Stagger ${chromStagger}t`);
     if (chromClimbActive && discordCount > 0) flashLines.push(`⚡ Chromatic Climb — discord pardoned`);
@@ -3163,7 +3163,6 @@ function Game({ gameState, onReturnToLobby }) {
       pendingMojoDrain: isMinorSeventhEnd ? 2 : (actingNoteState?.pendingMojoDrain ?? 0),
       pendingStagger:  chromStagger > 0 ? chromStagger : (actingNoteState?.pendingStagger ?? 0),
       burnArmed:       burnArm ? true : (actingNoteState?.burnArmed ?? false),
-      eRushArmed:      eRushArm ? true : (actingNoteState?.eRushArmed ?? false),
       transposeCardPending: null,
       ...cleansePatch, // Borrowed Chord (Maj3 end) — clears one active debuff
     });
@@ -3171,6 +3170,11 @@ function Game({ gameState, onReturnToLobby }) {
     // Small timeout so the state update above settles before awardTargetSkill reads noteStates.
     if (upgradeTriggered && actingNoteState?.targetSkillId) {
       setTimeout(() => awardTargetSkill(acting.id), 60);
+    }
+    // 🎵 WA NO KOE — check melody/chord alignment for Ronin's harmony passive
+    if (acting?.id === 'cosmic_ronin') {
+      const chordNotes = actingNoteState?.driveStack ?? actingNoteState?.sustainStack ?? [];
+      applyWaNoKoe(melodyLine, chordNotes);
     }
     setTurnStep('move_act'); // advance HUD flow → movement & actions
     setTimeout(() => showTip('move_act'), 300);
@@ -3275,6 +3279,8 @@ function Game({ gameState, onReturnToLobby }) {
           halfRefillNextTurn: false,  // 🪓 Axe Swing whiff penalty consumed
           // 🌌 Displace cooldown ticks down on Intergalactic 0's own turns
           displaceCd: Math.max(0, (ns.displaceCd ?? 0) - 1),
+          // 🌀 Psycho Bushido cooldown ticks down on Ronin's own turns
+          psychoBushidoCd: Math.max(0, (ns.psychoBushidoCd ?? 0) - 1),
 
           // Tick down roadie cooldowns
           roadies: nextRoadies,
@@ -3308,11 +3314,21 @@ function Game({ gameState, onReturnToLobby }) {
           pivotPending: true,
           // 🔥 Devil's Interval Burn arm likewise only lives for the turn it was set
           burnArmed: false,
-          // 🎴 E-Rush likewise only lives for the turn it was armed
-          eRushArmed: false,
+          // 👤 Shadow Illusion: tick down turns, dismiss if expired
+          shadowIllusion: (() => {
+            const si = ns.shadowIllusion;
+            if (!si) return null;
+            const left = (si.turnsLeft ?? 1) - 1;
+            return left > 0 ? { ...si, turnsLeft: left } : null;
+          })(),
         },
       };
     });
+    // 🗡️ Ronin rework: tick Cursed Shamisen + Wa no Koe at turn start
+    if (spiritId === 'cosmic_ronin') {
+      tickCursedShamisen();
+      tickWaNoKoe();
+    }
   }
 
   // Called when an attack hits — apply pendingMojoDrain / pendingStagger to target.
@@ -3472,6 +3488,8 @@ function Game({ gameState, onReturnToLobby }) {
     checkChargeZonePickup(acting.id, actualTarget);
     // Marquee event hex
     checkEventTrigger(acting.id, actualTarget);
+    // 🎸 Cursed Shamisen — check if any spirit walked onto the shamisen's hex
+    calmCursedShamisen(acting.id);
   }
 
   // ─── SKILL TREE — TARGET SELECTION & AWARD ───────────────────────────────────
@@ -3495,8 +3513,10 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull fans from the stands for a mosh pit — +2 Drive with 3 fans on stage.`);
     if (skillId === 'slime')        addLog(`🧪 ${spirit?.name} — SLIME! Swing/Smash hits can spend 1 Db to slime rivals — halving their next turn's note regen.`);
     if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
-    if (skillId === 'psycho_bushido') addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! A Thrash swing of 5–6 forces the rival's die to a 1.`);
-    if (skillId === 'e_rush')       addLog(`🎴 ${spirit?.name} — いいラッシュ unlocked! End on an E, then a riff-off that turn buries the rival under ghost notes.`);
+    if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Dash in a straight line — remaining AP becomes bonus Drive. 2-round cooldown.`);
+    if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Summon a decoy (costs 1 Drive token). Rivals who strike it waste their stack.`);
+    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Drop it on the board (2 Db per use). Expanding aura deals Sustain damage — goes autonomous after 3 rounds!`);
+    if (skillId === 'wa_no_koe')      addLog(`🎵 ${spirit?.name} — WA NO KOE! When melody aligns with your chord stack, notes convert to +1 Drive or Sustain for 3 rounds.`);
     if (skillId === 'theory_major')     addLog(`🎼 ${spirit?.name} — THE FULL SCALE! The 4th & 7th are now Discord-free — your Major scale is complete.`);
     if (skillId === 'theory_minor')     addLog(`🌑 ${spirit?.name} — MINOR TONALITY! You can now declare Minor at the pivot and play a minor key, clean.`);
     if (skillId === 'theory_sus')       addLog(`🕊️ ${spirit?.name} — SUSPENSIONS! Ending on the 2nd or 4th now rings out for bonus Flair.`);
@@ -3517,7 +3537,7 @@ function Game({ gameState, onReturnToLobby }) {
       });
       addLog(`🎨 ${spirit?.name} — colour notes online: ${grants.map(g => DISCORD_UPGRADE_TIERS.find(t => t.id === g)?.label ?? g).join(', ')}.`);
     }
-    if (skillId === 'hydra')        addLog(`🐉 ${spirit?.name} — HYDRA! With 3 amps, your Sonic Attack rolls 3d6 and fires three beams.`);
+    // (hydra removed — Ronin rework)
     if (skillId === 'blaster_of_ra') addLog(`🌀 ${spirit?.name} — BLASTER OF RA! Your Smash becomes a ranged, piercing bass-drop down the beam — undefendable, scatters & knocks back every rival in line.`);
     if (skillId === 'displace')      addLog(`🌌 ${spirit?.name} — DISPLACE! Warp to your amp rig for 3 AP (2-turn cooldown). He doesn't run — he transcends space.`);
     if (skillId === 'sunbeam')       addLog(`☀️ ${spirit?.name} — SUNBEAM! With 3 amps, your Sonic beam reaches +2 hexes and leaves burning ground in its wake.`);
@@ -4865,16 +4885,6 @@ function Game({ gameState, onReturnToLobby }) {
   // Some signature skills have a self-contained trigger we can fire for testing.
   function devFireSignature(spiritId, skill) {
     devUnlockSkill(spiritId, skill.id, skill.pre);
-    if (skill.fire === 'hydra') {
-      devSetupHydra();
-    }
-  }
-
-  // 🐉 Hydra dev setup — board amps removed (Phase 2); Hydra dice pool
-  // now comes from the Amp Deck's sonicRig system.
-  function devSetupHydra() {
-    addLog('🐉 Board amps removed — Hydra triggers via Amp Deck sonicRig.');
-    setDevOpen(false);
   }
 
   // Add raw Decibills toward the spirit's current target skill.
@@ -5839,6 +5849,8 @@ function Game({ gameState, onReturnToLobby }) {
   // attackerId (optional): the Spirit credited with this hit. Drives Azrael's
   // knockdown-streak Fame for Metalness Monster.
   function applyVibeDamage(targetId, dmg, sourceLabel, attackerId) {
+    // 👤 Ronin being attacked dismisses shadow
+    if (targetId === 'cosmic_ronin' && dmg > 0) dismissShadowIllusion('the Ronin was attacked');
     // 💥 Dramatise the hit: float a red number, shake the victim, push the camera in.
     if (dmg > 0) {
       const tgtNow = spirits.find(s => s.id === targetId);
@@ -6025,6 +6037,9 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
 
+    // 👤 Ronin attacking dismisses shadow
+    if (acting.id === 'cosmic_ronin') dismissShadowIllusion('the Ronin attacked');
+
     // 🥊 The jab: cheap (1 AP) and chord-driven, but still your one Action this turn.
     dispatch(beatsSpent(1, true));
     setAction(null);
@@ -6085,20 +6100,13 @@ function Game({ gameState, onReturnToLobby }) {
       atkStat, defStat,
       posing: defenderPosing,
       halveDef: skillMods.halveDef,
-      psychoEligible: (nsA.unlockedSkills ?? []).includes('psycho_bushido'),
       atkFloor, atkDie, defDie,
     }));
     const {
-      atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, psychoBushido,
+      atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin,
     } = rollState.battle;
     let damage = rollState.battle.damage;
     recordBattleTotals(attacker.id, targetId, atkTotal, defTotal, attackerWon); // 📊 scoreboard
-
-    // 🌀 PSYCHO BUSHIDO (Shredding Ronin) — a blistering 5 or 6 stuns the rival
-    // into folding: the engine already dropped their die to 1; announce it.
-    if (psychoBushido) {
-      addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} explodes with a ${atkRoll} — ${defender.name} is stunned by the pure speed and folds. Their die drops to a 1!`);
-    }
 
     // 🛡️ Fray on the verdict — the defender's chord takes real damage only when
     // the blow lands (margin-scaled; see applyChordFray).
@@ -6137,10 +6145,8 @@ function Game({ gameState, onReturnToLobby }) {
       skillMods, // stage effects, pyro, laser, fog flags
       // Stable dance-craze name shown when a plain swing connects.
       danceName: pickDanceName(),
-      psychoBushido, // 🌀 forced the rival's die to 1
       swingChordLeft, swingChordSpent, // deferred chord burn — only on a hit
     });
-    if (psychoBushido) setTimeout(() => triggerEffectFlash(targetId, '🌀', 'BUSHIDO!', '#4488ff'), 200);
     setDiceDisplay({ atk: null, def: null, rolling: null });
 
     // ⏭ When auto-skip is on, the whole pre-die cinematic is compressed: the
@@ -6436,6 +6442,360 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`🌌 ${acting.name} folds space and WARPS to hex #${hexNum} — Space is the place.`);
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🗡️ SHREDDING RONIN — REWORKED SIGNATURE ARSENAL
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // 🌀 PSYCHO BUSHIDO — Iaijutsu dash. Charge in a straight line from facing.
+  // Remaining AP after reaching the target converts to bonus Drive. 2-round CD.
+  // The Ronin warps to the hex adjacent to the target along the charge line,
+  // then initiates a swing with Drive boosted by leftover AP.
+  function resolvePsychoBushido(targetId) {
+    if (!acting || acting.id !== 'cosmic_ronin') return;
+    const ns = actingNoteState ?? {};
+    if ((ns.psychoBushidoCd ?? 0) > 0) {
+      addLog(`🌀 Psycho Bushido is recharging — ${ns.psychoBushidoCd} turn${ns.psychoBushidoCd > 1 ? 's' : ''} left.`);
+      return;
+    }
+    if (actionTokenUsed) { addLog('🌀 Already used your Action Token this turn!'); return; }
+    if (!hasConfirmed) { addLog('🌀 Commit your melody first!'); return; }
+
+    const attacker = spirits.find(s => s.id === acting.id);
+    const defender = spirits.find(s => s.id === targetId);
+    if (!attacker || !defender || defender.knockedOut) return;
+
+    // Build the straight line from Ronin's facing
+    const originHex = HEX_BY_NUM[attacker.num];
+    const targetHex = HEX_BY_NUM[defender.num];
+    if (!originHex || !targetHex) return;
+
+    // Verify target is on the facing line
+    const first = neighborInDirection(originHex, attacker.facing ?? 0);
+    if (!first) { addLog('🌀 No clear path ahead.'); return; }
+    const dq = first.q - originHex.q;
+    const dr = first.r - originHex.r;
+
+    // Walk the line to find the target
+    let distToTarget = 0;
+    let q = originHex.q, r = originHex.r;
+    for (let i = 1; i <= moveStepsLeft; i++) {
+      q += dq; r += dr;
+      const hex = HEX_BY_QR[`${q},${r}`];
+      if (!hex) break;
+      if (hex.num === defender.num) { distToTarget = i; break; }
+    }
+    if (distToTarget === 0) {
+      addLog('🌀 Target is not in your line of sight, or out of AP range!');
+      return;
+    }
+
+    // Calculate bonus Drive from leftover AP
+    const apLeft = moveStepsLeft;
+    const bonusDrive = Math.max(0, apLeft - distToTarget);
+
+    // Warp Ronin to the hex just before the target
+    const landQ = originHex.q + dq * (distToTarget - 1);
+    const landR = originHex.r + dr * (distToTarget - 1);
+    const landHex = HEX_BY_QR[`${landQ},${landR}`];
+    if (landHex && landHex.num !== originHex.num) {
+      dispatch(spiritWarped(acting.id, landHex.num, 0));
+    }
+
+    // Consume ALL remaining movement + action token
+    dispatch(beatsSpent(0, true, { all: true }));
+
+    // Apply bonus Drive as tempDrive (stacks with existing)
+    const prevTemp = ns.tempDrive ?? 0;
+    const newTemp = prevTemp + bonusDrive;
+    setNoteField(acting.id, {
+      psychoBushidoCd: 2,
+      tempDrive: newTemp,
+    });
+
+    triggerEffectFlash(acting.id, '🌀', 'BUSHIDO!', '#4488ff');
+    addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} dashes ${distToTarget} hex${distToTarget > 1 ? 'es' : ''} — +${bonusDrive} bonus Drive from ${apLeft} remaining AP!`);
+
+    // Auto-initiate swing against the target
+    setAction(null);
+    // Small delay so the warp settles before the swing triggers
+    setTimeout(() => initiateSwing(targetId), 100);
+  }
+
+  // Returns hex nums along Ronin's facing line within AP range (for highlighting)
+  function getPsychoBushidoTargets() {
+    if (!acting || acting.id !== 'cosmic_ronin') return new Set();
+    const ns = actingNoteState ?? {};
+    if ((ns.psychoBushidoCd ?? 0) > 0) return new Set();
+    const originHex = HEX_BY_NUM[acting.num];
+    if (!originHex) return new Set();
+    const first = neighborInDirection(originHex, acting.facing ?? 0);
+    if (!first) return new Set();
+    const dq = first.q - originHex.q;
+    const dr = first.r - originHex.r;
+    const targets = new Set();
+    const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
+    let q = originHex.q, r = originHex.r;
+    for (let i = 1; i <= moveStepsLeft; i++) {
+      q += dq; r += dr;
+      const hex = HEX_BY_QR[`${q},${r}`];
+      if (!hex) break;
+      // Can only target a rival on the line
+      if (occupied.has(hex.num) && hex.num !== acting.num) {
+        const rival = spirits.find(s => s.num === hex.num && s.id !== acting.id && !s.knockedOut);
+        if (rival) targets.add(hex.num);
+        break; // stop at first occupied hex
+      }
+    }
+    return targets;
+  }
+
+  // 👤 SHADOW ILLUSION — Summon a shadow decoy on an adjacent hex.
+  // Costs 1 Drive token from the stack. Lasts 1 turn. Disappears if:
+  //   - the decoy is attacked
+  //   - the real Ronin attacks
+  //   - the real Ronin is attacked
+  // Rivals who attack the decoy waste their Drive/AP normally but deal no damage.
+  // The decoy cannot interact with board elements (no note pickups, no amp placement).
+  function resolveShadowIllusion(hexNum) {
+    if (!acting || acting.id !== 'cosmic_ronin') return;
+    const ns = actingNoteState ?? {};
+    if (ns.shadowIllusion) { addLog('👤 A shadow is already on the board!'); return; }
+    const driveStack = ns.driveStack ?? [];
+    if (driveStack.length < 1) { addLog('👤 Need at least 1 Drive token to summon a shadow!'); return; }
+
+    const originHex = HEX_BY_NUM[acting.num];
+    if (!originHex) return;
+    const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
+    const neighbors = getFlatTopNeighborSlots(originHex).filter(n => !occupied.has(n.num));
+    if (!neighbors.some(n => n.num === hexNum)) {
+      addLog('👤 Place the shadow on an open adjacent hex.');
+      return;
+    }
+
+    // Spend 1 Drive token
+    const newStack = driveStack.slice(1);
+    setNoteField(acting.id, {
+      driveStack: newStack,
+      shadowIllusion: { hex: hexNum, facing: acting.facing ?? 0, turnsLeft: 1 },
+    });
+
+    triggerEffectFlash(acting.id, '👤', 'SHADOW!', '#4488ff');
+    addLog(`👤 ${acting.name} summons a SHADOW ILLUSION on hex #${hexNum} — which one is real?`);
+    setAction(null);
+  }
+
+  // Returns valid hexes for Shadow Illusion placement
+  function getShadowIllusionTargets() {
+    if (!acting || acting.id !== 'cosmic_ronin') return new Set();
+    const ns = actingNoteState ?? {};
+    if (ns.shadowIllusion) return new Set();
+    if ((ns.driveStack ?? []).length < 1) return new Set();
+    const originHex = HEX_BY_NUM[acting.num];
+    if (!originHex) return new Set();
+    const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
+    const targets = new Set();
+    getFlatTopNeighborSlots(originHex).forEach(n => {
+      if (!occupied.has(n.num)) targets.add(n.num);
+    });
+    return targets;
+  }
+
+  // Dismiss shadow when Ronin attacks, is attacked, or shadow is attacked
+  function dismissShadowIllusion(reason) {
+    const ns = noteStates['cosmic_ronin'] ?? {};
+    if (!ns.shadowIllusion) return;
+    setNoteField('cosmic_ronin', { shadowIllusion: null });
+    addLog(`👤 The shadow illusion vanishes — ${reason}.`);
+  }
+
+  // 🎸 CURSED SHAMISEN — Drop a cursed shamisen on Ronin's current hex.
+  // 8 Db to unlock, 2 Db per use. Starts with 4-hex range, +1/round, no cap.
+  // Deals 1 Sustain damage per round to anyone in range. Has 1 HP.
+  // Can be "calmed" by walking onto its hex (grants bonus note).
+  // After 3 rounds on the board, it goes autonomous — moves on its own,
+  // dealing Sustain damage to everyone in its wake, including Ronin.
+  function resolveCursedShamisen() {
+    if (!acting || acting.id !== 'cosmic_ronin') return;
+    const ns = actingNoteState ?? {};
+    if (ns.cursedShamisen) { addLog('🎸 A Shamisen is already haunting the board!'); return; }
+    // Check Db cost (2 per use)
+    const dbPts = ns.dbPoints ?? 0;
+    if (dbPts < 2) { addLog('🎸 Not enough Db to summon the Shamisen — costs 2 Db.'); return; }
+
+    setNoteField(acting.id, {
+      dbPoints: dbPts - 2,
+      cursedShamisen: {
+        hex: acting.num,
+        range: 4,
+        roundsOnBoard: 0,
+        autonomous: false,
+      },
+    });
+
+    triggerEffectFlash(acting.id, '🎸', 'SHAMISEN!', '#4488ff');
+    addLog(`🎸 ${acting.name} drops the CURSED SHAMISEN on hex #${acting.num} — its haunting melody spreads across 4 hexes!`);
+    setAction(null);
+  }
+
+  // Tick the Shamisen each round: expand range, deal Sustain damage, go autonomous after 3 rounds.
+  // Called from startNewTurnNotes (turn-start) when the Ronin's turn begins.
+  function tickCursedShamisen() {
+    const ns = noteStates['cosmic_ronin'] ?? {};
+    const sham = ns.cursedShamisen;
+    if (!sham) return;
+
+    const newRounds = sham.roundsOnBoard + 1;
+    const newRange = sham.range + 1; // +1 hex per round
+    const goesAutonomous = newRounds >= 3 && !sham.autonomous;
+
+    // If autonomous, move the Shamisen to a random adjacent hex
+    let newHex = sham.hex;
+    if (sham.autonomous || goesAutonomous) {
+      const shamHex = HEX_BY_NUM[sham.hex];
+      if (shamHex) {
+        const neighbors = getFlatTopNeighborSlots(shamHex);
+        if (neighbors.length > 0) {
+          newHex = neighbors[Math.floor(Math.random() * neighbors.length)].num;
+        }
+      }
+    }
+
+    // Deal 1 Sustain damage to everyone within range (including Ronin if autonomous)
+    const shamHex = HEX_BY_NUM[newHex];
+    if (shamHex) {
+      spirits.forEach(sp => {
+        if (sp.knockedOut) return;
+        // Only damage Ronin if autonomous
+        if (sp.id === 'cosmic_ronin' && !sham.autonomous && !goesAutonomous) return;
+        const spHex = HEX_BY_NUM[sp.num];
+        if (!spHex) return;
+        const dist = axialDist(shamHex.q, shamHex.r, spHex.q, spHex.r);
+        if (dist <= newRange) {
+          // Apply 1 Sustain damage (reduce tempSustain or apply Vibe damage)
+          const spNs = noteStates[sp.id] ?? {};
+          const curSustain = spNs.tempSustain ?? 0;
+          if (curSustain > 0) {
+            setNoteField(sp.id, { tempSustain: curSustain - 1 });
+          } else {
+            applyVibeDamage(sp.id, 1, 'Cursed Shamisen');
+          }
+          addLog(`🎸 The Shamisen's curse reaches ${sp.name} — 1 Sustain damage!`);
+        }
+      });
+    }
+
+    setNoteField('cosmic_ronin', {
+      cursedShamisen: {
+        hex: newHex,
+        range: newRange,
+        roundsOnBoard: newRounds,
+        autonomous: sham.autonomous || goesAutonomous,
+      },
+    });
+
+    if (goesAutonomous) {
+      addLog(`🎸💀 The Shamisen stirs — it moves on its own now! It damages EVERYONE in its wake, even the Ronin!`);
+    }
+  }
+
+  // Calm the Shamisen — called when any spirit walks onto its hex.
+  // The walker picks up a bonus note (like walking onto a note hex).
+  function calmCursedShamisen(walkerId) {
+    const ns = noteStates['cosmic_ronin'] ?? {};
+    if (!ns.cursedShamisen) return false;
+    const walkerSpirit = spirits.find(s => s.id === walkerId);
+    if (!walkerSpirit) return false;
+    if (walkerSpirit.num !== ns.cursedShamisen.hex) return false;
+
+    setNoteField('cosmic_ronin', { cursedShamisen: null });
+    const walkerName = walkerSpirit.name;
+    addLog(`🎸🎵 ${walkerName} calms the Cursed Shamisen — the haunting melody fades.`);
+    triggerEffectFlash(walkerId, '🎵', 'CALMED', '#44cc66');
+    // Grant bonus note to the walker (same as picking up a note on the board)
+    return true; // caller handles the bonus note grant
+  }
+
+  // 🎵 WA NO KOE (和の声) — Voice of Harmony. Passive: when the melody commit
+  // aligns with the Drive or Sustain chord stack, melody notes convert to
+  // +1 Drive or Sustain for 3 rounds. Checked during confirmNoteTrack.
+  function checkWaNoKoe(melodyLine, chordStack) {
+    const ns = noteStates['cosmic_ronin'] ?? {};
+    if (!(ns.unlockedSkills ?? []).includes('wa_no_koe')) return null;
+    if (!melodyLine || melodyLine.length === 0 || !chordStack) return null;
+
+    // "Aligns" means the melody notes overlap with the notes in the chord stack.
+    // Check if at least half the melody notes appear in the chord stack.
+    const chordNotes = new Set((chordStack ?? []).map(n => typeof n === 'string' ? n.replace(/\d/g, '') : n));
+    if (chordNotes.size === 0) return null;
+    const melodyNotes = melodyLine.map(n => typeof n === 'string' ? n.replace(/\d/g, '') : n);
+    const matchCount = melodyNotes.filter(n => chordNotes.has(n)).length;
+    const alignRatio = matchCount / melodyNotes.length;
+
+    if (alignRatio >= 0.5) {
+      // Determine which stat to boost based on chord quality
+      // If more Drive notes → boost Drive, else boost Sustain
+      const driveStack = ns.driveStack ?? [];
+      const sustainStack = ns.sustainStack ?? [];
+      const stat = driveStack.length >= sustainStack.length ? 'drive' : 'sustain';
+      return { stat, turnsLeft: 3 };
+    }
+    return null;
+  }
+
+  // Apply Wa no Koe buff if triggered during melody commit
+  function applyWaNoKoe(melodyLine, chordStack) {
+    if (!acting || acting.id !== 'cosmic_ronin') return;
+    const buff = checkWaNoKoe(melodyLine, chordStack);
+    if (!buff) return;
+
+    const ns = actingNoteState ?? {};
+    const existing = ns.waNoKoeBuffs ?? [];
+    const updated = [...existing, buff];
+
+    // Apply the +1 bonus
+    if (buff.stat === 'drive') {
+      const curTemp = ns.tempDrive ?? 0;
+      setNoteField(acting.id, { waNoKoeBuffs: updated, tempDrive: curTemp + 1 });
+      addLog(`🎵 WA NO KOE! Melody harmonizes with the chord — +1 Drive for 3 rounds.`);
+    } else {
+      const curTemp = ns.tempSustain ?? 0;
+      setNoteField(acting.id, { waNoKoeBuffs: updated, tempSustain: curTemp + 1 });
+      addLog(`🎵 WA NO KOE! Melody harmonizes with the chord — +1 Sustain for 3 rounds.`);
+    }
+    triggerEffectFlash(acting.id, '🎵', '和', '#4488ff');
+  }
+
+  // Tick down Wa no Koe buffs at turn start (remove expired, decrement remaining)
+  function tickWaNoKoe() {
+    const ns = noteStates['cosmic_ronin'] ?? {};
+    const buffs = ns.waNoKoeBuffs ?? [];
+    if (buffs.length === 0) return;
+    const updated = buffs
+      .map(b => ({ ...b, turnsLeft: b.turnsLeft - 1 }))
+      .filter(b => b.turnsLeft > 0);
+    // Expired buffs lose their bonus
+    const expired = buffs.filter(b => b.turnsLeft <= 1);
+    let driveLoss = 0, sustainLoss = 0;
+    expired.forEach(b => {
+      if (b.stat === 'drive') driveLoss++;
+      else sustainLoss++;
+    });
+    const patch = { waNoKoeBuffs: updated };
+    if (driveLoss > 0) {
+      patch.tempDrive = Math.max(0, (ns.tempDrive ?? 0) - driveLoss);
+      addLog(`🎵 Wa no Koe fades — Drive bonus -${driveLoss}.`);
+    }
+    if (sustainLoss > 0) {
+      patch.tempSustain = Math.max(0, (ns.tempSustain ?? 0) - sustainLoss);
+      addLog(`🎵 Wa no Koe fades — Sustain bonus -${sustainLoss}.`);
+    }
+    setNoteField('cosmic_ronin', patch);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // END SHREDDING RONIN REWORK
+  // ═══════════════════════════════════════════════════════════════════════════
+
   function initiateSonicAttack(targetId) {
     if (!acting) return;
     if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
@@ -6450,6 +6810,9 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`🔊 Not enough Action Points — Sonic Attack costs 2 AP.`);
       return;
     }
+
+    // 👤 Ronin attacking dismisses shadow
+    if (acting.id === 'cosmic_ronin') dismissShadowIllusion('the Ronin attacked');
 
     // 📡 RANGE GATE — outside your rig's radius the Sonic is OFFLINE entirely.
     // (Computed fresh from the attacker's position: bot calls arrive via
@@ -6559,12 +6922,8 @@ function Game({ gameState, onReturnToLobby }) {
     const defRig = sonicRig(defNsSkills, defDistHome);
     const retaliationBlocked = isAtRange && defRig.pool.length <= 1;
 
-    // Roll — attacker's pool from sonicRig (computed at render); Hydra upgrades
-    // remaining d6s → d8 (the old overdrive, now layered on the rig system).
-    const hasHydra    = atkSkills.includes('hydra');
-    const hydraActive = ampTier >= 3 && hasHydra;
+    // Roll — attacker's pool from sonicRig (computed at render).
     let   dicePool    = [...actingRig.pool];
-    if (hydraActive) dicePool = dicePool.map(s => s < 8 ? 8 : s);
     // ⚡ CHARGE ZONE charges — attacks only. Ceiling grows EVERY die in the pool
     // one size (d6→d8, d8→d10, capped d12); floor clamps every die's result to
     // at least 1+CHARGE_FLOOR_BONUS. The dormant dieFloorBoost (octave
@@ -6588,7 +6947,7 @@ function Game({ gameState, onReturnToLobby }) {
     } = rollState.battle;
     let damage = rollState.battle.damage;
     recordBattleTotals(attacker.id, targetId, atkTotal, defTotal, attackerWon); // 📊 scoreboard
-    if (hydraActive) addLog(`🐉 HYDRA AWAKENS! ${attacker.name} overdrives the rig — ${diceLabel}, keep best [${diceVals.join(', ')}] → ${atkRoll}, three beams scream out!`);
+    // (Hydra log removed — Ronin rework)
 
     // 🛡️ Fray on the verdict — the defender's chord takes real damage only when
     // the beam lands (margin-scaled; see applyChordFray).
@@ -6632,7 +6991,7 @@ function Game({ gameState, onReturnToLobby }) {
       diceSpin: diceVals,        // animated faces while spinning (seeded to the result)
       keptIdx,                   // index of the kept (max) die
       diceLabel,                 // "2d6" / "2d6+d8" / "3d8"
-      hydra: hydraActive,        // 🐉 overdriven rig (art/loom)
+      // (hydra flag removed — Ronin rework)
       sunbeam: hasSunbeam,       // ☀️ extra-lit beam (Intergalactic 0 capstone)
       retaliationBlocked,
       skillMods,
@@ -6703,10 +7062,9 @@ function Game({ gameState, onReturnToLobby }) {
   function startRiffOff(attacker, defender, tier = 'stadium') {
     // The engine generates both riffs + skill modifiers on its seeded rng and
     // stores them in engineState.battle — this client just renders that data.
-    // (eRush flag is client-supplied until noteStates joins in Ph 5.)
     const atkNs = noteStates[attacker.id] ?? {};
     const slayer = false; // Riff Slayer removed — kept as false to avoid touching riffOffStarted signature
-    const eRush  = (atkNs.unlockedSkills ?? []).includes('e_rush') && !!atkNs.eRushArmed;
+    const eRush  = false; // E-Rush removed — Ronin rework
     // Phase R1: pass the attacker's committed melody line so the engine builds
     // the riff from it (Rhythm Creation Device). hasRiff flags riffbook synergy.
     // The commit path stashes these in committedMelody/committedHasRiff since
@@ -6737,11 +7095,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     // (Riff Slayer removed — glitch mechanics no longer active)
 
-    // 🎴 いいラッシュ / E-RUSH — every answer note spawns a ghost second key
-    if (eRush) {
-      addLog(`🎴 いいラッシュ! ${attacker.name}'s E-Rush buries ${defender.name} under a ghost barrage — every answer note now demands TWO keys!`);
-      setNoteStates(prev => ({ ...prev, [attacker.id]: { ...prev[attacker.id], eRushArmed: false } }));
-    }
+    // (E-Rush riff-off logic removed — Ronin rework)
 
     riffEngineRef.current = null;
     playBattleMusic(riffOffSong, 0.7);
@@ -8472,6 +8826,20 @@ function Game({ gameState, onReturnToLobby }) {
       else addLog("🌌 Warp to an open hex beside you.");
       return;
     }
+    if (action === "psycho_bushido") {
+      const targets = getPsychoBushidoTargets();
+      if (targets.has(num)) {
+        const rival = spirits.find(s => s.num === num && s.id !== acting?.id && !s.knockedOut);
+        if (rival) { resolvePsychoBushido(rival.id); setAction(null); }
+      } else addLog("🌀 Click a rival in your straight line of sight!");
+      return;
+    }
+    if (action === "shadow_illusion") {
+      const targets = getShadowIllusionTargets();
+      if (targets.has(num)) { resolveShadowIllusion(num); }
+      else addLog("👤 Place the shadow on an open adjacent hex.");
+      return;
+    }
     if (action === "move") {
       if (reachable.has(num)) move(num);
       else addLog("❌ Can't reach that hex!");
@@ -8504,6 +8872,25 @@ function Game({ gameState, onReturnToLobby }) {
     // 💨 Smoke-hidden spirits are invisible — don't colour their hex
     if (sp && !isHiddenBySmoke(sp)) return sp.color + "44";
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#aa55ff33";
+    if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return "#4488ff33";
+    if (action === 'shadow_illusion' && getShadowIllusionTargets().has(hex.num)) return "#4488ff33";
+    // 🎸 Cursed Shamisen — glow the hex it's on and its range
+    {
+      const sham = noteStates['cosmic_ronin']?.cursedShamisen;
+      if (sham) {
+        if (hex.num === sham.hex) return sham.autonomous ? '#ff440044' : '#4488ff44';
+        const shamHex = HEX_BY_NUM[sham.hex];
+        if (shamHex) {
+          const dist = axialDist(shamHex.q, shamHex.r, hex.q, hex.r);
+          if (dist <= sham.range) return sham.autonomous ? '#ff220011' : '#4488ff11';
+        }
+      }
+    }
+    // 👤 Shadow Illusion — glow the decoy hex
+    {
+      const si = noteStates['cosmic_ronin']?.shadowIllusion;
+      if (si && hex.num === si.hex) return '#4488ff33';
+    }
     if (reachable.has(hex.num)) return "#ffffff18";
     // Swing / Smash cone highlight
     if ((previewAction === 'swing' || previewAction === 'smash') && acting) {
@@ -8548,6 +8935,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (sp && !isHiddenBySmoke(sp) && acting?.id === sp.id) return sp.color;
     if (sp && !isHiddenBySmoke(sp)) return sp.color;
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#cc88ffcc";
+    if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return "#4488ffcc";
+    if (action === 'shadow_illusion' && getShadowIllusionTargets().has(hex.num)) return "#4488ffcc";
     if (reachable.has(hex.num)) return "#ffffff88";
     // Swing / Smash cone stroke
     if ((previewAction === 'swing' || previewAction === 'smash') && acting) {
@@ -8593,6 +8982,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (spVisible && acting?.id === sp.id) return Math.round(3 / SCALE * 0.13);
     if (spVisible || reachable.has(hex.num) || hex.stage) return 1.5;
     if (action === 'displace' && displaceTargets.has(hex.num)) return 2;
+    if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return 2;
+    if (action === 'shadow_illusion' && getShadowIllusionTargets().has(hex.num)) return 2;
     return 0.8;
   }
 
@@ -9146,7 +9537,7 @@ function Game({ gameState, onReturnToLobby }) {
         fireBeamClash={fireBeamClash}
         handleAtkDieClick={handleAtkDieClick}
         handleDefDieClick={handleDefDieClick}
-        hydraImg={hydraImg}
+        // (hydraImg prop removed — Ronin rework)
         knockbackSpaces={knockbackSpaces}
         liteFx={liteFx}
         sonicKnockback={sonicKnockback}
@@ -10552,9 +10943,7 @@ function Game({ gameState, onReturnToLobby }) {
               const beam    = acting ? getSonicBeam(acting) : new Set();
               const targets = acting ? getRivalsInBeam(acting) : [];
               const poolNow = actingRig.pool;
-              const hasHydra = (actingNoteState?.unlockedSkills ?? []).includes('hydra');
-              const poolDisplay = hasHydra && ['amp_1','amp_2','amp_3'].filter(id => (actingNoteState?.unlockedSkills ?? []).includes(id)).length >= 3
-                ? poolNow.map(s => s < 8 ? 8 : s) : poolNow;
+              const poolDisplay = poolNow;
               const diceLabel = rigPoolLabel(poolDisplay);
               // 📡 Sonic is OFFLINE outside the rig's radius — the button fades.
               // GRAYED = no AP / token spent (mechanical); FADED = out of amp
@@ -10699,6 +11088,71 @@ function Game({ gameState, onReturnToLobby }) {
                       onClick={() => setAction(null)}>Cancel</button>
                   )}
                 </>
+              );
+            })()}
+            {/* 🌀 PSYCHO BUSHIDO — Shredding Ronin dash attack */}
+            {hasConfirmed && acting?.id === 'cosmic_ronin'
+              && (actingNoteState?.unlockedSkills ?? []).includes('psycho_bushido') && (() => {
+              const cd = actingNoteState?.psychoBushidoCd ?? 0;
+              const canDash = cd <= 0 && moveStepsLeft >= 1 && !actionTokenUsed;
+              return (
+                <>
+                  <button className={canDash ? 'btn active' : 'btn'}
+                    style={{borderColor: canDash ? '#4488ff' : '#1a2840', color: canDash ? '#88bbff' : '#1a2840'}}
+                    disabled={!canDash}
+                    title="Psycho Bushido — dash in a straight line from your facing. Remaining AP converts to bonus Drive. 2-round cooldown."
+                    onClick={() => {
+                      if (action === 'psycho_bushido') { setAction(null); }
+                      else if (canDash) { setAction('psycho_bushido'); addLog('🌀 PSYCHO BUSHIDO — click a rival in your line of sight to dash-strike!'); }
+                    }}>
+                    🌀 Bushido{cd > 0 ? ` (${cd})` : ''}
+                  </button>
+                  {action === 'psycho_bushido' && (
+                    <button className="btn" style={{borderColor:'#888',color:'#888'}}
+                      onClick={() => setAction(null)}>Cancel</button>
+                  )}
+                </>
+              );
+            })()}
+            {/* 👤 SHADOW ILLUSION — Shredding Ronin decoy */}
+            {hasConfirmed && acting?.id === 'cosmic_ronin'
+              && (actingNoteState?.unlockedSkills ?? []).includes('shadow_illusion') && (() => {
+              const hasShadow = !!(actingNoteState?.shadowIllusion);
+              const hasDrive = (actingNoteState?.driveStack ?? []).length >= 1;
+              const canSummon = !hasShadow && hasDrive;
+              return (
+                <>
+                  <button className={canSummon ? 'btn active' : 'btn'}
+                    style={{borderColor: canSummon ? '#4488ff' : '#1a2840', color: canSummon ? '#88bbff' : '#1a2840'}}
+                    disabled={!canSummon}
+                    title="Shadow Illusion — summon a decoy on an adjacent hex (costs 1 Drive token). Rivals waste their stack attacking it."
+                    onClick={() => {
+                      if (action === 'shadow_illusion') { setAction(null); }
+                      else if (canSummon) { setAction('shadow_illusion'); addLog('👤 SHADOW ILLUSION — click an adjacent hex to place the decoy.'); }
+                    }}>
+                    👤 Shadow{hasShadow ? ' (active)' : (!hasDrive ? ' (no Drive)' : '')}
+                  </button>
+                  {action === 'shadow_illusion' && (
+                    <button className="btn" style={{borderColor:'#888',color:'#888'}}
+                      onClick={() => setAction(null)}>Cancel</button>
+                  )}
+                </>
+              );
+            })()}
+            {/* 🎸 CURSED SHAMISEN — Shredding Ronin area denial */}
+            {hasConfirmed && acting?.id === 'cosmic_ronin'
+              && (actingNoteState?.unlockedSkills ?? []).includes('cursed_shamisen') && (() => {
+              const hasSham = !!(actingNoteState?.cursedShamisen);
+              const hasDb = (actingNoteState?.dbPoints ?? 0) >= 2;
+              const canDrop = !hasSham && hasDb;
+              return (
+                <button className={canDrop ? 'btn active' : 'btn'}
+                  style={{borderColor: canDrop ? '#4488ff' : '#1a2840', color: canDrop ? '#88bbff' : '#1a2840'}}
+                  disabled={!canDrop}
+                  title="Cursed Shamisen — drop it on your hex (2 Db). Expanding aura deals Sustain damage. Goes autonomous after 3 rounds."
+                  onClick={() => { if (canDrop) resolveCursedShamisen(); }}>
+                  🎸 Shamisen{hasSham ? ' (active)' : (!hasDb ? ' (2 Db)' : '')}
+                </button>
               );
             })()}
             <button className="btn end" data-tip-anchor="end-turn" onClick={endTurn}>End ⏭</button>

@@ -193,7 +193,6 @@ export function riffClosed() {
  * @param {number}  p.defStat         defender's pre-roll total
  * @param {boolean} [p.posing]        defender is posing → rolls no die (0)
  * @param {boolean} [p.halveDef]      Laser Show → defender's die halved (min 1)
- * @param {boolean} [p.psychoEligible] attacker owns Psycho Bushido (5/6 → def die → 1)
  * @param {number[]} [p.dicePool]     SONIC keep-highest pool of die sizes
  *                                     (e.g. [6,6], [6,6,8], [8,8,8]); omit for a
  *                                     plain swing (single d6).
@@ -212,11 +211,11 @@ export function riffClosed() {
  *                                     as 5/6.
  */
 export function attackRolled(kind, attackerId, defenderId,
-  { atkStat, defStat, posing = false, halveDef = false, psychoEligible = false, dicePool = null,
+  { atkStat, defStat, posing = false, halveDef = false, dicePool = null,
     atkFloor = 0, atkDie = 6, defDie = 6 }) {
   return {
     type: ATTACK_ROLLED, kind, attackerId, defenderId,
-    atkStat, defStat, posing, halveDef, psychoEligible, dicePool, atkFloor, atkDie, defDie,
+    atkStat, defStat, posing, halveDef, dicePool, atkFloor, atkDie, defDie,
   };
 }
 

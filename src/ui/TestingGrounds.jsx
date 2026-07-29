@@ -103,13 +103,13 @@ export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiri
                         const on = unlocked.includes(sk.id);
                         return (
                           <button key={sk.id} disabled={!inGame}
-                            onClick={()=> sk.fire ? devFireSignature(sid, sk) : devUnlockSkill(sid, sk.id, sk.pre)}
-                            title={sk.fire === 'hydra' ? 'Unlock + deploy 3 amps' : (on ? 'Already unlocked' : 'Unlock')}
-                            style={{background: on && !sk.fire ? '#16331e' : '#0a0814',
-                              border:`1px solid ${on && !sk.fire ? '#44cc66' : (sk.fire ? route.color : '#4a2a60')}`,
-                              color: on && !sk.fire ? '#88ffaa' : (sk.fire ? route.color : '#d0c0e0'),
+                            onClick={()=> devUnlockSkill(sid, sk.id, sk.pre)}
+                            title={on ? 'Already unlocked' : 'Unlock'}
+                            style={{background: on ? '#16331e' : '#0a0814',
+                              border:`1px solid ${on ? '#44cc66' : '#4a2a60'}`,
+                              color: on ? '#88ffaa' : '#d0c0e0',
                               borderRadius:5,fontSize:8.5,padding:'4px 7px',cursor:inGame?'pointer':'default',fontFamily:'inherit'}}>
-                            {sk.label}{sk.fire ? ' ▶' : (on ? ' ✓' : '')}
+                            {sk.label}{on ? ' ✓' : ''}
                           </button>
                         );
                       })}

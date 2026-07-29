@@ -237,7 +237,7 @@ export function BattleMeterOverlay({
   fireBeamClash,
   handleAtkDieClick,
   handleDefDieClick,
-  hydraImg,
+  // (hydraImg removed — Ronin rework)
   knockbackSpaces,
   liteFx,
   sonicKnockback,
@@ -1231,10 +1231,7 @@ export function BattleMeterOverlay({
                 50%     { transform:translateY(var(--cheer-amp,-6px))   scaleY(1.05); }
               }
               /* ── Stat-strength glow tiers (var(--gc) = spirit colour) ── */
-              @keyframes hydra-loom {
-                0%,100% { transform:translateY(0) scale(1);     opacity:0.42; }
-                50%     { transform:translateY(-8px) scale(1.03); opacity:0.6; }
-              }
+              /* (hydra-loom animation removed — Ronin rework) */
               /* Aura layers animate opacity/transform ONLY (GPU-composited) —
                  never filter, which re-rasterizes the layer every frame. */
               @keyframes battle-aura-pulse {
@@ -1432,13 +1429,7 @@ export function BattleMeterOverlay({
                   {/* Black strips to hide the PNG's left/right border edges */}
                   <div style={{position:'absolute',left:0,top:0,bottom:0,width:'2.8%',background:'#000',zIndex:3}}/>
                   <div style={{position:'absolute',right:0,top:0,bottom:0,width:'2.8%',background:'#000',zIndex:3}}/>
-                  {battleState.hydra && (
-                    <img src={hydraImg} alt="" draggable={false}
-                      style={{position:'absolute', left:'-14%', top:'-200%', width:'128%',
-                        pointerEvents:'none', mixBlendMode:blend, opacity:0.5,
-                        filter: liteFx ? 'none' : 'drop-shadow(0 0 26px #aa55ff66)', zIndex:1,
-                        animation: liteFx ? 'none' : 'hydra-loom 2.4s ease-in-out infinite'}}/>
-                  )}
+                  {/* (Hydra image overlay removed — Ronin rework) */}
                   <img src={battleMeterImg} alt="Battle Meter Track"
                     style={{position:'absolute', top:-CROP_TOP, left:0, width:'100%',
                             pointerEvents:'none', zIndex:2}}/>

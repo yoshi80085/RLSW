@@ -105,7 +105,7 @@ export function pickRockGod(profile) {
   const scores = {
     // Bardbarian answers the brawlers — scored on melee-flavoured signature
     // skills (the CQC branch it used to read was cut in the Stance rework).
-    bardbarian:       ['master_moshpits', 'slime', 'azrael', 'number_of_the_beast', 'psycho_bushido']
+    bardbarian:       ['master_moshpits', 'slime', 'azrael', 'number_of_the_beast', 'psycho_bushido', 'shadow_illusion', 'cursed_shamisen']
                         .filter(has).length * 2,
     feedback_warlock: (profile.ampsOwned ?? 0)
                         + ['amp_1', 'amp_2', 'amp_3', 'pedal_dist', 'power_chords'].filter(has).length,

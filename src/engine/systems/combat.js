@@ -197,7 +197,7 @@ export function smashOutcome(thrown) {
 export function applyAttackRolled(state, action, rng) {
   const {
     kind, attackerId, defenderId,
-    atkStat = 0, defStat = 0, posing = false, halveDef = false, psychoEligible = false,
+    atkStat = 0, defStat = 0, posing = false, halveDef = false,
     dicePool = null, atkFloor = 0, atkDie = 6, defDie = 6,
   } = action;
 
@@ -217,8 +217,7 @@ export function applyAttackRolled(state, action, rng) {
     ? 0
     : (halveDef ? Math.max(1, Math.floor(rawDefRoll / 2)) : rawDefRoll);
 
-  const psychoBushido = !!psychoEligible && !posing && atkRoll >= 5;
-  if (psychoBushido) defRoll = 1;
+  // (Psycho Bushido stun removed — Ronin rework: now a dash attack)
 
   const atkTotal    = atkStat + atkRoll;
   const defTotal    = posing ? 0 : defStat + defRoll;
@@ -238,7 +237,7 @@ export function applyAttackRolled(state, action, rng) {
       kind: "attack", attackKind: kind,
       attackerId, defenderId, atkStat, defStat,
       atkRoll, diceVals, keptIdx, rawDefRoll, defRoll, defDie,
-      atkTotal, defTotal, attackerWon, margin, damage, psychoBushido,
+      atkTotal, defTotal, attackerWon, margin, damage,
     },
   };
 }

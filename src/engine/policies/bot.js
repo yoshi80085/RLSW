@@ -49,7 +49,7 @@ export const BOT_SKILL_PRIORITY_BASE = [
 
 // Exclusive-route passives, slotted in up front for the spirit that owns them.
 export const BOT_SPIRIT_SKILLS = {
-  cosmic_ronin:      ['psycho_bushido', 'e_rush'],
+  cosmic_ronin:      ['psycho_bushido', 'shadow_illusion', 'cursed_shamisen', 'wa_no_koe'],
   Metalness_Monster: ['number_of_the_beast', 'master_moshpits', 'slime', 'azrael'],
 };
 
