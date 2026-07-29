@@ -184,8 +184,6 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     roadies:         [],
     bankedNote:      null,
     knockStreak:     0,
-    riffSlayerArmed: false,
-    pendingParanoia: false,
     eRushArmed:      false,
     discordUnlocks:  [],
     tripped:         false,

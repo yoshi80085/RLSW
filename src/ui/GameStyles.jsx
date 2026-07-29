@@ -120,6 +120,10 @@ export function GameStyles() {
           0%,100% { opacity: 0.55; filter: drop-shadow(0 0 3px currentColor); }
           50%     { opacity: 1;    filter: drop-shadow(0 0 9px currentColor); }
         }
+        @keyframes slimePulse {
+          0%,100% { opacity: 0.5; }
+          50%     { opacity: 0.85; }
+        }
         @keyframes flame-flicker {
           0%,100% { transform: scale(1)    rotate(-2deg); opacity: 0.9; }
           30%     { transform: scale(1.12) rotate(2deg);  opacity: 1;   }

@@ -350,10 +350,10 @@ const SIGNATURE_TESTS = {
     { id:'hydra',          label:'🐉 Hydra',           pre:['amp_1','amp_2','amp_3'], fire:'hydra' },
   ]},
   Metalness_Monster: { name: 'Metalness Monster', color: '#ffcc00', skills: [
-    { id:'master_moshpits', label:'🤘 Master of Moshpits', pre:[] },
-    { id:'riff_slayer',     label:'🗡️ Riff Slayer',        pre:[] },
-    { id:'paranoia',        label:'🌀 Paranoia',           pre:['discord_1'] },
-    { id:'azrael',          label:'💀 Azrael',             pre:[] },
+    { id:'number_of_the_beast', label:'6️⃣ Number of the Beast', pre:[] },
+    { id:'master_moshpits',     label:'🤘 Master of Moshpits',  pre:[] },
+    { id:'slime',               label:'🧪 Slime',               pre:[] },
+    { id:'azrael',              label:'💀 Azrael',               pre:[] },
   ]},
   intergalactic_0: { name: 'Intergalactic 0', color: '#aa55ff', skills: [
     { id:'blaster_of_ra', label:'🌀 Blaster of Ra', pre:[] },
@@ -523,16 +523,16 @@ const SKILL_TREE = {
       label: 'Metalness Monster',
       icon: '🤘',
       color: '#ffcc00',
-      desc: 'Trash-metal violence. An exclusive arsenal only the Monster can wield.',
+      desc: 'Dripping poison, summoning mosh pits, invoking the Beast. An exclusive arsenal only the Monster can wield.',
       spiritOnly: 'Metalness_Monster',
       skills: [
-        { id:'master_moshpits', label:'Master of Moshpits', icon:'🎸', dbCost:8,  gated:false,
-          desc:'On ANY battle win, if you have a banked note: burn it for +1 Vibe damage (can finish a knockdown). The pit floods the board.' },
-        { id:'riff_slayer',     label:'Riff Slayer',        icon:'🗡️', dbCost:10, gated:false,
-          desc:"Commit a SKIP-CLIMB (3+ notes leaping by thirds, one direction) to arm it. If a riff-off breaks out that turn, 2–3 of the rival's notes glitch mid-flight." },
-        { id:'paranoia',        label:'Paranoia',           icon:'🌀', dbCost:12, gated:true, prereq:'theory_dom7',
-          desc:"Supercharges your Mojo Drain (from the Blues 7th): now lasts 3 turns AND freezes 2 of the rival's note slots." },
-        { id:'azrael',          label:'Azrael',             icon:'💀', dbCost:14, gated:false,
+        { id:'number_of_the_beast', label:'Number of the Beast', icon:'6️⃣', dbCost:6, gated:false,
+          desc:'666 — Spend 6 Db to distribute 6 points randomly across Vibe, Db, Drive (until next battle), Sustain (same), Notes, and Fans. Chaos fuels the Monster.' },
+        { id:'master_moshpits', label:'Master of Moshpits', icon:'🤘', dbCost:8,  gated:false,
+          desc:'Pulls fans from the stands onto the board for a mosh pit. +2 Drive with 3 fans present — fans disappear afterwards.' },
+        { id:'slime',           label:'Slime',              icon:'🧪', dbCost:10, gated:false,
+          desc:'On Swing/Smash hit, spend 1 Db to slime the rival — their next turn\'s note regeneration is halved.' },
+        { id:'azrael',          label:'Azrael',             icon:'💀', dbCost:12, gated:false,
           desc:'Each rival you knock down feeds Fame equal to your knockdown streak (1st→1, 2nd→2…). Resets when YOU go down.' },
       ],
     },
@@ -1099,6 +1099,11 @@ function Game({ gameState, onReturnToLobby }) {
   // 🤘 MASTER OF MOSHPITS — spiritId → mob key. While set, the crowd PNGs
   // swarm that rival's hex on the board and "rock" them. Cleared after a beat.
   const [moshpitTargets, setMoshpitTargets] = useState({});
+
+  // 🧪 POISON SLIME (Metalness Monster passive) — hexNum → turnsLeft.
+  // MM drops slime on every hex it leaves. Slime lingers 1 turn, deals 1 Vibe
+  // damage to anyone who walks on it or gets pushed into it.
+  const [poisonSlime, setPoisonSlime] = useState({});
 
   // RIFF-OFF engine ref — timing-critical bookkeeping for the currently
   // flashing note lives here (not in React state) so reaction times are
@@ -2880,17 +2885,7 @@ function Game({ gameState, onReturnToLobby }) {
     // ── DRIVE BOOST: diatonic step runs (scale-only, blocked by Mojo Drain) ──
     const diatonicRunLen   = detectDiatonicRun(melodyLine, currentScale);
 
-    // ── 🗡️ RIFF SLAYER (Metalness) — a skip-climb (3+ notes leaping by thirds,
-    // one direction) ARMS the intimidation for this turn. If a riff-off breaks
-    // out before the turn ends, the rival's notes will glitch.
-    const ownsRiffSlayer = (actingNoteState?.unlockedSkills ?? []).includes('riff_slayer');
-    const skipClimbLen   = detectSkipClimb(melodyLine, currentScale);
-    const riffSlayerArm  = ownsRiffSlayer && skipClimbLen >= 3;
-
-    // ── 🌀 PARANOIA (Metalness) — supercharges Mojo Drain (Blues Lick). When the
-    // m7 ending charges a drain, Paranoia stretches it to 3 turns AND charges a
-    // 2-slot note freeze on the same hit.
-    const ownsParanoia   = (actingNoteState?.unlockedSkills ?? []).includes('paranoia');
+    // (Riff Slayer + Paranoia removed — replaced by Slime / Number of the Beast)
 
     // ── 🎴 いいラッシュ / E-RUSH (Shredding Ronin) — ending a track on an E arms
     // the ghost-note barrage for any riff-off that breaks out this turn.
@@ -3084,8 +3079,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (trackHasTritone)      flashLines.push('🔥 Tritone — Damage ×2');
     if (isOctaveResolution)   flashLines.push('🎶 Octave — DB +2');
     if (isMajorThirdEnd)      flashLines.push(cleansePatch.statusShield ? '✨ Borrowed Chord — Shield Up!' : '✨ Borrowed Chord — Cleanse!');
-    if (isMinorSeventhEnd)    flashLines.push(ownsParanoia ? '🌀 PARANOIA — drain 3t + 2 slots frozen!' : '🎷 Blues Lick — Mojo Drain!');
-    if (riffSlayerArm)        flashLines.push(`🗡️ RIFF SLAYER ARMED — skip-climb ×${skipClimbLen}!`);
+    if (isMinorSeventhEnd)    flashLines.push('🎷 Blues Lick — Mojo Drain!');
     if (eRushArm)             flashLines.push('🎴 いいラッシュ ARMED — ghost barrage ready!');
     if (isTritoneEnd)         flashLines.push('🔥 Devil\u2019s Interval — Burn armed!');
     if (chromStagger > 0)     flashLines.push(`⚡ Chromatic Climb ×${chromRunLen} — Stagger ${chromStagger}t`);
@@ -3111,8 +3105,8 @@ function Game({ gameState, onReturnToLobby }) {
     const sustMsg    = rawSustainBoost > 0  ? ` · 🛡️ Sustain +${newTempSustain}` : '';
     const triMsg     = trackHasTritone      ? ' · 🔥 Damage ×2'          : '';
     const octMsg     = isOctaveResolution   ? ' · 🎶 Octave DB+2'           : '';
-    const m7Msg      = isMinorSeventhEnd    ? (ownsParanoia ? ' · 🌀 Paranoia ready (3t + freeze)' : ' · 🎷 Mojo Drain ready') : '';
-    const rsMsg      = riffSlayerArm        ? ' · 🗡️ Riff Slayer ARMED' : '';
+    const m7Msg      = isMinorSeventhEnd    ? ' · 🎷 Mojo Drain ready' : '';
+    const rsMsg      = '';
     const tritoneEndMsg = '';
     const chrMsg     = chromStagger > 0     ? ` · ⚡ Stagger ${chromStagger}t`   : '';
     const chromClimbMsg = (chromClimbActive && discordCount > 0) ? ' · ⚡ Chrom Climb — no discord' : '';
@@ -3166,11 +3160,8 @@ function Game({ gameState, onReturnToLobby }) {
       tempDrive:       newTempDrive,
       tempSustain:     newTempSustain,
       bankedNote:      newBankedNote,
-      pendingMojoDrain: isMinorSeventhEnd ? (ownsParanoia ? 3 : 2) : (actingNoteState?.pendingMojoDrain ?? 0),
-      pendingStagger:  (isMinorSeventhEnd && ownsParanoia) ? 3
-                       : (chromStagger > 0 ? chromStagger : (actingNoteState?.pendingStagger ?? 0)),
-      pendingParanoia: (isMinorSeventhEnd && ownsParanoia) ? true : false,
-      riffSlayerArmed: riffSlayerArm ? true : (actingNoteState?.riffSlayerArmed ?? false),
+      pendingMojoDrain: isMinorSeventhEnd ? 2 : (actingNoteState?.pendingMojoDrain ?? 0),
+      pendingStagger:  chromStagger > 0 ? chromStagger : (actingNoteState?.pendingStagger ?? 0),
       burnArmed:       burnArm ? true : (actingNoteState?.burnArmed ?? false),
       eRushArmed:      eRushArm ? true : (actingNoteState?.eRushArmed ?? false),
       transposeCardPending: null,
@@ -3304,6 +3295,8 @@ function Game({ gameState, onReturnToLobby }) {
           // (bonusRevoiceAvailable removed — stack commit system replaces it)
           // Mixer recharges every turn
           mixerUsedThisTurn: false,
+          // 🤘 Moshpit once per turn
+          moshpitUsedThisTurn: false,
           // 🥊 CQC swing exposure clears at the start of your next turn
           swingExposed: false,
           // Refresh modulation cards (exhausted resets each turn) — but spent
@@ -3313,8 +3306,6 @@ function Game({ gameState, onReturnToLobby }) {
             .map(c => ({ ...c, exhausted: false })),
           // Prompt major/minor choice at the START of this spirit's turn
           pivotPending: true,
-          // 🗡️ Riff Slayer only lives for the turn it was armed — disarm on next turn
-          riffSlayerArmed: false,
           // 🔥 Devil's Interval Burn arm likewise only lives for the turn it was set
           burnArmed: false,
           // 🎴 E-Rush likewise only lives for the turn it was armed
@@ -3333,7 +3324,6 @@ function Game({ gameState, onReturnToLobby }) {
     const tgtNow = noteStates[targetId] ?? {};
     const willDrain   = (atkNow.pendingMojoDrain ?? 0) > 0 && (tgtNow.mojoDrain ?? 0) === 0;
     const willStagger = (atkNow.pendingStagger ?? 0) > 0 && !tgtNow.stagger;
-    const isParanoia  = !!atkNow.pendingParanoia && willDrain;
     const atkName = spirits.find(s => s.id === attackerId)?.name;
     const tgtName = spirits.find(s => s.id === targetId)?.name;
     // ✨ Borrowed Chord shield blocks Mojo Drain / Stagger entirely — the
@@ -3341,36 +3331,27 @@ function Game({ gameState, onReturnToLobby }) {
     if ((willDrain || willStagger) && consumeStatusShield(targetId)) {
       addLog(`✨ ${tgtName} is shielded — ${atkName}'s status attack fizzles!`);
       setNoteStates(prev => ({ ...prev, [attackerId]: { ...(prev[attackerId] ?? {}),
-        pendingMojoDrain: 0, pendingStagger: 0, pendingParanoia: false, burnArmed: false } }));
+        pendingMojoDrain: 0, pendingStagger: 0, burnArmed: false } }));
       return;
     }
-    if (isParanoia) {
-      addLog(`🌀 ${atkName}'s PARANOIA grips ${tgtName} — Mojo Drained ${atkNow.pendingMojoDrain} turns AND 2 note slots frozen. They can't play straight!`);
+    if (willDrain) {
+      addLog(`💧 ${atkName}'s Blues Lick lands — ${tgtName} is MOJO DRAINED for ${atkNow.pendingMojoDrain} turn${atkNow.pendingMojoDrain !== 1 ? 's' : ''}!`);
       showTip('status_effect');
-    } else {
-      if (willDrain) {
-        addLog(`💧 ${atkName}'s Blues Lick lands — ${tgtName} is MOJO DRAINED for ${atkNow.pendingMojoDrain} turn${atkNow.pendingMojoDrain !== 1 ? 's' : ''}!`);
-        showTip('status_effect');
-      }
-      if (willStagger) {
-        addLog(`⚡ ${atkName}'s attack STAGGERS ${tgtName} — 2 note slots frozen for ${atkNow.pendingStagger} turn${atkNow.pendingStagger !== 1 ? 's' : ''}!`);
-        showTip('status_effect');
-      }
+    }
+    if (willStagger) {
+      addLog(`⚡ ${atkName}'s attack STAGGERS ${tgtName} — 2 note slots frozen for ${atkNow.pendingStagger} turn${atkNow.pendingStagger !== 1 ? 's' : ''}!`);
+      showTip('status_effect');
     }
     // 💥 Board VFX — staggered after any CQC flashes already queued
-    if (isParanoia) {
-      setTimeout(() => triggerEffectFlash(targetId, '🌀', 'PARANOIA!', '#aa55ff'), 150);
-    } else {
-      if (willDrain)   setTimeout(() => triggerEffectFlash(targetId, '💧', 'MOJO DRAINED!', '#4499ff'), 150);
-      if (willStagger) setTimeout(() => triggerEffectFlash(targetId, '⚡', 'STAGGERED!', '#ff8800'), willDrain ? 650 : 150);
-    }
+    if (willDrain)   setTimeout(() => triggerEffectFlash(targetId, '💧', 'MOJO DRAINED!', '#4499ff'), 150);
+    if (willStagger) setTimeout(() => triggerEffectFlash(targetId, '⚡', 'STAGGERED!', '#ff8800'), willDrain ? 650 : 150);
 
     setNoteStates(prev => {
       const atk = prev[attackerId];
       const tgt = prev[targetId];
       if (!atk || !tgt) return prev;
 
-      let newAtk = { ...atk, pendingMojoDrain: 0, pendingStagger: 0, pendingParanoia: false, feedbackBoost: false };
+      let newAtk = { ...atk, pendingMojoDrain: 0, pendingStagger: 0, feedbackBoost: false };
       let newTgt = { ...tgt };
 
       // Mojo Drain: strip boosts + silence for 2 turns (blocked if already drained)
@@ -3458,6 +3439,7 @@ function Game({ gameState, onReturnToLobby }) {
   function move(toNum) {
     const s = spirits.find(sp => sp.id === acting.id);
     const ns = noteStates[acting.id] ?? {};
+    const fromHex = s.num; // capture hex BEFORE move for poison slime drop
 
     // Movement rules — including the dazed 33% redirect roll — live in the
     // engine now (src/engine/systems/movement.js). Spirits are engine-owned
@@ -3476,6 +3458,10 @@ function Game({ gameState, onReturnToLobby }) {
     else addLog(`🚶 ${s.name} → #${actualTarget} (${newSteps} step${newSteps !== 1 ? "s" : ""} left)`);
     if (to.edge) addLog(`⚠️ ${s.name} is on the EDGE — knockback risk!`);
     if (newSteps <= 0) setAction(null);
+    // 🧪 Poison Slime — Metalness Monster drops slime on the hex it just left
+    if (acting.id === 'Metalness_Monster') dropPoisonSlime(fromHex);
+    // 🧪 Poison Slime — check if anyone stepped in slime
+    checkPoisonSlime(acting.id, actualTarget);
     // Flaming disc hazard (Disco Inferno)
     checkFlamingDisc(acting.id, actualTarget);
     // 🎇 Stage hazards (lasers / erupting pyro / animatronics)
@@ -3505,9 +3491,9 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'hero_pose')    addLog(`🌟 ${spirit?.name} — HERO POSE unlocked! Pose on centre hex for 2 turns to win.`);
 
     // (v1 stance route removed — v2 stances are fixed ability kits, no learning tiers)
-    if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Win a battle with a banked note to burn it for +1 Vibe and flood the pit.`);
-    if (skillId === 'riff_slayer')  addLog(`🗡️ ${spirit?.name} — RIFF SLAYER! Commit a skip-climb (notes leaping by thirds) to rattle a rival in any riff-off that turn.`);
-    if (skillId === 'paranoia')     addLog(`🌀 ${spirit?.name} — PARANOIA! Your Mojo Drain now lasts 3 turns AND freezes 2 of the rival's note slots.`);
+    if (skillId === 'number_of_the_beast') addLog(`6️⃣ ${spirit?.name} — NUMBER OF THE BEAST! Spend 6 Db to scatter 6 random stat points across Vibe, Db, Drive, Sustain, Notes, and Fans.`);
+    if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull fans from the stands for a mosh pit — +2 Drive with 3 fans on stage.`);
+    if (skillId === 'slime')        addLog(`🧪 ${spirit?.name} — SLIME! Swing/Smash hits can spend 1 Db to slime rivals — halving their next turn's note regen.`);
     if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
     if (skillId === 'psycho_bushido') addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! A Thrash swing of 5–6 forces the rival's die to a 1.`);
     if (skillId === 'e_rush')       addLog(`🎴 ${spirit?.name} — いいラッシュ unlocked! End on an E, then a riff-off that turn buries the rival under ghost notes.`);
@@ -3910,6 +3896,34 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`🔥💿 ${spirit?.name} hits a flaming disc on #${hexNum} — 1 Vibe damage!`);
     triggerRumble(spiritId);
     applyVibeDamage(spiritId, 1, 'Disco Inferno');
+  }
+
+  // 🧪 POISON SLIME (Metalness Monster innate passive) ─────────────────────────
+  // Drop slime on the hex MM just LEFT (called with fromHex before the move).
+  function dropPoisonSlime(fromHex) {
+    if (fromHex == null) return;
+    setPoisonSlime(prev => ({ ...prev, [fromHex]: 1 })); // lingers 1 turn
+  }
+  // Check if a spirit stepped/was pushed into poison slime.
+  function checkPoisonSlime(spiritId, hexNum) {
+    if (!poisonSlime[hexNum]) return;
+    if (spiritId === 'Metalness_Monster') return; // MM is immune to its own goo
+    const spirit = spirits.find(s => s.id === spiritId);
+    addLog(`🧪 ${spirit?.name} steps in POISON SLIME on #${hexNum} — 1 Vibe damage!`);
+    triggerRumble(spiritId);
+    setTimeout(() => triggerEffectFlash(spiritId, '🧪', 'SLIMED!', '#44ff44'), 80);
+    applyVibeDamage(spiritId, 1, 'Poison Slime');
+  }
+  // Decay all poison slime by 1 turn — called at end-of-turn for each spirit.
+  function decayPoisonSlime() {
+    setPoisonSlime(prev => {
+      const next = {};
+      for (const [hex, turns] of Object.entries(prev)) {
+        if (turns > 1) next[hex] = turns - 1;
+        // else it expires
+      }
+      return next;
+    });
   }
 
   // 🎵 Board mini-goal pickup — called whenever a spirit enters a hex during a move.
@@ -4339,6 +4353,8 @@ function Game({ gameState, onReturnToLobby }) {
             if (occupied) return;
             next = next.map(s => s.id === rival.id ? { ...s, num: dest.num } : s);
             moved.push({ id: rival.id, name: rival.name, to: dest.num });
+            // Pushed into poison slime?
+            setTimeout(() => checkPoisonSlime(rival.id, dest.num), 60);
             // Pushed into the inferno?
             setTimeout(() => checkFlamingDisc(rival.id, dest.num), 100);
             // 🎇 …or into a stage hazard?
@@ -5724,6 +5740,7 @@ function Game({ gameState, onReturnToLobby }) {
           addLog(`🎤 ${target.name} knocked off the Limelight!`);
         }
         if (nextHex.edge) addLog(`⚠️ ${target.name} skids onto the EDGE — #${nextHex.num}!`);
+        checkPoisonSlime(targetId, nextHex.num);
         checkFlamingDisc(targetId, nextHex.num);
         checkStageFxHex(targetId, nextHex.num);
         if (step < spaces) stepOnce();
@@ -5902,25 +5919,10 @@ function Game({ gameState, onReturnToLobby }) {
     }, 80);
   }
 
-  // 🤘 MASTER OF MOSHPITS — wrap a battle WIN's damage. If the winner owns the
-  // skill and has a banked note, the note is burned for +1 Vibe (folded into the
-  // hit so it can finish a knockdown), and the pit floods the board to rock the
-  // rival (only if they survive the blow). attackerId is threaded to applyVibeDamage
-  // so Azrael can credit the knockdown.
+  // Battle WIN damage — simplified after Master of Moshpits rework (no longer
+  // a battle-win trigger). attackerId threaded for Azrael knockdown credit.
   function resolveWinDamage(winnerId, loserId, baseDmg, sourceLabel) {
-    const wNs   = noteStates[winnerId] ?? {};
-    const armed = (wNs.unlockedSkills ?? []).includes('master_moshpits') && !!wNs.bankedNote;
-    let dmg = baseDmg;
-    if (armed) {
-      dmg = baseDmg + 1;
-      const burned = wNs.bankedNote?.note;
-      setNoteStates(prev => ({ ...prev, [winnerId]: { ...prev[winnerId], bankedNote: null } }));
-      addLog(`🤘 MASTER OF MOSHPITS! ${spirits.find(s=>s.id===winnerId)?.name} burns the banked ${burned} — the pit erupts for +1 Vibe!`);
-      // Crowd swarms once the hit (and any knockdown) has settled — only if the
-      // rival is still standing to be rocked.
-      setTimeout(() => triggerMoshpit(loserId), 460);
-    }
-    applyVibeDamage(loserId, dmg, sourceLabel, winnerId);
+    applyVibeDamage(loserId, baseDmg, sourceLabel, winnerId);
   }
 
   // Flood the board around a battered rival with moshing fans for a few seconds.
@@ -5960,6 +5962,8 @@ function Game({ gameState, onReturnToLobby }) {
       s.id !== defenderId ? s : { ...s, num: pushHex.num }
     ));
     addLog(`💢 ${defender.name} pushed to hex #${pushHex.num}!${pushHex.edge ? ' ⚠️ EDGE!' : ''}`);
+    // 🧪 Pushed into poison slime?
+    setTimeout(() => checkPoisonSlime(defenderId, pushHex.num), 60);
     // Pushed into the Disco Inferno?
     setTimeout(() => checkFlamingDisc(defenderId, pushHex.num), 100);
     // 🎇 …or into a stage hazard?
@@ -6253,6 +6257,21 @@ function Game({ gameState, onReturnToLobby }) {
     triggerEffectFlash(targetId, '🎸', 'SMASH!', '#ff3344');
     resolveWinDamage(acting.id, targetId, damage, 'The Smash');
     battleKnockback(acting.id, targetId, knockback);
+    // 🧪 SLIME — Smash also triggers the Slime debuff
+    if (acting.id === 'Metalness_Monster') {
+      const atkNs = noteStates[acting.id] ?? {};
+      const hasSlime = (atkNs.unlockedSkills ?? []).includes('slime');
+      const atkDb = atkNs.dbPoints ?? 0;
+      if (hasSlime && atkDb >= 1) {
+        setNoteStates(prev => ({
+          ...prev,
+          [acting.id]: { ...prev[acting.id], dbPoints: (prev[acting.id]?.dbPoints ?? 0) - 1 },
+          [targetId]:  { ...prev[targetId], halfRefillNextTurn: true },
+        }));
+        addLog(`🧪 SLIMED! ${target.name} is coated in toxic goo — note regen HALVED next turn! (−1 Db)`);
+        setTimeout(() => triggerEffectFlash(targetId, '🧪', 'SLIMED!', '#44ff44'), 250);
+      }
+    }
     if (stepsBeforeSmash > 2) addLog(`🦶 ${acting.name} is rooted by the wind-up — no movement left this turn.`);
     addLog(`💢 ${acting.name} is left wide open — Exposed until their next turn.`);
   }
@@ -6303,6 +6322,94 @@ function Game({ gameState, onReturnToLobby }) {
     });
     if (stepsBefore > 2) addLog(`🦶 ${acting.name} rides the recoil — no movement left this turn.`);
     addLog(`💢 ${acting.name} is left wide open — Exposed until their next turn.`);
+  }
+
+  // 🤘 MASTER OF MOSHPITS — Metalness Monster pulls fans from the stands onto the board.
+  // Sacrifice 3 fans for +2 Drive (temp, until next battle). Fans disappear after.
+  // Free action — no AP cost, but once per turn.
+  function resolveMasterOfMoshpits() {
+    if (!acting || acting.id !== 'Metalness_Monster') return;
+    const ns = noteStates[acting.id] ?? {};
+    if (ns.moshpitUsedThisTurn) { addLog(`🤘 Already moshed this turn!`); return; }
+    const totalFans = (ns.diehardFans ?? 0) + (ns.casualFans ?? 0);
+    if (totalFans < 3) {
+      addLog(`🤘 Not enough fans — need at least 3 (have ${totalFans}).`);
+      return;
+    }
+    // Consume 3 fans (casuals first, then diehards)
+    const casualCost = Math.min(ns.casualFans ?? 0, 3);
+    const diehardCost = 3 - casualCost;
+    setNoteStates(prev => ({
+      ...prev,
+      [acting.id]: {
+        ...prev[acting.id],
+        casualFans:  (prev[acting.id]?.casualFans  ?? 0) - casualCost,
+        diehardFans: (prev[acting.id]?.diehardFans ?? 0) - diehardCost,
+        tempDrive:   (prev[acting.id]?.tempDrive   ?? 0) + 2,
+        moshpitUsedThisTurn: true,
+      },
+    }));
+    addLog(`🤘 MASTER OF MOSHPITS! ${acting.name} sacrifices 3 fans — the pit ERUPTS! +2 Drive!`);
+    triggerEffectFlash(acting.id, '🤘', 'MOSH PIT! +2 DRV', '#ffcc00');
+    // VFX: trigger the moshpit crowd swarm on the Monster's own hex (cosmetic)
+    triggerMoshpit(acting.id);
+  }
+
+  // 6️⃣ NUMBER OF THE BEAST — 666 — Spend 6 Db, distribute 6 points randomly across:
+  // Vibe, Db, Drive (temp until next battle), Sustain (temp), Notes, Fans.
+  // Each of the 6 points picks a random bucket. Pure chaos.
+  function resolveNumberOfTheBeast() {
+    if (!acting || acting.id !== 'Metalness_Monster') return;
+    const ns = noteStates[acting.id] ?? {};
+    if ((ns.dbPoints ?? 0) < 6) { addLog(`6️⃣ Not enough Db — need 6.`); return; }
+
+    // Roll 6 random bucket assignments
+    const buckets = ['vibe', 'db', 'drive', 'sustain', 'notes', 'fans'];
+    const alloc = { vibe: 0, db: 0, drive: 0, sustain: 0, notes: 0, fans: 0 };
+    for (let i = 0; i < 6; i++) {
+      const pick = buckets[Math.floor(Math.random() * buckets.length)];
+      alloc[pick]++;
+    }
+
+    setNoteStates(prev => {
+      const p = prev[acting.id] ?? {};
+      // Notes: refill random used stock slots
+      let newStock = [...(p.noteStock ?? [])];
+      let usedIdx  = [...usedList(p.usedStockIdx)];
+      let notesRestored = 0;
+      for (let i = 0; i < alloc.notes && usedIdx.length > 0; i++) {
+        const slot = usedIdx.shift();
+        newStock[slot] = randomNote(p.rootNote, p.scaleMode);
+        notesRestored++;
+      }
+      // If we got note points but had no used slots, the notes are "wasted" — chaos.
+      return {
+        ...prev,
+        [acting.id]: {
+          ...p,
+          dbPoints:     (p.dbPoints ?? 0) - 6 + alloc.db,   // spend 6, gain back any db rolls
+          vibe:         Math.min((p.vibe ?? 0) + alloc.vibe, 10), // cap at 10
+          tempDrive:    (p.tempDrive ?? 0) + alloc.drive,
+          tempSustain:  (p.tempSustain ?? 0) + alloc.sustain,
+          diehardFans:  (p.diehardFans ?? 0) + alloc.fans,   // new fans are diehard (summoned by the beast!)
+          noteStock:    newStock,
+          usedStockIdx: usedIdx,
+        },
+      };
+    });
+
+    // Build the result summary
+    const parts = [];
+    if (alloc.vibe)    parts.push(`+${alloc.vibe} Vibe`);
+    if (alloc.db)      parts.push(`+${alloc.db} Db`);
+    if (alloc.drive)   parts.push(`+${alloc.drive} Drive`);
+    if (alloc.sustain) parts.push(`+${alloc.sustain} Sustain`);
+    if (alloc.notes)   parts.push(`+${alloc.notes} Notes`);
+    if (alloc.fans)    parts.push(`+${alloc.fans} Fans`);
+    const summary = parts.join(', ');
+    addLog(`6️⃣ NUMBER OF THE BEAST! 🔥 ${acting.name} spends 6 Db — chaos distributes: ${summary}!`);
+    triggerEffectFlash(acting.id, '6️⃣', `666! ${summary}`, '#cc0000');
+    triggerRumble(acting.id);
   }
 
   // 🌌 DISPLACE — Intergalactic 0's signature. He can't run; he WARPS. Teleport to an open
@@ -6596,9 +6703,9 @@ function Game({ gameState, onReturnToLobby }) {
   function startRiffOff(attacker, defender, tier = 'stadium') {
     // The engine generates both riffs + skill modifiers on its seeded rng and
     // stores them in engineState.battle — this client just renders that data.
-    // (slayer/eRush flags are client-supplied until noteStates joins in Ph 5.)
+    // (eRush flag is client-supplied until noteStates joins in Ph 5.)
     const atkNs = noteStates[attacker.id] ?? {};
-    const slayer = (atkNs.unlockedSkills ?? []).includes('riff_slayer') && !!atkNs.riffSlayerArmed;
+    const slayer = false; // Riff Slayer removed — kept as false to avoid touching riffOffStarted signature
     const eRush  = (atkNs.unlockedSkills ?? []).includes('e_rush') && !!atkNs.eRushArmed;
     // Phase R1: pass the attacker's committed melody line so the engine builds
     // the riff from it (Rhythm Creation Device). hasRiff flags riffbook synergy.
@@ -6628,12 +6735,7 @@ function Game({ gameState, onReturnToLobby }) {
     }
     addLog(`🎶 ${attacker.name} calls a ${RIFF_CONTOUR_LABELS[atk.contour]} — ${defender.name} must answer with a ${RIFF_ANSWER_LABELS[def.kind].name}.`);
 
-    // 🗡️ RIFF SLAYER — the rival cracks under pressure: 2–3 answer notes lurch
-    if (slayer) {
-      addLog(`🗡️ RIFF SLAYER! ${attacker.name}'s menace rattles ${defender.name} — ${defGlitch.length} of their notes will LURCH mid-riff. They're on edge!`);
-      // consume the arm so it can't carry into another riff-off
-      setNoteStates(prev => ({ ...prev, [attacker.id]: { ...prev[attacker.id], riffSlayerArmed: false } }));
-    }
+    // (Riff Slayer removed — glitch mechanics no longer active)
 
     // 🎴 いいラッシュ / E-RUSH — every answer note spawns a ghost second key
     if (eRush) {
@@ -7249,6 +7351,23 @@ function Game({ gameState, onReturnToLobby }) {
         }
       }
       applyPendingCombatEffects(attackerId, defenderId); // Mojo Drain / Stagger land on any hit
+      // 🧪 SLIME (Metalness Monster) — on Swing/Smash hit, spend 1 Db to halve
+      // the rival's next turn note regen
+      if (!sonicAttack && attackerId === 'Metalness_Monster') {
+        const atkNs = noteStates[attackerId] ?? {};
+        const hasSlime = (atkNs.unlockedSkills ?? []).includes('slime');
+        const atkDb = atkNs.dbPoints ?? 0;
+        if (hasSlime && atkDb >= 1) {
+          setNoteStates(prev => ({
+            ...prev,
+            [attackerId]: { ...prev[attackerId], dbPoints: (prev[attackerId]?.dbPoints ?? 0) - 1 },
+            [defenderId]: { ...prev[defenderId], halfRefillNextTurn: true },
+          }));
+          const defName = spirits.find(x => x.id === defenderId)?.name;
+          addLog(`🧪 SLIMED! ${defName} is coated in toxic goo — note regen HALVED next turn! (−1 Db)`);
+          setTimeout(() => triggerEffectFlash(defenderId, '🧪', 'SLIMED!', '#44ff44'), 250);
+        }
+      }
       clearBattleBuffs(attackerId, defenderId);
       setBattleState(null);
       setDiceDisplay(null);
@@ -7589,6 +7708,9 @@ function Game({ gameState, onReturnToLobby }) {
       // ── 🎇 STAGE EFFECTS (per round): smoke spreads, lasers re-pattern ────
       tickStageFxRound();
     }
+
+    // 🧪 POISON SLIME decay — each slime tile loses 1 turn of life every spirit-turn
+    decayPoisonSlime();
 
     // Advance queue first so we know who acts next, then replenish their used slots
     setTurnStep('pivot'); // reset HUD flow for next spirit's turn
@@ -8412,6 +8534,8 @@ function Game({ gameState, onReturnToLobby }) {
         if (neighbors.some(n => n.num === hex.num)) return '#00ccff22';
       }
     }
+    // 🧪 Poison slime tint
+    if (poisonSlime[hex.num]) return '#44ff4412';
     return "transparent";
   }
 
@@ -8864,6 +8988,12 @@ function Game({ gameState, onReturnToLobby }) {
           <span style={{fontSize:9,padding:"2px 8px",background:"#1a0800",border:"1px solid #ff6622",borderRadius:10,color:"#ff8844",
             animation:"marqueeBlink 1.4s ease-in-out infinite"}}>
             🔥💿 DISCO INFERNO — {flamingHexes.roundsLeft} round{flamingHexes.roundsLeft!==1?"s":""} left
+          </span>
+        )}
+        {Object.keys(poisonSlime).length > 0 && (
+          <span style={{fontSize:9,padding:"2px 8px",background:"#0a1a0a",border:"1px solid #44ff44",borderRadius:10,color:"#66ff66",
+            animation:"marqueeBlink 1.4s ease-in-out infinite"}}>
+            🧪 POISON SLIME — {Object.keys(poisonSlime).length} hex{Object.keys(poisonSlime).length!==1?"es":""}
           </span>
         )}
         {stageFxBanner && (() => {
@@ -10516,6 +10646,37 @@ function Game({ gameState, onReturnToLobby }) {
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
+            {/* 🤘 MASTER OF MOSHPITS — Metalness Monster sacrifices 3 fans for +2 Drive */}
+            {hasConfirmed && acting?.id === 'Metalness_Monster'
+              && (actingNoteState?.unlockedSkills ?? []).includes('master_moshpits') && (() => {
+              const totalFans = (actingNoteState?.diehardFans ?? 0) + (actingNoteState?.casualFans ?? 0);
+              const used = actingNoteState?.moshpitUsedThisTurn;
+              const canMosh = !used && totalFans >= 3;
+              return (
+                <button className={canMosh ? 'btn active' : 'btn'}
+                  style={{borderColor: canMosh ? '#ffcc00' : '#3a3000', color: canMosh ? '#ffcc00' : '#3a3000'}}
+                  disabled={!canMosh}
+                  title="Master of Moshpits — sacrifice 3 fans for +2 Drive (once per turn)."
+                  onClick={() => { if (canMosh) resolveMasterOfMoshpits(); }}>
+                  🤘 Moshpit{used ? ' (used)' : totalFans < 3 ? ` (${totalFans}/3 fans)` : ''}
+                </button>
+              );
+            })()}
+            {/* 6️⃣ NUMBER OF THE BEAST — spend 6 Db, distribute 6 random stat points */}
+            {hasConfirmed && acting?.id === 'Metalness_Monster'
+              && (actingNoteState?.unlockedSkills ?? []).includes('number_of_the_beast') && (() => {
+              const db = actingNoteState?.dbPoints ?? 0;
+              const canBeast = db >= 6;
+              return (
+                <button className={canBeast ? 'btn active' : 'btn'}
+                  style={{borderColor: canBeast ? '#cc0000' : '#330000', color: canBeast ? '#ff4444' : '#330000'}}
+                  disabled={!canBeast}
+                  title="Number of the Beast — spend 6 Db, gain 6 random stat points across Vibe/Db/Drive/Sustain/Notes/Fans."
+                  onClick={() => { if (canBeast) resolveNumberOfTheBeast(); }}>
+                  6️⃣ Beast{!canBeast ? ` (${db}/6 Db)` : ''}
+                </button>
+              );
+            })()}
             {/* 🌌 DISPLACE — Intergalactic 0 warps to his amp rig (3 AP, 2-turn cooldown) */}
             {hasConfirmed && acting?.id === 'intergalactic_0'
               && (actingNoteState?.unlockedSkills ?? []).includes('displace') && (() => {
@@ -11779,6 +11940,27 @@ function Game({ gameState, onReturnToLobby }) {
                       <text x={cx} y={cy - r*0.12} textAnchor="middle" fontSize={r*1.05}
                         style={{filter:'drop-shadow(0 0 4px #ff6622)'}}>🔥</text>
                     </g>
+                  </g>
+                );
+              })}
+
+              {/* ── POISON SLIME — Metalness Monster passive hazard ── */}
+              {Object.entries(poisonSlime).map(([num, turns]) => {
+                if (turns <= 0) return null;
+                const hex = HEX_BY_NUM[Number(num)];
+                if (!hex) return null;
+                const cx = Math.round(hex.px * SCALE);
+                const cy = Math.round(hex.py * SCALE);
+                return (
+                  <g key={`slime-${num}`} style={{pointerEvents:'none'}}>
+                    <polygon
+                      points={pointyCorners(cx, cy, HS * 0.92)}
+                      fill="#44ff4418" stroke="#44ff44" strokeWidth={0.8}
+                      style={{filter:'drop-shadow(0 0 6px #44ff4466)',
+                        animation:'slimePulse 1.8s ease-in-out infinite',
+                        animationDelay:`${(Number(num) % 5) * 0.2}s`}}/>
+                    <text x={cx} y={cy + HS*0.12} textAnchor="middle" fontSize={HS*0.5}
+                      style={{opacity:0.7, filter:'drop-shadow(0 0 3px #44ff44)'}}>🧪</text>
                   </g>
                 );
               })}
