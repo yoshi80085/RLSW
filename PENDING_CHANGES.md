@@ -15,8 +15,21 @@ Tension & Release, Chromatic Approach, Color Bonus, Chord Resonance. Eight mecha
 **Implementation order:** A → B0 → B1 → B2 → B3 → B4 → B5 → B6 → B7 → B8 → B9 → B10 → C.
 B0 is the spine; several later items assume it. Task C depends on B3 shipping first.
 
-**Status:** ✅ Task A and B0 (a + b) are SHIPPED on branch `feat/chord-strength-b0`.
-Next up is B1. Notes from that pass:
+**Status:** ✅ Task A, B0 (a + b) and B1 are SHIPPED on branch `feat/chord-strength-b0`
+(local only — nothing pushed). Next up is B2. Notes from those passes:
+
+- **B1 correction — the statuses did NOT die with their triggers.** Mojo Drain,
+  Stagger and Burn each have independent sources (Riff-Off "convicted" verdict;
+  an ultimate + the candle event; Pyrotechnics). Only the arming fields were
+  removed. Consequently the `isMojoDrained` gates were **kept** — stripping them
+  as B1 asked would have quietly gutted the Riff-Off penalty.
+- `feedbackBoost` is set at commit and cleared **only** by `consumeAttackCharges`
+  on a hit — there is no turn-start reset, so that call must survive. Separately:
+  nothing actually multiplies damage by `feedbackBoost`; the "Damage ×2" is a HUD
+  badge only. **Pre-existing gap, worth a decision before B5.**
+- A lot of copy still taught the removed mechanics (tier descriptions, skill
+  descriptions, two beginner tips, two tutorial sections, a hint line). All
+  rewritten. B9 will still need a pass for the *context tiers*.
 
 - The B0a warning about keeping `economy.js` and `Game.makeInitialNoteState`
   byte-identical was **stale** — the client duplicate was already deleted at the
@@ -169,7 +182,7 @@ export function stackCapFor(unlockedSkills = []) {
 
 ---
 
-### B1 — Remove combat flavor triggers
+### B1 — Remove combat flavor triggers ✅ SHIPPED
 
 Remove these four entirely. They're skippable, awkward, and their removal is what frees
 the discord unlocks to become the context system instead.
