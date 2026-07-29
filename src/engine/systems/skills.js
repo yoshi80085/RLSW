@@ -14,12 +14,17 @@
 export const ULTIMATE_PREREQS = ["mic", "pedal_dist", "amp_1", "mixer"];
 
 // THE LADDER — climbing a Theory skill also grants the colour-note capabilities
-// (discordUnlocks + the matching unlockedSkills flags) the combat/scoring logic
-// reads. Pure lookup: skillId → discord-tier ids to grant.
+// (discordUnlocks + the matching unlockedSkills flags) the scoring logic reads.
+// Pure lookup: skillId → discord-tier ids to grant.
+//
+// B1: these are now purely SCALE-EXPANSION flags gating `playableScale`. The
+// combat riders they used to carry (Mojo Drain, Burn, cleanse/shield, Stagger)
+// were removed with the triggers that armed them. B3 gives the same tiers their
+// real mechanic — the chord-context ladder.
 export const THEORY_DISCORD_GRANTS = {
-  theory_dom7:      ["discord_1"],              // ♭7 clean + Mojo Drain (Blues Lick)
-  theory_modes:     ["discord_3"],              // tritone clean + Burn (Devil's Interval)
-  theory_chromatic: ["discord_2", "discord_4"], // maj3 cleanse (Borrowed Chord) + chromatic/Stagger
+  theory_dom7:      ["discord_1"],              // ♭7 clean
+  theory_modes:     ["discord_3"],              // tritone clean
+  theory_chromatic: ["discord_2", "discord_4"], // maj3 + chromatic clean
 };
 
 // (CQC_SWING_MAP removed — the CQC branch + %-proc swing effects were CUT in

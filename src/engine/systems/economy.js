@@ -164,11 +164,16 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     chargeFloorTurns: 0,   // ⚡ Charge Zone floor charge (attack dice can't roll below 3)
     chargeCeilTurns:  0,   // ⚡ Charge Zone ceiling charge (attack dice +1 die size)
     statusEffects:   [],
+    // These three statuses SURVIVE B1 — the melody triggers that used to arm
+    // them are gone, but each still has an independent source:
+    //   stagger   ← an ultimate, and the candle event rolling a 1
+    //   mojoDrain ← the Riff-Off "convicted" verdict
+    //   burn      ← Pyrotechnics (walk-in and eruption waves)
+    // Their ARMING fields (burnArmed / pendingMojoDrain / pendingStagger) and
+    // statusShield were removed in B1 — those really were trigger-only.
     stagger:         null,
     mojoDrain:       0,
     burn:            null,
-    burnArmed:       false,
-    statusShield:    false,
     tempDrive:       0,
     tempSustain:     0,
     swingExposed:    false,

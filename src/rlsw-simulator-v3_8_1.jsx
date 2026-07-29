@@ -420,7 +420,7 @@ import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } 
 // turn is your "final". String the right finals together across consecutive
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
-import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, staggerDuration, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote, detectResolvedDiscords } from "./music/cadence.js";
+import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote, detectResolvedDiscords } from "./music/cadence.js";
 import { evaluateChord } from "./music/chords.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -454,35 +454,39 @@ function pickDanceName() {
 //   • Are colored (no longer gray)
 //   • Do NOT count against Harmonic structure (discordCount not incremented)
 //   • CAN contribute to DB points
-//   • Keep all existing special effects (tritone feedback, m7 mojo drain, etc.)
 // Before unlock: grayed out, same rules as any other discord note.
+//
+// ⚠️ B1: these IDs are now PURELY scale-expansion flags. The combat effects they
+// used to carry (m7 → Mojo Drain, tritone → Burn, maj3 → cleanse/shield,
+// chromatic run → Stagger) are gone. The tritone → feedbackBoost link survives.
+// B3 repurposes the same IDs as the tiers of the chord-context ladder.
 const DISCORD_UPGRADE_TIERS = [
   {
     id: 'discord_1',
     label: 'Blues Lick',
     icon: '🎷',
-    desc: "Flat 7th (minor 7th) no longer discord in Major scales. End your track on it to inflict Mojo Drain on next attack target.",
+    desc: "Flat 7th (minor 7th) no longer discord in Major scales — the blues note joins your clean palette.",
     notesByMode: { major: ['minorSeventh'], minor: [] },
   },
   {
     id: 'discord_2',
     label: 'Borrowed Chord',
     icon: '✨',
-    desc: "Major 3rd no longer discord in Minor scales. End your track on it to cleanse one active status effect — or, if you're clean, raise a shield that blocks the next incoming status.",
+    desc: "Major 3rd no longer discord in Minor scales — borrow the brighter third whenever the line wants it.",
     notesByMode: { major: [], minor: ['majorThird'] },
   },
   {
     id: 'discord_3',
     label: "Devil's Interval",
     icon: '🔥',
-    desc: "Tritone never breaks harmony in either mode. End on it to arm a Burn — your next attack sets the rival alight for 2 turns (50% each turn to lose 1 Vibe).",
+    desc: "Tritone never breaks harmony in either mode. A tritone anywhere in the track still lights your feedback charge.",
     notesByMode: { major: ['tritone'], minor: ['tritone'] },
   },
   {
     id: 'discord_4',
     label: 'Chromatic Climb',
     icon: '⚡',
-    desc: "A chromatic run of 3+ notes no longer causes discord. Out-of-scale notes stay grey but the run is clean. Unlocks Stagger.",
+    desc: "A chromatic run of 3+ notes no longer causes discord. Out-of-scale notes stay grey but the run is clean.",
     notesByMode: { major: [], minor: [] },
   },
 ];
@@ -495,8 +499,10 @@ const SKILL_TREE = {
     // ── THE LADDER — Music Theory (universal spine: the consonance→dissonance arc) ──
     // Everyone starts on the Major Pentatonic. Climbing the ladder unlocks a wider,
     // riskier, higher-Fame palette. This route ABSORBS the old Discord path — the
-    // colour-note powers (Blues 7th, Devil's Interval, Chromatic/Stagger, Borrowed
-    // Chord) arrive as you learn the theory that justifies them (see applySkillEffects).
+    // colour notes (Blues 7th, Devil's Interval, Chromatic, Borrowed Chord) arrive
+    // as you learn the theory that justifies them (see applySkillEffects).
+    // B1 stripped their combat riders; B3 gives the same tiers a real mechanic —
+    // each one widens how far your chord's permission reaches into the melody.
     {
       id: 'theory',
       label: 'Music Theory',
@@ -509,11 +515,11 @@ const SKILL_TREE = {
         { id:'theory_minor',     label:'Minor Tonality',       icon:'🌑', dbCost:8,  gated:true, prereq:'theory_major',
           desc:'Unlocks the Minor scale and the Major/Minor pivot. Declare Minor at the pivot for a darker key, Discord-free.' },
         { id:'theory_dom7',      label:'Blues / Dominant 7th', icon:'🎷', dbCost:10, gated:true, prereq:'theory_minor',
-          desc:'The ♭7 joins your clean palette. BLUES LICK: end a track on the ♭7 to arm Mojo Drain on your next target.' },
+          desc:'The ♭7 joins your clean palette. +1 STACK SLOT (4) — the same lesson that lets you play the blues note lets you build the dominant 7th chord.' },
         { id:'theory_modes',     label:'Modal Colour',         icon:'🌀', dbCost:12, gated:true, prereq:'theory_dom7',
-          desc:"Lydian ♯4 & Mixolydian ♭7 become clean. DEVIL'S INTERVAL: the tritone never breaks harmony — end on it to arm a Burn (2 turns, 50%/turn to lose 1 Vibe)." },
+          desc:"Lydian ♯4 & Mixolydian ♭7 become clean, and the tritone never breaks harmony. +1 STACK SLOT (5) — room for 9th chords." },
         { id:'theory_chromatic', label:'Chromatic Mastery',    icon:'⚡', dbCost:16, gated:true, prereq:'theory_modes',
-          desc:'CAPSTONE — every Discord penalty halved; the whole chromatic scale is yours. Chromatic runs of 3+ play clean and STAGGER rivals, and the Major-3rd cleanse (Borrowed Chord) comes online in Minor.' },
+          desc:'CAPSTONE — every Discord penalty halved; the whole chromatic scale is yours. Chromatic runs of 3+ play clean, and the Major 3rd (Borrowed Chord) comes online in Minor.' },
       ],
     },
     // ── THE RIG — your amp deck lives at your corner and grows (AMP_DECK_DESIGN.md §4) ──
@@ -1735,13 +1741,13 @@ function Game({ gameState, onReturnToLobby }) {
     status_effect: {
       title: '⚡ Status Effect!',
       pages: [
-        { body: ['Someone\'s wearing a status effect. The house specials:', '🔥 BURN — Vibe damage over time. 😵 STAGGER — freezes note slots so part of your kit is just... gone. 🧿 MOJO DRAIN — saps your performance and fan draw.', 'They wear off after a few turns — and with the right Theory skill, ending your track on a Major 3rd cleanses one. The badges sit in your Note Stock panel; glance before you plan.'], anchor: 'note-stock' },
+        { body: ['Someone\'s wearing a status effect. The house specials:', '🔥 BURN — Vibe damage over time, straight off the pyro. 😵 STAGGER — freezes note slots so part of your kit is just... gone. 🧿 MOJO DRAIN — saps your performance and fan draw.', 'They wear off after a few turns. The badges sit in your Note Stock panel; glance before you plan.'], anchor: 'note-stock' },
       ],
     },
     intervals: {
       title: '🎵 Special Intervals',
       pages: [
-        { body: ['Some notes in your scale moonlight as weapons — the legend up top shows this turn\'s exact notes:', '🔴 TRITONE — maximum dissonance, the devil\'s interval. 💗 5th / 💜 4th — the load-bearing consonances, your Sustain backbone. 💚 MAJOR 3rd — the healer. 🔵 MINOR 7th — the drainer.', 'All pay bonus DB when played in-scale. Their combat powers — Burn, cleanse, Mojo Drain — switch on as you unlock Discord skills in the Theory Tree.'], anchor: 'interval-legend' },
+        { body: ['Some notes carry more weight than others — the legend up top shows this turn\'s exact notes:', '🔴 TRITONE — maximum dissonance, the devil\'s interval. 💗 5th / 💜 4th — the load-bearing consonances, your Sustain backbone. 💚 MAJOR 3rd — the bright one. 🔵 MINOR 7th — the blues note.', 'The 4th, 5th and octave pay DB when you LAND on them. The coloured ones start out grey and costly; climbing the Theory Tree is what turns them clean.'], anchor: 'interval-legend' },
       ],
     },
     // edge tips — REMOVED (system cut)
@@ -2992,23 +2998,30 @@ function Game({ gameState, onReturnToLobby }) {
     const isTritoneEnd       = hasTritoneUp && lastNote === intervals.tritone;
     // Chromatic run: detect longest run; discord only if discord_4 not unlocked
     const chromRunLen        = detectChromaticRun(melodyLine);
-    const chromStagger       = hasChromClimb ? staggerDuration(chromRunLen) : 0;
     // If discord_4 unlocked and a chrom run of 3+ exists, the whole track is treated as non-discord
     const chromClimbActive   = hasChromClimb && chromRunLen >= 3;
     if (chromClimbActive) allInScale = true;
 
-    // ── 🔥 DEVIL'S INTERVAL → BURN (Tritone last note, discord_3 unlocked) ─────
-    // Ending on the tritone ARMS a Burn for this turn. The next rival you ATTACK
-    // (swing or sonic) catches fire: Burned for 2 turns, 50% each of those turns
-    // to lose 1 Vibe. The arm is consumed by the first hit that lands
-    // (applied in applyPendingCombatEffects, which runs on every hit).
-    let feedbackOverloadMsg = '';
-    const burnArm = isTritoneEnd && !isMojoDrained;
-    if (burnArm) {
-      feedbackOverloadMsg = ' · 🔥 BURN ARMED — next attack sets the rival alight!';
-      addLog(`🔥 ${acting.name}'s Devil's Interval smoulders — your next attack will BURN the target!`);
-      triggerEffectFlash(acting.id, '🔥', 'BURN ARMED!', '#ff5522');
-    }
+    // ── ⚔️ COMBAT FLAVOR TRIGGERS — REMOVED (B1) ─────────────────────────────
+    // Four melody→combat triggers used to hang off these endings: Blues Lick
+    // (♭7 → Mojo Drain), Devil's Interval (tritone → Burn), Borrowed Chord
+    // (maj3 → cleanse/shield) and Stagger (chromatic run). They were skippable,
+    // awkward, and their removal is what frees the discord unlocks to become the
+    // chord-context system (B3) instead.
+    //
+    // The interval DETECTION above stays — B5's Harmonic Lock needs it, and
+    // `hasGatedEnding` still pays Performance Score for the flair of landing one.
+    //
+    // ⚠️ The STATUSES themselves are NOT gone, because none of them were
+    // exclusive to these triggers:
+    //   • mojoDrain ← the Riff-Off "convicted" verdict
+    //   • stagger   ← an ultimate, and the candle event rolling a 1
+    //   • burn      ← Pyrotechnics (walk-in and eruption waves)
+    // Only the ARMING fields (pendingMojoDrain / pendingStagger / burnArmed) and
+    // statusShield — which really was Borrowed-Chord-only — were removed. The
+    // `isMojoDrained` gates below are likewise KEPT: Mojo Drain still lands from
+    // the Riff-Off, and stripping its suppression would quietly gut that penalty.
+    const feedbackOverloadMsg = '';
 
     // ── DRIVE BOOST: diatonic step runs (scale-only, blocked by Mojo Drain) ──
     const diatonicRunLen   = detectDiatonicRun(melodyLine, currentScale);
@@ -3059,32 +3072,12 @@ function Game({ gameState, onReturnToLobby }) {
     const newFeedbackBoost = !isMojoDrained && trackHasTritone;
     const newDieFloorBoost = !isMojoDrained && isOctaveResolution ? 2 : 0;
 
-    // ── MAJOR 3RD: cleanse oldest status effect ───────────────────────────────
-    // Cleanses one ACTIVE debuff — the game's real debuffs are individual flags
-    // (mojoDrain / stagger / tripped / dazed / instrumentDropped), so check those
-    // first; the legacy statusEffects list is kept as a fallback.
-    let newStatusEffects = [...(actingNoteState?.statusEffects ?? [])];
-    let majorThirdMsg = '';
-    let cleansePatch = {};
-    if (isMajorThirdEnd) {
-      if ((actingNoteState?.mojoDrain ?? 0) > 0)   { cleansePatch.mojoDrain = 0;             majorThirdMsg = ' · ✨ Maj3 — cleansed Mojo Drain'; }
-      else if (actingNoteState?.stagger)           { cleansePatch.stagger = null;            majorThirdMsg = ' · ✨ Maj3 — cleansed Stagger'; }
-      else if ((actingNoteState?.burn?.turnsLeft ?? 0) > 0) { cleansePatch.burn = null;       majorThirdMsg = ' · ✨ Maj3 — doused the Burn'; }
-      else if (actingNoteState?.tripped)           { cleansePatch.tripped = false;           majorThirdMsg = ' · ✨ Maj3 — cleansed Tripped'; }
-      else if (actingNoteState?.dazed)             { cleansePatch.dazed = false;             majorThirdMsg = ' · ✨ Maj3 — cleansed Dazed'; }
-      else if (actingNoteState?.instrumentDropped) { cleansePatch.instrumentDropped = false; majorThirdMsg = ' · ✨ Maj3 — recovered instrument'; }
-      else if (newStatusEffects.length > 0) {
-        const removed = newStatusEffects.shift();
-        majorThirdMsg = ` · ✨ Maj3 — cleansed "${removed}"`;
-      } else {
-        // No active debuff — raise a shield that blocks the NEXT incoming status.
-        cleansePatch.statusShield = true;
-        majorThirdMsg = ' · ✨ Maj3 — SHIELD up (blocks next status)';
-      }
-      const shieldUp = !!cleansePatch.statusShield;
-      addLog(`✨ ${acting.name}'s Borrowed Chord rings out${majorThirdMsg.replace(' · ✨ Maj3 —', '')}!`);
-      triggerEffectFlash(acting.id, '✨', shieldUp ? 'SHIELD UP!' : 'CLEANSED!', '#44ffaa');
-    }
+    // ── MAJOR 3RD CLEANSE / SHIELD — REMOVED (B1) ────────────────────────────
+    // `newStatusEffects` is still threaded through the commit write below, so it
+    // survives as a plain pass-through of the existing list.
+    const newStatusEffects = [...(actingNoteState?.statusEffects ?? [])];
+    const majorThirdMsg = '';
+    const cleansePatch = {};
 
     // ── DB SCORING ────────────────────────────────────────────────────────────
     // A track scores its base Decibills, then a DISCHORD costs a flat 1 point
@@ -3209,11 +3202,10 @@ function Game({ gameState, onReturnToLobby }) {
     if (rawSustainBoost > 0)  flashLines.push(`🛡️ Sustain +${newTempSustain}${sustainOverflowToDB > 0 ? ` (↑DB +${sustainOverflowToDB})` : ''}`);
     if (trackHasTritone)      flashLines.push('🔥 Tritone — Damage ×2');
     if (isOctaveResolution)   flashLines.push('🎶 Octave — DB +2');
-    if (isMajorThirdEnd)      flashLines.push(cleansePatch.statusShield ? '✨ Borrowed Chord — Shield Up!' : '✨ Borrowed Chord — Cleanse!');
-    if (isMinorSeventhEnd)    flashLines.push('🎷 Blues Lick — Mojo Drain!');
+    // (B1: Borrowed Chord / Blues Lick / Devil's Interval / Stagger flashes removed
+    //  along with their effects. The endings still pay Performance Score via
+    //  hasGatedEnding, and B5 will give them a Db payoff.)
     // (E-Rush flash removed — Ronin rework)
-    if (isTritoneEnd)         flashLines.push('🔥 Devil\u2019s Interval — Burn armed!');
-    if (chromStagger > 0)     flashLines.push(`⚡ Chromatic Climb ×${chromRunLen} — Stagger ${chromStagger}t`);
     if (chromClimbActive && discordCount > 0) flashLines.push(`⚡ Chromatic Climb — discord pardoned`);
     if (perfFreestyle > 0)    flashLines.push('🌀 Freestyle — first wrong note landed perfect!');
     if (canBank)              flashLines.push(`💾 Banked: ${newBankedNote.note}`);
@@ -3236,10 +3228,10 @@ function Game({ gameState, onReturnToLobby }) {
     const sustMsg    = rawSustainBoost > 0  ? ` · 🛡️ Sustain +${newTempSustain}` : '';
     const triMsg     = trackHasTritone      ? ' · 🔥 Damage ×2'          : '';
     const octMsg     = isOctaveResolution   ? ' · 🎶 Octave DB+2'           : '';
-    const m7Msg      = isMinorSeventhEnd    ? ' · 🎷 Mojo Drain ready' : '';
+    const m7Msg      = '';   // B1 — Blues Lick / Mojo Drain arming removed
     const rsMsg      = '';
     const tritoneEndMsg = '';
-    const chrMsg     = chromStagger > 0     ? ` · ⚡ Stagger ${chromStagger}t`   : '';
+    const chrMsg     = '';   // B1 — chromatic-run Stagger removed
     const chromClimbMsg = (chromClimbActive && discordCount > 0) ? ' · ⚡ Chrom Climb — no discord' : '';
     const speedMsg   = totalNotes > actingSpeed
       ? ` · SPD ${actingSpeed}/${totalNotes}${canBank ? ` · 💾 ${newBankedNote.note} banked` : ' · bank full'}`
@@ -3291,11 +3283,11 @@ function Game({ gameState, onReturnToLobby }) {
       tempDrive:       newTempDrive,
       tempSustain:     newTempSustain,
       bankedNote:      newBankedNote,
-      pendingMojoDrain: isMinorSeventhEnd ? 2 : (actingNoteState?.pendingMojoDrain ?? 0),
-      pendingStagger:  chromStagger > 0 ? chromStagger : (actingNoteState?.pendingStagger ?? 0),
-      burnArmed:       burnArm ? true : (actingNoteState?.burnArmed ?? false),
+      // B1 — pendingMojoDrain / pendingStagger / burnArmed removed with the four
+      // combat flavor triggers. `cleansePatch` is now always empty; it is spread
+      // here only so B5 has an obvious seam to hang the Harmonic Lock patch on.
       transposeCardPending: null,
-      ...cleansePatch, // Borrowed Chord (Maj3 end) — clears one active debuff
+      ...cleansePatch,
     });
     // If a skill was just earned, award it now (adds to unlockedSkills, fires side-effects).
     // Small timeout so the state update above settles before awardTargetSkill reads noteStates.
@@ -3455,8 +3447,6 @@ function Game({ gameState, onReturnToLobby }) {
             .map(c => ({ ...c, exhausted: false })),
           // Prompt major/minor choice at the START of this spirit's turn
           pivotPending: true,
-          // 🔥 Devil's Interval Burn arm likewise only lives for the turn it was set
-          burnArmed: false,
           // 👤 Shadow Illusion: tick down turns, dismiss if expired.
           // Note this counts the Ronin's OWN turns, so a 3-turn double survives
           // three full rounds of rivals guessing wrong.
@@ -3486,88 +3476,24 @@ function Game({ gameState, onReturnToLobby }) {
     }
   }
 
-  // Called when an attack hits — apply pendingMojoDrain / pendingStagger to target.
-  // (Blues Lick charges Mojo Drain, Chromatic Climb charges Stagger; both land
-  // on the next attack target, swing or sonic.)
-  function applyPendingCombatEffects(attackerId, targetId) {
-    // Read current state up-front so we can log outside the updater
-    const atkNow = noteStates[attackerId] ?? {};
-    const tgtNow = noteStates[targetId] ?? {};
-    const willDrain   = (atkNow.pendingMojoDrain ?? 0) > 0 && (tgtNow.mojoDrain ?? 0) === 0;
-    const willStagger = (atkNow.pendingStagger ?? 0) > 0 && !tgtNow.stagger;
-    const atkName = spirits.find(s => s.id === attackerId)?.name;
-    const tgtName = spirits.find(s => s.id === targetId)?.name;
-    // ✨ Borrowed Chord shield blocks Mojo Drain / Stagger entirely — the
-    // attacker still spends the charge (it was "used up" breaking the shield).
-    if ((willDrain || willStagger) && consumeStatusShield(targetId)) {
-      addLog(`✨ ${tgtName} is shielded — ${atkName}'s status attack fizzles!`);
-      setNoteStates(prev => ({ ...prev, [attackerId]: { ...(prev[attackerId] ?? {}),
-        pendingMojoDrain: 0, pendingStagger: 0, burnArmed: false } }));
-      return;
-    }
-    if (willDrain) {
-      addLog(`💧 ${atkName}'s Blues Lick lands — ${tgtName} is MOJO DRAINED for ${atkNow.pendingMojoDrain} turn${atkNow.pendingMojoDrain !== 1 ? 's' : ''}!`);
-      showTip('status_effect');
-    }
-    if (willStagger) {
-      addLog(`⚡ ${atkName}'s attack STAGGERS ${tgtName} — 2 note slots frozen for ${atkNow.pendingStagger} turn${atkNow.pendingStagger !== 1 ? 's' : ''}!`);
-      showTip('status_effect');
-    }
-    // 💥 Board VFX — staggered after any CQC flashes already queued
-    if (willDrain)   setTimeout(() => triggerEffectFlash(targetId, '💧', 'MOJO DRAINED!', '#4499ff'), 150);
-    if (willStagger) setTimeout(() => triggerEffectFlash(targetId, '⚡', 'STAGGERED!', '#ff8800'), willDrain ? 650 : 150);
-
+  // Called when an attack hits. B1 gutted most of this: Mojo Drain, Stagger,
+  // Burn and the Borrowed Chord shield were all armed by the four melody
+  // triggers, and all four are gone. What SURVIVES is the attacker spending
+  // their tritone feedback charge on the hit.
+  //
+  // ⚠️ Do not fold this into the callers. `feedbackBoost` is set at commit and
+  // this is the ONLY place that clears it — there is no turn-start reset — so
+  // dropping this call would leave the charge lit permanently.
+  //
+  // (Kept deliberately per the plan's "do NOT remove the tritone → feedbackBoost
+  // link". Worth knowing: feedbackBoost is currently read only by the HUD badge;
+  // nothing multiplies damage by it. That gap predates B1.)
+  function consumeAttackCharges(attackerId) {
     setNoteStates(prev => {
       const atk = prev[attackerId];
-      const tgt = prev[targetId];
-      if (!atk || !tgt) return prev;
-
-      let newAtk = { ...atk, pendingMojoDrain: 0, pendingStagger: 0, feedbackBoost: false };
-      let newTgt = { ...tgt };
-
-      // Mojo Drain: strip boosts + silence for 2 turns (blocked if already drained)
-      if ((atk.pendingMojoDrain ?? 0) > 0 && (tgt.mojoDrain ?? 0) === 0) {
-        newTgt = {
-          ...newTgt,
-          mojoDrain:      atk.pendingMojoDrain,
-          feedbackBoost:  false,
-          dieFloorBoost:  0,
-          // statusEffects preserved — Mojo Drain silences future boosts, doesn't cleanse past debuffs
-        };
-      }
-
-      // Stagger: pick 2 random stock slots, freeze them for N turns (doesn't stack)
-      if ((atk.pendingStagger ?? 0) > 0 && !(tgt.stagger)) {
-        const allSlots = Array.from({ length: 8 }, (_, i) => i);
-        // Shuffle and pick 2
-        for (let i = allSlots.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [allSlots[i], allSlots[j]] = [allSlots[j], allSlots[i]];
-        }
-        const frozenSlots = allSlots.slice(0, 2);
-        newTgt = {
-          ...newTgt,
-          stagger: { slots: frozenSlots, turnsLeft: atk.pendingStagger },
-        };
-      }
-
-      return { ...prev, [attackerId]: newAtk, [targetId]: newTgt };
+      if (!atk || !atk.feedbackBoost) return prev;
+      return { ...prev, [attackerId]: { ...atk, feedbackBoost: false } };
     });
-
-    // 🔥 BURN — Devil's Interval armed this attack; the struck rival catches fire.
-    const atkBurnArmed = (engineRef.current.noteStates?.[attackerId] ?? noteStates[attackerId] ?? {}).burnArmed;
-    if (atkBurnArmed) {
-      // The charge is spent on this hit either way — disarm now.
-      setNoteStates(prev => ({ ...prev, [attackerId]: { ...(prev[attackerId] ?? {}), burnArmed: false } }));
-      if (consumeStatusShield(targetId)) {
-        addLog(`✨ ${tgtName} is shielded — ${atkName}'s Burn fizzles out!`);
-      } else {
-        setNoteStates(prev => ({ ...prev, [targetId]: { ...(prev[targetId] ?? {}), burn: { turnsLeft: 2 } } }));
-        addLog(`🔥 ${atkName}'s Devil's Interval IGNITES ${tgtName} — BURNED for 2 turns (50%/turn to lose 1 Vibe)!`);
-        showTip('status_effect');
-        setTimeout(() => triggerEffectFlash(targetId, '🔥', 'BURNED!', '#ff5522'), 300);
-      }
-    }
   }
 
   // ─── INITIAL SKILL — auto-grant THE FULL SCALE at the very start of a spirit's first turn ───
@@ -3676,8 +3602,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'theory_major')     addLog(`🎼 ${spirit?.name} — THE FULL SCALE! The 4th & 7th are now Discord-free — your Major scale is complete.`);
     if (skillId === 'theory_minor')     addLog(`🌑 ${spirit?.name} — MINOR TONALITY! You can now declare Minor at the pivot and play a minor key, clean.`);
     if (skillId === 'theory_sus')       addLog(`🕊️ ${spirit?.name} — SUSPENSIONS! Ending on the 2nd or 4th now rings out for bonus Flair.`);
-    if (skillId === 'theory_dom7')      addLog(`🎷 ${spirit?.name} — DOMINANT 7th! The ♭7 joins your clean palette — blues away.`);
-    if (skillId === 'theory_modes')     addLog(`🌀 ${spirit?.name} — MODAL SHIFT! Lydian ♯4 and Mixolydian ♭7 are now clean color tones.`);
+    if (skillId === 'theory_dom7')      addLog(`🎷 ${spirit?.name} — DOMINANT 7th! The ♭7 joins your clean palette, and your stacks open a 4th slot — you can build the chord you just learned to play over.`);
+    if (skillId === 'theory_modes')     addLog(`🌀 ${spirit?.name} — MODAL SHIFT! Lydian ♯4 and Mixolydian ♭7 are now clean color tones, and your stacks open a 5th slot — 9th chords are in reach.`);
     if (skillId === 'theory_chromatic') addLog(`⚡ ${spirit?.name} — CHROMATIC MASTERY! All Discord penalties are halved.`);
     // THE LADDER absorbs the old Discord path: climbing Theory grants the colour-note
     // capabilities the combat logic checks for (discordUnlocks + unlockedSkills flags).
@@ -3981,20 +3907,8 @@ function Game({ gameState, onReturnToLobby }) {
   // rework retired the Stance system that briefly held this). The status FIELDS
   // (tripped/dazed/instrumentDropped) remain in state + engine ticks — nothing
   // sets them from combat any more, but events/future systems may.
-  // ── ✨ BORROWED CHORD SHIELD ──────────────────────────────────────────────
-  // Returns true (and consumes the shield) if the spirit is holding a Borrowed
-  // Chord shield. One shield blocks the ENTIRE next incoming negative-status
-  // event (CQC procs, Mojo Drain, Stagger, Burn). Loud feedback so it's never
-  // ambiguous whether it fired.
-  function consumeStatusShield(spiritId) {
-    const ns = engineRef.current.noteStates?.[spiritId] ?? noteStates[spiritId] ?? {};
-    if (!ns.statusShield) return false;
-    setNoteStates(prev => ({ ...prev, [spiritId]: { ...(prev[spiritId] ?? {}), statusShield: false } }));
-    const sp = spirits.find(s => s.id === spiritId);
-    addLog(`✨ ${sp?.name}'s Borrowed Chord shield absorbs the hit — status BLOCKED!`);
-    triggerEffectFlash(spiritId, '✨', 'SHIELDED!', '#44ffaa');
-    return true;
-  }
+  // (✨ BORROWED CHORD SHIELD removed in B1 — `consumeStatusShield` and the
+  //  `statusShield` field went with the maj3 trigger that was its only source.)
 
   // ─── BOARD CARD SYSTEM ───────────────────────────────────────────────────────
   function spawnBoardCards(currentCards /* currentSpirits, currentAmps */) {
@@ -8127,7 +8041,7 @@ function Game({ gameState, onReturnToLobby }) {
         addLog(`👑 ${winnerName} claims the Headliner title!`);
         triggerEffectFlash(winnerId, '👑', 'HEADLINER!', '#ffd700');
       }
-      if (attackerWon) applyPendingCombatEffects(attackerId, defenderId);
+      if (attackerWon) consumeAttackCharges(attackerId);
     }
     clearBattleBuffs(attackerId, defenderId);
     riffEngineRef.current?.timers?.forEach(clearTimeout);
@@ -8337,7 +8251,7 @@ function Game({ gameState, onReturnToLobby }) {
           if (report) addLog(`🎵 ${report.added.length} Lost Chord${report.added.length !== 1 ? 's' : ''} knocked loose from the impact!`);
         }
       }
-      applyPendingCombatEffects(attackerId, defenderId); // Mojo Drain / Stagger land on any hit
+      consumeAttackCharges(attackerId); // B1: only the tritone feedback charge is spent now
       // 🧪 SLIME (Metalness Monster) — on Swing/Smash hit, spend 1 Db to halve
       // the rival's next turn note regen
       if (!sonicAttack && attackerId === 'Metalness_Monster') {
@@ -8538,7 +8452,7 @@ function Game({ gameState, onReturnToLobby }) {
                 } else {
                   awardThrashFame(attackerId, defenderId);
                 }
-                applyPendingCombatEffects(attackerId, defenderId); // Mojo Drain / Stagger land on any hit
+                consumeAttackCharges(attackerId); // B1: only the tritone feedback charge is spent now
                 clearBattleBuffs(attackerId, defenderId);
                 setBattleState(null);
                 setDiceDisplay(null);
@@ -10475,7 +10389,7 @@ function Game({ gameState, onReturnToLobby }) {
                 <div style={{flex:1, minWidth:170, order:1, display:"flex", flexDirection:"column",
                   borderRight:`1px solid ${s.color}22`}}>
                 {/* Status badges */}
-                {((ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||ns.statusShield||ns.burnArmed||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0) && (
+                {((ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0) && (
                   <div style={{display:"flex",gap:3,flexWrap:"wrap",padding:"4px 8px",borderTop:`1px solid ${s.color}22`}}>
                     {(ns.elevenTurns??0)>0&&(
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a1400",border:"1px solid #ffcc44",color:"#ffcc44"}}>
@@ -10500,14 +10414,7 @@ function Game({ gameState, onReturnToLobby }) {
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#2a0800",border:"1px solid #ff552288",color:"#ff7744"}}>
                         🔥 BURNING {ns.burn.turnsLeft}t
                       </span>)}
-                    {ns.statusShield&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#03261a",border:"1px solid #44ffaa88",color:"#44ffaa"}}>
-                        ✨ SHIELDED — blocks next status
-                      </span>)}
-                    {ns.burnArmed&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#2a0e00",border:"1px solid #ff5522",color:"#ff8855"}}>
-                        🔥 BURN ARMED — next attack
-                      </span>)}
+                    {/* B1 — SHIELDED and BURN ARMED badges removed with their triggers */}
                     {ns.tripped&&(
                       <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#0a1a0a",border:"1px solid #88ff8866",color:"#aaffaa"}}>
                         🌀 TRIPPED — half move

@@ -1256,7 +1256,7 @@ const config = {
     fameChanged("vera", -1),        // knockdown penalty path (floors at 0)
     fansChanged("wildaxe", { casuals: 9, diehards: 4, centerStreak: 1, fanActedThisTurn: true }),
     fansChanged("vera", { fanLag: 3, centerStreak: 0 }),
-    noteSheetPatched("wildaxe", { dbPoints: 2, unlockedSkills: ["mic"], burnArmed: true }),
+    noteSheetPatched("wildaxe", { dbPoints: 2, unlockedSkills: ["mic"], feedbackBoost: true }),
     noteSheetPatched("vera", { stagger: { turnsLeft: 1 }, modCards: [] }),
     winnerDeclared("wildaxe"),
     turnEnded(),
@@ -2078,7 +2078,7 @@ const config = {
     fameChanged("vera", -1),
     fansChanged("wildaxe", { casuals: 9, diehards: 4, centerStreak: 1, fanActedThisTurn: true }),
     fansChanged("vera", { fanLag: 3, centerStreak: 0 }),
-    noteSheetPatched("wildaxe", { dbPoints: 2, unlockedSkills: ["mic"], burnArmed: true }),
+    noteSheetPatched("wildaxe", { dbPoints: 2, unlockedSkills: ["mic"], feedbackBoost: true }),
     noteSheetPatched("vera", { stagger: { turnsLeft: 2 }, modCards: [] }),
     spiritPatched("wildaxe", { vibe: 5, drive: 7 }),
     spiritPatched("vera", { num: 63, facing: 1 }),

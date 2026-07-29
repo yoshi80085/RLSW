@@ -95,7 +95,11 @@ export function detectChromaticRun(track) {
   return maxRun;
 }
 
-// Stagger duration from chromatic run length
+// Stagger duration from chromatic run length.
+// ⚠️ UNUSED as of B1 — the chromatic-run → Stagger trigger was removed. Kept
+// because B6 rescores the chromatic run as a Db payout on the same length
+// thresholds (3/4/5+), so this curve is the obvious starting point. Delete it
+// if B6 lands on a different shape.
 export function staggerDuration(runLen) {
   if (runLen >= 5) return 3;
   if (runLen === 4) return 2;

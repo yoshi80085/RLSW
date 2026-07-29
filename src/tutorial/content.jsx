@@ -499,9 +499,9 @@ function TutSection_Intervals() {
   const intervals = [
     { note:"F",  label:"4th",      color:"#cc55ff", effect:"DB",         icon:"💜", desc:"A stable, consonant interval — score DB by ending your track here." },
     { note:"G",  label:"5th",      color:"#ff55aa", effect:"DB",         icon:"💗", desc:"The strong perfect fifth — also banks DB when it ends your track." },
-    { note:"E",  label:"Maj 3rd",  color:"#44ffaa", effect:"🔒 Cleanse / Shield", icon:"✨", desc:"EARNED (Borrowed Chord, Minor key only): end on the major third to cleanse a status — or, if you're clean, raise a shield that blocks the next one." },
-    { note:"Bb", label:"Min 7th",  color:"#4499ff", effect:"🔒 Mojo Drain",  icon:"🎷", desc:"EARNED (Blues Lick): end here to arm a Mojo Drain debuff on your next target." },
-    { note:"F#", label:"Tritone",  color:"#ff3300", effect:"🔒 Burn",       icon:"🔥", desc:"The devil's interval. EARNED (Devil's Interval): end your track on it to arm a Burn — your next hit sets the rival alight for 2 turns." },
+    { note:"E",  label:"Maj 3rd",  color:"#44ffaa", effect:"🔒 Clean note", icon:"✨", desc:"EARNED (Borrowed Chord, Minor key only): the brighter third stops counting as discord, so you can borrow it whenever the line wants it." },
+    { note:"Bb", label:"Min 7th",  color:"#4499ff", effect:"🔒 Clean note",  icon:"🎷", desc:"EARNED (Blues Lick): the flat 7th joins your clean palette in Major — the blues note, no longer a wrong note." },
+    { note:"F#", label:"Tritone",  color:"#ff3300", effect:"🔒 Feedback",   icon:"🔥", desc:"The devil's interval. EARNED (Devil's Interval): it stops breaking harmony in either mode, and a tritone anywhere in your track lights your feedback charge." },
     { note:"C",  label:"Octave",   color:"#44aaff", effect:"Die Floor +2",      icon:"🎶", desc:"Open and close on the same note to raise your attack die's floor — no more low rolls." },
   ];
   return (
@@ -509,8 +509,8 @@ function TutSection_Intervals() {
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
         An <span style={{color:"#aa88ff"}}>interval</span> is the musical distance between your
         Root Note and a note you play. The <span style={{color:"#cc55ff"}}>4th</span>, <span style={{color:"#ff55aa"}}>5th</span> and <span style={{color:"#44aaff"}}>octave</span> endings
-        work from your very first turn. The <span style={{color:"#44ffaa"}}>Maj 3rd</span>, <span style={{color:"#4499ff"}}>Min 7th</span> and <span style={{color:"#ff3300"}}>Tritone</span> effects
-        (marked 🔒) are <span style={{color:"#66ccff"}}>earned</span> — they come online as you climb the Music Theory ladder.
+        work from your very first turn. The <span style={{color:"#44ffaa"}}>Maj 3rd</span>, <span style={{color:"#4499ff"}}>Min 7th</span> and <span style={{color:"#ff3300"}}>Tritone</span> colours
+        (marked 🔒) are <span style={{color:"#66ccff"}}>earned</span> — climbing the Music Theory ladder widens which notes count as clean.
       </p>
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
         <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>INTERVAL REFERENCE (Root = C)</div>
@@ -551,44 +551,38 @@ function TutSection_Dischord() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        <span style={{color:"#ff6600"}}>Dischord</span> notes sit outside your scale, so they
-        earn no Decibills — but they're far from dead weight. Played right, they
-        unleash brutal combat effects all their own.
+        <span style={{color:"#ff6600"}}>Dischord</span> notes sit outside your scale. They cost
+        you Decibills — but the Music Theory ladder steadily widens what counts as
+        inside, until notes that were wrong become the most interesting ones you own.
       </p>
 
       {/* Dischord track */}
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>CHROMATIC RUN → STAGGER</div>
+        <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>CHROMATIC RUN</div>
         <MockNoteTrack notes={["C","C#","D","D#","E"]} rootNote="C"
           noteTypes={["inScale","dischord","inScale","dischord","majorThird"]}/>
         <div style={{marginTop:6, display:"flex", gap:6, alignItems:"center", flexWrap:"wrap"}}>
           <div style={{fontSize:8, color:"#ff6600", padding:"2px 6px", background:"#1f0d00", borderRadius:3, border:"1px solid #ff660044"}}>
             ⚡ 2 Dischord notes
           </div>
-          <MockFlashBadge text="⚡ Chromatic ×3 — Stagger 2t" color="#ff8800"/>
+          <MockFlashBadge text="⚡ Chromatic Climb — discord pardoned" color="#ff8800"/>
         </div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"8px 0 0", lineHeight:1.6}}>
-          Three or more semitone steps in a row hits your target with <span style={{color:"#ff8800"}}>Stagger</span>,
-          hiding two of their Note Stock slots for several turns.
+          Walking three or more semitone steps in a row is a <span style={{color:"#ff8800"}}>chromatic run</span>.
+          Once you've earned Chromatic Climb the whole run reads as clean, dischord notes and all.
         </p>
       </div>
 
-      {/* Stagger card */}
-      <MockSpiritCard name="Metalness Monster" style="Shred" drive={7} sustain={6} vibe={3} maxVibe={5} color="#ffcc00"
-        status="⚡ STAGGER 2t"/>
-
-      {/* Mojo Drain */}
+      {/* Colour notes */}
       <div style={{background:"#050c18", border:"1px solid #1155ff33", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#4499ff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>MOJO DRAIN</div>
+        <div style={{fontSize:8, color:"#4499ff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>EARNING THE COLOUR NOTES</div>
         <div style={{display:"flex", gap:8, alignItems:"center", marginBottom:6}}>
           <MockNoteHex note="Bb" type="minorSeventh"/>
-          <div style={{fontSize:9, color:"#a0b8cc"}}>Finish your track on the minor 7th, then attack to slap Mojo Drain on your enemy.</div>
+          <div style={{fontSize:9, color:"#a0b8cc"}}>The flat 7th is grey until Blues Lick — then it's just another note you can play.</div>
         </div>
-        <div style={{fontSize:8, color:"#4499ff", padding:"4px 8px", background:"#05101a", border:"1px solid #1155ff66",
-          borderRadius:3, display:"inline-block"}}>💧 MOJO DRAIN 3t</div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"8px 0 0"}}>
-          While Mojo Drained, a Spirit can't benefit from any of its bonuses — Drive,
-          Sustain and the rest are all locked out for several turns.
+          Each rung of the Theory ladder turns another grey note colour: the ♭7, the
+          major 3rd in minor, the tritone, and finally whole chromatic runs.
         </p>
       </div>
     </div>
