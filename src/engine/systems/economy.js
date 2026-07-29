@@ -1,7 +1,7 @@
 // ─── ENGINE SYSTEM: ECONOMY (note-track / skills) ────────────────────────────
 // Phase 5a: contract fixes ahead of the full economy extraction (Phase 5c flip).
 
-import { pitchIndex, NOTE_POOL, canonicalRoot, semitonesUp } from "../../music/notes.js";
+import { pitchIndex, NOTE_POOL, canonicalRoot } from "../../music/notes.js";
 import {
   detectMotifRepeat, refillStock,
   detectRepeatPattern, detectStyleRun, detectContourTurn,
@@ -129,26 +129,27 @@ export function performanceScore({
 // param through `randomNote`/`refillStock`). ~60 plain-JSON fields; no Set (5a),
 // no React, no FX.
 //
-// ⚠️ KEEP IN SYNC with Game.makeInitialNoteState until the 5c client flip. Both
-// are byte-identical today; the client's copy is deleted when the client reads
-// `engineState.noteStates` (then this becomes the single source). `rand` is a
-// 0..1 PRNG — the engine passes its seeded rng; it defaults to Math.random so the
-// (still-live) client copy behaves exactly as before.
+// This is the SINGLE SOURCE for the per-spirit sheet — the client's duplicate
+// `Game.makeInitialNoteState` was deleted at the 5c client flip. `rand` is a
+// 0..1 PRNG — the engine passes its seeded rng; it defaults to Math.random.
 export function makeInitialNoteState(spiritId, rand = Math.random) {
   const rawRoot = NOTE_POOL[Math.floor(rand() * NOTE_POOL.length)];
   const initMode = "major";
   const root = canonicalRoot(rawRoot, initMode);
   // 🗡️ SHREDDING RONIN carries a deeper well: 11 stock slots instead of 10.
   const stockSize = spiritId === "cosmic_ronin" ? 11 : 10;
-  const fifth = semitonesUp(root, 7);
   return {
     noteStock:       refillStock(root, initMode, stockSize, rand),
     melodyLine:      [],
     // ── 🎸 DRIVE / SUSTAIN SPLIT (DRIVE_SUSTAIN_SPLIT_DESIGN.md) ──
-    // Both stacks start with a Power Chord (R+5) — D5/S5, costs no pool notes.
-    driveStack:      [root, fifth],
-    sustainStack:    [root, fifth],
-    chordStack:      [root, fifth],  // DEPRECATED — kept for save compat (like edgeStage)
+    // B0a: stacks seed with the ROOT ALONE — a Single note (D3/S3), not a free
+    // Power Chord. The 5th now costs a stock note like any other, so the power
+    // chord is EARNED with your first stack commit. With STACK_COMMIT_BUDGET = 3
+    // a full triad is still reachable on turn one if you spend for it — this
+    // adds a choice, it does not impose a delay.
+    driveStack:      [root],
+    sustainStack:    [root],
+    chordStack:      [root],  // DEPRECATED — kept for save compat (like edgeStage)
     stackCommitsThisTurn: 0,         // 0–STACK_COMMIT_BUDGET per turn, resets at turn start
     usedStockIdx:    [], // insertion-ordered array of spent stock-slot indices (JSON-safe; was a Set)
     rootNote:        root,

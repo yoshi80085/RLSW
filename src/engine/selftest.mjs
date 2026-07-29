@@ -54,7 +54,7 @@ import {
   LIMELIGHT_HEX, UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT,
   FAN_BORED_AFTER, FAN_DECAY,
   TOKEN_MAX, EVENT_RESPAWN_TURNS, CHARGE_ZONE_COOLDOWN,
-  STACK_CAP, STACK_COMMIT_BUDGET, STYLE_DB_CAP,
+  STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor, STACK_COMMIT_BUDGET, STYLE_DB_CAP,
 } from "../data/gameConstants.js";
 import { hexRingFromCenter } from "../board/boardHelpers.js";
 import { HEX_BY_NUM, EDGE_HEX_NUMS } from "../board/hexMap.js";
@@ -2428,8 +2428,21 @@ const config = {
 // -- Drive/Sustain stack split: constants + spend helpers -----------------------
 {
   // Constants are sensible
-  assert.equal(STACK_CAP, 5, "STACK_CAP = 5");
+  assert.equal(STACK_CAP_BASE, 3, "STACK_CAP_BASE = 3");
+  assert.equal(STACK_CAP_MAX, 5, "STACK_CAP_MAX = 5");
   assert.equal(STACK_COMMIT_BUDGET, 3, "STACK_COMMIT_BUDGET = 3");
+
+  // ── B0b: stackCapFor — capacity is EARNED, one slot per gating tier ──
+  assert.equal(stackCapFor([]), 3, "no Theory → 3 slots");
+  assert.equal(stackCapFor(undefined), 3, "undefined skills → 3 slots (safe default)");
+  assert.equal(stackCapFor(['amp_1']), 3, "unrelated skills don't grant slots");
+  assert.equal(stackCapFor(['theory_minor']), 3, "theory_minor grants no slot");
+  assert.equal(stackCapFor(['theory_dom7']), 4, "theory_dom7 → slot 4");
+  assert.equal(stackCapFor(['theory_modes']), 4, "theory_modes alone → 4 (slots aren't ordered)");
+  assert.equal(stackCapFor(['theory_dom7', 'theory_modes']), 5, "both tiers → 5 slots");
+  assert.equal(
+    stackCapFor(['theory_major', 'theory_minor', 'theory_dom7', 'theory_modes', 'theory_chromatic']),
+    5, "full Theory branch is capped at STACK_CAP_MAX");
 
   // ── sonicDriveSpend — always pops 1 from Drive ──
   assert.deepEqual(sonicDriveSpend(['C', 'E', 'G']), { driveStack: ['C', 'E'] }, "sonic pops last Drive note");
@@ -2474,9 +2487,13 @@ const config = {
   const testNS = makeInitialNoteState("test_spirit");
   assert.ok(Array.isArray(testNS.driveStack), "driveStack is an array");
   assert.ok(Array.isArray(testNS.sustainStack), "sustainStack is an array");
-  assert.equal(testNS.driveStack.length, 2, "driveStack starts with power chord");
-  assert.equal(testNS.sustainStack.length, 2, "sustainStack starts with power chord");
+  // B0a: stacks seed with the ROOT ALONE — a Single note, not a free power chord.
+  assert.equal(testNS.driveStack.length, 1, "driveStack seeds with 1 note (B0a)");
+  assert.equal(testNS.sustainStack.length, 1, "sustainStack seeds with 1 note (B0a)");
+  assert.deepEqual(testNS.driveStack, [testNS.rootNote], "drive seed is the root");
+  assert.deepEqual(testNS.sustainStack, [testNS.rootNote], "sustain seed is the root");
   assert.deepEqual(testNS.driveStack, testNS.sustainStack, "both stacks identical at start");
+  assert.deepEqual(testNS.chordStack, [testNS.rootNote], "deprecated chordStack stays in step");
   assert.equal(testNS.stackCommitsThisTurn, 0, "stackCommitsThisTurn starts at 0");
   assert.equal(testNS.noteStock.length, 10, "base stock is 10");
   // Ronin gets 11

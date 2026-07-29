@@ -3,8 +3,10 @@
 // -----------------------------------------------------------------------------
 // "Your harmony IS your fight." A spirit's Drive/Sustain are read from the chord
 // implied by the notes they committed, not a static stat sheet.
-//   • Consonance buys Sustain (a stable wall).      • Dissonance buys Drive (aggression).
-//   • Sophistication buys total power.              • A note-set with no chord = a Tone Cluster.
+//   • Note count buys total power.                  • A note-set with no chord = a Tone Cluster.
+//   • Consonance/dissonance is a ±1 tilt on top: consonant leans Sustain (a stable
+//     wall), dissonant leans Drive (aggression). The tilt colours the chord; it no
+//     longer decides how strong it is.
 //
 // evaluateChord(notes) scans the DISTINCT pitch classes present and reports the
 // strongest chord that is fully contained in them (subset match), so a melodic
@@ -17,27 +19,36 @@ export const PC_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
 // Chord templates as interval sets relative to the root (semitones, mod 12).
 // `rank` = sophistication: higher wins when several templates match a root.
-// drive / sustain come straight from the design table (DESIGN_AUDIT_v2 §6.3).
 // Ordered rank-desc so the first match for a given root is that root's best.
+//
+// drive / sustain follow the note-count curve (PENDING_CHANGES Task A):
+//   base from note count — 2-note=5, 3-note=6, 4-note=7, 5-note=8
+//   then a ±1 affinity tilt — drive-lean, sustain-lean, or neutral.
+// More notes = stronger chord. Consonance/dissonance is the tilt, not the driver;
+// the old model punished players for correctly spelling a major triad.
 export const CHORD_TEMPLATES = [
-  { id:'dom9',  label:'Dominant 9',   ivals:[0,4,7,10,2], rank:7, drive:9, sustain:5 },
-  { id:'min9',  label:'Minor 9',      ivals:[0,3,7,10,2], rank:7, drive:8, sustain:6 },
-  { id:'dim7',  label:'Diminished 7', ivals:[0,3,6,9],    rank:6, drive:9, sustain:2 },
-  { id:'dom7',  label:'Dominant 7',   ivals:[0,4,7,10],   rank:6, drive:8, sustain:4 },
-  { id:'maj7',  label:'Major 7',      ivals:[0,4,7,11],   rank:6, drive:5, sustain:8 },
-  { id:'min7',  label:'Minor 7',      ivals:[0,3,7,10],   rank:6, drive:6, sustain:7 },
-  { id:'m7b5',  label:'Half-dim 7',   ivals:[0,3,6,10],   rank:6, drive:7, sustain:4 },
-  { id:'dim',   label:'Diminished',   ivals:[0,3,6],      rank:5, drive:9, sustain:2 },
-  { id:'aug',   label:'Augmented',    ivals:[0,4,8],      rank:5, drive:8, sustain:3 },
-  { id:'maj',   label:'Major triad',  ivals:[0,4,7],      rank:4, drive:4, sustain:7 },
-  { id:'min',   label:'Minor triad',  ivals:[0,3,7],      rank:4, drive:5, sustain:6 },
-  { id:'sus2',  label:'Sus2',         ivals:[0,2,7],      rank:3, drive:6, sustain:4 },
-  { id:'sus4',  label:'Sus4',         ivals:[0,5,7],      rank:3, drive:6, sustain:4 },
-  { id:'power', label:'Power chord',  ivals:[0,7],        rank:2, drive:5, sustain:5 },
+  // 5-note (base 8)
+  { id:'dom9',  label:'Dominant 9',   ivals:[0,4,7,10,2], rank:7, drive:9, sustain:7 },  // drive-lean
+  { id:'min9',  label:'Minor 9',      ivals:[0,3,7,10,2], rank:7, drive:7, sustain:9 },  // sustain-lean
+  // 4-note (base 7)
+  { id:'dim7',  label:'Diminished 7', ivals:[0,3,6,9],    rank:6, drive:8, sustain:6 },  // drive-lean
+  { id:'dom7',  label:'Dominant 7',   ivals:[0,4,7,10],   rank:6, drive:8, sustain:6 },  // drive-lean
+  { id:'maj7',  label:'Major 7',      ivals:[0,4,7,11],   rank:6, drive:6, sustain:8 },  // sustain-lean
+  { id:'min7',  label:'Minor 7',      ivals:[0,3,7,10],   rank:6, drive:6, sustain:8 },  // sustain-lean
+  { id:'m7b5',  label:'Half-dim 7',   ivals:[0,3,6,10],   rank:6, drive:8, sustain:6 },  // drive-lean
+  // 3-note (base 6)
+  { id:'dim',   label:'Diminished',   ivals:[0,3,6],      rank:5, drive:7, sustain:5 },  // drive-lean
+  { id:'aug',   label:'Augmented',    ivals:[0,4,8],      rank:5, drive:7, sustain:5 },  // drive-lean
+  { id:'maj',   label:'Major triad',  ivals:[0,4,7],      rank:4, drive:5, sustain:7 },  // sustain-lean
+  { id:'min',   label:'Minor triad',  ivals:[0,3,7],      rank:4, drive:5, sustain:7 },  // sustain-lean
+  { id:'sus2',  label:'Sus2',         ivals:[0,2,7],      rank:3, drive:6, sustain:6 },  // neutral
+  { id:'sus4',  label:'Sus4',         ivals:[0,5,7],      rank:3, drive:6, sustain:6 },  // neutral
+  // 2-note (base 5)
+  { id:'power', label:'Power chord',  ivals:[0,7],        rank:2, drive:5, sustain:5 },  // neutral
 ];
 
 const SINGLE  = { id:'single',  label:'Single note',  drive:3, sustain:3 };
-const CLUSTER = { id:'cluster', label:'Tone cluster', drive:7, sustain:1 };
+const CLUSTER = { id:'cluster', label:'Tone cluster', drive:3, sustain:2 };  // was drive:7, sustain:1
 
 // Returns { id, label, name, root, rootPc, drive, sustain, notesCount }.
 // notes: array of note names (any spelling) — order/duplicates ignored.

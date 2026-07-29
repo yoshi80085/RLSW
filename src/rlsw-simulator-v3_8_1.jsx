@@ -353,7 +353,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -1802,6 +1802,13 @@ function Game({ gameState, onReturnToLobby }) {
 
   // Convenience: pull the acting character's note state (falls back to empty defaults)
   const actingNoteState = acting ? (noteStates[acting.id] ?? makeInitialNoteState(acting.id)) : null;
+  // 🎸 B0b — stack capacity is EARNED. Slots 1–3 are baseline, slot 4 comes with
+  // `theory_dom7` and slot 5 with `theory_modes`. Every "is this stack full?" test
+  // must go through here; never compare against STACK_CAP_MAX (that's the render
+  // ceiling, used only to draw the locked slots).
+  const stackCapOf = (spiritId) =>
+    stackCapFor(noteStates[spiritId]?.unlockedSkills ?? []);
+  const actingStackCap = stackCapFor(actingNoteState?.unlockedSkills ?? []);
   const noteStock    = actingNoteState?.noteStock    ?? [];
   const melodyLine    = actingNoteState?.melodyLine    ?? [];
   const usedStockIdx = actingNoteState?.usedStockIdx ?? [];
@@ -2691,7 +2698,11 @@ function Game({ gameState, onReturnToLobby }) {
       if ((actingNoteState?.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET) { addLog('🎸 Stack commit budget spent this turn (3/turn).'); return; }
       const dest = stackCommitDest || 'drive'; // _forceChordMode fallback
       const stack = dest === 'sustain' ? (actingNoteState?.sustainStack ?? []) : (actingNoteState?.driveStack ?? []);
-      if (stack.length >= STACK_CAP) { addLog(`🎸 ${dest === 'sustain' ? 'Sustain' : 'Drive'} stack is full (${STACK_CAP} notes).`); return; }
+      if (stack.length >= actingStackCap) {
+        const locked = actingStackCap < STACK_CAP_MAX;
+        addLog(`🎸 ${dest === 'sustain' ? 'Sustain' : 'Drive'} stack is full (${actingStackCap} slot${actingStackCap !== 1 ? 's' : ''}).${locked ? ' 📖 More Theory unlocks more slots.' : ''}`);
+        return;
+      }
       const note = noteStock[idx];
       playNoteSound(note);
       // 🎸 FLY — launch chord note chip animation toward the chord stack slot
@@ -2700,7 +2711,7 @@ function Game({ gameState, onReturnToLobby }) {
         const stackEl = chordStackRef.current;
         const stackRect = stackEl.getBoundingClientRect();
         // Target = centre of the slot this note will land in (vertical, top→bottom)
-        const slotH = (stackRect.height - 30) / 5; // rough per-slot height
+        const slotH = (stackRect.height - 30) / STACK_CAP_MAX; // rough per-slot height (all slots render, locked included)
         const slotIdx = stack.length; // about to become this index
         const tgtX = stackRect.left + stackRect.width / 2;
         const tgtY = stackRect.top + 20 + slotIdx * slotH + slotH / 2;
@@ -4131,9 +4142,10 @@ function Game({ gameState, onReturnToLobby }) {
       const ns = noteStates[spiritId] ?? {};
       const drive = ns.driveStack ?? [];
       const sustain = ns.sustainStack ?? [];
+      const cap = stackCapOf(spiritId);
       // Try drive stack first
       let placed = false;
-      if (drive.length < STACK_CAP) {
+      if (drive.length < cap) {
         const curW = botSpiritChord(spiritId, drive);
         const newW = botSpiritChord(spiritId, [...drive, tok.note]);
         if (newW.drive > curW.drive) {
@@ -4147,7 +4159,7 @@ function Game({ gameState, onReturnToLobby }) {
           placed = true;
         }
       }
-      if (!placed && sustain.length < STACK_CAP) {
+      if (!placed && sustain.length < cap) {
         const curW = botSpiritChord(spiritId, sustain);
         const newW = botSpiritChord(spiritId, [...sustain, tok.note]);
         if (newW.sustain > curW.sustain) {
@@ -4206,7 +4218,7 @@ function Game({ gameState, onReturnToLobby }) {
       const ns = noteStates[spiritId] ?? {};
       const stackKey = choice === 'sustain' ? 'sustainStack' : 'driveStack';
       const stack = ns[stackKey] ?? [];
-      if (stack.length >= STACK_CAP) { bankLostChordNote(spiritId, note, roninGreed); return; }
+      if (stack.length >= stackCapOf(spiritId)) { bankLostChordNote(spiritId, note, roninGreed); return; }
       setNoteStates(prev => {
         const cur = prev[spiritId]; if (!cur) return prev;
         return { ...prev, [spiritId]: { ...cur, [stackKey]: [...(cur[stackKey] ?? []), note], stackCommitsThisTurn: (cur.stackCommitsThisTurn ?? 0) + 1 } };
@@ -4303,13 +4315,14 @@ function Game({ gameState, onReturnToLobby }) {
     const ns = noteStates[spiritId] ?? {};
     const dStack = ns.driveStack ?? [];
     const sStack = ns.sustainStack ?? [];
-    if (dStack.length >= STACK_CAP && sStack.length >= STACK_CAP) {
+    const cap = stackCapOf(spiritId);
+    if (dStack.length >= cap && sStack.length >= cap) {
       addLog(`🎸 ${sp?.name}'s stacks are already full — the charge sparks into the dice instead.`);
       grantChargeSpark(spiritId);
       return;
     }
     // Pick the stack with room; prefer drive
-    const stackKey = dStack.length < STACK_CAP ? 'driveStack' : 'sustainStack';
+    const stackKey = dStack.length < cap ? 'driveStack' : 'sustainStack';
     const note = curatedChordNote(spiritId, stackKey);
     setNoteStates(prev => {
       const cur = prev[spiritId]; if (!cur) return prev;
@@ -8853,7 +8866,7 @@ function Game({ gameState, onReturnToLobby }) {
     // are written via setNoteField which only updates React state, not engineRef.
     const ns = noteStates[self.id] ?? engineRef.current.noteStates?.[self.id] ?? {};
     const sp = self;
-    return _botPlanStackCommit(ns, self.id, botPersona(self), sp.vibe ?? 10, sp.maxVibe ?? 10);
+    return _botPlanStackCommit(ns, self.id, botPersona(self), sp.vibe ?? 10, sp.maxVibe ?? 10, stackCapOf(self.id));
   }
 
   function botExecuteStackCommits(self, commits) {
@@ -8865,9 +8878,10 @@ function Game({ gameState, onReturnToLobby }) {
     let sStack = [...(ns.sustainStack ?? [])];
     let commitsUsed = ns.stackCommitsThisTurn ?? 0;
 
+    const cap = stackCapFor(ns.unlockedSkills ?? []);
     for (const { note, dest } of commits) {
       const stack = dest === 'sustain' ? sStack : dStack;
-      if (stack.length >= STACK_CAP) continue;
+      if (stack.length >= cap) continue;
       if (commitsUsed >= STACK_COMMIT_BUDGET) break;
       stack.push(note);
       commitsUsed++;
@@ -9898,8 +9912,9 @@ function Game({ gameState, onReturnToLobby }) {
       {pendingLostChordPickup && (() => {
         const sp = spirits.find(s => s.id === pendingLostChordPickup.spiritId);
         const ns = noteStates[pendingLostChordPickup.spiritId] ?? {};
-        const driveFull = (ns.driveStack?.length ?? 0) >= STACK_CAP;
-        const sustainFull = (ns.sustainStack?.length ?? 0) >= STACK_CAP;
+        const pickupCap = stackCapFor(ns.unlockedSkills ?? []);
+        const driveFull = (ns.driveStack?.length ?? 0) >= pickupCap;
+        const sustainFull = (ns.sustainStack?.length ?? 0) >= pickupCap;
         const budgetSpent = (ns.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET;
         // Compute benefit advice: compare chord stats with the note added to each stack
         const theNote = pendingLostChordPickup.note;
@@ -11018,8 +11033,8 @@ function Game({ gameState, onReturnToLobby }) {
                   const sCh = spiritChord(acting?.id, sStack);
                   const commitsUsed = actingNoteState?.stackCommitsThisTurn ?? 0;
                   const budgetLeft = STACK_COMMIT_BUDGET - commitsUsed;
-                  const dFull = dStack.length >= STACK_CAP;
-                  const sFull = sStack.length >= STACK_CAP;
+                  const dFull = dStack.length >= actingStackCap;
+                  const sFull = sStack.length >= actingStackCap;
                   return (
                     <div style={{marginBottom:5}}>
                       <div className="step-active" style={{'--step-glow-color':'#ff66cc',background:"#0c0a18",border:"1.5px solid #ff66cc",borderRadius:6,padding:"8px 10px"}}>
@@ -11248,7 +11263,7 @@ function Game({ gameState, onReturnToLobby }) {
                 {/* 🎸 STACK COMMIT PREVIEW — hover-a-note guidance (inline, instant via hoverScale) */}
                 {!hasConfirmed && stackCommitDest && (() => {
                   const stack = stackCommitDest === 'sustain' ? (actingNoteState?.sustainStack ?? []) : (actingNoteState?.driveStack ?? []);
-                  const full  = stack.length >= STACK_CAP;
+                  const full  = stack.length >= actingStackCap;
                   const hn    = hoverScale?.note;
                   const next  = hn ? spiritChord(acting?.id, [...stack, hn]) : null;
                   const label = stackCommitDest === 'sustain' ? 'Sustain' : 'Drive';
@@ -12132,46 +12147,55 @@ function Game({ gameState, onReturnToLobby }) {
                     minWidth:44}}>
                   {/* Drive Stack */}
                   <div className="stitle" style={{marginBottom:0,color:"#ff6644",fontSize:6,letterSpacing:1.5}}>DRIVE</div>
-                  {Array.from({length:STACK_CAP}).map((_,i) => {
+                  {/* B0b: every slot renders, but slots past the earned cap show as
+                      LOCKED (🔒) so the gate reads as progression rather than as a
+                      missing feature. Slot 4 = theory_dom7, slot 5 = theory_modes. */}
+                  {Array.from({length:STACK_CAP_MAX}).map((_,i) => {
                     const note = dStack[i];
+                    const locked = i >= actingStackCap;
                     return (
                       <div key={`d${i}`}
                         className="hexw"
+                        title={locked ? (i === 3 ? '🔒 Slot 4 — unlock with Blues / Dominant 7th' : '🔒 Slot 5 — unlock with Modes') : undefined}
                         style={{
                           width:33,height:37,
-                          opacity: note ? 1 : 0.25,
-                          background: note ? "#ff6644" : "#2a1a1055",
+                          opacity: locked ? 0.14 : note ? 1 : 0.25,
+                          background: locked ? "#14141a" : note ? "#ff6644" : "#2a1a1055",
+                          filter: locked ? 'grayscale(1)' : undefined,
                           cursor: 'default',
                           transition:"all .15s",
                         }}>
                         <div className="hexi" style={{
-                          fontSize:10,fontWeight:700,
-                          color: note ? "#ffe0d0" : "#2a1a1040",
-                          background: note ? "#1a0c08" : "#07091466",
-                        }}>{note || ""}</div>
+                          fontSize:locked ? 9 : 10,fontWeight:700,
+                          color: locked ? "#8a8a9a" : note ? "#ffe0d0" : "#2a1a1040",
+                          background: locked ? "#0a0a1088" : note ? "#1a0c08" : "#07091466",
+                        }}>{locked ? "🔒" : (note || "")}</div>
                       </div>
                     );
                   })}
                   <span style={{fontSize:7,fontWeight:700,color:"#ff6644"}}>⚔️{dCh.drive}</span>
                   {/* Sustain Stack */}
                   <div className="stitle" style={{marginBottom:0,marginTop:4,color:"#44aaff",fontSize:6,letterSpacing:1.5}}>SUSTAIN</div>
-                  {Array.from({length:STACK_CAP}).map((_,i) => {
+                  {Array.from({length:STACK_CAP_MAX}).map((_,i) => {
                     const note = sStack[i];
+                    const locked = i >= actingStackCap;
                     return (
                       <div key={`s${i}`}
                         className="hexw"
+                        title={locked ? (i === 3 ? '🔒 Slot 4 — unlock with Blues / Dominant 7th' : '🔒 Slot 5 — unlock with Modes') : undefined}
                         style={{
                           width:33,height:37,
-                          opacity: note ? 1 : 0.25,
-                          background: note ? "#44aaff" : "#0a1a3055",
+                          opacity: locked ? 0.14 : note ? 1 : 0.25,
+                          background: locked ? "#14141a" : note ? "#44aaff" : "#0a1a3055",
+                          filter: locked ? 'grayscale(1)' : undefined,
                           cursor: 'default',
                           transition:"all .15s",
                         }}>
                         <div className="hexi" style={{
-                          fontSize:10,fontWeight:700,
-                          color: note ? "#d0e8ff" : "#0a1a3040",
-                          background: note ? "#081828" : "#07091466",
-                        }}>{note || ""}</div>
+                          fontSize:locked ? 9 : 10,fontWeight:700,
+                          color: locked ? "#8a8a9a" : note ? "#d0e8ff" : "#0a1a3040",
+                          background: locked ? "#0a0a1088" : note ? "#081828" : "#07091466",
+                        }}>{locked ? "🔒" : (note || "")}</div>
                       </div>
                     );
                   })}
@@ -12182,9 +12206,9 @@ function Game({ gameState, onReturnToLobby }) {
                       borderColor: stackCommitDest === 'drive' ? '#ff6644' : '#aa5533',
                       color: stackCommitDest === 'drive' ? '#ff6644' : '#aa5533',
                       background: stackCommitDest === 'drive' ? '#2a0c08' : 'transparent',whiteSpace:"nowrap",
-                      opacity: budgetLeft <= 0 || dStack.length >= STACK_CAP ? 0.4 : 1,
-                      ...(engineState.turn.count <= 8 && !(budgetLeft <= 0 || dStack.length >= STACK_CAP) ? {'--glow-color':'#ff6644', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}
-                    disabled={budgetLeft <= 0 || dStack.length >= STACK_CAP}
+                      opacity: budgetLeft <= 0 || dStack.length >= actingStackCap ? 0.4 : 1,
+                      ...(engineState.turn.count <= 8 && !(budgetLeft <= 0 || dStack.length >= actingStackCap) ? {'--glow-color':'#ff6644', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}
+                    disabled={budgetLeft <= 0 || dStack.length >= actingStackCap}
                     onClick={()=>setStackCommitDest(d => d === 'drive' ? null : 'drive')}>
                     {stackCommitDest === 'drive' ? '⚔️ DRIVE' : '⚔️ Drive'}
                   </button>
@@ -12193,9 +12217,9 @@ function Game({ gameState, onReturnToLobby }) {
                       borderColor: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
                       color: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
                       background: stackCommitDest === 'sustain' ? '#0a1828' : 'transparent',whiteSpace:"nowrap",
-                      opacity: budgetLeft <= 0 || sStack.length >= STACK_CAP ? 0.4 : 1,
-                      ...(engineState.turn.count <= 8 && !(budgetLeft <= 0 || sStack.length >= STACK_CAP) ? {'--glow-color':'#44aaff', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}
-                    disabled={budgetLeft <= 0 || sStack.length >= STACK_CAP}
+                      opacity: budgetLeft <= 0 || sStack.length >= actingStackCap ? 0.4 : 1,
+                      ...(engineState.turn.count <= 8 && !(budgetLeft <= 0 || sStack.length >= actingStackCap) ? {'--glow-color':'#44aaff', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}
+                    disabled={budgetLeft <= 0 || sStack.length >= actingStackCap}
                     onClick={()=>setStackCommitDest(d => d === 'sustain' ? null : 'sustain')}>
                     {stackCommitDest === 'sustain' ? '🛡️ SUSTAIN' : '🛡️ Sustain'}
                   </button>

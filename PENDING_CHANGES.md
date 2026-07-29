@@ -15,9 +15,25 @@ Tension & Release, Chromatic Approach, Color Bonus, Chord Resonance. Eight mecha
 **Implementation order:** A → B0 → B1 → B2 → B3 → B4 → B5 → B6 → B7 → B8 → B9 → B10 → C.
 B0 is the spine; several later items assume it. Task C depends on B3 shipping first.
 
+**Status:** ✅ Task A and B0 (a + b) are SHIPPED on branch `feat/chord-strength-b0`.
+Next up is B1. Notes from that pass:
+
+- The B0a warning about keeping `economy.js` and `Game.makeInitialNoteState`
+  byte-identical was **stale** — the client duplicate was already deleted at the
+  Phase-5c flip. `economy.js` is the single source; there is no second copy.
+- `STACK_CAP` was **removed**, not just deprecated, so any archived code that
+  revives it fails to import rather than silently assuming 5.
+- Fray / sustain-chip / finisher-wipe were checked and need no change — they only
+  ever subtract, and never read the cap.
+- ⚠️ `npm run test:engine` is **broken on main, pre-existing**: `selftest.mjs`
+  pulls in `data/spirits.js`, which imports `.png` standees that bare node can't
+  resolve. It throws before the first assertion. A/B0 coverage therefore lives in
+  `src/engine/b0check.mjs` (`node src/engine/b0check.mjs`) — fold it back into
+  selftest once the png import chain is fixed.
+
 ---
 
-## Task A: Chord Strength Redesign
+## Task A: Chord Strength Redesign ✅ SHIPPED
 
 **Problem:** Current `CHORD_TEMPLATES` drive/sustain values use a consonance/dissonance
 model that fights the Drive/Sustain split. A Major triad (1-3-5) in the Drive Stack gives
@@ -64,7 +80,7 @@ not more. Ship these values, then re-check after B0 rather than tuning twice.
 
 ## Task B: Theory Tree Redesign
 
-### B0 — Stack seeds down to 1 note; slots 4 and 5 gated
+### B0 — Stack seeds down to 1 note; slots 4 and 5 gated ✅ SHIPPED
 
 Two changes to the chord stacks.
 

@@ -8,7 +8,29 @@ export const STOCK_REFILL_RATE = 6;
 
 // -- DRIVE / SUSTAIN STACK SPLIT (DRIVE_SUSTAIN_SPLIT_DESIGN.md) --
 export const STACK_COMMIT_BUDGET = 3;   // max notes committed to stacks per turn (split freely between Drive & Sustain)
-export const STACK_CAP           = 5;   // max notes per stack (Drive or Sustain)
+
+// -- STACK CAPACITY IS EARNED (PENDING_CHANGES B0b) --
+// The cap is no longer a global constant. Slots 1-3 are baseline; slot 4 is
+// bought with `theory_dom7` and slot 5 with `theory_modes`. The skill named
+// "Blues / Dominant 7th" is the same purchase that lets you BUILD a dominant
+// 7th — melody permission and harmony capacity arrive together.
+export const STACK_CAP_BASE = 3;   // slots available with no Theory investment
+export const STACK_CAP_MAX  = 5;   // ceiling once both gating tiers are owned
+
+// Single source of truth for the derived cap. DO NOT inline this rule — every
+// read of "how many slots does this spirit have" must come through here.
+export function stackCapFor(unlockedSkills = []) {
+  let cap = STACK_CAP_BASE;
+  if (unlockedSkills.includes('theory_dom7'))  cap += 1;
+  if (unlockedSkills.includes('theory_modes')) cap += 1;
+  return Math.min(STACK_CAP_MAX, cap);
+}
+
+// NOTE: the old flat `STACK_CAP = 5` export is GONE on purpose. Anything that
+// used to compare a stack length against it must now call stackCapFor(); use
+// STACK_CAP_MAX only for layout loops that draw every slot, locked ones
+// included. Archived code (Rake's noteCost, gallopCondition) will fail to
+// import rather than silently assuming 5 — fix it to take the derived cap.
 
 // -- AMP / DICE SYSTEM --
 // ── NEW RIG SYSTEM (AMP_DECK_DESIGN.md) ──

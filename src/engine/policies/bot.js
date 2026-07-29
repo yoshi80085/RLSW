@@ -13,7 +13,7 @@ import { HEX_BY_NUM, HEX_BY_QR } from "../../board/hexMap.js";
 import { axialDist, axialNeighbors } from "../../board/hexGeometry.js";
 import { skillEligibility } from "../systems/skills.js";
 import { usedHas } from "../systems/economy.js";
-import { LIMELIGHT_HEX } from "../../data/gameConstants.js";
+import { LIMELIGHT_HEX, stackCapFor } from "../../data/gameConstants.js";
 import { buildScale, getIntervalNotes, pitchIndex } from "../../music/notes.js";
 import { cadenceHints } from "../../music/cadence.js";
 import { evaluateChord } from "../../music/chords.js";
@@ -317,12 +317,19 @@ export function botPlanRevoice(noteState, spiritId, persona) {
  *
  * Heuristic: favor Drive when hunting (persona.note === 'combat'/'disrupt'),
  * favor Sustain when low Vibe or defensive style. Splits evenly otherwise.
- * Pure over noteState + spiritId + persona + vibe.
+ * Pure over noteState + spiritId + persona + vibe + cap.
+ *
+ * `cap` is the spirit's DERIVED stack capacity (B0b) — slots 1-3 baseline, +1 for
+ * theory_dom7, +1 for theory_modes. It is passed in rather than read from a
+ * constant so this stays pure and so bots respect the same gate players do.
+ * Callers should supply `stackCapFor(noteState.unlockedSkills)`; the default
+ * derives it from the note sheet so an un-updated caller still behaves correctly.
  */
-export function botPlanStackCommit(noteState, spiritId, persona, vibe = 10, maxVibe = 10) {
+export function botPlanStackCommit(noteState, spiritId, persona, vibe = 10, maxVibe = 10, cap = null) {
   const ns = noteState ?? {};
   const budget = 3 - (ns.stackCommitsThisTurn ?? 0);
   if (budget <= 0) return [];
+  const stackCap = cap ?? stackCapFor(ns.unlockedSkills ?? []);
 
   const drive   = ns.driveStack   ?? [];
   const sustain = ns.sustainStack ?? [];
@@ -349,8 +356,8 @@ export function botPlanStackCommit(noteState, spiritId, persona, vibe = 10, maxV
 
   for (let i = 0; i < Math.min(budget, avail.length); i++) {
     // pick the best destination
-    const dFull = dStack.length >= 5;
-    const sFull = sStack.length >= 5;
+    const dFull = dStack.length >= stackCap;
+    const sFull = sStack.length >= stackCap;
     if (dFull && sFull) break;
 
     let dest;
