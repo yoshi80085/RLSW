@@ -36,8 +36,33 @@ Archetype quartet: **Ronin = Burst/virtuoso · Intergalactic 0 = Control/zoner �
   (~50% second note off a Lost Chord); 10-slot stock.
 - **Arsenal (reworked):**
   - **Psycho Bushido** (6 Db, 2-round CD) — Iaijutsu dash in a straight line from facing. Remaining AP becomes bonus Drive.
-  - **Shadow Illusion** (6 Db, costs 1 Drive token) — Summon a shadow decoy. Lasts 1 turn. Disappears if attacked, Ronin attacks, or Ronin is attacked. Rivals waste their stack striking it.
-  - **Cursed Shamisen** (8 Db unlock, 2 Db/use) — Drop on board, 4-hex range +1/round, 1 Sustain damage. 1 HP, calmed by walking onto it. After 3 rounds goes autonomous — damages everyone including Ronin.
+  - **Shadow Illusion** (6 Db, costs 1 Drive token) — The Ronin splits into a **body double**: a second,
+    pixel-identical Ronin standee, born **stacked on his own hex** (single-click, no hex to target). The
+    stacked spawn is the point — a decoy that popped into an empty adjacent tile would identify itself as
+    the copy on the spot. Starting superimposed means there's no "where it came from" to reason about;
+    they walk apart and by then the two are indistinguishable.
+    Rivals cannot tell the two apart — same sprite, same base ring, same
+    hex tint, same facing arrow, same acting-turn glow, and it blocks movement like a real body. It also
+    **walks the board on its own set of legs**: its movement pool refreshes each of Ronin's turns to match
+    whatever budget the real body was granted, so it has the Ronin's *range* without costing him a single
+    Action Point. (Sharing his AP was tried and rejected — it made summoning the double a self-inflicted
+    tempo tax rather than a threat.) Only the Ronin's own client sees a faint 👤 pip on the
+    fake. Lasts **3 of Ronin's turns**. Pops if it is struck, if Ronin attacks, or if Ronin is attacked.
+    A rival who swings at the double burns their AP **and** their Action Token for zero damage.
+  - **Cursed Shamisen** (8 Db unlock, 2 Db/use) — Set down on Ronin's hex, where it plays a **haunting
+    melody every turn** (real audio: an insen-scale phrase that drops an octave and speeds up once it
+    wakes). Everyone inside its rings loses 1 Sustain, then Vibe. Every Spirit the melody reaches is
+    marked with a pulsing 🎶 aura until it next plays, so the damage is never a mystery. Three stages,
+    ticked at the start of Ronin's turns:
+    **1 — Listening** (2 rings, still, spares Ronin) →
+    **2 — Swelling** (3 rings, still, spares Ronin) →
+    **3 — Hunting** (aura **frozen** at 3 rings; stalks 1 hex/turn toward the nearest Spirit, ties broken
+    toward the most wounded; spares nobody, Ronin included).
+    The freeze matters: an aura that both grows *and* chases would eventually cover the stage with no
+    counterplay. Growth is what it gets for standing still. Calmed by walking onto its hex, which also
+    hands the walker a bonus note — the answer is always "go and touch it".
+    Board art: `SHAMISEN_ART` at the top of the simulator (currently a vector placeholder; drop
+    `src/standees/Cursed_Shamisen.png` in and point the constant at it to swap).
   - **Wa no Koe** (12 Db) — Passive: melody commit aligning with chord stack gives +1 Drive or Sustain for 3 rounds.
 
 ### Intergalactic 0 — the slow forgiving cosmic controller (done)
@@ -72,7 +97,15 @@ innate identity**. Fantasy: the unkillable attrition wall that gets scarier as i
 - Direction we sketched: **chaos/dissonance that punishes others feeds him** — the Smash is his
   home (make it cheaper / non-Exposing for him?); resist knockback; Azrael (knockdown streak →
   Fame) is the snowball. He's the anti-turtle bruiser.
-- Needs: just the **innate identity** (arsenal already exists; may want a pass for cohesion).
+- **Poison Slime (innate passive, live):** he leaves slime on every hex he vacates — 1 Vibe to any
+  rival who walks onto it or is pushed into it; he's immune to his own goo. The trail lasts a
+  **full round**: `turnsLeft` is counted in *spirit-turns* and seeded with the number of living
+  Spirits, so it expires exactly as the turn order comes back to him, and self-scales as Spirits
+  are knocked out. (It used to be seeded with a flat `1`, but `decayPoisonSlime()` fires at the end
+  of every spirit-turn *including his own* — so the whole trail evaporated the moment he ended his
+  turn and no rival ever stepped in it. If you touch the lifetime, keep that decay cadence in mind.)
+  Tiles fade in opacity as they age so the board shows how long a detour is still needed.
+- Needs: the rest of the **innate identity** (arsenal already exists; may want a pass for cohesion).
 
 ---
 

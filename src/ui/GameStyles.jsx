@@ -168,6 +168,23 @@ export function GameStyles() {
           0%,100% { opacity: 0.45; }
           50%     { opacity: 1; }
         }
+        /* 🎸 Cursed Shamisen — idle sway while it plays itself on the boards */
+        @keyframes shamisen-sway {
+          0%,100% { transform: translateY(0)      rotate(-3deg); }
+          50%     { transform: translateY(-2.5px) rotate(3deg); }
+        }
+        /* 🎸💀 …and the lurching gait once it starts hunting */
+        @keyframes shamisen-stalk {
+          0%,100% { transform: translateY(0)    rotate(-13deg) scale(1); }
+          40%     { transform: translateY(-4px) rotate(-7deg)  scale(1.05); }
+          70%     { transform: translateY(1px)  rotate(-17deg) scale(0.98); }
+        }
+        /* 🎶 A Spirit the Shamisen's melody reached this round — the curse
+           clings to them until the next time it plays. */
+        @keyframes cursed-by-melody {
+          0%,100% { opacity: 0.25; transform: scale(1); }
+          50%     { opacity: 0.8;  transform: scale(1.06); }
+        }
         /* 🔊 AMP DECKS (AMP_DECK_DESIGN.md §3) — the rig at your corner */
         /* A fresh cabinet drops onto the stack with a bounce */
         @keyframes amp-drop-in {
@@ -406,6 +423,29 @@ export function GameStyles() {
           25%     { transform: translate(-2px,1px); }
           50%     { transform: translate(2px,-1px); }
           75%     { transform: translate(-1px,2px); }
+        }
+        /* 🤘 Master of Moshpits cinematic — fans climb out of the stands and
+           WALK to the Monster's hex. --mosh-dx/--mosh-dy carry the seat→pit
+           offset (each fan gets its own), so one keyframe serves every mover. */
+        @keyframes mosh-walk-in {
+          0%   { transform: translate(var(--mosh-dx,0px), var(--mosh-dy,0px)) scale(0.82); opacity: 0.35; }
+          12%  { opacity: 1; }
+          100% { transform: translate(0,0) scale(1); opacity: 1; }
+        }
+        /* the pit itself — stomping in place, harder than the idle crowd bob */
+        @keyframes mosh-stomp {
+          0%,100% { transform: translateY(0)    rotate(var(--mosh-tilt, 0deg)); }
+          50%     { transform: translateY(-9px) rotate(calc(var(--mosh-tilt, 0deg) * -1.4)); }
+        }
+        /* spent — the fans give everything and evaporate */
+        @keyframes mosh-spend {
+          0%   { opacity: 1; transform: scale(1)   translateY(0); }
+          100% { opacity: 0; transform: scale(1.5) translateY(-16px); }
+        }
+        /* the pit floor glow, breathing under the whole thing */
+        @keyframes mosh-pit-glow {
+          0%,100% { opacity: 0.30; transform: scale(1); }
+          50%     { opacity: 0.70; transform: scale(1.12); }
         }
         /* ── 🎬 Board dive-bomb: camera spirals into the battle ── */
         @keyframes board-divebomb {

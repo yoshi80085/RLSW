@@ -40,6 +40,7 @@ import React from "react";
 import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
 import riffOffSong from "./Riff_off_song.mp3";
 import battleSong  from "./battle_song.mp3";
+import moshpitSong from "./Master_of_Moshpits_song.mp3";   // 🤘 Master of Moshpits cinematic
 import { sonicRig, rigPoolLabel } from "./engine/systems/sonicRig.js";
 import AmpDecks from "./board/ampDecks.jsx";
 import { hexRingFromCenter, crowdMultiplier, advanceDB, SPOTLIGHT_POOL } from "./board/boardHelpers.js";
@@ -91,6 +92,55 @@ import {
   botPlanStackCommit as _botPlanStackCommit,
   botPlanMove as _botPlanMove, botRivalsWithin as _botRivalsWithin,
 } from "./engine/policies/bot.js";
+
+
+// ─── 🎸 CURSED SHAMISEN ART ───────────────────────────────────────────────────
+// The Shamisen has its own board token rather than borrowing an emoji.
+//
+// TO SWAP IN REAL ART: drop the file at src/standees/Cursed_Shamisen.png, add
+//   import cursedShamisenArt from "./standees/Cursed_Shamisen.png";
+// at the top of this file, and set SHAMISEN_ART to it. That's the only change —
+// the renderer falls through to the vector placeholder below whenever this is
+// null, so the board is never empty while the art is being drawn.
+const SHAMISEN_ART = null;
+
+// Vector placeholder: a three-stringed shamisen standing on its head, seen
+// head-on. `tint` recolours it with the instrument's mood (calm blue while it
+// waits, hot red once it starts hunting). Drawn around a 0,0 origin at unit
+// scale so the caller can size it off the hex.
+function shamisenPlaceholder(tint, glow) {
+  return (
+    <g style={{ pointerEvents: "none", filter: `drop-shadow(0 0 5px ${glow})` }}>
+      {/* neck (sao) — long, thin, runs up out of the body */}
+      <rect x={-0.045} y={-1.05} width={0.09} height={1.15} rx={0.03}
+        fill="#2a1a12" stroke={tint} strokeWidth={0.028}/>
+      {/* tuning head, canted back */}
+      <path d="M -0.075 -1.05 L 0.075 -1.05 L 0.11 -1.30 L -0.04 -1.30 Z"
+        fill="#2a1a12" stroke={tint} strokeWidth={0.028}/>
+      {/* three tuning pegs */}
+      <circle cx={-0.10} cy={-1.13} r={0.032} fill="#e8dcc0"/>
+      <circle cx={ 0.12} cy={-1.19} r={0.032} fill="#e8dcc0"/>
+      <circle cx={-0.09} cy={-1.25} r={0.032} fill="#e8dcc0"/>
+      {/* body (dou) — square skin-head drum */}
+      <rect x={-0.34} y={-0.16} width={0.68} height={0.62} rx={0.07}
+        fill="#3a2418" stroke={tint} strokeWidth={0.04}/>
+      {/* stretched skin face */}
+      <rect x={-0.27} y={-0.09} width={0.54} height={0.48} rx={0.05}
+        fill="#efe4cc" opacity={0.92}/>
+      {/* three strings running the full length */}
+      {[-0.035, 0, 0.035].map((dx, i) => (
+        <line key={i} x1={dx * 0.7} y1={-1.28} x2={dx} y2={0.40}
+          stroke="#f6f1e2" strokeWidth={0.012} opacity={0.85}/>
+      ))}
+      {/* bridge (koma) */}
+      <rect x={-0.10} y={0.20} width={0.20} height={0.035} fill="#c9a227"/>
+      {/* the curse: a crack across the skin, weeping light */}
+      <path d="M -0.20 -0.05 L -0.06 0.12 L -0.14 0.20 L 0.04 0.36"
+        fill="none" stroke={tint} strokeWidth={0.035} strokeLinecap="round"
+        opacity={0.95}/>
+    </g>
+  );
+}
 
 
 // 🎟️ A fan = a geometric "pawn": a detached round head above a downward-pointing
@@ -514,9 +564,9 @@ const SKILL_TREE = {
         { id:'psycho_bushido',  label:'Psycho Bushido',  icon:'🌀', dbCost:6,  gated:false,
           desc:'Iaijutsu dash — charge in a straight line from your facing. Remaining AP converts to bonus Drive on top of your Drive stack. 2-round cooldown.' },
         { id:'shadow_illusion', label:'Shadow Illusion', icon:'👤', dbCost:6,  gated:false,
-          desc:'Summon a shadow decoy (costs 1 Drive token). Moveable for 1 turn. Disappears if attacked, you attack, or you are attacked. Rivals who strike it waste their stack.' },
+          desc:'Split into a second, identical Ronin, born stacked on your own hex (costs 1 Drive token) — nobody sees which one appeared. Rivals cannot tell the double from the real you: it blocks, it faces, and it walks the board on its own steps, refreshed each turn to match your movement range at no cost to your Action Points. Lasts 3 turns. Pops if it is struck, if you attack, or if you are attacked. Whoever swings at it burns their AP and Action Token for nothing.' },
         { id:'cursed_shamisen', label:'Cursed Shamisen', icon:'🎸', dbCost:8,  gated:false,
-          desc:'Drop a cursed Shamisen on your hex (2 Db per use). 4-hex range, +1/round, deals 1 Sustain damage. After 3 rounds it goes autonomous — damaging everyone, even you. Calmed by walking onto it.' },
+          desc:'Set a cursed Shamisen down on your hex (2 Db per use). It plays a haunting melody every turn, costing 1 Sustain (then Vibe) to every Spirit inside its rings. Turn 1: 2 rings. Turn 2: 3 rings. Turn 3: it stops growing and starts HUNTING — stalking 1 hex a turn toward the nearest Spirit, and it no longer spares you. Calmed by walking onto its hex, which also hands the walker a bonus note.' },
         { id:'wa_no_koe',       label:'Wa no Koe (和の声)', icon:'🎵', dbCost:12, gated:false,
           desc:'Voice of Harmony — when your melody commit aligns with your chord stack, melody notes convert to +1 Drive or Sustain for 3 rounds.' },
       ],
@@ -530,9 +580,9 @@ const SKILL_TREE = {
       spiritOnly: 'Metalness_Monster',
       skills: [
         { id:'number_of_the_beast', label:'Number of the Beast', icon:'6️⃣', dbCost:6, gated:false,
-          desc:'666 — Spend 6 Db to distribute 6 points randomly across Vibe, Db, Drive (until next battle), Sustain (same), Notes, and Fans. Chaos fuels the Monster.' },
+          desc:'BERSERK — 1 Db to call, and only at 2 Vibe or less. +6 Drive with no cap, immune to knockback, and every attack costs 1 Vibe. Ends when you put a rival down, when you go down, or when you heal out of danger. The Beast only answers the dying.' },
         { id:'master_moshpits', label:'Master of Moshpits', icon:'🤘', dbCost:8,  gated:false,
-          desc:'Pulls fans from the stands onto the board for a mosh pit. +2 Drive with 3 fans present — fans disappear afterwards.' },
+          desc:'Pulls 3 fans out of the stands and onto the board for a pit. +2 Drive that STANDS — it survives battles and lasts until you call the next pit. Once per turn.' },
         { id:'slime',           label:'Slime',              icon:'🧪', dbCost:10, gated:false,
           desc:'On Swing/Smash hit, spend 1 Db to slime the rival — their next turn\'s note regeneration is halved.' },
         { id:'azrael',          label:'Azrael',             icon:'💀', dbCost:12, gated:false,
@@ -1103,9 +1153,27 @@ function Game({ gameState, onReturnToLobby }) {
   // swarm that rival's hex on the board and "rock" them. Cleared after a beat.
   const [moshpitTargets, setMoshpitTargets] = useState({});
 
-  // 🧪 POISON SLIME (Metalness Monster passive) — hexNum → turnsLeft.
-  // MM drops slime on every hex it leaves. Slime lingers 1 turn, deals 1 Vibe
-  // damage to anyone who walks on it or gets pushed into it.
+  // 🤘 MASTER OF MOSHPITS — the full cinematic. Three fans get up out of the
+  // grandstand, walk onto the board, and mosh it out on the Monster's hex while
+  // his song plays. Shape:
+  //   { key, spiritId, hexNum, phase: 'walk'|'pit'|'out', movers: [{seed,isDie,sx,sy,tx,ty}] }
+  // `phase` drives the CSS: 'walk' = travelling in, 'pit' = circling and moshing,
+  // 'out' = fading as the song lands. null when no pit is running.
+  const [moshCine, setMoshCine] = useState(null);
+  const moshCineRef   = useRef(null);
+  const moshTimersRef = useRef([]);   // cinematic setTimeouts, so Skip can cancel them
+  const moshAudioRef  = useRef(null); // the song itself (separate from battle music)
+  // Synchronous "already paid out" latch. The song ending and the Skip button can
+  // race each other inside one tick, and React state won't have caught up — this
+  // is what actually keeps the +Drive from landing twice.
+  const moshPaidRef   = useRef(null);
+  useEffect(() => { moshCineRef.current = moshCine; }, [moshCine]);
+
+  // 🧪 POISON SLIME (Metalness Monster passive) — hexNum → turnsLeft, counted in
+  // SPIRIT-TURNS (one tick per player's turn end, not per round).
+  // MM drops slime on every hex it leaves; the trail lives a full round — from
+  // the moment it's laid until the turn order comes back to him — and deals
+  // 1 Vibe damage to anyone who walks onto it or is pushed into it.
   const [poisonSlime, setPoisonSlime] = useState({});
 
   // RIFF-OFF engine ref — timing-critical bookkeeping for the currently
@@ -1846,6 +1914,33 @@ function Game({ gameState, onReturnToLobby }) {
     return m;
   }, [spirits]);
 
+  // ─── 👤 SHADOW ILLUSION — derived decoy state ────────────────────────────────
+  // The decoy is a *body double*: to every rival it is pixel-for-pixel the real
+  // Ronin — same standee, same base ring, same facing arrow, same hex tint, and
+  // it occupies its hex like a real Spirit. Only the Ronin's own client gets a
+  // faint tell so its controller doesn't lose track of themselves.
+  const shadowIllusion = (() => {
+    const si = noteStates['cosmic_ronin']?.shadowIllusion;
+    if (!si) return null;
+    const ronin = spirits.find(s => s.id === 'cosmic_ronin');
+    if (!ronin || ronin.knockedOut) return null;   // no Ronin, no shadow
+    return si;
+  })();
+  const shadowHex = shadowIllusion?.hex ?? null;
+  // A "spirit-shaped" view of the decoy — everything the board renderer needs to
+  // draw it exactly as it draws the real Ronin.
+  const shadowDecoy = useMemo(() => {
+    if (!shadowIllusion) return null;
+    const ronin = spirits.find(s => s.id === 'cosmic_ronin');
+    if (!ronin) return null;
+    return { ...ronin, num: shadowIllusion.hex, facing: shadowIllusion.facing ?? 0, isShadow: true };
+  }, [shadowIllusion, spirits]);
+  // Only the Ronin's controller sees which standee is the fake. Online that's
+  // the seat holding the Ronin; in hotseat it's whoever is currently acting.
+  const seesShadowTell = netRef.current
+    ? netRef.current.mySpiritId === 'cosmic_ronin'
+    : acting?.id === 'cosmic_ronin';
+
   const spiritById = useMemo(() => {
     const m = {};
     spirits.forEach(s => { m[s.id] = s; });
@@ -1865,11 +1960,30 @@ function Game({ gameState, onReturnToLobby }) {
         .filter(h => {
           if (!h) return false;
           if (spiritByNum[h.num]) return false;
+          if (h.num === shadowHex) return false;  // 👤 the decoy blocks like a body
           return true;
         })
         .map(h => h.num)
     );
-  }, [action, acting, moveStepsLeft, spiritByNum]);
+  }, [action, acting, moveStepsLeft, spiritByNum, shadowHex]);
+
+  // 👤 The double's own movement pool — same size as the Ronin's budget, but a
+  // separate pot, so walking the fake never costs the real body a step.
+  const shadowSteps = shadowIllusion?.stepsLeft ?? 0;
+
+  // 👤 Where the shadow can step. Identical rules to a real Spirit's move: one
+  // hex at a time, can't walk through anyone (including the real Ronin).
+  const shadowReachable = useMemo(() => {
+    if (action !== "move_shadow" || !shadowHex || shadowSteps < 1) return new Set();
+    const from = HEX_BY_NUM[shadowHex];
+    if (!from) return new Set();
+    return new Set(
+      axialNeighbors(from.q, from.r)
+        .map(({ q, r }) => HEX_BY_QR[`${q},${r}`])
+        .filter(h => h && !spiritByNum[h.num])
+        .map(h => h.num)
+    );
+  }, [action, shadowHex, shadowSteps, spiritByNum]);
 
   // ─── NOTE SOUND (distorted guitar) ───────────────────────────────────────────
   const audioCtxRef = useRef(null);
@@ -2889,6 +3003,12 @@ function Game({ gameState, onReturnToLobby }) {
     const diatonicRunLen   = detectDiatonicRun(melodyLine, currentScale);
 
     // (Riff Slayer + Paranoia removed — replaced by Slime / Number of the Beast)
+    // NOTE: the Riff Slayer removal took `skipClimbLen` with it, but the
+    // Performance Score kernel below still reads it (economy.js scores a
+    // skip-climb of 3+ as +1 flair). Keep it defined here — leaving it out
+    // throws a ReferenceError mid-commit, which silently aborts the rest of
+    // confirmNoteTrack (no move budget, no `move_act` step → turn deadlock).
+    const skipClimbLen     = detectSkipClimb(melodyLine, currentScale);
 
     // (E-Rush removed — Ronin rework)
 
@@ -3184,6 +3304,18 @@ function Game({ gameState, onReturnToLobby }) {
     if (actingNoteState?.tripped) {
       addLog(`🌀 ${acting?.name} is TRIPPED — movement halved this turn! (${grantedSteps} hex${grantedSteps !== 1 ? 'es' : ''})`);
     }
+    // 👤 SHADOW ILLUSION — the double gets its OWN legs, refreshed to whatever
+    // the real Ronin was granted this turn. Same range, separate pool: a body
+    // double that ate the Ronin's movement would be a tax on his own ability,
+    // not a threat to anyone else. `lastMoveBudget` is stashed so a shadow
+    // summoned later this turn can be handed a full budget too.
+    if (acting?.id === 'cosmic_ronin') {
+      const si = actingNoteState?.shadowIllusion;
+      setNoteField('cosmic_ronin', {
+        lastMoveBudget: grantedSteps,
+        ...(si ? { shadowIllusion: { ...si, stepsLeft: grantedSteps, stepsMax: grantedSteps } } : {}),
+      });
+    }
     setMovedThisTurn(false);
     setAction('move');
     // 🎤 FAN ECONOMY — a clean track in the centre rings pulls a crowd to you.
@@ -3314,18 +3446,30 @@ function Game({ gameState, onReturnToLobby }) {
           pivotPending: true,
           // 🔥 Devil's Interval Burn arm likewise only lives for the turn it was set
           burnArmed: false,
-          // 👤 Shadow Illusion: tick down turns, dismiss if expired
+          // 👤 Shadow Illusion: tick down turns, dismiss if expired.
+          // Note this counts the Ronin's OWN turns, so a 3-turn double survives
+          // three full rounds of rivals guessing wrong.
           shadowIllusion: (() => {
             const si = ns.shadowIllusion;
             if (!si) return null;
             const left = (si.turnsLeft ?? 1) - 1;
-            return left > 0 ? { ...si, turnsLeft: left } : null;
+            // Zero the double's legs here and let the melody commit refill them
+            // to this turn's granted budget — otherwise last turn's leftover
+            // steps would carry over into a turn whose budget isn't known yet.
+            return left > 0 ? { ...si, turnsLeft: left, stepsLeft: 0 } : null;
           })(),
         },
       };
     });
     // 🗡️ Ronin rework: tick Cursed Shamisen + Wa no Koe at turn start
     if (spiritId === 'cosmic_ronin') {
+      // 👤 Read the PRE-tick value: if this was its last turn, the updater above
+      // has just cleared it, so announce the double melting away.
+      const siBefore = noteStates['cosmic_ronin']?.shadowIllusion;
+      if (siBefore && (siBefore.turnsLeft ?? 1) <= 1) {
+        triggerDamageNumber(siBefore.hex, '👤 GONE', '#4488ff');
+        addLog('👤 The shadow illusion thins out and melts back into the Ronin — the double is spent.');
+      }
       tickCursedShamisen();
       tickWaNoKoe();
     }
@@ -3488,8 +3632,9 @@ function Game({ gameState, onReturnToLobby }) {
     checkChargeZonePickup(acting.id, actualTarget);
     // Marquee event hex
     checkEventTrigger(acting.id, actualTarget);
-    // 🎸 Cursed Shamisen — check if any spirit walked onto the shamisen's hex
-    calmCursedShamisen(acting.id);
+    // 🎸 Cursed Shamisen — did this step land ON the shamisen's hex? Must pass
+    // the destination: `spirits` in scope here is the pre-move snapshot.
+    calmCursedShamisen(acting.id, actualTarget);
   }
 
   // ─── SKILL TREE — TARGET SELECTION & AWARD ───────────────────────────────────
@@ -3509,13 +3654,13 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'hero_pose')    addLog(`🌟 ${spirit?.name} — HERO POSE unlocked! Pose on centre hex for 2 turns to win.`);
 
     // (v1 stance route removed — v2 stances are fixed ability kits, no learning tiers)
-    if (skillId === 'number_of_the_beast') addLog(`6️⃣ ${spirit?.name} — NUMBER OF THE BEAST! Spend 6 Db to scatter 6 random stat points across Vibe, Db, Drive, Sustain, Notes, and Fans.`);
-    if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull fans from the stands for a mosh pit — +2 Drive with 3 fans on stage.`);
+    if (skillId === 'number_of_the_beast') addLog(`6️⃣ ${spirit?.name} — NUMBER OF THE BEAST! At 2 Vibe or less, spend 1 Db to go BERSERK: +6 Drive with no cap, immune to knockback, 1 Vibe per attack. It ends when somebody hits the floor.`);
+    if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull 3 fans onto the board for a pit — +2 Drive that stands until the next pit.`);
     if (skillId === 'slime')        addLog(`🧪 ${spirit?.name} — SLIME! Swing/Smash hits can spend 1 Db to slime rivals — halving their next turn's note regen.`);
     if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
     if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Dash in a straight line — remaining AP becomes bonus Drive. 2-round cooldown.`);
-    if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Summon a decoy (costs 1 Drive token). Rivals who strike it waste their stack.`);
-    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Drop it on the board (2 Db per use). Expanding aura deals Sustain damage — goes autonomous after 3 rounds!`);
+    if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (costs 1 Drive token). It moves on its own legs at your full range — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn.`);
+    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Set it down (2 Db per use). It plays itself every turn — 2 rings, then 3 — and on the third turn it starts HUNTING the nearest Spirit. Including you.`);
     if (skillId === 'wa_no_koe')      addLog(`🎵 ${spirit?.name} — WA NO KOE! When melody aligns with your chord stack, notes convert to +1 Drive or Sustain for 3 rounds.`);
     if (skillId === 'theory_major')     addLog(`🎼 ${spirit?.name} — THE FULL SCALE! The 4th & 7th are now Discord-free — your Major scale is complete.`);
     if (skillId === 'theory_minor')     addLog(`🌑 ${spirit?.name} — MINOR TONALITY! You can now declare Minor at the pivot and play a minor key, clean.`);
@@ -3920,9 +4065,23 @@ function Game({ gameState, onReturnToLobby }) {
 
   // 🧪 POISON SLIME (Metalness Monster innate passive) ─────────────────────────
   // Drop slime on the hex MM just LEFT (called with fromHex before the move).
+  //
+  // LIFETIME: one FULL ROUND — the trail has to survive long enough for rivals
+  // to actually blunder into it. `turnsLeft` is counted in spirit-turns, not
+  // rounds, and decayPoisonSlime() runs at the end of EVERY spirit's turn —
+  // including the Monster's own, moments after he laid it. Dropping with a flat
+  // 1 therefore wiped the whole trail the instant his turn ended and nobody
+  // ever stepped in it.
+  //
+  // Seeding with the number of living Spirits makes it expire exactly as the
+  // turn order comes back around: with 4 alive, drop=4 → MM's end 3 → each
+  // rival's end 2, 1, 0, so the board is clean again just before MM acts. It
+  // self-scales as Spirits are knocked out, so the trail is always "up until my
+  // next turn" regardless of how many are left standing.
   function dropPoisonSlime(fromHex) {
     if (fromHex == null) return;
-    setPoisonSlime(prev => ({ ...prev, [fromHex]: 1 })); // lingers 1 turn
+    const aliveCount = Math.max(1, spirits.filter(s => !s.knockedOut).length);
+    setPoisonSlime(prev => ({ ...prev, [fromHex]: aliveCount }));
   }
   // Check if a spirit stepped/was pushed into poison slime.
   function checkPoisonSlime(spiritId, hexNum) {
@@ -4949,7 +5108,10 @@ function Game({ gameState, onReturnToLobby }) {
     // hexes / animatronic spawns roll on its seeded rng); the client plays the
     // cinematic off the fresh slice + report. `occupied` is passed because
     // amps are still React-owned.
-    const occupied = [...spirits.map(s => s.num), ...amps.map(a => a.hexNum)];
+    // 👤 The Shadow Illusion counts as occupied: a pyro hex or animatronic
+    // spawning *underneath* a standee would out it as an empty tile.
+    const occupied = [...spirits.map(s => s.num), ...amps.map(a => a.hexNum),
+      ...(shadowHex != null ? [shadowHex] : [])];
     const st = dispatch(stageFxActivated(fxId, occupied)).stageFx;
     if (fxId === 'smoke_machine') {
       addLog(`💨 Smoke floods the centre stage — Spirits in the cloud vanish from view! It spreads each round (${SMOKE_ROUNDS} rounds).`);
@@ -5112,7 +5274,8 @@ function Game({ gameState, onReturnToLobby }) {
     // Clear the Limelight — anyone standing there is blasted to a neighbour hex.
     const squatter = alive.find(sp => sp.num === LIMELIGHT_HEX);
     if (squatter) {
-      const occupied = [...spirits.map(sp => sp.num), ...amps.map(a => a.hexNum)];
+      const occupied = [...spirits.map(sp => sp.num), ...amps.map(a => a.hexNum),
+        ...(shadowHex != null ? [shadowHex] : [])];
       const dest = freeNeighborHex(LIMELIGHT_HEX, occupied);
       if (dest) setSpirits(prev => prev.map(sp => sp.id === squatter.id ? { ...sp, num: dest } : sp));
       addLog(`💥 ${squatter.name} is hurled off the Limelight by the shockwave — 1 Vibe!`);
@@ -5153,7 +5316,7 @@ function Game({ gameState, onReturnToLobby }) {
     const def = ROCK_GODS[god.id];
     const ns = engineRef.current.noteStates?.[spiritId] ?? {};
     const chord = ns.driveStack?.length ? spiritChord(spiritId, ns.driveStack) : null;
-    const raw = (chord ? chord.drive : (sp.drive ?? 6)) + (ns.tempDrive ?? 0);
+    const raw = (chord ? chord.drive : (sp.drive ?? 6)) + (ns.tempDrive ?? 0) + (ns.moshDrive ?? 0);
     const winded = god.winded;
     // Phase 6c — the hit lands in the ENGINE (it owns the winded ×2 + HP floor);
     // the report carries the final number for the log/FP.
@@ -5700,6 +5863,12 @@ function Game({ gameState, onReturnToLobby }) {
     const fromSp = spirits.find(s => s.id === fromId);
     const target = spirits.find(s => s.id === targetId);
     if (!fromSp || !target || target.knockedOut || spaces <= 0) return;
+    // 6️⃣ BERSERK — the Beast does not get moved. He comes at you.
+    if (noteStates[targetId]?.berserk) {
+      addLog(`6️⃣ ${target.name} doesn't move an inch — the Beast eats the hit and keeps coming.`);
+      triggerRumble(targetId);
+      return;
+    }
     // 🌀 ROLLS HARD — Intergalactic 0 plants like a boulder: shrug off 1 hex of any shove.
     // Still pushable (and edge-able) on a committed hit — just sturdier.
     if (targetId === 'intergalactic_0') {
@@ -5884,6 +6053,20 @@ function Game({ gameState, onReturnToLobby }) {
       // is still the hex they fell on (respawn moves them after this).
       setTimeout(() => demolishFans(targetId, attackerId, tgt.num), 0);
 
+      // 6️⃣ BERSERK ends here, either way round:
+      //   · the Monster put someone on the floor — the charge landed, glory, done
+      //   · the Monster IS the one on the floor — the cannons won
+      // Deferred a beat so it lands after the knockdown log, not before it.
+      if (attackerId && attackerId !== targetId && noteStates[attackerId]?.berserk) {
+        setTimeout(() => endBerserk(attackerId, `${tgt.name} went down — the charge landed`), 140);
+      }
+      // Immediate, not deferred: respawn restores full Vibe a beat later, and if
+      // that lands first the heal-watcher below would claim this ending with the
+      // wrong line ("the danger passed"). The cannons get the credit they're due.
+      if (noteStates[targetId]?.berserk) {
+        endBerserk(targetId, 'he charged the cannons and the cannons won');
+      }
+
       // 💀 AZRAEL — credit the attacker's knockdown streak (Metalness only).
       // A rival going down feeds Metalness Fame equal to his running streak.
       if (attackerId && attackerId !== targetId) {
@@ -5960,6 +6143,11 @@ function Game({ gameState, onReturnToLobby }) {
     if (!attacker || !defender) return;
     const defHex = HEX_BY_NUM[defender.num];
     if (!defHex) return;
+    // 6️⃣ BERSERK — same rule as knockback: the Beast holds its ground.
+    if (noteStates[defenderId]?.berserk) {
+      addLog(`6️⃣ ${defender.name} plants — the Beast will not be pushed.`);
+      return;
+    }
     // Find neighbor in the direction the attacker is facing
     const pushHex = neighborInDirection(defHex, attacker.facing ?? 0);
     if (!pushHex) return;
@@ -6065,12 +6253,19 @@ function Game({ gameState, onReturnToLobby }) {
     // 🛡️ Chord fray moved POST-ROLL (Stance rework): the defender's chord frays
     // only when the hit actually lands — see the fray step after the verdict.
 
-    const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0) + skillMods.pyroBonus;
+    // 6️⃣ BERSERK rides on the BASE, deliberately outside ATK_BONUS_CAP — the
+    // Beast is only ever out when the Monster is one hit from the floor, so it
+    // gets to break the ceiling the ordinary buff tower lives under.
+    const atkBerserk = nsA.berserk ? BEAST_DRIVE : 0;
+    if (atkBerserk) { addLog(`6️⃣ THE BEAST IS LOOSE — +${BEAST_DRIVE} Drive, no ceiling.`); beastAttackToll(attacker.id); }
+    const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0) + skillMods.pyroBonus + atkBerserk;
     const atkEdge  = edgeCombatMods(nsA);
     const defEdge   = edgeCombatMods(nsD);
     // ⚖️ Stacked bonuses cap at ATK_BONUS_CAP — no single turn should assemble
     // a +6-and-up tower on top of the chord (balance audit, 2026-07-16).
-    const rawAtkBonus = (nsA.tempDrive ?? 0) + atkEdge.drive;
+    // 🤘 moshDrive rides in here too: it's a standing buff, but it still has to
+    // live under the same ceiling as everything else.
+    const rawAtkBonus = (nsA.tempDrive ?? 0) + (nsA.moshDrive ?? 0) + atkEdge.drive;
     const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
     if (rawAtkBonus > atkBonus) addLog(`⚖️ The rig can only take so much — attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
     const atkStat  = atkBase + atkBonus;
@@ -6261,6 +6456,8 @@ function Game({ gameState, onReturnToLobby }) {
 
     addLog(`🎸💥 ${acting.name} brings the instrument DOWN — THE SMASH! ${thrown} notes hurled, UNDEFENDABLE — −${damage} Vibe${scatterN > 0 ? `, ${scatterN} of ${target.name}'s notes scatter loose` : ''}.`);
     triggerEffectFlash(targetId, '🎸', 'SMASH!', '#ff3344');
+    // 6️⃣ The Smash is an attack like any other — the Beast takes its cut.
+    beastAttackToll(acting.id);
     resolveWinDamage(acting.id, targetId, damage, 'The Smash');
     battleKnockback(acting.id, targetId, knockback);
     // 🧪 SLIME — Smash also triggers the Slime debuff
@@ -6330,93 +6527,289 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`💢 ${acting.name} is left wide open — Exposed until their next turn.`);
   }
 
-  // 🤘 MASTER OF MOSHPITS — Metalness Monster pulls fans from the stands onto the board.
-  // Sacrifice 3 fans for +2 Drive (temp, until next battle). Fans disappear after.
+  // ── 🤘 MASTER OF MOSHPITS ────────────────────────────────────────────────────
+  // Metalness Monster pulls three fans out of the stands, walks them onto the
+  // board, and mosh it out on his own hex while his song plays. The pit pays
+  // +2 Drive that STANDS — unlike tempDrive it survives battle resolution, and
+  // it lasts until the next time he calls a pit (a fresh pit re-pays the 3 fans
+  // and refreshes the buff to +2; it does not stack).
+  //
   // Free action — no AP cost, but once per turn.
+  //
+  // ⚠️ HISTORY: this read `ns.casualFans` / `ns.diehardFans`, which have never
+  // existed — the fan economy stores `ns.casuals` / `ns.diehards`. Both counts
+  // came back undefined, so totalFans was permanently 0 and the button sat
+  // grayed out at "(0/3 fans)" no matter how big the crowd got. Fixed below.
+  const MOSH_FAN_COST = 3;
+  const MOSH_DRIVE    = 2;
+
+  // Total fans a spirit can actually throw into a pit. Diehards on crew
+  // assignments are backstage and don't count — they can't mosh from there.
+  function moshableFans(ns) {
+    const assigned = (ns?.assignments ?? []).length;
+    const diehards = Math.max(0, (ns?.diehards ?? 0) - assigned);
+    return { casuals: ns?.casuals ?? 0, diehards, total: (ns?.casuals ?? 0) + diehards };
+  }
+
+  // Screen coords of a spirit's grandstand seats — mirrors the geometry the fan
+  // crowd renderer uses, so departing fans start from the exact seat they were
+  // drawn in and leave a visible gap behind them.
+  function grandstandSeatXY(spirit, seatIdx) {
+    const home = HEX_BY_NUM[CORNERS[spirit?.corner]?.homeNum];
+    const hub  = HEX_BY_NUM[LIMELIGHT_HEX];
+    if (!home || !hub) return null;
+    const hx = home.px * SCALE, hy = home.py * SCALE;
+    const cxC = hub.px * SCALE, cyC = hub.py * SCALE;
+    let ox = hx - cxC, oy = hy - cyC;
+    const L = Math.hypot(ox, oy) || 1; ox /= L; oy /= L;
+    const FAN_OUT = HS * 3.5;
+    const homeR   = Math.hypot(hx - cxC, hy - cyC);
+    const seatGap = HS * 0.68, rowGap = HS * 0.78;
+    return grandstandSeat(seatIdx, cxC, cyC, ox, oy, homeR + FAN_OUT, seatGap, rowGap);
+  }
+
+  function clearMoshTimers() {
+    moshTimersRef.current.forEach(clearTimeout);
+    moshTimersRef.current = [];
+  }
+  function stopMoshSong() {
+    if (moshAudioRef.current) {
+      moshAudioRef.current.onended = null;
+      moshAudioRef.current.pause();
+      moshAudioRef.current.currentTime = 0;
+      moshAudioRef.current = null;
+    }
+  }
+
   function resolveMasterOfMoshpits() {
     if (!acting || acting.id !== 'Metalness_Monster') return;
+    if (moshCineRef.current) return;                       // a pit is already running
     const ns = noteStates[acting.id] ?? {};
     if (ns.moshpitUsedThisTurn) { addLog(`🤘 Already moshed this turn!`); return; }
-    const totalFans = (ns.diehardFans ?? 0) + (ns.casualFans ?? 0);
-    if (totalFans < 3) {
-      addLog(`🤘 Not enough fans — need at least 3 (have ${totalFans}).`);
+    const pool = moshableFans(ns);
+    if (pool.total < MOSH_FAN_COST) {
+      addLog(`🤘 Not enough fans — need at least ${MOSH_FAN_COST} (have ${pool.total}).`);
       return;
     }
-    // Consume 3 fans (casuals first, then diehards)
-    const casualCost = Math.min(ns.casualFans ?? 0, 3);
-    const diehardCost = 3 - casualCost;
+    // Casuals get dragged in first — the loyal core only goes down when there
+    // aren't enough emotionally flexible bodies left to fill the pit.
+    const casualCost  = Math.min(pool.casuals, MOSH_FAN_COST);
+    const diehardCost = MOSH_FAN_COST - casualCost;
+
+    // The fans leave their seats NOW, so the gap in the grandstand opens as
+    // they walk out. The Drive lands later, when the song does.
     setNoteStates(prev => ({
       ...prev,
       [acting.id]: {
         ...prev[acting.id],
-        casualFans:  (prev[acting.id]?.casualFans  ?? 0) - casualCost,
-        diehardFans: (prev[acting.id]?.diehardFans ?? 0) - diehardCost,
-        tempDrive:   (prev[acting.id]?.tempDrive   ?? 0) + 2,
+        casuals:  Math.max(0, (prev[acting.id]?.casuals  ?? 0) - casualCost),
+        diehards: Math.max(0, (prev[acting.id]?.diehards ?? 0) - diehardCost),
         moshpitUsedThisTurn: true,
       },
     }));
-    addLog(`🤘 MASTER OF MOSHPITS! ${acting.name} sacrifices 3 fans — the pit ERUPTS! +2 Drive!`);
-    triggerEffectFlash(acting.id, '🤘', 'MOSH PIT! +2 DRV', '#ffcc00');
-    // VFX: trigger the moshpit crowd swarm on the Monster's own hex (cosmetic)
-    triggerMoshpit(acting.id);
+
+    addLog(`🤘 MASTER OF MOSHPITS! ${MOSH_FAN_COST} fans climb the barricade and head for the pit…`);
+    startMoshCinematic(acting.id, acting.num, diehardCost);
   }
 
-  // 6️⃣ NUMBER OF THE BEAST — 666 — Spend 6 Db, distribute 6 points randomly across:
-  // Vibe, Db, Drive (temp until next battle), Sustain (temp), Notes, Fans.
-  // Each of the 6 points picks a random bucket. Pure chaos.
+  // The show: fans walk in → camera pushes onto the pit → the song plays out →
+  // fans evaporate and the Drive lands. Skippable at any point.
+  const MOSH_WALK_MS = 1500;
+  function startMoshCinematic(spiritId, hexNum, diehardCost) {
+    const spirit = spirits.find(s => s.id === spiritId);
+    const hex    = HEX_BY_NUM[hexNum];
+    // No board position to stage the pit on — the fans are already spent, so pay
+    // the Drive out flat rather than swallowing it with the cinematic.
+    if (!spirit || !hex) {
+      setNoteStates(prev => ({ ...prev, [spiritId]: { ...prev[spiritId], moshDrive: MOSH_DRIVE } }));
+      addLog(`🤘 The pit erupts off-camera — +${MOSH_DRIVE} DRIVE.`);
+      return;
+    }
+
+    const tx = hex.px * SCALE, ty = hex.py * SCALE;
+    // Front-row seats empty first (they're closest to the rail), diehards first
+    // in the seat sequence — same ordering the grandstand draws in.
+    const movers = [];
+    for (let i = 0; i < MOSH_FAN_COST; i++) {
+      const seat = grandstandSeatXY(spirit, i) ?? { x: tx, y: ty };
+      const ang  = (Math.PI * 2 * i) / MOSH_FAN_COST - Math.PI / 2;
+      const ring = HS * 0.78;
+      movers.push({
+        seed: i * 37 + 11,
+        isDie: i < diehardCost,          // diehards lead the charge
+        sx: seat.x, sy: seat.y,
+        // Land ringed around the Monster, squashed for pseudo-perspective —
+        // matches the existing moshpit swarm treatment.
+        tx: tx + Math.cos(ang) * ring,
+        ty: ty + Math.sin(ang) * ring * 0.62,
+      });
+    }
+
+    const key = Date.now();
+    moshPaidRef.current = null;                 // fresh pit, fresh payout latch
+    setMoshCine({ key, spiritId, hexNum, phase: 'walk', movers });
+    moshCineRef.current = { key, spiritId, hexNum, phase: 'walk', movers };  // Skip may fire before the effect syncs
+    clearMoshTimers();
+
+    const skip = skipBattleIntrosRef.current;
+    const T = (fn, ms) => { const id = gt(fn, skip ? ms * 0.1 : ms); moshTimersRef.current.push(id); return id; };
+
+    // Camera pushes in on the Monster and holds for the whole song — passing a
+    // huge hold keeps focusOnHex from easing back out under us; finishMoshpit
+    // releases it with zoomReset.
+    focusOnHex(hexNum, 10 * 60 * 1000, 0.34);
+
+    // Fans arrive → the pit opens up.
+    T(() => {
+      setMoshCine(m => (m && m.key === key ? { ...m, phase: 'pit' } : m));
+      triggerRumble(spiritId, 900);
+      triggerMoshpit(spiritId);                  // the crowd-PNG swarm, on top
+      if (!liteFx) {
+        stopBattleMusic();                       // nothing competes with the song
+        const audio = new Audio(moshpitSong);
+        audio.loop = false;                      // it runs once, then the pit pays out
+        audio.volume = 0.8;
+        audio.onended = () => finishMoshpit(spiritId);
+        // Autoplay blocked / decode failure — don't strand the pit on screen.
+        audio.play().catch(() => finishMoshpit(spiritId));
+        moshAudioRef.current = audio;
+      } else {
+        // 🎨 lite FX skips audio decoding — fall back to a fixed beat.
+        T(() => finishMoshpit(spiritId), 3000);
+      }
+    }, MOSH_WALK_MS);
+  }
+
+  // Pay out the pit: fans evaporate, Drive lands, camera lets go. Safe to call
+  // twice — moshPaidRef latches the first caller and the second one no-ops.
+  function finishMoshpit(spiritId) {
+    const cur = moshCineRef.current;
+    if (!cur || cur.spiritId !== spiritId) return;
+    if (moshPaidRef.current === cur.key) return;   // song end and Skip raced — first one wins
+    moshPaidRef.current = cur.key;
+    clearMoshTimers();
+    stopMoshSong();
+    setMoshCine(m => (m ? { ...m, phase: 'out' } : m));
+
+    // 🤘 Standing buff: refresh to +2, never stack. A second pit costs another
+    // 3 fans and buys you the same +2 — it's an upkeep, not a ladder.
+    setNoteStates(prev => ({
+      ...prev,
+      [spiritId]: { ...prev[spiritId], moshDrive: MOSH_DRIVE },
+    }));
+
+    const nm = spirits.find(s => s.id === spiritId)?.name ?? 'The Monster';
+    addLog(`🤘 The pit ERUPTS around ${nm} — the fans are spent, but the Drive stays: +${MOSH_DRIVE} DRIVE until the next pit!`);
+    triggerEffectFlash(spiritId, '🤘', `MOSH PIT! +${MOSH_DRIVE} DRV`, '#ffcc00');
+
+    const id = gt(() => { setMoshCine(null); zoomReset(0); }, 900);
+    moshTimersRef.current.push(id);
+  }
+
+  // Skip button — jump straight to the payout.
+  function skipMoshCinematic() {
+    const cur = moshCineRef.current;
+    if (!cur) return;
+    finishMoshpit(cur.spiritId);
+  }
+
+  // Never leave a song playing or a camera pinned if the component unmounts.
+  useEffect(() => () => { clearMoshTimers(); stopMoshSong(); }, []);
+
+  // ── 6️⃣ NUMBER OF THE BEAST — BERSERK ────────────────────────────────────────
+  // "The Trooper": you don't charge the cannons because it's clever, you charge
+  // because there's nothing else left. The Beast can ONLY be called when the
+  // Monster is already dying — at BEAST_VIBE_GATE Vibe or less.
+  //
+  // WHY IT ONLY COSTS 1 Db: the old version wanted 6 Db up front, which put it
+  // in direct competition with the upgrade track — and the upgrade won every
+  // time, so the ability may as well not have existed. 1 Db keeps it in line
+  // with the other signature activations (Slime, the Shamisen) without being a
+  // real choice against an upgrade. The rest is paid in blood: the Vibe gate IS
+  // the cost, and every swing you take while raging burns another point.
+  //
+  // WHILE BERSERK:
+  //   · +BEAST_DRIVE Drive, and it bypasses ATK_BONUS_CAP — the whole point is
+  //     that the Beast is off the leash. It rides on the attack BASE, not the
+  //     capped bonus tower.
+  //   · Immune to knockback. He does not get moved. He comes at you.
+  //   · Every attack he makes costs 1 Vibe.
+  // IT ENDS WHEN:
+  //   · he knocks a rival down (glory — the charge landed), or
+  //   · he's knocked down himself (the cannons won), or
+  //   · his Vibe climbs back above the gate (he's out of danger, so the Beast
+  //     lets go — this is what stops you healing up while keeping the rage).
+  const BEAST_VIBE_GATE = 2;
+  const BEAST_DRIVE     = 6;
+  const BEAST_DB_COST   = 1;
+
   function resolveNumberOfTheBeast() {
     if (!acting || acting.id !== 'Metalness_Monster') return;
     const ns = noteStates[acting.id] ?? {};
-    if ((ns.dbPoints ?? 0) < 6) { addLog(`6️⃣ Not enough Db — need 6.`); return; }
-
-    // Roll 6 random bucket assignments
-    const buckets = ['vibe', 'db', 'drive', 'sustain', 'notes', 'fans'];
-    const alloc = { vibe: 0, db: 0, drive: 0, sustain: 0, notes: 0, fans: 0 };
-    for (let i = 0; i < 6; i++) {
-      const pick = buckets[Math.floor(Math.random() * buckets.length)];
-      alloc[pick]++;
+    if (ns.berserk) { addLog(`6️⃣ The Beast is already loose.`); return; }
+    const vibe = acting.vibe ?? 0;
+    if (vibe > BEAST_VIBE_GATE) {
+      addLog(`6️⃣ The Beast only answers the dying — ${BEAST_VIBE_GATE} Vibe or less (you're on ${vibe}).`);
+      return;
+    }
+    const db = ns.dbPoints ?? 0;
+    if (db < BEAST_DB_COST) {
+      addLog(`6️⃣ Not enough Db — calling the Beast costs ${BEAST_DB_COST} (you have ${db}).`);
+      return;
     }
 
-    setNoteStates(prev => {
-      const p = prev[acting.id] ?? {};
-      // Notes: refill random used stock slots
-      let newStock = [...(p.noteStock ?? [])];
-      let usedIdx  = [...usedList(p.usedStockIdx)];
-      let notesRestored = 0;
-      for (let i = 0; i < alloc.notes && usedIdx.length > 0; i++) {
-        const slot = usedIdx.shift();
-        newStock[slot] = randomNote(p.rootNote, p.scaleMode);
-        notesRestored++;
-      }
-      // If we got note points but had no used slots, the notes are "wasted" — chaos.
-      return {
-        ...prev,
-        [acting.id]: {
-          ...p,
-          dbPoints:     (p.dbPoints ?? 0) - 6 + alloc.db,   // spend 6, gain back any db rolls
-          vibe:         Math.min((p.vibe ?? 0) + alloc.vibe, 10), // cap at 10
-          tempDrive:    (p.tempDrive ?? 0) + alloc.drive,
-          tempSustain:  (p.tempSustain ?? 0) + alloc.sustain,
-          diehardFans:  (p.diehardFans ?? 0) + alloc.fans,   // new fans are diehard (summoned by the beast!)
-          noteStock:    newStock,
-          usedStockIdx: usedIdx,
-        },
-      };
-    });
-
-    // Build the result summary
-    const parts = [];
-    if (alloc.vibe)    parts.push(`+${alloc.vibe} Vibe`);
-    if (alloc.db)      parts.push(`+${alloc.db} Db`);
-    if (alloc.drive)   parts.push(`+${alloc.drive} Drive`);
-    if (alloc.sustain) parts.push(`+${alloc.sustain} Sustain`);
-    if (alloc.notes)   parts.push(`+${alloc.notes} Notes`);
-    if (alloc.fans)    parts.push(`+${alloc.fans} Fans`);
-    const summary = parts.join(', ');
-    addLog(`6️⃣ NUMBER OF THE BEAST! 🔥 ${acting.name} spends 6 Db — chaos distributes: ${summary}!`);
-    triggerEffectFlash(acting.id, '6️⃣', `666! ${summary}`, '#cc0000');
-    triggerRumble(acting.id);
+    setNoteStates(prev => ({
+      ...prev,
+      [acting.id]: {
+        ...prev[acting.id],
+        berserk: true,
+        dbPoints: (prev[acting.id]?.dbPoints ?? 0) - BEAST_DB_COST,
+      },
+    }));
+    addLog(`6️⃣🔥 NUMBER OF THE BEAST! ${acting.name} spends ${BEAST_DB_COST} Db — cornered, bleeding, and DONE RUNNING — BERSERK! +${BEAST_DRIVE} Drive, immune to knockback, and every swing costs a point of Vibe. It ends when someone goes down.`);
+    triggerEffectFlash(acting.id, '6️⃣', `BERSERK! +${BEAST_DRIVE} DRV`, '#cc0000');
+    triggerRumble(acting.id, 900);
+    focusOnHex(acting.num, 1400, 0.40, true);
   }
+
+  // Drop out of Berserk — one exit point so every ending logs the same way.
+  function endBerserk(spiritId, reason) {
+    if (!noteStates[spiritId]?.berserk) return;
+    setNoteField(spiritId, { berserk: false });
+    const nm = spirits.find(s => s.id === spiritId)?.name ?? 'The Monster';
+    addLog(`6️⃣ The Beast lets go of ${nm} — ${reason}.`);
+  }
+
+  // The rage burns Vibe on every attack he throws. Called from the three attack
+  // entry points (Swing / Smash / Sonic) the instant an attack is committed.
+  //
+  // The toll never takes the LAST point: the Beast bleeds him, but it doesn't
+  // get to be what kills him — a rival has to finish the job. That's partly
+  // flavour and partly practical, since a self-inflicted knockdown landing in
+  // the middle of a swing cinematic would fight the battle overlay for control.
+  function beastAttackToll(spiritId) {
+    if (!noteStates[spiritId]?.berserk) return;
+    const sp = spirits.find(s => s.id === spiritId);
+    if (!sp || (sp.vibe ?? 0) <= 1) {
+      addLog(`6️⃣ There's nothing left to burn — the Beast rides on fumes.`);
+      return;
+    }
+    addLog(`6️⃣ The Beast takes its cut — 1 Vibe.`);
+    applyVibeDamage(spiritId, 1, 'the Beast');
+  }
+
+  // 🩸 The Beast lets go the moment the Monster is out of danger. This is the
+  // "can't be healed" clause, expressed as an exit condition rather than as a
+  // block on every heal site in the game: heal up if you like, but the rage
+  // goes with it. Also catches a knockdown (Vibe hits 0 → respawn).
+  useEffect(() => {
+    const mm = spirits.find(s => s.id === 'Metalness_Monster');
+    if (!mm || !noteStates['Metalness_Monster']?.berserk) return;
+    if ((mm.vibe ?? 0) > BEAST_VIBE_GATE) {
+      endBerserk('Metalness_Monster', 'the danger passed, and so did the rage');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spirits, noteStates]);
 
   // 🌌 DISPLACE — Intergalactic 0's signature. He can't run; he WARPS. Teleport to an open
   // hex beside his amp rig for 3 AP, then a 2-turn cooldown. A deliberate get-out-of-jail
@@ -6549,71 +6942,212 @@ function Game({ gameState, onReturnToLobby }) {
     return targets;
   }
 
-  // 👤 SHADOW ILLUSION — Summon a shadow decoy on an adjacent hex.
-  // Costs 1 Drive token from the stack. Lasts 1 turn. Disappears if:
-  //   - the decoy is attacked
+  // 👤 SHADOW ILLUSION — Ronin splits off a body double.
+  //
+  // The decoy is NOT a marker or an aura: it is rendered as a second, identical
+  // Ronin standee. Rivals cannot tell the two apart — same sprite, same base
+  // ring, same hex tint, same facing arrow, and it blocks movement like a body.
+  // It can be walked around the board on the Ronin's own Action Points, so the
+  // pair genuinely behaves like two Ronins on the field.
+  //
+  // Costs 1 Drive token from the stack. Lasts SHADOW_ILLUSION_TURNS of Ronin's
+  // turns. Pops early if:
+  //   - the decoy is attacked (the attacker's AP + Action Token are burned)
   //   - the real Ronin attacks
   //   - the real Ronin is attacked
-  // Rivals who attack the decoy waste their Drive/AP normally but deal no damage.
-  // The decoy cannot interact with board elements (no note pickups, no amp placement).
-  function resolveShadowIllusion(hexNum) {
+  // The decoy cannot interact with board elements (no note pickups, no amp
+  // placement, no hazard triggers) — it isn't really there.
+  const SHADOW_ILLUSION_TURNS = 3;
+
+  // The double is born STACKED on the Ronin — it peels out of his own body on
+  // his own hex, so at the instant of the split there is visibly one Ronin, not
+  // two. Nobody sees where the fake "came from", because it didn't come from
+  // anywhere. The pair then walks apart (his legs, its legs) and by the time a
+  // rival is looking at two standees there is no history to reason from. This
+  // is the whole reason it isn't placed on an adjacent hex: watching a decoy
+  // pop into an empty tile tells you exactly which one is the copy.
+  function resolveShadowIllusion() {
     if (!acting || acting.id !== 'cosmic_ronin') return;
     const ns = actingNoteState ?? {};
     if (ns.shadowIllusion) { addLog('👤 A shadow is already on the board!'); return; }
     const driveStack = ns.driveStack ?? [];
     if (driveStack.length < 1) { addLog('👤 Need at least 1 Drive token to summon a shadow!'); return; }
 
-    const originHex = HEX_BY_NUM[acting.num];
-    if (!originHex) return;
-    const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
-    const neighbors = getFlatTopNeighborSlots(originHex).filter(n => !occupied.has(n.num));
-    if (!neighbors.some(n => n.num === hexNum)) {
-      addLog('👤 Place the shadow on an open adjacent hex.');
-      return;
-    }
-
-    // Spend 1 Drive token
+    // Spend 1 Drive token. The double steps out already facing the way the real
+    // Ronin faces — a mismatched arrow would give the game away instantly — and
+    // with its own full set of legs (see moveShadow).
     const newStack = driveStack.slice(1);
+    const budget = ns.lastMoveBudget ?? Math.max(1, moveStepsLeft);
     setNoteField(acting.id, {
       driveStack: newStack,
-      shadowIllusion: { hex: hexNum, facing: acting.facing ?? 0, turnsLeft: 1 },
+      shadowIllusion: {
+        hex: acting.num,                 // stacked on the real body
+        facing: acting.facing ?? 0,
+        turnsLeft: SHADOW_ILLUSION_TURNS,
+        stepsLeft: budget,
+        stepsMax:  budget,
+      },
     });
 
     triggerEffectFlash(acting.id, '👤', 'SHADOW!', '#4488ff');
-    addLog(`👤 ${acting.name} summons a SHADOW ILLUSION on hex #${hexNum} — which one is real?`);
+    addLog(`👤 ${acting.name} splits — a SHADOW ILLUSION peels out of him on hex #${acting.num}. Two Ronins, one shape. Walk them apart and nobody can say which is which.`);
     setAction(null);
   }
 
-  // Returns valid hexes for Shadow Illusion placement
-  function getShadowIllusionTargets() {
-    if (!acting || acting.id !== 'cosmic_ronin') return new Set();
-    const ns = actingNoteState ?? {};
-    if (ns.shadowIllusion) return new Set();
-    if ((ns.driveStack ?? []).length < 1) return new Set();
-    const originHex = HEX_BY_NUM[acting.num];
-    if (!originHex) return new Set();
-    const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
-    const targets = new Set();
-    getFlatTopNeighborSlots(originHex).forEach(n => {
-      if (!occupied.has(n.num)) targets.add(n.num);
+  // 👤 Walk the double one hex.
+  //
+  // The shadow has its OWN movement pool (`stepsLeft`), refreshed each of the
+  // Ronin's turns to match whatever budget the real body was granted. It shares
+  // the Ronin's *range*, not his Action Points. This is deliberate: if walking
+  // the double drained the Ronin's own AP, summoning it would cost him tempo
+  // every turn it stood on the board, and the ability would read as a drawback
+  // rather than a threat. Two bodies, two sets of legs — that's the point.
+  function moveShadow(toNum) {
+    const si = noteStates['cosmic_ronin']?.shadowIllusion;
+    if (!si) return;
+    const stepsNow = si.stepsLeft ?? 0;
+    if (stepsNow < 1) { addLog('👤 The shadow has no steps left this turn.'); return; }
+    const from = HEX_BY_NUM[si.hex];
+    const to   = HEX_BY_NUM[toNum];
+    if (!from || !to) return;
+    if (axialDist(from.q, from.r, to.q, to.r) !== 1) {
+      addLog('👤 The shadow can only step to an adjacent hex.');
+      return;
+    }
+    if (spiritByNum[toNum]) { addLog('👤 Something is already standing there.'); return; }
+
+    // The double turns to face the way it walked, exactly like a real Spirit.
+    const newFacing = angleTo(from, to);
+    const stepsLeft = stepsNow - 1;
+    setNoteField('cosmic_ronin', {
+      shadowIllusion: { ...si, hex: toNum, facing: newFacing, stepsLeft },
     });
-    return targets;
+    // Deliberately worded like an ordinary Ronin move — the combat log must not
+    // leak which of the two standees just moved.
+    addLog(`🚶 ${spirits.find(s => s.id === 'cosmic_ronin')?.name ?? 'Ronin'} → #${toNum} (${stepsLeft} step${stepsLeft !== 1 ? 's' : ''} left)`);
+    if (stepsLeft <= 0) setAction(null);
   }
 
   // Dismiss shadow when Ronin attacks, is attacked, or shadow is attacked
   function dismissShadowIllusion(reason) {
     const ns = noteStates['cosmic_ronin'] ?? {};
     if (!ns.shadowIllusion) return;
+    const hex = ns.shadowIllusion.hex;
     setNoteField('cosmic_ronin', { shadowIllusion: null });
+    triggerDamageNumber(hex, '👤 GONE', '#4488ff');
+    if (action === 'move_shadow') setAction(null);
     addLog(`👤 The shadow illusion vanishes — ${reason}.`);
   }
 
+  // 👤 Is `num` the decoy's hex, and is it legally in range of the attack the
+  // acting Spirit is currently aiming? The Ronin can't be fooled by their own
+  // double, so they're excluded. `mode` mirrors the attack's own range rule.
+  function isShadowTarget(num, mode) {
+    const si = noteStates['cosmic_ronin']?.shadowIllusion;
+    if (!si || num !== si.hex) return false;
+    if (!acting || acting.id === 'cosmic_ronin') return false;
+    // Freshly summoned, the double is STACKED on the real Ronin. A blow aimed at
+    // that hex has a real body in it, so it must land for real — whiffing on a
+    // hex the Ronin is demonstrably standing on would be a free miss.
+    if (spiritByNum[num]) return false;
+    if (mode === 'cone')  return getSwingCone(acting).has(num);
+    if (mode === 'beam')  return getSonicBeam(acting).has(num);
+    if (mode === 'adjacent') {
+      const a = HEX_BY_NUM[acting.num], b = HEX_BY_NUM[num];
+      return !!a && !!b && axialDist(a.q, a.r, b.q, b.r) === 1;
+    }
+    return false;
+  }
+
+  // 👤 Does the decoy stand in the acting Spirit's cone / beam at all? Used for
+  // the HUD target counts — the Swing button must read "(2)" when a rival can
+  // see one real Spirit and the double, or the count itself becomes the tell.
+  function shadowInRange(mode) {
+    const si = noteStates['cosmic_ronin']?.shadowIllusion;
+    if (!si || !acting || acting.id === 'cosmic_ronin') return false;
+    // While stacked on the real Ronin it isn't a separate target — counting it
+    // would show "(2)" on a hex holding one visible standee.
+    if (spiritByNum[si.hex]) return false;
+    if (mode === 'cone') return getSwingCone(acting).has(si.hex);
+    if (mode === 'beam') return getSonicBeam(acting).has(si.hex);
+    if (mode === 'adjacent') {
+      const a = HEX_BY_NUM[acting.num], b = HEX_BY_NUM[si.hex];
+      return !!a && !!b && axialDist(a.q, a.r, b.q, b.r) === 1;
+    }
+    return false;
+  }
+
+  // 👤 A rival swung at the double. The blow passes through empty air — but the
+  // attacker pays the FULL price of the attack they just threw, down to the last
+  // side-effect. This is not politeness, it's concealment: if whiffing on the
+  // double were cheaper than a real hit (a Smash that didn't drain your movement,
+  // a Blaster that didn't leave you Exposed), the discount itself would announce
+  // that the standee was fake. The wasted tempo is the payoff for the bluff.
+  //
+  //   kind: 'swing' (1 AP) | 'sonic' | 'acoustic' (2 AP)
+  //         | 'smash' | 'blaster' (2 AP minimum, then ALL movement, hurls the
+  //           attacker's whole unused stock, leaves them Exposed)
+  function resolveShadowWhiff(attacker, kind, label) {
+    const si = noteStates['cosmic_ronin']?.shadowIllusion;
+    if (!si || !attacker) return false;
+    const heavy  = kind === 'smash' || kind === 'blaster';
+    const apCost = kind === 'swing' ? 1 : 2;
+    if (actionTokenUsed) { addLog('⚔️ Already used your Action Token this turn!'); return false; }
+    if (moveStepsLeft < apCost) {
+      addLog(`⚔️ Not enough Action Points — that costs ${apCost} AP.`);
+      return false;
+    }
+
+    const ns    = noteStates[attacker.id] ?? {};
+    const used  = ns.usedStockIdx ?? [];
+    const unusedIdxs = (ns.noteStock ?? []).map((_, i) => i).filter(i => !usedHas(used, i));
+    if (heavy && unusedIdxs.length < 2) {
+      addLog(`${kind === 'blaster' ? '🌀' : '🎸'} Nothing to throw — you need at least 2 unused notes.`);
+      return false;
+    }
+
+    if (heavy) {
+      // Same commitment as a landed Smash / Blaster: all movement gone, all
+      // unused stock hurled into thin air, and you're left wide open.
+      dispatch(beatsSpent(0, true, { all: true }));
+      setNoteField(attacker.id, { usedStockIdx: usedAdd(used, unusedIdxs), smashExposed: true });
+    } else {
+      dispatch(beatsSpent(apCost, true));
+    }
+    setAction(null);
+
+    triggerDamageNumber(si.hex, 'MISS!', '#88bbff');
+    focusOnHex(si.hex, 900, 0.42, true);
+    addLog(`👤 ${attacker.name}'s ${label} tears straight through the Ronin — and the Ronin comes apart like smoke. It was the SHADOW.`);
+    if (heavy) {
+      addLog(`💢 ${attacker.name} hurled everything at a ghost — no movement left, stock spent, and Exposed until their next turn.`);
+    } else {
+      addLog(`💨 ${apCost} AP and ${attacker.name}'s Action Token, spent on nothing.`);
+    }
+    dismissShadowIllusion('a rival struck it');
+    return true;
+  }
+
   // 🎸 CURSED SHAMISEN — Drop a cursed shamisen on Ronin's current hex.
-  // 8 Db to unlock, 2 Db per use. Starts with 4-hex range, +1/round, no cap.
-  // Deals 1 Sustain damage per round to anyone in range. Has 1 HP.
-  // Can be "calmed" by walking onto its hex (grants bonus note).
-  // After 3 rounds on the board, it goes autonomous — moves on its own,
-  // dealing Sustain damage to everyone in its wake, including Ronin.
+  //
+  // Three-stage life, ticked at the start of each of Ronin's turns:
+  //
+  //   Stage 1 "LISTENING"  · 2 rings · sits still · spares the Ronin
+  //   Stage 2 "SWELLING"   · 3 rings · sits still · spares the Ronin
+  //   Stage 3 "HUNTING"    · 3 rings · stalks 1 hex/turn toward the nearest
+  //                          Spirit · spares NOBODY, the Ronin included
+  //
+  // The aura FREEZES at 3 rings when the hunt begins — an expanding zone that
+  // also chases you would eventually cover the whole stage with no counterplay.
+  // Growth is the price of standing still; mobility is the price of growth.
+  //
+  // 8 Db to unlock, 2 Db per use. 1 Sustain damage per turn to everyone inside
+  // the rings. Calmed (destroyed) by walking onto its hex, which also hands the
+  // walker a bonus note — so the answer to it is always "go and touch it".
+  const SHAM_RING_START  = 2;   // rings on the turn it lands
+  const SHAM_RING_MAX    = 3;   // frozen ceiling once the hunt starts
+  const SHAM_HUNT_STAGE  = 3;   // stage at which it starts stalking
+
   function resolveCursedShamisen() {
     if (!acting || acting.id !== 'cosmic_ronin') return;
     const ns = actingNoteState ?? {};
@@ -6626,93 +7160,176 @@ function Game({ gameState, onReturnToLobby }) {
       dbPoints: dbPts - 2,
       cursedShamisen: {
         hex: acting.num,
-        range: 4,
-        roundsOnBoard: 0,
-        autonomous: false,
+        range: SHAM_RING_START,
+        stage: 1,
+        hunting: false,
+        touched: [],      // ids the melody reached on its most recent tick
       },
     });
 
     triggerEffectFlash(acting.id, '🎸', 'SHAMISEN!', '#4488ff');
-    addLog(`🎸 ${acting.name} drops the CURSED SHAMISEN on hex #${acting.num} — its haunting melody spreads across 4 hexes!`);
+    addLog(`🎸 ${acting.name} sets the CURSED SHAMISEN down on hex #${acting.num}. It begins to play by itself — ${SHAM_RING_START} rings of haunted air.`);
+    playShamisenMelody(false);
     setAction(null);
   }
 
-  // Tick the Shamisen each round: expand range, deal Sustain damage, go autonomous after 3 rounds.
-  // Called from startNewTurnNotes (turn-start) when the Ronin's turn begins.
+  // 🎶 The haunting melody. An unaccompanied Japanese-flavoured minor phrase
+  // (roughly the "insen" scale) let ring with long tails — while it hunts the
+  // same shape drops an octave and speeds up into something predatory.
+  function playShamisenMelody(hunting) {
+    try {
+      const ctx = getAudioCtx();
+      // insen on D: D · Eb · G · A · C
+      const phrase = hunting
+        ? [146.83, 155.56, 196.00, 146.83, 130.81, 110.00]   // low, urgent, descending
+        : [293.66, 311.13, 392.00, 440.00, 392.00, 311.13];  // higher, drifting
+      const gap  = hunting ? 0.17 : 0.26;
+      const knobs = { drive: 0.18, tone: 0.30, echo: 0.72, verb: 0.55, voice: 'triangle' };
+      phrase.forEach((freq, i) => {
+        playAmpNote(ctx, freq, {
+          when: ctx.currentTime + i * gap,
+          holdTime: hunting ? 0.28 : 0.42,
+          fadeTime: hunting ? 0.5 : 0.9,
+          volume: hunting ? 0.13 : 0.10,
+          knobs,
+        });
+      });
+    } catch (_) { /* audio unavailable — silent fail */ }
+  }
+
+  // 🎯 One stalking step toward the nearest living Spirit (the Ronin counts —
+  // once it wakes up, the thing has no loyalties). It walks around bodies
+  // rather than through them; if every route is blocked it simply stays put
+  // and keeps playing.
+  function shamisenHuntStep(fromNum) {
+    const fromHex = HEX_BY_NUM[fromNum];
+    if (!fromHex) return fromNum;
+    const prey = spirits.filter(s => !s.knockedOut && HEX_BY_NUM[s.num]);
+    if (!prey.length) return fromNum;
+    // Nearest by hex distance; ties broken by lowest Vibe, so a wounded Spirit
+    // is the one it drifts toward when two are equidistant.
+    let target = null, bestD = Infinity;
+    prey.forEach(sp => {
+      const h = HEX_BY_NUM[sp.num];
+      const d = axialDist(fromHex.q, fromHex.r, h.q, h.r);
+      if (d < bestD || (d === bestD && target && sp.vibe < target.vibe)) { bestD = d; target = sp; }
+    });
+    if (!target) return fromNum;
+    const tHex = HEX_BY_NUM[target.num];
+    const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
+    // Pick the open neighbour that closes the most distance.
+    let bestNum = fromNum, bestDist = bestD;
+    getFlatTopNeighborSlots(fromHex).forEach(n => {
+      if (occupied.has(n.num)) return;              // can't share a hex with a body
+      const nHex = HEX_BY_NUM[n.num];
+      if (!nHex) return;
+      const d = axialDist(nHex.q, nHex.r, tHex.q, tHex.r);
+      if (d < bestDist) { bestDist = d; bestNum = n.num; }
+    });
+    return bestNum;
+  }
+
+  // Tick the Shamisen at the start of each of Ronin's turns: advance its stage,
+  // stalk if it has woken up, then play and resolve the melody.
   function tickCursedShamisen() {
     const ns = noteStates['cosmic_ronin'] ?? {};
     const sham = ns.cursedShamisen;
     if (!sham) return;
 
-    const newRounds = sham.roundsOnBoard + 1;
-    const newRange = sham.range + 1; // +1 hex per round
-    const goesAutonomous = newRounds >= 3 && !sham.autonomous;
+    const stage    = (sham.stage ?? 1) + 1;
+    const hunting  = stage >= SHAM_HUNT_STAGE;
+    const justWoke = hunting && !sham.hunting;
+    // Grows one ring per turn until the hunt begins, then freezes.
+    const newRange = hunting ? SHAM_RING_MAX : Math.min(SHAM_RING_MAX, (sham.range ?? SHAM_RING_START) + 1);
+    const newHex   = hunting ? shamisenHuntStep(sham.hex) : sham.hex;
 
-    // If autonomous, move the Shamisen to a random adjacent hex
-    let newHex = sham.hex;
-    if (sham.autonomous || goesAutonomous) {
-      const shamHex = HEX_BY_NUM[sham.hex];
-      if (shamHex) {
-        const neighbors = getFlatTopNeighborSlots(shamHex);
-        if (neighbors.length > 0) {
-          newHex = neighbors[Math.floor(Math.random() * neighbors.length)].num;
-        }
-      }
+    if (justWoke) {
+      addLog(`🎸💀 The Cursed Shamisen stops waiting. It lifts off the boards and starts HUNTING — its aura holds at ${SHAM_RING_MAX} rings, and it no longer cares whose Spirit you are. Even the Ronin.`);
+    } else if (hunting && newHex !== sham.hex) {
+      addLog(`🎸💀 The Shamisen drags itself to hex #${newHex}, still playing.`);
+    } else if (!hunting) {
+      addLog(`🎸 The Shamisen's melody swells — ${newRange} rings of haunted air now.`);
     }
 
-    // Deal 1 Sustain damage to everyone within range (including Ronin if autonomous)
+    // 🎶 The melody plays every single turn it lives, hunting or not.
+    playShamisenMelody(hunting);
+
+    // Resolve the melody: 1 Sustain damage to every Spirit inside the rings.
+    // Before it wakes, the Ronin is immune — it's still his instrument.
     const shamHex = HEX_BY_NUM[newHex];
+    const touched = [];
     if (shamHex) {
       spirits.forEach(sp => {
         if (sp.knockedOut) return;
-        // Only damage Ronin if autonomous
-        if (sp.id === 'cosmic_ronin' && !sham.autonomous && !goesAutonomous) return;
+        if (sp.id === 'cosmic_ronin' && !hunting) return;
         const spHex = HEX_BY_NUM[sp.num];
         if (!spHex) return;
         const dist = axialDist(shamHex.q, shamHex.r, spHex.q, spHex.r);
-        if (dist <= newRange) {
-          // Apply 1 Sustain damage (reduce tempSustain or apply Vibe damage)
-          const spNs = noteStates[sp.id] ?? {};
-          const curSustain = spNs.tempSustain ?? 0;
-          if (curSustain > 0) {
-            setNoteField(sp.id, { tempSustain: curSustain - 1 });
-          } else {
-            applyVibeDamage(sp.id, 1, 'Cursed Shamisen');
-          }
-          addLog(`🎸 The Shamisen's curse reaches ${sp.name} — 1 Sustain damage!`);
-        }
+        if (dist > newRange) return;
+
+        touched.push(sp.id);
+        // Sustain soaks the curse first; once that's gone it bites Vibe.
+        const spNs = noteStates[sp.id] ?? {};
+        const curSustain = spNs.tempSustain ?? 0;
+        const soaked = curSustain > 0;
+        if (soaked) setNoteField(sp.id, { tempSustain: curSustain - 1 });
+        else applyVibeDamage(sp.id, 1, 'Cursed Shamisen');
+
+        // 👁️ Make the hit unmissable: the victim's standee flashes, a cursed
+        // note floats off their hex, and their aura is marked for the round.
+        triggerEffectFlash(sp.id, '🎶', 'CURSED', '#aa55ff');
+        triggerDamageNumber(sp.num, soaked ? '🎶 −1 🛡️' : '🎶 −1 ❤️', '#cc88ff');
+        triggerRumble(sp.id, 420);
+        addLog(dist === 0
+          ? `🎶 ${sp.name} is standing right on top of the Shamisen — it plays straight through them. 1 ${soaked ? 'Sustain' : 'Vibe'} gone.`
+          : `🎶 The Shamisen's melody catches ${sp.name} at ${dist} ring${dist !== 1 ? 's' : ''} — 1 ${soaked ? 'Sustain' : 'Vibe'} gone.`);
       });
+    }
+    if (touched.length === 0) {
+      addLog(`🎶 The Shamisen plays to an empty room — nobody is close enough to hear it.`);
     }
 
     setNoteField('cosmic_ronin', {
       cursedShamisen: {
         hex: newHex,
         range: newRange,
-        roundsOnBoard: newRounds,
-        autonomous: sham.autonomous || goesAutonomous,
+        stage,
+        hunting,
+        touched,      // drives the lingering "you were played at" aura
       },
     });
-
-    if (goesAutonomous) {
-      addLog(`🎸💀 The Shamisen stirs — it moves on its own now! It damages EVERYONE in its wake, even the Ronin!`);
-    }
   }
 
-  // Calm the Shamisen — called when any spirit walks onto its hex.
-  // The walker picks up a bonus note (like walking onto a note hex).
-  function calmCursedShamisen(walkerId) {
+  // Calm the Shamisen — called when a Spirit finishes a step, with the hex they
+  // just landed on.
+  //
+  // `landedOn` is passed explicitly and is NOT optional in practice: the render
+  // closure's `spirits` array still holds the walker's PRE-move position, so
+  // reading the position off it here calmed the Shamisen the instant the Ronin
+  // stepped off the hex he'd just dropped it on — the ability killed itself on
+  // the very next move. Every other post-move hook (poison slime, token pickup,
+  // stage FX) already takes the destination hex for exactly this reason.
+  function calmCursedShamisen(walkerId, landedOn) {
     const ns = noteStates['cosmic_ronin'] ?? {};
     if (!ns.cursedShamisen) return false;
     const walkerSpirit = spirits.find(s => s.id === walkerId);
     if (!walkerSpirit) return false;
-    if (walkerSpirit.num !== ns.cursedShamisen.hex) return false;
+    const at = landedOn ?? walkerSpirit.num;
+    if (at !== ns.cursedShamisen.hex) return false;
 
+    const wasHunting = !!ns.cursedShamisen.hunting;
     setNoteField('cosmic_ronin', { cursedShamisen: null });
     const walkerName = walkerSpirit.name;
-    addLog(`🎸🎵 ${walkerName} calms the Cursed Shamisen — the haunting melody fades.`);
+    addLog(wasHunting
+      ? `🎸🎵 ${walkerName} walks straight into the hunting Shamisen and lays a hand on the strings — the melody chokes off dead.`
+      : `🎸🎵 ${walkerName} calms the Cursed Shamisen — the haunting melody fades.`);
     triggerEffectFlash(walkerId, '🎵', 'CALMED', '#44cc66');
-    // Grant bonus note to the walker (same as picking up a note on the board)
-    return true; // caller handles the bonus note grant
+    // The reward for walking into it: the silenced melody leaves a note behind.
+    // (This used to return true and rely on the caller to grant it, but no caller
+    // ever did — the promised bonus note simply never arrived.)
+    const wNs = noteStates[walkerId] ?? {};
+    bankLostChordNote(walkerId, randomNote(wNs.rootNote, wNs.scaleMode), false);
+    return true;
   }
 
   // 🎵 WA NO KOE (和の声) — Voice of Harmony. Passive: when the melody commit
@@ -6890,12 +7507,15 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`🎸 ${attacker.name} projects ${sonicChordSpent.join('')} from the drive stack — ${sonicChordLeft.length ? spiritChord(attacker.id, sonicChordLeft).name : 'drive exhausted (base stats until committed)'}.`);
     }
 
+    // 6️⃣ BERSERK — same uncapped base treatment as the Thrash path.
+    const atkBerserk = nsA.berserk ? BEAST_DRIVE : 0;
+    if (atkBerserk) { addLog(`6️⃣ THE BEAST IS LOOSE — +${BEAST_DRIVE} Drive, no ceiling.`); beastAttackToll(acting.id); }
     const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0)
-                   + skillMods.pyroBonus + pedalBonus + powerBonus;
+                   + skillMods.pyroBonus + pedalBonus + powerBonus + atkBerserk;
     const atkEdge  = edgeCombatMods(nsA);
     const defEdge   = edgeCombatMods(nsD);
     // ⚖️ Same stacked-bonus cap as Thrash (balance audit, 2026-07-16).
-    const rawAtkBonus = (nsA.tempDrive ?? 0) + atkEdge.drive;
+    const rawAtkBonus = (nsA.tempDrive ?? 0) + (nsA.moshDrive ?? 0) + atkEdge.drive;
     const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
     if (rawAtkBonus > atkBonus) addLog(`⚖️ The rig can only take so much — attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
     const atkStat  = atkBase + atkBonus;
@@ -8025,7 +8645,8 @@ function Game({ gameState, onReturnToLobby }) {
     // ── SPOTLIGHT MOVE: advance every full round (engine rng — Phase 6a) ─────
     if (report.roundCompleted) {
       {
-        const occupied = spirits.map(sp => sp.num);
+        const occupied = [...spirits.map(sp => sp.num),
+          ...(shadowHex != null ? [shadowHex] : [])]; // 👤 the double holds its tile
         dispatch(spotlightMoved(occupied));
         const moveReport = engineRef.current.board.lastSpotlightMove;
         if (moveReport) addLog(`💡 The spotlight shifts to hex #${moveReport.to}!`);
@@ -8041,6 +8662,7 @@ function Game({ gameState, onReturnToLobby }) {
           ...chargeZones.map(z => z.num),
           ...eventHexes,
           ...boardTokens.map(t => t.num),
+          ...(shadowHex != null ? [shadowHex] : []), // 👤 no Lost Chord under the double
           spotlightHex, LIMELIGHT_HEX,
         ];
         dispatch(tokensScattered(occupied, aliveSpirits.length, spirits.length));
@@ -8768,6 +9390,9 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
     if (action === "swing") {
+      // 👤 Swinging at the double looks exactly like swinging at the Ronin —
+      // right up until the blade meets nothing.
+      if (isShadowTarget(num, 'cone')) { resolveShadowWhiff(acting, 'swing', 'swing'); return; }
       const rivals = acting ? getRivalsInCone(acting) : [];
       const target = rivals.find(r => r.num === num);
       if (target) { initiateSwing(target.id); setAction(null); }
@@ -8790,6 +9415,7 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
     if (action === "sonic") {
+      if (isShadowTarget(num, 'beam')) { resolveShadowWhiff(acting, 'sonic', 'sonic beam'); return; }
       const rivals = acting ? getRivalsInBeam(acting) : [];
       const target = rivals.find(r => r.num === num);
       if (target) { initiateSonicAttack(target.id); setAction(null); }
@@ -8797,6 +9423,7 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
     if (action === "acoustic") {
+      if (isShadowTarget(num, 'adjacent')) { resolveShadowWhiff(acting, 'acoustic', 'Acoustic Duel'); return; }
       // Phase R4: Acoustic Duel targets adjacent rivals
       const actHex = HEX_BY_NUM[acting.num];
       const target = actHex ? spirits.filter(s => s.id !== acting.id && !s.knockedOut).find(s => {
@@ -8808,6 +9435,7 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
     if (action === "smash") {
+      if (isShadowTarget(num, 'cone')) { resolveShadowWhiff(acting, 'smash', 'Smash'); return; }
       const rivals = acting ? getRivalsInCone(acting) : [];
       const target = rivals.find(r => r.num === num);
       if (target) { resolveSmash(target.id); setAction(null); }
@@ -8817,7 +9445,14 @@ function Game({ gameState, onReturnToLobby }) {
     if (action === "blaster") {
       // 🌀 Ranged & piercing — clicking any rival in the beam fires at ALL of them.
       const rivals = acting ? getRivalsInBeam(acting) : [];
-      if (rivals.some(r => r.num === num)) { resolveBlasterOfRa(); setAction(null); }
+      if (rivals.some(r => r.num === num)) {
+        resolveBlasterOfRa();
+        setAction(null);
+        // The beam pierces everything in the line — including the double, which
+        // comes apart as the shot passes through it.
+        if (shadowInRange('beam')) dismissShadowIllusion('the Blaster of Ra tore through it');
+      }
+      else if (isShadowTarget(num, 'beam')) { resolveShadowWhiff(acting, 'blaster', 'Blaster of Ra'); }
       else addLog("🌀 Click a rival in your beam to fire the Blaster of Ra!");
       return;
     }
@@ -8834,10 +9469,9 @@ function Game({ gameState, onReturnToLobby }) {
       } else addLog("🌀 Click a rival in your straight line of sight!");
       return;
     }
-    if (action === "shadow_illusion") {
-      const targets = getShadowIllusionTargets();
-      if (targets.has(num)) { resolveShadowIllusion(num); }
-      else addLog("👤 Place the shadow on an open adjacent hex.");
+    if (action === "move_shadow") {
+      if (shadowReachable.has(num)) moveShadow(num);
+      else addLog("👤 The shadow can only step to an open adjacent hex.");
       return;
     }
     if (action === "move") {
@@ -8847,6 +9481,11 @@ function Game({ gameState, onReturnToLobby }) {
     }
     const s = spiritByNum[num];
     if (s) addLog(`ℹ️ ${s.name} — ${s.vibe}/${s.maxVibe} Vibe · Hex #${num}`);
+    // 👤 Inspecting the double reports the real Ronin's stat line, verbatim.
+    // A rival poking at it learns nothing they wouldn't learn poking the real one.
+    else if (shadowDecoy && num === shadowDecoy.num) {
+      addLog(`ℹ️ ${shadowDecoy.name} — ${shadowDecoy.vibe}/${shadowDecoy.maxVibe} Vibe · Hex #${num}`);
+    }
   }
 
   // ─── HEX VISUAL HELPERS ───────────────────────────────────────────────────────
@@ -8858,10 +9497,11 @@ function Game({ gameState, onReturnToLobby }) {
     const spHex = HEX_BY_NUM[acting.num];
     if (!spHex) return new Set();
     const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
+    if (shadowHex != null) occupied.add(shadowHex); // 👤 can't warp into the double
     const out = new Set();
     getFlatTopNeighborSlots(spHex).forEach(n => { if (!occupied.has(n.num)) out.add(n.num); });
     return out;
-  }, [action, acting, spirits]);
+  }, [action, acting, spirits, shadowHex]);
 
   function hexFill(hex) {
     // hovering a HUD attack button previews its range like the live mode
@@ -8871,25 +9511,29 @@ function Game({ gameState, onReturnToLobby }) {
     const sp = spiritByNum[hex.num];
     // 💨 Smoke-hidden spirits are invisible — don't colour their hex
     if (sp && !isHiddenBySmoke(sp)) return sp.color + "44";
+    // 👤 The double's hex is tinted with the Ronin's own colour, exactly as if
+    // he were standing on it. This runs BEFORE every targeting highlight so the
+    // decoy never lights up differently from the real body.
+    if (shadowDecoy && hex.num === shadowDecoy.num) return shadowDecoy.color + "44";
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#aa55ff33";
+    if (action === 'move_shadow' && shadowReachable.has(hex.num)) return "#ffffff18";
     if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return "#4488ff33";
-    if (action === 'shadow_illusion' && getShadowIllusionTargets().has(hex.num)) return "#4488ff33";
-    // 🎸 Cursed Shamisen — glow the hex it's on and its range
+    // 🎸 Cursed Shamisen — its hex plus the concentric rings of its melody.
+    // Each ring is shaded a step darker than the last, so you can count how many
+    // rings out you are at a glance instead of guessing where the edge is.
     {
       const sham = noteStates['cosmic_ronin']?.cursedShamisen;
       if (sham) {
-        if (hex.num === sham.hex) return sham.autonomous ? '#ff440044' : '#4488ff44';
+        if (hex.num === sham.hex) return sham.hunting ? '#ff440055' : '#4488ff55';
         const shamHex = HEX_BY_NUM[sham.hex];
         if (shamHex) {
           const dist = axialDist(shamHex.q, shamHex.r, hex.q, hex.r);
-          if (dist <= sham.range) return sham.autonomous ? '#ff220011' : '#4488ff11';
+          if (dist <= (sham.range ?? 0)) {
+            const fade = ['22', '18', '12', '0c'][Math.min(dist - 1, 3)];
+            return (sham.hunting ? '#ff2200' : '#4488ff') + fade;
+          }
         }
       }
-    }
-    // 👤 Shadow Illusion — glow the decoy hex
-    {
-      const si = noteStates['cosmic_ronin']?.shadowIllusion;
-      if (si && hex.num === si.hex) return '#4488ff33';
     }
     if (reachable.has(hex.num)) return "#ffffff18";
     // Swing / Smash cone highlight
@@ -8934,9 +9578,11 @@ function Game({ gameState, onReturnToLobby }) {
     // 💨 Smoke-hidden spirits are invisible — don't stroke their hex
     if (sp && !isHiddenBySmoke(sp) && acting?.id === sp.id) return sp.color;
     if (sp && !isHiddenBySmoke(sp)) return sp.color;
+    // 👤 Decoy hex is outlined in the Ronin's colour, same as a real standee.
+    if (shadowDecoy && hex.num === shadowDecoy.num) return shadowDecoy.color;
+    if (action === 'move_shadow' && shadowReachable.has(hex.num)) return "#ffffff88";
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#cc88ffcc";
     if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return "#4488ffcc";
-    if (action === 'shadow_illusion' && getShadowIllusionTargets().has(hex.num)) return "#4488ffcc";
     if (reachable.has(hex.num)) return "#ffffff88";
     // Swing / Smash cone stroke
     if ((previewAction === 'swing' || previewAction === 'smash') && acting) {
@@ -8980,10 +9626,14 @@ function Game({ gameState, onReturnToLobby }) {
     // 💨 Smoke-hidden spirits don't thicken their hex stroke
     const spVisible = sp && !isHiddenBySmoke(sp);
     if (spVisible && acting?.id === sp.id) return Math.round(3 / SCALE * 0.13);
-    if (spVisible || reachable.has(hex.num) || hex.stage) return 1.5;
+    // 👤 When the Ronin is the acting Spirit, BOTH his standees get the thick
+    // "it's my turn" outline — otherwise the ring thickness alone would out him.
+    if (shadowDecoy && hex.num === shadowDecoy.num) {
+      return acting?.id === 'cosmic_ronin' ? Math.round(3 / SCALE * 0.13) : 1.5;
+    }
+    if (spVisible || reachable.has(hex.num) || shadowReachable.has(hex.num) || hex.stage) return 1.5;
     if (action === 'displace' && displaceTargets.has(hex.num)) return 2;
     if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return 2;
-    if (action === 'shadow_illusion' && getShadowIllusionTargets().has(hex.num)) return 2;
     return 0.8;
   }
 
@@ -9597,6 +10247,27 @@ function Game({ gameState, onReturnToLobby }) {
         </div>
       )}
 
+      {/* ── 🤘 MOSHPIT CINEMATIC BANNER — title card + Skip while the song runs ── */}
+      {moshCine && moshCine.phase !== 'out' && (
+        <div style={{position:"fixed", left:0, right:0, bottom:26, zIndex:9000,
+          display:"flex", flexDirection:"column", alignItems:"center", gap:8,
+          pointerEvents:"none"}}>
+          <div style={{fontFamily:"'Saira Stencil One',sans-serif", fontSize:26, letterSpacing:2,
+            color:"#ffcc00", textShadow:"0 0 12px #ffcc00, 0 0 30px #aa6600",
+            animation:"moshpit-shudder 0.28s steps(2) infinite"}}>
+            🤘 MASTER OF MOSHPITS 🤘
+          </div>
+          <div style={{fontSize:11, color:"#ffe9a0", opacity:0.85}}>
+            {moshCine.phase === 'walk'
+              ? `${MOSH_FAN_COST} fans are coming over the barricade…`
+              : `The pit is raging — +${MOSH_DRIVE} DRIVE when the song lands`}
+          </div>
+          <button className="btn" style={{pointerEvents:"auto", borderColor:"#ffcc00", color:"#ffcc00"}}
+            title="Skip the mosh pit — the fans are spent either way and the Drive lands now."
+            onClick={skipMoshCinematic}>⏭ Skip</button>
+        </div>
+      )}
+
       {/* ── RIFF BANNER — legendary riff toast ── */}
       <RiffBanner riffBanner={riffBanner} spirits={spirits} setRiffBanner={setRiffBanner} />
 
@@ -9762,7 +10433,7 @@ function Game({ gameState, onReturnToLobby }) {
                         tempSustain PLUS the Dissonance Edge stage delta (edgeCombatMods), so the
                         dial always reflects the stat you'd actually fight with right now. */}
                     <StatKnob label="DRIVE" value={spiritChord(s.id, ns.driveStack ?? []).drive}
-                      boost={(ns.tempDrive ?? 0) + edgeCombatMods(ns).drive} color="#ff6644"/>
+                      boost={(ns.tempDrive ?? 0) + (ns.moshDrive ?? 0) + edgeCombatMods(ns).drive} color="#ff6644"/>
                     <StatKnob label="SUSTAIN" value={spiritChord(s.id, ns.sustainStack ?? []).sustain} boost={(ns.tempSustain ?? 0) - edgeCombatMods(ns).sustainPenalty} color="#44aaff"/>
                     <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
                       <div data-tip-anchor="vibe-bar">
@@ -10796,6 +11467,31 @@ function Game({ gameState, onReturnToLobby }) {
                 onClick={() => { if (!canAct) return; setAction(null); dispatch(beatsSpent(0, false, { all: true })); addLog(`🚶 ${acting.name} stops moving.`); }}>
                 ✓ End Move</button>
             )}
+            {/* 👤 MOVE SHADOW — the double walks on its OWN legs: same range as
+                the Ronin, separate pool, so it never eats his AP. Only the
+                Ronin ever sees this button. */}
+            {acting?.id === 'cosmic_ronin' && shadowIllusion && (
+              <>
+                <button className={`btn${action === "move_shadow" ? " on" : ""}`}
+                  style={{borderColor: action === "move_shadow" ? "#88bbff" : "#1a2840",
+                    color: action === "move_shadow" ? "#88bbff" : "#4a6a90"}}
+                  disabled={shadowSteps < 1}
+                  title="Move Shadow — your double moves on its own steps, refreshed each turn to match your own movement range. It costs you no Action Points."
+                  onClick={() => {
+                    if (action === "move_shadow") { setAction(null); }
+                    else if (shadowSteps > 0) {
+                      setAction("move_shadow");
+                      addLog(`👤 Moving the SHADOW — ${shadowSteps} step${shadowSteps!==1?"s":""} of its own (your AP is untouched).`);
+                    }
+                  }}>
+                  👤 Move Shadow{shadowSteps > 0 ? ` (${shadowSteps} hex)` : " (spent)"}
+                </button>
+                {action === "move_shadow" && (
+                  <button className="btn" style={{borderColor:"#888",color:"#888"}}
+                    onClick={() => setAction(null)}>Cancel</button>
+                )}
+              </>
+            )}
             {/* FACE TURN — costs 1 move step */}
             {acting && moveStepsLeft > 0 && (
               <button className={`btn${action === "face" ? " on" : ""}`}
@@ -10859,8 +11555,13 @@ function Game({ gameState, onReturnToLobby }) {
             {!rockGodActive && (() => {
               const cone = acting ? getSwingCone(acting) : new Set();
               const rivals = acting ? getRivalsInCone(acting) : [];
+              // 👤 The double counts as a target here. If the button read "(0)"
+              // while a Ronin standee sat in the cone, the count would be the
+              // tell — so it's tallied exactly like a real rival.
+              const shadowCounts = shadowInRange('cone') ? 1 : 0;
+              const targetCount = rivals.length + shadowCounts;
               const grayed = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
-              const canSwing = !grayed && rivals.length > 0;
+              const canSwing = !grayed && targetCount > 0;
               return (
                 <div style={{position:'relative',display:'inline-block'}}
                   onMouseEnter={() => setHoverPreview('swing')}
@@ -10883,7 +11584,7 @@ function Game({ gameState, onReturnToLobby }) {
                         addLog('⚔️ SWING — click a rival in your cone to attack! (1 AP)');
                       }
                     }}>
-                    ⚔️ Swing{rivals.length > 0 ? ` (${rivals.length})` : ''} {!canSwing && moveStepsLeft < 1 ? '(1AP)' : ''}
+                    ⚔️ Swing{targetCount > 0 ? ` (${targetCount})` : ''} {!canSwing && moveStepsLeft < 1 ? '(1AP)' : ''}
                   </button>
                 </div>
               );
@@ -10898,9 +11599,12 @@ function Game({ gameState, onReturnToLobby }) {
               // 🌀 Once Blaster of Ra is unlocked, it REPLACES the Smash: ranged beam, pierces all.
               const hasBlaster = acting?.id === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
               const rivals = acting ? (hasBlaster ? getRivalsInBeam(acting) : getRivalsInCone(acting)) : [];
+              // 👤 The Shadow Illusion is a legal target here too — it has to be,
+              // or the button greying out would reveal it as a fake.
+              const shadowSeen = shadowInRange(hasBlaster ? 'beam' : 'cone');
               const unused = (ns.noteStock ?? []).filter((_, i) => !usedHas(ns.usedStockIdx, i)).length;
               const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
-              const canFire = !grayed && rivals.length > 0 && unused >= 2;
+              const canFire = !grayed && (rivals.length > 0 || shadowSeen) && unused >= 2;
               const mode    = hasBlaster ? 'blaster' : 'smash';
               const baseTitle = hasBlaster
                 ? "Blaster of Ra (2 AP) — a ranged, piercing bass-drop down the beam: undefendable, scatters & knocks back EVERY rival in line. Ends your movement, leaves you Exposed. Hurls your unused stock."
@@ -10929,7 +11633,7 @@ function Game({ gameState, onReturnToLobby }) {
                           : `🎸💥 THE SMASH — click an adjacent rival to bring it down! (${unused} notes to hurl)`);
                       }
                     }}>
-                    {hasBlaster ? '🌀 Blaster of Ra' : '🎸 Smash'}{rivals.length > 0 ? ` (${unused})` : ''} {!canFire && moveStepsLeft < 2 ? '(2AP)' : ''}
+                    {hasBlaster ? '🌀 Blaster of Ra' : '🎸 Smash'}{(rivals.length > 0 || shadowSeen) ? ` (${unused})` : ''} {!canFire && moveStepsLeft < 2 ? '(2AP)' : ''}
                   </button>
                 </div>
               );
@@ -10950,8 +11654,11 @@ function Game({ gameState, onReturnToLobby }) {
               // range or no rival in the beam (positional). Hover shows both
               // the beam and the rig's radius ring so the player sees why.
               const outOfRange = !actingRig.inRange;
+              // 👤 The double reads as a beam target like any other standee.
+              const shadowSeen = shadowInRange('beam');
+              const beamCount  = targets.length + (shadowSeen ? 1 : 0);
               const grayed   = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
-              const canSonic = !grayed && !outOfRange && targets.length > 0;
+              const canSonic = !grayed && !outOfRange && beamCount > 0;
               return (
                 <div style={{position:'relative',display:'inline-block'}}
                   onMouseEnter={() => setHoverPreview('sonic')}
@@ -10976,7 +11683,7 @@ function Game({ gameState, onReturnToLobby }) {
                         addLog(`🔊 SONIC ATTACK — click a target in your beam! (${diceLabel} keep best)`);
                       }
                     }}>
-                    🔊 Sonic{outOfRange ? ' 📡' : targets.length > 0 ? ` (${targets.length})` : ''} {diceLabel}
+                    🔊 Sonic{outOfRange ? ' 📡' : beamCount > 0 ? ` (${beamCount})` : ''} {diceLabel}
                     {grayed && moveStepsLeft < 2 ? ' (2AP)' : ''}
                   </button>
                 </div>
@@ -11001,8 +11708,12 @@ function Game({ gameState, onReturnToLobby }) {
                 const pk = acousticDuelPairKey(acting.id, r.id);
                 return (cds[pk] ?? 0) <= 0;
               });
+              // 👤 An adjacent double looks like an available, off-cooldown rival
+              // (the fake has never duelled anyone, so it never shows a cooldown).
+              const shadowAdj = shadowInRange('adjacent') ? 1 : 0;
+              const duelCount = available.length + shadowAdj;
               const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
-              const canDuel = !grayed && available.length > 0;
+              const canDuel = !grayed && duelCount > 0;
               return (
                 <div style={{position:'relative',display:'inline-block'}}
                   onMouseEnter={() => setHoverPreview('acoustic')}
@@ -11026,7 +11737,7 @@ function Game({ gameState, onReturnToLobby }) {
                         addLog(`🎸 ACOUSTIC DUEL — click an adjacent rival to challenge! No amps needed.`);
                       }
                     }}>
-                    🎸 Acoustic{available.length > 0 ? ` (${available.length})` : ''} {!canDuel && moveStepsLeft < 2 ? '(2AP)' : ''}
+                    🎸 Acoustic{duelCount > 0 ? ` (${duelCount})` : ''} {!canDuel && moveStepsLeft < 2 ? '(2AP)' : ''}
                   </button>
                 </div>
               );
@@ -11035,34 +11746,59 @@ function Game({ gameState, onReturnToLobby }) {
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
-            {/* 🤘 MASTER OF MOSHPITS — Metalness Monster sacrifices 3 fans for +2 Drive */}
+            {/* 🤘 MASTER OF MOSHPITS — Metalness Monster sacrifices 3 fans for +2 standing Drive.
+                Fan counts come from ns.casuals / ns.diehards (the fan economy's real
+                fields) — reading the non-existent casualFans/diehardFans is what kept
+                this button dead at "(0/3 fans)". */}
             {hasConfirmed && acting?.id === 'Metalness_Monster'
               && (actingNoteState?.unlockedSkills ?? []).includes('master_moshpits') && (() => {
-              const totalFans = (actingNoteState?.diehardFans ?? 0) + (actingNoteState?.casualFans ?? 0);
+              const pool = moshableFans(actingNoteState);
               const used = actingNoteState?.moshpitUsedThisTurn;
-              const canMosh = !used && totalFans >= 3;
+              const running = !!moshCine;
+              const canMosh = !used && !running && pool.total >= MOSH_FAN_COST;
+              const standing = actingNoteState?.moshDrive ?? 0;
               return (
                 <button className={canMosh ? 'btn active' : 'btn'}
                   style={{borderColor: canMosh ? '#ffcc00' : '#3a3000', color: canMosh ? '#ffcc00' : '#3a3000'}}
                   disabled={!canMosh}
-                  title="Master of Moshpits — sacrifice 3 fans for +2 Drive (once per turn)."
+                  title={used
+                    ? "Master of Moshpits — already moshed this turn."
+                    : pool.total < MOSH_FAN_COST
+                    ? `Master of Moshpits — needs ${MOSH_FAN_COST} fans in the stands (you have ${pool.total}). Diehards away on crew assignments can't mosh.`
+                    : `Master of Moshpits — pull ${MOSH_FAN_COST} fans onto the board for a pit. +${MOSH_DRIVE} Drive that STANDS until you call the next pit. Once per turn.`}
                   onClick={() => { if (canMosh) resolveMasterOfMoshpits(); }}>
-                  🤘 Moshpit{used ? ' (used)' : totalFans < 3 ? ` (${totalFans}/3 fans)` : ''}
+                  🤘 Moshpit{used ? ' (used)' : pool.total < MOSH_FAN_COST ? ` (${pool.total}/${MOSH_FAN_COST} fans)` : ''}
+                  {standing > 0 ? ` ⚔️+${standing}` : ''}
                 </button>
               );
             })()}
-            {/* 6️⃣ NUMBER OF THE BEAST — spend 6 Db, distribute 6 random stat points */}
+            {/* 6️⃣ NUMBER OF THE BEAST — BERSERK. Free, but only when he's dying. */}
             {hasConfirmed && acting?.id === 'Metalness_Monster'
               && (actingNoteState?.unlockedSkills ?? []).includes('number_of_the_beast') && (() => {
-              const db = actingNoteState?.dbPoints ?? 0;
-              const canBeast = db >= 6;
+              const raging = !!actingNoteState?.berserk;
+              const vibe   = acting?.vibe ?? 0;
+              const db     = actingNoteState?.dbPoints ?? 0;
+              const lowEnough = vibe <= BEAST_VIBE_GATE;
+              const canBeast  = !raging && lowEnough && db >= BEAST_DB_COST;
               return (
-                <button className={canBeast ? 'btn active' : 'btn'}
-                  style={{borderColor: canBeast ? '#cc0000' : '#330000', color: canBeast ? '#ff4444' : '#330000'}}
+                <button className={canBeast || raging ? 'btn active' : 'btn'}
+                  style={raging
+                    ? {borderColor:'#ff2200', color:'#ff6644',
+                       animation:'moshpit-shudder 0.3s steps(2) infinite',
+                       filter:'drop-shadow(0 0 6px #ff2200)'}
+                    : {borderColor: canBeast ? '#cc0000' : '#330000', color: canBeast ? '#ff4444' : '#330000'}}
                   disabled={!canBeast}
-                  title="Number of the Beast — spend 6 Db, gain 6 random stat points across Vibe/Db/Drive/Sustain/Notes/Fans."
+                  title={raging
+                    ? `BERSERK — +${BEAST_DRIVE} Drive (uncapped), immune to knockback, 1 Vibe per attack. Ends when someone hits the floor.`
+                    : canBeast
+                    ? `Number of the Beast (${BEAST_DB_COST} Db) — go BERSERK. +${BEAST_DRIVE} Drive with no ceiling, immune to knockback, but every attack costs 1 Vibe. It ends when you put a rival down, when you go down, or if you heal back above ${BEAST_VIBE_GATE} Vibe.`
+                    : !lowEnough
+                    ? `Number of the Beast — the Beast only answers the dying. Needs ${BEAST_VIBE_GATE} Vibe or less (you're on ${vibe}).`
+                    : `Number of the Beast — needs ${BEAST_DB_COST} Db to call (you have ${db}).`}
                   onClick={() => { if (canBeast) resolveNumberOfTheBeast(); }}>
-                  6️⃣ Beast{!canBeast ? ` (${db}/6 Db)` : ''}
+                  {raging
+                    ? `6️⃣ BERSERK ⚔️+${BEAST_DRIVE}`
+                    : `6️⃣ Beast${!lowEnough ? ` (❤️${vibe}/${BEAST_VIBE_GATE})` : db < BEAST_DB_COST ? ` (${db}/${BEAST_DB_COST} Db)` : ''}`}
                 </button>
               );
             })()}
@@ -11120,23 +11856,16 @@ function Game({ gameState, onReturnToLobby }) {
               const hasShadow = !!(actingNoteState?.shadowIllusion);
               const hasDrive = (actingNoteState?.driveStack ?? []).length >= 1;
               const canSummon = !hasShadow && hasDrive;
+              // No hex to pick any more — the double is born on top of the
+              // Ronin, so this is a single-click action.
               return (
-                <>
-                  <button className={canSummon ? 'btn active' : 'btn'}
-                    style={{borderColor: canSummon ? '#4488ff' : '#1a2840', color: canSummon ? '#88bbff' : '#1a2840'}}
-                    disabled={!canSummon}
-                    title="Shadow Illusion — summon a decoy on an adjacent hex (costs 1 Drive token). Rivals waste their stack attacking it."
-                    onClick={() => {
-                      if (action === 'shadow_illusion') { setAction(null); }
-                      else if (canSummon) { setAction('shadow_illusion'); addLog('👤 SHADOW ILLUSION — click an adjacent hex to place the decoy.'); }
-                    }}>
-                    👤 Shadow{hasShadow ? ' (active)' : (!hasDrive ? ' (no Drive)' : '')}
-                  </button>
-                  {action === 'shadow_illusion' && (
-                    <button className="btn" style={{borderColor:'#888',color:'#888'}}
-                      onClick={() => setAction(null)}>Cancel</button>
-                  )}
-                </>
+                <button className={canSummon ? 'btn active' : 'btn'}
+                  style={{borderColor: canSummon ? '#4488ff' : '#1a2840', color: canSummon ? '#88bbff' : '#1a2840'}}
+                  disabled={!canSummon}
+                  title="Shadow Illusion — split into a second, identical Ronin right where you stand (costs 1 Drive token). You start stacked, so nobody sees which one appeared; walk them apart on separate legs and let rivals waste a turn on the wrong body."
+                  onClick={() => { if (canSummon) resolveShadowIllusion(); }}>
+                  👤 Shadow{hasShadow ? ` (${actingNoteState?.shadowIllusion?.turnsLeft ?? 0}t)` : (!hasDrive ? ' (no Drive)' : '')}
+                </button>
               );
             })()}
             {/* 🎸 CURSED SHAMISEN — Shredding Ronin area denial */}
@@ -11149,9 +11878,13 @@ function Game({ gameState, onReturnToLobby }) {
                 <button className={canDrop ? 'btn active' : 'btn'}
                   style={{borderColor: canDrop ? '#4488ff' : '#1a2840', color: canDrop ? '#88bbff' : '#1a2840'}}
                   disabled={!canDrop}
-                  title="Cursed Shamisen — drop it on your hex (2 Db). Expanding aura deals Sustain damage. Goes autonomous after 3 rounds."
+                  title="Cursed Shamisen — set it down on your hex (2 Db). It plays a haunting melody every turn: 2 rings, then 3, then it starts hunting the nearest Spirit — you included. Walking onto its hex calms it."
                   onClick={() => { if (canDrop) resolveCursedShamisen(); }}>
-                  🎸 Shamisen{hasSham ? ' (active)' : (!hasDb ? ' (2 Db)' : '')}
+                  🎸 Shamisen{hasSham
+                    ? (actingNoteState?.cursedShamisen?.hunting
+                        ? ' 💀 hunting'
+                        : ` (${actingNoteState?.cursedShamisen?.range ?? 0}◎)`)
+                    : (!hasDb ? ' (2 Db)' : '')}
                 </button>
               );
             })()}
@@ -11768,6 +12501,61 @@ function Game({ gameState, onReturnToLobby }) {
                 );
               })()}
 
+              {/* ── 🤘 MASTER OF MOSHPITS — the walk-on ──────────────────────────
+                  Three fans have left their seats (the grandstand count already
+                  dropped) and are crossing the board to the Monster's hex. Each
+                  mover is drawn AT its destination and animated in from its old
+                  seat via --mosh-dx/--mosh-dy, so the pit geometry stays exact
+                  no matter where the Monster is standing. */}
+              {moshCine && (() => {
+                const { phase, movers, hexNum, spiritId } = moshCine;
+                const hex = HEX_BY_NUM[hexNum];
+                const mm  = spirits.find(s => s.id === spiritId);
+                if (!hex) return null;
+                const px = hex.px * SCALE, py = hex.py * SCALE;
+                const sc = CORNER_LABELS[mm?.corner]?.color ?? mm?.color ?? '#ffcc00';
+                const r  = HS * 0.30;
+                return (
+                  <g style={{pointerEvents:"none"}}>
+                    {/* the pit opens up under them once they've arrived */}
+                    {phase !== 'walk' && (
+                      <ellipse cx={px} cy={py} rx={HS * 1.5} ry={HS * 1.0}
+                        fill="#ffcc0033" stroke="#ffcc00aa" strokeWidth={2}
+                        style={{transformOrigin:`${px}px ${py}px`,
+                          animation:"mosh-pit-glow 0.5s ease-in-out infinite",
+                          filter:"drop-shadow(0 0 10px #ffcc00)"}}/>
+                    )}
+                    {movers.map((f, i) => {
+                      const dx = (f.sx - f.tx).toFixed(1), dy = (f.sy - f.ty).toFixed(1);
+                      const anim = phase === 'walk'
+                        ? `mosh-walk-in ${MOSH_WALK_MS}ms ease-in-out both`
+                        : phase === 'pit'
+                        ? `mosh-stomp ${(0.34 + i * 0.05).toFixed(2)}s ease-in-out ${(i * 0.06).toFixed(2)}s infinite`
+                        : `mosh-spend 0.8s ease-out both`;
+                      return (
+                        <g key={`mosh-${f.seed}`}
+                          style={{
+                            ['--mosh-dx']: `${dx}px`,
+                            ['--mosh-dy']: `${dy}px`,
+                            ['--mosh-tilt']: `${i % 2 === 0 ? 7 : -7}deg`,
+                            transformOrigin: `${f.tx}px ${f.ty}px`,
+                            animation: anim,
+                          }}>
+                          {fanPawnShape(f.tx, f.ty, r, f.isDie ? sc : '#cfe0ff', f.isDie,
+                            1.3, 1, f.seed, false, 'fist')}
+                        </g>
+                      );
+                    })}
+                    {/* 🤘 over the pit once it's raging */}
+                    {phase === 'pit' && (
+                      <text x={px} y={py - HS * 1.5} textAnchor="middle" fontSize={HS * 0.9}
+                        style={{animation:"moshpit-bob 0.4s ease-in-out infinite",
+                          filter:"drop-shadow(0 0 8px #ffcc00)"}}>🤘</text>
+                    )}
+                  </g>
+                );
+              })()}
+
               {/* ── 🎤 FAN CROWDS ── each Spirit's following gathers at its home turf, outside the field ── */}
               {spirits.map(s => {
                 if (!s.corner) return null;
@@ -12020,20 +12808,201 @@ function Game({ gameState, onReturnToLobby }) {
                       stroke={hexStroke(hex)}
                       strokeWidth={hexStrokeW(hex)}
                     />
-                    {/* Turn-start hex pulse */}
-                    {pulsingHex === hex.num && sp && (
-                      <polygon
-                        points={pointyCorners(cx, cy, HS * 1.18)}
-                        fill="none"
-                        stroke={sp.color}
-                        strokeWidth={3}
-                        style={{
-                          pointerEvents: "none",
-                          animation: "hex-turn-pulse 1.8s ease-out forwards",
-                          filter: `drop-shadow(0 0 8px ${sp.color}) drop-shadow(0 0 16px ${sp.color})`,
-                        }}
-                      />
-                    )}
+                    {/* Turn-start hex pulse. 👤 When the Ronin's turn opens, the
+                        double pulses in lockstep with him — a single pulsing
+                        standee would point straight at the real body. */}
+                    {(() => {
+                      const pulseSp = (pulsingHex === hex.num && sp) ? sp
+                        : (shadowDecoy && hex.num === shadowDecoy.num
+                            && pulsingHex != null && spiritByNum[pulsingHex]?.id === 'cosmic_ronin')
+                          ? shadowDecoy : null;
+                      if (!pulseSp) return null;
+                      return (
+                        <polygon
+                          points={pointyCorners(cx, cy, HS * 1.18)}
+                          fill="none"
+                          stroke={pulseSp.color}
+                          strokeWidth={3}
+                          style={{
+                            pointerEvents: "none",
+                            animation: "hex-turn-pulse 1.8s ease-out forwards",
+                            filter: `drop-shadow(0 0 8px ${pulseSp.color}) drop-shadow(0 0 16px ${pulseSp.color})`,
+                          }}
+                        />
+                      );
+                    })()}
+
+                    {/* 🎸 CURSED SHAMISEN — its own board token. Sits on the
+                        boards playing itself while it waits; once it wakes it
+                        turns red, tilts, and drags itself after whoever is
+                        closest. Swap SHAMISEN_ART for a PNG to replace the
+                        vector placeholder. */}
+                    {(() => {
+                      const sham = noteStates['cosmic_ronin']?.cursedShamisen;
+                      if (!sham || sham.hex !== hex.num) return null;
+                      const hunting = !!sham.hunting;
+                      const tint = hunting ? '#ff4422' : '#66aaff';
+                      const glow = hunting ? '#ff2200' : '#4488ff';
+                      const size = HS * 1.55;
+                      return (
+                        <g style={{pointerEvents:"none"}}>
+                          <title>
+                            {hunting
+                              ? 'Cursed Shamisen — HUNTING. 3 rings, stalks the nearest Spirit, spares nobody. Walk onto its hex to calm it.'
+                              : `Cursed Shamisen — ${sham.range} ring${sham.range !== 1 ? 's' : ''}. Walk onto its hex to calm it and take a bonus note.`}
+                          </title>
+                          {/* the sound itself: rings pulsing out of the body */}
+                          <circle cx={cx} cy={cy} r={HS * 0.85} fill="none"
+                            stroke={glow} strokeWidth={1.6} opacity={0.5}
+                            style={{animation:`fx-ring ${hunting ? '1.1s' : '1.9s'} ease-out infinite`,
+                              transformOrigin:`${cx}px ${cy}px`}}/>
+                          <circle cx={cx} cy={cy} r={HS * 0.85} fill="none"
+                            stroke={glow} strokeWidth={1.1} opacity={0.35}
+                            style={{animation:`fx-ring ${hunting ? '1.1s' : '1.9s'} ease-out infinite`,
+                              animationDelay: hunting ? '0.45s' : '0.8s',
+                              transformOrigin:`${cx}px ${cy}px`}}/>
+                          {/* shadow pooled under it */}
+                          <ellipse cx={cx} cy={cy + HS * 0.34} rx={HS * 0.34} ry={HS * 0.12}
+                            fill="#000" opacity={0.4}/>
+                          {/* the instrument — hovers and sways; leans into its
+                              stride once it's hunting */}
+                          <g transform={`translate(${cx} ${cy - HS * 0.18}) scale(${size}) rotate(${hunting ? -13 : 0})`}
+                            style={{animation: hunting
+                              ? 'shamisen-stalk 0.9s ease-in-out infinite'
+                              : 'shamisen-sway 3.4s ease-in-out infinite',
+                              transformOrigin:`${cx}px ${cy}px`}}>
+                            {SHAMISEN_ART
+                              ? <image href={SHAMISEN_ART} x={-0.5} y={-1.4} width={1} height={2}
+                                  preserveAspectRatio="xMidYMid meet"/>
+                              : shamisenPlaceholder(tint, glow)}
+                          </g>
+                          {/* stage readout so nobody has to count rings */}
+                          <text x={cx} y={cy + HS * 0.72} textAnchor="middle"
+                            fontSize={HS * 0.32} fontWeight="900" fill={tint}
+                            stroke="#000" strokeWidth={0.5} paintOrder="stroke"
+                            style={{fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:0.5,
+                              filter:`drop-shadow(0 0 4px ${glow})`}}>
+                            {hunting ? '💀 HUNTING' : `${sham.range}◎`}
+                          </text>
+                        </g>
+                      );
+                    })()}
+
+                    {/* 👤 SHADOW ILLUSION STANDEE — the body double.
+                        This is a deliberate mirror of the real Spirit standee
+                        below: same base-plate shadow, same glow ring, same
+                        acting-turn drop-shadow, same sprite (mirrored on the
+                        same facing rule), same Charge Zone and affliction auras
+                        copied off the real Ronin. If you change the standee
+                        below, change this too — any divergence becomes a tell
+                        that lets rivals pick the real Ronin out instantly. */}
+                    {shadowDecoy && hex.num === shadowDecoy.num && (() => {
+                      const dsp = shadowDecoy;
+                      const isActing = acting?.id === 'cosmic_ronin';
+                      const isRumbling = rumblingIds.has('cosmic_ronin');
+                      const sc = dsp.corner ? (CORNER_LABELS[dsp.corner]?.color ?? dsp.color) : dsp.color;
+                      const baseR = HS * 0.62;
+                      const cardW = HS * 3;
+                      const cardH = HS * 3;
+                      const cardX = cx - cardW / 2;
+                      const cardY = cy - baseR - cardH + HS * 1;
+                      const useMirror = isMirrorFacing(dsp.facing ?? 0);
+                      const spriteSrc = useMirror
+                        ? (MIRROR_SPRITES[dsp.id] ?? dsp.imageSrc)
+                        : dsp.imageSrc;
+                      const imgOffset = dsp.imageOffset ?? { x: 0, y: 0 };
+                      const imgOffX = useMirror ? -imgOffset.x : imgOffset.x;
+                      const nsR = noteStates['cosmic_ronin'] ?? {};
+                      return (
+                        <g key="shadow-token"
+                          style={{ ...(isRumbling ? {animation:"rumble 0.08s linear infinite"} : {}) }}>
+                          {/* Base plate shadow */}
+                          <ellipse cx={cx+2} cy={cy+3} rx={baseR} ry={baseR*0.32}
+                            fill="#000" opacity={0.35} style={{pointerEvents:"none"}}/>
+                          {/* Base plate glow ring */}
+                          <circle cx={cx} cy={cy} r={baseR}
+                            fill={sc+"18"} stroke={sc}
+                            strokeWidth={isActing ? 2.2 : 1.4}
+                            style={{pointerEvents:"none"}}
+                            filter={isActing ? `drop-shadow(0 0 4px ${sc})` : undefined}/>
+                          {/* ⚡ Charge Zone aura — copied from the real Ronin */}
+                          {(() => {
+                            const qF = (nsR.chargeFloorTurns ?? 0) > 0;
+                            const qC = (nsR.chargeCeilTurns  ?? 0) > 0;
+                            if (!qF && !qC) return null;
+                            const qCol = qF && qC ? '#cceeff' : qF ? '#ffcc44' : '#44aaff';
+                            return (
+                              <g style={{pointerEvents:'none'}}>
+                                <circle cx={cx} cy={cy} r={baseR * 1.5} fill={qCol + '1c'}
+                                  style={{animation:'charge-aura-pulse 1.5s ease-in-out infinite'}}/>
+                                <circle cx={cx} cy={cy} r={baseR * 1.22} fill="none"
+                                  stroke={qCol} strokeWidth={2.2}
+                                  style={{animation:'charge-aura-pulse 1.5s ease-in-out infinite',
+                                    filter:`drop-shadow(0 0 5px ${qCol}) drop-shadow(0 0 12px ${qCol})`}}/>
+                                <text x={cx + baseR * 1.05} y={cy - baseR * 0.95}
+                                  fontSize={HS * 0.52} textAnchor="middle"
+                                  style={{animation:'charge-aura-pulse 1.5s ease-in-out infinite',
+                                    filter:`drop-shadow(0 0 4px ${qCol})`}}>⚡</text>
+                              </g>
+                            );
+                          })()}
+                          {/* 🌀 Affliction aura — copied from the real Ronin */}
+                          {(() => {
+                            const afflictions = [
+                              (nsR.mojoDrain ?? 0) > 0  && { icon:'💧', color:'#4499ff' },
+                              nsR.stagger               && { icon:'⚡', color:'#ff8800' },
+                              nsR.tripped               && { icon:'🌀', color:'#44ddff' },
+                              nsR.dazed                 && { icon:'😵', color:'#ff66ff' },
+                              nsR.instrumentDropped     && { icon:'🎸', color:'#ff4444' },
+                            ].filter(Boolean);
+                            if (afflictions.length === 0) return null;
+                            const iconSize = HS * 0.42;
+                            const rowW = afflictions.length * iconSize;
+                            return (
+                              <g style={{pointerEvents:"none"}}>
+                                <circle cx={cx} cy={cy} r={baseR * 1.3}
+                                  fill="none" stroke={afflictions[0].color} strokeWidth={2}
+                                  strokeDasharray="5 6"
+                                  style={{animation:"affliction-pulse 1.8s ease-in-out infinite",
+                                    filter:`drop-shadow(0 0 5px ${afflictions[0].color})`}}/>
+                                {afflictions.map((a, i) => (
+                                  <text key={i}
+                                    x={cx - rowW / 2 + iconSize * (i + 0.5)}
+                                    y={cardY - HS * 0.78}
+                                    textAnchor="middle" fontSize={iconSize}
+                                    style={{animation:"affliction-pulse 1.8s ease-in-out infinite",
+                                      filter:`drop-shadow(0 0 3px ${a.color})`}}>
+                                    {a.icon}
+                                  </text>
+                                ))}
+                              </g>
+                            );
+                          })()}
+                          {/* Standee sprite — byte-identical to the real one */}
+                          <image
+                            href={spriteSrc}
+                            x={cardX + imgOffX}
+                            y={cardY + imgOffset.y}
+                            width={cardW}
+                            height={cardH}
+                            preserveAspectRatio="xMidYMid meet"
+                            style={{pointerEvents:"none"}}
+                          />
+                          {/* The ONLY difference, and only on the Ronin player's
+                              own screen: a small dim pip so they don't lose
+                              track of which body they actually control. */}
+                          {seesShadowTell && (
+                            <g style={{pointerEvents:"none"}}>
+                              <title>Your Shadow Illusion — rivals see this as you.</title>
+                              <circle cx={cx} cy={cy + baseR * 0.05} r={baseR * 0.30}
+                                fill="#00000088" stroke={sc} strokeWidth={0.8} opacity={0.55}/>
+                              <text x={cx} y={cy + baseR * 0.30} textAnchor="middle"
+                                fontSize={HS * 0.34} opacity={0.75}>👤</text>
+                            </g>
+                          )}
+                        </g>
+                      );
+                    })()}
 
                     {/* Spirit standee */}
                     {sp && !slideOffAnimations[sp.id] && (() => {
@@ -12074,6 +13043,24 @@ function Game({ gameState, onReturnToLobby }) {
                             strokeWidth={isActing ? 2.2 : 1.4}
                             style={{pointerEvents:"none"}}
                             filter={isActing ? `drop-shadow(0 0 4px ${sc})` : undefined}/>
+                          {/* 🎶 CURSED BY THE MELODY — this Spirit was inside the
+                              Shamisen's rings when it last played. The mark sits
+                              on them until the next time it plays, so you can see
+                              at a glance exactly who the melody is eating. */}
+                          {(noteStates['cosmic_ronin']?.cursedShamisen?.touched ?? []).includes(sp.id) && (
+                            <g style={{pointerEvents:"none"}}>
+                              <title>Caught in the Cursed Shamisen's melody — losing 1 a turn until it's calmed or you leave the rings.</title>
+                              <circle cx={cx} cy={cy} r={baseR * 1.42} fill="none"
+                                stroke="#cc88ff" strokeWidth={1.8} strokeDasharray="3 7"
+                                style={{animation:"cursed-by-melody 1.6s ease-in-out infinite",
+                                  transformOrigin:`${cx}px ${cy}px`,
+                                  filter:"drop-shadow(0 0 6px #aa55ff)"}}/>
+                              <text x={cx - baseR * 1.15} y={cy - baseR * 0.85}
+                                textAnchor="middle" fontSize={HS * 0.44}
+                                style={{animation:"cursed-by-melody 1.6s ease-in-out infinite",
+                                  filter:"drop-shadow(0 0 4px #aa55ff)"}}>🎶</text>
+                            </g>
+                          )}
                           {/* ⚡ CHARGED — Charge Zone aura: floor=amber, ceiling=blue, both=white-hot */}
                           {(() => {
                             const nsQ = noteStates[sp.id] ?? {};
@@ -12398,26 +13385,36 @@ function Game({ gameState, onReturnToLobby }) {
                 );
               })}
 
-              {/* ── POISON SLIME — Metalness Monster passive hazard ── */}
-              {Object.entries(poisonSlime).map(([num, turns]) => {
-                if (turns <= 0) return null;
-                const hex = HEX_BY_NUM[Number(num)];
-                if (!hex) return null;
-                const cx = Math.round(hex.px * SCALE);
-                const cy = Math.round(hex.py * SCALE);
-                return (
-                  <g key={`slime-${num}`} style={{pointerEvents:'none'}}>
-                    <polygon
-                      points={pointyCorners(cx, cy, HS * 0.92)}
-                      fill="#44ff4418" stroke="#44ff44" strokeWidth={0.8}
-                      style={{filter:'drop-shadow(0 0 6px #44ff4466)',
-                        animation:'slimePulse 1.8s ease-in-out infinite',
-                        animationDelay:`${(Number(num) % 5) * 0.2}s`}}/>
-                    <text x={cx} y={cy + HS*0.12} textAnchor="middle" fontSize={HS*0.5}
-                      style={{opacity:0.7, filter:'drop-shadow(0 0 3px #44ff44)'}}>🧪</text>
-                  </g>
-                );
-              })}
+              {/* ── POISON SLIME — Metalness Monster passive hazard.
+                  The trail now lives a full round, so each tile fades as its
+                  turns run out: a bright pool is fresh, a faint one is about to
+                  dry up. Rivals can read how long they have to detour. ── */}
+              {(() => {
+                const slimeLife = Math.max(1, spirits.filter(s => !s.knockedOut).length);
+                return Object.entries(poisonSlime).map(([num, turns]) => {
+                  if (turns <= 0) return null;
+                  const hex = HEX_BY_NUM[Number(num)];
+                  if (!hex) return null;
+                  const cx = Math.round(hex.px * SCALE);
+                  const cy = Math.round(hex.py * SCALE);
+                  // 0.35 → 1 as freshness goes from "one turn left" to "just laid"
+                  const fresh = Math.min(1, turns / slimeLife);
+                  const op = 0.35 + fresh * 0.65;
+                  return (
+                    <g key={`slime-${num}`} style={{pointerEvents:'none', opacity: op}}>
+                      <title>Poison Slime — 1 Vibe to anyone who enters. {turns} turn{turns !== 1 ? 's' : ''} left.</title>
+                      <polygon
+                        points={pointyCorners(cx, cy, HS * 0.92)}
+                        fill="#44ff4418" stroke="#44ff44" strokeWidth={0.8}
+                        style={{filter:'drop-shadow(0 0 6px #44ff4466)',
+                          animation:'slimePulse 1.8s ease-in-out infinite',
+                          animationDelay:`${(Number(num) % 5) * 0.2}s`}}/>
+                      <text x={cx} y={cy + HS*0.12} textAnchor="middle" fontSize={HS*0.5}
+                        style={{opacity:0.7, filter:'drop-shadow(0 0 3px #44ff44)'}}>🧪</text>
+                    </g>
+                  );
+                });
+              })()}
 
               {/* ── BOARD TOKENS — Lost Chords (free notes into your stock) ── */}
               {boardTokens.map(tok => {
@@ -12519,7 +13516,10 @@ function Game({ gameState, onReturnToLobby }) {
                 if (hovered === null) return null;
                 const hovHex = HEX_BY_NUM[hovered];
                 if (!hovHex) return null;
-                const sp = spirits.find(s => s.num === hovered && !s.knockedOut);
+                // 👤 The decoy gets a facing arrow too — a standee that doesn't
+                // answer the hover would be the loudest tell on the board.
+                const sp = spirits.find(s => s.num === hovered && !s.knockedOut)
+                  ?? (shadowDecoy && shadowDecoy.num === hovered ? shadowDecoy : null);
                 if (!sp || isHiddenBySmoke(sp)) return null; // 💨 no arrow for smoke-hidden spirits
                 const cx  = Math.round(hovHex.px * SCALE);
                 const cy  = Math.round(hovHex.py * SCALE);

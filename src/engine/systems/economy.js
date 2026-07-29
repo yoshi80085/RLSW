@@ -186,8 +186,20 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     knockStreak:     0,
     // ── 🗡️ SHREDDING RONIN REWORK ──
     psychoBushidoCd:  0,       // 🌀 Psycho Bushido cooldown (2 rounds)
-    shadowIllusion:   null,    // 👤 Shadow Illusion decoy: { hex, facing, turnsLeft }
-    cursedShamisen:   null,    // 🎸 Cursed Shamisen: { hex, range, roundsOnBoard, autonomous }
+    // 👤 Shadow Illusion body double:
+    //   { hex, facing, turnsLeft, stepsLeft, stepsMax }
+    // Rendered as a second, identical Ronin standee. `facing` is tracked because
+    // a double whose arrow disagreed with its walk direction would be an instant
+    // tell. `stepsLeft` is the double's OWN movement pool — refilled each turn to
+    // match the Ronin's granted budget, but never drawn from his Action Points.
+    shadowIllusion:   null,
+    lastMoveBudget:   0,       // 👤 steps granted at the last melody commit
+
+    // 🎸 Cursed Shamisen: { hex, range, stage, hunting, touched[] }
+    // stage 1 → 2 rings · stage 2 → 3 rings · stage 3+ → 3 rings frozen and it
+    // hunts. `touched` is the ids its melody reached on the most recent tick,
+    // which drives the lingering 🎶 mark on those Spirits' standees.
+    cursedShamisen:   null,
     waNoKoeBuffs:     [],      // 🎵 Wa no Koe: [{ stat:'drive'|'sustain', turnsLeft }]
     discordUnlocks:  [],
     tripped:         false,
