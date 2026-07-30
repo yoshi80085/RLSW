@@ -17,10 +17,23 @@ export const ULTIMATE_PREREQS = ["mic", "pedal_dist", "amp_1", "mixer"];
 // (discordUnlocks + the matching unlockedSkills flags) the scoring logic reads.
 // Pure lookup: skillId → discord-tier ids to grant.
 //
-// B1: these are now purely SCALE-EXPANSION flags gating `playableScale`. The
-// combat riders they used to carry (Mojo Drain, Burn, cleanse/shield, Stagger)
-// were removed with the triggers that armed them. B3 gives the same tiers their
-// real mechanic — the chord-context ladder.
+// ⚠️ WHAT THESE IDS DO **NOT** DO ANY MORE. They are purely SCALE-EXPANSION flags
+// gating `playableScale` — which notes the game will deal you and paint as clean.
+// Every other job they once held is gone:
+//   • B1 removed the four combat riders (Mojo Drain, Burn, cleanse/shield, Stagger).
+//   • B3 moved the real mechanic to the chord-context ladder, which reads
+//     `unlockedSkills` directly via `CONTEXT_TIERS` and never looks at these ids.
+//   • B5 deleted the tritone's damage effect; `discord_3` now only makes the
+//     tritone clean and pays +1 Performance Score.
+//   • B6 turned `discord_4`'s chromatic pardon into a Db PAYOUT (`chromaticPayout`)
+//     and deleted the blanket "whole track counts as clean" rule it used to apply.
+// So: adding an id here widens the PALETTE. It does not widen the pardon, and it
+// does not pay anything. The pardon lives in `music/context.js`.
+//
+// ⚠️ AND NOTE THE ASYMMETRY: `theory_minor` is absent from this table but is the
+// FIRST rung of the context ladder (Chord Tone Pardon). Its scale expansion is
+// handled directly in `playableScale` rather than through a discord id. Don't read
+// this table as the list of Theory tiers — it isn't one.
 export const THEORY_DISCORD_GRANTS = {
   theory_dom7:      ["discord_1"],              // ♭7 clean
   theory_modes:     ["discord_3"],              // tritone clean

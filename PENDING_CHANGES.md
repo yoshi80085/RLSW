@@ -20,13 +20,71 @@ shipped together in one pass: B6's stated risk — "before the skill it wrecks y
 is only true once B7's per-note penalty exists, so shipping B6 alone would have
 advertised a downside the game didn't have.)
 
-**Status:** ✅ Task A, B0 (a + b), B1, B2, B3, **B4**, **B5**, **B6**, **B7** and
-**B8 (core + wiring)** are SHIPPED on branch `feat/chord-strength-b0` (local only —
-nothing pushed). Two changes were made that this doc did not ask for: the **note
-speller** was rewritten (it was mis-spelling 14 borrowed degrees) and **B8 was
-reopened and reversed** — see below. **The B6 double-pay question is resolved: it
-stacks, and the payout is priced knowing it stacks** (unresolved item 6, closed).
-**Next up is B9** (skill descriptions and grants table), then B10, then Task C.
+**Status:** 🎉 **TASK B IS COMPLETE.** ✅ Task A, B0 (a + b), B1, B2, B3, B4, B5, B6,
+B7, B8 (core + wiring), **B9** and **B10** are all SHIPPED on branch
+`feat/chord-strength-b0`. Three changes were made that this doc did not ask for: the
+**note speller** was rewritten (it was mis-spelling 14 borrowed degrees), **B8 was
+reopened and reversed**, and **the `theory_major` auto-grant was found to have never
+fired** — see below. **Next up is Task C.**
+
+### ⚠️ Notes from the B9 / B10 pass — READ THE FIRST ITEM
+
+- **🔴 THE `theory_major` AUTO-GRANT HAD NEVER FIRED ONCE.** The initial-skill
+  `useEffect` gated on `unlockedSkills.length === 0`, but `makeInitialNoteState`
+  seeds `["amp_1"]` for every spirit, so the condition was false on turn one and
+  every turn after. **Every spirit in every playtest has been playing the Major
+  Pentatonic — no 4th, no 7th** — while the comment above the grant, the skill's own
+  description, and every "46-Db ladder" figure in this document (= 52 list price
+  minus theory_major's 6) all assume the full scale is free from the start.
+  - **Fixed** to gate on `unlockedSkills.includes('theory_major')`. Emptiness could
+    never be the right test while any starting skill exists, and B10 would have
+    broken it a second way by giving Ronin `theory_minor`.
+  - **⚠️ THIS IS A LIVE BALANCE CHANGE, AND IT IS THE BIGGEST ONE IN THE PASS.** Two
+    notes per key move from grey to clean for every spirit. It also means **B7 was
+    tuned against a harsher palette than the design intends** — the per-note penalty
+    and its 1-note grace were measured in a world where the 4th and 7th cost Discord.
+    Re-measure B7 before treating its numbers as settled; the grace may now be too
+    generous rather than load-bearing.
+  - The branch blurb said "Start on the Major Pentatonic", which was accidentally
+    accurate for as long as the grant was broken. Rewritten.
+  - Pinned in `b0check` as a regression witness: the test asserts the OLD emptiness
+    gate stays closed on a fresh spirit, so the bug cannot silently return.
+- **B10 grants Ronin the WHOLE `theory_minor` skill, not just the tier.** Decided
+  deliberately over the narrower alternative. Three accepted consequences, all
+  documented at the grant in `economy.js` and asserted in `b0check`:
+  1. Chord Tone Pardon from turn one — what B10 actually asked for.
+  2. He also gets the **minor scale** in `playableScale` and `modeFromStack` may flip
+     his key to minor. Fitting for the character, and not separable without a second
+     code path that `context.js` explicitly warns against.
+  3. `theory_dom7`'s prereq is satisfied, so **his climb is 38 Db against everyone
+     else's 46.** That's the price of the flagship, and it's now a test rather than a
+     surprise.
+  The B0a invariant survives: his seed stack is still a quality-**ambiguous** single
+  note, so turn one cannot force-flip his mode despite the tier being live. Asserted
+  both ways — a real minor third *does* flip him from turn one, where an ungranted
+  spirit is held at major with `reason: 'locked'`.
+- **The `driveStack ?? sustainStack` bug is fixed.** `??` only falls through on
+  null/undefined and both stacks are always arrays (B0a seeds them with the root), so
+  **Wa no Koe never once saw the Sustain Stack.** Now passes both, which is what the
+  skill's own text promises and what B4 and B5 already do. Note `checkWaNoKoe` was
+  *already* reading both stacks to decide which stat to boost, so the call site was
+  inconsistent with the function it called.
+- **`THEORY_DISCORD_GRANTS` is a palette table, and now says so.** Its ids gate
+  `playableScale` and nothing else: B1 took their combat riders, B3 moved the pardon
+  to `CONTEXT_TIERS`, B5 deleted the tritone's damage, B6 turned `discord_4`'s pardon
+  into a payout. **The asymmetry worth knowing:** `theory_minor` is absent from the
+  table but is the *first rung* of the context ladder — so the table is **not** the
+  list of Theory tiers, and a reader who "fixes" it to match will grant a context
+  tier through the palette. Asserted, including that every value matches
+  `/^discord_\d+$/`.
+- **The stale comment B9 points at (~401–408, "tritone feedback, m7 mojo drain") no
+  longer exists** — an earlier pass already removed it. Nothing to do.
+- **Two new assertion groups (54 total, was 52):** the initial-grant invariant with
+  the old gate pinned as a witness, and the palette-table contract. Plus three groups
+  for B10 folded in above.
+- **Two pre-existing lint errors were left alone,** both in `styleCommitDb`
+  (`economy.js` ~492, `no-useless-assignment` on `tier`/`label`). Unrelated to this
+  pass; Task C will be in that function anyway.
 
 ### Notes from the B6 / B7 pass
 
@@ -838,7 +896,19 @@ commit as a mechanic change.
 
 ---
 
-### B9 — Skill descriptions and grants table
+### B9 — Skill descriptions and grants table ✅ SHIPPED
+
+All five Theory `desc` strings now state the scale expansion **and** the context tier
+**and** the slot unlock; the five matching `applySkillEffects` unlock logs were
+rewritten the same way (the unlock moment is the one time the player is guaranteed to
+be reading). The branch blurb was corrected. `THEORY_DISCORD_GRANTS` keeps its
+mappings and gained a comment block explaining what its ids no longer do — plus the
+`theory_minor` asymmetry, which is the trap in that table. **The stale comment at
+~401–408 was already gone.** See the B9/B10 notes at the top, especially the
+`theory_major` auto-grant bug this pass uncovered.
+
+---
+
 
 **`SKILL_TREE`** (~line 457) — each `desc` should state the scale expansion **and** the
 context tier **and** the slot unlock where applicable. Suggested:
@@ -874,7 +944,16 @@ Also fix the stale comment block at ~lines 401–408 ("Keep all existing special
 
 ---
 
-### B10 — Wa no Koe: promote, don't replace
+### B10 — Wa no Koe: promote, don't replace ✅ SHIPPED
+
+Ronin starts with `theory_minor` in `unlockedSkills` (`makeInitialNoteState`,
+`economy.js`) — **the whole skill, not just the tier**, with three accepted
+consequences recorded in the B9/B10 notes above and asserted in `b0check`. The
+`driveStack ?? sustainStack` bug is fixed to read both stacks. Wa no Koe's `desc` and
+unlock log now describe it as the amplifier on a pardon he already owns.
+
+---
+
 
 Cosmic Ronin's passive (`applyWaNoKoe`, line 6752 → `checkWaNoKoe`) is melody/chord
 alignment for +1 Drive/Sustain — i.e. this whole system, as one character's signature.
@@ -1050,9 +1129,9 @@ The comment on line 117 needs updating either way — its math refers to the old
 
 ## Verification
 
-**Where the tests live:** `node src/engine/b0check.mjs` — 49 assertion groups covering
-Task A, B0, B2, B3, B4, B5, **B6, B7**, the speller and B8 (core + wiring).
-`npm run test:engine` is
+**Where the tests live:** `node src/engine/b0check.mjs` — 54 assertion groups covering
+Task A, B0, B2, B3, B4, B5, B6, B7, **B9, B10**, the initial-grant invariant, the
+speller and B8 (core + wiring). `npm run test:engine` is
 still broken on main (pre-existing `.png` import chain in `data/spirits.js`); fold
 `b0check` into `selftest.mjs` once that's fixed. Its stale init-sheet block was
 corrected in passing anyway — it still asserted B0a's removed power-chord seed.
@@ -1105,7 +1184,17 @@ Already covered:
 `analyseTrack`'s three unused params (`cadence.js` ~265) and an unused `iv` in the
 tutorial's interval reference (`content.jsx` ~524).
 
-Still to add: nothing for B6/B7. Next test work is B9's grants table and Task C.
+- B10: Ronin's grant reaching the pardon ladder on turn one; the B0a ambiguous-seed
+  invariant surviving the free tier (and a real minor third still flipping him); and
+  the accepted 38-vs-46 Db ladder cost, documented rather than accidental.
+- The initial-grant invariant: every spirit starts with a non-empty skill list, so
+  emptiness can never gate the `theory_major` grant — **with the old broken gate
+  asserted to stay closed**, as a regression witness.
+- B9: `THEORY_DISCORD_GRANTS` grants no context tiers and only ever hands out
+  `discord_N` palette flags.
+
+Still to add: **re-measure B7 against the corrected (post-auto-grant-fix) palette**,
+then Task C's cases.
 - Play-test target: a turn-one spirit should reach a triad in one turn if they spend for
   it, and a mid-game spirit with `theory_dom7` should be able to say in one sentence why
   they built the chord they built.

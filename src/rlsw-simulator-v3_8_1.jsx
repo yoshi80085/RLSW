@@ -512,16 +512,24 @@ const SKILL_TREE = {
       label: 'Music Theory',
       icon: '🎼',
       color: '#66ccff',
-      desc: 'The spine of the game. Start on the Major Pentatonic; climb to unlock dissonance as power.',
+      // B9: was "Start on the Major Pentatonic", which contradicted the free
+      // theory_major grant. (For most of this branch's life the blurb was accurate
+      // by accident, because the grant was broken — see the initial-skill effect.)
+      desc: 'The spine of the game. You start with the full Major scale; each rung widens what your CHORD can make legal, until the wrong notes are the ones that pay.',
       skills: [
+        // B9: every desc now states all three things a tier can give — the SCALE
+        // expansion (what the key allows), the CONTEXT TIER (what your stacks
+        // pardon, B3's ladder) and the SLOT unlock (B0b). Before B9 they mentioned
+        // only the first, which left the branch's actual mechanic undocumented in
+        // the one place a player goes to read about it.
         { id:'theory_major',     label:'The Full Scale',       icon:'🎼', dbCost:6,  gated:true, prereq:null,
           desc:'Adds the 4th & 7th, completing the Major (Ionian) scale — those two notes stop costing Discord.' },
         { id:'theory_minor',     label:'Minor Tonality',       icon:'🌑', dbCost:8,  gated:true, prereq:'theory_major',
-          desc:'Unlocks the Minor scale. Stack a minor third in your Drive Stack and the song turns MINOR — a darker key, Discord-free. Without this, a minor stack holds major.' },
+          desc:'Unlocks the Minor scale — stack a minor third and the song follows you into a darker key, Discord-free. And it opens the ladder: CHORD TONE PARDON — any note sitting in your Drive or Sustain stack is never Discord, whatever the key says. Colour notes your chord legalizes pay Drive or Sustain.' },
         { id:'theory_dom7',      label:'Blues / Dominant 7th', icon:'🎷', dbCost:10, gated:true, prereq:'theory_minor',
-          desc:'The ♭7 joins your clean palette. +1 STACK SLOT (4) — the same lesson that lets you play the blues note lets you build the dominant 7th chord.' },
+          desc:'The ♭7 joins your clean palette. PLAY THE CHANGES — the pardon widens from the notes you placed to your stack\'s whole implied chord, completed to its seventh: a C-E-G stack makes B clean though you never stacked it. +1 STACK SLOT (4) — the lesson that teaches you the blues note also lets you build the dominant 7th.' },
         { id:'theory_modes',     label:'Modal Colour',         icon:'🌀', dbCost:12, gated:true, prereq:'theory_dom7',
-          desc:"Lydian ♯4 & Mixolydian ♭7 become clean, and the tritone never breaks harmony. +1 STACK SLOT (5) — room for 9th chords." },
+          desc:"Lydian ♯4 & Mixolydian ♭7 become clean, and the tritone never breaks harmony. EXTENSIONS — the pardon reaches your chord's available tensions by quality: ♯4 over major, natural 6 over minor, ♭9 and 9 over dominant. +1 STACK SLOT (5) — room for 9th chords." },
         { id:'theory_chromatic', label:'Chromatic Mastery',    icon:'⚡', dbCost:16, gated:true, prereq:'theory_modes',
           desc:'CAPSTONE — APPROACH NOTES: any note is clean if the next one lands on a chord tone. And the chromatic run stops being forgiven and starts PAYING: 3+ chromatic steps earn +3 Db, +1 per note beyond, up to +5 — the biggest single payout in the game. Also brings the Major 3rd (Borrowed Chord) online in Minor.' },
       ],
@@ -578,7 +586,7 @@ const SKILL_TREE = {
         { id:'cursed_shamisen', label:'Cursed Shamisen', icon:'🎸', dbCost:8,  gated:false,
           desc:'Set a cursed Shamisen down on your hex (2 Db per use). It plays a haunting melody every turn, costing 1 Sustain (then Vibe) to every Spirit inside its rings. Turn 1: 2 rings. Turn 2: 3 rings. Turn 3: it stops growing and starts HUNTING — stalking 1 hex a turn toward the nearest Spirit, and it no longer spares you. Calmed by walking onto its hex, which also hands the walker a bonus note.' },
         { id:'wa_no_koe',       label:'Wa no Koe (和の声)', icon:'🎵', dbCost:12, gated:false,
-          desc:'Voice of Harmony — when your melody commit aligns with your chord stack, melody notes convert to +1 Drive or Sustain for 3 rounds.' },
+          desc:'Voice of Harmony — when half your melody or more sits inside your Drive or Sustain stack, the alignment pays +1 Drive or Sustain for 3 rounds. The Ronin already starts holding CHORD TONE PARDON, so those same notes are never Discord for him either: this is the amplifier on top of an instinct he was born with.' },
       ],
     },
     {
@@ -3501,9 +3509,22 @@ function Game({ gameState, onReturnToLobby }) {
     if (upgradeTriggered && actingNoteState?.targetSkillId) {
       setTimeout(() => awardTargetSkill(acting.id), 60);
     }
-    // 🎵 WA NO KOE — check melody/chord alignment for Ronin's harmony passive
+    // 🎵 WA NO KOE — melody/chord alignment, Ronin's harmony passive.
+    // ⚠️ B10 BUG FIX: this read `driveStack ?? sustainStack`, which only ever saw
+    // the Drive Stack — `??` falls through on null/undefined only, and the stacks are
+    // arrays that always exist (B0a seeds both with the root). So the Sustain Stack
+    // was silently invisible to Ronin's signature passive.
+    //
+    // Fixed to pass BOTH stacks, which is also what the skill's own text promises
+    // ("your chord stack") and what every other part of the chord-context system
+    // does — B4 and B5 both weigh Drive and Sustain against each other rather than
+    // privileging one. Note `checkWaNoKoe` already reads both to decide WHICH stat
+    // to boost, so passing only Drive made it inconsistent with itself.
     if (acting?.id === 'cosmic_ronin') {
-      const chordNotes = actingNoteState?.driveStack ?? actingNoteState?.sustainStack ?? [];
+      const chordNotes = [
+        ...(actingNoteState?.driveStack   ?? []),
+        ...(actingNoteState?.sustainStack ?? []),
+      ];
       applyWaNoKoe(melodyLine, chordNotes);
     }
     setTurnStep('move_act'); // advance HUD flow → movement & actions
@@ -3743,12 +3764,30 @@ function Game({ gameState, onReturnToLobby }) {
     // client's write via the ACTION relay instead.
     if (!canAct) return;
     const ns = noteStates[acting.id] ?? {};
+    // ⚠️ BUG FIX (B9 pass). This used to read:
+    //     const hasSkills = (ns.unlockedSkills?.length ?? 0) > 0;
+    //   ... && !hasSkills && ...
+    // but `makeInitialNoteState` seeds `unlockedSkills: ["amp_1"]` for every spirit,
+    // so `hasSkills` was true on turn one, always, and **this grant never fired
+    // once**. Every spirit has been playing the Major PENTATONIC — no 4th, no 7th —
+    // while the comment above, the skill's own `desc`, and every "46-Db ladder"
+    // figure in PENDING_CHANGES (= 52 list price − theory_major's 6) all assume the
+    // full scale is free from the start.
+    //
+    // It also got quietly more expensive in the B6/B7 pass: B7 charges discord PER
+    // NOTE now, and two of the notes it was charging for are notes the player was
+    // supposed to already own.
+    //
+    // The correct gate is "do they hold the scale", not "is their skill list empty" —
+    // the latter can never again be true while any starting skill exists. Ronin now
+    // also starts with `theory_minor` (B10), which would have broken an emptiness
+    // check a second way.
     const hasTarget   = !!ns.targetSkillId;
-    const hasSkills   = (ns.unlockedSkills?.length ?? 0) > 0;
+    const hasScale    = (ns.unlockedSkills ?? []).includes('theory_major');
     const hasPending  = (ns.upgradesPending ?? 0) > 0;
     const alreadyPrompted = !!ns.initialPickDone;
-    // Only grant once, and only if they have nothing yet
-    if (!hasTarget && !hasSkills && !hasPending && !alreadyPrompted) {
+    // Only grant once, and only if they don't already hold the full scale.
+    if (!hasTarget && !hasScale && !hasPending && !alreadyPrompted) {
       setNoteStates(prev => ({
         ...prev,
         [acting.id]: {
@@ -3848,12 +3887,15 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Dash in a straight line — remaining AP becomes bonus Drive. 2-round cooldown.`);
     if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (costs 1 Drive token). It moves on its own legs at your full range — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn.`);
     if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Set it down (2 Db per use). It plays itself every turn — 2 rings, then 3 — and on the third turn it starts HUNTING the nearest Spirit. Including you.`);
-    if (skillId === 'wa_no_koe')      addLog(`🎵 ${spirit?.name} — WA NO KOE! When melody aligns with your chord stack, notes convert to +1 Drive or Sustain for 3 rounds.`);
+    if (skillId === 'wa_no_koe')      addLog(`🎵 ${spirit?.name} — WA NO KOE! Half your melody inside your stacks now pays +1 Drive or Sustain for 3 rounds — the amplifier on the Chord Tone Pardon he already owns.`);
+    // B9: the unlock logs name the CONTEXT TIER too, matching the descs. Each line
+    // is the one moment the player is guaranteed to be looking, so it's where the
+    // ladder's rule gets taught — not just the scale note that came with it.
     if (skillId === 'theory_major')     addLog(`🎼 ${spirit?.name} — THE FULL SCALE! The 4th & 7th are now Discord-free — your Major scale is complete.`);
-    if (skillId === 'theory_minor')     addLog(`🌑 ${spirit?.name} — MINOR TONALITY! Stack a minor third and the song follows you into a minor key, clean.`);
+    if (skillId === 'theory_minor')     addLog(`🌑 ${spirit?.name} — MINOR TONALITY! A minor third in your Drive Stack turns the song minor. And CHORD TONE PARDON is live: notes sitting in your stacks are never Discord, whatever the key says.`);
     if (skillId === 'theory_sus')       addLog(`🕊️ ${spirit?.name} — SUSPENSIONS! Ending on the 2nd or 4th now rings out for bonus Flair.`);
-    if (skillId === 'theory_dom7')      addLog(`🎷 ${spirit?.name} — DOMINANT 7th! The ♭7 joins your clean palette, and your stacks open a 4th slot — you can build the chord you just learned to play over.`);
-    if (skillId === 'theory_modes')     addLog(`🌀 ${spirit?.name} — MODAL SHIFT! Lydian ♯4 and Mixolydian ♭7 are now clean color tones, and your stacks open a 5th slot — 9th chords are in reach.`);
+    if (skillId === 'theory_dom7')      addLog(`🎷 ${spirit?.name} — DOMINANT 7th! The ♭7 joins your clean palette and your stacks open a 4th slot. PLAY THE CHANGES: your stack's whole implied chord is clean now, seventh included — even the notes you never stacked.`);
+    if (skillId === 'theory_modes')     addLog(`🌀 ${spirit?.name} — MODAL SHIFT! Lydian ♯4 and Mixolydian ♭7 go clean, stacks open a 5th slot. EXTENSIONS: your chord's own tensions are pardoned too — ♯4 over major, nat-6 over minor, ♭9 and 9 over dominant.`);
     if (skillId === 'theory_chromatic') addLog(`⚡ ${spirit?.name} — CHROMATIC MASTERY! Approach notes are clean, and a chromatic run of 3+ now PAYS (+3 Db, up to +5).`);
     // THE LADDER absorbs the old Discord path: climbing Theory grants the colour-note
     // capabilities the combat logic checks for (discordUnlocks + unlockedSkills flags).

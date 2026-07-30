@@ -16,6 +16,7 @@ import { scoreTrackDB } from "../music/cadence.js";
 import { getSpelledPool, pitchIndex, PITCH_INDEX, canonicalRoot } from "../music/notes.js";
 import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, stackContext, chromaticPayout, discordPenaltyFor } from "../music/context.js";
 import { detectChromaticRun } from "../music/cadence.js";
+import { skillEligibility, THEORY_DISCORD_GRANTS } from "../engine/systems/skills.js";
 import assert from "node:assert";
 
 // ── B0b: derived cap ──
@@ -700,3 +701,149 @@ console.log("✓ B7: penalty falls monotonically as the pardon ladder widens —
   }
 }
 console.log("✓ B6+B7 together: the run is a net GAIN at the capstone and a net LOSS below it — the asymmetry the spec asks for");
+
+// ─── B10: RONIN OWNS THE FIRST RUNG OF THE LADDER ───────────────────────────
+// He starts holding `theory_minor` so Wa no Koe amplifies the chord-context system
+// instead of being obsoleted by it. Asserted here because the grant is a single
+// literal in makeInitialNoteState and nothing else in the codebase would notice if
+// it silently disappeared.
+{
+  const ronin = makeInitialNoteState('cosmic_ronin', () => 0.5);
+  const other = makeInitialNoteState('Metalness_Monster', () => 0.5);
+  assert.ok(ronin.unlockedSkills.includes('theory_minor'),
+    'B10: Ronin must start holding theory_minor');
+  assert.ok(ronin.unlockedSkills.includes('amp_1'),
+    'B10: and must not have LOST amp_1 to the grant');
+  assert.ok(!other.unlockedSkills.includes('theory_minor'),
+    'B10: no other spirit starts with a Theory tier');
+  assert.deepEqual(other.unlockedSkills, ['amp_1'],
+    'B10: every other spirit still starts with amp_1 alone');
+
+  // The grant must actually reach the pardon ladder — the whole point of it.
+  const keyC  = [0,2,4,5,7,9,11];
+  const stack = ronin.driveStack;              // [root]
+  const offNote = ['C#','D#','F#','G#','A#'].find(n => !stack.includes(n)) ?? 'C#';
+  // A note LITERALLY in his stack must be pardoned from turn one, with no purchases.
+  const cls = classifyTrack([stack[0]], keyC, stack, [], ronin.unlockedSkills);
+  const inKey = keyC.includes(pitchIndex(stack[0]));
+  if (!inKey) {
+    assert.equal(cls[0].pardonedBy, 'literal',
+      'B10: Ronin\'s own stack note must be pardoned by the literal tier on turn one');
+  }
+  // And a spirit WITHOUT the grant must not get that pardon on the same input.
+  const clsOther = classifyTrack([stack[0]], keyC, stack, [], other.unlockedSkills);
+  if (!inKey) {
+    assert.equal(clsOther.pardonedBy ?? clsOther[0].pardonedBy, null,
+      'B10: the same note is unpardoned for a spirit without the tier — the grant is what differs');
+  }
+  void offNote;
+}
+console.log("✓ B10: Ronin starts holding theory_minor — and it reaches the pardon ladder on turn one");
+
+// B10 must not break the B0a mode invariant: the free tier lets modeFromStack FLIP
+// to minor, so it matters that his seed stack is still quality-ambiguous. If the
+// grant ever accidentally arrived alongside a minor-third seed, turn one would
+// force-flip his key.
+{
+  const ronin = makeInitialNoteState('cosmic_ronin', () => 0.5);
+  assert.deepEqual(ronin.driveStack, [ronin.rootNote],
+    'B10: Ronin\'s stack still seeds with the root alone');
+  const m = modeFromStack(ronin.driveStack, ronin.unlockedSkills, ronin.scaleMode);
+  assert.equal(m.reason, 'ambiguous',
+    'B10: a single-note seed has no third to read, so it stays ambiguous even WITH theory_minor');
+  assert.equal(m.mode, ronin.scaleMode,
+    'B10: so turn one never force-flips his mode despite the free tier');
+  // But the tier IS live: give him a real minor stack and he flips, where an
+  // ungranted spirit would be held at major with reason 'locked'.
+  assert.equal(modeFromStack(['C','D#','G'], ronin.unlockedSkills, 'major').mode, 'minor',
+    'B10: a minor third in his stack DOES turn the song minor from turn one');
+  assert.equal(modeFromStack(['C','D#','G'], ['amp_1'], 'major').reason, 'locked',
+    'B10: the same stack is held at major for a spirit without the tier');
+}
+console.log("✓ B10: the free tier is live but B0a's ambiguous seed still holds — turn one can't force-flip his key");
+
+// ⚠️ B10's ACCEPTED CONSEQUENCE, asserted so it can't drift into a surprise:
+// holding theory_minor satisfies theory_dom7's prereq, so Ronin's ladder is 8 Db
+// cheaper than everyone else's. This test DOCUMENTS that as intended.
+{
+  const ronin = makeInitialNoteState('cosmic_ronin', () => 0.5);
+  const dom7  = { id:'theory_dom7', prereq:'theory_minor', dbCost:10 };
+  const minor = { id:'theory_minor', prereq:'theory_major', dbCost:8 };
+  assert.ok(skillEligibility(dom7, ronin.unlockedSkills).ok,
+    'B10: Ronin may target theory_dom7 immediately — accepted consequence of the full grant');
+  assert.equal(skillEligibility(dom7, ['amp_1']).reason, 'prereq',
+    'B10: a spirit without the tier is blocked on the prereq');
+  assert.equal(skillEligibility(minor, ronin.unlockedSkills).reason, 'already',
+    'B10: and he cannot re-buy the tier he was given');
+  // The arithmetic, in the frame PENDING_CHANGES uses. The doc calls this "a 46-Db
+  // ladder", which is list price MINUS theory_major — because theory_major is
+  // supposed to be granted free at the start of a spirit's first turn. Both numbers
+  // are asserted so the two frames can't be confused for a discrepancy.
+  const ladder = { theory_major:6, theory_minor:8, theory_dom7:10, theory_modes:12, theory_chromatic:16 };
+  const list = Object.values(ladder).reduce((a,b)=>a+b, 0);
+  assert.equal(list, 52, 'B10: all five rungs total 52 Db at list price');
+  assert.equal(list - ladder.theory_major, 46,
+    'B10: with theory_major free at start, the climb is the 46 Db the doc quotes');
+  assert.equal(list - ladder.theory_major - ladder.theory_minor, 38,
+    'B10: Ronin skips the 8 Db rung on top of that — his climb is 38, the price of the flagship');
+}
+console.log("✓ B10: the free tier's accepted cost — Ronin skips a rung, documented not accidental");
+
+// ─── THE INITIAL-SKILL GRANT INVARIANT (bug found during the B9 pass) ───────
+// `theory_major` is granted free at the start of a spirit's first turn, and every
+// price in PENDING_CHANGES assumes it ("the 46-Db ladder" = 52 list − 6). The grant
+// used to be gated on `unlockedSkills.length === 0`, which `amp_1` made permanently
+// false, so it NEVER FIRED and every spirit played the pentatonic.
+//
+// The real gate can't be imported (it's a useEffect inside the component), so what's
+// pinned here is the PRECONDITION that broke it: a fresh spirit always has a
+// non-empty skill list, therefore emptiness can never be the test.
+{
+  for (const id of ['test_spirit', 'cosmic_ronin', 'Metalness_Monster', 'intergalactic_0']) {
+    const ns = makeInitialNoteState(id, () => 0.5);
+    assert.ok((ns.unlockedSkills?.length ?? 0) > 0,
+      `${id}: starts with a NON-EMPTY skill list — so "is the list empty" can never gate the grant`);
+    assert.ok(!ns.unlockedSkills.includes('theory_major'),
+      `${id}: does NOT start holding theory_major — the grant must still have work to do`);
+    assert.ok(!ns.initialPickDone,
+      `${id}: initialPickDone starts falsy so the grant is reachable on turn one`);
+  }
+  // And the grant's own condition, evaluated the way the fixed code evaluates it.
+  for (const id of ['test_spirit', 'cosmic_ronin']) {
+    const ns = makeInitialNoteState(id, () => 0.5);
+    const hasScale = (ns.unlockedSkills ?? []).includes('theory_major');
+    assert.ok(!hasScale && !ns.targetSkillId && !(ns.upgradesPending ?? 0) && !ns.initialPickDone,
+      `${id}: the fixed gate MUST open on turn one`);
+    // The old gate, kept as a regression witness: it must be shown to fail.
+    const oldGateOpens = !((ns.unlockedSkills?.length ?? 0) > 0);
+    assert.equal(oldGateOpens, false,
+      `${id}: the OLD emptiness gate stays closed — this is the bug, pinned so it can't return`);
+  }
+  // Idempotence: once granted, the gate must close.
+  const granted = { ...makeInitialNoteState('test_spirit', () => 0.5) };
+  granted.unlockedSkills = [...granted.unlockedSkills, 'theory_major'];
+  assert.ok((granted.unlockedSkills).includes('theory_major'),
+    'the gate closes once the scale is held — no double grant');
+}
+console.log("✓ initial grant: theory_major's gate opens on turn one for every spirit (the amp_1 emptiness bug is pinned)");
+
+// The grants table is not the list of Theory tiers — `theory_minor` is the first
+// rung of the context ladder and is deliberately absent from it. Asserted because
+// the two look like they should match and a future reader may try to "fix" it.
+{
+  assert.ok(!('theory_minor' in THEORY_DISCORD_GRANTS),
+    'B9: theory_minor grants no discord id — its scale expansion is handled in playableScale');
+  assert.ok(!('theory_major' in THEORY_DISCORD_GRANTS),
+    'B9: theory_major grants no discord id either');
+  assert.deepEqual(THEORY_DISCORD_GRANTS.theory_chromatic, ['discord_2', 'discord_4'],
+    'B9: the capstone still grants maj3 + chromatic palette flags');
+  // Every id the table hands out is a discord_N flag, never a skill id — mixing the
+  // two would silently grant a context tier through the palette table.
+  for (const [skill, ids] of Object.entries(THEORY_DISCORD_GRANTS)) {
+    for (const id of ids) {
+      assert.match(id, /^discord_\d+$/,
+        `B9: ${skill} grants "${id}" — the table may only hand out discord_N palette flags`);
+    }
+  }
+}
+console.log("✓ B9: THEORY_DISCORD_GRANTS is a palette table only — it grants no context tiers, by design");

@@ -196,7 +196,28 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     totalDB:         0,
     upgradesPending: 0,
     skillRoute:      null,
-    unlockedSkills:  ["amp_1"],  // 🔊 Amp I is the starting Main Amp — 2d6 from turn 1
+    // 🔊 Amp I is the starting Main Amp — 2d6 from turn 1.
+    // ── 🗡️ B10: RONIN OWNS THE FIRST RUNG OF THE LADDER ──────────────────────
+    // Wa no Koe (melody/chord alignment → +1 Drive/Sustain) was this whole system
+    // as one character's signature, written before the system existed. B3 turned it
+    // into a tier every spirit can buy, which would have left Ronin's flagship
+    // passive as the thing the tree obsoleted. So he starts holding `theory_minor`
+    // and Wa no Koe stacks on top as his personal amplifier: he is the spirit who
+    // plays over the changes natively, and he is the branch's in-game tutorial.
+    //
+    // ⚠️ THIS IS THE WHOLE SKILL, NOT JUST THE TIER, and that is a deliberate
+    // choice with three consequences we accept rather than engineer around:
+    //   1. He gets Chord Tone Pardon from turn one — the B10 ask.
+    //   2. He also gets the MINOR SCALE in `playableScale` and lets `modeFromStack`
+    //      flip his key to minor. Fitting for the character; not separable without
+    //      a second code path.
+    //   3. `theory_dom7`'s prereq is satisfied, so his ladder costs 38 Db, not 46.
+    // `music/context.js` documents the mechanism: a caller grants a free tier by
+    // putting its id in the list it passes, and there is exactly ONE code path. A
+    // spirit may therefore legitimately hold a tier without the ones "below" it —
+    // `tiersFor` is a set of independent checks, not an ordered walk, for this
+    // reason. Do not "fix" that by assuming the ladder was bought in order.
+    unlockedSkills:  spiritId === "cosmic_ronin" ? ["amp_1", "theory_minor"] : ["amp_1"],
     targetSkillId:   null,
     diceLevel:       0,
     ampOwned:        false,
