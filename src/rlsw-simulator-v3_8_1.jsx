@@ -50,6 +50,9 @@ import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./r
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset } from "./riff/fallingNotes.js";
 import { voiceRiff, nearestPositionForKey } from "./riff/guitarMap.js";
 import { Lobby } from "./ui/Lobby.jsx";
+import TitleMenu from "./ui/TitleMenu.jsx";
+import RiffMenu from "./ui/RiffMenu.jsx";
+import { buildTestingGroundsConfig } from "./data/matchSetup.js";
 import { RiffPractice } from "./ui/RiffPractice.jsx";
 import { FretboardRecon } from "./ui/FretboardRecon.jsx";
 import { DiscordCoach } from "./ui/DiscordCoach.jsx";
@@ -353,7 +356,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -680,9 +683,13 @@ const SKILL_BY_ID = (() => {
 // Returns the length of the longest chromatic run (consecutive semitones) in the track
 
 // ─── RIFF-OFF ────────────────────────────────────────────────────────────────
-// When two plugged-in Spirits clash with a Sonic Attack while facing each
-// other (each standing in the other's beam), the battle becomes a RIFF-OFF:
-// a call-and-response rhythm duel. The attacker lays down a riff; the
+// When two Spirits clash with a Sonic Attack while facing each other (each
+// standing in the other's beam) AND BOTH ARE INSIDE THEIR OWN RIG'S RADIUS,
+// the battle becomes a RIFF-OFF: a call-and-response rhythm duel.
+// The range requirement is mutual on purpose — a duel needs two live rigs. If
+// the rival is beam-to-beam but stranded outside their amp range, there is no
+// answering riff: the Sonic lands as an ordinary attack and the stranded rival
+// defends on a bare d4 instead of the usual d6 (SONIC_DEF_DIE_OUT_OF_RIG). The attacker lays down a riff; the
 // defender answers with a musically transformed version of it (inversion,
 // modulation, twisted notes, or a phrase resolution). The riff FALLS down a
 // note highway toward the strike line at the instrument (Guitar Hero style —
@@ -704,6 +711,13 @@ export default function RLSWSimulator() {
   const [showTutorial, setShowTutorial] = useState(false);
   const [practiceMode, setPracticeMode] = useState(null); // null | { mode: 'riff'|'fretboard'|'discord', diff? }
   const [introDone, setIntroDone] = useState(false);
+  // 🏝️ TITLE MENU — the Zelda-style front door. Everything hangs off it:
+  //   null    → the title menu itself
+  //   'normal'→ the match lobby (player count, Spirit select, settings)
+  //   'riff'  → the Riff Mode submenu (practice modes live in there)
+  // Rock God Challenge is on the menu but locked until it's built out; Testing
+  // Grounds and How to Play launch straight from the menu without a branch.
+  const [menuRoute, setMenuRoute] = useState(null);
   // 💡 HINT SCREEN — an intentional ~5s beat between Lobby and Game so a
   // random gameplay hint can be read. Reset on return-to-lobby so every match
   // start gets a fresh hint.
@@ -719,14 +733,36 @@ export default function RLSWSimulator() {
   }
   if (practiceMode) {
     const pm = practiceMode;
+    // Backing out of a trainer returns to the Riff Mode menu it was launched
+    // from, not all the way to the title screen — you almost always want another go.
     const back = () => setPracticeMode(null);
     if (pm.mode === 'fretboard') return <div style={isMobile ? mobileColorStyle : {}}><FretboardRecon onBack={back} /></div>;
     if (pm.mode === 'discord')   return <div style={isMobile ? mobileColorStyle : {}}><DiscordCoach onBack={back} /></div>;
     if (pm.mode === 'legend')    return <div style={isMobile ? mobileColorStyle : {}}><LegendLessons onBack={back} /></div>;
     return <div style={isMobile ? mobileColorStyle : {}}><RiffPractice initialDiff={pm.diff || pm} onBack={back} /></div>;
   }
+  // 🏝️ Title menu — shown whenever no match is running and no route is chosen.
+  if (!gameState && menuRoute === null) {
+    return <div style={isMobile ? mobileColorStyle : {}}><TitleMenu
+      onNormal={() => setMenuRoute('normal')}
+      onRiff={() => setMenuRoute('riff')}
+      onTestingGrounds={() => setGameState(buildTestingGroundsConfig())}
+      onHowToPlay={() => setShowTutorial(true)}
+    /></div>;
+  }
+  if (!gameState && menuRoute === 'riff') {
+    return <div style={isMobile ? mobileColorStyle : {}}><RiffMenu
+      onPractice={p => setPracticeMode(p)}
+      onBack={() => setMenuRoute(null)}
+    /></div>;
+  }
   if (!gameState) {
-    return <div style={isMobile ? mobileColorStyle : {}}><Lobby onStart={gs => setGameState(gs)} onTutorial={() => setShowTutorial(true)} onPractice={p => setPracticeMode(p)} /></div>;
+    return <div style={isMobile ? mobileColorStyle : {}}><Lobby
+      onStart={gs => setGameState(gs)}
+      onTutorial={() => setShowTutorial(true)}
+      onPractice={p => setPracticeMode(p)}
+      onBackToMenu={() => setMenuRoute(null)}
+    /></div>;
   }
   // 💡 Match is starting — hold on the hint screen for ~5s before the board mounts.
   if (!hintDone) {
@@ -900,7 +936,6 @@ function Game({ gameState, onReturnToLobby }) {
           const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
           setBattleState({
             riffOff: true, sonicAttack: true,
-            riffTier: eb.tier ?? 'stadium',
             oneLiner: null,
             phase: 'riff_intro',
             attackerId: eb.attackerId, defenderId: eb.defenderId,
@@ -945,14 +980,8 @@ function Game({ gameState, onReturnToLobby }) {
           const bs = battleStateRef.current;
           if (bs?.riffOff) {
             const { round, attackerWon, margin, tie, decidedBy, damage } = v;
-            if (bs.riffTier === 'acoustic') {
-              const winner = tie ? null : (attackerWon ? 'attacker' : 'defender');
-              setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_result', round,
-                clashStage: null, clashWinner: winner, attackerWon, margin, damage, tie, decidedBy, atkStats: v.atkStats, defStats: v.defStats } : p);
-            } else {
-              setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_clash', round, clashStage: 'charge',
-                clashWinner: null, attackerWon, margin, damage, tie, decidedBy, atkStats: v.atkStats, defStats: v.defStats } : p);
-            }
+            setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_clash', round, clashStage: 'charge',
+              clashWinner: null, attackerWon, margin, damage, tie, decidedBy, atkStats: v.atkStats, defStats: v.defStats } : p);
           }
         }
       }
@@ -1150,7 +1179,7 @@ function Game({ gameState, onReturnToLobby }) {
 
   const [action, setAction]   = useState(null); // "move" | "swing" | null
   // 🎯 Hovering a HUD attack button previews that attack's range on the board
-  // (same highlight the live aiming mode uses). null | 'swing'|'smash'|'blaster'|'sonic'|'acoustic'
+  // (same highlight the live aiming mode uses). null | 'swing'|'smash'|'blaster'|'sonic'
   const [hoverPreview, setHoverPreview] = useState(null);
   // ── BATTLE STATE ─────────────────────────────────────────────────────────────
   // actionTokenUsed: has the acting spirit used their action token this turn
@@ -1400,6 +1429,7 @@ function Game({ gameState, onReturnToLobby }) {
     rumblingIds, setRumblingIds,
     floatingDmg, setFloatingDmg,
     effectFlashes, setEffectFlashes,
+    spentNotes, setSpentNotes,
   } = useTransientFx();
   const [cameraView, setCameraView]   = useState(null);
   const [manualZoomActive, setManualZoomActive] = useState(false);
@@ -1733,7 +1763,8 @@ function Game({ gameState, onReturnToLobby }) {
       title: '🚶 Step 3 — Move & Act',
       pages: [
         { body: 'Track committed — your notes are now AP. MOVE across hexes, FACE to turn (1 AP), and fight. Attacks fire into the cone or beam you\'re FACING — sneaking behind someone isn\'t just rude, it\'s tactics.', anchor: 'actions-bar' },
-        { body: ['Three ways to ruin someone\'s set:', '⚔️ SWING (1 AP) — the melee jab. Cheap, defended, drives your chord into them.', '🎸 SMASH (2 AP) — the haymaker. Undefendable, ignores Sustain, hurls your unused stock... and leaves you Exposed. Commit issues, in weapon form.', '🔊 SONIC (2 AP) — the ranged beam from your amp rig. Less damage, way more Fame.'], anchor: 'actions-bar' },
+        { body: ['Three ways to ruin someone\'s set:', '⚔️ SWING (1 AP) — the melee jab. Cheap, defended, drives your chord into them.', '🎸 SMASH (2 AP) — the haymaker. Undefendable, ignores Sustain, hurls your unused stock... and leaves you Exposed. Commit issues, in weapon form.', '🔊 SONIC (2 AP) — the ranged beam from your amp rig. Less damage, way more Fame. Only fires from inside your RANGE ring.'], anchor: 'actions-bar' },
+        { body: ['🔥 THE RIFF-OFF is the big one, and you don\'t pick it from a menu — you earn it. Aim a Sonic at a rival who is facing straight back down the same beam and the attack escalates into a head-to-head rhythm duel.', 'One catch, and it cuts both ways: BOTH of you must be standing inside your OWN amp\'s range when it fires. A duel needs two live rigs. Catch a rival stranded outside theirs and there\'s no riff-off at all — the beam simply lands, and with no amp to brace against it they defend on a bare d4 instead of a d6.'], anchor: 'actions-bar' },
         { body: 'Done? Hit END TURN. Your last committed note becomes next turn\'s Root Note — that throwaway discord you ended on is tomorrow\'s tonal center. Plan the ending.', anchor: 'end-turn' },
       ],
     },
@@ -1741,7 +1772,8 @@ function Game({ gameState, onReturnToLobby }) {
       title: '⚔️ Battle!',
       pages: [
         { body: 'A SWING is a Thrash battle: both sides roll a d4 — attacker adds DRIVE, defender adds SUSTAIN. Win and you deal up to 4 Vibe damage. Lose as the attacker and you take a 1-Vibe humiliation tap. It\'s supposed to sting.', anchor: 'stat-knobs' },
-        { body: ['The fine print your rival hopes you skip:', 'A landed hit PLAYS your chord — you spend 2 Drive notes, the rival\'s Sustain Stack frays. A whiff spends nothing. Either way, swinging drops your guard: −1 Sustain until your next turn.', 'Thrash pays a flat 1 FP — it\'s for hurting people. For FAME, go Sonic: margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
+        { body: ['A SONIC is the ranged version, and it rolls differently: you throw your whole rig pool and KEEP THE HIGHEST die. The defender answers with a d6 — unless they\'re caught outside their own amp range, in which case they\'ve got no rig to brace with and scramble a d4. Position is damage.', 'Both of you beam-to-beam AND both inside your own range? That\'s not an attack any more. That\'s a RIFF-OFF.'], anchor: 'stat-knobs' },
+        { body: ['The fine print your rival hopes you skip:', 'Your stacks are AMMUNITION. A landed Swing burns 2 notes off your Drive Stack; a Sonic burns 1 win or lose. When a hit lands, the rival\'s Sustain Stack frays too — watch the notes tear off their standee and vanish. That\'s their armour leaving.', 'Swinging also drops your guard: −1 Sustain until your next turn. Thrash pays a flat 1 FP — it\'s for hurting people. For FAME, go Sonic: margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
       ],
     },
     fans: {
@@ -1789,6 +1821,7 @@ function Game({ gameState, onReturnToLobby }) {
       title: '⚡ Status Effect!',
       pages: [
         { body: ['Someone\'s wearing a status effect. The house specials:', '🔥 BURN — Vibe damage over time, straight off the pyro. 😵 STAGGER — freezes note slots so part of your kit is just... gone. 🧿 MOJO DRAIN — saps your performance and fan draw.', 'They wear off after a few turns. The badges sit in your Note Stock panel; glance before you plan.'], anchor: 'note-stock' },
+        { body: ['Read the board, not just the panel. Afflicted Spirits wear a dashed ring and their icons; ⚡ charged ones crackle amber (floor) or blue (ceiling).', 'And if a Spirit is glowing RED and burning — that\'s 6️⃣ BERSERK. Uncapped Drive, immune to knockback, bleeding a Vibe with every attack. It only ends when somebody hits the floor or they heal back out of danger. Deciding whether to be that somebody is the whole game right there.'] },
       ],
     },
     intervals: {
@@ -1892,6 +1925,18 @@ function Game({ gameState, onReturnToLobby }) {
   // Backward compat: ampsInRange ≥ 1 always (Main Amp — unplugged state is gone).
   // Old callers that checked `ampsInRange >= 1` will see "plugged in" universally.
   const ampsInRange = actingRig.pool.length;
+  // 📡 Live rig for ANY spirit, read straight from current positions. Combat
+  // paths (and the bot's scheduled closures) must not trust `actingRig`, which
+  // is a render-time snapshot of the acting Spirit only — and the defender's
+  // rig now decides both the riff-off gate and their defence die.
+  function rigForSpirit(sp, chargeBoost = 0) {
+    if (!sp) return { pool: [SONIC_BASE_DIE], inRange: false };
+    const homeHex = HEX_BY_NUM[CORNERS[sp.corner]?.homeNum];
+    const hex     = HEX_BY_NUM[sp.num];
+    const dist    = (homeHex && hex)
+      ? axialDist(homeHex.q, homeHex.r, hex.q, hex.r) : 0;
+    return sonicRig(noteStates[sp.id]?.unlockedSkills ?? [], dist, chargeBoost);
+  }
   // 🤖 keep the bot's live-state mirrors fresh
   useEffect(() => { moveStepsLeftRef.current = moveStepsLeft; }, [moveStepsLeft]);
   useEffect(() => { actionTokenUsedRef.current = actionTokenUsed; }, [actionTokenUsed]);
@@ -3819,10 +3864,8 @@ function Game({ gameState, onReturnToLobby }) {
           cadenceCooldowns: Object.fromEntries(
             Object.entries(ns.cadenceCooldowns ?? {}).map(([k, v]) => [k, Math.max(0, v - 1)])
           ),
-          // Phase R4: tick down acoustic duel per-pair cooldowns
-          acousticDuelCds: Object.fromEntries(
-            Object.entries(ns.acousticDuelCds ?? {}).filter(([, v]) => v > 1).map(([k, v]) => [k, v - 1])
-          ),
+          // (acousticDuelCds tick REMOVED — the Acoustic Duel and its per-pair
+          // cooldowns are gone. Any stale field on an old save just goes unread.)
           // Tick down "goes to eleven" boost
           elevenTurns: Math.max(0, (ns.elevenTurns ?? 0) - 1),
           // ⚡ Charge Zone charges tick down on the holder's own turns (2 ≈ 2 rounds);
@@ -5996,10 +6039,12 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ── RIFF-OFF FAME (Phase R6) — the marquee event's dedicated FP engine. ──
   // Replaces the old awardSonicFame call in closeRiffOff. Higher floor than
-  // sonic (this is the big show), style pay rewards HOW you played, tier mult
-  // shapes the acoustic-vs-stadium split, and loser consolation softens the
-  // dexterity gap for close duels. All numbers are first-pass — tune in playtest.
-  function awardRiffFame(winnerId, loserId, battleS, tier) {
+  // sonic (this is the big show), style pay rewards HOW you played, and loser
+  // consolation softens the dexterity gap for close duels. All numbers are
+  // first-pass — tune in playtest.
+  // (The old 'acoustic' tier multiplier is GONE along with the Acoustic Duel —
+  // every riff-off is a plugged-in stadium duel now, so there's one rate.)
+  function awardRiffFame(winnerId, loserId, battleS) {
     const round   = battleS.round ?? 1;
     const verdict = battleS;
     const margin  = verdict.margin ?? 0;
@@ -6012,12 +6057,8 @@ function Game({ gameState, onReturnToLobby }) {
     let base = 2 + Math.ceil(margin / 2);
     // ── Style pay: +1 per 3 perfects ──
     base += Math.floor((winStats.perfects ?? 0) / 3);
-    // ── Tier multiplier ──
-    if (tier === 'acoustic') {
-      base = Math.max(1, Math.round(base * 0.6));
-    }
-    // Round-2 stadium flat bonus
-    if (round >= 2 && tier !== 'acoustic') base += 2;
+    // Round-2 flat bonus — sudden death pays extra
+    if (round >= 2) base += 2;
     // ── Headliner rider ──
     const rider = headlinerRider(winnerId);
     base += rider;
@@ -6030,7 +6071,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     // ── Underdog ramp (applied to winner's total base) ──
     const { fp, deficit, mult } = underdogBonus(winnerId, loserId, base);
-    const tierTag = tier === 'acoustic' ? ' acoustic' : (round >= 2 ? ' R2 stadium' : ' stadium');
+    const tierTag = round >= 2 ? ' R2' : '';
     if (deficit >= UNDERDOG_MIN_DEFICIT && fp > base) {
       const nm = spirits.find(s => s.id === winnerId)?.name;
       addLog(`🔥 UNDERDOG! ${nm} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
@@ -6569,8 +6610,12 @@ function Game({ gameState, onReturnToLobby }) {
     }
     const fray = Math.min(amount, stack.length - 1); // floor: 1 note survives
     const frayedNotes = stack.slice(0, stack.length - fray);
+    const lostNotes   = stack.slice(stack.length - fray); // the notes knocked loose
     const frayed = spiritChord(targetId, frayedNotes);
     setNoteField(targetId, { sustainStack: frayedNotes });
+    // 🎵 A Spirit that got HIT visibly loses Sustain notes off its stack —
+    // the glyphs scatter off the standee and disappear.
+    showSpentNotes(targetId, lostNotes, 'sustain');
     addLog(`🛡️ ${defender?.name}'s chord frays under the blow — ${defChord.name} → ${frayed.name} (🛡️${frayed.sustain}, −${fray} note${fray !== 1 ? 's' : ''})`);
     return {
       frayed: fray,
@@ -7350,6 +7395,7 @@ function Game({ gameState, onReturnToLobby }) {
     // Ronin faces — a mismatched arrow would give the game away instantly — and
     // with its own full set of legs (see moveShadow).
     const newStack = driveStack.slice(1);
+    showSpentNotes(acting.id, driveStack.slice(0, 1), 'drive'); // 🎵 the note leaves
     const budget = ns.lastMoveBudget ?? Math.max(1, moveStepsLeft);
     setNoteField(acting.id, {
       driveStack: newStack,
@@ -7457,7 +7503,7 @@ function Game({ gameState, onReturnToLobby }) {
   // a Blaster that didn't leave you Exposed), the discount itself would announce
   // that the standee was fake. The wasted tempo is the payoff for the bluff.
   //
-  //   kind: 'swing' (1 AP) | 'sonic' | 'acoustic' (2 AP)
+  //   kind: 'swing' (1 AP) | 'sonic' (2 AP)
   //         | 'smash' | 'blaster' (2 AP minimum, then ALL movement, hurls the
   //           attacker's whole unused stock, leaves them Exposed)
   function resolveShadowWhiff(attacker, kind, label) {
@@ -7805,18 +7851,14 @@ function Game({ gameState, onReturnToLobby }) {
     if (acting.id === 'cosmic_ronin') dismissShadowIllusion('the Ronin attacked');
 
     // 📡 RANGE GATE — outside your rig's radius the Sonic is OFFLINE entirely.
-    // (Computed fresh from the attacker's position: bot calls arrive via
-    // scheduled closures that may hold a stale render's actingRig.)
-    {
-      const atkHome = HEX_BY_NUM[CORNERS[attacker.corner]?.homeNum];
-      const atkHex  = HEX_BY_NUM[attacker.num];
-      const atkDist = (atkHome && atkHex)
-        ? axialDist(atkHome.q, atkHome.r, atkHex.q, atkHex.r) : 0;
-      const rig = sonicRig(noteStates[attacker.id]?.unlockedSkills ?? [], atkDist);
-      if (!rig.inRange) {
-        addLog(`📡 ${attacker.name} is out of amp range — the rig can't reach this far. Move closer to home or buy Range.`);
-        return;
-      }
+    // (Computed fresh from BOTH positions: bot calls arrive via scheduled
+    // closures that may hold a stale render's actingRig, and the defender's
+    // rig decides both the riff-off gate and their defence die below.)
+    const atkRigLive = rigForSpirit(attacker);
+    const defRigLive = rigForSpirit(defender);
+    if (!atkRigLive.inRange) {
+      addLog(`📡 ${attacker.name} is out of amp range — the rig can't reach this far. Move closer to home or buy Range.`);
+      return;
     }
 
     dispatch(beatsSpent(2, true));
@@ -7828,15 +7870,23 @@ function Game({ gameState, onReturnToLobby }) {
     const sonicChordNotes = [...(actingNoteState?.driveStack ?? [])];
 
     // ── RIFF-OFF TRIGGER ─────────────────────────────────────────────────────
-    // Every Spirit is wired (Main Amp). If the defender is in the attacker's
-    // beam AND the attacker is in the defender's beam — facing each other down
-    // the same line — the Sonic Attack escalates into a head-to-head RIFF-OFF.
+    // A riff-off is a DUEL: both rigs have to be live for it to happen. Three
+    // conditions, all required:
+    //   1. the defender sits in the attacker's beam (already true to get here),
+    //   2. the attacker sits in the defender's beam — they're facing each other
+    //      down the same line,
+    //   3. BOTH Spirits are inside their OWN rig's radius. A rival caught
+    //      outside their amp range has nothing to answer with, so there's no
+    //      duel — the Sonic lands as a plain attack and they defend on a d4.
     // (AP + Action Token were already spent above, same cost as a Sonic Attack.)
     if (!posing[targetId] && getSonicBeam(defender).has(attacker.num)) {
-      // ⚡ A riff-off is still a battle — charges burn off (no dice to boost here).
-      burnChargesAfterBattle([attacker.id, targetId], 'the riff-off spent it');
-      startRiffOff(attacker, defender);
-      return;
+      if (defRigLive.inRange) {
+        // ⚡ A riff-off is still a battle — charges burn off (no dice to boost here).
+        burnChargesAfterBattle([attacker.id, targetId], 'the riff-off spent it');
+        startRiffOff(attacker, defender);
+        return;
+      }
+      addLog(`📡 ${defender.name} is beam-to-beam but OUT OF AMP RANGE — no rig to riff back with. No duel: the beam just hits, and they scramble a d4 defence.`);
     }
 
     const nsA     = noteStates[attacker.id] ?? {};
@@ -7877,6 +7927,8 @@ function Game({ gameState, onReturnToLobby }) {
     const sonicChordSpent = (nsA.driveStack ?? []).slice(0, sonicSpendN);
     if (sonicChordSpent.length) {
       setNoteField(attacker.id, { driveStack: sonicChordLeft });
+      // 🎵 The note leaves the Spirit — show it tearing off the standee.
+      showSpentNotes(attacker.id, sonicChordSpent, 'drive');
       addLog(`🎸 ${attacker.name} projects ${sonicChordSpent.join('')} from the drive stack — ${sonicChordLeft.length ? spiritChord(attacker.id, sonicChordLeft).name : 'drive exhausted (base stats until committed)'}.`);
     }
 
@@ -7908,12 +7960,17 @@ function Game({ gameState, onReturnToLobby }) {
 
     // Retaliation: both wired, so only blocked when defender is out of their own
     // rig range (baseline 1d6 can't project a counter-beam). Check defender's rig.
-    const defNsSkills = (nsD.unlockedSkills ?? []);
-    const defHomeHex  = HEX_BY_NUM[CORNERS[defender.corner]?.homeNum];
-    const defDistHome = (defHomeHex && defHex)
-      ? axialDist(defHomeHex.q, defHomeHex.r, defHex.q, defHex.r) : 0;
-    const defRig = sonicRig(defNsSkills, defDistHome);
+    const defRig = defRigLive;
     const retaliationBlocked = isAtRange && defRig.pool.length <= 1;
+
+    // 🛡️ DEFENCE DIE — inside their own rig radius the rival braces against the
+    // beam with their amp behind them (d6). Outside it there's no rig to answer
+    // with, so they scramble a bare d4. Same rule that just blocked the riff-off.
+    const defOutOfRig = !defRig.inRange;
+    const defDieSonic = defOutOfRig ? SONIC_DEF_DIE_OUT_OF_RIG : SONIC_DEF_DIE;
+    if (defOutOfRig) {
+      addLog(`📡🛡️ ${defender.name} is outside their own amp range — no rig to brace with. They defend on a d${SONIC_DEF_DIE_OUT_OF_RIG} instead of a d${SONIC_DEF_DIE}.`);
+    }
 
     // Roll — attacker's pool from sonicRig (computed at render).
     let   dicePool    = [...actingRig.pool];
@@ -7934,6 +7991,7 @@ function Game({ gameState, onReturnToLobby }) {
       posing: defenderPosing,
       halveDef: skillMods.halveDef,
       dicePool, atkFloor,
+      defDie: defDieSonic,   // d6 in rig range, d4 when the rival is stranded
     }));
     const {
       atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, diceVals, keptIdx,
@@ -7947,7 +8005,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (attackerWon) applyChordFray(targetId, margin);
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on dropped instrument — Drive -1!`);
-    addLog(`🔊 ${attacker.name} launches SONIC ATTACK at ${defender.name}! (${diceLabel} keep best${actingRig.inRange ? '' : ' · baseline'}${retaliationBlocked ? ' — TARGET OUT OF RIG RANGE, CANNOT RETALIATE!' : ''})`);
+    addLog(`🔊 ${attacker.name} launches SONIC ATTACK at ${defender.name}! (${diceLabel} keep best vs d${defDieSonic}${actingRig.inRange ? '' : ' · baseline'}${retaliationBlocked ? ' — TARGET OUT OF RIG RANGE, CANNOT RETALIATE!' : ''})`);
     // ⚡ A battle ensued — Charge Zone charges burn off for BOTH combatants.
     burnChargesAfterBattle([attacker.id, targetId], 'the Sonic battle spent it');
     // ☀️🔥 SUNBEAM — the beam scorches every hex it crosses into burning ground (reuses the
@@ -7978,7 +8036,8 @@ function Game({ gameState, onReturnToLobby }) {
       sonicAttack: true,
       ampCount: ampTier,
       dieSides,                  // = max(dicePool); fallback for single-die anim paths
-      defDieSides: 6,            // Sonic: defender always rolls d6
+      defDieSides: defDieSonic,  // Sonic: d6 in rig range, d4 stranded outside it
+      defOutOfRig,               // 📡 drives the "no rig" tell on the battle overlay
       dicePool,                  // 🔊 keep-highest pool: die sizes, e.g. [6,6,8]
       diceVals,                  // rolled values (length === dicePool.length)
       diceSpin: diceVals,        // animated faces while spinning (seeded to the result)
@@ -8009,50 +8068,23 @@ function Game({ gameState, onReturnToLobby }) {
     T(() => setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p), 5600);
   }
 
-  // ── ACOUSTIC DUEL — Phase R4 ────────────────────────────────────────────────
-  // The baseline riff-off: no amp requirement, just adjacency. Smaller pot
-  // (handled in R6), no beam clash, no Round 2. Once per turn, 2-turn cooldown
-  // per rival pair so it can't be farmed.
-  const ACOUSTIC_DUEL_CD = 2;
-  function acousticDuelPairKey(a, b) { return [a, b].sort().join(':'); }
-  function initiateAcousticDuel(targetId) {
-    if (!acting) return;
-    if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
-    if (actionTokenUsed) { addLog('🎸 Already used your Action Token this turn!'); return; }
-    if (moveStepsLeft < 2) { addLog('🎸 Not enough Action Points — Acoustic Duel costs 2 AP.'); return; }
-    const attacker = spirits.find(s => s.id === acting.id);
-    const defender = spirits.find(s => s.id === targetId);
-    if (!attacker || !defender) return;
-    // Adjacency check
-    const aHex = HEX_BY_NUM[attacker.num], dHex = HEX_BY_NUM[defender.num];
-    if (!aHex || !dHex || axialDist(aHex.q, aHex.r, dHex.q, dHex.r) > 1) {
-      addLog('🎸 Acoustic Duel requires an adjacent rival!'); return;
-    }
-    // Cooldown check
-    const pairKey = acousticDuelPairKey(attacker.id, targetId);
-    const cd = (noteStates[attacker.id]?.acousticDuelCds ?? {})[pairKey] ?? 0;
-    if (cd > 0) { addLog(`🎸 Too soon — ${defender.name} needs ${cd} more turn(s) before another acoustic duel.`); return; }
-    dispatch(beatsSpent(2, true));
-    setAction(null);
-    burnChargesAfterBattle([attacker.id, targetId], 'the acoustic duel spent it');
-    // Set cooldown on BOTH combatants for this pair
-    setNoteStates(prev => {
-      const next = { ...prev };
-      [attacker.id, targetId].forEach(sid => {
-        const ns = next[sid] ?? {};
-        next[sid] = { ...ns, acousticDuelCds: { ...(ns.acousticDuelCds ?? {}), [pairKey]: ACOUSTIC_DUEL_CD } };
-      });
-      return next;
-    });
-    startRiffOff(attacker, defender, 'acoustic');
-  }
+  // ── (ACOUSTIC DUEL — REMOVED) ───────────────────────────────────────────────
+  // Was the "unplugged" riff-off: adjacency only, no amps, smaller pot. Cut
+  // because the fiction never supported it — this is a sci-fi stage and these
+  // Spirits play electric instruments. Two of them twanging acoustically at
+  // each other is not rock. The riff-off is now exclusively the plugged-in,
+  // beam-crossed duel that escalates out of a Sonic Attack.
 
   // ── RIFF-OFF ENGINE ──────────────────────────────────────────────────────────
   // Sequential call-and-response on a shared keyboard: the attacker plays
   // their riff first, results are logged, the keyboard is passed, and the
   // defender answers with a transformed riff. Accuracy decides the winner;
   // average reaction time breaks ties.
-  function startRiffOff(attacker, defender, tier = 'stadium') {
+  // (The 'acoustic' tier is GONE. It was conceived as an unplugged duel, which
+  // doesn't survive contact with the setting: these Spirits are on a sci-fi
+  // stage holding electric instruments. Two of them twanging acoustically at
+  // each other isn't rock. Every riff-off is a plugged-in, beam-crossed duel.)
+  function startRiffOff(attacker, defender) {
     // The engine generates both riffs + skill modifiers on its seeded rng and
     // stores them in engineState.battle — this client just renders that data.
     const atkNs = noteStates[attacker.id] ?? {};
@@ -8067,22 +8099,16 @@ function Game({ gameState, onReturnToLobby }) {
     // Phase R2: difficulty tier caps riff length
     const activePreset = RIFF_FALL_DIFFICULTY[riffDifficultyRef.current] ?? RIFF_FALL_DIFFICULTY[RIFF_FALL_DEFAULT];
     const maxLen = activePreset.maxLen ?? RIFF_LEN;
-    // Phase R4: tier ('acoustic' | 'stadium') flows into the engine battle slice
-    const eb = dispatch(riffOffStarted(attacker.id, defender.id, { slayer, eRush, melodyLine, hasRiff, maxLen, tier })).battle;
+    const eb = dispatch(riffOffStarted(attacker.id, defender.id, { slayer, eRush, melodyLine, hasRiff, maxLen })).battle;
     const atk = eb.atkRiff, def = eb.defRiff;
     const defGlitch = eb.defGlitch, defGhosts = eb.defGhosts;
     const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
     // Log: show whether the riff came from the player's melody or was random
-    const isAcoustic = tier === 'acoustic';
     if (eb.fromMelody) {
-      addLog(isAcoustic
-        ? `🎸🎶 ACOUSTIC DUEL! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`
-        : `🎸🔥 RIFF-OFF! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`);
+      addLog(`🎸🔥 RIFF-OFF! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`);
       if (eb.hasRiff) addLog(`✨ Legendary riff woven into the call — the crowd leans in!`);
     } else {
-      addLog(isAcoustic
-        ? `🎸🎶 ACOUSTIC DUEL! ${attacker.name} and ${defender.name} square off — no amps, no beams, just chops!`
-        : `🎸🔥 RIFF-OFF! ${attacker.name} and ${defender.name} lock eyes — both plugged in, beams crossed!`);
+      addLog(`🎸🔥 RIFF-OFF! ${attacker.name} and ${defender.name} lock eyes — both plugged in, beams crossed!`);
     }
     addLog(`🎶 ${attacker.name} calls a ${RIFF_CONTOUR_LABELS[atk.contour]} — ${defender.name} must answer with a ${RIFF_ANSWER_LABELS[def.kind].name}.`);
 
@@ -8094,8 +8120,7 @@ function Game({ gameState, onReturnToLobby }) {
     playBattleMusic(riffOffSong, 0.7);
     setBattleState({
       riffOff: true, sonicAttack: true,   // sonicAttack → sonic-scale knockback
-      riffTier: tier,                     // Phase R4: 'acoustic' | 'stadium'
-      oneLiner: null,                      // Phase R5.2: { attacker: {line,dropped}, defender: {line,dropped} }
+      oneLiner: null,                    // Phase R5.2: { attacker: {line,dropped}, defender: {line,dropped} }
       phase: 'riff_intro',
       attackerId: attacker.id, defenderId: defender.id,
       atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
@@ -8356,19 +8381,11 @@ function Game({ gameState, onReturnToLobby }) {
     const defName = spirits.find(s => s.id === bs.defenderId)?.name;
     const atkLen = bs.atkRiff?.notes?.length ?? RIFF_LEN;
     const defLen = bs.defRiff?.notes?.length ?? RIFF_LEN;
-    const tierLabel = bs.riffTier === 'acoustic' ? 'ACOUSTIC DUEL' : 'RIFF-OFF';
-    if (tie) addLog(`🎸 ${tierLabel} R${round}: dead heat — both nailed ${A.hits}/${atkLen} at the same quality. The crowd can't pick a winner!`);
-    else addLog(`🎸 ${tierLabel} R${round}: ${attackerWon ? atkName : defName} takes it on ${decidedBy}! (${A.hits}/${atkLen}·${A.perfects}✦·${A.quality}%${A.avgRt != null ? ` · ${A.avgRt}ms` : ''} vs ${D.hits}/${defLen}·${D.perfects}✦·${D.quality}%${D.avgRt != null ? ` · ${D.avgRt}ms` : ''})`);
-    // Phase R4: acoustic duels skip the beam clash entirely — no Round 2, no
-    // escalation. The crowd circles up, the riff decides, move on.
-    if (bs.riffTier === 'acoustic') {
-      const winner = tie ? null : (attackerWon ? 'attacker' : 'defender');
-      setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_result', round,
-        clashStage: null, clashWinner: winner, attackerWon, margin, damage, tie, decidedBy, atkStats: A, defStats: D } : p);
-    } else {
-      setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_clash', round, clashStage: 'charge',
-        clashWinner: null, attackerWon, margin, damage, tie, decidedBy, atkStats: A, defStats: D } : p);
-    }
+    if (tie) addLog(`🎸 RIFF-OFF R${round}: dead heat — both nailed ${A.hits}/${atkLen} at the same quality. The crowd can't pick a winner!`);
+    else addLog(`🎸 RIFF-OFF R${round}: ${attackerWon ? atkName : defName} takes it on ${decidedBy}! (${A.hits}/${atkLen}·${A.perfects}✦·${A.quality}%${A.avgRt != null ? ` · ${A.avgRt}ms` : ''} vs ${D.hits}/${defLen}·${D.perfects}✦·${D.quality}%${D.avgRt != null ? ` · ${D.avgRt}ms` : ''})`);
+    // Every riff-off is plugged in, so every riff-off ends in the beam clash.
+    setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_clash', round, clashStage: 'charge',
+      clashWinner: null, attackerWon, margin, damage, tie, decidedBy, atkStats: A, defStats: D } : p);
   }
 
   // ── BEAM CLASH ("Kamehameha") — DBZ-style finale to the riff-off ──────────
@@ -8474,7 +8491,7 @@ function Game({ gameState, onReturnToLobby }) {
       // ── 🎤 ONE-LINER — smack talk is automatic, no risk/reward payout ──
       resolveWinDamage(winnerId, loserId, damage, spirits.find(x => x.id === winnerId)?.name);
       // Phase R6: dedicated riff-off FP engine (replaces awardSonicFame).
-      awardRiffFame(winnerId, loserId, s, s.riffTier);
+      awardRiffFame(winnerId, loserId, s);
       // 👑 HEADLINER — winner of any riff-off claims the title
       const prevHeadliner = engineRef.current.headliner;
       dispatch(headlinerChanged(winnerId));
@@ -8662,6 +8679,7 @@ function Game({ gameState, onReturnToLobby }) {
       if (!sonicAttack && s.swingChordSpent?.length) {
         addLog(`🎸 ${spirits.find(sp => sp.id === attackerId)?.name} burns ${s.swingChordSpent.join('+')} from the drive stack — ${s.swingChordLeft?.length ? spiritChord(attackerId, s.swingChordLeft).name : 'drive exhausted (base stats until committed)'}.`);
         setNoteStates(prev => ({ ...prev, [attackerId]: { ...prev[attackerId], driveStack: s.swingChordLeft } }));
+        showSpentNotes(attackerId, s.swingChordSpent, 'drive'); // 🎵 notes fly off the standee
       }
       // ── KNOCKBACK — route by attack kind ──
       if (sonicAttack) {
@@ -8874,6 +8892,7 @@ function Game({ gameState, onReturnToLobby }) {
                 if (!isSonic && snap.swingChordSpent?.length) {
                   addLog(`🎸 ${spirits.find(sp => sp.id === attackerId)?.name} burns ${snap.swingChordSpent.join('+')} from the drive stack — ${snap.swingChordLeft?.length ? spiritChord(attackerId, snap.swingChordLeft).name : 'drive exhausted (base stats until committed)'}.`);
                   setNoteStates(prev => ({ ...prev, [attackerId]: { ...prev[attackerId], driveStack: snap.swingChordLeft } }));
+                  showSpentNotes(attackerId, snap.swingChordSpent, 'drive'); // 🎵 notes fly off the standee
                 }
                 // Stage Lighting: 33% chance heal on win (rolled at battle start, stored in skillMods)
                 if (snap.skillMods?.stageLightActive) {
@@ -9495,25 +9514,9 @@ function Game({ gameState, onReturnToLobby }) {
             return;
           }
         }
-        // Phase R4: Acoustic Duel — fallback when no beam/cone available.
-        // Challenge an adjacent rival if off cooldown. Lower priority than sonic/swing
-        // since the pot is smaller, but better than doing nothing.
-        if (steps >= 2 && selfHex) {
-          {
-            const botCds = (noteStates[self.id]?.acousticDuelCds ?? {});
-            const adjRivals = spirits.filter(s => s.id !== self.id && !s.knockedOut && (() => {
-              const h = HEX_BY_NUM[s.num];
-              if (!h || axialDist(selfHex.q, selfHex.r, h.q, h.r) !== 1) return false;
-              return (botCds[acousticDuelPairKey(self.id, s.id)] ?? 0) <= 0;
-            })());
-            if (adjRivals.length) {
-              const t = botPickTarget(adjRivals, self);
-              botStepRef.current = 'ending';
-              schedule(guard(() => initiateAcousticDuel(t.id)));
-              return;
-            }
-          }
-        }
+        // (The Acoustic Duel fallback that used to sit here is gone with the
+        // duel itself. A bot with nothing lined up now goes straight to
+        // re-facing for a real shot, below.)
         // Not lined up — re-face toward the best shot (1 step to turn + 2 to fire).
         if (steps >= 3) {
           const bf = rigInRangeRef.current ? botBestFacing(self, 'beam') : null;
@@ -9798,18 +9801,6 @@ function Game({ gameState, onReturnToLobby }) {
       else addLog("🔊 That spirit is not in your sonic beam!");
       return;
     }
-    if (action === "acoustic") {
-      if (isShadowTarget(num, 'adjacent')) { resolveShadowWhiff(acting, 'acoustic', 'Acoustic Duel'); return; }
-      // Phase R4: Acoustic Duel targets adjacent rivals
-      const actHex = HEX_BY_NUM[acting.num];
-      const target = actHex ? spirits.filter(s => s.id !== acting.id && !s.knockedOut).find(s => {
-        const h = HEX_BY_NUM[s.num];
-        return h && axialDist(actHex.q, actHex.r, h.q, h.r) === 1 && s.num === num;
-      }) : null;
-      if (target) { initiateAcousticDuel(target.id); setAction(null); }
-      else addLog("🎸 That spirit is not adjacent — move closer for an acoustic duel!");
-      return;
-    }
     if (action === "smash") {
       if (isShadowTarget(num, 'cone')) { resolveShadowWhiff(acting, 'smash', 'Smash'); return; }
       const rivals = acting ? getRivalsInCone(acting) : [];
@@ -9928,11 +9919,6 @@ function Game({ gameState, onReturnToLobby }) {
         return isRival ? '#0066ff44' : '#0033ff18';
       }
     }
-    // Acoustic duel: shade adjacent hexes on preview
-    if (previewAction === 'acoustic' && acting) {
-      const actHex = HEX_BY_NUM[acting.num];
-      if (actHex && axialDist(actHex.q, actHex.r, hex.q, hex.r) === 1) return '#ffaa4418';
-    }
     // Face mode: highlight adjacent hexes
     if (action === 'face' && acting) {
       const actingHex = HEX_BY_NUM[acting.num];
@@ -9974,14 +9960,6 @@ function Game({ gameState, onReturnToLobby }) {
       if (beam.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
         return isRival ? '#44aaffee' : '#2244ff44';
-      }
-    }
-    // Phase R4: Acoustic duel — highlight adjacent rivals
-    if (previewAction === 'acoustic' && acting) {
-      const actHex = HEX_BY_NUM[acting.num];
-      if (actHex && axialDist(actHex.q, actHex.r, hex.q, hex.r) === 1) {
-        const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
-        return isRival ? '#ffaa44ee' : '#ff882233';
       }
     }
     // Face mode: adjacent hex stroke
@@ -10026,6 +10004,30 @@ function Game({ gameState, onReturnToLobby }) {
     const key = `${spiritId}-${Date.now()}-${Math.random()}`;
     setFloatingDmg(prev => [...prev, { spiritId, amount, key }]);
     gt(() => setFloatingDmg(prev => prev.filter(f => f.key !== key)), 1200);
+  }
+
+  // 🎵 SPENT NOTES ─────────────────────────────────────────────────────────────
+  // The stacks are ammunition, and ammunition running out should be VISIBLE.
+  // Every note that leaves a Spirit — Drive notes burned to power an attack,
+  // Sustain notes frayed off by a hit that landed — gets a glyph that tears
+  // away from the standee and fades to nothing. Two flavours:
+  //   'drive'   (⚔️ red)  — you spent it; it flies up and forward.
+  //   'sustain' (🛡️ blue) — it was knocked out of you; it scatters sideways.
+  // Notes fan out and stagger so a 2-note burn reads as two distinct losses.
+  const SPENT_NOTE_MS = 1500;
+  function showSpentNotes(spiritId, notes, kind = 'drive') {
+    const list = (notes ?? []).filter(Boolean);
+    if (!spiritId || list.length === 0) return;
+    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const burst = list.map((note, i) => ({
+      key: `sn-${spiritId}-${stamp}-${i}`,
+      spiritId, note, kind, i, n: list.length,
+    }));
+    setSpentNotes(prev => [...prev, ...burst]);
+    const keys = new Set(burst.map(b => b.key));
+    // Last glyph leaves ~180 ms after the first (the stagger), so hold for both.
+    gt(() => setSpentNotes(prev => prev.filter(s => !keys.has(s.key))),
+      SPENT_NOTE_MS + list.length * 180);
   }
 
   // 💥 STATUS-EFFECT BOARD VFX ─────────────────────────────────────────────────
@@ -12003,7 +12005,7 @@ function Game({ gameState, onReturnToLobby }) {
                       : outOfRange
                       ? "📡 Out of your amp's range — the Sonic is offline out here. Hover to see your rig's radius ring; move back inside it or buy Range tiers."
                       : canSonic
-                      ? `Sonic Attack (2 AP) — the ranged beam. ${diceLabel}, keep the highest.`
+                      ? `Sonic Attack (2 AP) — the ranged beam. ${diceLabel}, keep the highest. If your target is facing back down the beam AND inside their own amp range, it escalates into a RIFF-OFF; if they're stranded outside theirs, no duel — they defend on a d${SONIC_DEF_DIE_OUT_OF_RIG}.`
                       : "Sonic Attack (2 AP) — no rival in your beam. Hover to see the beam and your rig's range ring."}
                     onClick={() => {
                       if (action === 'sonic') { setAction(null); }
@@ -12022,59 +12024,9 @@ function Game({ gameState, onReturnToLobby }) {
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
-            {/* 🎸 ACOUSTIC DUEL — Phase R4: baseline riff-off, no amp needed, just adjacency.
-                Always visible; hover previews the adjacency range. */}
-            {!rockGodActive && (() => {
-              const actHex = acting ? HEX_BY_NUM[acting.num] : null;
-              const adjacentRivals = actHex ? spirits.filter(s =>
-                s.id !== acting.id && !s.knockedOut &&
-                HEX_BY_NUM[s.num] && axialDist(actHex.q, actHex.r, HEX_BY_NUM[s.num].q, HEX_BY_NUM[s.num].r) === 1
-              ) : [];
-              const aNs = actingNoteState ?? {};
-              const cds = aNs.acousticDuelCds ?? {};
-              // Any adjacent rival off cooldown?
-              const available = adjacentRivals.filter(r => {
-                const pk = acousticDuelPairKey(acting.id, r.id);
-                return (cds[pk] ?? 0) <= 0;
-              });
-              // 👤 An adjacent double looks like an available, off-cooldown rival
-              // (the fake has never duelled anyone, so it never shows a cooldown).
-              const shadowAdj = shadowInRange('adjacent') ? 1 : 0;
-              const duelCount = available.length + shadowAdj;
-              const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
-              const canDuel = !grayed && duelCount > 0;
-              return (
-                <div style={{position:'relative',display:'inline-block'}}
-                  onMouseEnter={() => setHoverPreview('acoustic')}
-                  onMouseLeave={() => setHoverPreview(p => p === 'acoustic' ? null : p)}>
-                  <button className={canDuel ? 'btn active' : 'btn'}
-                    style={grayed
-                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
-                      : {borderColor:'#ffaa44', color:'#ffcc66', opacity: canDuel ? 1 : 0.4}}
-                    disabled={!canDuel}
-                    title={grayed
-                      ? "Acoustic Duel (2 AP) — grayed out: needs a confirmed turn, your Action Token, and 2 AP."
-                      : canDuel
-                      ? "Acoustic Duel (2 AP) — challenge an adjacent rival to an unamped riff-off. No beam, no amps — just chops. 2-turn cooldown per rival."
-                      : adjacentRivals.length > 0
-                      ? "Acoustic Duel (2 AP) — adjacent rival(s) still on the 2-turn duel cooldown."
-                      : "Acoustic Duel (2 AP) — no adjacent rival. Hover to see the adjacency range."}
-                    onClick={() => {
-                      if (action === 'acoustic') { setAction(null); }
-                      else if (canDuel) {
-                        setAction('acoustic');
-                        addLog(`🎸 ACOUSTIC DUEL — click an adjacent rival to challenge! No amps needed.`);
-                      }
-                    }}>
-                    🎸 Acoustic{duelCount > 0 ? ` (${duelCount})` : ''} {!canDuel && moveStepsLeft < 2 ? '(2AP)' : ''}
-                  </button>
-                </div>
-              );
-            })()}
-            {action === 'acoustic' && (
-              <button className="btn" style={{borderColor:'#888',color:'#888'}}
-                onClick={() => setAction(null)}>Cancel</button>
-            )}
+            {/* (🎸 ACOUSTIC DUEL button REMOVED — the unplugged duel was cut.
+                A riff-off is now earned by aiming a Sonic down a shared beam
+                with both rigs live, not picked from the action bar.) */}
             {/* 🤘 MASTER OF MOSHPITS — Metalness Monster sacrifices 3 fans for +2 standing Drive.
                 Fan counts come from ns.casuals / ns.diehards (the fan economy's real
                 fields) — reading the non-existent casualFans/diehardFans is what kept
@@ -13424,11 +13376,31 @@ function Game({ gameState, onReturnToLobby }) {
                       // from view (visual only; never hides the acting Spirit).
                       const smokeHidden = isHiddenBySmoke(sp);
                       if (smokeHidden) return null; // completely erase any sign
+                      // 6️⃣ BERSERK — the Beast is loose. While raging, the whole
+                      // standee burns red: the art itself is tinted and haloed,
+                      // not just ringed, so it's unmistakable across the board.
+                      const berserking = !!noteStates[sp.id]?.berserk;
                       return (
                         <g key="spirit-token"
                           style={{
                             ...(isRumbling ? {animation:"rumble 0.08s linear infinite"} : {}),
                           }}>
+                          {/* 6️⃣ BERSERK — rage aura under the standee */}
+                          {berserking && (
+                            <g style={{pointerEvents:'none'}}>
+                              <title>BERSERK — the Beast is loose. +Drive uncapped, immune to knockback, 1 Vibe per attack.</title>
+                              <circle cx={cx} cy={cy} r={baseR * 2.1} fill="#cc000022"
+                                style={{animation:'berserk-glow 0.75s ease-in-out infinite'}}/>
+                              <circle cx={cx} cy={cy} r={baseR * 1.55} fill="#ff000030"
+                                stroke="#ff2200" strokeWidth={2.6}
+                                style={{animation:'berserk-glow 0.75s ease-in-out infinite',
+                                  filter:'drop-shadow(0 0 8px #ff0000) drop-shadow(0 0 20px #cc0000)'}}/>
+                              <circle cx={cx} cy={cy} r={baseR * 1.15} fill="none"
+                                stroke="#ff5522" strokeWidth={1.6} strokeDasharray="4 5"
+                                style={{animation:'berserk-spin 2.4s linear infinite',
+                                  transformOrigin:`${cx}px ${cy}px`}}/>
+                            </g>
+                          )}
                           {/* Base plate shadow */}
                           <ellipse cx={cx+2} cy={cy+3} rx={baseR} ry={baseR*0.32}
                             fill="#000" opacity={0.35} style={{pointerEvents:"none"}}/>
@@ -13517,7 +13489,9 @@ function Game({ gameState, onReturnToLobby }) {
                               </g>
                             );
                           })()}
-                          {/* Standee sprite */}
+                          {/* Standee sprite — 6️⃣ BERSERK washes the art red and
+                              makes it glow, so a raging Spirit is readable at a
+                              glance without hunting for a badge. */}
                           <image
                             href={spriteSrc}
                             x={cardX + imgOffX}
@@ -13525,8 +13499,35 @@ function Game({ gameState, onReturnToLobby }) {
                             width={cardW}
                             height={cardH}
                             preserveAspectRatio="xMidYMid meet"
-                            style={{pointerEvents:"none"}}
+                            style={berserking
+                              ? {pointerEvents:"none", animation:"berserk-standee 0.75s ease-in-out infinite"}
+                              : {pointerEvents:"none"}}
                           />
+                          {/* 6️⃣ BERSERK — flaming red overlay + tag above the head */}
+                          {berserking && (
+                            <g style={{pointerEvents:'none'}}>
+                              <image
+                                href={spriteSrc}
+                                x={cardX + imgOffX}
+                                y={cardY + imgOffset.y}
+                                width={cardW}
+                                height={cardH}
+                                preserveAspectRatio="xMidYMid meet"
+                                style={{mixBlendMode:'screen',
+                                  filter:'brightness(0) drop-shadow(0 0 0 #ff0000) sepia(1) saturate(14) hue-rotate(-24deg)',
+                                  animation:'berserk-wash 0.75s ease-in-out infinite'}}
+                              />
+                              <text x={cx} y={cardY - HS * 0.16} textAnchor="middle"
+                                fontSize={HS * 0.46} fontWeight="900"
+                                fill="#ff2200" stroke="#000" strokeWidth={1} paintOrder="stroke"
+                                fontFamily="'Saira Stencil One',sans-serif"
+                                style={{letterSpacing:1.5,
+                                  animation:'berserk-glow 0.75s ease-in-out infinite',
+                                  filter:'drop-shadow(0 0 6px #ff0000)'}}>
+                                6️⃣ BERSERK
+                              </text>
+                            </g>
+                          )}
                           {/* Respawn flash */}
                           {respawnFlashes[sp.id] && (
                             <circle cx={cx} cy={cy} r={baseR * 1.8}
@@ -13605,6 +13606,48 @@ function Game({ gameState, onReturnToLobby }) {
                               </g>
                             </g>
                           ))}
+                          {/* 🎵 SPENT NOTES — notes literally leaving the Spirit.
+                              Drive notes burned on an attack tear upward and
+                              forward; Sustain notes knocked loose by a hit
+                              scatter sideways. Both spin, shrink and fade out
+                              to nothing, so "the stack just got shorter" is
+                              something you SEE, not something you read in a log. */}
+                          {spentNotes.filter(f => f.spiritId === sp.id).map(f => {
+                            const isDrive = f.kind === 'drive';
+                            const col     = isDrive ? '#ff6644' : '#44aaff';
+                            // Fan the burst out: single note flies straight, a
+                            // pair splits left/right, three spread wider still.
+                            const spread  = f.n > 1 ? (f.i / (f.n - 1)) * 2 - 1 : 0;
+                            const driftX  = spread * HS * 1.15 + (isDrive ? 0 : (f.i % 2 ? HS * 0.5 : -HS * 0.5));
+                            const driftY  = isDrive ? -HS * 2.1 : -HS * 1.1;
+                            const spin    = (isDrive ? 1 : -1) * (25 + spread * 45);
+                            return (
+                              <g key={f.key} style={{pointerEvents:'none'}}>
+                                <g style={{
+                                  transformOrigin: `${cx}px ${cy - baseR * 0.4}px`,
+                                  animation: `spent-note-fly ${SPENT_NOTE_MS}ms cubic-bezier(.22,.7,.3,1) ${f.i * 0.18}s both`,
+                                  ['--spent-dx']: `${driftX}px`,
+                                  ['--spent-dy']: `${driftY}px`,
+                                  ['--spent-rot']: `${spin}deg`,
+                                }}>
+                                  {/* the note glyph itself, ripped off the stack */}
+                                  <text x={cx} y={cy - baseR * 0.4}
+                                    textAnchor="middle" dominantBaseline="central"
+                                    fontSize={HS * 0.62} fontWeight="900"
+                                    fill={col} stroke="#000" strokeWidth={1.1} paintOrder="stroke"
+                                    fontFamily="'Saira Stencil One',sans-serif"
+                                    style={{filter:`drop-shadow(0 0 6px ${col}) drop-shadow(0 0 14px ${col}88)`}}>
+                                    {String(f.note).toUpperCase()}
+                                  </text>
+                                  {/* trailing ♪ so it reads as a NOTE leaving, not a number */}
+                                  <text x={cx + HS * 0.42} y={cy - baseR * 0.4 - HS * 0.26}
+                                    textAnchor="middle" dominantBaseline="central"
+                                    fontSize={HS * 0.34} fill={col} opacity={0.85}
+                                    style={{filter:`drop-shadow(0 0 4px ${col})`}}>♪</text>
+                                </g>
+                              </g>
+                            );
+                          })}
                           {/* Floating damage numbers */}
                           {floatingDmg.filter(f => f.spiritId === sp.id).map(f => (
                             <text key={f.key}

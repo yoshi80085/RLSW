@@ -155,9 +155,10 @@ export function spiritsSynced(spirits) {
  *  when present the engine builds the riff from it (Phase R1: Rhythm Creation
  *  Device). hasRiff flags a legendary-riff bonus on the melody.
  *  maxLen (Phase R2): difficulty-tier cap on riff length.
- *  tier (Phase R4): 'acoustic' | 'stadium' — acoustic duels skip beam clash. */
-export function riffOffStarted(attackerId, defenderId, { slayer = false, eRush = false, melodyLine = null, hasRiff = false, maxLen = 6, tier = 'stadium' } = {}) {
-  return { type: RIFF_OFF_STARTED, attackerId, defenderId, slayer, eRush, melodyLine, hasRiff, maxLen, tier };
+ *  (The Phase R4 `tier` param is GONE — the 'acoustic' Acoustic Duel was cut,
+ *  so every riff-off is the plugged-in, beam-crossed duel.) */
+export function riffOffStarted(attackerId, defenderId, { slayer = false, eRush = false, melodyLine = null, hasRiff = false, maxLen = 6 } = {}) {
+  return { type: RIFF_OFF_STARTED, attackerId, defenderId, slayer, eRush, melodyLine, hasRiff, maxLen };
 }
 
 /** A performer submits their results array [{hit, rt, grade, noteIdx}]. */

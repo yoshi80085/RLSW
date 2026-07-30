@@ -452,6 +452,25 @@ function TutSection_DriveSustain() {
         <MockSpiritCard name="Glamarchy" style="Flair" drive={5} sustain={8} vibe={3} maxVibe={4} color="#ff6600" tempSustain={1}/>
       </div>
 
+      <div style={{background:"#140c0a", border:"1px solid #ff664444", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:8, color:"#ff6644", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>🎵 YOUR STACKS ARE AMMUNITION</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:"0 0 8px"}}>
+          Drive and Sustain aren't standing numbers — they're chords spelled out in notes, and
+          fighting <em>uses them up</em>. A landed <span style={{color:"#ff6644"}}>Swing</span> burns
+          two notes off your <span style={{color:"#ff6644"}}>Drive Stack</span>; a
+          <span style={{color:"#f6ad55"}}> Sonic</span> burns one whether it lands or not. When a hit
+          connects, the defender's <span style={{color:"#44aaff"}}>Sustain Stack</span> frays too —
+          one note on a graze, two on a solid hit, with a floor of one note surviving.
+        </p>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          You'll <em>see</em> every one of them go: spent notes tear off the standee and fade out —
+          <span style={{color:"#ff6644"}}> red</span> for Drive you spent,
+          <span style={{color:"#44aaff"}}> blue</span> for Sustain knocked out of you. A rival
+          shedding blue notes is a rival whose armour is thinning. Refill both stacks every turn
+          (up to 3 commits, split however you like) or you'll walk into a fight on base stats.
+        </p>
+      </div>
+
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
         <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:10}}>DRIVE BOOST — diatonic step runs</div>
         <MockNoteTrack notes={["C","D","E","F","G"]} rootNote="C"
@@ -677,7 +696,7 @@ function TutSection_Attacks() {
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
         You get one attack per turn — your <span style={{color:"#f6ad55"}}>Action Token</span> —
-        and two ways to spend it. <span style={{color:"#f6ad55"}}>Sonic</span> hits from range;
+        and a few ways to spend it. <span style={{color:"#f6ad55"}}>Sonic</span> hits from range;
         <span style={{color:"#ff6644"}}> Swing</span> gets up close. Either way the clash pits your
         <span style={{color:"#ff6644"}}> Drive</span> against the defender's
         <span style={{color:"#44aaff"}}> Sustain</span> — roll high, win, and deal damage scaled to your margin.
@@ -685,13 +704,40 @@ function TutSection_Attacks() {
 
       <div style={{background:"#14100a", border:"1px solid #f6ad5544", borderRadius:6, padding:"10px 14px"}}>
         <div style={{fontSize:8, color:"#f6ad55", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>🔊 SONIC ATTACK — ranged</div>
-        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:"0 0 8px"}}>
           Your main weapon, powered by the Melody Line you just committed. It fires a narrow
           three-hex beam straight ahead, so facing matters. Every Spirit is wired in from turn 1
           — your <span style={{color:"#ffcc44"}}>Amp Deck</span> at your corner drives the attack.
-          Inside your rig's Range you roll the full dice pool (keep highest); outside it, baseline 1d6.
+          You must be standing inside your rig's <span style={{color:"#e648f0"}}>Range ring</span> to
+          fire at all: step outside it and the Sonic goes offline entirely.
+        </p>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          You roll your whole pool and <span style={{color:"#ffcc44"}}>keep the highest</span> die.
+          The defender answers with a <span style={{color:"#44aaff"}}>d6</span> — but only if
+          they're inside their <em>own</em> rig's range. Catch a rival stranded outside theirs and
+          they've no amp to brace against the wall of sound: they scramble a
+          <span style={{color:"#ff8844"}}> d4</span> instead. Where your rival is standing is worth
+          as much as what they're holding.
         </p>
       </div>
+
+      <div style={{background:"#170a16", border:"1px solid #ff44dd55", borderRadius:6, padding:"10px 14px"}}>
+        <div style={{fontSize:8, color:"#ff66cc", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>🔥 RIFF-OFF — the duel</div>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:"0 0 8px"}}>
+          You don't choose a riff-off from the menu; you set one up. Aim a Sonic at a rival who is
+          facing straight back down the same beam and the attack escalates into a head-to-head
+          rhythm duel — you call a riff, they answer a transformed version of it, and timing
+          grades decide the winner. Commit a melody first and the duel is built from
+          <span style={{color:"#ffcc44"}}> your own line</span>.
+        </p>
+        <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
+          <span style={{color:"#ff66cc"}}>Both rigs have to be live.</span> A riff-off only fires
+          when <em>both</em> Spirits are inside their own amp's range at that moment — a duel needs
+          two amps. If your target is beam-to-beam but stranded outside their range, there's no
+          duel to have: the beam simply lands as a normal Sonic, and they defend on that bare d4.
+        </p>
+      </div>
+
 
       <div style={{background:"#140a0a", border:"1px solid #ff664444", borderRadius:6, padding:"10px 14px"}}>
         <div style={{fontSize:8, color:"#ff6644", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>🥊 SWING ATTACK — close combat</div>
@@ -782,8 +828,8 @@ function TutSection_Amps() {
         <div style={{fontSize:8, color:"#aa88ff", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>📡 RANGE — HOW FAR YOUR RIG REACHES</div>
         <div style={{display:"flex", flexDirection:"column", gap:4}}>
           {[
-            {t:"Start",     r:"2 hexes",  desc:"Your corner pocket only.",              c:"#5a7a8a"},
-            {t:"Range I",   r:"4 hexes",  desc:"The approaches — one hex shy of centre.", c:"#88aacc"},
+            {t:"Start",     r:"4 hexes",  desc:"Your corner and the approaches to it.",  c:"#5a7a8a"},
+            {t:"Range I",   r:"5 hexes",  desc:"One more ring of stage to work with.",   c:"#88aacc"},
             {t:"Range II",  r:"7 hexes",  desc:"The Limelight is inside your field.",    c:"#aa88ff"},
             {t:"Range III", r:"∞",        desc:"Fully wired. The whole venue is your stage.", c:"#ff88ee"},
           ].map((r,i)=>(
@@ -795,18 +841,30 @@ function TutSection_Amps() {
           ))}
         </div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"10px 0 0", lineHeight:1.6}}>
-          Inside your Range radius, the full rig applies — every Amp and Power upgrade counts.
-          Outside it, you fall back to the <span style={{color:"#88ffcc"}}>baseline 1d6</span> (the Main Amp's board-wide floor).
-          While aiming a Sonic Attack, a <span style={{color:"#e648f0"}}>neon radius ring</span> pulses from your corner so you can see exactly where your rig reaches.
+          Inside your Range radius, the full rig applies — every Amp and Power upgrade counts, and
+          you can fire a Sonic at all. Outside it you fall back to the
+          <span style={{color:"#88ffcc"}}> baseline 1d6</span> (the Main Amp's board-wide floor) and
+          the Sonic goes offline. While aiming, a <span style={{color:"#e648f0"}}>neon radius ring</span>
+          pulses from your corner so you can see exactly where your rig reaches.
+        </p>
+        <p style={{fontSize:9, color:"#6a8a9a", margin:"8px 0 0", lineHeight:1.6}}>
+          Range is <em>defensive</em> too, and this is the part people miss. Stray outside your own
+          ring and you have nothing to brace a rival's beam with: you defend their Sonic on a
+          <span style={{color:"#ff8844"}}> d4</span> instead of a d6, and you can't be pulled into a
+          <span style={{color:"#ff66cc"}}> riff-off</span> at all, because a duel needs two live
+          rigs. Buying Range buys you somewhere safe to stand.
         </p>
       </div>
 
       <div style={{background:"#14110a", border:"1px solid #ffcc4444", borderRadius:6, padding:"8px 12px"}}>
         <div style={{fontSize:8, color:"#ffcc44", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:5}}>⚡ THE AMP DECKS</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          Your rig is visible as two stacks flanking your home corner — one for Amps, one for Power.
-          They grow physically as you upgrade, readable at a glance across the table. Range shows as
-          lightning arcs crawling over the cabinets: the higher the tier, the brighter the storm.
+          Your rig is visible as two stacks flanking your home corner, and it reads at a glance.
+          <span style={{color:"#e648f0"}}> Amp</span> tier is the cabinet count — the wall gets
+          physically taller as you buy it. <span style={{color:"#ff2fd6"}}>Power</span> lights the
+          knobs in hot pink, one cabinet's worth per tier. <span style={{color:"#aa88ff"}}>Range</span>
+          glows around the base of the stack, brighter with every tier — and hovering a rig draws its
+          radius ring on the board so you can see exactly whose field you're standing in.
         </p>
       </div>
     </div>

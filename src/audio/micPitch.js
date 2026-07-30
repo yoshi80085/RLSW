@@ -6,6 +6,12 @@
 // (E2 to E5+), with gate + onset detection to fire one callback per pluck
 // rather than spamming continuously.
 //
+// SENSITIVITY (tuned 2026-07): the early "make the mic work at all" pass left
+// every threshold wide open, so the detector answered footsteps, speech and
+// room tone. It now takes four agreeing filters to fire a note — RMS gate with
+// hysteresis, YIN confidence, multi-frame pitch stability, and a debounce.
+// See MIC_DEFAULTS / startMicListening opts if it ever needs re-tuning.
+//
 // PURE MODULE — no React, no app state. Returns a handle with stop().
 // Output aligns with guitarMap.js: `key` (riff key letter) and `pcAbsolute`
 // (C-based pitch class 0–11) so both FretboardRecon and DiscordCoach can
@@ -70,9 +76,10 @@ function detectPitch(buffer, sampleRate) {
   }
 
   // Step 3: Absolute threshold — find first dip below threshold
-  // 0.25 is permissive enough for acoustic guitar through a laptop mic
-  // (noisier signal = higher d' values than a close-mic'd electric)
-  const threshold = 0.25;
+  // 0.14 demands a genuinely periodic signal. The old 0.25 was loose enough
+  // that room tone, keyboard clatter and speech formants cleared the bar, which
+  // is why the mic fired at everything. A plucked string sits well under this.
+  const threshold = 0.14;
   let tauEst = -1;
   for (let tau = minTau; tau <= maxTau; tau++) {
     if (dn[tau] < threshold) {
@@ -88,7 +95,7 @@ function detectPitch(buffer, sampleRate) {
     for (let tau = minTau; tau <= maxTau; tau++) {
       if (dn[tau] < minVal) { minVal = dn[tau]; tauEst = tau; }
     }
-    if (minVal > 0.5) return { freq: -1, confidence: 0 };
+    if (minVal > 0.35) return { freq: -1, confidence: 0 };
   }
 
   // Step 4: Parabolic interpolation for sub-sample accuracy
@@ -109,6 +116,14 @@ function detectPitch(buffer, sampleRate) {
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
+/** Default sensitivity settings — exported so UI meters can draw the gate. */
+export const MIC_DEFAULTS = {
+  gateDb: -38,
+  minConfidence: 0.90,
+  minGapMs: 160,
+  stableFrames: 3,
+};
+
 /** Check if getUserMedia is available (HTTPS or localhost required). */
 export function micAvailable() {
   return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
@@ -116,11 +131,26 @@ export function micAvailable() {
 
 /**
  * Start listening to the microphone for pitched notes.
+ *
+ * Sensitivity note: these defaults are deliberately CONSERVATIVE. The mic
+ * should answer a played note, not a chair scrape. Four independent filters
+ * have to agree before a note fires:
+ *   1. the RMS gate    — is it loud enough to be a deliberate pluck?
+ *   2. the YIN confidence — is it actually periodic, or is it noise?
+ *   3. pitch stability — did the same note hold for a few frames?
+ *   4. the debounce    — has enough time passed since the last note?
+ * Loosen `gateDb` toward -50 only if a quiet acoustic is being missed.
+ *
  * @param {function} onNote   ({ key, pcAbsolute, freq, confidence }) => void
  * @param {object}   opts
- *   gateDb        — dBFS gate threshold (default -50)
- *   minConfidence — YIN confidence floor (default 0.70)
- *   minGapMs      — debounce between callbacks (default 100)
+ *   gateDb        — dBFS gate threshold to OPEN the gate (default -38)
+ *   releaseDb     — dBFS level the signal must fall below to re-arm the onset
+ *                   detector. Hysteresis: prevents one note retriggering as it
+ *                   decays. (default gateDb - 8)
+ *   minConfidence — YIN confidence floor (default 0.90)
+ *   minGapMs      — debounce between callbacks (default 160)
+ *   stableFrames  — consecutive frames that must agree on the pitch before it
+ *                   counts as a note (default 3, ~50 ms at 60 fps)
  *   onLevel       — optional ({ db, state }) => void, called every frame.
  *                   state: 'silent' | 'detecting' | 'low-confidence' | 'note'
  *                   Use this to drive a signal meter in the UI.
@@ -129,21 +159,26 @@ export function micAvailable() {
  */
 export async function startMicListening(onNote, opts = {}) {
   const {
-    gateDb        = -50,   // dBFS — sensitive enough for acoustic guitar through laptop mic
-    minConfidence = 0.70,  // YIN confidence floor (acoustic + room noise = lower scores)
-    minGapMs      = 100,   // minimum ms between callbacks (debounce)
+    gateDb        = MIC_DEFAULTS.gateDb,        // dBFS — a deliberate pluck, not room tone
+    minConfidence = MIC_DEFAULTS.minConfidence, // YIN floor — noise scores well below this
+    minGapMs      = MIC_DEFAULTS.minGapMs,      // minimum ms between callbacks (debounce)
+    stableFrames  = MIC_DEFAULTS.stableFrames,  // frames the same pitch must hold
     onLevel       = null,  // optional signal level callback for UI meters
   } = opts;
+  const releaseDb = opts.releaseDb ?? (gateDb - 8);  // hysteresis floor
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-  // ── DEBUG: log stream info ──
-  const tracks = stream.getAudioTracks();
-  console.log('[MIC] stream tracks:', tracks.map(t => ({ label: t.label, readyState: t.readyState, muted: t.muted, enabled: t.enabled })));
+  // Browser DSP would otherwise ride the gain up on a quiet room until the
+  // noise floor clears our gate — exactly the "picks up everything" symptom.
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation:  false,
+      noiseSuppression:  false,
+      autoGainControl:   false,
+    },
+  });
 
   const audioCtx = new AudioContext();
   if (audioCtx.state === 'suspended') await audioCtx.resume();
-  console.log('[MIC] AudioContext state:', audioCtx.state, '| sampleRate:', audioCtx.sampleRate);
 
   const source   = audioCtx.createMediaStreamSource(stream);
   const analyser = audioCtx.createAnalyser();
@@ -163,7 +198,11 @@ export async function startMicListening(onNote, opts = {}) {
   let lastKey      = null;
   let lastCallTime = 0;
   let wasSilent    = true;
-  let _dbgFrames   = 0;
+  // Pitch-stability tracker: a note only counts once the SAME pitch has held
+  // for `stableFrames` frames in a row. Transients (a knock, a door, a
+  // consonant) resolve to a different pitch every frame and never survive it.
+  let candKey      = null;
+  let candFrames   = 0;
 
   function loop() {
     if (!running) return;
@@ -171,21 +210,23 @@ export async function startMicListening(onNote, opts = {}) {
 
     analyser.getFloatTimeDomainData(buffer);
 
-    // ── DEBUG: log first few frames ──
-    if (_dbgFrames < 5) {
-      const peak = Math.max(...Array.from(buffer.slice(0, 256)).map(Math.abs));
-      console.log(`[MIC] frame ${_dbgFrames}: peak=${peak.toFixed(6)}, buf[0..4]=[${Array.from(buffer.slice(0,5)).map(v=>v.toFixed(6))}]`);
-      _dbgFrames++;
-    }
-
-    // ── Gate: RMS level check ──
+    // ── Gate: RMS level check (with hysteresis) ──
     let sumSq = 0;
     for (let i = 0; i < buffer.length; i++) sumSq += buffer[i] * buffer[i];
     const rms = Math.sqrt(sumSq / buffer.length);
     const db  = rms > 0 ? 20 * Math.log10(rms) : -100;
 
+    // Below the RELEASE floor the gate shuts and the onset detector re-arms.
+    // Between release and gate is the dead band — a decaying note lives here,
+    // and it must not read as a fresh pluck.
+    if (db < releaseDb) {
+      wasSilent  = true;
+      candKey    = null;
+      candFrames = 0;
+      if (onLevel) onLevel({ db, state: 'silent' });
+      return;
+    }
     if (db < gateDb) {
-      wasSilent = true;
       if (onLevel) onLevel({ db, state: 'silent' });
       return;
     }
@@ -193,10 +234,12 @@ export async function startMicListening(onNote, opts = {}) {
     // ── Detect pitch ──
     const { freq, confidence } = detectPitch(buffer, audioCtx.sampleRate);
     if (freq <= 0) {
+      candKey = null; candFrames = 0;
       if (onLevel) onLevel({ db, state: 'detecting' });
       return;
     }
     if (confidence < minConfidence) {
+      candKey = null; candFrames = 0;
       if (onLevel) onLevel({ db, state: 'low-confidence', freq, confidence });
       return;
     }
@@ -205,6 +248,14 @@ export async function startMicListening(onNote, opts = {}) {
     const pitch      = freqToPitch(freq);
     const key        = pitchToKey(pitch);
     const pcAbsolute = pitchToPcAbsolute(pitch);
+
+    // ── Stability: the same pitch has to hold for a few frames ──
+    if (key === candKey) candFrames++;
+    else { candKey = key; candFrames = 1; }
+    if (candFrames < stableFrames) {
+      if (onLevel) onLevel({ db, state: 'detecting', freq, confidence });
+      return;
+    }
 
     // ── Onset filter: fire on silence→sound or pitch change ──
     const now           = performance.now();

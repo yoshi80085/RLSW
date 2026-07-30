@@ -184,6 +184,45 @@ export function GameStyles() {
           0%,100% { opacity: 0.30; }
           50%     { opacity: 0.85; }
         }
+        /* 6️⃣ BERSERK — the Beast is loose and the standee burns for it.
+           berserk-glow pulses the aura and the tag; berserk-standee pushes the
+           art hot and red; berserk-wash rides a red screen layer over the top;
+           berserk-spin turns the dashed rage ring. */
+        @keyframes berserk-glow {
+          0%,100% { opacity: 0.55; }
+          50%     { opacity: 1; }
+        }
+        @keyframes berserk-spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @keyframes berserk-standee {
+          0%,100% { filter: drop-shadow(0 0 6px #ff0000) saturate(1.5) brightness(1.05)
+                            hue-rotate(-12deg); }
+          50%     { filter: drop-shadow(0 0 18px #ff2200) drop-shadow(0 0 30px #cc0000)
+                            saturate(2.6) brightness(1.3) hue-rotate(-22deg); }
+        }
+        @keyframes berserk-wash {
+          0%,100% { opacity: 0.16; }
+          50%     { opacity: 0.42; }
+        }
+        /* 🎵 SPENT NOTE — a note leaving the Spirit for good. It pops off the
+           standee, tumbles away along --spent-dx/--spent-dy, and evaporates.
+           Used for Drive notes burned on an attack and Sustain notes frayed
+           off a Spirit that just took a hit. */
+        @keyframes spent-note-fly {
+          0%   { opacity: 0; transform: translate(0,0) scale(0.55) rotate(0deg); }
+          14%  { opacity: 1; transform: translate(0, -2px) scale(1.35) rotate(0deg); }
+          28%  { opacity: 1;
+                 transform: translate(calc(var(--spent-dx) * 0.22), calc(var(--spent-dy) * 0.22))
+                            scale(1.05) rotate(calc(var(--spent-rot) * 0.25)); }
+          70%  { opacity: 0.72;
+                 transform: translate(calc(var(--spent-dx) * 0.72), calc(var(--spent-dy) * 0.72))
+                            scale(0.8) rotate(calc(var(--spent-rot) * 0.75)); }
+          100% { opacity: 0;
+                 transform: translate(var(--spent-dx), var(--spent-dy))
+                            scale(0.42) rotate(var(--spent-rot)); }
+        }
         /* ⚡ Charge Zone aura — a charged Spirit crackles until it's spent */
         @keyframes charge-aura-pulse {
           0%,100% { opacity: 0.45; }

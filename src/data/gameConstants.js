@@ -59,6 +59,12 @@ export const SONIC_BASE_DIE     = 6;
 export const SONIC_UPGRADED_DIE = 8;
 export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
 export const RIG_RADIUS_BY_TIER = [4, 5, 7, Infinity];  // Range 0/I/II/III radii (axial hex distance)
+// 🛡️ Sonic DEFENCE die. A rival inside their own rig radius answers the beam
+// with their amp behind them (d6). Caught outside it, they have nothing to push
+// back with and scramble a bare d4 — the same die a Thrash defence rolls. This
+// is also what makes a RIFF-OFF impossible: no live rig, no answering riff.
+export const SONIC_DEF_DIE            = 6;
+export const SONIC_DEF_DIE_OUT_OF_RIG = 4;
 
 export const CAMERA_ZOOM_MS  = 620;          // push-in tween length; impact rumble lands as it settles
 

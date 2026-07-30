@@ -16,7 +16,7 @@ import { playAmpNote } from "../audio/ampVoice.js";
 import { getRiffAudio, playRiffWrong, playRiffMiss } from "../audio/riffSfx.js";
 import { FretboardFull } from "./FretboardFull.jsx";
 import { RIG_ORDER, RIG_LS_KEY, loadRig, rigKnobs, playRigHit, RigPicker } from "./RigPicker.jsx";
-import { micAvailable, startMicListening } from "../audio/micPitch.js";
+import { micAvailable, startMicListening, MIC_DEFAULTS } from "../audio/micPitch.js";
 
 // ── Neon palette ────────────────────────────────────────────────────────────
 const ACCENT     = '#19e6ff';
@@ -564,8 +564,15 @@ export function FretboardRecon({ onBack }) {
             }[micLevel.state];
             return (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 48, height: 6, background: '#0a1020', borderRadius: 3, border: '1px solid #1a2a40', overflow: 'hidden' }}>
+                <div style={{ position: 'relative', width: 48, height: 6, background: '#0a1020', borderRadius: 3, border: '1px solid #1a2a40', overflow: 'hidden' }}
+                  title={`Notes only register above the gate (${MIC_DEFAULTS.gateDb} dB) — play a little louder than the room.`}>
                   <div style={{ width: `${pct * 100}%`, height: '100%', background: stateColor, borderRadius: 3, transition: 'width .05s, background .15s' }} />
+                  {/* gate marker — the level a pluck has to clear */}
+                  <div style={{
+                    position: 'absolute', top: 0, bottom: 0,
+                    left: `${Math.max(0, Math.min(1, (MIC_DEFAULTS.gateDb + 60) / 50)) * 100}%`,
+                    width: 1, background: '#8899aa', opacity: 0.8,
+                  }} />
                 </div>
                 <span style={{ fontSize: 8, color: stateColor, minWidth: 50 }}>{stateLabel}</span>
               </div>

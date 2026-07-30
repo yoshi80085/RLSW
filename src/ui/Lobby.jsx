@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { SPIRIT_DEFS, SPIRIT_OPTIONS, ROSTER_ORDER, UNLOCKED_DEFAULT } from "../data/spirits.js";
+import { SPIRIT_DEFS, SPIRIT_OPTIONS, ROSTER_ORDER, UNLOCKED_DEFAULT, IN_DEVELOPMENT, MAX_PLAYERS } from "../data/spirits.js";
 import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "../data/corners.js";
 import { cornerFacing } from "../board/boardHelpers.js";
+import { buildTestingGroundsConfig } from "../data/matchSetup.js";
 import { makeNetClient } from "../net/client.js";
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT } from "../riff/fallingNotes.js";
 import { fpPerLife } from "../data/gameConstants.js";
@@ -17,9 +18,20 @@ const RIFF_DIFF_SHORT = { rookie: 'INFLUENCER', gigging: 'GIGGING', shredder: 'S
 
 const MENU_SONGS = [menuSong3];
 
-export function Lobby({ onStart, onTutorial, onPractice }) {
+export function Lobby({ onStart, onTutorial, onBackToMenu }) {
   const [playerCount, setPlayerCount] = useState(null);
-  const [mode, setMode] = useState(null);
+  // 🏁 FFA is the STANDING DEFAULT, not a button you have to remember to press.
+  // It reads from a persisted setting rather than a hardcoded literal so that
+  // when multiplayer lands and Team opens up, a chosen mode can stick — FFA
+  // just stays the thing you get if you never touch it. Nothing writes this key
+  // yet (Team is locked), so today it always resolves to 'ffa'.
+  const [mode] = useState(() => {
+    try {
+      const v = localStorage.getItem('rlsw.defaultMode');
+      if (v === 'ffa' || v === 'team') return v;
+    } catch { /* private mode / storage disabled — fall through to the default */ }
+    return 'ffa';
+  });
   const [assignments, setAssignments] = useState({});
   const [cpuCorners, setCpuCorners] = useState({});
   const [step, setStep] = useState("count");
@@ -85,10 +97,10 @@ export function Lobby({ onStart, onTutorial, onPractice }) {
   function assign(corner,spiritId){setAssignments(a=>({...a,[corner]:spiritId}));const sp=SPIRIT_DEFS[spiritId];if(sp){if(announcerTimer.current)clearTimeout(announcerTimer.current);setAnnouncer({name:sp.name,color:sp.color});announcerTimer.current=setTimeout(()=>setAnnouncer(null),700);}const nA={...assignments,[corner]:spiritId};setChoosingCorner(activeCorners.find(c=>!nA[c])??null);}
   function handleStart(){const spirits=activeCorners.map(corner=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:!!cpuCorners[corner]};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;onStart({spirits,mode,teams,startingLives,beginnerMode});}
   function handleStartOnline(){const hs=netRoom.seats.filter(s=>!s.isBot);const spirits=activeCorners.map((corner,ci)=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:ci>=hs.length};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;const config={spirits,mode,teams,startingLives,beginnerMode};const seatMap=hs.map((s,i)=>({seatId:s.seatId,spiritId:activeCorners[i]?assignments[activeCorners[i]]:null}));const botSeats=activeCorners.slice(hs.length).map(c=>({name:SPIRIT_DEFS[assignments[c]]?.name??"Bot",spiritId:assignments[c]}));netClient.startGame(config,{seatMap,botSeats:botSeats.length?botSeats:undefined});}
-  function startTestingGrounds(){const ids=Object.keys(SPIRIT_DEFS);const spirits=CORNERS_ORDER.map((corner,i)=>{const def=SPIRIT_DEFS[ids[i%ids.length]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:i!==0};});onStart({spirits,mode:"ffa",teams:null,startingLives:3,testMode:true,beginnerMode});}
+  function startTestingGrounds(){onStart(buildTestingGroundsConfig({beginnerMode}));}
   const iBase={fontFamily:"inherit",background:"#0a1020",border:"1px solid #1e3a5f",borderRadius:4,color:"#c0d0e0",fontSize:11,padding:"8px 10px",outline:"none"};
   const seg=(on,ac="#4488ff")=>({fontFamily:"'Saira Stencil One',sans-serif",cursor:"pointer",borderRadius:4,padding:"6px 14px",fontSize:10,letterSpacing:1,transition:"all .15s",border:"1px solid",background:on?ac+"22":"#0a1020",borderColor:on?ac:"#1e3a5f",color:on?ac:"#5a7a9a"});
-  const online=netStatus==="in-room", showCfg=online?isHost:true, canGo=allAssigned&&mode;
+  const online=netStatus==="in-room", showCfg=online?isHost:true, canGo=allAssigned;  // mode is always FFA now — a full roster is the only gate
 
   return (
     <div style={{minHeight:"100vh",background:"#050810",display:"flex",flexDirection:"column",fontFamily:"'Share Tech Mono','Courier New',monospace",overflow:"hidden",position:"relative"}}>
@@ -138,7 +150,8 @@ export function Lobby({ onStart, onTutorial, onPractice }) {
       {announcer&&<div style={{position:"fixed",inset:0,zIndex:90,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:48,fontWeight:700,color:announcer.color,textShadow:"0 0 30px "+announcer.color+", 0 0 60px "+announcer.color+"55",animation:"announcer-in 700ms ease-out forwards",whiteSpace:"nowrap"}}>{announcer.name.toUpperCase()}</div></div>}
       {/* HEADER */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 24px",borderBottom:"1px solid #1a2a40",flexShrink:0,position:"relative",zIndex:1}}>
-        <div style={{display:"flex",alignItems:"baseline",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          {onBackToMenu&&<button onClick={onBackToMenu} title="Back to the main menu" style={{fontFamily:"inherit",cursor:"pointer",background:"#0a1020",border:"1px solid #2a4a6a",borderRadius:4,color:"#5a8aaa",fontSize:9,padding:"6px 12px",letterSpacing:1,transition:"all .15s"}} onMouseEnter={e=>{e.target.style.borderColor="#f6ad55";e.target.style.color="#f6ad55";}} onMouseLeave={e=>{e.target.style.borderColor="#2a4a6a";e.target.style.color="#5a8aaa";}}>← MENU</button>}
           <span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:20,color:"#f6ad55",letterSpacing:4,fontWeight:700}}>RLSW</span>
           <span style={{fontSize:10,color:"#3a5a7a",letterSpacing:2}}>SPIRIT WARS</span></div>
         <div style={{display:"flex",gap:8}}>
@@ -174,14 +187,36 @@ export function Lobby({ onStart, onTutorial, onPractice }) {
           {/* PLAYER COUNT */}
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,flexWrap:"wrap"}}>
             {!online&&<><span style={{fontSize:9,color:"#3a5a7a",letterSpacing:2,fontFamily:"'Saira Stencil One',sans-serif"}}>PLAYERS</span>
-              <div style={{display:"flex",gap:6}}>{[2,3,4].map(n=><button key={n} onClick={()=>{setPlayerCount(n);setAssignments({});setMode(null);setStep("assign");}} style={seg(playerCount===n)}>{n}P</button>)}</div></>}
+              {/* Every Spirit is unique per match, so the playable roster caps
+                  the player count. With two Spirits still in development, 3P/4P
+                  can't be filled — they're shown disabled with the reason. */}
+              <div style={{display:"flex",gap:6}}>{[2,3,4].map(n=>{
+                const tooMany=n>MAX_PLAYERS;
+                return<button key={n} disabled={tooMany}
+                  title={tooMany?`Needs ${n} finished Spirits — only ${MAX_PLAYERS} are built out right now.`:`${n}-player match`}
+                  onClick={()=>{if(tooMany)return;setPlayerCount(n);setAssignments({});setStep("assign");}}
+                  style={{...seg(playerCount===n),...(tooMany?{opacity:0.3,cursor:"not-allowed",borderColor:"#1a2a40",color:"#2a3a4a"}:{})}}>{n}P</button>;})}</div>
+              {MAX_PLAYERS<4&&<span style={{fontSize:8,color:"#3a5a7a"}}>🚧 {4-MAX_PLAYERS} Spirit{4-MAX_PLAYERS!==1?'s':''} still in development</span>}</>}
             {online&&isHost&&playerCount&&<><span style={{fontSize:9,color:"#3a5a7a",letterSpacing:2,fontFamily:"'Saira Stencil One',sans-serif"}}>{playerCount} PLAYERS</span>
-              {playerCount<4&&<button onClick={()=>{setPlayerCount(p=>Math.min(4,p+1));setAssignments({});setMode(null);}} style={{...seg(false),background:"#1a2a10",borderColor:"#44cc66",color:"#44ff88",cursor:"pointer"}}>+ Bot</button>}
-              {playerCount>(netRoom?.seats?.filter(s=>!s.isBot).length??2)&&<button onClick={()=>{setPlayerCount(p=>Math.max(netRoom.seats.filter(s=>!s.isBot).length,p-1));setAssignments({});setMode(null);}} style={{...seg(false),background:"#301520",borderColor:"#ff4488",color:"#ff88bb",cursor:"pointer"}}>− Bot</button>}</>}
+              {playerCount<MAX_PLAYERS&&<button onClick={()=>{setPlayerCount(p=>Math.min(MAX_PLAYERS,p+1));setAssignments({});}} style={{...seg(false),background:"#1a2a10",borderColor:"#44cc66",color:"#44ff88",cursor:"pointer"}}>+ Bot</button>}
+              {playerCount>(netRoom?.seats?.filter(s=>!s.isBot).length??2)&&<button onClick={()=>{setPlayerCount(p=>Math.max(netRoom.seats.filter(s=>!s.isBot).length,p-1));setAssignments({});}} style={{...seg(false),background:"#301520",borderColor:"#ff4488",color:"#ff88bb",cursor:"pointer"}}>− Bot</button>}</>}
           </div>
           {/* ROSTER */}
           {playerCount&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))",gap:12,maxWidth:780,margin:"0 auto 20px",width:"100%"}}>{ROSTER_ORDER.map(id=>{
             const sp=SPIRIT_DEFS[id];if(!unlocked.has(id))return<div key={id} style={{aspectRatio:"3/4",background:"#080f1e",border:"2px solid #1a2a40",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",opacity:0.4,cursor:"not-allowed"}}><span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:36,color:"#1e3a5f"}}>?</span></div>;
+            // 🚧 IN DEVELOPMENT — the art is done, the kit isn't. Shown so players
+            // know who's coming, but desaturated and unclickable.
+            if(IN_DEVELOPMENT.has(id))return<div key={id} title={`${sp.name} is still being built — their kit isn't finished yet.`}
+              style={{aspectRatio:"3/4",background:"#080f1e",position:"relative",border:"2px dashed #2a3a4a",borderRadius:8,overflow:"hidden",cursor:"not-allowed"}}>
+              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:"8%"}}>
+                <img src={sp.imageSrc} alt={sp.name} draggable={false} style={{width:"85%",height:"85%",objectFit:"contain",objectPosition:"top",filter:"grayscale(1) brightness(0.45)",opacity:0.55,pointerEvents:"none"}}/></div>
+              <div style={{position:"absolute",inset:0,background:"repeating-linear-gradient(-45deg,#00000000 0px,#00000000 9px,#0a1424aa 9px,#0a1424aa 18px)",pointerEvents:"none"}}/>
+              <div style={{position:"absolute",top:"46%",left:0,right:0,textAlign:"center"}}>
+                <div style={{display:"inline-block",padding:"3px 8px",background:"#0a1020ee",border:"1px solid #3a5a7a",borderRadius:3,fontFamily:"'Saira Stencil One',sans-serif",fontSize:8,letterSpacing:1.5,color:"#6a8aaa"}}>🚧 IN DEVELOPMENT</div></div>
+              <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(transparent, #050810ee 40%)",padding:"20px 8px 8px",textAlign:"center"}}>
+                <div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,fontWeight:700,color:"#3a5a7a",letterSpacing:1}}>{sp.name.toUpperCase()}</div>
+                <div style={{fontSize:8,color:"#2a4a6a",marginTop:2}}>COMING SOON</div></div>
+            </div>;
             const tb=Object.entries(assignments).find(([,v])=>v===id)?.[0],tbo=tb&&tb!==choosingCorner,sel=choosingCorner&&assignments[choosingCorner]===id;
             const gl=sel?sp.color:tbo?"#1e3a5f":"#1a2a40",chip=tb?CORNER_LABELS[tb]:null;
             return<div key={id} onClick={()=>{if(!tbo&&choosingCorner)assign(choosingCorner,id);}}
@@ -210,19 +245,25 @@ export function Lobby({ onStart, onTutorial, onPractice }) {
               </div></div>})}</div>}
           {/* SETTINGS */}
           {playerCount&&<div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap",maxWidth:900,margin:"0 auto 20px",width:"100%",padding:"12px 16px",background:"#080f1e",borderRadius:8,border:"1px solid #1a2a40"}}>
+            {/* MODE — FFA is on by default and stays on. TEAM is parked until
+                multiplayer is built out; it's shown disabled rather than hidden
+                so it reads as "planned", not "missing". */}
             <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>MODE</span>
-              <button onClick={()=>setMode("ffa")} style={seg(mode==="ffa","#4488ff")}>FFA</button>
-              {playerCount===4?<button onClick={()=>setMode("team")} style={seg(mode==="team","#aa55ff")}>TEAM</button>:<span style={{fontSize:8,color:"#1e3a5f",padding:"6px 10px"}}>Team @ 4P</span>}</div>
-            {mode==="team"&&<span style={{fontSize:8,color:"#5a7a9a"}}>Blue+Purple vs Red+Yellow</span>}
+              <button title="Free-for-all — the standard match. Everyone for themselves." style={{...seg(true,"#4488ff"),cursor:"default"}}>FFA</button>
+              <button disabled title="Team mode arrives with multiplayer. FFA is the standard until then."
+                style={{...seg(false,"#aa55ff"),opacity:0.3,cursor:"not-allowed",borderColor:"#1a2a40",color:"#2a3a4a"}}>TEAM 🔒</button>
+              <span style={{fontSize:8,color:"#3a5a7a"}}>standard</span></div>
             <div style={{width:1,height:20,background:"#1a2a40"}}/>
             <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>KDs</span>
               {[1,2,3,4,5].map(n=><button key={n} onClick={()=>setStartingLives(n)} style={{...seg(startingLives===n,"#ff4488"),padding:"6px 10px"}}>{n}</button>)}</div>
             <div style={{width:1,height:20,background:"#1a2a40"}}/>
+            {/* 🎸 Riff-off difficulty — still settable here because it changes
+                how duels play in THIS match, but the trainers that share the
+                setting now live under Riff Mode on the main menu. */}
             <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>🎸 RIFF-OFF</span>
               {Object.entries(RIFF_FALL_DIFFICULTY).map(([k,p])=>
                 <button key={k} onClick={()=>pickRiffDiff(k)} title={`${p.label} — ${p.blurb}`}
                   style={{...seg(riffDiff===k,"#f6ad55"),padding:"6px 10px"}}>{p.icon} {RIFF_DIFF_SHORT[k] ?? k.toUpperCase()}</button>)}
-              {onPractice && <button onClick={()=>onPractice({mode:'riff',diff:riffDiff})} title="Practice riffs solo — endless stream with tier escalation" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:9,letterSpacing:1,cursor:"pointer",padding:"6px 12px",borderRadius:4,background:"#0a1a2a",border:"1px solid #19e6ff44",color:"#19e6ff",marginLeft:4,transition:"all .2s"}}>PRACTICE</button>}
             </div>
             <div style={{width:1,height:20,background:"#1a2a40"}}/>
             <span style={{fontSize:8,color:"#3a5a7a",flex:1,minWidth:100}}>{startingLives===1?`Sudden death — ${fpPerLife(playerCount ?? 2)} FP to win`:`${startingLives} Knock Downs = KO — ${startingLives*fpPerLife(playerCount ?? 2)} FP to win`}{startingLives>=3?" 🤘":""}</span>
@@ -230,11 +271,13 @@ export function Lobby({ onStart, onTutorial, onPractice }) {
           </div>}
         </>}
       </div>
+      {/* (The floating RECON / DISCORD / LEGENDS buttons moved to Riff Mode on
+          the main menu — they're trainers, not match setup, and they were
+          cluttering the corner of the lobby. Testing Grounds stays reachable
+          from here as well as the menu, since it's the fastest way onto a board
+          while you're already staring at one.) */}
       {netStatus!=="in-room"&&<div style={{position:'fixed',bottom:14,right:14,zIndex:50,display:'flex',gap:8,alignItems:'center'}}>
-        {onPractice&&<button onClick={()=>onPractice({mode:'fretboard'})} title="Fretboard Recon — find notes on the neck" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer',padding:'9px 14px',borderRadius:7,background:'#0a1a2a',border:'1.5px solid #19e6ff',color:'#19e6ff',boxShadow:'0 0 18px #19e6ff33'}}>🗺️ RECON</button>}
-        {onPractice&&<button onClick={()=>onPractice({mode:'discord'})} title="Discord Coach — learn tension & resolution" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer',padding:'9px 14px',borderRadius:7,background:'#1a1020',border:'1.5px solid #ff2d95',color:'#ff2d95',boxShadow:'0 0 18px #ff2d9533'}}>🎩 DISCORD</button>}
-        {onPractice&&<button onClick={()=>onPractice({mode:'legend'})} title="Legend Lessons — sound like the greats" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer',padding:'9px 14px',borderRadius:7,background:'#1a1508',border:'1.5px solid #f6ad55',color:'#f6ad55',boxShadow:'0 0 18px #f6ad5533'}}>🎸 LEGENDS</button>}
-        <button onClick={startTestingGrounds} title="Skip setup" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer',padding:'9px 14px',borderRadius:7,background:'#2a1030',border:'1.5px solid #cc66ff',color:'#e0a0ff',boxShadow:'0 0 18px #cc66ff55'}}>TESTING GROUNDS</button>
+        <button onClick={startTestingGrounds} title="Skip setup — drop straight onto the board with dev tools on" style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,letterSpacing:1,cursor:'pointer',padding:'9px 14px',borderRadius:7,background:'#2a1030',border:'1.5px solid #cc66ff',color:'#e0a0ff',boxShadow:'0 0 18px #cc66ff55'}}>🧪 TESTING GROUNDS</button>
       </div>}
     </div>
   );

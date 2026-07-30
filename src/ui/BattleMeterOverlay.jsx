@@ -567,10 +567,8 @@ export function BattleMeterOverlay({
                 isOnlineRiff && myBattleRole === 'defender' ? (
                   /* N12: Defender's client — waiting for attacker to play on their machine */
                   <div style={cardBase(defender?.color ?? '#00ccff')}>
-                    <div style={{fontSize:11, color: battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700', letterSpacing:2, marginBottom:10}}>
-                      {battleState.riffTier === 'acoustic'
-                        ? '🎸 ACOUSTIC DUEL · NO AMPS · JUST CHOPS'
-                        : '🔊 PLUGGED IN · FACE TO FACE · BEAMS CROSSED'}
+                    <div style={{fontSize:11, color:'#ffd700', letterSpacing:2, marginBottom:10}}>
+                      🔊 PLUGGED IN · FACE TO FACE · BEAMS CROSSED
                     </div>
                     <div style={{fontSize:12, color:'#fff', fontWeight:700, marginBottom:10}}>
                       ⏳ Waiting for {attacker?.name} to lay down the call…
@@ -585,11 +583,9 @@ export function BattleMeterOverlay({
                     </div>
                   </div>
                 ) : (
-                  <div style={cardBase(battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700')}>
-                    <div style={{fontSize:11, color: battleState.riffTier === 'acoustic' ? '#ffaa44' : '#ffd700', letterSpacing:2, marginBottom:10}}>
-                      {battleState.riffTier === 'acoustic'
-                        ? '🎸 ACOUSTIC DUEL · NO AMPS · JUST CHOPS'
-                        : '🔊 PLUGGED IN · FACE TO FACE · BEAMS CROSSED'}
+                  <div style={cardBase('#ffd700')}>
+                    <div style={{fontSize:11, color:'#ffd700', letterSpacing:2, marginBottom:10}}>
+                      🔊 PLUGGED IN · FACE TO FACE · BEAMS CROSSED
                     </div>
                     <div style={{fontSize:9, color:'#8aa5c5', lineHeight:1.8, marginBottom:8}}>
                       {battleState.atkRiff?.notes?.length ?? RIFF_LEN} notes flash one by one — hit the matching key the INSTANT it appears.<br/>
@@ -919,7 +915,7 @@ export function BattleMeterOverlay({
                       color: tie ? '#8aa5c5' : (winSp?.color ?? '#ffd700'),
                       textShadow: tie ? 'none' : `0 0 20px ${(winSp?.color ?? '#ffd700')}88`}}>
                       {tie ? '🤝 DEAD HEAT — CROWD CAN\'T DECIDE'
-                        : `🏆 ${winSp?.name} WINS THE ${battleState.riffTier === 'acoustic' ? 'ACOUSTIC DUEL' : 'RIFF-OFF'}!`}
+                        : `🏆 ${winSp?.name} WINS THE RIFF-OFF!`}
                     </div>
                     <div style={{display:'flex', gap:12, marginBottom:12}}>
                       {statCard(attacker, A, battleState.atkRiff, battleState.atkResults, !tie && won)}
@@ -948,15 +944,8 @@ export function BattleMeterOverlay({
                     })()}
                     <div style={{fontSize:8.5, color:'#6a8aaa', lineHeight:1.7}}>
                       {tie
-                        ? (battleState.riffTier === 'acoustic'
-                          ? 'The crowd goes quiet — neither could break through. No damage, no Fame.'
-                          : 'Beams cancelled out after 2 rounds — no damage, no Fame, both Spirits walk away with their pride.')
-                        : battleState.riffTier === 'acoustic'
-                          ? <>Won on <span style={{color:'#ffcc44'}}>{decidedBy}</span> · the busker circle roars · margin {m} →
-                            <span style={{color:'#ff6677'}}> {dmg} Vibe damage</span> +
-                            <span style={{color:'#88bbff'}}> knockback</span> ·
-                            <span style={{color:'#ffd700'}}> ⭐ Fame to the winner</span></>
-                          : <>Won on <span style={{color:'#ffcc44'}}>{decidedBy}</span> · sealed by beam clash{(battleState.round ?? 1) >= 2 ? ' (Round 2!)' : ''} · margin {m} →
+                        ? 'Beams cancelled out after 2 rounds — no damage, no Fame, both Spirits walk away with their pride.'
+                        : <>Won on <span style={{color:'#ffcc44'}}>{decidedBy}</span> · sealed by beam clash{(battleState.round ?? 1) >= 2 ? ' (Round 2!)' : ''} · margin {m} →
                             <span style={{color:'#ff6677'}}> {dmg} Vibe damage</span> +
                             <span style={{color:'#88bbff'}}> knockback</span> ·
                             <span style={{color:'#ffd700'}}> ⭐ Fame to the winner</span></>}
@@ -1786,6 +1775,18 @@ export function BattleMeterOverlay({
                 )}
                 <div style={{fontSize:8, color:defender?.color ?? '#00ccff', letterSpacing:2, marginTop:6,
                   fontFamily:"'Saira Stencil One',sans-serif", textTransform:'uppercase'}}>{defender?.name?.split(' ')[0]}</div>
+                {/* 📡 Stranded outside their own rig radius — no amp to brace
+                    against the beam, so the defence drops to a bare d4 (and no
+                    riff-off could fire). Says it plainly, right on the die. */}
+                {battleState?.defOutOfRig && (
+                  <div title="Outside their own amp range — no rig to answer the beam with. Defends on a d4, and a riff-off can't happen."
+                    style={{marginTop:4, fontSize:7.5, color:'#ff8844', letterSpacing:1.4,
+                      fontFamily:"'Saira Stencil One',sans-serif", textAlign:'center',
+                      border:'1px solid #ff884455', borderRadius:3, padding:'2px 5px',
+                      background:'#1a0e0699'}}>
+                    📡 NO RIG · d4
+                  </div>
+                )}
               </div>
             </div>
 
