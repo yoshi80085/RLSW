@@ -168,7 +168,11 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     tierPoints:      0,
     discordCount:    0,
     hasConfirmed:    false,
-    feedbackBoost:   false,
+    // (B5: `feedbackBoost` removed. It armed a "Damage ×2" HUD badge that no damage
+    //  path ever read — damage is banded and capped at 4 (Thrash) / 2 (Sonic)
+    //  against a max Vibe of 4–5, so an honest ×2 was never shippable. Removed
+    //  rather than deprecated, so archived code reviving it fails loudly — same
+    //  treatment as STACK_CAP and FLAT_ROOTS.)
     dieFloorBoost:   0,
     chargeFloorTurns: 0,   // ⚡ Charge Zone floor charge (attack dice can't roll below 3)
     chargeCeilTurns:  0,   // ⚡ Charge Zone ceiling charge (attack dice +1 die size)

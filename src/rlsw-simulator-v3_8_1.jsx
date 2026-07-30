@@ -421,7 +421,7 @@ import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } 
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
 import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote, detectResolvedDiscords } from "./music/cadence.js";
-import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack } from "./music/context.js";
+import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock } from "./music/context.js";
 import { evaluateChord } from "./music/chords.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -459,8 +459,11 @@ function pickDanceName() {
 //
 // ⚠️ B1: these IDs are now PURELY scale-expansion flags. The combat effects they
 // used to carry (m7 → Mojo Drain, tritone → Burn, maj3 → cleanse/shield,
-// chromatic run → Stagger) are gone. The tritone → feedbackBoost link survives.
-// B3 repurposes the same IDs as the tiers of the chord-context ladder.
+// chromatic run → Stagger) are gone. B5 finished the job: the tritone →
+// feedbackBoost link is gone too, so NONE of these IDs reaches combat any more.
+// The tritone survives as a colour, an unlock, and +1 Performance Score — all of
+// which do what they say. B3 repurposes the same IDs as the tiers of the
+// chord-context ladder.
 const DISCORD_UPGRADE_TIERS = [
   {
     id: 'discord_1',
@@ -480,7 +483,7 @@ const DISCORD_UPGRADE_TIERS = [
     id: 'discord_3',
     label: "Devil's Interval",
     icon: '🔥',
-    desc: "Tritone never breaks harmony in either mode. A tritone anywhere in the track still lights your feedback charge.",
+    desc: "Tritone never breaks harmony in either mode — the devil's interval joins your clean palette in Major and Minor alike.",
     notesByMode: { major: ['tritone'], minor: ['tritone'] },
   },
   {
@@ -1960,7 +1963,9 @@ function Game({ gameState, onReturnToLobby }) {
     if (key === 'tritone') return unlockedIntervalKeys.has('tritone');
     return unlockedIntervalKeys.has(key); // interval notes: playable once unlocked
   }
-  const feedbackBoost  = actingNoteState?.feedbackBoost  ?? false;
+  // (B5: `feedbackBoost` removed — it was read only by a HUD badge advertising a
+  //  damage multiplier that no code path applied. See the note at the self-effects
+  //  block in confirmNoteTrack.)
   const dieFloorBoost  = actingNoteState?.dieFloorBoost  ?? 0;
   const statusEffects  = actingNoteState?.statusEffects  ?? [];
   const stagger        = actingNoteState?.stagger        ?? null;
@@ -3043,7 +3048,9 @@ function Game({ gameState, onReturnToLobby }) {
     const isMojoDrained = (actingNoteState?.mojoDrain ?? 0) > 0;
 
     // ── INTERVAL EFFECTS ──────────────────────────────────────────────────────
-    // Tritone: anywhere in track → feedbackBoost (works even with Dischord)
+    // Tritone: anywhere in track → +1 Performance Score (works even with Dischord).
+    // This is the tritone's whole remaining payout; B5 removed the feedbackBoost
+    // charge it used to arm. Consumed by economy.js's performanceScore kernel.
     const trackHasTritone   = melodyLine.includes(intervals.tritone);
     // Octave resolution: first and last note identical
     const isOctaveResolution = hexes >= 2 && firstNote === lastNote;
@@ -3155,7 +3162,12 @@ function Game({ gameState, onReturnToLobby }) {
     const dbOverflow = driveOverflowToDB + sustainOverflowToDB;
 
     // ── APPLY SELF EFFECTS (blocked by Mojo Drain) ───────────────────────────
-    const newFeedbackBoost = !isMojoDrained && trackHasTritone;
+    // (B5: `newFeedbackBoost` removed. The tritone used to light a "Damage ×2"
+    //  charge that multiplied nothing — the badge was the whole feature. Damage is
+    //  banded and hard-capped (Thrash 4, Sonic 2) against a max Vibe of 4–5, so an
+    //  honest ×2 would have one-shot every spirit in the game; there was no version
+    //  of this worth shipping. The tritone keeps its colour, its discord_3 unlock
+    //  and its +1 Performance Score — three things that do what they advertise.)
     const newDieFloorBoost = !isMojoDrained && isOctaveResolution ? 2 : 0;
 
     // ── MAJOR 3RD CLEANSE / SHIELD — REMOVED (B1) ────────────────────────────
@@ -3174,9 +3186,30 @@ function Game({ gameState, onReturnToLobby }) {
     const discordFlat    = effectiveDiscord > 0 ? 1 : 0;
     const discordPenalty = chromClimbActive ? 0 : (hasChromMastery ? Math.floor(discordFlat / 2) : discordFlat);
     const baseScore = scoreTrackDB(melodyLine, fourthNote, fifthNote);
+
+    // ── B5: HARMONIC LOCK ────────────────────────────────────────────────────
+    // B2 halved the ending ladder so Db came from playing well rather than from
+    // turning up. This is where the other half returns — to a player who built a
+    // sophisticated chord AND landed the line on it. A 5th ending into a dom9
+    // stack is 3 + 2 = 5 Db: about the pre-B2 value, earned instead of baseline.
+    //
+    // ⚠️ It ESCALATES the ending bonus, so it requires one. No ending bonus → no
+    // lock, even if the final note is a chord tone. That's the doc's arithmetic
+    // ("stacks on top of B2's ladder") and it's the tighter design: the last note
+    // has to resolve at the key level AND belong to something worth building.
+    // Gated on `endingBonus` rather than on the breakdown strings, which are copy.
+    //
+    // Stack selection is B4's rule (higher rank, ties to Drive), decided inside
+    // harmonicLock so there is exactly one tie-break in the codebase.
+    const lock = baseScore.endingBonus > 0
+      ? harmonicLock(melodyLine[melodyLine.length - 1], actingDriveStack, actingSustainStack)
+      : { bonus: 0, stack: null, rank: 0, chordName: null };
+
     let breakdown = [...baseScore.breakdown];
-    let earned = Math.max(0, baseScore.points - discordPenalty);
-    if (discordPenalty > 0 && baseScore.points > 0) {
+    if (lock.bonus > 0) breakdown.push(`🔒 ${lock.chordName} +${lock.bonus}`);
+    const preDiscordPoints = baseScore.points + lock.bonus;
+    let earned = Math.max(0, preDiscordPoints - discordPenalty);
+    if (discordPenalty > 0 && preDiscordPoints > 0) {
       breakdown.push(`−${discordPenalty} discord`);
     }
     // ── 🎭 PERFORMANCE SCORE P — FLAIR (Crowd & Intimidation layer, §4) ──
@@ -3288,7 +3321,13 @@ function Game({ gameState, onReturnToLobby }) {
     }
     if (rawDriveBoost > 0)    flashLines.push(`⚔️ Drive +${newTempDrive}${driveOverflowToDB > 0 ? ` (↑DB +${driveOverflowToDB})` : ''}`);
     if (rawSustainBoost > 0)  flashLines.push(`🛡️ Sustain +${newTempSustain}${sustainOverflowToDB > 0 ? ` (↑DB +${sustainOverflowToDB})` : ''}`);
-    if (trackHasTritone)      flashLines.push('🔥 Tritone — Damage ×2');
+    // (B5: the '🔥 Tritone — Damage ×2' flash is gone with the effect it announced.
+    //  The tritone's surviving payout is +1 Performance Score, which the
+    //  '🎭 Performance n/10' line below already accounts for.)
+    // 🔒 B5 — name the chord the ending locked onto. This is the line that teaches
+    // the mechanic: the player sees WHICH chord paid and how much, so "build
+    // something and land on it" becomes a rule they can restate.
+    if (lock.bonus > 0) flashLines.push(`🔒 Harmonic Lock — ${lock.chordName} · DB +${lock.bonus}`);
     if (isOctaveResolution)   flashLines.push('🎶 Octave — DB +2');
     // (B1: Borrowed Chord / Blues Lick / Devil's Interval / Stagger flashes removed
     //  along with their effects. The endings still pay Performance Score via
@@ -3331,7 +3370,8 @@ function Game({ gameState, onReturnToLobby }) {
       : (discordPenalty > 0 ? ` · ⚡ ${unpardonedDiscord} Dischord — no points` : ` · DB [${newDBPoints}/${targetCost}]`);
     const driveMsg   = rawDriveBoost > 0   ? ` · ⚔️ Drive +${newTempDrive}` : '';
     const sustMsg    = rawSustainBoost > 0  ? ` · 🛡️ Sustain +${newTempSustain}` : '';
-    const triMsg     = trackHasTritone      ? ' · 🔥 Damage ×2'          : '';
+    const triMsg     = '';   // B5 — tritone "Damage ×2" removed (it multiplied nothing)
+    const lockMsg    = lock.bonus > 0 ? ` · 🔒 Harmonic Lock ${lock.chordName} DB+${lock.bonus}` : '';
     const octMsg     = isOctaveResolution   ? ' · 🎶 Octave DB+2'           : '';
     const m7Msg      = '';   // B1 — Blues Lick / Mojo Drain arming removed
     const rsMsg      = '';
@@ -3341,7 +3381,7 @@ function Game({ gameState, onReturnToLobby }) {
     const speedMsg   = totalNotes > actingSpeed
       ? ` · SPD ${actingSpeed}/${totalNotes}${canBank ? ` · 💾 ${newBankedNote.note} banked` : ' · bank full'}`
       : ` · SPD ${hexes}/${actingSpeed}`;
-    addLog(`✓ Committed · ${hexes} hexes${scoreStr}${driveMsg}${sustMsg}${triMsg}${octMsg}${majorThirdMsg}${m7Msg}${tritoneEndMsg}${chrMsg}${chromClimbMsg}${feedbackOverloadMsg}${rsMsg}${speedMsg} · Next RN: ${newRootRaw} (pick Major/Minor)`);
+    addLog(`✓ Committed · ${hexes} hexes${scoreStr}${driveMsg}${sustMsg}${triMsg}${lockMsg}${octMsg}${majorThirdMsg}${m7Msg}${tritoneEndMsg}${chrMsg}${chromClimbMsg}${feedbackOverloadMsg}${rsMsg}${speedMsg} · Next RN: ${newRootRaw}`);
     if (trackHasTritone || isMinorSeventhEnd || isMajorThirdEnd || isOctaveResolution) showTip('intervals');
 
     // ── STYLE — commit Db payout (STYLE_SYSTEM_HANDOFF.md §3/§4) ──────────────
@@ -3382,7 +3422,6 @@ function Game({ gameState, onReturnToLobby }) {
       lowPerfStreak:   lowPerfStreak,
       upgradesPending: newUpgradesPending,
       hasConfirmed:    true,
-      feedbackBoost:   newFeedbackBoost,
       dieFloorBoost:   newDieFloorBoost,
       statusEffects:   newStatusEffects,
       tempDrive:       newTempDrive,
@@ -3617,25 +3656,16 @@ function Game({ gameState, onReturnToLobby }) {
     }
   }
 
-  // Called when an attack hits. B1 gutted most of this: Mojo Drain, Stagger,
-  // Burn and the Borrowed Chord shield were all armed by the four melody
-  // triggers, and all four are gone. What SURVIVES is the attacker spending
-  // their tritone feedback charge on the hit.
+  // ─── consumeAttackCharges — REMOVED (B5) ─────────────────────────────────────
+  // B1 gutted this down to one job: clearing the attacker's tritone feedback
+  // charge on a hit. B5 removed the charge itself (it lit a "Damage ×2" badge that
+  // no damage path read), so the function had nothing left to clear and all three
+  // call sites are gone with it.
   //
-  // ⚠️ Do not fold this into the callers. `feedbackBoost` is set at commit and
-  // this is the ONLY place that clears it — there is no turn-start reset — so
-  // dropping this call would leave the charge lit permanently.
-  //
-  // (Kept deliberately per the plan's "do NOT remove the tritone → feedbackBoost
-  // link". Worth knowing: feedbackBoost is currently read only by the HUD badge;
-  // nothing multiplies damage by it. That gap predates B1.)
-  function consumeAttackCharges(attackerId) {
-    setNoteStates(prev => {
-      const atk = prev[attackerId];
-      if (!atk || !atk.feedbackBoost) return prev;
-      return { ...prev, [attackerId]: { ...atk, feedbackBoost: false } };
-    });
-  }
+  // If a melody→combat charge is ever reintroduced, note the shape that made this
+  // fragile: the flag was set at commit and cleared ONLY here, with no turn-start
+  // reset, so any path that hit without calling this left the charge lit forever.
+  // A future version should reset at turn start instead of relying on one call site.
 
   // ─── INITIAL SKILL — auto-grant THE FULL SCALE at the very start of a spirit's first turn ───
   // The old flow opened the Theory Tree as the very first thing a player saw —
@@ -8211,7 +8241,7 @@ function Game({ gameState, onReturnToLobby }) {
         addLog(`👑 ${winnerName} claims the Headliner title!`);
         triggerEffectFlash(winnerId, '👑', 'HEADLINER!', '#ffd700');
       }
-      if (attackerWon) consumeAttackCharges(attackerId);
+      // (B5: consumeAttackCharges call removed — nothing left to consume.)
     }
     clearBattleBuffs(attackerId, defenderId);
     riffEngineRef.current?.timers?.forEach(clearTimeout);
@@ -8421,7 +8451,7 @@ function Game({ gameState, onReturnToLobby }) {
           if (report) addLog(`🎵 ${report.added.length} Lost Chord${report.added.length !== 1 ? 's' : ''} knocked loose from the impact!`);
         }
       }
-      consumeAttackCharges(attackerId); // B1: only the tritone feedback charge is spent now
+      // (B5: consumeAttackCharges call removed — nothing left to consume.)
       // 🧪 SLIME (Metalness Monster) — on Swing/Smash hit, spend 1 Db to halve
       // the rival's next turn note regen
       if (!sonicAttack && attackerId === 'Metalness_Monster') {
@@ -8622,7 +8652,7 @@ function Game({ gameState, onReturnToLobby }) {
                 } else {
                   awardThrashFame(attackerId, defenderId);
                 }
-                consumeAttackCharges(attackerId); // B1: only the tritone feedback charge is spent now
+                // (B5: consumeAttackCharges call removed — nothing left to consume.)
                 clearBattleBuffs(attackerId, defenderId);
                 setBattleState(null);
                 setDiceDisplay(null);
@@ -10859,7 +10889,7 @@ function Game({ gameState, onReturnToLobby }) {
               {/* ⚡ DISSONANCE EDGE — REMOVED (system cut) */}
               {/* 🎛️ AMP TONE PANEL relocated → now flanks the Commit Track above the board. */}
               {/* Active effect badges — only show during melody step */}
-              {(turnStep === 'melody' || turnStep === 'move_act') && (feedbackBoost || dieFloorBoost > 0 || statusEffects.length > 0
+              {(turnStep === 'melody' || turnStep === 'move_act') && (dieFloorBoost > 0 || statusEffects.length > 0
                 || (actingNoteState?.chargeFloorTurns ?? 0) > 0 || (actingNoteState?.chargeCeilTurns ?? 0) > 0
                 || (actingNoteState?.finalsTrail?.length ?? 0) > 0
                 || ((actingNoteState?.unlockedSkills ?? []).includes('mixer') && !actingNoteState?.mixerUsedThisTurn && !hasConfirmed && !pivotPending)) && (
@@ -10901,12 +10931,8 @@ function Game({ gameState, onReturnToLobby }) {
                       animation:"crew-ready-glow 2.4s ease-in-out infinite"}}>
                       🎚️ MIXER READY — tap a played note to double it
                     </span>
-                  )}{feedbackBoost && (
-                    <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,
-                      background:"#2a0800",border:"1px solid #ff3300",color:"#ff5522"}}>
-                      🔥 Damage ×2
-                    </span>
-                  )}
+                  )}{/* B5: the 🔥 Damage ×2 badge is gone. It was the only reader of
+                       feedbackBoost, and nothing in the damage path ever consulted it. */}
                   {dieFloorBoost > 0 && (
                     <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,
                       background:"#0a1a2a",border:"1px solid #44aaff",color:"#44aaff"}}>

@@ -504,7 +504,7 @@ function TutSection_Intervals() {
     { note:"G",  label:"5th",      color:"#ff55aa", effect:"DB",         icon:"💗", desc:"The strong perfect fifth — also banks DB when it ends your track." },
     { note:"E",  label:"Maj 3rd",  color:"#44ffaa", effect:"🔒 Clean note", icon:"✨", desc:"EARNED (Borrowed Chord, Minor key only): the brighter third stops counting as discord, so you can borrow it whenever the line wants it." },
     { note:"Bb", label:"Min 7th",  color:"#4499ff", effect:"🔒 Clean note",  icon:"🎷", desc:"EARNED (Blues Lick): the flat 7th joins your clean palette in Major — the blues note, no longer a wrong note." },
-    { note:"F#", label:"Tritone",  color:"#ff3300", effect:"🔒 Feedback",   icon:"🔥", desc:"The devil's interval. EARNED (Devil's Interval): it stops breaking harmony in either mode, and a tritone anywhere in your track lights your feedback charge." },
+    { note:"F#", label:"Tritone",  color:"#ff3300", effect:"🔒 Clean note",  icon:"🔥", desc:"The devil's interval. EARNED (Devil's Interval): it stops breaking harmony in either mode — clean in Major and Minor alike. A tritone anywhere in the track is also worth +1 Performance." },
     { note:"C",  label:"Octave",   color:"#44aaff", effect:"Die Floor +2",      icon:"🎶", desc:"Open and close on the same note to raise your attack die's floor — no more low rolls." },
   ];
   return (

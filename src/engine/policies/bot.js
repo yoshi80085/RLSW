@@ -254,7 +254,12 @@ export function botPlanNoteStep(noteState, persona) {
   const deg  = (i) => { const d = scale.indexOf(stock[i]); return d === -1 ? 99 : d; };
   let body = clean.filter(i => i !== endIdx).sort((a, b) => deg(a) - deg(b));
 
-  // A Brawler welcomes ONE tritone in the body — Damage×2 worth the −1 DB.
+  // A Brawler welcomes ONE tritone in the body. ⚠️ The original reason was
+  // "Damage×2 worth the −1 DB" — B5 deleted that effect (it multiplied nothing).
+  // The behaviour is kept because the trade still stands on different grounds:
+  // the tritone pays +1 Performance, and after B4 a tritone the Brawler's own
+  // stack legalizes also pays Drive. Worth re-tuning once B7 gives discord real
+  // teeth, since the −1 DB half of this trade is about to get more expensive.
   if (style === 'combat') {
     const tri = discord.find(i => stock[i] === iv.tritone);
     if (tri != null && track.length < NOTE_CAP - 1 && !body.includes(tri)) body = [...body, tri];

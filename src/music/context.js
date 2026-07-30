@@ -122,7 +122,7 @@ const TEMPLATE_BY_ID = Object.fromEntries(CHORD_TEMPLATES.map(t => [t.id, t]));
 const pcOf = n => (typeof n === 'number' ? ((n % 12) + 12) % 12 : pitchIndex(n));
 
 /** Everything one stack knows how to legalize, split by tier.
- *  Returns { chord, rank, literal:Set, chordTones:Set, extensions:Set }.
+ *  Returns { chord, rank, literal:Set, tones:Set, chordTones:Set, extensions:Set }.
  *  `chord` is the evaluateChord result; `rank` is 0 for single/cluster so B4's
  *  "higher rank wins" tie-break has a number to compare on every stack. */
 export function stackContext(stack = []) {
@@ -132,15 +132,25 @@ export function stackContext(stack = []) {
   const tpl     = TEMPLATE_BY_ID[chord.id];
   const rank    = tpl ? tpl.rank : 0;
 
-  // Chord tones: a recognized chord contributes its whole implied spelling — its
-  // own template degrees PLUS the seventh its quality implies, which is the degree
-  // the player never placed. That completion IS "Play the Changes"; see the note on
+  // `tones` — what the chord ACTUALLY IS: the notes placed plus the rest of its
+  // own template. No implied seventh, no tensions. This is the set B5's Harmonic
+  // Lock reads, because "land on the chord" has to mean the chord itself. A maj
+  // triad's ♮7 is something the triad *implies*; landing on it is not landing on
+  // the triad, and paying the escalation for it would let the player collect on a
+  // chord they didn't build.
+  const tones = new Set(literal);
+  if (tpl && chord.rootPc != null) {
+    for (const iv of tpl.ivals) tones.add((chord.rootPc + iv) % 12);
+  }
+
+  // `chordTones` — the PARDON set, one tier wider than `tones`: the template
+  // degrees PLUS the seventh the quality implies, i.e. the degree the player never
+  // placed. That completion IS "Play the Changes"; see the note on
   // SEVENTH_COMPLETION above for why the template alone isn't enough. A single note
   // or an unrecognized cluster has no implied chord, so it contributes only what is
   // literally there.
-  const chordTones = new Set(literal);
+  const chordTones = new Set(tones);
   if (tpl && chord.rootPc != null) {
-    for (const iv of tpl.ivals) chordTones.add((chord.rootPc + iv) % 12);
     const seventh = SEVENTH_COMPLETION[chord.id];
     if (seventh != null) chordTones.add((chord.rootPc + seventh) % 12);
   }
@@ -150,7 +160,7 @@ export function stackContext(stack = []) {
     for (const iv of (EXTENSIONS[chord.id] || [])) extensions.add((chord.rootPc + iv) % 12);
   }
 
-  return { chord, rank, literal, chordTones, extensions };
+  return { chord, rank, literal, tones, chordTones, extensions };
 }
 
 /** Pitch classes made legal by the stacks, given the player's unlocked tiers.
@@ -286,4 +296,64 @@ export function countPardonedByStack(classified = []) {
     else if (c.stack === 'sustain') sustain++;
   }
   return { drive, sustain };
+}
+
+// ── B5: HARMONIC LOCK (the Db escalation) ────────────────────────────────────
+// B2 cut the ending bonus roughly in half (5th end +3, 4th +2, octave +1) so that
+// Db income came from playing well rather than from turning up. Harmonic Lock is
+// where the other half comes back — but only for a player who built something and
+// then landed on it.
+//
+//   rank ≤ 4  (triads, sus, power)  → +0
+//   rank 5    (dim, aug)            → +1
+//   rank ≥ 6  (7ths, 9ths)          → +2
+//
+// So a 5th ending into a dom9 stack is 3 + 2 = 5 Db — about the pre-B2 value,
+// earned instead of baseline. This replaces v1's Harmonic Resonance I/II, which
+// paid a flat +1 for merely HAVING a recognized chord; after Task A that's true
+// almost always, making it a stat bump wearing a mechanic's clothes.
+//
+// Two deliberate restrictions:
+//  • Single notes and unrecognized clusters are rank 0 and pay nothing. You cannot
+//    collect for landing on a note you happen to be holding.
+//  • The test is `tones`, NOT `chordTones` — the chord itself, without the seventh
+//    its quality implies. Landing on a maj triad's ♮7 is not landing on the triad.
+//    (It's also why this function takes no `unlockedSkills`: Harmonic Lock reads
+//    what the stack IS, which no tier changes. The pardon ladder is a separate
+//    question, already answered by classifyTrack.)
+const LOCK_BONUS_BY_RANK = rank => (rank >= 6 ? 2 : rank === 5 ? 1 : 0);
+
+/** B5 — the ending escalation for landing on a stack's chord. Pure.
+ *  @param lastNote  the melody's FINAL note (name or pc). Caller must only apply
+ *                   this to a track that already earned an ending bonus.
+ *  @returns { bonus, stack, rank, chordName } — `stack` is null when nothing
+ *           claims the note, and `bonus` is 0 whenever rank < 5.
+ *
+ *  Stack selection reuses B4's rule exactly: higher rank wins, ties go to Drive.
+ *  One tie-break for the whole feature set — if you change it, change `claimAt`
+ *  and this together, and update both sets of assertions in b0check. */
+export function harmonicLock(lastNote, driveStack = [], sustainStack = []) {
+  const pc = pcOf(lastNote);
+  const none = { bonus: 0, stack: null, rank: 0, chordName: null };
+  if (pc < 0) return none;
+
+  const d = stackContext(driveStack);
+  const s = stackContext(sustainStack);
+  const dHas = d.rank > 0 && d.tones.has(pc);
+  const sHas = s.rank > 0 && s.tones.has(pc);
+  if (!dHas && !sHas) return none;
+
+  // Higher rank wins; a tie goes to Drive. Note the bonus is identical on a true
+  // tie (same rank → same band), so this only decides which chord gets NAMED —
+  // but the flash line cites it, so it still has to be deterministic.
+  const pick = (dHas && sHas)
+    ? (s.rank > d.rank ? { c: s, stack: 'sustain' } : { c: d, stack: 'drive' })
+    : dHas ? { c: d, stack: 'drive' } : { c: s, stack: 'sustain' };
+
+  return {
+    bonus:     LOCK_BONUS_BY_RANK(pick.c.rank),
+    stack:     pick.stack,
+    rank:      pick.c.rank,
+    chordName: pick.c.chord.name ?? pick.c.chord.label ?? pick.c.chord.id ?? null,
+  };
 }

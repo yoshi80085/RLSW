@@ -14,7 +14,7 @@ import { makeInitialNoteState } from "../engine/systems/economy.js";
 import { evaluateChord, CHORD_TEMPLATES } from "../music/chords.js";
 import { scoreTrackDB } from "../music/cadence.js";
 import { getSpelledPool, pitchIndex, PITCH_INDEX, canonicalRoot } from "../music/notes.js";
-import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack } from "../music/context.js";
+import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, stackContext } from "../music/context.js";
 import assert from "node:assert";
 
 // ── B0b: derived cap ──
@@ -415,3 +415,114 @@ for (const track of b4tracks) {
   }
 }
 console.log("✓ B4 routing: buying a higher tier never reduces what the track pays");
+
+// ── B5: HARMONIC LOCK ───────────────────────────────────────────────────────
+// The rank bands, restated from the spec so a template rank change trips here.
+{
+  const bands = [
+    // [stack,                     last note, expected bonus, why]
+    [['C','E','G','A#','D'], 'D',  2, 'dom9 rank 7 → +2'],
+    [['C','D#','G','A#','D'],'D',  2, 'min9 rank 7 → +2'],
+    [['C','E','G','A#'],     'G',  2, 'dom7 rank 6 → +2'],
+    [['C','E','G','B'],      'B',  2, 'maj7 rank 6 → +2'],
+    [['C','D#','G','A#'],    'A#', 2, 'min7 rank 6 → +2'],
+    [['C','D#','F#','A'],    'A',  2, 'dim7 rank 6 → +2'],
+    [['C','D#','F#','A#'],   'A#', 2, 'm7b5 rank 6 → +2'],
+    [['C','D#','F#'],        'F#', 1, 'dim rank 5 → +1'],
+    [['C','E','G#'],         'G#', 1, 'aug rank 5 → +1'],
+    [['C','E','G'],          'G',  0, 'maj triad rank 4 → +0'],
+    [['C','D#','G'],         'G',  0, 'min triad rank 4 → +0'],
+    [['C','D','G'],          'D',  0, 'sus2 rank 3 → +0'],
+    [['C','F','G'],          'F',  0, 'sus4 rank 3 → +0'],
+    [['C','G'],              'G',  0, 'power rank 2 → +0'],
+  ];
+  for (const [stack, last, want, why] of bands) {
+    const got = harmonicLock(last, stack, []);
+    assert.equal(got.bonus, want, `B5: ${why} — got +${got.bonus} on ${stack.join('-')} ending ${last}`);
+    assert.equal(got.stack, 'drive', `B5: ${why} — should be claimed by the Drive stack`);
+  }
+  console.log("✓ B5 Harmonic Lock:", bands.length, "rank bands pay exactly what the spec says");
+}
+
+// NOTHING TO LOCK ONTO. A single note and an unrecognized cluster are rank 0 and
+// must pay nothing — you cannot collect for landing on a note you merely hold.
+for (const stack of [['C'], [], ['C','C#','D'], ['C','C#','D','D#']]) {
+  const last = stack[0] ?? 'C';
+  const got  = harmonicLock(last, stack, []);
+  assert.equal(got.bonus, 0,    `B5: ${stack.join('-')||'empty'} is not a chord and must pay 0`);
+  assert.equal(got.stack, null, `B5: ${stack.join('-')||'empty'} must claim nothing`);
+  assert.equal(got.rank,  0,    `B5: ${stack.join('-')||'empty'} must report rank 0`);
+}
+console.log("✓ B5 Harmonic Lock: single notes and clusters pay nothing — rank 0 claims nothing");
+
+// THE LOCK READS THE CHORD, NOT THE PARDON. `tones` excludes the seventh that
+// theory_dom7 *implies*, so landing on a maj triad's ♮7 must NOT pay. This is the
+// distinction that keeps B5 from paying out on a chord the player didn't build.
+{
+  const triad = ['C','E','G'];
+  const ctx   = stackContext(triad);
+  assert.ok(ctx.chordTones.has(11), 'B5 precondition: dom7 tier implies the ♮7 of a C maj triad');
+  assert.ok(!ctx.tones.has(11),     'B5: `tones` must NOT contain the merely-implied ♮7');
+  assert.equal(harmonicLock('B', triad, []).bonus, 0,
+    'B5: landing on an implied 7th is not landing on the chord');
+  assert.equal(harmonicLock('B', triad, []).stack, null,
+    'B5: an implied 7th must not let a stack claim the ending');
+  // And the real thing still pays: place the B and it becomes a maj7.
+  assert.equal(harmonicLock('B', ['C','E','G','B'], []).bonus, 2,
+    'B5: once the 7th is actually placed, the maj7 pays');
+}
+console.log("✓ B5 Harmonic Lock: reads what the chord IS, not what a tier implies");
+
+// STACK SELECTION IS B4'S RULE — higher rank wins, ties to Drive. Both stacks
+// below contain G; only their rank differs.
+{
+  assert.equal(harmonicLock('G', ['C','E','G','A#'], ['C','E','G']).stack, 'drive',
+    'B5: higher-ranked Drive stack should claim the ending');
+  assert.equal(harmonicLock('G', ['C','E','G','A#'], ['C','E','G']).bonus, 2,
+    'B5: and should pay its own band, not the loser\'s');
+  assert.equal(harmonicLock('G', ['C','E','G'], ['C','E','G','A#']).stack, 'sustain',
+    'B5: higher-ranked Sustain stack should claim the ending');
+  assert.equal(harmonicLock('G', ['C','E','G'], ['C','E','G','A#']).bonus, 2,
+    'B5: Sustain claim pays the Sustain chord\'s band');
+  // True tie → Drive, deterministically.
+  for (let i = 0; i < 20; i++) {
+    assert.equal(harmonicLock('G', ['C','E','G','A#'], ['C','E','G','A#']).stack, 'drive',
+      'B5: rank tie must resolve to Drive every time');
+  }
+  // Only the Sustain stack contains the note → Sustain claims it even at lower rank.
+  assert.equal(harmonicLock('F#', ['C','E','G'], ['C','D#','F#']).stack, 'sustain',
+    'B5: the only stack containing the note claims it regardless of the other\'s rank');
+}
+console.log("✓ B5 Harmonic Lock: stack selection matches B4 — higher rank, ties to Drive");
+
+// B5 REQUIRES AN ENDING BONUS TO ESCALATE. That gate lives at the commit site, so
+// what's asserted here is the contract it reads: scoreTrackDB must report
+// endingBonus/endingKind without the caller parsing display strings.
+{
+  const F = 'F', G = 'G';
+  const fifth  = scoreTrackDB(['C','D','E','G'], F, G);
+  assert.equal(fifth.endingBonus, 3,       'scoreTrackDB: 5th ending reports 3');
+  assert.equal(fifth.endingKind,  'fifth', 'scoreTrackDB: 5th ending names itself');
+  const fourth = scoreTrackDB(['C','D','E','F'], F, G);
+  assert.equal(fourth.endingBonus, 2,        'scoreTrackDB: 4th ending reports 2');
+  assert.equal(fourth.endingKind,  'fourth', 'scoreTrackDB: 4th ending names itself');
+  const oct = scoreTrackDB(['C','D','E','C'], F, G);
+  assert.equal(oct.endingBonus, 1,        'scoreTrackDB: octave ending reports 1');
+  assert.equal(oct.endingKind,  'octave', 'scoreTrackDB: octave ending names itself');
+  const none = scoreTrackDB(['C','D','E','A'], F, G);
+  assert.equal(none.endingBonus, 0,    'scoreTrackDB: a non-resolving ending reports 0');
+  assert.equal(none.endingKind,  null, 'scoreTrackDB: a non-resolving ending names nothing');
+  // endingBonus must be exactly the ending's share of points, never double-counted.
+  for (const t of [['C','D','E','G'], ['C','D','E','F'], ['C','D','E','C'], ['C','D','E','A'], ['C'], []]) {
+    const r = scoreTrackDB(t, F, G);
+    const placement = Math.max(0, Math.floor(t.length / 2) - 1);
+    assert.equal(r.points, placement + r.endingBonus,
+      `scoreTrackDB: ${t.join('-')||'empty'} — points must equal placement + endingBonus`);
+  }
+  // The headline number from the spec: a 5th ending into a dom9 stack is 3 + 2 = 5.
+  const track = ['C','D','E','F','A','B','D','G'];
+  const base  = scoreTrackDB(track, F, G);
+  const lock  = harmonicLock(track[track.length - 1], ['C','E','G','A#','D'], []);
+  assert.equal(base.endingBonus + lock.bonus, 5, 'B5: 5th end into a dom9 stack must total 5 Db');
+}
+console.log("✓ B5: scoreTrackDB reports endingBonus/endingKind — the gate B5 reads, no string matching");

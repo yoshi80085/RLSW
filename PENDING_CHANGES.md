@@ -17,11 +17,67 @@ B0 is the spine; several later items assume it. Task C depends on B3 shipping fi
 (B8 was pulled forward and is fully shipped — the mode question turned out to be a
 chord-context question, so it landed alongside B3 rather than after B7.)
 
-**Status:** ✅ Task A, B0 (a + b), B1, B2, B3, **B4** and **B8 (core + wiring)** are
-SHIPPED on branch `feat/chord-strength-b0` (local only — nothing pushed). Two changes
-were made that this doc did not ask for: the **note speller** was rewritten (it was
-mis-spelling 14 borrowed degrees) and **B8 was reopened and reversed** — see below.
-**Next up is B5** — but read the `feedbackBoost` note first, it's a decision B5 needs.
+**Status:** ✅ Task A, B0 (a + b), B1, B2, B3, **B4**, **B5** and **B8 (core + wiring)**
+are SHIPPED on branch `feat/chord-strength-b0` (local only — nothing pushed). Two
+changes were made that this doc did not ask for: the **note speller** was rewritten (it
+was mis-spelling 14 borrowed degrees) and **B8 was reopened and reversed** — see below.
+**Next up is B6** — it has a double-pay decision waiting, see the B5 notes.
+
+### Notes from the B5 pass
+
+- **The tritone's "Damage ×2" is gone, effect and all.** This was the open
+  `feedbackBoost` question and it resolved by deletion. The measurement that
+  settled it: damage is **banded and hard-capped** — Thrash 1/2/3/4 by margin
+  (cap 4), Sonic 1–2 (cap 2) — against a `maxVibe` of **4–5**. An honest ×2 would
+  have one-shot every spirit in the game from full health, so there was no version
+  of the advertised effect worth shipping. Removed: the `feedbackBoost` field,
+  `newFeedbackBoost`, the HUD badge, the commit flash, the log fragment, and
+  `consumeAttackCharges` plus all three of its call sites (the charge was its only
+  remaining job after B1). **No melody trigger now reaches combat at all** — B1
+  cut four of the five, this cut the fifth.
+- **What the tritone keeps:** its red colour, the `discord_3` "Devil's Interval"
+  unlock, and **+1 Performance Score** (`economy.js` ~105). All three do exactly
+  what they say. `trackHasTritone` therefore survives — it feeds the P-score kernel
+  and nothing else. The `discord_3` description and the tutorial's interval table
+  both claimed the feedback charge and were rewritten.
+- **⚠️ Harmonic Lock requires an ending bonus to escalate.** The spec says it
+  "stacks on top of B2's ladder" and gives the arithmetic `3 + 2 = 5`, so a track
+  whose final note earns *no* ending bonus gets no lock even if that note is a
+  chord tone. This makes B5 meaningfully tighter than "land on any chord tone": the
+  last note must resolve at the **key** level (5th/4th/octave) *and* belong to a
+  chord worth building. If it plays as too demanding, this gate is the lever.
+- **`scoreTrackDB` now returns `endingBonus` and `endingKind`.** B5 needed to know
+  an ending bonus existed, and the only other signal was the `breakdown` strings —
+  which are display copy and will change. `endingBonus` is the ending's exact share
+  of `points`, asserted so the two can't drift.
+- **`stackContext` gained a `tones` set, and it is NOT `chordTones`.** `tones` is
+  what the chord *is* (literal notes + its own template); `chordTones` is the pardon
+  set, one tier wider, including the seventh the quality merely *implies*. B5 reads
+  `tones`, so **landing on a maj triad's ♮7 pays nothing** — that note is an
+  implication, not the chord, and paying for it would let a player collect on a
+  chord they never built. Asserted both ways.
+- **B5 takes no `unlockedSkills`,** deliberately. Harmonic Lock reads what the stack
+  IS, and no tier changes that. The pardon ladder is a separate question that
+  `classifyTrack` already answers.
+- Stack selection reuses **B4's rule verbatim** (higher rank wins, ties to Drive),
+  decided inside `harmonicLock` so there is exactly one tie-break in the codebase.
+  Change it and you must change `claimAt` and both assertion groups together.
+- **⚠️ B6 still has the double-pay decision from the B4 pass,** now more concrete:
+  at `theory_chromatic` a chromatic run's notes are pardoned as approach notes and
+  so already pay Drive/Sustain under B4, and B6 wants to pay the same run +3 Db.
+  Decide whether B6 suppresses the color routing inside the run or is priced
+  knowing it stacks.
+- Five new assertion groups in `b0check.mjs` (**43 total**, was 38): all 14 rank
+  bands, rank-0 stacks claiming nothing, the `tones`-vs-`chordTones` distinction in
+  both directions, stack selection matching B4, and the `scoreTrackDB` contract
+  including the spec's headline `3 + 2 = 5`.
+- **Tidied while in there:** the commit log line still ended `· Next RN: X (pick
+  Major/Minor)`. B8 deleted that prompt; the parenthetical is gone.
+- **⚠️ Bot note:** `botPlanStackCommit`'s Brawler tritone rule was justified in
+  comment by "Damage×2 worth the −1 DB." That justification no longer exists. The
+  behaviour is kept — the tritone still pays +1 P, and after B4 a tritone the bot's
+  own stack legalizes also pays Drive — but it wants re-tuning once **B7** makes the
+  −1 DB half of that trade more expensive.
 
 ### Notes from the B4 pass
 
@@ -157,10 +213,12 @@ silently deleted the asymmetry it was defending. Now `tempSustain`.
   an ultimate + the candle event; Pyrotechnics). Only the arming fields were
   removed. Consequently the `isMojoDrained` gates were **kept** — stripping them
   as B1 asked would have quietly gutted the Riff-Off penalty.
-- `feedbackBoost` is set at commit and cleared **only** by `consumeAttackCharges`
+- ~~`feedbackBoost` is set at commit and cleared **only** by `consumeAttackCharges`
   on a hit — there is no turn-start reset, so that call must survive. Separately:
   nothing actually multiplies damage by `feedbackBoost`; the "Damage ×2" is a HUD
-  badge only. **Pre-existing gap, worth a decision before B5.**
+  badge only. **Pre-existing gap, worth a decision before B5.**~~
+  **✅ RESOLVED in the B5 pass — by deletion.** The effect, the field, the badge and
+  `consumeAttackCharges` are all gone. See "Notes from the B5 pass".
 - A lot of copy still taught the removed mechanics (tier descriptions, skill
   descriptions, two beginner tips, two tutorial sections, a hint line). All
   rewritten. B9 will still need a pass for the *context tiers*.
@@ -447,7 +505,7 @@ Player-facing model stays two sentences:
 
 ---
 
-### B5 — Harmonic Lock (the Db escalation)
+### B5 — Harmonic Lock (the Db escalation) ✅ SHIPPED
 
 If the melody's **final** note is a chord tone of a stack holding a *recognized* chord
 (not single, not cluster), the ending bonus escalates by that chord's `rank`:
@@ -469,6 +527,24 @@ direction.
 
 Musically it's the real lesson: you stopped thinking in the home key and started thinking
 in the chord.
+
+**Shipped as** `harmonicLock(lastNote, driveStack, sustainStack)` in
+`src/music/context.js`, wired at the Db scoring block in `confirmNoteTrack`
+(`src/rlsw-simulator-v3_8_1.jsx` ~3195–3215). Returns
+`{ bonus, stack, rank, chordName }`; the flash and log both cite `chordName` so the
+player sees which chord paid.
+
+```js
+/** B5 — the ending escalation for landing on a stack's chord. Pure.
+ *  Reads `stackContext().tones` (the chord itself), NOT `chordTones` (the pardon
+ *  set, which includes the seventh the quality only implies).
+ *  Takes no unlockedSkills: no tier changes what the stack IS. */
+export function harmonicLock(lastNote, driveStack, sustainStack)
+```
+
+⚠️ **Requires an ending bonus** (`scoreTrackDB().endingBonus > 0`) — it escalates
+that bonus rather than standing alone. See "Notes from the B5 pass" at the top for
+why, and for the `tones` vs `chordTones` distinction.
 
 ---
 
@@ -881,9 +957,15 @@ Already covered:
   repeats; buying Minor Tonality promotes a `locked` stack and never demotes any
   other stack.
 - `modeFromStack` across quality / ambiguous / locked.
+- B4 routing: every pardon pays exactly one stack (never zero, never twice) across
+  210 track×stack×tier combinations; rank breaks the tie and the tie goes to Drive;
+  buying a higher tier never reduces what a track pays.
+- B5 Harmonic Lock: all 14 rank bands; rank-0 stacks (single, cluster) claiming
+  nothing; `tones` vs `chordTones` in both directions (an implied ♮7 pays nothing, a
+  placed one pays 2); stack selection matching B4; and the `scoreTrackDB`
+  `endingBonus`/`endingKind` contract including the spec's headline `3 + 2 = 5`.
 
-Still to add: Harmonic Lock rank thresholds (B5); discord penalty floor and
-first-note grace (B7).
+Still to add: discord penalty floor and first-note grace (B7).
 - Play-test target: a turn-one spirit should reach a triad in one turn if they spend for
   it, and a mid-game spirit with `theory_dom7` should be able to say in one sentence why
   they built the chord they built.
@@ -905,10 +987,20 @@ first-note grace (B7).
 
 1. **Does `performanceScore` keep `hasGatedEnding`** after B1 removes the combat effects
    those endings triggered. (Recommended: yes, it's a flair signal.)
-   *Still open — B3 didn't touch it.*
+   *Still open — B3 didn't touch it, and B5 left it alone deliberately: with the
+   tritone's damage effect deleted, `hasGatedEnding` and the tritone's +1 P are the
+   only things those endings still pay, which is an argument for keeping them.*
 2. **Do Style Db and the P-score top-up need retuning** once B2 halves base income —
    `STYLE_DB_CAP` is 3 against a new best-case track of ~5, so Style becomes a much larger
    share of Db than it was designed to be. See Task C.
+   **⚠️ B5 moved this number.** Best-case Db is now ~5 base + 2 Harmonic Lock = **~7**,
+   so `STYLE_DB_CAP` 3 is a smaller share than the B2-era estimate — the opposite
+   direction from what this item feared. Re-measure before retuning; B6 and B7 will
+   move it again.
+6. **Does B6's chromatic payout double-pay with B4?** At `theory_chromatic` a run's
+   notes are pardoned as approach notes and already pay Drive/Sustain, and B6 wants
+   the same run to pay +3 Db. Either B6 suppresses color routing for notes inside
+   the run, or the +3 is priced knowing it stacks. **Blocking for B6.**
 3. **Other branches need ceilings of their own** so Theory-first isn't automatic — see the
    consequence note in B0b. Not blocking, but don't let it slide. **B3 made this
    worse, as predicted:** Theory now gates the stat ceiling, the melody palette, the

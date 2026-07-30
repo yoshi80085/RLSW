@@ -232,8 +232,15 @@ export function sustainBoostFromPattern(patLen) {
 // B5 (Harmonic Lock) stacks an additional rank-scaled bonus on top of Step B when
 // the final note is a chord tone of a stack holding a recognized chord. That lives
 // at the commit site, not here — this function stays pure and stack-unaware.
+// ⚠️ `endingBonus` / `endingKind` are part of the contract as of B5. Harmonic Lock
+// escalates the ENDING bonus, so it must know one was actually earned — and it has
+// to know without string-matching `breakdown`, which is display copy and will
+// change. `endingBonus` is 0 when the line didn't come to rest on the 5th, 4th or
+// its own first note; `endingKind` is null in that case, else 'fifth'|'fourth'|'octave'.
 export function scoreTrackDB(track, fourthNote, fifthNote) {
-  if (!track || track.length === 0) return { points: 0, breakdown: [] };
+  if (!track || track.length === 0) {
+    return { points: 0, breakdown: [], endingBonus: 0, endingKind: null };
+  }
   const breakdown = [];
   let points = 0;
 
@@ -248,11 +255,14 @@ export function scoreTrackDB(track, fourthNote, fifthNote) {
   const last = track[track.length - 1];
   const first = track[0];
   const isOctave = track.length >= 2 && first === last;
-  if (last === fifthNote)       { breakdown.push(`5th end +3`);    points += 3; }
-  else if (last === fourthNote) { breakdown.push(`4th end +2`);    points += 2; }
-  else if (isOctave)            { breakdown.push(`octave end +1`); points += 1; }
+  let endingBonus = 0;
+  let endingKind  = null;
+  if (last === fifthNote)       { breakdown.push(`5th end +3`);    endingBonus = 3; endingKind = 'fifth';  }
+  else if (last === fourthNote) { breakdown.push(`4th end +2`);    endingBonus = 2; endingKind = 'fourth'; }
+  else if (isOctave)            { breakdown.push(`octave end +1`); endingBonus = 1; endingKind = 'octave'; }
+  points += endingBonus;
 
-  return { points, breakdown };
+  return { points, breakdown, endingBonus, endingKind };
 }
 
 // analyseTrack still exists for Drive/Sustain pattern detection display in log
