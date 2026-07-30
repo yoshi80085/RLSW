@@ -357,3 +357,95 @@ export function harmonicLock(lastNote, driveStack = [], sustainStack = []) {
     chordName: pick.c.chord.name ?? pick.c.chord.label ?? pick.c.chord.id ?? null,
   };
 }
+
+// ── B6: THE CHROMATIC RUN — PARDON BECOMES PAYOUT ────────────────────────────
+// Before `theory_chromatic`, Chromatic Climb PARDONED a run of 3+: the track
+// stopped counting as discord. That is a defensive effect, and defence is a poor
+// thing to sell at the top of a 46-Db ladder. At the capstone the same gesture
+// PAYS:
+//
+//   run of 3   → +3 Db
+//   each note beyond 3 → +1
+//   capped at  → +5   (so 3→3, 4→4, 5→5, 6+→5)
+//
+// The risk is intrinsic and needs no balancing scaffold. A chromatic run eats 3+
+// of your 8 melody slots, drains the `noteStock` you'd otherwise spend building
+// stacks, and — pre-unlock — every note in it is a Discord costing its own point
+// under B7. Before the skill it wrecks you; after it, it is your single biggest
+// payout.
+//
+// ⚠️ THIS IS A DELIBERATE EXCEPTION TO B4'S ROUTING RULE. B4 established that
+// interior gestures pay Drive/Sustain and only the ENDING pays Db. A chromatic run
+// is unambiguously interior, and it pays Db anyway. Keep it *the* exception: a
+// capstone that breaks the game's own grammar is how an unlock earns the word
+// "mastery." The UI must therefore read it as singular — one loud line — not as
+// another row in the scoring table.
+//
+// ⚠️ AND IT DOUBLE-PAYS WITH B4, ON PURPOSE. At this tier the Approach Notes rule
+// also pardons run notes that resolve onto a chord tone, so those notes ALREADY
+// pay Drive/Sustain via `countPardonedByStack`. The B4 and B5 passes both flagged
+// this and deferred the call; the call is: **it stacks, and the +3/+5 is priced
+// knowing it stacks.** Suppressing the color routing inside the run was the
+// alternative and it was rejected for three reasons:
+//   1. It would need run MEMBERSHIP threaded through `classifyTrack`, which today
+//      classifies each note independently — a new cross-note dependency in the one
+//      function every other feature reads. That is a real architectural cost paid
+//      to make a capstone smaller.
+//   2. The double pay is not automatic. Approach Notes only pardons a note whose
+//      NEXT note is a chord tone, so a run collects Drive only where it actually
+//      RESOLVES into the harmony. A run that wanders pays the +3 and nothing else.
+//      The stacking is itself a skill gradient, not a loophole.
+//   3. It reads correctly. "The run paid Db and the chord it landed on paid Drive"
+//      is one sentence a player can say out loud, which is the bar Task C sets.
+// The lever, if it proves too strong in play: this curve, not the routing.
+const CHROM_BASE = 3, CHROM_CAP = 5, CHROM_MIN_RUN = 3;
+
+/** B6 — the chromatic run's Db payout. Pure.
+ *  @param runLen         longest chromatic run in the track (`detectChromaticRun`).
+ *  @param unlockedSkills the acting spirit's skills; the payout is gated on
+ *                        `theory_chromatic` and is 0 without it. Unlike B5 this
+ *                        DOES take skills — the run is worth nothing until the
+ *                        capstone says it is.
+ *  @returns { db, runLen } — `db` is 0 for any run under 3 or any locked spirit.
+ *
+ *  Note this replaces `staggerDuration`'s 3/4/5+ → 1/2/3 curve, which the B1 pass
+ *  kept alive purely as a starting point for this function. Different shape, so
+ *  that function is now gone. */
+export function chromaticPayout(runLen = 0, unlockedSkills = []) {
+  const u = unlockedSkills instanceof Set ? unlockedSkills : new Set(unlockedSkills || []);
+  const len = Number.isFinite(runLen) ? Math.floor(runLen) : 0;
+  if (!u.has(CONTEXT_TIERS.approach) || len < CHROM_MIN_RUN) return { db: 0, runLen: len };
+  return { db: Math.min(CHROM_CAP, CHROM_BASE + (len - CHROM_MIN_RUN)), runLen: len };
+}
+
+// ── B7: THE DISCORD PENALTY, PER NOTE ────────────────────────────────────────
+// It used to be a flat −1 for the whole track no matter how many notes were wrong.
+// That made the entire pardon economy worth at most one point — the tree would be
+// selling a 46-Db ladder to dodge a one-point tax. Now each wrong note costs, with
+// two guard rails:
+//
+//   penalty = min(3, max(0, unpardoned − 1))
+//
+//  • THE FIRST DISCORD IS FREE, and the grace is load-bearing. A strong track
+//    under B2+B5 is worth ~5 Db. Without the grace, one grey note a player hasn't
+//    learned to see yet takes 20% of the turn; `freestylePardon` (Intergalactic 0)
+//    already established the "one pardoned wrong note" pattern and this
+//    generalizes it to everyone.
+//  • THE FLOOR IS 3, so a genuinely lost track loses most of a turn but never
+//    goes negative-spiral. Db is already floored at 0 downstream.
+//
+// Count from `classifyTrack`, never from the placement-time `discordCount`: at
+// `theory_chromatic` the Approach Notes tier can only be resolved once the NEXT
+// note is known, so placement over-counts. The placement counter stays as live UI
+// feedback and the two legitimately disagree at that one tier.
+const DISCORD_GRACE = 1, DISCORD_FLOOR = 3;
+
+/** B7 — per-note discord penalty. Pure.
+ *  @param unpardoned  count of notes that are off-scale AND unpardoned, i.e.
+ *                     `countUnpardoned(classifyTrack(...))`, with any
+ *                     spirit-specific pardon (freestyle) already subtracted.
+ *  @returns the Db to deduct: 0, 1, 2 or 3. */
+export function discordPenaltyFor(unpardoned = 0) {
+  const n = Number.isFinite(unpardoned) ? Math.floor(unpardoned) : 0;
+  return Math.min(DISCORD_FLOOR, Math.max(0, n - DISCORD_GRACE));
+}

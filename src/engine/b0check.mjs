@@ -14,7 +14,8 @@ import { makeInitialNoteState } from "../engine/systems/economy.js";
 import { evaluateChord, CHORD_TEMPLATES } from "../music/chords.js";
 import { scoreTrackDB } from "../music/cadence.js";
 import { getSpelledPool, pitchIndex, PITCH_INDEX, canonicalRoot } from "../music/notes.js";
-import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, stackContext } from "../music/context.js";
+import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, stackContext, chromaticPayout, discordPenaltyFor } from "../music/context.js";
+import { detectChromaticRun } from "../music/cadence.js";
 import assert from "node:assert";
 
 // ── B0b: derived cap ──
@@ -526,3 +527,176 @@ console.log("✓ B5 Harmonic Lock: stack selection matches B4 — higher rank, t
   assert.equal(base.endingBonus + lock.bonus, 5, 'B5: 5th end into a dom9 stack must total 5 Db');
 }
 console.log("✓ B5: scoreTrackDB reports endingBonus/endingKind — the gate B5 reads, no string matching");
+
+// ─── B6: THE CHROMATIC RUN — PARDON BECAME PAYOUT ───────────────────────────
+// The curve: run of 3 → +3, +1 per note beyond, capped +5. Locked spirits get 0
+// however long the run, because before the capstone the run is the risk, not the
+// reward — that asymmetry IS the mechanic.
+{
+  const want = { 0:0, 1:0, 2:0, 3:3, 4:4, 5:5, 6:5, 7:5, 8:5, 12:5 };
+  for (const [len, db] of Object.entries(want)) {
+    assert.equal(chromaticPayout(Number(len), CHROM).db, db,
+      `B6: a run of ${len} at theory_chromatic must pay ${db}`);
+    assert.equal(chromaticPayout(Number(len), CHROM).runLen, Number(len),
+      'B6: the payout must report the run length it scored, for the flash copy');
+  }
+  // Every tier BELOW the capstone pays nothing, at every run length.
+  for (const tier of [NONE, MINOR, DOM7, MODES]) {
+    for (let len = 0; len <= 8; len++) {
+      assert.equal(chromaticPayout(len, tier).db, 0,
+        `B6: a run of ${len} must pay 0 without theory_chromatic (tier ${JSON.stringify(tier)})`);
+    }
+  }
+  // Monotonic and capped — no run length is ever worth less than a shorter one.
+  for (let len = 1; len <= 12; len++) {
+    const a = chromaticPayout(len - 1, CHROM).db, b = chromaticPayout(len, CHROM).db;
+    assert.ok(b >= a, `B6: run ${len} must not pay less than run ${len - 1}`);
+    assert.ok(b <= 5, 'B6: the payout is hard-capped at +5');
+  }
+  // Garbage in → 0 out, not NaN. This feeds an arithmetic chain into the Db meter.
+  for (const junk of [undefined, null, NaN, Infinity, -3, 'four', {}]) {
+    const r = chromaticPayout(junk, CHROM);
+    assert.equal(r.db, 0, `B6: ${String(junk)} must pay 0, not NaN`);
+    assert.ok(Number.isFinite(r.db), 'B6: the payout is always a finite number');
+  }
+  // A Set of skills must work identically to an array (callers pass both).
+  assert.equal(chromaticPayout(4, new Set(CHROM)).db, 4, 'B6: skills as a Set behave as an array');
+}
+console.log("✓ B6: chromatic payout curve — 3/4/5+ → 3/4/5 capped, zero below the capstone, monotonic, NaN-safe");
+
+// B6 reads the SAME detector the old pardon read, so the spec's example tracks
+// must actually register as runs. A payout gated on a length nothing produces is
+// a payout that never fires.
+{
+  assert.equal(detectChromaticRun(['C','C#','D']), 3, 'B6: three semitone steps is a run of 3');
+  assert.equal(detectChromaticRun(['C','C#','D','D#','E']), 5, 'B6: five ascending semitones is a run of 5');
+  assert.equal(detectChromaticRun(['E','D#','D','C#']), 4, 'B6: descending counts too');
+  assert.equal(detectChromaticRun(['C','C#','D','F','G']), 3, 'B6: the run need not span the whole track');
+  assert.equal(detectChromaticRun(['C','C#','C','C#']), 0, 'B6: direction must be consistent — zigzag is not a run');
+  assert.equal(detectChromaticRun(['C','D','E']), 0, 'B6: whole steps are not a chromatic run');
+  // End to end: the spec's headline case.
+  assert.equal(chromaticPayout(detectChromaticRun(['C','C#','D','D#','E']), CHROM).db, 5,
+    'B6: a 5-note chromatic run at the capstone pays the +5 cap');
+  assert.equal(chromaticPayout(detectChromaticRun(['C','C#','D']), CHROM).db, 3,
+    'B6: the minimum qualifying run pays the +3 base');
+}
+console.log("✓ B6: detectChromaticRun feeds the payout — the spec's tracks register at the lengths it prices");
+
+// ⚠️ B6 DOUBLE-PAYS WITH B4, BY DECISION. This group DOCUMENTS that as intended
+// rather than guarding against it, so a future reader can tell a deliberate
+// overlap from a bug. The decision and its three reasons are at `chromaticPayout`.
+{
+  // C-C#-D over a C-E-G drive stack at the capstone. C and D are in the C major
+  // key; C# is off-scale and the Approach Notes tier pardons it because the NEXT
+  // note (D)... is not a chord tone. So take a run that DOES resolve onto one:
+  // A#-B-C into C-E-G — C is a chord tone, so B is pardoned as an approach note.
+  const keyC  = [0,2,4,5,7,9,11];
+  const track = ['G','A#','B','C'];
+  const cls   = classifyTrack(track, keyC, ['C','E','G'], [], CHROM);
+  const paid  = countPardonedByStack(cls);
+  assert.equal(detectChromaticRun(track), 3, 'B6/B4: A#-B-C is a chromatic run of 3');
+  assert.ok(paid.drive + paid.sustain > 0,
+    'B6/B4: a run resolving onto a chord tone DOES also earn Drive/Sustain — the double pay is real');
+  assert.equal(chromaticPayout(detectChromaticRun(track), CHROM).db, 3,
+    'B6/B4: and the same run still collects its full +3 Db — priced knowing it stacks');
+  // The other half of the decision: the stacking is NOT automatic. A run that
+  // wanders off instead of resolving collects the Db and no colour at all.
+  const wander = ['C','C#','D','D#'];
+  const wcls   = classifyTrack(wander, keyC, ['C','E','G'], [], CHROM);
+  const wpaid  = countPardonedByStack(wcls);
+  assert.equal(detectChromaticRun(wander), 4, 'B6/B4: C-C#-D-D# is a run of 4');
+  assert.equal(chromaticPayout(4, CHROM).db, 4, 'B6/B4: it earns +4 Db');
+  assert.equal(wpaid.drive + wpaid.sustain, 0,
+    'B6/B4: but nothing in it resolves onto a chord tone, so it earns no colour — ' +
+    'the stacking is a skill gradient, not a flat bonus');
+}
+console.log("✓ B6/B4: the double pay is deliberate AND conditional — it only stacks where the run resolves");
+
+// ─── B7: THE DISCORD PENALTY GETS TEETH ─────────────────────────────────────
+// penalty = min(3, max(0, unpardoned − 1)). The grace and the floor are both
+// load-bearing; see `discordPenaltyFor`.
+{
+  const want = { 0:0, 1:0, 2:1, 3:2, 4:3, 5:3, 6:3, 8:3 };
+  for (const [n, p] of Object.entries(want)) {
+    assert.equal(discordPenaltyFor(Number(n)), p,
+      `B7: ${n} unpardoned discord${n === '1' ? '' : 's'} must cost ${p}`);
+  }
+  assert.equal(discordPenaltyFor(1), 0, 'B7: THE FIRST DISCORD IS FREE — the grace is load-bearing');
+  assert.equal(discordPenaltyFor(99), 3, 'B7: THE FLOOR IS 3 — a lost track never spirals');
+  // Monotonic: more wrong notes may never cost less.
+  for (let n = 1; n <= 20; n++) {
+    assert.ok(discordPenaltyFor(n) >= discordPenaltyFor(n - 1),
+      `B7: ${n} discords must not cost less than ${n - 1}`);
+  }
+  // Never negative, never NaN — this is subtracted from the Db meter.
+  for (const junk of [undefined, null, NaN, -5, -1, 'two', {}, Infinity]) {
+    const p = discordPenaltyFor(junk);
+    assert.ok(Number.isFinite(p) && p >= 0 && p <= 3,
+      `B7: ${String(junk)} must yield a penalty in 0..3, got ${p}`);
+  }
+  // The old behaviour, stated so the change is unmistakable: it used to be a flat
+  // 1 for any number of wrong notes. Two of the eight rows above now differ.
+  assert.notEqual(discordPenaltyFor(1), 1, 'B7: one wrong note no longer costs 1 (was flat −1)');
+  assert.notEqual(discordPenaltyFor(4), 1, 'B7: four wrong notes no longer cost 1 (was flat −1)');
+}
+console.log("✓ B7: per-note discord penalty — first free, floored at 3, monotonic, never negative");
+
+// B7 must score from classifyTrack's SETTLED count, not a placement counter. The
+// contract that makes that possible: countUnpardoned only counts notes the chord
+// context declined to pardon, so buying a tier can only ever LOWER the penalty.
+{
+  const keyC  = [0,2,4,5,7,9,11];
+  const track = ['C','C#','D#','F#','A#','C'];   // four off-scale notes in C major
+  const stack = ['C','E','G','A#'];              // C7 — pardons C#/D#/F#/A# by tier
+  let prev = Infinity;
+  for (const tier of [NONE, MINOR, DOM7, MODES, CHROM]) {
+    const n = countUnpardoned(classifyTrack(track, keyC, stack, [], tier));
+    const p = discordPenaltyFor(n);
+    assert.ok(p <= prev,
+      `B7: buying up the ladder must never RAISE the discord penalty (tier ${JSON.stringify(tier)}: ${p} > ${prev})`);
+    prev = p;
+  }
+  // And at tier 0 this track is expensive — the tax the ladder is sold against.
+  assert.equal(discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, stack, [], NONE))), 3,
+    'B7: an untutored spirit playing four wrong notes pays the full floor of 3');
+  assert.ok(discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, stack, [], CHROM))) < 3,
+    'B7: the same track costs the capstone spirit less — which is what the 46-Db ladder buys');
+}
+console.log("✓ B7: penalty falls monotonically as the pardon ladder widens — 3 at tier 0, less at the capstone");
+
+// B6 + B7 on ONE track, the arithmetic the commit site performs:
+//   earned = max(0, base + lock + chromRun − discordPenalty)
+// The claim being checked is the design one: a chromatic run is never a net loss
+// at the capstone, and IS one before it.
+{
+  const keyC = [0,2,4,5,7,9,11], F = 'F', G = 'G';
+  const track = ['C','C#','D','D#','E','F','F#','G'];  // a long run, ending on the 5th
+  const stack = ['C','E','G'];
+  const runLen = detectChromaticRun(track);
+  assert.ok(runLen >= 5, 'B6/B7: the sample track holds a long chromatic run');
+  const base = scoreTrackDB(track, F, G);
+  for (const [tier, label] of [[NONE, 'tier 0'], [CHROM, 'capstone']]) {
+    const n    = countUnpardoned(classifyTrack(track, keyC, stack, [], tier));
+    const pen  = discordPenaltyFor(n);
+    const pay  = chromaticPayout(runLen, tier).db;
+    const lock = base.endingBonus > 0 ? harmonicLock(track[track.length - 1], stack, []).bonus : 0;
+    const earned = Math.max(0, base.points + lock + pay - pen);
+    if (tier === CHROM) {
+      assert.equal(pay, 5, 'B6/B7 capstone: the run pays the +5 cap');
+      assert.ok(pay > pen, `B6/B7 capstone: the payout must exceed the penalty (${pay} vs ${pen})`);
+      assert.ok(earned > base.points,
+        'B6/B7 capstone: the run must leave the track BETTER off than its bare placement score');
+    } else {
+      assert.equal(pay, 0, 'B6/B7 tier 0: the run pays nothing');
+      assert.ok(pen > 0, 'B6/B7 tier 0: and the wrong notes in it still cost');
+      assert.ok(earned < base.points,
+        'B6/B7 tier 0: so the same track is WORSE than its bare placement score — before the skill it wrecks you');
+    }
+  }
+  // The floor holds even in the worst case: earned can never go negative here.
+  for (let n = 0; n <= 12; n++) {
+    assert.ok(Math.max(0, 0 + 0 + 0 - discordPenaltyFor(n)) === 0,
+      'B6/B7: a scoreless track floors at 0 Db, never negative');
+  }
+}
+console.log("✓ B6+B7 together: the run is a net GAIN at the capstone and a net LOSS below it — the asymmetry the spec asks for");

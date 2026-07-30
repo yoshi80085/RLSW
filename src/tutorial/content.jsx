@@ -373,7 +373,8 @@ function TutSection_HarmonicCharge() {
         <span style={{color:"#ffcc44"}}>Decibills</span> (DB) is what clean playing
         earns you — the currency you bank toward <span style={{color:"#44ffaa"}}>upgrades</span>.
         End your tracks on strong intervals and string together tidy, in-scale patterns to
-        rack up points; a Dischord note just trims a single point off the track. Fill the meter and you
+        rack up points; your first Dischord note each track is free, and every one after it trims a
+        point (never more than 3). Fill the meter and you
         cash it in for a new skill. (Your attack <em>die</em> comes from Amps, not DB — see the next tab.)
       </p>
 
@@ -396,7 +397,8 @@ function TutSection_HarmonicCharge() {
           ))}
         </div>
         <p style={{fontSize:8.5, color:"#6a8a9a", margin:"9px 0 0", lineHeight:1.5}}>
-          A Dischord note costs the track a single DB — no longer a blanket zero, so a little dissonance is affordable.
+          The first Dischord note on a track is free; each one after it costs a DB, up to 3. Never a
+          blanket zero — a little dissonance is affordable, a lot of it isn't.
         </p>
       </div>
 
@@ -554,9 +556,10 @@ function TutSection_Dischord() {
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
-        <span style={{color:"#ff6600"}}>Dischord</span> notes sit outside your scale. They cost
-        you Decibills — but the Music Theory ladder steadily widens what counts as
-        inside, until notes that were wrong become the most interesting ones you own.
+        <span style={{color:"#ff6600"}}>Dischord</span> notes sit outside your scale. The first one on a
+        track is free; after that each costs a Decibill, to a maximum of 3. The Music Theory ladder
+        steadily widens what counts as inside, until notes that were wrong become the most
+        interesting ones you own.
       </p>
 
       {/* Dischord track */}
@@ -568,11 +571,13 @@ function TutSection_Dischord() {
           <div style={{fontSize:8, color:"#ff6600", padding:"2px 6px", background:"#1f0d00", borderRadius:3, border:"1px solid #ff660044"}}>
             ⚡ 2 Dischord notes
           </div>
-          <MockFlashBadge text="⚡ Chromatic Climb — discord pardoned" color="#ff8800"/>
+          <MockFlashBadge text="⚡ CHROMATIC RUN ×5 — DB +5" color="#ff8800"/>
         </div>
         <p style={{fontSize:9, color:"#6a8a9a", margin:"8px 0 0", lineHeight:1.6}}>
           Walking three or more semitone steps in a row is a <span style={{color:"#ff8800"}}>chromatic run</span>.
-          Once you've earned Chromatic Climb the whole run reads as clean, dischord notes and all.
+          It costs you dearly — until <span style={{color:"#ff8800"}}>Chromatic Mastery</span>, the last rung of
+          the Theory ladder, turns it into the biggest single payout in the game:
+          <span style={{color:"#ffcc44"}}> +3 Decibills for three steps, +1 for each step beyond, up to +5</span>.
         </p>
       </div>
 

@@ -95,17 +95,11 @@ export function detectChromaticRun(track) {
   return maxRun;
 }
 
-// Stagger duration from chromatic run length.
-// ⚠️ UNUSED as of B1 — the chromatic-run → Stagger trigger was removed. Kept
-// because B6 rescores the chromatic run as a Db payout on the same length
-// thresholds (3/4/5+), so this curve is the obvious starting point. Delete it
-// if B6 lands on a different shape.
-export function staggerDuration(runLen) {
-  if (runLen >= 5) return 3;
-  if (runLen === 4) return 2;
-  if (runLen === 3) return 1;
-  return 0;
-}
+// (`staggerDuration` removed in B6. The B1 pass kept that 3/4/5+ → 1/2/3 curve
+//  alive on the guess that B6's Db payout would reuse it. B6 landed on a different
+//  shape — 3/4/5+ → 3/4/5, capped — so the curve is gone and the payout lives in
+//  `chromaticPayout` in music/context.js, next to the tier flags that gate it.
+//  `detectChromaticRun` above is still the only run detector and B6 reads it.)
 
 // ── DRIVE BOOST: diatonic step runs ──────────────────────────────────────────
 // Returns the longest run of consecutive ascending OR descending diatonic steps

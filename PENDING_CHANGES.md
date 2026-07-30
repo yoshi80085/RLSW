@@ -15,13 +15,92 @@ Tension & Release, Chromatic Approach, Color Bonus, Chord Resonance. Eight mecha
 **Implementation order:** A → B0 → B1 → B2 → B3 → B4 → B5 → B6 → B7 → B8 → B9 → B10 → C.
 B0 is the spine; several later items assume it. Task C depends on B3 shipping first.
 (B8 was pulled forward and is fully shipped — the mode question turned out to be a
-chord-context question, so it landed alongside B3 rather than after B7.)
+chord-context question, so it landed alongside B3 rather than after B7. B6 and B7
+shipped together in one pass: B6's stated risk — "before the skill it wrecks you" —
+is only true once B7's per-note penalty exists, so shipping B6 alone would have
+advertised a downside the game didn't have.)
 
-**Status:** ✅ Task A, B0 (a + b), B1, B2, B3, **B4**, **B5** and **B8 (core + wiring)**
-are SHIPPED on branch `feat/chord-strength-b0` (local only — nothing pushed). Two
-changes were made that this doc did not ask for: the **note speller** was rewritten (it
-was mis-spelling 14 borrowed degrees) and **B8 was reopened and reversed** — see below.
-**Next up is B6** — it has a double-pay decision waiting, see the B5 notes.
+**Status:** ✅ Task A, B0 (a + b), B1, B2, B3, **B4**, **B5**, **B6**, **B7** and
+**B8 (core + wiring)** are SHIPPED on branch `feat/chord-strength-b0` (local only —
+nothing pushed). Two changes were made that this doc did not ask for: the **note
+speller** was rewritten (it was mis-spelling 14 borrowed degrees) and **B8 was
+reopened and reversed** — see below. **The B6 double-pay question is resolved: it
+stacks, and the payout is priced knowing it stacks** (unresolved item 6, closed).
+**Next up is B9** (skill descriptions and grants table), then B10, then Task C.
+
+### Notes from the B6 / B7 pass
+
+- **The double-pay decision: IT STACKS.** At `theory_chromatic` a chromatic run's
+  notes are pardoned as approach notes and so already pay Drive/Sustain under B4;
+  B6 pays the same run +3 Db on top. The alternative — suppressing colour routing
+  for notes inside the run — was rejected for three reasons, recorded at
+  `chromaticPayout` in `context.js`:
+  1. It needs run **membership** threaded through `classifyTrack`, which today
+     classifies each note independently. That's a new cross-note dependency in the
+     one function B4, B5, B7 and the log all read, paid to make a capstone smaller.
+  2. **The stacking isn't automatic.** Approach Notes only pardons a note whose
+     *next* note is a chord tone, so a run collects Drive only where it actually
+     resolves into the harmony. A run that wanders pays the +3 and nothing else.
+     That's a skill gradient, not a loophole — and it's asserted in both directions.
+  3. It reads correctly: "the run paid Db and the chord it landed on paid Drive" is
+     one sentence, which is the bar Task C sets.
+  If it proves too strong in play, **the lever is the curve, not the routing.**
+- **⚠️ B6's real substance was deleting the blanket pardon, not adding the payout.**
+  The old rule set `allInScale = true` for the whole track, which pardoned every
+  *unrelated* wrong note elsewhere in the melody too — one chromatic run bought
+  total discord immunity. That's gone. The run's own notes are now pardoned only
+  where the Approach tier genuinely pardons them, and anything else you got wrong
+  still costs under B7. Without this, B7 would have been trivially bypassed.
+- **`allInScale` survives, but only for flavour.** It still flips true on a 3+ run
+  and now feeds exactly two things: `gainFans` and the maj3 gated ending. A
+  deliberate chromatic run should read to the *crowd* as intent rather than as a
+  fistful of mistakes. The **scoring path no longer reads the flag at all** — that
+  decoupling is the thing to preserve if this is ever revisited.
+- **B6's payout lands in the same Db pot as the ending and the lock, *before* the
+  discord subtraction.** One arithmetic path, and a run that leaves the rest of the
+  track in ruins still pays for the ruins. Because the payout starts at 3 and the
+  penalty is floored at 3, a run is never a net loss at the capstone — asserted
+  directly, along with the mirror case that below the capstone it always *is* one.
+- **B7's grace stacks with `freestylePardon`,** so Intergalactic 0 gets two free
+  wrong notes. Deliberate: freestyle also feeds the P-score and the crowd, so it
+  isn't merely a discount on this one line, and it's his identity. Note this differs
+  from the spec snippet, which computed the grace off the raw `classifyTrack` count
+  and dropped freestyle entirely. If two free notes proves too generous, subtract
+  the grace before the freestyle pardon rather than after.
+- **`hasChromMastery` and the "penalties halved" effect are both gone.** The halving
+  never lived in `applySkillEffects` (~3531) where this doc said it did — it was
+  inline in the DB scoring block. B3's Approach Notes tier plus halving was near
+  total immunity: two effects doing one job, one of them invisible.
+- **`staggerDuration` is deleted.** B1 kept that 3/4/5+ → 1/2/3 curve alive purely
+  as a guess at B6's shape. B6 landed on 3/4/5+ → 3/4/5 capped, so the guess was
+  wrong and the function is gone.
+- **The skill's advertisement now fires for players who don't have the skill.** The
+  "a run would pay you +N" flash is gated on run *length*, not on `chromClimbActive`
+  — `discord_4` is **granted by** `theory_chromatic` (`THEORY_DISCORD_GRANTS`), so a
+  spirit holding the climb but not the capstone barely exists, and gating on it
+  would have hidden the pitch from exactly the players who need to see it.
+- **Copy rewritten in four places** plus the tutorial: the skill-tree description
+  (which still advertised the deleted halving and never mentioned Approach Notes at
+  all — arguably the tier's *main* effect), the unlock log line, the commit flash,
+  the commit log fragment, and `TutSection_Dischord` + the Decibills panel, both of
+  which taught the old flat −1. The discord flash now shows the count *and* the
+  charge, since with the grace they're different numbers and otherwise it reads as
+  a bug.
+- **Six new assertion groups in `b0check.mjs` (49 groups, was 43):** the payout
+  curve at every length 0–12 including the cap and NaN-safety, zero at all four
+  lower tiers, `detectChromaticRun` actually registering the lengths B6 prices, the
+  double-pay documented in *both* directions (stacks when the run resolves, doesn't
+  when it wanders), B7's curve/grace/floor/monotonicity, the penalty falling as the
+  ladder widens, and B6+B7 on one track proving the gain/loss asymmetry.
+- **⚠️ Item 2 (STYLE_DB_CAP) moved again, and this time upward a lot.** Best-case Db
+  is now ~5 base + 2 lock + 5 chromatic run = **~12**, against `STYLE_DB_CAP` 3. The
+  B2-era fear that Style would become too large a share of Db is now firmly the
+  wrong direction. **Re-measure in Task C, don't retune from the old estimate.**
+- **⚠️ The bot re-tuning flagged in the B5 pass is now due.** `botPlanStackCommit`'s
+  Brawler tritone rule traded a −1 Db for a damage effect that no longer exists,
+  and B7 has now made the Db half of that trade cost up to 3. The bot also has no
+  concept of the chromatic payout, so `theory_chromatic` is worth strictly more to a
+  human than to a bot that never builds runs. Not blocking, but it's real now.
 
 ### Notes from the B5 pass
 
@@ -548,7 +627,29 @@ why, and for the `tones` vs `chordTones` distinction.
 
 ---
 
-### B6 — Chromatic run: pardon becomes payout
+### B6 — Chromatic run: pardon becomes payout ✅ SHIPPED
+
+**Shipped as** `chromaticPayout(runLen, unlockedSkills)` in `src/music/context.js`,
+wired at the Db scoring block in `confirmNoteTrack` (`src/rlsw-simulator-v3_8_1.jsx`
+~3222). Returns `{ db, runLen }`; the flash and log both cite `runLen` so the player
+can see the payout scales with it. `staggerDuration` in `cadence.js` is deleted (its
+curve was a wrong guess at this one). **The double-pay question resolved as "it
+stacks"** — see the B6/B7 notes at the top for the three reasons and the lever.
+
+⚠️ **The load-bearing half of this change is a deletion:** the old blanket
+`allInScale = true` pardon is gone from the scoring path. It used to excuse every
+unrelated wrong note in the track, which would have made B7 trivially bypassable.
+`allInScale` still flips true on a 3+ run but now feeds only `gainFans` and the maj3
+ending — flavour, not Db.
+
+```js
+/** B6 — the chromatic run's Db payout. Pure. Gated on theory_chromatic
+ *  (unlike B5, which takes no skills): the run is worth nothing until the
+ *  capstone says it is. 3→+3, 4→+4, 5+→+5. */
+export function chromaticPayout(runLen = 0, unlockedSkills = [])
+```
+
+---
 
 Chromatic Climb currently *pardons* discord when a chromatic run of 3+ is present. With
 `theory_chromatic`, make it **pay** instead: a chromatic run of 3+ earns **+3 Db**, +1 per
@@ -569,7 +670,26 @@ would stack into near-total immunity.
 
 ---
 
-### B7 — Discord penalty gets teeth
+### B7 — Discord penalty gets teeth ✅ SHIPPED
+
+**Shipped as** `discordPenaltyFor(unpardoned)` in `src/music/context.js` (kept pure
+and next to `countUnpardoned`, which supplies its input), wired at the Db scoring
+block ~3213. The old `discordFlat` / `hasChromMastery` halving / `chromClimbActive`
+full pardon are all gone.
+
+⚠️ **The grace stacks with `freestylePardon`,** so Intergalactic 0 gets two free wrong
+notes. Deliberate — see the B6/B7 notes. This differs from the snippet below, which
+computed the grace off the raw count and dropped freestyle. If two proves generous,
+subtract the grace *before* the freestyle pardon.
+
+```js
+/** B7 — per-note discord penalty. Pure. min(3, max(0, unpardoned − 1)).
+ *  `unpardoned` is countUnpardoned(classifyTrack(...)) with any spirit-specific
+ *  pardon already subtracted. */
+export function discordPenaltyFor(unpardoned = 0)
+```
+
+---
 
 **File:** `src/rlsw-simulator-v3_8_1.jsx`, DB scoring block (~lines 2964–2977).
 
@@ -930,8 +1050,9 @@ The comment on line 117 needs updating either way — its math refers to the old
 
 ## Verification
 
-**Where the tests live:** `node src/engine/b0check.mjs` — 35 checks covering
-Task A, B0, B2, B3, the speller and B8 (core + wiring). `npm run test:engine` is
+**Where the tests live:** `node src/engine/b0check.mjs` — 49 assertion groups covering
+Task A, B0, B2, B3, B4, B5, **B6, B7**, the speller and B8 (core + wiring).
+`npm run test:engine` is
 still broken on main (pre-existing `.png` import chain in `data/spirits.js`); fold
 `b0check` into `selftest.mjs` once that's fixed. Its stale init-sheet block was
 corrected in passing anyway — it still asserted B0a's removed power-chord seed.
@@ -965,7 +1086,26 @@ Already covered:
   placed one pays 2); stack selection matching B4; and the `scoreTrackDB`
   `endingBonus`/`endingKind` contract including the spec's headline `3 + 2 = 5`.
 
-Still to add: discord penalty floor and first-note grace (B7).
+- B6 chromatic payout: the curve at every run length 0–12 including the +5 cap and
+  NaN/garbage safety; zero at all four tiers below the capstone; `detectChromaticRun`
+  registering the exact lengths B6 prices (ascending, descending, partial, zigzag
+  rejected, whole steps rejected); and the **double pay asserted in both
+  directions** — it stacks when the run resolves onto a chord tone, it does not when
+  the run wanders.
+- B7 discord penalty: the full curve 0/0/1/2/3/3/3, the first-discord grace, the
+  floor of 3, monotonicity to 20 notes, never negative or NaN, and explicit
+  `notEqual` checks against the old flat −1 so the change can't silently revert.
+- B7 × the ladder: the penalty falls monotonically as tiers are bought (3 at tier 0
+  on a four-wrong-note track, less at the capstone) — buying Theory can only ever
+  reduce it.
+- B6 + B7 on one track: the run is a **net gain** at the capstone and a **net loss**
+  below it, which is the asymmetry the spec's risk framing depends on.
+
+⚠️ **Two pre-existing lint errors are unrelated to this pass** and were left alone:
+`analyseTrack`'s three unused params (`cadence.js` ~265) and an unused `iv` in the
+tutorial's interval reference (`content.jsx` ~524).
+
+Still to add: nothing for B6/B7. Next test work is B9's grants table and Task C.
 - Play-test target: a turn-one spirit should reach a triad in one turn if they spend for
   it, and a mid-game spirit with `theory_dom7` should be able to say in one sentence why
   they built the chord they built.
@@ -997,10 +1137,14 @@ Still to add: discord penalty floor and first-note grace (B7).
    so `STYLE_DB_CAP` 3 is a smaller share than the B2-era estimate — the opposite
    direction from what this item feared. Re-measure before retuning; B6 and B7 will
    move it again.
-6. **Does B6's chromatic payout double-pay with B4?** At `theory_chromatic` a run's
-   notes are pardoned as approach notes and already pay Drive/Sustain, and B6 wants
-   the same run to pay +3 Db. Either B6 suppresses color routing for notes inside
-   the run, or the +3 is priced knowing it stacks. **Blocking for B6.**
+6. ~~**Does B6's chromatic payout double-pay with B4?**~~ ✅ **RESOLVED — yes, and
+   deliberately.** It stacks and the +3/+5 is priced knowing it stacks; suppressing
+   colour routing inside the run was rejected because it needs run membership
+   threaded through `classifyTrack`, because the stacking is conditional on the run
+   actually resolving (so it's a skill gradient, not a flat bonus), and because it
+   reads correctly in one sentence. Asserted in both directions. **The lever if it's
+   too strong is the payout curve, not the routing.** Full reasoning at
+   `chromaticPayout` in `context.js` and in the B6/B7 notes at the top.
 3. **Other branches need ceilings of their own** so Theory-first isn't automatic — see the
    consequence note in B0b. Not blocking, but don't let it slide. **B3 made this
    worse, as predicted:** Theory now gates the stat ceiling, the melody palette, the

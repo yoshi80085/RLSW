@@ -421,7 +421,7 @@ import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } 
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
 import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote, detectResolvedDiscords } from "./music/cadence.js";
-import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock } from "./music/context.js";
+import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, chromaticPayout, discordPenaltyFor } from "./music/context.js";
 import { evaluateChord } from "./music/chords.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -523,7 +523,7 @@ const SKILL_TREE = {
         { id:'theory_modes',     label:'Modal Colour',         icon:'🌀', dbCost:12, gated:true, prereq:'theory_dom7',
           desc:"Lydian ♯4 & Mixolydian ♭7 become clean, and the tritone never breaks harmony. +1 STACK SLOT (5) — room for 9th chords." },
         { id:'theory_chromatic', label:'Chromatic Mastery',    icon:'⚡', dbCost:16, gated:true, prereq:'theory_modes',
-          desc:'CAPSTONE — every Discord penalty halved; the whole chromatic scale is yours. Chromatic runs of 3+ play clean, and the Major 3rd (Borrowed Chord) comes online in Minor.' },
+          desc:'CAPSTONE — APPROACH NOTES: any note is clean if the next one lands on a chord tone. And the chromatic run stops being forgiven and starts PAYING: 3+ chromatic steps earn +3 Db, +1 per note beyond, up to +5 — the biggest single payout in the game. Also brings the Major 3rd (Borrowed Chord) online in Minor.' },
       ],
     },
     // ── THE RIG — your amp deck lives at your corner and grows (AMP_DECK_DESIGN.md §4) ──
@@ -3018,10 +3018,11 @@ function Game({ gameState, onReturnToLobby }) {
     const unpardonedDiscord = countUnpardoned(trackClassified);
     const contextPardons    = countPardonedByStack(trackClassified);  // B4 reads this
     const effectiveDiscord = Math.max(0, unpardonedDiscord - (freestylePardon ? 1 : 0));
-    // chromClimbActive: if discord_4 unlocked and a chromatic run of 3+ is present,
-    // treat the track as non-discord for scoring (individual grey notes are cosmetic only)
-    // Note: chromClimbActive is set after the discord upgrade flags below — forward ref is fine
-    // because we only use it after those lines. We declare it here as a let and assign below.
+    // `allInScale` — "the crowd heard a clean track." Fed to gainFans and the maj3
+    // gated ending. B6 removed its old scoring role: a chromatic run of 3+ still
+    // flips it true (see the B6 block below) but that no longer waives the Db
+    // penalty, which is now per-note via B7. Declared `let` here and possibly
+    // reassigned after the discord-unlock flags are known.
     let allInScale     = effectiveDiscord === 0;
     const lastNote     = melodyLine[melodyLine.length - 1];
     const firstNote    = melodyLine[0];
@@ -3066,10 +3067,24 @@ function Game({ gameState, onReturnToLobby }) {
     const isMajorThirdEnd    = hasBorrowed && scaleMode === 'minor' && allInScale && lastNote === intervals.majorThird;
     // Tritone end — only fires if Devil's Interval (discord_3) is unlocked
     const isTritoneEnd       = hasTritoneUp && lastNote === intervals.tritone;
-    // Chromatic run: detect longest run; discord only if discord_4 not unlocked
+    // ── B6: CHROMATIC RUN — PARDON BECAME PAYOUT ─────────────────────────────
+    // The run used to switch the discord penalty off for the WHOLE track. It no
+    // longer does: it pays Db instead (`chromRun.db`, applied in the DB scoring
+    // block below) and the wrong notes are priced per-note by B7.
+    //
+    // Dropping the blanket pardon is the substance of "pardon becomes payout," and
+    // it matters more than it looks: the old rule pardoned every unrelated wrong
+    // note elsewhere in the track too, so one chromatic run bought total immunity.
+    // Now the run's own notes are pardoned only where the Approach Notes tier
+    // actually pardons them — i.e. where they RESOLVE onto a chord tone — and
+    // anything else you got wrong still costs. Same gesture, real gradient.
     const chromRunLen        = detectChromaticRun(melodyLine);
-    // If discord_4 unlocked and a chrom run of 3+ exists, the whole track is treated as non-discord
     const chromClimbActive   = hasChromClimb && chromRunLen >= 3;
+    // ⚠️ `allInScale` is KEPT true for a 3+ run, but note what it now feeds: the
+    // maj3 gated ending and `gainFans` — flavour and crowd, NOT the Db penalty.
+    // A deliberate chromatic run should still read to the crowd as intent rather
+    // than as a fistful of mistakes. If that ever needs to change, change it here;
+    // the scoring path no longer looks at this flag at all.
     if (chromClimbActive) allInScale = true;
 
     // ── ⚔️ COMBAT FLAVOR TRIGGERS — REMOVED (B1) ─────────────────────────────
@@ -3178,14 +3193,35 @@ function Game({ gameState, onReturnToLobby }) {
     const cleansePatch = {};
 
     // ── DB SCORING ────────────────────────────────────────────────────────────
-    // A track scores its base Decibills, then a DISCHORD costs a flat 1 point
-    // for the whole track (not 1 per note), floored at 0. A dischord note no longer
-    // wipes the round to zero — it just trims a point. Chromatic Climb pardons fully;
-    // Chromatic Mastery halves the (already small) cost.
-    const hasChromMastery = (actingNoteState?.unlockedSkills ?? []).includes('theory_chromatic');
-    const discordFlat    = effectiveDiscord > 0 ? 1 : 0;
-    const discordPenalty = chromClimbActive ? 0 : (hasChromMastery ? Math.floor(discordFlat / 2) : discordFlat);
+    // ── B7: THE DISCORD PENALTY GETS TEETH ───────────────────────────────────
+    // Was a flat −1 for the whole track however many notes were wrong, which made
+    // the entire pardon economy worth at most one point — a 46-Db ladder sold to
+    // dodge a one-point tax. Now it's per note, first one free, floored at 3.
+    // The curve lives in `discordPenaltyFor` (music/context.js) so the assertions
+    // can reach it; see there for why the grace and the floor are both load-bearing.
+    //
+    // `effectiveDiscord` is the count from `classifyTrack` — the SETTLED count,
+    // after the chord context has had its say — minus Intergalactic 0's freestyle
+    // pardon. The two pardons stack (freestyle + grace = two free notes for that
+    // spirit), which is deliberate: freestyle is his identity and it also feeds the
+    // P-score and the crowd, so it isn't merely a discount on this one line.
+    //
+    // Removed here: the `theory_chromatic` "penalties halved" effect and the
+    // Chromatic Climb full pardon. B3's Approach Notes tier already pardons the
+    // notes that resolve, and halving on top of it was near-total immunity — two
+    // effects doing one job, one of them invisible.
+    // (`hasChromMastery` is gone with the halving it gated. B6's payout reads the
+    //  same skill through `chromaticPayout`, which does its own tier check.)
+    const discordPenalty = discordPenaltyFor(effectiveDiscord);
     const baseScore = scoreTrackDB(melodyLine, fourthNote, fifthNote);
+
+    // ── B6: THE CHROMATIC RUN'S PAYOUT ───────────────────────────────────────
+    // The capstone's one loud effect: a run of 3+ pays +3 Db, +1 per note beyond,
+    // capped +5. Interior gesture paying Db is a deliberate break with B4's routing
+    // rule — the exception that makes the word "mastery" mean something — and it
+    // deliberately stacks with the Drive/Sustain those same notes earn where they
+    // resolve. Both calls are documented at `chromaticPayout`.
+    const chromRun = chromaticPayout(chromRunLen, actingNoteState?.unlockedSkills ?? []);
 
     // ── B5: HARMONIC LOCK ────────────────────────────────────────────────────
     // B2 halved the ending ladder so Db came from playing well rather than from
@@ -3207,7 +3243,12 @@ function Game({ gameState, onReturnToLobby }) {
 
     let breakdown = [...baseScore.breakdown];
     if (lock.bonus > 0) breakdown.push(`🔒 ${lock.chordName} +${lock.bonus}`);
-    const preDiscordPoints = baseScore.points + lock.bonus;
+    // B6 lands in the same Db pot as the ending and the lock, BEFORE the discord
+    // subtraction — one arithmetic path, and a run that leaves the rest of the track
+    // in ruins still has to pay for the ruins. With the penalty floored at 3 and the
+    // payout starting at 3, a run is never a net loss on its own.
+    if (chromRun.db > 0) breakdown.push(`⚡ chromatic run +${chromRun.db}`);
+    const preDiscordPoints = baseScore.points + lock.bonus + chromRun.db;
     let earned = Math.max(0, preDiscordPoints - discordPenalty);
     if (discordPenalty > 0 && preDiscordPoints > 0) {
       breakdown.push(`−${discordPenalty} discord`);
@@ -3333,7 +3374,21 @@ function Game({ gameState, onReturnToLobby }) {
     //  along with their effects. The endings still pay Performance Score via
     //  hasGatedEnding, and B5 will give them a Db payoff.)
     // (E-Rush flash removed — Ronin rework)
-    if (chromClimbActive && unpardonedDiscord > 0) flashLines.push(`⚡ Chromatic Climb — discord pardoned`);
+    // ⚡ B6 — THE CAPSTONE LINE. This is the one gesture in the game that breaks the
+    // Db/Drive routing rule, so it gets said like it means something rather than
+    // added as another quiet row. Note it names the run LENGTH: the payout scales
+    // with it and the player should be able to see that it does.
+    if (chromRun.db > 0) {
+      flashLines.push(`⚡ CHROMATIC RUN ×${chromRun.runLen} — DB +${chromRun.db}`);
+    } else if (chromRunLen >= 3) {
+      // Run of 3+ but no capstone yet: the notes still cost. Say so — this is the
+      // advertisement for the skill, and it's honest about what it's advertising.
+      // Gated on the run length rather than on `chromClimbActive`, deliberately:
+      // `discord_4` is GRANTED BY `theory_chromatic` (THEORY_DISCORD_GRANTS), so a
+      // spirit holding the climb but not the capstone barely exists and this branch
+      // would never fire for the players who most need to see it.
+      flashLines.push(`⚡ Chromatic run ×${chromRunLen} — Chromatic Mastery would pay +${Math.min(5, 3 + (chromRunLen - 3))} for this`);
+    }
     // 🎸 B3/B4 — say the pardon out loud, and say which stack paid for it. The
     // player should be able to point at a stack and name the reason a grey note
     // scored, the turn it happens. B4 names the destination too, because the two
@@ -3354,7 +3409,13 @@ function Game({ gameState, onReturnToLobby }) {
     if (perfFreestyle > 0)    flashLines.push('🌀 Freestyle — first wrong note landed perfect!');
     if (canBank)              flashLines.push(`💾 Banked: ${newBankedNote.note}`);
     if (totalNotes > actingSpeed && !canBank) flashLines.push(`⚠️ ${totalNotes - actingSpeed} note(s) discarded (bank full)`);
-    if (discordPenalty > 0)   flashLines.push(`⚡ ${unpardonedDiscord} Dischord — −${discordPenalty} DB`);
+    // B7 — the count and the charge are different numbers now (first one free,
+    // floor 3), so show both or the player reads the grace as a bug.
+    if (discordPenalty > 0) {
+      flashLines.push(`⚡ ${unpardonedDiscord} Dischord — −${discordPenalty} DB (1st free)`);
+    } else if (unpardonedDiscord > 0) {
+      flashLines.push(`⚡ ${unpardonedDiscord} Dischord — free this turn`);
+    }
     flashLines.push(`🎭 Performance ${perfScore}/10`);
     if (perfDbBonus > 0)    flashLines.push(`🎸 Flair DB +${perfDbBonus}`);
     if (perfFansGained > 0) flashLines.push(`🎤 +${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''} won over!`);
@@ -3367,7 +3428,7 @@ function Game({ gameState, onReturnToLobby }) {
     // ── LOG ───────────────────────────────────────────────────────────────────
     const scoreStr = earned > 0
       ? ` · 🎯 +${earned}pts (${breakdown.join(', ')})${dbOverflow > 0 ? ` +${dbOverflow}DB overflow` : ''}${upgradeTriggered ? ` · 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!` : ` · DB [${newDBPoints}/${targetCost}]`}`
-      : (discordPenalty > 0 ? ` · ⚡ ${unpardonedDiscord} Dischord — no points` : ` · DB [${newDBPoints}/${targetCost}]`);
+      : (discordPenalty > 0 ? ` · ⚡ ${unpardonedDiscord} Dischord — −${discordPenalty}, no points` : ` · DB [${newDBPoints}/${targetCost}]`);
     const driveMsg   = rawDriveBoost > 0   ? ` · ⚔️ Drive +${newTempDrive}` : '';
     const sustMsg    = rawSustainBoost > 0  ? ` · 🛡️ Sustain +${newTempSustain}` : '';
     const triMsg     = '';   // B5 — tritone "Damage ×2" removed (it multiplied nothing)
@@ -3377,7 +3438,9 @@ function Game({ gameState, onReturnToLobby }) {
     const rsMsg      = '';
     const tritoneEndMsg = '';
     const chrMsg     = '';   // B1 — chromatic-run Stagger removed
-    const chromClimbMsg = (chromClimbActive && unpardonedDiscord > 0) ? ' · ⚡ Chrom Climb — no discord' : '';
+    // B6 — the payout replaces the old "no discord" pardon note. `breakdown` already
+    // carries the +N inside scoreStr; this is the headline copy for the log.
+    const chromClimbMsg = chromRun.db > 0 ? ` · ⚡ CHROMATIC RUN ×${chromRun.runLen} DB+${chromRun.db}` : '';
     const speedMsg   = totalNotes > actingSpeed
       ? ` · SPD ${actingSpeed}/${totalNotes}${canBank ? ` · 💾 ${newBankedNote.note} banked` : ' · bank full'}`
       : ` · SPD ${hexes}/${actingSpeed}`;
@@ -3791,7 +3854,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'theory_sus')       addLog(`🕊️ ${spirit?.name} — SUSPENSIONS! Ending on the 2nd or 4th now rings out for bonus Flair.`);
     if (skillId === 'theory_dom7')      addLog(`🎷 ${spirit?.name} — DOMINANT 7th! The ♭7 joins your clean palette, and your stacks open a 4th slot — you can build the chord you just learned to play over.`);
     if (skillId === 'theory_modes')     addLog(`🌀 ${spirit?.name} — MODAL SHIFT! Lydian ♯4 and Mixolydian ♭7 are now clean color tones, and your stacks open a 5th slot — 9th chords are in reach.`);
-    if (skillId === 'theory_chromatic') addLog(`⚡ ${spirit?.name} — CHROMATIC MASTERY! All Discord penalties are halved.`);
+    if (skillId === 'theory_chromatic') addLog(`⚡ ${spirit?.name} — CHROMATIC MASTERY! Approach notes are clean, and a chromatic run of 3+ now PAYS (+3 Db, up to +5).`);
     // THE LADDER absorbs the old Discord path: climbing Theory grants the colour-note
     // capabilities the combat logic checks for (discordUnlocks + unlockedSkills flags).
     // Table is now the pure `THEORY_DISCORD_GRANTS` from engine/systems/skills.js.

@@ -176,7 +176,9 @@ export function getFourthFifth(root, mode = 'major') {
 //   theory_minor  → unlocks the Minor scale + the Major/Minor pivot
 //   theory_dom7   → the ♭7 (dominant / blues color)
 //   theory_modes  → modal color tones: Lydian ♯4 + Mixolydian ♭7 (Dorian 6 in minor)
-// (theory_sus = ending flair, theory_chromatic = halved discord — handled in Game.)
+// (theory_sus = ending flair. theory_chromatic adds no scale tones at all — it is
+//  the Approach Notes pardon tier plus B6's chromatic-run payout, both of which live
+//  in music/context.js and are applied at commit, not in the playable pool.)
 export function playableScale(rootNote, mode, unlocks = []) {
   const u = unlocks instanceof Set ? unlocks : new Set(unlocks || []);
   const pool = getSpelledPool(rootNote, mode);
