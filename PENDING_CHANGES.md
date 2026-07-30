@@ -17,11 +17,47 @@ B0 is the spine; several later items assume it. Task C depends on B3 shipping fi
 (B8 was pulled forward and is fully shipped — the mode question turned out to be a
 chord-context question, so it landed alongside B3 rather than after B7.)
 
-**Status:** ✅ Task A, B0 (a + b), B1, B2, B3 and **B8 (core + wiring)** are SHIPPED
-on branch `feat/chord-strength-b0` (local only — nothing pushed). Two changes were
-made that this doc did not ask for: the **note speller** was rewritten (it was
+**Status:** ✅ Task A, B0 (a + b), B1, B2, B3, **B4** and **B8 (core + wiring)** are
+SHIPPED on branch `feat/chord-strength-b0` (local only — nothing pushed). Two changes
+were made that this doc did not ask for: the **note speller** was rewritten (it was
 mis-spelling 14 borrowed degrees) and **B8 was reopened and reversed** — see below.
-**Next up is B4.**
+**Next up is B5** — but read the `feedbackBoost` note first, it's a decision B5 needs.
+
+### Notes from the B4 pass
+
+- **Color folds into the raw boost, it does not add on top.** B4 said "feeds
+  `tempDrive`/`tempSustain`, exactly like `driveBoostFromRun` already do," and those
+  two are not additive — they're **highest-wins with the loser discarded into Db**.
+  So the shipped line is `driveBoostFromRun(runLen) + colorDrive`, and the sum then
+  runs through the existing comparison untouched. The alternative (add color after
+  `newTempDrive` settles) would have made color the only boost in the game that
+  can't be discarded — a guaranteed +2 that ignores the overflow economy the other
+  two sources pay into.
+- **A consequence worth knowing:** because color raises `rawDriveBoost`, it can push
+  the total past `prevTempDrive` and thereby **convert a stale temp Drive into Db**
+  as overflow. That's the existing machinery behaving normally, but it means color
+  notes have a second-order Db effect the design didn't predict. It's small and it
+  points the right way (color is never dead value), so it shipped as-is.
+- **Mojo Drain blocks the color payout,** matching the other two boosts. The flash
+  line says so out loud (`— Mojo Drain, no payout`) rather than silently paying
+  nothing, because "your chord legalized 2 notes" with no Drive movement next to it
+  reads as a bug.
+- **Routing was already done by B3.** `classifyTrack` stamps each pardoned note with
+  the stack that authorized it and `claimAt` resolves "legal in both" to the higher
+  `rank` with ties to Drive. The commit site counts `contextPardons` and nothing
+  more — it does **not** re-derive which stack wins. If you ever need to change the
+  tie-break, `claimAt` in `context.js` is the only place it lives.
+- **⚠️ B6 has a double-pay decision waiting.** At `theory_chromatic` the notes in a
+  chromatic run get pardoned as approach notes, so under B4 they already pay
+  Drive/Sustain. B6 then wants to pay the same run **+3 Db** as its deliberate
+  exception. That's both currencies for one gesture. Either B6's payout should
+  suppress the color routing for notes inside the run, or the exception should be
+  priced knowing it stacks. **Decide this in B6, not by accident.**
+- Three new assertion groups in `b0check.mjs` (38 checks total, was 35): every
+  pardon pays exactly **one** stack (never zero, never twice), rank breaks the tie
+  and the tie goes to Drive across 20 repeat runs, and buying a higher tier never
+  *reduces* what a track pays. The `min(2, n)` cap is restated in the test as a
+  reminder that the real one lives in the JSX and can't be imported.
 
 ### Notes from the B2 / B3 pass
 
@@ -381,7 +417,7 @@ commit log all read the same single pass. Don't recompute the pardon in three pl
 
 ---
 
-### B4 — Color notes pay the stack that authorized them
+### B4 — Color notes pay the stack that authorized them ✅ SHIPPED
 
 A pardoned off-scale note isn't merely forgiven, it **earns** — but in Drive/Sustain, not Db.
 
@@ -391,6 +427,12 @@ A pardoned off-scale note isn't merely forgiven, it **earns** — but in Drive/S
 
 **Cap at +2 per stack per commit.** Feeds `tempDrive` / `tempSustain`, exactly like
 `driveBoostFromRun` and `sustainBoostFromPattern` already do.
+
+**Shipped in** `confirmNoteTrack` (`src/rlsw-simulator-v3_8_1.jsx` ~3110–3145) as
+`colorDrive` / `colorSustain`, folded into `rawDriveBoost` / `rawSustainBoost` so the
+sum flows through the existing highest-wins/overflow-to-Db comparison. Blocked by
+Mojo Drain like its two neighbours. See "Notes from the B4 pass" at the top for the
+fold-vs-add reasoning and the B6 double-pay warning.
 
 **Why not Db:** the game already teaches a positional rule — *the middle of the track
 builds Drive/Sustain* (`driveBoostFromRun`, `sustainBoostFromPattern` read the interior),

@@ -3099,7 +3099,30 @@ function Game({ gameState, onReturnToLobby }) {
 
     // (E-Rush removed — Ronin rework)
 
-    const rawDriveBoost    = !isMojoDrained ? driveBoostFromRun(diatonicRunLen) : 0;
+    // ── B4: COLOR NOTES PAY THE STACK THAT AUTHORIZED THEM ───────────────────
+    // A pardoned off-scale note doesn't just escape the Discord penalty, it earns —
+    // in Drive/Sustain, never in Db. Db is the ENDING's payout (scoreTrackDB reads
+    // the last note); Drive/Sustain is the INTERIOR's payout (driveBoostFromRun and
+    // sustainBoostFromPattern both read the middle). Color is an interior gesture,
+    // so it pays where interior gestures already pay and the player has no second
+    // mental column to keep.
+    //
+    // Routing is already decided for us: classifyTrack stamped each pardoned note
+    // with the stack that legalized it, and claimAt resolved "legal in both" to the
+    // higher-ranked chord with ties going to Drive. Count from contextPardons; do
+    // NOT re-derive which stack wins here, or this and the flash line will drift.
+    //
+    // Cap +2 per stack per commit — a 6-note chromatic smear over a dom9 shouldn't
+    // out-earn the diatonic run the boost was built for.
+    const colorDrive   = !isMojoDrained ? Math.min(2, contextPardons.drive)   : 0;
+    const colorSustain = !isMojoDrained ? Math.min(2, contextPardons.sustain) : 0;
+
+    // Folded into the raw boost rather than added after the fact, so color flows
+    // through the SAME highest-wins/overflow-to-Db machinery as every other boost.
+    // The alternative — adding on top once newTempDrive settles — would make color
+    // the only boost in the game that can't be discarded, i.e. a guaranteed +2 that
+    // ignores the economy the other two sources pay into.
+    const rawDriveBoost    = !isMojoDrained ? driveBoostFromRun(diatonicRunLen) + colorDrive : 0;
     const prevTempDrive    = actingNoteState?.tempDrive ?? 0;
     let newTempDrive       = prevTempDrive;
     let driveOverflowToDB  = 0; // lower-value discard feeds Decibills
@@ -3115,7 +3138,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     // ── FEEDBACK BOOST: repeat patterns (scale-only, blocked by Mojo Drain) ───
     const repeatPatLen      = detectRepeatPattern(melodyLine, currentScale);
-    const rawSustainBoost   = !isMojoDrained ? sustainBoostFromPattern(repeatPatLen) : 0;
+    const rawSustainBoost   = !isMojoDrained ? sustainBoostFromPattern(repeatPatLen) + colorSustain : 0;
     const prevTempSustain   = actingNoteState?.tempSustain ?? 0;
     let newTempSustain      = prevTempSustain;
     let sustainOverflowToDB = 0;
@@ -3272,11 +3295,23 @@ function Game({ gameState, onReturnToLobby }) {
     //  hasGatedEnding, and B5 will give them a Db payoff.)
     // (E-Rush flash removed — Ronin rework)
     if (chromClimbActive && unpardonedDiscord > 0) flashLines.push(`⚡ Chromatic Climb — discord pardoned`);
-    // 🎸 B3 — say the pardon out loud. The player should be able to point at the
-    // stack and name the reason a grey note scored, the turn it happens.
+    // 🎸 B3/B4 — say the pardon out loud, and say which stack paid for it. The
+    // player should be able to point at a stack and name the reason a grey note
+    // scored, the turn it happens. B4 names the destination too, because the two
+    // stacks pay different currencies and "your chord legalized 2 notes" doesn't
+    // tell you to look at Drive. The ⚔️/🛡️ amounts are replaced with an explicit
+    // "no payout" when Mojo Drain ate it — claiming credit for points that never
+    // landed teaches the wrong rule. (With no drain, pardonedTotal > 0 guarantees at
+    // least one of the two is non-zero, so the bare-suffix case is unreachable.)
     const pardonedTotal = contextPardons.drive + contextPardons.sustain;
-    if (pardonedTotal > 0) flashLines.push(
-      `🎸 Your chord legalized ${pardonedTotal} note${pardonedTotal !== 1 ? 's' : ''}`);
+    if (pardonedTotal > 0) {
+      const paidTo = [];
+      if (colorDrive   > 0) paidTo.push(`⚔️ +${colorDrive}`);
+      if (colorSustain > 0) paidTo.push(`🛡️ +${colorSustain}`);
+      flashLines.push(
+        `🎸 Your chord legalized ${pardonedTotal} note${pardonedTotal !== 1 ? 's' : ''}`
+        + (paidTo.length > 0 ? ` — ${paidTo.join(' ')}` : isMojoDrained ? ' — Mojo Drain, no payout' : ''));
+    }
     if (perfFreestyle > 0)    flashLines.push('🌀 Freestyle — first wrong note landed perfect!');
     if (canBank)              flashLines.push(`💾 Banked: ${newBankedNote.note}`);
     if (totalNotes > actingSpeed && !canBank) flashLines.push(`⚠️ ${totalNotes - actingSpeed} note(s) discarded (bank full)`);

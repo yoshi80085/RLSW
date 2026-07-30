@@ -320,3 +320,98 @@ for (const stack of [['C','D#','G'], ['C','D#','G','A#'], ['C','D#','F#'], ['C',
   if (before.reason === 'locked') assert.equal(after.mode, 'minor', `${stack.join('-')}: unlock didn't deliver minor`);
 }
 console.log("✓ B8 wiring: buying Minor Tonality promotes a locked stack and never demotes any other");
+
+// ── B4: COLOR NOTES PAY THE STACK THAT AUTHORIZED THEM ──────────────────────
+// The payout itself lives in confirmNoteTrack (React state, not reachable from
+// bare node). What IS reachable is every routing invariant that payout assumes,
+// so if one stops holding the failure surfaces here instead of in play.
+//
+// The scale used throughout: C major. Everything outside it is a candidate for
+// pardon, and therefore a candidate for payment.
+const CMAJ = ['C','D','E','F','G','A','B'];
+
+// The cap B4 applies at the commit site, restated so the arithmetic is pinned
+// even though the call site can't be imported. If this formula changes in the
+// JSX, this assertion is the reminder that it changed in two places.
+const b4cap = n => Math.min(2, n);
+assert.deepEqual([0,1,2,3,6].map(b4cap), [0,1,2,2,2], 'B4: cap is min(2, n) per stack');
+
+// EVERY PARDONED NOTE PAYS EXACTLY ONE STACK. If drive + sustain ever came out
+// below the pardoned total, some note would be forgiven for free — pardoned by a
+// chord but paying nobody, which is the one outcome B4 exists to prevent.
+// Above the total would be worse: the same note paid twice.
+const b4tracks = [
+  ['C','D#','G'], ['C#','D#','F#','G#'], ['A#','B','C'], ['F#','C','G'],
+  ['C','E','G','B'], ['D#','F#','A#','C#','E'], ['C','C#','D','D#','E'],
+];
+const b4stacks = [
+  [['C','E','G'],      ['A','C','E']],
+  [['C','D#','G'],     ['F','A','C']],
+  [['C','E','G','A#'], ['D','F#','A','C']],
+  [['C','G'],          []],
+  [[],                 []],
+  [['C','D#','F#','A'],['G','B','D','F']],
+];
+let b4checked = 0;
+for (const track of b4tracks) {
+  for (const [ds, ss] of b4stacks) {
+    for (const unlocks of [[], MINOR, DOM7, MODES, CHROM]) {
+      const cl   = classifyTrack(track, CMAJ, ds, ss, unlocks);
+      const paid = countPardonedByStack(cl);
+      const pardoned = cl.filter(c => c.pardonedBy !== null).length;
+      assert.equal(paid.drive + paid.sustain, pardoned,
+        `B4: ${track.join('-')} / ${ds.join('-')||'∅'} — ${pardoned} pardoned but ${paid.drive + paid.sustain} paid`);
+      // Nobody is paid for a note that was never in trouble, and nobody is paid
+      // for a note that stayed in trouble.
+      for (const c of cl) {
+        if (c.inScale) assert.equal(c.stack, null, `B4: in-scale ${c.note} named a paying stack`);
+        if (c.pardonedBy === null) assert.equal(c.stack, null, `B4: unpardoned ${c.note} named a paying stack`);
+        else assert.ok(c.stack === 'drive' || c.stack === 'sustain',
+          `B4: ${c.note} pardoned by ${c.pardonedBy} but routed to ${c.stack}`);
+      }
+      // The cap can never invent income.
+      assert.ok(b4cap(paid.drive)   <= paid.drive,   'B4: cap raised the Drive payout');
+      assert.ok(b4cap(paid.sustain) <= paid.sustain, 'B4: cap raised the Sustain payout');
+      b4checked++;
+    }
+  }
+}
+console.log("✓ B4 routing:", b4checked, "track×stack×tier combinations — every pardon pays exactly one stack");
+
+// RANK BREAKS THE TIE, AND THE TIE GOES TO DRIVE. A note legal against both
+// stacks must be routed to the more sophisticated chord — that's what makes
+// building the better stack worth doing — and an actual rank tie must land on
+// Drive deterministically rather than by set-iteration accident.
+// Both stacks below literally contain D#; only their rank differs.
+{
+  const dHigh = classifyTrack(['D#'], CMAJ, ['C','D#','F#','A'], ['C','D#','G'], DOM7);
+  assert.equal(dHigh[0].stack, 'drive',   'B4: higher-ranked Drive stack should claim the note');
+  const sHigh = classifyTrack(['D#'], CMAJ, ['C','D#','G'], ['C','D#','F#','A'], DOM7);
+  assert.equal(sHigh[0].stack, 'sustain', 'B4: higher-ranked Sustain stack should claim the note');
+  // Same chord id on both sides → same rank → Drive.
+  const tie = classifyTrack(['D#'], CMAJ, ['C','D#','G'], ['C','D#','G'], DOM7);
+  assert.equal(tie[0].stack, 'drive', 'B4: rank tie must go to Drive');
+  // Run the tie 20× to be sure it is decided by rank, not by iteration order.
+  for (let i = 0; i < 20; i++) {
+    assert.equal(classifyTrack(['D#'], CMAJ, ['C','D#','G'], ['C','D#','G'], DOM7)[0].stack,
+      'drive', 'B4: tie-break is not deterministic');
+  }
+}
+console.log("✓ B4 routing: higher chord rank claims a shared note, ties resolve to Drive every time");
+
+// A PARDON IS A PROMOTION HERE TOO. Buying a tier may add payees but must never
+// remove one — if a note paid Drive at theory_dom7 and paid nobody at
+// theory_modes, the purchase would have cost the player income.
+for (const track of b4tracks) {
+  for (const [ds, ss] of b4stacks) {
+    let prev = null;
+    for (const unlocks of [MINOR, DOM7, MODES, CHROM]) {
+      const paid = countPardonedByStack(classifyTrack(track, CMAJ, ds, ss, unlocks));
+      const total = paid.drive + paid.sustain;
+      if (prev !== null) assert.ok(total >= prev,
+        `B4: ${track.join('-')} / ${ds.join('-')||'∅'} — payout dropped from ${prev} to ${total} on unlock`);
+      prev = total;
+    }
+  }
+}
+console.log("✓ B4 routing: buying a higher tier never reduces what the track pays");
