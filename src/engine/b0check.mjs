@@ -14,7 +14,7 @@ import { makeInitialNoteState } from "../engine/systems/economy.js";
 import { evaluateChord, CHORD_TEMPLATES } from "../music/chords.js";
 import { scoreTrackDB } from "../music/cadence.js";
 import { getSpelledPool, pitchIndex, PITCH_INDEX, canonicalRoot } from "../music/notes.js";
-import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, stackContext, discordPenaltyFor } from "../music/context.js";
+import { chordContext, contextClaim, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, stackContext, discordPenaltyFor } from "../music/context.js";
 import { detectChromaticRun } from "../music/cadence.js";
 import { skillEligibility, THEORY_DISCORD_GRANTS } from "../engine/systems/skills.js";
 import assert from "node:assert";
@@ -865,6 +865,131 @@ console.log("✓ initial grant: theory_major's gate opens on turn one for every 
   }
 }
 console.log("✓ B9: THEORY_DISCORD_GRANTS is a palette table only — it grants no context tiers, by design");
+
+// ═══ STACK-COLOURED NOTE STOCK — contextClaim + payout routing ══════════════
+// The note stock stopped lighting pardoned notes gold and started lighting them
+// with the COLOUR OF THE STACK THAT GETS PAID: Drive red, Sustain blue, and an
+// alternating pulse when both qualify and the player picks at commit.
+//
+// The whole feature rests on one property — the colour on the hex and the Db the
+// note earns must come from the same decision. `contextClaim` (the highlight) and
+// `classifyTrack` (the settlement) are separate entry points, so that property is
+// only true as long as both keep routing through `claimAt`. These assertions are
+// what will fail if someone "optimizes" one of them into its own logic.
+{
+  const NONE  = [];
+  const MINOR = ['theory_minor'];
+  const DOM7  = ['theory_minor', 'theory_dom7'];
+  const [C, Cs, D, Eb, E, F, Fs, G, Ab, A, Bb, B] = [0,1,2,3,4,5,6,7,8,9,10,11];
+  void Cs; void D; void F; void Fs; void A;
+
+  // ── Tier gating: no tiers, no claim. Matches chordContext returning empty. ──
+  assert.equal(contextClaim(E, ['C','E','G'], [], NONE), null,
+    'contextClaim: below theory_minor nothing is claimed — melody is judged against the key alone');
+
+  // ── Single-stack attribution, both directions. ──
+  const dOnly = contextClaim(Eb, ['C','Eb','G'], ['C','E','G'], MINOR);
+  assert.equal(dOnly?.stack, 'drive',   'a note only the Drive stack holds pays Drive');
+  assert.equal(dOnly?.both,  false,     '…and is not dual-legal');
+  const sOnly = contextClaim(Eb, ['C','E','G'], ['C','Eb','G'], MINOR);
+  assert.equal(sOnly?.stack, 'sustain', 'a note only the Sustain stack holds pays Sustain');
+  assert.equal(sOnly?.both,  false,     '…and is not dual-legal');
+
+  // ── `both` fires only when each stack legalizes the pitch INDEPENDENTLY. ──
+  // Identical stacks: every literal note is claimed twice, tie → Drive.
+  const dual = contextClaim(G, ['C','E','G'], ['C','E','G'], MINOR);
+  assert.equal(dual?.both,  true,    'a pitch in BOTH stacks is dual-legal');
+  assert.equal(dual?.stack, 'drive', '…and defaults to Drive on a rank tie');
+  // Rank tie-break: the Sustain stack spells a richer chord, so it claims a note
+  // both reach — the highlight must follow the payout, not alphabetical order.
+  const ranked = contextClaim(Bb, ['C','E','G','Bb'], ['C','E','G','Bb','D'], DOM7);
+  assert.equal(ranked?.both, true, 'shared ♭7 is dual-legal at the chord tier');
+  assert.equal(ranked?.stack, 'sustain',
+    'the higher-ranked chord claims a shared note — same rule classifyTrack settles with');
+
+  // ── THE LOAD-BEARING ONE: highlight and settlement never disagree. ──
+  // Every pitch class, against a stack pair chosen so the two disagree if anything
+  // is re-derived rather than shared. keyScale is empty so nothing is in-scale and
+  // every pardon is visible.
+  {
+    const drive = ['C','E','G'], sustain = ['C','Eb','G','Bb'];
+    for (const tiers of [MINOR, DOM7, ['theory_minor','theory_dom7','theory_modes']]) {
+      for (let pc = 0; pc < 12; pc++) {
+        const note = getSpelledPool('C', 'major')[pc];
+        const claim = contextClaim(pc, drive, sustain, tiers);
+        const [settled] = classifyTrack([note], [], drive, sustain, tiers);
+        assert.equal(claim === null, settled.pardonedBy === null,
+          `pc ${pc}: the hex lights iff the note is actually pardoned`);
+        if (claim) {
+          assert.equal(claim.stack, settled.stack,
+            `pc ${pc}: the colour on the hex must be the stack that gets paid`);
+          assert.equal(claim.both, settled.both,
+            `pc ${pc}: the alternating pulse must match the routable flag`);
+        }
+      }
+    }
+  }
+}
+console.log("✓ note stock: contextClaim and classifyTrack agree on every pitch — the hex colour IS the payee");
+
+{
+  const DOM7  = ['theory_minor', 'theory_dom7'];
+  const drive = ['C','E','G'], sustain = ['C','E','G'];   // identical → everything dual
+  const track = ['E', 'G', 'E'];                          // three dual-legal notes
+
+  // Omitting `routing` must reproduce the old behaviour exactly. Anything else
+  // silently rescores every existing save and every bot turn.
+  const base = classifyTrack(track, [], drive, sustain, DOM7);
+  assert.deepEqual(base.map(c => c.stack), ['drive','drive','drive'],
+    'no routing map → the claimAt default stands, unchanged');
+  assert.deepEqual(countPardonedByStack(base), { drive: 3, sustain: 0 },
+    'and the tally is what it was before routing existed');
+
+  // Routing is keyed by TRACK INDEX, not by note — the same pitch at two positions
+  // must be independently routable, or a repeated note becomes un-splittable.
+  const split = classifyTrack(track, [], drive, sustain, DOM7, { 0: 'sustain', 2: 'drive' });
+  assert.deepEqual(split.map(c => c.stack), ['sustain','drive','drive'],
+    'routing is per-index — the same pitch can pay different stacks at different positions');
+  assert.deepEqual(countPardonedByStack(split), { drive: 2, sustain: 1 },
+    'the tally follows the routing');
+
+  // ── Routing may REDIRECT a pardon, never CREATE one. ──
+  // A note only Drive legalizes cannot be handed to Sustain: Sustain didn't earn
+  // it. This is the guard that keeps the choice a tactical one rather than a free
+  // +Db button, so it gets the fuzz.
+  {
+    const d = ['C','E','G'], s = ['D','F#','A'];
+    for (let pc = 0; pc < 12; pc++) {
+      const note = getSpelledPool('C', 'major')[pc];
+      const [plain] = classifyTrack([note], [], d, s, DOM7);
+      for (const forced of ['drive', 'sustain']) {
+        const [bent] = classifyTrack([note], [], d, s, DOM7, { 0: forced });
+        assert.equal(bent.pardonedBy, plain.pardonedBy,
+          `pc ${pc}: routing must never change WHETHER a note is pardoned`);
+        if (!plain.both) {
+          assert.equal(bent.stack, plain.stack,
+            `pc ${pc}: a note only one stack legalized cannot be routed to the other`);
+        }
+      }
+    }
+  }
+
+  // Garbage in the map is inert — a stale key, a bad value, a negative index.
+  const junk = classifyTrack(track, [], drive, sustain, DOM7,
+    { 0: 'bass', 7: 'sustain', '-1': 'sustain', x: 'sustain' });
+  assert.deepEqual(junk.map(c => c.stack), base.map(c => c.stack),
+    'a malformed or stale routing map changes nothing');
+  assert.deepEqual(classifyTrack(track, [], drive, sustain, DOM7, null).map(c => c.stack),
+    base.map(c => c.stack), 'a null routing map is the same as none');
+
+  // In-scale notes are nobody's to route — they were never Discord, so no stack
+  // earned them and none may be paid for them.
+  const inScale = classifyTrack(['E'], ['E'], drive, sustain, DOM7, { 0: 'sustain' });
+  assert.equal(inScale[0].inScale, true);
+  assert.equal(inScale[0].stack, null, 'an in-scale note cannot be routed to a stack');
+  assert.equal(inScale[0].both,  false, 'and is never marked dual-legal');
+}
+console.log("✓ payout routing: per-index, redirect-only, inert on garbage — and identical to the old scoring when omitted");
 
 // ═══ TASK C — STYLE — DELETED ═══════════════════════════════════════════════
 // Six assertion groups covered C4 (the three styles' chord-context reads, the

@@ -6,15 +6,26 @@ import React, { useState } from "react";
 function MockNoteHex({ note, type, used, staggered, small }) {
   const sz = small ? 22 : 26;
   const fs = small ? 8 : 9;
+  // ⚠️ Mirrors the live note stock in rlsw-simulator-v3_8_1.jsx. The tutorial
+  // teaching a palette the game stopped using is worse than no tutorial, so when
+  // colours move there, move them here.
+  // The three unlock-gated discords (tritone / ♭7 / maj3) share ONE look now: their
+  // individual combat effects were deleted in B1 and B5, and red and blue were
+  // reassigned to the Drive and Sustain stacks, which is live information.
+  const UNLOCKED_DISCORD = { border:"#a08fc0", text:"#b8a8d8", bg:"#201a2e", shadow:"0 0 4px #a08fc066" };
   const colors = {
-    tritone:      { border:"#ff3300", text:"#ff3300", bg:"#2a0800", shadow:"0 0 6px #ff330077" },
-    minorSeventh: { border:"#4499ff", text:"#4499ff", bg:"#051525", shadow:"0 0 5px #4499ff77" },
-    majorThird:   { border:"#44ffaa", text:"#44ffaa", bg:"#0a2a1a", shadow:"0 0 5px #44ffaa55" },
+    tritone:      UNLOCKED_DISCORD,
+    minorSeventh: UNLOCKED_DISCORD,
+    majorThird:   UNLOCKED_DISCORD,
     fifth:        { border:"#ff55aa", text:"#ff55aa", bg:"#2a0f1a", shadow:"0 0 5px #ff55aa66" },
     fourth:       { border:"#cc55ff", text:"#cc55ff", bg:"#1a0a2a", shadow:"0 0 5px #cc55ff66" },
     inScale:      { border:"#4488ff", text:"#4488ff", bg:"#0d1f35", shadow:"none" },
     dischord:     { border:"#ff660066", text:"#ff6600", bg:"#1f0d0066", shadow:"none" },
     staggered:    { border:"#ff880066", text:"#ff8800", bg:"#1a0e00", shadow:"none" },
+    // 🎸 Chord-context pardons — the note stock's loudest signal. Same two hexes as
+    // DRIVE_C / SUSTAIN_C in the main file.
+    paysDrive:    { border:"#ff6644", text:"#ff6644", bg:"#2a0f0a", shadow:"0 0 6px #ff664488" },
+    paysSustain:  { border:"#44aaff", text:"#44aaff", bg:"#08202e", shadow:"0 0 6px #44aaff88" },
   };
   const c = staggered ? colors.staggered : colors[type] || colors.inScale;
   return (
@@ -504,9 +515,9 @@ function TutSection_Intervals() {
   const intervals = [
     { note:"F",  label:"4th",      color:"#cc55ff", effect:"DB",         icon:"💜", desc:"A stable, consonant interval — score DB by ending your track here." },
     { note:"G",  label:"5th",      color:"#ff55aa", effect:"DB",         icon:"💗", desc:"The strong perfect fifth — also banks DB when it ends your track." },
-    { note:"E",  label:"Maj 3rd",  color:"#44ffaa", effect:"🔒 Clean note", icon:"✨", desc:"EARNED (Borrowed Chord, Minor key only): the brighter third stops counting as discord, so you can borrow it whenever the line wants it." },
-    { note:"Bb", label:"Min 7th",  color:"#4499ff", effect:"🔒 Clean note",  icon:"🎷", desc:"EARNED (Blues Lick): the flat 7th joins your clean palette in Major — the blues note, no longer a wrong note." },
-    { note:"F#", label:"Tritone",  color:"#ff3300", effect:"🔒 Clean note",  icon:"🔥", desc:"The devil's interval. EARNED (Devil's Interval): it stops breaking harmony in either mode — clean in Major and Minor alike. A tritone anywhere in the track is also worth +1 Performance." },
+    { note:"E",  label:"Maj 3rd",  color:"#b8a8d8", effect:"🔒 Clean note", icon:"✨", desc:"EARNED (Borrowed Chord, Minor key only): the brighter third stops counting as discord, so you can borrow it whenever the line wants it." },
+    { note:"Bb", label:"Min 7th",  color:"#b8a8d8", effect:"🔒 Clean note",  icon:"🎷", desc:"EARNED (Blues Lick): the flat 7th joins your clean palette in Major — the blues note, no longer a wrong note." },
+    { note:"F#", label:"Tritone",  color:"#b8a8d8", effect:"🔒 Clean note",  icon:"🔥", desc:"The devil's interval. EARNED (Devil's Interval): it stops breaking harmony in either mode — clean in Major and Minor alike. A tritone anywhere in the track is also worth +1 Performance." },
     { note:"C",  label:"Octave",   color:"#44aaff", effect:"Die Floor +2",      icon:"🎶", desc:"Open and close on the same note to raise your attack die's floor — no more low rolls." },
   ];
   return (
@@ -514,9 +525,23 @@ function TutSection_Intervals() {
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
         An <span style={{color:"#aa88ff"}}>interval</span> is the musical distance between your
         Root Note and a note you play. The <span style={{color:"#cc55ff"}}>4th</span>, <span style={{color:"#ff55aa"}}>5th</span> and <span style={{color:"#44aaff"}}>octave</span> endings
-        work from your very first turn. The <span style={{color:"#44ffaa"}}>Maj 3rd</span>, <span style={{color:"#4499ff"}}>Min 7th</span> and <span style={{color:"#ff3300"}}>Tritone</span> colours
-        (marked 🔒) are <span style={{color:"#66ccff"}}>earned</span> — climbing the Music Theory ladder widens which notes count as clean.
+        work from your very first turn. The <span style={{color:"#b8a8d8"}}>Maj 3rd, Min 7th and Tritone</span> share
+        one violet look (marked 🔒) because they now do the same thing: they're <span style={{color:"#66ccff"}}>earned</span> — climbing
+        the Music Theory ladder widens which notes count as clean.
       </p>
+      <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
+        <span style={{color:"#ff6644"}}>Red</span> and <span style={{color:"#44aaff"}}>blue</span> are
+        never intervals — they belong to your chord stacks. A note glowing red is one your
+        <span style={{color:"#ff6644"}}> ⚔️ Drive</span> chord pardoned, and playing it feeds Drive;
+        blue means <span style={{color:"#44aaff"}}>🛡️ Sustain</span> pardoned it and Sustain collects.
+        A note pulsing between the two is claimed by both — you decide who gets paid when you commit.
+      </p>
+      <div style={{display:"flex", gap:6, alignItems:"center"}}>
+        <MockNoteHex note="Ab" type="paysDrive" small/>
+        <span style={{fontSize:9, color:"#6a8a9a"}}>pays ⚔️ Drive</span>
+        <MockNoteHex note="Db" type="paysSustain" small/>
+        <span style={{fontSize:9, color:"#6a8a9a"}}>pays 🛡️ Sustain</span>
+      </div>
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
         <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>INTERVAL REFERENCE (Root = C)</div>
         <div style={{display:"flex", gap:3, marginBottom:10}}>

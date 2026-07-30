@@ -148,6 +148,27 @@ export function GameStyles() {
           0%,100% { filter: drop-shadow(0 0 3px #ffd70088); }
           50%     { filter: drop-shadow(0 0 9px #ffd700) drop-shadow(0 0 16px #ffd70055); }
         }
+        /* ⚔️↔🛡️ DUAL-LEGAL NOTE — both stacks legalize this pitch, so the hex says
+           both. Two keyframes because the hex is two elements: .hexw carries the
+           outer shape colour and glow, .hexi the interior and the letter. They must
+           stay phase-locked, hence identical duration/easing at both call sites.
+           The dwell at each end is intentional — a straight crossfade reads as one
+           muddy purple at speed, which is the exact reading we do NOT want, since a
+           third colour would imply a third category. The cycle returns to red at
+           100% so the loop seam is invisible.
+           ⚠️ #ff6644 / #44aaff are DRIVE_C / SUSTAIN_C in rlsw-simulator-v3_8_1.jsx.
+           They're literals here only because this is a CSS string; change one, change
+           both, or the hex will disagree with the stat readouts it's pointing at. */
+        @keyframes stack-dual-hex {
+          0%, 25%   { background: #ff6644; filter: drop-shadow(0 0 7px #ff664488); }
+          42%, 58%  { background: #44aaff; filter: drop-shadow(0 0 7px #44aaff88); }
+          75%, 100% { background: #ff6644; filter: drop-shadow(0 0 7px #ff664488); }
+        }
+        @keyframes stack-dual-ink {
+          0%, 25%   { color: #ff6644; background: #2a0f0a; }
+          42%, 58%  { color: #44aaff; background: #08202e; }
+          75%, 100% { color: #ff6644; background: #2a0f0a; }
+        }
         @keyframes fx-ring {
           0%   { transform: scale(0.55); opacity: 0.95; }
           100% { transform: scale(2.6);  opacity: 0; }

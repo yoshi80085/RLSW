@@ -421,7 +421,7 @@ import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } 
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
 import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote } from "./music/cadence.js";
-import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, discordPenaltyFor } from "./music/context.js";
+import { chordContext, contextClaim, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, discordPenaltyFor } from "./music/context.js";
 import { evaluateChord } from "./music/chords.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -464,6 +464,35 @@ function pickDanceName() {
 // The tritone survives as a colour, an unlock, and +1 Performance Score — all of
 // which do what they say. B3 repurposes the same IDs as the tiers of the
 // chord-context ladder.
+// ── STACK COLOURS — ONE SOURCE, EVERYWHERE ───────────────────────────────────
+// Drive is red and Sustain is blue in the stat readouts (⚔️/🛡️), in the chord
+// commit preview, in the note stock's context highlight, and in the commit-time
+// payout router. Same two hexes in all four places, defined once here, because the
+// whole point of recolouring the highlight was to make "which stack does this note
+// feed" answerable at a glance — and that collapses the moment two screens use two
+// reds. Import these rather than pasting a literal.
+const DRIVE_C   = "#ff6644";
+const SUSTAIN_C = "#44aaff";
+// Dimmed backings for the same pair, for hex interiors and chip fills.
+const DRIVE_BG   = "#2a0f0a";
+const SUSTAIN_BG = "#08202e";
+
+// ── THE UNLOCKED-DISCORD LOOK ────────────────────────────────────────────────
+// The tritone, the ♭7 and the major 3rd each used to own a colour (red, blue,
+// green) from the era when each carried its own combat effect. B1 and B5 deleted
+// every one of those effects; what survives is identical for all three — the
+// unlock makes the note clean, and ending a track on it adds +1 to a Performance
+// Score bucket that caps at 3. Three colours for one behaviour is three things to
+// learn and nothing to learn them for, and two of them were squatting on red and
+// blue, which the stacks now need.
+//
+// So they share one treatment: the locked-discord grey, LIFTED. That reads as what
+// actually happened — the note didn't become a new kind of thing, it came out of
+// the dark. Their identity is still on the hex, in the letter.
+// (4th purple and 5th pink are NOT demoted: those still pay real Db ending bonuses,
+//  +2 and +3, so their colour is still pointing at something.)
+const UNLOCKED_DISCORD = { border: "#a08fc0", text: "#b8a8d8", bg: "#201a2e", shadow: "0 0 4px #a08fc066" };
+
 const DISCORD_UPGRADE_TIERS = [
   {
     id: 'discord_1',
@@ -1696,7 +1725,8 @@ function Game({ gameState, onReturnToLobby }) {
       title: '🎶 Step 2 — Build Your Melody',
       pages: [
         { body: 'Now spend your remaining notes on the MELODY LINE: each note = 1 hex of movement (AP), up to your Speed — extras bank for later. In-scale notes also earn DB. Short track = safe but slow. Long track = mobile but you risk discords.', anchor: 'note-stock' },
-        { body: 'The colored slots mark special intervals — tritone (red, spicy), 5th (pink) and 4th (purple, sturdy), Major 3rd (green), minor 7th (blue). The LAST note matters most: it becomes next turn\'s Root and feeds cadences. When it sounds right, hit COMMIT.', anchor: 'commit-track' },
+        { body: 'RED means a note your ⚔️ Drive chord made legal; BLUE means your 🛡️ Sustain chord did — play it and that stack gets paid. A note flashing between both is claimed by both: you choose who collects, just under the track. Violet slots are discords your unlocks cleaned up; 5th (pink) and 4th (purple) pay bonus DB as endings.', anchor: 'note-stock' },
+        { body: 'The LAST note matters most: it becomes next turn\'s Root and feeds cadences. A gold hex means ending there RESOLVES a cadence — the crowd swells. When it sounds right, hit COMMIT.', anchor: 'commit-track' },
       ],
     },
     move_act: {
@@ -1953,6 +1983,36 @@ function Game({ gameState, onReturnToLobby }) {
     const pc = pitchIndex(note);
     return pc >= 0 && contextPcs.has(pc) && !keyScale.some(n => pitchIndex(n) === pc);
   }
+  // WHICH stack pardoned it — the note stock paints Drive red and Sustain blue off
+  // this, and alternates the two when `both`. Attribution comes from `contextClaim`
+  // rather than being re-derived here on purpose: it runs the same tier ladder and
+  // the same tie-break `classifyTrack` settles the payout with, so the color on the
+  // hex and the Db the note earns cannot drift apart. If you ever find yourself
+  // reimplementing "is it in the Drive stack?" in this file, that's the bug.
+  // Returns null for in-scale notes and for anything the stacks don't reach.
+  function noteContextClaim(note) {
+    if (!isNoteInContext(note)) return null;
+    return contextClaim(pitchIndex(note), actingDriveStack, actingSustainStack,
+                        actingNoteState?.unlockedSkills ?? []);
+  }
+  // ── PAYOUT ROUTING (dual-legal notes) ──────────────────────────────────────
+  // { [trackIndex]: 'drive' | 'sustain' } — the player's answer for notes BOTH
+  // stacks legalized. Keyed by track index rather than by note because the same
+  // pitch can appear twice in one track and the player is entitled to split it.
+  // Absent index = take the default (`claimAt`'s higher-rank-wins, tie to Drive),
+  // which is why an empty map is a complete and correct state and nothing has to
+  // seed it. Cleared with the track at turn start.
+  const payoutRouting = actingNoteState?.payoutRouting ?? {};
+  function setPayoutRoute(i, stack) {
+    if (!acting || hasConfirmed) return;
+    setNoteField(acting.id, { payoutRouting: { ...payoutRouting, [i]: stack } });
+  }
+  // The live read of the track as it stands — same function, same arguments the
+  // commit will use, so the router row below the Commit Track is showing the
+  // player the actual settlement and not a lookalike of it.
+  const liveClassified = classifyTrack(
+    melodyLine, keyScale, actingDriveStack, actingSustainStack,
+    actingNoteState?.unlockedSkills ?? [], payoutRouting);
 
   // (C1's live Style preview lived here — it read `styleCommitDb` on every render
   //  and rendered the payout on the Commit Track as the track was built. Deleted
@@ -2925,6 +2985,9 @@ function Game({ gameState, onReturnToLobby }) {
       melodyLine: [],
       usedStockIdx: [],
       discordCount: 0,
+      // Routing is keyed by track index, so it MUST die with the track — a stale
+      // map would silently reroute whatever note lands on index 3 next.
+      payoutRouting: {},
       // pivotPending intentionally NOT cleared — must still be resolved if active
     });
     addLog('✕ Melody Line cleared');
@@ -3040,9 +3103,14 @@ function Game({ gameState, onReturnToLobby }) {
     // feedback; the SCORE comes from here. The two agree for every tier except
     // theory_chromatic, where the commit count can only be lower — a pardon the
     // player earns by resolving, revealed at the moment they resolve it.
+    //
+    // `payoutRouting` is the last argument: the player's picks for notes both
+    // stacks legalized. It can only redirect a pardon between the two stacks that
+    // already earned it, never create one, so it cannot change `unpardonedDiscord`
+    // or any score below — only which of Drive/Sustain gets credited.
     const trackClassified = classifyTrack(
       melodyLine, keyScale, actingDriveStack, actingSustainStack,
-      actingNoteState?.unlockedSkills ?? []);
+      actingNoteState?.unlockedSkills ?? [], payoutRouting);
     const unpardonedDiscord = countUnpardoned(trackClassified);
     const contextPardons    = countPardonedByStack(trackClassified);  // B4 reads this
     const effectiveDiscord = Math.max(0, unpardonedDiscord - (freestylePardon ? 1 : 0));
@@ -3735,6 +3803,7 @@ function Game({ gameState, onReturnToLobby }) {
           stackCommitsThisTurn: 0,  // 🎸 fresh stack commit budget each turn
           usedStockIdx: carriedUsed,
           discordCount: 0,
+          payoutRouting: {},        // dies with the track it indexes into
           hasConfirmed: false,
           dieFloorBoost: 0,
           smashExposed: false,   // 🎸💥 exposure clears at the start of your own turn
@@ -11038,9 +11107,20 @@ function Game({ gameState, onReturnToLobby }) {
                   <div data-tip-anchor="interval-legend" style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
                     <span style={{fontSize:7,color:"#cc55ff"}}>4th={fourthNote}</span>
                     <span style={{fontSize:7,color:"#ff55aa"}}>5th={fifthNote}</span>
-                    <span style={{fontSize:7,color:"#ff3300"}}>tri={tritoneNote}</span>
-                    <span style={{fontSize:7,color:"#44ffaa"}}>M3={majorThirdNote}</span>
-                    <span style={{fontSize:7,color:"#4499ff"}}>m7={minorSeventhNote}</span>
+                    {/* One colour for all three unlock-gated discords — they behave
+                        identically now, and red/blue belong to the stacks. */}
+                    <span style={{fontSize:7,color:UNLOCKED_DISCORD.text}} title="Discords your unlocks made clean — each adds +1 Performance Score as a track ending">
+                      tri={tritoneNote} M3={majorThirdNote} m7={minorSeventhNote}
+                    </span>
+                    {/* The legend the player actually needs during Step 2. */}
+                    {turnStep === 'melody' && (
+                      <span style={{fontSize:7,color:"#66708a",display:"flex",gap:4,alignItems:"center"}}
+                        title="A lit note is a Discord your chord stack pardoned. Its colour is the stack that gets paid for it.">
+                        <span style={{color:"#3a4055"}}>│</span>
+                        <span style={{color:DRIVE_C}}>⚔️pays Drive</span>
+                        <span style={{color:SUSTAIN_C}}>🛡️pays Sustain</span>
+                      </span>
+                    )}
                   </div>
                   )}
                 </div>
@@ -11293,9 +11373,14 @@ function Game({ gameState, onReturnToLobby }) {
                                 const showMinorSeventhColor = isMinorSeventh && discordUnlocks.includes('discord_1') && scaleMode === 'major';
                                 const showMajorThirdColor   = isMajorThird   && discordUnlocks.includes('discord_2') && scaleMode === 'minor';
                                 const showAsDiscord  = isIntervalNote && !isUnlocked && !inScaleNote;
-                                const hexBorder = showAsDiscord ? "#444455" : showTritoneColor ? "#ff3300" : showMinorSeventhColor ? "#4499ff" : showMajorThirdColor ? "#44ffaa" : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#c0c8d8" : "#444455";
-                                const hexText   = showAsDiscord ? "#555566" : showTritoneColor ? "#ff3300" : showMinorSeventhColor ? "#4499ff" : showMajorThirdColor ? "#44ffaa" : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#e8eef8" : "#555566";
-                                const hexBg     = showAsDiscord ? "#111118" : showTritoneColor ? "#2a0800" : showMinorSeventhColor ? "#051525" : showMajorThirdColor ? "#0a2a1a" : isFifth ? "#2a0f1a" : isFourth ? "#1a0a2a" : inScaleNote ? "#1a2035" : "#111118";
+                                /* Same demotion as the melody-step stock (see UNLOCKED_DISCORD).
+                                   No context colouring here on purpose: this grid is for BUILDING
+                                   the stacks, so "which stack pays this note" isn't a question yet
+                                   — the answer changes with the very click you're about to make. */
+                                const showUnlockedD = showTritoneColor || showMinorSeventhColor || showMajorThirdColor;
+                                const hexBorder = showAsDiscord ? "#444455" : showUnlockedD ? UNLOCKED_DISCORD.border : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#c0c8d8" : "#444455";
+                                const hexText   = showAsDiscord ? "#555566" : showUnlockedD ? UNLOCKED_DISCORD.text   : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#e8eef8" : "#555566";
+                                const hexBg     = showAsDiscord ? "#111118" : showUnlockedD ? UNLOCKED_DISCORD.bg     : isFifth ? "#2a0f1a" : isFourth ? "#1a0a2a" : inScaleNote ? "#1a2035" : "#111118";
                                 /* Benefit preview for the targeted stack */
                                 const targetStack = stackCommitDest === 'sustain' ? sStack : dStack;
                                 const targetCh = stackCommitDest === 'sustain' ? sCh : dCh;
@@ -11362,63 +11447,79 @@ function Game({ gameState, onReturnToLobby }) {
                     const inScale        = inScaleNote;
                     const used           = usedHas(usedStockIdx, idx);
                     const isStaggered    = staggeredSlots.includes(idx);
-                    // Special color rules mirror the Discord unlock gates:
-                    // - tritone: needs discord_3 (out-of-scale until then → gray)
-                    // - minorSeventh: needs discord_1 to show blue (in Major it's out-of-scale
-                    //   without it; in Minor it's naturally in-scale → show as plain white)
-                    // - majorThird: needs discord_2 to show green (in Minor it's out-of-scale
-                    //   without it; in Major it's naturally in-scale → show as plain white)
-                    // - fourth/fifth: always diatonic → always show their color
+                    // Unlock gates, unchanged — only what they PAINT changed. All three
+                    // now share `UNLOCKED_DISCORD` (see its definition): the effects that
+                    // once justified three separate colours were deleted in B1 and B5, and
+                    // red and blue are spoken for now.
+                    // - tritone: needs discord_3 (out-of-scale until then → grey)
+                    // - minorSeventh: needs discord_1 (in Major it's out-of-scale without
+                    //   it; in Minor it's naturally in-scale → plain white)
+                    // - majorThird: needs discord_2 (in Minor it's out-of-scale without it;
+                    //   in Major it's naturally in-scale → plain white)
+                    // - fourth/fifth: always diatonic, still pay Db ending bonuses → keep
+                    //   their own colours
                     const showTritoneColor      = isTritone      && discordUnlocks.includes('discord_3');
                     const showMinorSeventhColor = isMinorSeventh && discordUnlocks.includes('discord_1') && scaleMode === 'major';
                     const showMajorThirdColor   = isMajorThird   && discordUnlocks.includes('discord_2') && scaleMode === 'minor';
+                    const showUnlockedDiscord   = showTritoneColor || showMinorSeventhColor || showMajorThirdColor;
                     // 🎸 B3 — CHORD CONTEXT HIGHLIGHT. A note the key calls wrong that your
-                    // stacks have made legal lights up in Decibill gold, the moment the stack
-                    // qualifies it. This highlight IS the teaching: the player never learns a
-                    // note table, they learn "lit notes are notes that pay me right now" — the
-                    // same habit C2 will reuse for Style. Gold overrides the discord grey,
-                    // because a pardoned note is emphatically not a wrong note.
-                    const litByContext = isNoteInContext(note);
+                    // stacks have made legal lights up the moment the stack qualifies it.
+                    // This highlight IS the teaching: the player never learns a note table,
+                    // they learn "lit notes are notes that pay me right now."
+                    //
+                    // It used to light gold — one colour for "some stack pardoned this,"
+                    // which answered the wrong half of the question. The player already
+                    // knows the note is clean; what they're deciding is whether to feed the
+                    // riff or the shield. So the highlight now names the payee: Drive red,
+                    // Sustain blue, and an alternating red↔blue pulse when both stacks
+                    // legalize it independently and the choice is genuinely theirs (they
+                    // make it at commit — see the payout router under the Commit Track).
+                    //
+                    // Gold is now exclusively the cadence-resolve signal, which is a strict
+                    // improvement: two unrelated mechanics were wearing the same colour on
+                    // the same grid.
+                    const ctxClaim     = noteContextClaim(note);
+                    const litByContext = ctxClaim !== null;
+                    const ctxDual      = ctxClaim?.both === true;
+                    const ctxC         = ctxClaim?.stack === 'sustain' ? SUSTAIN_C : DRIVE_C;
+                    const ctxBg        = ctxClaim?.stack === 'sustain' ? SUSTAIN_BG : DRIVE_BG;
                     // Out-of-scale interval notes that haven't been unlocked → gray discord
                     const showAsDiscord  = isIntervalNote && !isUnlocked && !inScaleNote && !litByContext;
-                    const borderC = litByContext         ? "#ffcc44"
+                    // ⚠️ Context wins over the interval colours, as gold did — a pardoned
+                    // note is emphatically not a wrong note, and "which stack pays me" is
+                    // live information while "you own this unlock" is not.
+                    const borderC = litByContext         ? ctxC
                                   : showAsDiscord        ? "#444455"
-                                  : showTritoneColor     ? "#ff3300"
-                                  : showMinorSeventhColor? "#4499ff"
-                                  : showMajorThirdColor  ? "#44ffaa"
+                                  : showUnlockedDiscord  ? UNLOCKED_DISCORD.border
                                   : isFifth              ? "#ff55aa"
                                   : isFourth             ? "#cc55ff"
                                   : inScaleNote          ? "#c0c8d8"
                                   : "#444455";
-                    const textC   = litByContext         ? "#ffdd77"
+                    const textC   = litByContext         ? ctxC
                                   : showAsDiscord        ? "#555566"
-                                  : showTritoneColor     ? "#ff3300"
-                                  : showMinorSeventhColor? "#4499ff"
-                                  : showMajorThirdColor  ? "#44ffaa"
+                                  : showUnlockedDiscord  ? UNLOCKED_DISCORD.text
                                   : isFifth              ? "#ff55aa"
                                   : isFourth             ? "#cc55ff"
                                   : inScaleNote          ? "#e8eef8"
                                   : "#555566";
-                    const bgC     = litByContext         ? "#2a2008"
+                    const bgC     = litByContext         ? ctxBg
                                   : showAsDiscord        ? "#111118"
-                                  : showTritoneColor     ? "#2a0800"
-                                  : showMinorSeventhColor? "#051525"
-                                  : showMajorThirdColor  ? "#0a2a1a"
+                                  : showUnlockedDiscord  ? UNLOCKED_DISCORD.bg
                                   : isFifth              ? "#2a0f1a"
                                   : isFourth             ? "#1a0a2a"
                                   : inScaleNote          ? "#1a2035"
                                   : "#111118";
-                    const shadow  = litByContext         ? "0 0 7px #ffcc4488"
+                    const shadow  = litByContext         ? `0 0 7px ${ctxC}88`
                                   : showAsDiscord        ? "none"
-                                  : showTritoneColor     ? "0 0 6px #ff330077"
-                                  : showMinorSeventhColor? "0 0 5px #4499ff77"
-                                  : showMajorThirdColor  ? "0 0 5px #44ffaa55"
+                                  : showUnlockedDiscord  ? UNLOCKED_DISCORD.shadow
                                   : isFifth              ? "0 0 5px #ff55aa66"
                                   : isFourth             ? "0 0 5px #cc55ff66"
                                   : inScaleNote          ? "0 0 4px #c0c8d844"
                                   : "none";
-                    const lockTip = litByContext
-                                  ? ` 🎸 Your chord makes this legal`
+                    const lockTip = ctxDual
+                                  ? ` 🎸 BOTH stacks make this legal — you pick who gets paid at commit`
+                                  : litByContext
+                                  ? ` 🎸 Your ${ctxClaim.stack === 'sustain' ? '🛡️ Sustain' : '⚔️ Drive'} chord makes this legal — it pays ${ctxClaim.stack === 'sustain' ? 'Sustain' : 'Drive'}`
                                   : isIntervalNote && !isUnlocked && !inScaleNote
                                   ? ` 🔒 Locked — upgrade Discord path to unlock` : '';
                     // 🎚️ Mixer — used slots stay tappable for one layered repeat per turn
@@ -11433,6 +11534,13 @@ function Game({ gameState, onReturnToLobby }) {
                     const isEmpty = used && !mixerReady && !isStaggered;
                     // 🎵 Just refilled this turn — pop in instead of silently appearing.
                     const isFresh = freshNoteIdx?.spiritId === acting?.id && freshNoteIdx.indices.has(idx);
+                    // ⚔️↔🛡️ Dual-legal: alternate the hex between the two stack colours so
+                    // "either of these will take it" is legible without a legend. The pulse
+                    // is deliberately slow (2.2s) — this is an invitation to choose, not an
+                    // alarm, and a fast strobe on up to eight hexes at once is unreadable.
+                    // Cadence gold still outranks it: resolving the track is the bigger
+                    // decision, and a hex can only say one thing at a time.
+                    const dualPulse = ctxDual && !used && !isStaggered && !resolvesCadence;
                     return (
                       <div key={idx} onClick={(e)=>{ if (isStaggered) return; if (!used || mixerReady) clickNoteStock(idx, e); }}
                         onMouseEnter={(e)=>{ const x=e.clientX, y=e.clientY; clearTimeout(hoverScaleTimerRef.current); hoverScaleTimerRef.current=setTimeout(()=>setHoverScale({note,x,y}),1500); }}
@@ -11450,6 +11558,7 @@ function Game({ gameState, onReturnToLobby }) {
                           filter: resolvesCadence ? "drop-shadow(0 0 5px #ffd700cc)"
                                 : (isStaggered || isEmpty || shadow === "none") ? "none" : `drop-shadow(${shadow})`,
                           animation: resolvesCadence ? "cadence-gold-pulse 1.6s ease-in-out infinite"
+                                   : dualPulse ? `stack-dual-hex 2.2s ease-in-out infinite${isFresh ? ", note-pop-in .5s ease-out" : ""}`
                                    : isFresh ? "note-pop-in .5s ease-out" : undefined,
                           transition:"all .1s",
                         }}>
@@ -11457,6 +11566,7 @@ function Game({ gameState, onReturnToLobby }) {
                           fontSize:9,fontWeight:700,
                           color: isStaggered ? "#ff8800" : mixerReady ? "#44ddff" : resolvesCadence ? "#ffd700" : isEmpty ? "transparent" : textC,
                           background: isStaggered ? "#1a0e00" : isEmpty ? "#141a24" : bgC,
+                          animation: dualPulse && !isEmpty ? "stack-dual-ink 2.2s ease-in-out infinite" : undefined,
                         }}>{isStaggered ? "⚡" : isEmpty ? "" : note}</div>
                       </div>
                     );
@@ -12234,41 +12344,53 @@ function Game({ gameState, onReturnToLobby }) {
                 const isFourth       = note && note === fourthNote;
                 const isFifth        = note && note === fifthNote;
                 const inScale        = note && currentScale.includes(note);
+                // 🎸 The placed note's settled payee, read straight off the live
+                // classification the commit will use — so a hex in the track is the
+                // same colour as the hex in the stock it came from, and both match
+                // the Db it will actually earn. Root green still outranks everything:
+                // the first note is next turn's Root, which is a bigger fact about it.
+                const cls       = liveClassified[i];
+                const paidBy    = note && !cls?.inScale && cls?.pardonedBy ? cls.stack : null;
+                const isDual    = !!(paidBy && cls?.both);
+                const paidC     = paidBy === 'sustain' ? SUSTAIN_C  : DRIVE_C;
+                const paidBgC   = paidBy === 'sustain' ? SUSTAIN_BG : DRIVE_BG;
+                // Same demotion as the note stock — one look for all three
+                // unlock-gated discords. See UNLOCKED_DISCORD.
+                const showUnlocked = (isTritone || isMinorSeventh || isMajorThird) && !paidBy;
                 const borderC = !note          ? "#2a1a5060"
                   : isRoot         ? "#44ff88"
-                  : isTritone      ? "#ff3300"
-                  : isMinorSeventh ? "#4499ff"
-                  : isMajorThird   ? "#44ffaa"
+                  : paidBy         ? paidC
+                  : showUnlocked   ? UNLOCKED_DISCORD.border
                   : isFifth        ? "#ff55aa"
                   : isFourth       ? "#cc55ff"
                   : inScale        ? "#c0c8d8"
                   : "#444455";
                 const textC = !note            ? "#2a1a5040"
                   : isRoot         ? "#44ff88"
-                  : isTritone      ? "#ff3300"
-                  : isMinorSeventh ? "#4499ff"
-                  : isMajorThird   ? "#44ffaa"
+                  : paidBy         ? paidC
+                  : showUnlocked   ? UNLOCKED_DISCORD.text
                   : isFifth        ? "#ff55aa"
                   : isFourth       ? "#cc55ff"
                   : inScale        ? "#e8eef8"
                   : "#555566";
                 const bgC = !note              ? "transparent"
                   : isRoot         ? "#0d2510"
-                  : isTritone      ? "#2a0800"
-                  : isMinorSeventh ? "#051525"
-                  : isMajorThird   ? "#0a2a1a"
+                  : paidBy         ? paidBgC
+                  : showUnlocked   ? UNLOCKED_DISCORD.bg
                   : isFifth        ? "#2a0f1a"
                   : isFourth       ? "#1a0a2a"
                   : inScale        ? "#1a2035"
                   : "#111118";
-                const glow = isTritone      ? "drop-shadow(0 0 7px #ff330077)"
-                           : isMinorSeventh ? "drop-shadow(0 0 6px #4499ff77)"
-                           : isMajorThird   ? "drop-shadow(0 0 5px #44ffaa55)"
+                const glow = paidBy         ? `drop-shadow(0 0 7px ${paidC}77)`
+                           : showUnlocked   ? `drop-shadow(${UNLOCKED_DISCORD.shadow})`
                            : isFifth        ? "drop-shadow(0 0 6px #ff55aa55)"
                            : isFourth       ? "drop-shadow(0 0 6px #cc55ff55)"
                            : "none";
                 return (
                   <div key={i} className="hexw"
+                    title={paidBy
+                      ? `${note} — pardoned by your ${paidBy === 'sustain' ? '🛡️ Sustain' : '⚔️ Drive'} chord${isDual ? ' (both qualify — reroute below)' : ''}`
+                      : undefined}
                     onMouseEnter={note ? (e) => { const x = e.clientX, y = e.clientY; clearTimeout(noteTipTimerRef.current); noteTipTimerRef.current = setTimeout(() => setNoteScaleTip({ note, x, y }), 900); } : undefined}
                     onMouseLeave={() => { clearTimeout(noteTipTimerRef.current); setNoteScaleTip(null); }}
                     style={{
@@ -12297,6 +12419,51 @@ function Game({ gameState, onReturnToLobby }) {
                 )}
               </div>
             </div>
+            {/* ── ⚔️↔🛡️ PAYOUT ROUTER ────────────────────────────────────────────
+                Notes both stacks legalized independently. The tie-break (higher
+                chord rank, tie to Drive) picks a default so the player can ignore
+                this entirely and still be scored sanely; this row exists to let
+                them override it, per note, once they can see the whole track.
+
+                Deliberately at COMMIT rather than at placement. The question "do I
+                feed the riff or the shield" is a read of the board — how much
+                pressure you're under, what you're setting up next turn — and none
+                of that is settled while you're still choosing note four of eight.
+                Asking mid-build would interrupt the melody with a tactics question
+                eight times a turn; asking here asks it once, with the answer
+                visible. The row simply doesn't render when nothing is dual-legal,
+                which is most turns early on.                                   */}
+            {turnStep === 'melody' && !hasConfirmed && (() => {
+              const dual = liveClassified
+                .map((c, i) => ({ ...c, i }))
+                .filter(c => c.both && c.pardonedBy && !c.inScale);
+              if (!dual.length) return null;
+              return (
+                <div style={{position:"absolute",top:52,left:"50%",transform:"translateX(-50%)",
+                  zIndex:5,display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",justifyContent:"center",
+                  maxWidth:"95%",background:"#060a10ee",border:"1px solid #7a5aa066",borderRadius:6,
+                  padding:"3px 9px",backdropFilter:"blur(4px)",boxShadow:"0 2px 12px #00000088"}}>
+                  <span style={{fontSize:7,color:"#b09ad0",fontWeight:700,letterSpacing:0.5,flexShrink:0}}>
+                    ⚔️↔🛡️ BOTH QUALIFY — WHO GETS PAID?
+                  </span>
+                  {dual.map(c => (
+                    <div key={c.i} style={{display:"flex",alignItems:"center",gap:2}}>
+                      <span style={{fontSize:8,fontWeight:700,color:"#e8eef8",minWidth:14,textAlign:"right"}}>{c.note}</span>
+                      {[['drive','⚔️',DRIVE_C],['sustain','🛡️',SUSTAIN_C]].map(([dest,icon,col]) => (
+                        <button key={dest} className="btn"
+                          title={`${c.note} (note ${c.i + 1}) pays ${dest === 'drive' ? 'Drive' : 'Sustain'}`}
+                          onClick={() => setPayoutRoute(c.i, dest)}
+                          style={{fontSize:7,padding:"0 4px",lineHeight:"14px",
+                            borderColor: c.stack === dest ? col : "#33384a",
+                            color:       c.stack === dest ? col : "#5a6070",
+                            background:  c.stack === dest ? `${col}22` : "transparent",
+                            boxShadow:   c.stack === dest ? `0 0 5px ${col}55` : "none"}}>{icon}</button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             {noteScaleTip && (() => {
               const maj = buildScale(canonicalRoot(noteScaleTip.note, 'major'), 'major');
               const min = buildScale(canonicalRoot(noteScaleTip.note, 'minor'), 'minor');

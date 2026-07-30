@@ -185,18 +185,54 @@ export function chordContext(driveStack = [], sustainStack = [], unlockedSkills 
 }
 
 // Which stack, if either, pardons `pc` at `tier` — and at what rank.
-// Returns null, or { stack:'drive'|'sustain', rank }. B4 routes the payout with
-// this: legal in both → the stack whose chord has the higher rank, tie to Drive.
+// Returns null, or { stack:'drive'|'sustain', rank, both }. B4 routes the payout
+// with this: legal in both → the stack whose chord has the higher rank, tie to
+// Drive.
+//
+// `both` is the DUAL-LEGAL flag: true when Drive and Sustain each legalize this
+// pitch independently at this tier. The winner above is then only a *default* —
+// the note stock renders these alternating red/blue, and the player may hand the
+// payout to either stack at commit (see `classifyTrack`'s `routing` argument).
+// Without this flag the two stacks are indistinguishable downstream, because the
+// tie-break has already thrown the loser away.
 function claimAt(pc, tier, dCtx, sCtx) {
   const key = tier === 'literal' ? 'literal' : tier === 'chord' ? 'chordTones' : 'extensions';
   const d = dCtx[key].has(pc);
   const s = sCtx[key].has(pc);
   if (!d && !s) return null;
-  if (d && !s)  return { stack: 'drive',   rank: dCtx.rank };
-  if (s && !d)  return { stack: 'sustain', rank: sCtx.rank };
+  if (d && !s)  return { stack: 'drive',   rank: dCtx.rank, both: false };
+  if (s && !d)  return { stack: 'sustain', rank: sCtx.rank, both: false };
   return sCtx.rank > dCtx.rank
-    ? { stack: 'sustain', rank: sCtx.rank }
-    : { stack: 'drive',   rank: dCtx.rank };   // tie goes to Drive
+    ? { stack: 'sustain', rank: sCtx.rank, both: true }
+    : { stack: 'drive',   rank: dCtx.rank, both: true };   // tie goes to Drive
+}
+
+/** Who pardons a single pitch class, right now, at the player's tiers — the
+ *  note-stock highlight's counterpart to `chordContext`.
+ *
+ *  `chordContext` answers "is this note clean?" and flattens everything into one
+ *  Set; that was enough while the highlight was a single gold. It isn't enough to
+ *  paint Drive red and Sustain blue, and re-deriving the attribution in the UI
+ *  would be the classic way for the color to drift out of sync with the payout.
+ *  So this walks the same tier ladder, in the same order, through the same
+ *  `claimAt` — the hex and the Db it earns cannot disagree by construction.
+ *
+ *  @returns null | { stack:'drive'|'sustain', tier:'literal'|'chord'|'extension', both:boolean }
+ *
+ *  Approach Notes are deliberately absent, for the reason given on `chordContext`:
+ *  that tier is a conditional on the note you play NEXT, so it has no meaning for a
+ *  hex sitting unplayed in the stock. */
+export function contextClaim(pc, driveStack = [], sustainStack = [], unlockedSkills = []) {
+  const t = tiersFor(unlockedSkills);
+  if (!t.literal) return null;
+  const dCtx = stackContext(driveStack);
+  const sCtx = stackContext(sustainStack);
+  for (const tier of ['literal', 'chord', 'extension']) {
+    if (!t[tier]) continue;
+    const claim = claimAt(pc, tier, dCtx, sCtx);
+    if (claim) return { stack: claim.stack, tier, both: claim.both };
+  }
+  return null;
 }
 
 /** Per-note classification for a committed track. One entry per note:
@@ -209,28 +245,47 @@ function claimAt(pc, tier, dCtx, sCtx) {
  *  An unpardoned off-scale note is { inScale:false, pardonedBy:null } — that is
  *  the set B7 counts for the Discord penalty.
  *
+ *  Entries also carry `both:true` when Drive and Sustain each legalize the note on
+ *  their own. Those are the notes the stock shows alternating red/blue and the ones
+ *  `routing` is allowed to move.
+ *
+ *  @param routing   Optional { [trackIndex]: 'drive' | 'sustain' } — the player's
+ *                   commit-time payout choice for DUAL-LEGAL notes. Ignored for any
+ *                   index that isn't `both`, so a routing map can never hand Db to a
+ *                   stack that didn't authorize the note; the worst a stale or
+ *                   malformed map can do is nothing. Omit it and this function
+ *                   behaves exactly as it did before the choice existed — the
+ *                   `claimAt` tie-break stands as the default.
  *  @param keyScale  Everything legal BEFORE chord context — the playable scale
  *                   PLUS any notes the discord unlocks have already made clean.
  *                   It must match whatever the caller's own `isNotePlayable` says,
  *                   or the live placement counter and the commit score will
  *                   disagree in front of the player. Accepts note names or pcs.
  *                   ⚠️ Never pass a scale that has had the context folded into it. */
-export function classifyTrack(track = [], keyScale = [], driveStack = [], sustainStack = [], unlockedSkills = []) {
+export function classifyTrack(track = [], keyScale = [], driveStack = [], sustainStack = [], unlockedSkills = [], routing = {}) {
   const t     = tiersFor(unlockedSkills);
   const scale = new Set((keyScale || []).map(pcOf).filter(p => p >= 0));
   const dCtx  = stackContext(driveStack);
   const sCtx  = stackContext(sustainStack);
   const pcs   = (track || []).map(pcOf);
+  // The player's pick only ever *replaces a default*, never creates a pardon. A
+  // note is routable strictly because both stacks already legalized it, so this
+  // reads as "which of the two that earned it gets paid" — never "which stack do I
+  // feel like paying." Anything outside that is dropped on the floor.
+  const routed = (i, claim) => {
+    const pick = routing?.[i];
+    return claim.both && (pick === 'drive' || pick === 'sustain') ? pick : claim.stack;
+  };
 
   return (track || []).map((note, i) => {
     const pc = pcs[i];
-    if (pc < 0) return { note, pc, inScale: false, pardonedBy: null, stack: null };
-    if (scale.has(pc)) return { note, pc, inScale: true, pardonedBy: null, stack: null };
+    if (pc < 0) return { note, pc, inScale: false, pardonedBy: null, stack: null, both: false };
+    if (scale.has(pc)) return { note, pc, inScale: true, pardonedBy: null, stack: null, both: false };
 
     for (const tier of ['literal', 'chord', 'extension']) {
       if (!t[tier]) continue;
       const claim = claimAt(pc, tier, dCtx, sCtx);
-      if (claim) return { note, pc, inScale: false, pardonedBy: tier, stack: claim.stack };
+      if (claim) return { note, pc, inScale: false, pardonedBy: tier, stack: routed(i, claim), both: claim.both };
     }
 
     // Approach Notes — last, and conditional on the NEXT note landing on a chord
@@ -239,10 +294,10 @@ export function classifyTrack(track = [], keyScale = [], driveStack = [], sustai
     // resolving rather than trailing off into the chromatic scale.
     if (t.approach && i + 1 < pcs.length) {
       const claim = claimAt(pcs[i + 1], 'chord', dCtx, sCtx);
-      if (claim) return { note, pc, inScale: false, pardonedBy: 'approach', stack: claim.stack };
+      if (claim) return { note, pc, inScale: false, pardonedBy: 'approach', stack: routed(i, claim), both: claim.both };
     }
 
-    return { note, pc, inScale: false, pardonedBy: null, stack: null };
+    return { note, pc, inScale: false, pardonedBy: null, stack: null, both: false };
   });
 }
 
