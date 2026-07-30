@@ -58,3 +58,21 @@ Task C is retired in full. b0check: 60 -> 53 groups, all passing.
 
 Not verified in the Linux sandbox: vite build (pre-existing bus error) and
 eslint on the 13.9k-line simulator. Both need a run on Windows.
+
+--- follow-up in this same commit ---
+
+Fix a broken build the sandbox checks could not see. Removing the Style
+detectors left a second, forgotten import of detectResolvedDiscords in the
+simulator. b0check passed (53 groups) and esbuild passed too, because
+`--bundle=false` parses each file in isolation and never resolves a
+cross-module import. Only `npm run build` caught it.
+
+New: src/engine/importcheck.mjs - resolves every static import in src/ and
+exits 1 on a dangling named import. Run it after any pass that deletes an
+export. Not a substitute for the real build, but it catches the one class of
+error that deleting code reliably produces, and it runs where vite cannot.
+
+It also found a latent deploy break unrelated to this work: App.jsx imported
+"./rlsw-simulator-V3_8_1" (capital V) for a file that is lowercase in git and
+on disk. Windows resolves it; Render builds on Linux, which does not. Fixed,
+and the checker now reports casing mismatches as errors.

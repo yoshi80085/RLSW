@@ -1296,6 +1296,26 @@ still broken on main (pre-existing `.png` import chain in `data/spirits.js`); fo
 `b0check` into `selftest.mjs` once that's fixed. Its stale init-sheet block was
 corrected in passing anyway — it still asserted B0a's removed power-chord seed.
 
+### ⚠️ RUN `node src/engine/importcheck.mjs` AFTER ANY PASS THAT DELETES AN EXPORT
+
+The simplification pass shipped a **broken build** that every other check passed.
+Removing four exports from `music/cadence.js` left a second, forgotten import of
+`detectResolvedDiscords` in the simulator. `b0check` was green at 53 groups.
+`esbuild --loader:.jsx=jsx --bundle=false` was green too — **because it parses each
+file in isolation and never resolves a cross-module import.** Only `npm run build` on
+Windows caught it.
+
+`src/engine/importcheck.mjs` closes that gap: it resolves every static import in
+`src/` and exits 1 if a named import doesn't match a real export. It is not a
+substitute for `npm run build` — no typecheck, no plugins, no dynamic imports — but
+it catches the one class of error that deleting code reliably produces, and it runs
+where `vite` cannot.
+
+It also found a **latent deploy break unrelated to this work**: `App.jsx` imported
+`./rlsw-simulator-V3_8_1` (capital V) for a file that is, in git and on disk,
+`rlsw-simulator-v3_8_1.jsx`. Windows resolves that; **Render builds on Linux, which
+does not.** Fixed, and the checker now reports casing mismatches as errors.
+
 ⚠️ **`vite build` cannot be verified in the Linux sandbox** — loading the `vite`
 module there dies with a bus error before any transform runs, so this pass was
 checked with `esbuild` parse runs over every touched file plus `b0check`. **Run a

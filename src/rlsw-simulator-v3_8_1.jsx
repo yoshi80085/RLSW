@@ -420,7 +420,7 @@ import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } 
 // turn is your "final". String the right finals together across consecutive
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
-import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote, detectResolvedDiscords } from "./music/cadence.js";
+import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote } from "./music/cadence.js";
 import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, discordPenaltyFor } from "./music/context.js";
 import { evaluateChord } from "./music/chords.js";
 
@@ -1927,13 +1927,15 @@ function Game({ gameState, onReturnToLobby }) {
   // `isNotePlayable` used to check on its own, and it is what `classifyTrack` must
   // be handed at commit.
   //
-  // ⚠️ keyScale and contextPcs stay SEPARATE VARIABLES, permanently. Folding the
-  // context into keyScale (or into `currentScale`) would reach
-  // `detectResolvedDiscords`, which identifies a Flair spirit's color notes by
-  // testing them against the key — pardoned notes would stop reading as discords,
-  // Flair's count would collapse toward zero, and buying Theory would actively
-  // destroy the one style built to reward it. Silent, single-style, and it would
-  // look like a tuning problem rather than a logic error. Do not merge them.
+  // ⚠️ keyScale and contextPcs stay SEPARATE VARIABLES, permanently. The pardon
+  // changes what a wrong note COSTS; it must not change what COUNTS as one.
+  // `classifyTrack` needs the bare key handed to it so it can tell "the key allows
+  // this" from "your chord excused this" — that distinction is the entire B3/B4
+  // mechanic, and it's what decides whether a note pays Drive/Sustain at all.
+  // Merge them and the pardon silently stops being attributable to a stack.
+  // (This warning used to be about `detectResolvedDiscords` collapsing a Flair
+  //  spirit's earning to zero. That detector went with the Style system, but the
+  //  rule it protected is older than Style and still load-bearing.)
   const keyScale = [...new Set([
     ...currentScale,
     ...[...unlockedIntervalKeys].map(k => intervals[k]).filter(Boolean),
