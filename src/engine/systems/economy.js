@@ -2,12 +2,8 @@
 // Phase 5a: contract fixes ahead of the full economy extraction (Phase 5c flip).
 
 import { pitchIndex, NOTE_POOL, canonicalRoot } from "../../music/notes.js";
-import {
-  detectMotifRepeat, refillStock,
-  detectRepeatPattern, detectStyleRun, detectContourTurn,
-  detectCellRepeat, detectResolvedDiscords,
-} from "../../music/cadence.js";
-import { FAN_DIEHARD_START, FAN_CASUAL_START, FAN_BORED_AFTER, FAN_DECAY, STYLE_DB_CAP } from "../../data/gameConstants.js";
+import { detectMotifRepeat, refillStock } from "../../music/cadence.js";
+import { FAN_DIEHARD_START, FAN_CASUAL_START, FAN_BORED_AFTER, FAN_DECAY } from "../../data/gameConstants.js";
 import { hexRingFromCenter } from "../../board/boardHelpers.js";
 //
 // `usedStockIdx` — the per-spirit set of spent stock-slot indices — used to be a
@@ -463,69 +459,29 @@ export function applyFansTicked(state, { spiritId }) {
   };
 }
 
-// ─── STYLE SYSTEM: Db PAYOUT (STYLE_SYSTEM_HANDOFF.md §3/§4) ────────────────
-// Style Db is granted once per commit, in confirmNoteTrack, after all existing
-// scoring — additive on top of scoreTrackDB and the Drive/Sustain overflow.
-// Pure — no state, no rng. Every style scores the same shape: a tier (1–3 Db)
-// from the primary pattern, plus a signature bonus (+1 Db) for the style's
-// mastery flourish, clamped to STYLE_DB_CAP.
-
-// Shared tier table for length-based primary patterns (Shred run length,
-// Groove pattern length): 3-4 → +1, 5-6 → +2, 7+ → +3.
-function styleLengthTier(len) {
-  if (len >= 7) return 3;
-  if (len >= 5) return 2;
-  if (len >= 3) return 1;
-  return 0;
-}
-
-/**
- * Style Db payout for one commit. Returns
- * { db, tier, bonus, label, detail } — db already clamped to STYLE_DB_CAP.
- * Returns { db:0, tier:0, bonus:0, label:'', detail:'' } when nothing qualifies.
- * `label` is the log/flash headline ('SHRED RUN' / 'GROOVE LOCK' / 'FLAIR').
- */
-export function styleCommitDb({ style, track, currentScale, rootNote }) {
-  const zero = { db: 0, tier: 0, bonus: 0, label: '', detail: '' };
-  if (!track || track.length === 0 || !currentScale) return zero;
-
-  let tier = 0, bonus = 0, label = '', detail = '';
-
-  if (style === 'Shred') {
-    label = 'SHRED RUN';
-    const runLen = detectStyleRun(track, currentScale);
-    tier = styleLengthTier(runLen);
-    if (runLen > 0) detail = `×${runLen}`;
-    if (detectContourTurn(track, currentScale)) {
-      bonus = 1;
-      detail = detail ? `${detail} + turn` : 'turn';
-    }
-  } else if (style === 'Groove') {
-    label = 'GROOVE LOCK';
-    const patLen = Math.max(
-      detectRepeatPattern(track, currentScale),
-      detectCellRepeat(track, currentScale),
-    );
-    tier = styleLengthTier(patLen);
-    if (patLen > 0) detail = `×${patLen}`;
-    if (track[track.length - 1] === rootNote) {
-      bonus = 1;
-      detail = detail ? `${detail} + root` : 'root';
-    }
-  } else if (style === 'Flair') {
-    label = 'FLAIR';
-    const { count, chromatic } = detectResolvedDiscords(track, currentScale);
-    tier = count >= 3 ? 3 : count === 2 ? 2 : count === 1 ? 1 : 0;
-    if (count > 0) detail = `×${count}`;
-    if (chromatic) {
-      bonus = 1;
-      detail = detail ? `${detail} chromatic` : 'chromatic';
-    }
-  } else {
-    return zero;  // unrecognized style — nothing qualifies
-  }
-
-  if (tier === 0 && bonus === 0) return zero;
-  const db = Math.min(STYLE_DB_CAP, tier + bonus);
-  return { db, tier, bonus, label, detail };
-}
+// ─── STYLE SYSTEM — DELETED ──────────────────────────────────────────────────
+// `styleCommitDb`, `styleLengthTier` and `micBonusNote` lived here. All three are
+// gone, along with the Style Db payout, C4's per-style chord-context reads, and
+// C1's live preview.
+//
+// WHY. Style was a second scoring layer sitting on top of gestures the game
+// already paid for: `detectStyleRun` was an explicit generalisation of the
+// Drive-boost's `detectDiatonicRun`/`detectSkipClimb`, `detectRepeatPattern` was
+// literally the same function the Sustain boost calls, and Flair's resolved
+// discords were the same notes the pardon economy already routed. Three gestures,
+// scored twice, in two currencies — a large part of why a single commit had nine
+// separate Db sources.
+//
+// It was also an aesthetic judge, and the game has stopped trying to be one. Db
+// now pays for FACTS a player can aim at (how much you played, where you came to
+// rest, whether that landing was in your chord, how many notes fought the key).
+// The "was that interesting?" question moved wholesale to the crowd, where being
+// impressionistic is correct rather than a flaw — see `performanceScore` above,
+// which still runs and now feeds fans and fans alone.
+//
+// `micBonusNote` went with it: it existed only to stop the mic's voice roll
+// overwriting a Groove spirit's root landing, and with no Groove there is nothing
+// non-monotone left for a rolled note to damage.
+//
+// STYLE_DEFS survives in data/styles.js as pure character flavour (icon, colour,
+// tagline). It has no mechanical effect and nothing reads it for scoring.

@@ -14,18 +14,161 @@ Tension & Release, Chromatic Approach, Color Bonus, Chord Resonance. Eight mecha
 
 **Implementation order:** A → B0 → B1 → B2 → B3 → B4 → B5 → B6 → B7 → B8 → B9 → B10 → C.
 B0 is the spine; several later items assume it. Task C depends on B3 shipping first.
+(Within C, **C4 shipped before C1** — C4 grows `styleCommitDb`'s signature and C1's
+preview calls that same function, so the doc's order would have meant writing C1
+twice. C2, C3, C5 and C6 remain.)
 (B8 was pulled forward and is fully shipped — the mode question turned out to be a
 chord-context question, so it landed alongside B3 rather than after B7. B6 and B7
 shipped together in one pass: B6's stated risk — "before the skill it wrecks you" —
 is only true once B7's per-note penalty exists, so shipping B6 alone would have
 advertised a downside the game didn't have.)
 
-**Status:** 🎉 **TASK B IS COMPLETE.** ✅ Task A, B0 (a + b), B1, B2, B3, B4, B5, B6,
-B7, B8 (core + wiring), **B9** and **B10** are all SHIPPED on branch
-`feat/chord-strength-b0`. Three changes were made that this doc did not ask for: the
-**note speller** was rewritten (it was mis-spelling 14 borrowed degrees), **B8 was
-reopened and reversed**, and **the `theory_major` auto-grant was found to have never
-fired** — see below. **Next up is Task C.**
+**Status:** ✅ Task A, B0 (a + b), B1, B2, B3, B4, B5, B7, B8 (core + wiring), B9 and
+B10 are SHIPPED on `feat/chord-strength-b0`. **B6 was shipped and then deleted** (its
+payout fired on 1% of commits). **Task C was shipped and then reversed in full** —
+C4 and C1 landed, an audit of the Db economy showed the Style system they served
+shouldn't exist, and Style was cut entirely. C2/C3/C5/C6 are retired with it.
+**A commit now has four Db sources, down from nine.** See the simplification notes
+immediately below — read them before adding anything back.
+
+### 🔄 Notes from the SIMPLIFICATION pass — TASK C WAS REVERSED
+
+**Task C shipped, was measured, and was then deleted along with the system it was
+making legible.** C4 and C1 landed earlier the same day; an audit of the Db economy
+that afternoon showed the thing they were polishing shouldn't exist. That sequence is
+the lesson, so it's recorded rather than tidied away.
+
+**What prompted it.** A review against the three original goals — build chords
+without being punished, make Theory fun to buy, tie chords to melody — found the
+first and third in good shape and the second at risk. But the stated premise,
+*simplify*, was failing outright: this doc had gone 609 → 1400 lines while
+implementing a plan whose thesis was "eight mechanics → one," and a single commit
+was moving the Db number **nine** different ways.
+
+#### The audit — `node src/engine/dbaudit.mjs`
+
+A new harness that mirrors `confirmNoteTrack`'s arithmetic and scores 3000 commits
+per Theory tier. **Build it before deleting things; it changed every decision below.**
+
+Measured on the pre-cut game (mean 3.98 Db/commit):
+
+| source | share | fires |
+|---|---|---|
+| track length | 35% | 89% |
+| ending bonus | 22% | 44% |
+| Style Db | 15% | 40% |
+| Drive/Sustain overflow | 13% | 35% |
+| P-score top-up | 10% | 35% |
+| Harmonic Lock | 8% | 16% |
+| discord penalty | −5% | 13% |
+| Flair Outside | 2% | 5% |
+| chromatic payout | **1%** | **1%** |
+
+Four findings, in order of how much they mattered:
+
+- **🔴 HARMONIC LOCK PAID NOTHING FOR A MAJOR OR MINOR TRIAD.** `LOCK_BONUS_BY_RANK`
+  banded at rank 5, and triads are rank 4. The one mechanic built to reward "you
+  built a chord and landed the line on it" ignored the two most musical chords there
+  are — and since the stack cap is 3 until Blues/Dom7 is bought, **a triad is the
+  only chord a new player can build.** Lock measured a flat 0.00 across the first
+  three Theory tiers. Fixed: rank 4–5 pay 1, rank 6–7 pay 2, rank 8 pays 3.
+- **🔴 THE THEORY LADDER'S FIRST TWO RUNGS WERE ECONOMICALLY INVISIBLE.** Income by
+  tier ran 3.25 → 3.31 → 3.30 → 4.83 → 5.20. Eighteen Db spent on Minor Tonality and
+  Blues/Dom7 moved income by −0.01. The flat, tier-blind sources were drowning out
+  the signal from the ones that respond to Theory.
+- **🔴 THE CAPSTONE'S HEADLINE FIRED ON 1% OF COMMITS.** The chromatic payout was
+  worth 0.02 Db per commit — 16 Db of ladder buying something a player would never
+  see. Every one of its assertions passed. **Tests prove a mechanic works; they do
+  not prove it matters.**
+- **The pardon economy is worth only ~+0.24 Db across the entire 46-Db ladder**,
+  because a pardon can never exceed the penalty it forgives and most tracks carry
+  0–1 wrong notes. Left alone deliberately: colour's real payoff is Drive/Sustain
+  via B4, which the audit didn't measure. Db answers "did you play it right", colour
+  answers "did you play it hard".
+
+#### The cuts — nine Db sources down to four
+
+    earned = max(0, length + ending + lock − penalty)
+
+    length   — how much did you play?
+    ending   — where did you come to rest?
+    lock     — was that landing in YOUR CHORD?
+    penalty  — how many notes fought the key?
+
+**The line that decided every cut: Db pays for FACTS, not for taste.** "You landed on
+the 5th" and "your last note was in your chord" are facts a player can hear, aim at
+and verify. "That phrase was interesting" is not — and every source cut was some
+version of trying to score it.
+
+- **STYLE IS GONE ENTIRELY**, and with it Task C (C1 shipped, C2/C3/C5/C6 retired).
+  Its detectors re-scored gestures the game already paid for: `detectStyleRun` was
+  written as a generalisation of the Drive boost's own run detectors, and
+  `detectRepeatPattern` was *literally the same function* the Sustain boost calls.
+  Three gestures, scored twice, in two currencies. It was also assigned rather than
+  chosen, so it rewarded a play pattern without ever requiring one — a player could
+  ignore their Style completely and lose 0.59 Db a commit. Character flavour
+  survives in `data/styles.js`; nothing reads it for scoring.
+- **THE PERFORMANCE SCORE NOW FEEDS THE CROWD AND ONLY THE CROWD.** P is the game's
+  aesthetic judge — contour, leaps, variety, motifs. That question has no honest
+  answer, which made it a bad Db source and makes it a **good crowd source**: a
+  crowd's taste is *supposed* to be impressionistic. Nobody minds a fickle audience;
+  everybody minds a fickle upgrade bar. P is untouched and still drives excitement,
+  loyalty, fans and the Fame multiplier. It just stops minting Decibills.
+  → This also answers unresolved item 3 at last: **Theory owns Db, showmanship owns
+  Fame.** Two routes to winning, and Theory gates only one of them.
+- **The Drive/Sustain overflow no longer becomes Db.** It was 13% of all income paid
+  out of the half of a comparison that *lost* — the largest source a player could
+  neither see, name, nor aim at. The boosts themselves are untouched.
+- **The chromatic payout is deleted.** The run still lands: `detectChromaticRun`
+  flips `allInScale`, which feeds `gainFans`. Flair pays the crowd now.
+
+#### The capstone, and a trap inside the fix
+
+`theory_chromatic` was paying **−0.04 Db** — literally less than the rung below it.
+The audit showed stack SLOTS are what make the ladder pay (Lock climbs 0.00 → 0.83 on
+slots alone), so the capstone now grants **slot 6**, `STACK_CAP_MAX` 5 → 6.
+
+**⚠️ That fix did nothing on its own, and the audit caught it.** The largest chord in
+`CHORD_TEMPLATES` was five notes, so a six-note stack evaluated as a plain Dominant 9
+— same rank, same Drive/Sustain, same Lock. Slot 6 had nothing to hold. Added
+**Dominant 13** and **Minor 11** at rank 8 (6 notes, base 9), with a new +3 Lock band.
+Pinned by an assertion that the biggest chord must exactly fill the biggest stack, so
+a future slot grant can't be dead on arrival the same way.
+
+#### Results
+
+Mean Db 3.98 → **2.52**, so `DB_UPGRADE_THRESHOLD` drops **6 → 4** to hold pacing —
+the honest lever, rather than re-inflating a source deleted for being illegible.
+
+Income by tier, before and after:
+
+    before   3.25  3.31  3.30  4.83  5.20     (flat for three rungs, then a jump)
+    after    1.96  2.20  2.41  3.02  3.24     (climbs at every rung)
+
+**Cutting the noise didn't just make Db legible — it un-masked the Theory ladder.**
+The flat sources were drowning the tier signal, so the same change served both goals.
+
+#### Process notes worth keeping
+
+- **🔴 A SEEDED-LCG FUZZ WAS DRAWING WITH `seed % n`, AND LOW BITS ARE DEGENERATE.**
+  `rnd(2)` returned 0 on **99.7%** of draws, so every power-of-two choice was a
+  constant: C1's fuzz generated almost exclusively descending runs and almost no
+  consecutive repeats while reporting 4000 cases of coverage, and the audit's first
+  run showed the Drive/Sustain overflow as identically zero. Odd moduli looked fine,
+  which is what hid it. **Always take the high bits (`seed >>> 15`).**
+- **The C1 preview/commit fuzz found a real bug that had nothing to do with C1** —
+  the mic voice roll could append a note that erased a Groove spirit's root landing.
+  Comparing two independent paths finds things neither path's own tests would.
+- **Groove's root bonus had never read the root**: the commit passed `newRootRaw`,
+  next turn's root, derived from the track's own last note. Both that bug and its fix
+  are gone with Style, but the class of error — passing a plausible-looking variable
+  that is silently the wrong one — is not.
+- `assert.equal(fn.length, N)` is **not** a way to check a signature: `Function.length`
+  stops counting at the first default parameter.
+
+**Assertion groups: 60 → 53.** Six Style groups deleted, three chromatic-payout
+groups deleted, plus new ones for the four-source economy, the Lock's triad band, the
+6-note chords and the capstone's slot.
 
 ### ⚠️ Notes from the B9 / B10 pass — READ THE FIRST ITEM
 
@@ -685,7 +828,11 @@ why, and for the `tones` vs `chordTones` distinction.
 
 ---
 
-### B6 — Chromatic run: pardon becomes payout ✅ SHIPPED
+### B6 — Chromatic run: pardon becomes payout ⏹️ SHIPPED, THEN DELETED
+
+> Deleted in the simplification pass: the payout fired on **1% of commits** (0.02 Db
+> each). The run still pays the crowd via `allInScale`. Chromatic Mastery sells the
+> 6th stack slot instead.
 
 **Shipped as** `chromaticPayout(runLen, unlockedSkills)` in `src/music/context.js`,
 wired at the Db scoring block in `confirmNoteTrack` (`src/rlsw-simulator-v3_8_1.jsx`
@@ -968,7 +1115,12 @@ ever looks at the Drive Stack since it's never nullish. Worth fixing while you'r
 
 ---
 
-## Task C: Make Style Legible
+## Task C: Make Style Legible — ⏹️ RETIRED IN FULL
+
+> **The Style system was deleted.** C1 and C4 shipped and were reversed; C2, C3, C5
+> and C6 are retired unbuilt. Kept below as the record of a plan that was correct
+> about its own premise (Style was illegible) and wrong about the remedy (it was
+> illegible because it was redundant, not because it was hidden).
 
 **Problem:** Style is fixed per Spirit and dictates how that Spirit most effectively earns
 Db — but a player has no way to *recognize* which shapes pay them. Style resolves once, at
@@ -992,7 +1144,11 @@ This is **not a content problem.** `src/data/styles.js` already carries `tagline
 
 ---
 
-### C1 — Live style prediction (the core change)
+### C1 — Live style prediction (the core change) ⏹️ SHIPPED, THEN REVERSED
+
+> Deleted with the Style system it previewed. The technique was sound and may be
+> worth reviving for the four surviving Db sources, which are all pure functions of
+> the provisional track. Its preview/commit fuzz found a real bug on the way out.
 
 `styleCommitDb` is **already pure and already takes exactly the arguments a live preview
 needs.** Nothing stops calling it on every note placement instead of once at commit.
@@ -1053,7 +1209,11 @@ Between C1, C2 and C3 the style stops needing to be explained anywhere.
 
 ---
 
-### C4 — Style × chord context (the balance fix)
+### C4 — Style × chord context (the balance fix) ⏹️ SHIPPED, THEN REVERSED
+
+> Deleted with Style. Note the problem C4 existed to solve — Theory skewing the
+> styles against each other — dissolved rather than being solved: with no Style
+> there is no skew.
 
 **The problem B3 creates.** Look at how each style interacts with the new context system:
 
@@ -1129,9 +1289,9 @@ The comment on line 117 needs updating either way — its math refers to the old
 
 ## Verification
 
-**Where the tests live:** `node src/engine/b0check.mjs` — 54 assertion groups covering
-Task A, B0, B2, B3, B4, B5, B6, B7, **B9, B10**, the initial-grant invariant, the
-speller and B8 (core + wiring). `npm run test:engine` is
+**Where the tests live:** `node src/engine/b0check.mjs` — 60 assertion groups covering
+Task A, B0, B2, B3, B4, B5, B6, B7, B9, B10, **C4, C1**, the initial-grant invariant,
+the speller and B8 (core + wiring). `npm run test:engine` is
 still broken on main (pre-existing `.png` import chain in `data/spirits.js`); fold
 `b0check` into `selftest.mjs` once that's fixed. Its stale init-sheet block was
 corrected in passing anyway — it still asserted B0a's removed power-chord seed.
@@ -1140,6 +1300,15 @@ corrected in passing anyway — it still asserted B0a's removed power-chord seed
 module there dies with a bus error before any transform runs, so this pass was
 checked with `esbuild` parse runs over every touched file plus `b0check`. **Run a
 real build on Windows before pushing.**
+
+⚠️ **`eslint` on `rlsw-simulator-v3_8_1.jsx` did not finish in the sandbox either** —
+it ran past ten minutes on the 13.9k-line file and was abandoned, so the C1 render
+block and the `confirmNoteTrack` edits are **parse-verified only** (esbuild) and have
+not been lint-verified. `cadence.js`, `economy.js` and `b0check.mjs` all lint clean
+apart from the pre-existing `analyseTrack` trio. **Lint the simulator on Windows
+alongside the build.** The one rule worth checking by hand is
+`react-hooks/exhaustive-deps`: `stylePreview` is deliberately *not* memoised (see the
+comment there), so there is no dependency array for it to complain about.
 
 Already covered:
 
@@ -1193,8 +1362,53 @@ tutorial's interval reference (`content.jsx` ~524).
 - B9: `THEORY_DISCORD_GRANTS` grants no context tiers and only ever hands out
   `discord_N` palette flags.
 
+Added for C4 / C1:
+
+- **C4 back-compat:** an absent, empty, `null` or garbage context reproduces pre-C4
+  scoring exactly, through the detectors and through `styleCommitDb` — a tier-0
+  spirit must not be able to tell C4 shipped.
+- **C4 Shred (Chromatic Passing):** the same track scores 0 without the pardon and
+  ×5 with it; trailing colour can't pad a run and leading colour can't open one (it
+  has to be *passed through*); a pardon doesn't excuse an illegal interval; and the
+  contour-turn bonus agrees with the tier rather than contradicting it.
+- **C4 Groove (Locked In):** a colour vamp goes from tier 0 → tier 3 while an
+  all-diatonic vamp is untouched by holding a context; both halves of
+  `detectRepeatPattern` carry the doubling; **and the context-free default is pinned,
+  because the universal Sustain boost shares that detector and must not see one** (B4
+  already pays pardoned notes into Sustain — passing a context there would pay the
+  same note twice through the same stack).
+- **C4 the landmine, from three directions:** pardoning *every* off-note in a Flair
+  track changes the payout by zero; the fully-pardoned track still returns
+  `tier > 0`; `detectResolvedDiscords` demonstrably *ignores* a third argument while
+  the other four detectors demonstrably read theirs (so the pair can't both pass by
+  the context being wired up nowhere); plus a source check that the word "context"
+  never appears inside that one function.
+- **C4 monotonicity:** across 225 style×track×context combinations, widening the
+  context can only ever hold or raise the payout — for **all three** styles. That is
+  the entire point of C4 and it is now a test.
+- **C4 the `newRootRaw` witness:** asserted in both directions, with the old argument
+  pinned as a regression witness that pays a bonus it did not earn.
+- **C4 Flair "Outside":** pays exactly what B4 would have paid (same caps, 0–4), the
+  cap never invents income, and it is asserted to be *allowed* above `STYLE_DB_CAP`
+  so "why is Flair over cap?" reads as intent rather than a bug.
+- **C1 preview/commit agreement:** 4000 fuzzed style×track×context×root cases,
+  deterministic seed, with interleaved partial-track preview calls between the two
+  reads. Also asserts purity (no argument mutation, no drift over 20 identical
+  calls) and that a missing `keyScale` returns zero rather than throwing, since the
+  preview can render before a scale exists.
+- **C1 the floor:** driven through the real `micBonusNote` selection rule, asserting
+  the roll can only ever raise the payout, that the guard substitutes nothing but the
+  root, and that **it only ever fires for Groove** — a substitution anywhere else
+  means a new non-monotone rule was added and the reasoning needs revisiting.
+- **The fuzz asserts its own warmth** (see the notes at the top): the run fails if
+  fewer than a quarter of cases score, or if any one style is paid fewer than 100
+  times.
+
 Still to add: **re-measure B7 against the corrected (post-auto-grant-fix) palette**,
-then Task C's cases.
+then C2 / C3 / C5's cases. ⚠️ **C6's measurement now has three new inputs**: the
+Groove root-bonus fix (probably *reduces* Groove income), Flair's uncapped Outside
+(0–4 Db that no other style can earn), and C1 making all of it legible enough that
+players will start hitting the ceilings deliberately.
 - Play-test target: a turn-one spirit should reach a triad in one turn if they spend for
   it, and a mid-game spirit with `theory_dom7` should be able to say in one sentence why
   they built the chord they built.

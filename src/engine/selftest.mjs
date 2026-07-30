@@ -33,13 +33,11 @@ import {
 } from "./systems/combat.js";
 import {
   usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState,
-  styleCommitDb,
 } from "./systems/economy.js";
 import { skillEligibility, ULTIMATE_PREREQS, THEORY_DISCORD_GRANTS } from "./systems/skills.js";
 import { pitchIndex, playableScale } from "../music/notes.js";
 import {
-  detectMotifRepeat, detectStyleRun, detectContourTurn,
-  detectCellRepeat, detectResolvedDiscords,
+  detectMotifRepeat,
 } from "../music/cadence.js";
 import { styleOf, styleDef, STYLE_DEFS } from "../data/styles.js";
 import { CORNERS } from "../data/corners.js";
@@ -54,7 +52,7 @@ import {
   LIMELIGHT_HEX, UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT,
   FAN_BORED_AFTER, FAN_DECAY,
   TOKEN_MAX, EVENT_RESPAWN_TURNS, CHARGE_ZONE_COOLDOWN,
-  STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor, STACK_COMMIT_BUDGET, STYLE_DB_CAP,
+  STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor, STACK_COMMIT_BUDGET,
 } from "../data/gameConstants.js";
 import { hexRingFromCenter } from "../board/boardHelpers.js";
 import { HEX_BY_NUM, EDGE_HEX_NUMS } from "../board/hexMap.js";
@@ -2209,133 +2207,15 @@ const config = {
   assert.equal(chordFrayAmount(5), 2, "bigger = still 2");
 }
 
-// -- Style detectors: detectStyleRun / detectContourTurn / detectCellRepeat /
-//    detectResolvedDiscords (STYLE_SYSTEM_HANDOFF.md §4) ------------------------
-{
-  // Full 7-note major scale (theory_major unlock) so runs up to length 7 fit —
-  // pentatonic (the default) only has 5 degrees, too short for the 5/6/7 tests.
-  const scale = playableScale('C', 'major', ['theory_major']);
-  assert.deepEqual(scale, ['C', 'D', 'E', 'F', 'G', 'A', 'B'], "sanity: full C major scale");
-
-  // ── detectStyleRun ──
-  assert.equal(detectStyleRun(['C', 'D', 'E'], scale), 3, "step run (interval 1)");
-  assert.equal(detectStyleRun(['C', 'E', 'G'], scale), 3, "3rd run (interval 2)");
-  assert.equal(detectStyleRun(['C', 'F', 'B'], scale), 3, "4th run (interval 3)");
-  assert.equal(detectStyleRun(['C', 'D', 'E', 'D'], scale), 3,
-    "direction change breaks the run — doesn't extend past the reversal");
-  assert.equal(detectStyleRun(['C', 'D', 'E', 'G#', 'F', 'G'], scale), 3,
-    "out-of-scale note breaks the run — doesn't extend past the discord");
-  assert.equal(detectStyleRun(['C', 'D'], scale), 0, "below 3 notes returns 0");
-
-  // ── detectContourTurn ──
-  assert.equal(detectContourTurn(['C', 'D', 'E', 'D', 'C'], scale), true,
-    "up-run then down-run (shared pivot E) is a contour turn");
-  assert.equal(detectContourTurn(['C', 'D', 'E', 'F'], scale), false,
-    "single-direction run is not a contour turn");
-
-  // ── detectCellRepeat ──
-  assert.equal(detectCellRepeat(['C', 'E', 'C', 'E'], scale), 4, "2-note cell × 2 reps = 4");
-  assert.equal(detectCellRepeat(['C', 'E', 'G', 'C', 'E', 'G'], scale), 6, "3-note cell × 2 reps = 6");
-  assert.equal(detectCellRepeat(['C', 'D', 'E', 'F'], scale), 0, "no repetition = 0");
-  assert.equal(detectCellRepeat(['C', 'G#', 'C', 'G#'], scale), 0,
-    "out-of-scale notes in the cell disqualify it");
-
-  // ── detectResolvedDiscords ──
-  assert.deepEqual(detectResolvedDiscords(['C', 'G#', 'D'], scale), { count: 1, chromatic: false },
-    "G# (out) → D (in) resolves, 6 semitones — not chromatic");
-  assert.deepEqual(detectResolvedDiscords(['C', 'D', 'G#'], scale), { count: 0, chromatic: false },
-    "trailing discord (track ends on it) does not count");
-  assert.deepEqual(detectResolvedDiscords(['C', 'G#', 'G'], scale), { count: 1, chromatic: true },
-    "G# → G resolves by exactly 1 semitone — chromatic");
-}
-
-// -- styleCommitDb: Db payout per commit (STYLE_SYSTEM_HANDOFF.md §3/§4) --------
-{
-  const scale = playableScale('C', 'major', ['theory_major']); // ['C','D','E','F','G','A','B']
-
-  // ── Shred: tier boundaries by run length 3/4/5/6/7 → db 1/1/2/2/3 ──
-  const shredLens = [3, 4, 5, 6, 7];
-  const shredExpected = [1, 1, 2, 2, 3];
-  shredLens.forEach((len, i) => {
-    const track = scale.slice(0, len); // pure ascending run, no reversal → no bonus
-    const r = styleCommitDb({ style: 'Shred', track, currentScale: scale, rootNote: 'C' });
-    assert.equal(r.db, shredExpected[i], `Shred run len ${len} → ${shredExpected[i]} Db`);
-    assert.equal(r.bonus, 0, `Shred run len ${len}: no contour turn, no bonus`);
-    assert.equal(r.label, 'SHRED RUN');
-  });
-
-  // ── Groove: tier boundaries by repeated-note length 3/4/5/6/7 → db 1/1/2/2/3 ──
-  const grooveExpected = [1, 1, 2, 2, 3];
-  [3, 4, 5, 6, 7].forEach((len, i) => {
-    const track = Array(len).fill('C'); // root is 'G' below, so no accidental resolution bonus
-    const r = styleCommitDb({ style: 'Groove', track, currentScale: scale, rootNote: 'G' });
-    assert.equal(r.db, grooveExpected[i], `Groove pattern len ${len} → ${grooveExpected[i]} Db`);
-    assert.equal(r.bonus, 0, `Groove pattern len ${len}: last note isn't root, no bonus`);
-    assert.equal(r.label, 'GROOVE LOCK');
-  });
-
-  // ── Flair: tier boundaries by resolved-discord count 1/2/3 → db 1/2/3 ──
-  const flairTracks = [
-    ['C', 'G#', 'D'],                              // 1 resolved discord
-    ['C', 'G#', 'D', 'A#', 'E'],                   // 2 resolved discords
-    ['C', 'G#', 'D', 'A#', 'E', 'C#', 'F'],        // 3 resolved discords
-  ];
-  [1, 2, 3].forEach((count, i) => {
-    const r = styleCommitDb({ style: 'Flair', track: flairTracks[i], currentScale: scale, rootNote: 'C' });
-    assert.equal(r.db, count, `Flair ${count} resolved discord(s) → ${count} Db`);
-    assert.equal(r.bonus, 0, `Flair ${count} resolved discord(s): none chromatic, no bonus`);
-    assert.equal(r.label, 'FLAIR');
-  });
-
-  // ── Signature bonus: +1 for each style ──
-  // Shred: contour turn (up then down, tier 1 run) → tier 1 + bonus 1 = 2
-  {
-    const r = styleCommitDb({ style: 'Shred', track: ['C', 'D', 'E', 'D', 'C'], currentScale: scale, rootNote: 'G' });
-    assert.equal(r.tier, 1);
-    assert.equal(r.bonus, 1, "Shred contour-turn signature bonus");
-    assert.equal(r.db, 2);
-  }
-  // Groove: resolution (last note is root, tier 1 pattern) → tier 1 + bonus 1 = 2
-  {
-    const r = styleCommitDb({ style: 'Groove', track: ['C', 'C', 'C', 'G'], currentScale: scale, rootNote: 'G' });
-    assert.equal(r.tier, 1);
-    assert.equal(r.bonus, 1, "Groove root-resolution signature bonus");
-    assert.equal(r.db, 2);
-  }
-  // Flair: chromatic approach (resolves by 1 semitone, tier 1 count) → tier 1 + bonus 1 = 2
-  {
-    const r = styleCommitDb({ style: 'Flair', track: ['C', 'G#', 'G'], currentScale: scale, rootNote: 'C' });
-    assert.equal(r.tier, 1);
-    assert.equal(r.bonus, 1, "Flair chromatic-approach signature bonus");
-    assert.equal(r.db, 2);
-  }
-
-  // ── STYLE_DB_CAP clamping: tier 3 + bonus 1 (=4) must clamp to the cap (3) ──
-  {
-    // Full 7-note ascending run (tier 3) followed by a 3-note descent (contour turn bonus)
-    const track = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'A', 'G', 'F'];
-    const r = styleCommitDb({ style: 'Shred', track, currentScale: scale, rootNote: 'C' });
-    assert.equal(r.tier, 3);
-    assert.equal(r.bonus, 1);
-    assert.equal(r.db, STYLE_DB_CAP, "tier 3 + bonus 1 clamps to STYLE_DB_CAP");
-  }
-
-  // ── Zero case: nothing qualifies → db 0 ──
-  assert.deepEqual(
-    styleCommitDb({ style: 'Shred', track: ['C', 'D'], currentScale: scale, rootNote: 'C' }),
-    { db: 0, tier: 0, bonus: 0, label: '', detail: '' },
-    "too-short track for Shred → zero object");
-  assert.deepEqual(
-    styleCommitDb({ style: 'Groove', track: [], currentScale: scale, rootNote: 'C' }),
-    { db: 0, tier: 0, bonus: 0, label: '', detail: '' },
-    "empty track → zero object");
-
-  // ── Unrecognized style: nothing qualifies → db 0 ──
-  assert.deepEqual(
-    styleCommitDb({ style: 'Mystery', track: ['C', 'D', 'E'], currentScale: scale, rootNote: 'C' }),
-    { db: 0, tier: 0, bonus: 0, label: '', detail: '' },
-    "unrecognized style → zero object");
-}
+// -- Style detectors + styleCommitDb -- DELETED --------------------------------
+// The Style Db payout and its four detectors are gone. Style survives above as
+// pure character flavour (icon, colour, tagline) and those checks still run —
+// what's removed is everything that let Style touch the score.
+//
+// Why: the detectors re-scored gestures the game already paid for (detectStyleRun
+// was a generalisation of the Drive boost's own run detectors; detectRepeatPattern
+// was literally the same function the Sustain boost calls), and Style was an
+// aesthetic judge in a currency that now pays only for facts a player can aim at.
 
 // -- sonicRig: tier × distance grid (AMP_DECK_DESIGN.md §2) --------------------
 {

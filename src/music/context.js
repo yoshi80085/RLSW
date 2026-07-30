@@ -321,7 +321,21 @@ export function countPardonedByStack(classified = []) {
 //    (It's also why this function takes no `unlockedSkills`: Harmonic Lock reads
 //    what the stack IS, which no tier changes. The pardon ladder is a separate
 //    question, already answered by classifyTrack.)
-const LOCK_BONUS_BY_RANK = rank => (rank >= 6 ? 2 : rank === 5 ? 1 : 0);
+//
+// ⚠️ TRIADS PAY. This band table used to read `rank >= 6 ? 2 : rank === 5 ? 1 : 0`,
+// which meant **major and minor triads — rank 4 — earned nothing.** The one
+// mechanic in the game built to reward "you built a chord and landed the line on
+// it" ignored the two most common and most musical chords there are. Worse, the
+// stack cap is 3 until Blues/Dominant 7th is bought, so a triad is the *only* thing
+// a new player can build: Harmonic Lock was unreachable for the entire early game
+// and measured a flat 0.00 across the first three Theory tiers.
+//
+// Now rank 4 (maj/min triad) and rank 5 (dim/aug) pay 1, rank 6–7 (sevenths and
+// ninths) pay 2, and rank 8 — the 6-note 13th and 11th chords, reachable only at
+// the Theory capstone — pays 3. Build a clean triad, land the line on it, get paid,
+// from turn one; and the ladder now slopes all the way to the top instead of
+// flattening out at the sevenths.
+const LOCK_BONUS_BY_RANK = rank => (rank >= 8 ? 3 : rank >= 6 ? 2 : rank >= 4 ? 1 : 0);
 
 /** B5 — the ending escalation for landing on a stack's chord. Pure.
  *  @param lastNote  the melody's FINAL note (name or pc). Caller must only apply
@@ -358,65 +372,23 @@ export function harmonicLock(lastNote, driveStack = [], sustainStack = []) {
   };
 }
 
-// ── B6: THE CHROMATIC RUN — PARDON BECOMES PAYOUT ────────────────────────────
-// Before `theory_chromatic`, Chromatic Climb PARDONED a run of 3+: the track
-// stopped counting as discord. That is a defensive effect, and defence is a poor
-// thing to sell at the top of a 46-Db ladder. At the capstone the same gesture
-// PAYS:
+// ── B6: THE CHROMATIC RUN'S Db PAYOUT — DELETED ─────────────────────────────
+// `chromaticPayout` and its CHROM_BASE/CHROM_CAP/CHROM_MIN_RUN curve lived here.
+// It paid +3 Db for a chromatic run of 3, +1 per note beyond, capped at +5, and it
+// was sold as the loudest thing at the top of the Theory ladder.
 //
-//   run of 3   → +3 Db
-//   each note beyond 3 → +1
-//   capped at  → +5   (so 3→3, 4→4, 5→5, 6+→5)
+// It fired on 1% OF COMMITS, worth 0.02 Db each across 15,000 simulated commits.
+// A chromatic run eats 3+ of your 8 melody slots and the note stock you'd spend
+// building stacks, so almost nobody ever played one — the "intrinsic risk" the
+// design leaned on turned out to be a deterrent, not a gradient. 16 Db of skill
+// ladder bought a payout the player would essentially never see.
 //
-// The risk is intrinsic and needs no balancing scaffold. A chromatic run eats 3+
-// of your 8 melody slots, drains the `noteStock` you'd otherwise spend building
-// stacks, and — pre-unlock — every note in it is a Discord costing its own point
-// under B7. Before the skill it wrecks you; after it, it is your single biggest
-// payout.
-//
-// ⚠️ THIS IS A DELIBERATE EXCEPTION TO B4'S ROUTING RULE. B4 established that
-// interior gestures pay Drive/Sustain and only the ENDING pays Db. A chromatic run
-// is unambiguously interior, and it pays Db anyway. Keep it *the* exception: a
-// capstone that breaks the game's own grammar is how an unlock earns the word
-// "mastery." The UI must therefore read it as singular — one loud line — not as
-// another row in the scoring table.
-//
-// ⚠️ AND IT DOUBLE-PAYS WITH B4, ON PURPOSE. At this tier the Approach Notes rule
-// also pardons run notes that resolve onto a chord tone, so those notes ALREADY
-// pay Drive/Sustain via `countPardonedByStack`. The B4 and B5 passes both flagged
-// this and deferred the call; the call is: **it stacks, and the +3/+5 is priced
-// knowing it stacks.** Suppressing the color routing inside the run was the
-// alternative and it was rejected for three reasons:
-//   1. It would need run MEMBERSHIP threaded through `classifyTrack`, which today
-//      classifies each note independently — a new cross-note dependency in the one
-//      function every other feature reads. That is a real architectural cost paid
-//      to make a capstone smaller.
-//   2. The double pay is not automatic. Approach Notes only pardons a note whose
-//      NEXT note is a chord tone, so a run collects Drive only where it actually
-//      RESOLVES into the harmony. A run that wanders pays the +3 and nothing else.
-//      The stacking is itself a skill gradient, not a loophole.
-//   3. It reads correctly. "The run paid Db and the chord it landed on paid Drive"
-//      is one sentence a player can say out loud, which is the bar Task C sets.
-// The lever, if it proves too strong in play: this curve, not the routing.
-const CHROM_BASE = 3, CHROM_CAP = 5, CHROM_MIN_RUN = 3;
-
-/** B6 — the chromatic run's Db payout. Pure.
- *  @param runLen         longest chromatic run in the track (`detectChromaticRun`).
- *  @param unlockedSkills the acting spirit's skills; the payout is gated on
- *                        `theory_chromatic` and is 0 without it. Unlike B5 this
- *                        DOES take skills — the run is worth nothing until the
- *                        capstone says it is.
- *  @returns { db, runLen } — `db` is 0 for any run under 3 or any locked spirit.
- *
- *  Note this replaces `staggerDuration`'s 3/4/5+ → 1/2/3 curve, which the B1 pass
- *  kept alive purely as a starting point for this function. Different shape, so
- *  that function is now gone. */
-export function chromaticPayout(runLen = 0, unlockedSkills = []) {
-  const u = unlockedSkills instanceof Set ? unlockedSkills : new Set(unlockedSkills || []);
-  const len = Number.isFinite(runLen) ? Math.floor(runLen) : 0;
-  if (!u.has(CONTEXT_TIERS.approach) || len < CHROM_MIN_RUN) return { db: 0, runLen: len };
-  return { db: Math.min(CHROM_CAP, CHROM_BASE + (len - CHROM_MIN_RUN)), runLen: len };
-}
+// Chromatic Mastery now sells the sixth stack slot instead, which is the lever the
+// audit showed actually moves the ladder (Harmonic Lock climbs 0.00 → 0.83 Db on
+// slots alone). The run itself still lands: `detectChromaticRun` survives in
+// cadence.js and still flips `allInScale`, which feeds `gainFans`. A chromatic
+// smear now reads to the CROWD as showmanship — which is where flair belongs, now
+// that Db pays only for facts.
 
 // ── B7: THE DISCORD PENALTY, PER NOTE ────────────────────────────────────────
 // It used to be a flat −1 for the whole track no matter how many notes were wrong.

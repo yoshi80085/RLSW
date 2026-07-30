@@ -77,7 +77,7 @@ import {
   chordFrayAmount,
 } from "./engine/systems/combat.js";
 import {
-  usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState, styleCommitDb,
+  usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState,
 } from "./engine/systems/economy.js";
 import { skillEligibility, THEORY_DISCORD_GRANTS } from "./engine/systems/skills.js";
 import { STYLE_DEFS, styleOf, styleDef } from "./data/styles.js";
@@ -421,7 +421,7 @@ import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } 
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
 import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote, detectResolvedDiscords } from "./music/cadence.js";
-import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, chromaticPayout, discordPenaltyFor } from "./music/context.js";
+import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, discordPenaltyFor } from "./music/context.js";
 import { evaluateChord } from "./music/chords.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -515,7 +515,7 @@ const SKILL_TREE = {
       // B9: was "Start on the Major Pentatonic", which contradicted the free
       // theory_major grant. (For most of this branch's life the blurb was accurate
       // by accident, because the grant was broken — see the initial-skill effect.)
-      desc: 'The spine of the game. You start with the full Major scale; each rung widens what your CHORD can make legal, until the wrong notes are the ones that pay.',
+      desc: 'The spine of the game. You start with the full Major scale. Each rung does two things: it widens what your CHORD can make legal, and it gives you room to build a bigger chord — and the bigger the chord, the more it pays to land your line on it.',
       skills: [
         // B9: every desc now states all three things a tier can give — the SCALE
         // expansion (what the key allows), the CONTEXT TIER (what your stacks
@@ -529,9 +529,13 @@ const SKILL_TREE = {
         { id:'theory_dom7',      label:'Blues / Dominant 7th', icon:'🎷', dbCost:10, gated:true, prereq:'theory_minor',
           desc:'The ♭7 joins your clean palette. PLAY THE CHANGES — the pardon widens from the notes you placed to your stack\'s whole implied chord, completed to its seventh: a C-E-G stack makes B clean though you never stacked it. +1 STACK SLOT (4) — the lesson that teaches you the blues note also lets you build the dominant 7th.' },
         { id:'theory_modes',     label:'Modal Colour',         icon:'🌀', dbCost:12, gated:true, prereq:'theory_dom7',
-          desc:"Lydian ♯4 & Mixolydian ♭7 become clean, and the tritone never breaks harmony. EXTENSIONS — the pardon reaches your chord's available tensions by quality: ♯4 over major, natural 6 over minor, ♭9 and 9 over dominant. +1 STACK SLOT (5) — room for 9th chords." },
+          desc:"Lydian ♯4 & Mixolydian ♭7 become clean, and the tritone never breaks harmony. EXTENSIONS — the pardon reaches your chord's available tensions by quality: ♯4 over major, natural 6 over minor, ♭9 and 9 over dominant. +1 STACK SLOT (5) — room for 9th chords, and a 9th is worth +2 to land on." },
+        // ⚠️ REWRITTEN. This used to headline the chromatic-run Db payout, which
+        // fired on 1% of commits — 16 Db for something the player would never see.
+        // The capstone now sells the sixth slot, which is the lever that actually
+        // moves the ladder: bigger chord, bigger target for Harmonic Lock.
         { id:'theory_chromatic', label:'Chromatic Mastery',    icon:'⚡', dbCost:16, gated:true, prereq:'theory_modes',
-          desc:'CAPSTONE — APPROACH NOTES: any note is clean if the next one lands on a chord tone. And the chromatic run stops being forgiven and starts PAYING: 3+ chromatic steps earn +3 Db, +1 per note beyond, up to +5 — the biggest single payout in the game. Also brings the Major 3rd (Borrowed Chord) online in Minor.' },
+          desc:'CAPSTONE — +1 STACK SLOT (6). The biggest chords in the game are yours alone, and a bigger chord is a bigger thing to land your line on. APPROACH NOTES too: any note is clean if the next one lands on a chord tone, so you can walk in from anywhere. Also brings the Major 3rd (Borrowed Chord) online in Minor.' },
       ],
     },
     // ── THE RIG — your amp deck lives at your corner and grows (AMP_DECK_DESIGN.md §4) ──
@@ -1948,6 +1952,13 @@ function Game({ gameState, onReturnToLobby }) {
     return pc >= 0 && contextPcs.has(pc) && !keyScale.some(n => pitchIndex(n) === pc);
   }
 
+  // (C1's live Style preview lived here — it read `styleCommitDb` on every render
+  //  and rendered the payout on the Commit Track as the track was built. Deleted
+  //  with the Style system it previewed. The idea was sound and may be worth
+  //  reviving for the four surviving Db sources, which are all pure functions of
+  //  the provisional track and would preview just as cheaply.)
+
+
   // Returns the interval key name for a given note, or null if not an interval note
   function getIntervalKey(note) {
     const pc = pitchIndex(note);
@@ -2938,6 +2949,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (!acting || !canAct) return; // N4/N7: gate
     const baseTrack = actingNoteState?.melodyLine ?? [];
     if (baseTrack.length === 0) { addLog('❌ No notes in track!'); return; }
+    // (Style is gone — `actingStyle` and its two Task-C consumers with it. The
+    //  spirit's style survives only as character flavour in data/styles.js.)
     // ── 🎤 MIC — voice roll: d6, on 4+ a bonus in-scale note joins the track ──
     // (shadows the outer derived melodyLine so all scoring below includes the bonus)
     let melodyLine = baseTrack;
@@ -2949,6 +2962,11 @@ function Game({ gameState, onReturnToLobby }) {
       setTimeout(() => setVoiceRollFx(prev => (prev && prev.key === vKey ? null : prev)), 2600);
       if (voiceRoll >= 4) {
         const scaleNotes = buildScale(rootNote, scaleMode);
+        // (C1's `micBonusNote` guard is gone with the Style system. It existed only
+        //  to stop a rolled note overwriting a Groove spirit's root landing — the
+        //  one non-monotone rule in the Style scorer. Every surviving Db source is
+        //  monotone under append, so a bonus note can no longer cost the player
+        //  anything and the roll is once again a plain upside.)
         const bonusNote  = scaleNotes[Math.floor(Math.random() * scaleNotes.length)];
         melodyLine = [...baseTrack, bonusNote];
         addLog(`🎤 Voice roll ${voiceRoll} — your vocals land! Bonus note ${bonusNote} joins the track.`);
@@ -3144,6 +3162,17 @@ function Game({ gameState, onReturnToLobby }) {
     //
     // Cap +2 per stack per commit — a 6-note chromatic smear over a dom9 shouldn't
     // out-earn the diatonic run the boost was built for.
+    //
+    // ⚠️ THIS IS NOW THE PARDON ECONOMY'S ONLY PAYOUT, AND THAT IS DELIBERATE.
+    // The Db audit found the pardon ladder worth only ~+0.24 Db per commit across
+    // all 46 Db of Theory — because a pardon can never be worth more than the
+    // penalty it forgives, and most tracks carry 0–1 wrong notes. That reads as
+    // alarming until you notice the audit measured Db only: colour's real payoff
+    // was always HERE, in Drive and Sustain. Db answers "did you play it right";
+    // colour answers "did you play it hard". Two currencies, two questions, and
+    // the reason the pardon was left alone rather than inflated.
+    // (C4's Flair "Outside" inverted this routing for one style — deleted with the
+    //  Style system. It fired on 5% of commits and was worth 0.06 Db.)
     const colorDrive   = !isMojoDrained ? Math.min(2, contextPardons.drive)   : 0;
     const colorSustain = !isMojoDrained ? Math.min(2, contextPardons.sustain) : 0;
 
@@ -3182,7 +3211,14 @@ function Game({ gameState, onReturnToLobby }) {
     }
 
     // Total overflow fed to Decibills as bonus points
-    const dbOverflow = driveOverflowToDB + sustainOverflowToDB;
+    // ⚠️ NO LONGER FED TO Db. The "discard the lower boost into Decibills" rule was
+    // 13% of all Db income — the single largest source the player could neither
+    // see, name, nor aim at, because it pays out the half of a comparison that
+    // LOST. The Drive/Sustain boosts themselves are untouched above; only this
+    // consolation Db is gone. Kept as a display value: the flash still shows what
+    // was discarded, it just no longer turns into currency.
+    const dbOverflow = 0;
+    const discarded  = driveOverflowToDB + sustainOverflowToDB;
 
     // ── APPLY SELF EFFECTS (blocked by Mojo Drain) ───────────────────────────
     // (B5: `newFeedbackBoost` removed. The tritone used to light a "Damage ×2"
@@ -3225,11 +3261,15 @@ function Game({ gameState, onReturnToLobby }) {
 
     // ── B6: THE CHROMATIC RUN'S PAYOUT ───────────────────────────────────────
     // The capstone's one loud effect: a run of 3+ pays +3 Db, +1 per note beyond,
-    // capped +5. Interior gesture paying Db is a deliberate break with B4's routing
-    // rule — the exception that makes the word "mastery" mean something — and it
-    // deliberately stacks with the Drive/Sustain those same notes earn where they
-    // resolve. Both calls are documented at `chromaticPayout`.
-    const chromRun = chromaticPayout(chromRunLen, actingNoteState?.unlockedSkills ?? []);
+    // capped +5. ⚠️ DELETED — IT FIRED ON 1% OF COMMITS. Measured across 15,000
+    // simulated commits it was worth 0.02 Db each, which made it 16 Db of skill
+    // ladder buying a payout essentially nobody would ever see. Chromatic Mastery
+    // now sells the sixth stack slot instead, which is the lever that demonstrably
+    // moves the ladder (Harmonic Lock climbs 0.00 → 0.83 on slots alone).
+    //
+    // The chromatic RUN still matters, just not in Db: `chromRunLen` below keeps
+    // flipping `allInScale`, which feeds `gainFans`. A chromatic smear reads to the
+    // crowd as showmanship — which is exactly where flair belongs now.
 
     // ── B5: HARMONIC LOCK ────────────────────────────────────────────────────
     // B2 halved the ending ladder so Db came from playing well rather than from
@@ -3249,14 +3289,31 @@ function Game({ gameState, onReturnToLobby }) {
       ? harmonicLock(melodyLine[melodyLine.length - 1], actingDriveStack, actingSustainStack)
       : { bonus: 0, stack: null, rank: 0, chordName: null };
 
+    // ═══ THE WHOLE Db PAYOUT — FOUR SOURCES, AND THAT IS THE POINT ═══════════
+    // A commit used to move the Db number nine different ways: track length, the
+    // ending bonus, Harmonic Lock, the chromatic payout, Flair's Outside, the
+    // discord penalty, the Drive/Sustain overflow, the Performance-Score top-up,
+    // and Style Db. Nobody can hold nine inputs in their head, so the Db a player
+    // earned read as weather rather than as consequence — which quietly wrecked
+    // the thing the game is actually about, because you cannot feel rewarded for
+    // building a good chord if you can't tell which of nine things paid you.
+    //
+    // Four remain, and each asks a question a player can aim at:
+    //
+    //   length   — how much did you play?          (scoreTrackDB step A)
+    //   ending   — where did you come to rest?     (scoreTrackDB step B: 4th/5th/8ve)
+    //   lock     — was that landing in YOUR CHORD? (harmonicLock)
+    //   penalty  — how many notes fought the key?  (discordPenaltyFor)
+    //
+    // The design line that decided the cuts: Db pays for FACTS, not for taste.
+    // "You landed on the 5th" and "your last note was in your chord" are facts a
+    // player can hear, aim at, and verify. "That phrase was interesting" is not,
+    // and every source cut was some version of trying to score it. That judgement
+    // didn't disappear — it moved to the crowd, where being impressionistic is
+    // correct. See `perfScore` below: it still runs, and it now feeds fans alone.
     let breakdown = [...baseScore.breakdown];
     if (lock.bonus > 0) breakdown.push(`🔒 ${lock.chordName} +${lock.bonus}`);
-    // B6 lands in the same Db pot as the ending and the lock, BEFORE the discord
-    // subtraction — one arithmetic path, and a run that leaves the rest of the track
-    // in ruins still has to pay for the ruins. With the penalty floored at 3 and the
-    // payout starting at 3, a run is never a net loss on its own.
-    if (chromRun.db > 0) breakdown.push(`⚡ chromatic run +${chromRun.db}`);
-    const preDiscordPoints = baseScore.points + lock.bonus + chromRun.db;
+    const preDiscordPoints = baseScore.points + lock.bonus;
     let earned = Math.max(0, preDiscordPoints - discordPenalty);
     if (discordPenalty > 0 && preDiscordPoints > 0) {
       breakdown.push(`−${discordPenalty} discord`);
@@ -3291,11 +3348,11 @@ function Game({ gameState, onReturnToLobby }) {
     // freestylePardon (Groove today, but kept separate on purpose).
     // NOTE: performanceScore doesn't take a resolvedDiscordCount param (yet) — the
     // exemption is folded into discordCount here at the call site instead.
-    const actingStyle = acting ? (acting.style ?? styleOf(acting.id)) : null;
-    const resolvedDiscords = actingStyle === 'Flair'
-      ? detectResolvedDiscords(melodyLine, currentScale)
-      : { count: 0, chromatic: false };
-    const flairExemptDiscords = Math.min(3, resolvedDiscords.count);
+    // (The Flair P-exemption is gone with the Style system — it waived the P
+    //  penalty on resolved discords for one style, and both the style and the
+    //  detector it called no longer exist. Every spirit is now judged the same way,
+    //  which is also what makes P a fair crowd signal.)
+    const flairExemptDiscords = 0;
     // B3: score the SETTLED count, not the placement counter — a note the chord
     // legalized was never a wrong note, so it must not drag the flair score either.
     const perfDiscordCount = Math.max(0, unpardonedDiscord - flairExemptDiscords);
@@ -3311,7 +3368,15 @@ function Game({ gameState, onReturnToLobby }) {
 
     // ── 🎭 STAGE B ROUTING: Performance Score P → DB top-up (§5b) + crowd excitement (§5a) ──
     // Baseline-on for now (no skill gate yet — will later sit behind Crowd Read / Stage Presence).
-    const perfDbBonus = perfScore >= 10 ? 2 : (perfScore >= 7 ? 1 : 0);   // §5b — tiny, capped at +2
+    // ⚠️ P NO LONGER PAYS Db — IT PAYS THE CROWD, AND ONLY THE CROWD.
+    // The Performance Score is the game's one aesthetic judge: it scores contour
+    // changes, leaps, interval variety, palette, motifs — "was that interesting?".
+    // That question has no honest answer, which is why it made a bad Db source and
+    // makes a *good* crowd source: a crowd's taste is supposed to be impressionistic.
+    // Nobody minds a fickle audience; everybody minds a fickle upgrade bar.
+    // So P survives entirely intact and keeps driving excitement, loyalty, fans and
+    // the Fame multiplier below. It simply stops also minting Decibills.
+    const perfDbBonus = 0;
     // §5a — fans NEVER hand out Fame directly (they only multiply earned FP via grantFame).
     // A strong performance instead SLOWLY grows the crowd and hardens casuals into diehards.
     const perfVibeFactor = (acting?.maxVibe ?? 5) / 5;
@@ -3350,6 +3415,9 @@ function Game({ gameState, onReturnToLobby }) {
 
     // Drive/Sustain overflow feeds DB points (non-stacking rule); Edge DB cost is
     // a real sacrifice, not a soft floor — it can eat into points earned this turn.
+    // Four sources in, one number out. `dbOverflow` and `perfDbBonus` are pinned to
+    // 0 above rather than deleted from this line, so the arithmetic still reads as
+    // the single pot it is and a future source has an obvious place to join.
     const earnedTotal = earned + dbOverflow + perfDbBonus + edgeDbBonus - edgeDbCost;
 
     // Check upgrade threshold against target skill cost
@@ -3368,8 +3436,8 @@ function Game({ gameState, onReturnToLobby }) {
       breakdown.forEach(b => flashLines.push(b));
       if (upgradeTriggered) flashLines.push(`🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!`);
     }
-    if (rawDriveBoost > 0)    flashLines.push(`⚔️ Drive +${newTempDrive}${driveOverflowToDB > 0 ? ` (↑DB +${driveOverflowToDB})` : ''}`);
-    if (rawSustainBoost > 0)  flashLines.push(`🛡️ Sustain +${newTempSustain}${sustainOverflowToDB > 0 ? ` (↑DB +${sustainOverflowToDB})` : ''}`);
+    if (rawDriveBoost > 0)    flashLines.push(`⚔️ Drive +${newTempDrive}`);
+    if (rawSustainBoost > 0)  flashLines.push(`🛡️ Sustain +${newTempSustain}`);
     // (B5: the '🔥 Tritone — Damage ×2' flash is gone with the effect it announced.
     //  The tritone's surviving payout is +1 Performance Score, which the
     //  '🎭 Performance n/10' line below already accounts for.)
@@ -3382,20 +3450,11 @@ function Game({ gameState, onReturnToLobby }) {
     //  along with their effects. The endings still pay Performance Score via
     //  hasGatedEnding, and B5 will give them a Db payoff.)
     // (E-Rush flash removed — Ronin rework)
-    // ⚡ B6 — THE CAPSTONE LINE. This is the one gesture in the game that breaks the
-    // Db/Drive routing rule, so it gets said like it means something rather than
-    // added as another quiet row. Note it names the run LENGTH: the payout scales
-    // with it and the player should be able to see that it does.
-    if (chromRun.db > 0) {
-      flashLines.push(`⚡ CHROMATIC RUN ×${chromRun.runLen} — DB +${chromRun.db}`);
-    } else if (chromRunLen >= 3) {
-      // Run of 3+ but no capstone yet: the notes still cost. Say so — this is the
-      // advertisement for the skill, and it's honest about what it's advertising.
-      // Gated on the run length rather than on `chromClimbActive`, deliberately:
-      // `discord_4` is GRANTED BY `theory_chromatic` (THEORY_DISCORD_GRANTS), so a
-      // spirit holding the climb but not the capstone barely exists and this branch
-      // would never fire for the players who most need to see it.
-      flashLines.push(`⚡ Chromatic run ×${chromRunLen} — Chromatic Mastery would pay +${Math.min(5, 3 + (chromRunLen - 3))} for this`);
+    // ⚡ The chromatic run no longer pays Db (B6 deleted — it fired on 1% of
+    // commits). It still lands, and the player should still be told: a run of 3+
+    // flips `allInScale`, which is what the CROWD reads. Flair pays fans now.
+    if (chromRunLen >= 3) {
+      flashLines.push(`⚡ Chromatic run ×${chromRunLen} — the crowd eats it up`);
     }
     // 🎸 B3/B4 — say the pardon out loud, and say which stack paid for it. The
     // player should be able to point at a stack and name the reason a grey note
@@ -3425,7 +3484,7 @@ function Game({ gameState, onReturnToLobby }) {
       flashLines.push(`⚡ ${unpardonedDiscord} Dischord — free this turn`);
     }
     flashLines.push(`🎭 Performance ${perfScore}/10`);
-    if (perfDbBonus > 0)    flashLines.push(`🎸 Flair DB +${perfDbBonus}`);
+
     if (perfFansGained > 0) flashLines.push(`🎤 +${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''} won over!`);
     if (perfPromotions > 0) flashLines.push(`💜 ${perfPromotions} fan${perfPromotions !== 1 ? 's' : ''} → Diehard!`);
     if (flashLines.length > 0) {
@@ -3435,7 +3494,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     // ── LOG ───────────────────────────────────────────────────────────────────
     const scoreStr = earned > 0
-      ? ` · 🎯 +${earned}pts (${breakdown.join(', ')})${dbOverflow > 0 ? ` +${dbOverflow}DB overflow` : ''}${upgradeTriggered ? ` · 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!` : ` · DB [${newDBPoints}/${targetCost}]`}`
+      ? ` · 🎯 +${earned}pts (${breakdown.join(', ')})${upgradeTriggered ? ` · 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!` : ` · DB [${newDBPoints}/${targetCost}]`}`
       : (discordPenalty > 0 ? ` · ⚡ ${unpardonedDiscord} Dischord — −${discordPenalty}, no points` : ` · DB [${newDBPoints}/${targetCost}]`);
     const driveMsg   = rawDriveBoost > 0   ? ` · ⚔️ Drive +${newTempDrive}` : '';
     const sustMsg    = rawSustainBoost > 0  ? ` · 🛡️ Sustain +${newTempSustain}` : '';
@@ -3448,27 +3507,38 @@ function Game({ gameState, onReturnToLobby }) {
     const chrMsg     = '';   // B1 — chromatic-run Stagger removed
     // B6 — the payout replaces the old "no discord" pardon note. `breakdown` already
     // carries the +N inside scoreStr; this is the headline copy for the log.
-    const chromClimbMsg = chromRun.db > 0 ? ` · ⚡ CHROMATIC RUN ×${chromRun.runLen} DB+${chromRun.db}` : '';
+    const chromClimbMsg = '';   // B6 payout deleted — the run pays the crowd now, not Db
+    // C4 — Flair's colour went to Db instead of Drive/Sustain. Named in the log so
+    // the player can see WHY their colour paid differently from everyone else's.
+    const outsideMsg = '';      // C4 Flair "Outside" deleted with the Style system
     const speedMsg   = totalNotes > actingSpeed
       ? ` · SPD ${actingSpeed}/${totalNotes}${canBank ? ` · 💾 ${newBankedNote.note} banked` : ' · bank full'}`
       : ` · SPD ${hexes}/${actingSpeed}`;
-    addLog(`✓ Committed · ${hexes} hexes${scoreStr}${driveMsg}${sustMsg}${triMsg}${lockMsg}${octMsg}${majorThirdMsg}${m7Msg}${tritoneEndMsg}${chrMsg}${chromClimbMsg}${feedbackOverloadMsg}${rsMsg}${speedMsg} · Next RN: ${newRootRaw}`);
+    addLog(`✓ Committed · ${hexes} hexes${scoreStr}${driveMsg}${sustMsg}${triMsg}${lockMsg}${octMsg}${majorThirdMsg}${m7Msg}${tritoneEndMsg}${chrMsg}${chromClimbMsg}${outsideMsg}${feedbackOverloadMsg}${rsMsg}${speedMsg} · Next RN: ${newRootRaw}`);
     if (trackHasTritone || isMinorSeventhEnd || isMajorThirdEnd || isOctaveResolution) showTip('intervals');
 
-    // ── STYLE — commit Db payout (STYLE_SYSTEM_HANDOFF.md §3/§4) ──────────────
-    // Granted once per commit, after all existing scoring. Additive on top of
-    // scoreTrackDB and the Drive/Sustain overflow. Every style scores the same
-    // shape: a tier (1–3 Db) from its primary pattern + a signature bonus (+1 Db),
-    // capped at STYLE_DB_CAP inside styleCommitDb.
-    const styleResult = acting
-      ? styleCommitDb({ style: actingStyle, track: melodyLine, currentScale, rootNote: newRootRaw })
-      : null;
-    if (styleResult && styleResult.db > 0) {
-      const sDef = STYLE_DEFS[actingStyle];
-      newDBPoints += styleResult.db;
-      addLog(`${sDef?.icon ?? '🎼'} ${styleResult.label} — +${styleResult.db} Db!${styleResult.detail ? ` (${styleResult.detail})` : ''}`);
-      triggerEffectFlash(acting.id, sDef?.icon ?? '🎼', `${styleResult.label} +${styleResult.db} Db`, sDef?.color ?? '#ffdd44');
-    }
+    // ── STYLE Db PAYOUT — DELETED ────────────────────────────────────────────
+    // `styleCommitDb` paid every commit a tier (1–3 Db) plus a signature bonus for
+    // matching the acting spirit's fixed Style. It was 15% of all Db income and it
+    // is gone, along with C4's per-style chord-context reads and C1's live preview.
+    //
+    // The measurement that decided it: the three Style detectors re-scored gestures
+    // the game already pays for. `detectStyleRun` was written as a generalisation of
+    // the Drive boost's own run detectors; `detectRepeatPattern` was *literally the
+    // same function* the Sustain boost calls; Flair's resolved discords were the
+    // notes the pardon economy already routed. Three gestures, scored twice, in two
+    // currencies — a large part of how one commit acquired nine Db sources.
+    //
+    // The design argument, which matters more: Style was an aesthetic judge, and it
+    // was assigned rather than chosen, so it rewarded a play pattern without ever
+    // requiring one. A player could ignore their Style completely and lose ~0.59 Db
+    // a commit — real, but nowhere near enough to shape behaviour. It asked "was
+    // that the kind of phrase your character plays?", which is a taste question, and
+    // Db has stopped answering taste questions.
+    //
+    // Character flavour survives in data/styles.js (icon, colour, tagline) and on
+    // the character-select screen. Nothing reads it for scoring.
+
 
     // 🎸 Your chord is a STANDING stance — it persists across turns and is only
     // changed by a revoice (one note add/drop per turn), so we don't touch it here.
@@ -10795,7 +10865,7 @@ function Game({ gameState, onReturnToLobby }) {
                         <span style={{flex:1,height:1,background:`linear-gradient(90deg, ${s.color}33, transparent)`}}/>
                       </div>
                       <div style={{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}}>
-                        <span title={`${curDef?.tagline ?? ''} — earns Db: ${curDef?.earnDesc ?? ''}`}
+                        <span title={curDef?.tagline ?? ''}
                           style={{...chip, cursor:'default', fontWeight:700,
                             background:`${curDef?.color}22`, border:`1.5px solid ${curDef?.color}`,
                             color:curDef?.color}}>
@@ -10986,7 +11056,7 @@ function Game({ gameState, onReturnToLobby }) {
                     <span style={{fontSize:11}}>{sDef.icon}</span>
                     <span style={{fontSize:7,fontWeight:700,color:sDef.color,letterSpacing:1}}>{sDef.label.toUpperCase()}</span>
                     <span style={{fontSize:7,color:"#7090a0",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                      earns Db: {sDef.earnDesc}
+                      {sDef.tagline}
                     </span>
                   </div>
                 );

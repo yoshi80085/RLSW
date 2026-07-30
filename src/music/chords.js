@@ -22,11 +22,23 @@ export const PC_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 // Ordered rank-desc so the first match for a given root is that root's best.
 //
 // drive / sustain follow the note-count curve (PENDING_CHANGES Task A):
-//   base from note count — 2-note=5, 3-note=6, 4-note=7, 5-note=8
+//   base from note count — 2-note=5, 3-note=6, 4-note=7, 5-note=8, 6-note=9
 //   then a ±1 affinity tilt — drive-lean, sustain-lean, or neutral.
 // More notes = stronger chord. Consonance/dissonance is the tilt, not the driver;
 // the old model punished players for correctly spelling a major triad.
 export const CHORD_TEMPLATES = [
+  // ── 6-note (base 9) — THE CAPSTONE'S CHORDS ────────────────────────────────
+  // ⚠️ ADDED WITH THE 6th STACK SLOT, AND THE SLOT IS USELESS WITHOUT THEM.
+  // `theory_chromatic` grants slot 6, but the table used to stop at 5 notes — so a
+  // six-note stack evaluated as a plain Dominant 9 (subset matching), with the same
+  // rank, the same Drive/Sustain and the same Harmonic Lock bonus as a five-note
+  // one. The most expensive skill in the game measured a payout of −0.04 Db.
+  //
+  // These are what "Chromatic Mastery" should mean musically: the 11th and the 13th
+  // are where a guitarist stops spelling chords and starts voicing them. Rank 8 is
+  // a new top band, and Harmonic Lock pays +3 for it — the only +3 in the game.
+  { id:'dom13', label:'Dominant 13',  ivals:[0,4,7,10,2,9], rank:8, drive:10, sustain:8 }, // drive-lean
+  { id:'min11', label:'Minor 11',     ivals:[0,3,7,10,2,5], rank:8, drive:8,  sustain:10 },// sustain-lean
   // 5-note (base 8)
   { id:'dom9',  label:'Dominant 9',   ivals:[0,4,7,10,2], rank:7, drive:9, sustain:7 },  // drive-lean
   { id:'min9',  label:'Minor 9',      ivals:[0,3,7,10,2], rank:7, drive:7, sustain:9 },  // sustain-lean

@@ -1,6 +1,14 @@
-// Every 8 Decibills -> player unlocks their targeted skill.
+// Every N Decibills -> player unlocks their targeted skill.
 // Points carry over after crossing a threshold.
-export const DB_UPGRADE_THRESHOLD = 6;
+//
+// ⚠️ 6 → 4 WHEN THE Db SOURCES WERE CUT FROM NINE TO FOUR. Removing the Style
+// payout, the Drive/Sustain overflow, the Performance-Score top-up and the
+// chromatic payout took mean income from 3.98 Db per commit to ~2.6 — a 35% drop.
+// At a threshold of 6 that would have been 2.3 commits per upgrade instead of 1.5,
+// i.e. the game silently got a third slower. Lowering the threshold is the honest
+// lever: it holds the pacing without re-inflating a source we deleted for being
+// illegible. Re-measure with `node src/engine/dbaudit.mjs` before touching it.
+export const DB_UPGRADE_THRESHOLD = 4;
 
 // Stock is a reservoir, not a fresh hand. Unused notes carry
 // over; only this many spent slots recharge per turn.
@@ -15,14 +23,23 @@ export const STACK_COMMIT_BUDGET = 3;   // max notes committed to stacks per tur
 // "Blues / Dominant 7th" is the same purchase that lets you BUILD a dominant
 // 7th — melody permission and harmony capacity arrive together.
 export const STACK_CAP_BASE = 3;   // slots available with no Theory investment
-export const STACK_CAP_MAX  = 5;   // ceiling once both gating tiers are owned
+export const STACK_CAP_MAX  = 6;   // ceiling once all three gating tiers are owned
 
 // Single source of truth for the derived cap. DO NOT inline this rule — every
 // read of "how many slots does this spirit have" must come through here.
+// ⚠️ `theory_chromatic` NOW GRANTS A SLOT — it is the whole reason to buy it.
+// Measured over 15,000 simulated commits, the capstone used to pay LESS than the
+// rung below it (−0.04 Db): its only lever was the approach-note pardon, which
+// shaved an already-tiny discord penalty, and its headline chromatic payout fired
+// on 1% of commits. Meanwhile the audit showed stack SLOTS are what actually make
+// the Theory ladder pay — Harmonic Lock climbs 0.00 → 0.83 Db on slots alone,
+// because a bigger stack is a bigger chord to land in. So the most expensive skill
+// in the game now sells the only 6-note stack there is.
 export function stackCapFor(unlockedSkills = []) {
   let cap = STACK_CAP_BASE;
-  if (unlockedSkills.includes('theory_dom7'))  cap += 1;
-  if (unlockedSkills.includes('theory_modes')) cap += 1;
+  if (unlockedSkills.includes('theory_dom7'))      cap += 1;
+  if (unlockedSkills.includes('theory_modes'))     cap += 1;
+  if (unlockedSkills.includes('theory_chromatic')) cap += 1;
   return Math.min(STACK_CAP_MAX, cap);
 }
 
@@ -134,11 +151,11 @@ export const SONIC_LIMELIGHT_FP      = 1;   // bonus FP when Sonic fires from ma
 // the bolt but stays excluded from the spawn pool).
 export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
 
-// -- STYLE SYSTEM (STYLE_SYSTEM_HANDOFF.md §3) --
-// Cap on Style Db per commit (tier 1-3 + signature bonus +1, clamped here).
-// DB_UPGRADE_THRESHOLD is 6, so cap 3 = two perfect commits per upgrade.
-// ⚠️ TUNABLE — raise to 4 only if progression feels slow.
-export const STYLE_DB_CAP = 3;
+// -- STYLE SYSTEM -- REMOVED.
+// `STYLE_DB_CAP` capped the per-commit Style payout. The Style Db payout is gone
+// (it re-scored gestures the Drive and Sustain boosts already pay for, and it was
+// an aesthetic judge in a currency that now pays only for facts), so the cap has
+// nothing to clamp. Style survives as character flavour in data/styles.js.
 
 // -- DISSONANCE EDGE -- REMOVED (system cut — Theory learning streamlined).
 

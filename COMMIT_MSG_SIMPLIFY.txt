@@ -1,0 +1,60 @@
+Cut the Db economy from nine sources to four
+
+A review against the project's own three goals found chords/melody in good
+shape, Theory at risk, and the stated premise - SIMPLIFY - failing outright:
+PENDING_CHANGES had gone 609 -> 1400 lines implementing a plan whose thesis was
+"eight mechanics -> one", and a single commit moved the Db number nine ways.
+
+New: src/engine/dbaudit.mjs, a harness mirroring confirmNoteTrack that scores
+3000 commits per Theory tier. It changed every decision here. Findings:
+
+- Harmonic Lock paid NOTHING for a major or minor triad (rank 4 was banded
+  out). The one mechanic built to reward chord building ignored the only chord
+  a new player can build - the stack cap is 3 until Blues/Dom7. It measured a
+  flat 0.00 across the first three Theory tiers.
+- Theory's first two rungs were economically invisible: income by tier ran
+  3.25 / 3.31 / 3.30 / 4.83 / 5.20. Eighteen Db moved income by -0.01.
+- The capstone's headline chromatic payout fired on 1% of commits, worth 0.02
+  Db each - 16 Db of ladder buying something nobody would see. Every one of its
+  assertions passed. Tests prove a mechanic works, not that it matters.
+
+Db now pays for FACTS, not taste:
+
+  earned = max(0, length + ending + lock - penalty)
+
+Cut: the Style system entirely (its detectors re-scored gestures the Drive and
+Sustain boosts already pay for - detectRepeatPattern was literally the same
+function the Sustain boost calls); the Drive/Sustain overflow into Db (13% of
+income, paid out of the half of a comparison that lost); the chromatic payout.
+
+The Performance Score now feeds the crowd and only the crowd. It is the game's
+aesthetic judge, that question has no honest answer, and that makes it a bad Db
+source and a good crowd source - a crowd's taste is supposed to be
+impressionistic. It keeps driving excitement, loyalty, fans and Fame. This also
+answers unresolved item 3: Theory owns Db, showmanship owns Fame.
+
+Fixed: Harmonic Lock pays triads (rank 4-5 = 1, 6-7 = 2, 8 = 3).
+
+theory_chromatic now grants stack slot 6 - slots are what make the ladder pay.
+That fix did nothing on its own and the audit caught it: the largest chord
+template was 5 notes, so a 6-note stack evaluated as a plain dom9. Added
+Dominant 13 and Minor 11 at rank 8, pinned by an assertion that the biggest
+chord must exactly fill the biggest stack.
+
+DB_UPGRADE_THRESHOLD 6 -> 4: mean Db 3.98 -> 2.57.
+
+Income by tier, before and after:
+  before  3.25  3.31  3.30  4.83  5.20   (flat for three rungs)
+  after   1.96  2.20  2.41  3.02  3.24   (climbs at every rung)
+
+Cutting the noise un-masked the Theory ladder - the flat sources were drowning
+the tier signal, so one change served both goals.
+
+Also fixed: a seeded-LCG fuzz drew with `seed % n`, and LCG low bits are
+degenerate - rnd(2) returned 0 on 99.7% of draws, so C1's fuzz generated almost
+only descending runs while reporting 4000 cases of coverage. Take the high bits.
+
+Task C is retired in full. b0check: 60 -> 53 groups, all passing.
+
+Not verified in the Linux sandbox: vite build (pre-existing bus error) and
+eslint on the 13.9k-line simulator. Both need a run on Windows.

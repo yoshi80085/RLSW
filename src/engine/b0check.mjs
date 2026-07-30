@@ -14,17 +14,29 @@ import { makeInitialNoteState } from "../engine/systems/economy.js";
 import { evaluateChord, CHORD_TEMPLATES } from "../music/chords.js";
 import { scoreTrackDB } from "../music/cadence.js";
 import { getSpelledPool, pitchIndex, PITCH_INDEX, canonicalRoot } from "../music/notes.js";
-import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, stackContext, chromaticPayout, discordPenaltyFor } from "../music/context.js";
+import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, stackContext, discordPenaltyFor } from "../music/context.js";
 import { detectChromaticRun } from "../music/cadence.js";
 import { skillEligibility, THEORY_DISCORD_GRANTS } from "../engine/systems/skills.js";
 import assert from "node:assert";
 
 // ── B0b: derived cap ──
+// ⚠️ `theory_chromatic` grants the 6th slot — that is now the capstone's whole
+// reason to exist. It used to pay LESS than the rung below it (−0.04 Db measured);
+// slots are what make the Theory ladder pay, because a bigger stack is a bigger
+// chord for Harmonic Lock to land in.
 const cases = [
   [[], 3], [undefined, 3], [['amp_1'], 3], [['theory_major'], 3], [['theory_minor'], 3],
-  [['theory_dom7'], 4], [['theory_modes'], 4], [['theory_dom7','theory_modes'], 5],
-  [['theory_major','theory_minor','theory_dom7','theory_modes','theory_chromatic'], 5],
+  [['theory_dom7'], 4], [['theory_modes'], 4], [['theory_chromatic'], 4],
+  [['theory_dom7','theory_modes'], 5],
+  [['theory_dom7','theory_chromatic'], 5], [['theory_modes','theory_chromatic'], 5],
+  [['theory_dom7','theory_modes','theory_chromatic'], 6],
+  [['theory_major','theory_minor','theory_dom7','theory_modes','theory_chromatic'], 6],
 ];
+// The capstone is the ONLY route to six, and the ladder never goes backwards.
+assert.equal(stackCapFor(['theory_dom7','theory_modes','theory_chromatic']), STACK_CAP_MAX,
+  'the full Theory ladder reaches the ceiling');
+assert.ok(stackCapFor(['theory_dom7','theory_modes']) < STACK_CAP_MAX,
+  'slot 6 must be unreachable without theory_chromatic — it is the capstone\'s only product');
 for (const [sk, want] of cases) assert.equal(stackCapFor(sk), want, `stackCapFor(${JSON.stringify(sk)}) → ${want}`);
 console.log("✓ stackCapFor: all", cases.length, "unlock combinations correct");
 
@@ -41,14 +53,34 @@ for (const id of ["test_spirit", "cosmic_ronin"]) {
 console.log("✓ B0a: stacks seed [root] → Single note D3/S3 (was power chord D5/S5)");
 
 // ── Task A: note-count curve ──
-const base = { 5: 8, 4: 7, 3: 6, 2: 5 };
+// One point of base per note, from 2 notes = 5. The 6-note entry arrived with the
+// 13th/11th chords that give the Theory capstone's 6th stack slot something to hold.
+const base = { 6: 9, 5: 8, 4: 7, 3: 6, 2: 5 };
 for (const t of CHORD_TEMPLATES) {
   const n = t.ivals.length, b = base[n];
+  assert.ok(b !== undefined,
+    `${t.id}: ${n} notes has no base in the Task A curve — extend it rather than exempting the chord`);
   const pair = [t.drive, t.sustain].sort((a,z)=>a-z);
   assert.deepEqual(pair, t.drive === t.sustain ? [b,b] : [b-1,b+1],
     `${t.id}: ${n} notes → base ${b}, got D${t.drive}/S${t.sustain}`);
 }
 console.log("✓ Task A: all", CHORD_TEMPLATES.length, "templates sit on base±1 for their note count");
+
+// Rank must be monotone in note count — "more notes = stronger chord" is the rule
+// Task A exists to enforce, and rank is what Harmonic Lock and B4's routing read.
+{
+  const byN = {};
+  for (const t of CHORD_TEMPLATES) (byN[t.ivals.length] ??= []).push(t.rank);
+  const sizes = Object.keys(byN).map(Number).sort((a, z) => a - z);
+  for (let i = 1; i < sizes.length; i++) {
+    assert.ok(Math.min(...byN[sizes[i]]) >= Math.max(...byN[sizes[i - 1]]),
+      `rank must not fall as notes rise: ${sizes[i]}-note chords rank ${Math.min(...byN[sizes[i]])}, ` +
+      `${sizes[i - 1]}-note rank up to ${Math.max(...byN[sizes[i - 1]])}`);
+  }
+  assert.equal(Math.max(...CHORD_TEMPLATES.map(t => t.ivals.length)), STACK_CAP_MAX,
+    'the biggest chord must exactly fill the biggest stack — a slot with nothing to hold is a dead skill');
+}
+console.log("✓ Task A: rank never falls as notes rise, and the biggest chord fills the biggest stack");
 
 // Major triad no longer punished
 const maj = evaluateChord(['C','E','G']);
@@ -423,6 +455,11 @@ console.log("✓ B4 routing: buying a higher tier never reduces what the track p
 {
   const bands = [
     // [stack,                     last note, expected bonus, why]
+    // ⚠️ The 6-note chords exist ONLY to give the Theory capstone's 6th stack slot
+    // something to hold. Without them slot 6 evaluated as a plain dom9 — same rank,
+    // same payout — and the most expensive skill in the game paid −0.04 Db.
+    [['C','E','G','A#','D','A'],  'A',  3, 'dom13 rank 8 → +3 (capstone only)'],
+    [['C','D#','G','A#','D','F'], 'F',  3, 'min11 rank 8 → +3 (capstone only)'],
     [['C','E','G','A#','D'], 'D',  2, 'dom9 rank 7 → +2'],
     [['C','D#','G','A#','D'],'D',  2, 'min9 rank 7 → +2'],
     [['C','E','G','A#'],     'G',  2, 'dom7 rank 6 → +2'],
@@ -432,12 +469,29 @@ console.log("✓ B4 routing: buying a higher tier never reduces what the track p
     [['C','D#','F#','A#'],   'A#', 2, 'm7b5 rank 6 → +2'],
     [['C','D#','F#'],        'F#', 1, 'dim rank 5 → +1'],
     [['C','E','G#'],         'G#', 1, 'aug rank 5 → +1'],
-    [['C','E','G'],          'G',  0, 'maj triad rank 4 → +0'],
-    [['C','D#','G'],         'G',  0, 'min triad rank 4 → +0'],
+    // ⚠️ TRIADS PAY NOW. These two used to expect +0, which meant the mechanic
+    // built to reward "you built a chord and landed on it" ignored the two most
+    // musical chords there are — and since the stack cap is 3 until Blues/Dom7 is
+    // bought, a triad is the ONLY chord a new player can build. Harmonic Lock
+    // measured a flat 0.00 across the first three Theory tiers because of this.
+    [['C','E','G'],          'G',  1, 'maj triad rank 4 → +1'],
+    [['C','D#','G'],         'G',  1, 'min triad rank 4 → +1'],
+    // The floor holds where it should: sus and power chords are still rank < 4 and
+    // still pay nothing. "Build a real chord" has to keep meaning something.
     [['C','D','G'],          'D',  0, 'sus2 rank 3 → +0'],
     [['C','F','G'],          'F',  0, 'sus4 rank 3 → +0'],
     [['C','G'],              'G',  0, 'power rank 2 → +0'],
   ];
+  // The band table must be monotone in rank — a bigger chord may never pay less.
+  {
+    let prevRank = -1, prevBonus = -1;
+    for (const [stack, last] of [...bands].reverse()) {
+      const g = harmonicLock(last, stack, []);
+      if (g.rank > prevRank) assert.ok(g.bonus >= prevBonus,
+        `B5: rank ${g.rank} pays ${g.bonus} but rank ${prevRank} paid ${prevBonus} — non-monotone`);
+      prevRank = g.rank; prevBonus = g.bonus;
+    }
+  }
   for (const [stack, last, want, why] of bands) {
     const got = harmonicLock(last, stack, []);
     assert.equal(got.bonus, want, `B5: ${why} — got +${got.bonus} on ${stack.join('-')} ending ${last}`);
@@ -529,89 +583,22 @@ console.log("✓ B5 Harmonic Lock: stack selection matches B4 — higher rank, t
 }
 console.log("✓ B5: scoreTrackDB reports endingBonus/endingKind — the gate B5 reads, no string matching");
 
-// ─── B6: THE CHROMATIC RUN — PARDON BECAME PAYOUT ───────────────────────────
-// The curve: run of 3 → +3, +1 per note beyond, capped +5. Locked spirits get 0
-// however long the run, because before the capstone the run is the risk, not the
-// reward — that asymmetry IS the mechanic.
-{
-  const want = { 0:0, 1:0, 2:0, 3:3, 4:4, 5:5, 6:5, 7:5, 8:5, 12:5 };
-  for (const [len, db] of Object.entries(want)) {
-    assert.equal(chromaticPayout(Number(len), CHROM).db, db,
-      `B6: a run of ${len} at theory_chromatic must pay ${db}`);
-    assert.equal(chromaticPayout(Number(len), CHROM).runLen, Number(len),
-      'B6: the payout must report the run length it scored, for the flash copy');
-  }
-  // Every tier BELOW the capstone pays nothing, at every run length.
-  for (const tier of [NONE, MINOR, DOM7, MODES]) {
-    for (let len = 0; len <= 8; len++) {
-      assert.equal(chromaticPayout(len, tier).db, 0,
-        `B6: a run of ${len} must pay 0 without theory_chromatic (tier ${JSON.stringify(tier)})`);
-    }
-  }
-  // Monotonic and capped — no run length is ever worth less than a shorter one.
-  for (let len = 1; len <= 12; len++) {
-    const a = chromaticPayout(len - 1, CHROM).db, b = chromaticPayout(len, CHROM).db;
-    assert.ok(b >= a, `B6: run ${len} must not pay less than run ${len - 1}`);
-    assert.ok(b <= 5, 'B6: the payout is hard-capped at +5');
-  }
-  // Garbage in → 0 out, not NaN. This feeds an arithmetic chain into the Db meter.
-  for (const junk of [undefined, null, NaN, Infinity, -3, 'four', {}]) {
-    const r = chromaticPayout(junk, CHROM);
-    assert.equal(r.db, 0, `B6: ${String(junk)} must pay 0, not NaN`);
-    assert.ok(Number.isFinite(r.db), 'B6: the payout is always a finite number');
-  }
-  // A Set of skills must work identically to an array (callers pass both).
-  assert.equal(chromaticPayout(4, new Set(CHROM)).db, 4, 'B6: skills as a Set behave as an array');
-}
-console.log("✓ B6: chromatic payout curve — 3/4/5+ → 3/4/5 capped, zero below the capstone, monotonic, NaN-safe");
+// ─── B6: THE CHROMATIC PAYOUT — DELETED ─────────────────────────────────────
+// Three assertion groups covered the payout curve, its detector wiring, and the
+// deliberate double-pay with B4. All gone with `chromaticPayout` itself.
+//
+// The reason is the most useful number this project has produced: the payout fired
+// on 1% OF COMMITS, worth 0.02 Db each. It was the loud headline at the top of a
+// 46-Db skill ladder and the player was never going to see it. Every one of those
+// assertions passed, every one of them was correct, and none of them could tell us
+// the mechanic was inert — that took `src/engine/dbaudit.mjs`.
+//
+// ⚠️ TESTS PROVE A MECHANIC WORKS. THEY DO NOT PROVE IT MATTERS. Run the audit
+// before adding a Db source, not just b0check after.
+//
+// `detectChromaticRun` is still live and still tested elsewhere — it flips
+// `allInScale`, which feeds the crowd.
 
-// B6 reads the SAME detector the old pardon read, so the spec's example tracks
-// must actually register as runs. A payout gated on a length nothing produces is
-// a payout that never fires.
-{
-  assert.equal(detectChromaticRun(['C','C#','D']), 3, 'B6: three semitone steps is a run of 3');
-  assert.equal(detectChromaticRun(['C','C#','D','D#','E']), 5, 'B6: five ascending semitones is a run of 5');
-  assert.equal(detectChromaticRun(['E','D#','D','C#']), 4, 'B6: descending counts too');
-  assert.equal(detectChromaticRun(['C','C#','D','F','G']), 3, 'B6: the run need not span the whole track');
-  assert.equal(detectChromaticRun(['C','C#','C','C#']), 0, 'B6: direction must be consistent — zigzag is not a run');
-  assert.equal(detectChromaticRun(['C','D','E']), 0, 'B6: whole steps are not a chromatic run');
-  // End to end: the spec's headline case.
-  assert.equal(chromaticPayout(detectChromaticRun(['C','C#','D','D#','E']), CHROM).db, 5,
-    'B6: a 5-note chromatic run at the capstone pays the +5 cap');
-  assert.equal(chromaticPayout(detectChromaticRun(['C','C#','D']), CHROM).db, 3,
-    'B6: the minimum qualifying run pays the +3 base');
-}
-console.log("✓ B6: detectChromaticRun feeds the payout — the spec's tracks register at the lengths it prices");
-
-// ⚠️ B6 DOUBLE-PAYS WITH B4, BY DECISION. This group DOCUMENTS that as intended
-// rather than guarding against it, so a future reader can tell a deliberate
-// overlap from a bug. The decision and its three reasons are at `chromaticPayout`.
-{
-  // C-C#-D over a C-E-G drive stack at the capstone. C and D are in the C major
-  // key; C# is off-scale and the Approach Notes tier pardons it because the NEXT
-  // note (D)... is not a chord tone. So take a run that DOES resolve onto one:
-  // A#-B-C into C-E-G — C is a chord tone, so B is pardoned as an approach note.
-  const keyC  = [0,2,4,5,7,9,11];
-  const track = ['G','A#','B','C'];
-  const cls   = classifyTrack(track, keyC, ['C','E','G'], [], CHROM);
-  const paid  = countPardonedByStack(cls);
-  assert.equal(detectChromaticRun(track), 3, 'B6/B4: A#-B-C is a chromatic run of 3');
-  assert.ok(paid.drive + paid.sustain > 0,
-    'B6/B4: a run resolving onto a chord tone DOES also earn Drive/Sustain — the double pay is real');
-  assert.equal(chromaticPayout(detectChromaticRun(track), CHROM).db, 3,
-    'B6/B4: and the same run still collects its full +3 Db — priced knowing it stacks');
-  // The other half of the decision: the stacking is NOT automatic. A run that
-  // wanders off instead of resolving collects the Db and no colour at all.
-  const wander = ['C','C#','D','D#'];
-  const wcls   = classifyTrack(wander, keyC, ['C','E','G'], [], CHROM);
-  const wpaid  = countPardonedByStack(wcls);
-  assert.equal(detectChromaticRun(wander), 4, 'B6/B4: C-C#-D-D# is a run of 4');
-  assert.equal(chromaticPayout(4, CHROM).db, 4, 'B6/B4: it earns +4 Db');
-  assert.equal(wpaid.drive + wpaid.sustain, 0,
-    'B6/B4: but nothing in it resolves onto a chord tone, so it earns no colour — ' +
-    'the stacking is a skill gradient, not a flat bonus');
-}
-console.log("✓ B6/B4: the double pay is deliberate AND conditional — it only stacks where the run resolves");
 
 // ─── B7: THE DISCORD PENALTY GETS TEETH ─────────────────────────────────────
 // penalty = min(3, max(0, unpardoned − 1)). The grace and the floor are both
@@ -665,42 +652,73 @@ console.log("✓ B7: per-note discord penalty — first free, floored at 3, mono
 }
 console.log("✓ B7: penalty falls monotonically as the pardon ladder widens — 3 at tier 0, less at the capstone");
 
-// B6 + B7 on ONE track, the arithmetic the commit site performs:
-//   earned = max(0, base + lock + chromRun − discordPenalty)
-// The claim being checked is the design one: a chromatic run is never a net loss
-// at the capstone, and IS one before it.
+// ═══ THE Db PAYOUT — FOUR SOURCES ═══════════════════════════════════════════
+// The commit-site arithmetic, in full:
+//
+//   earned = max(0, length + ending + lock − penalty)
+//
+// Four terms. It used to be nine. This group asserts the shape of the whole
+// economy rather than any one mechanic, because the failure this project actually
+// suffered was not a broken mechanic — every mechanic passed its own tests — it
+// was mechanics quietly stacking up until nobody could read the total.
+//
+// ⚠️ IF YOU ADD A FIFTH TERM, THIS GROUP SHOULD FAIL AND MAKE YOU JUSTIFY IT.
 {
   const keyC = [0,2,4,5,7,9,11], F = 'F', G = 'G';
-  const track = ['C','C#','D','D#','E','F','F#','G'];  // a long run, ending on the 5th
   const stack = ['C','E','G'];
-  const runLen = detectChromaticRun(track);
-  assert.ok(runLen >= 5, 'B6/B7: the sample track holds a long chromatic run');
-  const base = scoreTrackDB(track, F, G);
-  for (const [tier, label] of [[NONE, 'tier 0'], [CHROM, 'capstone']]) {
-    const n    = countUnpardoned(classifyTrack(track, keyC, stack, [], tier));
-    const pen  = discordPenaltyFor(n);
-    const pay  = chromaticPayout(runLen, tier).db;
-    const lock = base.endingBonus > 0 ? harmonicLock(track[track.length - 1], stack, []).bonus : 0;
-    const earned = Math.max(0, base.points + lock + pay - pen);
-    if (tier === CHROM) {
-      assert.equal(pay, 5, 'B6/B7 capstone: the run pays the +5 cap');
-      assert.ok(pay > pen, `B6/B7 capstone: the payout must exceed the penalty (${pay} vs ${pen})`);
-      assert.ok(earned > base.points,
-        'B6/B7 capstone: the run must leave the track BETTER off than its bare placement score');
-    } else {
-      assert.equal(pay, 0, 'B6/B7 tier 0: the run pays nothing');
-      assert.ok(pen > 0, 'B6/B7 tier 0: and the wrong notes in it still cost');
-      assert.ok(earned < base.points,
-        'B6/B7 tier 0: so the same track is WORSE than its bare placement score — before the skill it wrecks you');
-    }
+  // The commit's arithmetic, transcribed. Keep in step with confirmNoteTrack.
+  const commitDb = (track, skills, ds = stack, ss = []) => {
+    const base = scoreTrackDB(track, F, G);
+    const lock = base.endingBonus > 0
+      ? harmonicLock(track[track.length - 1], ds, ss).bonus : 0;
+    const pen  = discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, ds, ss, skills)));
+    return { total: Math.max(0, base.points + lock - pen),
+             length: base.points - base.endingBonus, ending: base.endingBonus, lock, pen };
+  };
+
+  // 1. A clean line that lands on the 5th of the chord you built pays all three
+  //    positive terms — and a triad is enough. This is the headline case, and the
+  //    one that used to pay nothing because rank 4 was banded out of the Lock.
+  const good = commitDb(['C','D','E','F','G'], NONE);
+  assert.ok(good.length > 0, 'four-source: length pays');
+  assert.equal(good.ending, 3,   'four-source: a 5th ending pays 3');
+  assert.equal(good.lock,   1,   'four-source: landing in a MAJOR TRIAD pays 1 — from turn one, no Theory');
+  assert.equal(good.pen,    0,   'four-source: a diatonic line owes nothing');
+  assert.equal(good.total,  good.length + 3 + 1, 'four-source: the terms simply add');
+
+  // 2. Every term is reachable at tier 0. A ladder whose first rung is a
+  //    prerequisite for being paid at all is the bug this replaced.
+  assert.ok(good.total > 0, 'four-source: a tier-0 spirit can earn from every positive term');
+
+  // 3. The penalty is the only negative, it can zero a track but never invert it.
+  for (const t of [['C#','D#','F#','G#','A#'], ['C#'], ['C#','D#'], []]) {
+    const r = commitDb(t, NONE);
+    assert.ok(r.total >= 0, `four-source: ${t.join('-')||'empty'} floored at 0, never negative`);
   }
-  // The floor holds even in the worst case: earned can never go negative here.
-  for (let n = 0; n <= 12; n++) {
-    assert.ok(Math.max(0, 0 + 0 + 0 - discordPenaltyFor(n)) === 0,
-      'B6/B7: a scoreless track floors at 0 Db, never negative');
+
+  // 4. Theory can only ever help. Buying a tier widens the pardon, which can only
+  //    shrink the penalty — the one thing an upgrade may never do is cost you.
+  const colourful = ['C','Eb','E','F','G'];
+  let prev = -1;
+  for (const tier of [NONE, MINOR, DOM7, MODES, CHROM]) {
+    const r = commitDb(colourful, tier);
+    assert.ok(r.total >= prev,
+      `four-source: buying Theory LOWERED the payout (${prev} → ${r.total}) on ${colourful.join('-')}`);
+    prev = r.total;
   }
+
+  // 5. The chord is load-bearing: the SAME line pays more into a real chord than
+  //    into a single note. This is the chord↔melody link, reduced to one assertion.
+  const intoChord  = commitDb(['C','D','E','F','G'], NONE, ['C','E','G']);
+  const intoNote   = commitDb(['C','D','E','F','G'], NONE, ['C']);
+  const intoSeventh= commitDb(['C','D','E','F','G'], NONE, ['C','E','G','Bb']);
+  assert.ok(intoChord.total > intoNote.total,
+    'four-source: building a chord must beat holding a single note');
+  assert.ok(intoSeventh.total > intoChord.total,
+    'four-source: and a seventh must beat a triad — the slot ladder has to slope');
 }
-console.log("✓ B6+B7 together: the run is a net GAIN at the capstone and a net LOSS below it — the asymmetry the spec asks for");
+console.log("✓ Db payout: four sources — length + ending + lock − penalty, all reachable at tier 0");
+console.log("✓ Db payout: Theory never lowers it, and a bigger chord always pays more than a smaller one");
 
 // ─── B10: RONIN OWNS THE FIRST RUNG OF THE LADDER ───────────────────────────
 // He starts holding `theory_minor` so Wa no Koe amplifies the chord-context system
@@ -847,3 +865,22 @@ console.log("✓ initial grant: theory_major's gate opens on turn one for every 
   }
 }
 console.log("✓ B9: THEORY_DISCORD_GRANTS is a palette table only — it grants no context tiers, by design");
+
+// ═══ TASK C — STYLE — DELETED ═══════════════════════════════════════════════
+// Six assertion groups covered C4 (the three styles' chord-context reads, the
+// landmine, the Groove root-bonus witness, Flair's Outside) and C1 (preview/commit
+// agreement, the voice-roll floor). All are gone with the Style system.
+//
+// Two of them are worth remembering rather than merely deleting:
+//
+//  • The C1 preview/commit fuzz FOUND A REAL BUG that had nothing to do with C1 —
+//    the mic voice roll could append a note that erased a Groove spirit's root
+//    landing. A fuzz that compares two paths finds things neither path's own tests
+//    would. That technique should come back when there are two paths again.
+//
+//  • That same fuzz was itself wrong on its first run: it seeded an LCG and drew
+//    with `seed % n`, and an LCG's low bits are degenerate — `rnd(2)` returned 0 on
+//    99.7% of draws, so it generated almost exclusively descending runs while
+//    reporting 4000 cases of coverage. Any future fuzz in this file must take the
+//    HIGH bits (`seed >>> 15`). Cheap mistake, invisible symptom, worthless test.
+

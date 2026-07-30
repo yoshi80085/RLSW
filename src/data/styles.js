@@ -1,9 +1,19 @@
-// ─── STYLE SYSTEM (STYLE_SYSTEM_HANDOFF.md) ─────────────────────────────────
-// Supersedes stances.js. Style is fixed per Spirit — read straight off the
-// spirit sheet (SPIRIT_DEFS[id].style) — and dictates how a Spirit most
-// effectively earns Db. Styles grant no abilities, no passives, no specials,
-// and no stat modifiers; combat identity lives entirely in per-Spirit innates
-// and Signature arsenals.
+// ─── STYLE — CHARACTER FLAVOUR ONLY ─────────────────────────────────────────
+// ⚠️ STYLE NO LONGER AFFECTS SCORING. It used to pay Db per commit for matching
+// the spirit's fixed pattern (`styleCommitDb`, deleted). That system was cut for
+// two reasons: its detectors re-scored gestures the Drive and Sustain boosts
+// already pay for, and it was an aesthetic judge in a currency that now pays only
+// for facts a player can aim at — how much you played, where you came to rest,
+// whether that landing was in your chord, how many notes fought the key.
+//
+// What survives is identity: an icon, a colour and a tagline on the character
+// sheet. `earnDesc` and `bonusDesc` are KEPT as a record of what each style used
+// to reward, but ⚠️ THEY MUST NOT BE RENDERED AS RULES — they describe mechanics
+// that no longer exist, and the two places that showed them ("earns Db: …") now
+// show the tagline instead. Delete them the moment nothing needs the history.
+//
+// Style is still fixed per Spirit and read off SPIRIT_DEFS[id].style. Combat
+// identity lives entirely in per-Spirit innates and Signature arsenals.
 import { SPIRIT_DEFS } from "./spirits.js";
 
 export const STYLE_DEFS = {
