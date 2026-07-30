@@ -13,9 +13,16 @@
 //   Chord Tone Pardon  theory_minor       A note LITERALLY sitting in either stack
 //                                         is never Discord.
 //   Play the Changes   theory_dom7        Pardon extends from the literal stack
-//                                         notes to the WHOLE implied chord. Stack
-//                                         reads C-E-G-B♭ → dom7 → the ♭7 is clean
-//                                         even if you never placed a B♭.
+//                                         notes to the whole implied chord,
+//                                         COMPLETED TO ITS SEVENTH. Stack reads
+//                                         C-E-G → maj → maj7 → the ♮7 is clean in
+//                                         your melody though you never placed a B.
+//                                         (Completing the 7th is the whole tier:
+//                                         evaluateChord matches subsets, so the
+//                                         "implied chord" of a literal stack adds
+//                                         nothing on its own. Power chords are
+//                                         excluded — no third, no quality to
+//                                         complete.)
 //   Extensions         theory_modes       Context grows to the chord's available
 //                                         tensions, by quality: ♯4 over major,
 //                                         natural 6 over minor, ♭9 and 9 over dom.

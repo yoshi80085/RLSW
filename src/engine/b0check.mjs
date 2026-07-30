@@ -13,7 +13,7 @@ import { STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "../data/gameConstant
 import { makeInitialNoteState } from "../engine/systems/economy.js";
 import { evaluateChord, CHORD_TEMPLATES } from "../music/chords.js";
 import { scoreTrackDB } from "../music/cadence.js";
-import { getSpelledPool, pitchIndex, PITCH_INDEX } from "../music/notes.js";
+import { getSpelledPool, pitchIndex, PITCH_INDEX, canonicalRoot } from "../music/notes.js";
 import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack } from "../music/context.js";
 import assert from "node:assert";
 
@@ -258,3 +258,65 @@ console.log("✓ B8: theory_minor still gates minor — 'locked' lets the UI adv
 // Turn one, post-B0: the stack is a single seeded note, so nothing is forced.
 assert.equal(mk([makeInitialNoteState('test_spirit', () => 0.5).rootNote]).reason, 'ambiguous');
 console.log("✓ B8: the B0 single-note seed reads as ambiguous — turn one never force-flips a spirit's mode");
+
+// ─── B8 WIRING: the derived mode reaches the turn flow ──────────────────────
+// These cover the invariants the wiring depends on. The React plumbing itself
+// (the pendingModeBonus effect, the read-only HUD line) isn't reachable from
+// bare node — what IS reachable is every property that plumbing assumes, so if
+// one of them stops holding, the failure surfaces here instead of in play.
+
+// The sheet no longer ships a pending pivot, and what it does ship agrees with
+// what modeFromStack would derive from its own seeded stack. (If B0's seed ever
+// grows a third, this is the check that notices.)
+for (const id of ["test_spirit", "cosmic_ronin"]) {
+  for (const r of [0.0, 0.31, 0.5, 0.87, 0.99]) {
+    const ns = makeInitialNoteState(id, () => r);
+    assert.equal(ns.pivotPending, false, `${id}: no pivot to pend at init`);
+    const d = modeFromStack(ns.driveStack, ns.unlockedSkills ?? [], ns.scaleMode);
+    assert.equal(d.mode,   ns.scaleMode,  `${id}: seeded mode is the derived mode`);
+    assert.equal(d.reason, ns.modeReason, `${id}: seeded reason matches`);
+  }
+}
+console.log("✓ B8 wiring: the initial sheet ships a derived mode, not a pending prompt");
+
+// IDEMPOTENCE ACROSS TURNS. Turn start feeds the previous turn's mode back in as
+// `currentMode`. If derivation weren't a fixed point, an untouched stack would
+// oscillate the key every turn all by itself — respelling the stock each time.
+for (const stack of [['C','E','G'], ['C','D#','G'], ['C','G'], ['C'], [], ['C','D','G'], ['C','C#','D']]) {
+  for (const unlocks of [[], MINOR]) {
+    let mode = 'major';
+    for (let turn = 0; turn < 5; turn++) {
+      const next = modeFromStack(stack, unlocks, mode).mode;
+      if (turn > 0) assert.equal(next, mode, `${stack.join('-')||'empty'}: mode drifts on turn ${turn}`);
+      mode = next;
+    }
+  }
+}
+console.log("✓ B8 wiring: derivation is a fixed point — an unchanged stack never drifts the key");
+
+// RESPELL STABILITY. Turn start respells the carried stock through
+// getSpelledPool(canonicalRoot(root, mode), mode). Doing that on five
+// consecutive turns must not walk a note's name (Eb → D# → Eb...), or a note the
+// player is holding would rename itself while they watch.
+for (const root of SPELL_ROOTS) {
+  for (const mode of ['major','minor']) {
+    const cr   = canonicalRoot(root, mode);
+    const pool = getSpelledPool(cr, mode);
+    assert.equal(canonicalRoot(cr, mode), cr, `${root} ${mode}: canonicalRoot is not stable`);
+    const once  = pool.map(n => pool[pitchIndex(n)]);
+    assert.deepEqual(once, pool, `${root} ${mode}: respelling twice changes the names`);
+  }
+}
+console.log("✓ B8 wiring: turn-start respell is stable — held notes never rename themselves");
+
+// UNLOCKING MINOR IS A PROMOTION, NEVER A DEMOTION. A 'locked' stack must read
+// minor the moment theory_minor lands, and no unlock may ever move a spirit the
+// other way (from minor back to major) on the same stack.
+for (const stack of [['C','D#','G'], ['C','D#','G','A#'], ['C','D#','F#'], ['C','E','G'], ['C','G']]) {
+  const before = modeFromStack(stack, [], 'major');
+  const after  = modeFromStack(stack, MINOR, before.mode);
+  assert.notEqual(after.reason, 'locked', `${stack.join('-')}: still locked after unlocking`);
+  if (before.mode === 'minor') assert.equal(after.mode, 'minor', `${stack.join('-')}: unlock demoted to major`);
+  if (before.reason === 'locked') assert.equal(after.mode, 'minor', `${stack.join('-')}: unlock didn't deliver minor`);
+}
+console.log("✓ B8 wiring: buying Minor Tonality promotes a locked stack and never demotes any other");

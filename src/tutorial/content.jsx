@@ -332,14 +332,16 @@ function TutSection_NoteTrack() {
         </div>
       </div>
 
-      {/* Root & pivot */}
+      {/* Root & mode — B8: the mode is derived from the Drive Stack, not declared */}
       <div style={{background:"#14110a", border:"1px solid #ffcc4444", borderRadius:6, padding:"10px 14px"}}>
-        <div style={{fontSize:8, color:"#ffcc44", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:6}}>⚡ THE PIVOT — set your key first</div>
+        <div style={{fontSize:8, color:"#ffcc44", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:6}}>⚡ THE KEY — your chord sets it</div>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
-          Before you can build, you pivot: pick your <span style={{color:"#ffcc44"}}>Root note</span> and
-          declare <span style={{color:"#aaccff"}}>Major</span> or <span style={{color:"#ff88aa"}}>Minor</span>.
-          That choice sets your scale — which notes count as in-scale, and how every interval is
-          measured from the Root. Mod Cards can bend this on the fly.
+          Your <span style={{color:"#ffcc44"}}>Root note</span> is the last note you committed last turn.
+          Whether the song is <span style={{color:"#aaccff"}}>Major</span> or <span style={{color:"#ff88aa"}}>Minor</span> is
+          not a question you answer — your <span style={{color:"#ff6688"}}>Drive Stack</span> answers it.
+          A major third makes it major, a minor third makes it minor, and a power chord has no third at
+          all, so the key simply holds. That sets your scale: which notes count as in-scale, and how
+          every interval is measured from the Root. Mod Cards can bend it on the fly.
         </p>
       </div>
 
@@ -835,16 +837,17 @@ function TutSection_Crowd() {
 
 function TutSection_ModCards() {
   const cards = [
-    {icon:"🎼", name:"Chromatic Shift", color:"#44ffaa", when:"after the pivot",  desc:"Rewrites every discord note on your track into an in-scale note — an instant clean-up."},
-    {icon:"🔄", name:"Transpose",       color:"#ffcc44", when:"during the pivot",  desc:"Pick any note in your stock and make it your new Root, re-spelling the whole scale around it."},
+    {icon:"🎼", name:"Chromatic Shift", color:"#44ffaa", when:"while building",   desc:"Rewrites every discord note on your track into an in-scale note — an instant clean-up."},
+    {icon:"🔄", name:"Transpose",       color:"#ffcc44", when:"before you build",  desc:"Pick any note in your stock and make it your new Root, re-spelling the whole scale around it."},
     {icon:"⚡", name:"Overdrive",       color:"#ff8844", when:"before you commit", desc:"Lets one discord note count as in-scale, so it scores instead of breaking your harmony."},
   ];
   return (
     <div style={{display:"flex", flexDirection:"column", gap:14}}>
       <p style={{fontSize:10, color:"#a0b8cc", lineHeight:1.7, margin:0}}>
         <span style={{color:"#aa88ff"}}>Mod Cards</span> are one-shot rule-benders for your Melody Line.
-        Play one per turn; they recharge by your next turn. Each fires at a specific moment around the
-        <span style={{color:"#ffcc44"}}> pivot</span> — where you lock in your Root and declare Major or Minor.
+        Play one per turn; they recharge by your next turn. Each fires at a specific moment in the turn —
+        before you build, while you build, or right before you
+        <span style={{color:"#ffcc44"}}> commit</span>.
       </p>
       {cards.map((c,i)=>(
         <div key={i} style={{background:"#050c18", border:`1px solid ${c.color}44`,

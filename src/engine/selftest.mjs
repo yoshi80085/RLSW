@@ -756,12 +756,17 @@ const config = {
   assert.equal(typeof ns.rootNote, "string", "root note built");
   assert.equal(ns.noteStock.length, 10, "default stock size 10 (Drive/Sustain split)");
   assert.deepEqual(ns.usedStockIdx, [], "usedStockIdx is a JSON array (5a)");
-  assert.equal(ns.driveStack.length, 2, "opens on a power chord in Drive");
-  assert.equal(ns.sustainStack.length, 2, "opens on a power chord in Sustain");
-  assert.deepEqual(ns.driveStack, ns.sustainStack, "both stacks start with the same power chord");
+  // B0a: the stacks seed with the ROOT ALONE — the 5th costs a stock note now, so
+  // the power chord is earned with your first commit rather than handed over.
+  assert.equal(ns.driveStack.length, 1, "opens on a single note in Drive (B0a)");
+  assert.equal(ns.sustainStack.length, 1, "opens on a single note in Sustain (B0a)");
+  assert.deepEqual(ns.driveStack, ns.sustainStack, "both stacks start on the same seed note");
   assert.equal(ns.stackCommitsThisTurn, 0, "stack commits start at 0");
   assert.equal(ns.scaleMode, "major");
-  assert.equal(ns.pivotPending, true);
+  // B8: no Major/Minor prompt — the Drive Stack decides, and a single note is
+  // quality-ambiguous, so turn one holds major without asking.
+  assert.equal(ns.pivotPending, false, "B8: nothing pends a pivot any more");
+  assert.equal(ns.modeReason, 'ambiguous', "B8: a single-note seed has no third to read");
 
   // building note sheets must NOT consume the main rng stream (it forks) → cursor 0,
   // so every existing roll downstream is byte-identical to before this landed.

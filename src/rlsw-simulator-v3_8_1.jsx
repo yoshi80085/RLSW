@@ -421,7 +421,7 @@ import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } 
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
 import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote, detectResolvedDiscords } from "./music/cadence.js";
-import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack } from "./music/context.js";
+import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack } from "./music/context.js";
 import { evaluateChord } from "./music/chords.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -514,7 +514,7 @@ const SKILL_TREE = {
         { id:'theory_major',     label:'The Full Scale',       icon:'🎼', dbCost:6,  gated:true, prereq:null,
           desc:'Adds the 4th & 7th, completing the Major (Ionian) scale — those two notes stop costing Discord.' },
         { id:'theory_minor',     label:'Minor Tonality',       icon:'🌑', dbCost:8,  gated:true, prereq:'theory_major',
-          desc:'Unlocks the Minor scale and the Major/Minor pivot. Declare Minor at the pivot for a darker key, Discord-free.' },
+          desc:'Unlocks the Minor scale. Stack a minor third in your Drive Stack and the song turns MINOR — a darker key, Discord-free. Without this, a minor stack holds major.' },
         { id:'theory_dom7',      label:'Blues / Dominant 7th', icon:'🎷', dbCost:10, gated:true, prereq:'theory_minor',
           desc:'The ♭7 joins your clean palette. +1 STACK SLOT (4) — the same lesson that lets you play the blues note lets you build the dominant 7th chord.' },
         { id:'theory_modes',     label:'Modal Colour',         icon:'🌀', dbCost:12, gated:true, prereq:'theory_dom7',
@@ -1317,8 +1317,9 @@ function Game({ gameState, onReturnToLobby }) {
   const [tauntDisplay, setTauntDisplay] = useState(null); // { line, name, color, key }
   const moveStepsLeft = engineState.turn.moveStepsLeft; // engine-owned (Phase 2)
   const [stackCommitDest, setStackCommitDest] = useState(null); // 🎸 null = melody mode, 'drive' | 'sustain' = stack commit mode
-  // 🎯 TURN STEP — progressive HUD flow: pivot → chord → melody → move_act
-  const [turnStep, setTurnStep] = useState('pivot');
+  // 🎯 TURN STEP — progressive HUD flow: chord → melody → move_act
+  // B8: 'pivot' is no longer a stage — the turn opens on the chord step.
+  const [turnStep, setTurnStep] = useState('chord');
   // 🎵 FLY NOTE — animated chip that flies from Note Stock to the commit track
   const [flyNote, setFlyNote] = useState(null); // { note, x, y, slotIdx, key }
   const commitTrackRef = useRef(null); // ref on the commit track container for target coords
@@ -1336,7 +1337,7 @@ function Game({ gameState, onReturnToLobby }) {
   const [beginnerTipsSeen, setBeginnerTipsSeen] = useState(new Set());
   const [activeTip, setActiveTip] = useState(null); // { id, title, body } or null
   // The very first tip (welcome) is triggered by the initial Full Scale grant
-  // useEffect, which also queues the pivot tip to follow it. The skill_tree tip
+  // useEffect, which also queues the chord tip to follow it. The skill_tree tip
   // fires the first time the Theory Tree opens (DB bar filled → upgradesPending).
   const turnQueue = engineState.turnQueue; // engine-owned (Phase 2)
   // 🧪 TESTING GROUNDS — dev panel (only when the sandbox was launched from the
@@ -1662,29 +1663,29 @@ function Game({ gameState, onReturnToLobby }) {
         { body: 'In-scale notes keep feeding DB toward your target — when the bar refills, the skill is yours and you pick the next one. The mini progress bar lives on your spirit card.', anchor: 'db-bar' },
       ],
     },
-    pivot: {
-      title: '🎵 Step 1 — Choose Your Scale',
-      pages: [
-        { body: 'Step 1: pick your sound. Your ROOT NOTE plus MAJOR (bright, sunshine) or MINOR (dark, brooding) defines your scale — which notes play clean this turn.', anchor: 'root-note' },
-        { body: ['In-scale notes earn DB and please the crowd. Off-scale notes are DISCORD — no DB, and the audience notices. They always notice.', 'Root feels wrong? Your 🔄 Transpose card can swap it. A bad root is a choice; staying on one is a lifestyle.'], anchor: 'note-stock' },
-      ],
-    },
+    // 🎸 B8: the `pivot` tip is GONE along with the step it explained. There is no
+    // "choose your scale" moment any more — the Drive Stack's chord quality sets
+    // Major/Minor at turn start. What that tip had to teach (root, mode, what
+    // Discord costs you) now belongs to the chord step, which is where the player
+    // actually influences it. Anything queueing showTip('pivot') is a leftover.
     chord: {
-      title: '🎸 Step 2 — Load Your Stacks',
+      title: '🎸 Step 1 — Load Your Stacks',
       pages: [
         { body: 'These racks are your combat stats, spelled in notes. The DRIVE STACK (⚔️ red) powers your attacks; the SUSTAIN STACK (🛡️ blue) is your armor. Each holds 5 notes — the better the chord they spell, the higher the stat.', anchor: 'chord-stack' },
         { body: ['Stacks are ammo, not decoration. Landing a hit SPENDS notes off your Drive Stack; getting hit CHIPS notes off your Sustain Stack.', 'You can commit up to 3 notes per turn, split between the two however you like. Keep both fed — an empty rack fights on base stats, which is a polite word for "losing".'], anchor: 'chord-stack' },
+        { body: ['Your Drive Stack also picks the KEY. Stack a major third and the song is MAJOR (bright, +1 DB); stack a minor third and it turns MINOR (dark, +1 Sustain). A power chord has no third, so the mode just holds — that is why rock lives on them.', 'Nobody asks you to declare it. Change the chord, change what plays clean: in-scale notes earn DB, off-scale notes are DISCORD and the audience notices. They always notice.'], anchor: 'derived-mode' },
+        { body: 'Root feels wrong? Your 🔄 Transpose card can swap it. A bad root is a choice; staying on one is a lifestyle.', anchor: 'root-note' },
       ],
     },
     melody: {
-      title: '🎶 Step 3 — Build Your Melody',
+      title: '🎶 Step 2 — Build Your Melody',
       pages: [
         { body: 'Now spend your remaining notes on the MELODY LINE: each note = 1 hex of movement (AP), up to your Speed — extras bank for later. In-scale notes also earn DB. Short track = safe but slow. Long track = mobile but you risk discords.', anchor: 'note-stock' },
         { body: 'The colored slots mark special intervals — tritone (red, spicy), 5th (pink) and 4th (purple, sturdy), Major 3rd (green), minor 7th (blue). The LAST note matters most: it becomes next turn\'s Root and feeds cadences. When it sounds right, hit COMMIT.', anchor: 'commit-track' },
       ],
     },
     move_act: {
-      title: '🚶 Step 4 — Move & Act',
+      title: '🚶 Step 3 — Move & Act',
       pages: [
         { body: 'Track committed — your notes are now AP. MOVE across hexes, FACE to turn (1 AP), and fight. Attacks fire into the cone or beam you\'re FACING — sneaking behind someone isn\'t just rude, it\'s tactics.', anchor: 'actions-bar' },
         { body: ['Three ways to ruin someone\'s set:', '⚔️ SWING (1 AP) — the melee jab. Cheap, defended, drives your chord into them.', '🎸 SMASH (2 AP) — the haymaker. Undefendable, ignores Sustain, hurls your unused stock... and leaves you Exposed. Commit issues, in weapon form.', '🔊 SONIC (2 AP) — the ranged beam from your amp rig. Less damage, way more Fame.'], anchor: 'actions-bar' },
@@ -1821,7 +1822,15 @@ function Game({ gameState, onReturnToLobby }) {
   const usedStockIdx = actingNoteState?.usedStockIdx ?? [];
   const rootNote     = actingNoteState?.rootNote     ?? 'C';
   const scaleMode    = actingNoteState?.scaleMode    ?? 'major';
+  // ⚠️ B8: nothing sets pivotPending true any more (the mode is derived from the
+  // Drive Stack at turn start). Its read sites are left in place on purpose —
+  // they now all read false and gate nothing. Don't reintroduce a writer.
   const pivotPending  = actingNoteState?.pivotPending ?? false;
+  // 🔒 B8 'locked': the Drive Stack spells a minor chord but theory_minor isn't
+  // unlocked, so the mode holds major. The HUD gets to advertise the skill at the
+  // one moment the player actively wants it — this inherits the amber treatment
+  // the old "PICK MODE" badge used.
+  const modeLocked    = (actingNoteState?.modeReason ?? '') === 'locked';
   // ── SONIC RIG (AMP_DECK_DESIGN.md §2) ──────────────────────────────────────
   // Every Spirit has a Main Amp at their corner from turn 1. Pool size comes
   // from Amp I–III, die upgrades from Power I–III, effective radius from
@@ -2823,49 +2832,43 @@ function Game({ gameState, onReturnToLobby }) {
     addLog('🎸 Drop not available — use the stack commit system.');
   }
 
-  function declarePivot(newMode) {
-    if (!acting || !canAct) return; // N4/N7: gate
-    if (newMode === 'minor' && !(actingNoteState?.unlockedSkills ?? []).includes('theory_minor')) {
-      addLog('🔒 Minor Tonality is locked — unlock it in the Theory tree to play in a minor key.');
-      return;
-    }
-    // Resolve canonical spelling now that mode is known (handles G#/Ab, C#/Db splits)
-    const respelledRoot = canonicalRoot(rootNote, newMode);
-    // Respell the existing stock to match the new root context
-    const respelledStock = (actingNoteState?.noteStock ?? []).map(n => {
-      const pool = getSpelledPool(respelledRoot, newMode);
-      const idx = pitchIndex(n);
-      return idx !== -1 ? pool[idx] : n;
-    });
+  // ── 🎸 B8 MODE BONUS — the applier ──────────────────────────────────────────
+  // This was `declarePivot(mode)`, wired to two buttons. The mode itself is now
+  // derived and respelled inside the startNewTurnNotes reducer (B8); all that is
+  // left here is the part that reducer can't do — pay the bonus, announce it, and
+  // award a skill if the DB bar tipped over.
+  //
+  //   Major → +1 DB          (bright momentum; major favours harmonic runs)
+  //   Minor → +1 tempSustain (dark resolve, defensive edge) — blocked by Mojo Drain
+  //
+  // The asymmetry is deliberate and load-bearing: major is tempo, minor is
+  // defense. If both paid DB the "choice" would collapse into "always the bigger
+  // number". (It also used to pay minor in tempDRIVE, contradicting both the
+  // comment above it and the design doc — fixed in the B8 core pass.)
+  function payModeBonus(spiritId) {
+    const ns = noteStates[spiritId];
+    const staged = ns?.pendingModeBonus;
+    if (!staged) return;
+    const { mode, reason, root } = staged;
 
-    // ── MODE BONUS ────────────────────────────────────────────────────────────
-    // Major → +1 DB point (bright momentum, major scales favour harmonic runs)
-    // Minor → +1 tempSustain (dark resolve, defensive edge)
-    const isMojoDrained = (actingNoteState?.mojoDrain ?? 0) > 0;
+    const isMojoDrained = (ns.mojoDrain ?? 0) > 0;
     let bonusPatch = {};
     let bonusMsg = '';
-    if (newMode === 'major') {
-      const targetSkill = actingNoteState?.targetSkillId ? SKILL_BY_ID[actingNoteState.targetSkillId] : null;
+    if (mode === 'major') {
+      const targetSkill = ns.targetSkillId ? SKILL_BY_ID[ns.targetSkillId] : null;
       const targetCost  = targetSkill?.dbCost ?? DB_UPGRADE_THRESHOLD;
-      const { newDBPoints, upgradeTriggered } = advanceDB(actingNoteState?.dbPoints ?? 0, 1, targetCost);
+      const { newDBPoints, upgradeTriggered } = advanceDB(ns.dbPoints ?? 0, 1, targetCost);
       const newUpgradesPending = upgradeTriggered
-        ? (actingNoteState?.upgradesPending ?? 0) + 1
-        : (actingNoteState?.upgradesPending ?? 0);
+        ? (ns.upgradesPending ?? 0) + 1
+        : (ns.upgradesPending ?? 0);
       bonusPatch = { dbPoints: newDBPoints, upgradesPending: newUpgradesPending,
-        totalDB: (actingNoteState?.totalDB ?? 0) + 1 };
+        totalDB: (ns.totalDB ?? 0) + 1 };
       bonusMsg = upgradeTriggered
         ? ` · ☀️ Major bonus: +1 DB → 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!`
         : ` · ☀️ Major bonus: +1 DB [${newDBPoints}/${targetCost}]`;
     } else {
-      // ⚠️ FIXED: this paid +1 tempDRIVE while the comment above it, and B8, both
-      // specify Sustain. B8's whole argument for keeping the pivot asymmetric is
-      // "major is tempo, minor is defense" — paying minor in Drive made both
-      // branches aggressive and quietly deleted the asymmetry it was defending.
-      // The comment and the design doc agreed with each other; only the code
-      // disagreed, so the code was wrong.
       if (!isMojoDrained) {
-        const prevSustain = actingNoteState?.tempSustain ?? 0;
-        const newSustain = prevSustain + 1;
+        const newSustain = (ns.tempSustain ?? 0) + 1;
         bonusPatch = { tempSustain: newSustain };
         bonusMsg = ` · 🌑 Minor bonus: +1 Sustain (now +${newSustain})`;
       } else {
@@ -2873,19 +2876,20 @@ function Game({ gameState, onReturnToLobby }) {
       }
     }
 
-    setNoteField(acting.id, {
-      scaleMode:   newMode,
-      rootNote:    respelledRoot,
-      pivotPending: false,
-      noteStock:   respelledStock,
-      ...bonusPatch,
-    });
-    addLog(`🎸 ${respelledRoot} ${newMode} — scale set, start building!${bonusMsg}`);
-    setTurnStep('chord'); // advance HUD flow → chord stack
-    setTimeout(() => showTip('chord'), 300);
-    // If Major bonus triggered an upgrade, award the skill
-    if (bonusPatch.upgradesPending > (actingNoteState?.upgradesPending ?? 0) && actingNoteState?.targetSkillId) {
-      setTimeout(() => awardTargetSkill(acting.id), 60);
+    setNoteField(spiritId, { ...bonusPatch, pendingModeBonus: null });
+
+    // Say WHY the mode is what it is — the line is doing the teaching the two
+    // buttons used to do. 'locked' is the most valuable of the three: hearing a
+    // minor chord and being told the game can't spell it yet sells Minor Tonality
+    // far better than a greyed-out button at the moment of least interest.
+    const chord  = ns.modeChordName ?? 'your stack';
+    const why = reason === 'quality'   ? `${chord} sets the key`
+              : reason === 'ambiguous' ? `${chord} has no third — mode held`
+              : /* locked */             `${chord} wants minor — 🔒 unlock Minor Tonality`;
+    addLog(`🎸 ${root} ${mode} — ${why}.${bonusMsg}`);
+
+    if (bonusPatch.upgradesPending > (ns.upgradesPending ?? 0) && ns.targetSkillId) {
+      setTimeout(() => awardTargetSkill(spiritId), 60);
     }
   }
 
@@ -3016,12 +3020,12 @@ function Game({ gameState, onReturnToLobby }) {
     let allInScale     = effectiveDiscord === 0;
     const lastNote     = melodyLine[melodyLine.length - 1];
     const firstNote    = melodyLine[0];
-    // pivotPending is now set at the START of the next turn (in startNewTurnNotes),
-    // not here at the end of scoring — so the key choice is a start-of-round decision.
-    const newPivotPending = false; // will be set true when next turn begins
-    // Carry forward current mode as default; player can change at pivot prompt
+    // B8: there is no pivot to pend. The mode is DERIVED at the start of the next
+    // turn (startNewTurnNotes → modeFromStack), so this stays false forever and the
+    // mode carried here is only a placeholder that turn start will overwrite.
+    const newPivotPending = false;
     const newMode = scaleMode;
-    // Respell the new root note using enharmonic map (split roots resolve at next pivot)
+    // Respell the new root note using enharmonic map (split roots resolve at turn start)
     const newRootRaw = ENHARMONIC_RESPELL[lastNote] ?? lastNote;
 
     // ── SPEED & BANKING ───────────────────────────────────────────────────────
@@ -3408,7 +3412,8 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   // Called when this character's turn begins — replenish only the used slots.
-  // pivotPending is preserved so the Major/Minor prompt appears before building starts.
+  // B8: the Major/Minor mode is DERIVED here from the Drive Stack instead of
+  // prompting the player, so pivotPending is now set false rather than true.
   // Also clears per-turn debuffs: tripped (movement halved), dazed, instrumentDropped.
   function startNewTurnNotes(spiritId) {
     // Record whether this spirit starts their turn on the limelight hex.
@@ -3421,15 +3426,41 @@ function Game({ gameState, onReturnToLobby }) {
       const ns = prev[spiritId];
       if (!ns) return prev;
 
+      // ── 🎸 B8: THE CHORD DECLARES THE MODE ──────────────────────────────────
+      // Was a per-turn "Major or Minor?" button prompt. The root changes every
+      // turn, so it fired every turn — the highest-frequency modal in the game,
+      // asking a theory question of players who may not have one. It also bought
+      // less than it looked like: after B3, stacking a minor triad already
+      // legalizes the ♭3 through Chord Tone Pardon without declaring anything.
+      // So the stack decides, and the decision moves into the thing the player is
+      // already manipulating.
+      //
+      // ⚠️ DERIVE AT TURN START ONLY — never on stack commit. Re-deriving mid-turn
+      // would respell the note stock underneath notes the player has already
+      // placed. A stack committed this turn changes the mode NEXT turn; the HUD
+      // says so rather than reaching back and rewriting the current one.
+      const derived     = modeFromStack(ns.driveStack ?? [], ns.unlockedSkills ?? [], ns.scaleMode ?? 'major');
+      const derivedMode = derived.mode;
+      const derivedRoot = canonicalRoot(ns.rootNote, derivedMode);
+      const modePool    = getSpelledPool(derivedRoot, derivedMode);
+      const driveChord  = evaluateChord((ns.driveStack ?? []).filter(Boolean));
+
       // 🎵 GRADUAL REFILL — unused notes carry over; only up to STOCK_REFILL_RATE
       // spent slots recharge this turn. Spend big one turn, run short the next.
       // Axe Swing whiff penalty: halve refill rate for one turn
       const refillRate = ns.halfRefillNextTurn ? Math.floor(STOCK_REFILL_RATE / 2) : STOCK_REFILL_RATE;
       const usedIdxs   = usedList(ns.usedStockIdx);
       const refreshing = new Set(usedIdxs.slice(0, refillRate));
-      const newStock = ns.noteStock.map((note, idx) =>
-        refreshing.has(idx) ? randomNote(ns.rootNote, ns.scaleMode) : note
-      );
+      // Fresh notes are drawn in the DERIVED key and carried-over notes are
+      // respelled into it — both here, before the player ever sees the stock.
+      // Drawing with ns.scaleMode would spell this turn's new notes in last
+      // turn's mode, which is exactly the bug the old pivot's respell-on-declare
+      // was there to prevent.
+      const newStock = ns.noteStock.map((note, idx) => {
+        if (refreshing.has(idx)) return randomNote(derivedRoot, derivedMode);
+        const pi = pitchIndex(note);
+        return pi !== -1 ? modePool[pi] : note;
+      });
       const carriedUsed = usedIdxs.filter(i => !refreshing.has(i)); // insertion order preserved (was a Set)
 
       // 🎵 Announce the refill instead of letting it happen silently — same
@@ -3511,8 +3542,17 @@ function Game({ gameState, onReturnToLobby }) {
           modCards: (ns.modCards ?? [])
             .filter(c => !(c.oneShot && c.exhausted))
             .map(c => ({ ...c, exhausted: false })),
-          // Prompt major/minor choice at the START of this spirit's turn
-          pivotPending: true,
+          // 🎸 B8: mode derived from the Drive Stack, applied here. The bonus it
+          // earns can't be paid inside this updater (advanceDB / awardTargetSkill
+          // have side effects, and React may run the updater more than once), so
+          // it is STAGED and a small effect pays it exactly once — see
+          // applyModeBonus below.
+          rootNote:     derivedRoot,
+          scaleMode:    derivedMode,
+          modeReason:   derived.reason,     // 'quality' | 'ambiguous' | 'locked'
+          modeChordName: driveChord.name,   // e.g. "C Minor triad" — the HUD cites it
+          pivotPending: false,              // ⚠️ never true again; guards stay, harmless
+          pendingModeBonus: { mode: derivedMode, reason: derived.reason, root: derivedRoot },
           // 👤 Shadow Illusion: tick down turns, dismiss if expired.
           // Note this counts the Ronin's OWN turns, so a 3-turn double survives
           // three full rounds of rivals guessing wrong.
@@ -3591,14 +3631,30 @@ function Game({ gameState, onReturnToLobby }) {
       }));
       applySkillEffects(acting.id, 'theory_major'); // logs "THE FULL SCALE!" (no discord grants at this tier)
       // 🎓 Welcome walkthrough for humans only (bots don't read), then the
-      // pivot tip queued so it appears right after the welcome card closes.
+      // chord tip queued so it appears right after the welcome card closes.
+      // (Was the pivot tip — B8 deleted that step and folded its lesson in.)
       if (!acting.cpu) {
         setTimeout(() => showTip('welcome'), 400);
-        if (!pendingTipsRef.current.includes('pivot')) pendingTipsRef.current.push('pivot');
+        if (!pendingTipsRef.current.includes('chord')) pendingTipsRef.current.push('chord');
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acting?.id]);
+
+  // ── 🎸 B8: pay the staged mode bonus ────────────────────────────────────────
+  // startNewTurnNotes derives the mode inside its reducer and stages the bonus;
+  // this pays it out here, where side effects are legal. It fires once per turn
+  // because payModeBonus clears pendingModeBonus as it pays.
+  //
+  // OWNERSHIP: same rule as the initial-skill grant above — only the client that
+  // controls the acting spirit may write, or a remote client would dispatch a
+  // duplicate patch and relay it (desync).
+  useEffect(() => {
+    if (!acting || !canAct) return;
+    if (!noteStates[acting.id]?.pendingModeBonus) return;
+    payModeBonus(acting.id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acting?.id, canAct, noteStates[acting?.id]?.pendingModeBonus]);
   function move(toNum) {
     const s = spirits.find(sp => sp.id === acting.id);
     const ns = noteStates[acting.id] ?? {};
@@ -3666,7 +3722,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Set it down (2 Db per use). It plays itself every turn — 2 rings, then 3 — and on the third turn it starts HUNTING the nearest Spirit. Including you.`);
     if (skillId === 'wa_no_koe')      addLog(`🎵 ${spirit?.name} — WA NO KOE! When melody aligns with your chord stack, notes convert to +1 Drive or Sustain for 3 rounds.`);
     if (skillId === 'theory_major')     addLog(`🎼 ${spirit?.name} — THE FULL SCALE! The 4th & 7th are now Discord-free — your Major scale is complete.`);
-    if (skillId === 'theory_minor')     addLog(`🌑 ${spirit?.name} — MINOR TONALITY! You can now declare Minor at the pivot and play a minor key, clean.`);
+    if (skillId === 'theory_minor')     addLog(`🌑 ${spirit?.name} — MINOR TONALITY! Stack a minor third and the song follows you into a minor key, clean.`);
     if (skillId === 'theory_sus')       addLog(`🕊️ ${spirit?.name} — SUSPENSIONS! Ending on the 2nd or 4th now rings out for bonus Flair.`);
     if (skillId === 'theory_dom7')      addLog(`🎷 ${spirit?.name} — DOMINANT 7th! The ♭7 joins your clean palette, and your stacks open a 4th slot — you can build the chord you just learned to play over.`);
     if (skillId === 'theory_modes')     addLog(`🌀 ${spirit?.name} — MODAL SHIFT! Lydian ♯4 and Mixolydian ♭7 are now clean color tones, and your stacks open a 5th slot — 9th chords are in reach.`);
@@ -3770,7 +3826,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     const spirit = spirits.find(s => s.id === spiritId);
     addLog(`🎯 ${spirit?.name} is saving toward: ${skill.icon} ${skill.label} (${skill.dbCost} DB)`);
-    if (turnStep === 'pivot') setTimeout(() => showTip('pivot'), 400);
+    if (turnStep === 'chord') setTimeout(() => showTip('chord'), 400);
   }
 
   // Called when advanceDB fires upgradeTriggered — awards the target skill & opens overlay.
@@ -3899,7 +3955,7 @@ function Game({ gameState, onReturnToLobby }) {
       name: 'Transpose',
       desc: 'Re-draw your Root Note from any note in your current stock — you choose.',
       color: '#ffcc44',
-      usableWhen: 'during-pivot', // instead of accepting assigned root
+      usableWhen: 'before-build', // was 'during-pivot' (B8 removed the pivot step)
     },
   };
 
@@ -3927,9 +3983,19 @@ function Game({ gameState, onReturnToLobby }) {
     if (!ns?.transposeCardPending) return;
     const newRoot = ns.noteStock[noteIdx];
     if (!newRoot) return;
-    const canonRoot = canonicalRoot(newRoot, scaleMode);
+    // 🎸 B8: the root just moved, so re-derive the mode from the Drive Stack and
+    // respell around the new root. Safe to respell here: Transpose is
+    // `usableWhen: 'before-build'`, i.e. before any melody note has been placed.
+    //
+    // ⚠️ Deliberately does NOT re-pay the mode bonus. The old flow re-opened the
+    // Major/Minor prompt, so declaring again paid a second +1 DB — affordable when
+    // it cost the player a decision, but now that the mode is automatic, re-paying
+    // would quietly turn Transpose into a DB battery.
+    const derived   = modeFromStack(ns.driveStack ?? [], ns.unlockedSkills ?? [], scaleMode);
+    const newMode   = derived.mode;
+    const canonRoot = canonicalRoot(newRoot, newMode);
     // Respell stock
-    const pool = getSpelledPool(canonRoot, scaleMode);
+    const pool = getSpelledPool(canonRoot, newMode);
     const newStock = (ns.noteStock ?? []).map(n => {
       const idx = pitchIndex(n);
       return idx !== -1 ? pool[idx] : n;
@@ -3937,10 +4003,13 @@ function Game({ gameState, onReturnToLobby }) {
     setNoteField(acting.id, {
       rootNote: canonRoot,
       noteStock: newStock,
-      pivotPending: true, // re-prompt for major/minor with new root
+      scaleMode: newMode,
+      modeReason: derived.reason,
+      modeChordName: evaluateChord((ns.driveStack ?? []).filter(Boolean)).name,
+      pivotPending: false,
       transposeCardPending: null,
     });
-    addLog(`🔄 Transpose — new Root Note: ${canonRoot}. Choose Major or Minor.`);
+    addLog(`🔄 Transpose — new Root Note: ${canonRoot} ${newMode === 'major' ? '☀️ Major' : '🌑 Minor'}.`);
   }
 
   // ─── SKILL EFFECT HELPERS ─────────────────────────────────────────────────────
@@ -8682,8 +8751,10 @@ function Game({ gameState, onReturnToLobby }) {
     decayPoisonSlime();
 
     // Advance queue first so we know who acts next, then replenish their used slots
-    setTurnStep('pivot'); // reset HUD flow for next spirit's turn
-    setTimeout(() => showTip('pivot'), 500);
+    // B8: the flow now OPENS on the chord step — the pivot stage is gone, the mode
+    // is derived from the Drive Stack at turn start and merely reported.
+    setTurnStep('chord'); // reset HUD flow for next spirit's turn
+    setTimeout(() => showTip('chord'), 500);
     {
       const nextId = report.nextId; // the engine already advanced the queue
       if (nextId) {
@@ -8758,11 +8829,11 @@ function Game({ gameState, onReturnToLobby }) {
   const botStepRef    = useRef('idle');   // idle → building → committed → moving → acting → ending
   const botLastTurnRef= useRef(null);     // which spirit id we last reset the step for
   const BOT_TICK      = 520;              // ms between bot actions (readable pacing)
-  // 🤖 A self-tick. Some bot actions (declarePivot, the inter-step "beat") change
+  // 🤖 A self-tick. Some bot actions (setSkillTarget, the inter-step "beat") change
   // no value in the step-machine's dependency array, so the effect would never
   // re-fire to advance the turn. Bumping this after EVERY scheduled action gives
   // the effect a dependency that always changes — guaranteeing it re-evaluates
-  // and the turn keeps flowing (pivot → build → commit → move → act → end).
+  // and the turn keeps flowing (build → commit → move → act → end).
   const [botNudge, setBotNudge] = useState(0);
 
   // ── 🤖 BOT PERSONALITIES (moved to engine/policies/bot.js) ─────────────────
@@ -8915,7 +8986,7 @@ function Game({ gameState, onReturnToLobby }) {
         fn();
         // If fn() didn't advance the step itself, restore it so the effect
         // re-evaluates at the same phase (e.g. the empty "beat" between
-        // move→act, or declarePivot which changes no dep-array value).
+        // move→act, or a skill-target pick, which change no dep-array value).
         if (botStepRef.current === 'pending') botStepRef.current = prevStep;
         setBotNudge(n => n + 1);
       }, Math.max(0, Math.round(BOT_TICK / (gameSpeedRef.current || 1))));
@@ -8943,15 +9014,15 @@ function Game({ gameState, onReturnToLobby }) {
         if (wantId) { schedule(() => setSkillTarget(self.id, wantId)); return; }
       }
 
-      // 1b) PIVOT — declare a key before any note can be placed.
-      if (ns.pivotPending) {
-        // Flair leans minor for its defensive bonus — but ONLY once Minor Tonality is
-        // unlocked. Declaring minor without theory_minor is rejected by declarePivot,
-        // which would leave pivotPending stuck and the bot frozen on its pivot all turn.
-        const mode = (self.style === 'Flair' && unlocked.includes('theory_minor')) ? 'minor' : 'major';
-        schedule(guard(() => declarePivot(mode)));
-        return;
-      }
+      // 1b) PIVOT — DELETED (B8). The bot used to declare Major/Minor here, leaning
+      //     minor for Flair's defensive bonus. There is no pivot to declare any
+      //     more: the mode is derived from the Drive Stack at turn start, so
+      //     `ns.pivotPending` can never be true and this branch could never fire.
+      //     Removed rather than left in — a bot branch that can't fire is a trap for
+      //     the next reader.
+      //     Flair's minor lean now belongs in botPlanStackCommit, if it belongs
+      //     anywhere: a bot that wants minor should stack a minor third and earn it
+      //     the way a player does.
 
       // 1b.5) STACK COMMITS — voice notes into Drive/Sustain stacks (up to 3/turn budget).
       // Budget check uses reactNs (React state) — see shared reads above.
@@ -10505,7 +10576,7 @@ function Game({ gameState, onReturnToLobby }) {
                   const cards = ns.modCards ?? [];
                   if (!cards.length) return null;
                   const MDEF = {
-                    transpose:       { icon:'🔄', name:'Transpose',       color:'#ffcc44', desc:'Pick any stock note as your new Root (during pivot) — one shot' },
+                    transpose:       { icon:'🔄', name:'Transpose',       color:'#ffcc44', desc:'Pick any stock note as your new Root (before you build) — one shot' },
                   };
                   return (
                     <div data-tip-anchor="mod-cards" style={{padding:'5px 8px',borderTop:`1px solid ${s.color}22`}}>
@@ -10685,41 +10756,41 @@ function Game({ gameState, onReturnToLobby }) {
           {/* ── NOTE STOCK PANEL ── */}
           {acting && (
             <div data-tip-anchor="note-stock"
-              className={`card${turnStep === 'pivot' || turnStep === 'melody' ? ' step-active' : turnStep === 'move_act' ? ' step-collapsed' : ''}`}
-              style={{'--step-glow-color': turnStep === 'pivot' ? '#ffcc44' : turnStep === 'chord' ? '#ff66cc' : '#4488ff',
-                borderLeft:`2px solid ${turnStep === 'pivot' ? '#ffcc44' : turnStep === 'melody' ? '#4488ff' : '#4488ff66'}`,padding:"6px 8px",marginBottom:4,
+              className={`card${turnStep === 'melody' ? ' step-active' : turnStep === 'move_act' ? ' step-collapsed' : ''}`}
+              style={{'--step-glow-color': turnStep === 'chord' ? '#ff66cc' : '#4488ff',
+                borderLeft:`2px solid ${turnStep === 'melody' ? '#4488ff' : '#4488ff66'}`,padding:"6px 8px",marginBottom:4,
                 ...(turnStep === 'move_act'
                   ? {maxHeight:36,overflow:'hidden',transition:'max-height 0.4s ease, opacity 0.3s'}
                   : {overflow:'visible',flexShrink:0,minHeight:'fit-content'})}}>
-              <NeonStrikeFX color={turnStep === 'pivot' ? '#ffcc44' : '#4488ff'}/>
+              <NeonStrikeFX color={'#4488ff'}/>
               {/* Header: big Root Note badge + title + interval legend */}
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:5}}>
                 {/* 🎵 ROOT NOTE — big mode-colored badge */}
-                <div data-tip-anchor="root-note" title={pivotPending
-                    ? `Root Note is ${rootNote} — choose Major or Minor below to set your scale`
-                    : `Root Note — your scale is ${rootNote} ${scaleMode}. The LAST note of your committed track becomes next turn's Root!`}
+                <div data-tip-anchor="root-note" title={modeLocked
+                    ? `Root Note is ${rootNote}. Your Drive Stack spells a minor chord, but Minor Tonality is locked — the song holds ${rootNote} major.`
+                    : `Root Note — your scale is ${rootNote} ${scaleMode}, set by your Drive Stack. The LAST note of your committed track becomes next turn's Root!`}
                   style={{
                     width:48,height:48,borderRadius:9,flexShrink:0,
                     display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                    background: pivotPending ? "linear-gradient(135deg,#241a00,#120d00)"
+                    background: modeLocked ? "linear-gradient(135deg,#241a00,#120d00)"
                       : scaleMode==='major' ? "linear-gradient(135deg,#0d2050,#0a1228)"
                       : "linear-gradient(135deg,#240d45,#12091e)",
-                    border:`2px solid ${pivotPending ? "#ffcc44" : scaleMode==='major' ? "#4488ff" : "#aa55ff"}`,
-                    boxShadow:`0 0 14px ${pivotPending ? "#ffcc4466" : scaleMode==='major' ? "#4488ff66" : "#aa55ff66"}, inset 0 0 10px ${pivotPending ? "#ffcc4422" : scaleMode==='major' ? "#4488ff22" : "#aa55ff22"}`,
+                    border:`2px solid ${modeLocked ? "#ffcc44" : scaleMode==='major' ? "#4488ff" : "#aa55ff"}`,
+                    boxShadow:`0 0 14px ${modeLocked ? "#ffcc4466" : scaleMode==='major' ? "#4488ff66" : "#aa55ff66"}, inset 0 0 10px ${modeLocked ? "#ffcc4422" : scaleMode==='major' ? "#4488ff22" : "#aa55ff22"}`,
                   }}>
                   <span style={{fontSize:5.5,letterSpacing:1.5,color:"#7a90aa",fontWeight:700}}>ROOT</span>
                   <span style={{fontSize:18,fontWeight:900,color:"#ffffff",lineHeight:1,
-                    textShadow:`0 0 10px ${pivotPending ? "#ffcc44" : scaleMode==='major' ? "#4488ff" : "#aa55ff"}`}}>
+                    textShadow:`0 0 10px ${modeLocked ? "#ffcc44" : scaleMode==='major' ? "#4488ff" : "#aa55ff"}`}}>
                     {rootNote}
                   </span>
                   <span style={{fontSize:6,letterSpacing:1,marginTop:1,fontWeight:700,
-                    color: pivotPending ? "#ffcc44" : scaleMode==='major' ? "#88bbff" : "#cc99ff"}}>
-                    {pivotPending ? "PICK MODE" : scaleMode === 'major' ? "☀️ MAJOR" : "🌑 MINOR"}
+                    color: modeLocked ? "#ffcc44" : scaleMode==='major' ? "#88bbff" : "#cc99ff"}}>
+                    {modeLocked ? "🔒 MAJOR" : scaleMode === 'major' ? "☀️ MAJOR" : "🌑 MINOR"}
                   </span>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div className="stitle" style={{marginBottom:3,color: turnStep === 'pivot' ? "#ffcc44" : "#4488ff"}}>
-                    {turnStep === 'pivot' ? 'Step 1 — Choose Scale' : turnStep === 'chord' ? 'Step 2 — Chord Stack' : turnStep === 'melody' ? 'Step 3 — Build Melody' : 'Note Stock'}
+                  <div className="stitle" style={{marginBottom:3,color:"#4488ff"}}>
+                    {turnStep === 'chord' ? 'Step 1 — Chord Stack' : turnStep === 'melody' ? 'Step 2 — Build Melody' : 'Note Stock'}
                   </div>
                   {turnStep !== 'move_act' && (
                   <div data-tip-anchor="interval-legend" style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
@@ -10832,13 +10903,50 @@ function Game({ gameState, onReturnToLobby }) {
                 </div>
               )}
               {/* ── COLLAPSED SUMMARIES for completed steps ── */}
-              {turnStep !== 'pivot' && !pivotPending && (
-                <div className="step-collapsed" style={{fontSize:8,color:scaleMode==='major'?"#88bbff":"#cc99ff",marginBottom:4,
-                  padding:"3px 7px",background:scaleMode==='major'?"#0a1228":"#12091e",border:`1px solid ${scaleMode==='major'?'#4488ff33':'#aa55ff33'}`,borderRadius:4}}>
-                  ✓ Scale: {rootNote} {scaleMode === 'major' ? '☀️ Major' : '🌑 Minor'}
-                </div>
-              )}
-              {turnStep !== 'pivot' && turnStep !== 'chord' && !pivotPending && !hasConfirmed && (() => {
+              {/* ── 🎸 B8: THE MODE, DERIVED ────────────────────────────────────
+                  Was two buttons plus a two-column stock preview, asking "Major or
+                  Minor?" every single turn. The stack answers that question now, so
+                  this reports the answer and CITES THE CHORD that gave it — the line
+                  has to teach what the buttons used to teach. The stock preview isn't
+                  replaced so much as made redundant: the note chips already speak the
+                  one highlight language every other B3 pardon uses.
+
+                  The ↻ hint matters more than it looks. Mode is derived at turn start
+                  ONLY (deriving mid-turn would respell the stock under notes already
+                  placed), so a player who stacks a ♭3 right now sees nothing change
+                  and reasonably concludes the mechanic is broken. This tells them
+                  when it lands. */}
+              {acting && (() => {
+                const reason  = actingNoteState?.modeReason ?? 'ambiguous';
+                const chord   = actingNoteState?.modeChordName ?? 'your stack';
+                const isMajor = scaleMode === 'major';
+                const locked  = reason === 'locked';
+                const col = locked ? "#ffcc44"   : isMajor ? "#88bbff"   : "#cc99ff";
+                const bg  = locked ? "#181200"   : isMajor ? "#0a1228"   : "#12091e";
+                const bd  = locked ? "#ffcc4455" : isMajor ? "#4488ff33" : "#aa55ff33";
+                const why = reason === 'quality'   ? `${chord} sets the key`
+                          : reason === 'ambiguous' ? `${chord} — no third to read, mode held`
+                          : `${chord} wants minor — 🔒 unlock Minor Tonality`;
+                // What the stack AS IT STANDS NOW would give at the next turn start.
+                const next  = modeFromStack(actingNoteState?.driveStack ?? [],
+                                            actingNoteState?.unlockedSkills ?? [], scaleMode);
+                const flips = next.mode !== scaleMode;
+                return (
+                  <div data-tip-anchor="derived-mode" style={{fontSize:8,color:col,marginBottom:4,
+                    padding:"3px 7px",background:bg,border:`1px solid ${bd}`,borderRadius:4}}>
+                    <span style={{fontWeight:700}}>
+                      {locked ? '🔒' : isMajor ? '☀️' : '🌑'} {rootNote} {isMajor ? 'MAJOR' : 'MINOR'}
+                    </span>
+                    <span style={{opacity:0.75}}> — {why}</span>
+                    {flips && (
+                      <div style={{marginTop:2,color:"#ff99dd"}}>
+                        ↻ next turn: {next.mode === 'major' ? '☀️ Major' : '🌑 Minor'} — your Drive Stack changed
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              {turnStep !== 'chord' && !hasConfirmed && (() => {
                 const dStack = actingNoteState?.driveStack ?? [];
                 const sStack = actingNoteState?.sustainStack ?? [];
                 const dCh = spiritChord(acting?.id, dStack);
@@ -10851,148 +10959,20 @@ function Game({ gameState, onReturnToLobby }) {
                 );
               })()}
 
-              {/* Pivot choice — shown during pivot step */}
-              {pivotPending ? (
-                <div style={{background:"#0e0d18",border:"1.5px solid #ffcc44",borderRadius:5,padding:"8px 10px",marginBottom:4}}>
-                  <div style={{fontSize:9,color:"#ffcc44",fontWeight:700,marginBottom:6}}>
-                    ⚡ Root Note: <span style={{color:"#fff"}}>{rootNote}</span> — choose your scale
-                  </div>
+              {/* ── 🎸 B8: the Major/Minor prompt used to live here ──────────────
+                  Two buttons and a side-by-side "how would your stock look in each
+                  mode?" preview, ~140 lines of it. All gone: the mode is derived from
+                  the Drive Stack at turn start and reported by the read-only line
+                  above. The preview's job — showing which notes go grey — is now done
+                  continuously by the note stock itself, in the same highlight language
+                  B3 uses for every other pardon, instead of only at a modal moment.
 
-                  {/* Stock preview split by mode */}
-                  {(() => {
-                    const majRoot  = canonicalRoot(rootNote, 'major');
-                    const minRoot  = canonicalRoot(rootNote, 'minor');
-                    // Only light notes the player can actually play Discord-free given their
-                    // Theory unlocks (everyone starts on the pentatonic) — not the full scale.
-                    const unlocks  = actingNoteState?.unlockedSkills ?? [];
-                    const majScale = playableScale(majRoot, 'major', unlocks);
-                    const minScale = playableScale(minRoot, 'minor', unlocks);
-                    const majIntervals = getIntervalNotes(majRoot, 'major');
-                    const minIntervals = getIntervalNotes(minRoot, 'minor');
-                    const stock = actingNoteState?.noteStock ?? [];
-
-                    function noteColor(note, scale, intervals, mode) {
-                      const pc = pitchIndex(note);
-                      // Fourth and fifth are always diatonic — always show their color
-                      if (pc === pitchIndex(intervals.fifth))        return { border:"#ff55aa", text:"#ff55aa", bg:"#2a0f1a" };
-                      if (pc === pitchIndex(intervals.fourth))       return { border:"#cc55ff", text:"#cc55ff", bg:"#1a0a2a" };
-                      // Special interval colors only show once the matching Discord upgrade is unlocked.
-                      // If the note is already in-scale for this mode, it's just a plain scale note.
-                      // Tritone: red only with discord_3 (Devil's Interval), both modes
-                      if (pc === pitchIndex(intervals.tritone)) {
-                        if (!scale.includes(note) && discordUnlocks.includes('discord_3'))
-                          return { border:"#ff3300", text:"#ff3300", bg:"#2a0800" };
-                        // Note: chromatic (discord_4) gives no special color — stays grey
-                      }
-                      // Minor seventh: blue only with discord_1 (Blues Lick), major mode only
-                      if (pc === pitchIndex(intervals.minorSeventh)) {
-                        if (!scale.includes(note) && mode === 'major' && discordUnlocks.includes('discord_1'))
-                          return { border:"#4499ff", text:"#4499ff", bg:"#051525" };
-                      }
-                      // Major third: green only with discord_2 (Borrowed Chord), minor mode only
-                      if (pc === pitchIndex(intervals.majorThird)) {
-                        if (!scale.includes(note) && mode === 'minor' && discordUnlocks.includes('discord_2'))
-                          return { border:"#44ffaa", text:"#44ffaa", bg:"#0a2a1a" };
-                      }
-                      if (scale.includes(note)) return { border:"#c0c8d8", text:"#e8eef8", bg:"#1a2035" };
-                      return { border:"#333344", text:"#444455", bg:"#0d0d14" };
-                    }
-
-                    // Count how many stock notes are in-scale for each mode
-                    const majInScale = stock.filter(n => {
-                      const respelled = getSpelledPool(majRoot,'major')[pitchIndex(n)] ?? n;
-                      return majScale.includes(respelled);
-                    }).length;
-                    const minInScale = stock.filter(n => {
-                      const respelled = getSpelledPool(minRoot,'minor')[pitchIndex(n)] ?? n;
-                      return minScale.includes(respelled);
-                    }).length;
-
-                    return (
-                      <div style={{display:"flex",gap:6,marginBottom:8}}>
-                        {/* Major preview */}
-                        <div style={{flex:1,background:"#0a1228",borderRadius:4,padding:"6px 7px",
-                          border:"1px solid #4488ff33"}}>
-                          <div style={{fontSize:7,color:"#4488ff",letterSpacing:1,marginBottom:5,
-                            display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                            <span>♩ MAJOR</span>
-                            <span style={{color:"#6aaa88",fontSize:7}}>{majInScale}/8 in scale</span>
-                          </div>
-                          <div style={{display:"flex",flexWrap:"wrap",gap:2,marginBottom:5}}>
-                            {stock.map((note,i) => {
-                              const pool = getSpelledPool(majRoot,'major');
-                              const respelled = pool[pitchIndex(note)] ?? note;
-                              const c = noteColor(respelled, majScale, majIntervals, 'major');
-                              return (
-                                <div key={i} style={{
-                                  width:22,height:20,borderRadius:2,fontSize:8,fontWeight:700,
-                                  display:"flex",alignItems:"center",justifyContent:"center",
-                                  border:`1.5px solid ${c.border}`,color:c.text,background:c.bg,
-                                }}>{respelled}</div>
-                              );
-                            })}
-                          </div>
-                          <div style={{fontSize:7,color:"#4488ff88",marginBottom:1}}>Scale: {majScale.join(' · ')}</div>
-                          <div style={{marginTop:4,padding:"3px 6px",borderRadius:3,
-                            background:"#0d1830",border:"1px solid #4488ff44",
-                            fontSize:7,color:"#88bbff"}}>
-                            ☀️ Bonus: <span style={{color:"#aaccff",fontWeight:700}}>+1 DB</span>
-                          </div>
-                        </div>
-
-                        {/* Minor preview */}
-                        <div style={{flex:1,background:"#12091e",borderRadius:4,padding:"6px 7px",
-                          border:"1px solid #aa55ff33"}}>
-                          <div style={{fontSize:7,color:"#aa55ff",letterSpacing:1,marginBottom:5,
-                            display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                            <span>♩ MINOR</span>
-                            <span style={{color:"#6aaa88",fontSize:7}}>{minInScale}/8 in scale</span>
-                          </div>
-                          <div style={{display:"flex",flexWrap:"wrap",gap:2,marginBottom:5}}>
-                            {stock.map((note,i) => {
-                              const pool = getSpelledPool(minRoot,'minor');
-                              const respelled = pool[pitchIndex(note)] ?? note;
-                              const c = noteColor(respelled, minScale, minIntervals, 'minor');
-                              return (
-                                <div key={i} style={{
-                                  width:22,height:20,borderRadius:2,fontSize:8,fontWeight:700,
-                                  display:"flex",alignItems:"center",justifyContent:"center",
-                                  border:`1.5px solid ${c.border}`,color:c.text,background:c.bg,
-                                }}>{respelled}</div>
-                              );
-                            })}
-                          </div>
-                          <div style={{fontSize:7,color:"#aa55ff88",marginBottom:1}}>Scale: {minScale.join(' · ')}</div>
-                          <div style={{marginTop:4,padding:"3px 6px",borderRadius:3,
-                            background:"#180d2a",border:"1px solid #aa55ff44",
-                            fontSize:7,color:"#cc99ff"}}>
-                            🌑 Bonus: <span style={{color:"#ddbbff",fontWeight:700}}>+1 Sustain</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  <div style={{display:"flex",gap:6}}>
-                    <button className="btn" onClick={()=>declarePivot("major")}
-                      style={{flex:1,fontSize:9,padding:"5px 0",borderColor:"#4488ff",color:"#4488ff",
-                        background:"#0a1228",fontWeight:700}}>
-                      ☀️ Major
-                    </button>
-                    {(() => {
-                      const minorOk = (actingNoteState?.unlockedSkills ?? []).includes('theory_minor');
-                      return (
-                    <button className="btn" onClick={()=>declarePivot("minor")} disabled={!minorOk}
-                      title={minorOk ? "Declare Minor" : "🔒 Unlock Minor Tonality in the Theory tree"}
-                      style={{flex:1,fontSize:9,padding:"5px 0",borderColor: minorOk ? "#aa55ff" : "#4a3a5a",color: minorOk ? "#aa55ff" : "#5a4a6a",
-                        background:"#12091e",fontWeight:700, opacity: minorOk ? 1 : 0.45, cursor: minorOk ? "pointer" : "not-allowed"}}>
-                      🌑 Minor {minorOk ? "" : "🔒"}
-                    </button>
-                      );
-                    })()}
-                  </div>
-                </div>
-              ) : hasConfirmed ? (
+                  ⚠️ `pivotPending` is never set true any more, but its ~30 read sites
+                  are deliberately LEFT IN PLACE (they all read false and gate nothing)
+                  rather than ripped out at the same time as this. Nothing can deadlock
+                  a turn on a flag no one raises; a half-finished surgery on 30 call
+                  sites very much could. */}
+              {hasConfirmed ? (
                 <div style={{fontSize:8,color:"#44ff88",marginBottom:5,padding:"6px 8px",background:"#0d1f10",border:"1px solid #44ff8844",borderRadius:4}}>
                   ✓ Notes committed — move and use actions below.
                 </div>
@@ -11446,7 +11426,7 @@ function Game({ gameState, onReturnToLobby }) {
           <div className={turnStep === 'move_act' ? 'step-active' : ''} style={{'--step-glow-color':'#44ff88',
             borderRadius:6, padding: turnStep === 'move_act' ? '4px 0' : 0, transition:'all 0.3s'}}>
           <div className="stitle" style={{marginTop:4}}>
-            {turnStep === 'move_act' ? 'Step 4 — Move & Act' : 'Actions'}
+            {turnStep === 'move_act' ? 'Step 3 — Move & Act' : 'Actions'}
           </div>
           {/* (bonus revoice UI removed — stack commit budget replaces it) */}
           {turnStep !== 'move_act' && (

@@ -154,7 +154,16 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     usedStockIdx:    [], // insertion-ordered array of spent stock-slot indices (JSON-safe; was a Set)
     rootNote:        root,
     scaleMode:       initMode,
-    pivotPending:    true,
+    // 🎸 B8: no Major/Minor prompt any more — the Drive Stack's chord quality
+    // decides, re-derived at the start of every turn. No need to call
+    // modeFromStack here: B0a seeds the stack with the root ALONE, which reads as
+    // a Single note, which is quality-AMBIGUOUS (no third to hear), so it holds
+    // whatever mode it is given — `initMode` — and turn one can never force-flip a
+    // spirit's mode. That invariant is asserted in b0check.mjs, so if the seed ever
+    // stops being a single note the test will say so.
+    pivotPending:    false,
+    modeReason:      'ambiguous',
+    modeChordName:   `${root} (single)`,
     diceTier:        0,
     tierPoints:      0,
     discordCount:    0,

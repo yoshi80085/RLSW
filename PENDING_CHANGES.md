@@ -14,14 +14,14 @@ Tension & Release, Chromatic Approach, Color Bonus, Chord Resonance. Eight mecha
 
 **Implementation order:** A → B0 → B1 → B2 → B3 → B4 → B5 → B6 → B7 → B8 → B9 → B10 → C.
 B0 is the spine; several later items assume it. Task C depends on B3 shipping first.
-(B8 was pulled forward — its pure core shipped alongside B3, since the mode
-question turned out to be a chord-context question. Only its wiring is outstanding.)
+(B8 was pulled forward and is fully shipped — the mode question turned out to be a
+chord-context question, so it landed alongside B3 rather than after B7.)
 
-**Status:** ✅ Task A, B0 (a + b), B1, **B2 and B3** are SHIPPED on branch
-`feat/chord-strength-b0` (local only — nothing pushed). Two changes were made that
-this doc did not ask for: the **note speller** was rewritten (it was mis-spelling
-14 borrowed degrees) and **B8 was reopened and reversed** — see below. Next up is
-wiring the derived mode into the turn flow, then B4.
+**Status:** ✅ Task A, B0 (a + b), B1, B2, B3 and **B8 (core + wiring)** are SHIPPED
+on branch `feat/chord-strength-b0` (local only — nothing pushed). Two changes were
+made that this doc did not ask for: the **note speller** was rewritten (it was
+mis-spelling 14 borrowed degrees) and **B8 was reopened and reversed** — see below.
+**Next up is B4.**
 
 ### Notes from the B2 / B3 pass
 
@@ -61,6 +61,30 @@ wiring the derived mode into the turn flow, then B4.
 - The tutorial's "WHAT EARNS DECIBILLS" table was stale in ways predating B2 — it
   advertised a Major-3rd cleanse removed in B1 and an octave value that never
   matched the code. Rewritten to the shipped numbers.
+
+### Notes from the B8 wiring pass
+
+- **`payModeBonus` is the old `declarePivot`.** Same bonus maths, same Mojo Drain
+  block on the minor branch, no respell (that moved to turn start) and no trigger of
+  its own — it is called by an effect watching `pendingModeBonus`. B1's cleanup list
+  mentions `declarePivot` by name; look for `payModeBonus`.
+- **`pivotPending` is a zombie by design.** Never written true, ~30 read sites left
+  intact and all reading false. Anyone tempted to finish the removal should do it as
+  its own commit, not folded into a mechanic change.
+- **New fields on the note sheet:** `modeReason` (`'quality' | 'ambiguous' |
+  'locked'`), `modeChordName` (e.g. `"C Minor triad"`, what the HUD cites), and the
+  transient `pendingModeBonus`. The first two are what any future UI should read to
+  explain the key — do not re-derive the mode in a component, because the live stack
+  may already imply something different from what this turn locked in.
+- **The HUD carries a "↻ next turn" hint** when the current Drive Stack would derive
+  a different mode than the one in force. Without it, stacking a ♭3 mid-turn looks
+  like nothing happened — the derivation is deliberately deferred to turn start so
+  the stock can't respell under already-placed notes, and that delay needs saying out
+  loud. Task C's live style prediction should sit next to this line, not compete with it.
+- **Not done, deliberately:** the bot no longer has any mode preference. Its old Flair
+  minor lean lived in the deleted pivot branch; giving it back means teaching
+  `botPlanStackCommit` to stack a minor third on purpose. Worth doing when B4 lands,
+  since B4 gives stacking a scoring reason.
 
 ### ⚠️ Unasked-for change 1: the note speller was rewritten
 
@@ -272,8 +296,9 @@ the discord unlocks to become the context system instead.
   `isMinorSeventhEnd`, `burnArm` / `isTritoneEnd`, `isMajorThirdEnd`, `chromStagger`.
   Remove the arming/application logic; **keep the interval detection**, B5 needs it.
 - Trace and remove reads of `pendingMojoDrain`, `pendingStagger`, `burnArmed`,
-  `statusShield` from `noteStates`. Also `mojoDrain` in `declarePivot` (`isMojoDrained`)
-  and in `driveBoostFromRun`'s call site.
+  `statusShield` from `noteStates`. Also `mojoDrain` in `payModeBonus` (`isMojoDrained`
+  — the function that was `declarePivot` before B8) and in `driveBoostFromRun`'s call
+  site.
 - `performanceScore` takes `hasGatedEnding: isMinorSeventhEnd || isMajorThirdEnd ||
   isTritoneEnd` — decide whether P keeps rewarding those endings. Recommended: keep it,
   it's a *flair* signal and independent of the removed combat effects.
@@ -323,8 +348,9 @@ rather than `currentScale` alone. Each tier widens the reach.
 
 Design notes for whoever implements this:
 
-- `theory_minor` still gates the minor pivot as it does today (see B8) — the pardon is
-  *additional*, not a replacement.
+- `theory_minor` still gates minor as it does today (see B8 — it now gates whether a
+  minor *stack* can move the key, rather than whether a button can be pressed) — the
+  pardon is *additional*, not a replacement.
 - The player never learns a list of notes. The rule is "whatever your chord made legal,"
   and it re-derives every turn from the stack in front of them. Do not surface this as a
   note table in the UI; surface it as **live highlighting on the note stock** — a note the
@@ -454,10 +480,11 @@ for live UI feedback, but score from `classifyTrack`'s result.
 
 ---
 
-### B8 — Major/Minor pivot: **REVERSED.** The chord declares the mode, not the player
+### B8 — Major/Minor pivot: **REVERSED.** The chord declares the mode, not the player ✅ SHIPPED
 
-🔶 **Pure core SHIPPED** (`modeFromStack` in `src/music/context.js`, covered in
-`b0check.mjs`). **Turn-flow wiring outstanding — this is the next task.**
+Pure core (`modeFromStack` in `src/music/context.js`) **and** the turn-flow wiring
+are both in, covered by 35 checks in `b0check.mjs`. The per-turn Major/Minor prompt
+no longer exists anywhere in the game.
 
 **What the previous revision said.** "The code is already right, change nothing:
 major → +1 Db, minor → +1 `tempSustain`." Two things were wrong with that. The code
@@ -508,30 +535,68 @@ minor → +1 `tempSustain`. Still asymmetric, still major-is-tempo /
 minor-is-defense — the argument for the asymmetry was always right, it just wasn't
 what the code was doing.
 
-#### Wiring plan (outstanding)
+#### Wiring — as shipped
 
-Lowest-risk shape: **do not rip out `pivotPending`.** Leave the ~30 guard sites in
-place and simply stop ever setting it true, so nothing can deadlock a turn.
+The plan's lowest-risk shape was kept: **`pivotPending` was not ripped out.** Its
+~30 read sites are still there, all reading false, gating nothing. Nothing sets it
+true, so no turn can deadlock on it, and no 30-site surgery had to land in the same
+commit as a mechanic change.
 
-1. Three sites set `pivotPending: true` — `startNewTurnNotes` (~3509),
-   `resolveTransposeCard` (~3934), and `makeInitialNoteState`
-   (`engine/systems/economy.js:157`). Each instead derives the mode, respells root
-   + stock, and leaves `pivotPending: false`.
-2. `declarePivot(mode)` survives as the **applier** (respell + bonus + upgrade
-   award), called with the derived mode rather than from a button. All of its
-   existing plumbing is reusable as-is; only its trigger changes.
-3. The mode bonus has side effects (`advanceDB`, `awardTargetSkill`) that can't run
-   inside the `setNoteStates` reducer. Stage it: write `pendingModeBonus` in the
-   reducer, apply it in a small effect. Do **not** try to inline `advanceDB` into
-   the reducer.
-4. **UI** (~10849–10990): replace the two pivot buttons with a read-only line
-   naming the derived mode and the chord that caused it — "🌑 MINOR — your C minor
-   triad", "☀️ MAJOR — hold (power chord has no third)", "🔒 your stack wants minor
-   — unlock Minor Tonality". The `turnStep === 'pivot'` HUD stage collapses.
-5. **Bot** (~8941): the `ns.pivotPending` branch becomes dead. Delete it rather
-   than leaving it — a bot branch that can never fire is a trap for the next reader.
-6. ⚠️ Mode must be derived **at turn start**, not on every stack commit. Re-deriving
-   mid-turn would respell the stock underneath notes the player has already placed.
+1. All three writers now derive instead of prompting. `startNewTurnNotes` derives,
+   respells root + stock and stages the bonus; `resolveTransposeCard` derives and
+   respells around the new root; `makeInitialNoteState` ships `pivotPending: false`
+   with `modeReason: 'ambiguous'` — B0a's single-note seed has no third, so turn one
+   can't force a mode. A `b0check` case asserts the seeded sheet agrees with what
+   `modeFromStack` would derive from its own stack, so if that seed ever grows a
+   third the test says so.
+2. **The refill had to move inside the derivation.** Not in the plan, and the reason
+   is worth recording: `startNewTurnNotes` drew this turn's new stock notes with
+   `randomNote(ns.rootNote, ns.scaleMode)` — *last* turn's mode. When mode was
+   declared afterwards, `declarePivot`'s respell cleaned that up. With the respell
+   moved to turn start, drawing first would spell fresh notes in the old mode and
+   nothing would come along behind to fix them. Mode is now derived **before** the
+   refill; fresh notes are drawn in the new key and carried notes are respelled into
+   it, in one pass.
+3. `declarePivot` is gone as such — it became **`payModeBonus(spiritId)`**, which does
+   only what the reducer can't: pay the bonus, log it, award a skill if the DB bar
+   tipped. The respell moved to turn start (see 2), so the applier no longer touches
+   spelling at all. Staging works as planned: the reducer writes `pendingModeBonus`,
+   a small effect pays it and clears the flag, so it fires exactly once and
+   `advanceDB` never runs inside a functional update.
+4. **UI**: ~140 lines deleted — both buttons and the two-column "how would your stock
+   look in each mode?" preview. In its place a read-only line naming the mode and
+   citing the chord: "☀️ C MAJOR — C Major triad sets the key", "☀️ C MAJOR — C Power
+   chord — no third to read, mode held", "🔒 C MAJOR — C Minor triad wants minor —
+   🔒 unlock Minor Tonality". The amber Root badge treatment (was "PICK MODE") is
+   reused for the `locked` state, so the one case worth interrupting for is the one
+   that still gets colour.
+5. **Bot**: the `ns.pivotPending` branch is deleted. Flair's minor lean is noted as
+   belonging in `botPlanStackCommit` if anywhere — a bot that wants minor should
+   stack a minor third and earn it the way a player does. Not implemented; the bot
+   currently takes whatever mode its stacking happens to produce.
+6. ⚠️ Mode is derived **at turn start only**. Two `b0check` cases defend it from the
+   other side: derivation is a **fixed point** (feeding the previous mode back in with
+   an unchanged stack never drifts the key, so an untouched stack can't oscillate),
+   and the turn-start respell is **stable** (five consecutive respells never walk a
+   note's name, so a held note can't rename itself while the player watches).
+
+**⚠️ Two decisions this plan didn't cover.**
+
+- **Transpose does not re-pay the mode bonus.** The old flow re-opened the prompt, so
+  a transpose paid a second +1 Db — affordable when it cost the player a decision.
+  Automatic, it would make Transpose a Db battery. Its `usableWhen` was relabelled
+  `'during-pivot'` → `'before-build'` (a descriptive field; nothing branches on it).
+  A transpose can therefore change the mode without paying for it, which is the
+  intended asymmetry: the card buys you a root, not a bonus.
+- **The `pivot` HUD stage and its tutorial tip are gone, and the steps renumbered**
+  Chord → Melody → Move & Act as **1–2–3**. `turnStep` now initializes to `'chord'`
+  and `endTurn` resets to `'chord'`. The pivot tip's content wasn't discarded — it
+  moved into the chord tip as a third page anchored on the new mode line, which is
+  where the player now actually influences the key. Player-facing copy that promised
+  a pivot was corrected in the same pass: `theory_minor`'s skill description and
+  unlock log ("declare Minor at the pivot" → "stack a minor third"), the Transpose
+  and Chromatic Shift card blurbs, and the tutorial's "⚡ THE PIVOT — set your key
+  first" panel, now "⚡ THE KEY — your chord sets it".
 
 ---
 
@@ -543,13 +608,16 @@ context tier **and** the slot unlock where applicable. Suggested:
 | Skill | Cost | Sells |
 |---|---|---|
 | `theory_major` | 6 *(free at start)* | The 4th & 7th go Discord-free — your Major scale is complete. |
-| `theory_minor` | 8 | Declare Minor at the pivot. **Chord Tone Pardon** — notes sitting in your stacks are never Discord. |
+| `theory_minor` | 8 | Stack a minor third and the song follows you into a minor key. **Chord Tone Pardon** — notes sitting in your stacks are never Discord. |
 | `theory_dom7` | 10 | The ♭7 joins your clean palette. **Play the Changes** — your stack's whole implied chord goes clean. **+1 stack slot (4).** |
 | `theory_modes` | 12 | **Extensions** — your chord's tensions (♯4, nat-6, ♭9, 9) go clean and pay Drive/Sustain. **+1 stack slot (5).** |
 | `theory_chromatic` | 16 | **Approach Notes** — any note is clean if you land the next one on a chord tone. Chromatic runs pay big. |
 
 **`applySkillEffects`** log lines (~3526–3531) need matching rewrites; the current
 `theory_chromatic` line ("All Discord penalties are halved") is now wrong per B6.
+✅ `theory_minor`'s `desc` and its unlock log were already corrected during the B8
+wiring pass — they promised "declare Minor at the pivot", which stopped being true
+the moment the prompt was deleted. The rest of the table is still outstanding.
 
 **`THEORY_DISCORD_GRANTS`** (`src/engine/systems/skills.js`, line 19) — the discord IDs
 still work as scale-expansion flags gating `playableScale`. Keep the mappings, strip the
@@ -744,10 +812,16 @@ The comment on line 117 needs updating either way — its math refers to the old
 
 ## Verification
 
-**Where the tests live:** `node src/engine/b0check.mjs` — 31 checks covering
-Task A, B0, B2, B3, the speller and B8's core. `npm run test:engine` is still
-broken on main (pre-existing `.png` import chain in `data/spirits.js`); fold
-`b0check` into `selftest.mjs` once that's fixed.
+**Where the tests live:** `node src/engine/b0check.mjs` — 35 checks covering
+Task A, B0, B2, B3, the speller and B8 (core + wiring). `npm run test:engine` is
+still broken on main (pre-existing `.png` import chain in `data/spirits.js`); fold
+`b0check` into `selftest.mjs` once that's fixed. Its stale init-sheet block was
+corrected in passing anyway — it still asserted B0a's removed power-chord seed.
+
+⚠️ **`vite build` cannot be verified in the Linux sandbox** — loading the `vite`
+module there dies with a bus error before any transform runs, so this pass was
+checked with `esbuild` parse runs over every touched file plus `b0check`. **Run a
+real build on Windows before pushing.**
 
 Already covered:
 
@@ -760,6 +834,10 @@ Already covered:
 - The approach tier never pardoning a track's final note.
 - The C4 landmine: a pardoned note still reports `inScale: false`.
 - All 24 speller pools: 12 unique, correctly-pitched, chip-readable names.
+- B8 wiring: the initial sheet ships a derived mode rather than a pending prompt;
+  derivation is a fixed point across turns; turn-start respelling is stable across
+  repeats; buying Minor Tonality promotes a `locked` stack and never demotes any
+  other stack.
 - `modeFromStack` across quality / ambiguous / locked.
 
 Still to add: Harmonic Lock rank thresholds (B5); discord penalty floor and
