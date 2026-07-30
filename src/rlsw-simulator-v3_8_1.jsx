@@ -421,6 +421,7 @@ import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } 
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
 import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote, detectResolvedDiscords } from "./music/cadence.js";
+import { chordContext, classifyTrack, countUnpardoned, countPardonedByStack } from "./music/context.js";
 import { evaluateChord } from "./music/chords.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -1896,6 +1897,37 @@ function Game({ gameState, onReturnToLobby }) {
           tritone: tritoneNote, majorThird: majorThirdNote,
           minorSeventh: minorSeventhNote } = intervals;
 
+  // ── 🎸 CHORD CONTEXT (B3) ──────────────────────────────────────────────────
+  // `keyScale` is everything legal BEFORE the stacks get a say: the playable scale
+  // plus whatever the Discord unlocks have already made clean. It is the exact set
+  // `isNotePlayable` used to check on its own, and it is what `classifyTrack` must
+  // be handed at commit.
+  //
+  // ⚠️ keyScale and contextPcs stay SEPARATE VARIABLES, permanently. Folding the
+  // context into keyScale (or into `currentScale`) would reach
+  // `detectResolvedDiscords`, which identifies a Flair spirit's color notes by
+  // testing them against the key — pardoned notes would stop reading as discords,
+  // Flair's count would collapse toward zero, and buying Theory would actively
+  // destroy the one style built to reward it. Silent, single-style, and it would
+  // look like a tuning problem rather than a logic error. Do not merge them.
+  const keyScale = [...new Set([
+    ...currentScale,
+    ...[...unlockedIntervalKeys].map(k => intervals[k]).filter(Boolean),
+  ])];
+  const actingDriveStack   = actingNoteState?.driveStack   ?? [];
+  const actingSustainStack = actingNoteState?.sustainStack ?? [];
+  // Pitch classes the stacks have legalized right now, at the player's tiers. This
+  // re-derives every render from the stack in front of them — the player never
+  // learns a note list, they learn "whatever my chord made legal."
+  const contextPcs = chordContext(
+    actingDriveStack, actingSustainStack, actingNoteState?.unlockedSkills ?? []);
+  // A note the context has legalized that the key alone would not have. This is the
+  // set the note stock lights up: the highlight IS the teaching for this mechanic.
+  function isNoteInContext(note) {
+    const pc = pitchIndex(note);
+    return pc >= 0 && contextPcs.has(pc) && !keyScale.some(n => pitchIndex(n) === pc);
+  }
+
   // Returns the interval key name for a given note, or null if not an interval note
   function getIntervalKey(note) {
     const pc = pitchIndex(note);
@@ -1907,8 +1939,13 @@ function Game({ gameState, onReturnToLobby }) {
     return null;
   }
   // Is a given note "playable" (not discord) given current scale + unlocks?
+  // B3: the chord context is consulted LAST, so a note the key already allows is
+  // never attributed to the stacks. This is the live placement check only — the
+  // score is settled at commit by `classifyTrack`, which sees the approach-note
+  // tier this function cannot (it depends on the note you play next).
   function isNotePlayable(note) {
     if (currentScale.includes(note)) return true;
+    if (isNoteInContext(note)) return true;
     const key = getIntervalKey(note);
     if (!key) return false;
     if (key === 'tritone') return unlockedIntervalKeys.has('tritone');
@@ -2820,13 +2857,19 @@ function Game({ gameState, onReturnToLobby }) {
         ? ` · ☀️ Major bonus: +1 DB → 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!`
         : ` · ☀️ Major bonus: +1 DB [${newDBPoints}/${targetCost}]`;
     } else {
+      // ⚠️ FIXED: this paid +1 tempDRIVE while the comment above it, and B8, both
+      // specify Sustain. B8's whole argument for keeping the pivot asymmetric is
+      // "major is tempo, minor is defense" — paying minor in Drive made both
+      // branches aggressive and quietly deleted the asymmetry it was defending.
+      // The comment and the design doc agreed with each other; only the code
+      // disagreed, so the code was wrong.
       if (!isMojoDrained) {
-        const prevDrive = actingNoteState?.tempDrive ?? 0;
-        const newDrive = prevDrive + 1;
-        bonusPatch = { tempDrive: newDrive };
-        bonusMsg = ` · 🌑 Minor bonus: +1 Drive (now +${newDrive})`;
+        const prevSustain = actingNoteState?.tempSustain ?? 0;
+        const newSustain = prevSustain + 1;
+        bonusPatch = { tempSustain: newSustain };
+        bonusMsg = ` · 🌑 Minor bonus: +1 Sustain (now +${newSustain})`;
       } else {
-        bonusMsg = ' · 🌑 Minor (Mojo Drained — Drive bonus blocked)';
+        bonusMsg = ' · 🌑 Minor (Mojo Drained — Sustain bonus blocked)';
       }
     }
 
@@ -2949,7 +2992,23 @@ function Game({ gameState, onReturnToLobby }) {
     // 🌀 FREESTYLE — Intergalactic 0's first wrong note each turn lands intentional, not wrong:
     // it's pardoned from the discord penalty (and, below, doesn't drag the crowd + earns Flair).
     const freestylePardon = acting?.id === 'intergalactic_0';
-    const effectiveDiscord = Math.max(0, discordCount - (freestylePardon ? 1 : 0));
+    // ── 🎸 CHORD CONTEXT — THE SINGLE PASS (B3) ──────────────────────────────
+    // One classification per commit, read by everything downstream. B4 (color notes
+    // pay the stack that authorized them), B5 (Harmonic Lock), B7 (per-note discord
+    // penalty) and the commit log must all count from THIS array — do not recompute
+    // the pardon in three places, they will drift.
+    //
+    // `discordCount` is incremented at PLACEMENT time, before the approach-note tier
+    // can be known (it depends on the note played next). It stays as live UI
+    // feedback; the SCORE comes from here. The two agree for every tier except
+    // theory_chromatic, where the commit count can only be lower — a pardon the
+    // player earns by resolving, revealed at the moment they resolve it.
+    const trackClassified = classifyTrack(
+      melodyLine, keyScale, actingDriveStack, actingSustainStack,
+      actingNoteState?.unlockedSkills ?? []);
+    const unpardonedDiscord = countUnpardoned(trackClassified);
+    const contextPardons    = countPardonedByStack(trackClassified);  // B4 reads this
+    const effectiveDiscord = Math.max(0, unpardonedDiscord - (freestylePardon ? 1 : 0));
     // chromClimbActive: if discord_4 unlocked and a chromatic run of 3+ is present,
     // treat the track as non-discord for scoring (individual grey notes are cosmetic only)
     // Note: chromClimbActive is set after the discord upgrade flags below — forward ref is fine
@@ -3128,7 +3187,9 @@ function Game({ gameState, onReturnToLobby }) {
       ? detectResolvedDiscords(melodyLine, currentScale)
       : { count: 0, chromatic: false };
     const flairExemptDiscords = Math.min(3, resolvedDiscords.count);
-    const perfDiscordCount = Math.max(0, discordCount - flairExemptDiscords);
+    // B3: score the SETTLED count, not the placement counter — a note the chord
+    // legalized was never a wrong note, so it must not drag the flair score either.
+    const perfDiscordCount = Math.max(0, unpardonedDiscord - flairExemptDiscords);
     const { score: perfScore, freestyle: perfFreestyle } = performanceScore({
       melodyLine,
       trackHasTritone, isOctaveResolution,
@@ -3206,11 +3267,16 @@ function Game({ gameState, onReturnToLobby }) {
     //  along with their effects. The endings still pay Performance Score via
     //  hasGatedEnding, and B5 will give them a Db payoff.)
     // (E-Rush flash removed — Ronin rework)
-    if (chromClimbActive && discordCount > 0) flashLines.push(`⚡ Chromatic Climb — discord pardoned`);
+    if (chromClimbActive && unpardonedDiscord > 0) flashLines.push(`⚡ Chromatic Climb — discord pardoned`);
+    // 🎸 B3 — say the pardon out loud. The player should be able to point at the
+    // stack and name the reason a grey note scored, the turn it happens.
+    const pardonedTotal = contextPardons.drive + contextPardons.sustain;
+    if (pardonedTotal > 0) flashLines.push(
+      `🎸 Your chord legalized ${pardonedTotal} note${pardonedTotal !== 1 ? 's' : ''}`);
     if (perfFreestyle > 0)    flashLines.push('🌀 Freestyle — first wrong note landed perfect!');
     if (canBank)              flashLines.push(`💾 Banked: ${newBankedNote.note}`);
     if (totalNotes > actingSpeed && !canBank) flashLines.push(`⚠️ ${totalNotes - actingSpeed} note(s) discarded (bank full)`);
-    if (discordPenalty > 0)   flashLines.push(`⚡ ${discordCount} Dischord — −${discordPenalty} DB`);
+    if (discordPenalty > 0)   flashLines.push(`⚡ ${unpardonedDiscord} Dischord — −${discordPenalty} DB`);
     flashLines.push(`🎭 Performance ${perfScore}/10`);
     if (perfDbBonus > 0)    flashLines.push(`🎸 Flair DB +${perfDbBonus}`);
     if (perfFansGained > 0) flashLines.push(`🎤 +${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''} won over!`);
@@ -3223,7 +3289,7 @@ function Game({ gameState, onReturnToLobby }) {
     // ── LOG ───────────────────────────────────────────────────────────────────
     const scoreStr = earned > 0
       ? ` · 🎯 +${earned}pts (${breakdown.join(', ')})${dbOverflow > 0 ? ` +${dbOverflow}DB overflow` : ''}${upgradeTriggered ? ` · 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!` : ` · DB [${newDBPoints}/${targetCost}]`}`
-      : (discordPenalty > 0 ? ` · ⚡ ${discordCount} Dischord — no points` : ` · DB [${newDBPoints}/${targetCost}]`);
+      : (discordPenalty > 0 ? ` · ⚡ ${unpardonedDiscord} Dischord — no points` : ` · DB [${newDBPoints}/${targetCost}]`);
     const driveMsg   = rawDriveBoost > 0   ? ` · ⚔️ Drive +${newTempDrive}` : '';
     const sustMsg    = rawSustainBoost > 0  ? ` · 🛡️ Sustain +${newTempSustain}` : '';
     const triMsg     = trackHasTritone      ? ' · 🔥 Damage ×2'          : '';
@@ -3232,7 +3298,7 @@ function Game({ gameState, onReturnToLobby }) {
     const rsMsg      = '';
     const tritoneEndMsg = '';
     const chrMsg     = '';   // B1 — chromatic-run Stagger removed
-    const chromClimbMsg = (chromClimbActive && discordCount > 0) ? ' · ⚡ Chrom Climb — no discord' : '';
+    const chromClimbMsg = (chromClimbActive && unpardonedDiscord > 0) ? ' · ⚡ Chrom Climb — no discord' : '';
     const speedMsg   = totalNotes > actingSpeed
       ? ` · SPD ${actingSpeed}/${totalNotes}${canBank ? ` · 💾 ${newBankedNote.note} banked` : ' · bank full'}`
       : ` · SPD ${hexes}/${actingSpeed}`;
@@ -11088,9 +11154,17 @@ function Game({ gameState, onReturnToLobby }) {
                     const showTritoneColor      = isTritone      && discordUnlocks.includes('discord_3');
                     const showMinorSeventhColor = isMinorSeventh && discordUnlocks.includes('discord_1') && scaleMode === 'major';
                     const showMajorThirdColor   = isMajorThird   && discordUnlocks.includes('discord_2') && scaleMode === 'minor';
+                    // 🎸 B3 — CHORD CONTEXT HIGHLIGHT. A note the key calls wrong that your
+                    // stacks have made legal lights up in Decibill gold, the moment the stack
+                    // qualifies it. This highlight IS the teaching: the player never learns a
+                    // note table, they learn "lit notes are notes that pay me right now" — the
+                    // same habit C2 will reuse for Style. Gold overrides the discord grey,
+                    // because a pardoned note is emphatically not a wrong note.
+                    const litByContext = isNoteInContext(note);
                     // Out-of-scale interval notes that haven't been unlocked → gray discord
-                    const showAsDiscord  = isIntervalNote && !isUnlocked && !inScaleNote;
-                    const borderC = showAsDiscord        ? "#444455"
+                    const showAsDiscord  = isIntervalNote && !isUnlocked && !inScaleNote && !litByContext;
+                    const borderC = litByContext         ? "#ffcc44"
+                                  : showAsDiscord        ? "#444455"
                                   : showTritoneColor     ? "#ff3300"
                                   : showMinorSeventhColor? "#4499ff"
                                   : showMajorThirdColor  ? "#44ffaa"
@@ -11098,7 +11172,8 @@ function Game({ gameState, onReturnToLobby }) {
                                   : isFourth             ? "#cc55ff"
                                   : inScaleNote          ? "#c0c8d8"
                                   : "#444455";
-                    const textC   = showAsDiscord        ? "#555566"
+                    const textC   = litByContext         ? "#ffdd77"
+                                  : showAsDiscord        ? "#555566"
                                   : showTritoneColor     ? "#ff3300"
                                   : showMinorSeventhColor? "#4499ff"
                                   : showMajorThirdColor  ? "#44ffaa"
@@ -11106,7 +11181,8 @@ function Game({ gameState, onReturnToLobby }) {
                                   : isFourth             ? "#cc55ff"
                                   : inScaleNote          ? "#e8eef8"
                                   : "#555566";
-                    const bgC     = showAsDiscord        ? "#111118"
+                    const bgC     = litByContext         ? "#2a2008"
+                                  : showAsDiscord        ? "#111118"
                                   : showTritoneColor     ? "#2a0800"
                                   : showMinorSeventhColor? "#051525"
                                   : showMajorThirdColor  ? "#0a2a1a"
@@ -11114,7 +11190,8 @@ function Game({ gameState, onReturnToLobby }) {
                                   : isFourth             ? "#1a0a2a"
                                   : inScaleNote          ? "#1a2035"
                                   : "#111118";
-                    const shadow  = showAsDiscord        ? "none"
+                    const shadow  = litByContext         ? "0 0 7px #ffcc4488"
+                                  : showAsDiscord        ? "none"
                                   : showTritoneColor     ? "0 0 6px #ff330077"
                                   : showMinorSeventhColor? "0 0 5px #4499ff77"
                                   : showMajorThirdColor  ? "0 0 5px #44ffaa55"
@@ -11122,7 +11199,9 @@ function Game({ gameState, onReturnToLobby }) {
                                   : isFourth             ? "0 0 5px #cc55ff66"
                                   : inScaleNote          ? "0 0 4px #c0c8d844"
                                   : "none";
-                    const lockTip = isIntervalNote && !isUnlocked && !inScaleNote
+                    const lockTip = litByContext
+                                  ? ` 🎸 Your chord makes this legal`
+                                  : isIntervalNote && !isUnlocked && !inScaleNote
                                   ? ` 🔒 Locked — upgrade Discord path to unlock` : '';
                     // 🎚️ Mixer — used slots stay tappable for one layered repeat per turn
                     const mixerReady = used && !isStaggered

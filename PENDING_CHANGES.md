@@ -14,9 +14,83 @@ Tension & Release, Chromatic Approach, Color Bonus, Chord Resonance. Eight mecha
 
 **Implementation order:** A → B0 → B1 → B2 → B3 → B4 → B5 → B6 → B7 → B8 → B9 → B10 → C.
 B0 is the spine; several later items assume it. Task C depends on B3 shipping first.
+(B8 was pulled forward — its pure core shipped alongside B3, since the mode
+question turned out to be a chord-context question. Only its wiring is outstanding.)
 
-**Status:** ✅ Task A, B0 (a + b) and B1 are SHIPPED on branch `feat/chord-strength-b0`
-(local only — nothing pushed). Next up is B2. Notes from those passes:
+**Status:** ✅ Task A, B0 (a + b), B1, **B2 and B3** are SHIPPED on branch
+`feat/chord-strength-b0` (local only — nothing pushed). Two changes were made that
+this doc did not ask for: the **note speller** was rewritten (it was mis-spelling
+14 borrowed degrees) and **B8 was reopened and reversed** — see below. Next up is
+wiring the derived mode into the turn flow, then B4.
+
+### Notes from the B2 / B3 pass
+
+- **⚠️ B3's `theory_dom7` tier was a NO-OP as specified.** The spec's example —
+  "stack reads C-E-G-B♭ → dom7 → the ♭7 is clean even if you never placed a B♭" —
+  contradicts itself: `evaluateChord` does **subset** matching, so it only returns
+  dom7 when the B♭ is literally in the stack. Verified across all 14 templates:
+  the implied chord's tones are always exactly the stack's literal notes, so the
+  tier would have pardoned nothing beyond `theory_minor`. **Resolved:** at this
+  tier a *triad implies its natural seventh* (maj→♮7, min→♭7, dim→♭♭7, aug→♭7,
+  sus→♭7). Power chords are excluded — no third means no quality to complete, and
+  handing the ♭7 to the one stack every player holds from turn one is a far bigger
+  grant than the tier is priced for. Already-complete 7ths and 9ths gain nothing;
+  their payoff for this tier is the 4th stack slot.
+- **Tiers are cumulative** (`theory_modes` implies `theory_dom7` implies
+  `theory_minor`). A purchase that removed a pardon you already had would be a
+  downgrade wearing an upgrade's clothes. Asserted in `b0check.mjs`.
+- **`chordContext` deliberately cannot express the approach-note tier** — it's a
+  condition on the *next* note, so it only exists per-position. Use it for the note
+  stock highlight ("would this be clean right now"); use `classifyTrack` for
+  scoring. An approach note isn't clean until you commit to landing it.
+- **The C4 landmine is now guarded in three places**: a comment at the
+  `keyScale` / `contextPcs` declarations, the module header of `context.js`, and a
+  regression assertion that a pardoned note still reports `inScale: false`. Pardon
+  changes **scoring**, never **classification**.
+- `discordCount` (placement-time) and `unpardonedDiscord` (commit-time, from
+  `classifyTrack`) now coexist as B7 intended. They agree at every tier except
+  `theory_chromatic`, where the commit count can only be *lower* — the
+  approach-note pardon is revealed at the moment the player resolves it.
+- **B4/B5/B7 have their inputs waiting for them** at the commit site:
+  `trackClassified`, `unpardonedDiscord`, and `contextPardons` (`{drive, sustain}`).
+  Count from those; do not re-derive the pardon.
+- B2's base is `max(0, floor(len/2) - 1)` → **0/0/0/1/1/2/2/3 for lengths 1–8**.
+  (The doc said "0/1/1/2/2/3/3 across lengths 3–8" — seven values for six lengths;
+  that list is right for lengths 3–9, and tracks cap at 8. The formula was the
+  intent and the formula is what shipped.) Best-case track: **6 Db, was 9.**
+- The tutorial's "WHAT EARNS DECIBILLS" table was stale in ways predating B2 — it
+  advertised a Major-3rd cleanse removed in B1 and an octave value that never
+  matched the code. Rewritten to the shipped numbers.
+
+### ⚠️ Unasked-for change 1: the note speller was rewritten
+
+`getSpelledPool` picked one global sharp-or-flat pool per key signature and named
+all twelve notes from it. That produced **14 wrong spellings** on the borrowed
+degrees players actually see — most damagingly, **in C (the default root) the blues
+♭7 displayed as "A♯"**, i.e. the signature note of the entire `theory_dom7` tier,
+misspelled in the most common key.
+
+Replaced with **degree-based spelling**: a note's name comes from which degree it
+is, so the ♭7 of C is B♭ because a seventh is some kind of B and this one is flat.
+Two readability escapes, both hit only on exotic roots: a white key never takes an
+accidental (no F♭/C♭/B♯/E♯), and double accidentals fall back to a plain enharmonic
+name. The ♯4-never-♭5 rock bias is now applied from every root, not just F.
+
+This also **removes mode from spelling almost entirely** — it turned out mode only
+changed the spelling of 3 of 12 roots to begin with. `FLAT_ROOTS` was **removed**,
+not deprecated, so archived code that revives it fails to import (same treatment as
+`STACK_CAP`). Mode now only survives in `canonicalRoot`, for the genuinely
+ambiguous split roots (D♭ major vs C♯ minor).
+
+### ⚠️ Unasked-for change 2: B8 is reversed — the pivot is derived, not declared
+
+See the rewritten §B8. Also fixed while in there: **`declarePivot` paid minor
+`+1 tempDrive`, contradicting both the comment directly above it and this doc**,
+which say Sustain. B8's argument for keeping the pivot asymmetric is "major is
+tempo, minor is defense" — paying minor in Drive made both branches aggressive and
+silently deleted the asymmetry it was defending. Now `tempSustain`.
+
+### Notes from the earlier A / B0 / B1 passes
 
 - **B1 correction — the statuses did NOT die with their triggers.** Mojo Drain,
   Stagger and Burn each have independent sources (Riff-Off "convicted" verdict;
@@ -210,7 +284,7 @@ exemption both use it).
 
 ---
 
-### B2 — Rescore melody Db
+### B2 — Rescore melody Db ✅ SHIPPED
 
 **File:** `src/music/cadence.js`, `scoreTrackDB()` (line 216). Update the header comment
 block at lines 211–215 too, it documents the old formula.
@@ -233,7 +307,7 @@ teaches. Color gets rewarded in the **body** of the track instead — see B4.
 
 ---
 
-### B3 — The Chord Context ladder (core mechanic)
+### B3 — The Chord Context ladder (core mechanic) ✅ SHIPPED
 
 At commit, `evaluateChord()` already returns the implied chord for each stack. Its pitch
 classes form a **context set**. Melody notes are judged against `currentScale` ∪ context
@@ -243,7 +317,7 @@ rather than `currentScale` alone. Each tier widens the reach.
 |---|---|---|
 | `theory_major` *(free at start)* | — | No context. Melody judged against the key only. |
 | `theory_minor` | **Chord Tone Pardon** | A melody note **literally present** in either stack is never Discord. |
-| `theory_dom7` | **Play the Changes** | Pardon extends from literal stack notes to the **whole implied chord**. Stack reads C-E-G-B♭ → dom7 → the ♭7 is clean in your melody *even if you never placed a B♭*. |
+| `theory_dom7` | **Play the Changes** | Pardon extends from literal stack notes to the **whole implied chord, completed to its seventh**. Stack reads C-E-G → maj → maj7 → the ♮7 is clean in your melody even though you never placed a B. A minor triad hands over the ♭7 the same way. ⚠️ The original wording of this row described a no-op — see the correction note at the top. |
 | `theory_modes` | **Extensions** | Context grows to the chord's available tensions, by quality: ♯4 over major, natural 6 over minor, ♭9 and 9 over dominant. |
 | `theory_chromatic` | **Approach Notes** | **Any** note is clean if the *next* note is a chord tone of either stack. Total chromatic freedom, conditional on landing it. |
 
@@ -260,8 +334,9 @@ Design notes for whoever implements this:
   so the final note of a track can never be pardoned by it. That's intended — it pushes
   players toward resolving.
 
-**Suggested home:** a new pure module `src/music/context.js`, alongside `chords.js` and
-`cadence.js`, exporting something like:
+**Shipped as** `src/music/context.js`, alongside `chords.js` and `cadence.js`.
+Exports `chordContext`, `classifyTrack`, `stackContext`, `modeFromStack`,
+`countUnpardoned`, `countPardonedByStack`, plus `CONTEXT_TIERS` / `PARDON_ORDER`:
 
 ```js
 /** Pitch classes made legal by the stacks, given the player's unlocked tiers.
@@ -379,19 +454,84 @@ for live UI feedback, but score from `classifyTrack`'s result.
 
 ---
 
-### B8 — Major/Minor pivot: unchanged (correcting v1)
+### B8 — Major/Minor pivot: **REVERSED.** The chord declares the mode, not the player
 
-v1 contradicted itself here — §B3 said minor grants +2 Db, §B6 said minor keeps its
-Drive/Sustain bonus. **Resolution: the code is already right, change nothing.**
+🔶 **Pure core SHIPPED** (`modeFromStack` in `src/music/context.js`, covered in
+`b0check.mjs`). **Turn-flow wiring outstanding — this is the next task.**
 
-`declarePivot()` (line 2658, mode bonus ~2673–2688) stays as-is:
+**What the previous revision said.** "The code is already right, change nothing:
+major → +1 Db, minor → +1 `tempSustain`." Two things were wrong with that. The code
+was in fact paying minor `+1 tempDrive` (now fixed). And the larger question —
+whether a per-turn Major/Minor prompt still earns its place — hadn't been asked.
 
-- **Major** → +1 Db
-- **Minor** → +1 `tempSustain`
+**Why it stops earning its place.** Measured, not asserted:
 
-If both branches paid Db and minor paid more, the pivot would stop being a decision and
-become "always minor." It would also double-pay: minor is only playable *because* you
-bought `theory_minor`. Keep it asymmetric — major is tempo, minor is defense.
+- At full unlock the two branches differ by **two notes you can't reach any other
+  way** — ♭3 and ♭6 — against three the other branch owns (maj3, ♯4, maj7). In C:
+  major gives `C D E F F♯ G A B♭ B`, minor gives `C D E♭ F G A♭ A B♭`, and six of
+  those are shared.
+- The prompt fires **every turn**, because the root changes every turn. It is the
+  highest-frequency modal interruption in the game, and it asks a music-theory
+  question of players who may not have one.
+- **B3 already eroded its exclusivity.** Stack a minor triad and Chord Tone Pardon
+  legalizes the ♭3 without ever declaring minor. Harmony had quietly taken over
+  half the pivot's job.
+- Mode turned out to drive spelling for only 3 of 12 roots — and after the speller
+  rewrite, for none of them except the split roots themselves.
+
+**The replacement.** `modeFromStack(driveStack, unlockedSkills, currentMode)`:
+
+| Drive Stack reads | Mode | Reason |
+|---|---|---|
+| min, min7, min9, dim, dim7, m7b5 | **minor** | `'quality'` |
+| maj, maj7, dom7, dom9, aug | **major** | `'quality'` |
+| power, sus2, sus4, single, cluster | *hold current* | `'ambiguous'` |
+| minor quality, but no `theory_minor` | **major** | `'locked'` |
+
+The decision doesn't disappear — it moves into the thing the player is already
+manipulating. Stack a ♭3 and watch which notes go grey. That's the same lesson B3
+teaches everywhere else, applied to the one place the game was still asking the
+player to state it out loud.
+
+Two details worth keeping:
+
+- **Ambiguous holds, never flips.** A power chord has no third; that is precisely
+  why rock leans on it, and the game shouldn't pretend to hear one. This also means
+  the B0 single-note seed never force-flips a spirit on turn one.
+- **`'locked'` is a feature.** A spirit without `theory_minor` whose stack wants
+  minor holds major and the UI says so. Being able to *hear* the minor chord and be
+  told the game can't spell it yet advertises the skill far better than a greyed-out
+  button at the moment of least interest.
+
+**The bonus survives unchanged** and simply becomes automatic: major → +1 Db,
+minor → +1 `tempSustain`. Still asymmetric, still major-is-tempo /
+minor-is-defense — the argument for the asymmetry was always right, it just wasn't
+what the code was doing.
+
+#### Wiring plan (outstanding)
+
+Lowest-risk shape: **do not rip out `pivotPending`.** Leave the ~30 guard sites in
+place and simply stop ever setting it true, so nothing can deadlock a turn.
+
+1. Three sites set `pivotPending: true` — `startNewTurnNotes` (~3509),
+   `resolveTransposeCard` (~3934), and `makeInitialNoteState`
+   (`engine/systems/economy.js:157`). Each instead derives the mode, respells root
+   + stock, and leaves `pivotPending: false`.
+2. `declarePivot(mode)` survives as the **applier** (respell + bonus + upgrade
+   award), called with the derived mode rather than from a button. All of its
+   existing plumbing is reusable as-is; only its trigger changes.
+3. The mode bonus has side effects (`advanceDB`, `awardTargetSkill`) that can't run
+   inside the `setNoteStates` reducer. Stage it: write `pendingModeBonus` in the
+   reducer, apply it in a small effect. Do **not** try to inline `advanceDB` into
+   the reducer.
+4. **UI** (~10849–10990): replace the two pivot buttons with a read-only line
+   naming the derived mode and the chord that caused it — "🌑 MINOR — your C minor
+   triad", "☀️ MAJOR — hold (power chord has no third)", "🔒 your stack wants minor
+   — unlock Minor Tonality". The `turnStep === 'pivot'` HUD stage collapses.
+5. **Bot** (~8941): the `ns.pivotPending` branch becomes dead. Delete it rather
+   than leaving it — a bot branch that can never fire is a trap for the next reader.
+6. ⚠️ Mode must be derived **at turn start**, not on every stack commit. Re-deriving
+   mid-turn would respell the stock underneath notes the player has already placed.
 
 ---
 
@@ -604,12 +744,26 @@ The comment on line 117 needs updating either way — its math refers to the old
 
 ## Verification
 
-- `src/engine/selftest.mjs` references `theory_*` and `pending*` fields — run it after B1
-  and again after B3; expect breakage from the removed status fields.
-- Add coverage for: `stackCapFor()` at each unlock combination; `chordContext()` returning
-  the ♭7 for a C-E-G-B♭ stack at `theory_dom7` but **not** at `theory_minor`;
-  `classifyTrack` provenance routing in B4; Harmonic Lock rank thresholds; discord penalty
-  floor and first-note grace.
+**Where the tests live:** `node src/engine/b0check.mjs` — 31 checks covering
+Task A, B0, B2, B3, the speller and B8's core. `npm run test:engine` is still
+broken on main (pre-existing `.png` import chain in `data/spirits.js`); fold
+`b0check` into `selftest.mjs` once that's fixed.
+
+Already covered:
+
+- `stackCapFor()` at every unlock combination.
+- `chordContext()` handing over the implied 7th at `theory_dom7` but **not** at
+  `theory_minor` — note this is the *corrected* case (a C-E-G triad completing to
+  maj7), since the doc's original C-E-G-B♭ example was a no-op.
+- Tier monotonicity: no purchase is ever a downgrade.
+- `classifyTrack` provenance and B4's stack routing (higher rank wins, ties to Drive).
+- The approach tier never pardoning a track's final note.
+- The C4 landmine: a pardoned note still reports `inScale: false`.
+- All 24 speller pools: 12 unique, correctly-pitched, chip-readable names.
+- `modeFromStack` across quality / ambiguous / locked.
+
+Still to add: Harmonic Lock rank thresholds (B5); discord penalty floor and
+first-note grace (B7).
 - Play-test target: a turn-one spirit should reach a triad in one turn if they spend for
   it, and a mid-game spirit with `theory_dom7` should be able to say in one sentence why
   they built the chord they built.
@@ -631,8 +785,22 @@ The comment on line 117 needs updating either way — its math refers to the old
 
 1. **Does `performanceScore` keep `hasGatedEnding`** after B1 removes the combat effects
    those endings triggered. (Recommended: yes, it's a flair signal.)
+   *Still open — B3 didn't touch it.*
 2. **Do Style Db and the P-score top-up need retuning** once B2 halves base income —
    `STYLE_DB_CAP` is 3 against a new best-case track of ~5, so Style becomes a much larger
    share of Db than it was designed to be. See Task C.
 3. **Other branches need ceilings of their own** so Theory-first isn't automatic — see the
-   consequence note in B0b. Not blocking, but don't let it slide.
+   consequence note in B0b. Not blocking, but don't let it slide. **B3 made this
+   worse, as predicted:** Theory now gates the stat ceiling, the melody palette, the
+   Db payout, chord capacity *and* the pardon economy. Electric/amp and Crew each
+   need one thing nobody else can grant.
+4. **Does the `theory_dom7` seventh-completion want a power-chord case?** Shipped
+   without one — a power chord has no third, so no quality to complete. If the tier
+   plays as too thin at purchase, the ♭7-over-power read is the lever to pull, but
+   it's a large grant (every player holds a power chord from turn one) and should be
+   a deliberate choice rather than a tuning nudge.
+5. **`theory_modes` gives no extensions to dim / aug / m7b5 / sus / power.** Only the
+   three qualities the design names (♯4 over major, ♮6 over minor, ♭9+9 over
+   dominant) contribute tensions; everything else stays at its chord tones. This is
+   what stops `theory_modes` from quietly pardoning most of the chromatic scale, but
+   it does mean a dim-stack build gets nothing from that tier beyond slot 5.

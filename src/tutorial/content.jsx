@@ -402,9 +402,10 @@ function TutSection_HarmonicCharge() {
       <div style={{background:"#050c18", border:"1px solid #1a2a40", borderRadius:6, padding:"10px 14px"}}>
         <div style={{fontSize:8, color:"#3a5a7a", fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:2, marginBottom:8}}>WHAT EARNS DECIBILLS</div>
         {[
-          {icon:"🎶", label:"End on 4th or 5th",       pts:"+2 pts", color:"#cc55ff"},
-          {icon:"🎶", label:"Octave resolution",        pts:"+3 pts + die floor", color:"#44aaff"},
-          {icon:"✨", label:"Major 3rd end",            pts:"+1 pt + cleanse", color:"#44ffaa"},
+          {icon:"📏", label:"Track length",              pts:"+1 per 2 notes past the 3rd", color:"#88aacc"},
+          {icon:"🎶", label:"End on the 5th",            pts:"+3 pts", color:"#ff55aa"},
+          {icon:"🎶", label:"End on the 4th",            pts:"+2 pts", color:"#cc55ff"},
+          {icon:"🎶", label:"Octave resolution",         pts:"+1 pt + die floor", color:"#44aaff"},
           {icon:"⚔️", label:"Drive overflow (non-stack)",pts:"+varies", color:"#ffaa44"},
           {icon:"🛡️", label:"Sustain overflow (non-stack)",pts:"+varies", color:"#88ccff"},
         ].map((r,i)=>(

@@ -14,13 +14,11 @@ export const PITCH_INDEX = {
   'F#':6,'Gb':6,'G':7,'G#':8,'Ab':8,'A':9,'A#':10,'Bb':10,'B':11,'Cb':11,'B#':0,
 };
 
-// Roots that prefer flat spellings for their note pool, keyed by mode.
-// Major flat keys: F, Bb, Eb, Ab, Db
-// Minor flat keys: D, G, C, F, Bb, Eb, Ab (relative majors are all flat keys)
-export const FLAT_ROOTS = {
-  major: new Set(['F','Bb','Eb','Ab','Db']),
-  minor: new Set(['D','G','C','F','Bb','Eb','Ab']),
-};
+// ⚠️ FLAT_ROOTS was REMOVED, not deprecated. It drove the old key-signature
+// speller — one global sharp-or-flat pool per root — which is exactly the model
+// `getSpelledPool` no longer uses. Deleting the export rather than leaving it
+// behind means any archived code that revives it fails to import, loudly, instead
+// of quietly re-introducing the mis-spellings. (Same treatment STACK_CAP got.)
 
 // Split roots — canonical spelling depends on mode chosen
 // e.g. G# → Ab major, G# minor
@@ -45,26 +43,65 @@ export function canonicalRoot(rawNote, mode) {
   return rawNote;
 }
 
-// Returns the correctly spelled 12-note chromatic pool for a given root + mode.
-// The root context determines sharp vs flat naming for ALL notes.
+// ─── SPELLING BY SCALE DEGREE ────────────────────────────────────────────────
+// A note's name comes from WHICH DEGREE it is, not from a key signature. The ♭7
+// of C is B♭ because it's a lowered seventh — a seventh is some kind of B, and
+// this one is flat. That's true in C major and C minor alike, which is why this
+// needs no mode.
+//
+// ⚠️ This replaces a key-signature lookup that chose ONE global sharp-or-flat
+// pool per root and named all twelve notes from it. That approach mis-spelled 14
+// of the borrowed degrees players actually see — most visibly the blues ♭7 in C,
+// the default root, which displayed as "A♯" instead of B♭. It also made spelling
+// depend on mode for exactly 3 of 12 roots (C, D, G) and nowhere else, which was
+// never enough to justify the coupling.
+//
+// Degree number for each interval above the root. Note 6 → 4, i.e. the tritone is
+// always a ♯4 and never a ♭5: RLSW already committed to that rock bias ("Always
+// F# — never Gb"), this just applies it consistently from every root.
+const DEGREE_OF_INTERVAL = [1, 2, 2, 3, 3, 4, 4, 5, 6, 6, 7, 7];
+const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+const LETTER_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+// Only single accidentals are readable on a note chip. Anything needing a double
+// flat/sharp — or the B♯/E♭♭ end of the spectrum — falls back to a plain name.
+const ACCIDENTAL = { '-1': 'b', '0': '', '1': '#' };
+const PLAIN_FLAT  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+const PLAIN_SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+// Returns the correctly spelled 12-note chromatic pool for a given root.
+// Indexed by absolute pitch class, so `pool[(rootIdx + n) % 12]` still returns the
+// note n semitones above the root — every existing caller is unchanged.
+//
+// `mode` is retained only to canonicalise split roots (G♯/A♭, C♯/D♭); it no longer
+// influences how any other note is spelled.
 export function getSpelledPool(rootNote, mode) {
-  const root = canonicalRoot(rootNote, mode);
-  const flatSet = FLAT_ROOTS[mode] ?? FLAT_ROOTS.major;
-  const useFlats = flatSet.has(root);
-  return [
-    'C',
-    useFlats ? 'Db' : 'C#',
-    'D',
-    useFlats ? 'Eb' : 'D#',
-    'E',
-    'F',
-    'F#',   // Always F# in RLSW — never Gb (rock bias)
-    'G',
-    useFlats ? 'Ab' : 'G#',
-    'A',
-    useFlats ? 'Bb' : 'A#',
-    'B',
-  ];
+  const root   = canonicalRoot(rootNote, mode);
+  const rootPc = pitchIndex(root);
+  if (rootPc < 0) return [...PLAIN_SHARP];
+  const rootLetterIdx = LETTERS.indexOf(root[0]);
+  if (rootLetterIdx < 0) return [...PLAIN_SHARP];
+
+  const pool = new Array(12);
+  for (let iv = 0; iv < 12; iv++) {
+    const pc     = (rootPc + iv) % 12;
+    const letter = LETTERS[(rootLetterIdx + DEGREE_OF_INTERVAL[iv] - 1) % 7];
+    // How far this pitch sits from the natural letter, as a signed semitone count.
+    let delta = ((pc - LETTER_PC[letter]) % 12 + 12) % 12;
+    if (delta > 6) delta -= 12;
+    const acc = ACCIDENTAL[String(delta)];
+    // Two readability escapes, both hit only on the exotic roots:
+    //   1. A WHITE KEY never takes an accidental name. Strict degree spelling wants
+    //      F♭ for the ♭3 of D♭ and B♯ for the ♯4 of F♯; a player reading a note chip
+    //      wants E and C. Same pitch, and no guitarist writes the other one.
+    //   2. Double accidentals (E♭♭, B♭♭) aren't spellable on a chip at all — fall
+    //      back to the plain enharmonic name, flats for lowered degrees and sharps
+    //      for the ♯4, matching what a guitarist would actually write.
+    const isWhiteKey = PLAIN_SHARP[pc].length === 1;
+    pool[pc] = isWhiteKey       ? PLAIN_SHARP[pc]
+             : acc === undefined ? (iv === 6 ? PLAIN_SHARP[pc] : PLAIN_FLAT[pc])
+             : letter + acc;
+  }
+  return pool;
 }
 
 // Converts a note name to pitch-class index (0–11), robust to either spelling

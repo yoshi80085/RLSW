@@ -214,16 +214,31 @@ export function sustainBoostFromPattern(patLen) {
 
 // ── DB SCORING ───────────────────────────────────────────────────────────────
 // Layer 1 (DB points — feeds upgrade counter):
-//   Step A: floor(totalNotes / 2)  — all notes including last
-//   Step B: ending bonus — 4th=+4, 5th=+5, Octave=+2
+//   Step A: max(0, floor(totalNotes / 2) - 1)  — all notes including last
+//   Step B: ending bonus — 4th=+2, 5th=+3, Octave=+1
 // Layer 2 (Drive/Sustain patterns) runs in confirmNoteTrack and is untouched.
+//
+// PENDING_CHANGES B2 — base melody income roughly halved. Step A now yields
+// 0/1/1/2/2/3 across lengths 3–8, so length stays a real slope but stops being
+// free money. (floor(len/3) was considered and rejected: it scores a 6-note and
+// an 8-note track identically, flattening length out of the Db game entirely.)
+//
+// The ending ladder is deliberately *cadential* — it asks where the line came to
+// rest, which is why there is no 7th/9th ending bonus. A ♭7 doesn't resolve, it
+// hangs; paying a premium for the least-resolved note would invert the lesson the
+// rest of the system teaches. Color is paid in the body of the track instead
+// (B4: pardoned notes feed Drive/Sustain, not Db).
+//
+// B5 (Harmonic Lock) stacks an additional rank-scaled bonus on top of Step B when
+// the final note is a chord tone of a stack holding a recognized chord. That lives
+// at the commit site, not here — this function stays pure and stack-unaware.
 export function scoreTrackDB(track, fourthNote, fifthNote) {
   if (!track || track.length === 0) return { points: 0, breakdown: [] };
   const breakdown = [];
   let points = 0;
 
   // Step A — placement points
-  const placementPts = Math.floor(track.length / 2);
+  const placementPts = Math.max(0, Math.floor(track.length / 2) - 1);
   if (placementPts > 0) {
     breakdown.push(`${track.length} notes → +${placementPts}`);
     points += placementPts;
@@ -233,9 +248,9 @@ export function scoreTrackDB(track, fourthNote, fifthNote) {
   const last = track[track.length - 1];
   const first = track[0];
   const isOctave = track.length >= 2 && first === last;
-  if (last === fifthNote)       { breakdown.push(`5th end +5`);    points += 5; }
-  else if (last === fourthNote) { breakdown.push(`4th end +4`);    points += 4; }
-  else if (isOctave)            { breakdown.push(`octave end +2`); points += 2; }
+  if (last === fifthNote)       { breakdown.push(`5th end +3`);    points += 3; }
+  else if (last === fourthNote) { breakdown.push(`4th end +2`);    points += 2; }
+  else if (isOctave)            { breakdown.push(`octave end +1`); points += 1; }
 
   return { points, breakdown };
 }
