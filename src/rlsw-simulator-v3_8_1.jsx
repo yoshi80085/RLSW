@@ -38,6 +38,7 @@ import { ToneFader } from "./ui/ToneFader.jsx";
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import React from "react";
 import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
+import { micAvailable, startMicListening } from "./audio/micPitch.js";
 import riffOffSong from "./Riff_off_song.mp3";
 import battleSong  from "./battle_song.mp3";
 import moshpitSong from "./Master_of_Moshpits_song.mp3";   // 🤘 Master of Moshpits cinematic
@@ -354,7 +355,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 }
 
 
-import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale } from "./music/notes.js";
+import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
 import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
@@ -1492,12 +1493,44 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── BATTLE / RIFF-OFF MUSIC ──────────────────────────────────────────────
   const battleAudioRef = useRef(null);
+
+  // ⚡ PERF — audio elements are CACHED, never rebuilt.
+  //
+  // This used to be `new Audio(src)` on every battle. battle_song.mp3 is ~1.6 MB
+  // and Riff_off_song.mp3 ~1.9 MB, so each battle threw away the decoded buffer
+  // and forced the browser to decode megabytes of MP3 again — on the main
+  // thread, at the exact moment the battle overlay animates in. That is the
+  // stutter. Decode once, reuse forever: replays are just currentTime = 0.
+  const audioCacheRef = useRef(new Map());
+  function getCachedAudio(src) {
+    const cache = audioCacheRef.current;
+    let audio = cache.get(src);
+    if (!audio) {
+      audio = new Audio(src);
+      audio.preload = 'auto';
+      audio.loop = true;
+      cache.set(src, audio);
+    }
+    return audio;
+  }
+
+  // Warm the decode during idle time after mount, so even the FIRST battle
+  // doesn't pay for it. requestIdleCallback keeps this off the critical path;
+  // browsers without it fall back to a lazy timeout.
+  useEffect(() => {
+    if (liteFx) return;
+    const warm = () => { [battleSong, riffOffSong].forEach(src => { try { getCachedAudio(src).load(); } catch {} }); };
+    const ric = window.requestIdleCallback;
+    const handle = ric ? ric(warm, { timeout: 4000 }) : setTimeout(warm, 2500);
+    return () => { if (ric && window.cancelIdleCallback) window.cancelIdleCallback(handle); else clearTimeout(handle); };
+  }, [liteFx]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function playBattleMusic(src, volume = 0.5) {
     if (liteFx) return;   // 🎨 lite FX: skip audio decoding to save CPU
     stopBattleMusic();
-    const audio = new Audio(src);
-    audio.loop = true;
+    const audio = getCachedAudio(src);
     audio.volume = volume;
+    audio.currentTime = 0;
     audio.play().catch(() => {});
     battleAudioRef.current = audio;
   }
@@ -1505,6 +1538,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (battleAudioRef.current) {
       battleAudioRef.current.pause();
       battleAudioRef.current.currentTime = 0;
+      // Only drop the "currently playing" pointer — the element stays in the
+      // cache with its decoded buffer intact, ready for the next battle.
       battleAudioRef.current = null;
     }
   }
@@ -1897,6 +1932,13 @@ function Game({ gameState, onReturnToLobby }) {
   const actingStackCap = stackCapFor(actingNoteState?.unlockedSkills ?? []);
   const noteStock    = actingNoteState?.noteStock    ?? [];
   const melodyLine    = actingNoteState?.melodyLine    ?? [];
+  // 🔁 Parallel to melodyLine: which noteStock slot each placed note came from.
+  // melodyLine only ever stored the note NAME, so the link back to the stock
+  // slot was lost the moment a note was placed — that's why the track was
+  // append-only. Recording the source index makes removal exact: pulling a
+  // note frees the specific slot it came from, even when the stock holds
+  // duplicates of the same note (or the same note also sits in a chord stack).
+  const melodySrcIdx  = actingNoteState?.melodySrcIdx  ?? [];
   const usedStockIdx = actingNoteState?.usedStockIdx ?? [];
   const rootNote     = actingNoteState?.rootNote     ?? 'C';
   const scaleMode    = actingNoteState?.scaleMode    ?? 'major';
@@ -2864,6 +2906,10 @@ function Game({ gameState, onReturnToLobby }) {
       playNoteSound(note);
       setNoteField(acting.id, {
         melodyLine:         newTrack,
+        // -1 = "frees no stock slot". The mixer re-plays a note whose slot was
+        // already spent by the original placement, so pulling this copy back
+        // out must not hand the slot back a second time.
+        melodySrcIdx:      [...melodySrcIdx, -1],
         discordCount:      playable ? discordCount : discordCount + 1,
         mixerUsedThisTurn: true,
       });
@@ -2946,6 +2992,7 @@ function Game({ gameState, onReturnToLobby }) {
     }
     setNoteField(acting.id, {
       melodyLine:    newTrack,
+      melodySrcIdx: [...melodySrcIdx, idx],
       usedStockIdx: usedAdd(usedStockIdx, idx),
       discordCount: newDiscord,
     });
@@ -2955,6 +3002,150 @@ function Game({ gameState, onReturnToLobby }) {
                     : intervalKey && !isUnlocked ? `🔒 ${intervalKey} — locked (discord)`
                     : '⚡ discord';
     addLog(`🎵 ${note} → track (${noteLabel}) · ${newTrack.length} notes`);
+  }
+
+  // ── 🔁 PULL A NOTE BACK OUT OF THE TRACK ────────────────────────────────────
+  // The track is a DRAFT until confirmNoteTrack() locks it in. Clicking a placed
+  // note lifts it back out and returns its stock slot, so building a melody is
+  // an editable arrangement rather than eight irreversible decisions. Nothing
+  // about scoring changes — this only runs before hasConfirmed.
+  //
+  // Notes carry where they came from (melodySrcIdx), so each source returns
+  // correctly: a stock note frees its exact slot, a banked note goes back to the
+  // bank, and a mixer duplicate simply disappears (its slot was already spent).
+  //
+  // discordCount is RECOMPUTED from the surviving notes rather than decremented,
+  // because a stale count would quietly corrupt the commit payout.
+  function removeMelodyNote(i) {
+    if (!acting || !canAct) return;
+    if (hasConfirmed) { addLog('✓ Already confirmed this turn — the track is locked in.'); return; }
+    if (pivotPending) { addLog('⚡ Declare Major or Minor for your Root Note first!'); return; }
+    const note = melodyLine[i];
+    if (note === undefined) return;
+
+    const src        = melodySrcIdx[i];
+    const newTrack   = melodyLine.filter((_, k) => k !== i);
+    const newSrc     = melodySrcIdx.filter((_, k) => k !== i);
+    const newDiscord = newTrack.reduce((n, nt) => n + (isNotePlayable(nt) ? 0 : 1), 0);
+
+    // ⚠️ payoutRouting is keyed by TRACK INDEX, so pulling a note out of the
+    // middle shifts every choice made after it. Left unremapped, the note that
+    // slides into slot 3 would silently inherit slot 3's old routing and get
+    // paid to the wrong stack. Drop the removed index, shift everything above
+    // it down one.
+    const oldRouting = actingNoteState?.payoutRouting ?? {};
+    const newRouting = {};
+    for (const [k, v] of Object.entries(oldRouting)) {
+      const k2 = Number(k);
+      if (k2 === i) continue;
+      newRouting[k2 > i ? k2 - 1 : k2] = v;
+    }
+
+    const patch = {
+      melodyLine:    newTrack,
+      melodySrcIdx:  newSrc,
+      discordCount:  newDiscord,
+      payoutRouting: newRouting,
+    };
+
+    if (src === 'bank') {
+      patch.bankedNote = { note };
+      addLog(`🔁 ${note} pulled from the track — back in the bank · ${newTrack.length} notes`);
+    } else if (typeof src === 'number' && src >= 0) {
+      patch.usedStockIdx = usedList(usedStockIdx).filter(x => x !== src);
+      addLog(`🔁 ${note} pulled from the track — back in your stock · ${newTrack.length} notes`);
+    } else {
+      // Mixer duplicate (or a legacy note placed before source tracking existed).
+      addLog(`🔁 ${note} pulled from the track · ${newTrack.length} notes`);
+    }
+
+    playNoteSound(note);
+    setNoteField(acting.id, patch);
+  }
+
+  // ── 🎤 MIC INPUT — play the note, place the note ─────────────────────────────
+  // The detection layer already exists and is proven (audio/micPitch.js drives
+  // Discord Coach and Fretboard Recon). All that happens here is routing its
+  // output into the SAME clickNoteStock() a click calls — no separate code path,
+  // so mic-placed notes score, route and undo identically to clicked ones.
+  //
+  // No debounce here on purpose: micPitch already gates on RMS, YIN confidence,
+  // pitch stability and minGapMs, and fires once per onset. Adding a second
+  // debounce would just swallow fast legitimate playing.
+  //
+  // Immediate-commit rather than arm-then-confirm is only safe because the track
+  // is editable — a misheard note costs one click to pull back out.
+  const [micOn, setMicOn]       = useState(false);
+  const [micHeard, setMicHeard] = useState(null);   // { note, ok } — last thing heard
+  const [micErr, setMicErr]     = useState(null);
+  const micHandleRef            = useRef(null);
+  const micNoteHandlerRef       = useRef(() => {});
+
+  // ⚠️ Match on `pcAbsolute`, NOT on `key`.
+  //
+  // micPitch's `key` is a guitarMap code, not a note name: PC_KEYS is
+  // ['a','A','b','c','C','d','D','e','f','F','g','G'] where lowercase is the
+  // natural and UPPERCASE is the sharp. So the mic's 'C' means C#, and feeding
+  // it to pitchIndex() silently resolved to C natural — placing a real but
+  // WRONG note rather than simply failing. `pcAbsolute` is already a C-based
+  // 0–11 pitch class, the same basis pitchIndex returns, so the two compare
+  // directly and enharmonics (F#/Gb) collapse for free.
+  function micPlaceNote({ key, pcAbsolute }) {
+    if (!acting || !canAct || hasConfirmed || pivotPending) return;
+    const heardName = NOTE_POOL[pcAbsolute] ?? key;
+    if (melodyLine.length >= 8) { setMicHeard({ note: heardName, ok: false }); return; }
+    // Strip any octave digits a stock note may carry before the lookup.
+    const pc  = (n) => pitchIndex(String(n).replace(/\d/g, ''));
+    const idx = noteStock.findIndex((n, i) =>
+      !usedHas(usedStockIdx, i) && !staggeredSlots.includes(i) && pc(n) === pcAbsolute);
+    if (idx < 0) { setMicHeard({ note: heardName, ok: false }); return; }
+    setMicHeard({ note: heardName, ok: true });
+    // The exact entry point a click uses. Called with no fly-event, so the
+    // chip animation is skipped (it needs a DOM source rect) — everything
+    // else, scoring and undo included, is the identical path.
+    clickNoteStock(idx);
+  }
+
+  // Keep the live handler in a ref. The mic callback is created once when the
+  // stream opens, so calling micPlaceNote directly would capture that render's
+  // melodyLine/usedStockIdx forever and place notes against stale state.
+  useEffect(() => { micNoteHandlerRef.current = micPlaceNote; });
+
+  // Open the stream only while the player is actually building a melody, and
+  // hand it back the moment they aren't — no hot mic sitting open all game.
+  useEffect(() => {
+    const wanted = micOn && turnStep === 'melody' && !!acting && canAct && !hasConfirmed;
+    let cancelled = false;
+    if (wanted && !micHandleRef.current) {
+      // Wrapped: this callback runs inside micPitch's rAF loop, so an exception
+      // here disappears into the audio thread instead of surfacing as a visible
+      // failure — the note readout still updates and nothing places, which looks
+      // like a detection problem rather than a code error. Log it loudly.
+      startMicListening(payload => {
+        try { micNoteHandlerRef.current(payload); }
+        catch (err) { console.error('[RLSW MIC] note placement failed:', err); }
+      })
+        .then(h => {
+          if (cancelled) { h.stop(); return; }
+          micHandleRef.current = h;
+          setMicErr(null);
+          addLog('🎤 Mic armed — play a note to place it in your track.');
+        })
+        .catch(() => { if (!cancelled) { setMicErr('mic blocked'); setMicOn(false); } });
+    } else if (!wanted && micHandleRef.current) {
+      micHandleRef.current.stop();
+      micHandleRef.current = null;
+      setMicHeard(null);
+    }
+    return () => { cancelled = true; };
+  }, [micOn, turnStep, acting?.id, canAct, hasConfirmed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Release the device if the component goes away mid-turn.
+  useEffect(() => () => { micHandleRef.current?.stop(); micHandleRef.current = null; }, []);
+
+  function toggleMic() {
+    if (!micAvailable()) { setMicErr('no mic'); addLog('🎤 No microphone available (needs HTTPS or localhost).'); return; }
+    setMicOn(v => !v);
   }
 
   // 🎸 Drop not available — use the stack commit system.
@@ -3028,6 +3219,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (!acting || !canAct) return; // N4/N7: gate
     setNoteField(acting.id, {
       melodyLine: [],
+      melodySrcIdx: [],
       usedStockIdx: [],
       discordCount: 0,
       // Routing is keyed by track index, so it MUST die with the track — a stale
@@ -3049,6 +3241,10 @@ function Game({ gameState, onReturnToLobby }) {
     const newDiscord = playable ? discordCount : discordCount + 1;
     setNoteField(acting.id, {
       melodyLine:    newTrack,
+      // 'bank' = came from the bank, not the stock. Pulling it back out
+      // re-banks it rather than freeing a stock slot, so an edit never
+      // silently destroys a banked note.
+      melodySrcIdx: [...melodySrcIdx, 'bank'],
       discordCount: newDiscord,
       bankedNote:   null,  // consumed
     });
@@ -3660,6 +3856,7 @@ function Game({ gameState, onReturnToLobby }) {
     setStackCommitDest(null);
     setNoteField(acting.id, {
       melodyLine:       [],
+      melodySrcIdx:     [],
       // Phase R1: stash the committed melody + riff-match for riff-off use.
       // startRiffOff reads these; cleared at turn start (startNewTurnNotes).
       committedMelody:  melodyLine,
@@ -3843,6 +4040,7 @@ function Game({ gameState, onReturnToLobby }) {
           ...ns,
           noteStock:    newStock,
           melodyLine:    [],
+          melodySrcIdx:  [],
           committedMelody:  null,   // Phase R1: clear stashed melody from last turn
           committedHasRiff: false,
           stackCommitsThisTurn: 0,  // 🎸 fresh stack commit budget each turn
@@ -10232,6 +10430,31 @@ function Game({ gameState, onReturnToLobby }) {
         30%  { opacity: 0.9; }
         100% { opacity: 0; }
       }
+      /* ⭐ FAME BAR — the win condition should never sit still. */
+      @keyframes fame-sheen {
+        0%   { transform: translateX(-120%); }
+        100% { transform: translateX(320%); }
+      }
+      @keyframes fame-danger {
+        0%,100% { box-shadow: 0 0 6px #ff2200aa, inset 0 0 8px #ff440055; border-color: #ff4422; }
+        50%     { box-shadow: 0 0 16px #ff4400ee, inset 0 0 14px #ff660088; border-color: #ff8844; }
+      }
+      @keyframes fame-crown {
+        0%,100% { text-shadow: 0 0 4px #ffd70088; }
+        50%     { text-shadow: 0 0 10px #fff3c4, 0 0 18px #ffd700aa; }
+      }
+      @keyframes fame-pip-pop {
+        0%   { transform: scale(0.4); opacity: 0.2; }
+        60%  { transform: scale(1.35); opacity: 1; }
+        100% { transform: scale(1);   opacity: 1; }
+      }
+      /* 🔁 Editable track note — lift + red cast on hover so it reads as
+         "pull this out", not "click to inspect". */
+      .track-note-edit { transition: transform .12s ease, filter .12s ease; }
+      .track-note-edit:hover {
+        transform: translateY(-3px) scale(1.06);
+        filter: drop-shadow(0 0 8px #ff5566cc) saturate(1.25);
+      }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -10795,17 +11018,111 @@ function Game({ gameState, onReturnToLobby }) {
                 {/* Stats — overlaid at the bottom, over the faded art */}
                 <div style={{padding:"6px 8px 7px", textShadow:"0 1px 3px #000c"}}>
                   {/* Vibe bar removed — shown on board standee + purple maxVibe bar below */}
-                  {/* ⭐ Fame — the win condition, front and centre */}
-                  <div data-tip-anchor="fame-bar" style={{display:"flex",alignItems:"center",gap:4,marginTop:4}}
-                    title={`Fame Points — first to ${fameToWin} wins the game!`}>
-                    <span style={{fontSize:7,color:"#ffd700",width:22,fontWeight:700}}>FAME</span>
-                    <div className="bar" style={{flex:1,boxShadow:"0 0 5px #ffd70033"}}>
-                      <div className="bar-f" style={{width:`${Math.min(100,((ns.fame ?? 0)/fameToWin)*100)}%`,
-                        background:"linear-gradient(90deg,#aa7700,#ffd700)",
-                        boxShadow:"0 0 6px #ffd70088"}}/>
-                    </div>
-                    <span style={{fontSize:8,width:22,textAlign:"right",color:"#ffd700",fontWeight:700}}>{ns.fame ?? 0}</span>
-                  </div>
+                  {/* ⭐ Fame — the win condition, front and centre.
+                      This is NOT a stat line. It's the scoreboard, so it gets
+                      its own block: marquee readout, a thick track with the
+                      Stage-FX thresholds notched in, and the per-turn cap pips
+                      underneath. Goes white-hot as you close on the crown and
+                      red when you're in Rock God territory without the lead. */}
+                  {(() => {
+                    const fp        = ns.fame ?? 0;
+                    const pct       = Math.min(100, (fp / fameToWin) * 100);
+                    // Banked this turn window — lives on a ref, but every grant
+                    // dispatches FAME_CHANGED in the same tick, so the re-render
+                    // that follows always reads a fresh value.
+                    const banked    = fameThisTurnRef.current?.[s.id] ?? 0;
+                    const rivalBest = Math.max(0, ...spirits.filter(o => o.id !== s.id)
+                                        .map(o => noteStates?.[o.id]?.fame ?? 0));
+                    const lead      = fp - rivalBest;
+                    // In striking distance of the crown but WITHOUT the runaway
+                    // lead — reaching the target here summons the boss instead
+                    // of ending the game. The bar should feel like a warning.
+                    const danger    = fp >= fameToWin - 4 && lead < ROCK_GOD_RUNAWAY_LEAD;
+                    const hot       = pct >= 75;
+                    const fill      = danger
+                      ? "linear-gradient(90deg,#7a1500,#ff4400,#ff9955)"
+                      : hot
+                        ? "linear-gradient(90deg,#cc9900,#ffd700 55%,#fff6d0)"
+                        : "linear-gradient(90deg,#aa7700,#ffd700)";
+                    const accent    = danger ? "#ff8855" : "#ffd700";
+                    return (
+                      <div data-tip-anchor="fame-bar" style={{marginTop:6, marginBottom:2}}
+                        title={danger
+                          ? `⭐${fp} / ${fameToWin} — lead of ${lead} (needs ${ROCK_GOD_RUNAWAY_LEAD} to win outright). Hit the target now and the ROCK GOD descends!`
+                          : `Fame Points — first to ${fameToWin} wins the game!`}>
+
+                        {/* Marquee readout */}
+                        <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:3}}>
+                          <span style={{fontSize:8,letterSpacing:1.6,fontWeight:800,color:accent,
+                            animation: hot && !danger ? "fame-crown 1.8s ease-in-out infinite" : undefined,
+                            textShadow:"0 0 6px #ffd70055"}}>
+                            ⭐ FAME
+                          </span>
+                          <span style={{display:"flex",alignItems:"baseline",gap:1}}>
+                            <span style={{fontSize:17,fontWeight:900,lineHeight:1,color:accent,
+                              textShadow:`0 0 9px ${danger ? "#ff440099" : "#ffd70099"}, 0 1px 2px #000`}}>{fp}</span>
+                            <span style={{fontSize:9,fontWeight:700,color:"#7d6a3a"}}>/{fameToWin}</span>
+                          </span>
+                        </div>
+
+                        {/* Track */}
+                        <div style={{position:"relative",height:11,borderRadius:6,overflow:"hidden",
+                          background:"#0a0f1c",
+                          border:`1px solid ${danger ? "#ff4422" : "#5a4410"}`,
+                          boxShadow: danger ? undefined : "inset 0 1px 3px #000a, 0 0 8px #ffd70022",
+                          animation: danger ? "fame-danger 1.1s ease-in-out infinite" : undefined}}>
+
+                          {/* Fill */}
+                          <div style={{position:"absolute",inset:0,width:`${pct}%`,background:fill,
+                            borderRadius:"5px 3px 3px 5px",
+                            boxShadow:`0 0 10px ${danger ? "#ff5500cc" : "#ffd700aa"}`,
+                            transition:"width .45s cubic-bezier(.2,.9,.3,1)"}}>
+                            {/* travelling sheen — the stage lights sweeping the bar */}
+                            {pct > 4 && (
+                              <div style={{position:"absolute",top:0,bottom:0,width:"28%",
+                                background:"linear-gradient(90deg,transparent,#ffffff66,transparent)",
+                                animation:"fame-sheen 2.6s linear infinite"}}/>
+                            )}
+                          </div>
+
+                          {/* 🎇 Stage Effect thresholds notched into the track */}
+                          {stageFxThresholds.filter(t => t < fameToWin).map(t => (
+                            <div key={t} style={{position:"absolute",top:0,bottom:0,
+                              left:`${(t / fameToWin) * 100}%`, width:1.5,
+                              background: fp >= t ? "#fff6d0cc" : "#ffffff26",
+                              boxShadow: fp >= t ? "0 0 5px #fff6d0" : undefined}}/>
+                          ))}
+                        </div>
+
+                        {/* ⛔ Per-turn cap pips — how much more the crowd will take */}
+                        <div style={{display:"flex",alignItems:"center",gap:3,marginTop:4}}>
+                          <span style={{fontSize:6,letterSpacing:.8,color:"#5a6a7a",fontWeight:700}}>THIS TURN</span>
+                          <div style={{display:"flex",gap:2.5}}>
+                            {Array.from({length: FAME_PER_TURN_CAP}, (_, i) => {
+                              const lit = i < banked;
+                              return (
+                                <span key={i} style={{fontSize:7,lineHeight:1,
+                                  color: lit ? "#ffd700" : "#2b3444",
+                                  textShadow: lit ? "0 0 6px #ffd700cc" : undefined,
+                                  animation: lit ? "fame-pip-pop .32s ease-out" : undefined}}>★</span>
+                              );
+                            })}
+                          </div>
+                          {banked >= FAME_PER_TURN_CAP && (
+                            <span style={{fontSize:6,fontWeight:700,color:"#ff7755",letterSpacing:.5}}>
+                              ⛔ CAPPED
+                            </span>
+                          )}
+                          {danger && (
+                            <span style={{marginLeft:"auto",fontSize:6,fontWeight:800,letterSpacing:.6,
+                              color:"#ff8855",textShadow:"0 0 6px #ff440088"}}>
+                              🤘 ROCK GOD WATCH
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {/* 🎛️ Drive & Sustain come from the player's Chord Stack now (not a static sheet) */}
                   <div data-tip-anchor="stat-knobs" style={{display:"flex",gap:9,marginTop:5,alignItems:"center"}}>
                     {/* boost = every live modifier on this stat, summed — pattern-boost tempDrive/
@@ -11066,6 +11383,100 @@ function Game({ gameState, onReturnToLobby }) {
             );
           })()}
 
+          {/* ── ⭐ THE RACE — shared Fame meter ──────────────────────────────
+              Takes over this slot whenever the player isn't committing notes.
+              Steps 1–2 belong to the Chord Stack / Melody build; the moment
+              that work is done (Step 3, or nobody acting) the panel becomes
+              the scoreboard, so the question "am I actually winning?" is
+              always on screen during the part of the turn where you decide
+              what to DO about it. Lanes are sorted by Fame — leader on top. */}
+          {(!acting || turnStep === 'move_act') && (() => {
+            const board = spirits.map(sp => ({
+              sp,
+              fp: noteStates?.[sp.id]?.fame ?? 0,
+            })).sort((a, b) => b.fp - a.fp);
+            const leadFp = board[0]?.fp ?? 0;
+            const runner = board[1]?.fp ?? 0;
+            // Same rule grantFame uses: hitting the target without this much
+            // daylight summons the Rock God instead of ending the game.
+            const contested = leadFp >= fameToWin - 4 && (leadFp - runner) < ROCK_GOD_RUNAWAY_LEAD;
+            return (
+              <div className="card" style={{
+                borderLeft:`2px solid ${contested ? '#ff4422' : '#ffd700'}`,
+                padding:"6px 8px", marginBottom:4, position:"relative",
+                background: contested ? "#170a06" : undefined}}>
+                <NeonStrikeFX color={contested ? '#ff4422' : '#ffd700'}/>
+
+                {/* Header */}
+                <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:5}}>
+                  <span className="stitle" style={{marginBottom:0,
+                    color: contested ? "#ff8855" : "#ffd700", letterSpacing:1.4}}>
+                    ⭐ THE RACE TO {fameToWin}
+                  </span>
+                  {contested && (
+                    <span style={{fontSize:6,fontWeight:800,letterSpacing:.6,color:"#ff8855",
+                      textShadow:"0 0 6px #ff440088",
+                      animation:"fame-crown 1.4s ease-in-out infinite"}}>
+                      🤘 FINALE PENDING
+                    </span>
+                  )}
+                </div>
+
+                {/* Lanes */}
+                <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                  {board.map(({ sp, fp }, i) => {
+                    const pct     = Math.min(100, (fp / fameToWin) * 100);
+                    const out     = sp.knockedOut;
+                    const isLead  = i === 0 && fp > 0;
+                    const gap     = fp - leadFp;   // 0 for the leader, negative behind
+                    const isYou   = acting?.id === sp.id;
+                    return (
+                      <div key={sp.id} style={{display:"flex",alignItems:"center",gap:4,
+                        opacity: out ? 0.32 : 1}}>
+                        {/* Who */}
+                        <span style={{width:11,fontSize:8,textAlign:"center",flexShrink:0}}>
+                          {out ? "💀" : isLead ? "👑" : ""}
+                        </span>
+                        <span style={{width:40,flexShrink:0,fontSize:7,fontWeight:700,
+                          color: sp.color, whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
+                          textShadow: isYou ? `0 0 7px ${sp.color}aa` : undefined}}>
+                          {sp.name.split(" ")[0]}{isYou ? " ◂" : ""}
+                        </span>
+
+                        {/* Lane track */}
+                        <div style={{position:"relative",flex:1,height:8,borderRadius:4,
+                          background:"#0a0f1c",overflow:"hidden",
+                          border:`1px solid ${isLead ? "#5a4410" : "#16202f"}`,
+                          boxShadow:"inset 0 1px 2px #000a"}}>
+                          <div style={{position:"absolute",inset:0,width:`${pct}%`,
+                            borderRadius:"3px 2px 2px 3px",
+                            background:`linear-gradient(90deg,${sp.color}55,${sp.color})`,
+                            boxShadow:`0 0 8px ${sp.color}99`,
+                            transition:"width .5s cubic-bezier(.2,.9,.3,1)"}}/>
+                          {/* 🎇 Stage Effect thresholds — same notches as the card bar */}
+                          {stageFxThresholds.filter(t => t < fameToWin).map(t => (
+                            <div key={t} style={{position:"absolute",top:0,bottom:0,
+                              left:`${(t / fameToWin) * 100}%`, width:1,
+                              background: fp >= t ? "#fff6d0aa" : "#ffffff1f"}}/>
+                          ))}
+                        </div>
+
+                        {/* Score + gap to leader */}
+                        <span style={{width:15,flexShrink:0,textAlign:"right",fontSize:9,fontWeight:900,
+                          color: isLead ? "#ffd700" : "#c0d0e0",
+                          textShadow: isLead ? "0 0 7px #ffd70088" : undefined}}>{fp}</span>
+                        <span style={{width:17,flexShrink:0,fontSize:6,fontWeight:700,
+                          color: gap < 0 ? "#5a6a7a" : "#7d6a3a"}}>
+                          {gap < 0 ? gap : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ── NOTE STOCK PANEL ── */}
           {acting && (
             <div data-tip-anchor="note-stock"
@@ -11102,8 +11513,37 @@ function Game({ gameState, onReturnToLobby }) {
                   </span>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div className="stitle" style={{marginBottom:3,color:"#4488ff"}}>
-                    {turnStep === 'chord' ? 'Step 1 — Chord Stack' : turnStep === 'melody' ? 'Step 2 — Build Melody' : 'Note Stock'}
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                    <div className="stitle" style={{marginBottom:0,color:"#4488ff"}}>
+                      {turnStep === 'chord' ? 'Step 1 — Chord Stack' : turnStep === 'melody' ? 'Step 2 — Build Melody' : 'Note Stock'}
+                    </div>
+                    {/* 🎤 MIC — only offered during the step it can actually act on */}
+                    {turnStep === 'melody' && !hasConfirmed && (
+                      <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
+                        {micOn && micHeard && (
+                          <span style={{fontSize:7,fontWeight:700,letterSpacing:.5,
+                            color: micHeard.ok ? "#44ff88" : "#ff7755"}}>
+                            {micHeard.ok ? `♪ ${micHeard.note}` : `✕ ${micHeard.note} not in stock`}
+                          </span>
+                        )}
+                        {micErr && <span style={{fontSize:7,color:"#ff7755"}}>🎤 {micErr}</span>}
+                        <button onClick={toggleMic}
+                          title={micOn
+                            ? 'Mic ON — play a note and it lands in your track. Click a placed note to undo.'
+                            : 'Mic OFF — click to play notes on your instrument instead of clicking them.'}
+                          style={{
+                            fontSize:8, fontWeight:800, letterSpacing:.6, cursor:'pointer',
+                            padding:"2px 7px", borderRadius:4,
+                            background: micOn ? "#0d2510" : "#0a1020",
+                            border:`1px solid ${micOn ? "#44ff88" : "#2a3a50"}`,
+                            color: micOn ? "#44ff88" : "#6a8098",
+                            boxShadow: micOn ? "0 0 9px #44ff8855" : "none",
+                            animation: micOn ? "fame-crown 1.9s ease-in-out infinite" : undefined,
+                          }}>
+                          🎤 {micOn ? 'LIVE' : 'MIC'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                   {turnStep !== 'move_act' && (
                   <div data-tip-anchor="interval-legend" style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
@@ -12286,7 +12726,16 @@ function Game({ gameState, onReturnToLobby }) {
                 padding:"3px 10px",display:"flex",gap:4,justifyContent:"center",alignItems:"center",
                 borderRadius:6,zIndex:5,backdropFilter:"blur(4px)",
                 boxShadow:"0 2px 12px #00000088"}}>
-              <div className="stitle" style={{marginBottom:0,color:"#aa88ff",flexShrink:0,fontSize:7}}>TRACK</div>
+              <div className="stitle" style={{marginBottom:0,color:"#aa88ff",flexShrink:0,fontSize:7,
+                display:"flex",flexDirection:"column",lineHeight:1.15}}>
+                <span>TRACK</span>
+                {/* The draft state is only obvious if you say so. */}
+                {!hasConfirmed && melodyLine.length > 0 && (
+                  <span style={{fontSize:5.5,letterSpacing:.4,color:"#6a5a8a",fontWeight:400}}>
+                    click to undo
+                  </span>
+                )}
+              </div>
               {Array.from({length:8}).map((_,i)=>{
                 const note = melodyLine[i];
                 const isRoot   = i === 0 && note;
@@ -12338,15 +12787,23 @@ function Game({ gameState, onReturnToLobby }) {
                            : isFifth        ? "drop-shadow(0 0 6px #ff55aa55)"
                            : isFourth       ? "drop-shadow(0 0 6px #cc55ff55)"
                            : "none";
+                // 🔁 The track is a draft until it's confirmed — a placed note
+                // can be clicked to lift it back out and reclaim its slot.
+                const editable = !!note && !hasConfirmed && canAct;
                 return (
-                  <div key={i} className="hexw"
-                    title={paidBy
-                      ? `${note} — pardoned by your ${paidBy === 'sustain' ? '🛡️ Sustain' : '⚔️ Drive'} chord${isDual ? ' (both qualify — reroute below)' : ''}`
-                      : undefined}
+                  <div key={i} className={`hexw${editable ? ' track-note-edit' : ''}`}
+                    title={[
+                      paidBy
+                        ? `${note} — pardoned by your ${paidBy === 'sustain' ? '🛡️ Sustain' : '⚔️ Drive'} chord${isDual ? ' (both qualify — reroute below)' : ''}`
+                        : null,
+                      editable ? '🔁 Click to pull this note back out' : null,
+                    ].filter(Boolean).join(' · ') || undefined}
+                    onClick={editable ? () => removeMelodyNote(i) : undefined}
                     onMouseEnter={note ? (e) => { const x = e.clientX, y = e.clientY; clearTimeout(noteTipTimerRef.current); noteTipTimerRef.current = setTimeout(() => setNoteScaleTip({ note, x, y }), 900); } : undefined}
                     onMouseLeave={() => { clearTimeout(noteTipTimerRef.current); setNoteScaleTip(null); }}
                     style={{
                     width:33,height:37,
+                    cursor: editable ? 'pointer' : 'default',
                     opacity: note ? 1 : 0.35,
                     background: note ? borderC : "#2a1a5055",
                     filter: glow,

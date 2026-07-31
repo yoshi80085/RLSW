@@ -18,6 +18,16 @@ import menuSong3 from "../Menu_song_3.mp3";
 
 const ISLAND_FALLBACK_TIP = "Pick a mode to get started.";
 
+// 🎨 Front-door palette. Both pulled from the board so the title screen and the
+// game read as the same object: MENU_PINK is the board's edge/stage neon, and
+// MENU_GREEN is the same green Step 3 glows with.
+//
+// MENU_GREEN currently overrides each item's own `color` for the option list —
+// the per-item colors are still in ITEMS below, so reverting to the rainbow is
+// a one-line change (swap MENU_GREEN back to `it.color` at the four use sites).
+const MENU_PINK  = '#ff44ff';
+const MENU_GREEN = '#44ff88';
+
 export default function TitleMenu({
   onNormal, onRiff, onRockGod, onTestingGrounds, onHowToPlay,
 }) {
@@ -159,8 +169,8 @@ export default function TitleMenu({
           <div style={{
             fontFamily: "'Saira Stencil One', sans-serif",
             fontSize: 'clamp(38px, 6.2vw, 78px)', lineHeight: 1,
-            color: '#f6ad55', letterSpacing: 9,
-            textShadow: '0 0 30px #f6ad5566, 0 0 70px #ff44dd33, 0 4px 0 #00000088',
+            color: MENU_PINK, letterSpacing: 9,
+            textShadow: `0 0 18px ${MENU_PINK}, 0 0 44px ${MENU_PINK}88, 0 0 90px ${MENU_PINK}44, 0 4px 0 #00000088`,
             animation: 'tm-title-in 900ms cubic-bezier(.16,1,.3,1) both',
           }}>RLSW</div>
           <div style={{
@@ -184,8 +194,8 @@ export default function TitleMenu({
                   display: 'flex', alignItems: 'center', gap: 12,
                   padding: '9px 12px 9px 6px', borderRadius: 6,
                   cursor: dim ? 'not-allowed' : 'pointer',
-                  background: on && !dim ? `${it.color}0e` : 'transparent',
-                  borderLeft: `3px solid ${on && !dim ? it.color : 'transparent'}`,
+                  background: on && !dim ? `${MENU_GREEN}12` : 'transparent',
+                  borderLeft: `3px solid ${on && !dim ? MENU_GREEN : 'transparent'}`,
                   transition: 'background .16s, border-color .16s',
                   animation: `tm-in 520ms ease-out ${340 + i * 85}ms both`,
                   opacity: dim ? 0.42 : 1,
@@ -193,18 +203,18 @@ export default function TitleMenu({
                 {/* cursor caret */}
                 <span style={{
                   width: 16, textAlign: 'center', flexShrink: 0,
-                  color: it.color, fontSize: 15,
+                  color: MENU_GREEN, fontSize: 15,
                   opacity: on ? 1 : 0,
                   animation: on ? 'tm-cursor 1s ease-in-out infinite' : 'none',
-                  filter: `drop-shadow(0 0 6px ${it.color})`,
+                  filter: `drop-shadow(0 0 7px ${MENU_GREEN})`,
                 }}>▶</span>
                 <span style={{ fontSize: 17, flexShrink: 0, filter: dim ? 'grayscale(1)' : 'none' }}>{it.icon}</span>
                 <span className="tm-label" style={{
                   fontFamily: "'Saira Stencil One', sans-serif",
                   fontSize: 'clamp(14px, 1.7vw, 21px)',
                   letterSpacing: 2.5,
-                  color: dim ? '#4a6a86' : on ? it.color : '#a8c2da',
-                  textShadow: on && !dim ? `0 0 16px ${it.color}88` : 'none',
+                  color: dim ? '#4a6a86' : on ? MENU_GREEN : '#a8c2da',
+                  textShadow: on && !dim ? `0 0 18px ${MENU_GREEN}aa` : 'none',
                   transition: 'color .16s, text-shadow .16s',
                   whiteSpace: 'nowrap',
                 }}>{it.label}</span>
