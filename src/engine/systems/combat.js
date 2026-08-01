@@ -42,8 +42,10 @@ export function thrashDamage(margin, isAttackerLoss = false) {
 }
 
 /**
- * Thrash knockback — minimal positional displacement.
- * 0 hexes on small wins, 1 hex only when margin >= THRASH_PUSH_THRESHOLD (3).
+ * Thrash knockback — minimal positional displacement, but ALWAYS non-zero on a
+ * hit. Landing a Swing is earned: you get the hex, however narrow the win. The
+ * push stays flat at 1 (vs Sonic's 1-5) so Sonic remains the positional weapon;
+ * Thrash just gets its due for kicking a rival off the spot they were holding.
  */
 export function thrashKnockback(margin) {
   return margin >= THRASH_PUSH_THRESHOLD ? 1 : 0;

@@ -85,3 +85,87 @@ export function gradeRiffOffset(offsetMs, preset, feel) {
   if (a <= preset.ok      * tighten) return 'ok';
   return null;
 }
+
+// ── 🐢 TEMPO — the practice speed dial ───────────────────────────────────────
+// A TEMPO scale, not a difficulty setting: `speed` stretches the whole run in
+// time, exactly like dropping a metronome to half tempo. 0.5 = half speed,
+// 1 = as written, 1.5 = 150%.
+//
+// Everything scales together, and that is the point:
+//   • leadTime  — the ring has longer to close, so longer to read
+//   • note gaps — see scaleTimeline(); more room between notes
+//   • grade windows — this is the part that is easy to get wrong. If windows
+//     stayed fixed in ms while the music halved, slow practice would demand the
+//     SAME absolute precision, just with more waiting. Human timing jitter is
+//     roughly constant in ms, so scaling the windows is what actually makes slow
+//     mode forgiving — and it keeps a 'perfect' at 0.5× meaning the same
+//     musical accuracy as a 'perfect' at 1×.
+export const RIFF_SPEED_MIN     = 0.25;
+export const RIFF_SPEED_MAX     = 1.50;
+export const RIFF_SPEED_DEFAULT = 1.00;
+
+export function clampRiffSpeed(speed) {
+  const s = Number(speed);
+  if (!Number.isFinite(s)) return RIFF_SPEED_DEFAULT;
+  return Math.min(RIFF_SPEED_MAX, Math.max(RIFF_SPEED_MIN, s));
+}
+
+// ── Persistence ──────────────────────────────────────────────────────────────
+// ONE speed for the whole game: the tempo you settle on in the practice trainer
+// is the tempo duels run at. Splitting them would mean grinding a comfortable
+// speed in practice and then being thrown back to 100% in a real riff-off,
+// which is the opposite of what a practice mode is for.
+export const RIFF_SPEED_LS_KEY = 'rlsw.riffSpeed';
+const RIFF_SPEED_LS_LEGACY     = 'rlsw.practiceSpeed';   // practice-only, pre-unification
+
+/** The player's chosen riff tempo, migrating the old practice-only key. */
+export function loadRiffSpeed() {
+  try {
+    const v = localStorage.getItem(RIFF_SPEED_LS_KEY);
+    if (v != null) return clampRiffSpeed(parseFloat(v));
+    // First run since the split: inherit whatever they dialled in in practice
+    // rather than silently resetting them to 100%.
+    const legacy = localStorage.getItem(RIFF_SPEED_LS_LEGACY);
+    if (legacy != null) {
+      const s = clampRiffSpeed(parseFloat(legacy));
+      localStorage.setItem(RIFF_SPEED_LS_KEY, String(s));
+      return s;
+    }
+  } catch { /* storage unavailable — fall through */ }
+  return RIFF_SPEED_DEFAULT;
+}
+
+export function saveRiffSpeed(speed) {
+  const s = clampRiffSpeed(speed);
+  try { localStorage.setItem(RIFF_SPEED_LS_KEY, String(s)); } catch { /* non-fatal */ }
+  return s;
+}
+
+/** Short label for a speed, e.g. "50%" / "NORMAL". */
+export function riffSpeedLabel(speed) {
+  const s = clampRiffSpeed(speed);
+  return s === RIFF_SPEED_DEFAULT ? 'NORMAL' : `${Math.round(s * 100)}%`;
+}
+
+/** A difficulty preset restated at `speed` tempo. Shape is unchanged, so it
+ *  drops into riffOkWindow / gradeRiffOffset / run.leadTime untouched. */
+export function scalePresetForSpeed(preset, speed) {
+  const s = clampRiffSpeed(speed);
+  if (s === 1) return preset;
+  return {
+    ...preset,
+    leadTime: Math.round(preset.leadTime / s),
+    perfect:  Math.round(preset.perfect  / s),
+    good:     Math.round(preset.good     / s),
+    ok:       Math.round(preset.ok       / s),
+  };
+}
+
+/** Stretch a built timeline to `speed`. Because hitAt[0] IS the lead time and
+ *  every later entry is lead + cumulative gaps, one uniform divide scales the
+ *  lead-in and the note spacing together — no separate gap maths needed. */
+export function scaleTimelineForSpeed(timeline, speed) {
+  const s = clampRiffSpeed(speed);
+  if (s === 1) return timeline;
+  return (timeline ?? []).map(t => ({ ...t, hitAt: Math.round(t.hitAt / s) }));
+}

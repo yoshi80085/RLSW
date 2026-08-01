@@ -256,7 +256,9 @@ const config = {
   assert.notDeepEqual(r2.battle.atkRiff.degrees, s.battle.atkRiff.degrees);
   assert.ok(r2.battle.atkRiff.rhythm.every(x => x.window <= 1600), "round 2 sped up");
   assert.ok(r2.battle.defGlitch.length >= 2, "slayer carries into round 2");
-  assert.equal(r2.battle.defGhosts.length, 6, "ghosts carry into round 2");
+  // This riff-off was started with eRush:false (the round-1 ghosts assertion was
+  // dropped in the Ronin rework), so ghosts stay off across the round boundary.
+  assert.equal(r2.battle.defGhosts, null, "no ghosts without eRush in round 2");
   assert.equal(r2.battle.atkResults, null);
   assert.deepEqual(r2.battle.r1, s.battle.r1);
 
@@ -2314,7 +2316,7 @@ const config = {
 {
   // Constants are sensible
   assert.equal(STACK_CAP_BASE, 3, "STACK_CAP_BASE = 3");
-  assert.equal(STACK_CAP_MAX, 5, "STACK_CAP_MAX = 5");
+  assert.equal(STACK_CAP_MAX, 6, "STACK_CAP_MAX = 6");
   assert.equal(STACK_COMMIT_BUDGET, 3, "STACK_COMMIT_BUDGET = 3");
 
   // ── B0b: stackCapFor — capacity is EARNED, one slot per gating tier ──
@@ -2325,9 +2327,15 @@ const config = {
   assert.equal(stackCapFor(['theory_dom7']), 4, "theory_dom7 → slot 4");
   assert.equal(stackCapFor(['theory_modes']), 4, "theory_modes alone → 4 (slots aren't ordered)");
   assert.equal(stackCapFor(['theory_dom7', 'theory_modes']), 5, "both tiers → 5 slots");
+  // theory_chromatic is the third gating tier — the capstone sells the only
+  // 6-note stack in the game, so it must grant a slot of its own.
+  assert.equal(stackCapFor(['theory_chromatic']), 4, "theory_chromatic alone → 4");
+  assert.equal(
+    stackCapFor(['theory_dom7', 'theory_modes', 'theory_chromatic']),
+    6, "all three gating tiers → 6 slots");
   assert.equal(
     stackCapFor(['theory_major', 'theory_minor', 'theory_dom7', 'theory_modes', 'theory_chromatic']),
-    5, "full Theory branch is capped at STACK_CAP_MAX");
+    6, "full Theory branch is capped at STACK_CAP_MAX");
 
   // ── sonicDriveSpend — always pops 1 from Drive ──
   assert.deepEqual(sonicDriveSpend(['C', 'E', 'G']), { driveStack: ['C', 'E'] }, "sonic pops last Drive note");

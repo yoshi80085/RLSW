@@ -4,7 +4,9 @@ import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "../data/corners.js";
 import { cornerFacing } from "../board/boardHelpers.js";
 import { buildTestingGroundsConfig } from "../data/matchSetup.js";
 import { makeNetClient } from "../net/client.js";
-import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT } from "../riff/fallingNotes.js";
+import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT,
+         RIFF_SPEED_MIN, RIFF_SPEED_MAX, RIFF_SPEED_DEFAULT,
+         loadRiffSpeed, saveRiffSpeed, riffSpeedLabel } from "../riff/fallingNotes.js";
 import { fpPerLife } from "../data/gameConstants.js";
 import menuSong3 from "../Menu_song_3.mp3";
 import boardImg from "../board.png";
@@ -48,6 +50,11 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
     setRiffDiff(k);
     try { localStorage.setItem('rlsw.riffDifficulty', k); } catch {}
   }
+  // 🐢 Riff-off TEMPO — shared with the practice trainer (same localStorage
+  // key), so a speed dialled in while practising is the speed duels run at.
+  // Difficulty picks the riff and the reading aids; this stretches the clock.
+  const [riffSpeed, setRiffSpeed] = useState(loadRiffSpeed);
+  function pickRiffSpeed(v) { setRiffSpeed(saveRiffSpeed(v)); }
   const [announcer, setAnnouncer] = useState(null);
   const announcerTimer = useRef(null);
   const [unlocked] = useState(() => {
@@ -294,6 +301,25 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
               {Object.entries(RIFF_FALL_DIFFICULTY).map(([k,p])=>
                 <button key={k} onClick={()=>pickRiffDiff(k)} title={`${p.label} — ${p.blurb}`}
                   style={{...seg(riffDiff===k,"#f6ad55"),padding:"6px 10px"}}>{p.icon} {RIFF_DIFF_SHORT[k] ?? k.toUpperCase()}</button>)}
+            </div>
+            <div style={{width:1,height:20,background:"#1a2a40"}}/>
+            {/* 🐢 TEMPO — the calibration dial. Difficulty above chooses WHAT you
+                play; this chooses HOW FAST it comes at you. Slowing it stretches
+                the lead-in, the note spacing AND the timing windows together, so
+                the riff keeps its groove and only the clock moves. */}
+            <div style={{display:"flex",alignItems:"center",gap:6}}
+              title="How fast riff-offs come at you. Shared with the Riff Practice trainer — find a speed there and duels use it too.">
+              <span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>🐢 SPEED</span>
+              <input type="range" min={RIFF_SPEED_MIN} max={RIFF_SPEED_MAX} step={0.05}
+                value={riffSpeed} onChange={e=>pickRiffSpeed(parseFloat(e.target.value))}
+                style={{width:110,accentColor:"#f6ad55",cursor:"pointer"}}/>
+              <span style={{fontSize:9,letterSpacing:1,minWidth:46,
+                color: riffSpeed<1?"#44ff88":riffSpeed>1?"#ff8a2a":"#f6ad55"}}>
+                {riffSpeedLabel(riffSpeed)}
+              </span>
+              {riffSpeed!==RIFF_SPEED_DEFAULT&&
+                <button onClick={()=>pickRiffSpeed(RIFF_SPEED_DEFAULT)} title="Back to written tempo"
+                  style={{...seg(false,"#f6ad55"),padding:"4px 7px"}}>↺</button>}
             </div>
             <div style={{width:1,height:20,background:"#1a2a40"}}/>
             <span style={{fontSize:8,color:"#3a5a7a",flex:1,minWidth:100}}>{startingLives===1?`Sudden death — ${fpPerLife(playerCount ?? 2)} FP to win`:`${startingLives} Knock Downs = KO — ${startingLives*fpPerLife(playerCount ?? 2)} FP to win`}{startingLives>=3?" 🤘":""}</span>

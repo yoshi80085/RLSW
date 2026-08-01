@@ -252,6 +252,10 @@ export function BattleMeterOverlay({
   riffPressKey,
   riffStats,
   riffView,
+  riffMicOn,
+  riffMicHeard,
+  riffMicErr,
+  toggleRiffMic,
   setBattleState,
   setDiceDisplay,
   setRiffDifficulty,
@@ -684,15 +688,34 @@ export function BattleMeterOverlay({
                     {battleState.countdown}
                   </div>
                   <div style={{display:'flex', gap:6, justifyContent:'center', margin:'8px 0 2px'}}>
-                    {['piano','guitar'].map(v => (
+                    {['piano','guitar','neon'].map(v => (
                       <button key={v} onClick={() => setRiffView(v)} style={{
                         cursor:'pointer', fontFamily:"'Saira Stencil One',sans-serif", fontSize:9, letterSpacing:1, padding:'4px 10px', borderRadius:6,
                         color: riffView === v ? '#06111f' : noteColor,
                         background: riffView === v ? noteColor : 'transparent',
                         border:`1px solid ${noteColor}`}}>
-                        {v === 'piano' ? '🎹 PIANO' : '🎸 GUITAR'}
+                        {v === 'piano' ? '🎹 PIANO' : v === 'guitar' ? '🎸 GUITAR' : '🎯 RIFF OFF'}
                       </button>
                     ))}
+                  </div>
+                  {/* 🎤 real-guitar input — a third route into the same judge as
+                      the keyboard and the neck taps, so it can be armed for any view */}
+                  <div style={{display:'flex', gap:6, justifyContent:'center', margin:'2px 0'}}>
+                    <button onClick={() => toggleRiffMic?.()}
+                      title="Play the riff on a real guitar — the mic hears the note and lands it for you"
+                      style={{
+                        cursor:'pointer', fontFamily:"'Saira Stencil One',sans-serif", fontSize:9, letterSpacing:1,
+                        padding:'4px 10px', borderRadius:6,
+                        color: riffMicOn ? '#06111f' : '#8aa5c5',
+                        background: riffMicOn ? '#4ade80' : 'transparent',
+                        border:`1px solid ${riffMicOn ? '#4ade80' : '#4a5f80'}`}}>
+                      {riffMicOn ? '🎤 MIC ARMED' : '🎤 USE REAL GUITAR'}
+                    </button>
+                    {riffMicErr && (
+                      <span style={{fontSize:8, color:'#ff6b6b', alignSelf:'center', letterSpacing:1}}>
+                        {riffMicErr === 'no mic' ? 'NO MIC (NEEDS HTTPS)' : 'MIC BLOCKED'}
+                      </span>
+                    )}
                   </div>
                   {/* 🎚️ fall-speed / window presets — locked in once the riff drops */}
                   <div style={{display:'flex', gap:6, justifyContent:'center', margin:'6px 0 2px'}}>
@@ -718,14 +741,21 @@ export function BattleMeterOverlay({
                 </div>
               )}
 
-              {/* ── PLAY — the falling-notes highway (Guitar Hero style) ── */}
+              {/* ── PLAY — the falling-notes highway (Guitar Hero style), or the
+                     🎯 full-bleed target-ring neck. The neon view is a WIDE
+                     instrument — the 580px card that suits a 7-key piano
+                     squeezes a 12-fret neck into a letterbox — so it takes the
+                     window instead. ── */}
               {phase === 'riff_play' && (
-                <div style={cardBase(noteColor)}>
+                <div style={riffView === 'neon'
+                  ? {...cardBase(noteColor), maxWidth:'min(1600px, 96vw)', width:'96vw', padding:'14px 18px'}
+                  : cardBase(noteColor)}>
                   <div style={{fontSize:10, color:noteColor, letterSpacing:2, marginBottom:6}}>
                     {isAtkTurn ? '🎤 THE CALL' : '🎸 THE ANSWER'} — {activeSp?.name}
                   </div>
                   {battleState.riffRun ? (
-                    <div style={{display:'flex', justifyContent:'center', margin:'2px 0'}}>
+                    <div style={{display:'flex', justifyContent:'center', margin:'2px 0',
+                                 width: riffView === 'neon' ? '100%' : undefined}}>
                       <RiffHighway
                         run={battleState.riffRun}
                         results={rResults}
@@ -745,8 +775,19 @@ export function BattleMeterOverlay({
                   <div style={{fontSize:9, letterSpacing:2, height:14, marginTop:6,
                     color: (!isAtkTurn && battleState.defGhosts) ? '#b899ff' : '#4a5f80'}}>
                     {(!isAtkTurn && battleState.defGhosts) ? '🎴 GHOST BARRAGE — EVERY NOTE DEMANDS BOTH KEYS'
+                     : riffView === 'neon' ? 'PLAY THE NOTE AS THE RING CLOSES ONTO ITS TARGET'
                      : 'HIT THE LETTER AS THE GEM CROSSES THE LINE — ⬆ GOLD RING = SHARP, HOLD SHIFT'}
                   </div>
+                  {/* 🎤 live detection readout — proves the mic is hearing you even
+                      on notes that land nowhere near the beat */}
+                  {riffMicOn && (
+                    <div style={{fontSize:9, letterSpacing:2, height:13, marginTop:2, color:'#4ade80'}}>
+                      🎤 {riffMicHeard
+                        ? `HEARD ${riffMicHeard === riffMicHeard.toUpperCase()
+                            ? `${riffMicHeard}♯` : riffMicHeard.toUpperCase()}`
+                        : 'LISTENING…'}
+                    </div>
+                  )}
                   {/* Timing feedback — how tight to the line the press landed */}
                   <div style={{height:18, marginTop:8, fontSize:12, fontWeight:800, letterSpacing:2,
                     color: fb ? GRADE_COLORS[fb.grade] : 'transparent'}}>

@@ -148,7 +148,7 @@ export const THRASH_DIE              = 4;   // base die for both attacker and de
 export const THRASH_CEIL_DIE         = 6;   // ceiling charge upgrades d4 → d6
 export const THRASH_DAMAGE_CAP       = 4;   // max Vibe damage from a single Thrash hit
 export const THRASH_WHIFF_DMG        = 1;   // losing attacker only takes this much Vibe (humiliation tap)
-export const THRASH_PUSH_THRESHOLD   = 3;   // margin needed before Thrash pushes 1 hex
+export const THRASH_PUSH_THRESHOLD   = 1;   // margin needed before Thrash pushes 1 hex — any successful hit shoves the target
 // Sonic (ranged) — keep-highest pool, FP/push focused, minimal Vibe damage.
 export const SONIC_VIBE_CAP          = 2;   // max Vibe damage from a Sonic hit
 export const SONIC_LIMELIGHT_FP      = 1;   // bonus FP when Sonic fires from main/pit ring

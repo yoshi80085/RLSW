@@ -26,6 +26,7 @@
 // =============================================================================
 import React, { useEffect, useRef } from "react";
 import { cellKey, nearestPositionForKey, MAX_FRET, WINDOW } from "../riff/guitarMap.js";
+import { NeonNeck } from "./NeonNeck.jsx";
 
 // ── Geometry (px) ────────────────────────────────────────────────────────────
 const HWY_H     = 230;  // highway height — strike line sits at its bottom edge
@@ -277,11 +278,13 @@ export function RiffHighway({ run, results, ghostHit, view, accent, onPressKey, 
   judgedRef.current = judged;
 
   const isGuitar = view === 'guitar';
+  const isNeon   = view === 'neon';
 
   // ── The motion loop — one rAF per run, transforms written directly. ──
   // ⚠️ rAF composes with data-rot for diamond gem rotation (see gem()).
   useEffect(() => {
     if (!run?.notes?.length) return;
+    if (isNeon) return;   // 🎯 neon view has no falling gems — NeonNeck runs its own loop
     let raf;
     const tick = () => {
       const r = runRef.current;
@@ -308,9 +311,21 @@ export function RiffHighway({ run, results, ghostHit, view, accent, onPressKey, 
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [run?.startedAt, run?.notes?.length]); // new run (new turn / round) → fresh loop
+  }, [run?.startedAt, run?.notes?.length, isNeon]); // new run (new turn / round) → fresh loop
 
   if (!run?.notes?.length) return null;
+
+  // 🎯 NEON view — no highway at all. Notes are reticles closing onto their own
+  // string/fret cell on the guitar artwork; NeonNeck owns its own rAF loop and
+  // camera. Routed here so both callers (battle overlay + practice) get it from
+  // the single `view` prop they already pass.
+  if (isNeon) {
+    return (
+      <NeonNeck run={run} results={results} ghostHit={ghostHit}
+        accent={accent} onPressKey={onPressKey} showLabels={showLabels} />
+    );
+  }
+
   const W = isGuitar ? GTR_W : PIANO_W;
 
   // ── Lit indicators ──

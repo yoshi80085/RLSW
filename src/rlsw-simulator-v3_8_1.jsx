@@ -48,7 +48,8 @@ import { hexRingFromCenter, crowdMultiplier, advanceDB, SPOTLIGHT_POOL } from ".
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRiffMiss, playBeamClash, playBeamSurge, playBeamBreak, playFanPop } from "./audio/riffSfx.js";
 import { TONE_KNOB_DEFAULTS, SPIRIT_TONES, TONE_VOICE_ORDER, TONE_VOICES, getAmpBuses, playAmpNote, makeDistortionCurve } from "./audio/ampVoice.js";
 import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./riff/riffGeneration.js";
-import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset } from "./riff/fallingNotes.js";
+import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset,
+         loadRiffSpeed, scalePresetForSpeed, scaleTimelineForSpeed } from "./riff/fallingNotes.js";
 import { voiceRiff, nearestPositionForKey } from "./riff/guitarMap.js";
 import { Lobby } from "./ui/Lobby.jsx";
 import TitleMenu from "./ui/TitleMenu.jsx";
@@ -1268,8 +1269,28 @@ function Game({ gameState, onReturnToLobby }) {
   const bttpModeRef = useRef({ view: 'piano', winMult: 1 });
   // 🎸⏰ Back to the Past — overlay state (declared here, before its input effect)
   const [bttpChallenge, setBttpChallenge] = useState(null);
-  // 🎹/🎸 instrument used to read notes in riff-off battles (toggle on the countdown card)
-  const [riffView, setRiffView] = useState('piano');
+  // 🎯/🎸/🎹 instrument used to read notes in riff-off battles (toggle on the
+  // countdown card). NEON is the standard: notes land on the real neck, in the
+  // position you actually play, and it is the only view a real guitar can be
+  // played against comfortably. Piano and the falling-gem guitar remain for
+  // players who prefer them — the choice is remembered.
+  const [riffView, setRiffView] = useState(() => {
+    try {
+      const v = localStorage.getItem('rlsw.riffView');
+      if (v === 'piano' || v === 'guitar' || v === 'neon') return v;
+    } catch { /* default */ }
+    return 'neon';
+  });
+  useEffect(() => {
+    try { localStorage.setItem('rlsw.riffView', riffView); } catch { /* non-fatal */ }
+  }, [riffView]);
+  // 🎤 REAL GUITAR — play the riff-off on an actual instrument instead of the
+  // keyboard. Persisted: a player who owns a guitar wants this every battle.
+  const [riffMicOn, setRiffMicOn] = useState(() => {
+    try { return localStorage.getItem('rlsw.riffMic') === '1'; } catch { return false; }
+  });
+  const [riffMicHeard, setRiffMicHeard] = useState(null);  // { key, at } — last note detected
+  const [riffMicErr,   setRiffMicErr]   = useState(null);
   // 🎚️ falling-notes difficulty (toggle on the countdown card) — presets tune
   // fall speed + grade windows (riff/fallingNotes.js). Ref mirror so the run
   // builder (fired from timers) never reads a stale closure.
@@ -1283,6 +1304,20 @@ function Game({ gameState, onReturnToLobby }) {
     riffDifficultyRef.current = riffDifficulty;
     try { localStorage.setItem('rlsw.riffDifficulty', riffDifficulty); } catch { /* non-fatal */ }
   }, [riffDifficulty]);
+  // 🐢 Riff-off TEMPO — the same setting the practice trainer uses, so a speed
+  // you get comfortable with in practice is the speed duels run at. Set on the
+  // Lobby settings row. Ref mirror because riffStartRun fires from a timer and
+  // must never read a stale closure.
+  const [riffSpeed, setRiffSpeed] = useState(loadRiffSpeed);
+  const riffSpeedRef = useRef(riffSpeed);
+  useEffect(() => { riffSpeedRef.current = riffSpeed; }, [riffSpeed]);
+  // Re-read on focus: the Lobby and the practice trainer both write this key,
+  // and a match started right after a practice session should honour it.
+  useEffect(() => {
+    const sync = () => setRiffSpeed(loadRiffSpeed());
+    window.addEventListener('focus', sync);
+    return () => window.removeEventListener('focus', sync);
+  }, []);
   // 🎨 Lite FX: strip GPU-heavy filter/shadow animations in the battle overlay
   const [liteFx, setLiteFx] = useState(() => {
     try { return localStorage.getItem('rlsw.liteFx') === '1'; } catch { return false; }
@@ -1370,6 +1405,85 @@ function Game({ gameState, onReturnToLobby }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [battleState?.riffOff, battleState?.phase, battleState?.turn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 🎤 RIFF-OFF MIC — play the riff on a REAL guitar ────────────────────────
+  // A third input into the SAME judge the keyboard and the neck taps use. This
+  // works with no translation layer because micPitch and guitarMap already
+  // agree on the note alphabet: both index PC_KEYS
+  // ['a','A','b','c','C','d','D','e','f','F','g','G'] from the same
+  // DEGREE0_PITCH anchor, so micPitch's `key` IS a riffPressKey key. (Do not
+  // "fix" this by routing through pcAbsolute — see the melody-step mic note;
+  // there the target alphabet is NOTE_POOL, which is a different basis.)
+  //
+  // Pitch class only, deliberately: the mic hears WHAT you played, never WHERE.
+  // A reticle on string 3 / fret 5 is satisfied by that pitch anywhere on the
+  // neck, which is correct — riffPressKey has always judged by key, and boxing
+  // a player into one fingering would punish valid alternate voicings.
+  const riffMicHandleRef = useRef(null);
+  const riffMicPressRef  = useRef(() => {});
+  const riffMicClearRef  = useRef(null);
+  // The readout self-clears on a timer. Deriving it from a timestamp compared
+  // against performance.now() at render time is impure AND wrong: nothing
+  // re-renders when the note goes stale, so the last note heard would stay on
+  // screen until some unrelated state moved.
+  useEffect(() => { riffMicPressRef.current = ({ key }) => {
+    setRiffMicHeard(key);
+    clearTimeout(riffMicClearRef.current);
+    riffMicClearRef.current = setTimeout(() => setRiffMicHeard(null), 900);
+    riffPressKey(key);
+  }; });
+
+  useEffect(() => {
+    const bs = battleState;
+    // Armed through the COUNTDOWN as well as the run: getUserMedia plus an
+    // AudioContext spin-up costs real time, and opening it on the first gem
+    // would eat the opening notes of the riff.
+    const performerId = bs?.turn === 'attacker' ? bs?.attackerId : bs?.defenderId;
+    const humanTurn   = !!bs?.riffOff && !isBot(spirits.find(s => s.id === performerId));
+    const wanted = riffMicOn && humanTurn &&
+      (bs.phase === 'riff_countdown' || bs.phase === 'riff_play');
+    let cancelled = false;
+
+    if (wanted && !riffMicHandleRef.current) {
+      startMicListening(payload => {
+        // Runs inside micPitch's rAF loop — an exception here would vanish into
+        // the audio thread and look like a detection failure. Log it loudly.
+        try { riffMicPressRef.current(payload); }
+        catch (err) { console.error('[RLSW MIC] riff press failed:', err); }
+      })
+        .then(h => {
+          if (cancelled) { h.stop(); return; }
+          riffMicHandleRef.current = h;
+          setRiffMicErr(null);
+          addLog('🎤 Mic armed — play the riff on your guitar.');
+        })
+        .catch(() => { if (!cancelled) { setRiffMicErr('mic blocked'); setRiffMicOn(false); } });
+    } else if (!wanted && riffMicHandleRef.current) {
+      riffMicHandleRef.current.stop();
+      riffMicHandleRef.current = null;
+      setRiffMicHeard(null);
+    }
+    return () => { cancelled = true; };
+  }, [riffMicOn, battleState?.riffOff, battleState?.phase, battleState?.turn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Hand the device back if the battle unmounts mid-run.
+  useEffect(() => () => {
+    riffMicHandleRef.current?.stop(); riffMicHandleRef.current = null;
+    clearTimeout(riffMicClearRef.current);
+  }, []);
+
+  function toggleRiffMic() {
+    if (!micAvailable()) {
+      setRiffMicErr('no mic');
+      addLog('🎤 No microphone available (needs HTTPS or localhost).');
+      return;
+    }
+    setRiffMicOn(v => {
+      const next = !v;
+      try { localStorage.setItem('rlsw.riffMic', next ? '1' : '0'); } catch { /* non-fatal */ }
+      return next;
+    });
+  }
 
   // 🎸⏰ BACK TO THE PAST — note input listener (armed only while a note flashes).
   useEffect(() => {
@@ -6535,10 +6649,16 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
     // 🌀 ROLLS HARD — Intergalactic 0 plants like a boulder: shrug off 1 hex of any shove.
-    // Still pushable (and edge-able) on a committed hit — just sturdier.
+    // Still pushable (and edge-able) on a committed hit — just sturdier. A floor of
+    // 1 hex always lands, otherwise he'd be immune to Thrash's flat 1-hex push and
+    // could squat the center untouchable.
     if (targetId === 'intergalactic_0') {
-      spaces -= 1;
-      if (spaces <= 0) { addLog(`🌀 ${target.name} Rolls Hard — the push barely budges him.`); return; }
+      if (spaces > 1) {
+        spaces -= 1;
+        addLog(`🌀 ${target.name} Rolls Hard — he digs in and eats a hex of the shove.`);
+      } else {
+        addLog(`🌀 ${target.name} Rolls Hard — he gives up the one hex and not an inch more.`);
+      }
     }
     const fromHex = HEX_BY_NUM[fromSp.num];
     const tgtHex  = HEX_BY_NUM[target.num];
@@ -8417,8 +8537,16 @@ function Game({ gameState, onReturnToLobby }) {
     if (!bs?.riffOff) return;
     const side   = turn === 'attacker' ? bs.atkRiff : bs.defRiff;
     const round  = bs.round ?? 1;
-    const preset = RIFF_FALL_DIFFICULTY[riffDifficultyRef.current] ?? RIFF_FALL_DIFFICULTY[RIFF_FALL_DEFAULT];
-    const timeline = buildRiffTimeline(side.rhythm, round, preset.leadTime);
+    // 🐢 The run restated at the player's chosen tempo: lead-in, note spacing
+    // and grade windows all stretch together, so the riff keeps its groove and
+    // only the clock moves. Build the timeline at the WRITTEN lead time and
+    // scale after — hitAt[0] IS the lead time and later entries are lead +
+    // cumulative gaps, so one uniform divide moves both. (Same helpers the
+    // practice trainer uses; pinned by riff/neonNeck.test.mjs.)
+    const written  = RIFF_FALL_DIFFICULTY[riffDifficultyRef.current] ?? RIFF_FALL_DIFFICULTY[RIFF_FALL_DEFAULT];
+    const spd      = riffSpeedRef.current;
+    const preset   = scalePresetForSpeed(written, spd);
+    const timeline = scaleTimelineForSpeed(buildRiffTimeline(side.rhythm, round, written.leadTime), spd);
     const voicing = side.voicing;  // Guitar-neck voicing (computed once in startRiffOff)
     const eng = {
       turn, preset, t0: performance.now(), timers: [],
@@ -10857,6 +10985,10 @@ function Game({ gameState, onReturnToLobby }) {
         riffPressKey={riffPressKey}
         riffStats={riffStats}
         riffView={riffView}
+        riffMicOn={riffMicOn}
+        riffMicHeard={riffMicHeard}
+        riffMicErr={riffMicErr}
+        toggleRiffMic={toggleRiffMic}
         setBattleState={setBattleState}
         setDiceDisplay={setDiceDisplay}
         setRiffDifficulty={setRiffDifficulty}

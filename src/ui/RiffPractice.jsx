@@ -22,7 +22,11 @@ import { generateAttackerRiff, riffDegreesToNotes } from "../riff/riffGeneration
 import {
   RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT,
   buildRiffTimeline, riffOkWindow, gradeRiffOffset,
+  RIFF_SPEED_MIN, RIFF_SPEED_MAX, RIFF_SPEED_DEFAULT,
+  clampRiffSpeed, scalePresetForSpeed, scaleTimelineForSpeed,
+  loadRiffSpeed, saveRiffSpeed,
 } from "../riff/fallingNotes.js";
+import { micAvailable, startMicListening } from "../audio/micPitch.js";
 import { voiceRiff } from "../riff/guitarMap.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, playRiffMiss } from "../audio/riffSfx.js";
 import { RiffHighway } from "./RiffHighway.jsx";
@@ -55,7 +59,17 @@ function saveStats(s) { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); }
 // ── Component ────────────────────────────────────────────────────────────────
 export function RiffPractice({ initialDiff, onBack }) {
   const [diff, setDiff]             = useState(initialDiff || RIFF_FALL_DEFAULT);
-  const [view, setView]             = useState('guitar');
+  // 🎯 NEON is the standard riff-off view — practice on what you duel on.
+  const [view, setView] = useState(() => {
+    try {
+      const v = localStorage.getItem('rlsw.riffView');
+      if (v === 'piano' || v === 'guitar' || v === 'neon') return v;
+    } catch { /* default */ }
+    return 'neon';
+  });
+  useEffect(() => {
+    try { localStorage.setItem('rlsw.riffView', view); } catch { /* non-fatal */ }
+  }, [view]);
   const [phase, setPhase]           = useState('idle'); // idle | countdown | playing | results
   const [countdown, setCountdown]   = useState(3);
   const [riffRun, setRiffRun]       = useState(null);
@@ -66,6 +80,17 @@ export function RiffPractice({ initialDiff, onBack }) {
   const [tierFlash, setTierFlash]   = useState(null); // 'up' | 'down' | null
   const [stats, setStats]           = useState(loadStats);
   const [rig, setRig]               = useState(loadRig); // 🎛️ whose amp we borrow
+  // 🐢 TEMPO — separate from difficulty on purpose: difficulty picks the riff
+  // and the reading aids, this stretches the clock. SHARED with the main game
+  // (same localStorage key), so the speed you get comfortable with here is the
+  // speed your duels run at.
+  const [speed, setSpeed] = useState(loadRiffSpeed);
+  // 🎤 real guitar — same judge as the keyboard and the neck taps.
+  const [micOn, setMicOn] = useState(() => {
+    try { return localStorage.getItem('rlsw.riffMic') === '1'; } catch { return false; }
+  });
+  const [micHeard, setMicHeard] = useState(null);  // { key, at }
+  const [micErr,   setMicErr]   = useState(null);
 
   // Refs for timing-critical state (closures inside rAF / setTimeout must
   // always read the latest value, not a stale React snapshot).
@@ -74,9 +99,11 @@ export function RiffPractice({ initialDiff, onBack }) {
   const streakRef  = useRef(0);
   const phaseRef   = useRef('idle');
   const rigRef     = useRef(rig);
+  const speedRef   = useRef(speed);
   diffRef.current  = diff;
   phaseRef.current = phase;
   rigRef.current   = rig;
+  speedRef.current = speed;
 
   function cycleRig() {
     const next = RIG_ORDER[(RIG_ORDER.indexOf(rigRef.current) + 1) % RIG_ORDER.length];
@@ -105,12 +132,18 @@ export function RiffPractice({ initialDiff, onBack }) {
   // ── Generate, voice, and launch a riff ─────────────────────────────────────
   function launchRiff() {
     getRiffAudio(); // unlock audio context on user gesture
-    const p = RIFF_FALL_DIFFICULTY[diffRef.current] || RIFF_FALL_DIFFICULTY[RIFF_FALL_DEFAULT];
-    const riff     = generateAttackerRiff(Math.random, p.maxLen);
+    const p0    = RIFF_FALL_DIFFICULTY[diffRef.current] || RIFF_FALL_DIFFICULTY[RIFF_FALL_DEFAULT];
+    const spd   = clampRiffSpeed(speedRef.current);
+    // 🐢 The whole run restated at `spd` tempo: lead-in, note gaps and grade
+    // windows all stretch together. Build the timeline at the WRITTEN lead time
+    // and scale afterwards — hitAt[0] IS the lead time and later entries are
+    // lead + cumulative gaps, so one uniform divide moves both.
+    const p        = scalePresetForSpeed(p0, spd);
+    const riff     = generateAttackerRiff(Math.random, p0.maxLen);
     const notes    = riffDegreesToNotes(riff.degrees, riff.sharps);
     const freqs    = riff.degrees.map((d, i) => riffDegreeFreq(d, riff.sharps[i]));
     const voicing  = voiceRiff(riff.degrees, riff.sharps, riff.rhythm);
-    const timeline = buildRiffTimeline(riff.rhythm, 1, p.leadTime);
+    const timeline = scaleTimelineForSpeed(buildRiffTimeline(riff.rhythm, 1, p0.leadTime), spd);
     const t0       = performance.now();
 
     const eng = {
@@ -143,7 +176,7 @@ export function RiffPractice({ initialDiff, onBack }) {
     setResults([]);
     setRiffRun({
       turn: 'attacker', round: 1, startedAt: t0,
-      leadTime: p.leadTime, difficulty: diffRef.current,
+      leadTime: p.leadTime, difficulty: diffRef.current, speed: spd,
       notes: eng.notes.map(n => ({
         idx: n.idx, key: n.key, hitAt: n.hitAt,
         feel: n.feel, ghostKey: null, okWin: n.okWin, pos: n.pos,
@@ -253,6 +286,70 @@ export function RiffPractice({ initialDiff, onBack }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [phase, riffRun?.startedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── 🎤 Mic: play the riff on a real guitar ─────────────────────────────────
+  // A third route into pressKey, alongside the keyboard and neck taps. No
+  // translation needed: micPitch and guitarMap index the same PC_KEYS alphabet
+  // from the same DEGREE0_PITCH anchor, so the mic's `key` IS a pressKey key.
+  // (Pinned by riff/neonNeck.test.mjs — it plays every cell on the neck through
+  // the detector's maths and asserts the judge would accept it.)
+  const micHandleRef = useRef(null);
+  const micPressRef  = useRef(() => {});
+  const micClearRef  = useRef(null);
+  // The readout self-clears on a timer rather than being derived from a
+  // timestamp at render time. Comparing performance.now() during render is both
+  // impure and broken in practice: nothing re-renders when the note goes stale,
+  // so the last note heard would sit on screen until something else moved.
+  useEffect(() => { micPressRef.current = ({ key }) => {
+    setMicHeard(key);
+    clearTimeout(micClearRef.current);
+    micClearRef.current = setTimeout(() => setMicHeard(null), 900);
+    pressKey(key);
+  }; });
+
+  // Held open for the whole practice session rather than per-riff: riffs
+  // auto-advance every couple of seconds, and re-acquiring getUserMedia between
+  // them would drop the opening notes each time. pressKey already ignores
+  // anything outside the 'playing' phase, so a hot mic costs nothing here.
+  useEffect(() => {
+    let cancelled = false;
+    if (micOn && !micHandleRef.current) {
+      startMicListening(payload => {
+        // Runs inside micPitch's rAF loop — an uncaught throw here vanishes into
+        // the audio thread and reads as a detection failure. Log it loudly.
+        try { micPressRef.current(payload); }
+        catch (err) { console.error('[RLSW MIC] practice press failed:', err); }
+      })
+        .then(h => {
+          if (cancelled) { h.stop(); return; }
+          micHandleRef.current = h;
+          setMicErr(null);
+        })
+        .catch(() => { if (!cancelled) { setMicErr('blocked'); setMicOn(false); } });
+    } else if (!micOn && micHandleRef.current) {
+      micHandleRef.current.stop();
+      micHandleRef.current = null;
+      setMicHeard(null);
+    }
+    return () => { cancelled = true; };
+  }, [micOn]);
+
+  // Hand the device back when the practice screen goes away.
+  useEffect(() => () => {
+    micHandleRef.current?.stop(); micHandleRef.current = null;
+    clearTimeout(micClearRef.current);
+  }, []);
+
+  function toggleMic() {
+    if (!micAvailable()) { setMicErr('no mic'); return; }
+    setMicOn(v => {
+      const next = !v;
+      try { localStorage.setItem('rlsw.riffMic', next ? '1' : '0'); } catch { /* non-fatal */ }
+      return next;
+    });
+  }
+
+  function changeSpeed(v) { setSpeed(saveRiffSpeed(v)); }
+
   // ── Keyboard: ESC to exit ──────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e) => {
@@ -325,7 +422,9 @@ export function RiffPractice({ initialDiff, onBack }) {
       )}
 
       {/* ── Highway ── */}
-      <div style={S.highwayWrap}>
+      {/* 🎯 the neon neck is a wide instrument — it takes the full practice
+          window rather than the 500px column the piano/highway views want. */}
+      <div style={view === 'neon' ? {...S.highwayWrap, maxWidth:'none'} : S.highwayWrap}>
         {riffRun && (
           <RiffHighway
             run={riffRun}
@@ -344,7 +443,43 @@ export function RiffPractice({ initialDiff, onBack }) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button onClick={() => setView('piano')}  style={viewBtn(view === 'piano')}>🎹</button>
           <button onClick={() => setView('guitar')} style={viewBtn(view === 'guitar')}>🎸</button>
+          <button onClick={() => setView('neon')}   style={viewBtn(view === 'neon')}
+            title="Riff Off — landing-target rings on the neck">🎯</button>
           <RigPicker rig={rig} onCycle={cycleRig} accent={ACCENT} />
+
+          {/* ── 🐢 TEMPO DIAL ── takes effect on the NEXT riff (the current run's
+                 hit-times are already scheduled on the engine clock). ── */}
+          <div style={S.dialWrap} title="Slow the whole riff down — lead-in, note spacing and timing windows together">
+            <span style={S.dialIcon}>🐢</span>
+            <input type="range" min={RIFF_SPEED_MIN} max={RIFF_SPEED_MAX} step={0.05}
+              value={speed} onChange={e => changeSpeed(parseFloat(e.target.value))}
+              style={S.dial} />
+            <span style={S.dialIcon}>🐇</span>
+            <span style={{ ...S.dialVal, color: speed < 1 ? '#4ade80' : speed > 1 ? '#ff8a2a' : ACCENT }}>
+              {Math.round(speed * 100)}%
+            </span>
+            {speed !== RIFF_SPEED_DEFAULT && (
+              <button onClick={() => changeSpeed(RIFF_SPEED_DEFAULT)} style={S.dialReset}
+                title="Back to written tempo">↺</button>
+            )}
+          </div>
+
+          {/* 🎤 real guitar */}
+          <button onClick={toggleMic} style={{ ...viewBtn(micOn), borderColor: micOn ? '#4ade80' : undefined,
+                                               color: micOn ? '#4ade80' : undefined }}
+            title={micErr === 'no mic' ? 'No microphone (needs HTTPS or localhost)'
+                 : micErr === 'blocked' ? 'Microphone permission denied'
+                 : 'Play the riff on a real guitar'}>
+            🎤
+          </button>
+          {micOn && (
+            <span style={S.micHeard}>
+              {micHeard
+                ? (micHeard === micHeard.toUpperCase() ? `${micHeard}♯` : micHeard.toUpperCase())
+                : '···'}
+            </span>
+          )}
+          {micErr && <span style={S.micErr}>{micErr === 'no mic' ? 'NO MIC' : 'BLOCKED'}</span>}
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <div style={{ fontSize: 9, color: '#3a5a7a', letterSpacing: 1 }}>
@@ -404,4 +539,23 @@ const S = {
     padding: '8px 16px', borderRadius: 6,
     background: '#1a1020', border: '1px solid #4a3060', color: '#c080ff',
   },
+  // 🐢 tempo dial
+  dialWrap: {
+    display: 'flex', alignItems: 'center', gap: 6, marginLeft: 10,
+    padding: '5px 10px', borderRadius: 6,
+    background: '#0a1424', border: '1px solid #24405e',
+  },
+  dialIcon:  { fontSize: 11, opacity: 0.75, lineHeight: 1 },
+  dial:      { width: 116, accentColor: ACCENT, cursor: 'pointer' },
+  dialVal:   { fontSize: 10, letterSpacing: 1, minWidth: 34, textAlign: 'right' },
+  dialReset: {
+    fontFamily: "'Saira Stencil One', sans-serif", fontSize: 11, lineHeight: 1,
+    cursor: 'pointer', padding: '2px 6px', borderRadius: 4,
+    background: 'transparent', border: '1px solid #24405e', color: '#5a7a9a',
+  },
+  micHeard: {
+    fontSize: 11, letterSpacing: 1, color: '#4ade80',
+    minWidth: 26, textAlign: 'center',
+  },
+  micErr: { fontSize: 9, letterSpacing: 1, color: '#ff6b6b' },
 };
