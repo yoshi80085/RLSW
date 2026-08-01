@@ -108,43 +108,73 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
       <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#2d3748}
 @keyframes chooser-pulse{0%,100%{box-shadow:0 0 12px #fff2}50%{box-shadow:0 0 24px #fff4,inset 0 0 12px #fff1}}
 @keyframes announcer-in{0%{opacity:0;letter-spacing:12px;transform:scale(1.3)}30%{opacity:1}100%{opacity:0;letter-spacing:28px;transform:scale(1)}}
-@keyframes lobby-lightning-crackle{0%,92%,100%{opacity:.12}93%{opacity:.55}94%{opacity:.15}95.5%{opacity:.65}97%{opacity:.18}98%{opacity:.45}99%{opacity:.10}}
+/* ⚡ The bolt across the island. It always had a crackle, but at .12 idle — under
+   a backdrop already dimmed to 18% opacity and 0.6 brightness — it never actually
+   surfaced. Idle sits at .55 now and the flares reach full, so the bolt reads as
+   a live strike the way it does on the game board instead of a hint of one.
+   Note the flares are already at opacity 1: past this point the only way UP is
+   the brightness filter on .lobby-lightning below, not these numbers. */
+@keyframes lobby-lightning-crackle{0%,88%,100%{opacity:.55}89%{opacity:1}90.5%{opacity:.64}92%{opacity:.95}93.5%{opacity:.5}95%{opacity:.88}96.5%{opacity:.58}}
+/* The bolt sits inside a group dimmed to .24 opacity and 0.72 brightness, so it
+   can never out-glow its parent on opacity alone. This filter multiplies against
+   that 0.72 to put the strike back up around full brightness while the rest of
+   the island stays down where the menu text can live on top of it. Raise it to
+   punch harder; it only ever touches the lightning layer. Screen blend means a
+   brighter source really does mean a brighter composite. */
+.lobby-lightning{filter:brightness(1.75)}
+/* A strobing bolt behind a menu is exactly what this flag is for — hold it lit. */
+@media (prefers-reduced-motion: reduce){
+  .lobby-lightning{animation:none!important;opacity:.55}
+}
 @keyframes lobby-outline-pulse{0%,100%{opacity:.25;filter:brightness(0.7) drop-shadow(0 0 2px #ff00ee44)}50%{opacity:.45;filter:brightness(1.0) drop-shadow(0 0 6px #ff44ff44) drop-shadow(0 0 14px #aa00aa44)}}
 @keyframes lobby-stars-drift{0%,100%{opacity:.08}50%{opacity:.18}}
-@keyframes lobby-float{0%,100%{transform:translateY(0px)}50%{transform:translateY(-12px)}}`}</style>
-      {/* ── DIMMED FLOATING ISLAND BACKGROUND ── crackles with thunder */}
-      <div style={{position:"fixed",inset:0,zIndex:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",overflow:"hidden"}}>
-        <div style={{animation:"lobby-float 8s ease-in-out infinite",willChange:"transform"}}>
-          <svg width={SVG_W} height={SVG_H} viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-            style={{width:"min(90vw, 800px)",height:"auto",opacity:0.18,filter:"brightness(0.6) saturate(0.4)"}}>
-            <image href={boardImg} x={0} y={0} width={SVG_W} height={SVG_H} preserveAspectRatio="xMidYMid slice"/>
-            {/* Stars — subtle twinkle */}
-            <image href={boardStarsImg} x={0} y={0} width={SVG_W} height={SVG_H}
-              preserveAspectRatio="xMidYMid meet"
-              style={{mixBlendMode:"screen",animation:"lobby-stars-drift 6s ease-in-out infinite"}}/>
-            {/* Lightning — crackle animation */}
-            <image href={boardLightningImg} x={0} y={0} width={SVG_W} height={SVG_H}
-              preserveAspectRatio="xMidYMid slice"
-              style={{mixBlendMode:"screen",animation:"lobby-lightning-crackle 4s ease-in-out infinite"}}/>
-            {/* Outline glow — dim pulsing */}
-            <defs>
-              <filter id="lobby-outline-crush" colorInterpolationFilters="sRGB">
-                <feComponentTransfer>
-                  <feFuncR type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>
-                  <feFuncG type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>
-                  <feFuncB type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>
-                  <feFuncA type="linear" slope="1" intercept="0"/>
-                </feComponentTransfer>
-              </filter>
-            </defs>
-            <image href={boardOutlineImg} x={0} y={0} width={SVG_W} height={SVG_H}
-              preserveAspectRatio="xMidYMid slice"
-              style={{mixBlendMode:"screen",filter:"url(#lobby-outline-crush) blur(3px)",animation:"lobby-outline-pulse 5s ease-in-out infinite"}}/>
-            <image href={boardOutlineImg} x={0} y={0} width={SVG_W} height={SVG_H}
-              preserveAspectRatio="xMidYMid slice"
-              style={{mixBlendMode:"screen",filter:"url(#lobby-outline-crush)",opacity:0.5,animation:"lobby-outline-pulse 5s ease-in-out infinite"}}/>
-          </svg>
-        </div>
+/* (lobby-float removed — it was the bob that made the backdrop read as a floating
+   window. Nothing references it now; the island is full-bleed and still.) */`}</style>
+      {/* ── ISLAND BACKGROUND ── full-bleed, crackles with thunder ───────────────
+          Was a "floating island": an 800px-capped board bobbing up and down in the
+          middle of the screen, which read as a small window sitting on the page
+          rather than as the world behind the menu. Now it fills the viewport.
+
+          `slice` on the SVG itself is what makes that work: the default `meet`
+          would letterbox the viewBox into the window and hand back the very margins
+          we're trying to kill. `slice` scales to COVER and crops the overflow
+          instead — fine here, because this is scenery, not the playable grid.
+
+          The bob is gone too (it was the literal float). Nothing is centred any
+          more, so the flex centring on the wrapper goes with it. */}
+      <div style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",overflow:"hidden"}}>
+        {/* (the float wrapper div that used to sit here went with its animation) */}
+        <svg width="100%" height="100%" viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          preserveAspectRatio="xMidYMid slice"
+          style={{display:"block",width:"100%",height:"100%",opacity:0.24,filter:"brightness(0.72) saturate(0.5)"}}>
+          <image href={boardImg} x={0} y={0} width={SVG_W} height={SVG_H} preserveAspectRatio="xMidYMid slice"/>
+          {/* Stars — subtle twinkle */}
+          <image href={boardStarsImg} x={0} y={0} width={SVG_W} height={SVG_H}
+            preserveAspectRatio="xMidYMid meet"
+            style={{mixBlendMode:"screen",animation:"lobby-stars-drift 6s ease-in-out infinite"}}/>
+          {/* Lightning — crackle animation. 4.7s, off-beat from the 5s outline
+              pulse: on the same period the two read as one mechanical throb. */}
+          <image href={boardLightningImg} className="lobby-lightning" x={0} y={0} width={SVG_W} height={SVG_H}
+            preserveAspectRatio="xMidYMid slice"
+            style={{mixBlendMode:"screen",animation:"lobby-lightning-crackle 4.7s ease-in-out infinite"}}/>
+          {/* Outline glow — dim pulsing */}
+          <defs>
+            <filter id="lobby-outline-crush" colorInterpolationFilters="sRGB">
+              <feComponentTransfer>
+                <feFuncR type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>
+                <feFuncG type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>
+                <feFuncB type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>
+                <feFuncA type="linear" slope="1" intercept="0"/>
+              </feComponentTransfer>
+            </filter>
+          </defs>
+          <image href={boardOutlineImg} x={0} y={0} width={SVG_W} height={SVG_H}
+            preserveAspectRatio="xMidYMid slice"
+            style={{mixBlendMode:"screen",filter:"url(#lobby-outline-crush) blur(3px)",animation:"lobby-outline-pulse 5s ease-in-out infinite"}}/>
+          <image href={boardOutlineImg} x={0} y={0} width={SVG_W} height={SVG_H}
+            preserveAspectRatio="xMidYMid slice"
+            style={{mixBlendMode:"screen",filter:"url(#lobby-outline-crush)",opacity:0.5,animation:"lobby-outline-pulse 5s ease-in-out infinite"}}/>
+        </svg>
       </div>
       {autoRejoining&&<div style={{position:"fixed",inset:0,zIndex:100,background:"#050810ee",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}><div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:16,color:"#f6ad55",letterSpacing:4}}>RECONNECTING</div><div style={{fontSize:10,color:"#3a5a7a",letterSpacing:1}}>Reclaiming your seat...</div></div>}
       {announcer&&<div style={{position:"fixed",inset:0,zIndex:90,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:48,fontWeight:700,color:announcer.color,textShadow:"0 0 30px "+announcer.color+", 0 0 60px "+announcer.color+"55",animation:"announcer-in 700ms ease-out forwards",whiteSpace:"nowrap"}}>{announcer.name.toUpperCase()}</div></div>}

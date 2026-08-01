@@ -17,10 +17,18 @@
 // (C-based pitch class 0–11) so both FretboardRecon and DiscordCoach can
 // consume detected notes without conversion.
 //
+// REGISTER (added 2026-07): the detector always knew the ABSOLUTE pitch — it
+// just folded it mod 12 on the way out, so every consumer saw a pitch class and
+// the octave you actually played was discarded. The payload now also carries
+// `pitch` / `midi` / `octave` / `freqTempered`, which is what lets the melody
+// track play back in the register it was played in. Pitch-class consumers are
+// unaffected: nothing was removed, only added.
+//
 // Usage:
-//   const mic = await startMicListening(({ key, pcAbsolute, freq }) => {
+//   const mic = await startMicListening(({ key, pcAbsolute, midi, freq }) => {
 //     // key: 'a','A','b','c','C','d','D','e','f','F','g','G' (same as cellKey)
 //     // pcAbsolute: 0=C, 1=C#, ..., 11=B (same as cellPcAbsolute)
+//     // midi: absolute MIDI note number (E2 = 40) — register included
 //   });
 //   mic.stop();  // cleanup: releases mic, closes AudioContext
 // =============================================================================
@@ -41,6 +49,27 @@ function pitchToKey(pitch) {
 function pitchToPcAbsolute(pitch) {
   // STRING_OPENS[0] = 0 = E2, and E = pc 4 in C-based system
   return ((pitch + 4) % 12 + 12) % 12;
+}
+
+// ── Register helpers ───────────────────────────────────────────────────────
+// `pitch` is semitones above open low E (E2). E2 is MIDI 40, so the two differ
+// by a constant. MIDI is the useful currency outside this module: it survives
+// as an integer, it's octave-aware, and it converts back to a frequency in one
+// line wherever a note needs to be sounded.
+const E2_MIDI = 40;
+
+export function pitchToMidi(pitch) {
+  return pitch + E2_MIDI;
+}
+
+/** Equal-tempered frequency for a MIDI note. A440. */
+export function midiToFreq(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+// Scientific pitch notation octave: MIDI 60 (C4) → 4.
+function midiToOctave(midi) {
+  return Math.floor(midi / 12) - 1;
 }
 
 // ── YIN pitch detection ────────────────────────────────────────────────────
@@ -201,7 +230,15 @@ export async function startMicListening(onNote, opts = {}) {
   // Pitch-stability tracker: a note only counts once the SAME pitch has held
   // for `stableFrames` frames in a row. Transients (a knock, a door, a
   // consonant) resolve to a different pitch every frame and never survive it.
-  let candKey      = null;
+  //
+  // ⚠️ Tracks the ABSOLUTE pitch, not the pitch class. It used to hold `key`,
+  // which is mod 12 — so a signal flip-flopping between E3 and E4 (the classic
+  // guitar octave error: the second harmonic outruns a weak fundamental) read
+  // as three "stable" frames and fired. That was invisible while every consumer
+  // folded to a pitch class anyway; the moment register is used it becomes an
+  // audibly wrong octave. Comparing absolute pitch makes an octave flip fail
+  // stability the same way any other unstable reading does.
+  let candPitch    = null;
   let candFrames   = 0;
 
   function loop() {
@@ -221,7 +258,7 @@ export async function startMicListening(onNote, opts = {}) {
     // and it must not read as a fresh pluck.
     if (db < releaseDb) {
       wasSilent  = true;
-      candKey    = null;
+      candPitch  = null;
       candFrames = 0;
       if (onLevel) onLevel({ db, state: 'silent' });
       return;
@@ -234,12 +271,12 @@ export async function startMicListening(onNote, opts = {}) {
     // ── Detect pitch ──
     const { freq, confidence } = detectPitch(buffer, audioCtx.sampleRate);
     if (freq <= 0) {
-      candKey = null; candFrames = 0;
+      candPitch = null; candFrames = 0;
       if (onLevel) onLevel({ db, state: 'detecting' });
       return;
     }
     if (confidence < minConfidence) {
-      candKey = null; candFrames = 0;
+      candPitch = null; candFrames = 0;
       if (onLevel) onLevel({ db, state: 'low-confidence', freq, confidence });
       return;
     }
@@ -249,15 +286,19 @@ export async function startMicListening(onNote, opts = {}) {
     const key        = pitchToKey(pitch);
     const pcAbsolute = pitchToPcAbsolute(pitch);
 
-    // ── Stability: the same pitch has to hold for a few frames ──
-    if (key === candKey) candFrames++;
-    else { candKey = key; candFrames = 1; }
+    // ── Stability: the same ABSOLUTE pitch has to hold for a few frames ──
+    if (pitch === candPitch) candFrames++;
+    else { candPitch = pitch; candFrames = 1; }
     if (candFrames < stableFrames) {
       if (onLevel) onLevel({ db, state: 'detecting', freq, confidence });
       return;
     }
 
     // ── Onset filter: fire on silence→sound or pitch change ──
+    // Deliberately still compares PITCH CLASS, not absolute pitch. Stability
+    // above already rejects octave wobble; retriggering on register too would
+    // mean a sustain that settles an octave off after firing fires a second
+    // time. Same note letter, held = one note, as before.
     const now           = performance.now();
     const isNewOnset    = wasSilent;
     const isPitchChange = key !== lastKey;
@@ -268,7 +309,17 @@ export async function startMicListening(onNote, opts = {}) {
       lastCallTime = now;
       wasSilent    = false;
       if (onLevel) onLevel({ db, state: 'note', freq, confidence });
-      onNote({ key, pcAbsolute, freq, confidence });
+      const midi = pitchToMidi(pitch);
+      onNote({
+        key,
+        pcAbsolute,
+        freq,                            // raw detected Hz — how sharp/flat you actually are
+        confidence,
+        pitch,                           // semitones above open low E (E2 = 0)
+        midi,                            // absolute MIDI note (E2 = 40)
+        octave: midiToOctave(midi),      // scientific pitch notation (C4 = 4)
+        freqTempered: midiToFreq(midi),  // snapped to A440 — use this to SOUND the note
+      });
     } else {
       wasSilent = false;
       if (onLevel) onLevel({ db, state: 'note', freq, confidence });

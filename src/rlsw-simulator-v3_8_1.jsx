@@ -1939,6 +1939,16 @@ function Game({ gameState, onReturnToLobby }) {
   // note frees the specific slot it came from, even when the stock holds
   // duplicates of the same note (or the same note also sits in a chord stack).
   const melodySrcIdx  = actingNoteState?.melodySrcIdx  ?? [];
+  // 🎤 Parallel to melodyLine: the REGISTER each note was played in, as an
+  // equal-tempered frequency, or null for notes that were clicked rather than
+  // played. melodyLine stores a pitch class only ('C', 'F#'), so a note placed
+  // by mic used to sound in whatever fixed octave PC_FREQ_BASE holds — you
+  // played the low E and the game answered an octave up. Keeping the frequency
+  // alongside lets playback answer in the octave you actually played.
+  // Frequencies, not MIDI, because playNoteSound's `freq` override already
+  // speaks Hz and every other voicing path in this file does too.
+  // ⚠️ Index-parallel to melodyLine: every write to one is a write to the other.
+  const melodyFreq    = actingNoteState?.melodyFreq    ?? [];
   const usedStockIdx = actingNoteState?.usedStockIdx ?? [];
   const rootNote     = actingNoteState?.rootNote     ?? 'C';
   const scaleMode    = actingNoteState?.scaleMode    ?? 'major';
@@ -2356,6 +2366,11 @@ function Game({ gameState, onReturnToLobby }) {
     Glamarchy:         'strut',      // 👑 stomp-clap swagger + glitter gliss
   };
 
+  // `opts.freqs` — index-parallel to `track`: the register each note was played
+  // in (mic), or null (clicked). Only the classic groove honours it; the four
+  // signature styles below voice the track their own way on purpose — a
+  // breakdown chugs in the low register whether or not you played it up the
+  // neck, because that's the character's voice, not yours.
   function playTrackSequence(track, opts = {}) {
     if (opts.style === 'shred')     { playShredSequence(track); return; }
     if (opts.style === 'breakdown') { playBreakdownSequence(track); return; }
@@ -2380,7 +2395,11 @@ function Game({ gameState, onReturnToLobby }) {
         : 0.62;                // dotted — leans on the note
       const breath = !last && Math.random() < 0.18 ? 150 : 0; // phrase break
       const accent = last || Math.random() < 0.22;
-      const vlf = voiceLeadFreq(note, prevFreq); if (vlf) prevFreq = vlf;
+      // A note the player actually PLAYED already has a register — use it, and
+      // let it seed the voice-leading so any clicked notes after it step from
+      // where the player left off rather than from the fixed base octave.
+      const heard = opts.freqs?.[i] ?? null;
+      const vlf = heard ?? voiceLeadFreq(note, prevFreq); if (vlf) prevFreq = vlf;
       playNoteSound(note, {
         holdTime: dur,
         fadeTime: last ? 0.9 : 0.35,
@@ -2892,7 +2911,10 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   // ─── MELODY LINE FUNCTIONS ─────────────────────────────────────────────────────
-  function clickNoteStock(idx, _flyEvent, _forceChordMode) {
+  // `_micFreq` — set only when the mic placed this note: the equal-tempered
+  // frequency of the register it was played in. Clicks pass nothing and behave
+  // exactly as before (null = "no register recorded, use the base octave").
+  function clickNoteStock(idx, _flyEvent, _forceChordMode, _micFreq = null) {
     if (!acting || !canAct) return; // N4/N7: gate
     // ── 🎚️ MIXER — once per turn, tap an already-played note to layer it again ──
     if (usedHas(usedStockIdx, idx)) {
@@ -2910,6 +2932,10 @@ function Game({ gameState, onReturnToLobby }) {
         // already spent by the original placement, so pulling this copy back
         // out must not hand the slot back a second time.
         melodySrcIdx:      [...melodySrcIdx, -1],
+        // The mixer layers a note the player TAPPED, not one they played, so
+        // there's no register to record. (The mic can't reach this path at all
+        // — micPlaceNote only matches unused stock slots.)
+        melodyFreq:        [...melodyFreq, null],
         discordCount:      playable ? discordCount : discordCount + 1,
         mixerUsedThisTurn: true,
       });
@@ -2972,7 +2998,8 @@ function Game({ gameState, onReturnToLobby }) {
     const playable       = isNotePlayable(note);
     const newTrack       = [...melodyLine, note];
     const newDiscord     = playable ? discordCount : discordCount + 1;
-    playNoteSound(note);
+    // Answer in the register it was played in when the mic supplied one.
+    playNoteSound(note, _micFreq ? { freq: _micFreq } : {});
     // 🎵 FLY — launch note chip animation toward the commit track slot
     if (typeof _flyEvent === 'object' && _flyEvent && commitTrackRef.current) {
       const src = _flyEvent.currentTarget?.getBoundingClientRect?.();
@@ -2993,6 +3020,7 @@ function Game({ gameState, onReturnToLobby }) {
     setNoteField(acting.id, {
       melodyLine:    newTrack,
       melodySrcIdx: [...melodySrcIdx, idx],
+      melodyFreq:   [...melodyFreq, _micFreq ?? null],
       usedStockIdx: usedAdd(usedStockIdx, idx),
       discordCount: newDiscord,
     });
@@ -3024,8 +3052,13 @@ function Game({ gameState, onReturnToLobby }) {
     if (note === undefined) return;
 
     const src        = melodySrcIdx[i];
+    const heardFreq  = melodyFreq[i] ?? null;
     const newTrack   = melodyLine.filter((_, k) => k !== i);
     const newSrc     = melodySrcIdx.filter((_, k) => k !== i);
+    // Same splice as melodySrcIdx — melodyFreq is index-parallel to melodyLine,
+    // so dropping a note from the middle without dropping its frequency would
+    // slide every later note's register one slot out of alignment.
+    const newFreq    = melodyFreq.filter((_, k) => k !== i);
     const newDiscord = newTrack.reduce((n, nt) => n + (isNotePlayable(nt) ? 0 : 1), 0);
 
     // ⚠️ payoutRouting is keyed by TRACK INDEX, so pulling a note out of the
@@ -3044,6 +3077,7 @@ function Game({ gameState, onReturnToLobby }) {
     const patch = {
       melodyLine:    newTrack,
       melodySrcIdx:  newSrc,
+      melodyFreq:    newFreq,
       discordCount:  newDiscord,
       payoutRouting: newRouting,
     };
@@ -3059,7 +3093,8 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`🔁 ${note} pulled from the track · ${newTrack.length} notes`);
     }
 
-    playNoteSound(note);
+    // Pulling a note out echoes it in the register it went in with.
+    playNoteSound(note, heardFreq ? { freq: heardFreq } : {});
     setNoteField(acting.id, patch);
   }
 
@@ -3090,7 +3125,11 @@ function Game({ gameState, onReturnToLobby }) {
   // WRONG note rather than simply failing. `pcAbsolute` is already a C-based
   // 0–11 pitch class, the same basis pitchIndex returns, so the two compare
   // directly and enharmonics (F#/Gb) collapse for free.
-  function micPlaceNote({ key, pcAbsolute }) {
+  // `freqTempered` is the detected note snapped to A440. Deliberately NOT the
+  // raw `freq`: a guitar that's a few cents flat would otherwise put a
+  // permanently out-of-tune note into a track that everything else voices in
+  // equal temperament. We keep the octave you played, not your intonation.
+  function micPlaceNote({ key, pcAbsolute, freqTempered }) {
     if (!acting || !canAct || hasConfirmed || pivotPending) return;
     const heardName = NOTE_POOL[pcAbsolute] ?? key;
     if (melodyLine.length >= 8) { setMicHeard({ note: heardName, ok: false }); return; }
@@ -3102,8 +3141,9 @@ function Game({ gameState, onReturnToLobby }) {
     setMicHeard({ note: heardName, ok: true });
     // The exact entry point a click uses. Called with no fly-event, so the
     // chip animation is skipped (it needs a DOM source rect) — everything
-    // else, scoring and undo included, is the identical path.
-    clickNoteStock(idx);
+    // else, scoring and undo included, is the identical path. The 4th arg is
+    // the only thing a mic placement carries that a click doesn't.
+    clickNoteStock(idx, null, false, freqTempered ?? null);
   }
 
   // Keep the live handler in a ref. The mic callback is created once when the
@@ -3220,6 +3260,7 @@ function Game({ gameState, onReturnToLobby }) {
     setNoteField(acting.id, {
       melodyLine: [],
       melodySrcIdx: [],
+      melodyFreq: [],
       usedStockIdx: [],
       discordCount: 0,
       // Routing is keyed by track index, so it MUST die with the track — a stale
@@ -3245,6 +3286,7 @@ function Game({ gameState, onReturnToLobby }) {
       // re-banks it rather than freeing a stock slot, so an edit never
       // silently destroys a banked note.
       melodySrcIdx: [...melodySrcIdx, 'bank'],
+      melodyFreq:   [...melodyFreq, null],  // tapped, not played — no register
       discordCount: newDiscord,
       bankedNote:   null,  // consumed
     });
@@ -3300,7 +3342,7 @@ function Game({ gameState, onReturnToLobby }) {
       setTimeout(() => setRiffBanner(prev => (prev && prev.riffId === riff.id ? null : prev)), 5600);
       setTimeout(() => grantFame(acting.id, fp, `🎼 ${riff.name}`), 500);
     } else {
-      playTrackSequence(melodyLine, { style: COMMIT_STYLES[acting?.id] });
+      playTrackSequence(melodyLine, { style: COMMIT_STYLES[acting?.id], freqs: melodyFreq });
     }
 
     // ── 🎯 CADENCE OBJECTIVES — your track's FINAL note is this turn's "final" ──
@@ -3857,9 +3899,18 @@ function Game({ gameState, onReturnToLobby }) {
     setNoteField(acting.id, {
       melodyLine:       [],
       melodySrcIdx:     [],
+      melodyFreq:       [],
       // Phase R1: stash the committed melody + riff-match for riff-off use.
       // startRiffOff reads these; cleared at turn start (startNewTurnNotes).
       committedMelody:  melodyLine,
+      // Registers ride along with the committed melody so the riff-off can
+      // voice it where the player played it (melodyToRiff still infers octave
+      // on its own for now — this is the raw material for when it doesn't).
+      // ⚠️ Mapped over `melodyLine`, not copied straight from melodyFreq: the
+      // mic skill's voice roll SHADOWS melodyLine above and may append a bonus
+      // note the player never played. Aligned by construction, one null on the
+      // tail for the bonus, so the two stay the same length downstream.
+      committedFreq:    melodyLine.map((_, i) => melodyFreq[i] ?? null),
       committedHasRiff: !!riffMatch,
       discordCount:    0,
       pivotPending:    newPivotPending,
@@ -4041,7 +4092,9 @@ function Game({ gameState, onReturnToLobby }) {
           noteStock:    newStock,
           melodyLine:    [],
           melodySrcIdx:  [],
+          melodyFreq:    [],
           committedMelody:  null,   // Phase R1: clear stashed melody from last turn
+          committedFreq:    null,
           committedHasRiff: false,
           stackCommitsThisTurn: 0,  // 🎸 fresh stack commit budget each turn
           usedStockIdx: carriedUsed,
