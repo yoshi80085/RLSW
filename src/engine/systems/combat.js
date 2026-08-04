@@ -244,6 +244,33 @@ export function applyAttackRolled(state, action, rng) {
   };
 }
 
+// ─── 🔪 THE REAR ARC ────────────────────────────────────────────────────────
+// A Spirit's facing already gates what they can ATTACK (getSwingCone, the Sonic
+// beam). This is the other half of that bargain: facing also decides what they
+// can BRACE against. Catch a rival in the wedge behind them and the blow lands
+// on an unguarded back — their Sustain stack sheds an extra note.
+//
+// Geometry: the rear wedge is everything more than 120° off the defender's
+// facing, i.e. 60° to either side of directly-behind. That is deliberately
+// NARROWER than "not in their front cone" — flanking is not backstabbing, and
+// a defender shouldn't be punished for every attacker they aren't staring at.
+// One hex of FACE (1 AP) is always enough to close the wedge, which is what
+// makes it a real decision rather than a positional tax.
+export const REAR_ARC = (2 * Math.PI) / 3;   // >120° off facing = behind them
+export const REAR_FRAY_BONUS = 1;            // extra Sustain notes stripped
+
+/**
+ * Is the attacker standing in the defender's rear wedge? (pure)
+ *   defenderFacing — the defender's facing angle, radians
+ *   angleToAttacker — angle from the DEFENDER's hex to the ATTACKER's hex
+ * Both angles are screen-space atan2 (see hexGeometry.angleTo), so the caller
+ * must not pre-normalise them; `diffFn` handles the wrap.
+ */
+export function isRearHit(defenderFacing, angleToAttacker, diffFn) {
+  if (defenderFacing == null || angleToAttacker == null) return false;
+  return diffFn(angleToAttacker, defenderFacing) > REAR_ARC;
+}
+
 /**
  * Chord-fray arithmetic (pure). Style-NEUTRAL base fray from the hit margin —
  * moved verbatim from data/stances.js (was `stanceFrayAmount`) when Stances
@@ -252,9 +279,13 @@ export function applyAttackRolled(state, action, rng) {
  * the caller owns).
  *   margin ≤ 2 → 1 note
  *   margin ≥ 3 → 2 notes
+ *   + REAR_FRAY_BONUS when the blow came from the defender's rear wedge
+ *
+ * ⚠️ The floor still belongs to the caller, so a backstab can never bleed a
+ * stack to nothing — it just gets there faster.
  */
-export function chordFrayAmount(margin) {
-  return margin >= 3 ? 2 : 1;
+export function chordFrayAmount(margin, fromBehind = false) {
+  return (margin >= 3 ? 2 : 1) + (fromBehind ? REAR_FRAY_BONUS : 0);
 }
 
 // ─── DRIVE / SUSTAIN STACK SPLIT: SPEND HELPERS ─────────────────────────────

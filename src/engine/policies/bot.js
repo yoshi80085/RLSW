@@ -10,7 +10,8 @@
 
 import { hexRingFromCenter } from "../../board/boardHelpers.js";
 import { HEX_BY_NUM, HEX_BY_QR } from "../../board/hexMap.js";
-import { axialDist, axialNeighbors } from "../../board/hexGeometry.js";
+import { axialDist, axialNeighbors, angleTo, angleDiff } from "../../board/hexGeometry.js";
+import { isRearHit } from "../systems/combat.js";
 import { skillEligibility } from "../systems/skills.js";
 import { usedHas } from "../systems/economy.js";
 import { LIMELIGHT_HEX, stackCapFor } from "../../data/gameConstants.js";
@@ -20,24 +21,39 @@ import { evaluateChord } from "../../music/chords.js";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
+// 🔪 `rear` = appetite for getting behind a rival (the extra Sustain note a
+// backstab strips). `rearFear` = how hard it works to keep its own back
+// covered. These are deliberately NOT the same number per persona — a bot that
+// hunts backs while carelessly showing its own is a distinct, readable
+// personality, and it's the one the Mosh Lord should have.
 export const BOT_PERSONALITIES = {
   maestro:  { name:'The Maestro',  emoji:'🎼', note:'musical',
     blurb:'wins on pure musicianship — Theory, clean tracks, cadences & riffs.',
-    move:{ center:1.2, rival:0.4, token:1.4, spotlight:1.1, edgeFear:1.6 },
+    move:{ center:1.2, rival:0.4, token:1.4, spotlight:1.1, edgeFear:1.6, rear:0.5, rearFear:1.3 },
     skillOrder:['theory_major','range_1','theory_minor','amp_1','theory_dom7','theory_modes','amp_2','range_2','theory_chromatic','amp_3','range_3'] },
   moshlord: { name:'The Mosh Lord', emoji:'🤘', note:'combat',
     blurb:'pure aggression — Thrash, hunts the wounded and the leader, swings for knockouts.',
-    move:{ center:1.0, rival:1.9, token:0.6, spotlight:0.8, edgeFear:0.5 },
+    move:{ center:1.0, rival:1.9, token:0.6, spotlight:0.8, edgeFear:0.5, rear:1.7, rearFear:0.4 },
     skillOrder:['power_1','amp_1','theory_major','amp_2','power_2','theory_minor','amp_3','power_3'] },
   diva:     { name:'The Diva',     emoji:'✨', note:'clean',
     blurb:'owns the spotlight — holds centre stage, works the crowd, grabs Lost Chords.',
-    move:{ center:1.9, rival:0.7, token:1.2, spotlight:1.4, edgeFear:1.2 },
+    move:{ center:1.9, rival:0.7, token:1.2, spotlight:1.4, edgeFear:1.2, rear:0.7, rearFear:1.5 },
     skillOrder:['range_1','amp_1','theory_major','range_2','amp_2','theory_minor','amp_3'] },
   saboteur: { name:'The Saboteur', emoji:'🪤', note:'disrupt', targetLeader:true,
     blurb:'controls the board — ranged Sonic, zoning, drains & staggers the leader.',
-    move:{ center:0.9, rival:1.1, token:0.8, spotlight:0.9, edgeFear:1.0 },
+    move:{ center:0.9, rival:1.1, token:0.8, spotlight:0.9, edgeFear:1.0, rear:1.5, rearFear:1.1 },
     skillOrder:['amp_1','range_1','power_1','theory_major','amp_2','range_2','power_2','theory_minor','theory_dom7','amp_3','range_3','power_3','theory_modes'] },
 };
+
+// How far away a rival still has to be worth turning to face. Beyond this the
+// rear geometry is noise — they can't reach you this turn anyway, and letting
+// distant spirits drag the score around makes the bot pace instead of play.
+export const REAR_INTEREST_DIST = 3;
+
+// Half-angle of the forward attack cone. Mirrors getSwingCone's Math.PI / 2.2
+// in the game file — if that arc is ever retuned, retune this with it, or the
+// bot will start valuing flanks it can't actually shoot from.
+export const CONE_HALF_ARC = Math.PI / 2.2;
 export const BOT_PERSONA_KEYS = ['maestro','moshlord','diva','saboteur'];
 
 export const BOT_SKILL_PRIORITY_BASE = [
@@ -75,12 +91,32 @@ export function botAssignPersona(takenKeys, rngVal) {
 }
 
 /**
+ * Is `attackerNum` standing in `defender`'s rear wedge? Board-aware wrapper
+ * around the engine's pure `isRearHit`, so the bot judges backstabs by exactly
+ * the same rule combat resolves them by. A missing hex answers "no".
+ */
+export function botIsBehind(defender, attackerNum) {
+  if (!defender) return false;
+  const dh = HEX_BY_NUM[defender.num];
+  const ah = HEX_BY_NUM[attackerNum];
+  if (!dh || !ah || dh.num === ah.num) return false;
+  return isRearHit(defender.facing ?? 0, angleTo(dh, ah), angleDiff);
+}
+
+/**
  * Pick the juiciest rival to hit from a candidate list (already filtered to
  * those it can actually reach). Priority: close a knockdown first, then lean
  * on the Fame front-runner, then break ties on lowest Vibe.
  * Pure — fame comes from `noteStates`.
+ *
+ * 🔪 `selfNum` (optional) lets it see which candidates have their backs turned.
+ * A backstab strips an extra Sustain note, so among otherwise-equal targets the
+ * exposed one wins — but it is deliberately the LAST tiebreak, below finishing
+ * a wounded rival and below pressuring the Fame leader. A bot that chases the
+ * flanking bonus past a rival it could knock down is a bot playing the bonus
+ * instead of the game. Callers that don't pass `selfNum` behave exactly as before.
  */
-export function botPickTarget(candidates, noteStates) {
+export function botPickTarget(candidates, noteStates, selfNum = null) {
   if (!candidates.length) return null;
   return [...candidates].sort((a, b) => {
     const ka = (a.vibe ?? 99) <= 2 ? 1 : 0;
@@ -90,7 +126,9 @@ export function botPickTarget(candidates, noteStates) {
     const fa = noteStates?.[a.id]?.fame ?? 0;
     const fb = noteStates?.[b.id]?.fame ?? 0;
     if (fb !== fa) return fb - fa;
-    return (a.vibe ?? 99) - (b.vibe ?? 99);
+    if ((a.vibe ?? 99) !== (b.vibe ?? 99)) return (a.vibe ?? 99) - (b.vibe ?? 99);
+    if (selfNum == null) return 0;
+    return (botIsBehind(b, selfNum) ? 1 : 0) - (botIsBehind(a, selfNum) ? 1 : 0);
   })[0];
 }
 
@@ -99,7 +137,11 @@ export function botPickTarget(candidates, noteStates) {
  * Pure — all data in `ctx` (built by the caller from engine state).
  * ctx: { p (persona), center (hex obj), hurt (bool), myFame, spot (hex obj),
  *        tokens [{num, q, r}], events [{num, q, r}],
- *        rivals [{r (spirit), h (hex), fame}] }
+ *        rivals [{r (spirit), h (hex), fame}],
+ *        from (hex obj — where the mover is standing now),
+ *        selfFacing (radians — its facing if it doesn't move) }
+ * `from`/`selfFacing` are optional; without them the rear-wedge term is simply
+ * skipped, so older callers keep their exact previous scores.
  */
 export function botHexScore(h, ctx) {
   const m = ctx.p.move;
@@ -126,6 +168,40 @@ export function botHexScore(h, ctx) {
       best = Math.max(best, -axialDist(h.q, h.r, rv.h.q, rv.h.r) * w);
     }
     s += best;
+  }
+
+  // ── 🔪 REAR WEDGE ─────────────────────────────────────────────────────────
+  // Facing isn't free: moving to `h` points the mover at `h` (movement.js sets
+  // facing = facingAngle(from, to)), so the destination decides BOTH which
+  // backs it can get behind and which back it turns. This term scores both
+  // halves of that trade at once, which is why it can't be a post-hoc filter.
+  //
+  // Weighted by proximity: a rival three hexes off is a hypothetical, one that
+  // is adjacent is about to hit you. Beyond REAR_INTEREST_DIST, nothing.
+  if (ctx.rivals.length && ctx.from) {
+    const moving = h.num !== ctx.from.num;
+    const myFacing = moving ? angleTo(ctx.from, h) : (ctx.selfFacing ?? 0);
+    for (const rv of ctx.rivals) {
+      const d = axialDist(h.q, h.r, rv.h.q, rv.h.r);
+      if (d < 1 || d > REAR_INTEREST_DIST) continue;
+      const prox = (REAR_INTEREST_DIST + 1 - d) / REAR_INTEREST_DIST;
+      const behindThem = isRearHit(rv.r.facing ?? 0, angleTo(rv.h, h), angleDiff);
+      // ⚠️ Standing behind someone is worth NOTHING if you're facing away from
+      // them — you can't swing or beam through the back of your own head. So
+      // the offensive half is gated on them landing in the cone this move
+      // leaves us pointing down (same ~80° half-arc getSwingCone uses).
+      // Without this gate the scorer rewards blowing straight PAST a rival,
+      // which lands you behind them, facing the wrong way, with your own back
+      // offered up. That is the exact opposite of a flank.
+      const facingThem = angleDiff(angleTo(h, rv.h), myFacing) <= CONE_HALF_ARC;
+      if (behindThem && facingThem) s += 9 * prox * (m.rear ?? 1);
+      // DEFENCE — from here, is MY back turned to them? Costed slightly higher
+      // than the offensive prize: you choose when to take a flank, but you
+      // don't choose when a rival takes yours.
+      if (isRearHit(myFacing, angleTo(h, rv.h), angleDiff)) {
+        s -= 11 * prox * (m.rearFear ?? 1);
+      }
+    }
   }
   return s;
 }
@@ -480,6 +556,10 @@ export function botPlanMove(state, self, persona, amps) {
     rivals: live.filter(s => !s.knockedOut && s.id !== self.id)
       .map(r => ({ r, h: HEX_BY_NUM[r.num], fame: state.noteStates?.[r.id]?.fame ?? 0 }))
       .filter(x => x.h),
+    // 🔪 the rear-wedge term needs to know where it's stepping FROM (that's
+    // what sets its new facing) and what it's facing if it holds position.
+    from: from,
+    selfFacing: me.facing ?? 0,
   };
   const here = botHexScore(from, ctx);
   const best = neighbors

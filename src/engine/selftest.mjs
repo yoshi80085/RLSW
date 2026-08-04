@@ -28,7 +28,7 @@ import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus, smashOutcome,
   decideWinner, resolveKnockdown,
   thrashDamage, sonicDamage,
-  chordFrayAmount,
+  chordFrayAmount, isRearHit, REAR_ARC, REAR_FRAY_BONUS,
   sonicDriveSpend, physicalDriveSpend, sustainChip, frayFromSustain, finisherStackWipe,
 } from "./systems/combat.js";
 import {
@@ -1735,6 +1735,133 @@ const config = {
   const score = botMod.botHexScore(fakeHex, fakeCtx);
   assert.ok(typeof score === "number" && isFinite(score), "botHexScore returns a finite number");
 
+  // ── 🔪 REAR-WEDGE AWARENESS ──
+  // Facings here are screen-space radians: 0 = east, π = west.
+  {
+    const { HEX_BY_NUM } = await import("../board/hexMap.js");
+    const hexes = Object.values(HEX_BY_NUM);
+    // Find a straight, evenly-spaced horizontal run of 4 hexes — enough room to
+    // APPROACH a rival from one side rather than only overshoot past them.
+    const run = (() => {
+      const rows = new Map();
+      for (const h of hexes) {
+        const k = Math.round(h.py * 100);
+        (rows.get(k) ?? rows.set(k, []).get(k)).push(h);
+      }
+      for (const row of rows.values()) {
+        row.sort((a, b) => a.px - b.px);
+        for (let i = 0; i + 3 < row.length; i++) {
+          const w = row[i+1].px - row[i].px;
+          if (w > 0 && Math.abs(row[i+2].px - row[i+1].px - w) < 0.01
+                    && Math.abs(row[i+3].px - row[i+2].px - w) < 0.01)
+            return row.slice(i, i + 4);
+        }
+      }
+      return null;
+    })();
+    assert.ok(run, "found a colinear run of 4 hexes to test rear geometry with");
+    const [h0, west, mid, east] = run;   // west→east, rival will stand at `mid`
+
+    // A spirit at `mid` facing EAST has its back to anything at `west`.
+    const facingEast = { num: mid.num, facing: 0 };
+    assert.equal(botMod.botIsBehind(facingEast, west.num), true,  "facing east, attacker to the west = behind");
+    assert.equal(botMod.botIsBehind(facingEast, east.num), false, "facing east, attacker to the east = head on");
+    assert.equal(botMod.botIsBehind(null, west.num), false, "no defender = not behind");
+    assert.equal(botMod.botIsBehind(facingEast, mid.num), false, "same hex = not behind");
+
+    // botPickTarget: with everything else equal, take the one facing away.
+    const ns = {};
+    const exposed = { id: "exposed", vibe: 6, num: mid.num, facing: 0 };   // back to a westerly attacker
+    const guarded = { id: "guarded", vibe: 6, num: mid.num, facing: Math.PI }; // squared up
+    assert.equal(botMod.botPickTarget([guarded, exposed], ns, west.num).id, "exposed",
+      "ties break toward the rival whose back is turned");
+    assert.equal(botMod.botPickTarget([guarded, exposed], ns).id, "guarded",
+      "without selfNum the old ordering is untouched");
+    // …but never ahead of a rival it can finish.
+    const woundedGuarded = { id: "wounded", vibe: 1, num: mid.num, facing: Math.PI };
+    assert.equal(botMod.botPickTarget([exposed, woundedGuarded], ns, west.num).id, "wounded",
+      "a knockdown still outranks a flank");
+
+    // botHexScore — each assertion changes exactly ONE variable, so a pass
+    // can only be the rear term talking.
+    const ctxFor = (rivalFacing, from) => ({
+      p: botMod.BOT_PERSONALITIES.moshlord, center: null, hurt: false, myFame: 0,
+      spot: null, tokens: [], events: [],
+      rivals: [{ r: { id:"rv", facing: rivalFacing, vibe: 5 }, h: mid, fame: 0 }],
+      from, selfFacing: 0,
+    });
+    // (a) OFFENCE — identical destination and approach; ONLY the rival's
+    // facing changes. Approaching `west` from `h0` leaves us facing east, at
+    // the rival's back when they face east.
+    const backTurned = botMod.botHexScore(west, ctxFor(0, h0));
+    const squaredUp  = botMod.botHexScore(west, ctxFor(Math.PI, h0));
+    assert.ok(backTurned > squaredUp,
+      `a rival with their back turned is worth more (${backTurned.toFixed(1)} > ${squaredUp.toFixed(1)})`);
+
+    // (b) …but the bonus must NOT pay when we blow straight PAST them. Same
+    // destination, same rival, only the approach flips: coming from the east we
+    // arrive facing away, behind them but unable to shoot — and with our own
+    // back offered up. That has to score worse than turning on them.
+    const pastThem = botMod.botHexScore(west, ctxFor(0, east));
+    assert.ok(pastThem < backTurned,
+      `overshooting past a rival scores worse than closing on them (${pastThem.toFixed(1)} < ${backTurned.toFixed(1)})`);
+
+    // (c) DEFENCE — hold position, rival standing due west and facing
+    // perpendicular (so the offence term can never fire). ONLY our own facing
+    // changes: looking east turns our back on them.
+    const holdCtx = (facing) => ({ ...ctxFor(Math.PI / 2, east), selfFacing: facing });
+    const lookingAway   = botMod.botHexScore(east, holdCtx(0));         // east = away from mid
+    const lookingAtThem = botMod.botHexScore(east, holdCtx(Math.PI));   // west = at mid
+    assert.ok(lookingAway < lookingAtThem,
+      `showing our back is penalised (${lookingAway.toFixed(1)} < ${lookingAtThem.toFixed(1)})`);
+
+    // (d) Omitting `from` must leave scores exactly as they were pre-feature —
+    // facing becomes irrelevant, so these two must land on the same number.
+    const noFrom = { ...ctxFor(0, h0), from: null };
+    assert.equal(botMod.botHexScore(west, noFrom), botMod.botHexScore(west, { ...noFrom, selfFacing: 3 }),
+      "rear term is skipped without `from` (back-compatible scoring)");
+  }
+
+  // ── 🎓 TIP CARD PLACEMENT ──
+  // Regression net for the offscreen-NEXT-button bug: placement used to clamp
+  // against a hardcoded card height, so tall pages pushed the footer under the
+  // fold. Sweep realistic viewports × card heights × anchor positions and
+  // assert the whole card is always on screen.
+  {
+    const { placeTipCard, fitsOnScreen, CARD_PAD } = await import("../ui/tipLayout.js");
+    const CARD_W = 400;
+    let checked = 0, worst = null;
+    for (const [vw, vh] of [[1920,1080],[1440,900],[1280,720],[1024,640],[800,600],[820,420]]) {
+      for (const cardH of [180, 280, 420, 560, 700, 1200]) {   // 1200 = taller than any viewport here
+        for (const ty of [0, 40, vh * 0.5, vh - 120, vh - 10]) {
+          for (const tx of [0, vw * 0.25, vw * 0.5, vw * 0.9, vw - 30]) {
+            const target = { left: tx, top: ty, width: 120, height: 40 };
+            const p = placeTipCard({ target, cardW: CARD_W, cardH, vw, vh });
+            checked++;
+            if (!fitsOnScreen(p, CARD_W, cardH, vw, vh, CARD_PAD)) {
+              worst = { vw, vh, cardH, tx, ty, p };
+            }
+          }
+        }
+      }
+    }
+    assert.equal(worst, null,
+      `tip card must never place off screen — failed at ${JSON.stringify(worst)}`);
+    assert.ok(checked > 500, `swept a meaningful number of layouts (${checked})`);
+
+    // The specific shape of the old bug: a tall card next to a low anchor.
+    const tall = placeTipCard({
+      target: { left: 900, top: 700, width: 120, height: 40 },
+      cardW: CARD_W, cardH: 620, vw: 1440, vh: 900,
+    });
+    assert.ok(tall.top + 620 <= 900 - CARD_PAD + 0.01,
+      `a 620px card by a low anchor keeps its footer on screen (bottom ${tall.top + 620} ≤ ${900 - CARD_PAD})`);
+
+    // No anchor → centred, and still fully on screen.
+    const mid = placeTipCard({ target: null, cardW: CARD_W, cardH: 300, vw: 1280, vh: 720 });
+    assert.equal(mid.centered, true, "no target → centred layout");
+  }
+
   // ── botSkillEligible ──
   const fakeSkillById = {
     amp_1: { id: "amp_1", routeId: "electric", prereq: null },
@@ -2207,6 +2334,24 @@ const config = {
   assert.equal(chordFrayAmount(2), 1, "margin 2 = 1");
   assert.equal(chordFrayAmount(3), 2, "big hit = 2");
   assert.equal(chordFrayAmount(5), 2, "bigger = still 2");
+
+  // 🔪 REAR WEDGE — a hit from behind strips one MORE note. The `fromBehind`
+  // argument defaults false, so every legacy call site keeps its old numbers.
+  assert.equal(chordFrayAmount(1, false), 1, "graze, faced = 1");
+  assert.equal(chordFrayAmount(1, true), 1 + REAR_FRAY_BONUS, "graze from behind = graze + bonus");
+  assert.equal(chordFrayAmount(3, true), 2 + REAR_FRAY_BONUS, "big hit from behind = big + bonus");
+
+  // isRearHit geometry. Angles are screen-space atan2 and `diffFn` owns the
+  // wrap, so feed it the real angleDiff rather than pre-normalised values.
+  const diff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2*Math.PI; while (d < -Math.PI) d += 2*Math.PI; return Math.abs(d); };
+  assert.equal(isRearHit(0, 0, diff), false, "attacker dead ahead — not behind");
+  assert.equal(isRearHit(0, Math.PI / 2, diff), false, "attacker on the flank — not behind");
+  assert.equal(isRearHit(0, Math.PI, diff), true, "attacker directly astern — behind");
+  assert.equal(isRearHit(0, REAR_ARC + 0.01, diff), true, "just past the arc — behind");
+  assert.equal(isRearHit(0, REAR_ARC - 0.01, diff), false, "just inside the arc — not behind");
+  // wrap-around: facing ~west, attacker ~east is still a rear hit
+  assert.equal(isRearHit(-Math.PI + 0.05, 0.05, diff), true, "wraps across ±π");
+  assert.equal(isRearHit(null, 1, diff), false, "missing facing degrades to not-behind");
 }
 
 // -- Style detectors + styleCommitDb -- DELETED --------------------------------

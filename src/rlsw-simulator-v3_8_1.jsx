@@ -79,7 +79,7 @@ import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus,
   smashOutcome, decideWinner, thrashDamage, thrashKnockback, thrashFame,
   sonicDamage, sonicKnockback, sonicFame,
-  chordFrayAmount,
+  chordFrayAmount, isRearHit, REAR_ARC, REAR_FRAY_BONUS,
 } from "./engine/systems/combat.js";
 import {
   usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState,
@@ -96,6 +96,7 @@ import {
   botPlanRevoice as _botPlanRevoice,
   botPlanStackCommit as _botPlanStackCommit,
   botPlanMove as _botPlanMove, botRivalsWithin as _botRivalsWithin,
+  botIsBehind, REAR_INTEREST_DIST,
 } from "./engine/policies/bot.js";
 
 
@@ -358,7 +359,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -1864,26 +1865,88 @@ function Game({ gameState, onReturnToLobby }) {
     return () => div.removeEventListener("wheel", handler);
   });
 
-  // ─── 🎓 BEGINNER TIP DEFINITIONS ───────────────────────────────────────────
-  // Each tip = { title, pages: [{ body, anchor? }] }. `anchor` names a HUD
-  // element wearing data-tip-anchor="<name>" — the overlay spotlights it and
-  // draws an arrow to it (falls back to a centered card if it's not on screen).
-  // Content is written against the CURRENT rules — if a system changes, the
-  // tip lies until someone updates it. Don't let the tip lie.
+  // ─── 🎓 BEGINNER TIP DEFINITIONS (spoken by PICKLES) ───────────────────────
+  // Each tip = { title, pages: [ page ] }, where a page is:
+  //   { body, anchor?, emote?, act?, tag?, mood?, gate?, gateHint? }
+  //
+  //   anchor   — a HUD element wearing data-tip-anchor="<name>". The overlay
+  //              spotlights it, and Pickles flies over and AIMS HIS POINT at it.
+  //              Missing/off-screen anchors degrade to a centred card.
+  //   emote    — 'drive'|'sustain'|'flex'|'paid'|'ko'|'gold'|'fame' (see Pickles.jsx)
+  //   act      — 'lunge'|'recoil'|'swing'|'smash'|'travel' — he acts it out
+  //   foe      — true spawns the GRAY PICK he spars with. Only does anything
+  //              alongside act 'lunge' (he rams it) or 'recoil' (it rams him).
+  //   crowd    — true and a crowd of fans runs in and gathers around him.
+  //   tag      — { text, color } floating label, e.g. −DRIVE coming off a hit
+  //   gate     — key in the `tipGates` map. The page WAITS for the player to do
+  //              the thing; the overlay stops eating clicks so they can reach
+  //              the real button, and auto-advances when the gate opens.
+  //   gateHint — what the waiting badge says, e.g. 'HIT ⚔️ DRIVE'
+  //
+  // Content is written against the CURRENT rules — if a system changes, the tip
+  // lies until someone updates it. Don't let the tip lie.
+  //
+  // ✍️ VOICE: Pickles is a guitar pick with opinions. Loud, encouraging, a
+  // little unhinged. He is NOT a manual — every page is one idea, said fast,
+  // pointed at one thing on screen. The overlay types him out at reading speed,
+  // so a page past ~4 lines outstays its welcome. SHOW, don't list: if a page
+  // is about taking a hit, he should take one.
+  //
+  // 📄 ONE IDEA PER PAGE. Pages are free; attention is not. If a page introduces
+  // a thing AND explains what the thing does, split it — the reader needs a beat
+  // to actually look at what the arrow is pointing at before the next noun
+  // arrives. Two ideas welded together with "and" is a page break you haven't
+  // taken yet.
+  //
+  // 🔁 SAY IT ONCE. Each system gets ONE home page, and every other page is
+  // allowed to reference it but not re-teach it. Two symptoms to watch for when
+  // editing: the same `anchor` appearing twice in one tip (he flies back to a
+  // thing he already pointed at, which reads as him losing his place), and a
+  // later tip re-explaining what an earlier one already covered. The welcome tip
+  // is the usual offender — it's the one written before the others existed.
   const BEGINNER_TIPS = {
     welcome: {
-      title: '🎸 Welcome to the Stage',
+      title: '🎸 Welcome to The Stage',
       pages: [
-        { body: 'This glowing badge is your ROOT NOTE — the tonal centre of your turn. Good news: you already know the FULL SCALE, so every note of your Major scale plays clean. You start ready to rock.', anchor: 'root-note' },
-        { body: 'Clean, in-scale notes earn Decibills (DB) into this bar. Fill it and the THEORY TREE opens — new abilities, your pick. Play clean, get paid.', anchor: 'db-bar' },
-        { body: 'In your back pocket: one 🔄 TRANSPOSE card — a one-time swap of your Root Note for any note in your stock. Bad opening hand? That\'s your escape hatch.', anchor: 'mod-cards' },
+        // 🎸 PICKLES INTRODUCES HIMSELF. These pages have to earn his presence —
+        // a floating cartoon that never says who it is reads as an ad. Three
+        // beats, one per page: name, why he's here, how to shut him up.
+        { body: 'Hey! HEY. Down here. Name\'s PICKLES. I\'m a guitar pick. Yes, with a face. Long story, don\'t worry about it.' },
+        // ⚠️ His backstory page ("dropped, stepped on, more gig bags than you've
+        // had hot dinners") lived here and is CUT. Nobody is here for the pick's
+        // history — the name page already establishes who's talking, and the
+        // sooner he's pointing at the HUD the better. Don't reinstate it.
+        // ⚠️ "Now — let's get you on stage" used to close this page, one line
+        // before the next page says "Welcome... to THE STAGE!". Two welcomes in
+        // a row; the second one is the real one, so this page just gets out of
+        // the way. Don't re-add a hand-off line here.
+        { body: 'Had enough of me? "Turn off tips" down there, no hard feelings.' },
+        { body: 'Welcome, intrepid Rock Spirit, to... THE STAGE! On this stage you will harness the Awesome power of Music and face your Rivals head on.' },
+        { body: 'Use your MELODY to — one! MOVE. Every note you play is a hex you travel.', anchor: 'note-stock', act: 'travel' },
+        // 💲 THE ONLY Db PAGE IN THIS TIP. Db used to be explained three times
+        // across the welcome — here, again on the root-note page, and a third
+        // time on a SECOND db-bar page right after it, which flew him back to a
+        // bar he'd already pointed at. All of it is folded into this one beat.
+        { body: 'Two! Gain DECIBILLS (Db). That\'s the currency of learning — Db is what buys you new skills, new tech and better gear.', anchor: 'db-bar', emote: 'paid' },
+        // 🎟️ The fans don't just get named — they run in and gather round him.
+        { body: 'Three! Gain FANS. They\'re out there listening to your tune, and they make everything you earn worth more.', anchor: 'fan-crowd', crowd: true },
+        // 🎸 A ROADMAP LINE, not a lesson. The `chord` tip teaches the stacks
+        // properly the moment the player reaches that step — so this stays at
+        // "these two things exist and here's where they live" and goes no
+        // further. Anything more detailed here gets said twice.
+        { body: 'And use your CHORDS to improve your attack strength (DRIVE) and your defense (SUSTAIN). Totally rad.', anchor: 'chord-stack', emote: 'flex' },
+        { body: 'This glowing badge is your ROOT NOTE — the tonal centre of your turn. It\'s what decides which notes in your pool light up as CLEAN.', anchor: 'root-note' },
+        { body: 'Those lit-up ones are the money notes. Play clean, get paid.', anchor: 'note-stock' },
+        // ⚠️ The TRANSPOSE card used to be introduced here and AGAIN in the
+        // chord tip. It's a rescue tool for a bad hand — meaningless before the
+        // player has met a hand they dislike — so it now lives only in `chord`.
       ],
     },
     skill_tree: {
       title: '🌳 The Theory Tree',
       pages: [
-        { body: 'Your DB bar is FULL — the Theory Tree is open! Pick a SKILL TARGET: scale tones, amps, crew, combat tricks. Choose a route that fits how you want to play. Or panic-pick — everyone does, their first game.' },
-        { body: 'In-scale notes keep feeding DB toward your target — when the bar refills, the skill is yours and you pick the next one. The mini progress bar lives on your spirit card.', anchor: 'db-bar' },
+        { body: 'Your Db bar is FULL — the THEORY TREE is open! Pick a SKILL TARGET: scale tones, amps, crew, combat tricks. Pick a route that fits how you wanna play. Or panic-pick. Everyone does, their first game.' },
+        { body: 'In-scale notes keep feeding Db toward that target — when the bar refills, the skill is yours and you pick the next one. The mini progress bar lives on your spirit card.', anchor: 'db-bar' },
       ],
     },
     // 🎸 B8: the `pivot` tip is GONE along with the step it explained. There is no
@@ -1892,28 +1955,108 @@ function Game({ gameState, onReturnToLobby }) {
     // Discord costs you) now belongs to the chord step, which is where the player
     // actually influences it. Anything queueing showTip('pivot') is a leftover.
     chord: {
-      title: '🎸 Step 1 — Load Your Stacks',
+      title: '🎸 Step 1 — Build Your Stacks',
       pages: [
-        { body: 'These racks are your combat stats, spelled in notes. The DRIVE STACK (⚔️ red) powers your attacks; the SUSTAIN STACK (🛡️ blue) is your armor. Each holds 5 notes — the better the chord they spell, the higher the stat.', anchor: 'chord-stack' },
-        { body: ['Stacks are ammo, not decoration. Landing a hit SPENDS notes off your Drive Stack; getting hit CHIPS notes off your Sustain Stack.', 'You can commit up to 3 notes per turn, split between the two however you like. Keep both fed — an empty rack fights on base stats, which is a polite word for "losing".'], anchor: 'chord-stack' },
-        { body: ['Your Drive Stack also picks the KEY. Stack a major third and the song is MAJOR (bright, +1 DB); stack a minor third and it turns MINOR (dark, +1 Sustain). A power chord has no third, so the mode just holds — that is why rock lives on them.', 'Nobody asks you to declare it. Change the chord, change what plays clean: in-scale notes earn DB, off-scale notes are DISCORD and the audience notices. They always notice.'], anchor: 'derived-mode' },
-        { body: 'Root feels wrong? Your 🔄 Transpose card can swap it. A bad root is a choice; staying on one is a lifestyle.', anchor: 'root-note' },
+        // 🚧 GATED. He points at the button and shuts up until you press it.
+        // Explaining a panel the player has never opened is how tutorials get
+        // skipped — make them open it, THEN talk about what's inside.
+        { body: ['Step one: your combat stats live in here, and I\'m not explaining a thing you can\'t see.',
+                 'Go on. Hit ⚔️ DRIVE. I\'ll wait.'],
+          anchor: 'drive-btn', gate: 'stackOpen', gateHint: 'HIT ⚔️ DRIVE' },
+        // 📄 ONE IDEA PER PAGE. The reveal, the red stack, the blue stack and
+        // the size limit used to be two crammed pages; a player meeting all of
+        // this for the first time can't hold four new nouns at once. He names
+        // ONE thing, then shuts up and lets them look at it.
+        { body: 'THERE it is. These are your combat stats, spelled in notes.', anchor: 'chord-stack' },
+        { body: 'The DRIVE STACK — the red one — powers your attacks. Better chord, harder hit.', anchor: 'chord-stack', emote: 'drive' },
+        { body: 'And the SUSTAIN STACK, the blue one, is your armor. How much can you *SUSTAIN* the hit?', anchor: 'sustain-btn', emote: 'sustain' },
+        { body: `Each one holds ${STACK_CAP_MAX} notes total — ${STACK_CAP_BASE} to start, ${STACK_CAP_MAX - STACK_CAP_BASE} to upgrade. The better the chord they spell, the stronger the effect.`, anchor: 'chord-stack', emote: 'flex' },
+        // 🔴🔵 The little ▲s under the note grid are the whole chord-building
+        // system made visible, and nobody had ever pointed at them. A player who
+        // never learns to read them is guessing at every commit for the rest of
+        // the game — so this page exists purely to say "those mean something".
+        { body: ['See the little arrows under the notes? Those are me doing the theory for you.',
+                 'A 🔴 RED ▲ means that note makes the chord you\'re building STRONGER for Drive. A 🔵 BLUE ▲ means it feeds Sustain. Two arrows? Greedy. Take it.',
+                 'Chase the arrows and you\'ll build better chords without knowing a lick of theory. Learn WHY later — the arrows work now.'], anchor: 'stack-note-grid' },
+        // 🩶 SHOW, DON'T LIST — these two pages are why the gray pick exists.
+        // "Hitting" and "getting hit" are the only ideas in this tip that need a
+        // second body on screen; he rams it, then it rams him.
+        { body: 'Stacks are *ammo*, not decoration. Landing a hit SPENDS notes off your DRIVE stack.',
+          anchor: 'chord-stack', act: 'lunge', foe: true, tag: { text: '−DRIVE', color: '#ff6644' } },
+        { body: 'And getting hit CHIPS notes off your SUSTAIN stack.',
+          anchor: 'chord-stack', act: 'recoil', foe: true, tag: { text: '−SUSTAIN', color: '#44aaff' } },
+        { body: 'You can commit up to 3 notes to your stacks per turn, split between the two however you like.', anchor: 'chord-stack' },
+        { body: 'Don\'t forget to commit here. Unless you wanna Kurt Cobain it.', anchor: 'chord-stack', emote: 'ko' },
+        // ⚠️ The Power Chord aside used to ride along on the end of this page.
+        // It taught a NON-event (nothing happens to the mode), which is a
+        // terrible use of the one page where something does. Deliberately cut —
+        // don't reinstate it.
+        // ⚠️ A second page here ("Nobody asks you to declare it. Change the
+        // chord, change what plays clean.") is CUT. The line above already says
+        // the stack picks the key; restating that nothing else picks it is a
+        // page spent on a non-event. Don't reinstate it.
+        { body: 'Your DRIVE Stack also picks the KEY. (For the music nerds out there —) Stack a MAJ 3rd, and the tune becomes Major (bright, +1 Db). Stack a min 3rd and it turns minor (dark, +1 Sustain — needs an upgrade first!).', anchor: 'derived-mode' },
+        { body: 'Root feels wrong? That\'s what your TRANSPOSE card is for — a one-time swap of your ROOT NOTE for any note in stock. Bad opening hand? Slam that card down, homie.', anchor: 'mod-cards' },
       ],
     },
     melody: {
       title: '🎶 Step 2 — Build Your Melody',
       pages: [
-        { body: 'Now spend your remaining notes on the MELODY LINE: each note = 1 hex of movement (AP), up to your Speed — extras bank for later. In-scale notes also earn DB. Short track = safe but slow. Long track = mobile but you risk discords.', anchor: 'note-stock' },
-        { body: 'RED means a note your ⚔️ Drive chord made legal; BLUE means your 🛡️ Sustain chord did — play it and that stack gets paid. A note flashing between both is claimed by both: you choose who collects, just under the track. Violet slots are discords your unlocks cleaned up; 5th (pink) and 4th (purple) pay bonus DB as endings.', anchor: 'note-stock' },
-        { body: 'The LAST note matters most: it becomes next turn\'s Root and feeds cadences. A gold hex means ending there RESOLVES a cadence — the crowd swells. When it sounds right, hit COMMIT.', anchor: 'commit-track' },
+        { body: 'Now spend your remaining notes on your MELODY LINE. Each note = 1 hex of movement, up to your Spirit\'s Speed stat.', anchor: 'note-stock', act: 'travel' },
+        { body: 'In-scale notes — the ones that light up — also earn Db.', anchor: 'note-stock', emote: 'paid' },
+        { body: ['Do you commit your best Db-earning notes to your Chord Stacks? Do you burn a DISCORD (grayed-out) note just to move farther?',
+                 'These are choices you make while playing. Just don\'t second-guess yourself. Play it HARD!'], anchor: 'note-stock' },
+      ],
+    },
+    // ✳️ CONDITIONAL — only fires the first time a 4th or 5th is actually
+    // sitting in the stock. Naming a colour the player can't see is noise.
+    harmonic_45: {
+      title: '💜 The 4th & the 5th',
+      pages: [
+        { body: ['First time seeing the purple and pink notes? Those are the 4th and the 5th — your harmonic balance notes.',
+                 'End your melody commit on one to earn *even MORE* Db. Purple = some. Pink = even more.',
+                 'These notes bring balance to the Force... of Music.'], anchor: 'interval-legend' },
+      ],
+    },
+    // ✳️ CONDITIONAL — only when a chord-pardoned note is actually on screen.
+    chord_notes: {
+      title: '🔴 Red & Blue Notes',
+      pages: [
+        { body: 'A RED note means that note lines up with your DRIVE chord stack — extra Drive for you. You know what BLUE means.', anchor: 'note-stock', emote: 'drive' },
+        { body: 'A note flashing blue AND red? Only the Rock Gods know.', anchor: 'note-stock', mood: 'wow' },
+      ],
+    },
+    // ✳️ Fires once the track is committed — the moment the last note stops
+    // being a hypothetical and becomes next turn's problem.
+    last_note: {
+      title: '🎯 The Last Note',
+      pages: [
+        { body: 'The LAST note *matters* a whole lot. It becomes next turn\'s ROOT NOTE, and it feeds cadences — how your melody line ends across turns.', anchor: 'commit-track' },
+      ],
+    },
+    // ✳️ CONDITIONAL — only when a gold cadence hex is on the board to look at.
+    gold_hex: {
+      title: '🥇 Gold Hex',
+      pages: [
+        { body: 'A GOLD hex means ending there resolves a cadence. And it looks cool.', anchor: 'commit-track', emote: 'gold' },
+        { body: 'Gold hexes are what the fans are *dying* to hear — commit it LAST for a boost in fans. Unless you maybe want that Db...', anchor: 'fan-crowd', emote: 'gold' },
       ],
     },
     move_act: {
-      title: '🚶 Step 3 — Move & Act',
+      title: '🚶 Step 3 — Move & Act!',
       pages: [
-        { body: 'Track committed — your notes are now AP. MOVE across hexes, FACE to turn (1 AP), and fight. Attacks fire into the cone or beam you\'re FACING — sneaking behind someone isn\'t just rude, it\'s tactics.', anchor: 'actions-bar' },
-        { body: ['Three ways to ruin someone\'s set:', '⚔️ SWING (1 AP) — the melee jab. Cheap, defended, drives your chord into them.', '🎸 SMASH (2 AP) — the haymaker. Undefendable, ignores Sustain, hurls your unused stock... and leaves you Exposed. Commit issues, in weapon form.', '🔊 SONIC (2 AP) — the ranged beam from your amp rig. Less damage, way more Fame. Only fires from inside your RANGE ring.'], anchor: 'actions-bar' },
-        { body: ['🔥 THE RIFF-OFF is the big one, and you don\'t pick it from a menu — you earn it. Aim a Sonic at a rival who is facing straight back down the same beam and the attack escalates into a head-to-head rhythm duel.', 'One catch, and it cuts both ways: BOTH of you must be standing inside your OWN amp\'s range when it fires. A duel needs two live rigs. Catch a rival stranded outside theirs and there\'s no riff-off at all — the beam simply lands, and with no amp to brace against it they defend on a bare d4 instead of a d6.'], anchor: 'actions-bar' },
+        { body: ['Track committed — those notes are now Action Points (AP). MOVE across hexes, FACE to turn (1 AP), and FIGHT!',
+                 'Attacks fire into the cone or beam you are FACING. Sneaking up behind someone isn\'t just rude — it\'s tactics, baby! Hit a rival in the wedge behind them and they lose an EXTRA note off their Sustain stack. Watch for the 🔪 badge while you aim — that\'s a back with nobody home.'], anchor: 'actions-bar' },
+        { body: 'Three ways to RUIN someone\'s set. One — ⚔️ SWING (1 AP): the melee jab. Cheap, defended, literally using your electric instrument as a weapon. Drives your chord into them!',
+          anchor: 'actions-bar', act: 'swing' },
+        { body: 'Two — 🎸 SMASH (2 AP): the haymaker. Undefendable, ignores Sustain, hurls your unused stock... and leaves you exposed. Commitment issues, in weapon form.',
+          anchor: 'actions-bar', act: 'smash' },
+        { body: 'Three — 🔊 SONIC (2 AP): the ranged beam off your amp rig. Less damage, way more Fame and pushback. Only fires from inside your RANGE ring (hover an amp to see it).',
+          anchor: 'actions-bar' },
+        { body: '🔥 THE RIFF-OFF is the big one, and you don\'t pick it from a menu — you EARN it. Aim a Sonic at a rival facing straight back down the same beam and it escalates into a head-to-head rhythm duel. Straight skill.',
+          anchor: 'fame-bar', emote: 'fame' },
+        { body: 'One catch, and it cuts both ways: BOTH of you must be inside your OWN amp\'s range when it fires. A duel needs two live rigs. Catch a rival stranded outside theirs and there\'s no riff-off at all — the beam just lands, and with no amp to brace against it they defend on a bare d4 instead of a d6.',
+          anchor: 'actions-bar' },
         { body: 'Done? Hit END TURN. Your last committed note becomes next turn\'s Root Note — that throwaway discord you ended on is tomorrow\'s tonal center. Plan the ending.', anchor: 'end-turn' },
       ],
     },
@@ -1922,7 +2065,10 @@ function Game({ gameState, onReturnToLobby }) {
       pages: [
         { body: 'A SWING is a Thrash battle: both sides roll a d4 — attacker adds DRIVE, defender adds SUSTAIN. Win and you deal up to 4 Vibe damage. Lose as the attacker and you take a 1-Vibe humiliation tap. It\'s supposed to sting.', anchor: 'stat-knobs' },
         { body: ['A SONIC is the ranged version, and it rolls differently: you throw your whole rig pool and KEEP THE HIGHEST die. The defender answers with a d6 — unless they\'re caught outside their own amp range, in which case they\'ve got no rig to brace with and scramble a d4. Position is damage.', 'Both of you beam-to-beam AND both inside your own range? That\'s not an attack any more. That\'s a RIFF-OFF.'], anchor: 'stat-knobs' },
-        { body: ['The fine print your rival hopes you skip:', 'Your stacks are AMMUNITION. A landed Swing burns 2 notes off your Drive Stack; a Sonic burns 1 win or lose. When a hit lands, the rival\'s Sustain Stack frays too — watch the notes tear off their standee and vanish. That\'s their armour leaving.', 'Swinging also drops your guard: −1 Sustain until your next turn. Thrash pays a flat 1 FP — it\'s for hurting people. For FAME, go Sonic: margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
+        { body: ['The fine print your rival hopes you skip:',
+                 'Your stacks are AMMUNITION. A landed Swing burns 2 notes off your Drive Stack; a Sonic burns 1 win or lose. When a hit lands, the rival\'s Sustain Stack frays too — watch the notes tear off their standee and vanish. That\'s their armour leaving.',
+                 `Land it in the wedge BEHIND them and they shed ${REAR_FRAY_BONUS} more. Facing decides what you can hit AND what you can brace against — it cuts both ways, so mind which way YOUR back is pointing.`,
+                 'Swinging also drops your guard: −1 Sustain until your next turn. Thrash pays a flat 1 FP — it\'s for hurting people. For FAME, go Sonic: margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
       ],
     },
     fans: {
@@ -1935,13 +2081,15 @@ function Game({ gameState, onReturnToLobby }) {
     cadence: {
       title: '🎼 Cadences',
       pages: [
-        { body: 'A CADENCE is a pattern formed by the FINAL notes of your tracks across turns — like V→I, or the full IV→V→I. Land the resolution and the crowd swells: bonus FANS on the spot. The hints in your Note Stock panel show exactly which final note keeps a sequence alive. Take the hint.', anchor: 'note-stock' },
+        { body: 'A CADENCE is a pattern spelled by the FINAL notes of your tracks across turns — V→I, or the full IV→V→I. Land the resolution and the crowd swells: bonus FANS, on the spot. The hints in your Note Stock panel tell you exactly which final note keeps the sequence alive. Take the hint!', anchor: 'note-stock' },
       ],
     },
     riff: {
       title: '🎸 Riff Discovered!',
       pages: [
-        { body: 'That pattern you just played? A legendary RIFF. First discovery writes it into the Riffbook and pays FP; replaying known riffs pays too. More are hidden in the note-space — treat every track as an excavation. Some spirits win with fists; the archaeologists win with licks.', anchor: 'riffbook' },
+        { body: 'Riff discovered! That pattern you just played? A legendary riff. Gotta play \'em all!', anchor: 'riffbook', mood: 'wow' },
+        { body: 'First discovery writes it into the Riffdex (📖 up top) and pays FP. Replaying a known one pays \'aight\' too.', anchor: 'fame-bar', emote: 'fame' },
+        { body: 'Dig out the music — more are hidden in the note space! Play those songs that enjoy freedom in the Public Domain! Not ROCK enough? Tough!', anchor: 'riffbook' },
       ],
     },
     knockdown: {
@@ -1954,16 +2102,21 @@ function Game({ gameState, onReturnToLobby }) {
     fame: {
       title: '⭐ Fame Points (FP)',
       pages: [
-        { body: `FP is the win condition: first to ${fameToWin} takes the crown. This gold bar is the only bar that truly matters — everything else exists to feed it.`, anchor: 'fame-bar' },
-        { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, ✨ holding centre-stage Limelight a full turn. (🎼 Cadences and 🧠 trivia pay FANS, not FP — the crowd is how you amplify the rest.)', 'Every payout is multiplied by your crowd (up to ×2), and if you\'re trailing badly the underdog bonus inflates it up to ×2.5. The comeback is canon.', `But the arena has a volume limit: at most ${FAME_PER_TURN_CAP} FP banked per turn. Spread your legend across the set, not one blowout.`], anchor: 'fame-bar' },
-        { body: `One warning, hotshot: reach ${fameToWin} FP without a comfortable lead and the sky splits open — the ROCK GOD descends as a final boss for EVERYONE. Win big or win together.`, anchor: 'fame-bar' },
+        { body: `We finally got to the system whereby players WIN the game! FAME POINTS — first to ${fameToWin} FP (set by total lives and number of Spirits) becomes LEGEND... unless you dead first.`, anchor: 'fame-bar', emote: 'fame' },
+        { body: 'This gold bar is the only bar that matters — everything else exists to feed it. If you\'re halfway there, better have a good prayer!', anchor: 'fame-bar' },
+        { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, ✨ holding centre-stage Limelight a full turn. (🎼 Cadences and 🧠 trivia pay FANS, not FP — the crowd is how you amplify everything else.)',
+                 'Every payout is multiplied by your crowd (up to ×2), and if you\'re trailing badly the underdog bonus inflates it up to ×2.5. The comeback is canon.',
+                 `But the arena has a volume limit: at most ${FAME_PER_TURN_CAP} FP banked per turn. Spread your legend across the set, not one blowout.`], anchor: 'fame-bar' },
+        { body: [`One final WARNING — reach ${fameToWin} FP without winning comfortably and the ROCK GODS become undecided about your Victory. Probably they just want an excuse to jump in the fray.`,
+                 'Anyways: they become EVERYONE\'S Rival. Your Spirit buddies become your allies. Temporarily. Good luck with that!',
+                 'Sorry to impede your playing. Go get \'em, little Rocker!! 🐯🎸'], anchor: 'fame-bar' },
       ],
     },
     skill_unlock: {
       title: '🌳 Skill Unlocked!',
       pages: [
-        { body: 'New ability unlocked — the DB grind paid off. Skills are permanent: scale tones, amps, crew, combat upgrades, signature moves. Your spirit card wears the new badge; hover it to gloat.' },
-        { body: 'Now pick your NEXT target and keep the loop rolling: in-scale notes → DB → skill → repeat. Spirits who stop building become content in other people\'s highlight reels.', anchor: 'db-bar' },
+        { body: 'New ability unlocked — the Db grind paid off! Skills are permanent: scale tones, amps, crew, combat upgrades, signature moves. Your spirit card wears the new badge. Hover it to gloat.' },
+        { body: 'Now pick your NEXT target and keep the loop rolling: in-scale notes → Db → skill → repeat. Spirits who stop building become content in other people\'s highlight reels.', anchor: 'db-bar' },
       ],
     },
     status_effect: {
@@ -1976,11 +2129,21 @@ function Game({ gameState, onReturnToLobby }) {
     intervals: {
       title: '🎵 Special Intervals',
       pages: [
-        { body: ['Some notes carry more weight than others — the legend up top shows this turn\'s exact notes:', '🔴 TRITONE — maximum dissonance, the devil\'s interval. 💗 5th / 💜 4th — the load-bearing consonances, your Sustain backbone. 💚 MAJOR 3rd — the bright one. 🔵 MINOR 7th — the blues note.', 'The 4th, 5th and octave pay DB when you LAND on them. The coloured ones start out grey and costly; climbing the Theory Tree is what turns them clean.'], anchor: 'interval-legend' },
+        { body: ['Some notes carry more weight than others — this legend names the exact ones in play this turn:',
+                 '🔴 TRITONE — maximum dissonance, the devil\'s interval. 💗 5th / 💜 4th — your harmonic balance notes. 💚 MAJOR 3rd — the bright one. 🔵 MINOR 7th — the blues note.',
+                 'End on the 4th, 5th or the octave and you get PAID in Db. The rest start out grey and costly — climbing the Theory Tree is what turns them clean. Wrong notes become your best notes. That\'s rock, baby.'], anchor: 'interval-legend' },
       ],
     },
     // edge tips — REMOVED (system cut)
   };
+
+  // 🚧 TIP GATES — the conditions a gated tip page waits on. A page with
+  // `gate: 'stackOpen'` sits there pointing at the ⚔️ DRIVE button until this
+  // flips true, then advances itself. Keep these cheap and derived; they're
+  // read on every render of the overlay.
+  const tipGates = useMemo(() => ({
+    stackOpen: stackCommitDest != null,
+  }), [stackCommitDest]);
 
   const activeTipRef = useRef(null);
   useEffect(() => { activeTipRef.current = activeTip; }, [activeTip]);
@@ -1998,7 +2161,22 @@ function Game({ gameState, onReturnToLobby }) {
       if (!pendingTipsRef.current.includes(tipId)) pendingTipsRef.current.push(tipId);
       return;
     }
-    if (activeTipRef.current) return; // don't overwrite a tip already showing
+    // 🐛 THE MISSING-AP-TIP BUG: this used to `return` here, silently DROPPING
+    // any tip that fired while another was on screen. Commit fires three tips in
+    // 300ms — last_note, gold_hex, move_act — so move_act (the one that explains
+    // Action Points, movement and the whole attack menu) was thrown away every
+    // time. It then reappeared at the NEXT commit, by which point the player had
+    // already moved, attacked and ended their turn, and a rival had taken one.
+    // Being told how to move a turn after you worked it out yourself is worse
+    // than not being told.
+    //
+    // Blocked tips now QUEUE instead. The flush effect beside `upgradesPending`
+    // reruns whenever `activeTip` clears, so the queue drains one page-turn at a
+    // time in the order they fired.
+    if (activeTipRef.current) {
+      if (!pendingTipsRef.current.includes(tipId)) pendingTipsRef.current.push(tipId);
+      return;
+    }
     const tip = BEGINNER_TIPS[tipId];
     if (!tip) return;
     setBeginnerTipsSeen(prev => new Set([...prev, tipId]));
@@ -2122,8 +2300,11 @@ function Game({ gameState, onReturnToLobby }) {
     if (upgradesPending > 0 && canAct && !acting?.cpu) showTip('skill_tree');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upgradesPending]);
-  // 🎓 Flush tips that were queued while the Theory Tree modal was up — one at
-  // a time (reruns as each closes), after a beat so the modal animates out.
+  // 🎓 Flush QUEUED tips — one at a time (this reruns as each one closes), after
+  // a beat so the previous card animates out. Two things fill this queue: tips
+  // fired while the Theory Tree modal was up, and tips fired while another tip
+  // was already on screen (see showTip). Without this drain, whichever tip lost
+  // the race was gone for good.
   useEffect(() => {
     if (upgradesPending > 0 || !beginnerEnabled || activeTip) return;
     if (!pendingTipsRef.current.length) return;
@@ -2231,6 +2412,108 @@ function Game({ gameState, onReturnToLobby }) {
   //  reviving for the four surviving Db sources, which are all pure functions of
   //  the provisional track and would preview just as cheaply.)
 
+
+  // ── 🎓 CONDITIONAL TIPS: WHAT'S ACTUALLY ON SCREEN ────────────────────────
+  // These tips name a COLOUR ("the purple and pink ones", "a red note"). Firing
+  // them before that colour exists in the player's stock teaches nothing and
+  // burns the one time the tip will ever show — showTip marks a tip seen
+  // whether or not the player could make sense of it. So each one waits until
+  // its subject is genuinely visible in the live note stock.
+  //
+  // Cheap by construction: a couple of passes over ≤12 notes, only on the human
+  // player's own melody step, and each fires at most once per game.
+  const stockSignature = noteStock.join(',');
+  useEffect(() => {
+    if (!beginnerEnabled || !acting || acting.cpu || !canAct) return;
+    if (turnStep !== 'melody') return;
+    const live = noteStock.filter((_, i) => !usedHas(usedStockIdx, i));
+    if (!live.length) return;
+
+    // 💜/💗 the 4th and the 5th — only once they're both defined and present
+    const fourthPc = pitchIndex(fourthNote), fifthPc = pitchIndex(fifthNote);
+    if (live.some(n => { const pc = pitchIndex(n); return pc === fourthPc || pc === fifthPc; })) {
+      showTip('harmonic_45');
+    }
+    // 🔴/🔵 a note one of the stacks pardoned. Needs a stack to exist at all,
+    // so this naturally holds off until the player has committed some chord.
+    if (live.some(n => noteContextClaim(n) !== null)) showTip('chord_notes');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stockSignature, turnStep, acting?.id, beginnerEnabled, canAct]);
+
+  // ─── 🔴🔵 BEGINNER ARROW GUARANTEE ─────────────────────────────────────────
+  // Pickles has a whole tip page pointing at the little ▲s under the stack-commit
+  // notes — red ▲ = this note strengthens the chord's Drive, blue ▲ = Sustain.
+  // Nothing guaranteed any were on screen when he said it.
+  //
+  // The odds are worse than they look. Both stacks seed with the ROOT ALONE, so
+  // the preview is "root + this note" — a two-note set, and the ONLY two-note set
+  // in CHORD_TEMPLATES is the power chord (0,7). Every other pair falls through to
+  // Tone cluster, which is a DOWNGRADE from a single note, so it shows no arrows
+  // at all. In other words: on turn one, only a 4th or a 5th in the stock can
+  // produce an arrow of either colour. Ten notes drawn from a twelve-note pool
+  // miss both about one game in six — and that beginner meets a tutorial page
+  // confidently describing something that is not on their screen.
+  //
+  // So for beginners we repair the deal rather than the sentence: if nothing in
+  // the live stock would raise Drive, swap a dead note for one that does; same
+  // for Sustain. Deliberately NOT generalised to normal play — a stock that
+  // always contains a 4th or a 5th is a real economy buff (those are the
+  // high-Db balance notes), and that's a game-balance decision, not a tutorial one.
+  //
+  // Derived from the chord tables rather than hardcoding "put a 5th in it", so it
+  // stays true if CHORD_TEMPLATES ever changes.
+  const arrowFixRef = useRef(null);
+  useEffect(() => {
+    if (!beginnerEnabled || !acting || acting.cpu || !canAct) return;
+    if (turnStep !== 'chord') return;
+    if (beginnerTipsSeen.has('chord')) return;   // he's already said his piece
+    const ns = noteStates[acting.id];
+    if (!ns) return;
+    // Guard against re-entry: this effect writes the very stock it reads.
+    const fixKey = `${acting.id}:${stockSignature}`;
+    if (arrowFixRef.current === fixKey) return;
+
+    const stack = (ns.driveStack ?? []).filter(Boolean);
+    if (!stack.length) return;
+    const base = spiritChord(acting.id, stack);
+    const gains = (note) => {
+      const c = spiritChord(acting.id, [...stack, note]);
+      return { d: c.drive - base.drive, s: c.sustain - base.sustain };
+    };
+
+    const stock = ns.noteStock ?? [];
+    const liveIdx = stock.map((_, i) => i).filter(i => !usedHas(ns.usedStockIdx, i));
+    if (!liveIdx.length) return;
+    const hasRed  = liveIdx.some(i => gains(stock[i]).d > 0);
+    const hasBlue = liveIdx.some(i => gains(stock[i]).s > 0);
+    if (hasRed && hasBlue) { arrowFixRef.current = fixKey; return; }
+
+    // Candidates from the spirit's own spelled pool, so a planted note is one
+    // they could legitimately have drawn — right key, right spelling.
+    const pool = getSpelledPool(ns.rootNote ?? rootNote, ns.scaleMode ?? scaleMode);
+    const pickFor = (want) => pool.find(n => gains(n)[want] > 0) ?? null;
+    // Sacrifice the deadest slot: a note that isn't already carrying the arrow
+    // we're not fixing, and (failing that) any live slot at all.
+    const nextStock = [...stock];
+    const spent = new Set();
+    const plant = (want, keep) => {
+      const note = pickFor(want);
+      if (!note) return;
+      const victim = liveIdx.find(i => !spent.has(i) && !(gains(nextStock[i])[keep] > 0))
+                  ?? liveIdx.find(i => !spent.has(i));
+      if (victim == null) return;
+      nextStock[victim] = note;
+      spent.add(victim);
+    };
+    if (!hasRed)  plant('d', 's');
+    if (!hasBlue) plant('s', 'd');
+
+    arrowFixRef.current = fixKey;
+    if (nextStock.some((n, i) => n !== stock[i])) {
+      setNoteField(acting.id, { noteStock: nextStock });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stockSignature, turnStep, acting?.id, beginnerEnabled, canAct]);
 
   // Returns the interval key name for a given note, or null if not an interval note
   function getIntervalKey(note) {
@@ -4075,7 +4358,24 @@ function Game({ gameState, onReturnToLobby }) {
       applyWaNoKoe(melodyLine, chordNotes);
     }
     setTurnStep('move_act'); // advance HUD flow → movement & actions
-    setTimeout(() => showTip('move_act'), 300);
+    // 🎓 The last note only becomes a real idea once it's been committed — up to
+    // that moment it's just "the note on the end". Teach it here, and only then
+    // mention the gold hex, and only if one was actually in play this track.
+    if (!acting?.cpu) {
+      const goldWasLive = (() => {
+        const resolvePcs = new Set(
+          cadenceHints(actingNoteState?.finalsTrail ?? [], actingNoteState?.cadenceCooldowns ?? {})
+            .filter(h => h.resolves).map(h => h.nextPc));
+        return resolvePcs.size > 0;
+      })();
+      setTimeout(() => showTip('last_note'), 250);
+      if (goldWasLive) setTimeout(() => showTip('gold_hex'), 450);
+    }
+    // ⏱️ Fires LAST of the three commit tips on purpose. All three now queue
+    // rather than fight (see showTip), and the queue drains in fire order — so
+    // this delay is what puts move_act after the two tips that are about the
+    // track just committed, rather than cutting in front of them.
+    setTimeout(() => showTip('move_act'), 600);
     // Grant the movement budget — the engine applies the tripped-halving rule.
     // (tripped is still true at commit time; it clears at the START of this spirit's NEXT turn)
     const grantedSteps = dispatch(moveBudgetSet(hexes, !!actingNoteState?.tripped)).turn.moveStepsLeft;
@@ -6289,7 +6589,9 @@ function Game({ gameState, onReturnToLobby }) {
     const crowdStr = (amplify && uncapped !== fp) ? ` (${fp} ×🎤${mult.toFixed(2)} crowd)` : '';
     const capStr   = clipped > 0 ? ` ⛔ capped at ${FAME_PER_TURN_CAP}/turn (${clipped} lost to the noise)` : '';
     addLog(`⭐ ${sp?.name} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${capStr}${reason ? ` — ${reason}` : ''}! (${Math.min(newFame, fameToWin)}/${fameToWin})`);
-    showTip('fame');
+    // 🎓 Explain FP the first time the PLAYER banks some. Firing on a bot's
+    // first point would spend the tip on a moment the player wasn't part of.
+    if (!sp?.cpu) showTip('fame');
     // 🎇 The show grows with the legend — Stage Effects fire at ⭐8/16/24.
     checkStageFxThresholds(ns.fame ?? 0, newFame);
     // 🐛 FIX (2026-07-16): read MY fame from the ENGINE after the dispatch above,
@@ -6960,22 +7262,36 @@ function Game({ gameState, onReturnToLobby }) {
     }
   }
 
+  // ── 🔪 HIT FROM BEHIND? ───────────────────────────────────────────────────
+  // Reads the angle from the DEFENDER to the ATTACKER against the defender's
+  // own facing. Everything past REAR_ARC (120° off) is the unguarded wedge.
+  // Both spirits must be on the board for this to mean anything; a missing hex
+  // degrades to "not behind", which is the safe answer (no free bonus).
+  function isHitFromBehind(attacker, defender) {
+    if (!attacker || !defender) return false;
+    const defHex = HEX_BY_NUM[defender.num];
+    const atkHex = HEX_BY_NUM[attacker.num];
+    if (!defHex || !atkHex || defHex.num === atkHex.num) return false;
+    return isRearHit(defender.facing ?? 0, angleTo(defHex, atkHex), angleDiff);
+  }
+
   // ── 🛡️ CHORD FRAY (post-roll) ─────────────────────────────────────────────
   // The defender's chord frays only when the hit actually LANDS, and the wound
   // scales with the margin: 1 note on a graze (margin ≤ 2), 2 on a big hit
-  // (margin ≥ 3) — see chordFrayAmount. Floored at 1 note remaining — you're
-  // never bled to nothing.
-  // Returns { frayed, destroyed, destroyedDrive }:
+  // (margin ≥ 3) — see chordFrayAmount. A blow from the defender's REAR WEDGE
+  // strips one more: they never got their guard around. Floored at 1 note
+  // remaining — you're never bled to nothing, backstab or not.
+  // Returns { frayed, destroyed, destroyedDrive, fromBehind }:
   //   destroyed      — the voicing was reduced below 2 notes
   //   destroyedDrive — the pre-fray chord's Drive
-  function applyChordFray(targetId, margin) {
-    const none = { frayed: 0, destroyed: false, destroyedDrive: 0 };
+  function applyChordFray(targetId, margin, fromBehind = false) {
+    const none = { frayed: 0, destroyed: false, destroyedDrive: 0, fromBehind: false };
     const defender = spirits.find(s => s.id === targetId);
     const nsD = noteStates[targetId] ?? {};
     const stack = nsD.sustainStack ?? [];
     if (stack.length <= 1 || posing[targetId]) return none;
     const defChord = spiritChord(targetId, stack);
-    const amount = chordFrayAmount(margin);
+    const amount = chordFrayAmount(margin, fromBehind);
     if (amount <= 0) {
       return none;
     }
@@ -6987,11 +7303,13 @@ function Game({ gameState, onReturnToLobby }) {
     // 🎵 A Spirit that got HIT visibly loses Sustain notes off its stack —
     // the glyphs scatter off the standee and disappear.
     showSpentNotes(targetId, lostNotes, 'sustain');
+    if (fromBehind) addLog(`🔪 FROM BEHIND! ${defender?.name} never saw it coming — the guard never came up (−${REAR_FRAY_BONUS} extra Sustain note).`);
     addLog(`🛡️ ${defender?.name}'s chord frays under the blow — ${defChord.name} → ${frayed.name} (🛡️${frayed.sustain}, −${fray} note${fray !== 1 ? 's' : ''})`);
     return {
       frayed: fray,
       destroyed: stack.length >= 2 && frayedNotes.length <= 1,
       destroyedDrive: defChord.drive,
+      fromBehind,
     };
   }
 
@@ -7093,8 +7411,10 @@ function Game({ gameState, onReturnToLobby }) {
     recordBattleTotals(attacker.id, targetId, atkTotal, defTotal, attackerWon); // 📊 scoreboard
 
     // 🛡️ Fray on the verdict — the defender's chord takes real damage only when
-    // the blow lands (margin-scaled; see applyChordFray).
-    if (attackerWon) applyChordFray(targetId, margin);
+    // the blow lands (margin-scaled, +1 from the rear wedge; see applyChordFray).
+    // ⚠️ Measured against the positions as they stand AT THE VERDICT, not when
+    // the swing was declared — the defender may have been shoved since.
+    if (attackerWon) applyChordFray(targetId, margin, isHitFromBehind(attacker, defender));
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on a dropped instrument — Drive -1!`);
     addLog(`⚔️ ${attacker.name} SWINGS at ${defender.name}!${defenderPosing ? ' — caught posing!' : ''}`);
@@ -8372,8 +8692,10 @@ function Game({ gameState, onReturnToLobby }) {
     // (Hydra log removed — Ronin rework)
 
     // 🛡️ Fray on the verdict — the defender's chord takes real damage only when
-    // the beam lands (margin-scaled; see applyChordFray).
-    if (attackerWon) applyChordFray(targetId, margin);
+    // the beam lands (margin-scaled, +1 from the rear wedge; see applyChordFray).
+    // A beam to the back of the head counts: the rear wedge is about which way
+    // the DEFENDER is braced, not how far away the attacker was standing.
+    if (attackerWon) applyChordFray(targetId, margin, isHitFromBehind(attacker, defender));
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on dropped instrument — Drive -1!`);
     addLog(`🔊 ${attacker.name} launches SONIC ATTACK at ${defender.name}! (${diceLabel} keep best vs d${defDieSonic}${actingRig.inRange ? '' : ' · baseline'}${retaliationBlocked ? ' — TARGET OUT OF RIG RANGE, CANNOT RETALIATE!' : ''})`);
@@ -9562,9 +9884,11 @@ function Game({ gameState, onReturnToLobby }) {
 
   function isBot(sp) { return !!sp?.cpu; }
 
-  // Thin wrapper → pure policy function (engine/policies/bot.js)
+  // Thin wrapper → pure policy function (engine/policies/bot.js).
+  // 🔪 `self.num` goes through so the policy can break ties toward a rival
+  // whose back is turned (extra Sustain note on the fray).
   function botPickTarget(candidates, self) {
-    return _botPickTarget(candidates, engineRef.current.noteStates);
+    return _botPickTarget(candidates, engineRef.current.noteStates, self?.num ?? null);
   }
 
   // Thin wrapper → pure policy function (engine/policies/bot.js)
@@ -9902,6 +10226,35 @@ function Game({ gameState, onReturnToLobby }) {
           if (bf) { schedule(aimFace(bf.angle)); return; }
           const cf = botBestFacing(self, 'cone');
           if (cf) { schedule(aimFace(cf.angle)); return; }
+        }
+      }
+
+      // ── 🔪 COVER YOUR BACK ────────────────────────────────────────────────
+      // Nothing left to shoot, but a rival is sitting in our blind wedge and a
+      // hit from there strips an extra Sustain note. Turning costs 1 AP, which
+      // at this point is AP we were about to throw away on End Turn — so this
+      // runs LAST, after every offensive option, and never outbids an attack.
+      //
+      // Gated on the persona's rearFear: the Mosh Lord (0.4) genuinely does not
+      // care who's behind him, and leaving that in makes him read as reckless
+      // rather than as a bot with a bug.
+      {
+        const persona = botPersona(self);
+        const myHex = HEX_BY_NUM[self.num];
+        if (myHex && steps >= 1 && (persona?.move?.rearFear ?? 1) >= 1) {
+          const threat = engineRef.current.spirits
+            .filter(r => !r.knockedOut && r.id !== self.id && HEX_BY_NUM[r.num])
+            .map(r => ({ r, h: HEX_BY_NUM[r.num],
+              d: axialDist(myHex.q, myHex.r, HEX_BY_NUM[r.num].q, HEX_BY_NUM[r.num].r) }))
+            .filter(x => x.d <= REAR_INTEREST_DIST && botIsBehind(self, x.r.num))
+            .sort((a, b) => a.d - b.d)[0];
+          if (threat) {
+            schedule(guard(() => {
+              dispatch(spiritFaced(self.id, angleTo(myHex, threat.h)));
+              addLog(`🔪 ${self.name} feels eyes on the back of their neck — and turns around.`);
+            }));
+            return;
+          }
         }
       }
 
@@ -10671,6 +11024,7 @@ function Game({ gameState, onReturnToLobby }) {
       {activeTip && (
         <BeginnerTipOverlay
           tip={activeTip}
+          gates={tipGates}
           onClose={() => setActiveTip(null)}
           onDisable={() => { setBeginnerEnabled(false); setActiveTip(null); }}
         />
@@ -11945,7 +12299,7 @@ function Game({ gameState, onReturnToLobby }) {
                         </div>
                         {/* Drive stack display */}
                         <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}>
-                          <button className="btn" onClick={()=>setStackCommitDest('drive')} disabled={dFull || budgetLeft <= 0}
+                          <button className="btn" data-tip-anchor="drive-btn" onClick={()=>setStackCommitDest('drive')} disabled={dFull || budgetLeft <= 0}
                             style={{fontSize:10,padding:"4px 10px",fontWeight:700,borderColor: stackCommitDest === 'drive' ? '#ff6644' : '#aa4422',
                               color: stackCommitDest === 'drive' ? '#ff6644' : '#aa6644',
                               background: stackCommitDest === 'drive' ? '#2a0c08' : 'transparent',
@@ -11963,7 +12317,7 @@ function Game({ gameState, onReturnToLobby }) {
                         </div>
                         {/* Sustain stack display */}
                         <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
-                          <button className="btn" onClick={()=>setStackCommitDest('sustain')} disabled={sFull || budgetLeft <= 0}
+                          <button className="btn" data-tip-anchor="sustain-btn" onClick={()=>setStackCommitDest('sustain')} disabled={sFull || budgetLeft <= 0}
                             style={{fontSize:10,padding:"4px 10px",fontWeight:700,borderColor: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
                               color: stackCommitDest === 'sustain' ? '#44aaff' : '#4488aa',
                               background: stackCommitDest === 'sustain' ? '#0a1828' : 'transparent',
@@ -11981,7 +12335,8 @@ function Game({ gameState, onReturnToLobby }) {
                         </div>
                         {/* Note stock for stack editing — visible when a dest is selected and budget remains */}
                         {stackCommitDest && budgetLeft > 0 && (
-                          <div style={{marginBottom:6,padding:"4px 7px",background:"#140a18",border:"1px solid #ff66cc33",borderRadius:4}}>
+                          <div data-tip-anchor="stack-note-grid"
+                            style={{marginBottom:6,padding:"4px 7px",background:"#140a18",border:"1px solid #ff66cc33",borderRadius:4}}>
                             <div style={{display:"flex",flexWrap:"wrap",gap:2}}>
                               {noteStock.map((note,idx)=>{
                                 const used = usedHas(usedStockIdx, idx);
@@ -13797,6 +14152,31 @@ function Game({ gameState, onReturnToLobby }) {
                       stroke={hexStroke(hex)}
                       strokeWidth={hexStrokeW(hex)}
                     />
+                    {/* 🔪 REAR-WEDGE TELL — while you're aiming, any rival whose
+                        unguarded back is turned to you gets a blade badge. The
+                        bonus is worth nothing if the player only learns about
+                        it in the combat log AFTER spending the AP, so it has to
+                        be legible at aim time. Mirrors isHitFromBehind exactly;
+                        if that rule moves, this moves with it. */}
+                    {(() => {
+                      const previewAction = action ?? hoverPreview;
+                      if (!acting || !sp || sp.id === acting.id || sp.knockedOut) return null;
+                      if (!['swing', 'smash', 'sonic', 'blaster'].includes(previewAction)) return null;
+                      if (isHiddenBySmoke(sp)) return null;
+                      const reach = (previewAction === 'sonic' || previewAction === 'blaster')
+                        ? getSonicBeam(acting) : getSwingCone(acting);
+                      if (!reach.has(hex.num) || !isHitFromBehind(acting, sp)) return null;
+                      return (
+                        <g style={{ pointerEvents: 'none' }}>
+                          <circle cx={cx + HS * 0.62} cy={cy - HS * 0.62} r={HS * 0.3}
+                            fill="#1a0510" stroke="#ff3366" strokeWidth={1.5}
+                            style={{ filter: 'drop-shadow(0 0 6px #ff3366)' }}/>
+                          <text x={cx + HS * 0.62} y={cy - HS * 0.62 + HS * 0.13}
+                            textAnchor="middle" fontSize={HS * 0.36} fill="#ff87a8">🔪</text>
+                        </g>
+                      );
+                    })()}
+
                     {/* Turn-start hex pulse. 👤 When the Ronin's turn opens, the
                         double pulses in lockstep with him — a single pulsing
                         standee would point straight at the real body. */}

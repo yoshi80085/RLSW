@@ -461,6 +461,9 @@ function TutSection_DriveSustain() {
           <span style={{color:"#f6ad55"}}> Sonic</span> burns one whether it lands or not. When a hit
           connects, the defender's <span style={{color:"#44aaff"}}>Sustain Stack</span> frays too —
           one note on a graze, two on a solid hit, with a floor of one note surviving.
+          Land the blow in the <span style={{color:"#ff3366"}}>wedge behind them</span> — more than
+          120° off the way they're facing — and it strips one note more: a back that never got its
+          guard up. Facing decides what you can hit <em>and</em> what you can brace against.
         </p>
         <p style={{fontSize:9.5, color:"#a0b8cc", lineHeight:1.6, margin:0}}>
           You'll <em>see</em> every one of them go: spent notes tear off the standee and fade out —
