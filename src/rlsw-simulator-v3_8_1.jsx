@@ -1922,6 +1922,15 @@ function Game({ gameState, onReturnToLobby }) {
         // the way. Don't re-add a hand-off line here.
         { body: 'Had enough of me? "Turn off tips" down there, no hard feelings.' },
         { body: 'Welcome, intrepid Rock Spirit, to... THE STAGE! On this stage you will harness the Awesome power of Music and face your Rivals head on.' },
+        // 🏆 THE GOAL, SAID OUT LOUD, EARLY. Both of these are real win
+        // conditions in the engine — decideWinner crowns the last spirit standing
+        // (survivors.length === 1), and hitting fameToHere with a big enough lead
+        // crowns outright. A player who doesn't know what they're aiming at
+        // optimises for nothing. The `fame` tip covers the FP race in detail
+        // later; this page is just "here's what winning looks like".
+        { body: ['TWO ways to win this thing. ONE: knock your Rivals out. Take every life they\'ve got and be the last Spirit standing.'] },
+        { body: [`TWO: win the FAME war. First to ${fameToWin} FAME POINTS is crowned a LEGEND — no punching required.`,
+                 'Most Spirits end up doing a bit of both. Pick a lane, or don\'t. I\'m a pick, not a cop.'], anchor: 'fame-bar', emote: 'fame' },
         { body: 'Use your MELODY to — one! MOVE. Every note you play is a hex you travel.', anchor: 'note-stock', act: 'travel' },
         // 💲 THE ONLY Db PAGE IN THIS TIP. Db used to be explained three times
         // across the welcome — here, again on the root-note page, and a third
@@ -1936,7 +1945,10 @@ function Game({ gameState, onReturnToLobby }) {
         // further. Anything more detailed here gets said twice.
         { body: 'And use your CHORDS to improve your attack strength (DRIVE) and your defense (SUSTAIN). Totally rad.', anchor: 'chord-stack', emote: 'flex' },
         { body: 'This glowing badge is your ROOT NOTE — the tonal centre of your turn. It\'s what decides which notes in your pool light up as CLEAN.', anchor: 'root-note' },
-        { body: 'Those lit-up ones are the money notes. Play clean, get paid.', anchor: 'note-stock' },
+        // ⚠️ A page here ("Those lit-up ones are the money notes. Play clean,
+        // get paid.") is CUT — the Db page above already says clean notes pay,
+        // and the root-note page already says which ones are clean. It was the
+        // punchline to a joke told twice. Don't reinstate it.
         // ⚠️ The TRANSPOSE card used to be introduced here and AGAIN in the
         // chord tip. It's a rescue tool for a bad hand — meaningless before the
         // player has met a hand they dislike — so it now lives only in `chord`.
@@ -1968,8 +1980,12 @@ function Game({ gameState, onReturnToLobby }) {
         // this for the first time can't hold four new nouns at once. He names
         // ONE thing, then shuts up and lets them look at it.
         { body: 'THERE it is. These are your combat stats, spelled in notes.', anchor: 'chord-stack' },
-        { body: 'The DRIVE STACK — the red one — powers your attacks. Better chord, harder hit.', anchor: 'chord-stack', emote: 'drive' },
-        { body: 'And the SUSTAIN STACK, the blue one, is your armor. How much can you *SUSTAIN* the hit?', anchor: 'sustain-btn', emote: 'sustain' },
+        // 🎯 These two point at the RED HALF and the BLUE HALF of the panel, not
+        // at the panel (which spotlights both and singles out neither) and not at
+        // the commit buttons over in the note-stock panel (a different part of the
+        // screen from the thing being named). He flies up to the stack itself.
+        { body: 'The DRIVE STACK — the red one — powers your attacks. Better chord, harder hit.', anchor: 'drive-stack', emote: 'drive' },
+        { body: 'And the SUSTAIN STACK, the blue one, is your armor. How much can you *SUSTAIN* the hit?', anchor: 'sustain-stack', emote: 'sustain' },
         { body: `Each one holds ${STACK_CAP_MAX} notes total — ${STACK_CAP_BASE} to start, ${STACK_CAP_MAX - STACK_CAP_BASE} to upgrade. The better the chord they spell, the stronger the effect.`, anchor: 'chord-stack', emote: 'flex' },
         // 🔴🔵 The little ▲s under the note grid are the whole chord-building
         // system made visible, and nobody had ever pointed at them. A player who
@@ -2004,7 +2020,14 @@ function Game({ gameState, onReturnToLobby }) {
       pages: [
         { body: 'Now spend your remaining notes on your MELODY LINE. Each note = 1 hex of movement, up to your Spirit\'s Speed stat.', anchor: 'note-stock', act: 'travel' },
         { body: 'In-scale notes — the ones that light up — also earn Db.', anchor: 'note-stock', emote: 'paid' },
-        { body: ['Do you commit your best Db-earning notes to your Chord Stacks? Do you burn a DISCORD (grayed-out) note just to move farther?',
+        // ⚡ The discord COST was never stated anywhere in the tips — the next
+        // page asks whether burning one is worth it, which is not a question you
+        // can answer without a price. Matches discordPenaltyFor(): a grace of 1,
+        // then −1 Db per extra, floored at −3. Keep these numbers in step with
+        // DISCORD_GRACE / DISCORD_FLOOR in music/context.js.
+        { body: ['The greyed-out ones are DISCORD notes. They still move you — they just fight the key, and that costs you Db.',
+                 'Your first discord each turn is FREE. Every one after that is −1 Db off what the track pays, down to −3. Play three wrong notes and you\'ve worked a whole turn for nothing.'], anchor: 'note-stock' },
+        { body: ['Do you commit your best Db-earning notes to your Chord Stacks? Do you burn a discord just to move farther?',
                  'These are choices you make while playing. Just don\'t second-guess yourself. Play it HARD!'], anchor: 'note-stock' },
       ],
     },
@@ -2102,7 +2125,7 @@ function Game({ gameState, onReturnToLobby }) {
     fame: {
       title: '⭐ Fame Points (FP)',
       pages: [
-        { body: `We finally got to the system whereby players WIN the game! FAME POINTS — first to ${fameToWin} FP (set by total lives and number of Spirits) becomes LEGEND... unless you dead first.`, anchor: 'fame-bar', emote: 'fame' },
+        { body: `Remember the two ways to win? This is the second one. FAME POINTS — first to ${fameToWin} FP (set by total lives and number of Spirits) becomes LEGEND... unless somebody knocks the last life out of you first.`, anchor: 'fame-bar', emote: 'fame' },
         { body: 'This gold bar is the only bar that matters — everything else exists to feed it. If you\'re halfway there, better have a good prayer!', anchor: 'fame-bar' },
         { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, ✨ holding centre-stage Limelight a full turn. (🎼 Cadences and 🧠 trivia pay FANS, not FP — the crowd is how you amplify everything else.)',
                  'Every payout is multiplied by your crowd (up to ×2), and if you\'re trailing badly the underdog bonus inflates it up to ×2.5. The comeback is canon.',
@@ -13465,7 +13488,12 @@ function Game({ gameState, onReturnToLobby }) {
                     backdropFilter:"blur(4px)",
                     boxShadow:"0 2px 12px #00000088",
                     minWidth:44}}>
-                  {/* Drive Stack */}
+                  {/* 🎓 Drive Stack — wrapped so Pickles can point at the RED
+                      HALF specifically. He used to anchor the whole panel for
+                      "the DRIVE STACK is the red one", which spotlit both stacks
+                      at once and pointed at neither. Same for sustain below. */}
+                  <div data-tip-anchor="drive-stack"
+                    style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
                   <div className="stitle" style={{marginBottom:0,color:"#ff6644",fontSize:6,letterSpacing:1.5}}>DRIVE</div>
                   {/* B0b: every slot renders, but slots past the earned cap show as
                       LOCKED (🔒) so the gate reads as progression rather than as a
@@ -13494,7 +13522,10 @@ function Game({ gameState, onReturnToLobby }) {
                     );
                   })}
                   <span style={{fontSize:7,fontWeight:700,color:"#ff6644"}}>⚔️{dCh.drive}</span>
+                  </div>
                   {/* Sustain Stack */}
+                  <div data-tip-anchor="sustain-stack"
+                    style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
                   <div className="stitle" style={{marginBottom:0,marginTop:4,color:"#44aaff",fontSize:6,letterSpacing:1.5}}>SUSTAIN</div>
                   {Array.from({length:STACK_CAP_MAX}).map((_,i) => {
                     const note = sStack[i];
@@ -13520,6 +13551,7 @@ function Game({ gameState, onReturnToLobby }) {
                     );
                   })}
                   <span style={{fontSize:7,fontWeight:700,color:"#4499ff"}}>🛡️{sCh.sustain}</span>
+                  </div>
                   {/* Stack commit buttons */}
                   <button className="btn"
                     style={{fontSize:8,padding:"3px 7px",fontWeight:700,

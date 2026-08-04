@@ -324,10 +324,16 @@ export function Pickles({
           42%  { transform: translateX(26%) scale(1.12, 0.9); }     /* strike  */
           100% { transform: translateX(0) scale(1); }
         }
+        /* ⚠️ PURELY PASSIVE. This used to swing back through translateX(-10%)
+           rotate(-4deg) after the hit, which read as Pickles RETALIATING — wrong
+           on a page whose whole point is that getting hit is something that
+           happens TO you. He now takes it, rides the knockback, and settles back
+           to his stance without ever crossing back past centre. */
         @keyframes pickles-recoil {
           0%   { transform: translateX(0) rotate(0deg); }
           18%  { transform: translateX(24%) rotate(9deg); }         /* took it */
-          48%  { transform: translateX(-10%) rotate(-4deg); }
+          46%  { transform: translateX(16%) rotate(6deg); }         /* absorbs   */
+          78%  { transform: translateX(4%) rotate(1.5deg); }        /* recovers  */
           100% { transform: translateX(0) rotate(0deg); }
         }
         @keyframes pickles-swing {
