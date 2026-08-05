@@ -29,7 +29,14 @@ export function hexInSmoke(hexNum, radius) {
 // `rand` is an injectable 0..1 PRNG (Phase 6b — same treatment as data/): it
 // defaults to Math.random so any legacy call behaves as before; the engine
 // passes its seeded rng so patterns are replay-deterministic.
-export function rollLaserBeams(count, rand = Math.random) {
+// `avoidNums` (2026-08-05 hazard rule): hexes a beam must NOT cross, i.e. the
+// ones Spirits are standing on right now. A hazard never STARTS on a player —
+// you can walk into a beam or be shoved into one, but a beam will not switch on
+// underneath you. Lines that clip an occupied hex are filtered out of the draw;
+// if that leaves fewer clean lines than `count` (a crowded board), the clean
+// ones are taken first and the remainder is topped up from the rest, so the
+// show always goes on.
+export function rollLaserBeams(count, rand = Math.random, avoidNums = []) {
   const byR = {}, byS = {};
   ALL_HEXES.forEach(h => {
     (byR[h.r] ??= []).push(h);
@@ -46,10 +53,20 @@ export function rollLaserBeams(count, rand = Math.random) {
   };
   collect('r', byR);
   collect('s', byS);
+  const avoid = new Set(avoidNums);
+  const clean = lines.filter(l => !l.hexes.some(n => avoid.has(n)));
+  const dirty = lines.filter(l => l.hexes.some(n => avoid.has(n)));
   const picked = [];
-  const pool = [...lines];
+  // Draw clean lines first, then (only if the board is too crowded to fill the
+  // pattern) fall back to the rest. Both pools are drawn with the same rng call
+  // shape, so the cursor advances identically either way.
+  const pool = [...clean];
   while (picked.length < count && pool.length) {
     picked.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
+  }
+  const spare = [...dirty];
+  while (picked.length < count && spare.length) {
+    picked.push(spare.splice(Math.floor(rand() * spare.length), 1)[0]);
   }
   return picked;
 }

@@ -19,15 +19,22 @@ import {
   SMOKE_START_RADIUS, SMOKE_ROUNDS,
   LASER_ROUNDS, LASER_BEAM_COUNT,
   PYRO_WAVES, PYRO_WAVE_HEXES,
-  ANIMATRONIC_COUNT, ANIMATRONIC_TURNS,
+  ANIMATRONIC_COUNT, ANIMATRONIC_ROUNDS,
 } from "../../data/stageEffects.js";
 import {
-  rollLaserBeams, rollPyroHexes, spawnAnimatronics, animatronicStep, hexInBeams,
+  rollLaserBeams, rollPyroHexes, spawnAnimatronics, animatronicStep,
 } from "../../board/stageFx.js";
 
-// Living spirits standing in the given beam pattern (for the zap report).
-function spiritsInBeams(state, beams) {
-  return state.spirits.filter(sp => !sp.knockedOut && hexInBeams(sp.num, beams)).map(sp => sp.id);
+// ── HAZARDS NEVER START ON A PLAYER (2026-08-05) ─────────────────────────────
+// Every hazard that picks hexes (laser beams, pyro charges, animatronic spawns)
+// is rolled AWAY from the hexes Spirits currently occupy. You can still walk
+// into one, or be knocked into one — being shoved onto a live beam is a good
+// death — but nothing switches on under your feet while you stand still, and
+// nothing can hit a player who has not had a turn yet. `spiritsInBeams` and the
+// `zapped` reports it fed are gone with the rule: there is no longer any moment
+// where a beam appearing deals damage.
+function occupiedHexes(state) {
+  return state.spirits.filter(sp => !sp.knockedOut).map(sp => sp.num);
 }
 
 /**
@@ -61,19 +68,25 @@ export function applyStageFxActivated(state, { fxId, occupied = [] }, rng) {
   const fx = state.stageFx;
   if (!fx) return state;
   let next = { ...fx, lastActivation: { fxId, zapped: [] } };
+  // `occupied` from the client covers Spirits + amps + the Ronin's shadow; fold
+  // in the engine's own spirit hexes so the no-start-on-a-player rule holds even
+  // if a caller forgets to pass them.
+  const clear = [...new Set([...occupied, ...occupiedHexes(state)])];
   if (fxId === "smoke_machine") {
     next.smoke = { radius: SMOKE_START_RADIUS, roundsLeft: SMOKE_ROUNDS };
   } else if (fxId === "laser_show") {
-    const beams = rollLaserBeams(LASER_BEAM_COUNT, rng);
+    // Beams route around everyone standing on the board — the show opens on
+    // empty stage, and only a Spirit's own step (or a shove) puts them in it.
+    const beams = rollLaserBeams(LASER_BEAM_COUNT, rng, clear);
     next.laser = { beams, roundsLeft: LASER_ROUNDS };
-    next.lastActivation = { fxId, zapped: spiritsInBeams(state, beams) };
+    next.lastActivation = { fxId, zapped: [] };
   } else if (fxId === "pyrotechnics") {
-    next.pyro = { phase: "arming", hexes: rollPyroHexes(PYRO_WAVE_HEXES[0] ?? 5, [], rng), wave: 1 };
+    next.pyro = { phase: "arming", hexes: rollPyroHexes(PYRO_WAVE_HEXES[0] ?? 5, clear, rng), wave: 1 };
   } else if (fxId === "animatronics") {
     // Deterministic keys — Date.now() keys would diverge replays. Unique per
     // game: the deck never repeats an effect, so one spawn wave ever.
     next.animatronics = spawnAnimatronics(
-      ANIMATRONIC_COUNT, ANIMATRONIC_TURNS, occupied, rng, `anim-t${state.turn?.count ?? 0}`);
+      ANIMATRONIC_COUNT, ANIMATRONIC_ROUNDS, occupied, rng, `anim-t${state.turn?.count ?? 0}`);
   } else {
     return { ...state, stageFx: { ...fx, lastActivation: null } };
   }
@@ -81,8 +94,16 @@ export function applyStageFxActivated(state, { fxId, occupied = [] }, rng) {
 }
 
 /**
- * STAGE_FX_TURN_TICKED — the per-TURN cadence (end of every player's turn),
- * rules verbatim from the old client tickStageFxTurn:
+ * STAGE_FX_TURN_TICKED — the pyro/animatronic cadence.
+ *
+ * ⏱️ 2026-08-05: this now fires ONCE PER ROUND, not once per player-turn. The
+ * action keeps its name so old replay logs still resolve; only the client's
+ * call site moved (endTurn's roundCompleted block). The reason is the whole
+ * point of the round clock: on a 4-player board this used to advance four
+ * times before the last player had moved once, so a Spirit could be telegraphed
+ * at, erupted on and slammed by an animatronic without ever taking a turn.
+ *
+ * Rules otherwise verbatim from the old client tickStageFxTurn:
  *   🎆 pyro: arming → ERUPTS (report who's caught); spent flames re-arm the
  *      next wave (finale bigger) or burn out after PYRO_WAVES.
  *   🤖 animatronics: each takes one step toward the nearest living Spirit
@@ -113,7 +134,12 @@ export function applyStageFxTurnTicked(state, _action, rng) {
       pyro = null;
     } else {
       const wave = pyro.wave + 1;
-      const hexes = rollPyroHexes(PYRO_WAVE_HEXES[wave - 1] ?? 5, pyro.hexes, rng);
+      // Fresh charges avoid last wave's hexes AND everyone standing on the
+      // board — a charge must never prime under a Spirit's feet. Anyone caught
+      // in the eruption below therefore walked onto a glowing hex (or was
+      // pushed onto one) with a full round of warning.
+      const hexes = rollPyroHexes(
+        PYRO_WAVE_HEXES[wave - 1] ?? 5, [...pyro.hexes, ...occupiedHexes(state)], rng);
       pyroReport = { event: "rearmed", wave, hexes };
       pyro = { phase: "arming", hexes, wave };
     }
@@ -180,9 +206,11 @@ export function applyStageFxRoundTicked(state, _action, rng) {
       laserReport = { event: "off" };
       laser = null;
     } else {
-      const beams = rollLaserBeams(LASER_BEAM_COUNT, rng);
+      // Re-pattern around the current bodies — the beams sweep to where nobody
+      // is standing, so a re-pattern is a movement problem, never free damage.
+      const beams = rollLaserBeams(LASER_BEAM_COUNT, rng, occupiedHexes(state));
       laser = { beams, roundsLeft: left };
-      laserReport = { event: "repatterned", left, zapped: spiritsInBeams(state, beams) };
+      laserReport = { event: "repatterned", left, zapped: [] };
     }
   }
   return {

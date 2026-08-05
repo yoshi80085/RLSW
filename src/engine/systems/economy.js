@@ -231,10 +231,13 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     shadowIllusion:   null,
     lastMoveBudget:   0,       // 👤 steps granted at the last melody commit
 
-    // 🎸 Cursed Shamisen: { hex, range, stage, hunting, touched[] }
-    // stage 1 → 2 rings · stage 2 → 3 rings · stage 3+ → 3 rings frozen and it
-    // hunts. `touched` is the ids its melody reached on the most recent tick,
-    // which drives the lingering 🎶 mark on those Spirits' standees.
+    // 🎸 Cursed Shamisen: { hex, range, roundsLeft, touched[] }
+    // 2026-08-05 rework: fixed 2-ring aura, 3 ROUNDS of life, and it only
+    // touches Spirits whose scaleMode is 'minor' — wandering one hex a round
+    // toward the nearest of them, standing still when the board is all major.
+    // (The old stage/hunting growth ladder is gone.) `touched` is the ids its
+    // melody reached on the most recent tick, which drives the lingering 🎶
+    // mark on those Spirits' standees.
     cursedShamisen:   null,
     waNoKoeBuffs:     [],      // 🎵 Wa no Koe: [{ stat:'drive'|'sustain', turnsLeft }]
     discordUnlocks:  [],

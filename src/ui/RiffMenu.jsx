@@ -20,6 +20,22 @@ const RIFF_DIFF_SHORT = {
   rookie: 'INFLUENCER', gigging: 'GIGGING', shredder: 'SHREDDER', virtuoso: 'VIRTUOSO',
 };
 
+// ─── 🔒 PLAYTEST GATE ────────────────────────────────────────────────────────
+// Which rooms are actually ready to be sat in front of a tester. Anything not
+// listed here still EXISTS and still works — it's just hidden behind a lock so
+// a playtest session can't wander into a half-finished mode and spend its
+// feedback on bugs we already know about.
+//
+// This is a testing gate, NOT a design decision. To reopen a room, add its id
+// back to the set — that's the whole change, nothing else is conditional on it.
+// To close the gate entirely once everything is ready, set it to `null`.
+const RIFF_MODES_UNLOCKED = new Set(['fretboard']);
+const RIFF_LOCK_NOTE = 'IN THE WORKSHOP';
+
+function isLocked(id) {
+  return RIFF_MODES_UNLOCKED != null && !RIFF_MODES_UNLOCKED.has(id);
+}
+
 export default function RiffMenu({ onPractice, onBack }) {
   const [riffDiff, setRiffDiff] = useState(() => {
     try {
@@ -33,16 +49,18 @@ export default function RiffMenu({ onPractice, onBack }) {
     try { localStorage.setItem('rlsw.riffDifficulty', k); } catch { /* storage disabled — the choice just won't persist */ }
   }
 
+  // Fretboard Recon leads now — it's the one room that's open, and a locked
+  // item sitting above the only playable one reads as a broken menu.
   const ITEMS = [
-    {
-      id: 'riff', label: 'RIFF PRACTICE', icon: '🎸', color: '#f6ad55',
-      blurb: 'The riff-off highway, endless. Notes fall, you play them, the tier climbs.',
-      go: () => onPractice({ mode: 'riff', diff: riffDiff }),
-    },
     {
       id: 'fretboard', label: 'FRETBOARD RECON', icon: '🗺️', color: '#19e6ff',
       blurb: 'Find any note anywhere on the neck. The groundwork everything else sits on.',
       go: () => onPractice({ mode: 'fretboard' }),
+    },
+    {
+      id: 'riff', label: 'RIFF PRACTICE', icon: '🎸', color: '#f6ad55',
+      blurb: 'The riff-off highway, endless. Notes fall, you play them, the tier climbs.',
+      go: () => onPractice({ mode: 'riff', diff: riffDiff }),
     },
     {
       id: 'discord', label: 'DISCORD COACH', icon: '🎩', color: '#ff2d95',
@@ -54,16 +72,30 @@ export default function RiffMenu({ onPractice, onBack }) {
       blurb: 'Sound like the greats. Their moves, broken down and put in your hands.',
       go: () => onPractice({ mode: 'legend' }),
     },
-  ];
+  ].map(it => isLocked(it.id)
+    ? { ...it, locked: true, go: () => {}, blurb: `${it.blurb}  —  🔒 ${RIFF_LOCK_NOTE}: not ready for testing yet.` }
+    : it);
 
   const [cursor, setCursor] = useState(0);
+
+  // 🔒 Keyboard nav STEPS OVER locked rooms rather than stopping on them. A
+  // cursor that parks on a dead entry and eats the Enter key feels like the menu
+  // is broken; skipping means the arrows only ever land somewhere that works.
+  // (Mouse hover can still rest on a locked row so its blurb explains the lock.)
+  const step = (from, dir) => {
+    for (let i = 1; i <= ITEMS.length; i++) {
+      const idx = (from + dir * i + ITEMS.length * i) % ITEMS.length;
+      if (!ITEMS[idx]?.locked) return idx;
+    }
+    return from; // everything locked — don't trap the cursor in an infinite hop
+  };
 
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); onBack(); }
-      else if (e.key === 'ArrowDown' || e.key === 's') { e.preventDefault(); setCursor(c => (c + 1) % ITEMS.length); }
-      else if (e.key === 'ArrowUp' || e.key === 'w') { e.preventDefault(); setCursor(c => (c - 1 + ITEMS.length) % ITEMS.length); }
-      else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ITEMS[cursor]?.go(); }
+      else if (e.key === 'ArrowDown' || e.key === 's') { e.preventDefault(); setCursor(c => step(c, 1)); }
+      else if (e.key === 'ArrowUp' || e.key === 'w') { e.preventDefault(); setCursor(c => step(c, -1)); }
+      else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!ITEMS[cursor]?.locked) ITEMS[cursor]?.go(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -130,34 +162,47 @@ export default function RiffMenu({ onPractice, onBack }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {ITEMS.map((it, i) => {
-            const on = i === cursor;
+            const on   = i === cursor;
+            const lock = !!it.locked;
             return (
               <div key={it.id}
                 onMouseEnter={() => setCursor(i)}
-                onClick={it.go}
+                onClick={() => { if (!lock) it.go(); }}
                 title={it.blurb}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '9px 12px 9px 6px', borderRadius: 6, cursor: 'pointer',
-                  background: on ? `${it.color}0e` : 'transparent',
-                  borderLeft: `3px solid ${on ? it.color : 'transparent'}`,
+                  padding: '9px 12px 9px 6px', borderRadius: 6,
+                  cursor: lock ? 'not-allowed' : 'pointer',
+                  // A locked room still lights up faintly on hover — it has to
+                  // acknowledge the pointer or it reads as an unresponsive UI
+                  // rather than a closed door.
+                  background: on ? (lock ? '#ffffff08' : `${it.color}0e`) : 'transparent',
+                  borderLeft: `3px solid ${on ? (lock ? '#3a4a5a' : it.color) : 'transparent'}`,
                   transition: 'background .16s, border-color .16s',
                   animation: `rm-in 500ms ease-out ${260 + i * 80}ms both`,
                 }}>
                 <span style={{
-                  width: 16, textAlign: 'center', flexShrink: 0, color: it.color, fontSize: 15,
-                  opacity: on ? 1 : 0,
-                  animation: on ? 'rm-cursor 1s ease-in-out infinite' : 'none',
-                  filter: `drop-shadow(0 0 6px ${it.color})`,
-                }}>▶</span>
-                <span style={{ fontSize: 17, flexShrink: 0 }}>{it.icon}</span>
+                  width: 16, textAlign: 'center', flexShrink: 0,
+                  color: lock ? '#4a5a6a' : it.color, fontSize: lock ? 12 : 15,
+                  opacity: lock ? (on ? 0.9 : 0.5) : (on ? 1 : 0),
+                  animation: (on && !lock) ? 'rm-cursor 1s ease-in-out infinite' : 'none',
+                  filter: lock ? 'none' : `drop-shadow(0 0 6px ${it.color})`,
+                }}>{lock ? '🔒' : '▶'}</span>
+                <span style={{ fontSize: 17, flexShrink: 0, filter: lock ? 'grayscale(1)' : 'none', opacity: lock ? 0.45 : 1 }}>{it.icon}</span>
                 <span style={{
                   fontFamily: "'Saira Stencil One', sans-serif",
                   fontSize: 'clamp(13px, 1.55vw, 19px)', letterSpacing: 2.5,
-                  color: on ? it.color : '#a8c2da',
-                  textShadow: on ? `0 0 16px ${it.color}88` : 'none',
+                  color: lock ? '#5a6a7a' : (on ? it.color : '#a8c2da'),
+                  textShadow: (on && !lock) ? `0 0 16px ${it.color}88` : 'none',
                   transition: 'color .16s, text-shadow .16s', whiteSpace: 'nowrap',
                 }}>{it.label}</span>
+                {lock && (
+                  <span style={{
+                    fontSize: 7.5, letterSpacing: 1.6, color: '#4a6a8a',
+                    border: '1px solid #24384e', borderRadius: 3, padding: '2px 6px',
+                    flexShrink: 0, whiteSpace: 'nowrap',
+                  }}>{RIFF_LOCK_NOTE}</span>
+                )}
               </div>
             );
           })}
@@ -176,8 +221,15 @@ export default function RiffMenu({ onPractice, onBack }) {
           marginTop: 'clamp(16px, 3vh, 30px)', paddingTop: 16, borderTop: '1px solid #1a2a40',
           animation: 'rm-in 600ms ease-out 720ms both',
         }}>
+          {/* Kept live even while Riff Practice is locked: this is the same
+              persisted key the IN-MATCH riff-off reads, so it's still the only
+              place to tune duel difficulty for a playtest. The label changes to
+              say so — otherwise it looks like a setting for a room you can't
+              get into. */}
           <div style={{ fontSize: 8, color: '#3a5a7a', letterSpacing: 2, marginBottom: 8 }}>
-            🎸 DIFFICULTY — also applies to riff-offs in a real match
+            🎸 DIFFICULTY — {isLocked('riff')
+              ? 'applies to riff-offs in a real match'
+              : 'also applies to riff-offs in a real match'}
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {Object.entries(RIFF_FALL_DIFFICULTY).map(([k, p]) => {

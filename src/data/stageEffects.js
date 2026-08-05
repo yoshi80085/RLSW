@@ -45,14 +45,21 @@ export const LASER_BEAM_COUNT = 3;    // diagonal beams per pattern
 export const LASER_DAMAGE     = 1;    // Vibe lost crossing / caught in a beam
 
 // ── 🎆 PYROTECHNICS ──────────────────────────────────────────────────────────
-export const PYRO_WAVES      = 3;         // arming→eruption cycles
-export const PYRO_WAVE_HEXES = [5, 5, 8]; // hexes per wave — the finale is bigger
+// ⏱️ ROUND CLOCK (2026-08-05): the arm→erupt cycle now advances once per ROUND
+// instead of once per player-turn, so every Spirit gets a move between the
+// glow and the bang. Waves cut 3→2 to keep the show about the same LENGTH in
+// real time — at 4 players 3 waves on the round clock ran ~6 revolutions.
+export const PYRO_WAVES      = 2;         // arming→eruption cycles (one step per round)
+export const PYRO_WAVE_HEXES = [5, 8];    // hexes per wave — the finale is bigger
 export const PYRO_DAMAGE     = 1;         // Vibe lost in an eruption
-export const PYRO_BURN_TURNS = 2;         // Burn status applied (reuses the Burn tick)
+export const PYRO_BURN_TURNS = 2;         // Burn status applied (reuses the Burn tick — the victim's OWN turns)
 
 // ── 🤖 ANIMATRONICS ──────────────────────────────────────────────────────────
+// ⏱️ ROUND CLOCK: they take one step per ROUND now, not per player-turn. 5
+// player-turns ≈ 2 revolutions at 3 players, so the life expectancy is
+// restated as rounds rather than left to quietly triple.
+export const ANIMATRONIC_ROUNDS = 2;  // rounds before they power down
 export const ANIMATRONIC_COUNT  = 2;  // robots spawned (on outer edge hexes)
-export const ANIMATRONIC_TURNS  = 5;  // player-turns before they power down
 export const ANIMATRONIC_DAMAGE = 1;  // Vibe dealt slamming a Spirit in the way
 
 // Fisher–Yates shuffle of the effect ids — drawn top-down, one per threshold.

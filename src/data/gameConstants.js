@@ -71,7 +71,33 @@ export const CAMERA_ZOOM_MS  = 620;          // push-in tween length; impact rum
 // -- LIMELIGHT SYSTEM --
 export const LIMELIGHT_HEX    = 56;   // centre stage hex
 export const LIMELIGHT_TO_WIN = 3;    // (legacy -- instant Limelight win removed; kept for overlay refs)
-export const LIMELIGHT_FAME   = 1;    // Fame paid (x crowd) for holding the centre Limelight a full turn
+export const LIMELIGHT_FAME   = 1;    // (legacy) the old flat payout for merely STANDING on the centre.
+                                      // Superseded by the Pose economy below -- kept only so old
+                                      // saves / overlay refs don't explode. Nothing grants it now.
+
+// -- STRIKE A POSE (2026-08 Limelight rework) --------------------------------
+// Standing on the centre hex pays NOTHING. The Limelight only pays a Spirit who
+// STRIKES A POSE on it, and a pose is a defenceless stance: a posing Spirit
+// rolls NO defence die (engine/systems/combat.js -- defTotal is a flat 0), so
+// anyone who reaches them lands automatically and hard.
+//
+// Why the escalating payout: a flat rate makes the centre a place you either
+// always want or never want. An escalating one makes it a place you have to
+// SURVIVE to profit from -- round one in the middle is barely worth the risk,
+// round four is a Spirit the whole table has to deal with. The count is
+// CUMULATIVE and never resets (getting shoved off costs you the tempo, not the
+// reputation you built), so the threat level of a repeat poser is legible: the
+// HUD shows exactly how dangerous the middle has made them.
+export const POSE_FP_STEP = 1;   // FP added per pose round survived
+export const POSE_FP_MAX  = 4;   // ...capped here. Matches FAME_PER_TURN_CAP -- a
+                                 // maxed poser earns a whole turn's FP ceiling by
+                                 // standing still with their guard down.
+// A pose costs a Sustain note per round -- posturing is not playing defence, and
+// the armour audibly decays while you hold it. Camping the middle therefore
+// erodes the exact stat that keeps you alive there. A Spirit with an empty
+// Sustain Stack may STILL pose: they just do it with nothing between them and
+// the next swing. Their funeral.
+export const POSE_SUSTAIN_COST = 1;
 // FP-per-life scales with player count: fewer players → more FP per life.
 // 2P → 8, 3P → 7, 4P → 6.  fameToWin = startingLives × fpPerLife(playerCount).
 export function fpPerLife(playerCount) { return Math.max(5, 10 - playerCount); }
@@ -92,7 +118,11 @@ export const UNDERDOG_MAX_MULT       = 2.5;  // hard ceiling on the comeback mul
 export const TOKEN_MAX        = 6;    // max board mini-goal tokens on the board at once (all Lost Chords now)
 export const TOKEN_BASE_POOL  = 10;   // target total tokens regardless of player count — fewer players → more starting tokens
 export const TOKEN_PER_ROUND_BASE = 2; // tokens scattered per round with a full roster (scales up as players drop)
-export const TOKEN_DRIFT_TURNS   = 3; // uncollected Lost Chords relocate after this many spirit-turns
+// ⏱️ ROUND CLOCK (2026-08-05): shared board timers below are counted in ROUNDS
+// (one full revolution of the turn order), not in individual player-turns.
+// Values are restated to keep roughly the same real-time length they had on the
+// old per-turn cadence at 3–4 players — see NETCODE/PENDING notes.
+export const TOKEN_DRIFT_TURNS   = 1; // rounds an uncollected Lost Chord sits before it drifts (was 3 spirit-turns)
 
 // -- FAN ECONOMY --
 // Fans never convert to Fame -- they MULTIPLY the Fame every deed is worth.
@@ -117,7 +147,7 @@ export const FAN_DEFECT_TO_VICTOR = 2;    // of the fled casuals, how many swing
 
 // -- EVENT SPACES --
 export const EVENT_HEX_COUNT     = 1;  // one marquee hex live at a time
-export const EVENT_RESPAWN_TURNS = 3;  // turns after a trigger before a new marquee lights up
+export const EVENT_RESPAWN_TURNS = 1;  // ROUNDS after a trigger before a new marquee lights up (was 3 spirit-turns)
 
 // -- FLAMING DISC / GROUPIE --
 export const FLAMING_DISC_COUNT  = 6;
@@ -138,8 +168,28 @@ export const FLAMING_DISC_ROUNDS = 2;
 // (Electric route) unlocks an alternative chord-assist payout instead.
 export const CHARGE_ZONE_COUNT       = 2;  // fixed lightning hexes on the board
 export const CHARGE_ZONE_BOOST_TURNS = 2;  // charge duration (holder's turns) on pickup
-export const CHARGE_ZONE_COOLDOWN    = 4;  // turns (any spirit's) before a drained zone relights
+export const CHARGE_ZONE_COOLDOWN    = 2;  // ROUNDS before a drained zone relights (was 4 spirit-turns)
 export const CHARGE_FLOOR_BONUS      = 2;  // floor charge: attack die results below 1+2 read as 3
+
+// -- 🎸💥 THE SMASH (2026-08-05 rework) --
+// The all-out front. You spend EVERYTHING that makes you dangerous — every
+// unused note in your stock, your ENTIRE Drive stack, and a note off your
+// Sustain — and in return the payout is fixed, undefendable, and aimed at the
+// rival's defence rather than their health bar: 2 Vibe, 2 notes torn off their
+// Sustain stack, 2 hexes of knockback.
+//
+// WHY FLAT: the old Smash scaled with notes thrown, which made it a numbers
+// puzzle ("hoard stock, then dump") rather than a decision. Paying with your
+// chord makes the decision the interesting part — you are trading your next
+// turn's offence for a guaranteed hole in their defence, right now.
+// The old `smashOutcome` scaling survives in engine/systems/combat.js because
+// Intergalactic 0's BLASTER OF RA still uses it — that skill spends the same
+// stock but hits a whole beam, so it keeps the throw-count curve.
+export const SMASH_AP_COST       = 2;  // Action Points (also ends all remaining movement)
+export const SMASH_DAMAGE        = 2;  // Vibe, undefendable
+export const SMASH_SUSTAIN_STRIP = 2;  // notes torn off the rival's Sustain stack
+export const SMASH_KNOCKBACK     = 2;  // hexes the rival is hurled
+export const SMASH_SELF_SUSTAIN  = 1;  // notes it costs YOU off your own Sustain stack
 
 // -- THRASH / SONIC ATTACK SPLIT --
 // Thrash (melee) — d4-based, Vibe-focused, minimal push/FP.

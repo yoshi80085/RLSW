@@ -46,7 +46,7 @@ import { applyGodActed } from "./systems/rockGod.js";
 import {
   shuffledStageFxDeck, STAGE_FX_IDS,
   SMOKE_START_RADIUS, SMOKE_ROUNDS, LASER_ROUNDS, LASER_BEAM_COUNT,
-  PYRO_WAVES, PYRO_WAVE_HEXES, ANIMATRONIC_COUNT, ANIMATRONIC_TURNS,
+  PYRO_WAVES, PYRO_WAVE_HEXES, ANIMATRONIC_COUNT, ANIMATRONIC_ROUNDS,
 } from "../data/stageEffects.js";
 import {
   LIMELIGHT_HEX, UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT,
@@ -176,18 +176,51 @@ const config = {
   const endedCold = applyAction(onLime, turnEnded());
   assert.equal(endedCold.turn.lastReport.limelightHeld, false);
 
-  // round completion: 2 alive spirits → every 2nd turn
+  // ── ROUND CLOCK (2026-08-05) ────────────────────────────────────────────
+  // A round is one full revolution, tracked by ANCHOR (turn.roundStarterId),
+  // not by `count % aliveCount` — the old arithmetic drifted the moment a
+  // Spirit was eliminated or a turn was skipped, which is exactly when the
+  // board hazards riding on this clock matter most.
   const t1 = applyAction(s0, turnEnded());
   assert.equal(t1.turn.lastReport.roundCompleted, false);
+  assert.equal(t1.turn.round, 1, "still round 1 mid-revolution");
   const t2 = applyAction(t1, turnEnded());
-  assert.equal(t2.turn.lastReport.roundCompleted, true);
+  assert.equal(t2.turn.lastReport.roundCompleted, true, "play came back to the anchor");
   assert.equal(t2.turn.count, 2);
+  assert.equal(t2.turn.round, 2, "round counter advances on completion");
+  assert.equal(t2.turn.roundStarterId, "wildaxe", "anchor holds across rounds");
+  // …and it keeps its footing over several revolutions
+  let many = t2;
+  for (let r = 3; r <= 5; r++) {
+    many = applyAction(applyAction(many, turnEnded()), turnEnded());
+    assert.equal(many.turn.round, r, `round ${r} counted`);
+  }
 
   // skip: queue advances, counter does NOT
   const sk = applyAction(s0, turnSkipped());
   assert.equal(sk.acting, "vera");
   assert.equal(sk.turn.count, 0);
   assert.equal(sk.turn.lastReport.type, "turnSkipped");
+
+  // A skip that closes the revolution BANKS the round rather than dropping it:
+  // no end-of-turn ticks run on a skip, so the next real turn end spends it.
+  {
+    const afterSkip = applyAction(t1, turnSkipped());   // vera skips → back to wildaxe
+    assert.equal(afterSkip.turn.lastReport.roundCompleted, false, "a skip reports no round");
+    assert.equal(afterSkip.turn.roundPending, true, "…but banks it");
+    const spent = applyAction(afterSkip, turnEnded());
+    assert.equal(spent.turn.lastReport.roundCompleted, true, "next real turn end spends the banked round");
+    assert.equal(spent.turn.roundPending, false, "bank cleared");
+  }
+
+  // Losing the anchor closes the round and re-anchors — otherwise eliminating
+  // the Spirit who opened the revolution would freeze the board clock forever.
+  {
+    const gone = applyAction(s0, spiritEliminated("wildaxe"));
+    const after = applyAction(gone, turnEnded());
+    assert.equal(after.turn.lastReport.roundCompleted, true, "elimination closes the round");
+    assert.equal(after.turn.roundStarterId, after.acting, "re-anchored on whoever acts next");
+  }
 
   // full mini-turn replay determinism
   const log = [gameInit(), turnStarted("wildaxe"), moveBudgetSet(4),
@@ -964,8 +997,9 @@ const config = {
     assert.deepEqual(st.stageFx.lastRoundTick.smoke, { event: "cleared" }, "clear reported");
   }
 
-  // 🔺 LASERS — seeded pattern; zap report lists spirits standing in beams;
-  // re-patterns per round then powers down
+  // 🔺 LASERS — seeded pattern that routes AROUND standing spirits (2026-08-05
+  // hazard rule: a hazard never starts on a player); re-patterns per round,
+  // then powers down. Nothing is damaged at roll time — beams bite on ENTRY.
   {
     const on = applyAction(s0, stageFxActivated("laser_show"));
     const lz = on.stageFx.laser;
@@ -974,18 +1008,30 @@ const config = {
     assert.ok(on.rng.cursor > s0.rng.cursor, "beam pattern rolls on engine rng");
     assert.deepEqual(applyAction(s0, stageFxActivated("laser_show")).stageFx.laser, lz,
       "same seed → same pattern");
-    // plant a spirit ON a beam hex → the fresh-pattern zap must report them
+    const standingOn = (state, beams) => state.spirits
+      .filter(sp => !sp.knockedOut)
+      .filter(sp => beams.some(b => b.hexes.includes(sp.num)))
+      .map(sp => sp.id);
+    assert.deepEqual(standingOn(on, lz.beams), [], "fresh beams thread around every spirit");
+    assert.deepEqual(on.stageFx.lastActivation.zapped, [],
+      "activation zaps nobody — standing still is never punished");
+    // Plant a spirit ON a hex the unplanted pattern used: the pattern rolled
+    // WITH them there must route elsewhere rather than switch on beneath them.
     const beamHex = lz.beams[0].hexes[0];
     const planted = applyAction(seed(makeInitialState(config, 4242), { wildaxe: beamHex, vera: 40 }),
       stageFxActivated("laser_show"));
-    assert.ok(planted.stageFx.lastActivation.zapped.includes("wildaxe"),
-      "spirit standing in a fresh beam is reported zapped");
-    // re-pattern: new beams, one less round, zap re-checked; then off
+    assert.deepEqual(standingOn(planted, planted.stageFx.laser.beams), [],
+      "a beam will not open under a spirit's feet");
+    assert.deepEqual(planted.stageFx.lastActivation.zapped, [], "no zap report at all");
+    // re-pattern: new beams, one less round, still clear of everyone; then off
     let st = on;
     for (let r = 1; r < LASER_ROUNDS; r++) {
       st = applyAction(st, stageFxRoundTicked());
       assert.equal(st.stageFx.lastRoundTick.laser.event, "repatterned", `round ${r}: re-patterns`);
       assert.equal(st.stageFx.laser.roundsLeft, LASER_ROUNDS - r, "clock ticks down");
+      assert.deepEqual(standingOn(st, st.stageFx.laser.beams), [],
+        `round ${r}: the sweep avoids everyone standing`);
+      assert.deepEqual(st.stageFx.lastRoundTick.laser.zapped, [], "re-pattern zaps nobody");
     }
     st = applyAction(st, stageFxRoundTicked());
     assert.equal(st.stageFx.laser, null, "laser rig powers down");
@@ -1033,17 +1079,17 @@ const config = {
     assert.ok(bots.every(b => /^anim-t\d+-\d+$/.test(b.key)), "keys are deterministic (no Date.now)");
     assert.ok(bots.every(b => EDGE_HEX_NUMS.has(b.num) && !occupied.includes(b.num)),
       "bots spawn on free edge hexes");   // EDGE_HEX_NUMS is a Set
-    assert.ok(bots.every(b => b.turnsLeft === ANIMATRONIC_TURNS), "full clocks");
+    assert.ok(bots.every(b => b.turnsLeft === ANIMATRONIC_ROUNDS), "full clocks");
     assert.deepEqual(applyAction(s0, stageFxActivated("animatronics", occupied)).stageFx.animatronics,
       bots, "same seed → same spawn");
     // one tick: every surviving bot moved-or-lunged and its clock ticked down
     const t1 = applyAction(on, stageFxTurnTicked());
     assert.equal(t1.stageFx.animatronics.length, ANIMATRONIC_COUNT, "no expiry yet");
-    assert.ok(t1.stageFx.animatronics.every(b => b.turnsLeft === ANIMATRONIC_TURNS - 1),
+    assert.ok(t1.stageFx.animatronics.every(b => b.turnsLeft === ANIMATRONIC_ROUNDS - 1),
       "clocks tick");
     // run the clock out — bots expire and are removed
     let st = on;
-    for (let i = 0; i < ANIMATRONIC_TURNS; i++) st = applyAction(st, stageFxTurnTicked());
+    for (let i = 0; i < ANIMATRONIC_ROUNDS; i++) st = applyAction(st, stageFxTurnTicked());
     assert.equal(st.stageFx.animatronics.length, 0, "bots wind down after their turns");
     assert.equal(st.stageFx.lastTurnTick.anim.expired, ANIMATRONIC_COUNT, "expiry reported");
     // a bot adjacent to a spirit lunges: plant vera next to a bot's spawn hex

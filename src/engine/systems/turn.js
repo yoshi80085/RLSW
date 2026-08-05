@@ -41,6 +41,23 @@ export function applyBeatsSpent(state, { n = 0, all = false, exhaustToken = fals
   };
 }
 
+/**
+ * The round clock. A ROUND is one full revolution of the turn order — see the
+ * `turn.round` block in state.js for why this is anchored rather than counted.
+ * Returns the next anchor and whether play has come back round to it.
+ *
+ * Elimination closes a round: if the Spirit who opened the revolution is gone
+ * from the queue, the rotation they anchored no longer exists, so we bank the
+ * round and re-anchor on whoever acts next. (Without this, losing the anchor
+ * would mean the board never ticked again.)
+ */
+function rollRound(state, turnQueue, nextId) {
+  const anchor = state.turn.roundStarterId ?? state.turnQueue[0] ?? nextId;
+  if (turnQueue.length === 0) return { starter: anchor, completed: false };
+  if (!turnQueue.includes(anchor)) return { starter: nextId, completed: true };
+  return { starter: anchor, completed: nextId != null && nextId === anchor };
+}
+
 /** TURN_ENDED — limelight verdict, counters, per-turn resets, queue advance. */
 export function applyTurnEnded(state) {
   const endedId = state.acting;
@@ -49,12 +66,15 @@ export function applyTurnEnded(state) {
     !!sp && sp.num === LIMELIGHT_HEX && !!state.turn.startedOnLimelight[endedId];
 
   const count = state.turn.count + 1;
-  const alive = state.spirits.filter(s => !s.knockedOut).length;
-  const roundCompleted = alive > 0 && count % alive === 0;
 
   const turnQueue = advanceTurnQueue(
     state.turnQueue, state.spirits, state.config.mode, state.config.teams);
   const nextId = turnQueue[0] ?? null;
+
+  const { starter, completed } = rollRound(state, turnQueue, nextId);
+  // A round banked by a skipped turn is spent here.
+  const roundCompleted = completed || state.turn.roundPending;
+  const round = state.turn.round + (roundCompleted ? 1 : 0);
 
   return {
     ...state,
@@ -63,10 +83,13 @@ export function applyTurnEnded(state) {
     turn: {
       ...state.turn,
       count,
+      round,
+      roundStarterId: starter,
+      roundPending: false,
       moveStepsLeft: 0,
       actionTokenUsed: false,
       lastMove: null,
-      lastReport: { type: "turnEnded", endedId, nextId, limelightHeld, roundCompleted },
+      lastReport: { type: "turnEnded", endedId, nextId, limelightHeld, roundCompleted, round },
     },
   };
 }
@@ -80,12 +103,18 @@ export function applyTurnSkipped(state) {
   const turnQueue = advanceTurnQueue(
     state.turnQueue, state.spirits, state.config.mode, state.config.teams);
   const nextId = turnQueue[0] ?? null;
+  // The skip still consumed a slot in the rotation. If that closes the round,
+  // BANK it (roundPending) instead of reporting it — no end-of-turn ticks run
+  // on a skip, so the board effects are spent by the next real turn end.
+  const { starter, completed } = rollRound(state, turnQueue, nextId);
   return {
     ...state,
     turnQueue,
     acting: nextId,
     turn: {
       ...state.turn,
+      roundStarterId: starter,
+      roundPending: state.turn.roundPending || completed,
       lastMove: null,
       lastReport: { type: "turnSkipped", endedId, nextId, limelightHeld: false, roundCompleted: false },
     },

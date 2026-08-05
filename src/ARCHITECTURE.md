@@ -299,6 +299,10 @@ Each takes everything via props. They hold **no game logic**.
 | Character stats / balance | `data/spirits.js` |
 | Gameplay tuning constants (fan caps, amp range, fame target, etc.) | `data/gameConstants.js` |
 | Win conditions (fame target, limelight turns) | `data/gameConstants.js` → `FAME_TO_WIN`, `LIMELIGHT_TO_WIN` |
+| ✨ Limelight / Strike a Pose economy (payout ramp, Sustain cost) | `data/gameConstants.js` → `POSE_FP_STEP` / `POSE_FP_MAX` / `POSE_SUSTAIN_COST` + `Game.togglePose` + `Game.poseTierFor` (the ONE place the next-round payout is computed) + the faucet in `Game.endTurn`. Standing on hex 56 pays nothing; only a pose does, and only on a `report.limelightHeld` turn. `LIMELIGHT_FAME` is legacy and no longer granted. |
+| 🔒 Which Riff Mode rooms are open to playtesters | `ui/RiffMenu.jsx` → `RIFF_MODES_UNLOCKED` (a Set of item ids; `null` disables the gate entirely) |
+| 🎨 Board colour schemes (Stage Skins) | `board/stageSkins.js` → `STAGE_SKINS`. Plate = CSS `hue-rotate` (angles are MEASURED against the real art — see the file header before adding one), outline = `feColorMatrix` luminance→exact colour. Purely local + cosmetic; deliberately NOT engine state, so players in one match can run different skins. |
+| 🗺️ Fretboard Recon levels / Live Set length / rank thresholds | `ui/FretboardRecon.jsx` → `TIER_CONFIG`, `LIVE_SET_LENGTH`, `RANKS`, `scoreSet()`, `recommendFor()`. ⚠️ The level NEVER changes mid-run — the old streak promote/fumble demote is cut on purpose (header explains why). Recommendations are advisory only. |
 | Scales, note spelling, intervals | `music/notes.js` |
 | Legendary riffs (add/edit) | `music/riffLibrary.js` |
 | Cadence objectives | `music/cadence.js` → `CADENCE_OBJECTIVES` |
@@ -316,7 +320,10 @@ Each takes everything via props. They hold **no game logic**.
 | Skill tree / upgrades | `SKILL_TREE`, `DISCORD_UPGRADE_TIERS` (main file, module-level) |
 | 🎵 Styles (earning lanes: Shred runs / Groove patterns / Flair flavors) | `data/styles.js` (`STYLE_DEFS`, `styleOf`, `styleDef`); `music/cadence.js` (detectors: `detectStyleRun`, `detectContourTurn`, `detectCellRepeat`, `detectResolvedDiscords`); `engine/systems/economy.js` (`styleCommitDb`); `engine/systems/combat.js` (`chordFrayAmount`); see `STYLE_SYSTEM_HANDOFF.md` for the full spec |
 | 🎇 Stage Effects (thresholds, damage, durations) | `data/stageEffects.js` (tuning) + `STAGE EFFECTS SYSTEM` in `Game` (logic) + `board/stageFx.js` (geometry) + `ui/StageFXLayer.jsx` (visuals). NOTE: the old skill-based stage effects (laser_show/stage_light/fog_machine/pyrotechnics) are RETIRED — `getBattleSkillMods` now returns permanently-false flags so downstream battle/overlay code stays inert. |
-| 🤘 Rock God boss (trigger margin, HP, timer, attacks, taunts) | `data/rockGods.js` (all tuning) + `ROCK GOD SYSTEM` in `Game` (engine) + `board/rockGodFx.js` (geometry) + `ui/RockGodLayer.jsx` (visuals). New gods: add a full def to `ROCK_GODS`, list it in `ROCK_GOD_IMPLEMENTED`, and extend `applyGodActed` (engine/systems/rockGod.js) + the `rockGodAct` report renderer with its attack ids. |
+| ⏱️ What ticks per TURN vs per ROUND | `engine/systems/turn.js` (`rollRound`, the anchor) + `Game.endTurn`'s `report.roundCompleted` block — see "The round clock" below |
+| 🎸💥 The Smash (cost + payout) | `data/gameConstants.js` → `SMASH_*` + `Game.resolveSmash`. Flat 2/2/2 for your whole Drive stack; `smashOutcome` in `engine/systems/combat.js` is now Blaster-of-Ra-only |
+| 🎸 Cursed Shamisen (minor-key haunt) | `Game.resolveCursedShamisen` / `tickCursedShamisen` / `shamisenWanderStep` (`SHAM_RINGS`, `SHAM_ROUNDS`) — ticks once per ROUND, only touches Spirits whose `scaleMode` is `'minor'` |
+| 🤘 Rock God boss (trigger margin, HP, timer, attacks, taunts) | `data/rockGods.js` (all tuning — incl. `ROCK_GOD_DIFFICULTY`, the wall-clock pace) + `ROCK GOD SYSTEM` in `Game` (engine) + `board/rockGodFx.js` (geometry) + `ui/RockGodLayer.jsx` (visuals). New gods: add a full def to `ROCK_GODS`, list it in `ROCK_GOD_IMPLEMENTED`, and extend `applyGodActed` (engine/systems/rockGod.js) + the `rockGodAct` report renderer with its attack ids. |
 | Event spaces | `data/events.js` + `EVENT SPACES SYSTEM` in `Game` |
 | Trivia questions | `data/trivia.js` |
 | Riff-off feel (length, timing window) | `RIFF_LEN`, `RIFF_NOTE_WINDOW` (main file, module-level) |
@@ -341,6 +348,42 @@ In short:
 - **New detectors** in `music/cadence.js`: `detectStyleRun`, `detectContourTurn`, `detectCellRepeat`, `detectResolvedDiscords` — pure, unit-tested.
 - **Chord fray** moved to `engine/systems/combat.js` as `chordFrayAmount` (pure margin math, stance-neutral).
 - **Action bar** restored to three buttons: Swing (1 AP) / Sonic (2 AP) / Smash (2 AP). All stance skill routes, `requiresStance` / `stancesKnown` gating, `Game.switchStance`, and the Groove counter are gone.
+
+## ⏱️ The round clock (2026-08-05) — what "a turn" means now
+
+A **TURN** is one player acting. A **ROUND** is one full revolution of the turn
+order. Shared board state runs on the ROUND; personal state runs on the TURN.
+The rule of thumb: *if it can hurt or help someone who isn't acting, it waits
+for the round.*
+
+- **Round detection lives in `engine/systems/turn.js`** (`rollRound`) and is
+  anchored, not counted: `turn.roundStarterId` is whoever opened the revolution,
+  and the round closes when play comes back to them. The old
+  `count % aliveCount` drifted on every knockout and every skipped turn.
+  `turn.round` is the round counter; `turn.roundPending` banks a round that a
+  SKIPPED turn closed (skips run no ticks, so the next real turn end spends it);
+  eliminating the anchor closes the round and re-anchors on the next actor.
+- **On the ROUND clock** (`endTurn`'s `report.roundCompleted` block): stage FX
+  (smoke, lasers, pyro arm→erupt, animatronic steps), spotlight move, Lost Chord
+  scatter + drift, Disco Inferno decay, marquee respawn, charge-zone cooldowns,
+  board-card respawn, the Cursed Shamisen.
+- **Still on the TURN clock** (the acting Spirit's own end of turn): debuff
+  ticks, Burn, the fan economy, the spotlight heal, poison-slime decay (seeded
+  with the living-Spirit count, so it already means "one revolution").
+- **Durations were RESTATED, not just relabelled** — see the ⏱️ comments in
+  `data/stageEffects.js` and `data/gameConstants.js`. e.g. animatronics 5
+  player-turns → 2 rounds, pyro 3 waves → 2.
+- **The Rock God is the deliberate exception.** He is not board weather: he acts
+  on WALL-CLOCK time (`ROCK_GOD_DIFFICULTY.actSeconds`, set from the lobby dial
+  and carried in the game config so a room agrees), driven only by the client
+  that controls the acting Spirit. Dawdle and he swings again.
+
+**Hazards never start on a player.** Laser beams and pyro charges are rolled
+around occupied hexes (`rollLaserBeams(count, rng, avoidNums)` /
+`rollPyroHexes(count, excludeNums, rng)`), and nothing deals damage at
+roll time — the activation/re-pattern "zap" is gone. Hazards bite on ENTRY
+only, via `checkStageFxHex`, which fires on a step OR a knockback: walking in
+costs you, and shoving a rival onto a live beam still works.
 
 ## Conventions
 

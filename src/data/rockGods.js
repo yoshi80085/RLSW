@@ -12,9 +12,14 @@
 //   • PvP is off: Swing/Sonic/Smash only reach the God.
 //   • Your committed chord's Drive = direct damage; damage = FP, 1:1
 //     (granted with amplify=false — the crowd is already screaming).
-//   • The God acts at the END of every player turn; big attacks telegraph
-//     one turn ahead (glowing hexes — same language as pyro arming).
-//   • Human turns are TIMED; expiry = the God's Vengeance + turn force-ends.
+//   • ⏱️ The God acts on a WALL CLOCK, not on the turn order (2026-08-05):
+//     every ROCK_GOD_DIFFICULTY.actSeconds of real time he answers — an armed
+//     telegraph lands or a new one opens. Big attacks still telegraph one beat
+//     ahead (glowing hexes — same language as pyro arming). Everything else on
+//     the board moved onto the round clock; he is the exception, because the
+//     finale is supposed to have you on the back foot.
+//   • Human turns are TIMED (ROCK_GOD_DIFFICULTY.turnSeconds); expiry = the
+//     God's Vengeance + turn force-ends.
 //   • God at 0 HP → killing blow pays ROCK_GOD_KILL_BLOW_FP, then the FP
 //     leader is crowned. All Spirits KO'd → the God keeps the crown.
 // =============================================================================
@@ -22,9 +27,38 @@
 // ── Engine tuning ────────────────────────────────────────────────────────────
 export const ROCK_GOD_RUNAWAY_LEAD   = 3;   // lead at FAME_TO_WIN that skips the boss — the finale is for CLOSE races only (was 5; lowered in the 2026-07-16 balance pass)
 export const ROCK_GOD_HP_PER_SPIRIT  = 20;  // HP pool = this × living Spirits
-export const ROCK_GOD_TIMER_SECONDS  = 45;  // human turn clock during the boss
+export const ROCK_GOD_TIMER_SECONDS  = 45;  // fallback human turn clock (see ROCK_GOD_DIFFICULTY)
 export const ROCK_GOD_VENGEANCE_DMG  = 2;   // Vibe cost of letting the clock die
 export const ROCK_GOD_KILL_BLOW_FP   = 3;   // Fame flourish for the final hit
+
+// ── ⏱️ THE GOD RUNS ON A CLOCK, NOT ON THE TURN ORDER (2026-08-05) ───────────
+// Everything else on the board moved onto the ROUND clock so nobody gets
+// bombarded before they've moved. The God is the deliberate exception: he is
+// not board weather, he's a boss, and the whole point of the finale is that
+// the Spirits are on the back foot and have to be QUICK. So he acts on
+// WALL-CLOCK time — every `actSeconds` of real time that the acting player
+// spends thinking, the God takes another swing. Dither and he'll take two.
+//
+// `turnSeconds` is the existing per-turn vengeance clock, kept on the same
+// difficulty dial so one setting describes the whole fight.
+//
+// ⚠️ ONLINE: only the client that controls the acting Spirit runs this timer
+// (it dispatches engine actions, and two machines firing it would double the
+// God's turns). The setting therefore rides in the game config from the host's
+// lobby, NOT in per-client localStorage — otherwise the God's pace would change
+// depending on whose turn it was.
+export const ROCK_GOD_DIFFICULTY = {
+  chill:    { label: 'CHILL',    icon: '🌙', actSeconds: 30, turnSeconds: 60,
+              blurb: 'The God is in no hurry. A swing every 30s, a full minute on your turn clock.' },
+  standard: { label: 'STANDARD', icon: '🤘', actSeconds: 20, turnSeconds: 45,
+              blurb: 'He answers every 20s. Think fast, play faster.' },
+  brutal:   { label: 'BRUTAL',   icon: '💀', actSeconds: 12, turnSeconds: 30,
+              blurb: 'A swing every 12 seconds. Hesitation is a decision, and it is the wrong one.' },
+};
+export const ROCK_GOD_DIFFICULTY_DEFAULT = 'standard';
+export function rockGodPace(key) {
+  return ROCK_GOD_DIFFICULTY[key] ?? ROCK_GOD_DIFFICULTY[ROCK_GOD_DIFFICULTY_DEFAULT];
+}
 
 // ── The pantheon ─────────────────────────────────────────────────────────────
 // Only the Bardbarian is playable so far; the other three are designed and

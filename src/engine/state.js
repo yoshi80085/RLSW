@@ -95,6 +95,20 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       startedOnLimelight: {},
       lastMove: null,
       lastReport: null,
+      // ── ROUND CLOCK (2026-08-05) ───────────────────────────────────────────
+      // A ROUND is one full revolution of the turn order, and it is the clock
+      // every shared board effect now runs on. Tracked by ANCHOR rather than by
+      // arithmetic: `count % aliveCount` silently drifts the moment a Spirit is
+      // knocked out or a turn is skipped, which is exactly when the board is
+      // most dangerous. `roundStarterId` is whoever opened the current
+      // revolution — when play comes back round to them, the round is done.
+      round: 1,
+      roundStarterId: spirits[0]?.id ?? null,
+      // A skipped turn (knock-down recovery) still consumes its slot in the
+      // rotation, but runs no end-of-turn ticks. If a skip is what closes the
+      // round, park the round here and let the next real turn end spend it —
+      // so a round is never silently dropped.
+      roundPending: false,
     },
 
     // Phase 5c: per-spirit note/skill/fan sheets (engine-owned, seeded)
