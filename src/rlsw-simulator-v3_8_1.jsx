@@ -875,6 +875,9 @@ function Game({ gameState, onReturnToLobby }) {
   );
   const [selfConn, setSelfConn] = useState("ok");                       // ok | reconnecting
   const [netSeatsLive, setNetSeatsLive] = useState(gameState.net?.seats ?? null); // ROOM_STATE presence
+  // 🔊 Plays a rival's committed melody on this machine (assigned every render,
+  // called from the mount-time ACTION handler — see MOVE_BUDGET_SET below).
+  const playRemoteCommitRef = useRef(null);
 
   function startResync(reason) {
     if (netSyncRef.current) return; // already frozen — one CATCH_UP is enough
@@ -882,6 +885,30 @@ function Game({ gameState, onReturnToLobby }) {
     netSyncRef.current = "resyncing";
     setNetSync("resyncing");
     netRef.current?.client.requestCatchUp();
+  }
+
+  // ── N12: riff-off overlay data, derived from the ENGINE battle slice ───────
+  // One builder, three callers: the RIFF_OFF_STARTED and RIFF_ROUND2_STARTED
+  // relay branches, and the CATCH_UP overlay rebuild. Pure function of engine
+  // state, so every client derives byte-identical riffs — which is what lets a
+  // resynced client rejoin a duel already in progress instead of freezing on
+  // whatever card happened to be on screen when the desync hit.
+  function riffSidesFromEngine(eb) {
+    const atk = eb.atkRiff, def = eb.defRiff;
+    return {
+      atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
+                 freqs: atk.degrees.map((d, i) => riffDegreeFreq(d, atk.sharps[i])),
+                 rhythm: atk.rhythm, contour: atk.contour,
+                 // origRhythm: Round 2 speeds the rhythm up, but the neck
+                 // voicing is scored against the WRITTEN one (see fireBeamClash).
+                 voicing: voiceRiff(atk.degrees, atk.sharps, atk.origRhythm ?? atk.rhythm) },
+      defRiff: { notes: riffDegreesToNotes(def.degrees, def.sharps),
+                 freqs: def.degrees.map((d, i) => riffDegreeFreq(d, def.sharps[i])),
+                 rhythm: def.rhythm, kind: def.kind,
+                 voicing: voiceRiff(def.degrees, def.sharps, def.origRhythm ?? def.rhythm) },
+      defGlitch: eb.defGlitch ?? [], glitchAt: null,
+      defGhosts: eb.defGhosts ?? null, ghostHit: null,
+    };
   }
 
   // N4: input gating — only the acting player can trigger user actions
@@ -935,25 +962,15 @@ function Game({ gameState, onReturnToLobby }) {
       if (aType === "RIFF_OFF_STARTED") {
         const eb = next.battle;
         if (eb) {
-          const atk = eb.atkRiff, def = eb.defRiff;
-          const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
           setBattleState({
             riffOff: true, sonicAttack: true,
             oneLiner: null,
             phase: 'riff_intro',
             attackerId: eb.attackerId, defenderId: eb.defenderId,
-            atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
-                       freqs: atk.degrees.map((d, i) => riffDegreeFreq(d, atk.sharps[i])),
-                       rhythm: atk.rhythm, contour: atk.contour,
-                       voicing: voiceRiff(atk.degrees, atk.sharps, atk.rhythm) },
-            defRiff: { notes: defNotesArr,
-                       freqs: def.degrees.map((d, i) => riffDegreeFreq(d, def.sharps[i])),
-                       rhythm: def.rhythm, kind: def.kind,
-                       voicing: voiceRiff(def.degrees, def.sharps, def.rhythm) },
-            defGlitch: eb.defGlitch ?? [], glitchAt: null,
-            defGhosts: eb.defGhosts ?? null, ghostHit: null,
+            ...riffSidesFromEngine(eb),
             turn: 'attacker', noteIdx: -1, countdown: 3, round: 1,
             atkResults: [], defResults: [], feedback: null,
+            waitingForResolve: false,
           });
           setDiceDisplay(null);
         }
@@ -968,9 +985,18 @@ function Game({ gameState, onReturnToLobby }) {
           const upd = { ...p, [key]: results };
           // N12: When the defender's client receives the attacker's results,
           // advance to the handoff phase so the defender can play their answer.
+          // ⚠️ waitingForResolve MUST be cleared here: it is set when the
+          // defender submits Round 1 and, left standing, it vetoes the
+          // coordination effect's auto-start for Round 2 — the exact shape of
+          // the "rival's riff turn never materialises" stall.
+          // Only the defender's OWN client hands off here. A bot defender is
+          // driven by the attacker's (acting) client, which reaches the handoff
+          // through its own riffEndTurn — routing bots through the host as well
+          // would have two machines synthesising two different answers.
           const myId = netRef.current?.mySpiritId;
           if (role === 'attacker' && myId === p.defenderId) {
             upd.phase = 'riff_handoff';
+            upd.waitingForResolve = false;
           }
           return upd;
         });
@@ -990,24 +1016,20 @@ function Game({ gameState, onReturnToLobby }) {
       }
 
       // ── RIFF-OFF: Round 2 — update overlay with new riffs
+      // Mirrors the acting client's own Round-2 rebuild (fireBeamClash) field
+      // for field. Every per-round flag is reset here on purpose: a Round-1
+      // leftover (waitingForResolve, botAutoFilled, the locked clash stage, a
+      // dead riffRun) silently jams Round 2 on the remote client.
       if (aType === "RIFF_ROUND2_STARTED") {
         const eb = next.battle;
         if (eb) {
-          const atk = eb.atkRiff, def = eb.defRiff;
-          const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
           setBattleState(p => p?.riffOff ? {
             ...p, round: 2,
-            atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
-                       freqs: atk.degrees.map((d, i) => riffDegreeFreq(d, atk.sharps[i])),
-                       rhythm: atk.rhythm, contour: atk.contour,
-                       voicing: voiceRiff(atk.degrees, atk.sharps, atk.rhythm) },
-            defRiff: { notes: defNotesArr,
-                       freqs: def.degrees.map((d, i) => riffDegreeFreq(d, def.sharps[i])),
-                       rhythm: def.rhythm, kind: def.kind,
-                       voicing: voiceRiff(def.degrees, def.sharps, def.rhythm) },
-            defGlitch: eb.defGlitch ?? [], glitchAt: null,
-            defGhosts: eb.defGhosts ?? null, ghostHit: null,
+            ...riffSidesFromEngine(eb),
             atkResults: [], defResults: [], feedback: null,
+            turn: 'attacker', noteIdx: -1,
+            clashStage: null, clashWinner: null,
+            waitingForResolve: false, botAutoFilled: null, riffRun: null,
             phase: 'riff_r2intro',
           } : p);
         }
@@ -1054,17 +1076,50 @@ function Game({ gameState, onReturnToLobby }) {
           T(() => setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p), 5600);
         }
       }
+
+      // ── 🎵 MELODY COMMIT: play the rival's committed track on THIS machine ──
+      // Presentation only. The track itself is already engine state by now —
+      // confirmNoteTrack stashes committedMelody / committedFreq /
+      // committedHasRiff via NOTE_SHEET_PATCHED and THEN dispatches
+      // MOVE_BUDGET_SET as its last action, so this frame is the "commit is
+      // complete" signal and the melody is identical on every client.
+      // Routed through a ref (refreshed every render) so the mount-time handler
+      // calls the CURRENT audio closures — the tone knobs live in state.
+      if (aType === "MOVE_BUDGET_SET") playRemoteCommitRef.current?.(next);
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 🔊 Remote commit playback — see the MOVE_BUDGET_SET branch above. Same
+  // stale-closure dodge as riffMicPressRef: assigned on every render.
+  useEffect(() => {
+    playRemoteCommitRef.current = (st) => {
+      const actorId = st?.acting;
+      const ns = actorId ? st.noteStates?.[actorId] : null;
+      const mel = ns?.committedMelody ?? [];
+      if (!mel.length) return;
+      // Legendary riffs play their real rhythm — detectRiff is pure and keyed
+      // off the track alone, so both machines reach the same verdict.
+      const rm = ns.committedHasRiff ? detectRiff(mel) : null;
+      if (rm) playRiffSequence(rm.riff, rm.rootPc);
+      else playTrackSequence(mel, { style: COMMIT_STYLES[actorId], freqs: ns.committedFreq ?? [] });
+    };
+  });
 
   // N8: mid-game CATCH_UP — desync recovery AND wifi-blip rejoin both land here
   // (the client auto-rejoins after a drop; the server answers WELCOME+CATCH_UP).
   // Rebuild the engine from scratch: seed + config are immutable for the match,
   // so makeInitialState + the server's authoritative log IS the current state —
   // the same machinery as the N6 mount-time replay (engine replay is cheap).
-  // Presentation state (open cinematics, camera) is NOT rebuilt — accepted v1;
-  // the engine converges and the next turn renders normally. No remount
-  // (landmine #2): gameState is untouched, only engine state is replaced.
+  // Camera and cinematic timers are NOT rebuilt — accepted v1; the engine
+  // converges and the next turn renders normally. No remount (landmine #2):
+  // gameState is untouched, only engine state is replaced.
+  // ⚠️ The BATTLE OVERLAY is the one piece of presentation that cannot be left
+  // behind. While a frozen client waits for CATCH_UP it drops every ACTION
+  // frame — including the riff-off handoff — so restoring the engine without
+  // restoring the overlay leaves the duel stranded on whatever card was on
+  // screen when the desync hit, forever. Rebuild it from the engine's battle
+  // slice (riffSidesFromEngine is a pure function of that slice) and let the
+  // phase-repair effect below put it back on the right card.
   useEffect(() => {
     const net = netRef.current;
     if (!net) return;
@@ -1079,6 +1134,34 @@ function Game({ gameState, onReturnToLobby }) {
       setNetSync(null);
       console.log(`[RLSW NET] resynced — ${f.log.length} actions replayed, cursor=${s.rng.cursor}`);
       setLog(p => ["🔄 Resynced with the room server.", ...p].slice(0, 40)); // local-only, don't relay
+
+      // ── Rebuild / tear down the riff-off overlay to match the engine ──
+      const eb = s.battle;
+      if (eb?.kind === "riffOff") {
+        riffEngineRef.current?.timers?.forEach(clearTimeout);
+        riffEngineRef.current = null;
+        setBattleState(p => ({
+          riffOff: true, sonicAttack: true,
+          oneLiner: p?.oneLiner ?? null,
+          // Provisional. The phase-repair effect below reads the submitted
+          // results out of the engine and moves this to the card the duel is
+          // actually on — including parking a player who has already performed
+          // on the waiting card, so a rebuild can't hand them a second run.
+          phase: 'riff_intro',
+          attackerId: eb.attackerId, defenderId: eb.defenderId,
+          ...riffSidesFromEngine(eb),
+          turn: 'attacker', noteIdx: -1, countdown: 3, round: eb.round ?? 1,
+          atkResults: eb.atkResults ?? [], defResults: eb.defResults ?? [],
+          feedback: null, waitingForResolve: false, botAutoFilled: null, riffRun: null,
+        }));
+        setDiceDisplay(null);
+      } else if (battleStateRef.current?.riffOff) {
+        // The duel finished while we were frozen — drop the stale overlay.
+        riffEngineRef.current?.timers?.forEach(clearTimeout);
+        riffEngineRef.current = null;
+        setBattleState(null);
+        setDiceDisplay(null);
+      }
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1391,6 +1474,104 @@ function Game({ gameState, onReturnToLobby }) {
     }
   }, [battleState?.phase, battleState?.riffOff, battleState?.defResults?.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── N13: RIFF-OFF PHASE REPAIR — the ENGINE decides whose turn it is ────────
+  // The coordination above hands off on the ARRIVAL of one relay frame, which
+  // makes the whole duel hostage to that single frame: miss it (desync freeze +
+  // CATCH_UP, a dropped socket, a mid-duel rejoin, a Round-1 flag left standing)
+  // and the defender sits on "waiting for the call" while the attacker sits on
+  // "waiting for rival" — forever. This effect is the belt to that braces: the
+  // engine battle slice already says exactly who has submitted, so derive the
+  // card from state rather than from an event, on every engine change.
+  //
+  // Only ever moves a client FORWARD to the phase the engine implies, and never
+  // touches a client already playing (riff_countdown / riff_play) or watching
+  // the finale (riff_clash / riff_result) — those own their own timing.
+  useEffect(() => {
+    const net = netRef.current;
+    if (!net) return;
+    const eb = engineState.battle;
+    if (eb?.kind !== 'riffOff') return;
+    const bs = battleState;
+    if (!bs?.riffOff || bs.attackerId !== eb.attackerId) return; // overlay not up / not this duel
+    const atkIn = !!eb.atkResults, defIn = !!eb.defResults;
+    // The ATTACKER's seat may be a bot the host drives (N7) — in that case the
+    // host IS the acting client and owes everyone the verdict, but
+    // mySpiritId never matches the bot, so the coordination effect's
+    // isAtkClient test silently excused it and a bot-attacker duel hung after
+    // the human defender answered. (Bot DEFENDERS need no equivalent: the
+    // acting client drives them from its own handoff card.)
+    const iDriveAtk = eb.attackerId === net.mySpiritId
+      || (net.isHost && !!net.seats?.find(s => s.isBot && s.spiritId === eb.attackerId));
+    // Cards that are safe to move off: nothing local is mid-flight on them.
+    const idle = ['riff_intro', 'riff_ante', 'riff_r2intro', 'riff_handoff'].includes(bs.phase);
+    if (!idle) return;
+
+    // DEFENDER — the call is in and my answer is not: my turn, whatever card
+    // I'm parked on. (Round 2 lands here too, which is why waitingForResolve
+    // is cleared rather than trusted.)
+    if (net.mySpiritId === eb.defenderId && atkIn && !defIn) {
+      if (bs.phase !== 'riff_handoff' || bs.waitingForResolve) {
+        console.warn('[RLSW NET] riff repair — defender stranded on', bs.phase, '→ handoff');
+        setBattleState(p => p?.riffOff
+          ? { ...p, phase: 'riff_handoff', atkResults: eb.atkResults, waitingForResolve: false } : p);
+      }
+      return;
+    }
+    // ATTACKER — my call is already submitted and their answer isn't: I'm
+    // waiting, not performing. Matters after a rebuild, which drops everyone on
+    // the intro card: without this the attacker would be offered "DROP THE
+    // RIFF" a second time and their re-run would overwrite the results the
+    // room has already scored.
+    if (iDriveAtk && atkIn && !defIn && bs.phase !== 'riff_handoff') {
+      console.warn('[RLSW NET] riff repair — attacker already performed →  handoff (waiting)');
+      setBattleState(p => p?.riffOff
+        ? { ...p, phase: 'riff_handoff', atkResults: eb.atkResults, waitingForResolve: false } : p);
+      return;
+    }
+    // ATTACKER — both sides are in but the verdict never came: resolve.
+    if (iDriveAtk && atkIn && defIn && !eb.verdict) {
+      const t = setTimeout(() => {
+        const cur = battleStateRef.current;
+        if (!cur?.riffOff || !['riff_intro', 'riff_ante', 'riff_r2intro', 'riff_handoff'].includes(cur.phase)) return;
+        if (engineRef.current.battle?.verdict) return; // beat us to it
+        console.warn('[RLSW NET] riff repair — both sides in, resolving from engine state');
+        setBattleState(p => p?.riffOff
+          ? { ...p, atkResults: eb.atkResults, defResults: eb.defResults, phase: 'riff_handoff' } : p);
+        // One tick of daylight so battleStateRef catches the results above —
+        // riffResolve reads the ref for its log line and the scoreboard.
+        setTimeout(() => { if (!engineRef.current.battle?.verdict) riffResolve(); }, 80);
+      }, 500);
+      return () => clearTimeout(t);
+    }
+  }, [engineState.battle, battleState?.phase, battleState?.riffOff]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── N13: STALLED-DUEL WATCHDOG ─────────────────────────────────────────────
+  // Last resort for the online riff-off. Only arms on a card where this client
+  // is waiting on the OTHER machine — never on one where the local player is
+  // the one being waited for (the attacker reading the intro can take as long
+  // as they like; yanking them into a resync mid-read would be the cure that
+  // is worse than the disease). 30s later, if we haven't moved, the frame that
+  // should have moved us isn't coming: ask the server for the authoritative log.
+  // CATCH_UP now rebuilds the overlay too, so this is a real recovery.
+  useEffect(() => {
+    const net = netRef.current;
+    if (!net || net.spectator || !battleState?.riffOff) return;
+    const myId = net.mySpiritId;
+    const phase = battleState.phase;
+    const waitingOnThem =
+      (myId === battleState.attackerId && phase === 'riff_handoff') ||          // their answer
+      (myId === battleState.defenderId && ['riff_intro', 'riff_ante', 'riff_r2intro', 'riff_handoff'].includes(phase)); // their call
+    if (!waitingOnThem) return;
+    const t = setTimeout(() => {
+      const cur = battleStateRef.current;
+      if (!cur?.riffOff || cur.phase !== phase) return;          // moved on, all good
+      if (engineRef.current.battle?.kind !== 'riffOff') return;  // duel already over
+      addLog('⏳ The duel has stalled — asking the room server to resync…');
+      startResync(`RIFF-OFF STALLED on ${cur.phase}`);
+    }, 30000);
+    return () => clearTimeout(t);
+  }, [battleState?.phase, battleState?.riffOff]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // RIFF-OFF keyboard listener — armed for the whole falling-notes run.
   // e.key gives 'a' for plain press, 'A' for Shift+A — exactly our sharp rule.
   // All judging lives in riffPressKey (RIFF-OFF ENGINE banner), which is also
@@ -1509,6 +1690,21 @@ function Game({ gameState, onReturnToLobby }) {
   // 🎯 TURN STEP — progressive HUD flow: chord → melody → move_act
   // B8: 'pivot' is no longer a stage — the turn opens on the chord step.
   const [turnStep, setTurnStep] = useState('chord');
+  // ── N13: the step belongs to the TURN, not to this browser tab ─────────────
+  // turnStep is local React state, and the only thing that reset it was
+  // endTurn() — which is canAct-gated, so it runs on the ACTING client alone.
+  // Online that made the step a per-tab counter that drifts: any click on the
+  // (fully live) rival HUD advanced YOUR step, nothing ever put it back, and
+  // your next turn opened on whatever card you had wandered onto — the
+  // "my chord stack phase got skipped" report. Anchor it to the engine's
+  // acting spirit instead: whenever the turn passes, every client resets.
+  const stepOwnerRef = useRef(engineState.acting);
+  useEffect(() => {
+    if (stepOwnerRef.current === engineState.acting) return;
+    stepOwnerRef.current = engineState.acting;
+    setTurnStep('chord');
+    setStackCommitDest(null);
+  }, [engineState.acting]);
   // 🎵 FLY NOTE — animated chip that flies from Note Stock to the commit track
   const [flyNote, setFlyNote] = useState(null); // { note, x, y, slotIdx, key }
   const commitTrackRef = useRef(null); // ref on the commit track container for target coords
@@ -8859,7 +9055,9 @@ function Game({ gameState, onReturnToLobby }) {
     getRiffAudio(); getAudioCtx(); // unlock both audio paths on this user gesture (SFX + amp)
     const round = battleStateRef.current?.round ?? 1;
     const cdStep = round >= 2 ? 520 : 800; // Round 2 counts in faster — less breathing room
-    setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_countdown', turn, countdown: 3, noteIdx: -1, feedback: null } : p);
+    // waitingForResolve is a PER-ROUND flag — starting a run always clears it,
+    // so a Round-1 leftover can never veto the Round-2 auto-start (N13).
+    setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_countdown', turn, countdown: 3, noteIdx: -1, feedback: null, waitingForResolve: false } : p);
     let c = 3;
     const iv = setInterval(() => {
       c--;
@@ -12076,8 +12274,10 @@ function Game({ gameState, onReturnToLobby }) {
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                    <div className="stitle" style={{marginBottom:0,color:"#4488ff"}}>
-                      {turnStep === 'chord' ? 'Step 1 — Chord Stack' : turnStep === 'melody' ? 'Step 2 — Build Melody' : 'Note Stock'}
+                    <div className="stitle" style={{marginBottom:0,color: canAct ? "#4488ff" : "#7a90aa"}}>
+                      {!canAct ? "🎧 Rival's Turn"
+                        : turnStep === 'chord' ? 'Step 1 — Chord Stack'
+                        : turnStep === 'melody' ? 'Step 2 — Build Melody' : 'Note Stock'}
                     </div>
                     {/* 🎤 MIC — only offered during the step it can actually act on */}
                     {turnStep === 'melody' && !hasConfirmed && (
@@ -12107,7 +12307,9 @@ function Game({ gameState, onReturnToLobby }) {
                       </div>
                     )}
                   </div>
-                  {turnStep !== 'move_act' && (
+                  {/* N13: the legend reads the ACTING spirit's scale — on a rival's
+                      turn it isn't your legend, so it only invites misreads. */}
+                  {turnStep !== 'move_act' && canAct && (
                   <div data-tip-anchor="interval-legend" style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
                     <span style={{fontSize:7,color:"#cc55ff"}}>4th={fourthNote}</span>
                     <span style={{fontSize:7,color:"#ff55aa"}}>5th={fifthNote}</span>
@@ -12294,7 +12496,55 @@ function Game({ gameState, onReturnToLobby }) {
                   rather than ripped out at the same time as this. Nothing can deadlock
                   a turn on a flag no one raises; a half-finished surgery on 30 call
                   sites very much could. */}
-              {hasConfirmed ? (
+              {/* ── 🎧 RIVAL ON STAGE (online, not your turn) ────────────────────
+                  N13. Everything below this point is the ACTING spirit's private
+                  workshop — their note stock, the stack they're voicing, the
+                  commit buttons. On a remote client it was rendered live AND
+                  clickable: you could read your rival's hand and, worse, press
+                  their buttons, which advanced YOUR local turnStep and skipped
+                  your own chord step next turn.
+                  What a rival is entitled to see is the PERFORMANCE, not the
+                  planning: the melody bar on the board fills in as they place
+                  notes (that's public — you hear it too, see MOVE_BUDGET_SET),
+                  their chord totals are already on their HUD row, and their
+                  stock, stack contents and pending actions stay hidden until
+                  they play them. */}
+              {!canAct ? (
+                <div style={{marginBottom:5,padding:"8px 10px",borderRadius:6,
+                  background:"#0a1020",border:`1.5px solid ${acting?.color ?? '#4488ff'}55`,
+                  boxShadow:`inset 0 0 18px ${acting?.color ?? '#4488ff'}14`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+                    <span style={{fontSize:11}}>🎧</span>
+                    <span style={{fontSize:9,fontWeight:800,letterSpacing:1,color:acting?.color ?? '#4488ff'}}>
+                      {acting?.name?.split(' ')[0] ?? 'RIVAL'} IS ON STAGE
+                    </span>
+                    <span style={{marginLeft:"auto",fontSize:7,color:"#6a8aaa",
+                      animation:'pulse 1.8s ease-in-out infinite'}}>
+                      {netSync ? 'resyncing…' : 'watching'}
+                    </span>
+                  </div>
+                  <div style={{fontSize:7.5,color:"#6a8098",lineHeight:1.7,marginBottom:6}}>
+                    Their stock and stack are theirs alone — you'll hear the melody
+                    when they commit it, and see it land on the bar below.
+                  </div>
+                  {/* Public read of their stance: the totals their rivals can
+                      already read off the board, never the notes that make them. */}
+                  {(() => {
+                    const dCh = spiritChord(acting?.id, actingNoteState?.driveStack ?? []);
+                    const sCh = spiritChord(acting?.id, actingNoteState?.sustainStack ?? []);
+                    const placed = (actingNoteState?.melodyLine ?? []).length;
+                    return (
+                      <div style={{display:"flex",alignItems:"center",gap:8,fontSize:9,fontWeight:700}}>
+                        <span style={{color:DRIVE_C}}>⚔️{dCh.drive}</span>
+                        <span style={{color:SUSTAIN_C}}>🛡️{sCh.sustain}</span>
+                        <span style={{marginLeft:"auto",fontSize:7.5,color:"#8aa5c5",fontWeight:400}}>
+                          {hasConfirmed ? '✓ track committed' : `♪ ${placed} note${placed === 1 ? '' : 's'} on the bar`}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : hasConfirmed ? (
                 <div style={{fontSize:8,color:"#44ff88",marginBottom:5,padding:"6px 8px",background:"#0d1f10",border:"1px solid #44ff8844",borderRadius:4}}>
                   ✓ Notes committed — move and use actions below.
                 </div>
@@ -12414,7 +12664,12 @@ function Game({ gameState, onReturnToLobby }) {
                             </div>
                           </div>
                         )}
-                        <button className="btn" onClick={()=>{ setStackCommitDest(null); setTurnStep('melody'); setTimeout(() => showTip('melody'), 300); }}
+                        {/* N13: canAct guard — this button only moves LOCAL HUD
+                            state, which is exactly why it was dangerous: it was
+                            the one control on the acting panel that changed
+                            something without going near the engine, so nothing
+                            stopped a rival from advancing their own step with it. */}
+                        <button className="btn" onClick={()=>{ if (!canAct) return; setStackCommitDest(null); setTurnStep('melody'); setTimeout(() => showTip('melody'), 300); }}
                           style={{width:"100%",fontSize:9,padding:"6px 0",borderColor:"#44ff88",color:"#44ff88",fontWeight:700,
                             background:"#0a1a10",boxShadow:"0 0 8px #44ff8833"}}>
                           {budgetLeft <= 0 ? '✓ Stacks set — Continue to Melody ->' : 'Continue to Melody ->'}
@@ -12776,13 +13031,20 @@ function Game({ gameState, onReturnToLobby }) {
           ))}
 
           {/* ACTIONS — only show during move_act step (or always for End Turn) */}
-          <div className={turnStep === 'move_act' ? 'step-active' : ''} style={{'--step-glow-color':'#44ff88',
-            borderRadius:6, padding: turnStep === 'move_act' ? '4px 0' : 0, transition:'all 0.3s'}}>
+          {/* N13: on a rival's turn the whole action rail goes dead — the
+              handlers were already canAct-gated, but a live-looking button that
+              silently does nothing reads as a broken game, and "I pushed my
+              friend's commit button" is how the turnStep drift got reported.
+              pointerEvents:none kills the whole subtree in one line, so no
+              future button can be added here and forget its gate. */}
+          <div className={turnStep === 'move_act' && canAct ? 'step-active' : ''} style={{'--step-glow-color':'#44ff88',
+            borderRadius:6, padding: turnStep === 'move_act' ? '4px 0' : 0, transition:'all 0.3s',
+            ...(canAct ? {} : {opacity:0.32, pointerEvents:'none', filter:'grayscale(0.85)'})}}>
           <div className="stitle" style={{marginTop:4}}>
-            {turnStep === 'move_act' ? 'Step 3 — Move & Act' : 'Actions'}
+            {!canAct ? 'Actions — rival on stage' : turnStep === 'move_act' ? 'Step 3 — Move & Act' : 'Actions'}
           </div>
           {/* (bonus revoice UI removed — stack commit budget replaces it) */}
-          {turnStep !== 'move_act' && (
+          {turnStep !== 'move_act' && canAct && (
             <div style={{marginBottom:3}}>
               <button className="btn end" data-tip-anchor="end-turn" onClick={endTurn} style={{width:'100%',fontSize:9,padding:'5px 0'}}>End Turn ⏭</button>
             </div>
@@ -13101,7 +13363,15 @@ function Game({ gameState, onReturnToLobby }) {
                       if (action === 'displace') { setAction(null); }
                       else if (canWarp) { setAction('displace'); addLog('🌌 DISPLACE — click an open hex beside your rig to warp there.'); }
                     }}>
-                    🌌 Displace{cd > 0 ? ` (${cd})` : ''}{!hasRig ? ' — need amp' : (moveStepsLeft < DISPLACE_AP && cd <= 0 ? ` (${DISPLACE_AP}AP)` : '')}
+                    {/* ⚠️ Was `!hasRig ? ' — need amp' : …` — `hasRig` is not
+                        defined anywhere in this component, so rendering this
+                        button threw a ReferenceError and dropped the whole game
+                        into the error boundary the moment Intergalactic 0
+                        unlocked Displace + committed a track. Caught by
+                        eslint no-undef; predates the netcode work. The label is
+                        stale as well as broken: resolveDisplace warps to an open
+                        neighbouring hex and no longer requires an amp at all. */}
+                    🌌 Displace{cd > 0 ? ` (${cd})` : ''}{moveStepsLeft < DISPLACE_AP && cd <= 0 ? ` (${DISPLACE_AP}AP)` : ''}
                   </button>
                   {action === 'displace' && (
                     <button className="btn" style={{borderColor:'#888',color:'#888'}}
@@ -13468,7 +13738,11 @@ function Game({ gameState, onReturnToLobby }) {
               </div>
             )}
             {/* 🎸 DRIVE / SUSTAIN STACKS — vertical bars on the left side of the board */}
-            {acting && !hasConfirmed && !pivotPending && (() => {
+            {/* N13: canAct — the stack notes are the acting player's hand while
+                they voice it. Rivals read the ⚔️/🛡️ TOTALS off the HUD rows (the
+                stance is public); the notes that make them are not, until the
+                melody bar shows what actually got played. */}
+            {acting && !hasConfirmed && !pivotPending && canAct && (() => {
               const dStack = actingNoteState?.driveStack ?? [];
               const sStack = actingNoteState?.sustainStack ?? [];
               const dCh = spiritChord(acting?.id, dStack);

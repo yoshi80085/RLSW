@@ -213,6 +213,46 @@ logLines[], seq }`. Rooms die 10 min after the last socket drops.
      No credit card, no surprise charges — if you exceed the 750 hr/mo free
      cap, service is suspended, not billed.
 
+- **N13 — live-play bug sweep. ☑ Shipped 2026-08-05** (three reports from a
+  friends game; all three were the same root cause wearing different hats —
+  *presentation lives outside the engine and nothing was rebuilding it*).
+  - **Rival melodies were silent.** `confirmNoteTrack` plays the committed
+    track on the acting client only. The commit's LAST action is
+    MOVE_BUDGET_SET, and by the time it lands the track is already engine state
+    (`committedMelody` / `committedFreq` / `committedHasRiff`, stashed by
+    NOTE_SHEET_PATCHED) — so the relay branch replays it from state. No new
+    frame type, no payload change, deterministic on every client.
+    *Pattern to reuse: for remote audio/FX, find the action that lands AFTER
+    the state the effect needs, then read the state — don't invent a frame.*
+  - **The rival's HUD was live and clickable.** `turnStep` (chord → melody →
+    move_act) is local React state whose only reset lived in `endTurn`, which
+    is canAct-gated — so it ran on the ACTING client alone. Clicking "Continue
+    to Melody" on a rival's panel therefore advanced YOUR step permanently and
+    your next turn opened past the chord stack. Fixed twice over: the step is
+    now anchored to `engineState.acting` (every client resets when the turn
+    passes), and the acting panel renders a read-only "🎧 rival is on stage"
+    card when `!canAct` — stock, stack notes and the action rail are hidden or
+    pointer-events:none. **Visibility rule (owner's call): the PERFORMANCE is
+    public, the PLANNING is private.** The melody bar, the ⚔️/🛡️ totals and
+    the board are shared; the note stock, the stack being voiced and pending
+    actions are not, until they're played.
+  - **The online riff-off hung at the handoff.** The duel advanced only on the
+    ARRIVAL of one relay frame, so anything that ate that frame (desync freeze
+    + CATCH_UP, a blip, a Round-1 `waitingForResolve` left standing) stranded
+    the defender on "waiting for the call" and the attacker on "waiting for
+    rival" with no way out. Three fixes: CATCH_UP now **rebuilds the battle
+    overlay** from the engine battle slice (it was explicitly not rebuilding
+    presentation — fine for a camera, fatal for a duel); a **phase-repair
+    effect** derives whose turn it is from `battle.atkResults` / `defResults`
+    on every engine change rather than from an event; and a 30s **watchdog**
+    requests a CATCH_UP if a client is still waiting on the other machine.
+    Also fixed: a bot ATTACKER on the host never resolved (`isAtkClient`
+    compares mySpiritId, which never matches a bot seat).
+  - **Drive-by:** `hasRig` in the Displace button label was undefined —
+    a ReferenceError into the error boundary the moment Intergalactic 0
+    unlocked Displace. Predates the netcode work; caught by eslint `no-undef`.
+    Worth running that lint pass over the main file more often.
+
 ## Landmines (read before each phase)
 
 1. **Remote clients replay, never re-run.** The acting client's timeout chains
@@ -235,3 +275,13 @@ logLines[], seq }`. Rooms die 10 min after the last socket drops.
    WINNER_DECLARED yet (MULTIPLAYER_HANDOFF §5c tail) — harmless for relay
    (clients converge via the log) but fold them in during N5 so remote HUDs
    read `engineState.winner` too.
+7. **Presentation is not replicated — derive it, don't relay it.** (N13) The
+   engine converges on every client for free; React state does not. Any overlay
+   that gates play (battle cards, phase handoffs) must be derivable from
+   `engineState` and re-derived after CATCH_UP, or a single dropped frame ends
+   the game. Anything gated behind an event handler alone is a stall waiting to
+   be reported.
+8. **Local-only controls still need `canAct`.** (N13) Handlers that dispatch
+   were gated from N4; handlers that only move HUD state were not, and one of
+   them (`setTurnStep`) silently desynced the player's own turn flow. If a
+   control mutates anything while a rival is acting, it needs the gate too.
