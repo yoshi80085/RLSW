@@ -29,7 +29,11 @@ const RIFF_DIFF_SHORT = {
 // This is a testing gate, NOT a design decision. To reopen a room, add its id
 // back to the set — that's the whole change, nothing else is conditional on it.
 // To close the gate entirely once everything is ready, set it to `null`.
-const RIFF_MODES_UNLOCKED = new Set(['fretboard']);
+// 🗣️ 'riff' reopened 2026-08-06: Riff Practice is the only place Call & Answer
+// can be practised, and derivation is a LEARNED skill — unlike sight-reading you
+// cannot brute-force "mirror it around the root" on your first attempt. Leaving
+// the room locked would ship the mechanic with no on-ramp.
+const RIFF_MODES_UNLOCKED = new Set(['fretboard', 'riff']);
 const RIFF_LOCK_NOTE = 'IN THE WORKSHOP';
 
 function isLocked(id) {
@@ -59,7 +63,7 @@ export default function RiffMenu({ onPractice, onBack }) {
     },
     {
       id: 'riff', label: 'RIFF PRACTICE', icon: '🎸', color: '#f6ad55',
-      blurb: 'The riff-off highway, endless. Notes fall, you play them, the tier climbs.',
+      blurb: 'The riff-off, endless. Read the notes off the neck — or switch to 🗣️ Call & Answer and work out the reply instead.',
       go: () => onPractice({ mode: 'riff', diff: riffDiff }),
     },
     {

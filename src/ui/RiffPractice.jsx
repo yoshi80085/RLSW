@@ -18,7 +18,7 @@
 // • ESC or ← LOBBY button returns to the lobby
 // =============================================================================
 import React, { useState, useRef, useEffect } from "react";
-import { generateAttackerRiff, riffDegreesToNotes } from "../riff/riffGeneration.js";
+import { generateAttackerRiff, generateDefenderRiff, riffDegreesToNotes } from "../riff/riffGeneration.js";
 import {
   RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT,
   buildRiffTimeline, riffOkWindow, gradeRiffOffset,
@@ -63,10 +63,14 @@ export function RiffPractice({ initialDiff, onBack }) {
   const [view, setView] = useState(() => {
     try {
       const v = localStorage.getItem('rlsw.riffView');
-      if (v === 'piano' || v === 'guitar' || v === 'neon') return v;
+      if (v === 'piano' || v === 'guitar' || v === 'neon' || v === 'answer') return v;
     } catch { /* default */ }
     return 'neon';
   });
+  // 🗣️ The call the current riff answers — null in every view but 'answer'.
+  // Practice normally streams lone attacker riffs; the answer view needs a PAIR,
+  // so launchRiff generates both and hands the call to the view.
+  const [callAnswer, setCallAnswer] = useState(null);
   useEffect(() => {
     try { localStorage.setItem('rlsw.riffView', view); } catch { /* non-fatal */ }
   }, [view]);
@@ -100,10 +104,12 @@ export function RiffPractice({ initialDiff, onBack }) {
   const phaseRef   = useRef('idle');
   const rigRef     = useRef(rig);
   const speedRef   = useRef(speed);
+  const viewRef    = useRef(view);
   diffRef.current  = diff;
   phaseRef.current = phase;
   rigRef.current   = rig;
   speedRef.current = speed;
+  viewRef.current  = view;
 
   function cycleRig() {
     const next = RIG_ORDER[(RIG_ORDER.indexOf(rigRef.current) + 1) % RIG_ORDER.length];
@@ -139,7 +145,14 @@ export function RiffPractice({ initialDiff, onBack }) {
     // and scale afterwards — hitAt[0] IS the lead time and later entries are
     // lead + cumulative gaps, so one uniform divide moves both.
     const p        = scalePresetForSpeed(p0, spd);
-    const riff     = generateAttackerRiff(Math.random, p0.maxLen);
+    // 🗣️ In the answer view you play the REPLY, not the call: generate the pair
+    // and run the defender's riff. Everything downstream (voicing, timeline,
+    // judging, stats) is identical — a riff is a riff, whoever threw it.
+    const call     = generateAttackerRiff(Math.random, p0.maxLen);
+    const wantsCA  = viewRef.current === 'answer';
+    const answer   = wantsCA ? generateDefenderRiff(call, Math.random) : null;
+    const riff     = answer ?? call;
+    setCallAnswer(answer ? { call, ans: answer, kind: answer.kind, tier: diffRef.current } : null);
     const notes    = riffDegreesToNotes(riff.degrees, riff.sharps);
     const freqs    = riff.degrees.map((d, i) => riffDegreeFreq(d, riff.sharps[i]));
     const voicing  = voiceRiff(riff.degrees, riff.sharps, riff.rhythm);
@@ -424,7 +437,8 @@ export function RiffPractice({ initialDiff, onBack }) {
       {/* ── Highway ── */}
       {/* 🎯 the neon neck is a wide instrument — it takes the full practice
           window rather than the 500px column the piano/highway views want. */}
-      <div style={view === 'neon' ? {...S.highwayWrap, maxWidth:'none'} : S.highwayWrap}>
+      <div style={(view === 'neon' || view === 'answer')
+        ? { ...S.highwayWrap, maxWidth: 'none' } : S.highwayWrap}>
         {riffRun && (
           <RiffHighway
             run={riffRun}
@@ -434,6 +448,7 @@ export function RiffPractice({ initialDiff, onBack }) {
             accent={ACCENT}
             onPressKey={pressKey}
             showLabels={showLabels}
+            callAnswer={callAnswer}
           />
         )}
       </div>
@@ -445,6 +460,11 @@ export function RiffPractice({ initialDiff, onBack }) {
           <button onClick={() => setView('guitar')} style={viewBtn(view === 'guitar')}>🎸</button>
           <button onClick={() => setView('neon')}   style={viewBtn(view === 'neon')}
             title="Riff Off — landing-target rings on the neck">🎯</button>
+          {/* 🗣️ Call & Answer — the derivation view. Switching takes effect on
+              the NEXT riff: the current run's notes are already scheduled, and
+              the answer view needs a call/answer PAIR the run wasn't built with. */}
+          <button onClick={() => setView('answer')} style={viewBtn(view === 'answer')}
+            title="Call & Answer — work out the reply instead of reading it">🗣️</button>
           <RigPicker rig={rig} onCycle={cycleRig} accent={ACCENT} />
 
           {/* ── 🐢 TEMPO DIAL ── takes effect on the NEXT riff (the current run's

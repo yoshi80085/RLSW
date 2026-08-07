@@ -27,6 +27,7 @@
 import React, { useEffect, useRef } from "react";
 import { cellKey, nearestPositionForKey, MAX_FRET, WINDOW } from "../riff/guitarMap.js";
 import { NeonNeck } from "./NeonNeck.jsx";
+import { CallAnswer } from "./CallAnswer.jsx";
 
 // ── Geometry (px) ────────────────────────────────────────────────────────────
 const HWY_H     = 230;  // highway height — strike line sits at its bottom edge
@@ -265,7 +266,10 @@ function GuitarStrike({ litNotes, activeAnchor, accent, onPress }) {
 // results:  the performer's results array (entries carry noteIdx)
 // ghostHit: battleState.ghostHit ({ idx, main, ghost }) — half-landed E-Rush pair
 // accent:   the performing spirit's color; onPressKey: the engine's judge fn
-export function RiffHighway({ run, results, ghostHit, view, accent, onPressKey, showLabels = true }) {
+// callAnswer: { call, ans, kind, tier } — only the 🗣️ answer view needs it, and
+//   only that view is gated on it (see the guard below). Every other caller can
+//   keep passing exactly what it passed before.
+export function RiffHighway({ run, results, ghostHit, view, accent, onPressKey, showLabels = true, callAnswer }) {
   // Latest run + judged set live on refs so the rAF loop (bound once per run)
   // always reads fresh data without re-subscribing on every judgment.
   const runRef    = useRef(run);
@@ -279,12 +283,16 @@ export function RiffHighway({ run, results, ghostHit, view, accent, onPressKey, 
 
   const isGuitar = view === 'guitar';
   const isNeon   = view === 'neon';
+  // 🗣️ The answer view needs the CALL as well as the run. A caller that hasn't
+  // been taught to supply it (an attacker turn, an old call site) falls back to
+  // the neon neck rather than rendering a broken derivation puzzle.
+  const isAnswer = view === 'answer' && !!callAnswer?.call && !!callAnswer?.ans;
 
   // ── The motion loop — one rAF per run, transforms written directly. ──
   // ⚠️ rAF composes with data-rot for diamond gem rotation (see gem()).
   useEffect(() => {
     if (!run?.notes?.length) return;
-    if (isNeon) return;   // 🎯 neon view has no falling gems — NeonNeck runs its own loop
+    if (isNeon || isAnswer) return;   // those views own their own loops
     let raf;
     const tick = () => {
       const r = runRef.current;
@@ -311,9 +319,22 @@ export function RiffHighway({ run, results, ghostHit, view, accent, onPressKey, 
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [run?.startedAt, run?.notes?.length, isNeon]); // new run (new turn / round) → fresh loop
+  }, [run?.startedAt, run?.notes?.length, isNeon, isAnswer]); // new run (new turn / round) → fresh loop
 
   if (!run?.notes?.length) return null;
+
+  // 🗣️ ANSWER view — no highway and no instrument. The call sits on screen as a
+  // contour, a rule card says what the answer does to it, and the answer's note
+  // letters withdraw as the tier climbs. Presses still go out through
+  // onPressKey, so the judge, the results array and the verdict are untouched.
+  if (isAnswer) {
+    return (
+      <CallAnswer run={run} results={results}
+        call={callAnswer.call} ans={callAnswer.ans}
+        kind={callAnswer.kind} tier={callAnswer.tier}
+        accent={accent} onPressKey={onPressKey} />
+    );
+  }
 
   // 🎯 NEON view — no highway at all. Notes are reticles closing onto their own
   // string/fret cell on the guitar artwork; NeonNeck owns its own rAF loop and
