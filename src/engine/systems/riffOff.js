@@ -10,6 +10,8 @@ import {
   riffDegreesToNotes, RIFF_LEN_DEFAULT,
 } from "../../riff/riffGeneration.js";
 import { melodyToRiff } from "../../riff/melodyRiff.js";
+import { voiceRiff, degreePitch } from "../../riff/guitarMap.js";
+import { applyPerformance } from "../../riff/riffPerformance.js";
 import { marginToDamage } from "./combat.js";
 
 // Grade → weight for the performance score (single source of truth; the
@@ -58,6 +60,33 @@ function pickGhostLetters(notes, rng) {
   });
 }
 
+/**
+ * Per-note performance data for one side's riff: melodic direction (the arrow
+ * the highway draws), sustains and bends. Index-aligned with riff.degrees.
+ *
+ * NOTE — chords are deliberately NOT applied here. A two-note chord INSERTS a
+ * note, which changes the riff's length, and `noteIdx` is the key that results,
+ * scoring, E-Rush ghost arrays and Riff Slayer glitch indexes are all built
+ * against. That needs its own pass with those four systems updated together;
+ * bolting it on here would silently corrupt every one of them.
+ */
+function performanceFor(riff, rng) {
+  const voicing = voiceRiff(riff.degrees, riff.sharps, riff.rhythm);
+  const notes = riff.degrees.map((d, i) => {
+    const [string, fret] = voicing?.positions?.[i] ?? [0, 0];
+    return {
+      pitch: degreePitch(d, riff.sharps?.[i]),
+      string, fret,
+      accent: (riff.rhythm?.[i]?.feel ?? 'steady') !== 'rushed',
+    };
+  });
+  return applyPerformance(notes, rng).map(n => ({
+    dir: n.dir, chugPart: !!n.chugPart, sustain: n.sustain,
+    bend: n.bend, bendDir: n.bendDir, bendAmt: n.bendAmt,
+    bendAt: n.bendAt, bendWeight: n.bendWeight,
+  }));
+}
+
 /** RIFF_OFF_STARTED — generate both riffs + skill modifiers on engine rng.
  *  When melodyLine is provided (Phase R1), the attacker's riff is built from
  *  their committed melody instead of randomly generated. If the melody is too
@@ -79,6 +108,19 @@ export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRu
   }
   const def = generateDefenderRiff(atk, rng);
   const defNotes = riffDegreesToNotes(def.degrees, def.sharps);
+
+  // 🎸 PERFORMANCE — which notes ring, which ones bend, and how hard.
+  //
+  // This MUST happen here, on the engine's seeded rng, not on the client at
+  // render time: in a multiplayer riff-off both players have to be handed the
+  // identical chart, or they're performing different riffs and the verdict
+  // means nothing. Same reason the riffs themselves are generated here.
+  //
+  // voiceRiff has no RNG (GUITAR_NECK_HANDOFF §0.3), so calling it here and
+  // again on the client yields the same positions — the perf array indexes
+  // straight onto the client's notes.
+  atk.perf = performanceFor(atk, rng);
+  def.perf = performanceFor(def, rng);
   return {
     ...state,
     battle: {

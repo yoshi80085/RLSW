@@ -67,7 +67,22 @@ const GAUGE         = [3.2, 2.9, 2.4, 1.9, 1.5, 1.1];
 
 const DIR_GLYPH = { up: '↑', down: '↓', same: '→' };
 
-// ── Lane geometry ────────────────────────────────────────────────────────────
+// ── Perspective ──────────────────────────────────────────────────────────────
+// The neck recedes: notes at the nut are small, slow and crowded; they open out
+// and accelerate as they come at you. This is what makes the highway feel like
+// a neck rather than a chart.
+//
+// ⚠️ ONLY THE PIXELS ARE CURVED. Judging stays linear in time — a note's grade
+// window is untouched by where perspective puts it on screen. Bending the clock
+// as well as the geometry would make the same timing error score differently
+// depending on tempo.
+const PERSP = 2.4;
+function persp(z) {                        // z: 0 at the bridge → 1 at the nut
+  const k = PERSP;
+  if (k <= 0.001) return z;
+  return (z / (1 + k * z)) * (1 + k);
+}
+
 // t = 0 at the bridge (bottom, wide), t = 1 at the nut (top, narrow).
 function laneX(stringIdx, t = 0) {
   const spread = 1 - NUT_SQUEEZE * t;
@@ -75,14 +90,25 @@ function laneX(stringIdx, t = 0) {
 }
 
 // Gem center Y (px from highway top) at run-time `now` (ms since run start).
-// Spawns at -SPAWN_PAD a full leadTime before its hit-time; crosses the strike
-// line (y = HWY_H) exactly AT its hit-time; tumbles TAIL px further, fading.
+// Spawns above the highway a full leadTime before its hit-time and crosses the
+// strike line (y = HWY_H) exactly AT its hit-time — perspective changes how it
+// travels between those two points, never when it arrives.
 function gemY(now, hitAt, leadTime) {
-  return -SPAWN_PAD + ((now - (hitAt - leadTime)) / leadTime) * TRAVEL;
+  const z = Math.max(0, Math.min(1, (hitAt - now) / leadTime));
+  const y = HWY_H - persp(z) * TRAVEL;
+  // past the line the gem tumbles on linearly — the curve is for approach only
+  return now > hitAt ? HWY_H + ((now - hitAt) / leadTime) * TRAVEL : y;
 }
 
 /** Fraction of the way from bridge to nut for a given y — for lane convergence. */
 const tAt = (y) => Math.max(0, Math.min(1, 1 - y / HWY_H));
+
+// Fret wires, spaced by real temperament so they bunch toward the nut. Purely
+// scenery, but it's the cue that reads as "guitar neck" rather than "lanes".
+const FRET_ZS = Array.from({ length: 13 }, (_, f) => {
+  const along = 1 - Math.pow(2, -f / 12);
+  return 1 - along / (1 - Math.pow(2, -12 / 12));
+});
 
 /** The string a note is voiced on. voiceRiff put it in pos = [string, fret]. */
 const stringOf = (n) => (Array.isArray(n?.pos) ? n.pos[0] : 0);
@@ -144,18 +170,19 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true 
           const hitAt = Number(el.dataset.hitat);
           const sIdx  = Number(el.dataset.str);
           if (judgedRef.current[idx]) { el.style.opacity = '0'; return; }
-          const y = gemY(now, hitAt, r.leadTime);
-          if (y < -GEM_R) {           // not spawned yet — park above, hidden
+          if (hitAt - now > r.leadTime) {   // not spawned yet — park above, hidden
             el.style.opacity = '0';
             el.style.transform = 'translate(0,0)';
             return;
           }
+          const y = gemY(now, hitAt, r.leadTime);
           const past = Math.max(0, y - HWY_H);
           el.style.opacity = past > 0 ? String(Math.max(0, 1 - past / TAIL)) : '1';
           // Strings converge toward the nut, so a gem's x drifts as it falls.
           const yy = Math.min(y, HWY_H + TAIL);
-          const dx = laneX(sIdx, tAt(yy)) - laneX(sIdx, 0);
-          const scale = 0.62 + 0.38 * (1 - tAt(yy));   // smaller far away
+          const t = tAt(yy);
+          const dx = laneX(sIdx, t) - laneX(sIdx, 0);
+          const scale = 0.42 + 0.58 * (1 - t);        // small and far, big and near
           el.style.transform =
             `translate(${dx}px, ${yy + SPAWN_PAD}px) scale(${scale.toFixed(3)})`;
         });
@@ -281,6 +308,20 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true 
           points={`${laneX(0, 1) - 8},0 ${laneX(5, 1) + 8},0 ` +
                   `${laneX(5, 0) + 18},${HWY_H} ${laneX(0, 0) - 18},${HWY_H}`}
           fill="url(#riffSlab)" stroke="rgba(25,230,255,0.22)" strokeWidth={1.5} />
+
+        {/* fret wires — real temperament, bunching toward the nut */}
+        {FRET_ZS.map((z, f) => {
+          const y = HWY_H - persp(z) * HWY_H;
+          const isNut = f === 0;
+          return (
+            <line key={`fw${f}`} x1={laneX(0, tAt(y)) - 6} y1={y}
+                  x2={laneX(5, tAt(y)) + 6} y2={y}
+                  stroke={NEON_CYAN}
+                  strokeWidth={isNut ? 2 : 1}
+                  opacity={isNut ? 0.8 : 0.06 + 0.10 * (1 - tAt(y))}
+                  filter={isNut ? 'url(#riffGlow)' : undefined} />
+          );
+        })}
 
         {/* the six strings, converging toward the nut */}
         {STRING_NAMES.map((nm, i) => (

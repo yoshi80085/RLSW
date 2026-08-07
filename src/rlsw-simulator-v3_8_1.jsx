@@ -9098,12 +9098,25 @@ function Game({ gameState, onReturnToLobby }) {
       notes: side.notes.map((k, i) => {
         const feel     = timeline[i]?.feel ?? 'steady';
         const ghostKey = (turn === 'defender' && bs.defGhosts) ? bs.defGhosts[i] : null;
+        // 🎸 Performance data — direction, sustains, bends — decided ONCE by the
+        // engine on seeded rng (engine/systems/riffOff.js → performanceFor) so
+        // both players in a networked duel perform the identical chart. The
+        // client only reads it.
+        const perf = side.perf?.[i] ?? {};
         return {
           idx: i, key: k, feel, ghostKey,
           pos: voicing?.positions?.[i] ?? null,             // [string, fret] from voiceRiff
           hitAt: timeline[i]?.hitAt ?? (preset.leadTime + i * 1000),
           okWin: riffOkWindow(preset, feel, !!ghostKey),
           resolved: false, hitMain: false, hitGhost: false,
+          dir: perf.dir ?? 'same', chugPart: !!perf.chugPart,
+          // Sustains scale with the tempo dial the same way the timeline does —
+          // a tail is a duration, so slowing the riff must lengthen it too, or
+          // the hold window shrinks relative to everything around it.
+          sustain: perf.sustain ? Math.round(perf.sustain / spd) : 0,
+          bend: !!perf.bend, bendDir: perf.bendDir, bendAmt: perf.bendAmt,
+          bendAt: perf.bendAt ? Math.round(perf.bendAt / spd) : 0,
+          bendWeight: perf.bendWeight,
         };
       }),
       anchors: voicing?.anchors ?? null,                   // camera script for the guitar view
@@ -9157,7 +9170,15 @@ function Game({ gameState, onReturnToLobby }) {
       ...p, phase: 'riff_play', turn, noteIdx: -1, glitchAt: null, ghostHit: null, feedback: null,
       riffRun: {
         turn, round, startedAt: eng.t0, leadTime: preset.leadTime, difficulty: riffDifficultyRef.current,
-        notes: eng.notes.map(n => ({ idx: n.idx, key: n.key, hitAt: n.hitAt, feel: n.feel, ghostKey: n.ghostKey, okWin: n.okWin, pos: n.pos })),
+        notes: eng.notes.map(n => ({
+          idx: n.idx, key: n.key, hitAt: n.hitAt, feel: n.feel, ghostKey: n.ghostKey,
+          okWin: n.okWin, pos: n.pos,
+          // the highway reads these — without them every gem draws as a flat
+          // "same" bar and the sustain/bend mechanics are invisible
+          dir: n.dir, chugPart: n.chugPart, sustain: n.sustain,
+          bend: n.bend, bendDir: n.bendDir, bendAmt: n.bendAmt,
+          bendAt: n.bendAt, bendWeight: n.bendWeight,
+        })),
         anchors: eng.anchors,  // Guitar-neck camera script (phrase windows)
       },
     } : p);
