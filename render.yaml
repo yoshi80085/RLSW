@@ -7,3 +7,15 @@ services:
     plan: free
     # Render injects PORT automatically (default 10000).
     # The server reads process.env.PORT, falling back to 8787 for LAN use.
+    envVars:
+      # Render terminates the connection at its edge proxy and appends the real
+      # client IP to X-Forwarded-For, so the per-IP abuse limits in index.js
+      # need this to see anything but the proxy's own address. Do NOT set this
+      # anywhere the server is reachable directly — an unproxied client can
+      # write whatever X-Forwarded-For it likes.
+      - key: TRUST_PROXY
+        value: "1"
+      # Browser origins allowed to open a socket. Add your itch.io / custom
+      # domain here if the game ever gets hosted somewhere else.
+      - key: ALLOWED_ORIGINS
+        value: "https://yoshi80085.github.io"

@@ -10,13 +10,103 @@ import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
 
 const PORT = Number(process.env.PORT ?? 8787);
-const ROOM_TTL_MS = 10 * 60 * 1000; // empty-room grave timer
+const ROOM_TTL_MS = Number(process.env.ROOM_TTL_MS ?? 10 * 60 * 1000); // empty-room grave timer
 // Lobby ghosts: a seat whose socket dropped IN THE LOBBY is kept briefly (so a
 // refresh can reclaim it by token), then removed — no lingering phantom
 // players. Mid-game seats survive indefinitely (reclaimable all match).
 // Env override exists for the smoke tests.
 const LOBBY_LINGER_MS = Number(process.env.LOBBY_LINGER_MS ?? 45_000);
 const SCHEMA = 1;                   // must match engine state schema
+
+// ─── N12: ABUSE LIMITS ──────────────────────────────────────────────────────
+// The server is a public socket on a small box with all state in RAM, so every
+// unbounded thing is a free OOM for anyone who finds the URL. Each limit below
+// is generous for real play and ruinous for a script. All env-overridable so
+// the smokes can tighten them without waiting around.
+const LIMITS = {
+  // per-message ceiling — `ws` defaults to 100MB, which is absurd for our frames
+  maxPayloadBytes: Number(process.env.MAX_PAYLOAD_BYTES ?? 64 * 1024),
+  // token bucket per socket: sustained rate + burst allowance
+  msgPerSec: Number(process.env.MSG_PER_SEC ?? 30),
+  msgBurst: Number(process.env.MSG_BURST ?? 60),
+  // room minting
+  maxRooms: Number(process.env.MAX_ROOMS ?? 500),
+  maxRoomsPerIp: Number(process.env.MAX_ROOMS_PER_IP ?? 5),
+  // simultaneous sockets from one address (a household NAT needs headroom)
+  maxConnPerIp: Number(process.env.MAX_CONN_PER_IP ?? 20),
+  // match log — a real game is a few hundred actions; 20k is a runaway
+  maxLog: Number(process.env.MAX_LOG ?? 20_000),
+  maxLogLines: Number(process.env.MAX_LOG_LINES ?? 5_000),
+  maxSpectators: Number(process.env.MAX_SPECTATORS ?? 20),
+  maxNameLen: Number(process.env.MAX_NAME_LEN ?? 24),
+  // failed JOIN_ROOM attempts before we hang up — room codes are only 4 chars
+  // over a 24-letter alphabet (~331k combos), which is walkable in minutes
+  maxBadJoins: Number(process.env.MAX_BAD_JOINS ?? 20),
+  badJoinWindowMs: Number(process.env.BAD_JOIN_WINDOW_MS ?? 60_000),
+};
+
+// Origin allowlist. Browsers always send Origin; non-browser clients (our node
+// smokes, curl) send none — those are allowed through, since Origin is a
+// browser-integrity signal, not authentication. Set ALLOWED_ORIGINS="*" to
+// disable (handy for LAN play off a phone).
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ??
+  "https://yoshi80085.github.io,http://localhost:5173,http://127.0.0.1:5173")
+  .split(",").map(s => s.trim()).filter(Boolean);
+
+function originAllowed(origin) {
+  if (ALLOWED_ORIGINS.includes("*")) return true;
+  if (!origin) return true;              // non-browser client
+  return ALLOWED_ORIGINS.includes(origin);
+}
+
+// Client address. Behind Render/Fly the socket peer is the proxy, so we read
+// X-Forwarded-For — but ONLY the rightmost entry, which is the one our nearest
+// trusted proxy appended. The left entries are client-supplied and forgeable;
+// trusting those would let one attacker wear a different IP per request and
+// walk straight through every per-IP limit here.
+//
+// OFF by default, deliberately. With no proxy in front of us, ANY X-Forwarded-For
+// is attacker-written, so trusting it would silently void every per-IP limit
+// below — the worst kind of bug, one that looks fine. Set TRUST_PROXY=1 only
+// where a proxy really does terminate the connection (see render.yaml). Getting
+// that wrong the other way is loud and harmless: everyone shares one bucket and
+// you notice immediately.
+const TRUST_PROXY = process.env.TRUST_PROXY === "1";
+function clientIp(req) {
+  if (TRUST_PROXY) {
+    const xff = req.headers["x-forwarded-for"];
+    if (xff) {
+      const hops = String(xff).split(",").map(s => s.trim()).filter(Boolean);
+      if (hops.length) return hops[hops.length - 1];
+    }
+  }
+  return req.socket?.remoteAddress ?? "unknown";
+}
+
+/** ip → live socket count */
+const connsByIp = new Map();
+/** ip → rooms currently owned */
+const roomsByIp = new Map();
+/** ip → { count, resetAt } for failed joins */
+const badJoinsByIp = new Map();
+
+const bump = (map, key, delta) => {
+  const next = (map.get(key) ?? 0) + delta;
+  if (next <= 0) map.delete(key); else map.set(key, next);
+  return next;
+};
+
+// Trim a player-supplied display name: strip control characters (they wreck
+// the lobby layout and log lines) and cap the length before it gets broadcast
+// to every other client in the room.
+function cleanName(raw) {
+  const s = String(raw ?? "Player")
+    /* eslint-disable-next-line no-control-regex */
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim()
+    .slice(0, LIMITS.maxNameLen);
+  return s || "Player";
+}
 
 // N8: version gate — a mismatched client is refused at the door (clean error
 // in the lobby) instead of desyncing mid-game. `schema` is the engine/protocol
@@ -49,9 +139,10 @@ function newRoomCode() {
 }
 const newToken = () => randomBytes(12).toString("hex");
 
-function makeRoom(code) {
+function makeRoom(code, ownerIp = null) {
   return {
     code,
+    ownerIp,                 // N12: charged against this IP's room quota
     appVersion: null,        // N8: creator's build — joiners must match
     phase: "lobby",          // lobby | playing
     seats: [],               // { seatId, name, ws|null, rejoinToken, isBot, spiritId|null }
@@ -124,11 +215,18 @@ function startLobbyLinger(room, s) {
   }, LOBBY_LINGER_MS);
 }
 
+// N12: single exit for a room's life, so the creator's per-IP quota is always
+// released. Anything that forgets this leaks quota until the process restarts.
+function deleteRoom(room) {
+  clearTimeout(room.graveTimer);
+  if (rooms.delete(room.code) && room.ownerIp) bump(roomsByIp, room.ownerIp, -1);
+}
+
 function scheduleGrave(room) {
   clearTimeout(room.graveTimer);
   room.graveTimer = setTimeout(() => {
     const anyLive = room.seats.some(s => s.ws) || room.spectators.size > 0;
-    if (!anyLive) rooms.delete(room.code);
+    if (!anyLive) deleteRoom(room);
   }, ROOM_TTL_MS);
 }
 
@@ -144,23 +242,72 @@ const httpServer = createServer((req, res) => {
   res.writeHead(404); res.end();
 });
 
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: LIMITS.maxPayloadBytes });
+
+// Same reasoning as the per-socket handler below: an unhandled 'error' here is
+// a process-wide crash triggerable by one malformed handshake.
+wss.on("error", (e) => console.error("wss error:", e.message));
+httpServer.on("clientError", (_e, socket) => {
+  try { socket.destroy(); } catch { /* already gone */ }
+});
+
+// N12: refuse at the handshake, before a socket object exists — an upgrade we
+// never complete costs us nothing, which is the whole point.
 httpServer.on("upgrade", (req, socket, head) => {
+  const origin = req.headers.origin;
+  if (!originAllowed(origin)) {
+    socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+    return socket.destroy();
+  }
+  const ip = clientIp(req);
+  if ((connsByIp.get(ip) ?? 0) >= LIMITS.maxConnPerIp) {
+    socket.write("HTTP/1.1 429 Too Many Requests\r\n\r\n");
+    return socket.destroy();
+  }
   wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
 });
 
-wss.on("connection", (ws) => {
+wss.on("connection", (ws, req) => {
   // per-connection context
   let room = null;
   let seat = null;      // null for spectators
+  const ip = clientIp(req);
+  bump(connsByIp, ip, +1);
   ws.isAlive = true;
   ws.on("pong", () => { ws.isAlive = true; });
+
+  // N12: a socket-level error ('error' on an EventEmitter with no listener is
+  // an uncaught throw) takes the whole process down and every live game with
+  // it. `ws` raises one for any protocol violation — an oversized frame, a bad
+  // opcode, a broken mask — so this listener is load-bearing, not politeness.
+  // 'close' still fires after, which is what releases the seat and the IP slot.
+  ws.on("error", () => { try { ws.terminate(); } catch { /* already gone */ } });
+
+  // N12: token bucket. Refills continuously at msgPerSec up to msgBurst, so
+  // normal play (a handful of frames per turn) never notices it, while a flood
+  // drains the bucket in well under a second and gets hung up on.
+  let tokens = LIMITS.msgBurst;
+  let lastRefill = Date.now();
+  function allowMessage() {
+    const now = Date.now();
+    tokens = Math.min(LIMITS.msgBurst, tokens + ((now - lastRefill) / 1000) * LIMITS.msgPerSec);
+    lastRefill = now;
+    if (tokens < 1) return false;
+    tokens -= 1;
+    return true;
+  }
 
   const err = (code, msg) => send(ws, { t: "ERROR", code, msg });
 
   ws.on("message", (raw) => {
+    if (!allowMessage()) {
+      err("RATE_LIMITED", "too many frames — slow down");
+      return ws.close(1008, "rate limited");
+    }
+
     let f;
     try { f = JSON.parse(raw); } catch { return err("BAD_JSON", "unparseable frame"); }
+    if (!f || typeof f !== "object") return err("BAD_FRAME", "frame must be an object");
 
     switch (f.t) {
       case "PING": return send(ws, { t: "PONG" });
@@ -169,10 +316,19 @@ wss.on("connection", (ws) => {
         if (room) return err("ALREADY_IN_ROOM", "leave first");
         const mismatch = versionMismatch(f);
         if (mismatch) return err("VERSION_MISMATCH", mismatch);
-        room = makeRoom(newRoomCode());
+        // N12: room minting is the cheapest attack on a RAM-only server —
+        // gate it globally and per-IP before anything gets allocated.
+        if (rooms.size >= LIMITS.maxRooms) {
+          return err("SERVER_BUSY", "too many rooms open — try again shortly");
+        }
+        if ((roomsByIp.get(ip) ?? 0) >= LIMITS.maxRoomsPerIp) {
+          return err("TOO_MANY_ROOMS", `you already have ${LIMITS.maxRoomsPerIp} rooms open`);
+        }
+        room = makeRoom(newRoomCode(), ip);
         room.appVersion = f.appVersion ?? null; // N8: pin the creator's build
         rooms.set(room.code, room);
-        seat = { seatId: 1, name: String(f.name ?? "Player"), ws, rejoinToken: newToken(), isBot: false, spiritId: null };
+        bump(roomsByIp, ip, +1);
+        seat = { seatId: 1, name: cleanName(f.name), ws, rejoinToken: newToken(), isBot: false, spiritId: null };
         room.seats.push(seat);
         room.hostSeatId = seat.seatId;
         send(ws, { t: "WELCOME", code: room.code, seatId: seat.seatId, rejoinToken: seat.rejoinToken, schema: SCHEMA });
@@ -181,8 +337,21 @@ wss.on("connection", (ws) => {
 
       case "JOIN_ROOM": {
         if (room) return err("ALREADY_IN_ROOM", "leave first");
-        const r = rooms.get(String(f.code ?? "").toUpperCase());
-        if (!r) return err("NO_SUCH_ROOM", "bad code");
+        const r = rooms.get(String(f.code ?? "").slice(0, 8).toUpperCase());
+        if (!r) {
+          // N12: wrong codes are how you enumerate a 4-char keyspace. Count
+          // them per IP over a sliding window and hang up on a scanner —
+          // a human fat-fingering a code will never reach the ceiling.
+          const now = Date.now();
+          const rec = badJoinsByIp.get(ip);
+          if (!rec || now > rec.resetAt) {
+            badJoinsByIp.set(ip, { count: 1, resetAt: now + LIMITS.badJoinWindowMs });
+          } else if (++rec.count > LIMITS.maxBadJoins) {
+            err("TOO_MANY_ATTEMPTS", "too many bad room codes — try again later");
+            return ws.close(1008, "join flood");
+          }
+          return err("NO_SUCH_ROOM", "bad code");
+        }
         const mismatch = versionMismatch(f, r);
         if (mismatch) return err("VERSION_MISMATCH", mismatch);
 
@@ -205,6 +374,9 @@ wss.on("connection", (ws) => {
 
         if (f.spectator || r.phase === "playing") {
           // mid-game joins become spectators (a seat can only be reclaimed by token)
+          if (r.spectators.size >= LIMITS.maxSpectators) {
+            return err("SPECTATORS_FULL", "too many spectators watching this room");
+          }
           room = r;
           room.spectators.add(ws);
           clearTimeout(room.graveTimer);
@@ -216,7 +388,7 @@ wss.on("connection", (ws) => {
 
         if (r.seats.length >= 4) return err("ROOM_FULL", "4 seats max");
         room = r;
-        seat = { seatId: nextSeatId(r), name: String(f.name ?? "Player"), ws, rejoinToken: newToken(), isBot: false, spiritId: null };
+        seat = { seatId: nextSeatId(r), name: cleanName(f.name), ws, rejoinToken: newToken(), isBot: false, spiritId: null };
         r.seats.push(seat);
         if (r.hostSeatId == null) r.hostSeatId = seat.seatId; // room had emptied of humans
         clearTimeout(room.graveTimer);
@@ -240,8 +412,12 @@ wss.on("connection", (ws) => {
           }
         }
         if (Array.isArray(f.botSeats)) {
+          // N12: bots are seats the host conjures out of a frame, so the 4-seat
+          // rule has to be enforced here too — otherwise a crafted START_GAME
+          // pushes unbounded seats into the room.
           for (const b of f.botSeats) {
-            room.seats.push({ seatId: nextSeatId(room), name: b.name ?? "Bot", ws: null, rejoinToken: null, isBot: true, spiritId: b.spiritId ?? null });
+            if (room.seats.length >= 4) break;
+            room.seats.push({ seatId: nextSeatId(room), name: cleanName(b?.name ?? "Bot"), ws: null, rejoinToken: null, isBot: true, spiritId: b?.spiritId ?? null });
           }
         }
         return broadcast(room, {
@@ -254,6 +430,12 @@ wss.on("connection", (ws) => {
         if (!room || room.phase !== "playing") return err("NOT_PLAYING", "no game in progress");
         if (!seat) return err("SPECTATOR", "spectators can't act");
         if (!f.action || typeof f.action.type !== "string") return err("BAD_ACTION", "action.type required");
+        // N12: the log is replayed to every joiner, so it's both a memory and a
+        // bandwidth liability. Refuse past the ceiling rather than trimming —
+        // dropping the front of a lockstep log would desync everyone.
+        if (room.log.length >= LIMITS.maxLog) {
+          return err("LOG_FULL", "match log limit reached — start a new game");
+        }
         const entry = { seq: ++room.seq, seatId: seat.seatId, action: f.action, cursorBefore: f.cursorBefore ?? null };
         room.log.push(entry);
         // echo to everyone INCLUDING the sender — the sender uses the echo only
@@ -264,6 +446,9 @@ wss.on("connection", (ws) => {
       case "LOG_LINE": {
         if (!room || room.phase !== "playing" || !seat) return;
         const entry = { seq: room.seq, seatId: seat.seatId, text: String(f.text ?? "").slice(0, 500) };
+        // Log lines are cosmetic (they only feed the on-screen feed), so unlike
+        // the action log these can safely lose their oldest entries.
+        if (room.logLines.length >= LIMITS.maxLogLines) room.logLines.shift();
         room.logLines.push(entry);
         return broadcast(room, { t: "LOG_LINE", ...entry }, { except: ws });
       }
@@ -334,6 +519,7 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
+    bump(connsByIp, ip, -1); // N12: release the per-IP slot before anything else
     if (!room) return;
     if (seat && seat.ws === ws) {
       seat.ws = null; // seat survives — reclaimable by token (guard: a rejoin may have already replaced this socket)

@@ -1,0 +1,77 @@
+RLSW — Rockiest, Illest, Savagest, most lit sound of all Worlds
+
+Copyright © 2026 yoshi80085. All rights reserved.
+
+
+WHAT THIS COVERS
+
+This notice covers the original work in this repository, including but not
+limited to:
+
+  - the source code (the game engine, the client, and the room server)
+  - the artwork (character standees, board art, amp art, UI art, and all
+    other original images)
+  - the original music
+  - the characters, their names, designs, biographies, and abilities
+  - the written design documents, and the text of the game itself
+
+
+WHAT THIS DOES NOT COVER
+
+This repository also contains material that is not mine and to which this
+notice does not apply: third-party sound effects, software dependencies,
+and fonts. It further contains material produced with generative AI, over
+which no authorship is claimed. Both are identified in ASSETS.md. Nothing
+in this notice should be read as a claim over either.
+
+
+WHAT YOU MAY DO
+
+You may view and read this source code, and you may play the game at the
+public address where it is hosted.
+
+
+WHAT YOU MAY NOT DO WITHOUT WRITTEN PERMISSION
+
+You may not copy, modify, redistribute, republish, sublicense, sell, or
+create derivative works from any part of this repository. You may not
+reuse the artwork, music, sound effects, or characters in any other
+project, commercial or non-commercial. You may not train machine learning
+models on the contents of this repository.
+
+Making this source publicly readable is not a grant of any license to it.
+No rights are granted by implication, estoppel, or otherwise. Any right
+not expressly granted above is reserved.
+
+
+ASKING
+
+Permission is genuinely available — the reservation above exists to keep
+ownership clear, not to refuse people. If you want to use something here,
+open an issue on the repository and ask.
+
+
+PROVENANCE
+
+Portions of this project's visual effects, HUD, and motion/animation work
+were produced with generative AI assistance, and are identified in
+ASSETS.md. Under current U.S. Copyright Office guidance, purely
+AI-generated material is not eligible for copyright protection and no
+claim of authorship is made over it here. The copyright claimed above
+covers the original human-authored work — the code, the music, the
+character art, the board, amp and stage art, the written material, and the
+selection, arrangement, and integration of the project as a whole.
+
+ASSETS.md is the authoritative record of what is original, what is
+third-party, and what was AI-generated. Where this notice and ASSETS.md
+appear to disagree, ASSETS.md is the more specific statement and governs.
+
+
+NO WARRANTY
+
+This software is provided "as is", without warranty of any kind, express
+or implied, including but not limited to the warranties of
+merchantability, fitness for a particular purpose, and noninfringement.
+In no event shall the copyright holder be liable for any claim, damages,
+or other liability arising from, out of, or in connection with the
+software or the use or other dealings in the software.

@@ -159,4 +159,21 @@ From a whole Galaxy of excess, drugs, wild style, and non-stop partying comes Gl
 
 ---
 
+## 📜 Credits & Rights
+
+**RLSW is created by yoshi80085.** The characters, their designs and
+stories, the music, the board and stage art, the game systems, and the code
+are original work.
+
+Copyright © 2026 yoshi80085. All rights reserved — see [LICENSE](LICENSE).
+The source is public to read, not to reuse. If you want to use something
+here, open an issue and ask; the answer is usually yes.
+
+Some of the visual effects, HUD treatment, and animation work were made
+with generative AI assistance, and the sound effects are free files sourced
+online. What's original, what isn't, and what came from where is listed
+per-file in [ASSETS.md](ASSETS.md), because you shouldn't have to guess.
+
+---
+
 *Built with React + Vite. v0.24*

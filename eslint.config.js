@@ -5,9 +5,17 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'src(backup)', 'src(update2)']),
+  {
+    // The room server is node, not browser — without this it lints against
+    // browser globals and every `process.env` read reports as no-undef.
+    files: ['server/**/*.{js,mjs}'],
+    extends: [js.configs.recommended],
+    languageOptions: { globals: globals.node },
+  },
   {
     files: ['**/*.{js,jsx}'],
+    ignores: ['server/**'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
