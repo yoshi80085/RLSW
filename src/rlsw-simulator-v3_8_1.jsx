@@ -1090,8 +1090,9 @@ function Game({ gameState, onReturnToLobby }) {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 🔊 Remote commit playback — see the MOVE_BUDGET_SET branch above. Same
-  // stale-closure dodge as riffMicPressRef: assigned on every render.
+  // 🔊 Remote commit playback — see the MOVE_BUDGET_SET branch above. Assigned
+  // on every render as a stale-closure dodge (the ref always holds the latest
+  // closure, so a callback captured long ago still sees current state).
   useEffect(() => {
     playRemoteCommitRef.current = (st) => {
       const actorId = st?.acting;
@@ -1359,23 +1360,6 @@ function Game({ gameState, onReturnToLobby }) {
   // position you actually play, and it is the only view a real guitar can be
   // played against comfortably. Piano and the falling-gem guitar remain for
   // players who prefer them — the choice is remembered.
-  const [riffView, setRiffView] = useState(() => {
-    try {
-      const v = localStorage.getItem('rlsw.riffView');
-      if (v === 'piano' || v === 'guitar' || v === 'neon') return v;
-    } catch { /* default */ }
-    return 'neon';
-  });
-  useEffect(() => {
-    try { localStorage.setItem('rlsw.riffView', riffView); } catch { /* non-fatal */ }
-  }, [riffView]);
-  // 🎤 REAL GUITAR — play the riff-off on an actual instrument instead of the
-  // keyboard. Persisted: a player who owns a guitar wants this every battle.
-  const [riffMicOn, setRiffMicOn] = useState(() => {
-    try { return localStorage.getItem('rlsw.riffMic') === '1'; } catch { return false; }
-  });
-  const [riffMicHeard, setRiffMicHeard] = useState(null);  // { key, at } — last note detected
-  const [riffMicErr,   setRiffMicErr]   = useState(null);
   // 🎚️ falling-notes difficulty (toggle on the countdown card) — presets tune
   // fall speed + grade windows (riff/fallingNotes.js). Ref mirror so the run
   // builder (fired from timers) never reads a stale closure.
@@ -1587,99 +1571,36 @@ function Game({ gameState, onReturnToLobby }) {
   }, [battleState?.phase, battleState?.riffOff]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // RIFF-OFF keyboard listener — armed for the whole falling-notes run.
-  // e.key gives 'a' for plain press, 'A' for Shift+A — exactly our sharp rule.
+  // ONE HAND: 1–6 are the six strings, low E to high e. Holding a number
+  // sustains the note it struck; ↑/↓ bend a note that is currently ringing.
   // All judging lives in riffPressKey (RIFF-OFF ENGINE banner), which is also
-  // fed by taps on the highway's strike-zone instrument (mobile / mouse play).
+  // fed by taps on the highway's string buttons (mobile / mouse play).
   useEffect(() => {
     if (!battleState?.riffOff || battleState.phase !== 'riff_play') return;
     const onKey = (e) => {
       if (e.repeat) return;
-      if (e.key.length !== 1 || !/[a-gA-G]/.test(e.key)) return; // only note keys count
-      riffPressKey(e.key);
-      e.preventDefault();
+      if (e.key >= '1' && e.key <= '6') { riffPressKey(Number(e.key)); e.preventDefault(); return; }
+      if (e.key === 'ArrowUp')   { riffBendPress('up');   e.preventDefault(); return; }
+      if (e.key === 'ArrowDown') { riffBendPress('down'); e.preventDefault(); }
+    };
+    const onKeyUp = (e) => {
+      if (e.key >= '1' && e.key <= '6') riffReleaseKey(Number(e.key));
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+    };
   }, [battleState?.riffOff, battleState?.phase, battleState?.turn]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 🎤 RIFF-OFF MIC — play the riff on a REAL guitar ────────────────────────
-  // A third input into the SAME judge the keyboard and the neck taps use. This
-  // works with no translation layer because micPitch and guitarMap already
-  // agree on the note alphabet: both index PC_KEYS
-  // ['a','A','b','c','C','d','D','e','f','F','g','G'] from the same
-  // DEGREE0_PITCH anchor, so micPitch's `key` IS a riffPressKey key. (Do not
-  // "fix" this by routing through pcAbsolute — see the melody-step mic note;
-  // there the target alphabet is NOTE_POOL, which is a different basis.)
-  //
-  // Pitch class only, deliberately: the mic hears WHAT you played, never WHERE.
-  // A reticle on string 3 / fret 5 is satisfied by that pitch anywhere on the
-  // neck, which is correct — riffPressKey has always judged by key, and boxing
-  // a player into one fingering would punish valid alternate voicings.
-  const riffMicHandleRef = useRef(null);
-  const riffMicPressRef  = useRef(() => {});
-  const riffMicClearRef  = useRef(null);
-  // The readout self-clears on a timer. Deriving it from a timestamp compared
-  // against performance.now() at render time is impure AND wrong: nothing
-  // re-renders when the note goes stale, so the last note heard would stay on
-  // screen until some unrelated state moved.
-  useEffect(() => { riffMicPressRef.current = ({ key }) => {
-    setRiffMicHeard(key);
-    clearTimeout(riffMicClearRef.current);
-    riffMicClearRef.current = setTimeout(() => setRiffMicHeard(null), 900);
-    riffPressKey(key);
-  }; });
-
-  useEffect(() => {
-    const bs = battleState;
-    // Armed through the COUNTDOWN as well as the run: getUserMedia plus an
-    // AudioContext spin-up costs real time, and opening it on the first gem
-    // would eat the opening notes of the riff.
-    const performerId = bs?.turn === 'attacker' ? bs?.attackerId : bs?.defenderId;
-    const humanTurn   = !!bs?.riffOff && !isBot(spirits.find(s => s.id === performerId));
-    const wanted = riffMicOn && humanTurn &&
-      (bs.phase === 'riff_countdown' || bs.phase === 'riff_play');
-    let cancelled = false;
-
-    if (wanted && !riffMicHandleRef.current) {
-      startMicListening(payload => {
-        // Runs inside micPitch's rAF loop — an exception here would vanish into
-        // the audio thread and look like a detection failure. Log it loudly.
-        try { riffMicPressRef.current(payload); }
-        catch (err) { console.error('[RLSW MIC] riff press failed:', err); }
-      })
-        .then(h => {
-          if (cancelled) { h.stop(); return; }
-          riffMicHandleRef.current = h;
-          setRiffMicErr(null);
-          addLog('🎤 Mic armed — play the riff on your guitar.');
-        })
-        .catch(() => { if (!cancelled) { setRiffMicErr('mic blocked'); setRiffMicOn(false); } });
-    } else if (!wanted && riffMicHandleRef.current) {
-      riffMicHandleRef.current.stop();
-      riffMicHandleRef.current = null;
-      setRiffMicHeard(null);
-    }
-    return () => { cancelled = true; };
-  }, [riffMicOn, battleState?.riffOff, battleState?.phase, battleState?.turn]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Hand the device back if the battle unmounts mid-run.
-  useEffect(() => () => {
-    riffMicHandleRef.current?.stop(); riffMicHandleRef.current = null;
-    clearTimeout(riffMicClearRef.current);
-  }, []);
-
-  function toggleRiffMic() {
-    if (!micAvailable()) {
-      setRiffMicErr('no mic');
-      addLog('🎤 No microphone available (needs HTTPS or localhost).');
-      return;
-    }
-    setRiffMicOn(v => {
-      const next = !v;
-      try { localStorage.setItem('rlsw.riffMic', next ? '1' : '0'); } catch { /* non-fatal */ }
-      return next;
-    });
-  }
+  // ── 🎤 RIFF-OFF MIC — REMOVED ──────────────────────────────────────────────
+  // Mic was a third input into the riff-off judge. A winner on paper, a loser in
+  // practice: reliable real-time pitch detection off a laptop mic is hard, and the
+  // riff-off is the game's marquee event — it cannot rest on the flakiest input in
+  // the build. The riff-off is number-row only now. micPitch.js is untouched and
+  // still serves Fretboard Recon and Discord Coach, where a bad read costs a hint
+  // rather than a duel.
 
   // 🎸⏰ BACK TO THE PAST — note input listener (armed only while a note flashes).
   useEffect(() => {
@@ -6219,104 +6140,6 @@ function Game({ gameState, onReturnToLobby }) {
   const NEON_WHITE_I   = '#ffffee';
   const NEON_STR_COLS  = [NEON_CYAN_I, '#33ccff', '#6699ff', NEON_VIOLET_I, '#cc44dd', NEON_MAGENTA_I];
 
-  function renderInstrument(view, noteKeys, gotKeys, accent) {
-    const lit = new Set(noteKeys || []);
-    const done = new Set(gotKeys || []);
-    if (view === 'guitar') {
-      const names = ['E','A','D','G','B','e'];
-      const gauge = [3.2, 2.6, 2.0, 1.6, 1.2, 0.8];
-      // Decorative — show melody notes at their lowest neck position, clamped
-      // to 7 visible frets. Uses guitarMap.js for real pitch positions.
-      const N = 6, FRETS = 7, colW = 30, fh = 24, side = 20, topPad = 20;
-      const W = (N - 1) * colW + side * 2, H = topPad + FRETS * fh + 14;
-      const sx = i => side + i * colW, nutY = topPad, fy = f => nutY + f * fh;
-      const blips = [...lit].map(k => {
-        const pos = nearestPositionForKey(k, [1, 2]);
-        if (!pos) return null;
-        return { k, pos: [pos[0], Math.min(pos[1], FRETS)], dn: done.has(k) };
-      }).filter(Boolean);
-      return (
-        <svg width={W} height={H} style={{maxWidth:'100%'}}>
-          <defs>
-            <filter id="neonBrdBloom" x="-40%" y="-40%" width="180%" height="180%">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b1"/>
-              <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b2"/>
-              <feMerge><feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-          </defs>
-          {/* string names — neon per string */}
-          {names.map((nm, i) => (
-            <text key={`n${i}`} x={sx(i)} y={topPad - 6} textAnchor="middle" fontSize={9} fontWeight="bold" fill={NEON_STR_COLS[i]} fontFamily="monospace">{nm}</text>
-          ))}
-          {/* fret inlays — violet glow */}
-          {[3,5,7].filter(f => f <= FRETS).map(f => (
-            <circle key={`in${f}`} cx={(sx(2) + sx(3)) / 2} cy={nutY + (f - 0.5) * fh} r={3.5}
-              fill={`${NEON_VIOLET_I}55`} stroke={`${NEON_VIOLET_I}44`} strokeWidth={1}
-              filter="url(#neonBrdBloom)"/>
-          ))}
-          {/* frets — dim cyan; nut = outline only */}
-          {Array.from({ length: FRETS + 1 }).map((_, f) => (
-            <line key={`f${f}`} x1={sx(0)} y1={fy(f)} x2={sx(N - 1)} y2={fy(f)}
-              stroke={f === 0 ? NEON_CYAN_I : `${NEON_CYAN_I}22`}
-              strokeWidth={f === 0 ? 2 : 0.8}
-              filter={f === 0 ? 'url(#neonBrdBloom)' : undefined}/>
-          ))}
-          {/* strings — neon glow, cyan→magenta */}
-          {names.map((_, i) => (
-            <line key={`s${i}`} x1={sx(i)} y1={fy(0)} x2={sx(i)} y2={fy(FRETS)}
-              stroke={NEON_STR_COLS[i]} strokeWidth={gauge[i] * 0.8}
-              strokeLinecap="round" filter="url(#neonBrdBloom)"/>
-          ))}
-          {/* note blips — white-hot on done, neon outline on lit */}
-          {blips.map(({ k, pos, dn }) => {
-            const [s, f] = pos, cx = sx(s);
-            if (f === 0) return <circle key={k} cx={cx} cy={nutY - 9} r={5}
-              fill={dn ? NEON_WHITE_I : 'none'} stroke={dn ? NEON_CYAN_I : NEON_STR_COLS[s]}
-              strokeWidth={1.5} filter="url(#neonBrdBloom)"/>;
-            return <circle key={k} cx={cx} cy={nutY + (f - 0.5) * fh} r={7.5}
-              fill={dn ? NEON_WHITE_I : `${NEON_STR_COLS[s]}44`}
-              stroke={NEON_STR_COLS[s]} strokeWidth={1.5}
-              filter="url(#neonBrdBloom)"/>;
-          })}
-        </svg>
-      );
-    }
-    // Neon piano — transparent whites with cyan outlines, magenta-filled blacks.
-    const whites = ['c','d','e','f','g','a','b'];
-    const blackAfter = [0, 1, 3, 4, 5];
-    const blackForSharp = { C:0, D:1, F:3, G:4, A:5 };
-    const W = 26, H = 84, bw = 16, bh = 52, svgW = whites.length * W;
-    return (
-      <svg width={svgW} height={H} style={{maxWidth:'100%'}}>
-        <defs>
-          <filter id="neonPnBloom" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="b1"/>
-            <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b2"/>
-            <feMerge><feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-        </defs>
-        {/* white keys — transparent with cyan outline */}
-        {whites.map((l, i) => {
-          const isLit = lit.has(l), dn = done.has(l);
-          const fill = dn ? NEON_WHITE_I : isLit ? `${NEON_CYAN_I}33` : 'transparent';
-          const stroke = dn ? NEON_WHITE_I : isLit ? NEON_WHITE_I : NEON_CYAN_I;
-          return <rect key={l} x={i * W + 1} y={1} width={W - 3} height={H - 2} rx={3}
-            fill={fill} stroke={stroke} strokeWidth={1.5}
-            filter={(isLit || dn) ? 'url(#neonPnBloom)' : undefined}/>;
-        })}
-        {/* black keys — filled magenta */}
-        {blackAfter.map(i => {
-          const sharp = Object.keys(blackForSharp).find(s => blackForSharp[s] === i);
-          const isLit = sharp && lit.has(sharp), dn = sharp && done.has(sharp);
-          const fill = dn ? NEON_WHITE_I : isLit ? NEON_WHITE_I : NEON_MAGENTA_I;
-          return <rect key={`b${i}`} x={(i + 1) * W - bw / 2} y={0} width={bw} height={bh} rx={2}
-            fill={fill} stroke={`${NEON_MAGENTA_I}cc`} strokeWidth={1}
-            filter="url(#neonPnBloom)"/>;
-        })}
-      </svg>
-    );
-  }
-
   // ─── 🧪 TESTING GROUNDS — dev helpers ──────────────────────────────────────
   // The acting spirit (front of the turn queue, skipping any KO'd).
   function devCurrentSpiritId() {
@@ -9341,32 +9164,51 @@ function Game({ gameState, onReturnToLobby }) {
   }
 
   // Judge a note-key press (keyboard or strike-zone tap) against the falling run.
-  function riffPressKey(key) {
+  // ── THE JUDGE — one key per note ───────────────────────────────────────────
+  // `str` is a STRING NUMBER, 1–6, low E to high e. It arrives from the number
+  // row or from a tap on the highway's string buttons.
+  //
+  // Judging moved off note LETTERS (the old a–g + Shift rule) because chording
+  // a letter for every gem is a typing test, not playing. The letters still
+  // exist — every note is still voiced to a real string and fret by voiceRiff,
+  // and still SOUNDS its real pitch — they are simply no longer what the hands
+  // are responsible for. The string is; the melody's contour is notation the
+  // player reads off the gem's shape.
+  function riffPressKey(str) {
     const eng = riffEngineRef.current;
     const bs  = battleStateRef.current;
     if (!eng?.notes || !bs?.riffOff || bs.phase !== 'riff_play' || bs.turn !== eng.turn) return;
     const now  = performance.now() - eng.t0;
     const side = eng.turn === 'attacker' ? bs.atkRiff : bs.defRiff;
+
+    (eng.held ??= new Set()).add(str);
+
     // Reachable notes right now, nearest to its hit-time first…
     const live = eng.notes
       .filter(n => !n.resolved && Math.abs(now - n.hitAt) <= n.okWin)
       .sort((a, b) => Math.abs(now - a.hitAt) - Math.abs(now - b.hitAt));
     if (!live.length) return; // nothing in reach — a press into empty air is ignored
-    // …preferring one this key actually matches (two gems can crowd the line);
-    // among matches take the EARLIEST hit-time, so a late catch of gem k can't
-    // be stolen by a same-letter gem k+1 whose window just opened.
-    const matches = live.filter(x => key === x.key || (x.ghostKey && key === x.ghostKey));
+
+    // …preferring one actually ON this string. Without that preference a
+    // correct press could be eaten by a neighbouring lane's gem whose window
+    // happened to be closer, which reads as a bug. Among matches take the
+    // EARLIEST hit-time, so a late catch of gem k can't be stolen by a
+    // same-string gem k+1 whose window just opened.
+    const strOf = (x) => (Array.isArray(x.pos) ? x.pos[0] : 0) + 1;
+    const matches = live.filter(x => strOf(x) === str || x.ghostString === str);
     const n = matches.length
       ? matches.reduce((a, b) => (a.hitAt <= b.hitAt ? a : b))
       : live[0];
     const offset = Math.round(now - n.hitAt);
 
-    // 🎴 いいラッシュ / E-RUSH — this note carries a GHOST: both the real key and
-    // the ghost key must land inside the window. Graded on the SECOND press.
-    if (n.ghostKey) {
-      if (key === n.key) n.hitMain = true;
-      else if (key === n.ghostKey) n.hitGhost = true;
-      else return; // wrong key — ignored, the window keeps running
+    // 🎴 いいラッシュ / E-RUSH — this note carries a GHOST: both its own string
+    // and the ghost string must land inside the window. Graded on the SECOND
+    // press. (Under the old letter judge this was two note names; the shape of
+    // the mechanic is unchanged, only what the fingers do.)
+    if (n.ghostString) {
+      if (strOf(n) === str) n.hitMain = true;
+      else if (n.ghostString === str) n.hitGhost = true;
+      else return; // wrong string — ignored, the window keeps running
       playNoteSound(null, { freq: side.freqs?.[n.idx], holdTime: 0.3, fadeTime: 0.35, volume: 0.16 });
       setBattleState(p => p?.riffOff ? { ...p, ghostHit: { idx: n.idx, main: n.hitMain, ghost: n.hitGhost } } : p);
       if (!(n.hitMain && n.hitGhost)) return; // need both — keep waiting
@@ -9378,22 +9220,78 @@ function Game({ gameState, onReturnToLobby }) {
     }
 
     n.resolved = true;
-    const hit   = key === n.key;
+    const hit   = strOf(n) === str;
     const grade = hit ? (gradeRiffOffset(offset, eng.preset, n.feel) ?? 'ok') : 'wrong';
     // ── the note RINGS through the player's own amp — same distorted
-    //    guitar voice (and 🎛️ knob settings) as the Melody Line. A wrong
-    //    key plays the sour bent note they actually hit.
+    //    guitar voice (and 🎛️ knob settings) as the Melody Line.
     if (hit) {
       const fr   = side.freqs?.[n.idx];
-      const hold = grade === 'perfect' ? 0.5 : grade === 'good' ? 0.42 : 0.34;
+      const hold = n.sustain ? n.sustain / 1000 + 0.4
+                 : grade === 'perfect' ? 0.5 : grade === 'good' ? 0.42 : 0.34;
       const vol  = grade === 'perfect' ? 0.22 : grade === 'good' ? 0.18 : 0.14;
-      // 🤘 POWER CHORD — root + fifth on every landed gem, so hits SLAM
+      // 🤘 POWER CHORD — root + fifth on every landed gem, so hits SLAM. A
+      // charted two-note chord already supplies its own fifth as a separate
+      // gem, so don't stack another one on top of it.
       playNoteSound(null, { freq: fr, holdTime: hold, fadeTime: 0.4, volume: vol });
-      if (fr) playNoteSound(null, { freq: fr * 1.5, holdTime: hold, fadeTime: 0.4, volume: vol * 0.5 });
+      if (fr && !n.hasPartner && n.partnerOf == null) {
+        playNoteSound(null, { freq: fr * 1.5, holdTime: hold, fadeTime: 0.4, volume: vol * 0.5 });
+      }
+      // A sustain keeps ringing until the key comes up or the tail runs out.
+      if (n.sustain) {
+        (eng.sustains ??= new Map()).set(str, {
+          idx: n.idx, key: str, freq: fr, bent: false,
+          until: n.hitAt + n.sustain, bendAt: n.hitAt + (n.bendAt ?? 0),
+        });
+      }
     }
-    else playRiffWrong(key);
+    else playRiffWrong(str);
     riffRecordResult(eng.turn, { hit, rt: hit ? Math.abs(offset) : null, grade, noteIdx: n.idx, early: offset < 0 });
     riffCheckRunEnd(eng);
+  }
+
+  /** Key up — a sustain only counts while its number is still held. */
+  function riffReleaseKey(str) {
+    const eng = riffEngineRef.current;
+    if (!eng) return;
+    eng.held?.delete(str);
+    eng.sustains?.delete(str);
+  }
+
+  /**
+   * ↑ / ↓ — bend a note that is already ringing.
+   * You cannot bend a note you are not fretting, so this only ever acts on a
+   * live sustain whose number is still down. Judged against the moment marked
+   * on the tail, not merely "some time during the note".
+   */
+  function riffBendPress(dir) {
+    const eng = riffEngineRef.current;
+    const bs  = battleStateRef.current;
+    if (!eng?.sustains?.size || !bs?.riffOff || bs.phase !== 'riff_play') return;
+    const now = performance.now() - eng.t0;
+
+    let best = null, bestDt = Infinity;
+    for (const a of eng.sustains.values()) {
+      const n = eng.notes.find(x => x.idx === a.idx);
+      if (!n?.bend || a.bent || !eng.held?.has(a.key)) continue;
+      const dt = Math.abs(now - a.bendAt);
+      if (dt < bestDt) { bestDt = dt; best = a; }
+    }
+    if (!best) return;
+    const n = eng.notes.find(x => x.idx === best.idx);
+    if (bestDt > (eng.preset?.ok ?? 420)) return;   // outside the gesture window
+
+    best.bent = true;
+    const landed = n.bendDir === dir;
+    if (landed && best.freq) {
+      // the bent pitch itself — the gesture is audible, not merely scored
+      const semis = (n.bendAmt ?? 2) * (dir === 'down' ? -1 : 1);
+      playNoteSound(null, { freq: best.freq * Math.pow(2, semis / 12),
+                            holdTime: 0.45, fadeTime: 0.5, volume: 0.2 });
+    } else if (!landed) {
+      playRiffWrong(dir);
+    }
+    setBattleState(p => p?.riffOff
+      ? { ...p, bendFlash: { idx: best.idx, landed, weight: n.bendWeight } } : p);
   }
 
   // Once every gem is judged, let the last flash breathe and hand the turn on.
@@ -11879,20 +11777,13 @@ function Game({ gameState, onReturnToLobby }) {
         thrashFame={thrashFame}
         noteStates={noteStates}
         playRiffOffPlayback={playRiffOffPlayback}
-        renderInstrument={renderInstrument}
         riffBeginTurn={riffBeginTurn}
         riffDifficulty={riffDifficulty}
         riffPressKey={riffPressKey}
         riffStats={riffStats}
-        riffView={riffView}
-        riffMicOn={riffMicOn}
-        riffMicHeard={riffMicHeard}
-        riffMicErr={riffMicErr}
-        toggleRiffMic={toggleRiffMic}
         setBattleState={setBattleState}
         setDiceDisplay={setDiceDisplay}
         setRiffDifficulty={setRiffDifficulty}
-        setRiffView={setRiffView}
         setSkipBattleIntros={setSkipBattleIntros}
         skipBattleIntro={skipBattleIntro}
         skipBattleIntros={skipBattleIntros}

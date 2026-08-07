@@ -3,7 +3,7 @@
 // -----------------------------------------------------------------------------
 // A standalone mini-game accessible from the lobby: riffs keep coming, difficulty
 // escalates after good streaks, pure sight-reading practice with the full-neck
-// guitar view (or piano). No duel state machine, no beams, no verdicts — just
+// the arrow highway. No duel state machine, no beams, no verdicts — just
 // the player vs. an infinite supply of randomly generated riffs.
 //
 // Reuses: generateAttackerRiff (riff generation), voiceRiff (guitar-neck
@@ -18,7 +18,7 @@
 // • ESC or ← LOBBY button returns to the lobby
 // =============================================================================
 import React, { useState, useRef, useEffect } from "react";
-import { generateAttackerRiff, generateDefenderRiff, riffDegreesToNotes } from "../riff/riffGeneration.js";
+import { generateAttackerRiff, riffDegreesToNotes } from "../riff/riffGeneration.js";
 import {
   RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT,
   buildRiffTimeline, riffOkWindow, gradeRiffOffset,
@@ -26,7 +26,6 @@ import {
   clampRiffSpeed, scalePresetForSpeed, scaleTimelineForSpeed,
   loadRiffSpeed, saveRiffSpeed,
 } from "../riff/fallingNotes.js";
-import { micAvailable, startMicListening } from "../audio/micPitch.js";
 import { voiceRiff } from "../riff/guitarMap.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, playRiffMiss } from "../audio/riffSfx.js";
 import { RiffHighway } from "./RiffHighway.jsx";
@@ -59,21 +58,6 @@ function saveStats(s) { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); }
 // ── Component ────────────────────────────────────────────────────────────────
 export function RiffPractice({ initialDiff, onBack }) {
   const [diff, setDiff]             = useState(initialDiff || RIFF_FALL_DEFAULT);
-  // 🎯 NEON is the standard riff-off view — practice on what you duel on.
-  const [view, setView] = useState(() => {
-    try {
-      const v = localStorage.getItem('rlsw.riffView');
-      if (v === 'piano' || v === 'guitar' || v === 'neon' || v === 'answer') return v;
-    } catch { /* default */ }
-    return 'neon';
-  });
-  // 🗣️ The call the current riff answers — null in every view but 'answer'.
-  // Practice normally streams lone attacker riffs; the answer view needs a PAIR,
-  // so launchRiff generates both and hands the call to the view.
-  const [callAnswer, setCallAnswer] = useState(null);
-  useEffect(() => {
-    try { localStorage.setItem('rlsw.riffView', view); } catch { /* non-fatal */ }
-  }, [view]);
   const [phase, setPhase]           = useState('idle'); // idle | countdown | playing | results
   const [countdown, setCountdown]   = useState(3);
   const [riffRun, setRiffRun]       = useState(null);
@@ -89,12 +73,6 @@ export function RiffPractice({ initialDiff, onBack }) {
   // (same localStorage key), so the speed you get comfortable with here is the
   // speed your duels run at.
   const [speed, setSpeed] = useState(loadRiffSpeed);
-  // 🎤 real guitar — same judge as the keyboard and the neck taps.
-  const [micOn, setMicOn] = useState(() => {
-    try { return localStorage.getItem('rlsw.riffMic') === '1'; } catch { return false; }
-  });
-  const [micHeard, setMicHeard] = useState(null);  // { key, at }
-  const [micErr,   setMicErr]   = useState(null);
 
   // Refs for timing-critical state (closures inside rAF / setTimeout must
   // always read the latest value, not a stale React snapshot).
@@ -104,12 +82,10 @@ export function RiffPractice({ initialDiff, onBack }) {
   const phaseRef   = useRef('idle');
   const rigRef     = useRef(rig);
   const speedRef   = useRef(speed);
-  const viewRef    = useRef(view);
   diffRef.current  = diff;
   phaseRef.current = phase;
   rigRef.current   = rig;
   speedRef.current = speed;
-  viewRef.current  = view;
 
   function cycleRig() {
     const next = RIG_ORDER[(RIG_ORDER.indexOf(rigRef.current) + 1) % RIG_ORDER.length];
@@ -145,14 +121,7 @@ export function RiffPractice({ initialDiff, onBack }) {
     // and scale afterwards — hitAt[0] IS the lead time and later entries are
     // lead + cumulative gaps, so one uniform divide moves both.
     const p        = scalePresetForSpeed(p0, spd);
-    // 🗣️ In the answer view you play the REPLY, not the call: generate the pair
-    // and run the defender's riff. Everything downstream (voicing, timeline,
-    // judging, stats) is identical — a riff is a riff, whoever threw it.
-    const call     = generateAttackerRiff(Math.random, p0.maxLen);
-    const wantsCA  = viewRef.current === 'answer';
-    const answer   = wantsCA ? generateDefenderRiff(call, Math.random) : null;
-    const riff     = answer ?? call;
-    setCallAnswer(answer ? { call, ans: answer, kind: answer.kind, tier: diffRef.current } : null);
+    const riff     = generateAttackerRiff(Math.random, p0.maxLen);
     const notes    = riffDegreesToNotes(riff.degrees, riff.sharps);
     const freqs    = riff.degrees.map((d, i) => riffDegreeFreq(d, riff.sharps[i]));
     const voicing  = voiceRiff(riff.degrees, riff.sharps, riff.rhythm);
@@ -200,7 +169,9 @@ export function RiffPractice({ initialDiff, onBack }) {
   }
 
   // ── Key press judge (keyboard + strike-zone taps) ─────────────────────────
-  function pressKey(key) {
+  // Judged by STRING NUMBER (1–6), exactly like the duel. Practice has to be
+  // the same instrument as the thing it practises for.
+  function pressKey(str) {
     const eng = engineRef.current;
     if (!eng?.notes || phaseRef.current !== 'playing') return;
     const now  = performance.now() - eng.t0;
@@ -208,18 +179,19 @@ export function RiffPractice({ initialDiff, onBack }) {
       .filter(n => !n.resolved && Math.abs(now - n.hitAt) <= n.okWin)
       .sort((a, b) => Math.abs(now - a.hitAt) - Math.abs(now - b.hitAt));
     if (!live.length) return;
-    // Prefer a note this key matches; among matches, take earliest
-    const matches = live.filter(x => key === x.key);
+    const strOf = (x) => (Array.isArray(x.pos) ? x.pos[0] : 0) + 1;
+    // Prefer a note actually on this string; among matches, take earliest
+    const matches = live.filter(x => strOf(x) === str);
     const n = matches.length
       ? matches.reduce((a, b) => a.hitAt <= b.hitAt ? a : b)
       : live[0];
     const offset = Math.round(now - n.hitAt);
     n.resolved = true;
-    const hit   = key === n.key;
+    const hit   = strOf(n) === str;
     const grade = hit ? (gradeRiffOffset(offset, eng.preset, n.feel) ?? 'ok') : 'wrong';
     n.hit = hit; n.grade = grade; n.rt = hit ? Math.abs(offset) : null;
     if (hit) playRigHit(eng.freqs[n.idx], grade, rigRef.current);
-    else     playRiffWrong(key);
+    else     playRiffWrong(str);
     setResults(prev => [...prev, { hit, rt: n.rt, grade, noteIdx: n.idx }]);
     endCheck(eng);
   }
@@ -291,75 +263,19 @@ export function RiffPractice({ initialDiff, onBack }) {
   useEffect(() => {
     if (phase !== 'playing') return;
     const onKey = (e) => {
-      if (e.repeat || e.key.length !== 1 || !/[a-gA-G]/.test(e.key)) return;
-      pressKey(e.key);
+      if (e.repeat || e.key < '1' || e.key > '6') return;
+      pressKey(Number(e.key));
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [phase, riffRun?.startedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 🎤 Mic: play the riff on a real guitar ─────────────────────────────────
-  // A third route into pressKey, alongside the keyboard and neck taps. No
-  // translation needed: micPitch and guitarMap index the same PC_KEYS alphabet
-  // from the same DEGREE0_PITCH anchor, so the mic's `key` IS a pressKey key.
-  // (Pinned by riff/neonNeck.test.mjs — it plays every cell on the neck through
-  // the detector's maths and asserts the judge would accept it.)
-  const micHandleRef = useRef(null);
-  const micPressRef  = useRef(() => {});
-  const micClearRef  = useRef(null);
-  // The readout self-clears on a timer rather than being derived from a
-  // timestamp at render time. Comparing performance.now() during render is both
-  // impure and broken in practice: nothing re-renders when the note goes stale,
-  // so the last note heard would sit on screen until something else moved.
-  useEffect(() => { micPressRef.current = ({ key }) => {
-    setMicHeard(key);
-    clearTimeout(micClearRef.current);
-    micClearRef.current = setTimeout(() => setMicHeard(null), 900);
-    pressKey(key);
-  }; });
-
-  // Held open for the whole practice session rather than per-riff: riffs
-  // auto-advance every couple of seconds, and re-acquiring getUserMedia between
-  // them would drop the opening notes each time. pressKey already ignores
-  // anything outside the 'playing' phase, so a hot mic costs nothing here.
-  useEffect(() => {
-    let cancelled = false;
-    if (micOn && !micHandleRef.current) {
-      startMicListening(payload => {
-        // Runs inside micPitch's rAF loop — an uncaught throw here vanishes into
-        // the audio thread and reads as a detection failure. Log it loudly.
-        try { micPressRef.current(payload); }
-        catch (err) { console.error('[RLSW MIC] practice press failed:', err); }
-      })
-        .then(h => {
-          if (cancelled) { h.stop(); return; }
-          micHandleRef.current = h;
-          setMicErr(null);
-        })
-        .catch(() => { if (!cancelled) { setMicErr('blocked'); setMicOn(false); } });
-    } else if (!micOn && micHandleRef.current) {
-      micHandleRef.current.stop();
-      micHandleRef.current = null;
-      setMicHeard(null);
-    }
-    return () => { cancelled = true; };
-  }, [micOn]);
-
-  // Hand the device back when the practice screen goes away.
-  useEffect(() => () => {
-    micHandleRef.current?.stop(); micHandleRef.current = null;
-    clearTimeout(micClearRef.current);
-  }, []);
-
-  function toggleMic() {
-    if (!micAvailable()) { setMicErr('no mic'); return; }
-    setMicOn(v => {
-      const next = !v;
-      try { localStorage.setItem('rlsw.riffMic', next ? '1' : '0'); } catch { /* non-fatal */ }
-      return next;
-    });
-  }
+  // ── 🎤 MIC — REMOVED ───────────────────────────────────────────────────────
+  // The mic handed pressKey a note LETTER. This judge speaks string numbers, so
+  // the path was already dead the moment the riff-off changed hands — and the
+  // riff-off dropped mic input for the same reason it dropped note letters.
+  // micPitch.js is untouched and still serves Fretboard Recon and Discord Coach.
 
   function changeSpeed(v) { setSpeed(saveRiffSpeed(v)); }
 
@@ -435,20 +351,14 @@ export function RiffPractice({ initialDiff, onBack }) {
       )}
 
       {/* ── Highway ── */}
-      {/* 🎯 the neon neck is a wide instrument — it takes the full practice
-          window rather than the 500px column the piano/highway views want. */}
-      <div style={(view === 'neon' || view === 'answer')
-        ? { ...S.highwayWrap, maxWidth: 'none' } : S.highwayWrap}>
+      <div style={{ ...S.highwayWrap, maxWidth: 'none' }}>
         {riffRun && (
           <RiffHighway
             run={riffRun}
             results={results}
-            ghostHit={null}
-            view={view}
             accent={ACCENT}
             onPressKey={pressKey}
-            showLabels={showLabels}
-            callAnswer={callAnswer}
+            showNums={showLabels}
           />
         )}
       </div>
@@ -456,15 +366,6 @@ export function RiffPractice({ initialDiff, onBack }) {
       {/* ── Bottom bar ── */}
       <div style={S.bottomBar}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button onClick={() => setView('piano')}  style={viewBtn(view === 'piano')}>🎹</button>
-          <button onClick={() => setView('guitar')} style={viewBtn(view === 'guitar')}>🎸</button>
-          <button onClick={() => setView('neon')}   style={viewBtn(view === 'neon')}
-            title="Riff Off — landing-target rings on the neck">🎯</button>
-          {/* 🗣️ Call & Answer — the derivation view. Switching takes effect on
-              the NEXT riff: the current run's notes are already scheduled, and
-              the answer view needs a call/answer PAIR the run wasn't built with. */}
-          <button onClick={() => setView('answer')} style={viewBtn(view === 'answer')}
-            title="Call & Answer — work out the reply instead of reading it">🗣️</button>
           <RigPicker rig={rig} onCycle={cycleRig} accent={ACCENT} />
 
           {/* ── 🐢 TEMPO DIAL ── takes effect on the NEXT riff (the current run's
@@ -484,22 +385,6 @@ export function RiffPractice({ initialDiff, onBack }) {
             )}
           </div>
 
-          {/* 🎤 real guitar */}
-          <button onClick={toggleMic} style={{ ...viewBtn(micOn), borderColor: micOn ? '#4ade80' : undefined,
-                                               color: micOn ? '#4ade80' : undefined }}
-            title={micErr === 'no mic' ? 'No microphone (needs HTTPS or localhost)'
-                 : micErr === 'blocked' ? 'Microphone permission denied'
-                 : 'Play the riff on a real guitar'}>
-            🎤
-          </button>
-          {micOn && (
-            <span style={S.micHeard}>
-              {micHeard
-                ? (micHeard === micHeard.toUpperCase() ? `${micHeard}♯` : micHeard.toUpperCase())
-                : '···'}
-            </span>
-          )}
-          {micErr && <span style={S.micErr}>{micErr === 'no mic' ? 'NO MIC' : 'BLOCKED'}</span>}
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <div style={{ fontSize: 9, color: '#3a5a7a', letterSpacing: 1 }}>

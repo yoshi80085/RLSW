@@ -22,6 +22,8 @@
 // =============================================================================
 import React, { useRef, useCallback, useEffect, useState } from "react";
 import { STRING_NAMES, STRING_OPENS, MAX_FRET, cellKey } from "../riff/guitarMap.js";
+import neckArt from "../neon_guitar_neck.png";
+import { NECK_IMG, FRET_X, WIRE_X, stringY, STRING_GAUGE_PX } from "../riff/neonNeckGeometry.js";
 
 // ── Neon palette ────────────────────────────────────────────────────────────
 const NEON_CYAN    = '#19e6ff';
@@ -48,19 +50,26 @@ const DISPLAY  = {
 function noteName(key) { return DISPLAY[key] ?? key; }
 
 // ── Geometry ────────────────────────────────────────────────────────────────
-const CELL_W    = 42;   // fret column width
-const CELL_H    = 28;   // string row height
-const NUT_W     = 8;    // nut (fret 0) visual width
-const SIDE_PAD  = 32;   // left padding for string labels
-const TOP_PAD   = 8;
+// Everything below is in the ARTWORK's own pixel space (2425×598), which is the
+// SVG viewBox. That way FRET_X / stringY / WIRE_X drop straight in with no
+// rescaling, and the calibration script stays the single source of truth.
+const NECK_W = NECK_IMG.w;
+const NECK_H = NECK_IMG.h;
 const INLAY_FRETS = [3, 5, 7, 9, 12];
-const DOUBLE_DOT  = new Set([12]);
 
-const NECK_W = SIDE_PAD + NUT_W + MAX_FRET * CELL_W + 12;
-const NECK_H = TOP_PAD + STRING_NAMES.length * CELL_H + 12;
-
-// String gauge widths (visual only)
-const GAUGE = [2.8, 2.2, 1.8, 1.4, 1.0, 0.7];
+// Cell hit-box size, in asset pixels. Frets crowd toward the bridge, so the
+// width is derived per-fret from the wire spacing rather than being constant.
+const ROW_H = 84;
+function fretCellW(f) {
+  if (f === 0) return WIRE_X[0] * 0.9;                       // open string, behind the nut
+  const left  = WIRE_X[f - 1] ?? 0;
+  const right = WIRE_X[f] ?? (left + 90);
+  return Math.max(40, right - left);
+}
+function fretCellLeft(f) {
+  if (f === 0) return 4;
+  return WIRE_X[f - 1] ?? 0;
+}
 
 export function FretboardFull({
   onTapCell, layers = {}, showLabels = true, flash = null,
@@ -84,17 +93,10 @@ export function FretboardFull({
   }, [flash]);
 
   // ── Cell center coords ────────────────────────────────────────────────────
-  // Strings render FLIPPED: string 0 (low E) at the BOTTOM, string 5 (high e)
-  // at the TOP — standard fretboard diagram orientation for a right-handed player.
-  function cellX(fret) {
-    if (fret === 0) return SIDE_PAD + NUT_W / 2;
-    return SIDE_PAD + NUT_W + (fret - 0.5) * CELL_W;
-  }
-  function cellY(string) {
-    // Flip: string 5 (high e) at top, string 0 (low E) at bottom
-    const flipped = 5 - string;
-    return TOP_PAD + flipped * CELL_H + CELL_H / 2;
-  }
+  // Straight off the calibrated artwork. The strings are not horizontal on this
+  // neck — they fan slightly — so a cell's y depends on its x.
+  function cellX(fret) { return FRET_X[fret] ?? FRET_X[FRET_X.length - 1]; }
+  function cellY(string, fret = 6) { return stringY(string, cellX(fret)); }
 
   // ── Tap handler ─────────────────────────────────────────────────────────
   const handleTap = useCallback((s, f) => {
@@ -120,7 +122,7 @@ export function FretboardFull({
   }
 
   return (
-    <div style={{ width: '100%', maxWidth: 620, margin: '0 auto', touchAction: 'none' }}>
+    <div style={{ width: '100%', maxWidth: 980, margin: '0 auto', touchAction: 'none' }}>
       <style>{`
         @keyframes fb-pulse { 0%,100%{opacity:.35} 50%{opacity:.75} }
         @keyframes fb-hot   { 0%,100%{opacity:.7} 50%{opacity:1} }
@@ -143,51 +145,34 @@ export function FretboardFull({
           </filter>
         </defs>
 
-        {/* ── Background ── */}
-        <rect x="0" y="0" width={NECK_W} height={NECK_H} fill="#050a14" rx="6" />
+        {/* ── The guitar ──
+             The artwork IS the neck: nut, fret wires, inlays and strings are
+             all painted. Everything this component draws from here on is an
+             OVERLAY registered to it by the calibrated geometry. */}
+        <image href={neckArt} x="0" y="0" width={NECK_W} height={NECK_H}
+               preserveAspectRatio="none" />
 
-        {/* ── Nut ── */}
-        <rect x={SIDE_PAD} y={TOP_PAD - 2} width={NUT_W} height={NECK_H - TOP_PAD - 8}
-          fill="#1a2a40" rx="2" filter="url(#neonFbBloom)" opacity="0.7" />
-
-        {/* ── Fret wires ── */}
-        {Array.from({ length: MAX_FRET }, (_, i) => {
-          const x = SIDE_PAD + NUT_W + (i + 1) * CELL_W;
-          return <line key={`fw${i}`} x1={x} y1={TOP_PAD}
-            x2={x} y2={NECK_H - 10} stroke="#1a2a40" strokeWidth="1.5" />;
-        })}
-
-        {/* ── Inlay dots (3/5/7/9/12) ── */}
-        {INLAY_FRETS.map(f => {
-          const x = SIDE_PAD + NUT_W + (f - 0.5) * CELL_W;
-          const midY = TOP_PAD + (STRING_NAMES.length * CELL_H) / 2;
-          if (DOUBLE_DOT.has(f)) {
-            return <g key={`inlay${f}`}>
-              <circle cx={x} cy={midY - CELL_H * 1.1} r={4} fill={NEON_VIOLET} opacity="0.45" />
-              <circle cx={x} cy={midY + CELL_H * 1.1} r={4} fill={NEON_VIOLET} opacity="0.45" />
-            </g>;
-          }
-          return <circle key={`inlay${f}`} cx={x} cy={midY} r={4}
-            fill={NEON_VIOLET} opacity="0.4" />;
-        })}
-
-        {/* ── Strings (horizontal lines) ── */}
+        {/* ── String highlight — glows the target string over the art ── */}
         {STRING_NAMES.map((nm, i) => {
-          const y = cellY(i);
-          const isHL = highlightString === i;
-          return <g key={`str${i}`}>
-            <line x1={SIDE_PAD} y1={y} x2={NECK_W - 10} y2={y}
-              stroke={NEON_STRING_COLORS[i]} strokeWidth={GAUGE[i]}
-              opacity={isHL ? 1 : 0.5}
-              filter={isHL ? 'url(#neonFbBloomStrong)' : undefined} />
-            {/* String label */}
-            <text x={SIDE_PAD - 8} y={y + 1} textAnchor="end" fontSize="10"
-              fontFamily="'Saira Stencil One', monospace" fontWeight="bold"
-              fill={NEON_STRING_COLORS[i]} opacity={isHL ? 1 : 0.6}>
-              {nm}
-            </text>
-          </g>;
+          if (highlightString !== i) return null;
+          return (
+            <line key={`hl${i}`}
+              x1={0} y1={stringY(i, 0)} x2={NECK_W} y2={stringY(i, NECK_W)}
+              stroke={NEON_STRING_COLORS[i]} strokeWidth={STRING_GAUGE_PX[i] * 1.15}
+              opacity={0.85} filter="url(#neonFbBloomStrong)"
+              style={{ pointerEvents: 'none' }} />
+          );
         })}
+
+        {/* ── String names, off the nut end ── */}
+        {STRING_NAMES.map((nm, i) => (
+          <text key={`sn${i}`} x={22} y={stringY(i, 22) + 8} textAnchor="middle"
+            fontSize="34" fontFamily="'Saira Stencil One', monospace" fontWeight="bold"
+            fill={NEON_STRING_COLORS[i]} opacity={highlightString === i ? 1 : 0.55}
+            style={{ pointerEvents: 'none' }}>
+            {nm}
+          </text>
+        ))}
 
         {/* ── Layer highlights + tap targets + labels ── */}
         {STRING_NAMES.map((_, s) =>
@@ -197,22 +182,23 @@ export function FretboardFull({
             const id = `${s},${f}`;
             const key = cellKey(s, f);
             const ls = layerStyle(id);
-            const cellW = f === 0 ? NUT_W : CELL_W;
-            const cellLeft = f === 0 ? SIDE_PAD : SIDE_PAD + NUT_W + (f - 1) * CELL_W;
+            const cellW = fretCellW(f);
+            const cellLeft = fretCellLeft(f);
 
             return <g key={id} className="fb-cell" style={{ cursor: 'pointer' }}
               onClick={() => handleTap(s, f)}
               onTouchStart={(e) => { e.preventDefault(); handleTap(s, f); }}>
               {/* Tap target (invisible rect) */}
-              <rect x={cellLeft} y={cy - CELL_H / 2} width={cellW} height={CELL_H}
+              <rect x={cellLeft} y={cy - ROW_H / 2} width={cellW} height={ROW_H}
                 fill="transparent" />
               {/* Layer highlight */}
-              {ls && <circle cx={cx} cy={cy} r={f === 0 ? 8 : 10}
+              {ls && <circle cx={cx} cy={cy} r={30}
                 fill={ls.fill} opacity={ls.opacity}
+                filter="url(#neonFbBloom)"
                 className={ls.className || undefined} />}
               {/* Note label */}
               {showLabels && (
-                <text x={cx} y={cy + 3.5} textAnchor="middle" fontSize="8"
+                <text x={cx} y={cy + 10} textAnchor="middle" fontSize="26"
                   fontFamily="'Saira Stencil One', monospace" fontWeight="bold"
                   fill={ls ? '#fff' : NEON_STRING_COLORS[s]}
                   opacity={ls ? 0.95 : 0.35} style={{ pointerEvents: 'none' }}>
@@ -225,9 +211,9 @@ export function FretboardFull({
 
         {/* ── Fret numbers on marked frets only (3/5/7/9/12) ── */}
         {INLAY_FRETS.map(f => (
-          <text key={`fn${f}`} x={SIDE_PAD + NUT_W + (f - 0.5) * CELL_W} y={NECK_H - 2}
-            textAnchor="middle" fontSize="8" fontFamily="'Saira Stencil One', monospace"
-            fill={NEON_VIOLET} opacity="0.55">
+          <text key={`fn${f}`} x={FRET_X[f]} y={NECK_H - 10}
+            textAnchor="middle" fontSize="26" fontFamily="'Saira Stencil One', monospace"
+            fill={NEON_VIOLET} opacity="0.7" style={{ pointerEvents: 'none' }}>
             {f}
           </text>
         ))}
@@ -235,7 +221,7 @@ export function FretboardFull({
         {/* ── Judgment burst ── */}
         {burst && (() => {
           const b = GRADE_BURST[burst.grade] || GRADE_BURST.ok;
-          return <circle cx={burst.x} cy={burst.y} r={b.r} fill={b.color}
+          return <circle cx={burst.x} cy={burst.y} r={b.r * 2.6} fill={b.color}
             opacity="0.8" filter="url(#neonFbBloomStrong)"
             style={{ animation: `fb-burst ${b.dur}ms ease-out forwards` }} />;
         })()}
