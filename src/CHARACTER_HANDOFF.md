@@ -65,14 +65,115 @@ Archetype quartet: **Ronin = Burst/virtuoso · Intergalactic 0 = Control/zoner �
     `src/standees/Cursed_Shamisen.png` in and point the constant at it to swap).
   - **Wa no Koe** (12 Db) — Passive: melody commit aligning with chord stack gives +1 Drive or Sustain for 3 rounds.
 
-### Intergalactic 0 — the slow forgiving cosmic controller (done)
+### Intergalactic 0 — the slow forgiving cosmic controller (done · UNLOCKED 2026-08-08)
 - **Innate:** speed 4; knockback −1 ("Rolls Hard"); **Freestyle** (first out-of-scale note/turn
-  lands perfect, no penalty +Flair; tone cluster reads **8/2** for him); +1 Sustain on every voicing.
-- **Arsenal:** **Blaster of Ra** (replaces Smash — ranged, piercing bass-drop) · **Displace**
-  (warp to a hex beside your amp rig, 3 AP, 2-turn cooldown, needs ≥1 amp) · **Sunbeam** (Amp-3
-  capstone: Sonic +2 range + scorches a fire trail + golden extra-lit beam).
+  lands perfect, no penalty +Flair; tone cluster reads **8/2** for him); +1 Sustain on every voicing;
+  **📻 Boom Box** (below).
+- **📻 Boom Box (innate, free).** Everyone else's Sonic rig radiates from the Main Amp at their
+  corner. While Intergalactic 0 holds a **⚡ Charge Zone charge**, his `distFromHome` reads **0**
+  wherever he stands, so he is never stranded. That one flag is worth four things: full dice pool
+  instead of dropping to the lone Main Amp die, Power d6→d8 upgrades staying live, the Riff-Off gate
+  opening, and defending on a d6 instead of the stranded d4 (plus keeping the right to retaliate).
+  Measured: stranded 2d6 → portable 2d8+2d6.
+  **The Charge Zones ARE the batteries** — no new resource, no Db toll, and the balance falls out of
+  a system that already exists: he must physically reach one of only `CHARGE_ZONE_COUNT` zones while
+  being the slowest Spirit on the board (Space is Displaced is the obvious answer, which makes the
+  kit cohere), it lasts `CHARGE_ZONE_BOOST_TURNS`, and `burnChargesAfterBattle` kills it the moment
+  any battle resolves, win or lose. So it powers his **roaming** and dies the instant he **fights**.
+  ⚠️ Applied in **two** places — `distFromHome` (render snapshot) *and* `rigForSpirit` (every combat
+  path, including the defender's rig). Patch one and not the other and it works on attack but
+  vanishes on defence. If charges ever survive battles, re-balance this first.
+- **Arsenal:**
+  - **Blaster of Ra** (10 Db) — replaces the Smash. Ranged, piercing bass-drop.
+  - **Space is Displaced** (8 Db unlock, **1 Db/use**) — blink to any open hex **2 or 3 rings**
+    away. No Action Points, no cooldown, no amp rig; movement is untouched, so he can still walk
+    after landing. Ring 1 is excluded on purpose — an adjacent hex is a free step, and he moves
+    *through* the space between, not across it.
+  - **Gravity Control** (6 Db unlock, **1 Db/use**) — tear open a **Black Hole Vortex** on any hex
+    within **2 rings** (occupied hexes allowed — dropping it on someone's head is the point). Every
+    rival within **2 rings** is dragged **1 hex** inward; anyone who ends up standing **in** it has
+    **2 notes** cut from next turn's stock refill (`refillDrain`), with the notes visibly torn off
+    their standee via `showSpentNotes`. The vortex **hangs for one full round**, grabbing anyone who
+    wanders into range, then collapses. **It never touches Intergalactic 0.** One vortex at a time.
+    Verified exhaustively over all 111 hexes: every ring-1 rival lands in the hole, every ring-2
+    rival is pulled strictly closer and can never reach it in one step — so the drain is exactly
+    "was adjacent when it opened".
+  - **Code Injection** (6 Db unlock, **1 Db to commit**) — a blind bet. Commit on your turn and say
+    nothing; for one full round the **first rival whose attack would beat you** has their dice thrown
+    out and re-rolled, and lives with the second result. Nobody attacks, or nobody lands? The Db is
+    gone. Gated on the attacker actually *winning*, so a whiff doesn't burn the patch (and a re-roll
+    could only ever turn a miss into a hit).
+    ⚠️ **It is HIDDEN INFORMATION and that is the ability.** `codeInjectTurns` syncs like any sheet
+    field, but syncing ≠ displaying: the only surface it ever gets is the button in the acting
+    Spirit's own HUD. No aura, no standee marker, no shared banner. The commit's log line is written
+    by `addLog` on his client only — remote clients apply engine actions *without* orchestration, so
+    it doesn't travel. Move that announcement into a reducer or a synced banner and the bluff dies.
+    📊 **Measured save rates** (20k trials each): Thrash single-die **36%**, Sonic 1 amp **22%**,
+    2 amps **15%**, 3 amps **16%**, maxed 3d8 **12%**. Keep-highest is biased high, so a re-drawn
+    pool usually lands high again — the bigger the attacker's rig, the less a forced re-roll can do.
+    If it wants to be scarier, the lever is re-rolling *and taking the lower* result, not the cost.
+  - **Sunbeam** (14 Db unlock, **2 Db/use**) — on any connecting attack (Swing *or* Sonic), the
+    rival's screen whites out completely for **1 turn**; 50% chance it lingers for a 2nd, capped
+    at 2. Fires automatically whenever he can afford it (the Slime pattern). Purely a *view*
+    effect — the blinded player keeps every move and button, they just can't see to aim.
+- ⚠️ **Both actives were REWORKED (2026-08-08) and the old versions are gone.** Sunbeam used to be
+  the Amp-3 capstone (Sonic beam +2 hexes + scorched fire trail); Displace used to warp you beside
+  your amp rig for 3 AP on a 2-turn cooldown. `displaceCd` is dead, `getSonicBeam` no longer widens
+  for him, and the Sonic resolution lays no flaming hexes. The only survivor of the old Sunbeam is
+  the cosmetic golden over-lit beam on the battle overlay (`battleState.sunbeam`). If you find a
+  reference to beam reach 5 or a `displaceCd` tick, it's a leftover — delete it, don't revive it.
+- **Tuning constants** live together above `SKILL_TREE` in the simulator: `SUNBEAM_DB_COST`,
+  `SUNBEAM_BLIND_TURNS`, `SUNBEAM_LINGER_CHANCE`, `SUNBEAM_MAX_BLIND_TURNS`, `DISPLACE_DB_COST`,
+  `DISPLACE_MIN_RINGS`, `DISPLACE_MAX_RINGS`, `GRAVITY_DB_COST`, `GRAVITY_PLACE_RINGS`,
+  `GRAVITY_PULL_RINGS`, `GRAVITY_PULL_HEXES`, `GRAVITY_NOTE_DRAIN`, `CODE_INJECT_DB_COST`.
+
+**A battle is decided in ONE action.** `ATTACK_ROLLED` resolves both rolls, the winner, the margin
+*and* the damage up front; the battle overlay only ANIMATES a result that already exists in engine
+state. So anything that "changes a die" must re-resolve the whole verdict in a reducer, off the
+seeded rng — `ATTACK_REROLLED` / `applyAttackRerolled` is the template. Re-spinning a number in
+React would desync online (clients compare rng cursors frame-by-frame and freeze on a mismatch) and
+would leave `damage` describing a roll that no longer exists. `ATTACK_ROLLED` now preserves
+`dicePool` / `atkFloor` / `atkDie` on `state.battle` precisely so a re-roll can reuse the dice shape.
+
+**Board hazards that live one FULL ROUND.** Poison Slime, and now the Gravity Vortex, both count
+their lifetime in **spirit-turns seeded with the living-Spirit count**, because the decay hook runs
+at the end of *every* spirit's turn — the caster's included, moments after they placed it. Seeding
+with a flat `1` deletes the hazard before a single rival can move. It also self-scales as Spirits
+are knocked out. There are unit tests for this cadence; keep them passing if you retune.
+
+**Pulls are not knockbacks.** `battleKnockback` bakes in "push away from `fromId`", Rolls Hard, and
+a "KNOCKED BACK" log line. `gravityPull` is a deliberate sibling, not a caller: same slide loop,
+same edge/occupancy/abort guards, same per-landing hazard checks, but the angle is measured from
+the target *toward* the hole. Routing a pull through `battleKnockback` with a mirrored phantom
+origin was tried and is worse. If you fix a bug in one slide loop, check the other.
+
+**Re-entrancy on hazard checks.** `checkGravityVortex` fires from the same move/push sites as
+`checkPoisonSlime` — but unlike slime, its effect *relocates* the victim, which re-fires the
+proximity check. The `pulled: []` list on the vortex is what stops that becoming a movement lock
+(and a repeating note drain). Any future hazard that moves the thing it just checked needs the
+same guard.
 - He's the Sun Ra homage ("Space is the place"). Note: we kept the homage *subtle* on purpose —
-  "Ra" + "Displace" are fine; we deliberately did NOT use the verbatim album/film title.
+  "Ra" + "Space is Displaced" are fine; we deliberately did NOT use the verbatim album/film title.
+
+**Per-client view effects (new pattern, set by Sunbeam).** The blind is the first effect that
+changes what ONE player sees rather than what everyone sees. Two rules came out of it:
+- Store the status on the victim's **note sheet** (`blindTurns`). `setNoteStates` diffs and
+  dispatches `NOTE_SHEET_PATCHED` per spirit, so it syncs online for free — no bespoke netcode.
+- Decide "is it me?" from **`netRef.current.mySpiritId`** online, and from **`acting.id`** offline
+  (hotseat is one shared screen, so a blind can only mean anything on the victim's own turn).
+  Spectators and resyncing clients are never blinded. See `blindedSpiritId` / `isBlinded`.
+
+**Per-use Db costs.** `dbCost` in `SKILL_TREE` is the one-time UNLOCK price. A per-use cost is a
+separate `ns.dbPoints` check + deduction inside the resolver (Cursed Shamisen was the first;
+Space is Displaced and Sunbeam now follow it). Both numbers belong in named constants, and the
+skill `desc` should interpolate them so the tree text can never drift from the behaviour.
+
+**Randomness in on-hit riders.** Sunbeam's 50% linger goes through
+`dispatch(randomBatchDrawn(1))` + `engineRef.current.lastRandomBatch[0]`, **never** `Math.random()`.
+Online clients compare rng cursors frame-by-frame and freeze on a mismatch, so an unseeded roll in
+a game rule is a desync bug, not a style nit. `closeBattleOverlay` (where both Slime and Sunbeam
+resolve) runs on the **attacker's client only** — remote viewers dismiss the overlay without
+calling it — so exactly one dispatch happens and every client advances the cursor identically.
 
 ---
 
@@ -128,7 +229,13 @@ it** — use it (not raw `evaluateChord`) for any new chord-based passive (e.g. 
    highlight, and a Cancel. (See `resolveBlasterOfRa` / `resolveDisplace` as templates.)
 
 **Cooldowns:** add a `<x>Cd` field in `makeInitialNoteState`, tick it down in `startNewTurnNotes`
-(see `displaceCd`).
+(see `psychoBushidoCd`). Note `displaceCd` was REMOVED in the Space is Displaced rework — don't
+copy it as a template, it no longer exists.
+
+**Turn-scoped debuffs on the victim:** add the field to `makeInitialNoteState`, then tick it in
+`applyDebuffsTicked` (`engine/systems/economy.js`) — and remember to add it to that function's
+`hadDebuff` early-return check, or it will silently never decrement. It fires at the **end** of the
+afflicted spirit's own turn, which is what makes a `1` cost a full turn (see `blindTurns`).
 
 **Crowd / Fame mechanics:** the seam is `confirmNoteTrack`'s **Performance Score** (`perfScore`,
 0–10) → `perfExciteGain` → casual/diehard fans, and `effectiveDiscord` (discord pardon). Ronin's

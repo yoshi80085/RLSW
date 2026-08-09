@@ -30,7 +30,11 @@ export const UNLOCKED_DEFAULT = [...ROSTER_ORDER]; // all 4 launch spirits
 // UNLOCKED_DEFAULT drives — that one is for unlockables, this one is for
 // "we haven't finished writing this character".
 // Delete an id from this set the moment its kit lands.
-export const IN_DEVELOPMENT = new Set(["Glamarchy", "intergalactic_0"]);
+// intergalactic_0 was released 2026-08-08: innates (Rolls Hard, Freestyle,
+// +1 Sustain) plus a full four-skill arsenal — Blaster of Ra, Space is
+// Displaced, Gravity Control, Sunbeam. Glamarchy is still a stat block with
+// no kit at all, so she stays locked.
+export const IN_DEVELOPMENT = new Set(["Glamarchy"]);
 
 /** Ids that can actually be taken into a match, in roster order. */
 export const PLAYABLE_ORDER = ROSTER_ORDER.filter(id => !IN_DEVELOPMENT.has(id));

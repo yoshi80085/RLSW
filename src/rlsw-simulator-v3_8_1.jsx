@@ -74,7 +74,7 @@ import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn ro
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted } from "./engine/actions.js";
 import { riffStats } from "./engine/systems/riffOff.js";
 import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus,
@@ -415,8 +415,12 @@ const SIGNATURE_TESTS = {
   ]},
   intergalactic_0: { name: 'Intergalactic 0', color: '#aa55ff', skills: [
     { id:'blaster_of_ra', label:'🌀 Blaster of Ra', pre:[] },
-    { id:'displace',      label:'🌌 Displace',       pre:[] },
-    { id:'sunbeam',       label:'☀️ Sunbeam',         pre:['amp_1','amp_2','amp_3'] },
+    { id:'displace',        label:'🌌 Space is Displaced', pre:[] },
+    { id:'gravity_control', label:'🕳️ Gravity Control',   pre:[] },
+    { id:'code_injection',  label:'💻 Code Injection',    pre:[] },
+    // ☀️ Sunbeam is no longer the Amp-3 capstone — it's an on-hit blind with no
+    // amp prerequisite, so the amp chain is NOT listed as a test prereq any more.
+    { id:'sunbeam',       label:'☀️ Sunbeam',         pre:[] },
   ]},
 };
 
@@ -530,6 +534,39 @@ const DISCORD_UPGRADE_TIERS = [
     notesByMode: { major: [], minor: [] },
   },
 ];
+// ── 🌀 INTERGALACTIC 0 — ARSENAL TUNING ──────────────────────────────────────
+// Both of his signature actives are UNLOCK-then-PAY-PER-USE (the Cursed
+// Shamisen pattern): the `dbCost` in SKILL_TREE buys the ability, and every
+// firing costs Db again. That is deliberate for a zoner — his power is real,
+// but it is metered by how loud he has managed to get, so he cannot simply
+// hold the board hostage every single turn on a whim.
+//
+// ⚠️ HISTORY (read before you "fix" anything here). Both of these names used to
+// belong to DIFFERENT abilities and were replaced outright in this pass:
+//   • Sunbeam WAS the Amp-3 capstone — Sonic beam +2 hexes plus a scorched fire
+//     trail. That version is GONE: `getSonicBeam` no longer widens for him, and
+//     the Sonic resolution no longer lays flaming hexes. It is now a blind.
+//   • Displace WAS "warp to an open hex beside your amp rig, 3 AP, 2-turn
+//     cooldown". That version is GONE too — no AP cost, no cooldown, no rig
+//     requirement. `displaceCd` is dead and no longer ticked.
+// If you find a stray reference to beam reach 5, flaming sunbeam hexes, or
+// displaceCd, it is a leftover and should be deleted, not revived.
+const SUNBEAM_DB_COST         = 2;    // Db charged per connecting attack
+const SUNBEAM_BLIND_TURNS     = 1;    // turns of whiteout on a clean proc
+const SUNBEAM_LINGER_CHANCE   = 0.5;  // odds the burn sears in for a 2nd turn
+const SUNBEAM_MAX_BLIND_TURNS = 2;    // hard ceiling — the sun always sets
+const DISPLACE_DB_COST   = 1;   // Db charged per warp
+const DISPLACE_MIN_RINGS = 2;   // nearest legal landing ring (1 = a normal step, so it's excluded)
+const DISPLACE_MAX_RINGS = 3;   // furthest legal landing ring
+// 🕳️ GRAVITY CONTROL — the black hole vortex.
+const GRAVITY_DB_COST     = 1;  // Db charged per vortex
+const GRAVITY_PLACE_RINGS = 2;  // how far out he can drop it
+const GRAVITY_PULL_RINGS  = 2;  // rivals this close (or closer) get dragged
+const GRAVITY_PULL_HEXES  = 1;  // hexes each caught rival is dragged inward
+const GRAVITY_NOTE_DRAIN  = 2;  // notes cut from NEXT turn's refill for anyone dragged INTO it
+// 💻 CODE INJECTION — the hidden commit.
+const CODE_INJECT_DB_COST = 1;  // Db burned at COMMIT, win or lose
+
 // ── SKILL TREE ────────────────────────────────────────────────────────────────
 // Four routes. Skills within a gated chain require the previous skill first.
 // PA sub-chain (mic/pedal/mixer/powerchords) requires amp_1 first.
@@ -657,10 +694,14 @@ const SKILL_TREE = {
       skills: [
         { id:'blaster_of_ra', label:'Blaster of Ra', icon:'🌀', dbCost:10, gated:false,
           desc:'REPLACES the Smash. A ranged, PIERCING bass-drop: hurl your unused stock down the forward beam, hammering EVERY rival in line — undefendable, scattering their stock and knocking them back. Leaves you Exposed.' },
-        { id:'displace', label:'Displace', icon:'🌌', dbCost:8,  gated:false,
-          desc:"He can't run — he warps. Teleport to an open hex beside your amp rig (costs 3 AP, 2-turn cooldown). The slow zoner's get-out-of-jail. Needs at least one amp to warp to." },
-        { id:'sunbeam', label:'Sunbeam', icon:'☀️', dbCost:14, gated:true, prereq:'amp_3',
-          desc:'CAPSTONE — requires Amp III. Your Sonic beam reaches +2 hexes AND scorches the hexes it crosses into burning ground (2 rounds) — area denial down the whole line.' },
+        { id:'displace', label:'Space is Displaced', icon:'🌌', dbCost:8,  gated:false,
+          desc:`He can't run — he warps. Spend ${DISPLACE_DB_COST} Db to fold space and appear instantly on any open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away. No cooldown, no Action Points, no rig required — the only thing that limits it is how loud you've been. Too close doesn't count: he steps THROUGH the space between, not across it.` },
+        { id:'gravity_control', label:'Gravity Control', icon:'🕳️', dbCost:6, gated:false,
+          desc:`Spend ${GRAVITY_DB_COST} Db to tear open a BLACK HOLE VORTEX on any hex within ${GRAVITY_PLACE_RINGS} rings. Every rival within ${GRAVITY_PULL_RINGS} rings is dragged ${GRAVITY_PULL_HEXES} hex toward it — and anyone pulled all the way INTO it watches ${GRAVITY_NOTE_DRAIN} notes get swallowed, ${GRAVITY_NOTE_DRAIN} fewer in their pool next turn. The vortex hangs there for one full round, catching anyone who wanders too close, then collapses. Gravity is his to command: it never touches him.` },
+        { id:'code_injection', label:'Code Injection', icon:'💻', dbCost:6, gated:false,
+          desc:`Spend ${CODE_INJECT_DB_COST} Db to slip a patch into the fabric of the fight — then say nothing. For one full round, the FIRST rival whose attack would beat you has their dice thrown out and re-rolled, and they live with whatever comes up second. Nobody can see that you've committed: no aura, no tell, no marker on your standee. If nobody swings, or nobody lands, the Db is simply gone. That's the bet.` },
+        { id:'sunbeam', label:'Sunbeam', icon:'☀️', dbCost:14, gated:false,
+          desc:`Spend ${SUNBEAM_DB_COST} Db on a connecting attack and the stage goes SUPERNOVA — the rival's whole world whites out for ${SUNBEAM_BLIND_TURNS} turn. They can't see the board, the standees, their own stack. Nothing. ${Math.round(SUNBEAM_LINGER_CHANCE * 100)}% of the time the burn stays seared in for a second turn (${SUNBEAM_MAX_BLIND_TURNS} turns is the ceiling — the sun always sets).` },
       ],
     },
   ],
@@ -2435,11 +2476,45 @@ function Game({ gameState, onReturnToLobby }) {
   // from Amp I–III, die upgrades from Power I–III, effective radius from
   // Range I–III. "Goes to eleven" charge becomes +1 d8 anywhere.
   const elevenBoost = (actingNoteState?.elevenTurns ?? 0) > 0 ? 1 : 0;
+
+  // 📻 THE BOOM BOX (Intergalactic 0 innate) — his rig is PORTABLE while charged.
+  //
+  // Everyone else's Sonic rig radiates from the Main Amp at their corner, and
+  // `sonicRig` decides `inRange` purely from how far the Spirit has strayed from
+  // that home hex. Intergalactic 0 carries his sound with him: while he is
+  // holding a ⚡ Charge Zone charge, his distance-from-home reads as ZERO no
+  // matter where he stands, so he is never stranded.
+  //
+  // That single flag is worth four separate things (see sonicRig + the Sonic
+  // resolution): full dice POOL instead of dropping to the lone Main Amp die,
+  // Power d6→d8 upgrades staying live, the RIFF-OFF gate opening, and defending
+  // on a d6 instead of the stranded d4 (plus keeping the right to retaliate).
+  //
+  // ⚡ THE BATTERIES ARE THE CHARGE ZONES — and this is the whole balance of it.
+  // We deliberately did NOT invent a new resource or a Db toll:
+  //   • He has to physically REACH a zone (there are only CHARGE_ZONE_COUNT of
+  //     them, on the lightning track) — and he is the slowest Spirit on the
+  //     board at speed 4, so that is a real cost paid in position and tempo.
+  //     Space is Displaced is the obvious answer, which makes his kit cohere.
+  //   • It lasts CHARGE_ZONE_BOOST_TURNS of his own turns and then dies.
+  //   • `burnChargesAfterBattle` wipes charges the moment a battle resolves,
+  //     win OR lose. So the boom box powers his ROAMING, and the instant he
+  //     actually picks a fight the batteries go flat and he is tethered again.
+  // Duration and drawback therefore come free from a system that already exists.
+  // If you ever make charges persist through battles, re-balance this first.
+  function boomBoxLit(spiritId) {
+    if (spiritId !== 'intergalactic_0') return false;
+    const ns = engineRef.current.noteStates?.[spiritId] ?? noteStates[spiritId] ?? {};
+    return (ns.chargeFloorTurns ?? 0) > 0 || (ns.chargeCeilTurns ?? 0) > 0;
+  }
+
   const actingHomeHex = acting ? HEX_BY_NUM[CORNERS[acting.corner]?.homeNum] : null;
   const actingHexObj  = acting ? HEX_BY_NUM[acting.num] : null;
-  const distFromHome  = (actingHomeHex && actingHexObj)
-    ? axialDist(actingHomeHex.q, actingHomeHex.r, actingHexObj.q, actingHexObj.r)
-    : 0;
+  const distFromHome  = (acting && boomBoxLit(acting.id))
+    ? 0
+    : (actingHomeHex && actingHexObj)
+      ? axialDist(actingHomeHex.q, actingHomeHex.r, actingHexObj.q, actingHexObj.r)
+      : 0;
   const actingRig = acting
     ? sonicRig(actingNoteState?.unlockedSkills ?? [], distFromHome, elevenBoost)
     : { pool: [6], inRange: true };
@@ -2452,6 +2527,15 @@ function Game({ gameState, onReturnToLobby }) {
   // rig now decides both the riff-off gate and their defence die.
   function rigForSpirit(sp, chargeBoost = 0) {
     if (!sp) return { pool: [SONIC_BASE_DIE], inRange: false };
+    // 📻 Boom Box — must be applied HERE as well as in `distFromHome` above.
+    // This is the function every COMBAT path uses (the defender's rig decides
+    // the riff-off gate and their defence die); `actingRig` is only a
+    // render-time snapshot of the acting Spirit. Applying the passive to one
+    // and not the other would mean his portable rig worked on attack but
+    // silently vanished on defence — which is the half the passive is FOR.
+    if (boomBoxLit(sp.id)) {
+      return sonicRig(noteStates[sp.id]?.unlockedSkills ?? [], 0, chargeBoost);
+    }
     const homeHex = HEX_BY_NUM[CORNERS[sp.corner]?.homeNum];
     const hex     = HEX_BY_NUM[sp.num];
     const dist    = (homeHex && hex)
@@ -4630,7 +4714,12 @@ function Game({ gameState, onReturnToLobby }) {
       // 🎵 GRADUAL REFILL — unused notes carry over; only up to STOCK_REFILL_RATE
       // spent slots recharge this turn. Spend big one turn, run short the next.
       // Axe Swing whiff penalty: halve refill rate for one turn
-      const refillRate = ns.halfRefillNextTurn ? Math.floor(STOCK_REFILL_RATE / 2) : STOCK_REFILL_RATE;
+      // 🕳️ Gravity Control's drain stacks ON TOP of the Axe Swing halving and is
+      // floored at 0 — being both slimed and swallowed is a bad turn, not a
+      // negative refill. Applied here and cleared below, so it bites once.
+      const refillRate = Math.max(0,
+        (ns.halfRefillNextTurn ? Math.floor(STOCK_REFILL_RATE / 2) : STOCK_REFILL_RATE)
+        - (ns.refillDrain ?? 0));
       const usedIdxs   = usedList(ns.usedStockIdx);
       const refreshing = new Set(usedIdxs.slice(0, refillRate));
       // Fresh notes are drawn in the DERIVED key and carried-over notes are
@@ -4650,6 +4739,10 @@ function Game({ gameState, onReturnToLobby }) {
       // so it fires safely outside this functional update (mirrors tickFans).
       if (ns.halfRefillNextTurn && refreshing.size > 0) {
         setTimeout(() => addLog(`🪓 Axe Swing whiff — stock recovery halved this turn!`), 0);
+      }
+      if ((ns.refillDrain ?? 0) > 0) {
+        const drained = ns.refillDrain;
+        setTimeout(() => addLog(`🕳️ The vortex already ate ${drained} note${drained !== 1 ? 's' : ''} — that many fewer come back this turn.`), 0);
       }
       if (refreshing.size > 0) {
         const nm = spirits.find(s => s.id === spiritId)?.name;
@@ -4695,8 +4788,10 @@ function Game({ gameState, onReturnToLobby }) {
           dieFloorBoost: 0,
           smashExposed: false,   // 🎸💥 exposure clears at the start of your own turn
           halfRefillNextTurn: false,  // 🪓 Axe Swing whiff penalty consumed
-          // 🌌 Displace cooldown ticks down on Intergalactic 0's own turns
-          displaceCd: Math.max(0, (ns.displaceCd ?? 0) - 1),
+          refillDrain: 0,             // 🕳️ vortex note-drain consumed (applied to refillRate above)
+          // (🌌 displaceCd tick REMOVED — Space is Displaced has no cooldown; it
+          // is metered by its Db cost alone. Any stale displaceCd left on an
+          // in-flight save just goes unread, exactly like acousticDuelCds.)
           // 🌀 Psycho Bushido cooldown ticks down on Ronin's own turns
           psychoBushidoCd: Math.max(0, (ns.psychoBushidoCd ?? 0) - 1),
 
@@ -4885,6 +4980,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (acting.id === 'Metalness_Monster') dropPoisonSlime(fromHex);
     // 🧪 Poison Slime — check if anyone stepped in slime
     checkPoisonSlime(acting.id, actualTarget);
+    // 🕳️ Walked too close to an open vortex? It takes you.
+    checkGravityVortex(acting.id, actualTarget);
     // Flaming disc hazard (Disco Inferno)
     checkFlamingDisc(acting.id, actualTarget);
     // 🎇 Stage hazards (lasers / erupting pyro / animatronics)
@@ -4965,8 +5062,10 @@ function Game({ gameState, onReturnToLobby }) {
     }
     // (hydra removed — Ronin rework)
     if (skillId === 'blaster_of_ra') addLog(`🌀 ${spirit?.name} — BLASTER OF RA! Your Smash becomes a ranged, piercing bass-drop down the beam — undefendable, scatters & knocks back every rival in line.`);
-    if (skillId === 'displace')      addLog(`🌌 ${spirit?.name} — DISPLACE! Warp to your amp rig for 3 AP (2-turn cooldown). He doesn't run — he transcends space.`);
-    if (skillId === 'sunbeam')       addLog(`☀️ ${spirit?.name} — SUNBEAM! With 3 amps, your Sonic beam reaches +2 hexes and leaves burning ground in its wake.`);
+    if (skillId === 'displace')      addLog(`🌌 ${spirit?.name} — SPACE IS DISPLACED! ${DISPLACE_DB_COST} Db to blink to any open hex ${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out. No cooldown, no AP. He doesn't run — he transcends space.`);
+    if (skillId === 'sunbeam')       addLog(`☀️ ${spirit?.name} — SUNBEAM! Land an attack and spend ${SUNBEAM_DB_COST} Db to white out your rival's entire world for a turn. Sometimes it sticks for two.`);
+    if (skillId === 'code_injection') addLog(`💻 ${spirit?.name} — CODE INJECTION! ${CODE_INJECT_DB_COST} Db, committed in secret, and the next rival who lands on you gets their dice thrown out and re-rolled. Nobody can see it armed.`);
+    if (skillId === 'gravity_control') addLog(`🕳️ ${spirit?.name} — GRAVITY CONTROL! ${GRAVITY_DB_COST} Db opens a black hole within ${GRAVITY_PLACE_RINGS} rings. It drags every rival nearby inward, and swallows ${GRAVITY_NOTE_DRAIN} notes from anyone it takes whole.`);
 
     if (['amp_1','amp_2','amp_3'].includes(skillId)) {
       const tier = ['amp_1','amp_2','amp_3'].indexOf(skillId) + 1;
@@ -5560,6 +5659,15 @@ function Game({ gameState, onReturnToLobby }) {
       triggerEffectFlash(spiritId, '⚡', 'FULLY CHARGED!', '#cceeff');
       addLog(`⚡ ${sp?.name} is FULLY CHARGED — floor AND ceiling refreshed to ${CHARGE_ZONE_BOOST_TURNS} rounds!`);
     }
+    // 📻 The zone doubles as a battery for Intergalactic 0's boom box. Announced
+    // separately so it never reads as part of the ordinary charge grant — the
+    // rig going portable is the bigger deal of the two.
+    if (spiritId === 'intergalactic_0') {
+      setTimeout(() => {
+        triggerEffectFlash(spiritId, '📻', 'BOOM BOX ON!', '#aa55ff');
+        addLog(`📻 The batteries take — ${sp?.name}'s BOOM BOX powers up. His rig travels with him now: full pool, full defence, riff-offs anywhere on the board. It dies with the charge, and a battle drains it.`);
+      }, 420);
+    }
   }
 
   // ⚡ A battle ensued — both combatants' charges burn off (the charged side got
@@ -5843,6 +5951,8 @@ function Game({ gameState, onReturnToLobby }) {
             moved.push({ id: rival.id, name: rival.name, to: dest.num });
             // Pushed into poison slime?
             setTimeout(() => checkPoisonSlime(rival.id, dest.num), 60);
+            // 🕳️ …or pushed into the vortex's reach?
+            setTimeout(() => checkGravityVortex(rival.id, dest.num), 80);
             // Pushed into the inferno?
             setTimeout(() => checkFlamingDisc(rival.id, dest.num), 100);
             // 🎇 …or into a stage hazard?
@@ -6443,6 +6553,39 @@ function Game({ gameState, onReturnToLobby }) {
   function isHiddenBySmoke(sp) {
     return !!(smokeFx && sp && acting?.id !== sp.id && hexInSmoke(sp.num, smokeFx.radius));
   }
+
+  // ☀️ SUNBEAM BLINDNESS — whose screen is currently white?
+  //
+  // The Smoke Machine hides OTHER Spirits from you. Sunbeam is the opposite and
+  // far more brutal: it hides EVERYTHING from ONE player, on their own display.
+  // That makes it the first genuinely per-client view effect in the game, so the
+  // two contexts have to be answered separately:
+  //
+  //   • ONLINE — every client renders the same engine state, so we ask "is the
+  //     Spirit *I* control blinded?" via net.mySpiritId. The rival's screen goes
+  //     white; mine does not. Spectators are never blinded (they bought a ticket,
+  //     they get to watch), and a resyncing client isn't either — see below.
+  //   • OFFLINE / HOTSEAT — one shared screen and players take it in turns, so
+  //     the only moment a blind can mean anything is while the blinded Spirit is
+  //     the ACTING one. Whiting out the shared screen during someone else's turn
+  //     would just punish the wrong person. Same call the Smoke Machine makes.
+  //
+  // `blindTurns` lives on the victim's note sheet, so it rides the normal
+  // NOTE_SHEET_PATCHED sync and needs no bespoke netcode of its own.
+  const blindedSpiritId = (() => {
+    const net = netRef.current;
+    if (net) {
+      if (net.spectator) return null;
+      return net.mySpiritId ?? null;
+    }
+    return acting?.id ?? null;
+  })();
+  const blindTurnsLeft = blindedSpiritId
+    ? (noteStates[blindedSpiritId]?.blindTurns ?? 0)
+    : 0;
+  // netSync = this client is mid-resync and its local state is untrustworthy;
+  // blacking it out on top of that would hide the recovery UI.
+  const isBlinded = blindTurnsLeft > 0 && !netSync;
 
   // ─── 🤘 ROCK GOD SYSTEM ──────────────────────────────────────────────────────
   // The endgame boss. Reaching fameToWin with a lead < ROCK_GOD_RUNAWAY_LEAD
@@ -7159,6 +7302,8 @@ function Game({ gameState, onReturnToLobby }) {
         }
         if (nextHex.edge) addLog(`⚠️ ${target.name} skids onto the EDGE — #${nextHex.num}!`);
         checkPoisonSlime(targetId, nextHex.num);
+        // 🕳️ Knocked INTO the vortex's reach — being shoved there counts.
+        checkGravityVortex(targetId, nextHex.num);
         checkFlamingDisc(targetId, nextHex.num);
         checkStageFxHex(targetId, nextHex.num);
         if (step < spaces) stepOnce();
@@ -7228,10 +7373,9 @@ function Game({ gameState, onReturnToLobby }) {
     if (!first) return new Set();
     const dq = first.q - originHex.q;
     const dr = first.r - originHex.r;
-    // ☀️ SUNBEAM (Intergalactic 0, Amp-3 capstone) — the beam reaches +2 hexes farther.
-    const hasSunbeam = spirit.id === 'intergalactic_0'
-      && ((noteStates[spirit.id]?.unlockedSkills) ?? []).includes('sunbeam');
-    const reach = hasSunbeam ? 5 : 3;
+    // (☀️ SUNBEAM's beam-reach bonus was REMOVED — Sunbeam is an on-hit blind
+    // now, not a range capstone. The beam is a flat 3 for everyone.)
+    const reach = 3;
     const beam = new Set();
     let q = originHex.q, r = originHex.r;
     for (let depth = 0; depth < reach; depth++) {
@@ -7403,6 +7547,8 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`💢 ${defender.name} pushed to hex #${pushHex.num}!${pushHex.edge ? ' ⚠️ EDGE!' : ''}`);
     // 🧪 Pushed into poison slime?
     setTimeout(() => checkPoisonSlime(defenderId, pushHex.num), 60);
+    // 🕳️ …or pushed into the vortex's reach?
+    setTimeout(() => checkGravityVortex(defenderId, pushHex.num), 80);
     // Pushed into the Disco Inferno?
     setTimeout(() => checkFlamingDisc(defenderId, pushHex.num), 100);
     // 🎇 …or into a stage hazard?
@@ -7550,12 +7696,13 @@ function Game({ gameState, onReturnToLobby }) {
     // engine owns the dice + verdict. `atkStat`/`defStat` already bake in fog's
     // -1 Sustain, edge mods, etc. The spin overlay below just displays
     // the already-decided faces (battle.atkRoll / battle.defRoll).
-    const rollState = dispatch(attackRolled('swing', attacker.id, targetId, {
+    // 💻 Code Injection gets its say between the roll and the verdict read.
+    const rollState = maybeCodeInjection(dispatch(attackRolled('swing', attacker.id, targetId, {
       atkStat, defStat,
       posing: defenderPosing,
       halveDef: skillMods.halveDef,
       atkFloor, atkDie, defDie,
-    }));
+    })), attacker.id, targetId);
     const {
       atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin,
     } = rollState.battle;
@@ -8086,28 +8233,340 @@ function Game({ gameState, onReturnToLobby }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spirits, noteStates]);
 
-  // 🌌 DISPLACE — Intergalactic 0's signature. He can't run; he WARPS. Teleport to an open
-  // hex beside his amp rig for 3 AP, then a 2-turn cooldown. A deliberate get-out-of-jail
-  // (the AP cost rules out a same-turn Sonic follow-up), not a kite tool. Needs ≥1 amp.
-  const DISPLACE_AP = 3;
+  // 🌌 SPACE IS DISPLACED — Intergalactic 0's signature. He can't run; he WARPS.
+  // Spend DISPLACE_DB_COST Db and appear instantly on any open hex between
+  // DISPLACE_MIN_RINGS and DISPLACE_MAX_RINGS away. No Action Points, no
+  // cooldown, no amp rig — Db is the ONLY brake, which is the point: the slowest
+  // Spirit on the board (speed 4) buys his mobility with the currency he earns by
+  // performing well, so a good set literally makes him harder to pin down.
+  //
+  // ⚠️ MIN 2 RINGS IS A RULE, NOT AN OFF-BY-ONE. An adjacent hex is a normal
+  // step he could take for free, so allowing ring 1 would let him burn Db to do
+  // something walking already does, and would blur the fantasy — he moves THROUGH
+  // the space between, never across it. Don't "helpfully" widen this to include 1.
+  //
+  // Ring distance uses the shared `axialDist` from board/hexGeometry.js — the
+  // same metric the amp rig, smoke radius and Shamisen aura all measure with.
+  // Don't hand-roll another one.
   function resolveDisplace(hexNum) {
     if (!acting) return;
     const ns = actingNoteState ?? {};
-    if ((ns.displaceCd ?? 0) > 0) { addLog(`🌌 Displace is recharging — ${ns.displaceCd} turn${ns.displaceCd > 1 ? 's' : ''} left.`); return; }
-    if (moveStepsLeft < DISPLACE_AP) { addLog(`🌌 Displace needs ${DISPLACE_AP} AP.`); return; }
-    // Warp target: any open neighbor hex of the spirit
+    const dbPts = ns.dbPoints ?? 0;
+    if (dbPts < DISPLACE_DB_COST) {
+      addLog(`🌌 Not enough Db to fold space — Space is Displaced costs ${DISPLACE_DB_COST} Db (you have ${dbPts}).`);
+      return;
+    }
     const spHex = HEX_BY_NUM[acting.num];
-    if (!spHex) return;
-    const openNeighbors = new Set();
+    const destHex = HEX_BY_NUM[hexNum];
+    if (!spHex || !destHex) return;
+    const rings = axialDist(destHex.q, destHex.r, spHex.q, spHex.r);
+    if (rings < DISPLACE_MIN_RINGS || rings > DISPLACE_MAX_RINGS) {
+      addLog(`🌌 Too ${rings < DISPLACE_MIN_RINGS ? 'close' : 'far'} — warp to an open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away.`);
+      return;
+    }
+    // Occupancy has to be re-checked here and not trusted from the highlight —
+    // the board can change between aiming and clicking (knockback, a bot turn).
     const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
-    getFlatTopNeighborSlots(spHex).forEach(n => { if (!occupied.has(n.num)) openNeighbors.add(n.num); });
-    if (!openNeighbors.has(hexNum)) { addLog('🌌 Warp to an open hex beside you.'); return; }
+    if (shadowHex != null) occupied.add(shadowHex); // 👤 can't warp into the Ronin's double
+    if (occupied.has(hexNum)) { addLog('🌌 Something is already standing there.'); return; }
 
     triggerEffectFlash(acting.id, '🌌', 'WARP', '#aa55ff');
-    dispatch(spiritWarped(acting.id, hexNum, DISPLACE_AP)); // reducer owns the position write
-    setNoteField(acting.id, { displaceCd: 2 });
+    // cost 0 — the warp is paid for in Db, not Action Points, so the reducer must
+    // not deduct movement. He can still walk his full allowance after blinking.
+    dispatch(spiritWarped(acting.id, hexNum, 0)); // reducer owns the position write
+    setNoteField(acting.id, { dbPoints: dbPts - DISPLACE_DB_COST });
     setAction(null);
-    addLog(`🌌 ${acting.name} folds space and WARPS to hex #${hexNum} — Space is the place.`);
+    addLog(`🌌 ${acting.name} folds space and WARPS ${rings} rings to hex #${hexNum} — Space is the place. (−${DISPLACE_DB_COST} Db)`);
+  }
+
+  // 🕳️ GRAVITY CONTROL — the black hole vortex.
+  //
+  // Tear one open on any hex within GRAVITY_PLACE_RINGS. Every living rival
+  // within GRAVITY_PULL_RINGS is dragged GRAVITY_PULL_HEXES inward; anyone who
+  // ends that drag standing ON the vortex has GRAVITY_NOTE_DRAIN notes swallowed
+  // — cut from NEXT turn's stock refill, so the hurt lands when they go to draw.
+  //
+  // ⚠️ THE VORTEX LIVES EXACTLY ONE FULL ROUND, and the lifetime is counted in
+  // SPIRIT-TURNS, not rounds — `decayGravityVortex()` runs at the end of EVERY
+  // spirit's turn, his own included, moments after he cast it. Seeding
+  // `turnsLeft` with a flat 1 would evaporate it the instant his turn ended and
+  // no rival could ever wander into it. Seeding with the living-Spirit count
+  // makes it expire exactly as the turn order comes back around, and self-scales
+  // as Spirits are knocked out. This is the identical trap `dropPoisonSlime`
+  // fell into — read that comment before touching this one.
+  //
+  // WHY IT LIVES ON THE NOTE SHEET, not in React state like Poison Slime does:
+  // `setNoteStates` diffs and dispatches NOTE_SHEET_PATCHED, so anything parked
+  // there syncs online for free. Poison Slime is plain `useState` and therefore
+  // does NOT survive a multiplayer session — a known pre-existing gap. The
+  // Cursed Shamisen is the pattern that got this right; follow it, not slime.
+  function resolveGravityControl(hexNum) {
+    if (!acting || acting.id !== 'intergalactic_0') return;
+    const ns = actingNoteState ?? {};
+    const dbPts = ns.dbPoints ?? 0;
+    if (dbPts < GRAVITY_DB_COST) {
+      addLog(`🕳️ Not enough Db to bend gravity — Gravity Control costs ${GRAVITY_DB_COST} Db (you have ${dbPts}).`);
+      return;
+    }
+    if (ns.gravityVortex) { addLog('🕳️ A vortex is already open — the stage only tolerates one singularity at a time.'); return; }
+    const spHex   = HEX_BY_NUM[acting.num];
+    const holeHex = HEX_BY_NUM[hexNum];
+    if (!spHex || !holeHex) return;
+    // Re-check range at click time rather than trusting the highlight — the
+    // board can shift between aiming and clicking (a pull, a bot turn).
+    if (axialDist(holeHex.q, holeHex.r, spHex.q, spHex.r) > GRAVITY_PLACE_RINGS) {
+      addLog(`🕳️ Out of reach — open the vortex within ${GRAVITY_PLACE_RINGS} rings of yourself.`);
+      return;
+    }
+
+    // One full revolution of the turn order. See the lifetime note above.
+    const aliveCount = Math.max(1, spirits.filter(s => !s.knockedOut).length);
+    setNoteField(acting.id, {
+      dbPoints: dbPts - GRAVITY_DB_COST,
+      // `pulled` = ids this vortex has already grabbed. A rival gets dragged by
+      // a given vortex ONCE, ever. Without it, a rival walking past would be
+      // yanked on every step of their own move — the pull relocates them, which
+      // re-fires the proximity check, which pulls them again. That's a movement
+      // lock, not a zoning tool, and it would also re-drain their notes each hop.
+      gravityVortex: { hex: hexNum, turnsLeft: aliveCount, pulled: [] },
+    });
+    setAction(null);
+    addLog(`🕳️ ${acting.name} clenches a fist and space TEARS — a BLACK HOLE VORTEX opens on hex #${hexNum}. (−${GRAVITY_DB_COST} Db)`);
+    focusOnHex(hexNum, 900, 0.42);
+
+    // Everyone already standing in the pull radius gets taken immediately.
+    const caught = spirits.filter(sp =>
+      !sp.knockedOut
+      && sp.id !== acting.id                       // gravity is his to command
+      && HEX_BY_NUM[sp.num]
+      && axialDist(HEX_BY_NUM[sp.num].q, HEX_BY_NUM[sp.num].r, holeHex.q, holeHex.r) <= GRAVITY_PULL_RINGS
+    );
+    if (!caught.length) {
+      addLog(`🕳️ The vortex turns, empty and patient. Nobody is close enough — yet.`);
+      return;
+    }
+    caught.forEach((sp, i) => {
+      // Stagger the drags so four standees don't slide simultaneously.
+      setTimeout(() => gravityPull(sp.id, hexNum), 220 * i);
+    });
+  }
+
+  // 🕳️ Drag ONE spirit inward. This is `battleKnockback` run backwards: same
+  // step-by-step slide, same edge/occupancy/abort guards, same hazard checks on
+  // each landing — but the angle is measured FROM the target TOWARD the hole
+  // instead of away from the attacker.
+  //
+  // ⚠️ It deliberately does NOT reuse battleKnockback. That function bakes in
+  // "push away from `fromId`", plus Rolls Hard (Intergalactic's own −1 shove
+  // resistance, meaningless here since he's immune to his own vortex) and a
+  // KNOCKED BACK log line that would read backwards. Forcing a pull through it
+  // by passing a mirrored phantom origin was tried and is worse than this copy.
+  function gravityPull(targetId, holeNum) {
+    const target  = spirits.find(s => s.id === targetId);
+    const holeHex = HEX_BY_NUM[holeNum];
+    if (!target || target.knockedOut || !holeHex) return;
+    // 6️⃣ BERSERK — the Beast is not moved by anything, gravity included.
+    if (noteStates[targetId]?.berserk) {
+      addLog(`6️⃣ ${target.name} plants against the pull — the Beast does not get dragged.`);
+      triggerRumble(targetId);
+      return;
+    }
+    // Mark as taken BEFORE the slide so the hazard checks the slide fires can't
+    // re-enter and pull them a second time mid-animation.
+    setNoteStates(prev => {
+      const g = prev['intergalactic_0']?.gravityVortex;
+      if (!g || (g.pulled ?? []).includes(targetId)) return prev;
+      return { ...prev, intergalactic_0: { ...prev['intergalactic_0'],
+        gravityVortex: { ...g, pulled: [...(g.pulled ?? []), targetId] } } };
+    });
+
+    addLog(`🕳️ ${target.name} is DRAGGED toward the vortex!`);
+    triggerRumble(targetId);
+    let curNum = target.num;
+    let step = 0;
+    const stepOnce = () => {
+      const curHex = HEX_BY_NUM[curNum];
+      if (!curHex) return;
+      if (curNum === holeNum) return; // already in it — nothing left to drag
+      const nextHex = neighborInDirection(curHex, angleTo(curHex, holeHex));
+      if (!nextHex) return;
+      const occupied = spirits.some(s => !s.knockedOut && s.id !== targetId && s.num === nextHex.num)
+                    || amps.some(a => a.hexNum === nextHex.num);
+      if (occupied) {
+        addLog(`🕳️ ${target.name} jams against ${nextHex.num === holeNum ? 'the rim of the vortex' : 'a body'} and stops at #${curNum}.`);
+        return;
+      }
+      const fromNum = curNum;
+      let aborted = false;
+      // Same fresh-state guard battleKnockback uses: if the target was KO'd,
+      // respawned or relocated since the last step, abort rather than dragging
+      // a respawned standee across the board.
+      setSpirits(prev => {
+        const t = prev.find(s => s.id === targetId);
+        if (!t || t.knockedOut || (t.vibe ?? 0) <= 0 || t.num !== fromNum) { aborted = true; return prev; }
+        return prev.map(s => s.id === targetId ? { ...s, num: nextHex.num } : s);
+      });
+      curNum = nextHex.num;
+      step++;
+      setTimeout(() => {
+        if (aborted) return;
+        if (fromNum === LIMELIGHT_HEX) {
+          setPosing(prev => ({ ...prev, [targetId]: false }));
+          addLog(`🎤 ${target.name} is torn off the Limelight by the pull!`);
+        }
+        checkPoisonSlime(targetId, nextHex.num);
+        checkFlamingDisc(targetId, nextHex.num);
+        checkStageFxHex(targetId, nextHex.num);
+        // Swallowed whole — the drag ended inside the singularity.
+        if (nextHex.num === holeNum) { swallowNotes(targetId); return; }
+        if (step < GRAVITY_PULL_HEXES) stepOnce();
+      }, 240);
+    };
+    setTimeout(stepOnce, 180);
+  }
+
+  // 🕳️🎵 The vortex eats notes. Charged against NEXT turn's refill rather than
+  // wiped out of the stock in front of them — that's what "lose 2 notes the next
+  // turn" means, and it matches how the Axe Swing whiff penalty already works
+  // (`halfRefillNextTurn`). `refillDrain` is consumed and reset in
+  // startNewTurnNotes, so it can never bite twice.
+  function swallowNotes(targetId) {
+    const target = spirits.find(s => s.id === targetId);
+    setNoteStates(prev => ({
+      ...prev,
+      [targetId]: { ...prev[targetId],
+        refillDrain: (prev[targetId]?.refillDrain ?? 0) + GRAVITY_NOTE_DRAIN },
+    }));
+    addLog(`🕳️🎵 ${target?.name} is swallowed WHOLE — ${GRAVITY_NOTE_DRAIN} notes spiral off into the dark. ${GRAVITY_NOTE_DRAIN} fewer in the pool next turn!`);
+    triggerEffectFlash(targetId, '🕳️', 'SWALLOWED!', '#aa55ff');
+    // 🎵 The notes visibly tear off the standee. showSpentNotes wants real note
+    // names for the glyphs, so pull the victim's last unspent stock entries —
+    // what the vortex takes is what they were about to play.
+    const ns = engineRef.current.noteStates?.[targetId] ?? noteStates[targetId] ?? {};
+    const stock = (ns.noteStock ?? []).filter(Boolean);
+    const flying = stock.slice(-GRAVITY_NOTE_DRAIN);
+    if (flying.length) showSpentNotes(targetId, flying, 'drive');
+  }
+
+  // 🕳️ Anyone who wanders within the pull radius while the vortex is still open
+  // gets taken too — that's what makes it linger for a round rather than being a
+  // one-shot burst. Called from the same move/push sites as checkPoisonSlime.
+  // The `pulled` guard means each rival is grabbed at most once per vortex.
+  function checkGravityVortex(spiritId, hexNum) {
+    if (spiritId === 'intergalactic_0') return; // gravity is his to command
+    const ns = engineRef.current.noteStates?.['intergalactic_0'] ?? noteStates['intergalactic_0'] ?? {};
+    const g = ns.gravityVortex;
+    if (!g) return;
+    if ((g.pulled ?? []).includes(spiritId)) return;
+    const holeHex = HEX_BY_NUM[g.hex];
+    const hereHex = HEX_BY_NUM[hexNum];
+    if (!holeHex || !hereHex) return;
+    if (axialDist(hereHex.q, hereHex.r, holeHex.q, holeHex.r) > GRAVITY_PULL_RINGS) return;
+    // Already standing in it — swallow without a slide.
+    if (hexNum === g.hex) {
+      setNoteStates(prev => {
+        const cur = prev['intergalactic_0']?.gravityVortex;
+        if (!cur || (cur.pulled ?? []).includes(spiritId)) return prev;
+        return { ...prev, intergalactic_0: { ...prev['intergalactic_0'],
+          gravityVortex: { ...cur, pulled: [...(cur.pulled ?? []), spiritId] } } };
+      });
+      swallowNotes(spiritId);
+      return;
+    }
+    setTimeout(() => gravityPull(spiritId, g.hex), 60);
+  }
+
+  // 🕳️ Tick the vortex down one spirit-turn. Called at the end of EVERY spirit's
+  // turn (same cadence as decayPoisonSlime) so one full revolution collapses it.
+  function decayGravityVortex() {
+    const ns = engineRef.current.noteStates?.['intergalactic_0'] ?? noteStates['intergalactic_0'] ?? {};
+    const g = ns.gravityVortex;
+    if (!g) return;
+    const left = (g.turnsLeft ?? 1) - 1;
+    if (left > 0) { setNoteField('intergalactic_0', { gravityVortex: { ...g, turnsLeft: left } }); return; }
+    setNoteField('intergalactic_0', { gravityVortex: null });
+    addLog(`🕳️ The vortex folds in on itself and winks out. Space settles.`);
+  }
+
+  // 💻 CODE INJECTION — the blind commit.
+  //
+  // Pay CODE_INJECT_DB_COST on your own turn and say nothing. For one full round
+  // the first rival whose attack WOULD BEAT YOU has their dice thrown out and
+  // re-rolled, and they live with the second result.
+  //
+  // ⚠️ IT IS HIDDEN INFORMATION, AND THAT IS THE ABILITY. There is no aura, no
+  // standee marker, no board tell — a rival must decide whether to commit their
+  // Action Token into a player who MIGHT have patched the fight. Two rules keep
+  // that true, and both are easy to break by accident:
+  //   1. The armed state syncs (it rides `codeInjectTurns` on the note sheet via
+  //      NOTE_SHEET_PATCHED) but must never be RENDERED for anyone but him. See
+  //      the HUD button — it is gated on `acting?.id === 'intergalactic_0'`, so
+  //      only the player holding him ever sees the counter. Syncing state and
+  //      displaying it are different things; do not "helpfully" add an aura.
+  //   2. The commit's log line is written by `addLog` on HIS client only. Remote
+  //      clients apply engine actions WITHOUT orchestration (no addLog, no FX —
+  //      see the ACTION frame handler), so the line does not travel. If you ever
+  //      move this announcement into a reducer or a synced banner, the bluff dies.
+  //
+  // Lifetime uses the same spirit-turn counting as the vortex: seeded with the
+  // living-Spirit count and ticked at the end of every spirit's turn, so it
+  // covers exactly one revolution and expires as the order returns to him.
+  function resolveCodeInjection() {
+    if (!acting || acting.id !== 'intergalactic_0') return;
+    const ns = actingNoteState ?? {};
+    const dbPts = ns.dbPoints ?? 0;
+    if ((ns.codeInjectTurns ?? 0) > 0) { addLog('💻 A patch is already live — one injection at a time.'); return; }
+    if (dbPts < CODE_INJECT_DB_COST) {
+      addLog(`💻 Not enough Db to inject — Code Injection costs ${CODE_INJECT_DB_COST} Db (you have ${dbPts}).`);
+      return;
+    }
+    const aliveCount = Math.max(1, spirits.filter(s => !s.knockedOut).length);
+    setNoteField(acting.id, {
+      dbPoints: dbPts - CODE_INJECT_DB_COST,
+      codeInjectTurns: aliveCount,
+    });
+    // Quiet on purpose — no triggerEffectFlash. A board-wide flash would be
+    // visible to every client and would hand rivals the read for free.
+    addLog(`💻 ${acting.name} slips a patch into the fight and gives nothing away. (−${CODE_INJECT_DB_COST} Db · armed for one round · nobody else can see this)`);
+  }
+
+  // 💻 Tick the armed patch down one spirit-turn — same cadence as the vortex.
+  function decayCodeInjection() {
+    const ns = engineRef.current.noteStates?.['intergalactic_0'] ?? noteStates['intergalactic_0'] ?? {};
+    const left = (ns.codeInjectTurns ?? 0) - 1;
+    if ((ns.codeInjectTurns ?? 0) <= 0) return;
+    if (left > 0) { setNoteField('intergalactic_0', { codeInjectTurns: left }); return; }
+    setNoteField('intergalactic_0', { codeInjectTurns: 0 });
+    // Only he is told the bet lapsed — the log is local to his client.
+    if (acting?.id === 'intergalactic_0' || !netRef.current) {
+      addLog(`💻 The patch times out unused. ${CODE_INJECT_DB_COST} Db into the void — that was the gamble.`);
+    }
+  }
+
+  // 💻 Called immediately after an attack is rolled, BEFORE the client reads the
+  // verdict. Returns the (possibly rewritten) engine state.
+  //
+  // It only fires when the attacker actually WON: re-rolling an attack that
+  // already missed could only ever turn a miss into a hit, so "force a re-roll"
+  // is gated on the roll being a threat. That also means a whiffed swing does
+  // not burn the patch — it stays armed for someone who can actually land.
+  function maybeCodeInjection(rollState, attackerId, defenderId) {
+    if (defenderId !== 'intergalactic_0') return rollState;
+    const ns = engineRef.current.noteStates?.[defenderId] ?? {};
+    if ((ns.codeInjectTurns ?? 0) <= 0) return rollState;
+    if (!rollState?.battle?.attackerWon) return rollState;
+
+    const before = rollState.battle.atkRoll;
+    const next   = dispatch(attackRerolled());   // reducer re-draws off the seeded rng
+    setNoteField(defenderId, { codeInjectTurns: 0 }); // one shot per commit
+    const after = next.battle.atkRoll;
+    const atkName = spirits.find(s => s.id === attackerId)?.name;
+    addLog(`💻 CODE INJECTION! ${acting?.name === atkName ? atkName : atkName}'s roll is rejected by the system — ${before} thrown out, re-rolled to ${after}.`);
+    addLog(next.battle.attackerWon
+      ? `💻 …and the patch doesn't save him. The hit still lands.`
+      : `💻 …and the attack DISSOLVES. Nothing connects.`);
+    triggerEffectFlash(defenderId, '💻', 'INJECTED!', '#44ffaa');
+    return next;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -8898,13 +9357,14 @@ function Game({ gameState, onReturnToLobby }) {
     if (chargeCeilA)  addLog(`⚡ ${attacker.name}'s ceiling charge surges — every die in the pool grows a size!`);
     const diceLabel   = rigPoolLabel(dicePool);
     const dieSides    = Math.max(...dicePool); // fallback for single-die animation paths
-    const rollState = dispatch(attackRolled('sonic', attacker.id, targetId, {
+    // 💻 Code Injection gets its say between the roll and the verdict read.
+    const rollState = maybeCodeInjection(dispatch(attackRolled('sonic', attacker.id, targetId, {
       atkStat, defStat,
       posing: defenderPosing,
       halveDef: skillMods.halveDef,
       dicePool, atkFloor,
       defDie: defDieSonic,   // d6 in rig range, d4 when the rival is stranded
-    }));
+    })), attacker.id, targetId);
     const {
       atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, diceVals, keptIdx,
     } = rollState.battle;
@@ -8922,18 +9382,11 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`🔊 ${attacker.name} launches SONIC ATTACK at ${defender.name}! (${diceLabel} keep best vs d${defDieSonic}${actingRig.inRange ? '' : ' · baseline'}${retaliationBlocked ? ' — TARGET OUT OF RIG RANGE, CANNOT RETALIATE!' : ''})`);
     // ⚡ A battle ensued — Charge Zone charges burn off for BOTH combatants.
     burnChargesAfterBattle([attacker.id, targetId], 'the Sonic battle spent it');
-    // ☀️🔥 SUNBEAM — the beam scorches every hex it crosses into burning ground (reuses the
-    // Disco Inferno flaming-hex hazard: entering one costs 1 Vibe). Area denial down the line.
+    // (☀️🔥 SUNBEAM's scorched-earth fire trail was REMOVED in the rework. Sunbeam
+    // no longer touches the board at all — it blinds the DEFENDER, and it resolves
+    // in closeBattleOverlay on a connecting hit, alongside Slime. Don't re-add a
+    // flamingHexesSet call here.)
     const hasSunbeam = attacker.id === 'intergalactic_0' && atkSkills.includes('sunbeam');
-    if (hasSunbeam) {
-      const scorched = [...getSonicBeam(attacker)];
-      {
-        const prev = engineRef.current.board.flamingHexes;
-        const merged = [...new Set([...(prev.hexes ?? []), ...scorched])];
-        dispatch(flamingHexesSet(merged, Math.max(prev.roundsLeft ?? 0, 2)));
-      }
-      addLog(`☀️🔥 SUNBEAM scorches the stage — ${scorched.length} hex${scorched.length !== 1 ? 'es' : ''} burn for 2 rounds!`);
-    }
 
     playBattleMusic(battleSong, 0.7);
     dieSettledRef.current = { atk: false, def: false }; // fresh battle, fresh dice
@@ -8958,7 +9411,7 @@ function Game({ gameState, onReturnToLobby }) {
       keptIdx,                   // index of the kept (max) die
       diceLabel,                 // "2d6" / "2d6+d8" / "3d8"
       // (hydra flag removed — Ronin rework)
-      sunbeam: hasSunbeam,       // ☀️ extra-lit beam (Intergalactic 0 capstone)
+      sunbeam: hasSunbeam,       // ☀️ purely cosmetic golden over-lit beam — the tell that a Sunbeam owner is firing. The BLIND itself resolves in closeBattleOverlay.
       retaliationBlocked,
       skillMods,
       pedalBonus,
@@ -9753,6 +10206,47 @@ function Game({ gameState, onReturnToLobby }) {
           setTimeout(() => triggerEffectFlash(defenderId, '🧪', 'SLIMED!', '#44ff44'), 250);
         }
       }
+      // ☀️ SUNBEAM (Intergalactic 0) — on ANY connecting attack (Swing or Sonic,
+      // unlike Slime which is melee-only), spend Db to white out the rival's
+      // world. Modelled on the Slime block directly above: same auto-spend, same
+      // "only if you can afford it" silence, same closeBattleOverlay home.
+      //
+      // ⚠️ WHY THE ROLL GOES THROUGH randomBatchDrawn. The linger is a 50/50, and
+      // every random draw in game RULES has to come off the seeded engine stream
+      // or replays and the online desync tripwire (which compares rng cursors
+      // frame-by-frame) both break. Math.random() here would be a live bug, not
+      // a style nit. closeBattleOverlay only ever runs on the ATTACKER'S client —
+      // remote viewers dismiss the overlay without calling it — so this dispatch
+      // fires exactly once and every client advances the cursor identically.
+      if (attackerId === 'intergalactic_0') {
+        const atkNs = noteStates[attackerId] ?? {};
+        const hasSunbeam = (atkNs.unlockedSkills ?? []).includes('sunbeam');
+        const atkDb = atkNs.dbPoints ?? 0;
+        if (hasSunbeam && atkDb >= SUNBEAM_DB_COST) {
+          dispatch(randomBatchDrawn(1));
+          const lingerRoll = engineRef.current.lastRandomBatch?.[0] ?? 1;
+          const lingers = lingerRoll < SUNBEAM_LINGER_CHANCE;
+          const turns = Math.min(
+            SUNBEAM_MAX_BLIND_TURNS,
+            SUNBEAM_BLIND_TURNS + (lingers ? 1 : 0),
+          );
+          setNoteStates(prev => ({
+            ...prev,
+            [attackerId]: { ...prev[attackerId], dbPoints: (prev[attackerId]?.dbPoints ?? 0) - SUNBEAM_DB_COST },
+            // Blinds do NOT stack — a fresh proc takes the higher of the two
+            // clocks rather than adding, so being hit twice in a round can
+            // never bury someone past the SUNBEAM_MAX_BLIND_TURNS ceiling.
+            [defenderId]: {
+              ...prev[defenderId],
+              blindTurns: Math.max(prev[defenderId]?.blindTurns ?? 0, turns),
+            },
+          }));
+          const defName = spirits.find(x => x.id === defenderId)?.name;
+          addLog(`☀️ SUNBEAM! ${spirits.find(x => x.id === attackerId)?.name} opens the star and ${defName}'s world goes WHITE — blinded for ${turns} turn${turns !== 1 ? 's' : ''}. (−${SUNBEAM_DB_COST} Db)`);
+          if (lingers) addLog(`☀️ The burn is seared in — ${defName} is still seeing nothing but light next turn.`);
+          setTimeout(() => triggerEffectFlash(defenderId, '☀️', 'BLINDED!', '#ffffff'), 250);
+        }
+      }
       clearBattleBuffs(attackerId, defenderId);
       setBattleState(null);
       setDiceDisplay(null);
@@ -10184,6 +10678,16 @@ function Game({ gameState, onReturnToLobby }) {
     // spirit-turn, so a trail lives exactly one revolution. Left on the turn
     // clock on purpose (see the WHAT TICKS WHEN note above).
     decayPoisonSlime();
+
+    // 🕳️ GRAVITY VORTEX decay — identical cadence and identical reasoning:
+    // seeded with the living Spirit count, ticked per spirit-turn, so the black
+    // hole hangs for exactly one revolution of the turn order.
+    decayGravityVortex();
+
+    // 💻 CODE INJECTION — same one-revolution cadence. Ticked here rather than in
+    // startNewTurnNotes so a patch committed on his turn covers every rival's
+    // turn before lapsing (the decayPoisonSlime trap, third time).
+    decayCodeInjection();
 
     // Advance queue first so we know who acts next, then replenish their used slots
     // B8: the flow now OPENS on the chord step — the pivot stage is gone, the mode
@@ -10968,7 +11472,12 @@ function Game({ gameState, onReturnToLobby }) {
     }
     if (action === "displace") {
       if (acting && displaceTargets.has(num)) resolveDisplace(num);
-      else addLog("🌌 Warp to an open hex beside you.");
+      else addLog(`🌌 Warp to an open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away.`);
+      return;
+    }
+    if (action === "gravity_control") {
+      if (acting && gravityTargets.has(num)) resolveGravityControl(num);
+      else addLog(`🕳️ Open the vortex on a hex within ${GRAVITY_PLACE_RINGS} rings of yourself.`);
       return;
     }
     if (action === "psycho_bushido") {
@@ -11001,7 +11510,13 @@ function Game({ gameState, onReturnToLobby }) {
   // ─── HEX VISUAL HELPERS ───────────────────────────────────────────────────────
   const HS = Math.round(HEX_SIZE * SCALE * 0.88);
 
-  // 🌌 Valid warp landing hexes while aiming Displace (open neighbor hexes).
+  // 🌌 Valid warp landing hexes while aiming Space is Displaced: every open hex
+  // in the DISPLACE_MIN_RINGS..DISPLACE_MAX_RINGS band. This deliberately scans
+  // the whole board rather than walking rings outward — the annulus is small,
+  // ALL_HEXES is a few dozen entries, and a flat filter keeps the legality rule
+  // in ONE readable expression that matches resolveDisplace's guard exactly.
+  // (Two different notions of "in range" between the highlight and the resolver
+  // is precisely how you get hexes that light up and then refuse the click.)
   const displaceTargets = useMemo(() => {
     if (action !== 'displace' || !acting) return new Set();
     const spHex = HEX_BY_NUM[acting.num];
@@ -11009,9 +11524,32 @@ function Game({ gameState, onReturnToLobby }) {
     const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
     if (shadowHex != null) occupied.add(shadowHex); // 👤 can't warp into the double
     const out = new Set();
-    getFlatTopNeighborSlots(spHex).forEach(n => { if (!occupied.has(n.num)) out.add(n.num); });
+    for (const h of ALL_HEXES) {
+      if (occupied.has(h.num)) continue;
+      const rings = axialDist(h.q, h.r, spHex.q, spHex.r);
+      if (rings >= DISPLACE_MIN_RINGS && rings <= DISPLACE_MAX_RINGS) out.add(h.num);
+    }
     return out;
-  }, [action, acting, spirits, shadowHex]);
+  }, [action, acting, spirits, shadowHex]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 🕳️ Valid vortex sites while aiming Gravity Control: every hex within
+  // GRAVITY_PLACE_RINGS, INCLUDING occupied ones and his own hex. A black hole
+  // is not a body — it opens in the same space something is already standing in,
+  // and dropping it directly under a rival is the whole point (they're already
+  // swallowed). Same legality expression as the guard in resolveGravityControl.
+  const gravityTargets = useMemo(() => {
+    if (action !== 'gravity_control' || !acting) return new Set();
+    const spHex = HEX_BY_NUM[acting.num];
+    if (!spHex) return new Set();
+    const out = new Set();
+    for (const h of ALL_HEXES) {
+      if (axialDist(h.q, h.r, spHex.q, spHex.r) <= GRAVITY_PLACE_RINGS) out.add(h.num);
+    }
+    return out;
+  }, [action, acting]);
+
+  // 🕳️ The open vortex, read once for the board layer + HUD readout.
+  const gravityVortex = noteStates['intergalactic_0']?.gravityVortex ?? null;
 
   function hexFill(hex) {
     // hovering a HUD attack button previews its range like the live mode
@@ -11026,6 +11564,11 @@ function Game({ gameState, onReturnToLobby }) {
     // decoy never lights up differently from the real body.
     if (shadowDecoy && hex.num === shadowDecoy.num) return shadowDecoy.color + "44";
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#aa55ff33";
+    // 🕳️ The open vortex reads BEFORE any aiming highlight — a black hole on the
+    // board must never be repainted as a targeting tint, or it vanishes from
+    // view at exactly the moment someone is deciding where to walk.
+    if (gravityVortex && hex.num === gravityVortex.hex) return "#05000c";
+    if (action === 'gravity_control' && gravityTargets.has(hex.num)) return "#7733cc33";
     if (action === 'move_shadow' && shadowReachable.has(hex.num)) return "#ffffff18";
     if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return "#4488ff33";
     // 🎸 Cursed Shamisen — its hex plus the concentric rings of its melody.
@@ -11091,6 +11634,8 @@ function Game({ gameState, onReturnToLobby }) {
     if (shadowDecoy && hex.num === shadowDecoy.num) return shadowDecoy.color;
     if (action === 'move_shadow' && shadowReachable.has(hex.num)) return "#ffffff88";
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#cc88ffcc";
+    if (gravityVortex && hex.num === gravityVortex.hex) return "#cc66ff";
+    if (action === 'gravity_control' && gravityTargets.has(hex.num)) return "#aa66ffcc";
     if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return "#4488ffcc";
     if (reachable.has(hex.num)) return "#ffffff88";
     // Swing / Smash cone stroke
@@ -11134,6 +11679,8 @@ function Game({ gameState, onReturnToLobby }) {
     }
     if (spVisible || reachable.has(hex.num) || shadowReachable.has(hex.num) || hex.stage) return 1.5;
     if (action === 'displace' && displaceTargets.has(hex.num)) return 2;
+    if (gravityVortex && hex.num === gravityVortex.hex) return 2.5;
+    if (action === 'gravity_control' && gravityTargets.has(hex.num)) return 2;
     if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return 2;
     return 0.8;
   }
@@ -11814,6 +12361,41 @@ function Game({ gameState, onReturnToLobby }) {
 
 
 
+
+      {/* ── ☀️ SUNBEAM WHITEOUT — the blinded player's entire world goes white ──
+          Sits above EVERY other overlay (taunts, battle, tooltips) on purpose:
+          if a layer could out-stack it, that layer becomes a peephole and the
+          ability stops working. Hence the deliberately absurd z-index.
+
+          `pointerEvents:'none'` is NOT an oversight. Blinded means blinded, not
+          paralysed — you keep every button, every hex and every legal move you
+          had a second ago, you simply cannot see to aim. Taking input away too
+          would make Sunbeam a stun, which is a different (and much stronger)
+          ability than the one that was designed. The one concession is the
+          counter, so the victim knows this ends and when. */}
+      {isBlinded && (
+        <div style={{
+          position:'fixed', inset:0, zIndex:2147483647, pointerEvents:'none',
+          background:'#ffffff',
+          display:'flex', flexDirection:'column',
+          alignItems:'center', justifyContent:'center',
+          animation:'sunbeam-flash 0.45s ease-out both',
+        }}>
+          <div style={{
+            fontFamily:"'Saira Stencil One','Impact',sans-serif",
+            fontSize:'clamp(26px, 5vw, 60px)', letterSpacing:6,
+            color:'#fff6d8', textShadow:'0 0 24px #ffdd7a, 0 0 60px #ffcc44',
+            userSelect:'none',
+          }}>☀️ BLINDED</div>
+          <div style={{
+            fontFamily:"'Share Tech Mono',monospace",
+            fontSize:'clamp(10px, 1.4vw, 15px)', letterSpacing:2,
+            color:'#ffe9b0', marginTop:10, userSelect:'none',
+          }}>
+            {blindTurnsLeft} TURN{blindTurnsLeft !== 1 ? 'S' : ''} OF NOTHING BUT LIGHT
+          </div>
+        </div>
+      )}
 
       {/* ── 🎤 RIFF-OFF TAUNT OVERLAY — big bold one-liners across the screen ── */}
       {tauntDisplay && (
@@ -12653,6 +13235,22 @@ function Game({ gameState, onReturnToLobby }) {
                       background:"#0a141f",border:"1px solid #44aaff",color:"#88ccff",
                       animation:"crew-ready-glow 2.4s ease-in-out infinite"}}>
                       ⚡ DIE SIZE ▲ ({actingNoteState.chargeCeilTurns})
+                    </span>
+                  )}
+                  {/* 📻 BOOM BOX — the rig-goes-portable tell. Safe to show
+                      publicly (unlike Code Injection): the ⚡ charge badges above
+                      already broadcast that he's charged, so this leaks nothing
+                      new — it just spells out what being charged MEANS for him,
+                      because "your rig moved" is not something a badge count
+                      would ever imply on its own. */}
+                  {acting?.id === 'intergalactic_0'
+                    && ((actingNoteState?.chargeFloorTurns ?? 0) > 0
+                     || (actingNoteState?.chargeCeilTurns ?? 0) > 0) && (
+                    <span title="Boom Box lit — while you hold a Charge Zone charge your Sonic rig travels with you: full dice pool, Power upgrades live, riff-offs anywhere, and you defend on a d6 instead of the stranded d4. It dies with the charge, and any battle drains it."
+                      style={{fontSize:7,padding:"1px 5px",borderRadius:3,
+                      background:"#140a1f",border:"1px solid #aa55ff",color:"#cc88ff",
+                      animation:"crew-ready-glow 2.4s ease-in-out infinite"}}>
+                      📻 BOOM BOX — RIG PORTABLE
                     </span>
                   )}
                   {statusEffects.map((fx,i) => (
@@ -13603,36 +14201,93 @@ function Game({ gameState, onReturnToLobby }) {
                 </button>
               );
             })()}
-            {/* 🌌 DISPLACE — Intergalactic 0 warps to his amp rig (3 AP, 2-turn cooldown) */}
+            {/* 🌌 SPACE IS DISPLACED — Intergalactic 0 blinks 2–3 rings for 1 Db.
+                ⚠️ This button previously read a `hasRig` variable that was never
+                defined anywhere in the component, so simply RENDERING it threw a
+                ReferenceError and dropped the whole game into the error boundary
+                the moment Intergalactic 0 unlocked the skill and committed a
+                track. That bug is gone with the rework — but the lesson stands:
+                every value in this label must come from something in scope. */}
             {hasConfirmed && acting?.id === 'intergalactic_0'
               && (actingNoteState?.unlockedSkills ?? []).includes('displace') && (() => {
-              const cd      = actingNoteState?.displaceCd ?? 0;
-              const canWarp = cd <= 0 && moveStepsLeft >= DISPLACE_AP;
+              const dbPts   = actingNoteState?.dbPoints ?? 0;
+              const canWarp = dbPts >= DISPLACE_DB_COST;
               return (
                 <>
                   <button className={canWarp ? 'btn active' : 'btn'}
                     style={{borderColor: canWarp ? '#aa55ff' : '#2a1840', color: canWarp ? '#cc88ff' : '#2a1840'}}
                     disabled={!canWarp}
-                    title="Displace — warp to an open hex beside your amp rig (3 AP, 2-turn cooldown). He doesn't run; he transcends space."
+                    title={`Space is Displaced — spend ${DISPLACE_DB_COST} Db to warp to any open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away. No Action Points, no cooldown, no rig needed — and your movement is untouched, so you can still walk after landing. Adjacent hexes don't count: he goes through the space between, not across it.`}
                     onClick={() => {
                       if (action === 'displace') { setAction(null); }
-                      else if (canWarp) { setAction('displace'); addLog('🌌 DISPLACE — click an open hex beside your rig to warp there.'); }
+                      else if (canWarp) {
+                        setAction('displace');
+                        addLog(`🌌 SPACE IS DISPLACED — click any lit hex (${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out) to warp there for ${DISPLACE_DB_COST} Db.`);
+                      }
                     }}>
-                    {/* ⚠️ Was `!hasRig ? ' — need amp' : …` — `hasRig` is not
-                        defined anywhere in this component, so rendering this
-                        button threw a ReferenceError and dropped the whole game
-                        into the error boundary the moment Intergalactic 0
-                        unlocked Displace + committed a track. Caught by
-                        eslint no-undef; predates the netcode work. The label is
-                        stale as well as broken: resolveDisplace warps to an open
-                        neighbouring hex and no longer requires an amp at all. */}
-                    🌌 Displace{cd > 0 ? ` (${cd})` : ''}{moveStepsLeft < DISPLACE_AP && cd <= 0 ? ` (${DISPLACE_AP}AP)` : ''}
+                    🌌 Displace{canWarp ? ` (${DISPLACE_DB_COST} Db)` : ` (${dbPts}/${DISPLACE_DB_COST} Db)`}
                   </button>
                   {action === 'displace' && (
                     <button className="btn" style={{borderColor:'#888',color:'#888'}}
                       onClick={() => setAction(null)}>Cancel</button>
                   )}
                 </>
+              );
+            })()}
+            {/* 🕳️ GRAVITY CONTROL — Intergalactic 0 opens a black hole vortex */}
+            {hasConfirmed && acting?.id === 'intergalactic_0'
+              && (actingNoteState?.unlockedSkills ?? []).includes('gravity_control') && (() => {
+              const dbPts   = actingNoteState?.dbPoints ?? 0;
+              const isOpen  = !!actingNoteState?.gravityVortex;
+              const canOpen = dbPts >= GRAVITY_DB_COST && !isOpen;
+              return (
+                <>
+                  <button className={canOpen ? 'btn active' : 'btn'}
+                    style={{borderColor: canOpen ? '#aa55ff' : '#2a1840', color: canOpen ? '#cc88ff' : '#2a1840'}}
+                    disabled={!canOpen}
+                    title={isOpen
+                      ? `A vortex is already open on hex #${actingNoteState?.gravityVortex?.hex}. Only one singularity at a time — it collapses when the turn order comes back to you.`
+                      : `Gravity Control — spend ${GRAVITY_DB_COST} Db to tear open a black hole on any hex within ${GRAVITY_PLACE_RINGS} rings (you can drop it right on top of someone). Every rival within ${GRAVITY_PULL_RINGS} rings is dragged ${GRAVITY_PULL_HEXES} hex toward it; anyone pulled all the way in loses ${GRAVITY_NOTE_DRAIN} notes off next turn's refill. It hangs for one full round and takes anyone who wanders close. It never touches you.`}
+                    onClick={() => {
+                      if (action === 'gravity_control') { setAction(null); }
+                      else if (canOpen) {
+                        setAction('gravity_control');
+                        addLog(`🕳️ GRAVITY CONTROL — click any lit hex (within ${GRAVITY_PLACE_RINGS} rings) to tear open the vortex for ${GRAVITY_DB_COST} Db.`);
+                      }
+                    }}>
+                    🕳️ Gravity{isOpen
+                      ? ` (open #${actingNoteState?.gravityVortex?.hex})`
+                      : dbPts < GRAVITY_DB_COST ? ` (${dbPts}/${GRAVITY_DB_COST} Db)` : ` (${GRAVITY_DB_COST} Db)`}
+                  </button>
+                  {action === 'gravity_control' && (
+                    <button className="btn" style={{borderColor:'#888',color:'#888'}}
+                      onClick={() => setAction(null)}>Cancel</button>
+                  )}
+                </>
+              );
+            })()}
+            {/* 💻 CODE INJECTION — Intergalactic 0's hidden commit.
+                ⚠️ This button, and the (n) counter on it, are the ONLY surface
+                the armed state ever gets. It renders inside the acting Spirit's
+                own HUD, so only the player holding Intergalactic 0 can see it.
+                Do not mirror this onto the standee, the board, or any shared
+                banner — the entire ability is that rivals cannot tell. */}
+            {hasConfirmed && acting?.id === 'intergalactic_0'
+              && (actingNoteState?.unlockedSkills ?? []).includes('code_injection') && (() => {
+              const dbPts   = actingNoteState?.dbPoints ?? 0;
+              const armed   = (actingNoteState?.codeInjectTurns ?? 0) > 0;
+              const canHack = dbPts >= CODE_INJECT_DB_COST && !armed;
+              return (
+                <button className={canHack ? 'btn active' : 'btn'}
+                  style={{borderColor: canHack ? '#44ffaa' : armed ? '#1d5c44' : '#12301f',
+                          color: canHack ? '#88ffcc' : armed ? '#44ffaa' : '#12301f'}}
+                  disabled={!canHack}
+                  title={armed
+                    ? `A patch is live and nobody else can see it. The next rival whose attack would beat you gets their dice thrown out and re-rolled. Lapses when the turn order comes back to you.`
+                    : `Code Injection — spend ${CODE_INJECT_DB_COST} Db in secret. For one round, the first rival whose attack WOULD land on you has their dice re-rolled and must live with the second result. No tell, no aura: rivals cannot tell whether you've committed. If nobody lands a hit, the Db is gone — that's the bet.`}
+                  onClick={() => { if (canHack) resolveCodeInjection(); }}>
+                  💻 Inject{armed ? ' ✅ LIVE' : dbPts < CODE_INJECT_DB_COST ? ` (${dbPts}/${CODE_INJECT_DB_COST} Db)` : ` (${CODE_INJECT_DB_COST} Db)`}
+                </button>
               );
             })()}
             {/* 🌀 PSYCHO BUSHIDO — Shredding Ronin dash attack */}
@@ -14843,6 +15498,50 @@ function Game({ gameState, onReturnToLobby }) {
                               filter:`drop-shadow(0 0 4px ${glow})`}}>
                             {hunting ? '💀 MINOR' : `${sham.range}◎`}
                           </text>
+                        </g>
+                      );
+                    })()}
+
+                    {/* 🕳️ BLACK HOLE VORTEX — Intergalactic 0's Gravity Control.
+                        A pit of nothing with an accretion ring around it. Drawn
+                        as concentric counter-rotating rings plus a dead-black
+                        core so it reads as a HOLE rather than another token: it
+                        is the one thing on this board that is darker than the
+                        board. The dashed outer ring marks the pull radius, so
+                        players can see exactly which hexes are dangerous without
+                        counting. */}
+                    {(() => {
+                      const g = noteStates['intergalactic_0']?.gravityVortex;
+                      if (!g || g.hex !== hex.num) return null;
+                      return (
+                        <g style={{pointerEvents:"none"}}>
+                          <title>
+                            {`Black Hole Vortex — anything within ${GRAVITY_PULL_RINGS} rings is dragged ${GRAVITY_PULL_HEXES} hex inward, and anyone pulled all the way in loses ${GRAVITY_NOTE_DRAIN} notes off next turn's refill. It takes each rival once, then collapses when the turn order returns to Intergalactic 0.`}
+                          </title>
+                          {/* pull radius — dashed, slowly turning */}
+                          <circle cx={cx} cy={cy} r={HS * (0.9 + GRAVITY_PULL_RINGS)} fill="none"
+                            stroke="#aa55ff" strokeWidth={1.1} opacity={0.32}
+                            strokeDasharray="5 7"
+                            style={{animation:'gravity-spin 14s linear infinite',
+                              transformOrigin:`${cx}px ${cy}px`}}/>
+                          {/* accretion disc — two rings turning against each other */}
+                          <circle cx={cx} cy={cy} r={HS * 0.82} fill="none"
+                            stroke="#cc66ff" strokeWidth={2.4} opacity={0.85}
+                            strokeDasharray="10 5"
+                            style={{animation:'gravity-spin 2.1s linear infinite',
+                              transformOrigin:`${cx}px ${cy}px`,
+                              filter:'drop-shadow(0 0 6px #aa33ff)'}}/>
+                          <circle cx={cx} cy={cy} r={HS * 0.56} fill="none"
+                            stroke="#7722dd" strokeWidth={1.8} opacity={0.7}
+                            strokeDasharray="4 6"
+                            style={{animation:'gravity-spin-rev 1.4s linear infinite',
+                              transformOrigin:`${cx}px ${cy}px`}}/>
+                          {/* the singularity — pure black, breathing slightly */}
+                          <circle cx={cx} cy={cy} r={HS * 0.38} fill="#000"
+                            style={{animation:'gravity-pulse 2.6s ease-in-out infinite',
+                              transformOrigin:`${cx}px ${cy}px`}}/>
+                          <circle cx={cx} cy={cy} r={HS * 0.38} fill="none"
+                            stroke="#ddaaff" strokeWidth={0.9} opacity={0.55}/>
                         </g>
                       );
                     })()}

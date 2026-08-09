@@ -240,6 +240,72 @@ export function applyAttackRolled(state, action, rng) {
       attackerId, defenderId, atkStat, defStat,
       atkRoll, diceVals, keptIdx, rawDefRoll, defRoll, defDie,
       atkTotal, defTotal, attackerWon, margin, damage,
+      // Preserved so ATTACK_REROLLED can redo the attacker's draw with the
+      // exact same dice shape it was originally rolled with.
+      dicePool, atkFloor, atkDie,
+      rerolled: false,
+    },
+  };
+}
+
+/**
+ * ATTACK_REROLLED (Code Injection — Intergalactic 0) — re-draw the ATTACKER'S
+ * dice and re-resolve the whole verdict. The defender's roll is untouched.
+ *
+ * ⚠️ WHY THIS HAS TO BE A REDUCER AND NOT A CLIENT-SIDE RE-SPIN. A whole battle
+ * — both rolls, the winner, the margin AND the damage — is decided in ONE
+ * ATTACK_ROLLED action, up front; the battle overlay merely ANIMATES a result
+ * that already exists in engine state. So "re-roll the dice" cannot mean
+ * spinning a number on screen: every downstream figure has to be recomputed, and
+ * it has to be recomputed from the SEEDED rng or online clients desync (they
+ * compare rng cursors frame-by-frame and freeze on a mismatch).
+ *
+ * Damage is recomputed with the same kind-split as the original roll, so a
+ * Thrash whiff still pays THRASH_WHIFF_DMG back at the attacker.
+ *
+ * Idempotence is NOT provided on purpose: Code Injection is once per commit, and
+ * the caller owns that gate. `rerolled: true` is set so the overlay can label
+ * the result, not to block a second call.
+ */
+export function applyAttackRerolled(state, action, rng) {
+  const b = state.battle;
+  if (!b || b.kind !== "attack") return state;
+
+  const clampFloor = v => Math.max(v, 1 + (b.atkFloor ?? 0));
+
+  let atkRoll, diceVals = null, keptIdx = null;
+  if (b.dicePool && b.dicePool.length) {
+    diceVals = b.dicePool.map(sides => clampFloor(rng.int(sides) + 1));
+    atkRoll  = Math.max(...diceVals);
+    keptIdx  = diceVals.indexOf(atkRoll);
+  } else {
+    atkRoll  = clampFloor(rng.int(b.atkDie ?? 6) + 1);
+  }
+
+  // The defender's side of the maths is deliberately reused verbatim — Code
+  // Injection rewrites the RIVAL'S roll, never your own defence.
+  const atkTotal    = (b.atkStat ?? 0) + atkRoll;
+  const defTotal    = b.defTotal ?? 0;
+  const attackerWon = atkTotal > defTotal;
+  const margin      = Math.abs(atkTotal - defTotal);
+
+  const damage = b.attackKind === 'sonic'
+    ? sonicDamage(margin)
+    : b.attackKind === 'swing'
+      ? thrashDamage(margin, !attackerWon)
+      : marginToDamage(margin);
+
+  return {
+    ...state,
+    battle: {
+      ...b,
+      atkRoll, diceVals, keptIdx,
+      atkTotal, attackerWon, margin, damage,
+      rerolled: true,
+      // Kept for the log line / overlay tell: what the attack WOULD have done.
+      preRerollAtkRoll:  b.atkRoll,
+      preRerollWon:      b.attackerWon,
+      preRerollDamage:   b.damage,
     },
   };
 }

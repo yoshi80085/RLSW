@@ -11,7 +11,7 @@ import {
   SPIRIT_FACED, SPIRIT_ELIMINATED, SPIRIT_PATCHED,
   RIFF_OFF_STARTED, RIFF_RESULTS_SUBMITTED, RIFF_RESOLVED,
   RIFF_ROUND2_STARTED, RIFF_CLOSED,
-  ATTACK_ROLLED,
+  ATTACK_ROLLED, ATTACK_REROLLED,
   DAMAGE_APPLIED, KNOCKDOWN_RESOLVED, WINNER_DECLARED,
   NOTE_STATES_SYNCED, FAME_CHANGED, FANS_CHANGED, NOTE_SHEET_PATCHED, FANS_TICKED,
   DEBUFFS_TICKED, BURN_TICKED,
@@ -33,7 +33,7 @@ import {
 } from "./systems/turn.js";
 import { applyMoveStep, applySpiritWarped, applySpiritFaced } from "./systems/movement.js";
 import {
-  applyAttackRolled,
+  applyAttackRolled, applyAttackRerolled,
   applyDamageApplied, applyKnockdownResolved, applyWinnerDeclared,
 } from "./systems/combat.js";
 import {
@@ -101,6 +101,8 @@ function reduce(state, action, rng) {
 
     // -- Phase 3b: combat rolls --
     case ATTACK_ROLLED:          return applyAttackRolled(state, action, rng);
+    // 💻 Code Injection — re-draw the attacker's dice, re-resolve the verdict.
+    case ATTACK_REROLLED:        return applyAttackRerolled(state, action, rng);
 
     // (Phase 3d COUNTER_ROLLED removed — Stance rework, natural retaliation.)
 

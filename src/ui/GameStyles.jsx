@@ -528,6 +528,35 @@ export function GameStyles() {
           100% { opacity: 1; transform: scale(1) rotate(0deg); }
         }
 
+        /* ☀️ Sunbeam whiteout — the star opening on the blinded player's screen.
+           Runs ONCE on mount and holds at full white (the caller passes the
+           "both" fill mode); it must never fade back out, because the overlay's
+           whole job is to stay opaque for the rest of the blind. Fast and
+           front-loaded so it reads as an impact, not a slow transition.
+           NB: this whole stylesheet is a JS template literal — no backticks. */
+        /* 🕳️ Black Hole Vortex — accretion rings turn against each other and the
+           singularity breathes. Two directions on purpose: a single spin reads
+           as a loading spinner, counter-rotation reads as something being pulled
+           apart. */
+        @keyframes gravity-spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @keyframes gravity-spin-rev {
+          from { transform: rotate(360deg); }
+          to   { transform: rotate(0deg); }
+        }
+        @keyframes gravity-pulse {
+          0%, 100% { transform: scale(1);    opacity: 1; }
+          50%      { transform: scale(0.86); opacity: 0.92; }
+        }
+
+        @keyframes sunbeam-flash {
+          0%   { opacity: 0; filter: brightness(3); }
+          35%  { opacity: 1; filter: brightness(1.8); }
+          100% { opacity: 1; filter: brightness(1); }
+        }
+
         /* 🔆 Drive/Sustain button glow for early rounds */
         @keyframes stack-btn-glow {
           0%, 100% { box-shadow: 0 0 6px var(--glow-color, #ff6644), 0 0 14px var(--glow-color, #ff6644)44; }

@@ -28,6 +28,7 @@ export const RIFF_CLOSED            = "RIFF_CLOSED";
 
 // ── Phase 3b: combat rolls ──────────────────────────────────────────────────
 export const ATTACK_ROLLED = "ATTACK_ROLLED";
+export const ATTACK_REROLLED = "ATTACK_REROLLED";
 
 // (Phase 3d COUNTER_ROLLED removed — Stance rework replaces the counter
 // mechanic with natural Thrash-adjacency retaliation.)
@@ -218,6 +219,17 @@ export function attackRolled(kind, attackerId, defenderId,
     type: ATTACK_ROLLED, kind, attackerId, defenderId,
     atkStat, defStat, posing, halveDef, dicePool, atkFloor, atkDie, defDie,
   };
+}
+
+/**
+ * 💻 CODE INJECTION (Intergalactic 0) — force the attacker to re-draw their dice
+ * and re-resolve the verdict off the seeded rng. Carries no payload: everything
+ * the re-roll needs (dice shape, floor, the defender's total) was preserved on
+ * `state.battle` by ATTACK_ROLLED. Keeping it payload-free means the action can
+ * never disagree with the battle it is rewriting.
+ */
+export function attackRerolled() {
+  return { type: ATTACK_REROLLED };
 }
 
 /**

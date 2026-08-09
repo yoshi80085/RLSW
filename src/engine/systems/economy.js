@@ -183,11 +183,29 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     stagger:         null,
     mojoDrain:       0,
     burn:            null,
+    // 🕳️ Notes the Gravity Control vortex swallowed — subtracted from THIS
+    // spirit's next stock refill, then reset. Same shape of penalty as
+    // halfRefillNextTurn, just a flat subtraction instead of a halving.
+    refillDrain:     0,
+    // 💻 Spirit-turns left on an armed Code Injection patch. Syncs like every
+    // other sheet field — but it is HIDDEN INFORMATION, so never render it for
+    // anyone except the player who owns the Spirit.
+    codeInjectTurns: 0,
+    // 🕳️ The open black hole, held on Intergalactic 0's sheet only:
+    // { hex, turnsLeft, pulled: [] }. Null for everyone else, always.
+    gravityVortex:   null,
+    // ☀️ Turns of Sunbeam blindness left (Intergalactic 0's on-hit rider).
+    // Ticked down at the END of this spirit's own turn by applyDebuffsTicked.
+    // Purely a VIEW effect: it whites out the blinded player's own screen and
+    // nothing else. It deliberately does NOT touch movement, targeting or any
+    // rule — you keep every option you had, you just can't see to use them.
+    blindTurns:      0,
     tempDrive:       0,
     tempSustain:     0,
     swingExposed:    false,
     smashExposed:    false,
-    displaceCd:      0,
+    // (displaceCd REMOVED — Space is Displaced has no cooldown any more; it is
+    // metered purely by its per-warp Db cost. Nothing reads the field.)
     dbPoints:        0,
     totalDB:         0,
     upgradesPending: 0,
@@ -346,14 +364,23 @@ export function applyNoteSheetPatched(state, { spiritId, patch = {} }) {
 /**
  * DEBUFFS_TICKED (Phase 6d) — end-of-turn debuff countdown for the acting spirit.
  * Clears one-turn flags (tripped, dazed, instrumentDropped), decrements mojoDrain
- * (−1, floored at 0), and ticks stagger.turnsLeft (expiry clears it to null).
+ * (−1, floored at 0), ticks stagger.turnsLeft (expiry clears it to null), and
+ * burns down ☀️ Sunbeam's `blindTurns`.
  * Pure — consumes no rng. Report in `state.turn.lastDebuffTick`.
+ *
+ * ⚠️ BLIND TICKS AT THE **END** OF THE BLINDED SPIRIT'S OWN TURN, ON PURPOSE.
+ * Sunbeam is bought and paid for with the promise of "your rival loses a turn",
+ * so the clock has to be spent by PLAYING a turn blind, not by the turn merely
+ * coming around. Decrementing at turn START would clear a 1-turn blind before
+ * the victim ever drew a hex, and the ability would do nothing at all. If you
+ * move this tick, check that a fresh `blindTurns: 1` still costs a full turn of
+ * vision. (Same trap `decayPoisonSlime` fell into — see CHARACTER_HANDOFF.md.)
  */
 export function applyDebuffsTicked(state, { spiritId }) {
   const ns = state.noteStates[spiritId];
   if (!ns) return state;
   const hadDebuff = ns.tripped || ns.dazed || ns.instrumentDropped
-    || (ns.mojoDrain ?? 0) > 0 || ns.stagger;
+    || (ns.mojoDrain ?? 0) > 0 || ns.stagger || (ns.blindTurns ?? 0) > 0;
   if (!hadDebuff) {
     return { ...state, turn: { ...state.turn, lastDebuffTick: { spiritId, cleared: false } } };
   }
@@ -362,6 +389,7 @@ export function applyDebuffsTicked(state, { spiritId }) {
   if (ns.stagger && ns.stagger.turnsLeft > 1) {
     newStagger = { ...ns.stagger, turnsLeft: ns.stagger.turnsLeft - 1 };
   }
+  const newBlindTurns = Math.max(0, (ns.blindTurns ?? 0) - 1);
   return {
     ...state,
     noteStates: { ...state.noteStates, [spiritId]: {
@@ -371,6 +399,7 @@ export function applyDebuffsTicked(state, { spiritId }) {
       instrumentDropped: false,
       mojoDrain:         newMojoDrain,
       stagger:           newStagger,
+      blindTurns:        newBlindTurns,
     }},
     turn: { ...state.turn, lastDebuffTick: {
       spiritId, cleared: true,
@@ -378,6 +407,8 @@ export function applyDebuffsTicked(state, { spiritId }) {
       instrumentDropped: !!ns.instrumentDropped,
       mojoDrainBefore: ns.mojoDrain ?? 0,
       staggerBefore: ns.stagger ? ns.stagger.turnsLeft : 0,
+      blindBefore: ns.blindTurns ?? 0,
+      blindCleared: (ns.blindTurns ?? 0) > 0 && newBlindTurns === 0,
     }},
   };
 }
