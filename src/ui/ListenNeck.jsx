@@ -30,6 +30,8 @@ import { FretboardFull } from "./FretboardFull.jsx";
 import { chromaAvailable, startChromaListening } from "../audio/chroma.js";
 import { makeKeyTracker, listenFrame, keyToScale, detectPalette } from "../music/keyDetect.js";
 import { makeNeckTracker } from "../music/neckPlacement.js";
+import CameraCalibrator from "./CameraCalibrator.jsx";
+import { makeFretFusion } from "../vision/fretFusion.js";
 import { makePhraseRecorder, analysePhrase, ROLE_LABELS } from "../music/riffAnalysis.js";
 import { getRiffAudio } from "../audio/riffSfx.js";
 import { makeNetClient } from "../net/client.js";
@@ -76,6 +78,22 @@ export function ListenNeck({ onBack }) {
   // the honest-uncertainty layer and useful on demand, but on by default they
   // light most of the neck and drown the answer.
   const [showOther, setShowOther] = useState(false);
+  // 📷 Camera fusion. OFF by default and always will be: it needs a camera the
+  // player has to place deliberately, and Ear Spy has to work for someone who
+  // just wants to point a laptop at a room. Measured worth, EAR_SPY_HANDOFF §6 —
+  // median fret error 0.44 with it against 2.53 without.
+  const [camera, setCamera] = useState(false);
+  // The camera's RAW fret reading, before anything learned is applied. Kept in a
+  // ref rather than state because it updates every animation frame and nothing
+  // renders from it directly.
+  const camFretRef = useRef(null);
+  // ⚠️ THE LOOP THAT PAYS FOR ITSELF. A heard pitch is playable in only three or
+  // four places, and those places are a fourth apart — so the camera does not
+  // need to know the fret, only which of a few options separated by five frets.
+  // Once snapped, the true fret is KNOWN, and the gap to the camera's raw reading
+  // is the parallax error, measured for free while somebody just plays. See
+  // vision/fretFusion.js, including the aliasing limit the guards cannot cover.
+  const fusionRef = useRef(makeFretFusion());
   const [showUsed, setShowUsed] = useState(true);
   const [showTrail, setShowTrail] = useState(true);
   const [riff, setRiff] = useState(null);        // the last finished phrase's report
@@ -176,6 +194,20 @@ export function ListenNeck({ onBack }) {
     keyTrackerRef.current.push(f.chroma, dt);
     const key = keyTrackerRef.current.estimate();
     setKeyEst(key);
+
+    // ── Camera fusion, before placement ──
+    // The corrected reading goes to the tracker; the snap of the top voice feeds
+    // the learner. Only the FRET is taken from the camera: finger height wrecks
+    // the string coordinate and leaves the fret alone (neckGeometry §stringSlack).
+    const rawCamFret = camFretRef.current;
+    if (rawCamFret != null) {
+      const corrected = fusionRef.current.correctedFret(rawCamFret);
+      neckRef.current.setRef([neckRef.current.ref()[0], corrected]);
+      if (f.notes.length) {
+        const top = f.notes.reduce((a, b) => (b.midi > a.midi ? b : a));
+        fusionRef.current.observe(top.midi, rawCamFret);
+      }
+    }
 
     const view = optsRef.current;
     const step = neckRef.current.push(f.notes, dt);
@@ -408,7 +440,27 @@ export function ListenNeck({ onBack }) {
           <input type="checkbox" checked={showOther} onChange={e => setShowOther(e.target.checked)} />
           other possible positions
         </label>
+        <label style={S.check}>
+          <input type="checkbox" checked={camera} onChange={e => setCamera(e.target.checked)} />
+          📷 watch my hand
+        </label>
       </div>
+
+      {/* ⚠️ THE CAMERA ONLY EVER SUPPLIES placePitch's `ref` ARGUMENT — one number,
+          and the audio tracker keeps running underneath it as the fallback. Audio
+          says WHEN and WHAT; video says WHERE. Two numbers of integration surface,
+          and nothing about the listening chain changes if the camera is off, is
+          refused, or loses the hand mid-phrase. */}
+      {camera && (
+        <CameraCalibrator
+          onRef={ref => {
+            camFretRef.current = ref ? ref[1] : null;
+            if (!ref) neckRef.current.setRef(null);
+          }}
+          onRecalibrate={() => fusionRef.current.reset()}
+          onClose={() => setCamera(false)}
+        />
+      )}
 
       {err && <div style={S.err}>{err}</div>}
 

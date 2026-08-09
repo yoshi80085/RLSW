@@ -231,6 +231,25 @@ export function placeNotes(notes = [], opts = {}) {
 export function makeNeckTracker(opts = {}) {
   const o = { ...PLACEMENT_DEFAULTS, ...opts };
   const hand = makeHandTracker(o);
+  /**
+   * A hand position from somewhere better than a guess — the camera.
+   *
+   * ⚠️ THE AUDIO TRACKER KEEPS RUNNING UNDERNEATH IT. It is tempting to stop
+   * feeding the internal tracker while an external reference is supplied, and
+   * that is exactly wrong: the moment the camera loses the hand — a lift, a
+   * shadow, someone walking past — the fallback has to be current, and a tracker
+   * that has been asleep for a minute still thinks the hand is where it was a
+   * minute ago. It costs nothing to keep it warm.
+   *
+   * Measured on a real neck (see EAR_SPY_HANDOFF §6): median absolute error
+   * 0.44 frets from the camera against 2.53 from this module's own guess, 88%
+   * within a fret against 25%. The audio heuristic did not merely lose — across
+   * ten frets of real hand movement it never left a three-fret band around its
+   * rest position, i.e. it carries almost no positional information at all. That
+   * is not a criticism of it; it is what a pitch can tell you about a position.
+   */
+  let externalRef = null;
+  const refNow = () => externalRef || hand.ref();
   /** @type {Map<number, number>} midi → current strength (the NOW layer) */
   let live = new Map();
   /** @type {Map<string, number>} cellId → accumulated weight (the USED layer) */
@@ -266,7 +285,7 @@ export function makeNeckTracker(opts = {}) {
       // by re-counting the same note on every frame it lingers.
       if (notes.length) {
         const positions = notes
-          .map(n => placePitch(midiToPitch(n.midi), hand.ref(), o).best)
+          .map(n => placePitch(midiToPitch(n.midi), refNow(), o).best)
           .filter(Boolean);
         hand.push(positions, dtMs);
 
@@ -299,7 +318,7 @@ export function makeNeckTracker(opts = {}) {
         const top = notes.reduce((a, b) => (b.midi > a.midi ? b : a));
         if (top.midi !== lastTopMidi) {
           lastTopMidi = top.midi;
-          const spot = placePitch(midiToPitch(top.midi), hand.ref(), o).best;
+          const spot = placePitch(midiToPitch(top.midi), refNow(), o).best;
           if (spot) {
             newStep = {
               s: spot[0], f: spot[1], midi: top.midi,
@@ -410,10 +429,20 @@ export function makeNeckTracker(opts = {}) {
             : { color: usedColor, style: 'pulse', level };
         }
       }
-      const now = placeNotes(this.notes(), { ...o, ...layerOpts, ref: hand.ref() }).layers;
+      const now = placeNotes(this.notes(), { ...o, ...layerOpts, ref: refNow() }).layers;
       return { ...out, ...now };
     },
-    ref() { return hand.ref(); },
+    ref() { return refNow(); },
+    /** Which source the current reference came from — for the UI to say so. */
+    refSource() { return externalRef ? 'camera' : 'audio'; },
+    /**
+     * Supply a hand position measured rather than inferred, or null to fall back.
+     * @param {[number,number]|null} ref  [string, fret]
+     */
+    setRef(ref) {
+      externalRef = Array.isArray(ref) && ref.length === 2 && ref.every(Number.isFinite)
+        ? ref : null;
+    },
     /** Clears the session picture but leaves the live trail and hand alone. */
     clearUsage() { usage = new Map(); pcUsage = new Float64Array(12); heardFrames = 0; },
     reset() {

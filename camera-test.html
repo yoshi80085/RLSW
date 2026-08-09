@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<!--
+  camera-test.html — 📷 CAMERA FUSION BENCH — does looking beat guessing?
+
+  The experiment proposed in EAR_SPY_HANDOFF.md §6, built as a bench and NOT as a
+  feature, for one reason: nobody knows yet whether a camera helps. The audio-only
+  placement heuristic in music/neckPlacement.js assumes a hand that drifts toward
+  what it hears. A camera can see the actual hand. Whether seeing beats guessing
+  depends on YOUR room, YOUR camera angle and YOUR guitar, and there is no way to
+  find that out except to measure it.
+
+    npm run dev   →   http://localhost:5173/RLSW/camera-test.html
+    npm run test:vision   (70 assertions on the geometry — run this first)
+
+  ⚠️ THE /RLSW/ IN THAT URL IS NOT OPTIONAL — vite.config.js sets base: '/RLSW/'
+  for the Pages deploy, and the dev server honours it. Opening the file directly
+  from VS Code, or serving it without that prefix, 404s the /src/… imports, kills
+  the module script, and leaves you with a page whose buttons all silently do
+  nothing. That failure looks exactly like a broken camera. It isn't.
+
+  ⚠️ NOTHING HERE IS WIRED INTO THE GAME AND NO DEPENDENCY IS INSTALLED. MediaPipe
+  is pulled from a CDN by this page alone. If the bench says the camera loses, you
+  delete this file and src/vision/ and the game is untouched. That reversibility is
+  the entire reason it is shaped this way — see §6, "it may not clear the bar".
+
+  ── HOW TO RUN THE EXPERIMENT ──
+    1. Prop your camera so it SEES THE NECK. A laptop lid pointed at your face is
+       the failure mode §6 warns about; a phone or webcam off to the side works.
+    2. START CAMERA, then CALIBRATE and click the four corners it asks for.
+    3. Check the drawn fret wires land on your real frets. If they don't, the
+       calibration is wrong and every number below it is meaningless. Recalibrate.
+       ⚠️ This visual check is the ONLY check there is: four clicks fit a
+       homography exactly, so the residual is always zero and can never tell you
+       your clicks were bad.
+    4. START MIC so the audio-only heuristic has something to run on.
+    5. Play. Each time you settle in a position, click that fret on the TRUTH strip.
+       Ten to twenty logs across the neck is enough to see which estimator wins.
+
+  ── WHAT THE ANSWER WILL PROBABLY LOOK LIKE ──
+  From the synthetic-camera tests: the FRET reading survives real conditions and
+  the STRING reading does not. Fingertips sit ~18 mm above the fretboard and the
+  calibration maps the fretboard plane, so that height reprojects as roughly five
+  strings of error and under half a fret. Which is the good outcome — fret region
+  is the argument placePitch() actually wants, and "which string" was never on the
+  table for either sensor.
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Camera Fusion Bench — RLSW</title>
+  <style>
+    :root {
+      --accent:  #19e6ff;
+      --green:   #44ff88;
+      --violet:  #8a5cff;
+      --magenta: #ff2d95;
+      --amber:   #f6ad55;
+      --void:    #07070c;
+      --panel:   #101018;
+      --dim:     #5a5a72;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px;
+      background: var(--void); color: #e8e8f0;
+      font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
+    }
+    h1 { font-size: 15px; letter-spacing: 3px; margin: 0 0 4px; color: var(--accent); }
+    .sub { color: var(--dim); margin-bottom: 20px; font-size: 11px; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+    .panel {
+      background: var(--panel); border: 1px solid #1e1e2c; border-radius: 8px;
+      padding: 14px 16px; flex: 1 1 320px; min-width: 300px;
+    }
+    .panel h2 {
+      font-size: 10px; letter-spacing: 2px; color: var(--dim);
+      margin: 0 0 12px; text-transform: uppercase; font-weight: 600;
+    }
+    button {
+      font: inherit; font-weight: 600; letter-spacing: 1px;
+      padding: 10px 18px; cursor: pointer; border-radius: 6px;
+      background: var(--accent); color: #04040a; border: none;
+    }
+    button.ghost { background: transparent; color: var(--dim); border: 1px solid #2a2a3c; }
+    button.warn { background: var(--amber); color: #04040a; }
+    button:disabled { opacity: .35; cursor: default; }
+    label.chk { color: var(--dim); cursor: pointer; user-select: none; }
+    .err { color: var(--magenta); }
+
+    /* ── the camera stage ── */
+    .stage { position: relative; width: 100%; background: #000; border-radius: 6px; overflow: hidden; }
+    .stage video, .stage canvas { display: block; width: 100%; }
+    .stage canvas { position: absolute; inset: 0; }
+    .stage.calibrating canvas { cursor: crosshair; }
+    .stage .prompt {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      background: rgba(7,7,12,.88); border-top: 1px solid var(--amber);
+      color: var(--amber); padding: 8px 12px; font-size: 12px; letter-spacing: 1px;
+    }
+    .stage .prompt b { color: #fff; }
+
+    /* ── side-by-side estimators ── */
+    .versus { display: flex; gap: 12px; }
+    .est { flex: 1; background: #14141f; border: 1px solid #22222f; border-radius: 6px; padding: 10px 12px; }
+    .est h3 { margin: 0 0 6px; font-size: 10px; letter-spacing: 2px; color: var(--dim); font-weight: 600; }
+    .est .num { font-size: 30px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .est.cam .num { color: var(--accent); }
+    .est.aud .num { color: var(--violet); }
+    .est .note { font-size: 10px; color: var(--dim); min-height: 26px; }
+    .est.blank .num { color: var(--dim); }
+    .est.stale { opacity: .45; }
+
+    /* ── the neck strip: truth logging + both estimates drawn on it ── */
+    .strip { position: relative; height: 62px; margin: 10px 0 4px; user-select: none; }
+    .strip .fret {
+      position: absolute; top: 0; bottom: 22px;
+      border-left: 1px solid #2a2a3c; cursor: pointer;
+    }
+    .strip .fret:hover { background: rgba(255,255,255,.07); }
+    .strip .fret span {
+      position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%);
+      font-size: 10px; color: var(--dim);
+    }
+    .strip .fret.dot span { color: #b9b9cc; }
+    .strip .mark {
+      position: absolute; top: 0; bottom: 22px; width: 2px; margin-left: -1px;
+      transition: left .08s linear;
+    }
+    .strip .mark.cam { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .strip .mark.aud { background: var(--violet); box-shadow: 0 0 8px var(--violet); }
+    .strip .mark.gone { opacity: .18; box-shadow: none; }
+
+    /* ── scoreboard ── */
+    table.score { width: 100%; border-collapse: collapse; font-size: 12px; }
+    table.score th {
+      text-align: right; font-weight: 600; font-size: 10px; letter-spacing: 1px;
+      color: var(--dim); padding: 4px 0; border-bottom: 1px solid #1e1e2c;
+    }
+    table.score th:first-child { text-align: left; }
+    table.score td { padding: 4px 0; text-align: right; font-variant-numeric: tabular-nums; }
+    table.score td:first-child { text-align: left; color: var(--dim); }
+    table.score td.cam { color: var(--accent); }
+    table.score td.aud { color: var(--violet); }
+    table.score tr.win td.cam, table.score tr.win td.aud { font-weight: 700; }
+    .verdict { font-size: 17px; font-weight: 600; letter-spacing: 1px; margin-top: 12px; }
+    .verdict.cam { color: var(--accent); }
+    .verdict.aud { color: var(--violet); }
+    .verdict.tie { color: var(--amber); }
+    .verdict.none { color: var(--dim); font-size: 13px; font-weight: 400; }
+
+    /* ── health / confidence ── */
+    table.health { width: 100%; border-collapse: collapse; font-size: 11px; }
+    table.health td { padding: 3px 0; }
+    table.health td.k { color: var(--dim); width: 52%; }
+    table.health td.v { text-align: right; font-variant-numeric: tabular-nums; }
+    table.health tr.bad td.v, table.health tr.bad td.k { color: var(--amber); }
+    table.health tr.good td.v { color: var(--green); }
+    .sliders { margin-top: 12px; border-top: 1px solid #1e1e2c; padding-top: 10px; }
+    .sliders label { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--dim); margin-bottom: 5px; }
+    .sliders input[type=range] { flex: 1; accent-color: var(--accent); }
+    .sliders .val { width: 46px; text-align: right; color: #e8e8f0; font-variant-numeric: tabular-nums; }
+    .logs { max-height: 150px; overflow-y: auto; font-size: 11px; margin-top: 10px; }
+    .logs div { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #16161f; }
+    .logs .miss { color: var(--amber); }
+    .caveat { color: var(--dim); font-size: 10px; margin-top: 10px; line-height: 1.5; }
+
+    /* ── the coach ── */
+    #coach {
+      border-left: 4px solid var(--dim); border-radius: 6px;
+      background: #14141f; padding: 12px 16px; margin-bottom: 16px;
+    }
+    #coach.blocker { border-color: var(--magenta); background: #1c1119; }
+    #coach.warn    { border-color: var(--amber);   background: #1b170f; }
+    #coach.tip     { border-color: var(--violet);  background: #16131f; }
+    #coach.ok      { border-color: var(--green);   background: #101a14; }
+    #coach .badge {
+      font-size: 10px; letter-spacing: 2px; font-weight: 700; text-transform: uppercase;
+    }
+    #coach.blocker .badge { color: var(--magenta); }
+    #coach.warn .badge { color: var(--amber); }
+    #coach.tip .badge { color: var(--violet); }
+    #coach.ok .badge { color: var(--green); }
+    #coach .problem { font-size: 15px; margin: 3px 0 6px; }
+    #coach .fix { color: #c9c9dc; font-size: 12px; }
+    #coach .fix::before { content: '→ '; color: var(--dim); }
+    #coach .more {
+      margin-top: 8px; font-size: 11px; color: var(--dim);
+      cursor: pointer; user-select: none;
+    }
+    #coach .more:hover { color: #e8e8f0; }
+    #coach ol { margin: 8px 0 0; padding-left: 20px; font-size: 11px; color: var(--dim); }
+    #coach ol li { margin-bottom: 5px; }
+    #coach ol b { color: #c9c9dc; font-weight: 400; }
+  </style>
+</head>
+<body>
+  <h1>📷 CAMERA FUSION BENCH</h1>
+  <div class="sub">
+    EAR_SPY_HANDOFF §6 — can a camera tell placePitch() where the hand is better than the heuristic can guess?
+  </div>
+
+  <div class="row" style="margin-bottom:16px; align-items:center">
+    <button id="startCam">START CAMERA</button>
+    <button id="calib" class="ghost" disabled>CALIBRATE NECK</button>
+    <button id="startMic" class="ghost">START MIC</button>
+    <label class="chk"><input type="checkbox" id="drawWires" checked> draw predicted frets</label>
+    <label class="chk"><input type="checkbox" id="drawHand" checked> draw landmarks</label>
+    <span id="err" class="err"></span>
+  </div>
+
+  <div id="coach">
+    <div class="badge" id="coachBadge">—</div>
+    <div class="problem" id="coachProblem">starting up…</div>
+    <div class="fix" id="coachFix"></div>
+    <div class="more" id="coachMore" style="display:none"></div>
+    <ol id="coachList" style="display:none"></ol>
+  </div>
+
+  <div class="row">
+    <div class="panel" style="flex:2 1 520px">
+      <h2>The camera — do the drawn wires sit on your real frets?</h2>
+      <div class="stage" id="stage">
+        <video id="video" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div class="prompt" id="prompt" style="display:none"></div>
+      </div>
+      <div class="caveat">
+        The preview is <b>not mirrored</b>, deliberately — landmark coordinates and your
+        calibration clicks have to live in the same space, and flipping one of them is a
+        bug that looks exactly like a bad camera angle.
+      </div>
+    </div>
+
+    <div class="panel" style="flex:1 1 340px">
+      <h2>Both estimators, right now</h2>
+      <div class="versus">
+        <div class="est cam blank" id="estCam">
+          <h3>📷 camera</h3>
+          <div class="num" id="camFret">—</div>
+          <div class="note" id="camNote">not calibrated</div>
+        </div>
+        <div class="est aud blank" id="estAud">
+          <h3>👂 audio heuristic</h3>
+          <div class="num" id="audFret">—</div>
+          <div class="note" id="audNote">mic off</div>
+        </div>
+      </div>
+
+      <h2 style="margin-top:16px">Where is your hand actually? — click the fret</h2>
+      <div class="strip" id="strip"></div>
+      <div class="row" style="gap:8px; margin-top:8px">
+        <button id="undo" class="ghost" disabled>UNDO LOG</button>
+        <button id="clear" class="ghost" disabled>CLEAR</button>
+      </div>
+      <div class="caveat">
+        Log the position you are <i>currently sitting in</i>, while you are still in it.
+        A log clicked after you have moved is noise — but one bad log moves the mean and
+        not the median, which is why both are reported.
+      </div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:16px">
+    <div class="panel" style="flex:1 1 420px">
+      <h2>The scoreboard — absolute fret error against your logs</h2>
+      <table class="score">
+        <tr><th></th><th>📷 camera</th><th>👂 audio</th></tr>
+        <tr id="r-n"><td>logs scored</td><td class="cam" id="s-cam-n">0</td><td class="aud" id="s-aud-n">0</td></tr>
+        <tr id="r-median"><td>median error</td><td class="cam" id="s-cam-median">—</td><td class="aud" id="s-aud-median">—</td></tr>
+        <tr id="r-mean"><td>mean error</td><td class="cam" id="s-cam-mean">—</td><td class="aud" id="s-aud-mean">—</td></tr>
+        <tr id="r-within1"><td>within 1 fret</td><td class="cam" id="s-cam-within1">—</td><td class="aud" id="s-aud-within1">—</td></tr>
+        <tr id="r-worst"><td>worst miss</td><td class="cam" id="s-cam-worst">—</td><td class="aud" id="s-aud-worst">—</td></tr>
+        <tr id="r-blank"><td>had no answer</td><td class="cam" id="s-cam-blank">—</td><td class="aud" id="s-aud-blank">—</td></tr>
+      </table>
+      <div class="verdict none" id="verdict">log some positions to find out</div>
+      <div class="logs" id="logs"></div>
+    </div>
+
+    <div class="panel" style="flex:1 1 320px">
+      <h2>Camera health — is this reading worth anything?</h2>
+      <table class="health">
+        <tr id="h-calib"><td class="k">calibration</td><td class="v" id="v-calib">none</td></tr>
+        <tr id="h-hands"><td class="k">hands found</td><td class="v" id="v-hands">—</td></tr>
+        <tr id="h-tips"><td class="k">fingertips on the neck</td><td class="v" id="v-tips">—</td></tr>
+        <tr id="h-spread"><td class="k">hand spread (frets)</td><td class="v" id="v-spread">—</td></tr>
+        <tr id="h-string"><td class="k">string coord (untrusted)</td><td class="v" id="v-string">—</td></tr>
+        <tr id="h-drift"><td class="k">off-board rate — drift?</td><td class="v" id="v-drift">—</td></tr>
+        <tr id="h-fps"><td class="k">vision fps · cost</td><td class="v" id="v-fps">—</td></tr>
+      </table>
+      <div class="sliders">
+        <label>vision Hz
+          <input type="range" id="s-hz" min="4" max="30" step="1" value="12">
+          <span class="val" id="d-hz">12</span></label>
+        <label>smoothing half-life
+          <input type="range" id="s-half" min="40" max="600" step="10" value="140">
+          <span class="val" id="d-half">140</span></label>
+        <label>min fingertips
+          <input type="range" id="s-tips" min="1" max="4" step="1" value="2">
+          <span class="val" id="d-tips">2</span></label>
+      </div>
+      <div class="caveat">
+        <b>off-board rate</b> is the drift alarm. A calibrated neck should swallow most of
+        what your fretting hand does; if this climbs while you are still playing normally,
+        the calibration has come loose — you shifted in your chair — and it will go on
+        being confidently wrong until you recalibrate. That silent failure is the third
+        thing §6 predicted would bite.
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+import {
+  makeNeckCalibration, pickFrettingHand, makeVisionTracker, makeScoreboard,
+  onNeck, CORNER_PROMPTS, VISION_DEFAULTS, MAX_FRET,
+} from '/src/vision/neckGeometry.js';
+import { diagnose, nextAction } from '/src/vision/visionCoach.js';
+import { startChromaListening, chromaAvailable } from '/src/audio/chroma.js';
+import { makeNeckTracker } from '/src/music/neckPlacement.js';
+
+const $ = id => document.getElementById(id);
+
+// ── MediaPipe, from a CDN, loaded ONLY when the camera actually starts ────────
+// Deliberately not a static import: the page must open, explain itself and run
+// its non-camera half on a machine that is offline or that has no webcam.
+const MP_VERSION = '0.10.14';
+const MP_BUNDLE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/vision_bundle.mjs`;
+const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
+const MP_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+
+let landmarker = null;
+let stream = null;
+let cal = null;
+let calibClicks = null;          // non-null while calibrating
+let lastCorners = null;          // kept even when the solve fails, so the coach
+                                 // can say WHY it failed rather than just "none"
+let audioListener = null;
+let cdnError = null;
+let camError = null;
+
+let vision = makeVisionTracker({ halfLifeMs: 140 });
+const scoreboard = makeScoreboard();
+const audioNeck = makeNeckTracker();
+const opts = { ...VISION_DEFAULTS };
+
+const video = $('video');
+const overlay = $('overlay');
+const ctx = overlay.getContext('2d');
+
+// ── Drift detector ───────────────────────────────────────────────────────────
+// ⚠️ THERE IS NO NUMERIC TEST FOR A BAD CALIBRATION (four points fit a homography
+// exactly — the residual is always zero). So drift is inferred behaviourally: a
+// hand the model can see, whose fingertips keep projecting OFF the board, means
+// the board is no longer where we think it is. Decaying so it reflects the last
+// several seconds rather than the whole session.
+let offBoardRate = 0;
+const DRIFT_HALF_LIFE = 4000;
+
+// ── The truth strip ──────────────────────────────────────────────────────────
+// Laid out on the real logarithmic neck rather than in even slices, so clicking
+// "fret 7" means the place fret 7 actually is. Sitting under a live marker of
+// each estimator, this doubles as the readout: two dots that track together are
+// two estimators agreeing, which you can see without reading a number.
+const DOTS = new Set([3, 5, 7, 9, 12]);
+const fretLeft = f => (1 - Math.pow(2, -f / 12)) / (1 - Math.pow(2, -(MAX_FRET + 1) / 12)) * 100;
+for (let f = 0; f <= MAX_FRET; f++) {
+  const el = document.createElement('div');
+  el.className = 'fret' + (DOTS.has(f) ? ' dot' : '');
+  el.style.left = fretLeft(f) + '%';
+  el.style.width = (fretLeft(f + 1) - fretLeft(f)) + '%';
+  el.innerHTML = `<span>${f}</span>`;
+  el.onclick = () => logTruth(f);
+  $('strip').appendChild(el);
+}
+for (const cls of ['cam', 'aud']) {
+  const m = document.createElement('div');
+  m.className = 'mark ' + cls + ' gone';
+  m.id = 'mark-' + cls;
+  $('strip').appendChild(m);
+}
+
+function logTruth(fret) {
+  const c = vision.value();
+  const a = audioRef();
+  scoreboard.log(
+    fret,
+    c && !c.stale ? c.fret : null,
+    a ? a[1] : null,
+  );
+  renderScore();
+}
+
+$('undo').onclick = () => { scoreboard.undo(); renderScore(); };
+$('clear').onclick = () => { scoreboard.clear(); renderScore(); };
+
+// ── Sliders ──────────────────────────────────────────────────────────────────
+let visionHz = 12;
+$('s-hz').oninput = e => { visionHz = Number(e.target.value); $('d-hz').textContent = visionHz; };
+$('s-half').oninput = e => {
+  $('d-half').textContent = e.target.value;
+  // Rebuilt rather than retuned in place — the smoother holds no state worth
+  // preserving across a change and it reconverges within a few frames anyway.
+  vision = makeVisionTracker({ halfLifeMs: Number(e.target.value) });
+};
+$('s-tips').oninput = e => { opts.minTips = Number(e.target.value); $('d-tips').textContent = e.target.value; };
+
+// ── Camera ───────────────────────────────────────────────────────────────────
+$('startCam').onclick = async () => {
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    $('startCam').textContent = 'START CAMERA';
+    $('calib').disabled = true;
+    return;
+  }
+  cdnError = null;
+  camError = null;
+  try {
+    $('err').textContent = 'loading mediapipe from CDN…';
+    let files, HandLandmarker;
+    try {
+      const mp = await import(/* @vite-ignore */ MP_BUNDLE);
+      HandLandmarker = mp.HandLandmarker;
+      files = await mp.FilesetResolver.forVisionTasks(MP_WASM);
+    } catch (e) {
+      // Separated from the camera failure below because the two have completely
+      // different fixes, and a single catch that says "could not start" sends
+      // people to check their webcam when the actual problem is the network.
+      cdnError = 'the hand tracker could not be downloaded (' + e.message + ')';
+      throw e;
+    }
+    landmarker = await HandLandmarker.createFromOptions(files, {
+      baseOptions: { modelAssetPath: MP_MODEL, delegate: 'GPU' },
+      runningMode: 'VIDEO',
+      numHands: 2,
+    });
+    $('err').textContent = 'requesting camera…';
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+    });
+    video.srcObject = stream;
+    await video.play();
+    overlay.width = video.videoWidth;
+    overlay.height = video.videoHeight;
+    $('err').textContent = '';
+    $('startCam').textContent = 'STOP CAMERA';
+    $('calib').disabled = false;
+  } catch (e) {
+    // The three ways this realistically fails, named, because "NotAllowedError"
+    // on a black rectangle tells a person nothing. The coach turns each into an
+    // instruction; this line is just the raw detail underneath it.
+    if (!cdnError) {
+      camError =
+        e.name === 'NotAllowedError' ? 'the browser denied access to the camera'
+        : e.name === 'NotFoundError' ? 'no camera was found on this machine'
+        : 'the camera would not start (' + e.message + ')';
+    }
+    $('err').textContent = cdnError || camError;
+    $('startCam').textContent = 'START CAMERA';
+  }
+};
+
+// ── Calibration ──────────────────────────────────────────────────────────────
+$('calib').onclick = () => {
+  calibClicks = [];
+  cal = null;
+  lastCorners = null;
+  vision.reset();
+  offBoardRate = 0;
+  $('stage').classList.add('calibrating');
+  showPrompt();
+};
+
+overlay.onclick = e => {
+  if (!calibClicks) return;
+  const r = overlay.getBoundingClientRect();
+  // Normalised 0..1 — the same space MediaPipe reports landmarks in, so the
+  // calibration and the hand never need converting between coordinate systems.
+  calibClicks.push([(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]);
+  if (calibClicks.length === 4) {
+    lastCorners = calibClicks;
+    cal = makeNeckCalibration(calibClicks);
+    calibClicks = null;
+    $('stage').classList.remove('calibrating');
+    $('prompt').style.display = 'none';
+    $('err').textContent = '';
+    if (cal) calibratedAt = performance.now();
+  } else showPrompt();
+};
+
+function showPrompt() {
+  $('prompt').style.display = '';
+  // ⚠️ THE VERB AND THE TARGET BOTH GO IN THE FIRST FOUR WORDS. "CLICK THE PICTURE"
+  // is not padding — without it, a prompt that mentions strings reads as an
+  // instruction to play, and someone will sit there plucking at a page that is
+  // waiting for a mouse.
+  $('prompt').innerHTML =
+    `<b>CLICK THE PICTURE</b> (${calibClicks.length + 1} of 4) — ${CORNER_PROMPTS[calibClicks.length]}`
+    + `<span style="opacity:.7"> · nothing to play, this is a mouse click</span>`;
+}
+let calibratedAt = 0;
+
+// ── Mic (so the audio-only heuristic has an opinion to compare against) ──────
+$('startMic').onclick = async () => {
+  if (audioListener) {
+    audioListener.stop();
+    audioListener = null;
+    $('startMic').textContent = 'START MIC';
+    return;
+  }
+  if (!chromaAvailable()) { $('err').textContent = 'getUserMedia unavailable'; return; }
+  try {
+    let lastT = 0;
+    audioListener = await startChromaListening(f => {
+      const now = performance.now();
+      const dt = lastT ? now - lastT : 16.7;
+      lastT = now;
+      // Same contract as ListenNeck: gated frames still push, so the tracker's
+      // clock advances and its trail expires. EAR_SPY_HANDOFF §3, "the melody
+      // trail froze mid-phrase".
+      audioNeck.push(f.musical ? f.notes : [], dt);
+      // The gate's own verdict, surfaced so a dead audio panel can be told apart
+      // from a rejected room. Without this, "the mic hears nothing" and "the mic
+      // hears you but the gate is throwing it away" look identical — which is
+      // the exact confusion listen-test.html exists to prevent, and there is no
+      // reason this page should reintroduce it.
+      micState = f.musical ? 'music' : f.active ? ('ignoring — ' + f.reject) : 'silence';
+      micDb = f.db;
+    });
+    $('startMic').textContent = 'STOP MIC';
+  } catch (e) {
+    $('err').textContent = 'mic error: ' + e.message;
+  }
+};
+
+const audioRef = () => (audioListener ? audioNeck.ref() : null);
+let micState = 'mic off';
+let micDb = -100;
+
+// ── The loop ─────────────────────────────────────────────────────────────────
+// Vision runs at `visionHz`, NOT every frame. §6's second warning: an 8192-point
+// FFT already runs every animation frame and a hand does not move meaningfully in
+// 80 ms. Drawing still runs at full rate so the overlay does not stutter.
+//
+// ⚠️ ONE LOOP, STARTED AT PAGE LOAD, NOT WHEN THE CAMERA STARTS. It used to bail
+// out when there was no camera stream, which meant that with the mic running and
+// the camera off — the obvious way to try the page for the first time — the audio
+// panel never repainted and the whole bench looked dead. The two sensors are
+// independent by design and the render loop has to be independent of both.
+let lastVisionT = 0;
+let lastVisionMs = 0;
+let visionFps = 0;
+let hands = [];
+let lastRead = null;
+
+function loop(t) {
+  requestAnimationFrame(loop);
+
+  if (!stream) {
+    // No camera: the vision estimate must go stale and then null on its own, or
+    // stopping the camera would strand its last reading on screen as if live.
+    if (vision.value()) vision.push(null, 32);
+    hands = [];
+    lastRead = null;
+  } else if (landmarker && t - lastVisionT >= 1000 / visionHz) {
+    const dt = lastVisionT ? t - lastVisionT : 1000 / visionHz;
+    lastVisionT = t;
+    const t0 = performance.now();
+    let result = null;
+    try { result = landmarker.detectForVideo(video, t); } catch { /* frame not ready */ }
+    lastVisionMs = performance.now() - t0;
+    visionFps = 1000 / Math.max(1, dt);
+
+    hands = result ? result.landmarks || [] : [];
+    const pick = cal ? pickFrettingHand(hands, cal, opts) : null;
+    lastRead = pick ? pick.read : null;
+    vision.push(lastRead, dt);
+
+    // Drift: a hand was visible but not on the board.
+    if (cal && hands.length) {
+      const decay = Math.pow(0.5, dt / DRIFT_HALF_LIFE);
+      offBoardRate = offBoardRate * decay + (lastRead ? 0 : 1) * (1 - decay);
+    }
+  }
+
+  draw();
+  renderLive();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  const W = overlay.width;
+  const H = overlay.height;
+  const px = p => [p[0] * W, p[1] * H];
+
+  // Corners clicked so far, during calibration.
+  if (calibClicks) {
+    ctx.strokeStyle = '#f6ad55';
+    ctx.fillStyle = '#f6ad55';
+    calibClicks.forEach((c, i) => {
+      const [x, y] = px(c);
+      ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.font = '16px monospace';
+      ctx.fillText(String(i + 1), x + 10, y - 8);
+    });
+  }
+
+  // ⚠️ THE PREDICTED FRET WIRES ARE THE CALIBRATION CHECK, and the only one that
+  // exists. Drawn from the homography, so if they land on your actual frets the
+  // geometry is right, and if they fan off across the body it is not.
+  if (cal && $('drawWires').checked) {
+    for (let f = 0; f <= MAX_FRET; f++) {
+      const w = cal.fretWire(f);
+      if (!w) continue;
+      ctx.strokeStyle = f === 0 ? '#ffffff' : DOTS.has(f) ? '#19e6ff' : 'rgba(25,230,255,.35)';
+      ctx.lineWidth = f === 0 ? 3 : DOTS.has(f) ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(...px(w[0]));
+      ctx.lineTo(...px(w[1]));
+      ctx.stroke();
+    }
+    for (let s = 0; s < 6; s++) {
+      const l = cal.stringLine(s);
+      if (!l) continue;
+      ctx.strokeStyle = 'rgba(138,92,255,.28)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(...px(l[0]));
+      ctx.lineTo(...px(l[1]));
+      ctx.stroke();
+    }
+  }
+
+  // Landmarks. Fingertips that the geometry BELIEVED are filled; ones it threw
+  // away are hollow — so a hand that reads as nothing shows you which tips were
+  // rejected instead of just vanishing from the numbers.
+  if ($('drawHand').checked) {
+    for (const lms of hands) {
+      ctx.fillStyle = 'rgba(255,255,255,.5)';
+      for (const lm of lms) {
+        ctx.beginPath(); ctx.arc(lm.x * W, lm.y * H, 2.5, 0, Math.PI * 2); ctx.fill();
+      }
+      for (const i of [8, 12, 16, 20]) {
+        const lm = lms[i];
+        if (!lm) continue;
+        ctx.beginPath();
+        ctx.arc(lm.x * W, lm.y * H, 7, 0, Math.PI * 2);
+        // ⚠️ THREE STATES, NOT TWO. Before calibration there is no board to be on
+        // or off, so a rejected-looking pink ring would be reporting a failure
+        // that has not happened yet — and it lands at exactly the moment a new
+        // user is deciding whether the page works. Amber = no opinion.
+        if (!cal) { ctx.strokeStyle = '#f6ad55'; ctx.lineWidth = 2; ctx.stroke(); }
+        else if (onNeck(cal.toNeck([lm.x, lm.y]), opts)) { ctx.fillStyle = '#44ff88'; ctx.fill(); }
+        else { ctx.strokeStyle = '#ff2d95'; ctx.lineWidth = 2; ctx.stroke(); }
+      }
+    }
+  }
+
+  // Where the camera thinks the hand is, drawn back onto the neck.
+  const v = vision.value();
+  if (cal && v) {
+    const w = cal.fretWire(Math.max(0, Math.min(MAX_FRET, v.fret)));
+    if (w) {
+      ctx.strokeStyle = v.stale ? 'rgba(246,173,85,.6)' : '#44ff88';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(...px(w[0]));
+      ctx.lineTo(...px(w[1]));
+      ctx.stroke();
+    }
+  }
+}
+
+// ── Live readouts ────────────────────────────────────────────────────────────
+function renderLive() {
+  const v = vision.value();
+  const a = audioRef();
+
+  $('estCam').className = 'est cam' + (v ? (v.stale ? ' stale' : '') : ' blank');
+  $('camFret').textContent = v ? v.fret.toFixed(1) : '—';
+  $('camNote').textContent = !cal ? 'not calibrated'
+    : !v ? (hands.length ? 'hand visible but not on the board' : 'no hand in frame')
+    : v.stale ? `holding — blind for ${(vision.age() / 1000).toFixed(1)}s`
+    : `${lastRead ? lastRead.tips : 0}/4 tips · spread ${lastRead ? lastRead.spread.toFixed(1) : '–'} frets`;
+
+  $('estAud').className = 'est aud' + (a ? '' : ' blank');
+  $('audFret').textContent = a ? a[1].toFixed(1) : '—';
+  $('audNote').textContent = a
+    ? `${micState} · ${micDb.toFixed(0)} dBFS · rest is fret 5`
+    : 'mic off — no comparison possible';
+
+  const place = (id, fret) => {
+    const m = $('mark-' + id);
+    if (fret == null) { m.classList.add('gone'); return; }
+    m.classList.remove('gone');
+    m.style.left = fretLeft(Math.max(0, Math.min(MAX_FRET + 1, fret + 0.5))) + '%';
+  };
+  place('cam', v && !v.stale ? v.fret : null);
+  place('aud', a ? a[1] : null);
+
+  const row = (id, text, state) => {
+    $('v-' + id).textContent = text;
+    $('h-' + id).className = state || '';
+  };
+  row('calib', cal ? `set ${((performance.now() - calibratedAt) / 1000).toFixed(0)}s ago` : 'none',
+    cal ? 'good' : 'bad');
+  row('hands', String(hands.length), hands.length ? 'good' : '');
+  row('tips', lastRead ? `${lastRead.tips} / 4` : '0 / 4',
+    lastRead && lastRead.tips >= 3 ? 'good' : lastRead ? '' : 'bad');
+  row('spread', lastRead ? lastRead.spread.toFixed(1) : '—',
+    lastRead && lastRead.spread > 6 ? 'bad' : '');
+  row('string', lastRead ? lastRead.string.toFixed(1) : '—');
+  row('drift', `${(offBoardRate * 100).toFixed(0)}%`, offBoardRate > 0.5 ? 'bad' : '');
+  row('fps', `${visionFps.toFixed(0)} Hz · ${lastVisionMs.toFixed(1)} ms/frame`,
+    lastVisionMs > 40 ? 'bad' : lastVisionMs ? 'good' : '');
+
+  renderCoach();
+}
+
+// ── The coach ────────────────────────────────────────────────────────────────
+// All the judgement lives in vision/visionCoach.js; this only paints it. The
+// page's job is to describe its own state honestly and hand it over.
+let coachOpen = false;
+$('coachMore').onclick = () => { coachOpen = !coachOpen; };
+
+function renderCoach() {
+  const state = {
+    cameraOn: !!stream,
+    micOn: !!audioListener,
+    cdnError: cdnError,
+    calibrating: !!calibClicks,
+    clicksSoFar: calibClicks ? calibClicks.length : 0,
+    corners: cal ? cal.corners : (calibClicks ? null : lastCorners),
+    calOk: !!cal,
+    handsSeen: hands.length,
+    read: lastRead,
+    noHandMs: vision.age(),
+    offBoardRate,
+    visionMs: lastVisionMs,
+    micState: audioListener ? micState : 'mic off',
+    logCount: scoreboard.count(),
+  };
+  const issues = diagnose(state);
+  const top = nextAction(issues, state);
+
+  $('coach').className = top.severity;
+  $('coachBadge').textContent =
+    top.severity === 'ok' ? 'ready' : top.severity === 'blocker' ? 'fix this first' : top.severity;
+  $('coachProblem').textContent = top.problem;
+  $('coachFix').textContent = top.fix;
+
+  // ⚠️ THE REST ARE COLLAPSED BEHIND A CLICK. Showing six problems at once is
+  // how a person concludes the tool is broken rather than that their camera is
+  // in the wrong place; showing one plus a count reads as a queue.
+  if (top.others > 0) {
+    $('coachMore').style.display = '';
+    $('coachMore').textContent =
+      `${coachOpen ? '▾' : '▸'} ${top.others} more thing${top.others === 1 ? '' : 's'} to sort out`;
+    $('coachList').style.display = coachOpen ? '' : 'none';
+    if (coachOpen) {
+      $('coachList').innerHTML = issues.slice(1)
+        .map(i => `<li><b>${i.problem}</b><br>→ ${i.fix}</li>`).join('');
+    }
+  } else {
+    $('coachMore').style.display = 'none';
+    $('coachList').style.display = 'none';
+  }
+}
+
+// ── Scoreboard ───────────────────────────────────────────────────────────────
+function renderScore() {
+  const c = scoreboard.camera();
+  const a = scoreboard.audio();
+  const n = scoreboard.count();
+  $('undo').disabled = !n;
+  $('clear').disabled = !n;
+
+  const put = (key, fmt) => {
+    $('s-cam-' + key).textContent = c.n ? fmt(c) : '—';
+    $('s-aud-' + key).textContent = a.n ? fmt(a) : '—';
+  };
+  $('s-cam-n').textContent = c.n;
+  $('s-aud-n').textContent = a.n;
+  put('median', s => s.median.toFixed(2));
+  put('mean', s => s.mean.toFixed(2));
+  put('within1', s => `${(s.within1 * 100).toFixed(0)}%`);
+  put('worst', s => s.worst.toFixed(1));
+  $('s-cam-blank').textContent = c.blank ?? n;
+  $('s-aud-blank').textContent = a.blank ?? n;
+
+  for (const [id, key] of [['r-median', 'median'], ['r-within1', 'within1']]) {
+    $(id).className = c.n && a.n && c[key] !== a[key] ? 'win' : '';
+  }
+
+  // ⚠️ THE VERDICT REFUSES TO BE DRAWN EARLY, and this is the most important line
+  // in the file. Four logs will always show a winner and it will always be noise.
+  // A bench whose whole purpose is to decide a question must not let you talk
+  // yourself into an answer off a handful of samples.
+  const v = $('verdict');
+  if (n < 8) {
+    v.className = 'verdict none';
+    v.textContent = `${n} log${n === 1 ? '' : 's'} — need at least 8 before this means anything`;
+  } else if (!c.n || !a.n) {
+    v.className = 'verdict none';
+    v.textContent = 'only one estimator has answered — start the other one';
+  } else {
+    const gap = a.median - c.median;
+    if (Math.abs(gap) < 0.35) {
+      v.className = 'verdict tie';
+      v.textContent = `too close to call (${c.median.toFixed(2)} vs ${a.median.toFixed(2)} frets) — the camera is not worth the dependency`;
+    } else if (gap > 0) {
+      v.className = 'verdict cam';
+      v.textContent = `camera wins by ${gap.toFixed(2)} frets · ${(c.within1 * 100).toFixed(0)}% within a fret vs ${(a.within1 * 100).toFixed(0)}%`;
+    } else {
+      v.className = 'verdict aud';
+      v.textContent = `the guess wins by ${(-gap).toFixed(2)} frets — in this room, at this angle, the camera does not clear the bar`;
+    }
+  }
+
+  $('logs').innerHTML = scoreboard.entries().slice(-30).reverse().map(l => `
+    <div>
+      <span>truth <b>${l.truth}</b></span>
+      <span class="${l.camera == null ? 'miss' : ''}">📷 ${l.camera == null ? 'none' : l.camera.toFixed(1)}</span>
+      <span class="${l.audio == null ? 'miss' : ''}">👂 ${l.audio == null ? 'none' : l.audio.toFixed(1)}</span>
+    </div>`).join('');
+}
+
+renderScore();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

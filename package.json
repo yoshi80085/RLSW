@@ -8,6 +8,8 @@
     "dev": "vite",
     "test:engine": "node --import ./src/engine/testAssetStub.mjs src/engine/selftest.mjs",
     "test:chroma": "node src/audio/chromaSelftest.mjs",
+    "test:vision": "node src/vision/neckGeometrySelftest.mjs",
+    "test:detect": "node src/vision/neckDetectSelftest.mjs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",

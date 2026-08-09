@@ -7,7 +7,8 @@
 > `PRACTICE_MODES_HANDOFF.md` (its §0 rulings all apply — Ear Spy is a fifth
 > practice room) and `NETCODE_HANDOFF.md` (the room server this rides on).
 >
-> Run `npm run test:chroma` (104 assertions) and `cd server && npm test`
+> Run `npm run test:chroma` (104), `npm run test:vision` (158),
+> `npm run test:detect` (38, 1 pending) and `cd server && npm test`
 > (includes N13, 21 checks) before and after touching any of it.
 
 ---
@@ -147,8 +148,11 @@ regression test whose name says what breaks. **Read the ⚠️ comment before
 
 ```
 npm run test:chroma          # 104 assertions, pure, no mic
+npm run test:vision          # 158 assertions — camera geometry, fusion, the coach
+npm run test:detect          #  38 on auto-detection (1 PENDING — see §6b)
 cd server && npm test        # includes N13 ear spy smoke (21 checks)
-npm run dev                  # → /listen-test.html   (tuning bench)
+npm run dev                  # → /RLSW/listen-test.html  (tuning bench)
+                             # → /RLSW/camera-test.html  (§6 fusion bench)
                              # → Riff Mode → 👂 EAR SPY  (the real room)
 ```
 
@@ -161,9 +165,191 @@ through.
 
 ---
 
-## 6. 🔭 NOT BUILT — camera fusion
+## 6. ✅ SHIPPED — camera fusion
 
-The open proposal, and the natural next step.
+> **▶ START HERE IF YOU ARE PICKING THIS UP COLD.** Camera fusion is built,
+> measured, tested and wired into Ear Spy behind a checkbox that is off by
+> default. Nothing is outstanding for it to work. The two open threads are
+> **§6b** (automatic calibration — theory proven, image pipeline unfinished, one
+> ⏳ PENDING test says exactly where it stopped) and the **hand-span constraint**
+> noted in `fretFusion.js`. Run `npm run test:vision` (158) and
+> `npm run test:detect` (38, 1 pending) first; between them they state every
+> claim this section makes.
+
+**Status: measured, and it won. Now wired in.** The bench was built first, the
+camera was scored against the audio heuristic on hand-logged ground truth, and it
+cleared the bar by six times the margin set in advance:
+
+| against 8 logged positions, frets 2–12 | 📷 camera | 👂 audio heuristic |
+|---|---|---|
+| median absolute error | **0.44 frets** | 2.53 |
+| mean absolute error | **0.55** | 3.19 |
+| within one fret | **88%** | 25% |
+| worst miss | **1.4** | 7.9 |
+
+⚠️ **Read the log, not just the summary.** Across ten frets of real hand movement
+the audio estimate never left a three-fret band around its rest position (3.1, 6.1,
+5.4, 6.1, 6.0, 4.9, 3.1, 5.9 against truths of 2, 4, 5, 7, 9, 9, 11, 12). It did
+not estimate badly — **it carries almost no positional information at all**. That
+is not a defect in `neckPlacement`; it is what a pitch can tell you about a
+position, and that module has said so about itself from the beginning.
+
+Caveat that stands: eight logs, one room, one angle, one guitar. Decisive on the
+gap, silent on whether it holds in a dark room or on a different instrument.
+
+### What was wired, and how little of it
+
+- `music/neckPlacement.js` gained `setRef` / `refSource` on `makeNeckTracker`.
+  The camera supplies **`placePitch`'s `ref` argument and nothing else**. Audio
+  says WHEN and WHAT; video says WHERE. Two numbers of integration surface, as §6
+  predicted.
+- ⚠️ **The audio tracker keeps running underneath.** Stopping it while the camera
+  supplies a reference is the obvious economy and it is wrong: when the camera
+  loses the hand the fallback has to be current, not a minute stale. Tested.
+- **Only the FRET comes from the camera.** Finger height reprojects as ~5 strings
+  of error and under half a fret, so the string half of the reference is left to
+  the audio tracker, which is no worse at it.
+- `vision/cameraHand.js` — the runtime sensor. `ui/CameraCalibrator.jsx` — the
+  panel. `ui/ListenNeck.jsx` — one checkbox, **off by default and staying that
+  way**: Ear Spy has to work for someone pointing a laptop at a room.
+- **No npm dependency.** MediaPipe loads from a CDN on demand; bundling it would
+  add ~2 MB for every player who never ticks the box, and the WASM and the model
+  come from Google either way. The game builds and runs with no trace of it.
+
+**What the bench answers:** you play, you click the fret you are actually in, and
+it scores the camera's guess against the audio heuristic's over your logs. It
+refuses to name a winner under 8 logs, and calls anything inside 0.35 frets a tie
+— i.e. *not worth the dependency*. Median is reported next to mean because one
+mistimed click moves one of them and not the other.
+
+### 6a. 🎯 Pitch + camera → the exact position
+
+The step that makes the reading **exact rather than approximate**, and it came
+from Alex asking the right question: if the note is known and the hand position
+is roughly known, isn't the answer pinned down?
+
+It is, and by a much wider margin than expected. A heard pitch is playable in
+only three or four places on a 12-fret neck, and adjacent strings are a fourth
+apart, so those places sit **four or five frets apart**:
+
+| | |
+|---|---|
+| pitches with more than one position | 27 |
+| gap between neighbouring candidates | min **4** frets, median 5 |
+| ⇒ accuracy the camera actually needs | **±2.0 frets** |
+| ⇒ accuracy it has | 0.66 RMS — **3× better than required** |
+| ⇒ simulated wrong-pick rate | **0.24%** |
+
+⚠️ **So do not spend effort making the camera's fret number more precise.** That
+was the obvious next move — fit the finger-height parallax, worth ~15% on RMS —
+and it is wasted: the output is a choice between options five frets apart and the
+input is already accurate to two thirds of one. What the fusion buys instead is a
+hard answer (**exact string and exact fret**, which audio alone can never give)
+plus a **margin** saying how close the call was, which a continuous estimate
+cannot express at all.
+
+**And the audio pays for itself twice.** Once a note is snapped its fret is
+KNOWN, so the gap to the camera's raw reading is the parallax error, measured for
+free while somebody just plays — no logging session, nobody clicking anything.
+`makeFretFusion` accumulates that and fits `trueFret ≈ offset + slope·cameraFret`.
+
+⚠️ **That loop can eat itself**, and the guards are load-bearing: it learns only
+from wide-margin picks, refuses residuals too large to be parallax, requires 20
+samples spread over ≥4 frets, clamps what the correction may do, and is **thrown
+away on every recalibration** — what it learned described one camera in one
+position.
+
+⚠️⚠️ **And the limit no guard covers.** A calibration wrong by *about a fourth*
+lands on a different REAL position: every snap is confident, every residual is
+small, and the answer is consistently wrong by five frets and a whole string.
+Same aliasing family as §6b's projective self-similarity — a repeating structure
+aliases. Only the drawn fret wires and the off-board rate catch it. There is a
+test named for this so nobody mistakes the guards for a proof.
+
+**Not built:** notes sounding together must be reachable by ONE hand, which is a
+far stronger constraint than each note alone. `snapNotes` currently snaps each
+independently. The hand-span rule needs its own rules about barres and
+thumb-overs before it can be trusted to reject anything.
+
+---
+
+### 6b. 🔬 Automatic calibration — the theory, and where it stopped
+
+Four clicks is a setup step most players will skip, and worse, a hand-clicked
+calibration goes stale silently the moment you shift in your chair. So: can the
+camera just find the neck? `vision/neckDetect.js` + `npm run test:detect`.
+
+⚠️ **The obvious approach cannot work, and it fails in a way that looks like it
+works.** Identify which frets you're seeing from the cross-ratio, which is
+projectively invariant and so survives an unknown camera. It doesn't, because the
+fret sequence is **projectively self-similar**: with u = 2^(−n/12), shifting the
+fret index by k scales u, and a scaling is a Möbius map. So *sliding along the
+neck is a projective transformation*. Four consecutive frets have cross-ratio
+**1.332962922399… everywhere on every guitar** — asserted to twelve places. Every
+"which fret does this run start at" hypothesis fits perfectly and the winner is
+decided by floating-point noise: a detector confidently wrong by several frets, at
+random. **There is a second symmetry too** — u → C/u reverses the sequence and is
+also Möbius, so direction isn't recoverable either, and "the gaps get smaller
+toward the bridge" is not a usable test.
+
+What breaks both: **an anchor at fret 0**, plus frets not being negative (that is
+what defeats the reversal — the mirror image lands on negative frets). A single
+interior anchor is *not* enough; there's a test for that trap. So the anchor has
+to be the **end of the board**, which is an image test rather than a geometric
+one, and that is the point.
+
+**Status: theory proven and tested, image pipeline unfinished.** Stages 1 and 2
+work — strings found, board isolated, strings erased, ~17 fret-orientation lines
+recovered with spacing visibly following 2^(1/12), and a RANSAC labeller that
+survives outliers. What fails is locating the nut: `looksLikeBoardEnd` is handed
+the outermost detected line, which is often a stray, so the anchor never lands and
+`identifyFrets` refuses. **`detectNeck` returns null and is not wired into the
+bench.** The test suite marks this ⏳ PENDING rather than asserting it, so the gap
+stays visible without leaving a permanently red suite.
+
+Next step is either testing every plausible outer line as the nut, or detecting
+the inlay dots (needs three or more, or the visually-distinct double dot — two
+plain dots are as reversible as two frets). If neither holds up, the literature's
+answer is a trained detector: TapToTab went to YOLO for exactly this reason.
+
+---
+
+**What the maths already says**, from 124 headless assertions against synthetic
+perspective projections of a 648 mm neck (`npm run test:vision`):
+
+| finding | number |
+|---|---|
+| a fingertip sits ~18 mm above the board; the homography maps the board | — |
+| that height costs, in **fret** | **0.35 frets** |
+| …and in **string** | **4.96 strings** |
+| a linear read of neck distance instead of `spanToFret`'s logarithm | wrong by **>1 fret** mid-neck |
+
+That split is the good outcome: parallax destroys the axis audio was never going
+to give you anyway (which string) and barely touches the one `placePitch` wants
+(which fret). It also sets a trap — a sane-looking string tolerance rejects every
+genuine fretting hand seen from above, so `VISION_DEFAULTS.stringSlack` is 4.5 and
+must stay loose. There is a test named after that trap.
+
+⚠️ **Four clicks fit a homography exactly, so the residual is always zero and a
+bad calibration is numerically undetectable.** Two things stand in for the check
+that cannot exist: the bench draws the predicted fret wires back over the video
+(if they don't sit on your real frets, everything below them is meaningless), and
+`checkCalibration` tests the SHAPE of the quad rather than the fit — a real
+fretboard cannot project to certain outlines, and when it does, the person
+clicked something that wasn't a fretboard corner.
+
+**Nothing here fails loudly**, which is the reason `vision/visionCoach.js` exists.
+An uncalibrated board, a nut just out of shot, a hand the model can't see, a
+calibration that came loose when you shifted — none of them throw, none look like
+errors, and every one produces confident numbers that are wrong. `diagnose()`
+turns a state snapshot into a ranked list, `nextAction()` picks the one thing to
+do now, and the rules are unit-tested because the rules are the part most likely
+to be wrong. Two conventions worth keeping if you extend it: **every fix is an
+action** (the person is holding a guitar and can't do anything with a number), and
+**only one is shown at a time** — six simultaneous complaints read as "this is
+broken", one plus a count reads as a queue.
+
+The original case, unchanged:
 
 **The case for it:** every placement in `neckPlacement.js` is a guess, and the
 module says so. The camera is weak at what audio is strong at (pitch) and strong
@@ -198,13 +384,24 @@ alone suffices. The audio half already exists here.
    it holds until you shift in your chair, then it's wrong *silently*. Needs a
    visible confidence readout and a fast re-calibrate.
 
-**Proposed first step:** a `camera-test.html` bench in the spirit of
-`listen-test.html` — corner calibration, hand landmarks projected into neck
-coordinates, and a readout of the camera's fret-region guess next to the
-audio-only heuristic's. That tells you whether it beats the guess in *your* room
-at *your* camera angle before any dependency is committed or anything is wired
-in. **It may not clear the bar** — if the angle is bad enough the heuristic
-wins, and it is much cheaper to learn that in a bench page.
+All three are now instrumented rather than argued about. (1) is yours to solve
+with a phone and something to lean it on — the bench cannot fix your camera
+angle, it can only tell you the angle is losing. (2) reads out as ms/frame next
+to the vision rate, which is a slider. (3) has a **drift alarm**: a fretting hand
+the model can see whose fingertips keep projecting *off* the board means the
+board has moved, and that is the one failure that is otherwise silent.
+
+**How to decide.** Run it for ten minutes across the neck. Then:
+
+- **camera wins by ≥ 0.35 frets** → worth wiring in. The integration is one
+  argument: feed the smoothed fret to `placePitch(pitch, ref)` as `ref`, keep the
+  audio hand tracker as the fallback for when the camera has no answer. Nothing
+  else in the chain changes. `@mediapipe/tasks-vision` becomes a real dependency
+  at that point and not before.
+- **tie, or the guess wins** → the honest answer, and the cheap one. Delete
+  `camera-test.html` and `src/vision/`. **This is a live possibility, not a
+  formality** — if the angle is bad enough the heuristic wins, and learning that
+  in a bench page is exactly what the bench page is for.
 
 ---
 
@@ -222,3 +419,9 @@ wins, and it is much cheaper to learn that in a bench page.
 | Online send rate / wire shape | `net/riffWire.js` → `WIRE_DEFAULTS` (⚠️ stay under the server's 30 msg/s) |
 | Floor / turn-taking rules | `server/index.js` → `case "FLOOR"` + `net/earSpyLink.js` |
 | Whether Ear Spy is open to playtesters | `ui/RiffMenu.jsx` → `RIFF_MODES_UNLOCKED` |
+| Camera geometry, fret spacing, hand reading | `vision/neckGeometry.js` → `VISION_DEFAULTS` (⚠️ `stringSlack` is loose on purpose — §6) |
+| Snapping a pitch to a position, the learner | `vision/fretFusion.js` → `FUSION_DEFAULTS` (⚠️ read the aliasing limit first — §6a) |
+| The camera sensor at runtime | `vision/cameraHand.js` (CDN-loaded MediaPipe; deliberately not an npm dependency) |
+| What the camera panel says when it's wrong | `vision/visionCoach.js` (every fix is an ACTION; only one shown at a time) |
+| Automatic neck detection | `vision/neckDetect.js` (⚠️ §6b — theory proven, `detectNeck` returns null) |
+| The scoring bench | `camera-test.html` (bench only — never built, never shipped) |
