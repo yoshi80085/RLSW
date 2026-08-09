@@ -12,10 +12,14 @@
 //   onTapCell(string, fret)  — every tap reports; parent decides meaning
 //   layers                   — Map/object of cellId → { color, style }
 //                              style: 'solid' | 'dim' | 'pulse' | 'hot'
-//   showLabels               — per-cell note letters on/off
+//   showLabels               — note letters: true (all cells) | false (none) |
+//                              'layers' (only cells that have a layer)
 //   flash                    — { cellId, grade } — judgment burst on a cell
 //   highlightString          — string index to glow (Recon target string hint)
 //   accent                   — accent color override (default cyan)
+//   trail                    — [{ cellId, fade }] oldest→newest; draws a glowing
+//                              line from cell to cell. Presentational only: the
+//                              caller decides what counts as consecutive.
 //
 // Free audition: every tap ALWAYS sounds its cell through the rig (the neck is
 // an instrument first, a quiz second). Parent passes playNote for this.
@@ -32,6 +36,56 @@ const NEON_VIOLET  = '#8a5cff';
 const NEON_WHITE   = '#ffffee';
 
 const NEON_STRING_COLORS = [NEON_CYAN, '#33ccff', '#6699ff', NEON_VIOLET, '#cc44dd', NEON_MAGENTA];
+
+// ── Snake geometry ──────────────────────────────────────────────────────────
+// The melody trail is drawn as a curve with a thick head and a thin tail. SVG
+// cannot vary a stroke's width along its length, so the curve is SAMPLED into
+// short round-capped segments, each with its own width and opacity. Overlapping
+// round caps make the joins invisible and the result reads as one body.
+const SNAKE_SAMPLES = 6;   // sub-segments per span; 6 is smooth at 13 spans
+
+/**
+ * Catmull-Rom through the points, which is the right spline here because it
+ * passes THROUGH its control points — the curve has to touch the frets that
+ * were actually played, not merely be influenced by them. A Bezier would bow
+ * away from the notes and put the line between strings it never sounded.
+ *
+ * @param {{x,y,w,a}[]} pts  position plus width and alpha to interpolate
+ * @returns {{x1,y1,x2,y2,w,o}[]} short segments, tail first
+ */
+function sampleSnake(pts) {
+  if (pts.length < 2) return [];
+  const at = i => pts[Math.max(0, Math.min(pts.length - 1, i))];
+  const out = [];
+  let prev = null;
+
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+    for (let s = 0; s <= SNAKE_SAMPLES; s++) {
+      const t = s / SNAKE_SAMPLES;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const cr = (a, b, c, d) => 0.5 * (
+        (2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3
+      );
+      const node = {
+        x: cr(p0.x, p1.x, p2.x, p3.x),
+        y: cr(p0.y, p1.y, p2.y, p3.y),
+        w: p1.w + (p2.w - p1.w) * t,
+        a: p1.a + (p2.a - p1.a) * t,
+      };
+      if (prev) {
+        out.push({
+          x1: prev.x, y1: prev.y, x2: node.x, y2: node.y,
+          w: (prev.w + node.w) / 2,
+          o: (prev.a + node.a) / 2,
+        });
+      }
+      prev = node;
+    }
+  }
+  return out;
+}
 
 const GRADE_BURST = {
   perfect: { color: NEON_WHITE,   r: 28, dur: 400 },
@@ -73,7 +127,7 @@ function fretCellLeft(f) {
 
 export function FretboardFull({
   onTapCell, layers = {}, showLabels = true, flash = null,
-  highlightString = -1, accent = NEON_CYAN, playNote,
+  highlightString = -1, accent = NEON_CYAN, playNote, trail = [],
 }) {
   const svgRef = useRef(null);
   const [burst, setBurst] = useState(null); // { x, y, grade, t }
@@ -108,11 +162,41 @@ export function FretboardFull({
     if (onTapCell) onTapCell(s, f);
   }, [onTapCell, playNote]);
 
+  // ── Which cells get a note letter ───────────────────────────────────────
+  // `showLabels` was a plain boolean: letters on every one of the 78 cells, or
+  // none. Ear Spy needs a third answer. Lighting a handful of cells inside a
+  // full grid of labels doesn't read as "these notes" — the eye can't separate
+  // signal from grid, and 70-odd unlit letters are pure noise when the whole
+  // point is which few notes are in play.
+  //
+  //   true       — every cell (Fretboard Recon: you're hunting, you need the map)
+  //   false      — none
+  //   'layers'   — only cells with a layer (Ear Spy: only what was heard)
+  //
+  // Deliberately additive. The two existing callers pass booleans and are
+  // unaffected; nothing had to change for this to land.
+  function labelThisCell(ls) {
+    if (showLabels === 'layers') return !!ls;
+    return !!showLabels;
+  }
+
   // ── Layer style → SVG fill/opacity/animation ────────────────────────────
+  // A layer may also carry `level` (0..1) for continuously graded brightness —
+  // "played four times" vs "played once" is a scale, not four buckets.
+  //
+  // ⚠️ `level` IS APPLIED TO A WRAPPING <g>, NOT TO THE CIRCLE. The pulse and
+  // hot classes animate the `opacity` PROPERTY, and a CSS animation beats an
+  // SVG presentation attribute — set both on one element and every pulsing cell
+  // flashes to exactly the same brightness, silently discarding the level.
+  // Nesting multiplies them instead: the group holds how much the note matters,
+  // the circle holds the flash.
   function layerStyle(cellId) {
     const l = layers[cellId];
     if (!l) return null;
-    const base = { fill: l.color || NEON_CYAN, opacity: 1 };
+    const level = typeof l.level === 'number'
+      ? Math.max(0, Math.min(1, l.level))
+      : null;
+    const base = { fill: l.color || NEON_CYAN, opacity: 1, level };
     switch (l.style) {
       case 'dim':   return { ...base, opacity: 0.3 };
       case 'pulse': return { ...base, opacity: 0.6, className: 'fb-pulse' };
@@ -174,6 +258,77 @@ export function FretboardFull({
           </text>
         ))}
 
+        {/* ── Melody trail — a snake, not a polyline ──
+             Drawn BEFORE the note circles so the line passes behind them: the
+             dots are the finding, the line is the story connecting them, and a
+             stroke laid over the top would read as scribble across the answer.
+
+             Two independent taperings are multiplied, and both are needed:
+               • POSITION — thick and bright at the head, thin and dark at the
+                 tail, so the shape reads as a body with a direction of travel.
+                 Time alone does not do this: during a fast lick every point is
+                 nearly the same age, so a purely time-faded line is a uniform
+                 stroke with no head.
+               • AGE — the whole snake dims and thins as it expires, so it
+                 slides out of view during a rest instead of sitting there. */}
+        {(() => {
+          const raw = trail
+            .map((pt, i) => {
+              const [s, f] = String(pt.cellId ?? '').split(',').map(Number);
+              if (Number.isNaN(s) || Number.isNaN(f)) return null;
+              const age = Math.max(0, Math.min(1, pt.fade ?? 1));
+              const head = trail.length > 1 ? i / (trail.length - 1) : 1;
+              const body = 0.25 + 0.75 * head;
+              return {
+                x: cellX(f), y: cellY(s, f),
+                // ⚠️ ALPHA REACHES ZERO. An earlier version floored it so the
+                // oldest segment stayed faintly visible and then POPPED out on
+                // expiry — a blink at the tail that reads as a glitch. Squaring
+                // the age keeps the recent path bright while letting the tail
+                // go properly dark before it is removed.
+                a: 0.8 * age * age * body,
+                w: 2 + 14 * body * age,
+              };
+            })
+            .filter(Boolean);
+          if (raw.length < 2) return null;
+
+          // ── The head grows out of the previous note ──
+          // The last point is pulled back toward its predecessor by however
+          // much of `growMs` has elapsed, so the line REACHES the new fret over
+          // a few frames. Without this a span appears at full length in one
+          // frame, which the eye reads as a new object rather than as the same
+          // line moving — the difference between a snake and a flicker.
+          const grow = Math.max(0, Math.min(1, trail[trail.length - 1].grow ?? 1));
+          if (grow < 1) {
+            const tip = raw[raw.length - 1];
+            const from = raw[raw.length - 2];
+            raw[raw.length - 1] = {
+              x: from.x + (tip.x - from.x) * grow,
+              y: from.y + (tip.y - from.y) * grow,
+              a: from.a + (tip.a - from.a) * grow,
+              w: from.w + (tip.w - from.w) * grow,
+            };
+          }
+
+          const segs = sampleSnake(raw).filter(s => s.o > 0.012 && s.w > 0.2);
+          if (!segs.length) return null;
+          // ⚠️ ONE FILTER ON THE GROUP, NOT ONE PER SEGMENT. A Gaussian blur is
+          // the expensive part of this render and the curve is ~80 segments; a
+          // filter per element is 80 offscreen rasterisations a frame. Filtering
+          // the group blurs it once, and the glow reads as a single body rather
+          // than eighty overlapping halos.
+          return (
+            <g filter="url(#neonFbBloom)" style={{ pointerEvents: 'none' }}>
+              {segs.map((s, i) => (
+                <line key={`sn${i}`} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2}
+                  stroke={accent} strokeWidth={s.w} strokeLinecap="round"
+                  opacity={s.o} />
+              ))}
+            </g>
+          );
+        })()}
+
         {/* ── Layer highlights + tap targets + labels ── */}
         {STRING_NAMES.map((_, s) =>
           Array.from({ length: MAX_FRET + 1 }, (_, f) => {
@@ -192,12 +347,21 @@ export function FretboardFull({
               <rect x={cellLeft} y={cy - ROW_H / 2} width={cellW} height={ROW_H}
                 fill="transparent" />
               {/* Layer highlight */}
-              {ls && <circle cx={cx} cy={cy} r={30}
-                fill={ls.fill} opacity={ls.opacity}
-                filter="url(#neonFbBloom)"
-                className={ls.className || undefined} />}
+              {ls && (ls.level != null ? (
+                <g opacity={ls.level}>
+                  <circle cx={cx} cy={cy} r={30}
+                    fill={ls.fill} opacity={ls.opacity}
+                    filter="url(#neonFbBloom)"
+                    className={ls.className || undefined} />
+                </g>
+              ) : (
+                <circle cx={cx} cy={cy} r={30}
+                  fill={ls.fill} opacity={ls.opacity}
+                  filter="url(#neonFbBloom)"
+                  className={ls.className || undefined} />
+              ))}
               {/* Note label */}
-              {showLabels && (
+              {labelThisCell(ls) && (
                 <text x={cx} y={cy + 10} textAnchor="middle" fontSize="26"
                   fontFamily="'Saira Stencil One', monospace" fontWeight="bold"
                   fill={ls ? '#fff' : NEON_STRING_COLORS[s]}

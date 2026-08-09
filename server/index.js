@@ -153,6 +153,7 @@ function makeRoom(code, ownerIp = null) {
     seq: 0,
     log: [],                 // { seq, seatId, action, cursorBefore }
     logLines: [],            // { seq, seatId, text }
+    floorSeatId: null,       // Ear Spy: who is currently playing (see "FLOOR")
     graveTimer: null,
   };
 }
@@ -177,6 +178,7 @@ function roomState(room) {
       spiritId: s.spiritId, connected: s.isBot || !!s.ws,
     })),
     spectators: room.spectators.size,
+    floorSeatId: room.floorSeatId,
   };
 }
 
@@ -200,6 +202,11 @@ function removeSeat(room, s) {
   if (room.hostSeatId === s.seatId) {
     room.hostSeatId = room.seats.find(x => !x.isBot)?.seatId ?? null;
   }
+  // ⚠️ THE FLOOR HAS TO BE RELEASED WITH THE SEAT. A player who closes the tab
+  // while holding it would otherwise leave the room permanently unable to
+  // play: every remaining CLAIM is refused with FLOOR_TAKEN by a seat that no
+  // longer exists, and nothing else in the protocol ever clears it.
+  if (room.floorSeatId === s.seatId) room.floorSeatId = null;
 }
 
 // next free seatId — seats can be removed in the lobby, so length+1 can collide
@@ -456,6 +463,58 @@ wss.on("connection", (ws, req) => {
       // N8: desync recovery — a client that detects a cursor mismatch or a seq
       // gap freezes its input and asks for the authoritative log; the server
       // answers with the same CATCH_UP bundle a late joiner gets.
+      // ─── EAR SPY ONLINE (see src/net/riffWire.js) ──────────────────────────
+      // Live listening analysis, relayed to the rest of the room.
+      //
+      // ⚠️ RIFF FRAMES NEVER ENTER room.log, AND THAT IS THE WHOLE POINT. The
+      // action log is a lockstep record replayed in full to every joiner; it is
+      // both a memory and a bandwidth liability (see ACTION above). Analysis is
+      // the opposite kind of data — 8 frames a second of "what is sounding
+      // right now", worthless one second later. Logging it would blow through
+      // maxLog in about forty minutes and hand every late joiner a replay of
+      // someone's warm-up. It is a passthrough: relayed, never remembered.
+      //
+      // The server still does not understand the payload — same contract as
+      // ACTION. It checks the shape enough to bound the cost and forwards it.
+      case "RIFF": {
+        if (!room || !seat) return; // spectators listen, they don't broadcast
+        // Only the player holding the floor may stream. Without this, every
+        // client in the room could push 8 frames/sec at everyone else and the
+        // relay cost becomes seats² — and the display would show two people
+        // playing at once, which is the exact thing turn-taking exists to stop.
+        if (room.floorSeatId !== seat.seatId) return;
+        const frame = f.frame;
+        if (!frame || typeof frame !== "object" || Array.isArray(frame)) return;
+        return broadcast(room, { t: "RIFF", seatId: seat.seatId, frame }, { except: ws });
+      }
+
+      // Who currently has the floor. Held on the room so a late joiner or a
+      // rejoin after a wifi blip learns whose turn it is without waiting for
+      // the next hand-over — the same reason seats and phase live here.
+      case "FLOOR": {
+        if (!room || !seat) return err("SPECTATOR", "spectators can't take the floor");
+        const mode = String(f.mode ?? "");
+        if (mode === "claim") {
+          // Taking the floor is only refused if someone else genuinely holds
+          // it; re-claiming your own is a harmless no-op (a reconnect will).
+          if (room.floorSeatId != null && room.floorSeatId !== seat.seatId) {
+            return err("FLOOR_TAKEN", "someone else is playing");
+          }
+          room.floorSeatId = seat.seatId;
+        } else if (mode === "release") {
+          if (room.floorSeatId !== seat.seatId) return;
+          room.floorSeatId = null;
+        } else if (mode === "pass") {
+          if (room.floorSeatId !== seat.seatId) return err("NOT_YOURS", "you don't have the floor");
+          const target = room.seats.find(s => s.seatId === f.toSeatId && !s.isBot);
+          if (!target) return err("NO_SUCH_SEAT", "nobody there to pass to");
+          room.floorSeatId = target.seatId;
+        } else {
+          return err("BAD_MODE", "claim | release | pass");
+        }
+        return broadcast(room, { t: "FLOOR", floorSeatId: room.floorSeatId });
+      }
+
       case "REQUEST_CATCHUP": {
         if (!room || room.phase !== "playing") return err("NOT_PLAYING", "no game in progress");
         return send(ws, catchUp(room));
@@ -523,6 +582,14 @@ wss.on("connection", (ws, req) => {
     if (!room) return;
     if (seat && seat.ws === ws) {
       seat.ws = null; // seat survives — reclaimable by token (guard: a rejoin may have already replaced this socket)
+      // The seat survives a wifi blip; the FLOOR does not. Holding it means
+      // "I am playing right now", which a disconnected player by definition
+      // isn't — and leaving it held would block everyone else for the whole
+      // rejoin window. They simply claim it again when they come back.
+      if (room.floorSeatId === seat.seatId) {
+        room.floorSeatId = null;
+        broadcast(room, { t: "FLOOR", floorSeatId: null });
+      }
       // in the lobby, a dropped seat only survives the linger window (F5 grace)
       if (room.phase === "lobby") startLobbyLinger(room, seat);
     }

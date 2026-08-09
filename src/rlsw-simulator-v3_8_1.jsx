@@ -58,6 +58,7 @@ import RiffMenu from "./ui/RiffMenu.jsx";
 import { buildTestingGroundsConfig } from "./data/matchSetup.js";
 import { RiffPractice } from "./ui/RiffPractice.jsx";
 import { FretboardRecon } from "./ui/FretboardRecon.jsx";
+import { ListenNeck } from "./ui/ListenNeck.jsx";
 import { DiscordCoach } from "./ui/DiscordCoach.jsx";
 import { LegendLessons } from "./ui/LegendLessons.jsx";
 import OpeningMovie from "./ui/OpeningMovie.jsx";
@@ -783,6 +784,7 @@ export default function RLSWSimulator() {
     const back = () => setPracticeMode(null);
     if (pm.mode === 'fretboard') return <div style={isMobile ? mobileColorStyle : {}}><FretboardRecon onBack={back} /></div>;
     if (pm.mode === 'discord')   return <div style={isMobile ? mobileColorStyle : {}}><DiscordCoach onBack={back} /></div>;
+    if (pm.mode === 'listen')    return <div style={isMobile ? mobileColorStyle : {}}><ListenNeck onBack={back} /></div>;
     if (pm.mode === 'legend')    return <div style={isMobile ? mobileColorStyle : {}}><LegendLessons onBack={back} /></div>;
     return <div style={isMobile ? mobileColorStyle : {}}><RiffPractice initialDiff={pm.diff || pm} onBack={back} /></div>;
   }

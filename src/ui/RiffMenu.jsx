@@ -4,11 +4,17 @@ import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT } from "../riff/fallingNotes.js
 
 // ─── 🎸 RIFF MODE ────────────────────────────────────────────────────────────
 // Everything that trains your hands, gathered in one place off the title menu.
-// Four rooms, all of them solo:
+// Five rooms, all of them solo:
 //   Riff Practice   — the falling-note stream from a real riff-off, endless
 //   Fretboard Recon — find the note on the neck
 //   Discord Coach   — tension and resolution
+//   Ear Spy         — someone ELSE plays; the neck shows you what you heard
 //   Legend Lessons  — play like the greats
+//
+// Ear Spy is the odd one out and deliberately so: it's the only room that
+// trains ears rather than hands, and the only one you can use with no
+// instrument in your lap. It sits above Legend Lessons because hearing a
+// change is upstream of copying one.
 //
 // The difficulty picker lives here too, because it's the one setting all of
 // these share, and it's the same persisted key the live riff-off reads.
@@ -33,7 +39,11 @@ const RIFF_DIFF_SHORT = {
 // can be practised, and derivation is a LEARNED skill — unlike sight-reading you
 // cannot brute-force "mirror it around the root" on your first attempt. Leaving
 // the room locked would ship the mechanic with no on-ramp.
-const RIFF_MODES_UNLOCKED = new Set(['fretboard', 'riff']);
+// 🗣️ 'listen' opened 2026-08-09 with the room itself: Ear Spy has no failure
+// state, no scoring and nothing to half-finish — it either hears the room or
+// says it can't. There is no half-built experience for a tester to waste
+// feedback on, and it is the one room that works with no guitar in hand.
+const RIFF_MODES_UNLOCKED = new Set(['fretboard', 'riff', 'listen']);
 const RIFF_LOCK_NOTE = 'IN THE WORKSHOP';
 
 function isLocked(id) {
@@ -70,6 +80,11 @@ export default function RiffMenu({ onPractice, onBack }) {
       id: 'discord', label: 'DISCORD COACH', icon: '🎩', color: '#ff2d95',
       blurb: 'Tension and resolution — learn which wrong notes are actually right.',
       go: () => onPractice({ mode: 'discord' }),
+    },
+    {
+      id: 'listen', label: 'EAR SPY', icon: '👂', color: '#44ff88',
+      blurb: 'You don\'t play — someone else does. Point the mic at a friend, a record, anything, and watch the notes land on the neck.',
+      go: () => onPractice({ mode: 'listen' }),
     },
     {
       id: 'legend', label: 'LEGEND LESSONS', icon: '⭐', color: '#ffd700',

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<!--
+  listen-test.html — 👂 LISTEN MODE BENCH — chroma / chord / key, live
+
+  Standalone rig for tuning audio/chroma.js + music/keyDetect.js against real
+  playing BEFORE any of it becomes UI. Same spirit as mic-test.html: no React,
+  no build step, no game state. Open it, play at it, watch the numbers.
+
+    npm run dev   →   http://localhost:5173/listen-test.html
+
+  (Vite serves the repo root, so the ES module imports below resolve straight
+  to source — edit chroma.js, hit reload, hear the difference.)
+
+  WHAT TO WATCH WHILE TUNING:
+    • THE GATE panel — the important one. Sit in your room in silence and watch
+      it say "ignoring". Talk near the mic: still "ignoring". Play: "MUSIC".
+      Each measure shows its live value against its threshold, so when the
+      wrong thing gets through you can see WHICH test let it through.
+    • CHROMA bars — is the note you played the tallest bar? If a fifth is
+      always taller than your root, harmonic suppression is too weak.
+    • CHORD candidates — the top 3, with the gap between them. A confident read
+      is one where #1 is clearly clear of #2. Ties are the honest answer to an
+      ambiguous chord and should look like ties.
+    • KEY — should firm up over ~10-20 seconds of playing and then stay put.
+      If it wanders every bar, the tracker half-life is too short.
+
+  The sliders retune the gate LIVE, without restarting the mic — deliberately,
+  because the adapted noise floor is part of what you are tuning and restarting
+  throws it away. Drag them while the offending noise is actually happening.
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Listen Mode Bench — RLSW</title>
+  <style>
+    :root {
+      --accent:  #19e6ff;
+      --green:   #44ff88;
+      --violet:  #8a5cff;
+      --magenta: #ff2d95;
+      --amber:   #f6ad55;
+      --void:    #07070c;
+      --panel:   #101018;
+      --dim:     #5a5a72;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px;
+      background: var(--void); color: #e8e8f0;
+      font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
+    }
+    h1 { font-size: 15px; letter-spacing: 3px; margin: 0 0 4px; color: var(--accent); }
+    .sub { color: var(--dim); margin-bottom: 20px; font-size: 11px; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+    .panel {
+      background: var(--panel); border: 1px solid #1e1e2c; border-radius: 8px;
+      padding: 14px 16px; flex: 1 1 320px; min-width: 300px;
+    }
+    .panel h2 {
+      font-size: 10px; letter-spacing: 2px; color: var(--dim);
+      margin: 0 0 12px; text-transform: uppercase; font-weight: 600;
+    }
+    button {
+      font: inherit; font-weight: 600; letter-spacing: 1px;
+      padding: 10px 20px; cursor: pointer; border-radius: 6px;
+      background: var(--accent); color: #04040a; border: none;
+    }
+    button.ghost { background: transparent; color: var(--dim); border: 1px solid #2a2a3c; }
+    button:disabled { opacity: .4; cursor: default; }
+    label.chk { color: var(--dim); cursor: pointer; user-select: none; }
+
+    /* chroma bars */
+    .bars { display: flex; align-items: flex-end; gap: 4px; height: 130px; }
+    .bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+    .bar .fill { background: var(--accent); border-radius: 2px 2px 0 0; transition: height .05s linear; }
+    .bar .fill.inkey { background: var(--green); }
+    .bar .lbl { text-align: center; font-size: 9px; color: var(--dim); padding-top: 4px; }
+    .bar .lbl.inkey { color: var(--green); }
+
+    /* candidates */
+    .cand { margin-bottom: 9px; }
+    .cand .top { display: flex; justify-content: space-between; align-items: baseline; }
+    .cand .nm { font-size: 15px; }
+    .cand .sc { color: var(--dim); font-size: 10px; }
+    .cand .track { height: 5px; background: #1c1c28; border-radius: 3px; margin-top: 3px; overflow: hidden; }
+    .cand .track > div { height: 100%; background: var(--violet); transition: width .08s; }
+    .cand:first-child .nm { color: var(--accent); font-size: 22px; font-weight: 600; }
+    .cand:first-child .track > div { background: var(--accent); }
+    .cand.faint { opacity: .45; }
+    .miss { color: var(--magenta); font-size: 10px; }
+
+    .big { font-size: 26px; color: var(--green); }
+    .meta { color: var(--dim); font-size: 11px; }
+    .meter { height: 6px; background: #1c1c28; border-radius: 3px; overflow: hidden; margin: 6px 0 10px; }
+    .meter > div { height: 100%; background: var(--green); transition: width .05s; }
+    .hist { display: flex; flex-wrap: wrap; gap: 6px; }
+    .hist span {
+      background: #191926; border: 1px solid #262636; border-radius: 4px;
+      padding: 3px 8px; font-size: 12px;
+    }
+    .hist span.low { color: var(--dim); border-style: dashed; }
+    .err { color: var(--magenta); }
+
+    /* gate panel */
+    .verdict { font-size: 24px; font-weight: 600; letter-spacing: 2px; }
+    .verdict.music { color: var(--green); }
+    .verdict.reject { color: var(--amber); }
+    .verdict.quiet { color: var(--dim); }
+    .why { color: var(--dim); font-size: 11px; min-height: 16px; margin-bottom: 12px; }
+    table.gates { width: 100%; border-collapse: collapse; font-size: 11px; }
+    table.gates td { padding: 3px 0; }
+    table.gates td.k { color: var(--dim); width: 34%; }
+    table.gates td.v { text-align: right; font-variant-numeric: tabular-nums; }
+    table.gates tr.fail td.v, table.gates tr.fail td.k { color: var(--amber); }
+    table.gates tr.ok td.v { color: var(--green); }
+    .sliders { margin-top: 12px; border-top: 1px solid #1e1e2c; padding-top: 10px; }
+    .sliders label { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--dim); margin-bottom: 5px; }
+    .sliders input[type=range] { flex: 1; accent-color: var(--accent); }
+    .sliders .val { width: 46px; text-align: right; color: #e8e8f0; font-variant-numeric: tabular-nums; }
+    .held { opacity: .35; }
+  </style>
+</head>
+<body>
+  <h1>👂 LISTEN MODE BENCH</h1>
+  <div class="sub">audio/chroma.js + music/keyDetect.js — live, against a real room</div>
+
+  <div class="row" style="margin-bottom:16px; align-items:center">
+    <button id="start">START LISTENING</button>
+    <button id="reset" class="ghost" disabled>RESET KEY</button>
+    <label class="chk"><input type="checkbox" id="bias" checked> bias chords toward detected key</label>
+    <span id="err" class="err"></span>
+  </div>
+
+  <div class="row">
+    <div class="panel" style="flex:1 1 340px">
+      <h2>The gate — is this music, or is it your room?</h2>
+      <div class="verdict quiet" id="verdict">—</div>
+      <div class="why" id="why">not listening</div>
+      <table class="gates">
+        <tr id="g-floor"><td class="k">level vs room floor</td><td class="v" id="v-floor">—</td></tr>
+        <tr id="g-noisy"><td class="k">flatness (peaky?)</td><td class="v" id="v-noisy">—</td></tr>
+        <tr id="g-unfocused"><td class="k">entropy (focused?)</td><td class="v" id="v-unfocused">—</td></tr>
+        <tr id="g-unstable"><td class="k">stability (held?)</td><td class="v" id="v-unstable">—</td></tr>
+      </table>
+      <div class="sliders">
+        <label>floor margin
+          <input type="range" id="s-floorMarginDb" min="0" max="30" step="1">
+          <span class="val" id="d-floorMarginDb"></span></label>
+        <label>max flatness
+          <input type="range" id="s-maxFlatness" min="0.02" max="0.9" step="0.01">
+          <span class="val" id="d-maxFlatness"></span></label>
+        <label>max entropy
+          <input type="range" id="s-maxEntropy" min="0.4" max="1" step="0.01">
+          <span class="val" id="d-maxEntropy"></span></label>
+        <label>min stability
+          <input type="range" id="s-minStability" min="0" max="0.99" step="0.01">
+          <span class="val" id="d-minStability"></span></label>
+        <label>stable frames
+          <input type="range" id="s-stableFrames" min="1" max="15" step="1">
+          <span class="val" id="d-stableFrames"></span></label>
+      </div>
+    </div>
+
+    <div class="panel" style="flex:1 1 420px">
+      <h2>Chroma — what's ringing (green = in the detected key)</h2>
+      <div class="bars" id="bars"></div>
+      <div class="meta" id="level" style="margin-top:10px">gate: —</div>
+      <div class="meter"><div id="levelbar" style="width:0"></div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Chord — one moment, ranked guesses</h2>
+      <div id="cands"><div class="meta">waiting for sound…</div></div>
+      <div class="meta" id="chordmeta" style="margin-top:10px"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Key — many moments, one answer</h2>
+      <div class="big" id="keyname">—</div>
+      <div class="meter"><div id="keybar" style="width:0;background:var(--violet)"></div></div>
+      <div class="meta" id="keymeta">warming up…</div>
+      <div class="meta" id="scale" style="margin-top:8px;color:#e8e8f0"></div>
+      <div class="meta" id="runnersup" style="margin-top:8px"></div>
+    </div>
+
+    <div class="panel" style="flex:1 1 100%">
+      <h2>Heard so far — chords that held long enough to count</h2>
+      <div class="hist" id="hist"><span class="low">nothing yet</span></div>
+    </div>
+  </div>
+
+<script type="module">
+import {
+  startChromaListening, chromaAvailable, CHROMA_DEFAULTS, GATE_DEFAULTS,
+} from '/src/audio/chroma.js';
+import { makeKeyTracker, listenFrame, keyToScale, keyPitchClasses } from '/src/music/keyDetect.js';
+import { PC_NAMES } from '/src/music/chords.js';
+
+const $ = id => document.getElementById(id);
+
+// Build the 12 chroma bars once.
+const barEls = PC_NAMES.map(name => {
+  const wrap = document.createElement('div');
+  wrap.className = 'bar';
+  wrap.innerHTML = `<div class="fill" style="height:0"></div><div class="lbl">${name}</div>`;
+  $('bars').appendChild(wrap);
+  return { fill: wrap.firstElementChild, lbl: wrap.lastElementChild };
+});
+
+// A chord only enters the history once it has HELD. Anything shorter is a
+// strum transient, and logging those buries the real progression in noise.
+const HOLD_MS = 260;
+const HIST_MIN_CONFIDENCE = 0.15;
+const history = [];
+let holdName = null, holdSince = 0, lastLogged = null;
+
+let listener = null;
+const keyTracker = makeKeyTracker();
+
+// ── Live threshold sliders ──────────────────────────────────────────────────
+// Seeded from GATE_DEFAULTS so the page never disagrees with the module about
+// what the shipped values are.
+const SLIDERS = ['floorMarginDb', 'maxFlatness', 'maxEntropy', 'minStability', 'stableFrames'];
+const gateOpts = { ...GATE_DEFAULTS };
+for (const k of SLIDERS) {
+  const el = $('s-' + k);
+  el.value = gateOpts[k];
+  $('d-' + k).textContent = gateOpts[k];
+  el.oninput = () => {
+    gateOpts[k] = Number(el.value);
+    $('d-' + k).textContent = el.value;
+    if (listener) listener.setOptions({ [k]: gateOpts[k] });
+  };
+}
+
+// Human-readable causes. The raw reject codes are for code; a person tuning a
+// room wants to know what the machine thinks it just heard.
+const WHY = {
+  quiet:     'silence — nothing above the absolute floor',
+  floor:     'too close to the room floor — this is background, not a performance',
+  noisy:     'broadband, not pitched — fan, traffic, hiss, clatter, a knock',
+  unfocused: 'energy smeared across all twelve notes — no harmony here',
+  unstable:  'changing every frame — speech, a transient, or a passing sound',
+  settling:  'looks musical, waiting for it to hold…',
+};
+
+$('start').onclick = async () => {
+  if (listener) {
+    listener.stop();
+    listener = null;
+    $('start').textContent = 'START LISTENING';
+    $('reset').disabled = true;
+    return;
+  }
+  if (!chromaAvailable()) {
+    $('err').textContent = 'getUserMedia unavailable — needs https or localhost';
+    return;
+  }
+  try {
+    $('err').textContent = '';
+    listener = await startChromaListening(onFrame, gateOpts);
+    $('start').textContent = 'STOP';
+    $('reset').disabled = false;
+  } catch (e) {
+    $('err').textContent = 'mic error: ' + e.message;
+  }
+};
+
+$('reset').onclick = () => {
+  keyTracker.reset();
+  if (listener) listener.resetGate();   // re-learn the room floor from scratch
+  history.length = 0;
+  lastLogged = null;
+  renderHistory();
+};
+
+let lastFrameT = 0;
+
+function onFrame(f) {
+  const { chroma, bass, db, active, musical, reject, floorDb, flatness, entropy, stability } = f;
+
+  // ── level meter ──
+  const pct = Math.max(0, Math.min(100, ((db + 70) / 60) * 100));
+  $('levelbar').style.width = pct + '%';
+  $('levelbar').style.background = musical ? 'var(--green)' : active ? 'var(--amber)' : 'var(--dim)';
+  $('level').textContent =
+    `${db.toFixed(1)} dBFS · room floor ${floorDb == null ? '—' : floorDb.toFixed(1)} · ` +
+    `gateDb ${CHROMA_DEFAULTS.gateDb} · fft ${CHROMA_DEFAULTS.fftSize}`;
+
+  // ── the gate panel ──
+  $('verdict').textContent = musical ? 'MUSIC' : active ? 'ignoring' : 'silence';
+  $('verdict').className = 'verdict ' + (musical ? 'music' : active ? 'reject' : 'quiet');
+  $('why').textContent = musical ? 'all gates agree — this is being measured' : (WHY[reject] || '');
+
+  const gateRow = (id, value, text, failing) => {
+    $('v-' + id).textContent = text;
+    $('g-' + id).className = value == null ? '' : failing ? 'fail' : 'ok';
+  };
+  if (active) {
+    gateRow('floor', db, `${(db - floorDb).toFixed(1)} dB over · need ${gateOpts.floorMarginDb}`,
+      db - floorDb < gateOpts.floorMarginDb);
+    gateRow('noisy', flatness, `${flatness.toFixed(3)} · max ${gateOpts.maxFlatness}`,
+      flatness > gateOpts.maxFlatness);
+    gateRow('unfocused', entropy, `${entropy.toFixed(3)} · max ${gateOpts.maxEntropy}`,
+      entropy > gateOpts.maxEntropy);
+    gateRow('unstable', stability, `${stability.toFixed(3)} · min ${gateOpts.minStability}`,
+      stability < gateOpts.minStability);
+  } else {
+    for (const id of ['floor', 'noisy', 'unfocused', 'unstable']) gateRow(id, null, '—', false);
+  }
+
+  const now = performance.now();
+  const dt = lastFrameT ? now - lastFrameT : 16.7;
+  lastFrameT = now;
+
+  // ⚠️ ONLY MUSICAL FRAMES REACH THE KEY TRACKER. Feeding it every audible
+  // frame was the original behaviour and it quietly poisoned the histogram:
+  // room noise contributes energy to all twelve pitch classes, which flattens
+  // the profile and drags every key correlation toward zero. The key estimate
+  // got worse the longer you left the page open in a noisy room.
+  if (musical) keyTracker.push(chroma, dt);
+  const key = keyTracker.estimate();
+
+  // ── key panel ──
+  if (key.best) {
+    const sc = keyToScale(key.best.rootPc, key.best.mode);
+    $('keyname').textContent = `${sc.root} ${key.best.mode}`;
+    $('keybar').style.width = (key.confidence * 100).toFixed(0) + '%';
+    $('keymeta').textContent =
+      `confidence ${(key.confidence * 100).toFixed(0)}% · r=${key.best.score.toFixed(3)} · ` +
+      `margin ${key.margin.toFixed(3)} · ${keyTracker.framesSeen()} frames`;
+    $('scale').textContent = sc.notes.join('  ');
+    $('runnersup').textContent = 'also plausible: ' +
+      key.ranked.slice(1, 4).map(k => `${k.name} (${k.score.toFixed(2)})`).join(' · ');
+  } else {
+    $('keyname').textContent = '—';
+    $('keymeta').textContent = key.warmingUp ? 'warming up — keep playing…' : 'no signal';
+  }
+
+  // ── chroma bars, tinted by key membership ──
+  const inKey = key.best ? keyPitchClasses(key.best.rootPc, key.best.mode) : null;
+  for (let i = 0; i < 12; i++) {
+    const member = inKey ? inKey.has(i) : false;
+    barEls[i].fill.style.height = ((chroma[i] || 0) * 100).toFixed(1) + '%';
+    barEls[i].fill.className = 'fill' + (member ? ' inkey' : '');
+    barEls[i].lbl.className = 'lbl' + (member ? ' inkey' : '');
+  }
+
+  // A rejected frame holds the last read on screen at reduced opacity rather
+  // than blanking. Blanking on every gap makes correct detection look broken.
+  $('cands').classList.toggle('held', !musical);
+  if (!musical) {
+    if (!active) {
+      $('cands').innerHTML = '<div class="meta">silence</div>';
+      $('chordmeta').textContent = '';
+      $('cands').classList.remove('held');
+    }
+    holdName = null;
+    return;
+  }
+
+  // ── chord candidates ──
+  const useBias = $('bias').checked;
+  const res = listenFrame(chroma, bass, useBias ? key : null, { topN: 3 });
+  $('cands').innerHTML = res.ranked.map((c, i) => `
+    <div class="cand${i ? ' faint' : ''}">
+      <div class="top">
+        <span class="nm">${c.name}</span>
+        <span class="sc">${c.score.toFixed(3)}</span>
+      </div>
+      <div class="track"><div style="width:${Math.max(0, c.score * 100).toFixed(0)}%"></div></div>
+      <div class="sc">${c.notes.join(' ')}${
+        c.missing.length ? ` <span class="miss">· weak: ${c.missing.join(' ')}</span>` : ''
+      }</div>
+    </div>`).join('');
+  $('chordmeta').textContent =
+    `confidence ${(res.confidence * 100).toFixed(0)}% · margin ${res.margin.toFixed(3)}` +
+    (res.keyBiased ? ' · key bias ON' : ' · unbiased');
+
+  // ── hold-then-log history ──
+  const name = res.best ? res.best.name : null;
+  if (name !== holdName) {
+    holdName = name;
+    holdSince = now;
+  } else if (name && now - holdSince > HOLD_MS && name !== lastLogged) {
+    lastLogged = name;
+    history.push({ name, confidence: res.confidence });
+    if (history.length > 40) history.shift();
+    renderHistory();
+  }
+}
+
+function renderHistory() {
+  $('hist').innerHTML = history.length
+    ? history.map(h =>
+        `<span class="${h.confidence < HIST_MIN_CONFIDENCE ? 'low' : ''}">${h.name}</span>`).join('')
+    : '<span class="low">nothing yet</span>';
+}
+</script>
+</body>
+</html>

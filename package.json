@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "test:engine": "node --import ./src/engine/testAssetStub.mjs src/engine/selftest.mjs",
+    "test:chroma": "node src/audio/chromaSelftest.mjs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
