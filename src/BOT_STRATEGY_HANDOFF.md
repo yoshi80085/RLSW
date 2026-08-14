@@ -349,12 +349,102 @@ tempo for rivals. Re-read this when the searcher starts scoring opponent replies
 5. **Time budget already exists.** `schedule()` / `botStepRef: 'pending'` insert
    cinematic delay per bot step — hundreds of ms of thinking that costs the
    player nothing.
-6. **Harness = the test bench.** Headless `while (!state.winner)` on seeded rng,
+6. **Harness = the test bench.** Now UNBLOCKED — `applyBotAction` is the step
+   function it was missing, and `transitionCheck.mjs` section 9 already pins the
+   determinism property it depends on. Headless `while (!state.winner)` on seeded rng,
    new bot vs. current bot, ~2000 matches. Bar: **≥60%** or it isn't smarter.
    Plus the determinism regression already patterned in Phase 7c — same seed +
    same state ⇒ identical action sequence.
 
 ---
+
+### 6b. The transition — `applyBotAction`
+
+> ✅ **SHIPPED 2026-08-14** — `policies/transition.js` + `systems/attackParams.js`,
+> covered by `transitionCheck.mjs` (`npm run test:transition`).
+
+`legalActions` says what may happen; `evaluate` says how good a position is.
+Neither is worth anything without the piece in the middle — a way to actually
+TAKE an action and get the next state. `applyBotAction(state, action, ctx) ->
+{ state, view, ok, reason, logs }`.
+
+**It owns no rules.** Every kind routes into the existing engine: `applyAction`
+(the reducer), `attackParams` (new — the stat derivation), `battleConsequences`
+(the ordered aftermath, the same generator the UI drives). Where a rule would
+have to be *re-implemented* to make a kind work, the kind is declared
+**unmodelled** instead. A transition that quietly invents rules is worse than
+one that admits a gap: the gap shows up as a bot that never considers a line,
+which is visible; an invented rule shows up as a bot that is confidently wrong,
+which is not.
+
+`ok: false` leaves state untouched and names one of two *different* facts:
+`'illegal'` (the rules refuse it — a caller feeding straight from `legalActions`
+should never see this, and if it does, the two files have drifted) or
+`'unmodelled'` (the rules allow it, the engine cannot yet run it headlessly).
+
+**What is not modelled yet — read this before trusting any win rate:**
+
+1. **`confirmMelody` is PARTIAL, and this is the significant one.** It applies
+   the mechanical half — the AP grant and the `hasConfirmed` flip — but not the
+   economic half: Db payout, Performance Score, fan gain, mode re-derivation,
+   banked note. Those live ~600 lines deep in `confirmNoteTrack`. **Consequence:
+   a searcher on this transition sees the melody's MOVEMENT value but is blind
+   to its SCORING value, so it will bias toward short tracks.** Do not read §6.6
+   results as melody-strategy evidence until this lands. It returns
+   `partial: ['dbPayout', 'perfScore', 'fanGain', 'modeDerivation', 'bankedNote']`
+   so the gap is announced at every call rather than remembered from a doc.
+2. **`smash` / `blaster` are UNMODELLED.** They are not `attackRolled` attacks —
+   undefendable, resolved through `smashOutcome`, with a long bespoke chain
+   (whole Drive stack spent, stock hurled, `smashExposed` set, movement zeroed).
+   Section 3.4 calls the Smash a defence-breaker whose real payload is the
+   *exposure*, so a half-modelled Smash would misprice the highest-damage
+   sequence in the game.
+3. **`pose` moves `view.posing` only** — the per-round FP tick and Sustain toll
+   are on the client's turn clock.
+
+Everything else — movement, facing, melody notes, stack commits, skill unlocks,
+Swing, Sonic, end of turn — is exact.
+
+**`applyBotLine` is ATOMIC**: all of it applies or none of it does. Returning a
+partially-advanced state would let a caller score a *truncated* line as the line
+it asked for — "walk in, then Smash" scored as "walk in", a position that looks
+safe precisely because the dangerous half silently did not happen. Rollback is
+free, because engine states are immutable snapshots.
+
+**`ctx.rng` must be a fork** (`rng.fork('search')`) whenever this is called
+speculatively — section 0.4. This file cannot enforce that; the caller must.
+
+Two facts the check pinned that are easy to get wrong in a searcher:
+
+- **Walking re-faces you.** `applyMoveStep` spends the AP *and* sets facing down
+  the direction of travel. Stepping toward a rival turns your back on whatever
+  was behind you, and `isRearHit` reads that on defence.
+- **The Smash exposure is consumed by being READ.** `attackParams` is pure and
+  cannot clear `smashExposed`, so the transition clears it after the blow that
+  read it. Miss that and the rival's armour stays switched off for the rest of
+  the match.
+
+### 6c. `attackParams` — and how much of the old preamble is dead
+
+The stat derivation lifted out of `resolveSwing` / `initiateSonicAttack`:
+`(state, attackerId, defenderId, kind, view)` -> the `attackRolled` payload.
+Pure — it rolls nothing, so every draw still happens inside `applyAttackRolled`
+off the seeded stream.
+
+**Most of the modifier tower it looked like it needed is inert, and has been for
+a while.** `getBattleSkillMods` returns `halveDef:false, fogActive:false,
+pyroBonus:0` — the stage-effect battle buffs were retired when Stage Effects
+moved onto the board; the flags survive only so downstream visuals don't crash.
+`edgeCombatMods()` returns zeroes — the Dissonance Edge is removed. Those
+branches are therefore **not** re-implemented. Reproducing `+ 0` in four places
+would imply the systems still exist and invite someone to "fix" the bot by
+tuning them. If a stage effect ever bites in battle again, it enters there, once.
+
+`BEAST_DRIVE = 6` is a bare local inside the monolith rather than a gameConstant,
+so `attackParams` carries a **transcription** of it. Hoist it when convenient.
+Likewise `spiritChord` now exists in **three** byte-identical copies (monolith,
+`bot.js`'s `botSpiritChord`, `attackParams`) — the new one is the copy a
+headless caller should use; collapse the others when those files are next touched.
 
 ### 6a. The action schema
 
@@ -425,6 +515,10 @@ which zeroes for the same reason.
   that self-debuff or it will over-rate melee.
 - ~~§3.7's underdog direction~~ — **resolved 2026-08-14**: the doc was inverted,
   `combat.js` wins. Punch up. Guarded by `evalCheck.mjs` §13.
+- **`confirmMelody`'s economy is the biggest remaining hole** (6b.1). Until it
+  lands, the searcher undervalues long melodies, and no section 6.6 win rate is
+  evidence about melody strategy. Extracting `confirmNoteTrack`'s scoring half
+  is probably the single highest-value next extraction in the whole engine.
 - **Opponent replies need a second mode.** Both `legalActions` (returns `[]`)
   and `evaluate` (`apBanked` → 0) deliberately refuse to speak for a Spirit who
   is not `state.acting`. That is right for a one-ply generator and wrong for
