@@ -165,12 +165,26 @@ turns are worth more than late ones. But centre is also the Limelight, i.e. the
 most contested hex on the board. The bot should treat fan multiplier as an
 *investment horizon* term, decaying in weight as `fameToWin` approaches.
 
-### 3.7 Underdog: the comeback tax on closing out
+### 3.7 Underdog: punch UP, or collect nothing
 `UNDERDOG_MIN_DEFICIT` 6 behind, +0.5 mult per `UNDERDOG_DEFICIT_PER_STEP` 6,
 up to `UNDERDOG_MAX_MULT` 2.5.
-**Verdict:** ⚠️ a leading bot must know that beating up the last-place Spirit
-*pays them*. Target selection should prefer second place. The current
-`botPickTarget` has a `targetLeader` flag but no underdog term at all.
+
+> ⚠️ **CORRECTED 2026-08-14 — this section was inverted, source wins.** It
+> previously read "beating up the last-place Spirit *pays them* — prefer second
+> place." That is backwards. `combat.js`:
+> `underdogBonus(winnerFame, loserFame)` → `deficit = loserFame - winnerFame`,
+> and the multiplier is applied to the **winner's** payout. Nobody is ever paid
+> for being hit. The bonus belongs to whoever wins **from behind**.
+
+**Verdict:** the money is in punching **up**. A trailing bot should hunt the
+fame **leader** — the same knockout is worth up to ×2.5 there and ×1 against
+last place. A leading bot gets no multiplier from anyone and should pick targets
+on damage and position alone. `botPickTarget`'s `targetLeader` flag turns out to
+be the right instinct wired to the wrong justification: it is not a saboteur
+personality trait, it is arithmetic, and it should be *conditional on trailing*.
+Shipped as the `targetUpside` term in `policies/evaluate.js`, cross-checked
+against `underdogBonus` itself in `evalCheck.mjs` §13 so the two cannot drift
+apart again.
 
 ---
 
@@ -243,8 +257,36 @@ counted in spirit-turns seeded with the living-Spirit count).
 
 ## 5. Evaluation weights — the persona replacement
 
-`evaluate(state, spiritId) → number`, weights keyed by Spirit. Values are
-starting points to be tuned by the §6 harness, **not** measurements.
+> ✅ **SHIPPED 2026-08-14** — `src/engine/policies/evaluate.js`, covered by
+> `src/engine/evalCheck.mjs` (`npm run test:eval`, 85 assertions).
+
+`evaluate(state, spiritId, view) → { score, terms, weights }`, weights keyed by
+Spirit. Values are starting points to be tuned by the §6 harness, **not**
+measurements.
+
+**Three things about the shipped shape that the table above does not say.**
+
+1. **It returns the breakdown, not just the number.** A single score tells you
+   the bot preferred a line but never *why*, and a mis-signed term looks exactly
+   like a good bot until it has lost 2000 matches. Log `terms`, don't trust
+   `score`.
+2. **The `view` argument carries what the engine still doesn't own.** `posing`
+   and `limelightScores` are React state (`state.js` null slices), so they are
+   passed in and default to empty — an eval with no view scores every other term
+   correctly and is simply blind to §3.3. Delete the argument when those slices
+   land in the engine; nothing else changes.
+3. **Sign convention (an ambiguity in the table, now resolved).** Every weight is
+   a **positive magnitude**; every term value is signed in `[-1, 1]` where
+   positive means "good for me". The table below printing `underdog` as −1.0
+   while printing `rival pose` as +1.0 was drift, not a distinction. Terms are
+   also **clamped** to `[-1, 1]` — the weight column is the only place tuning
+   happens, so no single row is allowed to swamp the sum.
+
+Normalisation worth knowing: `survival` folds lives and Vibe into one fraction
+so losing a life always outranks being chipped; `fanMult` and `dbHorizon` are
+both multiplied by an **investment horizon** (`1 - fame/fameToWin`) per §3.6 and
+§3.2; `perfCliff` is a step at 5, never a slope; `drive`/`sustain` divide by
+`stackCapFor()`, never a flat 5.
 
 | Term | Ronin | Intergalactic 0 | Metalness |
 |---|---|---|---|
@@ -262,11 +304,19 @@ starting points to be tuned by the §6 harness, **not** measurements.
 | distance from board edge | **1.3** | 0.9 | 0.6 |
 | Db banked vs. match remaining | 1.0 | 1.0 | 1.0 |
 | rival pose count (threat) | 1.0 | 1.0 | 1.0 |
-| **underdog-target penalty** | −1.0 | −1.0 | −1.0 |
+| **target upside** (was "underdog penalty") | 1.0 | 1.0 | 1.0 |
 
 ⚠️ **The last two rows are new terms with no equivalent in `botHexScore` today.**
 They are also the two most likely to change observed win rates, because they
-correct outright blind spots rather than re-weighting existing sight.
+correct outright blind spots rather than re-weighting existing sight. Term keys
+in code, in table order: `survival`, `fame`, `fanMult`, `perfCliff`, `drive`,
+`sustain`, `apBanked`, `inRig`, `charge`, `refillDenied`, `adjWounded`,
+`edgeSafety`, `dbHorizon`, `rivalPose`, `targetUpside`.
+
+🔎 **`apBanked` is scored 0 for any Spirit who is not `state.acting`.** Only the
+acting Spirit has a live `moveStepsLeft`; for everyone else the value is
+*unknowable*, not zero, and guessing it would have the searcher hallucinate
+tempo for rivals. Re-read this when the searcher starts scoring opponent replies.
 
 ---
 
@@ -276,7 +326,11 @@ correct outright blind spots rather than re-weighting existing sight.
    current bot function is a *chooser* (`botPlanMove` → one hex,
    `botPlanNoteStep` → one step, `botPickTarget` → one target). This is the
    bulk of the work.
-2. **`evaluate(state, spiritId)`** — §5. `botHexScore` scores a hex, not a position.
+2. ~~**`evaluate(state, spiritId)`** — §5.~~ ✅ **DONE** —
+   `policies/evaluate.js`. `botHexScore` scores a hex; this scores a position.
+   Left deliberately un-wired: nothing calls it yet, because the thing that
+   should call it is (1), and hanging it off the existing choosers early would
+   bake in the hex-at-a-time framing it exists to replace.
 3. **Beam, not full width.** Keep the existing planners as *candidate
    generators*: have each return its top 3–5 instead of top 1 and search only
    that. Preserves everything already tuned, keeps branching sane, degrades
@@ -306,7 +360,13 @@ correct outright blind spots rather than re-weighting existing sight.
   Sustain, and `swingExposed` costs the *attacker* −1 Sustain until their next
   turn — melee-only, Sonic keeps you safe. The evaluator must charge the Swing
   that self-debuff or it will over-rate melee.
+- ~~§3.7's underdog direction~~ — **resolved 2026-08-14**: the doc was inverted,
+  `combat.js` wins. Punch up. Guarded by `evalCheck.mjs` §13.
 - Metalness's missing innate (§4.3) blocks honest cross-Spirit tuning.
+- **`PERF_CLIFF = 5` lives in `evaluate.js`, not `gameConstants.js`** — because
+  `gameConstants` holds no per-Spirit innate numbers at all today. If a second
+  innate ever needs a threshold, that is the moment to give innates their own
+  constants module rather than scattering them through the policies.
 - Legendary riffs paying FP directly is still the open 💬 in `ECONOMY_HANDOFF.md`.
   If it changes, the FP terms in §5 move with it.
 - Should search depth be per-Spirit? A deep Intergalactic 0 (denial, long
