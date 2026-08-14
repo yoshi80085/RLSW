@@ -90,6 +90,7 @@ import { skillEligibility, THEORY_DISCORD_GRANTS } from "./engine/systems/skills
 import {
   battleConsequences, chordFray as chordFrayFlow, runBattleFlow,
 } from "./engine/systems/battleFlow.js";
+import { startTurnNotes, refillDrawCount } from "./engine/systems/turnFlow.js";
 import { STYLE_DEFS, styleOf, styleDef } from "./data/styles.js";
 import {
   BOT_PERSONALITIES, BOT_PERSONA_KEYS, BOT_SKILL_PRIORITY_BASE, BOT_SPIRIT_SKILLS,
@@ -364,7 +365,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, STOCK_REFILL_RATE, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_STEP, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, THRASH_DIE, THRASH_CEIL_DIE, SONIC_LIMELIGHT_FP, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_STEP, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, THRASH_DIE, THRASH_CEIL_DIE, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -4762,6 +4763,11 @@ function Game({ gameState, onReturnToLobby }) {
   // B8: the Major/Minor mode is DERIVED here from the Drive Stack instead of
   // prompting the player, so pivotPending is now set false rather than true.
   // Also clears per-turn debuffs: tripped (movement halved), dazed, instrumentDropped.
+  // ── TURN START ─────────────────────────────────────────────────────────────
+  // 📌 The transform moved to engine/systems/turnFlow.js. What stays here is the
+  // draw, the write, and the theatre. §1's spine — mode derivation, the gradual
+  // refill, every per-turn reset and cooldown tick — is engine-owned now, which
+  // is what lets the headless harness advance a turn at all.
   function startNewTurnNotes(spiritId) {
     // Record whether this spirit starts their turn on the limelight hex.
     // (The engine reads its own synced spirit positions.)
@@ -4770,198 +4776,47 @@ function Game({ gameState, onReturnToLobby }) {
     // defender who banked capped FP during the last turn gets a clean slate).
     fameThisTurnRef.current = {};
 
-    // ── 🎲 THE REFILL DRAW — pre-rolled off the SEEDED stream ────────────────
-    // ⚠️ This is the single most consequential random event in the game: it is
-    // §1's spine, the 6 notes that buy every stack commit and every hex walked.
-    // It used to call randomNote() with no rng, i.e. Math.random, which meant no
-    // seed could ever reproduce a match — replays, the online cursor tripwire,
-    // and the headless bot harness all silently broken by it.
-    //
-    // The rate is derivable from the sheet as it stands, so the draws are made
-    // HERE and consumed inside the updater. Drawing inside would advance the
-    // engine cursor once per React re-invocation of the updater — the same
-    // double-draw hazard, just better hidden.
-    const refillNs   = engineRef.current.noteStates?.[spiritId] ?? {};
-    const refillRate0 = Math.max(0,
-      (refillNs.halfRefillNextTurn ? Math.floor(STOCK_REFILL_RATE / 2) : STOCK_REFILL_RATE)
-      - (refillNs.refillDrain ?? 0));
-    const refillDraws = drawSeeded(Math.min(refillRate0, (refillNs.noteStock ?? []).length));
-    let refillCursor  = 0;
+    const ns = engineRef.current.noteStates?.[spiritId];
+    if (!ns) return;
 
-    setNoteStates(prev => {
-      const ns = prev[spiritId];
-      if (!ns) return prev;
+    // ⚠️ The draw happens HERE, before the write, and the COUNT comes from the
+    // engine (`refillDrawCount`) rather than being recomputed by eye. If the
+    // number drawn and the number consumed ever disagree, every later draw in
+    // the match is misaligned — a desync that shows up as nothing at all until
+    // a replay diverges. turnFlowCheck.mjs pins the two together.
+    const draws = drawSeeded(refillDrawCount(ns));
+    const { patch, report } = startTurnNotes(ns, { draws });
+    if (!patch) return;
+    setNoteField(spiritId, patch);
 
-      // ── 🎸 B8: THE CHORD DECLARES THE MODE ──────────────────────────────────
-      // Was a per-turn "Major or Minor?" button prompt. The root changes every
-      // turn, so it fired every turn — the highest-frequency modal in the game,
-      // asking a theory question of players who may not have one. It also bought
-      // less than it looked like: after B3, stacking a minor triad already
-      // legalizes the ♭3 through Chord Tone Pardon without declaring anything.
-      // So the stack decides, and the decision moves into the thing the player is
-      // already manipulating.
-      //
-      // ⚠️ DERIVE AT TURN START ONLY — never on stack commit. Re-deriving mid-turn
-      // would respell the note stock underneath notes the player has already
-      // placed. A stack committed this turn changes the mode NEXT turn; the HUD
-      // says so rather than reaching back and rewriting the current one.
-      const derived     = modeFromStack(ns.driveStack ?? [], ns.unlockedSkills ?? [], ns.scaleMode ?? 'major');
-      const derivedMode = derived.mode;
-      const derivedRoot = canonicalRoot(ns.rootNote, derivedMode);
-      const modePool    = getSpelledPool(derivedRoot, derivedMode);
-      const driveChord  = evaluateChord((ns.driveStack ?? []).filter(Boolean));
+    // ── Theatre, off the report — no rules re-derived from the patch ─────────
+    const nm = spirits.find(s => s.id === spiritId)?.name;
+    if (report.halvedByAxeSwing && report.refreshedCount > 0) {
+      addLog(`🪓 Axe Swing whiff — stock recovery halved this turn!`);
+    }
+    if (report.drainedByVortex > 0) {
+      const d = report.drainedByVortex;
+      addLog(`🕳️ The vortex already ate ${d} note${d !== 1 ? 's' : ''} — that many fewer come back this turn.`);
+    }
+    if (report.refreshedCount > 0) {
+      const c = report.refreshedCount;
+      addLog(`🎵 ${nm} draws ${c} new note${c !== 1 ? 's' : ''} into the pool!`);
+      setPointsFlash({ lines: [`🎵 +${c} new note${c !== 1 ? 's' : ''}`], key: Date.now() });
+      setTimeout(() => setPointsFlash(null), 2200);
+      setFreshNoteIdx({ spiritId, indices: new Set(report.refreshedIdx), key: Date.now() });
+      setTimeout(() => setFreshNoteIdx(prev => (prev?.spiritId === spiritId ? null : prev)), 700);
+    }
 
-      // 🎵 GRADUAL REFILL — unused notes carry over; only up to STOCK_REFILL_RATE
-      // spent slots recharge this turn. Spend big one turn, run short the next.
-      // Axe Swing whiff penalty: halve refill rate for one turn
-      // 🕳️ Gravity Control's drain stacks ON TOP of the Axe Swing halving and is
-      // floored at 0 — being both slimed and swallowed is a bad turn, not a
-      // negative refill. Applied here and cleared below, so it bites once.
-      const refillRate = Math.max(0,
-        (ns.halfRefillNextTurn ? Math.floor(STOCK_REFILL_RATE / 2) : STOCK_REFILL_RATE)
-        - (ns.refillDrain ?? 0));
-      const usedIdxs   = usedList(ns.usedStockIdx);
-      const refreshing = new Set(usedIdxs.slice(0, refillRate));
-      // Fresh notes are drawn in the DERIVED key and carried-over notes are
-      // respelled into it — both here, before the player ever sees the stock.
-      // Drawing with ns.scaleMode would spell this turn's new notes in last
-      // turn's mode, which is exactly the bug the old pivot's respell-on-declare
-      // was there to prevent.
-      refillCursor = 0;   // updater may re-run; always consume from the top
-      const newStock = ns.noteStock.map((note, idx) => {
-        if (refreshing.has(idx)) {
-          const draw = refillDraws[refillCursor++] ?? 0;
-          return randomNote(derivedRoot, derivedMode, () => draw);
-        }
-        const pi = pitchIndex(note);
-        return pi !== -1 ? modePool[pi] : note;
-      });
-      const carriedUsed = usedIdxs.filter(i => !refreshing.has(i)); // insertion order preserved (was a Set)
-
-      // 🎵 Announce the refill instead of letting it happen silently — same
-      // "pop in like fans do" treatment as flashFanFx, deferred via setTimeout
-      // so it fires safely outside this functional update (mirrors tickFans).
-      if (ns.halfRefillNextTurn && refreshing.size > 0) {
-        setTimeout(() => addLog(`🪓 Axe Swing whiff — stock recovery halved this turn!`), 0);
-      }
-      if ((ns.refillDrain ?? 0) > 0) {
-        const drained = ns.refillDrain;
-        setTimeout(() => addLog(`🕳️ The vortex already ate ${drained} note${drained !== 1 ? 's' : ''} — that many fewer come back this turn.`), 0);
-      }
-      if (refreshing.size > 0) {
-        const nm = spirits.find(s => s.id === spiritId)?.name;
-        setTimeout(() => {
-          addLog(`🎵 ${nm} draws ${refreshing.size} new note${refreshing.size !== 1 ? 's' : ''} into the pool!`);
-          setPointsFlash({ lines: [`🎵 +${refreshing.size} new note${refreshing.size !== 1 ? 's' : ''}`], key: Date.now() });
-          setTimeout(() => setPointsFlash(null), 2200);
-          setFreshNoteIdx({ spiritId, indices: refreshing, key: Date.now() });
-          setTimeout(() => setFreshNoteIdx(prev => (prev?.spiritId === spiritId ? null : prev)), 700);
-        }, 0);
-      }
-
-      // NOTE: mojoDrain / stagger / tripped / dazed / instrumentDropped are NO
-      // LONGER ticked or cleared here. Clearing them at the start of your own
-      // turn meant they expired before they could ever affect you (the bug that
-      // made CQC slip/daze/drop and Stagger feel like they never fired).
-      // They now tick down / clear at the END of your own turn — see endTurn().
-
-      // ── 🎫 CREW ASSIGNMENTS take effect here (CREW_SYSTEM_DESIGN.md §2) ──
-      // The fan had to get backstage overnight: pendingAssignments becomes the
-      // active roster. Stagehand's roadie is pushed/popped alongside (the whole
-      // roadie UI/flow reads ns.roadies — §4.2).
-      const nextRoadies = (ns.roadies ?? []).map(r =>
-        r.cooldownTurns > 0 ? { ...r, cooldownTurns: r.cooldownTurns - 1 } : r
-      );
-
-      return {
-        ...prev,
-        [spiritId]: {
-          ...ns,
-          noteStock:    newStock,
-          melodyLine:    [],
-          melodySrcIdx:  [],
-          melodyFreq:    [],
-          committedMelody:  null,   // Phase R1: clear stashed melody from last turn
-          committedFreq:    null,
-          committedHasRiff: false,
-          stackCommitsThisTurn: 0,  // 🎸 fresh stack commit budget each turn
-          usedStockIdx: carriedUsed,
-          discordCount: 0,
-          payoutRouting: {},        // dies with the track it indexes into
-          hasConfirmed: false,
-          dieFloorBoost: 0,
-          smashExposed: false,   // 🎸💥 exposure clears at the start of your own turn
-          halfRefillNextTurn: false,  // 🪓 Axe Swing whiff penalty consumed
-          refillDrain: 0,             // 🕳️ vortex note-drain consumed (applied to refillRate above)
-          // (🌌 displaceCd tick REMOVED — Space is Displaced has no cooldown; it
-          // is metered by its Db cost alone. Any stale displaceCd left on an
-          // in-flight save just goes unread, exactly like acousticDuelCds.)
-          // 🌀 Psycho Bushido cooldown ticks down on Ronin's own turns
-          psychoBushidoCd: Math.max(0, (ns.psychoBushidoCd ?? 0) - 1),
-
-          // Tick down roadie cooldowns
-          roadies: nextRoadies,
-          // Tick down cadence objective cooldowns
-          cadenceCooldowns: Object.fromEntries(
-            Object.entries(ns.cadenceCooldowns ?? {}).map(([k, v]) => [k, Math.max(0, v - 1)])
-          ),
-          // (acousticDuelCds tick REMOVED — the Acoustic Duel and its per-pair
-          // cooldowns are gone. Any stale field on an old save just goes unread.)
-          // Tick down "goes to eleven" boost
-          elevenTurns: Math.max(0, (ns.elevenTurns ?? 0) - 1),
-          // ⚡ Charge Zone charges tick down on the holder's own turns (2 ≈ 2 rounds);
-          // battles burn them early via burnChargesAfterBattle.
-          chargeFloorTurns: Math.max(0, (ns.chargeFloorTurns ?? 0) - 1),
-          chargeCeilTurns:  Math.max(0, (ns.chargeCeilTurns  ?? 0) - 1),
-          // (bonusRevoiceAvailable removed — stack commit system replaces it)
-          // Mixer recharges every turn
-          mixerUsedThisTurn: false,
-          // 🤘 Moshpit once per turn
-          moshpitUsedThisTurn: false,
-          // 🥊 CQC swing exposure clears at the start of your next turn
-          swingExposed: false,
-          // Refresh modulation cards (exhausted resets each turn) — but spent
-          // one-shots (e.g. the starter Transpose) fall away instead of recharging.
-          modCards: (ns.modCards ?? [])
-            .filter(c => !(c.oneShot && c.exhausted))
-            .map(c => ({ ...c, exhausted: false })),
-          // 🎸 B8: mode derived from the Drive Stack, applied here. The bonus it
-          // earns can't be paid inside this updater (advanceDB / awardTargetSkill
-          // have side effects, and React may run the updater more than once), so
-          // it is STAGED and a small effect pays it exactly once — see
-          // applyModeBonus below.
-          rootNote:     derivedRoot,
-          scaleMode:    derivedMode,
-          modeReason:   derived.reason,     // 'quality' | 'ambiguous' | 'locked'
-          modeChordName: driveChord.name,   // e.g. "C Minor triad" — the HUD cites it
-          pivotPending: false,              // ⚠️ never true again; guards stay, harmless
-          pendingModeBonus: { mode: derivedMode, reason: derived.reason, root: derivedRoot },
-          // 👤 Shadow Illusion: tick down turns, dismiss if expired.
-          // Note this counts the Ronin's OWN turns, so a 3-turn double survives
-          // three full rounds of rivals guessing wrong.
-          shadowIllusion: (() => {
-            const si = ns.shadowIllusion;
-            if (!si) return null;
-            const left = (si.turnsLeft ?? 1) - 1;
-            // Zero the double's legs here and let the melody commit refill them
-            // to this turn's granted budget — otherwise last turn's leftover
-            // steps would carry over into a turn whose budget isn't known yet.
-            return left > 0 ? { ...si, turnsLeft: left, stepsLeft: 0 } : null;
-          })(),
-        },
-      };
-    });
     // 🗡️ Ronin rework: tick Wa no Koe at turn start.
     // ⏱️ The Cursed Shamisen used to tick HERE too, on the Ronin's turn — which
     // meant a 4-player table saw it play once every four turns while a duel saw
     // it play every other turn. It's a board hazard, so it moved onto the ROUND
     // clock with the rest of them (endTurn's roundCompleted block).
     if (spiritId === 'cosmic_ronin') {
-      // 👤 Read the PRE-tick value: if this was its last turn, the updater above
-      // has just cleared it, so announce the double melting away.
-      const siBefore = noteStates['cosmic_ronin']?.shadowIllusion;
-      if (siBefore && (siBefore.turnsLeft ?? 1) <= 1) {
-        triggerDamageNumber(siBefore.hex, '👤 GONE', '#4488ff');
+      // 👤 The report carries the PRE-tick state: by the time the patch lands the
+      // double is already gone, so the announcement has to read the report.
+      if (report.shadowExpiring) {
+        triggerDamageNumber(report.shadowHexBefore, '👤 GONE', '#4488ff');
         addLog('👤 The shadow illusion thins out and melts back into the Ronin — the double is spent.');
       }
       tickWaNoKoe();
