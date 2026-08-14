@@ -21,7 +21,8 @@
 import {
   toGray, sobel, houghLines, groupByAngle, sameLine, crossRatio,
   fit1DProjective, apply1D, identifyFrets, detectNeck, looksLikeBoardEnd,
-  bandMask, suppressLines, DETECT_DEFAULTS,
+  bandMask, suppressLines, thinByPosition, lineIntersection, mergeNearby,
+  labellingsAgree, DETECT_DEFAULTS,
 } from './neckDetect.js';
 import {
   fretToSpan, spanToFret, makeNeckCalibration, CORNER_TARGETS, NECK_STRINGS,
@@ -374,14 +375,22 @@ group('⏳ end-to-end detection — the part that is NOT finished');
   const found = detectNeck(gray, width, height);
 
   todo('detectNeck() does not yet return a calibration on a clean synthetic neck',
-    'stages 1 and 2 work: the strings are found, the board is isolated, the strings\n'
-    + '      are erased and ~17 fret-orientation lines come back with a spacing sequence\n'
-    + '      that visibly follows 2^(1/12). What fails is the ANCHOR. looksLikeBoardEnd()\n'
-    + '      is handed the outermost detected line, and that line is often a stray rather\n'
-    + '      than the nut, so the sampled strips both land on background and the nut test\n'
-    + '      returns "not an end". Without an anchor identifyFrets refuses — correctly.\n'
-    + '      The fix is to test EVERY plausible outer line as the nut rather than only the\n'
-    + '      extreme one, or to detect the inlay dots and anchor on those instead.');
+    'THE ANCHOR IS NO LONGER THE BLOCKER — that diagnosis was wrong, and the reason\n'
+    + '      it looked right is recorded below. What remains is CONDENSING LINES.\n'
+    + '\n'
+    + '      Pass 2 must reach deep into the ranked candidates or it loses the nut (a\n'
+    + '      foreshortened edge fret scored 0.77 against a cut of 0.776). Reaching that\n'
+    + '      deep also admits the SHOULDERS of each fret\'s Hough ridge — phantoms about\n'
+    + '      7 px from a real fret while real frets are 14–24 px apart. mergeNearby cannot\n'
+    + '      remove them: its tolerance comes from the observed gaps, and fret spacing\n'
+    + '      varies threefold along one neck. identifyFrets then prefers a STRETCHED\n'
+    + '      labelling that gives a fret and its own shoulder consecutive numbers —\n'
+    + '      residual 0.0024, 20 inliers, ONE label in twenty correct. Both ends of the\n'
+    + '      board then pass the nut test with contradictory labellings, and the\n'
+    + '      agreement veto below correctly refuses to pick between them.\n'
+    + '      Widening nmsRhoFrac to 0.025 gives 17/17 correct labels square-on and\n'
+    + '      starves the other two views of lines. One threshold does not serve all\n'
+    + '      three, which is why this is still open.');
 
   // ⚠️ THE ONE THING THAT MUST STAY TRUE WHILE IT IS BROKEN. A detector that
   // cannot find the neck has to return null. It must never fall back to a guess,
@@ -389,6 +398,130 @@ group('⏳ end-to-end detection — the part that is NOT finished');
   // downstream will believe it.
   ok(found === null || (found.frets && found.frets[0] === 0),
     'and while it is unfinished it returns null rather than a guess');
+}
+
+// =============================================================================
+group('⚠️  the nut test was being fed the wrong coordinate space');
+// =============================================================================
+
+// This is the defect that made the previous diagnosis look correct. ρ is
+// normalised by max(w, h), so `lineIntersection` returns points in HOUGH space,
+// while `looksLikeBoardEnd` indexes `gray[y * w + x]` and needs PIXELS. Handing
+// it Hough-space points sampled pixel (0, 0) for both the inside strip and the
+// beyond strip, so the two means were identical, `diff` was exactly 0, and
+// `isEnd` was false at EVERY candidate line. No amount of trying more candidate
+// lines could have fixed that — which is exactly what the old note proposed.
+{
+  const cam = VIEWS['square on'];
+  const { gray, width, height } = toGray(render(cam), W, H);
+  const o = DETECT_DEFAULTS;
+  const mag = sobel(gray, width, height);
+  const strong = houghLines(mag, width, height, {
+    ...o, peakThreshold: o.stringPeakThreshold, maxLines: o.maxStringLines,
+  });
+  const sg = groupByAngle(strong)[0];
+  const sorted = [...sg.lines].sort((a, b) => a.rho - b.rho);
+  const outer = [sorted[0], sorted[sorted.length - 1]];
+  const mask = bandMask(width, height, outer[0], outer[1], o.bandMargin * Math.max(width, height));
+  suppressLines(mask, width, height, sg.lines, o.stringSuppressPx);
+  const fretLines = houghLines(mag, width, height, {
+    ...o, mask, maxLines: o.maxFretLines,
+    acceptTheta: { theta: (sg.theta + Math.PI / 2) % Math.PI, half: o.fretAcceptHalfWidth },
+  });
+  let rhoSum = 0;
+  for (const l of sg.lines) rhoSum += l.rho;
+  const axis = { theta: sg.theta, rho: rhoSum / sg.lines.length };
+  const dir = [Math.sin(axis.theta), -Math.cos(axis.theta)];
+  const hits = [];
+  for (const fl of fretLines) {
+    const p = lineIntersection(fl, axis);
+    const a = lineIntersection(fl, outer[0]);
+    const b = lineIntersection(fl, outer[1]);
+    if (p && a && b) hits.push({ line: fl, a, b, t: p[0] * dir[0] + p[1] * dir[1] });
+  }
+  hits.sort((x, y) => x.t - y.t);
+  const frets = thinByPosition(mergeNearby(hits, o.mergeGapFrac), o.positionBins);
+  const houghScale = Math.max(width, height);
+  const toPixel = p => [p[0] * houghScale, p[1] * houghScale];
+
+  // In HOUGH space every strip lands on the same pixel, so the test is blind.
+  let blindDiffs = 0;
+  for (let i = 0; i < 3; i++) {
+    const e = looksLikeBoardEnd(gray, width, height,
+      frets[i].a, frets[i].b, frets[i + 1].a, frets[i + 1].b, o);
+    if (e && e.diff === 0) blindDiffs++;
+  }
+  ok(blindDiffs === 3,
+    'fed Hough-space points the nut test reports a contrast of exactly zero every time');
+
+  // In PIXEL space it fires on the real end of the board.
+  let fired = false;
+  for (let i = 0; i < o.maxNutCandidates; i++) {
+    const e = looksLikeBoardEnd(gray, width, height,
+      toPixel(frets[i].a), toPixel(frets[i].b), toPixel(frets[i + 1].a), toPixel(frets[i + 1].b), o);
+    if (e && e.isEnd) fired = true;
+  }
+  ok(fired, 'and fed pixels it finds the end of the board on a synthetic neck');
+}
+
+// =============================================================================
+group('thinning keeps the ends of the neck, which ranking by votes does not');
+// =============================================================================
+
+{
+  // Twelve positions; the two at the ends are the WEAKEST, as edge frets are.
+  const hits = [];
+  for (let i = 0; i < 12; i++) {
+    hits.push({ t: i / 11, line: { votes: (i === 0 || i === 11) ? 0.3 : 0.9 } });
+  }
+  const byVotes = [...hits].sort((a, b) => b.line.votes - a.line.votes).slice(0, 8);
+  ok(!byVotes.some(x => x.t === 0) && !byVotes.some(x => x.t === 1),
+    'ranking by votes throws away both ends — which is where the nut is');
+
+  const thinned = thinByPosition(hits, 8);
+  ok(thinned.some(x => x.t === 0) && thinned.some(x => x.t === 1),
+    'while thinning by position keeps them, weak though they are');
+  ok(thinned.length <= 10, 'and still respects the budget, give or take the two ends');
+
+  // A duplicate in the same INTERIOR bin loses to its stronger twin. Tested
+  // away from the ends on purpose: the ends are exempt from this rule, because
+  // keeping a weak duplicate at the edge costs a candidate the nut search will
+  // try anyway, while dropping the edge costs the anchor outright.
+  const dupes = [
+    { t: 0, line: { votes: 0.5 } }, { t: 0.50, line: { votes: 0.4 } },
+    { t: 0.51, line: { votes: 0.9 } }, { t: 1, line: { votes: 0.5 } },
+  ];
+  const dedup = thinByPosition(dupes, 3);
+  ok(dedup.length === 3 && dedup.some(x => x.t === 0.51) && !dedup.some(x => x.t === 0.50),
+    'and within one bin the strongest line is the one kept');
+}
+
+// =============================================================================
+group('two anchors that contradict each other are a veto, not a vote');
+// =============================================================================
+
+// The module header explains why a REVERSED labelling fits a set of fret lines
+// exactly as well as the true one, and it was observed doing so on the bench at
+// a residual of 0.0029. Nothing about the fit, the inlier count or the nut
+// contrast separates the two. Contradiction is the only signal there is, so a
+// rival that disagrees has to sink the answer rather than come second.
+{
+  const asc = { pairs: [{ pos: 0.1, fret: 0 }, { pos: 0.4, fret: 5 }, { pos: 0.7, fret: 9 }, { pos: 0.9, fret: 12 }] };
+  const same = { pairs: [{ pos: 0.1, fret: 0 }, { pos: 0.4, fret: 5 }, { pos: 0.9, fret: 12 }] };
+  const reversed = { pairs: [{ pos: 0.1, fret: 12 }, { pos: 0.4, fret: 9 }, { pos: 0.7, fret: 5 }, { pos: 0.9, fret: 0 }] };
+  const shifted = { pairs: [{ pos: 0.1, fret: 1 }, { pos: 0.4, fret: 6 }, { pos: 0.7, fret: 10 }, { pos: 0.9, fret: 13 }] };
+
+  ok(labellingsAgree(asc, same, 0.01), 'two readings of the same neck agree');
+  ok(!labellingsAgree(asc, reversed, 0.01), 'a neck read backwards does not');
+  ok(!labellingsAgree(asc, shifted, 0.01), 'and neither does one shifted by a single fret');
+
+  // ⚠️ NO OVERLAP IS NOT AGREEMENT. Two labellings of disjoint parts of the
+  // picture have never contradicted each other and never confirmed each other
+  // either; treating that as consensus would wave through exactly the case
+  // where there is no evidence at all.
+  const elsewhere = { pairs: [{ pos: 0.2, fret: 3 }, { pos: 0.5, fret: 6 }, { pos: 0.8, fret: 11 }] };
+  ok(!labellingsAgree(asc, elsewhere, 0.001),
+    'and two labellings that share no lines are not counted as agreeing');
 }
 
 // =============================================================================

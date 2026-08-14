@@ -76,7 +76,7 @@ import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
 import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted } from "./engine/actions.js";
-import { riffStats } from "./engine/systems/riffOff.js";
+import { riffStats, RIFF_BOTH_PAID_QUALITY, RIFF_CLOSE_QUALITY_GAP } from "./engine/systems/riffOff.js";
 import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus,
   smashOutcome, decideWinner, thrashDamage, thrashKnockback, thrashFame,
@@ -743,7 +743,9 @@ const SKILL_BY_ID = (() => {
 // Press the note's letter key as its gem crosses the line; CAPITAL letters are
 // SHARPS (hold Shift). Grades measure |press − hit-time|, early or late alike.
 const RIFF_LEN          = 6;
-const RIFF_GAP_NORMAL   = 470;   // ms breath before a steady note (groove spacing)
+// (RIFF_GAP_NORMAL retired with the old generic riff readback — playback now
+//  goes through commitRiffPerformance, which builds its own phrasing per
+//  Spirit. Groove spacing for the falling run lives in riff/fallingNotes.js.)
 // ── RIFF-OFF SCORING — timing GRADE decides the duel, not raw hit-count ──
 // Every note is graded (perfect/good/ok/miss) on how tight to the strike line
 // it was played. The duel is won on the grade-weighted SCORE of the two
@@ -752,6 +754,45 @@ const RIFF_GAP_NORMAL   = 470;   // ms breath before a steady note (groove spaci
 // the whole point. (Grade thresholds live in RIFF_FALL_DIFFICULTY presets.)
 // Riff scoring weights/margins + riffStats now live in the engine —
 // src/engine/systems/riffOff.js (Phase 4). riffStats is imported above.
+
+// ── 🎸 THE COMMIT BEAT ───────────────────────────────────────────────────────
+// ms held at the handoff so a finished performance can COMMIT in its Spirit's
+// own voice before the next one counts in (see commitRiffPerformance). The
+// signature builds are budgeted to ≈2.5s, matching the Melody Line commit, so
+// this is that plus a breath. Shorten it and the two riffs talk over each
+// other; the whole point of the commit is that you hear whose it was.
+const RIFF_COMMIT_BEAT = 2800;
+
+// ── ONE SIDE OF A DUEL, AS THE OVERLAY NEEDS IT ──────────────────────────────
+// Engine riff → the shape battleState.atkRiff / defRiff carry. There are four
+// callers (startRiffOff, the Round-2 escalation, and two netcode relay
+// branches) and they used to each spell this out; every one of them forgot to
+// forward `perf`, which is why sustains, bends and note DIRECTIONS never
+// appeared in a riff-off despite the engine generating them for both sides
+// since Phase 4. `riffStartRun` read `side.perf?.[i] ?? {}` and silently got
+// `{}` every time — every gem drew as a flat "same" bar with no tail.
+//
+// It is one function now so that can't happen again.
+//
+// `perf` also carries each note's string/fret: a chord partner is voiced by the
+// chord pass onto the adjacent string, and re-running voiceRiff over the
+// expanded chart would voice a chord's two notes sequentially — possibly onto
+// the same string, which cannot be played at a shared hit-time. voiceRiff is
+// still called for `anchors`, the guitar camera script, which is per-phrase.
+function riffSideFrom(riff, extra = {}) {
+  return {
+    notes: riffDegreesToNotes(riff.degrees, riff.sharps),
+    freqs: riff.degrees.map((d, i) => riffDegreeFreq(d, riff.sharps[i])),
+    rhythm: riff.rhythm,
+    perf: riff.perf ?? null,
+    chordOf: riff.chordOf ?? null,
+    // origRhythm: Round 2 speeds the rhythm up, but the neck voicing is scored
+    // against the WRITTEN one, so phrase windows don't shift under the camera.
+    voicing: voiceRiff(riff.degrees, riff.sharps, riff.origRhythm ?? riff.rhythm),
+    ...extra,
+  };
+}
+
 export default function RLSWSimulator() {
   const [gameState, setGameState] = useState(null);
   const [showTutorial, setShowTutorial] = useState(false);
@@ -940,16 +981,8 @@ function Game({ gameState, onReturnToLobby }) {
   function riffSidesFromEngine(eb) {
     const atk = eb.atkRiff, def = eb.defRiff;
     return {
-      atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
-                 freqs: atk.degrees.map((d, i) => riffDegreeFreq(d, atk.sharps[i])),
-                 rhythm: atk.rhythm, contour: atk.contour,
-                 // origRhythm: Round 2 speeds the rhythm up, but the neck
-                 // voicing is scored against the WRITTEN one (see fireBeamClash).
-                 voicing: voiceRiff(atk.degrees, atk.sharps, atk.origRhythm ?? atk.rhythm) },
-      defRiff: { notes: riffDegreesToNotes(def.degrees, def.sharps),
-                 freqs: def.degrees.map((d, i) => riffDegreeFreq(d, def.sharps[i])),
-                 rhythm: def.rhythm, kind: def.kind,
-                 voicing: voiceRiff(def.degrees, def.sharps, def.origRhythm ?? def.rhythm) },
+      atkRiff: riffSideFrom(atk, { contour: atk.contour }),
+      defRiff: riffSideFrom(def, { kind: def.kind }),
       defGlitch: eb.defGlitch ?? [], glitchAt: null,
       defGhosts: eb.defGhosts ?? null, ghostHit: null,
     };
@@ -1498,7 +1531,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (isDefClient && battleState.phase === 'riff_handoff' && !battleState.waitingForResolve) {
       const t = setTimeout(() => {
         if (battleStateRef.current?.phase === 'riff_handoff') riffBeginTurn('defender');
-      }, 800);
+      }, RIFF_COMMIT_BEAT);
       return () => clearTimeout(t);
     }
 
@@ -7049,8 +7082,46 @@ function Game({ gameState, onReturnToLobby }) {
       gainFansFromDeed(winnerId, 1, '🎇 stage effects spectacle');
     }
 
-    // ── Loser consolation: quality ≥ 80% → 1 FP ──
-    if ((loseStats.quality ?? 0) >= 80) {
+    // ── 🤝 THE DUEL THAT PAID TWICE ──────────────────────────────────────────
+    // A riff-off that survives all the way to the end of Round 2 with BOTH
+    // performers above RIFF_BOTH_PAID_QUALITY was not a beating — it was a
+    // show, and a crowd that just watched two people play that well does not
+    // walk out thinking only one of them was worth it.
+    //
+    // This is not a participation prize: it is gated on the loser's own hands
+    // (75%+ clean), and it only exists in Round 2, which is itself gated on the
+    // two of them being within RIFF_CLOSE_QUALITY_GAP of each other in Round 1.
+    // You have to play well AND be pushed to get here.
+    //
+    // There is still a winner and they still take home MORE — the loser's share
+    // is scaled off their own quality and capped below the winner's total, so
+    // no amount of clean playing can make losing pay as well as winning. That
+    // cap is the whole design: reward the set, never blur the verdict.
+    const winnerFp    = fp > base ? fp : base;              // what the winner actually banked
+    const loserQual   = loseStats.quality ?? 0;
+    // The flag comes off the engine verdict (single source — it also has to be
+    // identical on both peers in a networked duel). The fallback recomputes it
+    // for a battleState that predates the field.
+    const bothStrong = verdict.bothStrong ?? (round >= 2
+      && (winStats.quality ?? 0) >= RIFF_BOTH_PAID_QUALITY
+      && loserQual >= RIFF_BOTH_PAID_QUALITY);
+    if (bothStrong) {
+      const loserName = spirits.find(s => s.id === loserId)?.name;
+      // Their own set, priced: 75% pays 2, a flawless losing set pays 4 — plus
+      // the same style pay the winner gets, because perfects are perfects.
+      let loserFp = 2 + Math.floor((loserQual - RIFF_BOTH_PAID_QUALITY) / 12);
+      loserFp += Math.floor((loseStats.perfects ?? 0) / 3);
+      // The hard rule: the loser can never out-earn or match the winner.
+      loserFp = Math.max(1, Math.min(loserFp, winnerFp - 1));
+      addLog(`🤝 A DUEL FOR THE AGES — both played over ${RIFF_BOTH_PAID_QUALITY}% clean through TWO rounds. The crowd pays them BOTH!`);
+      addLog(`🎵 ${loserName} lost the call and still earned it (${loserQual}% clean · ${loseStats.perfects ?? 0}✦) — +${loserFp} FP.`);
+      triggerEffectFlash(loserId, '🎵', 'WORTHY!', '#19e6ff');
+      grantFame(loserId, loserFp, `riff-off R2 — ${loserQual}% clean set`);
+    }
+    // ── Loser consolation (Round 1 finishes): quality ≥ 80% → 1 FP ──
+    // Unchanged. A duel that ended in one round didn't earn the split above,
+    // but a genuinely strong losing set still gets the crowd's nod.
+    else if (loserQual >= 80) {
       const loserName = spirits.find(s => s.id === loserId)?.name;
       addLog(`🎵 ${loserName} played a worthy set — the crowd salutes! (+1 FP consolation)`);
       grantFame(loserId, 1, 'worthy riff-off set');
@@ -9471,7 +9542,6 @@ function Game({ gameState, onReturnToLobby }) {
     const eb = dispatch(riffOffStarted(attacker.id, defender.id, { slayer, eRush, melodyLine, hasRiff, maxLen })).battle;
     const atk = eb.atkRiff, def = eb.defRiff;
     const defGlitch = eb.defGlitch, defGhosts = eb.defGhosts;
-    const defNotesArr = riffDegreesToNotes(def.degrees, def.sharps);
     // Log: show whether the riff came from the player's melody or was random
     if (eb.fromMelody) {
       addLog(`🎸🔥 RIFF-OFF! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`);
@@ -9492,14 +9562,8 @@ function Game({ gameState, onReturnToLobby }) {
       oneLiner: null,                    // Phase R5.2: { attacker: {line,dropped}, defender: {line,dropped} }
       phase: 'riff_intro',
       attackerId: attacker.id, defenderId: defender.id,
-      atkRiff: { notes: riffDegreesToNotes(atk.degrees, atk.sharps),
-                 freqs: atk.degrees.map((d, i) => riffDegreeFreq(d, atk.sharps[i])),
-                 rhythm: atk.rhythm, contour: atk.contour,
-                 voicing: voiceRiff(atk.degrees, atk.sharps, atk.rhythm) },
-      defRiff: { notes: defNotesArr,
-                 freqs: def.degrees.map((d, i) => riffDegreeFreq(d, def.sharps[i])),
-                 rhythm: def.rhythm, kind: def.kind,
-                 voicing: voiceRiff(def.degrees, def.sharps, def.rhythm) },
+      atkRiff: riffSideFrom(atk, { contour: atk.contour }),
+      defRiff: riffSideFrom(def, { kind: def.kind }),
       defGlitch, glitchAt: null,
       defGhosts, ghostHit: null,
       turn: 'attacker', noteIdx: -1, countdown: 3, round: 1,
@@ -9546,7 +9610,10 @@ function Game({ gameState, onReturnToLobby }) {
     const written  = RIFF_FALL_DIFFICULTY[riffDifficultyRef.current] ?? RIFF_FALL_DIFFICULTY[RIFF_FALL_DEFAULT];
     const spd      = riffSpeedRef.current;
     const preset   = scalePresetForSpeed(written, spd);
-    const timeline = scaleTimelineForSpeed(buildRiffTimeline(side.rhythm, round, written.leadTime), spd);
+    // chordOf pins a power chord's two gems to the SAME instant — pass it or
+    // the partner lands a full note-gap late and the chord is unplayable.
+    const timeline = scaleTimelineForSpeed(
+      buildRiffTimeline(side.rhythm, round, written.leadTime, side.chordOf), spd);
     const voicing = side.voicing;  // Guitar-neck voicing (computed once in startRiffOff)
     const eng = {
       turn, preset, t0: performance.now(), timers: [],
@@ -9560,11 +9627,21 @@ function Game({ gameState, onReturnToLobby }) {
         const perf = side.perf?.[i] ?? {};
         return {
           idx: i, key: k, feel, ghostKey,
-          pos: voicing?.positions?.[i] ?? null,             // [string, fret] from voiceRiff
+          // Position comes off the CHART first. A chord partner was voiced onto
+          // the adjacent string by the chord pass; voiceRiff, which voices notes
+          // one after another, would happily put both halves of a chord on the
+          // same string — unplayable at a shared hit-time. voicing is the
+          // fallback for charts built before perf carried positions.
+          pos: perf.string != null ? [perf.string, perf.fret]
+                                   : (voicing?.positions?.[i] ?? null),
           hitAt: timeline[i]?.hitAt ?? (preset.leadTime + i * 1000),
           okWin: riffOkWindow(preset, feel, !!ghostKey),
           resolved: false, hitMain: false, hitGhost: false,
           dir: perf.dir ?? 'same', chugPart: !!perf.chugPart,
+          // 🤘 chord bookkeeping — the highway draws the link bar between the
+          // pair, and the judge skips the extra fifth on a note that already
+          // has one charted.
+          hasPartner: !!perf.hasPartner, partnerOf: perf.partnerOf ?? null,
           // Sustains scale with the tempo dial the same way the timeline does —
           // a tail is a duration, so slowing the riff must lengthen it too, or
           // the hold window shrinks relative to everything around it.
@@ -9633,6 +9710,10 @@ function Game({ gameState, onReturnToLobby }) {
           dir: n.dir, chugPart: n.chugPart, sustain: n.sustain,
           bend: n.bend, bendDir: n.bendDir, bendAmt: n.bendAmt,
           bendAt: n.bendAt, bendWeight: n.bendWeight,
+          // 🤘 the dashed link bar between a chord's two gems — "one press each,
+          // same instant." Without these the pair looks like two ordinary notes
+          // that happen to be simultaneous, which reads as a rendering bug.
+          hasPartner: n.hasPartner, partnerOf: n.partnerOf,
         })),
         anchors: eng.anchors,  // Guitar-neck camera script (phrase windows)
       },
@@ -9792,6 +9873,19 @@ function Game({ gameState, onReturnToLobby }) {
   function riffEndTurn(turn) {
     riffEngineRef.current?.timers?.forEach(clearTimeout);
     riffEngineRef.current = null;
+    // 🎸 COMMIT — the run is over, so the performance commits in this Spirit's
+    // own voice, exactly as a Melody Line commit does. It plays over the top of
+    // the handoff/resolve beat rather than adding a pause of its own; the
+    // handoff and countdown delays below are sized to let it land.
+    {
+      const cur = battleStateRef.current;
+      if (cur?.riffOff) {
+        const sid  = turn === 'attacker' ? cur.attackerId : cur.defenderId;
+        const side = turn === 'attacker' ? cur.atkRiff : cur.defRiff;
+        const res  = turn === 'attacker' ? cur.atkResults : cur.defResults;
+        commitRiffPerformance(sid, side, res);
+      }
+    }
     // N12: online riff-offs — each side dispatches their own results so the
     // relay carries them to the other client. The acting client resolves once
     // both sides are in; the defender's client just submits and waits.
@@ -9818,19 +9912,50 @@ function Game({ gameState, onReturnToLobby }) {
     }
   }
 
-  // Replay a riff-off performance through the in-game amp — same voice the
-  // player heard while striking, groove (gaps + rests) intact.
-  function playRiffOffPlayback(freqs, rhythm) {
-    if (!freqs) return;
-    const t0 = getAudioCtx().currentTime + 0.06;   // audio-clock — jank-immune
-    let tMs = 0;
-    freqs.forEach((fr, i) => {
-      tMs += i === 0 ? 0 : 280 + (rhythm?.[i]?.gapBefore ?? RIFF_GAP_NORMAL);
-      const w = t0 + tMs / 1000;
-      // 🤘 power-chord replay — root + fifth
-      playNoteSound(null, { freq: fr, holdTime: 0.4, fadeTime: 0.38, volume: 0.17, when: w });
-      playNoteSound(null, { freq: fr * 1.5, holdTime: 0.4, fadeTime: 0.38, volume: 0.085, when: w });
-    });
+  // Riff notes are lowercase letters, uppercase = sharp ('a' = A, 'A' = A#).
+  // The commit path speaks NOTE_POOL ('A', 'A#'), so translate on the way in.
+  function riffNoteToPool(n) {
+    if (typeof n !== 'string' || !n) return null;
+    return n === n.toUpperCase() ? `${n}#` : n.toUpperCase();
+  }
+
+  // ── 🎸 THE RIFF-OFF COMMIT ───────────────────────────────────────────────────
+  // A riff-off performance COMMITS exactly the way a Melody Line does: the
+  // notes stop being a chart and become a statement, played back in the
+  // performer's own voice. Same call the commit path makes — same signature
+  // build per Spirit (the Ronin SHREDS it, the Monster BREAKS IT DOWN, 0
+  // SCRATCHES it, Glamarchy STRUTS it), same fall-through to the classic groove
+  // for anyone without one.
+  //
+  // This is the point of the change: two Spirits who played the identical chart
+  // do not sound identical when they commit it. The chart is what your hands
+  // did; the commit is who you are.
+  //
+  // `results` (optional) narrows the playback to the notes actually LANDED — a
+  // commit is what you played, not what you were handed. Passing nothing (the
+  // result card's ▶ HEAR THE RIFF) commits the whole written riff.
+  function commitRiffPerformance(spiritId, side, results = null) {
+    if (!side?.notes?.length) return;
+    let idxs = side.notes.map((_, i) => i);
+    if (results) {
+      const landed = new Set(results.filter(r => r.hit).map(r => r.noteIdx));
+      const kept = idxs.filter(i => landed.has(i));
+      // A run with almost nothing landed has no statement in it — fall back to
+      // the written riff rather than committing two lonely notes.
+      if (kept.length >= 3) idxs = kept;
+    }
+    const track = idxs.map(i => riffNoteToPool(side.notes[i])).filter(Boolean);
+    if (!track.length) return;
+    const freqs = idxs.map(i => side.freqs?.[i] ?? null);
+    playTrackSequence(track, { style: COMMIT_STYLES[spiritId], freqs });
+  }
+
+  // Replay a riff-off performance — the result card's ▶ HEAR THE RIFF. Routed
+  // through the commit so the button plays the Spirit's voice, not a generic
+  // power-chord readback. (`rhythm` is no longer read: the commit builds its
+  // own phrasing, which is the whole idea — see commitRiffPerformance.)
+  function playRiffOffPlayback(spiritId, side) {
+    commitRiffPerformance(spiritId, side, null);
   }
 
   function riffResolve() {
@@ -9860,7 +9985,11 @@ function Game({ gameState, onReturnToLobby }) {
     else addLog(`🎸 RIFF-OFF R${round}: ${attackerWon ? atkName : defName} takes it on ${decidedBy}! (${A.hits}/${atkLen}·${A.perfects}✦·${A.quality}%${A.avgRt != null ? ` · ${A.avgRt}ms` : ''} vs ${D.hits}/${defLen}·${D.perfects}✦·${D.quality}%${D.avgRt != null ? ` · ${D.avgRt}ms` : ''})`);
     // Every riff-off is plugged in, so every riff-off ends in the beam clash.
     setBattleState(p => p?.riffOff ? { ...p, phase: 'riff_clash', round, clashStage: 'charge',
-      clashWinner: null, attackerWon, margin, damage, tie, decidedBy, atkStats: A, defStats: D } : p);
+      clashWinner: null, attackerWon, margin, damage, tie, decidedBy, atkStats: A, defStats: D,
+      // Round-2 gate + both-paid flag come straight off the engine verdict —
+      // never re-derived here, or two networked peers could disagree about
+      // whether the beams break.
+      close: verdict.close, qualityGap: verdict.qualityGap, bothStrong: verdict.bothStrong } : p);
   }
 
   // ── BEAM CLASH ("Kamehameha") — DBZ-style finale to the riff-off ──────────
@@ -9884,7 +10013,14 @@ function Game({ gameState, onReturnToLobby }) {
     setTimeout(() => {
       const s = battleStateRef.current;
       if (!s?.riffOff || s.phase !== 'riff_clash') return;
-      const decisive = !s.tie && s.margin >= 3;        // ≥2-note accuracy gap = total domination
+      // DECISIVE = the engine says this wasn't close. One side has to out-play
+      // the other by RIFF_CLOSE_QUALITY_GAP points of clean quality (about one
+      // note in five) for a Round-1 beam to break through; anything tighter
+      // than that locks and surges. The old test was `margin >= 3`, which is a
+      // scaled score gap and therefore meant something different at every riff
+      // length — a 16-note Virtuoso duel escalated on gaps a 6-note Influencer
+      // duel would have ended on.
+      const decisive = !s.tie && !s.close;
       if (round >= 2 || decisive) {
         const winner = s.tie ? null : (s.attackerWon ? 'attacker' : 'defender');
         if (isActingClient) {
@@ -9900,7 +10036,11 @@ function Game({ gameState, onReturnToLobby }) {
         // Too close to break — beams lock, SURGE, and we play a real ROUND 2:
         // fresh riffs, faster and meaner, sudden death. The round-1 beams stay
         // locked in the background while the new riffs play out.
-        if (isActingClient) addLog(`⚡ ROUND 1 TOO CLOSE — the beams LOCK and SURGE! Bring on ROUND 2!`);
+        if (isActingClient) {
+          const gapTxt = s.tie ? 'DEAD EVEN'
+            : `${Math.round(s.qualityGap ?? 0)}% apart, under the ${RIFF_CLOSE_QUALITY_GAP}% break`;
+          addLog(`⚡ ROUND 1 TOO CLOSE (${gapTxt}) — the beams LOCK and SURGE! Bring on ROUND 2!`);
+        }
         playBeamSurge();
         setBattleState(p => p?.riffOff ? { ...p, clashStage: 'escalate' } : p);
         // N12: only the acting client dispatches RIFF_ROUND2_STARTED and builds
@@ -9912,13 +10052,6 @@ function Game({ gameState, onReturnToLobby }) {
             // Engine: fresh riffs at 0.58× speed, skill mods rerolled on its rng
             const eb2 = dispatch(riffRound2Started()).battle;
             const atk = eb2.atkRiff, def = eb2.defRiff;
-            const mk = (r, extra) => ({
-              notes: riffDegreesToNotes(r.degrees, r.sharps),
-              freqs: r.degrees.map((d, i) => riffDegreeFreq(d, r.sharps[i])),
-              rhythm: r.rhythm, // already sped up by the engine
-              voicing: voiceRiff(r.degrees, r.sharps, r.origRhythm ?? r.rhythm),
-              ...extra,
-            });
             addLog(`🎸🔥 ROUND 2! New riffs — faster, meaner, sudden death!`);
             const r2Glitch = eb2.defGlitch;
             if (r2Glitch.length > 0) {
@@ -9932,8 +10065,8 @@ function Game({ gameState, onReturnToLobby }) {
               ...p,
               round: 2,
               r1Won: s2.attackerWon, r1Tie: s2.tie, r1Margin: s2.margin,
-              atkRiff: mk(atk, { contour: atk.contour }),
-              defRiff: mk(def, { kind: def.kind }),
+              atkRiff: riffSideFrom(atk, { contour: atk.contour }),
+              defRiff: riffSideFrom(def, { kind: def.kind }),
               defGlitch: r2Glitch, glitchAt: null,
               defGhosts: r2Ghosts, ghostHit: null,
               atkResults: [], defResults: [],
@@ -11274,8 +11407,10 @@ function Game({ gameState, onReturnToLobby }) {
         setBattleState(p => p?.riffOff ? { ...p, [key]: results, botAutoFilled: cur.turn, phase: 'riff_play', riffRun: null } : p);
         setTimeout(() => {
           if (!battleStateRef.current?.riffOff) return;
-          if (cur.turn === 'attacker') riffEndTurn('attacker');
-          else riffResolve();
+          // Both sides route through riffEndTurn so a BOT's performance commits
+          // in its Spirit's voice too — the defender branch used to jump
+          // straight to riffResolve and silently skipped the commit.
+          riffEndTurn(cur.turn);
         }, 420);
       }, 700);
       return () => clearTimeout(t);
@@ -11308,7 +11443,7 @@ function Game({ gameState, onReturnToLobby }) {
     // human defender taps "DROP THE ANSWER" themselves — or the N12 coordination
     // effect auto-starts for online defenders).
     if (bs.phase === 'riff_handoff' && defBot) {
-      const t = setTimeout(() => { if (battleStateRef.current?.phase === 'riff_handoff') riffBeginTurn('defender'); }, 800);
+      const t = setTimeout(() => { if (battleStateRef.current?.phase === 'riff_handoff') riffBeginTurn('defender'); }, RIFF_COMMIT_BEAT);
       return () => clearTimeout(t);
     }
     // Clash + result are non-interactive spectacle — advance them whenever either

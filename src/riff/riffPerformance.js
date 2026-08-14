@@ -161,15 +161,35 @@ function applyBends(notes, rng, o) {
  * Runs AFTER the timeline is built — partners share the root's hit time exactly,
  * so `times` is spliced alongside `notes`.
  *
+ * Two optional hooks let a caller that carries MORE than pitch per note stay in
+ * sync with the partner it inserts. The riff-off needs them: its notes are
+ * scale DEGREES, and a partner that has a pitch but no degree would break
+ * `riffDegreesToNotes` and `riffDegreeFreq` downstream. Rather than fork this
+ * function (and let the two copies drift — the exact failure this codebase keeps
+ * writing itself notes about), the caller supplies:
+ *
+ *   opts.eligible(note)     → false to refuse a chord on this note entirely.
+ *                             The riff-off refuses when its degree arithmetic
+ *                             cannot express a true perfect fifth.
+ *   opts.partnerFields(note) → extra fields merged onto the inserted partner,
+ *                             AFTER the spread, so the caller's own bookkeeping
+ *                             (degree, sharp, …) describes the fifth and not a
+ *                             stale copy of the root.
+ *
+ * Both default to no-ops, so every existing caller is unaffected.
+ *
  * @returns {number} how many partners were inserted
  */
 export function applyChords(notes, times, rng, opts = {}) {
   const rate = (opts.chordPct ?? PERFORMANCE_DEFAULTS.chordPct) / 100;
+  const eligible = opts.eligible ?? (() => true);
+  const partnerFields = opts.partnerFields ?? (() => null);
   let added = 0;
   for (let i = notes.length - 1; i >= 0; i--) {
     const n = notes[i];
     if (n.partnerOf != null || n.hasPartner) continue;
     if (n.chugPart) continue;                          // chugs stay single-note
+    if (!eligible(n)) continue;                        // caller can't voice a fifth here
     if (!n.accent && rng() > rate * 0.4) continue;
     if (rng() >= rate) continue;
 
@@ -183,6 +203,7 @@ export function applyChords(notes, times, rng, opts = {}) {
     notes.splice(i + 1, 0, {
       ...n, pitch: target, string: s, fret, hasPartner: false, partnerOf: i,
       bend: false, bendDir: null, bendAmt: 0, bendAt: 0, bendWeight: null,
+      ...(partnerFields(n) ?? {}),
     });
     times.splice(i + 1, 0, times[i]);                  // same instant, exactly
     for (let k = i + 2; k < notes.length; k++) {

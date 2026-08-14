@@ -103,6 +103,31 @@ export const DETECT_DEFAULTS = {
   // them to mask the board, then look for frets ONLY inside it and ONLY at
   // orientations the strings are not using.
   peakThreshold: 0.30,
+  // ⚠️ PASS 2 GETS ITS OWN, MUCH LARGER CAP, AND THE REASON IS THE WHOLE ANCHOR.
+  // Sharing `maxLines: 40` with pass 1 looks harmless and silently breaks
+  // detection: a fret near the edge of the frame is foreshortened, so it casts
+  // fewer votes than one in the middle, and a vote-ranked cap therefore throws
+  // away the OUTERMOST frets first — which are precisely the ones the nut test
+  // needs. Measured on the synthetic bench: the nut scored 0.77 against a cut of
+  // 0.776 and was dropped by four thousandths, in all three camera views. The
+  // detector then had a perfect set of interior frets, no nut, and no way to
+  // anchor. Take lines generously here and thin them by POSITION below, which
+  // discards duplicates instead of extremities.
+  //
+  // ⚠️ AND THIS IS THE TRADE THAT IS STILL OPEN — see §6b of EAR_SPY_HANDOFF.
+  // Reaching this deep into the ranked candidate list also admits the SHOULDERS
+  // of each fret's Hough ridge: phantom lines sitting roughly midway between
+  // real frets, about 7 px apart at the working width while genuine frets are
+  // 14–24 px apart. They are NOT a fixture artefact — the synthetic board fill
+  // was checked and is solid — and `mergeNearby` cannot remove them, because its
+  // tolerance is derived from the observed gaps and fret spacing itself varies
+  // threefold along the neck. With the shoulders present, `identifyFrets` finds
+  // a STRETCHED labelling that hands consecutive fret numbers to a fret and its
+  // own shoulder: residual 0.0024, twenty inliers, and one label in twenty
+  // correct. Widening `nmsRhoFrac` to 0.025 fixes it outright for the square-on
+  // view (17/17 labels correct) and starves the other two views of lines
+  // altogether. The unfinished work is CONDENSING LINES, not finding the nut.
+  maxFretLines: 200,
   // Frets are looked for within this much of PERPENDICULAR to the strings.
   fretAcceptHalfWidth: 45 * Math.PI / 180,
   bandMargin: 0.06,
@@ -141,6 +166,20 @@ export const DETECT_DEFAULTS = {
   // How different the region beyond the outermost fret has to look from the
   // board before it counts as the end of the neck.
   nutContrast: 0.10,
+  // ⚠️ HOW MANY DISTINCT POSITIONS SURVIVE INTO IDENTIFICATION, AND IT IS A COST
+  // CEILING AS MUCH AS AN ACCURACY ONE. `identifyFrets` searches pairs of lines
+  // against pairs of fret numbers, so it is O(m²·F²): measured at 194 ms for
+  // m = 20, 1.4 s for m = 44 and 3.5 s for m = 60. Thinning to one line per bin
+  // along the neck keeps m near the number of frets that can actually be in
+  // shot, which is the honest bound anyway — two lines in the same bin are the
+  // same fret found twice, and the strongest of them is the one to keep.
+  positionBins: 32,
+  // How many lines in from each end to try as the nut. The extreme line is often
+  // a stray, so trying only it is what left `detectNeck` returning null.
+  maxNutCandidates: 3,
+  // A rival labelling within this many inliers of the best is a genuine rival.
+  // If it disagrees, the detector declines rather than picking a winner.
+  rivalInlierSlack: 2,
 };
 
 // =============================================================================
@@ -606,12 +645,97 @@ export function looksLikeBoardEnd(gray, w, h, edgeA, edgeB, nextA, nextB, opts =
 }
 
 /**
+ * Keep only the strongest line in each bin along the neck axis.
+ *
+ * ⚠️ THINNING BY POSITION, NOT BY VOTES, AND THE DIFFERENCE IS THE WHOLE
+ * DETECTOR. Ranking lines by Hough votes and keeping the top N throws away the
+ * outermost frets first, because a fret near the edge of the frame is
+ * foreshortened and casts fewer votes than one in the middle — so a vote-ranked
+ * cap deletes the nut and keeps three copies of fret 7. Binning along the neck
+ * gives every REGION one representative, which is what identification actually
+ * wants: duplicates are what should go, extremities are what must stay.
+ *
+ * @param {{t:number, line?:{votes:number}}[]} hits  sorted by `t`
+ */
+export function thinByPosition(hits, bins) {
+  if (!hits || hits.length <= bins || bins < 2) return [...(hits || [])];
+  const lo = hits[0].t;
+  const hi = hits[hits.length - 1].t;
+  const span = hi - lo;
+  if (!(span > 0)) return [...hits];
+  const votesOf = x => (x.line && x.line.votes) || x.votes || 0;
+  const best = new Map();
+  for (const x of hits) {
+    const b = Math.min(bins - 1, Math.floor(((x.t - lo) / span) * bins));
+    const cur = best.get(b);
+    if (!cur || votesOf(x) > votesOf(cur)) best.set(b, x);
+  }
+  const kept = new Set(best.values());
+  // ⚠️ THE TWO EXTREMES ARE KEPT UNCONDITIONALLY, AND THIS IS NOT A FLOURISH.
+  // Binning is half-open, so the very last position clamps into the same bin as
+  // its neighbour and then loses to it on votes — which is the one line that
+  // must never be dropped, because an edge fret is weak precisely BECAUSE it is
+  // at the edge, and the edge is where the nut is. Thinning that can discard an
+  // endpoint is thinning that recreates the bug it exists to fix.
+  kept.add(hits[0]);
+  kept.add(hits[hits.length - 1]);
+  return [...kept].sort((a, b) => a.t - b.t);
+}
+
+/**
+ * Do two labellings say the same thing about the lines they share?
+ *
+ * ⚠️ THE ONLY CHECK THAT CATCHES A WRONG ANCHOR. Anchoring on the wrong end of
+ * the board produces a REVERSED labelling that fits just as well — the module
+ * header explains why no geometric test can rule it out, and it was observed on
+ * the bench scoring a residual of 0.0033 while being wrong by twenty frets. What
+ * gives it away is that it CONTRADICTS the labelling anchored at the real nut.
+ * So rival anchors are not scored against each other, they are asked whether
+ * they agree; when they do not, the detector declines.
+ */
+export function labellingsAgree(a, b, tol) {
+  let shared = 0;
+  for (const pa of a.pairs) {
+    for (const pb of b.pairs) {
+      if (Math.abs(pa.pos - pb.pos) > tol) continue;
+      shared++;
+      if (pa.fret !== pb.fret) return false;
+      break;
+    }
+  }
+  // No overlap at all is not agreement, it is two unrelated answers.
+  return shared >= 3;
+}
+
+/**
  * Find the neck in a grayscale frame.
+ *
+ * ⚠️ THREE COORDINATE SPACES MEET IN THIS FUNCTION AND MIXING THEM IS SILENT.
+ * This was the actual reason the detector returned null for so long, and it did
+ * not look like a units bug from the outside — it looked like the nut test never
+ * firing:
+ *
+ *   1. HOUGH space — `lineIntersection` inherits ρ's normalisation, which is
+ *      ISOTROPIC, by `max(w, h)` on both axes. `t`, and every `hit.a`/`hit.b`,
+ *      live here.
+ *   2. PIXEL space — what `gray[y * w + x]` is indexed by, and therefore what
+ *      `looksLikeBoardEnd` needs. Handing it Hough-space points sampled pixel
+ *      (0, 0) for BOTH the inside and the beyond strip, so `diff` was exactly
+ *      0.000 at every candidate and `isEnd` could never be true. No amount of
+ *      trying more candidate lines could have fixed that.
+ *   3. FRAME space — `[x / w, y / h]`, ANISOTROPIC, which is what MediaPipe
+ *      reports landmarks in and what `CameraCalibrator` collects clicks in. The
+ *      returned corners must be in this one to be a drop-in for four clicks.
+ *
  * @returns {{corners, calibration, frets, confidence, ...}|null}
  */
 export function detectNeck(gray, w, h, opts = {}) {
   const o = { ...DETECT_DEFAULTS, ...opts };
   const mag = sobel(gray, w, h);
+  // Hough space → pixels, and Hough space → the frame space the callers use.
+  const houghScale = Math.max(w, h);
+  const toPixel = p => [p[0] * houghScale, p[1] * houghScale];
+  const toFrame = p => [(p[0] * houghScale) / w, (p[1] * houghScale) / h];
 
   // ── PASS 1: the strings and the board edges ──
   const strong = houghLines(mag, w, h, {
@@ -645,6 +769,7 @@ export function detectNeck(gray, w, h, opts = {}) {
   const fretLines = houghLines(mag, w, h, {
     ...o,
     mask,
+    maxLines: o.maxFretLines,
     acceptTheta: {
       theta: (stringGroup.theta + Math.PI / 2) % Math.PI,
       half: o.fretAcceptHalfWidth,
@@ -664,25 +789,72 @@ export function detectNeck(gray, w, h, opts = {}) {
   }
   if (hits.length < o.minFretLines) return null;
   hits.sort((x, y) => x.t - y.t);
-  const frets = mergeNearby(hits, o.mergeGapFrac);
+  const frets = thinByPosition(mergeNearby(hits, o.mergeGapFrac), o.positionBins);
   if (frets.length < o.minFretLines) return null;
 
   // ── Find the nut ──
   // Which end has the wider spacing is a hint, not proof — reversal is a legal
   // projective view — so BOTH ends are offered to the picture and it decides.
+  //
+  // ⚠️ AND SEVERAL LINES IN FROM EACH END, NOT JUST THE EXTREME ONE. The
+  // outermost detection is frequently a stray — a shadow past the nut, the edge
+  // of the board where it leaves frame — and testing only it means the real nut,
+  // sitting one or two places inside, is never asked.
+  const positions = frets.map(x => x.t);
+  const posTol = (positions[positions.length - 1] - positions[0]) * o.inlierFrac;
+  const candidates = [];
   for (const nutFirst of [true, false]) {
-    const edge = nutFirst ? frets[0] : frets[frets.length - 1];
-    const next = nutFirst ? frets[1] : frets[frets.length - 2];
-    const end = looksLikeBoardEnd(gray, w, h, edge.a, edge.b, next.a, next.b, o);
-    if (!end || !end.isEnd) continue;      // cannot anchor ⇒ will not guess
+    for (let k = 0; k < o.maxNutCandidates; k++) {
+      const i = nutFirst ? k : frets.length - 1 - k;
+      const j = nutFirst ? i + 1 : i - 1;
+      if (i < 0 || i >= frets.length || j < 0 || j >= frets.length) continue;
+      const edge = frets[i];
+      const next = frets[j];
+      const end = looksLikeBoardEnd(gray, w, h,
+        toPixel(edge.a), toPixel(edge.b), toPixel(next.a), toPixel(next.b), o);
+      if (!end || !end.isEnd) continue;    // cannot anchor ⇒ will not guess
 
-    const ident = identifyFrets(frets.map(x => x.t), {
-      ...o, anchor: { pos: edge.t, fret: 0 },
-    });
-    if (!ident) continue;
+      const ident = identifyFrets(positions, { ...o, anchor: { pos: edge.t, fret: 0 } });
+      if (!ident) continue;
+      candidates.push({ ident, end });
+    }
+  }
+  if (!candidates.length) return null;
 
-    const ascending = ident.pairs[0].pos <= ident.pairs[ident.pairs.length - 1].pos;
-    const ordered = ascending ? frets : [...frets].reverse();
+  // Most lines explained wins, residual breaks ties.
+  candidates.sort((a, b) =>
+    b.ident.inliers - a.ident.inliers || a.ident.residual - b.ident.residual);
+
+  // ⚠️ A RIVAL THAT DISAGREES IS A VETO, NOT A RUNNER-UP. See `labellingsAgree`:
+  // a wrong anchor yields a confident, well-fitting, completely wrong answer, and
+  // contradiction is the only signal that separates it from a right one. A false
+  // negative here costs a button press; a false positive silently shifts every
+  // fret the player is shown.
+  const top = candidates[0];
+  for (const rival of candidates.slice(1)) {
+    if (rival.ident.inliers < top.ident.inliers - o.rivalInlierSlack) continue;
+    if (!labellingsAgree(top.ident, rival.ident, posTol)) return null;
+  }
+
+  {
+    const ident = top.ident;
+    const end = top.end;
+
+    // ⚠️ PAIR BY POSITION, NEVER BY INDEX. `ident.frets` lists only the INLIERS,
+    // while `frets` holds every surviving line, so walking the two together with
+    // one counter reads fret numbers off the end of the shorter array and hands
+    // the homography `undefined` — a NaN fit, or worse a partial one. Each label
+    // carries the position it was measured at, so the line it belongs to is
+    // looked up rather than assumed.
+    const byPos = (pos) => {
+      let best = null;
+      let bestD = Infinity;
+      for (const hit of frets) {
+        const d = Math.abs(hit.t - pos);
+        if (d < bestD) { bestD = d; best = hit; }
+      }
+      return bestD <= posTol ? best : null;
+    };
 
     // ⚠️ THE OUTER LINES MAY BE THE BOARD EDGES RATHER THAN THE OUTER STRINGS,
     // and they are mapped to strings 0 and 5 regardless. That puts the STRING
@@ -692,21 +864,22 @@ export function detectNeck(gray, w, h, opts = {}) {
     // matters, comes from the fret lines and is completely unaffected.
     const src = [];
     const dst = [];
-    ordered.forEach((hit, i) => {
-      const fret = ident.frets[i];
-      src.push(hit.a, hit.b);
-      dst.push([fretToSpan(fret), 0], [fretToSpan(fret), NECK_STRINGS - 1]);
-    });
-    if (src.length < 6) continue;
+    for (const pair of ident.pairs) {
+      const hit = byPos(pair.pos);
+      if (!hit) continue;
+      src.push(toFrame(hit.a), toFrame(hit.b));
+      dst.push([fretToSpan(pair.fret), 0], [fretToSpan(pair.fret), NECK_STRINGS - 1]);
+    }
+    if (src.length < 6) return null;
 
     const fit = solveHomographyLS(src, dst);
     const inv = solveHomographyLS(dst, src);
-    if (!fit || !inv) continue;
+    if (!fit || !inv) return null;
 
     // Corners come from the fit, not from any detected line, so a fret that was
     // never visible is still placed correctly by the ones that were.
     const corners = CORNER_TARGETS.map(t => applyHomography(inv.h, t));
-    if (corners.some(c => !c || !c.every(Number.isFinite))) continue;
+    if (corners.some(c => !c || !c.every(Number.isFinite))) return null;
 
     return {
       corners,
@@ -720,10 +893,9 @@ export function detectNeck(gray, w, h, opts = {}) {
       // ⚠️ CONFIDENCE IS BUILT FROM THE THINGS THAT CAN BE WRONG, not from how
       // bright the edges were. Votes measure contrast; these measure whether the
       // thing found behaves like a fretboard.
-      confidence: confidenceOf(ident, fit, ordered.length, end, o),
+      confidence: confidenceOf(ident, fit, ident.frets.length, end, o),
     };
   }
-  return null;
 }
 
 /**

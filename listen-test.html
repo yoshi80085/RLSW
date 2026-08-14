@@ -159,7 +159,14 @@
         <label>stable frames
           <input type="range" id="s-stableFrames" min="1" max="15" step="1">
           <span class="val" id="d-stableFrames"></span></label>
+        <label>note admit
+          <input type="range" id="s-noteFloor" min="0.05" max="0.8" step="0.01">
+          <span class="val" id="d-noteFloor"></span></label>
+        <label>note release
+          <input type="range" id="s-noteFloorRelease" min="0.02" max="0.8" step="0.01">
+          <span class="val" id="d-noteFloorRelease"></span></label>
       </div>
+      <div class="meta" id="notereadout" style="margin-top:8px">notes: —</div>
     </div>
 
     <div class="panel" style="flex:1 1 420px">
@@ -221,8 +228,16 @@ const keyTracker = makeKeyTracker();
 // ── Live threshold sliders ──────────────────────────────────────────────────
 // Seeded from GATE_DEFAULTS so the page never disagrees with the module about
 // what the shipped values are.
-const SLIDERS = ['floorMarginDb', 'maxFlatness', 'maxEntropy', 'minStability', 'stableFrames'];
-const gateOpts = { ...GATE_DEFAULTS };
+//
+// The last two are the NOTE thresholds rather than frame thresholds, and they
+// belong here for the same reason as the rest: `noteFloorRelease` is the width
+// of the band that stops a decaying note blinking on and off, and the right
+// width depends on how much of the low end your mic keeps. Admit should always
+// sit above release; nothing enforces it, because being able to close the band
+// to nothing is how you see what it was buying you.
+const SLIDERS = ['floorMarginDb', 'maxFlatness', 'maxEntropy', 'minStability', 'stableFrames',
+                 'noteFloor', 'noteFloorRelease'];
+const gateOpts = { ...CHROMA_DEFAULTS, ...GATE_DEFAULTS };
 for (const k of SLIDERS) {
   const el = $('s-' + k);
   el.value = gateOpts[k];
@@ -279,6 +294,19 @@ let lastFrameT = 0;
 
 function onFrame(f) {
   const { chroma, bass, db, active, musical, reject, floorDb, flatness, entropy, stability } = f;
+
+  // ── the register list, which is what the neck actually draws ──
+  // ⚠️ SHOWN HERE BECAUSE THE CHROMA BARS CANNOT REVEAL AN OCTAVE ERROR — they
+  // have folded the octave away, so a low E read as its own second partial
+  // looks identical to a low E read correctly. This row is where you see it.
+  // `*` = an overtone, kept but not credited as played; `~` = a fundamental
+  // INFERRED from the spacing of its partials because the mic lost it (see
+  // `inferVirtualFundamentals`). A `~` on every note means your low end is
+  // being rolled off somewhere before us.
+  $('notereadout').textContent = 'notes: ' + ((f.notes || []).length
+    ? f.notes.map(n => `${PC_NAMES[n.pc]}${Math.floor(n.midi / 12) - 1}` +
+        `${n.virtual ? '~' : ''}${n.harmonic ? '*' : ''} ${n.strength.toFixed(2)}`).join('   ')
+    : '—');
 
   // ── level meter ──
   const pct = Math.max(0, Math.min(100, ((db + 70) / 60) * 100));

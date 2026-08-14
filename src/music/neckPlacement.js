@@ -61,6 +61,18 @@ export const PLACEMENT_DEFAULTS = {
   // reads as a glitch rather than as movement — the eye needs to see it travel
   // to read it as one line rather than a new object. ~7 frames.
   growMs: 120,
+
+  // How bright a merely-GUESSED position is drawn once something on this neck
+  // is capable of being known exactly. See `placeNotes` — this applies only
+  // while a snap function is supplied, i.e. while the camera is on.
+  //
+  // ⚠️ NOT MUCH DIMMER, ON PURPOSE. The guess is usually right; it is the
+  // string it is unsure of far more than the fret, and it is the same estimate
+  // this module has always drawn at full brightness. Grading it down to
+  // something faint would say "probably wrong", which is a stronger claim than
+  // the measurement supports. It only needs to be visibly less certain than a
+  // pick the camera actually resolved.
+  guessLevel: 0.55,
 };
 
 /**
@@ -190,8 +202,23 @@ export function placeNotes(notes = [], opts = {}) {
     }
   }
 
-  for (const n of notes) {
-    const { best, alternates, folded } = placePitch(midiToPitch(n.midi), ref, o);
+  // ⚠️ THE SNAP IS ASKED ONCE, FOR THE WHOLE SET, AND THAT IS THE POINT OF IT.
+  // These notes are sounding together, so they have to be reachable by one hand;
+  // a resolver called note-by-note cannot see that and would happily return a
+  // shape nobody could play. It is also allowed to DECLINE, per note or
+  // entirely, and declining is the common case — on a boundary, with the camera
+  // off, or with the hand out of shot it returns nothing and the audio estimate
+  // stands. So this reads as "an exact answer where one exists, otherwise the
+  // same guess as always", never as two sources needing to be reconciled.
+  const exacts = o.snap ? (o.snap(notes) || []) : [];
+
+  for (let ni = 0; ni < notes.length; ni++) {
+    const n = notes[ni];
+    const guess = placePitch(midiToPitch(n.midi), ref, o);
+    const { alternates, folded } = guess;
+    const ex = exacts[ni];
+    const exact = Array.isArray(ex) && ex.length === 2 && ex.every(Number.isFinite) ? ex : null;
+    const best = exact || guess.best;
     if (!best) continue;
     if (showAlternates) {
       for (const [s, f] of alternates) {
@@ -201,8 +228,15 @@ export function placeNotes(notes = [], opts = {}) {
     layers[`${best[0]},${best[1]}`] = {
       color: colors.heard,
       style: n.strength >= 0.6 ? 'hot' : 'solid',
+      // ⚠️ LEVEL IS SET ONLY WHEN SOMETHING COULD ACTUALLY SNAP. With no snap
+      // function there is nothing to contrast an exact pick against, and
+      // grading every cell down would dim the whole neck for the players who
+      // never turn the camera on — who are the default. `level` stays absent,
+      // FretboardFull skips the wrapping <g>, and the picture is identical to
+      // what it drew before any of this existed.
+      ...(o.snap ? { level: exact ? 1 : o.guessLevel } : {}),
     };
-    placements.push({ ...n, position: best, alternates, folded });
+    placements.push({ ...n, position: best, alternates, folded, exact: !!exact });
   }
 
   return { layers, placements };
@@ -250,6 +284,47 @@ export function makeNeckTracker(opts = {}) {
    */
   let externalRef = null;
   const refNow = () => externalRef || hand.ref();
+
+  /**
+   * Exact positions for the notes sounding right now, from somewhere that can
+   * actually know.
+   *
+   * ⚠️ THIS MODULE MUST NOT IMPORT THE VISION CODE, WHICH IS WHY THIS IS A
+   * FUNCTION AND NOT A DEPENDENCY. `fretFusion.snapChord` is what fills it in,
+   * but neckPlacement is the audio side and stays runnable — and testable —
+   * with no camera, no MediaPipe and no vision module anywhere in the graph.
+   * The caller closes over whatever it has. Same discipline as `setRef`.
+   *
+   * ⚠️ IT TAKES THE WHOLE NOTE LIST, NOT ONE NOTE. This started out per-note and
+   * that shape could not express the constraint that matters most: notes ringing
+   * together have to be reachable by ONE hand. A resolver handed a single midi
+   * has no way to know what else is sounding, so it cannot use the strongest
+   * evidence available to it — and a chord snapped a note at a time can produce
+   * a shape nobody could play. Frame in, frame out.
+   *
+   * @type {((notes:{midi:number}[]) => ([number,number]|null)[])|null}
+   */
+  let snap = null;
+  // ⚠️ WRAPPED SO A THROWING OR NONSENSE SNAP CANNOT TAKE THE NECK DOWN. This
+  // is fed by a camera, a CDN-loaded model and a homography that can come loose
+  // mid-song; the failure mode for all of that has to be "the audio estimate,
+  // as before", never a dead render loop. A short or ragged array is fine —
+  // every entry is validated on its own and a missing one just means "no answer
+  // for that note", which is a thing the resolver is allowed to say.
+  const snapNow = (notes) => {
+    if (!snap || !notes || !notes.length) return null;
+    let r;
+    try { r = snap(notes); } catch { return null; }
+    if (!Array.isArray(r)) return null;
+    const ok = p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite);
+    return notes.map((_, i) => (ok(r[i]) ? r[i] : null));
+  };
+  /** Positions for a whole frame: snapped where possible, guessed where not. */
+  const placeAll = (notes) => {
+    const snapped = snapNow(notes);
+    return notes.map((n, i) => (snapped && snapped[i])
+      || placePitch(midiToPitch(n.midi), refNow(), o).best);
+  };
   /** @type {Map<number, number>} midi → current strength (the NOW layer) */
   let live = new Map();
   /** @type {Map<string, number>} cellId → accumulated weight (the USED layer) */
@@ -284,9 +359,14 @@ export function makeNeckTracker(opts = {}) {
       // note that stopped sounding two seconds ago nor inflate the usage map
       // by re-counting the same note on every frame it lingers.
       if (notes.length) {
-        const positions = notes
-          .map(n => placePitch(midiToPitch(n.midi), refNow(), o).best)
-          .filter(Boolean);
+        // ⚠️ THE HAND TRACKER IS FED THE SNAPPED POSITIONS WHEN THERE ARE ANY,
+        // and that is deliberate rather than incidental: a measured position is
+        // better evidence of where the hand is than an inferred one, so letting
+        // the tracker learn from it keeps the fallback SHARP for the moment the
+        // camera loses the hand. The tracker still runs either way — see the
+        // note on `externalRef` above, which is the same argument.
+        const framePositions = placeAll(notes);
+        const positions = framePositions.filter(Boolean);
         hand.push(positions, dtMs);
 
         // ⚠️ USAGE IS WEIGHTED BY TIME, NOT BY FRAME COUNT. Accumulating one
@@ -294,9 +374,17 @@ export function makeNeckTracker(opts = {}) {
         // managed to render, so a note held through a slow patch would count
         // less than the same note during a smooth one. Seconds-of-sounding is
         // the thing actually being asked about.
+        //
+        // ⚠️ INDEXED OFF `framePositions`, WHICH IS ALIGNED WITH `notes` — NOT
+        // off the filtered list that went to the hand tracker. Those two are the
+        // same array right up until one note fails to place, at which point the
+        // filtered one is shorter and every note after the gap has its usage and
+        // its pitch class credited to the cell belonging to a DIFFERENT note.
+        // Silent, rare, and it corrupts the accumulated picture that the whole
+        // mode exists to build.
         const seconds = Math.max(0, dtMs) / 1000;
         for (let i = 0; i < notes.length; i++) {
-          const p = positions[i];
+          const p = framePositions[i];
           if (!p) continue;
           const w = notes[i].strength * seconds;
           const id = `${p[0]},${p[1]}`;
@@ -315,10 +403,37 @@ export function makeNeckTracker(opts = {}) {
         // A step is recorded only when the top voice CHANGES. Recording every
         // frame would stack hundreds of identical points on one cell and make
         // a held note look like a scribble.
-        const top = notes.reduce((a, b) => (b.midi > a.midi ? b : a));
+        //
+        // ⚠️ THE MELODY STEP REUSES THIS FRAME'S POSITION rather than resolving
+        // the top note again on its own. Asking a second time would ask WITHOUT
+        // the rest of the chord, so the trail could be drawn at a position the
+        // hand shape had already ruled out — the neck and the line through it
+        // disagreeing about where the same note was played.
+        //
+        // ⚠️ AND OVERTONES ARE SKIPPED WHEN PICKING IT. "Highest pitch wins" is
+        // the right rule for a melody and the wrong one to apply to a raw
+        // detection list, because an overtone is ALWAYS higher than the note
+        // that produced it — so a surviving harmonic captures the melody every
+        // time, and drags the trail an octave or a twelfth away from the string
+        // that was actually plucked. `chroma.js` marks the notes that nothing
+        // but overtones support; this is the consumer that has to care. If every
+        // note in the frame is marked, the plain top voice stands, because a
+        // trail that vanishes is worse than one drawn an octave out.
+        let topIdx = -1;
+        for (let i = 0; i < notes.length; i++) {
+          if (notes[i].harmonic) continue;
+          if (topIdx < 0 || notes[i].midi > notes[topIdx].midi) topIdx = i;
+        }
+        if (topIdx < 0) {
+          topIdx = 0;
+          for (let i = 1; i < notes.length; i++) {
+            if (notes[i].midi > notes[topIdx].midi) topIdx = i;
+          }
+        }
+        const top = notes[topIdx];
         if (top.midi !== lastTopMidi) {
           lastTopMidi = top.midi;
-          const spot = placePitch(midiToPitch(top.midi), refNow(), o).best;
+          const spot = framePositions[topIdx];
           if (spot) {
             newStep = {
               s: spot[0], f: spot[1], midi: top.midi,
@@ -429,7 +544,9 @@ export function makeNeckTracker(opts = {}) {
             : { color: usedColor, style: 'pulse', level };
         }
       }
-      const now = placeNotes(this.notes(), { ...o, ...layerOpts, ref: refNow() }).layers;
+      const now = placeNotes(this.notes(), {
+        ...o, ...layerOpts, ref: refNow(), snap: snap ? snapNow : null,
+      }).layers;
       return { ...out, ...now };
     },
     ref() { return refNow(); },
@@ -443,6 +560,24 @@ export function makeNeckTracker(opts = {}) {
       externalRef = Array.isArray(ref) && ref.length === 2 && ref.every(Number.isFinite)
         ? ref : null;
     },
+    /**
+     * Supply a resolver that can name the EXACT positions the notes sounding
+     * right now came from, or null to go back to inferring them.
+     *
+     * `setRef` and `setSnap` are two different strengths of the same help and
+     * both are worth having. A reference says "the hand is around here" and
+     * only tips the ranking; a snap says "these notes were played THERE" and
+     * settles it. The camera can supply the first while the second declines —
+     * notes sitting on a boundary — so the weaker signal is not made redundant
+     * by the stronger one.
+     *
+     * @param {((notes:{midi:number}[]) => ([number,number]|null)[])|null} fn
+     *   returns one entry per input note, index-aligned; null entries mean
+     *   "no exact answer for that one", and the audio estimate is used instead.
+     */
+    setSnap(fn) { snap = typeof fn === 'function' ? fn : null; },
+    /** Whether an exact resolver is currently attached — for the UI to say so. */
+    snapping() { return !!snap; },
     /** Clears the session picture but leaves the live trail and hand alone. */
     clearUsage() { usage = new Map(); pcUsage = new Float64Array(12); heardFrames = 0; },
     reset() {

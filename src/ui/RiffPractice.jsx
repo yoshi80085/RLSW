@@ -20,7 +20,7 @@
 // no re-render. Only the readouts are state.
 // =============================================================================
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { mountArrowHighway } from "../riff/arrowHighwayEngine.js";
+import { mountArrowHighway, TIERS } from "../riff/arrowHighwayEngine.js";
 import { GENRES } from "../riff/riffArchetypes.js";
 
 const ACCENT = '#19e6ff';
@@ -38,12 +38,16 @@ const ARCHETYPES = [
   ['alt_cell',    'ALT CELL — A-B-A-B'],
 ];
 
-const TIERS = [
-  ['rookie',   '📱 INFLUENCER — learn the shapes'],
-  ['gigging',  '🔥 GIGGING — working tempo'],
-  ['shredder', '⚡ SHREDDER — fast drop'],
-  ['virtuoso', '🌟 VIRTUOSO — wall of gems'],
-];
+// Dropdown copy only. The tier IDS are derived from the engine's table (which
+// is the riff-off's table) so this list cannot list a tier that doesn't exist
+// or miss one that does; the blurbs are just flavour.
+const TIER_BLURB = {
+  rookie:   '📱 INFLUENCER — learn the shapes',
+  gigging:  '🔥 GIGGING — working tempo',
+  shredder: '⚡ SHREDDER — fast drop',
+  virtuoso: '🌟 VIRTUOSO — wall of gems',
+};
+const TIER_OPTIONS = Object.keys(TIERS).map(id => [id, TIER_BLURB[id] ?? id.toUpperCase()]);
 
 // [id, key, label, min, max, step, format, rebuildsRiff]
 const KNOBS = {
@@ -116,8 +120,11 @@ export function RiffPractice({ initialDiff, onBack }) {
     if (!h) return;
     h.K[key] = value;
     if (key === 'tier') {
-      const t = h.K.tier;
-      h.K.lead = { rookie: 2000, gigging: 1600, shredder: 1150, virtuoso: 900 }[t] ?? 1600;
+      // Lead time comes from the engine's own tier table — which is itself the
+      // riff-off's table (fallingNotes.js). Practising at a tempo the duel
+      // doesn't use is worse than not practising, so there is exactly one
+      // number and this reads it rather than restating it.
+      h.K.lead = TIERS[h.K.tier]?.leadTime ?? TIERS.gigging.leadTime;
     }
     setNotes(h.readabilityNote());
     if (rebuild && !h.isRunning()) h.newRiff();
@@ -166,7 +173,7 @@ export function RiffPractice({ initialDiff, onBack }) {
         <h2 style={S.h2}>DIFFICULTY</h2>
         <select style={S.select} value={K?.tier ?? 'gigging'}
           onChange={e => setSelect('tier', e.target.value)}>
-          {TIERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          {TIER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
 
         <h2 style={S.h2}>MATERIAL</h2>

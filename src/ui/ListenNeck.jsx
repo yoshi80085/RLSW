@@ -31,7 +31,7 @@ import { chromaAvailable, startChromaListening } from "../audio/chroma.js";
 import { makeKeyTracker, listenFrame, keyToScale, detectPalette } from "../music/keyDetect.js";
 import { makeNeckTracker } from "../music/neckPlacement.js";
 import CameraCalibrator from "./CameraCalibrator.jsx";
-import { makeFretFusion } from "../vision/fretFusion.js";
+import { makeFretFusion, snapChord } from "../vision/fretFusion.js";
 import { makePhraseRecorder, analysePhrase, ROLE_LABELS } from "../music/riffAnalysis.js";
 import { getRiffAudio } from "../audio/riffSfx.js";
 import { makeNetClient } from "../net/client.js";
@@ -113,6 +113,21 @@ export function ListenNeck({ onBack }) {
   const listenerRef = useRef(null);
   const keyTrackerRef = useRef(makeKeyTracker());
   const neckRef = useRef(makeNeckTracker());
+  // ⚠️ TURNING THE CAMERA OFF HAS TO TEAR DOWN THE READING, NOT JUST THE PANEL.
+  // Unticking the box unmounts CameraCalibrator, which stops delivering hand
+  // positions — but the LAST one it delivered is still sitting in the ref, and
+  // without this the neck would go on snapping every note to wherever the hand
+  // happened to be when the panel closed. Stale-but-plausible is the worst
+  // failure this feature has, so it is cleared where the feature is switched
+  // off rather than trusted to a callback that may never fire on the way out.
+  // What the fusion learned is dropped too: it described one camera position.
+  useEffect(() => {
+    if (camera) return;
+    camFretRef.current = null;
+    neckRef.current.setSnap(null);
+    neckRef.current.setRef(null);
+    fusionRef.current.reset();
+  }, [camera]);
   const phraseRef = useRef(makePhraseRecorder());
   const lastTRef = useRef(0);
   const holdRef = useRef({ name: null, since: 0, logged: null });
@@ -207,6 +222,31 @@ export function ListenNeck({ onBack }) {
         const top = f.notes.reduce((a, b) => (b.midi > a.midi ? b : a));
         fusionRef.current.observe(top.midi, rawCamFret);
       }
+      // ── The exact answer, not just a better guess ──
+      // ⚠️ THIS IS THE STEP THAT MAKES THE READING EXACT RATHER THAN NEARER.
+      // `setRef` above only tips placePitch's ranking and still returns a
+      // continuous estimate with no way to say how close the call was. The snap
+      // chooses between the three or four places the pitch could ACTUALLY have
+      // come from — positions four or five frets apart — and reports the margin
+      // to the boundary. See EAR_SPY_HANDOFF §6a: ±2.0 frets of camera accuracy
+      // is enough to make that choice, and the camera has 0.66 RMS.
+      //
+      // ⚠️ AND IT DECLINES ON A BOUNDARY. `confident` is false inside 1.2 frets
+      // of the flip point, and then this returns null for that note and the
+      // audio estimate stands. Snapping anyway would put a specific, confidently
+      // wrong fret on screen in exactly the cases the maths says are coin tosses.
+      //
+      // ⚠️ THE WHOLE FRAME GOES IN AT ONCE, NOT ONE NOTE AT A TIME. Notes ringing
+      // together were played by one hand, which is a far stronger constraint
+      // than each note alone — and it CUTS BOTH WAYS: it rejects shapes nobody
+      // could hold, and it settles notes whose own margin was a coin toss,
+      // because often only one assignment leaves the chord playable.
+      neckRef.current.setSnap((notes) => snapChord(notes, corrected)
+        .map(s => (s && s.confident ? s.position : null)));
+    } else {
+      // No camera reading this frame — a lift, a shadow, someone walking past.
+      // Drop back to inference rather than snapping to a stale position.
+      neckRef.current.setSnap(null);
     }
 
     const view = optsRef.current;
@@ -446,11 +486,12 @@ export function ListenNeck({ onBack }) {
         </label>
       </div>
 
-      {/* ⚠️ THE CAMERA ONLY EVER SUPPLIES placePitch's `ref` ARGUMENT — one number,
-          and the audio tracker keeps running underneath it as the fallback. Audio
-          says WHEN and WHAT; video says WHERE. Two numbers of integration surface,
-          and nothing about the listening chain changes if the camera is off, is
-          refused, or loses the hand mid-phrase. */}
+      {/* ⚠️ THE CAMERA SUPPLIES TWO THINGS AND NOTHING ELSE: placePitch's `ref`
+          argument, and — when it can resolve a note past the confidence bar — the
+          exact position via `setSnap`. The audio tracker keeps running underneath
+          both as the fallback. Audio says WHEN and WHAT; video says WHERE. Nothing
+          about the listening chain changes if the camera is off, is refused, or
+          loses the hand mid-phrase. */}
       {camera && (
         <CameraCalibrator
           onRef={ref => {

@@ -81,6 +81,38 @@ export const CHROMA_DEFAULTS = {
   // prints a phantom octave above every single note you play.
   noteFloor: 0.30,
 
+  // ⚠️ ...AND THIS IS THE OTHER HALF OF THE SAME NUMBER, BECAUSE ONE THRESHOLD
+  // IS A CLIFF AND A DECAYING NOTE WALKS OVER IT. `noteFloor` admits; this
+  // releases. Measured: with the fundamental fixed and the 2nd partial rising
+  // through a note's decay, the discounted octave crosses 0.30 at a partial
+  // ratio of ~1.6 and lands at 0.316 — three hundredths clear. The balance
+  // between partials moves continuously while a note rings, so that boundary
+  // gets crossed several times per note and the neck dot blinks each time.
+  //
+  // Handoff ruling 3 says a rejected FRAME holds rather than blanks. The same
+  // argument applies per NOTE and did not: admitting at 0.30 while releasing at
+  // 0.20 means a note has to genuinely stop to leave, not merely wobble.
+  // Applied by `makeNoteHold`, not here — `chromaFromPeaks` stays pure.
+  noteFloorRelease: 0.20,
+
+  // Missing-fundamental inference. See `inferVirtualFundamentals`.
+  virtualFundamental: true,
+  minVirtualPartials: 4,   // UNEXPLAINED partials required before inventing an f0
+  maxVirtualDivisor: 4,    // the lowest peak may be partial 2, 3 or 4 of it
+  maxVirtualSeeds: 3,      // only the lowest few peaks are worth testing
+  // ⚠️ FAR TIGHTER THAN `harmonicTolerance`, AND THAT IS HALF THE DEFENCE
+  // AGAINST INVENTING CHORD ROOTS — see the note on `inferVirtualFundamentals`.
+  // ±0.4% ≈ 7 cents: wide enough for a real partial, too narrow for an
+  // equal-tempered major third pretending to be one (14 cents out).
+  virtualTolerance: 0.004,
+  // ⚠️ HIGHER THAN `maxHarmonic`, ON PURPOSE. Suppression stops at 8 because
+  // that is where a partial stops being worth discounting. Counting EVIDENCE is
+  // a different question and wants to reach further: partials 2..8 leave only
+  // {2,3,5,7} unexplained (4, 6 and 8 are covered by 2, 3 and 4), which is the
+  // bare minimum, and 11 and 13 are the margin that lets a real note survive a
+  // mic that swallowed one of them.
+  maxVirtualHarmonic: 13,
+
   // Exponential smoothing half-life. Chords last far longer than the ~46 ms of
   // one FFT frame, so averaging is nearly free accuracy. Too long and fast
   // changes smear into each other.
@@ -223,6 +255,141 @@ export function freqToMidiFloat(freq) {
   return 69 + 12 * Math.log2(freq / 440);
 }
 
+// ── Missing fundamentals ────────────────────────────────────────────────────
+// ⚠️ THE SUPPRESSION PASS BELOW HAS ONE UNSTATED PREMISE: THAT THE FUNDAMENTAL
+// IS IN THE PEAK LIST AT ALL. Ordering the pass by ascending frequency (see the
+// note in `chromaFromPeaks`) fixed the case where the fundamental is WEAKER than
+// its partials. It does nothing for the case where the fundamental is GONE —
+// and `pickPeaks` drops it at `peakFloorRatio`, which is measured against the
+// loudest peak anywhere in 73–2093 Hz, not against its own neighbourhood.
+//
+// Measured on a synthetic E2 with the partial balance of a real low string:
+//
+//   f0 at -20 dB  →  E2 1.00   E3 0.79*  B3 0.61*  E4 0.53*   (* = flagged)
+//   f0 at -26 dB  →  E3 1.00   B3 0.77   G#4 0.54  D5 0.38    (nothing flagged)
+//
+// The cliff sits at -24.4 dB, which is an ordinary amount of low-end rolloff for
+// a laptop or phone mic. Below it every partial is an orphan with no lower peak
+// to parent it, so every one takes FULL weight and `harmonic: false` — one
+// plucked string becomes a four-note chord an octave up, and it is invisible to
+// the guard that fixed the last version of this bug, because the melody trail's
+// skip-the-flagged rule can only skip notes that got flagged.
+//
+// A human hears the low E out of a phone speaker that cannot reproduce 82 Hz at
+// all. The pitch is carried by the SPACING of the partials, not by the presence
+// of the first one, and that is recoverable here for the same reason.
+//
+// ⚠️ AND HERE ARE THE THREE GUARDS THAT MAKE IT SOUND RATHER THAN RECKLESS.
+// Inventing notes is dangerous in a specific and embarrassing way: a MAJOR TRIAD
+// IS ITSELF ROUGHLY A HARMONIC SERIES (4:5:6), so the naive version of this
+// happily decides that every F major chord implies an F an octave below anything
+// anybody played. The first draft did exactly that — `npm run test:chroma` caught
+// it on D minor 7, which grew a phantom D2 and stopped reading as a seventh
+// chord at all. All three of these earn their place:
+//
+// 1. ⚠️ ONLY UNEXPLAINED PEAKS COUNT AS EVIDENCE. A peak the ordinary pass can
+//    already account for as some lower peak's overtone must not ALSO be counted
+//    as support for a deeper root — that is double-counting, and it is what let
+//    a chord's own upper partials vote for a fundamental underneath it. In a
+//    genuine missing fundamental the survivors are orphans by construction: with
+//    partials 2..8 present, 4, 6 and 8 are explained by 2, 3 and 4, leaving
+//    exactly {2, 3, 5, 7} to speak for the note that is gone.
+//
+// 2. ⚠️ THE MATCH TOLERANCE IS ±10 CENTS, NOT THE ±60 THE SUPPRESSION PASS USES,
+//    and the difference is doing real work. A real partial sits within a few
+//    cents of an exact multiple. An equal-tempered chord tone masquerading as one
+//    does not: ET's major third is 14 cents off 5:4, its minor third 16 cents off
+//    6:5, its minor seventh 31 cents off 7:4. A loose window cannot tell a string
+//    from a chord; a tight one can, because equal temperament is audibly and
+//    measurably not the harmonic series. This single number is what stops the F
+//    major triad above from summoning its own bass note.
+//
+// 3. ⚠️ THE MATCHED INDICES MUST BE COPRIME AS A SET, which is the same aliasing
+//    argument §6b makes about fret spacing: a repeating structure aliases, so you
+//    need something that breaks the repeat. Partials at 2f, 4f, 6f are explained
+//    just as well by a fundamental at 2f taking indices 1, 2, 3 — the simpler
+//    hypothesis — so inventing f would be inventing an octave nothing supports.
+//    2 and 3 pin the fundamental; 2 and 4 cannot. When the gcd is not 1 the
+//    information genuinely is not there and we decline, exactly as §4 says.
+//
+// ⚠️ AND IT IS DELIBERATELY LOPSIDED. Declining costs the old behaviour; a false
+// invention prints a note nobody played, an octave below, at full strength, as
+// the strongest thing in the frame. A chord whose bass fundamental is missing
+// generally will NOT be recovered — its partials are mostly explained by the
+// other notes, so there are too few orphans — and that is the correct trade. The
+// case this exists for is one plucked low string, which is where the octave
+// jitter actually lives.
+
+/** Greatest common divisor of a list of positive integers. */
+function gcdAll(nums) {
+  const gcd2 = (a, b) => (b === 0 ? a : gcd2(b, a % b));
+  return nums.reduce((g, n) => gcd2(g, n), 0);
+}
+
+/** Is `p` plausibly an overtone of some lower peak in `asc`? */
+function hasParent(p, asc, o) {
+  for (const q of asc) {
+    if (q.freq >= p.freq) break;
+    const ratio = p.freq / q.freq;
+    const nearest = Math.round(ratio);
+    if (nearest < 2 || nearest > o.maxHarmonic) continue;
+    if (Math.abs(ratio - nearest) < o.harmonicTolerance * nearest) return true;
+  }
+  return false;
+}
+
+/**
+ * Find fundamentals that the peak list implies but does not contain.
+ *
+ * Exported and pure so it can be tested against hand-built peak lists rather
+ * than through the FFT — the defect this exists for is a property of the peak
+ * SET, and a test that has to synthesize a spectrum to reach it is a test that
+ * will quietly stop reaching it.
+ *
+ * @param {{freq:number, mag:number}[]} peaks  any order; the WHOLE frame
+ * @returns {{freq:number, mag:number, virtual:true}[]} peaks to add, ascending
+ */
+export function inferVirtualFundamentals(peaks, opts = {}) {
+  const o = { ...CHROMA_DEFAULTS, ...opts };
+  if (!o.virtualFundamental || peaks.length < o.minVirtualPartials) return [];
+
+  const asc = [...peaks].sort((a, b) => a.freq - b.freq);
+  const near = (a, b) => Math.abs(a / b - 1) < o.virtualTolerance;
+  // Guard 1: the evidence is the peaks nothing else accounts for.
+  const orphans = asc.filter(p => !hasParent(p, asc, o));
+  const out = [];
+
+  // A harmonic series has ONE bottom, so only the lowest few peaks are worth
+  // testing as "partial n of something below me"; anything higher is already
+  // explained by whatever explains them.
+  for (const seed of asc.slice(0, o.maxVirtualSeeds)) {
+    for (let n = 2; n <= o.maxVirtualDivisor; n++) {
+      const f0 = seed.freq / n;
+      // Below the analysis band is below the instrument. Decline rather than
+      // invent a note nobody could have played.
+      if (f0 < o.minHz) break;
+      // The premise is that partial 1 is missing. If it is present there is
+      // nothing to infer and the ordinary pass already handles it.
+      if (asc.some(q => near(q.freq, f0))) continue;
+      // Don't invent the same fundamental twice from two different seeds.
+      if (out.some(v => near(v.freq, f0))) continue;
+
+      const idx = [];
+      let mag = 0;
+      for (let k = 2; k <= o.maxVirtualHarmonic; k++) {
+        const hit = orphans.find(q => near(q.freq, f0 * k));   // guard 1 + 2
+        if (hit) { idx.push(k); mag = Math.max(mag, hit.mag); }
+      }
+      if (idx.length < o.minVirtualPartials) continue;
+      if (gcdAll(idx) !== 1) continue;      // guard 3 — the aliasing check
+
+      out.push({ freq: f0, mag, virtual: true });
+      break;                                 // this seed is spoken for
+    }
+  }
+  return out.sort((a, b) => a.freq - b.freq);
+}
+
 /**
  * Fold spectral peaks into a 12-bin pitch class profile.
  *
@@ -245,7 +412,8 @@ export function freqToMidiFloat(freq) {
  *
  * @returns {{ chroma, bass, notes, energy }}
  *   chroma / bass — Float32Array(12), normalized so the strongest bin is 1
- *   notes  — [{ midi, pc, strength }] above `noteFloor`, strongest first
+ *   notes  — [{ midi, pc, strength, harmonic, virtual }] above `noteFloor`,
+ *            strongest first
  *   energy — raw pre-normalization sum; a "was there anything here" scalar
  */
 export function chromaFromPeaks(peaks, opts = {}) {
@@ -253,10 +421,48 @@ export function chromaFromPeaks(peaks, opts = {}) {
   const chroma = new Float32Array(12);
   const bass = new Float32Array(12);
   const byMidi = new Map();
+  /** Weight that arrived UNdiscounted — i.e. not explainable as an overtone. */
+  const byMidiDirect = new Map();
+  /** Midi numbers backed by at least one peak the FFT actually measured. */
+  const byMidiReal = new Set();
   const accepted = [];
   let energy = 0;
 
-  for (const p of peaks) {
+  // ⚠️ ASCENDING FREQUENCY, AND THE WHOLE HARMONIC SUPPRESSION DEPENDS ON IT.
+  // `pickPeaks` returns peaks strongest-first, because magnitude order is what
+  // the `maxPeaks` cap needs. Feeding that order straight into the loop below
+  // looks harmless and quietly breaks the suppression: a peak is only tested
+  // against parents already in `accepted`, i.e. only against LOUDER peaks, so a
+  // harmonic escaped the discount entirely unless its own fundamental happened
+  // to be louder than it.
+  //
+  // On a guitar it frequently is not. A low E's fundamental at 82 Hz is often
+  // weaker than its octave, and weaker still through a phone mic or a small
+  // speaker. Measured on a synthetic E2 whose 2nd partial dominates: ONE played
+  // note came back as THREE — E3 1.00, B3 0.77, E2 0.67 — with the top voice
+  // reported a twelfth above the string that was plucked. Worse, the balance
+  // between partials shifts continuously as a note decays, so the set flipped
+  // frame to frame (top voice B3, then E3), and `makeNeckTracker` records a
+  // melody step every time the top voice changes. That is what a jittering
+  // trail and "it gets confused about octaves" both look like from the outside.
+  //
+  // ⚠️ THE TEST SUITE COULD NOT SEE THIS. Its synthetic tones are built with the
+  // fundamental as the strongest partial, which is the one arrangement where
+  // magnitude order and frequency order agree. There is now a test built the
+  // other way round.
+  //
+  // Sorting here rather than in `pickPeaks` keeps this function correct whatever
+  // order it is handed — it is exported and tested directly.
+  //
+  // ⚠️ AND THE INFERRED FUNDAMENTALS GO IN BEFORE THE SORT, so they parent their
+  // own partials like any other peak. That is the entire integration: a virtual
+  // f0 is the lowest thing in its series, so the pass below discounts everything
+  // standing on it and flags it, with no special case anywhere downstream. See
+  // `inferVirtualFundamentals` for why it is allowed to invent one at all.
+  const ordered = [...peaks, ...inferVirtualFundamentals(peaks, o)]
+    .sort((a, b) => a.freq - b.freq);
+
+  for (const p of ordered) {
     let weight = 1;
     for (const q of accepted) {
       if (q.freq >= p.freq) continue;               // only lower peaks can parent
@@ -275,7 +481,17 @@ export function chromaFromPeaks(peaks, opts = {}) {
     chroma[pc] += w;
     if (p.freq <= o.bassMaxHz) bass[pc] += w;
     byMidi.set(midi, (byMidi.get(midi) || 0) + w);
-    energy += w;
+    // ⚠️ TRACKED SEPARATELY, BECAUSE "DISCOUNTED" IS NOT A PROPERTY OF A PEAK
+    // BUT OF A NOTE. Two peaks can land on the same MIDI number — one a real
+    // fundamental, one some other note's harmonic — and a note that received any
+    // full-weight peak at all is a note somebody played. Only a note whose
+    // every contribution was discounted is a note nothing but overtones support.
+    if (weight === 1) byMidiDirect.set(midi, (byMidiDirect.get(midi) || 0) + w);
+    if (!p.virtual) byMidiReal.add(midi);
+    // ⚠️ INVENTED WEIGHT IS NOT ENERGY. `energy` answers "was there anything
+    // here", and a virtual fundamental is precisely the thing that was NOT
+    // there. Counting it would let an inference raise the level meter.
+    if (!p.virtual) energy += w;
   }
 
   // Register list, normalized against the strongest note and thresholded.
@@ -283,7 +499,26 @@ export function chromaFromPeaks(peaks, opts = {}) {
   for (const w of byMidi.values()) if (w > maxNote) maxNote = w;
   const notes = maxNote > 0
     ? [...byMidi.entries()]
-        .map(([midi, w]) => ({ midi, pc: ((midi % 12) + 12) % 12, strength: w / maxNote }))
+        .map(([midi, w]) => ({
+          midi,
+          pc: ((midi % 12) + 12) % 12,
+          strength: w / maxNote,
+          // ⚠️ SURVIVING THE FLOOR AND BEING REAL ARE DIFFERENT QUESTIONS, and
+          // this is the answer to the second one. A loud low string's octave
+          // partial clears `noteFloor` even after the discount, so it is
+          // reported — correctly, something IS ringing at that frequency. But
+          // it is not a note anyone fretted, and a consumer that treats it as
+          // one will draw a dot on the wrong fret. Anything picking ONE note
+          // out of a frame should skip these; anything asking "what is ringing"
+          // should not.
+          harmonic: !byMidiDirect.has(midi),
+          // ⚠️ REPORTED, NOT HIDDEN. This note is an inference from the spacing
+          // of its own partials rather than a measurement — the same note a
+          // listener hears out of a speaker too small to produce it. It is the
+          // right answer and it belongs in the list, but a consumer weighing
+          // evidence is entitled to know which kind it is (handoff ruling 2).
+          virtual: !byMidiReal.has(midi),
+        }))
         .filter(n => n.strength >= o.noteFloor)
         .sort((a, b) => b.strength - a.strength)
     : [];
@@ -340,6 +575,57 @@ export function makeChromaSmoother(opts = {}) {
     },
     value() { return normalize(acc); },
     reset() { acc = new Float32Array(12); seeded = false; },
+  };
+}
+
+// ── Note hysteresis ─────────────────────────────────────────────────────────
+
+/**
+ * A Schmitt trigger on the `notes` list: a note is ADMITTED at `noteFloor` and
+ * only RELEASED once it falls under `noteFloorRelease`.
+ *
+ * ⚠️ WHY THIS IS NOT JUST A LOWER `noteFloor`. Lowering the floor admits every
+ * marginal partial on its first frame, which is what §4 warns about — a phantom
+ * octave over every note. The band is the point: hard to get in, easy to stay.
+ * A note that is genuinely ringing sits comfortably above the release level
+ * frame after frame; one that only grazed the admit level on a transient never
+ * got in to begin with.
+ *
+ * ⚠️ AND IT NEEDS NO TIMEOUT, WHICH IS WORTH UNDERSTANDING BEFORE ADDING ONE.
+ * `strength` is normalized against the strongest note in the FRAME, not against
+ * an absolute level, so a held note is released by the arrival of a louder one
+ * as well as by its own decay — the case a timeout would be reaching for is
+ * already covered, and the frame gate handles actual silence.
+ *
+ * ⚠️ Feed it a note list produced with `noteFloor` set to the RELEASE level, or
+ * held notes are filtered out upstream before they ever reach the hold and this
+ * does nothing at all. `startChromaListening` does this; a caller wiring the
+ * pieces together by hand must too.
+ *
+ * @returns {{ push(notes): notes, held(): Set<number>, reset(): void }}
+ */
+export function makeNoteHold(opts = {}) {
+  let o = { ...CHROMA_DEFAULTS, ...opts };
+  let held = new Set();
+
+  return {
+    // Retunable live, like the gate: `listen-test.html` moves these against a
+    // real room while the mic keeps running, and a hold frozen at construction
+    // would silently ignore the slider.
+    setOptions(next) { o = { ...o, ...next }; },
+    push(notes) {
+      const out = [];
+      const next = new Set();
+      for (const n of notes) {
+        const admit = n.strength >= o.noteFloor;
+        const keep = held.has(n.midi) && n.strength >= o.noteFloorRelease;
+        if (admit || keep) { out.push(n); next.add(n.midi); }
+      }
+      held = next;
+      return out;
+    },
+    held() { return new Set(held); },
+    reset() { held = new Set(); },
   };
 }
 
@@ -629,6 +915,7 @@ export async function startChromaListening(onFrame, opts = {}) {
   const mags = new Float32Array(analyser.frequencyBinCount);
   const smoother = makeChromaSmoother({ halfLifeMs: o.smoothHalfLifeMs });
   const gate = makeFrameGate(o);
+  const noteHold = makeNoteHold(o);
   const ZERO = new Float32Array(12);
 
   let running = true;
@@ -655,6 +942,7 @@ export async function startChromaListening(onFrame, opts = {}) {
     if (db < o.gateDb) {
       smoother.reset();
       gate.reset();
+      noteHold.reset();
       lastGood = ZERO;
       lastGoodBass = ZERO;
       lastGoodNotes = [];
@@ -673,8 +961,14 @@ export async function startChromaListening(onFrame, opts = {}) {
     }
 
     const flatness = spectralFlatness(mags, audioCtx.sampleRate, analyser.fftSize, o);
-    const { chroma: rawChroma, bass, notes, energy } =
-      chromaFromSpectrum(mags, audioCtx.sampleRate, analyser.fftSize, o);
+    // ⚠️ ANALYSE DOWN TO THE RELEASE LEVEL, DECIDE AT THE ADMIT LEVEL. The hold
+    // cannot keep a note it never sees, and `chromaFromPeaks` filters before it
+    // returns — so the floor handed to the analysis is the LOWER of the two and
+    // `makeNoteHold` applies the real one. Chroma is unaffected: `noteFloor`
+    // only ever gated the register list.
+    const { chroma: rawChroma, bass, notes: rawNotes, energy } =
+      chromaFromSpectrum(mags, audioCtx.sampleRate, analyser.fftSize,
+        { ...o, noteFloor: Math.min(o.noteFloor, o.noteFloorRelease) });
     const verdict = gate.push({ db, flatness, chroma: rawChroma, dtMs });
 
     // ⚠️ REJECTED FRAMES ARE DROPPED, NOT ZEROED. Zeroing makes the display
@@ -683,13 +977,20 @@ export async function startChromaListening(onFrame, opts = {}) {
     // rejected frame simply doesn't update the estimate: the last good read
     // stays on screen, flagged `musical: false`, until either a better frame
     // arrives or `releaseMs` of continuous rejection clears it.
+    //
+    // ⚠️ THE NOTE HOLD ADVANCES ONLY ON FRAMES THAT COUNT, for the same reason.
+    // Pushing rejected frames through it would let a few seconds of chair scrape
+    // release notes that are still on screen, and the next good frame would then
+    // have to re-admit from scratch — hysteresis that forgets exactly when the
+    // signal got difficult is worse than none.
     if (verdict.pass) {
       const chroma = smoother.push(rawChroma, dtMs);
       lastGood = chroma;
       lastGoodBass = bass;
-      lastGoodNotes = notes;
+      lastGoodNotes = noteHold.push(rawNotes);
     } else if (verdict.shouldReset) {
       smoother.reset();
+      noteHold.reset();
       lastGood = ZERO;
       lastGoodBass = ZERO;
       lastGoodNotes = [];
@@ -722,9 +1023,10 @@ export async function startChromaListening(onFrame, opts = {}) {
     setOptions(next) {
       o = { ...o, ...next };
       gate.setOptions(next);
+      noteHold.setOptions(next);
     },
     options() { return { ...o }; },
-    resetGate() { gate.reset(); smoother.reset(); },
+    resetGate() { gate.reset(); smoother.reset(); noteHold.reset(); },
     stop() {
       running = false;
       source.disconnect();

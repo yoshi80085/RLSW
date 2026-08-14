@@ -25,20 +25,34 @@
 import {
   generateArchetypeRiff, analyseArrows, GENRES, SCALES, STYLE_BIAS,
 } from './riffArchetypes.js';
+import { RIFF_FALL_DIFFICULTY } from './fallingNotes.js';
 
 
 /* ══════════════════════════════════════════════════════════════════════════
    1. CONSTANTS — mirrored from src/riff/fallingNotes.js + guitarMap.js
    ══════════════════════════════════════════════════════════════════════════ */
 
-// showNums mirrors R2's showLabels ladder: the teaching tiers print the key on
-// the gem, the high tiers make you read the lane.
-const TIERS = {
-  rookie:   { label:'INFLUENCER', leadTime:2000, perfect:150, good:320, ok:520, maxLen:9,  showNums:true  },
-  gigging:  { label:'GIGGING',    leadTime:1600, perfect:120, good:250, ok:420, maxLen:11, showNums:true  },
-  shredder: { label:'SHREDDER',   leadTime:1150, perfect:90,  good:190, ok:340, maxLen:13, showNums:false },
-  virtuoso: { label:'VIRTUOSO',   leadTime:900,  perfect:75,  good:160, ok:280, maxLen:16, showNums:false },
-};
+// ── TIERS — DERIVED, NOT COPIED ──────────────────────────────────────────────
+// The practice highway and the riff-off must be the SAME instrument at the same
+// difficulty, or practising the one doesn't prepare you for the other — which
+// is the entire reason practice exists. So the ladder is read straight out of
+// riff/fallingNotes.js (the riff-off's own table) rather than restated here.
+//
+// This used to be a hand-kept duplicate. It happened to agree at the time it
+// was written; nothing made it keep agreeing, and a tuning pass on one side
+// would silently have made the trainer teach the wrong tempo.
+//
+// showNums mirrors showLabels: the teaching tiers print the key on the gem, the
+// high tiers make you read the lane.
+export const TIERS = Object.fromEntries(
+  Object.entries(RIFF_FALL_DIFFICULTY).map(([id, t]) => [id, {
+    // The panel is narrow — 'INFLUENCER' where the game says 'SOCIAL MEDIA
+    // INFLUENCER'. Cosmetic only; every number below comes from the table.
+    label: id === 'rookie' ? 'INFLUENCER' : t.label,
+    leadTime: t.leadTime, perfect: t.perfect, good: t.good, ok: t.ok,
+    maxLen: t.maxLen, showNums: t.showLabels,
+  }]),
+);
 
 // guitarMap.js: semitones above low E2 for each open string. Index 0 = low E.
 const STRING_OPENS = [0, 5, 10, 15, 19, 24];

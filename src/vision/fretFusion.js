@@ -52,7 +52,7 @@
 // PURE MODULE — no camera, no audio, no DOM. Just arithmetic on a neck.
 // =============================================================================
 
-import { positionsForPitch } from '../riff/guitarMap.js';
+import { positionsForPitch, WINDOW } from '../riff/guitarMap.js';
 import { midiToPitch, foldOntoNeck } from '../music/neckPlacement.js';
 
 export const FUSION_DEFAULTS = {
@@ -122,20 +122,258 @@ export function snapToPosition(midi, cameraFret, opts = {}) {
 }
 
 /**
- * Snap a whole frame of heard notes.
+ * Snap a whole frame of heard notes, EACH ONE INDEPENDENTLY.
  *
- * ⚠️ EACH NOTE IS SNAPPED INDEPENDENTLY, AND THAT IS A KNOWN GAP. Notes sounding
- * together must be reachable by ONE hand, which is a much stronger constraint
- * than each note separately — a set demanding a six-fret stretch is impossible
- * even when every note in it looks fine alone. Not implemented; the hand-span
- * rule needs its own rules about barres and thumb-overs before it can be trusted
- * to reject anything.
+ * ⚠️ PREFER `snapChord` FOR ANYTHING SOUNDING AT THE SAME TIME. This function
+ * treats every note as if it were alone, which is right for a melodic line and
+ * wrong for a chord: notes ringing together must be reachable by ONE hand, and
+ * that is a far stronger constraint than each note separately. Kept because a
+ * per-note answer is still the honest one when the notes are not simultaneous,
+ * and because `snapChord` falls back to it.
  */
 export function snapNotes(notes = [], cameraFret, opts = {}) {
   const out = [];
   for (const n of notes) {
     const s = snapToPosition(n.midi, cameraFret, opts);
     if (s) out.push({ ...n, ...s });
+  }
+  return out;
+}
+
+// =============================================================================
+// 🖐 What one hand can actually do
+// =============================================================================
+
+export const HAND_DEFAULTS = {
+  // ⚠️ TAKEN FROM `guitarMap.WINDOW` RATHER THAN CHOSEN HERE. That constant
+  // already means "the frets a hand covers without moving" and the riff voicer
+  // has been laying out playable riffs with it since long before any of this
+  // existed. A project holding two different opinions about how far a hand
+  // reaches would eventually show a chord the voicer would never have written.
+  // Span is measured max − min, so WINDOW = 4 means five frets inclusive.
+  maxSpan: WINDOW,
+  // Four fingers. The thumb is handled separately because it can only do one
+  // very specific thing.
+  maxFingers: 4,
+  // ⚠️ THE THUMB IS NOT A FIFTH FINGER. It comes over the top of the neck and
+  // can reach exactly one string — the fattest — and only around the lowest
+  // fret of the shape, because the rest of the hand is in the way. Modelled as
+  // that narrow allowance rather than as an extra digit, because "five fingers"
+  // would wave through shapes no hand can make.
+  allowThumbOver: true,
+  // A ceiling on nodes explored by `snapChord`. Six notes with four candidates
+  // each is 4096 leaves before pruning and far fewer after, so this is never
+  // reached in practice — it exists so a pathological frame cannot stall a
+  // render loop that has to hit 60 Hz.
+  maxHandSearch: 20000,
+};
+
+/**
+ * Can one hand hold this set of positions at once?
+ *
+ * ⚠️ THIS IS A FEASIBILITY TEST, NOT A FINGERING. It answers "could a hand do
+ * this", and deliberately does not decide WHICH finger goes where — that is a
+ * much harder problem, it has many valid answers, and none of them are needed
+ * to reject an impossible shape. Every count below is therefore a LOWER BOUND
+ * on fingers required. Erring toward "reachable" is the safe direction: a false
+ * rejection changes the note shown on screen, a false acceptance merely fails to
+ * improve it.
+ *
+ * ⚠️ BARRES ARE NOT SPECIAL-CASED, AND THAT IS THE ONE DESIGN DECISION HERE
+ * WORTH KEEPING. Writing a rule for "a barre" and another for "a partial barre"
+ * and another for the low-fret exception is how this gets complicated and wrong.
+ * One finger lies flat across a RUN OF ADJACENT STRINGS AT ONE FRET — a full
+ * barre and a two-string ring-finger squash are the same physical act at
+ * different widths, so they get the same rule and fall out of it for free.
+ *
+ * What breaks a run is a string in the middle of it that the finger would have
+ * to lie on top of and must not: one that is OPEN (the finger would mute it) or
+ * fretted LOWER (the note nearer the bridge is the one that sounds, so the lower
+ * note could never speak). A string that is simply not being played is no
+ * obstacle — the barre rests on it and nobody strikes it.
+ *
+ * @param {[number,number][]} positions  [string, fret]; fret 0 is open
+ * @returns {{reachable:boolean, span:number, fingers:number, reason:string|null}}
+ */
+export function handShape(positions = [], opts = {}) {
+  const o = { ...HAND_DEFAULTS, ...opts };
+  const clean = (positions || []).filter(
+    p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite));
+
+  // ⚠️ ONE STRING CANNOT SOUND TWO NOTES, and this is checked before anything
+  // else because it is the constraint the independent snap breaks most often —
+  // two notes a fourth apart both land happily on the same string and nothing
+  // downstream notices.
+  const perString = new Map();
+  for (const [s, f] of clean) {
+    if (perString.has(s) && perString.get(s) !== f) {
+      return { reachable: false, span: 0, fingers: 0, reason: 'two notes on one string' };
+    }
+    perString.set(s, f);
+  }
+
+  const fretted = [...perString.entries()].filter(([, f]) => f > 0);
+  if (!fretted.length) {
+    // All open, or nothing at all. Always playable, and needs no hand.
+    return { reachable: true, span: 0, fingers: 0, reason: null };
+  }
+
+  const frets = fretted.map(([, f]) => f);
+  const lowest = Math.min(...frets);
+  const span = Math.max(...frets) - lowest;
+  if (span > o.maxSpan) {
+    return { reachable: false, span, fingers: 0, reason: 'span' };
+  }
+
+  // Group by fret, then split each group into runs one finger could cover.
+  const byFret = new Map();
+  for (const [s, f] of fretted) {
+    if (!byFret.has(f)) byFret.set(f, []);
+    byFret.get(f).push(s);
+  }
+
+  let fingers = 0;
+  let thumbCandidate = false;
+  for (const [f, strings] of byFret) {
+    strings.sort((a, b) => a - b);
+    let runStart = 0;
+    for (let i = 0; i < strings.length; i++) {
+      const last = i === strings.length - 1;
+      let broken = false;
+      if (!last) {
+        for (let t = strings[i] + 1; t < strings[i + 1]; t++) {
+          const at = perString.get(t);
+          if (at === 0 || (at !== undefined && at < f)) { broken = true; break; }
+        }
+      }
+      if (last || broken) {
+        fingers++;
+        // The thumb can take a run only if that run is the fattest string on
+        // its own, at the lowest fret in the shape.
+        if (strings[runStart] === 0 && i === runStart && f === lowest) thumbCandidate = true;
+        runStart = i + 1;
+      }
+    }
+  }
+
+  const allowed = o.maxFingers + (o.allowThumbOver && thumbCandidate ? 1 : 0);
+  return {
+    reachable: fingers <= allowed,
+    span,
+    fingers,
+    reason: fingers <= allowed ? null : 'fingers',
+  };
+}
+
+/**
+ * Snap notes that are sounding TOGETHER, as one hand shape.
+ *
+ * ⚠️ THE CONSTRAINT IS NOT A FILTER, IT IS EXTRA INFORMATION — that is the whole
+ * reason to do this rather than reject bad shapes after the fact. Each note
+ * alone offers three or four positions and the camera picks the nearest. But the
+ * notes must share a hand, so a note whose own choice is a coin toss can be
+ * settled outright by its neighbours: the only assignment that leaves the chord
+ * playable is often unique. Solving them jointly is strictly better than solving
+ * them one at a time and repairing afterwards.
+ *
+ * ⚠️ AND IT NEVER BLANKS. If no reachable assignment exists — an unlikely
+ * detection, a note that is really two notes, a hand doing something this model
+ * does not know about — it falls back to the independent snap. Ruling 3 of the
+ * handoff: a rejected frame HOLDS, it does not blank. Showing nothing because
+ * the chord "should be impossible" would be the system calling the player wrong.
+ *
+ * @param {{midi:number}[]} notes  sounding simultaneously
+ * @param {number} cameraFret      where the camera says the hand is
+ * @returns {({position:[number,number], fret, string, margin, confident,
+ *             candidates, runnerUp, residual, viaHand:boolean}|null)[]}
+ *   aligned index-for-index with `notes`.
+ */
+export function snapChord(notes = [], cameraFret, opts = {}) {
+  const o = { ...FUSION_DEFAULTS, ...HAND_DEFAULTS, ...opts };
+  const list = notes || [];
+  if (!list.length) return [];
+
+  // The per-note answer, which is both the fallback and the thing we compare
+  // against to report whether the hand constraint actually moved anything.
+  const alone = list.map(n => snapToPosition(n.midi, cameraFret, o));
+  if (!Number.isFinite(cameraFret)) return alone.map(() => null);
+
+  // ⚠️ SIX STRINGS, SO AT MOST SIX NOTES. Chroma can report more than a guitar
+  // can play — overtones, a second instrument, the room. Beyond six the search
+  // is both meaningless and exponential, so the extra notes keep their
+  // independent answer rather than dragging the whole frame into a fallback.
+  const order = list
+    .map((n, i) => ({ i, n }))
+    .filter(x => alone[x.i])
+    .slice(0, 6);
+  if (!order.length) return alone.map(() => null);
+
+  const candidatesFor = (midi) => {
+    const { pitch } = foldOntoNeck(midiToPitch(midi));
+    return [...positionsForPitch(pitch)]
+      .sort((a, b) => Math.abs(a[1] - cameraFret) - Math.abs(b[1] - cameraFret));
+  };
+  const cands = order.map(x => candidatesFor(x.n.midi));
+
+  // ⚠️ MOST-CONSTRAINED NOTE FIRST. Ordering the search by fewest candidates is
+  // what keeps it cheap: an open-string-only note has one option and fixes part
+  // of the shape immediately, pruning everything incompatible before the
+  // ambiguous notes are ever explored.
+  const idx = cands.map((c, k) => k).sort((a, b) => cands[a].length - cands[b].length);
+
+  const cost = ([, f]) => Math.abs(f - cameraFret);
+  let best = null;
+  let bestCost = Infinity;
+  let visited = 0;
+
+  const chosen = new Array(idx.length).fill(null);
+  const dfs = (depth, running) => {
+    if (++visited > o.maxHandSearch) return;
+    if (running >= bestCost) return;               // branch and bound
+    if (depth === idx.length) {
+      if (!handShape(chosen, o).reachable) return;
+      best = [...chosen];
+      bestCost = running;
+      return;
+    }
+    const k = idx[depth];
+    for (const p of cands[k]) {
+      chosen[depth] = p;
+      // Prune on the partial shape: a set that is already unreachable cannot be
+      // rescued by adding more notes to it.
+      if (handShape(chosen.slice(0, depth + 1), o).reachable) {
+        dfs(depth + 1, running + cost(p));
+      }
+      chosen[depth] = null;
+    }
+  };
+  dfs(0, 0);
+
+  const out = alone.map(s => (s ? { ...s, viaHand: false } : null));
+  if (!best) return out;                            // no shape works ⇒ keep the guesses
+
+  for (let d = 0; d < idx.length; d++) {
+    const target = order[idx[d]].i;
+    const p = best[d];
+    const solo = alone[target];
+    const moved = !solo || solo.fret !== p[1] || solo.string !== p[0];
+    // Re-derive the margin AT THE CHOSEN POSITION so `confident` still means
+    // what it says: how far the camera could be wrong before this answer flips.
+    const re = snapToPosition(order[idx[d]].n.midi, cameraFret, o);
+    out[target] = {
+      ...(re || {}),
+      position: p,
+      string: p[0],
+      fret: p[1],
+      residual: cameraFret - p[1],
+      // ⚠️ A NOTE THE HAND SHAPE MOVED IS CONFIDENT BY A DIFFERENT ROUTE. Its
+      // own margin may be tiny — that is usually WHY it moved — but it was not
+      // chosen by the camera, it was chosen by the only assignment that leaves
+      // the chord playable. Reporting it as unconfident would hide a stronger
+      // piece of evidence behind a weaker one.
+      confident: moved ? true : !!(re && re.confident),
+      viaHand: moved,
+    };
   }
   return out;
 }

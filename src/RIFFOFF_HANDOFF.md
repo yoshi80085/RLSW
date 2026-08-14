@@ -335,6 +335,99 @@ New `awardRiffFame(winnerId, loserId, verdict, tier)`:
 
 ---
 
+## 6b. Phase R8 — the parity + escalation pass ✅ BUILT (2026-08-11)
+
+Four changes from Alex, plus one bug the fourth one uncovered.
+
+### R8.1 — Round 2 on anything close ✅
+
+The old gate was `margin >= 3` in `fireBeamClash`. `margin` is a *scaled score
+gap*, so the same performance difference produced a different margin at 6 notes
+than at 16 — a Virtuoso duel escalated on gaps an Influencer duel ended on, for
+no reason a player could see.
+
+Replaced with a **quality-gap** rule, decided in the engine so networked peers
+can't disagree about whether the beams break:
+
+- `RIFF_CLOSE_QUALITY_GAP = 20` (riffOff.js) — the winner must be 20+ points of
+  clean quality ahead, about one clean note in five, at any riff length.
+- `applyRiffResolved` now emits `close`, `qualityGap` and `bothStrong` on the
+  verdict; `riffResolve` forwards them onto `battleState`; `fireBeamClash` tests
+  `!s.tie && !s.close`.
+- The surge log names the gap and the threshold, so the rule is learnable.
+
+### R8.2 — the riff-off COMMIT ✅
+
+A performance now commits the way a Melody Line does — in the performer's own
+voice. `commitRiffPerformance(spiritId, side, results)` routes the landed notes
+through `playTrackSequence` + `COMMIT_STYLES`, so the Ronin SHREDS his answer,
+the Monster BREAKS IT DOWN, 0 SCRATCHES it and Glamarchy STRUTS it. Two Spirits
+handed the identical chart no longer sound identical.
+
+- Fires from `riffEndTurn` (both sides, bots included — the bot defender branch
+  used to jump straight to `riffResolve` and skipped it).
+- `RIFF_COMMIT_BEAT = 2800` holds the handoff so the commit isn't talked over.
+- ▶ HEAR THE RIFF on the result card routes through the same call; the old
+  generic power-chord readback (and `RIFF_GAP_NORMAL`) is gone.
+- Falls back to the written riff when fewer than 3 notes landed — two lonely
+  notes aren't a statement.
+
+### R8.3 — both sides paid ✅
+
+`RIFF_BOTH_PAID_QUALITY = 75`. A duel that reaches the **end of Round 2** with
+both performers at 75%+ clean pays them both.
+
+- Loser's share: `2 + floor((quality − 75)/12)` + style pay (+1 per 3 perfects).
+- **Hard-capped at `winnerFp − 1`.** No amount of clean playing makes losing pay
+  as well as winning — reward the set, never blur the verdict.
+- Not a participation prize: it's gated on the loser's own hands *and* on Round
+  2, which is itself gated on the two of them being within 20 points in Round 1.
+- The old Round-1 consolation (quality ≥ 80% → 1 FP) survives as the `else`.
+
+### R8.4 — parity with Riff Practice ✅ (and the bug it found)
+
+Alex asked to check the riff-off uses the structure Riff Practice teaches. It
+didn't, in three ways:
+
+1. **`perf` never reached the chart.** The engine had generated directions,
+   sustains and bends for both sides of every duel since Phase 4 — and all four
+   places that built `battleState.atkRiff`/`defRiff` forgot to forward it.
+   `riffStartRun` read `side.perf?.[i] ?? {}` and got `{}` every time. **Every
+   riff-off ever played had no tails, no bends and flat "same" arrows.** Fixed
+   by one shared builder, `riffSideFrom`, used by all four callers.
+2. **Round 2 had no `perf` at all** — sudden death was mechanically *simpler*
+   than the round that forced it. `applyRiffRound2Started` now charts it fully.
+3. **Chords were skipped outright**, per the old note in `performanceFor`.
+
+Chords are now wired: `performanceFor` returns a **replacement** for the note
+arrays (degrees, sharps, rhythm, perf, chordOf) because a chord INSERTS a note,
+and every index-keyed array has to grow together or `noteIdx` stops pointing at
+the gem it was scored against.
+
+- Partner degree is `+4` steps, kept only if it really is 7 semitones
+  (`fifthOf`) — the seventh degree and some sharps can't express a fifth, and
+  those notes simply refuse the chord.
+- `perf` now carries `string`/`fret`. It has to: partners are voiced onto the
+  adjacent string by the chord pass, and re-running `voiceRiff` over the
+  expanded chart would voice a chord's two notes sequentially, possibly onto the
+  same string — unplayable at a shared hit-time.
+- `buildRiffTimeline(rhythm, round, leadTime, chordOf)` pins a partner to its
+  root's instant exactly.
+- `pickGlitchIndexes` skips chord notes — lurching half a power chord destroys
+  the gesture rather than making it harder to read.
+- Round 2 sizes itself off Round 1's **root** count, so chords can't compound.
+- `arrowHighwayEngine.TIERS` is now **derived from** `RIFF_FALL_DIFFICULTY`
+  instead of being a hand-kept duplicate, and `RiffPractice` reads lead times
+  from it rather than restating them.
+
+**Guard:** `src/riff/riffOffParity.test.mjs` (`npm run test:riffparity`) — 127k
+assertions over 120 seeds × 4 tiers × both sides × both rounds. Fails if the
+ladders drift, if any index-keyed array falls out of alignment, if a chord isn't
+adjacent/simultaneous/a fifth, if a bend has no tail, or if any gesture stops
+firing altogether.
+
+---
+
 ## 7. Phase R7 — sabotage (shared tree, later)
 
 After the core lands. 2–3 generic condition-skills any Spirit can buy, each

@@ -25,7 +25,9 @@ import {
 } from './neckGeometry.js';
 import { diagnose, nextAction } from './visionCoach.js';
 import { makeNeckTracker, pitchToMidi } from '../music/neckPlacement.js';
-import { snapToPosition, makeFretFusion, FUSION_DEFAULTS } from './fretFusion.js';
+import {
+  snapToPosition, makeFretFusion, FUSION_DEFAULTS, handShape, snapChord,
+} from './fretFusion.js';
 import { STRING_OPENS } from '../riff/guitarMap.js';
 import { MAX_FRET } from '../riff/guitarMap.js';
 
@@ -360,6 +362,96 @@ group('handing the camera to placePitch — the actual integration');
   ok(guard.refSource() === 'audio', 'a malformed reference is refused rather than believed');
   guard.setRef([1, 2, 3]);
   ok(guard.refSource() === 'audio', 'and so is one of the wrong shape');
+}
+
+// =============================================================================
+group('the snap reaches the neck — a reference tips, a snap settles');
+// =============================================================================
+
+// `setRef` and `setSnap` are two strengths of the same help. A reference only
+// re-ranks placePitch's candidates and still yields a continuous estimate; a
+// snap names the position outright. These assert the stronger one actually
+// reaches the drawn neck, and — more important — that it cannot damage the
+// weaker one it sits on top of.
+{
+  const E4 = 64;
+  // E4 on the G string at fret 9. A real position for that pitch, and nowhere
+  // near where the tracker would guess from its rest position of fret 5.
+  const AT_9 = [3, 9];
+
+  const plain = makeNeckTracker();
+  const plainStep = plain.push([{ midi: E4, pc: 4, strength: 0.9 }], 16.7);
+  ok(plain.snapping() === false, 'a fresh tracker is not snapping');
+  ok(plainStep && plainStep.f <= 6,
+    'and places E4 down near its rest position, as it always has');
+  const plainNow = plain.layers({ showUsed: false });
+  ok(Object.values(plainNow).every(l => l.level === undefined),
+    '⚠️ with nothing to snap, no cell carries a level — the neck is drawn exactly as before');
+
+  const snapped = makeNeckTracker();
+  snapped.setSnap(notes => notes.map(() => AT_9));
+  ok(snapped.snapping() === true, 'attaching a resolver is visible to the UI');
+  const step = snapped.push([{ midi: E4, pc: 4, strength: 0.9 }], 16.7);
+  ok(step && step.s === 3 && step.f === 9,
+    'a confident snap puts the note where the camera says, not where the guess says');
+
+  const now = snapped.layers({ showUsed: false });
+  ok(now['3,9'] && now['3,9'].level === 1,
+    'and the resolved cell is drawn at full level');
+
+  // ⚠️ DECLINING IS THE COMMON CASE AND MUST BE INVISIBLE. On a boundary the
+  // snap returns null, and the answer has to be the ordinary audio estimate —
+  // not a blank, not a stale position, not last frame's pick.
+  const shy = makeNeckTracker();
+  shy.setSnap(notes => notes.map(() => null));
+  const shyStep = shy.push([{ midi: E4, pc: 4, strength: 0.9 }], 16.7);
+  ok(shyStep && shyStep.f === plainStep.f && shyStep.s === plainStep.s,
+    'a snap that declines leaves the placement exactly as the audio guess had it');
+  const shyNow = shy.layers({ showUsed: false });
+  const shyCell = shyNow[`${shyStep.s},${shyStep.f}`];
+  ok(shyCell && shyCell.level > 0 && shyCell.level < 1,
+    'though the cell is dimmed, because on this neck a note COULD have been known exactly');
+
+  // ⚠️ THE THING FEEDING THIS IS A CAMERA, A CDN-LOADED MODEL AND A HOMOGRAPHY
+  // THAT CAN COME LOOSE MID-SONG. Every one of those can produce nonsense or
+  // throw, and the only acceptable outcome is the audio estimate.
+  const angry = makeNeckTracker();
+  angry.setSnap(() => { throw new Error('the model fell over'); });
+  const angryStep = angry.push([{ midi: E4, pc: 4, strength: 0.9 }], 16.7);
+  ok(angryStep && angryStep.f === plainStep.f,
+    'a snap that throws does not take the neck down with it');
+
+  const junk = makeNeckTracker();
+  junk.setSnap(notes => notes.map(() => [NaN, 9]));
+  ok(junk.push([{ midi: E4, pc: 4, strength: 0.9 }], 16.7).f === plainStep.f,
+    'and a malformed position is refused rather than believed');
+
+  // ⚠️ A RESOLVER THAT RETURNS THE WRONG SHAPE ENTIRELY. The contract is an
+  // array aligned with the notes; anything else has to be discarded wholesale
+  // rather than indexed into and half-believed.
+  const wrongShape = makeNeckTracker();
+  wrongShape.setSnap(() => ({ 0: [3, 9] }));
+  ok(wrongShape.push([{ midi: E4, pc: 4, strength: 0.9 }], 16.7).f === plainStep.f,
+    'and a resolver that does not return an array is ignored entirely');
+
+  // A short array is legal — it just means no answer for the later notes.
+  const partial = makeNeckTracker();
+  partial.setSnap(() => [AT_9]);
+  const two = partial.push([
+    { midi: E4, pc: 4, strength: 0.9 },
+    { midi: 60, pc: 0, strength: 0.8 },
+  ], 16.7);
+  ok(two && two.s === 3 && two.f === 9,
+    'a short array answers the notes it covers and leaves the rest to the guess');
+
+  // The fallback has to stay current, exactly as it does for `setRef`.
+  const warm = makeNeckTracker();
+  warm.setSnap(notes => notes.map(() => [3, 11]));
+  for (let i = 0; i < 60; i++) warm.push([{ midi: E4, pc: 4, strength: 0.9 }], 16.7);
+  warm.setSnap(null);
+  ok(warm.snapping() === false, 'detaching the resolver goes back to inferring');
+  ok(warm.ref()[1] > 6,
+    'and the hand tracker learned from the snapped positions, so the handover is not stale');
 }
 
 // =============================================================================
@@ -784,6 +876,120 @@ const HEALTHY = {
   ok(/6 more logs/.test(n.fix), 'with everything working it counts you toward a usable verdict');
   const one = nextAction(diagnose({ ...HEALTHY, logCount: 7 }), { ...HEALTHY, logCount: 7 });
   ok(/1 more log\b/.test(one.fix), 'and gets the singular right');
+}
+
+// =============================================================================
+group('🖐 what one hand can hold — checked against chords that exist');
+// =============================================================================
+
+// ⚠️ TESTED AGAINST REAL SHAPES, NOT AGAINST THE RULE. It would be easy to write
+// assertions that restate `handShape`'s own logic back at it and prove nothing.
+// These are chords off an actual guitar, written as [string, fret] with string 0
+// the fattest, so the model is being asked the only question that matters: does
+// it agree with a guitar.
+{
+  const E_OPEN  = [[0, 0], [1, 2], [2, 2], [3, 1], [4, 0], [5, 0]];
+  const C_OPEN  = [[1, 3], [2, 2], [3, 0], [4, 1], [5, 0]];
+  const F_BARRE = [[0, 1], [1, 3], [2, 3], [3, 2], [4, 1], [5, 1]];
+  const G_OPEN  = [[0, 3], [1, 2], [2, 0], [3, 0], [4, 0], [5, 3]];
+  // E7#9 at the 7th — the Hendrix chord. Four frets, four fingers, no barre.
+  const HENDRIX = [[0, 7], [1, 6], [2, 7], [3, 7], [4, 8]];
+
+  ok(handShape(E_OPEN).reachable, 'open E is playable');
+  ok(handShape(C_OPEN).reachable, 'so is open C');
+  ok(handShape(G_OPEN).reachable, 'so is open G, which is a wide one');
+  ok(handShape(HENDRIX).reachable, 'and so is the Hendrix chord up at the 7th');
+
+  const f = handShape(F_BARRE);
+  ok(f.reachable, 'the F barre is playable');
+  ok(f.fingers <= 4, `and the barre is counted as one finger, not six (${f.fingers})`);
+
+  // ── and the things that are not ──
+  ok(!handShape([[0, 2], [1, 9]]).reachable,
+    'a seven-fret spread is not — no hand does that');
+  ok(handShape([[0, 2], [1, 9]]).reason === 'span', 'and it says so');
+
+  // Five notes on five different frets, none of them on the fattest string, so
+  // the thumb cannot help. Five fingers, and there are four.
+  const FIVE = [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]];
+  ok(!handShape(FIVE).reachable, 'five notes on five different frets needs five fingers');
+  ok(handShape(FIVE).reason === 'fingers', 'and it says that too');
+
+  // ⚠️ THE SAME SHAPE BECOMES PLAYABLE WHEN THE SPARE NOTE IS THE THUMB'S. The
+  // thumb comes over the top and reaches exactly one string, the fattest, around
+  // the lowest fret of the shape. Move that fifth note onto the low E at the
+  // bottom fret and a hand really can hold it — awkwardly, but really.
+  const WITH_THUMB = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5]];
+  ok(handShape(WITH_THUMB).reachable,
+    'but the thumb comes over for the fattest string at the lowest fret');
+  ok(!handShape(WITH_THUMB, { allowThumbOver: false }).reachable,
+    'and turning the thumb off is what makes that shape impossible again');
+  // The thumb is not a general-purpose fifth finger.
+  ok(!handShape([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]], { allowThumbOver: true }).reachable,
+    'it cannot be borrowed for a string it can never reach');
+
+  // ⚠️ THE CONSTRAINT THE INDEPENDENT SNAP BREAKS MOST OFTEN, and the cheapest
+  // one to check: a string can only sound one note at a time.
+  ok(!handShape([[2, 5], [2, 9]]).reachable, 'one string cannot sound two notes');
+  ok(handShape([[2, 5], [2, 9]]).reason === 'two notes on one string', 'named for what it is');
+
+  // An open string inside a barre would be muted by the finger lying across it,
+  // so that run cannot be one finger.
+  const blocked = handShape([[0, 3], [2, 0], [5, 3]]);
+  ok(blocked.fingers === 2,
+    'a barre broken by an open string in the middle costs two fingers, not one');
+
+  // All open, or silence, needs no hand at all.
+  ok(handShape([[0, 0], [1, 0], [2, 0]]).reachable && handShape([]).reachable,
+    'open strings need no hand, and neither does silence');
+}
+
+// =============================================================================
+group('🖐 and the constraint EARNS its place by disambiguating');
+// =============================================================================
+
+// The point is not rejection. Each note alone offers several positions and the
+// camera picks the nearest; because the notes share a hand, a note whose own
+// choice is a coin toss can be settled outright by its neighbours.
+{
+  // An open-position D major: A string open-ish shape voiced at frets 2–3.
+  const chord = [[3, 2], [4, 3], [5, 2]].map(([s, f]) => ({ midi: midiAt(s, f) }));
+  const out = snapChord(chord, 2.4);
+  ok(out.every(Boolean), 'every note in the chord gets an answer');
+  ok(handShape(out.map(r => r.position)).reachable,
+    'and what comes back is a shape a hand can actually hold');
+
+  // ⚠️ THE REGRESSION THIS WHOLE FEATURE EXISTS FOR. Snapped independently with
+  // the hand reported halfway up the neck, notes of a chord can be sent to
+  // positions no single hand could reach at once. Solving them together cannot
+  // produce that, by construction.
+  const wide = [midiAt(0, 5), midiAt(2, 5), midiAt(4, 5)].map(midi => ({ midi }));
+  const joint = snapChord(wide, 5);
+  ok(joint.every(Boolean) && handShape(joint.map(r => r.position)).reachable,
+    'a three-note voicing solved jointly is always reachable');
+
+  // Two notes that would collide on one string alone must be separated.
+  const collide = [{ midi: midiAt(2, 5) }, { midi: midiAt(2, 9) }];
+  const sep = snapChord(collide, 7);
+  const strings = sep.filter(Boolean).map(r => r.string);
+  ok(new Set(strings).size === strings.length,
+    'two notes that would land on the same string are given different ones');
+
+  // ⚠️ IT NEVER BLANKS. Handoff ruling 3: a rejected frame HOLDS. If no
+  // reachable assignment exists the independent answers stand, because showing
+  // nothing would be the system calling the player wrong.
+  const impossible = [0, 1, 2, 3, 4, 5].map(s => ({ midi: midiAt(s, s * 2) }));
+  const held = snapChord(impossible, 6);
+  ok(held.length === 6 && held.some(Boolean),
+    'an unplayable set still comes back with positions rather than nothing');
+
+  // A note flagged `viaHand` was chosen by the chord, not by the camera.
+  ok(snapChord([{ midi: midiAt(3, 9) }], 9).every(r => r && r.viaHand === false),
+    'a single note the camera resolves on its own is not marked as hand-chosen');
+
+  ok(snapChord([], 5).length === 0, 'no notes, no answers');
+  ok(snapChord([{ midi: midiAt(3, 9) }], NaN).every(r => r === null),
+    'and with no camera reading it declines rather than inventing one');
 }
 
 // =============================================================================

@@ -15,6 +15,7 @@
 import assert from "node:assert/strict";
 import {
   chromaFromSamples, freqToMidiFloat, fftMagnitudes, chromaFromSpectrum,
+  chromaFromPeaks, inferVirtualFundamentals, makeNoteHold, CHROMA_DEFAULTS,
   spectralFlatness, chromaEntropy, chromaSimilarity, makeFrameGate, GATE_DEFAULTS,
 } from "./chroma.js";
 import {
@@ -147,6 +148,291 @@ check("a ringing chord beats its own top rival by a visible margin", () => {
   assert.ok(margin > 0, `margin ${margin.toFixed(4)} should be positive`);
   assert.ok(confidence > 0, `confidence ${confidence.toFixed(3)} should be positive`);
 });
+
+// ── 3b. ⚠️ WHEN THE FUNDAMENTAL IS NOT THE LOUDEST PARTIAL ───────────────────
+// ⚠️ THE SYNTHESIZER ABOVE CANNOT PRODUCE THIS CASE, WHICH IS WHY IT WAS MISSED.
+// `tone()` weights partial n by 1/n^bright, so partial 1 is always the strongest
+// and magnitude order always agrees with frequency order. That is the single
+// arrangement in which the harmonic-suppression pass cannot go wrong — and every
+// test above it was built that way.
+//
+// A real guitar is not. A low E's 82 Hz fundamental is routinely weaker than its
+// octave, and weaker again through a phone mic or a small speaker. When that
+// happened, `chromaFromPeaks` — which walked peaks strongest-first while only
+// letting ALREADY-SEEN (therefore louder) lower peaks act as parents — never
+// discounted the harmonic at all. One plucked string came back as three notes,
+// the top of them a twelfth above what was played, and the set changed frame to
+// frame as the partial balance shifted while the note decayed.
+//
+// These build peaks directly, so they test the suppression logic and not the FFT.
+console.log("\nregression: a weak fundamental must not become three phantom notes");
+{
+  const f0 = midiToFreq(40);                       // E2, the low string
+  const peaksOf = mags => mags
+    .map((mag, i) => ({ freq: f0 * (i + 1), mag }))
+    .filter(p => p.mag > 0)
+    .sort((a, b) => b.mag - a.mag);                // as pickPeaks hands them over
+
+  // 2nd partial louder than the fundamental — an ordinary low string.
+  const WEAK = [0.45, 1.0, 0.6, 0.4, 0.3, 0.2, 0.18, 0.15];
+  // The same note a moment later; only the balance has moved.
+  const LATER = [0.55, 0.95, 0.5, 0.35, 0.28, 0.2, 0.16, 0.13];
+
+  check("the played note is the strongest note, not its own octave", () => {
+    const { notes } = chromaFromPeaks(peaksOf(WEAK));
+    assert.ok(notes.length, "something should be detected");
+    assert.equal(notes[0].midi, 40, `strongest was MIDI ${notes[0].midi}, expected E2 (40)`);
+  });
+
+  check("and its twelfth does not appear as a note of its own", () => {
+    const { notes } = chromaFromPeaks(peaksOf(WEAK));
+    assert.ok(!notes.some(n => n.midi === 59),
+      `B3 (59) was reported: ${notes.map(n => `${n.midi}@${n.strength.toFixed(2)}`).join(' ')}`);
+  });
+
+  // ⚠️ THE ONE THAT MATTERS FOR THE MELODY TRAIL. `makeNeckTracker` records a
+  // step whenever the top voice CHANGES, so a top voice that flickers between
+  // two partials writes a new point every frame and the drawn line thrashes
+  // across the neck. Two frames of one sustained note must agree.
+  check("two frames of one sustained note report the same notes", () => {
+    const a = chromaFromPeaks(peaksOf(WEAK)).notes;
+    const b = chromaFromPeaks(peaksOf(LATER)).notes;
+    const ids = ns => ns.map(n => n.midi).sort((x, y) => x - y).join(',');
+    assert.equal(ids(a), ids(b), `frame A ${ids(a)} vs frame B ${ids(b)}`);
+  });
+
+  // Surviving the floor and being real are different questions. The octave
+  // partial can still clear `noteFloor` — something IS ringing there — but it
+  // must be MARKED, so consumers picking one note out of a frame can skip it.
+  check("an overtone that survives the floor is flagged as one", () => {
+    const { notes } = chromaFromPeaks(peaksOf(WEAK));
+    const fundamental = notes.find(n => n.midi === 40);
+    const octave = notes.find(n => n.midi === 52);
+    assert.equal(fundamental.harmonic, false, "the played note is not an overtone");
+    if (octave) assert.equal(octave.harmonic, true, "its octave partial is");
+  });
+
+  // ⚠️ AND THE TRAIL MUST FOLLOW THE STRING THAT WAS PLUCKED. Four frames of one
+  // held note is one melody step, at the open low E. Before the fix this walked.
+  check("four frames of one held note make ONE melody step, on the right string", () => {
+    const t = makeNeckTracker();
+    let steps = 0;
+    for (const mags of [WEAK, LATER, WEAK, LATER]) {
+      if (t.push(chromaFromPeaks(peaksOf(mags)).notes, 16.7)) steps++;
+    }
+    assert.equal(steps, 1, `${steps} steps recorded for one sustained note`);
+    const trail = t.melodyTrail().map(m => m.cellId);
+    assert.deepEqual(trail, ['0,0'], `trail was ${JSON.stringify(trail)}, expected the open low E`);
+  });
+
+  // The textbook case must be untouched by the fix.
+  check("a fundamental-dominant tone still reports exactly one note", () => {
+    const { notes } = chromaFromPeaks(peaksOf([1.0, 0.5, 0.33, 0.25, 0.2, 0.16, 0.14, 0.12]));
+    assert.equal(notes.length, 1, `got ${notes.map(n => n.midi).join(',')}`);
+    assert.equal(notes[0].midi, 40);
+  });
+}
+
+// ── 3c. ⚠️ WHEN THE FUNDAMENTAL IS NOT THERE AT ALL ──────────────────────────
+// ⚠️ §3b FIXED A FUNDAMENTAL THAT IS WEAK. THIS IS THE SAME BUG ONE STEP ON, AND
+// §3b CANNOT SEE IT, because every list it builds still CONTAINS partial 1.
+// `pickPeaks` drops a peak under `peakFloorRatio` of the loudest peak anywhere
+// in the band — measured, the low E's fundamental falls off that cliff at
+// -24.4 dB relative to its own strongest partial, which is ordinary rolloff for
+// a laptop or phone mic. Below it every partial is an orphan with no lower peak
+// to parent it, so each takes FULL weight and `harmonic: false`.
+//
+// That last part is why it survived the §3b fix: the melody trail's rule is
+// "skip the flagged notes", and in this failure NOTHING IS FLAGGED. One plucked
+// string reads as a four-note chord an octave up, all of it marked as played.
+console.log("\nregression: an ABSENT fundamental must not become four phantom notes");
+{
+  const f0 = midiToFreq(40);                       // E2 again
+  // Partial 1 simply missing — the rest of the series as a real low string.
+  const series = mags => mags
+    .map((mag, i) => ({ freq: f0 * (i + 1), mag }))
+    .filter(p => p.mag > 0)
+    .sort((a, b) => b.mag - a.mag);
+  const GONE = series([0, 1.0, 0.6, 0.45, 0.3, 0.2, 0.15, 0.12]);
+
+  check("the fundamental is inferred from the spacing of its own partials", () => {
+    const [v, ...rest] = inferVirtualFundamentals(GONE);
+    assert.ok(v, "nothing was inferred");
+    assert.equal(rest.length, 0, `inferred ${rest.length + 1} fundamentals, expected 1`);
+    assert.equal(Math.round(freqToMidiFloat(v.freq)), 40,
+      `inferred ${v.freq.toFixed(1)} Hz (MIDI ${Math.round(freqToMidiFloat(v.freq))}), expected E2`);
+  });
+
+  check("one plucked string with no fundamental is still ONE note", () => {
+    const { notes } = chromaFromPeaks(GONE);
+    assert.equal(notes[0].midi, 40,
+      `strongest was MIDI ${notes[0].midi}: ${notes.map(n => `${n.midi}@${n.strength.toFixed(2)}`).join(' ')}`);
+    const played = notes.filter(n => !n.harmonic);
+    assert.equal(played.length, 1,
+      `${played.length} notes claim to be played: ${played.map(n => n.midi).join(',')}`);
+  });
+
+  check("...and it says so — the inferred note is flagged `virtual`", () => {
+    const { notes } = chromaFromPeaks(GONE);
+    assert.equal(notes.find(n => n.midi === 40).virtual, true);
+    // Nothing that WAS measured may be called virtual.
+    const measured = chromaFromPeaks(series([1.0, 0.5, 0.33, 0.25, 0.2, 0.16, 0.14, 0.12]));
+    assert.equal(measured.notes.find(n => n.midi === 40).virtual, false);
+  });
+
+  check("the inference does not raise the level meter", () => {
+    // `energy` answers "was there anything here". An invented peak was not.
+    const withF0 = chromaFromPeaks(series([0.001, 1.0, 0.6, 0.45, 0.3, 0.2, 0.15, 0.12]));
+    const without = chromaFromPeaks(GONE);
+    assert.ok(without.energy <= withF0.energy,
+      `${without.energy.toFixed(3)} vs ${withF0.energy.toFixed(3)}`);
+  });
+
+  // ⚠️⚠️ THE GUARD THAT KEEPS THIS HONEST, AND THE ONE MOST LIKELY TO BE
+  // "SIMPLIFIED" AWAY BY SOMEONE WHO READS IT AS AN EDGE CASE. Partials at
+  // 2f, 4f, 6f, 8f are explained equally well by a fundamental at 2f taking
+  // indices 1, 2, 3, 4 — and that is the simpler hypothesis. Inventing f there
+  // means printing a phantom octave BELOW the note, which is the mirror image
+  // of the mistake `noteFloor`'s comment warns about. Coprime indices (2 and 3)
+  // pin the fundamental; even-only indices cannot, and we must decline.
+  check("an index set with a common factor stops at the octave it can prove", () => {
+    // 4f, 6f, 10f = 2·(2f, 3f, 5f). The evidence pins 2f0 — E3. Reading it as
+    // partials 4, 6, 10 of E2 fits equally well and is the extra octave that
+    // nothing supports, so the gcd check must stop at E3.
+    const evens = [4, 6, 10, 14].map(k => ({ freq: f0 * k, mag: 1 / k }));
+    const [v, ...rest] = inferVirtualFundamentals(evens);
+    assert.ok(v, "nothing was inferred at all");
+    assert.equal(rest.length, 0);
+    assert.equal(Math.round(freqToMidiFloat(v.freq)), 52,
+      `inferred MIDI ${Math.round(freqToMidiFloat(v.freq))}, expected E3 (52) — ` +
+      `E2 (40) means the gcd guard is gone`);
+  });
+
+  check("four coprime partials are enough to pin it", () => {
+    const coprime = [2, 3, 5, 7].map(k => ({ freq: f0 * k, mag: 1 / k }));
+    const [v] = inferVirtualFundamentals(coprime);
+    assert.ok(v && Math.round(freqToMidiFloat(v.freq)) === 40,
+      `expected E2, got ${v ? v.freq.toFixed(1) + ' Hz' : 'nothing'}`);
+  });
+
+  check("nothing is invented below the instrument's range", () => {
+    // Partials 2..6 of an E1 at 41 Hz — under `minHz`, so not a guitar note.
+    const low = [2, 3, 4, 5, 6].map(k => ({ freq: 41.2 * k, mag: 1 / k }));
+    assert.ok(!inferVirtualFundamentals(low).some(v => v.freq < CHROMA_DEFAULTS.minHz),
+      "invented a fundamental under minHz");
+  });
+
+  // ⚠️ THE FALSE POSITIVE THAT THE FIRST DRAFT SHIPPED WITH, AND THE REASON THE
+  // TOLERANCE IS TIGHT. A major triad is roughly 4:5:6, so F3 + C4 + A4 really
+  // does look like partials 2, 3 and 5 of an F2 nobody played — and the ±60-cent
+  // window the suppression pass uses cannot tell the difference. Equal
+  // temperament can: its major third is 14 cents off 5:4, far outside ±10.
+  check("a chord is not a harmonic series — no phantom root under a triad", () => {
+    for (const names of [['F3', 'C4', 'A4'], ['D3', 'F3', 'A3', 'C4'], ['C4', 'E4', 'G4']]) {
+      const peaks = names.flatMap(n => {
+        const f = midiToFreq(midi(n));
+        return [1, 2, 3, 4, 5, 6].map(k => ({ freq: f * k, mag: 1 / k }));
+      });
+      assert.deepEqual(inferVirtualFundamentals(peaks), [],
+        `${names.join(' ')} grew a phantom root`);
+    }
+  });
+
+  check("a triad whose fundamentals are all present is left alone", () => {
+    const peaks = ['C4', 'E4', 'G4'].flatMap(n => {
+      const f = midiToFreq(midi(n));
+      return [1, 2, 3, 4, 5, 6].map(k => ({ freq: f * k, mag: 1 / k }));
+    });
+    assert.deepEqual(inferVirtualFundamentals(peaks), [],
+      "invented a note under a chord that was fully measured");
+  });
+
+  // The one that matters downstream: the trail must sit on the plucked string.
+  check("the trail lands on the open low E, not on its second partial", () => {
+    const t = makeNeckTracker();
+    for (let i = 0; i < 4; i++) t.push(chromaFromPeaks(GONE).notes, 16.7);
+    assert.deepEqual(t.melodyTrail().map(m => m.cellId), ['0,0'],
+      `trail was ${JSON.stringify(t.melodyTrail().map(m => m.cellId))}`);
+  });
+}
+
+// ── 3d. Note hysteresis — one threshold is a cliff ───────────────────────────
+// ⚠️ MEASURED: with the fundamental fixed and the 2nd partial rising through a
+// note's decay, the discounted octave crosses `noteFloor` at a partial ratio of
+// ~1.6 and lands at 0.316 — three hundredths clear. The balance moves
+// continuously while a note rings, so that boundary is crossed several times per
+// note and the neck dot blinks each time. Handoff ruling 3 says a rejected FRAME
+// holds rather than blanks; this is the same argument per NOTE.
+console.log("\nnote hysteresis: admitted at noteFloor, released at noteFloorRelease");
+{
+  const note = (midi, strength) => ({ midi, pc: midi % 12, strength, harmonic: false });
+
+  check("a note grazing the release level never gets in on its own", () => {
+    const hold = makeNoteHold();
+    const out = hold.push([note(40, 1.0), note(52, 0.25)]);
+    assert.deepEqual(out.map(n => n.midi), [40], "0.25 is under noteFloor and was not held");
+  });
+
+  check("once admitted it survives a dip that would have blocked it", () => {
+    const hold = makeNoteHold();
+    hold.push([note(40, 1.0), note(52, 0.34)]);              // in at 0.34
+    const out = hold.push([note(40, 1.0), note(52, 0.25)]);  // dips under 0.30
+    assert.deepEqual(out.map(n => n.midi), [40, 52], "the held note was dropped by a wobble");
+  });
+
+  check("but a note that actually stops is released", () => {
+    const hold = makeNoteHold();
+    hold.push([note(40, 1.0), note(52, 0.34)]);
+    hold.push([note(40, 1.0), note(52, 0.25)]);
+    const out = hold.push([note(40, 1.0), note(52, 0.18)]);  // under the release level
+    assert.deepEqual(out.map(n => n.midi), [40], "a stopped note was held anyway");
+    assert.ok(!hold.held().has(52), "and it is forgotten, so it must re-earn its place");
+  });
+
+  // ⚠️ THE MEASUREMENT THIS WHOLE SECTION EXISTS FOR, run through the real
+  // `chromaFromPeaks`. The 2nd partial wanders either side of the ratio at which
+  // the discounted octave crosses 0.30 — which is what a decaying string does —
+  // and the octave blinked on and off once per crossing. Note the analysis floor
+  // is the RELEASE level, or the hold never sees the marginal note at all; see
+  // the ⚠️ in `startChromaListening`.
+  //
+  // The claim is NOT "the set never changes" — admitting E3 the first time is
+  // correct and is a change. It is that nothing ever LEAVES on a wobble.
+  // Measured: the octave's strength runs 0.274 at p2/p1 = 1.2 to 0.395 at 2.5,
+  // crossing 0.30 between 1.4 and 1.5. These ratios straddle it.
+  const SWEEP = [1.4, 1.6, 1.4, 1.7, 1.3, 1.8, 1.2];
+  const sweepSets = (hold) => {
+    const f0 = midiToFreq(40);
+    return SWEEP.map(a2 => {
+      const peaks = [0.2, a2 * 0.2, 0.12, 0.09, 0.06, 0.04, 0.03, 0.02]
+        .map((mag, i) => ({ freq: f0 * (i + 1), mag }));
+      const raw = chromaFromPeaks(peaks,
+        hold ? { noteFloor: CHROMA_DEFAULTS.noteFloorRelease } : {}).notes;
+      return new Set((hold ? hold.push(raw) : raw).map(n => n.midi));
+    });
+  };
+  const drops = sets => sets.reduce((n, s, i) =>
+    i === 0 ? n : n + [...sets[i - 1]].filter(m => !s.has(m)).length, 0);
+
+  check("the flicker is real without the hold (the measurement, kept)", () => {
+    assert.ok(drops(sweepSets(null)) >= 3,
+      "the sweep no longer reproduces the flicker — retune it before trusting the fix below");
+  });
+
+  check("...and nothing is ever dropped with it", () => {
+    const sets = sweepSets(makeNoteHold());
+    assert.equal(drops(sets), 0,
+      `notes left the set: ${sets.map(s => [...s].join('+')).join(' → ')}`);
+    assert.ok(sets[sets.length - 1].has(52), "the octave should have been admitted at all");
+  });
+
+  check("reset clears the held set", () => {
+    const hold = makeNoteHold();
+    hold.push([note(40, 1.0), note(52, 0.34)]);
+    hold.reset();
+    assert.deepEqual(hold.push([note(40, 1.0), note(52, 0.25)]).map(n => n.midi), [40]);
+  });
+}
 
 // ── 4. The bridge back into the game's own chord brain ──────────────────────
 console.log("\nhand-off to evaluateChord");

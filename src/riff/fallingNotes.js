@@ -55,12 +55,20 @@ export const RIFF_GHOST_WINDOW_MULT = 1.5;
 // rhythm → [{ hitAt, feel }] where hitAt is ms after the run starts (t0).
 // The first gem needs a full fall, so hitAt[0] = leadTime: the run starts the
 // instant the countdown ends and the first gem spawns at the top of the highway.
-export function buildRiffTimeline(rhythm, round, leadTime) {
+//
+// `chordOf` (optional, index-aligned) marks two-note power chords: an entry
+// that is not null is a partner, and it shares its root's hit-time EXACTLY —
+// the clock does not advance across it. That is what makes a chord one gesture
+// instead of a very fast pair of notes: both gems cross the line together and
+// one hand presses two adjacent numbers. Without this the partner would land a
+// full note-gap late and the chord would be unplayable as written.
+export function buildRiffTimeline(rhythm, round, leadTime, chordOf = null) {
   const base = round >= 2 ? RIFF_SPACING_BASE_R2 : RIFF_SPACING_BASE;
   const out = [];
   let t = leadTime;
   (rhythm ?? []).forEach((beat, i) => {
-    if (i > 0) t += (beat?.gapBefore ?? GAP_FALLBACK) + base;
+    const isPartner = chordOf?.[i] != null;
+    if (i > 0 && !isPartner) t += (beat?.gapBefore ?? GAP_FALLBACK) + base;
     out.push({ hitAt: t, feel: beat?.feel ?? 'steady' });
   });
   return out;

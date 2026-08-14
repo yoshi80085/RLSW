@@ -891,7 +891,7 @@ export function BattleMeterOverlay({
                           color: r ? GRADE_COLORS[r.grade] : '#2a3a55'}}>{noteGlyph(n)}</span>;
                       })}
                     </div>
-                    <button onClick={() => playRiffOffPlayback(riffObj.freqs, riffObj.rhythm)}
+                    <button onClick={() => playRiffOffPlayback(sp?.id, riffObj)}
                       style={{fontFamily:'inherit', fontSize:8, padding:'4px 10px', marginTop:8,
                         background:'#0a1020', border:`1px solid ${sp?.color ?? '#3a5070'}`,
                         borderRadius:5, color:sp?.color ?? '#8aa5c5', cursor:'pointer', letterSpacing:1}}>

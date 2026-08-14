@@ -34,6 +34,7 @@ import {
 import {
   usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState,
 } from "./systems/economy.js";
+import { RIFF_CLOSE_QUALITY_GAP, RIFF_BOTH_PAID_QUALITY } from "./systems/riffOff.js";
 import { skillEligibility, ULTIMATE_PREREQS, THEORY_DISCORD_GRANTS } from "./systems/skills.js";
 import { pitchIndex, playableScale } from "../music/notes.js";
 import {
@@ -252,9 +253,34 @@ const config = {
   const started = applyAction(s0, riffOffStarted("wildaxe", "vera", { slayer: true, eRush: false }));
   const b = started.battle;
   assert.equal(b.kind, "riffOff");
-  assert.equal(b.atkRiff.degrees.length, 6);
-  assert.equal(b.defRiff.degrees.length, 6);
+  // 🤘 The chart is the riff PLUS its chord partners, so length is no longer
+  // the generated riff length. What must hold is that the ROOT notes still
+  // number 6 and every index-keyed array grew with them — the invariant that
+  // keeps `noteIdx` pointing at the gem it was scored against.
+  const roots = side => side.chordOf.filter(c => c == null).length;
+  for (const [name, side] of [["atk", b.atkRiff], ["def", b.defRiff]]) {
+    const n = side.degrees.length;
+    assert.equal(roots(side), 6, `${name}: 6 root notes`);
+    assert.ok(n >= 6, `${name}: chart is at least the riff`);
+    assert.equal(side.sharps.length,  n, `${name}: sharps grew with degrees`);
+    assert.equal(side.rhythm.length,  n, `${name}: rhythm grew with degrees`);
+    assert.equal(side.perf.length,    n, `${name}: perf grew with degrees`);
+    assert.equal(side.chordOf.length, n, `${name}: chordOf grew with degrees`);
+    // Every partner points at the note immediately before it, is a perfect
+    // fifth above it, and sits on the NEXT string up — one hand, two adjacent
+    // number keys, same instant. That is what makes a chord playable.
+    side.chordOf.forEach((root, i) => {
+      if (root == null) return;
+      assert.equal(root, i - 1, `${name}[${i}]: partner follows its root`);
+      assert.equal(side.perf[i].string, side.perf[root].string + 1,
+        `${name}[${i}]: partner on the adjacent string`);
+      assert.equal(side.perf[root].hasPartner, true, `${name}[${root}]: root marked`);
+    });
+  }
   assert.ok(b.defGlitch.length >= 2 && b.defGlitch.length <= 3, "slayer glitches 2-3 notes");
+  // Riff Slayer never lurches half of a power chord — see pickGlitchIndexes.
+  b.defGlitch.forEach(i => assert.equal(b.defRiff.chordOf[i], null,
+    "slayer skips chord notes"));
   // (eRush ghosts test removed — Ronin rework)
   assert.deepEqual(started, applyAction(s0, riffOffStarted("wildaxe", "vera", { slayer: true, eRush: false })),
     "same seed → identical riffs, glitches");
@@ -275,6 +301,39 @@ const config = {
   // 🎸 Phase 3e: damage is decided in the verdict (round 1 → no round bonus).
   assert.equal(v.damage, marginToDamage(v.margin), "round-1 verdict damage = marginToDamage(margin)");
   assert.deepEqual(s.battle.r1, { won: true, tie: false, margin: v.margin }, "round-1 edge remembered");
+  // ⚡ THE ROUND-2 GATE — a blowout is NOT close, so this duel ends in one round.
+  assert.equal(v.close, false, "a lopsided round 1 breaks the beams");
+  assert.ok(v.qualityGap >= RIFF_CLOSE_QUALITY_GAP, "gap is outside the close band");
+  assert.equal(v.bothStrong, false, "the sloppy side didn't earn a share");
+
+  // …and a near-mirror IS close, so the beams lock and surge into Round 2 even
+  // though one side clearly won. "Even a bit close" is the whole rule.
+  {
+    let c = applyAction(started, riffResultsSubmitted("attacker",
+      mkResults(["perfect","perfect","perfect","perfect","perfect","good"])));
+    c = applyAction(c, riffResultsSubmitted("defender",
+      mkResults(["perfect","perfect","perfect","good","good","good"])));
+    const cv = applyAction(c, riffResolved()).battle.verdict;
+    assert.equal(cv.attackerWon, true, "the tighter set still wins the round");
+    assert.equal(cv.close, true, "…but a single-grade gap can't end the duel");
+    assert.ok(cv.qualityGap < RIFF_CLOSE_QUALITY_GAP);
+    // 🤝 Both are above the bar — but this is only Round 1, and surviving a
+    // second round together is the point. No shared payout yet.
+    assert.ok(cv.atkStats.quality >= RIFF_BOTH_PAID_QUALITY
+           && cv.defStats.quality >= RIFF_BOTH_PAID_QUALITY);
+    assert.equal(cv.bothStrong, false, "round 1 alone never splits the pot");
+
+    // …and once the beams surge and both hold up through Round 2, it does.
+    let r = applyAction(applyAction(c, riffResolved()), riffRound2Started());
+    r = applyAction(r, riffResultsSubmitted("attacker",
+      mkResults(["perfect","perfect","perfect","perfect","perfect","good"])));
+    r = applyAction(r, riffResultsSubmitted("defender",
+      mkResults(["perfect","perfect","perfect","good","good","good"])));
+    const rv = applyAction(r, riffResolved()).battle.verdict;
+    assert.equal(rv.round, 2);
+    assert.equal(rv.bothStrong, true, "two strong sets through two rounds both get paid");
+    assert.equal(rv.tie, false, "…and there is still a winner");
+  }
 
   // double whiff = tie → zero damage
   let t = applyAction(started, riffResultsSubmitted("attacker", mkResults(["miss","miss","miss","miss","miss","miss"])));
@@ -288,6 +347,14 @@ const config = {
   assert.equal(r2.battle.round, 2);
   assert.notDeepEqual(r2.battle.atkRiff.degrees, s.battle.atkRiff.degrees);
   assert.ok(r2.battle.atkRiff.rhythm.every(x => x.window <= 1600), "round 2 sped up");
+  // Sudden death is a full chart too — it used to ship bare note arrays with no
+  // perf at all, which made Round 2 mechanically SIMPLER than Round 1.
+  assert.equal(r2.battle.atkRiff.perf.length, r2.battle.atkRiff.degrees.length,
+    "round 2 carries performance data");
+  assert.ok(r2.battle.atkRiff.perf.some(p => p.string != null), "round 2 notes are voiced");
+  // Round 2 sizes itself off Round 1's ROOT count, not the chorded length —
+  // otherwise chords would compound and the riff would grow every round.
+  assert.equal(roots(r2.battle.atkRiff), 6, "round 2 keeps the tier's riff length");
   assert.ok(r2.battle.defGlitch.length >= 2, "slayer carries into round 2");
   // This riff-off was started with eRush:false (the round-1 ghosts assertion was
   // dropped in the Ronin rework), so ghosts stay off across the round boundary.
