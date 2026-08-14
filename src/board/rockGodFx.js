@@ -70,7 +70,11 @@ export function nearestSpiritTo(num, spirits) {
 }
 
 // A free neighbour hex for a spirit displaced by the god's arrival.
-export function freeNeighborHex(num, occupiedNums = []) {
+//
+// ⚠️ `rand` is a RULE input — where a displaced Spirit lands changes the board.
+// Callers in game rules MUST pass the seeded engine stream; the Math.random
+// default exists only so presentation-side probes don't have to thread an rng.
+export function freeNeighborHex(num, occupiedNums = [], rand = Math.random) {
   const here = HEX_BY_NUM[num];
   if (!here) return null;
   const occ = new Set(occupiedNums);
@@ -78,5 +82,5 @@ export function freeNeighborHex(num, occupiedNums = []) {
     .map(({ q, r }) => HEX_BY_QR[`${q},${r}`])
     .filter(Boolean)
     .filter(h => !occ.has(h.num));
-  return options.length ? options[Math.floor(Math.random() * options.length)].num : null;
+  return options.length ? options[Math.floor(rand() * options.length)].num : null;
 }

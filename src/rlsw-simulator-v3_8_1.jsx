@@ -943,6 +943,49 @@ function Game({ gameState, onReturnToLobby }) {
     return next;
   }
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // 🎲 SEEDED DRAWS — every random draw in game RULES goes through here.
+  //
+  // ⚠️ Math.random() in a rule is a silent bug, not a style nit. It breaks
+  // replays, and it breaks the online desync tripwire (clients compare rng
+  // cursors frame-by-frame and freeze on mismatch). It also makes the headless
+  // bot harness impossible to seed — two runs of the same bot on the same seed
+  // would diverge on turn one, so a win-rate A/B measures noise.
+  //
+  // RANDOM_BATCH_DRAWN advances the engine stream by exactly `n` and parks the
+  // values in `lastRandomBatch`, so the draw is part of the action log and every
+  // client replays it identically.
+  //
+  // 📌 Math.random() is still fine — and still used — for pure PRESENTATION:
+  // audio jitter, React keys, die SPIN faces (the landed value comes from the
+  // engine), dance names, taunt timing. If it can change an outcome, it belongs
+  // here instead.
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /** n seeded floats in [0,1). */
+  function drawSeeded(n = 1) {
+    if (n <= 0) return [];
+    dispatch(randomBatchDrawn(n));
+    return engineRef.current.lastRandomBatch ?? [];
+  }
+
+  /** A seeded integer in [0, max). */
+  function drawSeededInt(max) {
+    return Math.floor((drawSeeded(1)[0] ?? 0) * max);
+  }
+
+  /** True with probability p, off the seeded stream. */
+  function drawSeededChance(p) {
+    return (drawSeeded(1)[0] ?? 1) < p;
+  }
+
+  /** `n` fresh in-scale notes, drawn off the seeded stream. */
+  function drawSeededNotes(n, rootNote, scaleMode) {
+    const batch = drawSeeded(n);
+    let i = 0;
+    return Array.from({ length: n }, () => randomNote(rootNote, scaleMode, () => batch[i++] ?? 0));
+  }
+
   // N3: log seed + cursor on mount so both tabs can confirm identical engine boot
   useEffect(() => {
     console.log(`[RLSW NET] engine booted — seed: ${engineState.rng.seed}, cursor: ${engineState.rng.cursor}, spirits: ${engineState.spirits.map(s=>s.id).join(",")}`);
@@ -3999,7 +4042,7 @@ function Game({ gameState, onReturnToLobby }) {
     // (shadows the outer derived melodyLine so all scoring below includes the bonus)
     let melodyLine = baseTrack;
     if ((actingNoteState?.unlockedSkills ?? []).includes('mic')) {
-      const voiceRoll = Math.floor(Math.random() * 6) + 1;
+      const voiceRoll = drawSeededInt(6) + 1;
       // 🎤 Show the roll as a spinning-then-settling d6 so the player SEES it land.
       const vKey = Date.now() + Math.random();
       setVoiceRollFx({ value: voiceRoll, success: voiceRoll >= 4, key: vKey });
@@ -4011,7 +4054,7 @@ function Game({ gameState, onReturnToLobby }) {
         //  one non-monotone rule in the Style scorer. Every surviving Db source is
         //  monotone under append, so a bonus note can no longer cost the player
         //  anything and the roll is once again a plain upside.)
-        const bonusNote  = scaleNotes[Math.floor(Math.random() * scaleNotes.length)];
+        const bonusNote  = scaleNotes[drawSeededInt(scaleNotes.length)];
         melodyLine = [...baseTrack, bonusNote];
         addLog(`🎤 Voice roll ${voiceRoll} — your vocals land! Bonus note ${bonusNote} joins the track.`);
       } else {
@@ -4726,6 +4769,25 @@ function Game({ gameState, onReturnToLobby }) {
     // ⛔ Fresh turn window — everyone's per-turn FP cap meter resets (a
     // defender who banked capped FP during the last turn gets a clean slate).
     fameThisTurnRef.current = {};
+
+    // ── 🎲 THE REFILL DRAW — pre-rolled off the SEEDED stream ────────────────
+    // ⚠️ This is the single most consequential random event in the game: it is
+    // §1's spine, the 6 notes that buy every stack commit and every hex walked.
+    // It used to call randomNote() with no rng, i.e. Math.random, which meant no
+    // seed could ever reproduce a match — replays, the online cursor tripwire,
+    // and the headless bot harness all silently broken by it.
+    //
+    // The rate is derivable from the sheet as it stands, so the draws are made
+    // HERE and consumed inside the updater. Drawing inside would advance the
+    // engine cursor once per React re-invocation of the updater — the same
+    // double-draw hazard, just better hidden.
+    const refillNs   = engineRef.current.noteStates?.[spiritId] ?? {};
+    const refillRate0 = Math.max(0,
+      (refillNs.halfRefillNextTurn ? Math.floor(STOCK_REFILL_RATE / 2) : STOCK_REFILL_RATE)
+      - (refillNs.refillDrain ?? 0));
+    const refillDraws = drawSeeded(Math.min(refillRate0, (refillNs.noteStock ?? []).length));
+    let refillCursor  = 0;
+
     setNoteStates(prev => {
       const ns = prev[spiritId];
       if (!ns) return prev;
@@ -4765,8 +4827,12 @@ function Game({ gameState, onReturnToLobby }) {
       // Drawing with ns.scaleMode would spell this turn's new notes in last
       // turn's mode, which is exactly the bug the old pivot's respell-on-declare
       // was there to prevent.
+      refillCursor = 0;   // updater may re-run; always consume from the top
       const newStock = ns.noteStock.map((note, idx) => {
-        if (refreshing.has(idx)) return randomNote(derivedRoot, derivedMode);
+        if (refreshing.has(idx)) {
+          const draw = refillDraws[refillCursor++] ?? 0;
+          return randomNote(derivedRoot, derivedMode, () => draw);
+        }
         const pi = pitchIndex(note);
         return pi !== -1 ? modePool[pi] : note;
       });
@@ -5251,14 +5317,21 @@ function Game({ gameState, onReturnToLobby }) {
       return sh && axialDist(spiritHex.q, spiritHex.r, sh.q, sh.r) <= 4;
     });
     if (victims.length === 0) { addLog(`💀 No rivals within 4 hexes — don't waste the Encore!`); return; }
+    // Fisher-Yates needs 7 draws per victim; pull them all up front so the
+    // functional update below is pure (React may run it more than once).
+    const staggerDraws = drawSeeded(victims.length * 7);
     setNoteStates(prev => {
       let next = { ...prev, [spiritId]: { ...prev[spiritId], ultimateUsed: true } };
-      victims.forEach(v => {
+      victims.forEach((v, vi) => {
         const vNs = next[v.id] ?? {};
         if (!vNs.stagger) {
           const slots = Array.from({ length: 8 }, (_, i) => i);
+          // Which two slots get staggered is a RULE — it decides which notes the
+          // victim loses access to. Shuffle off the pre-drawn seeded batch
+          // (7 draws per victim), never Math.random inside this updater.
+          const cursor = vi * 7;
           for (let i = slots.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
+            const j = Math.floor((staggerDraws[cursor + (slots.length - 1 - i)] ?? 0) * (i + 1));
             [slots[i], slots[j]] = [slots[j], slots[i]];
           }
           next = { ...next, [v.id]: { ...vNs, stagger: { slots: slots.slice(0, 2), turnsLeft: 1 } } };
@@ -5563,7 +5636,7 @@ function Game({ gameState, onReturnToLobby }) {
     dispatch(tokenPickedUp(spiritId, hexNum));
     // 🗡️ SHREDDING RONIN — the virtuoso finds more music in it: ~50% of the time he
     // pockets a SECOND (fresh in-scale) note from the same find. Roll once, here.
-    const roninGreed = spiritId === 'cosmic_ronin' && Math.random() < 0.5;
+    const roninGreed = spiritId === 'cosmic_ronin' && drawSeededChance(0.5);
     const budgetSpent = (noteStates[spiritId]?.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET;
     if (budgetSpent) {
       bankLostChordNote(spiritId, tok.note, roninGreed);
@@ -5588,7 +5661,7 @@ function Game({ gameState, onReturnToLobby }) {
             return { ...prev, [spiritId]: { ...cur, driveStack: [...(cur.driveStack ?? []), tok.note], stackCommitsThisTurn: (cur.stackCommitsThisTurn ?? 0) + 1 } };
           });
           addLog(`🎸 ${sp?.name} weaves the Lost Chord (${tok.note}) into the Drive Stack!`);
-          if (roninGreed) bankLostChordNote(spiritId, randomNote(ns.rootNote, ns.scaleMode), false);
+          if (roninGreed) bankLostChordNote(spiritId, drawSeededNotes(1, ns.rootNote, ns.scaleMode)[0], false);
           placed = true;
         }
       }
@@ -5602,7 +5675,7 @@ function Game({ gameState, onReturnToLobby }) {
             return { ...prev, [spiritId]: { ...cur, sustainStack: [...(cur.sustainStack ?? []), tok.note], stackCommitsThisTurn: (cur.stackCommitsThisTurn ?? 0) + 1 } };
           });
           addLog(`🎸 ${sp?.name} weaves the Lost Chord (${tok.note}) into the Sustain Stack!`);
-          if (roninGreed) bankLostChordNote(spiritId, randomNote(ns.rootNote, ns.scaleMode), false);
+          if (roninGreed) bankLostChordNote(spiritId, drawSeededNotes(1, ns.rootNote, ns.scaleMode)[0], false);
           placed = true;
         }
       }
@@ -5616,6 +5689,12 @@ function Game({ gameState, onReturnToLobby }) {
   // then pop it in visibly instead of letting it silently splice into the stock.
   function bankLostChordNote(spiritId, note, roninGreed) {
     const sp = spirits.find(s => s.id === spiritId);
+    // ⚠️ Drawn BEFORE the updater, never inside it: React may invoke a
+    // functional update more than once, and a draw in there would advance the
+    // engine cursor twice — desyncing every other client.
+    const greedNote = roninGreed
+      ? drawSeededNotes(1, noteStates[spiritId]?.rootNote, noteStates[spiritId]?.scaleMode)[0]
+      : null;
     setNoteStates(prev => {
       const ns = prev[spiritId]; if (!ns) return prev;
       const stock = [...(ns.noteStock ?? [])];
@@ -5627,7 +5706,7 @@ function Game({ gameState, onReturnToLobby }) {
         else { stock[slot] = n; placed.add(slot); }
       };
       place(note);
-      if (roninGreed) place(randomNote(ns.rootNote, ns.scaleMode));
+      if (greedNote) place(greedNote);
       // 🎬 Same "pop in like it just arrived" treatment as a turn-start refill —
       // deferred via setTimeout so it fires safely outside this functional update.
       setTimeout(() => {
@@ -5659,7 +5738,7 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`🎸 ${sp?.name} weaves the Lost Chord (${note}) into the ${choice === 'sustain' ? 'Sustain' : 'Drive'} Stack!`);
       // The Ronin's serendipitous second note (if any) still lands in the stock —
       // the chosen stack only applies to the primary found note.
-      if (roninGreed) bankLostChordNote(spiritId, randomNote(ns.rootNote, ns.scaleMode), false);
+      if (roninGreed) bankLostChordNote(spiritId, drawSeededNotes(1, ns.rootNote, ns.scaleMode)[0], false);
     }
   }
 
@@ -5747,7 +5826,7 @@ function Game({ gameState, onReturnToLobby }) {
       }
       return best;
     }
-    return randomNote(ns.rootNote, ns.scaleMode);
+    return drawSeededNotes(1, ns.rootNote, ns.scaleMode)[0];
   }
 
   // Chord-assist alternative (Overcharge only): ONE extra note into the Drive Stack,
@@ -6660,7 +6739,9 @@ function Game({ gameState, onReturnToLobby }) {
     if (squatter) {
       const occupied = [...spirits.map(sp => sp.num), ...amps.map(a => a.hexNum),
         ...(shadowHex != null ? [shadowHex] : [])];
-      const dest = freeNeighborHex(LIMELIGHT_HEX, occupied);
+      // Seeded: where the god's arrival shoves a Spirit is a rule, not flavour.
+      const destDraw = drawSeeded(1)[0] ?? 0;
+      const dest = freeNeighborHex(LIMELIGHT_HEX, occupied, () => destDraw);
       if (dest) setSpirits(prev => prev.map(sp => sp.id === squatter.id ? { ...sp, num: dest } : sp));
       addLog(`💥 ${squatter.name} is hurled off the Limelight by the shockwave — 1 Vibe!`);
       setTimeout(() => applyVibeDamage(squatter.id, 1, 'Divine Shockwave'), 300);
@@ -7202,7 +7283,7 @@ function Game({ gameState, onReturnToLobby }) {
     const shaken = Math.min(2, unassignedDiehards);
     diehards -= shaken; casuals += shaken;
     // 7–10 Casuals flee.
-    const flee = Math.min(casuals, FAN_FLEE_MIN + Math.floor(Math.random() * (FAN_FLEE_MAX - FAN_FLEE_MIN + 1)));
+    const flee = Math.min(casuals, FAN_FLEE_MIN + drawSeededInt(FAN_FLEE_MAX - FAN_FLEE_MIN + 1));
     casuals -= flee;
     // Some defect straight to the demolisher; the rest pool as Unsure on the centre.
     const toVictor = (attackerId && attackerId !== targetId) ? Math.min(FAN_DEFECT_TO_VICTOR, flee) : 0;
@@ -9155,7 +9236,7 @@ function Game({ gameState, onReturnToLobby }) {
     // (This used to return true and rely on the caller to grant it, but no caller
     // ever did — the promised bonus note simply never arrived.)
     const wNs = noteStates[walkerId] ?? {};
-    bankLostChordNote(walkerId, randomNote(wNs.rootNote, wNs.scaleMode), false);
+    bankLostChordNote(walkerId, drawSeededNotes(1, wNs.rootNote, wNs.scaleMode)[0], false);
     return true;
   }
 
