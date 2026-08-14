@@ -140,14 +140,38 @@ Costs `SMASH_AP_COST` 2 AP (and **ends all remaining movement**), every unused
 note in stock, the **entire** Drive Stack, and `SMASH_SELF_SUSTAIN` 1 off
 Sustain. Pays, undefendably: `SMASH_DAMAGE` 2 Vibe, `SMASH_SUSTAIN_STRIP` 2
 notes off their Sustain, `SMASH_KNOCKBACK` 2 hexes.
-**Verdict:** it is a *defence-breaker*, not a finisher — it aims at their
-armour, not their health. Correct use is setup for the next attacker (or your
-own next turn) and edge-of-stage knockouts. ⚠️ Evaluating it on the 2 Vibe
-alone will make the bot refuse it forever. The real payload is two-part: the 2
-stripped Sustain notes downgrade the rival's whole chord shape, **and it sets
-`smashExposed` — the next blow to land on them ignores their Sustain entirely**
-(`defChordSustain = 0`, then clears). A Smash immediately followed by any hit
-is the highest-damage sequence available to a bot that can see two plies.
+> ⚠️ **CORRECTED 2026-08-14 — this section invented a mechanic, source wins.**
+> It previously read "it sets `smashExposed` — the next blow to land on them
+> ignores their Sustain entirely… a Smash immediately followed by any hit is the
+> highest-damage sequence available to a bot that can see two plies." **None of
+> that is true.** `resolveSmash` does not set `smashExposed` at all; the
+> 2026-08-05 rework deleted it and left the reason in the code — *"No Exposed
+> flag any more — the cost IS the drawback."* Where the flag IS set — Blaster of
+> Ra, and the shadow-whiff — it goes on the **ATTACKER**, as a self-debuff
+> ("ride the recoil into Exposed"), cleared at the start of their own turn
+> (`turnFlow.js`). `attackParams` reads the *defender's* copy, which is correct:
+> it is a vulnerability you inflict on yourself. Third doc inversion after §3.7
+> and §1's stack cap; the pattern is always the same, a design intention outliving
+> the code that carried it.
+
+**Verdict:** it is a *defence-breaker*, not a finisher — but ⚠️ **you cannot cash
+the hole you tear.** `actionTokenUsed` is one token per turn, so no follow-up
+this turn; and next turn your Drive Stack is EMPTY, so your Swing has nothing to
+spend and your Sonic has no Drive either. The strip is cashed by **somebody
+else** — and §3.7 says the money is in punching up, so the rival best placed to
+cash it is the leader. **The cost is private and the payout is public**, which in
+a 3–4 player FFA makes it a losing trade by construction rather than by tuning.
+
+Where it IS correct, and the evaluator should say so:
+- **Lethal.** 2 undefendable Vibe on a rival at ≤2 is a guaranteed life with no
+  defence roll. A Swing can whiff; this cannot. Cleanest closer in the game.
+- **Edge-of-stage knockouts** — 2 hexes of undefendable push.
+- **🧪 Metalness with Slime unlocked** — halved rival refill on top, for 1 Db.
+- **⚠️ THE UNPRICED LINE: the Smash is CHEAPEST on the turn you commit a long
+  melody.** A long track drains stock (that is what the notes bought) *and*
+  grants the AP, so "long melody → Smash" hurls almost nothing, while "short
+  melody → Smash" throws a full reservoir away. Nothing scores this today, and
+  §6d is what finally makes it visible.
 
 ### 3.5 Charge zones: roam vs. fight
 A charge lasts `CHARGE_ZONE_BOOST_TURNS` 2 turns **or until any battle
@@ -393,11 +417,12 @@ should never see this, and if it does, the two files have drifted) or
    empty declaration cannot coast on saying nothing. What is left rides
    `melodyCommit.CLIENT_OWNED` and is reported per call.
 2. **`smash` / `blaster` are UNMODELLED.** They are not `attackRolled` attacks —
-   undefendable, resolved through `smashOutcome`, with a long bespoke chain
-   (whole Drive stack spent, stock hurled, `smashExposed` set, movement zeroed).
-   Section 3.4 calls the Smash a defence-breaker whose real payload is the
-   *exposure*, so a half-modelled Smash would misprice the highest-damage
-   sequence in the game.
+   undefendable, with a long bespoke chain (whole Drive stack spent, stock
+   hurled, movement zeroed). ⚠️ Only the **Blaster** runs on `smashOutcome`'s
+   throw curve and only the Blaster sets `smashExposed` (on ITSELF — §3.4); the
+   Smash is flat and sets nothing. They are one `kind` pair in `legalActions`
+   and two different actions underneath, which is the trap to avoid when
+   modelling them.
 3. **`pose` moves `view.posing` only** — the per-round FP tick and Sustain toll
    are on the client's turn clock.
 
@@ -595,6 +620,22 @@ which zeroes for the same reason.
   expectimax. Decide whether the searcher hands rivals a *hypothetical* turn
   (grant them a melody, then their AP) or scores replies structurally.
 - Metalness's missing innate (§4.3) blocks honest cross-Spirit tuning.
+- **💥 THE SMASH PUNISHES YOU FOR HAVING A GOOD TURN** (§3.4). Its cost is
+  variable — every unused note — and its payout is fixed at 2/2/2, so hurling
+  eight notes and hurling one pay the same. It is therefore *worst* exactly when
+  you are richest, which is the opposite of a haymaker. ⚠️ Do **not** fix this by
+  restoring the `smashOutcome` curve: `gameConstants` records why it was
+  flattened ("a numbers puzzle — hoard stock, then dump — rather than a
+  decision"), and that reasoning still holds. **The surgical fix is a FIXED fuel
+  price** — spend 2 unused notes, the way the Blaster's gate already reads,
+  instead of "everything." Keeps "the Smash is your chord, swung" (the Drive
+  Stack still goes), keeps the flat payout, removes the wealth tax. One constant
+  and two lines.
+  The larger lever — an exposure on the TARGET lasting until the smasher's next
+  turn, i.e. actually building what §3.4 wrongly claimed — would turn the private
+  cost into a private benefit, but **hold it until §6.6 can measure it.** §5's
+  weights are explicitly not measurements, and tuning the Smash before anything
+  has played 2000 matches is tuning blind.
 - **`PERF_CLIFF = 5` now lives in TWO policy files** — `evaluate.js` and
   `melodyCommit.js` (`RONIN_PERF_CLIFF`), because `gameConstants` still holds no
   per-Spirit innate numbers at all. Two copies is the threshold at which this

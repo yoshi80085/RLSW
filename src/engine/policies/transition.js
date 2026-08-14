@@ -36,11 +36,17 @@
 //     enters `unlockedSkills`); the side-effect chain does not. `report.clientOwned`
 //     names it at every call.
 //  2. `smash` / `blaster` are UNMODELLED. They are not `attackRolled` attacks —
-//     they are undefendable, resolve through `smashOutcome`, and carry a long
-//     bespoke side-effect chain (whole Drive stack spent, stock hurled,
-//     `smashExposed` set, movement zeroed). §3.4 calls the Smash a
-//     defence-breaker whose real payload is the exposure, so a half-modelled
-//     Smash would misprice the single highest-damage sequence in the game.
+//     they are undefendable, and carry a long bespoke side-effect chain (whole
+//     Drive stack spent, stock hurled, movement zeroed).
+//     ⚠️ THEY ARE ONE `kind` PAIR AND TWO DIFFERENT ACTIONS. Only the Blaster
+//     runs on `smashOutcome`'s throw curve, and only the Blaster sets
+//     `smashExposed` — on ITSELF, as recoil ("ride the recoil into Exposed"),
+//     cleared at the start of its own turn. `resolveSmash` sets no flag at all;
+//     the 2026-08-05 rework deleted it on purpose ("the cost IS the drawback").
+//     An earlier draft of §3.4 had the Smash exposing its TARGET and called the
+//     follow-up the highest-damage sequence in the game. It was describing a
+//     mechanic that does not exist — corrected there, repeated here because this
+//     is the file someone reads right before trying to model it.
 //  3. `pose` moves `view.posing` only. The per-round FP tick and Sustain toll
 //     are on the turn clock in the client.
 //
