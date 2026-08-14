@@ -257,7 +257,7 @@ export function botRiffResults(len, rng) {
 
 // Discord-unlock tiers → which interval keys each unlock grants per mode.
 // Mirrors DISCORD_UPGRADE_TIERS in the main file (game data, stable).
-const DISCORD_INTERVAL_MAP = [
+export const DISCORD_INTERVAL_MAP = [
   { id: 'discord_1', notesByMode: { major: ['minorSeventh'], minor: [] } },
   { id: 'discord_2', notesByMode: { major: [], minor: ['majorThird'] } },
   { id: 'discord_3', notesByMode: { major: ['tritone'], minor: ['tritone'] } },

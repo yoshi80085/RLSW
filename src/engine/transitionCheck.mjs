@@ -12,10 +12,11 @@
 //   2. DETERMINISM ON A SEEDED STREAM. Same seed + same line ⇒ identical state.
 //      This is §0.4's tripwire: a hypothetical that burns cursor draws desyncs
 //      every replay and every online client, and it fails SILENTLY.
-//   3. THE GAPS STAY DECLARED. `smash` must refuse as `unmodelled`, not limp
-//      along half-right, and `confirmMelody` must keep announcing what it did
-//      not do. A test suite that let those quietly start "working" would be
-//      worse than no suite.
+//   3. THE GAPS STAY DECLARED. `smash` must refuse as `unmodelled` rather than
+//      limp along half-right. `confirmMelody` used to be the second half of this
+//      property; since the economy landed it is the inverse — an EMPTY `partial`
+//      is a claim that has to be backed by a payout on the sheet. A suite that
+//      let either drift would be worse than no suite.
 
 import assert from "node:assert";
 import { makeRng } from "./rng.js";
@@ -40,6 +41,7 @@ import { axialNeighbors, angleTo } from "../board/hexGeometry.js";
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks++; };
 const eq = (a, b, m) => { assert.equal(a, b, m); checks++; };
+const deep = (a, b, m) => { assert.deepEqual(a, b, m); checks++; };
 
 const RONIN = 'cosmic_ronin', ZERO = 'intergalactic_0', METAL = 'Metalness_Monster';
 const START = 45;   // interior, six real neighbours, not the Limelight
@@ -117,13 +119,25 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   eq(bogus.reason, 'illegal', 'an invented kind is illegal, not unmodelled — a different fact');
   eq(applyBotAction(st, null, { rng: rngOf() }).reason, 'illegal', 'a null action does not throw');
 
-  // ⚠️ confirmMelody must keep announcing what it did NOT do.
-  const track = withNs(baseState(), RONIN, { melodyLine: ['A', 'B', 'C'] });
+  // ⚠️ confirmMelody used to declare an economy it SKIPPED. It no longer skips
+  // one — `systems/melodyCommit.js` runs it — so the assertion inverts: the
+  // absence of a `partial` list is now a CLAIM, and it has to be backed by the
+  // economy visibly landing on the sheet. An empty declaration with no payout
+  // behind it would be the worst of both.
+  // ⚠️ The key is pinned. `makeInitialNoteState` seeds a RANDOM root and mode,
+  // so an unpinned fixture can hand the Ronin a track that is entirely discord —
+  // which earns 0 Db for a legitimate reason and would make this assertion flap.
+  const track = withNs(baseState(), RONIN, {
+    melodyLine: ['C', 'D', 'E', 'G'], rootNote: 'C', scaleMode: 'major',
+    driveStack: [], sustainStack: [], discordUnlocks: [], unlockedSkills: [],
+  });
   const conf = applyBotAction(track, { kind: 'confirmMelody' }, { rng: rngOf() });
   eq(conf.ok, true, 'confirmMelody runs');
-  ok(Array.isArray(conf.partial) && conf.partial.includes('dbPayout'),
-     '...and still declares the economy it skipped — silence here would mislead every tuning pass');
-  eq(conf.partial.join(','), PARTIAL_KINDS.confirmMelody.join(','), 'the declared list is the documented one');
+  eq(conf.partial, undefined, '...and declares no gap');
+  deep(PARTIAL_KINDS, {}, 'nothing in this file is partial any more');
+  ok(conf.report, 'the economy report comes back for a searcher to read');
+  ok((conf.state.noteStates[RONIN].totalDB ?? 0) > 0,
+     '...and the Db it used to skip actually reaches the sheet — see melodyCommitCheck for the rest');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

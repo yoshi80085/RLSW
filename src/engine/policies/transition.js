@@ -25,15 +25,16 @@
 //                      headlessly. Not a bug. See UNMODELLED below.
 //
 // ── ⚠️ WHAT IS NOT MODELLED YET, AND WHY IT MATTERS ─────────────────────────
-//  1. `confirmMelody` is PARTIAL, and this is the significant one. It applies
-//     the MECHANICAL half — the AP grant (§1's spine) and the `hasConfirmed`
-//     flip — but not the ECONOMIC half: Db payout, Performance Score, fan gain,
-//     mode re-derivation, banked note. Those live in `confirmNoteTrack`, ~600
-//     lines deep in the monolith, and re-deriving them here would be exactly
-//     the invented-rules failure above. CONSEQUENCE FOR TUNING: a searcher on
-//     this transition sees the melody's MOVEMENT value but is blind to its
-//     SCORING value, which will bias it toward short tracks. Do not read
-//     win rates off §6.6 as melody-strategy evidence until this lands.
+//  1. ~~`confirmMelody` is PARTIAL~~ ✅ COMPLETE — `systems/melodyCommit.js`.
+//     It applied only the MECHANICAL half (the AP grant, the `hasConfirmed`
+//     flip) and was blind to the ECONOMIC half — Db, Performance Score, fans,
+//     the banked note, the riff, the cadence — which biased any searcher on it
+//     toward SHORT tracks: three notes visibly cost less stock than six, while
+//     six notes invisibly paid Db, flair and a crowd. The economy is now a pure
+//     kernel this file drives. ⚠️ ONE THING STILL RIDES THE CLIENT:
+//     `applySkillEffects`. The STATE half of a skill award lands (the skill
+//     enters `unlockedSkills`); the side-effect chain does not. `report.clientOwned`
+//     names it at every call.
 //  2. `smash` / `blaster` are UNMODELLED. They are not `attackRolled` attacks —
 //     they are undefendable, resolve through `smashOutcome`, and carry a long
 //     bespoke side-effect chain (whole Drive stack spent, stock hurled,
@@ -49,12 +50,12 @@
 import { applyAction } from "../reduce.js";
 import {
   moveStep, spiritFaced, beatsSpent, moveBudgetSet, turnEnded,
-  noteSheetPatched, attackRolled,
+  noteSheetPatched, attackRolled, fansChanged,
 } from "../actions.js";
-import { battleConsequences, runBattleFlow } from "../systems/battleFlow.js";
+import { battleConsequences, runBattleFlow, grantFame } from "../systems/battleFlow.js";
 import { attackParams, spiritChord } from "../systems/attackParams.js";
 import { usedAdd } from "../systems/economy.js";
-import { SPIRIT_DEFS } from "../../data/spirits.js";
+import { commitMelodyEconomy } from "../systems/melodyCommit.js";
 import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 
 /** Kinds this file can actually run headlessly. */
@@ -66,8 +67,24 @@ export const MODELLED_KINDS = new Set([
 /** Kinds the rules allow but the engine cannot yet run. See the header. */
 export const UNMODELLED_KINDS = new Set(['smash', 'blaster']);
 
-/** `confirmMelody` applies the AP grant but not the scoring economy. */
-export const PARTIAL_KINDS = { confirmMelody: ['dbPayout', 'perfScore', 'fanGain', 'modeDerivation', 'bankedNote'] };
+/**
+ * Kinds that run, but hand part of the job back to the client.
+ *
+ * ⚠️ EMPTY IS A CLAIM, NOT AN ABSENCE. `confirmMelody` used to list five gaps;
+ * all five now run through `systems/melodyCommit.js`. Two of them turned out not
+ * to be gaps at all on inspection, and that is worth recording rather than
+ * quietly dropping:
+ *   · `modeDerivation` was never this action's job. B8 moved it to the START of
+ *     the next turn (`turnFlow.js` → `modeFromStack`); the mode written at
+ *     commit is a placeholder turn start overwrites.
+ *   · `bankedNote` was three lines of speed-overflow arithmetic, not a system.
+ * The real work was `dbPayout`, `perfScore` and `fanGain`.
+ *
+ * What is left is smaller and lives in `melodyCommit.CLIENT_OWNED`, reported per
+ * call rather than declared here, because it is a property of that kernel's
+ * return value and not of this dispatch table.
+ */
+export const PARTIAL_KINDS = {};
 
 const fail = (state, view, reason, detail) => ({ state, view, ok: false, reason, detail: detail ?? null, logs: [] });
 
@@ -126,18 +143,52 @@ export function applyBotAction(state, action, ctx = {}) {
     }
 
     case 'confirmMelody': {
-      // §1's spine, and the only part of the commit this file claims: the
-      // melody you wrote becomes the AP you act with, capped by speed.
-      // `tripped` halves it (min 1) inside the reducer — not re-derived here.
-      const track = ns.melodyLine ?? [];
-      if (!track.length) return fail(state, view, 'illegal', 'nothing to confirm');
-      const speed = SPIRIT_DEFS[spiritId]?.speed ?? 5;
-      let next = applyAction(state, moveBudgetSet(Math.min(track.length, speed), !!ns.tripped), rng);
-      next = patchNs(next, spiritId, { hasConfirmed: true }, rng);
+      // §1's spine, both halves of it. The melody you wrote becomes the AP you
+      // act with — AND the Db, the flair, the crowd and the bank it earned.
+      //
+      // ⚠️ ORDER MATTERS TWICE OVER. The economy is computed FIRST, off the
+      // pre-commit sheet, because it reads `melodyLine` and the kernel's own
+      // patch clears it. And `hexes` comes from the kernel rather than being
+      // re-derived here: the mic skill's voice roll can append a note the player
+      // never placed, so `melodyLine.length` at this point is the WRONG number.
+      const commit = commitMelodyEconomy(state, spiritId, { rng, view });
+      if (!commit.ok) return fail(state, view, 'illegal', commit.reason);
+
+      let next = patchNs(state, spiritId, commit.patch, rng);
+      let logs = [...commit.logs];
+      let nextView = view;
+
+      // Walk the ordered effects. ⚠️ DO NOT REORDER — the riff's Fame is
+      // multiplied by the crowd, so it must see the fans this commit already won
+      // and not the cadence fans that land after it.
+      for (const fx of commit.effects) {
+        if (fx.type === 'fans') {
+          next = applyAction(next, fansChanged(fx.spiritId, fx.fans), rng);
+        } else if (fx.type === 'fame') {
+          // Through `battleFlow.grantFame` so the 4/turn cap, the crowd
+          // multiplier and the Rock God gate all apply in exactly one place.
+          const run = runBattleFlow(
+            grantFame({ state: next, spiritId: fx.spiritId, fp: fx.fp, reason: fx.reason,
+                        fameThisTurn: nextView.fameThisTurn ?? {} }),
+            next,
+            { applyAction: (s, a) => applyAction(s, a, rng), hooks },
+          );
+          next = run.state;
+          logs = logs.concat(run.logs);
+          if (run.result?.fameThisTurn) nextView = { ...nextView, fameThisTurn: run.result.fameThisTurn };
+        } else if (fx.type === 'unsurePool') {
+          // The undecided crowd is client state; hand back the delta rather than
+          // inventing a slice for it.
+          nextView = { ...nextView, unsurePool: Math.max(0, (nextView.unsurePool ?? 0) + fx.delta) };
+        }
+      }
+
+      // `tripped` halves the grant (min 1) inside the reducer — not re-derived here.
+      next = applyAction(next, moveBudgetSet(commit.hexes, !!ns.tripped), rng);
+
       return {
-        state: next, view, ok: true, reason: null,
-        partial: PARTIAL_KINDS.confirmMelody,     // ⚠️ the economy did NOT run
-        logs: [],
+        state: next, view: nextView, ok: true, reason: null,
+        report: commit.report, flashLines: commit.flashLines, logs,
       };
     }
 

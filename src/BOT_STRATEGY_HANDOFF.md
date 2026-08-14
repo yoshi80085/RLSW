@@ -355,6 +355,9 @@ tempo for rivals. Re-read this when the searcher starts scoring opponent replies
    new bot vs. current bot, ~2000 matches. Bar: **≥60%** or it isn't smarter.
    Plus the determinism regression already patterned in Phase 7c — same seed +
    same state ⇒ identical action sequence.
+   ✅ **And its results are now readable as melody evidence** — §6b.1's caveat is
+   lifted. The transition prices a long track correctly, so a win rate that moves
+   when melody length changes is measuring strategy rather than a blind spot.
 
 ---
 
@@ -384,15 +387,11 @@ should never see this, and if it does, the two files have drifted) or
 
 **What is not modelled yet — read this before trusting any win rate:**
 
-1. **`confirmMelody` is PARTIAL, and this is the significant one.** It applies
-   the mechanical half — the AP grant and the `hasConfirmed` flip — but not the
-   economic half: Db payout, Performance Score, fan gain, mode re-derivation,
-   banked note. Those live ~600 lines deep in `confirmNoteTrack`. **Consequence:
-   a searcher on this transition sees the melody's MOVEMENT value but is blind
-   to its SCORING value, so it will bias toward short tracks.** Do not read §6.6
-   results as melody-strategy evidence until this lands. It returns
-   `partial: ['dbPayout', 'perfScore', 'fanGain', 'modeDerivation', 'bankedNote']`
-   so the gap is announced at every call rather than remembered from a doc.
+1. ~~**`confirmMelody` is PARTIAL**~~ ✅ **CLOSED 2026-08-14 — see §6d.**
+   `PARTIAL_KINDS` is now `{}`, and that emptiness is a *claim* the checks back:
+   `transitionCheck.mjs` §2 asserts the Db actually reaches the sheet, so an
+   empty declaration cannot coast on saying nothing. What is left rides
+   `melodyCommit.CLIENT_OWNED` and is reported per call.
 2. **`smash` / `blaster` are UNMODELLED.** They are not `attackRolled` attacks —
    undefendable, resolved through `smashOutcome`, with a long bespoke chain
    (whole Drive stack spent, stock hurled, `smashExposed` set, movement zeroed).
@@ -445,6 +444,62 @@ so `attackParams` carries a **transcription** of it. Hoist it when convenient.
 Likewise `spiritChord` now exists in **three** byte-identical copies (monolith,
 `bot.js`'s `botSpiritChord`, `attackParams`) — the new one is the copy a
 headless caller should use; collapse the others when those files are next touched.
+
+### 6d. The commit's economy — `commitMelodyEconomy`
+
+> ✅ **SHIPPED 2026-08-14** — `systems/melodyCommit.js`, covered by
+> `melodyCommitCheck.mjs` (`npm run test:melody`, 146 assertions).
+
+§1 says the melody you commit buys your ability to act. The engine only ever
+owned the *mechanical* half of that sentence. The economic half — Db, the
+Performance Score, the fans, the bank, the riff, the cadence — lived ~600 lines
+deep in `confirmNoteTrack`, welded to React setters, and **that asymmetry had a
+direction**: a searcher could see that three notes cost less stock than six and
+could not see that six notes pay Db, flair and a crowd. It did not make the bot
+noisy, it made it *systematically wrong in one direction*, which is the harder
+kind to notice from a win rate.
+
+`commitMelodyEconomy(state, spiritId, ctx) -> { patch, effects, hexes, report,
+logs, flashLines }`. **Pure — it computes, it does not write.** It returns a note
+sheet patch and an ordered effects list; the caller applies them through the
+reducer. That is what lets one piece of arithmetic serve three callers that
+cannot share a call stack (the client's setters, `applyBotAction`, a server)
+without a fourth copy of it.
+
+**Four things worth knowing before touching it:**
+
+1. **⚠️ THE ORDER OF `effects` IS LOAD-BEARING.** The client fires these at
+   0ms / 0ms / 500ms / 700ms, and the stagger is not cosmetic: a riff's Fame is
+   multiplied by the crowd, so it must see the fans *this* commit won and **not**
+   the cadence fans that land after it. Walk the list in order and the arithmetic
+   matches the shipped game; reorder it and a riff quietly pays a different
+   number of FP, with no symptom until someone asks why.
+2. **The mic skill SHADOWS the track.** A passed voice roll appends a note the
+   player never placed, and everything downstream scores the shadowed line — Db,
+   P, the ending, **and the AP grant**. `transition.js` therefore takes `hexes`
+   from the kernel instead of re-deriving `melodyLine.length`; re-deriving it is
+   the single easiest way to reintroduce the bug. Draw accounting is pinned: one
+   draw on a miss, two on a hit, and **no rng means the mic is skipped**, never
+   silently rolled off `Math.random`.
+3. **Two of the five declared gaps were never gaps.** `modeDerivation` is B8's
+   job and already belonged to `turnFlow.js` — the mode written at commit is a
+   placeholder turn start overwrites. `bankedNote` was three lines of overflow
+   arithmetic. The real work was `dbPayout`, `perfScore` and `fanGain`. Worth
+   recording because it is the reverse of the usual drift: a doc that *over*-stated
+   what was missing.
+4. **Fans fold sequentially, never sum.** Position → performance → deed, each
+   capped in turn, then emitted as one write. Summing the gains first would let a
+   single commit vault the casual cap. And a discordant track does not merely pay
+   zero — `gainFans` returns before touching `centerStreak`, so it does not even
+   advance the promotion clock. That distinction is pinned.
+
+**⚠️ THE ARITHMETIC NOW EXISTS TWICE.** `confirmNoteTrack` has *not* been rewired
+to call the kernel — that is a large edit to a 960 KB file with no UI coverage,
+and it is the obvious next step, not this one. Until it lands, `melodyCommitCheck`
+§14 is a **drift guard**: it reads the monolith's source and fails the moment one
+of nine load-bearing expressions moves. That is the difference between a known
+duplicate and a silent divergence. `flashLines` is returned precisely so that the
+rewire can be a thin UI shell rather than a second port.
 
 ### 6a. The action schema
 
@@ -515,20 +570,36 @@ which zeroes for the same reason.
   that self-debuff or it will over-rate melee.
 - ~~§3.7's underdog direction~~ — **resolved 2026-08-14**: the doc was inverted,
   `combat.js` wins. Punch up. Guarded by `evalCheck.mjs` §13.
-- **`confirmMelody`'s economy is the biggest remaining hole** (6b.1). Until it
-  lands, the searcher undervalues long melodies, and no section 6.6 win rate is
-  evidence about melody strategy. Extracting `confirmNoteTrack`'s scoring half
-  is probably the single highest-value next extraction in the whole engine.
+- ~~`confirmMelody`'s economy is the biggest remaining hole~~ — **closed
+  2026-08-14**, §6d. The searcher now prices a long melody correctly and §6.6
+  win rates are melody evidence again.
+- **⚠️ REWIRE `confirmNoteTrack` ONTO THE KERNEL — this is the new top item.**
+  The commit economy is currently in two places: `systems/melodyCommit.js` and
+  the monolith. `melodyCommitCheck.mjs` §14 guards the seam, but a guard is a
+  tripwire, not a fix, and the guard is written to be **deleted** the day the
+  rewire lands. The kernel returns `flashLines` and a full `report` so the
+  rewrite is a UI shell, not a second port.
+- **🐛 WA NO KOE SILENTLY EATS THE DRIVE BOOST, and the kernel reproduces it.**
+  In Game, `applyWaNoKoe` reads `curTemp` off the *render-scoped* `actingNoteState`
+  — the PRE-commit value — and writes `curTemp + 1` over the `tempDrive` the
+  commit patch just set. So on a turn where the Ronin earns **both** a diatonic
+  Drive boost and Wa no Koe, the boost is discarded and he ends on
+  `oldTempDrive + 1`. It is reproduced in `melodyCommit.js` on purpose: a kernel
+  that quietly plays a *better* game than the client is the same class of failure
+  as an invented rule. Fix it in one place, with the rewire above, and drop the
+  pin in `melodyCommitCheck` §13. (This is the second bug of exactly this shape
+  in this one function — B10's `driveStack ?? sustainStack` was the first.)
 - **Opponent replies need a second mode.** Both `legalActions` (returns `[]`)
   and `evaluate` (`apBanked` → 0) deliberately refuse to speak for a Spirit who
   is not `state.acting`. That is right for a one-ply generator and wrong for
   expectimax. Decide whether the searcher hands rivals a *hypothetical* turn
   (grant them a melody, then their AP) or scores replies structurally.
 - Metalness's missing innate (§4.3) blocks honest cross-Spirit tuning.
-- **`PERF_CLIFF = 5` lives in `evaluate.js`, not `gameConstants.js`** — because
-  `gameConstants` holds no per-Spirit innate numbers at all today. If a second
-  innate ever needs a threshold, that is the moment to give innates their own
-  constants module rather than scattering them through the policies.
+- **`PERF_CLIFF = 5` now lives in TWO policy files** — `evaluate.js` and
+  `melodyCommit.js` (`RONIN_PERF_CLIFF`), because `gameConstants` still holds no
+  per-Spirit innate numbers at all. Two copies is the threshold at which this
+  stops being a judgement call: **the next innate that needs a number should
+  arrive with an innate-constants module**, and take these two with it.
 - Legendary riffs paying FP directly is still the open 💬 in `ECONOMY_HANDOFF.md`.
   If it changes, the FP terms in §5 move with it.
 - Should search depth be per-Spirit? A deep Intergalactic 0 (denial, long
