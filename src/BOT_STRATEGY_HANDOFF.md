@@ -322,20 +322,27 @@ tempo for rivals. Re-read this when the searcher starts scoring opponent replies
 
 ## 6. What the searcher needs (build order)
 
-1. **`legalActions(state, spiritId) → action[]`** — does not exist. Every
-   current bot function is a *chooser* (`botPlanMove` → one hex,
-   `botPlanNoteStep` → one step, `botPickTarget` → one target). This is the
-   bulk of the work.
+1. ~~**`legalActions(state, spiritId) → action[]`**~~ ✅ **DONE 2026-08-14** —
+   `policies/legalActions.js`, pinned by `legalActionsCheck.mjs`
+   (`npm run test:legal`). Every current bot function is a *chooser*
+   (`botPlanMove` → one hex, `botPlanNoteStep` → one step, `botPickTarget` →
+   one target); this returns the branches instead. See §6a for the schema.
 2. ~~**`evaluate(state, spiritId)`** — §5.~~ ✅ **DONE** —
    `policies/evaluate.js`. `botHexScore` scores a hex; this scores a position.
    Left deliberately un-wired: nothing calls it yet, because the thing that
    should call it is (1), and hanging it off the existing choosers early would
    bake in the hex-at-a-time framing it exists to replace.
-3. **Beam, not full width.** Keep the existing planners as *candidate
-   generators*: have each return its top 3–5 instead of top 1 and search only
-   that. Preserves everything already tuned, keeps branching sane, degrades
-   gracefully. Note-track construction is combinatorial and will blow up a
-   naive tree — it must be beamed.
+3. **Beam, not full width.** `beamActions(actions, { limit, score })` ships
+   alongside `legalActions`. ⚠️ It beams **per kind**, not globally, and that
+   detail is load-bearing: with twenty melody notes on offer a global top-5 is
+   five melody notes, and the bot silently loses the ability to consider
+   attacking at all. Per-kind capping bounds the tree while guaranteeing that
+   if a Smash was legal, a Smash is still on the table. Ties keep source order
+   rather than relying on sort stability, so the §6.6 determinism regression
+   cannot fail intermittently.
+   **Still to do:** wire the existing planners in as the `score` function so
+   their tuning is preserved — they currently rank nothing, and an unranked
+   beam is just "the first 5".
 4. **Expectimax / sampled rollouts, not minimax.** Swing is d6, Sonic is
    keep-highest, knockback scatters, events draw. Plain minimax will
    systematically over-value high-variance lines.
@@ -346,6 +353,62 @@ tempo for rivals. Re-read this when the searcher starts scoring opponent replies
    new bot vs. current bot, ~2000 matches. Bar: **≥60%** or it isn't smarter.
    Plus the determinism regression already patterned in Phase 7c — same seed +
    same state ⇒ identical action sequence.
+
+---
+
+### 6a. The action schema
+
+`legalActions(state, spiritId, view) → action[]`. Pure, and deliberately
+**dumb**: it answers *what is legal*, never *what is good*. Ranking belongs to
+`evaluate.js` and narrowing to `beamActions` — a preference smuggled in here
+would be invisible to tuning, because the harness only ever sees what survived.
+
+**⚠️ THE TURN HAS TWO PHASES, and that is the whole shape.** `hasConfirmed`
+splits it, and the split *is* §1's spine:
+
+| Phase | Gate | Spends | Actions |
+|---|---|---|---|
+| **Composition** | `!hasConfirmed` | stock | `melodyNote` · `stackCommit` · `confirmMelody` |
+| **Action** | `hasConfirmed` | AP | `move` · `face` · `swing` · `sonic` · `smash`/`blaster` · `pose` · `endTurn` |
+| *(either)* | Db, not AP | Db | `skillUnlock` |
+
+`confirmMelody` carries `apGranted = min(trackLen, speed)` so a searcher can
+price the commit without re-deriving §1.
+
+**Three rules that collapse the branching factor, all easy to search straight past:**
+
+- **⚠️ ONE token, ONE attack.** `actionTokenUsed` is a single token: a turn holds
+  at most one Swing **or** Sonic **or** Smash, *ever*. A search that considers
+  two attacks in a turn is searching a game that does not exist. Movement is
+  **not** the token — you can still walk after attacking.
+- **⚠️ `face` is not gated on the token, and this was a real bug caught by the
+  check.** Facing looks like pure aiming, but `isRearHit` reads it on
+  **defence** — a blow in your rear wedge strips an extra Sustain note. Turning
+  to meet a threat with the token already spent is a legitimate play, and
+  `botPlanMove`'s `rearFear` term already knew it.
+- **The Sonic is OFFLINE outside your own rig radius.** Not weak — *absent*.
+  §3.1's worst square, made concrete in the generator.
+
+**Geometry is three different shapes, and "adjacent" is none of them:** Swing
+takes the **cone** (forward hex + two diagonals, `CONE_HALF_ARC` imported from
+`bot.js` so there is one number to retune); Sonic takes a **straight beam** of 3;
+Smash takes the cone; 🌀 Blaster of Ra **replaces** the Smash for Intergalactic 0
+with the beam, pierces every rival in line (`targetIds`, a list), and swaps the
+fuel bar (2 unused notes, no Drive-stack requirement — that gate is the Smash's).
+`smash`/`blaster` carry `endsMovement: true`, because `apCost: 2` understates
+"2 AP **and everything after it**".
+
+**What the `view` argument carries** — the same honest pattern as `evaluate`:
+`posing`, `amps` (furniture blocks movement), `shadowHex` (👤 the decoy blocks
+like a body, or the pathing itself leaks the bluff), `skillById` (SKILL_TREE is
+still in the monolith — without it the `skillUnlock` family is *absent* rather
+than guessed), `rockGodActive` (PvP is off entirely during the God fight).
+
+**Non-acting Spirits get `[]`.** They have no AP, no token and no turn, and
+emitting hypothetical actions for them would let a search invent replies the
+rules never offered. ⚠️ This is the first thing that has to change when the
+searcher starts scoring opponent replies — as does `evaluate`'s `apBanked`,
+which zeroes for the same reason.
 
 ---
 
@@ -362,6 +425,11 @@ tempo for rivals. Re-read this when the searcher starts scoring opponent replies
   that self-debuff or it will over-rate melee.
 - ~~§3.7's underdog direction~~ — **resolved 2026-08-14**: the doc was inverted,
   `combat.js` wins. Punch up. Guarded by `evalCheck.mjs` §13.
+- **Opponent replies need a second mode.** Both `legalActions` (returns `[]`)
+  and `evaluate` (`apBanked` → 0) deliberately refuse to speak for a Spirit who
+  is not `state.acting`. That is right for a one-ply generator and wrong for
+  expectimax. Decide whether the searcher hands rivals a *hypothetical* turn
+  (grant them a melody, then their AP) or scores replies structurally.
 - Metalness's missing innate (§4.3) blocks honest cross-Spirit tuning.
 - **`PERF_CLIFF = 5` lives in `evaluate.js`, not `gameConstants.js`** — because
   `gameConstants` holds no per-Spirit innate numbers at all today. If a second

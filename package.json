@@ -11,6 +11,7 @@
     "test:determinism": "node --import ./src/engine/testAssetStub.mjs src/engine/determinismCheck.mjs",
     "test:turnflow": "node --import ./src/engine/testAssetStub.mjs src/engine/turnFlowCheck.mjs",
     "test:eval": "node --import ./src/engine/testAssetStub.mjs src/engine/evalCheck.mjs",
+    "test:legal": "node --import ./src/engine/testAssetStub.mjs src/engine/legalActionsCheck.mjs",
     "test:riffparity": "node --import ./src/engine/testAssetStub.mjs src/riff/riffOffParity.test.mjs",
     "test:chroma": "node src/audio/chromaSelftest.mjs",
     "test:vision": "node src/vision/neckGeometrySelftest.mjs",
