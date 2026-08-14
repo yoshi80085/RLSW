@@ -87,6 +87,9 @@ import {
   usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState,
 } from "./engine/systems/economy.js";
 import { skillEligibility, THEORY_DISCORD_GRANTS } from "./engine/systems/skills.js";
+import {
+  battleConsequences, chordFray as chordFrayFlow, runBattleFlow,
+} from "./engine/systems/battleFlow.js";
 import { STYLE_DEFS, styleOf, styleDef } from "./data/styles.js";
 import {
   BOT_PERSONALITIES, BOT_PERSONA_KEYS, BOT_SKILL_PRIORITY_BASE, BOT_SPIRIT_SKILLS,
@@ -6988,51 +6991,14 @@ function Game({ gameState, onReturnToLobby }) {
     return engineRef.current.headliner === spiritId ? 1 : 0;
   }
 
-  // ── SONIC FAME — the primary FP engine. Margin-scaled + center-stage bonus. ──
-  function awardSonicFame(spiritId, margin, loserId, centerBonus = 0) {
-    const rider = headlinerRider(spiritId);
-    const stageFxBonus = anyStageEffectActive() ? 1 : 0;
-    const base = sonicFame(margin) + centerBonus + rider + stageFxBonus;
-    const { fp, deficit, mult } = underdogBonus(spiritId, loserId, base);
-    const riderTag = rider ? ' +👑' : '';
-    const fxTag = stageFxBonus ? ' +🎇' : '';
-    if (stageFxBonus) addLog(`🎇 The stage effects amplify the battle — +1 FP!`);
-    if (deficit >= UNDERDOG_MIN_DEFICIT && fp > base) {
-      const nm = spirits.find(s => s.id === spiritId)?.name;
-      addLog(`🔥 UNDERDOG! ${nm} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
-      triggerEffectFlash(spiritId, '🔥', 'UNDERDOG!', '#ffaa22');
-      grantFame(spiritId, fp, `sonic win by ${margin}${riderTag}${fxTag}`);
-    } else {
-      grantFame(spiritId, base, `sonic win by ${margin}${centerBonus ? ' +spotlight' : ''}${riderTag}${fxTag}`);
-    }
-    // 🎇 Stage FX bonus fan
-    if (stageFxBonus) {
-      gainFansFromDeed(spiritId, 1, '🎇 stage effects spectacle');
-    }
-  }
-
-  // ── THRASH FAME — flat 1 FP. You fight to hurt, not to shine. ──
-  function awardThrashFame(spiritId, loserId) {
-    const rider = headlinerRider(spiritId);
-    const stageFxBonus = anyStageEffectActive() ? 1 : 0;
-    const base = thrashFame() + rider + stageFxBonus;
-    const { fp, deficit, mult } = underdogBonus(spiritId, loserId, base);
-    const riderTag = rider ? ' +👑' : '';
-    const fxTag = stageFxBonus ? ' +🎇' : '';
-    if (stageFxBonus) addLog(`🎇 The stage effects amplify the battle — +1 FP!`);
-    if (deficit >= UNDERDOG_MIN_DEFICIT && fp > base) {
-      const nm = spirits.find(s => s.id === spiritId)?.name;
-      addLog(`🔥 UNDERDOG! ${nm} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
-      triggerEffectFlash(spiritId, '🔥', 'UNDERDOG!', '#ffaa22');
-      grantFame(spiritId, fp, `thrash win${riderTag}${fxTag}`);
-    } else {
-      grantFame(spiritId, base, `thrash win${riderTag}${fxTag}`);
-    }
-    // 🎇 Stage FX bonus fan
-    if (stageFxBonus) {
-      gainFansFromDeed(spiritId, 1, '🎇 stage effects spectacle');
-    }
-  }
+  // ── SONIC / THRASH FAME → engine/systems/battleFlow.js ──────────────────────
+  // `awardSonicFame` and `awardThrashFame` lived here and were deleted, not
+  // deprecated, when battleFlow took over the consequence sequence. Leaving dead
+  // copies of a payout rule next to the live one is how the two battle-close
+  // paths drifted in the first place (see the note in handleDefDieClick).
+  //
+  // The engine versions carry the same riders — Headliner +1, stage-FX +1, the
+  // underdog multiplier — and the same bonus fan on a stage-FX win.
 
   // ── RIFF-OFF FAME (Phase R6) — the marquee event's dedicated FP engine. ──
   // Replaces the old awardSonicFame call in closeRiffOff. Higher floor than
@@ -7655,33 +7621,31 @@ function Game({ gameState, onReturnToLobby }) {
   // Returns { frayed, destroyed, destroyedDrive, fromBehind }:
   //   destroyed      — the voicing was reduced below 2 notes
   //   destroyedDrive — the pre-fray chord's Drive
+  // 🛡️ Chord fray — delegated to engine/systems/battleFlow.js.
+  //
+  // ⚠️ This runs at the VERDICT, not with the rest of the consequence sequence:
+  // it must be measured against the positions as they stand when the blow lands,
+  // before knockback shoves anyone. That ordering is why chordFray is exported
+  // separately from battleConsequences rather than folded into it.
+  //
+  // Driven synchronously (every beat here is 0ms) because the callers need the
+  // returned fray report in the same tick to build the battle overlay.
   function applyChordFray(targetId, margin, fromBehind = false) {
-    const none = { frayed: 0, destroyed: false, destroyedDrive: 0, fromBehind: false };
-    const defender = spirits.find(s => s.id === targetId);
-    const nsD = noteStates[targetId] ?? {};
-    const stack = nsD.sustainStack ?? [];
-    if (stack.length <= 1 || posing[targetId]) return none;
-    const defChord = spiritChord(targetId, stack);
-    const amount = chordFrayAmount(margin, fromBehind);
-    if (amount <= 0) {
-      return none;
-    }
-    const fray = Math.min(amount, stack.length - 1); // floor: 1 note survives
-    const frayedNotes = stack.slice(0, stack.length - fray);
-    const lostNotes   = stack.slice(stack.length - fray); // the notes knocked loose
-    const frayed = spiritChord(targetId, frayedNotes);
-    setNoteField(targetId, { sustainStack: frayedNotes });
-    // 🎵 A Spirit that got HIT visibly loses Sustain notes off its stack —
-    // the glyphs scatter off the standee and disappear.
-    showSpentNotes(targetId, lostNotes, 'sustain');
-    if (fromBehind) addLog(`🔪 FROM BEHIND! ${defender?.name} never saw it coming — the guard never came up (−${REAR_FRAY_BONUS} extra Sustain note).`);
-    addLog(`🛡️ ${defender?.name}'s chord frays under the blow — ${defChord.name} → ${frayed.name} (🛡️${frayed.sustain}, −${fray} note${fray !== 1 ? 's' : ''})`);
-    return {
-      frayed: fray,
-      destroyed: stack.length >= 2 && frayedNotes.length <= 1,
-      destroyedDrive: defChord.drive,
-      fromBehind,
-    };
+    const out = runBattleFlow(
+      chordFrayFlow({
+        state: engineRef.current,
+        targetId, margin, fromBehind,
+        posing,                    // a posing Spirit has no guard to fray (§3.3)
+        chordOf: spiritChord,
+      }),
+      engineRef.current,
+      {
+        applyAction: (_s, a) => dispatch(a),
+        onLog: addLog,
+        onFx: playBattleFlowFx,
+      },
+    );
+    return out.result;
   }
 
   // Main entry point — attacker initiates a Swing against target
@@ -10277,131 +10241,175 @@ function Game({ gameState, onReturnToLobby }) {
     });
   }
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // ⚔️ BATTLE FLOW — the PACED interpreter
+  //
+  // The battle consequence sequence lives in engine/systems/battleFlow.js now.
+  // This is the client's driver for it: same generators, same order, played out
+  // over time so the cinematic keeps its beats. The headless harness drives the
+  // identical generators with runBattleFlow() at full speed.
+  //
+  // ⚠️ The ENGINE owns order; the CLIENT owns pacing. Delays live here, in
+  // BEAT_MS, and nowhere else — a `ms` field creeping into an effect would put
+  // presentation back in the rules and let the two drivers diverge silently.
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // Delays transcribed from the setTimeout chain this replaced, so the fight
+  // still reads at the tempo it always did. Keyed by action type / fx / hook.
+  const BEAT_MS = {
+    'action:SPIRITS_SYNCED':   240,   // one hex of a knockback slide
+    'action:DAMAGE_APPLIED':    80,   // the old "check for knock-down after state settles"
+    'hook:demolishFans':         0,
+    'hook:endBerserk':         140,
+    'hook:knockOut':           200,
+    'hook:declareWinner':      600,
+    'fx:rumble':               180,   // lead-in before the first slide step
+    'fx:flash':                250,
+  };
+
+  /**
+   * Drive a battleFlow generator, one effect per beat.
+   * @param {Generator} gen
+   * @param {object} [opts] { hooks, onDone }
+   */
+  function runBattleFlowPaced(gen, { hooks = {}, onDone } = {}) {
+    const step = (input) => {
+      let res;
+      try {
+        res = gen.next(input);
+      } catch (err) {
+        // A throw mid-sequence would otherwise strand the overlay open with no
+        // way out. Log loudly, then let the caller close up.
+        console.error('[battleFlow] sequence threw', err);
+        onDone?.(null);
+        return;
+      }
+      if (res.done) { onDone?.(res.value); return; }
+
+      const e = res.value;
+      let key = null;
+
+      switch (e.kind) {
+        case 'action':
+          key = `action:${e.action.type}`;
+          dispatch(e.action);
+          break;
+        case 'patch':
+          dispatch(noteSheetPatched(e.spiritId, e.patch));
+          break;
+        case 'log':
+          addLog(e.text);
+          break;
+        case 'peek':
+          break;
+        case 'fx':
+          key = `fx:${e.name}`;
+          playBattleFlowFx(e);
+          break;
+        case 'hook': {
+          key = `hook:${e.name}`;
+          hooks[e.name]?.(e);
+          break;
+        }
+        default:
+          console.warn(`[battleFlow] unknown effect kind: ${e.kind}`);
+      }
+
+      // Every step resumes from the LIVE engine state, never from a closure —
+      // dispatch() updates engineRef synchronously, so this is always current.
+      const ms = (key && BEAT_MS[key]) || 0;
+      if (ms > 0) gt(() => step(engineRef.current), ms);
+      else step(engineRef.current);
+    };
+    step(engineRef.current);
+  }
+
+  /** Presentation-only effects. The harness drops every one of these. */
+  function playBattleFlowFx(e) {
+    switch (e.name) {
+      case 'spentNotes':   showSpentNotes(e.spiritId, e.notes, e.stack); break;
+      case 'rumble':       triggerRumble(e.spiritId); break;
+      case 'damageNumber': triggerDamageNumber(e.hexNum, e.text, e.color); break;
+      case 'focus':        focusOnHex(e.hexNum, e.ms, e.zoom, e.rumble); break;
+      case 'flash':        triggerEffectFlash(e.spiritId, e.icon, e.text, e.color); break;
+      case 'respawnFlash':
+        setRespawnFlashes(rf => ({ ...rf, [e.spiritId]: true }));
+        gt(() => setRespawnFlashes(rf => ({ ...rf, [e.spiritId]: false })), 1200);
+        break;
+      default: break;   // an unknown FX is cosmetic by definition — never fatal
+    }
+  }
+
+  /**
+   * The client's implementations of the sequences battleFlow names but does not
+   * yet own. Order comes from the engine; these bodies are still local.
+   *
+   * 📌 Each one that graduates into the engine deletes a line here — that is the
+   * remaining extraction backlog, and it is deliberately visible.
+   */
+  function battleFlowHooks() {
+    return {
+      dismissShadowIllusion: (e) => dismissShadowIllusion(e.reason),
+      leftLimelight:         (e) => setPosing(prev => ({ ...prev, [e.spiritId]: false })),
+      hexHazards:            (e) => {
+        // ⚠️ RULES, not decoration — being shoved through a hex triggers it
+        // exactly as walking in does, and this can kill mid-slide.
+        checkPoisonSlime(e.spiritId, e.hexNum);
+        checkGravityVortex(e.spiritId, e.hexNum);
+        checkFlamingDisc(e.spiritId, e.hexNum);
+        checkStageFxHex(e.spiritId, e.hexNum);
+      },
+      demolishFans:          (e) => demolishFans(e.targetId, e.attackerId, e.hexNum),
+      endBerserk:            (e) => endBerserk(e.spiritId, e.reason),
+      knockOut:              (e) => knockOut(e.spiritId, null, undefined),
+      gainFans:              (e) => gainFansFromDeed(e.spiritId, e.n, e.reason),
+      stageFxThresholds:     (e) => {
+        checkStageFxThresholds(e.from, e.to);
+        // 🎓 Explain FP the first time the PLAYER banks some. Firing on a bot's
+        // first point would spend the tip on a moment they weren't part of.
+        if (!spirits.find(s => s.id === e.spiritId)?.cpu) showTip('fame');
+      },
+      declareWinner:         (e) => dispatch(winnerDeclared(e.spiritId)),
+      summonRockGod:         (e) => summonRockGod(e.spiritId),
+    };
+  }
+
   // Close the battle overlay and apply any pending effects immediately
+  // Close the battle overlay and run the consequence sequence.
+  //
+  // 📌 The 125 lines that used to live here are now engine/systems/battleFlow.js
+  // — chord burn, knockback, damage, the knockdown cascade, FP, Lost Chords,
+  // Slime, Sunbeam, buff cleanup. This function's whole job is to hand that
+  // sequence the client's pacing and the client's hooks. The rules moved; the
+  // theatre stayed. Anything rule-shaped added below belongs in the engine.
   function closeBattleOverlay() {
     const s = battleStateRef.current;
     if (!s || s.phase !== 'result') { setBattleState(null); setDiceDisplay(null); return; }
-    const { attackerWon, damage, margin, attackerId, defenderId, sonicAttack } = s;
-    if (attackerWon) {
-      // 🎸 Chord notes only burn on a HIT — whiffing keeps your drive stack intact.
-      if (!sonicAttack && s.swingChordSpent?.length) {
-        addLog(`🎸 ${spirits.find(sp => sp.id === attackerId)?.name} burns ${s.swingChordSpent.join('+')} from the drive stack — ${s.swingChordLeft?.length ? spiritChord(attackerId, s.swingChordLeft).name : 'drive exhausted (base stats until committed)'}.`);
-        setNoteStates(prev => ({ ...prev, [attackerId]: { ...prev[attackerId], driveStack: s.swingChordLeft } }));
-        showSpentNotes(attackerId, s.swingChordSpent, 'drive'); // 🎵 notes fly off the standee
-      }
-      // ── KNOCKBACK — route by attack kind ──
-      if (sonicAttack) {
-        const def = spirits.find(x => x.id === defenderId);
-        battleKnockback(attackerId, defenderId, sonicKnockback(margin, def?.vibe ?? 1, def?.maxVibe ?? 1));
-      } else {
-        battleKnockback(attackerId, defenderId, thrashKnockback(margin));
-      }
-      resolveWinDamage(attackerId, defenderId, damage, spirits.find(s2 => s2.id === attackerId)?.name);
-      // ── FP — Sonic is the Fame engine; Thrash earns a flat 1 ──
-      if (sonicAttack) {
-        const ring = hexRingFromCenter(spirits.find(x => x.id === attackerId)?.num ?? -1);
-        const centerBonus = (ring === 'main' || ring === 'pit') ? SONIC_LIMELIGHT_FP : 0;
-        awardSonicFame(attackerId, margin, defenderId, centerBonus);
-      } else {
-        awardThrashFame(attackerId, defenderId);
-      }
-      // ── Thrash impact knocks Lost Chords loose near the defender ──
-      if (!sonicAttack) {
-        const defSpirit = spirits.find(x => x.id === defenderId);
-        if (defSpirit) {
-          const tier = margin >= 6 ? 'heavy' : margin >= 3 ? 'medium' : 'light';
-          const occupied = [
-            ...spirits.filter(sp => !sp.knockedOut).map(sp => sp.num),
-            ...boardCards.map(c => c.hexNum),
-            ...chargeZones.map(z => z.num),
-            ...eventHexes,
-            ...boardTokens.map(t => t.num),
-            spotlightHex, LIMELIGHT_HEX,
-          ];
-          dispatch(thrashTokensSpawned(defSpirit.num, occupied, tier, 1));
-          const report = engineRef.current.board.lastThrashTokens;
-          if (report) addLog(`🎵 ${report.added.length} Lost Chord${report.added.length !== 1 ? 's' : ''} knocked loose from the impact!`);
-        }
-      }
-      // (B5: consumeAttackCharges call removed — nothing left to consume.)
-      // 🧪 SLIME (Metalness Monster) — on Swing/Smash hit, spend 1 Db to halve
-      // the rival's next turn note regen
-      if (!sonicAttack && attackerId === 'Metalness_Monster') {
-        const atkNs = noteStates[attackerId] ?? {};
-        const hasSlime = (atkNs.unlockedSkills ?? []).includes('slime');
-        const atkDb = atkNs.dbPoints ?? 0;
-        if (hasSlime && atkDb >= 1) {
-          setNoteStates(prev => ({
-            ...prev,
-            [attackerId]: { ...prev[attackerId], dbPoints: (prev[attackerId]?.dbPoints ?? 0) - 1 },
-            [defenderId]: { ...prev[defenderId], halfRefillNextTurn: true },
-          }));
-          const defName = spirits.find(x => x.id === defenderId)?.name;
-          addLog(`🧪 SLIMED! ${defName} is coated in toxic goo — note regen HALVED next turn! (−1 Db)`);
-          setTimeout(() => triggerEffectFlash(defenderId, '🧪', 'SLIMED!', '#44ff44'), 250);
-        }
-      }
-      // ☀️ SUNBEAM (Intergalactic 0) — on ANY connecting attack (Swing or Sonic,
-      // unlike Slime which is melee-only), spend Db to white out the rival's
-      // world. Modelled on the Slime block directly above: same auto-spend, same
-      // "only if you can afford it" silence, same closeBattleOverlay home.
-      //
-      // ⚠️ WHY THE ROLL GOES THROUGH randomBatchDrawn. The linger is a 50/50, and
-      // every random draw in game RULES has to come off the seeded engine stream
-      // or replays and the online desync tripwire (which compares rng cursors
-      // frame-by-frame) both break. Math.random() here would be a live bug, not
-      // a style nit. closeBattleOverlay only ever runs on the ATTACKER'S client —
-      // remote viewers dismiss the overlay without calling it — so this dispatch
-      // fires exactly once and every client advances the cursor identically.
-      if (attackerId === 'intergalactic_0') {
-        const atkNs = noteStates[attackerId] ?? {};
-        const hasSunbeam = (atkNs.unlockedSkills ?? []).includes('sunbeam');
-        const atkDb = atkNs.dbPoints ?? 0;
-        if (hasSunbeam && atkDb >= SUNBEAM_DB_COST) {
-          dispatch(randomBatchDrawn(1));
-          const lingerRoll = engineRef.current.lastRandomBatch?.[0] ?? 1;
-          const lingers = lingerRoll < SUNBEAM_LINGER_CHANCE;
-          const turns = Math.min(
-            SUNBEAM_MAX_BLIND_TURNS,
-            SUNBEAM_BLIND_TURNS + (lingers ? 1 : 0),
-          );
-          setNoteStates(prev => ({
-            ...prev,
-            [attackerId]: { ...prev[attackerId], dbPoints: (prev[attackerId]?.dbPoints ?? 0) - SUNBEAM_DB_COST },
-            // Blinds do NOT stack — a fresh proc takes the higher of the two
-            // clocks rather than adding, so being hit twice in a round can
-            // never bury someone past the SUNBEAM_MAX_BLIND_TURNS ceiling.
-            [defenderId]: {
-              ...prev[defenderId],
-              blindTurns: Math.max(prev[defenderId]?.blindTurns ?? 0, turns),
-            },
-          }));
-          const defName = spirits.find(x => x.id === defenderId)?.name;
-          addLog(`☀️ SUNBEAM! ${spirits.find(x => x.id === attackerId)?.name} opens the star and ${defName}'s world goes WHITE — blinded for ${turns} turn${turns !== 1 ? 's' : ''}. (−${SUNBEAM_DB_COST} Db)`);
-          if (lingers) addLog(`☀️ The burn is seared in — ${defName} is still seeing nothing but light next turn.`);
-          setTimeout(() => triggerEffectFlash(defenderId, '☀️', 'BLINDED!', '#ffffff'), 250);
-        }
-      }
-      clearBattleBuffs(attackerId, defenderId);
-      setBattleState(null);
-      setDiceDisplay(null);
-    } else {
-      // ── ATTACKER LOST — damage depends on attack kind ──
-      // Thrash whiff = THRASH_WHIFF_DMG (1). Sonic whiff = old formula.
-      const selfDmg = sonicAttack ? Math.max(1, Math.ceil(margin / 2)) : damage; // damage already = thrashDamage(margin, true) = 1
-      resolveWinDamage(defenderId, attackerId, selfDmg, 'whiff');
-      // Defender earns FP for successfully defending
-      if (sonicAttack) {
-        awardSonicFame(defenderId, margin, attackerId, 0);
-      } else {
-        awardThrashFame(defenderId, attackerId);
-      }
-      const defKB = sonicAttack ? 1 : thrashKnockback(margin);
-      battleKnockback(defenderId, attackerId, defKB);
-      clearBattleBuffs(attackerId, defenderId);
-      setBattleState(null);
-      setDiceDisplay(null);
-    }
+
+    // The overlay comes down NOW, not when the sequence finishes: knockback
+    // slides and knockdowns play out on the board behind it, which is what the
+    // old nested-setTimeout version did too.
+    setBattleState(null);
+    setDiceDisplay(null);
+
+    runBattleFlowPaced(
+      battleConsequences({
+        state: engineRef.current,
+        battle: s,
+        chordOf: spiritChord,
+        amps,
+        // ⛔ The per-turn FP window is a ref, not engine state, so it is passed
+        // in and written back on completion. When the turn slice owns it, this
+        // argument and the onDone write both disappear.
+        fameThisTurn: fameThisTurnRef.current,
+      }),
+      {
+        hooks: battleFlowHooks(),
+        onDone: (out) => {
+          if (out?.fameThisTurn) fameThisTurnRef.current = out.fameThisTurn;
+        },
+      },
+    );
   }
 
   // Called when player clicks the spinning attacker die
@@ -10529,61 +10537,23 @@ function Game({ gameState, onReturnToLobby }) {
               playSmashChord();
             }
 
-            // Apply effects after player reads — values captured in closure above, no ref needed
+            // Apply effects after the player reads the result.
+            //
+            // 🐛 FIXED BY EXTRACTION (2026-08-14). This auto-close path used to
+            // carry its OWN copy of the consequence code, and the two copies had
+            // drifted: this one was missing the Thrash Lost Chord scatter, Slime,
+            // AND Sunbeam entirely. Whether an Intergalactic 0 player got their
+            // blind depended on whether they clicked BACK TO GAME or waited three
+            // seconds. Both paths now run the same generator, so they cannot
+            // diverge again. (The Stage Lighting heal this copy had was already
+            // dead — `stageLightActive` is hardcoded false at its source.)
             setTimeout(() => {
               // Guard: if the player already clicked BACK TO GAME (closeBattleOverlay
               // applied everything and nulled the state), bail — otherwise damage,
               // Fame, and knockback would all be applied TWICE.
               const cur = battleStateRef.current;
               if (!cur || cur.phase !== 'result') return;
-              if (attackerWon) {
-                // 🎸 Chord notes only burn on a HIT — whiffing keeps drive stack intact
-                if (!isSonic && snap.swingChordSpent?.length) {
-                  addLog(`🎸 ${spirits.find(sp => sp.id === attackerId)?.name} burns ${snap.swingChordSpent.join('+')} from the drive stack — ${snap.swingChordLeft?.length ? spiritChord(attackerId, snap.swingChordLeft).name : 'drive exhausted (base stats until committed)'}.`);
-                  setNoteStates(prev => ({ ...prev, [attackerId]: { ...prev[attackerId], driveStack: snap.swingChordLeft } }));
-                  showSpentNotes(attackerId, snap.swingChordSpent, 'drive'); // 🎵 notes fly off the standee
-                }
-                // Stage Lighting: 33% chance heal on win (rolled at battle start, stored in skillMods)
-                if (snap.skillMods?.stageLightActive) {
-                  const heal = 1;
-                  setSpirits(prev => prev.map(s => s.id === attackerId
-                    ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + heal) } : s));
-                  addLog(`💡 Stage Lighting pays off! ${spirits.find(s=>s.id===attackerId)?.name} +${heal} Vibe saved.`);
-                }
-                // ── KNOCKBACK — route by attack kind ──
-                if (isSonic) {
-                  const def = spirits.find(x => x.id === defenderId);
-                  battleKnockback(attackerId, defenderId, sonicKnockback(margin, def?.vibe ?? 1, def?.maxVibe ?? 1));
-                } else {
-                  battleKnockback(attackerId, defenderId, thrashKnockback(margin));
-                }
-                resolveWinDamage(attackerId, defenderId, damage, spirits.find(s2 => s2.id === attackerId)?.name);
-                // ── FP — route by attack kind ──
-                if (isSonic) {
-                  const ring = hexRingFromCenter(spirits.find(x => x.id === attackerId)?.num ?? -1);
-                  const centerBonus = (ring === 'main' || ring === 'pit') ? SONIC_LIMELIGHT_FP : 0;
-                  awardSonicFame(attackerId, margin, defenderId, centerBonus);
-                } else {
-                  awardThrashFame(attackerId, defenderId);
-                }
-                // (B5: consumeAttackCharges call removed — nothing left to consume.)
-                clearBattleBuffs(attackerId, defenderId);
-                setBattleState(null);
-                setDiceDisplay(null);
-              } else {
-                const selfDmg = isSonic ? Math.max(1, Math.ceil(margin / 2)) : damage;
-                resolveWinDamage(defenderId, attackerId, selfDmg, 'whiff');
-                if (isSonic) {
-                  awardSonicFame(defenderId, margin, attackerId, 0);
-                } else {
-                  awardThrashFame(defenderId, attackerId);
-                }
-                const defKB = isSonic ? 1 : thrashKnockback(margin);
-                battleKnockback(defenderId, attackerId, defKB);
-                clearBattleBuffs(attackerId, defenderId);
-                setBattleState(null);
-                setDiceDisplay(null);
-              }
+              closeBattleOverlay();
             }, 3000); // 3s on screen, then auto-close
           }, 1400);
         }, 500);

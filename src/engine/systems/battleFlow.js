@@ -578,9 +578,12 @@ export function* clearBattleBuffs({ attackerId, defenderId }) {
  * @param {function} opts.applyAction  (state, action) => state
  * @param {object} [opts.hooks]        { [name]: (state, effect) => state }
  * @param {function} [opts.onLog]      collect log lines (default: drop)
+ * @param {function} [opts.onFx]       play a presentation effect (default: drop).
+ *   The harness never passes this. The client does, for the short sequences it
+ *   needs to run to completion synchronously (chord fray) rather than paced.
  * @returns {{ state: object, result: any, logs: string[] }}
  */
-export function runBattleFlow(gen, state, { applyAction, hooks = {}, onLog } = {}) {
+export function runBattleFlow(gen, state, { applyAction, hooks = {}, onLog, onFx } = {}) {
   const logs = [];
   let res = gen.next(state);
   while (!res.done) {
@@ -597,8 +600,10 @@ export function runBattleFlow(gen, state, { applyAction, hooks = {}, onLog } = {
         onLog?.(e.text);
         break;
       case 'fx':
+        onFx?.(e);
+        break;
       case 'peek':
-        break;                              // presentation / state re-read only
+        break;                              // state re-read only
       case 'hook': {
         const h = hooks[e.name];
         if (h) state = h(state, e) ?? state;
