@@ -23,10 +23,11 @@
 //      `applySkillEffects`. A suite that let that quietly start "working" would
 //      be worse than no suite.
 //
-// ⚠️ §14 is a DRIFT GUARD against the monolith. `confirmNoteTrack` has not been
-// rewired to call this kernel yet, so the arithmetic exists in two places. The
-// guard reads the monolith's source and fails if a load-bearing expression moved
-// — which is the difference between a known duplicate and a silent divergence.
+// ✅ §14 is a DELEGATION GUARD. `confirmNoteTrack` has been rewired onto this
+// kernel, so the arithmetic exists in exactly one place. The guard reads the
+// monolith's source and fails if any of it comes BACK — the old drift guard
+// inverted, because "is there a second copy?" is the question that outlives
+// "does the second copy still match?".
 
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
@@ -428,32 +429,56 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 14. ⚠️ DRIFT GUARD — the monolith still owns a second copy of this arithmetic.
-//     `confirmNoteTrack` has not been rewired to call the kernel yet, so these
-//     expressions exist twice. This section is the difference between a KNOWN
-//     duplicate and a SILENT divergence: it reads the monolith and fails the
-//     moment a load-bearing line moves. Delete it the day the rewire lands.
+// 14. ✅ THE REWIRE LANDED — the monolith DELEGATES instead of duplicating.
+//     This section used to be a DRIFT GUARD over nine expressions that existed
+//     twice, written to be deleted the day `confirmNoteTrack` was rewired onto
+//     the kernel. It is not deleted — it is INVERTED. The old guard asked "does
+//     the second copy still match?"; this one asks "is there a second copy?".
+//     That is the assertion worth keeping, because the failure it catches —
+//     somebody re-inlining one expression to make a quick tweak — is exactly
+//     how the duplicate arose the first time.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const monolithPath = fileURLToPath(new URL('../rlsw-simulator-v3_8_1.jsx', import.meta.url));
   const src = readFileSync(monolithPath, 'utf8').replace(/[ \t]+/g, ' ');
-  const pinned = [
+
+  ok(src.includes('commitMelodyEconomy(engineRef.current, acting.id'),
+     'confirmNoteTrack drives the kernel');
+  ok(src.includes('from "./engine/systems/melodyCommit.js"'),
+     '…importing it directly rather than reaching through another module');
+
+  // ⚠️ THE RNG SHIM IS THE NETCODE CONTRACT. The kernel's draws must ride
+  // `drawSeededInt`, which dispatches the LOGGED `randomBatchDrawn` action the
+  // netcode relays and every replay reproduces. A bare `makeRng()` in the client
+  // would roll identical numbers off an unlogged stream and desync silently —
+  // BOT_STRATEGY_HANDOFF §0.4's whole point, and invisible without this line.
+  ok(src.includes('const commitRng = { int: (n) => drawSeededInt(n) };'),
+     '⚠️ the commit rng is still the seeded, LOGGED shim — not a private stream');
+
+  // The expressions the old guard pinned must now exist in exactly ONE place.
+  // Their ABSENCE from the client is what the rewire actually is.
+  const goneFromClient = [
     ['const usableMoves = Math.min(totalNotes, actingSpeed);',       'the AP cap'],
     ['const canBank = overflow >= 1 && !existingBank;',              'the bank gate'],
     ['const effectiveDiscord = Math.max(0, unpardonedDiscord - (freestylePardon ? 1 : 0));', 'the freestyle pardon'],
     ['const discordPenalty = discordPenaltyFor(effectiveDiscord);',  'the discord penalty'],
     ['const earnedTotal = earned + dbOverflow + perfDbBonus + edgeDbBonus - edgeDbCost;', 'the Db pot'],
-    ['const dbOverflow = 0;',                                        'the deleted overflow-to-Db'],
-    ['const perfDbBonus = 0;',                                       'P paying no Db'],
     ['const colorDrive = !isMojoDrained ? Math.min(2, contextPardons.drive) : 0;', 'the colour cap'],
     ['const newDieFloorBoost = !isMojoDrained && isOctaveResolution ? 2 : 0;', 'the octave die floor'],
+    ['perfScore >= 5',                                    `the Ronin cliff (now ${RONIN_PERF_CLIFF}, kernel-side only)`],
   ];
-  for (const [needle, what] of pinned) {
-    ok(src.includes(needle), `⚠️ DRIFT: the monolith's ${what} changed — re-check systems/melodyCommit.js against confirmNoteTrack`);
+  for (const [needle, what] of goneFromClient) {
+    ok(!src.includes(needle),
+       `⚠️ ${what} is BACK in the monolith — the commit economy has forked again; it belongs in systems/melodyCommit.js`);
   }
-  // The two constants the kernel transcribes rather than imports.
-  ok(src.includes('const isRonin = acting?.id === \'cosmic_ronin\';'), 'the Ronin cliff still keys off the Spirit id');
-  ok(src.includes('perfScore >= 5'), `⚠️ DRIFT: the Ronin cliff moved off ${RONIN_PERF_CLIFF}`);
+
+  // Two decisions the kernel already made, which the client must not re-make.
+  ok(!src.includes('awardTargetSkill(acting.id)'),
+     '⚠️ awardTargetSkill at the commit site would find targetSkillId already cleared and silently skip applySkillEffects');
+  ok(!src.includes('function applyWaNoKoe('),
+     '⚠️ Wa no Koe is written by the commit patch — a second application would double the buff');
+  ok(!src.includes('function checkWaNoKoe('),
+     '⚠️ the Wa no Koe RULE lives in the kernel; a client copy is a third one');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

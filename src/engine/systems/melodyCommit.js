@@ -50,7 +50,7 @@ import {
 } from "../../music/context.js";
 import { detectRiff } from "../../music/riffLibrary.js";
 import { performanceScore } from "./economy.js";
-import { hexRingFromCenter, advanceDB } from "../../board/boardHelpers.js";
+import { hexRingFromCenter, crowdMultiplier, advanceDB } from "../../board/boardHelpers.js";
 import { DISCORD_INTERVAL_MAP } from "../policies/bot.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import {
@@ -252,7 +252,12 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   let riffAward = null;
   if (riffMatch) {
     const isNew = !(view.riffBook ?? {})[riffMatch.riff.id];
-    riffAward = { riffId: riffMatch.riff.id, name: riffMatch.riff.name, fp: isNew ? riffMatch.riff.fp : 1, isNew };
+    // ⚠️ `riff` and `rootPc` ride along for PRESENTATION ONLY — `playRiffSequence`
+    // needs the riff object and the key it matched in. They are carried rather
+    // than re-derived because a client that calls `detectRiff` again is a second
+    // copy of a decision this kernel already made.
+    riffAward = { riffId: riffMatch.riff.id, name: riffMatch.riff.name, fp: isNew ? riffMatch.riff.fp : 1, isNew,
+                  riff: riffMatch.riff, rootPc: riffMatch.rootPc };
     logs.push(isNew
       ? `🎼✨ RIFF DISCOVERED — ${riffMatch.riff.name}! ${name} writes it into the Riffbook!`
       : `🎼 ${name} plays ${riffMatch.riff.name}!`);
@@ -503,7 +508,8 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
       patch.upgradesPending     = 1;
       patch.pendingAwardSkillId = awardedSkillId;
       patch.targetSkillId       = null;
-      logs.push(`🏆 ${name} earned: ${(view.skillById ?? {})[awardedSkillId]?.label ?? awardedSkillId}!`);
+      const awarded = (view.skillById ?? {})[awardedSkillId];
+      logs.push(`🏆 ${name} earned: ${awarded ? `${awarded.icon ?? ''} ${awarded.label}`.trim() : awardedSkillId}!`);
     } else {
       patch.upgradesPending = 1;
     }
@@ -545,11 +551,18 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
 
   const pos = positionFanGain(fans, spirit.num, allInScale, view.unsurePool ?? 0);
   let fanWrite = null;
+  // (`pos` and `deed` are re-exported on `report` below — a client needs `base`,
+  //  `recruit` and `gain` to size its fan bursts, and re-deriving them would put
+  //  the ring arithmetic back in two places.)
   if (pos) {
     fans = { ...fans, ...pos.fans };
     fanWrite = { ...pos.fans };
     if (pos.recruit > 0) effects.push({ type: 'unsurePool', spiritId, delta: -pos.recruit });
-    logs.push(`🎤 ${name} works ${pos.ring === 'main' ? 'the Mainstage' : pos.ring === 'pit' ? 'the Pit' : 'the neutral floor'} — casuals +${pos.base}${pos.recruit > 0 ? ` (+${pos.recruit} won over)` : ''} → ♥${fans.diehards}·👥${fans.casuals}`);
+    // ⚠️ The multiplier is part of this line on purpose: it is the moment the
+    // player can see WHY a crowd is worth having. Derived here rather than in the
+    // client, so the sentence and the number cannot drift apart.
+    const mult = crowdMultiplier(fans.diehards, fans.casuals, (ns.assignments ?? []).length);
+    logs.push(`🎤 ${name} works ${pos.ring === 'main' ? 'the Mainstage' : pos.ring === 'pit' ? 'the Pit' : 'the neutral floor'} — casuals +${pos.base}${pos.recruit > 0 ? ` (+${pos.recruit} won over)` : ''} → ♥${fans.diehards}·👥${fans.casuals} (×${mult.toFixed(2)})`);
     if (pos.promoted) logs.push(`🎤 A casual hardens into a Diehard for ${name}! (${fans.diehards}♥)`);
   }
   if (perfFansGained > 0 || perfPromotions > 0 || perfFansLost > 0) {
@@ -571,9 +584,11 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   }
 
   // 🎯 Cadences are a melody-line feat, not a battle — they build crowd, not Fame.
+  let deedReport = null;
   if (cadence) {
     const deed = deedFanGain(fans, spirit.num, cadence.fp);
     if (deed) {
+      deedReport = { ring: deed.ring, gain: deed.gain, promoted: deed.promoted };
       fans = { ...fans, ...deed.fans };
       effects.push({ type: 'fans', spiritId, fans: deed.fans });
       logs.push(`🎤 ${name} wins the crowd — 🎯 ${cadence.name} — +${deed.gain} casual fan${deed.gain !== 1 ? 's' : ''}!`);
@@ -638,6 +653,8 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
       lowPerfStreak, waNoKoe,
       totalNotes, usableMoves, overflow, canBank, bankedNote: newBankedNote, speed,
       newRootRaw, newMode, fans,
+      positionFans: pos ? { ring: pos.ring, base: pos.base, recruit: pos.recruit, promoted: pos.promoted } : null,
+      deedFans: deedReport,
       clientOwned: CLIENT_OWNED,
     },
   };

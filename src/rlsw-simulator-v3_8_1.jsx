@@ -91,6 +91,9 @@ import {
   battleConsequences, chordFray as chordFrayFlow, runBattleFlow,
 } from "./engine/systems/battleFlow.js";
 import { startTurnNotes, refillDrawCount } from "./engine/systems/turnFlow.js";
+// 🎼 THE COMMIT'S ECONOMY — the single source of truth for what a melody is
+// worth. `confirmNoteTrack` is a shell over this; see the header there.
+import { commitMelodyEconomy, MIC_VOICE_ROLL_PASS } from "./engine/systems/melodyCommit.js";
 import { STYLE_DEFS, styleOf, styleDef } from "./data/styles.js";
 import {
   BOT_PERSONALITIES, BOT_PERSONA_KEYS, BOT_SKILL_PRIORITY_BASE, BOT_SPIRIT_SKILLS,
@@ -4033,694 +4036,156 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`💾 Banked note ${note} → track (${playable ? 'playable' : '⚡ discord'}) · ${newTrack.length} notes`);
   }
 
+  // ── THE COMMIT — A UI SHELL OVER `systems/melodyCommit.js` ───────────────
+  // ⚠️ THIS FUNCTION OWNS NO ARITHMETIC, AND THAT IS THE POINT. Every number
+  // below arrives from `commitMelodyEconomy`: the Db, the Performance Score,
+  // the fans, the bank, the riff, the cadence, the Wa no Koe write. It used to
+  // own a SECOND COPY of all of it — ~600 lines welded to React setters — with
+  // `melodyCommitCheck` §14 standing over the seam as a tripwire. A tripwire is
+  // not a fix, and the kernel returns `patch`, an ORDERED `effects` list, `logs`
+  // and `flashLines` precisely so that this could become a shell rather than a
+  // second port. If a rule needs changing, it changes in the kernel, once.
+  //
+  // What legitimately stays here is what the kernel cannot know — presentation
+  // (the d6 spin, the riff sequence, banners, toasts, tips, fan bursts),
+  // `applySkillEffects`, and the HUD's turn-step flow. They are declared in
+  // `melodyCommit.CLIENT_OWNED` rather than remembered from a doc.
+  //
+  // ── ⚠️ THE ORDER OF `effects` IS LOAD-BEARING, AND IT IS NOW STRUCTURAL ────
+  // A riff's Fame is multiplied by the crowd, so it must see the fans this
+  // commit already won and NOT the cadence fans that land after it. The shipped
+  // client encoded that ordering as setTimeout(0ms / 0ms / 500ms / 700ms) — a
+  // real rule expressed as three delays, which is a rule anybody could break by
+  // retiming an animation. The kernel's list encodes it structurally, so the
+  // writes below run SYNCHRONOUSLY in list order and the stagger is free to go
+  // back to being what it looks like: cosmetic.
   function confirmNoteTrack() {
     if (!acting || !canAct) return; // N4/N7: gate
     const baseTrack = actingNoteState?.melodyLine ?? [];
     if (baseTrack.length === 0) { addLog('❌ No notes in track!'); return; }
-    // (Style is gone — `actingStyle` and its two Task-C consumers with it. The
-    //  spirit's style survives only as character flavour in data/styles.js.)
-    // ── 🎤 MIC — voice roll: d6, on 4+ a bonus in-scale note joins the track ──
-    // (shadows the outer derived melodyLine so all scoring below includes the bonus)
-    let melodyLine = baseTrack;
-    if ((actingNoteState?.unlockedSkills ?? []).includes('mic')) {
-      const voiceRoll = drawSeededInt(6) + 1;
-      // 🎤 Show the roll as a spinning-then-settling d6 so the player SEES it land.
-      const vKey = Date.now() + Math.random();
-      setVoiceRollFx({ value: voiceRoll, success: voiceRoll >= 4, key: vKey });
-      setTimeout(() => setVoiceRollFx(prev => (prev && prev.key === vKey ? null : prev)), 2600);
-      if (voiceRoll >= 4) {
-        const scaleNotes = buildScale(rootNote, scaleMode);
-        // (C1's `micBonusNote` guard is gone with the Style system. It existed only
-        //  to stop a rolled note overwriting a Groove spirit's root landing — the
-        //  one non-monotone rule in the Style scorer. Every surviving Db source is
-        //  monotone under append, so a bonus note can no longer cost the player
-        //  anything and the roll is once again a plain upside.)
-        const bonusNote  = scaleNotes[drawSeededInt(scaleNotes.length)];
-        melodyLine = [...baseTrack, bonusNote];
-        addLog(`🎤 Voice roll ${voiceRoll} — your vocals land! Bonus note ${bonusNote} joins the track.`);
-      } else {
-        addLog(`🎤 Voice roll ${voiceRoll} — the crowd drowns you out. No bonus note.`);
+
+    // ⚠️ THE RNG SHIM IS NOT OPTIONAL — IT IS THE NETCODE CONTRACT. The kernel
+    // asks for `rng.int(n)`; the client's draws must go through `drawSeededInt`,
+    // which dispatches `randomBatchDrawn` — a LOGGED engine action the netcode
+    // relays and every replay reproduces. A bare `makeRng()` here would roll the
+    // same numbers off an unlogged stream and desync every replay and every
+    // online client, SILENTLY (BOT_STRATEGY_HANDOFF §0.4). Draw accounting is
+    // unchanged and pinned: one draw on a missed voice roll, two on a hit.
+    const commitRng = { int: (n) => drawSeededInt(n) };
+
+    const commit = commitMelodyEconomy(engineRef.current, acting.id, {
+      rng:  commitRng,
+      view: { skillById: SKILL_BY_ID, riffBook, unsurePool },
+    });
+    if (!commit.ok) { addLog(`❌ ${commit.reason}`); return; }
+    const { patch, effects, hexes, report, flashLines } = commit;
+
+    // ── 1. THE SHEET ─────────────────────────────────────────────────────────
+    // 🎸 Your chord is a STANDING stance — it persists across turns and is only
+    // changed by a revoice (one note add/drop per turn), so the patch never
+    // touches the stacks.
+    setStackCommitDest(null);
+    setNoteField(acting.id, patch);
+
+    // ── 2. THE ORDERED EFFECTS — ⚠️ DO NOT REORDER ───────────────────────────
+    for (const fx of effects) {
+      if (fx.type === 'fans') {
+        dispatch(fansChanged(fx.spiritId, fx.fans));
+      } else if (fx.type === 'fame') {
+        // Through `grantFame` so the 4/turn cap, the crowd multiplier and the
+        // Rock God gate all apply in exactly one place.
+        grantFame(fx.spiritId, fx.fp, fx.reason);
+      } else if (fx.type === 'unsurePool') {
+        // ❓ The undecided crowd is client state; the kernel hands back a delta.
+        setUnsurePool(p => Math.max(0, p + fx.delta));
       }
     }
-    // ── 🎼 RIFF DETECTION — does this track hide a legendary riff? ──
-    // If the opening intervals of a riff are on the track (any key), the FULL
-    // riff plays out with real rhythm instead of the plain arpeggio.
-    const riffMatch = detectRiff(melodyLine);
-    if (riffMatch) {
-      const { riff, rootPc } = riffMatch;
-      const isNew = !riffBook[riff.id];
-      const fp = isNew ? riff.fp : 1;
+    commit.logs.forEach(addLog);
+
+    // ── 3. PRESENTATION — everything the kernel cannot know ──────────────────
+    // 🎤 Show the voice roll as a spinning-then-settling d6 so the player SEES
+    // it land. The value came off the seeded stream inside the kernel.
+    if (report.voiceRoll != null) {
+      const vKey = Date.now() + Math.random();
+      setVoiceRollFx({ value: report.voiceRoll, success: report.voiceRoll >= MIC_VOICE_ROLL_PASS, key: vKey });
+      setTimeout(() => setVoiceRollFx(prev => (prev && prev.key === vKey ? null : prev)), 2600);
+    }
+    // 🎼 A hidden riff plays out with real rhythm instead of the plain arpeggio.
+    if (report.riff) {
+      const { riffId, riff, rootPc, fp, isNew } = report.riff;
       if (isNew) {
-        setRiffBook(prev => ({ ...prev, [riff.id]: acting.id }));
-        addLog(`🎼✨ RIFF DISCOVERED — ${riff.name}! ${acting.name} writes it into the Riffbook!`);
+        setRiffBook(prev => ({ ...prev, [riffId]: acting.id }));
         showTip('riff');
-      } else {
-        addLog(`🎼 ${acting.name} plays ${riff.name}!`);
       }
       playRiffSequence(riff, rootPc);
-      setRiffBanner({ riffId: riff.id, spiritId: acting.id, fp, isNew });
-      setTimeout(() => setRiffBanner(prev => (prev && prev.riffId === riff.id ? null : prev)), 5600);
-      setTimeout(() => grantFame(acting.id, fp, `🎼 ${riff.name}`), 500);
+      setRiffBanner({ riffId, spiritId: acting.id, fp, isNew });
+      setTimeout(() => setRiffBanner(prev => (prev && prev.riffId === riffId ? null : prev)), 5600);
     } else {
-      playTrackSequence(melodyLine, { style: COMMIT_STYLES[acting?.id], freqs: melodyFreq });
+      playTrackSequence(report.melodyLine, { style: COMMIT_STYLES[acting?.id], freqs: melodyFreq });
     }
-
-    // ── 🎯 CADENCE OBJECTIVES — your track's FINAL note is this turn's "final" ──
-    // String the right finals across consecutive turns (any key) to resolve a
-    // cadence for Fame. e.g. THE FULL RESOLVE: end on C, then F, then G, then C.
-    let cadenceResolved = false;  // 🎭 set when a cadence completes this commit (feeds P)
-    {
-      const lastPc = pitchIndex(melodyLine[melodyLine.length - 1]);
-      if (lastPc >= 0) {
-        const newTrail = [...(actingNoteState?.finalsTrail ?? []), lastPc].slice(-6);
-        const cooldowns = actingNoteState?.cadenceCooldowns ?? {};
-        const cadence = detectCadence(newTrail, cooldowns);
-        if (cadence) {
-          cadenceResolved = true;
-          setNoteField(acting.id, {
-            finalsTrail: [lastPc], // resolution note starts a fresh run
-            cadenceCooldowns: { ...cooldowns, [cadence.id]: 3 },
-          });
-          addLog(`🎯✨ ${acting.name} resolves ${cadence.name} (${cadence.formula})!`);
-          showTip('cadence');
-          setCadenceToast({ cadenceId: cadence.id, spiritId: acting.id, fans: cadence.fp });
-          setTimeout(() => setCadenceToast(prev => (prev && prev.cadenceId === cadence.id ? null : prev)), 5600);
-          // 🎤 Cadences are a melody-line feat, not a battle — they build crowd, not Fame.
-          setTimeout(() => gainFansFromDeed(acting.id, cadence.fp, `🎯 ${cadence.name}`), 700);
-        } else {
-          setNoteField(acting.id, { finalsTrail: newTrail });
-        }
-      }
+    // 🎯 A resolved cadence — the toast. Its crowd already landed as a `fans`
+    // effect above, in the position the ordering requires.
+    if (report.cadence) {
+      const cadenceId = report.cadence.id;
+      showTip('cadence');
+      setCadenceToast({ cadenceId, spiritId: acting.id, fans: report.cadence.fp });
+      setTimeout(() => setCadenceToast(prev => (prev && prev.cadenceId === cadenceId ? null : prev)), 5600);
     }
-    // 🌀 FREESTYLE — Intergalactic 0's first wrong note each turn lands intentional, not wrong:
-    // it's pardoned from the discord penalty (and, below, doesn't drag the crowd + earns Flair).
-    const freestylePardon = acting?.id === 'intergalactic_0';
-    // ── 🎸 CHORD CONTEXT — THE SINGLE PASS (B3) ──────────────────────────────
-    // One classification per commit, read by everything downstream. B4 (color notes
-    // pay the stack that authorized them), B5 (Harmonic Lock), B7 (per-note discord
-    // penalty) and the commit log must all count from THIS array — do not recompute
-    // the pardon in three places, they will drift.
-    //
-    // `discordCount` is incremented at PLACEMENT time, before the approach-note tier
-    // can be known (it depends on the note played next). It stays as live UI
-    // feedback; the SCORE comes from here. The two agree for every tier except
-    // theory_chromatic, where the commit count can only be lower — a pardon the
-    // player earns by resolving, revealed at the moment they resolve it.
-    //
-    // `payoutRouting` is the last argument: the player's picks for notes both
-    // stacks legalized. It can only redirect a pardon between the two stacks that
-    // already earned it, never create one, so it cannot change `unpardonedDiscord`
-    // or any score below — only which of Drive/Sustain gets credited.
-    const trackClassified = classifyTrack(
-      melodyLine, keyScale, actingDriveStack, actingSustainStack,
-      actingNoteState?.unlockedSkills ?? [], payoutRouting);
-    const unpardonedDiscord = countUnpardoned(trackClassified);
-    const contextPardons    = countPardonedByStack(trackClassified);  // B4 reads this
-    const effectiveDiscord = Math.max(0, unpardonedDiscord - (freestylePardon ? 1 : 0));
-    // `allInScale` — "the crowd heard a clean track." Fed to gainFans and the maj3
-    // gated ending. B6 removed its old scoring role: a chromatic run of 3+ still
-    // flips it true (see the B6 block below) but that no longer waives the Db
-    // penalty, which is now per-note via B7. Declared `let` here and possibly
-    // reassigned after the discord-unlock flags are known.
-    let allInScale     = effectiveDiscord === 0;
-    const lastNote     = melodyLine[melodyLine.length - 1];
-    const firstNote    = melodyLine[0];
-    // B8: there is no pivot to pend. The mode is DERIVED at the start of the next
-    // turn (startNewTurnNotes → modeFromStack), so this stays false forever and the
-    // mode carried here is only a placeholder that turn start will overwrite.
-    const newPivotPending = false;
-    const newMode = scaleMode;
-    // Respell the new root note using enharmonic map (split roots resolve at turn start)
-    const newRootRaw = ENHARMONIC_RESPELL[lastNote] ?? lastNote;
-
-    // ── SPEED & BANKING ───────────────────────────────────────────────────────
-    // Total notes placed = movement potential, capped at Spirit's Speed
-    const totalNotes    = melodyLine.length;
-    const usableMoves   = Math.min(totalNotes, actingSpeed);
-    const overflow      = totalNotes - usableMoves; // notes beyond speed cap
-    // If overflow >= 1 AND bank is empty, auto-bank the last overflow note
-    const existingBank  = actingNoteState?.bankedNote ?? null;
-    const canBank       = overflow >= 1 && !existingBank;
-    const newBankedNote = canBank ? { note: melodyLine[totalNotes - 1] } : existingBank;
-
-    const hexes    = usableMoves;
-    const intervals = getIntervalNotes(rootNote, scaleMode);
-    const isMojoDrained = (actingNoteState?.mojoDrain ?? 0) > 0;
-
-    // ── INTERVAL EFFECTS ──────────────────────────────────────────────────────
-    // Tritone: anywhere in track → +1 Performance Score (works even with Dischord).
-    // This is the tritone's whole remaining payout; B5 removed the feedbackBoost
-    // charge it used to arm. Consumed by economy.js's performanceScore kernel.
-    const trackHasTritone   = melodyLine.includes(intervals.tritone);
-    // Octave resolution: first and last note identical
-    const isOctaveResolution = hexes >= 2 && firstNote === lastNote;
-    // Major 3rd end: clean only
-    const hasBlues      = (actingNoteState?.discordUnlocks ?? []).includes('discord_1');
-    const hasBorrowed   = (actingNoteState?.discordUnlocks ?? []).includes('discord_2');
-    const hasTritoneUp  = (actingNoteState?.discordUnlocks ?? []).includes('discord_3');
-    const hasChromClimb = (actingNoteState?.discordUnlocks ?? []).includes('discord_4');
-
-    // Minor 7th end — only fires if Blues Lick (discord_1) is unlocked, major scale only
-    const isMinorSeventhEnd  = hasBlues && scaleMode === 'major' && lastNote === intervals.minorSeventh;
-    // Major 3rd end — only fires if Borrowed Chord (discord_2) is unlocked, minor scale only
-    const isMajorThirdEnd    = hasBorrowed && scaleMode === 'minor' && allInScale && lastNote === intervals.majorThird;
-    // Tritone end — only fires if Devil's Interval (discord_3) is unlocked
-    const isTritoneEnd       = hasTritoneUp && lastNote === intervals.tritone;
-    // ── B6: CHROMATIC RUN — PARDON BECAME PAYOUT ─────────────────────────────
-    // The run used to switch the discord penalty off for the WHOLE track. It no
-    // longer does: it pays Db instead (`chromRun.db`, applied in the DB scoring
-    // block below) and the wrong notes are priced per-note by B7.
-    //
-    // Dropping the blanket pardon is the substance of "pardon becomes payout," and
-    // it matters more than it looks: the old rule pardoned every unrelated wrong
-    // note elsewhere in the track too, so one chromatic run bought total immunity.
-    // Now the run's own notes are pardoned only where the Approach Notes tier
-    // actually pardons them — i.e. where they RESOLVE onto a chord tone — and
-    // anything else you got wrong still costs. Same gesture, real gradient.
-    const chromRunLen        = detectChromaticRun(melodyLine);
-    const chromClimbActive   = hasChromClimb && chromRunLen >= 3;
-    // ⚠️ `allInScale` is KEPT true for a 3+ run, but note what it now feeds: the
-    // maj3 gated ending and `gainFans` — flavour and crowd, NOT the Db penalty.
-    // A deliberate chromatic run should still read to the crowd as intent rather
-    // than as a fistful of mistakes. If that ever needs to change, change it here;
-    // the scoring path no longer looks at this flag at all.
-    if (chromClimbActive) allInScale = true;
-
-    // ── ⚔️ COMBAT FLAVOR TRIGGERS — REMOVED (B1) ─────────────────────────────
-    // Four melody→combat triggers used to hang off these endings: Blues Lick
-    // (♭7 → Mojo Drain), Devil's Interval (tritone → Burn), Borrowed Chord
-    // (maj3 → cleanse/shield) and Stagger (chromatic run). They were skippable,
-    // awkward, and their removal is what frees the discord unlocks to become the
-    // chord-context system (B3) instead.
-    //
-    // The interval DETECTION above stays — B5's Harmonic Lock needs it, and
-    // `hasGatedEnding` still pays Performance Score for the flair of landing one.
-    //
-    // ⚠️ The STATUSES themselves are NOT gone, because none of them were
-    // exclusive to these triggers:
-    //   • mojoDrain ← the Riff-Off "convicted" verdict
-    //   • stagger   ← an ultimate, and the candle event rolling a 1
-    //   • burn      ← Pyrotechnics (walk-in and eruption waves)
-    // Only the ARMING fields (pendingMojoDrain / pendingStagger / burnArmed) and
-    // statusShield — which really was Borrowed-Chord-only — were removed. The
-    // `isMojoDrained` gates below are likewise KEPT: Mojo Drain still lands from
-    // the Riff-Off, and stripping its suppression would quietly gut that penalty.
-    const feedbackOverloadMsg = '';
-
-    // ── DRIVE BOOST: diatonic step runs (scale-only, blocked by Mojo Drain) ──
-    const diatonicRunLen   = detectDiatonicRun(melodyLine, currentScale);
-
-    // (Riff Slayer + Paranoia removed — replaced by Slime / Number of the Beast)
-    // NOTE: the Riff Slayer removal took `skipClimbLen` with it, but the
-    // Performance Score kernel below still reads it (economy.js scores a
-    // skip-climb of 3+ as +1 flair). Keep it defined here — leaving it out
-    // throws a ReferenceError mid-commit, which silently aborts the rest of
-    // confirmNoteTrack (no move budget, no `move_act` step → turn deadlock).
-    const skipClimbLen     = detectSkipClimb(melodyLine, currentScale);
-
-    // (E-Rush removed — Ronin rework)
-
-    // ── B4: COLOR NOTES PAY THE STACK THAT AUTHORIZED THEM ───────────────────
-    // A pardoned off-scale note doesn't just escape the Discord penalty, it earns —
-    // in Drive/Sustain, never in Db. Db is the ENDING's payout (scoreTrackDB reads
-    // the last note); Drive/Sustain is the INTERIOR's payout (driveBoostFromRun and
-    // sustainBoostFromPattern both read the middle). Color is an interior gesture,
-    // so it pays where interior gestures already pay and the player has no second
-    // mental column to keep.
-    //
-    // Routing is already decided for us: classifyTrack stamped each pardoned note
-    // with the stack that legalized it, and claimAt resolved "legal in both" to the
-    // higher-ranked chord with ties going to Drive. Count from contextPardons; do
-    // NOT re-derive which stack wins here, or this and the flash line will drift.
-    //
-    // Cap +2 per stack per commit — a 6-note chromatic smear over a dom9 shouldn't
-    // out-earn the diatonic run the boost was built for.
-    //
-    // ⚠️ THIS IS NOW THE PARDON ECONOMY'S ONLY PAYOUT, AND THAT IS DELIBERATE.
-    // The Db audit found the pardon ladder worth only ~+0.24 Db per commit across
-    // all 46 Db of Theory — because a pardon can never be worth more than the
-    // penalty it forgives, and most tracks carry 0–1 wrong notes. That reads as
-    // alarming until you notice the audit measured Db only: colour's real payoff
-    // was always HERE, in Drive and Sustain. Db answers "did you play it right";
-    // colour answers "did you play it hard". Two currencies, two questions, and
-    // the reason the pardon was left alone rather than inflated.
-    // (C4's Flair "Outside" inverted this routing for one style — deleted with the
-    //  Style system. It fired on 5% of commits and was worth 0.06 Db.)
-    const colorDrive   = !isMojoDrained ? Math.min(2, contextPardons.drive)   : 0;
-    const colorSustain = !isMojoDrained ? Math.min(2, contextPardons.sustain) : 0;
-
-    // Folded into the raw boost rather than added after the fact, so color flows
-    // through the SAME highest-wins/overflow-to-Db machinery as every other boost.
-    // The alternative — adding on top once newTempDrive settles — would make color
-    // the only boost in the game that can't be discarded, i.e. a guaranteed +2 that
-    // ignores the economy the other two sources pay into.
-    const rawDriveBoost    = !isMojoDrained ? driveBoostFromRun(diatonicRunLen) + colorDrive : 0;
-    const prevTempDrive    = actingNoteState?.tempDrive ?? 0;
-    let newTempDrive       = prevTempDrive;
-    let driveOverflowToDB  = 0; // lower-value discard feeds Decibills
-    if (rawDriveBoost > 0) {
-      if (rawDriveBoost > prevTempDrive) {
-        driveOverflowToDB = prevTempDrive; // discard lower into DB
-        newTempDrive = rawDriveBoost;
-      } else {
-        driveOverflowToDB = rawDriveBoost; // new one is lower — discard it
-        // prevTempDrive stays
-      }
+    // 🎤 Fan bursts — the NUMBERS already landed above; these are only visuals.
+    if (report.positionFans) {
+      const { base, recruit } = report.positionFans;
+      if (recruit > 0) triggerUnsureWin(acting.id, recruit);
+      flashFanFx(acting.id, 'gain', base + recruit);
     }
+    if (report.deedFans) flashFanFx(acting.id, 'gain', report.deedFans.gain);
+    if (report.perfFansGained > 0) showTip('fans');
+    // 🎵 WA NO KOE — the buff itself is in the patch (faithful to the B10-shaped
+    // bug the kernel deliberately reproduces); this is just the flash.
+    if (report.waNoKoe) triggerEffectFlash(acting.id, '🎵', '和', '#4488ff');
 
-    // ── FEEDBACK BOOST: repeat patterns (scale-only, blocked by Mojo Drain) ───
-    const repeatPatLen      = detectRepeatPattern(melodyLine, currentScale);
-    const rawSustainBoost   = !isMojoDrained ? sustainBoostFromPattern(repeatPatLen) + colorSustain : 0;
-    const prevTempSustain   = actingNoteState?.tempSustain ?? 0;
-    let newTempSustain      = prevTempSustain;
-    let sustainOverflowToDB = 0;
-    if (rawSustainBoost > 0) {
-      if (rawSustainBoost > prevTempSustain) {
-        sustainOverflowToDB = prevTempSustain;
-        newTempSustain = rawSustainBoost;
-      } else {
-        sustainOverflowToDB = rawSustainBoost;
-      }
-    }
-
-    // Total overflow fed to Decibills as bonus points
-    // ⚠️ NO LONGER FED TO Db. The "discard the lower boost into Decibills" rule was
-    // 13% of all Db income — the single largest source the player could neither
-    // see, name, nor aim at, because it pays out the half of a comparison that
-    // LOST. The Drive/Sustain boosts themselves are untouched above; only this
-    // consolation Db is gone. Kept as a display value: the flash still shows what
-    // was discarded, it just no longer turns into currency.
-    const dbOverflow = 0;
-    const discarded  = driveOverflowToDB + sustainOverflowToDB;
-
-    // ── APPLY SELF EFFECTS (blocked by Mojo Drain) ───────────────────────────
-    // (B5: `newFeedbackBoost` removed. The tritone used to light a "Damage ×2"
-    //  charge that multiplied nothing — the badge was the whole feature. Damage is
-    //  banded and hard-capped (Thrash 4, Sonic 2) against a max Vibe of 4–5, so an
-    //  honest ×2 would have one-shot every spirit in the game; there was no version
-    //  of this worth shipping. The tritone keeps its colour, its discord_3 unlock
-    //  and its +1 Performance Score — three things that do what they advertise.)
-    const newDieFloorBoost = !isMojoDrained && isOctaveResolution ? 2 : 0;
-
-    // ── MAJOR 3RD CLEANSE / SHIELD — REMOVED (B1) ────────────────────────────
-    // `newStatusEffects` is still threaded through the commit write below, so it
-    // survives as a plain pass-through of the existing list.
-    const newStatusEffects = [...(actingNoteState?.statusEffects ?? [])];
-    const majorThirdMsg = '';
-    const cleansePatch = {};
-
-    // ── DB SCORING ────────────────────────────────────────────────────────────
-    // ── B7: THE DISCORD PENALTY GETS TEETH ───────────────────────────────────
-    // Was a flat −1 for the whole track however many notes were wrong, which made
-    // the entire pardon economy worth at most one point — a 46-Db ladder sold to
-    // dodge a one-point tax. Now it's per note, first one free, floored at 3.
-    // The curve lives in `discordPenaltyFor` (music/context.js) so the assertions
-    // can reach it; see there for why the grace and the floor are both load-bearing.
-    //
-    // `effectiveDiscord` is the count from `classifyTrack` — the SETTLED count,
-    // after the chord context has had its say — minus Intergalactic 0's freestyle
-    // pardon. The two pardons stack (freestyle + grace = two free notes for that
-    // spirit), which is deliberate: freestyle is his identity and it also feeds the
-    // P-score and the crowd, so it isn't merely a discount on this one line.
-    //
-    // Removed here: the `theory_chromatic` "penalties halved" effect and the
-    // Chromatic Climb full pardon. B3's Approach Notes tier already pardons the
-    // notes that resolve, and halving on top of it was near-total immunity — two
-    // effects doing one job, one of them invisible.
-    // (`hasChromMastery` is gone with the halving it gated. B6's payout reads the
-    //  same skill through `chromaticPayout`, which does its own tier check.)
-    const discordPenalty = discordPenaltyFor(effectiveDiscord);
-    const baseScore = scoreTrackDB(melodyLine, fourthNote, fifthNote);
-
-    // ── B6: THE CHROMATIC RUN'S PAYOUT ───────────────────────────────────────
-    // The capstone's one loud effect: a run of 3+ pays +3 Db, +1 per note beyond,
-    // capped +5. ⚠️ DELETED — IT FIRED ON 1% OF COMMITS. Measured across 15,000
-    // simulated commits it was worth 0.02 Db each, which made it 16 Db of skill
-    // ladder buying a payout essentially nobody would ever see. Chromatic Mastery
-    // now sells the sixth stack slot instead, which is the lever that demonstrably
-    // moves the ladder (Harmonic Lock climbs 0.00 → 0.83 on slots alone).
-    //
-    // The chromatic RUN still matters, just not in Db: `chromRunLen` below keeps
-    // flipping `allInScale`, which feeds `gainFans`. A chromatic smear reads to the
-    // crowd as showmanship — which is exactly where flair belongs now.
-
-    // ── B5: HARMONIC LOCK ────────────────────────────────────────────────────
-    // B2 halved the ending ladder so Db came from playing well rather than from
-    // turning up. This is where the other half returns — to a player who built a
-    // sophisticated chord AND landed the line on it. A 5th ending into a dom9
-    // stack is 3 + 2 = 5 Db: about the pre-B2 value, earned instead of baseline.
-    //
-    // ⚠️ It ESCALATES the ending bonus, so it requires one. No ending bonus → no
-    // lock, even if the final note is a chord tone. That's the doc's arithmetic
-    // ("stacks on top of B2's ladder") and it's the tighter design: the last note
-    // has to resolve at the key level AND belong to something worth building.
-    // Gated on `endingBonus` rather than on the breakdown strings, which are copy.
-    //
-    // Stack selection is B4's rule (higher rank, ties to Drive), decided inside
-    // harmonicLock so there is exactly one tie-break in the codebase.
-    const lock = baseScore.endingBonus > 0
-      ? harmonicLock(melodyLine[melodyLine.length - 1], actingDriveStack, actingSustainStack)
-      : { bonus: 0, stack: null, rank: 0, chordName: null };
-
-    // ═══ THE WHOLE Db PAYOUT — FOUR SOURCES, AND THAT IS THE POINT ═══════════
-    // A commit used to move the Db number nine different ways: track length, the
-    // ending bonus, Harmonic Lock, the chromatic payout, Flair's Outside, the
-    // discord penalty, the Drive/Sustain overflow, the Performance-Score top-up,
-    // and Style Db. Nobody can hold nine inputs in their head, so the Db a player
-    // earned read as weather rather than as consequence — which quietly wrecked
-    // the thing the game is actually about, because you cannot feel rewarded for
-    // building a good chord if you can't tell which of nine things paid you.
-    //
-    // Four remain, and each asks a question a player can aim at:
-    //
-    //   length   — how much did you play?          (scoreTrackDB step A)
-    //   ending   — where did you come to rest?     (scoreTrackDB step B: 4th/5th/8ve)
-    //   lock     — was that landing in YOUR CHORD? (harmonicLock)
-    //   penalty  — how many notes fought the key?  (discordPenaltyFor)
-    //
-    // The design line that decided the cuts: Db pays for FACTS, not for taste.
-    // "You landed on the 5th" and "your last note was in your chord" are facts a
-    // player can hear, aim at, and verify. "That phrase was interesting" is not,
-    // and every source cut was some version of trying to score it. That judgement
-    // didn't disappear — it moved to the crowd, where being impressionistic is
-    // correct. See `perfScore` below: it still runs, and it now feeds fans alone.
-    let breakdown = [...baseScore.breakdown];
-    if (lock.bonus > 0) breakdown.push(`🔒 ${lock.chordName} +${lock.bonus}`);
-    const preDiscordPoints = baseScore.points + lock.bonus;
-    let earned = Math.max(0, preDiscordPoints - discordPenalty);
-    if (discordPenalty > 0 && preDiscordPoints > 0) {
-      breakdown.push(`−${discordPenalty} discord`);
-    }
-    // ── 🎭 PERFORMANCE SCORE P — FLAIR (Crowd & Intimidation layer, §4) ──
-    // P measures how INTERESTING the placement was, not how long the track is:
-    // melodic shape (contour, leaps, interval variety) + palette + recognized
-    // gestures + repeated motifs, with track length only a small nudge. 0–10.
-    // The pure kernel now lives in engine/systems/economy.js (`performanceScore`,
-    // Phase 5a — single source of truth); it's invoked below once its remaining
-    // inputs (suspended ending) are known.
-
-    // ── ⚡ DISSONANCE EDGE — REMOVED (system cut — Theory streamlined) ──
-    const newEdgeStage          = 0;
-    const edgeDbCost            = 0;
-    const edgeFanCost           = 0;
-    const edgeDbBonus           = 0;
-    const edgeCollapseFans      = 0;
-    const edgeResolvedThisTurn  = false;
-    const edgeCollapsedThisTurn = false;
-
-    // theory_sus — a suspended ending (the 2nd or 4th) earns a small "hang" flair once unlocked
-    const perfSusEnd = (actingNoteState?.unlockedSkills ?? []).includes('theory_sus')
-      && (lastNote === semitonesUpSpelled(rootNote, scaleMode, 2) || lastNote === intervals.fourth);
-    // 🎭 Performance Score P — pure kernel (engine/systems/economy.js). `freestyle`
-    // (Intergalactic 0's pardoned first wrong note) comes back too, since the flash/
-    // log below need it and its arithmetic must not drift from the score's.
-    // ✨ FLAIR EXEMPTION (STYLE_SYSTEM_HANDOFF.md §3.3) — Flair spirits are exempt
-    // from the P penalty on RESOLVED discords (an out-of-scale note immediately
-    // followed by an in-scale one), capped at 3. Unresolved/trailing discords still
-    // hurt everyone, Flair included. This stacks independently with Intergalactic 0's
-    // freestylePardon (Groove today, but kept separate on purpose).
-    // NOTE: performanceScore doesn't take a resolvedDiscordCount param (yet) — the
-    // exemption is folded into discordCount here at the call site instead.
-    // (The Flair P-exemption is gone with the Style system — it waived the P
-    //  penalty on resolved discords for one style, and both the style and the
-    //  detector it called no longer exist. Every spirit is now judged the same way,
-    //  which is also what makes P a fair crowd signal.)
-    const flairExemptDiscords = 0;
-    // B3: score the SETTLED count, not the placement counter — a note the chord
-    // legalized was never a wrong note, so it must not drag the flair score either.
-    const perfDiscordCount = Math.max(0, unpardonedDiscord - flairExemptDiscords);
-    const { score: perfScore, freestyle: perfFreestyle } = performanceScore({
-      melodyLine,
-      trackHasTritone, isOctaveResolution,
-      diatonicRunLen, repeatPatLen, skipClimbLen,
-      hasGatedEnding: isMinorSeventhEnd || isMajorThirdEnd || isTritoneEnd,
-      hasRiff: !!riffMatch, cadenceResolved,
-      earned, edgeResolved: edgeResolvedThisTurn, susEnd: perfSusEnd,
-      discordCount: perfDiscordCount, freestylePardon,
-    });
-
-    // ── 🎭 STAGE B ROUTING: Performance Score P → DB top-up (§5b) + crowd excitement (§5a) ──
-    // Baseline-on for now (no skill gate yet — will later sit behind Crowd Read / Stage Presence).
-    // ⚠️ P NO LONGER PAYS Db — IT PAYS THE CROWD, AND ONLY THE CROWD.
-    // The Performance Score is the game's one aesthetic judge: it scores contour
-    // changes, leaps, interval variety, palette, motifs — "was that interesting?".
-    // That question has no honest answer, which is why it made a bad Db source and
-    // makes a *good* crowd source: a crowd's taste is supposed to be impressionistic.
-    // Nobody minds a fickle audience; everybody minds a fickle upgrade bar.
-    // So P survives entirely intact and keeps driving excitement, loyalty, fans and
-    // the Fame multiplier below. It simply stops also minting Decibills.
-    const perfDbBonus = 0;
-    // §5a — fans NEVER hand out Fame directly (they only multiply earned FP via grantFame).
-    // A strong performance instead SLOWLY grows the crowd and hardens casuals into diehards.
-    const perfVibeFactor = (acting?.maxVibe ?? 5) / 5;
-    // 🗡️ SHREDDING RONIN — the fans came for a masterpiece. A virtuosic show (P≥5) wins him
-    // ~double the crowd of a normal Spirit; a show that falls short BORES them — the meter
-    // cools (negative), and sustained mediocrity sheds a casual. His Fame engine swings on
-    // sheer quality: dazzle and they swarm, coast and they drift. (Other Spirits: P<5 = no
-    // change, as before.) Reuses the existing Performance Score → excitement pipeline.
-    const isRonin = acting?.id === 'cosmic_ronin';
-    // Deliberately NOT crowd-amplified — a bigger crowd must not snowball into faster growth.
-    const perfExciteGain = isRonin
-      ? (perfScore >= 5 ? (perfScore - 4) * perfVibeFactor * 2        // virtuoso: crowd swarms
-                        : (perfScore - 5) * perfVibeFactor * 0.5)     // short of it: crowd cools (gentle)
-      : Math.max(0, perfScore - 4) * perfVibeFactor;
-    let perfExcitement = (actingNoteState?.excitement ?? 0) + perfExciteGain;  // → new casual fans (slow)
-    let perfLoyalty    = Math.max(0, (actingNoteState?.loyalty ?? 0) + perfExciteGain);  // → harden casual→diehard
-    // Edge fan costs (stepping onto/escalating the stance, or its collapse) apply
-    // through this same bored-fans pipeline — one floor-at-0 path, not a new one.
-    let perfFansGained = 0, perfPromotions = 0, perfFansLost = edgeFanCost + edgeCollapseFans;
-    const loyaltyPerDiehard = LOYALTY_PER_DIEHARD;
-    while (perfExcitement >= EXCITE_PER_CASUAL)   { perfExcitement -= EXCITE_PER_CASUAL;   perfFansGained += 1; }
-    while (perfLoyalty    >= loyaltyPerDiehard)   { perfLoyalty    -= loyaltyPerDiehard;   perfPromotions += 1; }
-    // 🗡️ Bored crowd (only reachable when the meter has cooled below empty — i.e. Ronin
-    // stringing together weak shows): one casual drifts off, then the meter resets up.
-    while (perfExcitement <= -EXCITE_PER_CASUAL)  { perfExcitement += EXCITE_PER_CASUAL;   perfFansLost  += 1; }
-
-    // 🥱 SUSTAINED MEDIOCRITY (every Spirit except Ronin, who has his own stronger,
-    // instant version above) — a run of weak shows (P below the same floor
-    // perfExciteGain already uses) bores the crowd, mirroring the positional
-    // boredom decay in tickFans (same FAN_BORED_AFTER / FAN_DECAY constants, same
-    // "keeps decaying every turn the condition holds" shape, just triggered by
-    // performance instead of position).
-    const prevLowPerfStreak = actingNoteState?.lowPerfStreak ?? 0;
-    const lowPerfStreak = (!isRonin && perfScore < 4) ? prevLowPerfStreak + 1 : 0;
-    if (!isRonin && lowPerfStreak >= FAN_BORED_AFTER) perfFansLost += FAN_DECAY;
-
-    // Drive/Sustain overflow feeds DB points (non-stacking rule); Edge DB cost is
-    // a real sacrifice, not a soft floor — it can eat into points earned this turn.
-    // Four sources in, one number out. `dbOverflow` and `perfDbBonus` are pinned to
-    // 0 above rather than deleted from this line, so the arithmetic still reads as
-    // the single pot it is and a future source has an obvious place to join.
-    const earnedTotal = earned + dbOverflow + perfDbBonus + edgeDbBonus - edgeDbCost;
-
-    // Check upgrade threshold against target skill cost
-    const targetSkill = actingNoteState?.targetSkillId ? SKILL_BY_ID[actingNoteState.targetSkillId] : null;
-    const targetCost  = targetSkill?.dbCost ?? DB_UPGRADE_THRESHOLD;
-    const { newDBPoints: rawDBPoints, upgradeTriggered } = advanceDB(dbPoints, earnedTotal, targetCost);
-    let newDBPoints = Math.max(0, rawDBPoints); // floor — a heavy Edge cost can't drive the bar negative
-    const newUpgradesPending = upgradeTriggered
-      ? (actingNoteState?.upgradesPending ?? 0) + 1
-      : (actingNoteState?.upgradesPending ?? 0);
-
-    // ── POINTS FLASH ─────────────────────────────────────────────────────────
-    const flashLines = [];
-    if (earned > 0) {
-      flashLines.push(`+${earned} DB pts`);
-      breakdown.forEach(b => flashLines.push(b));
-      if (upgradeTriggered) flashLines.push(`🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!`);
-    }
-    if (rawDriveBoost > 0)    flashLines.push(`⚔️ Drive +${newTempDrive}`);
-    if (rawSustainBoost > 0)  flashLines.push(`🛡️ Sustain +${newTempSustain}`);
-    // (B5: the '🔥 Tritone — Damage ×2' flash is gone with the effect it announced.
-    //  The tritone's surviving payout is +1 Performance Score, which the
-    //  '🎭 Performance n/10' line below already accounts for.)
-    // 🔒 B5 — name the chord the ending locked onto. This is the line that teaches
-    // the mechanic: the player sees WHICH chord paid and how much, so "build
-    // something and land on it" becomes a rule they can restate.
-    if (lock.bonus > 0) flashLines.push(`🔒 Harmonic Lock — ${lock.chordName} · DB +${lock.bonus}`);
-    if (isOctaveResolution)   flashLines.push('🎶 Octave — DB +2');
-    // (B1: Borrowed Chord / Blues Lick / Devil's Interval / Stagger flashes removed
-    //  along with their effects. The endings still pay Performance Score via
-    //  hasGatedEnding, and B5 will give them a Db payoff.)
-    // (E-Rush flash removed — Ronin rework)
-    // ⚡ The chromatic run no longer pays Db (B6 deleted — it fired on 1% of
-    // commits). It still lands, and the player should still be told: a run of 3+
-    // flips `allInScale`, which is what the CROWD reads. Flair pays fans now.
-    if (chromRunLen >= 3) {
-      flashLines.push(`⚡ Chromatic run ×${chromRunLen} — the crowd eats it up`);
-    }
-    // 🎸 B3/B4 — say the pardon out loud, and say which stack paid for it. The
-    // player should be able to point at a stack and name the reason a grey note
-    // scored, the turn it happens. B4 names the destination too, because the two
-    // stacks pay different currencies and "your chord legalized 2 notes" doesn't
-    // tell you to look at Drive. The ⚔️/🛡️ amounts are replaced with an explicit
-    // "no payout" when Mojo Drain ate it — claiming credit for points that never
-    // landed teaches the wrong rule. (With no drain, pardonedTotal > 0 guarantees at
-    // least one of the two is non-zero, so the bare-suffix case is unreachable.)
-    const pardonedTotal = contextPardons.drive + contextPardons.sustain;
-    if (pardonedTotal > 0) {
-      const paidTo = [];
-      if (colorDrive   > 0) paidTo.push(`⚔️ +${colorDrive}`);
-      if (colorSustain > 0) paidTo.push(`🛡️ +${colorSustain}`);
-      flashLines.push(
-        `🎸 Your chord legalized ${pardonedTotal} note${pardonedTotal !== 1 ? 's' : ''}`
-        + (paidTo.length > 0 ? ` — ${paidTo.join(' ')}` : isMojoDrained ? ' — Mojo Drain, no payout' : ''));
-    }
-    if (perfFreestyle > 0)    flashLines.push('🌀 Freestyle — first wrong note landed perfect!');
-    if (canBank)              flashLines.push(`💾 Banked: ${newBankedNote.note}`);
-    if (totalNotes > actingSpeed && !canBank) flashLines.push(`⚠️ ${totalNotes - actingSpeed} note(s) discarded (bank full)`);
-    // B7 — the count and the charge are different numbers now (first one free,
-    // floor 3), so show both or the player reads the grace as a bug.
-    if (discordPenalty > 0) {
-      flashLines.push(`⚡ ${unpardonedDiscord} Dischord — −${discordPenalty} DB (1st free)`);
-    } else if (unpardonedDiscord > 0) {
-      flashLines.push(`⚡ ${unpardonedDiscord} Dischord — free this turn`);
-    }
-    flashLines.push(`🎭 Performance ${perfScore}/10`);
-
-    if (perfFansGained > 0) flashLines.push(`🎤 +${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''} won over!`);
-    if (perfPromotions > 0) flashLines.push(`💜 ${perfPromotions} fan${perfPromotions !== 1 ? 's' : ''} → Diehard!`);
     if (flashLines.length > 0) {
       setPointsFlash({ lines: flashLines, key: Date.now() });
       setTimeout(() => setPointsFlash(null), 4500);
     }
+    if (report.trackHasTritone || report.hasGatedEnding || report.isOctaveResolution) showTip('intervals');
 
-    // ── LOG ───────────────────────────────────────────────────────────────────
-    const scoreStr = earned > 0
-      ? ` · 🎯 +${earned}pts (${breakdown.join(', ')})${upgradeTriggered ? ` · 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!` : ` · DB [${newDBPoints}/${targetCost}]`}`
-      : (discordPenalty > 0 ? ` · ⚡ ${unpardonedDiscord} Dischord — −${discordPenalty}, no points` : ` · DB [${newDBPoints}/${targetCost}]`);
-    const driveMsg   = rawDriveBoost > 0   ? ` · ⚔️ Drive +${newTempDrive}` : '';
-    const sustMsg    = rawSustainBoost > 0  ? ` · 🛡️ Sustain +${newTempSustain}` : '';
-    const triMsg     = '';   // B5 — tritone "Damage ×2" removed (it multiplied nothing)
-    const lockMsg    = lock.bonus > 0 ? ` · 🔒 Harmonic Lock ${lock.chordName} DB+${lock.bonus}` : '';
-    const octMsg     = isOctaveResolution   ? ' · 🎶 Octave DB+2'           : '';
-    const m7Msg      = '';   // B1 — Blues Lick / Mojo Drain arming removed
-    const rsMsg      = '';
-    const tritoneEndMsg = '';
-    const chrMsg     = '';   // B1 — chromatic-run Stagger removed
-    // B6 — the payout replaces the old "no discord" pardon note. `breakdown` already
-    // carries the +N inside scoreStr; this is the headline copy for the log.
-    const chromClimbMsg = '';   // B6 payout deleted — the run pays the crowd now, not Db
-    // C4 — Flair's colour went to Db instead of Drive/Sustain. Named in the log so
-    // the player can see WHY their colour paid differently from everyone else's.
-    const outsideMsg = '';      // C4 Flair "Outside" deleted with the Style system
-    const speedMsg   = totalNotes > actingSpeed
-      ? ` · SPD ${actingSpeed}/${totalNotes}${canBank ? ` · 💾 ${newBankedNote.note} banked` : ' · bank full'}`
-      : ` · SPD ${hexes}/${actingSpeed}`;
-    addLog(`✓ Committed · ${hexes} hexes${scoreStr}${driveMsg}${sustMsg}${triMsg}${lockMsg}${octMsg}${majorThirdMsg}${m7Msg}${tritoneEndMsg}${chrMsg}${chromClimbMsg}${outsideMsg}${feedbackOverloadMsg}${rsMsg}${speedMsg} · Next RN: ${newRootRaw}`);
-    if (trackHasTritone || isMinorSeventhEnd || isMajorThirdEnd || isOctaveResolution) showTip('intervals');
-
-    // ── STYLE Db PAYOUT — DELETED ────────────────────────────────────────────
-    // `styleCommitDb` paid every commit a tier (1–3 Db) plus a signature bonus for
-    // matching the acting spirit's fixed Style. It was 15% of all Db income and it
-    // is gone, along with C4's per-style chord-context reads and C1's live preview.
-    //
-    // The measurement that decided it: the three Style detectors re-scored gestures
-    // the game already pays for. `detectStyleRun` was written as a generalisation of
-    // the Drive boost's own run detectors; `detectRepeatPattern` was *literally the
-    // same function* the Sustain boost calls; Flair's resolved discords were the
-    // notes the pardon economy already routed. Three gestures, scored twice, in two
-    // currencies — a large part of how one commit acquired nine Db sources.
-    //
-    // The design argument, which matters more: Style was an aesthetic judge, and it
-    // was assigned rather than chosen, so it rewarded a play pattern without ever
-    // requiring one. A player could ignore their Style completely and lose ~0.59 Db
-    // a commit — real, but nowhere near enough to shape behaviour. It asked "was
-    // that the kind of phrase your character plays?", which is a taste question, and
-    // Db has stopped answering taste questions.
-    //
-    // Character flavour survives in data/styles.js (icon, colour, tagline) and on
-    // the character-select screen. Nothing reads it for scoring.
-
-
-    // 🎸 Your chord is a STANDING stance — it persists across turns and is only
-    // changed by a revoice (one note add/drop per turn), so we don't touch it here.
-    setStackCommitDest(null);
-    setNoteField(acting.id, {
-      melodyLine:       [],
-      melodySrcIdx:     [],
-      melodyFreq:       [],
-      // Phase R1: stash the committed melody + riff-match for riff-off use.
-      // startRiffOff reads these; cleared at turn start (startNewTurnNotes).
-      committedMelody:  melodyLine,
-      // Registers ride along with the committed melody so the riff-off can
-      // voice it where the player played it (melodyToRiff still infers octave
-      // on its own for now — this is the raw material for when it doesn't).
-      // ⚠️ Mapped over `melodyLine`, not copied straight from melodyFreq: the
-      // mic skill's voice roll SHADOWS melodyLine above and may append a bonus
-      // note the player never played. Aligned by construction, one null on the
-      // tail for the bonus, so the two stay the same length downstream.
-      committedFreq:    melodyLine.map((_, i) => melodyFreq[i] ?? null),
-      committedHasRiff: !!riffMatch,
-      discordCount:    0,
-      pivotPending:    newPivotPending,
-      rootNote:        newRootRaw,
-      scaleMode:       newMode,
-      dbPoints:        newDBPoints,
-      totalDB:         (actingNoteState?.totalDB ?? 0) + earnedTotal,
-      edgeStage:       newEdgeStage,
-      perfScore:       perfScore,
-      recentP:         [...(actingNoteState?.recentP ?? []), perfScore].slice(-2),
-      excitement:      perfExcitement,
-      loyalty:         perfLoyalty,
-      lowPerfStreak:   lowPerfStreak,
-      upgradesPending: newUpgradesPending,
-      hasConfirmed:    true,
-      dieFloorBoost:   newDieFloorBoost,
-      statusEffects:   newStatusEffects,
-      tempDrive:       newTempDrive,
-      tempSustain:     newTempSustain,
-      bankedNote:      newBankedNote,
-      // B1 — pendingMojoDrain / pendingStagger / burnArmed removed with the four
-      // combat flavor triggers. `cleansePatch` is now always empty; it is spread
-      // here only so B5 has an obvious seam to hang the Harmonic Lock patch on.
-      transposeCardPending: null,
-      ...cleansePatch,
-    });
-    // If a skill was just earned, award it now (adds to unlockedSkills, fires side-effects).
-    // Small timeout so the state update above settles before awardTargetSkill reads noteStates.
-    if (upgradeTriggered && actingNoteState?.targetSkillId) {
-      setTimeout(() => awardTargetSkill(acting.id), 60);
+    // ── 4. THE SKILL AWARD — the half the kernel declares CLIENT_OWNED ───────
+    // ⚠️ `awardTargetSkill` MUST NOT run here. The STATE half is already in the
+    // patch (unlockedSkills, upgradesPending, pendingAwardSkillId, targetSkillId
+    // cleared), so it would find `targetSkillId` already null, take its no-op
+    // branch, and the side-effect chain would never fire. Only that chain is
+    // left to do — and the kernel already wrote the 🏆 line into `logs`.
+    if (report.awardedSkillId) {
+      setTimeout(() => {
+        applySkillEffects(acting.id, report.awardedSkillId);
+        showTip('skill_unlock');
+      }, 60);
     }
-    // 🎵 WA NO KOE — melody/chord alignment, Ronin's harmony passive.
-    // ⚠️ B10 BUG FIX: this read `driveStack ?? sustainStack`, which only ever saw
-    // the Drive Stack — `??` falls through on null/undefined only, and the stacks are
-    // arrays that always exist (B0a seeds both with the root). So the Sustain Stack
-    // was silently invisible to Ronin's signature passive.
-    //
-    // Fixed to pass BOTH stacks, which is also what the skill's own text promises
-    // ("your chord stack") and what every other part of the chord-context system
-    // does — B4 and B5 both weigh Drive and Sustain against each other rather than
-    // privileging one. Note `checkWaNoKoe` already reads both to decide WHICH stat
-    // to boost, so passing only Drive made it inconsistent with itself.
-    if (acting?.id === 'cosmic_ronin') {
-      const chordNotes = [
-        ...(actingNoteState?.driveStack   ?? []),
-        ...(actingNoteState?.sustainStack ?? []),
-      ];
-      applyWaNoKoe(melodyLine, chordNotes);
-    }
+
+    // ── 5. HUD FLOW & THE AP GRANT (§1's mechanical half) ────────────────────
     setTurnStep('move_act'); // advance HUD flow → movement & actions
     // 🎓 The last note only becomes a real idea once it's been committed — up to
-    // that moment it's just "the note on the end". Teach it here, and only then
-    // mention the gold hex, and only if one was actually in play this track.
+    // that moment it's just "the note on the end". Reads the PRE-commit trail
+    // off the render-scoped `actingNoteState` on purpose: the patch above has
+    // already moved the real one, and the tip is about the track just played.
     if (!acting?.cpu) {
-      const goldWasLive = (() => {
-        const resolvePcs = new Set(
-          cadenceHints(actingNoteState?.finalsTrail ?? [], actingNoteState?.cadenceCooldowns ?? {})
-            .filter(h => h.resolves).map(h => h.nextPc));
-        return resolvePcs.size > 0;
-      })();
+      const goldWasLive = cadenceHints(
+        actingNoteState?.finalsTrail ?? [],
+        actingNoteState?.cadenceCooldowns ?? {},
+      ).some(h => h.resolves);
       setTimeout(() => showTip('last_note'), 250);
       if (goldWasLive) setTimeout(() => showTip('gold_hex'), 450);
     }
-    // ⏱️ Fires LAST of the three commit tips on purpose. All three now queue
-    // rather than fight (see showTip), and the queue drains in fire order — so
-    // this delay is what puts move_act after the two tips that are about the
-    // track just committed, rather than cutting in front of them.
+    // ⏱️ Fires LAST of the three commit tips on purpose. All three queue rather
+    // than fight (see showTip), and the queue drains in fire order — so this
+    // delay is what puts move_act behind the two that are about the track.
     setTimeout(() => showTip('move_act'), 600);
     // Grant the movement budget — the engine applies the tripped-halving rule.
-    // (tripped is still true at commit time; it clears at the START of this spirit's NEXT turn)
+    // ⚠️ `hexes` comes from the KERNEL, never from `melodyLine.length`: the mic
+    // skill's voice roll shadows the track, so the local length is the wrong
+    // number. That is the single easiest way to reintroduce the bug.
+    // (tripped is still true at commit time; it clears at the START of this
+    //  spirit's NEXT turn.)
     const grantedSteps = dispatch(moveBudgetSet(hexes, !!actingNoteState?.tripped)).turn.moveStepsLeft;
     if (actingNoteState?.tripped) {
       addLog(`🌀 ${acting?.name} is TRIPPED — movement halved this turn! (${grantedSteps} hex${grantedSteps !== 1 ? 'es' : ''})`);
@@ -4739,24 +4204,6 @@ function Game({ gameState, onReturnToLobby }) {
     }
     setMovedThisTurn(false);
     setAction('move');
-    // 🎤 FAN ECONOMY — a clean track in the centre rings pulls a crowd to you.
-    gainFans(acting.id, acting.num, allInScale);
-    // 🎭 §5a — a strong performance slowly grows the crowd (new casuals) and hardens casuals
-    // into diehards. NO Fame is granted here: fans only ever MULTIPLY earned FP (grantFame).
-    // Applied after gainFans via a functional update so it stacks with position-based gains.
-    if (perfFansGained > 0 || perfPromotions > 0 || perfFansLost > 0) {
-      const ns0 = engineRef.current.noteStates[acting.id];
-      if (ns0) {
-        let cas = ns0.casuals ?? FAN_CASUAL_START, die = ns0.diehards ?? FAN_DIEHARD_START;
-        cas = Math.min(FAN_CASUAL_CAP, cas + perfFansGained);
-        for (let i = 0; i < perfPromotions; i++) { if (cas > 0 && die < FAN_DIEHARD_CAP) { cas -= 1; die += 1; } }
-        cas = Math.max(0, cas - perfFansLost);     // 🗡️ bored fans walk (Ronin's weak shows)
-        dispatch(fansChanged(acting.id, { casuals: cas, diehards: die }));
-      }
-      if (perfFansGained > 0) { addLog(`🎤 ${acting.name}'s performance wins over ${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''}!`); showTip('fans'); }
-      if (perfPromotions > 0) addLog(`💜 ${perfPromotions} of ${acting.name}'s casuals harden into Diehards!`);
-      if (perfFansLost > 0)   addLog(`😴 ${acting.name}'s show falls flat — ${perfFansLost} bored fan${perfFansLost !== 1 ? 's' : ''} drift off.`);
-    }
   }
 
   // Called when this character's turn begins — replenish only the used slots.
@@ -9095,55 +8542,14 @@ function Game({ gameState, onReturnToLobby }) {
     return true;
   }
 
-  // 🎵 WA NO KOE (和の声) — Voice of Harmony. Passive: when the melody commit
-  // aligns with the Drive or Sustain chord stack, melody notes convert to
-  // +1 Drive or Sustain for 3 rounds. Checked during confirmNoteTrack.
-  function checkWaNoKoe(melodyLine, chordStack) {
-    const ns = noteStates['cosmic_ronin'] ?? {};
-    if (!(ns.unlockedSkills ?? []).includes('wa_no_koe')) return null;
-    if (!melodyLine || melodyLine.length === 0 || !chordStack) return null;
-
-    // "Aligns" means the melody notes overlap with the notes in the chord stack.
-    // Check if at least half the melody notes appear in the chord stack.
-    const chordNotes = new Set((chordStack ?? []).map(n => typeof n === 'string' ? n.replace(/\d/g, '') : n));
-    if (chordNotes.size === 0) return null;
-    const melodyNotes = melodyLine.map(n => typeof n === 'string' ? n.replace(/\d/g, '') : n);
-    const matchCount = melodyNotes.filter(n => chordNotes.has(n)).length;
-    const alignRatio = matchCount / melodyNotes.length;
-
-    if (alignRatio >= 0.5) {
-      // Determine which stat to boost based on chord quality
-      // If more Drive notes → boost Drive, else boost Sustain
-      const driveStack = ns.driveStack ?? [];
-      const sustainStack = ns.sustainStack ?? [];
-      const stat = driveStack.length >= sustainStack.length ? 'drive' : 'sustain';
-      return { stat, turnsLeft: 3 };
-    }
-    return null;
-  }
-
-  // Apply Wa no Koe buff if triggered during melody commit
-  function applyWaNoKoe(melodyLine, chordStack) {
-    if (!acting || acting.id !== 'cosmic_ronin') return;
-    const buff = checkWaNoKoe(melodyLine, chordStack);
-    if (!buff) return;
-
-    const ns = actingNoteState ?? {};
-    const existing = ns.waNoKoeBuffs ?? [];
-    const updated = [...existing, buff];
-
-    // Apply the +1 bonus
-    if (buff.stat === 'drive') {
-      const curTemp = ns.tempDrive ?? 0;
-      setNoteField(acting.id, { waNoKoeBuffs: updated, tempDrive: curTemp + 1 });
-      addLog(`🎵 WA NO KOE! Melody harmonizes with the chord — +1 Drive for 3 rounds.`);
-    } else {
-      const curTemp = ns.tempSustain ?? 0;
-      setNoteField(acting.id, { waNoKoeBuffs: updated, tempSustain: curTemp + 1 });
-      addLog(`🎵 WA NO KOE! Melody harmonizes with the chord — +1 Sustain for 3 rounds.`);
-    }
-    triggerEffectFlash(acting.id, '🎵', '和', '#4488ff');
-  }
+  // 🎵 WA NO KOE (和の声) — Voice of Harmony. RETIRED FROM THIS FILE.
+  // `checkWaNoKoe` and `applyWaNoKoe` both lived here and both were copies:
+  // the rule is in `engine/systems/melodyCommit.js` (`checkWaNoKoe`), and the
+  // WRITE is part of the commit patch, bug and all — the kernel deliberately
+  // reproduces the shipped B10-shaped bug where the pre-commit `tempDrive` is
+  // read and overwrites the Drive boost the same commit just earned. Fixing
+  // that is now a ONE-place edit (BOT_STRATEGY_HANDOFF §7). `tickWaNoKoe`
+  // below is untouched: expiry is a turn-start rule, not a commit rule.
 
   // Tick down Wa no Koe buffs at turn start (remove expired, decrement remaining)
   function tickWaNoKoe() {

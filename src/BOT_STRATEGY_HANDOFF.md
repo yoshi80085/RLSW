@@ -6,6 +6,8 @@
 > bot personas. Written 2026-08-12. Companion to `CHARACTER_HANDOFF.md` (the
 > kits), `ECONOMY_HANDOFF.md` (the currencies), `MULTIPLAYER_HANDOFF.md` §5e
 > (bot policies), and `ARCHITECTURE.md` (the STICs + Earned lenses).
+> 🧭 **For what order this gets built in relative to the Metalness rework and the
+> Theory routes, see `SEQUENCING.md`.**
 >
 > Unlike the other handoffs, **almost nothing here is shipped code yet.** This
 > is the spec the search bot is built against. Every number is cited to the
@@ -269,6 +271,10 @@ counted in spirit-turns seeded with the living-Spirit count).
 
 - **Win path:** attrition that snowballs. Azrael is the payoff engine; slime is
   the board tax that funds it.
+- 📌 **A full kit redesign now exists — `METALNESS_REWORK_DESIGN.md`.** The
+  arsenal below is the SHIPPED one; that doc proposes cutting Azrael and Number
+  of the Beast and rebuilding around the trail as a currency. `SEQUENCING.md`
+  step 3 is where it lands, and it is the step that unblocks this section.
 - **⚠️ Thinnest kit of the three, by design gap not by balance.** `CHARACTER_HANDOFF.md`
   lists him as "arsenal, **no innate identity**." **Do not tune his eval weights
   against the other two until that lands** — a bot that plays him "correctly"
@@ -518,13 +524,22 @@ without a fourth copy of it.
    zero — `gainFans` returns before touching `centerStreak`, so it does not even
    advance the promotion clock. That distinction is pinned.
 
-**⚠️ THE ARITHMETIC NOW EXISTS TWICE.** `confirmNoteTrack` has *not* been rewired
-to call the kernel — that is a large edit to a 960 KB file with no UI coverage,
-and it is the obvious next step, not this one. Until it lands, `melodyCommitCheck`
-§14 is a **drift guard**: it reads the monolith's source and fails the moment one
-of nine load-bearing expressions moves. That is the difference between a known
-duplicate and a silent divergence. `flashLines` is returned precisely so that the
-rewire can be a thin UI shell rather than a second port.
+**✅ REWIRED 2026-08-15 — the arithmetic now exists ONCE.** `confirmNoteTrack` is
+a UI shell over this kernel: it applies `patch`, walks `effects` in order, and
+renders `logs` / `flashLines`. It owns no commit arithmetic. Two further copies
+went with it — `checkWaNoKoe` and `applyWaNoKoe` were both defined in the
+monolith, putting the rule in three places and the write in two.
+
+⚠️ **The one line to protect is the rng shim.** The kernel asks for `rng.int(n)`;
+the client passes `{ int: (n) => drawSeededInt(n) }` so the mic's voice roll
+advances the cursor through `randomBatchDrawn` — a LOGGED action the netcode
+relays. A bare `makeRng()` there rolls identical numbers off an unlogged stream
+and desyncs every replay SILENTLY (§0.4). Pinned by `melodyCommitCheck` §14.
+
+`melodyCommitCheck` §14 was **inverted rather than deleted**: the old drift guard
+asked "does the second copy still match?", the new one asks "is there a second
+copy?" and fails if any pinned expression returns to the monolith. See
+`SEQUENCING.md` §3 for the deliberate behaviour changes the rewire carried.
 
 ### 6a. The action schema
 
@@ -598,12 +613,12 @@ which zeroes for the same reason.
 - ~~`confirmMelody`'s economy is the biggest remaining hole~~ — **closed
   2026-08-14**, §6d. The searcher now prices a long melody correctly and §6.6
   win rates are melody evidence again.
-- **⚠️ REWIRE `confirmNoteTrack` ONTO THE KERNEL — this is the new top item.**
-  The commit economy is currently in two places: `systems/melodyCommit.js` and
-  the monolith. `melodyCommitCheck.mjs` §14 guards the seam, but a guard is a
-  tripwire, not a fix, and the guard is written to be **deleted** the day the
-  rewire lands. The kernel returns `flashLines` and a full `report` so the
-  rewrite is a UI shell, not a second port.
+- ~~**REWIRE `confirmNoteTrack` ONTO THE KERNEL**~~ — ✅ **DONE 2026-08-15**,
+  §6d. The commit economy is in one place. §14 was inverted into a delegation
+  guard rather than deleted. 🧭 **The new top item is `SEQUENCING.md` step 2 —
+  lock Theory's architecture** (the spine/branch split and the three slot-rung
+  renames), because it is Spirit-agnostic, cheap, and constrains every rung
+  written after it.
 - **🐛 WA NO KOE SILENTLY EATS THE DRIVE BOOST, and the kernel reproduces it.**
   In Game, `applyWaNoKoe` reads `curTemp` off the *render-scoped* `actingNoteState`
   — the PRE-commit value — and writes `curTemp + 1` over the `tempDrive` the
@@ -611,9 +626,12 @@ which zeroes for the same reason.
   Drive boost and Wa no Koe, the boost is discarded and he ends on
   `oldTempDrive + 1`. It is reproduced in `melodyCommit.js` on purpose: a kernel
   that quietly plays a *better* game than the client is the same class of failure
-  as an invented rule. Fix it in one place, with the rewire above, and drop the
-  pin in `melodyCommitCheck` §13. (This is the second bug of exactly this shape
-  in this one function — B10's `driveStack ?? sustainStack` was the first.)
+  as an invented rule. ✅ **The rewire landed, so this IS now a one-place edit** —
+  change `melodyCommit.js`'s Wa no Koe block to read the patch's `newTempDrive`
+  instead of `prevTempDrive`, and drop the pin in `melodyCommitCheck` §13. The
+  monolith's own `applyWaNoKoe` is gone, so there is nothing left to keep in
+  step. (This is the second bug of exactly this shape in this one function —
+  B10's `driveStack ?? sustainStack` was the first.)
 - **Opponent replies need a second mode.** Both `legalActions` (returns `[]`)
   and `evaluate` (`apBanked` → 0) deliberately refuse to speak for a Spirit who
   is not `state.acting`. That is right for a one-ply generator and wrong for
