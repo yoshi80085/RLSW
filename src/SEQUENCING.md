@@ -101,7 +101,7 @@ roughly doubled both the cost of the rewire and the surface it could drift on.
 
 See §3 for what actually landed.
 
-### 2. Lock Theory's ARCHITECTURE only
+### 2. ✅ Lock Theory's ARCHITECTURE only — **DONE 2026-08-15**, `THEORY_ARCHITECTURE.md`
 `THEORY_ROUTES_DESIGN.md` §1 and §0.3, plus the three open questions in §5 that
 are structural rather than per-Spirit:
 
@@ -111,13 +111,27 @@ are structural rather than per-Spirit:
 - Is `theory_sus` the template for every rung rather than a stray? (It is the
   one existing rung that already pays for a gesture.)
 
-⚠️ **Renaming `theory_dom7` / `theory_modes` / `theory_chromatic` off the stack
-slots is part of this step, not a later polish.** Until those three names are
-free, the branches below cannot use them, and §0.1's complaint — three of the
-most characterful ideas in tonal harmony all meaning "shelf" — is load-bearing
-on everything after it.
+⚠️ ~~Renaming the three slot rungs is part of this step.~~ **CLOSED — it is a
+LABEL change, not an id change.** The ids are in the replay contract; the names
+were never blocking anything, because branch rungs get new ids anyway. See
+`THEORY_ARCHITECTURE.md` §3.3.
 
-**Deliverable: a page. Not a build.**
+**Deliverable: a page. Not a build.** — `THEORY_ARCHITECTURE.md`.
+
+⚠️ **The step turned up a correction that changes the rework's premise.** The
+routes doc's §0.1 claim — that the three rungs are "storage" with the idea
+deleted and the name kept — is false: `CONTEXT_TIERS` gives each of them a
+pardon tier as well as a slot and a palette step, and the names are accurate to
+the tier. §2c's "two tiers nobody owns" is false for the same reason. Both are
+corrected in place. The diagnosis that survives is **stronger**: the rungs are
+not empty, they are GENERIC, so the commit phase is the one place four
+characters are indistinguishable.
+
+Locked: two ladders; three spine rungs (slot + diatonic palette); the `literal`
+pardon stays on the spine because B4's colour payout hangs off it; the
+diatonic/chromatic line is the split line, so the four `discord_*` rungs become
+branch tier-1s; the horizontal detectors go to the branches; **ids are kept and
+labels rewritten**, which delivers §1a's intent at zero migration cost.
 
 ### 3. Land Metalness's innate + kit
 `METALNESS_REWORK_DESIGN.md` §2–§4. This is the loop-breaker: it depends on
@@ -253,7 +267,7 @@ Theory arm is underdeveloped" has no end state and the loop in §0 reforms.
 | Step | Done when |
 |---|---|
 | 1 · Rewire | ✅ nine suites green, `melodyCommitCheck` §14 inverted, no second copy |
-| 2 · Theory architecture | the three structural questions in §5 have written answers and the three slot rungs have new names |
+| 2 · Theory architecture | ✅ two ladders locked, the split line drawn, the rename question closed |
 | 3 · Metalness kit | the four abilities are in `legalActions` + `applyBotAction`, and the trail is a modelled state class |
 | 4 · Harness | 2000 seeded headless matches run, new bot vs. current bot, ≥60% bar, determinism regression pinned |
 | 5 · Monster's route | three rungs in, and the harness shows the commit phase changed — not just that it did not break |

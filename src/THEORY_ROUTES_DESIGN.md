@@ -5,6 +5,12 @@
 > out of a design conversation. Companion to `BOT_STRATEGY_HANDOFF.md` §3.2 (Db:
 > unlock vs. fuel), `CHARACTER_HANDOFF.md` (the kits), `ECONOMY_HANDOFF.md`.
 >
+> 🧭 **STRUCTURE IS NOW LOCKED ELSEWHERE — see `THEORY_ARCHITECTURE.md`.** It
+> settles the two-ladder shape, where the line between them falls, and the rule
+> every branch rung must obey. It also CORRECTS §0.1 and §2c below; both
+> corrections are marked in place. This doc remains the source for route
+> CONTENT.
+>
 > ⚠️ **NOTHING HERE IS IMPLEMENTED.** This is a design argument and a route
 > sketch. Every claim about current behaviour is cited to the constant or
 > function it came from and was read out of source during the conversation that
@@ -48,6 +54,28 @@ This is not a tuning miss. **Permissions cannot excite, because their upside is
 bounded by the size of a penalty you deliberately made small.**
 
 ### 0.1 The three rungs that give the game away
+
+> ⚠️ **CORRECTED 2026-08-15 — THIS SECTION IS WRONG, SOURCE WINS.** It claims
+> `theory_dom7`, `theory_modes` and `theory_chromatic` "all do the same thing,
+> which is storage," and that `theory_chromatic`'s idea was deleted while "the
+> shelving kept the name." Read out of `music/context.js`: all three gate a
+> PARDON TIER as well as a slot, and the names are accurate to the tier —
+> `CONTEXT_TIERS` maps `chord`→`theory_dom7` (a triad implies its natural 7th),
+> `extension`→`theory_modes` (tensions by chord quality), `approach`→
+> `theory_chromatic` (any note clean if the next resolves). They also each add
+> a palette step. Three jobs, not one. B9 rewrote every `desc` in the branch for
+> precisely this reason.
+>
+> **The real problem is not that the rungs are EMPTY. It is that they are
+> GENERIC** — every Spirit climbs the same ladder to the same vocabulary, so the
+> commit phase, which is the game's spine, is the one place four characters are
+> indistinguishable. That diagnosis is stronger and it does not need this
+> section's claim. See `THEORY_ARCHITECTURE.md` §0.
+>
+> The paragraph below is kept because the measurement inside it is real — the
+> chromatic run's Db payout WAS deleted at 0.02 Db per commit — and because a
+> deleted mistake teaches nobody anything.
+
 
 `theory_dom7`, `theory_modes` and `theory_chromatic` are named after the three
 most characterful ideas in tonal harmony — the dominant seventh, the mode,
@@ -120,9 +148,13 @@ Three rungs that sell stack slots (3 baseline → 6 at `STACK_CAP_MAX`), renamed
 for what they do rather than for musical ideas they do not deliver. Everyone buys
 these. This is "learn to hold more."
 
-⚠️ Renaming is not cosmetic here — it is what frees `dom7` / `modes` /
-`chromatic` to become real techniques on the branches below, instead of being
-permanently spent as synonyms for "shelf."
+⚠️ ~~Renaming is not cosmetic here — it is what frees `dom7` / `modes` /
+`chromatic` to become real techniques on the branches below.~~ **SUPERSEDED —
+`THEORY_ARCHITECTURE.md` §3.3.** It frees nothing: branch rungs get new ids
+anyway (`metal_diabolus`, not `theory_dom7`), so there was never a collision.
+And the ids live in `stackCapFor`, `CONTEXT_TIERS`, `rockGods.js`, `b0check` and
+every saved `unlockedSkills` array — i.e. in the replay contract. **Keep the ids,
+rewrite the labels**: that delivers the whole intent at zero migration cost.
 
 ### 1b. The per-Spirit branch — technique
 Three rungs per Spirit, exclusive, each one a verb. This is "learn to *do*
@@ -188,6 +220,16 @@ Ronin's is about motion — the clean contrast.
 Also vertical, but the opposite end from Monster — rich rather than dark. And
 `PARDON_ORDER = ['literal', 'chord', 'extension', 'approach']` already has two
 tiers nobody owns.
+
+> ⚠️ **CORRECTED 2026-08-15 — "nobody owns them" IS FALSE, source wins.**
+> `CONTEXT_TIERS` gives `extension` to `theory_modes` and `approach` to
+> `theory_chromatic`, both shared rungs any Spirit can buy today. Handing them to
+> Zero is not claiming vacant ground — it is **removing them from the entire
+> roster**, and it has to be priced and measured as the roster-wide nerf it is.
+> The instinct survives (`THEORY_ARCHITECTURE.md` §4 still routes `approach` to
+> him); the justification does not. Third doc inversion of this shape; the
+> pattern is always a design intention outliving the code that carried it.
+
 
 1. **Extensions** — the `extension` tier becomes his, and **pays** rather than
    pardons. 9ths and 13ths are the space-funk sound.
