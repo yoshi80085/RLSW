@@ -49,6 +49,19 @@ export function stackCapFor(unlockedSkills = []) {
 // included. Archived code (Rake's noteCost, gallopCondition) will fail to
 // import rather than silently assuming 5 — fix it to take the derived cap.
 
+// -- 🧪 THE SLIDE (METALNESS_REWORK_DESIGN.md §2) --
+// Free movement BACKWARDS along your own slime trail. Speed 4 + 2 slide steps
+// is the "~6 effective moves" the rework quotes.
+//
+// ⚠️ THE CAP AND THE CONSUMPTION ARE BOTH LIVE, AND THEY PRICE DIFFERENT THINGS.
+// Sliding eats the slime it crosses (§5's ruling: all three uses on one meter),
+// which prices a retreat against the Tentacle's reach and the Slam's fuel — a
+// long escape costs a long road. That is the INTERESTING cost, and it is
+// self-limiting only in the long run. The cap is what stops one enormous
+// disengage in a single turn, which no amount of trail-spending would prevent.
+// Tune the cap; the consumption is the design.
+export const SLIDE_STEPS_PER_TURN = 2;
+
 // -- AMP / DICE SYSTEM --
 // ── NEW RIG SYSTEM (AMP_DECK_DESIGN.md) ──
 // Every Spirit starts with a Main Amp at their corner: baseline 1d6, board-wide.

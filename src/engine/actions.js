@@ -540,6 +540,31 @@ export function chargeZoneUsed(spiritId, hexNum) {
 }
 
 /** Disco Inferno event fires — places flaming discs on random hexes. */
+// ── 🧪 THE SLIME TRAIL (METALNESS_REWORK_DESIGN.md §3) ──────────────────────
+// `turns` is the CALLER's: the shipped rule seeds it with the living-Spirit
+// count so the trail expires as the turn order comes back around. The rework
+// proposes a flat 2 — a balance change, deliberately not made here.
+export const SLIME_DROPPED = "SLIME_DROPPED";
+export function slimeDropped(spiritId, hexNum, turns) {
+  return { type: SLIME_DROPPED, spiritId, hexNum, turns };
+}
+/** One tick off every trail. ⚠️ End of turn, never start — see systems/slime.js. */
+export const SLIME_DECAYED = "SLIME_DECAYED";
+export function slimeDecayed() {
+  return { type: SLIME_DECAYED };
+}
+/** Spend trail. Omit `hexNums` to collapse the whole thing (the Slam). */
+export const SLIME_CLEARED = "SLIME_CLEARED";
+export function slimeCleared(spiritId, hexNums = null) {
+  return { type: SLIME_CLEARED, spiritId, hexNums };
+}
+
+/** 🧪 Retreat one hex along your own trail, spending the slime. 0 AP, no re-face. */
+export const SPIRIT_SLID = "SPIRIT_SLID";
+export function spiritSlid(spiritId, toNum) {
+  return { type: SPIRIT_SLID, spiritId, toNum };
+}
+
 export const FLAMING_HEXES_SET = "FLAMING_HEXES_SET";
 export function flamingHexesSet(hexes, rounds) {
   return { type: FLAMING_HEXES_SET, hexes, rounds };

@@ -14,6 +14,7 @@
     "test:legal": "node --import ./src/engine/testAssetStub.mjs src/engine/legalActionsCheck.mjs",
     "test:transition": "node --import ./src/engine/testAssetStub.mjs src/engine/transitionCheck.mjs",
     "test:melody": "node --import ./src/engine/testAssetStub.mjs src/engine/melodyCommitCheck.mjs",
+    "test:slime": "node --import ./src/engine/testAssetStub.mjs src/engine/slimeCheck.mjs",
     "test:riffparity": "node --import ./src/engine/testAssetStub.mjs src/riff/riffOffParity.test.mjs",
     "test:chroma": "node src/audio/chromaSelftest.mjs",
     "test:vision": "node src/vision/neckGeometrySelftest.mjs",

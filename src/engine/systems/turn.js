@@ -6,7 +6,7 @@
 //   { type, endedId, nextId, limelightHeld, roundCompleted }
 
 import { advanceTurnQueue } from "../../board/boardHelpers.js";
-import { LIMELIGHT_HEX } from "../../data/gameConstants.js";
+import { LIMELIGHT_HEX, SLIDE_STEPS_PER_TURN } from "../../data/gameConstants.js";
 
 /** TURN_STARTED — record whether the spirit begins its turn on the Limelight hex. */
 export function applyTurnStarted(state, { spiritId }) {
@@ -23,10 +23,26 @@ export function applyTurnStarted(state, { spiritId }) {
   };
 }
 
-/** MOVE_BUDGET_SET — melody commit grants steps; tripped halves them (min 1). */
+/**
+ * MOVE_BUDGET_SET — melody commit grants steps; tripped halves them (min 1).
+ *
+ * 🧪 It also refills the SLIDE budget, and this is the right beat for it rather
+ * than TURN_STARTED: the slide is legs, and this is the moment §1's spine hands
+ * out legs. A Spirit who never commits a melody gets no walk and no slide,
+ * which is correct — and it means there is exactly ONE refill path to reason
+ * about instead of two that must agree.
+ *
+ * ⚠️ `tripped` does NOT halve the slide. Tripped is a punishment for walking,
+ * and the slide is the one movement he did not walk — it is the road already
+ * behind him. If that reads as too generous in play, halve it here, in the one
+ * place the grant happens.
+ */
 export function applyMoveBudgetSet(state, { steps, tripped }) {
   const granted = tripped ? Math.max(1, Math.floor(steps / 2)) : steps;
-  return { ...state, turn: { ...state.turn, moveStepsLeft: granted } };
+  return {
+    ...state,
+    turn: { ...state.turn, moveStepsLeft: granted, slideStepsLeft: SLIDE_STEPS_PER_TURN },
+  };
 }
 
 /** BEATS_SPENT — combat actions pay AP; most also exhaust the action token. */

@@ -56,7 +56,7 @@
 import { applyAction } from "../reduce.js";
 import {
   moveStep, spiritFaced, beatsSpent, moveBudgetSet, turnEnded,
-  noteSheetPatched, attackRolled, fansChanged,
+  noteSheetPatched, attackRolled, fansChanged, spiritSlid,
 } from "../actions.js";
 import { battleConsequences, runBattleFlow, grantFame } from "../systems/battleFlow.js";
 import { attackParams, spiritChord } from "../systems/attackParams.js";
@@ -67,7 +67,7 @@ import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 /** Kinds this file can actually run headlessly. */
 export const MODELLED_KINDS = new Set([
   'melodyNote', 'stackCommit', 'confirmMelody',
-  'move', 'face', 'swing', 'sonic', 'pose', 'skillUnlock', 'endTurn',
+  'move', 'slide', 'face', 'swing', 'sonic', 'pose', 'skillUnlock', 'endTurn',
 ]);
 
 /** Kinds the rules allow but the engine cannot yet run. See the header. */
@@ -206,6 +206,17 @@ export function applyBotAction(state, action, ctx = {}) {
     case 'move':
       return {
         state: applyAction(state, moveStep(spiritId, action.to, !!ns.dazed), rng),
+        view, ok: true, reason: null, logs: [],
+      };
+
+    // 🧪 THE SLIDE — free retreat along his own trail, spending the slime.
+    // ⚠️ Unlike `move` this does NOT re-face him: `isRearHit` reads facing on
+    // DEFENCE, so a re-facing retreat would turn his back on the thing he just
+    // disengaged from and punish the escape it exists to be. Both trail
+    // abilities decline the re-face walking gives you.
+    case 'slide':
+      return {
+        state: applyAction(state, spiritSlid(spiritId, action.to), rng),
         view, ok: true, reason: null, logs: [],
       };
 

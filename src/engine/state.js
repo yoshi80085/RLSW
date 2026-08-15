@@ -91,6 +91,9 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
     turn: {
       count: 0,
       moveStepsLeft: 0,
+      // 🧪 Free retreat along the Monster's own trail. Refilled by
+      // MOVE_BUDGET_SET alongside moveStepsLeft — one grant, one refill path.
+      slideStepsLeft: 0,
       actionTokenUsed: false,
       startedOnLimelight: {},
       lastMove: null,
@@ -122,6 +125,12 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       boardTokens,
       chargeZones,
       flamingHexes: { hexes: [], roundsLeft: 0 },
+      // 🧪 THE SLIME TRAIL (METALNESS_REWORK_DESIGN.md §3) — an ORDERED, OWNED
+      // path per Spirit, newest first: { [ownerId]: [{ num, turns }, …] }.
+      // It was `useState({})` in the client, which made it invisible to the
+      // searcher and, being an unordered map, made two of its three uses
+      // (the Slide, the Tentacle) inexpressible. See systems/slime.js.
+      slime: {},
       // Fan Mail letters on the board (CREW_SYSTEM_DESIGN.md §4.1 / §11)
       // Each: { ownerId, hexNum } — addressed to one spirit, occupies a hex,
       // picked up on move-onto-hex (spends Action, grants Vibe).

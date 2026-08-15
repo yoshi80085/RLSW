@@ -36,6 +36,7 @@
 // searches two attacks in a turn is searching a game that does not exist.
 
 import { HEX_BY_NUM, HEX_BY_QR } from "../../board/hexMap.js";
+import { slideTarget } from "../systems/slime.js";
 import { axialNeighbors, angleTo, angleDiff, getFlatTopNeighborSlots, neighborInDirection } from "../../board/hexGeometry.js";
 import { usedHas } from "../systems/economy.js";
 import { skillEligibility } from "../systems/skills.js";
@@ -223,6 +224,30 @@ export function legalActions(state, spiritId, view = {}) {
     for (const { q, r } of axialNeighbors(here.q, here.r)) {
       const h = HEX_BY_QR[`${q},${r}`];
       if (h && !blocked.has(h.num)) out.push({ kind: 'move', to: h.num, apCost: MOVE_AP_COST });
+    }
+  }
+
+  // 🧪 THE SLIDE — free retreat BACKWARDS along your own slime trail.
+  //
+  // ⚠️ IT IS NOT GATED ON `ap`, AND THAT IS THE POINT. §1's spine is that every
+  // hex costs AP; this is the one exception the Monster's innate exists to be,
+  // and a searcher that never sees it will conclude he is simply slow. §2: his
+  // old innate rewarded moving while speed 4 punished it, so his identity fought
+  // his win path — now moving generates movement.
+  //
+  // ⚠️ It is also not gated on the ACTION TOKEN, which is what makes him "the
+  // only melee Spirit who can hit and leave" (§2). Swing, then slide out. A
+  // searcher that only offers the slide before an attack has deleted the line
+  // the ability was designed around.
+  //
+  // The destination is `slideTarget` — always one hex, always the one he most
+  // recently vacated, and it consumes that slime. Sliding is therefore priced
+  // against the Tentacle's reach and the Slam's fuel (§3's one meter), which is
+  // why there is no `apCost` here but there IS a real cost.
+  {
+    const slideTo = slideTarget(state, spiritId);
+    if (slideTo != null && !blocked.has(slideTo)) {
+      out.push({ kind: 'slide', to: slideTo, apCost: 0 });
     }
   }
 

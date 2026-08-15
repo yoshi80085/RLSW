@@ -2935,6 +2935,20 @@ function Game({ gameState, onReturnToLobby }) {
   const queuedSpirits = turnQueue.map(id => spiritById[id]).filter(Boolean).filter(s => !s.knockedOut);
 
   // Reachable hexes for movement: immediate neighbors only, step by step
+  // 🧪 THE SLIDE — the one hex the Monster may retreat to for free, or null.
+  // Derived straight off engine state so the highlight and the click can never
+  // disagree about legality: two notions of "in range" between a highlight and
+  // its resolver is precisely how you get a hex that lights up and then refuses
+  // the click (the same reasoning `displaceTargets` carries).
+  const slideHex = useMemo(() => {
+    if (action !== 'move' || !acting) return null;
+    const to = slideTarget(engineState, acting.id);
+    if (to == null) return null;
+    if (spiritByNum[to] || to === shadowHex) return null;   // a body on the road blocks it
+    return to;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [action, acting?.id, engineState.board?.slime, engineState.turn?.slideStepsLeft, engineState.spirits, shadowHex]);
+
   const reachable = useMemo(() => {
     if (action !== "move" || !acting || moveStepsLeft < 1) return new Set();
     const from = HEX_BY_NUM[acting.num];
@@ -4897,6 +4911,32 @@ function Game({ gameState, onReturnToLobby }) {
   // rival's end 2, 1, 0, so the board is clean again just before MM acts. It
   // self-scales as Spirits are knocked out, so the trail is always "up until my
   // next turn" regardless of how many are left standing.
+  // 🧪 THE SLIDE — free retreat one hex back along his own trail (§2).
+  // ⚠️ NO `dropPoisonSlime` HERE. Walking lays slime on the hex you leave; the
+  // slide does the opposite — it SPENDS the road rather than extending it. Laying
+  // fresh slime behind a retreat would make the trail self-renewing and the
+  // "three uses, one meter" design (§3) would quietly stop costing anything.
+  function slide(toNum) {
+    const before = acting?.num;
+    dispatch(spiritSlid(acting.id, toNum));
+    addLog(`🧪 ${acting?.name} SLIDES back through the slime — #${before} → #${toNum} (free, ${engineRef.current.turn.slideStepsLeft} left)`);
+    triggerEffectFlash(acting.id, '🧪', 'SLIDE', '#44ff44');
+    setMovedThisTurn(true);
+    // ⚠️ ARRIVING IS ARRIVING. The slide is free and it does not re-face him, but
+    // the hex he lands on is a hex: the same on-arrival checks `move` runs must
+    // run here, or the retreat becomes a way to walk through hazards for nothing.
+    // `checkPoisonSlime` is deliberately in the list even though he is immune to
+    // his OWN goo — the immunity is a rule about owners now, so a second
+    // trail-layer's slime on that hex would still bite him.
+    checkPoisonSlime(acting.id, toNum);
+    checkGravityVortex(acting.id, toNum);
+    checkFlamingDisc(acting.id, toNum);
+    checkStageFxHex(acting.id, toNum);
+    checkTokenPickup(acting.id, toNum);
+    checkChargeZonePickup(acting.id, toNum);
+    checkEventTrigger(acting.id, toNum);
+  }
+
   function dropPoisonSlime(fromHex) {
     if (fromHex == null) return;
     const aliveCount = Math.max(1, spirits.filter(s => !s.knockedOut).length);
@@ -10943,6 +10983,11 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
     if (action === "move") {
+      // 🧪 THE SLIDE WINS THE TIE, and it has to. The retreat hex is adjacent, so
+      // it is usually also a legal WALK — and walking there costs AP and re-faces
+      // him. If the walk took priority the player would simply never be offered
+      // the free version of a move they were going to make anyway.
+      if (slideHex != null && num === slideHex) { slide(num); return; }
       if (reachable.has(num)) move(num);
       else addLog("❌ Can't reach that hex!");
       return;
@@ -11066,6 +11111,9 @@ function Game({ gameState, onReturnToLobby }) {
         if (neighbors.some(n => n.num === hex.num)) return '#00ccff22';
       }
     }
+    // 🧪 The retreat hex — brighter than plain slime, because it is a MOVE you
+    // can make, not just a hazard you can see.
+    if (slideHex != null && hex.num === slideHex) return '#44ff4455';
     // 🧪 Poison slime tint
     if (poisonSlime[hex.num]) return '#44ff4412';
     return "transparent";
