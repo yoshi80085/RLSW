@@ -12,11 +12,13 @@ import assert from "node:assert";
 import { makeInitialState } from "./state.js";
 import { applyAction } from "./reduce.js";
 import { slimeDropped, slimeDecayed, slimeCleared, spiritSlid, moveBudgetSet } from "./actions.js";
+import { applyBotAction } from "./policies/transition.js";
+import { makeRng } from "./rng.js";
 import {
   trailOf, trailRun, slimeAt, slimeBites, slideTarget,
   SLIME_VIBE_DAMAGE, SLIME_TRAIL_TURNS_PROPOSED,
 } from "./systems/slime.js";
-import { legalActions } from "./policies/legalActions.js";
+import { legalActions, tentacleOptions, swingCone } from "./policies/legalActions.js";
 import { SLIDE_STEPS_PER_TURN } from "../data/gameConstants.js";
 import { HEX_BY_NUM, ALL_HEXES } from "../board/hexMap.js";
 import { axialDist } from "../board/hexGeometry.js";
@@ -289,6 +291,96 @@ function walk(startNum, n) {
   const blockedSt = { ...st, spirits: st.spirits.map(s => s.id === RONIN ? { ...s, num: chain[chain.length - 2] } : s) };
   ok(!legalActions(blockedSt, MM, {}).some(a => a.kind === 'slide'),
      'a body on the road blocks the retreat, same as any hex');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 10. 🐙 THE TENTACLE — a Swing thrown from the trail, paid for in road (§4a).
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  const chain = walk(base.spirits[0].num, 4);
+  let st = { ...base, acting: MM };
+  for (let i = 0; i < chain.length - 1; i++) st = apply(st, slimeDropped(MM, chain[i], 9));
+  st = { ...st, spirits: st.spirits.map(s => s.id === MM ? { ...s, num: chain[chain.length - 1] } : s) };
+  const self = st.spirits.find(s => s.id === MM);
+
+  const opts = tentacleOptions(st, self);
+  eq(opts.length, chain.length - 1, 'one origin per hex of the contiguous run');
+  eq(opts.map(o => o.reach), opts.map((_, i) => i + 1), 'reach counts outward from him');
+
+  // ⚠️ REACH IS PRICED BY INDEX — the far origin costs the whole road.
+  eq(opts[0].spend, [chain[chain.length - 2]], 'the nearest origin spends one hex');
+  eq(opts[opts.length - 1].spend.length, opts.length,
+     '⚠️ the furthest origin spends the WHOLE road — range is priced, which is what makes it compete with the Slide and the Slam');
+  for (const o of opts) eq(o.spend[o.spend.length - 1], o.origin, 'the origin is always the last hex paid for');
+
+  // ⚠️ THE ARM HAS ITS OWN FACING, and it is the road — not his.
+  const spun = { ...self, facing: (self.facing ?? 0) + Math.PI };
+  deepSameCones(tentacleOptions({ ...st, spirits: st.spirits.map(s => s.id === MM ? spun : s) }, spun), opts);
+  function deepSameCones(a, b) {
+    eq(a.map(o => [...o.cone].sort()), b.map(o => [...o.cone].sort()),
+       '⚠️ turning him on the spot does NOT move the arm — the cone faces down the road it travelled, which is why he never has to re-face');
+  }
+
+  // …and it is genuinely a different cone from his own Swing.
+  const ownCone = [...swingCone(self)].sort();
+  ok(opts.some(o => JSON.stringify([...o.cone].sort()) !== JSON.stringify(ownCone)),
+     'the arm threatens hexes his own Swing cannot');
+
+  // A gap in the road shortens the option list, exactly as it shortens the run.
+  const broken = apply(st, slimeCleared(MM, [chain[chain.length - 3]]));
+  eq(tentacleOptions(broken, self).length, 1, 'a broken road offers only the origins before the break');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 11. 🐙 THE TENTACLE THROUGH THE SEARCHER — legal, and it PAYS.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  const chain = walk(base.spirits[0].num, 4);
+  let st = { ...base, acting: MM };
+  for (let i = 0; i < chain.length - 1; i++) st = apply(st, slimeDropped(MM, chain[i], 9));
+  st = { ...st, spirits: st.spirits.map(s => s.id === MM ? { ...s, num: chain[chain.length - 1] } : s) };
+  st = apply(st, moveBudgetSet(5, false));
+  st = { ...st, noteStates: { ...st.noteStates, [MM]: {
+    ...st.noteStates[MM], hasConfirmed: true, unlockedSkills: ['tentacle'],
+  } } };
+
+  const self = st.spirits.find(s => s.id === MM);
+  const opts = tentacleOptions(st, self);
+  const far  = opts[opts.length - 1];
+  const spot = [...far.cone][0];
+
+  // No skill, no arm.
+  const unskilled = { ...st, noteStates: { ...st.noteStates, [MM]: { ...st.noteStates[MM], unlockedSkills: [] } } };
+  const parked = { ...unskilled, spirits: unskilled.spirits.map(s => s.id === RONIN ? { ...s, num: spot } : s) };
+  ok(!legalActions(parked, MM, {}).some(a => a.kind === 'tentacle'), 'the Tentacle is an unlock, not an innate');
+
+  // Rival parked in the far cone — the arm reaches.
+  const armed = { ...st, spirits: st.spirits.map(s => s.id === RONIN ? { ...s, num: spot } : s) };
+  const acts  = legalActions(armed, MM, {}).filter(a => a.kind === 'tentacle');
+  ok(acts.length >= 1, 'the searcher is offered the strike');
+  ok(acts.every(a => a.apCost === 1), 'it costs a Swing, because it IS a Swing');
+  ok(acts.every(a => a.spend.length === a.reach), '⚠️ every action carries its own price, so a scorer can compare reaches');
+
+  // ⚠️ EVERY (rival × origin) PAIR, not just the cheapest — §6a: this generator
+  // answers what is LEGAL, never what is good. This is also exactly the
+  // branching blow-up §6 predicted, and why beamActions' null `score` is now a
+  // blocker rather than a to-do.
+  const reaches = new Set(acts.map(a => a.reach));
+  ok(reaches.size >= 1, 'reaches are enumerated rather than pre-narrowed');
+
+  // ── AND IT PAYS. The road it reached through is gone, win or lose. ──
+  const chosen = acts.reduce((a, b) => (a.reach >= b.reach ? a : b));
+  const before = trailOf(armed, MM).length;
+  const res = applyBotAction(armed, chosen, { rng: makeRng(7) });
+  ok(res.ok, 'the transition runs it');
+  const after = trailOf(res.state, MM).length;
+  eq(after, before - chosen.reach,
+     '⚠️ the reach is PAID IN ROAD — spent before the dice, so a whiffed reach is never free');
+  for (const h of chosen.spend) eq(slimeAt(res.state, h), null, 'every hex it reached through is gone');
+  eq(res.state.spirits.find(s => s.id === MM).num, self.num, 'and he never moved');
+  eq(res.state.spirits.find(s => s.id === MM).facing, self.facing,
+     '⚠️ …and never turned. Both trail abilities decline the re-face walking gives you.');
+  eq(res.state.turn.actionTokenUsed, true, 'it spends the one attack of the turn');
 }
 
 console.log(`✅ slimeCheck — ${count} assertions passed`);

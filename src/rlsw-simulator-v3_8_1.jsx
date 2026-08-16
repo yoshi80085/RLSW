@@ -419,6 +419,7 @@ const SIGNATURE_TESTS = {
     { id:'number_of_the_beast', label:'6️⃣ Number of the Beast', pre:[] },
     { id:'master_moshpits',     label:'🤘 Master of Moshpits',  pre:[] },
     { id:'slime',               label:'🧪 Slime',               pre:[] },
+    { id:'tentacle',            label:'🐙 Tentacle',            pre:[] },
     { id:'azrael',              label:'💀 Azrael',               pre:[] },
   ]},
   intergalactic_0: { name: 'Intergalactic 0', color: '#aa55ff', skills: [
@@ -688,6 +689,8 @@ const SKILL_TREE = {
           desc:'Pulls 3 fans out of the stands and onto the board for a pit. +2 Drive that STANDS — it survives battles and lasts until you call the next pit. Once per turn.' },
         { id:'slime',           label:'Slime',              icon:'🧪', dbCost:10, gated:false,
           desc:'On Swing/Smash hit, spend 1 Db to slime the rival — their next turn\'s note regeneration is halved.' },
+        { id:'tentacle',        label:'Tentacle',           icon:'🐙', dbCost:10, gated:false,
+          desc:'Swing from any hex of your SLIME TRAIL instead of from where you stand — and the trail you reach THROUGH is consumed. Next to the nearest slime costs 1 hex; three hexes down the road costs 3. It does not move you and it does not turn you, so reaching behind means the rival in front is hitting your back. Range is real, and you pay for it in road.' },
         { id:'azrael',          label:'Azrael',             icon:'💀', dbCost:12, gated:false,
           desc:'Each rival you knock down feeds Fame equal to your knockdown streak (1st→1, 2nd→2…). Resets when YOU go down.' },
       ],
@@ -1968,6 +1971,10 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── POINTS FLASH STATE ──────────────────────────────────────────────────────
   const [pointsFlash, setPointsFlash] = useState(null);
+  // 🐙 The tentacle's gesture: { key, pts:[{x,y}], target:{x,y} }. Presentation
+  // only — the hexes are already spent and the blow already rolled by the time
+  // this is set. See ui/TentacleFX.jsx.
+  const [tentacleFx, setTentacleFx] = useState(null);
   // voiceRollFx: { value:1..6, success:bool, key } — drives the animated Mic d6
   const [voiceRollFx, setVoiceRollFx] = useState(null);
   // 🔊 Amp deck thump — { id, key } bumps a 300ms speaker-thump on that
@@ -2935,6 +2942,27 @@ function Game({ gameState, onReturnToLobby }) {
   const queuedSpirits = turnQueue.map(id => spiritById[id]).filter(Boolean).filter(s => !s.knockedOut);
 
   // Reachable hexes for movement: immediate neighbors only, step by step
+  // 🐙 THE TENTACLE — every hex the arm threatens, mapped to the CHEAPEST reach
+  // that gets there.
+  //
+  // ⚠️ `legalActions` deliberately emits EVERY (rival × origin) pair, because it
+  // answers what is legal and never what is good (§6a). A human aiming with a
+  // mouse wants the opposite: one click, the cheapest road. So the narrowing
+  // lives HERE, in the UI, where it is a convenience — and not in the generator,
+  // where it would be a preference invisible to tuning.
+  const tentacleAim = useMemo(() => {
+    if (!acting || !(actingNoteState?.unlockedSkills ?? []).includes('tentacle')) return new Map();
+    const m = new Map();
+    for (const opt of tentacleOptions(engineState, acting)) {
+      for (const num of opt.cone) {
+        const prev = m.get(num);
+        if (!prev || opt.reach < prev.reach) m.set(num, opt);
+      }
+    }
+    return m;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acting?.id, acting?.num, engineState.board?.slime, actingNoteState?.unlockedSkills]);
+
   // 🧪 THE SLIDE — the one hex the Monster may retreat to for free, or null.
   // Derived straight off engine state so the highlight and the click can never
   // disagree about legality: two notions of "in range" between a highlight and
@@ -4452,6 +4480,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'number_of_the_beast') addLog(`6️⃣ ${spirit?.name} — NUMBER OF THE BEAST! At 2 Vibe or less, spend 1 Db to go BERSERK: +6 Drive with no cap, immune to knockback, 1 Vibe per attack. It ends when somebody hits the floor.`);
     if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull 3 fans onto the board for a pit — +2 Drive that stands until the next pit.`);
     if (skillId === 'slime')        addLog(`🧪 ${spirit?.name} — SLIME! Swing/Smash hits can spend 1 Db to slime rivals — halving their next turn's note regen.`);
+    if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Swing from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
     if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
     if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Dash in a straight line — remaining AP becomes bonus Drive. 2-round cooldown.`);
     if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (costs 1 Drive token). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn.`);
@@ -7077,7 +7106,15 @@ function Game({ gameState, onReturnToLobby }) {
   // enter_defender → flash_sustain → pick_sustain_slide →
   // atk_die_spin → [click] → pick_atk_slide →
   // def_die_spin → [click] → pick_def_slide → result
-  function initiateSwing(targetId) {
+  /**
+   * @param {string} targetId
+   * @param {object|null} tent 🐙 `{ origin, spend, reach }` from `tentacleOptions`
+   *   when the blow is thrown from the slime trail instead of from his own hex.
+   *   Everything else about the swing is IDENTICAL — same 1 AP, same token, same
+   *   dice — so the Tentacle threads through this function rather than growing a
+   *   second combat path that would drift from it.
+   */
+  function initiateSwing(targetId, tent = null) {
     if (!acting) return;
     if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
     if (actionTokenUsed) { addLog('⚔️ Already used your Action Token this turn!'); return; }
@@ -7096,6 +7133,22 @@ function Game({ gameState, onReturnToLobby }) {
     // 🥊 The jab: cheap (1 AP) and chord-driven, but still your one Action this turn.
     dispatch(beatsSpent(1, true));
     setAction(null);
+
+    // 🐙 THE TENTACLE'S BILL — the road it reached THROUGH is gone, paid before
+    // the dice and regardless of the outcome. You used the road to throw the
+    // punch (§4a); paying on hit would make a whiffed reach free, and free reach
+    // is the one thing this ability must never be.
+    if (tent) {
+      dispatch(slimeCleared(acting.id, tent.spend));
+      const pt = n => ({ x: Math.round(HEX_BY_NUM[n].px * SCALE), y: Math.round(HEX_BY_NUM[n].py * SCALE) });
+      setTentacleFx({
+        key: Date.now() + Math.random(),
+        pts: [pt(attacker.num), ...tent.spend.map(pt)],
+        target: pt(defender.num),
+      });
+      setTimeout(() => setTentacleFx(null), 1600);
+      addLog(`🐙 ${attacker.name} reaches ${tent.reach} hex${tent.reach !== 1 ? 'es' : ''} through the slime — the road behind him is GONE.`);
+    }
 
     const nsA = noteStates[attacker.id] ?? {};
     const nsD = noteStates[targetId]    ?? {};
@@ -7173,7 +7226,14 @@ function Game({ gameState, onReturnToLobby }) {
     // the blow lands (margin-scaled, +1 from the rear wedge; see applyChordFray).
     // ⚠️ Measured against the positions as they stand AT THE VERDICT, not when
     // the swing was declared — the defender may have been shoved since.
-    if (attackerWon) applyChordFray(targetId, margin, isHitFromBehind(attacker, defender));
+    //
+    // 🐙 ⚠️ AND THE BLOW COMES FROM THE ORIGIN, NOT FROM HIM. `isHitFromBehind`
+    // reads the line between attacker and defender, so a tentacle that snakes
+    // around a rival hits the back they turned on the SLIME, not the back they
+    // turned on the Monster. Reaching around behind somebody is the point of
+    // having an arm, and this is the one line that makes it true.
+    const blowFrom = tent ? { ...attacker, num: tent.origin } : attacker;
+    if (attackerWon) applyChordFray(targetId, margin, isHitFromBehind(blowFrom, defender));
 
     if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on a dropped instrument — Drive -1!`);
     addLog(`⚔️ ${attacker.name} SWINGS at ${defender.name}!${defenderPosing ? ' — caught posing!' : ''}`);
@@ -10982,6 +11042,13 @@ function Game({ gameState, onReturnToLobby }) {
       else addLog("👤 The shadow can only step to an open adjacent hex.");
       return;
     }
+    if (action === "tentacle") {
+      const opt = tentacleAim.get(num);
+      const rival = spirits.find(sp => sp.num === num && sp.id !== acting?.id && !sp.knockedOut);
+      if (opt && rival) { initiateSwing(rival.id, opt); setAction(null); }
+      else addLog("🐙 Click a rival standing in the arm's reach — the lit hexes off your slime trail.");
+      return;
+    }
     if (action === "move") {
       // 🧪 THE SLIDE WINS THE TIE, and it has to. The retreat hex is adjacent, so
       // it is usually also a legal WALK — and walking there costs AP and re-faces
@@ -11110,6 +11177,10 @@ function Game({ gameState, onReturnToLobby }) {
         const neighbors = getFlatTopNeighborSlots(actingHex);
         if (neighbors.some(n => n.num === hex.num)) return '#00ccff22';
       }
+    }
+    // 🐙 The arm's reach — a rival standing here is takeable this turn.
+    if (action === 'tentacle' && tentacleAim.has(hex.num)) {
+      return spiritByNum[hex.num] ? '#5cff6a55' : '#5cff6a22';
     }
     // 🧪 The retreat hex — brighter than plain slime, because it is a MOVE you
     // can make, not just a hazard you can see.
@@ -13588,6 +13659,40 @@ function Game({ gameState, onReturnToLobby }) {
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
+            {/* ── 🐙 TENTACLE — reach through your own slime (METALNESS §4a) ──
+                It IS a Swing, so it wears the Swing's gates: a confirmed turn,
+                the Action Token unspent, 1 AP. What it does NOT need is to be
+                standing next to anybody — that is the whole ability. */}
+            {!rockGodActive && (actingNoteState?.unlockedSkills ?? []).includes('tentacle') && (() => {
+              const inReach = spirits.filter(sp =>
+                !sp.knockedOut && sp.id !== acting?.id && tentacleAim.has(sp.num));
+              const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
+              const canFire = !grayed && inReach.length > 0;
+              return (
+                <button className={canFire ? 'btn active' : 'btn'}
+                  style={{borderColor:'#5cff6a', color:'#8dffa0', opacity: canFire ? 1 : 0.45}}
+                  disabled={!canFire}
+                  title={grayed
+                    ? '🐙 Tentacle — needs a confirmed turn, your Action Token, and 1 AP.'
+                    : tentacleAim.size === 0
+                    ? '🐙 Tentacle — no trail to reach through. Walk somewhere first; the road IS the weapon.'
+                    : inReach.length === 0
+                    ? '🐙 Tentacle — the arm can reach, but nobody is standing in it.'
+                    : '🐙 Tentacle — strike from the slime. The road you reach through is spent.'}
+                  onClick={() => {
+                    if (action === 'tentacle') { setAction(null); return; }
+                    if (!canFire) return;
+                    setAction('tentacle');
+                    addLog('🐙 TENTACLE — click a rival in the lit hexes. The further down the road you reach, the more of it you spend.');
+                  }}>
+                  🐙 Tentacle{inReach.length > 0 ? ` (${inReach.length})` : ''}{grayed && moveStepsLeft < 1 ? ' (1AP)' : ''}
+                </button>
+              );
+            })()}
+            {action === 'tentacle' && (
+              <button className="btn" style={{borderColor:'#888',color:'#888'}}
+                onClick={() => setAction(null)}>Cancel</button>
+            )}
             {/* SONIC ATTACK — always wired (Main Amp); hover previews beam + rig range ring */}
             {!rockGodActive && (() => {
               const beam    = acting ? getSonicBeam(acting) : new Set();
@@ -14871,6 +14976,12 @@ function Game({ gameState, onReturnToLobby }) {
 
               {/* ── 🔊 AMP DECKS ── each Spirit's rig grows at their home corner;
                   radius ring pulses out while the acting Spirit aims a Sonic Attack ── */}
+              {/* 🐙 THE TENTACLE — drawn over the board so the arm reads as being
+                  ON the slime rather than under it. It follows the ACTUAL trail
+                  hexes it spent, which is what makes the reach legible: the
+                  player watches the road get used. */}
+              <TentacleFX fx={tentacleFx} scale={HS} />
+
               <AmpDecks spirits={spirits} noteStates={noteStates} actingId={acting?.id}
                 aiming={action === 'sonic' || hoverPreview === 'sonic'} thumpFx={deckThump}/>
 

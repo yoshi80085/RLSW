@@ -36,7 +36,7 @@
 // searches two attacks in a turn is searching a game that does not exist.
 
 import { HEX_BY_NUM, HEX_BY_QR } from "../../board/hexMap.js";
-import { slideTarget } from "../systems/slime.js";
+import { slideTarget, trailRun } from "../systems/slime.js";
 import { axialNeighbors, angleTo, angleDiff, getFlatTopNeighborSlots, neighborInDirection } from "../../board/hexGeometry.js";
 import { usedHas } from "../systems/economy.js";
 import { skillEligibility } from "../systems/skills.js";
@@ -73,6 +73,44 @@ export function swingCone(spirit) {
     if (angleDiff(angleTo(hex, nb), spirit.facing ?? 0) <= CONE_HALF_ARC) cone.add(nb.num);
   }
   return cone;
+}
+
+/**
+ * 🐙 THE TENTACLE — every way the Monster can strike from his own trail.
+ * `METALNESS_REWORK_DESIGN.md` §4a. Returns one entry per reachable ORIGIN:
+ * `{ origin, spend, reach, cone }`.
+ *
+ * ⚠️ **THE ARM HAS ITS OWN FACING, AND IT IS THE ROAD.** A cone needs a
+ * direction and he never turns, so the direction is the one the tentacle
+ * travelled to arrive: from the previous hex of the run into the origin. That
+ * keeps the Swing's existing cone geometry (one `CONE_HALF_ARC` to retune), and
+ * it makes HOW HE LAID THE TRAIL into the decision — §2's "his movement is an
+ * attack", turned into something a player can aim.
+ *
+ * ⚠️ **REACH IS PRICED BY INDEX.** Striking from `run[k]` consumes `run[0..k]`,
+ * so the far origin costs the whole road. §4a's four jobs all fall out of that
+ * one rule: range is priced, it competes with the Slide and the Slam, rivals
+ * can COUNT the threat because the road is public, and the branching stays
+ * bounded by trail length rather than by board size.
+ *
+ * A body standing on the trail does NOT block the arm — it slithers along the
+ * ground past ankles. (It does block the SLIDE, which is a body moving.)
+ */
+export function tentacleOptions(state, self) {
+  const run = trailRun(state, self?.id);
+  const out = [];
+  for (let k = 0; k < run.length; k++) {
+    const originHex = HEX_BY_NUM[run[k]];
+    const prevHex   = HEX_BY_NUM[k === 0 ? self.num : run[k - 1]];
+    if (!originHex || !prevHex) break;
+    out.push({
+      origin: run[k],
+      spend:  run.slice(0, k + 1),
+      reach:  k + 1,
+      cone:   swingCone({ num: run[k], facing: angleTo(prevHex, originHex) }),
+    });
+  }
+  return out;
 }
 
 /**
@@ -277,6 +315,31 @@ export function legalActions(state, spiritId, view = {}) {
     if (ap >= SWING_AP_COST) {
       for (const r of rivals) {
         if (cone.has(r.num)) out.push({ kind: 'swing', targetId: r.id, apCost: SWING_AP_COST });
+      }
+    }
+
+    // 🐙 THE TENTACLE — the same 1 AP jab, launched from a hex on his trail.
+    //
+    // ⚠️ EVERY (rival × origin) PAIR IS EMITTED, NOT JUST THE CHEAPEST REACH,
+    // and that is §6a's rule rather than an oversight: this file answers what is
+    // LEGAL, never what is good. Emitting only the shortest reach would smuggle
+    // a preference in where tuning can never see it — and the longer reach is
+    // sometimes the better play, because it strikes from a different angle.
+    //
+    // ⚠️ THIS IS WHAT MAKES `beamActions`' NULL `score` A BLOCKER. §6 predicted
+    // it: cone-from-each-trail-hex multiplies his jab branches by trail length,
+    // and an unranked beam is just "the first 5", so a long trail would push
+    // real options off the end of an arbitrary list. `spend` and `reach` ride on
+    // each action so a scorer can price them the moment one exists.
+    if ((ns.unlockedSkills ?? []).includes('tentacle')) {
+      for (const opt of tentacleOptions(state, self)) {
+        for (const r of rivals) {
+          if (!opt.cone.has(r.num)) continue;
+          out.push({
+            kind: 'tentacle', targetId: r.id, apCost: SWING_AP_COST,
+            origin: opt.origin, spend: opt.spend, reach: opt.reach,
+          });
+        }
       }
     }
 

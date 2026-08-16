@@ -56,7 +56,7 @@
 import { applyAction } from "../reduce.js";
 import {
   moveStep, spiritFaced, beatsSpent, moveBudgetSet, turnEnded,
-  noteSheetPatched, attackRolled, fansChanged, spiritSlid,
+  noteSheetPatched, attackRolled, fansChanged, spiritSlid, slimeCleared,
 } from "../actions.js";
 import { battleConsequences, runBattleFlow, grantFame } from "../systems/battleFlow.js";
 import { attackParams, spiritChord } from "../systems/attackParams.js";
@@ -67,7 +67,7 @@ import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 /** Kinds this file can actually run headlessly. */
 export const MODELLED_KINDS = new Set([
   'melodyNote', 'stackCommit', 'confirmMelody',
-  'move', 'slide', 'face', 'swing', 'sonic', 'pose', 'skillUnlock', 'endTurn',
+  'move', 'slide', 'face', 'swing', 'sonic', 'tentacle', 'pose', 'skillUnlock', 'endTurn',
 ]);
 
 /** Kinds the rules allow but the engine cannot yet run. See the header. */
@@ -227,15 +227,31 @@ export function applyBotAction(state, action, ctx = {}) {
       };
 
     // ── VIOLENCE ───────────────────────────────────────────────────────────
+    // 🐙 The Tentacle is a Swing with a different ORIGIN and a different bill.
+    // It rolls as a swing — same 1 AP, same action token, same cone, same dice —
+    // so it deliberately falls through into the case below rather than growing a
+    // second combat path. What is bespoke is the payment, and it is paid FIRST:
+    // the road is spent whether or not the blow lands, because you used the road
+    // to throw the punch (§4a). Paying on hit would make a whiffed reach free,
+    // and free reach is the one thing this ability must never be.
+    case 'tentacle':
     case 'swing':
     case 'sonic': {
-      const params = attackParams(state, spiritId, action.targetId, kind, view);
+      const isTentacle = kind === 'tentacle';
+      const rollKind   = isTentacle ? 'swing' : kind;
+
+      // ⚠️ THE TRAIL IS SPENT BEFORE ANYTHING ELSE — and before `attackParams`,
+      // so the stats are derived off the board the blow actually lands on.
+      let pre = state;
+      if (isTentacle) pre = applyAction(pre, slimeCleared(spiritId, action.spend ?? []), rng);
+
+      const params = attackParams(pre, spiritId, action.targetId, rollKind, view);
       if (!params) return fail(state, view, 'illegal', 'attacker or defender not on the board');
       const { _derived, ...rollOpts } = params;
 
       // Pay first, exactly as the client does: AP off the shared pool, and the
       // Action Token — the one-attack-per-turn rule (§6a).
-      let next = applyAction(state, beatsSpent(kind === 'swing' ? SWING_AP_COST : SONIC_AP_COST, true), rng);
+      let next = applyAction(pre, beatsSpent(rollKind === 'swing' ? SWING_AP_COST : SONIC_AP_COST, true), rng);
 
       // ⚠️ The exposure is consumed by being READ. `attackParams` cannot clear
       // it (it is pure), so the clear happens here — miss it and the rival's
@@ -244,7 +260,7 @@ export function applyBotAction(state, action, ctx = {}) {
         next = patchNs(next, action.targetId, { smashExposed: false }, rng);
       }
 
-      next = applyAction(next, attackRolled(kind, spiritId, action.targetId, rollOpts), rng);
+      next = applyAction(next, attackRolled(rollKind, spiritId, action.targetId, rollOpts), rng);
       const battle = next.battle;
 
       // The ordered aftermath — the same generator the UI drives, run to
