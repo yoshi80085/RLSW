@@ -42,7 +42,7 @@ import { usedHas } from "../systems/economy.js";
 import { skillEligibility } from "../systems/skills.js";
 import { sonicRig } from "../systems/sonicRig.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
-import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST } from "../../data/gameConstants.js";
+import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS } from "../../data/gameConstants.js";
 import { CONE_HALF_ARC, SPIRIT_ONLY_ROUTE } from "./bot.js";
 // 📻 distFromHome carries the Boom Box rule with it — Intergalactic 0 reads
 // distance 0 while charged, which is exactly what keeps his Sonic legal out
@@ -263,6 +263,28 @@ export function legalActions(state, spiritId, view = {}) {
       const h = HEX_BY_QR[`${q},${r}`];
       if (h && !blocked.has(h.num)) out.push({ kind: 'move', to: h.num, apCost: MOVE_AP_COST });
     }
+  }
+
+  // 🧪 SLIME — call the ooze. 1 AP, once a turn, and movement BECOMES 3.
+  //
+  // ⚠️ INNATE, so there is no `unlockedSkills` gate here. `CHARACTER_HANDOFF`
+  // lists "arsenal, no innate identity" as the gap this whole rework exists to
+  // close; charging Db for the road as well as AP would re-open it, and a Spirit
+  // whose signature is a purchase has no signature until he can afford one.
+  //
+  // ⚠️ THE `slimingId` CHECK IS THE ONCE-PER-TURN RULE and it is doing real work.
+  // Because the call SETS movement rather than adding to it, a second call would
+  // top the pool back up to 3 for 1 AP — repeatable, so 1 AP would buy 2 net
+  // steps for as long as the AP held out. That is a movement engine, not an
+  // ability, and the ceiling on his road (§3's whole currency premise) would go
+  // with it.
+  //
+  // ⚠️ Emitted with `apGranted` for the same reason `confirmMelody` is: this
+  // action REWRITES the budget every action after it spends from, and a searcher
+  // that priced it as "-1 AP" would have the sign wrong on a bad melody, where
+  // calling it is a net GAIN of steps.
+  if (!turn.slimingId && ap >= SLIME_AP_COST) {
+    out.push({ kind: 'slime', apCost: SLIME_AP_COST, apGranted: SLIME_MOVE_STEPS });
   }
 
   // 🧪 THE SLIDE — free retreat BACKWARDS along your own slime trail.

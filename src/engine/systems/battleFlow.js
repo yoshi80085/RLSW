@@ -63,7 +63,22 @@ export const SUNBEAM_BLIND_TURNS     = 1;
 export const SUNBEAM_LINGER_CHANCE   = 0.5;
 export const SUNBEAM_MAX_BLIND_TURNS = 2;
 
-export const SLIME_DB_COST = 1;
+// 🧪 CUT 2026-08-17 — `SLIME_DB_COST` and the note-regen debuff it paid for.
+//
+// There were TWO unrelated things called Slime. One is the character: the road
+// he lays, that he slides down and reaches through. The other was this — a
+// 10 Db skill that charged a FURTHER 1 Db per hit to halve a rival's note regen
+// next turn. It shared a name and an emoji with the road and nothing else.
+//
+// It went for three reasons that all point the same way. It was a modifier
+// rather than a verb, which `METALNESS_REWORK_DESIGN.md` §3 names as exactly the
+// thing that makes an unlock feel like a settings change. It charged Db on top
+// of Db, so the unlock was a licence to keep paying. And it was invisible: the
+// victim found out on their next refill, by which point nothing connected the
+// shortfall to the hit that caused it.
+//
+// ⚠️ `halfRefillNextTurn` ITSELF STAYS — the Axe Swing whiff penalty sets it and
+// `turnFlow.refillRateFor` still reads it. Only the slime path into it is gone.
 
 // ── effect constructors ──────────────────────────────────────────────────────
 const act   = (action)          => ({ kind: 'action', action });
@@ -512,17 +527,6 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
       if (report?.added?.length) {
         yield log(`🎵 ${report.added.length} Lost Chord${report.added.length !== 1 ? 's' : ''} knocked loose from the impact!`);
       }
-    }
-  }
-
-  // ── 🧪 SLIME (Metalness) — melee-only, auto-spends 1 Db, halves rival regen ──
-  if (!sonicAttack && attackerId === 'Metalness_Monster') {
-    const atkNs = nsOf(state, attackerId);
-    if ((atkNs.unlockedSkills ?? []).includes('slime') && (atkNs.dbPoints ?? 0) >= SLIME_DB_COST) {
-      yield patch(attackerId, { dbPoints: (atkNs.dbPoints ?? 0) - SLIME_DB_COST });
-      state = yield patch(defenderId, { halfRefillNextTurn: true });
-      yield log(`🧪 SLIMED! ${nameOf(state, defenderId)} is coated in toxic goo — note regen HALVED next turn! (−${SLIME_DB_COST} Db)`);
-      yield fx('flash', { spiritId: defenderId, icon: '🧪', text: 'SLIMED!', color: '#44ff44' });
     }
   }
 

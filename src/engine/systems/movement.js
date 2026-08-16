@@ -6,6 +6,8 @@
 
 import { HEX_BY_NUM } from "../../board/hexMap.js";
 import { getFlatTopNeighborSlots, facingAngle } from "../../board/hexGeometry.js";
+import { applySlimeDropped } from "./slime.js";
+import { SLIME_LIFETIME_TURNS } from "../../data/gameConstants.js";
 
 /**
  * MOVE_STEP — one hex of movement by the acting spirit.
@@ -36,7 +38,7 @@ export function applyMoveStep(state, { spiritId, toNum, dazed }, rng) {
 
   const facing = facingAngle(from, to);
   const moveStepsLeft = state.turn.moveStepsLeft - 1;
-  return {
+  const moved = {
     ...state,
     spirits: state.spirits.map(s =>
       s.id !== spiritId ? s : { ...s, num: actualTarget, facing }),
@@ -49,6 +51,33 @@ export function applyMoveStep(state, { spiritId, toNum, dazed }, rng) {
       },
     },
   };
+
+  // 🧪 THE ROAD IS LAID HERE, and moving it here is the point rather than tidying.
+  //
+  // It used to be a client side effect: `move()` called `dropPoisonSlime` after
+  // dispatching, so the engine never saw a hex become road. Two things were wrong
+  // with that and only one of them was visible. The visible one was that the
+  // client wrote to a React map the engine could not read, so the trail was empty
+  // in engine state and every ability built on it was dead. The other is that a
+  // SEARCHER stepping through `applyMoveStep` could only ever inherit whatever
+  // road already existed at the root — it could not build one, so no line that
+  // began "lay road, then use it" was reachable to the bot at all.
+  //
+  // ⚠️ GATED ON `slimingId`, NOT ON WHO IS MOVING. Slime is an ability now, not a
+  // property of being Metalness: walking with it off lays nothing, and the flag —
+  // not the Spirit id — is what says otherwise. That is also what keeps the rule
+  // expressible if anything else ever oozes.
+  //
+  // ⚠️ AND IT LAYS `sp.num`, THE HEX HE LEFT — never the one he arrived on. The
+  // whole trail API depends on it (`applySpiritSlid`: "path[0] is always a hex he
+  // has LEFT, never one he is on"), and a dazed redirect does not break it,
+  // because a redirect still steps to a NEIGHBOUR of the hex he vacated.
+  if (state.turn.slimingId === spiritId) {
+    return applySlimeDropped(moved, {
+      spiritId, hexNum: sp.num, turns: SLIME_LIFETIME_TURNS,
+    });
+  }
+  return moved;
 }
 
 /** SPIRIT_FACED — turn in place to aim: facing change + step cost (default 1). */

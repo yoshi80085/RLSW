@@ -548,10 +548,27 @@ export const SLIME_DROPPED = "SLIME_DROPPED";
 export function slimeDropped(spiritId, hexNum, turns) {
   return { type: SLIME_DROPPED, spiritId, hexNum, turns };
 }
-/** One tick off every trail. ⚠️ End of turn, never start — see systems/slime.js. */
+/**
+ * 🧪 SLIME — call it. 1 AP, once per turn, and your movement BECOMES 3.
+ * Every hex vacated while it is on lays road; walking with it off lays nothing.
+ */
+export const SLIME_CALLED = "SLIME_CALLED";
+export function slimeCalled(spiritId) {
+  return { type: SLIME_CALLED, spiritId };
+}
+
+/**
+ * One tick off ONE Spirit's trail.
+ *
+ * ⚠️ `ownerId` IS REQUIRED, and it is the whole fix. This used to age every
+ * trail on the board at the end of every Spirit's turn, so a lifetime quoted in
+ * "turns" silently meant spirit-turns: in a four-handed game a three-turn road
+ * was gone before its owner acted again. Ticked on the owner's own turn end, the
+ * number on the tin is the number the player gets.
+ */
 export const SLIME_DECAYED = "SLIME_DECAYED";
-export function slimeDecayed() {
-  return { type: SLIME_DECAYED };
+export function slimeDecayed(ownerId) {
+  return { type: SLIME_DECAYED, ownerId };
 }
 /** Spend trail. Omit `hexNums` to collapse the whole thing (the Slam). */
 export const SLIME_CLEARED = "SLIME_CLEARED";

@@ -41,20 +41,21 @@
 
 import { HEX_BY_NUM } from "../../board/hexMap.js";
 import { axialDist } from "../../board/hexGeometry.js";
+import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX } from "../../data/gameConstants.js";
 
 /** 🧪 A rival who enters or is pushed into slime loses this much Vibe. */
 export const SLIME_VIBE_DAMAGE = 1;
 
 /**
- * ⚠️ LIFETIME IS THE CALLER'S, AND THAT IS ON PURPOSE.
- * The shipped rule seeds `turns` with the number of living Spirits, so the
- * trail expires exactly as the turn order comes back around — it self-scales
- * as Spirits are knocked out. `METALNESS_REWORK_DESIGN.md` §2 proposes a flat
- * **2 turns** instead, which is a BALANCE change and does not belong in a
- * state migration: a refactor that also moves a number is a refactor nobody
- * can test. When the kit lands, it is one argument at the drop site.
+ * ⚠️ ONE LIFETIME, COUNTED IN THE OWNER'S TURNS. An earlier pass split this in
+ * two — a short "bite" window and a longer "road" window, so dried slime stayed
+ * walkable but harmless. That existed only to work around a road that expired
+ * before its owner could spend it, and making Slime an ABILITY removed the
+ * problem it was solving: he now places road deliberately and it lives three of
+ * his own turns as both hazard and road. A mechanic kept after its reason has
+ * gone is just a rule nobody can explain, so it went with the reason.
  */
-export const SLIME_TRAIL_TURNS_PROPOSED = 2;
+export const SLIME_LIFETIME = SLIME_LIFETIME_TURNS;
 
 // ─── READS ───────────────────────────────────────────────────────────────────
 
@@ -150,11 +151,18 @@ export function slideTarget(state, spiritId) {
 export function applySlimeDropped(state, { spiritId, hexNum, turns }) {
   if (hexNum == null || !(turns > 0)) return state;
   const prev = trailOf(state, spiritId).filter(e => e.num !== hexNum);
+  // ⚠️ THE CAP IS APPLIED HERE, AT THE ONLY PLACE THE ROAD GROWS, and it is what
+  // replaced time-decay as the thing that ends a hex's life. The road is the last
+  // SLIME_TRAIL_MAX hexes he vacated — walk a seventh and the oldest falls off the
+  // far end. That keeps the trail proportional to how much he has been MOVING
+  // rather than to what turn it is, and it bounds `trailRun` (and therefore the
+  // Tentacle's origin count) by construction.
+  const path = [{ num: hexNum, turns }, ...prev].slice(0, SLIME_TRAIL_MAX);
   return {
     ...state,
     board: {
       ...state.board,
-      slime: { ...(state.board.slime ?? {}), [spiritId]: [{ num: hexNum, turns }, ...prev] },
+      slime: { ...(state.board.slime ?? {}), [spiritId]: path },
     },
   };
 }
@@ -172,14 +180,43 @@ export function applySlimeDropped(state, { spiritId, hexNum, turns }) {
  * Monster's own turn ended, so nobody ever stepped in it). This is the third
  * system with that shape; see `METALNESS_REWORK_DESIGN.md` §4d.
  */
-export function applySlimeDecayed(state) {
+export function applySlimeDecayed(state, { ownerId } = {}) {
   const all = state?.board?.slime ?? {};
-  const next = {};
-  for (const [ownerId, path] of Object.entries(all)) {
-    const kept = path.map(e => ({ ...e, turns: e.turns - 1 })).filter(e => e.turns > 0);
-    if (kept.length > 0) next[ownerId] = kept;
-  }
+  // ⚠️ ONE OWNER'S ROAD AGES, NOT EVERY ROAD ON THE BOARD. Ageing them all on
+  // every turn end is what made a lifetime quoted in "turns" silently mean
+  // SPIRIT-turns — see the action creator and gameConstants. With no ownerId
+  // this is a no-op rather than a tick-everything, because guessing here is
+  // exactly how that bug would come back.
+  if (!ownerId || !all[ownerId]) return state;
+  const kept = all[ownerId]
+    .map(e => ({ ...e, turns: e.turns - 1 }))
+    .filter(e => e.turns > 0);
+  const next = { ...all };
+  if (kept.length > 0) next[ownerId] = kept; else delete next[ownerId];
   return { ...state, board: { ...state.board, slime: next } };
+}
+
+/**
+ * 🧪 SLIME_CALLED — switch the ooze on for the rest of this turn.
+ *
+ * Three things, and the middle one IS the ability:
+ *   1. it bills `SLIME_AP_COST`, so it cannot be called on an empty pool;
+ *   2. it SETS movement to `SLIME_MOVE_STEPS` rather than adding to it — see
+ *      gameConstants for why a set is a different and better ability than a
+ *      bonus, and why it is the same idiom `Goes to 11` runs on;
+ *   3. it flags the turn, and `applyMoveStep` reads that flag to decide whether
+ *      a vacated hex becomes road.
+ *
+ * ⚠️ ONCE A TURN, enforced by `legalActions` reading `turn.slimingId`. Calling
+ * it twice would refill movement to 3 for 1 AP a time — a movement engine
+ * rather than an ability.
+ */
+export function applySlimeCalled(state, { spiritId }) {
+  if ((state?.turn?.moveStepsLeft ?? 0) < SLIME_AP_COST) return state;
+  return {
+    ...state,
+    turn: { ...state.turn, slimingId: spiritId, moveStepsLeft: SLIME_MOVE_STEPS },
+  };
 }
 
 /**

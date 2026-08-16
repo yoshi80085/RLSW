@@ -35,6 +35,20 @@ const COIL    = 0.60;   // …and wave there
 const STRIKE  = 0.76;   // snap straight, lunge
 const DURATION = 1500;  // ms, whole gesture
 
+/**
+ * 🐙 HOW LONG THE BOARD BELONGS TO THE ARM, in ms.
+ *
+ * ⚠️ THIS EXISTS BECAUSE THE FX WAS INVISIBLE, not to make it slower.
+ * `BattleMeterOverlay` is `position:'fixed', inset:0` on an OPAQUE black at
+ * zIndex 9980, and `initiateSwing` used to mount it in the same tick that set
+ * this animation running — so all 1500ms of the gesture played out underneath a
+ * black screen. The attack resolved correctly and no tentacle was ever seen.
+ *
+ * It lands on the STRIKE beat plus a breath, so the battle screen slams in on
+ * the impact rather than politely waiting for the arm to finish going home.
+ */
+export const TENTACLE_LEAD_MS = Math.round(DURATION * STRIKE) + 120;
+
 const SAMPLES = 44;     // centreline resolution — enough that the taper reads smooth
 const WAVES   = 2.1;    // sine periods along the arm
 const WAVE_SPEED = 6.4; // radians/sec the wave travels tip-ward

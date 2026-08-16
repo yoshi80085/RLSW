@@ -62,6 +62,47 @@ export function stackCapFor(unlockedSkills = []) {
 // Tune the cap; the consumption is the design.
 export const SLIDE_STEPS_PER_TURN = 2;
 
+// -- 🧪 SLIME IS AN ABILITY, NOT A PASSIVE (2026-08-17 rework) --
+//
+// ⚠️ IT USED TO TRAIL BEHIND HIM FOR FREE, and that was the design's one
+// unanswered complaint. §5 of the rework doc says it plainly: "it is a resource
+// he accrues for free that rivals can only avoid." Everything else in §3 treats
+// the trail as a CURRENCY — three uses competing for one pool — and a currency
+// nobody pays for is not a currency, it is weather.
+//
+// So laying road is now a deliberate act. It costs 1 AP, it can be called once
+// per turn, and it SETS his movement for that turn rather than adding to it.
+// Walking with it off lays nothing at all.
+//
+// ⚠️ SET, NOT ADD — and the distinction is the whole shape of the turn. AP is
+// `min(melody, speed)`, so a good melody already buys 4 steps; paying 1 for
+// Slime and keeping 3 would make it a straight tax on a good turn. Setting it
+// instead means Slime is worth exactly the same three steps whatever you rolled
+// up — it turns a BAD melody into a road-building turn, which is the first thing
+// in his kit that gives a weak commit somewhere useful to go. (Same idiom as
+// `Goes to 11` in §4d: the interesting version of a number is the one that sets.)
+export const SLIME_AP_COST    = 1;   // to call it
+export const SLIME_MOVE_STEPS = 3;   // …and your movement BECOMES this
+
+// -- 🧪 THE ROAD IS CAPPED BY LENGTH, NOT BY TIME (METALNESS_REWORK_DESIGN.md §3) --
+//
+// TWO rules end a hex, and under normal play they agree.
+//
+// ⚠️ THE LIFETIME IS COUNTED IN HIS OWN TURNS, NOT IN SPIRIT-TURNS. The shipped
+// decay ticked at the end of EVERY Spirit's turn, which in a four-handed game
+// burns a "3 turn" trail in less than one revolution — the road would be gone
+// before its owner ever acted again. `economy.js` carries the same warning about
+// Sunbeam's `blindTurns`, and `decayPoisonSlime` fell into it once already. This
+// is the third system with that shape. Tick it on the OWNER'S turn end.
+//
+// Three of his turns and a hard cap of six means: lay 3 on turn one, lay 3 more
+// on turn two and the board holds all six, lay a third batch on turn three and
+// the FIRST batch is pushed off the end. If he stops laying, the clock catches
+// it instead. That is one rule the player can state — "your last two batches" —
+// expressed as the two mechanisms that enforce it from either side.
+export const SLIME_LIFETIME_TURNS = 3;   // ticked on HIS turn end, never anyone else's
+export const SLIME_TRAIL_MAX      = 6;   // …and a third batch evicts the first
+
 // -- AMP / DICE SYSTEM --
 // ── NEW RIG SYSTEM (AMP_DECK_DESIGN.md) ──
 // Every Spirit starts with a Main Amp at their corner: baseline 1d6, board-wide.

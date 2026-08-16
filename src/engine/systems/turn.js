@@ -7,6 +7,7 @@
 
 import { advanceTurnQueue } from "../../board/boardHelpers.js";
 import { LIMELIGHT_HEX, SLIDE_STEPS_PER_TURN } from "../../data/gameConstants.js";
+import { applySlimeDecayed } from "./slime.js";
 
 /** TURN_STARTED — record whether the spirit begins its turn on the Limelight hex. */
 export function applyTurnStarted(state, { spiritId }) {
@@ -92,18 +93,35 @@ export function applyTurnEnded(state) {
   const roundCompleted = completed || state.turn.roundPending;
   const round = state.turn.round + (roundCompleted ? 1 : 0);
 
+  // 🧪 THE ROAD AGES ON ITS OWNER'S TURN END, AND ONLY ON HIS.
+  //
+  // ⚠️ This is the third system in the codebase to meet this trap and the first
+  // to be built out of it rather than patched after. `economy.js` carries the
+  // long version on Sunbeam's `blindTurns`; `decayPoisonSlime` fell in once
+  // already. A lifetime quoted in "turns" and ticked at the end of EVERY
+  // Spirit's turn is really quoted in spirit-turns, so in a four-handed game a
+  // three-turn road is gone before its owner ever acts again — and the ability
+  // reads as broken rather than as short.
+  //
+  // Doing it here, off `endedId`, means the number in gameConstants is the
+  // number the player experiences, at any player count.
+  const decayed = applySlimeDecayed(state, { ownerId: endedId });
+
   return {
-    ...state,
+    ...decayed,
     turnQueue,
     acting: nextId,
     turn: {
-      ...state.turn,
+      ...decayed.turn,
       count,
       round,
       roundStarterId: starter,
       roundPending: false,
       moveStepsLeft: 0,
       actionTokenUsed: false,
+      // 🧪 The ooze is a THIS-TURN state. Leaving it set would make every future
+      // walk lay road for free, which is the passive the ability replaced.
+      slimingId: null,
       lastMove: null,
       lastReport: { type: "turnEnded", endedId, nextId, limelightHeld, roundCompleted, round },
     },

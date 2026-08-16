@@ -75,7 +75,16 @@ import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn ro
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted } from "./engine/actions.js";
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted,
+  // 🧪 the slime trail (METALNESS_REWORK_DESIGN.md §3)
+  slimeDecayed, slimeCleared, spiritSlid, slimeCalled } from "./engine/actions.js";
+// 🧪 THE SLIME TRAIL — the road Metalness Monster lays, and the reads that price
+// it. `METALNESS_REWORK_DESIGN.md` §3: the trail is a CURRENCY, so the tint the
+// player sees and the hex an ability will accept have to be the same read.
+import { slimeBites, slideTarget, SLIME_VIBE_DAMAGE } from "./engine/systems/slime.js";
+import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX } from "./data/gameConstants.js";
+import { tentacleOptions } from "./engine/policies/legalActions.js";
+import TentacleFX, { TENTACLE_LEAD_MS } from "./ui/TentacleFX.jsx";
 import { riffStats, RIFF_BOTH_PAID_QUALITY, RIFF_CLOSE_QUALITY_GAP } from "./engine/systems/riffOff.js";
 import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus,
@@ -418,7 +427,6 @@ const SIGNATURE_TESTS = {
   Metalness_Monster: { name: 'Metalness Monster', color: '#ffcc00', skills: [
     { id:'number_of_the_beast', label:'6️⃣ Number of the Beast', pre:[] },
     { id:'master_moshpits',     label:'🤘 Master of Moshpits',  pre:[] },
-    { id:'slime',               label:'🧪 Slime',               pre:[] },
     { id:'tentacle',            label:'🐙 Tentacle',            pre:[] },
     { id:'azrael',              label:'💀 Azrael',               pre:[] },
   ]},
@@ -687,8 +695,6 @@ const SKILL_TREE = {
           desc:'BERSERK — 1 Db to call, and only at 2 Vibe or less. +6 Drive with no cap, immune to knockback, and every attack costs 1 Vibe. Ends when you put a rival down, when you go down, or when you heal out of danger. The Beast only answers the dying.' },
         { id:'master_moshpits', label:'Master of Moshpits', icon:'🤘', dbCost:8,  gated:false,
           desc:'Pulls 3 fans out of the stands and onto the board for a pit. +2 Drive that STANDS — it survives battles and lasts until you call the next pit. Once per turn.' },
-        { id:'slime',           label:'Slime',              icon:'🧪', dbCost:10, gated:false,
-          desc:'On Swing/Smash hit, spend 1 Db to slime the rival — their next turn\'s note regeneration is halved.' },
         { id:'tentacle',        label:'Tentacle',           icon:'🐙', dbCost:10, gated:false,
           desc:'Swing from any hex of your SLIME TRAIL instead of from where you stand — and the trail you reach THROUGH is consumed. Next to the nearest slime costs 1 hex; three hexes down the road costs 3. It does not move you and it does not turn you, so reaching behind means the rival in front is hitting your back. Range is real, and you pay for it in road.' },
         { id:'azrael',          label:'Azrael',             icon:'💀', dbCost:12, gated:false,
@@ -1471,7 +1477,6 @@ function Game({ gameState, onReturnToLobby }) {
   // MM drops slime on every hex it leaves; the trail lives a full round — from
   // the moment it's laid until the turn order comes back to him — and deals
   // 1 Vibe damage to anyone who walks onto it or is pushed into it.
-  const [poisonSlime, setPoisonSlime] = useState({});
 
   // RIFF-OFF engine ref — timing-critical bookkeeping for the currently
   // flashing note lives here (not in React state) so reaction times are
@@ -2942,6 +2947,25 @@ function Game({ gameState, onReturnToLobby }) {
   const queuedSpirits = turnQueue.map(id => spiritById[id]).filter(Boolean).filter(s => !s.knockedOut);
 
   // Reachable hexes for movement: immediate neighbors only, step by step
+  // 🧪 THE ROAD, flattened for drawing — every hex of every trail, with its
+  // owner and its remaining life.
+  //
+  // ⚠️ THIS REPLACED A SECOND MAP, and that is the point rather than a tidy-up.
+  // The trail used to live TWICE: `board.slime` in the engine (what the Slide and
+  // the Tentacle spend) and a React `poisonSlime` object (what the board drew and
+  // what actually damaged people). Nothing kept the two in step — and in fact
+  // nothing ever wrote the engine one at all, so every ability built on the trail
+  // was reading an empty road while the player watched a full one. That is the
+  // failure `systems/slime.js` opens by warning about, and it is invisible by
+  // construction: it looks like a highlight that is slightly wrong, not like a
+  // rule that is broken.
+  const slimeTiles = useMemo(() => {
+    const all = engineState.board?.slime ?? {};
+    return Object.entries(all).flatMap(([ownerId, path]) =>
+      (path ?? []).map(e => ({ ownerId, num: e.num, turns: e.turns })));
+  }, [engineState.board?.slime]);
+  const slimeByNum = useMemo(() => new Map(slimeTiles.map(t => [t.num, t])), [slimeTiles]);
+
   // 🐙 THE TENTACLE — every hex the arm threatens, mapped to the CHEAPEST reach
   // that gets there.
   //
@@ -4424,8 +4448,10 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`🎤 ${s.name} steps out of the Limelight — pose over, guard back up.`);
     }
     if (newSteps <= 0) setAction(null);
-    // 🧪 Poison Slime — Metalness Monster drops slime on the hex it just left
-    if (acting.id === 'Metalness_Monster') dropPoisonSlime(fromHex);
+    // 🧪 NOTHING IS LAID HERE ANY MORE. Slime is an ability, and the road is
+    // laid by `applyMoveStep` itself when `turn.slimingId` is set — one drop
+    // site, inside the engine, so the searcher can build a road instead of only
+    // inheriting whatever existed when it started looking.
     // 🧪 Poison Slime — check if anyone stepped in slime
     checkPoisonSlime(acting.id, actualTarget);
     // 🕳️ Walked too close to an open vortex? It takes you.
@@ -4479,7 +4505,6 @@ function Game({ gameState, onReturnToLobby }) {
     // (v1 stance route removed — v2 stances are fixed ability kits, no learning tiers)
     if (skillId === 'number_of_the_beast') addLog(`6️⃣ ${spirit?.name} — NUMBER OF THE BEAST! At 2 Vibe or less, spend 1 Db to go BERSERK: +6 Drive with no cap, immune to knockback, 1 Vibe per attack. It ends when somebody hits the floor.`);
     if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull 3 fans onto the board for a pit — +2 Drive that stands until the next pit.`);
-    if (skillId === 'slime')        addLog(`🧪 ${spirit?.name} — SLIME! Swing/Smash hits can spend 1 Db to slime rivals — halving their next turn's note regen.`);
     if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Swing from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
     if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
     if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Dash in a straight line — remaining AP becomes bonus Drive. 2-round cooldown.`);
@@ -4925,26 +4950,25 @@ function Game({ gameState, onReturnToLobby }) {
     applyVibeDamage(spiritId, 1, 'Disco Inferno');
   }
 
-  // 🧪 POISON SLIME (Metalness Monster innate passive) ─────────────────────────
-  // Drop slime on the hex MM just LEFT (called with fromHex before the move).
+  // 🧪 THE SLIME ROAD (Metalness Monster) ─────────────────────────────────────
   //
-  // LIFETIME: one FULL ROUND — the trail has to survive long enough for rivals
-  // to actually blunder into it. `turnsLeft` is counted in spirit-turns, not
-  // rounds, and decayPoisonSlime() runs at the end of EVERY spirit's turn —
-  // including the Monster's own, moments after he laid it. Dropping with a flat
-  // 1 therefore wiped the whole trail the instant his turn ended and nobody
-  // ever stepped in it.
+  // ⚠️ NONE OF IT LIVES IN REACT ANY MORE, and the history is worth keeping
+  // because every stage of it failed silently. It began as a passive `useState`
+  // map the engine could not see; then as an engine action nothing dispatched;
+  // then as a lifetime ticked on every Spirit's turn end, so "3 turns" meant
+  // three spirit-turns; then as a lifetime ticked TWICE per revolution, because
+  // the client kept a decay call after the engine grew one.
   //
-  // Seeding with the number of living Spirits makes it expire exactly as the
-  // turn order comes back around: with 4 alive, drop=4 → MM's end 3 → each
-  // rival's end 2, 1, 0, so the board is clean again just before MM acts. It
-  // self-scales as Spirits are knocked out, so the trail is always "up until my
-  // next turn" regardless of how many are left standing.
+  // What is left here is the call button (`callSlime`) and the bite check
+  // (`checkPoisonSlime`). The drop is `applyMoveStep`; the ageing is
+  // `applyTurnEnded`; the lifetime is `SLIME_LIFETIME_TURNS`. One site each.
   // 🧪 THE SLIDE — free retreat one hex back along his own trail (§2).
-  // ⚠️ NO `dropPoisonSlime` HERE. Walking lays slime on the hex you leave; the
-  // slide does the opposite — it SPENDS the road rather than extending it. Laying
-  // fresh slime behind a retreat would make the trail self-renewing and the
-  // "three uses, one meter" design (§3) would quietly stop costing anything.
+  // ⚠️ THE SLIDE NEVER LAYS ROAD, EVEN WHILE HE IS OOZING. It goes through
+  // `SPIRIT_SLID`, not `MOVE_STEP`, so it deliberately misses the drop that
+  // `applyMoveStep` performs — and that asymmetry is the design, not an
+  // oversight. Walking with the ooze on EXTENDS the road; the slide SPENDS it.
+  // If a retreat also laid fresh slime the road would be self-renewing, and
+  // §3's "uses competing for one meter" would quietly stop costing anything.
   function slide(toNum) {
     const before = acting?.num;
     dispatch(spiritSlid(acting.id, toNum));
@@ -4966,32 +4990,45 @@ function Game({ gameState, onReturnToLobby }) {
     checkEventTrigger(acting.id, toNum);
   }
 
-  function dropPoisonSlime(fromHex) {
-    if (fromHex == null) return;
-    const aliveCount = Math.max(1, spirits.filter(s => !s.knockedOut).length);
-    setPoisonSlime(prev => ({ ...prev, [fromHex]: aliveCount }));
+  // 🧪 CALL THE OOZE — 1 AP, once a turn, and movement BECOMES 3.
+  //
+  // ⚠️ THE ROAD IS NOT LAID HERE. This only arms it; `applyMoveStep` turns each
+  // vacated hex into road while `turn.slimingId` is set. Laying it from the
+  // client is precisely the mistake this replaced — a React-side drop the engine
+  // could not see, so every ability built on the road was reading an empty one.
+  function callSlime() {
+    if (!acting) return;
+    if (moveStepsLeft < SLIME_AP_COST) { addLog(`🧪 Not enough Action Points — calling the slime costs ${SLIME_AP_COST} AP.`); return; }
+    if (engineRef.current.turn.slimingId) { addLog('🧪 Already oozing this turn.'); return; }
+    dispatch(slimeCalled(acting.id));
+    setAction('move');
+    addLog(`🧪 ${acting.name} starts to OOZE — ${SLIME_MOVE_STEPS} steps, and every hex he leaves is slimed for ${SLIME_LIFETIME_TURNS} of his turns.`);
+    triggerEffectFlash(acting.id, '🧪', 'SLIME!', '#44ff44');
   }
   // Check if a spirit stepped/was pushed into poison slime.
   function checkPoisonSlime(spiritId, hexNum) {
-    if (!poisonSlime[hexNum]) return;
-    if (spiritId === 'Metalness_Monster') return; // MM is immune to its own goo
+    // ⚠️ `engineRef.current`, NOT `engineState`. This runs in the same tick as
+    // the MOVE_STEP / SLIME_DROPPED pair that put the road there, and the React
+    // mirror is a render behind — reading the stale copy would let the first
+    // Spirit into fresh slime walk through it for free.
+    //
+    // ⚠️ AND IMMUNITY IS AN OWNER RULE NOW, not a name. `slimeBites` asks "is
+    // this somebody ELSE'S road", so a second trail-layer's goo would still bite
+    // the Monster — something the hardcoded `spiritId === 'Metalness_Monster'`
+    // test this replaces could not express (systems/slime.js, §3 of its header).
+    if (!slimeBites(engineRef.current, spiritId, hexNum)) return;
     const spirit = spirits.find(s => s.id === spiritId);
-    addLog(`🧪 ${spirit?.name} steps in POISON SLIME on #${hexNum} — 1 Vibe damage!`);
+    addLog(`🧪 ${spirit?.name} steps in POISON SLIME on #${hexNum} — ${SLIME_VIBE_DAMAGE} Vibe damage!`);
     triggerRumble(spiritId);
     setTimeout(() => triggerEffectFlash(spiritId, '🧪', 'SLIMED!', '#44ff44'), 80);
-    applyVibeDamage(spiritId, 1, 'Poison Slime');
+    applyVibeDamage(spiritId, SLIME_VIBE_DAMAGE, 'Poison Slime');
   }
   // Decay all poison slime by 1 turn — called at end-of-turn for each spirit.
-  function decayPoisonSlime() {
-    setPoisonSlime(prev => {
-      const next = {};
-      for (const [hex, turns] of Object.entries(prev)) {
-        if (turns > 1) next[hex] = turns - 1;
-        // else it expires
-      }
-      return next;
-    });
-  }
+  // ⚠️ Ticked at the END of every Spirit's turn, and that is load-bearing —
+  // `applySlimeDecayed` carries the long version of the warning, and `economy.js`
+  // carries it again for Sunbeam's `blindTurns`. Decrementing at turn START
+  // clears a short trail before anyone can walk into it, and the cost silently
+  // becomes nothing.
 
   // 🎵 Board mini-goal pickup — called whenever a spirit enters a hex during a move.
   // Lighters (direct, unearned Fame) were cut -- see ECONOMY_HANDOFF.md. Every
@@ -7251,27 +7288,6 @@ function Game({ gameState, onReturnToLobby }) {
 
     // pickPos: 0 = center. Negative = toward attacker (left). Positive = toward defender (right).
     showTip('combat');
-    playBattleMusic(battleSong, 0.7);
-    dieSettledRef.current = { atk: false, def: false }; // fresh battle, fresh dice
-    setBattleState({
-      phase: 'enter_attacker',
-      attackerId: acting.id, defenderId: targetId,
-      atkStat, defStat, atkBase, atkBonus, defBase, defBonus,
-      atkRoll, defRoll, atkTotal, defTotal,
-      attackerWon, margin, damage,
-      posing: defenderPosing,
-      pickPos: 0,
-      spinFaceAtk: 1, spinFaceDef: 1,
-      atkDieReady: false, defDieReady: false,
-      dieSides: atkDie, // ⚡ ceiling charge grows the Thrash die (d4 base, d6 with charge)
-      defDieSides: defDie, // Thrash: defender rolls d4
-      skillMods, // stage effects, pyro, laser, fog flags
-      // Stable dance-craze name shown when a plain swing connects.
-      danceName: pickDanceName(),
-      swingChordLeft, swingChordSpent, // deferred chord burn — only on a hit
-    });
-    setDiceDisplay({ atk: null, def: null, rolling: null });
-
     // ⏭ When auto-skip is on, the whole pre-die cinematic is compressed: the
     // stat flashes and meter slides still play in order (so pickPos and the
     // standee entrances stay consistent), they just whip past in ~1s instead of
@@ -7279,7 +7295,51 @@ function Game({ gameState, onReturnToLobby }) {
     // never skipped — that's the player's moment.
     const skipCine = skipBattleIntrosRef.current;
     battleTimersRef.current = [];
-    const T = (fn, ms) => { const id = gt(fn, skipCine ? ms * 0.1 : ms); battleTimersRef.current.push(id); return id; };
+
+    // 🐙 THE ARM PLAYS FIRST, AND THAT IS A SEQUENCING RULE RATHER THAN A FLOURISH.
+    // `BattleMeterOverlay` mounts at `position:'fixed', inset:0` on an OPAQUE black
+    // at zIndex 9980, and everything below used to run in THIS tick — so the
+    // tentacle's whole 1.5s gesture played out underneath a black screen and the
+    // player never saw an arm. The strike landed, the road was spent, the log line
+    // printed, and the one thing that made the ability legible was invisible.
+    //
+    // Nothing about the blow moves here. It was rolled above; `TentacleFX` decides
+    // nothing (see its header). Only the curtain is late.
+    //
+    // ⚠️ THE AP AND THE ACTION TOKEN WERE SPENT BEFORE THIS DELAY, so there is no
+    // window in which a second attack can be started during the gesture.
+    // ⚠️ And a player who turned the intros OFF did not ask for a longer one, so
+    // `skipCine` skips the lead too.
+    const armLead = (tent && !skipCine) ? TENTACLE_LEAD_MS : 0;
+
+    const openBattle = () => {
+      playBattleMusic(battleSong, 0.7);
+      dieSettledRef.current = { atk: false, def: false }; // fresh battle, fresh dice
+      setBattleState({
+        phase: 'enter_attacker',
+        attackerId: acting.id, defenderId: targetId,
+        atkStat, defStat, atkBase, atkBonus, defBase, defBonus,
+        atkRoll, defRoll, atkTotal, defTotal,
+        attackerWon, margin, damage,
+        posing: defenderPosing,
+        pickPos: 0,
+        spinFaceAtk: 1, spinFaceDef: 1,
+        atkDieReady: false, defDieReady: false,
+        dieSides: atkDie, // ⚡ ceiling charge grows the Thrash die (d4 base, d6 with charge)
+        defDieSides: defDie, // Thrash: defender rolls d4
+        skillMods, // stage effects, pyro, laser, fog flags
+        // Stable dance-craze name shown when a plain swing connects.
+        danceName: pickDanceName(),
+        swingChordLeft, swingChordSpent, // deferred chord burn — only on a hit
+      });
+      setDiceDisplay({ atk: null, def: null, rolling: null });
+    };
+    if (armLead > 0) battleTimersRef.current.push(gt(openBattle, armLead));
+    else openBattle();
+
+    // Every scheduled beat rides the same lead, so the cinematic keeps its shape
+    // and simply starts when the arm has landed.
+    const T = (fn, ms) => { const id = gt(fn, armLead + (skipCine ? ms * 0.1 : ms)); battleTimersRef.current.push(id); return id; };
 
     // 0.7s: Flash Drive stat
     T(() => setBattleState(p => p ? { ...p, phase: 'flash_drive' } : p), 700);
@@ -7402,21 +7462,6 @@ function Game({ gameState, onReturnToLobby }) {
     beastAttackToll(acting.id);
     resolveWinDamage(acting.id, targetId, SMASH_DAMAGE, 'The Smash');
     battleKnockback(acting.id, targetId, SMASH_KNOCKBACK);
-    // 🧪 SLIME — Smash also triggers the Slime debuff
-    if (acting.id === 'Metalness_Monster') {
-      const atkNs = noteStates[acting.id] ?? {};
-      const hasSlime = (atkNs.unlockedSkills ?? []).includes('slime');
-      const atkDb = atkNs.dbPoints ?? 0;
-      if (hasSlime && atkDb >= 1) {
-        setNoteStates(prev => ({
-          ...prev,
-          [acting.id]: { ...prev[acting.id], dbPoints: (prev[acting.id]?.dbPoints ?? 0) - 1 },
-          [targetId]:  { ...prev[targetId], halfRefillNextTurn: true },
-        }));
-        addLog(`🧪 SLIMED! ${target.name} is coated in toxic goo — note regen HALVED next turn! (−1 Db)`);
-        setTimeout(() => triggerEffectFlash(targetId, '🧪', 'SLIMED!', '#44ff44'), 250);
-      }
-    }
     if (stepsBeforeSmash > SMASH_AP_COST) addLog(`🦶 ${acting.name} is rooted by the wind-up — no movement left this turn.`);
     addLog(`🫗 ${acting.name} has nothing left — the Drive stack is empty. Rebuild it before anyone comes looking.`);
   }
@@ -10222,9 +10267,18 @@ function Game({ gameState, onReturnToLobby }) {
     }
 
     // 🧪 POISON SLIME decay — seeded with the living Spirit count and ticked per
-    // spirit-turn, so a trail lives exactly one revolution. Left on the turn
-    // clock on purpose (see the WHAT TICKS WHEN note above).
-    decayPoisonSlime();
+    // 🧪 THE SLIME ROAD IS *NOT* TICKED HERE — see `applyTurnEnded`.
+    //
+    // ⚠️ IT WAS, AND IT COST A TURN OF LIFETIME. `dispatch(turnEnded())` above
+    // already ages the ending Spirit's road, so this second call made two ticks
+    // per revolution and a 3-turn road behaved like a 2-turn one. Worse, it read
+    // `acting` — which `turnEnded` has ALREADY advanced by the time this line
+    // runs — so the tick landed on the INCOMING Spirit's road: the Monster's
+    // trail was aged once on his own turn end and again on the turn end right
+    // before his.
+    //
+    // The engine owns this now, at exactly one site, so a second caller cannot
+    // reintroduce it.
 
     // 🕳️ GRAVITY VORTEX decay — identical cadence and identical reasoning:
     // seeded with the living Spirit count, ticked per spirit-turn, so the black
@@ -11185,8 +11239,8 @@ function Game({ gameState, onReturnToLobby }) {
     // 🧪 The retreat hex — brighter than plain slime, because it is a MOVE you
     // can make, not just a hazard you can see.
     if (slideHex != null && hex.num === slideHex) return '#44ff4455';
-    // 🧪 Poison slime tint
-    if (poisonSlime[hex.num]) return '#44ff4412';
+    // 🧪 The road, off the engine — the same one the Slide walks.
+    if (slimeByNum.has(hex.num)) return '#44ff4412';
     return "transparent";
   }
 
@@ -11698,10 +11752,10 @@ function Game({ gameState, onReturnToLobby }) {
             🔥💿 DISCO INFERNO — {flamingHexes.roundsLeft} round{flamingHexes.roundsLeft!==1?"s":""} left
           </span>
         )}
-        {Object.keys(poisonSlime).length > 0 && (
+        {slimeTiles.length > 0 && (
           <span style={{fontSize:9,padding:"2px 8px",background:"#0a1a0a",border:"1px solid #44ff44",borderRadius:10,color:"#66ff66",
             animation:"marqueeBlink 1.4s ease-in-out infinite"}}>
-            🧪 POISON SLIME — {Object.keys(poisonSlime).length} hex{Object.keys(poisonSlime).length!==1?"es":""}
+            🧪 SLIME ROAD — {slimeTiles.length}/{SLIME_TRAIL_MAX} hex{slimeTiles.length!==1?"es":""}
           </span>
         )}
         {stageFxBanner && (() => {
@@ -13659,6 +13713,35 @@ function Game({ gameState, onReturnToLobby }) {
               <button className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</button>
             )}
+            {/* ── 🧪 SLIME — lay the road (METALNESS §2, reworked 2026-08-17) ──
+                INNATE, so no `unlockedSkills` gate: this is the Monster's
+                signature, and `CHARACTER_HANDOFF` lists "arsenal, no innate
+                identity" as the gap the whole rework exists to close. Charging Db
+                for the road on top of the AP would re-open it.
+
+                ⚠️ It SETS movement rather than adding to it, so the button says
+                what you will END UP with, not what it costs. Off a thin melody
+                that number is a gain, and hiding that behind "-1 AP" would make
+                the one turn it most wants to be called look like the worst. */}
+            {!rockGodActive && acting?.id === 'Metalness_Monster' && (() => {
+              const already = !!engineState.turn?.slimingId;
+              const canCall = hasConfirmed && !already && moveStepsLeft >= SLIME_AP_COST;
+              return (
+                <button className={canCall ? 'btn active' : 'btn'}
+                  style={{borderColor:'#44ff44', color:'#8dffa0', opacity: canCall ? 1 : 0.45}}
+                  disabled={!canCall}
+                  title={already
+                    ? `🧪 Already oozing — ${moveStepsLeft} slimed step${moveStepsLeft !== 1 ? 's' : ''} left. Once a turn.`
+                    : !hasConfirmed
+                    ? '🧪 Slime — commit a melody first; the road is legs, and legs come from the melody.'
+                    : moveStepsLeft < SLIME_AP_COST
+                    ? `🧪 Slime — costs ${SLIME_AP_COST} AP and you have none left.`
+                    : `🧪 Slime — ${SLIME_AP_COST} AP, and your movement BECOMES ${SLIME_MOVE_STEPS}. Every hex you leave is slimed for ${SLIME_LIFETIME_TURNS} of your turns: 1 Vibe to any rival who steps in it, a free retreat for you, and reach for the Tentacle.`}
+                  onClick={callSlime}>
+                  🧪 Slime{already ? ` (${moveStepsLeft} left)` : ` → ${SLIME_MOVE_STEPS}`}
+                </button>
+              );
+            })()}
             {/* ── 🐙 TENTACLE — reach through your own slime (METALNESS §4a) ──
                 It IS a Swing, so it wears the Swing's gates: a confirmed turn,
                 the Action Token unspent, 1 AP. What it does NOT need is to be
@@ -15747,10 +15830,10 @@ function Game({ gameState, onReturnToLobby }) {
                   turns run out: a bright pool is fresh, a faint one is about to
                   dry up. Rivals can read how long they have to detour. ── */}
               {(() => {
-                const slimeLife = Math.max(1, spirits.filter(s => !s.knockedOut).length);
-                return Object.entries(poisonSlime).map(([num, turns]) => {
+                const slimeLife = SLIME_LIFETIME_TURNS;
+                return slimeTiles.map(({ num, turns }) => {
                   if (turns <= 0) return null;
-                  const hex = HEX_BY_NUM[Number(num)];
+                  const hex = HEX_BY_NUM[num];
                   if (!hex) return null;
                   const cx = Math.round(hex.px * SCALE);
                   const cy = Math.round(hex.py * SCALE);
@@ -15759,13 +15842,13 @@ function Game({ gameState, onReturnToLobby }) {
                   const op = 0.35 + fresh * 0.65;
                   return (
                     <g key={`slime-${num}`} style={{pointerEvents:'none', opacity: op}}>
-                      <title>Poison Slime — 1 Vibe to anyone who enters. {turns} turn{turns !== 1 ? 's' : ''} left.</title>
+                      <title>Poison Slime — {SLIME_VIBE_DAMAGE} Vibe to anyone who enters, and the Monster's road: he slides down it and reaches through it. {turns} of his turns left.</title>
                       <polygon
                         points={pointyCorners(cx, cy, HS * 0.92)}
                         fill="#44ff4418" stroke="#44ff44" strokeWidth={0.8}
                         style={{filter:'drop-shadow(0 0 6px #44ff4466)',
                           animation:'slimePulse 1.8s ease-in-out infinite',
-                          animationDelay:`${(Number(num) % 5) * 0.2}s`}}/>
+                          animationDelay:`${(num % 5) * 0.2}s`}}/>
                       <text x={cx} y={cy + HS*0.12} textAnchor="middle" fontSize={HS*0.5}
                         style={{opacity:0.7, filter:'drop-shadow(0 0 3px #44ff44)'}}>🧪</text>
                     </g>

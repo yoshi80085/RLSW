@@ -24,7 +24,7 @@ import {
   EVENT_RESPAWN_TICKED, EVENT_HEX_SPAWNED, CHARGE_ZONES_TICKED,
   EVENT_HEX_TRIGGERED, TOKEN_PICKED_UP, TOKENS_DRIFTED, CHARGE_ZONE_USED, FLAMING_HEXES_SET,
   RANDOM_BATCH_DRAWN,
-  SLIME_DROPPED, SLIME_DECAYED, SLIME_CLEARED, SPIRIT_SLID,
+  SLIME_DROPPED, SLIME_DECAYED, SLIME_CLEARED, SPIRIT_SLID, SLIME_CALLED,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
 import {
@@ -63,7 +63,7 @@ import {
   applyChargeZoneUsed, applyChargeZonesTicked,
   applyFlamingHexesSet, applyFlamingDecayed,
 } from "./systems/board.js";
-import { applySlimeDropped, applySlimeDecayed, applySlimeCleared, applySpiritSlid } from "./systems/slime.js";
+import { applySlimeDropped, applySlimeDecayed, applySlimeCleared, applySpiritSlid, applySlimeCalled } from "./systems/slime.js";
 
 /**
  * @param {object} state   plain-JSON GameState (never mutated)
@@ -155,7 +155,8 @@ function reduce(state, action, rng) {
     case CHARGE_ZONES_TICKED:    return applyChargeZonesTicked(state);
     // -- 🧪 the slime trail --
     case SLIME_DROPPED:          return applySlimeDropped(state, action);
-    case SLIME_DECAYED:          return applySlimeDecayed(state);
+    case SLIME_DECAYED:          return applySlimeDecayed(state, action);
+    case SLIME_CALLED:           return applySlimeCalled(state, action);
     case SLIME_CLEARED:          return applySlimeCleared(state, action);
     case SPIRIT_SLID:            return applySpiritSlid(state, action);
 

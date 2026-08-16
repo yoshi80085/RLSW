@@ -94,6 +94,12 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       // 🧪 Free retreat along the Monster's own trail. Refilled by
       // MOVE_BUDGET_SET alongside moveStepsLeft — one grant, one refill path.
       slideStepsLeft: 0,
+      // 🧪 SLIME MODE — the id of the Spirit currently oozing, or null. Set by
+      // SLIME_CALLED and cleared at turn end. `applyMoveStep` reads it to decide
+      // whether a vacated hex becomes road, which is what makes the road a thing
+      // the SEARCHER can build rather than a client-side side effect it could
+      // only ever inherit. Null is the normal state: walking lays nothing.
+      slimingId: null,
       actionTokenUsed: false,
       startedOnLimelight: {},
       lastMove: null,

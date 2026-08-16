@@ -56,7 +56,7 @@
 import { applyAction } from "../reduce.js";
 import {
   moveStep, spiritFaced, beatsSpent, moveBudgetSet, turnEnded,
-  noteSheetPatched, attackRolled, fansChanged, spiritSlid, slimeCleared,
+  noteSheetPatched, attackRolled, fansChanged, spiritSlid, slimeCleared, slimeCalled,
 } from "../actions.js";
 import { battleConsequences, runBattleFlow, grantFame } from "../systems/battleFlow.js";
 import { attackParams, spiritChord } from "../systems/attackParams.js";
@@ -68,6 +68,7 @@ import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 export const MODELLED_KINDS = new Set([
   'melodyNote', 'stackCommit', 'confirmMelody',
   'move', 'slide', 'face', 'swing', 'sonic', 'tentacle', 'pose', 'skillUnlock', 'endTurn',
+  'slime',
 ]);
 
 /** Kinds the rules allow but the engine cannot yet run. See the header. */
@@ -206,6 +207,17 @@ export function applyBotAction(state, action, ctx = {}) {
     case 'move':
       return {
         state: applyAction(state, moveStep(spiritId, action.to, !!ns.dazed), rng),
+        view, ok: true, reason: null, logs: [],
+      };
+
+    // 🧪 SLIME — call the ooze; the road is then laid by `applyMoveStep` itself
+    // on every hex he vacates while it is on. Nothing to do here beyond the
+    // call, and that is the payoff of moving the drop into the reducer: a line
+    // like [slime, move, move, move, tentacle] is now reachable to a searcher,
+    // where before it could only ever spend road that already existed.
+    case 'slime':
+      return {
+        state: applyAction(state, slimeCalled(spiritId), rng),
         view, ok: true, reason: null, logs: [],
       };
 

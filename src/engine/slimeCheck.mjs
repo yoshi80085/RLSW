@@ -11,15 +11,15 @@
 import assert from "node:assert";
 import { makeInitialState } from "./state.js";
 import { applyAction } from "./reduce.js";
-import { slimeDropped, slimeDecayed, slimeCleared, spiritSlid, moveBudgetSet } from "./actions.js";
+import { slimeDropped, slimeDecayed, slimeCleared, spiritSlid, moveBudgetSet, moveStep, slimeCalled, turnEnded } from "./actions.js";
 import { applyBotAction } from "./policies/transition.js";
 import { makeRng } from "./rng.js";
 import {
   trailOf, trailRun, slimeAt, slimeBites, slideTarget,
-  SLIME_VIBE_DAMAGE, SLIME_TRAIL_TURNS_PROPOSED,
+  SLIME_VIBE_DAMAGE, SLIME_LIFETIME,
 } from "./systems/slime.js";
 import { legalActions, tentacleOptions, swingCone } from "./policies/legalActions.js";
-import { SLIDE_STEPS_PER_TURN } from "../data/gameConstants.js";
+import { SLIDE_STEPS_PER_TURN, SLIME_TRAIL_MAX, SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS } from "../data/gameConstants.js";
 import { HEX_BY_NUM, ALL_HEXES } from "../board/hexMap.js";
 import { axialDist } from "../board/hexGeometry.js";
 
@@ -72,8 +72,10 @@ function walk(startNum, n) {
   st = apply(st, slimeDropped(MM, 11, 3));
   eq(trailOf(st, MM).map(e => e.num), [11, 10], 'the path is NEWEST FIRST — index 0 is the hex just vacated');
 
-  st = apply(st, slimeDecayed());
+  st = apply(st, slimeDecayed(MM));
   eq(trailOf(st, MM).map(e => e.turns), [2, 2], 'every entry ages together');
+  eq(apply(st, slimeDecayed(RONIN)), st,
+     '⚠️ …and ONLY its owner\'s. Ageing every road on every turn end is what made a lifetime quoted in turns silently mean spirit-turns.');
 
   // Double back onto 10.
   st = apply(st, slimeDropped(MM, 10, 3));
@@ -106,26 +108,41 @@ function walk(startNum, n) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 4. DECAY — expiry, and the map does not accumulate empty owners.
+// 4. DECAY — ONE lifetime, counted in the OWNER'S turns.
+//
+//    ⚠️ An earlier pass split this into a short "bite" window and a longer
+//    "road" window so dried slime stayed walkable but harmless. That existed
+//    only to work around a road that expired before its owner could spend it,
+//    and making Slime an ABILITY removed the problem — he places road on
+//    purpose now, and it lives three of his own turns as both. The split went
+//    with its reason; a rule kept past its cause is one nobody can explain.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   let st = apply(base, slimeDropped(MM, 10, 2));
   st = apply(st, slimeDropped(MM, 11, 1));   // shorter-lived, laid later
-  st = apply(st, slimeDecayed());
-  eq(trailOf(st, MM).map(e => e.num), [10], 'an expired hex leaves the path');
-  ok(st.board.slime[MM], 'a partly-alive trail survives');
+  st = apply(st, slimeDecayed(MM));
+  eq(trailOf(st, MM).map(e => e.num), [10], 'an expired hex leaves the road');
+  ok(st.board.slime[MM], 'a partly-alive road survives');
 
-  st = apply(st, slimeDecayed());
+  st = apply(st, slimeDecayed(MM));
   eq(trailOf(st, MM), [], 'the last hex expires');
-  eq(st.board.slime, {}, '⚠️ …and the OWNER leaves too — no empty arrays accumulate for anyone who ever laid slime');
+  eq(st.board.slime, {}, '⚠️ …and the OWNER leaves too — no empty arrays accumulate');
 
-  // The shipped seeding rule: living-Spirit count, so it expires as the order
-  // comes back round. Two Spirits alive ⇒ two ticks ⇒ clean before MM acts.
-  let round = apply(base, slimeDropped(MM, 10, 2));
-  round = apply(round, slimeDecayed());
-  ok(trailOf(round, MM).length === 1, 'still there after the layer’s own turn end');
-  round = apply(round, slimeDecayed());
-  eq(trailOf(round, MM), [], '…gone exactly as the turn order returns');
+  // ── THE TRAP THIS RULE IS BUILT OUT OF ────────────────────────────────────
+  // Three of HIS turns. Ticked on anyone's turn end it would be three
+  // spirit-turns, so in a four-handed game the road would be gone before he
+  // acted again and the ability would read as broken rather than as short.
+  // `economy.js` carries the same warning on Sunbeam's `blindTurns`, and
+  // `decayPoisonSlime` fell into it once already — this is the third system
+  // with that shape and the first built to refuse it.
+  let live = apply(base, slimeDropped(MM, 10, SLIME_LIFETIME_TURNS));
+  for (const rival of [RONIN, RONIN, RONIN]) live = apply(live, slimeDecayed(rival));
+  eq(trailOf(live, MM).map(e => e.turns), [SLIME_LIFETIME_TURNS],
+     '⚠️ a whole revolution of RIVAL turn-ends does not age his road by one tick');
+  for (let i = 0; i < SLIME_LIFETIME_TURNS - 1; i++) live = apply(live, slimeDecayed(MM));
+  ok(trailOf(live, MM).length === 1, '…it survives his own turns up to the last one');
+  live = apply(live, slimeDecayed(MM));
+  eq(trailOf(live, MM), [], '…and expires on the third of HIS turns, which is the number on the tin');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -199,11 +216,11 @@ function walk(startNum, n) {
 // 7. THE MIGRATION'S OWN CLAIM — nothing about the shipped rules moved.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  eq(SLIME_TRAIL_TURNS_PROPOSED, 2,
-     'the rework’s flat-2 lifetime is EXPORTED but unused — a proposal, not a change');
+  eq(SLIME_LIFETIME, SLIME_LIFETIME_TURNS,
+     'the system re-exports the tuning constant rather than keeping a second copy of it');
   const st = apply(base, slimeDropped(MM, 10, 4));
   eq(slimeAt(st, 10).turns, 4,
-     '⚠️ the lifetime is still whatever the caller seeds — the client still passes the living-Spirit count');
+     'the drop still takes its lifetime from the caller — the reducer supplies SLIME_LIFETIME_TURNS at the one drop site');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -381,6 +398,171 @@ function walk(startNum, n) {
   eq(res.state.spirits.find(s => s.id === MM).facing, self.facing,
      '⚠️ …and never turned. Both trail abilities decline the re-face walking gives you.');
   eq(res.state.turn.actionTokenUsed, true, 'it spends the one attack of the turn');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 12. 🧪 SLIME IS AN ABILITY — called for 1 AP, then walked.
+//
+// This section used to prove that WALKING laid road, because the road was a
+// passive and the drop site was a client side effect the engine never saw.
+// Both of those are gone. Slime is now a deliberate call that costs AP, SETS
+// movement to 3, and arms `applyMoveStep` to turn each vacated hex into road —
+// which also means a searcher can BUILD a road instead of only inheriting one.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  const chain = walk(base.spirits[0].num, SLIME_MOVE_STEPS);
+  let st = { ...base, acting: MM };
+  st = apply(st, moveBudgetSet(4, false));
+  st = { ...st, noteStates: { ...st.noteStates, [MM]: {
+    ...st.noteStates[MM], hasConfirmed: true, unlockedSkills: ['tentacle'],
+  } } };
+
+  // ── OFF BY DEFAULT, and that is the change §5 asked for. ──────────────────
+  // "It is a resource he accrues for free that rivals can only avoid" was the
+  // doc's one unanswered complaint about the trail. Walking no longer pays it.
+  const dry = apply(st, moveStep(MM, chain[1], false));
+  eq(trailOf(dry, MM), [],
+     '⚠️ walking lays NO road until the ability is called — the free trail is gone');
+  eq(dry.turn.slimingId, null, '…and nothing switched itself on');
+
+  // ── CALL IT ───────────────────────────────────────────────────────────────
+  const called = apply(st, slimeCalled(MM));
+  eq(called.turn.slimingId, MM, 'the ooze is on, and it is owned');
+  eq(called.turn.moveStepsLeft, SLIME_MOVE_STEPS,
+     '⚠️ movement is SET to 3, not decremented by the 1 AP — see gameConstants on why a set is the more interesting number');
+
+  // ⚠️ THE HALF THAT MAKES IT AN ABILITY RATHER THAN A TAX. Off a good melody
+  // the call costs a step; off a bad one it HANDS him steps. That is the first
+  // thing in his kit that gives a weak commit somewhere useful to go.
+  const thin = apply({ ...st, turn: { ...st.turn, moveStepsLeft: 1 } }, slimeCalled(MM));
+  eq(thin.turn.moveStepsLeft, SLIME_MOVE_STEPS,
+     '⚠️ from a 1-AP turn the call is a NET GAIN of movement');
+  const broke = apply({ ...st, turn: { ...st.turn, moveStepsLeft: 0 } }, slimeCalled(MM));
+  eq(broke.turn.slimingId, null, '…but an empty pool cannot pay the 1 AP, so nothing happens');
+
+  // ── ONCE PER TURN — and this gate is load-bearing, not hygiene. Because the
+  // call SETS the pool, a second one would top it back up to 3 for 1 AP, over
+  // and over: 1 AP for 2 net steps, repeatable. That is a movement engine, and
+  // it would erase the ceiling on his road that §3's whole currency rests on.
+  ok(legalActions(st, MM, {}).some(a => a.kind === 'slime'), 'it is offered');
+  ok(!legalActions(called, MM, {}).some(a => a.kind === 'slime'),
+     '⚠️ …and never twice in a turn');
+  const slimeAct = legalActions(st, MM, {}).find(a => a.kind === 'slime');
+  eq(slimeAct.apCost, SLIME_AP_COST, 'the searcher sees the bill');
+  eq(slimeAct.apGranted, SLIME_MOVE_STEPS,
+     '⚠️ …and the GRANT, because this action rewrites the budget every action after it spends from. Pricing it as "-1 AP" gets the sign wrong on a bad melody.');
+
+  // ── NOW WALK. The reducer lays the road; no client side effect involved. ──
+  let run = called;
+  for (let i = 1; i < chain.length; i++) run = apply(run, moveStep(MM, chain[i], false));
+  const walked = chain.slice(0, -1);
+
+  eq(trailOf(run, MM).map(e => e.num), [...walked].reverse(),
+     'every hex he vacated while oozing became road, newest first');
+  eq(trailOf(run, MM).map(e => e.turns),
+     walked.map(() => SLIME_LIFETIME_TURNS), '…each seeded with the owner-turn lifetime');
+  eq(run.turn.moveStepsLeft, 0, 'three steps is exactly what three steps buys');
+  eq(trailRun(run, MM), [...walked].reverse(),
+     '⚠️ and the road is ONE CONTIGUOUS RUN, so every hex is reachable by the abilities that spend it');
+
+  const self = run.spirits.find(s => s.id === MM);
+  eq(slimeAt(run, self.num), null,
+     '⚠️ he never stands on his own road — `applySpiritSlid` depends on path[0] being a hex he has LEFT');
+
+  // ── THE ABILITIES LIGHT UP OFF IT ────────────────────────────────────────
+  const acts = legalActions(run, MM, {});
+  ok(acts.some(a => a.kind === 'slide'), 'the Slide is on the table');
+  eq(acts.filter(a => a.kind === 'slide')[0].to, walked[walked.length - 1],
+     '…back down the hex he most recently vacated');
+  eq(tentacleOptions(run, self).length, walked.length,
+     'the arm reaches exactly as far as he laid');
+
+  // ── AND IT SURVIVES INTO HIS NEXT TURN, which is the whole point of counting
+  // the lifetime in HIS turns. A full revolution of rivals ending their turns
+  // does not age it at all.
+  let next = run;
+  for (const r of [RONIN, RONIN, RONIN]) next = apply(next, slimeDecayed(r));
+  eq(trailOf(next, MM).map(e => e.turns), walked.map(() => SLIME_LIFETIME_TURNS),
+     '⚠️ rivals ending their turns do not touch his road');
+  ok(legalActions({ ...next, turn: { ...next.turn, slimingId: null, moveStepsLeft: 4 } }, MM, {})
+       .some(a => a.kind === 'slide'),
+     '⚠️ …so the Slide is still there when his turn comes back round, which under the passive it never was');
+
+  // ── TURN END CLEANS UP AFTER ITSELF ──────────────────────────────────────
+  const ended = apply({ ...run, acting: MM }, turnEnded());
+  eq(ended.turn.slimingId, null,
+     '⚠️ the ooze is a THIS-TURN state — left set, every future walk would lay road for free and the passive would be back');
+  eq(trailOf(ended, MM).map(e => e.turns), walked.map(() => SLIME_LIFETIME_TURNS - 1),
+     '…and his own turn end is the one that ages his road');
+}
+// ═════════════════════════════════════════════════════════════════════════════
+// 13. ⚠️ THE CAP — the road is his last SLIME_TRAIL_MAX vacated hexes, and the
+//     cap is now the ONLY thing that ends one. Walk a seventh, lose the first.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  const chain = walk(base.spirits[0].num, SLIME_TRAIL_MAX + 3);
+  ok(chain.length === SLIME_TRAIL_MAX + 4, 'the board affords a walk long enough to overrun the cap');
+
+  let st = { ...base, acting: MM };
+  st = apply(st, moveBudgetSet(20, false));
+  st = { ...st, noteStates: { ...st.noteStates, [MM]: {
+    ...st.noteStates[MM], hasConfirmed: true, unlockedSkills: ['tentacle'],
+  } } };
+  for (let i = 1; i < chain.length; i++) {
+    const from = st.spirits.find(sp => sp.id === MM).num;
+    st = apply(st, moveStep(MM, chain[i], false));
+    st = apply(st, slimeDropped(MM, from, 4));
+  }
+
+  eq(trailOf(st, MM).length, SLIME_TRAIL_MAX, 'the road never grows past the cap');
+  eq(trailOf(st, MM).map(e => e.num), chain.slice(-SLIME_TRAIL_MAX - 1, -1).reverse(),
+     '⚠️ …and it is the NEWEST hexes that survive — the oldest drops off the far end, so the road tracks where he has been LATELY');
+
+  const self = st.spirits.find(sp => sp.id === MM);
+  eq(trailRun(st, MM).length, SLIME_TRAIL_MAX,
+     'the whole capped road is still one contiguous run — the cap trims the tail, it does not punch holes');
+  eq(tentacleOptions(st, self).length, SLIME_TRAIL_MAX,
+     '⚠️ …which BOUNDS the arm at 6 origins. §6 called cone-from-each-trail-hex a bot blocker because `beamActions` keeps an arbitrary first five while its score is null; the cap makes the branching finite by construction rather than by hoping trails stay short.');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 14. ⚠️ ONE TICK PER REVOLUTION — driven through REAL turn ends.
+//
+// This is a regression for a bug that shipped and was caught in play: the road
+// aged TWICE per revolution, so a 3-turn lifetime behaved like a 2-turn one.
+// `applyTurnEnded` had grown its own decay while the client kept the call it
+// used to make — and because `turnEnded` advances `acting` before the client's
+// line ran, the extra tick landed on the INCOMING Spirit's road rather than the
+// outgoing one. Two owners' worth of wrong, from one duplicated call.
+//
+// ⚠️ EVERY SECTION ABOVE DRIVES `slimeDecayed` DIRECTLY, which is exactly why
+// none of them saw it. Testing the tick in isolation proves the tick; it cannot
+// prove how many times a turn fires it. This section spends real `turnEnded`s.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  let st = { ...base, acting: MM };
+  st = apply(st, slimeDropped(MM, 10, SLIME_LIFETIME_TURNS));
+
+  st = apply(st, turnEnded());
+  eq(trailOf(st, MM)[0].turns, SLIME_LIFETIME_TURNS - 1,
+     'his own turn end ages his road by exactly one');
+
+  // Every other Spirit in the rotation ends a turn. None of them is his.
+  const others = base.spirits.filter(sp => sp.id !== MM).length;
+  for (let i = 0; i < others; i++) st = apply(st, turnEnded());
+  eq(trailOf(st, MM)[0].turns, SLIME_LIFETIME_TURNS - 1,
+     '⚠️ …and a full revolution of OTHER turn ends does not age it at all. One tick per revolution, not two.');
+
+  // …so the number in gameConstants is the number of his turns he actually gets.
+  let live = { ...base, acting: MM };
+  live = apply(live, slimeDropped(MM, 10, SLIME_LIFETIME_TURNS));
+  for (let t = 0; t < SLIME_LIFETIME_TURNS - 1; t++) {
+    for (let i = 0; i <= others; i++) live = apply(live, turnEnded());
+  }
+  ok(trailOf(live, MM).length === 1,
+     `the road is still there on his ${SLIME_LIFETIME_TURNS}th turn`);
+  for (let i = 0; i <= others; i++) live = apply(live, turnEnded());
+  eq(trailOf(live, MM), [], '…and gone on the one after, exactly as advertised');
 }
 
 console.log(`✅ slimeCheck — ${count} assertions passed`);
