@@ -104,9 +104,9 @@ export function botIsBehind(defender, attackerNum) {
 }
 
 /**
- * Pick the juiciest rival to hit from a candidate list (already filtered to
- * those it can actually reach). Priority: close a knockdown first, then lean
- * on the Fame front-runner, then break ties on lowest Vibe.
+ * Rank a candidate list (already filtered to rivals it can actually reach) from
+ * juiciest to least. Priority: close a knockdown first, then lean on the Fame
+ * front-runner, then break ties on lowest Vibe.
  * Pure — fame comes from `noteStates`.
  *
  * 🔪 `selfNum` (optional) lets it see which candidates have their backs turned.
@@ -115,10 +115,15 @@ export function botIsBehind(defender, attackerNum) {
  * a wounded rival and below pressuring the Fame leader. A bot that chases the
  * flanking bonus past a rival it could knock down is a bot playing the bonus
  * instead of the game. Callers that don't pass `selfNum` behave exactly as before.
+ *
+ * ⚠️ THE FULL ORDER IS THE EXPORT AND `botPickTarget` IS ITS HEAD. §6.3's beam
+ * has to RANK attack branches rather than choose one, and re-deriving this
+ * priority inside the scorer would fork the tuning across two files that drift
+ * in silence — the copy would look right until somebody retuned only one of
+ * them. One comparator, two consumers.
  */
-export function botPickTarget(candidates, noteStates, selfNum = null) {
-  if (!candidates.length) return null;
-  return [...candidates].sort((a, b) => {
+export function botTargetOrder(candidates, noteStates, selfNum = null) {
+  return [...(candidates ?? [])].sort((a, b) => {
     const ka = (a.vibe ?? 99) <= 2 ? 1 : 0;
     const kb = (b.vibe ?? 99) <= 2 ? 1 : 0;
     if (ka !== kb) return kb - ka;
@@ -129,7 +134,16 @@ export function botPickTarget(candidates, noteStates, selfNum = null) {
     if ((a.vibe ?? 99) !== (b.vibe ?? 99)) return (a.vibe ?? 99) - (b.vibe ?? 99);
     if (selfNum == null) return 0;
     return (botIsBehind(b, selfNum) ? 1 : 0) - (botIsBehind(a, selfNum) ? 1 : 0);
-  })[0];
+  });
+}
+
+/**
+ * Pick the juiciest rival to hit — the head of `botTargetOrder`. Behaviour is
+ * unchanged, `null` on an empty candidate list included.
+ */
+export function botPickTarget(candidates, noteStates, selfNum = null) {
+  if (!candidates.length) return null;
+  return botTargetOrder(candidates, noteStates, selfNum)[0];
 }
 
 /**
@@ -287,16 +301,32 @@ function botIsNotePlayable(note, scale, intervals, discordUnlocks, scaleMode) {
 }
 
 /**
- * Decide the bot's next note-track action: { slot } to play a stock index,
- * or { commit: true } to lock the track in. Pure over noteState + persona.
+ * RANK every stock index worth adding to the melody line, best first.
+ *
+ * ⚠️ THIS IS `botPlanNoteStep`'S BODY, PROMOTED — not a second opinion about
+ * note choice. The chooser always built a full preference order internally
+ * (body ascending by scale degree, then the reserved ending, then a discord
+ * opener) and then threw all but the head away. §6.3's beam needs the part that
+ * was thrown away: melody notes are the combinatorial kind, so an unranked beam
+ * keeps an arbitrary five of them and the bot's musicianship becomes whatever
+ * order the stock happened to arrive in.
+ *
+ * Returns `{ order, commit }`. `order` is stock INDICES, best first; `commit` is
+ * true exactly when the chooser would have said so, i.e. when `order` is empty.
+ *
+ * ⚠️ `order` DOES NOT LIST EVERY LEGAL NOTE, and that is deliberate. Discord
+ * notes appear only in the one case the chooser would ever play one — an empty
+ * track. A note missing from `order` is not "bad", it is UNRANKED: the scorer
+ * floors those to a single shared value so they keep source order among
+ * themselves rather than being reshuffled by a preference nobody wrote down.
  */
-export function botPlanNoteStep(noteState, persona) {
+export function botNoteStepOrder(noteState, persona) {
   const ns = noteState ?? {};
   const stock = ns.noteStock ?? [];
   const track = ns.melodyLine ?? [];
   const used  = ns.usedStockIdx;
   const NOTE_CAP = 8;
-  if (track.length >= NOTE_CAP) return { commit: true };
+  if (track.length >= NOTE_CAP) return { order: [], commit: true };
 
   const root = ns.rootNote ?? 'C', mode = ns.scaleMode ?? 'major';
   const scale = buildScale(root, mode);
@@ -341,10 +371,28 @@ export function botPlanNoteStep(noteState, persona) {
     if (tri != null && track.length < NOTE_CAP - 1 && !body.includes(tri)) body = [...body, tri];
   }
 
-  if (body.length) return { slot: body[0] };
-  if (endIdx != null) return { slot: endIdx };
-  if (track.length === 0 && discord.length) return { slot: discord[0] };
-  return { commit: true };
+  // ⚠️ THE CONCATENATION *IS* THE OLD CASCADE, in the same order the four
+  // returns ran in: body first, then the reserved ending, then — only on an
+  // empty track — the discord opener. Dedupe keeps first position, which is what
+  // makes the Brawler's tritone (appended to `body` above AND sitting in
+  // `discord`) rank where the body put it instead of falling to the tail.
+  const order = [
+    ...body,
+    ...(endIdx != null ? [endIdx] : []),
+    ...(track.length === 0 ? discord : []),
+  ].filter((idx, i, arr) => arr.indexOf(idx) === i);
+
+  return { order, commit: order.length === 0 };
+}
+
+/**
+ * Decide the bot's next note-track action: { slot } to play a stock index,
+ * or { commit: true } to lock the track in. Pure over noteState + persona.
+ * The head of `botNoteStepOrder`.
+ */
+export function botPlanNoteStep(noteState, persona) {
+  const { order, commit } = botNoteStepOrder(noteState, persona);
+  return commit ? { commit: true } : { slot: order[0] };
 }
 
 /**
@@ -507,6 +555,45 @@ export function botRivalsWithin(spirits, selfId, selfNum, dist) {
 }
 
 /**
+ * Build the `botHexScore` context for one Spirit's seat.
+ *
+ * ⚠️ EXTRACTED FROM `botPlanMove`, WHICH NOW CALLS IT — this is not a parallel
+ * reading of the board. §6.3's beam has to score `move` and `face` branches, and
+ * both are `botHexScore` questions: a move re-faces you down the direction of
+ * travel, so the destination decides the rear wedge, and a `face` is the same
+ * scorer with the position held and only `selfFacing` varied. A second copy of
+ * this ctx would be a second board reading to keep in step for no gain.
+ *
+ * Returns null if the Spirit is not on a hex — the same "no opinion" the callers
+ * already have to handle.
+ */
+export function botMoveCtx(state, self, persona) {
+  const from = HEX_BY_NUM[self?.num];
+  if (!from) return null;
+  const live = state?.spirits ?? [];
+  const me = live.find(s => s.id === self.id) ?? self;
+  const spotlightHex = state?.board?.spotlightHex;
+  const boardTokens = state?.board?.boardTokens ?? [];
+  const eventHexes = state?.board?.eventHexes ?? [];
+  return {
+    p:      persona,
+    center: HEX_BY_NUM[LIMELIGHT_HEX],
+    hurt:   (me.vibe ?? 9) <= Math.ceil((me.maxVibe ?? 5) * 0.4),
+    myFame: state?.noteStates?.[self.id]?.fame ?? 0,
+    spot:   (typeof spotlightHex === 'number') ? HEX_BY_NUM[spotlightHex] : null,
+    tokens: boardTokens.map(t => HEX_BY_NUM[t.num]).filter(Boolean),
+    events: eventHexes.map(n => HEX_BY_NUM[n]).filter(Boolean),
+    rivals: live.filter(s => !s.knockedOut && s.id !== self.id)
+      .map(r => ({ r, h: HEX_BY_NUM[r.num], fame: state?.noteStates?.[r.id]?.fame ?? 0 }))
+      .filter(x => x.h),
+    // 🔪 the rear-wedge term needs to know where it's stepping FROM (that's
+    // what sets its new facing) and what it's facing if it holds position.
+    from: from,
+    selfFacing: me.facing ?? 0,
+  };
+}
+
+/**
  * Decide the next movement step. Returns a hex num to move to, or null to
  * hold position. Pure over engine state + amps (passed separately since
  * amps aren't engine-owned yet).
@@ -541,26 +628,8 @@ export function botPlanMove(state, self, persona, amps) {
     }
   }
 
-  const me = live.find(s => s.id === self.id) ?? self;
-  const spotlightHex = state.board?.spotlightHex;
-  const boardTokens = state.board?.boardTokens ?? [];
-  const eventHexes = state.board?.eventHexes ?? [];
-  const ctx = {
-    p:      persona,
-    center: HEX_BY_NUM[LIMELIGHT_HEX],
-    hurt:   (me.vibe ?? 9) <= Math.ceil((me.maxVibe ?? 5) * 0.4),
-    myFame: state.noteStates?.[self.id]?.fame ?? 0,
-    spot:   (typeof spotlightHex === 'number') ? HEX_BY_NUM[spotlightHex] : null,
-    tokens: boardTokens.map(t => HEX_BY_NUM[t.num]).filter(Boolean),
-    events: eventHexes.map(n => HEX_BY_NUM[n]).filter(Boolean),
-    rivals: live.filter(s => !s.knockedOut && s.id !== self.id)
-      .map(r => ({ r, h: HEX_BY_NUM[r.num], fame: state.noteStates?.[r.id]?.fame ?? 0 }))
-      .filter(x => x.h),
-    // 🔪 the rear-wedge term needs to know where it's stepping FROM (that's
-    // what sets its new facing) and what it's facing if it holds position.
-    from: from,
-    selfFacing: me.facing ?? 0,
-  };
+  const ctx = botMoveCtx(state, self, persona);
+  if (!ctx) return null;
   const here = botHexScore(from, ctx);
   const best = neighbors
     .map(h => ({ num: h.num, s: botHexScore(h, ctx) }))

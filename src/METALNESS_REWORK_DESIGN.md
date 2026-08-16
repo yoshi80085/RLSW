@@ -5,9 +5,16 @@
 > TASK and `BOT_STRATEGY_HANDOFF.md` §4.3 flags as blocking cross-Spirit tuning.
 > Written 2026-08-15 out of a design conversation.
 >
-> ⚠️ **NOTHING HERE IS IMPLEMENTED.** Claims about *current* behaviour are cited
-> and were read out of source; everything else is a proposal. **All names are
-> placeholders.**
+> ⚠️ ~~**NOTHING HERE IS IMPLEMENTED.**~~ **STALE AS OF 2026-08-16 — PARTLY
+> SHIPPED.** §2's Slide, §4a's Tentacle and §4d's Goes to 11 are in
+> (`systems/slime.js`, `policies/legalActions.js`, `systems/eleven.js`), as is
+> §6's `beamActions` scorer. **§4b's Slam and §4c's Master of Moshpits are not,
+> and §1a's Azrael is still wired in despite being CUT here.** This banner is a
+> patch, not a reconciliation: the rest of the doc still reads as a proposal
+> throughout, and `BOT_STRATEGY_HANDOFF.md` §4.3 still lists the pre-rework
+> arsenal as shipped. **A full pass over both is outstanding.** Claims about
+> *current* behaviour predating this note were cited from source at the time.
+> **All names are placeholders.**
 
 ---
 
@@ -258,11 +265,20 @@ re-climbs the path that already exists.
 
 ## 6. Notes for the bot work
 
-- **⚠️ The Tentacle is what makes `beamActions`' scorer urgent.** `legalActions`
-  has three geometries today (cone, beam-of-3, cone). Cone-**from-each-trail-hex**
-  multiplies his Swing branches by trail length — up to ~12 origins. `beamActions`
-  caps at 5 per kind, but its `score` is still `null`, so it would keep an
-  arbitrary first five. §6.3's "still to do" becomes a blocker.
+- ~~**⚠️ The Tentacle is what makes `beamActions`' scorer urgent.**~~ ✅ **CLOSED
+  2026-08-16** — `policies/actionScore.js`, `npm run test:score`. It was a real
+  blocker and it played out exactly as written: cone-**from-each-trail-hex**
+  multiplies his Swing branches by trail length, `beamActions` caps at 5 per
+  kind, and with `score` still `null` it kept an arbitrary first five. The
+  scorer ranks WHO he hits strictly above HOW MUCH ROAD IT COSTS
+  (`rank * TENTACLE_RANK_STRIDE - reach`), so reach separates only two ways of
+  reaching the *same* rival — and the cheaper reach wins, because the road that
+  survives is §3's meter: the Slam's fuel and the next Slide's floor.
+  ⚠️ **Ranking the origins did NOT need per-origin target ranking**, which is the
+  one thing that looked obvious and was wrong: the rear wedge resolves off the
+  attacker's own hex in `combat.js`, and the arm never moves him (§4a — "he
+  stays where he is, facing where he was"), so re-ranking per origin would have
+  invented a flanking bonus the resolver does not pay.
 - **The trail is a new state class the searcher must model** — a set of hexes with
   ages, owned by a Spirit, consumed by three different actions. Nothing in
   `evaluate.js` has a shape like it.

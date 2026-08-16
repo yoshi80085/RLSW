@@ -149,7 +149,7 @@ building rather than after:
   the Tentacle look bad in exactly the searcher that is supposed to evaluate it.
   That makes step 4 a *co-requisite* of this one, not a successor.
 
-### 4. Build the §6.6 harness, and wire `beamActions`' `score`
+### 4. Build the §6.6 harness, and ~~wire `beamActions`' `score`~~ ✅ **score DONE 2026-08-16**
 **In parallel with 1–3.** This is the instrument, and it is upstream of all
 three arms rather than downstream of any:
 
@@ -165,9 +165,17 @@ It is unblocked — `applyBotAction` and `commitMelodyEconomy` are both in, and
 now measuring strategy rather than a blind spot. It is also character-agnostic:
 you do not need Metalness finished to build the instrument, only to read it.
 
-⚠️ **The unranked beam is the nearer half of this step.** An unranked beam is
-just "the first 5" (§6.3), so any harness run before `score` is wired measures a
-bot that has been arbitrarily blinded.
+~~⚠️ The unranked beam is the nearer half of this step.~~ ✅ **LANDED** —
+`policies/actionScore.js`, `npm run test:score`. The harness is no longer
+measuring a bot that has been arbitrarily blinded, so **what remains of step 4
+is the harness itself**: headless `while (!state.winner)` on seeded rng, new bot
+vs. current bot, ~2000 matches, bar ≥60%.
+
+⚠️ **And the co-requisite in §3 is discharged in the direction it mattered.**
+The `beamActions` note was the half of step 3 that could not wait for step 4 —
+the Tentacle's branches multiply with trail length, so an unranked beam would
+have made the ability look bad in the very searcher meant to evaluate it. That
+is closed. §5's trail counterplay is still open and still an ordering hazard.
 
 ### 5. Build ONE Theory route end to end — Monster's
 `THEORY_ROUTES_DESIGN.md` §4.2 already says this and it is right: build one

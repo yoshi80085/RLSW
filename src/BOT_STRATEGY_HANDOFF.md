@@ -362,17 +362,56 @@ tempo for rivals. Re-read this when the searcher starts scoring opponent replies
    Left deliberately un-wired: nothing calls it yet, because the thing that
    should call it is (1), and hanging it off the existing choosers early would
    bake in the hex-at-a-time framing it exists to replace.
-3. **Beam, not full width.** `beamActions(actions, { limit, score })` ships
-   alongside `legalActions`. ⚠️ It beams **per kind**, not globally, and that
-   detail is load-bearing: with twenty melody notes on offer a global top-5 is
-   five melody notes, and the bot silently loses the ability to consider
-   attacking at all. Per-kind capping bounds the tree while guaranteeing that
-   if a Smash was legal, a Smash is still on the table. Ties keep source order
-   rather than relying on sort stability, so the §6.6 determinism regression
-   cannot fail intermittently.
-   **Still to do:** wire the existing planners in as the `score` function so
-   their tuning is preserved — they currently rank nothing, and an unranked
-   beam is just "the first 5".
+3. ~~**Beam, not full width.**~~ ✅ **DONE 2026-08-16** — `beamActions` +
+   `policies/actionScore.js`, pinned by `actionScoreCheck.mjs`
+   (`npm run test:score`, 100 assertions). ⚠️ It beams **per kind**, not
+   globally, and that detail is load-bearing: with twenty melody notes on offer
+   a global top-5 is five melody notes, and the bot silently loses the ability
+   to consider attacking at all. Per-kind capping bounds the tree while
+   guaranteeing that if a Smash was legal, a Smash is still on the table. Ties
+   keep source order rather than relying on sort stability, so the §6.6
+   determinism regression cannot fail intermittently.
+
+   ~~Still to do: wire the existing planners in as the `score` function.~~
+   **Wired — and "wired" means CALLED, not re-derived.** Every ranking in
+   `actionScore.js` delegates to a shipped planner: `move`/`face` →
+   `botHexScore`, attack targets → `botPickTarget`'s comparator, `melodyNote`
+   → `botPlanNoteStep`'s preference, `stackCommit` → `botPlanStackCommit`'s
+   plan, `skillUnlock` → `botPickSkillTarget`'s order. Three of those were
+   choosers that built a full ordering and then threw away everything but the
+   head (§6.1: *"a chooser cannot be searched"*); they are now rankers in
+   `bot.js` with the chooser kept as the head, so there is **one comparator per
+   decision rather than two copies to keep in step**. The check's load-bearing
+   assertions all have one shape: *the top-scored action of a kind is the one
+   the old chooser would have chosen.*
+
+   ⚠️ **THE SCORES ARE ONLY EVER COMPARED WITHIN A KIND**, because the beam
+   groups by kind before it ranks. Nothing is calibrated across groups and no
+   attempt was made — a `move` scoring 41 against a `swing` scoring 3 says
+   nothing about whether to walk or hit. That question is `evaluate`'s, on the
+   resulting positions. A **constant is the correct score** for a kind that
+   emits at most one action (`confirmMelody`, `slime`, `slide`, `eleven`,
+   `pose`, `endTurn`): zero there means *nothing to rank*, not *worthless*, and
+   nothing is ever dropped from a group of one.
+
+   ⚠️ **RANKING IS NOT A VETO, and this is the boundary to defend.** Scoring
+   an action zero leaves it legal. A scorer that floored an option class to keep
+   it out of the beam would be smuggling a rule into the one place tuning cannot
+   see it — exactly the failure §6a's *"deliberately dumb"* rule exists to
+   prevent, one file downstream. Unranked actions therefore share a single
+   floor value, so the index tie-break leaves them in **source order** instead
+   of half-sorting them by a preference nobody wrote down.
+
+   🐙 **The Tentacle is what forced this, and it is the regression to keep.**
+   `legalActions` emits every (rival × trail-origin) pair, so branch count now
+   scales with the BOARD rather than the roster. The scorer ranks WHO you hit
+   strictly above HOW MUCH ROAD IT COSTS — `rank * TENTACLE_RANK_STRIDE - reach`
+   — so reach only ever separates two ways of reaching the *same* rival, and the
+   cheaper one wins because the surviving road is the Slam's fuel and the next
+   Slide's floor (`METALNESS_REWORK_DESIGN.md` §3's one meter). The doc's
+   counter-case — *"the longer reach is sometimes the better play, because it
+   strikes from a different angle"* — is real and shows up as a **different
+   target set**, which the rank term already separates.
 4. **Expectimax / sampled rollouts, not minimax.** Swing is d6, Sonic is
    keep-highest, knockback scatters, events draw. Plain minimax will
    systematically over-value high-variance lines.

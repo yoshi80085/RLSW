@@ -16,6 +16,7 @@
     "test:melody": "node --import ./src/engine/testAssetStub.mjs src/engine/melodyCommitCheck.mjs",
     "test:slime": "node --import ./src/engine/testAssetStub.mjs src/engine/slimeCheck.mjs",
     "test:eleven": "node --import ./src/engine/testAssetStub.mjs src/engine/elevenCheck.mjs",
+    "test:score": "node --import ./src/engine/testAssetStub.mjs src/engine/actionScoreCheck.mjs",
     "test:riffparity": "node --import ./src/engine/testAssetStub.mjs src/riff/riffOffParity.test.mjs",
     "test:chroma": "node src/audio/chromaSelftest.mjs",
     "test:vision": "node src/vision/neckGeometrySelftest.mjs",
