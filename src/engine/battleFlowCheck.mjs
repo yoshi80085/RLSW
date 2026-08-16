@@ -347,14 +347,20 @@ const battle = (over = {}) => ({
   ok(big.result.path.length <= 2, 'a 3-hex shove on Zero moves him at most 2');
   ok(one.result.path.length <= 1, 'a 1-hex shove still lands — he is sturdy, not immune');
 
-  // 6️⃣ Berserk plants completely.
+  // 🔊 Cranked to eleven, he plants completely.
+  //
+  // ⚠️ THIS ASSERTION USED TO BELONG TO 6️⃣ Number of the Beast, and it moved
+  // rather than died. §1b cuts that ability but names knockback immunity as its
+  // one genuinely good idea — "the only answer to a Smash or a Blaster this
+  // Spirit ever had" — and asks for it to be re-hung on Goes to 11. The rule
+  // outlived the ability that introduced it, so the test does too.
   let b = applyAction(s, { type: 'NOTE_SHEET_PATCHED', spiritId: 'Metalness_Monster',
-    patch: { berserk: true } });
+    patch: { atEleven: true } });
   const zerk = drive(
     st => knockback({ state: st, fromId: 'cosmic_ronin', targetId: 'Metalness_Monster', spaces: 3 }),
     b,
   );
-  eq(zerk.result.path.length, 0, 'the Beast does not get moved');
+  eq(zerk.result.path.length, 0, 'a Spirit on eleven does not get moved');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

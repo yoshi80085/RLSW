@@ -57,6 +57,7 @@ import { applyAction } from "../reduce.js";
 import {
   moveStep, spiritFaced, beatsSpent, moveBudgetSet, turnEnded,
   noteSheetPatched, attackRolled, fansChanged, spiritSlid, slimeCleared, slimeCalled,
+  elevenCalled,
 } from "../actions.js";
 import { battleConsequences, runBattleFlow, grantFame } from "../systems/battleFlow.js";
 import { attackParams, spiritChord } from "../systems/attackParams.js";
@@ -68,7 +69,7 @@ import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 export const MODELLED_KINDS = new Set([
   'melodyNote', 'stackCommit', 'confirmMelody',
   'move', 'slide', 'face', 'swing', 'sonic', 'tentacle', 'pose', 'skillUnlock', 'endTurn',
-  'slime',
+  'slime', 'eleven',
 ]);
 
 /** Kinds the rules allow but the engine cannot yet run. See the header. */
@@ -207,6 +208,16 @@ export function applyBotAction(state, action, ctx = {}) {
     case 'move':
       return {
         state: applyAction(state, moveStep(spiritId, action.to, !!ns.dazed), rng),
+        view, ok: true, reason: null, logs: [],
+      };
+
+    // 🔊 GOES TO 11 — the dial, the Sustain stack, and the amp, in one action.
+    // Everything downstream reads it off the sheet: `attackParams` SETS the
+    // attack stat, `rigFor` reports him out-of-rig, and `battleFlow.knockback`
+    // refuses to move him. Nothing here needs to know any of that.
+    case 'eleven':
+      return {
+        state: applyAction(state, elevenCalled(spiritId), rng),
         view, ok: true, reason: null, logs: [],
       };
 

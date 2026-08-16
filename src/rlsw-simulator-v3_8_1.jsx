@@ -77,12 +77,12 @@ import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
 import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted,
   // 🧪 the slime trail (METALNESS_REWORK_DESIGN.md §3)
-  slimeDecayed, slimeCleared, spiritSlid, slimeCalled } from "./engine/actions.js";
+  slimeDecayed, slimeCleared, spiritSlid, slimeCalled, elevenCalled } from "./engine/actions.js";
 // 🧪 THE SLIME TRAIL — the road Metalness Monster lays, and the reads that price
 // it. `METALNESS_REWORK_DESIGN.md` §3: the trail is a CURRENCY, so the tint the
 // player sees and the hex an ability will accept have to be the same read.
 import { slimeBites, slideTarget, SLIME_VIBE_DAMAGE } from "./engine/systems/slime.js";
-import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX } from "./data/gameConstants.js";
+import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX, ELEVEN_DRIVE } from "./data/gameConstants.js";
 import { tentacleOptions } from "./engine/policies/legalActions.js";
 import TentacleFX, { TENTACLE_LEAD_MS } from "./ui/TentacleFX.jsx";
 import { riffStats, RIFF_BOTH_PAID_QUALITY, RIFF_CLOSE_QUALITY_GAP } from "./engine/systems/riffOff.js";
@@ -425,7 +425,7 @@ const SIGNATURE_TESTS = {
     { id:'wa_no_koe',        label:'🎵 Wa no Koe',        pre:[] },
   ]},
   Metalness_Monster: { name: 'Metalness Monster', color: '#ffcc00', skills: [
-    { id:'number_of_the_beast', label:'6️⃣ Number of the Beast', pre:[] },
+    { id:'goes_to_11',          label:'🔊 Goes to 11',          pre:[] },
     { id:'master_moshpits',     label:'🤘 Master of Moshpits',  pre:[] },
     { id:'tentacle',            label:'🐙 Tentacle',            pre:[] },
     { id:'azrael',              label:'💀 Azrael',               pre:[] },
@@ -691,8 +691,8 @@ const SKILL_TREE = {
       desc: 'Dripping poison, summoning mosh pits, invoking the Beast. An exclusive arsenal only the Monster can wield.',
       spiritOnly: 'Metalness_Monster',
       skills: [
-        { id:'number_of_the_beast', label:'Number of the Beast', icon:'6️⃣', dbCost:6, gated:false,
-          desc:'BERSERK — 1 Db to call, and only at 2 Vibe or less. +6 Drive with no cap, immune to knockback, and every attack costs 1 Vibe. Ends when you put a rival down, when you go down, or when you heal out of danger. The Beast only answers the dying.' },
+        { id:'goes_to_11',      label:'Goes to 11',         icon:'🔊', dbCost:6, gated:false,
+          desc:'SETS your attack to exactly 11 for the turn — not a bonus, a setting, so it beats the bonus cap. ⚠️ If you were already louder than 11, it turns you DOWN: the amp only goes to eleven. You also shrug off knockback. It costs your whole Sustain stack, and it blows your amp — no Sonic at all and a bare d4 on defence until your rig comes back a turn later.' },
         { id:'master_moshpits', label:'Master of Moshpits', icon:'🤘', dbCost:8,  gated:false,
           desc:'Pulls 3 fans out of the stands and onto the board for a pit. +2 Drive that STANDS — it survives battles and lasts until you call the next pit. Once per turn.' },
         { id:'tentacle',        label:'Tentacle',           icon:'🐙', dbCost:10, gated:false,
@@ -4503,7 +4503,7 @@ function Game({ gameState, onReturnToLobby }) {
     // check. Posing is ungated now (see togglePose). Don't reinstate the gate.
 
     // (v1 stance route removed — v2 stances are fixed ability kits, no learning tiers)
-    if (skillId === 'number_of_the_beast') addLog(`6️⃣ ${spirit?.name} — NUMBER OF THE BEAST! At 2 Vibe or less, spend 1 Db to go BERSERK: +6 Drive with no cap, immune to knockback, 1 Vibe per attack. It ends when somebody hits the floor.`);
+    if (skillId === 'goes_to_11')   addLog(`🔊 ${spirit?.name} — GOES TO 11! Set your attack to exactly ${ELEVEN_DRIVE} and shrug off knockback — but it eats your Sustain stack and blows your amp for a turn. If you were already louder, it turns you down. That's the joke, and it's also the rule.`);
     if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull 3 fans onto the board for a pit — +2 Drive that stands until the next pit.`);
     if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Swing from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
     if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
@@ -6768,7 +6768,7 @@ function Game({ gameState, onReturnToLobby }) {
     const target = spirits.find(s => s.id === targetId);
     if (!fromSp || !target || target.knockedOut || spaces <= 0) return;
     // 6️⃣ BERSERK — the Beast does not get moved. He comes at you.
-    if (noteStates[targetId]?.berserk) {
+    if (noteStates[targetId]?.atEleven) {
       addLog(`6️⃣ ${target.name} doesn't move an inch — the Beast eats the hit and keeps coming.`);
       triggerRumble(targetId);
       return;
@@ -6968,15 +6968,9 @@ function Game({ gameState, onReturnToLobby }) {
       //   · the Monster put someone on the floor — the charge landed, glory, done
       //   · the Monster IS the one on the floor — the cannons won
       // Deferred a beat so it lands after the knockdown log, not before it.
-      if (attackerId && attackerId !== targetId && noteStates[attackerId]?.berserk) {
-        setTimeout(() => endBerserk(attackerId, `${tgt.name} went down — the charge landed`), 140);
-      }
       // Immediate, not deferred: respawn restores full Vibe a beat later, and if
       // that lands first the heal-watcher below would claim this ending with the
       // wrong line ("the danger passed"). The cannons get the credit they're due.
-      if (noteStates[targetId]?.berserk) {
-        endBerserk(targetId, 'he charged the cannons and the cannons won');
-      }
 
       // 💀 AZRAEL — credit the attacker's knockdown streak (Metalness only).
       // A rival going down feeds Metalness Fame equal to his running streak.
@@ -7055,7 +7049,7 @@ function Game({ gameState, onReturnToLobby }) {
     const defHex = HEX_BY_NUM[defender.num];
     if (!defHex) return;
     // 6️⃣ BERSERK — same rule as knockback: the Beast holds its ground.
-    if (noteStates[defenderId]?.berserk) {
+    if (noteStates[defenderId]?.atEleven) {
       addLog(`6️⃣ ${defender.name} plants — the Beast will not be pushed.`);
       return;
     }
@@ -7208,12 +7202,12 @@ function Game({ gameState, onReturnToLobby }) {
     // 🛡️ Chord fray moved POST-ROLL (Stance rework): the defender's chord frays
     // only when the hit actually lands — see the fray step after the verdict.
 
-    // 6️⃣ BERSERK rides on the BASE, deliberately outside ATK_BONUS_CAP — the
-    // Beast is only ever out when the Monster is one hit from the floor, so it
-    // gets to break the ceiling the ordinary buff tower lives under.
-    const atkBerserk = nsA.berserk ? BEAST_DRIVE : 0;
-    if (atkBerserk) { addLog(`6️⃣ THE BEAST IS LOOSE — +${BEAST_DRIVE} Drive, no ceiling.`); beastAttackToll(attacker.id); }
-    const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0) + skillMods.pyroBonus + atkBerserk;
+    // 🔊 GOES TO 11 overwrites the total further down rather than adding here —
+    // see the `cranked` clamp after the bonus cap. Nothing rides the BASE any
+    // more, which is the point: the ability it replaced broke ATK_BONUS_CAP by
+    // being written outside it.
+    const cranked  = !!nsA.atEleven;
+    const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0) + skillMods.pyroBonus;
     const atkEdge  = edgeCombatMods(nsA);
     const defEdge   = edgeCombatMods(nsD);
     // ⚖️ Stacked bonuses cap at ATK_BONUS_CAP — no single turn should assemble
@@ -7223,7 +7217,11 @@ function Game({ gameState, onReturnToLobby }) {
     const rawAtkBonus = (nsA.tempDrive ?? 0) + (nsA.moshDrive ?? 0) + atkEdge.drive;
     const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
     if (rawAtkBonus > atkBonus) addLog(`⚖️ The rig can only take so much — attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
-    const atkStat  = atkBase + atkBonus;
+    // 🔊 GOES TO 11 — the SET. It overwrites the finished total, so it neither
+    // participates in the tower nor needs an exemption from its cap, and it is a
+    // CEILING as much as a floor: if the honest number was already louder, this
+    // is where he gets turned down.
+    const atkStat  = cranked ? ELEVEN_DRIVE : atkBase + atkBonus;
     const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
     const defBonus = (nsD.tempSustain ?? 0) - defEdge.sustainPenalty;
     const defStat  = defBase + defBonus;
@@ -7458,8 +7456,6 @@ function Game({ gameState, onReturnToLobby }) {
     addLog(`🎸💥 ${acting.name} brings the instrument DOWN — THE SMASH! Everything goes in: ${thrown} note${thrown !== 1 ? 's' : ''} hurled, the whole Drive stack (${dStack.join(' ')}) spent${selfSustainPaid > 0 ? `, ${selfSustainPaid} off their own Sustain` : ''}.`);
     addLog(`💥 UNDEFENDABLE — −${SMASH_DAMAGE} Vibe${strippedNotes.length ? `, and ${strippedNotes.join(' ')} torn off ${target.name}'s Sustain stack` : ''}, hurled back ${SMASH_KNOCKBACK} hexes.`);
     triggerEffectFlash(targetId, '🎸', 'SMASH!', '#ff3344');
-    // 6️⃣ The Smash is an attack like any other — the Beast takes its cut.
-    beastAttackToll(acting.id);
     resolveWinDamage(acting.id, targetId, SMASH_DAMAGE, 'The Smash');
     battleKnockback(acting.id, targetId, SMASH_KNOCKBACK);
     if (stepsBeforeSmash > SMASH_AP_COST) addLog(`🦶 ${acting.name} is rooted by the wind-up — no movement left this turn.`);
@@ -7703,100 +7699,59 @@ function Game({ gameState, onReturnToLobby }) {
   // Never leave a song playing or a camera pinned if the component unmounts.
   useEffect(() => () => { clearMoshTimers(); stopMoshSong(); }, []);
 
-  // ── 6️⃣ NUMBER OF THE BEAST — BERSERK ────────────────────────────────────────
-  // "The Trooper": you don't charge the cannons because it's clever, you charge
-  // because there's nothing else left. The Beast can ONLY be called when the
-  // Monster is already dying — at BEAST_VIBE_GATE Vibe or less.
+  // ── 🔊 GOES TO 11 ───────────────────────────────────────────────────────────
+  // `METALNESS_REWORK_DESIGN.md` §4d. Replaces 6️⃣ Number of the Beast in the
+  // genre-joke slot, and it is a better fit for the same reason it is a better
+  // mechanic: the Beast's joke was a NUMBER (666 → +6 Drive → a 2-Vibe gate),
+  // chosen first with the design bent to fit it. Spinal Tap's joke is about a
+  // DIAL, and this game is made of dials.
   //
-  // WHY IT ONLY COSTS 1 Db: the old version wanted 6 Db up front, which put it
-  // in direct competition with the upgrade track — and the upgrade won every
-  // time, so the ability may as well not have existed. 1 Db keeps it in line
-  // with the other signature activations (Slime, the Shamisen) without being a
-  // real choice against an upgrade. The rest is paid in blood: the Vibe gate IS
-  // the cost, and every swing you take while raging burns another point.
+  // Everything here has a cap, and eleven is one louder than the cap. That
+  // sentence is the whole ability:
   //
-  // WHILE BERSERK:
-  //   · +BEAST_DRIVE Drive, and it bypasses ATK_BONUS_CAP — the whole point is
-  //     that the Beast is off the leash. It rides on the attack BASE, not the
-  //     capped bonus tower.
-  //   · Immune to knockback. He does not get moved. He comes at you.
-  //   · Every attack he makes costs 1 Vibe.
-  // IT ENDS WHEN:
-  //   · he knocks a rival down (glory — the charge landed), or
-  //   · he's knocked down himself (the cannons won), or
-  //   · his Vibe climbs back above the gate (he's out of danger, so the Beast
-  //     lets go — this is what stops you healing up while keeping the rage).
-  const BEAST_VIBE_GATE = 2;
-  const BEAST_DRIVE     = 6;
-  const BEAST_DB_COST   = 1;
-
-  function resolveNumberOfTheBeast() {
+  //   · it SETS the attack stat to exactly 11 rather than adding to it, so it
+  //     sidesteps ATK_BONUS_CAP without the exemption the Beast's uncapped +6
+  //     needed — and a cap with an exemption written into it is not a cap;
+  //   · ⚠️ therefore CALLING IT WHILE ALREADY LOUDER TURNS HIM DOWN. Stack
+  //     Moshpits and a Drive boost on a dominant chord, hit the dial, and you
+  //     get quieter. The joke and the balance lever are the same rule;
+  //   · it spends the SUSTAIN STACK. §0 of the rework: he is the toughest body
+  //     in the game and nothing in his kit had ever read that stat. Armour into
+  //     volume;
+  //   · it BLOWS THE AMP for a full turn. Not weaker — offline. §3.1's existing
+  //     out-of-rig rule does all the work: no Sonic at all, and he braces
+  //     against an incoming beam on a bare d4.
+  //
+  // ⚠️ ALL OF THAT IS ENGINE-SIDE (`engine/systems/eleven.js`). This function
+  // dispatches and narrates; it decides nothing. `attackParams` reads the dial,
+  // `rigFor` reports the blown rig, `battleFlow.knockback` refuses to move him.
+  function callEleven() {
     if (!acting || acting.id !== 'Metalness_Monster') return;
     const ns = noteStates[acting.id] ?? {};
-    if (ns.berserk) { addLog(`6️⃣ The Beast is already loose.`); return; }
-    const vibe = acting.vibe ?? 0;
-    if (vibe > BEAST_VIBE_GATE) {
-      addLog(`6️⃣ The Beast only answers the dying — ${BEAST_VIBE_GATE} Vibe or less (you're on ${vibe}).`);
+    if (ns.atEleven) { addLog('🔊 It is already on eleven. There is nowhere further to turn it.'); return; }
+    if (!(ns.sustainStack ?? []).length) {
+      addLog('🔊 Nothing to trade — Goes to 11 spends your Sustain stack, and yours is empty. Voice some armour first.');
       return;
     }
-    const db = ns.dbPoints ?? 0;
-    if (db < BEAST_DB_COST) {
-      addLog(`6️⃣ Not enough Db — calling the Beast costs ${BEAST_DB_COST} (you have ${db}).`);
-      return;
-    }
+    const stack = [...(ns.sustainStack ?? [])];
+    dispatch(elevenCalled(acting.id));
 
-    setNoteStates(prev => ({
-      ...prev,
-      [acting.id]: {
-        ...prev[acting.id],
-        berserk: true,
-        dbPoints: (prev[acting.id]?.dbPoints ?? 0) - BEAST_DB_COST,
-      },
-    }));
-    addLog(`6️⃣🔥 NUMBER OF THE BEAST! ${acting.name} spends ${BEAST_DB_COST} Db — cornered, bleeding, and DONE RUNNING — BERSERK! +${BEAST_DRIVE} Drive, immune to knockback, and every swing costs a point of Vibe. It ends when someone goes down.`);
-    triggerEffectFlash(acting.id, '6️⃣', `BERSERK! +${BEAST_DRIVE} DRV`, '#cc0000');
+    addLog(`🔊🎸 GOES TO ELEVEN! ${acting.name} tears the Sustain stack (${stack.join(' ')}) straight into the gain — attack set to exactly ${ELEVEN_DRIVE}, and he does not get moved.`);
+    // ⚠️ Say it out loud when the dial made him QUIETER. This is the one moment
+    // the ability can feel like a bug instead of a joke, and a silent downgrade
+    // is indistinguishable from a broken buff.
+    const chordNow = (ns.driveStack ?? []).length ? spiritChord(acting.id, ns.driveStack) : null;
+    const wouldHaveBeen = (chordNow ? chordNow.drive : (acting.drive ?? 7))
+      + Math.min((ns.tempDrive ?? 0) + (ns.moshDrive ?? 0), ATK_BONUS_CAP);
+    if (wouldHaveBeen > ELEVEN_DRIVE) {
+      addLog(`🔊 …and that is QUIETER than he already was (⚔️${wouldHaveBeen} → ${ELEVEN_DRIVE}). The amp only goes to eleven.`);
+    }
+    addLog(`🔇 The cabinet blows — no Sonic and a bare d4 on defence until his rig comes back.`);
+    triggerEffectFlash(acting.id, '🔊', `ELEVEN! ⚔️${ELEVEN_DRIVE}`, '#cc0000');
     triggerRumble(acting.id, 900);
     focusOnHex(acting.num, 1400, 0.40, true);
   }
 
-  // Drop out of Berserk — one exit point so every ending logs the same way.
-  function endBerserk(spiritId, reason) {
-    if (!noteStates[spiritId]?.berserk) return;
-    setNoteField(spiritId, { berserk: false });
-    const nm = spirits.find(s => s.id === spiritId)?.name ?? 'The Monster';
-    addLog(`6️⃣ The Beast lets go of ${nm} — ${reason}.`);
-  }
-
-  // The rage burns Vibe on every attack he throws. Called from the three attack
-  // entry points (Swing / Smash / Sonic) the instant an attack is committed.
-  //
-  // The toll never takes the LAST point: the Beast bleeds him, but it doesn't
-  // get to be what kills him — a rival has to finish the job. That's partly
-  // flavour and partly practical, since a self-inflicted knockdown landing in
-  // the middle of a swing cinematic would fight the battle overlay for control.
-  function beastAttackToll(spiritId) {
-    if (!noteStates[spiritId]?.berserk) return;
-    const sp = spirits.find(s => s.id === spiritId);
-    if (!sp || (sp.vibe ?? 0) <= 1) {
-      addLog(`6️⃣ There's nothing left to burn — the Beast rides on fumes.`);
-      return;
-    }
-    addLog(`6️⃣ The Beast takes its cut — 1 Vibe.`);
-    applyVibeDamage(spiritId, 1, 'the Beast');
-  }
-
-  // 🩸 The Beast lets go the moment the Monster is out of danger. This is the
-  // "can't be healed" clause, expressed as an exit condition rather than as a
-  // block on every heal site in the game: heal up if you like, but the rage
-  // goes with it. Also catches a knockdown (Vibe hits 0 → respawn).
-  useEffect(() => {
-    const mm = spirits.find(s => s.id === 'Metalness_Monster');
-    if (!mm || !noteStates['Metalness_Monster']?.berserk) return;
-    if ((mm.vibe ?? 0) > BEAST_VIBE_GATE) {
-      endBerserk('Metalness_Monster', 'the danger passed, and so did the rage');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spirits, noteStates]);
 
   // 🌌 SPACE IS DISPLACED — Intergalactic 0's signature. He can't run; he WARPS.
   // Spend DISPLACE_DB_COST Db and appear instantly on any open hex between
@@ -7931,7 +7886,7 @@ function Game({ gameState, onReturnToLobby }) {
     const holeHex = HEX_BY_NUM[holeNum];
     if (!target || target.knockedOut || !holeHex) return;
     // 6️⃣ BERSERK — the Beast is not moved by anything, gravity included.
-    if (noteStates[targetId]?.berserk) {
+    if (noteStates[targetId]?.atEleven) {
       addLog(`6️⃣ ${target.name} plants against the pull — the Beast does not get dragged.`);
       triggerRumble(targetId);
       return;
@@ -8827,18 +8782,21 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`🎸 ${attacker.name} projects ${sonicChordSpent.join('')} from the drive stack — ${sonicChordLeft.length ? spiritChord(attacker.id, sonicChordLeft).name : 'drive exhausted (base stats until committed)'}.`);
     }
 
-    // 6️⃣ BERSERK — same uncapped base treatment as the Thrash path.
-    const atkBerserk = nsA.berserk ? BEAST_DRIVE : 0;
-    if (atkBerserk) { addLog(`6️⃣ THE BEAST IS LOOSE — +${BEAST_DRIVE} Drive, no ceiling.`); beastAttackToll(acting.id); }
+    // 🔊 Same treatment as the Thrash path: the dial SETS the total below.
+    const cranked  = !!nsA.atEleven;
     const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0)
-                   + skillMods.pyroBonus + pedalBonus + powerBonus + atkBerserk;
+                   + skillMods.pyroBonus + pedalBonus + powerBonus;
     const atkEdge  = edgeCombatMods(nsA);
     const defEdge   = edgeCombatMods(nsD);
     // ⚖️ Same stacked-bonus cap as Thrash (balance audit, 2026-07-16).
     const rawAtkBonus = (nsA.tempDrive ?? 0) + (nsA.moshDrive ?? 0) + atkEdge.drive;
     const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
     if (rawAtkBonus > atkBonus) addLog(`⚖️ The rig can only take so much — attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
-    const atkStat  = atkBase + atkBonus;
+    // 🔊 GOES TO 11 — the SET. It overwrites the finished total, so it neither
+    // participates in the tower nor needs an exemption from its cap, and it is a
+    // CEILING as much as a floor: if the honest number was already louder, this
+    // is where he gets turned down.
+    const atkStat  = cranked ? ELEVEN_DRIVE : atkBase + atkBonus;
     const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
     const defBonus = (nsD.tempSustain ?? 0) - defEdge.sustainPenalty;
     const defStat  = defBase + defBonus;
@@ -9747,7 +9705,6 @@ function Game({ gameState, onReturnToLobby }) {
     'action:SPIRITS_SYNCED':   240,   // one hex of a knockback slide
     'action:DAMAGE_APPLIED':    80,   // the old "check for knock-down after state settles"
     'hook:demolishFans':         0,
-    'hook:endBerserk':         140,
     'hook:knockOut':           200,
     'hook:declareWinner':      600,
     'fx:rumble':               180,   // lead-in before the first slide step
@@ -9847,7 +9804,6 @@ function Game({ gameState, onReturnToLobby }) {
         checkStageFxHex(e.spiritId, e.hexNum);
       },
       demolishFans:          (e) => demolishFans(e.targetId, e.attackerId, e.hexNum),
-      endBerserk:            (e) => endBerserk(e.spiritId, e.reason),
       knockOut:              (e) => knockOut(e.spiritId, null, undefined),
       gainFans:              (e) => gainFansFromDeed(e.spiritId, e.n, e.reason),
       stageFxThresholds:     (e) => {
@@ -13856,33 +13812,47 @@ function Game({ gameState, onReturnToLobby }) {
                 </button>
               );
             })()}
-            {/* 6️⃣ NUMBER OF THE BEAST — BERSERK. Free, but only when he's dying. */}
+            {/* ── 🔊 GOES TO 11 — the dial (METALNESS §4d) ──
+                ⚠️ THE LABEL SAYS `⚔️ 11`, NOT `+11`, and that is deliberate. It
+                SETS the attack stat, so on a big turn it can turn him DOWN, and a
+                button that promised a bonus would be lying on exactly the turn
+                the joke fires. The tooltip does the arithmetic out loud. */}
             {hasConfirmed && acting?.id === 'Metalness_Monster'
-              && (actingNoteState?.unlockedSkills ?? []).includes('number_of_the_beast') && (() => {
-              const raging = !!actingNoteState?.berserk;
-              const vibe   = acting?.vibe ?? 0;
-              const db     = actingNoteState?.dbPoints ?? 0;
-              const lowEnough = vibe <= BEAST_VIBE_GATE;
-              const canBeast  = !raging && lowEnough && db >= BEAST_DB_COST;
+              && (actingNoteState?.unlockedSkills ?? []).includes('goes_to_11') && (() => {
+              const cranked = !!actingNoteState?.atEleven;
+              const stack   = actingNoteState?.sustainStack ?? [];
+              const blown   = (actingNoteState?.ampBlownTurns ?? 0) > 0;
+              const canCall = !cranked && stack.length > 0 && !actionTokenUsed;
+
+              // What he would swing for if he DIDN'T touch it — so the tooltip can
+              // warn him when eleven is a downgrade rather than a payday.
+              const chordNow = (actingNoteState?.driveStack ?? []).length
+                ? spiritChord(acting.id, actingNoteState.driveStack) : null;
+              const asIs = (chordNow ? chordNow.drive : (acting?.drive ?? 7))
+                + Math.min((actingNoteState?.tempDrive ?? 0) + (actingNoteState?.moshDrive ?? 0), ATK_BONUS_CAP);
+              const quieter = asIs > ELEVEN_DRIVE;
+
               return (
-                <button className={canBeast || raging ? 'btn active' : 'btn'}
-                  style={raging
+                <button className={canCall || cranked ? 'btn active' : 'btn'}
+                  style={cranked
                     ? {borderColor:'#ff2200', color:'#ff6644',
                        animation:'moshpit-shudder 0.3s steps(2) infinite',
                        filter:'drop-shadow(0 0 6px #ff2200)'}
-                    : {borderColor: canBeast ? '#cc0000' : '#330000', color: canBeast ? '#ff4444' : '#330000'}}
-                  disabled={!canBeast}
-                  title={raging
-                    ? `BERSERK — +${BEAST_DRIVE} Drive (uncapped), immune to knockback, 1 Vibe per attack. Ends when someone hits the floor.`
-                    : canBeast
-                    ? `Number of the Beast (${BEAST_DB_COST} Db) — go BERSERK. +${BEAST_DRIVE} Drive with no ceiling, immune to knockback, but every attack costs 1 Vibe. It ends when you put a rival down, when you go down, or if you heal back above ${BEAST_VIBE_GATE} Vibe.`
-                    : !lowEnough
-                    ? `Number of the Beast — the Beast only answers the dying. Needs ${BEAST_VIBE_GATE} Vibe or less (you're on ${vibe}).`
-                    : `Number of the Beast — needs ${BEAST_DB_COST} Db to call (you have ${db}).`}
-                  onClick={() => { if (canBeast) resolveNumberOfTheBeast(); }}>
-                  {raging
-                    ? `6️⃣ BERSERK ⚔️+${BEAST_DRIVE}`
-                    : `6️⃣ Beast${!lowEnough ? ` (❤️${vibe}/${BEAST_VIBE_GATE})` : db < BEAST_DB_COST ? ` (${db}/${BEAST_DB_COST} Db)` : ''}`}
+                    : {borderColor: canCall ? '#cc0000' : '#330000', color: canCall ? '#ff4444' : '#330000'}}
+                  disabled={!canCall}
+                  title={cranked
+                    ? `On ELEVEN — attack set to ${ELEVEN_DRIVE}, and you do not get moved.${blown ? ' Rig blown: no Sonic, bare d4 on defence.' : ''}`
+                    : actionTokenUsed
+                    ? 'Goes to 11 — your attack is already spent. Setting the dial now would do nothing.'
+                    : stack.length === 0
+                    ? 'Goes to 11 — the price is your SUSTAIN stack, and yours is empty. Voice some armour first.'
+                    : quieter
+                    ? `⚠️ Goes to 11 would turn you DOWN — you are already swinging at ⚔️${asIs}. The amp only goes to eleven. (Still buys knockback immunity, and still costs your stack ${stack.join(' ')} and your rig.)`
+                    : `Goes to 11 — set your attack to exactly ${ELEVEN_DRIVE} (from ⚔️${asIs}) and shrug off knockback. Costs your whole Sustain stack (${stack.join(' ')}) and blows your amp: no Sonic and a bare d4 on defence for a full turn.`}
+                  onClick={() => { if (canCall) callEleven(); }}>
+                  {cranked
+                    ? `🔊 ELEVEN ⚔️${ELEVEN_DRIVE}`
+                    : `🔊 Goes to 11${stack.length === 0 ? ' (no 🛡️stack)' : quieter ? ' ▼' : ''}`}
                 </button>
               );
             })()}
@@ -15381,14 +15351,20 @@ function Game({ gameState, onReturnToLobby }) {
                       // 6️⃣ BERSERK — the Beast is loose. While raging, the whole
                       // standee burns red: the art itself is tinted and haloed,
                       // not just ringed, so it's unmistakable across the board.
-                      const berserking = !!noteStates[sp.id]?.berserk;
+                      // 🔊 The cranked wash. ⚠️ The keyframes are still named
+                      // `berserk-*` in GameStyles: the ability that introduced
+                      // them is gone but the picture it wanted — hot red, pulsing,
+                      // a spinning ring — is exactly what "the gain is on eleven"
+                      // looks like, so the FX outlived their owner rather than
+                      // being deleted and rebuilt under a new name.
+                      const cranked = !!noteStates[sp.id]?.atEleven;
                       return (
                         <g key="spirit-token"
                           style={{
                             ...(isRumbling ? {animation:"rumble 0.08s linear infinite"} : {}),
                           }}>
                           {/* 6️⃣ BERSERK — rage aura under the standee */}
-                          {berserking && (
+                          {cranked && (
                             <g style={{pointerEvents:'none'}}>
                               <title>BERSERK — the Beast is loose. +Drive uncapped, immune to knockback, 1 Vibe per attack.</title>
                               <circle cx={cx} cy={cy} r={baseR * 2.1} fill="#cc000022"
@@ -15501,12 +15477,12 @@ function Game({ gameState, onReturnToLobby }) {
                             width={cardW}
                             height={cardH}
                             preserveAspectRatio="xMidYMid meet"
-                            style={berserking
+                            style={cranked
                               ? {pointerEvents:"none", animation:"berserk-standee 0.75s ease-in-out infinite"}
                               : {pointerEvents:"none"}}
                           />
                           {/* 6️⃣ BERSERK — flaming red overlay + tag above the head */}
-                          {berserking && (
+                          {cranked && (
                             <g style={{pointerEvents:'none'}}>
                               <image
                                 href={spriteSrc}

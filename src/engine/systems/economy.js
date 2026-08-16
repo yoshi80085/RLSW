@@ -200,6 +200,11 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     // nothing else. It deliberately does NOT touch movement, targeting or any
     // rule — you keep every option you had, you just can't see to use them.
     blindTurns:      0,
+    // 🔊 GOES TO 11 — `atEleven` is this turn's dial setting; `ampBlownTurns`
+    // is the bill, and it is ticked at the END of his own turn by
+    // applyDebuffsTicked so the turn without a rig actually happens.
+    atEleven:        false,
+    ampBlownTurns:   0,
     tempDrive:       0,
     tempSustain:     0,
     swingExposed:    false,
@@ -379,8 +384,13 @@ export function applyNoteSheetPatched(state, { spiritId, patch = {} }) {
 export function applyDebuffsTicked(state, { spiritId }) {
   const ns = state.noteStates[spiritId];
   if (!ns) return state;
+  // ⚠️ THE EARLY RETURN BELOW IS A TRAP FOR ANY NEW DEBUFF, so 🔊 Eleven's two
+  // fields are in this list. Miss one and the tick is skipped on every turn
+  // where it is the ONLY thing active — which is the common case for a blown
+  // amp — and the cost quietly becomes nothing.
   const hadDebuff = ns.tripped || ns.dazed || ns.instrumentDropped
-    || (ns.mojoDrain ?? 0) > 0 || ns.stagger || (ns.blindTurns ?? 0) > 0;
+    || (ns.mojoDrain ?? 0) > 0 || ns.stagger || (ns.blindTurns ?? 0) > 0
+    || ns.atEleven || (ns.ampBlownTurns ?? 0) > 0;
   if (!hadDebuff) {
     return { ...state, turn: { ...state.turn, lastDebuffTick: { spiritId, cleared: false } } };
   }
@@ -400,6 +410,10 @@ export function applyDebuffsTicked(state, { spiritId }) {
       mojoDrain:         newMojoDrain,
       stagger:           newStagger,
       blindTurns:        newBlindTurns,
+      // 🔊 The dial is a THIS-TURN setting — he gets one attack a turn, so one
+      // turn IS one enormous swing. The blown amp outlives it on purpose.
+      atEleven:          false,
+      ampBlownTurns:     Math.max(0, (ns.ampBlownTurns ?? 0) - 1),
     }},
     turn: { ...state.turn, lastDebuffTick: {
       spiritId, cleared: true,

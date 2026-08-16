@@ -27,7 +27,8 @@ import {
   applyBotAction, applyBotLine,
   MODELLED_KINDS, UNMODELLED_KINDS, PARTIAL_KINDS,
 } from "./policies/transition.js";
-import { attackParams, spiritChord, BEAST_DRIVE, CHARGE_DIE_CEILING } from "./systems/attackParams.js";
+import { attackParams, spiritChord, CHARGE_DIE_CEILING } from "./systems/attackParams.js";
+import { ELEVEN_DRIVE } from "../data/gameConstants.js";
 import { evaluate } from "./policies/evaluate.js";
 import { SPIRIT_DEFS } from "../data/spirits.js";
 import { CORNERS } from "../data/corners.js";
@@ -260,14 +261,19 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   const noSw = attackParams(withNs(voiced, METAL, { sustainStack: ['A', 'C', 'E'] }), RONIN, METAL, 'swing');
   eq(sw.defStat, noSw.defStat - 1, '🥊 swingExposed costs the defender exactly 1 Sustain');
 
-  // ⚖️ The bonus tower is capped; 6️⃣ Berserk rides the base and breaks it.
+  // ⚖️ The bonus tower is capped. 🔊 Goes to 11 does NOT break it — it overwrites
+  // the total, which is the difference between a cap with an exemption (what
+  // 6️⃣ Number of the Beast was, before §1b cut it) and a cap that still means
+  // something. The tower stays capped whether or not the dial is set.
   const towered = withNs(voiced, RONIN, { tempDrive: ATK_BONUS_CAP + 5, moshDrive: 3 });
   const pT = attackParams(towered, RONIN, METAL, 'swing');
   eq(pT.atkStat, p1._derived.atkChordDrive + ATK_BONUS_CAP, `⚖️ stacked bonuses cap at +${ATK_BONUS_CAP}`);
   eq(pT._derived.atkBonusCapped, true, '...and the capping is reported');
-  const beast = attackParams(withNs(towered, RONIN, { berserk: true }), RONIN, METAL, 'swing');
-  eq(beast.atkStat, pT.atkStat + BEAST_DRIVE,
-     `6️⃣ the Beast rides the BASE — +${BEAST_DRIVE} on top of an already-capped tower`);
+  const cranked = attackParams(withNs(towered, RONIN, { atEleven: true }), RONIN, METAL, 'swing');
+  eq(cranked.atkStat, ELEVEN_DRIVE,
+     '🔊 the dial SETS the total — it does not add to the capped tower, it replaces it');
+  eq(cranked._derived.atkBonusCapped, pT._derived.atkBonusCapped,
+     '⚠️ …and the cap itself is untouched by the dial being on');
 
   // 🎸 A dropped instrument is a flat −1 on the base.
   eq(attackParams(withNs(voiced, RONIN, { instrumentDropped: true }), RONIN, METAL, 'swing').atkStat,

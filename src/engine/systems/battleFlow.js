@@ -28,7 +28,7 @@
 //   { kind:'fx',     name, ... }     presentation only; harness drops it
 //   { kind:'hook',   name, ... }     a sequence still owned by the client this
 //                                    pass (demolishFans, summonRockGod, knockOut,
-//                                    endBerserk, dismissShadowIllusion). The
+//                                    dismissShadowIllusion). The
 //                                    ORDER is shared even though the body isn't
 //                                    yet — that is the point of naming them.
 //
@@ -168,9 +168,17 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [] }) {
   const target = spiritOf(state, targetId);
   if (!fromSp || !target || target.knockedOut || spaces <= 0) return { path: [] };
 
-  // 6️⃣ BERSERK — the Beast does not get moved. He comes at you.
-  if (nsOf(state, targetId).berserk) {
-    yield log(`6️⃣ ${target.name} doesn't move an inch — the Beast eats the hit and keeps coming.`);
+  // 🔊 GOES TO 11 — braced against his own stack with the gain on eleven, he
+  // does not get moved.
+  //
+  // ⚠️ SALVAGED, DELIBERATELY. §1b of the rework cuts Number of the Beast but
+  // flags that its one genuinely good idea was this: knockback immunity is "the
+  // only answer to a Smash (2 hexes) or a Blaster this Spirit ever had", and it
+  // asks for the property to be hung off Goes to 11 if nothing else in the new
+  // kit provides it. Nothing else does. Cutting an ability is not the same as
+  // throwing away the part of it that worked.
+  if (nsOf(state, targetId).atEleven) {
+    yield log(`🔊 ${target.name} doesn't move an inch — braced against the stack with the gain on ELEVEN.`);
     yield fx('rumble', { spiritId: targetId });
     return { path: [] };
   }
@@ -390,13 +398,12 @@ export function* vibeDamage({ state, targetId, dmg, sourceLabel, attackerId = nu
   yield log(`💥 ${tgt.name} is KNOCKED DOWN! (${newLives} life${newLives !== 1 ? 's' : ''} left)`);
   yield hook('demolishFans', { targetId, attackerId, hexNum: fellOn });
 
-  // 6️⃣ BERSERK ends here either way round — the charge landed, or the cannons won.
-  if (attackerId && attackerId !== targetId && nsOf(state, attackerId).berserk) {
-    yield hook('endBerserk', { spiritId: attackerId, reason: `${tgt.name} went down — the charge landed` });
-  }
-  if (nsOf(state, targetId).berserk) {
-    yield hook('endBerserk', { spiritId: targetId, reason: 'he charged the cannons and the cannons won' });
-  }
+  // 6️⃣ CUT — Berserk used to end here, either way round: the charge landed, or
+  // the cannons won. 🔊 Goes to 11 has no such exit, and that is a real
+  // simplification rather than an omission. The Beast needed three end
+  // conditions (you knock someone down, you go down, you heal out of the Vibe
+  // gate), and the first of them is what made it fight Azrael by rule — §1b.
+  // The dial just runs to the end of the turn it was called on.
 
   // 💀 AZRAEL — a rival going down feeds Metalness Fame equal to his streak.
   if (attackerId && attackerId !== targetId) {

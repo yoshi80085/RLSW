@@ -552,6 +552,15 @@ export function slimeDropped(spiritId, hexNum, turns) {
  * 🧪 SLIME — call it. 1 AP, once per turn, and your movement BECOMES 3.
  * Every hex vacated while it is on lays road; walking with it off lays nothing.
  */
+/**
+ * 🔊 GOES TO 11 — set the dial. Spends the Sustain stack and blows the amp.
+ * ⚠️ It SETS the attack stat, so calling it while already louder turns him DOWN.
+ */
+export const ELEVEN_CALLED = "ELEVEN_CALLED";
+export function elevenCalled(spiritId) {
+  return { type: ELEVEN_CALLED, spiritId };
+}
+
 export const SLIME_CALLED = "SLIME_CALLED";
 export function slimeCalled(spiritId) {
   return { type: SLIME_CALLED, spiritId };

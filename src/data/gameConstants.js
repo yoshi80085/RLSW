@@ -247,6 +247,18 @@ export const SMASH_SELF_SUSTAIN  = 1;  // notes it costs YOU off your own Sustai
 
 // -- THRASH / SONIC ATTACK SPLIT --
 // Thrash (melee) — d4-based, Vibe-focused, minimal push/FP.
+// -- 🔊 GOES TO 11 (METALNESS_REWORK_DESIGN.md §4d) --
+// It SETS the attack stat rather than adding to it, which is why it can be
+// louder than ATK_BONUS_CAP without the special case the ability it replaced
+// needed — and why calling it while ALREADY above 11 turns him DOWN. The amp
+// only goes to 11. See engine/systems/eleven.js for the full argument.
+export const ELEVEN_DRIVE = 11;
+
+// ⚠️ TWO, NOT ONE, and the sum is in eleven.js because getting it wrong makes
+// the cost silently free: ticked at the END of his own turn, a seed of 1 clears
+// before he ever plays a turn without a rig. Two buys the full turn.
+export const ELEVEN_AMP_BLOWN_TURNS = 2;
+
 export const ATK_BONUS_CAP           = 5;   // hard ceiling on stacked attack bonuses (tempDrive + stance) -- keeps the accumulative wave in check
 export const THRASH_DIE              = 4;   // base die for both attacker and defender in Thrash
 export const THRASH_CEIL_DIE         = 6;   // ceiling charge upgrades d4 → d6

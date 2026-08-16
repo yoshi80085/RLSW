@@ -40,7 +40,8 @@ import { slideTarget, trailRun } from "../systems/slime.js";
 import { axialNeighbors, angleTo, angleDiff, getFlatTopNeighborSlots, neighborInDirection } from "../../board/hexGeometry.js";
 import { usedHas } from "../systems/economy.js";
 import { skillEligibility } from "../systems/skills.js";
-import { sonicRig } from "../systems/sonicRig.js";
+import { rigFor } from "../systems/attackParams.js";
+import { canCallEleven } from "../systems/eleven.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS } from "../../data/gameConstants.js";
 import { CONE_HALF_ARC, SPIRIT_ONLY_ROUTE } from "./bot.js";
@@ -265,6 +266,23 @@ export function legalActions(state, spiritId, view = {}) {
     }
   }
 
+  // 🔊 GOES TO 11 — free to call, and priced in Sustain and silence instead.
+  //
+  // ⚠️ NO AP COST, and that is not generosity. §1's spine is that AP buys hexes
+  // and violence; this buys neither. It spends the Sustain stack (the stat §0
+  // says nothing in his kit ever read) and one turn of his rig. Charging AP as
+  // well would make the loudest turn in the game also the one where he cannot
+  // reach anybody, which is not a trade-off, it is a refusal.
+  //
+  // ⚠️ GATED ON THE ACTION TOKEN because setting your attack stat AFTER you have
+  // attacked does nothing at all — offering it there would be offering a button
+  // that lies. And gated on a non-empty Sustain stack by `canCallEleven`: if the
+  // price is "your Sustain stack", an empty stack makes it free.
+  if (!tokenSpent && !rockGodActive && ns.hasConfirmed && canCallEleven(state, spiritId)
+      && (ns.unlockedSkills ?? []).includes('goes_to_11')) {
+    out.push({ kind: 'eleven', apCost: 0 });
+  }
+
   // 🧪 SLIME — call the ooze. 1 AP, once a turn, and movement BECOMES 3.
   //
   // ⚠️ INNATE, so there is no `unlockedSkills` gate here. `CHARACTER_HANDOFF`
@@ -368,9 +386,13 @@ export function legalActions(state, spiritId, view = {}) {
     // SONIC — 2 AP, the straight beam, and OFFLINE outside your own rig radius.
     // That last gate is §3.1's worst square made concrete: stranded, the ranged
     // attack simply is not available to you.
+    // ⚠️ THROUGH `rigFor`, NOT `sonicRig` DIRECTLY — that is what makes a blown
+    // amp mean OFFLINE here rather than merely weaker. `rigFor` reports a Spirit
+    // with a blown rig as out-of-range wherever he stands, so 🔊 Goes to 11's
+    // second cost lands on exactly the gate §3.1 already built, and this file
+    // needs no idea that the ability exists.
     if (ap >= SONIC_AP_COST) {
-      const chargeBoost = (ns.chargeCeilTurns ?? 0) > 0 ? 1 : 0;
-      const { inRange } = sonicRig(ns.unlockedSkills ?? [], distFromHome(self, ns), chargeBoost);
+      const { inRange } = rigFor(self, ns);
       if (inRange) {
         for (const r of rivals) {
           if (beam.has(r.num)) out.push({ kind: 'sonic', targetId: r.id, apCost: SONIC_AP_COST });
