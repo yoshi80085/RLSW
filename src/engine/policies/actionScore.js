@@ -53,7 +53,7 @@
 //   attack targets    → `botTargetOrder` (`botPickTarget` is its head)
 //   `melodyNote`      → `botNoteStepOrder` (`botPlanNoteStep` is its head)
 //   `stackCommit`     → `botPlanStackCommit`'s own plan
-//   `skillUnlock`     → `botPickSkillTarget`'s priority order
+//   `skillTarget`     → `botPickSkillTarget`'s priority order
 //
 // Three of those were choosers that threw their ordering away at the last line
 // (§6.1: "a chooser cannot be searched"). They have been promoted to rankers in
@@ -260,7 +260,10 @@ export function makeActionScorer(state, spiritId, view = {}) {
         return (action.targetIds ?? []).reduce((best, id) => Math.max(best, targetRank.get(id) ?? 0), 0);
 
       // ── DB ──────────────────────────────────────────────────────────────
-      case 'skillUnlock':
+      // 🎯 Renamed from `skillUnlock` 2026-08-16 — the action is choosing what to
+      // SAVE FOR, not buying. The ranking is unchanged: `botPickSkillTarget`'s
+      // order was always a saving order, which is why the rename cost nothing here.
+      case 'skillTarget':
         return skillRank.get(action.skillId) ?? 0;
 
       // ── THE SINGLETONS ──────────────────────────────────────────────────

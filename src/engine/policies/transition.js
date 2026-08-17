@@ -68,7 +68,7 @@ import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 /** Kinds this file can actually run headlessly. */
 export const MODELLED_KINDS = new Set([
   'melodyNote', 'stackCommit', 'confirmMelody',
-  'move', 'slide', 'face', 'swing', 'sonic', 'tentacle', 'pose', 'skillUnlock', 'endTurn',
+  'move', 'slide', 'face', 'swing', 'sonic', 'tentacle', 'pose', 'skillTarget', 'endTurn',
   'slime', 'eleven',
 ]);
 
@@ -313,17 +313,27 @@ export function applyBotAction(state, action, ctx = {}) {
         ok: true, reason: null, logs: [],
       };
 
-    case 'skillUnlock': {
-      const cost = action.dbCost ?? 0;
-      if ((ns.dbPoints ?? 0) < cost) return fail(state, view, 'illegal', 'cannot afford it');
+    // 🎯 CHOOSING WHAT TO SAVE FOR — free, and it does NOT grant the skill.
+    //
+    // ⚠️ THIS CASE USED TO BE A SHOP (`skillUnlock`): subtract the cost, push the
+    // id into `unlockedSkills`. That is not how this game unlocks anything, and
+    // it is exactly the invented rule this file's header says is worse than a
+    // declared gap — the searcher was "confidently wrong" rather than blind. The
+    // real award happens inside `commitMelodyEconomy` when the Db bar fills, and
+    // its state half is already modelled there, so nothing needs granting here.
+    //
+    // ⚠️ `upgradesPending` AND `pendingAwardSkillId` ARE CLEARED, mirroring the
+    // client's own target-pick patch. Leaving a stale pending award behind would
+    // let a searcher re-collect a skill it already banked by re-aiming.
+    case 'skillTarget':
       return {
         state: patchNs(state, spiritId, {
-          unlockedSkills: [...(ns.unlockedSkills ?? []), action.skillId],
-          dbPoints:       (ns.dbPoints ?? 0) - cost,
+          targetSkillId:       action.skillId,
+          pendingAwardSkillId: null,
+          upgradesPending:     0,
         }, rng),
         view, ok: true, reason: null, logs: [],
       };
-    }
 
     case 'endTurn':
       return { state: applyAction(state, turnEnded(), rng), view, ok: true, reason: null, logs: [] };

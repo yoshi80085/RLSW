@@ -391,7 +391,9 @@ function walk(startNum, n) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 10. 💰 SKILL UNLOCKS — the exclusive route outranks the shared ladder.
+// 10. 🎯 SKILL TARGETING — the exclusive route outranks the shared ladder.
+//     (Renamed from `skillUnlock` 2026-08-16; the ranking is unchanged, because
+//     `botPickSkillTarget`'s order was always a SAVING order.)
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const st = { ...base, acting: MM };
@@ -399,11 +401,11 @@ function walk(startNum, n) {
 
   const own = BOT_SPIRIT_SKILLS[MM] ?? [];
   ok(own.length > 0, 'the Monster has an exclusive route to prefer');
-  ok(score({ kind: 'skillUnlock', skillId: own[0] }) > score({ kind: 'skillUnlock', skillId: 'amp_1' }),
+  ok(score({ kind: 'skillTarget', skillId: own[0] }) > score({ kind: 'skillTarget', skillId: 'amp_1' }),
      '⚠️ the Spirit\'s own route ranks above the generic ladder — `botPickSkillTarget`\'s order, not a new opinion');
-  ok(score({ kind: 'skillUnlock', skillId: own[0] }) > score({ kind: 'skillUnlock', skillId: own[1] }),
+  ok(score({ kind: 'skillTarget', skillId: own[0] }) > score({ kind: 'skillTarget', skillId: own[1] }),
      'and within the route, the earlier entry wins');
-  eq(score({ kind: 'skillUnlock', skillId: 'not_a_skill' }), 0, 'an unlisted skill is unranked');
+  eq(score({ kind: 'skillTarget', skillId: 'not_a_skill' }), 0, 'an unlisted skill is unranked');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

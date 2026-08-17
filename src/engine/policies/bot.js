@@ -69,7 +69,15 @@ export const BOT_SPIRIT_SKILLS = {
   Metalness_Monster: ['goes_to_11', 'master_moshpits', 'tentacle', 'azrael'],
 };
 
-export const SPIRIT_ONLY_ROUTE = { shredding_ronin: 'cosmic_ronin', metalness: 'Metalness_Monster' };
+// ⚠️ WAS A HAND-WRITTEN LITERAL HERE, AND IT WAS MISSING A ROUTE. It listed
+// `shredding_ronin` and `metalness` and not `intergalactic`, so `botSkillEligible`
+// waved Intergalactic 0's exclusive route through for every Spirit — live in the
+// shipped bot, found 2026-08-16 when `SKILL_TREE` was extracted and the engine
+// could finally read the tree it was supposed to be mirroring. It is now DERIVED
+// from the tree, so adding an exclusive route is one edit rather than two.
+// Re-exported under the same name because `legalActions.js` imports it from here.
+export { SPIRIT_ONLY_ROUTE } from "../../data/skillTree.js";
+import { SPIRIT_ONLY_ROUTE } from "../../data/skillTree.js";
 
 export const BOT_RIFF_PROFILE = {
   hitRate: 0.78, perfectRate: 0.30, goodRate: 0.40,

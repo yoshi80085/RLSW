@@ -211,6 +211,38 @@ export function applySlimeDecayed(state, { ownerId } = {}) {
  * it twice would refill movement to 3 for 1 AP a time — a movement engine
  * rather than an ability.
  */
+/**
+ * 🧪 WHOSE INNATE IS THIS? — the one place the question is answered.
+ *
+ * ⚠️ FOUND BY THE §6.6 HARNESS, 2026-08-16. `legalActions` gated the ooze on AP
+ * and on `turn.slimingId` and on nothing else, so it emitted `slime` for EVERY
+ * Spirit. The client never showed it — the button is behind
+ * `acting?.id === 'Metalness_Monster'` in the JSX — so no player could ever have
+ * hit it, and the searcher found it on its first headless match: the Ronin and
+ * Intergalactic 0 were both calling the ooze, laying road, and sliding on it.
+ *
+ * That is precisely the failure `legalActions`' own header names as the
+ * dangerous one — over-permissiveness — and it is worth noting HOW it hid. The
+ * rule lived in a JSX render condition, so the generator had nothing to
+ * transcribe from and the omission looked like the deliberate absence of an
+ * `unlockedSkills` gate ("INNATE, so there is no gate here"). Innate means no
+ * PURCHASE, not no OWNER.
+ *
+ * ⚠️ A NAME, AND KNOWINGLY SO. `slimeBites` deliberately asks "is this somebody
+ * ELSE'S road" rather than checking an id, because IMMUNITY is an owner rule.
+ * This is the other question — who may START a road — and the game has no data
+ * field for innates to hang it on (`SPIRIT_DEFS` carries stats and art, nothing
+ * else). Same posture as `boomBoxLit` in `evaluate.js`: one named constant, and
+ * if a second Spirit is ever given the ooze, widen it HERE and nowhere else.
+ */
+export const SLIME_INNATE_OWNER = 'Metalness_Monster';
+
+/** May this Spirit call the ooze at all? Ownership only — AP and the
+ *  once-a-turn rule are `legalActions`' to check. */
+export function canCallSlime(spiritId) {
+  return spiritId === SLIME_INNATE_OWNER;
+}
+
 export function applySlimeCalled(state, { spiritId }) {
   if ((state?.turn?.moveStepsLeft ?? 0) < SLIME_AP_COST) return state;
   return {

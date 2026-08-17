@@ -149,7 +149,7 @@ building rather than after:
   the Tentacle look bad in exactly the searcher that is supposed to evaluate it.
   That makes step 4 a *co-requisite* of this one, not a successor.
 
-### 4. Build the §6.6 harness, and ~~wire `beamActions`' `score`~~ ✅ **score DONE 2026-08-16**
+### 4. ✅ **DONE 2026-08-16** — the §6.6 harness AND `beamActions`' `score`
 **In parallel with 1–3.** This is the instrument, and it is upstream of all
 three arms rather than downstream of any:
 
@@ -165,17 +165,103 @@ It is unblocked — `applyBotAction` and `commitMelodyEconomy` are both in, and
 now measuring strategy rather than a blind spot. It is also character-agnostic:
 you do not need Metalness finished to build the instrument, only to read it.
 
-~~⚠️ The unranked beam is the nearer half of this step.~~ ✅ **LANDED** —
-`policies/actionScore.js`, `npm run test:score`. The harness is no longer
-measuring a bot that has been arbitrarily blinded, so **what remains of step 4
-is the harness itself**: headless `while (!state.winner)` on seeded rng, new bot
-vs. current bot, ~2000 matches, bar ≥60%.
+~~⚠️ The unranked beam is the nearer half of this step.~~ ✅ **BOTH HALVES
+LANDED** — `policies/actionScore.js` (`npm run test:score`) and
+`policies/play.js` (`npm run test:harness`, `npm run bench:bot`).
+**70.7% over 1749 decided matches, ±2.1 points; the bar was ≥60%.**
+See `BOT_STRATEGY_HANDOFF.md` §6.6 for what the number does and does not cover —
+the short version is that it is evidence about the SEARCHER, not a balance
+reading, because every bench match is played on base kits.
 
-⚠️ **And the co-requisite in §3 is discharged in the direction it mattered.**
+⚠️ **And the co-requisite in §3 was discharged in the direction it mattered.**
 The `beamActions` note was the half of step 3 that could not wait for step 4 —
 the Tentacle's branches multiply with trail length, so an unranked beam would
-have made the ability look bad in the very searcher meant to evaluate it. That
-is closed. §5's trail counterplay is still open and still an ordering hazard.
+have made the ability look bad in the very searcher meant to evaluate it.
+Closed. §5's trail counterplay is still open and still an ordering hazard.
+
+🧭 ~~The instrument now exists, which moves the bottleneck.~~ ✅ **SKILL_TREE
+EXTRACTED, same day** — `data/skillTree.js`, `npm run test:skilltree`. Unlocks
+are live in the bench, so Metalness's rework is finally something the searcher
+can play rather than something it is blind to.
+
+⚠️ **Handing the engine a real tree armed three gates that had never fired**,
+one of which was pinned wrong by a passing test — see `BOT_STRATEGY_HANDOFF.md`
+§6.6.1. Worth reading before trusting any other "the engine mirrors the client"
+claim in this repo: all three hid the same way, behind a rule that lived only in
+a JSX render condition.
+
+🧭 **What is left on the bench's critical path is now the Smash.** §7's "the
+Smash punishes you for having a good turn" is the oldest open balance question
+here and it is the one thing the harness still cannot see, because `smash` and
+`blaster` are UNMODELLED in `transition.js`.
+
+---
+
+## 5. NEXT UP — the evaluator cannot see a fight
+
+### 5.0 ⚠️ DO THIS BEFORE ANYTHING ELSE
+
+`evaluate` has no term for harming a rival, so the bot never attacks, so bench
+matches cannot end. Full write-up and the measured numbers:
+`BOT_STRATEGY_HANDOFF.md` §6.6.0. It supersedes §5a below — the inconclusive rate
+was never about the turn cap.
+
+⚠️ It is a §5 weight-table decision, not a bug patch: "how much does this
+character value hurting someone" is most of what a personality IS, and it should
+differ per Spirit.
+
+---
+
+## 5b. Then — harden the bench, then audit the gates
+
+> Written 2026-08-16 at the end of the harness work, so the next session starts
+> warm. Both halves are unblocked; do them in this order.
+
+### 5a. The bench's numbers are not yet worth quoting
+
+**37% of matches end inconclusive** at the 400-turn cap once unlocks are live
+(up from 12.6% on base kits — gear makes games grindier). `runBench` correctly
+EXCLUDES those from the rate rather than scoring them as losses, so the figure
+is honest, but it rests on 303 decided matches out of 480.
+
+⚠️ **More matches will not fix this.** More samples of a truncated game measure
+the cap, not the policies. The lever is one of:
+
+- raise `MAX_TURNS` (currently 400 in `policies/play.js`) and eat the runtime;
+- shorten the Fame target — `matchConfig` already runs 2 lives to sidestep the
+  Rock God, and `fameToWin` is `lives × fpPerLife(count)`;
+- or find out WHY games stall. ⚠️ Prefer this one first. A 400-turn two-hander
+  that cannot close is telling you something about the Fame economy, and it may
+  be the more interesting finding — check whether `FAME_PER_TURN_CAP` plus the
+  crowd multiplier simply cannot outrun the target at bench Db rates.
+
+📌 Runtime note: matches cost ~150–270ms each, so a 2000-match run is ~5–9
+minutes. `bench.mjs` takes `[n] [a] [b] [offset] [--json]` and the seed sequence
+is offset-addressable **precisely so a long run can be split into chunks and the
+JSON lines summed** — chunking is not sampling twice.
+
+### 5b. ⚠️ THE GATE AUDIT — the class of bug, not the instances
+
+Three bugs landed in one session and **all three hid the same way**: a rule that
+existed only in a JSX render condition, where `legalActions` had nothing to
+transcribe from. §6.6.1 has the full write-ups. The shape is worth naming:
+
+> The client gates a button; the engine's generator never learns the rule; the
+> generator is therefore over-permissive; nothing notices, because the only
+> consumer that would notice is a searcher, and the searcher was blind to that
+> family for an unrelated reason.
+
+**There is no reason to think three is all of them**, and the surface is
+countable: the monolith holds **26** `acting?.id === …` conditions and **24**
+`disabled={…}` button gates, against the **15** action kinds `legalActions`
+emits. The audit is mechanical rather than clever — walk each client-side gate
+and ask whether `legalActions` knows the same rule.
+
+⚠️ **`legalActionsCheck` will not catch these and must not be trusted to.** §15
+of that file PASSED for months against `skillUnlock`, a mechanic the game does
+not have — every assertion green, pinning a fiction. A test written from the
+same misunderstanding as the code agrees with the code. The audit has to read
+the CLIENT as the source of truth, not the check.
 
 ### 5. Build ONE Theory route end to end — Monster's
 `THEORY_ROUTES_DESIGN.md` §4.2 already says this and it is right: build one

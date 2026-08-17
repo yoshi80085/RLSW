@@ -16,6 +16,7 @@ import { applyBotAction } from "./policies/transition.js";
 import { makeRng } from "./rng.js";
 import {
   trailOf, trailRun, slimeAt, slimeBites, slideTarget,
+  canCallSlime, SLIME_INNATE_OWNER,
   SLIME_VIBE_DAMAGE, SLIME_LIFETIME,
 } from "./systems/slime.js";
 import { legalActions, tentacleOptions, swingCone } from "./policies/legalActions.js";
@@ -563,6 +564,38 @@ function walk(startNum, n) {
      `the road is still there on his ${SLIME_LIFETIME_TURNS}th turn`);
   for (let i = 0; i <= others; i++) live = apply(live, turnEnded());
   eq(trailOf(live, MM), [], '…and gone on the one after, exactly as advertised');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 13. 🧪 WHOSE OOZE IS IT — the gate the §6.6 harness found standing open.
+//
+// ⚠️ REGRESSION, and worth stating what the bug WAS rather than only that it is
+// fixed. `legalActions` gated the call on AP and on `turn.slimingId` and on
+// nothing else, so it emitted `slime` for every Spirit on the board. It never
+// surfaced in play because the button lives behind
+// `acting?.id === 'Metalness_Monster'` in the JSX — the rule was in a render
+// condition, so the generator had nothing to transcribe and the missing gate
+// read as the deliberate absence of an `unlockedSkills` check. The first
+// headless match had the Ronin calling the ooze, laying road and sliding on it.
+//
+// This is exactly the over-permissiveness `legalActions`' header calls the
+// dangerous failure: the searcher plans a line the client would never offer.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  eq(canCallSlime(SLIME_INNATE_OWNER), true, 'the owner may call the ooze');
+  eq(canCallSlime(RONIN), false, '⚠️ nobody else may — INNATE means no PURCHASE, not no OWNER');
+  eq(canCallSlime(undefined), false, 'a missing id is not the owner');
+
+  const armed = (id) => {
+    let st = { ...base, acting: id };
+    st = apply(st, moveBudgetSet(5, false));
+    return { ...st, noteStates: { ...st.noteStates, [id]: { ...st.noteStates[id], hasConfirmed: true } } };
+  };
+
+  ok(legalActions(armed(MM), MM, {}).some(a => a.kind === 'slime'),
+     'the Monster is offered the ooze with AP in hand');
+  ok(!legalActions(armed(RONIN), RONIN, {}).some(a => a.kind === 'slime'),
+     '⚠️ THE REGRESSION: no other Spirit is ever offered it, however much AP they hold');
 }
 
 console.log(`✅ slimeCheck — ${count} assertions passed`);

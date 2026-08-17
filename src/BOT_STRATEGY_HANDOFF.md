@@ -335,13 +335,25 @@ both multiplied by an **investment horizon** (`1 - fame/fameToWin`) per §3.6 an
 | Db banked vs. match remaining | 1.0 | 1.0 | 1.0 |
 | rival pose count (threat) | 1.0 | 1.0 | 1.0 |
 | **target upside** (was "underdog penalty") | 1.0 | 1.0 | 1.0 |
+| 🎓 **kit** — Db converted into capability (NEW) | 1.6 | 1.6 | 1.6 |
 
 ⚠️ **The last two rows are new terms with no equivalent in `botHexScore` today.**
 They are also the two most likely to change observed win rates, because they
 correct outright blind spots rather than re-weighting existing sight. Term keys
 in code, in table order: `survival`, `fame`, `fanMult`, `perfCliff`, `drive`,
 `sustain`, `apBanked`, `inRig`, `charge`, `refillDenied`, `adjWounded`,
-`edgeSafety`, `dbHorizon`, `rivalPose`, `targetUpside`.
+`edgeSafety`, `dbHorizon`, `rivalPose`, `targetUpside`, `kit`.
+
+🎓 **`kit` is NEW (2026-08-16) and it is not a re-weighting, it is a missing
+half.** Without it `dbHorizon` scored the pool in one state only — banked — so
+spending was a pure loss and the searcher refused every purchase in the game.
+See §6.6.1. Its 1.6 is a starting point like every other number in this table;
+the difference is that there is finally a harness to settle it with.
+
+⚠️ **`dbHorizon`'s denominator was also wrong** and is corrected in the same
+pass: it divided by `DB_UPGRADE_THRESHOLD` (4), the *fallback* cost when no
+skill is targeted, so it saturated at 4 against skills that cost 6–16. It now
+divides by the cost of the skill you are actually saving for.
 
 🔎 **`apBanked` is scored 0 for any Spirit who is not `state.acting`.** Only the
 acting Spirit has a live `moveStepsLeft`; for everyone else the value is
@@ -418,15 +430,175 @@ tempo for rivals. Re-read this when the searcher starts scoring opponent replies
 5. **Time budget already exists.** `schedule()` / `botStepRef: 'pending'` insert
    cinematic delay per bot step — hundreds of ms of thinking that costs the
    player nothing.
-6. **Harness = the test bench.** Now UNBLOCKED — `applyBotAction` is the step
-   function it was missing, and `transitionCheck.mjs` section 9 already pins the
-   determinism property it depends on. Headless `while (!state.winner)` on seeded rng,
-   new bot vs. current bot, ~2000 matches. Bar: **≥60%** or it isn't smarter.
-   Plus the determinism regression already patterned in Phase 7c — same seed +
-   same state ⇒ identical action sequence.
-   ✅ **And its results are now readable as melody evidence** — §6b.1's caveat is
-   lifted. The transition prices a long track correctly, so a win rate that moves
-   when melody length changes is measuring strategy rather than a blind spot.
+6. ~~**Harness = the test bench.**~~ ✅ **DONE 2026-08-16** —
+   `policies/play.js`, pinned by `harnessCheck.mjs` (`npm run test:harness`,
+   2003 assertions), driven by `npm run bench:bot`.
+
+   **Result: 65.7% over 303 decided matches (±5.3 points, 95%). Bar is ≥60% —
+   cleared.** 480 matches with unlocks live, seats swapped every other match.
+   Floor check: the same searcher beats uniform-legal play 89%.
+
+   📌 **An earlier run on BASE KITS read 70.7% ±2.1 over 1749 decided matches**,
+   before `SKILL_TREE` was extracted. Both numbers are kept because the gap
+   between them is itself the finding: turning unlocks on narrowed the margin
+   AND pushed the inconclusive rate from 12.6% to **37%**. Longer, grindier
+   games — a roster with rigs and Theory rungs is harder to finish inside the
+   400-turn cap. ⚠️ **37% inconclusive makes this the weaker number of the two**,
+   and the honest next move is a longer cap or a shorter Fame target rather than
+   more matches: more samples of a truncated game measure the cap.
+
+   ⚠️ **THE BASELINE IS `unranked`, NOT THE SHIPPED BOT, AND THAT IS A CHOICE.**
+   The current bot is a React step-machine (`botStepRef`, `schedule()`,
+   `setTimeout`, a dozen closure-scoped helpers) and cannot be lifted out
+   headlessly. Re-implementing it as a baseline would create a THIRD copy of the
+   bot's judgement to keep in step — the exact failure the chooser→ranker
+   promotion in §6.3 was done to avoid, committed one layer up and with 2000
+   matches of authority behind it. So the bench compares **the same searcher
+   with the beam's `score` on versus off**, which isolates the one variable
+   §6.3 changed instead of confounding ranking with search, phase order, and a
+   re-implementation's own bugs. 📌 A faithful `legacy` policy gets cheap the
+   day the step-machine leaves the monolith; the seat is left open in `POLICIES`
+   and deliberately **not** stubbed, because a stub called `legacy` would be
+   cited as "the current bot" by the first person to read a table without
+   reading the file.
+
+   ⚠️ **AND READ `HARNESS_GAPS` BEFORE QUOTING THE NUMBER.** ~~Base kits~~ ✅
+   unlocks are live as of the SKILL_TREE extraction. What remains: no Smash and
+   no Blaster (both UNMODELLED in `transition.js`), which means §7's "the Smash
+   punishes you for having a good turn" still **cannot** be measured here —
+   unfortunate, since §7 explicitly wants to hold that fix until §6.6 can measure
+   it. `applySkillEffects` is still client-owned, so a skill's unlock-moment side
+   effects do not fire (passive skills read off the sheet are fully live).
+   Short games (2 lives) to sidestep the Rock God finale, which shortens the
+   horizon and therefore under-rates the investment terms in §3.2 and §3.6.
+   Client fan hooks absent.
+
+   ✅ §6b.1's caveat stays lifted at the transition layer — but see below for
+   where it came back.
+
+### 6.6.0 ⚠️ READ FIRST — THE BENCH NUMBERS BELOW MEASURE A GAME WITH NO FIGHTING IN IT
+
+**Found 2026-08-17, and it invalidates the win rates in §6.6 as balance evidence.**
+
+`evaluate` HAS NO TERM FOR HARMING A RIVAL. Read the §5 table again with that in
+mind: twelve of the sixteen terms describe your OWN position, and the only four
+that look outward are `adjWounded` (requires them to be hurt ALREADY),
+`targetUpside` (requires a Fame deficit), `refillDenied` (Gravity Control's note
+drain) and `rivalPose` (a threat to fear). **Rival Vibe appears nowhere.** Not as
+a term, not inside another term.
+
+So a bot maximising this score cannot see that hitting somebody is good, while it
+sees every cost of hitting them perfectly well: the AP, the two Drive notes spent
+on a hit, and `swingExposed`'s −1 Sustain until its next turn. Measured, with the
+Ronin standing adjacent to Intergalactic 0, facing him, holding a legal Swing
+that lands:
+
+```
+base            5.1350
+  face         -0.1800   ← chosen
+  move         -0.5050
+  sonic        -0.5000
+  swing        -0.6450   ← lands, takes the rival 5 Vibe → 4
+  endTurn      -0.9000
+```
+
+**Every option is a loss, and the attack is nearly the worst one.** The bot
+shuffles and re-faces until its AP is gone, ends turn, repeats. Over 120 turns of
+a duel: 688 melody notes, 508 moves, 120 commits — and **zero attacks of any
+kind**. Two healthy, level Spirits have no reason to ever fight, so the match
+cannot end, so it runs to the 400-turn cap.
+
+⚠️ **THIS IS WHERE THE 37% INCONCLUSIVE RATE CAME FROM**, and §6.6's earlier
+guess — that it was telling us something about the Fame economy — was WRONG.
+Alex flagged it immediately from play experience ("I've played games that come to
+an end"), which is worth recording: the human who plays the game spotted in one
+sentence what a 2000-match bench reported as a number.
+
+📌 **What this does and does not invalidate.** The searcher-vs-unranked comparison
+is still a fair A/B — both sides were equally blind — so §6.3's ranking work
+stands. What is worthless until this is fixed is any reading about the ROSTER, the
+kits, or the pacing, because no bench match has ever contained a fight.
+
+🔧 **The fix is a term, not a rescue.** Something like `pressure` — rival Vibe
+missing, normalised per rival and weighted by reach — as the mirror of `survival`.
+⚠️ It is a §5 DESIGN decision (how much should a character value hurting someone?
+that answer differs per Spirit and is most of what "aggressive" means), so it
+wants a deliberate pass, not a patch. Note that `adjWounded` at 1.5 for Metalness
+already assumes this term exists underneath it: "finish the wounded" only reads as
+a bruiser trait if "hurt people" is scored at all.
+
+---
+
+### 6.6.1 What the harness found
+
+All three were invisible to every existing suite — one of them was actively
+PINNED WRONG by a passing test — which is the argument for the instrument in a
+paragraph.
+
+- **🐛 `legalActions` OFFERED 🧪 SLIME TO EVERY SPIRIT.** The call was gated on
+  AP and on `turn.slimingId` and on nothing else. No player could ever reach it
+  — the button sits behind `acting?.id === 'Metalness_Monster'` in the JSX — so
+  the rule lived in a *render condition*, this file had nothing to transcribe
+  from, and the missing gate read as the deliberate absence of an
+  `unlockedSkills` check. **Innate means no PURCHASE, not no OWNER.** The first
+  headless match had the Ronin calling the ooze, laying road and sliding on it.
+  That is exactly the over-permissiveness §6a calls the dangerous failure.
+  Fixed: ownership now lives in `canCallSlime` beside the rest of the trail
+  rules, pinned by `slimeCheck` §13 (the rule) and `harnessCheck` §3 (that no
+  path through a real match reaches around it).
+
+- **🐛 A ONE-PLY GREEDY CONFIRMS A ONE-NOTE MELODY, EVERY TURN.** Adding a note
+  to the track moves no term in `evaluate`, while `confirmMelody` immediately
+  raises `apBanked` — so greedy scores "confirm now" above "write more music",
+  forever, and the whole commit economy (Db, Performance Score, fans, the riff)
+  is skipped for 1 AP. 📌 **This is §6b.1's caveat re-appearing one layer up.**
+  That caveat was about the TRANSITION being blind to the commit's economy and
+  it is genuinely closed; what this found is that a one-ply POLICY cannot see
+  that price no matter how correct the transition is, because the payoff lands
+  entirely on one action and greedy compares one action at a time. Same blind
+  spot, different organ. Fixed by searching the composition phase as a **line**:
+  the scorer picks *which* note (the planners' musical judgement, per §6.3) and
+  `evaluate` picks *how many*, by pricing each candidate track at its own
+  confirm — never mid-track, since scoring a truncated composition compares
+  "three notes written" against "one note written and cashed".
+
+- **🐛 `skillUnlock` MODELLED A MECHANIC THIS GAME DOES NOT HAVE.** `legalActions`
+  emitted `{ kind: 'skillUnlock', skillId, dbCost }` gated on
+  `dbPoints >= dbCost`, and `transition.js` paid for it by subtracting the cost
+  and pushing the id into `unlockedSkills`. **A shop.** There is no shop. The
+  shipped flow, spelled out in the monolith: you pick a **target** skill, every
+  Db earned counts toward it, and the award fires **automatically inside
+  `commitMelodyEconomy`** when the bar fills. So the only decision is choosing
+  what to save for, it costs nothing, and it is offered only while you have no
+  target.
+
+  ⚠️ **This is `transition.js`'s own nightmare, living inside `transition.js`.**
+  Its header says an invented rule "shows up as a bot that is confidently wrong,
+  which is not visible", and that is exactly what happened — for as long as
+  nobody could pass a real tree, nothing could contradict it.
+  📌 **And §15 of `legalActionsCheck` PASSED against it**, every assertion,
+  pinning affordability gates on a mechanic that does not exist. A green test is
+  not evidence that a rule is real; it is evidence that two files agree.
+  Rewritten as `skillTarget` — free, not price-gated (saving toward what you
+  cannot yet afford *is* §3.2), one target at a time.
+
+- **🐛 THE EVALUATOR COULD NEVER BUY ANYTHING, and two things were wrong at once.**
+  §5's table scored Db BANKED (`dbHorizon`) and had no term at all for what the
+  Db bought, so every purchase was a pure loss and a greedy searcher refused all
+  of them forever. Added `kit` — Db **converted into capability**, measured in Db
+  invested so it is the exact mirror of `dbHorizon` (one pool, two states) and a
+  12 Db capstone does not score like a 6 Db rung, multiplied by the same
+  investment horizon because §3.2's verdict is that a capstone bought at 20/24
+  never pays for itself.
+
+  And `dbHorizon` divided by `DB_UPGRADE_THRESHOLD` (**4**), which is the
+  *fallback* cost used when no skill is targeted — not a ceiling on banking.
+  Skills cost 6–16, so the term saturated at 4 and scored 4 Db and 16 Db as
+  identically good: §3.2's "saving toward a capstone", the sharpest tension in
+  the game, flattened to nothing. It now divides by what you are actually saving
+  for, the way `melodyCommit.js` and the client already did.
+  ⚠️ **`kit`'s weight (1.6) is a starting point, not a measurement** — §5's
+  standing warning applies, and §6.6 is now the tool that can settle it.
 
 ---
 

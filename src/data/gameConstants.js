@@ -281,3 +281,42 @@ export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
 
 // -- DISSONANCE EDGE -- REMOVED (system cut — Theory learning streamlined).
 
+
+// ─── PER-SPIRIT ABILITY TUNING ──────────────────────────────────────────────
+// ⚠️ MOVED OUT OF THE MONOLITH 2026-08-16, and the reason is worth recording
+// because it is the same reason twice over.
+//
+// These thirteen numbers are RULES — Db prices, ring radii, drain amounts,
+// blindness durations — and they lived beside the JSX purely by accident of
+// where the abilities were first written. That had two costs. `SKILL_TREE`
+// interpolates every one of them into its skill descriptions, so the tree could
+// not be extracted while they stayed here; and the engine could not read a Db
+// price without the client handing it over. §7 has been asking for an
+// innate-constants module since `PERF_CLIFF` landed in two policy files; this
+// is that module's first tenant.
+//
+// 📌 They are grouped by the ability that owns them rather than sorted, so a
+// retune reads as one block.
+
+// ☀️ SUNBEAM — the whiteout.
+export const SUNBEAM_DB_COST         = 2;    // Db charged per connecting attack
+export const SUNBEAM_BLIND_TURNS     = 1;    // turns of whiteout on a clean proc
+export const SUNBEAM_LINGER_CHANCE   = 0.5;  // odds the burn sears in for a 2nd turn
+export const SUNBEAM_MAX_BLIND_TURNS = 2;    // hard ceiling — the sun always sets
+
+// 🌀 SPACE IS DISPLACED — the paid blink. §2 of the Metalness rework cites this
+// as the roster's only other free-ish movement, which is why its price matters
+// to a doc two directories away.
+export const DISPLACE_DB_COST   = 1;   // Db charged per warp
+export const DISPLACE_MIN_RINGS = 2;   // nearest legal landing ring (1 = a normal step, so it's excluded)
+export const DISPLACE_MAX_RINGS = 3;   // furthest legal landing ring
+
+// 🕳️ GRAVITY CONTROL — the black hole vortex.
+export const GRAVITY_DB_COST     = 1;  // Db charged per vortex
+export const GRAVITY_PLACE_RINGS = 2;  // how far out he can drop it
+export const GRAVITY_PULL_RINGS  = 2;  // rivals this close (or closer) get dragged
+export const GRAVITY_PULL_HEXES  = 1;  // hexes each caught rival is dragged inward
+export const GRAVITY_NOTE_DRAIN  = 2;  // notes cut from NEXT turn's refill for anyone dragged INTO it
+
+// 💻 CODE INJECTION — the hidden commit.
+export const CODE_INJECT_DB_COST = 1;  // Db burned at COMMIT, win or lose

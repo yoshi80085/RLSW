@@ -393,12 +393,25 @@ const faceRivalAt = (st, rivalId, step = 0) => {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 15. SKILL UNLOCKS — phase-agnostic (Db is not AP), affordability-gated, and
-//     ABSENT rather than guessed while SKILL_TREE still lives in the monolith.
+// 15. 🎯 SKILL TARGETING — phase-agnostic (Db is not AP), and ABSENT rather than
+//     guessed without a tree.
+//
+// ⚠️ REWRITTEN 2026-08-16. This section used to test `skillUnlock`: a family
+// gated on `dbPoints >= dbCost`, which `transition.js` then paid for by
+// subtracting the cost and granting the skill. There is no such mechanic. The
+// shipped flow is: pick a TARGET, Db accumulates toward it, and the award fires
+// automatically inside `commitMelodyEconomy`. So the decision is free, it is
+// NOT affordability-gated — saving toward what you cannot yet afford is the
+// whole of §3.2 — and it is offered only while you have no target, which is
+// both the client's flow and the only version that terminates.
+//
+// 📌 The old assertions all PASSED, every one of them, against a rule the game
+// does not have. They were pinning an invented mechanic, which is why nothing
+// caught it until the §6.6 bench played a match with a real tree in the view.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const st = withNs(confirmed(baseState()), RONIN, { dbPoints: 10, unlockedSkills: ['amp_1'] });
-  eq(ofKind(legalActions(st, RONIN), 'skillUnlock').length, 0,
+  eq(ofKind(legalActions(st, RONIN), 'skillTarget').length, 0,
      'no skillById supplied → the family is absent, not invented');
 
   const skillById = {
@@ -406,18 +419,35 @@ const faceRivalAt = (st, rivalId, step = 0) => {
     amp_2: { id: 'amp_2', chainId: 'pa', dbCost: 10, prereq: 'amp_1' },
     amp_3: { id: 'amp_3', chainId: 'pa', dbCost: 99, prereq: 'amp_2' },
     theory_minor: { id: 'theory_minor', chainId: 'theory', dbCost: 8, prereq: 'theory_major' },
+    // Eligible on every count EXCEPT price — the case the old gate hid.
+    capstone: { id: 'capstone', chainId: 'pa', dbCost: 99, prereq: 'amp_1' },
   };
-  const offered = ofKind(legalActions(st, RONIN, { skillById }), 'skillUnlock').map(a => a.skillId);
-  ok(offered.includes('amp_2'), 'affordable and prereq met → offered');
-  ok(!offered.includes('amp_1'), 'already unlocked → not offered');
-  ok(!offered.includes('amp_3'), 'unaffordable → not offered');
+  const offered = ofKind(legalActions(st, RONIN, { skillById }), 'skillTarget').map(a => a.skillId);
+  ok(offered.includes('amp_2'), 'prereq met → you may save toward it');
+  ok(!offered.includes('amp_1'), 'already unlocked → nothing to save for');
   ok(!offered.includes('theory_minor'), 'prereq missing → not offered');
 
-  // Db is not AP: a broke turn can still buy.
+  // ⚠️ THE PRICE DOES NOT GATE IT, and that is the correction. `amp_3` costs 99
+  // against 10 banked, and it is STILL on the table: deciding to aim at a
+  // capstone you cannot afford is §3.2's "saving toward a 14–16 Db capstone
+  // means an entire arc of turns where the arsenal you own goes unfired". The
+  // old affordability gate hid that decision precisely when it was interesting.
+  ok(offered.includes('capstone'),
+     '⚠️ unaffordable → STILL offered; you are choosing what to save for, not buying');
+  ok(!offered.includes('amp_3'), '…while a genuinely unmet PREREQ still blocks — a different refusal from a price');
+
+  // Db is not AP: a broke turn can still choose.
   const broke = withTurn(st, { moveStepsLeft: 0 });
-  ok(ofKind(legalActions(broke, RONIN, { skillById }), 'skillUnlock').length > 0,
-     'unlocks cost Db, not AP — 0 AP does not close the shop');
-  eq(ofKind(legalActions(st, RONIN, { skillById }), 'skillUnlock')[0].apCost, 0, '...and they are priced at 0 AP');
+  ok(ofKind(legalActions(broke, RONIN, { skillById }), 'skillTarget').length > 0,
+     'targeting costs neither Db nor AP — 0 AP does not close it');
+  eq(ofKind(legalActions(st, RONIN, { skillById }), 'skillTarget')[0].apCost, 0, '...and it is priced at 0 AP');
+
+  // ⚠️ ONE TARGET AT A TIME. A free action that changes the position (it moves
+  // `dbHorizon`'s denominator) and is always available is a searcher's infinite
+  // loop — the harness burned a whole turn on re-aiming before this gate landed.
+  const aiming = withNs(st, RONIN, { targetSkillId: 'amp_2' });
+  eq(ofKind(legalActions(aiming, RONIN, { skillById }), 'skillTarget').length, 0,
+     '⚠️ already saving toward something → the family closes until it lands');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -40,6 +40,7 @@ import { HEX_BY_NUM, ALL_HEXES, EDGE_HEX_NUMS } from "../../board/hexMap.js";
 import { axialDist } from "../../board/hexGeometry.js";
 import { crowdMultiplier } from "../../board/boardHelpers.js";
 import { sonicRig } from "../systems/sonicRig.js";
+import { SKILL_BY_ID } from "../../data/skillTree.js";
 
 // ── Tunables that are eval-local, not game rules ────────────────────────────
 
@@ -59,6 +60,16 @@ export const MAX_EDGE_DIST = ALL_HEXES.reduce((mx, h) => {
   return Number.isFinite(d) ? Math.max(mx, d) : mx;
 }, 0) || 1;
 
+// 🎓 The starting kit. `economy.js` wires every Spirit in with `amp_1` (and the
+// Ronin with `theory_minor`), so those are not PURCHASES and must not be scored
+// as investment — otherwise the Ronin is born looking richer than everybody else.
+export const STARTING_SKILLS = new Set(['amp_1', 'theory_minor']);
+
+// 🎓 How much Db invested in the kit counts as "fully equipped". Not a rule —
+// a normaliser, chosen as roughly two mid-tier unlocks, which is what a Spirit
+// can realistically land inside one match at the Db rates in §2.
+export const KIT_DB_HORIZON = 20;
+
 // ── §5 weights ──────────────────────────────────────────────────────────────
 //
 // ⚠️ STARTING POINTS, NOT MEASUREMENTS. Every number below is a design
@@ -72,7 +83,7 @@ export const DEFAULT_WEIGHTS = {
   survival: 1.0, fame: 1.0, fanMult: 1.0, perfCliff: 1.0,
   drive: 1.0, sustain: 1.0, apBanked: 1.0, inRig: 1.0,
   charge: 1.0, refillDenied: 1.0, adjWounded: 1.0, edgeSafety: 1.0,
-  dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0,
+  dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6,
 };
 
 export const EVAL_WEIGHTS = {
@@ -82,7 +93,7 @@ export const EVAL_WEIGHTS = {
     survival: 1.4, fame: 1.2, fanMult: 1.3, perfCliff: 2.0,
     drive: 1.1, sustain: 0.7, apBanked: 0.9, inRig: 1.0,
     charge: 0.5, refillDenied: 0.3, adjWounded: 0.8, edgeSafety: 1.3,
-    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0,
+    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6,
   },
   // 📻 The cosmic controller. The Boom Box makes "hold a charge" a near-
   // permanent objective, and denial is his win path, not damage.
@@ -90,7 +101,7 @@ export const EVAL_WEIGHTS = {
     survival: 1.0, fame: 1.0, fanMult: 0.7, perfCliff: 0.4,
     drive: 0.6, sustain: 1.2, apBanked: 0.5, inRig: 1.6,
     charge: 2.2, refillDenied: 1.5, adjWounded: 0.4, edgeSafety: 0.9,
-    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0,
+    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6,
   },
   // 🟢 The bruiser. Attrition that snowballs — he wants to be standing next to
   // something already bleeding.
@@ -98,7 +109,7 @@ export const EVAL_WEIGHTS = {
     survival: 0.7, fame: 1.1, fanMult: 0.6, perfCliff: 0.3,
     drive: 1.3, sustain: 1.0, apBanked: 0.5, inRig: 0.8,
     charge: 0.5, refillDenied: 0.4, adjWounded: 1.5, edgeSafety: 0.6,
-    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0,
+    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6,
   },
 };
 
@@ -279,7 +290,43 @@ export function evaluate(state, spiritId, view = {}) {
   //     and the one the current bot has no concept of. Banked Db is only worth
   //     something if there is enough match left to fire what it buys; a 14–16 Db
   //     capstone bought at 20/24 never pays for itself.
-  terms.dbHorizon = clamp01((ns.dbPoints ?? 0) / DB_UPGRADE_THRESHOLD) * horizon;
+  //     ⚠️ DIVIDED BY WHAT YOU ARE SAVING FOR, NOT BY A FLAT CONSTANT. This read
+  //     `/ DB_UPGRADE_THRESHOLD` until 2026-08-16, which is the FALLBACK cost
+  //     used when no skill is targeted (4) — not a ceiling on banking. Skills
+  //     cost 6–16, so the term saturated at 4 and scored 4 Db and 16 Db as
+  //     identically good, which is precisely the "saving toward a capstone"
+  //     tension §3.2 calls the sharpest in the game, flattened away. §5 already
+  //     states this discipline for the stacks — "divide by `stackCapFor()`,
+  //     never a flat 5" — and it applies here for the same reason.
+  //     `melodyCommit.js` and the client both derive the target cost this exact
+  //     way, so this is now one rule with three consumers rather than two
+  //     different readings of one pool.
+  const targetCost = SKILL_BY_ID[ns.targetSkillId]?.dbCost ?? DB_UPGRADE_THRESHOLD;
+  terms.dbHorizon = clamp01((ns.dbPoints ?? 0) / targetCost) * horizon;
+
+  // 13b. 🎓 KIT — Db that has been CONVERTED INTO CAPABILITY. The other half of
+  //     §3.2, and it was missing.
+  //
+  //     ⚠️ WITHOUT THIS THE BOT CAN NEVER BUY ANYTHING, and the failure is
+  //     structural rather than a tuning miss. `dbHorizon` scores Db BANKED, so
+  //     an unlock is a pure loss to it — the Db leaves the bank and nothing in
+  //     the table records what arrived in its place. A greedy searcher therefore
+  //     refuses every purchase in the game, forever. Found 2026-08-16, the first
+  //     time the §6.6 bench was handed a real SKILL_TREE: across 60 turns of a
+  //     three-handed match, not one skill was bought by anybody.
+  //
+  //     📌 It is measured in Db INVESTED rather than skills COUNTED, which makes
+  //     it the exact mirror of `dbHorizon` — one pool, two states — and means a
+  //     12 Db capstone is not scored the same as a 6 Db rung. Starting kit is
+  //     excluded; being wired in is not an investment.
+  //
+  //     ⚠️ AND IT IS MULTIPLIED BY THE HORIZON, which is §3.2's actual verdict:
+  //     "a capstone bought at fame 20/24 never pays for itself." Late in a match
+  //     an unlock is worth less because there is less match left to fire it.
+  const invested = (ns.unlockedSkills ?? [])
+    .filter(id => !STARTING_SKILLS.has(id))
+    .reduce((sum, id) => sum + (SKILL_BY_ID[id]?.dbCost ?? 0), 0);
+  terms.kit = clamp01(invested / KIT_DB_HORIZON) * horizon;
 
   // 14. RIVAL POSE THREAT (NEW — no equivalent in `botHexScore`). A maxed poser
   //     earns a full turn's FP ceiling standing still, which makes them the

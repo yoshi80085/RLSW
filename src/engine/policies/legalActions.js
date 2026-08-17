@@ -36,7 +36,7 @@
 // searches two attacks in a turn is searching a game that does not exist.
 
 import { HEX_BY_NUM, HEX_BY_QR } from "../../board/hexMap.js";
-import { slideTarget, trailRun } from "../systems/slime.js";
+import { slideTarget, trailRun, canCallSlime } from "../systems/slime.js";
 import { axialNeighbors, angleTo, angleDiff, getFlatTopNeighborSlots, neighborInDirection } from "../../board/hexGeometry.js";
 import { usedHas } from "../systems/economy.js";
 import { skillEligibility } from "../systems/skills.js";
@@ -45,10 +45,12 @@ import { canCallEleven } from "../systems/eleven.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS } from "../../data/gameConstants.js";
 import { CONE_HALF_ARC, SPIRIT_ONLY_ROUTE } from "./bot.js";
-// 📻 distFromHome carries the Boom Box rule with it — Intergalactic 0 reads
-// distance 0 while charged, which is exactly what keeps his Sonic legal out
-// on the board. Shared with evaluate.js so the innate has one implementation.
-import { distFromHome } from "./evaluate.js";
+// 📻 The Boom Box rule — Intergalactic 0 reads distance 0 while charged, which
+// is what keeps his Sonic legal out on the board — used to be imported here as
+// `distFromHome`. It is now reached through `rigFor`, which is the better
+// route: a blown amp reads as out-of-rig on the same call, so 🔊 Goes to 11's
+// second cost needs no idea that this file exists. (Dead import removed
+// 2026-08-16; it went unused in 1fab215 and lint caught it here.)
 
 // ── Costs and caps, named where the client names them ───────────────────────
 
@@ -181,18 +183,58 @@ export function legalActions(state, spiritId, view = {}) {
   const tokenSpent = !!turn.actionTokenUsed;
   const out = [];
 
-  // ── SKILL UNLOCKS — phase-agnostic: Db is not AP and buying is not acting.
-  // Gated on `skillById` because SKILL_TREE has not been extracted from the
-  // monolith yet; without it this family is simply absent rather than guessed.
-  if (skillById) {
+  // ── 🎯 SKILL TARGETING — phase-agnostic: Db is not AP, and choosing what to
+  // save for is not acting.
+  //
+  // ⚠️ THIS WAS `skillUnlock` AND IT MODELLED A MECHANIC THE GAME DOES NOT HAVE.
+  // Until 2026-08-16 this file emitted `{ kind: 'skillUnlock', skillId, dbCost }`
+  // gated on `dbPoints >= dbCost`, and `transition.js` paid for it by subtracting
+  // the cost and pushing the id into `unlockedSkills` — a shop. There is no shop.
+  // The shipped flow is four steps and the monolith spells them out:
+  //
+  //   1. you pick a TARGET skill  →  `targetSkillId`
+  //   2. every Db earned counts toward it (`advanceDB`, overflow carries)
+  //   3. the bar fills → the skill is awarded AUTOMATICALLY, inside the commit
+  //   4. you pick the next target
+  //
+  // So the only decision a player ever makes here is step 1, and it is free.
+  // The award is `commitMelodyEconomy`'s, and its state half is already modelled.
+  //
+  // ⚠️ THE INVENTED RULE WAS INVISIBLE FOR THE SAME REASON THE OTHER TWO WERE:
+  // this family is emitted only when the caller passes `skillById`, and nothing
+  // could until SKILL_TREE left the monolith. `transition.js`'s header warns that
+  // a transition inventing a rule "shows up as a bot that is confidently wrong,
+  // which is not visible" — this was one, sitting in the pair of files that warn
+  // about it. Found by the §6.6 bench: Spirits were filling a 4 Db bar over and
+  // over (the no-target fallback) and never receiving a single skill.
+  //
+  // ⚠️ NO Db GATE. You may save toward anything you are ELIGIBLE for, however
+  // broke you are — that is what saving means. Gating on affordability was part
+  // of the shop fiction, and it hid every capstone from the searcher precisely
+  // when deciding to aim at one is the interesting decision (§3.2).
+  //
+  // ⚠️ AND IT IS OFFERED ONLY WHEN THERE IS NO TARGET — which is the client's
+  // own flow ("skill awarded automatically, overlay opens to pick next"), and
+  // also the only version of this that TERMINATES. A free, unlimited re-aim is a
+  // zero-cost action that changes the position — `dbHorizon` divides by the
+  // target's cost — so a greedy searcher will re-aim, re-score, re-aim forever
+  // and burn the whole turn without touching the board. The §6.6 harness hit its
+  // per-turn ceiling on the first run after this family went live, which is
+  // exactly what that ceiling is for.
+  if (skillById && !ns.targetSkillId) {
     const unlocked = ns.unlockedSkills ?? [];
-    const db = ns.dbPoints ?? 0;
     for (const [id, skill] of Object.entries(skillById)) {
-      if (!skill || (skill.dbCost ?? Infinity) > db) continue;
-      const ownerRoute = Object.entries(SPIRIT_ONLY_ROUTE)
-        .find(([, owner]) => owner === skill.spiritOnly)?.[1] ?? skill.spiritOnly ?? null;
+      if (!skill) continue;
+      // ⚠️ `skill.spiritOnly` WAS ALWAYS `undefined` UNTIL 2026-08-16, so this
+      // gate could never fire — the old round-trip through `SPIRIT_ONLY_ROUTE`
+      // was searching a map BY OWNER to recover the owner it already had, off a
+      // field the tree builder never populated. `SKILL_BY_ID` now pushes the
+      // route's owner down onto every skill, so the honest read is the direct
+      // one. Falls back to the route map for any caller passing a hand-built
+      // `skillById` that predates the push-down.
+      const ownerRoute = skill.spiritOnly ?? SPIRIT_ONLY_ROUTE[skill.routeId] ?? null;
       if (!skillEligibility(skill, unlocked, { ownerRoute, selfId: spiritId }).ok) continue;
-      out.push({ kind: 'skillUnlock', skillId: id, dbCost: skill.dbCost, apCost: 0 });
+      out.push({ kind: 'skillTarget', skillId: id, dbCost: skill.dbCost, apCost: 0 });
     }
   }
 
@@ -290,6 +332,14 @@ export function legalActions(state, spiritId, view = {}) {
   // close; charging Db for the road as well as AP would re-open it, and a Spirit
   // whose signature is a purchase has no signature until he can afford one.
   //
+  // ⚠️ BUT INNATE MEANS NO PURCHASE, NOT NO OWNER — and getting that wrong is
+  // how this gate shipped open. Until 2026-08-16 the only thing standing between
+  // any Spirit and the ooze was a JSX render condition
+  // (`acting?.id === 'Metalness_Monster'`), which this file had nothing to
+  // transcribe from. No player could reach it; the §6.6 harness reached it on
+  // its first headless match and had the Ronin laying road. Ownership now lives
+  // in `canCallSlime` beside the rest of the trail rules — see its header.
+  //
   // ⚠️ THE `slimingId` CHECK IS THE ONCE-PER-TURN RULE and it is doing real work.
   // Because the call SETS movement rather than adding to it, a second call would
   // top the pool back up to 3 for 1 AP — repeatable, so 1 AP would buy 2 net
@@ -301,7 +351,7 @@ export function legalActions(state, spiritId, view = {}) {
   // action REWRITES the budget every action after it spends from, and a searcher
   // that priced it as "-1 AP" would have the sign wrong on a bad melody, where
   // calling it is a net GAIN of steps.
-  if (!turn.slimingId && ap >= SLIME_AP_COST) {
+  if (canCallSlime(spiritId) && !turn.slimingId && ap >= SLIME_AP_COST) {
     out.push({ kind: 'slime', apCost: SLIME_AP_COST, apGranted: SLIME_MOVE_STEPS });
   }
 
