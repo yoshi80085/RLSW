@@ -25,6 +25,7 @@ import {
   EVENT_HEX_TRIGGERED, TOKEN_PICKED_UP, TOKENS_DRIFTED, CHARGE_ZONE_USED, FLAMING_HEXES_SET,
   RANDOM_BATCH_DRAWN,
   SLIME_DROPPED, SLIME_DECAYED, SLIME_CLEARED, SPIRIT_SLID, SLIME_CALLED, ELEVEN_CALLED,
+  POSE_SET, POSE_ROUND_BANKED,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
 import {
@@ -65,6 +66,7 @@ import {
 } from "./systems/board.js";
 import { applySlimeDropped, applySlimeDecayed, applySlimeCleared, applySpiritSlid, applySlimeCalled } from "./systems/slime.js";
 import { applyElevenCalled } from "./systems/eleven.js";
+import { applyPoseSet, applyPoseRoundBanked } from "./systems/limelight.js";
 
 /**
  * @param {object} state   plain-JSON GameState (never mutated)
@@ -161,6 +163,10 @@ function reduce(state, action, rng) {
     case ELEVEN_CALLED:          return applyElevenCalled(state, action);
     case SLIME_CLEARED:          return applySlimeCleared(state, action);
     case SPIRIT_SLID:            return applySpiritSlid(state, action);
+
+    // -- ✨ Phase 6d: the Limelight (§3.3) --
+    case POSE_SET:               return applyPoseSet(state, action);
+    case POSE_ROUND_BANKED:      return applyPoseRoundBanked(state, action);
 
     case FLAMING_HEXES_SET:      return applyFlamingHexesSet(state, action);
     case FLAMING_DECAYED:        return applyFlamingDecayed(state);

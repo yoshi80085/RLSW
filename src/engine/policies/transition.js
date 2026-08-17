@@ -47,8 +47,12 @@
 //     follow-up the highest-damage sequence in the game. It was describing a
 //     mechanic that does not exist — corrected there, repeated here because this
 //     is the file someone reads right before trying to model it.
-//  3. `pose` moves `view.posing` only. The per-round FP tick and Sustain toll
-//     are on the turn clock in the client.
+//  3. ~~`pose` moves `view.posing` only. The per-round FP tick and Sustain toll
+//     are on the turn clock in the client.~~ ✅ CLOSED 2026-08-17 (§6.6.8) —
+//     `posing` and `limelightScores` are engine state (`systems/limelight.js`),
+//     and `endTurn` below drives `poseConsequences` off the same
+//     `limelightHeld` verdict the client reads. The pose now pays and bills
+//     headlessly, which it never has.
 //
 // Everything else — movement, facing, melody notes, stack commits, skill
 // unlocks, Swing, Sonic, end of turn — is exact.
@@ -57,10 +61,11 @@ import { applyAction } from "../reduce.js";
 import {
   moveStep, spiritFaced, beatsSpent, moveBudgetSet, turnEnded,
   noteSheetPatched, attackRolled, fansChanged, spiritSlid, slimeCleared, slimeCalled,
-  elevenCalled,
+  elevenCalled, posed,
 } from "../actions.js";
 import {
   battleConsequences, runBattleFlow, grantFame, riffOffConsequences,
+  poseConsequences,
 } from "../systems/battleFlow.js";
 import {
   applyRiffOffStarted, applyRiffResultsSubmitted, applyRiffResolved,
@@ -500,12 +505,16 @@ export function applyBotAction(state, action, ctx = {}) {
     }
 
     case 'pose':
-      // 🎤 Opening a pose is free; the FP tick and the Sustain toll ride the
-      // turn clock in the client, so only the flag moves here.
+      // 🎤 Opening a pose is free and it is a COMMITMENT, not a tap: the FP tick
+      // and the Sustain toll land at `endTurn` below, and until then the Spirit
+      // is standing in the middle with no defence die at all.
+      //
+      // ⚠️ THE FLAG USED TO LIVE IN `view` AND THAT IS WHY IT PAID NOTHING.
+      // See systems/limelight.js — a searcher could set it, and no rule
+      // anywhere downstream could read it back.
       return {
-        state,
-        view: { ...view, posing: { ...(view.posing ?? {}), [spiritId]: true } },
-        ok: true, reason: null, logs: [],
+        state: applyAction(state, posed(spiritId, true), rng),
+        view, ok: true, reason: null, logs: [],
       };
 
     // 🎯 CHOOSING WHAT TO SAVE FOR — free, and it does NOT grant the skill.
@@ -530,8 +539,35 @@ export function applyBotAction(state, action, ctx = {}) {
         view, ok: true, reason: null, logs: [],
       };
 
-    case 'endTurn':
-      return { state: applyAction(state, turnEnded(), rng), view, ok: true, reason: null, logs: [] };
+    case 'endTurn': {
+      // ✨ THE LIMELIGHT FAUCET, DRIVEN HEADLESSLY FOR THE FIRST TIME (§6.6.8).
+      //
+      // Order is the client's, and it is load-bearing rather than incidental:
+      // `turnEnded` is what DECIDES `limelightHeld` (started AND ended the turn
+      // on hex 56 — only the turn reducer knows both ends), so the payout can
+      // only be settled after it. ⚠️ And `turnEnded` rotates `state.acting`, so
+      // the Spirit being paid must be read BEFORE the dispatch, never after.
+      const posingId = spiritId;
+      const next = applyAction(state, turnEnded(), rng);
+      if (!next.turn?.lastReport?.limelightHeld) {
+        return { state: next, view, ok: true, reason: null, logs: [] };
+      }
+
+      const run = runBattleFlow(
+        poseConsequences({
+          state: next, spiritId: posingId, fameThisTurn: view.fameThisTurn ?? {},
+        }),
+        next,
+        { applyAction: (st, a) => applyAction(st, a, rng), hooks },
+      );
+      // The pose is billed against the window of the turn that just ENDED — it
+      // is the payout for having held the middle through it — so the grant goes
+      // through the same `fameThisTurn` cap as everything else that turn.
+      const nextView = run.result?.fameThisTurn
+        ? { ...view, fameThisTurn: run.result.fameThisTurn }
+        : view;
+      return { state: run.state, view: nextView, ok: true, reason: null, logs: run.logs };
+    }
 
     default:
       return fail(state, view, 'illegal', `unhandled kind ${kind}`);

@@ -13,6 +13,7 @@
 
 import { makeRng } from "./rng.js";
 import { makeInitialNoteState } from "./systems/economy.js";
+import { makeLimelightState } from "./systems/limelight.js";
 import { shuffledStageFxDeck } from "../data/stageEffects.js";
 import { makeBoardToken, SPOTLIGHT_POOL, EVENT_HEX_POOL } from "../board/boardHelpers.js";
 import { ALL_HEXES } from "../board/hexMap.js";
@@ -122,6 +123,18 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
 
     // Phase 5c: per-spirit note/skill/fan sheets (engine-owned, seeded)
     noteStates,
+
+    // ✨ Phase 6d: the Limelight (§3.3 — Strike a Pose), engine-owned.
+    //
+    // ⚠️ THESE TWO WERE THE LAST REACT-OWNED SLICES THE EVALUATOR HAD TO BE
+    // HANDED. `evaluate(state, spiritId, view)` carried a `view` argument
+    // specifically so `posing` and `limelightScores` could be passed in from
+    // outside, and the harness could not pay a pose at all
+    // (`HARNESS_GAPS.pose`) because the turn clock that billed it lived in the
+    // client. See systems/limelight.js. `scores` is CUMULATIVE and never
+    // resets — being shoved out of the middle costs you the tempo, not the
+    // reputation.
+    limelight: makeLimelightState(),
 
     // Phase 6a: board state (engine-owned, seeded)
     board: {

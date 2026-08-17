@@ -323,10 +323,14 @@ const battle = (over = {}) => ({
      'exactly one note survives — the floor bites');
 
   // A posing Spirit has no guard to fray — they gave up defence entirely (§3.3).
+  // ✨ Read off the STATE now, not passed in: `posing` stopped being a parameter
+  // on 2026-08-17 (§6.6.8). A caller that forgot the old argument silently
+  // frayed a stack the rules say is untouchable, and nothing could tell.
+  const poser = { ...s, limelight: { posing: { intergalactic_0: true }, scores: {} } };
   const posed = drive(
     st => chordFray({ state: st, targetId: 'intergalactic_0', margin: 9,
-                      fromBehind: true, posing: { intergalactic_0: true }, chordOf }),
-    s,
+                      fromBehind: true, chordOf }),
+    poser,
   );
   eq(posed.result.frayed, 0, 'a posing Spirit has no chord to fray');
 }

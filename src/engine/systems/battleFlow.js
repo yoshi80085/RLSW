@@ -38,8 +38,9 @@
 import {
   damageApplied, knockdownResolved, fameChanged,
   noteSheetPatched, thrashTokensSpawned, randomBatchDrawn,
-  spiritsSynced, headlinerChanged,
+  spiritsSynced, headlinerChanged, posed, poseRoundBanked,
 } from "../actions.js";
+import { isPosing, poseRounds, posePayout } from "./limelight.js";
 import {
   thrashKnockback, sonicKnockback, chordFrayAmount, underdogBonus,
   thrashFame, sonicFame, isRearHit,
@@ -49,7 +50,7 @@ import { neighborInDirection, angleTo, angleDiff } from "../../board/hexGeometry
 import { hexRingFromCenter, crowdMultiplier } from "../../board/boardHelpers.js";
 import {
   FAME_PER_TURN_CAP, FAN_DIEHARD_START, LIMELIGHT_HEX,
-  SONIC_LIMELIGHT_FP, fpPerLife,
+  SONIC_LIMELIGHT_FP, POSE_SUSTAIN_COST, fpPerLife,
 } from "../../data/gameConstants.js";
 import { ROCK_GOD_RUNAWAY_LEAD } from "../../data/rockGods.js";
 import { RIFF_BOTH_PAID_QUALITY } from "./riffOff.js";
@@ -121,11 +122,15 @@ const headlinerRider = (state, id) => (state.headliner === id ? 1 : 0);
 //    to fray (they gave up defence entirely, §3.3), and one note always
 //    survives so a stack is never wiped to nothing by fray alone.
 // ═════════════════════════════════════════════════════════════════════════════
-export function* chordFray({ state, targetId, margin, fromBehind = false, posing = {}, chordOf }) {
+// ⚠️ `posing` IS NO LONGER A PARAMETER — it is read off `state` (2026-08-17,
+// `systems/limelight.js`). It was passed in because the flag was React state,
+// which meant a caller that forgot it silently frayed a stack the rules say is
+// untouchable, and neither the engine nor a test could tell the difference.
+export function* chordFray({ state, targetId, margin, fromBehind = false, chordOf }) {
   const none = { frayed: 0, destroyed: false, fromBehind: false };
   const nsD   = nsOf(state, targetId);
   const stack = nsD.sustainStack ?? [];
-  if (stack.length <= 1 || posing[targetId]) return none;
+  if (stack.length <= 1 || isPosing(state, targetId)) return none;
 
   const amount = chordFrayAmount(margin, fromBehind);
   if (amount <= 0) return none;
@@ -243,9 +248,21 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [] }) {
     // Names come off the LIVE state, not the `target` snapshot taken before the
     // slide began — a hazard mid-path can respawn them, and the old code read a
     // stale standee here.
+    // ✨ SHOVED OUT OF THE MIDDLE — the pose ends here, and this is a RULE now
+    // rather than a hook.
+    //
+    // ⚠️ IT WAS `hook('leftLimelight')`, WHICH NO HEADLESS MATCH IMPLEMENTED.
+    // `harnessHooks` skips hooks it does not have, so a bench Spirit knocked off
+    // the Limelight kept `posing` set — and a posing Spirit rolls NO defence die
+    // at all. That is not a missing bonus, it is a live penalty welded on for
+    // the rest of the match, on a Spirit who never chose to keep posing. It
+    // could only ever have made the bench's numbers worse, quietly, and it is
+    // §5.A's pattern with the sign flipped: the rule existed, in a place the
+    // engine could not read.
     if (fromNum === LIMELIGHT_HEX) {
-      yield hook('leftLimelight', { spiritId: targetId });
-      yield log(`🎤 ${nameOf(state, targetId)} knocked off the Limelight!`);
+      const wasPosing = isPosing(state, targetId);
+      if (wasPosing) state = yield act(posed(targetId, false));
+      yield log(`🎤 ${nameOf(state, targetId)} knocked off the Limelight!${wasPosing ? ' — pose over, guard back up' : ''}`);
     }
     if (nextHex.edge) yield log(`⚠️ ${nameOf(state, targetId)} skids onto the EDGE — #${nextHex.num}!`);
 
@@ -349,6 +366,64 @@ export function* awardThrashFame({ state, spiritId, loserId, fameThisTurn }) {
   const res = yield* grantFame({ state, spiritId, fp: amount, reason: tag, fameThisTurn });
   if (fxBonus) yield hook('gainFans', { spiritId, n: 1, reason: '🎇 stage effects spectacle' });
   return res;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 3b. ✨ THE LIMELIGHT FAUCET — the only Fame engine that pays for standing
+//     still, and the only one that bills you for it in the same breath.
+//
+// ⚠️ MOVED HERE FROM THE CLIENT TURN CLOCK 2026-08-17 (§6.6.8), and the move is
+// the point rather than tidiness. `HARNESS_GAPS.pose` read "the FP tick and
+// Sustain toll are on the client turn clock", which meant a headless pose set a
+// flag, gave up its defence die, and earned NOTHING — so the searcher was
+// offered a strictly self-harming action and, correctly, never took it. Four
+// surviving rounds is 4 FP, the entire per-turn Fame cap, earned without
+// rolling a die; it is the largest payout the bench has never seen.
+//
+// THE TWO HALVES ARE ONE BEAT AND MUST STAY THAT WAY. The FP is what makes the
+// middle worth walking to; the Sustain note is what stops camping there being
+// free. Pay one without billing the other in the same sequence and the
+// Limelight becomes either a bug or a chore.
+//
+// ⚠️ THE SUSTAIN FLOOR IS GENUINELY ZERO HERE, unlike `chordFray` (which always
+// leaves one note standing). The whole point of the pose is that the middle
+// costs you your armour: run the stack dry and you may STILL pose, on nerve.
+//
+// Call it AFTER `turnEnded` has produced `limelightHeld` — the verdict is
+// "started AND ended the turn on hex 56", which only the turn reducer knows.
+// ═════════════════════════════════════════════════════════════════════════════
+export function* poseConsequences({ state, spiritId, fameThisTurn = {} }) {
+  if (!isPosing(state, spiritId)) return { granted: 0, rounds: 0, shed: 0, fameThisTurn };
+
+  const rounds = poseRounds(state, spiritId) + 1;
+  const tier   = posePayout(rounds - 1);
+
+  state = yield act(poseRoundBanked(spiritId));
+
+  // 💸 Bill the note first. A Spirit who is about to be crowned by this very
+  // grant should still have paid for the pose that crowned them — settling up
+  // after the win check would let the last pose of the match be free.
+  const stack = nsOf(state, spiritId).sustainStack ?? [];
+  let shed = 0;
+  if (stack.length > 0) {
+    const lost = stack.slice(Math.max(0, stack.length - POSE_SUSTAIN_COST));
+    shed = lost.length;
+    state = yield patch(spiritId, { sustainStack: stack.slice(0, Math.max(0, stack.length - POSE_SUSTAIN_COST)) });
+    yield fx('spentNotes', { spiritId, notes: lost, stack: 'sustain' });
+    yield log(`✨ ${nameOf(state, spiritId)} holds the pose — the Sustain Stack thins to feed it (−${shed} note).`);
+  } else {
+    yield log(`💀 ${nameOf(state, spiritId)} poses on an EMPTY Sustain Stack — nothing but nerve holding them up.`);
+  }
+
+  yield log(`🌟 ${nameOf(state, spiritId)} works the Limelight — ${rounds} round${rounds !== 1 ? 's' : ''} posed, the crowd is losing it!`);
+  yield fx('flash', { spiritId, icon: '✨', text: `POSE ×${rounds}`, color: '#ff88ff' });
+
+  const res = yield* grantFame({
+    state, spiritId, fp: tier,
+    reason: `✨ Struck a Pose in the Limelight (round ${rounds})`,
+    fameThisTurn,
+  });
+  return { ...res, rounds, shed };
 }
 
 /** Sonic win: margin-scaled, plus a Limelight-ring bonus. */

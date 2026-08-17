@@ -1,0 +1,2 @@
+posePlay 0             turns  151 decided  19/28 FP/turn 0.086 poses   27 atk {"swing":138,"riffOff":23,"sonic":11}
+posePlay 0.3           turns  178 decided  17/28 FP/turn 0.072 poses   28 atk {"sonic":12,"swing":141,"riffOff":24}

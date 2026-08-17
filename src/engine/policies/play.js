@@ -90,10 +90,23 @@ export const HARNESS_GAPS = {
   hexHazards: 'hazard hexes along a knockback path — client-owned, skipped',
   stageFxThresholds: 'stage FX draws at Fame thresholds — client-owned, skipped',
 
-  // The pose's per-round FP tick and Sustain toll ride the client turn clock
-  // (`transition.js` gap 3), so a `pose` here flips a flag and pays nothing.
-  // Policies are therefore blind to §3.3 rather than wrong about it.
-  pose: 'the FP tick and Sustain toll are on the client turn clock',
+  // ~~The pose's per-round FP tick and Sustain toll ride the client turn clock
+  // (`transition.js` gap 3), so a `pose` here flips a flag and pays nothing.~~
+  //
+  // ✅ CLOSED 2026-08-17 (§6.6.8) — the key is DELETED, not set to a nicer
+  // string, so `harnessCheck`'s "declared, not silently absent" sweep keeps
+  // meaning what it says. `posing` and `limelightScores` are engine state
+  // (`systems/limelight.js`); `transition.js`'s `endTurn` drives
+  // `poseConsequences` off the same `limelightHeld` verdict the client reads, so
+  // the FP goes through `grantFame` (crowd multiplier, per-turn cap, win check)
+  // and the Sustain note is billed, exactly once, in one place.
+  //
+  // ⚠️ AND CLOSING IT UNCOVERED A SECOND GAP UNDERNEATH. `hook('leftLimelight')`
+  // — the pose ending when you are SHOVED out of the middle — was client-only,
+  // and `harnessHooks` never implemented it, so a bench Spirit knocked off the
+  // Limelight kept `posing` set and rolled a ZERO defence die for the rest of
+  // the match. That one was not an unpaid bonus; it was a live penalty welded
+  // on, on a Spirit who never chose it. It is a rule in `battleFlow.js` now.
 
   // See `matchConfig` — the Rock God finale is sidestepped by construction.
   summonRockGod: 'sidestepped: short games crown outright (see matchConfig)',
@@ -519,7 +532,10 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
   // so every bench match was played on base kits, i.e. blind to every unlock in
   // the game and therefore to the whole of `METALNESS_REWORK_DESIGN.md`.
   // `view.skillById: null` still opts out, deliberately.
-  let v = { posing: {}, amps: [], shadowHex: null, rockGodActive: false, skillById: SKILL_BY_ID, ...view };
+  // ✨ `posing: {}` is GONE from here (§6.6.8) — it is engine state now, and
+  // leaving a dead copy in `view` would be a second source of truth that only
+  // ever agreed by accident.
+  let v = { amps: [], shadowHex: null, rockGodActive: false, skillById: SKILL_BY_ID, ...view };
   let turns = 0;
 
   while (!state.winner && turns < maxTurns) {
@@ -543,11 +559,20 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
   const fame = Object.fromEntries(
     (state.spirits ?? []).map(s => [s.id, state.noteStates?.[s.id]?.fame ?? 0]));
 
+  // ✨ Banked pose rounds come back with the result (§6.6.8) for the same reason
+  // `fame` does: a POSE STRUCK IS NOT A POSE PAID. `limelightHeld` needs both
+  // ends of the turn on hex 56, so a Spirit who walks in, poses, and is shoved
+  // out banks nothing — and a probe that counted `pose` actions would report a
+  // thriving Limelight economy that never paid anybody. This is the number that
+  // says which of the two happened.
+  const limelightScores = { ...(state.limelight?.scores ?? {}) };
+
   return {
     winner: state.winner ?? null,
     turns,
     reason: state.winner ? 'winner' : 'turnCap',
     fame,
+    limelightScores,
     anomaly: null,
   };
 }

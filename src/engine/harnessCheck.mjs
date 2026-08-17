@@ -59,7 +59,7 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
   // base-kit match while `runMatch` played with unlocks — two different games
   // under one file, and the §9 assertions below would have been measuring the
   // wrong one.
-  let v = { posing: {}, amps: [], shadowHex: null, rockGodActive: false, skillById: SKILL_BY_ID };
+  let v = { amps: [], shadowHex: null, rockGodActive: false, skillById: SKILL_BY_ID };
   const log = [];
   for (let i = 0; i < turns && !state.winner && state.acting; i++) {
     state = startSpiritTurn(state, rng);
@@ -248,6 +248,8 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
      '⚠️ base-kit-only is NO LONGER a gap — SKILL_TREE left the monolith 2026-08-16 and `runMatch` passes the real tree');
   ok(HARNESS_GAPS.skillEffects,
      '…but what replaced it is declared: the STATE half of an unlock lands, `applySkillEffects` is still client-owned');
+  ok(!HARNESS_GAPS.pose,
+     '✨ the pose is NO LONGER a gap — `posing`/`limelightScores` are engine state and `endTurn` drives the payout (§6.6.8)');
   ok(HARNESS_GAPS.summonRockGod, 'the sidestepped finale is declared');
   ok(!('legacy' in POLICIES),
      '⚠️ there is no `legacy` policy — a stub by that name would be cited as "the current bot" by the first person who read a table without reading the file');

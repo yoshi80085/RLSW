@@ -69,6 +69,24 @@ const withSpirit = (st, id, patch) => ({
   ...st, spirits: st.spirits.map(s => s.id === id ? { ...s, ...patch } : s),
 });
 
+/**
+ * ✨ State with the Limelight slice set — the pose flag and the banked rounds.
+ *
+ * ⚠️ THIS USED TO BE A `view` OBJECT, and the difference is the whole of §6.6.8.
+ * `posing` and `limelightScores` were React state handed to `evaluate` from
+ * outside, so a test could show the evaluator a pose the ENGINE had never heard
+ * of — which is how a mechanic that pays nothing headlessly stays green for
+ * months. They are engine state now: a test that wants a pose has to put one on
+ * the board.
+ */
+const withPose = (st, id, { on = true, rounds = 0 } = {}) => ({
+  ...st,
+  limelight: {
+    posing: { ...(st.limelight?.posing ?? {}), ...(on ? { [id]: true } : {}) },
+    scores: { ...(st.limelight?.scores ?? {}), [id]: rounds },
+  },
+});
+
 /** Score one term in isolation: how much did THIS row move? */
 const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
 
@@ -86,10 +104,11 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
   eq(a, b, 'same state twice → identical score');
   eq(JSON.stringify(st), before, 'evaluate does not mutate the state it is handed');
 
-  // The view is optional and its absence must not throw or poison the sum —
-  // it only blinds §3.3 (see the header note on React-owned slices).
+  // The view is optional and its absence must not throw or poison the sum. It
+  // carries no game state any more (§6.6.8) — only the bench's weight override.
   ok(Number.isFinite(evalScore(st, RONIN)), 'scores fine with no view');
-  eq(term(st, RONIN, 'rivalPose'), 0, 'no view → pose threat reads 0, not NaN');
+  eq(term(st, RONIN, 'rivalPose'), 0, 'nobody posing → pose threat reads 0, not NaN');
+  eq(term(st, RONIN, 'posePlay'), 0, 'not posing → own-pose value reads 0, not NaN');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -109,9 +128,10 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
   st = withNs(st, METAL, { refillDrain: 999 });
   st = { ...st, turn: { ...st.turn, moveStepsLeft: 999 } };
 
-  const { terms } = evaluate(st, RONIN, {
-    posing: { [ZERO]: true }, limelightScores: { [ZERO]: 99 },
-  });
+  st = withPose(st, ZERO,  { rounds: 99 });
+  st = withPose(st, RONIN, { rounds: 99 });
+
+  const { terms } = evaluate(st, RONIN);
   for (const [k, v] of Object.entries(terms)) {
     ok(v >= -1 && v <= 1, `term ${k} (${v}) stays inside [-1, 1] under absurd input`);
   }
@@ -365,17 +385,66 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
   eq(posePayout(0), POSE_FP_STEP, 'a fresh pose pays one step');
   eq(posePayout(99), POSE_FP_MAX, 'the payout is capped');
 
-  const open   = { posing: { [ZERO]: true }, limelightScores: { [ZERO]: 0 } };
-  const maxed  = { posing: { [ZERO]: true }, limelightScores: { [ZERO]: POSE_FP_MAX } };
-  const stood  = { posing: { [ZERO]: false }, limelightScores: { [ZERO]: POSE_FP_MAX } };
+  const open   = withPose(st, ZERO, { rounds: 0 });
+  const maxed  = withPose(st, ZERO, { rounds: POSE_FP_MAX });
+  const stood  = withPose(st, ZERO, { on: false, rounds: POSE_FP_MAX });
 
-  ok(term(st, RONIN, 'rivalPose', open) < 0, 'a rival mid-pose is a NEGATIVE, not a bonus');
-  ok(term(st, RONIN, 'rivalPose', maxed) < term(st, RONIN, 'rivalPose', open),
+  ok(term(open, RONIN, 'rivalPose') < 0, 'a rival mid-pose is a NEGATIVE, not a bonus');
+  ok(term(maxed, RONIN, 'rivalPose') < term(open, RONIN, 'rivalPose'),
      'the escalating payout makes a maxed poser the whole table\'s problem');
-  eq(term(st, RONIN, 'rivalPose', stood), 0, 'banked rounds with nobody posing are not a live threat');
-  eq(term(st, ZERO, 'rivalPose', maxed), 0, 'your OWN pose is not a threat to you');
-  eq(evaluate(st, RONIN, maxed).weights.rivalPose > 0, true,
+  eq(term(stood, RONIN, 'rivalPose'), 0, 'banked rounds with nobody posing are not a live threat');
+  eq(term(maxed, ZERO, 'rivalPose'), 0, 'your OWN pose is not a threat to you');
+  eq(evaluate(maxed, RONIN).weights.rivalPose > 0, true,
      'the weight stays a positive magnitude — the sign lives in the term');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 12b. ✨ THE POSE FROM THE INSIDE (§6.6.8) — `posePlay`, the mirror `rivalPose`
+//      never had.
+//
+//      ⚠️ THIS ROW IS WHAT MAKES POSING REACHABLE AT ALL. `pose` costs 0 AP and
+//      moves one flag; the FP lands at `endTurn`. Without a term that can tell
+//      the state AFTER a pose from the state before it, the searcher sees two
+//      identical scores and picks between them by tie-break — while quietly
+//      giving up the defence die. So the FIRST assertion here is the one that
+//      matters: posing has to score differently from not posing.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  const base = withSpirit(baseState(), RONIN, { num: LIMELIGHT_HEX });
+  // Everyone else shoved to their home corners, i.e. far away.
+  const lone = { ...base, turn: { ...base.turn, startedOnLimelight: { [RONIN]: true } } };
+
+  const still  = lone;
+  const posing = withPose(lone, RONIN, { rounds: 0 });
+  const veteran = withPose(lone, RONIN, { rounds: POSE_FP_MAX });
+
+  eq(term(still, RONIN, 'posePlay'), 0, 'standing in the middle without posing pays nothing');
+  ok(term(posing, RONIN, 'posePlay') > 0,
+     '✨ a pose nobody can reach is worth taking — the term the searcher follows');
+  ok(term(veteran, RONIN, 'posePlay') >= term(posing, RONIN, 'posePlay'),
+     'a longer streak is worth more, exactly as the ladder pays more');
+
+  // 💀 THE BET GOES THE OTHER WAY IN CONTACT. Posing next to a rival hands over
+  // a free clean hit — that is not a small bonus, it is a donation.
+  const neighbour = Object.values(HEX_BY_NUM).find(h => {
+    const c = HEX_BY_NUM[LIMELIGHT_HEX];
+    return h.num !== LIMELIGHT_HEX && Math.max(
+      Math.abs(h.q - c.q), Math.abs(h.r - c.r), Math.abs((h.q + h.r) - (c.q + c.r))) === 1;
+  });
+  ok(neighbour, 'the fixture found a hex adjacent to the Limelight');
+  const crowded = withPose(withSpirit(lone, ZERO, { num: neighbour.num }), RONIN, { rounds: 0 });
+  ok(term(crowded, RONIN, 'posePlay') < 0,
+     '💀 posing with a rival at arm\'s length is NEGATIVE — the defence die is gone');
+
+  // 🕒 A pose struck on the turn you ARRIVE cannot pay until the turn after:
+  // `limelightHeld` needs both ends of the turn. Discounted, not zeroed.
+  const arrived = { ...posing, turn: { ...posing.turn, startedOnLimelight: {} } };
+  ok(term(arrived, RONIN, 'posePlay') < term(posing, RONIN, 'posePlay'),
+     '🕒 a pose that cannot pay until next turn is worth less than one that pays now');
+  ok(term(arrived, RONIN, 'posePlay') > 0, '...but still worth something — it is on its way');
+
+  eq(evaluate(posing, RONIN).weights.posePlay > 0, true,
+     'the weight is a positive magnitude; the bet\'s sign lives in the term');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -527,14 +596,15 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
       && h.num !== self.num);
     if (offAxis) {
       const away = withSpirit(posed, ZERO, { num: offAxis.num });
-      const v = beamOpportunity(away, self, nsSelf, rivalsOf(away), {});
+      const v = beamOpportunity(away, self, nsSelf, rivalsOf(away));
       ok(v < BEAM_ALIGNED, '🔊 a rival on no axis at all scores below "one face away"');
     }
     ok(BEAM_DUEL > BEAM_READY && BEAM_READY > BEAM_ALIGNED,
        '🔊 the bands are ordered: a duel beats a shot beats an alignment');
 
     // 🎤 A rival who cannot answer is not a duel — they are just a target.
-    const posingRival = beamOpportunity(posed, self, nsSelf, rivalsOf(posed), { [ZERO]: true });
+    const withPoser = withPose(posed, ZERO, { rounds: 0 });
+    const posingRival = beamOpportunity(withPoser, self, nsSelf, rivalsOf(withPoser));
     ok(posingRival <= BEAM_READY, '🎤 a POSING rival cannot riff back, so it is no duel');
   }
 }

@@ -10,16 +10,20 @@
 // which is what lets the searcher call it a few thousand times a turn and what
 // lets `evalCheck.mjs` pin it down.
 //
-// ⚠️ WHY THERE IS A `view` ARGUMENT. Two things this has to score are still
-// React-owned and are NOT on the engine state (see `state.js` — the null
-// slices):
+// ✅ THE `view` ARGUMENT NO LONGER CARRIES ANY GAME STATE (2026-08-17, §6.6.8).
+// It existed for exactly two React-owned slices:
 //   · `posing`          { [spiritId]: bool }  — who is currently Striking a Pose
 //   · `limelightScores` { [spiritId]: rounds } — cumulative pose rounds banked
-// Rather than pretend they are readable, they come in through `view` and
-// default to empty. An eval with no view still scores every other term
-// correctly; it is simply blind to §3.3, and `terms.rivalPose` will read 0.
-// When those slices move into the engine, delete the argument and read them
-// off `state` — nothing else here changes.
+// Both are engine state now (`systems/limelight.js`), so they are read off
+// `state` like every other term — and `terms.rivalPose`, which in a headless
+// match could only ever read 0, is finally live.
+//
+// ⚠️ THE ARGUMENT SURVIVES FOR ONE NON-RULE REASON: `weightOverrides`, the
+// bench's `--weights='{...}'` hook for isolating a single term at fixed seeds.
+// That is an instrument, not a slice of the game. If a third thing ever wants
+// to ride along, ask first whether it is a RULE — if it is, it belongs on the
+// state, and this argument is what made it easy not to notice for a whole
+// phase.
 //
 // SIGN CONVENTION (resolves an ambiguity in the §5 table). Every WEIGHT here is
 // a positive magnitude. Every TERM VALUE is a signed number in [-1, 1] where
@@ -42,6 +46,7 @@ import { crowdMultiplier, hexRingFromCenter } from "../../board/boardHelpers.js"
 import { sonicRig } from "../systems/sonicRig.js";
 import { usedHas } from "../systems/economy.js";
 import { rigFor } from "../systems/attackParams.js";
+import { posePayout, posingMap, poseRounds, isPosing } from "../systems/limelight.js";
 import { SKILL_BY_ID } from "../../data/skillTree.js";
 // 🔊 The beam geometry, BORROWED FROM THE GENERATOR RATHER THAN RE-DERIVED. A
 // second copy of "which hexes does a Sonic reach" is a second thing to retune,
@@ -232,7 +237,8 @@ export const BEAM_DUEL = 1;
  * wherever the Spirit stands. A term that promised a shot the generator would
  * refuse to emit is worse than no term.
  */
-export function beamOpportunity(state, self, ns, rivals, posing = {}) {
+export function beamOpportunity(state, self, ns, rivals) {
+  const posing = posingMap(state);
   const here = HEX_BY_NUM[self?.num];
   if (!here || !rivals.length) return 0;
   if (!rigFor(self, ns).inRange) return 0;
@@ -356,12 +362,40 @@ export function beamOpportunity(state, self, ns, rivals, posing = {}) {
 // having the range to shoot from there, which is a term that reads two things at
 // once and wants the bench, not a guess.
 
+// ✨ ONE NEW ROW, 2026-08-17 (§6.6.8) — `posePlay`, on a mechanic that has never
+// been exercised headlessly before today, so there is no prior bench reading for
+// it to agree with.
+//
+// ⚠️ IT IS SMALL, AND THE SMALLNESS IS THE MEASUREMENT RATHER THAN CAUTION.
+// Swept at 0 / 0.2 / 0.4 / 0.8 / 1.2 over 44 matches at fixed seeds, two pairings:
+//
+//     weight   poses   rounds BANKED   turns   decided   FP/turn
+//     0         47          44          139     32/44     0.096
+//     0.4       48          43          139     32/44     0.103
+//     1.2       39          21          154     30/44     0.089
+//
+// 🎯 THE COLUMN THAT MATTERS IS "ROUNDS BANKED", NOT "POSES". A pose struck is
+// not a pose paid — `limelightHeld` needs BOTH ends of a turn on hex 56 — and at
+// 1.2 the bot posed nearly as often and collected HALF as much, because the
+// weight walked it into the middle in company, where it was knocked straight
+// off again. Paying a term more bought less of the thing the term is for.
+//
+// 📌 0 and 0.4 are indistinguishable on every gate, and 0.4 is shipped anyway,
+// deliberately: at 0 the bot still poses — by TIE-BREAK, because `pose` costs 0
+// AP and scores identically to not posing — which is the same behaviour arrived
+// at by accident, and it would evaporate the day somebody reorders
+// `legalActions`. A weight is a decision; a tie-break is a coincidence with good
+// manners. ⚠️ The 18-match version of this sweep said 0 beat 0.4 clearly on
+// three separate rows. It was noise, exactly as §5.E′ warns; 44 matches erased
+// it. Do not settle a 0.2 on this table either.
+
 export const DEFAULT_WEIGHTS = {
   survival: 1.0, fame: 2.0, fanMult: 1.0, perfCliff: 1.0,
   drive: 0.6, sustain: 0.5, apBanked: 1.0, inRig: 1.0,
   charge: 1.2, refillDenied: 1.0, edgeSafety: 1.0,
   dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6, pressure: 2.5,
   centreStage: 0.8, chargeSeek: 0.6, stock: 1.0, beamSetup: 2.2,
+  posePlay: 0.4,
 };
 
 export const EVAL_WEIGHTS = {
@@ -377,7 +411,13 @@ export const EVAL_WEIGHTS = {
     // 🎵 `stock` runs high for him alone — an 11-slot reservoir and a Lost Chord
     // innate that finds a second note make notes the currency he is richest in,
     // and a long track is what the Performance cliff is bought with.
+    // ✨ THE ROSTER'S HIGHEST POSE, and it is the same claim `centreStage: 0.95`
+    // makes, one step further on. The ring pays the casuals his ≥5 innate then
+    // doubles, so Fame earned IN the middle compounds for him in a way it does
+    // for nobody else — and `fame: 2.2` is already his second-highest row.
+    // ⚠️ Still a SMALL number in absolute terms; see the sweep above.
     centreStage: 0.95, chargeSeek: 0.5, stock: 1.3, beamSetup: 2.2,
+    posePlay: 0.5,
   },
   // 📻 The cosmic controller. The Boom Box makes "hold a charge" a near-
   // permanent objective, and denial is his win path, not damage.
@@ -404,7 +444,12 @@ export const EVAL_WEIGHTS = {
     // 2026-08-17 he could not hold a charge headlessly AT ALL, so his 2.2 has
     // never once fired in a bench match. 🔊 And `beamSetup` is his too: the
     // Blaster runs down the same line as the Sonic.
+    // ✨ His lowest, and it is `inRig: 1.6` talking. The pose is four rounds of
+    // standing in a spot that is OUTSIDE a tier-0 rig (§6.6.7's centre/rig
+    // tension) with the defence die switched off — for the Spirit whose whole
+    // game is a live rig and a held charge, that is the worst trade on the board.
     centreStage: 0.7, chargeSeek: 1.6, stock: 0.9, beamSetup: 2.8,
+    posePlay: 0.25,
   },
   // 🟢 The bruiser. Attrition that snowballs — he wants to be standing next to
   // something already bleeding.
@@ -417,7 +462,12 @@ export const EVAL_WEIGHTS = {
     // temperament: the Tentacle and the Slam are melee, the trail is his
     // approach, and a Spirit who wants to be in contact has less use for a
     // three-hex line than the two who want the range.
+    // ✨ Middling, and for a reason that cuts both ways: `survival: 0.7` is the
+    // roster's lowest, so giving up a defence die costs him least — but a bruiser
+    // who wants to be in CONTACT is standing where the term goes negative. He
+    // should pose when the board has cleared around him and not otherwise.
     centreStage: 0.75, chargeSeek: 0.5, stock: 1.0, beamSetup: 1.6,
+    posePlay: 0.35,
   },
 };
 
@@ -497,10 +547,97 @@ export function distFromEdge(hexNum) {
   return EDGE_HEXES.reduce((m, e) => Math.min(m, axialDist(here.q, here.r, e.q, e.r)), MAX_EDGE_DIST);
 }
 
-/** FP a posing Spirit banks on their NEXT surviving round (§3.3). */
-export function posePayout(rounds = 0) {
-  return Math.min((rounds + 1) * POSE_FP_STEP, POSE_FP_MAX);
+// ✨ HOW FAR A RIVAL HAS TO BE BEFORE A POSE IS WORTH IT.
+//
+// Transcribed from the shipped client bot's `POSE_BOT_SAFE_DIST = 3` so the two
+// judgements agree: a rival three hexes out can close and swing in one turn, and
+// a posing Spirit rolls NO defence die at all. Below this the term goes NEGATIVE
+// rather than merely small — posing next to somebody is not a weak play, it is
+// a donation.
+export const POSE_SAFE_DIST = 3;
+
+// ✨ HOW FAR UP THE LADDER THE TERM LOOKS — and this one is not a taste, it is a
+// correction for a property of the searcher.
+//
+// ⚠️ THE POSE IS A BACK-LOADED STAIRCASE AND A GREEDY SEARCH CANNOT CLIMB ONE.
+// Round one pays 1 FP; round four pays 4. Held from a standing start the whole
+// flight is 1+2+3+4 = 10 FP, which is more than two lives are worth — but the
+// FIRST rung is priced at a quarter of the cap, against a board where `pressure`
+// is 2.5 and a fight is available now. So a per-action search correctly declines
+// the first step of a staircase whose value is entirely in the last, every time,
+// and the mechanic reads as dead. Measured 2026-08-17 before this constant
+// existed: 18 poses struck across 18 matches, SIX rounds ever banked.
+//
+// Scoring the rung the pose is HEADING FOR rather than the one it is standing on
+// is the smallest honest fix — the risk half of the term (`safety` below)
+// already discounts a pose that will be interrupted, which is exactly the thing
+// a lookahead would otherwise over-claim. 2 is a starting point; the bench gets
+// to move it.
+export const POSE_LOOKAHEAD = 2;
+
+// 💀 WHAT THE DROPPED GUARD COSTS, AND WHY IT IS A FLAT NUMBER.
+//
+// ⚠️ THE FIRST DRAFT SCALED THE RISK WITH THE PRIZE (`payoff × (2·safety − 1)`)
+// and it was backwards in a way worth keeping written down: raising the pose's
+// value made the bot pose LESS, because the same factor amplified the penalty
+// for posing in company, and in a two-handed duel a rival is nearly always in
+// company. Measured: lifting the payoff from 0.25 to 0.75 took poses from 18 to
+// 13. A term where paying more buys less is not mistuned, it is mis-shaped.
+//
+// The prize grows with the ladder. The danger does not: a rival next to you gets
+// one free clean hit whether this is your first pose round or your fourth.
+export const POSE_RISK = 0.5;
+
+/**
+ * ✨ What MY pose is worth from where I am standing, in [-1, 1].
+ *
+ * Zero unless the flag is actually up, which is the whole point: this term has
+ * to be able to tell the state AFTER `pose` from the state before it, or the
+ * searcher has no gradient to follow and the action is invisible to it.
+ *
+ * ⚠️ AND IT KNOWS THE VERDICT NEEDS BOTH ENDS OF THE TURN. `limelightHeld` is
+ * "started AND ended the turn on hex 56", so a pose struck on the turn you
+ * ARRIVE cannot pay until the turn after — you eat a whole round with your guard
+ * down for nothing. That case is halved rather than zeroed: the pose is still
+ * live and still on its way to paying, it is simply a turn further off.
+ */
+export function selfPoseValue(state, self, rivals) {
+  if (!self || !isPosing(state, self.id)) return 0;
+  const here = HEX_BY_NUM[self.num];
+  if (!here) return 0;
+
+  // The rung this pose is HEADING FOR, not the one under its feet — see
+  // POSE_LOOKAHEAD for why that is a fix rather than an inflation.
+  const payoff = clamp01(
+    posePayout(poseRounds(state, self.id) + POSE_LOOKAHEAD) / POSE_FP_MAX);
+
+  // Nearest live rival, in hexes. Nobody on the board ⇒ nothing can punish it.
+  let reach = Infinity;
+  for (const r of rivals) {
+    const rh = HEX_BY_NUM[r.num];
+    if (rh) reach = Math.min(reach, axialDist(here.q, here.r, rh.q, rh.r));
+  }
+
+  // 0 in contact → 1 at the safe distance and beyond.
+  const safety = Number.isFinite(reach)
+    ? clamp01((reach - 1) / Math.max(1, POSE_SAFE_DIST - 1))
+    : 1;
+  const deferred = state?.turn?.startedOnLimelight?.[self.id] ? 1 : 0.5;
+
+  // Prize × how much of it is collectable, minus a FLAT exposure cost — see
+  // POSE_RISK. The two halves are deliberately on different scales.
+  return clampSig(payoff * deferred * safety - POSE_RISK * (1 - safety));
 }
+
+// 🌟 FP a posing Spirit banks on their NEXT surviving round (§3.3).
+//
+// ⚠️ RE-EXPORTED, NOT RE-IMPLEMENTED. This was a third transcription of the
+// ladder, alongside the monolith's `poseTierFor` and the payout the turn clock
+// actually billed. They agreed, which is why it was easy to leave — and why it
+// was dangerous: an evaluator scoring a pose at one rate while the game paid
+// another is a bot that is confidently wrong rather than blind, and every suite
+// would still be green. The ladder lives in `systems/limelight.js` now.
+export { posePayout };
 
 /**
  * The comeback multiplier a hit on `loserId` would pay `spiritId` (§3.7).
@@ -526,7 +663,8 @@ export function targetMultiplier(myFame, theirFame) {
  *
  * @param {object} state     engine GameState (spirits, noteStates, turn, config)
  * @param {string} spiritId  whose seat we are scoring from
- * @param {object} [view]    React-owned slices: { posing, limelightScores }
+ * @param {object} [view]    `{ weightOverrides }` only — the bench's term
+ *   isolator. No game state rides in here any more; see the header.
  * @returns {{ score:number, terms:Record<string,number>, weights:object }}
  *
  * `terms` is returned for a reason: a single number tells you the bot preferred
@@ -534,8 +672,9 @@ export function targetMultiplier(myFame, theirFame) {
  * until it loses 2000 matches. Log the breakdown, don't trust the total.
  */
 export function evaluate(state, spiritId, view = {}) {
-  const { posing = {}, limelightScores = {}, weightOverrides = null } = view;
+  const { weightOverrides = null } = view;
   const weights = weightsFor(spiritId, weightOverrides);
+  const posing  = posingMap(state);
 
   const spirits = state?.spirits ?? [];
   const self    = spirits.find(s => s.id === spiritId);
@@ -685,7 +824,7 @@ export function evaluate(state, spiritId, view = {}) {
   //     earns a full turn's FP ceiling standing still, which makes them the
   //     table's problem, not just their neighbour's. NEGATIVE by definition.
   terms.rivalPose = -clamp01(rivals.reduce((worst, r) => (
-    posing[r.id] ? Math.max(worst, posePayout(limelightScores[r.id] ?? 0) / POSE_FP_MAX) : worst
+    posing[r.id] ? Math.max(worst, posePayout(poseRounds(state, r.id)) / POSE_FP_MAX) : worst
   ), 0));
 
   // 15. TARGET UPSIDE (NEW — replaces §3.7's "underdog-target penalty", which
@@ -835,7 +974,28 @@ export function evaluate(state, spiritId, view = {}) {
   // 20. 🔊 BEAM SETUP — how close this position is to a Sonic, and to the
   //     riff-off that rides on one. See `beamOpportunity` for the four bands and
   //     for why this is a position question rather than an action question.
-  terms.beamSetup = beamOpportunity(state, self, ns, rivals, posing);
+  terms.beamSetup = beamOpportunity(state, self, ns, rivals);
+
+  // 21. ✨ THE POSE, FROM THE INSIDE — the mirror `rivalPose` never had, and
+  //     without it the whole §6.6.8 pass would have paid for nothing.
+  //
+  //     ⚠️ THIS IS THE TERM THAT MAKES POSING REACHABLE AT ALL, and the reason
+  //     is a property of the searcher rather than of the pose. `pose` costs 0 AP
+  //     and moves ONE flag; the FP it earns does not land until `endTurn`
+  //     resolves the Limelight verdict. So to a per-action search, posing scores
+  //     EXACTLY the same as not posing — a coin flip — while quietly giving up
+  //     the defence die. §5.A one more time: the game rewards something, no term
+  //     names the act of going and getting it, and nothing errors.
+  //
+  //     SIGNED, because the pose is a bet rather than a bonus. A Spirit alone in
+  //     the middle is collecting; a Spirit posing with a rival at arm's length
+  //     has handed over a free clean hit. The ramp between the two is the
+  //     continuous version of the shipped client bot's own rule
+  //     (`POSE_BOT_SAFE_DIST = 3`, "a rival 3 hexes out can close and swing in
+  //     one turn"), and it is deliberately generous for the same reason that one
+  //     is: the bots are here to demo the tempo of the Limelight, not to squeeze
+  //     the last point out of it.
+  terms.posePlay = selfPoseValue(state, self, rivals);
 
   let score = 0;
   for (const key of Object.keys(weights)) {

@@ -77,7 +77,9 @@ import { applyAction } from "./engine/reduce.js";
 import { bankLostChord, chargeSparkPatch } from "./engine/systems/board.js";
 import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted,
   // 🧪 the slime trail (METALNESS_REWORK_DESIGN.md §3)
-  slimeDecayed, slimeCleared, spiritSlid, slimeCalled, elevenCalled } from "./engine/actions.js";
+  slimeDecayed, slimeCleared, spiritSlid, slimeCalled, elevenCalled,
+  // ✨ the Limelight (§3.3) — engine state since 2026-08-17, §6.6.8
+  posed } from "./engine/actions.js";
 // 🧪 THE SLIME TRAIL — the road Metalness Monster lays, and the reads that price
 // it. `METALNESS_REWORK_DESIGN.md` §3: the trail is a CURRENCY, so the tint the
 // player sees and the hex an ability will accept have to be the same read.
@@ -102,8 +104,12 @@ import {
 } from "./engine/systems/economy.js";
 import { skillEligibility, THEORY_DISCORD_GRANTS } from "./engine/systems/skills.js";
 import {
-  battleConsequences, chordFray as chordFrayFlow, runBattleFlow,
+  battleConsequences, chordFray as chordFrayFlow, runBattleFlow, poseConsequences,
 } from "./engine/systems/battleFlow.js";
+// ✨ The pose ladder, in ONE place. There used to be three transcriptions of it
+// (here, `evaluate.js`, and whatever the turn clock actually billed) and they
+// agreed only by convention — see engine/systems/limelight.js.
+import { posePayout } from "./engine/systems/limelight.js";
 import { startTurnNotes, refillDrawCount } from "./engine/systems/turnFlow.js";
 // 🎼 THE COMMIT'S ECONOMY — the single source of truth for what a melody is
 // worth. `confirmNoteTrack` is a shell over this; see the header there.
@@ -382,7 +388,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_STEP, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, THRASH_DIE, THRASH_CEIL_DIE, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, THRASH_DIE, THRASH_CEIL_DIE, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -1843,13 +1849,23 @@ function Game({ gameState, onReturnToLobby }) {
   // Phase 2 stub: board amps removed — empty array keeps downstream reads safe.
   const amps = [];
   // ─── FAN ECONOMY ── (moved to ./hooks/useFanEconomy.js)
+  // ✨ `limelightScores` / `posing` LEFT THIS HOOK ON 2026-08-17 (§6.6.8) — they
+  // are engine state now (`engine/systems/limelight.js`), read below off
+  // `engineState.limelight` like the spotlight and the event hexes. While they
+  // were React's, no rule the engine owned could see a pose: `HARNESS_GAPS.pose`
+  // declared that a headless match paid nothing for one, and the searcher was
+  // blind to the biggest standing-still payout on the board.
   const {
-    limelightScores, setLimelightScores,
-    posing, setPosing,
     unsurePool, setUnsurePool,
     unsureFx, setUnsureFx,
     fanFx, setFanFx,
   } = useFanEconomy(SPOTLIGHT_POOL);
+  // ── ✨ THE LIMELIGHT ── (ENGINE-owned — Phase 6d, fully migrated) ──────────
+  // ⚠️ RENDER VIEWS. Anything inside a timeout chain must read
+  // `engineRef.current.limelight` instead — the same rule the board slices
+  // carry, and for the same reason: these two are a snapshot of the last render.
+  const posing = engineState.limelight.posing;
+  const limelightScores = engineState.limelight.scores;
   // ── SPOTLIGHT ── (ENGINE-owned — Phase 6a, fully migrated) ─────────────────
   const spotlightHex = engineState.board.spotlightHex;
   // 💥 Floating combat numbers (e.g. −2 ❤️) that drift up over an affected hex.
@@ -4242,6 +4258,9 @@ function Game({ gameState, onReturnToLobby }) {
     const s = spirits.find(sp => sp.id === acting.id);
     const ns = noteStates[acting.id] ?? {};
     const fromHex = s.num; // capture hex BEFORE move for poison slime drop
+    // ✨ Captured BEFORE the dispatch: `applyMoveStep` drops the pose itself now
+    // (§6.6.8), so by the time the log line below runs the flag is already gone.
+    const wasPosing = !!engineRef.current.limelight.posing[acting.id];
 
     // Movement rules — including the dazed 33% redirect roll — live in the
     // engine now (src/engine/systems/movement.js). Spirits are engine-owned
@@ -4263,8 +4282,11 @@ function Game({ gameState, onReturnToLobby }) {
     // pose the same way a shove does — the guard comes back up, and the payout
     // stops. (The accumulated `limelightScores` rounds SURVIVE the walk-off;
     // see the turn-end faucet. You lose the tempo, not the reputation.)
-    if (fromHex === LIMELIGHT_HEX && actualTarget !== LIMELIGHT_HEX && posing[acting.id]) {
-      setPosing(prev => ({ ...prev, [acting.id]: false }));
+    // ⚠️ THE CLEAR ITSELF IS GONE FROM HERE — `applyMoveStep` does it (§6.6.8),
+    // so the rule fires for a bot walking headlessly too. Only the LOG is left,
+    // and it reads the flag from BEFORE the dispatch (`wasPosing`, captured at
+    // the top of move()) because the engine has already dropped it by now.
+    if (fromHex === LIMELIGHT_HEX && actualTarget !== LIMELIGHT_HEX && wasPosing) {
       addLog(`🎤 ${s.name} steps out of the Limelight — pose over, guard back up.`);
     }
     if (newSteps <= 0) setAction(null);
@@ -4559,19 +4581,21 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`🎤 Build and confirm your Melody Line before posing.`);
       return;
     }
-    setPosing(prev => {
-      const current = !!prev[acting.id];
-      if (current) {
-        addLog(`🎤 ${acting.name} drops the pose — guard back up.`);
-      } else {
-        const sustainLeft = (noteStates[acting.id]?.sustainStack ?? []).length;
-        addLog(`🎤 ${acting.name} STRIKES A POSE! ✨ In the Limelight — ⭐${poseTierFor(acting.id)} FP if they're still standing there at end of turn.`);
-        addLog(sustainLeft > 0
-          ? `⚠️ Guard is DOWN — no defence die until they drop it, and the pose eats a Sustain note.`
-          : `💀 Guard is DOWN and the Sustain Stack is EMPTY. Anything that reaches them lands clean. Their funeral.`);
-      }
-      return { ...prev, [acting.id]: !current };
-    });
+    // ✨ ONE DISPATCH, NOT A SETSTATE UPDATER. `posing` is engine state (§6.6.8),
+    // and `dispatch` writes `engineRef.current` synchronously — which also means
+    // the log lines below can be plain statements instead of side effects inside
+    // a React updater that may run twice.
+    const current = !!engineRef.current.limelight.posing[acting.id];
+    dispatch(posed(acting.id, !current));
+    if (current) {
+      addLog(`🎤 ${acting.name} drops the pose — guard back up.`);
+    } else {
+      const sustainLeft = (noteStates[acting.id]?.sustainStack ?? []).length;
+      addLog(`🎤 ${acting.name} STRIKES A POSE! ✨ In the Limelight — ⭐${poseTierFor(acting.id)} FP if they're still standing there at end of turn.`);
+      addLog(sustainLeft > 0
+        ? `⚠️ Guard is DOWN — no defence die until they drop it, and the pose eats a Sustain note.`
+        : `💀 Guard is DOWN and the Sustain Stack is EMPTY. Anything that reaches them lands clean. Their funeral.`);
+    }
   }
 
   // 🌟 What the NEXT pose round is worth to this Spirit, before the crowd
@@ -4579,12 +4603,16 @@ function Game({ gameState, onReturnToLobby }) {
   // ALREADY survived and never resets — a Spirit shoved out of the middle keeps
   // their standing and resumes at the same rate when they fight their way back.
   //
-  // ⚠️ SINGLE SOURCE OF TRUTH. This is deliberately the only place the +1 and
-  // the cap live: the payout is quoted in four separate places (the button, its
-  // tooltip, the pose log line, the standings panel) and the moment two of them
-  // disagree the player stops trusting any of them. Everything asks this.
+  // ⚠️ SINGLE SOURCE OF TRUTH, AND IT IS NO LONGER IN THIS FILE. The payout is
+  // quoted in four places here (the button, its tooltip, the pose log line, the
+  // standings panel) and the moment two of them disagree the player stops
+  // trusting any of them — but there were THREE transcriptions of the ladder
+  // across the codebase, and the evaluator's copy scoring a pose at a different
+  // rate than the game paid would have been a bot that is confidently wrong
+  // rather than blind. `engine/systems/limelight.js` owns it; everything asks
+  // that. This wrapper stays only so the four call sites below read the same.
   function poseTierFor(spiritId) {
-    return Math.min(((limelightScores[spiritId] ?? 0) + 1) * POSE_FP_STEP, POSE_FP_MAX);
+    return posePayout(engineRef.current.limelight.scores[spiritId] ?? 0);
   }
 
   // Roadie action flow — board amps removed (Phase 2); roadie move is a no-op.
@@ -5296,7 +5324,7 @@ function Game({ gameState, onReturnToLobby }) {
             // 🎇 …or into a stage hazard?
             setTimeout(() => checkStageFxHex(rival.id, dest.num), 130);
             // Knocked off the limelight?
-            if (rival.num === LIMELIGHT_HEX) setPosing(p => ({ ...p, [rival.id]: false }));
+            if (rival.num === LIMELIGHT_HEX) dispatch(posed(rival.id, false));
           });
           return next;
         });
@@ -6638,7 +6666,7 @@ function Game({ gameState, onReturnToLobby }) {
       setTimeout(() => {
         if (aborted) return;
         if (fromNum === LIMELIGHT_HEX) {
-          setPosing(prev => ({ ...prev, [targetId]: false }));
+          dispatch(posed(targetId, false));
           addLog(`🎤 ${target.name} knocked off the Limelight!`);
         }
         if (nextHex.edge) addLog(`⚠️ ${target.name} skids onto the EDGE — #${nextHex.num}!`);
@@ -6890,7 +6918,7 @@ function Game({ gameState, onReturnToLobby }) {
     setTimeout(() => checkStageFxHex(defenderId, pushHex.num), 130);
     // Clear pose if pushed off limelight
     if (defender.num === LIMELIGHT_HEX && pushHex.num !== LIMELIGHT_HEX) {
-      setPosing(prev => ({ ...prev, [defenderId]: false }));
+      dispatch(posed(defenderId, false));
       addLog(`🎤 ${defender.name} knocked off the Limelight!`);
     }
   }
@@ -6931,7 +6959,8 @@ function Game({ gameState, onReturnToLobby }) {
       chordFrayFlow({
         state: engineRef.current,
         targetId, margin, fromBehind,
-        posing,                    // a posing Spirit has no guard to fray (§3.3)
+        // (§3.3's "a posing Spirit has no guard to fray" is read off the engine
+        // state inside chordFray now — it stopped being a parameter in §6.6.8.)
         chordOf: spiritChord,
       }),
       engineRef.current,
@@ -7038,7 +7067,13 @@ function Game({ gameState, onReturnToLobby }) {
     const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
     const defBonus = (nsD.tempSustain ?? 0) - defEdge.sustainPenalty;
     const defStat  = defBase + defBonus;
-    const defenderPosing = posing[targetId];
+    // ⚠️ THE LIVE MIRROR, NOT THE RENDER SNAPSHOT. `posing` up top is a view of
+    // the last render; a rival shoved off the Limelight earlier in this same tick
+    // would still read as posing here, and a posing defender rolls NO defence
+    // die — so the stale read is a free clean hit on somebody who has their guard
+    // back up. It was React state before §6.6.8 and carried the same hazard with
+    // no way to fix it.
+    const defenderPosing = engineRef.current.limelight.posing[targetId];
 
     // ⚡ CHARGE ZONE charges — attacks only. Ceiling grows the Thrash die
     // d4→d6; floor clamps every result to at least 1+CHARGE_FLOOR_BONUS. The
@@ -7744,7 +7779,7 @@ function Game({ gameState, onReturnToLobby }) {
       setTimeout(() => {
         if (aborted) return;
         if (fromNum === LIMELIGHT_HEX) {
-          setPosing(prev => ({ ...prev, [targetId]: false }));
+          dispatch(posed(targetId, false));
           addLog(`🎤 ${target.name} is torn off the Limelight by the pull!`);
         }
         checkPoisonSlime(targetId, nextHex.num);
@@ -8542,7 +8577,7 @@ function Game({ gameState, onReturnToLobby }) {
     //      outside their amp range has nothing to answer with, so there's no
     //      duel — the Sonic lands as a plain attack and they defend on a d4.
     // (AP + Action Token were already spent above, same cost as a Sonic Attack.)
-    if (!posing[targetId] && getSonicBeam(defender).has(attacker.num)) {
+    if (!engineRef.current.limelight.posing[targetId] && getSonicBeam(defender).has(attacker.num)) {
       if (defRigLive.inRange) {
         // ⚡ A riff-off is still a battle — charges burn off (no dice to boost here).
         burnChargesAfterBattle([attacker.id, targetId], 'the riff-off spent it');
@@ -8613,7 +8648,13 @@ function Game({ gameState, onReturnToLobby }) {
     const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
     const defBonus = (nsD.tempSustain ?? 0) - defEdge.sustainPenalty;
     const defStat  = defBase + defBonus;
-    const defenderPosing = posing[targetId];
+    // ⚠️ THE LIVE MIRROR, NOT THE RENDER SNAPSHOT. `posing` up top is a view of
+    // the last render; a rival shoved off the Limelight earlier in this same tick
+    // would still read as posing here, and a posing defender rolls NO defence
+    // die — so the stale read is a free clean hit on somebody who has their guard
+    // back up. It was React state before §6.6.8 and carried the same hazard with
+    // no way to fix it.
+    const defenderPosing = engineRef.current.limelight.posing[targetId];
 
     // Every Spirit is wired (Main Amp) — "plugged in" universally.
     const defHex = HEX_BY_NUM[defender.num];
@@ -9605,7 +9646,12 @@ function Game({ gameState, onReturnToLobby }) {
   function battleFlowHooks() {
     return {
       dismissShadowIllusion: (e) => dismissShadowIllusion(e.reason),
-      leftLimelight:         (e) => setPosing(prev => ({ ...prev, [e.spiritId]: false })),
+      // 🪦 `leftLimelight` IS GONE — it is a rule inside `battleFlow.js` now
+      // (§6.6.8). It was one of the hooks this list exists to make visible, and
+      // it was the one that mattered most: `harnessHooks` never implemented it,
+      // so a BOT knocked off the Limelight kept `posing` set and rolled a zero
+      // defence die for the rest of the match. A hook nobody implements is a
+      // rule that only applies to humans.
       hexHazards:            (e) => {
         // ⚠️ RULES, not decoration — being shoved through a hex triggers it
         // exactly as walking in does, and this can kill mid-slide.
@@ -9837,39 +9883,34 @@ function Game({ gameState, onReturnToLobby }) {
     // Holding the centre stage (start AND end your turn on hex 56) is the
     // ticket; STRIKING A POSE is the performance. Only the pose pays.
     //
-    // The payout escalates with `limelightScores` — the cumulative count of pose
-    // rounds this Spirit has survived — so the middle is worth more to whoever
-    // has already proved they can hold it. First round out there is 1 FP and
-    // barely worth the exposure; by the fourth it's the whole per-turn FP cap,
-    // and the table has a very obvious problem to solve.
+    // ⚠️ THE RULE ITSELF LEFT THIS FILE ON 2026-08-17 (§6.6.8). It is
+    // `battleFlow.poseConsequences` now — the escalating ladder, the Sustain
+    // toll, the crowd multiplier and the per-turn cap, in one ordered sequence
+    // the harness drives too. What was here was the LAST copy of it, and while
+    // it was the only copy `HARNESS_GAPS.pose` had to declare that a headless
+    // pose paid nothing: a bot could stand in the middle for forty turns and
+    // earn zero, so the searcher never posed and nothing ever errored.
     //
-    // The pose bills a Sustain note on the way out. That's what makes camping
-    // untenable rather than merely rude: every round in the middle strips the
-    // armour that was keeping you there, and the pose itself already zeroes your
-    // defence die. Run out of Sustain and you may STILL pose — you just do it
-    // with nothing left to absorb the answer.
-    if (report.limelightHeld && posing[acting.id]) {
-      const tier    = poseTierFor(acting.id);
-      const rounds  = (limelightScores[acting.id] ?? 0) + 1;
-      setLimelightScores(prev => ({ ...prev, [acting.id]: (prev[acting.id] ?? 0) + 1 }));
-
-      // 💸 Bill the Sustain note. Floor is genuinely zero here — unlike fray
-      // (which always leaves one note standing), posing will strip you bare,
-      // because the whole point is that the middle costs you your defence.
-      const poseNs = noteStates[acting.id] ?? {};
-      const sStack = poseNs.sustainStack ?? [];
-      if (sStack.length > 0) {
-        const shed = sStack.slice(sStack.length - POSE_SUSTAIN_COST);
-        setNoteField(acting.id, { sustainStack: sStack.slice(0, sStack.length - POSE_SUSTAIN_COST) });
-        showSpentNotes(acting.id, shed, 'sustain');
-        addLog(`✨ ${s.name} holds the pose — the Sustain Stack thins to feed it (−${shed.length} note).`);
-      } else {
-        addLog(`💀 ${s.name} poses on an EMPTY Sustain Stack — nothing but nerve holding them up.`);
-      }
-
-      addLog(`🌟 ${s.name} works the Limelight — ${rounds} round${rounds !== 1 ? 's' : ''} posed, the crowd is losing it!`);
-      triggerEffectFlash(acting.id, '✨', `POSE ×${rounds}`, '#ff88ff');
-      setTimeout(() => grantFame(acting.id, tier, `✨ Struck a Pose in the Limelight (round ${rounds})`), 80);
+    // 📌 Same shape as `awardRiffFame` and the Charge Zone before it: the rule
+    // existed, in a place the engine could not read.
+    if (report.limelightHeld && engineRef.current.limelight.posing[acting.id]) {
+      const out = runBattleFlow(
+        poseConsequences({
+          state: engineRef.current,
+          spiritId: acting.id,
+          // ⛔ The per-turn FP window is still a ref rather than engine state, so
+          // it is passed in and written back — same as `battleConsequences`.
+          fameThisTurn: fameThisTurnRef.current,
+        }),
+        engineRef.current,
+        {
+          applyAction: (_st, a) => dispatch(a),
+          hooks: battleFlowHooks(),
+          onLog: addLog,
+          onFx: playBattleFlowFx,
+        },
+      );
+      if (out.result?.fameThisTurn) fameThisTurnRef.current = out.result.fameThisTurn;
     } else if (report.limelightHeld) {
       // Held the middle without performing. The spotlight is on and nobody is
       // doing anything with it — say so, or the player reads the silence as a bug.
@@ -10523,7 +10564,7 @@ function Game({ gameState, onReturnToLobby }) {
       // POSE_BOT_SAFE_DIST is deliberately generous (a rival 3 hexes out can
       // close and swing in one turn); the bots are here to demo the tempo of the
       // Limelight, not to squeeze the last point out of it.
-      if (self.num === LIMELIGHT_HEX && !posing[self.id]) {
+      if (self.num === LIMELIGHT_HEX && !engineRef.current.limelight.posing[self.id]) {
         const POSE_BOT_SAFE_DIST = 3;
         const myHex = HEX_BY_NUM[self.num];
         const nearest = engineRef.current.spirits
@@ -10532,7 +10573,7 @@ function Game({ gameState, onReturnToLobby }) {
           .sort((a, b) => a - b)[0] ?? 99;
         if (nearest > POSE_BOT_SAFE_DIST) {
           const tier = poseTierFor(self.id);
-          setPosing(prev => ({ ...prev, [self.id]: true }));
+          dispatch(posed(self.id, true));
           addLog(`🎤 ${self.name} STRIKES A POSE! ✨ Nobody close enough to punish it — ⭐${tier} on the line.`);
         }
       }
@@ -10769,7 +10810,8 @@ function Game({ gameState, onReturnToLobby }) {
     // ✨ Hitting the floor ends the pose, wherever the body lands. Without this
     // a Spirit knocked down IN the Limelight would keep the `posing` flag — and
     // therefore keep rolling a zero defence die — through their recovery turn.
-    if (posing[tgtId]) setPosing(prev => ({ ...prev, [tgtId]: false }));
+    // ✨ THE CLEAR MOVED INTO `applyKnockdownResolved` (§6.6.8) — same rule, one
+    // copy, and it now fires for a headless knockdown too.
     if (!willRespawn) dispatch(spiritEliminated(tgtId));
     const updated = dispatch(knockdownResolved(tgtId)).spirits;
     if (!willRespawn) checkWinner(updated);

@@ -7,7 +7,8 @@
 import { HEX_BY_NUM } from "../../board/hexMap.js";
 import { getFlatTopNeighborSlots, facingAngle } from "../../board/hexGeometry.js";
 import { applySlimeDropped } from "./slime.js";
-import { SLIME_LIFETIME_TURNS } from "../../data/gameConstants.js";
+import { applyPoseSet, isPosing } from "./limelight.js";
+import { SLIME_LIFETIME_TURNS, LIMELIGHT_HEX } from "../../data/gameConstants.js";
 
 /**
  * MOVE_STEP — one hex of movement by the acting spirit.
@@ -38,12 +39,30 @@ export function applyMoveStep(state, { spiritId, toNum, dazed }, rng) {
 
   const facing = facingAngle(from, to);
   const moveStepsLeft = state.turn.moveStepsLeft - 1;
+
+  // ✨ YOU CANNOT POSE FROM OFF-STAGE, and this is the second half of a rule
+  // whose first half was already here: the pose ends when you leave the middle,
+  // exactly as it does when a shove takes you out of it. The guard comes back
+  // up and the payout stops.
+  //
+  // ⚠️ MOVED IN FROM THE CLIENT 2026-08-17 (§6.6.8). `Game.move()` did this
+  // after dispatching, so a headless walk out of the Limelight left `posing`
+  // set — which is not a missing bonus but a live penalty stuck on: the Spirit
+  // keeps rolling a ZERO defence die, anywhere on the board, for the rest of
+  // the match. The searcher would have learned to pose and stroll away.
+  //
+  // 📌 The banked `scores` deliberately survive the walk-off. You lose the
+  // tempo, not the reputation.
+  const base = (sp.num === LIMELIGHT_HEX && actualTarget !== LIMELIGHT_HEX && isPosing(state, spiritId))
+    ? applyPoseSet(state, { spiritId, on: false })
+    : state;
+
   const moved = {
-    ...state,
-    spirits: state.spirits.map(s =>
+    ...base,
+    spirits: base.spirits.map(s =>
       s.id !== spiritId ? s : { ...s, num: actualTarget, facing }),
     turn: {
-      ...state.turn,
+      ...base.turn,
       moveStepsLeft,
       lastMove: {
         spiritId, from: sp.num, to: actualTarget, facing,

@@ -681,11 +681,169 @@ as a bruiser trait if "hurt people" is scored at all. ✅ It does now, and
 
 ---
 
+### 6.6.8 ✅ 2026-08-17 (late) — THE POSE PAYS, AND THE HOOK NOBODY IMPLEMENTED
+
+> §6.6.7 closed by naming three Fame engines that were still switched off
+> headlessly. This is the largest of them, and taking it apart found a second
+> bug underneath it that had been running the wrong way for months.
+
+#### The headline
+
+🌟 **`posing` AND `limelightScores` ARE ENGINE STATE.** They were the last two
+React-owned slices any rule depended on — `evaluate` carried a whole `view`
+argument for them, `legalActions` took them as a parameter, `attackParams` read
+`posing` to decide whether a defender rolls a die at all, and the payout that
+made them worth anything lived on the client turn clock. So a headless pose set
+a flag, gave up its defence die, and earned **nothing**. `HARNESS_GAPS.pose`
+said so honestly for weeks; it is deleted now, not softened.
+
+The rule lives in three files instead of one monolith:
+
+| | |
+|---|---|
+| `engine/systems/limelight.js` | the slice, the readers, and **the ladder** — `posePayout`, which had three separate transcriptions |
+| `engine/systems/battleFlow.js` | `poseConsequences` — the FP grant and the Sustain toll, one ordered beat, through `grantFame` like every other payout |
+| `engine/policies/transition.js` | `endTurn` drives it off the same `limelightHeld` verdict the client reads |
+
+#### 🐛 The bug underneath, and it is the pattern with the SIGN FLIPPED
+
+⚠️ **`hook('leftLimelight')` — the pose ending when you are SHOVED out of the
+middle — was client-only, and `harnessHooks` never implemented it.** `runBattleFlow`
+skips hooks it does not have, so a bench Spirit knocked off the Limelight **kept
+`posing` set and rolled a ZERO defence die for the rest of the match.**
+
+Every other sighting of §5.A's pattern has been a reward the bot could not reach.
+This one is a **PENALTY THAT COULD NOT BE TAKEN OFF**, welded onto a Spirit who
+never chose to keep posing, and it could only ever have made the bench's numbers
+worse — quietly, in the direction nobody audits. A hook nobody implements is a
+rule that only applies to humans.
+
+📌 There were three drop sites in the client and all three are engine rules now:
+walking out of the middle (`movement.js`), being shoved out of it
+(`battleFlow.js`), and hitting the floor (`combat.js` — without which a Spirit
+knocked down IN the Limelight keeps the dropped guard through their **recovery
+turn**, which is the worst possible moment for it).
+
+#### 🎯 THE FINDING OF THE DAY — a greedy search cannot climb a back-loaded ladder
+
+Wiring the payout up was not enough, and the reason is a property of the
+SEARCHER rather than of the pose.
+
+`pose` costs 0 AP and moves one flag. The FP does not land until `endTurn`
+resolves the Limelight verdict. **So to a per-action search, posing scores
+EXACTLY the same as not posing** — a coin flip — while quietly handing over the
+defence die. Measured before the term existed: the bots posed 34 times in 44
+matches and banked **zero rounds**, because a pose taken by tie-break is dropped
+by the next thing that looks better.
+
+⚠️ **AND THE LADDER MAKES IT WORSE, NOT BETTER.** Round one pays 1 FP; round four
+pays 4. Held from a standing start the whole flight is **1+2+3+4 = 10 FP, more
+than two lives are worth** — but the FIRST rung is priced at a quarter of the cap
+against a board where `pressure` is 2.5 and a fight is available now. A search
+that declines the first step of a staircase whose value is entirely in the last
+is not malfunctioning; it is correct, once per turn, forever.
+
+Two things came out of that:
+
+- ✨ **`posePlay`** — the mirror `rivalPose` never had, scoring MY pose from the
+  inside. Zero unless the flag is up, which is the whole point: it has to be able
+  to tell the state after a pose from the state before it.
+- 🪜 **`POSE_LOOKAHEAD`** — it scores the rung the pose is HEADING FOR, not the
+  one under its feet. The risk half of the term already discounts a pose that
+  will be interrupted, which is exactly what a lookahead would otherwise
+  over-claim.
+
+#### 🐛 And a term where paying MORE bought LESS
+
+⚠️ **The first draft scaled the risk with the prize** — `payoff × (2·safety − 1)`,
+so one factor carried both halves. Lifting a pose's value from 0.25 to 0.75 took
+poses from **18 down to 13**, because the same factor amplified the penalty for
+posing in company, and in a two-handed duel a rival is nearly always in company.
+
+A term where paying more buys less is not mistuned, it is **mis-shaped**. The
+prize grows with the ladder; the danger does not — a rival next to you gets one
+free clean hit whether this is your first pose round or your fourth. Split into
+`payoff × safety − POSE_RISK × (1 − safety)` and the curve behaves.
+
+#### 📊 The A/B — same seeds, same fixture, HEAD vs this pass
+
+Ronin-vs-Intergalactic 0 and Ronin-vs-Metalness, 22 seeds each, 400-turn cap,
+both seats searching. "Before" is `fee7be0` checked out clean.
+
+| | before (fee7be0) | this pass |
+|---|---|---|
+| mean match length | 206 turns | **156** |
+| decided inside the cap | 24/44 (55%) | **30/44 (68%)** |
+| Fame per turn | 0.050 | **0.089** |
+| poses struck | 34 | 50 |
+| 🌟 **pose rounds PAID** | **0** | **39** |
+| Sonics | 15 | 18 |
+| riff-offs | 29 | 37 |
+
+And the §6.6 bench itself, `searcher` vs `unranked`, 50 matches:
+
+| | before | this pass |
+|---|---|---|
+| draw-inclusive rate | 49.0% | **53.0%** |
+| inconclusive rate | 70.0% | **58.0%** |
+| mean match length | 294 | **255** |
+
+⚠️ **NEITHER GATE CLEARS, AND 50 MATCHES IS ±21 POINTS.** That is a direction,
+not a measurement, and it must not be quoted as one. The inconclusive rate is
+still four times its bar. What the table does support is the narrow claim: the
+Limelight went from paying nothing to paying, and nothing else got worse.
+
+#### 📏 The weight, and why it is small
+
+Swept at 0 / 0.2 / 0.4 / 0.8 / 1.2 over 44 matches at fixed seeds:
+
+| weight | poses | rounds BANKED | turns | decided | FP/turn |
+|---|---|---|---|---|---|
+| 0 | 47 | 44 | 139 | 32/44 | 0.096 |
+| 0.4 | 48 | 43 | 139 | 32/44 | 0.103 |
+| 1.2 | 39 | 21 | 154 | 30/44 | 0.089 |
+
+🎯 **THE COLUMN THAT MATTERS IS "ROUNDS BANKED", NOT "POSES".** A pose struck is
+not a pose paid — `limelightHeld` needs BOTH ends of a turn on hex 56 — and at
+1.2 the bot posed nearly as often and collected **half** as much, because the
+weight walked it into the middle in company, where it was knocked straight off
+again. That is §6.6.7's centre/rig tension one term further on.
+
+📌 0 and 0.4 are indistinguishable on every gate, and **0.4 ships anyway,
+deliberately.** At 0 the bot still poses — by tie-break, because `pose` costs 0
+AP and scores identically to not posing — which is the same behaviour arrived at
+by accident, and it would evaporate the day somebody reorders `legalActions`. A
+weight is a decision; a tie-break is a coincidence with good manners.
+
+⚠️ **THE 18-MATCH VERSION OF THAT SWEEP SAID 0 BEAT 0.4 CLEARLY, ON THREE
+SEPARATE ROWS.** It was noise. 44 matches erased it. §5.E′ warned that 9–14 match
+samples find a factor of two and cannot settle a 0.2 — this is what that looks
+like from the inside, and the same warning applies to the 44-match table above.
+
+#### 🔬 What the suites say
+
+legal 547, eval 124→**134**, transition 222→**232**, turnflow 61, determinism 22,
+battleflow 45, melody 159, slime 127, eleven 38, score 122, harness 1681→**1680**,
+riffparity 127598, skilltree 208. `check:bundle` clean, `eslint` clean.
+
+📌 **harness went DOWN by one and that is not a lost test.** It asserts once per
+action played across its traced matches, so the count moves whenever the
+evaluator's decisions move; the file gained a static assertion (`pose` is no
+longer in `HARNESS_GAPS`) and the trace played one action fewer.
+
+#### 📌 Still switched off
+
+Two of §6.6.7's three remain: **riff-off Round 2 is not driven** (`verdict.close`
+is computed and ignored, under-paying every duel by 2 FP, a damage band and the
+whole both-paid consolation), and **the Smash is still UNMODELLED**.
+
+---
+
 ### 6.6.7 ✅ 2026-08-17 (evening) — THE BOT CAN NOW SEE THE BOARD, THE DICE, AND ITS OWN SOUND
 
 > **Six things landed together and they are not six tweaks — five of them are the
 > same bug.** Read §5.A's pattern first; every item below is another sighting.
-> Full A/B at the bottom. ⚠️ Nothing here is committed.
+> Full A/B at the bottom. ~~⚠️ Nothing here is committed.~~ It landed as `fee7be0`.
 
 #### The one finding that reframes the rest
 

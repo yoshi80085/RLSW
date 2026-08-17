@@ -42,6 +42,7 @@ import { usedHas } from "../systems/economy.js";
 import { skillEligibility } from "../systems/skills.js";
 import { rigFor } from "../systems/attackParams.js";
 import { canCallEleven } from "../systems/eleven.js";
+import { posingMap } from "../systems/limelight.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH } from "../../data/gameConstants.js";
 import { CONE_HALF_ARC, SPIRIT_ONLY_ROUTE } from "./bot.js";
@@ -157,7 +158,7 @@ export function facingOptions(spirit) {
  * @param {object} state     engine GameState
  * @param {string} spiritId  the acting Spirit (non-acting Spirits get [] — see below)
  * @param {object} [view]    client-owned slices this cannot read off the engine:
- *   · `posing`     { [id]: bool }        — §3.3, React state
+ *   · ~~`posing`~~ ✅ engine state since 2026-08-17 — `state.limelight.posing`
  *   · `amps`       [{ hexNum }]          — amp furniture blocks movement, React state
  *   · `shadowHex`  number|null           — 👤 the decoy blocks like a body
  *   · `skillById`  { [id]: skill }       — SKILL_TREE still lives in the monolith
@@ -170,9 +171,10 @@ export function facingOptions(spirit) {
  */
 export function legalActions(state, spiritId, view = {}) {
   const {
-    posing = {}, amps = [], shadowHex = null,
+    amps = [], shadowHex = null,
     skillById = null, rockGodActive = false,
   } = view;
+  const posing = posingMap(state);
 
   const self = (state?.spirits ?? []).find(s => s.id === spiritId);
   if (!self || self.knockedOut) return [];

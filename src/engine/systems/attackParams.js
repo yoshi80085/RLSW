@@ -37,6 +37,7 @@ import {
   SONIC_BASE_DIE, ELEVEN_DRIVE,
 } from "../../data/gameConstants.js";
 import { ampBlown } from "./eleven.js";
+import { isPosing } from "./limelight.js";
 import { distFromHome } from "../policies/evaluate.js";
 
 // 6️⃣ CUT 2026-08-17 — `BEAST_DRIVE`, Number of the Beast's uncapped +6.
@@ -111,7 +112,11 @@ export function rigFor(spirit, ns = {}) {
  * @param {string} attackerId
  * @param {string} defenderId
  * @param {'swing'|'sonic'} kind
- * @param {object} [view]    client-owned slices — `posing` only
+ * @param {object} [view]    ~~client-owned slices — `posing` only~~ nothing any
+ *   more: `posing` became engine state on 2026-08-17 (`systems/limelight.js`),
+ *   so the defender's dropped guard is read off `state` like every other rule.
+ *   The parameter survives so the call sites need not all move in one pass; it
+ *   is read for nothing and should go with the next sweep.
  * @returns {object|null} the `attackRolled` options payload, plus `_derived`
  *   for tests and logs. `null` when either Spirit is missing from the board.
  *
@@ -123,7 +128,7 @@ export function rigFor(spirit, ns = {}) {
  * armour stopped working" and is very hard to trace back to here.
  */
 export function attackParams(state, attackerId, defenderId, kind, view = {}) {
-  const { posing = {} } = view;
+  void view;
   const spirits = state?.spirits ?? [];
   const attacker = spirits.find(s => s.id === attackerId);
   const defender = spirits.find(s => s.id === defenderId);
@@ -183,7 +188,7 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
 
   const base = {
     atkStat, defStat,
-    posing: !!posing[defenderId],
+    posing: isPosing(state, defenderId),
     halveDef: false,                    // retired — see the header
     atkFloor,
     _derived: {

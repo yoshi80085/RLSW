@@ -380,7 +380,11 @@ const faceRivalAt = (st, rivalId, step = 0) => {
 
   const on = withSpirit(off, RONIN, { num: LIMELIGHT_HEX });
   ok(kinds(legalActions(on, RONIN)).has('pose'), '🎤 on the Limelight, the pose is on the table');
-  ok(!kinds(legalActions(on, RONIN, { posing: { [RONIN]: true } })).has('pose'),
+  // ✨ `posing` is ENGINE STATE since 2026-08-17 (§6.6.8) — it used to arrive
+  // through `view`, which meant this generator's gate and the rule that paid the
+  // pose read two different maps that only ever agreed by convention.
+  const already = { ...on, limelight: { posing: { [RONIN]: true }, scores: {} } };
+  ok(!kinds(legalActions(already, RONIN)).has('pose'),
      '...but a pose is a COMMITMENT already running, not a tap to re-tap');
 
   // PvP is switched off entirely while the Rock God is on the board.

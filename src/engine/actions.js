@@ -572,6 +572,35 @@ export function slimeCalled(spiritId) {
   return { type: SLIME_CALLED, spiritId };
 }
 
+// ── ✨ THE LIMELIGHT (§3.3 — Strike a Pose) ─────────────────────────────────
+// Both of these were `useState` in the monolith until 2026-08-17, which is why
+// `HARNESS_GAPS.pose` existed: a headless match could set the flag and nothing
+// downstream could read it, let alone pay it.
+
+/**
+ * POSE_SET — raise (`on: true`) or drop the pose.
+ *
+ * ⚠️ THREE THINGS DROP A POSE and all three must dispatch this: the player's
+ * own toggle, walking out of the Limelight, and hitting the floor. A posing
+ * Spirit rolls no defence die, so a flag left standing is a permanent free hit.
+ */
+export const POSE_SET = "POSE_SET";
+export function posed(spiritId, on = true) {
+  return { type: POSE_SET, spiritId, on };
+}
+
+/**
+ * POSE_ROUND_BANKED — one more round survived in the middle.
+ *
+ * The COUNT only. The Fame it pays is a `battleFlow` consequence, because it
+ * runs through `grantFame` (crowd multiplier, per-turn cap, the win check) like
+ * every other payout in the game.
+ */
+export const POSE_ROUND_BANKED = "POSE_ROUND_BANKED";
+export function poseRoundBanked(spiritId) {
+  return { type: POSE_ROUND_BANKED, spiritId };
+}
+
 /**
  * One tick off ONE Spirit's trail.
  *

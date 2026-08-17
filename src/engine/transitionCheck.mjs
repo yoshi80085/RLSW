@@ -34,7 +34,7 @@ import { SPIRIT_DEFS } from "../data/spirits.js";
 import { CORNERS } from "../data/corners.js";
 import {
   ATK_BONUS_CAP, CHARGE_FLOOR_BONUS, THRASH_DIE, THRASH_CEIL_DIE,
-  SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, STACK_COMMIT_BUDGET,
+  SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, STACK_COMMIT_BUDGET, LIMELIGHT_HEX,
 } from "../data/gameConstants.js";
 import { HEX_BY_NUM, HEX_BY_QR } from "../board/hexMap.js";
 import { axialNeighbors, angleTo } from "../board/hexGeometry.js";
@@ -515,19 +515,79 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 12. 🎤 POSE moves the VIEW, not the state — because `posing` is still React's.
+// 12. ✨ THE POSE MOVES THE STATE, AND THEN IT PAYS (§6.6.8).
+//
+//     ⚠️ THIS SECTION USED TO ASSERT THE OPPOSITE — "…in the VIEW, where
+//     `posing` actually lives", and "the engine state is untouched, because it
+//     does not own this yet". Both were TRUE and both were the bug: the flag
+//     moved somewhere no rule could read, so `HARNESS_GAPS.pose` had to declare
+//     that a headless pose paid nothing. It is engine state now, and the payout
+//     rides `endTurn` off the same `limelightHeld` verdict the client uses.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  const st = withSpirit(confirmed(baseState()), RONIN, { num: 56 });
+  const st = withSpirit(confirmed(baseState()), RONIN, { num: LIMELIGHT_HEX });
   const pose = ofKind(legalActions(st, RONIN), 'pose')[0];
   ok(pose, '🎤 on the Limelight the pose is offered');
 
-  const r = applyBotAction(st, pose, { rng: rngOf(), view: { posing: {} } });
+  const r = applyBotAction(st, pose, { rng: rngOf() });
   eq(r.ok, true, 'the pose opens');
-  eq(r.view.posing[RONIN], true, '...in the VIEW, where `posing` actually lives');
-  eq(r.state, st, '...and the engine state is untouched, because it does not own this yet');
-  eq(ofKind(legalActions(r.state, RONIN, r.view), 'pose').length, 0,
+  eq(r.state.limelight.posing[RONIN], true, '✨ …in the ENGINE STATE, where every rule can read it');
+  eq(ofKind(legalActions(r.state, RONIN), 'pose').length, 0,
      'and a pose already running is not re-offered');
+
+  // ── 🌟 THE FAUCET. Held the middle for a whole turn and posed → paid, billed.
+  {
+    const held  = { ...r.state, turn: { ...r.state.turn, startedOnLimelight: { [RONIN]: true } } };
+    const fame0 = held.noteStates[RONIN].fame ?? 0;
+    const sus0  = (held.noteStates[RONIN].sustainStack ?? []).length;
+
+    const done = applyBotAction(held, { kind: 'endTurn' }, { rng: rngOf(), view: { fameThisTurn: {} } });
+    eq(done.ok, true, 'the turn ends');
+    ok((done.state.noteStates[RONIN].fame ?? 0) > fame0,
+       '🌟 …AND THE POSE PAYS — the thing no bench match in this repo has ever seen');
+    eq(done.state.limelight.scores[RONIN], 1, '…the round is banked, so the next one pays more');
+    eq((done.state.noteStates[RONIN].sustainStack ?? []).length, Math.max(0, sus0 - 1),
+       '💸 …and it BILLS a Sustain note in the same beat, which is what stops camping being free');
+    eq(done.state.limelight.posing[RONIN], true,
+       '…the pose stays up: it is a commitment, not a one-shot');
+  }
+
+  // ── 🎤 HELD THE MIDDLE WITHOUT PERFORMING pays nothing. The spotlight is on
+  //    and nobody is doing anything with it.
+  {
+    const stood = { ...st, turn: { ...st.turn, startedOnLimelight: { [RONIN]: true } } };
+    const fame0 = stood.noteStates[RONIN].fame ?? 0;
+    const done  = applyBotAction(stood, { kind: 'endTurn' }, { rng: rngOf(), view: { fameThisTurn: {} } });
+    eq(done.state.noteStates[RONIN].fame ?? 0, fame0,
+       '🎤 standing in the Limelight without posing pays NOTHING — only the performance does');
+    eq(done.state.limelight.scores[RONIN] ?? 0, 0, '…and banks no round');
+  }
+
+  // ── 🕒 POSED, BUT ONLY ARRIVED THIS TURN. `limelightHeld` needs BOTH ends of
+  //    the turn, so the first round out there is a round with the guard down and
+  //    nothing to show for it. That is the rule, not an oversight.
+  {
+    const fame0 = r.state.noteStates[RONIN].fame ?? 0;
+    const done  = applyBotAction(r.state, { kind: 'endTurn' }, { rng: rngOf(), view: { fameThisTurn: {} } });
+    eq(done.state.noteStates[RONIN].fame ?? 0, fame0,
+       '🕒 a pose struck on the turn you ARRIVE pays nothing yet — both ends of the turn or nothing');
+  }
+
+  // ── 🚶 WALKING OUT OF THE MIDDLE ENDS THE POSE, and the banked rounds survive.
+  {
+    const banked = {
+      ...r.state,
+      limelight: { posing: { [RONIN]: true }, scores: { [RONIN]: 3 } },
+      turn: { ...r.state.turn, moveStepsLeft: 3 },
+    };
+    const step = ofKind(legalActions(banked, RONIN), 'move')[0];
+    ok(step, 'the fixture can walk off the Limelight');
+    const out = applyBotAction(banked, step, { rng: rngOf() });
+    eq(out.state.limelight.posing[RONIN] ?? false, false,
+       '🚶 …off the hex, off the pose — the guard comes back up');
+    eq(out.state.limelight.scores[RONIN], 3,
+       '…but the standing survives. You lose the tempo, not the reputation.');
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -618,14 +678,14 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   st = withNs(st, METAL, { unlockedSkills: ['amp_1', 'range_1', 'range_2', 'range_3'] });
   st = withNs(st, RONIN, { unlockedSkills: ['amp_1', 'range_1', 'range_2', 'range_3'] });
 
-  const acts = legalActions(st, RONIN, { posing: {} });
+  const acts = legalActions(st, RONIN);
   const duel = ofKind(acts, 'riffOff')[0];
   const plainSonic = ofKind(acts, 'sonic').filter(a => a.targetId === METAL);
   ok(duel, '🎤 beam-to-beam with both rigs live, the riff-off is offered');
   eq(plainSonic.length, 0,
      '🎤 …IN PLACE OF the Sonic, not alongside it — the client never lets you decline');
 
-  const r = applyBotAction(st, duel, { rng: rngOf(11), view: { posing: {}, fameThisTurn: {} } });
+  const r = applyBotAction(st, duel, { rng: rngOf(11), view: { fameThisTurn: {} } });
   eq(r.ok, true, '🎤 the duel runs headlessly');
   eq(r.state.battle, null, '🎤 …and the battle slice is cleared when it closes');
   ok(r.state.turn.actionTokenUsed, '🎤 …it spends the Action Token, like the Sonic it replaces');
@@ -638,7 +698,7 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   // ⚡ A duel is a battle, so charges burn — §3.5's "win or lose".
   {
     const lit = withNs(withNs(st, RONIN, { chargeCeilTurns: 2 }), METAL, { chargeFloorTurns: 2 });
-    const r2 = applyBotAction(lit, duel, { rng: rngOf(11), view: { posing: {}, fameThisTurn: {} } });
+    const r2 = applyBotAction(lit, duel, { rng: rngOf(11), view: { fameThisTurn: {} } });
     eq(r2.state.noteStates[RONIN].chargeCeilTurns, 0, '⚡ the attacker\'s charge burns off');
     eq(r2.state.noteStates[METAL].chargeFloorTurns, 0, '⚡ …and the defender\'s does too');
   }
@@ -648,13 +708,14 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   //    not a consolation: if the generator emitted NOTHING here, a searcher
   //    would conclude the shot was illegal and stop taking it.
   {
-    const posingRival = legalActions(st, RONIN, { posing: { [METAL]: true } });
+    const posingRival = legalActions(
+      { ...st, limelight: { posing: { [METAL]: true }, scores: {} } }, RONIN);
     eq(ofKind(posingRival, 'riffOff').length, 0, '🎤 a POSING rival cannot riff back — no duel');
     ok(ofKind(posingRival, 'sonic').some(a => a.targetId === METAL),
        '🎤 …the Sonic is offered instead, which is the whole rule');
 
     const stranded = withNs(st, METAL, { unlockedSkills: ['amp_1'] });
-    const a2 = legalActions(stranded, RONIN, { posing: {} });
+    const a2 = legalActions(stranded, RONIN);
     eq(ofKind(a2, 'riffOff').length, 0, '📡 a rival outside their own rig radius has nothing to answer with');
     ok(ofKind(a2, 'sonic').some(a => a.targetId === METAL), '📡 …so the beam just lands');
   }

@@ -12,6 +12,7 @@ import {
 } from "../../data/gameConstants.js";
 import { CORNERS } from "../../data/corners.js";
 import { cornerFacing } from "../../board/boardHelpers.js";
+import { isPosing, applyPoseSet } from "./limelight.js";
 
 /**
  * LEGACY damage table — still used by Smash, riff-off, and any call site that
@@ -162,15 +163,27 @@ export function applyDamageApplied(state, action) {
 
 /**
  * KNOCKDOWN_RESOLVED (Phase 5c) — apply resolveKnockdown transform.
+ *
+ * ✨ HITTING THE FLOOR ENDS THE POSE, WHEREVER THE BODY LANDS, and this is the
+ * third of the three drop sites (the other two are walking out of the middle and
+ * being shoved out of it — `movement.js` and `battleFlow.js`). Lifted in from
+ * the client 2026-08-17: without it a Spirit knocked down IN the Limelight keeps
+ * `posing` set and therefore keeps rolling a zero defence die THROUGH THEIR
+ * RECOVERY TURN, which is the worst possible moment for it.
+ *
+ * 📌 The banked rounds survive, like every other way of leaving the middle.
  */
 export function applyKnockdownResolved(state, action, corners = CORNERS) {
   const { targetId } = action;
   const spirit = state.spirits.find(s => s.id === targetId);
   if (!spirit) return state;
   const { next } = resolveKnockdown(spirit, corners);
+  const dropped = isPosing(state, targetId)
+    ? applyPoseSet(state, { spiritId: targetId, on: false })
+    : state;
   return {
-    ...state,
-    spirits: state.spirits.map(s => (s.id === targetId ? next : s)),
+    ...dropped,
+    spirits: dropped.spirits.map(s => (s.id === targetId ? next : s)),
   };
 }
 
