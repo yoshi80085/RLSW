@@ -48,8 +48,8 @@ import {
   classifyTrack, countUnpardoned, countPardonedByStack,
   harmonicLock, discordPenaltyFor,
 } from "../../music/context.js";
-import { detectRiff } from "../../music/riffLibrary.js";
 import { performanceScore } from "./economy.js";
+import { detectSpiritStyle } from "../../music/spiritStyle.js";
 import { hexRingFromCenter, crowdMultiplier, advanceDB } from "../../board/boardHelpers.js";
 import { DISCORD_INTERVAL_MAP } from "../policies/bot.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
@@ -196,8 +196,8 @@ export function checkWaNoKoe(melodyLine, chordStack, ns = {}) {
  *            rather than silently rolled off `Math.random`.
  *   · `view` client-owned slices: `skillById` (SKILL_TREE still lives in the
  *            monolith — without it a target skill's real `dbCost` is unknown and
- *            the threshold falls back to `DB_UPGRADE_THRESHOLD`), `riffBook`
- *            (who has already discovered which riff), `unsurePool`.
+ *            the threshold falls back to `DB_UPGRADE_THRESHOLD`) and
+ *            `unsurePool`. 🪦 `riffBook` is gone with the riff library.
  *
  * @returns {object}
  *   · `ok`      false only when there is nothing to commit
@@ -247,21 +247,36 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     }
   }
 
-  // ── 🎼 RIFF DETECTION ─────────────────────────────────────────────────────
-  const riffMatch = detectRiff(melodyLine);
-  let riffAward = null;
-  if (riffMatch) {
-    const isNew = !(view.riffBook ?? {})[riffMatch.riff.id];
-    // ⚠️ `riff` and `rootPc` ride along for PRESENTATION ONLY — `playRiffSequence`
-    // needs the riff object and the key it matched in. They are carried rather
-    // than re-derived because a client that calls `detectRiff` again is a second
-    // copy of a decision this kernel already made.
-    riffAward = { riffId: riffMatch.riff.id, name: riffMatch.riff.name, fp: isNew ? riffMatch.riff.fp : 1, isNew,
-                  riff: riffMatch.riff, rootPc: riffMatch.rootPc };
-    logs.push(isNew
-      ? `🎼✨ RIFF DISCOVERED — ${riffMatch.riff.name}! ${name} writes it into the Riffbook!`
-      : `🎼 ${name} plays ${riffMatch.riff.name}!`);
-  }
+  // ── 🪦 LEGENDARY RIFFS — RETIRED 2026-08-17 ───────────────────────────────
+  //
+  // `detectRiff` scanned every committed track against a 34-entry library of
+  // named tunes (Beethoven's Fifth, Ode to Joy, the Andalusian cadence, a dozen
+  // rock homages). A match paid 2–5 FP, +3 Performance Score, and flagged a
+  // riff-off bonus. All three are gone; the library is gone with them.
+  //
+  // ⚠️ TWO REASONS, AND THE SECOND IS THE STRUCTURAL ONE.
+  //
+  //   1. **They were not ROCK.** Half the library was classical and most of the
+  //      rest was a named-tune reference. This is a game about four Spirits
+  //      making their own noise; a Spirit winning on Für Elise is the wrong
+  //      story.
+  //   2. ⚠️ **THE FAME WAS NOT EARNED BY A DECISION.** Note stock is DRAWN, so
+  //      which riffs a player could even spell was largely their draw. A 5 FP
+  //      riff against a 16 FP target is a third of a match, so a tight game
+  //      could be decided by a shape one player happened to be dealt and the
+  //      other was not. Fame in this game is supposed to come from what you
+  //      chose to play.
+  //
+  // 🧭 **WHAT REPLACES IT IS NOT A SECOND RIFF LIBRARY.** The intended design is
+  // per-Spirit STYLE: fans for playing to who you are — Metalness landing a
+  // gallop or working a tritone, a cadence that makes sense for THAT Spirit —
+  // rather than Fame for reciting a canon. That reads the same melody the player
+  // already composed, so it rewards a decision instead of a draw, and it pays
+  // FANS (which compound into Fame through the crowd multiplier) instead of
+  // handing over a third of the win condition in one commit.
+  //
+  // 📌 Until that lands there is a real hole in the Fame economy and it is
+  // measured rather than guessed: see `BOT_STRATEGY_HANDOFF.md` §6.6.5.
 
   // ── 🎯 CADENCE — the track's FINAL note is this turn's "final" ─────────────
   const cooldowns = ns.cadenceCooldowns ?? {};
@@ -414,12 +429,21 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     && (lastNote === semitonesUpSpelled(rootNote, scaleMode, 2) || lastNote === intervals.fourth);
   // B3: score the SETTLED count, not the placement counter — a note the chord
   // legalized was never a wrong note, so it must not drag the flair score either.
+  // 🎭 PER-SPIRIT STYLE — did this line sound like THIS character? One point per
+  // completed gesture, into `performanceScore`'s `perfBig` seat, which pays the
+  // CROWD and never Fame. See `music/spiritStyle.js` for why it replaced the
+  // riff library rather than reinstating it.
+  //
+  // ⚠️ READ OFF `melodyLine`, THE COMMITTED TRACK, and nothing else — no stock,
+  // no draw, no rng. That is the property the riffs failed: a payout that reads
+  // the hand you were dealt is a lottery wearing a skill's clothes.
+  const style = detectSpiritStyle(spiritId, melodyLine);
   const { score: perfScore, freestyle: perfFreestyle } = performanceScore({
     melodyLine,
     trackHasTritone, isOctaveResolution,
     diatonicRunLen, repeatPatLen, skipClimbLen,
     hasGatedEnding: isMinorSeventhEnd || isMajorThirdEnd || isTritoneEnd,
-    hasRiff: !!riffMatch, cadenceResolved,
+    cadenceResolved, styleBig: style.score,
     earned, edgeResolved: edgeResolvedThisTurn, susEnd: perfSusEnd,
     discordCount: unpardonedDiscord, freestylePardon,
   });
@@ -471,7 +495,6 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     // shadows the track and may append a note the player never played.
     committedMelody:  melodyLine,
     committedFreq:    melodyLine.map((_, i) => melodyFreq[i] ?? null),
-    committedHasRiff: !!riffMatch,
     discordCount:  0,
     pivotPending:  newPivotPending,
     rootNote:      newRootRaw,
@@ -575,13 +598,13 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   }
   if (fanWrite) effects.push({ type: 'fans', spiritId, fans: fanWrite });
 
-  // ⭐ The riff is the ONLY Fame this commit can pay, and it is amplified by the
-  // crowd the two writes above just settled — which is exactly why it sits here
-  // and not at the end. Run it through `battleFlow.grantFame` so the 4/turn cap,
-  // the crowd multiplier and the Rock God gate all apply once, in one place.
-  if (riffAward) {
-    effects.push({ type: 'fame', spiritId, fp: riffAward.fp, reason: `🎼 ${riffAward.name}` });
-  }
+  // 🪦 The riff's Fame effect lived here and is retired with it (see above).
+  //
+  // ⚠️ THE COMMIT NOW PAYS NO FAME AT ALL, and the ordering note that used to sit
+  // here still matters for whatever pays next: a Fame effect must be emitted
+  // AFTER the two fan writes above, because `grantFame` multiplies by the crowd
+  // and must see the fans this commit just won — not the cadence fans that land
+  // after it. The effects list is ordered for that reason, not for looks.
 
   // 🎯 Cadences are a melody-line feat, not a battle — they build crowd, not Fame.
   let deedReport = null;
@@ -619,6 +642,10 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   if (totalNotes > speed && !canBank) flashLines.push(`⚠️ ${totalNotes - speed} note(s) discarded (bank full)`);
   if (discordPenalty > 0) flashLines.push(`⚡ ${unpardonedDiscord} Dischord — −${discordPenalty} DB (1st free)`);
   else if (unpardonedDiscord > 0) flashLines.push(`⚡ ${unpardonedDiscord} Dischord — free this turn`);
+  for (const label of style.labels) {
+    flashLines.push(`🎸 ${label} — that's your sound`);
+    logs.push(`🎸 ${name} lands ${label} — the crowd knows that sound.`);
+  }
   flashLines.push(`🎭 Performance ${perfScore}/10`);
   if (perfFansGained > 0) flashLines.push(`🎤 +${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''} won over!`);
   if (perfPromotions > 0) flashLines.push(`💜 ${perfPromotions} fan${perfPromotions !== 1 ? 's' : ''} → Diehard!`);
@@ -641,7 +668,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     patch, effects, hexes, logs, flashLines,
     report: {
       melodyLine, baseTrack, voiceRoll, micBonusNote,
-      riff: riffAward, cadence: cadence ? { id: cadence.id, name: cadence.name, fp: cadence.fp } : null,
+      cadence: cadence ? { id: cadence.id, name: cadence.name, fp: cadence.fp } : null,
       unpardonedDiscord, effectiveDiscord, contextPardons, allInScale,
       colorDrive, colorSustain, discarded, dbOverflow,
       diatonicRunLen, repeatPatLen, skipClimbLen, chromRunLen, chromClimbActive,
@@ -650,6 +677,10 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
       baseScore, lock, discordPenalty, breakdown,
       earned, earnedTotal, newDBPoints, targetCost, upgradeTriggered, awardedSkillId,
       perfScore, perfFreestyle, perfExciteGain, perfFansGained, perfPromotions, perfFansLost,
+      // 🎭 Which of this Spirit's own gestures the line landed. On the report
+      // rather than only in a log line so a check, a searcher, or a HUD can
+      // read it without re-detecting — one reading, three consumers.
+      style: { score: style.score, hits: style.hits, labels: style.labels },
       lowPerfStreak, waNoKoe,
       totalNotes, usableMoves, overflow, canBank, bankedNote: newBankedNote, speed,
       newRootRaw, newMode, fans,

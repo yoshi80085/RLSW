@@ -675,6 +675,13 @@ const config = {
   // The reference is the ORIGINAL inline P formula, verbatim. Extraction is a
   // no-op on behavior iff the kernel matches it for every track+flag combo.
   const POOL = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  // ⚠️ THIS IS A DRIFT GUARD, NOT A SPEC. `oldP` transcribes the client's inline
+  // Performance math as it stood when `performanceScore` was extracted, and its
+  // job is to catch an ACCIDENTAL divergence. 🪦 The riff term (`f.riff ? 3 : 0`)
+  // was cut from BOTH sides on 2026-08-17 when the riff library was retired —
+  // a deliberate rule change, so the guard moves with it. If you are here
+  // because this failed, the question to ask first is "did somebody MEAN to
+  // change the rule", and only then "which copy is wrong".
   const oldP = (ml, f) => {
     const pc = ml.map(pitchIndex).filter(p => p >= 0);
     const diff = [];
@@ -690,7 +697,7 @@ const config = {
     const pal = (dpc>=3 && !r3 ? 1:0) + (dpc>=5?1:0);
     const gest = Math.min(3, (f.tri?1:0)+(f.oct?1:0)+(f.dia>=3?1:0)+(f.rep>=3?1:0)+(f.skip>=3?1:0)+(f.gated?1:0));
     const m0 = detectMotifRepeat(ml); const motif = (m0.period>=3?2:0) + (m0.reps>=3?1:0);
-    const big = (f.riff?3:0) + (f.cad?1:0);
+    const big = (f.cad?1:0);   // 🪦 `(f.riff?3:0) +` retired with the riff library
     const len = Math.floor(f.earned/3);
     const pdisc = f.free ? Math.max(0, f.disc-1) : f.disc;
     const pfree = (f.free && f.disc>=1) ? 1 : 0;
@@ -703,27 +710,27 @@ const config = {
     const ml = Array.from({ length: len }, () => POOL[Math.floor(rnd()*12)]);
     const f = {
       tri: rnd()<.4, oct: rnd()<.3, dia: Math.floor(rnd()*6), rep: Math.floor(rnd()*6), skip: Math.floor(rnd()*6),
-      gated: rnd()<.5, riff: rnd()<.15, cad: rnd()<.3, earned: Math.floor(rnd()*12),
+      gated: rnd()<.5, cad: rnd()<.3, earned: Math.floor(rnd()*12),
       edge: rnd()<.25, sus: rnd()<.2, disc: Math.floor(rnd()*4), free: rnd()<.3,
     };
     assert.deepEqual(
       performanceScore({ melodyLine: ml, trackHasTritone: f.tri, isOctaveResolution: f.oct,
         diatonicRunLen: f.dia, repeatPatLen: f.rep, skipClimbLen: f.skip, hasGatedEnding: f.gated,
-        hasRiff: f.riff, cadenceResolved: f.cad, earned: f.earned, edgeResolved: f.edge,
+        cadenceResolved: f.cad, earned: f.earned, edgeResolved: f.edge,
         susEnd: f.sus, discordCount: f.disc, freestylePardon: f.free }),
       oldP(ml, f), `performanceScore matches old inline math (trial ${t})`);
   }
   // clamp + freestyle spot checks
   assert.equal(performanceScore({ melodyLine: [], trackHasTritone: false, isOctaveResolution: false,
-    diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0, hasGatedEnding: false, hasRiff: false,
+    diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0, hasGatedEnding: false,
     cadenceResolved: false, earned: 0, edgeResolved: false, susEnd: false, discordCount: 5,
     freestylePardon: false }).score, 0, "P floors at 0 under heavy discord");
   assert.deepEqual(performanceScore({ melodyLine: ["C","D"], trackHasTritone: false, isOctaveResolution: false,
-    diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0, hasGatedEnding: false, hasRiff: false,
+    diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0, hasGatedEnding: false,
     cadenceResolved: false, earned: 0, edgeResolved: false, susEnd: false, discordCount: 2,
     freestylePardon: true }), performanceScore({ melodyLine: ["C","D"], trackHasTritone: false,
     isOctaveResolution: false, diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0, hasGatedEnding: false,
-    hasRiff: false, cadenceResolved: false, earned: 0, edgeResolved: false, susEnd: false, discordCount: 2,
+    cadenceResolved: false, earned: 0, edgeResolved: false, susEnd: false, discordCount: 2,
     freestylePardon: true }), "deterministic (pure)");
 }
 

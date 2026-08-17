@@ -20,7 +20,6 @@ import { useTransientFx } from "./hooks/useTransientFx.js";
 // now reads engineState.noteStates via a setNoteStates compat shim).
 import { GameOverOverlay } from "./ui/GameOverOverlay.jsx";
 import { GameStyles } from "./ui/GameStyles.jsx";
-import { RiffBanner } from "./ui/RiffBanner.jsx";
 import { CadenceToast } from "./ui/CadenceToast.jsx";
 import { BattleMeterOverlay } from "./ui/BattleMeterOverlay.jsx";
 import { UpgradeModal } from "./ui/UpgradeModal.jsx";
@@ -75,6 +74,7 @@ import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn ro
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
+import { bankLostChord, chargeSparkPatch } from "./engine/systems/board.js";
 import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted,
   // 🧪 the slime trail (METALNESS_REWORK_DESIGN.md §3)
   slimeDecayed, slimeCleared, spiritSlid, slimeCalled, elevenCalled } from "./engine/actions.js";
@@ -446,7 +446,7 @@ const SIGNATURE_TESTS = {
   ]},
 };
 
-import { RIFF_LIBRARY, RIFF_GENRE, RIFF_GENRE_META, PC_PLAY_NAMES, detectRiff } from "./music/riffLibrary.js";
+import { PC_PLAY_NAMES } from "./music/pitchNames.js";
 
 // ─── CADENCE OBJECTIVES ──────────────────────────────────────────────────────
 // Multi-turn music-theory goals: the LAST note of your confirmed track each
@@ -1081,8 +1081,7 @@ function Game({ gameState, onReturnToLobby }) {
       if (!mel.length) return;
       // Legendary riffs play their real rhythm — detectRiff is pure and keyed
       // off the track alone, so both machines reach the same verdict.
-      const rm = ns.committedHasRiff ? detectRiff(mel) : null;
-      if (rm) playRiffSequence(rm.riff, rm.rootPc);
+      // 🪦 a matched legendary riff replayed its own rhythm here — retired 2026-08-17.
       else playTrackSequence(mel, { style: COMMIT_STYLES[actorId], freqs: ns.committedFreq ?? [] });
     };
   });
@@ -1922,14 +1921,10 @@ function Game({ gameState, onReturnToLobby }) {
   const [noteScaleTip, setNoteScaleTip] = useState(null); // { note, x, y } | null
   const noteTipTimerRef = useRef(null);
 
-  // ─── RIFF STATE ── (moved to ./hooks/useRiffState.js)
+  // ─── CADENCE / OVERLAY STATE ── (./hooks/useRiffState.js)
   const {
-    riffBook, setRiffBook,
-    riffBanner, setRiffBanner,
     showRiffbook, setShowRiffbook,
     signatureSpirit, setSignatureSpirit,
-    riffbookTab, setRiffbookTab,
-    legacyPlayingId, setLegacyPlayingId,
     cadenceToast, setCadenceToast,
   } = useRiffState();
 
@@ -3547,22 +3542,10 @@ function Game({ gameState, onReturnToLobby }) {
     }
   }
 
-  function playRiffSequence(riff, rootPc) {
-    const spb = 60 / (riff.bpm ?? 110); // seconds per beat
-    let t = 0.08;
-    riff.notes.forEach(([off, beats, gap]) => {
-      const pc   = ((rootPc + off) % 12 + 12) % 12;
-      const name = PC_PLAY_NAMES[pc];
-      const dur  = (beats ?? 1) * spb;
-      setTimeout(() => playNoteSound(name, {
-        holdTime: Math.max(0.18, dur * 0.85),
-        fadeTime: 0.4,
-        volume: 0.2,
-      }), t * 1000);
-      t += dur + (gap ? gap * spb : 0);
-    });
-    return t * 1000;
-  }
+  // 🪦 `playRiffSequence(riff, rootPc)` played a matched legendary riff's own
+  // rhythm — bpm, note offsets, beat lengths — instead of the plain committed
+  // arpeggio. Retired 2026-08-17 with the riff library. `playTrackSequence` is
+  // now the only commit playback, and it plays what the player actually wrote.
 
   // ─── MELODY LINE FUNCTIONS ─────────────────────────────────────────────────────
   // `_micFreq` — set only when the mic placed this note: the equal-tempered
@@ -3986,7 +3969,7 @@ function Game({ gameState, onReturnToLobby }) {
 
     const commit = commitMelodyEconomy(engineRef.current, acting.id, {
       rng:  commitRng,
-      view: { skillById: SKILL_BY_ID, riffBook, unsurePool },
+      view: { skillById: SKILL_BY_ID, unsurePool },
     });
     if (!commit.ok) { addLog(`❌ ${commit.reason}`); return; }
     const { patch, effects, hexes, report, flashLines } = commit;
@@ -4021,19 +4004,11 @@ function Game({ gameState, onReturnToLobby }) {
       setVoiceRollFx({ value: report.voiceRoll, success: report.voiceRoll >= MIC_VOICE_ROLL_PASS, key: vKey });
       setTimeout(() => setVoiceRollFx(prev => (prev && prev.key === vKey ? null : prev)), 2600);
     }
-    // 🎼 A hidden riff plays out with real rhythm instead of the plain arpeggio.
-    if (report.riff) {
-      const { riffId, riff, rootPc, fp, isNew } = report.riff;
-      if (isNew) {
-        setRiffBook(prev => ({ ...prev, [riffId]: acting.id }));
-        showTip('riff');
-      }
-      playRiffSequence(riff, rootPc);
-      setRiffBanner({ riffId, spiritId: acting.id, fp, isNew });
-      setTimeout(() => setRiffBanner(prev => (prev && prev.riffId === riffId ? null : prev)), 5600);
-    } else {
-      playTrackSequence(report.melodyLine, { style: COMMIT_STYLES[acting?.id], freqs: melodyFreq });
-    }
+    // 🪦 A `report.riff` branch played the matched legendary riff's real rhythm
+    // here instead of the plain arpeggio, wrote the Riffbook and raised a banner.
+    // Retired 2026-08-17 with the library — every commit now plays as the track
+    // the player actually composed.
+    playTrackSequence(report.melodyLine, { style: COMMIT_STYLES[acting?.id], freqs: melodyFreq });
     // 🎯 A resolved cadence — the toast. Its crowd already landed as a `fans`
     // effect above, in the position the ordering requires.
     if (report.cadence) {
@@ -4950,23 +4925,19 @@ function Game({ gameState, onReturnToLobby }) {
       : null;
     setNoteStates(prev => {
       const ns = prev[spiritId]; if (!ns) return prev;
-      const stock = [...(ns.noteStock ?? [])];
-      const used  = usedList(ns.usedStockIdx);
-      const placed = new Set();
-      const place = (n) => {
-        const slot = stock.findIndex((_, i) => !usedHas(used, i) && !placed.has(i));
-        if (slot === -1) { stock.push(n); placed.add(stock.length - 1); }
-        else { stock[slot] = n; placed.add(slot); }
-      };
-      place(note);
-      if (greedNote) place(greedNote);
+      // 🎵 THE PLACEMENT RULE IS THE ENGINE'S — `systems/board.js: bankLostChord`.
+      // It used to be inlined here, which made it invisible to
+      // `policies/transition.js` and is why a headless bot walked over Lost
+      // Chords for nothing. One rule, two callers.
+      const { noteStock, placed } = bankLostChord(
+        ns.noteStock, usedList(ns.usedStockIdx), note, greedNote);
       // 🎬 Same "pop in like it just arrived" treatment as a turn-start refill —
       // deferred via setTimeout so it fires safely outside this functional update.
       setTimeout(() => {
-        setFreshNoteIdx({ spiritId, indices: placed, key: Date.now() });
+        setFreshNoteIdx({ spiritId, indices: new Set(placed), key: Date.now() });
         setTimeout(() => setFreshNoteIdx(prevF => (prevF?.spiritId === spiritId ? null : prevF)), 700);
       }, 0);
-      return { ...prev, [spiritId]: { ...ns, noteStock: stock } };
+      return { ...prev, [spiritId]: { ...ns, noteStock } };
     });
     addLog(`🎵 ${sp?.name} picks up a Lost Chord (${note}) — it lands in your stock!`);
     if (roninGreed) addLog(`🗡️ ${sp?.name} hears a second note in it — an extra lands in the stock!`);
@@ -5006,18 +4977,15 @@ function Game({ gameState, onReturnToLobby }) {
   function grantChargeSpark(spiritId) {
     const sp = spirits.find(s => s.id === spiritId);
     const ns = noteStates[spiritId] ?? {};
-    const hasFloor = (ns.chargeFloorTurns ?? 0) > 0;
-    const hasCeil  = (ns.chargeCeilTurns  ?? 0) > 0;
     // 50/50 draw on the engine's seeded rng — deterministic for replays/netplay.
     dispatch(randomBatchDrawn(1));
     const draw = engineRef.current.lastRandomBatch?.[0] ?? Math.random();
-    let kind = draw < 0.5 ? 'floor' : 'ceil';
-    if (hasFloor && hasCeil)                kind = 'both';   // full — refresh both
-    else if (kind === 'floor' && hasFloor)  kind = 'ceil';   // dupe flips to the other type
-    else if (kind === 'ceil'  && hasCeil)   kind = 'floor';
-    const patch = {};
-    if (kind === 'floor' || kind === 'both') patch.chargeFloorTurns = CHARGE_ZONE_BOOST_TURNS;
-    if (kind === 'ceil'  || kind === 'both') patch.chargeCeilTurns  = CHARGE_ZONE_BOOST_TURNS;
+    // ⚡ THE SPARK RULE IS THE ENGINE'S — `systems/board.js: chargeSparkPatch`,
+    // including the duplicate-flips-to-the-other-type ramp. It was inlined here,
+    // so `policies/transition.js` had nothing to transcribe and a headless bot
+    // could never hold a charge — which switched off Intergalactic 0's identity
+    // in every bench match ever run. One rule, two callers.
+    const { patch, kind } = chargeSparkPatch(ns, draw, CHARGE_ZONE_BOOST_TURNS);
     setNoteField(spiritId, patch);
     if (kind === 'floor') {
       triggerEffectFlash(spiritId, '⚡', 'FLOOR CHARGED!', '#ffcc44');
@@ -8789,17 +8757,15 @@ function Game({ gameState, onReturnToLobby }) {
     // The commit path stashes these in committedMelody/committedHasRiff since
     // melodyLine is cleared to [] after commit.
     const melodyLine = atkNs.committedMelody ?? null;
-    const hasRiff    = !!atkNs.committedHasRiff;
     // Phase R2: difficulty tier caps riff length
     const activePreset = RIFF_FALL_DIFFICULTY[riffDifficultyRef.current] ?? RIFF_FALL_DIFFICULTY[RIFF_FALL_DEFAULT];
     const maxLen = activePreset.maxLen ?? RIFF_LEN;
-    const eb = dispatch(riffOffStarted(attacker.id, defender.id, { slayer, eRush, melodyLine, hasRiff, maxLen })).battle;
+    const eb = dispatch(riffOffStarted(attacker.id, defender.id, { slayer, eRush, melodyLine, maxLen })).battle;
     const atk = eb.atkRiff, def = eb.defRiff;
     const defGlitch = eb.defGlitch, defGhosts = eb.defGhosts;
     // Log: show whether the riff came from the player's melody or was random
     if (eb.fromMelody) {
       addLog(`🎸🔥 RIFF-OFF! ${attacker.name} steps up with their OWN melody — ${defender.name} must answer!`);
-      if (eb.hasRiff) addLog(`✨ Legendary riff woven into the call — the crowd leans in!`);
     } else {
       addLog(`🎸🔥 RIFF-OFF! ${attacker.name} and ${defender.name} lock eyes — both plugged in, beams crossed!`);
     }
@@ -11525,10 +11491,10 @@ function Game({ gameState, onReturnToLobby }) {
         <span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:17,color:"#f6ad55",letterSpacing:3,
           textShadow:"0 0 12px #f6ad5566, 0 0 28px #f6ad5522"}}>⚡ RLSW</span>
         <span style={{fontSize:10,color:"#3a5a7a"}}>v3.6</span>
-        <button onClick={() => setShowRiffbook(true)} data-tip-anchor="riffbook" title="The Riffbook — legendary riffs hidden in the note system"
+        <button onClick={() => setShowRiffbook(true)} data-tip-anchor="riffbook" title="The Cadence Book — the endings that pay"
           style={{fontFamily:'inherit', fontSize:9, padding:'2px 9px', cursor:'pointer',
             background:'#14110a', border:'1px solid #ffd70066', borderRadius:10, color:'#ffd700'}}>
-          📖 RIFFBOOK {Object.keys(riffBook).length}/{RIFF_LIBRARY.length}
+          🎯 CADENCES
         </button>
         {(() => {
           // Show only when the acting Spirit has an exclusive (spiritOnly) route.
@@ -11873,29 +11839,17 @@ function Game({ gameState, onReturnToLobby }) {
       )}
 
       {/* ── RIFF BANNER — legendary riff toast ── */}
-      <RiffBanner riffBanner={riffBanner} spirits={spirits} setRiffBanner={setRiffBanner} />
-
       {/* ── CADENCE TOAST — objective resolved ── */}
-      <CadenceToast cadenceToast={cadenceToast} spirits={spirits} setCadenceToast={setCadenceToast} riffBanner={riffBanner} />
+      <CadenceToast cadenceToast={cadenceToast} spirits={spirits} setCadenceToast={setCadenceToast} />
 
-      {/* ── RIFFBOOK — discovery codex ── */}
+      {/* ── THE CADENCE BOOK — 🪦 was the Riffbook; the two riff tabs retired 2026-08-17 ── */}
       <Riffbook
         CADENCE_OBJECTIVES={CADENCE_OBJECTIVES}
         PC_PLAY_NAMES={PC_PLAY_NAMES}
-        RIFF_GENRE={RIFF_GENRE}
-        RIFF_GENRE_META={RIFF_GENRE_META}
-        RIFF_LIBRARY={RIFF_LIBRARY}
         acting={acting}
-        legacyPlayingId={legacyPlayingId}
         noteStates={noteStates}
-        playRiffSequence={playRiffSequence}
-        riffBook={riffBook}
-        riffbookTab={riffbookTab}
-        setLegacyPlayingId={setLegacyPlayingId}
-        setRiffbookTab={setRiffbookTab}
         setShowRiffbook={setShowRiffbook}
         showRiffbook={showRiffbook}
-        spirits={spirits}
       />
       {/* ── EVENT MODAL — marquee ticket ── */}
       <EventModal

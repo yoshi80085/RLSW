@@ -68,6 +68,8 @@ import {
   botHexScore, botMoveCtx, botTargetOrder, botNoteStepOrder, botPlanStackCommit,
 } from "./bot.js";
 import { stackCapFor } from "../../data/gameConstants.js";
+import { MELODY_MAX } from "./legalActions.js";
+import { styleGain } from "../../music/spiritStyle.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 
 // ── The neutral seat ────────────────────────────────────────────────────────
@@ -116,6 +118,36 @@ export function resolvePersona(persona) {
  * scores at least 1, a ranked action always outranks an unranked one — "the
  * planner had no opinion about this" reads as last, never as best.
  */
+// ── 🪦 THE RIFF LADDER — ADDED AND RETIRED THE SAME DAY, 2026-08-17 ─────────
+//
+// `riffProgress` scored a candidate note by how much closer it brought the track
+// to one of 34 named-tune triggers, and it worked: the bot went from **0 riffs
+// in 1,218 commits** to 5–6 a match, matches went from 89 rounds ending in
+// knockouts to 25 rounds ending on Fame, and the stall rate hit 0%.
+//
+// ⚠️ IT IS GONE BECAUSE THE MECHANIC IS GONE, NOT BECAUSE IT FAILED. The riff
+// library was retired as a design decision — the tunes were not rock, and the
+// Fame came from the note DRAW rather than from a decision. See
+// `systems/melodyCommit.js` for the full reasoning.
+//
+// 🧭 **KEEP THE SHAPE, IT IS THE REUSABLE PART.** Whatever scores per-Spirit
+// STYLE next — a gallop, a tritone, a Spirit-appropriate cadence — needs exactly
+// this structure, and these were the four decisions worth re-making:
+//
+//   · IT BELONGS IN THE SCORER, NOT `evaluate`. A payoff that lands AT the
+//     commit is already visible to `evaluate`; what is missing is anything that
+//     values a track one note AWAY from it, so the searcher never steers there.
+//     §6.3: the scorer picks WHICH note, `evaluate` picks HOW MANY.
+//   · SCORE THE GAIN, not the absolute position — a note is worth what it ADDS.
+//   · KEEP A NOISE FLOOR. Any two notes spell some interval; a one-rung match
+//     fires on nearly every note and drowns the shipped planners in noise.
+//   · A TARGET YOU CANNOT REACH MUST NOT STEER. `MELODY_MAX` is 8; a shape
+//     needing four more notes with two slots left is a distraction, and scoring
+//     it small does not help — a small score still steers.
+//
+// The full version is in git; `RIFF_RANK_STRIDE`'s job (dominate the note rank,
+// leave the planners as the tie-break) is the one number worth copying.
+
 function rankMap(order) {
   const m = new Map();
   const n = order.length;
@@ -143,6 +175,50 @@ function rankMap(order) {
  * ranked below its cheaper twin, which is a different thing.
  */
 export const TENTACLE_RANK_STRIDE = 1000;
+
+/**
+ * 🎭 How far a STYLE gain has to outrun the note planners' own preference.
+ *
+ * ✅ THE RIFF LADDER'S SHAPE, REBUILT ON THE THING THAT REPLACED IT. The ladder
+ * retired above worked — 0 riffs in 1,218 commits became 5–6 a match — and the
+ * comment kept four decisions worth re-making. All four are honoured here:
+ *
+ *   · IT LIVES IN THE SCORER, NOT `evaluate`. The style payout lands AT the
+ *     commit, where `evaluate` can already see it in the fans. What nothing can
+ *     see is a track ONE NOTE AWAY from a gesture, because that state pays
+ *     nothing yet. §6.3: the scorer picks WHICH note, `evaluate` picks HOW MANY.
+ *   · IT SCORES THE GAIN, not the absolute position — `styleGain`.
+ *   · IT HAS A NOISE FLOOR. `STYLE_GAIN_FLOOR` below.
+ *   · A TARGET THAT CANNOT FIT MUST NOT STEER, and scoring it small does not
+ *     help because a small score still steers. `styleProgress` drops unreachable
+ *     gestures outright, given the slots left.
+ *
+ * ⚠️ THE STRIDE DOMINATES, THE PLANNERS TIE-BREAK, and that ordering is the
+ * whole design. `botNoteStepOrder` ranks up to ~11 stock slots, so a stride
+ * above that guarantees a note completing a gesture outranks every note that
+ * does not — while two notes with the SAME style gain still fall back to the
+ * shipped musical judgement rather than to source order.
+ */
+export const STYLE_RANK_STRIDE = 40;
+
+/**
+ * The smallest style gain worth steering on.
+ *
+ * ⚠️ IT SITS JUST BELOW A THIRD, AND THE FIRST VERSION SAT JUST ABOVE IT — which
+ * silently switched the whole ladder off for five gestures out of six. Every
+ * gesture in `spiritStyle.js` climbs in thirds (0 → ⅓ → ⅔ → 1), so a floor of
+ * 0.34 admitted only the one gesture that happened to move in halves. Measured
+ * over 536 commits: that gesture landed 180 times and the other five landed
+ * 11-19 times each, which read as "the Ronin's style is hard" rather than as a
+ * dead comparison.
+ *
+ * 📌 The floor still has a job — it is what keeps a gain of exactly zero from
+ * being strided — and the noise it was originally written against is now handled
+ * where it belongs, by making every gesture's progress 0 until real pattern
+ * material is on the track. A guard in the consumer was papering over a
+ * definition problem in the source.
+ */
+export const STYLE_GAIN_FLOOR = 0.3;
 
 // ── The scorer ──────────────────────────────────────────────────────────────
 
@@ -190,6 +266,19 @@ export function makeActionScorer(state, spiritId, view = {}) {
   // ── Melody notes, keyed by the stock index the action carries.
   const noteRank = rankMap(botNoteStepOrder(ns, persona).order);
 
+  // 🎭 The track as it stands, and how many slots are left after it. Read HERE
+  // rather than inside `score` because the scorer is rebuilt per composition
+  // step (see the note below), so this is already the current track — and
+  // re-reading it per candidate would be the same lookup twenty times over.
+  const track     = ns.melodyLine ?? [];
+  const slotsLeft = Math.max(0, MELODY_MAX - track.length - 1);
+
+  // 📌 The scorer is rebuilt PER COMPOSITION STEP, not per turn — `composePhase`
+  // calls `makeActionScorer(cur, …)` inside its loop with the state after each
+  // note. Nothing here reads the growing track today, but anything scoring the
+  // SHAPE of a melody-in-progress (the style system) depends on that, and it is
+  // the first thing to check if such a term ever seems stuck on its first rung.
+
   // ── Stack commits. The plan names (note, dest) pairs, so that is the key.
   //
   // ⚠️ THE KEY IS THE NOTE, NOT THE STOCK INDEX, because that is all the planner
@@ -217,8 +306,21 @@ export function makeActionScorer(state, spiritId, view = {}) {
   return function score(action) {
     switch (action?.kind) {
       // ── COMPOSITION ─────────────────────────────────────────────────────
-      case 'melodyNote':
-        return noteRank.get(action.stockIdx) ?? 0;
+      // 🎭 STYLE FIRST, THE MUSICIAN SECOND. A note that closes one of this
+      // Spirit's own gestures outranks every note that does not; among notes
+      // that are equal on style — which is most of them — `botNoteStepOrder`'s
+      // shipped judgement decides, exactly as before.
+      case 'melodyNote': {
+        const base = noteRank.get(action.stockIdx) ?? 0;
+        const gain = styleGain(spiritId, track, action.note, slotsLeft);
+        // ⚠️ `gain` is quantised to tenths before it is strided, so two notes
+        // that close a shape by the same amount land on the SAME rung and fall
+        // through to the planner's tie-break — which is the whole point of
+        // having a stride rather than just adding a float.
+        return gain >= STYLE_GAIN_FLOOR
+          ? base + Math.round(gain * 10) * STYLE_RANK_STRIDE
+          : base;
+      }
 
       case 'stackCommit':
         return commitRank.get(`${action.dest}:${action.note}`) ?? 0;
@@ -241,9 +343,16 @@ export function makeActionScorer(state, spiritId, view = {}) {
         return (ctx && here) ? botHexScore(here, { ...ctx, selfFacing: action.facing }) : 0;
 
       // ── VIOLENCE ────────────────────────────────────────────────────────
+      // 🎤 `riffOff` ranks here because it IS an attack — the same button as the
+      // Sonic, the same 2 AP, the same "which rival" question. WHETHER to duel at
+      // all is `evaluate`'s, on the position after it, and `beamSetup` is the
+      // term that sees one coming.
+      // ⚠️ The comment sits ABOVE the group rather than between two cases: a
+      // comment between empty `case` labels reads as a fall-through to eslint.
       case 'swing':
       case 'sonic':
       case 'smash':
+      case 'riffOff':
         return targetRank.get(action.targetId) ?? 0;
 
       // 🐙 WHO you hit, then how much road it costs. See TENTACLE_RANK_STRIDE.

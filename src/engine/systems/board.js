@@ -289,3 +289,96 @@ export function applyFlamingDecayed(state) {
     },
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🎯 WHAT WALKING ONTO A HEX PAYS — the pickup kernels
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ ADDED 2026-08-17, AND THE REASON IS A BUG OF THE FAMILY `SEQUENCING.md`
+// §5.A CATALOGUES — the seventh instance, and the same shape every time.
+//
+// `applyTokenPickedUp` and `applyChargeZoneUsed` have been engine reducers for a
+// long time and they are CORRECT. Nothing called them outside React. The rules
+// that decide WHAT you get — the Lost Chord landing in your stock, the 50/50
+// charge spark — lived only inside `Game.checkTokenPickup` and
+// `Game.grantChargeSpark`, closure-scoped in the monolith, where
+// `policies/transition.js` had nothing to transcribe from.
+//
+// The consequence was not an error. It was silence:
+//   · The bot walked over Lost Chords and got no note.
+//   · The bot walked over Charge Zones and got no charge — which means
+//     `evaluate`'s `charge` weight of **2.2**, Intergalactic 0's single highest
+//     number and the term the handoff calls "the whole character" (§4.2), has
+//     never once been able to fire in a bench match. Every reading about him is
+//     a reading of a Spirit with his identity switched off.
+//
+// 📌 The kernels live HERE, next to the reducers that own the board half, and
+// the client is rewired onto them in the same pass. Two copies of a payout rule
+// is how `checkWaNoKoe` drifted (`SEQUENCING.md` §3) and it is not worth
+// repeating for the sake of a smaller diff.
+
+/**
+ * 🎵 A Lost Chord lands in the stock.
+ *
+ * Returns the new `noteStock` array. ⚠️ It OVERWRITES the first unused slot
+ * before it appends, which looks like a detail and is the rule: stock is a
+ * reservoir of fixed slots, not a hand, so a pickup refills a spent slot rather
+ * than growing the sheet. Appending unconditionally would hand the collector a
+ * reservoir bigger than `stockSize` and quietly break §1's spine.
+ *
+ * `extraNote` is the 🗡️ Ronin's second note (his innate finds more music in a
+ * find). Pass `null` for everyone else; the caller owns the coin flip because
+ * the draw has to happen on a logged stream, never inside a state updater.
+ */
+export function bankLostChord(noteStock, usedIdxList, note, extraNote = null) {
+  const stock  = [...(noteStock ?? [])];
+  const used   = new Set(usedIdxList ?? []);
+  const placed = new Set();
+  const place = (n) => {
+    const slot = stock.findIndex((_, i) => !used.has(i) && !placed.has(i));
+    if (slot === -1) { stock.push(n); placed.add(stock.length - 1); }
+    else { stock[slot] = n; placed.add(slot); }
+  };
+  place(note);
+  if (extraNote) place(extraNote);
+  return { noteStock: stock, placed: [...placed] };
+}
+
+/**
+ * ⚡ The charge spark — the sheet patch a tapped Charge Zone writes.
+ *
+ * A 50/50 between a die FLOOR (attack dice cannot roll below 3) and a die
+ * CEILING (dice grow a size, d6→d8). ⚠️ A DUPLICATE FLIPS TO THE OTHER TYPE
+ * rather than refreshing what you already hold, which is what stops a Spirit
+ * camping one zone from banking the same half twice; holding both refreshes
+ * both. Transcribed from `Game.grantChargeSpark` — if that ramp changes, this
+ * changes with it, and vice versa, because they are now the same function.
+ *
+ * @param {object} ns    the Spirit's note sheet (reads the two charge counters)
+ * @param {number} draw  a float in [0,1) from the CALLER's rng
+ * @param {number} turns `CHARGE_ZONE_BOOST_TURNS`
+ * @returns {{ patch:object, kind:'floor'|'ceil'|'both' }}
+ */
+export function chargeSparkPatch(ns = {}, draw = 0, turns = 2) {
+  const hasFloor = (ns.chargeFloorTurns ?? 0) > 0;
+  const hasCeil  = (ns.chargeCeilTurns  ?? 0) > 0;
+  let kind = draw < 0.5 ? 'floor' : 'ceil';
+  if (hasFloor && hasCeil)               kind = 'both';
+  else if (kind === 'floor' && hasFloor) kind = 'ceil';
+  else if (kind === 'ceil'  && hasCeil)  kind = 'floor';
+  const patch = {};
+  if (kind === 'floor' || kind === 'both') patch.chargeFloorTurns = turns;
+  if (kind === 'ceil'  || kind === 'both') patch.chargeCeilTurns  = turns;
+  return { patch, kind };
+}
+
+/** Is there an uncollected Lost Chord on this hex? */
+export function tokenAt(state, hexNum) {
+  return (state?.board?.boardTokens ?? []).find(t => t.num === hexNum) ?? null;
+}
+
+/** Is there a LIT (off-cooldown) Charge Zone on this hex? */
+export function liveChargeZoneAt(state, hexNum) {
+  return (state?.board?.chargeZones ?? [])
+    .find(z => z.num === hexNum && (z.cooldown ?? 0) <= 0) ?? null;
+}

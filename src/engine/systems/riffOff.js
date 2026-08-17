@@ -180,7 +180,7 @@ function performanceFor(riff, rng) {
  *  When melodyLine is provided (Phase R1), the attacker's riff is built from
  *  their committed melody instead of randomly generated. If the melody is too
  *  short (<4 notes), falls back to a random riff (reduced-pot flag set). */
-export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRush, melodyLine, hasRiff, maxLen }, rng) {
+export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRush, melodyLine, maxLen }, rng) {
   const len = Math.max(4, maxLen ?? RIFF_LEN_DEFAULT);
   let atk;
   let fromMelody = false;
@@ -233,7 +233,6 @@ export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRu
       atkRiff: atkFull,                // {degrees, sharps, contour, rhythm, perf, chordOf}
       defRiff: defFull,                // {degrees, sharps, kind, rhythm, perf, chordOf}
       fromMelody,                      // true when the riff came from the player's melody
-      hasRiff: !!hasRiff,              // legendary riff detected on the melody — bonus pot
       defGlitch: slayer ? pickGlitchIndexes(defFull.degrees.length, rng, defFull.chordOf) : [],
       defGhosts: eRush ? pickGhostLetters(defNotes, rng) : null,
       atkResults: null, defResults: null,
@@ -358,4 +357,74 @@ export function applyRiffRound2Started(state, _action, rng) {
 export function applyRiffClosed(state) {
   if (state.battle?.kind !== "riffOff") return state;
   return { ...state, battle: null };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🤖 A DUEL WITH NOBODY AT THE KEYBOARD — the headless performance model
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ THIS IS A MODEL AND IT IS DECLARED AS ONE. Everything else in this file is
+// the RULES: the engine hands both sides an identical chart, they submit results,
+// and `applyRiffResolved` reads the verdict off those results. The one thing the
+// engine cannot own is the PERFORMANCE — for a human that is fingers on a
+// falling-notes highway, and there is no honest way to derive it from state.
+//
+// So rather than pretend, this names its assumption in one place:
+//
+//   🎯 A SPIRIT PLAYS THE DUEL AS WELL AS THEY PLAYED THEIR LAST MELODY.
+//
+// `perfScore` is the Performance Score of their most recent commit — melodic
+// shape, palette, gesture, motif, their own style — so it is the closest thing
+// in the state to "how well is this musician playing right now", and it is
+// EARNED (`ARCHITECTURE.md`'s lens) rather than read off a stat block. It also
+// makes the riff-off the payoff for the commit phase, which is the shape the
+// whole design wants: write a good line, then cash it in the duel.
+//
+// ⚠️ WHAT THIS IS NOT. It is not a claim about how a HUMAN performs — a player
+// with fast hands and a sloppy melody will beat this model's prediction all day.
+// It exists so a headless bench can contain duels at all. Any balance reading
+// about riff-off frequency or payout out of the bench is a reading of THIS
+// CURVE as much as of the game, and must be quoted that way.
+
+/** Quality floor: even a Spirit who played nothing lands about a third of it. */
+export const RIFF_SIM_FLOOR    = 0.35;
+/** How much one point of Performance Score is worth in clean-hit probability. */
+export const RIFF_SIM_PER_PERF = 0.06;
+/** Grade bands, as fractions of the clean-hit probability. */
+export const RIFF_SIM_PERFECT  = 0.45;
+export const RIFF_SIM_GOOD     = 0.80;
+
+/** Clean-hit probability for a Spirit whose last commit scored `perfScore`. */
+export function riffSkill(perfScore = 0) {
+  return Math.max(0, Math.min(0.97, RIFF_SIM_FLOOR + RIFF_SIM_PER_PERF * Math.max(0, perfScore)));
+}
+
+/**
+ * Play one side's chart, headlessly.
+ *
+ * @param {number} noteCount  how many gems the chart has
+ * @param {number} perfScore  that Spirit's last Performance Score
+ * @param {function} rng      the CALLER's rng — forked inside a search (§0.4)
+ * @returns {Array<{hit:boolean, rt:number, grade:string, noteIdx:number}>}
+ *   the same shape a real client submits, so `riffStats` and
+ *   `applyRiffResolved` need no idea a human was not involved.
+ */
+export function simulateRiffPerformance(noteCount, perfScore, rng) {
+  const q = riffSkill(perfScore);
+  const out = [];
+  for (let i = 0; i < noteCount; i++) {
+    const d = rng();
+    // ⚠️ REACTION TIME IS DRAWN TOO, not left null. `applyRiffResolved` falls
+    // back to average rt when the two scores are within `RIFF_TIE_EPS`, and a
+    // null there would send a near-mirror straight to a tie — which is the one
+    // outcome that pays nobody, so a missing field would quietly suppress the
+    // payout this whole system exists to deliver.
+    const rt = Math.round(420 - q * 220 + rng() * 120);
+    let grade = 'miss';
+    if (d < q * RIFF_SIM_PERFECT)   grade = 'perfect';
+    else if (d < q * RIFF_SIM_GOOD) grade = 'good';
+    else if (d < q)                 grade = 'ok';
+    out.push({ hit: grade !== 'miss', rt, grade, noteIdx: i });
+  }
+  return out;
 }

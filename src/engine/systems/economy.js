@@ -63,8 +63,9 @@ export function usedAdd(used, ...idxs) {
 //   trackHasTritone, isOctaveResolution           — interval-effect flags
 //   diatonicRunLen, repeatPatLen, skipClimbLen     — detected run lengths
 //   hasGatedEnding      — minor-7th | major-3rd | tritone unlock-gated ending
-//   hasRiff             — a legendary riff was detected on the track
 //   cadenceResolved     — a cadence objective completed this commit
+//   styleBig            — completed PER-SPIRIT STYLE gestures this commit (0-2,
+//                         from music/spiritStyle.js). See `perfBig` below.
 //   earned              — base DB points earned (feeds the small length nudge)
 //   edgeResolved        — the Dissonance Edge resolved this turn (+2 flair)
 //   susEnd              — theory_sus suspended ending (+1 flair)
@@ -74,7 +75,7 @@ export function performanceScore({
   melodyLine,
   trackHasTritone, isOctaveResolution,
   diatonicRunLen, repeatPatLen, skipClimbLen,
-  hasGatedEnding, hasRiff, cadenceResolved,
+  hasGatedEnding, cadenceResolved, styleBig = 0,
   earned, edgeResolved, susEnd,
   discordCount, freestylePardon,
 }) {
@@ -107,7 +108,36 @@ export function performanceScore({
   );
   const perfMotif0 = detectMotifRepeat(melodyLine);
   const perfMotif  = (perfMotif0.period >= 3 ? 2 : 0) + (perfMotif0.reps >= 3 ? 1 : 0);
-  const perfBig      = (hasRiff ? 3 : 0) + (cadenceResolved ? 1 : 0);  // a landed riff is peak flair
+  // 🎭 THE BIG-GESTURE SEAT — a cadence, plus this Spirit's own STYLE.
+  //
+  // 🪦 `hasRiff ? 3 : 0` was the original occupant and was RETIRED 2026-08-17
+  // with the riff library. It was the single largest term in the whole score — a
+  // landed riff outweighed every gesture combined — so its removal left the seat
+  // worth 1, `perfCliff` (the Ronin's 2.0 weight, his whole identity) out of
+  // reach, and the crowd economy flat.
+  //
+  // ✅ REFILLED 2026-08-17 with `styleBig` — `music/spiritStyle.js`, one point
+  // per completed per-Spirit gesture, capped at 2. Three things about it are
+  // deliberate and are the reasons the riffs are not simply coming back:
+  //
+  //   · IT IS A SHAPE, NOT A SEQUENCE. A pedal, a tritone, a scalar run, a
+  //     chromatic slide — each buildable from many different draws, so reaching
+  //     for one is a DECISION. A riff trigger was four exact pitches in order,
+  //     which mostly asked what your stock happened to hold.
+  //   · IT PAYS THE CROWD, NEVER FAME. This function's payout runs through
+  //     `perfExciteGain` into casuals and diehards, and fans only MULTIPLY FP.
+  //     A style run therefore compounds instead of handing over a third of the
+  //     win in one commit, which is the other half of why the riffs went.
+  //   · IT IS PER-SPIRIT, so the commit phase finally distinguishes the roster.
+  //     `THEORY_ARCHITECTURE.md` §2's diagnosis was that the three spine rungs
+  //     are GENERIC, making the commit the one place four characters play
+  //     identically. This is the first term that reads differently for each.
+  //
+  // ⚠️ CAPPED AT 3 TOGETHER. Uncapped, a Spirit landing both gestures AND a
+  // cadence would take the seat back past what `hasRiff` was worth, and `score`
+  // itself is clamped at 10 — so the overflow would silently eat every other
+  // term's headroom rather than reading as a big turn.
+  const perfBig      = Math.min(3, (cadenceResolved ? 1 : 0) + Math.max(0, styleBig));
   const perfLenNudge = Math.floor(earned / 3);                          // length is only a small nudge
   const perfDiscord   = freestylePardon ? Math.max(0, discordCount - 1) : discordCount;
   const perfFreestyle = (freestylePardon && discordCount >= 1) ? 1 : 0;

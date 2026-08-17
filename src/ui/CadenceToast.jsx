@@ -1,20 +1,21 @@
 // =============================================================================
 // ui/CadenceToast.jsx  —  cadence-objective-resolved toast
 // Presentational: state + setter via props; cadence data imported from the music module.
-// `riffBanner` is passed only to offset this toast when both are showing.
+// 🪦 A `riffBanner` prop offset this toast when a riff banner shared the screen.
+// The riff banner retired 2026-08-17, so the toast always sits at its base height.
 // Extracted verbatim from the Game render (CADENCE TOAST block).
 // =============================================================================
 import React from "react";
 import { CADENCE_BY_ID } from "../music/cadence.js";
 
-export function CadenceToast({ cadenceToast, spirits, setCadenceToast, riffBanner }) {
+export function CadenceToast({ cadenceToast, spirits, setCadenceToast }) {
   if (!cadenceToast) return null;
   const cad = CADENCE_BY_ID[cadenceToast.cadenceId];
   const sp  = spirits.find(s => s.id === cadenceToast.spiritId);
   if (!cad) return null;
   return (
     <div onClick={() => setCadenceToast(null)} style={{
-      position:'fixed', bottom: riffBanner ? 128 : 24, left:'50%', transform:'translateX(-50%)',
+      position:'fixed', bottom: 24, left:'50%', transform:'translateX(-50%)',
       zIndex:9986, cursor:'pointer',
       background:'linear-gradient(135deg, #081a14 0%, #0a0f20 100%)',
       border:'2px solid #44ffaa', borderRadius:12, padding:'12px 26px',

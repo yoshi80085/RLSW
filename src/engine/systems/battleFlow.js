@@ -38,7 +38,7 @@
 import {
   damageApplied, knockdownResolved, fameChanged,
   noteSheetPatched, thrashTokensSpawned, randomBatchDrawn,
-  spiritsSynced,
+  spiritsSynced, headlinerChanged,
 } from "../actions.js";
 import {
   thrashKnockback, sonicKnockback, chordFrayAmount, underdogBonus,
@@ -52,6 +52,7 @@ import {
   SONIC_LIMELIGHT_FP, fpPerLife,
 } from "../../data/gameConstants.js";
 import { ROCK_GOD_RUNAWAY_LEAD } from "../../data/rockGods.js";
+import { RIFF_BOTH_PAID_QUALITY } from "./riffOff.js";
 
 // ── Sunbeam (Intergalactic 0) ────────────────────────────────────────────────
 // Transcribed from rlsw-simulator-v3_8_1.jsx:555-558 at extraction. Left here
@@ -370,6 +371,125 @@ export function* awardSonicFame({ state, spiritId, loserId, margin, centerBonus 
     amount = fp;
   }
   return yield* grantFame({ state, spiritId, fp: amount, reason: tag, fameThisTurn });
+}
+
+/**
+ * 🎤 RIFF-OFF FAME — the marquee event's dedicated FP engine.
+ *
+ * ⚠️ MOVED HERE FROM THE CLIENT 2026-08-17, and the move is the point rather
+ * than tidiness. `Game.awardRiffFame` was the last battle payout still living in
+ * the monolith, so `policies/transition.js` had no riff-off to model, so
+ * `legalActions` emitted no `riffOff` kind, so **no bench match in this repo's
+ * history has ever contained a duel** — while Alex expects several per game and
+ * this is the biggest Fame payout in the rules. Same shape as the Charge Zone
+ * and the Lost Chord: the rule existed, in a place the engine could not read.
+ *
+ * Higher floor than the Sonic (this is the big show), style pay for perfects,
+ * a Round-2 bonus for sudden death, and the loser's consolation when both sets
+ * were strong. Transcribed number for number; the client now calls this.
+ */
+export const RIFF_FP_FLOOR   = 2;   // base, before margin
+export const RIFF_R2_BONUS   = 2;   // sudden death pays extra
+export const RIFF_PERFECTS_PER_FP = 3;
+
+export function* awardRiffFame({ state, winnerId, loserId, verdict, fameThisTurn }) {
+  const round     = verdict?.round ?? 1;
+  const margin    = verdict?.margin ?? 0;
+  const winStats  = (verdict?.attackerWon ? verdict?.atkStats : verdict?.defStats) ?? {};
+  const loseStats = (verdict?.attackerWon ? verdict?.defStats : verdict?.atkStats) ?? {};
+
+  let base = RIFF_FP_FLOOR + Math.ceil(margin / 2);
+  base += Math.floor((winStats.perfects ?? 0) / RIFF_PERFECTS_PER_FP);
+  if (round >= 2) base += RIFF_R2_BONUS;
+  const rider   = headlinerRider(state, winnerId);
+  const fxBonus = anyStageEffectActive(state) ? 1 : 0;
+  base += rider + fxBonus;
+  if (fxBonus) yield log(`🎇 The stage effects amplify the riff-off — +1 FP!`);
+
+  const { fp, deficit, mult } = underdogBonus(
+    nsOf(state, winnerId).fame ?? 0,
+    nsOf(state, loserId).fame ?? 0,
+    base,
+  );
+  let amount = base;
+  if (deficit > 0 && fp > base) {
+    yield log(`🔥 UNDERDOG! ${nameOf(state, winnerId)} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
+    yield fx('flash', { spiritId: winnerId, icon: '🔥', text: 'UNDERDOG!', color: '#ffaa22' });
+    amount = fp;
+  }
+  const tag = `riff-off win by ${margin}${round >= 2 ? ' R2' : ''}${rider ? ' +👑' : ''}${fxBonus ? ' +🎇' : ''}`;
+  let res = yield* grantFame({ state, spiritId: winnerId, fp: amount, reason: tag, fameThisTurn });
+  fameThisTurn = res.fameThisTurn;
+  if (fxBonus) yield hook('gainFans', { spiritId: winnerId, n: 1, reason: '🎇 stage effects spectacle' });
+
+  // ── 🤝 THE DUEL THAT PAID TWICE ────────────────────────────────────────────
+  // Gated on the LOSER'S OWN HANDS (75%+ clean) and on Round 2, which is itself
+  // gated on the two of them being within `RIFF_CLOSE_QUALITY_GAP` in Round 1.
+  // You have to play well AND be pushed to get here — it is not a participation
+  // prize. ⚠️ The loser's share is hard-capped one below the winner's total: the
+  // whole design is to reward the SET without ever blurring the verdict.
+  if (verdict?.bothStrong) {
+    const winnerFp  = Math.max(base, amount);
+    const loserQual = loseStats.quality ?? 0;
+    let loserFp = 2 + Math.floor((loserQual - RIFF_BOTH_PAID_QUALITY) / 12);
+    loserFp += Math.floor((loseStats.perfects ?? 0) / RIFF_PERFECTS_PER_FP);
+    loserFp = Math.max(1, Math.min(loserFp, winnerFp - 1));
+    if (loserFp > 0) {
+      state = yield ({ kind: 'peek' });
+      yield log(`🤝 ${nameOf(state, loserId)} lost the duel and won the room — ${loserQual}% clean.`);
+      res = yield* grantFame({
+        state, spiritId: loserId, fp: loserFp,
+        reason: 'a losing set worth paying for', fameThisTurn,
+      });
+    }
+  }
+  return res;
+}
+
+/**
+ * 🎸 THE WHOLE RIFF-OFF AFTERMATH — knockback, damage, Fame, the Headliner belt.
+ *
+ * Mirrors `Game.closeRiffOff`. ⚠️ THE DUEL IS SYMMETRIC and that is the one
+ * thing not to get wrong: whoever loses takes the hit, attacker or defender
+ * alike. A riff-off started on your own Sonic can end with you knocked back and
+ * bleeding, which is exactly why it is a bigger decision than a Sonic.
+ */
+export function* riffOffConsequences({ state, battle, verdict, amps = [], fameThisTurn = {} }) {
+  const { attackerId, defenderId } = battle;
+  if (verdict?.tie) {
+    yield log(`🎸 The duel is a DEAD HEAT — the crowd cannot separate them.`);
+    yield* clearBattleBuffs({ attackerId, defenderId });
+    return { fameThisTurn };
+  }
+  const winnerId = verdict.attackerWon ? attackerId : defenderId;
+  const loserId  = verdict.attackerWon ? defenderId : attackerId;
+  const loser    = spiritOf(state, loserId);
+
+  yield* knockback({
+    state, fromId: winnerId, targetId: loserId,
+    spaces: sonicKnockback(verdict.margin, loser?.vibe ?? 1, loser?.maxVibe ?? 1),
+    amps,
+  });
+  state = yield ({ kind: 'peek' });
+
+  const r1 = yield* vibeDamage({
+    state, targetId: loserId, dmg: verdict.damage,
+    sourceLabel: 'riff-off', attackerId: winnerId, fameThisTurn,
+  });
+  fameThisTurn = r1.fameThisTurn;
+  state = yield ({ kind: 'peek' });
+
+  const r2 = yield* awardRiffFame({ state, winnerId, loserId, verdict, fameThisTurn });
+  fameThisTurn = r2.fameThisTurn;
+  state = yield ({ kind: 'peek' });
+
+  // 👑 The belt changes hands on every duel — it is a +1 FP rider on every
+  // later battle win, so it is a real prize and not a cosmetic title.
+  yield act(headlinerChanged(winnerId));
+  yield log(`👑 ${nameOf(state, winnerId)} claims the Headliner title!`);
+
+  yield* clearBattleBuffs({ attackerId, defenderId });
+  return { fameThisTurn };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

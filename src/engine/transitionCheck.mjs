@@ -38,6 +38,9 @@ import {
 } from "../data/gameConstants.js";
 import { HEX_BY_NUM, HEX_BY_QR } from "../board/hexMap.js";
 import { axialNeighbors, angleTo } from "../board/hexGeometry.js";
+import { sonicBeam } from "./policies/legalActions.js";
+import { makeBoardToken } from "../board/boardHelpers.js";
+import { usedList } from "./systems/economy.js";
 
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks++; };
@@ -525,6 +528,136 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   eq(r.state, st, '...and the engine state is untouched, because it does not own this yet');
   eq(ofKind(legalActions(r.state, RONIN, r.view), 'pose').length, 0,
      'and a pose already running is not re-offered');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 20. 🎯 WALKING ONTO A HEX PAYS — the pickups that only existed in React.
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ THE POINT OF THESE ASSERTIONS IS THAT THEY WOULD ALL HAVE PASSED AS
+// "nothing happens" BEFORE 2026-08-17, and nothing anywhere would have failed.
+// `applyTokenPickedUp` and `applyChargeZoneUsed` were correct engine reducers
+// with no headless caller, so a bot walked over a Lost Chord and got no note and
+// over a Charge Zone and got no charge — which meant Intergalactic 0's highest
+// weight (`charge`, 2.2, "the whole character") had never once been able to fire
+// in a bench match. Absence of a payout is the quietest bug in this repo.
+{
+  const st0 = confirmed(baseState());
+  const self = st0.spirits.find(x => x.id === RONIN);
+  const here = HEX_BY_NUM[self.num];
+  const nb = axialNeighbors(here.q, here.r)
+    .map(({ q, r }) => HEX_BY_QR[`${q},${r}`])
+    .find(h => h && !st0.spirits.some(sp => sp.num === h.num));
+  ok(nb, 'fixture: the Ronin has a free neighbour to step into');
+
+  // 🎵 A Lost Chord on that hex.
+  {
+    const st = {
+      ...st0,
+      board: { ...st0.board, boardTokens: [makeBoardToken(nb.num, () => 0)] },
+      turn: { ...st0.turn, moveStepsLeft: 3 },
+    };
+    const before = (st.noteStates[RONIN].noteStock ?? []).length;
+    const usedBefore = usedList(st.noteStates[RONIN].usedStockIdx).length;
+    const r = applyBotAction(st, { kind: 'move', to: nb.num, apCost: 1 }, { rng: rngOf(), view: {} });
+    eq(r.ok, true, '🎵 the step is legal');
+    eq(r.state.board.boardTokens.length, 0, '🎵 …the Lost Chord leaves the board');
+    const after = r.state.noteStates[RONIN].noteStock ?? [];
+    ok(after.length >= before, '🎵 …and the note lands in the stock');
+    eq(usedList(r.state.noteStates[RONIN].usedStockIdx).length, usedBefore,
+       '🎵 …a picked-up note is UNSPENT — it refills a slot, it does not consume one');
+  }
+
+  // ⚡ A lit Charge Zone on that hex.
+  {
+    const st = {
+      ...st0,
+      board: { ...st0.board, chargeZones: [{ num: nb.num, cooldown: 0 }] },
+      turn: { ...st0.turn, moveStepsLeft: 3 },
+    };
+    eq((st.noteStates[RONIN].chargeFloorTurns ?? 0) + (st.noteStates[RONIN].chargeCeilTurns ?? 0), 0,
+       'fixture: nobody starts charged');
+    const r = applyBotAction(st, { kind: 'move', to: nb.num, apCost: 1 }, { rng: rngOf(), view: {} });
+    eq(r.ok, true, '⚡ the step is legal');
+    const ns = r.state.noteStates[RONIN];
+    ok((ns.chargeFloorTurns ?? 0) > 0 || (ns.chargeCeilTurns ?? 0) > 0,
+       '⚡ …the spark lands: a die floor OR a die ceiling');
+    ok((r.state.board.chargeZones[0].cooldown ?? 0) > 0, '⚡ …and the zone goes dark');
+
+    // ⚠️ A DARK ZONE PAYS NOTHING. Without this the same hex could be farmed by
+    // stepping off and back on, which is a movement-priced infinite charge.
+    const again = applyBotAction(
+      { ...r.state, turn: { ...r.state.turn, moveStepsLeft: 3 } },
+      { kind: 'move', to: self.num, apCost: 1 }, { rng: rngOf(), view: {} });
+    eq(again.ok, true, 'stepping back off is legal');
+    const back = applyBotAction(again.state, { kind: 'move', to: nb.num, apCost: 1 }, { rng: rngOf(), view: {} });
+    eq(back.state.board.chargeZones[0].cooldown, r.state.board.chargeZones[0].cooldown,
+       '⚡ a spent zone cannot be re-tapped by walking back over it');
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 21. 🎤 THE RIFF-OFF — the trigger that was the only missing piece.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  // Put the two of them beam-to-beam: adjacent, each facing the other.
+  const st0 = confirmed(baseState());
+  const ronin = st0.spirits.find(x => x.id === RONIN);
+  const here = HEX_BY_NUM[ronin.num];
+  const nb = axialNeighbors(here.q, here.r)
+    .map(({ q, r }) => HEX_BY_QR[`${q},${r}`]).find(Boolean);
+  let st = withSpirit(st0, METAL, { num: nb.num, facing: angleTo(nb, here) });
+  st = withSpirit(st, RONIN, { facing: angleTo(here, nb) });
+  st = { ...st, turn: { ...st.turn, moveStepsLeft: 4, actionTokenUsed: false } };
+  // ⚠️ BOTH RIGS HAVE TO REACH, and this is the fixture detail that took a
+  // debugging pass: they are meeting next to the RONIN'S corner, so Metalness is
+  // far from his own Main Amp and defaults to out-of-rig — which is the very
+  // condition that CANCELS a duel (§3.1's worst square). Range unlocks put his
+  // rig over the meeting point so the gate under test is the beam geometry
+  // rather than an accident of where the fixture stood them.
+  st = withNs(st, METAL, { unlockedSkills: ['amp_1', 'range_1', 'range_2', 'range_3'] });
+  st = withNs(st, RONIN, { unlockedSkills: ['amp_1', 'range_1', 'range_2', 'range_3'] });
+
+  const acts = legalActions(st, RONIN, { posing: {} });
+  const duel = ofKind(acts, 'riffOff')[0];
+  const plainSonic = ofKind(acts, 'sonic').filter(a => a.targetId === METAL);
+  ok(duel, '🎤 beam-to-beam with both rigs live, the riff-off is offered');
+  eq(plainSonic.length, 0,
+     '🎤 …IN PLACE OF the Sonic, not alongside it — the client never lets you decline');
+
+  const r = applyBotAction(st, duel, { rng: rngOf(11), view: { posing: {}, fameThisTurn: {} } });
+  eq(r.ok, true, '🎤 the duel runs headlessly');
+  eq(r.state.battle, null, '🎤 …and the battle slice is cleared when it closes');
+  ok(r.state.turn.actionTokenUsed, '🎤 …it spends the Action Token, like the Sonic it replaces');
+
+  const fameAfter = (r.state.noteStates[RONIN].fame ?? 0) + (r.state.noteStates[METAL].fame ?? 0);
+  ok(fameAfter > 0, '🎤 SOMEBODY gets paid — the duel is the biggest Fame play in the rules');
+  ok(r.state.headliner === RONIN || r.state.headliner === METAL,
+     '👑 …and the winner takes the Headliner belt');
+
+  // ⚡ A duel is a battle, so charges burn — §3.5's "win or lose".
+  {
+    const lit = withNs(withNs(st, RONIN, { chargeCeilTurns: 2 }), METAL, { chargeFloorTurns: 2 });
+    const r2 = applyBotAction(lit, duel, { rng: rngOf(11), view: { posing: {}, fameThisTurn: {} } });
+    eq(r2.state.noteStates[RONIN].chargeCeilTurns, 0, '⚡ the attacker\'s charge burns off');
+    eq(r2.state.noteStates[METAL].chargeFloorTurns, 0, '⚡ …and the defender\'s does too');
+  }
+
+  // 🎤 EITHER GATE ALONE CANCELS THE DUEL, and in both cases the beam still
+  //    fires — a plain Sonic, and they scramble a d4. That fallback is the rule,
+  //    not a consolation: if the generator emitted NOTHING here, a searcher
+  //    would conclude the shot was illegal and stop taking it.
+  {
+    const posingRival = legalActions(st, RONIN, { posing: { [METAL]: true } });
+    eq(ofKind(posingRival, 'riffOff').length, 0, '🎤 a POSING rival cannot riff back — no duel');
+    ok(ofKind(posingRival, 'sonic').some(a => a.targetId === METAL),
+       '🎤 …the Sonic is offered instead, which is the whole rule');
+
+    const stranded = withNs(st, METAL, { unlockedSkills: ['amp_1'] });
+    const a2 = legalActions(stranded, RONIN, { posing: {} });
+    eq(ofKind(a2, 'riffOff').length, 0, '📡 a rival outside their own rig radius has nothing to answer with');
+    ok(ofKind(a2, 'sonic').some(a => a.targetId === METAL), '📡 …so the beam just lands');
+  }
 }
 
 console.log(`✅ transitionCheck — ${checks} assertions passed`);

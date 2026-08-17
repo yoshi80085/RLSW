@@ -502,11 +502,50 @@ tempo for rivals. Re-read this when the searcher starts scoring opponent replies
       starting points that have now had exactly one bench run pointed at them,
       and §5's standing warning applies with full force.
 
-   ⚠️ **Do not resolve this by tuning `pressure` until the two are separated.**
-   The clean experiment is an A/B at fixed seeds with `pressure` at weight 0 —
-   same attack costs, same everything else — which isolates what the term did
-   from what the cost fix did. Reading (1) predicts the inconclusive rate stays
-   near 10% and the win rate barely moves; reading (2) predicts it moves.
+   ✅ **THE A/B RAN, 2026-08-17. `--weights='{"pressure":0}'`, same 520 seeds,
+   same attack costs.** Reading (1) is right about most of it and is not the
+   whole story. Three runs, and the shape is the finding:
+
+   | run | inconclusive | decided-only rate | draw-inclusive rate |
+   |---|---|---|---|
+   | free attacks, no pressure | 36.9% | 65.7% | 59.9% |
+   | costed attacks, no pressure | **49.2%** | **84.5%** | 67.5% |
+   | costed attacks, `pressure` ON | **9.8%** | **56.3%** | 55.7% |
+
+   ⚠️ **THE HEADLINE RATE IS LARGELY A FUNCTION OF THE EXCLUSION RATE, and that
+   invalidates the ≥60% bar as written.** Read the middle two columns together:
+   they move in lockstep across three independent runs. Excluding stalls is the
+   right call for honesty — a timeout is not a loss — but the survivors are not a
+   random sample. **A match resolves when somebody runs away with the Fame race,
+   which is the situation a stronger searcher creates**, so throwing away the
+   stalls throws away the hard games. At 49.2% exclusion the searcher "wins
+   84.5%"; the same searcher over nearly the whole population wins 56.3%. It did
+   not get worse by 28 points. The statistic was measuring its own filter.
+
+   📌 **`pressure` — not the cost fix — is what makes matches end.** Costs alone
+   made stalling *worse* (36.9% → 49.2%), which is exactly right: attacking got
+   more expensive and no more attractive. The term reversed it to 9.8%.
+
+   ⚠️ **BUT A REAL RESIDUAL SURVIVES, so do not close this.** The last column
+   scores a stall as half a win, which makes the three runs comparable over the
+   same denominator. On that basis the gap shrinks from 28.2 points to **11.8**
+   — so exclusion bias explains roughly 60% of it and something real explains the
+   rest. ⚠️ That column is a BOUND, not a measurement: it assumes stalls are
+   50/50, and in the no-pressure runs stalls are half the sample.
+
+   🧭 **The residual's likeliest cause is match LENGTH, not weights.** Mean match
+   length falls from **331 turns to 209** when the term goes in. A shorter game
+   gives a stronger policy less room to compound an edge, and the games now end
+   through combat — dice — rather than through Fame accumulation. Both push a
+   skill edge toward 50%. That is a property of measuring a game that finishes,
+   not a defect in the searcher.
+
+   🎯 **What this changes: the bar, before the weights.** "≥60% over decided
+   matches" cannot gate anything while it rises with the stall rate — under it,
+   the WORST configuration here (49.2% stalls) scores best. Restate it on the
+   draw-inclusive basis, or split it into two gates: a win rate AND a maximum
+   inconclusive rate. ⚠️ Only then is a `pressure` retune worth running, because
+   only then does the number it is tuned against mean something.
 
    📌 **And the bot is still very attack-shy.** A 12-match duel sample logs
    11,639 melody notes, 8,125 moves and **24 swings** — 2 per match, 0.012 per
@@ -639,6 +678,455 @@ wants a deliberate pass, not a patch. Note that `adjWounded` at 1.5 for Metalnes
 already assumed this term existed underneath it: "finish the wounded" only reads
 as a bruiser trait if "hurt people" is scored at all. ✅ It does now, and
 `adjWounded` is gone — his 1.5 became `pressure` 1.8.
+
+---
+
+### 6.6.7 ✅ 2026-08-17 (evening) — THE BOT CAN NOW SEE THE BOARD, THE DICE, AND ITS OWN SOUND
+
+> **Six things landed together and they are not six tweaks — five of them are the
+> same bug.** Read §5.A's pattern first; every item below is another sighting.
+> Full A/B at the bottom. ⚠️ Nothing here is committed.
+
+#### The one finding that reframes the rest
+
+🎯 **TAKING A RIVAL'S LIFE SCORED LESS THAN THE TWO DRIVE NOTES IT COST.**
+Measured on the shipped column: a Ronin Swing that lands is `drive` **−0.73**
+against `pressure` +0.16 and `fame` +0.08, and even the killing blow
+(`pressure` +0.60) came out behind the ammunition. So the searcher was offered an
+attack at **773 decision points in one 250-turn duel and took 2**.
+
+⚠️ **It is §6.6.1's `kit` bug, one pool further on.** `dbHorizon` scored Db in
+one state only — banked — so spending was a pure loss and the bot refused every
+purchase. `drive`/`sustain` scored the stacks in one state only, so ATTACKING was
+a pure loss and the bot refused every fight. Db needed a second term; the stacks
+did not — what a stack converts into is damage, and damage is `pressure`. They
+were simply priced above what they buy.
+
+📌 **And it was invisible until the day before.** Attacks were FREE headlessly
+until §6.6.2, so the ratio between "what you hold" and "what you spend it on"
+could not be wrong, because nothing was ever spent. **A bug fix is a measuring
+instrument switching on**, and the thing it measured first was a factor-of-two
+weighting error nobody had reason to suspect.
+
+#### What landed
+
+| | what it was | what it is |
+|---|---|---|
+| 🎯 **Board terms** (§6.6.6) | 16 terms, no term named a PLACE | `centreStage`, `chargeSeek`, `stock`, `beamSetup` |
+| 🎲 **§6.4 expectimax** | every attack judged on ONE dice roll | `ATTACK_SAMPLES` = 6, `expectedScore` |
+| 🎤 **The riff-off** | `startRiffOff` client-only, no `riffOff` kind | emitted, modelled, paid |
+| 🎯 **Pickups** | walking onto a Lost Chord or Charge Zone paid NOTHING | `collectPickups` in `transition.js` |
+| 🎭 **Per-Spirit style** | `perfBig`'s seat empty since the riffs went | `music/spiritStyle.js`, six gestures |
+| 🐛 **`weightsFor`** | a per-Spirit override NaN'd every other seat | shape detected by values |
+
+#### 🎲 §6.4, and it had the sign backwards
+
+The handoff warned that "plain minimax will systematically OVER-value
+high-variance lines". In a game where the variance is mostly DOWNSIDE and the
+alternative is a safe shuffle, one sample systematically **under**-values them:
+`applyBotAction` resolves the attack, so a one-sample greedy rolls the dice once
+and reads the result as the action's value. A Swing's hit rate runs 17.8% on one
+Drive note to 100% on eight — a single sample is not an estimate of anything.
+⚠️ `WIN_SCORE` had to become finite for this: `Infinity` does not survive
+averaging, or a 17% chance of victory would outrank a certainty.
+
+#### 🎯 The pickups — the quietest of the six
+
+`applyTokenPickedUp` and `applyChargeZoneUsed` have been correct engine reducers
+for a long time with no headless caller, and the payout rules lived inside
+closure-scoped client functions. So a bot walked over a Lost Chord and got no
+note, and over a Charge Zone and got no charge.
+
+⚠️ **Which means `evaluate`'s `charge` weight — Intergalactic 0's highest at 2.2,
+the term §4.2 calls "the whole character" — has never once been able to fire in a
+bench match.** Every number ever quoted for him is a reading of a Spirit with his
+identity switched off. The kernels now live in `systems/board.js` and the CLIENT
+IS REWIRED ONTO THEM, so there is one copy rather than two.
+
+#### 🎭 The style system, and the two bugs it shipped with
+
+`music/spiritStyle.js` fills `perfBig` — one point per completed per-Spirit
+gesture, capped at 2, paying **FANS through `performanceScore` and never Fame**,
+which is the rule the riffs broke. Metalness: the gallop (a pedal tone) and the
+tritone walked away from. The Ronin: the run and the sweep. Intergalactic 0: the
+chromatic slide and the two-note groove.
+
+Both bugs are worth keeping because both are invisible:
+
+1. ⚠️ **`STYLE_GAIN_FLOOR` was 0.34 and every gesture climbs in THIRDS.** Five of
+   six gestures were silently unreachable; the sixth looked like the only style
+   anybody had (180 hits against 11–19). A ladder whose rungs are all below its
+   own floor is not a weak ladder, it is no ladder, and nothing fails.
+2. ⚠️ **`notesStillNeeded` counted NOTES where progress counts INTERVALS.** An
+   `n`-note shape has `n−1` rungs, so `ceil(4 × ⅓)` said a two-thirds-finished
+   four-note run needed two more notes. The gesture dropped out of consideration
+   exactly when it was one note from landing.
+
+📌 A third was a design correction rather than a bug: the first draft's Ronin
+gesture was "a leap, answered", which fired on **87%** of his commits — because
+`melodyLine` is pitch CLASSES and the interval fold caps every distance at six
+semitones, so "a leap" could only ever mean a fourth or a tritone. **There is no
+such thing as a big leap in pitch-class space**, and the detector was measuring
+the fold. Replaced by the sweep (three thirds in a row).
+
+#### 🎤 The centre / rig tension — an interaction nobody predicted
+
+⚠️ **THE MIDDLE IS OUTSIDE EVERYBODY'S RIG.** `RIG_RADIUS_BY_TIER` is 4 at tier
+zero and the Limelight sits ~6 from a home corner, so a Spirit who walks to
+centre stage is stranded (§3.1's "worst square"): a bare d4, **no Sonic, and no
+riff-off at all**. Overpaying `centreStage` therefore switched OFF the two Fame
+engines this whole pass exists to switch on. Ronin vs Metalness, 14 matches: at
+1.3–1.7 they ran 326 turns, decided 3, fought **1** duel; at ~0.8 they ran ~220,
+decided 7, fought **10**.
+
+📌 **The game already has the answer and it is a purchase** — Range I takes the
+radius to 5, Range II to 7. "Work the middle" is something a Spirit EARNS. The
+right long-term shape is a `centreStage` conditional on having the range to shoot
+from there, which reads two things at once and wants the bench, not a guess.
+
+#### 📊 The A/B — same seeds, same fixture, both seats searching
+
+Ronin-vs-Intergalactic 0 and Ronin-vs-Metalness, 9 seeds each, 400-turn cap.
+"Pre-session" zeroes the four new terms and restores the four retuned rows to
+their §5-transcribed values; everything else (riff-off, pickups, style,
+expectimax) is live on both sides, so this isolates the EVALUATOR.
+
+| | pre-session weights | this session |
+|---|---|---|
+| mean match length | 369 turns | **215** |
+| decided inside the cap | 3/18 | **9/18** |
+| Fame per turn | 0.002 | **0.044** (22×) |
+| swings | 6 | **86** |
+| Sonics | 0 | **8** |
+| riff-offs | 0 | **12** |
+
+⚠️ **AND IT DOES NOT CLEAR THE SECOND GATE.** Half the matches still hit the
+400-turn cap. `bench.mjs` now prints §5.A's two gates — a draw-inclusive rate on
+a fixed denominator AND a maximum inconclusive rate of 15% — and the inconclusive
+gate is the one to chase next. ⚠️ `searcher` vs `unranked` is worse still (72.5%
+inconclusive over 40): a passive baseline gives the searcher nobody to trade
+with, which is a property of the A/B, not of the game.
+
+📌 **Three Fame engines are still switched off**, and any one of them may be the
+missing rate: the pose pays nothing headlessly (`view.posing` is still React
+state, so §3.3 is unreachable), riff-off Round 2 is not driven, and the Smash is
+still UNMODELLED.
+
+---
+
+### 6.6.6 🎯 `evaluate` HAS NO BOARD-OBJECTIVE TERM AT ALL — 15 terms, zero places
+
+**Found 2026-08-17, from Alex describing how they actually play.** Asked whether
+the bots' 83%-at-distance-1 clumping matched real play:
+
+> *"Most action takes place in the middle. The Limelight spot is there, Charge up
+> spots tend to be in the middle, with upgrades available, I would try and work
+> it to get a good Sonic attack off. I couldn't say 'how close I am to Rivals'
+> honestly. Sometimes close, it depends on what I want to do at the moment."*
+
+⚠️ **THAT DESCRIBES A GAME ABOUT CONTESTING PLACES, AND `evaluate` HAS NO TERM
+FOR A PLACE.** Grep the file for `LIMELIGHT`, `chargeZone`, `hexRingFromCenter`
+or `token` and the count is **0**. The fifteen terms are:
+
+`survival` `fame` `fanMult` `perfCliff` `drive` `sustain` `apBanked` `inRig`
+`charge` `refillDenied` `edgeSafety` `dbHorizon` `kit` `rivalPose`
+`targetUpside` `pressure`
+
+Every one is a resource, a stat, or a relationship to a rival. **`edgeSafety` is
+the only one that reads the board, and it only says "not the edge".** Nothing
+says "the middle is where the game is."
+
+📌 **AND THE NEAR-MISSES ARE THE TELL, because each scores the AFTERMATH of an
+objective rather than the objective:**
+
+- `charge` scores **holding** a charge (`chargeFloorTurns > 0`) — not standing on
+  or moving toward a Charge Zone.
+- `fanMult` scores the multiplier you **have** — not the ring you are standing
+  in, even though `FAN_GAIN_BY_RING` pays `main: 2, pit: 1, floor: 1, back: 0`,
+  so where you commit decides what you earn.
+- `rivalPose` scores a **rival** in the Limelight — there is no term for being
+  there yourself.
+
+⚠️ **THIS IS THE SAME SHAPE AS EVERY OTHER BUG FOUND TODAY, for the sixth time**:
+the game rewards something, the evaluator has a term for the reward's *result*
+but none for the *act of going and getting it*, so the bot never goes.
+
+🧭 **AND IT IS THE LIKELIEST EXPLANATION OF THE CLUMPING.** `botHexScore` — the
+MOVE planner — does have `center` and `spotlight` weights, so the bot knows which
+hex is better *once it has decided to move*. But `evaluate` decides **whether to
+move at all**, and there `apBanked` charges for the step while nothing credits
+the destination. So the bots drift, end up adjacent, and stay. They are not
+choosing melee range; they are declining to travel.
+
+🔧 The fix is a family of terms, and Alex's sentence names them: the Limelight /
+centre ring, the Charge Zones, the token-and-upgrade pickups. ⚠️ Get this in
+BEFORE the beam-range term — "work it to get a good Sonic off" is a manoeuvre
+that happens **in the middle**, so a Sonic-setup term written against bots that
+never travel would be tuned against the wrong board.
+
+---
+
+### 6.6.5 🪦 THE RIFF LIBRARY IS RETIRED — and the Fame hole is now 100%
+
+**Design decision, Alex, 2026-08-17**, taken with the §6.6.3/§6.6.4 numbers in
+hand. All 34 riffs are gone, along with the ladder that had just landed.
+
+**Two reasons, and the second is the one that generalises:**
+
+1. **They were not rock.** 13 of 34 were classical (Beethoven, Bach, Grieg,
+   Wagner, Mozart) and most of the rest were named-tune references. A Spirit
+   winning on Für Elise is the wrong story for this game.
+2. ⚠️ **THE FAME WAS NOT EARNED BY A DECISION.** Note stock is DRAWN, so which
+   riffs a player could even spell was largely their draw. At 2–5 FP against a
+   16 FP target, a tight game could be decided by a shape one player happened to
+   be dealt. *"I'd feel upset if a Rival won a tight game we were neck and neck
+   in because he got hold of a legacy riff — something I had no control over."*
+
+**What went, in one list:** `detectRiff` and the award in `melodyCommit`; the FP
+effect; `hasRiff`'s **+3 Performance Score** in `economy.js`; `committedHasRiff`
+and the riff-off's `hasRiff` flag; the `riffProgress` ladder in `actionScore`;
+the riffbook, its banner and its two UI tabs; `riffLibrary.js` itself
+(`PC_PLAY_NAMES` moved to `music/pitchNames.js` — it was the one thing in there
+with nothing to do with riffs).
+
+⚠️ **THE PERFORMANCE SCORE TOOK A SECOND, QUIETER HIT.** `hasRiff ? 3 : 0` was
+the single largest term in `performanceScore`. Scores now sit meaningfully lower
+across the board and **`perfCliff` — the Ronin's 2.0 weight, his whole identity —
+is harder to reach.** That seat is left EMPTY rather than backfilled with a
+stand-in number, because a stand-in would bury the hole.
+
+#### The measured hole
+
+| | riffs live | riffs retired |
+|---|---|---|
+| Fame per turn, both seats | 0.359 | **0.000** |
+| matches ending by Fame | 8 of 8 | **0 of 8** |
+| by knockout | 0 | **7 of 8** (1 unfinished) |
+| mean length | 25 rounds | **125 rounds** |
+
+**A 400-turn duel now ends 0/16 FP on both sides**, with both crowds maxed
+(6♥/14👥) and 637 Db banked. The Fame economy is not slow, it is **empty**.
+
+---
+
+#### 🧭 THE REPLACEMENT — Alex's direction, 2026-08-17
+
+Not a second riff library. Three things, in the designer's words:
+
+> **Sonic should be the main way to gain Fame. And Riff Offs even more so. And
+> Sonic plays should be powerful for the attacker since they get potentially
+> more powerful dice to play with. The system should try and devise ways to
+> reach these potential Fame awards.**
+
+Plus, for the melody side: **fans for playing to the Spirit's STYLE** — Metalness
+landing a gallop or working a tritone, a cadence that makes sense for *that*
+Spirit. Fans rather than Fame, so it compounds through the crowd multiplier
+instead of handing over a third of the win in one commit.
+
+📌 **THE GOOD NEWS: THE COMBAT HALF ALREADY POINTS THE RIGHT WAY.** This did not
+need designing, only measuring:
+
+- `thrashFame()` returns a flat **1** — a Swing win is worth 1 FP, period.
+- `sonicFame(margin)` returns `max(1, ceil(margin/2))` — **the Sonic already
+  scales with the margin**, so a well-set-up beam pays 2, 3, 4. That is exactly
+  "powerful for the attacker because they get more powerful dice", already in the
+  code.
+
+So the Sonic is *designed* as the better Fame play and the bot fires **zero** of
+them. Measured (§6.6.4): it is offered on 1.4% of action-phase decision points
+and chosen never. The two halves of that are separable and both need work:
+
+1. ⚠️ **IT IS RARELY OFFERED, AND THE GEOMETRY IS WHY.** The Sonic is a straight
+   beam; the Swing is a cone. **The two Spirits stand at distance 1 for 83% of
+   all turns** — jammed together, where the cone is easy and the beam needs exact
+   alignment. Nothing in `evaluate` values *standing off at beam range*, so the
+   bot has no reason to make a Sonic possible. This is the "devise ways to reach
+   these awards" half, and it is an `evaluate` term about POSITION, not a
+   scorer change.
+2. **When offered, it is outscored** — the Fame it pays is a post-hit
+   consequence and one-ply search prices its costs immediately.
+
+🐛 **AND THE RIFF-OFF IS NOT MODELLED AT ALL.** `startRiffOff` lives entirely in
+the monolith; `legalActions` emits no `riffOff` kind and `transition.js` has no
+case for it. The engine has `applyRiffOffStarted` and the full duel resolver —
+**the ONE missing piece is the trigger**, which the client raises when a Sonic
+finds a rival who is beam-to-beam and in their own rig radius. So the source Alex
+wants to be the LARGEST is currently invisible to both the bot and the bench.
+
+⚠️ Note the dependency: the riff-off trigger rides ON a Sonic. Fix the Sonic and
+the riff-off becomes reachable; fix the riff-off first and nothing reaches it.
+
+---
+
+### 6.6.4 ✅ FIXED — the riff ladder, and the exploit it uncovered
+
+**Shipped 2026-08-17**, `policies/actionScore.js`, pinned by `npm run test:score`
+(111 assertions, up from 100).
+
+**The term.** `riffProgress(pcs)` measures how many of a riff's opening intervals
+the track's TAIL already spells — on the interval diffs, so it is key-agnostic
+for free, exactly as `detectRiff` is. `melodyNote` now scores
+`gain * RIFF_RANK_STRIDE + noteRank`.
+
+Four decisions worth keeping:
+
+- ⚠️ **THE SCORER, NOT `evaluate`.** The FP already landed correctly *after* a
+  riff — `evaluate` sees it on the sheet. What was missing was anything valuing a
+  track one note from a trigger, so the searcher never steered toward one. §6.3's
+  split names the owner: the scorer picks WHICH note.
+- ⚠️ **`gain`, NOT ABSOLUTE PROGRESS.** A note is scored on what it ADDS. A note
+  that leaves the tail no closer scores like one that breaks the run, because
+  both are worth nothing to a riff and the planners should settle it.
+- ⚠️ **A NOISE FLOOR AT k ≥ 2.** Any two notes spell some interval; with 34 riffs
+  a k of 1 fires on almost every note and would drown the shipped musical
+  judgement in a signal that means nothing.
+- ⚠️ **A RIFF YOU CANNOT FINISH DOES NOT STEER.** `MELODY_MAX` is 8; a trigger
+  needing four more intervals with two slots left is a distraction that costs
+  real notes. Skipped outright rather than scored small — a small score still
+  steers.
+
+📌 The stride (32) clears the largest possible note rank (~11), so riff progress
+dominates and `botNoteStepOrder` becomes the TIE-BREAK. §6.3's "preserve the
+shipped tuning" is honoured rather than overwritten. Same shape as
+`TENTACLE_RANK_STRIDE`.
+
+---
+
+#### 🐛 AND IT IMMEDIATELY EXPOSED A FIFTH BUG OF THE SAME SHAPE
+
+The first bench after the term read **95.4%** and matches collapsed to 30 rounds.
+That is the number that should have been suspicious, and it was.
+
+**`riffBook` IS REACT STATE, AND THE HARNESS NEVER MAINTAINED IT.**
+`melodyCommit` decides a riff's payout with:
+
+```js
+const isNew = !(view.riffBook ?? {})[riffMatch.riff.id];
+riffAward = { …, fp: isNew ? riffMatch.riff.fp : 1 };
+```
+
+With no book, **every riff was forever new**. The same riff paid its full 2–5 FP
+every single turn. Given a reason to chase riffs for the first time, the searcher
+found one and farmed it straight to the 4 FP per-turn cap — **16 FP, the entire
+win condition, in four turns.**
+
+⚠️ **`?? {}` cannot tell "nobody has discovered anything yet" from "this harness
+does not model discovery."** That is the identical failure to §6.6.2's
+`swingChordSpent = []`, in a different file, found the same day.
+
+Fixed in `transition.js`, which already hands back exactly this species of client
+state (`unsurePool`, `fameThisTurn`): on a discovery it writes
+`riffBook[riffId] = spiritId`, mirroring the client's `setRiffBook`. 📌 The book
+is **global** — the value is WHO discovered it, and everyone afterwards gets the
+1 FP rate. A riff is only new to the world once.
+
+---
+
+#### The measurement
+
+| | before | riff ladder | + riffbook fixed |
+|---|---|---|---|
+| riffs matched per 1,200 commits | **0** | — | 5–6 distinct **per match** |
+| Fame rate (both seats) | 0.105 FP/turn | 0.359 | — |
+| matches ending by **Fame** | 1 of 8 | 8 of 8 | 8 of 8 |
+| mean match length | 177 turns (89 rounds) | 60 (30) | **49 turns (25 rounds)** |
+| inconclusive @ 520 | 9.8% | 0.0% | **0.0%** |
+| searcher win rate | 56.3% ±4.5 | 95.4% | **96.2% ±1.7** |
+
+✅ **The stall problem is gone — 0 inconclusive in 520 matches** — so §6.6's bar
+finally sits on a denominator that does not move, which is what §5.0c asked for.
+
+⚠️ **BUT 96.2% IS NOT A CLAIM THAT THE SEARCHER IS 96% BETTER.** `unranked` is the
+same searcher with `ranked: false`, which takes `steps[0]` during composition and
+therefore **never chases a riff at all**. The A/B now largely measures "does this
+policy know about the riff library", which is close to a binary. It is honest
+evidence that the ladder works and poor evidence about search quality generally.
+🔧 A more informative opponent is `ranked: true` with the riff stride at 0.
+
+📌 **25 rounds against Alex's reported 15–20.** In range for the first time, and
+the residual has two named causes still open: the pose's FP tick is client-owned
+(§3.3 unreachable headlessly) and the riff-off never starts. On the Sonic —
+measured rather than assumed this time — it **is** offered, on 1.4% of
+action-phase decision points, and chosen zero times. It is outscored, not
+missing. 📌 A related oddity fell out of that probe and is worth someone's
+attention: **the two Spirits stand at distance 1 for 83% of all turns.**
+
+---
+
+### 6.6.3 🎼 THE BOT HAS NEVER PLAYED A RIFF — why bench matches run 89 rounds
+
+**Found 2026-08-17, from Alex saying "when I play, games end in 15–20 rounds
+tops."** That is the second time play experience has located in one sentence
+what a 2000-match bench reported as a number (§6.6.0 was the first), and it is
+worth treating as a standing method rather than a coincidence: **the bench can
+only report that something is slow. A player can say what is missing.**
+
+**The arithmetic first, because it makes the gap unarguable.** At 2 players and
+2 lives, `fpPerLife(2) = 8`, so `fameToWin` is **16 FP**, and `FAME_PER_TURN_CAP`
+is 4. A Spirit playing at the ceiling wins in **4 turns**. Measured over a real
+bench match: **0.105 FP per turn across both seats — 2.6% of the ceiling.** Fame
+sat at literally **0 for the first 40 turns** while both Spirits maxed their
+crowds (6♥/14👥, both caps) and banked 75 Db.
+
+⚠️ **SO THE BENCH DOES NOT WIN BY FAME. IT WINS BY ELIMINATION** — 7 of 8 matches
+ended by knockout, 1 by Fame — and elimination is slow because attacks are rare.
+Every "mean match length" figure in this file is therefore describing an attrition
+game, not the Fame race the game actually is.
+
+**Where the missing Fame went — four sources, and the bot reaches none of them:**
+
+| FP source | client site | in the bench? |
+|---|---|---|
+| 🎼 **Riff discovery on commit** | `melodyCommit` → `grantFame` effect | ✅ wired, **fires 0 times** |
+| ✨ **Pose in the Limelight** | monolith:9906 | ❌ client-owned (`HARNESS_GAPS.pose`) |
+| 🎤 **Riff-off win** | monolith:6376–6427 | ❌ needs a Sonic; the bot fires **zero** |
+| ⚔️ Combat win | `awardThrashFame` | ✅ wired, ~2 swings per match |
+
+🐛 **THE HEADLINE: ZERO RIFFS AND ZERO CADENCES ACROSS 1,218 MELODY COMMITS.**
+And it is not a broken detector — that was the control. `detectRiff` fires
+correctly on all six constructed lines tested, and it is generous: **key-agnostic,
+interval-only, and it scans for the trigger ANYWHERE inside the committed line.**
+`fate_knocks` is `C C C Ab` — four notes, 4 FP, a quarter of the win condition.
+The bot commits a 4-or-5-note melody **1,367 times** out of 1,418 and never once
+lands on one of 34 shapes.
+
+⚠️ **BECAUSE NOTHING IN §5 SCORES IT.** Read the term list again: `survival`,
+`fame`, `fanMult`, `perfCliff`, `drive`, `sustain`, `apBanked`, `inRig`,
+`charge`, `refillDenied`, `edgeSafety`, `dbHorizon`, `rivalPose`, `targetUpside`,
+`kit`, `pressure`. **`fame` scores FP already banked — no term scores the act of
+earning it.** The searcher picks notes for chord quality and Performance Score and
+is blind to the riff library entirely, so it plays 1,218 melodies that are
+musically reasonable and worth nothing.
+
+📌 **This is the same shape as §6.6.0 and §6.6.1 for the third time**, and the
+pattern is now the most reliable predictor of a bug in this codebase:
+
+> A whole scoring system exists in the game. The evaluator has no term for it.
+> The bot therefore never uses it, nothing errors, every test stays green, and
+> the only symptom is a number somewhere else that looks merely disappointing —
+> a stall rate, a match length, a win rate.
+
+⚠️ **AND IT INVALIDATES THE MUSICAL HALF OF EVERY BENCH NUMBER ON RECORD.** §1
+calls the melody the game's spine. The searcher has been optimising that spine
+against an objective that omits its largest payout, which means §6d's "the
+searcher now prices a long melody correctly" is true about *stock and Db* and
+false about *Fame*.
+
+🔧 **The fix is a term, and it is NOT "add riff FP to `evaluate`".** A riff pays
+on the commit, so a one-ply evaluator scoring the post-commit state sees the FP
+land — that already works. What is missing is that **nothing values a melody line
+that is one note away from a riff**, so the searcher never steers toward one. It
+wants a term over the CANDIDATE TRACK during the composition phase — the same
+place `actionScore.js` already picks which note to write — scoring proximity to a
+trigger shape. ⚠️ That makes it an `actionScore` change more than an `evaluate`
+change, and §6.3's split is exactly right about which file owns it: **the scorer
+picks *which* note, `evaluate` picks *how many*.**
+
+📌 **Two smaller ones ride along.** The pose's FP tick is client-owned, so the
+whole of §3.3 is unreachable headlessly (the bot poses 16 times in 1,218 turns
+and is paid nothing for it). And the riff-off — a large FP source — is gated
+behind a Sonic the bot never fires. **Fix the never-fired Sonic and a second Fame
+engine switches on for free.**
 
 ---
 

@@ -2,7 +2,7 @@
 // music/cadence.js  —  CADENCE objectives + note-track scoring (pure logic)
 // =============================================================================
 import { NOTE_POOL, getSpelledPool, pitchIndex } from "./notes.js";
-import { PC_PLAY_NAMES } from "./riffLibrary.js";
+import { PC_PLAY_NAMES } from "./pitchNames.js";
 
 export const CADENCE_OBJECTIVES = [
   { id:'amen', name:'AMEN CADENCE', formula:'I → IV → I', degrees:[0,5,0], fp:2, icon:'🙏',

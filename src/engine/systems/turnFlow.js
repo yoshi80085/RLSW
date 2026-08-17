@@ -109,7 +109,6 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
     melodyFreq:   [],
     committedMelody:  null,   // Phase R1: clear last turn's stashed melody
     committedFreq:    null,
-    committedHasRiff: false,
     stackCommitsThisTurn: 0,  // 🎸 fresh stack commit budget each turn
     usedStockIdx: carriedUsed,
     discordCount: 0,

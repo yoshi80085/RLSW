@@ -29,7 +29,11 @@ import { makeInitialState } from "./state.js";
 import { applyAction } from "./reduce.js";
 import { slimeDropped, moveBudgetSet } from "./actions.js";
 import { legalActions, beamActions, tentacleOptions } from "./policies/legalActions.js";
-import { makeActionScorer, beamFor, resolvePersona, NEUTRAL_PERSONA, TENTACLE_RANK_STRIDE } from "./policies/actionScore.js";
+import {
+  makeActionScorer, beamFor, resolvePersona, NEUTRAL_PERSONA, TENTACLE_RANK_STRIDE,
+  STYLE_RANK_STRIDE, STYLE_GAIN_FLOOR,
+} from "./policies/actionScore.js";
+import { styleGain, styleProgress, detectSpiritStyle, gesturesFor } from "../music/spiritStyle.js";
 import {
   BOT_PERSONALITIES, BOT_SPIRIT_SKILLS,
   botPlanNoteStep, botPlanStackCommit, botPickTarget, botPlanMove, botMoveCtx, botHexScore,
@@ -459,6 +463,95 @@ function walk(startNum, n) {
     eq(score(group[0]), 0, `${k} is a singleton and scores the neutral constant`);
     eq(beamActions(group, { limit: 1, score }).length, 1,
        `⚠️ …and survives anyway — nothing is ever dropped from a group of one`);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 🪦 THE RIFF LADDER'S SECTION LIVED HERE and retired with the mechanic on
+//    2026-08-17. It pinned four properties that any future melody-SHAPE term
+//    (per-Spirit style: a gallop, a tritone, a Spirit-appropriate cadence) will
+//    want pinned again, so they are recorded rather than deleted:
+//
+//      · a noise floor — one matching interval must score ZERO, or with a large
+//        pattern set the term fires on nearly every note and drowns out the
+//        shipped planners;
+//      · monotone progress — the score never falls as the track closes in;
+//      · EVERY pattern reachable — a shape the ladder cannot climb is one the
+//        bot can never aim at, and it fails silently;
+//      · unreachable targets do not steer — `MELODY_MAX` is 8, and scoring an
+//        unfinishable shape small does not help, because a small score still
+//        steers.
+//
+//    The last one was the sharpest: it is the difference between a term that
+//    plans and a term that merely leans. See git for the assertions.
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 16. 🎭 THE STYLE LADDER — what steers a track toward this Spirit's own sound.
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ THE FIRST ASSERTION IS THE ONE THAT WOULD HAVE CAUGHT THE BUG THIS SHIPPED
+// WITH. Every gesture climbs in THIRDS, and the floor was originally set at
+// 0.34 — just above a third — so five of the six gestures were silently
+// unreachable and the sixth looked like the only style anybody had. A ladder
+// whose rungs are all below its own floor is not a weak ladder, it is no ladder,
+// and nothing about it fails.
+{
+  ok(STYLE_GAIN_FLOOR < 1 / 3,
+     '🎭 the floor admits a one-third gain — every gesture climbs in thirds');
+
+  // Each Spirit's gestures must be REACHABLE: some note completes each one.
+  for (const id of [MM, RONIN, ZERO]) {
+    for (const g of gesturesFor(id)) {
+      ok(g.notes <= 8, `🎭 ${id}/${g.id} fits inside MELODY_MAX`);
+    }
+    ok(gesturesFor(id).length > 0, `🎭 ${id} has a sound of their own`);
+  }
+  eq(gesturesFor('Glamarchy'), [],
+     '🎭 a Spirit with no kit gets no gestures — never another character\'s');
+
+  // ── The Ronin's run: C D E is two-thirds of it, and F finishes it.
+  const track = ['C', 'D', 'E'];
+  ok(styleProgress(RONIN, track, 5) > 0, '🎭 three stepwise notes is real progress');
+  const good = styleGain(RONIN, track, 'F', 4);
+  const bad  = styleGain(RONIN, track, 'A#', 4);
+  ok(good > bad, '🎭 the note that continues the run gains more than one that breaks it');
+  ok(good >= STYLE_GAIN_FLOOR, '🎭 …and it clears the floor, so it actually steers');
+  eq(bad, 0, '🎭 a note that closes nothing gains exactly nothing');
+
+  // ⚠️ A GESTURE THAT CANNOT FIT MUST NOT STEER. Scoring it small does not help:
+  // a small score still steers. With no slots left it must drop out entirely.
+  ok(styleGain(RONIN, track, 'F', 0) > 0,
+     '🎭 the LAST slot still lands a shape that only needs one more note');
+  eq(styleGain(RONIN, ['C'], 'D', 0), 0,
+     '🎭 …but a shape needing two more notes with one slot left stops pulling entirely');
+
+  // ── And the ladder actually reaches the beam: the completing note outranks
+  //    every other candidate of its kind, whatever the planner thought.
+  {
+    let st = { ...base, acting: RONIN };
+    st = withNs(st, RONIN, {
+      melodyLine: ['C', 'D', 'E'],
+      noteStock: ['A#', 'G#', 'F', 'B'],
+      usedStockIdx: [],
+    });
+    const score = makeActionScorer(st, RONIN, {});
+    const notes = legalActions(st, RONIN, {}).filter(a => a.kind === 'melodyNote');
+    ok(notes.length >= 2, 'fixture: several notes are on offer');
+    const best = notes.map(a => ({ a, s: score(a) })).sort((x, y) => y.s - x.s)[0];
+    eq(best.a.note, 'F', '🎭 the beam ranks the note that lands the gesture first');
+    const others = notes.filter(a => a.note !== 'F').map(a => score(a));
+    ok(Math.max(...others) + STYLE_RANK_STRIDE <= best.s,
+       '🎭 …by a full stride, so the planners tie-break rather than overrule');
+  }
+
+  // ── Style is per-Spirit, and that is the point: THE SAME TRACK reads
+  //    differently from a different seat. This is the first term in the commit
+  //    phase that distinguishes the roster at all.
+  {
+    const metalLine = ['C', 'F#', 'G'];
+    ok(detectSpiritStyle(MM, metalLine).hits.length > 0, '🎭 the walked tritone is Metalness\'s');
+    eq(detectSpiritStyle(RONIN, metalLine).hits.length, 0, '🎭 …and means nothing to the Ronin');
   }
 }
 

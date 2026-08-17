@@ -23,13 +23,18 @@ import {
   evaluate, evalScore, weightsFor, targetMultiplier, posePayout,
   distFromEdge, distFromHome, boomBoxLit, fameToWin, reachWeight,
   EVAL_WEIGHTS, DEFAULT_WEIGHTS, PERF_CLIFF, MAX_EDGE_DIST, PRESSURE_REACH_FLOOR,
+  beamOpportunity, CENTRE_RING_PAY, MAX_CENTRE_DIST, CHARGE_SEEK_REACH,
+  BEAM_READY, BEAM_ALIGNED, BEAM_DUEL,
 } from "./policies/evaluate.js";
 import { underdogBonus } from "./systems/combat.js";
 import {
   UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT, POSE_FP_MAX, POSE_FP_STEP,
   STOCK_REFILL_RATE, DB_UPGRADE_THRESHOLD, FAN_MULT_CAP,
 } from "../data/gameConstants.js";
-import { EDGE_HEX_NUMS, HEX_BY_NUM } from "../board/hexMap.js";
+import { EDGE_HEX_NUMS, HEX_BY_NUM, HEX_BY_QR } from "../board/hexMap.js";
+import { LIMELIGHT_HEX } from "../data/gameConstants.js";
+import { hexRingFromCenter } from "../board/boardHelpers.js";
+import { sonicBeam, facingOptions } from "./policies/legalActions.js";
 import { CORNERS } from "../data/corners.js";
 
 let checks = 0;
@@ -435,6 +440,103 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
   };
   ok(cliffed(RONIN) > cliffed(ZERO) && cliffed(RONIN) > cliffed(METAL),
      '🎭 the Performance cliff is worth most to the virtuoso');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 17. 🎯 THE BOARD — §6.6.6's family, and the two inversions it must not become.
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ THE FIRST TWO ASSERTIONS ARE THE ONES THAT MATTER, and neither is about a
+// magnitude. A term that pays for BEING NEAR an objective and stops paying the
+// moment you take it is the `adjWounded` bug — cut on 2026-08-17 for exactly
+// this — and it is invisible in play: nothing errors, the bot simply circles.
+{
+  const st = baseState();
+
+  // ── 🎤 The centre is a RAMP, not just a shelf. A step inward from the far
+  //    Backstage must move the number, or the term is flat where it is needed
+  //    most and the bot has no reason to start walking.
+  const ringOf = (n) => hexRingFromCenter(n);
+  const backHex = st.spirits.find(x => x.id === RONIN).num;
+  ok(ringOf(backHex) === 'back', 'fixture: the Ronin starts Backstage');
+  const centreAt = (n) => term(withSpirit(st, RONIN, { num: n }), RONIN, 'centreStage');
+  ok(centreAt(LIMELIGHT_HEX) === 1, '🎤 the Limelight is the maximum');
+  ok(centreAt(LIMELIGHT_HEX) > centreAt(backHex), '…and Backstage is the minimum');
+  {
+    // Walk in one hex from home and the term must RISE, even while still in the
+    // same ring — that is the whole difference between a shelf and a ramp.
+    const home = HEX_BY_NUM[backHex];
+    const inward = Object.values(HEX_BY_NUM)
+      .filter(h => Math.abs(h.q - home.q) + Math.abs(h.r - home.r) <= 2 && h.num !== backHex)
+      .map(h => ({ h, c: centreAt(h.num) }))
+      .sort((a, b) => b.c - a.c)[0];
+    ok(inward && inward.c > centreAt(backHex),
+       '🎤 one hex toward the middle scores more — the ramp is live');
+  }
+
+  // ── ⚡ THE HAND-OFF. Seeking a charge must be worth STRICTLY LESS than
+  //    holding one, for every Spirit, or tapping the zone reads as a loss and
+  //    the bot loiters beside it forever.
+  for (const id of [RONIN, ZERO, METAL]) {
+    const w = weightsFor(id);
+    ok(w.charge > w.chargeSeek,
+       `⚡ ${id}: holding a charge outweighs seeking one — the hand-off cannot invert`);
+  }
+  {
+    const zone = st.board.chargeZones[0];
+    ok(zone, 'fixture: the board has a Charge Zone');
+    const onZone  = withSpirit(st, ZERO, { num: zone.num });
+    const seeking = term(onZone, ZERO, 'chargeSeek');
+    ok(seeking === 1, '⚡ standing on a lit zone is maximum seek');
+    const holding = term(withNs(onZone, ZERO, { chargeFloorTurns: 2 }), ZERO, 'chargeSeek');
+    eq(holding, 0, '⚡ …and it gates OFF once the charge is held — `charge` has it now');
+    // The net of the hand-off, weighted, must be positive.
+    const before = evalScore(onZone, ZERO);
+    const after  = evalScore(withNs(onZone, ZERO, { chargeFloorTurns: 2 }), ZERO);
+    ok(after > before, '⚡ tapping the zone is a GAIN, not a loss — no `adjWounded` here');
+  }
+
+  // ── 🎵 STOCK is the banked half of a Lost Chord, and it must count UNUSED
+  //    slots. Counting the array would score a spent reservoir as a full one.
+  {
+    const full  = withNs(st, RONIN, { noteStock: ['C','D','E','F'], usedStockIdx: [] });
+    const spent = withNs(st, RONIN, { noteStock: ['C','D','E','F'], usedStockIdx: [0,1,2] });
+    ok(term(full, RONIN, 'stock') > term(spent, RONIN, 'stock'),
+       '🎵 a reservoir you have spent is not a reservoir you have');
+  }
+
+  // ── 🔊 BEAM SETUP — the four bands, in order, and the rig gate.
+  {
+    const shooter = st.spirits.find(x => x.id === RONIN);
+    const here = HEX_BY_NUM[shooter.num];
+    const facing = facingOptions(shooter)[0];
+    const aimed = { ...shooter, facing };
+    const inBeam = [...sonicBeam(aimed)][0];
+    ok(inBeam != null, 'fixture: the beam reaches somewhere');
+
+    const posed = withSpirit(withSpirit(st, RONIN, { facing }), ZERO, { num: inBeam, facing });
+    const rivalsOf = (state) => state.spirits.filter(x => x.id !== RONIN && !x.knockedOut);
+    const self = posed.spirits.find(x => x.id === RONIN);
+    const nsSelf = posed.noteStates[RONIN];
+    const live = beamOpportunity(posed, self, nsSelf, rivalsOf(posed), {});
+    ok(live >= BEAM_READY, '🔊 a rival standing in the live beam is at least a ready shot');
+
+    // Off every axis entirely: strictly less than one `face` away.
+    const offAxis = Object.values(HEX_BY_NUM).find(h =>
+      ![...facingOptions(self)].some(f => sonicBeam({ num: self.num, facing: f }).has(h.num))
+      && h.num !== self.num);
+    if (offAxis) {
+      const away = withSpirit(posed, ZERO, { num: offAxis.num });
+      const v = beamOpportunity(away, self, nsSelf, rivalsOf(away), {});
+      ok(v < BEAM_ALIGNED, '🔊 a rival on no axis at all scores below "one face away"');
+    }
+    ok(BEAM_DUEL > BEAM_READY && BEAM_READY > BEAM_ALIGNED,
+       '🔊 the bands are ordered: a duel beats a shot beats an alignment');
+
+    // 🎤 A rival who cannot answer is not a duel — they are just a target.
+    const posingRival = beamOpportunity(posed, self, nsSelf, rivalsOf(posed), { [ZERO]: true });
+    ok(posingRival <= BEAM_READY, '🎤 a POSING rival cannot riff back, so it is no duel');
+  }
 }
 
 console.log(`✅ evalCheck — ${checks} assertions passed`);

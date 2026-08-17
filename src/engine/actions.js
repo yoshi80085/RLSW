@@ -154,7 +154,7 @@ export function spiritsSynced(spirits) {
  *  slayer/eRush are client-supplied until noteStates joins the engine (Ph 5).
  *  melodyLine (optional): attacker's committed melody (NOTE_POOL format) —
  *  when present the engine builds the riff from it (Phase R1: Rhythm Creation
- *  Device). hasRiff flags a legendary-riff bonus on the melody.
+ *  Device). 🪦 The legendary-riff bonus flag retired 2026-08-17 with the library.
  *  maxLen (Phase R2): difficulty-tier cap on riff length.
  *  (The Phase R4 `tier` param is GONE — the 'acoustic' Acoustic Duel was cut,
  *  so every riff-off is the plugged-in, beam-crossed duel.) */

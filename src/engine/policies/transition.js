@@ -59,9 +59,21 @@ import {
   noteSheetPatched, attackRolled, fansChanged, spiritSlid, slimeCleared, slimeCalled,
   elevenCalled,
 } from "../actions.js";
-import { battleConsequences, runBattleFlow, grantFame } from "../systems/battleFlow.js";
+import {
+  battleConsequences, runBattleFlow, grantFame, riffOffConsequences,
+} from "../systems/battleFlow.js";
+import {
+  applyRiffOffStarted, applyRiffResultsSubmitted, applyRiffResolved,
+  applyRiffClosed, simulateRiffPerformance,
+} from "../systems/riffOff.js";
 import { attackParams, spiritChord, SONIC_DRIVE_SPEND } from "../systems/attackParams.js";
-import { usedAdd } from "../systems/economy.js";
+import { usedAdd, usedList } from "../systems/economy.js";
+import {
+  bankLostChord, chargeSparkPatch, tokenAt, liveChargeZoneAt,
+} from "../systems/board.js";
+import { tokenPickedUp, chargeZoneUsed } from "../actions.js";
+import { CHARGE_ZONE_BOOST_TURNS } from "../../data/gameConstants.js";
+import { randomNote } from "../../music/cadence.js";
 import { commitMelodyEconomy } from "../systems/melodyCommit.js";
 import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 
@@ -69,6 +81,7 @@ import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 export const MODELLED_KINDS = new Set([
   'melodyNote', 'stackCommit', 'confirmMelody',
   'move', 'slide', 'face', 'swing', 'sonic', 'tentacle', 'pose', 'skillTarget', 'endTurn',
+  'riffOff',
   'slime', 'eleven',
 ]);
 
@@ -99,6 +112,68 @@ const fail = (state, view, reason, detail) => ({ state, view, ok: false, reason,
 /** Merge a patch into one Spirit's note sheet, through the reducer. */
 const patchNs = (state, spiritId, patch, rng) =>
   applyAction(state, noteSheetPatched(spiritId, patch), rng);
+
+/**
+ * 🎯 WHAT WALKING ONTO A HEX PAYS — the Lost Chord and the Charge Zone.
+ *
+ * ⚠️ THIS EXISTED ONLY IN REACT UNTIL 2026-08-17, and its absence was the
+ * seventh instance of `SEQUENCING.md` §5.A's pattern: the game rewards going
+ * somewhere, the headless path pays nothing for arriving, nothing errors, every
+ * suite stays green. The reducers (`applyTokenPickedUp`, `applyChargeZoneUsed`)
+ * and now the payout kernels (`systems/board.js`) were all in place; only the
+ * TRIGGER was missing, exactly like the riff-off.
+ *
+ * 🎯 THE CONSEQUENCE WORTH NAMING: `evaluate`'s `charge` term is Intergalactic
+ * 0's highest weight at **2.2** — §4.2 calls the Boom Box "the whole character"
+ * — and until this landed no bench match could ever set it above zero. Every
+ * win rate ever quoted for him was a reading of a Spirit with his identity
+ * switched off.
+ *
+ * ⚠️ THE OVERCHARGE MODAL IS NOT MODELLED, deliberately. With `overcharge`
+ * unlocked the client asks the player to CHOOSE floor / ceiling / chord assist;
+ * a headless seat takes the ordinary 50/50 spark instead of guessing at a
+ * preference. Declared in `HARNESS_GAPS` rather than invented here.
+ *
+ * ⚠️ AND THE STACK-COMMIT BRANCH IS NOT MODELLED EITHER. A picked-up chord can
+ * be woven straight into a stack instead of banked, if the turn's revoice budget
+ * is unspent. That is a second decision the client raises as a modal, so the
+ * headless path always banks — the conservative half, and the one that does not
+ * hand a searcher free stack slots it never chose.
+ */
+function collectPickups(state, spiritId, hexNum, rng) {
+  if (hexNum == null) return { state, logs: [] };
+  const logs = [];
+  let next = state;
+
+  const tok = tokenAt(next, hexNum);
+  if (tok) {
+    const ns = next.noteStates?.[spiritId] ?? {};
+    // 🗡️ The Ronin hears a second note in the same find (~50%). ⚠️ DRAWN HERE,
+    // unconditionally ordered before the patch, because the client draws it
+    // before its state updater for the same reason — a draw whose position in
+    // the stream depends on a branch is a replay divergence waiting to happen.
+    const greed = spiritId === 'cosmic_ronin' && rng ? rng.chance(0.5) : false;
+    const extra = greed
+      ? randomNote(ns.rootNote, ns.scaleMode, () => rng())
+      : null;
+    const { noteStock } = bankLostChord(ns.noteStock, usedList(ns.usedStockIdx), tok.note, extra);
+    next = applyAction(next, tokenPickedUp(spiritId, hexNum), rng);
+    next = patchNs(next, spiritId, { noteStock }, rng);
+    logs.push(`🎵 Lost Chord (${tok.note}) picked up on #${hexNum}`);
+    if (extra) logs.push(`🗡️ a second note (${extra}) came with it`);
+  }
+
+  const zone = liveChargeZoneAt(next, hexNum);
+  if (zone) {
+    const ns = next.noteStates?.[spiritId] ?? {};
+    const { patch, kind } = chargeSparkPatch(ns, rng ? rng() : 0, CHARGE_ZONE_BOOST_TURNS);
+    next = applyAction(next, chargeZoneUsed(spiritId, hexNum), rng);
+    next = patchNs(next, spiritId, patch, rng);
+    logs.push(`⚡ Charge Zone tapped on #${hexNum} — ${kind}`);
+  }
+
+  return { state: next, logs };
+}
 
 /**
  * Take one bot action.
@@ -205,11 +280,15 @@ export function applyBotAction(state, action, ctx = {}) {
     // the direction of travel. No separate beatsSpent, and no separate face —
     // walking IS a facing decision, which is why a bot that steps toward a
     // rival is also turning its back on whatever is behind it.
-    case 'move':
-      return {
-        state: applyAction(state, moveStep(spiritId, action.to, !!ns.dazed), rng),
-        view, ok: true, reason: null, logs: [],
-      };
+    case 'move': {
+      let next = applyAction(state, moveStep(spiritId, action.to, !!ns.dazed), rng);
+      // ⚠️ WHERE HE ACTUALLY LANDED, NOT WHERE HE AIMED. The Dazed rule can
+      // redirect a step to a different neighbour, so reading `action.to` here
+      // would collect a token off a hex nobody is standing on.
+      const landedOn = (next.spirits ?? []).find(s => s.id === spiritId)?.num ?? null;
+      const { state: picked, logs } = collectPickups(next, spiritId, landedOn, rng);
+      return { state: picked, view, ok: true, reason: null, logs };
+    }
 
     // 🔊 GOES TO 11 — the dial, the Sustain stack, and the amp, in one action.
     // Everything downstream reads it off the sheet: `attackParams` SETS the
@@ -335,6 +414,91 @@ export function applyBotAction(state, action, ctx = {}) {
     }
 
     // ── EVERYTHING ELSE ────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🎤 THE RIFF-OFF — the duel a Sonic becomes when both beams cross.
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    // ⚠️ THE TRIGGER WAS THE ONLY MISSING PIECE, and it had been missing since
+    // the duel was built. `applyRiffOffStarted`, `applyRiffResolved`,
+    // `applyRiffRound2Started` and `applyRiffClosed` have all been engine
+    // reducers for a long time and they are correct; `startRiffOff` lived in the
+    // monolith, so `legalActions` had nothing to transcribe, so the kind did not
+    // exist, so **no bench match in this repo's history has contained a duel** —
+    // against Alex's expectation of several per game and the biggest Fame payout
+    // in the rules. The seventh sighting of `SEQUENCING.md` §5.A's pattern.
+    //
+    // ⚠️ THE PERFORMANCE IS MODELLED, THE RULES ARE NOT. Both charts come out of
+    // the engine exactly as they do online; the two RESULTS arrays come from
+    // `simulateRiffPerformance`, whose single assumption — a Spirit plays the
+    // duel as well as they played their last melody — is stated and defended in
+    // `riffOff.js`. Read that before quoting any riff-off number out of a bench.
+    //
+    // 📌 ROUND 2 IS NOT DRIVEN HERE. `applyRiffResolved` sets `verdict.close`
+    // when the two sets were within `RIFF_CLOSE_QUALITY_GAP`, which is what
+    // escalates a duel to sudden death in the client. The headless path takes
+    // the Round-1 verdict and closes. That under-pays close duels (Round 2 adds
+    // 2 FP and a damage band) and never fires the both-paid consolation, so the
+    // bench UNDER-states the riff-off rather than over-stating it — which is the
+    // safe direction for a gap, and it is declared in `HARNESS_GAPS`.
+    case 'riffOff': {
+      const target = (state.spirits ?? []).find(sp => sp.id === action.targetId);
+      if (!target) return fail(state, view, 'illegal', 'no such rival');
+
+      // The same price as the Sonic it replaces: 2 AP and the Action Token.
+      let next = applyAction(state, beatsSpent(SONIC_AP_COST, true), rng);
+
+      // ⚡ A riff-off is still a battle, so charges burn off on both sides —
+      // §3.5's "a charge dies on any battle, win or lose". Missing this would
+      // make the duel the one safe place to spend a charge you kept.
+      for (const id of [spiritId, action.targetId]) {
+        next = patchNs(next, id, { chargeFloorTurns: 0, chargeCeilTurns: 0 }, rng);
+      }
+
+      // The attacker calls with their own committed melody where they have one
+      // (Phase R1's Rhythm Creation Device); the engine pads or falls back.
+      next = applyRiffOffStarted(next, {
+        attackerId: spiritId, defenderId: action.targetId,
+        slayer: false, eRush: false,
+        melodyLine: ns.committedMelody ?? null,
+      }, rng);
+
+      const b = next.battle;
+      if (b?.kind !== 'riffOff') return fail(state, view, 'illegal', 'duel would not start');
+
+      const atkPerf = ns.perfScore ?? 0;
+      const defPerf = next.noteStates?.[action.targetId]?.perfScore ?? 0;
+      next = applyRiffResultsSubmitted(next, {
+        role: 'attacker',
+        results: simulateRiffPerformance(b.atkRiff?.degrees?.length ?? 0, atkPerf, rng),
+      });
+      next = applyRiffResultsSubmitted(next, {
+        role: 'defender',
+        results: simulateRiffPerformance(b.defRiff?.degrees?.length ?? 0, defPerf, rng),
+      });
+      next = applyRiffResolved(next);
+
+      const verdict = next.battle?.verdict;
+      if (!verdict) return fail(state, view, 'illegal', 'duel produced no verdict');
+
+      const run = runBattleFlow(
+        riffOffConsequences({
+          state: next, battle: next.battle, verdict,
+          amps: view.amps ?? [],
+          fameThisTurn: view.fameThisTurn ?? {},
+        }),
+        next,
+        { applyAction: (st, a) => applyAction(st, a, rng), hooks },
+      );
+
+      // ⚠️ CLEAR THE BATTLE SLICE. `battle` is a live-duel marker the rest of the
+      // engine reads; leaving it set would have every later action in the turn
+      // think a duel is still on the board.
+      return {
+        state: applyRiffClosed(run.state), view, ok: true, reason: null,
+        logs: run.logs, battle: next.battle,
+      };
+    }
+
     case 'pose':
       // 🎤 Opening a pose is free; the FP tick and the Sustain toll ride the
       // turn clock in the client, so only the flag moves here.

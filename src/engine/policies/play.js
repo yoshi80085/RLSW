@@ -97,6 +97,30 @@ export const HARNESS_GAPS = {
 
   // See `matchConfig` — the Rock God finale is sidestepped by construction.
   summonRockGod: 'sidestepped: short games crown outright (see matchConfig)',
+
+  // ── 🎤 NEW 2026-08-17 — the riff-off runs, with one modelled part ──────────
+  //
+  // ⚠️ THE RULES ARE REAL; THE HANDS ARE NOT. Both charts come out of
+  // `applyRiffOffStarted` exactly as they do online, and the verdict is
+  // `applyRiffResolved`'s. What no state can supply is the PERFORMANCE — for a
+  // human that is fingers on a falling-notes highway — so the two results arrays
+  // come from `riffOff.js: simulateRiffPerformance`, whose single assumption is
+  // that a Spirit plays the duel as well as they played their last melody.
+  // ⚠️ ANY BENCH READING ABOUT RIFF-OFF FREQUENCY OR PAYOUT IS A READING OF THAT
+  // CURVE AS MUCH AS OF THE GAME. Quote it that way.
+  riffPerformance: 'the duel runs; both sides are PLAYED by simulateRiffPerformance (perfScore-driven)',
+
+  // Round 2 escalation is not driven headlessly: the Round-1 verdict closes the
+  // duel. ⚠️ This UNDER-states the riff-off — sudden death adds 2 FP, a damage
+  // band, and the only path to the both-paid consolation — which is the safe
+  // direction for a gap but must not be read as "duels pay about this much".
+  riffRound2: 'sudden death not driven; Round-1 verdict closes the duel',
+
+  // The Overcharge modal (choose floor / ceiling / chord assist on a Charge Zone)
+  // is a player decision the headless path does not guess at: it takes the
+  // ordinary 50/50 spark. Likewise a picked-up Lost Chord always BANKS rather
+  // than being woven straight into a stack, which is the conservative branch.
+  pickupChoices: 'Overcharge + stack-weave modals not modelled; spark is 50/50, chords bank',
 };
 
 // ── The hooks a match genuinely needs ───────────────────────────────────────
@@ -257,7 +281,88 @@ function composePhase(state, spiritId, view, ctx, { ranked }) {
  *  `STACK_COMMIT_BUDGET` adds 3 more steps, so this covers the whole phase. */
 export const MELODY_SEARCH_DEPTH = 11;
 
-function searcherPolicy({ ranked = true, limit = 5 } = {}) {
+/**
+ * ⚠️ ACTIONS WHOSE OUTCOME IS A DICE ROLL, AND WHY THEY CANNOT BE SCORED ONCE.
+ *
+ * 🎯 THIS IS §6.4, AND UNTIL 2026-08-17 IT WAS THE LARGEST UNBUILT PIECE OF THE
+ * SEARCHER. Measured before it landed: across a 250-turn duel an attack was
+ * legal at **773** decision points and was chosen **2** times. The weights were
+ * not the reason and neither was the beam — both were exonerated by probe.
+ *
+ * The reason is structural. `applyBotAction` RESOLVES an attack: it rolls, it
+ * applies damage or a whiff, it knocks somebody back. So a one-sample greedy
+ * decides whether to fight by rolling the dice ONCE and reading the result as if
+ * it were the action's value. A Swing's hit rate runs 17.8% on one Drive note to
+ * 100% on eight (§6.6.0), so a single sample is not an estimate of anything — and
+ * a miss is expensive (the defender's counter, the knockback, the AP), so the
+ * modal sample of a marginal attack is a loss. The bot was not attack-shy. It was
+ * looking at one roll and believing it.
+ *
+ * §6.4 called this in advance and got the SIGN backwards, which is worth
+ * recording: it warned that "plain minimax will systematically OVER-value
+ * high-variance lines". In a game where the variance is mostly downside and the
+ * alternative is a safe shuffle, one sample systematically UNDER-values them.
+ *
+ * 📌 Deterministic kinds are still scored once, and that is not an optimisation
+ * to be tidied away later — sampling something with no randomness in it would
+ * burn N times the transitions to return the same number N times.
+ */
+export const STOCHASTIC_KINDS = new Set([
+  'swing', 'sonic', 'tentacle', 'riffOff', 'smash', 'blaster',
+]);
+
+/**
+ * How many rolls an attack is judged on.
+ *
+ * ⚠️ A BUDGET, NOT A CONVERGENCE TARGET. Six samples of a d6-scale outcome still
+ * carry real error; the point is to move from "one roll, believed" to "a mean
+ * with a known bias", which is the difference between never attacking and
+ * attacking when the odds are good. It is the searcher's dominant cost — every
+ * sample is a full battle resolution — so raising it is a runtime decision to be
+ * made against the §6.6 bench, not a free accuracy dial.
+ */
+export const ATTACK_SAMPLES = 6;
+
+/**
+ * The score of winning outright.
+ *
+ * ⚠️ FINITE, AND IT HAS TO BE. `Infinity` was correct while every action was
+ * scored once — a line that wins is taken — but it does not survive averaging:
+ * one winning sample in six would make the mean `Infinity` too, so a 17% chance
+ * of victory would outrank a certainty. Large enough to dominate any real
+ * position, small enough that expectation still works on it.
+ */
+export const WIN_SCORE = 1e6;
+
+/**
+ * Expected value of one action, over `samples` independent dice draws.
+ *
+ * ⚠️ EACH SAMPLE GETS ITS OWN FORK, AND THE LABEL CARRIES THE INDEX. Reusing one
+ * fork across the samples would replay the same stream from a different point
+ * for every action — correlated, and worse, ORDER-DEPENDENT, so the beam's
+ * source order would leak into the estimate. Labelled forks keep every action's
+ * k-th sample drawn from the same place, which is what makes this a fair
+ * comparison and keeps the §6.6 determinism regression green: forks are derived
+ * from the seed, so the whole search is still reproducible from `{seed}` alone.
+ */
+function expectedScore(state, action, spiritId, view, ctx, samples) {
+  let total = 0, n = 0;
+  for (let k = 0; k < samples; k++) {
+    const probe = ctx.rng.fork(`search:${state?.turn?.count ?? 0}:${k}`);
+    const r = applyBotAction(state, action, { rng: probe, view, hooks: ctx.hooks });
+    if (!r.ok) continue;
+    // A dead seat is -Infinity by `evaluate`'s own contract. ⚠️ That one value
+    // must NOT be averaged — a line that can kill you is not redeemed by five
+    // samples where it does not — so it short-circuits the whole estimate.
+    if (r.state?.winner === spiritId) { total += WIN_SCORE; n++; continue; }
+    const sc = evaluate(r.state, spiritId, r.view ?? view).score;
+    if (!Number.isFinite(sc)) return -Infinity;
+    total += sc; n++;
+  }
+  return n ? total / n : -Infinity;
+}
+
+function searcherPolicy({ ranked = true, limit = 5, samples = ATTACK_SAMPLES } = {}) {
   return function choose(state, spiritId, view, ctx) {
     const ns = state?.noteStates?.[spiritId] ?? {};
 
@@ -270,9 +375,10 @@ function searcherPolicy({ ranked = true, limit = 5 } = {}) {
       // `endTurn`, correctly: a Spirit with nothing to play has nothing to do.
     }
 
-    // ACTION PHASE — greedy is honest here. Every action has an immediate board
-    // effect the evaluator can already see, so there is no deferred payoff for
-    // one ply to be blind to.
+    // ACTION PHASE — greedy over ONE PLY, but over the EXPECTATION of that ply
+    // rather than over one sample of it. Every action still has an immediate
+    // board effect the evaluator can see; what needed fixing was not the depth
+    // but the fact that some of those effects are rolled.
     const options = playable(legalActions(state, spiritId, view));
     if (!options.length) return { kind: 'endTurn', apCost: 0 };
 
@@ -280,16 +386,10 @@ function searcherPolicy({ ranked = true, limit = 5 } = {}) {
       ? beamActions(options, { limit, score: makeActionScorer(state, spiritId, view) })
       : beamActions(options, { limit });
 
-    const probe = ctx.rng.fork(`search:${state?.turn?.count ?? 0}`);
     let best = null, bestScore = -Infinity;
     for (const action of beamed) {
-      const r = applyBotAction(state, action, { rng: probe, view, hooks: ctx.hooks });
-      if (!r.ok) continue;
-      // Scored from this seat, after the action. A dead seat is -Infinity by
-      // `evaluate`'s own contract, so nothing has to be special-cased here.
-      const s = r.state?.winner === spiritId
-        ? Infinity
-        : evaluate(r.state, spiritId, r.view ?? view).score;
+      const n = STOCHASTIC_KINDS.has(action.kind) ? samples : 1;
+      const s = expectedScore(state, action, spiritId, view, ctx, n);
       if (s > bestScore) { bestScore = s; best = action; }
     }
     return best ?? { kind: 'endTurn', apCost: 0 };

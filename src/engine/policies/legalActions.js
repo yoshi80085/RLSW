@@ -448,7 +448,31 @@ export function legalActions(state, spiritId, view = {}) {
       const { inRange } = rigFor(self, ns);
       if (inRange) {
         for (const r of rivals) {
-          if (beam.has(r.num)) out.push({ kind: 'sonic', targetId: r.id, apCost: SONIC_AP_COST });
+          if (!beam.has(r.num)) continue;
+          // 🎤 THE RIFF-OFF IS THE SAME BUTTON, and that is why it is emitted in
+          // PLACE of the Sonic rather than alongside it.
+          //
+          // ⚠️ EMITTING BOTH WOULD BE THE §5b BUG ALL OVER AGAIN. The client has
+          // no separate riff-off action: `resolveSonic` checks these conditions
+          // and, if they hold, the Sonic BECOMES a duel — the player never gets
+          // to decline it. A generator that offered a plain `sonic` on a
+          // beam-to-beam target would be over-permissive in exactly the way §5b
+          // catalogues, and the searcher would happily plan a line no player can
+          // take. One target, one action, whichever the rules say it is.
+          //
+          // Three conditions, all required, transcribed from `resolveSonic`:
+          //   1. they sit in my beam (true to get here),
+          //   2. I sit in THEIRS — beam-to-beam down the same line,
+          //   3. their rig is live. A rival caught outside their own amp radius
+          //      has nothing to answer with, so there is no duel: the beam just
+          //      lands and they scramble a d4.
+          // Plus: a posing Spirit cannot answer either — they are mid-pose with
+          // their guard down, which is the trade §3.3 already priced.
+          const rns  = state.noteStates?.[r.id] ?? {};
+          const duel = !posing[r.id] && sonicBeam(r).has(self.num) && rigFor(r, rns).inRange;
+          out.push(duel
+            ? { kind: 'riffOff', targetId: r.id, apCost: SONIC_AP_COST }
+            : { kind: 'sonic',   targetId: r.id, apCost: SONIC_AP_COST });
         }
       }
     }

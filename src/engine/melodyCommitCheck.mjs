@@ -241,7 +241,12 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
     repeatPatLen: r.report.repeatPatLen,
     skipClimbLen: r.report.skipClimbLen,
     hasGatedEnding: r.report.hasGatedEnding,
-    hasRiff: !!r.report.riff, cadenceResolved: !!r.report.cadence,
+    cadenceResolved: !!r.report.cadence,
+    // 🎭 The per-Spirit style score is an INPUT to P, so re-deriving P without it
+    // is re-deriving a different number. Reading it off the report rather than
+    // re-detecting is the point of the assertion: it pins that the style the
+    // report announces is the same one that was paid for.
+    styleBig: r.report.style.score,
     earned: r.report.earned, edgeResolved: false, susEnd: false,
     discordCount: r.report.unpardonedDiscord, freestylePardon: false,
   });
@@ -252,6 +257,37 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
   // ⚠️ P must not appear anywhere in the Db arithmetic.
   eq(r.report.earnedTotal - r.report.earned, 0, 'P contributes exactly 0 Db');
   deep(r.patch.recentP.slice(-1), [r.report.perfScore], 'recentP keeps the last two shows');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 8b. 🎭 PER-SPIRIT STYLE — the riff library's replacement.
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ THE LOAD-BEARING ASSERTION IS THE LAST ONE: STYLE PAYS FANS AND NEVER FAME.
+// The riffs were retired because they handed over a third of the win in one
+// commit off the note DRAW. Anything that reinstates a Fame payout here has
+// re-created the mechanic, and it will look like a balance tweak in the diff.
+{
+  const plain  = run(composed(['C', 'D', 'E', 'F'],  {}, METAL), METAL);
+  const styled = run(composed(['C', 'F#', 'G', 'A'], {}, METAL), METAL);
+  deep(plain.report.style.hits, [], 'a line with none of his gestures scores no style');
+  deep(styled.report.style.hits, ['diabolus'], 'C→F# is a tritone, and G walks away from it');
+  ok(styled.report.perfScore > plain.report.perfScore,
+     'landing your Spirit’s gesture raises the Performance Score');
+
+  // The SAME track read from another seat scores nothing — this is what makes
+  // the commit phase distinguish the roster, which THEORY_ARCHITECTURE.md §2
+  // names as the one place four characters used to play identically.
+  const wrongSeat = run(composed(['C', 'F#', 'G', 'A'], {}, RONIN), RONIN);
+  deep(wrongSeat.report.style.hits, [], 'the tritone is Metalness’s gesture, not the Ronin’s');
+
+  const roninRun = run(composed(['C', 'D', 'E', 'F'], {}, RONIN), RONIN);
+  ok(roninRun.report.style.hits.includes('run'), 'four stepwise notes is the Ronin’s run');
+
+  // 🪦 THE RULE THE RIFFS BROKE.
+  eq(styled.patch.fame ?? 0, plain.patch.fame ?? 0, 'style pays no Fame — not one point');
+  ok((styled.report.perfExciteGain ?? 0) > (plain.report.perfExciteGain ?? 0),
+     '…it pays the CROWD, through P’s excitement, where it can only multiply');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -329,9 +365,18 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 11. ⚠️ THE ORDER OF `effects` — the riff's Fame sees the crowd this commit
-//     won, and NOT the cadence fans that land after it. No symptom until
-//     someone wonders why a riff paid 3 last week and 2 today.
+// 11. ⚠️ THE ORDER OF `effects` — a Fame effect must see the crowd THIS commit
+//     won, and NOT the cadence fans that land after it, because `grantFame`
+//     multiplies by the crowd. No symptom until someone wonders why the same
+//     play paid 3 last week and 2 today.
+//
+//     🪦 The riff was the effect this rule was written for, and it retired on
+//     2026-08-17 — so `fameAt` is currently always -1 and the ordering assertion
+//     below is DORMANT, not deleted. ⚠️ That is deliberate and it is the whole
+//     point of keeping it: the moment anything pays Fame at the commit again
+//     (the per-Spirit style system is expected to), this fires without anyone
+//     remembering to re-derive the rule. `fansIdx.length` is asserted
+//     unconditionally so the section cannot pass on an empty effects list.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const st = composed(['C', 'D', 'E'], { casuals: 4 }, RONIN, withSpirit(baseState(), RONIN, { num: LIMELIGHT_HEX }));
@@ -587,16 +632,20 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
        '…and never Fame directly');
   }
 
-  // ⭐ The riff is the only Fame a commit can pay, and rediscovery pays 1.
+  // 🪦 A riff discovery was the ONLY Fame a commit could pay, and rediscovery
+  //    paid a flat 1. Retired 2026-08-17 with the library.
+  //
+  // ⚠️ SO THE COMMIT NOW PAYS NO FAME AT ALL, and that is worth an assertion
+  // rather than an absence — it is a deliberate hole in the Fame economy, and
+  // the next person to read this file should be told so by a test rather than
+  // discover it from a bench number. Cadences still pay FANS (asserted above),
+  // which is the shape the per-Spirit style system is meant to grow into.
   const st = composed(['C', 'D', 'E']);
   const r = run(st);
-  if (r.report.riff) {
-    eq(r.report.riff.isNew, true, 'an empty riffbook makes every riff a discovery');
-    const again = run(st, RONIN, { view: { riffBook: { [r.report.riff.riffId]: METAL } } });
-    eq(again.report.riff.isNew, false, 'a known riff is not a discovery');
-    eq(again.report.riff.fp, 1, '…and pays a flat 1 FP');
-    ok(again.report.riff.fp <= FAME_PER_TURN_CAP, 'no single source can exceed the turn cap on its own');
-  }
+  eq(r.report.riff, undefined, '🪦 no riff award survives on the report');
+  ok(!r.effects.some(e => e.type === 'fame'),
+     '🪦 …and a melody commit pays NO Fame — the hole the style system has to fill');
+  ok(!('committedHasRiff' in r.patch), '🪦 …and nothing stashes a riff flag for the riff-off');
 }
 
 console.log(`✅ melodyCommitCheck — ${checks} assertions passed`);
