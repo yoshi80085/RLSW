@@ -286,5 +286,10 @@ re-climbs the path that already exists.
   place), and — for the first time — a term that is *negative* while an amp is
   blown.
 - **§5's weight table needs revisiting for him regardless.** `survival` 0.7 is the
-  lowest in the roster and `adjWounded` 1.5 the highest — a table written for the
-  bruiser-with-Azrael he no longer is.
+  lowest in the roster and `adjWounded` 1.5 was the highest — a table written for
+  the bruiser-with-Azrael he no longer is.
+  ⚠️ **`adjWounded` was CUT on 2026-08-17** (`BOT_STRATEGY_HANDOFF.md` §5): it paid
+  him for standing beside a bleeding rival, so it paid him for NOT finishing them,
+  and at 1.5 he was the roster's most reluctant closer. His share of it lives in
+  the new `pressure` term at **1.8**, still the roster's highest. `survival` 0.7
+  is untouched and still wants the revisit this bullet asks for.

@@ -169,6 +169,8 @@ you do not need Metalness finished to build the instrument, only to read it.
 LANDED** — `policies/actionScore.js` (`npm run test:score`) and
 `policies/play.js` (`npm run test:harness`, `npm run bench:bot`).
 **70.7% over 1749 decided matches, ±2.1 points; the bar was ≥60%.**
+⚠️ **SUPERSEDED 2026-08-17 — that run contained no fighting and charged nothing
+for attacking. Current: 56.3% ±4.5 over 469 decided. See §5.0.**
 See `BOT_STRATEGY_HANDOFF.md` §6.6 for what the number does and does not cover —
 the short version is that it is evidence about the SEARCHER, not a balance
 reading, because every bench match is played on base kits.
@@ -197,18 +199,52 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. NEXT UP — the evaluator cannot see a fight
+## 5. ✅ DONE 2026-08-17 — the evaluator can see a fight
 
-### 5.0 ⚠️ DO THIS BEFORE ANYTHING ELSE
+### 5.0 ✅ CLOSED — `pressure` is in, `adjWounded` is out, attacks cost something
 
-`evaluate` has no term for harming a rival, so the bot never attacks, so bench
-matches cannot end. Full write-up and the measured numbers:
-`BOT_STRATEGY_HANDOFF.md` §6.6.0. It supersedes §5a below — the inconclusive rate
-was never about the turn cap.
+`evaluate` had no term for harming a rival, so the bot never attacked, so bench
+matches could not end. Full write-up: `BOT_STRATEGY_HANDOFF.md` §6.6.0 (and
+§6.6.2 for the bug found underneath it).
 
-⚠️ It is a §5 weight-table decision, not a bug patch: "how much does this
-character value hurting someone" is most of what a personality IS, and it should
-differ per Spirit.
+**What landed:**
+
+- 💢 **`pressure`** — rival lives and Vibe missing, averaged across the field,
+  the mirror `survival` never had. Per-Spirit: Metalness **1.8**, Ronin 1.2,
+  Intergalactic 0 **0.6** (denial is his win path, not damage). The load-bearing
+  design point is that **lives are not reach-weighted and chip Vibe is** — a life
+  taken is banked and survives the respawn, chip damage is provisional and only
+  worth what you can reach. Reach decays to a **floor**, not zero, so there is a
+  gradient pointing at the wounded rather than a flat board outside melee.
+- 🪦 **`adjWounded` cut.** It was `pressure`'s Vibe half with a cliff instead of a
+  floor — a double-count whose duplicate inverted. It paid for standing beside
+  someone bleeding, so acting on it destroyed the payment, and Metalness held the
+  highest weight, making the bruiser the most reluctant finisher.
+- 🐛 **Attacks were FREE in the bench** and had always been. The Swing's 2 Drive
+  notes, the Sonic's 1 and `swingExposed` were never applied headlessly — a
+  defaulted destructure in `battleConsequences` swallowed the omission in
+  silence. Fourth bug of the §5b family. `transitionCheck` §8a pins it.
+
+**Measured:** inconclusive **37% → 9.8%** over 520 matches; a duel sample that
+logged ZERO attacks now decides **12/12**, mean 167 turns.
+
+⚠️ **BUT THE WIN RATE FELL TO 56.3% ±4.5, BELOW THE ≥60% BAR**, and that is now
+the open question rather than a closed step. It may not be a regression at all —
+the old 70.7%/65.7% figures were computed over the ~63% of matches that resolved,
+and those were never a random sample. See §6.6's step 6 for the two competing
+readings and the A/B that separates them.
+
+### 5.0a ⚠️ DO THIS BEFORE TUNING ANYTHING
+
+**Run `pressure` at weight 0 against the same seeds.** Same attack costs, same
+everything else. It is the only way to tell what the term did from what the cost
+fix did, and every retune before it is guesswork wearing a number.
+
+📌 **And the bot is still attack-shy** — 2 swings per match, and the Sonic is
+**never chosen once**, despite scoring above every alternative in an isolated
+probe at a 4-note stack. That gap between the probe and the match is a thread
+worth pulling: it is the shape of a beam that is not offering the action, not of
+a weight that is too low.
 
 ---
 

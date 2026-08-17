@@ -330,19 +330,41 @@ both multiplied by an **investment horizon** (`1 - fame/fameToWin`) per §3.6 an
 | inside own rig radius | 1.0 | **1.6** | 0.8 |
 | holding a ⚡ charge | 0.5 | **2.2** | 0.5 |
 | rival refill denied | 0.3 | **1.5** | 0.4 |
-| adjacency to wounded rival | 0.8 | 0.4 | **1.5** |
+| ~~adjacency to wounded rival~~ 🪦 **CUT 2026-08-17** | ~~0.8~~ | ~~0.4~~ | ~~1.5~~ |
 | distance from board edge | **1.3** | 0.9 | 0.6 |
 | Db banked vs. match remaining | 1.0 | 1.0 | 1.0 |
 | rival pose count (threat) | 1.0 | 1.0 | 1.0 |
 | **target upside** (was "underdog penalty") | 1.0 | 1.0 | 1.0 |
 | 🎓 **kit** — Db converted into capability (NEW) | 1.6 | 1.6 | 1.6 |
+| 💢 **pressure** — how close the rivals are to finished (NEW) | 1.2 | 0.6 | **1.8** |
 
 ⚠️ **The last two rows are new terms with no equivalent in `botHexScore` today.**
 They are also the two most likely to change observed win rates, because they
 correct outright blind spots rather than re-weighting existing sight. Term keys
 in code, in table order: `survival`, `fame`, `fanMult`, `perfCliff`, `drive`,
-`sustain`, `apBanked`, `inRig`, `charge`, `refillDenied`, `adjWounded`,
-`edgeSafety`, `dbHorizon`, `rivalPose`, `targetUpside`, `kit`.
+`sustain`, `apBanked`, `inRig`, `charge`, `refillDenied`, `edgeSafety`,
+`dbHorizon`, `rivalPose`, `targetUpside`, `kit`, `pressure`.
+
+💢 **`pressure` is NEW (2026-08-17) and it is the mirror `survival` never had.**
+Rival lives and Vibe missing, averaged across the field, with the Vibe half
+reach-weighted and the LIVES half not. Full write-up in §6.6.0; the two-line
+version is that nothing in this table used to say hitting somebody was good, so
+nobody ever did. Its three weights are the answer to "how much does this
+character value hurting someone", which is most of what a personality is:
+Metalness highest at 1.8, Intergalactic 0 lowest at 0.6 because denial is his win
+path rather than damage, the Ronin between them at 1.2. **Starting points, like
+every number in this table.**
+
+🪦 **`adjWounded` was CUT the same day, and it was not a re-weighting either.**
+It scored `max` over ADJACENT rivals of the fraction of Vibe they were missing —
+which is exactly `pressure`'s Vibe half, hard-gated at distance 1 instead of
+decayed. Keeping both priced chip damage twice, and the duplicate was the copy
+that pointed backwards: it paid for **standing next to** someone bleeding, so
+finishing them destroyed the payment. Measured — a rival on 1/4 Vibe beside the
+Ronin was worth +0.600, and the blow that took their life dropped it to 0 because
+they respawn at home across the board. Metalness held the highest weight at 1.5,
+so the bruiser was the roster's *most* reluctant finisher. His character did not
+go anywhere; it moved into `pressure` 1.8, where it survives being acted on.
 
 🎓 **`kit` is NEW (2026-08-16) and it is not a re-weighting, it is a missing
 half.** Without it `dbHorizon` scored the pool in one state only — banked — so
@@ -432,7 +454,17 @@ tempo for rivals. Re-read this when the searcher starts scoring opponent replies
    player nothing.
 6. ~~**Harness = the test bench.**~~ ✅ **DONE 2026-08-16** —
    `policies/play.js`, pinned by `harnessCheck.mjs` (`npm run test:harness`,
-   2003 assertions), driven by `npm run bench:bot`.
+   **1974** assertions), driven by `npm run bench:bot`.
+
+   📌 **That count read 2003 until 2026-08-17 and the drop is not lost coverage.**
+   Most of `harnessCheck` asserts per ACTION inside `for (const a of turn.actions)`,
+   so its total is a function of how long the sampled matches run. Once the bot
+   could fight, those matches got shorter and more decisive (mean 167 turns
+   against a 400 cap) and the loop ran fewer times. ⚠️ Worth stating because the
+   general rule cuts the other way: **a falling assertion count is normally a
+   coverage regression and should be explained, not waved through** — this one is
+   explained by the match length moving, and if it drops again without the match
+   length moving, that is a real loss.
 
    **Result: 65.7% over 303 decided matches (±5.3 points, 95%). Bar is ≥60% —
    cleared.** 480 matches with unlocks live, seats swapped every other match.
@@ -446,6 +478,43 @@ tempo for rivals. Re-read this when the searcher starts scoring opponent replies
    400-turn cap. ⚠️ **37% inconclusive makes this the weaker number of the two**,
    and the honest next move is a longer cap or a shorter Fame target rather than
    more matches: more samples of a truncated game measure the cap.
+
+   ⚠️ **BOTH NUMBERS ARE SUPERSEDED — 2026-08-17. Neither measured a game with
+   fighting in it** (§6.6.0), and neither charged an attacker for attacking
+   (§6.6.2). **The current reading is 56.3% ±4.5 over 469 decided matches**, from
+   520 played, with `pressure` in, `adjWounded` cut and attack costs applied.
+
+   🎯 **THAT IS BELOW THE ≥60% BAR, and it should not be explained away.** Two
+   readings, and they are not exclusive:
+
+   1. **The old numbers were computed on a biased subsample and read as though
+      they were not.** `runBench` correctly excludes inconclusive matches from
+      the rate — but when 37% of matches were excluded, the survivors were not a
+      random 63%. A match resolved when somebody ran away with the Fame race,
+      which is precisely the situation a stronger searcher creates. Dropping the
+      stalls dropped the hard cases. Now that **9.8%** stall instead of 37%, the
+      rate is computed over very nearly the whole population and the edge looks
+      smaller because more of the difficult games are finally in it. If this is
+      the whole story, 56.3% is not a regression — it is the first honest
+      measurement, and the bar was set against a number that never meant what it
+      appeared to.
+   2. **Or the new weights are simply not tuned.** `pressure`'s three values are
+      starting points that have now had exactly one bench run pointed at them,
+      and §5's standing warning applies with full force.
+
+   ⚠️ **Do not resolve this by tuning `pressure` until the two are separated.**
+   The clean experiment is an A/B at fixed seeds with `pressure` at weight 0 —
+   same attack costs, same everything else — which isolates what the term did
+   from what the cost fix did. Reading (1) predicts the inconclusive rate stays
+   near 10% and the win rate barely moves; reading (2) predicts it moves.
+
+   📌 **And the bot is still very attack-shy.** A 12-match duel sample logs
+   11,639 melody notes, 8,125 moves and **24 swings** — 2 per match, 0.012 per
+   turn — with **zero Sonics ever chosen**, even though an isolated probe scores
+   the Sonic ABOVE every alternative at a 4-note stack. Going from literally zero
+   attacks to a handful of decisive ones was enough to make matches end (12/12
+   decided, mean 167 turns). It is not enough to call combat solved, and the
+   never-fired Sonic is the more suspicious half of it.
 
    ⚠️ **THE BASELINE IS `unranked`, NOT THE SHIPPED BOT, AND THAT IS A CHOICE.**
    The current bot is a React step-machine (`botStepRef`, `schedule()`,
@@ -476,9 +545,16 @@ tempo for rivals. Re-read this when the searcher starts scoring opponent replies
    ✅ §6b.1's caveat stays lifted at the transition layer — but see below for
    where it came back.
 
-### 6.6.0 ⚠️ READ FIRST — THE BENCH NUMBERS BELOW MEASURE A GAME WITH NO FIGHTING IN IT
+### 6.6.0 ✅ RESOLVED 2026-08-17 — the evaluator can see a fight now
 
-**Found 2026-08-17, and it invalidates the win rates in §6.6 as balance evidence.**
+> **The diagnosis below was right and its evidence was wrong in two places.**
+> Both corrections are marked 🩹 inline; read them before quoting any number
+> from this section. The fix shipped the same day: `pressure` (§5) plus the
+> attack-cost bug in §6.6.2. **Inconclusive matches fell from 37% to 9.8%** over
+> 520 fresh matches, and a 12-match duel sample that previously logged ZERO
+> attacks now decides 12 out of 12, mean 167 turns.
+
+**Found 2026-08-17, and it invalidated the win rates in §6.6 as balance evidence.**
 
 `evaluate` HAS NO TERM FOR HARMING A RIVAL. Read the §5 table again with that in
 mind: twelve of the sixteen terms describe your OWN position, and the only four
@@ -488,19 +564,41 @@ drain) and `rivalPose` (a threat to fear). **Rival Vibe appears nowhere.** Not a
 a term, not inside another term.
 
 So a bot maximising this score cannot see that hitting somebody is good, while it
-sees every cost of hitting them perfectly well: the AP, the two Drive notes spent
-on a hit, and `swingExposed`'s −1 Sustain until its next turn. Measured, with the
-Ronin standing adjacent to Intergalactic 0, facing him, holding a legal Swing
-that lands:
+sees the costs of hitting them.
+
+🩹 **CORRECTION 1 — it did not see "every cost… perfectly well".** It saw the AP
+and nothing else. The two Drive notes and `swingExposed` were **never applied in
+the headless path at all** — every bench Swing was free. See §6.6.2. The
+sentence was true of the game and false of the engine, which is the whole
+recurring problem in one line.
+
+Measured, with the Ronin standing adjacent to Intergalactic 0, facing him,
+holding a legal Swing:
 
 ```
 base            5.1350
   face         -0.1800   ← chosen
   move         -0.5050
   sonic        -0.5000
-  swing        -0.6450   ← lands, takes the rival 5 Vibe → 4
+  swing        -0.6450   ← 🩹 NOT a hit. See below.
   endTurn      -0.9000
 ```
+
+🩹 **CORRECTION 2 — THAT SWING MISSED.** The row was labelled "lands, takes the
+rival 5 Vibe → 4". Re-running the identical fixture reproduces `−0.6450` exactly
+and **the rival's Vibe never moves**: it is a whiff, plus the defender's counter
+(−1 Vibe on the attacker) and the knockback that follows it. A swing that
+actually connects scores **−0.1212**, and it is not the worst option on the
+board — it beats `move`, `sonic` and `endTurn`. Worth recording as its own
+lesson: the sample was chosen by one rng seed and read as though the label were
+data. **A single sample of a dice game is an anecdote.** The honest shape is a
+distribution — swept across Drive stack size, the Swing's hit rate runs 17.8% on
+one note to 100% on eight, so "should I attack" was never one question.
+
+🩹 **And damage was never worth literally nothing** — it pays through `fame`
+(+0.063 × 1.2 = **+0.075** on a landing blow). The claim to keep is the weaker
+and still-decisive one: the reward was far too small to cover the AP, and no term
+grew as a rival got closer to being finished.
 
 **Every option is a loss, and the attack is nearly the worst one.** The bot
 shuffles and re-faces until its AP is gone, ends turn, repeats. Over 120 turns of
@@ -519,13 +617,81 @@ is still a fair A/B — both sides were equally blind — so §6.3's ranking wor
 stands. What is worthless until this is fixed is any reading about the ROSTER, the
 kits, or the pacing, because no bench match has ever contained a fight.
 
-🔧 **The fix is a term, not a rescue.** Something like `pressure` — rival Vibe
-missing, normalised per rival and weighted by reach — as the mirror of `survival`.
+🔧 ✅ **THE FIX SHIPPED — `pressure`, and it is a term, not a rescue.** Rival lives
+and Vibe missing, averaged across the field, as the mirror of `survival`.
+
+⚠️ **The one design point worth carrying forward: LIVES ARE NOT REACH-WEIGHTED
+AND CHIP VIBE IS.** They are different kinds of progress and collapsing them
+re-creates the bug in a new place. A life taken is BANKED — it survives the
+respawn and cannot be walked away from — whereas chip Vibe heals, resets on
+respawn, and is only worth anything if you are close enough to convert it. Decay
+the life by distance and finishing a rival scores WORSE than leaving them
+bleeding beside you, because they respawn at home across the board. The reach
+term is also a **floor (0.35), not a cutoff**: at zero, the score is flat
+everywhere outside melee, there is no gradient pointing at the wounded one, and
+the bot never walks over to finish the job.
+
+📌 `adjWounded` was cut in the same pass — it was this term's Vibe half with a
+cliff instead of a floor, and it inverted. See §5.
 ⚠️ It is a §5 DESIGN decision (how much should a character value hurting someone?
 that answer differs per Spirit and is most of what "aggressive" means), so it
 wants a deliberate pass, not a patch. Note that `adjWounded` at 1.5 for Metalness
-already assumes this term exists underneath it: "finish the wounded" only reads as
-a bruiser trait if "hurt people" is scored at all.
+already assumed this term existed underneath it: "finish the wounded" only reads
+as a bruiser trait if "hurt people" is scored at all. ✅ It does now, and
+`adjWounded` is gone — his 1.5 became `pressure` 1.8.
+
+---
+
+### 6.6.2 🐛 IN THE BENCH, ATTACKING WAS FREE — the fourth gate bug, and the quietest
+
+**Found and fixed 2026-08-17, while trying to size `pressure`'s weight.** It is
+the same shape as the three in §6.6.1 and it is worth its own section because of
+*how* it hid.
+
+`applyBotAction` never spent the Swing's 2 Drive notes, never set `swingExposed`,
+and never spent the Sonic's 1 note. Every headless attack in every bench match
+ever run was **free**: no ammunition, no dropped guard.
+
+⚠️ **THE DEFAULT SWALLOWED THE EVIDENCE, and that is the transferable lesson.**
+The client's `resolveSwing` computes `swingChordLeft` / `swingChordSpent` and
+hangs them on its own React battle object; `battleConsequences` — the *shared*
+generator both paths drive — destructures them as:
+
+```js
+const { …, swingChordLeft = [], swingChordSpent = [] } = battle;
+```
+
+The engine's `attackRolled` action carried a **whitelist** of fields and those
+two were not on it, so `state.battle` never had them, so the generator burned
+nothing, **logged nothing, and threw nothing.** A defaulted destructure cannot
+tell *"this Spirit has no notes left to spend"* from *"nobody told me what to
+spend"*. Both read as `[]`. This is the over-permissive failure of §6a arriving
+through a language feature rather than a missing `if`.
+
+📌 **It also means one sentence in §6b was false for as long as it has been
+there:** "movement, facing, melody notes, stack commits, skill unlocks, Swing,
+Sonic, end of turn — everything else is exact." The mechanics were exact. The
+*prices* were not, and nothing asserted them, which is exactly how §6.6.1's
+`skillUnlock` fiction survived. **A claim with no assertion behind it is a wish.**
+`transitionCheck` §8a is now that assertion.
+
+**The two kinds pay differently, and the difference is the rule:**
+
+| | spends | when | drops guard |
+|---|---|---|---|
+| **Swing** | 2 Drive notes | **on a hit only** — whiffing keeps the stack | ✅ `swingExposed`, hit or miss |
+| **Sonic** | 1 Drive note | **hit or miss** — the note left the rig | ❌ range is the point of it |
+
+⚠️ The Sonic's spend is applied **after** `attackParams` derives the chord and
+**before** the roll. Pay it earlier and the beam fires weaker than the one the
+player throws.
+
+⚠️ **And it changed the balance reading in the direction you would expect.** With
+attacks free, a loaded Swing already scored better than shuffling; priced
+correctly it costs `drive −0.27` at a 4-note stack, which is what makes
+`pressure`'s weight a real trade rather than a free bonus. Sizing the term
+against the unpriced version would have produced a bot that brawls constantly and
+a bench number about a game nobody plays.
 
 ---
 
@@ -643,8 +809,17 @@ should never see this, and if it does, the two files have drifted) or
 3. **`pose` moves `view.posing` only** — the per-round FP tick and Sustain toll
    are on the client's turn clock.
 
-Everything else — movement, facing, melody notes, stack commits, skill unlocks,
+Everything else — movement, facing, melody notes, stack commits, skill targets,
 Swing, Sonic, end of turn — is exact.
+
+⚠️ **THIS SENTENCE WAS FALSE FOR THE ATTACKS UNTIL 2026-08-17 AND NOTHING CAUGHT
+IT.** The Swing's 2 Drive notes, the Sonic's 1, and `swingExposed` were all
+missing from this path — the mechanics resolved exactly and the *prices* were
+never charged. §6.6.2 has the write-up. What made it survivable was that no
+assertion existed for any of it, so "exact" was a claim this file made about
+itself. `transitionCheck` §8a now pins all three, and the general rule is worth
+stating: **when this doc says a kind is exact, there should be a check named
+beside it.**
 
 **`applyBotLine` is ATOMIC**: all of it applies or none of it does. Returning a
 partially-advanced state would let a caller score a *truncated* line as the line

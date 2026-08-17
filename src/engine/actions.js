@@ -214,10 +214,16 @@ export function riffClosed() {
  */
 export function attackRolled(kind, attackerId, defenderId,
   { atkStat, defStat, posing = false, halveDef = false, dicePool = null,
-    atkFloor = 0, atkDie = 6, defDie = 6 }) {
+    atkFloor = 0, atkDie = 6, defDie = 6,
+    swingChordLeft = [], swingChordSpent = [] }) {
   return {
     type: ATTACK_ROLLED, kind, attackerId, defenderId,
     atkStat, defStat, posing, halveDef, dicePool, atkFloor, atkDie, defDie,
+    // 🎸 The Swing's deferred chord burn — spent by `battleConsequences` on a
+    // HIT ONLY. ⚠️ It travels on the ACTION rather than being re-derived in the
+    // reducer because the stack must be read BEFORE the blow; re-deriving it
+    // downstream would slice a stack the fight has already changed.
+    swingChordLeft, swingChordSpent,
   };
 }
 

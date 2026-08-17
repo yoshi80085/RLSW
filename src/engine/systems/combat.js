@@ -201,6 +201,7 @@ export function applyAttackRolled(state, action, rng) {
     kind, attackerId, defenderId,
     atkStat = 0, defStat = 0, posing = false, halveDef = false,
     dicePool = null, atkFloor = 0, atkDie = 6, defDie = 6,
+    swingChordLeft = [], swingChordSpent = [],
   } = action;
 
   const clampFloor = v => Math.max(v, 1 + atkFloor);
@@ -243,6 +244,14 @@ export function applyAttackRolled(state, action, rng) {
       // Preserved so ATTACK_REROLLED can redo the attacker's draw with the
       // exact same dice shape it was originally rolled with.
       dicePool, atkFloor, atkDie,
+      // 🎸 The Swing's deferred chord burn, carried so `battleConsequences` can
+      // spend it on a hit. ⚠️ It lives on `state.battle` rather than only in the
+      // caller's hand for the same reason the reroll payload does: every
+      // consumer that drives the aftermath from engine state — the bot's
+      // transition, a server, a replay — must see the same price. It did not
+      // until 2026-08-17, and because `battleConsequences` defaults both to
+      // `[]`, the omission burned nothing and said nothing.
+      swingChordLeft, swingChordSpent,
       rerolled: false,
     },
   };

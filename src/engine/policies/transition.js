@@ -60,7 +60,7 @@ import {
   elevenCalled,
 } from "../actions.js";
 import { battleConsequences, runBattleFlow, grantFame } from "../systems/battleFlow.js";
-import { attackParams, spiritChord } from "../systems/attackParams.js";
+import { attackParams, spiritChord, SONIC_DRIVE_SPEND } from "../systems/attackParams.js";
 import { usedAdd } from "../systems/economy.js";
 import { commitMelodyEconomy } from "../systems/melodyCommit.js";
 import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
@@ -281,6 +281,37 @@ export function applyBotAction(state, action, ctx = {}) {
       // armour stays switched off for the rest of the match.
       if (_derived.consumedSmashExposed) {
         next = patchNs(next, action.targetId, { smashExposed: false }, rng);
+      }
+
+      // 🎸 WHAT THE ATTACK COSTS THE ATTACKER. Both halves were MISSING until
+      // 2026-08-17, which made every headless attack free and every bench win
+      // rate a reading of a game nobody plays. §6.6.0 diagnosed a bot that
+      // "sees every cost of hitting them perfectly well" — it saw none of them.
+      //
+      // ⚠️ THE TWO KINDS PAY DIFFERENTLY AND THE DIFFERENCE IS THE RULE, not a
+      // detail. Collapsing them into one branch is the trap:
+      //
+      //   · SONIC spends 1 Drive note HIT OR MISS, because the note left the rig
+      //     the moment it was projected. It is paid HERE — after `attackParams`
+      //     has derived the chord off the FULL stack, before the roll. Pay it
+      //     earlier and the beam fires weaker than the one the player throws.
+      //   · SWING spends 2 Drive notes ON A HIT ONLY (whiffing keeps the stack),
+      //     so its spend is a CONSEQUENCE and rides `swingChordSpent` into
+      //     `battleConsequences`. Nothing to do here but take the guard down.
+      //
+      // 🥊 `swingExposed` is UNCONDITIONAL and it is the attacker's, not the
+      // defender's: committing to melee drops your guard for −1 Sustain until
+      // your next turn, whether or not the blow lands. Ranged Sonic keeps you
+      // safe. `attackParams` reads this flag on the DEFENDER, so an evaluator
+      // that never sets it on the attacker prices melee as risk-free and
+      // over-rates it — exactly the direction §7 warns about.
+      if (rollKind === 'sonic') {
+        const stack = pre?.noteStates?.[spiritId]?.driveStack ?? [];
+        if (stack.length) {
+          next = patchNs(next, spiritId, { driveStack: stack.slice(SONIC_DRIVE_SPEND) }, rng);
+        }
+      } else {
+        next = patchNs(next, spiritId, { swingExposed: true }, rng);
       }
 
       next = applyAction(next, attackRolled(rollKind, spiritId, action.targetId, rollOpts), rng);

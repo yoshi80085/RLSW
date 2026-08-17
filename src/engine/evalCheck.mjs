@@ -21,8 +21,8 @@ import assert from "node:assert";
 import { makeInitialState } from "./state.js";
 import {
   evaluate, evalScore, weightsFor, targetMultiplier, posePayout,
-  distFromEdge, distFromHome, boomBoxLit, fameToWin,
-  EVAL_WEIGHTS, DEFAULT_WEIGHTS, PERF_CLIFF, MAX_EDGE_DIST,
+  distFromEdge, distFromHome, boomBoxLit, fameToWin, reachWeight,
+  EVAL_WEIGHTS, DEFAULT_WEIGHTS, PERF_CLIFF, MAX_EDGE_DIST, PRESSURE_REACH_FLOOR,
 } from "./policies/evaluate.js";
 import { underdogBonus } from "./systems/combat.js";
 import {
@@ -267,8 +267,9 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 11. ADJACENCY TO THE WOUNDED — the bruiser's shape. A wounded rival across
-//     the board is a PLAN, not a position, and must not score as one.
+// 11. 💢 PRESSURE — the mirror of `survival`, and the replacement for the cut
+//     `adjWounded`. Four properties, and three of them are guards against a
+//     specific way this term can invert.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const st   = baseState();
@@ -281,9 +282,73 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
   const nearFull = withSpirit(st, METAL, { num: neighbour.num });
   const nearHurt = withSpirit(nearFull, METAL, { vibe: 1 });
 
-  eq(term(farHurt, RONIN, 'adjWounded'), 0, 'a bleeding rival across the board scores nothing');
-  eq(term(nearFull, RONIN, 'adjWounded'), 0, 'an adjacent rival at FULL Vibe scores nothing');
-  ok(term(nearHurt, RONIN, 'adjWounded') > 0, 'adjacent AND bleeding is the term that fires');
+  // 🪦 The cut term is GONE, not zeroed. A term left in the table at weight 0 is
+  // a trap: it reads as a considered weighting rather than a deleted rule.
+  eq(evaluate(st, RONIN).terms.adjWounded, undefined, '🪦 adjWounded is gone from the terms');
+  eq(evaluate(st, RONIN).weights.adjWounded, undefined, '🪦 ...and gone from the weights');
+
+  // A healthy field is zero pressure; hurting anyone is strictly positive.
+  eq(term(st, RONIN, 'pressure'), 0, 'a full-health field scores no pressure');
+  ok(term(nearHurt, RONIN, 'pressure') > 0, 'an adjacent bleeding rival scores');
+
+  // ⚠️ THE FLOOR, NOT A CLIFF. `adjWounded` scored a distant wound at exactly 0,
+  // which left the board flat outside melee and gave the bot no gradient to walk
+  // down. A wound must still be worth something at range — just less.
+  ok(term(farHurt, RONIN, 'pressure') > 0,
+     '💢 a bleeding rival across the board is worth SOMETHING (the floor)');
+  ok(term(nearHurt, RONIN, 'pressure') > term(farHurt, RONIN, 'pressure'),
+     '💢 ...and worth more when you can reach them — that gradient is the approach');
+  eq(term(nearFull, RONIN, 'pressure'), 0, 'an adjacent rival at FULL Vibe scores nothing');
+
+  // ⚠️ MONOTONE IN DISTANCE. A term that could RISE as a rival retreats would pay
+  // the bot for letting them go.
+  for (let d = 1; d <= 6; d++) {
+    ok(reachWeight(d) <= reachWeight(d - 1) + 1e-12,
+       `💢 reach weight never rises as distance grows (${d - 1} → ${d})`);
+  }
+  eq(reachWeight(0), 1, 'a rival on top of you is full reach');
+  eq(reachWeight(1), 1, 'melee reach is full value');
+  eq(reachWeight(99), PRESSURE_REACH_FLOOR, 'past the beam it is flat at the floor');
+
+  // ⚠️ THE INVERSION THAT KILLED `adjWounded`. Taking a life must never score
+  // WORSE than leaving the rival bleeding — they respawn at home, far away and
+  // at full Vibe, so any term that reach-weights the LIFE collapses on the exact
+  // blow it should reward. This is the assertion that pins the lives/Vibe split.
+  const onTheRopes = withSpirit(nearFull, METAL, { vibe: 1, lives: 3 });
+  const lifeTaken  = withSpirit(st, METAL,
+    { vibe: 5, lives: 2, num: CORNERS.yellow.homeNum });   // respawned, full, far
+  ok(term(lifeTaken, RONIN, 'pressure') > term(onTheRopes, RONIN, 'pressure'),
+     '💢 TAKING A LIFE beats leaving them bleeding next to you — the respawn must not undo it');
+
+  // 📌 A knocked-out rival is banked at the maximum and cannot decay.
+  const koed = withSpirit(st, METAL, { knockedOut: true, lives: 0, vibe: 0 });
+  ok(term(koed, RONIN, 'pressure') > term(lifeTaken, RONIN, 'pressure'),
+     '💢 a knocked-out rival is the most pressure there is');
+
+  // 🟢 The bruiser values damage most; 📻 the controller least. That ordering IS
+  // the character, now that it lives here instead of in `adjWounded`.
+  //
+  // ⚠️ EACH SPIRIT IS ASKED ABOUT A VICTIM STANDING NEXT TO *THEM*. Scoring one
+  // shared board from three corners would compare weights times three different
+  // reach factors, and the geometry — not the weight column — would decide who
+  // "cares more". The victim moves so that only the weight differs.
+  const victimOf = (id) => {
+    const me = HEX_BY_NUM[st.spirits.find(x => x.id === id).num];
+    const nb = Object.values(HEX_BY_NUM).find(h =>
+      Math.max(Math.abs(h.q - me.q), Math.abs(h.r - me.r),
+               Math.abs((h.q + h.r) - (me.q + me.r))) === 1
+      && !st.spirits.some(x => x.num === h.num));
+    return nb;
+  };
+  const values = (id) => {
+    const victim = st.spirits.find(x => x.id !== id);           // anyone but them
+    const nb = victimOf(id);
+    const full = withSpirit(st, victim.id, { num: nb.num });
+    const hurt = withSpirit(full, victim.id, { vibe: 1 });
+    return evalScore(hurt, id) - evalScore(full, id);
+  };
+  ok(values(METAL) > values(RONIN), '🟢 hurting a rival is worth more to Metalness than to the Ronin');
+  ok(values(RONIN) > values(ZERO),  '📻 ...and least of all to Intergalactic 0, whose win path is denial');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

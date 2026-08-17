@@ -264,8 +264,11 @@ own.
 §5's whole thesis is "the Spirit IS the plan." But look at the shipped eval
 table: **`perfCliff` is the only musical term in it.** Every other weight —
 `survival`, `fame`, `fanMult`, `drive`, `sustain`, `apBanked`, `inRig`, `charge`,
-`refillDenied`, `adjWounded`, `edgeSafety`, `dbHorizon`, `rivalPose`,
-`targetUpside` — is combat, board or economy.
+`refillDenied`, `edgeSafety`, `dbHorizon`, `rivalPose`, `targetUpside`, `kit`,
+`pressure` — is combat, board or economy. (`adjWounded` was cut 2026-08-17 and
+`pressure` added; the count changed, the point did not — if anything the two
+newest terms are combat and economy, so the imbalance this section names got
+slightly worse.)
 
 So today, four Spirits **fight** differently and **play music** identically. The
 commit phase is the game's spine (§1) and where most of its decisions live, and

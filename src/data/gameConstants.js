@@ -298,6 +298,13 @@ export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
 // 📌 They are grouped by the ability that owns them rather than sorted, so a
 // retune reads as one block.
 
+// 🔊 THE SONIC BEAM'S LENGTH — flat 3 for everyone since Sunbeam stopped being a
+// range capstone. It is the LONGEST reach any attack in the game has, which is
+// why it lives here rather than in one policy file: `legalActions` uses it to
+// build the beam, and `evaluate` uses it as the distance past which a rival is a
+// plan rather than a target. One number, two consumers, no transcription.
+export const SONIC_BEAM_REACH = 3;
+
 // ☀️ SUNBEAM — the whiteout.
 export const SUNBEAM_DB_COST         = 2;    // Db charged per connecting attack
 export const SUNBEAM_BLIND_TURNS     = 1;    // turns of whiteout on a clean proc

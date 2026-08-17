@@ -43,7 +43,7 @@ import { skillEligibility } from "../systems/skills.js";
 import { rigFor } from "../systems/attackParams.js";
 import { canCallEleven } from "../systems/eleven.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
-import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS } from "../../data/gameConstants.js";
+import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH } from "../../data/gameConstants.js";
 import { CONE_HALF_ARC, SPIRIT_ONLY_ROUTE } from "./bot.js";
 // 📻 The Boom Box rule — Intergalactic 0 reads distance 0 while charged, which
 // is what keeps his Sonic legal out on the board — used to be imported here as
@@ -59,7 +59,10 @@ export const SONIC_AP_COST = 2;   // the Sonic button: moveStepsLeft < 2 greys i
 export const MOVE_AP_COST  = 1;   // one hex, one step
 export const FACE_AP_COST  = 1;   // `applySpiritFaced` default cost
 export const MELODY_MAX    = 8;   // `if (melodyLine.length >= 8) return;`
-export const SONIC_BEAM_REACH = 3; // flat 3 for everyone since Sunbeam stopped being a range capstone
+// 🔊 Re-exported, not defined: it moved to `gameConstants` when `evaluate` needed
+// the same number to decide what counts as "in reach" (§5 `pressure`). Importers
+// that already read it from here keep working.
+export { SONIC_BEAM_REACH };
 
 // ── Geometry, mirrored from the client ──────────────────────────────────────
 

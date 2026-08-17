@@ -355,6 +355,86 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// 8a. 🎸 WHAT THE ATTACK COSTS THE ATTACKER — and until 2026-08-17 it cost
+//     NOTHING. Every headless Swing was free: `attackParams` never supplied
+//     `swingChordLeft`/`swingChordSpent`, and `battleConsequences` destructures
+//     both with `= []`, so the burn was skipped in SILENCE — the generator could
+//     not tell "no notes left" from "nobody told me". Nothing set `swingExposed`
+//     either. So the bench was scoring a game in which melee is risk-free.
+//
+//     ⚠️ THESE ASSERTIONS ARE THE CLAIM, not decoration. §6b says movement,
+//     Swing and Sonic are "exact"; that sentence had nothing backing it for the
+//     price half, which is exactly how it stayed wrong for so long.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  const stack = ['A', 'C', 'E', 'G', 'B'];
+  const st = withNs(armed(confirmed(baseState())), RONIN, { driveStack: [...stack] });
+
+  // Walk seeds until the Swing has been seen both landing and whiffing — the
+  // whole rule is that these two pay DIFFERENTLY.
+  //
+  // 📌 Two fixtures, because a 5-note chord against a bare defender essentially
+  // never misses: the defender is braced with a full Sustain stack for the whiff
+  // hunt. The ATTACKER's stack is identical in both, which is what the
+  // assertions below read.
+  const braced = withNs(st, METAL, { sustainStack: ['A', 'C', 'E', 'G', 'B'] });
+  const findVerdict = (state, won) => {
+    const act = ofKind(legalActions(state, RONIN), 'swing')[0];
+    if (!act) return null;
+    for (let seed = 1; seed < 400; seed++) {
+      const r = applyBotAction(state, act, { rng: rngOf(seed) });
+      if (r.ok && r.battle.attackerWon === won) return r;
+    }
+    return null;
+  };
+  const hit  = findVerdict(st, true);
+  const miss = findVerdict(braced, false) ?? findVerdict(st, false);
+  ok(hit && miss, 'the fixture produced both a landing and a whiffing Swing');
+
+  eq(hit.state.noteStates[RONIN].driveStack.length, stack.length - 2,
+     '🎸 a Swing that LANDS burns 2 Drive notes');
+  eq(miss.state.noteStates[RONIN].driveStack.length, stack.length,
+     '🎸 ...and a Swing that WHIFFS keeps the stack intact — whiffing no longer taxes you');
+  eq(hit.state.noteStates[RONIN].driveStack.join(''), stack.slice(2).join(''),
+     '🎸 ...and it burns from the FRONT, the same slice the client takes');
+
+  // 🥊 The guard drops either way. It is the attacker's own debuff, and it is
+  // what stops the evaluator pricing melee as free.
+  eq(hit.state.noteStates[RONIN].swingExposed, true,  '🥊 a landed Swing drops your guard');
+  eq(miss.state.noteStates[RONIN].swingExposed, true, '🥊 ...and so does a whiffed one — the commitment is the cost');
+
+  // 🔊 The Sonic pays a different price on a different clock: 1 note, hit or
+  // miss, and NO exposure. Collapsing the two kinds into one branch is the trap.
+  const stS = withNs(st, RONIN, { driveStack: [...stack] });
+  const sonic = ofKind(legalActions(stS, RONIN), 'sonic')[0];
+  if (sonic) {
+    let sHit = null, sMiss = null;
+    for (let seed = 1; seed < 200 && !(sHit && sMiss); seed++) {
+      const r = applyBotAction(stS, sonic, { rng: rngOf(seed) });
+      if (!r.ok) continue;
+      if (r.battle.attackerWon) sHit ??= r; else sMiss ??= r;
+    }
+    for (const [label, r] of [['landing', sHit], ['whiffing', sMiss]]) {
+      if (!r) continue;
+      eq(r.state.noteStates[RONIN].driveStack.length, stack.length - 1,
+         `🔊 a ${label} Sonic spends exactly 1 Drive note — the note left the rig either way`);
+      eq(r.state.noteStates[RONIN].swingExposed, false,
+         `🔊 ...and a ${label} Sonic never drops your guard — range is the point of it`);
+    }
+  }
+
+  // 📌 An empty stack must not throw or go negative — the Spirit simply has
+  // nothing to burn.
+  const dry = withNs(st, RONIN, { driveStack: [] });
+  const dSwing = ofKind(legalActions(dry, RONIN), 'swing')[0];
+  if (dSwing) {
+    const rD = applyBotAction(dry, dSwing, { rng: rngOf(3) });
+    eq(rD.ok, true, 'a Swing off an empty Drive stack still resolves');
+    eq(rD.state.noteStates[RONIN].driveStack.length, 0, '...and spends nothing it does not have');
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // 9. DETERMINISM (§0.4's tripwire). Same seed + same line ⇒ identical state.
 //    A hypothetical that burns draws off the live stream desyncs every replay
 //    and every online client, and it fails SILENTLY — hence a test, not a hope.

@@ -56,6 +56,21 @@ import { distFromHome } from "../policies/evaluate.js";
 // The biggest a charged die may grow. Mirrors the client's `Math.min(12, s + 2)`.
 export const CHARGE_DIE_CEILING = 12;
 
+// 🎸 WHAT AN ATTACK COSTS THE DRIVE STACK, and the two halves are NOT the same
+// rule wearing two numbers — they differ in WHEN as well as HOW MUCH:
+//
+//   · SWING  — 2 notes, ON A HIT ONLY. Whiffing keeps the stack intact, so the
+//     spend is a consequence and `battleConsequences` applies it.
+//   · SONIC  — 1 note, HIT OR MISS. You spent the note the moment you projected
+//     it, so the spend is part of throwing the attack and the caller applies it
+//     BEFORE the roll (after the chord stats are derived off the full stack —
+//     get that order wrong and the beam is weaker than the one the player fires).
+//
+// Both transcribed from the client (`resolveSwing`'s `.slice(2)` and
+// `initiateSonicAttack`'s `sonicSpendN = 1`), not invented here.
+export const SWING_DRIVE_SPEND = 2;
+export const SONIC_DRIVE_SPEND = 1;
+
 /**
  * A Spirit's combat chord.
  *
@@ -202,10 +217,37 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
 
   // SWING — a single die. The ceiling charge grows the Thrash die d4→d6; the
   // defender always answers a Swing on the base die.
+  //
+  // 🎸 AND THE CHORD BURN PLAN RIDES ALONG. `battleConsequences` spends these on
+  // a HIT ONLY (whiffing keeps the stack intact), which is why the plan is
+  // derived here — pure, off the stack as it stands BEFORE the blow — and
+  // applied there.
+  //
+  // ⚠️ THIS WAS MISSING UNTIL 2026-08-17 AND THE GAP WAS SILENT. `battleConsequences`
+  // destructures `swingChordLeft = [], swingChordSpent = []`, so a battle object
+  // that never carried them burned nothing and logged nothing — it cannot tell
+  // "no notes left to spend" from "nobody told me what to spend". Every headless
+  // Swing was therefore FREE, while the client's `resolveSwing` hung the same two
+  // fields on its own battle object and paid in full. That is §6a's over-permissive
+  // failure wearing a different coat: the rule lived in the client, the engine had
+  // nothing to transcribe from, and the default swallowed the evidence.
+  //
+  // 📌 The 2 is the client's literal `.slice(2)` in `resolveSwing`, transcribed
+  // rather than invented. Hoist it to `gameConstants` when the Sonic's
+  // `sonicSpendN = 1` goes with it — they are one rule with two numbers.
+  //
+  // ⚠️ THE TENTACLE INHERITS THIS, because it enters as `rollKind: 'swing'` and
+  // this function sees only the roll kind. That is consistent with §4a's "one
+  // combat path, not two" — but whether a reach swing should ALSO burn 2 Drive
+  // notes on top of the trail it already spent is a `METALNESS_REWORK_DESIGN.md`
+  // question, not a transcription. Flagged there rather than decided here.
+  const driveStack = nsA.driveStack ?? [];
   return {
     ...base,
     dicePool: null,
     atkDie: chargeCeil ? THRASH_CEIL_DIE : THRASH_DIE,
     defDie: THRASH_DIE,
+    swingChordLeft:  driveStack.slice(SWING_DRIVE_SPEND),
+    swingChordSpent: driveStack.slice(0, SWING_DRIVE_SPEND),
   };
 }

@@ -32,7 +32,7 @@ import {
   STOCK_REFILL_RATE, DB_UPGRADE_THRESHOLD, stackCapFor,
   fpPerLife, POSE_FP_STEP, POSE_FP_MAX,
   UNDERDOG_MIN_DEFICIT, UNDERDOG_DEFICIT_PER_STEP, UNDERDOG_MAX_MULT,
-  FAN_MULT_CAP, FAN_DIEHARD_START,
+  FAN_MULT_CAP, FAN_DIEHARD_START, SONIC_BEAM_REACH,
 } from "../../data/gameConstants.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import { CORNERS } from "../../data/corners.js";
@@ -70,6 +70,42 @@ export const STARTING_SKILLS = new Set(['amp_1', 'theory_minor']);
 // can realistically land inside one match at the Db rates in §2.
 export const KIT_DB_HORIZON = 20;
 
+// 💢 HOW MUCH OF A WOUND SURVIVES BEING OUT OF REACH.
+//
+// ⚠️ IT IS A FLOOR, NOT A CUTOFF, AND THAT IS THE WHOLE DESIGN. Decay chip
+// damage to ZERO at distance and a rival bleeding across the board contributes
+// nothing — so the score is flat everywhere outside reach, there is no gradient
+// pointing at the wounded one, and the bot has no reason to walk over and finish
+// them. A floor keeps the wound worth something wherever they stand (it is a
+// real fact about the match) while making it worth MORE when you can act on it,
+// which is the gradient that produces an approach.
+//
+// 0.35 is a starting point, not a measurement — §5's standing warning.
+export const PRESSURE_REACH_FLOOR = 0.35;
+
+/**
+ * 💢 How much of a rival's chip damage counts, given how far away they are.
+ *
+ * Full value inside melee reach, decaying linearly to `PRESSURE_REACH_FLOOR` at
+ * `SONIC_BEAM_REACH` — the longest reach any attack in this game has — and flat
+ * at the floor beyond it. Monotone non-increasing by construction, which is the
+ * property `evalCheck` pins: a term that could rise as a rival retreats would
+ * pay the bot for letting them go.
+ *
+ * ⚠️ DISTANCE, NOT THE ATTACK CONE. Facing is deliberately ignored. Turning to
+ * face costs 1 AP and `face` is not gated on the Action Token (§6a), so a rival
+ * you are standing next to but not pointing at is one cheap action from being a
+ * target — scoring them as unreachable would make the bot walk away from fights
+ * it is already in.
+ */
+export function reachWeight(dist) {
+  if (!Number.isFinite(dist)) return PRESSURE_REACH_FLOOR;
+  if (dist <= 1) return 1;
+  if (dist >= SONIC_BEAM_REACH) return PRESSURE_REACH_FLOOR;
+  const t = (SONIC_BEAM_REACH - dist) / (SONIC_BEAM_REACH - 1);
+  return PRESSURE_REACH_FLOOR + (1 - PRESSURE_REACH_FLOOR) * t;
+}
+
 // ── §5 weights ──────────────────────────────────────────────────────────────
 //
 // ⚠️ STARTING POINTS, NOT MEASUREMENTS. Every number below is a design
@@ -82,8 +118,8 @@ export const KIT_DB_HORIZON = 20;
 export const DEFAULT_WEIGHTS = {
   survival: 1.0, fame: 1.0, fanMult: 1.0, perfCliff: 1.0,
   drive: 1.0, sustain: 1.0, apBanked: 1.0, inRig: 1.0,
-  charge: 1.0, refillDenied: 1.0, adjWounded: 1.0, edgeSafety: 1.0,
-  dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6,
+  charge: 1.0, refillDenied: 1.0, edgeSafety: 1.0,
+  dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6, pressure: 1.2,
 };
 
 export const EVAL_WEIGHTS = {
@@ -92,24 +128,24 @@ export const EVAL_WEIGHTS = {
   cosmic_ronin: {
     survival: 1.4, fame: 1.2, fanMult: 1.3, perfCliff: 2.0,
     drive: 1.1, sustain: 0.7, apBanked: 0.9, inRig: 1.0,
-    charge: 0.5, refillDenied: 0.3, adjWounded: 0.8, edgeSafety: 1.3,
-    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6,
+    charge: 0.5, refillDenied: 0.3, edgeSafety: 1.3,
+    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6, pressure: 1.2,
   },
   // 📻 The cosmic controller. The Boom Box makes "hold a charge" a near-
   // permanent objective, and denial is his win path, not damage.
   intergalactic_0: {
     survival: 1.0, fame: 1.0, fanMult: 0.7, perfCliff: 0.4,
     drive: 0.6, sustain: 1.2, apBanked: 0.5, inRig: 1.6,
-    charge: 2.2, refillDenied: 1.5, adjWounded: 0.4, edgeSafety: 0.9,
-    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6,
+    charge: 2.2, refillDenied: 1.5, edgeSafety: 0.9,
+    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6, pressure: 0.6,
   },
   // 🟢 The bruiser. Attrition that snowballs — he wants to be standing next to
   // something already bleeding.
   Metalness_Monster: {
     survival: 0.7, fame: 1.1, fanMult: 0.6, perfCliff: 0.3,
     drive: 1.3, sustain: 1.0, apBanked: 0.5, inRig: 0.8,
-    charge: 0.5, refillDenied: 0.4, adjWounded: 1.5, edgeSafety: 0.6,
-    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6,
+    charge: 0.5, refillDenied: 0.4, edgeSafety: 0.6,
+    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6, pressure: 1.8,
   },
 };
 
@@ -269,18 +305,31 @@ export function evaluate(state, spiritId, view = {}) {
       }, 0) / rivals.length)
     : 0;
 
-  // 11. ADJACENCY TO A WOUNDED RIVAL — the bruiser's whole shape. Only counts
-  //     rivals actually in melee reach; a wounded Spirit across the board is a
-  //     plan, not a position.
+  // 11. 🪦 CUT 2026-08-17 — `adjWounded`, "adjacency to a wounded rival".
+  //
+  //     It was `max` over adjacent rivals of `1 - vibe/maxVibe`. Term 16
+  //     (`pressure`) computes that same quantity as its Vibe half, reach-weighted
+  //     instead of hard-gated at distance 1 — so keeping both PRICED CHIP DAMAGE
+  //     TWICE, and the duplicate was the copy that pointed the wrong way.
+  //
+  //     ⚠️ IT PAID THE BOT FOR NOT FINISHING ANYONE, which is why it had to go
+  //     rather than shrink. It scored the OPPORTUNITY (standing next to someone
+  //     bleeding), so taking the opportunity destroyed the payment: a rival on
+  //     1/4 Vibe next to the Ronin was worth +0.600, and the blow that took their
+  //     life dropped it to 0, because they respawn at home across the board.
+  //     Measured on the killing blow — `pressure` correctly paid +0.150 for the
+  //     life taken and the term still nets −0.571. A bot maximising this score
+  //     keeps a victim alive and bleeding forever, and Metalness, who held the
+  //     highest weight at 1.5, was the MOST reluctant to close.
+  //
+  //     📌 The bruiser's character is not lost, it moved to where it belongs:
+  //     his `pressure` weight is the roster's highest (1.8). "Attrition that
+  //     snowballs" is a statement about valuing damage, and it now reads as one
+  //     — as an achievement that survives the respawn rather than a position
+  //     that evaporates when you act on it.
+  //
+  //     ⚠️ `here` STAYS — terms 15 and 16 both need it.
   const here = HEX_BY_NUM[self.num];
-  terms.adjWounded = here
-    ? rivals.reduce((best, r) => {
-        const rh = HEX_BY_NUM[r.num];
-        if (!rh || axialDist(here.q, here.r, rh.q, rh.r) > 1) return best;
-        const rMax = r.maxVibe ?? SPIRIT_DEFS[r.id]?.maxVibe ?? 5;
-        return Math.max(best, clamp01(1 - (r.vibe ?? rMax) / rMax));
-      }, 0)
-    : 0;
 
   // 12. EDGE SAFETY — knockback is 1–2 hexes and the edge is a knockout, so
   //     standing room is defensive value the hex scorers already priced.
@@ -346,6 +395,61 @@ export function evaluate(state, spiritId, view = {}) {
         const m = targetMultiplier(myFame, state?.noteStates?.[r.id]?.fame ?? 0);
         return Math.max(best, (m - 1) / (UNDERDOG_MAX_MULT - 1));
       }, 0))
+    : 0;
+
+  // 16. 💢 PRESSURE — HOW CLOSE THE RIVALS ARE TO BEING FINISHED. The mirror of
+  //     `survival`, and until 2026-08-17 the table did not have one.
+  //
+  //     ⚠️ WITHOUT IT NOTHING IN THIS FILE SAYS THAT HITTING SOMEBODY IS GOOD.
+  //     Twelve of the sixteen terms describe your OWN position; the four that
+  //     look outward all required a condition that a healthy rival does not meet
+  //     — `adjWounded` (now cut, see 11) needed them hurt ALREADY, `targetUpside`
+  //     needs a Fame deficit, `refillDenied` needs Gravity Control, `rivalPose`
+  //     needs a threat to fear. So a bot maximising this score saw every cost of an
+  //     attack and none of the point of one, shuffled and re-faced until its AP
+  //     ran out, and two healthy Spirits had no reason to ever fight. That is
+  //     where the bench's 37% inconclusive rate came from (§6.6.0).
+  //
+  //     ⚠️ LIVES ARE NOT REACH-WEIGHTED AND CHIP VIBE IS, and mixing them is the
+  //     trap. They are different KINDS of progress:
+  //
+  //       · A LIFE TAKEN IS BANKED. It survives the respawn, it cannot be walked
+  //         away from, and it is permanent progress toward removing that Spirit.
+  //         Decaying it by distance would mean finishing a rival SCORES WORSE
+  //         than leaving them bleeding next to you — they respawn at home, far
+  //         away, and the term would collapse at the exact moment it should pay.
+  //       · CHIP VIBE IS PROVISIONAL. It heals, it resets on respawn, and it is
+  //         only worth anything if you are close enough to convert it. A rival on
+  //         2 Vibe across the board is a plan, not a position — the discipline
+  //         the cut `adjWounded` stated, kept, with a floor instead of a cliff.
+  //
+  //     📌 A knocked-out rival is a flat 1: maximum pressure, permanently, and
+  //     no reach term. Scoring them through the formula would push past 1 (no
+  //     lives AND no Vibe) and, worse, they leave `rivals` entirely — so an
+  //     average taken over the survivors would DROP on the winning blow. An
+  //     evaluator that scores victory as a loss is not a tuning problem.
+  //
+  //     ⚠️ AVERAGED, NOT MAXED — and this is where it parts company with the
+  //     `adjWounded` it replaces. Max would mean that once one
+  //     rival is badly hurt, opening damage on a SECOND rival registers as
+  //     exactly zero — the bot would fixate on one victim and read every blow
+  //     struck elsewhere as wasted. The average is also the honest mirror of
+  //     `survival`, which measures one Spirit's whole pool.
+  const allLivesForRivals = allLives;
+  const pressureRivals = spirits.filter(s => s.id !== spiritId);
+  terms.pressure = pressureRivals.length
+    ? pressureRivals.reduce((sum, r) => {
+        if (r.knockedOut) return sum + 1;
+        const rMax   = r.maxVibe ?? SPIRIT_DEFS[r.id]?.maxVibe ?? 5;
+        const rLives = r.lives ?? allLivesForRivals;
+        const livesTaken = clamp01(Math.max(0, allLivesForRivals - rLives) / allLivesForRivals);
+        const vibeMissing = clamp01(1 - clamp01((r.vibe ?? rMax) / rMax)) / allLivesForRivals;
+        const rh = here && HEX_BY_NUM[r.num];
+        const reach = rh
+          ? reachWeight(axialDist(here.q, here.r, rh.q, rh.r))
+          : PRESSURE_REACH_FLOOR;
+        return sum + clamp01(livesTaken + vibeMissing * reach);
+      }, 0) / pressureRivals.length
     : 0;
 
   let score = 0;
