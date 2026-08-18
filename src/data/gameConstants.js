@@ -165,6 +165,29 @@ export const FAME_TO_WIN      = 24;   // legacy fallback (3 lives × 8) — runt
 // DISCARDED — the crowd can only scream so loud. Applies to boss-fight FP too.
 export const FAME_PER_TURN_CAP = 4;
 
+// 🎤 THE DUEL'S OWN CEILING (2026-08-18) — and it is a HIGHER cap, not an
+// exemption. `awardRiffFame` builds a payout out of six terms and then hands it
+// to `grantFame`, which was clipping the lot at 4: measured over 94 bench duels,
+// one that went to sudden death banked 3.81 FP and one that ended in Round 1
+// banked 3.89 (`BOT_STRATEGY_HANDOFF.md` §6.6.9). Margin, perfects, the
+// Headliner belt, the stage-FX rider and the whole Round-2 bonus were being
+// awarded in full and discarded — the marquee event paid exactly what a maxed
+// pose pays, which is `POSE_FP_MAX` above, matched to the general cap on purpose.
+//
+// ⚠️ WHY NOT UNCAPPED. The reason the general cap exists has not gone away: the
+// crowd and underdog multipliers compound, and an unclipped duel with the belt,
+// stage FX and a comeback multiplier can print double figures in one action.
+// This is deliberately a MULTIPLE of the general cap rather than a free number,
+// so the two move together if the economy is ever retuned: a duel is worth up to
+// two ordinary turns of crowd noise, and never a whole life (`fpPerLife` is 8
+// at two players).
+//
+// ⚠️ IT SHARES ONE WINDOW WITH EVERYTHING ELSE, which is the property that keeps
+// it honest. `fameThisTurn` is per Spirit per turn, so a Spirit who already
+// banked 3 FP this turn and then wins a duel takes 5, not 8 — and once they are
+// above 4 for the turn, every ordinary payout after it banks nothing.
+export const RIFF_FP_TURN_CAP = FAME_PER_TURN_CAP * 2;
+
 // UNDERDOG comeback tuning -- see awardFame/underdogBonus.
 export const UNDERDOG_MIN_DEFICIT    = 6;    // must be trailing the loser by at least this much Fame
 export const UNDERDOG_DEFICIT_PER_STEP = 6;  // every 6 Fame of deficit adds +0.5 to the multiplier

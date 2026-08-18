@@ -23,7 +23,7 @@ import {
   battleConsequences, grantFame, vibeDamage, knockback, chordFray,
   runBattleFlow, fameToWin, SUNBEAM_DB_COST, awardThrashFame,
 } from "./systems/battleFlow.js";
-import { FAME_PER_TURN_CAP, fpPerLife } from "../data/gameConstants.js";
+import { FAME_PER_TURN_CAP, RIFF_FP_TURN_CAP, fpPerLife } from "../data/gameConstants.js";
 import { crowdMultiplier } from "../board/boardHelpers.js";
 
 let checks = 0;
@@ -209,6 +209,54 @@ const battle = (over = {}) => ({
   ok(loud.result.granted > plain.result.granted,
      'the crowd multiplies BEFORE the cap — 1 FP with a big crowd beats 1 FP with none');
   ok(loud.result.granted <= FAME_PER_TURN_CAP, 'amplified FP is still clipped at the turn cap');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 5a. 🎤 THE DUEL'S OWN CEILING — `RIFF_FP_TURN_CAP`, added 2026-08-18.
+//
+// ⚠️ THE THING TO PIN IS THAT IT IS A HIGHER CAP AND NOT AN EXEMPTION, because
+// the two are indistinguishable from a payout that happens to be small. Measured
+// over 94 bench duels before this existed, a duel that went to sudden death
+// banked 3.81 FP and one that ended in Round 1 banked 3.89 — the ladder in
+// `awardRiffFame` was arithmetic nobody could collect (§6.6.9).
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  ok(RIFF_FP_TURN_CAP > FAME_PER_TURN_CAP,
+     '🎤 the duel ceiling is HIGHER than the general one, or none of this means anything');
+
+  // A duel-sized payout clears the general cap…
+  const big = drive(
+    st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 20, reason: 'riff-off win',
+                      amplify: false, cap: RIFF_FP_TURN_CAP }),
+    freshState(2024),
+  );
+  eq(big.result.granted, RIFF_FP_TURN_CAP,
+     `🎤 a duel banks up to ${RIFF_FP_TURN_CAP} in one turn, not ${FAME_PER_TURN_CAP}`);
+
+  // …and it is still a CAP: the overflow is discarded exactly like the general
+  // one, which is what stops the belt, the stage FX and a comeback multiplier
+  // from compounding into double figures in a single action.
+  ok(big.result.granted < 20, '🎤 …and the rest is still lost to the noise — this is a ceiling, not a bypass');
+
+  // ⚠️ ONE SHARED WINDOW. The duel does not get a private allowance: a Spirit
+  // carried above the general cap by a duel banks NOTHING from an ordinary
+  // payout later in the same turn. Without this a caller could alternate the two
+  // caps and farm the difference, and no assertion above would notice.
+  const after = drive(
+    st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 3, reason: 'ordinary deed',
+                      amplify: false, fameThisTurn: big.result.fameThisTurn }),
+    big.state,
+  );
+  eq(after.result.granted, 0,
+     '🎤 an ordinary payout after a duel banks nothing — one window, two ceilings');
+
+  // And the default is unchanged, so every existing caller is untouched.
+  const plainCap = drive(
+    st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 20, reason: 'x', amplify: false }),
+    freshState(2024),
+  );
+  eq(plainCap.result.granted, FAME_PER_TURN_CAP,
+     '🎤 `cap` defaults to the general ceiling — the duel opted in, nothing else did');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

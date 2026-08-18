@@ -385,6 +385,17 @@ export function applyRiffClosed(state) {
 // It exists so a headless bench can contain duels at all. Any balance reading
 // about riff-off frequency or payout out of the bench is a reading of THIS
 // CURVE as much as of the game, and must be quoted that way.
+//
+// ⚠️ AND IT HAS NO TEMPO TERM. `applyRiffRound2Started` speeds sudden death up
+// to 0.58× the gaps, and this function cannot see that: it takes a note COUNT,
+// not a rhythm. So a Spirit plays Round 2 exactly as well as they played Round
+// 1, on a chart that got half again as fast. The bias is not symmetric in its
+// consequences — the verdict is roughly unaffected (both sides are flattered
+// equally) but `RIFF_BOTH_PAID_QUALITY` is an ABSOLUTE bar at 75%, so the
+// loser's consolation fires more often here than it would with human hands.
+// Declared in `HARNESS_GAPS.riffRound2Speed`; not patched with a guessed
+// penalty, because a difficulty curve nobody measured would be indistinguishable
+// from a balance change once it was in the payout path.
 
 /** Quality floor: even a Spirit who played nothing lands about a third of it. */
 export const RIFF_SIM_FLOOR    = 0.35;

@@ -109,7 +109,18 @@ export const HARNESS_GAPS = {
   // on, on a Spirit who never chose it. It is a rule in `battleFlow.js` now.
 
   // See `matchConfig` — the Rock God finale is sidestepped by construction.
-  summonRockGod: 'sidestepped: short games crown outright (see matchConfig)',
+  //
+  // 🪦 AND AS OF 2026-08-18 IT IS SHELVED, NOT PENDING (Alex's call). That
+  // changes what this entry MEANS rather than whether it is here: it used to
+  // name work the harness owed the game, and it now names a subsystem the game
+  // is not currently shipping.
+  //
+  // ✅ AND THE CONSTRAINT IT IMPOSED IS RECLAIMED. The finale used to be
+  // sidestepped by playing TWO-LIFE matches, which `matchConfig` was very clear
+  // under-rates every investment term in §3.2 and §3.6. `grantFame` now crowns on
+  // the Fame target at any number of lives, so `matchConfig` defaults to THREE
+  // and the bench finally measures the horizon the game is played on.
+  summonRockGod: '🪦 SHELVED 2026-08-18 — `ROCK_GODS_SHELVED`; the Fame target crowns outright at any number of lives',
 
   // ── 🎤 NEW 2026-08-17 — the riff-off runs, with one modelled part ──────────
   //
@@ -123,11 +134,26 @@ export const HARNESS_GAPS = {
   // CURVE AS MUCH AS OF THE GAME. Quote it that way.
   riffPerformance: 'the duel runs; both sides are PLAYED by simulateRiffPerformance (perfScore-driven)',
 
-  // Round 2 escalation is not driven headlessly: the Round-1 verdict closes the
-  // duel. ⚠️ This UNDER-states the riff-off — sudden death adds 2 FP, a damage
-  // band, and the only path to the both-paid consolation — which is the safe
-  // direction for a gap but must not be read as "duels pay about this much".
-  riffRound2: 'sudden death not driven; Round-1 verdict closes the duel',
+  // ~~Round 2 escalation is not driven headlessly: the Round-1 verdict closes
+  // the duel.~~
+  //
+  // ✅ CLOSED 2026-08-18 — the key is DELETED, not softened, so `harnessCheck`'s
+  // "declared, not silently absent" sweep keeps meaning what it says.
+  // `transition.js`'s `riffOff` case now escalates on the engine's own
+  // `verdict.close`, exactly where the client's `fireBeamClash` does, capped at
+  // two rounds. That restores the 2 FP sudden-death bonus, the extra damage
+  // band, and the both-paid consolation — which `bothStrong` gates on
+  // `round >= 2`, so before this it could not fire at all.
+  //
+  // ⚠️ WHAT IS LEFT IS A DIFFICULTY GAP, NOT A RULES GAP. Round 2's chart is
+  // sped up to 0.58× the gaps and `simulateRiffPerformance` has no tempo term,
+  // so both sides play sudden death as well as they played Round 1. That
+  // OVER-states clean quality in Round 2 specifically, which matters most at the
+  // `RIFF_BOTH_PAID_QUALITY` bar (75%): the consolation fires more often here
+  // than it would with human hands on a chart that just got half again as fast.
+  // Declared rather than corrected — a tempo penalty would be a number nobody
+  // has measured, sitting in the one place tuning cannot see it.
+  riffRound2Speed: 'sudden death IS driven; its 0.58× chart is played at Round-1 difficulty (no tempo term)',
 
   // The Overcharge modal (choose floor / ceiling / chord assist on a Charge Zone)
   // is a player decision the headless path does not guess at: it takes the
@@ -456,9 +482,16 @@ export function playTurn(state, view, policy, ctx) {
   // turn start and `grantFame` reads it to enforce FAME_PER_TURN_CAP.
   let v = { ...view, fameThisTurn: {} };
   const actions = [];
+  // 🎤 EVERY DUEL FOUGHT THIS TURN, as the verdict that ended it. ⚠️ A RIFF-OFF
+  // COUNTED IS NOT A ROUND 2 REACHED — the same distinction `limelightScores`
+  // exists for. Counting `riffOff` actions would report a thriving sudden-death
+  // economy on a tree that never escalates, which is exactly the reading §6.6.9
+  // had to disprove. `applyBotAction` hands the resolved battle back; this keeps
+  // the three fields a payout depends on and drops the charts.
+  const duels = [];
 
   for (let i = 0; i < MAX_ACTIONS_PER_TURN; i++) {
-    if (cur.winner) return { state: cur, view: v, actions, stalled: false };
+    if (cur.winner) return { state: cur, view: v, actions, duels, stalled: false };
 
     // ⚠️ A POLICY MAY ANSWER WITH A LINE, NOT JUST A STEP. The composition phase
     // is a plan whose whole payoff lands on its last action (`confirmMelody`),
@@ -467,44 +500,83 @@ export function playTurn(state, view, policy, ctx) {
     // refusal check below still sees every action individually.
     const answer = policy(cur, spiritId, v, ctx) ?? { kind: 'endTurn', apCost: 0 };
     const chunk = Array.isArray(answer) ? answer : [answer];
-    if (!chunk.length) return { state: cur, view: v, actions, stalled: true, refused: { reason: 'empty plan' } };
+    if (!chunk.length) return { state: cur, view: v, actions, duels, stalled: true, refused: { reason: 'empty plan' } };
 
     for (const action of chunk) {
+      const before = cur;
       const r = applyBotAction(cur, action, { rng: ctx.rng, view: v, hooks: ctx.hooks });
       if (!r.ok) {
         // ⚠️ A refusal here is a REAL BUG and must not be swallowed. Actions come
         // straight from `legalActions`, so `illegal` means the generator and the
         // transition have drifted — §6's contract, broken. The run reports it
         // rather than quietly ending the turn and averaging the damage away.
-        return { state: cur, view: v, actions, stalled: true, refused: { action, reason: r.reason, detail: r.detail } };
+        return { state: cur, view: v, actions, duels, stalled: true, refused: { action, reason: r.reason, detail: r.detail } };
       }
       cur = r.state; v = r.view ?? v;
       actions.push(action);
-      if (action.kind === 'endTurn') return { state: cur, view: v, actions, stalled: false };
-      if (cur.winner) return { state: cur, view: v, actions, stalled: false };
+      if (action.kind === 'riffOff' && r.battle?.verdict) {
+        const vd = r.battle.verdict;
+        // ⚠️ `fp` IS THE POINT OF THIS LEDGER, not a nicety. A duel RESOLVED and
+        // a duel PAID are different events — `grantFame` clips at
+        // `FAME_PER_TURN_CAP`, so a bonus can be awarded in full and banked at
+        // zero. Measured across the action rather than read off the verdict for
+        // that exact reason: the verdict knows what was owed, not what landed.
+        // §6.6.9 is the finding this field produced.
+        const fpOf = (st) => (st.noteStates?.[spiritId]?.fame ?? 0)
+                           + (st.noteStates?.[action.targetId]?.fame ?? 0);
+        duels.push({
+          round: vd.round ?? 1, tie: !!vd.tie, close: !!vd.close,
+          bothStrong: !!vd.bothStrong, fp: fpOf(r.state) - fpOf(before),
+        });
+      }
+      if (action.kind === 'endTurn') return { state: cur, view: v, actions, duels, stalled: false };
+      if (cur.winner) return { state: cur, view: v, actions, duels, stalled: false };
     }
   }
-  return { state: cur, view: v, actions, stalled: true, refused: { reason: 'turn ceiling' } };
+  return { state: cur, view: v, actions, duels, stalled: true, refused: { reason: 'turn ceiling' } };
 }
 
 // ── One match ───────────────────────────────────────────────────────────────
 
 /**
- * ⚠️ SHORT GAMES BY DEFAULT, AND IT IS LOAD-BEARING RATHER THAN IMPATIENT.
+ * ✅ FULL-LENGTH GAMES BY DEFAULT SINCE 2026-08-18 — and the change is a
+ * constraint being RETIRED, not a preference.
+ *
+ * ~~⚠️ SHORT GAMES BY DEFAULT, AND IT IS LOAD-BEARING RATHER THAN IMPATIENT.
  * `grantFame` branches on `shortGame = startingLives < 3`: under three lives a
  * Spirit who reaches the Fame target is crowned outright, and above it a close
  * race summons a Rock God to settle the finale instead. The God is a whole
  * subsystem the harness does not drive, so a 3-life match can reach the target
- * and then run forever with nothing able to end it.
+ * and then run forever with nothing able to end it. Two lives sidesteps that by
+ * construction rather than by patching the rule.~~
  *
- * Two lives sidesteps that by construction rather than by patching the rule.
- * ⚠️ THE COST IS REAL AND MUST BE QUOTED WITH ANY RESULT: `fameToWin` is
- * `lives × fpPerLife(count)`, so a 2-life match has a materially shorter
- * horizon — and §3.2 and §3.6 both make the horizon a strategic variable
- * (banked Db and fan multipliers are worth less the closer the finish line).
- * A bench on short games under-rates investment and over-rates tempo.
+ * 🪦 The Rock God finale is SHELVED (`ROCK_GODS_SHELVED`, Alex 2026-08-18), so
+ * `grantFame` now crowns on the Fame target at any number of lives and there is
+ * nothing left to sidestep. The warning that made two lives a cost worth paying:
+ *
+ * > ⚠️ THE COST IS REAL AND MUST BE QUOTED WITH ANY RESULT: `fameToWin` is
+ * > `lives × fpPerLife(count)`, so a 2-life match has a materially shorter
+ * > horizon — and §3.2 and §3.6 both make the horizon a strategic variable
+ * > (banked Db and fan multipliers are worth less the closer the finish line).
+ * > A bench on short games under-rates investment and over-rates tempo.
+ *
+ * 🐛 AND THE FIRST ATTEMPT AT THREE FAILED, WHICH IS HOW §6.6.10 WAS FOUND.
+ * Three lives ran 20/40 decided at a 400-turn cap and 21/40 at 800 — doubling
+ * the cap bought three points, because the stalls were not slow games but dead
+ * ones. The cause was the evaluator, not the horizon: `beamSetup` was priced
+ * above the Fame it sets up, so `endTurn` outscored every action on the board
+ * (see `evaluate.js`, above `BEAM_READY`). With that corrected, 30 matches a row:
+ *
+ * | lives | decided | mean turns | FP/turn |
+ * |---|---|---|---|
+ * | 2 | **30/30** | 24 | 0.77 |
+ * | 3 | **30/30** | 34 | 0.74 |
+ *
+ * ⚠️ EVERY NUMBER MEASURED BEFORE 2026-08-18 WAS MEASURED ON TWO LIVES, and the
+ * horizon is the variable §3.2 and §3.6 are about. Do not compare a three-life
+ * reading to a two-life one and call the difference a policy change.
  */
-export function matchConfig(spirits, { startingLives = 2, mode = 'ffa' } = {}) {
+export function matchConfig(spirits, { startingLives = 3, mode = 'ffa' } = {}) {
   return { mode, startingLives, spirits: structuredClone(spirits) };
 }
 
@@ -537,20 +609,30 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
   // ever agreed by accident.
   let v = { amps: [], shadowHex: null, rockGodActive: false, skillById: SKILL_BY_ID, ...view };
   let turns = 0;
+  // 🎤 The duel ledger — see `playTurn`. `round2` is the one that matters: it is
+  // the difference between a rule being present and a rule being reachable.
+  const duels = { fought: 0, round2: 0, ties: 0, bothPaid: 0, fp: 0, fpRound2: 0 };
 
   while (!state.winner && turns < maxTurns) {
     if (!state.acting) break;
     const seat = state.acting;
     const policy = policies[seat];
-    if (!policy) return { winner: null, turns, reason: 'stalled', anomaly: `no policy for ${seat}` };
+    if (!policy) return { winner: null, turns, duels, reason: 'stalled', anomaly: `no policy for ${seat}` };
 
     state = startSpiritTurn(state, rng);
     const t = playTurn(state, v, policy, ctx);
     state = t.state; v = t.view;
     turns++;
+    for (const d of t.duels ?? []) {
+      duels.fought++;
+      duels.fp += d.fp ?? 0;
+      if (d.round >= 2) { duels.round2++; duels.fpRound2 += d.fp ?? 0; }
+      if (d.tie) duels.ties++;
+      if (d.bothStrong) duels.bothPaid++;
+    }
 
     if (t.stalled) {
-      return { winner: state.winner ?? null, turns, reason: 'stalled', anomaly: t.refused };
+      return { winner: state.winner ?? null, turns, duels, reason: 'stalled', anomaly: t.refused };
     }
     // `endTurn` already rotated the queue; a policy that returned early on a
     // winner did not, and does not need to.
@@ -573,6 +655,7 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
     reason: state.winner ? 'winner' : 'turnCap',
     fame,
     limelightScores,
+    duels,
     anomaly: null,
   };
 }

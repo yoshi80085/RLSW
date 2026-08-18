@@ -69,7 +69,7 @@ import {
 } from "../systems/battleFlow.js";
 import {
   applyRiffOffStarted, applyRiffResultsSubmitted, applyRiffResolved,
-  applyRiffClosed, simulateRiffPerformance,
+  applyRiffRound2Started, applyRiffClosed, simulateRiffPerformance,
 } from "../systems/riffOff.js";
 import { attackParams, spiritChord, SONIC_DRIVE_SPEND } from "../systems/attackParams.js";
 import { usedAdd, usedList } from "../systems/economy.js";
@@ -438,13 +438,27 @@ export function applyBotAction(state, action, ctx = {}) {
     // duel as well as they played their last melody — is stated and defended in
     // `riffOff.js`. Read that before quoting any riff-off number out of a bench.
     //
-    // 📌 ROUND 2 IS NOT DRIVEN HERE. `applyRiffResolved` sets `verdict.close`
-    // when the two sets were within `RIFF_CLOSE_QUALITY_GAP`, which is what
-    // escalates a duel to sudden death in the client. The headless path takes
-    // the Round-1 verdict and closes. That under-pays close duels (Round 2 adds
-    // 2 FP and a damage band) and never fires the both-paid consolation, so the
-    // bench UNDER-states the riff-off rather than over-stating it — which is the
-    // safe direction for a gap, and it is declared in `HARNESS_GAPS`.
+    // ⚡ ROUND 2 IS DRIVEN HERE — 2026-08-18. `applyRiffResolved` sets
+    // `verdict.close` when the two sets were within `RIFF_CLOSE_QUALITY_GAP`
+    // (or dead-heated), and that flag is the client's escalation gate verbatim:
+    // `fireBeamClash` breaks the beams on `!tie && !close` and otherwise surges
+    // into sudden death, capped at two rounds.
+    //
+    // ⚠️ IGNORING IT WAS NOT "A SLIGHTLY CHEAPER DUEL", WHICH IS WHY IT MOVED.
+    // Sudden death adds `RIFF_R2_BONUS` (2 FP) and a damage band to the winner,
+    // and it is the ONLY path to the both-paid consolation — `bothStrong`
+    // requires `round >= 2` by construction. A headless riff-off that stopped at
+    // Round 1 therefore ran a different Fame economy from the shipped game, and
+    // it was the closest duels — the ones the design cares most about — that it
+    // dropped. Eighth sighting of `SEQUENCING.md` §5.A's pattern: the reward
+    // existed, the flag that unlocks it was computed, and nothing headless read
+    // it back.
+    //
+    // 📌 What is still modelled rather than played: Round 2's chart runs at
+    // 0.58× the gaps and `simulateRiffPerformance` has no tempo term, so both
+    // sides play sudden death at Round-1 difficulty. Declared as
+    // `HARNESS_GAPS.riffRound2Speed` rather than corrected with a number nobody
+    // measured.
     case 'riffOff': {
       const target = (state.spirits ?? []).find(sp => sp.id === action.targetId);
       if (!target) return fail(state, view, 'illegal', 'no such rival');
@@ -472,18 +486,40 @@ export function applyBotAction(state, action, ctx = {}) {
 
       const atkPerf = ns.perfScore ?? 0;
       const defPerf = next.noteStates?.[action.targetId]?.perfScore ?? 0;
-      next = applyRiffResultsSubmitted(next, {
-        role: 'attacker',
-        results: simulateRiffPerformance(b.atkRiff?.degrees?.length ?? 0, atkPerf, rng),
-      });
-      next = applyRiffResultsSubmitted(next, {
-        role: 'defender',
-        results: simulateRiffPerformance(b.defRiff?.degrees?.length ?? 0, defPerf, rng),
-      });
-      next = applyRiffResolved(next);
 
-      const verdict = next.battle?.verdict;
+      // One round, played and judged. ⚠️ It re-reads `st.battle` rather than
+      // closing over `b`: Round 2 REPLACES both charts (and their lengths — the
+      // R1 chart carries chord partners the R2 one has not grown yet), so a
+      // helper that remembered Round 1's note counts would submit results arrays
+      // of the wrong length and `riffStats` would score gems that do not exist.
+      const playRound = (st) => {
+        const chart = st.battle;
+        st = applyRiffResultsSubmitted(st, {
+          role: 'attacker',
+          results: simulateRiffPerformance(chart.atkRiff?.degrees?.length ?? 0, atkPerf, rng),
+        });
+        st = applyRiffResultsSubmitted(st, {
+          role: 'defender',
+          results: simulateRiffPerformance(chart.defRiff?.degrees?.length ?? 0, defPerf, rng),
+        });
+        return applyRiffResolved(st);
+      };
+
+      next = playRound(next);
+      let verdict = next.battle?.verdict;
       if (!verdict) return fail(state, view, 'illegal', 'duel produced no verdict');
+
+      // ⚡ THE BEAMS LOCK AND SURGE. Escalate at most once — `round >= 2` is the
+      // client's cap too, and `applyRiffResolved` leans on it: a Round-2 dead
+      // heat falls back to the Round-1 edge rather than looping forever looking
+      // for a winner. `applyRiffRound2Started` keeps `r1` for exactly that.
+      if (verdict.close && (next.battle?.round ?? 1) < 2) {
+        next = applyRiffRound2Started(next, null, rng);
+        if (next.battle?.round !== 2) return fail(state, view, 'illegal', 'sudden death would not start');
+        next = playRound(next);
+        verdict = next.battle?.verdict;
+        if (!verdict) return fail(state, view, 'illegal', 'sudden death produced no verdict');
+      }
 
       const run = runBattleFlow(
         riffOffConsequences({

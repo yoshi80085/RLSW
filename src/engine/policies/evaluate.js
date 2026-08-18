@@ -213,6 +213,27 @@ export const CHARGE_SEEK_REACH = 6;
 // This term is the "devise ways to reach these awards" half, and it belongs in
 // the evaluator rather than the scorer because it is a property of a POSITION.
 
+// ⚠️ 2026-08-18 — THIS TERM'S WEIGHT WAS WHAT STOPPED THE BOTS PLAYING, and the
+// bug was not in the bands below. They are fine; the COLUMN was priced against
+// nothing. At `beamSetup: 2.2`, giving up a live duel line cost the Ronin 1.96
+// points of position, while the 8 Fame the duel pays — a THIRD of a 24-point
+// race — scored +0.73. So the best move in a stalled board was `endTurn`, and
+// two Spirits stood nose to nose for 400 turns composing melodies: 2,178 melody
+// notes, 400 confirms, 5 swings, 0 duels, 4 Fame between them (§6.6.10).
+//
+// 🎯 THE RULE THIS BROKE IS ALREADY WRITTEN DOWN, one term up: `chargeSeek` must
+// be worth strictly less than `charge`, because a term that scores the APPROACH
+// to an objective and does not hand off to a term that scores HAVING TAKEN IT
+// teaches the bot to loiter beside it forever. `beamSetup` had no such partner
+// and no such inequality — firing the beam DESTROYS the alignment it scores, and
+// the Fame it earns is normalised against the whole match. Scaled ×0.32 so the
+// roster's ordering (Zero > Ronin > Metalness — it is character, see each
+// column) survives: inconclusive matches fell from 65% to 2%.
+//
+// ⚠️ THE GENERAL LESSON IS THE INEQUALITY, NOT THE NUMBER. Any future term that
+// scores getting ready to do something must be capped below what doing it pays,
+// or the bot will get ready forever.
+
 /** A shot that is live right now. */
 export const BEAM_READY = 0.8;
 /** A shot one `face` away — 1 AP, and `face` is not gated on the Action Token. */
@@ -394,7 +415,7 @@ export const DEFAULT_WEIGHTS = {
   drive: 0.6, sustain: 0.5, apBanked: 1.0, inRig: 1.0,
   charge: 1.2, refillDenied: 1.0, edgeSafety: 1.0,
   dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6, pressure: 2.5,
-  centreStage: 0.8, chargeSeek: 0.6, stock: 1.0, beamSetup: 2.2,
+  centreStage: 0.8, chargeSeek: 0.6, stock: 1.0, beamSetup: 0.7,
   posePlay: 0.4,
 };
 
@@ -416,7 +437,7 @@ export const EVAL_WEIGHTS = {
     // doubles, so Fame earned IN the middle compounds for him in a way it does
     // for nobody else — and `fame: 2.2` is already his second-highest row.
     // ⚠️ Still a SMALL number in absolute terms; see the sweep above.
-    centreStage: 0.95, chargeSeek: 0.5, stock: 1.3, beamSetup: 2.2,
+    centreStage: 0.95, chargeSeek: 0.5, stock: 1.3, beamSetup: 0.7,
     posePlay: 0.5,
   },
   // 📻 The cosmic controller. The Boom Box makes "hold a charge" a near-
@@ -448,7 +469,7 @@ export const EVAL_WEIGHTS = {
     // standing in a spot that is OUTSIDE a tier-0 rig (§6.6.7's centre/rig
     // tension) with the defence die switched off — for the Spirit whose whole
     // game is a live rig and a held charge, that is the worst trade on the board.
-    centreStage: 0.7, chargeSeek: 1.6, stock: 0.9, beamSetup: 2.8,
+    centreStage: 0.7, chargeSeek: 1.6, stock: 0.9, beamSetup: 0.9,
     posePlay: 0.25,
   },
   // 🟢 The bruiser. Attrition that snowballs — he wants to be standing next to
@@ -466,7 +487,7 @@ export const EVAL_WEIGHTS = {
     // roster's lowest, so giving up a defence die costs him least — but a bruiser
     // who wants to be in CONTACT is standing where the term goes negative. He
     // should pose when the board has cleared around him and not otherwise.
-    centreStage: 0.75, chargeSeek: 0.5, stock: 1.0, beamSetup: 1.6,
+    centreStage: 0.75, chargeSeek: 0.5, stock: 1.0, beamSetup: 0.5,
     posePlay: 0.35,
   },
 };

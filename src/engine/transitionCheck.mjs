@@ -719,6 +719,65 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
     eq(ofKind(a2, 'riffOff').length, 0, '📡 a rival outside their own rig radius has nothing to answer with');
     ok(ofKind(a2, 'sonic').some(a => a.targetId === METAL), '📡 …so the beam just lands');
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ⚡ 21b. SUDDEN DEATH — the escalation the headless path used to drop.
+  //
+  // `verdict.close` was computed by `applyRiffResolved` and read by nobody
+  // outside the client, so every bench duel ended in Round 1. The gate is one
+  // line in `fireBeamClash` — break the beams on `!tie && !close`, otherwise
+  // surge — and this asserts the engine now agrees with it in both directions.
+  //
+  // ⚠️ THESE SWEEP SEEDS RATHER THAN PINNING ONE, deliberately. The two
+  // performances come out of `simulateRiffPerformance`, so which seed produces a
+  // close duel is a property of that model; a single pinned seed would fail the
+  // day the curve is retuned and read as "escalation broke". What is asserted is
+  // the INVARIANT — close escalates, decisive does not, nothing ever reaches a
+  // third round — over a population big enough to contain both outcomes.
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    const verdicts = [];
+    for (let seed = 1; seed <= 60; seed++) {
+      const r = applyBotAction(st, duel, { rng: rngOf(seed), view: { fameThisTurn: {} } });
+      if (r.ok && r.battle?.verdict) verdicts.push(r.battle.verdict);
+    }
+    ok(verdicts.length >= 55, '⚡ the sweep actually ran duels (60 seeds, near-all resolve)');
+
+    const escalated = verdicts.filter(v => v.round >= 2);
+    const stopped   = verdicts.filter(v => v.round === 1);
+    ok(escalated.length > 0, '⚡ SOME duels reach Round 2 — the beams lock and surge headlessly now');
+    ok(stopped.length > 0,   '⚡ …and some still end in Round 1, so this is a gate and not a rewrite');
+    eq(verdicts.filter(v => v.round > 2).length, 0,
+       '⚡ nothing ever reaches Round 3 — two rounds is the cap the client caps at, and the fallback to the Round-1 edge depends on it');
+    eq(stopped.filter(v => v.close).length, 0,
+       '⚡ NO CLOSE DUEL IS ALLOWED TO STOP AT ROUND 1 — that is the whole bug: a computed flag nobody read');
+    ok(escalated.every(v => /Round 2/.test(v.decidedBy)),
+       '⚡ a Round-2 verdict says so in `decidedBy` — the log the player reads is the log the bench produced');
+    ok(escalated.every(v => v.tie || v.margin >= 2),
+       '⚡ …and sudden death carries the +1 margin, which is the extra damage band');
+  }
+
+  // 🤝 THE DUEL THAT PAID TWICE — unreachable until now, because `bothStrong`
+  // is gated on `round >= 2` by construction. Both sides get a high Performance
+  // Score so the model plays them near its 0.97 ceiling; the `close` gate then
+  // does the rest, since two Spirits playing equally well is precisely what a
+  // quality gap under 20 points means.
+  {
+    const aces = withNs(withNs(st, RONIN, { perfScore: 18 }), METAL, { perfScore: 18 });
+    let paidTwice = 0;
+    for (let seed = 1; seed <= 80; seed++) {
+      const r = applyBotAction(aces, duel, { rng: rngOf(seed), view: { fameThisTurn: {} } });
+      const v = r.battle?.verdict;
+      if (!v?.bothStrong) continue;
+      paidTwice++;
+      const loserId = v.attackerWon ? METAL : RONIN;
+      ok((r.state.noteStates[loserId].fame ?? 0) > 0,
+         '🤝 the loser of a hard-fought duel gets paid — a losing set worth paying for');
+      break;
+    }
+    ok(paidTwice > 0,
+       '🤝 the both-paid consolation FIRES at all, which it could not do while duels stopped at Round 1');
+  }
 }
 
 console.log(`✅ transitionCheck — ${checks} assertions passed`);

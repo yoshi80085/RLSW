@@ -622,6 +622,16 @@ export function botPlanMove(state, self, persona, amps) {
     .filter(h => h && !occupied.has(h.num) && !ampHexes.has(h.num));
   if (!neighbors.length) return null;
 
+  // 🪦 SHELVED 2026-08-18 — ROCK GODS ARE OFF THE ROADMAP (Alex's call). This is
+  // the ONLY Rock-God-aware behaviour the bot has ever had: when a God is on the
+  // board, PvP is off (`legalActions`' `rockGodActive` gate) and everyone walks
+  // at it. It is left standing rather than cut, because it is four lines that
+  // cannot fire while nothing summons a God — `state.rockGod.summoned` is the
+  // whole guard — and deleting a working rule to express a scheduling decision
+  // is how a shelf turns into a rewrite. ⚠️ DO NOT BUILD ON IT: no evaluator
+  // term, no search branch and no bench number should assume a God exists. If
+  // the finale comes back, this is the seam it comes back through.
+  //
   // Boss fight: converge on the God.
   const bossGod = state.rockGod?.god;
   if (state.rockGod?.summoned && bossGod && !state.rockGod?.outcome) {

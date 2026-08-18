@@ -25,6 +25,18 @@
 // =============================================================================
 
 // ── Engine tuning ────────────────────────────────────────────────────────────
+// 🪦 THE FINALE IS SHELVED — Alex, 2026-08-18. While this is true, reaching the
+// Fame target ALWAYS crowns a Legend outright: `grantFame` never summons, and
+// `hook('summonRockGod')` is never yielded. Nothing else about the God is
+// deleted — the data, the systems and the client's fight are all still here —
+// because a shelf is a scheduling decision and cutting working rules to express
+// one turns it into a rewrite. Flip this to `false` and the finale is back.
+//
+// ⚠️ IT IS ALSO WHAT LETS THE BENCH PLAY THREE-LIFE MATCHES. `policies/play.js`
+// played TWO-life games purely to sidestep this branch, and a short game
+// under-rates every investment term in `BOT_STRATEGY_HANDOFF.md` §3.2 and §3.6.
+export const ROCK_GODS_SHELVED = true;
+
 export const ROCK_GOD_RUNAWAY_LEAD   = 3;   // lead at FAME_TO_WIN that skips the boss — the finale is for CLOSE races only (was 5; lowered in the 2026-07-16 balance pass)
 export const ROCK_GOD_HP_PER_SPIRIT  = 20;  // HP pool = this × living Spirits
 export const ROCK_GOD_TIMER_SECONDS  = 45;  // fallback human turn clock (see ROCK_GOD_DIFFICULTY)

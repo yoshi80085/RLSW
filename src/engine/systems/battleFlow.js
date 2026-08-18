@@ -49,10 +49,10 @@ import { HEX_BY_NUM } from "../../board/hexMap.js";
 import { neighborInDirection, angleTo, angleDiff } from "../../board/hexGeometry.js";
 import { hexRingFromCenter, crowdMultiplier } from "../../board/boardHelpers.js";
 import {
-  FAME_PER_TURN_CAP, FAN_DIEHARD_START, LIMELIGHT_HEX,
+  FAME_PER_TURN_CAP, RIFF_FP_TURN_CAP, FAN_DIEHARD_START, LIMELIGHT_HEX,
   SONIC_LIMELIGHT_FP, POSE_SUSTAIN_COST, fpPerLife,
 } from "../../data/gameConstants.js";
-import { ROCK_GOD_RUNAWAY_LEAD } from "../../data/rockGods.js";
+import { ROCK_GOD_RUNAWAY_LEAD, ROCK_GODS_SHELVED } from "../../data/rockGods.js";
 import { RIFF_BOTH_PAID_QUALITY } from "./riffOff.js";
 
 // ── Sunbeam (Intergalactic 0) ────────────────────────────────────────────────
@@ -283,7 +283,15 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [] }) {
 // `fameThisTurn` is threaded in and out rather than read from a ref, because
 // the cap is a per-turn window the harness has to own too.
 // ═════════════════════════════════════════════════════════════════════════════
-export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameThisTurn = {} }) {
+/**
+ * ⚠️ `cap` IS A PER-EVENT CEILING ON A SHARED WINDOW, not a private allowance.
+ * `fameThisTurn` still counts every FP a Spirit banks in the turn no matter what
+ * granted it; `cap` only says how far THIS payout is allowed to push that total.
+ * So a bigger cap cannot be farmed by taking the big payout twice, and a Spirit
+ * carried above `FAME_PER_TURN_CAP` by one banks nothing from anything else that
+ * turn. Default is the general cap, so every existing caller is unchanged.
+ */
+export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameThisTurn = {}, cap = FAME_PER_TURN_CAP }) {
   if (fp <= 0) return { granted: 0, fameThisTurn };
 
   const ns       = nsOf(state, spiritId);
@@ -294,12 +302,12 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
   const uncapped = amplify ? Math.max(fp, Math.round(fp * mult)) : fp;
 
   const earnedSoFar = fameThisTurn[spiritId] ?? 0;
-  const room        = Math.max(0, FAME_PER_TURN_CAP - earnedSoFar);
+  const room        = Math.max(0, cap - earnedSoFar);
   const finalFp     = Math.min(uncapped, room);
   const clipped     = uncapped - finalFp;
 
   if (finalFp <= 0) {
-    yield log(`⭐🚫 ${nameOf(state, spiritId)} is already at the ${FAME_PER_TURN_CAP} FP turn cap — the crowd can only scream so loud${reason ? ` (${reason} lost to the noise)` : ''}.`);
+    yield log(`⭐🚫 ${nameOf(state, spiritId)} is already at the ${cap} FP turn cap — the crowd can only scream so loud${reason ? ` (${reason} lost to the noise)` : ''}.`);
     return { granted: 0, fameThisTurn };
   }
 
@@ -310,7 +318,7 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
 
   const target   = fameToWin(state);
   const crowdStr = (amplify && uncapped !== fp) ? ` (${fp} ×🎤${mult.toFixed(2)} crowd)` : '';
-  const capStr   = clipped > 0 ? ` ⛔ capped at ${FAME_PER_TURN_CAP}/turn (${clipped} lost to the noise)` : '';
+  const capStr   = clipped > 0 ? ` ⛔ capped at ${cap}/turn (${clipped} lost to the noise)` : '';
   const myFame   = nsOf(state, spiritId).fame ?? (fameBefore + finalFp);
   yield log(`⭐ ${nameOf(state, spiritId)} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${capStr}${reason ? ` — ${reason}` : ''}! (${Math.min(myFame, target)}/${target})`);
 
@@ -331,7 +339,12 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
   const lead = myFame - rivalBest;
   const shortGame = (state.config?.startingLives ?? 3) < 3;
 
-  if (lead >= ROCK_GOD_RUNAWAY_LEAD || shortGame) {
+  // 🪦 SHELVED 2026-08-18 — while `ROCK_GODS_SHELVED` holds, the Fame target
+  // always crowns and the finale is never summoned. It is a DISJUNCT rather than
+  // a deletion so the close-race branch below stays readable and one constant
+  // brings it back. ⚠️ This is also what frees the bench from two-life matches:
+  // `matchConfig` was playing short games purely to keep this branch unreachable.
+  if (ROCK_GODS_SHELVED || lead >= ROCK_GOD_RUNAWAY_LEAD || shortGame) {
     yield log(`🌟🌟🌟 ${nameOf(state, spiritId)} reaches ${target} Fame — ⭐${myFame} vs ⭐${rivalBest}, a runaway lead of ${lead}. A LEGEND IS BORN! 🌟🌟🌟`);
     yield hook('declareWinner', { spiritId });
   } else {
@@ -493,7 +506,9 @@ export function* awardRiffFame({ state, winnerId, loserId, verdict, fameThisTurn
     amount = fp;
   }
   const tag = `riff-off win by ${margin}${round >= 2 ? ' R2' : ''}${rider ? ' +👑' : ''}${fxBonus ? ' +🎇' : ''}`;
-  let res = yield* grantFame({ state, spiritId: winnerId, fp: amount, reason: tag, fameThisTurn });
+  // 🎤 The duel banks against its own ceiling — see `RIFF_FP_TURN_CAP`. Without
+  // it every term above this line is arithmetic nobody can collect.
+  let res = yield* grantFame({ state, spiritId: winnerId, fp: amount, reason: tag, fameThisTurn, cap: RIFF_FP_TURN_CAP });
   fameThisTurn = res.fameThisTurn;
   if (fxBonus) yield hook('gainFans', { spiritId: winnerId, n: 1, reason: '🎇 stage effects spectacle' });
 
@@ -515,6 +530,7 @@ export function* awardRiffFame({ state, winnerId, loserId, verdict, fameThisTurn
       res = yield* grantFame({
         state, spiritId: loserId, fp: loserFp,
         reason: 'a losing set worth paying for', fameThisTurn,
+        cap: RIFF_FP_TURN_CAP,
       });
     }
   }

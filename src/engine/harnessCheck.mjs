@@ -250,6 +250,10 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
      '…but what replaced it is declared: the STATE half of an unlock lands, `applySkillEffects` is still client-owned');
   ok(!HARNESS_GAPS.pose,
      '✨ the pose is NO LONGER a gap — `posing`/`limelightScores` are engine state and `endTurn` drives the payout (§6.6.8)');
+  ok(!HARNESS_GAPS.riffRound2,
+     '⚡ sudden death is NO LONGER a gap — `transition.js` escalates on `verdict.close`, the client\'s own gate (§6.6.9)');
+  ok(HARNESS_GAPS.riffRound2Speed,
+     '…but what replaced it is declared: the 0.58× Round-2 chart is played at Round-1 difficulty, because `simulateRiffPerformance` has no tempo term');
   ok(HARNESS_GAPS.summonRockGod, 'the sidestepped finale is declared');
   ok(!('legacy' in POLICIES),
      '⚠️ there is no `legacy` policy — a stub by that name would be cited as "the current bot" by the first person who read a table without reading the file');

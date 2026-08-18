@@ -681,6 +681,332 @@ as a bruiser trait if "hurt people" is scored at all. ✅ It does now, and
 
 ---
 
+### 6.6.10 🎯 2026-08-18 — THE BOTS WERE NOT PLAYING THE GAME, AND ONE WEIGHT IS WHY
+
+#### The headline
+
+Alex, on being told that half of all three-life matches never finish: *"Yo these
+bots have a problem if they can't finish a game of like a race to 20 FP."*
+
+He was right, and the diagnosis in §6.6.9 — "the Fame economy stops producing" —
+was **wrong**. Nothing was drying up. The bots were standing still on purpose.
+
+A stalled 400-turn match, instrumented: the two Spirits are **adjacent for 417 of
+427 samples**, both inside their own rigs, and across those 400 turns they play
+**2,178 melody notes, 400 confirms, 5 swings and 0 duels**, finishing on 1 Fame
+and 3 Fame. They were nose to nose, fully armed, composing.
+
+#### 🐛 THE DECISION DUMP — every action is worse than doing nothing
+
+Turn 120 of that match, the Ronin to act, scored the way the searcher scores
+(apply the action, evaluate the resulting position):
+
+| option | score |
+|---|---|
+| **the position as it stands** | **14.422** |
+| `endTurn` | 13.522 |
+| `move` | 13.429 |
+| `face` | 13.252 |
+| `riffOff` (live, against Zero) | 11.186 |
+| `swing` | 10.515 |
+
+**Doing nothing is the best available move, and a duel is the fourth-best.** Once
+a board reaches that shape, it stays there for 400 turns — which is exactly what
+"the median decided match is 41 turns and the p90 is 159" was telling us. Games
+were bistable: bootstrap early or never start.
+
+#### 🎯 THE CAUSE — a term that scores getting ready, priced above doing it
+
+Weighted term deltas for the two actions that should be the game:
+
+| action | total | the deltas that explain it |
+|---|---|---|
+| `riffOff` | **−2.63** | `beamSetup` **−1.96**, `fame` +0.73, `kit` −0.53, `fanMult` −0.43, `apBanked` −0.36 |
+| `swing` | **−4.89** | `beamSetup` **−2.20**, `edgeSafety` −1.30, `centreStage` −0.77, `pressure` **−0.41** |
+
+`beamSetup` scores how close a position is to firing a Sonic — and **firing it
+destroys the alignment being scored**, because the rival is knocked off the line.
+At `beamSetup: 2.2` that cost 1.96 points. The Fame the duel pays — 8 FP, a
+THIRD of a 24-point race — scored **+0.73**, because `fame` is normalised against
+the whole match while `beamSetup` swings its full range for one hex of geometry.
+
+🎯 **AND THE RULE THIS BROKE WAS ALREADY WRITTEN DOWN, ONE TERM ABOVE IT.**
+§6.6.6 shipped `chargeSeek` with an explicit inequality and an explicit reason:
+*"`charge` > `chargeSeek`… the value HANDS OFF: seek goes to zero and `charge`
+goes to one"*, or the bot loiters beside a Charge Zone forever rather than
+stepping on it. `beamSetup` was written in the same pass, with **no hand-off
+partner and no inequality** — and it produced precisely the failure the
+`chargeSeek` comment predicts, one term over.
+
+📌 **The general form, worth keeping:** any term that scores GETTING READY to do
+something must be capped below what DOING it pays, or the bot will get ready
+forever.
+
+#### 📊 The sweep — one variable, via `weightOverrides`
+
+Three lives, 30 matches a row, searcher in both seats, nothing else touched:
+
+| `beamSetup` | decided | mean turns | FP/turn | duels | Sonics |
+|---|---|---|---|---|---|
+| 2.2 / 2.8 / 1.6 (shipped) | **12/30 (40%)** | 267 | 0.070 | 20 | 14 |
+| 1.2 flat | 28/30 (93%) | 54 | 0.544 | 54 | 28 |
+| 0.7 flat | **30/30 (100%)** | 36 | 0.760 | 43 | 37 |
+| 0.3 flat | 30/30 (100%) | 31 | 0.809 | 53 | 32 |
+
+**Shipped: the column scaled ×0.32** — Zero 0.9, Ronin 0.7, Metalness 0.5, default
+0.7. The scale keeps the roster's ORDERING, which is character rather than
+tuning: Zero's Blaster runs down the same line as his Sonic, Metalness is a melee
+kit that has least use for a three-hex line. Verified as shipped: 30/30 decided
+at three lives (mean 34 turns, FP/turn 0.742, 43 duels) and 30/30 at two (mean
+24 turns).
+
+#### 📏 The two-gate bench — 60 seeds, three lives, searcher vs unranked
+
+| `beamSetup` | searcher win rate | inconclusive |
+|---|---|---|
+| shipped (2.2 / 2.8 / 1.6) | 42.9% ±21.2 | **39/60 (65%)** |
+| 1.2 flat | 44.4% ±14.5 | 15/60 (25%) |
+| **0.7 flat** | 48.3% ±12.9 | **2/60 (3%)** |
+| the scaled column, as shipped | 52.5% ±12.7 | **1/60 (2%)** |
+
+🎯 **THE INCONCLUSIVE GATE IS THE RESULT: 65% → 2%.** §6.6 spent three sessions
+arguing that the ≥60% bar was measuring its own exclusion rate; this is the first
+configuration where that argument does not apply, because there is almost nothing
+left to exclude.
+
+⚠️ **AND THE WIN RATE IS ~52%, WHICH IS NOT AN EDGE.** Read it honestly: `a` is
+the searcher with the beam's ranking ON and `b` is the same searcher with it OFF,
+so this says the RANKING buys little once both seats will actually fight. That is
+a real open question and it now has a clean instrument pointed at it.
+
+#### ✅ Three lives is the default now
+
+The move `SEQUENCING.md` §5.F‴ had blocked. With the weight corrected the horizon
+is not the problem it looked like: **30/30 decided at three lives, mean 34
+turns.** `matchConfig` defaults to three, and every reading taken before
+2026-08-18 was taken on two — do not compare across that line.
+
+#### 🐛 AND A SECOND BUG IS VISIBLE IN THE SAME TABLE — still open
+
+`pressure` went **−0.41 on a swing that landed**. The term is reach-weighted
+(`vibeMissing × reach`) and a successful hit KNOCKS THE RIVAL AWAY, so the
+distance penalty falls faster than the damage credit rises: **hurting somebody
+can score worse than not hurting them.** §5's own comment block anticipated
+exactly this for LIVES — *"decaying it by distance would mean finishing a rival
+SCORES WORSE than leaving them bleeding next to you"* — and banked lives
+accordingly. Chip Vibe was left reach-weighted on the argument that it is
+provisional, and knockback turns that argument inside out. Not fixed here: it
+wants its own A/B, and one variable at a time is how §6.6.10 stayed legible.
+
+#### 🎤 Footnote: the duel ceiling was NOT what was breaking the game
+
+With the bots actually playing, the §6.6.9 ceiling sweeps clean — three lives, 30
+matches: ceiling 4 → 35 turns and 30/30 decided, ceiling 6 → 47 turns and 29/30,
+ceiling 8 → 36 turns and 30/30. 8 FP a duel does not run away with the match; it
+buys duels (34 → 43 chosen). ⚠️ Round 1 still pays 7.64 and Round 2 7.48, so
+§6.6.9's re-pricing job is untouched by any of this.
+
+### 6.6.9 ✅ 2026-08-18 — SUDDEN DEATH RUNS, AND THE FP CAP EATS EVERY POINT OF IT
+
+#### The headline
+
+`transition.js`'s `riffOff` case now escalates to Round 2 on the engine's own
+`verdict.close`, which is the client's gate verbatim (`fireBeamClash`: break the
+beams on `!tie && !close`, otherwise surge, capped at two rounds).
+`HARNESS_GAPS.riffRound2` is **deleted**, not softened.
+
+**It fires constantly: 116 of 205 duels — 57% — go to sudden death.** That is
+not a rounding error on the Fame economy; it is the majority of every duel the
+bench has ever played, resolved by a rule the headless path did not run.
+
+🎯 **AND THE PAYOUT DID NOT MOVE, WHICH IS THE REAL FINDING.**
+
+| | HEAD (Round 1 only) | this pass (Round 2 driven) |
+|---|---|---|
+| matches | 250 | 250 |
+| mean turns | 188 | 182 |
+| decided | 153/250 (61%) | 158/250 (63%) |
+| **FP per turn** | **0.067** | **0.066** |
+| duels fought | 238 | 205 |
+| duels reaching Round 2 | 0 | **116 (57%)** |
+
+Same seeds, same two pairs, searcher in both seats. ⚠️ **These are population
+comparisons, not paired ones** — Round 2 draws from the rng, so every roll after
+the first duel diverges. The duel counts differing by 33 is that divergence, not
+a preference the searcher acquired.
+
+#### 🐛 WHY A 2 FP BONUS BOUGHT NOTHING — the ledger that answered it
+
+`playTurn`'s duel ledger now records the FP that actually **landed** on the two
+duelists across the action, because a duel resolved and a duel paid are
+different events. Over 120 matches:
+
+| | duels | FP banked per duel |
+|---|---|---|
+| ended in Round 1 | 37 | **3.89** |
+| went to Round 2 | 57 | **3.81** |
+
+`FAME_PER_TURN_CAP` is **4**.
+
+🎯 **THE CAP, NOT THE LADDER, SETS THE PRICE OF A DUEL.** `awardRiffFame` builds
+a payout out of six terms — floor 2, `ceil(margin/2)`, a perfect per three, the
+Round-2 bonus of 2, the Headliner rider, the stage-FX rider — then hands it to
+`grantFame`, which multiplies it by the crowd and clips the result at 4 per
+Spirit per turn. A Round-1 win on margin 2 already reaches the ceiling before
+any of that is counted. **So `RIFF_R2_BONUS` is awarded in full and banked at
+zero, every time.**
+
+⚠️ **AND IT IS NOT ONLY THE BONUS.** The same arithmetic flattens margin,
+perfects, the belt, the stage effects and the underdog multiplier into the same
+number. The biggest Fame play in the rules pays a bot exactly what a pose round
+pays it — `POSE_FP_MAX` is 4 as well, and the constant's own comment says it was
+matched to the cap deliberately. §5.A's pattern has a **third sign** now: not a
+reward the bot cannot reach, not a penalty it cannot shed, but a reward it
+collects and a cap that discards.
+
+📌 **WHAT NOT TO DO WITH THIS.** Raising the cap, exempting duels from it, or
+banking the overflow are all balance changes to the whole Fame economy, and the
+cap is doing real work — `battleFlowCheck` §5 pins overflow as discarded, and the
+per-turn window is what stops a chained payout (Azrael streaks, riff payouts
+back to back) from ending a match in one beat. This is Alex's decision, not a
+weight to nudge, and the evidence for it should be quoted with the sim caveat
+below.
+
+#### 🤝 The consolation is reachable, and still almost never fires
+
+`bothStrong` requires `round >= 2` by construction, so before this pass the
+both-paid consolation could not fire at all. It now can: **1 duel in 205.**
+The gate is `RIFF_BOTH_PAID_QUALITY` = 75% clean **for both sides**, and the
+model's ceiling is `riffSkill` = 0.97, worth about 76% expected quality — so it
+needs two Spirits both at a Performance Score near 11+ **and** the variance to
+land kindly. Whether that is the right rarity is a design question; what matters
+here is that the rule is now on the board instead of unreachable.
+
+#### 📏 What is modelled, and what that biases
+
+`simulateRiffPerformance` takes a note COUNT, not a rhythm, so it cannot see that
+Round 2 runs at **0.58× the gaps**. Both sides therefore play sudden death as
+well as they played Round 1, on a chart that got half again as fast. Declared as
+`HARNESS_GAPS.riffRound2Speed` rather than patched with a guessed penalty.
+
+⚠️ **The bias is not symmetric in its consequences.** The verdict is roughly
+unaffected — both sides are flattered equally — but `RIFF_BOTH_PAID_QUALITY` is
+an ABSOLUTE bar, so the consolation fires more often here than it would with
+human hands. It is also part of why the `close` gate trips so readily: two
+performances drawn from the same curve at similar Performance Scores cluster
+inside `RIFF_CLOSE_QUALITY_GAP` by construction. **57% escalation is a reading of
+that model as much as of the game.**
+
+#### 🔬 What the suites say
+
+transition 232 → **241** (the escalation sweep and the both-paid probe),
+harness 1681 → **1694** (2 of those are the new `HARNESS_GAPS` assertions; the
+rest is the per-action loop running over slightly different matches). Every other
+suite unchanged and green: engine, legal 547, eval 134, turnflow 61, determinism
+22, battleflow 45, melody 159, slime 127, eleven 38, score 122, riffparity
+127598, skilltree 208. `check:bundle` clean.
+
+⚠️ The new transition assertions **sweep 60 seeds rather than pinning one**, on
+purpose: which seed produces a close duel is a property of
+`simulateRiffPerformance`, so a pinned seed would fail the day that curve is
+retuned and read as "escalation broke". What they pin is the invariant — close
+escalates, decisive does not, no duel ever reaches a third round, and no close
+duel is allowed to stop at Round 1.
+
+#### 🎤 THE DUEL GOT ITS OWN CEILING — and the searcher noticed immediately
+
+Alex's call, same day: `RIFF_FP_TURN_CAP = FAME_PER_TURN_CAP × 2` (**8**), passed
+by `awardRiffFame` into `grantFame`'s new `cap` argument. It is a HIGHER cap, not
+an exemption — the overflow above 8 is still discarded, and `fameThisTurn` is
+still one shared window, so a Spirit carried past 4 by a duel banks nothing from
+anything else that turn. Everything else keeps the general ceiling by default.
+
+40 matches per cell, same seeds, searcher in both seats, turn cap 400:
+
+| lives | duel ceiling | decided | mean turns | FP/turn | duels chosen | FP/duel R1 | FP/duel R2 |
+|---|---|---|---|---|---|---|---|
+| 2 | 4 (old) | 26/40 (65%) | 168 | 0.073 | 28 | 3.83 | 3.88 |
+| 2 | **8** | 27/40 (68%) | 156 | **0.096** | **37** | **7.77** | 7.79 |
+| 3 | 4 (old) | 16/40 (40%) | 262 | 0.064 | 12 | 3.75 | 3.88 |
+| 3 | **8** | 20/40 (50%) | 227 | 0.090 | **29** | 7.20 | 7.58 |
+
+🎯 **THE DUEL COUNT IS THE RESULT, NOT THE FP.** The searcher went from 28 duels
+to 37 at two lives, and from 12 to 29 at three — the same policy, the same beam,
+the same weights. It was not avoiding riff-offs out of temperament; it was
+correctly pricing an action whose reward was being deleted after the fact. This
+is §6.6.6's lesson in the payout layer rather than the evaluator: **a term the
+economy discards is a term the search cannot see.**
+
+⚠️ **AND THE LADDER IS STILL SATURATED, SO DO NOT CALL THIS FIXED.** Round 1 pays
+7.77 and Round 2 pays 7.79. The cap moved, the ceiling did not stop binding.
+Instrumenting every riff grant (76,020 of them, most inside the searcher's own
+lookahead) says why:
+
+| mean base, before multipliers | mean crowd multiplier | mean uncapped award | mean banked | clipped |
+|---|---|---|---|---|
+| 8.34 | ×1.90 | **15.85** | 7.81 | **96%** |
+
+**`awardRiffFame` is writing ~16 FP cheques against a 4 FP account.** A whole life
+is worth 8 (`fpPerLife` at two players), so the average duel is priced at two
+lives of Fame. The dominant term is `ceil(margin / 2)`, and `margin` is
+`round(scoreGap × RIFF_MARGIN_SCALE)` — a scaled score gap that grows with riff
+LENGTH, which is exactly the objection `RIFF_CLOSE_QUALITY_GAP` was introduced to
+fix on the Round-2 gate and which nobody carried across to the payout.
+
+📌 **PROOF THE CAP IS LOAD-BEARING, IN CASE ANYONE IS TEMPTED TO REMOVE IT:** run
+the same fixture with the duel ceiling lifted entirely and matches end in a mean
+of **14 turns**, 40/40 decided, FP per turn 1.649 — a duel wins the match on its
+own. The cap is not a nuisance; it is the only thing that has been balancing the
+riff-off.
+
+🎯 **SO THE NEXT MOVE ON THE FAME ECONOMY IS RE-PRICING `awardRiffFame`, NOT
+RAISING ITS CAP AGAIN.** Get the uncapped award to land INSIDE the band — 4 to 8
+across the realistic spread of margins, perfects and rounds — and every term in
+it becomes visible to the searcher for the first time. Until then the duel is
+worth "8", full stop, and Round 2 is worth nothing again for a second, entirely
+different reason.
+
+#### 🕰️ THREE LIVES IS RULE-LEGAL NOW, AND THE GAME STILL WILL NOT FINISH IT
+
+With the Gods shelved (below), `grantFame` crowns on the Fame target at any
+number of lives, so `matchConfig`'s two-life default had nothing left to
+sidestep. **It stayed at two anyway, and the reason is measured rather than
+cautious.**
+
+| lives | turn cap | decided | mean turns |
+|---|---|---|---|
+| 2 | 400 | 27/40 (68%) | 156 |
+| 3 | 400 | 20/40 (50%) | 227 |
+| 3 | **800** | 21/40 (53%) | 423 |
+
+⚠️ **DOUBLING THE TURN CAP BOUGHT THREE POINTS.** The median DECIDED three-life
+match is 41 turns and its p90 is 159, so a match that has not finished by roughly
+200 turns never finishes — the stalls are dead games, not slow ones. Something
+stops the Fame economy producing before 24 FP is reached, and `MAX_TURNS` is not
+the knob. `harnessCheck` §5 refuses the default outright (2/8 decided), which is
+the assertion doing its job.
+
+📌 **This is the sharpest open question on the bench**, and it is upstream of
+§6.6's "restate the bar" problem: a two-gate bar cannot be calibrated on a
+horizon where half the games die of natural causes. Pass `startingLives: 3`
+deliberately to reproduce.
+
+#### 🪦 Rock Gods — shelved 2026-08-18, Alex's call
+
+The finale is off the roadmap for now. The bot's only God-aware behaviour is four
+lines in `botPlanMove` (converge on the God while one is summoned); it is marked
+🪦 and left standing, because it cannot fire while nothing summons a God and
+cutting a working rule to express a scheduling decision turns a shelf into a
+rewrite. `HARNESS_GAPS.summonRockGod` now names a shelved subsystem rather than
+owed work.
+
+⚠️ **The cost it was carrying did not go away.** `matchConfig` plays TWO-life
+matches specifically to sidestep the finale, and short games under-rate every
+investment term in §3.2 and §3.6. With the Gods shelved that constraint stops
+being load-bearing — but moving the bench to three lives means changing
+`grantFame`'s `shortGame` branch so reaching the Fame target always crowns
+outright, which is a game rule and therefore Alex's call.
+
 ### 6.6.8 ✅ 2026-08-17 (late) — THE POSE PAYS, AND THE HOOK NOBODY IMPLEMENTED
 
 > §6.6.7 closed by naming three Fame engines that were still switched off

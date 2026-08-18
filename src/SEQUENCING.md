@@ -199,7 +199,231 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. 🧭 START HERE — session handoff, 2026-08-17 (late)
+## 5. 🧭 START HERE — session handoff, 2026-08-18
+
+> ⚠️ **NOTHING IS COMMITTED THIS SESSION** — 12 files, all suites green. Read
+> this, then `BOT_STRATEGY_HANDOFF.md` §6.6.9. The previous session (§5-late) is
+> committed as `805b1ec`.
+>
+> 🪦 **AND TWO OF ALEX'S CALLS LANDED TODAY:** Rock Gods are shelved (5.F‴), and
+> the riff-off has its own Fame ceiling (5.C‴).
+>
+> 🎯 **THEN ALEX ASKED THE RIGHT QUESTION AND IT BROKE THE SESSION OPEN** — see
+> 5.H‴ and `BOT_STRATEGY_HANDOFF.md` §6.6.10. The bots were not failing to finish
+> matches. **They were choosing not to play**, and one over-weighted evaluator
+> term was the whole of it. Inconclusive matches: **65% → 2%.**
+
+### 5.A‴ The pattern is eight for eight — and this is the THIRD sign it wears
+
+§5.A named the most reliable bug predictor in this repo:
+
+> The game rewards something. The evaluator has no term for it — or has a term
+> for the reward's RESULT but not for the act of going and getting it. So the bot
+> never does it, nothing errors, every suite stays green.
+
+| # | the blind spot | symptom it wore |
+|---|---|---|
+| 12 | `verdict.close` was computed and read only by the client | **0 of 238 bench duels ever reached Round 2** — the majority of duels, by the rules |
+| 13 | the Round-2 bonus is granted in full and **clipped to nothing** | escalation landed, and FP per turn moved 0.067 → 0.066 |
+
+🎯 **#13 IS A SHAPE THIS LIST HAS NOT HELD BEFORE.** #10 was a reward the bot
+could not reach. #11 was a penalty it could not shed. This one is a reward it
+reaches, collects, and then hands to `grantFame`, which throws it away at the
+4 FP-per-turn cap. A rule can be present, reachable, exercised and green, and
+still pay zero.
+
+### 5.B‴ What shipped (uncommitted)
+
+- ⚡ **Round 2 is driven headlessly** — `transition.js`'s `riffOff` case
+  escalates on `verdict.close`, the client's own gate, capped at two rounds.
+  `HARNESS_GAPS.riffRound2` is **deleted**. 116 of 205 duels (57%) now go to
+  sudden death; the both-paid consolation, which `bothStrong` gates on
+  `round >= 2`, fires for the first time.
+- 📒 **The duel ledger** — `playTurn`/`runMatch` return
+  `{ fought, round2, ties, bothPaid, fp, fpRound2 }`. `fp` is the FP that
+  actually LANDED, for the same reason `limelightScores` exists: a duel resolved
+  and a duel paid are different events, and only the second one is the economy.
+- 🔬 **9 new transition assertions**, sweeping 60 seeds rather than pinning one —
+  close escalates, decisive does not, nothing reaches Round 3, no close duel is
+  allowed to stop at Round 1, and the loser of a hard-fought duel gets paid.
+- 📌 **`HARNESS_GAPS.riffRound2Speed`** — sudden death's 0.58× chart is played at
+  Round-1 difficulty, because `simulateRiffPerformance` has no tempo term.
+  Declared, not patched with a guessed penalty.
+- 🎤 **`RIFF_FP_TURN_CAP` = 8** (Alex's call) — a HIGHER cap for the duel, not an
+  exemption: overflow is still discarded and `fameThisTurn` is still one shared
+  window, so a Spirit carried past 4 by a duel banks nothing else that turn.
+  `grantFame` took a `cap` argument to do it; every other caller is unchanged
+  because it defaults to `FAME_PER_TURN_CAP`. 5 new battleFlow assertions.
+- 🪦 **Rock Gods shelved** (Alex's call) — `ROCK_GODS_SHELVED` in
+  `data/rockGods.js`; `grantFame` crowns on the Fame target at any number of
+  lives. See 5.F‴.
+
+### 5.C‴ 🎯 THE FINDING — the Fame cap is the ceiling on every play in the game
+
+`awardRiffFame` builds the duel's payout out of six terms and the underdog
+multiplier. `grantFame` then clips the lot at `FAME_PER_TURN_CAP` = **4**.
+
+| duels that… | count | FP banked per duel |
+|---|---|---|
+| ended in Round 1 | 37 | **3.89** |
+| went to Round 2 | 57 | **3.81** |
+
+A Round-1 win on margin 2 is already at the ceiling. So sudden death's +2 is
+awarded and discarded — and so are the margin scaling, the perfect bonus, the
+Headliner belt, the stage-FX rider and the underdog multiplier, all of them, all
+the time.
+
+📌 **The biggest Fame play in the rules pays a bot exactly what a pose round
+pays it.** `POSE_FP_MAX` is 4 too, matched to the cap on purpose.
+
+✅ **ALEX'S CALL, SAME DAY: the duel gets its own ceiling** — `RIFF_FP_TURN_CAP`
+= `FAME_PER_TURN_CAP × 2` = 8. And the searcher answered immediately: duels
+chosen went **28 → 37** at two lives and **12 → 29** at three, on the same
+policy, the same beam and the same weights. It was never avoiding riff-offs; it
+was correctly pricing an action whose reward was deleted after the fact.
+
+⚠️ **THE LADDER IS STILL SATURATED, THOUGH — Round 1 now pays 7.77 and Round 2
+7.79.** Instrumenting every riff grant says why: mean base **8.34** before
+multipliers, mean crowd multiplier **×1.90**, mean uncapped award **15.85**, mean
+banked 7.81, **96% clipped**. `awardRiffFame` is writing 16 FP cheques against a
+4 FP account, and a whole life is worth 8. The dominant term is
+`ceil(margin / 2)`, where `margin` is a SCALED SCORE GAP that grows with riff
+length — the same objection `RIFF_CLOSE_QUALITY_GAP` was introduced to fix on the
+Round-2 gate, never carried across to the payout.
+
+📌 **And the cap is load-bearing, so nobody should be tempted to delete it:**
+with the duel ceiling lifted entirely, matches end in a mean of **14 turns**,
+40/40 decided. The cap is the only thing that has been balancing the riff-off.
+
+### 5.D‴ THE STATE OF THE GAME RIGHT NOW
+
+Same seeds, same fixture, HEAD vs this pass, **250 matches each**: mean length
+188 → **182** turns, decided 153/250 → **158/250**, FP per turn 0.067 →
+**0.066**, duels reaching Round 2 **0 → 116**.
+
+⚠️ **THE FIRST THREE COLUMNS ARE NOISE AND MUST BE READ AS NOISE.** 250 matches
+is roughly ±6 points on the decided rate, and Round 2 draws from the rng, so
+every roll after the first duel diverges — these are population comparisons, not
+paired ones. The only column that measures the change is the last, and the FP
+column is the finding precisely because it did NOT move.
+
+### 5.E‴ 🎯 NEXT, IN DEPENDENCY ORDER
+
+1. ✅ ~~**FIND OUT WHY HALF OF ALL THREE-LIFE MATCHES NEVER FINISH.**~~ **DONE
+   THE SAME SESSION — see 5.H‴.** It was not the Fame economy drying up. It was
+   `beamSetup` priced above the Fame it sets up, so `endTurn` outscored every
+   action on the board. Inconclusive 65% → 2%, three lives is the default, and
+   the diagnosis that replaced it is in §6.6.10.
+2. 💢 **FIX `pressure`'s KNOCKBACK INVERSION** (5.H‴). A swing that LANDS scores
+   `pressure` **−0.41**, because the term reach-weights chip Vibe and a good hit
+   shoves the rival out of reach. §5's comment block solved exactly this for
+   lives and left chip Vibe exposed. One variable, one A/B — and it is the last
+   term still telling the bot that hurting somebody is a bad idea.
+3. 🧮 **RE-PRICE `awardRiffFame` INTO THE BAND** (§5.C‴). Not the cap again — the
+   award. Get the uncapped payout to land between 4 and 8 across the realistic
+   spread of margins, perfects and rounds, and every term in it becomes visible
+   to the searcher for the first time. Start with `ceil(margin / 2)`, where
+   `margin` scales with riff LENGTH for no reason a player could see.
+4. 🥁 **ASK WHY THE RANKING BUYS NOTHING.** The two-gate bench now runs on a
+   population where 98% of matches finish, and the searcher beats the SAME
+   searcher-with-ranking-off **52.5% ±12.7**. That is not an edge. It was
+   unanswerable while two thirds of matches were excluded; it is answerable now.
+5. 🔊 **MAKE `centreStage` CONDITIONAL ON RANGE** (carried, unchanged, from
+   §5.E″ item 2). The middle is outside a tier-0 rig, so centre and `inRig`
+   fight and the beam loses.
+6. 📏 **THEN A REAL BENCH.** ⚠️ Every number in §6.6.9–10 is 30–250 matches;
+   §6.6's bar is ~2000. The inconclusive gate finally has a value worth setting:
+   2%.
+7. 🪦 **THE SMASH IS STILL UNMODELLED.** Oldest debt on the list, unchanged.
+
+### 5.F‴ 🪦 ROCK GODS ARE SHELVED — Alex, 2026-08-18
+
+The finale is off the roadmap for now. The bot's only God-aware behaviour is four
+lines in `botPlanMove` (converge on the God while one is summoned), now marked 🪦
+and left standing: it cannot fire while nothing summons a God, and cutting a
+working rule to express a scheduling decision turns a shelf into a rewrite.
+`HARNESS_GAPS.summonRockGod` now names a shelved subsystem rather than owed work.
+
+✅ **AND THE RULE MOVED WITH IT (Alex's call).** `grantFame` no longer summons:
+reaching the Fame target crowns a Legend outright at any number of lives. That
+was the only thing forcing `matchConfig`'s TWO-life matches, which §3.2 and §3.6
+are both clear under-rate every investment term the bot has.
+
+⚠️ **THE BENCH DEFAULT STAYED AT TWO ANYWAY, AND THAT IS A FINDING, NOT A
+HESITATION** — see 5.E‴ item 1. Three lives is rule-legal and the game will not
+finish it. Pass `startingLives: 3` deliberately to reproduce.
+
+### 5.H‴ 🎯 THE ONE THAT MATTERED — the bots were not playing the game
+
+Alex, reading 5.C‴: *"Yo these bots have a problem if they can't finish a game of
+like a race to 20 FP."* He was right, and 5.E‴'s original item 1 — "the Fame
+economy stops producing" — was wrong.
+
+A stalled 400-turn match, instrumented: the two Spirits stand **adjacent for 417
+of 427 samples**, both in rig, and over those 400 turns they play **2,178 melody
+notes, 400 confirms, 5 swings and 0 duels**, finishing on 1 Fame and 3. Nose to
+nose, fully armed, composing.
+
+The decision dump at turn 120 says why. Scoring every option the way the searcher
+does: the position as it stands **14.42**, `endTurn` 13.52, `move` 13.43, `face`
+13.25, a live **riff-off 11.19**, `swing` 10.52. **Doing nothing was the best
+move on the board.**
+
+🎯 **ONE TERM CARRIES IT.** Taking the duel loses **1.96** of `beamSetup` — which
+scores how close you are to firing a Sonic, and firing it knocks the rival off
+the line the term is scoring — and gains **0.73** of `fame` for 8 FP, a third of
+a 24-point race. A positional term with a cheap full range outweighed a third of
+the win condition.
+
+📌 **AND THE RULE IT BROKE IS ONE TERM ABOVE IT IN THE SAME FILE.** `chargeSeek`
+ships with an explicit inequality — `charge` > `chargeSeek` — and an explicit
+reason: without the hand-off the bot loiters beside a Charge Zone forever rather
+than stepping on it. `beamSetup` was written in the same pass with no hand-off
+partner and no inequality, and produced exactly that failure. **Any term that
+scores getting ready must be capped below what doing it pays.**
+
+Shipped: the `beamSetup` column scaled ×0.32 (Zero 0.9, Ronin 0.7, Metalness 0.5,
+default 0.7), keeping the roster ordering, which is character. Three lives, 30
+matches: decided **12/30 → 30/30**, mean turns **267 → 34**, FP per turn
+**0.070 → 0.742**, duels **20 → 43**. Two-gate bench over 60 seeds: inconclusive
+**65% → 2%**, searcher 42.9% ±21.2 → **52.5% ±12.7**.
+
+⚠️ **THE WIN RATE IS THE HONEST HALF OF THAT.** `unranked` is the same searcher
+with the beam's ranking off, so ~52% says the RANKING buys little once both seats
+will fight. New question, clean instrument — 5.E‴ item 4.
+
+### 5.G‴ 📌 Housekeeping
+
+⚠️ **`git worktree` left a stale registration.** This session compared trees with
+a detached worktree at `/tmp/rlsw-head`; the directory is gone but the metadata
+in `.git/worktrees/rlsw-head` could not be removed from where the work was done.
+One command clears it: `git worktree prune`.
+
+`.scratch/` gained `ab669.mjs`, the A/B behind every number in §6.6.9, and three
+probes behind §6.6.10:
+
+- **`whyendturn.mjs` — the one to keep.** The decision dump: every legal action
+  scored the way the searcher scores it, plus the WEIGHTED TERM DELTAS for the
+  duel and the swing. It is the file that turned "the economy dries up" into
+  "`beamSetup` is 1.96 and the Fame is 0.73". ⚠️ Takes the old weight as a second
+  argument, because on the fixed tree these matches END and there is no turn 120
+  left to dump: `.scratch/whyendturn.mjs 120 2.2`.
+- **`beamsweep.mjs`** — the sweep, and **`twogate.mjs`** — the win rate and the
+  inconclusive rate reported together, which is the shape §6.6 asked for. Both
+  drive the change through `weightOverrides`, so neither needs a code edit to
+  re-run against a future weight table. Like
+`ab68.mjs` it runs UNCHANGED on both trees — an older checkout has no `duels` on
+its match result and simply reports zeros — which is what makes a real
+before/after possible instead of a comparison inside one tree. It also gained
+`enginesrc.tgz` / `headsrc.tgz`, throwaway tarballs of the engine subset; both
+can go.
+
+📌 `_to_delete/` still holds `riffLibrary.js`, `RiffBanner.jsx` and `mono.diff`.
+Still needs removing by hand.
+
+---
+
+## 5-late. 🧭 session handoff, 2026-08-17 (late)
 
 > ✅ **THE PREVIOUS SESSION IS COMMITTED** — `fee7be0`, and §5-eve's "STILL
 > NOTHING COMMITTED" banner below is stale as a result; it is left in place
