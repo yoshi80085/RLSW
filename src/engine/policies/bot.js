@@ -654,3 +654,33 @@ export function botPlanMove(state, self, persona, amps) {
     .sort((a, b) => b.s - a.s)[0];
   return best && best.s > here + 0.5 ? best.num : null;
 }
+
+// ── 🧠 WHAT THE CLIENT'S BOT DRIVER CAN ACTUALLY PERFORM ────────────────────
+//
+// The searcher chooses in `policies/play.js` and the CLIENT executes, by
+// translating each action `kind` into the function a human's click would have
+// called (`botSearcherExecute`, in the monolith). These two sets are that
+// table's contents, lifted somewhere a headless test can see them.
+//
+// ⚠️ THIS IS A CANARY, NOT A PROOF. Nothing here can see the switch statement in
+// the .jsx — it cannot tell you the translation is CORRECT, only that the set of
+// kinds the rules can emit has not grown while nobody was looking. A new kind in
+// `legalActions` fails `legalActionsCheck` §16 and points whoever added it at
+// the table. That is the failure this repo keeps having: a rule ships, the bot
+// has no path to it, and every suite stays green (§5.A, eight times running).
+export const BOT_CLIENT_KINDS = new Set([
+  'skillTarget', 'melodyNote', 'stackCommit', 'confirmMelody',
+  'move', 'face', 'swing', 'tentacle', 'sonic', 'riffOff', 'pose', 'endTurn',
+  // 🧪 Metalness's trail and his dial. `.scratch/clientkinds.mjs` is why these
+  // are here rather than in the gap list: he reaches for them constantly.
+  'slime', 'eleven', 'slide',
+]);
+
+// 🪦 Modelled by the engine, NOT drivable from the client bot yet. Named rather
+// than forgotten — each one is a line of play the searcher can plan and then be
+// unable to take, which shows up in the client as "wanted to X, ending the turn".
+//   · smash/blaster — the searcher can never CHOOSE these (UNMODELLED_KINDS in
+//     transition.js), so the legacy bot's best attack is absent from searcher
+//     play entirely. That is the single biggest behavioural difference between
+//     the two bots and it belongs in any comparison of them.
+export const BOT_CLIENT_GAPS = new Set(['smash', 'blaster']);

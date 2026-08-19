@@ -102,52 +102,6 @@ export const KIT_DB_HORIZON = 20;
 // 0.35 is a starting point, not a measurement — §5's standing warning.
 export const PRESSURE_REACH_FLOOR = 0.35;
 
-// 💢 HOW MUCH OF THE CHIP-VIBE CREDIT THE REACH GRADIENT IS ALLOWED TO MOVE.
-//
-// ⚠️ WITHOUT THIS BOUND, A BLOW THAT LANDS CAN SCORE WORSE THAN NOT THROWING
-// IT — the §6.6.10 inversion. Chip Vibe was multiplied by `reachWeight` at full
-// strength, and every attack in this game KNOCKS THE RIVAL BACK 1–2 hexes. So a
-// hit adds one point of damage and simultaneously demotes ALL the damage already
-// done to a lower reach band: a rival taken from 2 Vibe to 1 scored −0.02 (−0.05
-// weighted) for the Ronin, measured over 390 landed swings. The bot was being
-// told, in the term whose entire job is "hitting people is good", that hitting
-// people is bad. It is the same failure that retired `adjWounded` (term 11) —
-// scoring the OPPORTUNITY so that taking it destroys the payment — surviving in
-// the term that replaced it.
-//
-// 🎯 THE INEQUALITY, IN THE §6.6.10 FORM: a term that scores GETTING READY must
-// be capped below what DOING it pays. Here the reach gradient is the getting-
-// ready half and one point of chip damage is the doing half, so the worst reach
-// demotion a single hit can cause must cost less than that hit earns.
-//
-// The worst case is the tightest ratio available: a 1-point hit on a rival one
-// point above going down (Vibe 2 → 1, the smallest proportional gain that is not
-// a life) knocked the full 2 hexes, from melee reach to the floor. Requiring
-//
-//     (M-2)/(M-1)  ≤  1 - MIX · (1 - PRESSURE_REACH_FLOOR)
-//
-// for the largest Vibe pool on the roster (M) rearranges to the bound below.
-// ⚠️ DERIVED FROM THE ROSTER, NOT PINNED AT A NUMBER, for the same reason
-// `dbHorizon` divides by the skill you are saving for rather than a flat 4: a
-// Spirit with a deeper Vibe pool makes the ratio tighter, and a hard-coded 0.35
-// would silently go back to paying the bot for missing. `evalCheck` §16 sweeps
-// the whole roster against the property itself, so this cannot drift quietly.
-// 📌 The 0.9 is headroom, so the guarantee is strict rather than an equality one
-// floating-point ulp could tip.
-const MAX_VIBE_POOL = Math.max(...Object.values(SPIRIT_DEFS).map(d => d.maxVibe ?? 5));
-export const PRESSURE_CHIP_REACH_MIX =
-  0.9 / ((MAX_VIBE_POOL - 1) * (1 - PRESSURE_REACH_FLOOR));
-
-/**
- * 💢 The reach multiplier actually applied to chip Vibe — `reachWeight` mixed
- * back toward 1 by `PRESSURE_CHIP_REACH_MIX`. Still strictly decreasing in
- * distance (the wound is worth more when you can act on it), but no longer
- * steep enough for a landed blow to lose more to the knockback than it gains.
- */
-export function chipReachWeight(dist) {
-  return 1 - PRESSURE_CHIP_REACH_MIX * (1 - reachWeight(dist));
-}
-
 /**
  * 💢 How much of a rival's chip damage counts, given how far away they are.
  *
@@ -933,15 +887,6 @@ export function evaluate(state, spiritId, view = {}) {
   //         2 Vibe across the board is a plan, not a position — the discipline
   //         the cut `adjWounded` stated, kept, with a floor instead of a cliff.
   //
-  //     ⚠️ AND THE REACH GRADIENT IS BOUNDED — `chipReachWeight`, not
-  //     `reachWeight`. Fixed 2026-08-18 (§6.6.11). The distinction above is
-  //     right and the arithmetic under it was not: attacks knock the target
-  //     BACK, so at full strength the curve demoted every point of damage
-  //     already banked into a weaker reach band the instant you added one more.
-  //     A rival taken from 2 Vibe to 1 scored the Ronin −0.05 weighted. The
-  //     provisional/banked distinction survives; what does not is the idea that
-  //     it may be worth more than the damage itself.
-  //
   //     📌 A knocked-out rival is a flat 1: maximum pressure, permanently, and
   //     no reach term. Scoring them through the formula would push past 1 (no
   //     lives AND no Vibe) and, worse, they leave `rivals` entirely — so an
@@ -964,13 +909,9 @@ export function evaluate(state, spiritId, view = {}) {
         const livesTaken = clamp01(Math.max(0, allLivesForRivals - rLives) / allLivesForRivals);
         const vibeMissing = clamp01(1 - clamp01((r.vibe ?? rMax) / rMax)) / allLivesForRivals;
         const rh = here && HEX_BY_NUM[r.num];
-        // ⚠️ `chipReachWeight`, NOT `reachWeight` — the bounded mix. Every attack
-        // knocks the target back, so the raw curve let a landed blow demote more
-        // old damage than the new damage was worth (§6.6.11). The gradient is
-        // kept; its authority over the damage credit is not.
         const reach = rh
-          ? chipReachWeight(axialDist(here.q, here.r, rh.q, rh.r))
-          : chipReachWeight(Infinity);
+          ? reachWeight(axialDist(here.q, here.r, rh.q, rh.r))
+          : PRESSURE_REACH_FLOOR;
         return sum + clamp01(livesTaken + vibeMissing * reach);
       }, 0) / pressureRivals.length
     : 0;

@@ -37,6 +37,11 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
   });
   const [assignments, setAssignments] = useState({});
   const [cpuCorners, setCpuCorners] = useState({});
+  // 🧠 WHICH BOT IS IN THE CHAIR. Unchecked = the legacy step-machine that has
+  // always shipped; checked = `engine/policies/play.js`'s searcher, the one
+  // BOT_STRATEGY_HANDOFF §6.6 has been tuning against the bench. Per-corner
+  // rather than global so the two can be played against each other.
+  const [cpuSearcher, setCpuSearcher] = useState({});
   const [step, setStep] = useState("count");
   const [startingLives, setStartingLives] = useState(3);
   const [beginnerMode, setBeginnerMode] = useState(true);
@@ -116,7 +121,7 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
   useEffect(()=>{if(!playerCount)return;setCpuCorners(prev=>{const next={...prev};activeCorners.forEach((c,i)=>{if(next[c]===undefined)next[c]=i!==0;});return next;});},[playerCount]);
   useEffect(()=>{if(!playerCount){setChoosingCorner(null);return;}const f=activeCorners.find(c=>!assignments[c]);setChoosingCorner(f??null);},[playerCount]);
   function assign(corner,spiritId){setAssignments(a=>({...a,[corner]:spiritId}));const sp=SPIRIT_DEFS[spiritId];if(sp){if(announcerTimer.current)clearTimeout(announcerTimer.current);setAnnouncer({name:sp.name,color:sp.color});announcerTimer.current=setTimeout(()=>setAnnouncer(null),700);}const nA={...assignments,[corner]:spiritId};setChoosingCorner(activeCorners.find(c=>!nA[c])??null);}
-  function handleStart(){const spirits=activeCorners.map(corner=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:!!cpuCorners[corner]};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;onStart({spirits,mode,teams,startingLives,beginnerMode,godDifficulty:godDiff});}
+  function handleStart(){const spirits=activeCorners.map(corner=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:!!cpuCorners[corner],botPolicy:(cpuCorners[corner]&&cpuSearcher[corner])?"searcher":"legacy"};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;onStart({spirits,mode,teams,startingLives,beginnerMode,godDifficulty:godDiff});}
   function handleStartOnline(){const hs=netRoom.seats.filter(s=>!s.isBot);const spirits=activeCorners.map((corner,ci)=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:ci>=hs.length};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;const config={spirits,mode,teams,startingLives,beginnerMode,godDifficulty:godDiff};const seatMap=hs.map((s,i)=>({seatId:s.seatId,spiritId:activeCorners[i]?assignments[activeCorners[i]]:null}));const botSeats=activeCorners.slice(hs.length).map(c=>({name:SPIRIT_DEFS[assignments[c]]?.name??"Bot",spiritId:assignments[c]}));netClient.startGame(config,{seatMap,botSeats:botSeats.length?botSeats:undefined});}
   function startTestingGrounds(){onStart(buildTestingGroundsConfig({beginnerMode}));}
   const iBase={fontFamily:"inherit",background:"#0a1020",border:"1px solid #1e3a5f",borderRadius:4,color:"#c0d0e0",fontSize:11,padding:"8px 10px",outline:"none"};
@@ -289,6 +294,7 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,color,fontWeight:700,letterSpacing:1}}>{label.split(" ")[0].toUpperCase()}</span>{sn&&<span style={{fontSize:8,color:"#5a7a9a"}}>{sn}</span>}</div>
                 {!online&&<label style={{fontSize:8,color:cpuCorners[corner]?"#44ff88":"#3a5a7a",cursor:"pointer",display:"flex",alignItems:"center",gap:3,userSelect:"none"}} onClick={e=>e.stopPropagation()}><input type="checkbox" checked={!!cpuCorners[corner]} onChange={e=>setCpuCorners(c=>({...c,[corner]:e.target.checked}))} style={{accentColor:"#44cc66",cursor:"pointer",width:12,height:12}}/>CPU</label>}
+                {!online&&cpuCorners[corner]&&<label title="Use the searching bot (engine/policies/play.js) instead of the legacy step-machine" style={{fontSize:8,color:cpuSearcher[corner]?"#ffcc44":"#3a5a7a",cursor:"pointer",display:"flex",alignItems:"center",gap:3,userSelect:"none"}} onClick={e=>e.stopPropagation()}><input type="checkbox" checked={!!cpuSearcher[corner]} onChange={e=>setCpuSearcher(c=>({...c,[corner]:e.target.checked}))} style={{accentColor:"#ffcc44",cursor:"pointer",width:12,height:12}}/>🧠</label>}
               </div>
               <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
                 {sp?<div style={{textAlign:"center"}}><img src={sp.imageSrc} alt={sp.name} draggable={false} style={{height:80,objectFit:"contain",transform:ir?"scaleX(-1)":"none",filter:"drop-shadow(0 0 8px "+sp.color+"66)",pointerEvents:"none"}}/><div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,color:sp.color,letterSpacing:1,marginTop:4,textShadow:"0 0 8px "+sp.color+"55"}}>{sp.name.toUpperCase()}</div><div style={{fontSize:8,color:"#5a7a9a",marginTop:2}}>D{sp.drive} · S{sp.sustain} · SP{sp.speed}</div></div>

@@ -24,7 +24,6 @@ import {
   distFromEdge, distFromHome, boomBoxLit, fameToWin, reachWeight,
   EVAL_WEIGHTS, DEFAULT_WEIGHTS, PERF_CLIFF, MAX_EDGE_DIST, PRESSURE_REACH_FLOOR,
   beamOpportunity, CENTRE_RING_PAY, MAX_CENTRE_DIST, CHARGE_SEEK_REACH,
-  chipReachWeight, PRESSURE_CHIP_REACH_MIX,
   BEAM_READY, BEAM_ALIGNED, BEAM_DUEL,
 } from "./policies/evaluate.js";
 import { underdogBonus } from "./systems/combat.js";
@@ -37,7 +36,6 @@ import { LIMELIGHT_HEX } from "../data/gameConstants.js";
 import { hexRingFromCenter } from "../board/boardHelpers.js";
 import { sonicBeam, facingOptions } from "./policies/legalActions.js";
 import { CORNERS } from "../data/corners.js";
-import { SPIRIT_DEFS } from "../data/spirits.js";
 
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks++; };
@@ -351,49 +349,6 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
   const koed = withSpirit(st, METAL, { knockedOut: true, lives: 0, vibe: 0 });
   ok(term(koed, RONIN, 'pressure') > term(lifeTaken, RONIN, 'pressure'),
      '💢 a knocked-out rival is the most pressure there is');
-
-  // ⚠️ THE KNOCKBACK INVERSION (§6.6.11) — THE PROPERTY, SWEPT, NOT ONE CASE.
-  //
-  // Every attack in this game shoves the target 1–2 hexes. Chip Vibe is reach-
-  // weighted, so a landed blow adds one point of damage and at the same time
-  // demotes every point already banked into a weaker band. At full strength the
-  // second effect won: a rival taken from 2 Vibe to 1 scored the Ronin −0.05
-  // weighted, and the term whose whole job is "hitting people is good" was
-  // telling the bot the opposite. Same shape as the inversion above, one row
-  // down — that one was about LIVES, this one is about the Vibe underneath them.
-  //
-  // 📌 SWEPT OVER THE ROSTER'S VIBE POOLS because the ratio tightens as the pool
-  // deepens: one point out of eight is a smaller share of the credit than one
-  // out of four, so a Spirit with a deeper pool is exactly how this silently
-  // comes back. `PRESSURE_CHIP_REACH_MIX` is derived from the roster for that
-  // reason, and this sweep reads the roster too — add a 7-Vibe Spirit and the
-  // constant and the assertion move together instead of drifting apart.
-  const distFrom = h => Math.max(
-    Math.abs(h.q - home.q), Math.abs(h.r - home.r), Math.abs((h.q + h.r) - (home.q + home.r)));
-  const hexAt = d => Object.values(HEX_BY_NUM).find(h => distFrom(h) === d);
-  const POOLS = [...new Set(Object.values(SPIRIT_DEFS).map(d => d.maxVibe ?? 5))];
-  for (const pool of POOLS) {
-    for (let v = pool; v >= 2; v--) {
-      for (const knock of [1, 2]) {
-        const before = withSpirit(st, METAL,
-          { num: hexAt(1).num, maxVibe: pool, vibe: v });
-        const after  = withSpirit(st, METAL,
-          { num: hexAt(1 + knock).num, maxVibe: pool, vibe: v - 1 });
-        ok(term(after, RONIN, 'pressure') >= term(before, RONIN, 'pressure') - 1e-12,
-           `💢 a landed blow never scores worse than not landing it (pool ${pool}, ${v}→${v - 1} Vibe, knocked ${knock})`);
-      }
-    }
-  }
-
-  // 📌 AND THE GRADIENT SURVIVED THE BOUND. If the mix flattened `chipReachWeight`
-  // to a constant the sweep above would pass trivially and the bot would lose
-  // every reason to walk toward a wounded rival — the failure that made the floor
-  // a floor rather than a cutoff in the first place.
-  ok(chipReachWeight(1) > chipReachWeight(3),
-     '💢 chip reach still strictly rewards being closer — the bound is not a flattening');
-  eq(chipReachWeight(1), 1, '💢 ...and melee reach is still the full credit');
-  ok(PRESSURE_CHIP_REACH_MIX > 0 && PRESSURE_CHIP_REACH_MIX < 1,
-     '💢 the mix is a real blend, not a switch');
 
   // 🟢 The bruiser values damage most; 📻 the controller least. That ordering IS
   // the character, now that it lives here instead of in `adjWounded`.

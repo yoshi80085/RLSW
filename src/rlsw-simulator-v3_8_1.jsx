@@ -90,7 +90,13 @@ import { SUNBEAM_DB_COST, SUNBEAM_BLIND_TURNS, SUNBEAM_LINGER_CHANCE, SUNBEAM_MA
          GRAVITY_DB_COST, GRAVITY_PLACE_RINGS, GRAVITY_PULL_RINGS, GRAVITY_PULL_HEXES, GRAVITY_NOTE_DRAIN,
          CODE_INJECT_DB_COST } from "./data/gameConstants.js";
 import { SKILL_TREE, SKILL_BY_ID } from "./data/skillTree.js";
-import { tentacleOptions } from "./engine/policies/legalActions.js";
+import { tentacleOptions, legalActions } from "./engine/policies/legalActions.js";
+// 🧠 THE SEARCHER — the headless bot from the §6.6 bench, wired into the chair.
+// ⚠️ `POLICIES.searcher` is used as a CHOOSER ONLY; `playTurn` is not, because it
+// would advance the seeded rng outside `dispatch()`. See "THE SEARCHER, IN THE
+// CHAIR" below for the full reasoning.
+import { POLICIES, harnessHooks } from "./engine/policies/play.js";
+import { restoreRng } from "./engine/rng.js";
 import TentacleFX, { TENTACLE_LEAD_MS } from "./ui/TentacleFX.jsx";
 import { riffStats, RIFF_BOTH_PAID_QUALITY, RIFF_CLOSE_QUALITY_GAP } from "./engine/systems/riffOff.js";
 import {
@@ -3604,7 +3610,11 @@ function Game({ gameState, onReturnToLobby }) {
       if (hasConfirmed) { addLog('✓ Already confirmed this turn.'); return; }
       if (pivotPending) { addLog('⚡ Declare Major or Minor first!'); return; }
       if ((actingNoteState?.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET) { addLog('🎸 Stack commit budget spent this turn (3/turn).'); return; }
-      const dest = stackCommitDest || 'drive'; // _forceChordMode fallback
+      // 🧠 `_forceChordMode` may NAME the destination ('drive' | 'sustain'), so a
+      // driver with no UI to click can still reach the Sustain stack. A bare
+      // `true` — every caller that predates this — still means Drive.
+      const dest = stackCommitDest
+        || (typeof _forceChordMode === 'string' ? _forceChordMode : 'drive');
       const stack = dest === 'sustain' ? (actingNoteState?.sustainStack ?? []) : (actingNoteState?.driveStack ?? []);
       if (stack.length >= actingStackCap) {
         const locked = actingStackCap < STACK_CAP_MAX;
@@ -10278,6 +10288,181 @@ function Game({ gameState, onReturnToLobby }) {
     return _botRiffResults(len, () => batch[rC++]);
   }
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // 🧠 THE SEARCHER, IN THE CHAIR
+  //
+  // `engine/policies/play.js`'s searching bot — the one `BOT_STRATEGY_HANDOFF`
+  // §5 and §6.6 have spent four sessions tuning — driving the REAL client
+  // instead of the harness. Until now nothing outside `src/engine/` imported it,
+  // so every weight in that table was theory: measured over 200-match benches,
+  // never once put in front of a player.
+  //
+  // ⚠️ IT REPLACES THE STEP-MACHINE'S JUDGEMENT, NOT ITS CADENCE, and `playTurn`
+  // is deliberately NOT used. Two reasons, both load-bearing:
+  //   · `playTurn` applies its chosen action with `ctx.rng` directly, which would
+  //     advance the seeded cursor OUTSIDE `dispatch()` — no entry in the action
+  //     log, no `cursorBefore` for the peers, and the resync tripwire freezing
+  //     every online client at once. Every draw in this file goes through
+  //     `dispatch`, and that is a netcode contract, not a style preference.
+  //   · the client resolves a Swing as a CINEMATIC (dice overlay → `battleState`
+  //     → `closeBattleOverlay` → `runBattleFlowPaced`), not as one synchronous
+  //     call. A plan cannot be fired in a loop even if the rng were safe.
+  // So the searcher CHOOSES and the existing client functions EXECUTE, one action
+  // per tick, through exactly the paths a human's clicks would take.
+  //
+  // 📌 NO PERSONA IS PASSED. §0.1 retires them — the Spirit is the plan, and
+  // difficulty is search depth. `botPersona` still runs for the legacy bot.
+  // ════════════════════════════════════════════════════════════════════════════
+  const botPlanRef = useRef({ key: null, queue: [], ticks: 0 });
+  // ⚠️ A PER-TURN CEILING, AND IT IS LOAD-BEARING NOW THAT THE WATCHDOG RE-ARMS
+  // PER ACTION. If a client function ever refuses an action the rules call legal
+  // — a render-lagged read, a gate the generator does not model — this driver
+  // would re-plan, get the same answer, and be refused again forever, bumping
+  // `botNudge` each time and so keeping the 15s stall timer permanently fresh.
+  // A live-lock the safety net cannot see is worse than the stall it replaced.
+  // 60 is `MAX_ACTIONS_PER_TURN` from `play.js` — the engine's own ceiling.
+  const BOT_SEARCH_MAX_TICKS = 60;
+  // 📊 Cheap instrumentation, because §6.6's own estimate of what a search costs
+  // inside a render loop is "unknown" rather than "fine". `window.__botSearch`.
+  const botSearchStatsRef = useRef({ decisions: 0, ms: 0, worstMs: 0, stale: 0, unsupported: 0 });
+  useEffect(() => { if (typeof window !== 'undefined') window.__botSearch = botSearchStatsRef.current; }, []);
+
+  /** The client-owned slices `legalActions` / `evaluate` cannot read off the engine. */
+  function botSearcherView() {
+    return {
+      amps,                       // ⚠️ the Phase-2 stub ([]) — the same value the human UI uses
+      shadowHex,
+      rockGodActive,
+      skillById: SKILL_BY_ID,
+      unsurePool,
+      // 🎤 THE LIVE CAP WINDOW, not a fresh `{}`. `grantFame` clips at
+      // FAME_PER_TURN_CAP against exactly this, so handing the searcher an empty
+      // one would let it price Fame the game is about to throw away (§5.C‴).
+      fameThisTurn: fameThisTurnRef.current ?? {},
+    };
+  }
+
+  /** Ask the searcher. Returns an ARRAY — the composition phase answers with a whole line. */
+  function botSearcherChoose(self) {
+    const st = engineRef.current;
+    // ⚠️ `legalActions` returns [] for a non-acting Spirit, which would read as
+    // "nothing to do" and end the turn. The render-scope `acting` memo is derived
+    // independently of `state.acting`; on any frame where they disagree, wait.
+    if (st.acting !== self.id) return [];
+    const stats = botSearchStatsRef.current;
+    // 🎲 A FORK, NEVER THE LIVE STREAM (§0.4). `fork` re-seeds off the label and
+    // consumes nothing, so a few thousand hypothetical dice leave the match's own
+    // cursor exactly where it was — which is what every replay and every peer
+    // compares, frame by frame.
+    const rng = restoreRng(st.rng).fork(`search:${st.turn?.count ?? 0}:${stats.decisions}`);
+    const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const t0 = now();
+    let answer = null;
+    try {
+      answer = POLICIES.searcher({})(st, self.id, botSearcherView(), { rng, hooks: harnessHooks({ rng }) });
+    } catch (err) {
+      // A throw here would wedge the turn in silence. Say it out loud instead.
+      addLog(`🧠 ${self.name}'s search failed (${err?.message ?? err}) — ending the turn.`);
+      return [];
+    }
+    const ms = now() - t0;
+    stats.decisions++; stats.ms += ms; stats.worstMs = Math.max(stats.worstMs, ms);
+    return Array.isArray(answer) ? answer : (answer ? [answer] : []);
+  }
+
+  /** Is this cached action still one the rules would offer, right now? */
+  function botSearcherStillLegal(action) {
+    const st = engineRef.current;
+    if (!action) return false;
+    return legalActions(st, st.acting, botSearcherView()).some(l => l.kind === action.kind
+      && (l.stockIdx ?? null) === (action.stockIdx ?? null)
+      && (l.to       ?? null) === (action.to       ?? null)
+      && (l.targetId ?? null) === (action.targetId ?? null)
+      && (l.skillId  ?? null) === (action.skillId  ?? null)
+      && (l.dest     ?? null) === (action.dest     ?? null)
+      && Math.abs((l.facing ?? 0) - (action.facing ?? 0)) < 1e-9);
+  }
+
+  /**
+   * 🎛️ THE TRANSLATION TABLE — one engine action `kind` → the client function a
+   * human's click would have called. Returns false for a kind with no client
+   * path, which is a FINDING rather than an error; the caller counts and logs it.
+   */
+  function botSearcherExecute(self, a) {
+    switch (a.kind) {
+      case 'skillTarget':   setSkillTarget(self.id, a.skillId); return true;
+      case 'melodyNote':    clickNoteStock(a.stockIdx); return true;
+      // 🎸 Through the HUMAN path, which also spends the stock slot
+      // (`usedStockIdx`). ⚠️ `botExecuteStackCommits` — the LEGACY bot's helper —
+      // does not, so the two bots do not pay the same price for a chord.
+      case 'stackCommit':   clickNoteStock(a.stockIdx, null, a.dest === 'sustain' ? 'sustain' : 'drive'); return true;
+      case 'confirmMelody': confirmNoteTrack(); return true;
+      case 'move':          setAction('move'); move(a.to); return true;
+      case 'face':          dispatch(spiritFaced(self.id, a.facing)); addLog(`🧠 ${self.name} takes aim.`); return true;
+      case 'swing':         initiateSwing(a.targetId); return true;
+      // 🐙 The Tentacle IS a Swing thrown from the trail — same AP, same token,
+      // same dice. `{origin, spend, reach}` ride on the action for exactly this.
+      case 'tentacle':      initiateSwing(a.targetId, { origin: a.origin, spend: a.spend, reach: a.reach }); return true;
+      // 📡 `riffOff` is not a separate client action: `resolveSonic` promotes a
+      // beam-to-beam Sonic into a duel itself, and the generator emits exactly
+      // one of the two for a given target (`legalActions` §SONIC).
+      case 'sonic':
+      case 'riffOff':       initiateSonicAttack(a.targetId); return true;
+      case 'pose':          dispatch(posed(self.id, true)); addLog(`🎤 ${self.name} STRIKES A POSE!`); return true;
+      case 'endTurn':       endTurn(); return true;
+      // 🧪 THE OOZE AND THE DIAL — Metalness's whole identity, and the first
+      // measurement of this driver said they are not optional: over 30 headless
+      // matches the searcher chose `slime` in 2.8% of all actions and `slide` in
+      // 0.6%, so 6.5% of its DECISIONS contained something the client could not
+      // perform. Left out, he would visibly give up mid-turn in front of a player
+      // — which is the difference between a bot that is wired in and one that
+      // merely compiles.
+      case 'slime':         callSlime(); return true;
+      case 'eleven':        callEleven(); return true;
+      case 'slide':         slide(a.to); return true;
+      // Nothing reaches here today (`legalActionsCheck` §16 pins that), and the
+      // caller counts and narrates it rather than failing silently if one ever does.
+      default:              return false;
+    }
+  }
+
+  /** One tick of a searcher turn: re-validate, translate, perform. */
+  function botSearcherStep(self, schedule, guard) {
+    const st   = engineRef.current;
+    const plan = botPlanRef.current;
+    const key  = `${self.id}:${st.turn?.count ?? 0}`;
+    if (plan.key !== key) { plan.key = key; plan.queue = []; plan.ticks = 0; }
+    if (++plan.ticks > BOT_SEARCH_MAX_TICKS) {
+      addLog(`🧠 ${self.name} has taken ${BOT_SEARCH_MAX_TICKS} actions this turn — wrapping up.`);
+      plan.queue = [];
+      schedule(guard(() => endTurn()));
+      return;
+    }
+
+    if (!plan.queue.length) plan.queue = botSearcherChoose(self);
+    if (!plan.queue.length) { schedule(guard(() => endTurn())); return; }
+
+    const a = plan.queue.shift();
+    // ⚠️ RE-VALIDATED EVERY TICK, and this is the whole reason the queue is safe.
+    // The composition phase answers with a line of up to 11 actions; the board can
+    // move underneath it (a knockback, a Stagger, a slot spent). A stale note index
+    // is swallowed silently by `clickNoteStock`, and the turn would appear to just
+    // stop — the exact failure mode this repo keeps catching with green tests.
+    if (!botSearcherStillLegal(a)) {
+      botSearchStatsRef.current.stale++;
+      plan.queue = [];
+      schedule(() => {});           // a beat, then re-plan against the live board
+      return;
+    }
+    schedule(guard(() => {
+      if (botSearcherExecute(self, a)) return;
+      botSearchStatsRef.current.unsupported++;
+      addLog(`🧠 ${self.name} wanted to ${a.kind} — no client path for that yet. Ending the turn.`);
+      plan.queue = [];
+      endTurn();
+    }));
+  }
+
   // Reset the bot step-machine whenever a new spirit takes the turn.
   useEffect(() => {
     if (acting?.id && botLastTurnRef.current !== acting.id) {
@@ -10327,6 +10512,13 @@ function Game({ gameState, onReturnToLobby }) {
     const liveSelf  = engineRef.current.spirits.find(s => s.id === self.id) ?? self;
     const hasSkill    = (id) => unlocked.includes(id);
     const guard     = (fn) => () => { if (actingRef.current?.id === self.id) fn(); };
+
+    // 🧠 THE SEARCHER TAKES THE CHAIR. Judgement only — the cadence below is
+    // still this machine's, and every action still goes through the same client
+    // function a button would call. Returns before the legacy branches so the
+    // two bots never both decide (the pose block at the bottom would otherwise
+    // fire underneath the searcher's own limelight terms).
+    if (self.botPolicy === 'searcher') { botSearcherStep(self, schedule, guard); return; }
 
     // 1) BUILD — climb the skill tree, sharpen the stock, build a clean track.
     if (step === 'idle' || step === 'building') {
@@ -10612,7 +10804,12 @@ function Game({ gameState, onReturnToLobby }) {
       }
     }, 15000);
     return () => clearTimeout(t);
-  }, [acting?.id, battleState?.phase, winner]); // eslint-disable-line react-hooks/exhaustive-deps
+    // ⚠️ `botNudge` IS IN THE DEPS ON PURPOSE — the timer re-arms after every
+    // action the bot takes, so 15s means "stalled", not "took a long turn". A
+    // searcher turn is a melody line plus movement plus a shot, which at
+    // BOT_TICK pacing is comfortably past 15s of wall clock and was tripping the
+    // net rather than the stall it was written for.
+  }, [acting?.id, battleState?.phase, winner, botNudge]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const bs = battleState;
     if (!bs || bs.riffOff) return;

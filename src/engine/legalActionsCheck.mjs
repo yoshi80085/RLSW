@@ -26,6 +26,8 @@ import {
   LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST,
 } from "../data/gameConstants.js";
 import { SPIRIT_DEFS } from "../data/spirits.js";
+import { MODELLED_KINDS, UNMODELLED_KINDS } from "./policies/transition.js";
+import { BOT_CLIENT_KINDS, BOT_CLIENT_GAPS } from "./policies/bot.js";
 import { CORNERS } from "../data/corners.js";
 import { HEX_BY_NUM, HEX_BY_QR } from "../board/hexMap.js";
 import { axialNeighbors, angleTo } from "../board/hexGeometry.js";
@@ -519,6 +521,41 @@ const faceRivalAt = (st, rivalId, step = 0) => {
       }
     }
   }
+}
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 16. 🧠 EVERY MODELLED KIND HAS A CLIENT PATH — OR IS NAMED AS NOT HAVING ONE
+//
+// The searcher chooses actions in `policies/play.js`; the CLIENT executes them
+// by translating each `kind` into the function a button would have called. That
+// table lives in the .jsx and cannot be imported here, so its CONTENTS are
+// mirrored in `bot.js` as `BOT_CLIENT_KINDS` / `BOT_CLIENT_GAPS`.
+//
+// ⚠️ WHAT THIS CANNOT TELL YOU: whether the translation is correct. It cannot
+// see the switch. What it CAN do is fail the moment a new action kind appears in
+// the rules with nobody having taught the client about it — which is §5.A's
+// predictor written down as a test: the game rewards something, the bot has no
+// path to it, and every suite stays green.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  const covered = new Set([...BOT_CLIENT_KINDS, ...BOT_CLIENT_GAPS]);
+  for (const kind of MODELLED_KINDS) {
+    ok(covered.has(kind),
+       `🧠 modelled kind '${kind}' is either driven by the client bot or named as a gap`);
+  }
+  for (const kind of UNMODELLED_KINDS) {
+    ok(BOT_CLIENT_GAPS.has(kind),
+       `🧠 unmodelled kind '${kind}' is named as a gap — the searcher can never choose it`);
+  }
+  // And the mirror must not rot in the other direction either: a kind listed as
+  // driven that the rules no longer emit is a translation branch nobody can reach.
+  for (const kind of BOT_CLIENT_KINDS) {
+    ok(MODELLED_KINDS.has(kind),
+       `🧠 client-driven kind '${kind}' is still a kind the rules actually emit`);
+  }
+  ok(![...BOT_CLIENT_KINDS].some(k => BOT_CLIENT_GAPS.has(k)),
+     '🧠 no kind is both driven and a gap');
 }
 
 console.log(`✅ legalActionsCheck — ${checks} assertions passed`);

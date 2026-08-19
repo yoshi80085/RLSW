@@ -199,7 +199,205 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. 🧭 START HERE — session handoff, 2026-08-18
+## 5. 🧭 START HERE — session handoff, 2026-08-18 (evening)
+
+> ⚠️ **NOTHING IS COMMITTED THIS SESSION** — 5 source files + 3 new probes, all
+> suites green. The previous session (§5-day) is committed as `6f2fe00`.
+>
+> 🧠 **AND THE SEARCHER IS PLAYABLE FOR THE FIRST TIME** — 5.I⁗. Tick the `🧠`
+> box next to a CPU corner in the Lobby. Everything §5/§6.6 has been tuning was
+> headless-only until tonight; the client did not import `play.js` at all.
+>
+> ✅ **§5.E‴ ITEM 2 IS CLOSED** — `pressure`'s knockback inversion. Read
+> `BOT_STRATEGY_HANDOFF.md` §6.6.11.
+>
+> 🎯 **AND THE BENCH TOOK YESTERDAY'S WIN RATE BACK.** §6.6.10's "searcher
+> 52.5% ±12.7" was 60 seeds. At **300 seeds it is 42.7% ±5.7**, and the fixed
+> tree is 41.1% ±5.6 — one point apart, 50% outside both intervals. The beam's
+> ranking is not buying nothing; **it is losing to its own absence.** That makes
+> §5.E‴ item 4 the top of the list, and it now has a number instead of a shrug.
+
+### 5.A⁗ The pattern is nine for nine — and this one is a repeat offender
+
+§5.A's predictor, unchanged:
+
+> The game rewards something. The evaluator has no term for it — or has a term
+> for the reward's RESULT but not for the act of going and getting it. So the bot
+> never does it, nothing errors, every suite stays green.
+
+| # | the blind spot | symptom it wore |
+|---|---|---|
+| 14 | chip Vibe reach-weighted at full strength, against a rule where **every attack knocks the target back** | a landed blow scored `pressure` **negative** on 3% of hits — all of them hits on somebody nearly down |
+
+🎯 **#14 IS #10's SHAPE FOR THE THIRD TIME IN THREE SESSIONS.** `adjWounded`
+scored standing next to a bleeding rival, so finishing them paid nothing.
+`beamSetup` scored lining a Sonic up, so firing it cost 1.96. `pressure` scored
+being close enough to convert damage, so dealing it lost more than it gained.
+**Every term that scores GETTING READY has to be capped below what DOING it
+pays** — that rule has now been derived independently three times, and
+`chargeSeek` is still the only term that shipped with it written down.
+
+### 5.B⁗ What shipped (uncommitted)
+
+- 💢 **`chipReachWeight`** in `evaluate.js` — `reachWeight` mixed back toward 1 by
+  `PRESSURE_CHIP_REACH_MIX`, and it is the chip-Vibe half of `pressure` that reads
+  it. `reachWeight` itself is untouched, because `beamSetup` and `evalCheck` both
+  depend on its shape.
+- 🧮 **The mix is DERIVED FROM THE ROSTER, not tuned** —
+  `0.9 / ((maxVibePool − 1) × (1 − PRESSURE_REACH_FLOOR))`, which is the worst-case
+  ratio (a 1-point hit on a rival at 2 Vibe, knocked the full 2 hexes) rearranged.
+  0.346 today. A deeper Vibe pool tightens the ratio, so a hard-coded number would
+  be correct now and wrong the day the roster grows.
+- 🔬 **`evalCheck` 134 → 151 assertions** — the property SWEPT (every roster Vibe
+  pool × every Vibe level × knockback 1 and 2), plus three that stop the fix from
+  passing by flattening the gradient into a constant. HEAD's own 134 assertions
+  were also run against the new `evaluate` and all passed.
+- 📒 **`.scratch/pressureswing.mjs`** — the inversion probe. Walks real matches,
+  keeps only blows that LANDED, reports the `pressure` delta next to the geometry.
+- 📏 **`.scratch/pressureab.mjs`** — the A/B. Runs UNCHANGED on both trees
+  (`ab68.mjs` discipline), because a formula change cannot be expressed through
+  `weightOverrides`; the header says how to build the HEAD checkout.
+- 🧠 **THE SEARCHER, WIRED IN** (5.I⁗) — `botSearcherStep` and its translation
+  table in the monolith, a `botPolicy` toggle in `ui/Lobby.jsx`,
+  `BOT_CLIENT_KINDS`/`BOT_CLIENT_GAPS` in `policies/bot.js`,
+  `legalActionsCheck` §16, and `.scratch/clientkinds.mjs`. `clickNoteStock`'s
+  `_forceChordMode` may now NAME the stack ('drive' | 'sustain'); every existing
+  caller passed `true` and still means Drive.
+- 🔧 **The bot watchdog re-arms per ACTION, not per turn**, and the searcher
+  driver carries its own 60-tick ceiling because that re-arm opens a live-lock
+  the watchdog can no longer see. Both explained in §6.6.12.
+
+### 5.C⁗ 🎯 THE FINDING — the ranking is behind, and 60 seeds hid it
+
+| two-gate, three lives | HEAD | this pass |
+|---|---|---|
+| 60 seeds | 52.5% ±12.7 | 38.3% ±12.3 |
+| **300 seeds** | **42.7% ±5.7** | **41.1% ±5.6** |
+
+Read the top row as an object lesson. It reproduces §6.6.10's headline number
+exactly, and it disagrees with the fixed tree by 14 points — a difference that is
+entirely gone at 300 seeds. **Two configurations that are one point apart looked
+like a 14-point swing.** §6.6's own bar is ~2000 matches and every number in
+§6.6.9–11 is 30–300; this is what that warning cashes out as.
+
+⚠️ **AND THE LEVEL MATTERS MORE THAN THE DELTA.** `unranked` is the same searcher
+with the beam's `score` turned off, so ~42% with 50% outside the interval says the
+ranking is actively costing the bot games. It is not a tie and it is not an edge.
+
+### 5.D⁗ THE STATE OF THE GAME RIGHT NOW
+
+200 matches a tree, same seeds, three lives: decided 199/200 → 198/200, mean turns
+35 → 37, FP per turn 0.711 → 0.697, duels 277 → **297**, Sonics 218 → **279**,
+swings 1259 → 1207. Two lives: FP per turn 0.716 → **0.759**, duels 255 → 278.
+
+⚠️ **ONLY THE SONIC COLUMN IS A RESULT.** +28%, and it is the action a knockback-
+charging term punished hardest — a Sonic shoves the target down the beam by
+definition. Everything else is population noise at n=200. Nothing here is quoted
+as an improvement; the fix is worth having because the sign was wrong, not because
+the bench moved.
+
+📌 **Suites, this pass:** engine ✅, legal 547, eval **151**, transition 241,
+turnflow 61, determinism 22, battleflow 50, melody 159, slime 127, eleven 38,
+score 122, harness **1738**, riffparity 127598, skilltree 208, `check:bundle` OK.
+⚠️ **`harness` went 1709 → 1738 and that is NOT new coverage** — `harnessCheck`
+asserts inside `for (const turn of log) for (const a of turn.actions)`, so its
+count tracks how many actions the bots take. More Sonics, more assertions. A count
+that moves with behaviour cannot be read as a coverage signal in either direction.
+
+### 5.E⁗ 🎯 NEXT, IN DEPENDENCY ORDER
+
+1. 🥁 **WHY IS THE RANKING BEHIND?** Promoted from item 4 and it is now the whole
+   list's blocker. 🧠 **AND IT HAS A THIRD INSTRUMENT NOW: play it** (5.I⁗). A
+   candidate answer that no bench could produce is in §6.6.12's open list —
+   `attackParams` (what the searcher plans against) and `initiateSwing` (what the
+   client actually resolves) are not pinned to each other, and nothing would say
+   so. At 300 seeds the beam's `score` loses to its own absence,
+   42.7% / 41.1% against 50%. Two candidates worth separating before touching
+   anything: the ranking prunes a branch the evaluator would have liked (a search
+   bug), or the evaluator is confidently wrong about a whole class of position and
+   ranking by it just gets there faster (an eval bug). ⚠️ The second explains why
+   three sessions of eval fixes have not moved this number.
+2. 🧮 **RE-PRICE `awardRiffFame` INTO THE BAND** (§5.C‴, carried). Mean uncapped
+   award 15.85 against a cap of 8, 96% clipped, dominant term `ceil(margin / 2)`
+   where `margin` grows with riff LENGTH for no reason a player could see. Every
+   term in the payout is invisible to the searcher until this lands.
+3. 🔊 **MAKE `centreStage` CONDITIONAL ON RANGE** (carried, unchanged, from §5.E″
+   item 2). The middle is outside a tier-0 rig, so centre and `inRig` fight and the
+   beam loses.
+4. 📏 **THEN A REAL BENCH.** ⚠️ 300 seeds was enough to delete a headline this
+   session. §6.6's bar is ~2000 and nothing in §6.6.9–11 is close to it.
+5. 🪦 **THE SMASH IS STILL UNMODELLED.** Oldest debt on the list, unchanged.
+
+### 5.I⁗ 🧠 THE SEARCHER IS IN THE CHAIR — Alex's call, and it was the right one
+
+> *"I think a med student can study all the science behind health and the body all
+> she wants, but until she gets put in the situation where the tools become
+> necessary all it is is theory."*
+
+He asked to have a go at one of these. Checking what he could actually have a go
+AT turned up the thing this list should have opened with: **the client imports
+`bot.js` and `legalActions.js` and nothing else from `policies/`.** Not `play.js`,
+not `evaluate.js`, not `transition.js`. Four sessions of weight tuning, and none
+of it had ever run in the game.
+
+**Shipped:** a `🧠` toggle per CPU corner writes `botPolicy` onto the spirit, and
+the step-machine hands over to a driver that keeps its CADENCE and replaces its
+JUDGEMENT — `POLICIES.searcher` chooses, the existing client functions execute,
+one action per tick. `playTurn` is deliberately unused: it would advance the
+seeded cursor outside `dispatch()` and desync every peer, and the client resolves
+a Swing as a cinematic rather than a call. Full reasoning in
+`BOT_STRATEGY_HANDOFF.md` §6.6.12.
+
+🎯 **AND THE FIRST MEASUREMENT PAID FOR THE WHOLE EXERCISE.**
+`.scratch/clientkinds.mjs` counts what the searcher CHOOSES against what the
+client can PERFORM: **6.50% of decisions contained a kind with no client path**,
+all of it Metalness's trail and dial (`slime` 2.8% of actions, `slide` 0.6%). He
+would have visibly given up mid-turn in front of a player. Wiring `callSlime`,
+`callEleven` and `slide` — three switch cases over functions that already existed
+— took it to **0.00%**. No bench could have found that, because the bench IS the
+thing that has no client.
+
+⚠️ **THE TWO BOTS ARE NOT THE SAME BOT.** Before anyone compares them: the Smash
+and the Blaster are `UNMODELLED_KINDS`, so the searcher can never choose the
+legacy bot's two best attacks; and `botExecuteStackCommits` never spends
+`usedStockIdx`, so the legacy bot has been getting its chords for free while the
+searcher pays. Both are named in §6.6.12 and neither is fixed here.
+
+📌 Pinned: `BOT_CLIENT_KINDS` / `BOT_CLIENT_GAPS` in `bot.js`, asserted both ways
+against `MODELLED_KINDS` in `legalActionsCheck` §16 (547 → **580**). It cannot see
+the switch statement, and the comment says so.
+
+
+### 5.F⁗ 📌 Housekeeping
+
+⚠️ **GIT WRITES FAIL FROM THE AGENT'S SHELL ON THIS MOUNT.** `git stash` died with
+`unable to unlink .git/index.lock — Operation not permitted` and left a zero-byte
+lock behind; the working tree was untouched, and the lock is now in
+`_to_delete/gitlocks/`. **Commit from a normal terminal, not from the agent.**
+The A/B's HEAD checkout was built by `cp` + `git show HEAD:…` into `/tmp` for the
+same reason — no worktree was created, so §5.G‴'s stale registration is still the
+only one and `git worktree prune` is still owed.
+
+`.scratch/` gained `clientkinds.mjs` (what the searcher chooses vs what the
+client can perform — 5.I⁗), `pressureswing.mjs` (the inversion probe) and
+`pressureab.mjs` (the A/B). Both are worth keeping: the first is the only thing in
+the repo that measures whether an attack SCORES like an attack, and the second is
+the template for A/B-ing a formula rather than a weight.
+
+⚠️ **AND A PROBE BUG WORTH REMEMBERING:** the first cut of `pressureab.mjs` read
+`r.lives` off the match result and reported "lives lost 0" — on **both** trees.
+`runMatch` returns `winner / turns / reason / fame / limelightScores / duels` and
+nothing else. A metric that reads a field that does not exist reports a tidy zero
+and agrees with itself perfectly. Lives are counted off the board between policy
+calls now.
+
+📌 `_to_delete/` still holds `riffLibrary.js`, `RiffBanner.jsx` and `mono.diff`,
+plus this session's `gitlocks/` and `session0818b/` (throwaway tarball + a HEAD
+copy of `evaluate.js`). Still needs removing by hand.
+
+---
+
+## 5-day. 🧭 session handoff, 2026-08-18 (day)
 
 > ⚠️ **NOTHING IS COMMITTED THIS SESSION** — 12 files, all suites green. Read
 > this, then `BOT_STRATEGY_HANDOFF.md` §6.6.9. The previous session (§5-late) is
@@ -314,7 +512,7 @@ column is the finding precisely because it did NOT move.
    `beamSetup` priced above the Fame it sets up, so `endTurn` outscored every
    action on the board. Inconclusive 65% → 2%, three lives is the default, and
    the diagnosis that replaced it is in §6.6.10.
-2. 💢 **FIX `pressure`'s KNOCKBACK INVERSION** (5.H‴). A swing that LANDS scores
+2. ✅ ~~**FIX `pressure`'s KNOCKBACK INVERSION**~~ **DONE 2026-08-18 (evening) — see §5 above and `BOT_STRATEGY_HANDOFF.md` §6.6.11.** The reach gradient is bounded below one point of damage now; 3% of landed blows scored negative, 0% do. (5.H‴). A swing that LANDS scores
    `pressure` **−0.41**, because the term reach-weights chip Vibe and a good hit
    shoves the rival out of reach. §5's comment block solved exactly this for
    lives and left chip Vibe exposed. One variable, one A/B — and it is the last

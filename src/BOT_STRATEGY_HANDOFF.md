@@ -681,6 +681,263 @@ as a bruiser trait if "hurt people" is scored at all. ✅ It does now, and
 
 ---
 
+### 6.6.12 ✅ 2026-08-18 (night) — THE SEARCHER IS IN THE CHAIR
+
+#### 🎯 THE FINDING, AND IT IS THE OLDEST ONE ON THE LIST
+
+Alex: *"I think a med student can study all the science behind health and the body
+all she wants, but until she gets put in the situation where the tools become
+necessary all it is is theory."*
+
+Grepping the client for what it imports from `policies/`:
+
+| imported by `rlsw-simulator-v3_8_1.jsx` | not imported |
+|---|---|
+| `bot.js` (18 symbols), `legalActions.js` (`tentacleOptions`) | **`play.js`, `evaluate.js`, `transition.js`, `actionScore.js`** |
+
+**The browser game has never once run the searcher.** §5's weight table, the
+`beamSetup` scale, `pressure`'s bounded reach, `chargeSeek`'s hand-off — four
+sessions of work, every number of it measured against a headless bench, none of
+it ever in front of a player. `play.js`'s own header explains why the *harness*
+exists; nobody noticed it also explained why the tuning was unfalsifiable outside
+the harness.
+
+#### ✅ WHAT SHIPPED — judgement replaced, cadence kept
+
+A `🧠` toggle per CPU corner in the Lobby writes `botPolicy: 'searcher' | 'legacy'`
+onto the spirit (`makeInitialState` spreads unknown fields through, so this needed
+no new state slice). The step-machine returns to a new driver when it is set.
+
+⚠️ **`playTurn` IS DELIBERATELY NOT USED,** and the reasons are the whole design:
+
+1. **It would desync every peer.** `playTurn` applies its chosen action with
+   `ctx.rng` directly (`play.js:507`). The client's seeded cursor lives *inside*
+   the state and only advances through `dispatch`, which logs `cursorBefore` and
+   relays it; peers compare frame by frame and freeze on mismatch. A driver that
+   advanced the cursor outside `dispatch` would fail silently and everywhere.
+2. **The client resolves a Swing as a cinematic**, not a call: dice overlay →
+   `battleState` → `closeBattleOverlay` → `runBattleFlowPaced`, several hundred ms
+   and several renders later. `playTurn`'s loop is synchronous. A plan cannot be
+   fired in one go even if the rng were safe.
+
+So the searcher **chooses** and the existing client functions **execute**, one
+action per tick, through the same paths a human's clicks take. Search runs on
+`restoreRng(state.rng).fork('search:<turn>:<n>')` — a fork consumes nothing, so a
+few thousand hypothetical dice leave the match's own cursor exactly where it was.
+Speculation uses `harnessHooks`, which is engine-pure; handing it the CLIENT's
+`battleFlowHooks` would have fired real fan and hazard effects during search.
+
+#### 📊 AND THE FIRST MEASUREMENT PAID FOR ITSELF IMMEDIATELY
+
+`.scratch/clientkinds.mjs` — what the searcher actually *chooses*, over 30 headless
+matches, against what the client could actually *perform*:
+
+| kind | share of chosen actions | client path |
+|---|---|---|
+| `melodyNote` | 43.9% | ✅ |
+| `face` | 16.6% | ✅ |
+| `move` | 10.2% | ✅ |
+| `confirmMelody` / `endTurn` | 8.6% / 8.3% | ✅ |
+| **`slime`** | **2.8%** | ❌ → now ✅ |
+| `stackCommit` · `skillTarget` · `swing` · `pose` | 2.5% · 2.1% · 1.8% · 1.6% | ✅ |
+| **`slide`** | **0.6%** | ❌ → now ✅ |
+| `sonic` / `riffOff` | 0.5% / 0.5% | ✅ |
+
+🎯 **6.50% of all decisions contained a kind the client could not perform** — and
+all of it was Metalness's identity, the trail and the dial. Shipped without them,
+he would have visibly given up mid-turn in front of a player. `callSlime()`,
+`callEleven()` and `slide()` are zero-argument client functions that already
+existed; wiring them took three switch cases and took the figure to **0.00%**.
+
+📌 **The kind-coverage table is now pinned** — `BOT_CLIENT_KINDS` /
+`BOT_CLIENT_GAPS` in `bot.js`, asserted against `MODELLED_KINDS` in
+`legalActionsCheck` §16 (547 → 580 assertions), in both directions. ⚠️ **It cannot
+see the switch statement** and says so out loud: it proves the SET has not grown
+unnoticed, not that any translation is correct.
+
+#### ⚠️ THE TWO BOTS ARE NOT THE SAME BOT — read this before comparing them
+
+- 🪦 **The Smash and the Blaster are absent from searcher play.** They are
+  `UNMODELLED_KINDS` (`transition.js:94`), filtered before the beam ever sees
+  them — and they are the LEGACY bot's two highest-priority attacks. This is the
+  single biggest behavioural difference and it is not a tuning artefact.
+- 🐛 **The legacy bot gets free chords.** `botExecuteStackCommits` writes the
+  stacks and the commit counter but never `usedStockIdx`, while the human path and
+  `transition.js` both spend the slot. The searcher goes through the human path, so
+  it PAYS for stack commits and the legacy bot does not. Not fixed here — it
+  changes legacy economics and wants its own before/after.
+- 📌 **No persona is passed.** §0.1 retires them; `botPersona` still runs for the
+  legacy bot, so the "takes the stage as 📻 the Diva" line is legacy-only theatre.
+
+#### 🔧 Two safety-net changes that came out of the wiring
+
+- **The 15s watchdog now re-arms per action** (`botNudge` in its deps), not per
+  turn. A searcher turn is a melody line plus movement plus a shot — comfortably
+  past 15s at `BOT_TICK` pacing — so the old timer would have fired on healthy
+  turns and forced an `endTurn` mid-plan.
+- ⚠️ **Which opens a live-lock the watchdog can no longer see,** so the driver
+  carries its own ceiling: if a client function ever refuses an action the rules
+  call legal, the driver would re-plan, be refused again, and bump the nudge
+  forever — keeping the stall timer permanently fresh. 60 ticks per turn
+  (`MAX_ACTIONS_PER_TURN`, `play.js`) and it wraps up.
+
+#### 🎯 WHAT THIS IS NOT — three things nobody has verified yet
+
+1. **Nobody has played it.** Every number above is still headless. The whole point
+   of the change is the numbers that come from a human at the controls.
+2. ⚠️ **`attackParams` and `initiateSwing` are not pinned to each other.** The
+   searcher plans a fight through `attackParams`; the client resolves one through
+   `initiateSwing`'s own inline arithmetic (chord lookup, `instrumentDropped`,
+   `pyroBonus`, `ATK_BONUS_CAP`, the charge dice). Nothing asserts they agree. If
+   they don't, the searcher is planning against a fight the client does not run —
+   and that is a candidate answer to §5.E⁗ item 1 that no bench could have found.
+3. **The search's cost in a browser is unmeasured.** `window.__botSearch` carries
+   `{decisions, ms, worstMs, stale, unsupported}` — check `worstMs` against the
+   520ms tick before trusting the pacing.
+
+### 6.6.11 ✅ 2026-08-18 (evening) — HURTING SOMEBODY SCORED WORSE THAN NOT HURTING THEM
+
+#### The item, closed
+
+§5.E‴ item 2, the second bug visible in §6.6.10's table and the last term still
+telling the bot that landing a blow was a mistake.
+
+`pressure` splits its two halves on purpose (§5, term 16): **a life taken is
+banked** and is not reach-weighted, because the victim respawns across the board
+and a distance-decayed life would collapse on the exact blow it should reward.
+**Chip Vibe is provisional** and IS reach-weighted, because a rival on 2 Vibe
+across the board is a plan rather than a position.
+
+The split is right. The arithmetic under it was not.
+
+#### 🐛 THE CAUSE — every attack in this game knocks the target back
+
+`vibeMissing × reachWeight(dist)`. A landed hit adds one point of damage **and
+simultaneously demotes every point already banked into a weaker reach band**,
+because the rival is shoved 1–2 hexes. The two effects pull opposite ways and the
+demotion is the bigger one whenever the rival is already hurt:
+
+| the blow | before | after | Δ `pressure` |
+|---|---|---|---|
+| rival 2 → 1 Vibe, knocked 1 hex | 0.6/3 × 1.000 = 0.200 | 0.8/3 × 0.675 = 0.180 | **−0.020** (−0.05 weighted, Ronin) |
+
+📌 **It is the `adjWounded` failure (term 11) surviving inside the term that
+replaced it** — score the OPPORTUNITY and taking it destroys the payment. That
+one paid the bot for standing next to a bleeding rival; this one paid it for not
+finishing the job it had already started.
+
+#### 📊 Measured, not argued — `.scratch/pressureswing.mjs`
+
+Walks real searcher matches, applies every legal `swing`, keeps the cases where
+the blow LANDED (Vibe or a life actually came off), and reports the `pressure`
+delta next to the geometry. 200 matches a tree, three lives:
+
+| tree | landed swings | Δ`pressure` **negative** | mean weighted Δ |
+|---|---|---|---|
+| HEAD | 1875 | **49 (3%)** — all 49 knockback | 0.240 |
+| fixed | 1882 | **0 (0%)** | 0.268 |
+
+⚠️ **3% IS THE HONEST SIZE OF IT, AND IT IS NOT §6.6.10.** That one moved 65% of
+matches; this one is a wrong sign on the blows that matter most — the ones that
+land on somebody nearly down — and it is worth fixing because it is *wrong*, not
+because it is *big*. Every number below is small, and none of it is quoted as an
+improvement.
+
+#### ✅ THE FIX — `chipReachWeight`, a bounded mix, with the inequality written down
+
+    chipReachWeight(d) = 1 − MIX · (1 − reachWeight(d))
+
+`reachWeight` is untouched (`evalCheck` pins its shape and `beamSetup` reads the
+same curve); the chip-Vibe half of `pressure` now reads the mixed one. `MIX`
+bounds how much authority the reach gradient has over the damage credit, and it
+is **derived, not picked**:
+
+    MIX = 0.9 / ((maxVibePool − 1) × (1 − PRESSURE_REACH_FLOOR))    → 0.346 today
+
+The worst case is the tightest ratio the rules allow: a 1-point hit on a rival one
+point above going down (Vibe 2 → 1 — the smallest proportional gain that is not a
+life) knocked the full 2 hexes, melee reach to the floor. Requiring
+`(M−2)/(M−1) ≤ 1 − MIX·(1 − FLOOR)` rearranges to the line above; the 0.9 is
+headroom so the guarantee is strict rather than an equality a float could tip.
+
+🎯 **THIS IS §6.6.10's RULE APPLIED A SECOND TIME.** *Any term that scores GETTING
+READY must be capped below what DOING it pays.* There, `beamSetup` scored lining
+a Sonic up and outbid firing it. Here the reach gradient scores being CLOSE ENOUGH
+to convert damage and outbid dealing it. Same shape, two terms apart — and both
+were written in the same pass as `chargeSeek`, which is the one term that shipped
+with its inequality stated.
+
+⚠️ **DERIVED FROM THE ROSTER, FOR THE SAME REASON `dbHorizon` DIVIDES BY THE
+SKILL YOU ARE SAVING FOR.** The ratio tightens as the Vibe pool deepens — one
+point out of eight is a smaller share of the credit than one out of four — so a
+future Spirit with a deeper pool is exactly how this comes back quietly. Hard-
+coding 0.35 would have been correct today and wrong on the day the roster grew.
+
+#### 🔬 `evalCheck` — 134 → 151 assertions
+
+The new ones test **the property, swept**, not the instance: for every Vibe pool
+on the roster, every Vibe level from full down to 1, and knockback of 1 and 2
+hexes, a landed blow must not score less than not landing it. Plus three that stop
+the fix from passing by flattening — `chipReachWeight(1) > chipReachWeight(3)`,
+melee reach still full credit, and the mix a real blend rather than a switch. If
+the sweep passed because the gradient had been deleted, the approach behaviour the
+floor exists to produce would be gone and nothing would say so.
+
+📌 HEAD's own 134 assertions were also run **against the new `evaluate`** and all
+passed, which is the check that matters more than the new count.
+
+#### 📏 The A/B — `.scratch/pressureab.mjs`, 200 matches a tree, same seeds
+
+⚠️ **A FORMULA CANNOT BE SWEPT THROUGH `weightOverrides`,** so this is the
+`ab68.mjs` discipline instead: one script, unchanged, run against a HEAD checkout
+of `evaluate.js`. The script says how to build one in its header.
+
+| three lives | HEAD | fixed |
+|---|---|---|
+| decided | 199/200 | 198/200 |
+| mean turns | 35 | 37 |
+| FP per turn | 0.711 | 0.697 |
+| duels | 277 | **297** |
+| Sonics | 218 | **279** |
+| swings | 1259 | 1207 |
+| lives taken | 507 | 483 |
+
+| two lives | HEAD | fixed |
+|---|---|---|
+| FP per turn | 0.716 | **0.759** |
+| duels | 255 | 278 |
+| Sonics | 133 | 160 |
+
+**The one column with a story is Sonics, +28%.** A Sonic knocks the target down
+the beam, so it was the action punished hardest by a term that charged for the
+knockback it caused. Everything else is inside the noise §5.D‴ describes — these
+are population comparisons at n=200, not paired ones, and the decided rate, the
+turn count and FP per turn should all be read as unchanged.
+
+#### 🎯 AND THE BENCH TOOK §6.6.10's WIN RATE AWAY — 60 seeds was never enough
+
+Two-gate, searcher vs `unranked` (the same searcher with the beam's `score` off),
+three lives:
+
+| seeds | HEAD | fixed |
+|---|---|---|
+| 60 | 52.5% ±12.7 · inconclusive 2% | 38.3% ±12.3 · inconclusive 0% |
+| **300** | **42.7% ±5.7** · inconclusive 2% | **41.1% ±5.6** · inconclusive 3% |
+
+⚠️ **THE 60-SEED ROW REPRODUCED §6.6.10's 52.5% EXACTLY AND THEN EVAPORATED.**
+The 14-point gap between the two trees at 60 seeds is noise — at 300 they are one
+point apart, well inside either interval. This change does not move the win rate.
+
+🎯 **AND THE NUMBER IT LANDS ON IS THE FINDING: ~42%, WITH 50% OUTSIDE THE
+INTERVAL.** §5.E‴ item 4 asked why the ranking buys nothing. At 300 seeds the
+answer is worse than nothing: **the beam's `score` is losing to its own absence.**
+§6.6.10 read 52.5% and called it "not an edge"; the honest reading is that it was
+never 52.5%. Item 4 is now the top of the list and it has a number.
+
+📌 **`RIFF_FP_TURN_CAP` and the ~2% inconclusive gate both held** across 600
+matches of bench, which is the first independent confirmation of §6.6.10's
+headline outside the session that produced it.
+
 ### 6.6.10 🎯 2026-08-18 — THE BOTS WERE NOT PLAYING THE GAME, AND ONE WEIGHT IS WHY
 
 #### The headline
@@ -786,7 +1043,7 @@ is not the problem it looked like: **30/30 decided at three lives, mean 34
 turns.** `matchConfig` defaults to three, and every reading taken before
 2026-08-18 was taken on two — do not compare across that line.
 
-#### 🐛 AND A SECOND BUG IS VISIBLE IN THE SAME TABLE — still open
+#### 🐛 AND A SECOND BUG IS VISIBLE IN THE SAME TABLE — ✅ FIXED IN §6.6.11
 
 `pressure` went **−0.41 on a swing that landed**. The term is reach-weighted
 (`vibeMissing × reach`) and a successful hit KNOCKS THE RIVAL AWAY, so the
@@ -797,6 +1054,7 @@ SCORES WORSE than leaving them bleeding next to you"* — and banked lives
 accordingly. Chip Vibe was left reach-weighted on the argument that it is
 provisional, and knockback turns that argument inside out. Not fixed here: it
 wants its own A/B, and one variable at a time is how §6.6.10 stayed legible.
+✅ **It got that A/B the same evening — see §6.6.11.**
 
 #### 🎤 Footnote: the duel ceiling was NOT what was breaking the game
 
