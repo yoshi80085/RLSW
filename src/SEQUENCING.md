@@ -201,8 +201,21 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ## 5. 🧭 START HERE — session handoff, 2026-08-18 (evening)
 
-> ⚠️ **NOTHING IS COMMITTED THIS SESSION** — 5 source files + 3 new probes, all
-> suites green. The previous session (§5-day) is committed as `6f2fe00`.
+> ⚠️ **PARTLY COMMITTED.** §5.A⁗–5.I⁗ (the `pressure` fix and the searcher
+> wiring) are in `230ff8e`; 5.J⁗'s journal is NOT — `package.json`, `play.js`,
+> the monolith, `policies/botJournal.js`, `engine/botTraceCheck.mjs`,
+> `ui/BotReview.jsx`, `.scratch/journal.mjs`. All suites green. The session
+> before this one (§5-day) is `6f2fe00`.
+>
+> 🧹 **AND `230ff8e` SWALLOWED THE SCRATCH JUNK.** `_to_delete/session0818b/`
+> carried a **4.4MB** throwaway tarball and a copy of HEAD's `evaluate.js` into
+> history, alongside `_to_delete/gitlocks/`. ⚠️ The agent cannot delete files on
+> this mount (`unlink: Operation not permitted`), which is why they were parked in
+> `_to_delete/` in the first place — `git rm -r _to_delete` by hand, and note the
+> blobs stay in history regardless unless somebody decides that matters.
+>
+> 🧠 **AND IT REVIEWS ITSELF NOW** — 5.J⁗, the 🧠 REVIEW button. On its first run
+> it found #15: Metalness has never once played Goes to Eleven, legal 263 times.
 >
 > 🧠 **AND THE SEARCHER IS PLAYABLE FOR THE FIRST TIME** — 5.I⁗. Tick the `🧠`
 > box next to a CPU corner in the Lobby. Everything §5/§6.6 has been tuning was
@@ -217,7 +230,7 @@ here and it is the one thing the harness still cannot see, because `smash` and
 > ranking is not buying nothing; **it is losing to its own absence.** That makes
 > §5.E‴ item 4 the top of the list, and it now has a number instead of a shrug.
 
-### 5.A⁗ The pattern is nine for nine — and this one is a repeat offender
+### 5.A⁗ The pattern is TEN for ten — and a machine found the tenth
 
 §5.A's predictor, unchanged:
 
@@ -228,6 +241,7 @@ here and it is the one thing the harness still cannot see, because `smash` and
 | # | the blind spot | symptom it wore |
 |---|---|---|
 | 14 | chip Vibe reach-weighted at full strength, against a rule where **every attack knocks the target back** | a landed blow scored `pressure` **negative** on 3% of hits — all of them hits on somebody nearly down |
+| 15 | `evaluate` has no term for being LOUD — `atEleven` is in no row of the weight table | 🔊 `eleven` legal on **263** decisions across 12 matches, chosen **0** times (5.J⁗) |
 
 🎯 **#14 IS #10's SHAPE FOR THE THIRD TIME IN THREE SESSIONS.** `adjWounded`
 scored standing next to a bleeding rival, so finishing them paid nothing.
@@ -263,6 +277,9 @@ pays** — that rule has now been derived independently three times, and
   `legalActionsCheck` §16, and `.scratch/clientkinds.mjs`. `clickNoteStock`'s
   `_forceChordMode` may now NAME the stack ('drive' | 'sustain'); every existing
   caller passed `true` and still means Drive.
+- 🧠 **THE JOURNAL** (5.J⁗) — `policies/botJournal.js`, `trace`/`audit` on
+  `searcherPolicy`, `ui/BotReview.jsx`, `npm run test:trace` (1435 assertions),
+  `.scratch/journal.mjs`.
 - 🔧 **The bot watchdog re-arms per ACTION, not per turn**, and the searcher
   driver carries its own 60-tick ceiling because that re-arm opens a live-lock
   the watchdog can no longer see. Both explained in §6.6.12.
@@ -306,27 +323,42 @@ that moves with behaviour cannot be read as a coverage signal in either directio
 
 ### 5.E⁗ 🎯 NEXT, IN DEPENDENCY ORDER
 
-1. 🥁 **WHY IS THE RANKING BEHIND?** Promoted from item 4 and it is now the whole
-   list's blocker. 🧠 **AND IT HAS A THIRD INSTRUMENT NOW: play it** (5.I⁗). A
-   candidate answer that no bench could produce is in §6.6.12's open list —
-   `attackParams` (what the searcher plans against) and `initiateSwing` (what the
-   client actually resolves) are not pinned to each other, and nothing would say
-   so. At 300 seeds the beam's `score` loses to its own absence,
-   42.7% / 41.1% against 50%. Two candidates worth separating before touching
-   anything: the ranking prunes a branch the evaluator would have liked (a search
-   bug), or the evaluator is confidently wrong about a whole class of position and
-   ranking by it just gets there faster (an eval bug). ⚠️ The second explains why
-   three sessions of eval fixes have not moved this number.
-2. 🧮 **RE-PRICE `awardRiffFame` INTO THE BAND** (§5.C‴, carried). Mean uncapped
+1. 🥁 **WHY IS THE RANKING BEHIND?** Promoted from item 4, and it is the whole
+   list's blocker. At 300 seeds the beam's `score` loses to its own absence —
+   42.7% / 41.1% against 50%, with 50 outside both intervals.
+
+   🎯 **THE AUDIT HAS ALREADY HALVED THE QUESTION** (5.J⁗). Two hypotheses were on
+   the table: the ranking prunes a branch the evaluator would have liked (a SEARCH
+   bug), or the evaluator is confidently wrong about a class of position and
+   ranking by it just arrives there faster (an EVAL bug). Over ~1,860 action
+   decisions the beam threw away a better option **15 times, worth 5.6 points
+   total** — so it is not pruning wrong, and the first hypothesis is dead. What is
+   left is the expensive one, which is also the one that explains why three
+   sessions of eval fixes have not moved this number.
+
+   🧠 **AND THERE ARE TWO INSTRUMENTS ON IT NOW: play it, and read the journal**
+   (5.I⁗, 5.J⁗). One candidate no bench could ever have produced is in §6.6.12's
+   open list — `attackParams` (what the searcher plans against) and
+   `initiateSwing` (what the client actually resolves) are not pinned to each
+   other, and nothing in the repo would say so if they disagreed.
+
+2. 🔊 **GIVE `evaluate` A TERM FOR BEING LOUD** (5.J⁗, bug #15). `eleven` legal
+   263×, chosen 0×. The Sustain stack leaving is visible to the weight table and
+   nothing arriving is. ⚠️ Same shape as `kit` before §6.6.6 — and note that the
+   fix is a NEW TERM, which §5's Earned lens says must trace to a decision rather
+   than a stat block. It is also the cheapest possible test of the journal: the
+   detector should go quiet when the term lands, and if it does not, the term is
+   wrong.
+3. 🧮 **RE-PRICE `awardRiffFame` INTO THE BAND** (§5.C‴, carried). Mean uncapped
    award 15.85 against a cap of 8, 96% clipped, dominant term `ceil(margin / 2)`
    where `margin` grows with riff LENGTH for no reason a player could see. Every
    term in the payout is invisible to the searcher until this lands.
-3. 🔊 **MAKE `centreStage` CONDITIONAL ON RANGE** (carried, unchanged, from §5.E″
+4. 🔊 **MAKE `centreStage` CONDITIONAL ON RANGE** (carried, unchanged, from §5.E″
    item 2). The middle is outside a tier-0 rig, so centre and `inRig` fight and the
    beam loses.
-4. 📏 **THEN A REAL BENCH.** ⚠️ 300 seeds was enough to delete a headline this
+5. 📏 **THEN A REAL BENCH.** ⚠️ 300 seeds was enough to delete a headline this
    session. §6.6's bar is ~2000 and nothing in §6.6.9–11 is close to it.
-5. 🪦 **THE SMASH IS STILL UNMODELLED.** Oldest debt on the list, unchanged.
+6. 🪦 **THE SMASH IS STILL UNMODELLED.** Oldest debt on the list, unchanged.
 
 ### 5.I⁗ 🧠 THE SEARCHER IS IN THE CHAIR — Alex's call, and it was the right one
 
@@ -368,6 +400,48 @@ against `MODELLED_KINDS` in `legalActionsCheck` §16 (547 → **580**). It canno
 the switch statement, and the comment says so.
 
 
+### 5.J⁗ 🧠 THE FEEDBACK LOOP — and bug #15, found by it on its first run
+
+Alex: *"Is there a way to hook up the Computer players to a feedback system that
+can be reviewed after every game?"* There was, and it was nearly free: the
+searcher already prices every option the beam keeps and then discards all but the
+winner. A `trace` sink keeps them. Full account in `BOT_STRATEGY_HANDOFF.md`
+§6.6.13.
+
+**Shipped:** `policies/botJournal.js` (entry shapes + a pure `journalSummary`),
+`trace` and `audit` options on `searcherPolicy`, `ui/BotReview.jsx` behind a 🧠
+REVIEW button with a JSON download, `npm run test:trace` (**1435** assertions),
+and `.scratch/journal.mjs` for the same summary over a bench run.
+
+⚠️ **THE ASSERTION IT ALL RESTS ON:** the same seed played untraced, traced, and
+traced-with-audit produces the same winner, the same turns, the same Fame **and
+the same list of chosen actions**. A journal that changed the game it journalled
+would make every reading taken through it describe a bot nobody plays against.
+
+#### 🐛 #15 — GOES TO ELEVEN HAS NEVER BEEN PLAYED
+
+| # | the blind spot | symptom it wore |
+|---|---|---|
+| 15 | `evaluate` has no term for being LOUD — `atEleven` is in no row of the weight table | 🔊 `eleven` was legal on **263** decisions across 12 matches and chosen **0** times, while `slime` was chosen 122× from the same kit |
+
+The centrepiece of `METALNESS_REWORK_DESIGN.md` §0 — armour into volume, the one
+rule that finally reads his Sustain stat — and the searcher can see the Sustain
+stack LEAVE and cannot see anything arrive. Nine for nine on §5.A's predictor, and
+this is the first one a machine found rather than a person.
+
+#### 🎯 AND HALF AN ANSWER TO ITEM 1, FROM THE AUDIT
+
+Over ~1,860 action decisions the beam threw away a better option **15 times, worth
+5.6 points total**. **The ranking is not losing the game by pruning wrong.** That
+kills the cheaper of item 1's two hypotheses and leaves the expensive one: the
+evaluator is confidently wrong about a class of position and ranking by it simply
+arrives there sooner.
+
+📌 Two unsettled readings, both in §6.6.13: `face` is the single most-chosen action
+in the game (349 of the Ronin's 913 decisions), and 57–79% of decisions are
+"close calls" — which is either a badly-chosen threshold or a bot whose turns are
+coin flips between its top two options. Neither is quotable yet.
+
 ### 5.F⁗ 📌 Housekeeping
 
 ⚠️ **GIT WRITES FAIL FROM THE AGENT'S SHELL ON THIS MOUNT.** `git stash` died with
@@ -378,7 +452,8 @@ The A/B's HEAD checkout was built by `cp` + `git show HEAD:…` into `/tmp` for 
 same reason — no worktree was created, so §5.G‴'s stale registration is still the
 only one and `git worktree prune` is still owed.
 
-`.scratch/` gained `clientkinds.mjs` (what the searcher chooses vs what the
+`.scratch/` gained `journal.mjs` (the review panel's summary over a bench run —
+5.J⁗), `clientkinds.mjs` (what the searcher chooses vs what the
 client can perform — 5.I⁗), `pressureswing.mjs` (the inversion probe) and
 `pressureab.mjs` (the A/B). Both are worth keeping: the first is the only thing in
 the repo that measures whether an attack SCORES like an attack, and the second is

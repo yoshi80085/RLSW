@@ -11,6 +11,7 @@
     "test:determinism": "node --import ./src/engine/testAssetStub.mjs src/engine/determinismCheck.mjs",
     "test:turnflow": "node --import ./src/engine/testAssetStub.mjs src/engine/turnFlowCheck.mjs",
     "test:eval": "node --import ./src/engine/testAssetStub.mjs src/engine/evalCheck.mjs",
+    "test:trace": "node --import ./src/engine/testAssetStub.mjs src/engine/botTraceCheck.mjs",
     "test:legal": "node --import ./src/engine/testAssetStub.mjs src/engine/legalActionsCheck.mjs",
     "test:transition": "node --import ./src/engine/testAssetStub.mjs src/engine/transitionCheck.mjs",
     "test:melody": "node --import ./src/engine/testAssetStub.mjs src/engine/melodyCommitCheck.mjs",

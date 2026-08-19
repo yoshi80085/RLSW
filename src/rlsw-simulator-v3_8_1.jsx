@@ -97,6 +97,7 @@ import { tentacleOptions, legalActions } from "./engine/policies/legalActions.js
 // CHAIR" below for the full reasoning.
 import { POLICIES, harnessHooks } from "./engine/policies/play.js";
 import { restoreRng } from "./engine/rng.js";
+import BotReview from "./ui/BotReview.jsx";
 import TentacleFX, { TENTACLE_LEAD_MS } from "./ui/TentacleFX.jsx";
 import { riffStats, RIFF_BOTH_PAID_QUALITY, RIFF_CLOSE_QUALITY_GAP } from "./engine/systems/riffOff.js";
 import {
@@ -10168,6 +10169,7 @@ function Game({ gameState, onReturnToLobby }) {
   // the effect a dependency that always changes — guaranteeing it re-evaluates
   // and the turn keeps flowing (build → commit → move → act → end).
   const [botNudge, setBotNudge] = useState(0);
+  const [botReviewOpen, setBotReviewOpen] = useState(false);
 
   // ── 🤖 BOT PERSONALITIES (moved to engine/policies/bot.js) ─────────────────
   const botPersonaRef = useRef({});
@@ -10325,6 +10327,16 @@ function Game({ gameState, onReturnToLobby }) {
   // 📊 Cheap instrumentation, because §6.6's own estimate of what a search costs
   // inside a render loop is "unknown" rather than "fine". `window.__botSearch`.
   const botSearchStatsRef = useRef({ decisions: 0, ms: 0, worstMs: 0, stale: 0, unsupported: 0 });
+  // 🧠 THE JOURNAL — every decision, with what it was decided against.
+  // `window.__botJournal`, the 🧠 REVIEW button, and `ui/BotReview.jsx`.
+  const botJournalRef = useRef([]);
+  const BOT_JOURNAL_MAX = 4000;   // a long match, not a session; the download carries what is kept
+  // 🎯 THE AUDIT IS ON IN THE CLIENT AND OFF IN THE BENCH, on purpose. It prices
+  // the options the BEAM THREW AWAY, which costs a second sampling pass — a real
+  // tax on 300 headless matches, and free here, where the bot spends 520ms a tick
+  // waiting for the animation anyway. It cannot change play (`expectedScore` runs
+  // on forks), and it is the only way to see the ranking lose a position.
+  const BOT_SEARCH_AUDIT = true;
   useEffect(() => { if (typeof window !== 'undefined') window.__botSearch = botSearchStatsRef.current; }, []);
 
   /** The client-owned slices `legalActions` / `evaluate` cannot read off the engine. */
@@ -10357,9 +10369,11 @@ function Game({ gameState, onReturnToLobby }) {
     const rng = restoreRng(st.rng).fork(`search:${st.turn?.count ?? 0}:${stats.decisions}`);
     const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
     const t0 = now();
+    const pending = [];   // 🧠 journal entries from this one call, stamped below
     let answer = null;
     try {
-      answer = POLICIES.searcher({})(st, self.id, botSearcherView(), { rng, hooks: harnessHooks({ rng }) });
+      answer = POLICIES.searcher({ trace: (e) => pending.push(e), audit: BOT_SEARCH_AUDIT })(
+        st, self.id, botSearcherView(), { rng, hooks: harnessHooks({ rng }) });
     } catch (err) {
       // A throw here would wedge the turn in silence. Say it out loud instead.
       addLog(`🧠 ${self.name}'s search failed (${err?.message ?? err}) — ending the turn.`);
@@ -10367,6 +10381,16 @@ function Game({ gameState, onReturnToLobby }) {
     }
     const ms = now() - t0;
     stats.decisions++; stats.ms += ms; stats.worstMs = Math.max(stats.worstMs, ms);
+    // 🧠 STAMPED HERE, BECAUSE THE ENGINE NEVER READS A CLOCK — a search that read
+    // the wall clock would make the determinism regression flicker. ⚠️ The whole
+    // duration goes on the FIRST entry and zero on any others: one call can emit a
+    // composition entry AND an action entry, and splitting the time between them
+    // would be inventing a measurement nobody took.
+    pending.forEach((e, i) => { e.ms = i === 0 ? ms : 0; e.name = self.name; });
+    const J = botJournalRef.current;
+    J.push(...pending);
+    if (J.length > BOT_JOURNAL_MAX) J.splice(0, J.length - BOT_JOURNAL_MAX);
+    if (typeof window !== 'undefined') window.__botJournal = J;
     return Array.isArray(answer) ? answer : (answer ? [answer] : []);
   }
 
@@ -11603,6 +11627,22 @@ function Game({ gameState, onReturnToLobby }) {
         fameToWin={fameToWin}
         LIMELIGHT_TO_WIN={LIMELIGHT_TO_WIN}
       />
+      {/* 🧠 BOT REVIEW — what the computer players decided, and what they decided
+          against. Only offered when there is something to review, i.e. when a
+          searcher-driven CPU has actually taken a turn. */}
+      {botReviewOpen && (
+        <BotReview journal={botJournalRef.current} spirits={spirits}
+          onClose={() => setBotReviewOpen(false)} />
+      )}
+      {!botReviewOpen && botJournalRef.current.length > 0 && (
+        <button onClick={() => setBotReviewOpen(true)}
+          title="What the computer players decided, and what they decided against"
+          style={{ position:'fixed', left:12, bottom:12, zIndex:8000, cursor:'pointer',
+            fontFamily:"'Share Tech Mono',monospace", fontSize:11, padding:'6px 12px',
+            borderRadius:4, border:'1px solid #ffcc44', background:'#0a1020', color:'#ffcc44' }}>
+          🧠 REVIEW ({botJournalRef.current.length})
+        </button>
+      )}
       {/* 🤘 Total wipe — the Rock God keeps the crown */}
       <GodVictoryOverlay god={rockGod} bossOutcome={bossOutcome} spirits={spirits}
         noteStates={noteStates} onReturnToLobby={onReturnToLobby} />

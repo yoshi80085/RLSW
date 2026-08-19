@@ -49,6 +49,7 @@ import { SKILL_BY_ID } from "../../data/skillTree.js";
 import { startTurnNotes, refillDrawCount } from "../systems/turnFlow.js";
 import { decideWinner } from "../systems/combat.js";
 import { legalActions, beamActions } from "./legalActions.js";
+import { traceKey } from "./botJournal.js";
 import { makeActionScorer } from "./actionScore.js";
 import { evaluate } from "./evaluate.js";
 import { applyBotAction, applyBotLine, UNMODELLED_KINDS } from "./transition.js";
@@ -279,10 +280,11 @@ const COMPOSITION_KINDS = new Set(['melodyNote', 'stackCommit']);
 // branching-factor control for a search that keeps several lines alive; this
 // walks ONE line and only ever needs the single best next step, so it asks for
 // `limit: 1` outright. Taking a `limit` it then ignored would read as a knob.
-function composePhase(state, spiritId, view, ctx, { ranked }) {
+function composePhase(state, spiritId, view, ctx, { ranked, trace = null }) {
   const probe = ctx.rng.fork(`compose:${state?.turn?.count ?? 0}`);
   let cur = state, curView = view;
   const prefix = [];
+  const curve = [];
   let best = null, bestScore = -Infinity;
 
   for (let i = 0; i <= MELODY_SEARCH_DEPTH; i++) {
@@ -296,6 +298,11 @@ function composePhase(state, spiritId, view, ctx, { ranked }) {
       const r = applyBotLine(state, line, { rng: probe, view, hooks: ctx.hooks });
       if (!r.stoppedAt) {
         const s = evaluate(r.state, spiritId, r.view ?? view).score;
+        // 🧠 THE CURVE — what each track LENGTH was worth, which is the whole
+        // argument of this function made visible. §6.3's finding was that a
+        // one-ply greedy confirms a ONE-NOTE melody every turn; this is the
+        // shape that says whether it still would.
+        if (trace) curve.push({ len: prefix.length, score: s });
         if (s > bestScore) { bestScore = s; best = line; }
       }
     }
@@ -313,6 +320,12 @@ function composePhase(state, spiritId, view, ctx, { ranked }) {
     prefix.push(pick);
   }
 
+  if (trace) {
+    trace({
+      t: 'compose', turn: state?.turn?.count ?? 0, spiritId,
+      curve, chosen: best ? { len: best.length - 1 } : null, score: bestScore,
+    });
+  }
   return best;
 }
 
@@ -401,13 +414,31 @@ function expectedScore(state, action, spiritId, view, ctx, samples) {
   return n ? total / n : -Infinity;
 }
 
-function searcherPolicy({ ranked = true, limit = 5, samples = ATTACK_SAMPLES } = {}) {
+/**
+ * @param {object} opts
+ *   · `ranked`  rank the beam by `makeActionScorer` (false = "the first 5")
+ *   · `limit`   beam width per kind · `samples` dice draws per stochastic action
+ *   · `trace`   🧠 OPTIONAL SINK. Called with one plain object per decision — see
+ *     `botJournal.js` for the shapes. ⚠️ PURE FROM THIS SIDE: the return value is
+ *     ignored, nothing is read back, and no clock is read here (a sink that wants
+ *     wall-clock stamps its own — the engine reading the clock is what broke the
+ *     determinism regression the last time somebody tried it). `botTraceCheck`
+ *     pins the consequence: same seed, traced and untraced, same game.
+ *   · `audit`   🎯 also price the options the BEAM THREW AWAY, and report the best
+ *     of them as `bestPruned`. Costs a second full sampling pass over the pruned
+ *     options, so it is off by default and off in the bench — but a played game
+ *     spends 520ms a tick doing nothing, which is a budget worth spending on the
+ *     one question §5.E⁗ item 1 cannot otherwise answer: does the ranking throw
+ *     away better moves than it keeps? ⚠️ It cannot change play. `expectedScore`
+ *     works on forks, and a fork consumes nothing from the stream it came from.
+ */
+function searcherPolicy({ ranked = true, limit = 5, samples = ATTACK_SAMPLES, trace = null, audit = false } = {}) {
   return function choose(state, spiritId, view, ctx) {
     const ns = state?.noteStates?.[spiritId] ?? {};
 
     // COMPOSITION — searched as a line, for the reason above.
     if (!ns.hasConfirmed) {
-      const line = composePhase(state, spiritId, view, ctx, { ranked });
+      const line = composePhase(state, spiritId, view, ctx, { ranked, trace });
       if (line?.length) return line;
       // No confirmable track (an empty melody line is not confirmable), so fall
       // through and let the action phase's greedy answer — which will be
@@ -426,10 +457,38 @@ function searcherPolicy({ ranked = true, limit = 5, samples = ATTACK_SAMPLES } =
       : beamActions(options, { limit });
 
     let best = null, bestScore = -Infinity;
+    const scored = trace ? [] : null;
     for (const action of beamed) {
       const n = STOCHASTIC_KINDS.has(action.kind) ? samples : 1;
       const s = expectedScore(state, action, spiritId, view, ctx, n);
+      if (scored) scored.push({ kind: action.kind, key: traceKey(action), score: s });
       if (s > bestScore) { bestScore = s; best = action; }
+    }
+
+    if (trace) {
+      // 🎯 WHAT THE BEAM THREW AWAY. Priced with the same sampler, on forks, and
+      // then discarded — the chosen action above is already fixed by the loop
+      // that ran before this block, so nothing here can reach the game.
+      let bestPruned = null;
+      if (audit) {
+        const kept = new Set(beamed);
+        for (const action of options) {
+          if (kept.has(action)) continue;
+          const n = STOCHASTIC_KINDS.has(action.kind) ? samples : 1;
+          const s = expectedScore(state, action, spiritId, view, ctx, n);
+          if (!bestPruned || s > bestPruned.score) {
+            bestPruned = { kind: action.kind, key: traceKey(action), score: s };
+          }
+        }
+      }
+      trace({
+        t: 'action', turn: state?.turn?.count ?? 0, spiritId,
+        legalKinds: [...new Set(options.map(a => a.kind))],
+        legal: options.length, beamed: beamed.length, pruned: options.length - beamed.length,
+        considered: scored.slice().sort((x, y) => y.score - x.score),
+        chosen: best ? { kind: best.kind, key: traceKey(best) } : null,
+        score: bestScore, bestPruned,
+      });
     }
     return best ?? { kind: 'endTurn', apCost: 0 };
   };

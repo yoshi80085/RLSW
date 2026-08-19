@@ -681,6 +681,91 @@ as a bruiser trait if "hurt people" is scored at all. ✅ It does now, and
 
 ---
 
+### 6.6.13 ✅ 2026-08-18 (night) — THE JOURNAL, AND WHAT IT SAID THE FIRST TIME IT RAN
+
+#### The ask
+
+Alex: *"Is there a way to hook up the Computer players to a feedback system that
+can be reviewed after every game?"*
+
+Yes, and it was nearly free, because the searcher already computes the answer and
+throws it away. `searcherPolicy` prices every action that survives the beam and
+keeps one. A `trace` sink keeps the rest.
+
+#### ✅ WHAT SHIPPED
+
+- **`policies/botJournal.js`** — the entry shapes and `journalSummary(entries)`,
+  pure. In the ENGINE rather than the .jsx on purpose: a summary that only exists
+  inside the client cannot be tested and cannot be run over a bench.
+- **`trace` and `audit` on `searcherPolicy`** — one plain object per decision. The
+  action phase reports what was legal, what the beam kept, what each kept option
+  scored, and what it chose. The composition phase reports THE CURVE: what each
+  track LENGTH was worth, which is §6.3's argument made visible.
+- 🎯 **`audit`** — also price the options the beam THREW AWAY. On in the client,
+  off in the bench: it costs a second sampling pass, which is a real tax on 300
+  headless matches and free in a game that spends 520ms a tick on animation.
+- **`ui/BotReview.jsx` + the 🧠 REVIEW button** — the summary, the never-played
+  sweep, and the decision list, with a JSON download.
+- **`npm run test:trace`** — 1435 assertions, and the first one is the only one
+  that really matters (below). Plus `.scratch/journal.mjs`, the same summary over
+  a bench run.
+
+⚠️ **THE ENGINE NEVER READS A CLOCK.** A search that timed itself would make the
+determinism regression flicker. The client stamps the duration on the first entry
+of each call and zero on the rest — one call can emit a composition entry AND an
+action entry, and splitting the time between them would be inventing a
+measurement nobody took.
+
+#### 📏 THE ASSERTION THE WHOLE THING RESTS ON
+
+A journal that changes the game it is journalling is worse than no journal: every
+reading taken through it would describe a bot nobody plays against. So
+`botTraceCheck` §1 plays the same seed four ways — untraced, traced, and traced
+with the audit on — and pins that the winner, the turn count, the Fame, the duel
+ledger AND **the full list of chosen actions** are identical. The audit is safe
+for the same reason the search is: `expectedScore` runs on forks, and a fork
+consumes nothing from the stream it came from.
+
+#### 🎯 AND IT FOUND SOMETHING ON THE FIRST RUN
+
+12 matches, three pairings, audit on — 2,218 decisions:
+
+| seat | decisions | mean pruned | close calls | 🎯 beam cost the position | ⚠️ legal and NEVER played |
+|---|---|---|---|---|---|
+| Shredding Ronin | 913 | 1.0 | 523/771 (68%) | 4× (1.2 pts) | — |
+| Intergalactic 0 | 403 | 2.1 | 184/325 (57%) | 6× (0.4 pts) | — |
+| **Metalness Monster** | 902 | 2.0 | 607/768 (79%) | 5× (4.0 pts) | 🔊 **`eleven` — legal 263×, chosen 0×** |
+
+🐛 **#15: GOES TO ELEVEN HAS NEVER BEEN PLAYED.** It was legal on 263 separate
+decisions across twelve matches and the searcher took it **not once** — while
+happily choosing `slime` 122 times and `slide` 42 times from the same kit. It is
+the centrepiece of `METALNESS_REWORK_DESIGN.md` §0 — armour into volume, the one
+rule that finally reads his Sustain stat — and by §5.A's predictor the diagnosis
+writes itself: **`evaluate` has no term for being loud.** `atEleven` appears in no
+row of the weight table, so the searcher can see the Sustain stack leave and
+cannot see anything arrive. Same shape as `kit` before §6.6.6, one ability over.
+
+🎯 **AND A PARTIAL ANSWER TO §5.E⁗ ITEM 1, FROM THE AUDIT.** Across ~1,860 action
+decisions the beam threw away a better option **15 times, worth 5.6 points in
+total.** So the ranking's ~42% two-gate result is **not** explained by bad
+pruning — the beam is keeping the right options and something downstream of it is
+losing the game. That eliminates the cheaper of the two hypotheses in §5.E⁗
+item 1 and leaves the expensive one: the evaluator is confidently wrong about a
+class of position, and ranking by it just arrives there faster.
+
+📌 **Two more readings worth arguing about, neither of them settled:**
+- **`face` is the most-chosen action in the game** — 349 of the Ronin's 913
+  decisions and 250 of Metalness's 902. The bots spend most of their turns turning
+  around. It may be correct (facing is 1 AP, not gated on the token, and matters on
+  defence) or it may be `evaluate` finding a cheap way to bank a small positional
+  gain. Nobody has looked.
+- **57–79% of decisions are "close calls"** at `JOURNAL_CLOSE_GAP` = 0.25. Either
+  the threshold is far too generous, or most turns genuinely are coin-flips
+  between the top two options — and a bot whose every turn is a coin flip is not
+  being steered by the weight column it was given. ⚠️ The constant is a starting
+  point and is labelled as one; do not quote that percentage until it has been
+  argued with.
+
 ### 6.6.12 ✅ 2026-08-18 (night) — THE SEARCHER IS IN THE CHAIR
 
 #### 🎯 THE FINDING, AND IT IS THE OLDEST ONE ON THE LIST
