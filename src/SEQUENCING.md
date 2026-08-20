@@ -338,9 +338,18 @@ with no arsenal.
 1. 🌀 **PLAY-TEST PSYCHO BUSHIDO.** Client-only, no suite covers it. Dash with
    spare AP: does the battle overlay's attack stat include the bonus the log
    promises, and does the blow come from the hex he dashed TO?
-2. 🗡️ **WIRE THE RONIN'S THREE ACTIVES INTO `legalActions` + `transition`.**
-   §5.D⁶. The biggest open item on the roster and the one that makes him a real
-   opponent. ⚠️ Bushido is aimed by FACING, so it depends on §5.C⁶ having landed.
+2. 🗡️ **WIRE THE RONIN'S REMAINING TWO ACTIVES IN.** 🌀 Psycho Bushido is
+   ✅ **DONE** — §5.G⁶, it is a `MODELLED_KIND` and the searcher draws it on 23.3%
+   of the turns it is legal. The other two are each a SUBSYSTEM rather than an
+   action, and the estimates are not close:
+   · 👤 **Shadow Illusion** — a second body with its own movement pool, its own
+     pickups, a 3-turn clock and four pop conditions. `legalActions` already
+     takes `shadowHex` in `view`, so the BLOCKING half is modelled and nothing
+     else is. Needs board state the engine does not have.
+   · 🎸 **Cursed Shamisen** — a wandering hazard that ticks per round, chases
+     minor-key Spirits, drains Sustain in two rings and can be calmed by walking
+     onto it. ⚠️ **Same class as `hexHazards`** (item 3): a per-tick board effect
+     the harness has no hook for. Do item 3 FIRST — they want one hook, not two.
 3. 🧪 **THE OOZE STILL DOES NOTHING IN ANY BENCH MATCH** (carried, §5.E⁵ 1b).
    `hexHazards` is not in `harnessHooks`. Unchanged.
 4. 🎸 **THE LEGACY BOT STILL DOES NOT PAY FOR ITS CHORDS** (carried, §5.E⁵ 1c).
@@ -351,6 +360,80 @@ with no arsenal.
 7. 🧮 **RE-PRICE `awardRiffFame` INTO THE BAND** (carried, §5.C‴).
 8. 📏 **THEN A REAL BENCH.** §6.6's bar is ~2000. Nothing here is above 135.
 9. 🪦 **THE SMASH IS STILL UNMODELLED.** Oldest debt, unchanged.
+
+### 5.G⁶ 🌀 PSYCHO BUSHIDO IS AN ACTION NOW
+
+`legalActions` walks the facing line, stops at the first body, and emits
+`{ kind:'psychoBushido', targetId, to, dist, apCost: dist }` when the skill is
+unlocked, the cooldown is clear and there is room to move. `transition.js` joins
+it to the `swing`/`sonic`/`tentacle` group and pays a **prologue** — warp, dash
+AP, `tempDrive`, cooldown — then falls through into the combat path.
+
+🎯 **THE BUFF LANDS ON `pre`, WHICH IS WHAT `attackParams` READS.** The bug the
+client carried for months (§6.6.16, §5.A⁶ — a `setTimeout` handing the strike a
+pre-dash closure) is not reproducible here, because the ordering is structural
+rather than temporal. ⚠️ That is worth stating out loud: the engine copy is not
+"the same code that works"; it is a shape in which the failure cannot occur.
+
+**It draws.** 20 matches with the skill seeded: `psychoBushido` legal 163×,
+**chosen 38× (23.3%)** — against a plain `swing` at 10.2%. The Ronin prefers the
+charge to the jab, which is what the payout now says he should.
+
+⚠️ **AND IT IS GATED ON THE SKILL, NOT ON THE SPIRIT.** `psycho_bushido` is
+`spiritOnly` in the tree, so the roster gate exists one layer up; reading the
+unlock keeps `legalActions` free of a hard-coded name to keep in step.
+
+📌 **Suites, and every movement is an INCREASE:** legal 580 → **582** (§16's
+kind-coverage table asserts `BOT_CLIENT_KINDS` against `MODELLED_KINDS` in both
+directions, so one kind adds two), transition 241 → **242**, harness 1665 →
+**1703**, trace 1595 → **1598**. Everything else unchanged. `check:bundle` clean.
+
+### 5.H⁶ 🔊 OPEN DESIGN QUESTION — THE RIG THAT BREATHES (Alex, 2026-08-20)
+
+> *"What if the range of the amps increased linearly with Drive and Sustain? When
+> the player is actively having their turn, their amps expand to how much Drive
+> they currently have. When it's another player's turn, those same amps expand or
+> collapse depending on how much Sustain they have."*
+
+**Not decided. Recorded because the fit is unusually good and the analysis should
+not have to be redone.**
+
+🎯 **THE EXISTING GATES ALREADY SPLIT ALONG THAT LINE.** Every offensive read of
+`inRange` happens on your turn and every defensive one on theirs:
+
+| gate | fires on | the rule says |
+|---|---|---|
+| `legalActions:450` — can you fire a Sonic | your turn | **Drive** |
+| `attackParams:214` — `defInRig`, d6 vs bare d4 | their turn | **Sustain** |
+| `legalActions:474` / `evaluate:404` — can a rival ANSWER | their turn | **Sustain** |
+
+`rigFor(spirit, ns)` is the single wrapper nearly everything goes through and it
+**already receives `ns`** — which holds both stacks. It needs one more input and
+one line of arithmetic. 📌 One tidy-up it forces: `evaluate.js:898` calls
+`sonicRig()` directly instead of `rigFor`, and is the one place that would drift.
+
+🎯 **AND IT RETIRES §6.6.7's CENTRE/RIG TENSION** — the four-session-old item
+*"make `centreStage` conditional on range"*. Under this rule you PLAY your way to
+centre stage: stack Drive and the rig reaches the middle. The tension stops being
+a purchase gate and becomes a decision. It also answers the weight table's own
+complaint about `drive: 0.6` (*"readiness never spent is worth nothing"*) — a
+Drive stack would be worth something standing still.
+
+**Numbers that line up:** `STACK_CAP_BASE` 3 / `STACK_CAP_MAX` 6 against radii
+`[4, 5, 7, ∞]`. `radius = RANGE_FLOOR[tier] + stackLen` with floors `[2,3,4,6]`
+puts today's flat values mid-range and gives a swing at both ends. The Range rungs
+become **the floor — how far you carry when silent**, which is a better purchase
+than +3 flat: it is insurance, and it matters most when you are empty.
+
+⚠️ **THE RISK IS A LOSS SPIRAL, AND IT IS REAL.** Sustain frays when you are hit
+(`applyChordFray`, +1 from the rear wedge), so a beaten Spirit's rig shrinks →
+defence die drops d6 → d4 → they are hit harder → Sustain frays faster. **Tune
+the FLOOR before the swing.** A floor that leaves a fully-frayed Spirit still in
+rig near home turns the spiral into a readable escape hatch — fall back to your
+amp — and a floor of 0 or 1 builds a game the loser cannot come back from.
+
+📌 It composes with the quiz idea rather than replacing it: amps (pool size) and
+power (die size) stay pure numbers and stay quiz-able; range stops being one.
 
 ### 5.F⁶ 📌 Housekeeping
 

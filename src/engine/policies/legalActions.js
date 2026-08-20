@@ -44,7 +44,7 @@ import { rigFor } from "../systems/attackParams.js";
 import { canCallEleven } from "../systems/eleven.js";
 import { posingMap } from "../systems/limelight.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
-import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH } from "../../data/gameConstants.js";
+import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH, PSYCHO_BUSHIDO_MIN_AP } from "../../data/gameConstants.js";
 import { CONE_HALF_ARC, SPIRIT_ONLY_ROUTE } from "./bot.js";
 // 📻 The Boom Box rule — Intergalactic 0 reads distance 0 while charged, which
 // is what keeps his Sonic legal out on the board — used to be imported here as
@@ -405,6 +405,47 @@ export function legalActions(state, spiritId, view = {}) {
   if (!tokenSpent && !rockGodActive) {
     const cone = swingCone(self);
     const beam = sonicBeam(self);
+
+    // 🌀 PSYCHO BUSHIDO — the Iaijutsu dash, and the Ronin's only ranged opener.
+    //
+    // Straight down the facing line, stopping at the FIRST body: a charge does not
+    // curve and it does not pass through people. The blow is a Swing — same token,
+    // same dice — so this emits a target and a distance and lets `transition.js`
+    // fall through into the combat path rather than growing a second one.
+    //
+    // ⚠️ THE DISTANCE IS THE PAYLOAD, NOT THE COST OF REACHING IT. `dist - 1`
+    // becomes bonus Drive on the strike, so a long charge hits harder — and
+    // because the move spends the whole remaining pool, a charge from next door
+    // is strictly worse than the 1 AP Swing it replaces. That self-policing is
+    // why there is no minimum-range rule here beyond having room to move at all.
+    //
+    // 📌 GATED ON THE SKILL, NOT ON THE SPIRIT. `psycho_bushido` is `spiritOnly`
+    // in the tree, so the roster gate already exists one layer up; reading the
+    // unlock here keeps this file's contract ("what is legal") free of a
+    // hard-coded name it would have to keep in step.
+    if (ap >= PSYCHO_BUSHIDO_MIN_AP
+        && (ns.unlockedSkills ?? []).includes('psycho_bushido')
+        && (ns.psychoBushidoCd ?? 0) <= 0) {
+      const step = neighborInDirection(here, self.facing ?? 0);
+      if (step) {
+        const dq = step.q - here.q, dr = step.r - here.r;
+        let q = here.q, r = here.r, prev = here.num;
+        for (let d = 1; d <= ap; d++) {
+          q += dq; r += dr;
+          const h = HEX_BY_QR[`${q},${r}`];
+          if (!h) break;                       // the charge runs off the stage
+          if (blocked.has(h.num)) {
+            // ⚠️ ANY body stops it, but only a RIVAL is a target — an amp or the
+            // 👤 decoy blocks the lane without offering a blow, which is what
+            // makes the decoy worth standing behind.
+            const rival = rivals.find(x => x.num === h.num);
+            if (rival) out.push({ kind: 'psychoBushido', targetId: rival.id, to: prev, dist: d, apCost: d });
+            break;
+          }
+          prev = h.num;
+        }
+      }
+    }
 
     // SWING — 1 AP, the cone.
     if (ap >= SWING_AP_COST) {

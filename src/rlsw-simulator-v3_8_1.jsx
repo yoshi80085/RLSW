@@ -10659,6 +10659,13 @@ function Game({ gameState, onReturnToLobby }) {
       // perform. Left out, he would visibly give up mid-turn in front of a player
       // — which is the difference between a bot that is wired in and one that
       // merely compiles.
+      // 🌀 THE IAIJUTSU DASH. `resolvePsychoBushido` re-derives the line from the
+      // Ronin's live facing and AP, so it needs only the target — the engine's
+      // `to`/`dist` are its own model of the same walk, and handing them over
+      // would let a stale plan warp him somewhere the client never agreed to.
+      // ⚠️ It is `MODELLED_KINDS` on the engine side, so a searcher that plans a
+      // charge and could not throw it would end its turn standing still.
+      case 'psychoBushido': resolvePsychoBushido(a.targetId); return true;
       case 'slime':         callSlime(); return true;
       case 'eleven':        callEleven(); return true;
       case 'slide':         slide(a.to); return true;

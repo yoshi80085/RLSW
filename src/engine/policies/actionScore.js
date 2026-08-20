@@ -355,6 +355,16 @@ export function makeActionScorer(state, spiritId, view = {}) {
       case 'riffOff':
         return targetRank.get(action.targetId) ?? 0;
 
+      // 🌀 WHO first, then HOW FAR — the Tentacle's shape with the sign flipped.
+      // The Tentacle subtracts reach because road is fuel it is spending; the dash
+      // ADDS distance because distance IS its payload (`dist - 1` bonus Drive). At
+      // most one Bushido per rival is ever emitted (the line stops at the first
+      // body), so the distance term only ever separates different targets — it is
+      // carried for the beam's ordering, not to choose between two ways in.
+      case 'psychoBushido':
+        return (targetRank.get(action.targetId) ?? 0) * TENTACLE_RANK_STRIDE
+             + (action.dist ?? 0);
+
       // 🐙 WHO you hit, then how much road it costs. See TENTACLE_RANK_STRIDE.
       case 'tentacle':
         return (targetRank.get(action.targetId) ?? 0) * TENTACLE_RANK_STRIDE

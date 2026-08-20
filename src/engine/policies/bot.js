@@ -671,6 +671,9 @@ export function botPlanMove(state, self, persona, amps) {
 export const BOT_CLIENT_KINDS = new Set([
   'skillTarget', 'melodyNote', 'stackCommit', 'confirmMelody',
   'move', 'face', 'swing', 'tentacle', 'sonic', 'riffOff', 'pose', 'endTurn',
+  // 🌀 The Ronin's dash — `resolvePsychoBushido` is a one-argument client
+  // function that already existed; wiring it was one switch case.
+  'psychoBushido',
   // 🧪 Metalness's trail and his dial. `.scratch/clientkinds.mjs` is why these
   // are here rather than in the gap list: he reaches for them constantly.
   'slime', 'eleven', 'slide',

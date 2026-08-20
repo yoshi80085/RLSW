@@ -112,6 +112,16 @@ export const SLIME_TRAIL_MAX      = 6;   // …and a third batch evicts the firs
 export const SONIC_BASE_DIE     = 6;
 export const SONIC_UPGRADED_DIE = 8;
 export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
+// 🌀 PSYCHO BUSHIDO — the Iaijutsu dash (§4.1). The cooldown was already ticked
+// by `turnFlow` and stored by `economy` long before the move was reachable to a
+// bot; these two are the rest of its rule, hoisted out of the monolith so the
+// engine and the client cannot drift.
+// ⚠️ THE BONUS IS THE GROUND HE COVERED — `dist - 1` — and the sign matters. It
+// used to be `apLeft - dist`, which paid MOST for a charge of zero hexes and
+// nothing for a full-length one. Alex caught it 2026-08-20.
+export const PSYCHO_BUSHIDO_CD     = 2;   // rounds, ticked in turnFlow
+export const PSYCHO_BUSHIDO_MIN_AP = 2;   // 1 hex of run-up + the Swing's own AP
+
 export const RIG_RADIUS_BY_TIER = [4, 5, 7, Infinity];  // Range 0/I/II/III radii (axial hex distance)
 // 🛡️ Sonic DEFENCE die. A rival inside their own rig radius answers the beam
 // with their amp behind them (d6). Caught outside it, they have nothing to push

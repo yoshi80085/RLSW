@@ -472,6 +472,9 @@ export const MELODY_SEARCH_DEPTH = 11;
  */
 export const STOCHASTIC_KINDS = new Set([
   'swing', 'sonic', 'tentacle', 'riffOff', 'smash', 'blaster',
+  // 🌀 The dash ends in a Swing, so it is judged on the same dice as one. A
+  // deterministic estimate here would price a coin-flip blow as a certainty.
+  'psychoBushido',
 ]);
 
 /**

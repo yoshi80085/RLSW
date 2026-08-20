@@ -61,7 +61,7 @@ import { applyAction } from "../reduce.js";
 import {
   moveStep, spiritFaced, beatsSpent, moveBudgetSet, turnEnded,
   noteSheetPatched, attackRolled, fansChanged, spiritSlid, slimeCleared, slimeCalled,
-  elevenCalled, posed,
+  elevenCalled, posed, spiritWarped,
 } from "../actions.js";
 import {
   battleConsequences, runBattleFlow, grantFame, riffOffConsequences,
@@ -77,7 +77,7 @@ import {
   bankLostChord, chargeSparkPatch, tokenAt, liveChargeZoneAt,
 } from "../systems/board.js";
 import { tokenPickedUp, chargeZoneUsed } from "../actions.js";
-import { CHARGE_ZONE_BOOST_TURNS } from "../../data/gameConstants.js";
+import { CHARGE_ZONE_BOOST_TURNS, PSYCHO_BUSHIDO_CD } from "../../data/gameConstants.js";
 import { randomNote } from "../../music/cadence.js";
 import { commitMelodyEconomy } from "../systems/melodyCommit.js";
 import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
@@ -85,7 +85,7 @@ import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 /** Kinds this file can actually run headlessly. */
 export const MODELLED_KINDS = new Set([
   'melodyNote', 'stackCommit', 'confirmMelody',
-  'move', 'slide', 'face', 'swing', 'sonic', 'tentacle', 'pose', 'skillTarget', 'endTurn',
+  'move', 'slide', 'face', 'swing', 'sonic', 'tentacle', 'psychoBushido', 'pose', 'skillTarget', 'endTurn',
   'riffOff',
   'slime', 'eleven',
 ]);
@@ -341,16 +341,44 @@ export function applyBotAction(state, action, ctx = {}) {
     // the road is spent whether or not the blow lands, because you used the road
     // to throw the punch (§4a). Paying on hit would make a whiffed reach free,
     // and free reach is the one thing this ability must never be.
+    // 🌀 PSYCHO BUSHIDO joins this group for the Tentacle's reason: the dash ends
+    // in a Swing — same token, same cone rules, same dice — so what is bespoke is
+    // the PROLOGUE, and it is paid first.
+    case 'psychoBushido':
     case 'tentacle':
     case 'swing':
     case 'sonic': {
       const isTentacle = kind === 'tentacle';
-      const rollKind   = isTentacle ? 'swing' : kind;
+      const isBushido  = kind === 'psychoBushido';
+      const rollKind   = (isTentacle || isBushido) ? 'swing' : kind;
 
       // ⚠️ THE TRAIL IS SPENT BEFORE ANYTHING ELSE — and before `attackParams`,
       // so the stats are derived off the board the blow actually lands on.
       let pre = state;
       if (isTentacle) pre = applyAction(pre, slimeCleared(spiritId, action.spend ?? []), rng);
+
+      // 🌀 THE CHARGE, AND EVERY LINE OF IT IS ORDERED ON PURPOSE.
+      //
+      // ⚠️ THE BUFF MUST LAND BEFORE `attackParams` READS THE SHEET. The client
+      // shipped this the other way round for months behind a `setTimeout`, so the
+      // bonus was computed, logged, written — and then read at its pre-dash value
+      // by a strike holding a stale closure (§6.6.16). Here it is structural: the
+      // patch goes onto `pre`, and `pre` is what the stats are derived from.
+      //
+      // ⚠️ AND THE DASH PAYS ONLY FOR ITS MOVEMENT. The Swing below spends its own
+      // AP and burns the token, exactly as it does for a blow thrown standing
+      // still. Paying the whole bill here would leave the strike insolvent.
+      if (isBushido) {
+        const dist  = action.dist ?? 1;
+        const bonus = Math.max(0, dist - 1);          // the ground he covered
+        if (action.to != null) pre = applyAction(pre, spiritWarped(spiritId, action.to, 0), rng);
+        if (dist > 1) pre = applyAction(pre, beatsSpent(dist - 1, false), rng);
+        const nsSelf = pre?.noteStates?.[spiritId] ?? {};
+        pre = patchNs(pre, spiritId, {
+          tempDrive:       (nsSelf.tempDrive ?? 0) + bonus,
+          psychoBushidoCd: PSYCHO_BUSHIDO_CD,
+        }, rng);
+      }
 
       const params = attackParams(pre, spiritId, action.targetId, rollKind, view);
       if (!params) return fail(state, view, 'illegal', 'attacker or defender not on the board');

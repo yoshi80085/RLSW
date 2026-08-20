@@ -42,6 +42,15 @@ Archetype quartet: **Ronin = Burst/virtuoso · Intergalactic 0 = Control/zoner �
     never had; Alex's call 2026-08-20 was that the CODE is right and the wording was wrong.
     📌The strike is dispatched SYNCHRONOUSLY — see `resolvePsychoBushido`'s comment for why the 100ms
     `setTimeout` that used to sit there silently discarded the entire bonus.
+    ⚠️ **THE BONUS IS `dist - 1`, THE GROUND HE COVERED.** It used to be `apLeft - dist`, which paid
+    MOST for a charge of zero hexes and nothing for a full-length one — the ability rewarded standing
+    still and called it lightning. Because the move spends the whole remaining pool the flipped sign
+    self-polices: a charge from next door is strictly worse than the 1 AP Swing it replaces, so there
+    is deliberately NO minimum-range rule.
+    ✅ **ENGINE-MODELLED since 2026-08-20** — `kind:'psychoBushido'`, joined to the `swing` group in
+    `transition.js`. The searcher draws it on 23.3% of the turns it is legal, against 10.2% for a
+    plain Swing. 🗡️ Shadow Illusion and Cursed Shamisen are still client-only — `SEQUENCING.md`
+    §5.E⁶ item 2 has the estimates.
   - **Shadow Illusion** (6 Db, costs 1 Drive token) — The Ronin splits into a **body double**: a second,
     pixel-identical Ronin standee, born **stacked on his own hex** (single-click, no hex to target). The
     stacked spawn is the point — a decoy that popped into an empty adjacent tile would identify itself as
