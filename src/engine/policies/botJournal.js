@@ -19,15 +19,30 @@
 // ACTION PHASE — one per decision:
 //   { t:'action', turn, spiritId, ms,
 //     legalKinds:[…], legal:n, beamed:n, pruned:n,
-//     considered:[{ kind, key, score }],     // every option the search PRICED, best first
+//     considered:[{ kind, key, score, terms? }], // every option PRICED, best first
 //     chosen:{ kind, key }, score,
 //     bestPruned:{ kind, key, score } | null // audit mode only — see below
 //   }
+//   🧠 `terms` rides on the top TWO entries only — see `play.js` for why. It is
+//   `evaluate`'s own term vector, averaged over the same samples as the score.
 //
 // COMPOSITION PHASE — one per turn:
 //   { t:'compose', turn, spiritId, ms,
 //     curve:[{ len, score }],                // what each track LENGTH was worth
-//     chosen:{ len }, score }
+//     steps:[{ i, took:{kind,key}, cands:[{kind,key,score}] }],
+//     legalKinds:[…],                        // composition kinds ever on the menu
+//     chosenKinds:{ melodyNote:n, stackCommit:n },
+//     chosen:{ len }, score, terms }
+//
+// 🥁 `chosenKinds` AND `legalKinds` ON A COMPOSE ENTRY ARE 2026-08-19's FIX, AND
+// THE REASON IS WORTH KEEPING. Until then a compose entry said only how LONG the
+// line was, `journalSummary` bumped `chosen` with the literal 'confirmMelody',
+// and nothing fed `legalSeen` — so `melodyNote` and `stackCommit` could appear
+// in neither `chosen` nor `neverChosen`. The never-chosen sweep, which exists to
+// catch exactly "legal again and again, never once picked", was blind to half of
+// every turn. That is how a `stackCommit` the search could not reach until the
+// melody line was full went 455 offers without being taken and showed up in no
+// column of this file's own output.
 //
 // 🎯 `bestPruned` IS THE ONE TO READ FIRST. The beam keeps `limit` actions per
 // kind and the rest are never priced at all — so "the ranking threw away the
@@ -74,6 +89,10 @@ export function journalSummary(entries) {
     prunedTotal: 0, prunedMax: 0, consideredTotal: 0,
     closeCalls: 0, rankingCost: 0, rankingCostTotal: 0,
     trackLengths: {}, ms: 0, worstMs: 0,
+    // 🥁 The composition phase, which used to report nothing but a length.
+    composeKinds: {}, composeTurnsWith: {},
+    // 🎯 Which terms decide the close calls — see `termSwing` below.
+    termSwingTotal: {}, termSwingN: 0,
   });
 
   for (const e of entries ?? []) {
@@ -86,6 +105,15 @@ export function journalSummary(entries) {
       s.composeDecisions++;
       bump(s.chosen, 'confirmMelody');
       if (e.chosen?.len != null) bump(s.trackLengths, e.chosen.len);
+      // 🥁 THE COMPOSITION PHASE, FED INTO THE SAME TWO COLUMNS AS THE ACTION
+      // PHASE. `legalSeen` and `chosen` are what `neverChosen` is derived from
+      // below, so a composition kind that is offered and never taken now wears
+      // the same fingerprint as an action kind that is.
+      for (const k of e.legalKinds ?? []) bump(s.legalSeen, k);
+      for (const [k, n] of Object.entries(e.chosenKinds ?? {})) {
+        s.composeKinds[k] = (s.composeKinds[k] ?? 0) + n;
+        if (n > 0) { bump(s.chosen, k); bump(s.composeTurnsWith, k); }
+      }
       continue;
     }
 
@@ -97,7 +125,28 @@ export function journalSummary(entries) {
     s.consideredTotal += (e.considered ?? []).length;
 
     const top = e.considered ?? [];
-    if (top.length >= 2 && Math.abs(top[0].score - top[1].score) < JOURNAL_CLOSE_GAP) s.closeCalls++;
+    const close = top.length >= 2 && Math.abs(top[0].score - top[1].score) < JOURNAL_CLOSE_GAP;
+    if (close) s.closeCalls++;
+
+    // 🎯 WHICH TERMS MOVED, ON THE TURNS THAT WERE NEARLY COIN FLIPS.
+    //
+    // A close call is not a problem by itself — two moves really can be worth
+    // the same. It is a problem when 58–79% of a match is close calls, because
+    // then the whole game is being decided by whatever term happens to twitch,
+    // and until now nothing in this repo could say WHICH one. This is that
+    // column: the mean absolute per-term difference between the winner and the
+    // runner-up, over close calls only.
+    //
+    // ⚠️ RAW TERMS, NOT WEIGHTED ONES, AND THE DISTINCTION MATTERS. `evaluate`
+    // returns each term before its weight is applied, so a big swing here on a
+    // term with a small weight is a term that MOVES a lot and DECIDES little.
+    // Read this column next to the weight table, never instead of it.
+    if (close && top[0]?.terms && top[1]?.terms) {
+      for (const k of new Set([...Object.keys(top[0].terms), ...Object.keys(top[1].terms)])) {
+        s.termSwingTotal[k] = (s.termSwingTotal[k] ?? 0) + Math.abs((top[0].terms[k] ?? 0) - (top[1].terms[k] ?? 0));
+      }
+      s.termSwingN++;
+    }
 
     // 🎯 The beam threw away something better than what it kept.
     if (e.bestPruned && Number.isFinite(e.bestPruned.score) && Number.isFinite(e.score)
@@ -119,6 +168,15 @@ export function journalSummary(entries) {
     s.meanPruned    = s.actionDecisions ? s.prunedTotal / s.actionDecisions : 0;
     s.meanConsidered= s.actionDecisions ? s.consideredTotal / s.actionDecisions : 0;
     s.meanMs        = s.decisions ? s.ms / s.decisions : 0;
+    // 🥁 Per COMPOSITION turn, not per decision — "how much did it write and how
+    // much did it load, in an average turn" is the question the stack bug was.
+    s.meanNotes   = s.composeDecisions ? (s.composeKinds.melodyNote  ?? 0) / s.composeDecisions : 0;
+    s.meanCommits = s.composeDecisions ? (s.composeKinds.stackCommit ?? 0) / s.composeDecisions : 0;
+    // 🎯 Biggest movers first. `[termName, meanAbsDelta]`, close calls only.
+    s.termSwing = Object.entries(s.termSwingTotal)
+      .map(([k, v]) => [k, v / Math.max(1, s.termSwingN)])
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1]);
   }
   return bySpirit;
 }

@@ -11,9 +11,10 @@
 // turn count, the same Fame, and the same list of chosen actions. Everything
 // below that is shape.
 import assert from "node:assert";
-import { runMatch, POLICIES } from "./policies/play.js";
+import { runMatch, POLICIES, COMPOSITION_KINDS } from "./policies/play.js";
 import { journalSummary, traceKey, JOURNAL_CLOSE_GAP } from "./policies/botJournal.js";
 import { MODELLED_KINDS } from "./policies/transition.js";
+import { MELODY_MAX } from "./policies/legalActions.js";
 import { SPIRIT_DEFS } from "../data/spirits.js";
 
 let checks = 0;
@@ -94,8 +95,47 @@ for (const e of composes) {
     ok(Number.isFinite(e.score), 'a chosen line has a finite score');
     ok(e.curve.some(p => Math.abs(p.score - e.score) < 1e-9),
        '🎯 the chosen line is one of the lengths the curve priced');
+    ok(e.terms && typeof e.terms === 'object',
+       '🧠 a chosen line carries the term vector it was chosen on');
+  }
+  // 🥁 THE COMPOSITION PHASE REPORTS WHAT IT PLAYED, NOT JUST HOW MUCH OF IT.
+  ok(Array.isArray(e.legalKinds), 'a compose entry lists the composition kinds it was offered');
+  ok(e.legalKinds.every(k => COMPOSITION_KINDS.has(k)),
+     '📏 ...and only composition kinds — the action beam owns the rest');
+  ok(e.chosenKinds && typeof e.chosenKinds === 'object', 'a compose entry counts the kinds it took');
+  ok(Object.keys(e.chosenKinds).every(k => e.legalKinds.includes(k)),
+     '📏 nothing can be taken that was never offered');
+  eq(Object.values(e.chosenKinds).reduce((a, b) => a + b, 0), e.chosen ? e.chosen.len : 0,
+     '📏 the kind counts add up to the length of the line');
+  for (const st of e.steps ?? []) {
+    ok(st.cands.some(c => c.kind === st.took.kind), '📏 the step took one of the candidates it priced');
+    ok(new Set(st.cands.map(c => c.kind)).size === st.cands.length,
+       '📏 one candidate per kind — the beam ranks WITHIN a kind, this chooses BETWEEN them');
   }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 3b. 🥁 THE REGRESSION — a stack commit is reachable before the track is full
+//
+// 🎯 THE BUG THIS PINS, 2026-08-19. `beamActions` groups by kind and emits the
+// groups in first-appearance order; `legalActions` pushes every `melodyNote`
+// before every `stackCommit`; `composePhase` took `[0]`. So a commit was
+// unreachable until `melodyNote` stopped being legal at all — i.e. until the
+// 8-note track was full. Over 18 headless matches the step-picker was offered
+// both kinds 455 times and took a note 455 times.
+//
+// ⚠️ THE ASSERTION IS "ON A SHORT TRACK", NOT "AT ALL", AND THAT IS THE WHOLE
+// VALUE OF IT. The shipped bug still produced commits — 148 in that sample —
+// every one of them on a FULL track, as leftovers once there was nothing else to
+// spend stock on. A test that asked only "does it ever commit" would have been
+// green throughout, which is §5.A's lesson wearing a new hat: the count was
+// never zero, so nothing looked broken.
+// ═════════════════════════════════════════════════════════════════════════════
+ok(composes.some(e => (e.chosenKinds?.stackCommit ?? 0) > 0
+                   && (e.chosenKinds?.melodyNote ?? 0) < MELODY_MAX),
+   '🥁 the searcher commits to a stack BEFORE the melody line is full');
+ok(composes.some(e => (e.steps ?? []).some(st => st.cands.length > 1 && st.took.kind === 'stackCommit')),
+   '🥁 ...and takes one in a step where a melody note was priced against it');
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 4. 🎯 THE AUDIT — and what it is for
@@ -133,6 +173,30 @@ for (const id of seats) {
     ok(!s.chosen[k],       `never-chosen '${k}' was actually never chosen`);
   }
   eq(s.rankingCost, 0, '📏 no audit in this journal, so nothing can be blamed on the ranking');
+
+  // 🥁 THE COMPOSITION PHASE IS IN THE SAME TWO COLUMNS AS THE ACTION PHASE.
+  // This is the fix to the blindness that hid the stack bug: `neverChosen` is
+  // derived from `legalSeen` minus `chosen`, and until 2026-08-19 nothing from
+  // the composition phase reached either of them.
+  ok(s.legalSeen.melodyNote > 0, '🥁 the summary can see that melody notes were offered');
+  ok(s.chosen.melodyNote > 0,    '🥁 ...and that they were taken');
+  ok(s.legalSeen.stackCommit > 0 || s.composeDecisions === 0,
+     '🥁 the summary can see that stack commits were offered');
+  ok(!s.neverChosen.includes('melodyNote'),
+     '📏 a kind the bot plays every turn cannot be reported as never played');
+  eq(s.meanNotes, (s.composeKinds.melodyNote ?? 0) / Math.max(1, s.composeDecisions),
+     '📏 notes per composition turn is a mean over composition turns, not over decisions');
+  eq(s.meanCommits, (s.composeKinds.stackCommit ?? 0) / Math.max(1, s.composeDecisions),
+     '📏 ...and so is commits per composition turn');
+
+  // 🎯 WHICH TERMS DECIDE THE CLOSE CALLS.
+  ok(Array.isArray(s.termSwing), 'the summary reports a term-swing ranking');
+  for (let i = 1; i < s.termSwing.length; i++) {
+    ok(s.termSwing[i - 1][1] >= s.termSwing[i][1], '📏 term swings are ranked biggest first');
+  }
+  ok(s.termSwing.every(([, v]) => v >= 0), '📏 a swing is an absolute difference, never negative');
+  ok(s.termSwingN <= s.closeCalls,
+     '📏 a term swing is only measured on a close call, so it cannot outnumber them');
 }
 eq(total, traced.journal.length, 'the summary accounts for every entry');
 eq(journalSummary([]), {}, 'an empty journal summarises to nothing rather than throwing');
@@ -151,6 +215,14 @@ for (const id of seats) {
     + ` · close calls ${s.closeCalls}`
     + ` · beam cost the position ${s.rankingCost}×`
     + (s.neverChosen.length ? ` · NEVER CHOSEN: ${s.neverChosen.map(k => `${k}(legal ${s.legalSeen[k]}×)`).join(', ')}` : ' · nothing legal went unplayed'));
+  // 🥁 The composition half of the turn, which reported nothing at all until now.
+  console.log(`      ✍️  per composition turn: ${s.meanNotes.toFixed(2)} notes, ${s.meanCommits.toFixed(2)} commits`
+    + ` (${s.composeTurnsWith.stackCommit ?? 0}/${s.composeDecisions} turns loaded a stack)`);
+  // 🎯 What the coin flips are actually flipping on. Raw terms — read against the
+  // weight table, never instead of it.
+  if (s.termSwing.length) {
+    console.log(`      🎯 close calls turn on: ${s.termSwing.slice(0, 4).map(([k, v]) => `${k} ${v.toFixed(3)}`).join(', ')}`);
+  }
 }
 
 console.log(`✅ botTraceCheck — ${checks} assertions passed`);

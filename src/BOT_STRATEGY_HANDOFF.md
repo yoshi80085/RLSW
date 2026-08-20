@@ -681,6 +681,256 @@ as a bruiser trait if "hurt people" is scored at all. ✅ It does now, and
 
 ---
 
+### 6.6.15 🧪 2026-08-19 (evening) — THE TRAIL BITES NOBODY IN ANY MATCH WE HAVE EVER BENCHED
+
+Alex, after playing: *"The Smart bot got crushed. It used some Slime ability but
+I'm not sure how effectively it did. The old bot lasted a bit longer than the
+smart one."* Both halves of that turn out to be real, and neither is a weight.
+
+**1. 🧪 `slimeBites` IS CALLED FROM THE CLIENT AND NOWHERE ELSE.**
+`harnessHooks` (`play.js`) implements two hooks: `declareWinner` and `knockOut`.
+`hexHazards` is not one of them — and `play.js` §91 says so in as many words,
+*"hazard hexes along a knockback path — client-owned, skipped"*. `transition.js`'s
+`case 'move'` applies `moveStep` and `collectPickups` and nothing else. So in
+every headless match ever run:
+
+- the Monster's trail has **never damaged anybody**;
+- `slime` is a **free AP button** — `apCost` paid, `apGranted: SLIME_MOVE_STEPS`
+  received, no consequence modelled in either direction;
+- and the searcher's transition model says **walking through a rival's ooze is
+  free**, when on the real board it is 1 Vibe per step.
+
+⚠️ **THIS IS §6.6.8's `leftLimelight` FINDING, IN THE HOOK NEXT DOOR.** That one
+cost a knocked-off bot its defence die for the rest of the match, for the same
+reason and in the same table. The rule stands and should be quoted every time
+this list grows: **a hook nobody implements is a rule that only applies to
+humans.** `hexHazards` also carries the gravity vortex, the flaming disc and the
+stage-FX hexes, so this is four hazards, not one.
+
+**2. 🎯 AND `evaluate` HAS NO TERM FOR THE TRAIL AT ALL** — not for laying it,
+not for standing in it, not for avoiding it. `.scratch/slimeuse.mjs` over 24
+matches: `slime` chosen **254×**, 53.1% of the times it was offered, third only
+to `move` and `face`. He is not playing his identity; he is buying steps, and
+`apBanked` is in every column of `SEQUENCING.md` §5.C⁵'s close-call table. The
+ooze is a side effect he cannot see. `tentacle` legal 9× and chosen **0×** says
+the same thing from the other end: the trail is never worth standing on.
+
+**3. 🎸 AND THE LEGACY BOT DOES NOT PAY FOR ITS CHORDS.**
+`botExecuteStackCommits` writes `driveStack`/`sustainStack` directly and never
+touches the stock slot; the searcher's `stackCommit` goes through
+`clickNoteStock`, which spends it. The monolith's own comment at that case has
+said so for a while — and it cost nothing until §6.6.14, which took commits on a
+short track from **0 to 268**. The searcher has just started paying a bill the
+old bot has never paid, out of the same reservoir its melody line is built from.
+
+⚠️ **NONE OF THIS IS VISIBLE TO A WIN-RATE A/B ON THE BENCH**, because the bench
+is the world where the trail is inert and the legacy bot does not exist. It was
+found by a person playing the game, which is where §5.A⁵ came from the same
+morning. Two for two.
+
+📌 **ORDER MATTERS IF THIS IS PICKED UP.** Implement `hexHazards` in
+`harnessHooks` and price the move FIRST, then re-read the 53%; a slime term added
+before the hazard is real would be tuned against a trail that still does nothing.
+
+---
+
+### 6.6.14 🥁 2026-08-19 — THE STACKS WERE UNREACHABLE, AND THE JOURNAL COULD NOT SEE IT
+
+#### The report
+
+Alex, playing against 🧠 CPUs: *"they don't really ever commit to their stacks —
+pretty elementary stuff for the game. They don't really seem to be moving with
+much intention to satisfy long term or even short term goals."*
+
+Both halves reproduced headlessly on the first look, and they are two different
+bugs that happen to wear the same face.
+
+#### 🎯 THE FINDING — an array order, not a judgement
+
+`composePhase` extended its line with `beamActions(steps, { limit: 1, … })[0]`.
+`beamActions` groups by KIND and emits the groups in first-appearance order;
+`legalActions` pushes every `melodyNote` (§legalActions 261) before every
+`stackCommit` (§276). So `[0]` was the best melody note whenever one was legal,
+and a commit was unreachable until `melodyNote` stopped being offered at all —
+i.e. until the 8-note track was full.
+
+**The two kinds were never compared, and could not have been.**
+`makeActionScorer`'s own contract is *"higher is better, WITHIN A KIND"*. There
+is no cross-kind number in that scorer. "Which note" and "note or commit" look
+like one question and are two: the first is a ranking inside a kind, the second
+is a trade between kinds.
+
+| 18 headless matches, 3 lives, searcher both seats | before | after |
+|---|---|---|
+| step-picker offered both kinds → took a note | **455 / 455** | — (the picker is gone) |
+| commits landed on a full 8-note track | 148 | 26 |
+| commits landed on a SHORTER track | **0** | **268** |
+| turns that loaded a stack — Ronin / Intergalactic / Metalness | 15% / 12% / 12% | 22% / 23% / 33% |
+| Drive stack at confirm, mean | 2.08 / 0.78 / 1.35 | 3.43 / 3.51 / 3.00 |
+| ...and empty at confirm | 11% / 46% / 27% | **0% / 0% / 0%** |
+
+⚠️ **THE SHIPPED BUG STILL PRODUCED 148 COMMITS.** Every one of them was a
+leftover — stock with nothing else to be spent on once the track filled. A test
+asking *"does the bot ever commit"* would have been green the whole time. That is
+§5.A's lesson in a new costume: **the count was never zero, so nothing looked
+broken.** `botTraceCheck` §3b therefore asserts a commit on a SHORT track
+specifically, and says why in the comment.
+
+#### 🎯 AND IT IS A NEW SHAPE, NOT THE TENTH REPEAT OF THE OLD ONE
+
+§5.A's predictor is *"the game rewards something, the evaluator has no term for
+it, so the bot never does it."* This is not that. `drive` and `sustain` are in
+every column of `EVAL_WEIGHTS`. Forcing the commits first and pricing both lines
+through **the same evaluator** preferred the commits-first line on **231 of 310
+turns** (Ronin 70/38, Intergalactic 57/21, Metalness 104/19).
+
+> **The evaluator already wanted the stacks. It was never consulted, because the
+> search could not reach the branch to ask about it.**
+
+📌 Worth adding to §5.A's table as a sibling rather than an instance: *a term
+nobody disputes is worth nothing if no line ever carries it.* The old shape is a
+missing weight and is found by the never-chosen sweep; this one is a missing
+BRANCH and the sweep is blind to it by construction, because the action was
+technically chosen sometimes.
+
+📌 The mean score deltas were small and **one of them is negative** (−0.085 /
++0.115 / +0.195 by Spirit) — when notes-first wins it wins bigger. Read the 231
+as "prefers stacks three turns in four", not as "commits-first is strictly
+better". §5's standing warning applies at full force.
+
+#### ✅ THE FIX — the cross-kind trade is `evaluate`'s, for the same reason "how many" is
+
+`composePhase` now takes one candidate PER KIND (that is all `limit: 1` on a
+kind-grouped beam ever meant) and prices each at ITS OWN confirm via
+`confirmPrice`. Higher price wins; a tie keeps source order, matching
+`beamActions`' own tie-break. The header's original split is unchanged and simply
+extended:
+
+- WHICH note, WHICH commit → the beam's scorer, within its kind.
+- **WHICH KIND → `evaluate`, at the confirm.** ← new
+- HOW MANY before confirming → `evaluate`, at the confirm.
+
+⚠️ `-Infinity` from `confirmPrice` means *"not a turn yet"*, not *"bad"*. A
+commit onto an empty melody line has no confirm to be priced at, so it loses to
+any note — correctly: a Spirit who voices a chord and writes no melody has spent
+its turn on a track it cannot cash. When BOTH come back −∞ the caller keeps the
+first, which is the shipped behaviour in the one case where there is nothing to
+choose on.
+
+⚠️ **`unranked` GETS THE CROSS-KIND PRICE TOO, ON PURPOSE.** It is the A/B
+control — the beam's `score` switched off — and its whole value is that it
+differs from `searcher` in exactly one named place. ⚠️ **A consequence worth
+stating before somebody quotes the wrong table: `twogate.mjs` cannot measure this
+fix**, because both of its arms have it. 60 seeds read 38.3% ±12.3 before and
+41.4% ±12.7 after, which is a "nothing broke" reading and nothing more.
+
+#### 📊 The A/B — same script, both trees (the `pressureab.mjs` discipline)
+
+A formula change cannot be expressed through `weightOverrides`, so this is the
+same probe run unchanged against a pre-change checkout.
+
+| 120 matches, 3 lives, 2 pairings | before | after |
+|---|---|---|
+| decided | 119/120 | 119/120 |
+| mean turns | 36 | 38 |
+| FP per turn | 0.713 | **0.772** |
+| duels fought | 189 | **251** |
+| swings | 719 | **456** |
+| Sonics | 158 | 197 |
+| poses | 880 | 1221 |
+| lives lost | 291 | 249 |
+| wall clock | 21.4s | **27.8s** |
+
+🎯 **THE READING IS "IT FIGHTS DIFFERENTLY", NOT "IT FIGHTS MORE".** Swings down
+37% while duels are up 33% and Fame per turn is up 8%: a Spirit walking in with a
+loaded Drive stack takes the shot that pays instead of the one that is merely
+available. ⚠️ **AND A 50-MATCH RUN OF THE SAME PROBE SAID "mean turns 43 → 37",
+WHICH 120 MATCHES ERASED.** Same object lesson as §5.C⁗ at 60 vs 300 seeds; the
+turn count is noise at this n and is quoted here only to be disowned.
+
+⚠️ **THE FIX COSTS ~30% OF SEARCH TIME** (21.4s → 27.8s over 120 matches). Every
+composition step now prices two candidates to their confirm instead of taking the
+head of a list. That is free in the client — the driver waits ~520ms a tick on
+animation anyway (§6.6.12) — and it is a real tax on a 2000-match bench.
+
+#### 🧠 AND THE JOURNAL COULD NOT SEE ANY OF IT
+
+`journalSummary` bumped `chosen` with the literal `'confirmMelody'` for every
+compose entry, and `legalSeen` was fed only from action-phase entries. So
+`melodyNote` and `stackCommit` could appear in **neither** `chosen` nor
+`neverChosen`. §5.A's automated predictor — the one column in this repo built to
+catch *"legal again and again, never once picked"* — **was blind to half of every
+turn.** It found #15 (Goes to Eleven) and could not have found this.
+
+✅ **Fixed in the same pass.** A compose entry now carries `legalKinds`,
+`chosenKinds`, per-step `steps[{i, took, cands}]`, and the `terms` of the line it
+chose; `journalSummary` feeds composition kinds into the same two columns as
+action kinds and reports `meanNotes` / `meanCommits` / `composeTurnsWith`.
+
+#### 🎯 THE SECOND HALF OF THE REPORT — "no intention" has a number now
+
+The action-phase kind mix, same 18 matches, before the fix:
+
+| | Ronin (1162 decisions) | Intergalactic (516) | Metalness (1121) |
+|---|---|---|---|
+| `face` | **534 (46%)** | 65 | 371 |
+| `move` | 250 | 216 | 200 |
+| `endTurn` | 206 | 123 | 186 |
+| swing + sonic + riffOff | **63 (5.4%)** | 37 (7.2%) | 77 (6.9%) |
+
+`FACE_AP_COST` is 1. The Ronin composes a ~5-note track for ~5 AP and spends
+about half of it turning on the spot. That is what "no intention" looks like from
+the inside: a one-ply greedy with no plan longer than the next action, and the
+cheapest always-available positive action is to re-face.
+
+🎯 **AND THE NEW TERM-SWING COLUMN NAMES THE CULPRIT.** Over ~2,400 close calls
+(70–79% of decisions), the mean per-term difference between the winner and the
+runner-up ranks:
+
+| Spirit | what the close calls turn on |
+|---|---|
+| cosmic_ronin | `posePlay` 0.158, `beamSetup` 0.110, `centreStage` 0.052, `apBanked` 0.051 |
+| intergalactic_0 | `apBanked` 0.191, `beamSetup` 0.179, `posePlay` 0.057, `centreStage` 0.037 |
+| Metalness_Monster | `beamSetup` 0.120, `apBanked` 0.075, `posePlay` 0.037, `centreStage` 0.034 |
+
+**`pressure` and `fame` are in none of them.** The two win conditions are not what
+decides the turns; the positioning-and-setup terms are. That is §6.6.10's rule —
+*every term that scores GETTING READY has to be capped below what DOING it pays*
+— measured directly for the first time rather than inferred from a symptom.
+
+⚠️ **RAW TERMS, NOT WEIGHTED ONES.** `evaluate` returns each term before its
+weight, so a big swing on a small weight MOVES a lot and DECIDES little. This
+column has to be read beside `EVAL_WEIGHTS`, never instead of it. It is a
+pointer at where to look next, not a verdict.
+
+#### 🔬 What the suites say
+
+engine ✅, legal 580, eval 151, transition 241, turnflow 61, determinism 22,
+battleflow 50, melody 159, slime 127, eleven 38, score 122, **harness 1738 →
+1843**, skilltree 208, **trace 1435 → 1700**, riffparity 127598.
+
+⚠️ **NEITHER MOVED COUNT IS COVERAGE, AND ONE OF THEM WENT DOWN FIRST.**
+`harnessCheck` asserts inside `for (turn of log) for (a of turn.actions)`, so its
+count tracks how many actions the bots take — more commits, more actions, +105.
+`botTraceCheck` is the same shape: before its new assertions were added it went
+1435 → **1363**, and the drop decomposes exactly — the fixture match lost 1 action
+decision, 48 `considered` pairs and 17 curve points, because commits spend stock
+that melody notes used to spend, so compositions are shorter. Then §3, §3b and §5's
+new assertions took it to 1700. **No assertion was removed or weakened.**
+
+⚠️ **`.scratch/reviewsmoke.jsx` COULD NOT BE RUN IN THE CLOUD CONTAINER.**
+`react-dom/server.browser`, bundled to ESM, hangs before printing — verified to
+hang identically on the UNMODIFIED panel and on a bare `<div>hello</div>`, so it
+is the environment and not the change. It has new assertions (composition kinds,
+the term-swing panel, and a deliberately PRE-2026-08-19 compose entry that must
+still render, since journals get downloaded and kept) and **needs running on a
+real machine before this is called done.** `check:bundle` was likewise
+unavailable — the monolith's image assets are not in the container — so
+`src/rlsw-simulator-v3_8_1.jsx` and `src/ui/BotReview.jsx` were parse-checked with
+esbuild in transform-only mode instead. That catches syntax, not resolution.
+
+---
+
 ### 6.6.13 ✅ 2026-08-18 (night) — THE JOURNAL, AND WHAT IT SAID THE FIRST TIME IT RAN
 
 #### The ask

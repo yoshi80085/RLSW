@@ -66,7 +66,7 @@ import { BeginnerTipOverlay } from "./ui/BeginnerTipOverlay.jsx";
 import { isMirrorFacing, MIRROR_SPRITES, mobileColorStyle, GameErrorBoundary } from "./ui/GameErrorBoundary.jsx";
 import { useStageEffects } from "./hooks/useStageEffects.js";
 import { useRockGod } from "./hooks/useRockGod.js";
-import { ROCK_GODS, ROCK_GOD_RUNAWAY_LEAD, ROCK_GOD_VENGEANCE_DMG, ROCK_GOD_KILL_BLOW_FP, rockGodPace, pickRockGod, godTauntLine } from "./data/rockGods.js"; // HP scaling moved into the engine (Phase 6c)
+import { ROCK_GODS, ROCK_GODS_SHELVED, ROCK_GOD_RUNAWAY_LEAD, ROCK_GOD_VENGEANCE_DMG, ROCK_GOD_KILL_BLOW_FP, rockGodPace, pickRockGod, godTauntLine } from "./data/rockGods.js"; // HP scaling moved into the engine (Phase 6c)
 import { freeNeighborHex } from "./board/rockGodFx.js"; // AoE/slide/shove geometry moved into the engine (Phase 6c)
 import { RockGodBoardLayer, RockGodHUD, GodVictoryOverlay } from "./ui/RockGodLayer.jsx";
 import { STAGE_FX_META, SMOKE_ROUNDS, LASER_ROUNDS, LASER_DAMAGE, PYRO_WAVES, PYRO_DAMAGE, PYRO_BURN_TURNS, ANIMATRONIC_ROUNDS, ANIMATRONIC_DAMAGE } from "./data/stageEffects.js"; // tuning the engine consumes directly (counts/radii/waves) moved with the 6b flip
@@ -636,6 +636,15 @@ const RIFF_LEN          = 6;
 // this is that plus a breath. Shorten it and the two riffs talk over each
 // other; the whole point of the commit is that you hear whose it was.
 const RIFF_COMMIT_BEAT = 2800;
+
+// ── ⏱️ THE RUN WATCHDOG'S GRACE ──────────────────────────────────────────────
+// How long past the LAST judgeable moment on the chart the run is given to close
+// itself before `riffStartRun`'s watchdog closes it by force. Generous on
+// purpose: it must never clip a legitimately slow finish (a long sustain tail on
+// the final gem, a browser that just dropped a second of frames), only a run
+// that has genuinely stopped. See the ⏱️ block in `riffStartRun` for why the
+// watchdog has to exist at all — the play card has no button to escape with.
+const RIFF_RUN_WATCHDOG_MS = 2500;
 
 // ── ONE SIDE OF A DUEL, AS THE OVERLAY NEEDS IT ──────────────────────────────
 // Engine riff → the shape battleState.atkRiff / defRiff carry. There are four
@@ -4129,6 +4138,12 @@ function Game({ gameState, onReturnToLobby }) {
   // refill, every per-turn reset and cooldown tick — is engine-owned now, which
   // is what lets the headless harness advance a turn at all.
   function startNewTurnNotes(spiritId) {
+    // 🏁 IS THIS MATCH ALREADY OVER? Asked here because the top of a turn is
+    // the one moment every match passes through, whatever route the Fame came
+    // by — see `checkStandingFameWin` for why a check that only fires on the
+    // grant is not enough. Before `turnStarted`, so a decided match is never
+    // dealt a fresh hand.
+    if (checkStandingFameWin()) return;
     // Record whether this spirit starts their turn on the limelight hex.
     // (The engine reads its own synced spirit positions.)
     dispatch(turnStarted(spiritId));
@@ -6283,7 +6298,19 @@ function Game({ gameState, onReturnToLobby }) {
         const rivalBest = Math.max(0, ...spirits.filter(s => s.id !== spiritId && !s.knockedOut)
           .map(s => engineRef.current.noteStates?.[s.id]?.fame ?? 0));
         const lead = myFame - rivalBest;
-        if (lead >= ROCK_GOD_RUNAWAY_LEAD || startingLives < 3) {
+        // 🪦 SHELVED 2026-08-18 (`ROCK_GODS_SHELVED`) — while the shelf holds, the
+        // Fame target ALWAYS crowns and the finale is never summoned.
+        // ⚠️ THIS DISJUNCT WAS ADDED TO THE ENGINE'S COPY OF THIS RULE ON THE DAY
+        // OF THE CALL (engine/systems/battleFlow.js §grantFame) AND NOT TO THIS
+        // ONE, and the two copies are not interchangeable: Fame banked inside a
+        // BATTLE flows through the engine's generator, Fame banked anywhere else
+        // — a riff-off payout, a cadence, an Azrael streak, a Limelight pose —
+        // flows through here. So a player could cross the target off a duel and
+        // summon a boss the design had retired. And the summon is a ONE-WAY DOOR:
+        // `rockGod.summoned` gates the branch above forever after, so the Fame
+        // win becomes unreachable for the rest of the match. That is the shape of
+        // "I was on ⭐27/21 and the finishing screen never came" (2026-08-19).
+        if (ROCK_GODS_SHELVED || lead >= ROCK_GOD_RUNAWAY_LEAD || startingLives < 3) {
           // Rock Gods only descend in games with 3+ lives (≥24 FP). Shorter games crown outright.
           addLog(`🌟🌟🌟 ${sp?.name} reaches ${fameToWin} Fame — ⭐${myFame} vs ⭐${rivalBest}, a runaway lead of ${lead}. A LEGEND IS BORN! 🌟🌟🌟`);
           setTimeout(() => {
@@ -6296,6 +6323,60 @@ function Game({ gameState, onReturnToLobby }) {
       }
     }
   }
+
+  // 🏁 THE STANDING WIN CHECK — asked every turn, not only on the beat the
+  // points land.
+  //
+  // ⚠️ THE FAME TARGET USED TO BE TESTED IN EXACTLY ONE PLACE: inside
+  // `grantFame`, at the bottom, after five other things. Every route that RAISES
+  // Fame does go through there — but every route that RETURNS EARLY from there
+  // skips the test, and once a Spirit is sitting ABOVE the line nothing ever
+  // asks again. There are at least three such routes today:
+  //   · ⛔ the per-turn cap (`finalFp <= 0`) returns before the check;
+  //   · `checkStageFxThresholds` runs before it, so a throw in a stage effect
+  //     eats the win as well as the effect;
+  //   · a summoned Rock God gates it permanently, and the God is SHELVED.
+  // A test that only fires on a TRANSITION cannot notice a state the game is
+  // already IN. This is the backstop: whoever is over the line at the top of ANY
+  // turn is crowned then, whatever happened on the beat they crossed it.
+  //
+  // 📌 Returns true when it crowned, so the caller can decline to deal a
+  // fresh hand into a decided match.
+  function checkStandingFameWin() {
+    if (engineRef.current.winner) return false;
+    // N8: a resyncing client is running on state it has already been told not to
+    // trust. N7: one client crowns — the same rule the bot driver follows.
+    if (netSyncRef.current) return false;
+    if (netRef.current && (!netRef.current.isHost || netRef.current.spectator)) return false;
+    // 🤘 The same gate `grantFame` uses, for the same reason: while a God holds
+    // the stage the Fame target does not end the match, the boss fight does.
+    if (engineRef.current.rockGod?.summoned) return false;
+
+    // ⚠️ SORTED, NOT `Math.max`, because the runner-up is half the rule. Ties
+    // fall to `spirits` order, which is engine-owned and identical on every
+    // client — `Array.prototype.sort` is stable, so this cannot disagree across
+    // a room the way a `find` on a React mirror could.
+    const board = (engineRef.current.spirits ?? [])
+      .filter(s => !s.knockedOut)
+      .map(s => ({ id: s.id, fame: engineRef.current.noteStates?.[s.id]?.fame ?? 0 }))
+      .sort((a, b) => b.fame - a.fame);
+    const top = board[0];
+    if (!top || top.fame < fameToWin) return false;
+
+    const rivalBest = board[1]?.fame ?? 0;
+    const lead = top.fame - rivalBest;
+    const nm = spirits.find(s => s.id === top.id)?.name;
+    // Same disjunct as `grantFame` — one shelf, read in both places.
+    if (!(ROCK_GODS_SHELVED || lead >= ROCK_GOD_RUNAWAY_LEAD || startingLives < 3)) {
+      addLog(`⭐ ${nm} is standing on ${top.fame} Fame — but ⭐${top.fame} vs ⭐${rivalBest} is only a ${lead}-point lead (needs ${ROCK_GOD_RUNAWAY_LEAD}). The Gods demand a FINALE.`);
+      summonRockGod(top.id);
+      return false;
+    }
+    addLog(`🌟🌟🌟 ${nm} stands at ⭐${top.fame}/${fameToWin} — ⭐${top.fame} vs ⭐${rivalBest}, a lead of ${lead}. A LEGEND IS BORN! 🌟🌟🌟`);
+    dispatch(winnerDeclared(top.id)); // N5: engine winner slice → derived `winner` renders on all clients
+    return true;
+  }
+
   // 🔥 UNDERDOG / COMEBACK — fans live for a come-from-behind story. When a
   // trailing Spirit beats a rival who is AHEAD of them on Fame, the payout is
   // amplified by how big the deficit was. This doubles as the game's comeback
@@ -8928,15 +9009,66 @@ function Game({ gameState, onReturnToLobby }) {
     riffEngineRef.current = eng;
 
     // Per-note MISS timers — fire once the gem is past saving.
+    //
+    // ⚠️ SCORE FIRST, THEN MAKE THE NOISE, AND NEVER LET THE NOISE THROW. These
+    // three statements used to run in the other order, and the order is the
+    // difference between a missed note and a DEAD DUEL. `playRiffMiss` reaches
+    // into the WebAudio graph; anything it throws (a closed context, a node
+    // budget, an autoplay policy) aborts the callback with the note already
+    // flagged `resolved` — so no result is recorded AND, fatally,
+    // `riffCheckRunEnd` is never reached. The last note to resolve is the one
+    // that ends the turn, so a single failed sound effect strands the whole match
+    // on the play card, which has no controls on it to escape with.
     eng.notes.forEach(n => {
       eng.timers.push(setTimeout(() => {
         if (riffEngineRef.current !== eng || n.resolved) return;
         n.resolved = true;
-        playRiffMiss();
         riffRecordResult(turn, { hit: false, rt: null, grade: 'miss', noteIdx: n.idx });
+        try { playRiffMiss(); } catch { /* the sound is not the rule */ }
         riffCheckRunEnd(eng);
       }, n.hitAt + n.okWin + 40));
     });
+
+    // ⏱️ THE RUN WATCHDOG — a riff-off must never be able to hang on this card.
+    //
+    // Everything that ends a run is a per-note callback: the last note to resolve
+    // calls `riffCheckRunEnd`, which hands the turn on. That makes the whole duel
+    // depend on every one of N timers firing and surviving — and this card is the
+    // one place in the game with NO button on it, so when the chain breaks there
+    // is nothing the player can press. It has broken at least once, at the end of
+    // a Round-2 call, leaving unscored gems on the progress row and the match
+    // waiting forever for a turn that had already finished.
+    //
+    // This fires once, past the last possible judgment on the chart, and closes
+    // the run out of whatever state it is in: anything the results array never
+    // scored is booked as a miss (the array, not the `resolved` flag, is what
+    // scoring reads — a callback that died mid-flight leaves those disagreeing).
+    // It costs one timer per run and it is the difference between a bug that ends
+    // a session and a bug that shows up in the log.
+    const lastJudgeable = eng.notes.reduce(
+      (m, n) => Math.max(m, n.hitAt + n.okWin + (n.sustain ?? 0)), 0);
+    eng.timers.push(setTimeout(() => {
+      if (riffEngineRef.current !== eng) return;            // a newer run owns the stage
+      const cur = battleStateRef.current;
+      if (!cur?.riffOff || cur.phase !== 'riff_play' || cur.turn !== eng.turn) return;
+      const scored = new Set(
+        ((eng.turn === 'attacker' ? cur.atkResults : cur.defResults) ?? []).map(r => r.noteIdx));
+      const unscored = eng.notes.filter(n => !scored.has(n.idx));
+      if (unscored.length) {
+        console.warn(`[RLSW] riff watchdog — ${unscored.length} gem(s) never scored; closing the run`);
+        unscored.forEach(n => {
+          n.resolved = true;
+          riffRecordResult(eng.turn, { hit: false, rt: null, grade: 'miss', noteIdx: n.idx });
+        });
+      }
+      eng.notes.forEach(n => { n.resolved = true; });
+      // ⚠️ A BEAT BEFORE HANDING ON. `riffRecordResult` is a setState, so the
+      // misses booked above are not in `battleStateRef` yet — and `riffEndTurn`
+      // reads that ref to commit the performance and submit the results. Ending
+      // in the same tick would score the run without them. (`riffCheckRunEnd`'s
+      // own 700ms pause does this job on the healthy path.)
+      setTimeout(() => { if (riffEngineRef.current === eng) riffEndTurn(eng.turn); }, 140);
+    }, lastJudgeable + RIFF_RUN_WATCHDOG_MS));
 
     // 🗡️ RIFF SLAYER — flagged answer notes LURCH mid-fall: the gem (and the
     // real target) swap to a different note partway down the highway, so the
@@ -9053,27 +9185,36 @@ function Game({ gameState, onReturnToLobby }) {
     const grade = hit ? (gradeRiffOffset(offset, eng.preset, n.feel) ?? 'ok') : 'wrong';
     // ── the note RINGS through the player's own amp — same distorted
     //    guitar voice (and 🎛️ knob settings) as the Melody Line.
-    if (hit) {
-      const fr   = side.freqs?.[n.idx];
-      const hold = n.sustain ? n.sustain / 1000 + 0.4
-                 : grade === 'perfect' ? 0.5 : grade === 'good' ? 0.42 : 0.34;
-      const vol  = grade === 'perfect' ? 0.22 : grade === 'good' ? 0.18 : 0.14;
-      // 🤘 POWER CHORD — root + fifth on every landed gem, so hits SLAM. A
-      // charted two-note chord already supplies its own fifth as a separate
-      // gem, so don't stack another one on top of it.
-      playNoteSound(null, { freq: fr, holdTime: hold, fadeTime: 0.4, volume: vol });
-      if (fr && !n.hasPartner && n.partnerOf == null) {
-        playNoteSound(null, { freq: fr * 1.5, holdTime: hold, fadeTime: 0.4, volume: vol * 0.5 });
+    //
+    // ⚠️ THE WHOLE AUDIO BLOCK IS FENCED, for the same reason the miss timer's
+    // is: the two lines that matter to the RULES are the ones below it, and a
+    // WebAudio call that throws part-way through would skip both — leaving this
+    // gem flagged `resolved` but unscored, and skipping the `riffCheckRunEnd`
+    // that ends the turn. Sound is presentation; it does not get a vote on
+    // whether the duel can finish.
+    try {
+      if (hit) {
+        const fr   = side.freqs?.[n.idx];
+        const hold = n.sustain ? n.sustain / 1000 + 0.4
+                   : grade === 'perfect' ? 0.5 : grade === 'good' ? 0.42 : 0.34;
+        const vol  = grade === 'perfect' ? 0.22 : grade === 'good' ? 0.18 : 0.14;
+        // 🤘 POWER CHORD — root + fifth on every landed gem, so hits SLAM. A
+        // charted two-note chord already supplies its own fifth as a separate
+        // gem, so don't stack another one on top of it.
+        playNoteSound(null, { freq: fr, holdTime: hold, fadeTime: 0.4, volume: vol });
+        if (fr && !n.hasPartner && n.partnerOf == null) {
+          playNoteSound(null, { freq: fr * 1.5, holdTime: hold, fadeTime: 0.4, volume: vol * 0.5 });
+        }
+        // A sustain keeps ringing until the key comes up or the tail runs out.
+        if (n.sustain) {
+          (eng.sustains ??= new Map()).set(str, {
+            idx: n.idx, key: str, freq: fr, bent: false,
+            until: n.hitAt + n.sustain, bendAt: n.hitAt + (n.bendAt ?? 0),
+          });
+        }
       }
-      // A sustain keeps ringing until the key comes up or the tail runs out.
-      if (n.sustain) {
-        (eng.sustains ??= new Map()).set(str, {
-          idx: n.idx, key: str, freq: fr, bent: false,
-          until: n.hitAt + n.sustain, bendAt: n.hitAt + (n.bendAt ?? 0),
-        });
-      }
-    }
-    else playRiffWrong(str);
+      else playRiffWrong(str);
+    } catch (err) { console.warn('[RLSW] riff note audio failed — play continues', err); }
     riffRecordResult(eng.turn, { hit, rt: hit ? Math.abs(offset) : null, grade, noteIdx: n.idx, early: offset < 0 });
     riffCheckRunEnd(eng);
   }
@@ -9344,6 +9485,20 @@ function Game({ gameState, onReturnToLobby }) {
               atkResults: [], defResults: [],
               turn: 'attacker', noteIdx: -1, feedback: null,
               clashStage: null, clashWinner: null,
+              // ⚠️ EVERY PER-ROUND FLAG IS RESET HERE, AND `botAutoFilled` IS THE
+              // ONE THAT STOPS THE DUEL DEAD. It records which SIDE the bot has
+              // already auto-performed ('attacker' / 'defender'), and the bot
+              // riff-off hook refuses to fire when it already equals the current
+              // turn. Carried into Round 2 it always does — so the bot's Round-2
+              // performance never runs, `riffEndTurn` is never reached, and the
+              // duel hangs on the play card forever with nothing to click.
+              //
+              // 📌 The RIFF_ROUND2_STARTED relay handler has cleared these since
+              // N12 (see its comment: "a Round-1 leftover … silently jams Round 2
+              // on the remote client"). It jams the LOCAL client identically; only
+              // the online half of the pair was ever fixed. Keep the two lists in
+              // step — they are one rebuild written twice.
+              waitingForResolve: false, botAutoFilled: null, riffRun: null,
               phase: 'riff_r2intro',
             } : p);
           }, 1700);
@@ -10330,7 +10485,14 @@ function Game({ gameState, onReturnToLobby }) {
   // 🧠 THE JOURNAL — every decision, with what it was decided against.
   // `window.__botJournal`, the 🧠 REVIEW button, and `ui/BotReview.jsx`.
   const botJournalRef = useRef([]);
-  const BOT_JOURNAL_MAX = 4000;   // a long match, not a session; the download carries what is kept
+  // ⚠️ RAISED 4000 → 12000 ON 2026-08-19, AND THE REASON IS SIZE PER ENTRY
+  // RATHER THAN AMBITION. The top two priced options now carry `evaluate`'s
+  // term vector (~20 floats each) and a compose entry carries its per-step
+  // candidates, so an entry is several times what it was. Leaving the cap
+  // where it was would have quietly turned "a long match" into "the last
+  // third of a long match" — a journal that drops the opening is a journal
+  // that cannot answer what the bot did before it was losing.
+  const BOT_JOURNAL_MAX = 12000;   // a long match, not a session; the download carries what is kept
   // 🎯 THE AUDIT IS ON IN THE CLIENT AND OFF IN THE BENCH, on purpose. It prices
   // the options the BEAM THREW AWAY, which costs a second sampling pass — a real
   // tax on 300 headless matches, and free here, where the bot spends 520ms a tick
@@ -10875,6 +11037,10 @@ function Game({ gameState, onReturnToLobby }) {
   // ── BOT RIFF-OFF HOOK — synthesize a bot side's performance ──────────────────
   // When a riff-off reaches a play turn whose performer is a bot, fill its results
   // instantly from the skill profile instead of running the live keyboard loop.
+  //
+  // The latch that stops it firing twice for one performance. ROUND FIRST — see
+  // the ⚠️ inside the effect for what keying it by side alone cost.
+  const riffFillKey = (bs) => `${bs?.round ?? 1}:${bs?.turn ?? ''}`;
   useEffect(() => {
     const bs = battleState;
     if (!bs?.riffOff) return;
@@ -10884,13 +11050,21 @@ function Game({ gameState, onReturnToLobby }) {
     // handoff advancement is owned by the auto-advance hook below — this hook just
     // fills a bot performer's results the instant their play phase begins, then
     // hands the flow back (attacker → handoff, defender → resolve).
-    if (bs.phase === 'riff_play' && bs.botAutoFilled !== bs.turn) {
+    // ⚠️ THE ONCE-PER-TURN LATCH IS KEYED BY ROUND AS WELL AS SIDE, and the round
+    // is not decoration. Keyed by side alone ('attacker' / 'defender') the latch
+    // survives into sudden death — the same two sides play again — so the bot's
+    // Round-2 performance is skipped, nothing calls `riffEndTurn`, and the duel
+    // hangs on the play card with no control on screen. Both Round-2 rebuilds
+    // clear the flag as well (see `fireBeamClash` and the RIFF_ROUND2_STARTED
+    // relay); this key is the belt to that pair of braces, and it is what makes a
+    // Round 3 safe if one is ever added.
+    if (bs.phase === 'riff_play' && bs.botAutoFilled !== riffFillKey(bs)) {
       const t = setTimeout(() => {
         const cur = battleStateRef.current;
         if (!cur?.riffOff || cur.phase !== 'riff_play') return;
         const perfId = cur.turn === 'attacker' ? cur.attackerId : cur.defenderId;
         if (!isBot(spirits.find(s => s.id === perfId))) return;
-        if (cur.botAutoFilled === cur.turn) return; // already filled this turn
+        if (cur.botAutoFilled === riffFillKey(cur)) return; // already filled this round's turn
         const side = cur.turn === 'attacker' ? cur.atkRiff : cur.defRiff;
         const len  = side?.notes?.length ?? RIFF_LEN;
         const results = botRiffResults(len);
@@ -10899,7 +11073,7 @@ function Game({ gameState, onReturnToLobby }) {
         // Halt the live falling-notes run (kill its miss/glitch timers) and mark filled.
         riffEngineRef.current?.timers?.forEach(clearTimeout);
         riffEngineRef.current = null;
-        setBattleState(p => p?.riffOff ? { ...p, [key]: results, botAutoFilled: cur.turn, phase: 'riff_play', riffRun: null } : p);
+        setBattleState(p => p?.riffOff ? { ...p, [key]: results, botAutoFilled: riffFillKey(cur), phase: 'riff_play', riffRun: null } : p);
         setTimeout(() => {
           if (!battleStateRef.current?.riffOff) return;
           // Both sides route through riffEndTurn so a BOT's performance commits

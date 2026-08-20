@@ -303,6 +303,16 @@ export function BattleMeterOverlay({
           // Round-2 riff phases (the new sudden-death round playing out)
           const r2intro     = phase === 'riff_r2intro';
           const inRiffPlay  = ['riff_countdown','riff_play','riff_handoff','riff_ante','riff_ante_respond'].includes(phase) || r2intro;
+          // 🎸 CLEAR THE STAGE WHILE THE NOTES ARE FALLING. Once the count-in
+          // starts, the neck is the only thing you can act on — the two 190px
+          // standees and the title bar are 280px of scenery sitting between you
+          // and the strike line, and every pixel they take is a pixel the neck
+          // does not get. They come back for the handoff, the intro and the clash,
+          // which are the beats they were drawn for.
+          const onTheNeck = phase === 'riff_countdown' || phase === 'riff_play';
+          // And on the cards that still show them, they play smaller during a duel
+          // than they do at the intro — the card underneath has a button on it.
+          const portraitH = inRiffPlay ? 130 : 190;
           const bgBeams     = round >= 2 && inRiffPlay; // round-1 beams linger behind round 2
           // Lean: how far off-center the beams meet. Pushed toward the WEAKER
           // side (the one losing the push). attacker stronger → meet point right.
@@ -368,8 +378,12 @@ export function BattleMeterOverlay({
           // Falling-notes runs judge gems in whatever order they cross the line,
           // so results carry a noteIdx — look each slot up by it. (Bot-filled
           // results also carry noteIdx; a plain positional array still works.)
+          // ⚠️ IT WRAPS. The top tiers chart up to 20 notes, which at 34px a slot
+          // is wider than the card — an unwrapped row either overflows the card or
+          // stretches it past the window, and this row sits UNDER the neck, so
+          // anything it adds pushes the controls toward the fold.
           const progressRow = (notes, res, current, accent) => (
-            <div style={{display:'flex', gap:8, justifyContent:'center', marginTop:16}}>
+            <div style={{display:'flex', gap:8, justifyContent:'center', marginTop:12, flexWrap:'wrap'}}>
               {notes.map((n, i) => {
                 const hasIdx = (res ?? []).some(x => x.noteIdx != null);
                 const r = hasIdx ? res.find(x => x.noteIdx === i) : res?.[i];
@@ -403,7 +417,18 @@ export function BattleMeterOverlay({
           return (
             <div style={{
               position:'fixed', inset:0, background:'#000000', zIndex:9980,
-              display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+              display:'flex', flexDirection:'column', alignItems:'center',
+              // ⚠️ `safe center` + `overflowY:auto`, NOT plain `center`. A centred
+              // flex column with no scroller overflows in BOTH directions when it
+              // is taller than the window, and the overflow above the top edge is
+              // UNREACHABLE — no scrollbar, nothing to drag. That is what hid the
+              // 🎸 DROP THE ANSWER button on the handoff card: the title, the two
+              // 190px portraits and the card together ran past a laptop screen, and
+              // the one control the duel was waiting on was the part that got cut.
+              // `safe` keeps the centring for cards that DO fit. Same fix, same
+              // reason, as the melee overlay further down this file.
+              justifyContent:'safe center', overflowY:'auto', overflowX:'hidden',
+              padding:'14px 0',
               fontFamily:"'Saira Stencil One',sans-serif",
               animation: clashing ? containerShake : undefined,
             }}>
@@ -432,9 +457,16 @@ export function BattleMeterOverlay({
                 @keyframes bg-beam-pulse     { 0%,100%{opacity:0.18;} 50%{opacity:0.34;} }
               `}</style>
 
-              {/* ── FAN-FARE — pink fans (attacker/left), blue fans (defender/right) ── */}
-              <div style={{position:'absolute', left:0, right:0, bottom:0, height:'30%',
-                           zIndex:-1, pointerEvents:'none', overflow:'hidden'}}>
+              {/* ── FAN-FARE — pink fans (attacker/left), blue fans (defender/right) ──
+                  ⚠️ THE BAND IS MASKED, NOT JUST CLIPPED. `overflow:hidden` on a
+                  30%-tall strip cuts the crowd art off with a dead straight
+                  horizontal edge across the screen, which reads as a second
+                  window sitting on top of the stage rather than as a crowd. The
+                  gradient mask dissolves the same cut into the black instead. */}
+              <div style={{position:'absolute', left:0, right:0, bottom:0, height:'34%',
+                           zIndex:-1, pointerEvents:'none', overflow:'hidden',
+                           WebkitMaskImage:'linear-gradient(to top, #000 0%, #000 52%, rgba(0,0,0,0) 100%)',
+                           maskImage:'linear-gradient(to top, #000 0%, #000 52%, rgba(0,0,0,0) 100%)'}}>
                 <div style={{position:'absolute', left:'-3%', bottom:'-2%', width:'52%', maxWidth:660}}>
                   <img src={crowdPinkImg} alt="" draggable={false}
                     style={{width:'100%', display:'block', mixBlendMode:blend, transformOrigin:'bottom center',
@@ -465,15 +497,22 @@ export function BattleMeterOverlay({
                 </div>
               )}
 
-              {/* Title */}
-              <div style={{position:'relative', zIndex:3, fontSize:24, fontWeight:900, letterSpacing:6, marginBottom:16,
-                color: round >= 2 ? '#ff7733' : '#ffd700',
-                textShadow: round >= 2 ? '0 0 28px #ff5522, 0 0 70px #ff990055' : '0 0 24px #ff444488, 0 0 60px #ffd70044'}}>
-                {round >= 2 ? '🔥 RIFF-OFF · ROUND 2 🔥' : '⚡ RIFF-OFF ⚡'}
-              </div>
+              {/* Title — stood down while the notes fall (see `onTheNeck`). */}
+              {!onTheNeck && (
+                <div style={{position:'relative', zIndex:3, fontSize:24, fontWeight:900, letterSpacing:6, marginBottom:16,
+                  color: round >= 2 ? '#ff7733' : '#ffd700',
+                  textShadow: round >= 2 ? '0 0 28px #ff5522, 0 0 70px #ff990055' : '0 0 24px #ff444488, 0 0 60px #ffd70044'}}>
+                  {round >= 2 ? '🔥 RIFF-OFF · ROUND 2 🔥' : '⚡ RIFF-OFF ⚡'}
+                </div>
+              )}
 
               {/* Portraits — live player glows, the other waits in the dark.
-                  During the beam clash this band also hosts the dueling beams. */}
+                  During the beam clash this band also hosts the dueling beams.
+                  ⚠️ The whole band is UNMOUNTED rather than hidden while the notes
+                  fall: `visibility:hidden` would leave its 190px + margin holding
+                  the neck down, which is the room this was freed to give it. The
+                  clash always mounts it — the beams live in this band. */}
+              {(!onTheNeck || clashing) && (
               <div style={{position:'relative', display:'flex', alignItems:'flex-end', justifyContent:'center',
                            gap:70, marginBottom:18, width:'100%', maxWidth:760}}>
 
@@ -531,7 +570,7 @@ export function BattleMeterOverlay({
 
                 <div style={{position:'relative', zIndex:2, textAlign:'center'}}>
                   <img src={attacker?.imageSrc} alt={attacker?.name}
-                    style={{height:190, width:'auto', objectFit:'contain', objectPosition:'bottom center',
+                    style={{height:portraitH, width:'auto', objectFit:'contain', objectPosition:'bottom center',
                       opacity: atkLive ? 1 : 0.35,
                       filter: liteFx ? 'none' : `drop-shadow(0 0 ${atkLive ? (clashing ? 34 : 26) : 8}px ${atkColor}${atkLive ? 'aa' : '44'})`,
                       transition:'opacity 0.4s, filter 0.4s',
@@ -542,7 +581,7 @@ export function BattleMeterOverlay({
                   opacity: clashing ? 0 : 1, transition:'opacity 0.3s'}}>VS</div>
                 <div style={{position:'relative', zIndex:2, textAlign:'center'}}>
                   <img src={defender?.imageSrc} alt={defender?.name}
-                    style={{height:190, width:'auto', objectFit:'contain', objectPosition:'bottom center',
+                    style={{height:portraitH, width:'auto', objectFit:'contain', objectPosition:'bottom center',
                       transform:'scaleX(-1)',
                       opacity: defLive ? 1 : 0.35,
                       filter: liteFx ? 'none' : `drop-shadow(0 0 ${defLive ? (clashing ? 34 : 26) : 8}px ${defColor}${defLive ? 'aa' : '44'})`,
@@ -551,6 +590,7 @@ export function BattleMeterOverlay({
                   <div style={{fontSize:9, color:defender?.color ?? '#66ccff', letterSpacing:2, marginTop:4}}>🎸 {defender?.name}</div>
                 </div>
               </div>
+              )}
 
               {/* ── FULL-SCREEN IMPACT FLASH (the break, brighter on round 2) ── */}
               {isBreak && (
@@ -710,8 +750,24 @@ export function BattleMeterOverlay({
                      squeezes a 12-fret neck into a letterbox — so it takes the
                      window instead. ── */}
               {phase === 'riff_play' && (
-                <div style={{...cardBase(noteColor), maxWidth:'min(1200px, 94vw)',
-                             width:'auto', padding:'14px 18px'}}>
+                <div style={{
+                  // 🎸 NO CARD WHILE YOU PLAY — ONE STAGE, NOT A BOX ON A STAGE.
+                  // `cardBase` paints an opaque #080f1e panel with a 2px border,
+                  // and against the overlay's pure black that panel reads as a
+                  // second window: a hard rectangle that slices the crowd art
+                  // behind it and frames the neck like a screenshot pasted on top.
+                  // A soft radial wash does the one job the panel was actually
+                  // for — keeping the text legible over the fans — and fades to
+                  // nothing well before its edge, so there is no edge to see.
+                  // ⚠️ It fades to rgba(3,8,18,0) rather than `transparent`:
+                  // `transparent` is transparent BLACK, and interpolating toward
+                  // it drags the wash grey through the middle stops.
+                  background:'radial-gradient(ellipse 78% 62% at 50% 46%, ' +
+                             'rgba(3,8,18,0.93) 0%, rgba(3,8,18,0.86) 46%, ' +
+                             'rgba(3,8,18,0.55) 74%, rgba(3,8,18,0) 100%)',
+                  maxWidth:'min(1200px, 94vw)', minWidth:420, textAlign:'center',
+                  width:'auto', padding:'14px 18px',
+                }}>
                   <div style={{fontSize:10, color:noteColor, letterSpacing:2, marginBottom:6}}>
                     {isAtkTurn ? '🎤 THE CALL' : '🎸 THE ANSWER'} — {activeSp?.name}
                   </div>

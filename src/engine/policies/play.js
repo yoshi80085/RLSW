@@ -244,7 +244,11 @@ const playable = (actions) => actions.filter(a => !UNMODELLED_KINDS.has(a.kind))
  * the turn count so the bot is not married to one dice roll for a whole match
  * while staying reproducible from the seed alone.
  */
-const COMPOSITION_KINDS = new Set(['melodyNote', 'stackCommit']);
+// ⚠️ EXPORTED SO A TEST CAN ASSERT AGAINST THE SET ITSELF rather than against a
+// hand-written copy of it. `botTraceCheck` §3 checks that a compose entry only
+// ever reports composition kinds; a literal there would agree with itself
+// forever if a third kind ever joined this phase.
+export const COMPOSITION_KINDS = new Set(['melodyNote', 'stackCommit']);
 
 /**
  * ⚠️ THE COMPOSITION PHASE IS A PLAN, NOT A SEQUENCE OF STEPS — and the first
@@ -275,20 +279,99 @@ const COMPOSITION_KINDS = new Set(['melodyNote', 'stackCommit']);
  * a truncated composition would compare "three notes written" against "one note
  * written and cashed", which is not a comparison — `transition.js`'s
  * `applyBotLine` header refuses partial lines for exactly this reason.
+ *
+ * ── 🥁 AND THE SPLIT ABOVE HAD A THIRD QUESTION HIDING INSIDE THE FIRST ──────
+ *
+ * 🎯 THE FINDING, 2026-08-19: **a stack commit was unreachable until the melody
+ * line was full.** Measured over 18 headless matches — the step-picker was
+ * offered both kinds 455 times and returned a `melodyNote` 455 times, and every
+ * commit in the sample landed on a full 8-note track, i.e. only once
+ * `melodyNote` had stopped being legal at all. The bots went into 12–15% of
+ * their turns with anything in a stack.
+ *
+ * ⚠️ IT WAS NEVER A JUDGEMENT, IT WAS AN ARRAY ORDER. `beamActions` groups by
+ * KIND and emits the groups in first-appearance order; `legalActions` pushes
+ * every `melodyNote` before every `stackCommit`; this walk took `[0]`. So the
+ * two kinds were never compared — and could not have been, because
+ * `makeActionScorer`'s own contract is "higher is better, WITHIN A KIND". There
+ * is no cross-kind number in that scorer to compare them with. "Which note" and
+ * "note or commit" look like the same question and are not: the first is a
+ * ranking inside one kind, the second is a trade between two.
+ *
+ * 🎯 THE OWNER OF THE THIRD QUESTION IS `evaluate`, FOR THE SAME REASON IT OWNS
+ * "HOW MANY". A commit's whole value is what it does to the position, and the
+ * position is only legible at a confirm. So each kind's best candidate is now
+ * priced at ITS OWN confirm and the better price wins — the same instrument,
+ * the same discipline, one question further out.
+ *
+ * ⚠️ AND THE EVALUATOR ALREADY WANTED THE STACKS. Before the fix, forcing the
+ * commits first and pricing both lines through this same evaluator preferred the
+ * commits-first line on 231 of 310 turns. This is therefore NOT §5.A's usual
+ * shape — no weight was missing, `drive` and `sustain` are in every column of
+ * the table. ⚠️ It is a new shape worth naming: **the evaluator was never
+ * consulted, because the search could not reach the branch to ask about it.**
+ * A term nobody disputes is worth nothing if no line ever carries it.
+ *
+ * 📌 The mean score deltas were small (−0.085 / +0.115 / +0.195 by Spirit) and
+ * one of them is NEGATIVE — when notes-first wins it wins bigger. Read that as
+ * "the evaluator prefers stacks three turns in four", not as "commits-first is
+ * strictly better". §5's standing warning about sample size applies.
  */
-// ⚠️ NO `limit` HERE, AND IT IS NOT AN OVERSIGHT. The beam's per-kind cap is a
-// branching-factor control for a search that keeps several lines alive; this
-// walks ONE line and only ever needs the single best next step, so it asks for
-// `limit: 1` outright. Taking a `limit` it then ignored would read as a knob.
+// ⚠️ `limit: 1` AND IT IS STILL NOT A KNOB, but it now means something slightly
+// different: one candidate PER KIND, which is exactly the shortlist the
+// cross-kind price below has to choose between. The beam is being used for what
+// it can do (rank within a kind) and nothing more.
+/**
+ * 🥁 WHAT ONE CANDIDATE IS WORTH — the line `prefix + cand`, cashed immediately.
+ *
+ * ⚠️ `-Infinity` MEANS "NOT A TURN YET", NOT "BAD". A `stackCommit` onto an
+ * empty melody line has no confirm to be priced at (`legalActions` only offers
+ * one with `track.length > 0`), so it scores −∞ and loses to any note. That is
+ * the right answer for the right reason: a Spirit who voices a chord and writes
+ * no melody has spent its turn on a track it cannot cash. When BOTH candidates
+ * come back −∞ the caller keeps the first, which is `beamActions`' source order
+ * — i.e. exactly the behaviour that shipped, in the one case where there is
+ * nothing to choose on.
+ *
+ * ⚠️ THE FORKS ARE LABELLED AND THE LABEL CARRIES THE STEP AND THE KIND, which
+ * is `expectedScore`'s discipline for the same reason: a fork consumes nothing
+ * from its parent, so how many candidates get priced can never move the walk's
+ * own dice. Pricing two options must not play a different game from pricing one.
+ */
+function confirmPrice(state, spiritId, view, ctx, prefix, cur, curView, cand, label) {
+  const after = applyBotAction(cur, cand,
+    { rng: ctx.rng.fork(label), view: curView, hooks: ctx.hooks });
+  if (!after.ok) return -Infinity;
+  const confirm = playable(legalActions(after.state, spiritId, after.view ?? curView))
+    .find(a => a.kind === 'confirmMelody');
+  if (!confirm) return -Infinity;
+  // Priced by replaying the WHOLE line from the turn's own start, exactly as the
+  // curve below does — not by evaluating `after` in place. `applyBotLine` is
+  // atomic and starts from the turn-start `view`, so every price in this
+  // function and every point on the curve is taken on the same footing.
+  const r = applyBotLine(state, [...prefix, cand, confirm],
+    { rng: ctx.rng.fork(`${label}:line`), view, hooks: ctx.hooks });
+  if (r.stoppedAt) return -Infinity;
+  return evaluate(r.state, spiritId, r.view ?? view).score;
+}
+
 function composePhase(state, spiritId, view, ctx, { ranked, trace = null }) {
-  const probe = ctx.rng.fork(`compose:${state?.turn?.count ?? 0}`);
+  const turn = state?.turn?.count ?? 0;
+  const probe = ctx.rng.fork(`compose:${turn}`);
   let cur = state, curView = view;
   const prefix = [];
   const curve = [];
-  let best = null, bestScore = -Infinity;
+  const stepLog = trace ? [] : null;
+  const legalKinds = new Set();
+  let best = null, bestScore = -Infinity, bestTerms = null;
 
   for (let i = 0; i <= MELODY_SEARCH_DEPTH; i++) {
     const options = playable(legalActions(cur, spiritId, curView));
+    // 🧠 EVERY COMPOSITION KIND THAT WAS EVER ON THE MENU THIS TURN. Recorded
+    // because `journalSummary`'s never-chosen sweep is fed by `legalKinds`, and
+    // until now the composition phase put nothing in it — which is precisely how
+    // the stack bug above stayed invisible to the one column built to catch it.
+    for (const a of options) if (COMPOSITION_KINDS.has(a.kind)) legalKinds.add(a.kind);
 
     // Price THIS track, as committed. `applyBotLine` is atomic, so a refusal
     // anywhere in the line leaves the real state untouched.
@@ -297,23 +380,43 @@ function composePhase(state, spiritId, view, ctx, { ranked, trace = null }) {
       const line = [...prefix, confirm];
       const r = applyBotLine(state, line, { rng: probe, view, hooks: ctx.hooks });
       if (!r.stoppedAt) {
-        const s = evaluate(r.state, spiritId, r.view ?? view).score;
+        const ev = evaluate(r.state, spiritId, r.view ?? view);
         // 🧠 THE CURVE — what each track LENGTH was worth, which is the whole
         // argument of this function made visible. §6.3's finding was that a
         // one-ply greedy confirms a ONE-NOTE melody every turn; this is the
         // shape that says whether it still would.
-        if (trace) curve.push({ len: prefix.length, score: s });
-        if (s > bestScore) { bestScore = s; best = line; }
+        if (trace) curve.push({ len: prefix.length, score: ev.score });
+        if (ev.score > bestScore) { bestScore = ev.score; best = line; bestTerms = ev.terms; }
       }
     }
 
-    // Extend by the single best composition step the SCORER likes.
     const steps = options.filter(a => COMPOSITION_KINDS.has(a.kind));
     if (!steps.length) break;
-    const pick = ranked
-      ? beamActions(steps, { limit: 1, score: makeActionScorer(cur, spiritId, curView) })[0]
-      : steps[0];
+
+    // ONE CANDIDATE PER KIND — the beam ranking within each kind, which is the
+    // only thing it is entitled to say — then the cross-kind trade priced by
+    // `evaluate`. See this function's header for why that split is where it is.
+    const cands = ranked
+      ? beamActions(steps, { limit: 1, score: makeActionScorer(cur, spiritId, curView) })
+      // ⚠️ `unranked` is the A/B CONTROL — the beam's `score` switched off — so it
+      // must keep taking the first of each kind in source order. It is NOT a
+      // second policy that gets to skip the cross-kind price: the whole value of
+      // that control is that it differs from `searcher` in one named place.
+      : [...new Map(steps.map(a => [a.kind, a])).values()];
+
+    let pick = null, pickPrice = -Infinity;
+    const priced = stepLog ? [] : null;
+    for (const cand of cands) {
+      const price = confirmPrice(state, spiritId, view, ctx, prefix, cur, curView,
+        cand, `compose:${turn}:${i}:${cand.kind}`);
+      if (priced) priced.push({ kind: cand.kind, key: traceKey(cand), score: price });
+      // Strict `>` keeps a tie on source order, matching `beamActions`' own
+      // tie-break — an equal price is not a reason to reorder the kinds.
+      if (pick === null || price > pickPrice) { pick = cand; pickPrice = price; }
+    }
     if (!pick) break;
+    if (stepLog) stepLog.push({ i, took: { kind: pick.kind, key: traceKey(pick) }, cands: priced });
+
     const r = applyBotAction(cur, pick, { rng: probe, view: curView, hooks: ctx.hooks });
     if (!r.ok) break;
     cur = r.state; curView = r.view ?? curView;
@@ -321,9 +424,17 @@ function composePhase(state, spiritId, view, ctx, { ranked, trace = null }) {
   }
 
   if (trace) {
+    // 🧠 WHAT THE CHOSEN LINE ACTUALLY CONTAINED, by kind. `chosen.len` alone
+    // cannot tell a track of eight notes from five notes and three commits.
+    const chosenKinds = {};
+    for (const a of best ?? []) {
+      if (COMPOSITION_KINDS.has(a.kind)) chosenKinds[a.kind] = (chosenKinds[a.kind] ?? 0) + 1;
+    }
     trace({
-      t: 'compose', turn: state?.turn?.count ?? 0, spiritId,
-      curve, chosen: best ? { len: best.length - 1 } : null, score: bestScore,
+      t: 'compose', turn, spiritId,
+      curve, steps: stepLog, legalKinds: [...legalKinds], chosenKinds,
+      chosen: best ? { len: best.length - 1 } : null,
+      score: bestScore, terms: bestTerms,
     });
   }
   return best;
@@ -397,8 +508,12 @@ export const WIN_SCORE = 1e6;
  * comparison and keeps the §6.6 determinism regression green: forks are derived
  * from the seed, so the whole search is still reproducible from `{seed}` alone.
  */
-function expectedScore(state, action, spiritId, view, ctx, samples) {
+function expectedDetail(state, action, spiritId, view, ctx, samples, wantTerms) {
   let total = 0, n = 0;
+  // 🧠 THE TERM VECTOR, AVERAGED THE SAME WAY THE SCORE IS. Off unless a sink
+  // asked for it — see the note on `terms` in `searcherPolicy`.
+  const sum = wantTerms ? {} : null;
+  let termN = 0;
   for (let k = 0; k < samples; k++) {
     const probe = ctx.rng.fork(`search:${state?.turn?.count ?? 0}:${k}`);
     const r = applyBotAction(state, action, { rng: probe, view, hooks: ctx.hooks });
@@ -407,11 +522,28 @@ function expectedScore(state, action, spiritId, view, ctx, samples) {
     // must NOT be averaged — a line that can kill you is not redeemed by five
     // samples where it does not — so it short-circuits the whole estimate.
     if (r.state?.winner === spiritId) { total += WIN_SCORE; n++; continue; }
-    const sc = evaluate(r.state, spiritId, r.view ?? view).score;
-    if (!Number.isFinite(sc)) return -Infinity;
-    total += sc; n++;
+    const ev = evaluate(r.state, spiritId, r.view ?? view);
+    if (!Number.isFinite(ev.score)) return { score: -Infinity, terms: null };
+    total += ev.score; n++;
+    // ⚠️ A WON SAMPLE CONTRIBUTES NO TERMS, ON PURPOSE. `WIN_SCORE` is a
+    // sentinel rather than a weighted sum, so folding it into a term mean would
+    // report a position that no row of the weight table describes.
+    if (sum) {
+      for (const [t, v] of Object.entries(ev.terms ?? {})) sum[t] = (sum[t] ?? 0) + v;
+      termN++;
+    }
   }
-  return n ? total / n : -Infinity;
+  if (sum && termN) for (const t of Object.keys(sum)) sum[t] /= termN;
+  return { score: n ? total / n : -Infinity, terms: termN ? sum : null };
+}
+
+/**
+ * The number `expectedDetail` exists to produce. Kept as its own name because
+ * the audit pass wants the score and nothing else, and a caller that ignores
+ * half a return value reads like it forgot to use it.
+ */
+function expectedScore(state, action, spiritId, view, ctx, samples) {
+  return expectedDetail(state, action, spiritId, view, ctx, samples, false).score;
 }
 
 /**
@@ -460,9 +592,13 @@ function searcherPolicy({ ranked = true, limit = 5, samples = ATTACK_SAMPLES, tr
     const scored = trace ? [] : null;
     for (const action of beamed) {
       const n = STOCHASTIC_KINDS.has(action.kind) ? samples : 1;
-      const s = expectedScore(state, action, spiritId, view, ctx, n);
-      if (scored) scored.push({ kind: action.kind, key: traceKey(action), score: s });
-      if (s > bestScore) { bestScore = s; best = action; }
+      // 🧠 TERMS ONLY WHEN SOMEBODY IS LISTENING. Collecting them costs an object
+      // per sample and nothing else — no extra transition, no extra roll — but a
+      // 2000-match bench with no sink would allocate several million of them for
+      // a reading nobody takes.
+      const d = expectedDetail(state, action, spiritId, view, ctx, n, !!trace);
+      if (scored) scored.push({ kind: action.kind, key: traceKey(action), score: d.score, terms: d.terms });
+      if (d.score > bestScore) { bestScore = d.score; best = action; }
     }
 
     if (trace) {
@@ -481,11 +617,19 @@ function searcherPolicy({ ranked = true, limit = 5, samples = ATTACK_SAMPLES, tr
           }
         }
       }
+      // 🧠 THE TERM VECTORS RIDE ONLY ON THE TOP TWO, and that is a size decision
+      // rather than a modelling one. The interesting quantity is the DELTA
+      // between the winner and the runner-up — that is what a "close call"
+      // actually is, and it is the only thing that can name which term decided
+      // the turn. Carrying ~20 floats on all twelve priced options would multiply
+      // a journal entry by an order of magnitude to answer nothing extra.
+      const ranking = scored.slice().sort((x, y) => y.score - x.score);
+      const considered = ranking.map((e, i) => (i < 2 ? e : { kind: e.kind, key: e.key, score: e.score }));
       trace({
         t: 'action', turn: state?.turn?.count ?? 0, spiritId,
         legalKinds: [...new Set(options.map(a => a.kind))],
         legal: options.length, beamed: beamed.length, pruned: options.length - beamed.length,
-        considered: scored.slice().sort((x, y) => y.score - x.score),
+        considered,
         chosen: best ? { kind: best.kind, key: traceKey(best) } : null,
         score: bestScore, bestPruned,
       });

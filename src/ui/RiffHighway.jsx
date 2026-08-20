@@ -22,6 +22,12 @@
 // each re-render. The rAF loop reads the clock fresh each frame, so gem
 // positions are exact no matter how often React re-renders.
 //
+// ⚠️ AND THE LOOP WRITES AN ABSOLUTE POSITION, NEVER A DELTA (fixed 2026-08-19).
+// A CSS transform on an SVG node REPLACES the `transform` attribute rather than
+// composing with it. Writing "just the drift" and leaving the lane's base x on
+// the attribute dropped the base x entirely and every gem fell down the left
+// edge of the neck. If you touch this loop, write the whole transform.
+//
 // HISTORY: this file used to host four views — a piano strike zone, a
 // Rocksmith-style fret-cell neck, a neon reticle mode and a call-and-answer
 // derivation puzzle — each with its own input path (note letters, fret taps,
@@ -34,21 +40,56 @@
 // buttons make riff-offs playable on touch screens).
 // Timing/difficulty numbers live in riff/fallingNotes.js.
 // =============================================================================
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 // ── Geometry (px) ────────────────────────────────────────────────────────────
-const HWY_H     = 260;  // highway height — strike line sits at its bottom edge
+// 🎸 THE NECK IS TALL AND NARROW, because a fretboard is. The width is fixed by
+// the six strings; only the LENGTH flexes, and it takes whatever vertical room
+// the overlay can spare (see `neckHeight`). A longer neck is not decoration: the
+// gem spends the same lead time crossing MORE pixels, so it separates from its
+// neighbours and the shape you have to read arrives sooner and clearer.
 const GEM_R     = 17;   // gem radius at the bridge
 const SPAWN_PAD = 34;   // gems spawn this far above the highway top (off-screen)
 const TAIL      = 54;   // how far past the line a missed gem tumbles before fading
-const TRAVEL    = HWY_H + SPAWN_PAD;
 
 const LANES     = 6;
-const LANE_W    = 46;                      // string spacing at the bridge
+const LANE_W    = 56;                      // string spacing at the bridge
 const SIDE      = 30;
 const HWY_W     = (LANES - 1) * LANE_W + SIDE * 2;
-const NUT_SQUEEZE = 0.34;                  // how far the strings converge at the nut
 const BTN_H     = 52;                      // string-button row below the bridge
+
+// ── 🎸 THE TILT ──────────────────────────────────────────────────────────────
+// How far the strings converge at the nut: the neck is `1 - NUT_SQUEEZE` as wide
+// up there as it is at the bridge. This is the single number that decides
+// whether the highway reads as a NECK RECEDING AWAY FROM YOU or as a slightly
+// wonky ladder, and it was set too timid — at 0.34 the taper was barely past a
+// rounding error, so the eye read six parallel lanes.
+//
+// 📌 The practice trainer states the same idea as `K.far` (nut half-width as a
+// FRACTION of the bridge, so `far = 1 - NUT_SQUEEZE`) and ships 0.20 — a far
+// harder tilt than this. It can afford one: its bridge is up to 860px wide, so
+// even a fifth of that leaves the nut lanes readable. This neck is 280px at the
+// bridge, and 0.20 would squeeze the six strings into 56px of nut — gems on top
+// of each other. 0.50 is the strongest tilt this width carries: 28px between
+// strings at the nut, against a gem that has shrunk to ~15px up there.
+//
+// ⚠️ Raising it further means widening LANE_W with it, or the top of the neck
+// stops being playable to read.
+const NUT_SQUEEZE = 0.50;
+
+// How long the neck may get, and the vertical room the rest of the play card
+// needs around it (title line, timing feedback, the progress row, card padding).
+// ⚠️ CHROME IS MEASURED, NOT GUESSED — undercount it and the neck grows past the
+// bottom of the window, which is precisely the failure this was written to end:
+// the tallest thing on screen pushed the controls below the fold.
+const NECK_MIN   = 300;
+const NECK_MAX   = 620;
+const CARD_CHROME = 250;
+
+/** The neck length that fits the window right now. */
+function neckHeight(viewportH) {
+  return Math.round(Math.max(NECK_MIN, Math.min(NECK_MAX, viewportH - CARD_CHROME)));
+}
 
 // ── Neon palette (outrun / synthwave) ────────────────────────────────────────
 const NEON_CYAN    = '#19e6ff';
@@ -76,7 +117,9 @@ const DIR_GLYPH = { up: '↑', down: '↓', same: '→' };
 // window is untouched by where perspective puts it on screen. Bending the clock
 // as well as the geometry would make the same timing error score differently
 // depending on tempo.
-const PERSP = 2.4;
+// 📌 2.6 is the practice trainer's own `K.persp` default — same curve, so a gem
+// accelerates toward you at the same rate in both places.
+const PERSP = 2.6;
 function persp(z) {                        // z: 0 at the bridge → 1 at the nut
   const k = PERSP;
   if (k <= 0.001) return z;
@@ -91,17 +134,22 @@ function laneX(stringIdx, t = 0) {
 
 // Gem center Y (px from highway top) at run-time `now` (ms since run start).
 // Spawns above the highway a full leadTime before its hit-time and crosses the
-// strike line (y = HWY_H) exactly AT its hit-time — perspective changes how it
+// strike line (y = H) exactly AT its hit-time — perspective changes how it
 // travels between those two points, never when it arrives.
-function gemY(now, hitAt, leadTime) {
+//
+// ⚠️ `H` IS A PARAMETER NOW, not a module constant: the neck's length depends on
+// the window. Everything below takes it explicitly rather than closing over it,
+// so there is no second, stale copy of the neck length anywhere.
+function gemY(now, hitAt, leadTime, H) {
+  const travel = H + SPAWN_PAD;
   const z = Math.max(0, Math.min(1, (hitAt - now) / leadTime));
-  const y = HWY_H - persp(z) * TRAVEL;
+  const y = H - persp(z) * travel;
   // past the line the gem tumbles on linearly — the curve is for approach only
-  return now > hitAt ? HWY_H + ((now - hitAt) / leadTime) * TRAVEL : y;
+  return now > hitAt ? H + ((now - hitAt) / leadTime) * travel : y;
 }
 
 /** Fraction of the way from bridge to nut for a given y — for lane convergence. */
-const tAt = (y) => Math.max(0, Math.min(1, 1 - y / HWY_H));
+const tAt = (y, H) => Math.max(0, Math.min(1, 1 - y / H));
 
 // Fret wires, spaced by real temperament so they bunch toward the nut. Purely
 // scenery, but it's the cue that reads as "guitar neck" rather than "lanes".
@@ -144,12 +192,25 @@ function arrowPath(dir, r) {
 // accent:   the performing spirit's color
 // onPressKey: the engine's judge — now takes a STRING NUMBER (1–6)
 // showNums: print the number to press on the gem (teaching tiers only)
-export function RiffHighway({ run, results, accent, onPressKey, showNums = true }) {
+export function RiffHighway({ run, results, accent, onPressKey, showNums = true, height }) {
   // Latest run + judged set live on refs so the rAF loop (bound once per run)
   // always reads fresh data without re-subscribing on every judgment.
   const runRef    = useRef(run);
   const judgedRef = useRef({});
   const gemElsRef = useRef(new Map()); // element key → DOM node
+
+  // 🎸 HOW LONG THE NECK IS. A caller may pin it; otherwise it takes the window.
+  // Re-measured on resize so the neck grows when the browser does — a duel is
+  // often the moment somebody maximises the window.
+  const [viewportH, setViewportH] = useState(
+    () => (typeof window === 'undefined' ? 900 : window.innerHeight));
+  useEffect(() => {
+    const onResize = () => setViewportH(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const HWY_H  = height ?? neckHeight(viewportH);
+  const TRAVEL = HWY_H + SPAWN_PAD;   // nut → strike line, the whole fall
 
   const judged = {};
   (results ?? []).forEach(r => { if (r.noteIdx != null) judged[r.noteIdx] = r; });
@@ -157,6 +218,9 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true 
   judgedRef.current = judged;
 
   // ── The motion loop — one rAF per run, transforms written directly. ──
+  // ⚠️ `HWY_H` IS IN THE DEPS. The loop closes over the neck length, so a resize
+  // mid-riff would otherwise keep flying gems at the old length while the drawn
+  // neck used the new one — the gems would cross a strike line that isn't there.
   useEffect(() => {
     if (!run?.notes?.length) return;
     let raf;
@@ -172,38 +236,60 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true 
           if (judgedRef.current[idx]) { el.style.opacity = '0'; return; }
           if (hitAt - now > r.leadTime) {   // not spawned yet — park above, hidden
             el.style.opacity = '0';
-            el.style.transform = 'translate(0,0)';
+            el.style.transform = `translate(${laneX(sIdx, 1)}px, ${-SPAWN_PAD}px)`;
             return;
           }
-          const y = gemY(now, hitAt, r.leadTime);
+          const y = gemY(now, hitAt, r.leadTime, HWY_H);
           const past = Math.max(0, y - HWY_H);
           el.style.opacity = past > 0 ? String(Math.max(0, 1 - past / TAIL)) : '1';
           // Strings converge toward the nut, so a gem's x drifts as it falls.
           const yy = Math.min(y, HWY_H + TAIL);
-          const t = tAt(yy);
-          const dx = laneX(sIdx, t) - laneX(sIdx, 0);
+          const t = tAt(yy, HWY_H);
           const scale = 0.42 + 0.58 * (1 - t);        // small and far, big and near
+          // ⚠️ ABSOLUTE, NOT RELATIVE — AND THIS IS THE WHOLE BUG THAT KILLED THE
+          // IN-GAME HIGHWAY. A CSS `transform` on an SVG node does NOT compose
+          // with the element's `transform` ATTRIBUTE: the attribute is a
+          // presentation attribute, so any inline style REPLACES it outright.
+          // This loop used to write only the lane DRIFT (`dx`) plus a `+SPAWN_PAD`
+          // fudge, both of which only make sense if the attribute's
+          // `translate(x0, -SPAWN_PAD)` were still underneath — it never was. Every
+          // gem therefore fell down x ≈ 0, i.e. off the left edge of the neck in
+          // one overlapping column, 34px below where it was judged. The riff-off
+          // looked broken while Riff Practice (canvas, one absolute transform per
+          // gem) looked right. Write the FULL position every frame.
           el.style.transform =
-            `translate(${dx}px, ${yy + SPAWN_PAD}px) scale(${scale.toFixed(3)})`;
+            `translate(${laneX(sIdx, t)}px, ${yy}px) scale(${scale.toFixed(3)})`;
         });
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [run?.startedAt, run?.notes?.length]);
+  }, [run?.startedAt, run?.notes?.length, HWY_H]);
 
   if (!run?.notes?.length) return null;
 
-  // Which strings are lit right now (fresh hits), keyed by string index so two
-  // notes on different strings can never light the wrong one.
+  // Which string is lit right now — the one the LAST landed gem was on.
+  //
+  // ⚠️ THIS USED TO ACCUMULATE OVER THE WHOLE RUN, and it quietly wrecked the
+  // thing the colours are for. Every hit permanently switched its string to
+  // white, so four notes in, most of the neck was white and the cyan→magenta
+  // ramp that tells you WHICH STRING YOU ARE LOOKING AT was gone — exactly when
+  // the chart gets busy enough to need it. A hit is a flash, not a state: only
+  // the most recent one is lit, so the highlight travels with the riff.
   const litStrings = {};
-  (results ?? []).forEach(r => {
-    if (!r.hit || r.noteIdx == null) return;
-    const n = run.notes.find(x => x.idx === r.noteIdx);
-    if (n) litStrings[stringOf(n)] = true;
-  });
+  {
+    const last = (results ?? [])[(results ?? []).length - 1];
+    if (last?.hit && last.noteIdx != null) {
+      const n = run.notes.find(x => x.idx === last.noteIdx);
+      if (n) litStrings[stringOf(n)] = true;
+    }
+  }
 
+  // ⚠️ THE BRACES ARE LOAD-BEARING ON REACT 19. A callback ref that RETURNS a
+  // value is now read as returning a cleanup function; `Map.set` returns the Map
+  // and `Map.delete` returns a boolean, so an expression body would hand React a
+  // non-function "cleanup" every time a gem mounts. Keep the statement body.
   const gemRef = (elKey) => (el) => {
     if (el) gemElsRef.current.set(elKey, el);
     else gemElsRef.current.delete(elKey);
@@ -228,8 +314,22 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true 
       <g key={`gem-${n.idx}`}
          ref={gemRef(`gem-${n.idx}`)}
          data-idx={n.idx} data-hitat={n.hitAt} data-str={s}
-         transform={`translate(${x0} ${-SPAWN_PAD})`}
-         style={{ opacity: 0, willChange: 'transform, opacity' }}>
+         style={{
+           opacity: 0, willChange: 'transform, opacity',
+           // ⚠️ ONE TRANSFORM SOURCE, AND IT IS THE STYLE. The `transform`
+           // ATTRIBUTE cannot live alongside this — an inline style overrides a
+           // presentation attribute completely, so having both means the rAF loop
+           // silently throws the attribute away (see the loop above).
+           //
+           // ⚠️ `view-box` + `0 0` is what makes a CSS transform on an SVG node
+           // behave like the attribute did. The CSS defaults (`view-box` with
+           // `transform-origin: 50% 50%`) scale about the CENTRE OF THE WHOLE SVG,
+           // which sprays gems across the neck as they grow. Origin at the user
+           // -space origin means translate-then-scale grows the gem about its own
+           // position, exactly like `transform="translate(…) scale(…)"`.
+           transformBox: 'view-box', transformOrigin: '0 0',
+           transform: `translate(${x0}px, ${-SPAWN_PAD}px)`,
+         }}>
 
         {/* sustain tail, receding up the string */}
         {n.sustain > 0 && (
@@ -312,13 +412,14 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true 
         {/* fret wires — real temperament, bunching toward the nut */}
         {FRET_ZS.map((z, f) => {
           const y = HWY_H - persp(z) * HWY_H;
+          const t = tAt(y, HWY_H);
           const isNut = f === 0;
           return (
-            <line key={`fw${f}`} x1={laneX(0, tAt(y)) - 6} y1={y}
-                  x2={laneX(5, tAt(y)) + 6} y2={y}
+            <line key={`fw${f}`} x1={laneX(0, t) - 6} y1={y}
+                  x2={laneX(5, t) + 6} y2={y}
                   stroke={NEON_CYAN}
                   strokeWidth={isNut ? 2 : 1}
-                  opacity={isNut ? 0.8 : 0.06 + 0.10 * (1 - tAt(y))}
+                  opacity={isNut ? 0.8 : 0.06 + 0.10 * (1 - t)}
                   filter={isNut ? 'url(#riffGlow)' : undefined} />
           );
         })}

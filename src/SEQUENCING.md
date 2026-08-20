@@ -199,7 +199,307 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. 🧭 START HERE — session handoff, 2026-08-18 (evening)
+## 5. 🧭 START HERE — session handoff, 2026-08-19
+
+> ⚠️ **UNCOMMITTED.** `src/engine/policies/play.js`, `src/engine/policies/botJournal.js`,
+> `src/engine/botTraceCheck.mjs`, `src/ui/BotReview.jsx`, `src/rlsw-simulator-v3_8_1.jsx`
+> (one constant), `.scratch/journal.mjs`, `.scratch/reviewsmoke.jsx`, and two new
+> probes `.scratch/stackorder.mjs` / `.scratch/stackab.mjs`. The session before
+> this one is §5-prev below (partly `230ff8e`).
+>
+> 🥁 **THE BOTS COULD NOT REACH A STACK COMMIT UNTIL THE MELODY LINE WAS FULL** —
+> §5.A⁵. Alex found it by playing; it reproduced on the first headless look. It
+> is an ARRAY ORDER, not a judgement, and it had been live in every searcher
+> match ever benched.
+>
+> 🧠 **AND THE JOURNAL WAS BLIND TO THE WHOLE COMPOSITION PHASE** — §5.B⁵. The one
+> column built to catch "legal again and again, never once picked" could not see
+> half of any turn. Fixed in the same pass, which is the only reason the fix can
+> be checked by the instrument rather than by a probe written for it.
+>
+> 🎯 **AND THE CLOSE CALLS NOW NAME THEMSELVES** — §5.C⁵. 70–79% of decisions were
+> near coin flips and nothing could say what they were flipping on. They are
+> flipping on `posePlay`, `beamSetup`, `centreStage` and `apBanked`. **`pressure`
+> and `fame` are in none of the top fours.**
+>
+> ✅ **THE TWO OWED VERIFICATIONS ARE DONE** — §5.G⁵, on Alex's machine, and they
+> cover this session's edits as well as the previous one's: `npm run check:bundle`
+> is clean in 2.6s (6 pre-existing `different-path-case` warnings on the standee
+> PNGs, unchanged) and `.scratch/reviewsmoke.jsx` renders the panel at 8220 bytes
+> with all eleven of its assertions green.
+>
+> 🏆 **AND A FAME WIN COULD BE SWALLOWED WHOLE** — §5.G⁵. Alex played a match to
+> ⭐27/21 and no finishing screen ever came. The client's copy of `grantFame`
+> never got the `ROCK_GODS_SHELVED` disjunct the engine's copy got on 2026-08-18.
+
+### 5.A⁵ 🥁 THE FINDING — the stacks were unreachable, and it was an array order
+
+Full account in `BOT_STRATEGY_HANDOFF.md` §6.6.14.
+
+`composePhase` extended its line with `beamActions(steps, { limit: 1, … })[0]`.
+`beamActions` groups by KIND and emits groups in first-appearance order;
+`legalActions` pushes every `melodyNote` before every `stackCommit`. So `[0]` was
+a melody note whenever one was legal, and a commit was unreachable until the
+8-note track was full. Over 18 headless matches the picker was offered both kinds
+**455 times and took a note 455 times**; every commit in the sample was a
+leftover on a full track.
+
+⚠️ **THE TWO KINDS COULD NOT HAVE BEEN COMPARED.** `makeActionScorer`'s contract
+is "higher is better, WITHIN A KIND". There is no cross-kind number in it. The
+fix gives that one question to `evaluate`, at the confirm, for the same reason
+`evaluate` already owned "how many notes".
+
+🎯 **AND IT IS A NEW SHAPE — WORTH A ROW OF ITS OWN IN §5.A's TABLE.** The old
+predictor is *the evaluator has no term, so the bot never does it*. Here the term
+exists in every column of `EVAL_WEIGHTS`, and forcing commits first through the
+**same** evaluator preferred the commits-first line on **231 of 310 turns**.
+
+> **The evaluator already wanted the stacks. It was never consulted, because the
+> search could not reach the branch to ask about it.** A term nobody disputes is
+> worth nothing if no line ever carries it.
+
+⚠️ **AND THE SHIPPED BUG STILL PRODUCED 148 COMMITS**, so "does it ever commit"
+was green throughout. `botTraceCheck` §3b now asserts a commit on a SHORT track
+specifically, and the comment says why.
+
+| 18 matches, searcher both seats | before | after |
+|---|---|---|
+| commits on a track shorter than 8 | **0** | 268 |
+| turns that loaded a stack (Ronin/Int/Metal) | 15%/12%/12% | 22%/23%/33% |
+| Drive stack at confirm, mean | 2.08/0.78/1.35 | 3.43/3.51/3.00 |
+| ...empty at confirm | 11%/46%/27% | **0%/0%/0%** |
+
+### 5.B⁵ 🧠 THE JOURNAL COULD NOT SEE THE COMPOSITION PHASE AT ALL
+
+`journalSummary` bumped `chosen` with the literal `'confirmMelody'` for every
+compose entry, and `legalSeen` was fed only from action entries. `melodyNote` and
+`stackCommit` could therefore appear in **neither** `chosen` nor `neverChosen`.
+
+🎯 **§5.A's automated predictor was blind to half of every turn.** It found #15
+on its first run and could not have found this one, however long it ran.
+
+**Shipped:** compose entries carry `legalKinds`, `chosenKinds`, per-step
+`steps[{i, took, cands}]` and the winning line's `terms`; `journalSummary` feeds
+composition kinds into the same two columns as action kinds and reports
+`meanNotes` / `meanCommits` / `composeTurnsWith`; the 🧠 REVIEW panel grew two
+tiles and a compose row that says "5 notes + 2 🥁" instead of "a 7-step track".
+
+### 5.C⁵ 🎯 WHAT THE CLOSE CALLS TURN ON — the term-swing column
+
+§5.J⁗ left "57–79% of decisions are close calls" as unquotable, because nothing
+could say whether that was a bad threshold or a bot flipping coins. The journal
+now records `evaluate`'s term vector on the top two priced options, and the
+summary reports the mean absolute per-term difference between them over close
+calls only:
+
+| Spirit | close calls turn on |
+|---|---|
+| cosmic_ronin | `posePlay` 0.158, `beamSetup` 0.110, `centreStage` 0.052, `apBanked` 0.051 |
+| intergalactic_0 | `apBanked` 0.191, `beamSetup` 0.179, `posePlay` 0.057, `centreStage` 0.037 |
+| Metalness_Monster | `beamSetup` 0.120, `apBanked` 0.075, `posePlay` 0.037, `centreStage` 0.034 |
+
+**`pressure` and `fame` appear in none of them.** The turns are being decided by
+the positioning-and-setup terms, not by either win condition. That is §6.6.10's
+rule — *a term that scores GETTING READY must be capped below what DOING it pays*
+— measured for the first time instead of inferred from a symptom.
+
+⚠️ **RAW TERMS, NOT WEIGHTED.** A big swing on a small weight moves a lot and
+decides little. Read this beside `EVAL_WEIGHTS`, never instead of it.
+
+### 5.D⁵ THE STATE OF THE GAME RIGHT NOW
+
+120 matches a tree, same seeds, 3 lives, same script both trees (the
+`pressureab.mjs` discipline, since a formula change cannot go through
+`weightOverrides`): decided 119/120 → 119/120, mean turns 36 → 38, FP per turn
+0.713 → **0.772**, duels 189 → **251**, swings 719 → **456**, Sonics 158 → 197,
+poses 880 → 1221, lives lost 291 → 249. Wall clock 21.4s → **27.8s**.
+
+🎯 **READ IT AS "IT FIGHTS DIFFERENTLY", NOT "IT FIGHTS MORE."** Swings down 37%
+while duels are up 33% and Fame per turn is up 8%: a Spirit that walks in with a
+loaded Drive stack takes the shot that pays instead of the one that is available.
+
+⚠️ **A 50-MATCH RUN OF THE SAME PROBE SAID "mean turns 43 → 37" AND 120 ERASED
+IT.** §5.C⁗'s object lesson, again, at a fifth of the sample. The turn count is
+quoted above only to be disowned.
+
+⚠️ **THE FIX COSTS ~30% OF SEARCH TIME.** Every composition step prices two
+candidates to their confirm rather than taking the head of a list. Free in the
+client (the driver waits ~520ms a tick on animation — §6.6.12), a real tax on a
+2000-match bench.
+
+⚠️ **`twogate.mjs` CANNOT MEASURE THIS FIX** — `unranked` gets the cross-kind
+price too, deliberately, so both arms have it. 60 seeds read 38.3% ±12.3 before
+and 41.4% ±12.7 after: a "nothing broke" reading and nothing more.
+
+📌 **Suites, this pass:** engine ✅, legal 580, eval 151, transition 241, turnflow
+61, determinism 22, battleflow 50, melody 159, slime 127, eleven 38, score 122,
+**harness 1738 → 1843**, skilltree 208, **trace 1435 → 1700**, riffparity 127598.
+⚠️ Neither moved count is coverage. `harness` tracks how many actions the bots
+take. `trace` went 1435 → **1363** on the fix alone — 1 fewer action decision, 48
+fewer `considered` pairs, 17 fewer curve points, because commits spend stock that
+melody notes used to spend — and the new assertions took it to 1700. Nothing was
+removed or weakened.
+
+### 5.E⁵ 🎯 NEXT, IN DEPENDENCY ORDER
+
+1. ✅ ~~**RUN `check:bundle` AND `reviewsmoke` ON A REAL MACHINE.**~~ **DONE**,
+   §5.G⁵ — both clean, and they now also cover §5.G⁵'s own two edits.
+1b. 🧪 **THE OOZE DOES NOTHING IN ANY BENCH MATCH EVER RUN** — new, §5.G⁵, and it
+   goes at the top because it invalidates readings rather than adding one.
+   `harnessHooks` implements `declareWinner` and `knockOut` and nothing else, so
+   the `hexHazards` hook — `play.js` §91 says so out loud, *"client-owned,
+   skipped"* — never fires; `transition.js`'s `case 'move'` has no slime cost
+   either. So `slimeBites` is called from the CLIENT AND NOWHERE ELSE. Every
+   Metalness weight in `EVAL_WEIGHTS` was tuned in a game where his trail cannot
+   hurt anybody, and the searcher walks rivals' ooze for free in its own head and
+   pays 1 Vibe a step for it on the real board. ⚠️ This is §6.6.8's
+   `leftLimelight` finding again, in the hook right next to it: **a hook nobody
+   implements is a rule that only applies to humans.**
+1c. 🎸 **THE LEGACY BOT DOES NOT PAY FOR ITS CHORDS** — new, §5.G⁵.
+   `botExecuteStackCommits` pushes straight onto `driveStack`/`sustainStack` and
+   never spends the stock slot; the searcher commits through `clickNoteStock`,
+   which does. The monolith's own comment at the `stackCommit` case says this and
+   it had no consequence until 2026-08-19 — §5.A⁵ took commits on a short track
+   from **0 to 268**, so the searcher has just started paying a bill the old bot
+   has never once paid. Alex, playing: *"The Smart bot got crushed. The old bot
+   lasted a bit longer than the smart one."*
+2. 🥁 **WHY IS `face` HALF THE TURN?** Promoted, because §5.C⁵ has finally aimed
+   at it. Before the fix the Ronin chose `face` on **534 of 1162** action
+   decisions at `FACE_AP_COST` 1 — about half its AP — and attacked on 5.4%. The
+   close-call column says `beamSetup` and `posePlay` are what it is buying. This
+   is §6.6.10's "getting ready outranks doing it" for the FOURTH time, and it is
+   the first one with an instrument pointed at it before the fix rather than
+   after.
+3. 🔊 **GIVE `evaluate` A TERM FOR BEING LOUD** (carried, #15). `eleven` legal
+   **331×**, chosen 0× on the post-fix run — the detector has not gone quiet, and
+   should not until the term lands.
+4. 🧮 **RE-PRICE `awardRiffFame` INTO THE BAND** (carried, §5.C‴). Now more
+   urgent, not less: duels are up 33% and every term in the payout is still
+   invisible to the searcher.
+5. 🔊 **MAKE `centreStage` CONDITIONAL ON RANGE** (carried). It is third or fourth
+   in every column of §5.C⁵'s table, which is new evidence for an old item.
+6. 📏 **THEN A REAL BENCH.** §6.6's bar is ~2000. Nothing here is above 120.
+7. 🪦 **THE SMASH IS STILL UNMODELLED.** Oldest debt on the list, unchanged.
+
+### 5.F⁵ 📌 Housekeeping
+
+⚠️ **THE ⁴ MARKERS MOVED DOWN A SECTION.** The 2026-08-18 (evening) handoff is now
+`## 5-prev.` and keeps its `⁗` subsection markers; this session uses `⁵`.
+
+Two new probes in `.scratch/`, both worth keeping:
+- **`stackorder.mjs`** — what the composition step-picker actually returns, and
+  what the bot goes into the action phase holding. ⚠️ Its `[control]` row calls
+  the OLD picker directly and will keep reporting `stackCommit 0×` forever; that
+  is the regression witness for the ordering bug, not a live reading.
+- **`stackab.mjs`** — notes-first vs commits-first through the same evaluator.
+  The template for asking *"does the evaluator want the thing the search cannot
+  reach"*, which is a question this repo is now known to need.
+
+`BOT_JOURNAL_MAX` in the monolith went **4000 → 12000**, because entries are
+several times bigger (term vectors on the top two options, per-step candidates on
+a compose entry). Leaving it would have quietly turned "a long match" into "the
+last third of a long match".
+
+📌 Git writes still fail from the agent's shell on this mount (§5-prev). Commit
+from a normal terminal. `_to_delete/` still needs removing by hand.
+
+### 5.G⁵ 🏆 THE FINISHING SCREEN THAT NEVER CAME — one rule, two copies
+
+Alex played a match to ⭐**27/21** on `first to 21 FP wins` and the game just kept
+going. The Fame target is tested in **exactly one place** — the bottom of
+`grantFame` — and there are **two `grantFame`s**:
+
+| | `engine/systems/battleFlow.js` | `rlsw-simulator-v3_8_1.jsx` |
+|---|---|---|
+| who routes through it | Fame banked inside a BATTLE | riff-off payouts, cadences, Azrael streaks, poses, boss damage |
+| `ROCK_GODS_SHELVED` disjunct | ✅ added 2026-08-18 | ❌ **never added** |
+| `cap` argument (`RIFF_FP_TURN_CAP`) | ✅ added 2026-08-18 | ❌ **never added** — see below |
+
+🎯 **AND THE SUMMON IS A ONE-WAY DOOR.** Crossing the target with a lead under
+`ROCK_GOD_RUNAWAY_LEAD` (3) called `summonRockGod` — a finale the design SHELVED
+on 2026-08-18 — and `rockGod.summoned` then gates that same branch *for the rest
+of the match*. One close crossing outside a battle and the Fame win is
+unreachable forever, which is exactly what ⭐27/21-and-still-playing looks like.
+
+**Shipped:** the client's copy gains `ROCK_GODS_SHELVED ||`, so one shelf is read
+in both places.
+
+⚠️ **AND A SECOND FIX, BECAUSE THE FIRST ONE ONLY CLOSES THE BRANCH WE FOUND.**
+`checkStandingFameWin` now runs at the top of `startNewTurnNotes`. The old check
+fires on a TRANSITION and so cannot notice a state the game is already IN — and
+at least three routes return from `grantFame` before reaching it: the ⛔ per-turn
+cap (`finalFp <= 0`), a throw inside `checkStageFxThresholds` (which runs first),
+and the God gate. Whoever is over the line at the top of any turn is crowned
+then, whatever happened on the beat they crossed it.
+
+📌 **THE `cap` DRIFT IS LEFT ALONE AND WRITTEN DOWN INSTEAD.** Alex's scope call.
+`RIFF_FP_TURN_CAP = 8` exists so a duel can bank more than an ordinary turn's 4 —
+and the client's `grantFame` has no `cap` parameter at all, so **in the shipped
+game every duel payout is still clipped at 4**. `battleFlowCheck` §5a is green on
+the engine's copy throughout. This is the same shape as the row above it.
+
+### 5.H⁵ ⬇ THE JOURNAL DOWNLOAD WROTE 0 BYTES AND SAID NOTHING
+
+Two `bot-journal-*.json` in `.scratch/journals/`, both empty, both from a session
+where the panel was showing 80 decisions. A save dialog CREATES the file when it
+is confirmed and the bytes only arrive at `close()`, so anything that throws in
+between leaves the named file on disk at zero length — and `download()` wrapped
+the whole picker branch in a bare `catch {}`, so nothing reached the console
+either. **The cause is still unknown and that is the finding**: the instrument
+destroyed its own evidence.
+
+**Shipped:** the JSON is built BEFORE the picker opens (so an unserialisable
+journal is reported before a file is named), `AbortError` is the only swallowed
+error, every other failure is `console.error`'d AND shown in red beside the ⬇
+button, and the Blob fallback still runs after a picker failure.
+
+📌 `.scratch/jsonprobe.mjs` rules out the obvious suspect: a 171-entry journal
+stringifies fine at 571 KB, and the only non-JSON-safe value in it is a
+`-Infinity` score, which serialises to `null` rather than throwing.
+
+### 5.I⁵ 🧪 WHAT THE MONSTER ACTUALLY DOES WITH HIS OOZE
+
+`.scratch/slimeuse.mjs`, 24 matches, searcher every seat, 3 lives, legal-vs-chosen
+per kind:
+
+| Metalness_Monster | legal | chosen | took it |
+|---|---|---|---|
+| `slime` | 478× | 254× | **53.1%** |
+| `slide` | 441× | 147× | 33.3% |
+| `tentacle` | 9× | **0×** | 0% |
+| `eleven` | 760× | **0×** | 0% |
+| `swing` | 427× | 24× | 5.6% |
+
+🎯 **HE CALLS SLIME MORE THAN HE DOES ANYTHING BUT MOVE AND FACE — AND NOT ONE
+TERM IN `evaluate` MENTIONS THE TRAIL.** `legalActions` hands `slime` an
+`apGranted: SLIME_MOVE_STEPS`, and `apBanked` is in every column of §5.C⁵'s
+close-call table. **He is not laying ooze; he is buying steps, and the ooze is a
+side effect he cannot see.** §5.A's predictor in its purest form.
+
+⚠️ **AND THE BENCH CANNOT DISAGREE, BECAUSE IN THE BENCH THE TRAIL IS INERT** —
+§5.E⁵ item 1b. The 53% is a reading of a game where slime is a free AP button
+with no downside for anyone.
+
+📌 `eleven` legal **760×**, chosen **0×** — carried item #3, and the detector is
+getting louder, not quieter (331× at the last count).
+
+### 5.J⁵ 📌 Housekeeping
+
+Suites, unchanged and quoted because they are: engine ✅, legal 580, eval 151,
+transition 241, turnflow 61, determinism 22, battleflow 50, melody 159, slime 127,
+eleven 38, score 122, harness 1843, skilltree 208, trace 1700, riffparity 127598.
+⚠️ **NOTHING MOVED, AND NOTHING SHOULD HAVE.** Both edits are in the monolith and
+in `ui/`, which no suite covers — the win rule has no test because the client's
+copy of it has never had one. `reviewsmoke` covers the `BotReview` edit; the
+`grantFame` copy is covered by `check:bundle` and by nothing else.
+
+Two new probes in `.scratch/`, both cheap and both worth keeping:
+- **`slimeuse.mjs`** — legal-vs-chosen per kind for the whole kit, per seat.
+- **`jsonprobe.mjs`** — reproduces `BotReview`'s `payload()` on a real journal.
+
+---
+
+## 5-prev. 🧭 session handoff, 2026-08-18 (evening)
 
 > ⚠️ **PARTLY COMMITTED.** §5.A⁗–5.I⁗ (the `pressure` fix and the searcher
 > wiring) are in `230ff8e`; 5.J⁗'s journal is NOT — `package.json`, `play.js`,

@@ -36,5 +36,13 @@ for (const [id, s] of Object.entries(sum)) {
   console.log(`  🎯 beam cost   ${s.rankingCost}× the position, ${s.rankingCostTotal.toFixed(1)} pts total`);
   console.log(`  chosen         ${Object.entries(s.chosen).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${v}`).join(', ')}`);
   console.log(`  ⚠️ NEVER PLAYED ${s.neverChosen.length ? s.neverChosen.map(k=>`${k} (legal ${s.legalSeen[k]}×)`).join(', ') : '—'}`);
-  console.log(`  track lengths  ${Object.entries(s.trackLengths).sort((a,b)=>a[0]-b[0]).map(([k,v])=>`${k}:${v}`).join(' ')}\n`);
+  console.log(`  track lengths  ${Object.entries(s.trackLengths).sort((a,b)=>a[0]-b[0]).map(([k,v])=>`${k}:${v}`).join(' ')}`);
+  // 🥁 The composition half of the turn. Reported nothing at all before 2026-08-19.
+  console.log(`  ✍️ composition  ${s.meanNotes.toFixed(2)} notes + ${s.meanCommits.toFixed(2)} commits per turn`
+    + `; ${s.composeTurnsWith.stackCommit ?? 0}/${s.composeDecisions} turns loaded a stack`);
+  // 🎯 What the close calls are actually flipping on. RAW terms — a big swing on
+  // a small weight moves a lot and decides little, so read this beside the
+  // weight table in `evaluate.js`, not instead of it.
+  console.log(`  🎯 decided by   ${s.termSwing.slice(0,5).map(([k,v])=>`${k} ${v.toFixed(3)}`).join(', ') || '—'}`
+    + ` (over ${s.termSwingN} close calls)\n`);
 }
