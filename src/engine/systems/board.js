@@ -6,9 +6,9 @@
 // Every reducer is pure: (state, action[, rng]) -> state. Reports live in
 // state.board.last* for the client to read for logs/FX.
 
-import { SPOTLIGHT_POOL, EVENT_HEX_POOL, makeBoardToken } from "../../board/boardHelpers.js";
+import { SPOTLIGHT_POOL, eventHexCandidates, makeBoardToken } from "../../board/boardHelpers.js";
 import { ALL_HEXES } from "../../board/hexMap.js";
-import { TOKEN_MAX, TOKEN_BASE_POOL, TOKEN_PER_ROUND_BASE, TOKEN_DRIFT_TURNS, EVENT_RESPAWN_TURNS, CHARGE_ZONE_COOLDOWN, LIMELIGHT_HEX } from "../../data/gameConstants.js";
+import { TOKEN_MAX, TOKEN_BASE_POOL, TOKEN_PER_ROUND_BASE, TOKEN_DRIFT_TURNS, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, CHARGE_ZONE_COOLDOWN, LIMELIGHT_HEX } from "../../data/gameConstants.js";
 
 // All valid hex nums for token scatter (exclude nothing -- exclusions come in `occupied`)
 const ALL_HEX_NUMS = ALL_HEXES.filter(h => h.num !== LIMELIGHT_HEX).map(h => h.num);
@@ -196,23 +196,46 @@ export function applyEventRespawnTicked(state) {
   };
 }
 
-/** A new marquee event hex spawns (when respawn counter reached 0). */
+/**
+ * A new marquee event hex lights up (when the respawn counter reached 0).
+ * Lights exactly ONE, and re-arms the timer if the board is still short.
+ *
+ * ⚠️ THE CAP USED TO BE THE LITERAL `2`. It happened to match the count we now
+ * want, which is precisely why it was dangerous: raise `EVENT_HEX_COUNT` to 3
+ * and the spawner would have refused to go past two, with no error, no log line
+ * and a board quietly one marquee short for the rest of the match. It reads the
+ * constant now, so the count has exactly one home.
+ *
+ * ⚠️ ONE PER CALL, NOT A FULL TOP-UP, is a pacing decision rather than a
+ * limitation. `EVENT_RESPAWN_TURNS` is the cadence of a marquee LIGHTING, and
+ * the client's log line ("a new marquee hex lights up") reads as one event.
+ * Consume both in the same round and the board recovers over two rounds rather
+ * than snapping back to full — the middle stays scarce right when the table has
+ * just fought over it. Re-arming here (rather than in the client) is what makes
+ * that true no matter who calls this.
+ */
 export function applyEventHexSpawned(state, { occupied }, rng) {
   const evHexes = state.board.eventHexes;
-  if (evHexes.length >= 2) {
+  if (evHexes.length >= EVENT_HEX_COUNT) {
     return { ...state, board: { ...state.board, lastEventRespawn: null } };
   }
-  const occ = new Set([...occupied, ...evHexes]);
-  const pool = EVENT_HEX_POOL.filter(n => !occ.has(n));
+  // Separation from the marquees already lit lives in the candidate helper --
+  // see `eventHexCandidates`, which degrades to the unspaced pool rather than
+  // returning nothing on a crowded board.
+  const pool = eventHexCandidates(occupied, evHexes);
   if (pool.length === 0) {
+    // Nowhere to go. Leave the timer where it is; the caller's "am I short?"
+    // check will bring us back next round, so a full board self-heals.
     return { ...state, board: { ...state.board, lastEventRespawn: null } };
   }
   const pick = pool[Math.floor(rng() * pool.length)];
+  const next = [...evHexes, pick];
   return {
     ...state,
     board: {
       ...state.board,
-      eventHexes: [...evHexes, pick],
+      eventHexes: next,
+      eventRespawnIn: next.length < EVENT_HEX_COUNT ? EVENT_RESPAWN_TURNS : 0,
       lastEventRespawn: { hexNum: pick },
     },
   };

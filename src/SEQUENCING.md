@@ -201,10 +201,11 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ## 5. 🧭 START HERE — session handoff, 2026-08-20
 
-> ⚠️ **UNCOMMITTED.** `src/rlsw-simulator-v3_8_1.jsx`, `src/engine/policies/play.js`,
-> `src/engine/policies/evaluate.js`, `src/engine/botTraceCheck.mjs`,
-> `src/data/skillTree.js`, `src/CHARACTER_HANDOFF.md`, and nine probes in
-> `.scratch/`. The session before this one is §5-aug19 below.
+> ✅ **COMMITTED** in `1f84663` / `1df5e08` / `ed3c9b1`, probes included.
+> ⚠️ This banner said UNCOMMITTED and listed six files until 2026-08-20; it had
+> gone stale and was telling every reader to re-do work that was already in.
+> **Uncommitted now:** the marquee work in §5.I⁶ and `MARQUEE_QUIZ_DESIGN.md`.
+> The session before this one is §5-aug19 below.
 >
 > 🌀 **PSYCHO BUSHIDO NEVER LANDED ITS PAYLOAD, AND IT WAS BROKEN FOR HUMANS TOO**
 > — §5.A⁶. A `setTimeout` handed the strike a closure that predated the dash, so
@@ -434,6 +435,66 @@ amp — and a floor of 0 or 1 builds a game the loser cannot come back from.
 
 📌 It composes with the quiz idea rather than replacing it: amps (pool size) and
 power (die size) stay pure numbers and stay quiz-able; range stops being one.
+
+🎯 **AND THE QUIZ IDEA IS NOW WRITTEN DOWN TOO** — `MARQUEE_QUIZ_DESIGN.md`,
+2026-08-20. Two marquee hexes, a lane × difficulty choice card, and the rig's
+pool/power tiers earned at the quiz and lost to **atrophy** rather than to a
+timer. ⚠️ It also records the decision that **amps come off the skill tree
+entirely**, which this section's radius rework did not anticipate: with no
+`rig_*` rungs left, the "Range rungs become the floor" proposal above has
+nothing to hang on and the radius floor becomes a flat constant. The two docs
+share `sonicRig` and should be built in one pass, radius first.
+
+### 5.I⁶ 🎪 TWO MARQUEES — AND THE ONE THAT NEVER CAME BACK
+
+`MARQUEE_QUIZ_DESIGN.md` §8 slice 1, shipped. `EVENT_HEX_COUNT` 1 → 2, plus a
+new `EVENT_MIN_SEPARATION` (4) so a pair cannot light up inside one Spirit's
+pocket and hand them both over uncontested.
+
+🐛 **AND IT UNCOVERED A LIVE BUG, WHICH IS THE REAL VALUE OF THE SLICE.** The
+client respawn driver watched for a TIMER EDGE — `board.eventRespawnIn <= 0 &&
+eventRespawnIn > 0`, where the second half was a **render-scoped copy of the
+previous value**. `applyEventHexTriggered` sets that counter to the same value
+however many marquees are consumed, so two triggers in one round cross zero
+ONCE and light ONE hex. The board then sits a marquee short for the rest of the
+match, with no error and no log line.
+
+⚠️ **AT `EVENT_HEX_COUNT = 1` THAT BUG WAS UNREACHABLE**, which is why it
+survived: you cannot consume two marquees in a round when only one exists. The
+count change did not cause it, it *exposed* it. 📌 Same shape as §5.A⁶ — a
+render-scoped copy standing in for live state — and the fix is the same one:
+ask `engineRef.current` what the board is short of, rather than asking a stale
+number what it used to be.
+
+**Also fixed:** `applyEventHexSpawned` capped on a **literal `2`**, not on
+`EVENT_HEX_COUNT`. It happened to agree with the new count, which is exactly what
+made it dangerous — a future 3 would have been silently clamped to 2. It reads
+the constant now, and re-arms the respawn timer itself when the board is still
+short, so a double-trigger recovers over two rounds instead of snapping back to
+full in one dispatch.
+
+**Setup and respawn now share one helper** (`eventHexCandidates` in
+`board/boardHelpers.js`), so opening placement obeys the separation rule too.
+⚠️ Separation is a PREFERENCE, not a gate: on a crowded board the spaced pool
+can empty, and returning nothing there would stop marquees respawning for the
+rest of the match. It degrades to the unspaced pool — a badly placed marquee
+beats no marquee. The selftest proves that path by setting the separation to 99
+and watching placement fall back rather than fail.
+
+📌 **Suites — nothing dropped, and two ROSE for a legible reason:**
+selftest +9 assertions (the new marquee block), harness **1703 → 1751**, trace
+**1598 → 1683**. Both of those assert inside `for (const turn of log) for (const
+a of turn.actions)`, so their counts track how much match there is to walk — and
+`botMoveCtx` (`policies/bot.js:585`) feeds `eventHexes` into the bot's move
+scoring, so two marquees genuinely change where the bots go. Everything else
+unchanged: legal 582, transition 242, determinism 22, turnFlow 61, battleFlow 50,
+eval 152, melody 159, slime 127, eleven 38, score 122, skillTree 208, riff parity
+127598. `check:bundle` clean.
+
+⚠️ **NOT SHIPPED, AND NOT MEASURED:** the throughput question. Trivia pays FANS,
+and fans are the one economy with no per-turn ceiling. Doubling the marquees
+roughly doubles quiz income and nobody has benched what that does to
+`FAN_MULT_CAP`. `TRIVIA_REWARD` is the dial if it turns out to matter.
 
 ### 5.F⁶ 📌 Housekeeping
 

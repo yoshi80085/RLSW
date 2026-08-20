@@ -1894,7 +1894,6 @@ function Game({ gameState, onReturnToLobby }) {
   const [activeEvent, setActiveEvent] = useState(null);
   // 🧠 Trivia: questions already asked this game (no repeats until the pool is exhausted).
   const usedTriviaRef = useRef(new Set());
-  const eventRespawnIn = engineState.board.eventRespawnIn;
   const flamingHexes = engineState.board.flamingHexes;
 
   // ─── 🎇 STAGE EFFECTS ── (ENGINE-owned — Phase 6b full flip) ────────────────
@@ -10262,8 +10261,21 @@ function Game({ gameState, onReturnToLobby }) {
 
       // ── 🎪 EVENT MARQUEE — respawn countdown, one tick per round ──────────
       dispatch(eventRespawnTicked());
-      if (engineRef.current.board.eventRespawnIn <= 0 && eventRespawnIn > 0) {
-        // Counter just hit 0 — spawn a new marquee hex (engine rng)
+      // ⚠️ ASK THE BOARD WHAT IT IS SHORT OF — DO NOT WATCH FOR A TIMER EDGE.
+      // This read `engineRef.current.board.eventRespawnIn <= 0 && eventRespawnIn > 0`,
+      // i.e. "the counter just crossed zero", where the second half was a
+      // RENDER-SCOPED copy of the previous value. With one marquee that was
+      // merely fragile. With two it is WRONG: consume both inside the same
+      // round and `applyEventHexTriggered` sets the counter to the same value
+      // twice, so it crosses zero ONCE and lights ONE hex — the second marquee
+      // never comes back, nothing logs it, and the board is quietly short for
+      // the rest of the match. A shortfall is a fact about state, so read it
+      // off state. 📌 Same lesson as §5.A⁶: the stale copy is the bug.
+      if (engineRef.current.board.eventRespawnIn <= 0 &&
+          engineRef.current.board.eventHexes.length < EVENT_HEX_COUNT) {
+        // The board is short and the cooldown is clear — light one (engine rng).
+        // The engine re-arms the timer itself if it is STILL short afterwards,
+        // so a double-trigger recovers over two rounds instead of snapping back.
         setTimeout(() => {
           const occupied = [
             ...engineRef.current.spirits.filter(sp => !sp.knockedOut).map(sp => sp.num),

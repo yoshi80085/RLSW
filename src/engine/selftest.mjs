@@ -52,12 +52,13 @@ import {
 import {
   LIMELIGHT_HEX, UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT,
   FAN_BORED_AFTER, FAN_DECAY,
-  TOKEN_MAX, EVENT_RESPAWN_TURNS, CHARGE_ZONE_COOLDOWN,
+  TOKEN_MAX, EVENT_RESPAWN_TURNS, EVENT_HEX_COUNT, EVENT_MIN_SEPARATION,
+  CHARGE_ZONE_COOLDOWN,
   STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor, STACK_COMMIT_BUDGET,
 } from "../data/gameConstants.js";
 import { hexRingFromCenter } from "../board/boardHelpers.js";
 import { HEX_BY_NUM, EDGE_HEX_NUMS } from "../board/hexMap.js";
-import { getFlatTopNeighborSlots } from "../board/hexGeometry.js";
+import { getFlatTopNeighborSlots, axialDist } from "../board/hexGeometry.js";
 
 // -- rng determinism ----------------------------------------------------------
 {
@@ -1753,6 +1754,38 @@ const config = {
   const spawned = applyAction(depleted, eventHexSpawned([]));
   assert.ok(spawned.board.eventHexes.length > 0, "new event hex spawned");
   assert.ok(spawned.board.lastEventRespawn, "report written");
+
+  // 🎪 TWO MARQUEES (MARQUEE_QUIZ_DESIGN.md §1) ------------------------------
+  // ⚠️ These four assertions exist because the old spawner passed its tests
+  // while being wrong: it capped on a LITERAL 2 that happened to match the
+  // count, and it lit exactly one hex per timer edge, so a board that lost both
+  // marquees in the same round stayed one short forever with nothing logged.
+  const marqueeDist = (a, b) =>
+    axialDist(HEX_BY_NUM[a].q, HEX_BY_NUM[a].r, HEX_BY_NUM[b].q, HEX_BY_NUM[b].r);
+
+  // Setup lights the full count, and lights them APART.
+  assert.equal(s0.board.eventHexes.length, EVENT_HEX_COUNT, "setup lights EVENT_HEX_COUNT marquees");
+  s0.board.eventHexes.forEach((a, i) => s0.board.eventHexes.slice(i + 1).forEach(b => {
+    assert.ok(marqueeDist(a, b) >= EVENT_MIN_SEPARATION,
+      `setup marquees #${a}/#${b} are ${marqueeDist(a, b)} apart, want >= ${EVENT_MIN_SEPARATION}`);
+  }));
+
+  // Spawning while STILL short re-arms the timer itself — the board recovers
+  // over two rounds rather than snapping back to full in one dispatch.
+  assert.equal(spawned.board.eventHexes.length, 1, "one marquee per spawn, not a full top-up");
+  assert.equal(spawned.board.eventRespawnIn, EVENT_RESPAWN_TURNS, "still short -> timer re-armed");
+  const refilled = applyAction(spawned, eventHexSpawned([]));
+  assert.equal(refilled.board.eventHexes.length, EVENT_HEX_COUNT, "second spawn reaches the count");
+  assert.equal(refilled.board.eventRespawnIn, 0, "back to full -> timer stands down");
+
+  // A spawn onto a board that already holds one keeps its distance.
+  assert.ok(marqueeDist(refilled.board.eventHexes[0], refilled.board.eventHexes[1]) >= EVENT_MIN_SEPARATION,
+    "respawn keeps EVENT_MIN_SEPARATION from the live marquee");
+
+  // And the cap is the CONSTANT, not a literal that merely agrees with it.
+  const atCap = applyAction(refilled, eventHexSpawned([]));
+  assert.equal(atCap.board.eventHexes.length, EVENT_HEX_COUNT, "spawn at full count is a no-op");
+  assert.equal(atCap.board.lastEventRespawn, null, "no-op writes no report");
 
   // CHARGE_ZONE_USED — sets cooldown
   const cz = s0.board.chargeZones[0];

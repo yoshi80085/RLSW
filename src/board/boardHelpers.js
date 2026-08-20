@@ -1,13 +1,38 @@
 import { HEX_BY_NUM, ALL_HEXES } from "./hexMap.js";
 import { axialDist, getFlatTopNeighborSlots, angleTo, angleDiff } from "./hexGeometry.js";
 import { NOTE_POOL } from "../music/notes.js";
-import { LIMELIGHT_HEX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_START, DB_UPGRADE_THRESHOLD } from "../data/gameConstants.js";
+import { LIMELIGHT_HEX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_START, DB_UPGRADE_THRESHOLD, EVENT_MIN_SEPARATION } from "../data/gameConstants.js";
 
 // ── Hex pools for board placement (engine + client) ──
 // Non-edge hexes minus the Limelight — where the spotlight roams.
 export const SPOTLIGHT_POOL = ALL_HEXES.filter(h => !h.edge && h.num !== 56).map(h => h.num);
 // Non-Limelight interior hexes — where marquee event spaces can appear.
 export const EVENT_HEX_POOL = ALL_HEXES.filter(h => !h.edge && h.num !== LIMELIGHT_HEX).map(h => h.num);
+
+/** Axial distance between two hex NUMBERS. Unknown nums read as infinitely far
+ *  apart, so a bad num can never make two marquees look adjacent. */
+function hexDist(a, b) {
+  const ha = HEX_BY_NUM[a], hb = HEX_BY_NUM[b];
+  if (!ha || !hb) return Infinity;
+  return axialDist(ha.q, ha.r, hb.q, hb.r);
+}
+
+// 🎪 Where a marquee may light up, given what is already on the board.
+// `occupied` = anything a marquee must not land on (Spirits, tokens, the
+// spotlight…); `liveHexes` = the marquees already lit.
+//
+// ⚠️ SEPARATION IS A PREFERENCE, NOT A GATE, AND THAT IS DELIBERATE. On a busy
+// board the spaced pool can come back empty. Returning nothing there would stop
+// marquees respawning for the rest of the match — silently, with no log line and
+// no error, which is the worst failure shape available. So we fall back to the
+// unspaced pool and light one anyway: a badly placed marquee beats no marquee.
+export function eventHexCandidates(occupied = [], liveHexes = []) {
+  const taken = new Set([...occupied, ...liveHexes]);
+  const free  = EVENT_HEX_POOL.filter(n => !taken.has(n));
+  if (liveHexes.length === 0 || free.length === 0) return free;
+  const spaced = free.filter(n => liveHexes.every(live => hexDist(n, live) >= EVENT_MIN_SEPARATION));
+  return spaced.length > 0 ? spaced : free;
+}
 
 export function cornerFacing(homeNum) {
   const home   = HEX_BY_NUM[homeNum];

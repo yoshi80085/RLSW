@@ -233,8 +233,25 @@ export const FAN_FLEE_MAX        = 3;     // (high end)
 export const FAN_DEFECT_TO_VICTOR = 2;    // of the fled casuals, how many swing straight to the demolisher
 
 // -- EVENT SPACES --
-export const EVENT_HEX_COUNT     = 1;  // one marquee hex live at a time
+// 🎪 TWO MARQUEES, NOT ONE (2026-08-20, MARQUEE_QUIZ_DESIGN.md §1). One event
+// hex on a 111-hex board is not a decision, it is proximity: whoever already
+// stood nearby takes it and everyone else concedes the round. Two makes the
+// player choose which to route toward, and gives a second Spirit a target
+// instead of a spectator's seat.
+// ⚠️ THIS IS A THROUGHPUT CHANGE AS WELL AS A CHOICE ONE. Trivia pays FANS, and
+// fans are the one economy with no per-turn ceiling (`FAME_PER_TURN_CAP` clamps
+// Fame and never touches them, because fans MULTIPLY Fame rather than being
+// it). Doubling the marquees roughly doubles quiz throughput, so if the crowd
+// multiplier starts topping out at `FAN_MULT_CAP` too early, the payouts in
+// `TRIVIA_REWARD` are the dial to turn — not this count.
+export const EVENT_HEX_COUNT     = 2;  // marquee hexes live at once
 export const EVENT_RESPAWN_TURNS = 1;  // ROUNDS after a trigger before a new marquee lights up (was 3 spirit-turns)
+// 🎪 Minimum axial distance between two live marquees.
+// ⚠️ TWO MARQUEES IN ONE CORNER IS WORSE THAN ONE ANYWHERE — a pair inside a
+// single Spirit's pocket hands them BOTH over uncontested, which is the exact
+// failure the second hex exists to fix. Home → Limelight is 5 on this map, so 4
+// stops them sharing a neighbourhood without shoving them to opposite edges.
+export const EVENT_MIN_SEPARATION = 4;
 
 // -- FLAMING DISC / GROUPIE --
 export const FLAMING_DISC_COUNT  = 6;

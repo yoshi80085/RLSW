@@ -15,7 +15,7 @@ import { makeRng } from "./rng.js";
 import { makeInitialNoteState } from "./systems/economy.js";
 import { makeLimelightState } from "./systems/limelight.js";
 import { shuffledStageFxDeck } from "../data/stageEffects.js";
-import { makeBoardToken, SPOTLIGHT_POOL, EVENT_HEX_POOL } from "../board/boardHelpers.js";
+import { makeBoardToken, SPOTLIGHT_POOL, eventHexCandidates } from "../board/boardHelpers.js";
 import { ALL_HEXES } from "../board/hexMap.js";
 import { TOKEN_MAX, TOKEN_BASE_POOL, EVENT_HEX_COUNT, CHARGE_ZONE_COUNT, LIMELIGHT_HEX, LIGHTNING_TRACK_HEXES } from "../data/gameConstants.js";
 
@@ -44,12 +44,17 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
   // Spotlight: random interior hex
   const spotlightHex = SPOTLIGHT_POOL[Math.floor(boardRng() * SPOTLIGHT_POOL.length)];
 
-  // Event hexes: avoid spirit start positions
-  const eventPool = EVENT_HEX_POOL.filter(n => !startHexNums.has(n));
+  // Event hexes: avoid spirit start positions, and keep the marquees apart.
+  // ⚠️ SETUP AND RESPAWN MUST AGREE. `eventHexCandidates` is the same helper the
+  // respawn path uses, so opening placement obeys `EVENT_MIN_SEPARATION` too --
+  // two marquees adjacent from turn 1 would be the failure the second hex was
+  // added to prevent, arriving before anyone had a chance to contest it.
+  const startNums = [...startHexNums];
   const eventHexes = [];
-  for (let i = 0; i < EVENT_HEX_COUNT && eventPool.length > 0; i++) {
-    const idx = Math.floor(boardRng() * eventPool.length);
-    eventHexes.push(eventPool.splice(idx, 1)[0]);
+  for (let i = 0; i < EVENT_HEX_COUNT; i++) {
+    const cand = eventHexCandidates(startNums, eventHexes);
+    if (cand.length === 0) break;
+    eventHexes.push(cand[Math.floor(boardRng() * cand.length)]);
   }
 
   // Lost Chord tokens: avoid spirit starts + Limelight.
