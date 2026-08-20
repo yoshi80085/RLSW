@@ -53,6 +53,14 @@ import { SKILL_BY_ID } from "../../data/skillTree.js";
 // and the whole point of the `beamSetup` term is that it agrees with the action
 // `legalActions` will or will not offer.
 import { sonicBeam, facingOptions } from "./legalActions.js";
+// 🔪 The rear wedge, BORROWED rather than re-derived, for the same reason the
+// beam geometry above is. `isRearHit` is the rule the DICE read (`chordFrayAmount`
+// strips REAR_FRAY_BONUS extra notes on a blow from behind); `CONE_HALF_ARC` and
+// `REAR_INTEREST_DIST` are `botHexScore`'s, so the ranker and the evaluator agree
+// about what a flank is instead of drifting apart.
+import { isRearHit } from "../systems/combat.js";
+import { angleTo, angleDiff } from "../../board/hexGeometry.js";
+import { CONE_HALF_ARC, REAR_INTEREST_DIST } from "./bot.js";
 
 // ── Small shared clamps ─────────────────────────────────────────────────────
 // Hoisted above the tunables because the board helpers below use them; every
@@ -68,6 +76,13 @@ const clampSig = (n) => Math.max(-1, Math.min(1, n));
 // Lives here rather than in gameConstants because the cliff is a property of
 // his innate, and gameConstants holds no per-Spirit innate numbers yet.
 export const PERF_CLIFF = 5;
+
+// 🔪 THE REAR-WEDGE TRADE, in `botHexScore`'s own 9:11 proportion, rescaled so
+// one adjacent rival roughly fills the term's [-1, 1] range on its own.
+// ⚠️ DEFENCE OUTWEIGHS OFFENCE, and the asymmetry is deliberate and inherited:
+// you choose when to take a flank and never when one is taken from you.
+export const REAR_OFFENCE = 0.45;
+export const REAR_DEFENCE = 0.55;
 
 // Longest distance any hex sits from the board edge — the denominator for the
 // edge-safety term. Derived once from the map so a board redraw retunes it
@@ -304,6 +319,66 @@ export const BEAM_DUEL = 1;
  * wherever the Spirit stands. A term that promised a shot the generator would
  * refuse to emit is worse than no term.
  */
+/**
+ * 🔪 WHICH WAY IS HE LOOKING — the term that did not exist until 2026-08-20.
+ *
+ * The game prices facing on DEFENCE: `chordFrayAmount` strips `REAR_FRAY_BONUS`
+ * extra Sustain notes when a blow lands in your rear arc, and `legalActions`'
+ * `face` case says out loud that this is why turning is not gated on the action
+ * token. 🗡️ It prices it on OFFENCE too, hardest for the Ronin: Psycho Bushido
+ * dashes along the facing line, so his signature ability is aimed by this and
+ * nothing else.
+ *
+ * ⚠️ IT LIVED IN THE RANKER AND NOWHERE ELSE, WHICH IS WHY NOBODY NOTICED.
+ * `botHexScore`'s rear block has modelled this trade since long before the
+ * searcher, and `actionScore`'s `case 'face'` delegates to it — so the beam
+ * always ordered the facings correctly and then handed `evaluate` five options
+ * it could not tell apart, because no term in this file read `.facing` at all.
+ * Measured before the fix: every facing priced to the SAME NUMBER to four
+ * decimals, `face` took 41.7% of the Ronin's entire AP budget, and 100% of
+ * multi-face runs were a two-facing oscillation that span until the AP ran out —
+ * `endTurn` legal on every step of every one of them.
+ *
+ * 🎯 §6.6.14's shape, mirrored. There the evaluator wanted a branch the search
+ * could not reach. Here the search offered a branch the evaluator could not
+ * distinguish — and an option nobody can tell apart is not a choice, it is a
+ * coin the bot flips with its own AP.
+ *
+ * SIGNED, like `posePlay`, because facing is a TRADE and not a bonus: the turn
+ * that puts one rival in your cone can put your back to another.
+ *
+ * ⚠️ AND CAPPED BELOW WHAT HITTING PAYS — §6.6.10's rule, now derived a fourth
+ * time. This scores BEING AIMED, never landing the blow. `pressure` (2.5) has to
+ * stay the bigger number or the bot lines up shots it never takes, which is
+ * precisely the failure this file has already had three times.
+ */
+export function facingTrade(self, rivals) {
+  const here = HEX_BY_NUM[self?.num];
+  if (!here || !rivals?.length) return 0;
+  const myFacing = self.facing ?? 0;
+  let score = 0;
+  for (const r of rivals) {
+    const rh = HEX_BY_NUM[r.num];
+    if (!rh) continue;
+    const d = axialDist(here.q, here.r, rh.q, rh.r);
+    if (d < 1 || d > REAR_INTEREST_DIST) continue;
+    // A rival three hexes off is a hypothesis; one at arm's length is a blow
+    // already on its way. Same ramp `botHexScore` uses, so the two agree.
+    const prox = (REAR_INTEREST_DIST + 1 - d) / REAR_INTEREST_DIST;
+    // OFFENCE — behind them AND pointing at them. ⚠️ BOTH HALVES REQUIRED:
+    // standing behind somebody while facing away is worth nothing, because you
+    // cannot swing or beam through the back of your own head. Dropping the
+    // second half rewards blowing straight PAST a rival, which lands you behind
+    // them, facing the wrong way, with your own back offered up.
+    const behindThem = isRearHit(r.facing ?? 0, angleTo(rh, here), angleDiff);
+    const facingThem = angleDiff(angleTo(here, rh), myFacing) <= CONE_HALF_ARC;
+    if (behindThem && facingThem) score += REAR_OFFENCE * prox;
+    // DEFENCE — is MY back turned to them?
+    if (isRearHit(myFacing, angleTo(here, rh), angleDiff)) score -= REAR_DEFENCE * prox;
+  }
+  return clampSig(score);
+}
+
 export function beamOpportunity(state, self, ns, rivals) {
   const posing = posingMap(state);
   const here = HEX_BY_NUM[self?.num];
@@ -462,7 +537,7 @@ export const DEFAULT_WEIGHTS = {
   charge: 1.2, refillDenied: 1.0, edgeSafety: 1.0,
   dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6, pressure: 2.5,
   centreStage: 0.8, chargeSeek: 0.6, stock: 1.0, beamSetup: 0.7,
-  posePlay: 0.4,
+  posePlay: 0.4, facing: 1.0,
 };
 
 export const EVAL_WEIGHTS = {
@@ -485,6 +560,12 @@ export const EVAL_WEIGHTS = {
     // ⚠️ Still a SMALL number in absolute terms; see the sweep above.
     centreStage: 0.95, chargeSeek: 0.5, stock: 1.3, beamSetup: 0.7,
     posePlay: 0.5,
+    // 🔪 THE ROSTER'S HIGHEST, and the only row on this table justified by an
+    // ABILITY rather than a stat. 🗡️ Psycho Bushido dashes along the facing line —
+    // his signature move is aimed by this term and by nothing else — and at
+    // `survival: 1.0` with the roster's thinnest Vibe, a blow in the rear wedge
+    // (`REAR_FRAY_BONUS` extra Sustain notes) costs him more than anyone.
+    facing: 1.3,
   },
   // 📻 The cosmic controller. The Boom Box makes "hold a charge" a near-
   // permanent objective, and denial is his win path, not damage.
@@ -517,6 +598,11 @@ export const EVAL_WEIGHTS = {
     // game is a live rig and a held charge, that is the worst trade on the board.
     centreStage: 0.7, chargeSeek: 1.6, stock: 0.9, beamSetup: 0.9,
     posePlay: 0.25,
+    // 🔪 THE ROSTER'S LOWEST, and `inRig: 1.6` is talking again. He fights down a
+    // BEAM at range, and `beamSetup: 0.9` already prices the alignment half of
+    // facing for him; what is left here is the rear wedge, which matters least to
+    // the Spirit whose plan is to never be adjacent to anybody.
+    facing: 0.7,
   },
   // 🟢 The bruiser. Attrition that snowballs — he wants to be standing next to
   // something already bleeding.
@@ -535,6 +621,14 @@ export const EVAL_WEIGHTS = {
     // should pose when the board has cleared around him and not otherwise.
     centreStage: 0.75, chargeSeek: 0.5, stock: 1.0, beamSetup: 0.5,
     posePlay: 0.35,
+    // 🔪 Middling, and it is the mirror of his `posePlay` note. A bruiser who
+    // wants CONTACT spends his whole game inside `REAR_INTEREST_DIST` of somebody,
+    // so this term is live for him almost every turn — but `survival: 0.7` is the
+    // roster's lowest, so each individual back he turns costs him the least.
+    // 🐙 ⚠️ The Tentacle cuts the other way and is NOT priced here: it strikes
+    // from a trail hex, so `isHitFromBehind` reads the line from the ORIGIN, and
+    // his reach can find a back that his own facing says he is nowhere near.
+    facing: 0.9,
   },
 };
 
@@ -1055,6 +1149,10 @@ export function evaluate(state, spiritId, view = {}) {
   //     riff-off that rides on one. See `beamOpportunity` for the four bands and
   //     for why this is a position question rather than an action question.
   terms.beamSetup = beamOpportunity(state, self, ns, rivals);
+
+  // 20b. 🔪 WHICH WAY HE IS LOOKING. See `facingTrade` for why this arrived so
+  //      late and what it cost to be missing.
+  terms.facing = facingTrade(self, rivals);
 
   // 21. ✨ THE POSE, FROM THE INSIDE — the mirror `rivalPose` never had, and
   //     without it the whole §6.6.8 pass would have paid for nothing.

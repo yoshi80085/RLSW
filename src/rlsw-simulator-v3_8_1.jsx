@@ -4375,7 +4375,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull 3 fans onto the board for a pit — +2 Drive that stands until the next pit.`);
     if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Swing from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
     if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
-    if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Dash in a straight line — remaining AP becomes bonus Drive. 2-round cooldown.`);
+    if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Dash in a straight line and strike — the AP you don't spend on the run-up powers the blow. 2-round cooldown.`);
     if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (costs 1 Drive token). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn.`);
     if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Set it down (2 Db per use). It plays a minor phrase for 3 rounds and haunts ONLY Spirits in a minor key — wandering after them, 2 rings, 1 Sustain a round. Including you, if you're in minor.`);
     if (skillId === 'wa_no_koe')      addLog(`🎵 ${spirit?.name} — WA NO KOE! Half your melody inside your stacks now pays +1 Drive or Sustain for 3 rounds — the amplifier on the Chord Tone Pardon he already owns.`);
@@ -7082,13 +7082,30 @@ function Game({ gameState, onReturnToLobby }) {
   function initiateSwing(targetId, tent = null) {
     if (!acting) return;
     if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
-    if (actionTokenUsed) { addLog('⚔️ Already used your Action Token this turn!'); return; }
-    const attacker = spirits.find(s => s.id === acting.id);
-    const defender = spirits.find(s => s.id === targetId);
+
+    // ⚠️ THE LIVE MIRROR, NOT THE RENDER SNAPSHOT — the same trap `defenderPosing`
+    // was fixed for further down, in this same function. Every caller but one
+    // reaches this SYNCHRONOUSLY from a click handler, where the render snapshot
+    // and the engine agree, so these reads were correct by accident.
+    //
+    // 🌀 Psycho Bushido is the exception. It dashes, pays, buffs, and only THEN
+    // strikes — so against the render snapshot the strike saw a Ronin who had not
+    // moved, had not spent, and had not been granted his bonus Drive. The two
+    // guards below read a full AP pool and an unspent token and waved the blow
+    // through; `nsA` read a `tempDrive` that predated the buff. The ability's
+    // entire payload was computed, logged, and then silently thrown away.
+    //
+    // 📌 `engineRef.current` is updated synchronously by `dispatch`, so it is
+    // never staler than the render values it replaces — this is strictly safer
+    // at the synchronous call sites too, not merely equivalent.
+    const live = engineRef.current;
+    if (live.turn.actionTokenUsed) { addLog('⚔️ Already used your Action Token this turn!'); return; }
+    const attacker = live.spirits.find(s => s.id === acting.id);
+    const defender = live.spirits.find(s => s.id === targetId);
     if (!attacker || !defender) return;
 
-    if (moveStepsLeft < 1) {
-      addLog(`⚔️ Not enough Action Points — Swing costs 1 AP. Move steps left: ${moveStepsLeft}`);
+    if (live.turn.moveStepsLeft < 1) {
+      addLog(`⚔️ Not enough Action Points — Swing costs 1 AP. Move steps left: ${live.turn.moveStepsLeft}`);
       return;
     }
 
@@ -7115,8 +7132,11 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`🐙 ${attacker.name} reaches ${tent.reach} hex${tent.reach !== 1 ? 'es' : ''} through the slime — the road behind him is GONE.`);
     }
 
-    const nsA = noteStates[attacker.id] ?? {};
-    const nsD = noteStates[targetId]    ?? {};
+    // ⚠️ LIVE, for the reason at the top of this function: 🌀 Psycho Bushido
+    // writes `tempDrive` immediately before it strikes, and the render snapshot
+    // does not have that write yet. This is the read that decides the blow.
+    const nsA = live.noteStates[attacker.id] ?? {};
+    const nsD = live.noteStates[targetId]    ?? {};
 
     // ── Stage Effects / skill mods ────────────────────────────────────────────
     const skillMods = getBattleSkillMods(attacker.id, targetId);
@@ -8039,6 +8059,11 @@ function Game({ gameState, onReturnToLobby }) {
   // then initiates a swing with Drive boosted by leftover AP.
   function resolvePsychoBushido(targetId) {
     if (!acting || acting.id !== 'cosmic_ronin') return;
+    // ⚠️ MIRRORED FROM `initiateSwing`, because the dash commits the turn before
+    // the strike is attempted. Every other refusal that function can raise is
+    // already covered below (token, AP, a live target); this one was not, and an
+    // unmirrored refusal now means a Ronin who has dashed and paid for nothing.
+    if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
     const ns = actingNoteState ?? {};
     if ((ns.psychoBushidoCd ?? 0) > 0) {
       addLog(`🌀 Psycho Bushido is recharging — ${ns.psychoBushidoCd} turn${ns.psychoBushidoCd > 1 ? 's' : ''} left.`);
@@ -8076,9 +8101,25 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
 
-    // Calculate bonus Drive from leftover AP
+    // 🌀 THE BONUS IS THE GROUND HE COVERED, NOT THE GROUND HE DIDN'T.
+    //
+    // ⚠️ THIS WAS `apLeft - distToTarget` AND IT WAS EXACTLY BACKWARDS. The dash
+    // warps to `distToTarget - 1`, so an ADJACENT rival meant a charge of zero
+    // hexes — and paid the MAXIMUM bonus (+4 at speed 5), while the full-length
+    // charge paid nothing. The ability rewarded standing still and called it
+    // lightning. Alex found it by reading the payout table, 2026-08-20.
+    //
+    // 🎯 AND THE INVERSION IS WHY IT NEEDS NO MINIMUM RANGE. The move already
+    // consumes ALL remaining AP, so with the sign the right way round it polices
+    // itself: charging from next door spends five AP for +0 — strictly worse than
+    // the 1 AP Swing it replaces — while charging four hexes spends the same five
+    // for +4, and you paid for that bonus in the movement you gave up. The cost
+    // scales with the reward without a rule anyone has to be taught.
+    // 📌 `distToTarget <= apLeft <= speed`, so this can never exceed
+    // ATK_BONUS_CAP on its own; it can still clip when stacked with moshDrive,
+    // and `initiateSwing` logs it when it does.
     const apLeft = moveStepsLeft;
-    const bonusDrive = Math.max(0, apLeft - distToTarget);
+    const bonusDrive = Math.max(0, distToTarget - 1);
 
     // Warp Ronin to the hex just before the target
     const landQ = originHex.q + dq * (distToTarget - 1);
@@ -8088,11 +8129,22 @@ function Game({ gameState, onReturnToLobby }) {
       dispatch(spiritWarped(acting.id, landHex.num, 0));
     }
 
-    // Consume ALL remaining movement + action token
-    dispatch(beatsSpent(0, true, { all: true }));
+    // 🌀 SPEND EVERYTHING EXCEPT THE SWING'S OWN 1 AP, and do NOT touch the
+    // Action Token here. `initiateSwing` refuses a strike with either already
+    // spent, and this used to pay the whole bill up front — dash, AP and token —
+    // and then ask for a blow the turn could no longer afford.
+    //
+    // ⚠️ THE TOTAL IS UNCHANGED: the strike below spends the last point and
+    // burns the token itself, so the Ronin still ends the turn at zero with his
+    // Action spent. What changed is only that the bill is paid by whoever incurs
+    // it. `distToTarget <= apLeft` is guaranteed by the walk above, so `apLeft-1`
+    // is never negative and the Swing's point is always there to spend.
+    dispatch(beatsSpent(apLeft - 1, false));
 
-    // Apply bonus Drive as tempDrive (stacks with existing)
-    const prevTemp = ns.tempDrive ?? 0;
+    // 🌀 THE BONUS LANDS BEFORE THE BLOW, which is the whole point of the
+    // ability. Read from the live sheet, not the render-scoped `ns` — that is the
+    // same overwrite that §7 records against `applyWaNoKoe`.
+    const prevTemp = (engineRef.current.noteStates[acting.id] ?? {}).tempDrive ?? 0;
     const newTemp = prevTemp + bonusDrive;
     setNoteField(acting.id, {
       psychoBushidoCd: 2,
@@ -8102,10 +8154,14 @@ function Game({ gameState, onReturnToLobby }) {
     triggerEffectFlash(acting.id, '🌀', 'BUSHIDO!', '#4488ff');
     addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} dashes ${distToTarget} hex${distToTarget > 1 ? 'es' : ''} — +${bonusDrive} bonus Drive from ${apLeft} remaining AP!`);
 
-    // Auto-initiate swing against the target
+    // 🌀 SYNCHRONOUS, AND THAT IS THE FIX. The delay was there so "the warp
+    // settles", but a warp settles in ENGINE state the instant it is dispatched —
+    // what the 100ms actually bought was a re-render, and the deferred callback
+    // still held the OLD closure, so it read pre-dash values however long it
+    // waited. `initiateSwing` now reads `engineRef.current`, which the warp, the
+    // AP spend and the Drive buff have all already reached.
     setAction(null);
-    // Small delay so the warp settles before the swing triggers
-    setTimeout(() => initiateSwing(targetId), 100);
+    initiateSwing(targetId);
   }
 
   // Returns hex nums along Ronin's facing line within AP range (for highlighting)

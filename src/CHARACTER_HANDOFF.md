@@ -35,7 +35,13 @@ Archetype quartet: **Ronin = Burst/virtuoso · Intergalactic 0 = Control/zoner �
   Smash relationship (his own Smash hits soft; a Smash *on* him double-scatters); note-greed
   (~50% second note off a Lost Chord); 10-slot stock.
 - **Arsenal (reworked):**
-  - **Psycho Bushido** (6 Db, 2-round CD) — Iaijutsu dash in a straight line from facing. Remaining AP becomes bonus Drive.
+  - **Psycho Bushido** (6 Db, 2-round CD) — Iaijutsu dash in a straight line from facing, into an auto-Swing.
+    Leftover AP (`apLeft - distToTarget`) rides that Swing as `tempDrive`. ⚠️ **`tempDrive`, not `driveStack`** —
+    it is a battle-scoped attack bonus under `ATK_BONUS_CAP`, and `clearBattleBuffs` wipes it when the
+    battle ends. The doc used to say "on top of your Drive stack", which described an ability the code has
+    never had; Alex's call 2026-08-20 was that the CODE is right and the wording was wrong.
+    📌The strike is dispatched SYNCHRONOUSLY — see `resolvePsychoBushido`'s comment for why the 100ms
+    `setTimeout` that used to sit there silently discarded the entire bonus.
   - **Shadow Illusion** (6 Db, costs 1 Drive token) — The Ronin splits into a **body double**: a second,
     pixel-identical Ronin standee, born **stacked on his own hex** (single-click, no hex to target). The
     stacked spawn is the point — a decoy that popped into an empty adjacent tile would identify itself as

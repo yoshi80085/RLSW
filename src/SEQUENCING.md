@@ -199,7 +199,191 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. 🧭 START HERE — session handoff, 2026-08-19
+## 5. 🧭 START HERE — session handoff, 2026-08-20
+
+> ⚠️ **UNCOMMITTED.** `src/rlsw-simulator-v3_8_1.jsx`, `src/engine/policies/play.js`,
+> `src/engine/policies/evaluate.js`, `src/engine/botTraceCheck.mjs`,
+> `src/data/skillTree.js`, `src/CHARACTER_HANDOFF.md`, and nine probes in
+> `.scratch/`. The session before this one is §5-aug19 below.
+>
+> 🌀 **PSYCHO BUSHIDO NEVER LANDED ITS PAYLOAD, AND IT WAS BROKEN FOR HUMANS TOO**
+> — §5.A⁶. A `setTimeout` handed the strike a closure that predated the dash, so
+> the bonus Drive was computed, logged, written to state and then read at its
+> pre-dash value. The only deferred call to `initiateSwing` in the file.
+>
+> 🌀 **AND THE PAYOUT WAS INVERTED** — §5.B⁶. `apLeft - distToTarget` paid MOST
+> for a charge of zero hexes and NOTHING for a full-length one. Alex found it by
+> reading the table. One sign flip, and the ability now polices itself.
+>
+> 🧭 **THE BOTS WERE SPINNING ON THE SPOT** — §5.C⁶, `BOT_STRATEGY_HANDOFF.md`
+> §6.6.16. `face` was 41.7% of the Ronin's AP, 100% of multi-face runs were an
+> A→B→A→B oscillation, and **a facing term made it worse before the guard fixed
+> it**. Read that section before adding a term to anything.
+>
+> 🗡️ **THE RONIN CANNOT USE THREE OF HIS FOUR ABILITIES** — §5.D⁶. They are not
+> action kinds at all. He aims 45% of his skill savings at them anyway.
+
+### 5.A⁶ 🌀 PSYCHO BUSHIDO WAS THROWING ITS OWN PAYLOAD AWAY
+
+`resolvePsychoBushido` ended with `setTimeout(() => initiateSwing(targetId), 100)`
+— **the only deferred call to `initiateSwing` anywhere in the monolith.** Every
+other call site is synchronous inside a click handler, so `initiateSwing` read its
+rule inputs from render-scoped values and was correct BY ACCIDENT.
+
+| what the deferred strike read | value it saw |
+|---|---|
+| `actionTokenUsed` (:7085) | stale — token looked unspent |
+| `moveStepsLeft` (:7090) | stale — pool looked full |
+| `spirits.find(...)` (:7086) | stale — **the PRE-DASH hex** |
+| `noteStates[attacker.id]` (:7118) | stale — **`tempDrive` predated the buff** |
+
+The two guards passing on stale data is the only reason the swing fired at all.
+`nsA` being stale is why **the entire bonus never reached the blow**, and
+`clearBattleBuffs` then zeroed it unspent.
+
+⚠️ **THE FILE ALREADY KNEW.** The refs at :1313–1314 sit under *"live-state
+mirrors so the async bot loop never reads stale closures"*, and `defenderPosing`
+was fixed this exact way in §6.6.8 — twenty lines further down the same function.
+
+**Shipped:** `initiateSwing` reads `engineRef.current` (strictly fresher than the
+render values at every call site, not merely equivalent); Bushido pays
+`beatsSpent(apLeft - 1, false)` for the dash and lets the Swing spend its own AP
+and burn its own token; the strike is synchronous; and a `rockGodActive` guard is
+mirrored up front, because the dash commits the turn before the strike is tried.
+
+### 5.B⁶ 🌀 AND THE PAYOUT REWARDED NOT CHARGING
+
+`bonusDrive = max(0, apLeft - distToTarget)`, and the dash warps to
+`distToTarget - 1`:
+
+| rival at | hexes charged | bonus (speed 5) |
+|---|---|---|
+| 1 | **0** | **+4** |
+| 5 | **4** | **0** |
+
+**Maximum payout at zero charge.** Alex: *"the player is incentivized to be as
+close to the Rival as possible... which is literally the opposite effect of what
+I want."*
+
+**Shipped:** `bonusDrive = max(0, distToTarget - 1)` — the ground he covered.
+
+🎯 **AND THAT IS WHY IT NEEDS NO MINIMUM RANGE, which was the other half of the
+proposal.** The move already consumes ALL remaining AP, so the flipped sign
+polices itself: charging from next door spends five AP for +0 — strictly worse
+than the 1 AP Swing — while charging four spends the same five for +4. The cost
+scales with the reward with no rule to teach.
+
+⚠️ **AND A HARD GATE WOULD PROBABLY HAVE BEEN A DEAD ABILITY.**
+`.scratch/bushidowindow.mjs`, 8261 Ronin decision points, walking all six axes and
+stopping at the first body:
+
+| rival on an unblocked axis at | |
+|---|---|
+| exactly 1 hex | **86.2%** |
+| exactly 3 | 0.4% |
+| ≥3, with the AP for it | **0.4%** |
+
+⚠️ **A FLOOR, NOT A VERDICT** — these are bot boards, and §6.6.7 documents why the
+bots clump (*"declining to travel"*, 83% of turns in contact). A human spaces out
+far more. But the direction matters: the game's resting state is everyone
+touching, and `eleven` (legal 760×, chosen **0×**) and `tentacle` (legal 9×,
+chosen 0×) are what a too-narrow window looks like after it ships.
+
+📌 **THE `tempDrive` WORDING WAS DRIFT, AND THE CODE WON.** The skill said
+*"bonus Drive on top of your Drive stack"*; it writes `tempDrive`, a battle-scoped
+attack bonus under `ATK_BONUS_CAP` that `clearBattleBuffs` wipes. Alex's call:
+code is right. `skillTree.js`, `CHARACTER_HANDOFF.md` and the unlock log line now
+say so.
+
+### 5.C⁶ 🧭 THE SPIN — full account in `BOT_STRATEGY_HANDOFF.md` §6.6.16
+
+`face` was 41.7% of the Ronin's entire AP budget; 100% of multi-face runs were a
+perfect two-facing oscillation with `endTurn` legal on every step; 16% of all AP
+went into it. No term in `evaluate` read `.facing` — every facing priced
+identically to four decimals.
+
+⚠️ **THE FACING TERM ALONE DOUBLED IT** (32.7% → 55.7% of actions), because
+`legalActions` excludes the facing you are already in, so value on facing is fuel
+for the oscillation. The fix is the **dominance guard**: price standing still, and
+drop any `face` that does not beat it.
+
+| 60 matches, same seeds | decided | turns | `face` | dominated | `move` | attacks |
+|---|---|---|---|---|---|---|
+| guard OFF | 49/60 | 104.8 | 55.1% | 8933 | 6.6% | 439 |
+| guard ON, `facing: 0` | 59/60 | 43.3 | 10.2% | 0 | 40.6% | 449 |
+| **guard ON + term** | **59/60** | **29.1** | **6.5%** | **0** | 36.3% | **508** |
+
+⚠️ 60 matches. §6.6's bar is ~2000 and §5.C⁗'s lesson stands.
+
+### 5.D⁶ 🗡️ THE RONIN'S ARSENAL IS NOT IN THE ENGINE'S VOCABULARY
+
+`MODELLED_KINDS` has no entry for `psycho_bushido`, `shadow_illusion` or
+`cursed_shamisen` — not filtered like the Smash, **absent**. Only `wa_no_koe`
+works, because it is a passive. The Monster's four are all first-class.
+
+| Ronin skill-target aims, 24 matches | | |
+|---|---|---|
+| `psycho_bushido` | **24** | ❌ unusable |
+| `shadow_illusion` | **24** | ❌ unusable |
+| `cursed_shamisen` | 15 | ❌ unusable |
+| everything else | 76 | ✅ passive |
+
+🎯 **His top two picks are his two most expensive dead ends** — 63 of 139 aims
+(45%) point the Db bar at an ability he has no action for, and §3.2's whole
+premise is that Db is finite. Every Ronin bench number ever recorded was a Ronin
+with no arsenal.
+
+### 5.E⁶ 🎯 NEXT, IN DEPENDENCY ORDER
+
+1. 🌀 **PLAY-TEST PSYCHO BUSHIDO.** Client-only, no suite covers it. Dash with
+   spare AP: does the battle overlay's attack stat include the bonus the log
+   promises, and does the blow come from the hex he dashed TO?
+2. 🗡️ **WIRE THE RONIN'S THREE ACTIVES INTO `legalActions` + `transition`.**
+   §5.D⁶. The biggest open item on the roster and the one that makes him a real
+   opponent. ⚠️ Bushido is aimed by FACING, so it depends on §5.C⁶ having landed.
+3. 🧪 **THE OOZE STILL DOES NOTHING IN ANY BENCH MATCH** (carried, §5.E⁵ 1b).
+   `hexHazards` is not in `harnessHooks`. Unchanged.
+4. 🎸 **THE LEGACY BOT STILL DOES NOT PAY FOR ITS CHORDS** (carried, §5.E⁵ 1c).
+5. ✨ **WHY DID POSES FALL 1054 → 224 WHEN THE FACING TERM WENT IN?** New, §6.6.16.
+   Match length explains some of it and not all. Nobody has looked.
+6. 🔊 **GIVE `evaluate` A TERM FOR BEING LOUD** (carried, #15). Still legal
+   hundreds of times, chosen 0×.
+7. 🧮 **RE-PRICE `awardRiffFame` INTO THE BAND** (carried, §5.C‴).
+8. 📏 **THEN A REAL BENCH.** §6.6's bar is ~2000. Nothing here is above 135.
+9. 🪦 **THE SMASH IS STILL UNMODELLED.** Oldest debt, unchanged.
+
+### 5.F⁶ 📌 Housekeeping
+
+⚠️ **THE SECTION NAMING CHANGED.** The 2026-08-19 handoff is now `## 5-aug19.`
+rather than `## 5-prev.`, because `## 5-prev.` was already taken by 2026-08-18
+(evening) and the cascade had run out of words. Dated suffixes from here.
+This session uses `⁶` subsection markers.
+
+Nine probes in `.scratch/`, all cheap and worth keeping:
+- **`facestreak.mjs`** — face run lengths and provably-dominated AP. The
+  regression witness for the spin.
+- **`facespin.mjs`** — proves the oscillation is A→B→A→B and that `endTurn` was
+  legal throughout.
+- **`facewhy.mjs`** — the full priced menu on one spin. The clearest single
+  picture of why the bot preferred turning to stopping.
+- **`faceguardab.mjs`** — the three-arm A/B. ⚠️ **Arms run SEPARATELY** (`noguard`
+  / `guard` / `noterm`); the whole thing in one process exceeds the tool's 45s cap
+  on this machine, and a truncated run reports nothing at all.
+- **`bushidowindow.mjs`** — how often a charge lane is open, by distance.
+- **`roninkit.mjs`** — legal-vs-chosen for the Ronin, plus the arsenal-vs-
+  `MODELLED_KINDS` table.
+- **`ronininvest.mjs`** — what the Ronin saves up for, and how much of it is dead.
+- **`faceab.mjs`** — ⚠️ its `apBanked: 0` arm is RETIRED. That hypothesis was
+  wrong: zeroing the AP term made the spin worse, not better, because it made
+  turning free. Kept as the record of an exonerated suspect.
+- **`facewaste.mjs`** — superseded by `facestreak.mjs`. Bin it.
+
+📌 Git writes still fail from the agent's shell on this mount. Commit from a
+normal terminal. `_to_delete/` still needs removing by hand.
+
+---
+
+## 5-aug19. 🧭 session handoff, 2026-08-19
 
 > ⚠️ **UNCOMMITTED.** `src/engine/policies/play.js`, `src/engine/policies/botJournal.js`,
 > `src/engine/botTraceCheck.mjs`, `src/ui/BotReview.jsx`, `src/rlsw-simulator-v3_8_1.jsx`

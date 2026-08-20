@@ -564,7 +564,7 @@ function expectedScore(state, action, spiritId, view, ctx, samples) {
  *     away better moves than it keeps? ⚠️ It cannot change play. `expectedScore`
  *     works on forks, and a fork consumes nothing from the stream it came from.
  */
-function searcherPolicy({ ranked = true, limit = 5, samples = ATTACK_SAMPLES, trace = null, audit = false } = {}) {
+function searcherPolicy({ ranked = true, limit = 5, samples = ATTACK_SAMPLES, trace = null, audit = false, faceGuard = true } = {}) {
   return function choose(state, spiritId, view, ctx) {
     const ns = state?.noteStates?.[spiritId] ?? {};
 
@@ -588,6 +588,29 @@ function searcherPolicy({ ranked = true, limit = 5, samples = ATTACK_SAMPLES, tr
       ? beamActions(options, { limit, score: makeActionScorer(state, spiritId, view) })
       : beamActions(options, { limit });
 
+    // 🧭 STANDING STILL, PRICED — the option that was never on the ballot.
+    //
+    // Every action here is compared against the OTHER actions and never against
+    // NOT ACTING, and `endTurn` is a poor stand-in for it because it forfeits the
+    // whole remaining AP pool at once. So the bot faced a menu where the cheapest
+    // item cost 1 AP and the only way to stop cost 4, and it did the arithmetic
+    // correctly: it span. Measured 2026-08-20 — 100% of multi-face runs were a
+    // two-facing A→B→A→B oscillation, `endTurn` legal on every step of every one,
+    // ending exactly when the AP ran out. 37% of the bots' entire AP budget.
+    //
+    // ⚠️ AND A FACING TERM MAKES IT WORSE, WHICH IS THE COUNTER-INTUITIVE HALF.
+    // `legalActions` excludes the facing you are ALREADY IN ("already looking
+    // there"), so the moment turning is worth something there is always an
+    // attractive facing you are not in — and the one you just left is the best
+    // one again. Adding value to facing added fuel. It went 32.7% → 55.7% of all
+    // actions before this guard went in.
+    // 📌 `faceGuard: false` is the A/B arm and the regression witness, not a
+    // tuning knob — a formula change cannot go through `weightOverrides`, so the
+    // honest before/after needs the same script running both arms (the
+    // `pressureab.mjs` discipline). It is the only thing that can ever put the
+    // spin back, which is why it is a named option rather than a deleted branch.
+    const standScore = faceGuard ? evaluate(state, spiritId, view).score : -Infinity;
+
     let best = null, bestScore = -Infinity;
     const scored = trace ? [] : null;
     for (const action of beamed) {
@@ -597,7 +620,33 @@ function searcherPolicy({ ranked = true, limit = 5, samples = ATTACK_SAMPLES, tr
       // 2000-match bench with no sink would allocate several million of them for
       // a reading nobody takes.
       const d = expectedDetail(state, action, spiritId, view, ctx, n, !!trace);
-      if (scored) scored.push({ kind: action.kind, key: traceKey(action), score: d.score, terms: d.terms });
+      // 🧭 A GUARDED OPTION IS RECORDED, NOT HIDDEN. It was priced, and it may
+      // well have priced HIGHEST — that is the whole point of a dominance guard,
+      // and §5.B⁵ built this journal precisely to catch "scored well, never once
+      // picked". Dropping it from `considered` would make the guard invisible to
+      // the one instrument that could ever question it.
+      const skipped = (faceGuard && action.kind === 'face' && !(d.score > standScore))
+        ? 'faceGuard' : null;
+      if (scored) {
+        const row = { kind: action.kind, key: traceKey(action), score: d.score, terms: d.terms };
+        if (skipped) row.skipped = skipped;
+        scored.push(row);
+      }
+      // 🧭 THE DOMINANCE GUARD. A `face` changes nothing but the facing and costs
+      // a guaranteed 1 AP, so a turn that does not out-score standing there is
+      // strictly worse than not turning — and once the bot HAS turned to the best
+      // facing, turning back can never clear this bar, because it is paying a
+      // second AP to reach a facing it has already priced below the one it is in.
+      // That is what makes the oscillation unreachable rather than merely unlikely.
+      //
+      // ⚠️ SCOPED TO `face` DELIBERATELY, though the argument generalises to any
+      // pure-cost action. Every other kind moves something the evaluator can see —
+      // a body, a note, a blow — and "did not beat standing still" is a judgement
+      // about VALUE there, not the dominance proof it is here. Widening this is a
+      // balance change wearing a correctness change's clothes.
+      // 📌 Both arms of the bench get it, `unranked` included, so an A/B still
+      // isolates the ranking rather than confounding it with this.
+      if (skipped) continue;
       if (d.score > bestScore) { bestScore = d.score; best = action; }
     }
 
@@ -624,7 +673,8 @@ function searcherPolicy({ ranked = true, limit = 5, samples = ATTACK_SAMPLES, tr
       // the turn. Carrying ~20 floats on all twelve priced options would multiply
       // a journal entry by an order of magnitude to answer nothing extra.
       const ranking = scored.slice().sort((x, y) => y.score - x.score);
-      const considered = ranking.map((e, i) => (i < 2 ? e : { kind: e.kind, key: e.key, score: e.score }));
+      const considered = ranking.map((e, i) => (i < 2 ? e
+        : { kind: e.kind, key: e.key, score: e.score, ...(e.skipped ? { skipped: e.skipped } : {}) }));
       trace({
         t: 'action', turn: state?.turn?.count ?? 0, spiritId,
         legalKinds: [...new Set(options.map(a => a.kind))],

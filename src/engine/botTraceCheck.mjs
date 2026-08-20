@@ -78,8 +78,20 @@ for (const e of actions) {
   for (let i = 1; i < e.considered.length; i++) {
     ok(e.considered[i - 1].score >= e.considered[i].score, '📏 considered is sorted best-first');
   }
-  ok(e.considered.length === 0 || Math.abs(e.considered[0].score - e.score) < 1e-9,
-     '🎯 the reported score IS the best considered score');
+  // 🧭 THE CONTRACT IS ABOUT ELIGIBLE OPTIONS, NOT PRICED ONES, and the gap
+  // between the two is the face guard. A `face` that does not out-score standing
+  // still is priced, recorded, and then skipped — so it can sit at the TOP of
+  // `considered` while the reported score belongs to something below it. That is
+  // the guard working, and it must stay visible here rather than be filtered out
+  // upstream: an option that scores best and is never taken is exactly what this
+  // journal was built to surface.
+  const eligible = e.considered.filter(c => !c.skipped);
+  ok(eligible.length === 0 || Math.abs(eligible[0].score - e.score) < 1e-9,
+     '🎯 the reported score IS the best ELIGIBLE considered score');
+  ok(e.considered.every(c => !c.skipped || c.kind === 'face'),
+     '🧭 nothing but a `face` is ever skipped — the guard is scoped, not general');
+  ok(!e.considered.some(c => c.skipped && c.kind === e.chosen?.kind && c.key === e.chosen?.key),
+     '🧭 a skipped option is never the chosen one');
   ok(e.bestPruned === null, '📏 no audit, no bestPruned');
 }
 

@@ -117,7 +117,7 @@ export const SKILL_TREE = {
       spiritOnly: 'cosmic_ronin',
       skills: [
         { id:'psycho_bushido',  label:'Psycho Bushido',  icon:'🌀', dbCost:6,  gated:false,
-          desc:'Iaijutsu dash — charge in a straight line from your facing. Remaining AP converts to bonus Drive on top of your Drive stack. 2-round cooldown.' },
+          desc:'Iaijutsu dash — charge in a straight line from your facing and strike whoever you reach. Whatever AP you did not need for the run-up is added to THAT strike as bonus Drive. ⚠️ It powers the blow and expires with the battle — it does not join your Drive stack, and it shares the +5 ceiling with every other attack bonus. 2-round cooldown.' },
         { id:'shadow_illusion', label:'Shadow Illusion', icon:'👤', dbCost:6,  gated:false,
           desc:'Split into a second, identical Ronin, born stacked on your own hex (costs 1 Drive token) — nobody sees which one appeared. Rivals cannot tell the double from the real you: it blocks, it faces, and it walks the board on its own steps, refreshed each turn to match your movement range at no cost to your Action Points. 🎵 It can also PICK UP LOST CHORD NOTES for you — an illusion made of sound can carry a sound. It cannot take ⚡ charge zones or 🎪 event spaces, and hazards pass straight through it. Lasts 3 turns. Pops if it is struck, if you attack, or if you are attacked. Whoever swings at it burns their AP and Action Token for nothing.' },
         { id:'cursed_shamisen', label:'Cursed Shamisen', icon:'🎸', dbCost:8,  gated:false,

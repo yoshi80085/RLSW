@@ -681,6 +681,127 @@ as a bruiser trait if "hurt people" is scored at all. ✅ It does now, and
 
 ---
 
+### 6.6.16 🧭 2026-08-20 — THE BOT WAS SPINNING ON THE SPOT, AND "DO NOTHING" WAS NEVER ON THE BALLOT
+
+#### The finding
+
+Alex, reasoning about the searcher's workload: *"for a bot without a brain, they
+have to hold every imaginable path available... and then there's also the question
+about facing. To a human, not difficult. To a bot, possibly quite difficult."*
+
+The instinct was right and the cause was the inverse of the worry. The search
+space is TINY — `move` emits six neighbours, `face` emits five angles — and the
+bot holds no path at all: `legalActions` §308 emits movement **one hex at a
+time**, and `searcherPolicy`'s own comment says the action phase is *"greedy over
+ONE PLY"*. It plans its melody eleven steps deep and its footwork not one step.
+
+🎯 **NO TERM IN `evaluate` READ `.facing`. Zero occurrences in 62KB.** So every
+facing scored identically, to four decimal places:
+
+```
+face  ∠-2.61   9.6263      ← all five priced the SAME
+face  ∠1.57    9.6263
+...
+move  37       9.3635      ← every move scored WORSE than standing still
+endTurn        8.9063      ← ending forfeits 4 AP × 0.18
+```
+
+Turning is consequence-free and costs 1 AP; ending the turn forfeits the whole
+remaining pool. **So spinning was the cheapest way not to stop**, and the bot did
+the arithmetic correctly. Measured over 926 turns: `face` was **41.7% of the
+Ronin's entire AP budget**, run lengths clustered at the AP cap (`1×286 2×38 3×23
+4×41 5×69`), **100% of multi-face runs were a perfect A→B→A→B oscillation**, and
+`endTurn` was legal on every step of every one of them. 16% of all AP, spinning.
+
+#### ⚠️ AND A FACING TERM MADE IT WORSE — READ THIS BEFORE "FIXING" A TERM AGAIN
+
+`facingTrade` landed first, built on `isRearHit` and `botHexScore`'s own 9:11
+offence/defence split. It **doubled** the problem: `face` went 32.7% → 55.7% of
+all actions and dominated AP went 16% → 37%.
+
+> `legalActions` excludes the facing you are ALREADY IN — *"already looking
+> there"*. So "stay as I am" is not on the face menu. The moment turning is worth
+> something, there is always an attractive facing you are not in, and the one you
+> just left is the best one again. **Adding value to facing added fuel.**
+
+🎯 **THE SHAPE IS NEW AND IT IS WORTH ITS OWN ROW.** §6.6.14 was *the evaluator
+wanted a branch the search could not reach*. This is the mirror: **the search
+offered a branch the evaluator could not tell apart** — and an option nobody can
+distinguish is not a choice, it is a coin the bot flips with its own AP.
+
+#### ✅ What shipped — the guard, and it is a dominance proof rather than a weight
+
+Every action was compared against the other actions and never against NOT ACTING,
+and `endTurn` is a poor stand-in because it forfeits everything at once. So
+`searcherPolicy` now prices **standing still** once per decision
+(`evaluate(state, spiritId, view).score`) and drops any `face` that does not beat
+it. Once the bot has turned to the best facing, turning back cannot clear the bar
+— it would pay a second AP to reach a facing it already priced below the one it
+is in. The oscillation is **unreachable, not merely unlikely**.
+
+⚠️ **SCOPED TO `face` ON PURPOSE.** The argument generalises to any pure-cost
+action, but every other kind moves something the evaluator can see, and there
+"did not beat standing still" is a judgement about VALUE rather than the
+dominance proof it is here. Widening it is a balance change in a correctness
+change's clothes.
+
+📌 **AND IT IS A NAMED OPTION, `faceGuard`, defaulting on** — a formula change
+cannot ride `weightOverrides`, so the honest before/after needs one script running
+both arms (the `pressureab.mjs` discipline). It is the only thing that can put
+the spin back, which is why it is an option rather than a deleted branch.
+
+#### 📊 The A/B — 60 matches, same seeds, same script all three arms
+
+| | decided | mean turns | `face` | dominated AP | `move` | attacks |
+|---|---|---|---|---|---|---|
+| guard OFF | 49/60 | 104.8 | **55.1%** | 8933 | 6.6% | 439 |
+| guard ON, `facing: 0` | 59/60 | 43.3 | 10.2% | **0** | 40.6% | 449 |
+| **guard ON + term** | **59/60** | **29.1** | **6.5%** | **0** | 36.3% | **508** |
+
+🎯 **THE GUARD IS THE LOAD-BEARING HALF.** It is what takes the stall rate from
+18.3% to 1.7% and the dominated AP to zero. Without it the bots barely walk at
+all (`move` 6.6%) — they spend the AP they need to close the distance turning on
+the spot, never engage, and the match runs to the cap.
+
+📌 **THE TERM EARNS ITS PLACE ON TOP OF THE GUARD**, but modestly: turns 43.3 →
+29.1 and attacks +13%. ⚠️ **AND IT HAS AN UNEXPLAINED SIDE EFFECT** — poses fall
+1054 → 224 (8.2% → 3.6% of actions). Longer matches account for some of it and
+not all. Nobody has looked; it is written down rather than waved through.
+
+⚠️ **60 MATCHES. §6.6's bar is ~2000, and §5.C⁗'s lesson is that 300 seeds
+deleted a headline.** Read the direction, not the decimals.
+
+#### 📏 Suites
+
+engine ✅, legal 580, **eval 151 → 152**, transition 241, turnflow 61, determinism
+22, battleflow 50, melody 159, slime 127, eleven 38, score 122, **harness 1843 →
+1665**, skilltree 208, **trace 1700 → 1595**, riffparity 127598. `check:bundle`
+clean (6 pre-existing `different-path-case` warnings on the standee PNGs).
+
+- **eval +1** is real new coverage: `evalCheck` §2 loops every term asserting it
+  stays inside [-1, 1], so `facing` adds one and `clampSig` is now pinned.
+- **harness −178 and trace −105 are the match length moving**, the same mechanism
+  §6.6 records for the 2003 → 1974 drop: most assertions sit inside
+  `for (const a of turn.actions)`, and the whole point of this change was to
+  delete ~28% of all actions. Both drops are far smaller than 28% because many
+  assertions are per-turn or per-match, and trace gained two new ones.
+  ⚠️ **The general rule still cuts the other way** — a falling count is normally
+  a coverage regression. This one is explained by the action count; if it drops
+  again without the action count moving, that is a real loss.
+
+#### 🧭 AND THE JOURNAL CAUGHT THE FIRST ATTEMPT
+
+`botTraceCheck` failed on *"the reported score IS the best considered score"* the
+moment the guard went in — because a guarded `face` can price **highest** and
+still be skipped. The fix was NOT to hide it: a skipped option carries
+`skipped: 'faceGuard'` in `considered`, and the check now asserts the reported
+score is the best **eligible** one, that nothing but a `face` is ever skipped, and
+that a skipped option is never the chosen one. §5.B⁵ built this journal to catch
+*"scored well, never once picked"*; filtering the guard out upstream would have
+blinded it to the one thing it exists to see.
+
+---
+
 ### 6.6.15 🧪 2026-08-19 (evening) — THE TRAIL BITES NOBODY IN ANY MATCH WE HAVE EVER BENCHED
 
 Alex, after playing: *"The Smart bot got crushed. It used some Slime ability but

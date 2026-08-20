@@ -35,4 +35,4 @@ function run(view,label){
   console.log(`${''.padEnd(22)} face ${String(faces).padStart(5)} (${(100*faces/acts).toFixed(1)}%)   dominated ${String(wasted).padStart(5)}   move ${String(moves).padStart(5)} (${(100*moves/acts).toFixed(1)}%)   attacks ${atk}`);
 }
 run({}, '[shipped]');
-run({ weightOverrides: { apBanked: 0 } }, '[apBanked:0]');
+// second arm retired — apBanked was exonerated 2026-08-20, the spin was the ballot
