@@ -1,77 +1,23 @@
 # RLSW Simulator — Architecture
 
-> **For AI editors.** This file is the canonical map of the codebase. When you
-> make structural changes (new files, moved code, renamed exports, new UI
-> regions), **update this file in the same edit session** so the next AI picks
-> up where you left off.
-
-Line numbers are approximate — navigate by the **banner comments**
-(`// ─── NAME ───`) inside the main file, not by line number.
-
-
----
-
-> ## ⚠️ THIS MAP HAS DRIFTED. MEASURED 2026-08-21, NOT REPAIRED.
+> 🗺️ **THIS IS THE MAP OF THE CODEBASE, AND IT IS CHECKED.** Rewritten from
+> measurement on 2026-08-21, replacing a version that had drifted so far it called
+> `engine/` a "~300 line Phase 1 scaffold" while `engine/` had become 21,595 lines
+> and the whole game.
 >
-> CLAUDE.md's rule is that a doc which has drifted from the code is worse than no
-> doc, and that the honest move is to **say so plainly rather than edit around it.**
-> So: this file is a map of the codebase as it stood before the engine existed.
-> The numbers below were counted, not estimated.
+> 🎯 **`npm run test:arch` IS WHY YOU CAN TRUST IT.** `engine/architectureCheck.mjs`
+> asserts three things against the real tree: every source module is named here,
+> every file path named here exists, and every export named here is really
+> exported. **A file added without a row fails the suite.** That is the entire
+> point — the last version rotted for months because nothing could tell.
 >
-> - 🎮 **It calls `engine/` a "~300 line Phase 1 scaffold."** `engine/` is
->   **11,694 lines across 29 modules** and is the authoritative game core — every
->   rule, every bot decision, every payout. It is where essentially all work since
->   June has happened.
-> - 🕳️ **`engine/policies/` and `engine/systems/` are absent entirely.** Not
->   stale — *missing*. `evaluate.js`, `bot.js`, `legalActions.js`, `play.js`,
->   `transition.js`, `battleFlow.js`, `turnFlow.js`, `sonicRig.js`,
->   `economy.js`, `melodyCommit.js`, `limelight.js`, `slime.js`,
->   `attackParams.js` — none of them appear in this file.
-> - 📊 **50 of 130 source modules are unlisted**, including all of `ui/Pickles.jsx`,
->   `ui/OpeningMovie.jsx`, `ui/LegendLessons.jsx`, `ui/DiscordCoach.jsx`,
->   `board/ampDecks.jsx`, `data/skillTree.js` and `music/context.js`.
-> - 🔢 **`data/gameConstants.js` is listed as "39 named constants."** It exports
->   **96**.
+> ⚠️ **SO WHEN YOU ADD A MODULE, ADD ITS ROW IN THE SAME PASS.** The check will
+> stop you, but only if you run `npm run test:all` before calling the work done,
+> which CLAUDE.md requires anyway.
 >
-> 🎯 **WHAT IS STILL TRUE, AND WHY THE FILE SURVIVES.** The `board/`, `music/`,
-> `audio/`, `riff/` and `vision/` tables are broadly accurate, and the
-> **"where do I change X?" index near the bottom is the single most useful thing
-> in the repo for a cold start** — that is the part worth rebuilding around.
->
-> 📌 **The rows that named files which no longer exist were removed on 2026-08-21**
-> (`ampRigs.js`, `useNoteSystem.js`, `RiffBanner.jsx`, `riffLibrary.js`), so
-> the file no longer sends anyone to a path that isn't there. Nothing else was
-> touched: a partial repair that *looked* current would be more dangerous than a
-> banner saying it isn't. **Rewriting this properly is its own session** — it is
-> logged as the top item in `SEQUENCING.md` §5.E⁸.
-
----
-
-## Design lenses — the STICs test + Earned
-
-Run every mechanics proposal through this before coding it. Full rationale
-lives in `DESIGN_AUDIT.md` / `DESIGN_AUDIT_v2.md`; this is the compact
-checklist for future sessions (AI or human).
-
-**STICs** — four independent lenses. A change should pass all four, or the
-trade-off should be a deliberate, stated call rather than an accident:
-
-| Lens | Question |
-|---|---|
-| **S**implicity | Can a player hold this rule in their head? Does it add a new resource/exception, or fold into something that already exists? |
-| **T**hematic | Does this make sense for a battle-of-the-bands rock game? Would a rock-myth reference explain *why* the rule works this way? |
-| **I**ntuitive | Will a new player guess this correctly, or does it need a tooltip to not feel broken? |
-| **C**oherent | Does it agree with the rest of the ruleset — no contradicting a system elsewhere, no "taught vs. coded" mismatch (`DESIGN_AUDIT_v2.md` §2)? |
-
-**Earned** — a fifth, usually-deciding check, orthogonal to STIC: does this
-number trace back to a choice the player just made (melody built, chord
-voiced, position held), or is it handed out by a static stat, a character
-sheet, or a die roll? The game's thesis is *"the melody you build is your
-combat"* (`DESIGN_AUDIT.md` §1) — a payout with no traceable player action
-undercuts that thesis even if it cleanly passes STIC.
-
-When evaluating a proposal, say explicitly which lens (if any) it's weak on
-rather than a flat yes/no.
+> 📌 Line counts below are measured and will drift by a few lines constantly —
+> they are for *proportion*, not precision, and the check does not assert them.
+> Navigate by the **banner comments** (`// ─── NAME ───`), never by line number.
 
 ---
 
@@ -79,351 +25,478 @@ rather than a flat yes/no.
 
 ```
 index.html
-  └─ main.jsx              React root, StrictMode, imports index.css
-       └─ App.jsx           thin wrapper, renders <RLSWSimulator/>
+  └─ main.jsx                  React root, StrictMode, imports index.css
+       └─ App.jsx              thin wrapper, renders <RLSWSimulator/>
             └─ rlsw-simulator-v3_8_1.jsx
-                 ├─ RLSWSimulator()   app shell: Lobby → Tutorial → Game
-                 └─ Game()            the gameplay component (~10,000 lines)
+                 ├─ RLSWSimulator()   app shell: Title → Lobby → Tutorial → Game
+                 └─ Game()            the gameplay component (~15,700 lines)
 ```
 
----
-
-## Directory map
-
-| Path | Contents | Lines |
-|------|----------|-------|
-| `rlsw-simulator-v3_8_1.jsx` | Main file: module-level data/constants, `RLSWSimulator` shell, and the `Game` component with all gameplay logic. | ~10,650 |
-| `App.jsx`, `main.jsx` | Vite/React entry wiring. | 12 |
-| `audio/` | Web-Audio SFX and BGM track management. | ~240 |
-| `board/` | Board geometry, hex map, amp-rig graph, board helpers. | ~300 |
-| `data/` | Pure game data — spirits, corners, events, trivia, tuning constants. | ~2,280 |
-| `engine/` | 🎮 **The authoritative game core — not a scaffold.** Plain-JSON `GameState`, `applyAction` reducer, seeded rng, snapshot/replay, plus `systems/` (17 rule modules) and `policies/` (the bot, the evaluator, legal actions, the headless harness). ⚠️ Almost none of it is mapped below; read the modules. See `MULTIPLAYER_HANDOFF.md` and `BOT_STRATEGY_HANDOFF.md`. | ~11,700 |
-| `hooks/` | Custom React hooks that own slices of `Game` state. | ~6 files |
-| `music/` | Music theory, riff library, cadence scoring, chord evaluation. | ~730 |
-| `riff/` | Riff generation engine (contours, rhythms, attacker/defender riffs), melody-to-riff converter (`melodyRiff.js` — Phase R1), falling-notes timing/difficulty (`fallingNotes.js`), + full-neck guitar voicing (`guitarMap.js` — Rocksmith pass). | ~540 |
-| `tutorial/` | Illustrated in-game tutorial. | ~1,030 |
-| `ui/` | Presentational React components extracted from `Game`'s render. | ~18 files |
-| `standees/` | Character standee PNGs (normal + `_mirror`). | — |
-| `bgm/`, `sfx/` | Background-music `.mp3` tracks and sound effects. | — |
-| `index.css` | Global CSS (Vite starter, overridden by `GameStyles`). | 112 |
+⚠️ **THE ENGINE IS NOT IN THAT CHAIN, AND THAT IS THE SINGLE MOST IMPORTANT FACT
+ABOUT THIS CODEBASE.** `Game` is a *client* of `engine/`. Rules live in the engine
+and are reached by `dispatch(action)`; `Game` reads the resulting state and draws
+it. A rule implemented inside `Game` is a rule the headless harness, the bot bench
+and the determinism replay cannot see — which is how the marquee quiz sat
+client-only until 2026-08-20 and did nothing at all in every bench match ever run.
 
 ---
 
-## The main file — layer by layer
+## Directory map — measured 2026-08-21
 
-`rlsw-simulator-v3_8_1.jsx` (~10,650 lines) is organized in three layers.
+| Path | Lines | Contents |
+|------|------:|----------|
+| `engine/` | 21,595 | 🎮 **The authoritative game core.** The reducer, seeded rng, snapshot/replay, 17 rule modules in `systems/`, the bot and evaluator in `policies/`, and the test suites. |
+| `rlsw-simulator-v3_8_1.jsx` | 16,455 | The monolith: module-level data, the `RLSWSimulator` shell, and `Game` — all rendering, all cinematics, and the shrinking set of rules not yet extracted. |
+| `ui/` | 13,508 | Presentational React components lifted out of `Game`'s render. |
+| `riff/` | 4,338 | Riff generation, the falling-note highway, guitar-neck voicing. |
+| `vision/` | 4,039 | 📷 Camera fretboard detection — neck geometry, homography, fusion with audio. |
+| `data/` | 3,702 | Pure game data: spirits, corners, events, the skill tree, trivia, tuning constants. |
+| `music/` | 3,516 | Music theory: scales, chords, the chord-context ladder, cadence scoring, key detection. |
+| `audio/` | 3,344 | Web-Audio SFX, BGM, the amp voice, mic pitch, chroma analysis. |
+| `tutorial/` | 1,160 | The illustrated in-game tutorial. |
+| `board/` | 997 | Hex geometry, the 111-hex map, board helpers, stage-effect and boss geometry. |
+| `net/` | 522 | 🌐 The multiplayer client and the Ear Spy riff wire. |
+| `hooks/` | 168 | Seven thin React state slices. ⚠️ Nearly empty by design — see `hooks/` below. |
+| `App.jsx`, `main.jsx` | 20 | Vite/React entry wiring. |
+| `standees/`, `bgm/`, `sfx/` | — | Character PNGs (normal + `_mirror`), music, sound effects. |
 
-### 1. Imports + module-level code (top → ~line 583)
-
-- **Asset imports** (board, crowd, battle-meter PNGs) — lines 1–8.
-- **Module imports** from all extracted directories — lines 9–48.
-- **React / library imports** — lines 49–50.
-- **Module-level data still in main** (not yet extracted):
-  - `SPOTLIGHT_POOL`, `EVENT_HEX_POOL` (depend on runtime `ALL_HEXES`)
-  - `BTTP_STAGES`, `SIGNATURE_TESTS`
-  - `DISCORD_UPGRADE_TIERS`
-  - `SKILL_TREE` / `SKILL_BY_ID`
-  - `TONE_VOICES`, `TONE_VOICE_ORDER`, `TONE_KNOB_DEFAULTS`
-  - `fanPawnShape()` (returns JSX — can't trivially extract)
-
-### 2. `RLSWSimulator` (~line 584)
-
-App shell / router. Holds top-level UI state (player count, assignments,
-starting lives, tutorial flag) and switches between `Lobby`, `Tutorial`, `Game`.
-
-### 3. `Game` (~line 602 → end)
-
-The big component. Its internal sections (by banner):
-
-| Banner | ~Line | Responsibility |
-|--------|-------|----------------|
-| `BATTLE STATE` | 602 | Core combat state + `useRef` mirrors for async callbacks. |
-| `TRANSIENT BOARD FX` | 789 | (Delegated to `hooks/useTransientFx.js`.) |
-| `NOTE SYSTEM STATE` | 801 | Per-spirit sheet shape — now built by the ENGINE (`engine/systems/economy.js: makeInitialNoteState`, seeded; the client duplicate was deleted in Phase 5c). `setNoteStates` is a DIFFING shim → per-spirit `NOTE_SHEET_PATCHED` actions (full-map `NOTE_STATES_SYNCED` is fallback-only). |
-| `BGM` | 894 | (Delegated to `hooks/useBgmState.js`.) |
-| `POINTS FLASH STATE` | 912 | Transient scoring flash. |
-| `BOARD DEPLOYABLES` | 919 | (Delegated to `hooks/useBoardState.js`.) |
-| `FAN ECONOMY` | 929 | (Delegated to `hooks/useFanEconomy.js`.) |
-| `EVENT SPACES STATE` | 942 | Event hex tracking + `STAGE EFFECTS` views (Phase 6b: active effects live in `engineState.stageFx`; only the banner remains in `hooks/useStageEffects.js` — the hazard ref mirror is gone, async checks read `engineRef`). |
-| `BOARD MINI-GOALS` | 963 | Lost Chords (Lighters were cut — see `ECONOMY_HANDOFF.md`). |
-| `RIFF STATE` | 982 | (Delegated to `hooks/useRiffState.js`.) |
-| `BGM SETUP` | 993 | Background-music playback effects. |
-| `BEGINNER TIP DEFS` | 1036 | Tutorial tip popup definitions. |
-| `DERIVED STATE` | 1112 | Computed values (acting spirit, current scale, amp rigs). |
-| `NOTE SOUND` | 1253 | Web-Audio synth for note playback + tone knobs. |
-| `RIFF PLAYBACK` | 1537 | `playRiffSequence` — the riff-off playback engine. |
-| `MELODY LINE FUNCTIONS` | 1569 | `clickNoteStock`, `confirmNoteTrack`, `clearNoteTrack`, chord revoice (`addChordNote`/`removeChordNote`). |
-| `SKILL TREE` | 2470 | Target selection & skill award. |
-| `CREW & GEAR` | 2740 | Deployable placement handlers (junkyard_dog / fandom_army CUT with Stance system). |
-| `MODULATION CARDS` | 2898 | 🧍 CUT to one survivor: the starter Transpose one-shot (Chromatic Shift + Overdrive gone). |
-| `SWING EFFECTS` | 3029 | 🧍 CUT — the CQC %-proc chain is gone; melee identity lives in per-Spirit innates and Signature arsenals (see CHARACTER_HANDOFF.md). |
-| `AMP UNPLUG` | 3217 | Amp-unplug system. |
-| `BOARD CARD SYSTEM` | 3261 | Board card pickup/replace. |
-| `EVENT SPACES SYSTEM` | 3315 | Event space resolution. |
-| `BACK TO THE PAST` | 3713 | Play-challenge mini-engine. |
-| `BATTLE SYSTEM` | 4040 | Combat entry point. |
-| `STAGE EFFECTS SYSTEM` | ~4330 | 🎇 Board Stage Effects — Phase 6b: the RULES (activation, per-turn/per-round ticks) are engine reducers; these functions dispatch and render the reports (logs/FX/damage timing). `checkStageFxHex` hazard-entry damage reads `engineRef.current.stageFx`; `isHiddenBySmoke` reads the view. |
-| `ROCK GOD SYSTEM` | ~4530 | 🤘 Endgame boss — Phase 6c: the god/outcome are ENGINE state; `summonRockGod` computes the god pick (amps are client) and dispatches `GOD_SUMMONED`; `attackRockGod` dispatches `GOD_DAMAGED` (engine owns winded ×2 + floor); `rockGodAct` dispatches `GOD_ACTED` and renders the report; the 45s clock stays client (expiry dispatches `GOD_TIMER_EXPIRED`); `godDefeated`/`godTriumphs` lock the engine outcome (+ `WINNER_DECLARED` shadow on the crowning). PvP is guarded off in `initiateSwing`/`initiateSonicAttack`/`resolveSmash`; `knockOut.checkWinner` is boss-aware (total wipe → God wins). Bots converge on the God via branches in `botPlanMove` + the acting step (reading `engineRef.current.rockGod.god`). |
-| `FAME POINTS` | 4051 | Fame award pipeline (`grantFame` also fires Stage Effect thresholds). 👑 Phase R5: `headlinerRider(spiritId)` returns +1 when the spirit holds the Headliner title; applied in `awardSonicFame`/`awardThrashFame`/`awardRiffFame` (NOT `grantFame`). Phase R6: `awardRiffFame(winnerId, loserId, battleS, tier)` — dedicated riff-off FP engine replacing `awardSonicFame` in `closeRiffOff`: base 2+ceil(margin/2), style pay +1/3 perfects, acoustic ×0.6/stadium ×1/R2 +2, loser consolation (quality ≥80% → 1 FP). |
-| `FAN ECONOMY HELPERS` | 4117 | Per-turn fan logic. |
-| `BATTLE KNOCKBACK` | 4294 | Knockback + Swing/Sonic attack. |
-| `RIFF-OFF ENGINE` | ~6000 | Falling-notes (Guitar Hero) duel: `startRiffOff(attacker, defender, tier)`, `riffBeginTurn` (count-in), `riffStartRun` (schedules every note's hit-time + miss timers + Riff Slayer/E-Rush hooks), `riffPressKey` (judges presses by |press−hitTime|; fed by keyboard AND strike-zone taps), `riffResolve`, beam clash, `closeRiffOff`. 🎸 Phase R4: `initiateAcousticDuel(targetId)` — adjacency-only riff-off (no amp/beam), 2-turn pair cooldown in `acousticDuelCds`, `riffResolve` skips beam clash for acoustic tier (straight to `riff_result`, no Round 2). Bot policy falls back to acoustic when beam/cone unavailable. Timing/difficulty presets live in `riff/fallingNotes.js`; the highway UI is `ui/RiffHighway.jsx`, fed by `battleState.riffRun`. |
-| `END TURN` | 5908 | Turn resolution, end-of-turn ticks. |
-| `BOT …` | 6082 | AI turn step-machine + bot riff synthesis. |
-| `KNOCK OUT` | 6809 | KO + respawn. |
-| `HEX CLICK` | 6894 | Board-click handler. |
-| `HEX VISUAL HELPERS` | 6978 | Hex color/glow/label computation. |
-| `RUMBLE & DAMAGE FLOAT` | 7125 | Screen-shake + floating numbers. |
-| `CAMERA ZOOM` | 7194 | Auto camera. |
-| `MANUAL ZOOM/PAN` | 7251 | Player-driven zoom/pan. |
-| `RENDER` | 7362 | The JSX tree (see Render Layout below). |
+📌 **156 source modules.** `ui/` being the second-largest directory is the shape of
+a healthy extraction: rendering left the monolith first, and rules are still
+leaving.
 
 ---
 
-## Render layout (inside `Game`, ~line 7362 → end)
+## `engine/` — the authoritative game core
 
-The render is a **three-column grid**: left HUD · center board · right header.
+### The spine
 
-### Board overlays (positioned inside the board container)
+| File | Lines | Key exports | What it owns |
+|------|------:|-------------|--------------|
+| `rng.js` | 79 | `makeRng`, `restoreRng`, `hashSeed` | Seeded mulberry32, serializable as `{seed, cursor}`, forkable per subsystem. ⚠️ **Game rules must draw from this, never `Math.random()`** — a single stray call breaks replay. |
+| `state.js` | 208 | `makeInitialState` | Lobby config → plain-JSON `GameState`. |
+| `actions.js` | 659 | `GAME_INIT`…`HEADLINER_CHANGED` + a creator per type | The serializable action vocabulary — ~55 types, each with a creator. Every rule change enters the game through one of these. |
+| `reduce.js` | 188 | `applyAction` | `(state, action, rng) → state`. **The one door.** Persists the rng cursor into the returned state so a replay lands on the same numbers. |
+| `serialize.js` | 92 | `snapshot`, `restore`, `replay`, `assertJsonSafe` | Save/load and action-log replay — the determinism proof. `assertJsonSafe` is what stops a `Set` or a ref sneaking into state. |
 
-| Overlay | Position | Purpose |
-|---------|----------|---------|
-| **Commit Track** | `top:4, centered` | Horizontal 8-slot melody line (left→right). |
-| **Chord Stack** | `left:4, top:50` | Vertical 5-slot chord display (top→bottom). Shows Drive/Sustain, revoice toggle. Notes fly in from Note Stock. |
-| **Voicing Panel** | `left:4, bottom:8/28` | Toggle button + tone faders (GAIN/TONE/ECHO/VERB + voice cycle). |
-| **Note Scale Tip** | fixed, on hover | Tooltip showing a note's major/minor scales. |
-| **Fly Note chips** | fixed | Animated hex chips flying from Note Stock to Commit Track or Chord Stack. |
+### `engine/systems/` — the rules, one concern per file
 
-### Left HUD column
+| File | Lines | Key exports | What it owns |
+|------|------:|-------------|--------------|
+| `turn.js` | 194 | `applyTurnStarted`, `applyTurnEnded`, `applyTurnSkipped`, `applyMoveBudgetSet`, `applyBeatsSpent`, `applySpiritEliminated`, `applySpiritsSynced`, `applySpiritPatched` | The turn queue, beats/AP, and the **round anchor** (`rollRound`, module-local) — see "The round clock". |
+| `turnFlow.js` | 209 | `startTurnNotes`, `refillRateFor`, `refillDrawCount` | What happens at the *start* of your turn: note-stock refill, cooldown ticks, rig atrophy. |
+| `movement.js` | 127 | `applyMoveStep`, `applySpiritFaced`, `applySpiritWarped` | Stepping, facing, and the dazed 33% redirect (on engine rng). |
+| `combat.js` | 439 | `marginToDamage`, `knockbackSpaces`, `fameFromMargin`, `underdogBonus`, `decideWinner`, `resolveKnockdown`, `applyAttackRolled`, `applyDamageApplied`, `smashOutcome`, `chordFrayAmount`, `isRearHit`, `sustainChip`, `finisherStackWipe` | The fight **math** — damage/knockback/Fame tables, the underdog ramp, rear-arc bonuses, and the dice rolls themselves. Pure functions plus the roll actions. |
+| `battleFlow.js` | 843 | `runBattleFlow`, `battleConsequences`, `poseConsequences`, `riffOffConsequences`, `chordFray`, `knockback`, `grantFame`, `awardSonicFame`, `awardThrashFame`, `awardRiffFame`, `vibeDamage`, `clearBattleBuffs` | The fight's **consequences**, as ordered generators: who gains Fame, who loses stack, who slides. ⚠️ Generators, not plain functions — the client steps them to time its cinematics. |
+| `attackParams.js` | 270 | `attackParams`, `rigFor`, `spiritChord`, `SWING_DRIVE_SPEND`, `SONIC_DRIVE_SPEND`, `CHARGE_DIE_CEILING` | One place that answers "what does this attack cost and roll?", so client and bot cannot disagree. |
+| `sonicRig.js` | 194 | `sonicRig`, `rigTiers`, `rigStack`, `rigRadius`, `rigSpendable`, `rigTrained`, `rigAtrophyTick`, `rigPoolLabel`, `rigTierSpend` | 🎛️ The amp: dice pool, die size, and the **breathing radius** (`RIG_RADIUS_FLOOR` + your Drive stack on your turn, Sustain on theirs). Won at the marquee, lost to atrophy. |
+| `economy.js` | 625 | `makeInitialNoteState`, `performanceScore`, `fansFromDeed`, `applyFameChanged`, `applyFansChanged`, `applyFansTicked`, `applyNoteSheetPatched`, `applyDebuffsTicked`, `applyBurnTicked`, `usedHas`, `usedList`, `usedAdd`, `FAN_FIELDS` | 💰 Fame, fans, and the per-spirit note sheet. `FAN_FIELDS` whitelists what a fan patch may touch so it can't quietly write Fame. |
+| `melodyCommit.js` | 693 | `commitMelodyEconomy`, `checkWaNoKoe`, `positionFanGain`, `deedFanGain`, `performanceFanGain`, `SPEED_CAP`, `COLOR_PAYOUT_CAP`, `MIC_VOICE_ROLL_DIE`, `CLIENT_OWNED` | 🎵 What a committed melody pays. `CLIENT_OWNED` names the pieces still living in the monolith — read it before assuming a payout is here. |
+| `limelight.js` | 95 | `makeLimelightState`, `posePayout`, `isPosing`, `poseRounds`, `applyPoseSet`, `applyPoseRoundBanked` | ✨ The Limelight hex and the Strike-a-Pose payout ramp. |
+| `skills.js` | 88 | `skillEligibility`, `THEORY_DISCORD_GRANTS` | 🎓 The one gate deciding whether a skill can be bought. Shared by the bot and the client so they cannot disagree. |
+| `board.js` | 411 | `applyBoardSynced`, `applyEventHexTriggered`, `applyEventHexSpawned`, `applyChargeZoneUsed`, `applyChargeZonesTicked`, `applyTokenPickedUp`, `applyTokensDrifted`, `applyTokensScattered`, `applySpotlightMoved`, `applySpotlightHealed`, `applyFlamingHexesSet`, `bankLostChord`, `tokenAt`, `liveChargeZoneAt` | 🗺️ Everything sitting *on* the board: Lost Chords, Charge Zones, marquee event hexes, the spotlight, Disco Inferno. |
+| `riffOff.js` | 442 | `riffStats`, `applyRiffOffStarted`, `applyRiffResolved`, `applyRiffRound2Started`, `applyRiffClosed`, `simulateRiffPerformance`, `riffSkill`, `riffIsClose`, `RIFF_GRADE_WEIGHT`, `RIFF_MARGIN_SCALE` | 🎸 The duel: riff generation on engine rng, and the verdict math. `simulateRiffPerformance` is how a bot "plays" one. |
+| `slime.js` | 314 | `applySlimeDropped`, `applySlimeDecayed`, `applySlimeCalled`, `applySpiritSlid`, `trailOf`, `slimeAt`, `slimeBites`, `slideTarget`, `canCallSlime`, `SLIME_LIFETIME` | 🧪 The Metalness Monster's trail — where it is, what it costs to walk through, and where it slides you. |
+| `eleven.js` | 112 | `atEleven`, `ampBlown`, `canCallEleven`, `applyElevenCalled`, `elevenDrive` | 🔊 Going to eleven, and the blown amp that follows. |
+| `stageFx.js` | 221 | `applyStageFxDrawn`, `applyStageFxActivated`, `applyStageFxTurnTicked`, `applyStageFxRoundTicked` | 🎇 Smoke, lasers, pyro, animatronics — deck seeded once at init, each threshold firing exactly once. |
+| `rockGod.js` | 272 | `applyGodSummoned`, `applyGodAttackPicked`, `applyGodDamaged`, `applyGodActed`, `applyGodDefeated`, `applyGodTriumphed`, `applyGodTimerExpired` | 🤘 The endgame boss as engine state. `GOD_ACTED` is the whole end-of-turn answer. ⚠️ His clock is wall-clock and stays client-side — the deliberate exception. |
 
-The Note Stock grid, scale-peek/chord-preview panel, commit/clear buttons,
-transpose/overdrive/banked-note banners, and the Step 2 chord editing UI
-(shown during the `chord` turn step with inline note stock + Drive/Sustain
-preview arrows).
+### `engine/policies/` — the bot, and the headless game
+
+⚠️ **NONE OF THIS IS THE GAME'S RULES.** Policies *choose* actions; `systems/`
+decides what those actions do. A rule that lives in a policy is a rule only the
+bot obeys.
+
+| File | Lines | Key exports | What it owns |
+|------|------:|-------------|--------------|
+| `legalActions.js` | 613 | `legalActions`, `actionKinds`, `beamActions`, `swingCone`, `sonicBeam`, `facingOptions`, `tentacleOptions`, `SWING_AP_COST`, `SONIC_AP_COST`, `MOVE_AP_COST`, `SONIC_BEAM_REACH` | 🚦 What a Spirit may legally do right now. ⚠️ **Read the CLIENT when checking whether a rule is real** — `legalActionsCheck` §15 was green for months against a mechanic the game does not have. |
+| `evaluate.js` | 1,309 | `evaluate`, `evalScore`, `EVAL_WEIGHTS`, `DEFAULT_WEIGHTS`, `weightsFor`, `STARTING_SKILLS`, `posePayout`, `selfPoseValue`, `beamOpportunity`, `facingTrade`, `boomBoxLit` | 🧠 How good is this position? One weighted sum of named terms. ⚠️ Every weight is a **measured** number or a flagged guess — `BOT_STRATEGY_HANDOFF.md` records which is which. |
+| `actionScore.js` | 410 | `makeActionScorer`, `beamFor`, `resolvePersona`, `NEUTRAL_PERSONA`, `STYLE_RANK_STRIDE`, `TENTACLE_RANK_STRIDE`, `STYLE_GAIN_FLOOR` | 🎯 Scores a single candidate action, persona-flavoured, so the searcher can rank without simulating everything. |
+| `bot.js` | 698 | `botPlanMove`, `botPickTarget`, `botPlanNoteStep`, `botPlanStackCommit`, `botPlanRevoice`, `botPickSkillTarget`, `botRiffResults`, `botAssignPersona`, `BOT_PERSONALITIES`, `BOT_SKILL_PRIORITY_BASE`, `BOT_CLIENT_KINDS`, `BOT_CLIENT_GAPS` | 🤖 The bot's actual choices, per personality. `BOT_CLIENT_GAPS` names what the bot can do in the client but not headless — read it before trusting a bench number. |
+| `play.js` | 988 | `runMatch`, `runBench`, `playTurn`, `matchConfig`, `POLICIES`, `HARNESS_GAPS`, `harnessHooks`, `startSpiritTurn`, `MAX_TURNS`, `MAX_ACTIONS_PER_TURN` | 🎲 The headless harness — plays whole matches with no React at all. ⚠️ **`HARNESS_GAPS` is the honesty ledger**: what the harness knowingly does not model. A mechanic missing from it is not "skipped", it is *silently absent*, which is far worse. |
+| `transition.js` | 747 | `applyBotAction`, `applyBotLine`, `MODELLED_KINDS`, `UNMODELLED_KINDS`, `PARTIAL_KINDS` | 🔁 Turns a chosen action into dispatched engine actions, and declares which kinds are fully modelled. `collectPickups` (module-local) resolves what you step on. |
+| `botJournal.js` | 183 | `journalSummary`, `traceKey`, `JOURNAL_CLOSE_GAP` | 📓 Why the bot did that — a readable per-turn account, used by `test:trace` and `ui/BotReview.jsx`. |
+
+### `engine/` — the suites
+
+⚠️ **A suite that no npm script runs is not a suite** (`b0check` was quoted as
+green for months while nothing ran it). Everything below has a script, and
+`npm run test:all` runs the lot.
+
+| File | Script | Covers |
+|------|--------|--------|
+| `selftest.mjs` | `test:engine` | The broadest sweep — state shape, systems, the rig, the skill tree fixtures. |
+| `legalActionsCheck.mjs` | `test:legal` | What is and isn't a legal action. |
+| `evalCheck.mjs` | `test:eval` | Every weight in the evaluator's table, and the terms that read them. |
+| `transitionCheck.mjs` | `test:transition` | Bot action → engine action, and the modelled/unmodelled declarations. |
+| `turnFlowCheck.mjs` | `test:turnflow` | Start-of-turn refills, cooldowns, atrophy. |
+| `determinismCheck.mjs` | `test:determinism` | Same seed, same match — the replay proof. |
+| `battleFlowCheck.mjs` | `test:battleflow` | The ordered consequence generators. |
+| `melodyCommitCheck.mjs` | `test:melody` | What a commit pays. |
+| `slimeCheck.mjs` | `test:slime` | The trail, the slide, the bite. |
+| `elevenCheck.mjs` | `test:eleven` | Eleven and the blown amp. |
+| `actionScoreCheck.mjs` | `test:score` | Per-action scoring and persona strides. |
+| `harnessCheck.mjs` | `test:harness` | That the headless harness mounts and every knob is live — **and that each gap is declared**. |
+| `skillTreeCheck.mjs` | `test:skilltree` | Every skill's price, route and prereq, and that no prereq names a skill that does not exist. |
+| `b0check.mjs` | `test:b0` | The chord-context ladder and the Theory economy (see `THEORY_REWRITE_LOG.md`). |
+| `botTraceCheck.mjs` | `test:trace` | A full match walked turn by turn, with the bot's journal. |
+| `architectureCheck.mjs` | `test:arch` | **This file** — that it names every module, points at no dead path, and lists no phantom export. |
+| `bench.mjs` | `bench:bot` | Not a test. Prints evidence for the §6.6 bot bench. |
+| `testAssetStub.mjs` | — | Lets Node import the monolith's `.png`/`.mp3` chain. Loaded via `--import` by every script above. |
+
+---
+
+## The monolith — `rlsw-simulator-v3_8_1.jsx` (16,455 lines)
+
+Three layers. ⚠️ **It cannot be eyeballed** — verify with `npm run check:bundle`
+before and after touching it, and navigate by banner.
+
+| Layer | From | What is there |
+|---|---:|---|
+| Module-level | 1 | Imports, the Cursed Shamisen art, the fan crowd SVG, cadence hints, the Discord upgrade path, stack colours, per-ability tuning, riff-off scoring constants. |
+| `RLSWSimulator()` | 680 | The app shell: Title → Lobby → Tutorial → Game. |
+| `Game()` | 766 | Everything else — state, handlers, cinematics, and the render. |
+
+**Named banners inside `Game`, in order** — these are the search targets:
+
+| Banner | ~Line | What it is |
+|---|---:|---|
+| `ENGINE STATE` | 779 | The dispatch seam. Read `MULTIPLAYER_HANDOFF.md` before touching it. |
+| `NOTE SYSTEM STATE` | 1692 | The per-spirit sheet — **engine-owned**; this is a diffing shim. |
+| `BOARD CARD SYSTEM` | 4752 | Board deployables and respawn. |
+| `EVENT SPACES SYSTEM` | 4761 | The marquee hexes and the quiz card. |
+| `BATTLE SYSTEM` | 5827 | Attack orchestration and the spin overlays. |
+| `STAGE EFFECTS SYSTEM` | 5834 | Smoke/laser/pyro/animatronic cinematics off the engine reports. |
+| `ROCK GOD SYSTEM` | 6027 | Boss cinematics and the wall-clock timer. |
+| `RIFF-OFF ENGINE` | 8959 | The falling run, miss timers, Riff Slayer lurch, E-Rush ghosts. |
+| `RENDER` | 11891 | The whole render tree, to end of file. |
+
+📌 **The engine-owned banners say so in their own text** (`Phase 6a/6b/6c/6d, fully
+migrated`). Where a banner claims engine ownership, the React state beside it is a
+mirror for rendering — change the rule in `engine/systems/`, not here.
 
 ---
 
 ## Extracted modules
 
-### `audio/` — sound
+### `board/` — geometry & the map
 
-| File | Exports | Purpose |
-|------|---------|---------|
-| `bgm.js` | `BGM_TRACKS`, `nextBgmTrack` | BGM track imports, shuffle queue, next-track picker. |
-| `riffSfx.js` | `getRiffAudio`, `riffDegreeFreq`, `playRiffWrong`, `pickGlitchRiffNote`, `playRiffMiss`, `playBeamClash`, `playBeamSurge`, `playBeamBreak`, `playFanPop` | All riff-off Web-Audio SFX. |
-
-### `board/` — geometry & map
-
-| File | Exports | Purpose |
-|------|---------|---------|
-| `constants.js` | `HEX_SIZE`, `SCALE`, `SVG_W`, `SVG_H` | Board image dimensions. |
-| `hexMap.js` | `HEX_BY_NUM`, `HEX_BY_QR`, `ALL_HEXES` | The 111-hex column layout + edge set. |
-| `hexGeometry.js` | `pointyCorners`, `fanGesture`, `axialDist`, `axialNeighbors`, `facingAngle`, `getFlatTopNeighborSlots`, `angleTo`, `angleDiff`, `neighborInDirection` | Pure hex math. |
-| `boardHelpers.js` | `cornerFacing`, `advanceTurnQueue`, `makeBoardToken`, `hexRingFromCenter`, `crowdMultiplier`, `advanceHC` | Board utility functions. |
-| `stageFx.js` | `smokeHexNums`, `hexInSmoke`, `rollLaserBeams`, `hexInBeams`, `rollPyroHexes`, `spawnAnimatronics`, `animatronicStep` | 🎇 Stage Effects geometry: smoke rings, diagonal laser lines (constant r / constant s axes), pyro rolls, animatronic chase-step. Phase 6b: the rollers take an injectable `rand` (engine passes its seeded rng); `spawnAnimatronics` takes a `keyBase` for deterministic keys. |
-| `rockGodFx.js` | `hexesWithin`, `slideLine`, `shoveAwayHex`, `nearestSpiritTo`, `freeNeighborHex` | 🤘 Rock God boss geometry: AoE rings, Power Slide line, Mosh shove, spawn displacement. |
+| File | Lines | Key exports | Purpose |
+|------|------:|-------------|---------|
+| `constants.js` | 10 | `HEX_SIZE`, `SCALE`, `SVG_W`, `SVG_H`, `IMG_W`, `IMG_H`, `COL_SPACING`, `ROW_SPACING` | Board image dimensions. |
+| `hexMap.js` | 68 | `HEX_BY_NUM`, `HEX_BY_QR`, `ALL_HEXES`, `COLUMNS`, `EDGE_HEX_NUMS`, `buildHexMap` | The 111-hex column layout and the edge set. |
+| `hexGeometry.js` | 114 | `pointyCorners`, `axialDist`, `axialNeighbors`, `facingAngle`, `angleTo`, `angleDiff`, `neighborInDirection`, `getFlatTopNeighborSlots`, `fanGesture`, `grandstandSeat` | Pure hex math, plus the grandstand seating the crowd sits in. |
+| `boardHelpers.js` | 117 | `cornerFacing`, `advanceTurnQueue`, `makeBoardToken`, `hexRingFromCenter`, `crowdMultiplier`, `advanceDB`, `SPOTLIGHT_POOL`, `EVENT_HEX_POOL`, `eventHexCandidates` | Board utilities and the pools the spotlight and marquees are drawn from. |
+| `stageFx.js` | 144 | `smokeHexNums`, `hexInSmoke`, `rollLaserBeams`, `hexInBeams`, `rollPyroHexes`, `spawnAnimatronics`, `animatronicStep` | 🎇 Stage-effect geometry. ⚠️ The rollers take an injectable `rand` and **avoid occupied hexes** — hazards never start on a player. |
+| `rockGodFx.js` | 87 | `hexesWithin`, `slideLine`, `shoveAwayHex`, `nearestSpiritTo`, `freeNeighborHex` | 🤘 Boss geometry: AoE rings, Power Slide, Mosh shove. |
+| `stageSkins.js` | 169 | `STAGE_SKINS`, `STAGE_SKIN_BY_ID`, `DEFAULT_SKIN_ID`, `loadStageSkin`, `saveStageSkin`, `stageSkinPlateFilter`, `stageSkinLineMatrix` | 🎨 Board colour schemes. Deliberately **local and cosmetic**, not engine state, so players in one match can run different skins. |
+| `ampDecks.jsx` | 278 | `CORNER_DECKS` | The corner amp-stack art. |
+| `ampKnobs.js` | 10 | `AMP_KNOBS` | Tone-knob defaults for note playback. |
 
 ### `data/` — pure game data
 
-| File | Exports | Purpose |
-|------|---------|---------|
-| `spirits.js` | `SPIRIT_DEFS`, `SPIRIT_OPTIONS` | Per-character stats. **Change character balance here.** |
-| `styles.js` | `STYLE_DEFS`, `styleOf`, `styleDef` | 🎵 The STYLE system (replaces STANCE — `STYLE_SYSTEM_HANDOFF.md`): three Styles (Shred/Groove/Flair) that dictate how each Spirit earns Db from melody commits. No abilities, no passives, no stat mods. **Change style definitions here.** |
-| `corners.js` | `CORNERS`, `CORNER_LABELS`, `CORNERS_ORDER` | Home hexes per corner. |
-| `events.js` | `EVENT_DECK`, `EVENT_BY_ID` | The 10 event-space definitions. |
-| `gameConstants.js` | 96 named constants | All gameplay tuning: `HC_UPGRADE_THRESHOLD`, `FAME_TO_WIN`, `LIMELIGHT_*`, `FAN_*`, `TOKEN_MAX`, `RIG_*`, etc. **Change balance numbers here.** ⚠️ `AMP_RANGE` and `AMP_LINK_DIST` were listed here until 2026-08-21; both died with the amp-rig graph. |
-| `trivia.js` | `TRIVIA_QUESTIONS`, `TRIVIA_REWARD`, `TRIVIA_BOT_ODDS` | Trivia event question bank. |
-| `stageEffects.js` | `STAGE_FX_THRESHOLDS`, `STAGE_FX_META`, `shuffledStageFxDeck`, `SMOKE_*`, `LASER_*`, `PYRO_*`, `ANIMATRONIC_*` | 🎇 Stage Effects meta + tuning. Fired once each at ⭐8/16/24 (any Spirit crossing), drawn from a per-game shuffled deck — no repeats. **Change Stage Effect balance here.** |
-| `rockGods.js` | `ROCK_GODS`, `ROCK_GOD_*` tuning, `pickRockGod`, `pickGodAttack`, `godTauntLine` | 🤘 The endgame boss pantheon (Bardbarian live; Feedback Warlock / Sonic Sorceress / Glam Reaper stubbed, fall back to Bardbarian). God chosen from the leader's playstyle. **Change boss balance, attack decks, and taunts here.** |
+| File | Lines | Key exports | Purpose |
+|------|------:|-------------|---------|
+| `spirits.js` | 48 | `SPIRIT_DEFS`, `SPIRIT_OPTIONS`, `ROSTER_ORDER`, `PLAYABLE_ORDER`, `IN_DEVELOPMENT`, `isPlayable`, `MAX_PLAYERS` | **Character stats and balance.** |
+| `gameConstants.js` | 438 | 96 named constants — `FAME_TO_WIN`, `LIMELIGHT_TO_WIN`, `POSE_FP_STEP`, `RIG_RADIUS_FLOOR`, `RIG_ATROPHY_TURNS`, `FAN_*`, `SMASH_*`, `THRASH_*`, `SONIC_*`, `TOKEN_*`, `stackCapFor`, … | **All gameplay tuning.** |
+| `skillTree.js` | 221 | `SKILL_TREE`, `SKILL_BY_ID`, `SPIRIT_ONLY_ROUTE` | 🎓 The ability tree. ⚠️ The `electric` route (`amp_*`, `power_*`, `range_*`, `overcharge`) was **deleted** on 2026-08-20 — the rig is won at the marquee now. |
+| `trivia.js` | 2,545 | `TRIVIA_QUESTIONS`, `TRIVIA_BY_ID`, `drawTrivia`, `TRIVIA_BUCKETS`, `TRIVIA_LANES`, `TRIVIA_REWARD`, `TRIVIA_TIER_GRANT`, `TRIVIA_BOT_ODDS`, `bestTriviaDifficulty` | 🎪 The marquee quiz bank. `drawTrivia` is pure and recycles **per bucket**. Write new questions against `TRIVIA_CONTENT_BRIEF.md`. |
+| `events.js` | 64 | `EVENT_DECK`, `EVENT_BY_ID` | The event-space definitions. |
+| `corners.js` | 18 | `CORNERS`, `CORNER_LABELS`, `CORNERS_ORDER` | Home hexes per corner. |
+| `stageEffects.js` | 80 | `STAGE_FX_THRESHOLDS`, `STAGE_FX_META`, `shuffledStageFxDeck`, `SMOKE_ROUNDS`, `LASER_*`, `PYRO_*`, `ANIMATRONIC_*` | 🎇 Stage-effect tuning. Fired once each at ⭐8/16/24 from a per-game shuffled deck. |
+| `rockGods.js` | 193 | `ROCK_GODS`, `ROCK_GOD_IMPLEMENTED`, `ROCK_GOD_DIFFICULTY`, `ROCK_GOD_HP_PER_SPIRIT`, `ROCK_GOD_TIMER_SECONDS`, `pickRockGod`, `pickGodAttack`, `godTauntLine` | 🤘 The boss pantheon and all its tuning. |
+| `styles.js` | 43 | `STYLE_DEFS`, `styleOf`, `styleDef` | ⚠️ **FLAVOUR ONLY.** Style stopped affecting scoring — icon, colour and tagline are all that is live. See below. |
+| `matchSetup.js` | 52 | `cornersForCount`, `seatSpirit`, `buildTestingGroundsConfig` | Seat assignment and the Testing Grounds config. |
 
 ### `music/` — the music rules
 
-| File | Exports | Purpose |
-|------|---------|---------|
-| `notes.js` | `NOTE_POOL`, `ENHARMONIC_RESPELL`, `canonicalRoot`, `getSpelledPool`, `pitchIndex`, `semitonesUpSpelled`, `buildScale`, `semitonesUp`, `getIntervalNotes`, `getFourthFifth`, `playableScale` | Note theory, scale spelling, interval helpers. |
-| `cadence.js` | `CADENCE_OBJECTIVES`, `cadenceHints`, `detectCadence`, scoring fns | Cadence goals + note-track scoring pipeline. |
-| `chords.js` | `evaluateChord`, `CHORD_TEMPLATES` | Chord → Drive/Sustain mapping. |
+| File | Lines | Key exports | Purpose |
+|------|------:|-------------|---------|
+| `notes.js` | 200 | `NOTE_POOL`, `canonicalRoot`, `getSpelledPool`, `pitchIndex`, `buildScale`, `semitonesUp`, `getIntervalNotes`, `getFourthFifth`, `playableScale`, `MAJOR_SCALES`, `MINOR_SCALES`, `ENHARMONIC_RESPELL` | Scales, note spelling, intervals. |
+| `chords.js` | 100 | `CHORD_TEMPLATES`, `evaluateChord`, `PC_NAMES` | **Chord → Drive/Sustain.** |
+| `context.js` | 479 | `CONTEXT_TIERS`, `stackContext`, `chordContext`, `contextClaim`, `classifyTrack`, `modeFromStack`, `harmonicLock`, `discordPenaltyFor`, `countUnpardoned`, `PARDON_ORDER` | 🎼 **The chord-context ladder** — the one idea the Theory tree sells: your stack decides which notes are legal. See `THEORY_ARCHITECTURE.md`. |
+| `cadence.js` | 335 | `CADENCE_OBJECTIVES`, `cadenceHints`, `detectCadence`, `detectDiatonicRun`, `detectSkipClimb`, `detectRepeatPattern`, `detectMotifRepeat`, `scoreTrackDB`, `analyseTrack`, `refillStock`, `randomNote` | Cadence goals and melody scoring. ⚠️ The Style detectors that lived here are **deleted** — the tombstone at the bottom of the file explains why. |
+| `spiritStyle.js` | 366 | `detectSpiritStyle`, `styleProgress`, `styleGain`, `styleProgressWithNote`, `STYLE_GESTURES`, `gesturesFor` | Gesture detection for the character-sheet style read (flavour, not payout). |
+| `keyDetect.js` | 433 | `detectKey`, `makeKeyTracker`, `keyToScale`, `keyPitchClasses`, `chordCandidates`, `detectPalette`, `listenFrame`, `SCALE_SHAPES` | 👂 Ear Spy: what key is being played. |
+| `neckPlacement.js` | 597 | `placeNotes`, `placePitch`, `makeNeckTracker`, `makeHandTracker`, `foldOntoNeck`, `positionsForPitchClass`, `midiToPitch`, `pitchToMidi`, `PLACEMENT_DEFAULTS` | 👂 Notes → frets, with a trail and hand tracking. |
+| `riffAnalysis.js` | 329 | `analysePhrase`, `makePhraseRecorder`, `weighPhrase`, `impliedChord`, `RIFF_DEFAULTS`, `ROLE_LABELS` | 👂 Post-phrase verdict. |
+| `spice.js` | 216 | `spiceSetFor`, `classifyNote`, `expireOpenNotes`, `coachLine` | 👂 The deliberate-discord judgement. ⚠️ **Shared with Discord Coach** — changing it changes both. |
+| `styles.js` | 444 | `LEGENDS`, `LEGEND_BY_ID`, `paletteFit`, `detectMoves`, `phraseStats`, `styleMeter`, `toneMatch`, `lickMatch` | 🎸 Legend Lessons: matching a player's phrasing against a legend. ⚠️ Unrelated to `data/styles.js` despite the name. |
+| `pitchNames.js` | 17 | `PC_PLAY_NAMES` | Display names per pitch class. |
 
-### `riff/` — riff generation
+### `riff/` — riff generation and the highway
 
-| File | Exports | Purpose |
-|------|---------|---------|
-| `riffGeneration.js` | `generateRiffRhythm`, `speedUpRiffRhythm`, `RIFF_CONTOUR_LABELS`, `RIFF_ANSWER_LABELS`, `riffDegreesToNotes`, `generateAttackerRiff`, `generateDefenderRiff`, `RIFF_LEN_DEFAULT` | Riff-off note sequence generation. Generators take an optional `rand` (default `Math.random`) and `len` (default `RIFF_LEN_DEFAULT=6`) — the engine passes its seeded rng; only the engine should generate riffs now. |
-| `melodyRiff.js` | `melodyToRiff` | 🎸 Phase R1: converts a committed melody line (NOTE_POOL format) into a riff-off riff. Maps notes → degrees/sharps, detects contour, pads/trims to target length, applies generated rhythm. Returns same shape as `generateAttackerRiff` + `fromMelody` flag. Returns `null` when melody < 4 notes (minimum-material rule). |
-| `fallingNotes.js` | `RIFF_FALL_DIFFICULTY`, `RIFF_FALL_DEFAULT`, `buildRiffTimeline`, `riffOkWindow`, `gradeRiffOffset` | Falling-notes (Guitar Hero) riff-off timing: difficulty presets (fall lead-time + grade windows), rhythm→hit-time timeline, |press−hitTime| grading. Pure module — **tune riff-off feel here.** 🎸 Phase R2: each preset now carries `showLabels: boolean` (labels hidden at Shredder+) and `maxLen: number` (tier-caps riff length). VIRTUOSO tier added (`leadTime:1150`, `maxLen:15`, `showLabels:false`). ROOKIE label renamed to SOCIAL MEDIA INFLUENCER (internal id unchanged). |
-| `guitarMap.js` | `voiceRiff`, `degreePitch`, `pitchKey`, `cellKey`, `positionsForPitch`, `nearestPositionForKey`, `STRING_NAMES`, `STRING_OPENS`, `MAX_FRET`, `WINDOW`, `NECK_MAX_PITCH` | 🎸 Full-neck guitar map (Rocksmith pass): 6 strings, frets 0–12, deterministic position-anchored riff voicing — phrases sit in 4–5 fret windows that follow the register up/down the neck. Pitch space aligned with `riffDegreeFreq` (degree 0 = open A). Pure module, no RNG. Wired into `startRiffOff` (voicing attached to riff data), `riffStartRun` (pos on each run note, anchors on the run), `RiffHighway.jsx` (string-colored gems, fret glyphs, scrolling camera, fret-cell taps), and `renderInstrument` (board decorative neck). Test: `node src/riff/guitarMap.test.mjs` (750-riff corpus; re-run after touching this file, `riffGeneration.js`, or `melodyRiff.js`). |
+| File | Lines | Key exports | Purpose |
+|------|------:|-------------|---------|
+| `riffGeneration.js` | 166 | `generateRiffRhythm`, `speedUpRiffRhythm`, `riffDegreesToNotes`, `RIFF_LEN_DEFAULT`, `RIFF_CONTOUR_LABELS`, `RIFF_ANSWER_LABELS` | Contours and rhythms for the duel. |
+| `fallingNotes.js` | 180 | `RIFF_FALL_DIFFICULTY`, `RIFF_FALL_DEFAULT`, `RIFF_SPACING_BASE`, `RIFF_GHOST_WINDOW_MULT`, `RIFF_RUSHED_TIGHTEN` | **Timing feel** — fall speed, difficulty presets, grade windows, note spacing. |
+| `melodyRiff.js` | 168 | `melodyToRiff` | Turns a committed melody into a playable riff. |
+| `guitarMap.js` | 257 | `STRING_NAMES`, `STRING_OPENS`, `MAX_FRET`, `degreePitch`, `pitchKey`, `cellKey`, `nearestPositionForKey` | Full-neck voicing — which fret on which string. |
+| `riffArchetypes.js` | 514 | `SCALES`, `GENRES`, `STYLE_BIAS`, `generateArchetypeRiff`, `arrowsFor`, `analyseArrows`, `longestDirectionalRun` | Genre-flavoured riff archetypes for practice. |
+| `riffPerformance.js` | 216 | `applyPerformance`, `applyChords`, `directionsFor`, `BEND_WEIGHTS`, `PERFORMANCE_DEFAULTS`, `BEND_MIN_SUSTAIN` | Bends, showpieces, and how a riff is *played* rather than spelled. |
+| `arrowHighwayEngine.js` | 1,368 | `mountArrowHighway`, `TIERS` | The canvas renderer for the arrow highway. 📌 Ported from `arrow-highway-proto.html`, which is still read off disk by `syncProtoGenerator.mjs`. |
+| `neonNeckGeometry.js` | 81 | `NECK_IMG`, `FRET_X`, `STRING_LINES`, `stringY`, `cellXY`, `stringPitch`, `stringSpan` | Neon-neck coordinates, calibrated against the art. |
+| `calibrateNeonNeck.mjs` | 293 | `FRET_X`, `STRING_LINES`, `stringY`, `cellXY` | The calibration script those numbers came from. |
+| `syncProtoGenerator.mjs` | 53 | — | Keeps the prototype HTML and the ported engine in sync. |
+| `riffOffParity.test.mjs` | 170 | — | `test:riffparity` — the duel asks for what practice teaches. |
+| `arrowHighwayEngine.test.mjs`, `guitarMap.test.mjs`, `neonNeck.test.mjs`, `riffArchetypes.test.mjs`, `riffPerformance.test.mjs` | 872 | — | `test:riff`. ⚠️ These ran for **nobody** until 2026-08-21 — 132 assertions with no script. |
 
-### `engine/` — the authoritative game core (in extraction)
+### `audio/` — sound
 
-| File | Exports | Purpose |
-|------|---------|---------|
-| `rng.js` | `makeRng`, `restoreRng`, `hashSeed` | Seeded mulberry32 PRNG, serializable as `{seed, cursor}`; `fork(label)` per subsystem. Game rules must draw from this, never `Math.random()`. |
-| `state.js` | `makeInitialState` | Lobby config → plain-JSON `GameState`. Slices still `null` are React-owned until their phase lands. |
-| `actions.js` | `GAME_INIT`, creators | Serializable action types; grows per phase. |
-| `reduce.js` | `applyAction` | `(state, action, rng) → state`, the one door for rule changes; persists rng position into the returned state. |
-| `serialize.js` | `snapshot`, `restore`, `replay` | Save/load + action-log replay (determinism proof). |
-| `systems/turn.js` | `applyTurnStarted/Ended/Skipped`, `applyMoveBudgetSet`, `applyBeatsSpent`, `applySpiritEliminated`, `applySpiritsSynced` | 🎯 Phase 2: turn queue, beats/AP, limelight-start flags, turn/round counters. `TURN_ENDED` returns a `lastReport` the client uses to run not-yet-extracted ticks. |
-| `systems/movement.js` | `applyMoveStep`, `applySpiritFaced`, `applySpiritWarped` | 🎯 Phase 2: movement + facing rules incl. the dazed 33% redirect (engine rng). |
-| `systems/combat.js` | `marginToDamage`, `fameFromMargin`, `knockbackSpaces`, `underdogBonus`, `smashOutcome`, `decideWinner`, `resolveKnockdown`, `counterOutcome`, `applyAttackRolled`, `applyCounterRolled` | 🥊 Phase 3a: the pure combat MATH (damage/knockback/Fame tables + underdog ramp) — `Game` imports these (single source, like `riffStats`); `underdogBonus` takes the two resolved Fame totals so it stays pure. 🥊 Phase 3b: `applyAttackRolled` — `ATTACK_ROLLED` rolls the SWING dice on engine rng and stores the verdict in `state.battle` (`{kind:'attack', attackKind:'swing', atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, damage, psychoBushido}`). The client passes pre-computed `atkStat`/`defStat` + mod flags (posing/halveDef/psychoEligible — they read `noteStates`, Phase 5); the spin overlay displays the decided face. Sonic uses the same action with an optional `dicePool` (keep-highest, amp-scaled — records `diceVals`/`keptIdx`). The Smash has NO roll — `smashOutcome(thrown, {roninSmasher, roninTarget}) → {damage, knockback, scatterN}` is pure deterministic math (like the 3a tables), shared by `resolveSmash` and `resolveBlasterOfRa`. 🏆 Phase 3c (kernels): `decideWinner(spirits, {godSummoned, attackerId, hasWinner})` (boss-aware win check, from `knockOut.checkWinner`) and `resolveKnockdown(spirit, corners)` (respawn-to-home / KO transform, shared by `knockOut` + `applyVibeDamage`). Pure, wired single-source; the cinematics/state-application stay client. The full spirit-ownership flip (DAMAGE_APPLIED/KNOCKED_OUT actions, killing `spiritsSynced`) is the remaining 3c work. 🥊 Phase 3d (retaliation): `applyCounterRolled` (COUNTER_ROLLED — counter d6 + Vibe bonus + success vs the attacker's die, on engine rng, merged into `battle`) and pure `counterOutcome(total, target)` (landed-counter margin/damage). Wired into `resolveRetaliation`/`finishCounter`; the prompt→spin→result phases, countdown timer, and damage application stay client. |
-| `systems/riffOff.js` | `applyRiffOffStarted/ResultsSubmitted/Resolved/Round2Started/Closed`, `riffStats`, `RIFF_GRADE_WEIGHT/MARGIN_SCALE/TIE_EPS` | 🎸 Phase 4: riff data + verdict. Generates riffs/glitches/ghosts on engine rng; clients submit results arrays; verdict math incl. Round-2 fallback. `Game` imports `riffStats` from here (single source of truth). 🎸 Phase 3e: the verdict now carries `damage` (`tie?0:marginToDamage(margin+round2bonus)`, imported from `systems/combat.js`) so the client reads it instead of re-deriving — one source, no drift. Damage *application* still client until the 3c ownership flip. |
-| `systems/economy.js` | `usedHas/usedList/usedAdd`, `performanceScore`, `makeInitialNoteState`, `applyNoteStatesSynced`, `applyFameChanged`, `applyFansChanged` (+`FAN_FIELDS`), `applyNoteSheetPatched`, `applyFansTicked`, `applyHeadlinerChanged` | 💰 Phase 5a: `usedStockIdx` Set→array helpers + the pure Performance-Score-P kernel. Phase 5c: the engine BUILDS + OWNS `noteStates` (seeded `"noteStatesInit"` fork; single-source `makeInitialNoteState`), and the semantic write layer: `FAME_CHANGED` (signed delta, floored at 0), `FANS_CHANGED` (whitelisted fan-field patch — `FAN_FIELDS` guards fame/skills/notes), `NOTE_SHEET_PATCHED` (the shim's generic per-spirit diff action). Phase 5d: `FANS_TICKED` — the end-of-turn fan tick as an engine RULE (zone derived from the engine's spirit position; boredom/lag/streaks; client report in `turn.lastFanTick`). 👑 Phase R5: `HEADLINER_CHANGED` sets `state.headliner` (spiritId or null); `makeInitialState` inits to null. |
-| `systems/skills.js` | `skillEligibility`, `ULTIMATE_PREREQS`, `THEORY_DISCORD_GRANTS` | 🎓 Phase 5b: pure skill-tree gating + grant tables — `botSkillEligible` and `setSkillTarget` share ONE gate. |
-| `systems/stageFx.js` | `applyStageFxDrawn`, `applyStageFxActivated`, `applyStageFxTurnTicked`, `applyStageFxRoundTicked` | 🎇 Phase 6b (FULL): `state.stageFx { deck, fired, smoke, laser, pyro, animatronics, lastDraw, lastActivation, lastTurnTick, lastRoundTick }` — deck seeded ONCE at init (`"stageFxDeck"` fork); `STAGE_FX_DRAWN` fires each threshold exactly-once; `STAGE_FX_ACTIVATED` creates the live effect (patterns/spawns on engine rng; deterministic animatronic keys); the TURN tick (pyro cadence + animatronic steps) and ROUND tick (smoke spread, laser re-pattern) are engine rules. Client renders the slices + plays cinematics/damage off the reports. |
-| `systems/rockGod.js` | `applyGodAttackPicked`, `applyGodSummoned`, `applyGodDamaged`, `applyGodActed`, `applyGodDefeated`, `applyGodTriumphed`, `applyGodTimerExpired` | 🤘 Phase 6c (FULL): `state.rockGod { summoned, god, outcome, lastPick, lastHit, lastAct, lastTimerExpiry }` — the boss IS engine state. `GOD_DAMAGED` owns the winded ×2 + HP floor; `GOD_ACTED` is the whole end-of-turn answer (telegraph resolve / winded recovery / weighted engine-rng open; mosh shoves move engine spirits). Boss clock stays client; expiry dispatches `GOD_TIMER_EXPIRED`. |
-| `selftest.mjs` | — | Headless test: `node src/engine/selftest.mjs`. Extend each phase. |
+| File | Lines | Key exports | Purpose |
+|------|------:|-------------|---------|
+| `chroma.js` | 1,040 | `CHROMA_DEFAULTS`, `chromaFromPeaks`, `chromaFromSpectrum`, `fftMagnitudes`, `pickPeaks`, `inferVirtualFundamentals`, `freqToMidiFloat`, `normalize` | 👂 The listening pipeline. ⚠️ **Every gate threshold is MEASURED, not guessed** — `npm run test:chroma` prints the table it came from. |
+| `micPitch.js` | 342 | `startMicListening`, `micAvailable`, `MIC_DEFAULTS`, `pitchToMidi`, `midiToFreq` | Microphone capture and pitch tracking. |
+| `ampVoice.js` | 234 | `playAmpNote`, `playAmpPowerChord`, `getAmpBuses`, `makeDistortionCurve`, `SPIRIT_TONES`, `TONE_VOICES`, `TONE_KNOB_DEFAULTS` | The distorted guitar voice notes are played through. |
+| `riffSfx.js` | 210 | `getRiffAudio`, `riffDegreeFreq`, `playRiffMiss`, `playRiffWrong`, `playBeamClash`, `playBeamSurge`, `playBeamBreak`, `pickGlitchRiffNote` | Duel and beam sound effects. |
+| `bgm.js` | 42 | `BGM_TRACKS`, `nextBgmTrack` | Background music tracks. |
+| `chromaSelftest.mjs` | 1,476 | — | `test:chroma` — asserts the measured separation still holds. |
 
-**Phase 2 state ownership:** the engine owns `turnQueue`, `turn.{count, moveStepsLeft, actionTokenUsed, startedOnLimelight}`, and movement/facing *rules*. `Game` reads them via derived consts (`const moveStepsLeft = engineState.turn.moveStepsLeft`) and mutates them ONLY via `dispatch(...)`. React still owns the `spirits` array (combat writes vibe/KO/knockback); `dispatch(spiritsSynced(spirits))` bridges positions into the engine before `move`/`endTurn`/skip — the bridge dies in Phase 3.
+### `vision/` — 📷 the camera fretboard
 
-### `tutorial/`
+| File | Lines | Key exports | Purpose |
+|------|------:|-------------|---------|
+| `neckDetect.js` | 1,006 | `DETECT_DEFAULTS`, `houghLines`, `sobel`, `toGray`, `groupByAngle`, `lineIntersection`, `crossRatio`, `INLAY_FRETS` | Finding a guitar neck in a camera frame. |
+| `neckGeometry.js` | 604 | `NECK_STRINGS`, `CORNER_PROMPTS`, `CORNER_TARGETS`, `solveHomography`, `spanToFret`, `fretToSpan`, `spanToPressedFret` | The projective maths turning a photographed neck into fret coordinates. ⚠️ A **separate pure module** on purpose, so it can be tested without a camera. |
+| `fretFusion.js` | 471 | `makeFretFusion`, `snapToPosition`, `snapNotes`, `snapChord`, `handShape`, `FUSION_DEFAULTS`, `HAND_DEFAULTS` | Fusing what the camera sees with what the mic hears. |
+| `cameraHand.js` | 191 | `startCameraHand`, `cameraAvailable`, `CAMERA_DEFAULTS` | Camera capture and hand tracking. |
+| `visionCoach.js` | 183 | `diagnose`, `nextAction`, `COACH_LIMITS` | Telling the player why detection is failing. |
+| `neckGeometrySelftest.mjs` | 1,001 | — | `test:vision`. |
+| `neckDetectSelftest.mjs` | 583 | — | `test:detect`. |
 
-| File | Exports | Purpose |
-|------|---------|---------|
-| `content.jsx` | `Tutorial` | The full illustrated tutorial overlay. Self-contained. |
+### `net/` — 🌐 multiplayer
 
-### `hooks/` — state slices
+| File | Lines | Key exports | Purpose |
+|------|------:|-------------|---------|
+| `client.js` | 181 | `makeNetClient`, `CLIENT_SCHEMA`, `defaultServerUrl` | The room/lobby/relay client. See `NETCODE_HANDOFF.md`. |
+| `riffWire.js` | 195 | `WIRE_DEFAULTS`, `makeRiffSender`, `encodeRiffFrame`, `decodeRiffFrame`, `holdsFloor`, `isStale`, `FLOOR` | 👂 Ear Spy Online wire format and turn-taking. ⚠️ The server closes sockets over 30 msg/s; the 8 Hz coalescing throttle is what stops streaming from disconnecting players. |
+| `earSpyLink.js` | 146 | `makeEarSpyLink`, `LINK_DEFAULTS`, `encodeRiffFrame`, `decodeRiffFrame` | The Ear Spy peer link. |
 
-Each hook owns a cohesive group of `useState` and returns values + setters.
-They are pure state containers sharing `Game`'s component instance.
+### `hooks/` — React state slices
 
-| Hook | Owns |
-|------|------|
-| `useRiffState.js` | Riffbook discoveries, riff/cadence toasts, riffbook + signature UI. |
-| `useFanEconomy.js` | Limelight scores, posing, "Unsure" crowd, fan reactions, spotlight hex. |
-| `useBgmState.js` | `<audio>` ref, track index, mute/volume/track state. |
-| `useBoardState.js` | Amps, board cards + respawn counter, pending pickup, roadie actions. |
-| `useTransientFx.js` | Knockback slides, respawn flashes, rumble, floating damage, status VFX. |
-| `useStageEffects.js` | 🎇 Stage Effects slice — Phase 6b flip: ONLY the activation banner remains; deck/fired/active effects live in `engineState.stageFx`. |
-| `useRockGod.js` | 🤘 Rock God slice — Phase 6c flip: ONLY the boss turn-clock + descent banner remain; god/outcome/summoned live in `engineState.rockGod` (ref mirrors dissolved). |
+⚠️ **NEARLY EMPTY, AND THAT IS THE POINT.** 168 lines across seven files. Each was
+a large slice of `Game` state until the engine took ownership of its rules; what
+remains is presentation state only. A hook growing again is a signal that a rule
+is being written in the client.
+
+| Hook | Lines | Owns |
+|------|------:|------|
+| `useRiffState.js` | 26 | Riffbook discoveries, riff/cadence toasts, riffbook UI. |
+| `useFanEconomy.js` | 33 | Fan reactions, the "Unsure" crowd, spotlight hex display. |
+| `useBgmState.js` | 21 | `<audio>` ref, track index, mute/volume. |
+| `useBoardState.js` | 19 | Pending pickup and roadie actions. |
+| `useTransientFx.js` | 30 | Knockback slides, respawn flashes, rumble, floating damage. |
+| `useStageEffects.js` | 15 | 🎇 The activation banner only — the effects are engine state. |
+| `useRockGod.js` | 24 | 🤘 The boss turn-clock and descent banner only. |
 
 ### `ui/` — presentational components
 
-Each takes everything via props. They hold **no game logic**.
+Each takes everything via props. ⚠️ **They hold no game rules.**
 
-| Component | Purpose |
-|-----------|---------|
-| `GameStyles.jsx` | Global `<style>` block (CSS keyframes/classes, `.note-fly-chip` animation). No props. |
-| `GameOverOverlay.jsx` | End-of-game victory screen. |
-| `CadenceToast.jsx` | "Cadence resolved" toast. |
-| `BattleMeterOverlay.jsx` | Full battle/riff-off duel overlay (~1,870 lines, largest component). |
-| `RiffHighway.jsx` | Falling-notes highway for the riff-off: gems fall down neon lanes onto a scaled, tappable piano/guitar strike zone. Gem motion is a rAF loop writing transforms from the engine clock each frame — NOT CSS animations (React re-renders rewrite a running animation's delay without restarting it, which teleports gems; see file header). Renders `battleState.riffRun`; presses route to `Game.riffPressKey`. 🎸 Phase R2: accepts `showLabels` prop — when `false`, `noteGlyph` text is suppressed; sharps render as diamond-shaped gems (`rotate(45deg)`, `borderRadius:3px`), naturals stay round. Diamond shape preserved through burst animations. 🎸 Phase R3 (neon pass): outrun/synthwave visual overhaul — piano keys are transparent with cyan outlines + magenta-filled blacks; guitar strings glow cyan→magenta with violet inlay dots; highway has a scrolling perspective grid and sunset-gradient strike line (orange→magenta); gems are neon-outlined with trailing tails (CSS `::before` using `--gem-color` variable); judgment bursts: perfect=white-hot, good=cyan, ok=violet, miss=gray tumble. Palette constants: `NEON_CYAN`, `NEON_MAGENTA`, `NEON_VIOLET`, `NEON_ORANGE`, `NEON_WHITE`. Board-side `renderInstrument` mirrors the same neon treatment for visual consistency. |
-| `Riffbook.jsx` | Discovery codex / cadence list. |
-| `EventModal.jsx` | Event-space marquee ticket. |
-| `UpgradeModal.jsx` | Harmonic-charge upgrade picker. |
-| `SignatureAbilities.jsx` | Per-spirit signature-route reference. |
-| `TestingGrounds.jsx` | In-game dev panel. |
-| `Lobby.jsx` | Player/mode select screen. |
-| `BoardFX.jsx` | Board star/lightning overlay layer. |
-| `VoiceRollDie.jsx` | Animated d6 for Mic skill. |
-| `NeonStrikeFX.jsx` | HUD neon glow borders + `NEON_STRIKE_PALETTE`. |
-| `ScoreTrackOverlay.jsx` | Score-track life indicator + `SCORE_TRACK_CORNERS`. |
-| `StatKnob.jsx` | Read-only stat gauge. |
-| `ToneFader.jsx` | Vertical mixer fader (GAIN/TONE/ECHO/VERB). |
-| `GameErrorBoundary.jsx` | Error boundary + `isMirrorFacing`, `MIRROR_SPRITES`, `mobileColorStyle`. |
-| `StageFXLayer.jsx` | 🎇 `StageFXBoardLayer` (SVG: smoke cloud, laser beams, pyro glow/flames, animatronic tokens — mounted late in the board svg so smoke covers standees) + `StageFXBanner` (HTML activation marquee + active-effect status pills). |
-| `RockGodLayer.jsx` | 🤘 `RockGodBoardLayer` (SVG: telegraph hexes, god standee/aura/HP bar, winded marker) + `RockGodHUD` (descent marquee, HP/clock/telegraph pills) + `GodVictoryOverlay` (total-wipe game over). |
+| Component | Lines | Purpose |
+|-----------|------:|---------|
+| `BattleMeterOverlay.jsx` | 2,063 | The full battle/riff-off duel overlay — the largest component. |
+| `OpeningMovie.jsx` | 1,051 | The opening cinematic. |
+| `FretboardRecon.jsx` | 1,033 | 🗺️ Practice mode: levels, Live Set, ranks. Exports `scoreSet` and `recommendFor`; `TIER_CONFIG`, `RANKS` and `LIVE_SET_LENGTH` are module-local tuning. ⚠️ The level never changes mid-run, on purpose. |
+| `ListenNeck.jsx` | 823 | 👂 The live listening fretboard. |
+| `LegendLessons.jsx` | 772 | 🎸 Legend Lessons UI. |
+| `Pickles.jsx` | 592 | 🎓 The guitar pick with eyes who delivers the tips. |
+| `DiscordCoach.jsx` | 580 | 👂 Live "was that discord deliberate?" coaching. |
+| `GameStyles.jsx` | 568 | The global `<style>` block — CSS keyframes and classes. No props. |
+| `BeginnerTipOverlay.jsx` | 506 | Multi-page walkthroughs with an arrow pointing at the real HUD element. |
+| `GameOverOverlay.jsx` | 425 | End-of-game victory screen. |
+| `FretboardFull.jsx` | 396 | The full-neck fretboard display. |
+| `Lobby.jsx` | 373 | Pre-match seating and options. |
+| `StageFXLayer.jsx` | 323 | 🎇 `StageFXBoardLayer` + `StageFXBanner`. |
+| `RiffPractice.jsx` | 317 | Practice room for the arrow highway. |
+| `UpgradeModal.jsx` | 311 | The harmonic-charge upgrade picker. |
+| `CameraCalibrator.jsx` | 309 | 📷 Corner-tap calibration for the camera neck. |
+| `BotReview.jsx` | 299 | 📓 Reads the bot journal back as prose. |
+| `RiffMenu.jsx` | 279 | Riff Mode room list. `RIFF_MODES_UNLOCKED` (module-local) gates which rooms playtesters see. |
+| `EventModal.jsx` | 274 | 🎪 The marquee ticket — lane × difficulty chosen **before** the question is drawn. |
+| `TitleMenu.jsx` | 258 | Title screen. |
+| `RockGodLayer.jsx` | 253 | 🤘 `RockGodBoardLayer`, `RockGodHUD`, `GodVictoryOverlay`. |
+| `TentacleFX.jsx` | 250 | 🧪 Metalness Monster tentacle visuals. |
+| `TestingGrounds.jsx` | 137 | The sandbox launcher. |
+| `Riffbook.jsx` | 127 | Discovery codex and cadence list. |
+| `HintScreen.jsx` | 114 | Loading-screen hints. |
+| `NeonStrikeFX.jsx` | 85 | Neon strike burst. |
+| `SignatureAbilities.jsx` | 65 | Signature ability panel. |
+| `ToneFader.jsx` | 61 | Tone slider. |
+| `GameErrorBoundary.jsx` | 60 | Crash boundary; also `isMirrorFacing` / `MIRROR_SPRITES`. |
+| `VoiceRollDie.jsx` | 59 | The mic voice-roll die. |
+| `RigPicker.jsx` | 55 | Amp/rig tone picker. |
+| `ScoreTrackOverlay.jsx` | 51 | Corner score tracks. |
+| `tipLayout.js` | 51 | `placeTipCard` — where a tip card fits on screen. |
+| `StatKnob.jsx` | 47 | A single stat knob. |
+| `CadenceToast.jsx` | 45 | "Cadence resolved" toast. |
+| `BoardFX.jsx` | 24 | Board effect wrapper. |
+
+### `tutorial/`
+
+| File | Lines | Exports | Purpose |
+|------|------:|---------|---------|
+| `content.jsx` | 1,160 | `Tutorial` | The full illustrated tutorial overlay. Self-contained. |
 
 ---
 
 ## "Where do I change X?"
 
+> 🎯 **THE MOST USEFUL TABLE IN THE REPO, AND THE ONE WORTH DEFENDING.** Audited
+> row by row on 2026-08-21; six rows were fiction and are marked or gone.
+
 | I want to change… | Go to |
 |---|---|
-| Combat damage / knockback / Fame tables (margin→dmg, underdog ramp) | `engine/systems/combat.js` (Phase 3a — single source; `Game` imports them) |
-| Character stats / balance | `data/spirits.js` |
-| Gameplay tuning constants (fan caps, amp range, fame target, etc.) | `data/gameConstants.js` |
-| Win conditions (fame target, limelight turns) | `data/gameConstants.js` → `FAME_TO_WIN`, `LIMELIGHT_TO_WIN` |
-| ✨ Limelight / Strike a Pose economy (payout ramp, Sustain cost) | `data/gameConstants.js` → `POSE_FP_STEP` / `POSE_FP_MAX` / `POSE_SUSTAIN_COST` + `Game.togglePose` + `Game.poseTierFor` (the ONE place the next-round payout is computed) + the faucet in `Game.endTurn`. Standing on hex 56 pays nothing; only a pose does, and only on a `report.limelightHeld` turn. `LIMELIGHT_FAME` is legacy and no longer granted. |
-| 🔒 Which Riff Mode rooms are open to playtesters | `ui/RiffMenu.jsx` → `RIFF_MODES_UNLOCKED` (a Set of item ids; `null` disables the gate entirely) |
-| 🎨 Board colour schemes (Stage Skins) | `board/stageSkins.js` → `STAGE_SKINS`. Plate = CSS `hue-rotate` (angles are MEASURED against the real art — see the file header before adding one), outline = `feColorMatrix` luminance→exact colour. Purely local + cosmetic; deliberately NOT engine state, so players in one match can run different skins. |
-| 🗺️ Fretboard Recon levels / Live Set length / rank thresholds | `ui/FretboardRecon.jsx` → `TIER_CONFIG`, `LIVE_SET_LENGTH`, `RANKS`, `scoreSet()`, `recommendFor()`. ⚠️ The level NEVER changes mid-run — the old streak promote/fumble demote is cut on purpose (header explains why). Recommendations are advisory only. |
-| 👂 Ear Spy — mic sensitivity / what counts as "music" vs room noise | `audio/chroma.js` → `GATE_DEFAULTS`. ⚠️ Every threshold is MEASURED, not guessed — `npm run test:chroma` prints the table it came from and asserts the separation still holds. See `EAR_SPY_HANDOFF.md` §2. |
-| 👂 Ear Spy — chord/key/scale detection, fret placement, riff verdict | `music/keyDetect.js` (key + palette), `music/neckPlacement.js` (notes → frets, trail, usage), `music/riffAnalysis.js` (post-phrase). The deliberate-discord judgement is `music/spice.js`, SHARED with Discord Coach — changing it changes both. `EAR_SPY_HANDOFF.md` §3 lists the bugs each ⚠️ comment guards. |
-| 👂 Ear Spy Online — send rate, wire shape, turn-taking | `net/riffWire.js` → `WIRE_DEFAULTS` + `net/earSpyLink.js` + `server/index.js` → `case "RIFF"` / `case "FLOOR"`. ⚠️ The server closes sockets over 30 msg/s; the 8 Hz coalescing throttle is what stops streaming from disconnecting players. |
-| Scales, note spelling, intervals | `music/notes.js` |
+| Character stats / balance | `data/spirits.js` → `SPIRIT_DEFS` |
+| Any gameplay tuning number | `data/gameConstants.js` — 96 constants, and the first place to look |
+| Win conditions | `data/gameConstants.js` → `FAME_TO_WIN`, `LIMELIGHT_TO_WIN` |
+| Combat maths — damage, knockback, Fame from margin, the underdog ramp | `engine/systems/combat.js` → `marginToDamage`, `knockbackSpaces`, `fameFromMargin`, `underdogBonus` |
+| What a fight *does* afterwards — Fame grants, stack loss, slides | `engine/systems/battleFlow.js` → `battleConsequences`, `runBattleFlow` |
+| What an attack costs and rolls | `engine/systems/attackParams.js` → `attackParams` (⚠️ the one place; do not re-derive) |
+| 🎛️ Amp dice pool / die size / radius | `engine/systems/sonicRig.js` → `rigTiers`, `rigRadius`; floors in `data/gameConstants.js` → `RIG_RADIUS_FLOOR`, `RIG_POOL_FLOOR`, `RIG_ATROPHY_TURNS`. ⚠️ Radius **breathes with your stacks** — Drive on your turn, Sustain on theirs. There is no Range skill any more. |
+| 🎪 The marquee quiz — payouts, lanes, atrophy | `data/trivia.js` (`TRIVIA_REWARD`, `TRIVIA_TIER_GRANT`, the bank) + `ui/EventModal.jsx` (the card) + `engine/policies/transition.js` (the headless resolve). See `MARQUEE_QUIZ_DESIGN.md`. |
+| ✨ Limelight / Strike a Pose economy | `data/gameConstants.js` → `POSE_FP_STEP`, `POSE_FP_MAX`, `POSE_SUSTAIN_COST` + `engine/systems/limelight.js` → `posePayout`. ⚠️ Standing on the hex pays nothing; only a pose does. `LIMELIGHT_FAME` is legacy and no longer granted. |
+| 💰 What a committed melody pays | `engine/systems/melodyCommit.js` → `commitMelodyEconomy`; the scoring itself in `music/cadence.js` → `scoreTrackDB`. ⚠️ Read `CLIENT_OWNED` first — some of it is still in `Game.confirmNoteTrack`. |
+| 🎼 Which notes are legal / the pardon ladder | `music/context.js` → `CONTEXT_TIERS`, `classifyTrack`, `discordPenaltyFor`. See `THEORY_ARCHITECTURE.md`; history in `THEORY_REWRITE_LOG.md`. |
+| Chord → Drive/Sustain | `music/chords.js` → `CHORD_TEMPLATES`, `evaluateChord` |
 | Cadence objectives | `music/cadence.js` → `CADENCE_OBJECTIVES` |
-| Melody-line scoring numbers | `music/cadence.js` (scoring fns) + `Game.confirmNoteTrack` |
-| Dissonance Edge (stage costs/payouts, Drive/Sustain deltas) | `data/gameConstants.js` → `EDGE_*` + `Game.confirmNoteTrack` (start/escalate/resolve/collapse) + `Game.edgeCombatMods` (combat read) + `Game.clearBattleBuffs` (burn-on-battle) (see `DESIGN_AUDIT_v2.md` §9) |
-| Chord → Drive/Sustain table | `music/chords.js` → `CHORD_TEMPLATES` / `evaluateChord` |
-| Riff-off generation (contours, rhythms) | `riff/riffGeneration.js` |
-| Riff-off timing feel (fall speed, difficulty presets, grade windows, note spacing) | `riff/fallingNotes.js` |
-| Riff-off input/judging engine (falling run, miss timers, Riff Slayer lurch, E-Rush ghosts) | `RIFF-OFF ENGINE` banner in `Game` (`riffStartRun` / `riffPressKey`) |
-| Riff-off highway visuals (gems, strike zone, bursts) | `ui/RiffHighway.jsx` — Rocksmith pass: string-colored gems, fret-number glyphs, scrolling 13-fret neck, fret-cell taps (GPOS deleted) |
-| Riff-off SFX (synth sounds) | `audio/riffSfx.js` |
-| BGM tracks | `audio/bgm.js` |
-| Fan-economy tuning | `data/gameConstants.js` → `FAN_*` constants |
-| Amp range / chaining | `data/gameConstants.js` → `AMP_RANGE`, `AMP_LINK_DIST` |
-| Skill tree / upgrades | `SKILL_TREE`, `DISCORD_UPGRADE_TIERS` (main file, module-level) |
-| 🎵 Styles (earning lanes: Shred runs / Groove patterns / Flair flavors) | `data/styles.js` (`STYLE_DEFS`, `styleOf`, `styleDef`); `music/cadence.js` (detectors: `detectStyleRun`, `detectContourTurn`, `detectCellRepeat`, `detectResolvedDiscords`); `engine/systems/economy.js` (`styleCommitDb`); `engine/systems/combat.js` (`chordFrayAmount`); see `STYLE_SYSTEM_HANDOFF.md` for the full spec |
-| 🎇 Stage Effects (thresholds, damage, durations) | `data/stageEffects.js` (tuning) + `STAGE EFFECTS SYSTEM` in `Game` (logic) + `board/stageFx.js` (geometry) + `ui/StageFXLayer.jsx` (visuals). NOTE: the old skill-based stage effects (laser_show/stage_light/fog_machine/pyrotechnics) are RETIRED — `getBattleSkillMods` now returns permanently-false flags so downstream battle/overlay code stays inert. |
-| ⏱️ What ticks per TURN vs per ROUND | `engine/systems/turn.js` (`rollRound`, the anchor) + `Game.endTurn`'s `report.roundCompleted` block — see "The round clock" below |
-| 🎸💥 The Smash (cost + payout) | `data/gameConstants.js` → `SMASH_*` + `Game.resolveSmash`. Flat 2/2/2 for your whole Drive stack; `smashOutcome` in `engine/systems/combat.js` is now Blaster-of-Ra-only |
-| 🎸 Cursed Shamisen (minor-key haunt) | `Game.resolveCursedShamisen` / `tickCursedShamisen` / `shamisenWanderStep` (`SHAM_RINGS`, `SHAM_ROUNDS`) — ticks once per ROUND, only touches Spirits whose `scaleMode` is `'minor'` |
-| 🤘 Rock God boss (trigger margin, HP, timer, attacks, taunts) | `data/rockGods.js` (all tuning — incl. `ROCK_GOD_DIFFICULTY`, the wall-clock pace) + `ROCK GOD SYSTEM` in `Game` (engine) + `board/rockGodFx.js` (geometry) + `ui/RockGodLayer.jsx` (visuals). New gods: add a full def to `ROCK_GODS`, list it in `ROCK_GOD_IMPLEMENTED`, and extend `applyGodActed` (engine/systems/rockGod.js) + the `rockGodAct` report renderer with its attack ids. |
-| Event spaces | `data/events.js` + `EVENT SPACES SYSTEM` in `Game` |
-| Trivia questions | `data/trivia.js` |
-| Riff-off feel (length, timing window) | `RIFF_LEN`, `RIFF_NOTE_WINDOW` (main file, module-level) |
-| Board overlay: Commit Track | Main file, `RENDER` banner → search `COMMIT TRACK` |
-| Board overlay: Chord Stack | Main file, `RENDER` banner → search `CHORD STACK` |
-| Board overlay: Voicing Panel | Main file, `RENDER` banner → search `FLOATING VOICING PANEL` |
-| A specific overlay/modal's look | The matching file in `ui/` |
-| Tutorial content | `tutorial/content.jsx` |
+| Scales, note spelling, intervals | `music/notes.js` |
+| 🎓 The skill tree | `data/skillTree.js` → `SKILL_TREE`; the gate is `engine/systems/skills.js` → `skillEligibility` (⚠️ shared by bot and client — one gate). Routes in `THEORY_ROUTES_DESIGN.md`. |
+| Fan economy tuning | `data/gameConstants.js` → `FAN_*`; the rules in `engine/systems/economy.js` → `applyFansTicked`, `fansFromDeed` |
+| 🎸💥 The Smash | `data/gameConstants.js` → `SMASH_*` + `Game.resolveSmash`. ⚠️ Still unmodelled headless — the oldest debt in `SEQUENCING.md`. |
+| 🧪 The slime trail | `engine/systems/slime.js` + `data/gameConstants.js` → `SLIME_*`. See `METALNESS_REWORK_DESIGN.md`. |
+| 🔊 Going to eleven | `engine/systems/eleven.js` + `ELEVEN_DRIVE`, `ELEVEN_AMP_BLOWN_TURNS` |
+| 🎇 Stage Effects | `data/stageEffects.js` (tuning) + `engine/systems/stageFx.js` (rules) + `board/stageFx.js` (geometry) + `ui/StageFXLayer.jsx` (visuals) |
+| 🤘 Rock God boss | `data/rockGods.js` (all tuning) + `engine/systems/rockGod.js` (rules) + `board/rockGodFx.js` (geometry) + `ui/RockGodLayer.jsx` (visuals). New gods: add to `ROCK_GODS`, list in `ROCK_GOD_IMPLEMENTED`, extend `applyGodActed`. See `ROCK_GODS_DESIGN.md`. |
+| 🎸 Cursed Shamisen | `Game.resolveCursedShamisen` / `tickCursedShamisen` (`SHAM_RINGS`, `SHAM_ROUNDS`, module-level in the monolith) — ticks once per ROUND, only touches minor-key Spirits |
+| Event spaces | `data/events.js` + `EVENT SPACES SYSTEM` banner in `Game` |
+| Trivia questions | `data/trivia.js` — write against `TRIVIA_CONTENT_BRIEF.md` |
+| 🤖 How the bot values a position | `engine/policies/evaluate.js` → `EVAL_WEIGHTS`. ⚠️ **Measure, don't guess** — `BOT_STRATEGY_HANDOFF.md` records which weights are measured and which are still guesses, and §5.D⁷ of `SEQUENCING.md` shows a weight that made things *worse* when raised. |
+| 🤖 What the bot is allowed to consider | `engine/policies/legalActions.js` → `legalActions` |
+| 🤖 Bot personalities | `engine/policies/bot.js` → `BOT_PERSONALITIES` |
+| 🎲 What the headless harness does *not* model | `engine/policies/play.js` → `HARNESS_GAPS` (⚠️ add to it rather than leaving a mechanic silently absent) |
+| Riff-off generation | `riff/riffGeneration.js` |
+| Riff-off timing feel | `riff/fallingNotes.js` → `RIFF_FALL_DIFFICULTY` |
+| Riff-off verdict maths | `engine/systems/riffOff.js` → `riffStats`, `RIFF_GRADE_WEIGHT` |
+| Riff-off input/judging | `RIFF-OFF ENGINE` banner in `Game` (`riffStartRun` / `riffPressKey`) |
+| Riff-off highway visuals | `ui/RiffHighway.jsx` |
+| 🔒 Which Riff Mode rooms playtesters see | `ui/RiffMenu.jsx` → `RIFF_MODES_UNLOCKED` (module-local; `null` disables the gate) |
+| 🗺️ Fretboard Recon levels / ranks | `ui/FretboardRecon.jsx` → `TIER_CONFIG`, `RANKS`, `LIVE_SET_LENGTH`, `scoreSet`, `recommendFor` |
+| 👂 Ear Spy mic sensitivity | `audio/chroma.js` → `CHROMA_DEFAULTS`. ⚠️ Measured, not guessed — `npm run test:chroma` prints the table. `EAR_SPY_HANDOFF.md` §2. |
+| 👂 Ear Spy detection / placement / verdict | `music/keyDetect.js`, `music/neckPlacement.js`, `music/riffAnalysis.js`. The deliberate-discord call is `music/spice.js`, **shared with Discord Coach**. `EAR_SPY_HANDOFF.md` §3. |
+| 👂 Ear Spy Online wire | `net/riffWire.js` → `WIRE_DEFAULTS` + `net/earSpyLink.js` + `server/index.js` |
+| 📷 Camera fretboard detection | `vision/neckDetect.js` (finding it), `vision/neckGeometry.js` (the maths), `vision/fretFusion.js` (fusing with audio). `GUITAR_NECK_HANDOFF.md`. |
+| 🎨 Board colour schemes | `board/stageSkins.js` → `STAGE_SKINS`. ⚠️ Hue angles are MEASURED against the real art — read the file header before adding one. |
 | Board map / hex layout | `board/hexMap.js`, `board/constants.js` |
+| Board overlay: Commit Track / Chord Stack / Voicing Panel | Monolith, `RENDER` banner → search `COMMIT TRACK`, `CHORD STACK`, `FLOATING VOICING PANEL` |
+| A specific overlay or modal's look | The matching file in `ui/` |
 | CSS keyframes / global styles | `ui/GameStyles.jsx` |
+| Tutorial content | `tutorial/content.jsx` |
+| BGM tracks / riff SFX | `audio/bgm.js` / `audio/riffSfx.js` |
+
+### 🪦 Rows that used to be here, and what happened to them
+
+⚠️ **Kept deliberately.** Somebody who learned this file a month ago will still
+look for these, and "it moved" is a cheaper answer than a silent absence.
+
+| The old row said | Truth |
+|---|---|
+| Amp range / chaining → `AMP_RANGE`, `AMP_LINK_DIST` | **Both constants deleted.** The amp-rig graph (`board/ampRigs.js`) is gone; radius is `engine/systems/sonicRig.js` → `rigRadius`. |
+| 🎵 Styles → `styleCommitDb`, `detectStyleRun`, `detectContourTurn`, `detectCellRepeat`, `detectResolvedDiscords` | **All five deleted with the Style system.** Style pays nothing now; it is an icon, a colour and a tagline. The tombstones in `music/cadence.js` and `engine/systems/economy.js` explain why: they re-scored gestures the Drive and Sustain boosts already pay for. `STYLE_SYSTEM_HANDOFF.md` describes the deleted system and is history, not instructions. |
+| Skill tree → `SKILL_TREE` (main file, module-level) | Moved to `data/skillTree.js`. `DISCORD_UPGRADE_TIERS` is still module-level in the monolith. |
+| Riff-off feel → `RIFF_LEN`, `RIFF_NOTE_WINDOW` (main file) | `RIFF_NOTE_WINDOW` lives in `riff/riffGeneration.js`; `RIFF_LEN` is still module-level in the monolith. |
+| Dissonance Edge → `EDGE_*` + `Game.edgeCombatMods` | ⚠️ **THE MECHANIC IS REMOVED AND THE ROW WAS SENDING PEOPLE TO A STUB.** No `EDGE_*` tuning constant exists anywhere (the `EDGE_HEX_NUMS` / `EDGE_DIST` in `board/` and `evaluate.js` are board-edge *distance*, unrelated). `edgeCombatMods` survives at monolith line ~6833 as a function whose own comment reads *"Dissonance Edge — REMOVED. Returns zero mods for backward compat"*, still called from four sites. `DESIGN_AUDIT_v2.md` §9 describes the design it used to have. |
+| `engine/systems/skills.js` → `ULTIMATE_PREREQS` | **Deleted 2026-08-20** — it named three ids that were not in the tree, and no skill carried the matching `prereq`, so the Ultimate branch was unreachable in both directions while the test was green against a fake tree. |
 
 ---
 
-## 🎵 The Style system (2026-07-28) — what changed where
-
-**See `STYLE_SYSTEM_HANDOFF.md` for the full spec.** The nine stance abilities are preserved in `STANCE_PARTS_BIN.md` as menu options for the upcoming Spirit redraw.
-
-In short:
-- **Stances are cut completely** from `data/`, skills, and UI.
-- **Styles are fixed per Spirit**, read directly from `SPIRIT_DEFS[id].style`. Three styles: **Shred** (long directional runs — earn Db), **Groove** (repetition — earn Db), **Flair** (resolved discords — earn Db). No abilities, no passives, no stat mods.
-- **Db payout** happens once per melody commit in `confirmNoteTrack` via `styleCommitDb()`, on top of existing scoring. Tiers 1–3 based on pattern length, +1 signature bonus (contour turn / root resolution / chromatic approach).
-- **New detectors** in `music/cadence.js`: `detectStyleRun`, `detectContourTurn`, `detectCellRepeat`, `detectResolvedDiscords` — pure, unit-tested.
-- **Chord fray** moved to `engine/systems/combat.js` as `chordFrayAmount` (pure margin math, stance-neutral).
-- **Action bar** restored to three buttons: Swing (1 AP) / Sonic (2 AP) / Smash (2 AP). All stance skill routes, `requiresStance` / `stancesKnown` gating, `Game.switchStance`, and the Groove counter are gone.
-
-## ⏱️ The round clock (2026-08-05) — what "a turn" means now
+## ⏱️ The round clock — what "a turn" means
 
 A **TURN** is one player acting. A **ROUND** is one full revolution of the turn
 order. Shared board state runs on the ROUND; personal state runs on the TURN.
-The rule of thumb: *if it can hurt or help someone who isn't acting, it waits
-for the round.*
+🎯 **The rule of thumb: *if it can hurt or help someone who isn't acting, it waits
+for the round.***
 
-- **Round detection lives in `engine/systems/turn.js`** (`rollRound`) and is
-  anchored, not counted: `turn.roundStarterId` is whoever opened the revolution,
-  and the round closes when play comes back to them. The old
+- **Round detection lives in `engine/systems/turn.js`** (`rollRound`, module-local)
+  and is **anchored, not counted**: `turn.roundStarterId` is whoever opened the
+  revolution, and the round closes when play returns to them. ⚠️ The old
   `count % aliveCount` drifted on every knockout and every skipped turn.
-  `turn.round` is the round counter; `turn.roundPending` banks a round that a
-  SKIPPED turn closed (skips run no ticks, so the next real turn end spends it);
-  eliminating the anchor closes the round and re-anchors on the next actor.
+  `turn.roundPending` banks a round that a SKIPPED turn closed, since skips run no
+  ticks; eliminating the anchor closes the round and re-anchors on the next actor.
 - **On the ROUND clock** (`endTurn`'s `report.roundCompleted` block): stage FX
   (smoke, lasers, pyro arm→erupt, animatronic steps), spotlight move, Lost Chord
-  scatter + drift, Disco Inferno decay, marquee respawn, charge-zone cooldowns,
+  scatter and drift, Disco Inferno decay, marquee respawn, charge-zone cooldowns,
   board-card respawn, the Cursed Shamisen.
-- **Still on the TURN clock** (the acting Spirit's own end of turn): debuff
-  ticks, Burn, the fan economy, the spotlight heal, poison-slime decay (seeded
-  with the living-Spirit count, so it already means "one revolution").
-- **Durations were RESTATED, not just relabelled** — see the ⏱️ comments in
-  `data/stageEffects.js` and `data/gameConstants.js`. e.g. animatronics 5
-  player-turns → 2 rounds, pyro 3 waves → 2.
-- **The Rock God is the deliberate exception.** He is not board weather: he acts
-  on WALL-CLOCK time (`ROCK_GOD_DIFFICULTY.actSeconds`, set from the lobby dial
-  and carried in the game config so a room agrees), driven only by the client
-  that controls the acting Spirit. Dawdle and he swings again.
+- **On the TURN clock** (the acting Spirit's own end of turn): debuff ticks, Burn,
+  the fan economy, the spotlight heal, poison-slime decay, **and rig atrophy** —
+  ⚠️ a clock counted in spirit-turns runs four times too fast in a four-handed
+  game, which is why atrophy ticks on the owner's own turns only.
+- **Durations were RESTATED, not relabelled** — see the ⏱️ comments in
+  `data/stageEffects.js` and `data/gameConstants.js`. Animatronics went 5
+  player-turns → 2 rounds; pyro 3 waves → 2.
+- **The Rock God is the deliberate exception.** He is not board weather: he acts on
+  WALL-CLOCK time (`ROCK_GOD_DIFFICULTY.actSeconds`), driven only by the client
+  controlling the acting Spirit. Dawdle and he swings again.
 
-**Hazards never start on a player.** Laser beams and pyro charges are rolled
-around occupied hexes (`rollLaserBeams(count, rng, avoidNums)` /
-`rollPyroHexes(count, excludeNums, rng)`), and nothing deals damage at
-roll time — the activation/re-pattern "zap" is gone. Hazards bite on ENTRY
-only, via `checkStageFxHex`, which fires on a step OR a knockback: walking in
-costs you, and shoving a rival onto a live beam still works.
+**Hazards never start on a player.** Laser beams and pyro charges are rolled around
+occupied hexes (`rollLaserBeams`, `rollPyroHexes`), and nothing deals damage at roll
+time. Hazards bite on ENTRY only — walking in costs you, and shoving a rival onto a
+live beam still works.
+
+---
+
+## 🗂️ The other docs — which map is which
+
+The design lives in Markdown next to the code. ⚠️ **A doc that has drifted is worse
+than no doc** — if you find one that has, say so plainly rather than editing around it.
+
+| Doc | What it is |
+|---|---|
+| `SEQUENCING.md` | 🧭 **START HERE.** §5 is always the current session handoff and the next step. |
+| `BOT_STRATEGY_HANDOFF.md` | The bot, the evaluator, the cost web, the kits. Which weights are measured, which are guesses. |
+| `MULTIPLAYER_HANDOFF.md` | The engine extraction, phase by phase — what the engine owns and what React still holds. |
+| `NETCODE_HANDOFF.md` | The server, rooms, relay, spectating. |
+| `THEORY_ARCHITECTURE.md` / `THEORY_ROUTES_DESIGN.md` | The chord-context ladder and the Theory routes. |
+| `THEORY_REWRITE_LOG.md` | 🪦 History of how that ladder was built. **Nothing in it is pending.** |
+| `AMP_DECK_DESIGN.md` | The rig. §2 and §4 are current; ⚠️ §5–§7 are a historical implementation log. |
+| `MARQUEE_QUIZ_DESIGN.md` | 🎪 The quiz card, the lanes, the workout, atrophy. |
+| `TRIVIA_CONTENT_BRIEF.md` | The spec for writing new trivia, somewhere cheaper than a coding session. |
+| `METALNESS_REWORK_DESIGN.md` | 🧪 The Metalness Monster kit. |
+| `CHARACTER_HANDOFF.md` | Per-character state. |
+| `RIFFOFF_HANDOFF.md` | 🎸 The duel. |
+| `EAR_SPY_HANDOFF.md` | 👂 Mic listening, the gates, the benches. |
+| `GUITAR_NECK_HANDOFF.md` | 📷 The camera fretboard. |
+| `PRACTICE_MODES_HANDOFF.md` / `LEGEND_LESSONS_HANDOFF.md` | The practice rooms. |
+| `ROCK_GODS_DESIGN.md` | 🤘 The endgame boss. |
+| `CREW_SYSTEM_DESIGN.md` / `RIFF_RAT_DESIGN.md` / `DRIVE_SUSTAIN_SPLIT_DESIGN.md` | Open design arms — see `SEQUENCING.md` for which are live. |
+| `ECONOMY_HANDOFF.md` / `DESIGN_AUDIT.md` / `DESIGN_AUDIT_v2.md` | Economy analysis and audits. ⚠️ v2 §9 describes the Dissonance Edge, which is removed. |
+| `POLISH_HANDOFF.md` / `OPENING_MOVIE_HANDOFF.md` | Presentation work. |
+| `STYLE_SYSTEM_HANDOFF.md` | 🪦 **HISTORY.** Describes the Style system, which is deleted — Style is flavour only now. |
+| `STANCE_SYSTEM_DESIGN.md` / `STANCE_V2_HANDOFF.md` / `STANCE_PARTS_BIN.md` | 🪦 **SUPERSEDED**, and they say so in their own headers. Stances are cut; the parts bin is a menu for a future redraw, not live content. |
+
+---
 
 ## Conventions
 
-- **Navigate by banner comments, not line numbers** — lines shift with every edit.
-- **`Game` is still a "God component."** It holds most state, all system logic, async-combat refs, and the left/center render columns. The `hooks/` and `ui/` files are the seams; further reduction means moving *logic* (effects/handlers) into hooks.
-- **Filename case:** `App.jsx` imports `./rlsw-simulator-V3_8_1` while the file is lowercase `v3_8_1`. Line 7 imports `./groupie_fans.png` for a file named `.PNG`. Both work on case-insensitive filesystems but would break on Linux.
-- **No behavior was changed during extraction** — every module was moved verbatim with imports/exports wired and verified.
-- **Keep this file updated** — if you add a file, move a section, or create a new board overlay, update this doc before ending your session.
+- 🧭 **Navigate by banner comments, not line numbers.** Lines shift with every edit.
+- 🎯 **Rules go in `engine/`, not in `Game`.** A rule written in the client is
+  invisible to the harness, the bench and the replay. If you must leave one there,
+  declare it — `HARNESS_GAPS` in `policies/play.js`, or `CLIENT_OWNED` in
+  `systems/melodyCommit.js`.
+- 🎲 **Never call `Math.random()` in a rule.** Draw from the engine rng, and draw
+  in a position that does not depend on an outcome — a draw whose place in the
+  stream moves is a replay divergence waiting to happen.
+- ⚠️ **A passing test is not evidence a rule is real.** `legalActionsCheck` §15 was
+  green for months against a skill-purchase mechanic the game does not have,
+  because the test was written from the same misunderstanding as the code. **When
+  checking whether the engine matches the game, read the CLIENT.**
+- 📌 **`Game` is still a God component**, and that is a known cost rather than a
+  plan. `hooks/` and `ui/` are the seams; further reduction means moving *logic*
+  into the engine, not more state into hooks.
+- ✍️ **Comment the WHY and the failure mode**, not the what. `⚠️` marks a trap
+  someone could reasonably fall into; `📌` marks a note for later.
+- 🔤 **Filename case is load-bearing.** Windows resolves a wrong-case import;
+  the Linux box Render builds on does not. `npm run check:bundle` must end with
+  **zero warnings** — it caught six real case mismatches that had been sitting in
+  the output as scenery for months.
+- 🗺️ **Update this file in the same pass as the code.** `npm run test:arch` will
+  fail if you don't, which is the only reason it is still true.

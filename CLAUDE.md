@@ -39,8 +39,18 @@ pass as the code:
 - `src/THEORY_ARCHITECTURE.md` / `THEORY_ROUTES_DESIGN.md` — the music theory routes
 - `src/CHARACTER_HANDOFF.md` — per-character state
 
+`src/ARCHITECTURE.md` is the map of the code itself — every module, what it
+exports, and the "where do I change X?" index. 🎯 **It is the only doc that is
+machine-checked**: `npm run test:arch` asserts that it names every source module,
+points at no file that does not exist, and lists no export that is not real. **Add
+a module, add its row in the same pass** — the suite will fail until you do, and
+that is deliberate.
+
 ⚠️ A doc that has drifted from the code is worse than no doc. If you find one
-that is stale, say so plainly rather than editing around it.
+that is stale, say so plainly rather than editing around it. ARCHITECTURE.md spent
+months calling `engine/` a "~300 line scaffold" while it grew into the whole game,
+because nothing could tell. That is what `test:arch` exists to prevent, and it is
+why the other docs — which have no such check — are worth reading with suspicion.
 
 ## House style for comments
 
@@ -58,7 +68,7 @@ unremarked.
 
 Individual suites are `npm run test:<suite>`: engine, legal, eval, transition,
 turnflow, determinism, battleflow, melody, slime, eleven, score, harness,
-riffparity, skilltree, b0, riff, trace. `npm run bench:bot` runs the §6.6 bot
+riffparity, skilltree, b0, riff, trace, arch. `npm run bench:bot` runs the §6.6 bot
 bench (not a test — it prints evidence), and `.scratch/` holds one-off probes,
 which are evidence for one session and never a suite.
 

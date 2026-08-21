@@ -1,0 +1,81 @@
+docs: rewrite ARCHITECTURE.md from measurement, and make it checkable
+
+SEQUENCING §5.E⁸ item 1. The map called engine/ a "~300 line Phase 1 scaffold"
+while engine/ had become 21,595 lines and the entire game; engine/policies/ and
+engine/systems/ did not appear in the file at all; 50 of 130 modules were
+unlisted; gameConstants.js was listed at 39 constants and exports 96.
+
+🗺️ THE REWRITE
+   502 lines, written from a machine-read inventory rather than memory: the
+   boot flow (with the point that the engine is NOT in it — Game is a client of
+   engine/, and a rule written in the client is invisible to the harness, the
+   bench and the replay), a measured directory map, full engine tables at one
+   row per module with real exports, the 17 systems and 7 policies that were
+   entirely missing, the suite table, the monolith's named banners with line
+   numbers, every extracted directory, an audited "where do I change X?" index,
+   the round clock, a table of the 31 design docs saying which are live and
+   which are history, and conventions.
+
+🎯 THE CHECK IS THE POINT, NOT THE REWRITE
+   A rewritten doc drifts again in a month — that is exactly what happened to
+   the last one, and nothing could tell. src/engine/architectureCheck.mjs
+   (`npm run test:arch`, wired into test:all) asserts the three claims a map
+   makes that CAN be falsified:
+     §1 every source module is named in the doc          — 157 modules
+     §2 every file path the doc names exists             — 218 paths
+     §3 every export the doc lists is really exported    — 502 exports
+     §4 the doc is intact and keeps its load-bearing sections
+   A module added without a row FAILS the suite. That is deliberate: the cost of
+   documenting a file is paid when it is cheapest, by whoever has the context.
+
+   ⚠️ PROVEN BY BREAKING IT, NOT BY WATCHING IT PASS. CLAUDE.md's rule is that a
+   passing test is not evidence a rule is real, so all three arms were failed on
+   purpose first: a new module with no row, a row renamed to a nonexistent file,
+   and styleCommitDb — the real historical phantom — added to chords.js's export
+   list. Each failed with the message a reader needs.
+
+   📌 §3 reads only four-column rows. The first draft regexed whole lines and
+   produced six false positives off the ui/ table's three-column prose, which is
+   exactly how importcheck.mjs earned its deletion yesterday. The row shape is
+   the gate.
+
+🪦 THE AUDIT FOUND TWO DELETED SYSTEMS STILL DOCUMENTED AS LIVE
+   · THE STYLE SYSTEM IS GONE. The index row named styleCommitDb,
+     detectStyleRun, detectContourTurn, detectCellRepeat and
+     detectResolvedDiscords — not one of the five exists. The tombstones in
+     music/cadence.js and engine/systems/economy.js explain why they went: they
+     re-scored the same gestures the Drive and Sustain boosts already pay for,
+     so three gestures were being paid twice in two currencies. data/styles.js
+     survives as flavour — icon, colour, tagline.
+     ⚠️ STYLE_SYSTEM_HANDOFF.md is a 246-line handoff for a deleted system and
+     still reads as instructions. Labelled history in the new doc table;
+     somebody should decide whether it stays.
+   · THE DISSONANCE EDGE IS GONE. The row said gameConstants.js -> EDGE_*. No
+     such constant exists anywhere (the EDGE_HEX_NUMS / EDGE_DIST hits are
+     board-edge distance, unrelated). Game.edgeCombatMods survives at ~6833 as a
+     function whose own comment reads "REMOVED. Returns zero mods for backward
+     compat", still called from four sites.
+     📌 Four live call sites into a permanent zero is dead weight worth a look,
+     but removing them is a behaviour change, so it is not this pass.
+
+   Four more stale rows: AMP_RANGE / AMP_LINK_DIST (deleted with the amp-rig
+   graph), SKILL_TREE ("main file, module-level" — it moved to
+   data/skillTree.js), RIFF_NOTE_WINDOW ("main file" — it is in
+   riff/riffGeneration.js), and two of the three Conventions warnings, which
+   described casing bugs that had already been fixed.
+
+   Dead rows were NOT silently dropped. They sit in a forwarding table at the
+   end of the index saying what happened to each, because somebody who learned
+   the file a month ago will still look for them and "it moved, here is where"
+   beats a silent absence — which is the failure this whole pass is about. The
+   check exempts that table so a dead name may be written there exactly once.
+
+VERIFICATION
+   test:all green, 18 suites. Every count unchanged, as it must be for a
+   documentation pass: legal 582, eval 154, transition 242, determinism 22,
+   turnFlow 61, battleFlow 50, melody 159, slime 127, eleven 38, score 122,
+   harness 1659, riffparity 127598, skillTree 159, trace 1831, engine/b0/riff
+   green. New: arch 8 checks over 157 modules / 218 paths / 502 exports.
+   check:bundle: 0 warnings.
+   ⚠️ npm run lint still does not finish on this machine (see the note in
+   §5.F⁸) and remains unverified since the eslint 10 upgrade.

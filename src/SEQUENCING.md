@@ -218,10 +218,14 @@ here and it is the one thing the harness still cannot see, because `smash` and
 > `check:bundle` has been printing "6 warnings" at the end of every run, and every
 > session — this one included, until it looked — read that as noise.
 >
-> 🗺️ **AND `ARCHITECTURE.md` IS A MAP OF A GAME THAT NO LONGER EXISTS** — §5.B⁸.
-> It calls `engine/` a "~300 line Phase 1 scaffold." `engine/` is **11,694 lines**
-> and is the whole game. It is **not repaired**, on purpose; it now says so at the
-> top in its own words. Rewriting it is item 1 of §5.E⁸.
+> 🗺️ **`ARCHITECTURE.md` WAS A MAP OF A GAME THAT NO LONGER EXISTS** — §5.B⁸ has
+> the measurement: it called `engine/` a "~300 line Phase 1 scaffold" when `engine/`
+> is the whole game. ✅ **Rewritten in the same session — §5.H⁸ — and `npm run
+> test:arch` now fails if it drifts again**, which is the part that matters.
+>
+> 🪦 **AND REWRITING IT FOUND TWO SYSTEMS THE MAP STILL ADVERTISED AS LIVE** — §5.I⁸.
+> The Style system and the Dissonance Edge are both **deleted**, and the index was
+> sending readers to five functions and a constant family that do not exist.
 >
 > 🔇 **332 ASSERTIONS WERE RUNNING FOR NOBODY** — §5.C⁸. `b0check` is quoted as
 > green in every handoff in this file and **no npm script has ever run it.**
@@ -249,7 +253,12 @@ signal. Keep it that way; treat a non-zero warning count as a failure.
 ever shows on a fresh Linux build. If the live site currently renders standees, it is
 serving an artifact built on Windows.
 
-### 5.B⁸ 🗺️ `ARCHITECTURE.md` HAS DRIFTED — SAID PLAINLY, NOT REPAIRED
+### 5.B⁸ 🗺️ `ARCHITECTURE.md` HAD DRIFTED — THE DIAGNOSIS
+
+> ✅ **REPAIRED LATER THE SAME DAY — see §5.H⁸.** This section is kept because it
+> is the *measurement* that justified the rewrite, and because the numbers in it
+> are the before-picture. The banner it describes is gone from the doc.
+
 
 CLAUDE.md's rule is that a drifted doc is worse than no doc, and that the honest move
 is to say so rather than edit around it. So the file now opens with a measured
@@ -339,10 +348,13 @@ including four ~600 KB source tarballs and a 242 KB diff. §5.G⁸.
 
 ### 5.E⁸ 🎯 NEXT, IN DEPENDENCY ORDER
 
-1. 🗺️ **REWRITE `ARCHITECTURE.md`, OR DEMOTE IT.** Now the top item, because every
-   other item on this list costs more while the map is wrong — it is the tax paid at
-   the start of every session. Build outward from the "where do I change X?" index,
-   which still works. ⚠️ Half the file is missing, not wrong; budget accordingly.
+1. ✅ **DONE — `ARCHITECTURE.md` IS REWRITTEN AND CHECKED.** Full account in §5.H⁸
+   and §5.I⁸. 502 lines from measurement, `npm run test:arch` keeps it true, and the
+   audit turned up two systems the old map still advertised as live (the Style
+   system and the Dissonance Edge) that do not exist at all. 📌 Two things it
+   surfaced and did NOT fix, both behaviour rather than docs: `Game.edgeCombatMods`
+   is a permanent zero called from four sites, and `STYLE_SYSTEM_HANDOFF.md` is a
+   246-line handoff for a deleted system.
 2. 🔊 **THE THROUGHPUT QUESTION IS STILL UNMEASURED** (carried from §5.E⁷.2). Two
    marquees roughly double quiz income; fans have no per-turn cap; the same card now
    hands out dice as well.
@@ -404,27 +416,110 @@ clean" a claim nobody has been able to re-verify on this machine since, and it s
 stop being repeated in a handoff until somebody runs it on Windows. 📌 Same disease as
 §5.A⁸: a check that is too slow to run is a check that quietly stops being run.
 
-### 5.G⁸ ✋ WHAT ALEX HAS TO DO FROM A REAL TERMINAL
+### 5.G⁸ ✋ WHAT IS STILL OUTSTANDING FROM A REAL TERMINAL
 
-The agent's shell on this mount **cannot unlink** — `rm` fails with `Operation not
-permitted`, and git writes leave `.lock` files it cannot clean up afterwards, which
-jams the next git command. So the deletions are staged as moves and the index still
-holds the old paths:
+✅ **THE COMMIT LANDED** — `52e16a2 "clearing old clutter"`, and it carried the rig
+rework with it, so the two-session backlog is closed. `COMMIT_MSG_RIG_REWORK.txt` and
+`COMMIT_MSG_CLUTTER_PASS.txt` are both spent and can go.
+
+⚠️ **BUT THE UNTRACKING STEP WAS NOT RUN, AND GITIGNORE DOES NOT UNTRACK.** Both
+directories are still in the index: **72 files under `.scratch/` and 12 under
+`_to_delete/`**, the latter including four ~600 KB source tarballs and a 242 KB diff.
+They are ignored for *future* changes and tracked for *existing* ones, which is the
+worst of both — edits to a probe still show up as repo noise.
 
 ```bash
 cd ~/rlsw-sim
-rm -rf _to_delete                        # the quarantine + 2.6 MB of old tarballs
-git rm -r --cached _to_delete .scratch   # 84 files out of the index; both are gitignored now
-git add -A                               # picks up the 10 deletions + the rename
-git status                               # sanity-read before committing
+git rm -r --cached _to_delete .scratch    # 84 files out of the index
+rm -rf _to_delete                         # the quarantine + 2.6 MB of tarballs
+git commit -m "chore: untrack the working piles"
 ```
 
-⚠️ **`git add -A` also stages last session's 28-file rig rework**, which is still
-uncommitted. Either commit the lot as one, or commit the rig rework first using
-`COMMIT_MSG_RIG_REWORK.txt` and this pass second.
+📌 The agent shell **cannot unlink**, so `_to_delete/` can only be emptied from a real
+terminal. It has since collected the ten quarantined files, a `__drifttest.js` left
+by the negative test in §5.H⁸, and a `gitlocks/` folder of `.lock` files the agent's
+git reads leave behind and cannot clean up.
 
-📌 **And run `npm run build` on Windows once** before pushing. §5.A⁸ was a Linux-only
-failure that no check in this repo could have caught on the dev machine.
+⚠️ **AND `npm run build` STILL WANTS RUNNING ON WINDOWS ONCE.** §5.A⁸ was a
+Linux-only failure that no check in this repo can reproduce on the dev machine.
+
+### 5.H⁸ 🗺️ THE MAP WAS REWRITTEN, AND IT IS CHECKED NOW
+
+✅ **§5.E⁸ ITEM 1 IS DONE.** `ARCHITECTURE.md` is 502 lines written from
+measurement, and `npm run test:arch` is what makes it stay true.
+
+🎯 **THE CHECK IS THE POINT, NOT THE REWRITE.** A rewritten doc drifts again in a
+month; that is exactly what happened to the last one. `engine/architectureCheck.mjs`
+asserts the three claims a map makes that can actually be falsified:
+
+| § | asserts | caught, today |
+|---|---|---|
+| 1 | every source module is named in the doc | **157 modules**, all now have a row |
+| 2 | every file path the doc names exists | **218 paths**, all resolve |
+| 3 | every export the doc lists is really exported | **502 exports**, all real |
+| 4 | the doc is intact and keeps its load-bearing sections | — |
+
+⚠️ **AND IT WAS PROVEN BY BREAKING IT, NOT BY PASSING.** CLAUDE.md's rule is that a
+passing test is not evidence a rule is real, so all three arms were failed on
+purpose before being trusted: a new module with no row (§1 fails), a row renamed to
+a file that does not exist (§2 fails), and `styleCommitDb` — the real historical
+phantom — added to `chords.js`'s export list (§3 fails). Each failed with the
+message a reader needs, and the doc was restored from a backup taken first.
+
+📌 **§3 ONLY READS FOUR-COLUMN ROWS**, and the first draft did not. The `ui/` table
+and the directory map are `| file | lines | purpose |`, so treating column 3 as
+exports flagged prose words as phantoms — six false positives on the first run. That
+is precisely how `importcheck.mjs` earned its deletion yesterday (17 findings, all 17
+false), so the row shape is now the gate rather than a regex over the whole line.
+
+### 5.I⁸ 🪦 WHAT THE AUDIT FOUND WHILE MEASURING
+
+Rewriting the map meant checking every claim in it. Six were fiction, and two of
+those were pointing at systems that no longer exist at all:
+
+- 🎵 **THE STYLE SYSTEM IS DELETED, AND THE DOC STILL SOLD IT AS LIVE.** The index
+  row for Styles named five functions — `styleCommitDb`, `detectStyleRun`,
+  `detectContourTurn`, `detectCellRepeat`, `detectResolvedDiscords` — and **not one
+  of them exists.** The tombstones in `music/cadence.js` and
+  `engine/systems/economy.js` explain why they went: they re-scored gestures the
+  Drive and Sustain boosts already pay for, so the same three gestures were being
+  paid twice in two currencies. `data/styles.js` survives as flavour — an icon, a
+  colour, a tagline. ⚠️ `STYLE_SYSTEM_HANDOFF.md` is a 246-line handoff for a
+  deleted system and reads as instructions; it is now labelled history in the new
+  doc table, but somebody should decide whether it stays.
+- ⚡ **THE DISSONANCE EDGE IS REMOVED AND THE DOC SENT YOU TO A STUB.** The row
+  said `data/gameConstants.js → EDGE_*`. **No `EDGE_*` tuning constant exists
+  anywhere** — the `EDGE_HEX_NUMS` / `EDGE_DIST` hits are board-edge *distance*,
+  unrelated. `Game.edgeCombatMods` is still there at ~6833 and still called from
+  four sites, as a function whose own comment reads *"REMOVED. Returns zero mods
+  for backward compat."* 📌 Four live call sites into a permanent zero is dead
+  weight worth a look, but it is a behaviour change, so it is not this pass.
+- 🎛️ `AMP_RANGE` / `AMP_LINK_DIST` — both deleted with the amp-rig graph.
+- 🎓 `SKILL_TREE` "main file, module-level" — it moved to `data/skillTree.js`.
+- 🎸 `RIFF_NOTE_WINDOW` "main file, module-level" — it is in `riff/riffGeneration.js`.
+- 🔤 **Two of the three "Conventions" warnings were already fixed** and the doc still
+  warned about them: `App.jsx`'s capital-V import (fixed) and a `groupie_fans.png`
+  case mismatch for a file that no longer exists.
+
+🎯 **THE DEAD ROWS WERE NOT SILENTLY DROPPED.** They live in a 🪦 forwarding table at
+the end of the index, saying what happened to each. Somebody who learned this file a
+month ago will still look for them, and "it moved, here is where" is a cheaper answer
+than a silent absence — which is the failure the whole rewrite is about. The check
+knows to exempt that table, so naming a dead file there is allowed exactly once.
+
+📌 **The new doc also gained a `🗂️ The other docs` table** — 31 design docs live in
+`src/`, and until now nothing said which were live and which were history. Three are
+marked superseded in their own headers (`STANCE_*`), one is the retired theory log,
+and `STYLE_SYSTEM_HANDOFF.md` is the one whose status the code contradicts.
+
+### 5.J⁸ 📌 Suites, after the rewrite
+
+**legal 582, eval 154, transition 242, determinism 22, turnFlow 61, battleFlow 50,
+melody 159, slime 127, eleven 38, score 122, harness 1659, riffparity 127598,
+skillTree 159, trace 1831, engine ✓, b0 ✓, riff ✓** — unchanged again, as they must
+be for a documentation pass. **New: arch 8 checks**, covering 157 modules, 218 paths
+and 502 exports. `check:bundle` still zero warnings. `test:all` now runs **18 suites**.
+
 
 ---
 
