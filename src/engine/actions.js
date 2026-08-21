@@ -513,10 +513,18 @@ export function chargeZonesTicked() {
   return { type: CHARGE_ZONES_TICKED };
 }
 
-/** A spirit steps on a marquee event hex — hex is consumed, respawn timer set. */
+/**
+ * A spirit steps on a marquee event hex — hex is consumed, respawn timer set.
+ *
+ * 🎪 `usedTrivia` RIDES ALONG since 2026-08-20. The used-question list used to
+ * be a React ref, which meant it could not be serialized, could not be replayed
+ * and could not be shared with the headless path. `drawTrivia` is pure and
+ * returns the next list; the caller hands it here and the reducer stores it, so
+ * one match's question history is part of the match.
+ */
 export const EVENT_HEX_TRIGGERED = "EVENT_HEX_TRIGGERED";
-export function eventHexTriggered(spiritId, hexNum) {
-  return { type: EVENT_HEX_TRIGGERED, spiritId, hexNum };
+export function eventHexTriggered(spiritId, hexNum, usedTrivia = null) {
+  return { type: EVENT_HEX_TRIGGERED, spiritId, hexNum, usedTrivia };
 }
 
 /** A successful Thrash hit knocks Lost Chords loose around the defender.

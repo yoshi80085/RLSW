@@ -730,12 +730,17 @@ console.log("✓ Db payout: Theory never lowers it, and a bigger chord always pa
   const other = makeInitialNoteState('Metalness_Monster', () => 0.5);
   assert.ok(ronin.unlockedSkills.includes('theory_minor'),
     'B10: Ronin must start holding theory_minor');
-  assert.ok(ronin.unlockedSkills.includes('amp_1'),
-    'B10: and must not have LOST amp_1 to the grant');
   assert.ok(!other.unlockedSkills.includes('theory_minor'),
     'B10: no other spirit starts with a Theory tier');
-  assert.deepEqual(other.unlockedSkills, ['amp_1'],
-    'B10: every other spirit still starts with amp_1 alone');
+  // 🛑 THIS PAIR USED TO PIN `amp_1` — that every Spirit started holding it, and
+  //    that the Ronin's Theory grant had not displaced it. The rig came off the
+  //    skill tree on 2026-08-20 and `amp_1` no longer exists, so the seed is now
+  //    EMPTY for everyone but the Ronin. Nobody lost a free amp: `rigPool` starts
+  //    at `RIG_POOL_FLOOR`, which is the same 2d6 the rung used to grant.
+  assert.deepEqual(other.unlockedSkills, [],
+    'B10: every other spirit starts with NO skills at all');
+  assert.deepEqual(ronin.unlockedSkills, ['theory_minor'],
+    'B10: …and the Ronin with exactly his one free Theory tier');
 
   // The grant must actually reach the pardon ladder — the whole point of it.
   const keyC  = [0,2,4,5,7,9,11];
@@ -793,7 +798,7 @@ console.log("✓ B10: the free tier is live but B0a's ambiguous seed still holds
     'B10: a spirit without the tier is blocked on the prereq');
   assert.equal(skillEligibility(minor, ronin.unlockedSkills).reason, 'already',
     'B10: and he cannot re-buy the tier he was given');
-  // The arithmetic, in the frame PENDING_CHANGES uses. The doc calls this "a 46-Db
+  // The arithmetic, in the frame THEORY_REWRITE_LOG uses. The doc calls this "a 46-Db
   // ladder", which is list price MINUS theory_major — because theory_major is
   // supposed to be granted free at the start of a spirit's first turn. Both numbers
   // are asserted so the two frames can't be confused for a discrepancy.
@@ -809,35 +814,48 @@ console.log("✓ B10: the free tier's accepted cost — Ronin skips a rung, docu
 
 // ─── THE INITIAL-SKILL GRANT INVARIANT (bug found during the B9 pass) ───────
 // `theory_major` is granted free at the start of a spirit's first turn, and every
-// price in PENDING_CHANGES assumes it ("the 46-Db ladder" = 52 list − 6). The grant
-// used to be gated on `unlockedSkills.length === 0`, which `amp_1` made permanently
-// false, so it NEVER FIRED and every spirit played the pentatonic.
+// price above assumes it ("the 46-Db ladder" = 52 list − 6). The grant used to be
+// gated on `unlockedSkills.length === 0`, which `amp_1` made permanently false, so
+// it NEVER FIRED and every spirit played the pentatonic.
 //
-// The real gate can't be imported (it's a useEffect inside the component), so what's
-// pinned here is the PRECONDITION that broke it: a fresh spirit always has a
-// non-empty skill list, therefore emptiness can never be the test.
+// 🛑 AND THE TRAP CHANGED SHAPE ON 2026-08-20 RATHER THAN GOING AWAY. The rig came
+// off the skill tree, `amp_1` stopped existing, and most Spirits now start with an
+// EMPTY skill list — so the old emptiness gate would fire for them. It would still
+// be a bug, and a nastier one: the Ronin starts holding `theory_minor`, so the
+// emptiness test is now ASYMMETRIC. Revive it and every Spirit gets the full scale
+// except the Ronin, who quietly plays the pentatonic all match. One character
+// broken instead of all four is far harder to notice.
+//
+// The real gate can't be imported (it's a useEffect inside the component), so what
+// is pinned here is that the CONDITION THE FIXED CODE USES opens for everybody, and
+// that the emptiness shortcut disagrees with it for at least one Spirit.
 {
   for (const id of ['test_spirit', 'cosmic_ronin', 'Metalness_Monster', 'intergalactic_0']) {
     const ns = makeInitialNoteState(id, () => 0.5);
-    assert.ok((ns.unlockedSkills?.length ?? 0) > 0,
-      `${id}: starts with a NON-EMPTY skill list — so "is the list empty" can never gate the grant`);
     assert.ok(!ns.unlockedSkills.includes('theory_major'),
       `${id}: does NOT start holding theory_major — the grant must still have work to do`);
     assert.ok(!ns.initialPickDone,
       `${id}: initialPickDone starts falsy so the grant is reachable on turn one`);
   }
   // And the grant's own condition, evaluated the way the fixed code evaluates it.
-  for (const id of ['test_spirit', 'cosmic_ronin']) {
+  for (const id of ['test_spirit', 'cosmic_ronin', 'Metalness_Monster', 'intergalactic_0']) {
     const ns = makeInitialNoteState(id, () => 0.5);
     const hasScale = (ns.unlockedSkills ?? []).includes('theory_major');
     assert.ok(!hasScale && !ns.targetSkillId && !(ns.upgradesPending ?? 0) && !ns.initialPickDone,
       `${id}: the fixed gate MUST open on turn one`);
-    // The old gate, kept as a regression witness: it must be shown to fail.
-    const oldGateOpens = !((ns.unlockedSkills?.length ?? 0) > 0);
-    assert.equal(oldGateOpens, false,
-      `${id}: the OLD emptiness gate stays closed — this is the bug, pinned so it can't return`);
   }
-  // Idempotence: once granted, the gate must close.
+  // ⚠️ THE REGRESSION WITNESS, REWRITTEN FOR THE NEW SHAPE. The old shortcut and
+  //    the real gate must be shown to DISAGREE — if they ever agree for every
+  //    Spirit, somebody has quietly made the seed uniform again and the shortcut
+  //    is one refactor away from coming back and looking harmless.
+  {
+    const emptiness = (id) => ((makeInitialNoteState(id, () => 0.5).unlockedSkills?.length ?? 0) === 0);
+    assert.equal(emptiness('Metalness_Monster'), true,
+      'a Spirit with no free grants now starts EMPTY — the old shortcut would fire for him');
+    assert.equal(emptiness('cosmic_ronin'), false,
+      '🎯 …but NOT for the Ronin, who holds theory_minor. The emptiness test is asymmetric: revive it and he alone never gets the full scale');
+  }
+// Idempotence: once granted, the gate must close.
   const granted = { ...makeInitialNoteState('test_spirit', () => 0.5) };
   granted.unlockedSkills = [...granted.unlockedSkills, 'theory_major'];
   assert.ok((granted.unlockedSkills).includes('theory_major'),

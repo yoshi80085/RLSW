@@ -46,6 +46,7 @@ import {
 } from "../actions.js";
 import { makeInitialState } from "../state.js";
 import { SKILL_BY_ID } from "../../data/skillTree.js";
+import { rigTiers } from "../systems/sonicRig.js";
 import { startTurnNotes, refillDrawCount } from "../systems/turnFlow.js";
 import { decideWinner } from "../systems/combat.js";
 import { legalActions, beamActions } from "./legalActions.js";
@@ -905,6 +906,17 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
   // says which of the two happened.
   const limelightScores = { ...(state.limelight?.scores ?? {}) };
 
+  // 🎛️ THE RIG AS IT ENDED, per seat — new 2026-08-20 with the workout.
+  //
+  // ⚠️ WITHOUT THIS THE BENCH CANNOT SEE ITS OWN BIGGEST VARIABLE. Pool size
+  // and die size used to be a Db purchase, visible in the skill trace; they are
+  // won at the marquee now, and `TRIVIA_BOT_ODDS` therefore sets how loud every
+  // bot in the match is (MARQUEE_QUIZ_DESIGN.md §6). A win rate quoted without
+  // knowing whether the winner was running 2d6 or 3d8+d6 is not a reading of a
+  // policy, it is a reading of who found the marquee.
+  const rig = Object.fromEntries(
+    (state.spirits ?? []).map(s => [s.id, rigTiers(state.noteStates?.[s.id] ?? {})]));
+
   return {
     winner: state.winner ?? null,
     turns,
@@ -912,6 +924,20 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
     fame,
     limelightScores,
     duels,
+    rig,
+    // 🎪 How many marquee questions were drawn all match — the denominator
+    // for every rig number above. `rig` reports where a Spirit ENDED, and
+    // atrophy means that is not where they peaked.
+    marquees: (state.board?.usedTrivia ?? []).length,
+    // 💰 UNSPENT Db AND WHAT IT BOUGHT, per seat — added 2026-08-20 with the
+    // tree deletion. MARQUEE_QUIZ_DESIGN.md §7 parks a known hole: the rig branch
+    // was the largest sink in the game and nothing replaced it yet, so Db is
+    // expected to pile up. This is the number that says how badly, instead of
+    // leaving it as a worry in a doc.
+    db: Object.fromEntries((state.spirits ?? []).map(s => [s.id, {
+      unspent: state.noteStates?.[s.id]?.dbPoints ?? 0,
+      bought:  (state.noteStates?.[s.id]?.unlockedSkills ?? []).length,
+    }])),
     anomaly: null,
   };
 }

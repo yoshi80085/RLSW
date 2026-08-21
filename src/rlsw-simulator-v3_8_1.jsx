@@ -26,7 +26,8 @@ import { UpgradeModal } from "./ui/UpgradeModal.jsx";
 import { SignatureAbilities } from "./ui/SignatureAbilities.jsx";
 import { TestingGrounds } from "./ui/TestingGrounds.jsx";
 import { EventModal } from "./ui/EventModal.jsx";
-import { TRIVIA_QUESTIONS, TRIVIA_REWARD, TRIVIA_BOT_ODDS } from "./data/trivia.js";
+import { TRIVIA_REWARD, TRIVIA_TIER_GRANT, TRIVIA_BOT_ODDS,
+         drawTrivia, bestTriviaDifficulty } from "./data/trivia.js";
 import { Riffbook } from "./ui/Riffbook.jsx";
 import { BoardFX } from "./ui/BoardFX.jsx";
 import { VoiceRollDie } from "./ui/VoiceRollDie.jsx";
@@ -41,7 +42,7 @@ import { micAvailable, startMicListening } from "./audio/micPitch.js";
 import riffOffSong from "./Riff_off_song.mp3";
 import battleSong  from "./battle_song.mp3";
 import moshpitSong from "./Master_of_Moshpits_song.mp3";   // 🤘 Master of Moshpits cinematic
-import { sonicRig, rigPoolLabel } from "./engine/systems/sonicRig.js";
+import { sonicRig, rigPoolLabel, rigTiers, rigTierSpend, rigSpendable } from "./engine/systems/sonicRig.js";
 import AmpDecks from "./board/ampDecks.jsx";
 import { hexRingFromCenter, crowdMultiplier, advanceDB, SPOTLIGHT_POOL } from "./board/boardHelpers.js";
 import { STAGE_SKINS, STAGE_SKIN_BY_ID, DEFAULT_SKIN_ID, loadStageSkin, saveStageSkin, stageSkinPlateFilter, stageSkinLineMatrix } from "./board/stageSkins.js";
@@ -107,7 +108,7 @@ import {
   chordFrayAmount, isRearHit, REAR_ARC, REAR_FRAY_BONUS,
 } from "./engine/systems/combat.js";
 import {
-  usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState,
+  usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState, fansFromDeed,
 } from "./engine/systems/economy.js";
 import { skillEligibility, THEORY_DISCORD_GRANTS } from "./engine/systems/skills.js";
 import {
@@ -1944,9 +1945,6 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── CHARGE ZONES ── (ENGINE-owned — Phase 6a, fully migrated) ─────────────
   const chargeZones = engineState.board.chargeZones;
-  // chargeChoicePending: { spiritId, num } — Overcharge unlocked, waiting on the
-  // die-tier-boost vs chord-assist choice.
-  const [chargeChoicePending, setChargeChoicePending] = useState(null);
 
   // 🎼 Delayed hover tooltip — shows a hovered track note's scales (teaching aid).
   const [noteScaleTip, setNoteScaleTip] = useState(null); // { note, x, y } | null
@@ -2439,10 +2437,11 @@ function Game({ gameState, onReturnToLobby }) {
   // one moment the player actively wants it — this inherits the amber treatment
   // the old "PICK MODE" badge used.
   const modeLocked    = (actingNoteState?.modeReason ?? '') === 'locked';
-  // ── SONIC RIG (AMP_DECK_DESIGN.md §2) ──────────────────────────────────────
-  // Every Spirit has a Main Amp at their corner from turn 1. Pool size comes
-  // from Amp I–III, die upgrades from Power I–III, effective radius from
-  // Range I–III. "Goes to eleven" charge becomes +1 d8 anywhere.
+  // ── SONIC RIG (AMP_DECK_DESIGN.md §2, MARQUEE_QUIZ_DESIGN.md §0.1) ────────
+  // Every Spirit has a Main Amp at their corner from turn 1. Pool size and die
+  // upgrades come from the rig tiers; the effective radius BREATHES with the
+  // stacks — Drive while you are acting, Sustain while somebody else is
+  // (§5.H⁶). "Goes to eleven" charge becomes +1 d8 anywhere.
   const elevenBoost = (actingNoteState?.elevenTurns ?? 0) > 0 ? 1 : 0;
 
   // 📻 THE BOOM BOX (Intergalactic 0 innate) — his rig is PORTABLE while charged.
@@ -2483,9 +2482,12 @@ function Game({ gameState, onReturnToLobby }) {
     : (actingHomeHex && actingHexObj)
       ? axialDist(actingHomeHex.q, actingHomeHex.r, actingHexObj.q, actingHexObj.r)
       : 0;
+  // 🫁 `onTurn` IS TRUE HERE BY DEFINITION — this is the ACTING Spirit's rig,
+  // so the radius breathes on their Drive stack (§5.H⁶). Everyone else's rig is
+  // read through `rigForSpirit` below, which passes false and gets Sustain.
   const actingRig = acting
-    ? sonicRig(actingNoteState?.unlockedSkills ?? [], distFromHome, elevenBoost)
-    : { pool: [6], inRange: true };
+    ? sonicRig(actingNoteState ?? {}, distFromHome, elevenBoost, true)
+    : { pool: [6], inRange: true, radius: 0 };
   // Backward compat: ampsInRange ≥ 1 always (Main Amp — unplugged state is gone).
   // Old callers that checked `ampsInRange >= 1` will see "plugged in" universally.
   const ampsInRange = actingRig.pool.length;
@@ -2502,13 +2504,13 @@ function Game({ gameState, onReturnToLobby }) {
     // and not the other would mean his portable rig worked on attack but
     // silently vanished on defence — which is the half the passive is FOR.
     if (boomBoxLit(sp.id)) {
-      return sonicRig(noteStates[sp.id]?.unlockedSkills ?? [], 0, chargeBoost);
+      return sonicRig(noteStates[sp.id] ?? {}, 0, chargeBoost, sp.id === acting?.id);
     }
     const homeHex = HEX_BY_NUM[CORNERS[sp.corner]?.homeNum];
     const hex     = HEX_BY_NUM[sp.num];
     const dist    = (homeHex && hex)
       ? axialDist(homeHex.q, homeHex.r, hex.q, hex.r) : 0;
-    return sonicRig(noteStates[sp.id]?.unlockedSkills ?? [], dist, chargeBoost);
+    return sonicRig(noteStates[sp.id] ?? {}, dist, chargeBoost, sp.id === acting?.id);
   }
   // 🤖 keep the bot's live-state mirrors fresh
   useEffect(() => { moveStepsLeftRef.current = moveStepsLeft; }, [moveStepsLeft]);
@@ -4224,21 +4226,26 @@ function Game({ gameState, onReturnToLobby }) {
     // ⚠️ BUG FIX (B9 pass). This used to read:
     //     const hasSkills = (ns.unlockedSkills?.length ?? 0) > 0;
     //   ... && !hasSkills && ...
-    // but `makeInitialNoteState` seeds `unlockedSkills: ["amp_1"]` for every spirit,
-    // so `hasSkills` was true on turn one, always, and **this grant never fired
-    // once**. Every spirit has been playing the Major PENTATONIC — no 4th, no 7th —
+    // but `makeInitialNoteState` seeded `unlockedSkills: ["amp_1"]` for every
+    // spirit, so `hasSkills` was true on turn one, always, and **this grant never
+    // fired once**. 📌 The seed is EMPTY as of 2026-08-20 (the rig came off the
+    // tree and `amp_1` no longer exists), so that particular trap is defused —
+    // but the shape of it is worth keeping: a "has the player bought anything
+    // yet?" test is only ever as true as the free grants underneath it. Every spirit has been playing the Major PENTATONIC — no 4th, no 7th —
     // while the comment above, the skill's own `desc`, and every "46-Db ladder"
-    // figure in PENDING_CHANGES (= 52 list price − theory_major's 6) all assume the
+    // figure in THEORY_REWRITE_LOG (= 52 list price − theory_major's 6) all assume the
     // full scale is free from the start.
     //
     // It also got quietly more expensive in the B6/B7 pass: B7 charges discord PER
     // NOTE now, and two of the notes it was charging for are notes the player was
     // supposed to already own.
     //
-    // The correct gate is "do they hold the scale", not "is their skill list empty" —
-    // the latter can never again be true while any starting skill exists. Ronin now
-    // also starts with `theory_minor` (B10), which would have broken an emptiness
-    // check a second way.
+    // The correct gate is "do they hold the scale", not "is their skill list empty".
+    // ⚠️ AND THE EMPTINESS SHORTCUT IS MORE DANGEROUS NOW, NOT LESS. With `amp_1`
+    // deleted (2026-08-20) most Spirits DO start empty, so reviving it would look
+    // like it worked — except for the Ronin, who starts holding `theory_minor` and
+    // would be the only character in the game quietly stuck on the pentatonic.
+    // `b0check.mjs` pins that asymmetry deliberately.
     const hasTarget   = !!ns.targetSkillId;
     const hasScale    = (ns.unlockedSkills ?? []).includes('theory_major');
     const hasPending  = (ns.upgradesPending ?? 0) > 0;
@@ -4408,18 +4415,11 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'code_injection') addLog(`💻 ${spirit?.name} — CODE INJECTION! ${CODE_INJECT_DB_COST} Db, committed in secret, and the next rival who lands on you gets their dice thrown out and re-rolled. Nobody can see it armed.`);
     if (skillId === 'gravity_control') addLog(`🕳️ ${spirit?.name} — GRAVITY CONTROL! ${GRAVITY_DB_COST} Db opens a black hole within ${GRAVITY_PLACE_RINGS} rings. It drags every rival nearby inward, and swallows ${GRAVITY_NOTE_DRAIN} notes from anyone it takes whole.`);
 
-    if (['amp_1','amp_2','amp_3'].includes(skillId)) {
-      const tier = ['amp_1','amp_2','amp_3'].indexOf(skillId) + 1;
-      addLog(`🔊 ${spirit?.name} — Amp ${tier}! +1d6 to the Sonic pool (roll ${tier + 1}, keep highest).`);
-    }
-    if (['power_1','power_2','power_3'].includes(skillId)) {
-      const tier = ['power_1','power_2','power_3'].indexOf(skillId) + 1;
-      addLog(`🎛️ ${spirit?.name} — Power ${tier}! ${tier} ${tier === 1 ? 'die' : 'dice'} in the pool upgraded to d8.`);
-    }
-    if (['range_1','range_2','range_3'].includes(skillId)) {
-      const labels = ['Range I — full rig reaches 4 hexes from home.', 'Range II — the Limelight is inside your field.', 'Range III — fully wired. The whole venue is your stage.'];
-      addLog(`📡 ${spirit?.name} — ${labels[['range_1','range_2','range_3'].indexOf(skillId)]}`);
-    }
+    // 🎛️ (The Amp / Power / Range unlock logs are GONE with the rungs themselves,
+    //  2026-08-20. None of the three is a purchase any more: pool and power are
+    //  won at the marquee and announced by the card, and reach is
+    //  `RIG_RADIUS_FLOOR + stack length`. Nothing can grant a `rig_*` id, so
+    //  nothing can log one.)
     // Legacy roadie_2/roadie_3 (if any saves reference them); crew_stagehand handled above.
     if (['roadie_2','roadie_3'].includes(skillId)) {
       const newRoadie = { id:`roadie-${spiritId}-${Date.now()}`, cooldownTurns:0, onBoard:false, boardHex:null };
@@ -4529,7 +4529,11 @@ function Game({ gameState, onReturnToLobby }) {
   // Legacy alias
   function purchaseSkill(spiritId, skillId) { setSkillTarget(spiritId, skillId); }
   function chooseUpgrade(spiritId, categoryId) {
-    const legacyMap = { amp:'amp_1', roadie:'roadie_1',
+    // 🛑 `amp:'amp_1'` was removed here on 2026-08-20 — the target it aliased
+    //    does not exist, so an old save asking for `amp` now falls through to
+    //    `setSkillTarget` with an unknown id and is refused, rather than silently
+    //    aiming a Spirit's Db at nothing.
+    const legacyMap = { roadie:'roadie_1',
       discord_1:'discord_1', discord_2:'discord_2', discord_3:'discord_3', discord_4:'discord_4' };
     // Old crew ids (roadie_1/crew_stagehand, fans_4eva/crew_backstage, pranksta/crew_heckler, crew_merch, crew_manager) drop silently
     const DEAD_IDS = new Set(['roadie_1','crew_stagehand','fans_4eva','crew_backstage','pranksta','crew_heckler','crew_merch','crew_manager']);
@@ -4756,56 +4760,153 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ─── EVENT SPACES SYSTEM ─────────────────────────────────────────────────────
 
-  // 🧠 Pick a fresh trivia question — no repeats until the whole pool is used.
-  // `rngVal` is a pre-drawn [0,1) engine rng value for deterministic selection.
-  function pickTrivia(rngVal) {
-    const used = usedTriviaRef.current;
-    let pool = TRIVIA_QUESTIONS.filter(q => !used.has(q.id));
-    if (pool.length === 0) { used.clear(); pool = TRIVIA_QUESTIONS; }
-    const q = pool[Math.floor(rngVal * pool.length)];
-    used.add(q.id);
-    return q;
+  // 🧠 Pick a fresh question from ONE bucket — no repeats until that bucket is
+  // spent. `rngVal` is a pre-drawn [0,1) engine rng value for deterministic
+  // selection; the used-question list is ENGINE STATE (`board.usedTrivia`), not
+  // a React ref, so a replay and the headless path draw the same cards.
+  //
+  // ⚠️ THE CALLER MUST DISPATCH THE RETURNED `used`. `drawTrivia` is pure; it
+  // reports what the history should become and changes nothing itself. That
+  // dispatch rides on `eventHexTriggered`, which the caller was already sending.
+  function pickTrivia(rngVal, lane, difficulty) {
+    return drawTrivia(rngVal, lane, difficulty, engineRef.current.board?.usedTrivia ?? []);
   }
 
   // Player answered the trivia card — grade it, pay fans on a correct answer.
-  // 🎤 Fans, not DB: knowing rock trivia is crowd cred, not musicianship.
+  // 🎤 CROWD pays fans, 🎛️ RIG pays tiers — the split is the whole card
+  // (MARQUEE_QUIZ_DESIGN.md §2). Knowing the lore is crowd cred; knowing the
+  // gear is musicianship, and musicianship is what makes an amp loud.
   function answerTrivia(idx) {
     if (!activeEvent || activeEvent.phase !== 'question') return;
-    const q = activeEvent.q;
+    const { q, lane, spiritId } = activeEvent;
     const correct = idx === q.answer;
-    const reward = correct ? (TRIVIA_REWARD[q.difficulty] ?? 3) : 0;
-    const sp = spirits.find(s => s.id === activeEvent.spiritId);
-    if (correct) { gainFansFromDeed(activeEvent.spiritId, reward, '🧠 Trivia'); addLog(`🧠 ${sp?.name} nails the trivia — +${reward} fans! 💡 ${q.sauce}`); }
-    else { addLog(`🧠 ${sp?.name} blanks on the trivia — no bonus. 💡 ${q.sauce}`); }
-    setActiveEvent(prev => prev ? { ...prev, phase: 'result', chosen: idx, correct, reward } : prev);
+    const sp = spirits.find(s => s.id === spiritId);
+
+    if (!correct) {
+      // A wrong answer costs nothing (§2) — the difficulty choice already
+      // carried the risk, and the `sauce` is a gift rather than a consolation.
+      // ⚠️ The TRIP still resets the atrophy clock: you turned up.
+      dispatch(noteSheetPatched(spiritId, { rigIdleTurns: 0 }));
+      addLog(`🧠 ${sp?.name} blanks on the trivia — no bonus. 💡 ${q.sauce}`);
+      setActiveEvent(prev => prev ? { ...prev, phase: 'result', chosen: idx, correct: false, reward: 0 } : prev);
+      return;
+    }
+
+    if (lane === 'rig') {
+      const tiers = TRIVIA_TIER_GRANT[q.difficulty] ?? 1;
+      dispatch(noteSheetPatched(spiritId, { rigIdleTurns: 0 }));
+      addLog(`🎛️ ${sp?.name} knows their gear — ${tiers} rig tier${tiers === 1 ? '' : 's'} to spend! 💡 ${q.sauce}`);
+      // 🏋️ SPENT AT THE CARD, ONE AT A TIME (§9's simpler branch). Banking a
+      // tier for later is a better decision and needs UI that does not exist;
+      // this keeps the modal self-contained and the sheet always consistent.
+      setActiveEvent(prev => prev ? { ...prev, phase: 'spend', chosen: idx, correct: true, tiersLeft: tiers } : prev);
+      return;
+    }
+
+    const reward = TRIVIA_REWARD[q.difficulty] ?? 3;
+    gainFansFromDeed(spiritId, reward, '🧠 Trivia');
+    addLog(`🧠 ${sp?.name} nails the trivia — +${reward} fans! 💡 ${q.sauce}`);
+    setActiveEvent(prev => prev ? { ...prev, phase: 'result', chosen: idx, correct: true, reward } : prev);
   }
 
-  // Called from move() — stepping on a marquee hex triggers ROCK TRIVIA.
+  /**
+   * 🏋️ Spend ONE won tier on pool or power, from the card.
+   *
+   * ⚠️ IT RE-READS THE SHEET EVERY TIME rather than batching, because
+   * `rigTierSpend` enforces "power can never exceed pool" against the CURRENT
+   * numbers. Spend three tiers off one stale snapshot and a hard answer could
+   * hand out an upgrade for a die the second tier had not bought yet.
+   */
+  function spendRigTier(track) {
+    if (!activeEvent || activeEvent.phase !== 'spend') return;
+    const spiritId = activeEvent.spiritId;
+    const sheet = engineRef.current.noteStates?.[spiritId] ?? {};
+    const patch = rigTierSpend(sheet, track);
+    if (!patch) return;   // the card offers only what `rigSpendable` allows
+    dispatch(noteSheetPatched(spiritId, patch));
+    const sp = spirits.find(s => s.id === spiritId);
+    const t  = rigTiers({ ...sheet, ...patch });
+    addLog(track === 'pool'
+      ? `🔊 ${sp?.name} adds a cabinet — the Sonic pool is ${t.pool + 1} dice.`
+      : `🎛️ ${sp?.name} drops in a bigger head — ${t.power} die/dice upgraded to d8.`);
+    setActiveEvent(prev => {
+      if (!prev) return prev;
+      const left = (prev.tiersLeft ?? 1) - 1;
+      const done = left <= 0 || !(() => { const c = rigSpendable({ ...sheet, ...patch }); return c.pool || c.power; })();
+      return { ...prev, tiersLeft: Math.max(0, left), phase: done ? 'result' : 'spend' };
+    });
+  }
+
+  // Called from move() — stepping on a marquee hex opens the CHOICE CARD.
   function checkEventTrigger(spiritId, hexNum) {
     if (!eventHexes.includes(hexNum)) return;
     if (activeEvent) return; // one at a time
     const spirit = spirits.find(s => s.id === spiritId);
-    // Pre-draw engine rng: [0] for trivia pick, [1] for bot odds (wasted for humans)
-    dispatch(randomBatchDrawn(2));
-    const triviaRng = engineRef.current.lastRandomBatch;
-    const q = pickTrivia(triviaRng[0]);
-    if (!q) return;
-    // Marquee burns out — a new one lights up after the cooldown
-    dispatch(eventHexTriggered(spiritId, hexNum));
-    addLog(`🎪 ${spirit?.name} steps on a marquee hex — 🎤 ROCK TRIVIA! (${q.era})`);
+
     if (isBot(spirit)) {
-      // Bots can't "know" trivia — fair fixed odds, resolved instantly, no modal.
-      const got = triviaRng[1] < (TRIVIA_BOT_ODDS[q.difficulty] ?? 0.5);
-      if (got) {
-        const reward = TRIVIA_REWARD[q.difficulty] ?? 3;
-        gainFansFromDeed(spiritId, reward, '🧠 Trivia');
-        addLog(`🧠 ${spirit?.name} answers correctly — +${reward} fans! 💡 ${q.sauce}`);
+      // 🤖 Bots can't "know" trivia — fixed odds, resolved instantly, no modal.
+      // The lane and difficulty come from the SAME rule the headless path uses
+      // (`transition.js`'s `collectPickups`): train while there is headroom,
+      // then play for the crowd; difficulty by expected value.
+      // ⚠️ Pre-draw both floats BEFORE branching — [0] picks the card, [1] is
+      // the odds roll — so the rng stream does not depend on the outcome.
+      dispatch(randomBatchDrawn(2));
+      const triviaRng = engineRef.current.lastRandomBatch;
+      const sheet = engineRef.current.noteStates?.[spiritId] ?? {};
+      const can   = rigSpendable(sheet);
+      const lane  = (can.pool || can.power) ? 'rig' : 'crowd';
+      const difficulty = bestTriviaDifficulty(lane);
+      const { q, used } = pickTrivia(triviaRng[0], lane, difficulty);
+      if (!q) return;
+      dispatch(eventHexTriggered(spiritId, hexNum, used));
+      addLog(`🎪 ${spirit?.name} steps on a marquee — ${lane === 'rig' ? '🎛️ RIG' : '🎤 CROWD'} lane, ${difficulty}. (${q.era})`);
+      const got = triviaRng[1] < (TRIVIA_BOT_ODDS[difficulty] ?? 0.5);
+      let patch = { rigIdleTurns: 0 };
+      if (got && lane === 'crowd') {
+        gainFansFromDeed(spiritId, TRIVIA_REWARD[difficulty] ?? 3, '🧠 Trivia');
+        addLog(`🧠 ${spirit?.name} answers correctly — +${TRIVIA_REWARD[difficulty] ?? 3} fans! 💡 ${q.sauce}`);
+      } else if (got) {
+        for (let i = 0; i < (TRIVIA_TIER_GRANT[difficulty] ?? 1); i++) {
+          const cur = { ...sheet, ...patch };
+          const c = rigSpendable(cur);
+          // 🎛️ Upgrade before adding — keep-highest makes a d8 in place of a d6
+          //    worth more than an extra d6 beside it on a small pool.
+          const track = c.power ? 'power' : c.pool ? 'pool' : null;
+          if (!track) break;
+          patch = { ...patch, ...rigTierSpend(cur, track) };
+        }
+        const t = rigTiers({ ...sheet, ...patch });
+        addLog(`🎛️ ${spirit?.name} knows their gear — rig now ${t.pool + 1}d, ${t.power} upgraded. 💡 ${q.sauce}`);
       } else {
         addLog(`🧠 ${spirit?.name} guesses wrong — no bonus. 💡 ${q.sauce}`);
       }
+      dispatch(noteSheetPatched(spiritId, patch));
       return;
     }
-    setActiveEvent({ spiritId, q, phase: 'question', chosen: null });
+
+    // 🎪 A HUMAN CHOOSES FIRST. The lane and the difficulty are picked
+    // face-down, before any question is drawn — that ordering is the entire
+    // skill component, and drawing early would leak the card.
+    //
+    // ⚠️ THE MARQUEE IS NOT CONSUMED YET, and that is deliberate: the hex burns
+    // out when the card is DRAWN (`chooseTriviaCard`), because the draw and the
+    // burn are one event and `eventHexTriggered` carries both. Nobody else can
+    // act in between — the modal owns the screen — and a player who somehow
+    // escapes it leaves the marquee lit rather than eating it for nothing.
+    addLog(`🎪 ${spirit?.name} steps on a marquee hex — 🎤 pick your lane!`);
+    setActiveEvent({ spiritId, hexNum, q: null, phase: 'choice', chosen: null });
+  }
+
+  /** 🎪 The card's lane × difficulty pick — draws the question it asked for. */
+  function chooseTriviaCard(lane, difficulty) {
+    if (!activeEvent || activeEvent.phase !== 'choice') return;
+    dispatch(randomBatchDrawn(1));
+    const { q, used } = pickTrivia(engineRef.current.lastRandomBatch[0], lane, difficulty);
+    if (!q) return;
+    // The hex burns out HERE, carrying the question history with it.
+    dispatch(eventHexTriggered(activeEvent.spiritId, activeEvent.hexNum, used));
+    addLog(`🎤 ${lane === 'rig' ? '🎛️ RIG' : '🎤 CROWD'} lane, ${difficulty} — (${q.era})`);
+    setActiveEvent(prev => prev ? { ...prev, q, lane, difficulty, phase: 'question' } : prev);
   }
 
   // Flaming disc hazard — called whenever a spirit ENTERS a hex (move or push)
@@ -5083,50 +5184,6 @@ function Game({ gameState, onReturnToLobby }) {
     }
   }
 
-  // 🎸 Pick the note the Overcharge chord-assist grants — biased toward whichever
-  // available stock pitch improves the targeted stack the most, falling back to a
-  // fresh in-scale note if the stock has nothing useful.
-  function curatedChordNote(spiritId, stackKey = 'driveStack') {
-    const ns = noteStates[spiritId] ?? {};
-    const stack = ns[stackKey] ?? [];
-    const have  = new Set(stack.map(pitchIndex));
-    const cands = [...new Set((ns.noteStock ?? []).filter(n => !have.has(pitchIndex(n))))];
-    if (cands.length) {
-      const weight = (c) => c.drive + c.sustain;
-      let best = cands[0], bestW = weight(spiritChord(spiritId, [...stack, cands[0]]));
-      for (const note of cands.slice(1)) {
-        const w = weight(spiritChord(spiritId, [...stack, note]));
-        if (w > bestW) { bestW = w; best = note; }
-      }
-      return best;
-    }
-    return drawSeededNotes(1, ns.rootNote, ns.scaleMode)[0];
-  }
-
-  // Chord-assist alternative (Overcharge only): ONE extra note into the Drive Stack,
-  // counts against the stack commit budget.
-  function grantChargeChordAssist(spiritId) {
-    const sp = spirits.find(s => s.id === spiritId);
-    const ns = noteStates[spiritId] ?? {};
-    const dStack = ns.driveStack ?? [];
-    const sStack = ns.sustainStack ?? [];
-    const cap = stackCapOf(spiritId);
-    if (dStack.length >= cap && sStack.length >= cap) {
-      addLog(`🎸 ${sp?.name}'s stacks are already full — the charge sparks into the dice instead.`);
-      grantChargeSpark(spiritId);
-      return;
-    }
-    // Pick the stack with room; prefer drive
-    const stackKey = dStack.length < cap ? 'driveStack' : 'sustainStack';
-    const note = curatedChordNote(spiritId, stackKey);
-    setNoteStates(prev => {
-      const cur = prev[spiritId]; if (!cur) return prev;
-      return { ...prev, [spiritId]: { ...cur, [stackKey]: [...(cur[stackKey] ?? []), note], stackCommitsThisTurn: (cur.stackCommitsThisTurn ?? 0) + 1 } };
-    });
-    triggerEffectFlash(spiritId, '🎸', 'OVERCHARGED!', '#ff66cc');
-    addLog(`🎸 ${sp?.name} overcharges — ${note} lands straight in the ${stackKey === 'driveStack' ? 'Drive' : 'Sustain'} Stack!`);
-  }
-
   // Called whenever a spirit enters a hex during a move.
   function checkChargeZonePickup(spiritId, hexNum) {
     const zone = chargeZones.find(z => z.num === hexNum && (z.cooldown ?? 0) <= 0);
@@ -5134,23 +5191,12 @@ function Game({ gameState, onReturnToLobby }) {
     // ⚡ Charge-up SFX — the lightning crackles
     playChargeSound();
     dispatch(chargeZoneUsed(spiritId, hexNum));
-    const overcharged = (noteStates[spiritId]?.unlockedSkills ?? []).includes('overcharge');
-    if (overcharged) {
-      const sp = spirits.find(s => s.id === spiritId);
-      addLog(`⚡ ${sp?.name} taps a Charge Zone — Overcharge lets you pick your payoff!`);
-      setChargeChoicePending({ spiritId, num: hexNum });
-      return;
-    }
+    // ⚡ ONE PAYOFF, ALWAYS. The `overcharge` unlock used to open a modal here
+    // (dice charge vs a curated chord note); it was deleted with the rig branch
+    // on 2026-08-20. `HARNESS_GAPS.pickupChoices` declared this modal as
+    // unmodelled headlessly, so removing it makes the client and the engine
+    // agree rather than losing a rule.
     grantChargeSpark(spiritId);
-  }
-
-  // Modal resolver for the Overcharge choice.
-  function resolveChargeChoice(choice) {
-    if (!canAct || !chargeChoicePending) return; // N4/N7: gate
-    const { spiritId } = chargeChoicePending;
-    setChargeChoicePending(null);
-    if (choice === 'boost') grantChargeSpark(spiritId);
-    else if (choice === 'chord') grantChargeChordAssist(spiritId);
   }
 
   // ⚡ Bonus revoice — DEPRECATED (replaced by stack commit budget system).
@@ -6042,8 +6088,13 @@ function Game({ gameState, onReturnToLobby }) {
     const spHex = HEX_BY_NUM[sp.num], godHex = HEX_BY_NUM[god.num];
     if (!spHex || !godHex) return;
     const adjacent = axialDist(spHex.q, spHex.r, godHex.q, godHex.r) <= 1;
-    const hasAmp1  = ((engineRef.current.noteStates?.[spiritId]?.unlockedSkills) ?? []).includes('amp_1');
-    const inBeam   = hasAmp1 && getSonicBeam(sp).has(god.num);
+    // 📡 THE GATE USED TO BE `unlockedSkills.includes('amp_1')`, WHICH WAS
+    //    ALWAYS TRUE — every Spirit was granted `amp_1` at setup, so the check
+    //    read as "do you have the thing everybody has". With the rig off the tree
+    //    there is no such id; the honest gate is the one every other Sonic in the
+    //    game uses, so striking a God down the beam now asks whether your rig
+    //    actually reaches from where you are standing.
+    const inBeam   = rigForSpirit(sp).inRange && getSonicBeam(sp).has(god.num);
     const steps    = moveStepsLeftRef.current ?? 0;
 
     let cost, via;
@@ -6654,32 +6705,19 @@ function Game({ gameState, onReturnToLobby }) {
   function gainFansFromDeed(spiritId, baseAmount, label) {
     const spirit = spirits.find(s => s.id === spiritId);
     if (!spirit || baseAmount <= 0) return;
-    const ring = hexRingFromCenter(spirit.num);
-    const inCentre = ring === 'main' || ring === 'pit';
-    const centreBonus = ring === 'main' ? 2 : ring === 'pit' ? 1 : ring === 'floor' ? 1 : 0;
-    const deedNs = engineRef.current.noteStates[spiritId];
-    const gain = baseAmount + centreBonus;
-    {
-      const ns = deedNs;
-      if (ns) {
-        let casuals  = Math.min(FAN_CASUAL_CAP, (ns.casuals ?? 0) + gain);
-        let diehards = ns.diehards ?? FAN_DIEHARD_START;
-        let streak   = ns.centerStreak ?? 0;
-        let promoted = false;
-        if (inCentre) {
-          streak += 1;
-          const promoteEvery = FAN_PROMOTE_EVERY;
-          if (streak % promoteEvery === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
-            casuals -= 1; diehards += 1; promoted = true;
-          }
-        }
-        if (promoted) setTimeout(() => addLog(`🎤 A casual hardens into a Diehard for ${spirit.name}! (${diehards}♥)`), 0);
-        dispatch(fansChanged(spiritId, { casuals, diehards, centerStreak: streak, fanActedThisTurn: true, fanLag: 0 }));
-      }
-    }
+    // 🎤 THE ARITHMETIC MOVED TO `systems/economy.js` (2026-08-20). It used
+    // to live here, which meant the headless path could not pay a single fan —
+    // and the moment the marquee became reachable in the engine that stopped
+    // being acceptable. This function kept what a React function should keep:
+    // reading the board, logging, dispatching. `fansFromDeed` owns the rule.
+    const deed = fansFromDeed(engineRef.current.noteStates[spiritId], hexRingFromCenter(spirit.num), baseAmount);
+    if (!deed.patch) return;
+    if (deed.promoted) setTimeout(() => addLog(`🎤 A casual hardens into a Diehard for ${spirit.name}! (${deed.patch.diehards}♥)`), 0);
+    dispatch(fansChanged(spiritId, deed.patch));
+    const ring  = hexRingFromCenter(spirit.num);
     const where = ring === 'main' ? ' on the Mainstage' : ring === 'pit' ? ' in the Pit' : ring === 'floor' ? ' on the floor' : '';
-    addLog(`🎤 ${spirit.name} wins the crowd${where}${label ? ` — ${label}` : ''} — +${gain} casual fan${gain !== 1 ? 's' : ''}!`);
-    flashFanFx(spiritId, 'gain', gain);
+    addLog(`🎤 ${spirit.name} wins the crowd${where}${label ? ` — ${label}` : ''} — +${deed.gain} casual fan${deed.gain !== 1 ? 's' : ''}!`);
+    flashFanFx(spiritId, 'gain', deed.gain);
   }
 
   // Total committed crowd across the arena — the gauge that will summon the
@@ -7339,16 +7377,13 @@ function Game({ gameState, onReturnToLobby }) {
 
   // ── SONIC ATTACK ─────────────────────────────────────────────────────────────
   // Available when attacker is connected to ≥1 amp.
-  // KEEP-HIGHEST dice pool — amps buy reliability, not a bigger ceiling, so your Chord
-  // Stack stats stay the deciding term (the pool caps at the rival's d6 ceiling until
-  // the 3rd amp). 1 amp = 2d6 · 2 amps = 3d6 · 3 amps = 2d6 + 1d8 (the 3rd amp can finally
-  // punch past a 6) · 🐉 Hydra overdrives the whole rig to 3d8. Defender still rolls a flat d6.
-  // Range: narrow 3-hex forward beam. Unplugged defender cannot retaliate.
-  function sonicDicePool(ampCount, hasHydra) {
-    if (ampCount >= 3) return hasHydra ? [8, 8, 8] : [6, 6, 8];
-    if (ampCount === 2) return [6, 6, 6];
-    return [6, 6]; // 1 amp
-  }
+  // 🛑 `sonicDicePool(ampCount, hasHydra)` WAS DELETED HERE ON 2026-08-20, and
+  // it had been dead for longer than that. It mapped an amp COUNT to a pool
+  // ([6,6] / [6,6,6] / [6,6,8], or 3d8 for a Hydra that no longer exists) — a
+  // rule `engine/systems/sonicRig.js` took over when the rig rework landed, and
+  // which now reads the workout tiers off the note sheet instead of counting
+  // purchases. Nothing called this. Removed rather than left as a second,
+  // disagreeing copy of the most important table in combat.
   // Pretty label for a pool: [6,6]→"2d6", [6,6,8]→"2d6+d8", [8,8,8]→"3d8".
   function dicePoolLabel(pool) {
     const counts = {};
@@ -8744,16 +8779,14 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillMods.pyroBonus > 0)addLog(`🔥 Pyrotechnics! +${skillMods.pyroBonus} bonus added to Drive roll.`);
 
     // ── Rig pool (AMP_DECK_DESIGN.md §2) ────────────────────────────────────
-    // The pool comes from sonicRig (computed at render); ampTier is derived
-    // from skill IDs so Power Chords / Hydra gates stay readable.
-    const atkSkills    = nsA.unlockedSkills ?? [];
-    const ampTier     = ['amp_1','amp_2','amp_3'].filter(id => atkSkills.includes(id)).length;
-
-    // PA skill bonuses for Sonic Attack
-    const pedalBonus   = atkSkills.includes('pedal_dist') ? 1 : 0;
-    const powerBonus   = (atkSkills.includes('power_chords') && ampTier >= 2) ? 2 : 0;
-    if (pedalBonus)  addLog(`🎛️ Pedal Distortion! +1 Drive on Sonic Attack.`);
-    if (powerBonus)  addLog(`🤘 Power Chords! +2 Drive (Amp ${ampTier}).`);
+    // The pool comes from `sonicRig`, which reads the workout tiers off the sheet.
+    //
+    // 🛑 TWO DEAD BONUSES WERE REMOVED HERE ON 2026-08-20. `pedalBonus` keyed on
+    //    `pedal_dist` and `powerBonus` on `power_chords`; NEITHER ID IS IN THE
+    //    SKILL TREE and neither has been for a long time, so both were reliably
+    //    zero and their log lines could never print. They also derived an
+    //    `ampTier` from `amp_*` unlocks, which is the thing this session deleted.
+    //    Removed rather than ported: a bonus nothing can grant is not a rule.
 
     // 🎸 Harmony → combat: Drive from driveStack, Sustain from sustainStack
     // (falls back to the static spirit stat until a stack has been played).
@@ -8780,7 +8813,7 @@ function Game({ gameState, onReturnToLobby }) {
     // 🔊 Same treatment as the Thrash path: the dial SETS the total below.
     const cranked  = !!nsA.atEleven;
     const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0)
-                   + skillMods.pyroBonus + pedalBonus + powerBonus;
+                   + skillMods.pyroBonus;
     const atkEdge  = edgeCombatMods(nsA);
     const defEdge   = edgeCombatMods(nsD);
     // ⚖️ Same stacked-bonus cap as Thrash (balance audit, 2026-07-16).
@@ -8884,7 +8917,7 @@ function Game({ gameState, onReturnToLobby }) {
       spinFaceAtk: 1, spinFaceDef: 1,
       atkDieReady: false, defDieReady: false,
       sonicAttack: true,
-      ampCount: ampTier,
+      ampCount: rigTiers(nsA).pool,   // 🎛️ the workout tier, not a skill count
       dieSides,                  // = max(dicePool); fallback for single-die anim paths
       defDieSides: defDieSonic,  // Sonic: d6 in rig range, d4 stranded outside it
       defOutOfRig,               // 📡 drives the "no rig" tell on the battle overlay
@@ -8897,8 +8930,6 @@ function Game({ gameState, onReturnToLobby }) {
       sunbeam: hasSunbeam,       // ☀️ purely cosmetic golden over-lit beam — the tell that a Sunbeam owner is firing. The BLIND itself resolves in closeBattleOverlay.
       retaliationBlocked,
       skillMods,
-      pedalBonus,
-      powerBonus,
       sonicChordNotes, // 🔊 chord notes saved for playback at beam fire
     });
     setDiceDisplay({ atk: null, def: null, rolling: null });
@@ -11980,40 +12011,6 @@ function Game({ gameState, onReturnToLobby }) {
         );
       })()}
 
-      {/* ⚡ CHARGE ZONE — OVERCHARGE CHOICE — dice charge vs chord assist */}
-      {chargeChoicePending && (() => {
-        const sp = spirits.find(s => s.id === chargeChoicePending.spiritId);
-        return (
-          <div style={{position:'fixed',inset:0,zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',
-            background:'#000000aa',backdropFilter:'blur(3px)'}}>
-            <div style={{width:380,maxWidth:'90vw',background:'linear-gradient(180deg,#0e1828,#080f1e)',
-              border:'1.5px solid #44aaff',borderRadius:12,padding:'22px 20px 18px',
-              boxShadow:'0 0 40px #44aaff33, 0 8px 32px #00000088',
-              fontFamily:"'Share Tech Mono',monospace",textAlign:'center'}}>
-              <div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:12,color:'#44aaff',letterSpacing:1,marginBottom:10,
-                textShadow:'0 0 10px #44aaff55'}}>⚡ CHARGE ZONE — OVERCHARGE</div>
-              <div style={{fontSize:9,color:'#8aa5c5',marginBottom:16,lineHeight:1.5}}>
-                {sp?.name} taps into the rig. Pick the payoff:
-              </div>
-              <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                <button onClick={() => resolveChargeChoice('boost')}
-                  style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor:'pointer',
-                    background:'#0a1828',border:'1.5px solid #44aaff',borderRadius:5,
-                    color:'#88ccff',padding:'8px 16px',letterSpacing:1,textAlign:'left'}}>
-                  ⚡ Dice Charge — random Floor +{CHARGE_FLOOR_BONUS} or die-size up ({CHARGE_ZONE_BOOST_TURNS} rounds / until battle)
-                </button>
-                <button onClick={() => resolveChargeChoice('chord')}
-                  style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,cursor:'pointer',
-                    background:'#1a0c1a',border:'1.5px solid #ff66cc',borderRadius:5,
-                    color:'#ff99dd',padding:'8px 16px',letterSpacing:1,textAlign:'left'}}>
-                  🎸 Chord Assist — 1 curated Chord Stack note + a bonus revoice
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
       {/* ── HEADER ── */}
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,paddingBottom:7,borderBottom:"1px solid #1a2a40"}}>
         <span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:17,color:"#f6ad55",letterSpacing:3,
@@ -12383,6 +12380,12 @@ function Game({ gameState, onReturnToLobby }) {
       <EventModal
         activeEvent={activeEvent}
         answerTrivia={answerTrivia}
+        chooseTriviaCard={chooseTriviaCard}
+        spendRigTier={spendRigTier}
+        {...(activeEvent ? {
+          rigSpendable: rigSpendable(noteStates[activeEvent.spiritId] ?? {}),
+          rigTiers:     rigTiers(noteStates[activeEvent.spiritId] ?? {}),
+        } : {})}
         setActiveEvent={setActiveEvent}
         spirits={spirits}
       />
@@ -13877,8 +13880,7 @@ function Game({ gameState, onReturnToLobby }) {
               const spHex = acting ? HEX_BY_NUM[acting.num] : null;
               const godHex = HEX_BY_NUM[rockGod.num];
               const adjacent = spHex && godHex && axialDist(spHex.q, spHex.r, godHex.q, godHex.r) <= 1;
-              const hasAmp1 = (actingNoteState?.unlockedSkills ?? []).includes('amp_1');
-              const inBeam = hasAmp1 && acting && getSonicBeam(acting).has(rockGod.num);
+              const inBeam = actingRig.inRange && acting && getSonicBeam(acting).has(rockGod.num);
               const canMelee = adjacent && moveStepsLeft >= 1;
               const canBeam  = inBeam && moveStepsLeft >= 2;
               const canStrike = canMelee || canBeam;
@@ -14089,7 +14091,7 @@ function Game({ gameState, onReturnToLobby }) {
                     title={grayed
                       ? "Sonic Attack (2 AP) — grayed out: needs a confirmed turn, your Action Token, and 2 AP."
                       : outOfRange
-                      ? "📡 Out of your amp's range — the Sonic is offline out here. Hover to see your rig's radius ring; move back inside it or buy Range tiers."
+                      ? "📡 Out of your amp's range — the Sonic is offline out here. Hover to see your rig's radius ring; move back inside it, or stack Drive: your rig reaches one hex further for every note on the stack."
                       : canSonic
                       ? `Sonic Attack (2 AP) — the ranged beam. ${diceLabel}, keep the highest. If your target is facing back down the beam AND inside their own amp range, it escalates into a RIFF-OFF; if they're stranded outside theirs, no duel — they defend on a d${SONIC_DEF_DIE_OUT_OF_RIG}.`
                       : "Sonic Attack (2 AP) — no rival in your beam. Hover to see the beam and your rig's range ring."}

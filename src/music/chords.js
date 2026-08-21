@@ -21,7 +21,7 @@ export const PC_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 // `rank` = sophistication: higher wins when several templates match a root.
 // Ordered rank-desc so the first match for a given root is that root's best.
 //
-// drive / sustain follow the note-count curve (PENDING_CHANGES Task A):
+// drive / sustain follow the note-count curve (THEORY_REWRITE_LOG Task A):
 //   base from note count — 2-note=5, 3-note=6, 4-note=7, 5-note=8, 6-note=9
 //   then a ±1 affinity tilt — drive-lean, sustain-lean, or neutral.
 // More notes = stronger chord. Consonance/dissonance is the tilt, not the driver;

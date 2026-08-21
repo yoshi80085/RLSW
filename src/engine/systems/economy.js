@@ -3,7 +3,8 @@
 
 import { pitchIndex, NOTE_POOL, canonicalRoot } from "../../music/notes.js";
 import { detectMotifRepeat, refillStock } from "../../music/cadence.js";
-import { FAN_DIEHARD_START, FAN_CASUAL_START, FAN_BORED_AFTER, FAN_DECAY } from "../../data/gameConstants.js";
+import { FAN_DIEHARD_START, FAN_CASUAL_START, FAN_BORED_AFTER, FAN_DECAY,
+         FAN_CASUAL_CAP, FAN_DIEHARD_CAP, FAN_PROMOTE_EVERY, RIG_POOL_FLOOR } from "../../data/gameConstants.js";
 import { hexRingFromCenter } from "../../board/boardHelpers.js";
 //
 // `usedStockIdx` — the per-spirit set of spent stock-slot indices — used to be a
@@ -200,6 +201,15 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     //  rather than deprecated, so archived code reviving it fails loudly — same
     //  treatment as STACK_CAP and FLAT_ROOTS.)
     dieFloorBoost:   0,
+    // ── 🎛️ THE RIG WORKOUT (MARQUEE_QUIZ_DESIGN.md §4–§5) ──
+    // Pool and power are WON at the marquee's RIG lane and shed through
+    // neglect. They start at the floor — `RIG_POOL_FLOOR` — which is exactly
+    // what the free `amp_1` grant used to hand every Spirit: 2d6 in range, 1d6
+    // out of it. ⚠️ `rigIdleTurns` counts the OWNER'S OWN turns since the last
+    // trip to a marquee; `startTurnNotes` ticks it.
+    rigPool:         RIG_POOL_FLOOR,
+    rigPower:        0,
+    rigIdleTurns:    0,
     chargeFloorTurns: 0,   // ⚡ Charge Zone floor charge (attack dice can't roll below 3)
     chargeCeilTurns:  0,   // ⚡ Charge Zone ceiling charge (attack dice +1 die size)
     statusEffects:   [],
@@ -266,7 +276,14 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     // spirit may therefore legitimately hold a tier without the ones "below" it —
     // `tiersFor` is a set of independent checks, not an ordered walk, for this
     // reason. Do not "fix" that by assuming the ladder was bought in order.
-    unlockedSkills:  spiritId === "cosmic_ronin" ? ["amp_1", "theory_minor"] : ["amp_1"],
+    // 🛑 `amp_1` LEFT THIS SEED ON 2026-08-20 with the rig branch. Nobody lost a
+    // free amp — every Spirit still opens at `RIG_POOL_FLOOR` (2d6 in range,
+    // 1d6 out), it is simply not a SKILL any more. ⚠️ Which means most Spirits
+    // now start with an EMPTY `unlockedSkills`, and code that treats "has bought
+    // nothing yet" as a proxy for "turn one" will behave differently than it did
+    // for the last year. That proxy was already a bug once (the B9 grant that
+    // never fired, because `amp_1` made the list non-empty on turn one).
+    unlockedSkills:  spiritId === "cosmic_ronin" ? ["theory_minor"] : [],
     targetSkillId:   null,
     diceLevel:       0,
     ampOwned:        false,
@@ -369,6 +386,48 @@ export const FAN_FIELDS = [
   "diehards", "casuals", "centerStreak", "outerStreak",
   "fanLag", "fanActedThisTurn", "divineShield",
 ];
+/**
+ * 🎤 FANS FROM A DEED — the pure rule behind every "you did a thing, take some
+ * fans" payout: trivia, and anything that joins it later.
+ *
+ * ⚠️ THIS WAS CLIENT-ONLY UNTIL 2026-08-20 and the headless path could not pay
+ * a single fan. That mattered the moment the marquee became reachable in the
+ * engine (`transition.js`'s `collectPickups`): a rule that lives in a React
+ * function is a rule the bench cannot measure and a replay cannot reproduce.
+ * `gainFansFromDeed` in the monolith now calls THIS — it kept the logging and
+ * the dispatch, and gave up owning the arithmetic.
+ *
+ * The centre bonus is the interesting half: fans pay more the closer to the
+ * middle you were standing when you earned them, which is the same pressure
+ * `posePlay` applies from the other direction.
+ *
+ * @param {object} ns      the spirit's note state
+ * @param {string} ring    `hexRingFromCenter(spirit.num)` — the caller owns the board
+ * @param {number} base    the deed's own payout before the centre bonus
+ * @returns {{ patch: object, gain: number, promoted: boolean }}
+ */
+export function fansFromDeed(ns = {}, ring, base = 0) {
+  if (base <= 0) return { patch: null, gain: 0, promoted: false };
+  const inCentre    = ring === 'main' || ring === 'pit';
+  const centreBonus = ring === 'main' ? 2 : ring === 'pit' ? 1 : ring === 'floor' ? 1 : 0;
+  const gain = base + centreBonus;
+
+  let casuals  = Math.min(FAN_CASUAL_CAP, (ns.casuals ?? 0) + gain);
+  let diehards = ns.diehards ?? FAN_DIEHARD_START;
+  let streak   = ns.centerStreak ?? 0;
+  let promoted = false;
+  if (inCentre) {
+    streak += 1;
+    if (streak % FAN_PROMOTE_EVERY === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
+      casuals -= 1; diehards += 1; promoted = true;
+    }
+  }
+  return {
+    patch: { casuals, diehards, centerStreak: streak, fanActedThisTurn: true, fanLag: 0 },
+    gain, promoted,
+  };
+}
+
 export function applyFansChanged(state, { spiritId, fans = {} }) {
   const ns = state.noteStates[spiritId];
   if (!ns) return state;

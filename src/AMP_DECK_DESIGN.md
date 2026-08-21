@@ -1,24 +1,20 @@
 # Rock Legends: Spirit Wars — Amp Deck System Design
 
-> **2026-07-22 revisions (implemented):** Amp I is now GRANTED at start — every
-> Spirit begins at 2d6; Amp II/III are the purchases (3d6/4d6) and cabinet count
-> tracks Amp tier (1/2/3 stacks). Power tiers ring the KNOBS of stack N in
-> vibrant pink (cumulative, positions in `board/ampKnobs.js`). Range tiers are a
-> hex glow at the stack base (brighter per tier); hovering a stack shows the
-> radius ring. `RIG_RADIUS_BY_TIER = [3, 4, 7, ∞]` (starting radius bumped 2→3).
-> **Outside the radius the Sonic Attack is OFFLINE entirely** — no 1d6/2d6
-> fallback fire; the HUD button fades (§2.4's "baseline floor" is superseded).
-> HUD attack buttons are always visible: lit when usable, FADED when nothing is
-> in range, GRAYED when AP/Action Token is lacking; hovering previews the range.
-
-Supersedes the on-board amp token system (`board/ampRigs.js`, `AMP_RANGE`/`AMP_LINK_DIST`/
-`AMP_UNPLUG_DIST` in `gameConstants.js`), the unplug/replug sabotage loop, **and the entire
-Crew system (`CREW_SYSTEM_DESIGN.md`)**. Emerged from the fiction fix: electric Spirits
-cannot start unplugged — everyone begins wired into a **Main Amp** at their home corner,
-and the rig grows there for the whole table to see. With amps off-board the crew route's
-jobs go moot, so the skill tree consolidates to three routes: Theory, Electric, Stances.
-
----
+> ✅ **REWRITTEN 2026-08-20 (evening), IN THE SAME PASS AS THE DELETION** — which is
+> what this doc's own header demanded. **§2 and §4 describe the game as it is.**
+>
+> The rig is no longer bought with Db. Pool size and die size are won at the marquee
+> quiz and lost to atrophy (`MARQUEE_QUIZ_DESIGN.md` §4–§5); the radius breathes with
+> your stacks (`SEQUENCING.md` §5.A⁷). The CEILING did not move — 3 pool + 3 power is
+> exactly the old Amp III / Power III, so §2.5's "the maximum Sonic roll is 8" and
+> everything ever checked against it still holds.
+>
+> ⚠️ **§5 AND §6 AND §7 ARE A HISTORICAL IMPLEMENTATION LOG, NOT INSTRUCTIONS.** They
+> record how this system was built in July 2026, including files that no longer exist
+> and constants that have since been deleted. §5.1's function signature is two
+> rewrites out of date and is kept because the SHAPE of it — one pure function
+> everything routes through — is the reason the 2026-08-20 rework was cheap. Read
+> `engine/systems/sonicRig.js` for what it says today.
 
 ## 1. Design principles
 
@@ -59,62 +55,103 @@ assignment layer that pulled diehards out of it).
 
 ## 2. The rig — mechanics
 
-### 2.1 Baseline (turn 1, no unlocks)
+> 🎛️ **REWRITTEN 2026-08-20**, the day the rig came off the skill tree. The three
+> axes are the same three axes; not one of them is a purchase any more. See
+> `MARQUEE_QUIZ_DESIGN.md` §0.1 for the three clocks and `SEQUENCING.md` §5.A⁷–§5.B⁷
+> for the measurements.
 
-Every Spirit: **roll 1d6, keep the highest**, anywhere on the board. The Main Amp has
+### 2.1 Baseline — the floor everybody stands on
+
+Every Spirit: **2d6, keep the highest**, anywhere on the board. The Main Amp has
 board-wide reach — you are never "out of range" of your own baseline Sonic. (Sonic's
 *targeting* range — the forward beam — is unchanged and separate.)
 
-### 2.2 Amp I–III — pool size
+🎯 **THIS IS A FLOOR, NOT A STARTING PURCHASE.** It used to be the free `amp_1` grant
+seeded into `unlockedSkills`; it is `RIG_POOL_FLOOR` now, and `rigTiers()` clamps to
+it. The number did not change — the reason it exists did. Nothing can take it away:
+atrophy stops here, and a Spirit who never answers a single quiz question plays the
+whole match on exactly this.
 
-Each tier bolts another cabinet onto a deck and adds **+1 d6 to the roll**. Full track:
-roll 4 dice, keep the highest. More dice = consistency — a bigger pool squeezes the
-variance out of your attack.
+### 2.2 Pool size — how many dice
 
-### 2.3 Power I–III — die upgrades
+`rigPool`, 1 → 3, **+1 d6 per tier**. Full pool: roll 4 dice, keep the highest. More
+dice is consistency — a bigger pool squeezes the variance out of your attack.
 
-Each tier upgrades the amp *head*, converting **one die in your pool from d6 to d8**:
-Power I = one d8 in the pool, Power II = two, Power III = three. Power N requires
-Amp N first — the head needs a cabinet to drive, and the gate keeps the DB curve
-honest. Full rig: roll 3×d8 + 1×d6, keep the highest.
+**Won at the marquee**, in the 🎛️ RIG lane: a correct answer grants 1 / 2 / 3 tiers by
+difficulty, spent at the card on this track or on power. Lost to **atrophy** — one
+tier shed for every `RIG_ATROPHY_TURNS` of your own turns without a trip to a marquee.
 
-### 2.4 Range I–III — where the bonuses live
+### 2.3 Die size — how big those dice are
 
-The upgrade stacks are physical hardware at your corner: their boost only carries so
-far. **Within radius of your home hex, the full rig applies. Outside it, you fall back
-to baseline 1d6** (the Main Amp's board-wide floor).
+`rigPower`, 0 → 3, converting **one die in your pool from d6 to d8** per tier. Full
+rig: 3×d8 + 1×d6, keep the highest.
 
-Proposed radii (tunable, axial distance from `CORNERS[corner].homeNum`):
+⚠️ **POWER CAN NEVER EXCEED POOL** — you cannot upgrade a die you do not have. This
+was the tree's `prereq` gate (Power II needed Amp II). With no tree left it is plain
+arithmetic, enforced inside `rigTiers()` so that every reader gets the clamped
+numbers and no caller can talk itself into an upgrade for a die that does not exist.
 
-Measured on the 111-hex map: home → Limelight (hex 56) = **5**, home → adjacent corner
-= 5, home → far corner = **10**.
+📌 **AND ATROPHY SHEDS POWER FIRST**, which is not flavour: shedding a pool tier while
+power equalled it would silently drop both, so one turn of neglect would cost two
+tiers with only one of them logged. You lose the head before you lose the cabinet.
 
-| Tier | Radius | Feel |
+### 2.4 Radius — 🫁 where the bonuses live, and it breathes
+
+The rig is physical hardware at your corner: its boost only carries so far. **Within
+the radius, the full rig applies. Outside it you fall back to the board-wide floor,
+the Sonic is OFFLINE for targeting, you brace an incoming beam on a bare d4 instead of
+a d6, and no riff-off is possible** — §3.1's "worst square on the board".
+
+What changed is that the radius is no longer a tier you bought:
+
+```
+radius = RIG_RADIUS_FLOOR + (your turn ? Drive stack : Sustain stack).length
+```
+
+| stack length | radius | when |
 |---|---|---|
-| Range 0 (start) | 2 | Your corner pocket only |
-| Range I | 4 | The approaches — one hex shy of the Limelight |
-| Range II | 7 | Limelight AND both adjacent corners inside your field |
-| Range III | ∞ | Fully wired — even the far corner (dist 10) is your stage |
+| 0 (emptied out) | 3 | you spent it, posed it away, or were frayed to nothing |
+| 1 (the opening state) | **4** | turn one, every Spirit — the old Range-0 number exactly |
+| 4 | 7 | the Limelight is inside your field |
+| 6 (a full stack) | 9 | most of the venue, and never all of it |
 
-This is the positional tension that replaces amp-token play: you're a monster on home
-turf, honest in the middle, and baseline in a rival's corner — until you buy Range.
-Note Range II deliberately covers the center hex so contesting the Limelight is a
-mid-game rig goal, and Range III existing keeps the endgame from turtling.
+🎯 **THE TURN SPLIT IS WHERE THE EXISTING GATES ALREADY FELL.** Every offensive read of
+`inRange` happens on your own turn (can you fire a Sonic) and every defensive one on
+somebody else's (the d6/d4 answer, and whether a rival can riff back). "Drive on your
+turn, Sustain on theirs" therefore invents nothing: it hands each gate the stack that
+gate was already about. Stack Drive and you reach further when you act; stack Sustain
+and you are still standing in your own rig when they come for you.
+
+⚠️ **THE FLOOR IS THE ANTI-SPIRAL AND IT IS TUNED TO A FACT.** Sustain frays when you
+are hit, and a shrinking rig means a smaller defence die means a harder hit. Floor 3
+plus the root-alone seed puts every Spirit at exactly the old radius on turn one, so
+only a genuinely emptied-out Spirit drops below it. Lower the floor and you build a
+game where the Spirit already losing is the one who cannot answer a beam.
+
+📌 **There is no infinite radius any more.** Range III used to grant `Infinity`;
+anything that drew or compared against it (the neon ring had a `Number.isFinite`
+branch) now deals in ordinary numbers.
 
 ### 2.5 Tuning guardrails
 
-- Keep-highest means margins stay in familiar territory — no sum inflation. But note
-  the **ceiling drops**: the old rig topped out at d12; the new one tops at 8. Check
-  every rule that leaned on high Sonic rolls (margin-scaled push `ceil(margin/2)`,
-  knockback tiers, 7+ Performance triggers like the Soloist diehard convert) against
-  a max roll of 8, and rebalance the defender's die downward if Sonic stops winning
-  exchanges it should.
-- Full rig (3×d8+1×d6, keep highest) ≈ 7.1 expected, ≥7 about 66% of the time —
-  strong and consistent without breaking the cap structure. Baseline 1d6 ≈ 3.5.
-- Charge Zone boost (`elevenBoost` currently bumps the amp tier): becomes **+1 d8 to
-  the pool** (works anywhere, even past your Range). Overcharge unchanged.
-- Suggested DB costs, mirroring existing curves: Amp 8/12/18 (unchanged), Power
-  10/14/18, Range 8/12/16.
+- Keep-highest means margins stay in familiar territory — no sum inflation. The
+  **ceiling is 8**: the old rig topped out at d12, this one at d8. Every rule that
+  leaned on high Sonic rolls — margin-scaled push `ceil(margin/2)`, knockback tiers,
+  7+ Performance triggers — was checked against a max roll of 8 when that change
+  landed.
+- 🎯 **AND THE WORKOUT DELIBERATELY REPRODUCES THAT CEILING.** 3 pool + 3 power is
+  exactly the old Amp III / Power III, so nothing downstream needed re-checking when
+  the source of the tiers changed. A hard question that wants to feel special should
+  feel special by LASTING LONGER, never by introducing a d10.
+- Full rig (3×d8+1×d6, keep highest) ≈ 7.1 expected, ≥7 about 66% of the time. The
+  floor (2d6) ≈ 4.5.
+- Charge Zone boost: **+1 d8 to the pool**, and it works anywhere — even outside your
+  radius. That is the one part of the rig you can carry.
+- ⚠️ **THE PRICES ARE GONE, NOT RE-QUOTED.** This section used to end with suggested
+  Db costs. There are none: the rig costs no Db at all. What it costs is EXPOSURE —
+  staying loud means walking back onto a published hex in the middle of the board,
+  round after round, where everybody can reach you. That is the counterplay, and it
+  is positional rather than trivia-based.
 
 ---
 
@@ -180,44 +217,51 @@ color; outside it dims to the baseline "1d6" with a small 📡 hint. Same spot, 
 
 ---
 
-## 4. Skill tree — the new Electric route
+## 4. Skill tree — 🛑 THE ELECTRIC ROUTE IS DELETED
 
-Structured as `subChains` (same pattern as the Stances route) so the upgrade modal
-renders three labeled columns. IDs `amp_1..3` are **preserved** — every existing prereq
-(`ULTIMATE_PREREQS`, PA sub-chain gate, `hydra`/`sunbeam` pre-reqs, `rockGods.js`
-counts, bot `skillOrder`s) keeps working without migration.
+This section used to specify the route: three `subChains` (Amps, Power, Range) plus
+Overcharge, ids `amp_1..3` / `power_1..3` / `range_1..3` preserved so that every
+existing prereq kept working without migration. **All of it was removed from
+`data/skillTree.js` on 2026-08-20.** Ten rungs, 110 Db — the single largest sink in
+the game, against 52 for the whole Theory route.
 
-```js
-{
-  id: 'electric',
-  label: 'Electric',
-  icon: '⚡',
-  color: '#ffcc44',
-  desc: 'Your rig. It lives at your corner and it only gets bigger.',
-  subChains: [
-    { id:'rig_amps', label:'🔊 Amps', skills: [
-      { id:'amp_1', label:'Amp I',  dbCost:8,  prereq:null,    desc:'+1d6 to your Sonic pool (roll 2, keep highest). A second cabinet hits the deck.' },
-      { id:'amp_2', label:'Amp II', dbCost:12, prereq:'amp_1', desc:'+1d6 (roll 3, keep highest).' },
-      { id:'amp_3', label:'Amp III',dbCost:18, prereq:'amp_2', desc:'+1d6 (roll 4, keep highest). The wall of sound is complete.' },
-    ]},
-    { id:'rig_power', label:'🎛️ Power', skills: [
-      { id:'power_1', label:'Power I',  dbCost:10, prereq:'amp_1', desc:'A real head on the stack — one of your dice becomes a d8.' },
-      { id:'power_2', label:'Power II', dbCost:14, prereq:['power_1','amp_2'], desc:'A second die becomes a d8.' },
-      { id:'power_3', label:'Power III',dbCost:18, prereq:['power_2','amp_3'], desc:'Three d8s in the pool — maximum wattage.' },
-    ]},
-    { id:'rig_range', label:'📡 Range', skills: [
-      { id:'range_1', label:'Range I',  dbCost:8,  prereq:null,     desc:'Full rig reaches 6 hexes from home.' },
-      { id:'range_2', label:'Range II', dbCost:12, prereq:'range_1',desc:'Full rig reaches 9 hexes — the Limelight is inside your field.' },
-      { id:'range_3', label:'Range III',dbCost:16, prereq:'range_2',desc:'Fully wired. The whole venue is your stage.' },
-    ]},
-  ],
-  // Overcharge stays, appended to rig_amps (prereq amp_2) unchanged.
-}
-```
+**Why, in one line:** a rig you bought in round three is a shopping decision; a rig you
+play into existence and then have to maintain is a game. §2 above is the replacement.
 
-Note: `power_1..3` must not collide with the existing `power_chords` skill — it doesn't,
-but double-check the legacy map. Multi-prereq (`['power_1','amp_2']`) needs a small
-extension in `skills.js` `canUnlock` if it only supports a single `prereq` string today.
+**What went with it, and what happened to each:**
+
+| gone | replaced by |
+|---|---|
+| `amp_1..3` | `rigPool`, won at the marquee (§2.2) |
+| `power_1..3` | `rigPower`, same source (§2.3) |
+| `range_1..3` | the breathing radius (§2.4) |
+| `overcharge` | ⚡ nothing — see below |
+| `ULTIMATE_PREREQS`, the `pa` chain gate | 🛑 deleted; neither could fire |
+
+⚡ **OVERCHARGE WAS CUT RATHER THAN REHOUSED**, and it was a decision rather than
+collateral. It opened a modal on a Charge Zone — dice charge, or one curated chord
+note — gated behind Amp II. With the amps gone it had no gate left, and a free 12 Db
+upgrade reachable on turn two is a different skill from the one that was designed.
+Tapping a zone now always takes the ordinary 50/50 spark, which is also what the
+headless path always did (`HARNESS_GAPS.pickupChoices` declared the modal unmodelled),
+so the client and the engine agree for the first time.
+
+🛑 **AND TWO GATES THAT COULD NEVER FIRE WENT AT THE SAME TIME.**
+`ULTIMATE_PREREQS = ["mic", "pedal_dist", "amp_1", "mixer"]` named three ids that are
+not in the tree and have not been for a long time, and no skill anywhere carried
+`prereq: '__all_pa__'`, so the Ultimate branch was unreachable. Both were nonetheless
+GREEN in `selftest` — against a fake tree written to match the gate rather than the
+game. That is `CLAUDE.md`'s §15 warning landing for the second time, and the
+replacement assertion is the one that would have caught it: **every prereq in the real
+tree must name a skill that exists.**
+
+⚠️ **THE Db HOLE IS REAL AND IS PARKED DELIBERATELY.** Removing the biggest sink in the
+game leaves Db piling up against a tree that cannot absorb it. Alex's answer
+(2026-08-20) is to build out the ABILITY tree so a character's kit grows over a match;
+that work does not exist yet. First measurement, 30 bench matches on the day of the
+deletion: **mean 4.0 unspent Db at match end, worst 8, 2.67 skills bought per seat** —
+i.e. no visible inflation yet, but bench matches run ~19 turns and the whole Theory
+ladder is only 5 rungs. Re-measure on long matches before calling it fine.
 
 ---
 
@@ -225,8 +269,15 @@ extension in `skills.js` `canUnlock` if it only supports a single `prereq` strin
 
 ### 5.1 The one new pure function
 
+> 📌 **AS SHIPPED IN JULY 2026, AND SUPERSEDED TWICE SINCE.** Kept because it is the
+> load-bearing observation of this whole document: the entire rig reduces to two
+> integers and a radius, in ONE pure function that everything routes through. That is
+> why changing where the numbers come from (2026-08-20) was a change at the BOTTOM of
+> the funnel rather than a rewrite of combat. Today's version takes the note state and
+> whose turn it is; read the file.
+
 ```js
-// engine/systems/sonicRig.js
+// engine/systems/sonicRig.js — the ORIGINAL, for the shape only
 export function sonicRig(unlockedSkills, distFromHome, chargeBoost = 0) {
   const ampT   = countOf(unlockedSkills, ['amp_1','amp_2','amp_3']);
   const powT   = countOf(unlockedSkills, ['power_1','power_2','power_3']);

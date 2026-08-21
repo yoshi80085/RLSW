@@ -1873,8 +1873,9 @@ export function BattleMeterOverlay({
                 mods.stageLightActive && { icon:'💡', label:'Stage Lighting',  color:'#ffcc44', desc:'+1 Vibe on win' },
                 mods.fogActive        && { icon:'🌫️', label:'Fog Machine',     color:'#aaccff', desc:'-1 Drive, -1 Sustain' },
                 mods.pyroBonus > 0    && { icon:'🔥', label:'Pyrotechnics',    color:'#ff8844', desc:`+${mods.pyroBonus} Drive` },
-                (battleState.pedalBonus > 0) && { icon:'🎛️', label:'Pedal Dist', color:'#44ffaa', desc:`+${battleState.pedalBonus} Drive` },
-                (battleState.powerBonus > 0) && { icon:'🤘', label:'Power Chords',color:'#ffcc44', desc:`+${battleState.powerBonus} Drive` },
+                // 🛑 `pedalBonus` / `powerBonus` rows removed 2026-08-20 — they keyed
+                //    on `pedal_dist` and `power_chords`, ids that are not in the skill
+                //    tree, so both were always 0 and neither row could ever render.
               ].filter(Boolean);
               return (
                 <div style={{textAlign:'center'}}>

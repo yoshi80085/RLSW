@@ -1,6 +1,12 @@
 # 🎪 MARQUEE QUIZ & THE RIG WORKOUT — design
 
-> ⚠️ **NOTHING HERE IS IMPLEMENTED.** Written 2026-08-20 out of a design
+> ✅ **§1, §2, §4, §5 AND THE TREE DELETION ARE ALL IMPLEMENTED** as of 2026-08-20 — see §8
+> for what landed when, and `SEQUENCING.md` §5.A⁷–§5.D⁷ for the measurements.
+> **§3's throughput question is still open; §7's Db hole is now MEASURED and small
+> so far (mean 4.0 unspent at match end — but on ~19-turn bench matches); and §6's
+> bot odds are the single largest lever on bot strength in the game.**
+>
+> ⚠️ Originally written 2026-08-20 out of a design
 > conversation with Alex. Companion to `SEQUENCING.md` §5.H⁶ ("The rig that
 > breathes"), which holds the other half of this rework and was recorded the
 > same day.
@@ -348,13 +354,28 @@ fourth front. Taking its own medicine, in order:
    consumed in one round lit only one back, permanently and silently.
    ⚠️ The throughput question in §3 is now *measurable* and still **unmeasured**
    — nobody has benched what doubled quiz income does to `FAN_MULT_CAP`.
-2. **The lane × difficulty card**, paying fans on both lanes for now. Tests the
-   *decision* without needing the rig rework to exist. If choosing turns out not
-   to be fun, everything below this line is moot and cheap to abandon.
-3. **The rig workout** — but only after §5.H⁶'s breathing radius lands, because
-   the two share `sonicRig` and doing them separately means touching the same
-   pure function twice with a half-migrated tree in between.
-4. **The tree deletion**, last, once nothing reads `rig_*` any more.
+2. ✅ **DONE, 2026-08-20 (evening)** — the lane × difficulty card, and it pays
+   the REAL rewards on both lanes rather than fans on both: the rig rework landed
+   in the same pass, so there was nothing to stub. `EventModal` gained a `choice`
+   phase (face-down, before the draw) and a `spend` phase.
+   🐛 Building it uncovered that the quiz was **client-only** — a headless Spirit
+   walked onto a marquee and nothing happened, undeclared in `HARNESS_GAPS`. With
+   the rig off the tree that would have frozen every bench Spirit at the floor
+   forever. `collectPickups` resolves it now.
+3. ✅ **DONE, 2026-08-20 (evening)** — the rig workout, on top of §5.H⁶'s
+   breathing radius, which shipped first exactly as this list said it must.
+   `rigPool` / `rigPower` on the note sheet, spent at the card, shed by
+   `rigAtrophyTick` on the owner's own turns, floored at the old free grant.
+   ⚠️ Bots barely train: 0.60 marquee visits per match and 85% of seats finish at
+   the floor even after `evaluate` got the two terms it needed. See
+   `SEQUENCING.md` §5.D⁷ before quoting any bench number.
+4. ✅ **DONE, 2026-08-20 (late)** — the tree deletion. The whole `electric`
+   route is gone: `amp_1..3`, `power_1..3`, `range_1..3` and `overcharge`, plus
+   every reader (bot skill orders, `STARTING_SKILLS`, the `amp_1` seed, the Rock
+   God scoring, the client's unlock logs and Overcharge modal, and two duplicate
+   copies of the pool table that had drifted). `SEQUENCING.md` §5.G⁷ has the full
+   account. ⚡ Overcharge was CUT rather than rehoused, and the dead
+   `ULTIMATE_PREREQS` / `pa` gates went with it — both Alex's call.
 
 Steps 1 and 2 are independent of the whole rig question and can ship this week.
 

@@ -37,15 +37,16 @@ import {
   fpPerLife, POSE_FP_STEP, POSE_FP_MAX,
   UNDERDOG_MIN_DEFICIT, UNDERDOG_DEFICIT_PER_STEP, UNDERDOG_MAX_MULT,
   FAN_MULT_CAP, FAN_DIEHARD_START, SONIC_BEAM_REACH, LIMELIGHT_HEX,
+  RIG_POOL_FLOOR, RIG_TIER_MAX,
 } from "../../data/gameConstants.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import { CORNERS } from "../../data/corners.js";
 import { HEX_BY_NUM, ALL_HEXES, EDGE_HEX_NUMS } from "../../board/hexMap.js";
 import { axialDist } from "../../board/hexGeometry.js";
 import { crowdMultiplier, hexRingFromCenter } from "../../board/boardHelpers.js";
-import { sonicRig } from "../systems/sonicRig.js";
 import { usedHas } from "../systems/economy.js";
 import { rigFor } from "../systems/attackParams.js";
+import { rigSpendable, rigTiers } from "../systems/sonicRig.js";
 import { posePayout, posingMap, poseRounds, isPosing } from "../systems/limelight.js";
 import { SKILL_BY_ID } from "../../data/skillTree.js";
 // 🔊 The beam geometry, BORROWED FROM THE GENERATOR RATHER THAN RE-DERIVED. A
@@ -94,10 +95,14 @@ export const MAX_EDGE_DIST = ALL_HEXES.reduce((mx, h) => {
   return Number.isFinite(d) ? Math.max(mx, d) : mx;
 }, 0) || 1;
 
-// 🎓 The starting kit. `economy.js` wires every Spirit in with `amp_1` (and the
-// Ronin with `theory_minor`), so those are not PURCHASES and must not be scored
-// as investment — otherwise the Ronin is born looking richer than everybody else.
-export const STARTING_SKILLS = new Set(['amp_1', 'theory_minor']);
+// 🎓 The starting kit — what a Spirit is BORN with, which must not be scored as
+// investment or the Ronin looks richer than everybody else from turn one.
+//
+// 📌 `amp_1` left this set on 2026-08-20 with the rig branch. It is not that the
+// free rig went away — every Spirit still opens at `RIG_POOL_FLOOR`, 2d6 in
+// range — it is that the floor is not a SKILL any more, so there is no id here
+// to exclude. What remains is the Ronin's `theory_minor`.
+export const STARTING_SKILLS = new Set(['theory_minor']);
 
 // 🎓 How much Db invested in the kit counts as "fully equipped". Not a rule —
 // a normaliser, chosen as roughly two mid-tier unlocks, which is what a Spirit
@@ -258,6 +263,25 @@ export const CENTRE_SHELF = 0.6, CENTRE_RAMP = 0.4;
 /** How far a Charge Zone still pulls. Beyond this the walk is somebody else's plan. */
 export const CHARGE_SEEK_REACH = 6;
 
+/**
+ * 🎪 How far a MARQUEE pulls — and this row exists because the rig came off
+ * the skill tree (MARQUEE_QUIZ_DESIGN.md §4).
+ *
+ * ⚠️ WITHOUT IT THE WORKOUT IS INVISIBLE TO EVERY BOT. Measured on 30 bench
+ * matches the day the engine learned to draw a trivia question: 0.20 marquee
+ * visits PER MATCH across ~36 turns, and 60 of 60 seats finished at the rig
+ * floor. `botHexScore` has had an events term for months, but that is an action
+ * PRIOR — the searcher plans on `evaluate`, and `evaluate` had no opinion about
+ * the middle of the board lighting up. While pool and power were a Db purchase
+ * that was a missed opportunity; now it is the difference between a bench
+ * Spirit having a rig and not having one.
+ *
+ * 📌 The value is scaled by HEADROOM: a Spirit at 3/3 has nothing left to
+ * train, and for them the card pays only fans.
+ */
+export const MARQUEE_SEEK_REACH = 6;
+export const MARQUEE_MAXED_VALUE = 0.4;
+
 // ── 🔊 The Sonic setup ──────────────────────────────────────────────────────
 //
 // ⚠️ THE BOT HAS NEVER FIRED A SONIC. Measured, not assumed: it is offered on
@@ -383,7 +407,7 @@ export function beamOpportunity(state, self, ns, rivals) {
   const posing = posingMap(state);
   const here = HEX_BY_NUM[self?.num];
   if (!here || !rivals.length) return 0;
-  if (!rigFor(self, ns).inRange) return 0;
+  if (!rigFor(self, ns, state).inRange) return 0;
 
   const liveBeam = sonicBeam(self);
   const axes = facingOptions(self).map(f => sonicBeam({ num: self.num, facing: f }));
@@ -401,7 +425,7 @@ export function beamOpportunity(state, self, ns, rivals) {
       const rns = state?.noteStates?.[r.id] ?? {};
       const answers = !posing[r.id]
         && sonicBeam(r).has(self.num)
-        && rigFor(r, rns).inRange;
+        && rigFor(r, rns, state).inRange;
       if (onLiveBeam && answers) { best = Math.max(best, BEAM_DUEL); continue; }
       best = Math.max(best, onLiveBeam ? BEAM_READY : BEAM_ALIGNED);
       continue;
@@ -488,21 +512,28 @@ export function beamOpportunity(state, self, ns, rivals) {
 // ⚠️ AND `centreStage` WAS CUT ROUGHLY IN HALF AGAIN AFTER A SECOND MEASUREMENT,
 // which found a tension the term created and nobody predicted:
 //
-//   🎤 THE MIDDLE IS OUTSIDE EVERYBODY'S RIG. `RIG_RADIUS_BY_TIER` is 4 at tier
-//   zero and the Limelight sits ~6 from a home corner, so a Spirit who walks to
-//   centre stage is stranded (§3.1's "worst square on the board"): a bare d4
+//   🎤 THE MIDDLE WAS OUTSIDE EVERYBODY'S RIG. The radius was a flat 4 at tier
+//   zero and the Limelight sits ~6 from a home corner, so a Spirit who walked to
+//   centre stage was stranded (§3.1's "worst square on the board"): a bare d4
 //   defence, NO Sonic, and no riff-off at all. Overpaying the centre therefore
 //   switched OFF the two Fame engines the whole session was built to switch on.
 //   Measured on the bench's own fixture, Ronin vs Metalness over 14 matches:
 //   at 1.3-1.7 the pair ran 326 turns, decided 3, and fought 1 duel; at ~0.7-0.9
 //   they ran ~220, decided 7, and fought 10.
 //
-// 📌 THE GAME ALREADY HAS THE ANSWER AND IT IS A PURCHASE. Range I takes the
-// radius to 5 and Range II to 7 — the whole board — so "work the middle" is
-// something a Spirit EARNS rather than something the evaluator should assume.
-// The right long-term fix is probably to make `centreStage` conditional on
-// having the range to shoot from there, which is a term that reads two things at
-// once and wants the bench, not a guess.
+// 🫁 AND THAT TENSION IS NOW RETIRED BY THE BREATHING RADIUS (§5.H⁶, shipped
+// 2026-08-20). The standing item here — "make `centreStage` conditional on
+// having the range to shoot from there" — was written when reach was a rung on
+// the skill tree, i.e. a purchase the evaluator had to check for. It is not a
+// purchase any more: radius is `RIG_RADIUS_FLOOR + stack length`, so a Spirit
+// with a four-note Drive stack reaches 7 and CAN work the middle, and the same
+// Spirit emptied out cannot. The read the term wanted is therefore already
+// inside `terms.inRig`, live, every turn.
+//
+// ⚠️ WHICH MEANS THIS WEIGHT IS DUE A RE-SWEEP, NOT A REWRITE. The measurement
+// above was taken against a board where the centre was unreachable for most of
+// a match; it is now conditionally reachable, and nobody has re-run it. Treat
+// 0.7-0.9 as inherited, not confirmed.
 
 // ✨ ONE NEW ROW, 2026-08-17 (§6.6.8) — `posePlay`, on a mechanic that has never
 // been exercised headlessly before today, so there is no prior bench reading for
@@ -536,7 +567,7 @@ export const DEFAULT_WEIGHTS = {
   drive: 0.6, sustain: 0.5, apBanked: 1.0, inRig: 1.0,
   charge: 1.2, refillDenied: 1.0, edgeSafety: 1.0,
   dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6, pressure: 2.5,
-  centreStage: 0.8, chargeSeek: 0.6, stock: 1.0, beamSetup: 0.7,
+  centreStage: 0.8, chargeSeek: 0.6, stock: 1.0, beamSetup: 0.7, marqueeSeek: 0.7, loud: 3.0,
   posePlay: 0.4, facing: 1.0,
 };
 
@@ -558,7 +589,7 @@ export const EVAL_WEIGHTS = {
     // doubles, so Fame earned IN the middle compounds for him in a way it does
     // for nobody else — and `fame: 2.2` is already his second-highest row.
     // ⚠️ Still a SMALL number in absolute terms; see the sweep above.
-    centreStage: 0.95, chargeSeek: 0.5, stock: 1.3, beamSetup: 0.7,
+    centreStage: 0.95, chargeSeek: 0.5, stock: 1.3, beamSetup: 0.7, marqueeSeek: 0.7, loud: 3.0,
     posePlay: 0.5,
     // 🔪 THE ROSTER'S HIGHEST, and the only row on this table justified by an
     // ABILITY rather than a stat. 🗡️ Psycho Bushido dashes along the facing line —
@@ -596,7 +627,7 @@ export const EVAL_WEIGHTS = {
     // standing in a spot that is OUTSIDE a tier-0 rig (§6.6.7's centre/rig
     // tension) with the defence die switched off — for the Spirit whose whole
     // game is a live rig and a held charge, that is the worst trade on the board.
-    centreStage: 0.7, chargeSeek: 1.6, stock: 0.9, beamSetup: 0.9,
+    centreStage: 0.7, chargeSeek: 1.6, stock: 0.9, beamSetup: 0.9, marqueeSeek: 0.7, loud: 3.0,
     posePlay: 0.25,
     // 🔪 THE ROSTER'S LOWEST, and `inRig: 1.6` is talking again. He fights down a
     // BEAM at range, and `beamSetup: 0.9` already prices the alignment half of
@@ -619,7 +650,7 @@ export const EVAL_WEIGHTS = {
     // roster's lowest, so giving up a defence die costs him least — but a bruiser
     // who wants to be in CONTACT is standing where the term goes negative. He
     // should pose when the board has cleared around him and not otherwise.
-    centreStage: 0.75, chargeSeek: 0.5, stock: 1.0, beamSetup: 0.5,
+    centreStage: 0.75, chargeSeek: 0.5, stock: 1.0, beamSetup: 0.5, marqueeSeek: 0.7, loud: 3.0,
     posePlay: 0.35,
     // 🔪 Middling, and it is the mirror of his `posePlay` note. A bruiser who
     // wants CONTACT spends his whole game inside `REAR_INTEREST_DIST` of somebody,
@@ -894,8 +925,13 @@ export function evaluate(state, spiritId, view = {}) {
 
   // 8. INSIDE OWN RIG RADIUS — §3.1's worst square on the board is being
   //    stranded outside it: a bare d4 defence and no riff-off at all.
-  const chargeBoost = (ns.chargeCeilTurns ?? 0) > 0 ? 1 : 0;
-  terms.inRig = sonicRig(ns.unlockedSkills ?? [], distFromHome(self, ns), chargeBoost).inRange ? 1 : 0;
+  // ⚠️ THROUGH `rigFor`, NOT `sonicRig` DIRECTLY. This line called the raw
+  //    function for months and was the ONE place that would not follow the rig
+  //    rules — it could not see a blown amp (§3.1's "worst square on the board"
+  //    scored as if the rig were fine) and, from 2026-08-20, it could not see
+  //    whose turn it is either, which is now half the radius rule. Both fixes
+  //    are the same one-word change. 📌 Logged as drift in §5.H⁶ before it bit.
+  terms.inRig = rigFor(self, ns, state).inRange ? 1 : 0;
 
   // 9. HOLDING A CHARGE — a boost for everyone, an identity for Intergalactic 0.
   terms.charge = ((ns.chargeFloorTurns ?? 0) > 0 || (ns.chargeCeilTurns ?? 0) > 0) ? 1 : 0;
@@ -1123,6 +1159,88 @@ export function evaluate(state, spiritId, view = {}) {
         return zh ? Math.min(m, axialDist(here.q, here.r, zh.q, zh.r)) : m;
       }, Infinity);
       terms.chargeSeek = Number.isFinite(d) ? clamp01(1 - d / CHARGE_SEEK_REACH) : 0;
+    }
+  }
+
+  // 18b. 🎪 MARQUEE SEEK — the walk to the quiz, which since the rig came off
+  //      the tree is the walk to a LOUDER AMP. Same shape as `chargeSeek` above
+  //      and for the same reason: a term that scored only "am I standing on it"
+  //      would be worth nothing, because stepping on a marquee CONSUMES it in
+  //      the same action (`collectPickups`). The value has to live in the
+  //      approach or it does not exist at all.
+  //
+  //      ⚠️ SCALED BY HEADROOM, WHICH IS WHAT KEEPS IT HONEST. A Spirit at
+  //      3 pool / 3 power cannot train any further, so for them the RIG lane is
+  //      dead and the card is worth only its fans. A flat term would have the
+  //      loudest Spirit on the board sprinting for a prize it cannot collect.
+  //
+  //      📌 AND IT DOES NOT MODEL THE ATROPHY CLOCK. "I am one turn from
+  //      shedding a tier" should pull harder than "I trained this turn", and
+  //      that is probably the better term — but it is a second dimension nobody
+  //      has benched, and §5's warning about settling numbers on small samples
+  //      applies. Written down rather than guessed at.
+  // 18c. LOUD — how much rig this Spirit has actually TRAINED.
+  //
+  //      WARNING: this is SEQUENCING.md 5.E6 item 6, and it stopped being a
+  //      nice-to-have the day the rig came off the tree. The evaluator has never
+  //      had an opinion about volume: `inRig` asks only "am I inside my own
+  //      radius", a yes/no, and nothing anywhere read the SIZE of the pool.
+  //      While pool and power were bought with Db that was merely a blind spot.
+  //      Once they are won at the marquee it is an INVERSION — measured, on the
+  //      first bench run after the quiz went headless: bots sat at distance 1
+  //      from a live marquee on 54 decision points of a 43-turn match and
+  //      stepped on it ONCE. Taking a marquee CONSUMES it, so `marqueeSeek`
+  //      falls when you collect the prize; with no term rising to meet that,
+  //      the best-scoring move was always to hover beside it and never touch it.
+  //
+  //      SO THE PAIR IS THE POINT, and it is the pairing this file already uses
+  //      for charges: `chargeSeek` pays the walk, `charge` pays the holding, and
+  //      the note there says in as many words that `charge` must be worth
+  //      strictly more than `chargeSeek` or the bot walks to a zone it never
+  //      taps. Same inequality, same reason.
+  //
+  //      Scale is EARNED tiers over the maximum earnable — the floor every
+  //      Spirit starts with is not an achievement and must not score as one.
+  //
+  //      THE WEIGHTS WERE PICKED FROM A SWEEP, and the sweep found a pathology
+  //      in the OTHER row rather than in this one. 24 matches, two pairings,
+  //      fixed seeds, `.scratch/marqsweep.mjs`:
+  //
+  //        seek  loud | turns/match  marquees/match  seats above floor  decided
+  //        0.7   1.6  |     18.0          0.33            3/48          24/24
+  //        0.7   3.0  |     17.4          0.50            6/48          24/24
+  //        1.5   3.0  |     65.3          0.33            1/48          21/24
+  //        1.5   5.0  |     50.4          0.54            1/48          22/24
+  //        3.0   6.0  |     77.7          0.96            4/48          21/24
+  //
+  //      WARNING: PAYING MORE FOR THE WALK MAKES IT WORSE, and it is the exact
+  //      shape of the facing spin in 5.C6 — a term whose value sits on the
+  //      APPROACH funds orbiting rather than arriving. At seek 1.5 the match
+  //      length triples, matches stop being decided, and FEWER Spirits end up
+  //      with a rig than at 0.7. Raise `loud` when you want more training, never
+  //      `marqueeSeek`.
+  //
+  //      And 24 matches is nowhere near 6.6's bar of ~2000. Even the best arm
+  //      leaves 42 of 48 seats finishing at the floor, so no bench reading taken
+  //      today is a reading of a game where anybody's rig grew.
+  {
+    const { pool, power } = rigTiers(ns);
+    const earned = (pool - RIG_POOL_FLOOR) + power;
+    const most   = (RIG_TIER_MAX - RIG_POOL_FLOOR) + RIG_TIER_MAX;
+    terms.loud = clamp01(earned / most);
+  }
+
+  {
+    const evs = (state?.board?.eventHexes ?? []).map(n => HEX_BY_NUM[n]).filter(Boolean);
+    if (!evs.length || !here) {
+      terms.marqueeSeek = 0;
+    } else {
+      const can = rigSpendable(ns);
+      const headroom = (can.pool || can.power) ? 1 : MARQUEE_MAXED_VALUE;
+      const d = evs.reduce((m, eh) => Math.min(m, axialDist(here.q, here.r, eh.q, eh.r)), Infinity);
+      terms.marqueeSeek = Number.isFinite(d)
+        ? clamp01(1 - d / MARQUEE_SEEK_REACH) * headroom
+        : 0;
     }
   }
 

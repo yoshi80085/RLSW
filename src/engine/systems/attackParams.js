@@ -91,8 +91,18 @@ export function spiritChord(spiritId, notes) {
   return ch;
 }
 
-/** The dice pool a Spirit's Sonic rig throws right now, charge included. */
-export function rigFor(spirit, ns = {}) {
+/**
+ * The dice pool a Spirit's Sonic rig throws right now, charge included.
+ *
+ * 🫁 AND `state` IS HOW THE RADIUS KNOWS WHOSE TURN IT IS (§5.H⁶). The rig
+ * breathes on the Drive stack when you are acting and on the Sustain stack when
+ * somebody else is, so this wrapper reads `state.acting` and hands `sonicRig`
+ * the answer — rather than making every call site pass a boolean it could get
+ * backwards. ⚠️ Omit `state` and you get the DEFENSIVE reading; that is the
+ * safe direction (see `sonicRig`'s `onTurn` note) but it is still wrong, so
+ * pass it.
+ */
+export function rigFor(spirit, ns = {}, state = null) {
   // 🔊 A BLOWN AMP IS OUT-OF-RIG, WHEREVER HE IS STANDING — and expressing it
   // that way is why Goes to 11 needs no new systems at all. §3.1's rule already
   // says what happens to a Spirit with no rig behind them: the Sonic is OFFLINE
@@ -100,9 +110,10 @@ export function rigFor(spirit, ns = {}) {
   // an incoming beam on a bare d4 instead of a d6. Blowing the amp just moves him
   // into that state without moving him. One flag, one line, and the "worst square
   // on the board" the rework promised is the square he is already on.
-  if (ampBlown(ns)) return { pool: [SONIC_BASE_DIE], inRange: false };
+  if (ampBlown(ns)) return { pool: [SONIC_BASE_DIE], inRange: false, radius: 0 };
   const chargeBoost = (ns.chargeCeilTurns ?? 0) > 0 ? 1 : 0;
-  return sonicRig(ns.unlockedSkills ?? [], distFromHome(spirit, ns), chargeBoost);
+  const onTurn = !!spirit && state?.acting === spirit.id;
+  return sonicRig(ns, distFromHome(spirit, ns), chargeBoost, onTurn);
 }
 
 /**
@@ -205,13 +216,13 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
   if (kind === 'sonic') {
     // The attacker throws their rig's pool; the ceiling charge grows EVERY die
     // one size (d6→d8, d8→d10), capped.
-    const pool = rigFor(attacker, nsA).pool;
+    const pool = rigFor(attacker, nsA, state).pool;
     const dicePool = chargeCeil ? pool.map(s => Math.min(CHARGE_DIE_CEILING, s + 2)) : [...pool];
 
     // 🛡️ Inside their own rig radius the rival braces against the beam with
     // their amp behind them (d6). Stranded outside it there is no rig to answer
     // with and they scramble a bare d4 — the same rule that blocks the riff-off.
-    const defInRig = rigFor(defender, nsD).inRange;
+    const defInRig = rigFor(defender, nsD, state).inRange;
     return {
       ...base,
       dicePool,

@@ -51,12 +51,21 @@ matching; the surrounding code is written this way throughout.
 
 ## Testing
 
-`npm run test:<suite>` — engine, legal, eval, transition, turnflow,
-determinism, battleflow, melody, slime, eleven, score, harness, riffparity.
-`npm run bench:bot` runs the §6.6 bot bench (not a test — it prints evidence).
+**`npm run test:all`** is the full sweep — seventeen suites, one command,
+stops on the first red. Run it before reporting anything as done, and quote the
+assertion counts. If a count drops, explain why rather than letting it pass
+unremarked.
 
-Run the full sweep before reporting anything as done, and quote the assertion
-counts. If a count drops, explain why rather than letting it pass unremarked.
+Individual suites are `npm run test:<suite>`: engine, legal, eval, transition,
+turnflow, determinism, battleflow, melody, slime, eleven, score, harness,
+riffparity, skilltree, b0, riff, trace. `npm run bench:bot` runs the §6.6 bot
+bench (not a test — it prints evidence), and `.scratch/` holds one-off probes,
+which are evidence for one session and never a suite.
+
+⚠️ **A SUITE THAT NO SCRIPT RUNS IS NOT A SUITE.** `b0check` was quoted as green
+in every handoff in SEQUENCING for months while nothing ran it, and five riff test
+files carrying 132 assertions had never been wired at all. If you write a check,
+give it a script in the same pass and add it to `test:all`.
 
 ⚠️ **`npm run build` currently dies with a bus error on this machine** — a
 memory limit in the local VM, not a code fault. Use **`npm run check:bundle`**
@@ -64,6 +73,12 @@ instead: esbuild bundles the whole app, monolith included, in ~2 seconds and
 catches syntax errors and unresolved imports. Verify with it before and after
 touching `rlsw-simulator-v3_8_1.jsx`, which is ~15k lines and cannot be
 eyeballed.
+
+⚠️ **AND `check:bundle` MUST END WITH ZERO WARNINGS.** It sat at "6 warnings" for
+months. All six were real: import paths whose CASE did not match the file on disk,
+which Windows resolves and the Linux box Render builds on does not. A warning that
+is always there is indistinguishable from one that never matters — so the count is
+the check. Treat any non-zero warning count as a failure, not as scenery.
 
 ⚠️ **A passing test is not evidence a rule is real.** `legalActionsCheck` §15
 was green for months against a skill-purchase mechanic the game does not have,

@@ -35,7 +35,8 @@ import {
   usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState,
 } from "./systems/economy.js";
 import { RIFF_CLOSE_QUALITY_GAP, RIFF_BOTH_PAID_QUALITY } from "./systems/riffOff.js";
-import { skillEligibility, ULTIMATE_PREREQS, THEORY_DISCORD_GRANTS } from "./systems/skills.js";
+import { skillEligibility, THEORY_DISCORD_GRANTS } from "./systems/skills.js";
+import { SKILL_BY_ID } from "../data/skillTree.js";
 import { pitchIndex, playableScale } from "../music/notes.js";
 import {
   detectMotifRepeat,
@@ -736,51 +737,48 @@ const config = {
 }
 
 // -- Phase 5b: skillEligibility ≡ old bot + human gating ------------------------
+//
+// 🛑 THE ULTIMATE AND PA-CHAIN ARMS OF THIS BLOCK WERE DELETED ON 2026-08-20,
+// along with the gates they tested. They were green for a very long time against
+// a FAKE TREE built to match the gate — `mic`, `pedal_dist`, `mixer`, a `pa`
+// chain and a skill with `prereq: '__all_pa__'`, none of which exist in
+// `data/skillTree.js` or ever did in this version of the game. `CLAUDE.md` §15's
+// warning, verbatim: a passing test is not evidence a rule is real.
+//
+// What remains is the equivalence sweep that still MEANS something: the extracted
+// `skillEligibility` must agree, on 4000 random unlock sets, with the two
+// implementations it replaced — for the branches those implementations still have.
 {
-  // References = the ORIGINAL two implementations, verbatim.
+  // References = the ORIGINAL two implementations, minus the dead branches.
   const botOld = (sk, unlocked, selfId, ownerRoute) => {
     if (!sk || unlocked.includes(sk.id)) return false;
     if (ownerRoute && ownerRoute !== selfId) return false;
-    if (sk.prereq === "__all_pa__")
-      return ["mic", "pedal_dist", "amp_1", "mixer"].every(id => unlocked.includes(id));
     if (sk.prereq && !unlocked.includes(sk.prereq)) return false;
-    if (sk.chainId === "pa" && sk.id !== "amp_1" && !unlocked.includes("amp_1")) return false;
     return true;
   };
-  // old human path (no owner check): returns the toast it would have shown, or "" to proceed.
+  // old human path (no owner check): the toast it would have shown, or "" to proceed.
   const humanOld = (sk, unlocked) => {
     if (unlocked.includes(sk.id)) return "already";
-    if (sk.prereq && sk.prereq !== "__all_pa__") {
-      if (!unlocked.includes(sk.prereq)) return `❌ Requires ${sk.prereq} first.`;
-    }
-    if (sk.prereq === "__all_pa__") {
-      const missing = ["mic", "pedal_dist", "amp_1", "mixer"].filter(id => !unlocked.includes(id));
-      if (missing.length) return `❌ Ultimate requires: ${missing.join(", ")}`;
-    }
-    if (sk.chainId === "pa" && sk.id !== "amp_1" && !unlocked.includes("amp_1")) return `❌ PA system requires Amp I first.`;
+    if (sk.prereq && !unlocked.includes(sk.prereq)) return `❌ Requires ${sk.prereq} first.`;
     return "";
   };
   // new human wrapper reproduced from Game.setSkillTarget's reason mapping
   const humanNew = (sk, unlocked) => {
     const e = skillEligibility(sk, unlocked);
     if (e.ok) return "";
-    if (e.reason === "prereq")        return `❌ Requires ${sk.prereq} first.`;
-    if (e.reason === "ultimate")      return `❌ Ultimate requires: ${e.missing.join(", ")}`;
-    if (e.reason === "pa")            return `❌ PA system requires Amp I first.`;
-    return "already"; // already-unlocked is filtered before this block in Game; matches humanOld
+    if (e.reason === "prereq") return `❌ Requires ${sk.prereq} first.`;
+    return "already"; // already-unlocked is filtered before this block in Game
   };
 
-  // synthetic skills covering every branch
+  // synthetic skills covering every branch THAT EXISTS
   const SK = {
     a:      { id: "a" },
     b:      { id: "b", prereq: "a" },
-    ult:    { id: "ult", prereq: "__all_pa__" },
-    pa2:    { id: "pa2", chainId: "pa" },
-    amp_1:  { id: "amp_1", chainId: "pa" },
+    c:      { id: "c", prereq: ["a", "b"] },   // multi-prereq: all must be held
     ronin:  { id: "ronin", routeId: "shredding_ronin" },
   };
   const ROUTE = { shredding_ronin: "cosmic_ronin", metalness: "Metalness_Monster" };
-  const POOL = ["a", "b", "mic", "pedal_dist", "amp_1", "mixer", "pa2", "ult", "ronin"];
+  const POOL = ["a", "b", "c", "ronin"];
   const selves = [null, "cosmic_ronin", "vera"];
 
   let seed = 999; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
@@ -789,31 +787,44 @@ const config = {
     const sk = SK[Object.keys(SK)[Math.floor(rnd() * Object.keys(SK).length)]];
     const selfId = selves[Math.floor(rnd() * selves.length)];
     const ownerRoute = sk.routeId ? ROUTE[sk.routeId] : null;
-    // bot equivalence
-    assert.equal(
-      skillEligibility(sk, unlocked, { ownerRoute, selfId }).ok,
-      botOld(sk, unlocked, selfId, ownerRoute),
-      `skillEligibility.ok ≡ botSkillEligible (t${t})`);
-    // human equivalence (no owner route)
-    assert.equal(humanNew(sk, unlocked), humanOld(sk, unlocked),
-      `human toast ≡ old setSkillTarget (t${t})`);
+    // ⚠️ The array-prereq skill is excluded from the BOT equivalence arm on
+    //    purpose: `botOld` only ever handled a string prereq, so agreeing with it
+    //    there would mean the new function had inherited a limitation instead of
+    //    replacing it. The multi-prereq rule is asserted directly below.
+    if (!Array.isArray(sk.prereq)) {
+      assert.equal(
+        skillEligibility(sk, unlocked, { ownerRoute, selfId }).ok,
+        botOld(sk, unlocked, selfId, ownerRoute),
+        `skillEligibility.ok ≡ botSkillEligible (t${t})`);
+      assert.equal(humanNew(sk, unlocked), humanOld(sk, unlocked),
+        `human toast ≡ old setSkillTarget (t${t})`);
+    }
   }
 
   // spot checks on reasons + missing list
-  assert.deepEqual(skillEligibility(SK.ult, ["mic", "amp_1"]),
-    { ok: false, reason: "ultimate", missing: ["pedal_dist", "mixer"] }, "ultimate reports missing PA parts");
-  assert.deepEqual(skillEligibility(SK.ult, ["mic", "pedal_dist", "amp_1", "mixer"]), { ok: true }, "full PA → Ultimate opens");
-  assert.deepEqual(skillEligibility(SK.pa2, []), { ok: false, reason: "pa" }, "pa chain needs amp_1");
-  assert.deepEqual(skillEligibility(SK.amp_1, []), { ok: true }, "amp_1 itself is exempt from the pa gate");
   assert.deepEqual(skillEligibility(SK.b, ["b"]), { ok: false, reason: "already" }, "already-unlocked");
+  assert.deepEqual(skillEligibility(SK.b, []), { ok: false, reason: "prereq", missing: ["a"] }, "a missing prereq names itself");
+  assert.deepEqual(skillEligibility(SK.c, ["a"]), { ok: false, reason: "prereq", missing: ["b"] }, "multi-prereq reports only what is missing");
+  assert.deepEqual(skillEligibility(SK.c, ["a", "b"]), { ok: true }, "…and opens once both are held");
   assert.deepEqual(skillEligibility(SK.ronin, [], { ownerRoute: "cosmic_ronin", selfId: "vera" }),
     { ok: false, reason: "owner" }, "owner-only route blocks non-owner");
   assert.deepEqual(skillEligibility(SK.ronin, [], { ownerRoute: "cosmic_ronin", selfId: "cosmic_ronin" }),
     { ok: true }, "owner may take their signature skill");
 
+  // 🎯 AND THE REAL TREE, not a fixture: no skill may carry a prereq that does
+  //    not exist in the tree. This is the assertion the deleted block should have
+  //    been all along — it would have caught `ULTIMATE_PREREQS` years ago.
+  {
+    const ids = new Set(Object.keys(SKILL_BY_ID));
+    for (const sk of Object.values(SKILL_BY_ID)) {
+      for (const p of (Array.isArray(sk.prereq) ? sk.prereq : (sk.prereq ? [sk.prereq] : []))) {
+        assert.ok(ids.has(p), `🎯 ${sk.id}'s prereq "${p}" must be a skill that exists`);
+      }
+    }
+  }
+
   // grant tables intact
   assert.deepEqual(THEORY_DISCORD_GRANTS.theory_chromatic, ["discord_2", "discord_4"]);
-  assert.deepEqual(ULTIMATE_PREREQS, ["mic", "pedal_dist", "amp_1", "mixer"]);
 }
 
 // -- Phase 5c foundation: combat-ownership actions on engine spirits ------------
@@ -2016,12 +2027,14 @@ const config = {
   }
 
   // ── botSkillEligible ──
+  // 📌 The fixture was `amp_1` + `theory_minor` until 2026-08-20; the rig branch
+  //    is gone, so the ROOT of the queue is `theory_major` now.
   const fakeSkillById = {
-    amp_1: { id: "amp_1", routeId: "electric", prereq: null },
-    theory_minor: { id: "theory_minor", routeId: "common", prereq: "theory_major" },
+    theory_major: { id: "theory_major", routeId: "theory", prereq: null },
+    theory_minor: { id: "theory_minor", routeId: "theory", prereq: "theory_major" },
   };
-  assert.ok(botMod.botSkillEligible("amp_1", [], "wildaxe", fakeSkillById),
-    "amp_1 eligible with no prereqs");
+  assert.ok(botMod.botSkillEligible("theory_major", [], "wildaxe", fakeSkillById),
+    "theory_major eligible with no prereqs");
   assert.ok(!botMod.botSkillEligible("theory_minor", [], "wildaxe", fakeSkillById),
     "theory_minor NOT eligible without theory_major");
   assert.ok(botMod.botSkillEligible("theory_minor", ["theory_major"], "wildaxe", fakeSkillById),
@@ -2029,7 +2042,7 @@ const config = {
 
   // ── botPickSkillTarget ──
   const pick = botMod.botPickSkillTarget("wildaxe", [], "maestro", fakeSkillById);
-  assert.equal(pick, "amp_1", "maestro's first eligible skill from updated priority is amp_1");
+  assert.equal(pick, "theory_major", "maestro's first eligible skill is theory_major — the rig is not a purchase any more");
 
   // ── botRiffResults ──
   // determinism: same rng sequence → same results
@@ -2517,85 +2530,132 @@ const config = {
 // was literally the same function the Sustain boost calls), and Style was an
 // aesthetic judge in a currency that now pays only for facts a player can aim at.
 
-// -- sonicRig: tier × distance grid (AMP_DECK_DESIGN.md §2) --------------------
+// -- sonicRig: the workout × distance × THE BREATHING RADIUS -----------------
+// AMP_DECK_DESIGN.md §2 for the dice; SEQUENCING.md §5.H⁶ for the radius;
+// MARQUEE_QUIZ_DESIGN.md §4–§5 for where the tiers come from and how they go.
+//
+// 🎛️ REWRITTEN 2026-08-20. This block used to walk `RIG_RADIUS_BY_TIER` with
+// `range_1..3` and count pool size out of `amp_1..3`. None of those rungs exist
+// any more: pool and power are won at the marquee and shed to atrophy, and the
+// radius is `RIG_RADIUS_FLOOR + stack length`. A test that kept asserting
+// through the tree would have been testing a fiction — exactly the failure
+// `CLAUDE.md` warns about and MARQUEE_QUIZ_DESIGN.md §7 predicted for this
+// change specifically.
 {
-  // Import inline — sonicRig is a pure function, no React needed.
-  const { sonicRig, rigPoolLabel } = await import("./systems/sonicRig.js");
-  const { RIG_RADIUS_BY_TIER, SONIC_BASE_DIE, SONIC_UPGRADED_DIE } = await import("../data/gameConstants.js");
+  const { sonicRig, rigPoolLabel, rigRadius, rigTiers, rigTierSpend, rigSpendable, rigAtrophyTick }
+    = await import("./systems/sonicRig.js");
+  const { RIG_RADIUS_FLOOR, RIG_POOL_FLOOR, RIG_TIER_MAX, RIG_ATROPHY_TURNS }
+    = await import("../data/gameConstants.js");
 
-  // ── Baseline: no skills, any distance → 1d6 ──
+  // A sheet: rig tiers, and a stack of length n on the given side.
+  const ns = (pool = RIG_POOL_FLOOR, power = 0, n = 0, which = 'sustainStack') =>
+    ({ rigPool: pool, rigPower: power, [which]: Array(n).fill('C') });
+
+  // ── The floor: what every Spirit carries, trained or not ──
   {
-    const r = sonicRig([], 0);
-    assert.deepEqual(r.pool, [6], "baseline: 1d6");
-    assert.equal(r.inRange, true, "baseline: always in range (radius 0 ≤ tier-0 radius 2)");
+    const r = sonicRig(ns(), 0);
+    assert.deepEqual(r.pool, [6, 6], "floor: 2d6 — the free grant `amp_1` used to make");
+    assert.equal(r.inRange, true, "floor: at home, always in range");
+    assert.equal(r.radius, RIG_RADIUS_FLOOR, "floor: an empty stack reaches exactly the radius floor");
   }
   {
-    const r = sonicRig([], 99);
-    assert.deepEqual(r.pool, [6], "baseline far away: still 1d6 (outside range, no amps to lose)");
-    assert.equal(r.inRange, false, "baseline far: out of range");
+    const r = sonicRig(ns(), 99);
+    assert.deepEqual(r.pool, [6, 6], "floor far away: still 2d6 — the Main Amp is board-wide");
+    assert.equal(r.inRange, false, "floor far: out of range");
   }
+  // ⚠️ A SHEET WITH NO RIG FIELDS AT ALL (an old save, or a test fixture) must
+  //    read as the floor rather than as nothing.
+  assert.deepEqual(sonicRig({}, 0).pool, [6, 6], "a sheet with no rig fields degrades to the floor, not to 1d6");
+  assert.deepEqual(rigTiers({}), { pool: RIG_POOL_FLOOR, power: 0 }, "…and rigTiers says so");
 
-  // ── Amp tiers (in range) — pool size grows ──
-  assert.deepEqual(sonicRig(["amp_1"], 0).pool, [6, 6], "Amp I: 2d6");
-  assert.deepEqual(sonicRig(["amp_1", "amp_2"], 0).pool, [6, 6, 6], "Amp II: 3d6");
-  assert.deepEqual(sonicRig(["amp_1", "amp_2", "amp_3"], 0).pool, [6, 6, 6, 6], "Amp III: 4d6");
+  // ── Pool tiers (in range) — pool size grows ──
+  assert.deepEqual(sonicRig(ns(2, 0), 0).pool, [6, 6, 6], "pool 2: 3d6");
+  assert.deepEqual(sonicRig(ns(3, 0), 0).pool, [6, 6, 6, 6], "pool 3: 4d6 — the ceiling");
 
-  // ── Power tiers (gated behind matching Amp) ──
-  // Power without Amp upgrades the baseline die (can't happen in game — prereqs
-  // gate Power behind Amp — but the pure function doesn't enforce prereqs).
-  assert.deepEqual(sonicRig(["power_1"], 0).pool, [8], "Power I alone: baseline die → d8");
-  // Power I + Amp I: one die upgrades
-  assert.deepEqual(sonicRig(["amp_1", "power_1"], 0).pool, [8, 6], "Amp I + Power I: d8+d6");
-  // Power II + Amp II
-  assert.deepEqual(sonicRig(["amp_1", "amp_2", "power_1", "power_2"], 0).pool,
-    [8, 8, 6], "Amp II + Power II: 2d8+d6");
-  // Full rig: Amp III + Power III
-  assert.deepEqual(sonicRig(["amp_1", "amp_2", "amp_3", "power_1", "power_2", "power_3"], 0).pool,
-    [8, 8, 8, 6], "Full rig: 3d8+d6");
-  // Power III can't exceed pool size (3 upgrades on 2-die pool capped at 2)
-  assert.deepEqual(sonicRig(["amp_1", "power_1", "power_2", "power_3"], 0).pool,
-    [8, 8], "Power capped at pool size: Amp I + Power III → 2d8 (not 3)");
+  // ── Power tiers upgrade d6 → d8, and CANNOT exceed pool ──
+  assert.deepEqual(sonicRig(ns(1, 1), 0).pool, [8, 6], "pool 1 + power 1: d8+d6");
+  assert.deepEqual(sonicRig(ns(2, 2), 0).pool, [8, 8, 6], "pool 2 + power 2: 2d8+d6");
+  assert.deepEqual(sonicRig(ns(3, 3), 0).pool, [8, 8, 8, 6], "full rig: 3d8+d6");
+  assert.deepEqual(sonicRig(ns(1, 3), 0).pool, [8, 6],
+    "power is CLAMPED to pool — you cannot upgrade a die you do not have");
 
-  // ── Range tiers — radii from RIG_RADIUS_BY_TIER [4, 5, 7, Infinity] ──
-  // Tier 0 radius = 4 (starting range)
-  assert.equal(sonicRig(["amp_1"], 4).inRange, true, "Range 0: dist 4 inside (starting radius 4)");
-  assert.equal(sonicRig(["amp_1"], 5).inRange, false, "Range 0: dist 5 outside");
-  assert.deepEqual(sonicRig(["amp_1"], 5).pool, [6, 6], "out of range → Main Amp floor 2d6");
-  // Tier I radius = 5
-  assert.equal(sonicRig(["amp_1", "range_1"], 5).inRange, true, "Range I: dist 5 inside");
-  assert.equal(sonicRig(["amp_1", "range_1"], 6).inRange, false, "Range I: dist 6 outside");
-  // Tier II radius = 7 (requires Range I too — prereqs cumulate in countOf)
-  assert.equal(sonicRig(["amp_1", "range_1", "range_2"], 7).inRange, true, "Range II: dist 7 inside");
-  assert.equal(sonicRig(["amp_1", "range_1", "range_2"], 8).inRange, false, "Range II: dist 8 outside");
-  // Tier III radius = Infinity (requires Range I + II)
-  assert.equal(sonicRig(["amp_1", "range_1", "range_2", "range_3"], 999).inRange, true, "Range III: everywhere");
-  assert.deepEqual(sonicRig(["amp_1", "range_1", "range_2", "range_3"], 999).pool, [6, 6], "Range III far: full pool");
+  // ── 🫁 THE BREATHING RADIUS — floor + stack length ──
+  assert.equal(rigRadius({}, false), RIG_RADIUS_FLOOR, "no stacks at all → the floor, not a crash");
+  assert.equal(rigRadius(ns(1, 0, 1), false), RIG_RADIUS_FLOOR + 1, "the opening state (root alone) → floor + 1 = 4");
+  assert.equal(rigRadius(ns(1, 0, 6), false), RIG_RADIUS_FLOOR + 6, "a full six-note stack → 9, the ceiling of the rule");
 
-  // ── Out of range: amp/power bonuses stripped, just baseline ──
-  assert.deepEqual(
-    sonicRig(["amp_1", "amp_2", "amp_3", "power_1", "power_2", "power_3"], 99).pool,
-    [6, 6], "full rig, way out of range → Main Amp floor 2d6 (Amp I is board-wide)");
+  // The opening radius is 4 — EXACTLY the old tier-0 number, which is the whole
+  // reason the floor is 3. If this assertion ever moves, the resting state of
+  // every board in the game moved with it.
+  assert.equal(sonicRig(ns(1, 0, 1), 4).inRange, true,  "opening stack: dist 4 inside");
+  assert.equal(sonicRig(ns(1, 0, 1), 5).inRange, false, "opening stack: dist 5 outside");
+  assert.deepEqual(sonicRig(ns(3, 3, 1), 5).pool, [6, 6], "out of range → Main Amp floor 2d6, upgrades stripped");
+
+  // Stack up and the same Spirit reaches further from the same corner.
+  assert.equal(sonicRig(ns(1, 0, 4), 7).inRange, true,  "four-note stack: dist 7 inside");
+  assert.equal(sonicRig(ns(1, 0, 4), 8).inRange, false, "four-note stack: dist 8 outside");
+
+  // ⚠️ WHOSE TURN IT IS PICKS THE STACK, and this is the assertion that pins it.
+  // The same Spirit, the same hex, two different answers depending on whether
+  // they are acting — a big Drive stack reaches on YOUR turn, a big Sustain
+  // stack is what keeps you in rig on THEIRS.
+  {
+    const driveHeavy = { rigPool: 1, driveStack: Array(5).fill('C'), sustainStack: ['C'] };
+    assert.equal(sonicRig(driveHeavy, 7, 0, true).inRange,  true,  "acting: the Drive stack carries the rig to 8");
+    assert.equal(sonicRig(driveHeavy, 7, 0, false).inRange, false, "…and on somebody else's turn the same Spirit is stranded on Sustain");
+  }
 
   // ── chargeBoost — adds d8 dice that work ANYWHERE ──
   {
-    const r = sonicRig([], 99, 1);
-    assert.deepEqual(r.pool, [8, 6], "charge boost out of range: +1 d8 + baseline d6");
+    const r = sonicRig(ns(1, 0), 99, 1);
+    assert.deepEqual(r.pool, [8, 6, 6], "charge boost out of range: +1 d8 on top of the board-wide floor");
     assert.equal(r.inRange, false);
   }
   {
-    const r = sonicRig(["amp_1", "power_1"], 0, 1);
+    const r = sonicRig(ns(1, 1), 0, 1);
     assert.deepEqual(r.pool, [8, 8, 6], "charge boost in range: d8(power) + d8(charge) + d6");
   }
-  {
-    const r = sonicRig([], 0, 2);
-    assert.deepEqual(r.pool, [8, 8, 6], "double charge: 2×d8 + baseline d6");
-  }
 
-  // ── Expected values sanity (§2.5) ──
-  // Full rig 3d8+1d6 ≈ 7.1 expected (keep highest). Spot-check: max possible = 8.
-  const fullPool = sonicRig(["amp_1","amp_2","amp_3","power_1","power_2","power_3"], 0).pool;
-  assert.equal(Math.max(...fullPool), 8, "full rig ceiling = 8");
-  assert.equal(fullPool.length, 4, "full rig = 4 dice");
+  // ── 🏋️ THE WORKOUT: spending won tiers ──
+  assert.deepEqual(rigTierSpend(ns(1, 0), 'power'), { rigPower: 1 }, "a tier can upgrade the die you have");
+  assert.deepEqual(rigTierSpend(ns(1, 1), 'power'), null, "…but not a second die you do not have");
+  assert.deepEqual(rigTierSpend(ns(1, 1), 'pool'),  { rigPool: 2 },  "…the other track is still open");
+  assert.deepEqual(rigTierSpend(ns(3, 3), 'pool'),  null, "at the ceiling both tracks refuse");
+  assert.deepEqual(rigTierSpend(ns(3, 3), 'power'), null, "…so the card has nothing to offer and the lane is worthless");
+  assert.deepEqual(rigSpendable(ns(2, 1)), { pool: true, power: true }, "mid-build: either track takes a tier");
+  assert.deepEqual(rigSpendable(ns(3, 3)), { pool: false, power: false }, "maxed: neither does");
+
+  // ⚠️ THE CEILING IS THE OLD CEILING — 3 pool + 3 power is exactly Amp III /
+  //    Power III, so §2.5's "max Sonic roll is 8" survives untouched.
+  assert.equal(Math.max(...sonicRig(ns(RIG_TIER_MAX, RIG_TIER_MAX), 0).pool), 8, "full rig ceiling = 8, not 10");
+  assert.equal(sonicRig(ns(RIG_TIER_MAX, RIG_TIER_MAX), 0).pool.length, 4, "full rig = 4 dice");
+
+  // ── 🏋️ ATROPHY: shed by neglect, never below the floor ──
+  {
+    // A rig at the floor never ticks and never sheds — no clock runs on a
+    // Spirit with nothing to lose.
+    const idle = rigAtrophyTick({ rigPool: RIG_POOL_FLOOR, rigPower: 0, rigIdleTurns: 5 });
+    assert.deepEqual(idle, { patch: { rigIdleTurns: 0 }, shed: null }, "at the floor: no clock, no loss");
+
+    // Below `RIG_ATROPHY_TURNS` the clock just advances.
+    let sheet = { rigPool: 3, rigPower: 2, rigIdleTurns: 0 };
+    for (let i = 1; i < RIG_ATROPHY_TURNS; i++) {
+      const t = rigAtrophyTick(sheet);
+      assert.equal(t.shed, null, `turn ${i} of neglect: still loud`);
+      sheet = { ...sheet, ...t.patch };
+    }
+    // …and on the Nth it sheds POWER first.
+    const t1 = rigAtrophyTick(sheet);
+    assert.equal(t1.shed, 'power', "neglect sheds the head before the cabinet");
+    sheet = { ...sheet, ...t1.patch };
+    assert.deepEqual(rigTiers(sheet), { pool: 3, power: 1 }, "…one upgrade gone, the pool untouched");
+
+    // Run it to the bottom: it stops at the starting grant, not at nothing.
+    for (let i = 0; i < RIG_ATROPHY_TURNS * 6; i++) sheet = { ...sheet, ...rigAtrophyTick(sheet).patch };
+    assert.deepEqual(rigTiers(sheet), { pool: RIG_POOL_FLOOR, power: 0 },
+      "🎯 total neglect lands EXACTLY where every Spirit starts the game — the spiral has a bottom");
+    assert.deepEqual(sonicRig(sheet, 0).pool, [6, 6], "…which is 2d6, same as turn one");
+  }
 
   // ── rigPoolLabel ──
   assert.equal(rigPoolLabel([6]), "d6");
@@ -2605,9 +2665,62 @@ const config = {
   assert.equal(rigPoolLabel([8, 8, 6, 6]), "2d6+2d8");
 
   // ── Determinism: same inputs → same outputs (pure function contract) ──
-  const skills = ["amp_1", "amp_2", "power_1", "range_1"];
-  assert.deepEqual(sonicRig(skills, 3), sonicRig(skills, 3), "pure: identical calls match");
-  assert.deepEqual(sonicRig(skills, 3, 1), sonicRig(skills, 3, 1), "pure: with chargeBoost");
+  const sheet = ns(2, 1, 2);
+  assert.deepEqual(sonicRig(sheet, 3), sonicRig(sheet, 3), "pure: identical calls match");
+  assert.deepEqual(sonicRig(sheet, 3, 1), sonicRig(sheet, 3, 1), "pure: with chargeBoost");
+}
+
+// -- 🎪 THE MARQUEE QUIZ: lanes, buckets, per-bucket recycling ----------------
+// MARQUEE_QUIZ_DESIGN.md §2. The card asks for a LANE and a DIFFICULTY before
+// the question is drawn, so every combination has to be a real deck.
+{
+  const T = await import("../data/trivia.js");
+
+  // Every question lands in exactly one bucket, and the buckets partition the
+  // pool — a question that classified into neither would be undrawable and a
+  // question in both would be double-counted.
+  const total = Object.values(T.TRIVIA_BUCKETS).reduce((n, ids) => n + ids.length, 0);
+  assert.equal(total, T.TRIVIA_QUESTIONS.length, "🎪 the buckets partition the whole pool");
+  const seen = new Set(Object.values(T.TRIVIA_BUCKETS).flat());
+  assert.equal(seen.size, T.TRIVIA_QUESTIONS.length, "🎪 …with no question in two buckets");
+
+  // ⚠️ THE BLOCKER §2.1 FOUND: RIG × easy held SEVEN cards against 65 CROWD
+  // mediums, and under the rig workout that lane is the only source of pool and
+  // power. Twenty questions were written to fix it. This is the guard rail —
+  // if a bucket ever falls back under 15, the card is offering a choice the
+  // content cannot honour.
+  for (const [key, ids] of Object.entries(T.TRIVIA_BUCKETS)) {
+    assert.ok(ids.length >= 15, `🎪 bucket ${key} has ${ids.length} questions — a lane × difficulty needs a real deck`);
+  }
+
+  // Per-BUCKET exhaustion and reset. Draw a bucket dry and the NEXT draw must
+  // recycle that bucket alone, leaving every other bucket's history intact.
+  {
+    const ids = T.TRIVIA_BUCKETS['rig:easy'];
+    let used = ['blues_01'];          // a crowd question, from another bucket
+    const drawn = new Set();
+    for (let i = 0; i < ids.length; i++) {
+      const r = T.drawTrivia((i * 37 % 100) / 100, 'rig', 'easy', used);
+      drawn.add(r.q.id); used = r.used;
+    }
+    assert.equal(drawn.size, ids.length, "🎪 a bucket deals every card before repeating one");
+    const after = T.drawTrivia(0.5, 'rig', 'easy', used);
+    assert.ok(ids.includes(after.q.id), "🎪 …then recycles");
+    assert.ok(after.used.includes('blues_01'),
+      "🎯 …and the recycle is PER BUCKET: another bucket's history survives it");
+    assert.equal(after.used.filter(id => ids.includes(id)).length, 1,
+      "🎪 …the rig:easy history resets to just the card it dealt");
+  }
+
+  // Determinism: the same rng value draws the same question from the same state.
+  assert.equal(T.drawTrivia(0.42, 'crowd', 'hard', []).q.id,
+               T.drawTrivia(0.42, 'crowd', 'hard', []).q.id, "🎪 pure: same draw, same card");
+  assert.equal(T.drawTrivia(1, 'crowd', 'hard', []).q?.id != null, true, "🎪 rngVal of exactly 1 does not fall off the end");
+  assert.equal(T.drawTrivia(0.5, 'rig', 'impossible', []).q, null, "🎪 a bucket that does not exist draws nothing rather than throwing");
+
+  // 🤖 The bot's choice policy is expected value, and the two lanes disagree.
+  assert.equal(T.bestTriviaDifficulty('crowd'), 'medium', "🤖 fans: 0.5×3 beats 0.7×2 and 0.35×4");
+  assert.equal(T.bestTriviaDifficulty('rig'),   'hard',   "🤖 tiers: 0.35×3 beats 0.5×2 — the rig lane rewards nerve");
 }
 
 // -- Drive/Sustain stack split: constants + spend helpers -----------------------

@@ -199,12 +199,578 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. 🧭 START HERE — session handoff, 2026-08-20
+## 5. 🧭 START HERE — session handoff, 2026-08-21 (the clutter pass)
 
-> ✅ **COMMITTED** in `1f84663` / `1df5e08` / `ed3c9b1`, probes included.
-> ⚠️ This banner said UNCOMMITTED and listed six files until 2026-08-20; it had
-> gone stale and was telling every reader to re-do work that was already in.
-> **Uncommitted now:** the marquee work in §5.I⁶ and `MARQUEE_QUIZ_DESIGN.md`.
+> 🧹 **A CLEAR-OUT, NOT A FEATURE.** Alex's call this session: *"let's continue
+> clearing out any old clutter, items that may be adding to the bloat of the game
+> that are no longer necessary while paving the way forward."* Nothing in the rules
+> moved. Ten files left the tree, one doc was renamed and told the truth about
+> itself, 332 assertions got a switch, and one live bug fell out of the process.
+>
+> ⚠️ **UNCOMMITTED, AND NOW IT IS TWO SESSIONS DEEP.** Last session's 28-file rig
+> rework is *still* uncommitted (`COMMIT_MSG_RIG_REWORK.txt` is its message, kept
+> deliberately); this pass adds to it. **Commit from a normal terminal** — and read
+> §5.G⁸ first, because the deletions need a `git rm` the agent shell cannot do.
+>
+> 🐛 **THE HEADLINE IS A LIVE DEPLOY BUG, AND IT HAS BEEN SHOUTING FOR MONTHS.**
+> §5.A⁸. Six standee imports name a file whose case does not match the disk.
+> Windows resolves that. **Render builds on Linux, which does not.**
+> `check:bundle` has been printing "6 warnings" at the end of every run, and every
+> session — this one included, until it looked — read that as noise.
+>
+> 🗺️ **AND `ARCHITECTURE.md` IS A MAP OF A GAME THAT NO LONGER EXISTS** — §5.B⁸.
+> It calls `engine/` a "~300 line Phase 1 scaffold." `engine/` is **11,694 lines**
+> and is the whole game. It is **not repaired**, on purpose; it now says so at the
+> top in its own words. Rewriting it is item 1 of §5.E⁸.
+>
+> 🔇 **332 ASSERTIONS WERE RUNNING FOR NOBODY** — §5.C⁸. `b0check` is quoted as
+> green in every handoff in this file and **no npm script has ever run it.**
+
+### 5.A⁸ 🐛 SIX IMPORTS THAT WOULD 404 ON RENDER
+
+On disk: `cosmic_ronin.png`, `Metalness_monster.png`. In the code, six times:
+`Cosmic_Ronin.png`, `Metalness_Monster.png` — in `data/spirits.js`,
+`ui/GameErrorBoundary.jsx` and `ui/OpeningMovie.jsx`. Fixed to match the disk, plus
+the row in `OPENING_MOVIE_HANDOFF.md` that taught the wrong spelling.
+
+🎯 **THIS IS THE SAME BUG AS THE `App.jsx` CAPITAL-V**, which broke a deploy once
+already and is written up in the rewrite log. The class repeats because the machine
+the game is *developed* on forgives it and the machine it is *served* from does not:
+a case-insensitive filesystem cannot tell you that you got the case wrong.
+
+⚠️ **AND THE REASON NOBODY SAW IT IS WORTH MORE THAN THE FIX.** `check:bundle`
+reported it correctly, every run, for as long as it has existed — as six warnings in
+a wall of esbuild output that ends with a cheerful `⚡ Done in 1.8s`. A warning that
+is always present is indistinguishable from a warning that is never important.
+**`check:bundle` now ends with zero warnings**, so the next one that appears is
+signal. Keep it that way; treat a non-zero warning count as a failure.
+
+📌 `dist/` is gitignored, so the broken build was never committed — the failure only
+ever shows on a fresh Linux build. If the live site currently renders standees, it is
+serving an artifact built on Windows.
+
+### 5.B⁸ 🗺️ `ARCHITECTURE.md` HAS DRIFTED — SAID PLAINLY, NOT REPAIRED
+
+CLAUDE.md's rule is that a drifted doc is worse than no doc, and that the honest move
+is to say so rather than edit around it. So the file now opens with a measured
+staleness banner instead of a quiet correction. What was counted:
+
+| the doc says | reality |
+|---|---|
+| `engine/` is a "~300 line Phase 1 scaffold" | **11,694 lines, 29 modules** — the authoritative core |
+| `engine/policies/` and `engine/systems/` | **absent entirely** — not stale, missing |
+| — | **50 of 130 source modules unlisted** |
+| `gameConstants.js`: "39 named constants" | **96** |
+
+⚠️ **IT IS DELIBERATELY NOT FIXED.** A partial repair that *looked* current would be
+more dangerous than a banner admitting it isn't — the drift is not a few wrong rows,
+it is a missing half. Four rows naming files that no longer exist (`ampRigs.js`,
+`useNoteSystem.js`, `RiffBanner.jsx`, `riffLibrary.js`) were removed so it cannot
+send anyone to a path that isn't there, `AMP_RANGE`/`AMP_LINK_DIST` were struck, and
+the `engine/` row was rewritten. Nothing else was touched.
+
+🎯 **THE PART WORTH SAVING IS THE "WHERE DO I CHANGE X?" INDEX** near the bottom.
+That is the single most useful thing in the repo for a cold start, and it is broadly
+still accurate. A rewrite should be built outward from it.
+
+### 5.C⁸ 🔇 THE 332 UNWIRED ASSERTIONS, AND `npm run test:all`
+
+| suite | assertions | ran how, before today |
+|---|---|---|
+| `b0check.mjs` | 200 `assert`/`ok` calls, 55 reported groups | **by hand, never in a script** |
+| `riff/arrowHighwayEngine.test.mjs` | 14 | nothing ran it |
+| `riff/guitarMap.test.mjs` | 29 (70,970 fuzzed) | nothing ran it |
+| `riff/neonNeck.test.mjs` | 43 (253,506 fuzzed) | nothing ran it |
+| `riff/riffArchetypes.test.mjs` | 21 | nothing ran it |
+| `riff/riffPerformance.test.mjs` | 25 | nothing ran it |
+
+All six pass today. **That is luck, not evidence** — nothing was watching them, so
+a break would have sat there until somebody happened to run the file by hand.
+They are now `npm run test:b0` and `npm run test:riff`.
+
+🎯 **AND `npm run test:all` EXISTS NOW.** CLAUDE.md demands the full sweep before
+anything is reported as done, and the full sweep was seventeen hand-typed commands —
+which is exactly how a suite goes unwired in the first place. One command, seventeen
+suites, fails on the first red.
+
+📌 **`dbaudit.mjs` moved to `.scratch/`**, where the probes live. It asserts nothing,
+prints a table, and its own header admits it hand-transcribes `confirmNoteTrack` and
+**drifts silently** when that path changes. That is a probe, not a test, and it was
+sitting in `engine/` looking like one. ⚠️ Its stated reason for transcribing — "the
+simulator can't be imported here" — predates `testAssetStub.mjs`, which solves
+exactly that. Worth rewriting against the real path before anyone quotes it again.
+
+### 5.D⁸ 🪦 WHAT LEFT THE TREE, AND WHY EACH ONE WAS SAFE
+
+Ten files, quarantined in `_to_delete/purge-20260821/` (the agent shell cannot
+unlink — §5.G⁸ has the command).
+
+| file | why it was safe |
+|---|---|
+| `engine/importcheck.mjs` | **17 dangling imports reported, all 17 false.** Its parser cannot read `export function*` or a multi-line import list containing comments, so it flagged `poseConsequences` — exported on line 408 of `battleFlow.js`, called in production every time somebody poses. Superseded by `check:bundle`, which runs a real bundle and resolves imports properly. |
+| `board/ampRigs.js` | A 4-line tombstone whose own comment said *"delete entirely once all imports are cleaned."* They are. |
+| `hooks/useNoteSystem.js` | Retired in Phase 5c when noteStates moved into the engine. The monolith's line 19 says so. Nothing imported it. |
+| `ui/__orig_check.jsx` | A 251-line pre-Pickles backup copy of `BeginnerTipOverlay.jsx`. 482 diff lines out of date. |
+| `__p.jsx`, `__smoke.jsx` | Two throwaway render smokes. `__smoke.jsx` hardcoded an **absolute container path** from a previous session's sandbox, so it could not run anywhere. |
+| `COMMIT_MSG_C4_C1.txt`, `COMMIT_MSG_SIMPLIFY.txt` | Messages for commits that landed months ago. ⚠️ `COMMIT_MSG_RIG_REWORK.txt` **stays** — that one is still pending. |
+| `mic-test.html` | A bare mic-level meter, superseded by `listen-test.html`, which says so in its own header. |
+| `PENDING_CHANGES.md` | Renamed, not deleted — see below. |
+
+🛑 **THREE THINGS ON THE CUT LIST WERE NOT CUT, AND THE REASON MATTERS.**
+`camera-test.html`, `listen-test.html` and `arrow-highway-proto.html` look exactly
+like dead root-level prototypes. They are **live tooling**: the first two are the
+standalone tuning benches `EAR_SPY_HANDOFF.md` §2/§6 sends you to and are served by
+`npm run dev`, and the third is read **off disk at runtime** by
+`riff/syncProtoGenerator.mjs`. 📌 The lesson generalises: in this repo, root-level
+HTML is as likely to be a bench as it is to be litter. Grep before you cut.
+
+📌 **`PENDING_CHANGES.md` → `src/THEORY_REWRITE_LOG.md`.** 1,485 lines at the root of
+the repo under a name that advertises a work queue, when **every task in it is
+shipped, reversed, or retired** — Task C in full. It was the first thing a new
+session saw and the last thing it should have been reading. Its six live citations
+in code (`gameConstants.js` B0b, `cadence.js` B2, `chords.js` Task A, `context.js`
+B3, `b0check.mjs`, and the monolith's Db arithmetic) were updated to the new name in
+the same pass, so no comment points at a file that isn't there. Its instruction to
+run `importcheck.mjs` was replaced with the account of why that tool is gone.
+
+📌 **`.scratch/` and `_to_delete/` are gitignored now.** ⚠️ Gitignoring does not
+untrack: **72 `.scratch` files and 12 `_to_delete` files are still in the index**,
+including four ~600 KB source tarballs and a 242 KB diff. §5.G⁸.
+
+### 5.E⁸ 🎯 NEXT, IN DEPENDENCY ORDER
+
+1. 🗺️ **REWRITE `ARCHITECTURE.md`, OR DEMOTE IT.** Now the top item, because every
+   other item on this list costs more while the map is wrong — it is the tax paid at
+   the start of every session. Build outward from the "where do I change X?" index,
+   which still works. ⚠️ Half the file is missing, not wrong; budget accordingly.
+2. 🔊 **THE THROUGHPUT QUESTION IS STILL UNMEASURED** (carried from §5.E⁷.2). Two
+   marquees roughly double quiz income; fans have no per-turn cap; the same card now
+   hands out dice as well.
+3. 🏋️ **`RIG_ATROPHY_TURNS = 3`, `marqueeSeek: 0.7` AND `loud: 3.0` ARE GUESSES**
+   (carried). All three want the ~2000-match bench, together. ⚠️ 85% of seats still
+   finish at the rig floor; no bench number yet read a game in which anybody trained.
+4. 🧪 **THE OOZE STILL DOES NOTHING IN ANY BENCH MATCH** (carried). `hexHazards` is
+   not in `harnessHooks`. 📌 The marquee fix (§5.C⁷) is the shape of this one.
+5. 🎸 **THE LEGACY BOT STILL DOES NOT PAY FOR ITS CHORDS** (carried).
+6. ✨ **WHY DID POSES FALL 1054 → 224?** (carried, still unexamined.)
+7. 🧮 **RE-PRICE `awardRiffFame` INTO THE BAND** (carried).
+8. 🪦 **THE SMASH IS STILL UNMODELLED.** Oldest debt, unchanged.
+
+**🎼 And five open design questions, rescued from the retired doc.** They sat at the
+bottom of a 1,485-line file called PENDING_CHANGES that nobody read to the end. They
+are genuinely open, and the first two have *moved* since they were written:
+
+- 🕳️ **OTHER BRANCHES NEED CEILINGS OF THEIR OWN**, so Theory-first is not automatic.
+  ⚠️ **This got dramatically worse on 2026-08-20 and the doc predicted it.** Theory
+  already gated the stat ceiling, the melody palette, the Db payout, chord capacity
+  *and* the pardon economy; the answer was going to be "Electric and Crew each need
+  one thing nobody else can grant" — and **Electric has since been deleted outright.**
+  The Theory ladder is now close to the only ladder. This is the same 110-Db hole
+  §5.G⁷ logged from the other side.
+- 💰 **DOES `STYLE_DB_CAP` NEED RETUNING?** Best-case Db moved twice after the
+  estimate that raised the question. Re-measure before touching it. 📌 `.scratch/dbaudit.mjs`
+  is the probe for this, and per §5.C⁸ it needs rewriting against the real commit path first.
+- 🎺 **DOES `performanceScore` KEEP `hasGatedEnding`** now that the tritone's damage
+  effect is deleted? Those endings pay almost nothing else. (Leaning yes: flair signal.)
+- 7️⃣ **DOES `theory_dom7`'s SEVENTH-COMPLETION WANT A POWER-CHORD CASE?** Shipped
+  without one — a power chord has no third, so no quality to complete. A large grant
+  if added (everyone holds a power chord from turn one); make it a decision, not a nudge.
+- 🎹 **`theory_modes` GIVES NOTHING TO dim / aug / m7b5 / sus / power.** That is what
+  stops it pardoning most of the chromatic scale, but a dim-stack build gets nothing
+  from the tier beyond slot 5.
+
+### 5.F⁸ 📌 Suites — every count identical, which is the point
+
+**engine ✓, legal 582, eval 154, transition 242, determinism 22, turnFlow 61,
+battleFlow 50, melody 159, slime 127, eleven 38, score 122, harness 1659,
+riffparity 127598, skillTree 159, trace 1831** — every one of them exactly the number
+§5.F⁷ quoted. 🎯 **A cleanup that moves an assertion count has deleted something that
+was load-bearing**; the flat line is the evidence the ten files were dead.
+
+Newly visible rather than new: **b0check 55 groups**, **guitarMap 70,970**,
+**neonNeck 253,506**. `check:bundle` **6 warnings → 0**.
+
+⚠️ **AND `npm run lint` IS NOT CLEAN, WHICH §5.F⁷ SAID IT WAS.** It did not
+finish in this session either — abandoned past 25 minutes on the 16k-line monolith,
+the same behaviour the rewrite log recorded months ago. Every file this pass touched
+was linted directly instead: **14 errors, and all 14 reproduce at HEAD**, so nothing
+here introduced one. They are 8 × `react-hooks/refs` in `ui/OpeningMovie.jsx`
+(reading `ref.current` during render), one `no-unused-vars` on its `React`
+import, and 6 × `react-refresh/only-export-components`.
+
+🎯 **THE LIKELY CAUSE IS AN UPGRADE, NOT A REGRESSION** — `react-hooks/refs` is new
+in eslint-plugin-react-hooks 7, which `package.json` now pins. That makes "lint
+clean" a claim nobody has been able to re-verify on this machine since, and it should
+stop being repeated in a handoff until somebody runs it on Windows. 📌 Same disease as
+§5.A⁸: a check that is too slow to run is a check that quietly stops being run.
+
+### 5.G⁸ ✋ WHAT ALEX HAS TO DO FROM A REAL TERMINAL
+
+The agent's shell on this mount **cannot unlink** — `rm` fails with `Operation not
+permitted`, and git writes leave `.lock` files it cannot clean up afterwards, which
+jams the next git command. So the deletions are staged as moves and the index still
+holds the old paths:
+
+```bash
+cd ~/rlsw-sim
+rm -rf _to_delete                        # the quarantine + 2.6 MB of old tarballs
+git rm -r --cached _to_delete .scratch   # 84 files out of the index; both are gitignored now
+git add -A                               # picks up the 10 deletions + the rename
+git status                               # sanity-read before committing
+```
+
+⚠️ **`git add -A` also stages last session's 28-file rig rework**, which is still
+uncommitted. Either commit the lot as one, or commit the rig rework first using
+`COMMIT_MSG_RIG_REWORK.txt` and this pass second.
+
+📌 **And run `npm run build` on Windows once** before pushing. §5.A⁸ was a Linux-only
+failure that no check in this repo could have caught on the dev machine.
+
+---
+
+## 5-aug20pm. 🧭 session handoff, 2026-08-20 (evening)
+
+> 🎛️ **THE RIG IS OFF THE SKILL TREE.** Alex's call, this session: *"get rid of the
+> branch of the tree, put the power and amp levels into the marquee, and the range
+> tied together with the overall strength of Drive and Sustain."* That is §5.H⁶ and
+> `MARQUEE_QUIZ_DESIGN.md` §4–§5, built in one pass, radius first — and finished
+> with the deletion in §5.G⁷.
+>
+> ⚠️ **UNCOMMITTED, ALL OF IT.** 24 files. Commit from a normal terminal; git
+> writes still fail from the agent's shell on this mount.
+>
+> 🫁 **THE RIG BREATHES** — §5.A⁷. `radius = RIG_RADIUS_FLOOR + stack length`,
+> Drive on your turn and Sustain on theirs, because that is where the existing
+> gates already fell. Floor 3, so the opening state is 4 — the old tier-0 number
+> exactly, and nothing about the resting board changed.
+>
+> 🎪 **THE MARQUEE IS A CHOICE CARD** — §5.B⁷. Lane × difficulty, picked before
+> the question is drawn. CROWD pays fans; RIG pays tiers you spend at the card on
+> pool or power and lose to atrophy rather than to a timer.
+>
+> 🐛 **AND THE QUIZ WAS CLIENT-ONLY, WHICH WAS ABOUT TO BE A CATASTROPHE** —
+> §5.C⁷. A headless Spirit walked onto a marquee and NOTHING happened. Not
+> declared in `HARNESS_GAPS`, just absent. Survivable while the rig was a Db
+> purchase. It is now the only source of pool and power.
+>
+> 🔊 **THE EVALUATOR HAD NO OPINION ABOUT VOLUME, AND IT INVERTED** — §5.D⁷.
+> Bots sat one hex from a live marquee on 54 decision points of a 43-turn match
+> and stepped on it once. Old item 6 ("give `evaluate` a term for being loud")
+> was not a nice-to-have; it was load-bearing.
+
+### 5.A⁷ 🫁 THE BREATHING RADIUS
+
+```
+radius = RIG_RADIUS_FLOOR + (your turn ? Drive stack : Sustain stack).length
+```
+
+`RIG_RADIUS_BY_TIER = [4, 5, 7, Infinity]` is **deleted, not deprecated** — and
+`RIG_RANGE_IDS` with it — so nothing can quietly keep asking a Range tier how far
+it carries. There is no infinite radius left in the game; a full six-note stack
+reaches 9, which is most of the board and never all of it.
+
+🎯 **THE TURN SPLIT IS NOT DECORATION — IT IS WHERE THE GATES ALREADY FELL.**
+Every offensive read of `inRange` happens on your own turn (can you fire a Sonic)
+and every defensive one on somebody else's (d6 or a bare d4; can a rival ANSWER a
+beam). "Drive on your turn, Sustain on theirs" invents no concept: it hands each
+gate the stack that gate was already about.
+
+⚠️ **FLOOR 3 IS THE ANTI-SPIRAL, AND IT IS TUNED TO A FACT RATHER THAN A FEELING.**
+`makeInitialNoteState` seeds both stacks with the root alone, so every Spirit
+opens at 3 + 1 = **4, exactly the old tier-0 radius**. Only a Spirit genuinely
+emptied out (a Swing spends 2 Drive; a Pose sheds Sustain; `chordFray` eats it
+under a beating) drops to 3. Lower the floor and you build a game where the Spirit
+already losing is the one who cannot answer a beam.
+
+📌 `sonicRig` now takes **the note state**, not an unlockedSkills array, plus an
+`onTurn` flag that defaults to FALSE on purpose: a caller who forgets it reads the
+DEFENSIVE rig, so the failure mode is under-reaching on your own turn — visible,
+and never a phantom attack from outside the radius the rules allow. `rigFor` takes
+`state` and answers the question once, so no call site has a boolean to get
+backwards. `evaluate.js:898`, the one place that called `sonicRig` raw and was
+logged as drift in §5.H⁶, goes through `rigFor` now — which also means it can
+finally see a blown amp.
+
+🎯 **AND IT RETIRES §6.6.7's CENTRE/RIG TENSION**, four sessions old. "Make
+`centreStage` conditional on having the range to shoot from there" was written
+when reach was a purchase the evaluator had to check for. It is not one now: a
+four-note Drive stack reaches 7 and CAN work the middle; the same Spirit emptied
+out cannot. The read that item wanted is already inside `terms.inRig`, live, every
+turn. ⚠️ Which makes `centreStage: 0.7–0.9` **inherited, not confirmed** — it was
+measured on a board where the centre was unreachable for most of a match.
+
+### 5.B⁷ 🎪 THE CHOICE CARD, AND THE WORKOUT
+
+**Lane × difficulty, face-down.** `EventModal` grew two phases: `choice` (before
+anything is drawn — that ordering is the whole skill component, since betting on
+`hard` has to be a bet) and `spend` (RIG lane only, one tier at a time).
+
+| | pays | easy | medium | hard |
+|---|---|---|---|---|
+| 🎤 CROWD | fans | +2 | +3 | +4 |
+| 🎛️ RIG | tiers | 1 | 2 | 3 |
+
+**The tiers are `rigPool` and `rigPower` on the note sheet** — the old Amp and
+Power tiers by another name, same ceiling (3 + 3 = Amp III / Power III), so
+`AMP_DECK_DESIGN.md` §2.5's "max Sonic roll is 8" survives untouched and nothing
+downstream needs re-checking. `power ≤ pool` was the tree's `prereq` gate; it is
+plain arithmetic now, enforced inside `rigTiers` so no caller can talk itself into
+an upgrade for a die that does not exist.
+
+🏋️ **ATROPHY TICKS ON THE OWNER'S OWN TURNS** (`startTurnNotes`, beside the Psycho
+Bushido cooldown, for the identical reason — a clock counted in spirit-turns runs
+four times too fast in a four-handed game). One tier shed per `RIG_ATROPHY_TURNS`
+(3) without a trip to a marquee.
+
+⚠️ **POWER SHEDS BEFORE POOL, AND THE ORDER IS LOAD-BEARING.** `rigTiers` clamps
+power to pool, so shedding a pool tier while power equalled it would silently drop
+BOTH — one turn of neglect costing two tiers, with only one of them logged.
+
+🎯 **THE FLOOR IS TODAY'S FREE GRANT.** `rigPool` starts at `RIG_POOL_FLOOR = 1` —
+exactly what the free `amp_1` handed everyone (2d6 in range, 1d6 out) — and
+atrophy can never take it below. Total neglect lands precisely where every Spirit
+begins the game: survivable by definition, and nobody can be quizzed out of
+existence by a rival who happens to know their gear.
+
+📌 **A wrong answer costs nothing, and the TRIP still resets the clock.** You
+turned up. The alternative punishes the reach twice, and the exposure of standing
+on a published hex in the middle of the board is paid either way — that exposure
+IS the counterplay to the snowball (design doc §5), and it is positional rather
+than trivia-based.
+
+### 5.C⁷ 🐛 THE QUIZ WAS CLIENT-ONLY
+
+`checkEventTrigger`, `pickTrivia`, the payout — all of it lived in the monolith. A
+headless Spirit stepped on a marquee and nothing happened at all: not declared in
+`HARNESS_GAPS`, **absent**. `collectPickups` (`transition.js`) now resolves the
+marquee alongside Lost Chords and Charge Zones, by the same rule the client uses.
+Three things had to move to make that possible, and each was a fork waiting to
+happen:
+
+- 🎤 **`fansFromDeed` → `systems/economy.js`.** The fan-gain arithmetic (centre
+  bonus, casual cap, the streak that hardens a casual into a diehard) was a React
+  function, so the headless path could not pay a single fan. `gainFansFromDeed` in
+  the monolith CALLS it now and keeps only what a React function should: the board
+  read, the log, the dispatch.
+- 🎪 **`usedTrivia` → engine state.** It was a `useRef(new Set())` —
+  unserializable, unreplayable, invisible to the bench. It rides on
+  `eventHexTriggered` now.
+- 🎲 **`drawTrivia` is pure**, takes and returns an array, and recycles **per
+  bucket**: the old `pickTrivia` cleared the used-set only when all 180 questions
+  were gone, so a player with a favourite lane could run one bucket dry and then
+  draw nothing while sixty cards sat untouched elsewhere.
+
+⚠️ **BOTH RNG DRAWS HAPPEN BEFORE EITHER BRANCH**, client and engine alike. A draw
+whose position in the stream depends on an outcome is a replay divergence waiting
+to happen.
+
+📌 **The bot's card policy is expected value, and it falls out of constants that
+were already in the file** (§6's one pleasant surprise): train while there is
+headroom, then play for the crowd; `0.5×3 = 1.50` makes **medium** the fans pick
+and `0.35×3 = 1.05` makes **hard** the tiers pick. The two lanes genuinely
+disagree about how much risk is worth taking, which is the decision the card is
+asking a human.
+
+📌 **Content:** twenty new RIG-lane questions (14 easy / 6 medium), because §2.1's
+count left RIG × easy holding **seven** cards against 65 CROWD mediums — and under
+the workout that lane is the only source of pool and power. Buckets now
+22/34/22 (rig) and 29/56/37 (crowd), and `selftest` asserts **≥15 per bucket** so a
+future skew fails loudly. `TRIVIA_CONTENT_BRIEF.md` is the spec for writing more
+somewhere cheaper than a coding session.
+
+### 5.D⁷ 🔊 THE EVALUATOR HAD NO OPINION ABOUT VOLUME — AND IT INVERTED
+
+Measured the day the engine learned to draw a question: **0.20 marquee visits per
+match** across ~36 turns, and **60 of 60 seats finished at the rig floor**. Then
+the mechanism, on one 43-turn match (`.scratch/marqwalk.mjs`):
+
+| distance to the nearest live marquee | decision points |
+|---|---|
+| 1 hex | **54** |
+| 2 | 81 |
+| 3 | 51 |
+| ≥4 | 27 |
+
+**Fifty-four decision points standing right next to it, and it was stepped on
+once.**
+
+🎯 **BECAUSE TAKING IT MADE THE SCORE GO DOWN.** Stepping on a marquee CONSUMES
+it, so any term paying for proximity FALLS the moment you collect the prize — and
+nothing rose to meet it, because `evaluate` has never read the size of a dice
+pool. `inRig` is a yes/no about the radius. While pool and power were a Db purchase
+that was a blind spot; once they are won at the marquee it is an inversion, and
+the best-scoring move was to hover beside the thing forever.
+
+**Two rows, and the pair is the point** — the same pairing the file already uses
+for charges (`chargeSeek` pays the walk, `charge` pays the holding, and the note
+there says in as many words that the holding must be worth strictly more):
+
+- `marqueeSeek` (0.7) — the ramp toward a live marquee, **scaled by headroom**, so
+  a Spirit at 3/3 is not sprinting for a prize it cannot collect.
+- `loud` (3.0) — earned tiers over the maximum earnable. This is old item 6.
+
+⚠️ **AND PAYING MORE FOR THE WALK MAKES IT WORSE — THE SAME SHAPE AS THE FACING
+SPIN** (§5.C⁶). 24 matches, two pairings, fixed seeds, `.scratch/marqsweep.mjs`:
+
+| seek | loud | turns/match | marquees/match | seats above floor | decided |
+|---|---|---|---|---|---|
+| 0.7 | 1.6 | 18.0 | 0.33 | 3/48 | 24/24 |
+| **0.7** | **3.0** | **17.4** | **0.50** | **6/48** | **24/24** |
+| 1.5 | 3.0 | 65.3 | 0.33 | 1/48 | 21/24 |
+| 1.5 | 5.0 | 50.4 | 0.54 | 1/48 | 22/24 |
+| 3.0 | 6.0 | 77.7 | 0.96 | 4/48 | 21/24 |
+
+At seek 1.5 the match length **triples**, matches stop being decided, and FEWER
+Spirits end up with a rig than at 0.7 — value on the approach funds orbiting
+rather than arriving. **Raise `loud` when you want more training, never
+`marqueeSeek`.**
+
+⚠️ **AND EVEN THE BEST ARM LEAVES 42 OF 48 SEATS AT THE FLOOR.** 30 matches on the
+shipped weights: 0.60 marquees per match, 85% of seats finishing untrained. **No
+bench number taken today is a reading of a game in which anybody's rig grew.** 24
+matches is also nowhere near §6.6's bar of ~2000.
+
+📌 The term nobody has built: the atrophy clock. "I am one turn from shedding a
+tier" should pull harder than "I trained this turn". That is a second dimension
+and it wants a bench, not a guess.
+
+### 5.E⁷ 🎯 NEXT, IN DEPENDENCY ORDER
+
+1. ✅ **DONE — the `rig_*` branch is deleted.** Full account in §5.G⁷; the list
+   below is what it touched, kept because it is the map of what a reader might
+   still expect to find:
+   · `engine/policies/bot.js` — four `skillOrder` arrays and `BOT_SKILL_ORDER`
+     still queue those ids, so a bot is saving Db for rungs that do nothing. That
+     is the §5.D⁶ disease, self-inflicted.
+   · `evaluate.js`'s `STARTING_SKILLS`, `data/rockGods.js:157`, and
+     `makeInitialNoteState`'s `unlockedSkills: ["amp_1"]` seed.
+   · ⚠️ `systems/skills.js`'s `ULTIMATE_PREREQS = ["mic", "pedal_dist", "amp_1",
+     "mixer"]` — **three of those four ids are not in the tree at all** and have
+     not been for a long time. Pre-existing drift this change walks straight into.
+     Decide what the Ultimate gate is; do not edit around it.
+   · `AMP_DECK_DESIGN.md` §2.2 / §2.3 / §2.5 now describe a game that does not
+     exist. Its own header says rewrite it in the same pass.
+   · ⚠️ And the Db hole is real and deliberate (design doc §7): the branch was
+     110 Db, the largest sink in the game. Until the ability tree grows to absorb
+     it, expect Db inflation and do not read a bench's Db numbers as a verdict.
+2. 🔊 **THE THROUGHPUT QUESTION IS STILL UNMEASURED** (carried from §5.I⁶, and now
+   bigger). Two marquees roughly double quiz income; fans are the one economy with
+   no per-turn cap; and the same card now hands out dice as well.
+3. 🏋️ **`RIG_ATROPHY_TURNS = 3` IS A GUESS.** So are `marqueeSeek: 0.7` and
+   `loud: 3.0`. All three want the ~2000-match bench, together.
+4. 🧪 **THE OOZE STILL DOES NOTHING IN ANY BENCH MATCH** (carried). `hexHazards`
+   is not in `harnessHooks`. 📌 The marquee just showed the shape of that fix.
+5. 🎸 **THE LEGACY BOT STILL DOES NOT PAY FOR ITS CHORDS** (carried).
+6. ✨ **WHY DID POSES FALL 1054 → 224?** (carried, unexamined.)
+7. 🧮 **RE-PRICE `awardRiffFame` INTO THE BAND** (carried).
+8. 🪦 **THE SMASH IS STILL UNMODELLED.** Oldest debt, unchanged.
+
+### 5.G⁷ 🪓 THE DELETION — the last quarter, done 2026-08-20 (late)
+
+`data/skillTree.js`'s `electric` route is **gone**: `amp_1..3`, `power_1..3`,
+`range_1..3` and `overcharge`. Ten rungs, 110 Db, the largest sink in the game.
+Deleted rather than deprecated, so anything still asking for a rig id fails loudly
+instead of quietly buying nothing.
+
+**Every reader, cleaned in the same pass:**
+
+| site | was | now |
+|---|---|---|
+| `bot.js` — 4 persona `skillOrder`s + `BOT_SKILL_PRIORITY_BASE` | queued nine dead rungs | Theory only |
+| `evaluate.js` `STARTING_SKILLS` | `{amp_1, theory_minor}` | `{theory_minor}` |
+| `economy.js` seed | `["amp_1"]` / `["amp_1","theory_minor"]` | `[]` / `["theory_minor"]` |
+| `rockGods.js` `feedback_warlock` | counted `amp_*` + two ids not in the tree | reads `rigPool`/`rigPower` |
+| client unlock logs, `legacyMap.amp`, Overcharge modal | live | removed |
+| `sonicDicePool()` in the monolith | a second, disagreeing copy of the pool table | removed |
+| `pedalBonus` / `powerBonus` in the Sonic path | keyed on `pedal_dist` / `power_chords` — **neither id is in the tree** | removed |
+
+⚡ **OVERCHARGE WAS CUT, BY DECISION.** Alex's call. It gated the Charge Zone's
+choose-your-payoff modal behind Amp II; with the amps gone it had no gate left, and a
+free 12 Db upgrade reachable on turn two is a different skill from the one designed.
+Tapping a zone now always takes the ordinary 50/50 spark — which is exactly what the
+headless path always did (`HARNESS_GAPS.pickupChoices`), so client and engine agree
+for the first time.
+
+🪦 **AND TWO GATES THAT COULD NEVER FIRE WENT WITH IT** — Alex's call, same session.
+`ULTIMATE_PREREQS = ["mic", "pedal_dist", "amp_1", "mixer"]` named three ids that are
+not in the tree and have not been for a long time, and **no skill anywhere carried
+`prereq: '__all_pa__'`**, so the Ultimate branch was unreachable in both directions.
+Both were GREEN in `selftest` — against a fake tree written to match the gate rather
+than the game.
+
+🎯 **THE REPLACEMENT ASSERTION IS THE ONE THAT WOULD HAVE CAUGHT IT**, and it runs on
+the real tree instead of a fixture: *every prereq in `SKILL_BY_ID` must name a skill
+that exists*. `skillTreeCheck` also now pins that none of the ten deleted ids can be
+offered to anybody, so a half-finished deletion fails rather than lingering.
+
+⚠️ **THE ONE LIVE TRAP THIS CREATED, AND IT IS PINNED.** Most Spirits now start with an
+EMPTY `unlockedSkills`. The B9 bug — the free `theory_major` grant gated on
+`unlockedSkills.length === 0`, which `amp_1` made permanently false so it never fired —
+would now *appear to work*: the list really is empty for three of the four. But the
+Ronin starts holding `theory_minor`, so the emptiness test is **asymmetric**. Revive it
+and every Spirit gets the full scale except the Ronin, who quietly plays the
+pentatonic all match. One character broken instead of all four is far harder to
+notice. `b0check.mjs` now asserts the disagreement directly rather than asserting that
+the list is never empty.
+
+📌 **THE Db HOLE, FIRST MEASUREMENT** (`.scratch/dbhole.mjs`, 30 matches): **mean 4.0
+unspent Db at match end, worst 8, 2.67 skills bought per seat.** `DB_UPGRADE_THRESHOLD`
+is 4, so that is roughly "one purchase pending" — no visible inflation. ⚠️ But bench
+matches run ~19 turns and the Theory ladder is only five rungs; the pile-up the design
+doc warns about would show on long matches, which nobody has run. `runMatch` returns
+`db` per seat now, so it is one probe away whenever somebody wants it.
+
+### 5.F⁷ 📌 Suites, and what moved
+
+Everything green, after the deletion as well as before it. **legal 582,
+transition 242, determinism 22, turnFlow 61, battleFlow 50, eval 152 → 154,
+melody 159, slime 127, score 122, eleven 38, riff parity 127598, `b0check` green,
+`check:bundle` clean, `npm run lint` clean.**
+
+- **skillTree 208 → 159, and the arithmetic is exact.** Ten deleted skills × six
+  per-skill assertions (id, price, route, `spiritOnly`, the shared-route null, the
+  price-sanity sweep) = 60 fewer; +12 new (ten pinning that each deleted id is
+  offered to nobody, plus the two ownership pins that replaced the `amp_1` one);
+  −1 for the `amp_1` pin itself. 208 − 60 + 12 − 1 = **159**. Nothing was thinned:
+  the file asserts strictly more per skill than it did.
+- 🎯 **And one assertion got BETTER by failing.** `ok(allSkills().length >= 20)`
+  broke on 18 and reported *"the flat lookup found them all"* about a lookup that
+  had in fact found them all. It now counts what the routes declare and compares —
+  the assertion that was meant all along.
+
+- **eval +2** — the two new rows, caught by the suite's own weight-table sweep.
+- **harness 1751 → 1659** and **trace 1683 → 1831.** ⚠️ Both assert inside
+  `for (const turn of log) for (const a of turn.actions)`, so their counts track
+  HOW MUCH MATCH THERE IS TO WALK, not how much is covered. The trace fixture is
+  one match on one seed: 14 turns before this session and 14 after, with more
+  actions per turn (bots now walk toward marquees) — and the winner flipped twice
+  along the way before landing back where it started.
+  Nothing was removed from either suite.
+- ⚠️ **Two fixtures were rewritten because they had become fictions**, which is §7
+  of the design doc landing exactly where it said it would: `transitionCheck` §21
+  bought its riff-off reach with `range_1..3` (it buys reach with stacks now), and
+  `selftest`'s rig block walked `RIG_RADIUS_BY_TIER` and counted `amp_*` (it walks
+  the stacks and the workout now, and asserts the atrophy floor).
+
+New probes in `.scratch/`: **`rigbreath.mjs`** (the A/B on match shape),
+**`rigworkout.mjs`** (does the workout reach the bench at all),
+**`marqwalk.mjs`** (the distance histogram that found the inversion),
+**`marqsweep.mjs`** (the weight sweep above), plus `rigreach.mjs`, `marqterm.mjs`,
+`marqueecheck.mjs`, `onematch.mjs`.
+
+📌 Git writes still fail from the agent's shell on this mount. Commit from a
+normal terminal. `_to_delete/` still needs removing by hand.
+
+---
+
+## 5-aug20am. 🧭 session handoff, 2026-08-20 (day)
+
+> ✅ **ALL COMMITTED** — `1f84663` / `1df5e08` / `ed3c9b1`, and the §5.I⁶ marquee
+> work in `b8d1626`. Probes included.
+> ⚠️ This banner has now gone stale TWICE in one day: it said UNCOMMITTED and
+> listed six files, was corrected, and then said the marquee work was
+> uncommitted after that had landed too. If you are editing a banner, check the
+> log rather than the previous banner.
 > The session before this one is §5-aug19 below.
 >
 > 🌀 **PSYCHO BUSHIDO NEVER LANDED ITS PAYLOAD, AND IT WAS BROKEN FOR HUMANS TOO**

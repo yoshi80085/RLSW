@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import openingIsland from "../assets/opening_island.png";
-import cosmicRonin from "../standees/Cosmic_Ronin.png";
+import cosmicRonin from "../standees/cosmic_ronin.png";
 import glamarchy from "../standees/Glamarchy.png";
 import intergalactic0 from "../standees/Intergalactic_0.png";
-import metalnessMonster from "../standees/Metalness_Monster.png";
+import metalnessMonster from "../standees/Metalness_monster.png";
 import crowdBlue from "../crowd_blue.png";
 import crowdPink from "../crowd_pink.png";
 import rlMovieSong from "../rl_movie_song.mp3";

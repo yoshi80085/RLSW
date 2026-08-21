@@ -153,8 +153,12 @@ export function pickRockGod(profile) {
     // skills (the CQC branch it used to read was cut in the Stance rework).
     bardbarian:       ['master_moshpits', 'azrael', 'goes_to_11', 'psycho_bushido', 'shadow_illusion', 'cursed_shamisen']
                         .filter(has).length * 2,
-    feedback_warlock: (profile.ampsOwned ?? 0)
-                        + ['amp_1', 'amp_2', 'amp_3', 'pedal_dist', 'power_chords'].filter(has).length,
+    // 🎛️ SCORED ON THE RIG THE SPIRIT ACTUALLY BUILT, not on purchases. This row
+    // used to count `amp_1..3` plus `pedal_dist` and `power_chords` — the amps
+    // were deleted with the rig branch on 2026-08-20 and the other two ids have
+    // not been in the tree for far longer, so on the day this was rewritten the
+    // whole term was reading `ampsOwned` and four ghosts.
+    feedback_warlock: (profile.rigPool ?? 1) - 1 + (profile.rigPower ?? 0),
     sonic_sorceress:  ['theory_major', 'theory_minor', 'theory_dom7', 'theory_modes', 'theory_chromatic']
                         .filter(has).length * 1.5,
     glam_reaper:      (profile.livesLost ?? 0) * 2,

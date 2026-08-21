@@ -174,7 +174,7 @@ export function applyTokensDrifted(state, { occupied }, rng) {
 // -- Event hexes --------------------------------------------------------------
 
 /** Spirit steps on a marquee event hex -- hex consumed, respawn timer set. */
-export function applyEventHexTriggered(state, { spiritId, hexNum }) {
+export function applyEventHexTriggered(state, { hexNum, usedTrivia = null }) {
   if (!state.board.eventHexes.includes(hexNum)) return state;
   return {
     ...state,
@@ -182,6 +182,9 @@ export function applyEventHexTriggered(state, { spiritId, hexNum }) {
       ...state.board,
       eventHexes: state.board.eventHexes.filter(n => n !== hexNum),
       eventRespawnIn: EVENT_RESPAWN_TURNS,
+      // 🎪 null means "the caller drew nothing" (a trigger with no question),
+      // which must LEAVE the history alone rather than clearing it.
+      usedTrivia: usedTrivia ?? state.board.usedTrivia ?? [],
     },
   };
 }

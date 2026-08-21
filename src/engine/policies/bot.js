@@ -30,19 +30,19 @@ export const BOT_PERSONALITIES = {
   maestro:  { name:'The Maestro',  emoji:'🎼', note:'musical',
     blurb:'wins on pure musicianship — Theory, clean tracks, cadences & riffs.',
     move:{ center:1.2, rival:0.4, token:1.4, spotlight:1.1, edgeFear:1.6, rear:0.5, rearFear:1.3 },
-    skillOrder:['theory_major','range_1','theory_minor','amp_1','theory_dom7','theory_modes','amp_2','range_2','theory_chromatic','amp_3','range_3'] },
+    skillOrder:['theory_major','theory_minor','theory_dom7','theory_modes','theory_chromatic'] },
   moshlord: { name:'The Mosh Lord', emoji:'🤘', note:'combat',
     blurb:'pure aggression — Thrash, hunts the wounded and the leader, swings for knockouts.',
     move:{ center:1.0, rival:1.9, token:0.6, spotlight:0.8, edgeFear:0.5, rear:1.7, rearFear:0.4 },
-    skillOrder:['power_1','amp_1','theory_major','amp_2','power_2','theory_minor','amp_3','power_3'] },
+    skillOrder:['theory_major','theory_minor'] },
   diva:     { name:'The Diva',     emoji:'✨', note:'clean',
     blurb:'owns the spotlight — holds centre stage, works the crowd, grabs Lost Chords.',
     move:{ center:1.9, rival:0.7, token:1.2, spotlight:1.4, edgeFear:1.2, rear:0.7, rearFear:1.5 },
-    skillOrder:['range_1','amp_1','theory_major','range_2','amp_2','theory_minor','amp_3'] },
+    skillOrder:['theory_major','theory_minor'] },
   saboteur: { name:'The Saboteur', emoji:'🪤', note:'disrupt', targetLeader:true,
     blurb:'controls the board — ranged Sonic, zoning, drains & staggers the leader.',
     move:{ center:0.9, rival:1.1, token:0.8, spotlight:0.9, edgeFear:1.0, rear:1.5, rearFear:1.1 },
-    skillOrder:['amp_1','range_1','power_1','theory_major','amp_2','range_2','power_2','theory_minor','theory_dom7','amp_3','range_3','power_3','theory_modes'] },
+    skillOrder:['theory_major','theory_minor','theory_dom7','theory_modes'] },
 };
 
 // How far away a rival still has to be worth turning to face. Beyond this the
@@ -56,11 +56,19 @@ export const REAR_INTEREST_DIST = 3;
 export const CONE_HALF_ARC = Math.PI / 2.2;
 export const BOT_PERSONA_KEYS = ['maestro','moshlord','diva','saboteur'];
 
+// 🛑 NINE RUNGS CAME OUT OF THIS LIST ON 2026-08-20, and leaving them in
+// would have been the §5.D⁶ disease self-inflicted: a bot banking Db toward
+// `amp_2` after the rig came off the tree is saving for a rung that cannot be
+// bought and would do nothing if it were. Every persona's queue is Theory now.
+//
+// ⚠️ WHICH MEANS THE PERSONAS HAVE LARGELY STOPPED DIFFERING HERE. `maestro`
+// and `saboteur` used to interleave rig and Theory in different orders;
+// `moshlord` and `diva` are down to two rungs each. The personality survives in
+// the `move` weights and in `EVAL_WEIGHTS`, but if the ABILITY tree grows to
+// absorb the Db hole (design doc §7), this is the table that should express it.
 export const BOT_SKILL_PRIORITY_BASE = [
-  'amp_1', 'range_1',
-  'theory_major', 'amp_2', 'power_1', 'theory_minor',
-  'theory_dom7', 'amp_3', 'range_2', 'power_2', 'theory_modes', 'theory_chromatic',
-  'range_3', 'power_3',
+  'theory_major', 'theory_minor',
+  'theory_dom7', 'theory_modes', 'theory_chromatic',
 ];
 
 // Exclusive-route passives, slotted in up front for the spirit that owns them.

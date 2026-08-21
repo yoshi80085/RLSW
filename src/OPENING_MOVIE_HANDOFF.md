@@ -31,7 +31,7 @@ effect syncs to narration beats. It also weighs ~nothing vs a 120s m4v.
 | Asset | Path | Status |
 |---|---|---|
 | Hero artwork (island in space) | `src/assets/opening_island.png` | ⚠️ OWNER MUST SAVE IT HERE (2521×2600 PNG from design session) |
-| Spirit silhouettes | `src/standees/Cosmic_Ronin.png`, `Glamarchy.png`, `Intergalactic_0.png`, `Metalness_Monster.png` | exists — silhouette via `filter: brightness(0) drop-shadow(...)` |
+| Spirit silhouettes | `src/standees/cosmic_ronin.png`, `Glamarchy.png`, `Intergalactic_0.png`, `Metalness_monster.png` (⚠️ the case is exact — Linux builds do not forgive it) | exists — silhouette via `filter: brightness(0) drop-shadow(...)` |
 | Fan/crowd silhouettes | `src/groupie_fans.PNG`, `src/crowd_blue.png`, `src/crowd_pink.png` | exists — same silhouette treatment |
 | Rock God silhouette | `src/hydra.PNG` (plus custom SVG towering figures) | partial — draw 2 generic towering horned/winged figures as inline SVG paths |
 | Instrument silhouettes | none | draw inline SVG: flying-V guitar, keytar, drum kit + sticks, mic on stand (simple filled paths, ~40 pts each) |

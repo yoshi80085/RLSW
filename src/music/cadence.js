@@ -222,7 +222,7 @@ export function sustainBoostFromPattern(patLen) {
 //   Step B: ending bonus — 4th=+2, 5th=+3, Octave=+1
 // Layer 2 (Drive/Sustain patterns) runs in confirmNoteTrack and is untouched.
 //
-// PENDING_CHANGES B2 — base melody income roughly halved. Step A now yields
+// THEORY_REWRITE_LOG B2 — base melody income roughly halved. Step A now yields
 // 0/1/1/2/2/3 across lengths 3–8, so length stays a real slope but stops being
 // free money. (floor(len/3) was considered and rejected: it scores a 6-note and
 // an 8-note track identically, flattening length out of the Db game entirely.)

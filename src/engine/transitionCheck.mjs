@@ -670,13 +670,22 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   st = withSpirit(st, RONIN, { facing: angleTo(here, nb) });
   st = { ...st, turn: { ...st.turn, moveStepsLeft: 4, actionTokenUsed: false } };
   // ⚠️ BOTH RIGS HAVE TO REACH, and this is the fixture detail that took a
-  // debugging pass: they are meeting next to the RONIN'S corner, so Metalness is
-  // far from his own Main Amp and defaults to out-of-rig — which is the very
-  // condition that CANCELS a duel (§3.1's worst square). Range unlocks put his
-  // rig over the meeting point so the gate under test is the beam geometry
-  // rather than an accident of where the fixture stood them.
-  st = withNs(st, METAL, { unlockedSkills: ['amp_1', 'range_1', 'range_2', 'range_3'] });
-  st = withNs(st, RONIN, { unlockedSkills: ['amp_1', 'range_1', 'range_2', 'range_3'] });
+  // debugging pass: they meet on hex 55, which is 5 from BOTH homes, so a rig at
+  // the floor does not cover it — and being out-of-rig is the very condition
+  // that CANCELS a duel (§3.1's worst square). The gate under test is the beam
+  // geometry, so the fixture has to buy the reach first.
+  //
+  // 🫁 AND IT BUYS IT WITH STACKS NOW, NOT WITH RANGE UNLOCKS (§5.H⁶). This
+  // used to hand both Spirits `range_1..3`; those rungs are gone, and a test
+  // that kept asserting through them would have been testing a fiction — which
+  // is precisely the failure `CLAUDE.md` and MARQUEE_QUIZ_DESIGN.md §7 warn
+  // about. Radius is `RIG_RADIUS_FLOOR + stack length`, the Ronin is acting so
+  // his breathes on DRIVE and Metalness is not so his breathes on SUSTAIN: a
+  // four-note stack each puts the radius at 7 over a distance of 5, with room
+  // to spare so a tuning change to the floor does not silently un-arm the test.
+  const REACH = ['C', 'E', 'G', 'B'];
+  st = withNs(st, METAL, { unlockedSkills: ['amp_1'], sustainStack: [...REACH] });
+  st = withNs(st, RONIN, { unlockedSkills: ['amp_1'], driveStack: [...REACH] });
 
   const acts = legalActions(st, RONIN);
   const duel = ofKind(acts, 'riffOff')[0];
@@ -714,7 +723,10 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
     ok(ofKind(posingRival, 'sonic').some(a => a.targetId === METAL),
        '🎤 …the Sonic is offered instead, which is the whole rule');
 
-    const stranded = withNs(st, METAL, { unlockedSkills: ['amp_1'] });
+    // 🫁 STRANDED IS A THIN STACK NOW, not a missing purchase. Metalness keeps
+    //    his amp; what he loses is the Sustain to throw it 5 hexes from home,
+    //    which drops his radius to the floor+1 of 4 and leaves him a hex short.
+    const stranded = withNs(st, METAL, { sustainStack: ['C'] });
     const a2 = legalActions(stranded, RONIN);
     eq(ofKind(a2, 'riffOff').length, 0, '📡 a rival outside their own rig radius has nothing to answer with');
     ok(ofKind(a2, 'sonic').some(a => a.targetId === METAL), '📡 …so the beam just lands');

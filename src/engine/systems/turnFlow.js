@@ -29,6 +29,7 @@ import { randomNote } from "../../music/cadence.js";
 import { evaluateChord } from "../../music/chords.js";
 import { usedList } from "./economy.js";
 import { STOCK_REFILL_RATE } from "../../data/gameConstants.js";
+import { rigAtrophyTick } from "./sonicRig.js";
 
 /**
  * How many stock slots recharge for this sheet this turn.
@@ -102,6 +103,10 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
   // Insertion order preserved (this was a Set before it had to be JSON-safe).
   const carriedUsed = usedIdxs.filter(i => !refreshing.has(i));
 
+  // 🏋️ Computed before the patch so the report can say what was lost — the
+  // player should hear the amp get quieter, not discover it mid-beam.
+  const rigAtrophy = rigAtrophyTick(ns);
+
   const patch = {
     noteStock:    newStock,
     melodyLine:   [],
@@ -121,6 +126,13 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
 
     // 🌀 Psycho Bushido cooldown ticks on the Ronin's own turns.
     psychoBushidoCd: Math.max(0, (ns.psychoBushidoCd ?? 0) - 1),
+
+    // 🏋️ THE RIG ATROPHIES ON HIS OWN TURNS TOO (MARQUEE_QUIZ_DESIGN.md §5).
+    // A tier won at the marquee is not on a countdown and is not burned by a
+    // battle — it is shed by NOT GOING BACK. Ticked here, at the top of the
+    // owner's turn, for the same reason the cooldown above is: a clock counted
+    // in spirit-turns runs four times too fast in a four-handed game.
+    ...rigAtrophy.patch,
 
     // 🎫 Crew: roadie cooldowns tick down (CREW_SYSTEM_DESIGN.md §4.2).
     roadies: (ns.roadies ?? []).map(r =>
@@ -169,6 +181,7 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
       refillRate,
       halvedByAxeSwing: !!ns.halfRefillNextTurn,
       drainedByVortex:  ns.refillDrain ?? 0,
+      rigShed: rigAtrophy.shed,   // 🏋️ 'pool' | 'power' | null
       derivedMode,
       derivedRoot,
       modeReason:  derived.reason,

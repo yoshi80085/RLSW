@@ -17,7 +17,7 @@ export const STOCK_REFILL_RATE = 6;
 // -- DRIVE / SUSTAIN STACK SPLIT (DRIVE_SUSTAIN_SPLIT_DESIGN.md) --
 export const STACK_COMMIT_BUDGET = 3;   // max notes committed to stacks per turn (split freely between Drive & Sustain)
 
-// -- STACK CAPACITY IS EARNED (PENDING_CHANGES B0b) --
+// -- STACK CAPACITY IS EARNED (THEORY_REWRITE_LOG B0b) --
 // The cap is no longer a global constant. Slots 1-3 are baseline; slot 4 is
 // bought with `theory_dom7` and slot 5 with `theory_modes`. The skill named
 // "Blues / Dominant 7th" is the same purchase that lets you BUILD a dominant
@@ -122,7 +122,65 @@ export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
 export const PSYCHO_BUSHIDO_CD     = 2;   // rounds, ticked in turnFlow
 export const PSYCHO_BUSHIDO_MIN_AP = 2;   // 1 hex of run-up + the Swing's own AP
 
-export const RIG_RADIUS_BY_TIER = [4, 5, 7, Infinity];  // Range 0/I/II/III radii (axial hex distance)
+// 🫁 THE RIG BREATHES — SEQUENCING.md §5.H⁶, shipped 2026-08-20.
+//
+// The radius is no longer a tier you bought. It is
+//
+//     RIG_RADIUS_FLOOR + (your turn ? Drive stack : Sustain stack).length
+//
+// which means the rig reaches further the more you have going on, and shrinks
+// when you spend or get frayed. `RIG_RADIUS_BY_TIER = [4, 5, 7, Infinity]` is
+// GONE rather than deprecated, on purpose: nothing should be able to quietly
+// keep asking a Range tier how far it carries when Range tiers no longer exist.
+//
+// ⚠️ THE FLOOR IS THE ANTI-SPIRAL AND 3 IS NOT ARBITRARY. `makeInitialNoteState`
+// seeds both stacks with the ROOT ALONE, so every Spirit opens the game at
+// 3 + 1 = 4 — exactly the old tier-0 radius. Nothing about the resting state of
+// the board changed. Only a Spirit who has genuinely been emptied out (a Swing
+// spends 2 Drive; a Pose sheds Sustain; `chordFray` eats it under a beating)
+// drops to 3, and a full six-note stack reaches 9. Lower this and you build a
+// game where the Spirit already losing is the one who cannot answer a beam.
+export const RIG_RADIUS_FLOOR = 3;
+
+// ─── 🎛️ THE RIG WORKOUT (MARQUEE_QUIZ_DESIGN.md §4–5) ────────────────────────
+//
+// Pool size and die size are no longer bought with Db. They are WON at the
+// marquee quiz's RIG lane, spent immediately on one of two tracks, and lost to
+// neglect rather than to a timer.
+//
+//   `rigPool`  — extra d6 in the Sonic pool. Stands in for the old Amp tier.
+//   `rigPower` — dice upgraded d6 → d8. Stands in for the old Power tier.
+//
+// ⚠️ THE CEILING IS THE OLD CEILING, ON PURPOSE. `AMP_DECK_DESIGN.md` §2.5 is
+// explicit that the keep-highest rework dropped the maximum Sonic roll from 12
+// to 8, and that every rule leaning on high Sonic rolls — margin-scaled push
+// `ceil(margin/2)`, the knockback tiers, the 7+ Performance triggers — was
+// re-checked against that 8. Capping the workout at 3 pool + 3 power reproduces
+// Amp III / Power III exactly, so nothing downstream needs re-checking. A hard
+// question that wants to feel special should feel special by LASTING LONGER,
+// never by introducing a d10.
+export const RIG_TIER_MAX = 3;
+
+// ⚠️ THE FLOOR IS TODAY'S FREE GRANT, AND IT IS WHAT STOPS THE SPIRAL. Every
+// Spirit used to start with `amp_1` seeded into `unlockedSkills` — 2d6 in range,
+// 1d6 out of it. `rigPool` starts AT this floor and atrophy can never take it
+// below, so the worst case of total neglect is exactly where everyone begins
+// the game: survivable by definition, and no way to be quizzed out of existence
+// by a rival who happens to know their gear.
+export const RIG_POOL_FLOOR = 1;
+
+// 🏋️ ATROPHY — one tier shed for every N of the OWNER'S OWN turns that pass
+// without training at a marquee.
+//
+// ⚠️ COUNTED IN HIS OWN TURNS, NOT IN SPIRIT-TURNS, and this is the third
+// system in the file to carry that warning (see `SLIME_LIFETIME_TURNS` and
+// Sunbeam's `blindTurns`). Tick it on every Spirit's turn end in a four-handed
+// game and a "3 turn" clock expires before its owner has acted twice.
+//
+// 📌 3 IS A GUESS AND IS FLAGGED AS ONE in MARQUEE_QUIZ_DESIGN.md §9. It wants
+// a bench: too fast and the marquee becomes a treadmill nobody can step off,
+// too slow and the "workout" is a purchase with extra steps.
+export const RIG_ATROPHY_TURNS = 3;
 // 🛡️ Sonic DEFENCE die. A rival inside their own rig radius answers the beam
 // with their amp behind them (d6). Caught outside it, they have nothing to push
 // back with and scramble a bare d4 — the same die a Thrash defence rolls. This

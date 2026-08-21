@@ -1,8 +1,8 @@
 import React from "react";
 import glamarchy_mirror from "../standees/Glamarchy_mirror.png";
-import cosmic_ronin_mirror from "../standees/Cosmic_Ronin_mirror.png";
+import cosmic_ronin_mirror from "../standees/cosmic_ronin_mirror.png";
 import intergalactic_0_mirror from "../standees/Intergalactic_0_mirror.png";
-import metalness_monster_mirror from "../standees/Metalness_Monster_mirror.png";
+import metalness_monster_mirror from "../standees/Metalness_monster_mirror.png";
 
 export function isMirrorFacing(facingAngleRad) {
   const a = ((facingAngleRad % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);

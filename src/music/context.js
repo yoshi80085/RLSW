@@ -1,5 +1,5 @@
 // =============================================================================
-// music/context.js  —  THE CHORD CONTEXT LADDER (PENDING_CHANGES B3)
+// music/context.js  —  THE CHORD CONTEXT LADDER (THEORY_REWRITE_LOG B3)
 // -----------------------------------------------------------------------------
 // The one idea the Theory branch sells: *your chord stack defines the local key.*
 // Notes that are Discord against the song's key stop being Discord when the chord

@@ -16,8 +16,8 @@ import React, { useState } from "react";
 import { HEX_BY_NUM } from "./hexMap.js";
 import { SCALE, HEX_SIZE, COL_SPACING, SVG_W, SVG_H } from "./constants.js";
 import { CORNERS } from "../data/corners.js";
-import { LIMELIGHT_HEX, RIG_RADIUS_BY_TIER } from "../data/gameConstants.js";
-import { RIG_AMP_IDS, RIG_POWER_IDS, RIG_RANGE_IDS } from "../engine/systems/sonicRig.js";
+import { LIMELIGHT_HEX, RIG_RADIUS_FLOOR } from "../data/gameConstants.js";
+import { rigRadius, rigTiers } from "../engine/systems/sonicRig.js";
 import { AMP_KNOBS } from "./ampKnobs.js";
 
 import ampTl1 from "../amps/amp_tl_lv1.png";
@@ -89,7 +89,6 @@ export const CORNER_DECKS = {
 
 const PX = (HS * 2.7) / 235;    // uniform art scale (diag cabinets ≈ 2.7 hexes wide)
 
-const countOf = (unlocked, ids) => ids.filter((id) => unlocked.includes(id)).length;
 
 // Flat-top hexagon path centered at (cx, cy), radius r, squashed to sy.
 function hexPath(cx, cy, r, sy) {
@@ -199,14 +198,21 @@ function DeckStack({ pos, stage, powT, rangeT, thump, seed, onHover }) {
 
 // Neon radius ring — pulses out from the home hex while its Spirit aims a
 // Sonic Attack, or while anyone hovers that Spirit's amp stacks. Inside the
-// ring the full rig applies; outside, the Main Amp floor (2d6). Range III
-// (Infinity) draws a venue-wide ring: the whole stage is yours.
-function RangeRing({ spirit, unlocked }) {
+// ring the full rig applies; outside, the Main Amp floor (2d6).
+//
+// 🫁 THE RING IS NOT A FIXED SIZE ANY MORE (§5.H⁶). It is drawn from the live
+// stacks — Drive while this Spirit is acting, Sustain while they are not — so
+// it grows as they build and pulls in as they spend, get frayed or pose. The
+// old `Number.isFinite` branch is gone with Range III: there is no infinite
+// radius left to encircle the venue with.
+//
+// ⚠️ IT MUST ASK `rigRadius`, NOT REDERIVE THE RULE. This is presentation, and
+// presentation that computes its own copy of a rule is how a player ends up
+// standing just inside a ring the engine says they are outside of.
+function RangeRing({ spirit, ns, onTurn }) {
   const home = HEX_BY_NUM[CORNERS[spirit.corner]?.homeNum];
   if (!home) return null;
-  const rangeT = countOf(unlocked, RIG_RANGE_IDS);
-  const radius = RIG_RADIUS_BY_TIER[rangeT];
-  const drawR = Number.isFinite(radius) ? radius : 11;  // ∞ → encircle the venue
+  const drawR = rigRadius(ns, onTurn);
   const hx = home.px * SCALE, hy = home.py * SCALE;
   const ringR = (drawR + 0.5) * COL_SPACING * SCALE;
   return (
@@ -227,12 +233,12 @@ function RangeRing({ spirit, unlocked }) {
  * the acting Spirit's while they line up a Sonic Attack, and any Spirit's
  * while their amp stacks are hovered.
  *
- * Level mapping: cabinet count = Amp tier. Amp I (everyone's start) is the
- * single Main Amp cabinet; Amp II stacks the second; Amp III completes the
- * wall at the level-3 art. Power rings the knobs; Range glows the base.
+ * Level mapping: cabinet count = POOL tier. Tier 1 (everyone's floor) is the
+ * single Main Amp cabinet; tier 2 stacks the second; tier 3 completes the wall
+ * at the level-3 art. POWER rings the knobs; the live RADIUS glows the base.
  *
  * @param spirits    spirits array (only those with a corner render)
- * @param noteStates per-spirit note state (unlockedSkills drives the tiers)
+ * @param noteStates per-spirit note state (rig tiers + stacks drive the art)
  * @param actingId   the acting spirit's id (ring owner)
  * @param aiming     true while the Sonic Attack targeting UI is open
  * @param thumpFx    { id, key } — bumps a 300ms thump on that spirit's stacks
@@ -246,13 +252,17 @@ export default function AmpDecks({ spirits, noteStates, actingId, aiming, thumpF
     <g>
       {spirits.filter((s) => s.corner && ringIds.has(s.id)).map((s) => (
         <RangeRing key={`ring-${s.id}`} spirit={s}
-          unlocked={noteStates[s.id]?.unlockedSkills ?? []}/>
+          ns={noteStates[s.id] ?? {}} onTurn={s.id === actingId}/>
       ))}
       {spirits.filter((s) => s.corner).map((s, si) => {
-        const unlocked = noteStates[s.id]?.unlockedSkills ?? [];
-        const ampT = countOf(unlocked, RIG_AMP_IDS);
-        const powT = countOf(unlocked, RIG_POWER_IDS);
-        const rangeT = countOf(unlocked, RIG_RANGE_IDS);
+        // 🎛️ CABINETS AND KNOBS ARE THE WORKOUT TIERS NOW, not skill unlocks —
+        // so the deck visibly grows when a RIG-lane answer lands and visibly
+        // shrinks when it atrophies. Same numbers as the old Amp/Power tiers.
+        const { pool: ampT, power: powT } = rigTiers(noteStates[s.id] ?? {});
+        // 📡 The base glow used to be the Range tier. Range is not a purchase
+        // any more, so the deck lights by how far the rig is CURRENTLY throwing:
+        // 0 at the floor, up to 3 on a full stack. The amps visibly breathe.
+        const rangeT = Math.max(0, Math.min(3, rigRadius(noteStates[s.id] ?? {}, s.id === actingId) - RIG_RADIUS_FLOOR - 1));
         const stage = Math.min(Math.max(ampT, 1), 3);   // cabinets = Amp tier
         const thump = thumpFx?.id === s.id ? thumpFx.key : null;
         return CORNER_DECKS[s.corner]?.map((pos, di) => (

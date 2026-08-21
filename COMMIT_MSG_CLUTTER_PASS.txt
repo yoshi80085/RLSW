@@ -1,0 +1,96 @@
+chore: the clutter pass — ten dead files out, a live deploy bug found
+
+A clear-out, not a feature. No rule changed; every suite count is identical to
+the last handoff, which is the evidence that nothing removed was load-bearing.
+
+🐛 THE HEADLINE IS A LIVE BUG, AND IT CAME OUT OF THE CLEANUP
+   Six standee imports named a file whose CASE does not match the disk —
+   `Cosmic_Ronin.png` / `Metalness_Monster.png` against `cosmic_ronin.png` /
+   `Metalness_monster.png` — in data/spirits.js, ui/GameErrorBoundary.jsx and
+   ui/OpeningMovie.jsx. Windows resolves that. Render builds on Linux, which
+   does not. This is the same class as the App.jsx capital-V that broke a
+   deploy once already.
+
+   `check:bundle` has reported all six correctly on every run for as long as it
+   has existed, as "6 warnings" in a wall of esbuild output ending in a cheerful
+   ⚡ Done. A warning that is always present is indistinguishable from one that
+   never matters. check:bundle now ends at ZERO warnings and CLAUDE.md says to
+   treat a non-zero count as a failure.
+
+🔇 332 ASSERTIONS WERE RUNNING FOR NOBODY
+   b0check.mjs (200 assert calls, 55 groups) is quoted as green in every session
+   handoff in SEQUENCING.md and no npm script has ever run it. Five riff test
+   files carrying another 132 assertions had never been wired at all. All six
+   pass — which is luck, not evidence.
+   New: `npm run test:b0`, `npm run test:riff`, and `npm run test:all` — the
+   full sweep in one command instead of seventeen hand-typed ones.
+
+🗺️ ARCHITECTURE.md IS A MAP OF A GAME THAT NO LONGER EXISTS — SAID, NOT FIXED
+   It calls engine/ a "~300 line Phase 1 scaffold". engine/ is 11,694 lines
+   across 29 modules and is the entire game; engine/policies/ and
+   engine/systems/ do not appear in the file at all; 50 of 130 source modules
+   are unlisted; gameConstants.js is listed at 39 constants and exports 96.
+   Per CLAUDE.md, a drifted doc is worse than no doc and the honest move is to
+   say so. It now opens with a measured staleness banner. Four rows naming
+   files that no longer exist were removed so it cannot send anyone to a dead
+   path; nothing else was touched. A partial repair that LOOKED current would
+   be more dangerous than the banner. Rewriting it is now item 1 of §5.E⁸.
+
+🪦 TEN FILES QUARANTINED (in _to_delete/purge-20260821/ — the agent shell
+   cannot unlink; see SEQUENCING §5.G⁸ for the git rm)
+   · engine/importcheck.mjs — reported 17 dangling imports, all 17 FALSE. Its
+     parser cannot read `export function*` or a multi-line import list with
+     comments in it, so it flagged poseConsequences, which is exported and
+     called in production every time somebody strikes a pose. check:bundle
+     runs a real bundle and closes the gap properly.
+   · board/ampRigs.js — a 4-line tombstone whose own comment said to delete it
+     once the imports were clean. They are.
+   · hooks/useNoteSystem.js — retired in Phase 5c; nothing imported it.
+   · ui/__orig_check.jsx — a 251-line pre-Pickles backup of BeginnerTipOverlay.
+   · __p.jsx, __smoke.jsx — throwaway smokes; __smoke.jsx hardcoded an absolute
+     path from a dead sandbox and could not run anywhere.
+   · COMMIT_MSG_C4_C1.txt, COMMIT_MSG_SIMPLIFY.txt — messages for commits that
+     landed months ago. COMMIT_MSG_RIG_REWORK.txt STAYS; still pending.
+   · mic-test.html — superseded by listen-test.html, which says so itself.
+   · engine/dbaudit.mjs -> .scratch/ — a probe, not a test: it asserts nothing
+     and its header admits it hand-transcribes confirmNoteTrack and drifts.
+
+🛑 THREE THINGS THAT LOOKED DEAD AND WERE NOT
+   camera-test.html and listen-test.html are the standalone tuning benches
+   EAR_SPY_HANDOFF §2/§6 sends you to, served by npm run dev.
+   arrow-highway-proto.html is read OFF DISK AT RUNTIME by
+   riff/syncProtoGenerator.mjs. In this repo, root-level HTML is as likely to
+   be a bench as litter. Grep before you cut.
+
+📌 PENDING_CHANGES.md -> src/THEORY_REWRITE_LOG.md
+   1,485 lines at the repo root under a name advertising a work queue, when
+   every task in it is shipped, reversed, or retired — Task C in full. It was
+   the first thing a new session saw and the last thing it should have read.
+   Six live code comments cite its task ids as their reason-why (gameConstants
+   B0b, cadence B2, chords Task A, context B3, b0check, the monolith's Db
+   arithmetic); all six were updated to the new name in the same pass. Its five
+   genuinely-open design questions were lifted into SEQUENCING §5.E⁸, where the
+   live map is — the first of them ("other branches need ceilings of their own")
+   predicted the Theory-monopoly problem that deleting the Electric branch has
+   now made real.
+
+📌 .scratch/ and _to_delete/ are gitignored. That does not untrack: 72 + 12
+   files are still in the index, including four ~600KB source tarballs and a
+   242KB diff. `git rm -r --cached _to_delete .scratch` clears it.
+
+VERIFICATION
+   test:all green end to end, twice — before and after the standee fix.
+   legal 582, eval 154, transition 242, determinism 22, turnFlow 61,
+   battleFlow 50, melody 159, slime 127, eleven 38, score 122, harness 1659,
+   riffparity 127598, skillTree 159, trace 1831 — every number identical to the
+   2026-08-20 handoff. Newly visible: b0check 55 groups, guitarMap 70,970,
+   neonNeck 253,506. check:bundle 6 warnings -> 0.
+   ⚠️ npm run lint is NOT clean, contrary to the 2026-08-20 handoff, and does
+   not finish on this machine (abandoned past 25 min on the monolith). Every
+   touched file was linted directly: 14 errors, all 14 reproducing at HEAD, so
+   this pass introduced none. They are react-hooks/refs x8 in OpeningMovie.jsx,
+   no-unused-vars on its React import, and react-refresh/only-export-components
+   x6 — most likely surfaced by the eslint-plugin-react-hooks 7 upgrade rather
+   than by a regression. Run lint on Windows and settle it.
+   ⚠️ Run `npm run build` on Windows before pushing. The standee bug was a
+   Linux-only failure no check in this repo can reproduce on the dev machine.

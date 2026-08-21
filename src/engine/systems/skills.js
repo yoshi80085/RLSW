@@ -10,8 +10,20 @@
 // the +1-Drive CQC buff, log lines) stay in `Game.applySkillEffects` for now —
 // they're side effects, and their state writes land in the Phase-5c flip.
 
-// The Ultimate ('__all_pa__') opens only once the whole PA chain is unlocked.
-export const ULTIMATE_PREREQS = ["mic", "pedal_dist", "amp_1", "mixer"];
+// 🛑 `ULTIMATE_PREREQS` AND THE `pa` CHAIN GATE WERE DELETED ON 2026-08-20, and
+// the reason is worth keeping because it is `CLAUDE.md`'s standing warning
+// landing for the second time.
+//
+// The list was `["mic", "pedal_dist", "amp_1", "mixer"]`. THREE OF THOSE FOUR IDS
+// ARE NOT IN THE SKILL TREE and have not been for a long time; the fourth went
+// with the rig branch. And no skill anywhere carried `prereq: '__all_pa__'`, so
+// the gate could not fire even if the ids had existed. It was nonetheless GREEN
+// in `selftest` — against a fake tree written to match the gate rather than the
+// game. That is §15 exactly: "a passing test is not evidence a rule is real".
+//
+// Deleted rather than left with a warning, so that archived code trying to
+// revive an Ultimate fails loudly instead of silently gating on ghosts. If a
+// capstone is ever wanted, write the prereq list against skills that exist.
 
 // THE LADDER — climbing a Theory skill also grants the colour-note capabilities
 // (discordUnlocks + the matching unlockedSkills flags) the scoring logic reads.
@@ -55,24 +67,21 @@ export const THEORY_DISCORD_GRANTS = {
  *                         which only ever offers the player their own skills)
  * @param opts.selfId      the spirit choosing (only used with ownerRoute)
  * @returns { ok, reason?, missing? }
- *   reason ∈ 'unknown' | 'already' | 'owner' | 'ultimate' | 'prereq' | 'pa'
+ *
+ * 📌 THREE GATES, NOT FIVE. The Ultimate and PA-chain branches were deleted on
+ * 2026-08-20 — see the note at the top of this file. What is left is: do you
+ * already own it, is it somebody else's exclusive route, and are its prereqs met.
+ *   reason ∈ 'unknown' | 'already' | 'owner' | 'prereq'
  */
 export function skillEligibility(skill, unlocked, { ownerRoute = null, selfId = null } = {}) {
   if (!skill) return { ok: false, reason: "unknown" };
   if (unlocked.includes(skill.id)) return { ok: false, reason: "already" };
   if (ownerRoute && ownerRoute !== selfId) return { ok: false, reason: "owner" };
-  if (skill.prereq === "__all_pa__") {
-    const missing = ULTIMATE_PREREQS.filter(id => !unlocked.includes(id));
-    return missing.length ? { ok: false, reason: "ultimate", missing } : { ok: true };
-  }
   // Multi-prereq: prereq can be a string or an array of strings (all must be unlocked).
-  if (skill.prereq && skill.prereq !== '__all_pa__') {
+  if (skill.prereq) {
     const prereqs = Array.isArray(skill.prereq) ? skill.prereq : [skill.prereq];
     const missing = prereqs.filter(id => !unlocked.includes(id));
     if (missing.length) return { ok: false, reason: "prereq", missing: missing };
-  }
-  if (skill.chainId === "pa" && skill.id !== "amp_1" && !unlocked.includes("amp_1")) {
-    return { ok: false, reason: "pa" };
   }
   return { ok: true };
 }

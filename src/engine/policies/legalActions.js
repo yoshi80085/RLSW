@@ -488,7 +488,7 @@ export function legalActions(state, spiritId, view = {}) {
     // second cost lands on exactly the gate §3.1 already built, and this file
     // needs no idea that the ability exists.
     if (ap >= SONIC_AP_COST) {
-      const { inRange } = rigFor(self, ns);
+      const { inRange } = rigFor(self, ns, state);
       if (inRange) {
         for (const r of rivals) {
           if (!beam.has(r.num)) continue;
@@ -512,7 +512,7 @@ export function legalActions(state, spiritId, view = {}) {
           // Plus: a posing Spirit cannot answer either — they are mid-pose with
           // their guard down, which is the trade §3.3 already priced.
           const rns  = state.noteStates?.[r.id] ?? {};
-          const duel = !posing[r.id] && sonicBeam(r).has(self.num) && rigFor(r, rns).inRange;
+          const duel = !posing[r.id] && sonicBeam(r).has(self.num) && rigFor(r, rns, state).inRange;
           out.push(duel
             ? { kind: 'riffOff', targetId: r.id, apCost: SONIC_AP_COST }
             : { kind: 'sonic',   targetId: r.id, apCost: SONIC_AP_COST });

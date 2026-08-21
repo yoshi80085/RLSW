@@ -23,3 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 src(backup)/
+
+# 🧹 Working piles, not source (added 2026-08-21).
+# `.scratch/` is one-off bench probes — evidence for a session, never a suite.
+# `_to_delete/` is the quarantine the agent shell uses because it cannot unlink;
+# empty it from a real terminal, do not commit it.
+.scratch/
+_to_delete/

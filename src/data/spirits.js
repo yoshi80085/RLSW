@@ -4,9 +4,9 @@
 // Style: Shred = high Drive | Flair = high Sustain | Groove = balanced lean-Sustain.
 // Speed: 4–6 — max hexes of movement per turn.
 import glamarchy from "../standees/Glamarchy.png";
-import cosmic_ronin from "../standees/Cosmic_Ronin.png";
+import cosmic_ronin from "../standees/cosmic_ronin.png";
 import intergalactic_0 from "../standees/Intergalactic_0.png";
-import metalness_monster from "../standees/Metalness_Monster.png";
+import metalness_monster from "../standees/Metalness_monster.png";
 
 export const SPIRIT_DEFS = {
   "cosmic_ronin":      { id:"cosmic_ronin",      name:"Shredding Ronin",      imageSrc:cosmic_ronin,      color:"#4488ff", vibe:5, maxVibe:5, knockedOut:false, style:"Shred",  drive:8, sustain:5, speed:5 },

@@ -8,6 +8,43 @@
 Line numbers are approximate — navigate by the **banner comments**
 (`// ─── NAME ───`) inside the main file, not by line number.
 
+
+---
+
+> ## ⚠️ THIS MAP HAS DRIFTED. MEASURED 2026-08-21, NOT REPAIRED.
+>
+> CLAUDE.md's rule is that a doc which has drifted from the code is worse than no
+> doc, and that the honest move is to **say so plainly rather than edit around it.**
+> So: this file is a map of the codebase as it stood before the engine existed.
+> The numbers below were counted, not estimated.
+>
+> - 🎮 **It calls `engine/` a "~300 line Phase 1 scaffold."** `engine/` is
+>   **11,694 lines across 29 modules** and is the authoritative game core — every
+>   rule, every bot decision, every payout. It is where essentially all work since
+>   June has happened.
+> - 🕳️ **`engine/policies/` and `engine/systems/` are absent entirely.** Not
+>   stale — *missing*. `evaluate.js`, `bot.js`, `legalActions.js`, `play.js`,
+>   `transition.js`, `battleFlow.js`, `turnFlow.js`, `sonicRig.js`,
+>   `economy.js`, `melodyCommit.js`, `limelight.js`, `slime.js`,
+>   `attackParams.js` — none of them appear in this file.
+> - 📊 **50 of 130 source modules are unlisted**, including all of `ui/Pickles.jsx`,
+>   `ui/OpeningMovie.jsx`, `ui/LegendLessons.jsx`, `ui/DiscordCoach.jsx`,
+>   `board/ampDecks.jsx`, `data/skillTree.js` and `music/context.js`.
+> - 🔢 **`data/gameConstants.js` is listed as "39 named constants."** It exports
+>   **96**.
+>
+> 🎯 **WHAT IS STILL TRUE, AND WHY THE FILE SURVIVES.** The `board/`, `music/`,
+> `audio/`, `riff/` and `vision/` tables are broadly accurate, and the
+> **"where do I change X?" index near the bottom is the single most useful thing
+> in the repo for a cold start** — that is the part worth rebuilding around.
+>
+> 📌 **The rows that named files which no longer exist were removed on 2026-08-21**
+> (`ampRigs.js`, `useNoteSystem.js`, `RiffBanner.jsx`, `riffLibrary.js`), so
+> the file no longer sends anyone to a path that isn't there. Nothing else was
+> touched: a partial repair that *looked* current would be more dangerous than a
+> banner saying it isn't. **Rewriting this properly is its own session** — it is
+> logged as the top item in `SEQUENCING.md` §5.E⁸.
+
 ---
 
 ## Design lenses — the STICs test + Earned
@@ -60,7 +97,7 @@ index.html
 | `audio/` | Web-Audio SFX and BGM track management. | ~240 |
 | `board/` | Board geometry, hex map, amp-rig graph, board helpers. | ~300 |
 | `data/` | Pure game data — spirits, corners, events, trivia, tuning constants. | ~2,280 |
-| `engine/` | 🎮 The multiplayer-ready game core (Phase 1 scaffold): plain-JSON `GameState`, `applyAction` reducer, seeded rng, snapshot/replay. See `MULTIPLAYER_HANDOFF.md`. | ~300 |
+| `engine/` | 🎮 **The authoritative game core — not a scaffold.** Plain-JSON `GameState`, `applyAction` reducer, seeded rng, snapshot/replay, plus `systems/` (17 rule modules) and `policies/` (the bot, the evaluator, legal actions, the headless harness). ⚠️ Almost none of it is mapped below; read the modules. See `MULTIPLAYER_HANDOFF.md` and `BOT_STRATEGY_HANDOFF.md`. | ~11,700 |
 | `hooks/` | Custom React hooks that own slices of `Game` state. | ~6 files |
 | `music/` | Music theory, riff library, cadence scoring, chord evaluation. | ~730 |
 | `riff/` | Riff generation engine (contours, rhythms, attacker/defender riffs), melody-to-riff converter (`melodyRiff.js` — Phase R1), falling-notes timing/difficulty (`fallingNotes.js`), + full-neck guitar voicing (`guitarMap.js` — Rocksmith pass). | ~540 |
@@ -182,7 +219,6 @@ preview arrows).
 | `constants.js` | `HEX_SIZE`, `SCALE`, `SVG_W`, `SVG_H` | Board image dimensions. |
 | `hexMap.js` | `HEX_BY_NUM`, `HEX_BY_QR`, `ALL_HEXES` | The 111-hex column layout + edge set. |
 | `hexGeometry.js` | `pointyCorners`, `fanGesture`, `axialDist`, `axialNeighbors`, `facingAngle`, `getFlatTopNeighborSlots`, `angleTo`, `angleDiff`, `neighborInDirection` | Pure hex math. |
-| `ampRigs.js` | `ampLinked`, `ampMstEdges`, `computeAmpRigs` | Amp connectivity graph (MST + rig grouping). |
 | `boardHelpers.js` | `cornerFacing`, `advanceTurnQueue`, `makeBoardToken`, `hexRingFromCenter`, `crowdMultiplier`, `advanceHC` | Board utility functions. |
 | `stageFx.js` | `smokeHexNums`, `hexInSmoke`, `rollLaserBeams`, `hexInBeams`, `rollPyroHexes`, `spawnAnimatronics`, `animatronicStep` | 🎇 Stage Effects geometry: smoke rings, diagonal laser lines (constant r / constant s axes), pyro rolls, animatronic chase-step. Phase 6b: the rollers take an injectable `rand` (engine passes its seeded rng); `spawnAnimatronics` takes a `keyBase` for deterministic keys. |
 | `rockGodFx.js` | `hexesWithin`, `slideLine`, `shoveAwayHex`, `nearestSpiritTo`, `freeNeighborHex` | 🤘 Rock God boss geometry: AoE rings, Power Slide line, Mosh shove, spawn displacement. |
@@ -195,7 +231,7 @@ preview arrows).
 | `styles.js` | `STYLE_DEFS`, `styleOf`, `styleDef` | 🎵 The STYLE system (replaces STANCE — `STYLE_SYSTEM_HANDOFF.md`): three Styles (Shred/Groove/Flair) that dictate how each Spirit earns Db from melody commits. No abilities, no passives, no stat mods. **Change style definitions here.** |
 | `corners.js` | `CORNERS`, `CORNER_LABELS`, `CORNERS_ORDER` | Home hexes per corner. |
 | `events.js` | `EVENT_DECK`, `EVENT_BY_ID` | The 10 event-space definitions. |
-| `gameConstants.js` | 39 named constants | All gameplay tuning: `HC_UPGRADE_THRESHOLD`, `AMP_RANGE`, `AMP_LINK_DIST`, `FAME_TO_WIN`, `LIMELIGHT_*`, `FAN_*`, `TOKEN_MAX`, etc. **Change balance numbers here.** |
+| `gameConstants.js` | 96 named constants | All gameplay tuning: `HC_UPGRADE_THRESHOLD`, `FAME_TO_WIN`, `LIMELIGHT_*`, `FAN_*`, `TOKEN_MAX`, `RIG_*`, etc. **Change balance numbers here.** ⚠️ `AMP_RANGE` and `AMP_LINK_DIST` were listed here until 2026-08-21; both died with the amp-rig graph. |
 | `trivia.js` | `TRIVIA_QUESTIONS`, `TRIVIA_REWARD`, `TRIVIA_BOT_ODDS` | Trivia event question bank. |
 | `stageEffects.js` | `STAGE_FX_THRESHOLDS`, `STAGE_FX_META`, `shuffledStageFxDeck`, `SMOKE_*`, `LASER_*`, `PYRO_*`, `ANIMATRONIC_*` | 🎇 Stage Effects meta + tuning. Fired once each at ⭐8/16/24 (any Spirit crossing), drawn from a per-game shuffled deck — no repeats. **Change Stage Effect balance here.** |
 | `rockGods.js` | `ROCK_GODS`, `ROCK_GOD_*` tuning, `pickRockGod`, `pickGodAttack`, `godTauntLine` | 🤘 The endgame boss pantheon (Bardbarian live; Feedback Warlock / Sonic Sorceress / Glam Reaper stubbed, fall back to Bardbarian). God chosen from the leader's playstyle. **Change boss balance, attack decks, and taunts here.** |
@@ -205,7 +241,6 @@ preview arrows).
 | File | Exports | Purpose |
 |------|---------|---------|
 | `notes.js` | `NOTE_POOL`, `ENHARMONIC_RESPELL`, `canonicalRoot`, `getSpelledPool`, `pitchIndex`, `semitonesUpSpelled`, `buildScale`, `semitonesUp`, `getIntervalNotes`, `getFourthFifth`, `playableScale` | Note theory, scale spelling, interval helpers. |
-| `riffLibrary.js` | `RIFF_LIBRARY`, `detectRiff` | Legendary-riff table + detection. **Add/edit riffs here.** |
 | `cadence.js` | `CADENCE_OBJECTIVES`, `cadenceHints`, `detectCadence`, scoring fns | Cadence goals + note-track scoring pipeline. |
 | `chords.js` | `evaluateChord`, `CHORD_TEMPLATES` | Chord → Drive/Sustain mapping. |
 
@@ -257,7 +292,6 @@ They are pure state containers sharing `Game`'s component instance.
 | `useBgmState.js` | `<audio>` ref, track index, mute/volume/track state. |
 | `useBoardState.js` | Amps, board cards + respawn counter, pending pickup, roadie actions. |
 | `useTransientFx.js` | Knockback slides, respawn flashes, rumble, floating damage, status VFX. |
-| `useNoteSystem.js` | `noteStates` — the core per-spirit note-track map. |
 | `useStageEffects.js` | 🎇 Stage Effects slice — Phase 6b flip: ONLY the activation banner remains; deck/fired/active effects live in `engineState.stageFx`. |
 | `useRockGod.js` | 🤘 Rock God slice — Phase 6c flip: ONLY the boss turn-clock + descent banner remain; god/outcome/summoned live in `engineState.rockGod` (ref mirrors dissolved). |
 
@@ -269,7 +303,6 @@ Each takes everything via props. They hold **no game logic**.
 |-----------|---------|
 | `GameStyles.jsx` | Global `<style>` block (CSS keyframes/classes, `.note-fly-chip` animation). No props. |
 | `GameOverOverlay.jsx` | End-of-game victory screen. |
-| `RiffBanner.jsx` | "Legendary riff detected" toast. |
 | `CadenceToast.jsx` | "Cadence resolved" toast. |
 | `BattleMeterOverlay.jsx` | Full battle/riff-off duel overlay (~1,870 lines, largest component). |
 | `RiffHighway.jsx` | Falling-notes highway for the riff-off: gems fall down neon lanes onto a scaled, tappable piano/guitar strike zone. Gem motion is a rAF loop writing transforms from the engine clock each frame — NOT CSS animations (React re-renders rewrite a running animation's delay without restarting it, which teleports gems; see file header). Renders `battleState.riffRun`; presses route to `Game.riffPressKey`. 🎸 Phase R2: accepts `showLabels` prop — when `false`, `noteGlyph` text is suppressed; sharps render as diamond-shaped gems (`rotate(45deg)`, `borderRadius:3px`), naturals stay round. Diamond shape preserved through burst animations. 🎸 Phase R3 (neon pass): outrun/synthwave visual overhaul — piano keys are transparent with cyan outlines + magenta-filled blacks; guitar strings glow cyan→magenta with violet inlay dots; highway has a scrolling perspective grid and sunset-gradient strike line (orange→magenta); gems are neon-outlined with trailing tails (CSS `::before` using `--gem-color` variable); judgment bursts: perfect=white-hot, good=cyan, ok=violet, miss=gray tumble. Palette constants: `NEON_CYAN`, `NEON_MAGENTA`, `NEON_VIOLET`, `NEON_ORANGE`, `NEON_WHITE`. Board-side `renderInstrument` mirrors the same neon treatment for visual consistency. |
@@ -307,7 +340,6 @@ Each takes everything via props. They hold **no game logic**.
 | 👂 Ear Spy — chord/key/scale detection, fret placement, riff verdict | `music/keyDetect.js` (key + palette), `music/neckPlacement.js` (notes → frets, trail, usage), `music/riffAnalysis.js` (post-phrase). The deliberate-discord judgement is `music/spice.js`, SHARED with Discord Coach — changing it changes both. `EAR_SPY_HANDOFF.md` §3 lists the bugs each ⚠️ comment guards. |
 | 👂 Ear Spy Online — send rate, wire shape, turn-taking | `net/riffWire.js` → `WIRE_DEFAULTS` + `net/earSpyLink.js` + `server/index.js` → `case "RIFF"` / `case "FLOOR"`. ⚠️ The server closes sockets over 30 msg/s; the 8 Hz coalescing throttle is what stops streaming from disconnecting players. |
 | Scales, note spelling, intervals | `music/notes.js` |
-| Legendary riffs (add/edit) | `music/riffLibrary.js` |
 | Cadence objectives | `music/cadence.js` → `CADENCE_OBJECTIVES` |
 | Melody-line scoring numbers | `music/cadence.js` (scoring fns) + `Game.confirmNoteTrack` |
 | Dissonance Edge (stage costs/payouts, Drive/Sustain deltas) | `data/gameConstants.js` → `EDGE_*` + `Game.confirmNoteTrack` (start/escalate/resolve/collapse) + `Game.edgeCombatMods` (combat read) + `Game.clearBattleBuffs` (burn-on-battle) (see `DESIGN_AUDIT_v2.md` §9) |

@@ -71,42 +71,33 @@ export const SKILL_TREE = {
           desc:'CAPSTONE — +1 STACK SLOT (6). The biggest chords in the game are yours alone, and a bigger chord is a bigger thing to land your line on. APPROACH NOTES too: any note is clean if the next one lands on a chord tone, so you can walk in from anywhere. Also brings the Major 3rd (Borrowed Chord) online in Minor.' },
       ],
     },
-    // ── THE RIG — your amp deck lives at your corner and grows (AMP_DECK_DESIGN.md §4) ──
-    {
-      id: 'electric',
-      label: 'Electric',
-      icon: '⚡',
-      color: '#ffcc44',
-      desc: 'Your rig. It lives at your corner and it only gets bigger.',
-      subChains: [
-        { id:'rig_amps', label:'🔊 Amps', skills: [
-          { id:'amp_1', label:'Amp I',  icon:'🔊', dbCost:6,  gated:true, prereq:null,
-            desc:'Your starting Main Amp — 2d6, keep highest, board-wide. Every Spirit begins wired in.' },
-          { id:'amp_2', label:'Amp II', icon:'🔊', dbCost:10, gated:true, prereq:'amp_1',
-            desc:'+1d6 (roll 3, keep highest). A second cabinet hits the stack.' },
-          { id:'amp_3', label:'Amp III',icon:'🔊', dbCost:16, gated:true, prereq:'amp_2',
-            desc:'+1d6 (roll 4, keep highest). Three stacks — the wall of sound is complete.' },
-          { id:'overcharge', label:'Overcharge', icon:'🎸', dbCost:12, gated:true, prereq:'amp_2',
-            desc:'Charge Zones no longer just spark your dice — tapping one now lets you choose: the usual charge (random die floor/ceiling boost), OR one curated Chord Stack note plus a bonus revoice to spend on it.' },
-        ]},
-        { id:'rig_power', label:'🎛️ Power', skills: [
-          { id:'power_1', label:'Power I',  icon:'🎛️', dbCost:8,  gated:true, prereq:'amp_1',
-            desc:'A real head on the stack — one of your dice becomes a d8.' },
-          { id:'power_2', label:'Power II', icon:'🎛️', dbCost:12, gated:true, prereq:['power_1','amp_2'],
-            desc:'A second die becomes a d8.' },
-          { id:'power_3', label:'Power III',icon:'🎛️', dbCost:16, gated:true, prereq:['power_2','amp_3'],
-            desc:'Three d8s in the pool — maximum wattage.' },
-        ]},
-        { id:'rig_range', label:'📡 Range', skills: [
-          { id:'range_1', label:'Range I',  icon:'📡', dbCost:6,  gated:true, prereq:null,
-            desc:'Full rig reaches 4 hexes from home.' },
-          { id:'range_2', label:'Range II', icon:'📡', dbCost:10, gated:true, prereq:'range_1',
-            desc:'Full rig reaches 7 hexes — the Limelight is inside your field.' },
-          { id:'range_3', label:'Range III',icon:'📡', dbCost:14, gated:true, prereq:'range_2',
-            desc:'Fully wired. The whole venue is your stage.' },
-        ]},
-      ],
-    },
+    // ── 🛑 THE RIG BRANCH IS GONE (2026-08-20) ──────────────────────────────
+    //
+    // There was an `electric` route here: Amp I–III, Power I–III, Range I–III and
+    // Overcharge — 110 Db, the single largest sink in the game, against 52 for
+    // the whole Theory route.
+    //
+    // ⚠️ IT IS DELETED RATHER THAN DEPRECATED, and anything still asking for
+    // `amp_*`, `power_*` or `range_*` must now fail loudly instead of quietly
+    // buying nothing. The rig is not a purchase any more:
+    //
+    //   pool size + die size → won at the marquee quiz's RIG lane, spent at the
+    //                          card, shed by atrophy (MARQUEE_QUIZ_DESIGN.md §4–§5)
+    //   radius               → `RIG_RADIUS_FLOOR + stack length`, breathing with
+    //                          Drive on your turn and Sustain on theirs (§5.H⁶)
+    //
+    // 📌 AND THE Db HOLE IS REAL AND DELIBERATE (design doc §7). Removing the
+    // biggest sink in the game leaves Db piling up against a tree that cannot
+    // absorb it. Alex's answer is to grow the ABILITY tree so a character's kit
+    // develops over a match; that work does not exist yet. Until it does, expect
+    // Db inflation and do not read a bench's Db numbers as a verdict on anything.
+    //
+    // ⚡ Overcharge went with it, by decision rather than by accident: it was the
+    // Charge Zone's choose-your-payoff modal, gated behind Amp II. With the amps
+    // gone it had no gate left, and a free 12 Db upgrade reachable on turn two is
+    // a different skill from the one that was designed. Tapping a zone now always
+    // takes the ordinary 50/50 spark — which is also what the headless path has
+    // always done, so the client and the engine agree for the first time.
     // ── SIGNATURE ARSENALS — one compact route per Spirit (hidden from the others) ──
     {
       id: 'shredding_ronin',

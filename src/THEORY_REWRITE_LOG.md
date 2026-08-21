@@ -1,4 +1,26 @@
-# PENDING CHANGES — Chord Strength + Theory Tree Redesign (v2)
+# The Chord Strength + Theory Tree rewrite — IMPLEMENTATION LOG
+
+> 🪦 **NOTHING IN THIS FILE IS PENDING.** It was called `PENDING_CHANGES.md` for
+> months after the last of it shipped, at the root of the repo, 1,485 lines long,
+> where every new session read it as a work queue. It is not one. Every task it
+> names is ✅ SHIPPED, ⏹️ SHIPPED-THEN-REVERSED, or ⏹️ RETIRED — Task C in full.
+> Renamed and moved next to the other design docs on 2026-08-21.
+>
+> 🎯 **WHAT IT IS STILL FOR.** Six load-bearing comments in live code cite its task
+> ids as their reason-why — `gameConstants.js` (B0b), `cadence.js` (B2),
+> `chords.js` (Task A), `context.js` (B3), `b0check.mjs`, and the monolith's
+> Db arithmetic. That provenance is the whole value: it records *why* the numbers
+> are what they are, which is exactly what a future session cannot re-derive from
+> the code. Read it as history, never as instructions.
+>
+> ⚠️ **THE OPEN DESIGN QUESTIONS MOVED OUT.** The old "Unresolved before
+> implementation" list at the bottom held five questions that are still genuinely
+> open. They now live in `SEQUENCING.md` §5.E⁸ where the live map is. They are
+> kept below as well, in their original wording, because the reasoning around
+> them is the record — but SEQUENCING is the one that gets updated.
+
+## The original v2 header
+
 
 Supersedes the v1 draft. v1's Task B has been replaced wholesale: the tree no longer
 hands out a scatter of flat +1s, it sells one idea across five tiers.
@@ -1296,25 +1318,28 @@ still broken on main (pre-existing `.png` import chain in `data/spirits.js`); fo
 `b0check` into `selftest.mjs` once that's fixed. Its stale init-sheet block was
 corrected in passing anyway — it still asserted B0a's removed power-chord seed.
 
-### ⚠️ RUN `node src/engine/importcheck.mjs` AFTER ANY PASS THAT DELETES AN EXPORT
+### 🪦 THIS SECTION USED TO ORDER YOU TO RUN `importcheck.mjs`. THE TOOL IS GONE.
 
-The simplification pass shipped a **broken build** that every other check passed.
-Removing four exports from `music/cadence.js` left a second, forgotten import of
-`detectResolvedDiscords` in the simulator. `b0check` was green at 53 groups.
-`esbuild --loader:.jsx=jsx --bundle=false` was green too — **because it parses each
-file in isolation and never resolves a cross-module import.** Only `npm run build` on
-Windows caught it.
+It was written after a broken build that every other check passed: a refactor
+deleted four exports from `music/cadence.js`, a second forgotten import of
+`detectResolvedDiscords` survived in the simulator, and `b0check` was green at 53
+groups while `esbuild --bundle=false` was green too — **because it parses each file
+in isolation and never resolves a cross-module import.**
 
-`src/engine/importcheck.mjs` closes that gap: it resolves every static import in
-`src/` and exits 1 if a named import doesn't match a real export. It is not a
-substitute for `npm run build` — no typecheck, no plugins, no dynamic imports — but
-it catches the one class of error that deleting code reliably produces, and it runs
-where `vite` cannot.
+⚠️ **THE GAP IS REAL AND IS NOW CLOSED BY `npm run check:bundle`**, which runs a
+genuine esbuild *bundle* and therefore does resolve every static cross-module
+import. `importcheck.mjs` was deleted on 2026-08-21 because its own parser had
+rotted past usefulness: it could not read `export function*` or a multi-line
+import list containing comments, so it reported **17 dangling imports, all 17
+false**, including `poseConsequences` — which is exported, on line 408 of
+`battleFlow.js`, and called in production every time somebody strikes a pose. A
+checker that cries wolf on every run gets ignored, and an ignored checker is worse
+than no checker.
 
-It also found a **latent deploy break unrelated to this work**: `App.jsx` imported
-`./rlsw-simulator-V3_8_1` (capital V) for a file that is, in git and on disk,
-`rlsw-simulator-v3_8_1.jsx`. Windows resolves that; **Render builds on Linux, which
-does not.** Fixed, and the checker now reports casing mismatches as errors.
+📌 One true finding of its is worth keeping, because the class of bug repeats:
+`App.jsx` once imported `./rlsw-simulator-V3_8_1` with a capital V for a file
+that is lowercase on disk. **Windows resolves that; Render builds on Linux, which
+does not.** `check:bundle` catches it for the same reason it catches the rest.
 
 ⚠️ **`vite build` cannot be verified in the Linux sandbox** — loading the `vite`
 module there dies with a bus error before any transform runs, so this pass was

@@ -2105,13 +2105,440 @@ export const TRIVIA_QUESTIONS = [
     "options": ["Monterey Pop", "Woodstock", "Isle of Wight", "Altamont"],
     "answer": 1,
     "sauce": "Carlos Santana has said he played that hypnotic 'Soul Sacrifice' set while tripping, fighting to keep his guitar neck from turning into a snake. His drummer, barely out of his teens, stole the film.",
+  },
+  // ─── 🎛️ THE RIG LANE TOP-UP, 2026-08-20 ────────────────────────────────────
+  // MARQUEE_QUIZ_DESIGN.md §2.1 counted the buckets and found the design's own
+  // blocker: splitting these questions by LANE × DIFFICULTY left RIG × easy
+  // holding SEVEN cards, against 65 CROWD mediums. A player who picks "the safe
+  // answer in the lane I actually want" — a perfectly reasonable habit — would
+  // see a repeat inside two games, and under the rig workout that same lane is
+  // the ONLY source of pool and power. A thin bucket is a broken economy, not a
+  // content nit.
+  //
+  // These twenty are weighted 14 easy / 6 medium, because easy is where the
+  // hole was. They keep the house rule: the `sauce` is the payoff, and it pays
+  // out whether or not the answer was right.
+  {
+    "id": "rig_01",
+    "difficulty": "easy",
+    "era": "Theory, Gear & Studio Lore",
+    "topic": "tuning",
+    "question": "Standard tuning on a six-string guitar, lowest string to highest, is which of these?",
+    "options": [
+      "E A D G B E",
+      "E A D G C F",
+      "D G C F A D",
+      "C G D A E B"
+    ],
+    "answer": 0,
+    "sauce": "The odd one out is that B — every other gap is a fourth, and that single major third is why chord shapes stop being symmetrical and guitarists develop opinions."
+  },
+  {
+    "id": "rig_02",
+    "difficulty": "easy",
+    "era": "Theory, Gear & Studio Lore",
+    "topic": "theory",
+    "question": "A power chord — the backbone of punk and metal — is built from the root plus which interval?",
+    "options": [
+      "The fifth",
+      "The third",
+      "The seventh",
+      "The second"
+    ],
+    "answer": 0,
+    "sauce": "No third means no major and no minor: a power chord is quality-AMBIGUOUS, which is exactly why it sits under any riff without picking a mood. Your Drive Stack knows the feeling."
+  },
+  {
+    "id": "rig_03",
+    "difficulty": "easy",
+    "era": "Amps, Effects & Studio Gear",
+    "topic": "amps",
+    "question": "\"Amp\" is short for which word?",
+    "options": [
+      "Amplifier",
+      "Amplitude",
+      "Ampere",
+      "Ampersand"
+    ],
+    "answer": 0,
+    "sauce": "It takes a signal too weak to hear and makes it loud enough to move air — and, if you ask it nicely and stand close, loud enough to move the guitar too. That last part is feedback."
+  },
+  {
+    "id": "rig_04",
+    "difficulty": "easy",
+    "era": "Amps, Effects & Studio Gear",
+    "topic": "effects",
+    "question": "Which pedal effect gives a guitar that vocal, crying sweep — famously rocked with the foot?",
+    "options": [
+      "Wah-wah",
+      "Chorus",
+      "Delay",
+      "Compressor"
+    ],
+    "answer": 0,
+    "sauce": "It is a filter you steer with your ankle: rock the treadle and a peak in the tone sweeps up and down, which the human ear hears as a voice saying a vowel."
+  },
+  {
+    "id": "rig_05",
+    "difficulty": "easy",
+    "era": "Iconic Guitars & Their Players",
+    "topic": "guitars",
+    "question": "The Les Paul is the flagship solid-body of which guitar company?",
+    "options": [
+      "Gibson",
+      "Fender",
+      "Gretsch",
+      "Rickenbacker"
+    ],
+    "answer": 0,
+    "sauce": "Les Paul was a real player and inventor who lent his name to it — and who also pioneered multitrack recording, so he is arguably responsible for the guitar AND for the studio you overdub it in."
+  },
+  {
+    "id": "rig_06",
+    "difficulty": "easy",
+    "era": "Iconic Guitars & Their Players",
+    "topic": "guitars",
+    "question": "Jimi Hendrix famously played a right-handed Fender Stratocaster in what way?",
+    "options": [
+      "Flipped upside down and restrung for his left hand",
+      "Tuned to open G with a slide",
+      "With the neck detached",
+      "Strung with bass strings"
+    ],
+    "answer": 0,
+    "sauce": "Flipping it moved the controls and the angled pickup, which changed the tone as well as the ergonomics — part of that sound is literally a right-handed guitar being played wrong."
+  },
+  {
+    "id": "rig_07",
+    "difficulty": "easy",
+    "era": "Theory, Gear & Studio Lore",
+    "topic": "instruments",
+    "question": "How many strings does a standard bass guitar have?",
+    "options": [
+      "Four",
+      "Five",
+      "Six",
+      "Eight"
+    ],
+    "answer": 0,
+    "sauce": "Tuned E A D G — the bottom four of a guitar, an octave down. Five- and six-string basses exist and mostly add a low B, which is the note that makes PA speakers file a complaint."
+  },
+  {
+    "id": "rig_08",
+    "difficulty": "easy",
+    "era": "Theory, Gear & Studio Lore",
+    "topic": "theory",
+    "question": "A time signature of 4/4 means how many beats in a bar?",
+    "options": [
+      "Four",
+      "Three",
+      "Six",
+      "Two"
+    ],
+    "answer": 0,
+    "sauce": "So common it is written as C for \"common time\". Almost everything you can nod your head to is in it, which is why the songs that are NOT stand out so violently."
+  },
+  {
+    "id": "rig_09",
+    "difficulty": "easy",
+    "era": "Theory, Gear & Studio Lore",
+    "topic": "instruments",
+    "question": "How many keys does a standard full-size piano have?",
+    "options": [
+      "88",
+      "72",
+      "96",
+      "64"
+    ],
+    "answer": 0,
+    "sauce": "Fifty-two white and thirty-six black, spanning a bit over seven octaves — the range settled where it did because past either end the strings stop sounding like notes and start sounding like noise."
+  },
+  {
+    "id": "rig_10",
+    "difficulty": "easy",
+    "era": "Amps, Effects & Studio Gear",
+    "topic": "effects",
+    "question": "What is a reverb effect simulating?",
+    "options": [
+      "The sound of a space — a room, a hall, a cathedral",
+      "A doubled vocal",
+      "A faster tempo",
+      "A detuned string"
+    ],
+    "answer": 0,
+    "sauce": "Before it was a plugin it was a physical fact: engineers put speakers in stairwells, chambers and even tiled bathrooms, played the track in and recorded the room answering back."
+  },
+  {
+    "id": "rig_11",
+    "difficulty": "easy",
+    "era": "Amps, Effects & Studio Gear",
+    "topic": "technique",
+    "question": "In a standard drum kit, which pair of cymbals is opened and closed with a foot pedal?",
+    "options": [
+      "The hi-hat",
+      "The ride",
+      "The crash",
+      "The splash"
+    ],
+    "answer": 0,
+    "sauce": "Closed it ticks, open it sizzles, and the moment a drummer lets it breathe on the chorus is one of the oldest tricks for making a song feel like it just got bigger."
+  },
+  {
+    "id": "rig_12",
+    "difficulty": "easy",
+    "era": "Theory, Gear & Studio Lore",
+    "topic": "technique",
+    "question": "Play the twelfth fret of a guitar string instead of letting it ring open. What have you done to the pitch?",
+    "options": [
+      "Raised it exactly one octave",
+      "Raised it a fifth",
+      "Lowered it an octave",
+      "Nothing — it is the same note"
+    ],
+    "answer": 0,
+    "sauce": "Halve the length of a vibrating string and you double its frequency. The twelfth fret is the exact midpoint, which is why that is where the big dot marker lives."
+  },
+  {
+    "id": "rig_13",
+    "difficulty": "easy",
+    "era": "Theory, Gear & Studio Lore",
+    "topic": "gear",
+    "question": "What does a capo do when clamped across a guitar's neck?",
+    "options": [
+      "Raises the pitch of every string by shortening them",
+      "Lowers the tuning by a whole step",
+      "Mutes the low strings",
+      "Holds the strings down for barre chords only"
+    ],
+    "answer": 0,
+    "sauce": "It is a movable nut. Singers love it because it moves the KEY without moving the shapes — the same three chords, somewhere your voice can actually live."
+  },
+  {
+    "id": "rig_14",
+    "difficulty": "easy",
+    "era": "Amps, Effects & Studio Gear",
+    "topic": "studio",
+    "question": "What does DAW stand for in a modern studio?",
+    "options": [
+      "Digital Audio Workstation",
+      "Direct Amplified Wave",
+      "Dynamic Analogue Wiring",
+      "Doubled Audio Waveform"
+    ],
+    "answer": 0,
+    "sauce": "The reason a bedroom can out-spec a 1970s console room. The catch is that unlimited takes and unlimited undo removed the one thing tape gave you for free: a reason to commit."
+  },
+  {
+    "id": "rig_15",
+    "difficulty": "medium",
+    "era": "Amps, Effects & Studio Gear",
+    "topic": "amps",
+    "question": "Which amplifier maker's \"Plexi\" heads defined the roar of late-60s British rock?",
+    "options": [
+      "Marshall",
+      "Vox",
+      "Orange",
+      "Ampeg"
+    ],
+    "answer": 0,
+    "sauce": "Named for the Plexiglas panel on the front. The sound is an amp being asked for more than it can politely give — the distortion everyone chases was originally a fault."
+  },
+  {
+    "id": "rig_16",
+    "difficulty": "medium",
+    "era": "Theory, Gear & Studio Lore",
+    "topic": "tuning",
+    "question": "Drop D tuning drops which string, and by how much?",
+    "options": [
+      "The low E, down a whole step to D",
+      "The high E, down a semitone",
+      "The A string, down to G",
+      "All six, down a semitone"
+    ],
+    "answer": 0,
+    "sauce": "It puts a one-finger power chord under your index and hands you a low D the guitar did not have. Cheap, instant heaviness — which is why half of the 1990s is in it."
+  },
+  {
+    "id": "rig_17",
+    "difficulty": "medium",
+    "era": "Iconic Guitars & Their Players",
+    "topic": "guitars",
+    "question": "The humbucking pickup, designed at Gibson in the 1950s, was invented to cancel what?",
+    "options": [
+      "Electrical hum picked up from the mains",
+      "String buzz against the frets",
+      "Feedback from the amplifier",
+      "Finger noise on wound strings"
+    ],
+    "answer": 0,
+    "sauce": "Two coils wired out of phase with opposite magnets: the hum arrives at both the same way and cancels, the string signal does not. Fatter tone was a side effect that ate the world."
+  },
+  {
+    "id": "rig_18",
+    "difficulty": "medium",
+    "era": "Amps, Effects & Studio Gear",
+    "topic": "drum machines",
+    "question": "The Roland TR-808 sold poorly on release, then became one of the most sampled machines ever. What is its signature sound?",
+    "options": [
+      "A long, booming, tuneable kick drum",
+      "A realistic acoustic snare",
+      "A sampled orchestral hit",
+      "A vinyl crackle loop"
+    ],
+    "answer": 0,
+    "sauce": "It struggled because it did not sound like a real kit. Hip-hop and electro heard a machine that sounded like ITSELF, and that kick has been rattling car boots ever since."
+  },
+  {
+    "id": "rig_19",
+    "difficulty": "medium",
+    "era": "Amps, Effects & Studio Gear",
+    "topic": "studio",
+    "question": "What does a compressor do to a signal?",
+    "options": [
+      "Narrows the gap between loud and quiet",
+      "Removes unwanted frequencies",
+      "Adds an echo",
+      "Shifts the pitch"
+    ],
+    "answer": 0,
+    "sauce": "Turn the loud bits down, then turn the whole thing up: the quiet detail rises and the track feels louder without peaking. Overdo it and the life goes out of the performance."
+  },
+  {
+    "id": "rig_20",
+    "difficulty": "medium",
+    "era": "Theory, Gear & Studio Lore",
+    "topic": "theory",
+    "question": "Two notes an octave apart share a name — A and A — because the higher one vibrates at what rate?",
+    "options": [
+      "Exactly twice the frequency",
+      "Exactly half the frequency",
+      "One and a half times",
+      "Twelve times"
+    ],
+    "answer": 0,
+    "sauce": "The simplest ratio in music, 2:1, and the one every tuning system on earth agrees about. Everything else — fifths, thirds, the tritone your game pays you for — is an argument about how to fill it in."
   }
 ];
 
 export const TRIVIA_BY_ID = Object.fromEntries(TRIVIA_QUESTIONS.map(q => [q.id, q]));
 
-// Fans granted for a correct answer, by difficulty.
+// ─── 🎪 THE TWO LANES (MARQUEE_QUIZ_DESIGN.md §2) ────────────────────────────
+//
+// Landing on a marquee no longer draws a question — it opens a CARD, and the
+// player picks a lane and a difficulty before seeing anything.
+//
+//   🎤 CROWD — lore, scandal, legend, records, live moments → pays FANS
+//   🎛️ RIG   — theory, gear, guitars, amps, studio, technique → pays RIG TIERS
+//
+// 🎯 THE FICTION DOES THE WORK, and it is the rule this file already had:
+// knowing the lore is crowd cred, knowing the gear is musicianship. The header
+// of this file has said that since trivia replaced the dice-roll event deck.
+//
+// ⚠️ THE CLASSIFIER IS DERIVED, NOT HAND-TAGGED, and that is deliberate: 200
+// questions with a `lane` field typed in by hand is 200 chances to typo one
+// into the wrong economy. Three eras ARE the rig lane; on top of that a handful
+// of `topic` values pull gear questions out of the decade eras, where they were
+// always filed by decade rather than by subject.
+export const RIG_ERAS = new Set([
+  'Theory, Gear & Studio Lore',
+  'Iconic Guitars & Their Players',
+  'Amps, Effects & Studio Gear',
+]);
+export const RIG_TOPICS = new Set([
+  'gear', 'tuning', 'studio', 'technique', 'effects', 'theory', 'instruments',
+  'guitars', 'bass', 'amps', 'synths', 'drum machines', 'samplers', 'keys',
+  'production', 'tech', 'sampling', 'innovators',
+]);
+
+/** Which lane does a question belong to? 'rig' | 'crowd'. */
+export function triviaLane(q) {
+  return (RIG_ERAS.has(q?.era) || RIG_TOPICS.has(q?.topic)) ? 'rig' : 'crowd';
+}
+
+export const TRIVIA_LANES       = ['crowd', 'rig'];
+export const TRIVIA_DIFFICULTIES = ['easy', 'medium', 'hard'];
+
+/** `lane:difficulty` → the question ids in that bucket. Built once, at import. */
+export const TRIVIA_BUCKETS = (() => {
+  const out = {};
+  for (const lane of TRIVIA_LANES) for (const d of TRIVIA_DIFFICULTIES) out[`${lane}:${d}`] = [];
+  for (const q of TRIVIA_QUESTIONS) {
+    const key = `${triviaLane(q)}:${q.difficulty}`;
+    if (out[key]) out[key].push(q.id);
+  }
+  return out;
+})();
+
+export const triviaBucketKey = (lane, difficulty) => `${lane}:${difficulty}`;
+
+/**
+ * Draw a question from ONE bucket, without repeats until that bucket is spent.
+ *
+ * ⚠️ PER-BUCKET EXHAUSTION, NOT GLOBAL — and the old behaviour was a real bug
+ * waiting for this feature. `pickTrivia` used to clear the used-set only when
+ * all 180 questions were gone, so a starved bucket had no way to recycle on its
+ * own: a player who kept picking the same lane and difficulty would run it dry
+ * and then be stuck while sixty cards in another bucket sat untouched.
+ * Resetting per bucket means each combination recycles on its own clock, which
+ * is the only version that survives a player having a favourite.
+ *
+ * ⚠️ AND IT IS PURE, TAKING AND RETURNING AN ARRAY, because `used` lives in
+ * ENGINE STATE now (`board.usedTrivia`) rather than in a React ref. A ref could
+ * not be serialized, could not be replayed, and could not be shared with the
+ * headless path — which since 2026-08-20 draws these questions too.
+ *
+ * @param {number} rngVal   pre-drawn [0,1) engine rng value — determinism (§6)
+ * @param {string} lane     'crowd' | 'rig'
+ * @param {string} difficulty 'easy' | 'medium' | 'hard'
+ * @param {string[]} used   ids already drawn this match
+ * @returns {{ q: object|null, used: string[] }} the question and the next used list
+ */
+export function drawTrivia(rngVal, lane, difficulty, used = []) {
+  const ids = TRIVIA_BUCKETS[triviaBucketKey(lane, difficulty)];
+  if (!ids || ids.length === 0) return { q: null, used };
+  let nextUsed = used;
+  let avail = ids.filter(id => !used.includes(id));
+  if (avail.length === 0) {
+    nextUsed = used.filter(id => !ids.includes(id));   // this bucket alone recycles
+    avail = ids;
+  }
+  const id = avail[Math.min(avail.length - 1, Math.floor(rngVal * avail.length))];
+  return { q: TRIVIA_BY_ID[id] ?? null, used: [...nextUsed, id] };
+}
+
+// Fans granted for a correct answer in the 🎤 CROWD lane, by difficulty.
 export const TRIVIA_REWARD = { easy: 2, medium: 3, hard: 4 };
 
+// 🎛️ Rig tiers granted for a correct answer in the RIG lane, by difficulty
+// (MARQUEE_QUIZ_DESIGN.md §4). Each tier is spent at the card on POOL (one more
+// die) or POWER (one die upgraded d6 → d8).
+export const TRIVIA_TIER_GRANT = { easy: 1, medium: 2, hard: 3 };
+
 // AI opponents can't 'know' trivia — fair fixed odds of a correct answer, by difficulty.
+//
+// ⚠️ THIS IS NOW A TOP-LEVEL DIFFICULTY DIAL, NOT FLAVOUR (§6). It used to
+// govern a small side payout in fans. Under the rig workout it governs HOW LOUD
+// EVERY BOT IN THE GAME IS, for the whole match — pool size and die size both
+// come through this table. Whoever tunes it next is tuning bot strength.
 export const TRIVIA_BOT_ODDS = { easy: 0.7, medium: 0.5, hard: 0.35 };
+
+/**
+ * 🤖 What a bot should pick at the card, by expected value — and both answers
+ * fall straight out of the two tables above, which is the pleasant surprise in
+ * §6. A bot taking the correct one is neither cheating nor stupid.
+ *
+ *   CROWD fans:  0.7×2 = 1.40 · 0.5×3 = 1.50 · 0.35×4 = 1.40  → MEDIUM
+ *   RIG tiers:   0.7×1 = 0.70 · 0.5×2 = 1.00 · 0.35×3 = 1.05  → HARD
+ *
+ * The two lanes genuinely disagree about how much risk is worth taking, which
+ * is exactly the decision the card is supposed to be asking a human.
+ */
+export function bestTriviaDifficulty(lane) {
+  const table = lane === 'rig' ? TRIVIA_TIER_GRANT : TRIVIA_REWARD;
+  let best = 'easy', bestEv = -Infinity;
+  for (const d of TRIVIA_DIFFICULTIES) {
+    const ev = (TRIVIA_BOT_ODDS[d] ?? 0) * (table[d] ?? 0);
+    if (ev > bestEv) { bestEv = ev; best = d; }
+  }
+  return best;
+}

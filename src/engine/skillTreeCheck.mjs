@@ -34,7 +34,17 @@ const allSkills = () => Object.values(SKILL_BY_ID);
 // ═════════════════════════════════════════════════════════════════════════════
 {
   ok(SKILL_TREE.routes.length >= 4, 'the tree has its routes');
-  ok(allSkills().length >= 20, `the flat lookup found them all (${allSkills().length})`);
+
+  // 🎯 THE FLAT LOOKUP HOLDS EXACTLY WHAT THE ROUTES DECLARE — derived, not a
+  // magic number. This used to assert `>= 20`, which is the kind of threshold
+  // that passes for years and then fails for the wrong reason: when the rig
+  // branch was deleted on 2026-08-20 the count fell from 28 to 18 and this line
+  // failed, reporting "the flat lookup found them all" about a lookup that had in
+  // fact found them all. Counting the source is the assertion that was meant.
+  const declared = SKILL_TREE.routes.flatMap(r =>
+    [...(r.skills ?? []), ...(r.subChains ?? []).flatMap(c => c.skills ?? [])]);
+  eq(allSkills().length, declared.length,
+     `the flat lookup found every skill the routes declare (${declared.length})`);
 
   for (const sk of allSkills()) {
     ok(typeof sk.id === 'string' && sk.id, 'every skill has an id');
@@ -106,11 +116,13 @@ const allSkills = () => Object.values(SKILL_BY_ID);
   eq(gate(tentacle, RONIN), false, '⚠️ …and nobody else may');
   eq(gate(SKILL_BY_ID.blaster_of_ra, RONIN), false, 'nor may the Ronin take the Blaster');
   eq(gate(SKILL_BY_ID.blaster_of_ra, ZERO), true, 'its owner may');
-  eq(gate(SKILL_BY_ID.amp_2, RONIN, ['amp_1']), true, 'shared rungs stay shared');
-  eq(gate(SKILL_BY_ID.amp_2, MM, ['amp_1']), true, '…for everyone');
-  eq(gate(SKILL_BY_ID.amp_2, RONIN, []).valueOf(), false,
+  // 📌 The shared-rung arm used `amp_2` until 2026-08-20. The rig branch is gone,
+  //    so the shared ladder in the game is Theory — same assertion, live data.
+  eq(gate(SKILL_BY_ID.theory_minor, RONIN, ['theory_major']), true, 'shared rungs stay shared');
+  eq(gate(SKILL_BY_ID.theory_minor, MM, ['theory_major']), true, '…for everyone');
+  eq(gate(SKILL_BY_ID.theory_minor, RONIN, []).valueOf(), false,
      '…and an unmet prereq still blocks it, which is a DIFFERENT refusal from ownership');
-  eq(skillEligibility(SKILL_BY_ID.amp_2, [], { ownerRoute: null, selfId: RONIN }).reason, 'prereq',
+  eq(skillEligibility(SKILL_BY_ID.theory_minor, [], { ownerRoute: null, selfId: RONIN }).reason, 'prereq',
      'the rule names which of the two refused');
   eq(skillEligibility(tentacle, [], { ownerRoute: tentacle.spiritOnly, selfId: RONIN }).reason, 'owner',
      '⚠️ …and ownership refuses by NAME, so a future bug here is legible rather than silent');
@@ -151,18 +163,32 @@ const allSkills = () => Object.values(SKILL_BY_ID);
      '⚠️ THE REGRESSION: the Ronin is NOT offered the Tentacle — this gate read an always-undefined field until the tree was extracted');
   ok(!toRonin.has('goes_to_11'), '…nor the dial');
   ok(!toMonster.has('blaster_of_ra'), '…and the Monster is not offered the Blaster');
-  ok(toRonin.has('amp_2') && toMonster.has('amp_2'), 'shared rungs are offered to both');
+  ok(toRonin.has('theory_major') && toMonster.has('theory_major'), 'shared rungs are offered to both');
   ok(toRonin.has('psycho_bushido'), 'and each Spirit IS offered their own exclusive route');
   ok(toMonster.has('goes_to_11') && toMonster.has('master_moshpits'),
      '…including the Monster\'s whole rework, which is the point of the extraction');
   ok(!toMonster.has('psycho_bushido'), 'the Monster is not offered the Ronin\'s route either — the gate cuts both ways');
 
-  // 📌 `amp_1` is offered to NOBODY, and that is right rather than a gap: every
-  // Spirit starts wired in, so it is already in `unlockedSkills` and
-  // `skillEligibility` returns `already`. Worth pinning, because "shared rung
-  // missing from the list" is otherwise indistinguishable from a broken gate.
-  ok(!toRonin.has('amp_1') && !toMonster.has('amp_1'),
-     'amp_1 is offered to nobody — everyone already owns it, which is not the same as being blocked');
+  // 📌 A rung a Spirit ALREADY OWNS is offered to nobody, which is right rather
+  // than a gap — `skillEligibility` returns `already`. This used to be pinned on
+  // `amp_1` (granted to everyone at setup); the rig branch is gone, so it is
+  // pinned on the Ronin's free `theory_minor` instead. Worth keeping, because
+  // "rung missing from the list" is otherwise indistinguishable from a broken
+  // gate.
+  ok(!toRonin.has('theory_minor'),
+     'the Ronin is not offered `theory_minor` — he was born with it, which is not the same as being blocked');
+  ok(toMonster.has('theory_major'),
+     '…while the Monster, who was born with nothing, is offered the root of the ladder');
+
+  // 🛑 AND NOTHING FROM THE DELETED RIG BRANCH IS OFFERED TO ANYBODY. This is the
+  // assertion that would have caught a half-finished deletion: the ids are gone
+  // from the tree, so the family cannot emit them, so no Spirit can aim Db at a
+  // rung that does nothing.
+  for (const dead of ['amp_1', 'amp_2', 'amp_3', 'power_1', 'power_2', 'power_3',
+                      'range_1', 'range_2', 'range_3', 'overcharge']) {
+    ok(!toRonin.has(dead) && !toMonster.has(dead) && !SKILL_BY_ID[dead],
+       `🛑 ${dead} is gone from the tree — the rig is trained at the marquee, not bought`);
+  }
 
   // 📌 And the family really is ABSENT without a tree — §6a's rule, which is
   // what made both holes invisible for so long.
