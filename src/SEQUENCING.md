@@ -199,7 +199,59 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. 🧭 START HERE — session handoff, 2026-08-22 (design only)
+## 5. 🧭 START HERE — session handoff, 2026-08-22b (the Ronin foundation)
+
+> ⏸️ **THREE ARMS WENT ON HOLD, AND THE REASON IS THE SAME ONE EACH TIME.** Alex:
+> *"To design a bot around a game that is in flux seems like a fool's errand."*
+> **Bot strategy on hold. Metalness on hold** (he is unsatisfied with the character
+> and will rethink it). **Theory-off-the-ladder on hold** too. ⚠️ Do not spend a
+> session on any of the three — including "while I'm here" cooldown/Db passes over
+> Metalness's four skills, which is work thrown away if the kit changes.
+>
+> 📌 **Amps ARE already off the ladder** (confirmed — only tombstone comments left in
+> `sonicRig.js`, `economy.js`, `evaluate.js`). **Theory is NOT**: the `theory` route
+> still has all five rungs, and ⚠️ **its capstone is what sells the 6th stack slot**,
+> so the slot upgrades need a new home before theory can move. Stacks stay upgradeable
+> either way; each Spirit getting its own melody theory is the eventual shape.
+>
+> ✅ **SHIPPED: THE COOLDOWN SYSTEM, AND IT IS THE HEADLINE.** `engine/systems/cooldowns.js`
+> — one map on the sheet (`ns.abilityCd`), one tick in `turnFlow`, one gate (`canFire`),
+> one charge (`firePatch`). It replaces `psychoBushidoCd`, **which was the only cooldown
+> in the entire game.** 🎯 The reason that number was 1 and not 13 is structural: a named
+> `<x>Cd` field needs four separate edits before it exists, and at four edits a time
+> nobody finishes. Giving the remaining nine abilities a cooldown is now a data edit.
+>
+> ✅ **AND RONIN'S THREE ACTIVES NOW PAY.** Bushido 1 Db / 2 rounds, Shadow 2 Db / 3
+> rounds, Shamisen 2 Db / 3 rounds. **7 of 13 abilities pay Db, 3 of 13 are cooled** —
+> up from 5 and 1. ⏸️ Wa no Koe was skipped on purpose: it is a passive with no moment
+> of use to charge, and it is being replaced outright, so pricing it is work thrown
+> away twice.
+>
+> ✅ **SHADOW ILLUSION'S COST CHANGED SHAPE**: 1 Drive token at summon → 2 Db plus
+> **1 Sustain every turn it stands**, and it **starves** if he cannot feed it. A token is
+> a price you pay once and forget; a drain is a clock you can hear running.
+>
+> 🎯 **SUITES — three counts moved and ALL THREE WENT UP.** Baseline §5.F⁸.
+> **turnFlow 61 → 73** (mine, deliberate: one assertion about a field became three about
+> the mechanism, plus ten for the drain). **harness 1659 → 1663, trace 1831 → 1834** —
+> also mine, and **bisected to prove it**: HEAD alone gives 1659/1831. Both suites assert
+> over the decisions a seeded match actually produces, so a Ronin who cannot always afford
+> Bushido plays a different game and a few more decision points get asserted. Everything
+> else identical. `check:bundle` **0 warnings.**
+>
+> 🐛 **AND THE REPO HAS A STALE `.git/index.lock`.** It is why `git stash` and
+> `git checkout --` fail *silently* in the agent shell — no message, exit 128, no stash
+> created. Nothing is wrong with the history; delete the file from a normal terminal.
+> The agent shell cannot unlink, which is also why one-off probe files are quarantined in
+> `_to_delete/baseline-probe-20260822/` rather than removed.
+>
+> ⏳ **STILL DESIGN ONLY:** Cursed Shamisen's rework (the ♭3→2→1→♭6→5 feeding sequence,
+> dropping the minor-key gate) and the Wa no Koe replacement. `RONIN_ABILITY_DESIGN.md`
+> §7 records what shipped; §8 has the order for the rest.
+
+---
+
+## 5-aug22a. 🧭 session handoff, 2026-08-22 (design only)
 
 > 📐 **NO CODE WAS TOUCHED.** Alex's call this session was to lock the design and write it
 > down, not to build it — the tree is still carrying two sessions of uncommitted work

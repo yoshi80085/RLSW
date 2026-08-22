@@ -290,8 +290,14 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     roadies:         [],
     bankedNote:      null,
     knockStreak:     0,
+    // 🕒 ABILITY COOLDOWNS — `{ [skillId]: roundsLeft }`, ticked once per OWNER
+    // turn in `turnFlow`. See `engine/systems/cooldowns.js`.
+    // ⚠️ THIS REPLACED `psychoBushidoCd` ON 2026-08-22, which was the only
+    // cooldown the game had. If you find a `psychoBushidoCd` read anywhere, it
+    // is a leftover reading `undefined` — i.e. an ability that silently has NO
+    // cooldown — not a second system. Delete it, don't revive it.
+    abilityCd:        {},
     // ── 🗡️ SHREDDING RONIN REWORK ──
-    psychoBushidoCd:  0,       // 🌀 Psycho Bushido cooldown (2 rounds)
     // 👤 Shadow Illusion body double:
     //   { hex, facing, turnsLeft, stepsLeft, stepsMax }
     // Rendered as a second, identical Ronin standee. `facing` is tracked because

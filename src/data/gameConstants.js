@@ -122,6 +122,54 @@ export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
 export const PSYCHO_BUSHIDO_CD     = 2;   // rounds, ticked in turnFlow
 export const PSYCHO_BUSHIDO_MIN_AP = 2;   // 1 hex of run-up + the Swing's own AP
 
+// ─── 🕒💿 EVERY ABILITY COSTS Db AND TAKES A COOLDOWN ────────────────────────
+//
+// Alex's rule, 2026-08-22 (`RONIN_ABILITY_DESIGN.md` §0): an ability with no
+// per-use price and no recharge is not a decision, it is a DEFAULT. It gets
+// taken every turn it is legal and stops competing with the rest of the turn.
+// Db is the game's scarcity, and a power that never touches it is outside the
+// economy.
+//
+// ⚠️ THE Db BAR IS ALSO THE UPGRADE BAR. `advanceDB` spends `dbPoints` on the
+// next unlock the moment it fills, so a per-use cost is not a side pocket — it
+// is progress toward the next skill, given up. That is the tension, and it is
+// the reason these numbers are small: a good commit earns roughly 2–8, and the
+// unlocks cost 6–16.
+//
+// 📌 THIS BLOCK IS RONIN-ONLY SO FAR. Nine other abilities still owe a cost, a
+// cooldown or both, and three of them (Space is Displaced, Code Injection,
+// Gravity Control) were designed AROUND having no cooldown with written reasons
+// — see §0.3 of the design doc. Do not paste this block over them without the
+// exemption calls being made first.
+export const SHADOW_ILLUSION_CD    = 3;   // rounds — see the note below
+export const CURSED_SHAMISEN_CD    = 3;   // rounds — matches its 3-round life
+
+// Per-use Db. ⚠️ SEPARATE FROM `dbCost` IN THE SKILL TREE, which is the ONE-TIME
+// unlock price. Both numbers are rules and both live in this file; the tree
+// interpolates these into its `desc` strings so the text cannot drift from the
+// behaviour.
+//
+// 🌀 Bushido is the cheapest ON PURPOSE. It already spends the ENTIRE remaining
+//    AP pool — it is the most expensive move in the kit measured in tempo, and
+//    charging it like the others would bill the same cost twice.
+// 👤 The double is the dearest because it is the most versatile: it collects
+//    notes, it soaks a whole rival turn, and it baits the Bushido lane.
+export const PSYCHO_BUSHIDO_DB_COST  = 1;
+export const SHADOW_ILLUSION_DB_COST = 2;
+export const CURSED_SHAMISEN_DB_COST = 2;   // unchanged — it was already paying
+
+// 👤 SHADOW ILLUSION — Sustain drain, replacing the 1 Drive token it used to
+// cost at summon. Charged at the start of each of the Ronin's OWN turns while
+// the double stands, and the double COLLAPSES when he has no Sustain left to
+// feed it.
+//
+// 🎯 THE DRAIN IS THE ABILITY, not a tax on it. A one-off token at summon time
+// is a price you pay and forget; a drain is a clock you can hear running. It is
+// what makes the double a genuine trade — *"I can be in two places at once, but
+// I am giving up my defences to do it"* — and it means the Ronin is at his most
+// fragile exactly while rivals cannot tell which body to hit.
+export const SHADOW_ILLUSION_SUSTAIN_DRAIN = 1;
+
 // 🫁 THE RIG BREATHES — SEQUENCING.md §5.H⁶, shipped 2026-08-20.
 //
 // The radius is no longer a tier you bought. It is

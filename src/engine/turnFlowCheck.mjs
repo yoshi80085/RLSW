@@ -14,7 +14,7 @@ import assert from "node:assert";
 import { makeRng } from "./rng.js";
 import { startTurnNotes, refillRateFor, refillDrawCount } from "./systems/turnFlow.js";
 import { makeInitialNoteState } from "./systems/economy.js";
-import { STOCK_REFILL_RATE } from "../data/gameConstants.js";
+import { STOCK_REFILL_RATE, SHADOW_ILLUSION_SUSTAIN_DRAIN } from "../data/gameConstants.js";
 
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks++; };
@@ -153,7 +153,8 @@ const run = (ns, seed = 5) => startTurnNotes(ns, { draws: drawsFor(ns, seed) });
     melodyLine: ['C', 'D'], hasConfirmed: true, discordCount: 3,
     stackCommitsThisTurn: 3, smashExposed: true, swingExposed: true,
     mixerUsedThisTurn: true, moshpitUsedThisTurn: true, dieFloorBoost: 2,
-    psychoBushidoCd: 2, elevenTurns: 3, chargeFloorTurns: 2, chargeCeilTurns: 1,
+    abilityCd: { psycho_bushido: 2, shadow_illusion: 1, cursed_shamisen: 0 },
+    elevenTurns: 3, chargeFloorTurns: 2, chargeCeilTurns: 1,
     cadenceCooldowns: { perfect: 3, plagal: 1, deceptive: 0 },
     roadies: [{ id: 'a', cooldownTurns: 2 }, { id: 'b', cooldownTurns: 0 }],
     modCards: [{ id: 'x', exhausted: true }, { id: 'y', oneShot: true, exhausted: true }],
@@ -170,7 +171,12 @@ const run = (ns, seed = 5) => startTurnNotes(ns, { draws: drawsFor(ns, seed) });
   eq(patch.moshpitUsedThisTurn, false, '🤘 moshpit recharges');
   eq(patch.dieFloorBoost, 0, 'the die floor boost clears');
 
-  eq(patch.psychoBushidoCd, 1, '🌀 Psycho Bushido cooldown ticks');
+  // 🕒 ONE MAP, ONE TICK — this replaced the lone `psychoBushidoCd` field on
+  // 2026-08-22. Every ability's cooldown now rides the same object, so the
+  // assertions are about the MECHANISM rather than about one ability.
+  eq(patch.abilityCd.psycho_bushido, 1, '🌀 Psycho Bushido cooldown ticks');
+  eq(patch.abilityCd.shadow_illusion, 0, '👤 and so does every other ability in the map');
+  eq(patch.abilityCd.cursed_shamisen, 0, '🎸 a settled cooldown floors at 0 rather than going negative');
   eq(patch.elevenTurns, 2, 'the eleven boost ticks');
   eq(patch.chargeFloorTurns, 1, '⚡ floor charge ticks on the holder\'s own turn');
   eq(patch.chargeCeilTurns, 0, '⚡ ceiling charge ticks');
@@ -193,18 +199,48 @@ const run = (ns, seed = 5) => startTurnNotes(ns, { draws: drawsFor(ns, seed) });
 //    the PRE-tick state so the client can announce the double melting away.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  const alive = run(sheet({ shadowIllusion: { hex: 40, turnsLeft: 3, stepsLeft: 4 } }));
+  const alive = run(sheet({ shadowIllusion: { hex: 40, turnsLeft: 3, stepsLeft: 4 }, tempSustain: 5 }));
   eq(alive.patch.shadowIllusion.turnsLeft, 2, 'the double ticks down');
   eq(alive.patch.shadowIllusion.stepsLeft, 0,
      "the double's legs zero here — the melody commit refills them to THIS turn's budget");
   eq(alive.report.shadowExpiring, false, 'and it is not announced as expiring');
 
-  const last = run(sheet({ shadowIllusion: { hex: 40, turnsLeft: 1, stepsLeft: 2 } }));
+  const last = run(sheet({ shadowIllusion: { hex: 40, turnsLeft: 1, stepsLeft: 2 }, tempSustain: 5 }));
   eq(last.patch.shadowIllusion, null, 'the double is spent on its last turn');
   eq(last.report.shadowExpiring, true, 'the report flags it BEFORE the patch erases it');
   eq(last.report.shadowHexBefore, 40, 'and carries the hex so the FX knows where to play');
 
   eq(run(sheet({ shadowIllusion: null })).patch.shadowIllusion, null, 'no illusion stays no illusion');
+
+  // ── 👤 THE SUSTAIN DRAIN (2026-08-22) ──────────────────────────────────────
+  // The double used to cost 1 Drive token at summon and nothing afterwards. It
+  // now eats Sustain every turn it stands, which is the trade the ability is
+  // built on: two bodies on the stage, and the real one losing its guard the
+  // whole time they are up.
+  eq(alive.patch.tempSustain, 5 - SHADOW_ILLUSION_SUSTAIN_DRAIN,
+     `👤 a standing double drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain a turn`);
+  eq(alive.report.shadowSustainDrained, SHADOW_ILLUSION_SUSTAIN_DRAIN,
+     'and the report says how much, so the log can show it');
+  eq(alive.report.shadowStarved, false, 'a fed double has not starved');
+
+  // ⚠️ STARVATION ENDS THE DOUBLE; IT DOES NOT BLEED VIBE. Sustain is what is
+  // being spent, so Sustain is what runs out — routing the shortfall into Vibe
+  // would quietly turn a positioning ability into a self-damage ability.
+  const starved = run(sheet({ shadowIllusion: { hex: 40, turnsLeft: 3, stepsLeft: 4 }, tempSustain: 0 }));
+  eq(starved.patch.shadowIllusion, null, '👤 with no Sustain to give, the double comes apart');
+  eq(starved.report.shadowStarved, true, 'and the report calls it STARVED, not spent');
+  eq(starved.report.shadowExpiring, false,
+     '⚠️ starved is NOT expiring — the client prints a different sentence for each');
+  eq(starved.report.shadowSustainDrained, 0, 'a double that starved was never fed');
+  eq(starved.patch.tempSustain, undefined,
+     'and an unfed turn writes no Sustain at all, rather than writing back a 0');
+
+  // 📌 TIME IS CHECKED BEFORE THE BILL. A double on its last turn is spent
+  // whether or not the Ronin could have fed it — charging for a turn it never
+  // gets would bill him for nothing.
+  const lastAndBroke = run(sheet({ shadowIllusion: { hex: 40, turnsLeft: 1, stepsLeft: 2 }, tempSustain: 0 }));
+  eq(lastAndBroke.report.shadowExpiring, true, 'a double out of time reads as SPENT even on an empty guard');
+  eq(lastAndBroke.report.shadowStarved, false, 'not as starved');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

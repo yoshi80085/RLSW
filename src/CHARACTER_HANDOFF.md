@@ -5,11 +5,22 @@ Pick-up notes for continuing the Spirit-identity work. Read this + `DESIGN_AUDIT
 
 > ⚠️ **2026-08-22 — TWO GAME-WIDE RULES LANDED, AND THE RONIN IS NO LONGER "COMPLETE".**
 > Alex's call: **every ability costs at least 1 Db per use, and every ability has a
-> cooldown.** Measured today, **5 of 13 abilities pay Db and 1 of 13 has a cooldown** —
-> `psychoBushidoCd` is the only cooldown that exists anywhere in `src/`. Three abilities
-> were designed *around* having none. And a Ronin design pass replaced Wa no Koe outright.
-> **`RONIN_ABILITY_DESIGN.md` is the canonical statement of all of it**, including the
-> per-ability violation table and the exemptions that need Alex's call. Nothing was built.
+> cooldown.** **`RONIN_ABILITY_DESIGN.md` is the canonical statement of all of it**,
+> including the ledger of who still owes what and the exemptions that need Alex's call.
+>
+> ✅ **THE FOUNDATION IS BUILT.** `engine/systems/cooldowns.js` is the general cooldown
+> system — one map (`ns.abilityCd`), one tick, one gate — replacing `psychoBushidoCd`,
+> which was the *only* cooldown the game had. Ronin's three actives now pay Db per use
+> and take a cooldown, and Shadow Illusion's Drive-token cost became a Sustain drain.
+> **7 of 13 abilities pay Db, 3 of 13 are cooled.** The remaining nine are a data edit.
+>
+> ⏳ **STILL DESIGN ONLY:** Cursed Shamisen's rework and the Wa no Koe replacement.
+>
+> ⏸️ **ON HOLD (Alex, 2026-08-22):** the **bot strategy** work — designing a bot around a
+> game still in flux is a fool's errand — **Metalness Monster**, which is getting a
+> redesign, and the **theory-off-the-ladder** change. Don't spend a session on any of the
+> three. Amps are already off the ladder; theory is not, and its capstone still sells the
+> 6th stack slot, so that slot needs a new home whenever theory does move.
 
 ---
 
@@ -71,7 +82,8 @@ and three of them no longer match what they are supposed to be. Read the status 
     `transition.js`. The searcher draws it on 23.3% of the turns it is legal, against 10.2% for a
     plain Swing. 🗡️ Shadow Illusion and Cursed Shamisen are still client-only — `SEQUENCING.md`
     §5.E⁶ item 2 has the estimates.
-  - **Shadow Illusion** (6 Db, costs 1 Drive token) — The Ronin splits into a **body double**: a second,
+  - **Shadow Illusion** (6 Db unlock, **2 Db/use**, **3-round CD**, **−1 Sustain per turn it
+    stands**) — The Ronin splits into a **body double**: a second,
     pixel-identical Ronin standee, born **stacked on his own hex** (single-click, no hex to target). The
     stacked spawn is the point — a decoy that popped into an empty adjacent tile would identify itself as
     the copy on the spot. Starting superimposed means there's no "where it came from" to reason about;
@@ -84,6 +96,15 @@ and three of them no longer match what they are supposed to be. Read the status 
     tempo tax rather than a threat.) Only the Ronin's own client sees a faint 👤 pip on the
     fake. Lasts **3 of Ronin's turns**. Pops if it is struck, if Ronin attacks, or if Ronin is attacked.
     A rival who swings at the double burns their AP **and** their Action Token for zero damage.
+    ⚠️ **THE COST CHANGED 2026-08-22: 1 Drive token at summon → Db + a recurring Sustain
+    drain**, charged in `turnFlow.js`'s `tickShadowIllusion`. The double **collapses** when
+    he has no Sustain to feed it, and summoning is refused on an empty guard so the Db can't
+    buy a body that never stands. A token is a price you pay once and forget; a drain is a
+    clock you can hear running — and it puts the Ronin at his most fragile exactly while
+    rivals cannot tell which body to hit. 📌 Starvation does **not** bleed Vibe: Sustain is
+    what is spent, so Sustain is what runs out. The report separates `shadowExpiring` (out
+    of time) from `shadowStarved` (drank him dry) because they look identical on the board
+    and must not read identically in the log.
   - **Cursed Shamisen** (8 Db unlock, 2 Db/use, **no cooldown**) — Set down on Ronin's hex, where it
     plays a **haunting melody every round** (real audio: an insen-scale phrase that drops an octave and
     speeds up once it has prey). Aura is a **fixed 2 rings** (`SHAM_RINGS`), and it lives **3 rounds**
@@ -293,12 +314,26 @@ written reasons. The violation table and the exemption calls Alex still owes are
 `RONIN_ABILITY_DESIGN.md` §0. **Innate passives are NOT settled** — recommendation there is that
 the rule binds actives only, since Boom Box and Poison Slime have no moment to charge for.
 
-**Cooldowns:** add a `<x>Cd` field in `makeInitialNoteState` (`engine/systems/economy.js`), tick
-it down in `startNewTurnNotes` / `engine/systems/turnFlow.js` (see `psychoBushidoCd`). Note
-`displaceCd` was REMOVED in the Space is Displaced rework — don't copy it as a template, it no
-longer exists. ⚠️ **`psychoBushidoCd` is the ONLY live cooldown in `src/`.** Grep `[a-zA-Z]Cd\b`
-and every other hit is a `displaceCd` tombstone comment. So the rule above is not a tuning pass —
-the cooldown system is one field wide and has to be generalised before anything else in it lands.
+**Cooldowns and per-use Db → `engine/systems/cooldowns.js`.** Add a row to `ABILITY_CD`
+and/or `ABILITY_DB_COST` (numbers live in `gameConstants.js`), then call `firePatch(ns, skillId)`
+in the resolver and gate the button/`legalActions` on `canFire(ns, skillId)`. That is the whole
+job — `ns.abilityCd` is seeded in `economy.js` and ticked once per owner-turn in `turnFlow.js`,
+so nothing per-ability is needed in either.
+
+⚠️ **DO NOT ADD A NAMED `<x>Cd` FIELD.** That was the old pattern and it is exactly why twelve
+abilities had no cooldown: a named field needs an `economy` seed, a `turnFlow` tick, a
+`legalActions` gate and a HUD read before it can exist at all, and at four edits a time nobody
+does it. `psychoBushidoCd` was the only one anybody ever finished, and it is now gone —
+anything still reading it reads `undefined`, i.e. no cooldown. `displaceCd` is likewise dead.
+
+⚠️ **AND THE CLIENT AND THE SEARCHER MUST CHARGE THROUGH THE SAME `firePatch`.** The client's
+resolver and `transition.js` both call it; if only one does, the kernel plays a cheaper game than
+the player and every bench number about that ability is fiction.
+
+📌 **Rounds, not spirit-turns.** The tick fires at the start of the OWNER's turn, so a `2` costs
+two of his own turns whatever the player count. Board hazards (Poison Slime, the Gravity Vortex)
+use the opposite convention for a good reason — their decay hook runs at the end of *every*
+spirit's turn. Don't unify them.
 
 **Turn-scoped debuffs on the victim:** add the field to `makeInitialNoteState`, then tick it in
 `applyDebuffsTicked` (`engine/systems/economy.js`) — and remember to add it to that function's

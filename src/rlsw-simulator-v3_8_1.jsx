@@ -86,6 +86,10 @@ import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineM
 // player sees and the hex an ability will accept have to be the same read.
 import { slimeBites, slideTarget, SLIME_VIBE_DAMAGE } from "./engine/systems/slime.js";
 import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX, ELEVEN_DRIVE } from "./data/gameConstants.js";
+import { cooldownLeft, canFire, firePatch } from "./engine/systems/cooldowns.js";
+import { PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
+         SHADOW_ILLUSION_SUSTAIN_DRAIN, PSYCHO_BUSHIDO_CD, SHADOW_ILLUSION_CD,
+         CURSED_SHAMISEN_CD } from "./data/gameConstants.js";
 import { SUNBEAM_DB_COST, SUNBEAM_BLIND_TURNS, SUNBEAM_LINGER_CHANCE, SUNBEAM_MAX_BLIND_TURNS,
          DISPLACE_DB_COST, DISPLACE_MIN_RINGS, DISPLACE_MAX_RINGS,
          GRAVITY_DB_COST, GRAVITY_PLACE_RINGS, GRAVITY_PULL_RINGS, GRAVITY_PULL_HEXES, GRAVITY_NOTE_DRAIN,
@@ -4194,6 +4198,15 @@ function Game({ gameState, onReturnToLobby }) {
       if (report.shadowExpiring) {
         triggerDamageNumber(report.shadowHexBefore, '👤 GONE', '#4488ff');
         addLog('👤 The shadow illusion thins out and melts back into the Ronin — the double is spent.');
+      } else if (report.shadowStarved) {
+        // 👤 STARVED ≠ SPENT, and the player must be able to tell. A double that
+        // ran out of time and one that drank him dry look identical on the board;
+        // if they also read identically in the log, the Sustain drain is invisible
+        // and the trade the ability is built on never gets learned.
+        triggerDamageNumber(report.shadowHexBefore, '👤 STARVED', '#ff6688');
+        addLog(`👤 The Ronin has no guard left to lend it — the shadow illusion comes apart where it stands. (needed ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain)`);
+      } else if (report.shadowSustainDrained > 0) {
+        addLog(`👤 The double drinks — −${report.shadowSustainDrained} Sustain to keep two Ronins on the stage.`);
       }
       tickWaNoKoe();
     }
@@ -4381,9 +4394,9 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull 3 fans onto the board for a pit — +2 Drive that stands until the next pit.`);
     if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Swing from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
     if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
-    if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Dash in a straight line and strike — the AP you don't spend on the run-up powers the blow. 2-round cooldown.`);
-    if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (costs 1 Drive token). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn.`);
-    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Set it down (2 Db per use). It plays a minor phrase for 3 rounds and haunts ONLY Spirits in a minor key — wandering after them, 2 rings, 1 Sustain a round. Including you, if you're in minor.`);
+    if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Dash in a straight line and strike — the ground you cover powers the blow. ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_CD}-round cooldown, and it spends every Action Point you have left.`);
+    if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn. ⚠️ It drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain every turn it stands, and dies when you have none left.`);
+    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Set it down (${CURSED_SHAMISEN_DB_COST} Db per use, ${CURSED_SHAMISEN_CD}-round cooldown). It plays a minor phrase for 3 rounds and haunts ONLY Spirits in a minor key — wandering after them, 2 rings, 1 Sustain a round. Including you, if you're in minor.`);
     if (skillId === 'wa_no_koe')      addLog(`🎵 ${spirit?.name} — WA NO KOE! Half your melody inside your stacks now pays +1 Drive or Sustain for 3 rounds — the amplifier on the Chord Tone Pardon he already owns.`);
     // B9: the unlock logs name the CONTEXT TIER too, matching the descs. Each line
     // is the one moment the player is guaranteed to be looking, so it's where the
@@ -8099,8 +8112,18 @@ function Game({ gameState, onReturnToLobby }) {
     // unmirrored refusal now means a Ronin who has dashed and paid for nothing.
     if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
     const ns = actingNoteState ?? {};
-    if ((ns.psychoBushidoCd ?? 0) > 0) {
-      addLog(`🌀 Psycho Bushido is recharging — ${ns.psychoBushidoCd} turn${ns.psychoBushidoCd > 1 ? 's' : ''} left.`);
+    const bushidoCd = cooldownLeft(ns, 'psycho_bushido');
+    if (bushidoCd > 0) {
+      addLog(`🌀 Psycho Bushido is recharging — ${bushidoCd} turn${bushidoCd > 1 ? 's' : ''} left.`);
+      return;
+    }
+    // 💿 THE Db REFUSAL BELONGS WITH THE OTHER PRE-DASH REFUSALS, not after the
+    // warp. Everything from here down commits the turn, and a Ronin who has
+    // dashed and then been told he cannot afford the strike has paid his entire
+    // AP pool for nothing — the same class of bug as the unmirrored `rockGod`
+    // check directly above.
+    if ((ns.dbPoints ?? 0) < PSYCHO_BUSHIDO_DB_COST) {
+      addLog(`🌀 Not enough Db for Psycho Bushido — costs ${PSYCHO_BUSHIDO_DB_COST} Db.`);
       return;
     }
     if (actionTokenUsed) { addLog('🌀 Already used your Action Token this turn!'); return; }
@@ -8178,15 +8201,21 @@ function Game({ gameState, onReturnToLobby }) {
     // 🌀 THE BONUS LANDS BEFORE THE BLOW, which is the whole point of the
     // ability. Read from the live sheet, not the render-scoped `ns` — that is the
     // same overwrite that §7 records against `applyWaNoKoe`.
-    const prevTemp = (engineRef.current.noteStates[acting.id] ?? {}).tempDrive ?? 0;
+    const liveNs = engineRef.current.noteStates[acting.id] ?? {};
+    const prevTemp = liveNs.tempDrive ?? 0;
     const newTemp = prevTemp + bonusDrive;
+    // 💿🕒 One helper pays the Db and starts the clock, and it is the SAME helper
+    // `transition.js` calls — see `engine/systems/cooldowns.js`. The cooldown
+    // used to be a bare `2` written here, which is how the number and
+    // `PSYCHO_BUSHIDO_CD` in gameConstants managed to describe the same rule in
+    // two places for months.
     setNoteField(acting.id, {
-      psychoBushidoCd: 2,
+      ...firePatch(liveNs, 'psycho_bushido'),
       tempDrive: newTemp,
     });
 
     triggerEffectFlash(acting.id, '🌀', 'BUSHIDO!', '#4488ff');
-    addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} dashes ${distToTarget} hex${distToTarget > 1 ? 'es' : ''} — +${bonusDrive} bonus Drive from ${apLeft} remaining AP!`);
+    addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} dashes ${distToTarget} hex${distToTarget > 1 ? 'es' : ''} — +${bonusDrive} bonus Drive from ${apLeft} remaining AP! (−${PSYCHO_BUSHIDO_DB_COST} Db)`);
 
     // 🌀 SYNCHRONOUS, AND THAT IS THE FIX. The delay was there so "the warp
     // settles", but a warp settles in ENGINE state the instant it is dispatched —
@@ -8202,7 +8231,9 @@ function Game({ gameState, onReturnToLobby }) {
   function getPsychoBushidoTargets() {
     if (!acting || acting.id !== 'cosmic_ronin') return new Set();
     const ns = actingNoteState ?? {};
-    if ((ns.psychoBushidoCd ?? 0) > 0) return new Set();
+    // 💿 No Db, no lane. The highlight has to agree with `resolvePsychoBushido`'s
+    // refusals or the board offers a strike the click will bounce.
+    if (!canFire(ns, 'psycho_bushido')) return new Set();
     const originHex = HEX_BY_NUM[acting.num];
     if (!originHex) return new Set();
     const first = neighborInDirection(originHex, acting.facing ?? 0);
@@ -8234,8 +8265,18 @@ function Game({ gameState, onReturnToLobby }) {
   // It can be walked around the board on the Ronin's own Action Points, so the
   // pair genuinely behaves like two Ronins on the field.
   //
-  // Costs 1 Drive token from the stack. Lasts SHADOW_ILLUSION_TURNS of Ronin's
-  // turns. Pops early if:
+  // Costs SHADOW_ILLUSION_DB_COST Db to summon and then DRAINS
+  // SHADOW_ILLUSION_SUSTAIN_DRAIN Sustain at the start of every one of Ronin's
+  // turns that it stands (charged in `turnFlow.js`; the double COLLAPSES when he
+  // has none left to feed it).
+  //
+  // ⚠️ IT USED TO COST 1 DRIVE TOKEN AT SUMMON AND NOTHING AFTERWARDS. Alex's
+  // 2026-08-22 design call moved the price onto Sustain and made it recurring,
+  // because a one-off token is a price you pay and forget while a drain is a
+  // clock you can hear running. The trade is now legible: two bodies on the
+  // board, and the real one is losing its guard the whole time they are up.
+  //
+  // Lasts SHADOW_ILLUSION_TURNS of Ronin's turns. Pops early if:
   //   - the decoy is attacked (the attacker's AP + Action Token are burned)
   //   - the real Ronin attacks
   //   - the real Ronin is attacked
@@ -8254,17 +8295,29 @@ function Game({ gameState, onReturnToLobby }) {
     if (!acting || acting.id !== 'cosmic_ronin') return;
     const ns = actingNoteState ?? {};
     if (ns.shadowIllusion) { addLog('👤 A shadow is already on the board!'); return; }
-    const driveStack = ns.driveStack ?? [];
-    if (driveStack.length < 1) { addLog('👤 Need at least 1 Drive token to summon a shadow!'); return; }
+    const shadowCd = cooldownLeft(ns, 'shadow_illusion');
+    if (shadowCd > 0) {
+      addLog(`👤 The shadow won't come — ${shadowCd} turn${shadowCd > 1 ? 's' : ''} until he can split again.`);
+      return;
+    }
+    if ((ns.dbPoints ?? 0) < SHADOW_ILLUSION_DB_COST) {
+      addLog(`👤 Not enough Db to split — costs ${SHADOW_ILLUSION_DB_COST} Db.`);
+      return;
+    }
+    // ⚠️ AND HE MUST HAVE SUSTAIN TO FEED IT. Summoning a double the very next
+    // turn-start would starve is a Db burned for a body that never stands, so
+    // the refusal happens here rather than as a silent collapse in `turnFlow`.
+    if ((ns.tempSustain ?? 0) < SHADOW_ILLUSION_SUSTAIN_DRAIN) {
+      addLog(`👤 Nothing left to give it — the shadow needs ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain a turn to stand.`);
+      return;
+    }
 
-    // Spend 1 Drive token. The double steps out already facing the way the real
-    // Ronin faces — a mismatched arrow would give the game away instantly — and
-    // with its own full set of legs (see moveShadow).
-    const newStack = driveStack.slice(1);
-    showSpentNotes(acting.id, driveStack.slice(0, 1), 'drive'); // 🎵 the note leaves
+    // The double steps out already facing the way the real Ronin faces — a
+    // mismatched arrow would give the game away instantly — and with its own
+    // full set of legs (see moveShadow).
     const budget = ns.lastMoveBudget ?? Math.max(1, moveStepsLeft);
     setNoteField(acting.id, {
-      driveStack: newStack,
+      ...firePatch(ns, 'shadow_illusion'),
       shadowIllusion: {
         hex: acting.num,                 // stacked on the real body
         facing: acting.facing ?? 0,
@@ -8275,7 +8328,8 @@ function Game({ gameState, onReturnToLobby }) {
     });
 
     triggerEffectFlash(acting.id, '👤', 'SHADOW!', '#4488ff');
-    addLog(`👤 ${acting.name} splits — a SHADOW ILLUSION peels out of him on hex #${acting.num}. Two Ronins, one shape. Walk them apart and nobody can say which is which.`);
+    addLog(`👤 ${acting.name} splits — a SHADOW ILLUSION peels out of him on hex #${acting.num}. Two Ronins, one shape. Walk them apart and nobody can say which is which. (−${SHADOW_ILLUSION_DB_COST} Db)`);
+    addLog(`👤 It feeds on him while it stands — ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of each of his turns, and it falls apart the moment he has none to give.`);
     setAction(null);
   }
 
@@ -8478,12 +8532,23 @@ function Game({ gameState, onReturnToLobby }) {
     if (!acting || acting.id !== 'cosmic_ronin') return;
     const ns = actingNoteState ?? {};
     if (ns.cursedShamisen) { addLog('🎸 A Shamisen is already haunting the board!'); return; }
-    // Check Db cost (2 per use)
+    // 🕒 "One at a time" was doing the work of a cooldown and doing it badly: the
+    // instant the old one decayed a new one could go straight down, so the board
+    // was never actually free of it. The cooldown is what puts a gap between
+    // hauntings — it outlives the instrument by design.
+    const shamCd = cooldownLeft(ns, 'cursed_shamisen');
+    if (shamCd > 0) {
+      addLog(`🎸 The strings are still dead — ${shamCd} turn${shamCd > 1 ? 's' : ''} before another Shamisen will play.`);
+      return;
+    }
     const dbPts = ns.dbPoints ?? 0;
-    if (dbPts < 2) { addLog('🎸 Not enough Db to summon the Shamisen — costs 2 Db.'); return; }
+    if (dbPts < CURSED_SHAMISEN_DB_COST) {
+      addLog(`🎸 Not enough Db to summon the Shamisen — costs ${CURSED_SHAMISEN_DB_COST} Db.`);
+      return;
+    }
 
     setNoteField(acting.id, {
-      dbPoints: dbPts - 2,
+      ...firePatch(ns, 'cursed_shamisen'),
       cursedShamisen: {
         hex: acting.num,
         range: SHAM_RINGS,
@@ -14277,19 +14342,26 @@ function Game({ gameState, onReturnToLobby }) {
             {/* 🌀 PSYCHO BUSHIDO — Shredding Ronin dash attack */}
             {hasConfirmed && acting?.id === 'cosmic_ronin'
               && (actingNoteState?.unlockedSkills ?? []).includes('psycho_bushido') && (() => {
-              const cd = actingNoteState?.psychoBushidoCd ?? 0;
-              const canDash = cd <= 0 && moveStepsLeft >= 1 && !actionTokenUsed;
+              const cd    = cooldownLeft(actingNoteState, 'psycho_bushido');
+              const dbPts = actingNoteState?.dbPoints ?? 0;
+              const poor  = dbPts < PSYCHO_BUSHIDO_DB_COST;
+              const canDash = cd <= 0 && !poor && moveStepsLeft >= 1 && !actionTokenUsed;
               return (
                 <>
                   <button className={canDash ? 'btn active' : 'btn'}
                     style={{borderColor: canDash ? '#4488ff' : '#1a2840', color: canDash ? '#88bbff' : '#1a2840'}}
                     disabled={!canDash}
-                    title="Psycho Bushido — dash in a straight line from your facing. Remaining AP converts to bonus Drive. 2-round cooldown."
+                    title={`Psycho Bushido — dash in a straight line from your facing and strike whoever you reach. The ground you cover becomes bonus Drive on that blow. Costs ${PSYCHO_BUSHIDO_DB_COST} Db and the whole of your remaining AP. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
                     onClick={() => {
                       if (action === 'psycho_bushido') { setAction(null); }
                       else if (canDash) { setAction('psycho_bushido'); addLog('🌀 PSYCHO BUSHIDO — click a rival in your line of sight to dash-strike!'); }
                     }}>
-                    🌀 Bushido{cd > 0 ? ` (${cd})` : ''}
+                    {/* ⚠️ THE LABEL SAYS WHICH REFUSAL IS BITING. A greyed button
+                        that only ever reads "Bushido" teaches the player nothing
+                        — recharging and skint are different problems with
+                        different answers, and the Db one is new as of the
+                        2026-08-22 rule. */}
+                    🌀 Bushido{cd > 0 ? ` (${cd})` : poor ? ` (${dbPts}/${PSYCHO_BUSHIDO_DB_COST} Db)` : ''}
                   </button>
                   {action === 'psycho_bushido' && (
                     <button className="btn" style={{borderColor:'#888',color:'#888'}}
@@ -14302,17 +14374,28 @@ function Game({ gameState, onReturnToLobby }) {
             {hasConfirmed && acting?.id === 'cosmic_ronin'
               && (actingNoteState?.unlockedSkills ?? []).includes('shadow_illusion') && (() => {
               const hasShadow = !!(actingNoteState?.shadowIllusion);
-              const hasDrive = (actingNoteState?.driveStack ?? []).length >= 1;
-              const canSummon = !hasShadow && hasDrive;
+              const cd    = cooldownLeft(actingNoteState, 'shadow_illusion');
+              const dbPts = actingNoteState?.dbPoints ?? 0;
+              const sus   = actingNoteState?.tempSustain ?? 0;
+              const poor  = dbPts < SHADOW_ILLUSION_DB_COST;
+              // 👤 THE SUSTAIN CHECK IS A SUMMON CONDITION, not just a drain. A
+              // double conjured with an empty guard starves at the very next
+              // turn-start, so the Db would buy a body that never stands.
+              const starving = sus < SHADOW_ILLUSION_SUSTAIN_DRAIN;
+              const canSummon = !hasShadow && cd <= 0 && !poor && !starving;
               // No hex to pick any more — the double is born on top of the
               // Ronin, so this is a single-click action.
               return (
                 <button className={canSummon ? 'btn active' : 'btn'}
                   style={{borderColor: canSummon ? '#4488ff' : '#1a2840', color: canSummon ? '#88bbff' : '#1a2840'}}
                   disabled={!canSummon}
-                  title="Shadow Illusion — split into a second, identical Ronin right where you stand (costs 1 Drive token). You start stacked, so nobody sees which one appeared; walk them apart on separate legs and let rivals waste a turn on the wrong body."
+                  title={`Shadow Illusion — split into a second, identical Ronin right where you stand (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). You start stacked, so nobody sees which one appeared; walk them apart on separate legs and let rivals waste a turn on the wrong body. ⚠️ It feeds on you: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it falls apart the moment you have none to give.`}
                   onClick={() => { if (canSummon) resolveShadowIllusion(); }}>
-                  👤 Shadow{hasShadow ? ` (${actingNoteState?.shadowIllusion?.turnsLeft ?? 0}t)` : (!hasDrive ? ' (no Drive)' : '')}
+                  👤 Shadow{hasShadow
+                    ? ` (${actingNoteState?.shadowIllusion?.turnsLeft ?? 0}t · −${SHADOW_ILLUSION_SUSTAIN_DRAIN}🛡️)`
+                    : cd > 0 ? ` (${cd})`
+                    : poor ? ` (${dbPts}/${SHADOW_ILLUSION_DB_COST} Db)`
+                    : starving ? ' (no Sustain)' : ''}
                 </button>
               );
             })()}
@@ -14320,17 +14403,20 @@ function Game({ gameState, onReturnToLobby }) {
             {hasConfirmed && acting?.id === 'cosmic_ronin'
               && (actingNoteState?.unlockedSkills ?? []).includes('cursed_shamisen') && (() => {
               const hasSham = !!(actingNoteState?.cursedShamisen);
-              const hasDb = (actingNoteState?.dbPoints ?? 0) >= 2;
-              const canDrop = !hasSham && hasDb;
+              const cd    = cooldownLeft(actingNoteState, 'cursed_shamisen');
+              const dbPts = actingNoteState?.dbPoints ?? 0;
+              const poor  = dbPts < CURSED_SHAMISEN_DB_COST;
+              const canDrop = !hasSham && cd <= 0 && !poor;
               return (
                 <button className={canDrop ? 'btn active' : 'btn'}
                   style={{borderColor: canDrop ? '#4488ff' : '#1a2840', color: canDrop ? '#88bbff' : '#1a2840'}}
                   disabled={!canDrop}
-                  title={`Cursed Shamisen — set it down on your hex (2 Db). It plays one endless MINOR phrase for ${SHAM_ROUNDS} rounds, and only Spirits in a minor key can hear it: ${SHAM_RINGS} rings, 1 Sustain (then Vibe) a round. Each round it wanders one hex toward the nearest minor-key Spirit — nobody in minor, and it just stands there. It does NOT spare you: stay in major, or get haunted by your own instrument. Walking onto its hex calms it and hands over a bonus note.`}
+                  title={`Cursed Shamisen — set it down on your hex (${CURSED_SHAMISEN_DB_COST} Db, ${CURSED_SHAMISEN_CD}-round cooldown). It plays one endless MINOR phrase for ${SHAM_ROUNDS} rounds, and only Spirits in a minor key can hear it: ${SHAM_RINGS} rings, 1 Sustain (then Vibe) a round. Each round it wanders one hex toward the nearest minor-key Spirit — nobody in minor, and it just stands there. It does NOT spare you: stay in major, or get haunted by your own instrument. Walking onto its hex calms it and hands over a bonus note.`}
                   onClick={() => { if (canDrop) resolveCursedShamisen(); }}>
                   🎸 Shamisen{hasSham
                     ? ` (${actingNoteState?.cursedShamisen?.roundsLeft ?? 0}r ${actingNoteState?.cursedShamisen?.range ?? 0}◎)`
-                    : (!hasDb ? ' (2 Db)' : '')}
+                    : cd > 0 ? ` (${cd})`
+                    : poor ? ` (${dbPts}/${CURSED_SHAMISEN_DB_COST} Db)` : ''}
                 </button>
               );
             })()}

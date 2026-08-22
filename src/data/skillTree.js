@@ -29,6 +29,9 @@ import {
   DISPLACE_DB_COST, DISPLACE_MIN_RINGS, DISPLACE_MAX_RINGS,
   GRAVITY_DB_COST, GRAVITY_PLACE_RINGS, GRAVITY_PULL_RINGS, GRAVITY_PULL_HEXES, GRAVITY_NOTE_DRAIN,
   CODE_INJECT_DB_COST,
+  PSYCHO_BUSHIDO_CD, SHADOW_ILLUSION_CD, CURSED_SHAMISEN_CD,
+  PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
+  SHADOW_ILLUSION_SUSTAIN_DRAIN,
 } from "./gameConstants.js";
 
 export const SKILL_TREE = {
@@ -108,11 +111,11 @@ export const SKILL_TREE = {
       spiritOnly: 'cosmic_ronin',
       skills: [
         { id:'psycho_bushido',  label:'Psycho Bushido',  icon:'🌀', dbCost:6,  gated:false,
-          desc:'Iaijutsu dash — charge in a straight line from your facing and strike whoever you reach. Whatever AP you did not need for the run-up is added to THAT strike as bonus Drive. ⚠️ It powers the blow and expires with the battle — it does not join your Drive stack, and it shares the +5 ceiling with every other attack bonus. 2-round cooldown.' },
+          desc:`Iaijutsu dash — charge in a straight line from your facing and strike whoever you reach. Whatever AP you did not need for the run-up is added to THAT strike as bonus Drive. ⚠️ It powers the blow and expires with the battle — it does not join your Drive stack, and it shares the +5 ceiling with every other attack bonus. ${PSYCHO_BUSHIDO_DB_COST} Db a charge, ${PSYCHO_BUSHIDO_CD}-round cooldown — and it spends every Action Point you have left, so a charge from next door is worse than the Swing it replaces.` },
         { id:'shadow_illusion', label:'Shadow Illusion', icon:'👤', dbCost:6,  gated:false,
-          desc:'Split into a second, identical Ronin, born stacked on your own hex (costs 1 Drive token) — nobody sees which one appeared. Rivals cannot tell the double from the real you: it blocks, it faces, and it walks the board on its own steps, refreshed each turn to match your movement range at no cost to your Action Points. 🎵 It can also PICK UP LOST CHORD NOTES for you — an illusion made of sound can carry a sound. It cannot take ⚡ charge zones or 🎪 event spaces, and hazards pass straight through it. Lasts 3 turns. Pops if it is struck, if you attack, or if you are attacked. Whoever swings at it burns their AP and Action Token for nothing.' },
+          desc:`Split into a second, identical Ronin, born stacked on your own hex (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown) — nobody sees which one appeared. Rivals cannot tell the double from the real you: it blocks, it faces, and it walks the board on its own steps, refreshed each turn to match your movement range at no cost to your Action Points. 🎵 It can also PICK UP LOST CHORD NOTES for you — an illusion made of sound can carry a sound. It cannot take ⚡ charge zones or 🎪 event spaces, and hazards pass straight through it. ⚠️ IT FEEDS ON YOU: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it comes apart the moment you have none to give — you are at your most fragile exactly while nobody can tell which body to hit. Lasts 3 turns. Pops if it is struck, if you attack, or if you are attacked. Whoever swings at it burns their AP and Action Token for nothing.` },
         { id:'cursed_shamisen', label:'Cursed Shamisen', icon:'🎸', dbCost:8,  gated:false,
-          desc:'Set a cursed Shamisen down on your hex (2 Db per use). It plays one endless MINOR phrase for 3 rounds — and only Spirits in a MINOR key can hear it. Anyone in minor inside its 2 rings loses 1 Sustain a round (then Vibe). Each round it wanders one hex toward the nearest minor-key Spirit; if the whole board is in major it has nothing to follow and stands still. It does not spare you — your own key decides whether it is a weapon or a haunting. Calmed by walking onto its hex, which also hands the walker a bonus note.' },
+          desc:`Set a cursed Shamisen down on your hex (${CURSED_SHAMISEN_DB_COST} Db per use, ${CURSED_SHAMISEN_CD}-round cooldown). It plays one endless MINOR phrase for 3 rounds — and only Spirits in a MINOR key can hear it. Anyone in minor inside its 2 rings loses 1 Sustain a round (then Vibe). Each round it wanders one hex toward the nearest minor-key Spirit; if the whole board is in major it has nothing to follow and stands still. It does not spare you — your own key decides whether it is a weapon or a haunting. Calmed by walking onto its hex, which also hands the walker a bonus note.` },
         { id:'wa_no_koe',       label:'Wa no Koe (和の声)', icon:'🎵', dbCost:12, gated:false,
           desc:'Voice of Harmony — when half your melody or more sits inside your Drive or Sustain stack, the alignment pays +1 Drive or Sustain for 3 rounds. The Ronin already starts holding CHORD TONE PARDON, so those same notes are never Discord for him either: this is the amplifier on top of an instinct he was born with.' },
       ],

@@ -42,6 +42,7 @@ import { usedHas } from "../systems/economy.js";
 import { skillEligibility } from "../systems/skills.js";
 import { rigFor } from "../systems/attackParams.js";
 import { canCallEleven } from "../systems/eleven.js";
+import { canFire } from "../systems/cooldowns.js";
 import { posingMap } from "../systems/limelight.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH, PSYCHO_BUSHIDO_MIN_AP } from "../../data/gameConstants.js";
@@ -423,9 +424,14 @@ export function legalActions(state, spiritId, view = {}) {
     // in the tree, so the roster gate already exists one layer up; reading the
     // unlock here keeps this file's contract ("what is legal") free of a
     // hard-coded name it would have to keep in step.
+    // 💿 AND GATED ON Db AS WELL AS ON THE CLOCK since 2026-08-22. `canFire`
+    // asks both questions at once deliberately — a generator that emitted a move
+    // the resolver would then refuse for want of 1 Db is a searcher planning
+    // turns it cannot play, and the refusal happens after the dash has already
+    // committed the turn.
     if (ap >= PSYCHO_BUSHIDO_MIN_AP
         && (ns.unlockedSkills ?? []).includes('psycho_bushido')
-        && (ns.psychoBushidoCd ?? 0) <= 0) {
+        && canFire(ns, 'psycho_bushido')) {
       const step = neighborInDirection(here, self.facing ?? 0);
       if (step) {
         const dq = step.q - here.q, dr = step.r - here.r;

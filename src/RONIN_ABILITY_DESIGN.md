@@ -4,6 +4,11 @@
 Ronin's four abilities are *meant to be*. It is a design doc, not a report on the
 build.
 
+> ✅ **THE FOUNDATION SHIPPED THE SAME DAY — see §8.** The general cooldown
+> system, per-use Db on the three actives, and Shadow Illusion's Sustain drain
+> are all in the code and under test. §0.2's ledger has been updated to match.
+> Cursed Shamisen's rework and the Wa no Koe replacement are **still design only.**
+
 > ⚠️ **THIS DOC AND THE SHIPPED GAME DISAGREE, AND THE DOC IS THE INTENT.**
 > Three of the four abilities described here differ from what
 > `rlsw-simulator-v3_8_1.jsx` does today, and **Wa no Koe is a different ability
@@ -38,18 +43,18 @@ against **10.2%** for a plain Swing — and that is an ability which *does* have
 cooldown. A free, uncooled ability doesn't get evaluated against alternatives so
 much as it removes them.
 
-### 0.2 ⚠️ THE RULE IS CURRENTLY VIOLATED ALMOST EVERYWHERE
+### 0.2 ⚠️ THE LEDGER — WHO PAYS AND WHO STILL OWES
 
-Measured from `data/skillTree.js`, `data/gameConstants.js` and the resolvers
-(2026-08-22). `dbCost` in the tree is the **one-time unlock** price and is not
-what this rule is about — the rule is about the **per-use** cost.
+Measured from `data/skillTree.js`, `data/gameConstants.js` and the resolvers.
+`dbCost` in the tree is the **one-time unlock** price and is not what this rule is
+about — the rule is about the **per-use** cost. ✅ marks what shipped 2026-08-22.
 
 | Spirit | Ability | Db per use | Cooldown |
 |---|---|---|---|
-| Ronin | 🌀 Psycho Bushido | **0** ❌ | 2 rounds ✅ |
-| Ronin | 👤 Shadow Illusion | **0** ❌ (costs 1 Drive token) | **none** ❌ |
-| Ronin | 🎸 Cursed Shamisen | 2 ✅ | **none** ❌ |
-| Ronin | 🎵 Wa no Koe | **0** ❌ (passive) | **none** ❌ |
+| Ronin | 🌀 Psycho Bushido | **1** ✅ | 2 rounds ✅ |
+| Ronin | 👤 Shadow Illusion | **2** ✅ + 1 Sustain/turn while it stands | **3 rounds** ✅ |
+| Ronin | 🎸 Cursed Shamisen | 2 ✅ | **3 rounds** ✅ |
+| Ronin | 🎵 Wa no Koe | **0** ⏸️ (passive) | **none** ⏸️ |
 | Metalness | 🔊 Goes to 11 | **0** ❌ | **none** ❌ |
 | Metalness | 🤘 Master of Moshpits | **0** ❌ | **none** ❌ |
 | Metalness | 🐙 Tentacle | **0** ❌ | **none** ❌ |
@@ -60,12 +65,21 @@ what this rule is about — the rule is about the **per-use** cost.
 | Intergalactic 0 | 💻 Code Injection | 1 ✅ | **none** ❌ |
 | Intergalactic 0 | ☀️ Sunbeam | 2 ✅ | **none** ❌ |
 
-**5 of 13 pay Db. 1 of 13 has a cooldown.**
+**Was 5 of 13 paying Db and 1 of 13 cooled. Now 7 of 13 and 3 of 13.**
 
-🎯 **`psychoBushidoCd` IS THE ONLY COOLDOWN IN THE ENTIRE GAME.** Grep for
-`[a-zA-Z]Cd\b` across `src/` and it is the only live hit; the others are the
-`displaceCd` tombstone comments. So "all abilities have some cooldown" is not a
-tuning pass — **the cooldown system is one field wide and has to be built.**
+⏸️ **Wa no Koe was deliberately skipped, and it is the one exception in the
+kit.** It is a *passive* — there is no moment of use to charge for — and §2.4
+replaces it outright. Building a per-proc price for an ability scheduled for
+deletion is work thrown away twice: once writing it, once removing it. It gets
+its cost and its cooldown as part of the replacement, when it becomes an active.
+
+🎯 **`psychoBushidoCd` WAS THE ONLY COOLDOWN IN THE ENTIRE GAME**, which is why
+the fix was a system and not a number. A named `<x>Cd` field per ability means
+every new ability needs an `economy` seed, a `turnFlow` tick, a `legalActions`
+gate and a HUD read before it can have a cooldown at all — four chances to
+forget, and twelve abilities that never got one is what that costs. It is now
+one map (`ns.abilityCd`), one tick, one gate: `engine/systems/cooldowns.js`.
+**Giving the remaining nine abilities a cooldown is now a data edit.**
 
 ### 0.3 ⚠️ Three abilities were designed AROUND having no cooldown
 
@@ -340,9 +354,9 @@ tests** (CLAUDE.md: a passing test is not evidence a rule is real).
 
 | | **Shipped today** | **This design** |
 |---|---|---|
-| **🌀 Psycho Bushido** | Iaijutsu **dash** in a straight line from facing into an auto-Swing. Bonus `= distToTarget − 1` as `tempDrive`. 6 Db unlock, **0 Db/use**, 2-round CD. Engine-modelled, `kind:'psychoBushido'`. | Farther = stronger ✅ **agrees in spirit.** But framed as a **waiting** threat on a sightline rather than a charge, and it must now **cost Db per use**. |
-| **👤 Shadow Illusion** | 6 Db unlock, **0 Db/use**, costs **1 Drive token**. Lasts 3 turns. **No Sustain drain.** **No cooldown.** Picks up Lost Chord notes ✅. Pops if struck / if Ronin attacks / **if Ronin is attacked**. | Cost is **Sustain drain while active**, not a Drive token. Needs **Db + cooldown**. "Pops if Ronin attacks or is attacked" is **not in this design** — the sheet only says *disappears if attacked*. ❓ Keep or drop? |
-| **🎸 Cursed Shamisen** | 8 Db unlock, **2 Db/use**, no CD. Fixed **2 rings**, lives **3 rounds**, **no stages**. Haunts **ONLY minor-key Spirits** — including Ronin. Wanders 1 hex/round toward nearest minor-key Spirit. Sustain soaks first, then Vibe. Calmed by walking onto its hex (+ a bonus note). | **Ronin feeds it ♭3 → 2 → 1 → ♭6 → 5**; completing the sequence escalates it. **Minor is flavour, not a gate.** Attacks the **Sustain stack**. Counterplay = leave range **or** exorcise. Needs a cooldown. |
+| **🌀 Psycho Bushido** | Iaijutsu **dash** in a straight line from facing into an auto-Swing. Bonus `= distToTarget − 1` as `tempDrive`. 6 Db unlock, **1 Db/use** ✅, 2-round CD ✅. Engine-modelled, `kind:'psychoBushido'`. | Farther = stronger ✅ **agrees in spirit.** Remaining gap: framed as a **waiting** threat on a sightline rather than a charge. |
+| **👤 Shadow Illusion** | 6 Db unlock, **2 Db/use** ✅, **1 Sustain per turn while it stands** ✅, **3-round CD** ✅. Lasts 3 turns; **starves** if he cannot feed it. Picks up Lost Chord notes ✅. Pops if struck / if Ronin attacks / **if Ronin is attacked**. | ✅ **Matches**, except: "Pops if Ronin attacks or is attacked" is **not in this design** — the sheet only says *disappears if attacked*. ❓ Keep or drop? |
+| **🎸 Cursed Shamisen** | 8 Db unlock, **2 Db/use** ✅, **3-round CD** ✅. Fixed **2 rings**, lives **3 rounds**, **no stages**. Haunts **ONLY minor-key Spirits** — including Ronin. Wanders 1 hex/round toward nearest minor-key Spirit. Sustain soaks first, then Vibe. Calmed by walking onto its hex (+ a bonus note). | **Ronin feeds it ♭3 → 2 → 1 → ♭6 → 5**; completing the sequence escalates it. **Minor is flavour, not a gate.** Attacks the **Sustain stack**. Counterplay = leave range **or** exorcise. ⏳ **Still the big open one.** |
 | **🎵 Wa no Koe** | 🚨 **A DIFFERENT ABILITY.** 12 Db, **passive**: ≥half your melody sitting inside your Drive/Sustain stack pays **+1 Drive or Sustain for 3 rounds**. Rule lives in `engine/systems/melodyCommit.js` `checkWaNoKoe`. | **Pick one note from the current chord stack → it is Resonant board-wide. Echoes reset cooldowns. Ronin enters a vulnerable Harmony state.** Shares only the name and the 12 Db. |
 
 🚨 **Wa no Koe is not a rework, it is a replacement.** Note what goes with it:
@@ -402,24 +416,106 @@ file too.
 
 ---
 
-## 7. If this gets built — rough order
+## 7. ✅ WHAT SHIPPED, 2026-08-22
+
+The foundation pass. **No ability changed what it DOES** — this pass changed only
+what each one costs and how often it can be used, plus one cost swap.
+
+### 7.1 🕒 The cooldown system
+
+`engine/systems/cooldowns.js` (new). `ns.abilityCd` is `{ [skillId]: roundsLeft }`,
+seeded in `economy.js`, ticked once per owner-turn in `turnFlow.js`, read through
+`cooldownLeft` / `onCooldown` / `canFire`, and started by `firePatch`.
+
+📌 **The shape is `cadenceCooldowns`'**, which already lived on the sheet, already
+ticked in `turnFlow` and already survived the netcode — a plain JSON string→number
+object that `setNoteStates` diffs and syncs for free. Copying a proven shape beat
+inventing a second one that would then need proving separately.
+
+⚠️ **`psychoBushidoCd` IS GONE, NOT DEPRECATED.** Anything still reading it reads
+`undefined`, i.e. "no cooldown". If you find one, delete it.
+
+⚠️ **ROUNDS, NOT SPIRIT-TURNS** — the opposite convention from board hazards
+(Poison Slime, the Gravity Vortex), which count in spirit-turns seeded with the
+living-Spirit count because their decay hook fires at the end of *every* Spirit's
+turn. Both are right; they count different clocks. The module comment says so.
+
+### 7.2 💿 Per-use Db, and one place that charges it
+
+`firePatch(ns, skillId)` returns the patch — Db off the bar, cooldown started —
+and **the client's resolvers and `transition.js`'s searcher both call it.** They
+must, or the kernel plays a cheaper game than the player, which is the exact
+failure `melodyCommit.js` warns about.
+
+`legalActions.js` now gates Psycho Bushido on `canFire`, which asks affordability
+and readiness as **one question**. Two separate checks is how an ability ends up
+free — and here it matters twice over, because a generator that offers a dash the
+resolver will refuse is a searcher planning turns it cannot play, and the refusal
+would land *after* the dash has already committed the turn.
+
+⚠️ **AND THE Db REFUSAL MOVED ABOVE THE WARP** in `resolvePsychoBushido`, next to
+the `rockGodActive` check. Everything below that point commits the turn; a Ronin
+told he cannot afford the strike *after* dashing has paid his whole AP pool for
+nothing. Same class as the unmirrored refusal already documented there.
+
+The tree's `desc` strings interpolate every number, so the text cannot drift.
+
+### 7.3 👤 Shadow Illusion — the cost swap
+
+1 Drive token at summon → **2 Db at summon plus 1 Sustain at the start of every
+turn it stands**, and the double **collapses** when he has none left to give.
+
+🎯 A token is a price you pay once and forget. A drain is a clock you can hear
+running — and it makes the Ronin most fragile exactly while rivals cannot tell
+which of the two bodies to hit, which is the trade the ability is built on.
+
+📌 **Starvation is a real end, not a guard.** The shortfall does *not* bleed Vibe.
+Sustain is what is being spent, so Sustain is what runs out; routing it into Vibe
+would quietly turn a positioning ability into a self-damage ability. Summoning is
+also refused with an empty guard, so the Db can't buy a body that never stands.
+The report distinguishes **spent** from **starved** and the log prints a different
+sentence for each — otherwise the drain is invisible and the trade is never
+learned.
+
+### 7.4 🎯 The counts
+
+Baseline is §5.F⁸ of `SEQUENCING.md` (2026-08-21).
+
+**engine ✓, legal 582, eval 154, transition 242, determinism 22, turnFlow 61 →
+73, battleFlow 50, melody 159, slime 127, eleven 38, score 122, harness 1659 →
+1663, riffparity 127598, skillTree 159, trace 1831 → 1834, b0 55706+7870,
+guitarMap 70970, neonNeck 253506, arch 8.** `check:bundle` **0 warnings.**
+
+Three counts moved and **all three went up**:
+
+- **turnFlow +12** — mine, deliberately. One assertion about `psychoBushidoCd`
+  became three about the *mechanism*, and ten new ones cover the Sustain drain,
+  starvation, and the fact that time is checked before the bill.
+- **harness +4, trace +3** — mine, and **verified by bisection**: HEAD alone
+  gives 1659/1831, HEAD plus this pass gives 1663/1834. Both suites assert over
+  the decisions a seeded headless match actually produces (`for (const e of
+  actions)`), not over a fixed list — so a Ronin who now sometimes cannot afford
+  Bushido plays a different game and a few more decision points get asserted.
+
+---
+
+## 8. If the rest gets built — rough order
 
 Not a commitment, just the dependency order that falls out of the above.
 
-1. **The cooldown system first.** It is one field wide today (`psychoBushidoCd`)
-   and §0 needs it to be general. The pattern already exists —
-   `makeInitialNoteState` → `startNewTurnNotes` / `turnFlow.js:128` — it just has
-   one member. Everything else in §0 and the Echoes in §2.4 depend on it.
-2. **Per-use Db costs.** Cheapest change; the pattern is written down in
-   `CHARACTER_HANDOFF.md` ("Per-use Db costs") and Cursed Shamisen is the
-   template. Do the exemption decisions (§6.1, §6.2) before, not during.
-3. **Cursed Shamisen rework.** Self-contained in the client, and the exorcism
-   rules need designing before code.
-4. **Shadow Illusion cost swap** (Drive token → Sustain drain). Small, but it
-   changes what the ability *is*, so it wants playtesting alone.
+1. ~~The cooldown system~~ ✅ **done** — §7.1.
+2. ~~Per-use Db costs (Ronin)~~ ✅ **done** — §7.2.
+3. ~~Shadow Illusion cost swap~~ ✅ **done** — §7.3.
+4. **Cursed Shamisen rework.** Self-contained in the client, and the exorcism
+   rules need designing before code — they are the counterplay now that the
+   minor-key gate is going (§2.3).
 5. **Wa no Koe replacement — last, and biggest.** It touches the engine kernel, a
-   test suite and the bot policy, unlike the other three which are client-only.
+   test suite and the bot policy, unlike the others which are client-only. It
+   also brings the Echoes, which only mean anything now that cooldowns exist.
 
-⚠️ **And before any of it: the tree has two sessions of uncommitted work in it**
-(`SEQUENCING.md` §5, `COMMIT_MSG_RIG_REWORK.txt`). Commit from a normal terminal
-first — §5.G⁸ has the `git rm` the agent shell cannot do.
+📌 **The nine remaining abilities are now a data edit**, not a build: add rows to
+`ABILITY_CD` / `ABILITY_DB_COST` in `cooldowns.js` and call `firePatch` in each
+resolver. ⚠️ **But make the exemption calls first** (§6.1, §6.2) — Space is
+Displaced advertises "no cooldown" in its own player-facing text, and Metalness is
+on hold pending a redesign, so cooling abilities that may not survive it is work
+thrown away.

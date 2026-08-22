@@ -83,7 +83,8 @@ import { rigSpendable, rigTierSpend, rigTiers } from "../systems/sonicRig.js";
 import {
   drawTrivia, bestTriviaDifficulty, TRIVIA_REWARD, TRIVIA_TIER_GRANT, TRIVIA_BOT_ODDS,
 } from "../../data/trivia.js";
-import { CHARGE_ZONE_BOOST_TURNS, PSYCHO_BUSHIDO_CD } from "../../data/gameConstants.js";
+import { CHARGE_ZONE_BOOST_TURNS } from "../../data/gameConstants.js";
+import { firePatch } from "../systems/cooldowns.js";
 import { randomNote } from "../../music/cadence.js";
 import { commitMelodyEconomy } from "../systems/melodyCommit.js";
 import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
@@ -449,9 +450,14 @@ export function applyBotAction(state, action, ctx = {}) {
         if (action.to != null) pre = applyAction(pre, spiritWarped(spiritId, action.to, 0), rng);
         if (dist > 1) pre = applyAction(pre, beatsSpent(dist - 1, false), rng);
         const nsSelf = pre?.noteStates?.[spiritId] ?? {};
+        // ⚠️ `firePatch` PAYS THE Db AND STARTS THE COOLDOWN IN ONE PLACE, and
+        // the searcher must use the same one the client does. A kernel that
+        // charged less than the client would quietly play a cheaper game — the
+        // same failure `melodyCommit.js` warns about, and the reason every
+        // Bushido number in the §6.6 bench predates the ability having a price.
         pre = patchNs(pre, spiritId, {
-          tempDrive:       (nsSelf.tempDrive ?? 0) + bonus,
-          psychoBushidoCd: PSYCHO_BUSHIDO_CD,
+          tempDrive: (nsSelf.tempDrive ?? 0) + bonus,
+          ...firePatch(nsSelf, 'psycho_bushido'),
         }, rng);
       }
 

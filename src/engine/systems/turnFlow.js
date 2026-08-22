@@ -28,8 +28,9 @@ import { canonicalRoot, getSpelledPool, pitchIndex } from "../../music/notes.js"
 import { randomNote } from "../../music/cadence.js";
 import { evaluateChord } from "../../music/chords.js";
 import { usedList } from "./economy.js";
-import { STOCK_REFILL_RATE } from "../../data/gameConstants.js";
+import { STOCK_REFILL_RATE, SHADOW_ILLUSION_SUSTAIN_DRAIN } from "../../data/gameConstants.js";
 import { rigAtrophyTick } from "./sonicRig.js";
+import { tickCooldowns } from "./cooldowns.js";
 
 /**
  * How many stock slots recharge for this sheet this turn.
@@ -107,6 +108,10 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
   // player should hear the amp get quieter, not discover it mid-beam.
   const rigAtrophy = rigAtrophyTick(ns);
 
+  // 👤 Same reason: the report has to be able to say the double starved, and by
+  // the time anyone reads the patch it is already gone.
+  const shadow = tickShadowIllusion(ns.shadowIllusion, ns.tempSustain ?? 0);
+
   const patch = {
     noteStock:    newStock,
     melodyLine:   [],
@@ -124,8 +129,11 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
     halfRefillNextTurn: false,  // 🪓 Axe Swing whiff penalty consumed
     refillDrain: 0,             // 🕳️ vortex drain consumed (applied to the rate above)
 
-    // 🌀 Psycho Bushido cooldown ticks on the Ronin's own turns.
-    psychoBushidoCd: Math.max(0, (ns.psychoBushidoCd ?? 0) - 1),
+    // 🕒 EVERY ability cooldown ticks on its owner's own turns — one map, one
+    // tick. ⚠️ Was `psychoBushidoCd`, a single named field, until 2026-08-22;
+    // see `cooldowns.js` for why a named field per ability is how twelve
+    // abilities ended up with no cooldown at all.
+    abilityCd: tickCooldowns(ns),
 
     // 🏋️ THE RIG ATROPHIES ON HIS OWN TURNS TOO (MARQUEE_QUIZ_DESIGN.md §5).
     // A tier won at the marquee is not on a countdown and is not burned by a
@@ -169,8 +177,10 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
     pendingModeBonus: { mode: derivedMode, reason: derived.reason, root: derivedRoot },
 
     // 👤 Shadow Illusion counts the Ronin's OWN turns, so a 3-turn double
-    // survives three full rounds of rivals guessing wrong.
-    shadowIllusion: tickShadowIllusion(ns.shadowIllusion),
+    // survives three full rounds of rivals guessing wrong — and CHARGES HIM
+    // SUSTAIN for every one of them.
+    shadowIllusion: shadow.si,
+    ...(shadow.drained > 0 ? { tempSustain: shadow.sustainLeft } : {}),
   };
 
   return {
@@ -190,19 +200,56 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
       // by the time it reads the patch the illusion is already gone.
       shadowExpiring: !!ns.shadowIllusion && (ns.shadowIllusion.turnsLeft ?? 1) <= 1,
       shadowHexBefore: ns.shadowIllusion?.hex ?? null,
+      // 👤 How much Sustain the double ate this turn, and whether it STARVED —
+      // two different sentences for the player, so they are two fields. A double
+      // that ran out of time and one that drank the Ronin dry look identical on
+      // the board and should not sound identical in the log.
+      shadowSustainDrained: shadow.drained,
+      shadowStarved:        shadow.starved,
     },
   };
 }
 
 /**
- * 👤 Tick the Shadow Illusion; null once spent.
+ * 👤 Tick the Shadow Illusion, and charge the Ronin for standing it up.
  *
  * The double's legs are zeroed here and refilled by the melody commit to THIS
  * turn's granted budget — otherwise last turn's leftover steps carry into a turn
  * whose budget isn't known yet.
+ *
+ * ⚠️ THE DRAIN REPLACED A ONE-OFF DRIVE TOKEN AT SUMMON (2026-08-22,
+ * `RONIN_ABILITY_DESIGN.md` §2.2), and the difference is the whole point. A
+ * token is a price you pay once and forget; a drain is a clock the player can
+ * hear running. It is what makes the double a trade rather than a freebie — the
+ * Ronin is at his most fragile exactly while rivals cannot tell which of the two
+ * bodies to hit.
+ *
+ * 📌 STARVATION IS A REAL END, NOT A GUARD. `SHADOW_ILLUSION_SUSTAIN_DRAIN` is
+ * charged against `tempSustain` only; when there is not enough left to pay, the
+ * double collapses instead of the Ronin bleeding Vibe for it. Sustain is the
+ * thing being spent, so Sustain is the thing that runs out — routing the
+ * shortfall into Vibe would quietly turn a positioning ability into a
+ * self-damage ability, which is a different card.
+ *
+ * @returns {{si: object|null, drained: number, sustainLeft: number, starved: boolean}}
  */
-function tickShadowIllusion(si) {
-  if (!si) return null;
+function tickShadowIllusion(si, sustain) {
+  if (!si) return { si: null, drained: 0, sustainLeft: sustain, starved: false };
+
   const left = (si.turnsLeft ?? 1) - 1;
-  return left > 0 ? { ...si, turnsLeft: left, stepsLeft: 0 } : null;
+  // Time is checked FIRST: a double on its last turn is spent whether or not
+  // the Ronin could have fed it, and charging for a turn it never gets would
+  // bill him for nothing.
+  if (left <= 0) return { si: null, drained: 0, sustainLeft: sustain, starved: false };
+
+  const cost = SHADOW_ILLUSION_SUSTAIN_DRAIN;
+  if (sustain < cost) {
+    return { si: null, drained: 0, sustainLeft: sustain, starved: true };
+  }
+  return {
+    si: { ...si, turnsLeft: left, stepsLeft: 0 },
+    drained: cost,
+    sustainLeft: sustain - cost,
+    starved: false,
+  };
 }
