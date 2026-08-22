@@ -3,6 +3,14 @@
 Pick-up notes for continuing the Spirit-identity work. Read this + `DESIGN_AUDIT_v2.md`
 (design thesis) + `ARCHITECTURE.md` (where things live) and you're caught up.
 
+> ⚠️ **2026-08-22 — TWO GAME-WIDE RULES LANDED, AND THE RONIN IS NO LONGER "COMPLETE".**
+> Alex's call: **every ability costs at least 1 Db per use, and every ability has a
+> cooldown.** Measured today, **5 of 13 abilities pay Db and 1 of 13 has a cooldown** —
+> `psychoBushidoCd` is the only cooldown that exists anywhere in `src/`. Three abilities
+> were designed *around* having none. And a Ronin design pass replaced Wa no Koe outright.
+> **`RONIN_ABILITY_DESIGN.md` is the canonical statement of all of it**, including the
+> per-ability violation table and the exemptions that need Alex's call. Nothing was built.
+
 ---
 
 ## The big idea (how we're building characters)
@@ -25,12 +33,24 @@ Archetype quartet: **Ronin = Burst/virtuoso · Intergalactic 0 = Control/zoner �
 
 | Spirit | Stats (Drive/Sus/Spd/Vibe) | Status |
 |---|---|---|
-| **Shredding Ronin** (`cosmic_ronin`) | 8/5/5/5, Shred | ✅ **Complete** |
-| **Intergalactic 0** (`intergalactic_0`) | 6/7/**4**/4, Groove | ✅ **Complete** |
-| **Metalness Monster** (`Metalness_Monster`) | 7/6/4/5, Shred | ⚠️ Has arsenal, **no innate identity** |
+| **Shredding Ronin** (`cosmic_ronin`) | 8/5/5/5, Shred | 🔁 **Built, then re-designed 2026-08-22** — see `RONIN_ABILITY_DESIGN.md` |
+| **Intergalactic 0** (`intergalactic_0`) | 6/7/**4**/4, Groove | ✅ Built · ⚠️ owes Db/cooldown under the new rule |
+| **Metalness Monster** (`Metalness_Monster`) | 7/6/4/5, Shred | ⚠️ Has arsenal, **no innate identity** · all 4 skills owe Db **and** cooldown |
 | **Glamarchy** (`Glamarchy`) | 5/8/5/4, Flair | ❌ **Not started** (no innate, no arsenal) |
 
+⚠️ **"Complete" used to mean "the code runs".** It was doing double duty as "the design
+is settled", and the Ronin row is why that broke: every one of his four abilities shipped,
+and three of them no longer match what they are supposed to be. Read the status column as
+*build* state and the design docs as *intent* — they are not the same axis.
+
 ### Ronin — the fragile ranged virtuoso (REWORKED)
+
+> 🎯 **THIS SECTION DESCRIBES WHAT THE CODE DOES. `RONIN_ABILITY_DESIGN.md` DESCRIBES
+> WHAT IT IS SUPPOSED TO DO, AND THEY DIVERGE.** Read that doc's §4 before treating any
+> line below as a rule: Wa no Koe is being **replaced** rather than tuned, Cursed
+> Shamisen's minor-key gate is being **removed**, and Shadow Illusion's cost is moving
+> from a Drive token to a **Sustain drain**. Only Psycho Bushido survives roughly intact.
+
 - **Innate:** crowd virtuosity (Performance Score ≥5 wins ~2× fans, <5 cools/sheds fans);
   Smash relationship (his own Smash hits soft; a Smash *on* him double-scatters); note-greed
   (~50% second note off a Lost Chord); 10-slot stock.
@@ -64,21 +84,34 @@ Archetype quartet: **Ronin = Burst/virtuoso · Intergalactic 0 = Control/zoner �
     tempo tax rather than a threat.) Only the Ronin's own client sees a faint 👤 pip on the
     fake. Lasts **3 of Ronin's turns**. Pops if it is struck, if Ronin attacks, or if Ronin is attacked.
     A rival who swings at the double burns their AP **and** their Action Token for zero damage.
-  - **Cursed Shamisen** (8 Db unlock, 2 Db/use) — Set down on Ronin's hex, where it plays a **haunting
-    melody every turn** (real audio: an insen-scale phrase that drops an octave and speeds up once it
-    wakes). Everyone inside its rings loses 1 Sustain, then Vibe. Every Spirit the melody reaches is
-    marked with a pulsing 🎶 aura until it next plays, so the damage is never a mystery. Three stages,
-    ticked at the start of Ronin's turns:
-    **1 — Listening** (2 rings, still, spares Ronin) →
-    **2 — Swelling** (3 rings, still, spares Ronin) →
-    **3 — Hunting** (aura **frozen** at 3 rings; stalks 1 hex/turn toward the nearest Spirit, ties broken
-    toward the most wounded; spares nobody, Ronin included).
-    The freeze matters: an aura that both grows *and* chases would eventually cover the stage with no
-    counterplay. Growth is what it gets for standing still. Calmed by walking onto its hex, which also
-    hands the walker a bonus note — the answer is always "go and touch it".
+  - **Cursed Shamisen** (8 Db unlock, 2 Db/use, **no cooldown**) — Set down on Ronin's hex, where it
+    plays a **haunting melody every round** (real audio: an insen-scale phrase that drops an octave and
+    speeds up once it has prey). Aura is a **fixed 2 rings** (`SHAM_RINGS`), and it lives **3 rounds**
+    (`SHAM_ROUNDS`), ticked once per round from `endTurn`'s `roundCompleted` block.
+    ⚠️ **IT ONLY HAUNTS SPIRITS IN A MINOR KEY** (`inMinorKey`) — Ronin included, so his own key decides
+    whether it is a weapon or a haunting. Anyone in minor inside the rings loses 1 **Sustain**
+    (`tempSustain`), and only bleeds **Vibe** once Sustain is gone. Every Spirit the melody reaches is
+    marked with a pulsing 🎶 aura until it next plays, so the damage is never a mystery.
+    Each round it **wanders one hex toward the nearest minor-key Spirit** (ties broken toward the
+    lowest Vibe), walking *around* bodies; with the whole board in major it has no prey, no destination,
+    and stands still. Calmed by walking onto its hex — whatever key you're in — which also hands the
+    walker a bonus note. The safe approach is to be in **major** when you go and touch it.
+    🪦 **THIS ENTRY USED TO DESCRIBE THREE STAGES** — *Listening → Swelling → Hunting*, 2 rings growing
+    to 3, a frozen aura, and "spares Ronin" — **and none of it has ever been in the code.** There is no
+    stage field, `SHAM_RINGS` is a constant, and the thing wanders from round 1. Corrected 2026-08-22.
     Board art: `SHAMISEN_ART` at the top of the simulator (currently a vector placeholder; drop
     `src/standees/Cursed_Shamisen.png` in and point the constant at it to swap).
-  - **Wa no Koe** (12 Db) — Passive: melody commit aligning with chord stack gives +1 Drive or Sustain for 3 rounds.
+  - **Wa no Koe** (12 Db, **no per-use cost, no cooldown**) — Passive: when **half or more** of the
+    committed melody sits inside the Drive+Sustain stacks, it pays **+1 Drive or Sustain for 3 rounds**
+    (whichever stack is longer). ⚠️ The rule is a pure function in the **kernel** —
+    `checkWaNoKoe` in `engine/systems/melodyCommit.js` — not in this file; the monolith keeps only
+    `tickWaNoKoe` (expiry is a turn-start rule, not a commit rule). The kernel deliberately reproduces
+    the shipped B10 bug where pre-commit `tempDrive` overwrites the boost the same commit just earned
+    (one-place fix, `BOT_STRATEGY_HANDOFF` §7).
+    🚨 **THIS ABILITY IS BEING REPLACED, NOT TUNED** — the designed Wa no Koe makes **one chosen note
+    Resonant board-wide** and puts Ronin in a vulnerable **Harmony** state. It shares only the name and
+    the 12 Db. See `RONIN_ABILITY_DESIGN.md` §2.4. 📌 Don't spend a session fixing the B10 bug first;
+    the replacement makes it moot.
 
 ### Intergalactic 0 — the slow forgiving cosmic controller (done · UNLOCKED 2026-08-08)
 - **Innate:** speed 4; knockback −1 ("Rolls Hard"); **Freestyle** (first out-of-scale note/turn
@@ -194,6 +227,14 @@ calling it — so exactly one dispatch happens and every client advances the cur
 
 ## NEXT TASK: design + build a third Spirit
 
+> ⚠️ **THIS IS NO LONGER THE ONLY OPEN LANE.** As of 2026-08-22 there are two more, and
+> both are *game-wide* rather than per-Spirit: the **Db + cooldown rule** (which needs a
+> general cooldown system before anything else in it can land) and the **Ronin re-design**
+> (`RONIN_ABILITY_DESIGN.md`). Alex is also reworking the **HUD** independently and will
+> upload it — worth knowing before anyone adds screen furniture, because thirteen cooldown
+> timers plus an Echo counter is exactly the clutter that pass is meant to solve.
+> Sequencing between the three is Alex's call and is **not** settled here.
+
 Two candidates. **Glamarchy is the cleaner open lane** (owns the crowd pillar, which no one else
 touches). Recommended order: design Glamarchy first, then give Metalness its innate identity.
 
@@ -243,9 +284,21 @@ it** — use it (not raw `evaluateChord`) for any new chord-based passive (e.g. 
    `onHexClick` branch, a button (near the Smash/Sonic buttons), a `hexFill`/`hexStroke`
    highlight, and a Cancel. (See `resolveBlasterOfRa` / `resolveDisplace` as templates.)
 
-**Cooldowns:** add a `<x>Cd` field in `makeInitialNoteState`, tick it down in `startNewTurnNotes`
-(see `psychoBushidoCd`). Note `displaceCd` was REMOVED in the Space is Displaced rework — don't
-copy it as a template, it no longer exists.
+**🆕 EVERY ABILITY COSTS ≥1 Db PER USE AND HAS A COOLDOWN** (Alex, 2026-08-22, game-wide).
+An ability with no per-use price and no recharge isn't a decision, it's a default — it gets
+taken every turn it's legal and stops competing with the rest of the turn. ⚠️ **The game does
+not currently obey this**: 5 of 13 abilities pay Db, **1 of 13 has a cooldown**, and three
+(Space is Displaced, Code Injection, Gravity Control) were designed *around* having none, with
+written reasons. The violation table and the exemption calls Alex still owes are in
+`RONIN_ABILITY_DESIGN.md` §0. **Innate passives are NOT settled** — recommendation there is that
+the rule binds actives only, since Boom Box and Poison Slime have no moment to charge for.
+
+**Cooldowns:** add a `<x>Cd` field in `makeInitialNoteState` (`engine/systems/economy.js`), tick
+it down in `startNewTurnNotes` / `engine/systems/turnFlow.js` (see `psychoBushidoCd`). Note
+`displaceCd` was REMOVED in the Space is Displaced rework — don't copy it as a template, it no
+longer exists. ⚠️ **`psychoBushidoCd` is the ONLY live cooldown in `src/`.** Grep `[a-zA-Z]Cd\b`
+and every other hit is a `displaceCd` tombstone comment. So the rule above is not a tuning pass —
+the cooldown system is one field wide and has to be generalised before anything else in it lands.
 
 **Turn-scoped debuffs on the victim:** add the field to `makeInitialNoteState`, then tick it in
 `applyDebuffsTicked` (`engine/systems/economy.js`) — and remember to add it to that function's

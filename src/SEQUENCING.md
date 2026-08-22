@@ -199,7 +199,48 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. 🧭 START HERE — session handoff, 2026-08-21 (the clutter pass)
+## 5. 🧭 START HERE — session handoff, 2026-08-22 (design only)
+
+> 📐 **NO CODE WAS TOUCHED.** Alex's call this session was to lock the design and write it
+> down, not to build it — the tree is still carrying two sessions of uncommitted work
+> (§5 below), and adding a third was the wrong move.
+>
+> 🆕 **TWO RULES, AND THEY ARE GAME-WIDE.** *"All abilities cost at least 1 Db, and all
+> abilities have some cooldown."* Measured against the client: **5 of 13 abilities pay Db
+> per use, and 1 of 13 has a cooldown.** 🎯 `psychoBushidoCd` is the **only live cooldown
+> in `src/`** — so this is not a tuning pass, the cooldown system is one field wide and has
+> to be generalised first. Three abilities (Space is Displaced, Code Injection, Gravity
+> Control) were designed *around* having no cooldown, each with a written reason; those are
+> exemption calls Alex still owes, along with whether innate passives are covered at all.
+>
+> 🗡️ **AND THE RONIN'S KIT WAS RE-DESIGNED.** Three of his four abilities no longer match
+> what ships, and **Wa no Koe is a replacement, not a rework** — the shipped one is a
+> passive harmony bonus in the kernel (`checkWaNoKoe`), the designed one makes a chosen note
+> Resonant board-wide and puts Ronin in a vulnerable Harmony state. They share the name and
+> the 12 Db.
+>
+> 📄 **`src/RONIN_ABILITY_DESIGN.md` is the canonical doc** — the four abilities, the firm
+> decisions separated from the playtest bucket, the measured drift table, and the open calls.
+> `CHARACTER_HANDOFF.md` was updated in the same pass and the Ronin is no longer "Complete".
+>
+> 🪦 **ONE DOC WAS LYING.** `CHARACTER_HANDOFF.md` described Cursed Shamisen as a three-stage
+> escalation — *Listening → Swelling → Hunting*, 2 rings growing to 3, a frozen aura, "spares
+> Ronin" — with a paragraph justifying the freeze. **None of it has ever been in the code.**
+> `SHAM_RINGS` is a constant, there is no stage field, and the thing wanders from round 1.
+> Same class as the `ARCHITECTURE.md` drift below; these design docs have no `test:arch`.
+>
+> 🖥️ **The HUD rework is Alex's, and he will upload it.** Don't pre-empt it — but note it
+> collides with the rule above, because thirteen cooldowns plus an Echo counter is a lot of
+> new state wanting screen space.
+>
+> ⚠️ **THE UNCOMMITTED WORK IS NOW THREE SESSIONS DEEP** and none of it is this one's — the
+> 28-file rig rework and the clutter pass are both still sitting there. **Commit from a normal
+> terminal**, and read §5.G⁸ in the 2026-08-21 section below first: the deletions need a `git rm`
+> the agent shell cannot do.
+
+---
+
+## 5-aug21. 🧭 session handoff, 2026-08-21 (the clutter pass)
 
 > 🧹 **A CLEAR-OUT, NOT A FEATURE.** Alex's call this session: *"let's continue
 > clearing out any old clutter, items that may be adding to the bloat of the game

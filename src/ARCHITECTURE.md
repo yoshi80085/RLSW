@@ -452,6 +452,7 @@ than no doc** — if you find one that has, say so plainly rather than editing a
 | Doc | What it is |
 |---|---|
 | `SEQUENCING.md` | 🧭 **START HERE.** §5 is always the current session handoff and the next step. |
+| `GAME_BRIEF.md` | 🎲 **The game itself, portable.** Every rule and every live tuning value in one self-contained file, written to be handed to another tool with no repo access so design changes can be thought through away from the code. ⚠️ It quotes ~80 constants by value — regenerate it from the source when they move, or it becomes the exact kind of confidently-wrong map this file's own header is about. |
 | `BOT_STRATEGY_HANDOFF.md` | The bot, the evaluator, the cost web, the kits. Which weights are measured, which are guesses. |
 | `MULTIPLAYER_HANDOFF.md` | The engine extraction, phase by phase — what the engine owns and what React still holds. |
 | `NETCODE_HANDOFF.md` | The server, rooms, relay, spectating. |
