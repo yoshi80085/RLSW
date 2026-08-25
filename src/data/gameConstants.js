@@ -136,13 +136,40 @@ export const PSYCHO_BUSHIDO_MIN_AP = 2;   // 1 hex of run-up + the Swing's own A
 // the reason these numbers are small: a good commit earns roughly 2–8, and the
 // unlocks cost 6–16.
 //
-// 📌 THIS BLOCK IS RONIN-ONLY SO FAR. Nine other abilities still owe a cost, a
-// cooldown or both, and three of them (Space is Displaced, Code Injection,
-// Gravity Control) were designed AROUND having no cooldown with written reasons
-// — see §0.3 of the design doc. Do not paste this block over them without the
-// exemption calls being made first.
+// 🎯 THERE ARE NO EXEMPTIONS — THERE ARE DIFFERENT RATES. Alex's call, 2026-08-22:
+// *"Make it a 1 turn cool down. Different abilities can cool down at different
+// rates."* Space is Displaced was the strongest exemption case in the game (its
+// own skill text used to promise "no cooldown", and the blink is the slowest
+// Spirit's compensation for being slow) and it did not get one — it got a SHORT
+// number instead. That is the better rule: "is this ability special?" is an
+// argument with no end, "how long should this one be?" is a number.
+//
+// ⏸️ INNATE PASSIVES ARE OUT OF SCOPE, and that is a scope line, not an
+// exemption. Boom Box, Poison Slime, crowd virtuosity and Freestyle are not
+// things you DO — there is no moment of use to charge for. An innate is the
+// character; an active is a choice, and the rule exists to make choices cost.
 export const SHADOW_ILLUSION_CD    = 3;   // rounds — see the note below
 export const CURSED_SHAMISEN_CD    = 3;   // rounds — matches its 3-round life
+
+// 🌌🕳️💻☀️ INTERGALACTIC 0. He is the zoner: his kit is about doing a small thing
+// often, so his rates are short. The shapes justify the spread —
+//   Displace 1  · Alex's number. It is his answer to being speed 4, so it has to
+//                 come back fast or the cooldown re-strands the character the
+//                 ability exists to un-strand.
+//   Gravity  2  · the vortex already hangs for a full round, so a 1 would let the
+//                 next one open the instant the last collapsed — no gap at all.
+//   Inject   2  · a 1 would be decorative: `codeInjectTurns` already blocks
+//                 re-arming while a patch is live, so the cooldown only starts
+//                 mattering at 2 — one turn where the bluff is genuinely
+//                 unavailable. ⚠️ It stays HIDDEN either way: the counter lives
+//                 on his own sheet, and rivals never learn he armed it, so they
+//                 cannot infer the recharge. Do not surface it anywhere shared.
+//   Sunbeam  2  · the only one that fires AUTOMATICALLY on any connecting hit, so
+//                 it is the only one where the cooldown is the whole restraint.
+export const DISPLACE_CD      = 1;
+export const GRAVITY_CD       = 2;
+export const CODE_INJECT_CD   = 2;
+export const SUNBEAM_CD       = 2;
 
 // Per-use Db. ⚠️ SEPARATE FROM `dbCost` IN THE SKILL TREE, which is the ONE-TIME
 // unlock price. Both numbers are rules and both live in this file; the tree

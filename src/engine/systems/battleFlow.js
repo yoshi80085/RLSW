@@ -54,16 +54,29 @@ import {
 } from "../../data/gameConstants.js";
 import { ROCK_GOD_RUNAWAY_LEAD, ROCK_GODS_SHELVED } from "../../data/rockGods.js";
 import { RIFF_BOTH_PAID_QUALITY } from "./riffOff.js";
+import { canFire, firePatch } from "./cooldowns.js";
 
 // ── Sunbeam (Intergalactic 0) ────────────────────────────────────────────────
-// Transcribed from rlsw-simulator-v3_8_1.jsx:555-558 at extraction. Left here
-// rather than in gameConstants so the move is a pure lift with no constant
-// re-homing in the same pass; fold them into gameConstants when the monolith's
-// copies are deleted.
-export const SUNBEAM_DB_COST         = 2;
-export const SUNBEAM_BLIND_TURNS     = 1;
-export const SUNBEAM_LINGER_CHANCE   = 0.5;
-export const SUNBEAM_MAX_BLIND_TURNS = 2;
+// Transcribed from rlsw-simulator-v3_8_1.jsx:555-558 at extraction, and this file
+// carried its own literal copies for months — the header comment said to "fold
+// them into gameConstants when the monolith's copies are deleted", and nobody did.
+//
+// ✅ FOLDED 2026-08-22. They are now RE-EXPORTS of the `gameConstants` values, so
+// the names every importer already uses keep working while there is exactly one
+// number behind each. ⚠️ Do not re-introduce a literal here: two `2`s that agree
+// today are a silent fork tomorrow, and `cooldowns.js` now reads the same four.
+// ⚠️ IMPORTED **AND** RE-EXPORTED, and it has to be both. `export … from` creates
+// no local binding, so the four uses further down this file would have been
+// undefined at runtime — a bundle that compiles clean and a Sunbeam that silently
+// never fires. The import is what this file reads; the export is what its existing
+// importers keep reading.
+import {
+  SUNBEAM_DB_COST,
+  SUNBEAM_BLIND_TURNS,
+  SUNBEAM_LINGER_CHANCE,
+  SUNBEAM_MAX_BLIND_TURNS,
+} from "../../data/gameConstants.js";
+export { SUNBEAM_DB_COST, SUNBEAM_BLIND_TURNS, SUNBEAM_LINGER_CHANCE, SUNBEAM_MAX_BLIND_TURNS };
 
 // 🧪 CUT 2026-08-17 — `SLIME_DB_COST` and the note-regen debuff it paid for.
 //
@@ -755,13 +768,17 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
   // unworkable — see the header.
   if (attackerId === 'intergalactic_0') {
     const atkNs = nsOf(state, attackerId);
-    if ((atkNs.unlockedSkills ?? []).includes('sunbeam') && (atkNs.dbPoints ?? 0) >= SUNBEAM_DB_COST) {
+    // 🕒 AND IT NOW RECHARGES. Sunbeam is the only ability in the game that fires
+    // AUTOMATICALLY on any connecting hit — the player never chooses it — so the
+    // cooldown is the whole of its restraint, and `canFire` is the gate rather
+    // than a bare Db check.
+    if ((atkNs.unlockedSkills ?? []).includes('sunbeam') && canFire(atkNs, 'sunbeam')) {
       state = yield act(randomBatchDrawn(1));
       const lingerRoll = state.lastRandomBatch?.[0] ?? 1;
       const lingers = lingerRoll < SUNBEAM_LINGER_CHANCE;
       const turns = Math.min(SUNBEAM_MAX_BLIND_TURNS, SUNBEAM_BLIND_TURNS + (lingers ? 1 : 0));
 
-      state = yield patch(attackerId, { dbPoints: (atkNs.dbPoints ?? 0) - SUNBEAM_DB_COST });
+      state = yield patch(attackerId, firePatch(atkNs, 'sunbeam'));
       // Blinds do NOT stack — a fresh proc takes the HIGHER clock, so being hit
       // twice in a round can never bury someone past the ceiling.
       state = yield patch(defenderId, {

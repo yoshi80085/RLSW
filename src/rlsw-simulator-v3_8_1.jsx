@@ -89,7 +89,8 @@ import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX,
 import { cooldownLeft, canFire, firePatch } from "./engine/systems/cooldowns.js";
 import { PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
          SHADOW_ILLUSION_SUSTAIN_DRAIN, PSYCHO_BUSHIDO_CD, SHADOW_ILLUSION_CD,
-         CURSED_SHAMISEN_CD } from "./data/gameConstants.js";
+         CURSED_SHAMISEN_CD, DISPLACE_CD, GRAVITY_CD, CODE_INJECT_CD,
+         SUNBEAM_CD } from "./data/gameConstants.js";
 import { SUNBEAM_DB_COST, SUNBEAM_BLIND_TURNS, SUNBEAM_LINGER_CHANCE, SUNBEAM_MAX_BLIND_TURNS,
          DISPLACE_DB_COST, DISPLACE_MIN_RINGS, DISPLACE_MAX_RINGS,
          GRAVITY_DB_COST, GRAVITY_PLACE_RINGS, GRAVITY_PULL_RINGS, GRAVITY_PULL_HEXES, GRAVITY_NOTE_DRAIN,
@@ -4423,7 +4424,7 @@ function Game({ gameState, onReturnToLobby }) {
     }
     // (hydra removed — Ronin rework)
     if (skillId === 'blaster_of_ra') addLog(`🌀 ${spirit?.name} — BLASTER OF RA! Your Smash becomes a ranged, piercing bass-drop down the beam — undefendable, scatters & knocks back every rival in line.`);
-    if (skillId === 'displace')      addLog(`🌌 ${spirit?.name} — SPACE IS DISPLACED! ${DISPLACE_DB_COST} Db to blink to any open hex ${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out. No cooldown, no AP. He doesn't run — he transcends space.`);
+    if (skillId === 'displace')      addLog(`🌌 ${spirit?.name} — SPACE IS DISPLACED! ${DISPLACE_DB_COST} Db to blink to any open hex ${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out, then ${DISPLACE_CD} turn to settle. No AP. He doesn't run — he transcends space.`);
     if (skillId === 'sunbeam')       addLog(`☀️ ${spirit?.name} — SUNBEAM! Land an attack and spend ${SUNBEAM_DB_COST} Db to white out your rival's entire world for a turn. Sometimes it sticks for two.`);
     if (skillId === 'code_injection') addLog(`💻 ${spirit?.name} — CODE INJECTION! ${CODE_INJECT_DB_COST} Db, committed in secret, and the next rival who lands on you gets their dice thrown out and re-rolled. Nobody can see it armed.`);
     if (skillId === 'gravity_control') addLog(`🕳️ ${spirit?.name} — GRAVITY CONTROL! ${GRAVITY_DB_COST} Db opens a black hole within ${GRAVITY_PLACE_RINGS} rings. It drags every rival nearby inward, and swallows ${GRAVITY_NOTE_DRAIN} notes from anyone it takes whole.`);
@@ -7779,6 +7780,11 @@ function Game({ gameState, onReturnToLobby }) {
     if (!acting) return;
     const ns = actingNoteState ?? {};
     const dbPts = ns.dbPoints ?? 0;
+    const displaceCdLeft = cooldownLeft(ns, 'displace');
+    if (displaceCdLeft > 0) {
+      addLog(`\u{1F30C} Space has not settled \u2014 ${displaceCdLeft} turn${displaceCdLeft > 1 ? 's' : ''} before he can fold it again.`);
+      return;
+    }
     if (dbPts < DISPLACE_DB_COST) {
       addLog(`🌌 Not enough Db to fold space — Space is Displaced costs ${DISPLACE_DB_COST} Db (you have ${dbPts}).`);
       return;
@@ -7801,7 +7807,7 @@ function Game({ gameState, onReturnToLobby }) {
     // cost 0 — the warp is paid for in Db, not Action Points, so the reducer must
     // not deduct movement. He can still walk his full allowance after blinking.
     dispatch(spiritWarped(acting.id, hexNum, 0)); // reducer owns the position write
-    setNoteField(acting.id, { dbPoints: dbPts - DISPLACE_DB_COST });
+    setNoteField(acting.id, firePatch(ns, 'displace'));
     setAction(null);
     addLog(`🌌 ${acting.name} folds space and WARPS ${rings} rings to hex #${hexNum} — Space is the place. (−${DISPLACE_DB_COST} Db)`);
   }
@@ -7831,6 +7837,11 @@ function Game({ gameState, onReturnToLobby }) {
     if (!acting || acting.id !== 'intergalactic_0') return;
     const ns = actingNoteState ?? {};
     const dbPts = ns.dbPoints ?? 0;
+    const gravityCdLeft = cooldownLeft(ns, 'gravity_control');
+    if (gravityCdLeft > 0) {
+      addLog(`\u{1F573}\uFE0F Gravity is still ringing \u2014 ${gravityCdLeft} turn${gravityCdLeft > 1 ? 's' : ''} before another vortex will open.`);
+      return;
+    }
     if (dbPts < GRAVITY_DB_COST) {
       addLog(`🕳️ Not enough Db to bend gravity — Gravity Control costs ${GRAVITY_DB_COST} Db (you have ${dbPts}).`);
       return;
@@ -7849,7 +7860,7 @@ function Game({ gameState, onReturnToLobby }) {
     // One full revolution of the turn order. See the lifetime note above.
     const aliveCount = Math.max(1, spirits.filter(s => !s.knockedOut).length);
     setNoteField(acting.id, {
-      dbPoints: dbPts - GRAVITY_DB_COST,
+      ...firePatch(ns, 'gravity_control'),
       // `pulled` = ids this vortex has already grabbed. A rival gets dragged by
       // a given vortex ONCE, ever. Without it, a rival walking past would be
       // yanked on every step of their own move — the pull relocates them, which
@@ -8043,13 +8054,18 @@ function Game({ gameState, onReturnToLobby }) {
     const ns = actingNoteState ?? {};
     const dbPts = ns.dbPoints ?? 0;
     if ((ns.codeInjectTurns ?? 0) > 0) { addLog('💻 A patch is already live — one injection at a time.'); return; }
+    const injectCdLeft = cooldownLeft(ns, 'code_injection');
+    if (injectCdLeft > 0) {
+      addLog(`\u{1F4BB} The last patch is still compiling \u2014 ${injectCdLeft} turn${injectCdLeft > 1 ? 's' : ''}.`);
+      return;
+    }
     if (dbPts < CODE_INJECT_DB_COST) {
       addLog(`💻 Not enough Db to inject — Code Injection costs ${CODE_INJECT_DB_COST} Db (you have ${dbPts}).`);
       return;
     }
     const aliveCount = Math.max(1, spirits.filter(s => !s.knockedOut).length);
     setNoteField(acting.id, {
-      dbPoints: dbPts - CODE_INJECT_DB_COST,
+      ...firePatch(ns, 'code_injection'),
       codeInjectTurns: aliveCount,
     });
     // Quiet on purpose — no triggerEffectFlash. A board-wide flash would be
@@ -14260,7 +14276,8 @@ function Game({ gameState, onReturnToLobby }) {
             {hasConfirmed && acting?.id === 'intergalactic_0'
               && (actingNoteState?.unlockedSkills ?? []).includes('displace') && (() => {
               const dbPts   = actingNoteState?.dbPoints ?? 0;
-              const canWarp = dbPts >= DISPLACE_DB_COST;
+              const warpCd  = cooldownLeft(actingNoteState, 'displace');
+              const canWarp = canFire(actingNoteState, 'displace');
               return (
                 <>
                   <button className={canWarp ? 'btn active' : 'btn'}
@@ -14274,7 +14291,9 @@ function Game({ gameState, onReturnToLobby }) {
                         addLog(`🌌 SPACE IS DISPLACED — click any lit hex (${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out) to warp there for ${DISPLACE_DB_COST} Db.`);
                       }
                     }}>
-                    🌌 Displace{canWarp ? ` (${DISPLACE_DB_COST} Db)` : ` (${dbPts}/${DISPLACE_DB_COST} Db)`}
+                    🌌 Displace{canWarp ? ` (${DISPLACE_DB_COST} Db)`
+                      : warpCd > 0 ? ` (${warpCd})`
+                      : ` (${dbPts}/${DISPLACE_DB_COST} Db)`}
                   </button>
                   {action === 'displace' && (
                     <button className="btn" style={{borderColor:'#888',color:'#888'}}
@@ -14288,7 +14307,8 @@ function Game({ gameState, onReturnToLobby }) {
               && (actingNoteState?.unlockedSkills ?? []).includes('gravity_control') && (() => {
               const dbPts   = actingNoteState?.dbPoints ?? 0;
               const isOpen  = !!actingNoteState?.gravityVortex;
-              const canOpen = dbPts >= GRAVITY_DB_COST && !isOpen;
+              const gravCd  = cooldownLeft(actingNoteState, 'gravity_control');
+              const canOpen = canFire(actingNoteState, 'gravity_control') && !isOpen;
               return (
                 <>
                   <button className={canOpen ? 'btn active' : 'btn'}
@@ -14306,6 +14326,7 @@ function Game({ gameState, onReturnToLobby }) {
                     }}>
                     🕳️ Gravity{isOpen
                       ? ` (open #${actingNoteState?.gravityVortex?.hex})`
+                      : gravCd > 0 ? ` (${gravCd})`
                       : dbPts < GRAVITY_DB_COST ? ` (${dbPts}/${GRAVITY_DB_COST} Db)` : ` (${GRAVITY_DB_COST} Db)`}
                   </button>
                   {action === 'gravity_control' && (
@@ -14325,7 +14346,8 @@ function Game({ gameState, onReturnToLobby }) {
               && (actingNoteState?.unlockedSkills ?? []).includes('code_injection') && (() => {
               const dbPts   = actingNoteState?.dbPoints ?? 0;
               const armed   = (actingNoteState?.codeInjectTurns ?? 0) > 0;
-              const canHack = dbPts >= CODE_INJECT_DB_COST && !armed;
+              const hackCd  = cooldownLeft(actingNoteState, 'code_injection');
+              const canHack = canFire(actingNoteState, 'code_injection') && !armed;
               return (
                 <button className={canHack ? 'btn active' : 'btn'}
                   style={{borderColor: canHack ? '#44ffaa' : armed ? '#1d5c44' : '#12301f',
@@ -14335,7 +14357,9 @@ function Game({ gameState, onReturnToLobby }) {
                     ? `A patch is live and nobody else can see it. The next rival whose attack would beat you gets their dice thrown out and re-rolled. Lapses when the turn order comes back to you.`
                     : `Code Injection — spend ${CODE_INJECT_DB_COST} Db in secret. For one round, the first rival whose attack WOULD land on you has their dice re-rolled and must live with the second result. No tell, no aura: rivals cannot tell whether you've committed. If nobody lands a hit, the Db is gone — that's the bet.`}
                   onClick={() => { if (canHack) resolveCodeInjection(); }}>
-                  💻 Inject{armed ? ' ✅ LIVE' : dbPts < CODE_INJECT_DB_COST ? ` (${dbPts}/${CODE_INJECT_DB_COST} Db)` : ` (${CODE_INJECT_DB_COST} Db)`}
+                  💻 Inject{armed ? ' ✅ LIVE'
+                    : hackCd > 0 ? ` (${hackCd})`
+                    : dbPts < CODE_INJECT_DB_COST ? ` (${dbPts}/${CODE_INJECT_DB_COST} Db)` : ` (${CODE_INJECT_DB_COST} Db)`}
                 </button>
               );
             })()}

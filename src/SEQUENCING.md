@@ -199,7 +199,59 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. 🧭 START HERE — session handoff, 2026-08-22b (the Ronin foundation)
+## 5. 🧭 START HERE — session handoff, 2026-08-22c (the rule, applied)
+
+> ✅ **THREE OPEN CALLS CLOSED, AND ONE OF THEM IMPROVED THE RULE.** Alex on Space
+> is Displaced: *"Make it a 1 turn cool down. Different abilities can cool down at
+> different rates."* 🎯 **That kills the exemption question outright** — "is this
+> ability special enough?" is an argument with no end, "how long should this one
+> be?" is a number. The strongest exemption case in the game (its own skill text
+> promised "no cooldown", and the blink is the slowest Spirit's compensation for
+> being slow) took a **short number** instead of a pass.
+>
+> ✅ **INNATE PASSIVES ARE OUT OF SCOPE** — a scope line, not an exemption. Boom
+> Box, Poison Slime, crowd virtuosity and Freestyle are not things you *do*.
+> ✅ **SHADOW ILLUSION KEEPS ALL THREE POP CONDITIONS** (struck / Ronin attacks /
+> Ronin is attacked) — it stays a pure positioning tool. 📌 Heavier than it was,
+> since the double also drains Sustain now; if it never survives long enough to
+> matter in playtest, turn this dial before the drain.
+>
+> ✅ **INTERGALACTIC 0'S FOUR TOOK COOLDOWNS THE SAME DAY** — Displace 1, Gravity 2,
+> Code Injection 2, Sunbeam 2. **7 of 13 abilities pay Db, 7 of 13 are cooled.**
+> ⏸️ Metalness's four are still untouched **on purpose** — his redesign is on hold,
+> and pricing a kit that may not survive it is work thrown away.
+>
+> ⁉️ **ONE FORK IS OPEN AND NEEDS ALEX: is 🌀 Blaster of Ra an *ability*?** It does
+> not add an action — it **replaces the Smash** (`hasBlaster` branches the Smash
+> button and `legalActions`' smash family), so pricing or cooling it leaves
+> Intergalactic 0 with **no Smash at all** for a stretch, which no other Spirit
+> suffers. That may mean the rule needs a third category — *permanent upgrade to a
+> basic action* — and 🐙 Tentacle would be in it too. It is deliberately absent
+> from both tables with a comment saying why. `RONIN_ABILITY_DESIGN.md` §0.5.
+>
+> ⚠️ **AN UNCHANGED ASSERTION COUNT IS WHAT CAUGHT THE SUNBEAM HOLE.** `test:all`
+> came back byte-identical after the Sunbeam cooldown landed — which sounds like
+> good news and is actually the warning: **no existing assertion touched the new
+> gate.** `battleFlowCheck` **50 → 54** now proves a recharging beam does not fire,
+> charges no Db, and **draws nothing off the seeded stream** — an rng draw behind a
+> closed gate desyncs every replay and freezes online clients.
+>
+> 🪦 **A DUPLICATE CONSTANT DIED.** `SUNBEAM_DB_COST` and its three siblings were
+> literals in **both** `gameConstants.js` and `battleFlow.js` — battleFlow's own
+> header said to fold them in "when the monolith's copies are deleted" and nobody
+> ever had. Now re-exports, one number each. ⚠️ Imported **and** re-exported on
+> purpose: `export … from` binds nothing locally, and that file reads all four.
+>
+> 📌 **AND THE Db HOLE IS PARTLY CLOSED FROM AN UNEXPECTED DIRECTION.**
+> `skillTree.js` records that killing the rig branch removed the biggest sink in
+> the game, with "grow the ability tree" as the intended answer. Per-use costs are
+> the other half and need no new rungs: seven abilities now draw on the same bar
+> the tree does, every turn they are used. Six are still free, so it is not closed
+> — but a bench's Db numbers are no longer measuring a pool with no outlet.
+
+---
+
+## 5-aug22b. 🧭 session handoff, 2026-08-22 (the Ronin foundation)
 
 > ⏸️ **THREE ARMS WENT ON HOLD, AND THE REASON IS THE SAME ONE EACH TIME.** Alex:
 > *"To design a bot around a game that is in flux seems like a fool's errand."*

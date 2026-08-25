@@ -33,7 +33,13 @@ import {
   PSYCHO_BUSHIDO_DB_COST,
   SHADOW_ILLUSION_DB_COST,
   CURSED_SHAMISEN_DB_COST,
+  DISPLACE_CD, GRAVITY_CD, CODE_INJECT_CD, SUNBEAM_CD,
+  DISPLACE_DB_COST, GRAVITY_DB_COST, CODE_INJECT_DB_COST, SUNBEAM_DB_COST,
 } from "../../data/gameConstants.js";
+// ⚠️ SUNBEAM_DB_COST COMES FROM `gameConstants`, NOT FROM `battleFlow`. battleFlow
+// exports the same name and `battleFlow` imports THIS module, so pulling it from
+// there would close an import cycle. It also used to be a second literal `2`; that
+// copy is now a re-export of this one, so there is a single source of truth.
 
 /**
  * skillId → rounds the ability sleeps after use.
@@ -47,6 +53,10 @@ export const ABILITY_CD = {
   psycho_bushido:  PSYCHO_BUSHIDO_CD,
   shadow_illusion: SHADOW_ILLUSION_CD,
   cursed_shamisen: CURSED_SHAMISEN_CD,
+  displace:        DISPLACE_CD,
+  gravity_control: GRAVITY_CD,
+  code_injection:  CODE_INJECT_CD,
+  sunbeam:         SUNBEAM_CD,
 };
 
 /**
@@ -57,16 +67,27 @@ export const ABILITY_CD = {
  * time the ability fires — and because `advanceDB` spends that same pool on the
  * next unlock the moment it fills, using an ability literally costs progress.
  *
- * 📌 The five abilities that already charged per use (Sunbeam, Space is
- * Displaced, Gravity Control, Code Injection, and the Shamisen) each did it with
- * a bespoke check inside their own resolver. Only the Shamisen is folded in here
- * so far, because only the Ronin's kit has been through the rule. The other four
- * keep their own constants until their Spirits get the same pass.
+ * 📌 Each of these already had a bespoke Db check inside its own resolver before
+ * this table existed, and those checks are LEFT IN PLACE — they hold the
+ * ability-specific refusal message a player needs ("not enough Db to fold
+ * space"), which a generic gate cannot write. The table is what the searcher and
+ * the buttons read; the resolver still speaks for itself.
+ *
+ * ⚠️ 🌀 BLASTER OF RA IS DELIBERATELY ABSENT and is NOT an oversight. It does not
+ * add an action — it REPLACES the Smash (`hasBlaster` branches the Smash button
+ * and `legalActions`' smash family). Pricing or cooling it would leave
+ * Intergalactic 0 with no Smash at all for a stretch, which no other Spirit ever
+ * suffers, so it is a question about what counts as an *ability* rather than a
+ * number. Pending Alex's call.
  */
 export const ABILITY_DB_COST = {
   psycho_bushido:  PSYCHO_BUSHIDO_DB_COST,
   shadow_illusion: SHADOW_ILLUSION_DB_COST,
   cursed_shamisen: CURSED_SHAMISEN_DB_COST,
+  displace:        DISPLACE_DB_COST,
+  gravity_control: GRAVITY_DB_COST,
+  code_injection:  CODE_INJECT_DB_COST,
+  sunbeam:         SUNBEAM_DB_COST,
 };
 
 /** Rounds left before `skillId` can be used again. 0 = ready. */

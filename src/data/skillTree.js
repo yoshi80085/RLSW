@@ -29,6 +29,7 @@ import {
   DISPLACE_DB_COST, DISPLACE_MIN_RINGS, DISPLACE_MAX_RINGS,
   GRAVITY_DB_COST, GRAVITY_PLACE_RINGS, GRAVITY_PULL_RINGS, GRAVITY_PULL_HEXES, GRAVITY_NOTE_DRAIN,
   CODE_INJECT_DB_COST,
+  DISPLACE_CD, GRAVITY_CD, CODE_INJECT_CD, SUNBEAM_CD,
   PSYCHO_BUSHIDO_CD, SHADOW_ILLUSION_CD, CURSED_SHAMISEN_CD,
   PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
   SHADOW_ILLUSION_SUSTAIN_DRAIN,
@@ -92,8 +93,15 @@ export const SKILL_TREE = {
     // 📌 AND THE Db HOLE IS REAL AND DELIBERATE (design doc §7). Removing the
     // biggest sink in the game leaves Db piling up against a tree that cannot
     // absorb it. Alex's answer is to grow the ABILITY tree so a character's kit
-    // develops over a match; that work does not exist yet. Until it does, expect
-    // Db inflation and do not read a bench's Db numbers as a verdict on anything.
+    // develops over a match.
+    //
+    // 🎯 HALF OF THAT ARRIVED 2026-08-22, FROM AN UNEXPECTED DIRECTION. The rule
+    // that every ability costs Db PER USE is a sink that needs no new rungs at
+    // all: seven abilities now draw on the same bar the tree does, every turn
+    // they are used, so surplus Db has somewhere to go without the tree growing
+    // a single row. ⚠️ It does NOT close the hole on its own — six abilities are
+    // still free, and a Spirit who buys nothing still banks everything — but a
+    // bench's Db numbers are no longer measuring a pool with no outlet.
     //
     // ⚡ Overcharge went with it, by decision rather than by accident: it was the
     // Charge Zone's choose-your-payoff modal, gated behind Amp II. With the amps
@@ -149,13 +157,13 @@ export const SKILL_TREE = {
         { id:'blaster_of_ra', label:'Blaster of Ra', icon:'🌀', dbCost:10, gated:false,
           desc:'REPLACES the Smash. A ranged, PIERCING bass-drop: hurl your unused stock down the forward beam, hammering EVERY rival in line — undefendable, scattering their stock and knocking them back. Leaves you Exposed.' },
         { id:'displace', label:'Space is Displaced', icon:'🌌', dbCost:8,  gated:false,
-          desc:`He can't run — he warps. Spend ${DISPLACE_DB_COST} Db to fold space and appear instantly on any open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away. No cooldown, no Action Points, no rig required — the only thing that limits it is how loud you've been. Too close doesn't count: he steps THROUGH the space between, not across it.` },
+          desc:`He can't run — he warps. Spend ${DISPLACE_DB_COST} Db to fold space and appear instantly on any open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away. ${DISPLACE_CD}-turn cooldown, no Action Points, no rig required. Too close doesn't count: he steps THROUGH the space between, not across it.` },
         { id:'gravity_control', label:'Gravity Control', icon:'🕳️', dbCost:6, gated:false,
-          desc:`Spend ${GRAVITY_DB_COST} Db to tear open a BLACK HOLE VORTEX on any hex within ${GRAVITY_PLACE_RINGS} rings. Every rival within ${GRAVITY_PULL_RINGS} rings is dragged ${GRAVITY_PULL_HEXES} hex toward it — and anyone pulled all the way INTO it watches ${GRAVITY_NOTE_DRAIN} notes get swallowed, ${GRAVITY_NOTE_DRAIN} fewer in their pool next turn. The vortex hangs there for one full round, catching anyone who wanders too close, then collapses. Gravity is his to command: it never touches him.` },
+          desc:`Spend ${GRAVITY_DB_COST} Db (${GRAVITY_CD}-turn cooldown) to tear open a BLACK HOLE VORTEX on any hex within ${GRAVITY_PLACE_RINGS} rings. Every rival within ${GRAVITY_PULL_RINGS} rings is dragged ${GRAVITY_PULL_HEXES} hex toward it — and anyone pulled all the way INTO it watches ${GRAVITY_NOTE_DRAIN} notes get swallowed, ${GRAVITY_NOTE_DRAIN} fewer in their pool next turn. The vortex hangs there for one full round, catching anyone who wanders too close, then collapses. Gravity is his to command: it never touches him.` },
         { id:'code_injection', label:'Code Injection', icon:'💻', dbCost:6, gated:false,
-          desc:`Spend ${CODE_INJECT_DB_COST} Db to slip a patch into the fabric of the fight — then say nothing. For one full round, the FIRST rival whose attack would beat you has their dice thrown out and re-rolled, and they live with whatever comes up second. Nobody can see that you've committed: no aura, no tell, no marker on your standee. If nobody swings, or nobody lands, the Db is simply gone. That's the bet.` },
+          desc:`Spend ${CODE_INJECT_DB_COST} Db (${CODE_INJECT_CD}-turn cooldown) to slip a patch into the fabric of the fight — then say nothing. For one full round, the FIRST rival whose attack would beat you has their dice thrown out and re-rolled, and they live with whatever comes up second. Nobody can see that you've committed: no aura, no tell, no marker on your standee. If nobody swings, or nobody lands, the Db is simply gone. That's the bet.` },
         { id:'sunbeam', label:'Sunbeam', icon:'☀️', dbCost:14, gated:false,
-          desc:`Spend ${SUNBEAM_DB_COST} Db on a connecting attack and the stage goes SUPERNOVA — the rival's whole world whites out for ${SUNBEAM_BLIND_TURNS} turn. They can't see the board, the standees, their own stack. Nothing. ${Math.round(SUNBEAM_LINGER_CHANCE * 100)}% of the time the burn stays seared in for a second turn (${SUNBEAM_MAX_BLIND_TURNS} turns is the ceiling — the sun always sets).` },
+          desc:`Spend ${SUNBEAM_DB_COST} Db on a connecting attack (then ${SUNBEAM_CD} turns to recharge) and the stage goes SUPERNOVA — the rival's whole world whites out for ${SUNBEAM_BLIND_TURNS} turn. They can't see the board, the standees, their own stack. Nothing. ${Math.round(SUNBEAM_LINGER_CHANCE * 100)}% of the time the burn stays seared in for a second turn (${SUNBEAM_MAX_BLIND_TURNS} turns is the ceiling — the sun always sets).` },
       ],
     },
   ],

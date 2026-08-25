@@ -9,12 +9,11 @@ build.
 > are all in the code and under test. §0.2's ledger has been updated to match.
 > Cursed Shamisen's rework and the Wa no Koe replacement are **still design only.**
 
-> ⚠️ **THIS DOC AND THE SHIPPED GAME DISAGREE, AND THE DOC IS THE INTENT.**
-> Three of the four abilities described here differ from what
-> `rlsw-simulator-v3_8_1.jsx` does today, and **Wa no Koe is a different ability
-> entirely** — the shipped one is a passive harmony bonus, the designed one is a
-> board-wide resonance state. §5 is the measured difference, line by line.
-> **Nothing was built this session.** Read §5 before quoting §2 at the code.
+> ⚠️ **THIS DOC AND THE SHIPPED GAME STILL DISAGREE IN TWO PLACES, AND THE DOC IS
+> THE INTENT.** Cursed Shamisen's rework is unbuilt, and **Wa no Koe is a
+> different ability entirely** — the shipped one is a passive harmony bonus, the
+> designed one is a board-wide resonance state. §4 is the measured difference,
+> line by line. Read it before quoting §2 at the code.
 >
 > 🪦 **AND `CHARACTER_HANDOFF.md` WAS WRONG ABOUT CURSED SHAMISEN** — it described
 > a three-stage escalation the code has never had. §6. It has been corrected in
@@ -55,17 +54,23 @@ about — the rule is about the **per-use** cost. ✅ marks what shipped 2026-08
 | Ronin | 👤 Shadow Illusion | **2** ✅ + 1 Sustain/turn while it stands | **3 rounds** ✅ |
 | Ronin | 🎸 Cursed Shamisen | 2 ✅ | **3 rounds** ✅ |
 | Ronin | 🎵 Wa no Koe | **0** ⏸️ (passive) | **none** ⏸️ |
-| Metalness | 🔊 Goes to 11 | **0** ❌ | **none** ❌ |
-| Metalness | 🤘 Master of Moshpits | **0** ❌ | **none** ❌ |
-| Metalness | 🐙 Tentacle | **0** ❌ | **none** ❌ |
-| Metalness | 💀 Azrael | **0** ❌ | **none** ❌ |
-| Intergalactic 0 | 🌀 Blaster of Ra | **0** ❌ | **none** ❌ |
-| Intergalactic 0 | 🌌 Space is Displaced | 1 ✅ | **none** ❌ |
-| Intergalactic 0 | 🕳️ Gravity Control | 1 ✅ | **none** ❌ |
-| Intergalactic 0 | 💻 Code Injection | 1 ✅ | **none** ❌ |
-| Intergalactic 0 | ☀️ Sunbeam | 2 ✅ | **none** ❌ |
+| Metalness | 🔊 Goes to 11 | **0** ⏸️ | **none** ⏸️ |
+| Metalness | 🤘 Master of Moshpits | **0** ⏸️ | **none** ⏸️ |
+| Metalness | 🐙 Tentacle | **0** ⏸️ | **none** ⏸️ |
+| Metalness | 💀 Azrael | **0** ⏸️ | **none** ⏸️ |
+| Intergalactic 0 | 🌀 Blaster of Ra | **0** ⁉️ | **none** ⁉️ — *see §0.5* |
+| Intergalactic 0 | 🌌 Space is Displaced | 1 ✅ | **1 round** ✅ |
+| Intergalactic 0 | 🕳️ Gravity Control | 1 ✅ | **2 rounds** ✅ |
+| Intergalactic 0 | 💻 Code Injection | 1 ✅ | **2 rounds** ✅ |
+| Intergalactic 0 | ☀️ Sunbeam | 2 ✅ | **2 rounds** ✅ |
 
-**Was 5 of 13 paying Db and 1 of 13 cooled. Now 7 of 13 and 3 of 13.**
+**Was 5 of 13 paying Db and 1 of 13 cooled. Now 7 of 13 and 7 of 13.**
+
+⏸️ **Metalness's four are untouched ON PURPOSE.** The character is being
+redesigned (Alex, 2026-08-22), so pricing a kit that may not survive the redesign
+is work thrown away. They stay in this table as debt, not as an oversight.
+
+⁉️ **Blaster of Ra is a question, not a debt — see §0.5.**
 
 ⏸️ **Wa no Koe was deliberately skipped, and it is the one exception in the
 kit.** It is a *passive* — there is no moment of use to charge for — and §2.4
@@ -79,44 +84,71 @@ every new ability needs an `economy` seed, a `turnFlow` tick, a `legalActions`
 gate and a HUD read before it can have a cooldown at all — four chances to
 forget, and twelve abilities that never got one is what that costs. It is now
 one map (`ns.abilityCd`), one tick, one gate: `engine/systems/cooldowns.js`.
-**Giving the remaining nine abilities a cooldown is now a data edit.**
+**Giving the remaining abilities a cooldown is now a data edit** — Intergalactic
+0's four took theirs the same day, and Metalness's four are waiting on his
+redesign rather than on any code.
 
-### 0.3 ⚠️ Three abilities were designed AROUND having no cooldown
+### 0.3 ✅ SETTLED — there are no exemptions, only different rates
 
-These are not oversights. Each has a written reason, and the rule collides with
-it head-on. Do not "fix" them without a decision:
+**Alex, 2026-08-22:** *"Make it a 1 turn cool down. Different abilities can cool
+down at different rates."*
 
-- **🌌 Space is Displaced** — `CHARACTER_HANDOFF.md`: *"No Action Points, no
-  cooldown, no amp rig."* Intergalactic 0 is the slowest Spirit on the board
-  (speed 4) and the blink is his compensation for it. A cooldown re-strands the
-  character the ability exists to un-strand. **If any ability gets an exemption,
-  it is this one.**
-- **💻 Code Injection** — a blind bet that is *already* gated on the attacker
-  actually winning. It self-limits: nobody attacks, the Db is gone. A cooldown on
-  top taxes a power that measured **12–36% save rates** and is deliberately weak.
-- **🕳️ Gravity Control** — "one vortex at a time" is a de-facto cooldown. Adding a
-  numeric one may double-charge for the same restriction.
+🎯 **THAT IS A BETTER RULE THAN THE ONE THIS DOC PROPOSED**, and it is worth
+saying why. The question "is this ability special enough to be exempt?" is an
+argument with no end — every ability's designer can make the case, and each
+exemption granted strengthens the next one's claim. "How long should this one
+be?" is a number. Same flexibility, no precedent.
 
-📌 **And Psycho Bushido is the counter-example that proves the rule.** It spends
-the *entire* remaining AP pool. That is a cost, and a heavy one — but it is paid
-in tempo, not Db, so under the new rule it still needs a number.
+**Space is Displaced was the strongest exemption case in the game and it did not
+get one.** Its own skill text used to promise *"No cooldown, no Action Points, no
+rig required"*, and the blink is the slowest Spirit's compensation for being
+slow. It got **1 round** — short enough that the compensation survives, long
+enough that the rule is real. The skill text now says so.
 
-### 0.4 ❓ Innate passives — NEEDS A DECISION
+Gravity Control and Code Injection were the other two exemption candidates. Both
+took numbers instead: **2 rounds each**. 📌 Code Injection is 2 rather than 1
+because `codeInjectTurns` already blocks re-arming while a patch is live, so a 1
+would have been decorative — a cooldown that never denies anything.
 
-"All abilities" is unambiguous about the arsenals. It is genuinely ambiguous
-about the always-on innates, and four of them cannot take a per-use Db price
-without becoming a different kind of thing:
+### 0.4 ✅ SETTLED — innate passives are out of scope
 
-| Innate | Spirit | Why a Db cost breaks it |
-|---|---|---|
-| 📻 Boom Box | Intergalactic 0 | Already paid for — it costs a physical trip to a Charge Zone, and `burnChargesAfterBattle` kills it on any battle. |
-| 🧪 Poison Slime | Metalness | Fires on *vacating* a hex. There is no moment to charge for. |
-| 🎤 Crowd virtuosity | Ronin | A modifier on `perfScore`, not an action. |
-| 🎺 Freestyle | Intergalactic 0 | Once per turn, automatic. Nothing to spend on. |
+**Alex, 2026-08-22: exempt.** And it is a *scope line* rather than an exemption.
+Boom Box, Poison Slime, crowd virtuosity and Freestyle are not things you **do** —
+there is no moment of use to charge for. Poison Slime fires when Metalness
+*vacates* a hex; crowd virtuosity is a modifier on Performance Score.
 
-**Recommendation: the rule binds actives, innates stay free.** An innate is the
-character; an active is the choice. But it is Alex's call and it is **not settled
-here.**
+**An innate is the character. An active is a choice.** The rule exists to make
+choices cost something, so it binds the things you choose.
+
+### 0.5 ⁉️ OPEN — is Blaster of Ra an *ability*?
+
+It is the one thing in the game the rule cannot price without an answer, and the
+reason is structural rather than a matter of taste.
+
+**Blaster of Ra does not add an action. It REPLACES the Smash.** `hasBlaster`
+branches the Smash button in the client and the smash family in `legalActions`.
+So a per-use Db cost or a cooldown on the Blaster means Intergalactic 0 has **no
+Smash at all** for a stretch — a basic attack every other Spirit keeps for free.
+Nobody designed that; it falls out of pricing a thing that is standing in another
+thing's shoes.
+
+Which suggests the rule may need a **third category** beyond *active* and
+*innate*: a **permanent upgrade to a basic action**. And Blaster would not be
+alone in it — 🐙 Tentacle lets Metalness Swing from anywhere on his slime trail,
+which is the Swing wearing a hat rather than a new verb.
+
+Three ways out, and it is Alex's call:
+
+1. **Cooling the Blaster falls back to the ordinary Smash.** The *upgrade* rests;
+   the baseline never goes away. Costs one branch in the Smash path.
+2. **Blaster is a basic action and is out of scope**, like the innates in §0.4 —
+   the Smash itself has no Db cost and no cooldown, so neither does its
+   replacement.
+3. **Price it anyway** and accept that Intergalactic 0 loses his Smash while it
+   recharges, as the price of the upgrade.
+
+📌 It is **absent from `ABILITY_CD` and `ABILITY_DB_COST`**, with a comment saying
+why, so nobody reads the gap as an oversight and quietly fills it in.
 
 ---
 
@@ -400,15 +432,22 @@ file too.
 
 ## 6. What this doc does NOT settle
 
-1. **Whether innate passives are covered by the Db rule** (§0.4). Recommendation:
-   no. Needs Alex's call.
-2. **Whether Space is Displaced is exempt from the cooldown rule** (§0.3). It is
-   the strongest case for an exemption in the game.
-3. **Which Wa no Koe survives.** This doc assumes the new one replaces the shipped
+1. ~~Whether innate passives are covered~~ ✅ **settled — out of scope, §0.4.**
+2. ~~Whether Space is Displaced is exempt~~ ✅ **settled — no exemptions, only
+   different rates. It took 1 round. §0.3.**
+3. ~~Whether Shadow Illusion still pops when Ronin attacks or is attacked~~
+   ✅ **settled — it does. All three conditions stay** (struck / Ronin attacks /
+   Ronin is attacked), which keeps the double a pure positioning-and-deception
+   tool: he cannot fight and hold it at once. 📌 That is a heavier constraint now
+   than it was, because the double also drains Sustain every turn — he pays
+   continuously for something a rival can delete by swinging at *him*. Watch it
+   in playtest; if the double never survives long enough to matter, this is the
+   first dial to turn, not the drain.
+4. ⁉️ **Whether Blaster of Ra is an ability at all** — §0.5. The one thing the
+   rule cannot price without a decision.
+5. **Which Wa no Koe survives.** This doc assumes the new one replaces the shipped
    passive. If both are wanted, the 12 Db slot only holds one.
-4. **Whether Shadow Illusion still pops when Ronin attacks or is attacked.** In the
-   code today; absent from this design.
-5. **The HUD.** Alex is designing a reduced HUD — fewer elements, bigger buttons,
+6. **The HUD.** Alex is designing a reduced HUD — fewer elements, bigger buttons,
    only pertinent information — **separately, and will upload it.** Do not
    pre-empt it. 📌 It is relevant here: cooldowns on thirteen abilities plus an
    Echo counter is a lot of new state wanting screen space, and the HUD pass is
@@ -482,11 +521,14 @@ learned.
 Baseline is §5.F⁸ of `SEQUENCING.md` (2026-08-21).
 
 **engine ✓, legal 582, eval 154, transition 242, determinism 22, turnFlow 61 →
-73, battleFlow 50, melody 159, slime 127, eleven 38, score 122, harness 1659 →
-1663, riffparity 127598, skillTree 159, trace 1831 → 1834, b0 55706+7870,
+73, battleFlow 50 → 54, melody 159, slime 127, eleven 38, score 122, harness 1659
+→ 1663, riffparity 127598, skillTree 159, trace 1831 → 1834, b0 55706+7870,
 guitarMap 70970, neonNeck 253506, arch 8.** `check:bundle` **0 warnings.**
 
-Three counts moved and **all three went up**:
+Four counts moved and **all four went up**:
+
+- **battleFlow +4** — the Sunbeam cooldown, tested rather than assumed. See §7.5
+  for why an unchanged count was the thing that prompted it.
 
 - **turnFlow +12** — mine, deliberately. One assertion about `psychoBushidoCd`
   became three about the *mechanism*, and ten new ones cover the Sustain drain,
@@ -496,6 +538,48 @@ Three counts moved and **all three went up**:
   the decisions a seeded headless match actually produces (`for (const e of
   actions)`), not over a fixed list — so a Ronin who now sometimes cannot afford
   Bushido plays a different game and a few more decision points get asserted.
+
+---
+
+### 7.5 ✅ AND THE SAME DAY: INTERGALACTIC 0'S FOUR, PLUS A FORK CLOSED
+
+Once §0.3 settled "no exemptions, only different rates", his kit followed
+immediately — he is not on hold, and the numbers are all short because the zoner's
+kit is about doing a small thing often.
+
+**Displace 1 · Gravity 2 · Code Injection 2 · Sunbeam 2.**
+
+☀️ **Sunbeam is the interesting one.** It is the only ability in the game that
+fires **without the player choosing it** — it rides any connecting attack whenever
+it can be afforded — so the cooldown is the whole of its restraint. It is also the
+only one of the four that lives in the **kernel** (`battleFlow.js`), so it went
+through `canFire` / `firePatch` there rather than in a client resolver.
+
+⚠️ **AND IT NEEDED A TEST, BECAUSE NOTHING ELSE WOULD HAVE NOTICED IT BREAKING.**
+`test:all` came back with every count identical after the Sunbeam change — which
+sounds like good news and is actually the warning: no existing assertion touched
+the new gate. `battleFlowCheck` now asserts a fired beam goes on cooldown, and
+that a *recharging* beam does not fire, does not charge Db, and — the part that
+would really hurt — **does not draw off the seeded stream**, since an rng draw
+behind a closed gate desyncs every replay and freezes online clients. 50 → 54.
+
+🪦 **A duplicate constant died on the way.** `SUNBEAM_DB_COST` and its three
+siblings existed as literals in **both** `gameConstants.js` and `battleFlow.js`;
+battleFlow's own header comment had said to fold them in "when the monolith's
+copies are deleted", and nobody ever had. They are now re-exports of the
+`gameConstants` values — same names for every importer, one number behind each.
+⚠️ They are imported **and** re-exported, deliberately: `export … from` creates no
+local binding, and this file reads all four. Getting that wrong bundles clean and
+gives you a Sunbeam that silently never fires.
+
+📌 **A side effect worth recording, on the Db hole.** `skillTree.js` notes that
+killing the rig branch removed the biggest Db sink in the game and left Db piling
+up against a tree that could not absorb it, with "grow the ability tree" as the
+answer. Per-use costs are the *other* half of that answer and they need no new
+rungs at all: seven abilities now draw on the same bar the tree does, every turn
+they are used. It does **not** close the hole — six abilities are still free, and a
+Spirit who buys nothing still banks everything — but a bench's Db numbers are no
+longer measuring a pool with no outlet.
 
 ---
 

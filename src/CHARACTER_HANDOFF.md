@@ -12,7 +12,18 @@ Pick-up notes for continuing the Spirit-identity work. Read this + `DESIGN_AUDIT
 > system — one map (`ns.abilityCd`), one tick, one gate — replacing `psychoBushidoCd`,
 > which was the *only* cooldown the game had. Ronin's three actives now pay Db per use
 > and take a cooldown, and Shadow Illusion's Drive-token cost became a Sustain drain.
-> **7 of 13 abilities pay Db, 3 of 13 are cooled.** The remaining nine are a data edit.
+> The mechanism is what mattered: giving any remaining ability a cooldown is now a data edit.
+>
+> ✅ **AND THE RULE'S OPEN CALLS ARE SETTLED (2026-08-22).** **No exemptions — only
+> different rates** (Alex). Space is Displaced, the strongest exemption case in the
+> game, took **1 round** rather than a pass; Gravity, Code Injection and Sunbeam took
+> 2 each. **Innate passives are out of scope** — an innate is the character, an active
+> is a choice. **7 of 13 abilities pay Db, 7 of 13 are cooled.**
+>
+> ⁉️ **ONE FORK OPEN: is 🌀 Blaster of Ra an ability?** It *replaces* the Smash, so
+> pricing it leaves Intergalactic 0 with no Smash at all for a stretch. Deliberately
+> absent from both tables. May mean a third category — *permanent upgrade to a basic
+> action* — which 🐙 Tentacle would also join. `RONIN_ABILITY_DESIGN.md` §0.5.
 >
 > ⏳ **STILL DESIGN ONLY:** Cursed Shamisen's rework and the Wa no Koe replacement.
 >
@@ -45,8 +56,8 @@ Archetype quartet: **Ronin = Burst/virtuoso · Intergalactic 0 = Control/zoner �
 | Spirit | Stats (Drive/Sus/Spd/Vibe) | Status |
 |---|---|---|
 | **Shredding Ronin** (`cosmic_ronin`) | 8/5/5/5, Shred | 🔁 **Built, then re-designed 2026-08-22** — see `RONIN_ABILITY_DESIGN.md` |
-| **Intergalactic 0** (`intergalactic_0`) | 6/7/**4**/4, Groove | ✅ Built · ⚠️ owes Db/cooldown under the new rule |
-| **Metalness Monster** (`Metalness_Monster`) | 7/6/4/5, Shred | ⚠️ Has arsenal, **no innate identity** · all 4 skills owe Db **and** cooldown |
+| **Intergalactic 0** (`intergalactic_0`) | 6/7/**4**/4, Groove | ✅ Built · ✅ Db + cooldowns done 2026-08-22 · ⁉️ Blaster of Ra open |
+| **Metalness Monster** (`Metalness_Monster`) | 7/6/4/5, Shred | ⏸️ **ON HOLD — redesign pending.** Has arsenal, no innate identity; all 4 skills owe Db **and** cooldown, deliberately unpaid until the redesign lands |
 | **Glamarchy** (`Glamarchy`) | 5/8/5/4, Flair | ❌ **Not started** (no innate, no arsenal) |
 
 ⚠️ **"Complete" used to mean "the code runs".** It was doing double duty as "the design
@@ -66,7 +77,7 @@ and three of them no longer match what they are supposed to be. Read the status 
   Smash relationship (his own Smash hits soft; a Smash *on* him double-scatters); note-greed
   (~50% second note off a Lost Chord); 10-slot stock.
 - **Arsenal (reworked):**
-  - **Psycho Bushido** (6 Db, 2-round CD) — Iaijutsu dash in a straight line from facing, into an auto-Swing.
+  - **Psycho Bushido** (6 Db unlock, **1 Db/use**, 2-round CD) — Iaijutsu dash in a straight line from facing, into an auto-Swing.
     Leftover AP (`apLeft - distToTarget`) rides that Swing as `tempDrive`. ⚠️ **`tempDrive`, not `driveStack`** —
     it is a battle-scoped attack bonus under `ATK_BONUS_CAP`, and `clearBattleBuffs` wipes it when the
     battle ends. The doc used to say "on top of your Drive stack", which described an ability the code has
