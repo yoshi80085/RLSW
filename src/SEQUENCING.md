@@ -199,7 +199,94 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. 🧭 START HERE — session handoff, 2026-08-25 (the Shamisen, settled)
+## 5. 🧭 START HERE — session handoff, 2026-08-25b (the Shamisen, BUILT)
+
+> ✅ **THE WHOLE REWORK LANDED — §8 ITEM 4's STEPS (a) THROUGH (f), IN ONE PASS.**
+> The ability described in `RONIN_ABILITY_DESIGN.md` §2.3 is the ability that now
+> runs. **§7b of that doc is the build report.** `check:bundle` **0 warnings**;
+> **eighteen** suites green.
+>
+> 🎯 **WHAT THE CODE DOES NOW.** Feeding is `feedShamisenPhrase`, called from two
+> places — the summon (off `committedMelody`) and the melody-commit hook (off
+> `report.melodyLine`). Death is `!complete && !fedThisRound`, checked **only** at
+> the round tick: **one executioner, not two**, so a turn where Ronin never commits
+> at all is judged by the same rule as one where he committed the wrong notes.
+> Reach is `shamisenRings(linksFed, …)`, derived at every read and never stored.
+> The bite is `frayFromSustain`, never Vibe. Exorcism is two beats — click the
+> instrument to arm, click a note to spend — gated on range and on the pitch class
+> being Ronin's tonic. The cooldown is now charged when the haunting **ENDS**.
+>
+> 🚨 **AND THE REAL FINDING: EVERY SUITE CAME BACK BYTE-IDENTICAL.** All seventeen,
+> unchanged, after a pass that changed which resource the ability attacks, deleted
+> its lifespan, gave it a growing radius and added a verb the game did not have.
+> ⚠️ **That is not a pass, it is a hole — and it is the SAME hole §7.5 caught with
+> Sunbeam three days ago.** An unchanged count after a real change can only mean
+> **nothing had ever asserted over this ability**, because it has lived entirely
+> inside the 16.5k-line client monolith since it was written.
+>
+> ✅ **SO THE PHRASE LOGIC WAS LIFTED OUT AND GIVEN A SUITE.**
+> `engine/shamisenCheck.mjs` — **`test:shamisen`, 29 assertions**, wired into
+> `test:all` in the same pass (CLAUDE.md: a suite no script runs is not a suite).
+> The four pure functions live in `music/cadence.js` **specifically so they could
+> be tested**, rather than inline in the monolith where they would have been
+> untestable by construction. ⚠️ It covers the pure half only — the tick, wander,
+> bite, summon guard and exorcism click are still client-side and still
+> unreachable by any harness. Stated plainly rather than assumed away.
+>
+> 📌 **ONE OF MY OWN ASSERTIONS WAS WRONG AND THE FAILURE TAUGHT SOMETHING.** I
+> asserted that the C-rooted spelling of the phrase feeds **zero** links to an
+> A-rooted Ronin. It feeds **one**: pitch classes are shared, so a stray note
+> really can open someone else's phrase — it just cannot carry it past link 2. The
+> assertion now pins the true behaviour and says why.
+>
+> 📌 **DECISIONS TAKEN DURING THE BUILD THAT THE SPEC DID NOT COVER** (§7b.3): the
+> summon is **refused** when the committed track opens no link (same shape as
+> Shadow Illusion's empty-guard refusal — a refusal is learnable, a silent death
+> next round is not); feeding counts the mic's bonus note, like every other commit
+> payout; the board token now goes **red when BOUND** and stays blue while it can
+> still be starved, which is the only thing on the board that says *starving it is
+> off the table now*.
+>
+> **Counts:** engine ✓, legal 582, eval 154, transition 242, turnFlow 73,
+> determinism 22, battleFlow 54, melody 159, slime 127, eleven 38, score 122,
+> harness 1663, riffparity 127598, skillTree 159, **shamisen 29 (new)**, b0 ✓,
+> riff 70970, trace 1834, arch 8.
+>
+> 🐛 **AND THEN THE AUDIT FOUND THREE BUGS THE GREEN SUITES DID NOT SEE.** Alex
+> asked "is everything OK with it then?"; reading the diff back rather than
+> answering from the test output turned up three real defects — §7b.4 has them in
+> full. In short: the **board token's tooltip and readout still read `sham.range`
+> and `sham.roundsLeft`**, fields deleted in the same pass, so it rendered
+> "undefined rings" and advertised the minor gate and the free walk-on; the
+> **exorcism hex-click ate attack clicks** at the Shamisen's hex and made that hex
+> unwalkable at range; and I had **documented the cooldown wrong in five files** —
+> `firePatch` does still charge it at summon, and my comments confidently and
+> repeatedly said it did not.
+>
+> 🎯 **ALL THREE WERE IN THE CLIENT MONOLITH — render, click routing, and prose —
+> i.e. exactly the three-quarters of the ability `test:shamisen` cannot reach.**
+> The new suite covers the phrase logic, which was the half that was already
+> right. §7b.2 said that in the abstract; this is what it looks like ten minutes
+> later, in the concrete.
+>
+> ⏳ **STILL UNVERIFIED BY ANYTHING BUT READING:** the tick, the wander, the fray,
+> the starvation path, the summon refusal and the two-click exorcism have never
+> been *executed*. `check:bundle` proves they parse; nothing proves they run.
+> **Play a match before trusting this.**
+>
+> ▶️ **NEXT:** §8 item 5 — the **Wa no Koe replacement**, now the only Ronin
+> ability left and the biggest of the five. ⚠️ Unlike the others it is **not
+> client-only**: it touches the engine kernel (`checkWaNoKoe` in
+> `melodyCommit.js`), its suite, and the bot policy. It also brings the Echoes,
+> which only mean anything because cooldowns now exist. ⏳ Still design-only —
+> §2.4 is firm on the *shape* (one Resonant note board-wide, Echoes reset
+> cooldowns, Ronin is vulnerable in Harmony) and §3 lists six open numbers under
+> it. 📌 The B10-shaped `tempDrive` bug the kernel deliberately reproduces becomes
+> **moot** with the replacement — do not spend a session fixing it first.
+
+---
+
+## 5-aug25a. 🧭 session handoff, 2026-08-25 (the Shamisen, settled — design only)
 
 > 📐 **NO CODE WAS TOUCHED. THIS WAS A DESIGN SESSION AND THE OUTPUT IS A SPEC.**
 > `RONIN_ABILITY_DESIGN.md` §2.3 was rewritten from a sketch into a buildable

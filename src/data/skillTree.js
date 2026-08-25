@@ -32,7 +32,7 @@ import {
   DISPLACE_CD, GRAVITY_CD, CODE_INJECT_CD, SUNBEAM_CD,
   PSYCHO_BUSHIDO_CD, SHADOW_ILLUSION_CD, CURSED_SHAMISEN_CD,
   PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
-  SHADOW_ILLUSION_SUSTAIN_DRAIN,
+  SHADOW_ILLUSION_SUSTAIN_DRAIN, SHAMISEN_FRAY, SHAMISEN_RING_MAX,
 } from "./gameConstants.js";
 
 export const SKILL_TREE = {
@@ -123,7 +123,7 @@ export const SKILL_TREE = {
         { id:'shadow_illusion', label:'Shadow Illusion', icon:'👤', dbCost:6,  gated:false,
           desc:`Split into a second, identical Ronin, born stacked on your own hex (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown) — nobody sees which one appeared. Rivals cannot tell the double from the real you: it blocks, it faces, and it walks the board on its own steps, refreshed each turn to match your movement range at no cost to your Action Points. 🎵 It can also PICK UP LOST CHORD NOTES for you — an illusion made of sound can carry a sound. It cannot take ⚡ charge zones or 🎪 event spaces, and hazards pass straight through it. ⚠️ IT FEEDS ON YOU: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it comes apart the moment you have none to give — you are at your most fragile exactly while nobody can tell which body to hit. Lasts 3 turns. Pops if it is struck, if you attack, or if you are attacked. Whoever swings at it burns their AP and Action Token for nothing.` },
         { id:'cursed_shamisen', label:'Cursed Shamisen', icon:'🎸', dbCost:8,  gated:false,
-          desc:`Set a cursed Shamisen down on your hex (${CURSED_SHAMISEN_DB_COST} Db per use, ${CURSED_SHAMISEN_CD}-round cooldown). It plays one endless MINOR phrase for 3 rounds — and only Spirits in a MINOR key can hear it. Anyone in minor inside its 2 rings loses 1 Sustain a round (then Vibe). Each round it wanders one hex toward the nearest minor-key Spirit; if the whole board is in major it has nothing to follow and stands still. It does not spare you — your own key decides whether it is a weapon or a haunting. Calmed by walking onto its hex, which also hands the walker a bonus note.` },
+          desc:`Set a cursed Shamisen down on your hex (${CURSED_SHAMISEN_DB_COST} Db per use, ${CURSED_SHAMISEN_CD}-round cooldown, which restarts when the haunting ends) and then FEED IT. Its phrase is ♭3 → 2 → 1 → ♭6 → 5 in your key, and you feed it those notes IN ORDER out of the melody you commit each turn — one link, or the whole phrase at once if your hand holds all five. ⚠️ A TURN THAT ADDS NO LINK SNAPS THE STRINGS: there is no timer, the feeding is the timer. Finish the phrase and it is BOUND — it needs nothing more and it never fades. Every round it steps one hex toward the nearest rival and frays ${SHAMISEN_FRAY} note off the Sustain chord of everyone in its rings. It never touches Vibe, so it cannot kill — it makes them killable. Its reach GROWS with the phrase, 1 → ${SHAMISEN_RING_MAX} rings, and it spares you: it knows your hand. ⚔️ The only way out is for a rival to stand INSIDE its rings and spend your own tonic at it — finishing the cadence you left hanging on the 5.` },
         { id:'wa_no_koe',       label:'Wa no Koe (和の声)', icon:'🎵', dbCost:12, gated:false,
           desc:'Voice of Harmony — when half your melody or more sits inside your Drive or Sustain stack, the alignment pays +1 Drive or Sustain for 3 rounds. The Ronin already starts holding CHORD TONE PARDON, so those same notes are never Discord for him either: this is the amplifier on top of an instinct he was born with.' },
       ],

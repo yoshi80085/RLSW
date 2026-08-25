@@ -69,6 +69,72 @@ export function detectCadence(trail, cooldowns = {}) {
   return best;
 }
 
+// ─── 🎸 THE CURSED SHAMISEN'S HAUNTING PHRASE ────────────────────────────────
+//
+// `RONIN_ABILITY_DESIGN.md` §2.3.2. Ronin feeds the haunting by playing the next
+// link(s) of ♭3 → 2 → 1 → ♭6 → 5 **in order, inside the melody line he commits
+// that turn**.
+//
+// ⚠️ THIS IS NOT WHAT `cadenceHints`/`detectCadence` ABOVE DO, AND THE DIFFERENCE
+// IS THE WHOLE REASON THIS FUNCTION EXISTS. Those match a trail of ONE PITCH
+// CLASS PER TURN — "end three consecutive turns on the root, the 4th, then home".
+// Feeding matches an ordered subsequence WITHIN A SINGLE TRACK, and one turn may
+// legitimately supply the entire phrase. The design doc briefly claimed the
+// cadence matcher could be reused for this; it cannot. Different array, different
+// question.
+//
+// 🎯 SUBSEQUENCE, NOT SUBSTRING — the links must appear in ORDER but need not be
+// adjacent. A player who has to walk through other notes to reach the next link
+// is still playing the phrase; requiring adjacency would make the ability hostage
+// to note-pool luck in a way §2.3.7 already worries about.
+//
+// @param track    committed melody line, note names (e.g. ['C','E♭','G'])
+// @param rootPc   RONIN'S root as a pitch class 0–11 — the haunting is in HIS
+//                 key, never the listener's
+// @param fed      links already fed, 0 … phrase.length
+// @param phrase   semitone offsets from `rootPc` (SHAMISEN_PHRASE)
+// @returns        the NEW total of links fed. Equal to `fed` means the track
+//                 advanced nothing — which is what kills the haunting.
+export function feedShamisenPhrase(track, rootPc, fed, phrase) {
+  if (!track || !track.length || !phrase?.length) return fed;
+  let links = fed;
+  for (const note of track) {
+    if (links >= phrase.length) break;          // finished — stop consuming notes
+    const want = (rootPc + phrase[links]) % 12;
+    if (pitchIndex(note) === want) links++;
+  }
+  return links;
+}
+
+// Rings the aura covers at `fed` links — `ceil(fed / 2)`, floored at 1 and capped
+// at `ringMax` (`SHAMISEN_RING_MAX`).
+//
+// 🎯 THE GROWING REACH IS THE ABILITY'S OWN COUNTERPLAY, which is why this is a
+// function and not a stored field: exorcism requires standing INSIDE the rings
+// (§2.3.6), so the number that makes the haunting dangerous is the same number
+// that decides who is allowed to answer it. Stronger ⇒ more players in reach to
+// kill it. ⚠️ Never cache the result onto the Shamisen object — a stored radius
+// that disagrees with `linksFed` is a haunting that bites at a range the board
+// does not draw.
+export function shamisenRings(fed, ringMax) {
+  return Math.min(ringMax, Math.max(1, Math.ceil((fed ?? 0) / 2)));
+}
+
+// The pitch class that ENDS the haunting: Ronin's tonic, the note his phrase
+// walks away from and never returns to. See §2.3.6 — a rival spends this note AT
+// the instrument, which is a different act from committing it into a melody.
+export function shamisenResolvingPc(rootPc) {
+  return ((rootPc % 12) + 12) % 12;
+}
+
+// The pitch class the haunting is waiting for next, or `null` when it is
+// finished. Drives the required-note display for BOTH sides: Ronin needs it to
+// keep feeding, and rivals read it to know how close the thing is to permanent.
+export function shamisenNextPc(rootPc, fed, phrase) {
+  if (!phrase?.length || fed >= phrase.length) return null;
+  return (rootPc + phrase[fed]) % 12;
+}
+
 export function detectChromaticRun(track) {
   if (!track || track.length < 3) return 0;
   let maxRun = 0;

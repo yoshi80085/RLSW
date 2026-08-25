@@ -4,16 +4,21 @@
 Ronin's four abilities are *meant to be*. It is a design doc, not a report on the
 build.
 
-> ✅ **THE FOUNDATION SHIPPED THE SAME DAY — see §8.** The general cooldown
+> ✅ **THE FOUNDATION SHIPPED THE SAME DAY — see §7.** The general cooldown
 > system, per-use Db on the three actives, and Shadow Illusion's Sustain drain
 > are all in the code and under test. §0.2's ledger has been updated to match.
-> Cursed Shamisen's rework and the Wa no Koe replacement are **still design only.**
+>
+> ✅ **AND THE CURSED SHAMISEN REWORK SHIPPED 2026-08-25 — §7b.** §2.3 was
+> rewritten from a sketch into a spec and then built in the same day: the feeding
+> phrase, death-on-no-link, permanence, the growing reach, the Sustain-stack bite
+> and the exorcism. It also grew the suite it had never had (`test:shamisen`).
 
-> ⚠️ **THIS DOC AND THE SHIPPED GAME STILL DISAGREE IN TWO PLACES, AND THE DOC IS
-> THE INTENT.** Cursed Shamisen's rework is unbuilt, and **Wa no Koe is a
-> different ability entirely** — the shipped one is a passive harmony bonus, the
-> designed one is a board-wide resonance state. §4 is the measured difference,
-> line by line. Read it before quoting §2 at the code.
+> ⚠️ **THIS DOC AND THE SHIPPED GAME NOW DISAGREE IN EXACTLY ONE PLACE, AND THE
+> DOC IS THE INTENT.** **Wa no Koe is a different ability entirely** — the shipped
+> one is a passive harmony bonus, the designed one is a board-wide resonance
+> state. §4 is the measured difference, line by line. Read it before quoting §2 at
+> the code. (Cursed Shamisen's row in §4 is kept for completeness and reads ✅ NO
+> GAP.)
 >
 > 🪦 **AND `CHARACTER_HANDOFF.md` WAS WRONG ABOUT CURSED SHAMISEN** — it described
 > a three-stage escalation the code has never had. §6. It has been corrected in
@@ -605,7 +610,7 @@ tests** (CLAUDE.md: a passing test is not evidence a rule is real).
 |---|---|---|
 | **🌀 Psycho Bushido** | Iaijutsu **dash** in a straight line from facing into an auto-Swing. Bonus `= distToTarget − 1` as `tempDrive`. 6 Db unlock, **1 Db/use** ✅, 2-round CD ✅. Engine-modelled, `kind:'psychoBushido'`. | Farther = stronger ✅ **agrees in spirit.** Remaining gap: framed as a **waiting** threat on a sightline rather than a charge. |
 | **👤 Shadow Illusion** | 6 Db unlock, **2 Db/use** ✅, **1 Sustain per turn while it stands** ✅, **3-round CD** ✅. Lasts 3 turns; **starves** if he cannot feed it. Picks up Lost Chord notes ✅. Pops if struck / if Ronin attacks / **if Ronin is attacked**. | ✅ **Matches**, except: "Pops if Ronin attacks or is attacked" is **not in this design** — the sheet only says *disappears if attacked*. ❓ Keep or drop? |
-| **🎸 Cursed Shamisen** | 8 Db unlock, **2 Db/use** ✅, **3-round CD** ✅. Fixed **2 rings**. Lives **3 rounds** on a timer. **No stages**. Haunts **ONLY minor-key Spirits** — including Ronin. Wanders 1 hex/round toward nearest minor-key Spirit. Drains `tempSustain`, **then bites Vibe**. Calmed by **freely** walking onto its hex (+ a bonus note). | ✅ **FULLY SPECIFIED 2026-08-25, §2.3 — but NOT BUILT.** Ronin feeds ♭3 → 2 → 1 → ♭6 → 5 **in order inside his committed melody line — possibly all five in one turn**; a turn that adds no link **kills it**; finishing makes it **permanent**. **The radius GROWS with the phrase, 1 → 3 rings**; the bite never does. **Minor is flavour, not a gate.** Frays the **`sustainStack`**, 1 note/round, **never Vibe**. **Spares Ronin.** Exorcised by **clicking it from inside its rings and spending his tonic** from your pool. Five gaps: the timer, the fixed radius, the resource, the gate, and free-walk-on exorcism. |
+| **🎸 Cursed Shamisen** | ✅ **THE DESIGN, SHIPPED 2026-08-25 (§7b).** Feeds ♭3 → 2 → 1 → ♭6 → 5 in order out of the committed melody line, all five possible in one turn; a round with no new link **snaps it**; finishing makes it **permanent**. Reach grows 1 → 3 rings; frays 1 note off the `sustainStack`, never Vibe; spares Ronin. Exorcised by clicking it from inside its rings and spending his tonic. Cooldown set at summon and re-set on the haunting's end. | ✅ **NO GAP.** The one thing §2.3 asks for that the code does not do is nothing — this row is kept only so the table stays complete. Open numbers, not gaps, are in §2.3.7. |
 | **🎵 Wa no Koe** | 🚨 **A DIFFERENT ABILITY.** 12 Db, **passive**: ≥half your melody sitting inside your Drive/Sustain stack pays **+1 Drive or Sustain for 3 rounds**. Rule lives in `engine/systems/melodyCommit.js` `checkWaNoKoe`. | **Pick one note from the current chord stack → it is Resonant board-wide. Echoes reset cooldowns. Ronin enters a vulnerable Harmony state.** Shares only the name and the 12 Db. |
 
 🚨 **Wa no Koe is not a rework, it is a replacement.** Note what goes with it:
@@ -813,6 +818,129 @@ longer measuring a pool with no outlet.
 
 ---
 
+## 7b. ✅ WHAT SHIPPED, 2026-08-25 — THE SHAMISEN REWORK, ALL OF IT
+
+§8 item 4's steps (a)–(f) all landed in one pass. **The ability described in §2.3
+is the ability that now runs.** `check:bundle` **0 warnings**.
+
+### 7b.1 🎸 What the code does now
+
+| | |
+|---|---|
+| **Feeding** | `feedShamisenPhrase` in `music/cadence.js`, called from **two** places: the summon (off `ns.committedMelody`) and the melody-commit hook in `confirmNoteTrack` (off `report.melodyLine`). Links must appear **in order inside one track**; one commit may supply all five. |
+| **Death** | `!complete && !fedThisRound` at the round tick. **One executioner, not two** — the commit hook deliberately does *not* kill, so a turn where Ronin never commits at all is judged by the same rule as one where he committed the wrong notes. |
+| **Permanence** | `complete` flag. `roundsLeft` is **gone**; there is no lifespan field. |
+| **Reach** | `shamisenRings(linksFed, SHAMISEN_RING_MAX)` — `ceil(links/2)`, 1 → 3. **Derived at every read**, never stored. |
+| **Bite** | `frayFromSustain(stack, SHAMISEN_FRAY)`. Never Vibe. At the one-note floor it says so in the log rather than silently doing nothing. |
+| **Exorcism** | `exorciseCursedShamisen(exorcistId, idx)` — two beats: click the instrument to arm, click a note to spend. Gated on range and on the pitch class being Ronin's tonic. |
+| **Cooldown** | Set at summon by `firePatch` like every other ability's, **and re-set in `endCursedShamisen`** when the haunting ends. ⚠️ Both, deliberately — a haunting that can stand indefinitely outlives a summon-time cooldown, so the gap it was meant to create would be worth nothing. 🪦 An earlier draft of this row said the summon no longer charged it at all. It does. |
+
+📌 **`calmCursedShamisen` is now a no-op that returns `false`**, kept rather than
+deleted so the post-move call site and the hard-won `landedOn` comment above it
+both stay put. The free walk-on it used to perform is the thing this rework
+existed to remove.
+
+### 7b.2 ⚠️ THE COUNTS DID NOT MOVE, AND THAT WAS THE FINDING
+
+**Every one of the seventeen suites returned a byte-identical count** after a pass
+that changed which resource the ability attacks, deleted its lifespan, gave it a
+growing radius and added a verb the game did not have.
+
+> 🎯 **That is not a pass, it is a hole — and it is the same hole §7.5 caught with
+> Sunbeam, two paragraphs of this very document later.** An unchanged count after a
+> real change can only mean **no assertion ever touched the ability.** The Shamisen
+> had lived entirely in the client monolith since it was written, where nothing can
+> reach it.
+
+✅ **`engine/shamisenCheck.mjs` — `npm run test:shamisen`, 29 assertions**, wired
+into `test:all` **in the same pass** (CLAUDE.md: a suite no script runs is not a
+suite). To make it possible, the phrase logic was lifted OUT of the monolith into
+`music/cadence.js` as four pure functions rather than written inline where it
+would have been untestable by construction.
+
+⚠️ **It covers the pure half only.** The tick, the wander, the bite, the summon
+guard and the exorcism click are still client-side and still unreachable by any
+harness. That is a real remaining gap and it is stated here rather than left to be
+assumed away.
+
+📌 **One assertion in it was written wrong and the failure taught something.**
+The C-rooted spelling of the phrase, fed to an **A**-rooted Ronin, was asserted to
+advance **zero** links. It advances **one** — pitch classes are shared, so a stray
+note genuinely can open someone else's phrase; what it cannot do is carry it past
+link 2. The assertion now pins the real behaviour and says why.
+
+**Final counts:** engine ✓, legal 582, eval 154, transition 242, turnFlow 73,
+determinism 22, battleFlow 54, melody 159, slime 127, eleven 38, score 122,
+harness 1663, riffparity 127598, skillTree 159, **shamisen 29 (new)**, b0 ✓,
+riff 70970, trace 1834, arch 8.
+
+### 7b.3 📌 Decisions taken during the build that §2.3 did not cover
+
+- **The summon is REFUSED when the committed track opens no link.** Same shape as
+  Shadow Illusion's empty-guard refusal (§7.3): a Shamisen born on zero links is
+  dead at the end of that very round, so summoning it would be a pure 2 Db
+  donation with no moment of play in between. A **refusal now** is learnable; a
+  silent death later is not.
+- **Feeding is scored off `report.melodyLine`, mic bonus note included.** The
+  kernel's own rule is that a note the player never placed still counts for Db,
+  Performance, the ending and the AP grant. It counts here too — one rule, not a
+  special case.
+- **The board token's colour now means "bound".** Blue while the phrase is still
+  being fed and could still snap, red once it is permanent. It is the only thing
+  on the board that says *starving it is off the table now*. It used to mean
+  "somebody is in a minor key".
+- **The exorcism names the note outright** in its armed banner. Guessing a pitch
+  class out of a foreign key is not the interesting decision; deciding whether it
+  is worth standing in the aura to spend it is.
+
+### 7b.4 🐛 THE POST-BUILD AUDIT — three bugs the green suites did not see
+
+Alex asked *"is everything OK with it then?"* after every suite came back green.
+Reading the diff back rather than answering from the test output found **three
+real defects**, and all three were in exactly the places the tests cannot reach.
+📌 **Recorded because the pattern is the lesson, not the bugs.**
+
+1. 🐛 **THE BOARD TOKEN'S TOOLTIP AND READOUT STILL READ DELETED FIELDS.** The
+   `<title>` printed `` `${sham.range}` `` and `` `${sham.roundsLeft}` `` — both
+   removed in this very pass — so it rendered *"undefined rings, 0 rounds left"*
+   and then advertised the **minor-key gate** and the **free walk-on**, neither of
+   which exists any more. The stage readout under the token printed `💀 MINOR`.
+   ⚠️ **This is `CHARACTER_HANDOFF.md`'s failure mode with a shorter feedback loop
+   and a wider audience: stale text that reads as current, except a player sees it
+   instead of an editor.** Now shows fed-links, the live radius, and how to end it.
+
+2. 🐛 **THE HEX CLICK ATE CLICKS IT HAD NO RIGHT TO.** Arming the exorcism was
+   checked *before* every attack branch and with no range gate, so:
+   **(a)** a rival standing on the Shamisen's hex could not be Swung, Sonic'd,
+   Smashed, Blastered or Bushido'd — the armed attack silently became an exorcism
+   prompt; and **(b)** clicking a *distant* Shamisen in move mode was refused with
+   "too far", which quietly made that one hex **unwalkable**. Now gated twice: only
+   when no targeting mode is armed, and only when the clicker is already inside the
+   rings — out of range it falls through to the ordinary move path.
+
+3. 🐛 **I DOCUMENTED THE COOLDOWN WRONG, IN FIVE FILES.** The comment, this
+   section's table, `gameConstants.js`, the skill tree text and the button tooltip
+   all said the cooldown was *"charged when the haunting ENDS, not at summon"*.
+   **`firePatch` sets it at summon like every other ability's** — I never removed
+   that and should not have. The behaviour is right (summon-time charge, plus a
+   re-set on the end, because a haunting that stands indefinitely outlives its own
+   cooldown); the description was a confident, repeated falsehood. All five now say
+   what the code does.
+
+> 🎯 **THE COMMON THREAD, AND IT IS THE POINT.** Every one of the three lived in
+> the client monolith — board render, click routing, and prose. `test:shamisen`
+> covers the *phrase logic*, which is precisely the half that was already correct.
+> A green suite said nothing about the three-quarters of this ability a player
+> actually touches, and §7b.2 already said so in the abstract. This is what that
+> warning looks like when it comes true, ten minutes later.
+
+⏳ **STILL UNVERIFIED BY ANYTHING BUT READING:** the round tick, the wander, the
+fray, the starvation path, the summon refusal, and the two-click exorcism have
+never been *executed*. `check:bundle` proves they parse. Nothing proves they run.
+**The next person to touch this should play a match before trusting it.**
+
+---
+
 ## 8. If the rest gets built — rough order
 
 Not a commitment, just the dependency order that falls out of the above.
@@ -820,28 +948,9 @@ Not a commitment, just the dependency order that falls out of the above.
 1. ~~The cooldown system~~ ✅ **done** — §7.1.
 2. ~~Per-use Db costs (Ronin)~~ ✅ **done** — §7.2.
 3. ~~Shadow Illusion cost swap~~ ✅ **done** — §7.3.
-4. **Cursed Shamisen rework.** ✅ **DESIGN DONE 2026-08-25 — §2.3 is the spec.**
-   The exorcism rules that were blocking it are settled. Build order inside it,
-   cheapest-first, each independently verifiable:
+4. ~~Cursed Shamisen rework~~ ✅ **BUILT 2026-08-25 — §7b.** All six steps
+   (a)–(f) landed in one pass, plus the suite that should have existed already.
 
-   a. **Fray the stack, not the pool.** Swap `tempSustain`-then-Vibe for
-      `frayFromSustain`. Smallest edit, biggest correctness win, and it stands
-      alone — do it even if the rest slips.
-   b. **Delete the minor gate.** `inMinorKey` stops deciding who is touched;
-      wander targets nearest non-Ronin Spirit; Ronin is spared.
-   c. **The feeding sequence.** An in-track ordered-subsequence matcher over the
-      committed melody line (⚠️ **new code** — see the correction in §2.3.8), a
-      link-progress field, and death-on-no-advance. A turn may advance several
-      links, or all five.
-   d. **The growing radius.** `SHAM_RINGS` stops being a constant and becomes
-      `ceil(links / 2)`; the aura render reads it. 📌 Do this **with** (c) — the
-      progress field is the same field, and a radius that cannot grow makes the
-      whole build phase invisible.
-   e. **Permanence.** Delete `roundsLeft`; add `complete`.
-   f. **Exorcism.** Click-the-Shamisen-spend-a-note, gated on being inside the
-      rings and on the note being his tonic. ⚠️ **(e) MUST NOT SHIP WITHOUT (f).**
-      A permanent haunting whose only counterplay is the shipped free walk-on is
-      either unkillable or free, and neither is the design.
 5. **Wa no Koe replacement — last, and biggest.** It touches the engine kernel, a
    test suite and the bot policy, unlike the others which are client-only. It
    also brings the Echoes, which only mean anything now that cooldowns exist.

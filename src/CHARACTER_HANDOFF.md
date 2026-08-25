@@ -25,9 +25,11 @@ Pick-up notes for continuing the Spirit-identity work. Read this + `DESIGN_AUDIT
 > absent from both tables. May mean a third category — *permanent upgrade to a basic
 > action* — which 🐙 Tentacle would also join. `RONIN_ABILITY_DESIGN.md` §0.5.
 >
-> ⏳ **STILL DESIGN ONLY:** Cursed Shamisen's rework — ✅ **now FULLY SPECIFIED**
-> (`RONIN_ABILITY_DESIGN.md` §2.3, settled 2026-08-25) and ready to build — and the
-> Wa no Koe replacement, which is still the biggest open piece.
+> ✅ **CURSED SHAMISEN IS BUILT (2026-08-25)** — specified in `RONIN_ABILITY_DESIGN.md`
+> §2.3 and shipped the same day, §7b. It also finally has a suite: `test:shamisen`.
+> ⏳ **STILL DESIGN ONLY: the Wa no Koe replacement**, now the last Ronin ability
+> open and the only one that reaches past the client into the kernel, a suite and
+> the bot policy.
 >
 > ⏸️ **ON HOLD (Alex, 2026-08-22):** the **bot strategy** work — designing a bot around a
 > game still in flux is a fool's errand — **Metalness Monster**, which is getting a
@@ -118,26 +120,41 @@ and three of them no longer match what they are supposed to be. Read the status 
     what is spent, so Sustain is what runs out. The report separates `shadowExpiring` (out
     of time) from `shadowStarved` (drank him dry) because they look identical on the board
     and must not read identically in the log.
-  - **Cursed Shamisen** (8 Db unlock, **2 Db/use**, **3-round CD**) — 🪦 *This entry said "no
-    cooldown" until 2026-08-25. It has had `CURSED_SHAMISEN_CD = 3` since the 08-22 cooldown pass —
-    a miss, not a disagreement; the Shadow Illusion entry above it was updated correctly at the time.*
-    ⏳ **AND THIS WHOLE ENTRY IS ABOUT TO BE OBSOLETE**: the rework is fully specified in
-    `RONIN_ABILITY_DESIGN.md` §2.3 (settled 2026-08-25) and **not built**. What follows is the
-    SHIPPED ability, which is still what runs. Set down on Ronin's hex, where it
-    plays a **haunting melody every round** (real audio: an insen-scale phrase that drops an octave and
-    speeds up once it has prey). Aura is a **fixed 2 rings** (`SHAM_RINGS`), and it lives **3 rounds**
-    (`SHAM_ROUNDS`), ticked once per round from `endTurn`'s `roundCompleted` block.
-    ⚠️ **IT ONLY HAUNTS SPIRITS IN A MINOR KEY** (`inMinorKey`) — Ronin included, so his own key decides
-    whether it is a weapon or a haunting. Anyone in minor inside the rings loses 1 **Sustain**
-    (`tempSustain`), and only bleeds **Vibe** once Sustain is gone. Every Spirit the melody reaches is
-    marked with a pulsing 🎶 aura until it next plays, so the damage is never a mystery.
-    Each round it **wanders one hex toward the nearest minor-key Spirit** (ties broken toward the
-    lowest Vibe), walking *around* bodies; with the whole board in major it has no prey, no destination,
-    and stands still. Calmed by walking onto its hex — whatever key you're in — which also hands the
-    walker a bonus note. The safe approach is to be in **major** when you go and touch it.
-    🪦 **THIS ENTRY USED TO DESCRIBE THREE STAGES** — *Listening → Swelling → Hunting*, 2 rings growing
-    to 3, a frozen aura, and "spares Ronin" — **and none of it has ever been in the code.** There is no
-    stage field, `SHAM_RINGS` is a constant, and the thing wanders from round 1. Corrected 2026-08-22.
+  - **Cursed Shamisen** (8 Db unlock, **2 Db/use**, **3-round CD — set at summon like every other ability, and RE-SET when the haunting ends**, because a haunting that can stand indefinitely would otherwise outlive its own cooldown)
+    — ✅ **FULLY REWORKED 2026-08-25.** Spec: `RONIN_ABILITY_DESIGN.md` §2.3. Build report: §7b.
+    Set down on Ronin's hex, where it plays a **haunting melody every round** (real audio: an
+    insen-scale phrase). Its phrase is **♭3 → 2 → 1 → ♭6 → 5** (`SHAMISEN_PHRASE`, semitones off
+    RONIN'S root) and he **FEEDS** it those links in order out of the melody line he commits —
+    ⚡ **one link a turn, or the whole phrase in a single turn if his hand holds all five.**
+    ⚠️ **A ROUND THAT ADDS NO LINK SNAPS THE STRINGS.** There is no lifespan field at all; the
+    feeding IS the lifespan, checked at the round tick (`!complete && !fedThisRound`). Finish the
+    phrase and it is **BOUND** — it needs no more food and never fades.
+    Its **reach GROWS with the phrase**, `shamisenRings` → `ceil(links/2)`, 1 → `SHAMISEN_RING_MAX`
+    (3) rings; 🎯 and the growing reach is its own counterplay, because exorcism requires standing
+    INSIDE the rings — the number that makes it dangerous is the number that decides who can end it.
+    Each round it steps one hex toward the nearest **non-Ronin** Spirit and frays `SHAMISEN_FRAY`
+    note off the **`sustainStack`** of everyone in range (`frayFromSustain`, floor of 1 note).
+    ⚠️ **IT NEVER TOUCHES VIBE** — it cannot kill, it makes its victims killable. It **spares Ronin**
+    (Alex's call: it knows his hand). Every Spirit the melody reaches is marked with a pulsing 🎶
+    aura until it next plays. The board token is **blue while it can still be starved and RED once
+    BOUND**.
+    ⚔️ **EXORCISM** (`exorciseCursedShamisen`) — the only way out. Stand **inside its rings**, click
+    the instrument to arm, then click a note from your own pool: it must be **Ronin's TONIC**, the
+    note his half cadence hangs one step away from and never reaches. The note is spent; the
+    exorcist takes a bonus note. 📌 That same pitch class is **link 3 of the feeding phrase** —
+    Ronin commits it INTO a melody to feed, a rival spends it AT the instrument to kill. Same note,
+    opposite verb.
+    🪦 **WHAT THIS REPLACED, so nobody rebuilds it:** a **minor-key gate** (`inMinorKey`, now
+    deleted) that made major-key Spirits deaf to it; a fixed 2-ring aura; a **3-round timer**; a
+    drain on `tempSustain` that **then bit Vibe**; no owner exemption; and destruction by **any
+    Spirit freely walking onto its hex** (`calmCursedShamisen`, now a kept no-op). Minor is flavour
+    now — the sound — not a mechanical gate.
+    ✅ **Under test at last:** `engine/shamisenCheck.mjs` / `npm run test:shamisen`, 29 assertions.
+    ⚠️ It reaches the **phrase logic only** — the tick, bite, summon guard and exorcism click are
+    still in the client monolith and unreachable by any harness.
+    🪦 *This entry also said "no cooldown" until 2026-08-25, a full three days after
+    `CURSED_SHAMISEN_CD = 3` shipped — the second time this file has been 95% right about this one
+    ability while the Shadow Illusion entry above it was correct.*
     Board art: `SHAMISEN_ART` at the top of the simulator (currently a vector placeholder; drop
     `src/standees/Cursed_Shamisen.png` in and point the constant at it to swap).
   - **Wa no Koe** (12 Db, **no per-use cost, no cooldown**) — Passive: when **half or more** of the

@@ -89,7 +89,8 @@ import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX,
 import { cooldownLeft, canFire, firePatch } from "./engine/systems/cooldowns.js";
 import { PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
          SHADOW_ILLUSION_SUSTAIN_DRAIN, PSYCHO_BUSHIDO_CD, SHADOW_ILLUSION_CD,
-         CURSED_SHAMISEN_CD, DISPLACE_CD, GRAVITY_CD, CODE_INJECT_CD,
+         CURSED_SHAMISEN_CD, SHAMISEN_PHRASE, SHAMISEN_RING_MAX, SHAMISEN_FRAY,
+         DISPLACE_CD, GRAVITY_CD, CODE_INJECT_CD,
          SUNBEAM_CD } from "./data/gameConstants.js";
 import { SUNBEAM_DB_COST, SUNBEAM_BLIND_TURNS, SUNBEAM_LINGER_CHANCE, SUNBEAM_MAX_BLIND_TURNS,
          DISPLACE_DB_COST, DISPLACE_MIN_RINGS, DISPLACE_MAX_RINGS,
@@ -110,7 +111,7 @@ import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus,
   smashOutcome, decideWinner, thrashDamage, thrashKnockback, thrashFame,
   sonicDamage, sonicKnockback, sonicFame,
-  chordFrayAmount, isRearHit, REAR_ARC, REAR_FRAY_BONUS,
+  chordFrayAmount, isRearHit, REAR_ARC, REAR_FRAY_BONUS, frayFromSustain,
 } from "./engine/systems/combat.js";
 import {
   usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState, fansFromDeed,
@@ -472,7 +473,7 @@ import { PC_PLAY_NAMES } from "./music/pitchNames.js";
 // turn is your "final". String the right finals together across consecutive
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
-import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote } from "./music/cadence.js";
+import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote, feedShamisenPhrase, shamisenNextPc, shamisenResolvingPc, shamisenRings } from "./music/cadence.js";
 import { chordContext, contextClaim, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, discordPenaltyFor } from "./music/context.js";
 import { evaluateChord } from "./music/chords.js";
 
@@ -3591,6 +3592,17 @@ function Game({ gameState, onReturnToLobby }) {
   // exactly as before (null = "no register recorded, use the base octave").
   function clickNoteStock(idx, _flyEvent, _forceChordMode, _micFreq = null) {
     if (!acting || !canAct) return; // N4/N7: gate
+    // ⚔️ EXORCISM — the second beat. The Shamisen is armed, this click chooses
+    // which note gets spent at it. ⚠️ FIRST IN THE FUNCTION, ahead of the mixer
+    // and the placement paths: while the exorcism is armed the pool is not a
+    // track any more, it is a set of answers, and a note that fell through to
+    // `melodyLine` here would be a note the player thought they had spent.
+    // A wrong note still ARMS nothing and costs nothing — it is refused with a
+    // line, not swallowed, so the rule is learnable in one attempt.
+    if (action === 'exorcise') {
+      if (exorciseCursedShamisen(acting.id, idx)) setAction(null);
+      return;
+    }
     // ── 🎚️ MIXER — once per turn, tap an already-played note to layer it again ──
     if (usedHas(usedStockIdx, idx)) {
       const hasMixer  = (actingNoteState?.unlockedSkills ?? []).includes('mixer');
@@ -4125,9 +4137,40 @@ function Game({ gameState, onReturnToLobby }) {
     // summoned later this turn can be handed a full budget too.
     if (acting?.id === 'cosmic_ronin') {
       const si = actingNoteState?.shadowIllusion;
+      // ── 🎸 FEED THE CURSED SHAMISEN ────────────────────────────────────────
+      // The track he just committed is what the haunting eats. Links must appear
+      // IN ORDER inside this one melody line, and a single line may supply the
+      // whole phrase — which is exactly what lets a well-held hand finish the
+      // curse in one turn (`RONIN_ABILITY_DESIGN.md` §2.3.2).
+      //
+      // ⚠️ SCORED OFF `report.melodyLine`, NOT the raw track, for the same reason
+      // everything else in this commit is: the mic skill's voice roll shadows the
+      // line, and a bonus note the player never placed already counts for Db, for
+      // Performance, for the ending and for the AP grant. It counts here too.
+      //
+      // 📌 NO DEATH CHECK HERE. A commit that feeds nothing does not kill the
+      // Shamisen on the spot — the round tick does that, so that a turn where
+      // Ronin never commits at all is judged by the same rule as one where he
+      // committed the wrong notes. One executioner, not two.
+      const sham = actingNoteState?.cursedShamisen;
+      let shamPatch = {};
+      if (sham && !sham.complete) {
+        const rootPc = pitchIndex(actingNoteState?.rootNote ?? 'C');
+        const fed    = feedShamisenPhrase(report.melodyLine ?? [], rootPc, sham.linksFed ?? 0, SHAMISEN_PHRASE);
+        if (fed > (sham.linksFed ?? 0)) {
+          const complete = fed >= SHAMISEN_PHRASE.length;
+          shamPatch = { cursedShamisen: { ...sham, linksFed: fed, complete, fedThisRound: true } };
+          const gained = fed - (sham.linksFed ?? 0);
+          addLog(`🎸 The track feeds the haunting — ${gained} link${gained !== 1 ? 's' : ''} of the phrase lands.`);
+          logShamisenPhraseState(fed, complete, rootPc);
+          if (complete) triggerEffectFlash('cosmic_ronin', '🎸', 'BOUND!', '#4488ff');
+          playShamisenMelody(complete);
+        }
+      }
       setNoteField('cosmic_ronin', {
         lastMoveBudget: grantedSteps,
         ...(si ? { shadowIllusion: { ...si, stepsLeft: grantedSteps, stepsMax: grantedSteps } } : {}),
+        ...shamPatch,
       });
     }
     setMovedThisTurn(false);
@@ -4397,7 +4440,7 @@ function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
     if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Dash in a straight line and strike — the ground you cover powers the blow. ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_CD}-round cooldown, and it spends every Action Point you have left.`);
     if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn. ⚠️ It drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain every turn it stands, and dies when you have none left.`);
-    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Set it down (${CURSED_SHAMISEN_DB_COST} Db per use, ${CURSED_SHAMISEN_CD}-round cooldown). It plays a minor phrase for 3 rounds and haunts ONLY Spirits in a minor key — wandering after them, 2 rings, 1 Sustain a round. Including you, if you're in minor.`);
+    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Set it down (${CURSED_SHAMISEN_DB_COST} Db per use) and FEED it ♭3 → 2 → 1 → ♭6 → 5 out of the melody you commit — a link a turn, or all five at once if your hand holds them. ⚠️ A turn that adds no link snaps the strings. Finish the phrase and it stands FOREVER. It frays ${SHAMISEN_FRAY} note off the Sustain chord of everyone in range each round — never you — and its reach grows with the phrase, 1 → ${SHAMISEN_RING_MAX} rings.`);
     if (skillId === 'wa_no_koe')      addLog(`🎵 ${spirit?.name} — WA NO KOE! Half your melody inside your stacks now pays +1 Drive or Sustain for 3 rounds — the amplifier on the Chord Tone Pardon he already owns.`);
     // B9: the unlock logs name the CONTEXT TIER too, matching the descs. Each line
     // is the one moment the player is guaranteed to be looking, so it's where the
@@ -8512,36 +8555,55 @@ function Game({ gameState, onReturnToLobby }) {
 
   // 🎸 CURSED SHAMISEN — Drop a cursed shamisen on Ronin's current hex.
   //
-  // ── 2026-08-05 REWORK: IT ONLY HAUNTS THE MINOR ─────────────────────────────
-  // The thing plays one endless minor phrase, and a Spirit only hears it if
-  // they're in the same tonality. Concretely: it touches a Spirit ONLY while
-  // that Spirit's key is MINOR (noteStates[id].scaleMode — derived from their
-  // Drive Stack at turn start, B8). Everyone in major is deaf to it and can
-  // walk straight through the aura.
+  // ── 2026-08-25 REWORK: THE CURSE HE FEEDS ───────────────────────────────────
+  // `RONIN_ABILITY_DESIGN.md` §2.3 is the spec; the numbers are in
+  // `data/gameConstants.js`. In one paragraph:
   //
-  //   · 2 rings, fixed. No growth stages, no hunt stage — it is what it is from
-  //     the moment it lands.
-  //   · Once per ROUND it takes one step toward the nearest MINOR-key Spirit
-  //     and plays. Nobody in minor → nothing to haunt → it stays where it is
-  //     and plays to an empty room.
-  //   · 3 rounds, then the strings finally go quiet.
-  //   · 1 Sustain per tick, and Vibe once the Sustain is gone.
-  //   · The Ronin is NOT spared: it is a cursed object, not a pet. Stay major
-  //     and it ignores you — which is a real cost, because minor is where your
-  //     own Drive stack may want to be.
+  //   · It plays ♭3 → 2 → 1 → ♭6 → 5 (`SHAMISEN_PHRASE`, semitones off RONIN'S
+  //     root) and Ronin feeds it those links IN ORDER, inside the melody line he
+  //     commits. A single commit may feed one link, or all five.
+  //   · ⚠️ A TURN THAT ADDS NO LINK KILLS IT. There is no lifespan field — the
+  //     feeding IS the lifespan. Finish the phrase and it stands FOREVER, until
+  //     a rival exorcises it.
+  //   · The AURA GROWS with the phrase, `ceil(links/2)` → 1…3 rings. The BITE
+  //     never grows: `SHAMISEN_FRAY` notes off each victim's SUSTAIN STACK per
+  //     round, and never Vibe.
+  //   · Once per ROUND it steps one hex toward the nearest non-Ronin Spirit.
+  //   · 🎯 IT SPARES RONIN (Alex, 2026-08-25). It knows his hand.
   //
-  // Calmed (destroyed) by walking onto its hex, which also hands the walker a
-  // bonus note — so the answer to it is always "go and touch it". Major-key
-  // Spirits can do that with total impunity, which is the point: the counter to
-  // a minor-key haunt is to change key.
+  // ⚔️ EXORCISM: stand INSIDE its rings, click it, and spend Ronin's TONIC from
+  // your own pool — you finish the half cadence he refused to finish. See
+  // `exorciseCursedShamisen`.
+  //
+  // 🎯 THE GROWING AURA IS ITS OWN COUNTERPLAY, and it is the best thing in this
+  // ability: exorcism requires being inside the rings, so the number that makes
+  // the haunting dangerous is the same number that decides who can answer it. A
+  // 1-ring haunting is nearly untouchable and nearly harmless; a 3-ring one is
+  // lethal and standing in reach of a third of the board.
+  //
+  // 🪦 WHAT THIS REPLACED, so nobody rebuilds it: a MINOR-KEY GATE. The melody
+  // touched a Spirit only while their `scaleMode` was 'minor' — everyone in major
+  // was deaf to it and strolled through the aura, and the counterplay was "change
+  // key". It was a fixed 2 rings, lived 3 rounds on a timer, drained `tempSustain`
+  // and then bit VIBE, did not spare Ronin, and was destroyed by ANY Spirit
+  // freely walking onto its hex. Minor is now flavour — the sound, the insen
+  // phrase — and not a mechanical gate. `inMinorKey` went with it.
   //
   // 8 Db to unlock, 2 Db per use.
-  const SHAM_RINGS  = 2;   // fixed aura, in rings
-  const SHAM_ROUNDS = 3;   // full revolutions it lives
 
-  // Is this Spirit currently in a minor key — i.e. can the melody touch them?
-  function inMinorKey(spiritId) {
-    return (engineRef.current.noteStates?.[spiritId] ?? noteStates[spiritId] ?? {}).scaleMode === 'minor';
+  // Rings the aura covers at `linksFed` links. ⚠️ Derived, never stored — a
+  // stored copy is a second source of truth that drifts the moment a link lands.
+  // The arithmetic itself lives in `music/cadence.js` so a suite can assert the
+  // whole table; this is only the binding of the cap.
+  function shamRings(linksFed) {
+    return shamisenRings(linksFed, SHAMISEN_RING_MAX);
+  }
+
+  // Ronin's root as a pitch class. The haunting is in HIS key at every point —
+  // the links he feeds, and the tonic a rival spends to end it.
+  function shamRootPc() {
+    const rNs = engineRef.current.noteStates?.['cosmic_ronin'] ?? noteStates['cosmic_ronin'] ?? {};
+    return pitchIndex(rNs.rootNote ?? 'C');
   }
 
   function resolveCursedShamisen() {
@@ -8551,7 +8613,10 @@ function Game({ gameState, onReturnToLobby }) {
     // 🕒 "One at a time" was doing the work of a cooldown and doing it badly: the
     // instant the old one decayed a new one could go straight down, so the board
     // was never actually free of it. The cooldown is what puts a gap between
-    // hauntings — it outlives the instrument by design.
+    // hauntings. ⚠️ `firePatch` below sets it at summon as usual, AND
+    // `endCursedShamisen` RE-SETS it when the haunting ends — because a haunting
+    // that can stand indefinitely would otherwise outlive its own cooldown and the
+    // gap would be worth nothing. Both, deliberately; see `endCursedShamisen`.
     const shamCd = cooldownLeft(ns, 'cursed_shamisen');
     if (shamCd > 0) {
       addLog(`🎸 The strings are still dead — ${shamCd} turn${shamCd > 1 ? 's' : ''} before another Shamisen will play.`);
@@ -8563,24 +8628,64 @@ function Game({ gameState, onReturnToLobby }) {
       return;
     }
 
+    // 🎸 THE TRACK HE JUST PLAYED IS THE FIRST FEED, and this is what makes the
+    // one-turn assembly real: hold ♭3, 2, 1, ♭6 and 5, place them in order in a
+    // single commit, and the haunting is FINISHED on the turn it is set down.
+    // `committedMelody` is this turn's committed track (mic bonus note included,
+    // deliberately — it counts for Db, P and the AP grant, so it counts here).
+    const track   = ns.committedMelody ?? [];
+    const rootPc  = pitchIndex(ns.rootNote ?? 'C');
+    const links   = feedShamisenPhrase(track, rootPc, 0, SHAMISEN_PHRASE);
+
+    // ⚠️ REFUSED ON AN EMPTY FEED, and for the same reason Shadow Illusion is
+    // refused on an empty guard: the Db must not buy an instrument that cannot
+    // stand. A Shamisen that starts on zero links is dead at the end of this very
+    // round, so summoning it would be a pure 2 Db donation with no moment of play
+    // in between. Making it a REFUSAL — not a silent death later — is what lets
+    // the player learn the rule.
+    if (links === 0) {
+      const wantPc = shamisenNextPc(rootPc, 0, SHAMISEN_PHRASE);
+      addLog(`🎸 The strings will not take. The haunting opens on ${PC_PLAY_NAMES[wantPc]} (the ♭3) and nothing in that track was it — play the phrase, then set it down.`);
+      return;
+    }
+
+    const complete = links >= SHAMISEN_PHRASE.length;
     setNoteField(acting.id, {
       ...firePatch(ns, 'cursed_shamisen'),
       cursedShamisen: {
         hex: acting.num,
-        range: SHAM_RINGS,
-        roundsLeft: SHAM_ROUNDS,
+        // 📌 `linksFed` IS THE WHOLE STATE MACHINE: it drives the radius, the
+        // required note, and whether the thing is permanent. There is no
+        // `roundsLeft` any more — feeding is the lifespan.
+        linksFed: links,
+        complete,
+        // Set because the track that summoned it also fed it. Cleared at every
+        // round tick; a tick that finds it false on an unfinished haunting is
+        // what kills it.
+        fedThisRound: true,
         touched: [],      // ids the melody reached on its most recent tick
       },
     });
 
-    triggerEffectFlash(acting.id, '🎸', 'SHAMISEN!', '#4488ff');
-    const minorNow = spirits.filter(sp => !sp.knockedOut && inMinorKey(sp.id));
-    addLog(`🎸 ${acting.name} sets the CURSED SHAMISEN down on hex #${acting.num}. It begins to play by itself — ${SHAM_RINGS} rings of haunted air, for ${SHAM_ROUNDS} rounds.`);
-    addLog(minorNow.length
-      ? `🎶 It only haunts the MINOR: ${minorNow.map(sp => sp.name).join(', ')} ${minorNow.length === 1 ? 'is' : 'are'} in its key right now.`
-      : `🎶 It only haunts the MINOR — and nobody is in a minor key. It waits, and listens.`);
-    playShamisenMelody(false);
+    triggerEffectFlash(acting.id, '🎸', complete ? 'BOUND!' : 'SHAMISEN!', '#4488ff');
+    addLog(`🎸 ${acting.name} sets the CURSED SHAMISEN down on hex #${acting.num}. It begins to play by itself — ${shamRings(links)} ring${shamRings(links) !== 1 ? 's' : ''} of haunted air.`);
+    logShamisenPhraseState(links, complete, rootPc);
+    playShamisenMelody(complete);
     setAction(null);
+  }
+
+  // 🎸 The phrase's state, in words, every time it moves. ⚠️ THE REQUIRED NOTE IS
+  // PUBLIC ON PURPOSE — rivals need to see how close the haunting is to permanent
+  // to decide whether to pressure Ronin or go and exorcise it, and Ronin needs it
+  // to plan his next track. A hidden progress bar would make the whole build
+  // phase unreadable.
+  function logShamisenPhraseState(links, complete, rootPc) {
+    if (complete) {
+      addLog(`🎸💀 The phrase LANDS — ♭3 · 2 · 1 · ♭6 · 5, and it stops dead on the 5. The haunting is BOUND: it needs no more feeding and it will not fade. Only an exorcism ends it now.`);
+      return;
+    }
+    const wantPc = shamisenNextPc(rootPc, links, SHAMISEN_PHRASE);
+    addLog(`🎶 ${links}/${SHAMISEN_PHRASE.length} of the haunting is in place. It wants ${PC_PLAY_NAMES[wantPc]} next — and if the Ronin's next track does not give it one more link, the strings snap.`);
   }
 
   // 🎶 The haunting melody. An unaccompanied Japanese-flavoured minor phrase
@@ -8615,7 +8720,11 @@ function Game({ gameState, onReturnToLobby }) {
   function shamisenWanderStep(fromNum) {
     const fromHex = HEX_BY_NUM[fromNum];
     if (!fromHex) return fromNum;
-    const prey = spirits.filter(s => !s.knockedOut && HEX_BY_NUM[s.num] && inMinorKey(s.id));
+    // 🪦 THIS USED TO FILTER ON `inMinorKey`. The minor gate is gone; what it
+    // filters on now is simply "not the Ronin", because the Shamisen spares its
+    // owner (§2.3.5). With the gate went the "everyone is in major, so it has
+    // nothing to follow" case — it idles only when he is the last one standing.
+    const prey = spirits.filter(s => !s.knockedOut && HEX_BY_NUM[s.num] && s.id !== 'cosmic_ronin');
     if (!prey.length) return fromNum;
     // Nearest by hex distance; ties broken by lowest Vibe, so a wounded Spirit
     // is the one it drifts toward when two are equidistant.
@@ -8640,82 +8749,125 @@ function Game({ gameState, onReturnToLobby }) {
     return bestNum;
   }
 
+  // 🎸 Take the Shamisen off the board and start the gap before the next one.
+  //
+  // ⚠️ THE COOLDOWN IS RE-CHARGED HERE. It is ALSO set at summon by `firePatch`,
+  // like every other ability's — that is not a bug and it is not redundant, and
+  // the distinction is worth stating precisely because an earlier version of this
+  // comment got it wrong and claimed the summon no longer charged it at all.
+  //
+  // What each one does:
+  //   · `firePatch` at summon  — the ordinary rule, and it also charges the Db.
+  //     Under the old 3-round life the two clocks matched, which is what
+  //     `CURSED_SHAMISEN_CD`'s "matches its 3-round life" comment meant.
+  //   · this re-charge at the END — because that match is now gone. A haunting
+  //     can stand indefinitely, so the summon-time cooldown expires underneath a
+  //     Shamisen that is still playing, and the gap it was supposed to create
+  //     would be worth nothing. Re-charging on the end restores what the number
+  //     was always FOR: a gap between HAUNTINGS, not between summons.
+  //
+  // 📌 The "one at a time" guard in `resolveCursedShamisen` is what stops a second
+  // Shamisen while the first stands; the cooldown is only the gap after.
+  function endCursedShamisen(reason) {
+    const rNs = engineRef.current.noteStates?.['cosmic_ronin'] ?? noteStates['cosmic_ronin'] ?? {};
+    setNoteField('cosmic_ronin', {
+      cursedShamisen: null,
+      abilityCd: { ...(rNs.abilityCd ?? {}), cursed_shamisen: CURSED_SHAMISEN_CD },
+    });
+    if (reason) addLog(reason);
+  }
+
   // Tick the Shamisen ONCE PER ROUND (called from endTurn's roundCompleted
-  // block): wander one step toward the nearest minor-key Spirit, play, resolve
-  // the melody against everyone in minor inside the rings, then age it.
+  // block): settle the feeding debt, wander one step toward the nearest
+  // non-Ronin Spirit, play, then fray everyone inside the rings.
   function tickCursedShamisen() {
     const ns = engineRef.current.noteStates?.['cosmic_ronin'] ?? noteStates['cosmic_ronin'] ?? {};
     const sham = ns.cursedShamisen;
     if (!sham) return;
 
-    // Three rounds and the strings go quiet.
-    const roundsLeft = (sham.roundsLeft ?? SHAM_ROUNDS) - 1;
-    if (roundsLeft < 0) {
-      setNoteField('cosmic_ronin', { cursedShamisen: null });
-      addLog(`🎸 The Cursed Shamisen's last note decays into nothing. The stage is quiet again.`);
+    // ── ⚠️ THE FEEDING DEBT, AND IT IS CHECKED BEFORE ANYTHING ELSE ──────────
+    // An unfinished haunting that went a whole round without gaining a link comes
+    // apart. There is no timer to expire — THIS is the only way an unfinished
+    // Shamisen dies of its own accord, and it is why the required note is printed
+    // every time the phrase moves. A finished one is exempt: it feeds on nothing
+    // and stands until exorcised.
+    if (!sham.complete && !sham.fedThisRound) {
+      const rootPc = shamRootPc();
+      const wantPc = shamisenNextPc(rootPc, sham.linksFed ?? 0, SHAMISEN_PHRASE);
+      endCursedShamisen(`🎸💔 The haunting starves. It waited a whole round for ${PC_PLAY_NAMES[wantPc]} and the Ronin never played it — the phrase comes apart at ${sham.linksFed ?? 0}/${SHAMISEN_PHRASE.length} and the strings snap.`);
+      triggerEffectFlash('cosmic_ronin', '🎸', 'SNAPPED', '#886699');
       return;
     }
 
-    // Prey = living Spirits currently in a MINOR key. Nobody in minor → nothing
-    // to walk toward, so it holds its ground.
-    const minorPrey = spirits.filter(sp => !sp.knockedOut && inMinorKey(sp.id));
-    const newHex = minorPrey.length ? shamisenWanderStep(sham.hex) : sham.hex;
-    const range  = SHAM_RINGS;
+    // Prey = every living Spirit that is not the Ronin — it spares its owner.
+    // 🪦 This used to be "everyone in a minor key", which meant an all-major board
+    // gave it nothing to follow. That case is gone with the gate.
+    const prey   = spirits.filter(sp => !sp.knockedOut && sp.id !== 'cosmic_ronin');
+    const newHex = prey.length ? shamisenWanderStep(sham.hex) : sham.hex;
+    // ⚠️ DERIVED FROM `linksFed` EVERY TICK, never read off the stored object —
+    // the radius and the phrase must not be able to disagree.
+    const range  = shamRings(sham.linksFed);
 
-    if (!minorPrey.length) {
-      addLog(`🎸 The Shamisen has nobody to haunt — every Spirit is in major. It sits where it is, playing to itself.`);
+    if (!prey.length) {
+      addLog(`🎸 The Shamisen has nobody left to haunt. It sits where it is, playing to itself.`);
     } else if (newHex !== sham.hex) {
-      addLog(`🎸💀 The Shamisen drags itself to hex #${newHex}, following the minor.`);
+      addLog(`🎸💀 The Shamisen drags itself to hex #${newHex}, following the living.`);
     } else {
-      addLog(`🎸💀 The Shamisen holds its ground, the minor phrase circling.`);
+      addLog(`🎸💀 The Shamisen holds its ground, the phrase circling.`);
     }
 
-    // 🎶 The melody plays every round it lives. It gets urgent once it has prey.
-    playShamisenMelody(minorPrey.length > 0);
+    // 🎶 The melody plays every round it stands. It gets urgent once it has prey.
+    playShamisenMelody(prey.length > 0);
 
-    // Resolve the melody: only MINOR-key Spirits inside the rings hear it — the
-    // Ronin included. Sustain soaks the curse first, then it bites Vibe.
+    // ── THE BITE — it frays the SUSTAIN STACK, and it never touches Vibe ──────
+    // 🪦 UNTIL 2026-08-25 THIS DRAINED `tempSustain` AND THEN BIT VIBE. Three
+    // different resources, and the design had said "the Sustain STACK" all along.
+    // `frayFromSustain` always leaves one note standing, so the haunting CANNOT
+    // KILL — it makes its victims killable, which is the whole fantasy. Routing a
+    // shortfall into Vibe would quietly make this a damage-over-time card, which
+    // is a different ability (the same call Shadow Illusion's starvation made).
     const shamHex = HEX_BY_NUM[newHex];
     const touched = [];
     if (shamHex) {
-      minorPrey.forEach(sp => {
+      prey.forEach(sp => {
         const spHex = HEX_BY_NUM[sp.num];
         if (!spHex) return;
         const dist = axialDist(shamHex.q, shamHex.r, spHex.q, spHex.r);
         if (dist > range) return;
 
+        const spNs   = engineRef.current.noteStates?.[sp.id] ?? noteStates[sp.id] ?? {};
+        const stack  = spNs.sustainStack ?? [];
+        // At the floor there is nothing left to take — say so rather than
+        // silently doing nothing, or the rule looks like a bug.
+        const atFloor = stack.length <= 1;
         touched.push(sp.id);
-        const spNs = engineRef.current.noteStates?.[sp.id] ?? noteStates[sp.id] ?? {};
-        const curSustain = spNs.tempSustain ?? 0;
-        const soaked = curSustain > 0;
-        if (soaked) setNoteField(sp.id, { tempSustain: curSustain - 1 });
-        else applyVibeDamage(sp.id, 1, 'Cursed Shamisen');
+        if (!atFloor) setNoteField(sp.id, frayFromSustain(stack, SHAMISEN_FRAY));
 
         // 👁️ Make the hit unmissable: the victim's standee flashes, a cursed
         // note floats off their hex, and their aura is marked for the round.
-        triggerEffectFlash(sp.id, '🎶', 'CURSED', '#aa55ff');
-        triggerDamageNumber(sp.num, soaked ? '🎶 −1 🛡️' : '🎶 −1 ❤️', '#cc88ff');
+        triggerEffectFlash(sp.id, '🎶', atFloor ? 'BARE' : 'CURSED', '#aa55ff');
+        if (!atFloor) triggerDamageNumber(sp.num, `🎶 −${SHAMISEN_FRAY} 🎵`, '#cc88ff');
         triggerRumble(sp.id, 420);
-        addLog(dist === 0
-          ? `🎶 ${sp.name} is standing right on top of the Shamisen, in its very key — it plays straight through them. 1 ${soaked ? 'Sustain' : 'Vibe'} gone.`
-          : `🎶 The minor phrase finds ${sp.name} at ${dist} ring${dist !== 1 ? 's' : ''} — 1 ${soaked ? 'Sustain' : 'Vibe'} gone.`);
+        addLog(atFloor
+          ? `🎶 The phrase gnaws at ${sp.name} and finds bare wood — their Sustain is down to its last note and the haunting cannot take it. It can only hold them there.`
+          : dist === 0
+            ? `🎶 ${sp.name} is standing right on top of the Shamisen — it plays straight through them. ${SHAMISEN_FRAY} note off their Sustain chord.`
+            : `🎶 The phrase finds ${sp.name} at ${dist} ring${dist !== 1 ? 's' : ''} — ${SHAMISEN_FRAY} note off their Sustain chord.`);
       });
     }
-    if (minorPrey.length && touched.length === 0) {
-      addLog(`🎶 The Shamisen plays on — the minor keys are all out of earshot.`);
+    if (prey.length && touched.length === 0) {
+      addLog(`🎶 The Shamisen plays on — everyone is out of earshot.`);
     }
 
     setNoteField('cosmic_ronin', {
       cursedShamisen: {
+        ...sham,
         hex: newHex,
-        range,
-        roundsLeft,
+        // Cleared every tick: the next round has to earn its own link.
+        fedThisRound: false,
         touched,      // drives the lingering "you were played at" aura
       },
     });
-    if (roundsLeft === 0) {
-      addLog(`🎸 The Shamisen's strings are fraying — one more round of it.`);
-    }
   }
 
   // Calm the Shamisen — called when a Spirit finishes a step, with the hex they
@@ -8728,28 +8880,82 @@ function Game({ gameState, onReturnToLobby }) {
   // the very next move. Every other post-move hook (poison slime, token pickup,
   // stage FX) already takes the destination hex for exactly this reason.
   function calmCursedShamisen(walkerId, landedOn) {
-    const ns = noteStates['cosmic_ronin'] ?? {};
-    if (!ns.cursedShamisen) return false;
-    const walkerSpirit = spirits.find(s => s.id === walkerId);
-    if (!walkerSpirit) return false;
-    const at = landedOn ?? walkerSpirit.num;
-    if (at !== ns.cursedShamisen.hex) return false;
+    // 🪦 WALKING ONTO IT NO LONGER DOES ANYTHING, AND DELETING THAT WAS THE POINT
+    // OF THE REWORK. Any Spirit could stroll onto the hex and destroy it for
+    // free; that was survivable only because the minor-key gate meant a
+    // major-key Spirit was not being hurt by it anyway. With the gate gone
+    // EVERYONE in the rings is being frayed, so a free walk-on would delete the
+    // ability the turn after it lands — and a haunting that can be permanent has
+    // to cost more than a step to end.
+    //
+    // The answer is `exorciseCursedShamisen`: stand inside the rings, click the
+    // instrument, and SPEND Ronin's tonic out of your own pool. This hook is kept
+    // as a no-op so the post-move call site, and the `landedOn` lesson baked into
+    // it above, both stay put.
+    return false;
+  }
 
-    // Walking onto it silences it, whatever key you're in — but a MINOR-key
-    // walker has to eat the aura on the way, so the safe answer is to be in
-    // major when you go and touch it.
-    const walkerInMinor = inMinorKey(walkerId);
-    setNoteField('cosmic_ronin', { cursedShamisen: null });
-    const walkerName = walkerSpirit.name;
-    addLog(walkerInMinor
-      ? `🎸🎵 ${walkerName} walks into their own haunting and lays a hand on the strings — the minor phrase chokes off dead.`
-      : `🎸🎵 ${walkerName} is in major — the melody can't touch them. They stroll up and calm the Cursed Shamisen.`);
-    triggerEffectFlash(walkerId, '🎵', 'CALMED', '#44cc66');
-    // The reward for walking into it: the silenced melody leaves a note behind.
-    // (This used to return true and rely on the caller to grant it, but no caller
-    // ever did — the promised bonus note simply never arrived.)
-    const wNs = noteStates[walkerId] ?? {};
-    bankLostChordNote(walkerId, drawSeededNotes(1, wNs.rootNote, wNs.scaleMode)[0], false);
+  // ⚔️ EXORCISE THE CURSED SHAMISEN — `RONIN_ABILITY_DESIGN.md` §2.3.6.
+  //
+  // 🎯 THE PHRASE IS A HALF CADENCE. ♭3 → 2 → 1 → ♭6 → 5 stops on the 5 and never
+  // lands, which is why it will not stop playing — so you end it by playing the
+  // note it is refusing to reach: RONIN'S TONIC. Not yours. You are finishing his
+  // sentence for him.
+  //
+  // ⚠️ THE SAME PITCH CLASS BOTH FEEDS AND KILLS, AND THAT IS DELIBERATE. The
+  // tonic is link 3 of the phrase — Ronin plays it himself mid-build and resolves
+  // nothing, because he COMMITS it into a melody line while a rival SPENDS it at
+  // the instrument. Same note, opposite verb. Do not collapse the two paths.
+  //
+  // Three costs, one click: the right pitch class, in a foreign key, spent while
+  // standing inside an aura that is fraying you.
+  //
+  // @param exorcistId  who is laying hands on it
+  // @param idx         which of THEIR OWN `noteStock` slots they clicked
+  //
+  // ⚠️ TAKES A STOCK INDEX, NOT A NOTE NAME. Every other note-spending path in
+  // the game addresses the pool by slot (`usedStockIdx`), because the same note
+  // can sit in two slots and a name cannot say which one to burn.
+  function exorciseCursedShamisen(exorcistId, idx) {
+    const rNs  = engineRef.current.noteStates?.['cosmic_ronin'] ?? noteStates['cosmic_ronin'] ?? {};
+    const sham = rNs.cursedShamisen;
+    if (!sham) return false;
+    const sp = spirits.find(s => s.id === exorcistId);
+    if (!sp || sp.knockedOut) return false;
+    const eNs   = engineRef.current.noteStates?.[exorcistId] ?? noteStates[exorcistId] ?? {};
+    const stock = eNs.noteStock ?? [];
+    const used  = eNs.usedStockIdx ?? [];
+    const note  = stock[idx];
+    if (note == null || usedHas(used, idx)) return false;
+
+    // 📍 IN RANGE — "you cannot resolve a phrase you cannot hear". This is the
+    // condition that makes the growing aura self-balancing: the radius that makes
+    // the haunting dangerous is the same radius that decides who may answer it,
+    // so the stronger it gets the more players it drags into killing range.
+    const shamHex = HEX_BY_NUM[sham.hex];
+    const spHex   = HEX_BY_NUM[sp.num];
+    if (!shamHex || !spHex) return false;
+    const dist = axialDist(shamHex.q, shamHex.r, spHex.q, spHex.r);
+    if (dist > shamRings(sham.linksFed)) {
+      addLog(`🎸 ${sp.name} is too far out to answer it — you have to be inside the haunting to resolve it. (${dist} rings away, it reaches ${shamRings(sham.linksFed)}.)`);
+      return false;
+    }
+
+    const wantPc = shamisenResolvingPc(shamRootPc());
+    if (pitchIndex(note) !== wantPc) {
+      addLog(`🎸 ${sp.name} plays ${note} at the Shamisen and it swallows the note whole. The phrase is hanging on the 5 — only ${PC_PLAY_NAMES[wantPc]}, its own tonic, will bring it home.`);
+      return false;
+    }
+
+    // The note is SPENT — the slot is burned exactly the way placing a note on
+    // the track burns it. It does not come back this turn.
+    setNoteField(exorcistId, { usedStockIdx: usedAdd(used, idx) });
+    endCursedShamisen(`🎸🎵 ${sp.name} steps into the haunting and plays ${note} straight at it — the tonic the phrase has been circling for and never reached. The cadence LANDS. The Cursed Shamisen resolves itself into silence.`);
+    triggerEffectFlash(exorcistId, '🎵', 'RESOLVED', '#44cc66');
+    // The reward for walking into the fire and spending a note to do it: the
+    // silenced melody leaves one behind.
+    const wNs = noteStates[exorcistId] ?? {};
+    bankLostChordNote(exorcistId, drawSeededNotes(1, wNs.rootNote, wNs.scaleMode)[0], false);
     return true;
   }
 
@@ -11403,6 +11609,39 @@ function Game({ gameState, onReturnToLobby }) {
   // ─── HEX CLICK ───────────────────────────────────────────────────────────────
   function onHexClick(num) {
     if (!acting || !canAct) return; // N4/N7: gate — only the acting client drives moves
+    // ⚔️ CURSED SHAMISEN — clicking the instrument ARMS the exorcism, it does not
+    // perform it. The act is two beats on purpose: point at the thing, then
+    // choose the note you are going to spend on it. A one-click answer would let
+    // a player end a permanent haunting by brushing past it, which is exactly the
+    // free walk-on this rework deleted.
+    //
+    // ⚠️ CHECKED BEFORE EVERY ATTACK MODE, because the Shamisen shares the board
+    // with bodies and an armed swing must not eat the click.
+    // ⚠️ TWO GATES, AND BOTH ARE THERE BECAUSE THE FIRST DRAFT ATE CLICKS IT HAD
+    // NO RIGHT TO.
+    //
+    //   1. Only when no TARGETING mode is armed. The Shamisen shares the board
+    //      with bodies and a rival can walk onto its hex, so an armed Swing,
+    //      Sonic, Smash, Blaster or Bushido click at that hex must reach the
+    //      attack and not get turned into an exorcism prompt.
+    //   2. Only when the clicker is ALREADY INSIDE the rings. Out of range this
+    //      falls through to the ordinary move path, so clicking a distant
+    //      Shamisen still walks you toward it instead of scolding you. Refusing
+    //      the click at range would have quietly made that one hex unwalkable.
+    {
+      const shamNs = noteStates['cosmic_ronin']?.cursedShamisen;
+      const idleMode = !action || action === 'move' || action === 'move_shadow' || action === 'exorcise';
+      if (shamNs && shamNs.hex === num && acting.id !== 'cosmic_ronin' && idleMode) {
+        const shamHex = HEX_BY_NUM[shamNs.hex], meHex = HEX_BY_NUM[acting.num];
+        const dist = (shamHex && meHex) ? axialDist(shamHex.q, shamHex.r, meHex.q, meHex.r) : Infinity;
+        if (dist <= shamRings(shamNs.linksFed)) {
+          setAction('exorcise');
+          addLog(`🎸 ${acting.name} squares up to the Cursed Shamisen. Now pick the note to play at it — the phrase is hanging on the 5, and only ${PC_PLAY_NAMES[shamisenResolvingPc(shamRootPc())]} will bring it home.`);
+          return;
+        }
+        // else: out of earshot — fall through, so the click still moves you.
+      }
+    }
     // 🤘 ROCK GOD — clicking the God IS the attack (melee if adjacent, Sonic
     // beam if lined up). Overrides every other action; commit fast, hit hard.
     if (rockGodActive && rockGod && num === rockGod.num) {
@@ -11583,15 +11822,19 @@ function Game({ gameState, onReturnToLobby }) {
     {
       const sham = noteStates['cosmic_ronin']?.cursedShamisen;
       if (sham) {
-        // 🎶 The aura burns RED for the acting Spirit only while THEY are in a
-        // minor key — i.e. only while it can actually reach them. In major it
-        // renders cold blue: visible, mapped, and harmless to you.
-        const live = inMinorKey(acting?.id);
+        // 🎶 The aura burns RED for anyone it can actually reach and cold BLUE
+        // for the Ronin, who it spares.
+        // 🪦 This used to key off the acting Spirit's MINOR key — the old gate.
+        // With the gate gone the only Spirit who sees blue is its owner.
+        const live = acting?.id !== 'cosmic_ronin';
         if (hex.num === sham.hex) return live ? '#ff440055' : '#4488ff55';
         const shamHex = HEX_BY_NUM[sham.hex];
         if (shamHex) {
           const dist = axialDist(shamHex.q, shamHex.r, hex.q, hex.r);
-          if (dist <= (sham.range ?? 0)) {
+          // ⚠️ Derived from `linksFed`, never from a stored `range` — the ring
+          // the player SEES has to be the ring the tick uses, and a stored copy
+          // is one refactor away from disagreeing with it.
+          if (dist <= shamRings(sham.linksFed)) {
             const fade = ['22', '18', '12', '0c'][Math.min(dist - 1, 3)];
             return (live ? '#ff2200' : '#4488ff') + fade;
           }
@@ -14423,6 +14666,22 @@ function Game({ gameState, onReturnToLobby }) {
                 </button>
               );
             })()}
+            {/* ⚔️ EXORCISM ARMED — the Shamisen is pointed at and waiting for a
+                note. Shown to whoever armed it, never to the Ronin: it is the
+                rivals' verb. The required note is named outright rather than
+                hinted, because guessing a pitch class out of a foreign key is
+                not the interesting decision — deciding whether it is worth
+                standing in the aura to spend it IS. */}
+            {action === 'exorcise' && acting?.id !== 'cosmic_ronin' && (() => {
+              const wantPc = shamisenResolvingPc(shamRootPc());
+              return (
+                <span style={{color:'#44cc66', fontSize:'0.82em', display:'inline-flex', alignItems:'center', gap:6}}>
+                  ⚔️ Play <b>{PC_PLAY_NAMES[wantPc]}</b> at the Shamisen
+                  <button className="btn" style={{borderColor:'#888',color:'#888'}}
+                    onClick={() => setAction(null)}>Cancel</button>
+                </span>
+              );
+            })()}
             {/* 🎸 CURSED SHAMISEN — Shredding Ronin area denial */}
             {hasConfirmed && acting?.id === 'cosmic_ronin'
               && (actingNoteState?.unlockedSkills ?? []).includes('cursed_shamisen') && (() => {
@@ -14435,10 +14694,10 @@ function Game({ gameState, onReturnToLobby }) {
                 <button className={canDrop ? 'btn active' : 'btn'}
                   style={{borderColor: canDrop ? '#4488ff' : '#1a2840', color: canDrop ? '#88bbff' : '#1a2840'}}
                   disabled={!canDrop}
-                  title={`Cursed Shamisen — set it down on your hex (${CURSED_SHAMISEN_DB_COST} Db, ${CURSED_SHAMISEN_CD}-round cooldown). It plays one endless MINOR phrase for ${SHAM_ROUNDS} rounds, and only Spirits in a minor key can hear it: ${SHAM_RINGS} rings, 1 Sustain (then Vibe) a round. Each round it wanders one hex toward the nearest minor-key Spirit — nobody in minor, and it just stands there. It does NOT spare you: stay in major, or get haunted by your own instrument. Walking onto its hex calms it and hands over a bonus note.`}
+                  title={`Cursed Shamisen — set it down on your hex (${CURSED_SHAMISEN_DB_COST} Db, ${CURSED_SHAMISEN_CD}-round cooldown, which RESTARTS when the haunting ends). It plays ♭3 → 2 → 1 → ♭6 → 5 and you FEED it those notes, in order, inside the melody you commit — one link a turn, or the whole phrase in one turn if your hand holds it. ⚠️ A turn that adds no link SNAPS THE STRINGS. Finish the phrase and it stands forever. It frays ${SHAMISEN_FRAY} note off the Sustain chord of everyone in its rings each round (never Vibe, and never you). Its reach GROWS with the phrase, 1 → ${SHAMISEN_RING_MAX} rings. Only a rival standing inside those rings can end it, by spending your tonic at it.`}
                   onClick={() => { if (canDrop) resolveCursedShamisen(); }}>
                   🎸 Shamisen{hasSham
-                    ? ` (${actingNoteState?.cursedShamisen?.roundsLeft ?? 0}r ${actingNoteState?.cursedShamisen?.range ?? 0}◎)`
+                    ? ` (${actingNoteState?.cursedShamisen?.complete ? '∞' : `${actingNoteState?.cursedShamisen?.linksFed ?? 0}/${SHAMISEN_PHRASE.length}`} ${shamRings(actingNoteState?.cursedShamisen?.linksFed)}◎)`
                     : cd > 0 ? ` (${cd})`
                     : poor ? ` (${dbPts}/${CURSED_SHAMISEN_DB_COST} Db)` : ''}
                 </button>
@@ -15545,25 +15804,31 @@ function Game({ gameState, onReturnToLobby }) {
                     })()}
 
                     {/* 🎸 CURSED SHAMISEN — its own board token. It plays itself,
-                        wandering after whoever is in a MINOR key; red and
-                        leaning when it has prey, cold blue when the whole board
-                        is in major and it has nothing to chase. Swap
-                        SHAMISEN_ART for a PNG to replace the vector placeholder. */}
+                        wandering after the living; red and leaning once the
+                        phrase is BOUND, cold blue while it is still being fed
+                        and could still snap. Swap SHAMISEN_ART for a PNG to
+                        replace the vector placeholder. */}
                     {(() => {
                       const sham = noteStates['cosmic_ronin']?.cursedShamisen;
                       if (!sham || sham.hex !== hex.num) return null;
-                      // "hunting" now means: somebody on the board is in minor,
-                      // so the melody has someone to walk toward.
-                      const hunting = spirits.some(sp => !sp.knockedOut && inMinorKey(sp.id));
+                      // 🎯 The token's colour is the ONE thing on the board that
+                      // says "this is permanent now". An unfinished haunting is
+                      // blue because it is still a threat you can starve; a bound
+                      // one goes red because starving it is off the table.
+                      // 🪦 It used to mean "somebody is in a minor key".
+                      const hunting = !!sham.complete;
                       const tint = hunting ? '#ff4422' : '#66aaff';
                       const glow = hunting ? '#ff2200' : '#4488ff';
                       const size = HS * 1.55;
                       return (
                         <g style={{pointerEvents:"none"}}>
                           <title>
-                            {`Cursed Shamisen — ${sham.range} ring${sham.range !== 1 ? 's' : ''}, ${sham.roundsLeft ?? 0} round${(sham.roundsLeft ?? 0) !== 1 ? 's' : ''} left. It only haunts Spirits in a MINOR key`
-                              + (hunting ? ' — and it has someone to follow.' : ' — nobody is in minor, so it stands still.')
-                              + ' Walk onto its hex to calm it and take a bonus note.'}
+                            {`Cursed Shamisen — ${shamRings(sham.linksFed)} ring${shamRings(sham.linksFed) !== 1 ? 's' : ''}. `
+                              + (hunting
+                                ? 'BOUND: the phrase is finished, so it needs no more feeding and will never fade.'
+                                : `${sham.linksFed ?? 0}/${SHAMISEN_PHRASE.length} fed — the Ronin must add a link every round or the strings snap, and its reach grows with every one he lands.`)
+                              + ` It frays ${SHAMISEN_FRAY} note off the Sustain chord of everyone in its rings each round, and never touches Vibe.`
+                              + ` To END it: stand inside its rings, click it, and play ${PC_PLAY_NAMES[shamisenResolvingPc(shamRootPc())]} — the Ronin's own tonic, the note its phrase hangs one step short of.`}
                           </title>
                           {/* the sound itself: rings pulsing out of the body */}
                           <circle cx={cx} cy={cy} r={HS * 0.85} fill="none"
@@ -15596,7 +15861,7 @@ function Game({ gameState, onReturnToLobby }) {
                             stroke="#000" strokeWidth={0.5} paintOrder="stroke"
                             style={{fontFamily:"'Saira Stencil One',sans-serif", letterSpacing:0.5,
                               filter:`drop-shadow(0 0 4px ${glow})`}}>
-                            {hunting ? '💀 MINOR' : `${sham.range}◎`}
+                            {hunting ? `💀 ${shamRings(sham.linksFed)}◎` : `${sham.linksFed ?? 0}/${SHAMISEN_PHRASE.length}`}
                           </text>
                         </g>
                       );
