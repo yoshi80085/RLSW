@@ -25,7 +25,9 @@ Pick-up notes for continuing the Spirit-identity work. Read this + `DESIGN_AUDIT
 > absent from both tables. May mean a third category — *permanent upgrade to a basic
 > action* — which 🐙 Tentacle would also join. `RONIN_ABILITY_DESIGN.md` §0.5.
 >
-> ⏳ **STILL DESIGN ONLY:** Cursed Shamisen's rework and the Wa no Koe replacement.
+> ⏳ **STILL DESIGN ONLY:** Cursed Shamisen's rework — ✅ **now FULLY SPECIFIED**
+> (`RONIN_ABILITY_DESIGN.md` §2.3, settled 2026-08-25) and ready to build — and the
+> Wa no Koe replacement, which is still the biggest open piece.
 >
 > ⏸️ **ON HOLD (Alex, 2026-08-22):** the **bot strategy** work — designing a bot around a
 > game still in flux is a fool's errand — **Metalness Monster**, which is getting a
@@ -116,7 +118,12 @@ and three of them no longer match what they are supposed to be. Read the status 
     what is spent, so Sustain is what runs out. The report separates `shadowExpiring` (out
     of time) from `shadowStarved` (drank him dry) because they look identical on the board
     and must not read identically in the log.
-  - **Cursed Shamisen** (8 Db unlock, 2 Db/use, **no cooldown**) — Set down on Ronin's hex, where it
+  - **Cursed Shamisen** (8 Db unlock, **2 Db/use**, **3-round CD**) — 🪦 *This entry said "no
+    cooldown" until 2026-08-25. It has had `CURSED_SHAMISEN_CD = 3` since the 08-22 cooldown pass —
+    a miss, not a disagreement; the Shadow Illusion entry above it was updated correctly at the time.*
+    ⏳ **AND THIS WHOLE ENTRY IS ABOUT TO BE OBSOLETE**: the rework is fully specified in
+    `RONIN_ABILITY_DESIGN.md` §2.3 (settled 2026-08-25) and **not built**. What follows is the
+    SHIPPED ability, which is still what runs. Set down on Ronin's hex, where it
     plays a **haunting melody every round** (real audio: an insen-scale phrase that drops an octave and
     speeds up once it has prey). Aura is a **fixed 2 rings** (`SHAM_RINGS`), and it lives **3 rounds**
     (`SHAM_ROUNDS`), ticked once per round from `endTurn`'s `roundCompleted` block.

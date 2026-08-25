@@ -199,7 +199,97 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. 🧭 START HERE — session handoff, 2026-08-22c (the rule, applied)
+## 5. 🧭 START HERE — session handoff, 2026-08-25 (the Shamisen, settled)
+
+> 📐 **NO CODE WAS TOUCHED. THIS WAS A DESIGN SESSION AND THE OUTPUT IS A SPEC.**
+> `RONIN_ABILITY_DESIGN.md` §2.3 was rewritten from a sketch into a buildable
+> rule set. **All six of §3's open Shamisen questions are closed.** §8 item 4 now
+> carries a five-step build order (a–e) instead of "needs designing first".
+>
+> 🎯 **THE PHRASE ENDS ON THE 5 — IT IS A HALF CADENCE, AND THAT IS THE WHOLE
+> ABILITY.** ♭3 → 2 → 1 → ♭6 → 5 hangs on the dominant and never lands. Nobody had
+> noticed. It gives the curse a *reason* to keep playing, and it hands the
+> exorcism its shape for free: **you end the haunting by finishing the sentence he
+> refused to finish.** Stand inside its rings, **click the Shamisen, and spend
+> HIS tonic from your own note pool.** Right note, foreign key, standing in the
+> damage. 🎯 The same pitch is **link 3 of the feeding phrase** — Ronin plays it
+> himself mid-build and resolves nothing, because he commits it *into* a melody
+> while a rival spends it *at* the instrument. Same note, opposite verb.
+>
+> ✅ **ALEX'S CALL ON THE CLOCK DELETED A TIMER.** *"If a turn fails to feed notes
+> to the Shamisen, it goes away. Once the whole sequence is completed, it doesn't go
+> away unless it's exorcised."* There is now **no lifespan field at all** — feeding
+> IS the lifespan.
+>
+> ⚡ **AND THE PHRASE CAN LAND IN A SINGLE TURN.** Feeding is the next links
+> appearing **in order inside one committed melody line** — not one note per turn.
+> Hold all five degrees, place them in order, and the Shamisen is **finished on the
+> turn it is set down**. 🎯 **That is the whole risk curve, and the player picks
+> it:** the fast route is a real feat of hand management rewarded with a fully-grown
+> haunting; the slow route leaves him weak and interruptible for four extra turns,
+> with his next required note public the whole time. Same ability, two games.
+>
+> ✅ **THE RADIUS GROWS WITH THE PHRASE — 1 → 3 rings, `ceil(links/2)`.** The bite
+> never grows: **1 note of fray, always.** One escalating axis, not two. 📌 The
+> board is 111 hexes and coverage goes `3r²+3r+1`, so 1 ring = 7 hexes, 3 = 37 (a
+> third of the board), **4 = 61 (over half)** and 5 = 91 ≈ everywhere. 4 is the dial
+> if 3 is not "wide" enough; 5 is not a number.
+>
+> 🎯 **THE GROWING RADIUS IS ITS OWN COUNTERPLAY, AND THIS KILLED MY OBJECTION.**
+> An earlier draft of §2.3.4 *refused* a growing radius — "it moves the exit out
+> from under the player walking toward it". **Wrong, because you must be INSIDE the
+> rings to exorcise it.** The number that makes it dangerous is the same number
+> that decides who can answer it: **the stronger it gets, the more players it drags
+> into exorcism range.** Self-balancing, one number, no catch-up rule. ⚠️ Nor is it
+> the resurrected *Listening → Swelling → Hunting* ladder — that grew **on a timer**;
+> this grows **only when he pays**, and the growth is what exposes it. Same surface,
+> opposite engine.
+>
+> ⚠️ **THE SHIPPED CODE ATTACKS THE WRONG RESOURCE, AND HAS ALL ALONG.** The doc
+> has always said "the Sustain **stack**"; the client drains `tempSustain` (the
+> pool) and **then bites Vibe**. Three different things. Settled: **fray
+> `sustainStack`, never Vibe** — `frayFromSustain` already floors at one note, so
+> the haunting **cannot kill anyone, it makes them killable.** 🎯 Same argument
+> §7.3 made for Shadow Illusion's starvation; the same mistake refused twice.
+>
+> 🔧 **A CLAIM I MADE AND THEN HAD TO WITHDRAW, RECORDED BECAUSE IT MOVES THE COST
+> ESTIMATE.** I first wrote that `music/cadence.js` already did the feeding match.
+> **It does not.** `cadenceHints`/`detectCadence` match a **trail of one pitch class
+> per turn**; feeding is an ordered subsequence **inside a single committed melody
+> line**, where one turn may supply all five. Different matcher, different array —
+> **new code**, small and well-precedented (`detectChromaticRun` scans within a
+> track), but new. Reusable for real: `frayFromSustain`, and the tick, wander, aura,
+> insen audio and `touched` mark, which all survive.
+>
+> 📌 **ONE CALL WENT AGAINST THE RECOMMENDATION AND IS FLAGGED AS THE FIRST DIAL.**
+> The Shamisen now **spares Ronin**. That plus permanence plus feeding-ends-at-five
+> makes a completed Shamisen a one-sided permanent aura whose only pressure was the
+> build. `RONIN_ABILITY_DESIGN.md` §2.3.5 says plainly: if it plays oppressive, turn
+> **this** first, before the fray or the radius.
+>
+> 🪦 **`CHARACTER_HANDOFF.md` WAS STALE AGAIN, SAME ABILITY, SAME ENTRY.** It said
+> Cursed Shamisen had **"no cooldown"**; it has had `CURSED_SHAMISEN_CD = 3` since
+> 08-22 — and the Shadow Illusion entry *directly above it* was updated correctly in
+> that pass. Fixed. ⚠️ Caught by reading the constant, not the prose. Second time
+> this file has been 95% right about this one ability, which is the dangerous kind
+> of wrong.
+>
+> ⏳ **THREE SMALL QUESTIONS OPENED IN PLACE OF THE SIX CLOSED** (§2.3.7): what a
+> 3-round cooldown means when the instrument can stand forever (proposed: it runs
+> from when the Shamisen leaves the board), what a completed Shamisen does if Ronin
+> is KO'd, and whether an unobtainable required note should kill the haunting.
+>
+> ▶️ **NEXT:** build §8 item 4 in its a–f order. ⚠️ **(e) permanence must not ship
+> without (f) exorcism** — a permanent haunting answered only by the shipped free
+> walk-on is either unkillable or free, and neither is the design. 📌 **(c) feeding
+> and (d) the growing radius are one step in two halves**: same progress field, and
+> a radius that cannot grow makes the entire build phase invisible. Step (a) — fray
+> the stack instead of the pool — stands alone and is worth doing even if the rest
+> slips.
+
+---
+
+## 5-aug22c. 🧭 session handoff, 2026-08-22c (the rule, applied)
 
 > ✅ **THREE OPEN CALLS CLOSED, AND ONE OF THEM IMPROVED THE RULE.** Alex on Space
 > is Displaced: *"Make it a 1 turn cool down. Different abilities can cool down at

@@ -256,44 +256,251 @@ not be built as though it were.
 
 This one changed the most, and the changes are the point.
 
-**Decided:**
+> ✅ **SETTLED 2026-08-25 (Alex).** Everything in this section is now a decision,
+> not a sketch. The six items §3 listed as open — feeding requirements, escalation
+> values, escalation stages, Sustain loss, radius, exorcism — are answered below.
+> **Still design only: no code has been written.** §4's drift table is the
+> shipped-vs-this-doc ledger and it has NOT moved.
 
-- The Shamisen is a **living musical curse that Ronin feeds with his own notes.**
-  It is **not** a passive damage-over-time hazard — it is something he actively
-  builds.
-- The haunting has a specific melodic sequence:
+#### 2.3.1 The phrase, and why it haunts
 
-  > **♭3 → 2 → 1 → ♭6 → 5**
+The haunting is a specific melodic sequence:
 
-  Each round Ronin has a **required note** for the next link in the haunting, and
-  he must feed that note into the Shamisen.
-- **Completing the sequence strengthens the haunting.** Feed → complete →
-  escalate → repeat.
-- ⚠️ **IT ATTACKS THE TARGET'S SUSTAIN STACK.** It does **not** corrupt the
-  target's individual notes. This was an explicit reversal (§1) — the Shamisen is
-  a debuff against *survivability*, and keeping it off notes is what stops Ronin
-  becoming a note-manipulation character.
-- **Two counterplays, both real:**
-  1. **Leave its range.** Get away from the haunting.
-  2. **Exorcise it directly.** Go to the Shamisen and deal with it.
-- Costs Db and has a cooldown (§0).
+> **♭3 → 2 → 1 → ♭6 → 5**  ·  semitones `[3, 2, 0, 8, 7]` from **Ronin's root**
+
+🎯 **IT ENDS ON THE 5. That is a half cadence — it hangs on the dominant and never
+lands.** This was not noticed when the phrase was written down and it is the best
+thing about it: an unresolved phrase is the actual, literal musical mechanism of
+tension. The Shamisen keeps playing *because nobody has finished the sentence.*
+Note that the phrase passes **through** the tonic in the middle (link 3) and then
+walks away from it again down ♭6 → 5 — it goes home, refuses to stay, and stops on
+the step before home. Everything below falls out of that one observation.
+
+#### 2.3.2 Feeding — the clock IS the sequence
+
+- **Feeding = the next link(s) of the phrase appearing IN ORDER inside the melody
+  line he commits that turn.** Not the note he ends on — anywhere in the track,
+  in sequence.
+- ⚠️ **THE WHOLE PHRASE CAN LAND IN ONE TURN.** If he holds ♭3, 2, 1, ♭6 and 5 and
+  can place them in that order in a single commit, the Shamisen is **finished on
+  the turn it is set down.** There is no minimum number of turns. A turn that
+  feeds three links advances three links.
+- ⚠️ **A TURN THAT ADDS NO LINK KILLS IT.** Not "stalls", not "loses a round" —
+  if a turn goes by, the melody does not advance the phrase, and the phrase is not
+  yet finished, the Shamisen comes apart that instant. There is **no lifespan
+  field at all: feeding is the lifespan.**
+- ✅ **COMPLETING THE PHRASE MAKES IT PERMANENT.** It stops needing food and stands
+  until exorcised. He can walk away from it.
+
+🎯 **The variable pace is the interesting part, and it is a genuine skill
+expression.** Holding all five degrees at once and placing them in order in one
+commit is rare, expensive, and a real feat of hand management — and it is rewarded
+with a fully-grown haunting in a single turn. Dribbling them out one at a time
+works too, but it leaves him weak and interruptible for four extra turns. **Same
+ability, two completely different risk curves, chosen by the player.**
+
+📌 **AND A SLOW BUILD HANDS RIVALS A FREE COUNTERPLAY.** A Ronin mid-phrase is a
+Ronin whose next required note is public. Pressure him, blind him, take the note
+he needs off the board — anything that costs him one turn's link ends the haunting
+outright, no exorcism required. **That is the price of the slow route**, and it is
+why the fast route is worth holding cards for.
+
+#### 2.3.3 What it does — it frays the Sustain STACK
+
+- **1 note off the target's `sustainStack` per round**, for everyone inside the
+  rings. Not `tempSustain`. Not Vibe.
+- ⚠️ **IT NEVER TOUCHES VIBE, INCLUDING WHEN THE STACK IS EMPTY.** `frayFromSustain`
+  already guarantees at least one note survives, so **the haunting cannot kill
+  anybody — it makes them killable.** That is the fantasy in §2.3.5, stated as a
+  rule.
+- 🎯 **This is the same argument §7.3 made for Shadow Illusion's starvation**, and
+  it is the same mistake being refused twice: routing a shortfall into Vibe quietly
+  turns a positioning-and-debuff ability into a self-damage or damage-over-time
+  ability, which is a different card. Sustain is what is being attacked, so Sustain
+  is what runs out.
+- It does **not** corrupt the target's individual melody notes. Explicit reversal
+  (§1) — keeping it off notes is what stops Ronin becoming a note-manipulation
+  character.
+
+> ⚠️ **THIS IS A REAL BREAK WITH THE SHIPPED CODE AND THE SHIPPED CODE IS THE ONE
+> THAT'S WRONG.** Today it drains `tempSustain` (the spendable pool) and **then
+> bites Vibe** — two resources, neither of them the one this doc has always named.
+> `sustainStack` is the defensive *chord*; `attackParams.js:158` reads it through
+> `spiritChord` to set defence, so fraying it degrades survivability directly and
+> visibly. The verbs already exist in `combat.js`: `frayFromSustain(stack, amount)`
+> and `sustainChip(stack)`.
+
+#### 2.3.4 Escalation — the RANGE grows, the bite does not
+
+✅ **It is in effect from the moment it lands, but weak — and the weakness is
+purely its reach.** The aura widens with every link fed. **One escalating axis, not
+two:** the fray is always **1 note a round**, at every stage. §3's "exact Sustain
+loss at each stage" is answered with **one, always**.
+
+| Links fed | Rings | Hexes covered (of 111) |
+|---|---|---|
+| 1 | 1 | 7 — barely more than the hex it stands on |
+| 2 | 1 | 7 |
+| 3 | 2 | 19 |
+| 4 | 2 | 19 |
+| **5 — complete** | **3** | **37 — a third of the board** |
+
+**Rings = `ceil(links / 2)`.** Starting value, not scripture. 📌 The board is
+**111 hexes** and coverage goes as `3r² + 3r + 1`, so the ceiling matters more than
+it looks: **4 rings is 61 hexes — over half the board** — and 5 rings is 91, which
+is effectively "everywhere". ⚠️ **4 is the dial if 3 does not feel wide enough at
+full strength; 5 is not a number, it is the whole stage.**
+
+🎯 **AND THE GROWING RANGE IS ITS OWN COUNTERPLAY — THIS IS THE KEY INSIGHT.**
+An earlier draft of this section *refused* a growing radius, arguing it "moves the
+exit out from under the player walking toward it". **That was wrong, and the reason
+it was wrong is the exorcism (§2.3.6): you must be INSIDE the rings to exorcise
+it.** The radius that makes it dangerous is the same number that decides who can
+answer it. So:
+
+> **The stronger the haunting gets, the more players it drags into exorcism
+> range.** It is self-balancing, in one number, with no cap or catch-up rule
+> needed. A tiny 1-ring haunting is nearly untouchable but nearly harmless; a
+> board-wide one is lethal and standing in reach of everybody.
+
+🪦 **The doc's old "feed → complete → escalate → REPEAT" loop is dead.** Once
+completion means *permanence* and growth happens during the build, there is nothing
+left to repeat for. §3's "exact number of escalation stages" is answered by the
+table above — five, and they are the links themselves.
+
+📌 **This is NOT the resurrected *Listening → Swelling → Hunting* ladder** that §5
+caught `CHARACTER_HANDOFF.md` inventing. That one grew **on a timer** and froze its
+aura when it started chasing. This one grows **only when he pays for it**, and the
+growth is the thing that exposes it. Same shape on the surface, opposite engine.
+
+#### 2.3.5 The board rules
+
+| | |
+|---|---|
+| **Radius** | ⚠️ **GROWS WITH THE PHRASE — 1 → 3 rings** (§2.3.4). `SHAM_RINGS` stops being a constant. |
+| **Placement** | Ronin's own hex, unchanged. |
+| **Movement** | 1 hex per round toward the nearest **non-Ronin** Spirit, walking around bodies — unchanged mechanically, but the target set changes: with the minor gate gone there is no "nobody in minor, so it idles" case any more. It idles only if he is alone. |
+| **Tick** | Once per round, from `endTurn`'s `roundCompleted` block, unchanged. |
+| **Ronin** | ✅ **SPARED** (Alex, 2026-08-25). It knows his hand. |
+| **Cost** | 2 Db per use, unchanged. |
+
+**🌑 Minor key is FLAVOUR, not a gate.** Minor/haunting stays the Shamisen's musical
+identity and its sound — the insen phrase, the octave drop when it has prey. It is
+**no longer the mechanical on/off condition.**
 
 **The fantasy to protect:** the target is not simply taking damage. It should feel
 like *"this thing is consuming my ability to withstand attacks — I have to deal
-with it."* And because it grows, ignoring it gets worse.
+with it."*
 
-**🌑 Minor key is FLAVOUR, not a gate.** Minor / haunting stays part of the
-Shamisen's musical identity and its sound. It is **no longer the mechanical on/off
-condition.**
+> 📌 **THE OWNER EXEMPTION IS THE ONE CALL HERE I ARGUED THE OTHER WAY ON, AND IT
+> IS WORTH A PLAYTEST WATCH.** The shipped comment calls it "a cursed object, not a
+> pet", and sparing him means placement stops being a decision — he can stand on
+> top of it all game. Combined with permanence and with feeding ending at link 5,
+> a completed Shamisen is a **one-sided permanent aura** whose only pressure was the
+> five-turn build. ⚠️ If it plays as oppressive, this is the **first dial to turn**,
+> before touching the fray or the radius: making it haunt him too costs him the hex
+> he is standing on and nothing else.
 
-> ⚠️ **THIS IS THE SINGLE BIGGEST BREAK WITH THE SHIPPED CODE, AND IT HAS A
-> KNOCK-ON.** Today the melody haunts **only Spirits in a minor key**, and that
-> gate is doing real work: it is the counterplay (*change key and it cannot touch
-> you*), and it is thematically anchored because **the Ronin is the only Spirit
-> who starts holding `theory_minor`** (`engine/systems/economy.js:286`). Remove
-> the gate and you remove a counterplay that the two replacements above must now
-> carry alone. Budget the exorcism rules accordingly — they are load-bearing now,
-> not garnish.
+#### 2.3.6 ⚔️ EXORCISM — resolve the phrase he refused to finish
+
+This is the load-bearing counterplay and it is now specified. **To exorcise a
+Shamisen you must land the cadence it never landed.**
+
+**The rule — a direct interaction, not a melody commit:**
+
+1. 📍 **Be inside its rings.** *You cannot resolve a phrase you cannot hear.* This
+   means walking into the haunting and eating the fray to do it.
+2. 🖱️ **Click the Shamisen, then click a note from your own pool.** A deliberate
+   act aimed at the object, distinct from anything else in the game — you are not
+   playing your song, you are answering its song.
+3. 🎯 **The note must be the one that finishes the tune: the TONIC of the
+   Shamisen's key** — Ronin's 1, not yours. The phrase has been sitting on the 5
+   this whole time; you land it home.
+4. The note is **spent from your pool**. The Shamisen goes **silent permanently**,
+   and the exorcist takes the **bonus note** (the shipped reward for touching it —
+   keep it; it is the payoff for standing in the fire).
+
+**Why this is earned:** you must hold the right pitch class, in *his* key, and be
+standing in the damage to spend it. Three costs, one click.
+
+🎯 **THE SAME NOTE MEANS TWO OPPOSITE THINGS, AND THAT IS THE DESIGN.** The tonic
+is **link 3 of the feeding phrase** — Ronin plays it himself, mid-build, and it
+does not resolve anything, because he is *feeding* the curse. A rival plays the
+same note *at* the instrument and it ends it. Same pitch, opposite verb: he commits
+it into a melody line, they spend it into the Shamisen. Nothing else in the game
+reads a note that way, which is exactly why it should be its own click.
+
+🎯 **AND IT TURNS THE SHAMISEN'S OWN BEHAVIOUR INTO ITS WEAKNESS, TWICE.** The
+thing walks toward people — that is the threat *and* the opening. And its aura
+grows as it strengthens (§2.3.4), which drags more players into the range they need
+to be in to kill it. **The ability's power and its vulnerability are the same
+number.**
+
+📌 **AN UNFINISHED HAUNTING CAN BE EXORCISED TOO, and it needs no special case.**
+Playing the tonic at a half-built phrase resolves it early and kills it the same
+way. It is not a loophole because a young Shamisen covers **7 hexes** — almost
+nobody is standing close enough to try. The rule is uniform; the geometry does the
+balancing.
+
+> 📌 **DIALS, IN THE ORDER TO TURN THEM.** If exorcism proves too easy: require
+> **`5` then `1`** — two clicks across two turns, telegraphed. If too hard: let
+> **any chord tone of his key** answer it. ⚠️ Turn these *before* touching the fray
+> or the ring table — exorcism difficulty is the intended pressure valve on a
+> permanent haunting, so it is the knob that should move first in both directions.
+
+#### 2.3.7 📌 What this does NOT settle
+
+- **What the 3-round cooldown means now.** `CURSED_SHAMISEN_CD = 3`'s own comment
+  says it "matches its 3-round life" and `cooldowns.js` calls it a gap that
+  "outlives the instrument by design" — **both reasons evaporate when the
+  instrument can stand forever.** Proposed: **the cooldown runs from the moment the
+  Shamisen leaves the board** (starved or exorcised), which preserves the original
+  intent. Cheap to change; not yet Alex's call.
+- **What happens to a completed Shamisen if Ronin is knocked out.** It is a cursed
+  object, so "it stands" is the flavour-consistent answer — but a permanent aura
+  outliving its owner needs saying out loud rather than discovering.
+- **Whether feeding is refused or merely wasted** when the required note is not
+  obtainable from his stock that turn. As written, unobtainable = the haunting
+  dies, which is harsh and luck-driven. 📌 Less harsh than it was: he can bank
+  links ahead whenever his hand is good, so a bad turn only kills a phrase he was
+  dribbling out. Still worth watching before adding a mercy rule.
+- **Whether the exorcism click costs Action Points** on top of the note. As
+  written it costs the note, the position and the fray taken getting there. Adding
+  AP is the obvious lever if it wants to be dearer, and is cheaper to tune than
+  changing which note answers.
+- **Whether a repeated degree can be fed twice by one note.** The phrase is
+  `[3, 2, 0, 8, 7]` — all distinct, so this does not bite today, but the matcher
+  should be written knowing the answer rather than discovering it.
+
+#### 2.3.8 🔧 What machinery exists — and one claim withdrawn
+
+Some of it exists. ⚠️ **Less than an earlier draft of this section claimed, and
+the correction is worth stating because it changes the cost estimate.**
+
+**What is genuinely reusable:**
+
+- **`combat.js` has the bite:** `frayFromSustain(stack, amount)`, floor of 1 note.
+- **The tick, the wander, the aura render, the insen audio and the `touched`
+  standee mark all ship today** and survive unchanged. The aura render needs to
+  read a variable radius instead of a constant, which is the one-line half of it.
+- **`music/cadence.js` is the right *shape* to copy from** — a degree list matched
+  positionally, `degrees: [3, 2, 0, 8, 7]` — and `detectChromaticRun` is precedent
+  for scanning **within** a single committed track.
+
+**What is NOT reusable, contrary to the earlier draft:**
+
+> ⚠️ **`cadenceHints` / `detectCadence` DO NOT FIT THE FEEDING RULE.** They match
+> against a **trail of one pitch class per turn** (*"End three consecutive turns on
+> the root, the 4th, then home again"*). Feeding is now *"the next links appear in
+> order **inside one committed melody line**, and a single turn may supply all
+> five"* (§2.3.2) — a different matcher over a different array. The earlier draft
+> said the pattern-matching was already written. **It is not.** It is small and
+> well-precedented, but it is new code, and the "required note" display is new too.
+
+📌 **So the new code is:** an in-track ordered-subsequence matcher, a link-progress
+field on the Shamisen driving a **variable radius**, a `complete` flag, the
+death-on-no-advance check, the click-the-Shamisen-spend-a-note interaction, and
+deleting the minor gate.
 
 ### 2.4 🎵 和の声 — Wa no Koe — the mastery
 
@@ -359,13 +566,23 @@ settle once the board/combat flow is nailed down. Do not build from this section
 
 - Exact Sustain drain rate.
 
-**Cursed Shamisen**
+**Cursed Shamisen** — ✅ **ALL SIX CLOSED 2026-08-25.** See §2.3.
 
-- Exact feeding requirements and escalation values.
-- Exact number of escalation stages.
-- Exact Sustain loss at each stage.
-- Exact radius.
-- Exact exorcism rules. *(⚠️ Now load-bearing — see the warning in §2.3.)*
+- ~~Exact feeding requirements and escalation values.~~ → the phrase in order
+  inside a committed melody line, any number of links per turn; a turn that adds
+  none kills it (§2.3.2).
+- ~~Exact number of escalation stages.~~ → **five — the links themselves**, and
+  they move the **radius** (§2.3.4).
+- ~~Exact Sustain loss at each stage.~~ → **1 note off `sustainStack` per round**,
+  at every stage, never Vibe (§2.3.3).
+- ~~Exact radius.~~ → **grows `ceil(links/2)`: 1 → 3 rings**, 7 → 37 hexes of 111
+  (§2.3.4).
+- ~~Exact exorcism rules.~~ → **click it from inside its rings, spend his tonic
+  from your pool** (§2.3.6).
+
+⏳ Three smaller ones opened in their place — the cooldown's meaning under
+permanence, what happens when Ronin is KO'd, and the unobtainable-note case.
+§2.3.7 has them.
 
 **Wa no Koe / Harmony**
 
@@ -388,7 +605,7 @@ tests** (CLAUDE.md: a passing test is not evidence a rule is real).
 |---|---|---|
 | **🌀 Psycho Bushido** | Iaijutsu **dash** in a straight line from facing into an auto-Swing. Bonus `= distToTarget − 1` as `tempDrive`. 6 Db unlock, **1 Db/use** ✅, 2-round CD ✅. Engine-modelled, `kind:'psychoBushido'`. | Farther = stronger ✅ **agrees in spirit.** Remaining gap: framed as a **waiting** threat on a sightline rather than a charge. |
 | **👤 Shadow Illusion** | 6 Db unlock, **2 Db/use** ✅, **1 Sustain per turn while it stands** ✅, **3-round CD** ✅. Lasts 3 turns; **starves** if he cannot feed it. Picks up Lost Chord notes ✅. Pops if struck / if Ronin attacks / **if Ronin is attacked**. | ✅ **Matches**, except: "Pops if Ronin attacks or is attacked" is **not in this design** — the sheet only says *disappears if attacked*. ❓ Keep or drop? |
-| **🎸 Cursed Shamisen** | 8 Db unlock, **2 Db/use** ✅, **3-round CD** ✅. Fixed **2 rings**, lives **3 rounds**, **no stages**. Haunts **ONLY minor-key Spirits** — including Ronin. Wanders 1 hex/round toward nearest minor-key Spirit. Sustain soaks first, then Vibe. Calmed by walking onto its hex (+ a bonus note). | **Ronin feeds it ♭3 → 2 → 1 → ♭6 → 5**; completing the sequence escalates it. **Minor is flavour, not a gate.** Attacks the **Sustain stack**. Counterplay = leave range **or** exorcise. ⏳ **Still the big open one.** |
+| **🎸 Cursed Shamisen** | 8 Db unlock, **2 Db/use** ✅, **3-round CD** ✅. Fixed **2 rings**. Lives **3 rounds** on a timer. **No stages**. Haunts **ONLY minor-key Spirits** — including Ronin. Wanders 1 hex/round toward nearest minor-key Spirit. Drains `tempSustain`, **then bites Vibe**. Calmed by **freely** walking onto its hex (+ a bonus note). | ✅ **FULLY SPECIFIED 2026-08-25, §2.3 — but NOT BUILT.** Ronin feeds ♭3 → 2 → 1 → ♭6 → 5 **in order inside his committed melody line — possibly all five in one turn**; a turn that adds no link **kills it**; finishing makes it **permanent**. **The radius GROWS with the phrase, 1 → 3 rings**; the bite never does. **Minor is flavour, not a gate.** Frays the **`sustainStack`**, 1 note/round, **never Vibe**. **Spares Ronin.** Exorcised by **clicking it from inside its rings and spending his tonic** from your pool. Five gaps: the timer, the fixed radius, the resource, the gate, and free-walk-on exorcism. |
 | **🎵 Wa no Koe** | 🚨 **A DIFFERENT ABILITY.** 12 Db, **passive**: ≥half your melody sitting inside your Drive/Sustain stack pays **+1 Drive or Sustain for 3 rounds**. Rule lives in `engine/systems/melodyCommit.js` `checkWaNoKoe`. | **Pick one note from the current chord stack → it is Resonant board-wide. Echoes reset cooldowns. Ronin enters a vulnerable Harmony state.** Shares only the name and the 12 Db. |
 
 🚨 **Wa no Koe is not a rework, it is a replacement.** Note what goes with it:
@@ -427,6 +644,19 @@ of failure `test:arch` exists to prevent: **a doc that reads as current and is
 not.** These design docs have no machine check, which is exactly why
 `CHARACTER_HANDOFF.md`'s own advice — read them with suspicion — applies to this
 file too.
+
+### 🪦 And again, 2026-08-25 — the same file, the same ability
+
+`CHARACTER_HANDOFF.md` still labelled Cursed Shamisen **"(8 Db unlock, 2 Db/use,
+no cooldown)"**. It has had `CURSED_SHAMISEN_CD = 3` since 2026-08-22, shipped in
+the same pass this file records in §7.1, and the **Shadow Illusion entry directly
+above it was updated correctly** — so this was a miss, not a disagreement. Fixed
+in the same pass as this section.
+
+⚠️ **Note what it took to catch: reading the constant, not the doc.** Twice now
+the stale line has been in the same entry for the same ability, and both times
+the surrounding entries were fine. A doc that is 95% right is the dangerous
+kind — there is nothing in the prose to tell you which 5% to distrust.
 
 ---
 
@@ -590,9 +820,28 @@ Not a commitment, just the dependency order that falls out of the above.
 1. ~~The cooldown system~~ ✅ **done** — §7.1.
 2. ~~Per-use Db costs (Ronin)~~ ✅ **done** — §7.2.
 3. ~~Shadow Illusion cost swap~~ ✅ **done** — §7.3.
-4. **Cursed Shamisen rework.** Self-contained in the client, and the exorcism
-   rules need designing before code — they are the counterplay now that the
-   minor-key gate is going (§2.3).
+4. **Cursed Shamisen rework.** ✅ **DESIGN DONE 2026-08-25 — §2.3 is the spec.**
+   The exorcism rules that were blocking it are settled. Build order inside it,
+   cheapest-first, each independently verifiable:
+
+   a. **Fray the stack, not the pool.** Swap `tempSustain`-then-Vibe for
+      `frayFromSustain`. Smallest edit, biggest correctness win, and it stands
+      alone — do it even if the rest slips.
+   b. **Delete the minor gate.** `inMinorKey` stops deciding who is touched;
+      wander targets nearest non-Ronin Spirit; Ronin is spared.
+   c. **The feeding sequence.** An in-track ordered-subsequence matcher over the
+      committed melody line (⚠️ **new code** — see the correction in §2.3.8), a
+      link-progress field, and death-on-no-advance. A turn may advance several
+      links, or all five.
+   d. **The growing radius.** `SHAM_RINGS` stops being a constant and becomes
+      `ceil(links / 2)`; the aura render reads it. 📌 Do this **with** (c) — the
+      progress field is the same field, and a radius that cannot grow makes the
+      whole build phase invisible.
+   e. **Permanence.** Delete `roundsLeft`; add `complete`.
+   f. **Exorcism.** Click-the-Shamisen-spend-a-note, gated on being inside the
+      rings and on the note being his tonic. ⚠️ **(e) MUST NOT SHIP WITHOUT (f).**
+      A permanent haunting whose only counterplay is the shipped free walk-on is
+      either unkillable or free, and neither is the design.
 5. **Wa no Koe replacement — last, and biggest.** It touches the engine kernel, a
    test suite and the bot policy, unlike the others which are client-only. It
    also brings the Echoes, which only mean anything now that cooldowns exist.
