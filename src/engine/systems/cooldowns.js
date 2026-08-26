@@ -151,3 +151,50 @@ export function tickCooldowns(ns) {
     Object.entries(ns?.abilityCd ?? {}).map(([k, v]) => [k, Math.max(0, v - 1)])
   );
 }
+
+// ── 🎸 CURSED SHAMISEN — cooldown acceleration and reset ─────────────────────
+//
+// The Shamisen no longer lives on the board. It is a self-buff that speeds up
+// ALL OTHER ability cooldowns while active, and a debt that punishes Ronin if
+// he takes Vibe damage while it runs and he has not paid.
+//
+// ⚠️ THE SHAMISEN'S OWN COOLDOWN IS EXCLUDED. Only the other abilities charge
+// faster. This prevents the recursive loop of Shamisen speeding up Shamisen.
+
+/**
+ * Extra cooldown tick for the Cursed Shamisen. Reduces every NON-SHAMISEN
+ * ability cooldown by 1 additional round. Called from the round tick when
+ * `shamisenCurse.turnsLeft > 0` on the Ronin's sheet.
+ *
+ * Returns a new `abilityCd` map; does NOT mutate.
+ */
+export function tickShamisen(ns) {
+  const cd = ns?.abilityCd ?? {};
+  return Object.fromEntries(
+    Object.entries(cd).map(([k, v]) =>
+      // ⚠️ Skip the Shamisen's own cooldown — it must NOT accelerate itself.
+      [k, k === 'cursed_shamisen' ? v : Math.max(0, v - 1)]
+    )
+  );
+}
+
+/**
+ * Reset ALL cooldowns to their full duration. Called when Ronin takes Vibe
+ * damage while the curse is active and unpaid.
+ *
+ * Returns a new `abilityCd` map with every ability the sheet has ever touched
+ * set back to its maximum, PLUS any ability in ABILITY_CD that the Ronin has
+ * unlocked (passed in as `unlockedSkills`).
+ *
+ * ⚠️ THIS IS THE PUNISHMENT, NOT A BUG. The whole point of the curse is that
+ * getting caught costs you ALL the tempo you gained and then some.
+ */
+export function resetAllCooldowns(ns, unlockedSkills = []) {
+  const cd = { ...(ns?.abilityCd ?? {}) };
+  // Reset every ability the Ronin has unlocked to its full CD
+  for (const skillId of unlockedSkills) {
+    const max = ABILITY_CD[skillId];
+    if (max != null && max > 0) cd[skillId] = max;
+  }
+  return cd;
+}

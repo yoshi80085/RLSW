@@ -93,7 +93,7 @@ leaving.
 | `melodyCommit.js` | 693 | `commitMelodyEconomy`, `checkWaNoKoe`, `positionFanGain`, `deedFanGain`, `performanceFanGain`, `SPEED_CAP`, `COLOR_PAYOUT_CAP`, `MIC_VOICE_ROLL_DIE`, `CLIENT_OWNED` | 🎵 What a committed melody pays. `CLIENT_OWNED` names the pieces still living in the monolith — read it before assuming a payout is here. |
 | `limelight.js` | 95 | `makeLimelightState`, `posePayout`, `isPosing`, `poseRounds`, `applyPoseSet`, `applyPoseRoundBanked` | ✨ The Limelight hex and the Strike-a-Pose payout ramp. |
 | `skills.js` | 88 | `skillEligibility`, `THEORY_DISCORD_GRANTS` | 🎓 The one gate deciding whether a skill can be bought. Shared by the bot and the client so they cannot disagree. |
-| `cooldowns.js` | 153 | `ABILITY_CD`, `ABILITY_DB_COST`, `cooldownLeft`, `onCooldown`, `dbCostOf`, `canFire`, `firePatch`, `tickCooldowns` | 🕒💿 What an ability costs to fire and how long it then sleeps. One map on the sheet (`ns.abilityCd`), one tick in `turnFlow`. ⚠️ Replaced `psychoBushidoCd`, which was the game's *only* cooldown; an ability absent from `ABILITY_CD` has none, which is a **debt** under the 2026-08-22 rule, not a design. |
+| `cooldowns.js` | 200 | `ABILITY_CD`, `ABILITY_DB_COST`, `cooldownLeft`, `onCooldown`, `dbCostOf`, `canFire`, `firePatch`, `tickCooldowns`, `tickShamisen`, `resetAllCooldowns` | 🕒💿 What an ability costs to fire and how long it then sleeps. One map on the sheet (`ns.abilityCd`), one tick in `turnFlow`. `tickShamisen` gives non-Shamisen abilities an extra tick (2× speed); `resetAllCooldowns` slams everything to max (the curse penalty). ⚠️ An ability absent from `ABILITY_CD` has no cooldown, which is a **debt** under the 2026-08-22 rule. |
 | `board.js` | 411 | `applyBoardSynced`, `applyEventHexTriggered`, `applyEventHexSpawned`, `applyChargeZoneUsed`, `applyChargeZonesTicked`, `applyTokenPickedUp`, `applyTokensDrifted`, `applyTokensScattered`, `applySpotlightMoved`, `applySpotlightHealed`, `applyFlamingHexesSet`, `bankLostChord`, `tokenAt`, `liveChargeZoneAt` | 🗺️ Everything sitting *on* the board: Lost Chords, Charge Zones, marquee event hexes, the spotlight, Disco Inferno. |
 | `riffOff.js` | 442 | `riffStats`, `applyRiffOffStarted`, `applyRiffResolved`, `applyRiffRound2Started`, `applyRiffClosed`, `simulateRiffPerformance`, `riffSkill`, `riffIsClose`, `RIFF_GRADE_WEIGHT`, `RIFF_MARGIN_SCALE` | 🎸 The duel: riff generation on engine rng, and the verdict math. `simulateRiffPerformance` is how a bot "plays" one. |
 | `slime.js` | 314 | `applySlimeDropped`, `applySlimeDecayed`, `applySlimeCalled`, `applySpiritSlid`, `trailOf`, `slimeAt`, `slimeBites`, `slideTarget`, `canCallSlime`, `SLIME_LIFETIME` | 🧪 The Metalness Monster's trail — where it is, what it costs to walk through, and where it slides you. |
@@ -135,7 +135,7 @@ green for months while nothing ran it). Everything below has a script, and
 | `melodyCommitCheck.mjs` | `test:melody` | What a commit pays. |
 | `slimeCheck.mjs` | `test:slime` | The trail, the slide, the bite. |
 | `elevenCheck.mjs` | `test:eleven` | Eleven and the blown amp. |
-| `shamisenCheck.mjs` | `test:shamisen` | 🎸 The Cursed Shamisen's phrase: feeding, the required note, the resolving note, the growing reach. ⚠️ Written because `test:all` came back **byte-identical** after the 2026-08-25 rework — nothing had ever asserted over the ability. Covers the pure half only; the tick, bite and exorcism click still live in the client monolith. |
+| `shamisenCheck.mjs` | `test:shamisen` | 🎸 The Cursed Shamisen's cooldown acceleration (`tickShamisen`), cooldown reset (`resetAllCooldowns`), activation cost, and design invariants. 34 assertions. |
 | `actionScoreCheck.mjs` | `test:score` | Per-action scoring and persona strides. |
 | `harnessCheck.mjs` | `test:harness` | That the headless harness mounts and every knob is live — **and that each gap is declared**. |
 | `skillTreeCheck.mjs` | `test:skilltree` | Every skill's price, route and prereq, and that no prereq names a skill that does not exist. |
@@ -154,7 +154,7 @@ before and after touching it, and navigate by banner.
 
 | Layer | From | What is there |
 |---|---:|---|
-| Module-level | 1 | Imports, the Cursed Shamisen art, the fan crowd SVG, cadence hints, the Discord upgrade path, stack colours, per-ability tuning, riff-off scoring constants. |
+| Module-level | 1 | Imports, the fan crowd SVG, cadence hints, the Discord upgrade path, stack colours, per-ability tuning, riff-off scoring constants. |
 | `RLSWSimulator()` | 680 | The app shell: Title → Lobby → Tutorial → Game. |
 | `Game()` | 766 | Everything else — state, handlers, cinematics, and the render. |
 
@@ -199,7 +199,7 @@ mirror for rendering — change the rule in `engine/systems/`, not here.
 | File | Lines | Key exports | Purpose |
 |------|------:|-------------|---------|
 | `spirits.js` | 48 | `SPIRIT_DEFS`, `SPIRIT_OPTIONS`, `ROSTER_ORDER`, `PLAYABLE_ORDER`, `IN_DEVELOPMENT`, `isPlayable`, `MAX_PLAYERS` | **Character stats and balance.** |
-| `gameConstants.js` | 438 | 96 named constants — `FAME_TO_WIN`, `LIMELIGHT_TO_WIN`, `POSE_FP_STEP`, `RIG_RADIUS_FLOOR`, `RIG_ATROPHY_TURNS`, `FAN_*`, `SMASH_*`, `THRASH_*`, `SONIC_*`, `TOKEN_*`, `stackCapFor`, … | **All gameplay tuning.** |
+| `gameConstants.js` | 556 | 106 named constants — `FAME_TO_WIN`, `LIMELIGHT_TO_WIN`, `POSE_FP_STEP`, `RIG_RADIUS_FLOOR`, `RIG_ATROPHY_TURNS`, `FAN_*`, `SMASH_*`, `THRASH_*`, `SONIC_*`, `TOKEN_*`, `stackCapFor`, … | **All gameplay tuning.** |
 | `skillTree.js` | 221 | `SKILL_TREE`, `SKILL_BY_ID`, `SPIRIT_ONLY_ROUTE` | 🎓 The ability tree. ⚠️ The `electric` route (`amp_*`, `power_*`, `range_*`, `overcharge`) was **deleted** on 2026-08-20 — the rig is won at the marquee now. |
 | `trivia.js` | 2,545 | `TRIVIA_QUESTIONS`, `TRIVIA_BY_ID`, `drawTrivia`, `TRIVIA_BUCKETS`, `TRIVIA_LANES`, `TRIVIA_REWARD`, `TRIVIA_TIER_GRANT`, `TRIVIA_BOT_ODDS`, `bestTriviaDifficulty` | 🎪 The marquee quiz bank. `drawTrivia` is pure and recycles **per bucket**. Write new questions against `TRIVIA_CONTENT_BRIEF.md`. |
 | `events.js` | 64 | `EVENT_DECK`, `EVENT_BY_ID` | The event-space definitions. |
@@ -216,7 +216,7 @@ mirror for rendering — change the rule in `engine/systems/`, not here.
 | `notes.js` | 200 | `NOTE_POOL`, `canonicalRoot`, `getSpelledPool`, `pitchIndex`, `buildScale`, `semitonesUp`, `getIntervalNotes`, `getFourthFifth`, `playableScale`, `MAJOR_SCALES`, `MINOR_SCALES`, `ENHARMONIC_RESPELL` | Scales, note spelling, intervals. |
 | `chords.js` | 100 | `CHORD_TEMPLATES`, `evaluateChord`, `PC_NAMES` | **Chord → Drive/Sustain.** |
 | `context.js` | 479 | `CONTEXT_TIERS`, `stackContext`, `chordContext`, `contextClaim`, `classifyTrack`, `modeFromStack`, `harmonicLock`, `discordPenaltyFor`, `countUnpardoned`, `PARDON_ORDER` | 🎼 **The chord-context ladder** — the one idea the Theory tree sells: your stack decides which notes are legal. See `THEORY_ARCHITECTURE.md`. |
-| `cadence.js` | 335 | `CADENCE_OBJECTIVES`, `cadenceHints`, `detectCadence`, `detectDiatonicRun`, `detectSkipClimb`, `detectRepeatPattern`, `detectMotifRepeat`, `scoreTrackDB`, `analyseTrack`, `refillStock`, `randomNote`, `feedShamisenPhrase`, `shamisenNextPc`, `shamisenResolvingPc`, `shamisenRings` | Cadence goals and melody scoring, **plus the Cursed Shamisen's haunting phrase**. ⚠️ The four `shamisen*` exports are NOT cadence objectives and must not be folded into them: a cadence matches a trail of ONE PITCH CLASS PER TURN, the haunting matches an ordered subsequence **inside a single committed track** where one turn may supply all five links. Different array, different question. ⚠️ The Style detectors that lived here are **deleted** — the tombstone at the bottom of the file explains why. |
+| `cadence.js` | 358 | `CADENCE_OBJECTIVES`, `CADENCE_BY_ID`, `cadenceHints`, `detectCadence`, `detectChromaticRun`, `detectDiatonicRun`, `driveBoostFromRun`, `detectSkipClimb`, `detectRepeatPattern`, `sustainBoostFromPattern`, `scoreTrackDB`, `analyseTrack`, `randomNote`, `refillStock`, `detectMotifRepeat` | Cadence goals and melody scoring. 🪦 Four `shamisen*` exports removed 2026-08-26 — the Shamisen is no longer a board token with a phrase. |
 | `spiritStyle.js` | 366 | `detectSpiritStyle`, `styleProgress`, `styleGain`, `styleProgressWithNote`, `STYLE_GESTURES`, `gesturesFor` | Gesture detection for the character-sheet style read (flavour, not payout). |
 | `keyDetect.js` | 433 | `detectKey`, `makeKeyTracker`, `keyToScale`, `keyPitchClasses`, `chordCandidates`, `detectPalette`, `listenFrame`, `SCALE_SHAPES` | 👂 Ear Spy: what key is being played. |
 | `neckPlacement.js` | 597 | `placeNotes`, `placePitch`, `makeNeckTracker`, `makeHandTracker`, `foldOntoNeck`, `positionsForPitchClass`, `midiToPitch`, `pitchToMidi`, `PLACEMENT_DEFAULTS` | 👂 Notes → frets, with a trail and hand tracking. |
@@ -349,7 +349,7 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | I want to change… | Go to |
 |---|---|
 | Character stats / balance | `data/spirits.js` → `SPIRIT_DEFS` |
-| Any gameplay tuning number | `data/gameConstants.js` — 96 constants, and the first place to look |
+| Any gameplay tuning number | `data/gameConstants.js` — 106 constants, and the first place to look |
 | Win conditions | `data/gameConstants.js` → `FAME_TO_WIN`, `LIMELIGHT_TO_WIN` |
 | Combat maths — damage, knockback, Fame from margin, the underdog ramp | `engine/systems/combat.js` → `marginToDamage`, `knockbackSpaces`, `fameFromMargin`, `underdogBonus` |
 | What a fight *does* afterwards — Fame grants, stack loss, slides | `engine/systems/battleFlow.js` → `battleConsequences`, `runBattleFlow` |
@@ -370,7 +370,7 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | 🔊 Going to eleven | `engine/systems/eleven.js` + `ELEVEN_DRIVE`, `ELEVEN_AMP_BLOWN_TURNS` |
 | 🎇 Stage Effects | `data/stageEffects.js` (tuning) + `engine/systems/stageFx.js` (rules) + `board/stageFx.js` (geometry) + `ui/StageFXLayer.jsx` (visuals) |
 | 🤘 Rock God boss | `data/rockGods.js` (all tuning) + `engine/systems/rockGod.js` (rules) + `board/rockGodFx.js` (geometry) + `ui/RockGodLayer.jsx` (visuals). New gods: add to `ROCK_GODS`, list in `ROCK_GOD_IMPLEMENTED`, extend `applyGodActed`. See `ROCK_GODS_DESIGN.md`. |
-| 🎸 Cursed Shamisen | `Game.resolveCursedShamisen` / `tickCursedShamisen` (`SHAM_RINGS`, `SHAM_ROUNDS`, module-level in the monolith) — ticks once per ROUND, only touches minor-key Spirits |
+| 🎸 Cursed Shamisen | `resolveCursedShamisen` / `payShamisenDebt` / `tickCursedShamisen` / `checkShamisenCursePenalty` — self-buff that accelerates other cooldowns; no board token |
 | Event spaces | `data/events.js` + `EVENT SPACES SYSTEM` banner in `Game` |
 | Trivia questions | `data/trivia.js` — write against `TRIVIA_CONTENT_BRIEF.md` |
 | 🤖 How the bot values a position | `engine/policies/evaluate.js` → `EVAL_WEIGHTS`. ⚠️ **Measure, don't guess** — `BOT_STRATEGY_HANDOFF.md` records which weights are measured and which are still guesses, and §5.D⁷ of `SEQUENCING.md` shows a weight that made things *worse* when raised. |

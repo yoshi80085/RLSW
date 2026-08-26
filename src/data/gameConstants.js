@@ -149,14 +149,13 @@ export const PSYCHO_BUSHIDO_MIN_AP = 2;   // 1 hex of run-up + the Swing's own A
 // things you DO — there is no moment of use to charge for. An innate is the
 // character; an active is a choice, and the rule exists to make choices cost.
 export const SHADOW_ILLUSION_CD    = 3;   // rounds — see the note below
-// 🎸 ⚠️ THIS NUMBER'S ORIGINAL JUSTIFICATION EXPIRED ON 2026-08-25. It used to
-// read "matches its 3-round life" — but the Shamisen no longer HAS a life: it
-// stands as long as Ronin keeps feeding it, and forever once the phrase is
-// finished (`RONIN_ABILITY_DESIGN.md` §2.3.2). The cooldown is now charged when
-// the instrument LEAVES THE BOARD — starved or exorcised — which preserves what
-// it was actually for: a gap between hauntings, not a gap between summons.
-// §2.3.7 flags this as still open for Alex.
-export const CURSED_SHAMISEN_CD    = 3;   // rounds — set at summon AND re-set on the end
+// 🎸 CURSED SHAMISEN — the curse is a debt, not a board token. Activation speeds
+// up ALL OTHER ability cooldowns for CURSED_SHAMISEN_DURATION rounds. While
+// active, Ronin glows — if he loses ANY Vibe in battle, all cooldowns RESET to
+// full. He can pay 1 Db per round to protect himself, but the glow stays either
+// way: rivals must guess whether he paid.
+// `RONIN_ABILITY_DESIGN.md` §2.3 is the spec.
+export const CURSED_SHAMISEN_CD    = 3;   // rounds — gap between activations
 
 // 🌌🕳️💻☀️ INTERGALACTIC 0. He is the zoner: his kit is about doing a small thing
 // often, so his rates are short. The shapes justify the spread —
@@ -204,53 +203,43 @@ export const CURSED_SHAMISEN_DB_COST = 2;   // unchanged — it was already payi
 // fragile exactly while rivals cannot tell which body to hit.
 export const SHADOW_ILLUSION_SUSTAIN_DRAIN = 1;
 
-// ── 🎸 CURSED SHAMISEN — the haunting Ronin feeds ────────────────────────────
-// `RONIN_ABILITY_DESIGN.md` §2.3 is the spec. Everything here is §2.3's numbers.
+// ── 🎸 CURSED SHAMISEN — the curse is a debt ─────────────────────────────────
+// `RONIN_ABILITY_DESIGN.md` §2.3 is the spec.
 //
-// 🎯 THE PHRASE ENDS ON THE 5 — IT IS A HALF CADENCE. ♭3 → 2 → 1 → ♭6 → 5 hangs
-// on the dominant and never lands, which is the in-fiction reason the thing will
-// not stop playing, and it is why the exorcism is what it is: a rival ends the
-// haunting by playing the TONIC at it — finishing the sentence Ronin refused to
-// finish. Semitones from RONIN'S root, not the listener's.
+// 🎯 THE FANTASY: Ronin plays a cursed instrument that speeds him up but puts a
+// target on his back. While the curse runs, ALL OTHER ability cooldowns tick
+// twice as fast (one extra tick per round). The Shamisen is NOT a board token —
+// it is an internal state on the Ronin. He glows while it is active.
 //
-// ⚠️ THE MIDDLE ENTRY IS THE TONIC (0), AND THAT IS NOT AN ACCIDENT. The same
-// pitch class both FEEDS the curse (link 3, committed into Ronin's melody line)
-// and KILLS it (spent AT the instrument by a rival). Same note, opposite verb —
-// do not "simplify" one of them away.
-export const SHAMISEN_PHRASE = [3, 2, 0, 8, 7];
+// ⚠️ THE CURSE BITES: if Ronin loses ANY Vibe in battle while the curse is
+// active AND he has NOT paid his debt that round, ALL cooldowns (including the
+// Shamisen's own) RESET to their full duration. That is the punishment for being
+// caught with the curse running and unpaid.
+//
+// 💰 THE DEBT: each round while active, Ronin may spend 1 Db to "pay off" the
+// curse for that round. Payment protects him from the reset penalty, but the
+// glow stays either way — rivals CANNOT TELL whether he paid. That is the bluff.
+// Total safe cost: 2 Db activation + 3 Db payoff = 5 Db for guaranteed speed.
+// Total gamble cost: 2 Db activation + 0 payoff = 2 Db but you are exposed.
+//
+// 📌 THE SHAMISEN'S OWN COOLDOWN IS EXCLUDED FROM THE SPEED BOOST. Only
+// Psycho Bushido, Shadow Illusion, and Wa no Koe charge faster. This prevents
+// the recursive loop of using Shamisen to speed up Shamisen.
+//
+// 🪦 WHAT THIS REPLACED (2026-08-26): a board token with a 5-note feeding
+// phrase (♭3 → 2 → 1 → ♭6 → 5), growing aura, Sustain-stack fray, wandering AI,
+// and exorcism by spending Ronin's tonic. All of that is gone — the constants
+// `SHAMISEN_PHRASE`, `SHAMISEN_RING_MAX`, `SHAMISEN_FRAY`, and the functions
+// `feedShamisenPhrase`, `shamisenNextPc`, `shamisenResolvingPc`, `shamisenRings`
+// in `music/cadence.js` are deleted, along with the board-token code in the
+// client monolith.
 
-// 🎯 THE RADIUS GROWS WITH THE PHRASE; THE BITE NEVER DOES. One escalating axis,
-// not two — `ceil(linksFed / 2)`, so 1 → 1 → 2 → 2 → 3 rings.
-//
-// ⚠️ AND THE GROWING RADIUS IS ITS OWN COUNTERPLAY, WHICH IS THE WHOLE TRICK:
-// you must be INSIDE the rings to exorcise it (§2.3.6), so the number that makes
-// it dangerous is the same number that decides who can answer it. The stronger it
-// gets, the more players it drags into range to kill it. Self-balancing, in one
-// number, with no cap or catch-up rule needed. An earlier draft of the design
-// REFUSED a growing radius on the grounds that it "moves the exit out from under
-// the player walking toward it" — that was wrong for exactly this reason.
-//
-// 📌 THE CEILING MATTERS MORE THAN IT LOOKS. The board is 111 hexes and coverage
-// goes 3r²+3r+1: 1 ring = 7 hexes, 2 = 19, 3 = 37 (a third of the board),
-// 4 = 61 (OVER HALF) and 5 = 91, which is effectively everywhere. 4 is the dial
-// if 3 does not feel wide enough at full strength. 5 is not a number.
-export const SHAMISEN_RING_MAX = 3;
+// How many rounds the curse lasts after activation.
+export const CURSED_SHAMISEN_DURATION    = 3;
 
-// Notes frayed off each haunted Spirit's SUSTAIN STACK per round — at every
-// stage, complete or not.
-//
-// ⚠️ IT NEVER TOUCHES VIBE, INCLUDING WHEN THE STACK IS DOWN TO ITS LAST NOTE.
-// `frayFromSustain` floors at one note, so the haunting CANNOT KILL ANYBODY — it
-// makes them killable, which is the entire fantasy. Same argument Shadow
-// Illusion's starvation settled (see the drain above): routing a shortfall into
-// Vibe quietly turns a debuff into a damage card, which is a different ability.
-// Sustain is what is attacked, so Sustain is what runs out.
-//
-// 🪦 UNTIL 2026-08-25 THIS DRAINED `tempSustain` (the spendable POOL) AND THEN
-// BIT VIBE. Three different resources, and the design doc had said "the Sustain
-// STACK" the whole time. The test suite never caught it because no assertion
-// touched the path.
-export const SHAMISEN_FRAY = 1;
+// Db per round to pay off the debt and avoid the reset penalty.
+// ⚠️ SEPARATE FROM `CURSED_SHAMISEN_DB_COST`, which is the activation price.
+export const CURSED_SHAMISEN_PAYOFF_COST = 1;
 
 // 🫁 THE RIG BREATHES — SEQUENCING.md §5.H⁶, shipped 2026-08-20.
 //

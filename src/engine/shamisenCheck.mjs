@@ -1,114 +1,179 @@
 // ─── 🎸 CURSED SHAMISEN CHECK ────────────────────────────────────────────────
-// `npm run test:shamisen`. Pins the pure half of the haunting Ronin feeds:
-// `feedShamisenPhrase`, `shamisenNextPc`, `shamisenResolvingPc` and
-// `shamisenRings` in `music/cadence.js`, plus the constants they are driven by.
+// `npm run test:shamisen`. Pins the new Cursed Shamisen: a self-buff that
+// accelerates cooldowns, with a debt mechanic that resets them all on damage.
 // `RONIN_ABILITY_DESIGN.md` §2.3 is the spec.
 //
-// ⚠️ THIS FILE EXISTS BECAUSE `test:all` CAME BACK BYTE-IDENTICAL AFTER THE
-// REWORK, AND THAT IS THE WARNING, NOT THE WIN. The 2026-08-25 pass changed what
-// the ability attacks (`tempSustain`+Vibe → the `sustainStack`), deleted its
-// lifespan outright, gave it a radius that grows, and added an exorcism verb the
-// game did not have — and all seventeen suites returned the same counts they
-// returned before. That can only mean one thing: NOTHING ASSERTED OVER THIS
-// ABILITY AT ALL. It is the same shape as the Sunbeam hole `RONIN_ABILITY_
-// DESIGN.md` §7.5 caught, and the same lesson: an unchanged count after a real
-// change is a hole, not a pass.
-//
-// 📌 WHAT THIS FILE CANNOT REACH, STATED SO NOBODY MISTAKES IT FOR COVERAGE.
-// The Shamisen's tick, wander, bite, summon guard and exorcism click all live in
-// `rlsw-simulator-v3_8_1.jsx` — the ~16.5k-line client monolith — and no harness
-// can drive them today. What is asserted here is the phrase logic those callers
-// depend on. The rest is covered by `check:bundle` and eyes, which is a real gap
-// and is exactly why the pure parts were lifted OUT of the monolith in the same
-// pass rather than written inline where they would be untestable.
+// 🪦 The old test file pinned `feedShamisenPhrase`, `shamisenRings`,
+// `shamisenResolvingPc` and `shamisenNextPc` in `music/cadence.js`. Those
+// functions are gone: the Shamisen is no longer a board token with a phrase
+// to feed. What lives here now tests `tickShamisen` and `resetAllCooldowns`
+// in `engine/systems/cooldowns.js`, plus the constants they rely on.
 
 import assert from "node:assert";
 import {
-  feedShamisenPhrase, shamisenNextPc, shamisenResolvingPc, shamisenRings,
-} from "../music/cadence.js";
-import { pitchIndex } from "../music/notes.js";
+  ABILITY_CD, tickCooldowns, tickShamisen, resetAllCooldowns,
+  cooldownLeft, canFire, firePatch,
+} from "./systems/cooldowns.js";
 import {
-  SHAMISEN_PHRASE, SHAMISEN_RING_MAX, SHAMISEN_FRAY, CURSED_SHAMISEN_DB_COST,
+  CURSED_SHAMISEN_CD, CURSED_SHAMISEN_DB_COST,
+  CURSED_SHAMISEN_DURATION, CURSED_SHAMISEN_PAYOFF_COST,
 } from "../data/gameConstants.js";
 
 let count = 0;
 const ok = (c, m) => { count++; assert.ok(c, m); };
 const eq = (a, b, m) => { count++; assert.deepStrictEqual(a, b, m); };
 
-// C is pitch class 0, so the phrase spells out in absolute pitch classes as
-// 3 (D#/♭3) · 2 (D) · 0 (C) · 8 (G#/♭6) · 7 (G).
-const C = pitchIndex('C');
-const PHRASE_IN_C = ['D#', 'D', 'C', 'G#', 'G'];
+// ── CONSTANTS ────────────────────────────────────────────────────────────────
 
-// ── THE PHRASE ITSELF ────────────────────────────────────────────────────────
+eq(CURSED_SHAMISEN_CD, 3, '🎸 3-round cooldown between activations');
+eq(CURSED_SHAMISEN_DB_COST, 2, '🎸 2 Db to invoke the curse');
+eq(CURSED_SHAMISEN_DURATION, 3, '🎸 the curse runs for 3 rounds');
+eq(CURSED_SHAMISEN_PAYOFF_COST, 1,
+  '🎸 1 Db per round to pay the debt — separate from the activation cost');
+ok(CURSED_SHAMISEN_PAYOFF_COST < CURSED_SHAMISEN_DB_COST,
+  '⚠️ the debt payment must be CHEAPER than activation — otherwise paying every round costs more than re-casting, and the bluff collapses');
 
-eq(SHAMISEN_PHRASE, [3, 2, 0, 8, 7], '🎸 the haunting is ♭3 → 2 → 1 → ♭6 → 5, in semitones off RONIN\'S root');
-eq(SHAMISEN_PHRASE[SHAMISEN_PHRASE.length - 1], 7,
-  '🎯 IT ENDS ON THE 5 — a half cadence, hanging on the dominant. This is the whole reason the thing will not stop playing, and the reason the exorcism is what it is. If this ever stops being 7, §2.3.6 needs rewriting, not patching.');
-eq(SHAMISEN_PHRASE[2], 0,
-  '⚠️ the TONIC sits in the middle of the phrase — the same pitch class that FEEDS the curse as link 3 is the one that KILLS it when spent at the instrument. Same note, opposite verb (§2.3.6).');
+// ── ABILITY_CD TABLE ─────────────────────────────────────────────────────────
 
-// ── FEEDING — an ordered subsequence inside ONE committed melody line ────────
+eq(ABILITY_CD['cursed_shamisen'], CURSED_SHAMISEN_CD,
+  '🎸 the Shamisen has a cooldown in the table');
+ok(ABILITY_CD['psycho_bushido'] > 0,
+  '🎸 Bushido has a cooldown (one of the abilities the Shamisen accelerates)');
+ok(ABILITY_CD['shadow_illusion'] > 0,
+  '🎸 Shadow Illusion has a cooldown');
 
-eq(feedShamisenPhrase(PHRASE_IN_C, C, 0, SHAMISEN_PHRASE), 5,
-  '⚡ THE WHOLE PHRASE CAN LAND IN A SINGLE TURN. This is the headline rule (Alex, 2026-08-25): hold all five degrees, place them in order in one commit, and the haunting is finished on the turn it is set down.');
-eq(feedShamisenPhrase(['D#'], C, 0, SHAMISEN_PHRASE), 1, '🎸 one link a turn is the slow route, and it works');
-eq(feedShamisenPhrase(['D#', 'D'], C, 0, SHAMISEN_PHRASE), 2, '🎸 two links in one line');
-eq(feedShamisenPhrase(['D'], C, 0, SHAMISEN_PHRASE), 0,
-  '⚠️ ORDER IS LOAD-BEARING: the 2 does not feed a phrase still waiting on the ♭3. Out-of-order notes advance nothing.');
-eq(feedShamisenPhrase(['D'], C, 1, SHAMISEN_PHRASE), 2, '🎸 …and the same note DOES feed it once the ♭3 is already in place');
+// ── tickShamisen — the 2× acceleration ──────────────────────────────────────
 
-eq(feedShamisenPhrase(['D#', 'A', 'F', 'D'], C, 0, SHAMISEN_PHRASE), 2,
-  '🎯 SUBSEQUENCE, NOT SUBSTRING — links must be in order but need not be adjacent. A player walking through other notes to reach the next link is still playing the phrase; demanding adjacency would hand the ability to note-pool luck.');
-eq(feedShamisenPhrase(['A', 'F', 'B'], C, 0, SHAMISEN_PHRASE), 0,
-  '🎸 a track with none of the phrase in it advances nothing — which is what kills an unfinished haunting at the round tick');
-eq(feedShamisenPhrase([], C, 2, SHAMISEN_PHRASE), 2, '🎸 an empty track is not a feed');
-eq(feedShamisenPhrase(null, C, 2, SHAMISEN_PHRASE), 2, '🎸 …and neither is a missing one');
+{
+  const ns = { abilityCd: {
+    psycho_bushido: 4,
+    shadow_illusion: 3,
+    cursed_shamisen: 3,
+    wa_no_koe: 2,
+  }};
 
-eq(feedShamisenPhrase(PHRASE_IN_C, C, 5, SHAMISEN_PHRASE), 5,
-  '🎸 a FINISHED haunting eats nothing more — it needs no food and cannot be over-fed past its length');
-ok(feedShamisenPhrase([...PHRASE_IN_C, 'C', 'G'], C, 0, SHAMISEN_PHRASE) === SHAMISEN_PHRASE.length,
-  '⚠️ and it never runs off the end of the phrase even when the track keeps going');
+  const result = tickShamisen(ns);
 
-// The haunting is in RONIN'S key, never the listener's. In A (pitch class 9) the
-// same phrase spells C · B · A · F · E.
-const A = pitchIndex('A');
-eq(feedShamisenPhrase(['C', 'B', 'A', 'F', 'E'], A, 0, SHAMISEN_PHRASE), 5,
-  '🎸 the phrase transposes with Ronin\'s root — in A it is C · B · A · F · E');
-eq(feedShamisenPhrase(PHRASE_IN_C, A, 0, SHAMISEN_PHRASE), 1,
-  '⚠️ …and the C-rooted spelling gets ONE link by accident against an A-rooted Ronin and then stalls dead. 📌 The accident is worth pinning rather than wishing away: a stray note CAN start someone else\'s phrase, because pitch classes are shared — what it cannot do is carry it. Every note in this ability is measured in HIS key, and a track built for the wrong root fails at link 2.');
+  eq(result['psycho_bushido'], 3,
+    '🎸 Bushido ticks DOWN by 1 extra');
+  eq(result['shadow_illusion'], 2,
+    '🎸 Shadow Illusion ticks DOWN by 1 extra');
+  eq(result['wa_no_koe'], 1,
+    '🎸 Wa no Koe ticks DOWN by 1 extra');
+  eq(result['cursed_shamisen'], 3,
+    '⚠️ THE SHAMISEN\'S OWN COOLDOWN IS UNTOUCHED — it must NOT accelerate itself, or you get a recursive loop that makes the ability free');
+}
 
-// ── THE REQUIRED NOTE — public on purpose, for both sides ────────────────────
+{
+  // tickShamisen stacked on tickCooldowns = 2 ticks per round for others,
+  // 1 tick for shamisen itself. This is what "2× speed" means.
+  const ns = { abilityCd: {
+    psycho_bushido: 4,
+    cursed_shamisen: 2,
+  }};
 
-eq(shamisenNextPc(C, 0, SHAMISEN_PHRASE), 3, '🎶 a fresh haunting is waiting on the ♭3');
-eq(shamisenNextPc(C, 4, SHAMISEN_PHRASE), 7, '🎶 one link from home it wants the 5');
-eq(shamisenNextPc(C, 5, SHAMISEN_PHRASE), null,
-  '🎶 a finished phrase wants nothing — `null` is what tells the UI to stop printing a required note');
+  const afterNormal = tickCooldowns(ns);
+  eq(afterNormal['psycho_bushido'], 3, '🕒 normal tick: Bushido 4→3');
+  eq(afterNormal['cursed_shamisen'], 1, '🕒 normal tick: Shamisen 2→1');
 
-// ── THE RESOLVING NOTE — what a rival spends to end it ───────────────────────
+  const afterBoth = tickShamisen({ abilityCd: afterNormal });
+  eq(afterBoth['psycho_bushido'], 2,
+    '⚡ normal + shamisen tick: Bushido 4→3→2 in one round — that is 2× speed');
+  eq(afterBoth['cursed_shamisen'], 1,
+    '⚠️ Shamisen stays at 1 — it only got the normal tick, not its own extra');
+}
 
-eq(shamisenResolvingPc(C), 0, '⚔️ the exorcism note is Ronin\'s TONIC — you finish the sentence he refused to finish');
-eq(shamisenResolvingPc(A), 9, '⚔️ …in his key, so an A-rooted Ronin is exorcised with an A');
-eq(shamisenResolvingPc(C), SHAMISEN_PHRASE[2],
-  '⚠️ THE EXORCISM NOTE AND LINK 3 ARE THE SAME PITCH CLASS, asserted rather than left to be rediscovered. Ronin commits it INTO a melody to feed; a rival spends it AT the instrument to kill. If anyone ever "simplifies" one path into the other, this is the assertion that should stop them.');
+{
+  // Floors at 0 — never goes negative
+  const ns = { abilityCd: { psycho_bushido: 0, shadow_illusion: 1 }};
+  const result = tickShamisen(ns);
+  eq(result['psycho_bushido'], 0,
+    '🎸 already at 0 stays at 0 — no negative cooldowns');
+  eq(result['shadow_illusion'], 0,
+    '🎸 1 ticks to 0');
+}
 
-// ── THE GROWING REACH, AND WHY IT IS ALSO THE COUNTERPLAY ────────────────────
+{
+  // Empty or missing abilityCd
+  const result1 = tickShamisen({});
+  eq(result1, {}, '🎸 empty sheet returns empty map');
+  const result2 = tickShamisen(null);
+  eq(result2, {}, '🎸 null sheet returns empty map');
+}
 
-eq([0, 1, 2, 3, 4, 5].map(n => shamisenRings(n, SHAMISEN_RING_MAX)), [1, 1, 1, 2, 2, 3],
-  '🎸 the ring table: `ceil(links/2)`, floored at 1 so a just-placed Shamisen still bites, capped at the max');
-eq(shamisenRings(0, SHAMISEN_RING_MAX), 1,
-  '⚠️ FLOORED AT 1, NOT 0 — a haunting with no reach would be unexorcisable, because you have to be INSIDE the rings to answer it');
-eq(shamisenRings(99, SHAMISEN_RING_MAX), SHAMISEN_RING_MAX, '🎸 and it never exceeds the cap');
-eq(SHAMISEN_RING_MAX, 3,
-  '📌 3 rings is 37 of the board\'s 111 hexes (3r²+3r+1) — a third of the stage. 4 would be 61, over HALF, and 5 is 91 ≈ everywhere. If this number moves, it moves to 4 and no further.');
+// ── resetAllCooldowns — the punishment ──────────────────────────────────────
 
-ok(shamisenRings(5, SHAMISEN_RING_MAX) > shamisenRings(1, SHAMISEN_RING_MAX),
-  '🎯 THE REACH GROWS WITH THE PHRASE, and this is the ability\'s self-balancing hinge: exorcism requires standing inside the rings, so the number that makes the haunting dangerous is the same number that decides who may kill it. A weak haunting is nearly untouchable AND nearly harmless; a bound one is lethal AND standing in reach of a third of the board. An earlier design draft refused a growing radius for the opposite reason and was wrong.');
+{
+  const ns = { abilityCd: {
+    psycho_bushido: 1,
+    shadow_illusion: 0,
+    cursed_shamisen: 2,
+  }};
+  const unlocked = ['psycho_bushido', 'shadow_illusion', 'cursed_shamisen', 'wa_no_koe'];
+  const result = resetAllCooldowns(ns, unlocked);
 
-// ── THE BITE, AND THE LINE IT MUST NOT CROSS ─────────────────────────────────
+  eq(result['psycho_bushido'], ABILITY_CD['psycho_bushido'],
+    '💀 Bushido RESETS to full duration — you lose all the progress you made');
+  eq(result['shadow_illusion'], ABILITY_CD['shadow_illusion'],
+    '💀 Shadow Illusion resets to full even though it was already ready');
+  eq(result['cursed_shamisen'], ABILITY_CD['cursed_shamisen'],
+    '💀 the Shamisen ITSELF resets too — the punishment is total');
+  ok(result['wa_no_koe'] === undefined || result['wa_no_koe'] === (ABILITY_CD['wa_no_koe'] ?? 0),
+    '🎸 Wa no Koe: if it has a CD in ABILITY_CD it resets, otherwise it stays as-is');
+}
 
-eq(SHAMISEN_FRAY, 1,
-  '🎸 ONE escalating axis, not two: the reach grows, the bite never does. The fray is 1 note at every stage, complete or not.');
-eq(CURSED_SHAMISEN_DB_COST, 2, '🎸 2 Db per use, unchanged by the rework');
+{
+  // Only abilities WITH a cooldown in ABILITY_CD get reset
+  const ns = { abilityCd: { psycho_bushido: 1 }};
+  const unlocked = ['psycho_bushido', 'some_future_ability'];
+  const result = resetAllCooldowns(ns, unlocked);
+  eq(result['psycho_bushido'], ABILITY_CD['psycho_bushido'],
+    '💀 known ability resets');
+  ok(!('some_future_ability' in result) || result['some_future_ability'] === 0,
+    '🎸 an ability not in ABILITY_CD cannot be reset to a max that does not exist');
+}
 
-console.log(`\n✅ shamisenCheck: ${count} assertions passed — the phrase hangs on the 5, and the reach that makes it dangerous is the reach that lets you end it`);
+{
+  // Empty unlocked list — nothing to reset to, but existing state is preserved
+  const ns = { abilityCd: { psycho_bushido: 1 }};
+  const result = resetAllCooldowns(ns, []);
+  eq(result['psycho_bushido'], 1,
+    '🎸 with no unlocked skills, existing CDs are kept as-is');
+}
+
+// ── firePatch — activation cost and cooldown ────────────────────────────────
+
+{
+  const ns = { dbPoints: 10, abilityCd: {} };
+  const patch = firePatch(ns, 'cursed_shamisen');
+  eq(patch.dbPoints, 10 - CURSED_SHAMISEN_DB_COST,
+    '🎸 firing the Shamisen costs exactly CURSED_SHAMISEN_DB_COST Db');
+  eq(patch.abilityCd['cursed_shamisen'], CURSED_SHAMISEN_CD,
+    '🎸 …and starts the cooldown at CURSED_SHAMISEN_CD rounds');
+}
+
+// ── canFire — the gate ──────────────────────────────────────────────────────
+
+{
+  const ready = { dbPoints: 5, abilityCd: { cursed_shamisen: 0 } };
+  ok(canFire(ready, 'cursed_shamisen'),
+    '🎸 Shamisen is ready when CD is 0 and Db is enough');
+
+  const broke = { dbPoints: 1, abilityCd: { cursed_shamisen: 0 } };
+  ok(!canFire(broke, 'cursed_shamisen'),
+    '⚠️ cannot fire with fewer Db than the cost');
+
+  const cooling = { dbPoints: 5, abilityCd: { cursed_shamisen: 2 } };
+  ok(!canFire(cooling, 'cursed_shamisen'),
+    '⚠️ cannot fire while still on cooldown');
+}
+
+// ── DESIGN INVARIANTS ───────────────────────────────────────────────────────
+
+ok(CURSED_SHAMISEN_DURATION === CURSED_SHAMISEN_CD,
+  '📌 duration equals cooldown — the curse expires the same turn it comes off CD, so there is no overlap window where Ronin runs two curses at once. If this equality breaks, the UI needs an "already cursed" guard.');
+
+ok(CURSED_SHAMISEN_DURATION * CURSED_SHAMISEN_PAYOFF_COST < CURSED_SHAMISEN_DURATION + CURSED_SHAMISEN_DB_COST,
+  '📌 total debt (3×1=3 Db) is LESS than activation + duration — paying every round is still cheaper than being caught, which is what keeps the bluff alive');
+
+console.log(`\n✅ shamisenCheck: ${count} assertions passed — the curse accelerates, the debt protects, the glow bluffs`);

@@ -120,44 +120,23 @@ and three of them no longer match what they are supposed to be. Read the status 
     what is spent, so Sustain is what runs out. The report separates `shadowExpiring` (out
     of time) from `shadowStarved` (drank him dry) because they look identical on the board
     and must not read identically in the log.
-  - **Cursed Shamisen** (8 Db unlock, **2 Db/use**, **3-round CD — set at summon like every other ability, and RE-SET when the haunting ends**, because a haunting that can stand indefinitely would otherwise outlive its own cooldown)
-    — ✅ **FULLY REWORKED 2026-08-25.** Spec: `RONIN_ABILITY_DESIGN.md` §2.3. Build report: §7b.
-    Set down on Ronin's hex, where it plays a **haunting melody every round** (real audio: an
-    insen-scale phrase). Its phrase is **♭3 → 2 → 1 → ♭6 → 5** (`SHAMISEN_PHRASE`, semitones off
-    RONIN'S root) and he **FEEDS** it those links in order out of the melody line he commits —
-    ⚡ **one link a turn, or the whole phrase in a single turn if his hand holds all five.**
-    ⚠️ **A ROUND THAT ADDS NO LINK SNAPS THE STRINGS.** There is no lifespan field at all; the
-    feeding IS the lifespan, checked at the round tick (`!complete && !fedThisRound`). Finish the
-    phrase and it is **BOUND** — it needs no more food and never fades.
-    Its **reach GROWS with the phrase**, `shamisenRings` → `ceil(links/2)`, 1 → `SHAMISEN_RING_MAX`
-    (3) rings; 🎯 and the growing reach is its own counterplay, because exorcism requires standing
-    INSIDE the rings — the number that makes it dangerous is the number that decides who can end it.
-    Each round it steps one hex toward the nearest **non-Ronin** Spirit and frays `SHAMISEN_FRAY`
-    note off the **`sustainStack`** of everyone in range (`frayFromSustain`, floor of 1 note).
-    ⚠️ **IT NEVER TOUCHES VIBE** — it cannot kill, it makes its victims killable. It **spares Ronin**
-    (Alex's call: it knows his hand). Every Spirit the melody reaches is marked with a pulsing 🎶
-    aura until it next plays. The board token is **blue while it can still be starved and RED once
-    BOUND**.
-    ⚔️ **EXORCISM** (`exorciseCursedShamisen`) — the only way out. Stand **inside its rings**, click
-    the instrument to arm, then click a note from your own pool: it must be **Ronin's TONIC**, the
-    note his half cadence hangs one step away from and never reaches. The note is spent; the
-    exorcist takes a bonus note. 📌 That same pitch class is **link 3 of the feeding phrase** —
-    Ronin commits it INTO a melody to feed, a rival spends it AT the instrument to kill. Same note,
-    opposite verb.
-    🪦 **WHAT THIS REPLACED, so nobody rebuilds it:** a **minor-key gate** (`inMinorKey`, now
-    deleted) that made major-key Spirits deaf to it; a fixed 2-ring aura; a **3-round timer**; a
-    drain on `tempSustain` that **then bit Vibe**; no owner exemption; and destruction by **any
-    Spirit freely walking onto its hex** (`calmCursedShamisen`, now a kept no-op). Minor is flavour
-    now — the sound — not a mechanical gate.
-    ✅ **Under test at last:** `engine/shamisenCheck.mjs` / `npm run test:shamisen`, 29 assertions.
-    ⚠️ It reaches the **phrase logic only** — the tick, bite, summon guard and exorcism click are
-    still in the client monolith and unreachable by any harness.
-    🪦 *This entry also said "no cooldown" until 2026-08-25, a full three days after
-    `CURSED_SHAMISEN_CD = 3` shipped — the second time this file has been 95% right about this one
-    ability while the Shadow Illusion entry above it was correct.*
-    Board art: `SHAMISEN_ART` at the top of the simulator (currently a vector placeholder; drop
-    `src/standees/Cursed_Shamisen.png` in and point the constant at it to swap).
-  - **Wa no Koe** (12 Db, **no per-use cost, no cooldown**) — Passive: when **half or more** of the
+  - **Cursed Shamisen** (8 Db unlock, **2 Db/use**, **3-round CD**)
+    — ✅ **FULLY REWORKED 2026-08-26.** Spec: `RONIN_ABILITY_DESIGN.md` §2.3.
+    🪦 The old board-token design (phrase feeding, wandering AI, growing aura, exorcism) is
+    entirely gone. The Shamisen is now a **self-buff that accelerates all OTHER ability
+    cooldowns for 3 rounds** (`CURSED_SHAMISEN_DURATION`). While active, Bushido, Shadow
+    Illusion and Wa no Koe tick at **2× speed** — one extra tick per round via `tickShamisen`
+    in `cooldowns.js`. The Shamisen's own cooldown is excluded (no recursive loop).
+    **The curse:** while glowing, if Ronin takes **any Vibe damage in battle** and has **not
+    paid 1 Db** (`CURSED_SHAMISEN_PAYOFF_COST`) that round, **ALL cooldowns RESET to full
+    duration** (`resetAllCooldowns`). The glow stays for the full 3 rounds regardless of
+    payment — rivals see the same purple aura whether he paid or not. **That is the bluff.**
+    State: `ns.shamisenCurse: { turnsLeft, paidThisRound }`. Client functions:
+    `resolveCursedShamisen`, `payShamisenDebt`, `tickCursedShamisen`,
+    `checkShamisenCursePenalty`, `playShamisenStrum`.
+    ✅ **Under test:** `engine/shamisenCheck.mjs` / `npm run test:shamisen`, 34 assertions
+    covering acceleration, reset, constants and design invariants.
+    - **Wa no Koe** (12 Db, **no per-use cost, no cooldown**) — Passive: when **half or more** of the
     committed melody sits inside the Drive+Sustain stacks, it pays **+1 Drive or Sustain for 3 rounds**
     (whichever stack is longer). ⚠️ The rule is a pure function in the **kernel** —
     `checkWaNoKoe` in `engine/systems/melodyCommit.js` — not in this file; the monolith keeps only
