@@ -199,7 +199,453 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. 🧭 START HERE — session handoff, 2026-08-25b (the Shamisen, BUILT)
+## 5. 🧭 START HERE — session handoff, 2026-08-29 (the HUD cuts, and a strip on a preview)
+
+> 🪦 **THREE SECTIONS CAME OUT OF THE COLUMN BESIDE THE CHARACTER CARD**, at
+> Alex's call, and each was a different kind of dead weight worth naming:
+>
+> 🎴 **MOD CARDS / TRANSPOSE** — a control that existed to rescue a bad opening
+> hand, in a game whose opening hand is DEALT to guarantee a playable one. A fix
+> for a problem the design already prevents, so it could only ever be pressed by
+> someone who did not need it. Gone from the client end to end: the HUD banner,
+> `MOD_CARD_DEFS`, `playModCard`, `resolveTransposeCard`, the pick-a-note banner,
+> and the tutorial page that named it.
+> ⚠️ **THE ENGINE SIDE IS STILL THERE AND IS NOW INERT.** `economy.js` seeds
+> `modCards: [starter-transpose]`, `turnFlow.js` refreshes it every turn,
+> `melodyCommit.js` still clears `transposeCardPending`. Nothing sets or renders
+> any of it. Removing that is an engine change with suite coverage
+> (`turnFlowCheck`'s mod-card refresh section) and wants its own pass — it was
+> deliberately NOT done as a drive-by inside a HUD edit.
+> 🐛 **AND IT LEFT A DEAD EARLY-RETURN IN THE COMMIT PATH.** The Transpose
+> intercept sat at the top of `clickNoteStock` and could no longer fire. An
+> unreachable `return` there is the exact shape of the 2026-08-26 Shamisen bug
+> (§5-shamisen below): a branch nobody can enter reads as a branch somebody
+> might, and the next person would have had to prove it dead all over again.
+> 🪦 **THE TUTORIAL PAGE WENT WITH IT.** A tip that names a control which is not
+> on screen is worse than no tip — the player hunts for it, fails, and stops
+> trusting the rest.
+>
+> ✨ **STYLE (Shred / Groove / …)** — a label with no mechanism behind it as the
+> game stands. A word that changes nothing does not earn a titled section.
+> 🌳 **SKILLS** — a LIST of things whose buttons are already on screen below. A
+> menu of the menu.
+>
+> 🎛️ **WHAT GOES BACK IN IS ON A PREVIEW PAGE, NOT IN THE CLIENT —
+> `.scratch/hud-channel-strip.html`.** The card is the player's amp head and that
+> column is its channel strip: a **turn rail** (three lamps, one lit in its own
+> step's colour, each carrying its own one-line state) over a **key plate** (root,
+> mode, the interval map), with DB Progress as a meter at the foot. Drawn against
+> the card's REAL proportions — a fixed 238px portrait column and whatever is
+> left — because judging a strip on a blank page is how you ship one at the wrong
+> width, and against the real `StatKnob` geometry rather than an approximation.
+> 🎯 **AWAITING ALEX'S NUMBERS.** Rail shape / lit style / lamp height / gap /
+> glow / off-depth / substate / numerals · plate style / root size / bevel /
+> interval layout / mode line · strip width / section gap / faceplate / rivets.
+>
+> ⚠️ **I GOT A JUSTIFICATION WRONG AND CAUGHT IT BY CHECKING THE MARKUP.** I
+> wrote — into the client, in a comment — that the interval legend
+> (`4th=G 5th=A tri=G#…`) was trapped inside the step-2 panel and invisible during
+> step 1. It is not: it is gated `turnStep !== 'move_act'`, so it is up in BOTH
+> building steps. The real complaint is smaller and still stands (it is a wrapping
+> row of 7px text under the step panel, so it reads as that panel's footnote, and
+> it does vanish in step 3), and the comment now says so. 📌 **If the plate ships,
+> the inline row must be DELETED** — two copies of a legend is worse than either.
+>
+> ✅ **GREEN.** `check:bundle` 0 warnings · `client` 6 · `render` 8/8 · `arch` 8 ·
+> `determinism` 22 · `turnflow` 73 · `melody` 159 · `engine` selftest.
+>
+> ▶️ **NEXT.** **(1) Dial the strip** and port the numbers. **(2) The valve-amp
+> direction for the stacks and track** — bezel wells on the empty seats and a
+> single light source (`SKIN.bezel` / `SKIN.light`, both dialled at 0 today), the
+> track as a luminous baseline rather than a row of sockets, faceplates darker
+> than the board. Discussed, not designed. **(3) The engine-side mod card
+> removal.** **(4) The other half of `test:render`** — still nothing drives a
+> click.
+
+## 5-aug28c. 🧭 session handoff, 2026-08-28c (the tilt, the honeycomb, the burst)
+
+> 🎆 **THE COMMIT REGION NOW MATCHES THE PREVIEW PAGE.** Alex asked for three
+> things by name — "spinning, glowing notes", "the HUD is slanted", "notes in
+> the Stacks are staggered so they all can fit nicely" — and all three were
+> layout and FX that §5-aug28b had not reached.
+>
+> ✅ **THE PANELS LEAN.** `skewX(-6deg)` on the commit track, the payout router
+> and both chord stacks, straight off the preview's TILT slider.
+> ⚠️ **ONE UN-SKEW LAYER, NEVER TWO.** Each panel stands its contents back up
+> exactly once (`Unskew`, and a flex-row variant inside `CommitTrackPanel`
+> because the track's children are flex items of the panel itself). Nest a
+> second and the contents come out sheared the other way. The preview page
+> carries the same warning beside the same line, which is how I knew to look.
+> 📌 The dial is deliberately OUTSIDE the un-skew: at 6° a knob leaning with its
+> faceplate is the point of the slant.
+>
+> 🔷 **THE CHORD STACKS ARE A HONEYCOMB, NOT A ROW** — `StackNest` +
+> `stackSeatPos`. A column steps 0.78× the chip box across and odd columns drop
+> 0.45× down, anchored to each panel's OUTER edge so both stacks grow away from
+> the dial in the middle.
+>
+> 🐛 **AND THAT RETIRES THE 58px FUDGE §5-aug28b SHIPPED.** Last pass I shrank
+> the stack chip from Alex's dialled 72 to 58 with an arithmetic justification:
+> six 72px chips need 447px and the panel has 368px. The arithmetic was right and
+> the conclusion was wrong — **the preview never laid them in a row.** Interlocked,
+> six 72px seats are 353px. 🎯 **THE GENERAL LESSON: when a dialled number does
+> not fit, check whether the LAYOUT was ported before deciding the number was
+> wrong.** It also un-does the `knobPad` patch — the mirrored nest is what keeps
+> the Sustain dial off the first committed note, which is how the preview solved
+> it in the first place.
+>
+> ✅ **THE BURST IS IN — `NOTE_BURST` in `NoteHex.jsx`, keyframes in
+> `GameStyles.jsx`.** A note flares as it leaves your hand and flares again as it
+> seats: white core, flash rim, the letter lifting away, and the bracket ring
+> taking three 120° detents with an overshoot it settles back from. That spin is
+> the "spinning notes" — the preview's IDLE STEP is off, so a chip at rest does
+> not turn; it turns when it is committed.
+> ⚠️ **THE BURST IS DRAWN INSIDE `NoteHex`'s OWN `<svg>`, not in an overlay.**
+> That is what puts the core BEHIND the chip's rings and the flash IN FRONT, and
+> what makes one burst correct on a 67px hand chip and a 72px stack seat with no
+> scale factor anywhere. An overlay can do neither.
+> 📌 Only the "overdrive" preset is ported, because that is the one selected. The
+> other three (magic / shockwave / starburst) add rings and spokes and are not
+> taste calls that were made.
+> 🐛 **The departure flare takes `borderC`, not the chip's live hue** — the commit
+> marks the slot used in the same tick, so by render time the chip is already the
+> empty-socket grey and the flare would have been grey with it.
+>
+> ✅ **`NOTE_FLIGHT.launchDelay` IS BACK TO ALEX'S 289ms** (849 × 0.34). It was 0
+> for exactly one session because the delay exists to be covered by the departure
+> burst, and the burst was not ported. It is now.
+>
+> 🕳️ **AN EMPTY SEAT IS A SOCKET, NOT AN ABSENCE.** Caught by SCREENSHOTTING the
+> port, not by reading it: empty seats were being dimmed to 30–50% opacity ON TOP
+> OF NoteHex's own `dull`, and two reductions stacked leave a ring you cannot
+> see — the stacks read as "one note and some padlocks". One `SOCKET_HUE`
+> (`#2a1a50`, the preview's), dimmed once.
+>
+> 🎯 **THE VERIFICATION METHOD IS THE REUSABLE PART.** `.scratch/_shotpage.jsx`
+> dumps the SHIPPED client through React SSR as a standalone HTML page, and
+> `.scratch/_burstpage.jsx` does the same for a row of chips mid-burst. Rendered
+> in a headless Chromium they can be measured and LOOKED AT — the seat offsets
+> came back 56.2 / 32.4px, identical to the preview's. ⚠️ Two harness quirks:
+> the bundler stubs image assets, so the stage art must be pointed at
+> `.scratch/_board_bg.jpg` and the blend layers hidden before screenshotting;
+> and the page keeps a timer alive, so node needs killing rather than waiting.
+>
+> 🐛 **`determinismCheck` COUNTS THE LITERAL CALL TEXT ANYWHERE IN THE MONOLITH,
+> COMMENTS INCLUDED.** A comment explaining why the burst key does NOT use a
+> random draw spent two of the pinned 44 draws and failed the suite. Worth
+> knowing before someone spends an hour hunting a draw that does not exist.
+>
+> ✅ **GREEN.** `check:bundle` 0 warnings · `arch` 8 · `render` 8/8 · `client` 6 ·
+> `determinism` 22 · `engine legal eval transition turnflow battleflow melody
+> slime eleven score harness riffparity skilltree shamisen b0 riff trace` —
+> riffparity 127598, riff 70970, harness 1663, trace 1834, unchanged.
+>
+> 🔴🔵 **AND EACH PANEL NOW WEARS ITS OWN STAT'S COLOUR.** Drive is outlined and
+> glows red, Sustain blue. Both were being forced to `#ff66cc`, the stack-commit
+> accent — survivable while the panels also appeared outside step 1, but they are
+> gated TO step 1 now, so the `isChordStep` override was unconditional and the
+> two panels were the same pink box at opposite ends of the board. The outline is
+> the only thing that says which stack you are looking at from across the screen.
+> 📌 The coloured shadows FOLLOW the black one rather than replacing it: the
+> panel sits on a lit board, and a coloured glow with nothing dark underneath
+> just reads as more neon.
+>
+> 🎼 **THE COMMIT TRACK IS STEP 2 ONLY**, the same argument as the stacks. Two
+> things used to ride along inside it: the "✓ N hex" movement hint (the HUD says
+> it in three other places during step 3, the Move button included) and the ZOOM
+> RESET — which now has its own permanent home beside the Tone button, because a
+> control for panning the board cannot live inside a panel that is up for one
+> step of the turn. ⚠️ `clientRenderCheck` §3 changed with it: it asserted "the
+> track rendered", which was true for months and became the WRONG assertion the
+> moment the panels earned a step to belong to. It now asserts the GATE — stacks
+> up, track not — on the step a fresh game opens in.
+>
+> 🐛 **THE CHORD FLIGHT HAD NO LIVE PATH AND NOTHING SAID SO.** Step 1's
+> stack-commit grid (in the HUD, not the board) called `clickNoteStock(idx,
+> undefined, true)` — and that second argument IS the flight, because it is the
+> only way the handler learns where the note is coming FROM. So every stack
+> commit landed with no animation, while the identical commit from the big hand
+> flew. Since that grid is the only stack-commit control there is during step 1,
+> the chord flight built in §5-aug28b had, in practice, never run once. One
+> argument. 📌 The DEPARTURE flare still does not fire there — it is drawn inside
+> a `NoteHex` and those 26px grid chips are still old clip-path hexes. The
+> arrival flare, at the seat, does.
+>
+> 📏 **AND THE FLIGHT NOW MEASURES WHAT IT LEFT.** `size0` was hardcoded to
+> `NOTE_HEX.size`; a commit can start from the 60px hand or that 26px grid, and a
+> chip that pops to the wrong size on frame one breaks the whole illusion that
+> the thing flying is the thing you touched. It reads the clicked element's rect.
+>
+> 🪦 **AND THE CLIP-PATH CHIP IS RETIRED — `.hexw` / `.hexi` NO LONGER EXIST.**
+> The last one alive was step 1's stack-commit grid in the HUD, the pool you
+> actually pick from when loading a chord, so the notes you were choosing between
+> were flat tiles while the seats they flew into were glowing rings.
+> ⚠️ **THE SIZE IS MEASURED, NOT CHOSEN.** The grid was rendered through SSR,
+> forced to the real 238px HUD column, and the rows counted: 11 chips (the
+> Ronin's stock, the biggest there is) at `STACK_GRID_CHIP` = 34 with the grid's
+> gap of 2 come out **6 + 5, two rows, 87px** — the same footprint the old 26px
+> chip had. 40 breaks it to three, and every row carries a ▲ preview strip, so a
+> third row costs more than a third of the height. 📌 It is a 19px hexagon where
+> the old chip drew 26 and it still reads better: a stroked ring with a halo
+> carries further than a filled slab.
+> 🎆 **The chain is now unbroken** — click → departure flare → flight → landing
+> flare — because the flare needs a NoteHex to be drawn inside and this grid
+> finally has one.
+> 📌 **NoteHex.jsx's header carried the excuse and no longer does.** It said the
+> clip-path classes were "still correct for the Commit Track and the two Chord
+> Stacks, which are filled chips and want to stay that way." That was never a
+> design position, only an unfinished port, and it read as one for two days.
+>
+> ▶️ **NEXT.** **(1) What is still preview-only:** the dial needle swinging from
+> its pre-commit value (the preview captures the value BEFORE the stack changes
+> so the needle has somewhere to swing from — that is the whole point of it), the
+> per-panel headline and `RANK n` readout, lit-vs-dim sockets as a choice, the
+> chip's optional bezel + directional light (`SKIN`, dialled at 0 so nothing is
+> owed), the idle bracket step (dialled OFF), the note-stock hand restyle, the
+> wordless coach layer and the badges. **(2) The other half of `test:render`** —
+> ⚠️ NOTHING IN ANY SUITE DRIVES A CLICK, so every burst and flight in this pass
+> was verified by screenshot and by reading, not by a test. `jsdom` still will not
+> install on this machine.
+
+## 5-aug28b. 🧭 session handoff, 2026-08-28b (the commit chips and the flight)
+
+> 🎵 **THE CHIP THAT FLIES IS NOW THE CHIP THAT LANDS.** Alex reported four
+> things off one screenshot; all four were the same fact wearing different
+> clothes — §5-aug28 below ported the PANEL SHELLS and nothing inside them, so
+> the commit region was a new box around old contents.
+>
+> ✅ **COMMITTED NOTES ARE REAL `NoteHex` CHIPS.** The eight commit-track seats
+> and the twelve chord-stack slots were still the `.hexw`/`.hexi` clip-path
+> divs — filled hexagons, 33×37, flat. That is why a note "reverted to the old
+> style" the instant it was placed: it did, literally. Track seats are
+> `COMMIT_OVERLAY.trackChip` (69, Alex's), stack slots are `stackChip`. Zero
+> `.hexw` chips remain in the commit region — probed, not assumed.
+>
+> ⚠️ **`stackChip` IS 58, NOT THE 72 HE DIALLED, AND THE PREVIEW COULD NOT HAVE
+> TOLD HIM.** The preview mocks a chord stack with THREE seats; the real one has
+> SIX, because locked slots render greyed rather than absent. Six 72px chips need
+> 447px and the panel has 368px. 58 is where the drawn hexagon matches the 33px
+> chip it replaces, so the LOOK ports at the footprint the panel already had.
+> 🎯 **Put a six-seat stack on the preview page and re-dial STACK CHIP** — this
+> is a placeholder wearing an arithmetic justification, not a taste call.
+> 📌 The inline `DRIVE`/`SUSTAIN` title and the `⚔️5` readout came out of the
+> slot row to make the seats fit. Neither was lost: the `StatKnob` beside them
+> already draws its own label and its own value, so both were being said twice.
+>
+> 🎸 **THE FLIGHT IS PORTED — `src/ui/NoteFlyChip.jsx` (new, 137 lines).** The
+> old `.note-fly-chip` was firing correctly and reading as nothing: a solid
+> hexagon translated in a straight line and faded out. The preview's is
+> ballistic (a 95px bowed arc), it morphs from the hand chip's size to the
+> seat's, its bracket ring spins 240°, and it sheds three rings along its own
+> path. Web Animations API, not CSS — the endpoints are wherever the seat is,
+> and a keyframe cannot be told that.
+>
+> 🐛 **THE OLD CHIP WAS ALSO BEING KILLED TWO-THIRDS OF THE WAY OVER.** Both
+> fly calls wiped their state with `setTimeout(…, 500)` fired at launch — a
+> second copy of the duration living in a different file from the animation. The
+> flight is 751ms. `onDone` is now the animation reporting its own landing.
+> ⚠️ **`NOTE_FLIGHT.launchDelay` IS 0 AND HIS IS 0.34.** The preview holds the
+> chip while the DEPARTURE BURST covers the pause; the burst is not ported, so
+> the same delay here is a chip sitting still for a third of a second, which
+> reads as a dropped click. **Restore it in the pass that lands the burst.**
+>
+> 🐛 **THE SUSTAIN DIAL WAS SITTING ON THE FIRST COMMITTED NOTE.** `knobX` is
+> measured from the panel's INNER edge — the comment said OUTER, which is what
+> made it easy to miss. For Drive (panel left, dial right) that is empty space;
+> for Sustain the inner edge is the LEFT edge, exactly where the slots start,
+> and nothing reserved room. `COMMIT_OVERLAY.knobPad` (78 = a 38px knob at scale
+> 1.90, plus its offset) is now padding on whichever side the dial is on.
+>
+> 🎸 **THE STACKS RETIRE WHEN STEP 1 ENDS.** They rendered through Step 2 and
+> Step 3, flanking the board long after the last thing you could do with them was
+> over. The gate is `turnStep === 'chord'` and NOT "the budget is spent":
+> choosing to commit NOTHING to a chord ends the step just as much as spending
+> all three does. Nothing is lost — the mini Drive/Sustain dials on the spirit
+> already report what is in them.
+>
+> 🎯 **AND BOTH FLY AIMS NOW QUERY THE REAL SEAT.** §5-aug28 fixed the chord
+> stack's aim and left the track's: it divided the panel width by 8 and added a
+> 40px guess for the TRACK label, numbers that stopped being true the moment the
+> seats changed size — which they just did. Same bug, same fix, one seam later.
+>
+> ✅ **GREEN.** `check:bundle` 0 warnings · `test:arch` 8 · `test:render` 8/8 ·
+> `test:client` 6 · plus `engine legal eval transition turnflow determinism
+> battleflow melody slime eleven score harness riffparity skilltree shamisen b0
+> riff trace` — `riffparity` 127598, `harness` 1663, `trace` 1834, unchanged.
+> ⚠️ `test:all` in ONE command still restarts the local VM partway (the memory
+> ceiling in CLAUDE.md); the suites were run in two halves, not skipped.
+>
+> ▶️ **NEXT.** Still §5-aug28's two arms, minus what just landed. **(1) The rest
+> of the overlay** — the departure/landing BURSTS (and `launchDelay` with them),
+> the dial needle swinging from its pre-commit value, lit/dim sockets, the chip's
+> bezel + directional light, the idle bracket spin, the note-stock hand restyle,
+> the wordless coach layer and the badges. **(2) The other half of
+> `test:render`** — a DOM, then commit a track and end a turn; `jsdom` still
+> will not install on this machine.
+
+## 5-aug28. 🧭 session handoff, 2026-08-28 (the note-commit overlay, WIRED IN)
+
+> 🎛️ **THE OVERLAY IS IN THE GAME.** `.scratch/note-commit-overlay.html` had been
+> a preview page since 2026-08-26; its geometry now renders on the real board.
+> Three panels moved, and only their SHELL moved — see the split below.
+>
+> ✅ **`src/ui/NoteCommitOverlay.jsx` (new, 118 lines)** holds `ChordStackPanel`,
+> `CommitTrackPanel`, `PayoutRouterPanel` and the `COMMIT_OVERLAY` tuning block.
+> ⚠️ **IT IS SHELL-ONLY, DELIBERATELY.** Every number the panels show and every
+> click they answer to stayed in `rlsw-simulator-v3_8_1.jsx` and arrives as
+> `children`. The commit region is where the 26 Aug rework cut across a function
+> boundary and shipped a game that could not leave turn one; a restyle that
+> cannot reach the commit path cannot repeat that, and this one cannot.
+>
+> 🎸 **THE CHORD STACKS ARE NOW TWO PANELS, NOT ONE.** They flank the bottom of
+> the board (`left/right:3%`, `width:45%`, `bottom:3%`) instead of stacking in a
+> single column at `left:4`. Each carries the player HUD's own amp knob —
+> `StatKnob`, magnified by a CSS transform rather than redrawn, so the geometry
+> is bit-identical to the HUD's.
+>
+> 🐛 **THE SPLIT WOULD HAVE SILENTLY BROKEN THE FLY ANIMATION, and nothing would
+> have said so.** `commitNoteToStack` aimed its chip by taking the SHARED panel's
+> height and dividing by `STACK_CAP_MAX` — arithmetic that only meant anything
+> while both stacks were one tall column. Two panels at opposite ends of the
+> board would have thrown every chord note at the middle of the screen. It now
+> queries the real `[data-stack-slot]` element, which is correct under any future
+> layout. No suite covers this animation; it was caught by reading, not by a test.
+>
+> 🎯 **THE KNOB'S `boost` IS THE HOVER PREVIEW, and it rides state the client
+> already kept.** The HUD's copy of this dial spends `boost` on live combat
+> modifiers; saying that twice teaches nothing. On the board it answers "where
+> would the note under my cursor take me" — the question the preview's phantom
+> needle answered — by reading `hoverScale`, the exact state the STACK COMMIT
+> PREVIEW block below the note stock has used for months. A second hover channel
+> would have drifted out of step with that one the first time either changed.
+>
+> ✅ **AND THE CLIENT CAN FINALLY BE DRIVEN — `engine/clientRenderCheck.jsx`,
+> `test:render`, 8 checks**, wired into `test:all` and `ARCHITECTURE.md` in the
+> same pass. `Game` is now exported (one word) so a test can mount it; the suite
+> renders it through `react-dom/server` against `buildTestingGroundsConfig()` and
+> asserts the board came out with its panels on it. 🎯 **This is the check the
+> last three handoffs asked for, and it is the half that needs no DOM.**
+> `clientRefCheck` catches a missing NAME; this catches the THROW — which is what
+> both August client bugs actually were.
+>
+> 🐛 **IT FOUND A REAL DEFECT ON ITS FIRST RUN.** Two `<filter>` elements carried
+> `color-interpolation-filters="sRGB"`; React wants `colorInterpolationFilters`
+> and was dropping the attribute silently, so the outline-crush filters have been
+> compositing in linearRGB the whole time. Fixed.
+>
+> ⏳ **WHAT `test:render` STILL IS NOT.** It does not click, does not commit a
+> track and does not end a turn — so the exact 26 Aug bug would still get past
+> it. That half needs a DOM, and **jsdom will not install on this machine**:
+> `npm install jsdom` hangs on the local VM's network the same way `npm run
+> build` bus-errors on its memory. ⚠️ A partial `node_modules/jsdom` was left
+> behind by the interrupted install and should be cleared before the next
+> `npm install`.
+>
+> 🎛️ **FOUR NUMBERS IN THE PORT ARE MINE, NOT ALEX'S** — `COMMIT_OVERLAY`'s
+> `knobScale` (1.90), `knobX` (44) and `knobY` (22), plus `ghostBoost`. Every
+> other value was read off a control panel he set. They have sliders on the
+> preview page's STACK DIAL row; they want landing.
+>
+> ▶️ **NEXT.** Two arms, in this order. **(1) The rest of the overlay** — the
+> note-stock hand restyle, the wordless coach layer, the badges and the burst /
+> flight FX are all still preview-only; only the board's three panels crossed
+> over. **(2) The other half of `test:render`** — a DOM, then commit a track and
+> end a turn. §8 item 5 (the **Wa no Koe replacement**) is still the biggest open
+> arm and still the last Ronin ability, and it touches the kernel, its suite AND
+> the client, so it is still the pass that most wants a driving test first.
+
+## 5-aug26b. 🧭 session handoff, 2026-08-26b (the Shamisen rework, REPAIRED)
+
+> 🚨 **THE 2026-08-26 SHAMISEN REWORK SHIPPED A GAME THAT COULD NOT LEAVE TURN
+> ONE, AND ALL EIGHTEEN SUITES WERE GREEN WHILE IT DID.** Alex reported it as
+> "commit options don't show, so no action can happen, only end turn". That is
+> exactly what it was.
+>
+> 🐛 **THE BUG, EXACTLY.** The rework deleted the board-token mechanic. One of
+> the deleted blocks — "FEED THE CURSED SHAMISEN" — sat in the **middle of the
+> melody commit**, and the cut ran past the end of it. It took with it:
+>
+> - `setNoteField('cosmic_ronin', { lastMoveBudget: … })` — the shadow's legs;
+> - **`setMovedThisTurn(false)` and `setAction('move')`** — the last two lines of
+>   the commit, which are what hand the player the move/act phase;
+> - **the entire `startNewTurnNotes` function** — the turn-start dispatch, the
+>   seeded draw and the refill — while **two call sites kept calling it**.
+>
+> So: committing a track left the player in no action mode, and ending the turn
+> threw a `ReferenceError` before the next Spirit was ever dealt a hand. Restored
+> verbatim from `85dcf02` minus the feeding block, with a `⚠️` over the braces
+> saying why the region is dangerous to cut across.
+>
+> 🎯 **NOTHING IN THE REPO COULD HAVE CAUGHT IT, AND THAT IS THE REAL FINDING.**
+> `check:bundle` was clean because **esbuild reads a call to a function nobody
+> defined as a reference to a global** — legal JavaScript right up until it runs.
+> All eighteen suites were clean because **every one of them tests the engine and
+> none of them drives the client**, which is where three-quarters of this ability
+> lives. §5-aug25b below wrote that same sentence a day earlier and the next pass
+> still shipped this.
+>
+> ✅ **SO THE CLIENT GOT ITS FIRST CHECK: `engine/clientRefCheck.mjs` —
+> `test:client`, 6 checks over 41 `.jsx` files**, wired into `test:all` and
+> `ARCHITECTURE.md` in the same pass. It parses every `.jsx` with espree and
+> asserts that every name it reads is declared, imported, or a real browser
+> global. Scope-blind on purpose (`npm run lint` is the thorough, slow version);
+> it answers only the question that cost the build. Runs in ~0.4s.
+>
+> 🐛 **AND IT IMMEDIATELY FOUND A SECOND, OLDER CRASH.** `startSonicAttack` reads
+> `atkSkills`, a local that **"clearing old clutter" (52e16a2) deleted weeks ago**
+> along with the amp-tier bonuses above it, missing this one surviving use. Every
+> **Intergalactic 0 Sonic Attack** threw a `ReferenceError` on that line — and only
+> his, because `attacker.id === 'intergalactic_0'` short-circuits for everyone
+> else. Nobody had reported it. Now reads `nsA.unlockedSkills` directly.
+>
+> 🧹 **THREE PIECES OF THE OLD TOKEN WERE STILL LYING AROUND** and are gone:
+> `economy.js` still seeded `cursedShamisen: { hex, range, roundsLeft, touched[] }`
+> (and never seeded `shamisenCurse` at all — now it does); `GameStyles.jsx` still
+> carried `shamisen-sway`, `shamisen-stalk` and `cursed-by-melody`, keyframes for a
+> standee that no longer renders; and `cadence.js` still explained the feeding
+> phrase at length above its own tombstone.
+>
+> ✅ **THE ABILITY ITSELF IS CORRECT AGAINST `RONIN_ABILITY_DESIGN.md` §2.3.**
+> Activation charges 2 Db and a 3-round CD through `firePatch`; `tickShamisen`
+> skips `cursed_shamisen` so the curse cannot accelerate itself; the debt resets
+> each round inside the round tick; the penalty hook fires from `applyVibeDamage`
+> **before** the engine's damage slice, so it reads the pre-damage cooldown map;
+> the glow is identical whether or not he paid. **One thing the code does that the
+> doc did not say: the curse ENDS when the penalty bites.** The doc now says it
+> (§2.3.3) — the code is right, the doc was silent.
+>
+> **Counts (all green):** engine ✓, legal 582, eval 154, transition 242, turnFlow 73,
+> determinism 22, battleFlow 54, melody 159, slime 127, eleven 38, score 122,
+> harness 1663, riffparity 127598, skillTree 159, shamisen 34, **client 6 (new)**,
+> b0 ✓ (253506), riff 70970, trace 1834, arch 8 (160 modules, 222 paths, 516
+> exports). `check:bundle` **0 warnings**.
+>
+> ⏳ **STILL UNVERIFIED BY ANYTHING BUT READING.** `test:client` proves the client's
+> names exist; it does not prove the client *behaves*. The curse tick, the debt
+> button, the penalty on a real hit and the purple glow have never been executed by
+> a machine. **Play a match.** That is now the third handoff in a row to end with
+> that sentence, which is itself the argument for the next item.
+>
+> ▶️ **NEXT — and this is a change of order.** §8 item 5 (the **Wa no Koe
+> replacement**) is still the biggest open arm and still the last Ronin ability.
+> But two consecutive reworks have now shipped client bugs that no suite could
+> see, and the second one made the game unplayable. 🎯 **Before Wa no Koe, give the
+> client a way to be driven** — even a thin one: mount `Game` headless, commit a
+> track, end a turn, assert the next Spirit was dealt a hand. `test:client` is a
+> spellchecker; that would be a smoke test. Wa no Koe touches the kernel, its
+> suite AND the client, so it is exactly the pass that will need one.
+
+---
+
+## 5-aug25b. 🧭 session handoff, 2026-08-25b (the Shamisen, BUILT — 🪦 NOW VOID)
+
+> ⚠️ **EVERYTHING BELOW DESCRIBES A MECHANIC THAT NO LONGER EXISTS.** The
+> 2026-08-26 rework deleted the board token, the feeding phrase, the wander, the
+> fray and the exorcism outright — see §5 above. It is kept because its
+> **findings** outlived its subject: an unchanged assertion count after a real
+> change means nothing was ever asserting, and three of the four bugs that pass
+> shipped were in the client, where no suite could see them. That is the same
+> sentence §5 above had to write again.
 
 > ✅ **THE WHOLE REWORK LANDED — §8 ITEM 4's STEPS (a) THROUGH (f), IN ONE PASS.**
 > The ability described in `RONIN_ABILITY_DESIGN.md` §2.3 is the ability that now

@@ -56,16 +56,74 @@ export function GameStyles() {
         }
         .stitle{font-family:'Saira Stencil One',sans-serif;font-size:8px;color:#5a7a9a;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;display:flex;align-items:center;gap:6}
         .stitle::before{content:'';width:3px;height:9px;border-radius:2px;background:linear-gradient(180deg,#f6ad55,#ff6644);box-shadow:0 0 6px #f6ad5566}
-        /* Hexagonal note chips — pointy-top, matching the board.
-           .hexw = outer shell (background acts as the border), .hexi = inner fill */
-        .hexw{clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);display:flex;align-items:center;justify-content:center;padding:1.5px;flex-shrink:0;box-sizing:border-box}
-        .hexi{clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+        /* 🪦 THE CLIP-PATH CHIPS ARE GONE (2026-08-28). .hexw / .hexi drew every
+           note in the game as a SOLID hexagon — an outer div whose background acted as
+           the border, an inner div as the fill. Nothing uses them now: the note stock,
+           the step-1 commit grid, the eight track seats and the twelve chord-stack
+           seats are all NoteHex inline SVG. ⚠️ DO NOT BRING THEM BACK FOR "just one
+           small chip". The reason they died is in NoteHex.jsx's header and it is not a
+           style preference: a filled hexagon's drop-shadow hides behind the hexagon, so
+           a clip-path chip fundamentally CANNOT glow, and every one of these that
+           survived read as a dead tile sitting next to live ones. */
         /* 🎵 Note fly chip — animates from source (Note Stock) to target (commit track / chord stack) */
-        .note-fly-chip{position:fixed;z-index:999;pointer-events:none;animation:note-fly .4s cubic-bezier(.22,1,.36,1) forwards}
-        @keyframes note-fly {
-          0%   { transform: translate(var(--fly-dx), var(--fly-dy)) scale(1.2); opacity: 1; }
-          80%  { transform: translate(0, 0) scale(1.05); opacity: 1; }
-          100% { transform: translate(0, 0) scale(1); opacity: 0; }
+        /* 🎵 THE NOTE IN FLIGHT. The path, the size morph and the bracket spin are
+           driven from NoteFlyChip.jsx through the Web Animations API — a bowed
+           arc is not expressible in keyframes without hardcoding the endpoints,
+           and the endpoints are wherever the seat happens to be. Only the shed
+           trail rings are CSS, because they are identical apart from a delay. */
+        .note-fly-layer{position:fixed;inset:0;z-index:999;pointer-events:none;overflow:visible}
+        .note-fly-chip-v2{position:absolute;left:0;top:0;will-change:transform}
+        .note-fly-wave{position:absolute;pointer-events:none;overflow:visible;display:block}
+        .note-fly-wave polygon{transform-box:view-box;transform-origin:60px 60px;
+          animation:note-fly-wave var(--wave-ms) cubic-bezier(.16,.84,.36,1) var(--wave-delay) both}
+        @keyframes note-fly-wave{
+          0%   { opacity:.95; stroke-width:3.6; transform:scale(1); }
+          100% { opacity:0;   stroke-width:.6;  transform:scale(var(--reach)); }
+        }
+
+        /* 🎆 THE COMMIT BURST — the flare a note throws as it leaves your hand,
+           and the one it throws again as it seats. Ported wholesale from
+           .scratch/note-commit-overlay.html at the "overdrive" variant Alex
+           selected, which is flash + core + lifted letter + the detent spin (no
+           shockwave ring, no starburst spokes — those are the other three
+           presets and they are deliberately not here).
+           ⚠️ EVERY LAYER LIVES IN THE CHIP'S OWN 120×120 viewBox, inside
+           NoteHex's <svg>. That is what keeps the burst the right size on a 67px
+           hand chip AND on a 72px stack seat without a scale factor anywhere,
+           and what lets the core sit BEHIND the chip's rings while the flash
+           sits in front. A burst drawn in a separate overlay cannot do either. */
+        .notehex-burst *{transform-box:view-box;transform-origin:60px 60px}
+        @keyframes b-core{
+          0%   { opacity:0;   transform:scale(.2); }
+          16%  { opacity:.85; transform:scale(1); }
+          100% { opacity:0;   transform:scale(1.5); }
+        }
+        /* the arrival's answer to b-core: it falls INTO the seat instead of out of it */
+        @keyframes b-seat{
+          0%   { opacity:0;  transform:scale(1.55); }
+          38%  { opacity:.9; transform:scale(.93); }
+          100% { opacity:0;  transform:scale(1); }
+        }
+        @keyframes b-flash{
+          0%   { opacity:0; stroke-width:3.4; transform:scale(1); }
+          12%  { opacity:1; stroke-width:7;   transform:scale(1.04); }
+          100% { opacity:0; stroke-width:2;   transform:scale(1.18); }
+        }
+        @keyframes b-lift{
+          0%   { opacity:1; transform:scale(1); }
+          100% { opacity:0; transform:scale(2.1); }
+        }
+        /* ⚠️ 120° MAPS THE THREE BRACKETS ONTO THEMSELVES — upper-left lands on
+           middle-right, middle-right on lower-left — so the ring at rest is
+           identical to where it started and only the MOTION reads. 60° lands on
+           the other three corners and mirrors the pinwheel, which the chip then
+           keeps for the rest of the game. That is why the detent is 120 and not
+           a number that "looks like more spin". */
+        @keyframes b-detent{
+          0%   { opacity:1; transform:rotate(0deg); }
+          74%  { opacity:1; transform:rotate(var(--det-over)); }
+          88%  { opacity:1; transform:rotate(var(--det)); }
+          100% { opacity:0; transform:rotate(var(--det)); }
         }
         *::-webkit-scrollbar{width:7px;height:7px}
         *::-webkit-scrollbar-track{background:#070d18}
@@ -148,27 +206,37 @@ export function GameStyles() {
           0%,100% { filter: drop-shadow(0 0 3px #ffd70088); }
           50%     { filter: drop-shadow(0 0 9px #ffd700) drop-shadow(0 0 16px #ffd70055); }
         }
-        /* ⚔️↔🛡️ DUAL-LEGAL NOTE — both stacks legalize this pitch, so the hex says
-           both. Two keyframes because the hex is two elements: .hexw carries the
-           outer shape colour and glow, .hexi the interior and the letter. They must
-           stay phase-locked, hence identical duration/easing at both call sites.
-           The dwell at each end is intentional — a straight crossfade reads as one
-           muddy purple at speed, which is the exact reading we do NOT want, since a
-           third colour would imply a third category. The cycle returns to red at
-           100% so the loop seam is invisible.
+        /* ⚔️↔🛡️ DUAL-LEGAL NOTE — both stacks legalize this pitch, so the chip says
+           both. The dwell at each end is intentional: a straight crossfade reads as
+           one muddy purple at speed, and a third colour would imply a third
+           category. The cycle returns to red at 100% so the loop seam is invisible.
            ⚠️ #ff6644 / #44aaff are DRIVE_C / SUSTAIN_C in rlsw-simulator-v3_8_1.jsx.
            They're literals here only because this is a CSS string; change one, change
-           both, or the hex will disagree with the stat readouts it's pointing at. */
-        @keyframes stack-dual-hex {
-          0%, 25%   { background: #ff6644; filter: drop-shadow(0 0 7px #ff664488); }
-          42%, 58%  { background: #44aaff; filter: drop-shadow(0 0 7px #44aaff88); }
-          75%, 100% { background: #ff6644; filter: drop-shadow(0 0 7px #ff664488); }
+           both, or the chip will disagree with the stat readouts it points at.
+
+           🪦 stack-dual-hex / stack-dual-ink LIVED HERE AND ARE GONE (2026-08-26).
+           They animated 'background' on the two nested clip-path divs, which the Note
+           Stock no longer uses — it renders ui/NoteHex.jsx, an SVG, where the colour
+           lives on 'stroke'. Nothing else ever referenced them: the Commit Track and
+           both Chord Stacks have no dual state. The three below replace them. */
+        @keyframes note-dual-stroke {
+          0%, 25%   { stroke: #ff6644; }
+          42%, 58%  { stroke: #44aaff; }
+          75%, 100% { stroke: #ff6644; }
         }
-        @keyframes stack-dual-ink {
-          0%, 25%   { color: #ff6644; background: #2a0f0a; }
-          42%, 58%  { color: #44aaff; background: #08202e; }
-          75%, 100% { color: #ff6644; background: #2a0f0a; }
+        @keyframes note-dual-bloom {
+          0%, 25%   { filter: drop-shadow(0 0 2px #ffffffcc) drop-shadow(0 0 4px #ff6644) drop-shadow(0 0 11px #ff664499); }
+          42%, 58%  { filter: drop-shadow(0 0 2px #ffffffcc) drop-shadow(0 0 4px #44aaff) drop-shadow(0 0 11px #44aaff99); }
+          75%, 100% { filter: drop-shadow(0 0 2px #ffffffcc) drop-shadow(0 0 4px #ff6644) drop-shadow(0 0 11px #ff664499); }
         }
+        /* ⚠️ Phase-locked with the two above — identical duration and easing at every
+           call site, or the ring and the brackets drift apart mid-cycle. */
+        .notehex-dual .notehex-ring { animation: note-dual-stroke 2.2s ease-in-out infinite; }
+        .notehex-dual .notehex-brk  { animation: note-dual-stroke 2.2s ease-in-out infinite; }
+        .notehex-dual .notehex-glow { animation: note-dual-bloom  2.2s ease-in-out infinite; }
+        /* 🔤 The chip's letter follows the HUD's mono, not the SVG default serif. */
+        .notehex text { font-family: 'Share Tech Mono', ui-monospace, monospace; font-weight: 700; }
+
         @keyframes fx-ring {
           0%   { transform: scale(0.55); opacity: 0.95; }
           100% { transform: scale(2.6);  opacity: 0; }
@@ -228,23 +296,10 @@ export function GameStyles() {
           0%,100% { opacity: 0.45; }
           50%     { opacity: 1; }
         }
-        /* 🎸 Cursed Shamisen — idle sway while it plays itself on the boards */
-        @keyframes shamisen-sway {
-          0%,100% { transform: translateY(0)      rotate(-3deg); }
-          50%     { transform: translateY(-2.5px) rotate(3deg); }
-        }
-        /* 🎸💀 …and the lurching gait once it starts hunting */
-        @keyframes shamisen-stalk {
-          0%,100% { transform: translateY(0)    rotate(-13deg) scale(1); }
-          40%     { transform: translateY(-4px) rotate(-7deg)  scale(1.05); }
-          70%     { transform: translateY(1px)  rotate(-17deg) scale(0.98); }
-        }
-        /* 🎶 A Spirit the Shamisen's melody reached this round — the curse
-           clings to them until the next time it plays. */
-        @keyframes cursed-by-melody {
-          0%,100% { opacity: 0.25; transform: scale(1); }
-          50%     { opacity: 0.8;  transform: scale(1.06); }
-        }
+        /* 🪦 SHAMISEN ANIMATIONS — removed 2026-08-26 with the board token.
+           shamisen-sway, shamisen-stalk and cursed-by-melody all drove the
+           standee that no longer exists. The curse's only animation now is
+           shamisen-glow, injected next to the ability bar it belongs to. */
         /* 🔊 AMP DECKS (AMP_DECK_DESIGN.md §3) — the rig at your corner */
         /* A fresh cabinet drops onto the stack with a bounce */
         @keyframes amp-drop-in {

@@ -34,8 +34,10 @@ import { VoiceRollDie } from "./ui/VoiceRollDie.jsx";
 import { NeonStrikeFX } from "./ui/NeonStrikeFX.jsx";
 import { ScoreTrackOverlay } from "./ui/ScoreTrackOverlay.jsx";
 import { StatKnob } from "./ui/StatKnob.jsx";
+import { ChordStackPanel, CommitTrackPanel, PayoutRouterPanel, COMMIT_OVERLAY,
+         StackNest, stackSeatPos } from "./ui/NoteCommitOverlay.jsx";
 import { ToneFader } from "./ui/ToneFader.jsx";
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from "react";
 import React from "react";
 import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
 import { micAvailable, startMicListening } from "./audio/micPitch.js";
@@ -422,6 +424,11 @@ const SIGNATURE_TESTS = {
 };
 
 import { PC_PLAY_NAMES } from "./music/pitchNames.js";
+// 🎵 The Note Stock chip. SVG rings, not clip-path divs — NoteHex.jsx opens with
+// the reason why, and it is a reason worth reading before touching the chip.
+import NoteHex, { NOTE_HEX, NOTE_BURST } from "./ui/NoteHex.jsx";
+// 🎵 The note in flight — a real NoteHex on a bowed arc, not the old flat chip.
+import { NoteFlyChip } from "./ui/NoteFlyChip.jsx";
 
 // ─── CADENCE OBJECTIVES ──────────────────────────────────────────────────────
 // Multi-turn music-theory goals: the LAST note of your confirmed track each
@@ -479,6 +486,23 @@ function pickDanceName() {
 // whole point of recolouring the highlight was to make "which stack does this note
 // feed" answerable at a glance — and that collapses the moment two screens use two
 // reds. Import these rather than pasting a literal.
+// 🕳️ The colour of an EMPTY seat — a commit-track slot or a chord-stack slot
+// with nothing in it. One constant because the preview uses one: a socket in the
+// track and a socket in a stack are the same object, and a stack-tinted socket
+// reads as a note that is already half-committed.
+const SOCKET_HUE = "#2a1a50";
+// 🎵 The step-1 stack-commit grid's chip. ⚠️ THIS IS A WRAP NUMBER, NOT A TASTE
+// NUMBER. MEASURED, not derived: the grid was rendered through SSR, forced to the
+// real 238px HUD column, and the rows counted — 11 chips (the Ronin's stock, the
+// biggest there is) at 34px with the grid's own gap of 2 come out **6 + 5, two
+// rows, 87px tall**, which is exactly the footprint the old 26px clip-path chip
+// had. 40px would break it to three rows, and each row also carries a ▲ preview
+// strip under it, so a third row costs more than a third of the height.
+// 📌 NoteHex draws its hexagon at 2R/VB = 56.7% of the box, so 34 here is a 19px
+// hexagon where the old chip drew 26 — SMALLER, and it still reads better,
+// because a stroked ring with a halo carries further than a filled slab. Do not
+// "fix" that by growing it without counting the rows again.
+const STACK_GRID_CHIP = 34;
 const DRIVE_C   = "#ff6644";
 const SUSTAIN_C = "#44aaff";
 // Dimmed backings for the same pair, for hex interiors and chip fills.
@@ -724,7 +748,12 @@ export default function RLSWSimulator() {
 }
 
 // ─── GAME ─────────────────────────────────────────────────────────────────────
-function Game({ gameState, onReturnToLobby }) {
+// 🎯 EXPORTED SO A TEST CAN MOUNT IT. SEQUENCING.md §5 ended three handoffs in
+// a row asking for "a way to drive the client", because two reworks shipped
+// client bugs that every engine suite was blind to. A component nothing can
+// import is a component nothing can check; this one word is what `test:render`
+// stands on. Nothing else imports it — the app still renders it internally.
+export function Game({ gameState, onReturnToLobby }) {
   const { mode, teams } = gameState;
   const startingLives = gameState.startingLives ?? 3;
   const playerCount = gameState.spirits.length;
@@ -1607,7 +1636,64 @@ function Game({ gameState, onReturnToLobby }) {
   const commitTrackRef = useRef(null); // ref on the commit track container for target coords
   // 🎸 FLY CHORD NOTE — animated chip that flies from Note Stock to the chord stack
   const [flyChordNote, setFlyChordNote] = useState(null); // { note, x, y, dx, dy, key }
+  // 🎆 THE COMMIT BURST — which single chip is flaring, and which way.
+  // `burstOut` is the note leaving your hand; `burstIn` is it seating. Both are
+  // { key, seat, hue, letter, dir } where `seat` names the chip that owns it —
+  // 'hand:3', 'track:0', 'drive:1'. ⚠️ A NAME, NOT A REF: the seat that lands a
+  // note may not have existed when the note left (the stack panels retire, the
+  // track re-renders), and a ref captured at launch would be pointing at a node
+  // React has since replaced. The chip that matches the name draws the burst.
+  const [burstOut, setBurstOut] = useState(null);
+  const [burstIn,  setBurstIn]  = useState(null);
+  // 🧹 Cleanup only — the animation ends itself at opacity 0 with `both`, so
+  // this is about not leaving dead nodes in eight seats, NOT about timing.
+  const burstOutTimer = useRef(null), burstInTimer = useRef(null);
+  // ⚠️ A PLAIN COUNTER, NOT `Date.now()` AND NOT A RANDOM DRAW. The key only has
+  // to differ from the last one so React builds a fresh node and the CSS
+  // animation restarts. `Date.now()` can repeat inside a millisecond (a
+  // departure and its own arrival can land in the same tick), and a random key
+  // would spend one of the draws `determinismCheck` pins — a cosmetic effect
+  // must not touch that budget. 📌 That check counts the literal call text
+  // ANYWHERE in this file, comments included, so do not spell it out here.
+  const burstSeq = useRef(0);
+  const fireBurst = (which, payload) => {
+    const set   = which === 'in' ? setBurstIn : setBurstOut;
+    const timer = which === 'in' ? burstInTimer : burstOutTimer;
+    set({ ...payload, dir: which, key: ++burstSeq.current });
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => set(null),
+      Math.round(NOTE_BURST.duration * (which === 'in' ? NOTE_BURST.inScale : 1)) + 300);
+  };
   const chordStackRef = useRef(null); // ref on the vertical chord stack for target coords
+  // 🎸 ⚠️ ONE REF PER STACK, NOT ONE FOR BOTH. The stacks used to share a single
+  // tall panel, so the fly animation could aim at "the panel" and work out a slot
+  // by dividing its height. They are now two separate panels at opposite ends of
+  // the board, and aiming at the wrapper would fire every chord note at the
+  // centre of the screen. See the fly block in commitNoteToStack.
+  const driveStackRef   = useRef(null);
+  const sustainStackRef = useRef(null);
+  // 🎯 THE ROUTER SITS UNDER THE TRACK, WHATEVER HEIGHT THE TRACK CAME OUT AT.
+  // Ported from the preview page's `place()`. A constant `top:52` was fine while
+  // the track was a compact centred pill; it now spans the board at `left:3%`,
+  // and its height moves with the "click to undo" subtitle, so a fixed number
+  // would either sit on top of the track or float away from it.
+  // ⚠️ THE GUARD IS LOAD-BEARING. Setting state unconditionally from a layout
+  // effect with no dependency array re-renders forever; only write when the
+  // measurement actually changed.
+  const [routerTop, setRouterTop] = useState('11%');
+  // ⚠️ ISOMORPHIC ON PURPOSE. `test:render` renders this component through
+  // react-dom/server, where React warns that useLayoutEffect does nothing. The
+  // measurement is a browser-only concern anyway, so fall back to useEffect off
+  // the browser and keep the suite's output clean enough that a REAL warning
+  // would stand out.
+  const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+  useIsoLayoutEffect(() => {
+    const t = commitTrackRef.current, b = t?.offsetParent;
+    if (!t || !b) return;
+    const bh = b.getBoundingClientRect().height || 620;
+    const next = ((t.offsetTop + t.getBoundingClientRect().height + 8) / bh * 100).toFixed(2) + '%';
+    setRouterTop(cur => (cur === next ? cur : next));
+  });
   // 🎛️ FLOATING VOICING PANEL — toggle show/hide
   const [voicingOpen, setVoicingOpen] = useState(false);
   const [hoverScale, setHoverScale] = useState(null); // 🎼 { note, x, y } | null — stock note hover → scale-peek popup
@@ -2048,9 +2134,9 @@ function Game({ gameState, onReturnToLobby }) {
         // get paid.") is CUT — the Db page above already says clean notes pay,
         // and the root-note page already says which ones are clean. It was the
         // punchline to a joke told twice. Don't reinstate it.
-        // ⚠️ The TRANSPOSE card used to be introduced here and AGAIN in the
-        // chord tip. It's a rescue tool for a bad hand — meaningless before the
-        // player has met a hand they dislike — so it now lives only in `chord`.
+        // 🪦 The TRANSPOSE card was introduced here, then moved to `chord`, and
+        // is now gone from both because the card itself is gone. Kept as a note
+        // only so nobody re-adds the page from memory.
       ],
     },
     skill_tree: {
@@ -2111,7 +2197,10 @@ function Game({ gameState, onReturnToLobby }) {
         // the stack picks the key; restating that nothing else picks it is a
         // page spent on a non-event. Don't reinstate it.
         { body: 'Your DRIVE Stack also picks the KEY. (For the music nerds out there —) Stack a MAJ 3rd, and the tune becomes Major (bright, +1 Db). Stack a min 3rd and it turns minor (dark, +1 Sustain — needs an upgrade first!).', anchor: 'derived-mode' },
-        { body: 'Root feels wrong? That\'s what your TRANSPOSE card is for — a one-time swap of your ROOT NOTE for any note in stock. Bad opening hand? Slam that card down, homie.', anchor: 'mod-cards' },
+        // 🪦 A TRANSPOSE page stood here ("Root feels wrong? That's what your
+        // TRANSPOSE card is for…"). ⚠️ A TUTORIAL THAT NAMES A CONTROL THAT IS
+        // NOT ON SCREEN is worse than no tutorial: the player looks for it,
+        // fails to find it, and stops trusting the rest of the tips.
       ],
     },
     melody: {
@@ -3574,8 +3663,13 @@ function Game({ gameState, onReturnToLobby }) {
       addLog(`🎚️ MIXER — ${acting.name} layers ${note} a second time! (${newTrack.length} notes)`);
       return;
     }
-    // Transpose card intercept: clicking a note picks the new root
-    if (actingNoteState?.transposeCardPending) { resolveTransposeCard(idx); return; }
+    // ⚠️ A DEAD EARLY-RETURN CAME OUT OF HERE. The Transpose card's intercept
+    // ("clicking a note picks the new root") sat at the top of this function and
+    // could no longer fire, because nothing sets `transposeCardPending` any
+    // more. An unreachable `return` in the commit path is exactly the shape of
+    // the 2026-08-26 Shamisen bug (SEQUENCING §5) — a branch nobody can enter
+    // reads as a branch somebody might, and the next person to work here would
+    // have had to prove it was dead all over again.
     // 🎸 CHORD MODE — lift this note into your combat chord instead of the melody.
     // A note spent on the chord is NOT in the track, so it doesn't carry you forward
     // (harmony vs. movement). Consumes the stock slot.
@@ -3597,20 +3691,39 @@ function Game({ gameState, onReturnToLobby }) {
       const note = noteStock[idx];
       playNoteSound(note);
       // 🎸 FLY — launch chord note chip animation toward the chord stack slot
-      if (typeof _flyEvent === 'object' && _flyEvent && chordStackRef.current) {
+      // ⚠️ AIM AT THE SLOT ELEMENT, NOT AT ARITHMETIC ON THE PANEL. This used to
+      // divide the shared panel's height by STACK_CAP_MAX to guess a slot centre,
+      // which only worked while both stacks were one tall vertical column. The
+      // stacks are now two wide panels flanking the board, so the guess would land
+      // the chip in empty space — and nothing in the suite would have said so,
+      // because no test drives this animation. Querying the real slot is correct
+      // under ANY future layout, which is the point.
+      const flyPanelEl = (dest === 'sustain' ? sustainStackRef : driveStackRef).current;
+      if (typeof _flyEvent === 'object' && _flyEvent && flyPanelEl) {
         const src = _flyEvent.currentTarget?.getBoundingClientRect?.();
-        const stackEl = chordStackRef.current;
-        const stackRect = stackEl.getBoundingClientRect();
-        // Target = centre of the slot this note will land in (vertical, top→bottom)
-        const slotH = (stackRect.height - 30) / STACK_CAP_MAX; // rough per-slot height (all slots render, locked included)
         const slotIdx = stack.length; // about to become this index
-        const tgtX = stackRect.left + stackRect.width / 2;
-        const tgtY = stackRect.top + 20 + slotIdx * slotH + slotH / 2;
+        const slotEl = flyPanelEl.querySelectorAll('[data-stack-slot]')[slotIdx];
+        const tgtRect = (slotEl ?? flyPanelEl).getBoundingClientRect();
+        const tgtX = tgtRect.left + tgtRect.width / 2;
+        const tgtY = tgtRect.top + tgtRect.height / 2;
         if (src) {
           const srcX = src.left + src.width / 2;
           const srcY = src.top + src.height / 2;
-          setFlyChordNote({ note, x: tgtX, y: tgtY, dx: srcX - tgtX, dy: srcY - tgtY, key: Date.now() });
-          setTimeout(() => setFlyChordNote(null), 500);
+          // 🎯 IT LANDS IN THE STACK'S COLOUR, NOT THE COMMIT ACCENT. The chip
+          // that arrives has to be the chip that is sitting there a frame later,
+          // or the flight reads as a separate effect that happens to end nearby.
+          fireBurst('out', { seat: `hand:${idx}`, letter: note });  // hue: the chip's own
+          setFlyChordNote({ note, hue: dest === 'sustain' ? SUSTAIN_C : DRIVE_C,
+            x0: srcX, y0: srcY, x1: tgtX, y1: tgtY,
+            // 📏 THE SIZE IT LEAVES AT IS THE SIZE OF WHAT WAS CLICKED, measured,
+            // not assumed. A stack commit can start from the big 60px hand OR
+            // from the 26px grid in step 1's HUD, and a chip that pops to the
+            // wrong size on frame 1 breaks the illusion that the thing flying is
+            // the thing you touched.
+            size0: Math.max(24, Math.round(src.width)), size1: COMMIT_OVERLAY.stackChip, key: Date.now(),
+            // 🎯 the arrival burst is the flight's own business — it fires from
+            // `onDone`, so the flare and the chip land on the same frame.
+            land: { seat: `${dest}:${slotIdx}`, letter: note } });
         }
       }
       const stackKey = dest === 'sustain' ? 'sustainStack' : 'driveStack';
@@ -3640,17 +3753,23 @@ function Game({ gameState, onReturnToLobby }) {
     if (typeof _flyEvent === 'object' && _flyEvent && commitTrackRef.current) {
       const src = _flyEvent.currentTarget?.getBoundingClientRect?.();
       const trackEl = commitTrackRef.current;
-      const trackRect = trackEl.getBoundingClientRect();
-      // Target = centre of the slot this note will land in
-      const slotW = (trackRect.width - 40) / 8; // rough per-slot width
+      // ⚠️ AIM AT THE SEAT ELEMENT, NOT AT ARITHMETIC ON THE PANEL. This used to
+      // divide the panel's width by 8 and add a 40px guess for the TRACK label —
+      // numbers that stopped being true the moment the seats changed size, and
+      // nothing would have said so, because no suite drives this animation. Same
+      // fix, same reason, as the chord-stack aim above.
       const slotIdx = melodyLine.length; // about to become this index
-      const tgtX = trackRect.left + 40 + slotIdx * slotW + slotW / 2;
-      const tgtY = trackRect.top + trackRect.height / 2;
+      const seatEl  = trackEl.querySelectorAll('[data-track-seat]')[slotIdx];
+      const tgtRect = (seatEl ?? trackEl).getBoundingClientRect();
+      const tgtX = tgtRect.left + tgtRect.width / 2;
+      const tgtY = tgtRect.top + tgtRect.height / 2;
       if (src) {
         const srcX = src.left + src.width / 2;
         const srcY = src.top + src.height / 2;
-        setFlyNote({ note, x: tgtX, y: tgtY, dx: srcX - tgtX, dy: srcY - tgtY, key: Date.now() });
-        setTimeout(() => setFlyNote(null), 500);
+        fireBurst('out', { seat: `hand:${idx}`, letter: note });  // hue: the chip's own
+        setFlyNote({ note, hue: '#aa88ff', x0: srcX, y0: srcY, x1: tgtX, y1: tgtY,
+          size0: Math.max(24, Math.round(src.width)), size1: COMMIT_OVERLAY.trackChip, key: Date.now(),
+          land: { seat: `track:${slotIdx}`, letter: note } });
       }
     }
     setNoteField(acting.id, {
@@ -4083,7 +4202,83 @@ function Game({ gameState, onReturnToLobby }) {
     if (acting?.id === 'cosmic_ronin') {
       const si = actingNoteState?.shadowIllusion;
       // 🪦 SHAMISEN FEEDING — removed 2026-08-26. No board token to feed.
+      // ⚠️ THE `setNoteField` BELOW AND EVERYTHING DOWN TO `startNewTurnNotes`
+      // WERE DELETED BY ACCIDENT IN THE 2026-08-26 REWORK, and restored the same
+      // week. The feeding block sat in the MIDDLE of them, so cutting it took the
+      // end of the commit (`setMovedThisTurn(false)`, `setAction('move')`) and the
+      // WHOLE turn-start function away with it: no new notes were ever dealt and
+      // the match never left turn one. Nothing catches this — esbuild reads a
+      // missing function as a global and no suite drives the client. Delete INSIDE
+      // these braces, never across them.
+      setNoteField('cosmic_ronin', {
+        lastMoveBudget: grantedSteps,
+        ...(si ? { shadowIllusion: { ...si, stepsLeft: grantedSteps, stepsMax: grantedSteps } } : {}),
+      });
+    }
+    setMovedThisTurn(false);
+    setAction('move');
+  }
 
+  // Called when this character's turn begins — replenish only the used slots.
+  // B8: the Major/Minor mode is DERIVED here from the Drive Stack instead of
+  // prompting the player, so pivotPending is now set false rather than true.
+  // Also clears per-turn debuffs: tripped (movement halved), dazed, instrumentDropped.
+  // ── TURN START ─────────────────────────────────────────────────────────────
+  // 📌 The transform moved to engine/systems/turnFlow.js. What stays here is the
+  // draw, the write, and the theatre. §1's spine — mode derivation, the gradual
+  // refill, every per-turn reset and cooldown tick — is engine-owned now, which
+  // is what lets the headless harness advance a turn at all.
+  function startNewTurnNotes(spiritId) {
+    // 🏁 IS THIS MATCH ALREADY OVER? Asked here because the top of a turn is
+    // the one moment every match passes through, whatever route the Fame came
+    // by — see `checkStandingFameWin` for why a check that only fires on the
+    // grant is not enough. Before `turnStarted`, so a decided match is never
+    // dealt a fresh hand.
+    if (checkStandingFameWin()) return;
+    // Record whether this spirit starts their turn on the limelight hex.
+    // (The engine reads its own synced spirit positions.)
+    dispatch(turnStarted(spiritId));
+    // ⛔ Fresh turn window — everyone's per-turn FP cap meter resets (a
+    // defender who banked capped FP during the last turn gets a clean slate).
+    fameThisTurnRef.current = {};
+
+    const ns = engineRef.current.noteStates?.[spiritId];
+    if (!ns) return;
+
+    // ⚠️ The draw happens HERE, before the write, and the COUNT comes from the
+    // engine (`refillDrawCount`) rather than being recomputed by eye. If the
+    // number drawn and the number consumed ever disagree, every later draw in
+    // the match is misaligned — a desync that shows up as nothing at all until
+    // a replay diverges. turnFlowCheck.mjs pins the two together.
+    const draws = drawSeeded(refillDrawCount(ns));
+    const { patch, report } = startTurnNotes(ns, { draws });
+    if (!patch) return;
+    setNoteField(spiritId, patch);
+
+    // ── Theatre, off the report — no rules re-derived from the patch ─────────
+    const nm = spirits.find(s => s.id === spiritId)?.name;
+    if (report.halvedByAxeSwing && report.refreshedCount > 0) {
+      addLog(`🪓 Axe Swing whiff — stock recovery halved this turn!`);
+    }
+    if (report.drainedByVortex > 0) {
+      const d = report.drainedByVortex;
+      addLog(`🕳️ The vortex already ate ${d} note${d !== 1 ? 's' : ''} — that many fewer come back this turn.`);
+    }
+    if (report.refreshedCount > 0) {
+      const c = report.refreshedCount;
+      addLog(`🎵 ${nm} draws ${c} new note${c !== 1 ? 's' : ''} into the pool!`);
+      setPointsFlash({ lines: [`🎵 +${c} new note${c !== 1 ? 's' : ''}`], key: Date.now() });
+      setTimeout(() => setPointsFlash(null), 2200);
+      setFreshNoteIdx({ spiritId, indices: new Set(report.refreshedIdx), key: Date.now() });
+      setTimeout(() => setFreshNoteIdx(prev => (prev?.spiritId === spiritId ? null : prev)), 700);
+    }
+
+    // 🗡️ Ronin rework: tick Wa no Koe at turn start.
+    // ⏱️ The Cursed Shamisen used to tick HERE too, on the Ronin's turn — which
+    // meant a 4-player table saw it play once every four turns while a duel saw
+    // it play every other turn. It's a board hazard, so it moved onto the ROUND
+    // clock with the rest of them (endTurn's roundCompleted block).
+    if (spiritId === 'cosmic_ronin') {
       // 👤 The report carries the PRE-tick state: by the time the patch lands the
       // double is already gone, so the announcement has to read the report.
       if (report.shadowExpiring) {
@@ -4557,68 +4752,15 @@ function Game({ gameState, onReturnToLobby }) {
   // Chromatic Shift + Overdrive are GONE (the Theory ladder rescues bad tracks
   // now). The starter Transpose one-shot survives as a beginner mercy: re-draw
   // your Root Note once, then the card falls away.
-  const MOD_CARD_DEFS = {
-    transpose: {
-      icon: '🔄',
-      name: 'Transpose',
-      desc: 'Re-draw your Root Note from any note in your current stock — you choose.',
-      color: '#ffcc44',
-      usableWhen: 'before-build', // was 'during-pivot' (B8 removed the pivot step)
-    },
-  };
-
-  function playModCard(cardId) {
-    if (!acting || !canAct) return; // N4/N7: gate
-    const ns = actingNoteState;
-    const card = (ns?.modCards ?? []).find(c => c.id === cardId);
-    if (!card || card.exhausted) return;
-    const def = MOD_CARD_DEFS[card.type];
-    if (!def) return;
-
-    if (card.type === 'transpose') {
-      // Open a "pick your new root" overlay — set a pending state
-      setNoteField(acting.id, {
-        transposeCardPending: cardId,
-        modCards: (ns.modCards ?? []).map(c => c.id === cardId ? { ...c, exhausted: true } : c),
-      });
-      addLog('🔄 Transpose — click any note in your stock to use it as your new Root Note.');
-    }
-  }
-
-  function resolveTransposeCard(noteIdx) {
-    if (!acting) return;
-    const ns = actingNoteState;
-    if (!ns?.transposeCardPending) return;
-    const newRoot = ns.noteStock[noteIdx];
-    if (!newRoot) return;
-    // 🎸 B8: the root just moved, so re-derive the mode from the Drive Stack and
-    // respell around the new root. Safe to respell here: Transpose is
-    // `usableWhen: 'before-build'`, i.e. before any melody note has been placed.
-    //
-    // ⚠️ Deliberately does NOT re-pay the mode bonus. The old flow re-opened the
-    // Major/Minor prompt, so declaring again paid a second +1 DB — affordable when
-    // it cost the player a decision, but now that the mode is automatic, re-paying
-    // would quietly turn Transpose into a DB battery.
-    const derived   = modeFromStack(ns.driveStack ?? [], ns.unlockedSkills ?? [], scaleMode);
-    const newMode   = derived.mode;
-    const canonRoot = canonicalRoot(newRoot, newMode);
-    // Respell stock
-    const pool = getSpelledPool(canonRoot, newMode);
-    const newStock = (ns.noteStock ?? []).map(n => {
-      const idx = pitchIndex(n);
-      return idx !== -1 ? pool[idx] : n;
-    });
-    setNoteField(acting.id, {
-      rootNote: canonRoot,
-      noteStock: newStock,
-      scaleMode: newMode,
-      modeReason: derived.reason,
-      modeChordName: evaluateChord((ns.driveStack ?? []).filter(Boolean)).name,
-      pivotPending: false,
-      transposeCardPending: null,
-    });
-    addLog(`🔄 Transpose — new Root Note: ${canonRoot} ${newMode === 'major' ? '☀️ Major' : '🌑 Minor'}.`);
-  }
+  /* 🪦 THE TRANSPOSE CARD IS GONE (2026-08-28) — `MOD_CARD_DEFS`, `playModCard`
+     and `resolveTransposeCard` all lived here. It let you re-draw your Root Note
+     from your stock to rescue a bad opening hand, on a game that DEALS a
+     guaranteed-playable opening hand. A fix for a problem the design prevents.
+     ⚠️ THE ENGINE SIDE IS STILL THERE AND IS NOW INERT: `economy.js` seeds
+     `modCards: [starter-transpose]`, `turnFlow.js` refreshes it each turn, and
+     `melodyCommit.js` still clears `transposeCardPending`. Nothing sets it and
+     nothing renders it. Removing that is an engine change with suite coverage
+     (`turnFlowCheck`'s mod-card refresh section) and wants its own pass. */
 
   // ─── SKILL EFFECT HELPERS ─────────────────────────────────────────────────────
 
@@ -8779,7 +8921,14 @@ function Game({ gameState, onReturnToLobby }) {
     // no longer touches the board at all — it blinds the DEFENDER, and it resolves
     // in closeBattleOverlay on a connecting hit, alongside Slime. Don't re-add a
     // flamingHexesSet call here.)
-    const hasSunbeam = attacker.id === 'intergalactic_0' && atkSkills.includes('sunbeam');
+    // ⚠️ READS `nsA.unlockedSkills` DIRECTLY. It used to read a local
+    // `atkSkills`, which "clearing old clutter" (52e16a2) deleted along with the
+    // amp-tier bonuses above it — and missed this one surviving use. The line then
+    // sat here throwing a ReferenceError every time INTERGALACTIC 0 fired a Sonic
+    // Attack, and only him, because `attacker.id` short-circuits for everyone
+    // else. Nothing caught it: esbuild reads a free name as a global. Found by
+    // `test:client` 2026-08-26.
+    const hasSunbeam = attacker.id === 'intergalactic_0' && (nsA.unlockedSkills ?? []).includes('sunbeam');
 
     playBattleMusic(battleSong, 0.7);
     dieSettledRef.current = { atk: false, def: false }; // fresh battle, fresh dice
@@ -12551,104 +12700,51 @@ function Game({ gameState, onReturnToLobby }) {
                       </span>)}
                   </div>
                 )}
-                {/* ── 🎴 MOD CARDS — relocated from the old right panel; a banner of
-                    ability-like chips alongside Crew & Gear. Still played via playModCard. ── */}
-                {(() => {
-                  const cards = ns.modCards ?? [];
-                  if (!cards.length) return null;
-                  const MDEF = {
-                    transpose:       { icon:'🔄', name:'Transpose',       color:'#ffcc44', desc:'Pick any stock note as your new Root (before you build) — one shot' },
-                  };
-                  return (
-                    <div data-tip-anchor="mod-cards" style={{padding:'5px 8px',borderTop:`1px solid ${s.color}22`}}>
-                      <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:4}}>
-                        <span style={{fontSize:7,color:'#3a5a7a',letterSpacing:2}}>MOD CARDS</span>
-                        <span style={{flex:1,height:1,background:`linear-gradient(90deg, ${s.color}33, transparent)`}}/>
-                      </div>
-                      <div style={{display:'flex',gap:3,flexWrap:'wrap'}}>
-                        {cards.map(card => {
-                          const d = MDEF[card.type] ?? { icon:'🎴', name:card.type, color:'#8899aa', desc:'' };
-                          const pend = ns.transposeCardPending === card.id;
-                          return (
-                            <button key={card.id} disabled={card.exhausted} title={d.desc}
-                              onClick={() => !card.exhausted && playModCard(card.id)}
-                              style={{display:'flex',alignItems:'center',gap:5,fontFamily:'inherit',
-                                cursor:card.exhausted?'default':'pointer',textAlign:'left',
-                                background:card.exhausted?'#0a0e16':`${d.color}14`,borderRadius:4,padding:'3px 7px',
-                                border:`1px solid ${card.exhausted?'#26303f':d.color+'88'}`,
-                                color:card.exhausted?'#3a4658':d.color,opacity:card.exhausted?0.6:1}}>
-                              <span style={{fontSize:12,lineHeight:1}}>{d.icon}</span>
-                              <span style={{display:'flex',flexDirection:'column',alignItems:'flex-start',lineHeight:1.15}}>
-                                <span style={{fontSize:8,fontWeight:700}}>{d.name}</span>
-                                <span style={{fontSize:6.5,color:card.exhausted?'#33415a':(pend?'#ffcc44':'#7090a0')}}>
-                                  {card.exhausted?'used · back next turn':pend?'◂ pick a note':'▶ tap to play'}
-                                </span>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
-                {/* ── ✨ STYLE — how this Spirit earns Db (STYLE_SYSTEM_HANDOFF.md §5) ── */}
-                {(() => {
-                  const curStyle = s.style ?? styleOf(s.id);
-                  const curDef = STYLE_DEFS[curStyle];
-                  const chip = {
-                    fontFamily:'inherit', borderRadius:4, padding:'3px 7px',
-                    fontSize:8, lineHeight:1.3, whiteSpace:'nowrap',
-                  };
-                  return (
-                    <div style={{padding:'5px 8px', borderTop:`1px solid ${s.color}22`}}>
-                      <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:4}}>
-                        <span style={{fontSize:7,color:'#3a5a7a',letterSpacing:2}}>STYLE</span>
-                        <span style={{flex:1,height:1,background:`linear-gradient(90deg, ${s.color}33, transparent)`}}/>
-                      </div>
-                      <div style={{display:'flex',gap:3,flexWrap:'wrap',alignItems:'center'}}>
-                        <span title={curDef?.tagline ?? ''}
-                          style={{...chip, cursor:'default', fontWeight:700,
-                            background:`${curDef?.color}22`, border:`1.5px solid ${curDef?.color}`,
-                            color:curDef?.color}}>
-                          {curDef?.icon} {curDef?.label?.toUpperCase()}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })()}
-                {/* ── ULTIMATE — once-per-game ability ── */}
-                {(() => {
-                  const unlocked = ns.unlockedSkills ?? [];
-                  const hasUlt   = unlocked.includes('ultimate');
-                  if (!hasUlt) return null;
-                  const chipBase = {
-                    fontFamily:'inherit', cursor:'pointer', borderRadius:4,
-                    padding:'3px 7px', fontSize:8, lineHeight:1.3, whiteSpace:'nowrap',
-                  };
-                  return (
-                    <div style={{padding:'5px 8px', borderTop:`1px solid ${s.color}22`}}>
-                      <div style={{display:'flex',gap:3,flexWrap:'wrap',marginBottom:2,alignItems:'center'}}>
-                        <span style={{fontSize:7,color:'#ff44aa88',width:34}}>ULT</span>
-                        {ns.ultimateUsed ? (
-                          <span style={{...chipBase, cursor:'default',
-                            background:'#0a0e16', border:'1px solid #333344', color:'#444455'}}>
-                            💀 Encore spent
-                          </span>
-                        ) : (
-                          <button title="Once per game: 2 Vibe damage + Stagger to all rivals within 4 hexes"
-                            onClick={() => fireUltimate(s.id)}
-                            style={{...chipBase, color:'#ff44aa', fontWeight:700,
-                              background:'linear-gradient(135deg,#1a0014,#0a0010)',
-                              border:'1px solid #ff44aa',
-                              animation:'crew-ready-glow 1.6s ease-in-out infinite'}}>
-                            💀 ENCORE APOCALYPSE
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
+                {/* ── 🎛️ THE CHANNEL STRIP ────────────────────────────────────────
+                    🪦 THREE SECTIONS CAME OUT OF HERE ON 2026-08-28, and the reasons
+                    are worth keeping because each is a different kind of dead weight:
 
+                    🎴 MOD CARDS / TRANSPOSE — a control that existed to rescue a bad
+                    opening hand, on a game whose opening hand is DEALT to guarantee a
+                    playable one (a purple and a pink note are always present on turn
+                    one). It was a fix for a problem the design already prevents, so it
+                    could only ever be pressed by someone who did not need it.
+                    ⚠️ THE ENGINE STILL GRANTS IT. `economy.js` seeds
+                    `modCards: [starter-transpose]` and `turnFlow.js` still refreshes
+                    it every turn; that state is now INERT — nothing renders it and
+                    `playModCard` is gone. Ripping it out is an engine change with
+                    suite coverage (`turnFlowCheck` §mod-card refresh) and wants its
+                    own pass, not a drive-by inside a HUD edit.
+
+                    ✨ STYLE (Shred / Groove / …) — a label with no mechanism behind
+                    it in the game as it stands. A word that changes nothing does not
+                    earn a titled section; the spirit's name and portrait already say
+                    who you are.
+
+                    🌳 SKILLS — a LIST of things whose buttons are already on screen,
+                    below. A menu of the menu. Owning a skill is visible the moment you
+                    look at what you can press.
+
+                    🎯 WHAT GOES HERE INSTEAD: the turn rail (① CHORD ② MELODY
+                    ③ MOVE & ACT, one lamp lit, each carrying its own one-line state)
+                    and the key plate (root, mode, and the interval map).
+
+                    The rail because gating the board panels to their own steps took
+                    the step signal off the board and it has to live somewhere.
+
+                    The key plate for a smaller reason than I first wrote down, and the
+                    correction is worth keeping: I claimed `4th=G 5th=A tri=G#…` was
+                    trapped in step 2 and invisible in step 1. ⚠️ THAT WAS WRONG — I
+                    checked the rendered markup and the legend is gated
+                    `turnStep !== 'move_act'`, so it is up in BOTH building steps. What
+                    is actually wrong with it is smaller and still real: it is a
+                    wrapping row of 7px text tucked under the step panel, so it reads
+                    as a footnote to that panel rather than as the reference table you
+                    consult, and it does vanish in step 3. A plate gives it a fixed
+                    place to be looked up.
+
+                    Being dialled on `.scratch/hud-channel-strip.html`; do not build it
+                    straight in here. ── */}
                 {/* ── DB PROGRESS BAR ── */}
                 {(() => {
                   const targetId  = ns.targetSkillId;
@@ -12691,42 +12787,6 @@ function Game({ gameState, onReturnToLobby }) {
                   );
                 })()}
 
-                {/* ── OWNED SKILLS (collapsible) ── */}
-                {(ns.unlockedSkills?.length ?? 0) > 0 && (() => {
-                  return (
-                    <div style={{padding:"4px 8px 6px", borderTop:`1px solid ${s.color}22`}}>
-                      <div style={{display:"flex", alignItems:"center", gap:5, marginBottom: skillsCollapsed ? 0 : 4, cursor:"pointer"}}
-                        onClick={() => setSkillsCollapsed(p => !p)}>
-                        <span style={{fontSize:7, color:"#3a5a7a", letterSpacing:1}}>SKILLS ({ns.unlockedSkills.length})</span>
-                        <span style={{flex:1,height:1,background:`linear-gradient(90deg, ${s.color}33, transparent)`}}/>
-                        <span style={{fontSize:8, color:"#3a5a7a"}}>{skillsCollapsed ? '▸' : '▾'}</span>
-                      </div>
-                      {!skillsCollapsed && (
-                        <div style={{display:"flex", gap:4, flexWrap:"wrap"}}>
-                          {ns.unlockedSkills.map(skillId => {
-                            const sk       = SKILL_BY_ID[skillId];
-                            if (!sk) return null;
-                            const routeDef = SKILL_TREE.routes.find(r => r.id === sk.routeId);
-                            const col      = routeDef?.color ?? '#88aabb';
-                            return (
-                              <div key={skillId} title={`${sk.label}: ${sk.desc}`} style={{
-                                display:"flex", alignItems:"center", gap:3,
-                                background:`${col}18`, border:`1px solid ${col}55`,
-                                borderRadius:4, padding:"2px 6px",
-                                cursor:"default",
-                              }}>
-                                <span style={{fontSize:11}}>{sk.icon}</span>
-                                <span style={{fontSize:7, color:col, fontWeight:700, lineHeight:1.2}}>
-                                  {sk.label}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
                 <div style={{flex:1}}/>{/* push loadout content to top */}
                 </div>{/* end left column */}
                 </div>{/* end two-column row */}
@@ -13241,8 +13301,9 @@ function Game({ gameState, onReturnToLobby }) {
                                    — the answer changes with the very click you're about to make. */
                                 const showUnlockedD = showTritoneColor || showMinorSeventhColor || showMajorThirdColor;
                                 const hexBorder = showAsDiscord ? "#444455" : showUnlockedD ? UNLOCKED_DISCORD.border : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#c0c8d8" : "#444455";
-                                const hexText   = showAsDiscord ? "#555566" : showUnlockedD ? UNLOCKED_DISCORD.text   : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#e8eef8" : "#555566";
-                                const hexBg     = showAsDiscord ? "#111118" : showUnlockedD ? UNLOCKED_DISCORD.bg     : isFifth ? "#2a0f1a" : isFourth ? "#1a0a2a" : inScaleNote ? "#1a2035" : "#111118";
+                                // 🎨 ONE HUE, as everywhere else now. `hexText` and `hexBg`
+                                // are gone with the clip-path chip that needed three values
+                                // to say one thing; a NoteHex derives the rest from the hue.
                                 /* Benefit preview for the targeted stack */
                                 const targetStack = stackCommitDest === 'sustain' ? sStack : dStack;
                                 const targetCh = stackCommitDest === 'sustain' ? sCh : dCh;
@@ -13254,10 +13315,31 @@ function Game({ gameState, onReturnToLobby }) {
                                   <div key={idx} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:0}}
                                     onMouseEnter={(e)=>{ if (!used) { const x=e.clientX, y=e.clientY; clearTimeout(hoverScaleTimerRef.current); hoverScaleTimerRef.current=setTimeout(()=>setHoverScale({note,x,y}),1500); }}}
                                     onMouseLeave={()=>{ clearTimeout(hoverScaleTimerRef.current); setHoverScale(cur=>cur?.note===note?null:cur); }}>
-                                    <div onClick={()=>{ if (!used) clickNoteStock(idx, undefined, true); }}
-                                      className="hexw" style={{width:26,height:29,cursor:used?"default":"pointer",
-                                        background:used?"#232b3a":hexBorder,transition:"all .1s"}}>
-                                      <div className="hexi" style={{fontSize:8,fontWeight:700,color:hexText,background:used?"#141a24":hexBg}}>{used?"":note}</div>
+                                    {/* 🎸 ⚠️ THE EVENT IS THE FLIGHT. This passed
+                                        `undefined` where clickNoteStock expects the
+                                        click, which is the ONLY way it learns where
+                                        the note is flying FROM — so every stack commit
+                                        made from this grid landed with no animation at
+                                        all, while the same commit made from the big
+                                        hand flew. And this grid is the only
+                                        stack-commit control there is during step 1, so
+                                        in practice that meant the chord flight never
+                                        ran. 🎆 Now that these are real NoteHexes the
+                                        DEPARTURE flare fires here too, so the chain
+                                        from click → flare → flight → landing flare is
+                                        unbroken for the first time. */}
+                                    <div onClick={(e)=>{ if (!used) clickNoteStock(idx, e, true); }}
+                                      style={{width:STACK_GRID_CHIP,height:STACK_GRID_CHIP,flexShrink:0,
+                                        display:"flex",alignItems:"center",justifyContent:"center",
+                                        cursor:used?"default":"pointer",opacity:used?0.5:1,
+                                        transition:"opacity .1s"}}>
+                                      {/* 🕳️ A spent slot keeps the BIG HAND's empty colour, not the
+                                          seats' socket violet — this is a hand going empty, not a
+                                          socket waiting to be filled, and they must not look alike. */}
+                                      <NoteHex size={STACK_GRID_CHIP}
+                                        hue={used ? "#232b3a" : hexBorder}
+                                        letter={used ? "" : note} dull={used}
+                                        burst={burstOut?.seat === `hand:${idx}` ? { ...burstOut, hue: hexBorder } : null} />
                                     </div>
                                     {previewChord && (dDrive > 0 || dSustain > 0) && (
                                       <div style={{display:"flex",gap:1,marginTop:1}}>
@@ -13416,25 +13498,36 @@ function Game({ gameState, onReturnToLobby }) {
                              : mixerReady ? "🎚️ Mixer — tap to layer this note again"
                              : resolvesCadence ? `🎯 End your track on this note to RESOLVE a cadence — the crowd swells (+Fans)!${lockTip}`
                              : lockTip || undefined}
-                        className="hexw"
                         style={{
-                          width:29,height:32,
+                          width:NOTE_HEX.size,height:NOTE_HEX.size,flexShrink:0,
+                          display:"flex",alignItems:"center",justifyContent:"center",
                           cursor:(used&&!mixerReady)||isStaggered?"default":"pointer",
                           opacity: mixerReady ? 0.55 : isStaggered ? 0.3 : 1,
-                          background: isStaggered ? "#ff880066" : mixerReady ? "#44ddff" : resolvesCadence ? "#ffd700" : isEmpty ? "#232b3a" : borderC,
-                          filter: resolvesCadence ? "drop-shadow(0 0 5px #ffd700cc)"
-                                : (isStaggered || isEmpty || shadow === "none") ? "none" : `drop-shadow(${shadow})`,
-                          animation: resolvesCadence ? "cadence-gold-pulse 1.6s ease-in-out infinite"
-                                   : dualPulse ? `stack-dual-hex 2.2s ease-in-out infinite${isFresh ? ", note-pop-in .5s ease-out" : ""}`
-                                   : isFresh ? "note-pop-in .5s ease-out" : undefined,
+                          // ⚠️ THE BLOOM NO LONGER LIVES HERE. It is a drop-shadow on the
+                          // SVG's stroked rings inside NoteHex — a filter on THIS div would
+                          // blur the chip's whole silhouette again, which is the exact bug
+                          // that made the glow look frozen. Only the pop-in stays.
+                          animation: isFresh ? "note-pop-in .5s ease-out" : undefined,
                           transition:"all .1s",
                         }}>
-                        <div className="hexi" style={{
-                          fontSize:9,fontWeight:700,
-                          color: isStaggered ? "#ff8800" : mixerReady ? "#44ddff" : resolvesCadence ? "#ffd700" : isEmpty ? "transparent" : textC,
-                          background: isStaggered ? "#1a0e00" : isEmpty ? "#141a24" : bgC,
-                          animation: dualPulse && !isEmpty ? "stack-dual-ink 2.2s ease-in-out infinite" : undefined,
-                        }}>{isStaggered ? "⚡" : isEmpty ? "" : note}</div>
+                        {/* 🎨 `borderC` is the SAME variable the old chip used, so all
+                            twelve colour states carry over untouched — the chip changed
+                            shape, not language. `shadow === "none"` is the existing test
+                            for "this state does not glow", reused as `dull`. */}
+                        <NoteHex
+                          hue={isStaggered ? "#ff8800" : mixerReady ? "#44ddff"
+                             : resolvesCadence ? "#ffd700" : isEmpty ? "#232b3a" : borderC}
+                          letter={isStaggered ? "\u26a1" : isEmpty ? "" : note}
+                          dull={isStaggered || isEmpty || shadow === "none"}
+                          dual={dualPulse}
+                          gold={resolvesCadence}
+                          // 🎆 ⚠️ THE FLARE TAKES `borderC`, NOT THE CHIP'S CURRENT HUE.
+                          // The commit marks the slot used in the same tick the burst
+                          // fires, so by the time this renders the chip is already the
+                          // EMPTY socket colour — and a burst that borrowed its chip's
+                          // hue would flare grey for the note that just left.
+                          burst={burstOut?.seat === `hand:${idx}` ? { ...burstOut, hue: borderC } : null}
+                        />
                       </div>
                     );
                   })}
@@ -13480,17 +13573,6 @@ function Game({ gameState, onReturnToLobby }) {
                   );
                 })()}
                 {/* 🎸 CHORD STACK — now lives on the left side of the board (see board overlay section) */}
-                {/* Transpose card — pick-a-note banner */}
-                {actingNoteState?.transposeCardPending && (
-                  <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,
-                    background:'#1a1400',border:'1.5px solid #ffcc44',borderRadius:4,padding:'5px 8px',
-                    animation:'hex-turn-pulse 1s ease-in-out infinite'}}>
-                    <span style={{fontSize:11}}>🔄</span>
-                    <span style={{fontSize:8,color:'#ffcc44',fontWeight:700}}>
-                      Transpose: click any stock note to set it as your new Root
-                    </span>
-                  </div>
-                )}
                 {/* Bank note UI */}
                 {bankedNote && !hasConfirmed && (
                   <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4,
@@ -14358,15 +14440,20 @@ function Game({ gameState, onReturnToLobby }) {
             onMouseLeave={handleBoardMouseUp}
             onContextMenu={e => e.preventDefault()}
           >
-            {/* ── COMMIT TRACK — overlaid on the board SVG ── */}
-            <div ref={commitTrackRef} data-tip-anchor="commit-track" className={turnStep === 'melody' ? 'step-active' : ''}
-              style={{'--step-glow-color':'#aa88ff',
-                position:"absolute",top:4,left:"50%",transform:"translateX(-50%)",
-                width:"auto",maxWidth:"95%",background:"#060a10dd",
-                border:`1px solid ${turnStep === 'melody' ? '#aa88ff66' : '#1a2a4044'}`,
-                padding:"3px 10px",display:"flex",gap:4,justifyContent:"center",alignItems:"center",
-                borderRadius:6,zIndex:5,backdropFilter:"blur(4px)",
-                boxShadow:"0 2px 12px #00000088"}}>
+            {/* ── COMMIT TRACK — overlaid on the board SVG ──
+                🎼 STEP 2 ONLY, for the same reason the chord stacks are step 1
+                only: eight seats spanning the top of the board are worth that
+                much of it while you are filling them, and not before or after.
+                📌 What used to ride along in here and no longer does: the
+                "✓ N hex" movement hint (the HUD says it in three other places
+                during step 3, including on the Move button itself) and the zoom
+                reset, which now has its own permanent home beside the Tone
+                button — a control for panning the board cannot live inside a
+                panel that is only up for one step of the turn. */}
+            {turnStep === 'melody' && (
+            <CommitTrackPanel panelRef={commitTrackRef} tipAnchor="commit-track"
+              className={turnStep === 'melody' ? 'step-active' : ''}
+              active={turnStep === 'melody'}>
               <div className="stitle" style={{marginBottom:0,color:"#aa88ff",flexShrink:0,fontSize:7,
                 display:"flex",flexDirection:"column",lineHeight:1.15}}>
                 <span>TRACK</span>
@@ -14407,32 +14494,22 @@ function Game({ gameState, onReturnToLobby }) {
                   : isFourth       ? "#cc55ff"
                   : inScale        ? "#c0c8d8"
                   : "#444455";
-                const textC = !note            ? "#2a1a5040"
-                  : isRoot         ? "#44ff88"
-                  : paidBy         ? paidC
-                  : showUnlocked   ? UNLOCKED_DISCORD.text
-                  : isFifth        ? "#ff55aa"
-                  : isFourth       ? "#cc55ff"
-                  : inScale        ? "#e8eef8"
-                  : "#555566";
-                const bgC = !note              ? "transparent"
-                  : isRoot         ? "#0d2510"
-                  : paidBy         ? paidBgC
-                  : showUnlocked   ? UNLOCKED_DISCORD.bg
-                  : isFifth        ? "#2a0f1a"
-                  : isFourth       ? "#1a0a2a"
-                  : inScale        ? "#1a2035"
-                  : "#111118";
-                const glow = paidBy         ? `drop-shadow(0 0 7px ${paidC}77)`
-                           : showUnlocked   ? `drop-shadow(${UNLOCKED_DISCORD.shadow})`
-                           : isFifth        ? "drop-shadow(0 0 6px #ff55aa55)"
-                           : isFourth       ? "drop-shadow(0 0 6px #cc55ff55)"
-                           : "none";
+                // 🎨 `borderC` ABOVE IS NOW THE WHOLE COLOUR STORY. The old chip
+                // needed three values — a border, a text colour and a fill — and
+                // a `filter: drop-shadow` bolted on top for the states that glow.
+                // A NoteHex takes ONE hue and derives the rest, so `textC`, `bgC`
+                // and `glow` are gone rather than being fed to something that
+                // ignores them. ⚠️ THE GLOW ESPECIALLY HAD TO GO: NoteHex blooms
+                // from the drop-shadow on its own STROKED rings, and a second
+                // filter on this wrapper would blur the chip's whole silhouette —
+                // the exact bug that made the old glow look frozen (NoteHex.jsx).
+                // 📌 `paidBgC` is still read by the router row below.
                 // 🔁 The track is a draft until it's confirmed — a placed note
                 // can be clicked to lift it back out and reclaim its slot.
                 const editable = !!note && !hasConfirmed && canAct;
                 return (
-                  <div key={i} className={`hexw${editable ? ' track-note-edit' : ''}`}
+                  <div key={i} data-track-seat={i}
+                    className={editable ? 'track-note-edit' : undefined}
                     title={[
                       paidBy
                         ? `${note} — pardoned by your ${paidBy === 'sustain' ? '🛡️ Sustain' : '⚔️ Drive'} chord${isDual ? ' (both qualify — reroute below)' : ''}`
@@ -14443,32 +14520,28 @@ function Game({ gameState, onReturnToLobby }) {
                     onMouseEnter={note ? (e) => { const x = e.clientX, y = e.clientY; clearTimeout(noteTipTimerRef.current); noteTipTimerRef.current = setTimeout(() => setNoteScaleTip({ note, x, y }), 900); } : undefined}
                     onMouseLeave={() => { clearTimeout(noteTipTimerRef.current); setNoteScaleTip(null); }}
                     style={{
-                    width:33,height:37,
+                    width:COMMIT_OVERLAY.trackChip, height:COMMIT_OVERLAY.trackChip,
+                    flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
                     cursor: editable ? 'pointer' : 'default',
-                    opacity: note ? 1 : 0.35,
-                    background: note ? borderC : "#2a1a5055",
-                    filter: glow,
-                    transition:"all .15s",
+                    opacity: 1,   // 🕳️ see the socket note on the stack seats
+                    transition:"opacity .15s",
                   }}>
-                    <div className="hexi" style={{
-                      fontSize:10,fontWeight:700,
-                      color:textC,
-                      background: note ? bgC : "#07091466",
-                    }}>{note || ""}</div>
+                    <NoteHex size={COMMIT_OVERLAY.trackChip}
+                      hue={note ? borderC : SOCKET_HUE} letter={note || ""} dull={!note}
+                      burst={burstIn?.seat === `track:${i}` ? burstIn : null} />
                   </div>
                 );
               })}
-              {hasConfirmed && moveStepsLeft > 0 && (
-                <span style={{fontSize:7,color:"#44ff88",marginLeft:4,flexShrink:0}}>✓ {moveStepsLeft} hex</span>
-              )}
-              {/* Zoom controls — tucked to the right */}
-              <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
-                {manualZoomActive && (
-                  <button className="btn" style={{fontSize:7,padding:"1px 5px",borderColor:"#3a5a7a",color:"#7090b0"}}
-                    onClick={resetManualZoom}>⌖</button>
-                )}
-              </div>
-            </div>
+            </CommitTrackPanel>
+            )}
+            {/* ⌖ RESET THE ZOOM. Its own control, because panning is not part of
+                any one step of the turn and this used to be parented to the
+                commit track. */}
+            {manualZoomActive && (
+              <button className="btn" onClick={resetManualZoom}
+                style={{position:"absolute",left:44,bottom:8,zIndex:20,fontSize:7,padding:"2px 6px",
+                  borderColor:"#3a5a7a",color:"#7090b0",background:"#0a1020cc"}}>⌖</button>
+            )}
             {/* ── ⚔️↔🛡️ PAYOUT ROUTER ────────────────────────────────────────────
                 Notes both stacks legalized independently. The tie-break (higher
                 chord rank, tie to Drive) picks a default so the player can ignore
@@ -14489,10 +14562,7 @@ function Game({ gameState, onReturnToLobby }) {
                 .filter(c => c.both && c.pardonedBy && !c.inScale);
               if (!dual.length) return null;
               return (
-                <div style={{position:"absolute",top:52,left:"50%",transform:"translateX(-50%)",
-                  zIndex:5,display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",justifyContent:"center",
-                  maxWidth:"95%",background:"#060a10ee",border:"1px solid #7a5aa066",borderRadius:6,
-                  padding:"3px 9px",backdropFilter:"blur(4px)",boxShadow:"0 2px 12px #00000088"}}>
+                <PayoutRouterPanel top={routerTop}>
                   <span style={{fontSize:7,color:"#b09ad0",fontWeight:700,letterSpacing:0.5,flexShrink:0}}>
                     ⚔️↔🛡️ BOTH QUALIFY — WHO GETS PAID?
                   </span>
@@ -14511,7 +14581,7 @@ function Game({ gameState, onReturnToLobby }) {
                       ))}
                     </div>
                   ))}
-                </div>
+                </PayoutRouterPanel>
               );
             })()}
             {noteScaleTip && (() => {
@@ -14527,30 +14597,32 @@ function Game({ gameState, onReturnToLobby }) {
                 </div>
               );
             })()}
-            {/* 🎵 FLY NOTE — animated chip from Note Stock to commit track */}
-            {flyNote && (
-              <div key={flyNote.key} className="note-fly-chip hexw"
-                style={{left:flyNote.x - 16, top:flyNote.y - 18, width:33, height:37,
-                  '--fly-dx': `${flyNote.dx}px`, '--fly-dy': `${flyNote.dy}px`,
-                  background:"#aa88ff"}}>
-                <div className="hexi" style={{fontSize:10,fontWeight:700,color:"#e8eef8",background:"#1a2035"}}>{flyNote.note}</div>
-              </div>
-            )}
-            {/* 🎸 FLY CHORD NOTE — animated chip from Note Stock to chord stack */}
-            {flyChordNote && (
-              <div key={flyChordNote.key} className="note-fly-chip hexw"
-                style={{left:flyChordNote.x - 16, top:flyChordNote.y - 18, width:33, height:37,
-                  '--fly-dx': `${flyChordNote.dx}px`, '--fly-dy': `${flyChordNote.dy}px`,
-                  background:"#ff66cc"}}>
-                <div className="hexi" style={{fontSize:10,fontWeight:700,color:"#ffe0f0",background:"#1a0c1a"}}>{flyChordNote.note}</div>
-              </div>
-            )}
+            {/* 🎵 FLY NOTE — Note Stock → commit track. 🎸 And → chord stack.
+                📌 THE CHIP CLEARS ITSELF NOW. Both used to be wiped by a 500ms
+                setTimeout fired at launch, which was a second copy of the
+                duration living in a different file from the animation; the
+                flight is 751ms, so the old timer was cutting it off two thirds
+                of the way over. `onDone` is the animation telling us it landed. */}
+            <NoteFlyChip flight={flyNote}
+              onDone={() => { if (flyNote?.land) fireBurst('in', flyNote.land); setFlyNote(null); }} />
+            <NoteFlyChip flight={flyChordNote}
+              onDone={() => { if (flyChordNote?.land) fireBurst('in', flyChordNote.land); setFlyChordNote(null); }} />
             {/* 🎸 DRIVE / SUSTAIN STACKS — vertical bars on the left side of the board */}
             {/* N13: canAct — the stack notes are the acting player's hand while
                 they voice it. Rivals read the ⚔️/🛡️ TOTALS off the HUD rows (the
                 stance is public); the notes that make them are not, until the
                 melody bar shows what actually got played. */}
-            {acting && !hasConfirmed && !pivotPending && canAct && (() => {
+            {/* 🎸 ...AND ONLY DURING STEP 1. The panels used to stay up through
+                Step 2 and Step 3, flanking the board long after the last thing
+                you could do with them was over — and the notes in them are
+                already reported by the mini Drive/Sustain dials on your own
+                spirit, so nothing is lost by retiring them. `turnStep` is the
+                right gate rather than "the budget is spent": you may choose to
+                commit NOTHING to a chord this turn, and that decision ends the
+                step just as much as spending all three commits does. The
+                "Build the melody →" button already clears `stackCommitDest`,
+                so nothing can be left aimed at a panel that is gone. */}
+            {acting && turnStep === 'chord' && !hasConfirmed && !pivotPending && canAct && (() => {
               const dStack = actingNoteState?.driveStack ?? [];
               const sStack = actingNoteState?.sustainStack ?? [];
               const dCh = spiritChord(acting?.id, dStack);
@@ -14558,108 +14630,132 @@ function Game({ gameState, onReturnToLobby }) {
               const commitsUsed = actingNoteState?.stackCommitsThisTurn ?? 0;
               const budgetLeft = STACK_COMMIT_BUDGET - commitsUsed;
               const isChordStep = turnStep === 'chord';
+              // 🎸 ONE STACK, drawn inside the flanking panel Alex dialled on the
+              // preview page. ⚠️ THE CONTENTS ARE UNCHANGED from the single-panel
+              // version — same slots, same lock gate (i >= actingStackCap), same
+              // commit button, same budget hint, same tip anchors. Only the box
+              // around them moved. See NoteCommitOverlay.jsx for why the split is
+              // shell-vs-content and not "move the whole panel over".
+              const renderStack = (side) => {
+                const isDrive = side === 'drive';
+                const stack   = isDrive ? dStack : sStack;
+                const ch      = isDrive ? dCh : sCh;
+                const col     = isDrive ? DRIVE_C : SUSTAIN_C;
+                const full    = stack.length >= actingStackCap;
+                const spent   = budgetLeft <= 0;
+                // 📌 THE KNOB'S `boost` IS THE HOVER PREVIEW, not the combat mods —
+                // the HUD's copy of this dial already spends `boost` on those, and
+                // saying the same thing twice teaches nothing. This is "where would
+                // the note under my cursor take me", which is the question the
+                // preview's phantom needle answered.
+                // ⚠️ IT READS `hoverScale`, THE STATE THE CLIENT ALREADY KEEPS. The
+                // STACK COMMIT PREVIEW block below the note stock has computed this
+                // exact chord from this exact state for months; a second hover
+                // channel would have drifted out of step with it the first time one
+                // of them changed. Same source, same debounce, same answer.
+                const ghostNote  = stackCommitDest === side ? hoverScale?.note : null;
+                const ghostBoost = (COMMIT_OVERLAY.ghostBoost && ghostNote && !full && !spent)
+                  ? (isDrive
+                      ? spiritChord(acting?.id, [...stack, ghostNote]).drive   - ch.drive
+                      : spiritChord(acting?.id, [...stack, ghostNote]).sustain - ch.sustain)
+                  : 0;
+                return (
+                  <ChordStackPanel key={side} side={side}
+                    value={isDrive ? ch.drive : ch.sustain} boost={ghostBoost}
+                    panelRef={isDrive ? driveStackRef : sustainStackRef}
+                    tipAnchor={`${side}-stack`}
+                    className={isChordStep ? 'step-active' : ''}
+                    // 🔴🔵 ⚠️ THE PANEL WEARS ITS OWN STAT'S COLOUR, NOT THE COMMIT
+                    // PINK. Both of these used to be forced to #ff66cc — the
+                    // stack-commit accent — which was survivable while the panels
+                    // also appeared outside the chord step, but they are now
+                    // gated TO that step, so `isChordStep` is true every time
+                    // they render and the override was unconditional. Two
+                    // identically pink boxes at opposite ends of the board is the
+                    // one thing the outline exists to prevent.
+                    glowColor={col}
+                    borderColor={col}>
+                    {/* 🎸 THE SEATS. ⚠️ THE INLINE TITLE AND THE ⚔️/🛡️ READOUT ARE
+                        GONE ON PURPOSE, AND NOT AS A TASTE CALL — THE ROW RAN OUT
+                        OF ROOM. The dial to the right of these seats is a StatKnob,
+                        and a StatKnob already draws its own label ("DRIVE") and its
+                        own value in the cap, so both were being said twice. Six
+                        real NoteHex seats plus the dial's reserved 78px do not fit
+                        in a 45% panel WITH the duplicates; they fit comfortably
+                        without them. 📌 If the panel ever gets wider, they are the
+                        first thing worth putting back. */}
+                    <StackNest>
+                      {/* B0b: every slot renders, but slots past the earned cap show as
+                          LOCKED (🔒) so the gate reads as progression rather than as a
+                          missing feature. Slot 4 = theory_dom7, slot 5 = theory_modes. */}
+                      {Array.from({length:STACK_CAP_MAX}).map((_,i) => {
+                        const note = stack[i];
+                        const locked = i >= actingStackCap;
+                        return (
+                          <div key={`${side}${i}`} data-stack-slot={i}
+                            title={locked ? (i === 3 ? '🔒 Slot 4 — unlock with Blues / Dominant 7th' : '🔒 Slot 5 — unlock with Modes') : undefined}
+                            style={{
+                              ...stackSeatPos(side, i),
+                              cursor:'default',
+                              display:"flex", alignItems:"center", justifyContent:"center",
+                              // 🕳️ AN EMPTY SEAT IS A SOCKET, NOT AN ABSENCE. It was
+                              // being dimmed to 30–50% ON TOP OF NoteHex's own `dull`
+                              // rendering, which stacks two reductions and leaves a
+                              // ring you cannot see — so the stack read as "one note
+                              // and some padlocks" instead of "six seats, one filled".
+                              // The preview dims a socket exactly once, with `dull`.
+                              opacity: locked ? 0.5 : 1,
+                              transition:"opacity .15s",
+                            }}>
+                            {/* ⚠️ THE LOCK IS AN OVERLAY, NOT THE CHIP'S LETTER. NoteHex
+                                sets its letter at font-size 34 in a 120 viewBox — a
+                                padlock drawn at that size would fill the whole hex and
+                                read as a button rather than as a disabled slot. */}
+                            <NoteHex size={COMMIT_OVERLAY.stackChip}
+                              hue={locked ? "#2a2a3a" : note ? col : SOCKET_HUE}
+                              letter={locked ? "" : (note || "")} dull={locked || !note}
+                              burst={burstIn?.seat === `${side}:${i}` ? burstIn : null} />
+                            {locked && (
+                              <span style={{position:"absolute",inset:0,display:"flex",
+                                alignItems:"center",justifyContent:"center",
+                                fontSize:12,color:"#8a8a9a",pointerEvents:"none"}}>🔒</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </StackNest>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginTop:5}}>
+                      <button className="btn"
+                        style={{fontSize:8,padding:"3px 7px",fontWeight:700,
+                          borderColor: stackCommitDest === side ? col : (isDrive ? '#aa5533' : '#2266aa'),
+                          color: stackCommitDest === side ? col : (isDrive ? '#aa5533' : '#2266aa'),
+                          background: stackCommitDest === side ? (isDrive ? '#2a0c08' : '#0a1828') : 'transparent',
+                          whiteSpace:"nowrap",
+                          opacity: spent || full ? 0.4 : 1,
+                          ...(engineState.turn.count <= 8 && !(spent || full) ? {'--glow-color':col, animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}
+                        disabled={spent || full}
+                        onClick={()=>setStackCommitDest(d => d === side ? null : side)}>
+                        {stackCommitDest === side
+                          ? (isDrive ? '⚔️ DRIVE' : '🛡️ SUSTAIN')
+                          : (isDrive ? '⚔️ Drive' : '🛡️ Sustain')}
+                      </button>
+                      <div style={{fontSize:5,color:"#6a8a9a",lineHeight:1.3}}>
+                        {spent ? '✓ done' : `${budgetLeft}/${STACK_COMMIT_BUDGET} left`}
+                      </div>
+                    </div>
+                  </ChordStackPanel>
+                );
+              };
+              // 🎓 Pickles still needs an anchor for "the CHORD STACKS" as a pair.
+              // The two panels are now far apart, so the old single wrapper cannot
+              // do it; `chord-stack` rides the Drive panel, which is the one his
+              // script points at first.
               return (
                 <div ref={chordStackRef} data-tip-anchor="chord-stack"
-                  className={isChordStep ? 'step-active' : ''}
-                  style={{'--step-glow-color':'#ff66cc',
-                    position:"absolute",left:4,top:50,zIndex:10,
-                    display:"flex",flexDirection:"column",alignItems:"center",gap:3,
-                    background:"#060a10dd",
-                    border:`1px solid ${isChordStep ? '#ff66cc66' : stackCommitDest ? '#ff66cc44' : '#1a2a4044'}`,
-                    borderRadius:6,padding:"6px 5px",
-                    backdropFilter:"blur(4px)",
-                    boxShadow:"0 2px 12px #00000088",
-                    minWidth:44}}>
-                  {/* 🎓 Drive Stack — wrapped so Pickles can point at the RED
-                      HALF specifically. He used to anchor the whole panel for
-                      "the DRIVE STACK is the red one", which spotlit both stacks
-                      at once and pointed at neither. Same for sustain below. */}
-                  <div data-tip-anchor="drive-stack"
-                    style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-                  <div className="stitle" style={{marginBottom:0,color:"#ff6644",fontSize:6,letterSpacing:1.5}}>DRIVE</div>
-                  {/* B0b: every slot renders, but slots past the earned cap show as
-                      LOCKED (🔒) so the gate reads as progression rather than as a
-                      missing feature. Slot 4 = theory_dom7, slot 5 = theory_modes. */}
-                  {Array.from({length:STACK_CAP_MAX}).map((_,i) => {
-                    const note = dStack[i];
-                    const locked = i >= actingStackCap;
-                    return (
-                      <div key={`d${i}`}
-                        className="hexw"
-                        title={locked ? (i === 3 ? '🔒 Slot 4 — unlock with Blues / Dominant 7th' : '🔒 Slot 5 — unlock with Modes') : undefined}
-                        style={{
-                          width:33,height:37,
-                          opacity: locked ? 0.14 : note ? 1 : 0.25,
-                          background: locked ? "#14141a" : note ? "#ff6644" : "#2a1a1055",
-                          filter: locked ? 'grayscale(1)' : undefined,
-                          cursor: 'default',
-                          transition:"all .15s",
-                        }}>
-                        <div className="hexi" style={{
-                          fontSize:locked ? 9 : 10,fontWeight:700,
-                          color: locked ? "#8a8a9a" : note ? "#ffe0d0" : "#2a1a1040",
-                          background: locked ? "#0a0a1088" : note ? "#1a0c08" : "#07091466",
-                        }}>{locked ? "🔒" : (note || "")}</div>
-                      </div>
-                    );
-                  })}
-                  <span style={{fontSize:7,fontWeight:700,color:"#ff6644"}}>⚔️{dCh.drive}</span>
-                  </div>
-                  {/* Sustain Stack */}
-                  <div data-tip-anchor="sustain-stack"
-                    style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-                  <div className="stitle" style={{marginBottom:0,marginTop:4,color:"#44aaff",fontSize:6,letterSpacing:1.5}}>SUSTAIN</div>
-                  {Array.from({length:STACK_CAP_MAX}).map((_,i) => {
-                    const note = sStack[i];
-                    const locked = i >= actingStackCap;
-                    return (
-                      <div key={`s${i}`}
-                        className="hexw"
-                        title={locked ? (i === 3 ? '🔒 Slot 4 — unlock with Blues / Dominant 7th' : '🔒 Slot 5 — unlock with Modes') : undefined}
-                        style={{
-                          width:33,height:37,
-                          opacity: locked ? 0.14 : note ? 1 : 0.25,
-                          background: locked ? "#14141a" : note ? "#44aaff" : "#0a1a3055",
-                          filter: locked ? 'grayscale(1)' : undefined,
-                          cursor: 'default',
-                          transition:"all .15s",
-                        }}>
-                        <div className="hexi" style={{
-                          fontSize:locked ? 9 : 10,fontWeight:700,
-                          color: locked ? "#8a8a9a" : note ? "#d0e8ff" : "#0a1a3040",
-                          background: locked ? "#0a0a1088" : note ? "#081828" : "#07091466",
-                        }}>{locked ? "🔒" : (note || "")}</div>
-                      </div>
-                    );
-                  })}
-                  <span style={{fontSize:7,fontWeight:700,color:"#4499ff"}}>🛡️{sCh.sustain}</span>
-                  </div>
-                  {/* Stack commit buttons */}
-                  <button className="btn"
-                    style={{fontSize:8,padding:"3px 7px",fontWeight:700,
-                      borderColor: stackCommitDest === 'drive' ? '#ff6644' : '#aa5533',
-                      color: stackCommitDest === 'drive' ? '#ff6644' : '#aa5533',
-                      background: stackCommitDest === 'drive' ? '#2a0c08' : 'transparent',whiteSpace:"nowrap",
-                      opacity: budgetLeft <= 0 || dStack.length >= actingStackCap ? 0.4 : 1,
-                      ...(engineState.turn.count <= 8 && !(budgetLeft <= 0 || dStack.length >= actingStackCap) ? {'--glow-color':'#ff6644', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}
-                    disabled={budgetLeft <= 0 || dStack.length >= actingStackCap}
-                    onClick={()=>setStackCommitDest(d => d === 'drive' ? null : 'drive')}>
-                    {stackCommitDest === 'drive' ? '⚔️ DRIVE' : '⚔️ Drive'}
-                  </button>
-                  <button className="btn"
-                    style={{fontSize:8,padding:"3px 7px",fontWeight:700,
-                      borderColor: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
-                      color: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
-                      background: stackCommitDest === 'sustain' ? '#0a1828' : 'transparent',whiteSpace:"nowrap",
-                      opacity: budgetLeft <= 0 || sStack.length >= actingStackCap ? 0.4 : 1,
-                      ...(engineState.turn.count <= 8 && !(budgetLeft <= 0 || sStack.length >= actingStackCap) ? {'--glow-color':'#44aaff', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}
-                    disabled={budgetLeft <= 0 || sStack.length >= actingStackCap}
-                    onClick={()=>setStackCommitDest(d => d === 'sustain' ? null : 'sustain')}>
-                    {stackCommitDest === 'sustain' ? '🛡️ SUSTAIN' : '🛡️ Sustain'}
-                  </button>
-                  {/* Status hint */}
-                  <div style={{fontSize:5,color:"#6a8a9a",textAlign:"center",maxWidth:48,lineHeight:1.3}}>
-                    {budgetLeft <= 0 ? '✓ done' : `${budgetLeft}/${STACK_COMMIT_BUDGET} left`}
+                  style={{position:"absolute",inset:0,pointerEvents:"none",zIndex:5}}>
+                  <div style={{pointerEvents:"auto"}}>
+                    {renderStack('drive')}
+                    {renderStack('sustain')}
                   </div>
                 </div>
               );
@@ -14740,7 +14836,7 @@ function Game({ gameState, onReturnToLobby }) {
                     outline PNG's soft grey line work into something that reads
                     as neon under `screen`. Untouched — the skin tint is a
                     SEPARATE stage bolted on after it. */}
-                <filter id="outline-crush" color-interpolation-filters="sRGB">
+                <filter id="outline-crush" colorInterpolationFilters="sRGB">
                   <feComponentTransfer>
                     <feFuncR type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>
                     <feFuncG type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>
@@ -14752,7 +14848,7 @@ function Game({ gameState, onReturnToLobby }) {
                     Keyed on the skin id so switching presets remounts the filter
                     (Safari has a long history of not re-reading a mutated
                     feColorMatrix `values` string in place). */}
-                <filter id="outline-crush-skin" key={stageSkin} color-interpolation-filters="sRGB">
+                <filter id="outline-crush-skin" key={stageSkin} colorInterpolationFilters="sRGB">
                   <feComponentTransfer>
                     <feFuncR type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>
                     <feFuncG type="gamma" amplitude="1" exponent="0.5" offset="-0.18"/>

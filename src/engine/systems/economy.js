@@ -307,14 +307,14 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     shadowIllusion:   null,
     lastMoveBudget:   0,       // 👤 steps granted at the last melody commit
 
-    // 🎸 Cursed Shamisen: { hex, range, roundsLeft, touched[] }
-    // 2026-08-05 rework: fixed 2-ring aura, 3 ROUNDS of life, and it only
-    // touches Spirits whose scaleMode is 'minor' — wandering one hex a round
-    // toward the nearest of them, standing still when the board is all major.
-    // (The old stage/hunting growth ladder is gone.) `touched` is the ids its
-    // melody reached on the most recent tick, which drives the lingering 🎶
-    // mark on those Spirits' standees.
-    cursedShamisen:   null,
+    // 🎸 Cursed Shamisen: { turnsLeft, paidThisRound }
+    // 2026-08-26 rework: NOT a board token any more. It is a self-buff — while
+    // `turnsLeft > 0` every OTHER ability cooldown takes an extra tick per round
+    // and the Ronin glows. `paidThisRound` is the insurance: pay it and a hit
+    // costs nothing, skip it and a hit resets every cooldown to full.
+    // 🪦 The old `cursedShamisen: { hex, range, roundsLeft, touched[] }` seed
+    // outlived the mechanic by a commit. See RONIN_ABILITY_DESIGN.md §2.3.
+    shamisenCurse:    null,
     waNoKoeBuffs:     [],      // 🎵 Wa no Koe: [{ stat:'drive'|'sustain', turnsLeft }]
     discordUnlocks:  [],
     tripped:         false,

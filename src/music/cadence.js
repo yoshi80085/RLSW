@@ -69,29 +69,17 @@ export function detectCadence(trail, cooldowns = {}) {
   return best;
 }
 
-// ─── 🎸 THE CURSED SHAMISEN'S HAUNTING PHRASE ────────────────────────────────
+// 🪦 THE CURSED SHAMISEN'S HAUNTING PHRASE — REMOVED 2026-08-26.
+// `feedShamisenPhrase`, `shamisenRings`, `shamisenResolvingPc` and
+// `shamisenNextPc` lived here, matching ♭3 → 2 → 1 → ♭6 → 5 as an ordered
+// subsequence inside one committed track. The Shamisen is no longer a board
+// token that eats a phrase; it is a self-buff on the Ronin, so there is nothing
+// to feed. RONIN_ABILITY_DESIGN.md §2.3 is the current mechanic.
 //
-// `RONIN_ABILITY_DESIGN.md` §2.3.2. Ronin feeds the haunting by playing the next
-// link(s) of ♭3 → 2 → 1 → ♭6 → 5 **in order, inside the melody line he commits
-// that turn**.
-//
-// ⚠️ THIS IS NOT WHAT `cadenceHints`/`detectCadence` ABOVE DO, AND THE DIFFERENCE
-// IS THE WHOLE REASON THIS FUNCTION EXISTS. Those match a trail of ONE PITCH
-// CLASS PER TURN — "end three consecutive turns on the root, the 4th, then home".
-// Feeding matches an ordered subsequence WITHIN A SINGLE TRACK, and one turn may
-// legitimately supply the entire phrase. The design doc briefly claimed the
-// cadence matcher could be reused for this; it cannot. Different array, different
-// question.
-//
-// 🎯 SUBSEQUENCE, NOT SUBSTRING — the links must appear in ORDER but need not be
-// adjacent. A player who has to walk through other notes to reach the next link
-// is still playing the phrase; requiring adjacency would make the ability hostage
-// to note-pool luck in a way §2.3.7 already worries about.
-//
-// 🪦 SHAMISEN PHRASE FUNCTIONS — removed 2026-08-26.
-// feedShamisenPhrase, shamisenRings, shamisenResolvingPc, shamisenNextPc
-// all lived here. The Cursed Shamisen is no longer a board token with a
-// feeding phrase; it is a self-buff on Ronin. See RONIN_ABILITY_DESIGN.md §2.3.
+// ⚠️ The long note that used to stand here explained why feeding could NOT
+// reuse `cadenceHints`/`detectCadence` — different array, different question.
+// It is kept only as this sentence: if a "play these notes in this order within
+// one track" mechanic ever returns, it needs its own matcher, not the cadence one.
 
 export function detectChromaticRun(track) {
   if (!track || track.length < 3) return 0;

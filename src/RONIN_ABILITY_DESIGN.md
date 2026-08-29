@@ -12,6 +12,14 @@ build.
 > (phrase feeding, wandering AI, growing aura, exorcism) is gone entirely. §2.3
 > now describes a **self-buff that accelerates cooldowns** with a **curse debt**
 > mechanic. `test:shamisen` rewritten: 34 assertions.
+>
+> 🐛 **THAT REWORK ALSO BROKE THE GAME, AND IT IS WORTH KNOWING HOW.** The cut
+> that removed the feeding block ran past the end of it and took the last two
+> lines of the melody commit and the whole `startNewTurnNotes` function with it —
+> no move phase after a commit, no cards dealt on the next turn, all eighteen
+> suites green throughout. Repaired 2026-08-26b; `SEQUENCING.md` §5 is the report,
+> and `test:client` is the tripwire that now exists because of it. **The mechanic
+> in §2.3 was never the problem — the deletion around it was.**
 
 > ⚠️ **THIS DOC AND THE SHIPPED GAME NOW DISAGREE IN EXACTLY ONE PLACE, AND THE
 > DOC IS THE INTENT.** **Wa no Koe is a different ability entirely** — the shipped
@@ -296,6 +304,13 @@ The acceleration he gained — and then some — is wiped out in one hit.
 ⚠️ **This is the punishment, not a bug.** The whole point of the mechanic is
 that getting caught costs the Ronin all the tempo he gained. It makes the
 acceleration a genuine gamble rather than free value.
+
+✅ **AND THE CURSE ITSELF ENDS THE MOMENT IT BITES** — `shamisenCurse` is cleared
+in the same patch as the reset, so the glow goes out and the acceleration stops.
+This doc was silent on it until 2026-08-26b and the code has always done it; the
+code is right. Being hit is public anyway, so ending the glow leaks nothing that
+§2.3.2's bluff depends on — what stays hidden is whether he *paid*, and a Ronin
+who paid keeps both the glow and the curse.
 
 #### 2.3.4 Paying the debt — the bluff within the bluff
 

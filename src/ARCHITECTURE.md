@@ -140,6 +140,9 @@ green for months while nothing ran it). Everything below has a script, and
 | `harnessCheck.mjs` | `test:harness` | That the headless harness mounts and every knob is live — **and that each gap is declared**. |
 | `skillTreeCheck.mjs` | `test:skilltree` | Every skill's price, route and prereq, and that no prereq names a skill that does not exist. |
 | `b0check.mjs` | `test:b0` | The chord-context ladder and the Theory economy (see `THEORY_REWRITE_LOG.md`). |
+| `clientRefCheck.mjs` | `test:client` | 🔎 **The only suite that looks at the CLIENT.** Parses every `.jsx` and asserts that every name it reads is declared, imported, or a real browser global. Written after the 2026-08-26 Shamisen rework deleted `startNewTurnNotes` and the end of the melody commit while both stayed green everywhere else — esbuild reads a missing function as a global. Scope-blind on purpose; `npm run lint` is the thorough, slow version. |
+| `clientRenderCheck.jsx` | `test:render` | 🎬 **The only suite that RENDERS the client.** Mounts `Game` through `react-dom/server` against `buildTestingGroundsConfig()` and asserts the board came out with the RIGHT commit panels on it for the step it opens in — the chord stacks up, the commit track not. Catches the render-time `ReferenceError` that `clientRefCheck` can only see as a missing *name* — both August client bugs were exactly that. ⏳ Does not click, commit or end a turn: that needs a DOM, and jsdom will not install on this machine. |
+| `clientRenderShim.mjs` | — | The smallest browser `clientRenderCheck` can run against — `document`, `localStorage`, `AudioContext` and friends, all inert. ⚠️ Uses `defineProperty`, not assignment: Node 22 ships `navigator` as a getter-only global. |
 | `botTraceCheck.mjs` | `test:trace` | A full match walked turn by turn, with the bot's journal. |
 | `architectureCheck.mjs` | `test:arch` | **This file** — that it names every module, points at no dead path, and lists no phantom export. |
 | `bench.mjs` | `bench:bot` | Not a test. Prints evidence for the §6.6 bot bench. |
@@ -304,6 +307,7 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | `Pickles.jsx` | 592 | 🎓 The guitar pick with eyes who delivers the tips. |
 | `DiscordCoach.jsx` | 580 | 👂 Live "was that discord deliberate?" coaching. |
 | `GameStyles.jsx` | 568 | The global `<style>` block — CSS keyframes and classes. No props. |
+| `NoteHex.jsx` | — | 🎵 One note chip as inline SVG: outer ring, inner corner-bracket ring, white letter. Used by the Note Stock, the commit track and both chord stacks. Exports `NoteHex` (default), `NOTE_HEX` and `NOTE_BURST` (the tuning blocks) plus `deepen` and `hexPoints` (the chip's own outline, so the flying chip's shed rings trace the same hexagon). ⚠️ SVG rather than the `.hexw` clip-path divs because `drop-shadow` blurs a SILHOUETTE — a filled hexagon's glow hides behind itself, a stroked ring's does not. |
 | `BeginnerTipOverlay.jsx` | 506 | Multi-page walkthroughs with an arrow pointing at the real HUD element. |
 | `GameOverOverlay.jsx` | 425 | End-of-game victory screen. |
 | `FretboardFull.jsx` | 396 | The full-neck fretboard display. |
@@ -330,6 +334,8 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | `ScoreTrackOverlay.jsx` | 51 | Corner score tracks. |
 | `tipLayout.js` | 51 | `placeTipCard` — where a tip card fits on screen. |
 | `StatKnob.jsx` | 47 | A single stat knob. |
+| `NoteCommitOverlay.jsx` | 118 | 🎛️ Panel chrome for the note-commit overlay — `ChordStackPanel`, `CommitTrackPanel`, `PayoutRouterPanel`, `StackNest`, `stackSeatPos` and the `COMMIT_OVERLAY` tuning block. Panels lean (`skewX`) and un-skew their contents exactly once; the chord stacks lay their seats out as an interlocking honeycomb anchored to each panel's outer edge. Geometry read off `.scratch/note-commit-overlay.html`. ⚠️ SHELL ONLY: the numbers and the click handlers stay in the client, so a mistake here can misplace a panel but cannot cut across the melody commit. |
+| `NoteFlyChip.jsx` | 137 | 🎵 A committed note in flight — a real `NoteHex` on a bowed arc from the note stock to its seat, morphing to the seat's size, its bracket ring spinning, shedding rings behind it. Exports `NoteFlyChip` and the `NOTE_FLIGHT` tuning block (dialled on `.scratch/note-commit-overlay.html`). ⚠️ The path is driven through the Web Animations API, not CSS: the endpoints are wherever the seat is, and a keyframe cannot be told that. |
 | `CadenceToast.jsx` | 45 | "Cadence resolved" toast. |
 | `BoardFX.jsx` | 24 | Board effect wrapper. |
 

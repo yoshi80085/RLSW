@@ -59,16 +59,46 @@ prevents — not just what the code does. `⚠️` marks a trap someone could
 reasonably fall into; `📌` marks a note for later. This is deliberate and worth
 matching; the surrounding code is written this way throughout.
 
+## Visual changes get a preview first
+
+⚠️ **DO NOT EDIT THE HUD, THE BOARD OR ANY VISUAL ELEMENT STRAIGHT INTO THE
+CLIENT.** Build a standalone interactive preview page in `.scratch/` first, send
+it to Alex, let him dial it in, and only then port the numbers he lands on. He
+asked for this explicitly on 2026-08-26 and it has already paid for itself twice.
+
+What makes a preview page useful:
+
+- **Every taste call is a lever** — a slider or a button row, not a hardcoded
+  number. Radius, arm length, bloom, size, colour source, count. If you find
+  yourself guessing at a value, that value wants a control.
+- **Show the states, not one happy example.** The Note Stock chip has twelve
+  states; a design that only looks good on the default one is not finished.
+- **Show it in the real container.** The HUD column is 238px and the stock is
+  10 notes (11 for the Ronin). A chip that looks great alone can still wrap the
+  hand to four rows — put the real column on the page as a dashed outline and
+  count the rows.
+- **Old look beside new look**, so the comparison is honest.
+
+📌 **YOU CANNOT SEE WHERE HE LANDS.** The page runs in his browser and no state
+comes back. Ask for a screenshot of the control panel and read the values off it
+— and warn him to screenshot BEFORE opening any new copy you send, because a
+fresh file loads with defaults and wipes his dial-in.
+
+⚠️ **VERIFY THE PORT, DON'T ASSUME IT.** Render the shipped component through
+React SSR (`esbuild --jsx=automatic` + `react-dom/server`) and diff it against
+the preview at the same settings. The chip is the product; "it compiles" is not
+evidence that it looks right.
+
 ## Testing
 
-**`npm run test:all`** is the full sweep — seventeen suites, one command,
+**`npm run test:all`** is the full sweep — twenty-one suites, one command,
 stops on the first red. Run it before reporting anything as done, and quote the
 assertion counts. If a count drops, explain why rather than letting it pass
 unremarked.
 
 Individual suites are `npm run test:<suite>`: engine, legal, eval, transition,
 turnflow, determinism, battleflow, melody, slime, eleven, score, harness,
-riffparity, skilltree, b0, riff, trace, arch. `npm run bench:bot` runs the §6.6 bot
+riffparity, skilltree, shamisen, client, render, b0, riff, trace, arch. `npm run bench:bot` runs the §6.6 bot
 bench (not a test — it prints evidence), and `.scratch/` holds one-off probes,
 which are evidence for one session and never a suite.
 
@@ -78,7 +108,12 @@ files carrying 132 assertions had never been wired at all. If you write a check,
 give it a script in the same pass and add it to `test:all`.
 
 ⚠️ **`npm run build` currently dies with a bus error on this machine** — a
-memory limit in the local VM, not a code fault. Use **`npm run check:bundle`**
+memory limit in the local VM, not a code fault. ⚠️ **The same ceiling reaches
+further than the build**: the VM will restart under memory pressure mid-command,
+and `npm install` hangs on its network, so a missing package usually cannot be
+fetched here. Bundle with `--loader:.png=empty` rather than `dataurl` for
+anything that only needs to RUN — it is the difference between an 81MB bundle
+that restarts the box and a 2.5MB one that does not. Use **`npm run check:bundle`**
 instead: esbuild bundles the whole app, monolith included, in ~2 seconds and
 catches syntax errors and unresolved imports. Verify with it before and after
 touching `rlsw-simulator-v3_8_1.jsx`, which is ~15k lines and cannot be
