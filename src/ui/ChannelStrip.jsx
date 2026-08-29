@@ -71,6 +71,17 @@ export const CHANNEL_STRIP = {
   intervalCols:  2,   // 2 = two columns, 1 = one, 0 = inline
   modeLine:   true,
   plateTilt:    -4,   // degrees. See 📌 below.
+
+  /* 🎵 THE NOTE-STOCK DRAWER, Alex 2026-08-29. The stock stopped being its own
+     panel in the column and became a fold inside this plate. ⚠️ ONLY DURING
+     STEP 3 — steps 1 and 2 keep the full panel, because there the grid is the
+     surface you CLICK to build the melody and a 240px plate is not somewhere to
+     do that. By step 3 the same grid is reference, not workspace: "what is left
+     for next turn", which is exactly the question the rest of this plate answers.
+     📌 `drawerOpen` is only the STARTING state; the player's toggle wins after
+     that and the client owns it, so the fold survives a re-render. */
+  drawer:      true,
+  drawerOpen: false,  // he landed it closed — the plate reads as a key plate first
 };
 
 /** 🃏 THE SPIRIT CARD'S GEOMETRY, landed by Alex on the dial-in console
@@ -239,7 +250,8 @@ export function TurnRail({ steps, current }) {
  * these breaks Pickles silently, which is the only reason this note is this loud.
  * If the plate is ever restructured, the names move with the meaning, not the div.
  */
-export function KeyPlate({ root, mode, intervals, note, locked = false }) {
+export function KeyPlate({ root, mode, intervals, note, locked = false,
+  next = false, stock = null, stockOpen = false, stockLeft = 0, onStock }) {
   const bv = CS.bevel;
   const style = CS.plate === "etched"
     ? { background: "#080d17", border: "1px dashed #253449" }
@@ -272,7 +284,7 @@ export function KeyPlate({ root, mode, intervals, note, locked = false }) {
       transform: pt ? `skewX(${pt}deg)` : undefined, ...style }}>
       <div style={{ transform: pt ? `skewX(${-pt}deg)` : undefined }}>
       <div data-tip-anchor="root-note"
-        style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+        style={{ display: "flex", alignItems: "baseline", gap: 7, flexWrap: "wrap" }}>
         <span style={{ fontFamily: "'Saira Stencil One',sans-serif", lineHeight: 1,
           fontSize: CS.rootSize, color: "#dce8ff",
           textShadow: CS.plate === "backlit" ? "0 0 14px #7fb0ffaa"
@@ -280,6 +292,18 @@ export function KeyPlate({ root, mode, intervals, note, locked = false }) {
         <span style={{ fontFamily: "'Saira Stencil One',sans-serif", fontSize: 8, letterSpacing: 2.4,
           color: modeColor, textShadow: locked ? "0 0 8px #ffcc4466" : undefined }}>
           {locked ? "🔒 " : ""}{isMajor ? "MAJOR" : "MINOR"}</span>
+        {/* ↻ ⚠️ THIS BADGE IS THE FIX FOR A SILENT SWITCH, not a decoration.
+            Committing the melody REWRITES `rootNote` on the spot — the track's
+            last note becomes the next round's root (melodyCommit.js) — so from
+            step 3 onward this plate has always been printing a key the player
+            has not played in yet, with nothing to say so. The letter changed
+            under them at commit and the HUD stayed silent about it. */}
+        {next && (
+          <span style={{ marginLeft: "auto", fontFamily: "'Saira Stencil One',sans-serif",
+            fontSize: 6.5, letterSpacing: 1.6, padding: "1px 5px", borderRadius: 2,
+            color: "#ff99dd", background: "#2a0f22", border: "1px solid #ff99dd55" }}>
+            ↻ NEXT ROUND</span>
+        )}
       </div>
       {CS.intervalCols === 0 ? (
         <div data-tip-anchor="interval-legend"
@@ -311,6 +335,30 @@ export function KeyPlate({ root, mode, intervals, note, locked = false }) {
       {CS.modeLine && note && (
         <div data-tip-anchor="derived-mode"
           style={{ fontSize: 7, color: "#55637a", marginTop: 7, lineHeight: 1.4 }}>{note}</div>
+      )}
+      {/* 🎵 THE DRAWER. It carries `note-stock` while it is up, and the panel in
+          the column drops the anchor for exactly as long — one anchor in the DOM
+          at all times. ⚠️ TWO ELEMENTS WITH THE SAME `data-tip-anchor` IS A REAL
+          BUG, not a tidiness point: BeginnerTipOverlay takes the FIRST match, so
+          a duplicate makes Pickles point at whichever happens to be earlier in
+          the tree, and it fails silently (a missing anchor just re-centres). */}
+      {CS.drawer && stock && (
+        <div data-tip-anchor="note-stock"
+          style={{ borderTop: "1px solid #1b2740", marginTop: 8, paddingTop: 6 }}>
+          <div onClick={onStock} role="button" tabIndex={0}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onStock?.(); } }}
+            title={stockOpen ? "Fold the stock away" : "What is left in your hand for next turn"}
+            style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
+              userSelect: "none" }}>
+            <span style={{ fontSize: 8, color: "#3a5a7a",
+              display: "inline-block", transition: "transform .2s",
+              transform: stockOpen ? "rotate(90deg)" : "none" }}>▶</span>
+            <span style={{ fontSize: 7, letterSpacing: 1.8, color: "#3a5a7a" }}>NOTE STOCK</span>
+            <span style={{ fontSize: 7, color: "#7fb0ff", marginLeft: "auto" }}>
+              {stockLeft} left</span>
+          </div>
+          {stockOpen && <div style={{ marginTop: 5 }}>{stock}</div>}
+        </div>
       )}
       </div>
     </div>

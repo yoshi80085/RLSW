@@ -26,6 +26,39 @@ export function GameStyles() {
         .btn:hover{background:#152030;transform:translateY(-1px);box-shadow:0 2px 8px #00000066}.btn.on{background:#1a3560;border-color:#4488ff;color:#88bbff}
         .btn:disabled{opacity:.3;cursor:not-allowed}
         .btn.end{border-color:#cc8800;color:#ffaa22}
+        /* ── 🎛️ THE STEP-3 ACTION RAIL ─────────────────────────────────────
+           Geometry comes from 'RAIL_VARS' in ui/ActionRail.jsx, set inline on
+           the '.arail' wrapper, so the dial-in stays in ONE object and this
+           stylesheet keeps its "zero props, no app references" promise.
+           ⚠️ EVERY RULE HERE IS SCOPED UNDER '.arail'. The '.btn' class is worn
+           by dozens of buttons across the HUD, the modals and the lobby; a bare
+           '.btn{height:33px}' would rake the Continue-to-Melody button and the
+           upgrade tree along with the rail. */
+        .arail .arail-row{display:flex;flex-wrap:wrap;gap:var(--rb-gap);align-content:flex-start}
+        .arail .btn{
+          height:var(--rb-h);padding:0 var(--rb-px);font-size:var(--rb-fs);
+          min-width:var(--rb-minw);border-radius:3px;overflow:hidden;
+          display:inline-flex;align-items:center;justify-content:center;
+          transform:skewX(var(--rb-shear));clip-path:var(--rb-clip);
+          background:linear-gradient(100deg,
+            color-mix(in srgb,currentColor var(--rb-wash),transparent),transparent);
+          box-shadow:0 0 calc(9px * var(--rb-bloom))
+            color-mix(in srgb,currentColor 33%,transparent),inset 2px 0 0 currentColor;
+        }
+        /* ⚠️ THE HOVER RULE MUST RESTATE THE SKEW. The base '.btn:hover' sets
+           'transform:translateY(-1px)', and a transform does not merge — without
+           this the button SNAPS UPRIGHT under the cursor, which reads as the
+           panel glitching rather than as a lift. */
+        .arail .btn:hover{transform:skewX(var(--rb-shear)) translateY(-1px)}
+        .arail .btn > .rb-in{
+          display:flex;align-items:center;gap:5px;white-space:nowrap;line-height:1.05;
+          transform:skewX(var(--rb-unshear));
+        }
+        /* A refused button is a dark recess, not the lit one turned down — the
+           same rule the turn rail's unlit lamp obeys. See TurnRail's ⚠️. */
+        .arail .btn:disabled{background:#0a1020;box-shadow:none}
+        .arail .btn.end{box-shadow:0 0 calc(9px * var(--rb-bloom))
+          color-mix(in srgb,#ffaa22 40%,transparent),inset 2px 0 0 #ffaa22}
         .bar{background:#0d1a2a;border-radius:2px;height:5px}
         .bar-f{height:5px;border-radius:2px;transition:width .3s}
         .pip{display:inline-block;width:9px;height:9px;border-radius:50%;margin:1px;border:1px solid #1e3a5f}

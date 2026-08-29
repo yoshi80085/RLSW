@@ -13,6 +13,48 @@
 
 ---
 
+## 5-hud. 🧭 session handoff, 2026-08-29 — the step-3 rail
+
+**Landed.** Four HUD changes that are one design, dialled by Alex on
+`.scratch/hud-step3-rail.html` and ported at his readout values:
+
+1. **The action rail moved up** — out of the bottom of the HUD column (below the
+   RACE meter, the Note Stock and every rival row) to directly under the spirit
+   card. Physically moved in the JSX, not pulled up with flex `order`, so tab
+   order still matches reading order.
+2. **The buttons rake and grew** — shear −8°, a 5px `tl-br` chamfer, 33px tall,
+   12px text, a `currentColor` wash and bloom so each button glows in its own
+   hue. New module `ui/ActionRail.jsx`; the CSS lives under `.arail` in
+   `GameStyles.jsx` and reads custom properties that module sets.
+3. **UNIVERSAL | SIGNATURE split** — left is the move set every Spirit has,
+   right is what this one owns. ⚠️ *Signature ≠ unlocked*: the Monster's Slime is
+   innate and sits right, because the question is "mine or everyone's". Blaster
+   of Ra sits LEFT — it replaces the Smash rather than adding a button, and the
+   slot is universal. Both calls are argued in `ActionRail.jsx`.
+4. **The Note Stock became a drawer in the KEY plate**, step 3 only. Steps 1–2
+   keep the full panel, because there the grid is the surface you click. The
+   grid node is **hoisted and rendered in both places** rather than rebuilt, and
+   the `note-stock` tutorial anchor moves with the content — never two copies.
+
+**The one real finding.** Making the plate step-aware turned up that the two
+halves of "the key" flip at different moments: `melodyCommit` writes the track's
+last note into `rootNote` at COMMIT, while `turnFlow` derives the mode at TURN
+START. So step 3 has always shown next round's root against this round's mode,
+with nothing saying so — the letter changed under the player silently. The plate
+now prints both halves of the next key from the commit onward, behind a
+`↻ NEXT ROUND` badge.
+
+**Still open.** `ChannelStrip.jsx` claims the strip column measures 238px at
+every viewport width. Probed against the shipped declarations, the card's flex
+row breaks below **532px** (286 basis + 238 portrait + 4 inset + 4 border), so at
+the documented `minmax(430px,480px)` track the strip and the portrait should
+STACK. Alex's screenshots show them side by side. ⚠️ One of the two is wrong and
+it was not resolved this session — **measure the real client before trusting
+either.** It matters: the rail is sized against the column, and a rail dialled at
+560 wraps to more rows at 480.
+
+---
+
 ## 0. The diagnosis — three docs, one deferral loop
 
 Read the three sequencing notes side by side and the shape is obvious:

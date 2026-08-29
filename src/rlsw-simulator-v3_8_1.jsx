@@ -37,7 +37,8 @@ import { StatKnob } from "./ui/StatKnob.jsx";
 import { ChordStackPanel, CommitTrackPanel, PayoutRouterPanel, COMMIT_OVERLAY,
          StackNest, stackSeatPos } from "./ui/NoteCommitOverlay.jsx";
 // 🎛️ The column beside the character card — turn rail, key plate, DB meter.
-import { ChannelStrip, StripSection, TurnRail, KeyPlate, SPIRIT_CARD } from "./ui/ChannelStrip.jsx";
+import { ChannelStrip, StripSection, TurnRail, KeyPlate, SPIRIT_CARD, CHANNEL_STRIP } from "./ui/ChannelStrip.jsx";
+import { ActionRail, RailBtn, ACTION_RAIL } from "./ui/ActionRail.jsx";
 import { ToneFader } from "./ui/ToneFader.jsx";
 import { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from "react";
 import React from "react";
@@ -1615,6 +1616,10 @@ export function Game({ gameState, onReturnToLobby }) {
   const [tauntDisplay, setTauntDisplay] = useState(null); // { line, name, color, key }
   const moveStepsLeft = engineState.turn.moveStepsLeft; // engine-owned (Phase 2)
   const [stackCommitDest, setStackCommitDest] = useState(null); // 🎸 null = melody mode, 'drive' | 'sustain' = stack commit mode
+  /* 🎵 THE KEY PLATE'S NOTE-STOCK DRAWER. Owned here, not in ChannelStrip, so a
+     re-render (and there are many per turn) cannot silently re-fold it under the
+     player. It seeds from CHANNEL_STRIP.drawerOpen — Alex landed it closed. */
+  const [stockDrawer, setStockDrawer] = useState(CHANNEL_STRIP.drawerOpen);
   // 🎯 TURN STEP — progressive HUD flow: chord → melody → move_act
   // B8: 'pivot' is no longer a stage — the turn opens on the chord step.
   const [turnStep, setTurnStep] = useState('chord');
@@ -11904,6 +11909,185 @@ export function Game({ gameState, onReturnToLobby }) {
   }, []);
 
   // ─── RENDER ───────────────────────────────────────────────────────────────────
+  /* ── 🎵 THE NOTE STOCK GRID, hoisted 2026-08-29 ────────────────────────────
+     ⚠️ IT IS HOISTED BECAUSE IT NOW RENDERS IN TWO PLACES, NOT BECAUSE IT WAS
+     TIDIER UP HERE. Steps 1–2 draw it in the Note Stock panel, where it is the
+     working surface you click to build the melody; step 3 draws the SAME NODE
+     inside the KEY plate's drawer, as read-only reference for what is left.
+     📌 Building it twice from two copies of the colour logic is exactly the
+     drift this repo keeps finding months later — a chip in the drawer painted
+     from a stale copy of `noteContextClaim` would tell the player a note pays
+     Drive when the panel says Sustain, and both would look authoritative.
+     📌 The guard is not an optimisation, it is the old gate preserved: this used
+     to sit inside `turnStep === 'melody' || 'move_act'`, so it must not evaluate
+     during step 1. */
+  const stockGrid = (acting && (turnStep === 'melody' || turnStep === 'move_act'))
+    ? (() => {
+                      // 🎯 Pitch classes that would RESOLVE a cadence if they end this track
+                      const resolvePcs = new Set(
+                        cadenceHints(actingNoteState?.finalsTrail ?? [], actingNoteState?.cadenceCooldowns ?? {})
+                          .filter(h => h.resolves).map(h => h.nextPc)
+                      );
+                      return (
+                    <div style={{display:"flex",flexWrap:"wrap",gap:2,marginBottom:5}}>
+                      {noteStock.map((note,idx)=>{
+                        const notePC         = pitchIndex(note);
+                        const isTritone      = notePC === pitchIndex(tritoneNote);
+                        const isMajorThird   = notePC === pitchIndex(majorThirdNote);
+                        const isMinorSeventh = notePC === pitchIndex(minorSeventhNote);
+                        const isFourth       = notePC === pitchIndex(fourthNote);
+                        const isFifth        = notePC === pitchIndex(fifthNote);
+                        const intervalKey    = isTritone      ? 'tritone'
+                                            : isMajorThird   ? 'majorThird'
+                                            : isMinorSeventh ? 'minorSeventh'
+                                            : isFourth       ? 'fourth'
+                                            : isFifth        ? 'fifth' : null;
+                        const isIntervalNote = intervalKey !== null;
+                        const isUnlocked     = isIntervalNote && unlockedIntervalKeys.has(intervalKey);
+                        const inScaleNote    = currentScale.includes(note);
+                        const inScale        = inScaleNote;
+                        const used           = usedHas(usedStockIdx, idx);
+                        const isStaggered    = staggeredSlots.includes(idx);
+                        // Unlock gates, unchanged — only what they PAINT changed. All three
+                        // now share `UNLOCKED_DISCORD` (see its definition): the effects that
+                        // once justified three separate colours were deleted in B1 and B5, and
+                        // red and blue are spoken for now.
+                        // - tritone: needs discord_3 (out-of-scale until then → grey)
+                        // - minorSeventh: needs discord_1 (in Major it's out-of-scale without
+                        //   it; in Minor it's naturally in-scale → plain white)
+                        // - majorThird: needs discord_2 (in Minor it's out-of-scale without it;
+                        //   in Major it's naturally in-scale → plain white)
+                        // - fourth/fifth: always diatonic, still pay Db ending bonuses → keep
+                        //   their own colours
+                        const showTritoneColor      = isTritone      && discordUnlocks.includes('discord_3');
+                        const showMinorSeventhColor = isMinorSeventh && discordUnlocks.includes('discord_1') && scaleMode === 'major';
+                        const showMajorThirdColor   = isMajorThird   && discordUnlocks.includes('discord_2') && scaleMode === 'minor';
+                        const showUnlockedDiscord   = showTritoneColor || showMinorSeventhColor || showMajorThirdColor;
+                        // 🎸 B3 — CHORD CONTEXT HIGHLIGHT. A note the key calls wrong that your
+                        // stacks have made legal lights up the moment the stack qualifies it.
+                        // This highlight IS the teaching: the player never learns a note table,
+                        // they learn "lit notes are notes that pay me right now."
+                        //
+                        // It used to light gold — one colour for "some stack pardoned this,"
+                        // which answered the wrong half of the question. The player already
+                        // knows the note is clean; what they're deciding is whether to feed the
+                        // riff or the shield. So the highlight now names the payee: Drive red,
+                        // Sustain blue, and an alternating red↔blue pulse when both stacks
+                        // legalize it independently and the choice is genuinely theirs (they
+                        // make it at commit — see the payout router under the Commit Track).
+                        //
+                        // Gold is now exclusively the cadence-resolve signal, which is a strict
+                        // improvement: two unrelated mechanics were wearing the same colour on
+                        // the same grid.
+                        const ctxClaim     = noteContextClaim(note);
+                        const litByContext = ctxClaim !== null;
+                        const ctxDual      = ctxClaim?.both === true;
+                        const ctxC         = ctxClaim?.stack === 'sustain' ? SUSTAIN_C : DRIVE_C;
+                        const ctxBg        = ctxClaim?.stack === 'sustain' ? SUSTAIN_BG : DRIVE_BG;
+                        // Out-of-scale interval notes that haven't been unlocked → gray discord
+                        const showAsDiscord  = isIntervalNote && !isUnlocked && !inScaleNote && !litByContext;
+                        // ⚠️ Context wins over the interval colours, as gold did — a pardoned
+                        // note is emphatically not a wrong note, and "which stack pays me" is
+                        // live information while "you own this unlock" is not.
+                        const borderC = litByContext         ? ctxC
+                                      : showAsDiscord        ? "#444455"
+                                      : showUnlockedDiscord  ? UNLOCKED_DISCORD.border
+                                      : isFifth              ? "#ff55aa"
+                                      : isFourth             ? "#cc55ff"
+                                      : inScaleNote          ? "#c0c8d8"
+                                      : "#444455";
+                        const textC   = litByContext         ? ctxC
+                                      : showAsDiscord        ? "#555566"
+                                      : showUnlockedDiscord  ? UNLOCKED_DISCORD.text
+                                      : isFifth              ? "#ff55aa"
+                                      : isFourth             ? "#cc55ff"
+                                      : inScaleNote          ? "#e8eef8"
+                                      : "#555566";
+                        const bgC     = litByContext         ? ctxBg
+                                      : showAsDiscord        ? "#111118"
+                                      : showUnlockedDiscord  ? UNLOCKED_DISCORD.bg
+                                      : isFifth              ? "#2a0f1a"
+                                      : isFourth             ? "#1a0a2a"
+                                      : inScaleNote          ? "#1a2035"
+                                      : "#111118";
+                        const shadow  = litByContext         ? `0 0 7px ${ctxC}88`
+                                      : showAsDiscord        ? "none"
+                                      : showUnlockedDiscord  ? UNLOCKED_DISCORD.shadow
+                                      : isFifth              ? "0 0 5px #ff55aa66"
+                                      : isFourth             ? "0 0 5px #cc55ff66"
+                                      : inScaleNote          ? "0 0 4px #c0c8d844"
+                                      : "none";
+                        const lockTip = ctxDual
+                                      ? ` 🎸 BOTH stacks make this legal — you pick who gets paid at commit`
+                                      : litByContext
+                                      ? ` 🎸 Your ${ctxClaim.stack === 'sustain' ? '🛡️ Sustain' : '⚔️ Drive'} chord makes this legal — it pays ${ctxClaim.stack === 'sustain' ? 'Sustain' : 'Drive'}`
+                                      : isIntervalNote && !isUnlocked && !inScaleNote
+                                      ? ` 🔒 Locked — upgrade Discord path to unlock` : '';
+                        // 🎚️ Mixer — used slots stay tappable for one layered repeat per turn
+                        const mixerReady = used && !isStaggered
+                          && (actingNoteState?.unlockedSkills ?? []).includes('mixer')
+                          && !actingNoteState?.mixerUsedThisTurn
+                          && !hasConfirmed && !pivotPending && melodyLine.length < 8;
+                        // 🎯 This note's pitch would resolve a cadence if it ends the track
+                        const resolvesCadence = resolvePcs.has(notePC) && !used && !isStaggered;
+                        // 🕳️ A used, non-Mixer, non-staggered slot is genuinely EMPTY — no note
+                        // color, no letter — so it never reads as a (still-full-opacity) discord note.
+                        const isEmpty = used && !mixerReady && !isStaggered;
+                        // 🎵 Just refilled this turn — pop in instead of silently appearing.
+                        const isFresh = freshNoteIdx?.spiritId === acting?.id && freshNoteIdx.indices.has(idx);
+                        // ⚔️↔🛡️ Dual-legal: alternate the hex between the two stack colours so
+                        // "either of these will take it" is legible without a legend. The pulse
+                        // is deliberately slow (2.2s) — this is an invitation to choose, not an
+                        // alarm, and a fast strobe on up to eight hexes at once is unreadable.
+                        // Cadence gold still outranks it: resolving the track is the bigger
+                        // decision, and a hex can only say one thing at a time.
+                        const dualPulse = ctxDual && !used && !isStaggered && !resolvesCadence;
+                        return (
+                          <div key={idx} onClick={(e)=>{ if (isStaggered) return; if (!used || mixerReady) clickNoteStock(idx, e); }}
+                            onMouseEnter={(e)=>{ const x=e.clientX, y=e.clientY; clearTimeout(hoverScaleTimerRef.current); hoverScaleTimerRef.current=setTimeout(()=>setHoverScale({note,x,y}),1500); }}
+                            onMouseLeave={()=>{ clearTimeout(hoverScaleTimerRef.current); setHoverScale(cur=>cur?.note===note?null:cur); }}
+                            title={isStaggered ? "⚡ Staggered — unavailable"
+                                 : mixerReady ? "🎚️ Mixer — tap to layer this note again"
+                                 : resolvesCadence ? `🎯 End your track on this note to RESOLVE a cadence — the crowd swells (+Fans)!${lockTip}`
+                                 : lockTip || undefined}
+                            style={{
+                              width:NOTE_HEX.size,height:NOTE_HEX.size,flexShrink:0,
+                              display:"flex",alignItems:"center",justifyContent:"center",
+                              cursor:(used&&!mixerReady)||isStaggered?"default":"pointer",
+                              opacity: mixerReady ? 0.55 : isStaggered ? 0.3 : 1,
+                              // ⚠️ THE BLOOM NO LONGER LIVES HERE. It is a drop-shadow on the
+                              // SVG's stroked rings inside NoteHex — a filter on THIS div would
+                              // blur the chip's whole silhouette again, which is the exact bug
+                              // that made the glow look frozen. Only the pop-in stays.
+                              animation: isFresh ? "note-pop-in .5s ease-out" : undefined,
+                              transition:"all .1s",
+                            }}>
+                            {/* 🎨 `borderC` is the SAME variable the old chip used, so all
+                                twelve colour states carry over untouched — the chip changed
+                                shape, not language. `shadow === "none"` is the existing test
+                                for "this state does not glow", reused as `dull`. */}
+                            <NoteHex
+                              hue={isStaggered ? "#ff8800" : mixerReady ? "#44ddff"
+                                 : resolvesCadence ? "#ffd700" : isEmpty ? "#232b3a" : borderC}
+                              letter={isStaggered ? "\u26a1" : isEmpty ? "" : note}
+                              dull={isStaggered || isEmpty || shadow === "none"}
+                              dual={dualPulse}
+                              gold={resolvesCadence}
+                              // 🎆 ⚠️ THE FLARE TAKES `borderC`, NOT THE CHIP'S CURRENT HUE.
+                              // The commit marks the slot used in the same tick the burst
+                              // fires, so by the time this renders the chip is already the
+                              // EMPTY socket colour — and a burst that borrowed its chip's
+                              // hue would flare grey for the note that just left.
+                              burst={burstOut?.seat === `hand:${idx}` ? { ...burstOut, hue: borderC } : null}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                      );
+                    })()
+    : null;
+
   return (
     <div className={beginnerEnabled ? 'beginner-glow' : ''} style={{ fontFamily:"'Share Tech Mono','Courier New',monospace",
       background:"radial-gradient(ellipse at 50% -10%, #0a1226 0%, #050810 55%)",
@@ -12860,7 +13044,37 @@ export function Game({ gameState, onReturnToLobby }) {
                         respell the stock under notes already placed), so a player who
                         stacks a ♭3 right now sees nothing change and concludes the
                         feature is broken. This is what tells them when it lands. */}
-                    <KeyPlate root={rootNote} mode={scaleMode} locked={modeLocked}
+                    {/* 🔑 STEP-AWARE, Alex 2026-08-29. ⚠️ THE TWO HALVES OF "THE KEY"
+                        TURN OVER AT DIFFERENT MOMENTS, and that is the whole reason
+                        this is computed rather than passed straight through:
+                          · the ROOT flips at COMMIT — `melodyCommit` writes the
+                            track's last note straight into `rootNote`, so by step 3
+                            this plate is already printing next round's letter;
+                          · the MODE flips at TURN START — `turnFlow` derives it from
+                            the Drive Stack, so during step 3 the plate is still
+                            printing the mode you are leaving.
+                        Left alone, step 3 shows next round's root against this
+                        round's mode: a chord that will never be played, with nothing
+                        marking it as a mixture. So from the commit onward the plate
+                        prints BOTH halves of the next key and says so on the badge.
+                        📌 It reads `hasConfirmed`, not just the step — the step can
+                        advance without a committed track, and an uncommitted track
+                        has not moved the root yet. */}
+                    {(() => {
+                    const nextKey = turnStep === 'move_act' && hasConfirmed;
+                    const derived = modeFromStack(actingNoteState?.driveStack ?? [],
+                                                  actingNoteState?.unlockedSkills ?? [], scaleMode);
+                    const plateMode = nextKey ? derived.mode : scaleMode;
+                    const plateIvs  = nextKey ? getIntervalNotes(rootNote, plateMode) : intervals;
+                    const unusedLeft = (noteStock ?? [])
+                      .filter((_, i) => !usedHas(usedStockIdx, i)).length;
+                    return (
+                    <KeyPlate root={rootNote} mode={plateMode} locked={modeLocked && !nextKey}
+                      next={nextKey}
+                      stock={nextKey ? stockGrid : null}
+                      stockOpen={stockDrawer}
+                      stockLeft={unusedLeft}
+                      onStock={() => setStockDrawer(v => !v)}
                       note={(() => {
                         const reason = actingNoteState?.modeReason ?? 'ambiguous';
                         const chord  = actingNoteState?.modeChordName ?? 'your stack';
@@ -12869,23 +13083,38 @@ export function Game({ gameState, onReturnToLobby }) {
                           : reason === 'locked'
                             ? `${chord} wants minor — 🔒 unlock Minor Tonality`
                             : `${chord} sets the key`;
-                        const next = modeFromStack(actingNoteState?.driveStack ?? [],
-                                                   actingNoteState?.unlockedSkills ?? [], scaleMode);
-                        if (next.mode === scaleMode) return why;
+                        /* 🔑 ONCE THE PLATE IS SHOWING THE NEXT KEY, this line stops
+                           being a forecast and becomes the RECEIPT for it. ⚠️ The old
+                           "↻ next turn: 🌑 Minor" warning must not survive into step 3
+                           alongside a plate that has already flipped — a warning about
+                           a change that is on screen reads as a second, different
+                           change, and the player goes looking for it. */
+                        if (nextKey) return (<>
+                          <div style={{color:"#ff99dd"}}>
+                            ↻ your track ended on {rootNote} — that opens the next round
+                          </div>
+                          <div style={{marginTop:3}}>
+                            {derived.mode === scaleMode
+                              ? `${chord} holds the mode`
+                              : `${chord} turns it ${derived.mode === 'major' ? '☀️ Major' : '🌑 Minor'} at turn start`}
+                          </div>
+                        </>);
+                        if (derived.mode === scaleMode) return why;
                         return (<>
                           {why}
                           <div style={{marginTop:3,color:"#ff99dd"}}>
-                            ↻ next turn: {next.mode === 'major' ? '☀️ Major' : '🌑 Minor'} — your Drive Stack changed
+                            ↻ next turn: {derived.mode === 'major' ? '☀️ Major' : '🌑 Minor'} — your Drive Stack changed
                           </div>
                         </>);
                       })()}
                       intervals={[
-                        ['4th', fourthNote,        '#cc55ff'],
-                        ['5th', fifthNote,         '#ff55aa'],
-                        ['tri', tritoneNote,       UNLOCKED_DISCORD.text],
-                        ['M3',  majorThirdNote,    UNLOCKED_DISCORD.text],
-                        ['m7',  minorSeventhNote,  UNLOCKED_DISCORD.text],
+                        ['4th', plateIvs.fourth,        '#cc55ff'],
+                        ['5th', plateIvs.fifth,         '#ff55aa'],
+                        ['tri', plateIvs.tritone,       UNLOCKED_DISCORD.text],
+                        ['M3',  plateIvs.majorThird,    UNLOCKED_DISCORD.text],
+                        ['m7',  plateIvs.minorSeventh,  UNLOCKED_DISCORD.text],
                       ]}/>
+                    ); })()}
                   </StripSection>
                 </ChannelStrip>
                 <div style={{flex:1}}/>{/* push loadout content to top */}
@@ -12894,6 +13123,670 @@ export function Game({ gameState, onReturnToLobby }) {
               </div>
             );
           })()}
+
+          {/* ── 🎛️ THE ACTION RAIL — moved up here 2026-08-29 ────────────────
+              It used to be the LAST thing in this column, under the RACE meter,
+              the Note Stock and every rival's row. ⚠️ THAT WAS NOT A LAYOUT
+              PREFERENCE, it was a real cost: during step 3 the only panel a
+              player is working in was the one furthest from the card that says
+              who they are and what they can afford, so every decision was a
+              scroll or a long saccade away from the numbers it depended on.
+              📌 It sits ABOVE the RACE meter deliberately. The meter answers
+              "am I winning"; the rail answers "what do I do about it", and the
+              answer belongs next to the character, not next to the scoreboard.
+              📌 DOM ORDER IS THE VISUAL ORDER — this block was physically moved
+              rather than pulled up with flex `order`, so keyboard tabbing walks
+              the HUD in the order the eye reads it. ── */}
+          {/* ACTIONS — only show during move_act step (or always for End Turn) */}
+          {/* N13: on a rival's turn the whole action rail goes dead — the
+              handlers were already canAct-gated, but a live-looking button that
+              silently does nothing reads as a broken game, and "I pushed my
+              friend's commit button" is how the turnStep drift got reported.
+              pointerEvents:none kills the whole subtree in one line, so no
+              future button can be added here and forget its gate. */}
+          <div className={turnStep === 'move_act' && canAct ? 'step-active' : ''} style={{'--step-glow-color':'#44ff88',
+            borderRadius:6, padding: turnStep === 'move_act' ? '4px 0' : 0, transition:'all 0.3s',
+            ...(canAct ? {} : {opacity:0.32, pointerEvents:'none', filter:'grayscale(0.85)'})}}>
+          <div className="stitle" style={{marginTop:4}}>
+            {!canAct ? 'Actions — rival on stage' : turnStep === 'move_act' ? 'Step 3 — Move & Act' : 'Actions'}
+          </div>
+          {/* (bonus revoice UI removed — stack commit budget replaces it) */}
+          {turnStep !== 'move_act' && canAct && (
+            <div style={{marginBottom:3}}>
+              <button className="btn end" data-tip-anchor="end-turn" onClick={endTurn} style={{width:'100%',fontSize:9,padding:'5px 0'}}>End Turn ⏭</button>
+            </div>
+          )}
+          {/* ── ⑤ THE SPLIT, Alex 2026-08-29 ────────────────────────────────
+              LEFT is the move set EVERY Spirit has; RIGHT is what THIS one owns.
+              ⚠️ "SIGNATURE" IS NOT "UNLOCKED", and the difference is load-bearing:
+              the Monster's Slime is innate and still belongs on the right, because
+              the question this split answers is "is this mine, or is this
+              everyone's". A rival can predict your left half and cannot predict
+              your right — and the right half is the one that visibly GROWS as you
+              spend Db, which is the whole reward loop made legible.
+              🌀 Blaster of Ra stays on the LEFT even though it is an Intergalactic
+              unlock: it does not add a button, it takes the Smash's slot, and the
+              slot is universal. See ActionRail.jsx for the full argument. ── */}
+          {turnStep === 'move_act' && (
+          <ActionRail
+            universal={<>
+            <RailBtn className={`btn${action==="move"?" on":""}`}
+              onClick={() => {
+                if (action === "move") { setAction(null); }
+                else if (moveStepsLeft > 0) { setAction("move"); addLog(`🚶 ${acting?.name} enters move mode — ${moveStepsLeft} hex${moveStepsLeft!==1?"es":""} available`); }
+                else addLog(`🎵 Build and confirm your Melody Line first.`);
+              }}
+              disabled={!acting}>Move {moveStepsLeft>0?`(${moveStepsLeft} hex)`:""}</RailBtn>
+            {action === "move" && (
+              <RailBtn className="btn" style={{borderColor:"#44cc88",color:"#44cc88"}}
+                onClick={() => { if (!canAct) return; setAction(null); dispatch(beatsSpent(0, false, { all: true })); addLog(`🚶 ${acting.name} stops moving.`); }}>
+                ✓ End Move</RailBtn>
+            )}
+            {/* FACE TURN — costs 1 move step */}
+            {acting && moveStepsLeft > 0 && (
+              <RailBtn className={`btn${action === "face" ? " on" : ""}`}
+                style={{borderColor: action === "face" ? "#44ccff" : "#0a3044",
+                  color: action === "face" ? "#44ccff" : "#1a5066"}}
+                onClick={() => {
+                  if (action === "face") { setAction(null); }
+                  else {
+                    setAction("face");
+                    addLog(`🔄 ${acting.name} — click any adjacent hex to face that direction (costs 1 step)`);
+                  }
+                }}>
+                🔄 Face{action === "face" ? "…" : ""}
+              </RailBtn>
+            )}
+            {action === "face" && (
+              <RailBtn className="btn" style={{borderColor:"#888",color:"#888"}}
+                onClick={() => setAction(null)}>Cancel</RailBtn>
+            )}
+            {/* ✨ Pose button — Limelight hex + a confirmed turn. NO skill gate
+                (2026-08): the centre-stage economy is open to everyone, because
+                a board objective only some characters can touch teaches nobody
+                anything. The button states its own price and payout so the
+                trade is legible before the click, not after. */}
+            {acting?.num === LIMELIGHT_HEX && hasConfirmed && (() => {
+              const on      = !!posing[acting?.id];
+              const nextTier = poseTierFor(acting?.id);
+              const sLeft   = (actingNoteState?.sustainStack ?? []).length;
+              return (
+                <RailBtn className={`btn${on ? " on" : ""}`}
+                  style={{borderColor:"#ff88ff",color: on ? "#ff88ff" : "#aa55cc",
+                    ...(on ? { animation:'crew-ready-glow 1.6s ease-in-out infinite' } : {})}}
+                  title={on
+                    ? `Posing — end your turn here for ⭐${nextTier} FP (×crowd) and −${POSE_SUSTAIN_COST} Sustain note. Your defence die is ZERO until you drop it.`
+                    : `Strike a Pose: end your turn on the Limelight for ⭐${nextTier} FP (×crowd). Costs ${POSE_SUSTAIN_COST} Sustain note per round${sLeft === 0 ? ' — and you have NONE left' : ''}, and you roll NO defence die while posing.`}
+                  onClick={togglePose}>
+                  {on ? `✨ Posing! ⭐${nextTier}${sLeft === 0 ? ' 💀' : ''}` : `✨ Pose (⭐${nextTier})`}
+                </RailBtn>
+              );
+            })()}
+            {/* 🤘 STRIKE THE GOD — the ONLY attack while the Rock God stands.
+                Clicking his hex also works; this button makes the affordance
+                impossible to miss (bugfix 2026-07-16: players couldn't find
+                the attack — PvP buttons had no targets and went dark). */}
+            {rockGodActive && rockGod && !actionTokenUsed && (() => {
+              const def = ROCK_GODS[rockGod.id] ?? {};
+              const spHex = acting ? HEX_BY_NUM[acting.num] : null;
+              const godHex = HEX_BY_NUM[rockGod.num];
+              const adjacent = spHex && godHex && axialDist(spHex.q, spHex.r, godHex.q, godHex.r) <= 1;
+              const inBeam = actingRig.inRange && acting && getSonicBeam(acting).has(rockGod.num);
+              const canMelee = adjacent && moveStepsLeft >= 1;
+              const canBeam  = inBeam && moveStepsLeft >= 2;
+              const canStrike = canMelee || canBeam;
+              const why = canStrike ? ''
+                : (adjacent || inBeam) ? ` (${adjacent ? '1AP' : '2AP'})`
+                : ' — get adjacent or line up your beam';
+              return (
+                <RailBtn className={canStrike ? 'btn active' : 'btn'}
+                  style={{borderColor: canStrike ? (def.color ?? '#ffcc22') : '#443300',
+                    color: canStrike ? (def.color ?? '#ffcc22') : '#443300',
+                    fontWeight: 700,
+                    ...(canStrike ? { animation:'crew-ready-glow 1.6s ease-in-out infinite' } : {})}}
+                  disabled={!canStrike}
+                  title={`Strike ${def.name ?? 'the God'} — your chord's Drive lands straight as damage AND Fame (no dice). Melee adjacent (1 AP) or Sonic beam (2 AP, needs Amp I). Clicking his hex works too.`}
+                  onClick={() => canStrike && attackRockGod(acting.id)}>
+                  🤘 STRIKE {def.name ? def.name.toUpperCase() : 'THE GOD'}{canStrike ? ` (${canMelee ? '⚔️ 1AP' : '🔊 2AP'})` : why}
+                </RailBtn>
+              );
+            })()}
+            {/* SWING — baseline attack, always visible & lit (PvP is off during the God fight).
+                Hover previews the cone. GRAYED = no AP / token spent; FADED = no rival in range. */}
+            {!rockGodActive && (() => {
+              const cone = acting ? getSwingCone(acting) : new Set();
+              const rivals = acting ? getRivalsInCone(acting) : [];
+              // 👤 The double counts as a target here. If the button read "(0)"
+              // while a Ronin standee sat in the cone, the count would be the
+              // tell — so it's tallied exactly like a real rival.
+              const shadowCounts = shadowInRange('cone') ? 1 : 0;
+              const targetCount = rivals.length + shadowCounts;
+              const grayed = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
+              const canSwing = !grayed && targetCount > 0;
+              return (
+                <div style={{position:'relative',display:'inline-block'}}
+                  onMouseEnter={() => setHoverPreview('swing')}
+                  onMouseLeave={() => setHoverPreview(p => p === 'swing' ? null : p)}>
+                  <RailBtn className={canSwing ? 'btn active' : 'btn'}
+                    style={grayed
+                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6, position:'relative'}
+                      : {borderColor:'#ff4444', color:'#ff6666',
+                          opacity: canSwing ? 1 : 0.4, position:'relative'}}
+                    disabled={!canSwing}
+                    title={grayed
+                      ? "The jab (1 AP) — grayed out: needs a confirmed turn, your Action Token, and at least 1 AP."
+                      : canSwing
+                      ? "The jab — cheap (1 AP) & defended. Drives your chord into them and can land Thrash statuses."
+                      : "The jab (1 AP) — no rival in your cone. Hover to see the swing range."}
+                    onClick={() => {
+                      if (action === 'swing') { setAction(null); }
+                      else if (canSwing) {
+                        setAction('swing');
+                        addLog('⚔️ SWING — click a rival in your cone to attack! (1 AP)');
+                      }
+                    }}>
+                    ⚔️ Swing{targetCount > 0 ? ` (${targetCount})` : ''} {!canSwing && moveStepsLeft < 1 ? '(1AP)' : ''}
+                  </RailBtn>
+                </div>
+              );
+            })()}
+            {action === 'swing' && (
+              <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
+                onClick={() => setAction(null)}>Cancel</RailBtn>
+            )}
+            {/* 🎸 THE SMASH (melee) — or 🌀 BLASTER OF RA (ranged, piercing) for Intergalactic 0 */}
+            {!rockGodActive && (() => {
+              const ns = actingNoteState ?? {};
+              // 🌀 Once Blaster of Ra is unlocked, it REPLACES the Smash: ranged beam, pierces all.
+              const hasBlaster = acting?.id === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
+              const rivals = acting ? (hasBlaster ? getRivalsInBeam(acting) : getRivalsInCone(acting)) : [];
+              // 👤 The Shadow Illusion is a legal target here too — it has to be,
+              // or the button greying out would reveal it as a fake.
+              const shadowSeen = shadowInRange(hasBlaster ? 'beam' : 'cone');
+              const unused = (ns.noteStock ?? []).filter((_, i) => !usedHas(ns.usedStockIdx, i)).length;
+              const driveNotes = (ns.driveStack ?? []).length;
+              // 🎸 The Smash's fuel gate: 1+ unused note AND a voiced Drive stack
+              // (it spends the whole thing). The Blaster keeps the old 2-note bar.
+              const fuelOk  = hasBlaster ? unused >= 2 : (unused >= 1 && driveNotes >= 1);
+              const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
+              const canFire = !grayed && (rivals.length > 0 || shadowSeen) && fuelOk;
+              const mode    = hasBlaster ? 'blaster' : 'smash';
+              const baseTitle = hasBlaster
+                ? "Blaster of Ra (2 AP) — a ranged, piercing bass-drop down the beam: undefendable, scatters & knocks back EVERY rival in line. Ends your movement, leaves you Exposed. Hurls your unused stock."
+                : `The all-out front (${SMASH_AP_COST} AP) — you spend EVERYTHING: every unused note, your WHOLE Drive stack, and ${SMASH_SELF_SUSTAIN} off your Sustain. Undefendable in return: −${SMASH_DAMAGE} Vibe, ${SMASH_SUSTAIN_STRIP} notes torn off their Sustain stack, hurled back ${SMASH_KNOCKBACK} hexes. Ends all your movement.`;
+              return (
+                <div style={{position:'relative',display:'inline-block'}}
+                  onMouseEnter={() => setHoverPreview(mode)}
+                  onMouseLeave={() => setHoverPreview(p => p === mode ? null : p)}>
+                  <RailBtn className={canFire ? 'btn active' : 'btn'}
+                    style={grayed
+                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
+                      : {borderColor:'#ff33aa', color:'#ff66cc', opacity: canFire ? 1 : 0.4}}
+                    disabled={!canFire}
+                    title={grayed
+                      ? `${baseTitle} — grayed out: needs a confirmed turn, your Action Token, and 2 AP.`
+                      : canFire ? baseTitle
+                      : !fuelOk
+                      ? (hasBlaster
+                          ? `${baseTitle} — faded: you need at least 2 unused stock notes to hurl.`
+                          : `${baseTitle} — faded: you need an unused note to hurl AND a voiced Drive stack to swing.`)
+                      : `${baseTitle} — no rival in range. Hover to see the ${hasBlaster ? 'beam' : 'melee'} range.`}
+                    onClick={() => {
+                      if (action === mode) { setAction(null); }
+                      else if (canFire) {
+                        setAction(mode);
+                        addLog(hasBlaster
+                          ? `🌀💥 BLASTER OF RA — click a rival in your beam to fire down the line! (${unused} notes to hurl)`
+                          : `🎸💥 THE SMASH — click an adjacent rival to bring it down! Everything goes: ${unused} note${unused !== 1 ? 's' : ''} + your whole Drive stack.`);
+                      }
+                    }}>
+                    {hasBlaster ? '🌀 Blaster of Ra' : '🎸 Smash'}{(rivals.length > 0 || shadowSeen) ? ` (${unused})` : ''} {!canFire && moveStepsLeft < 2 ? '(2AP)' : ''}
+                  </RailBtn>
+                </div>
+              );
+            })()}
+            {(action === 'smash' || action === 'blaster') && (
+              <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
+                onClick={() => setAction(null)}>Cancel</RailBtn>
+            )}
+            {/* SONIC ATTACK — always wired (Main Amp); hover previews beam + rig range ring */}
+            {!rockGodActive && (() => {
+              const beam    = acting ? getSonicBeam(acting) : new Set();
+              const targets = acting ? getRivalsInBeam(acting) : [];
+              const poolNow = actingRig.pool;
+              const poolDisplay = poolNow;
+              const diceLabel = rigPoolLabel(poolDisplay);
+              // 📡 Sonic is OFFLINE outside the rig's radius — the button fades.
+              // GRAYED = no AP / token spent (mechanical); FADED = out of amp
+              // range or no rival in the beam (positional). Hover shows both
+              // the beam and the rig's radius ring so the player sees why.
+              const outOfRange = !actingRig.inRange;
+              // 👤 The double reads as a beam target like any other standee.
+              const shadowSeen = shadowInRange('beam');
+              const beamCount  = targets.length + (shadowSeen ? 1 : 0);
+              const grayed   = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
+              const canSonic = !grayed && !outOfRange && beamCount > 0;
+              return (
+                <div style={{position:'relative',display:'inline-block'}}
+                  onMouseEnter={() => setHoverPreview('sonic')}
+                  onMouseLeave={() => setHoverPreview(p => p === 'sonic' ? null : p)}>
+                  <RailBtn className={canSonic ? 'btn active' : 'btn'}
+                    style={grayed
+                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
+                      : {borderColor:'#44aaff', color:'#66ccff',
+                          opacity: canSonic ? 1 : (outOfRange ? 0.35 : 0.4)}}
+                    disabled={!canSonic}
+                    title={grayed
+                      ? "Sonic Attack (2 AP) — grayed out: needs a confirmed turn, your Action Token, and 2 AP."
+                      : outOfRange
+                      ? "📡 Out of your amp's range — the Sonic is offline out here. Hover to see your rig's radius ring; move back inside it, or stack Drive: your rig reaches one hex further for every note on the stack."
+                      : canSonic
+                      ? `Sonic Attack (2 AP) — the ranged beam. ${diceLabel}, keep the highest. If your target is facing back down the beam AND inside their own amp range, it escalates into a RIFF-OFF; if they're stranded outside theirs, no duel — they defend on a d${SONIC_DEF_DIE_OUT_OF_RIG}.`
+                      : "Sonic Attack (2 AP) — no rival in your beam. Hover to see the beam and your rig's range ring."}
+                    onClick={() => {
+                      if (action === 'sonic') { setAction(null); }
+                      else if (canSonic) {
+                        setAction('sonic');
+                        addLog(`🔊 SONIC ATTACK — click a target in your beam! (${diceLabel} keep best)`);
+                      }
+                    }}>
+                    🔊 Sonic{outOfRange ? ' 📡' : beamCount > 0 ? ` (${beamCount})` : ''} {diceLabel}
+                    {grayed && moveStepsLeft < 2 ? ' (2AP)' : ''}
+                  </RailBtn>
+                </div>
+              );
+            })()}
+            {action === 'sonic' && (
+              <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
+                onClick={() => setAction(null)}>Cancel</RailBtn>
+            )}
+            {/* (🎸 ACOUSTIC DUEL button REMOVED — the unplugged duel was cut.
+                A riff-off is now earned by aiming a Sonic down a shared beam
+                with both rigs live, not picked from the action bar.) */}
+            <RailBtn className="btn end" data-tip-anchor="end-turn" onClick={endTurn}>End ⏭</RailBtn>
+            </>}
+            signature={<>
+            {/* 👤 MOVE SHADOW — the double walks on its OWN legs: same range as
+                the Ronin, separate pool, so it never eats his AP. Only the
+                Ronin ever sees this button. */}
+            {acting?.id === 'cosmic_ronin' && shadowIllusion && (
+              <>
+                <RailBtn className={`btn${action === "move_shadow" ? " on" : ""}`}
+                  style={{borderColor: action === "move_shadow" ? "#88bbff" : "#1a2840",
+                    color: action === "move_shadow" ? "#88bbff" : "#4a6a90"}}
+                  disabled={shadowSteps < 1}
+                  title="Move Shadow — your double moves on its own steps, refreshed each turn to match your own movement range. It costs you no Action Points."
+                  onClick={() => {
+                    if (action === "move_shadow") { setAction(null); }
+                    else if (shadowSteps > 0) {
+                      setAction("move_shadow");
+                      addLog(`👤 Moving the SHADOW — ${shadowSteps} step${shadowSteps!==1?"s":""} of its own (your AP is untouched).`);
+                    }
+                  }}>
+                  👤 Move Shadow{shadowSteps > 0 ? ` (${shadowSteps} hex)` : " (spent)"}
+                </RailBtn>
+                {action === "move_shadow" && (
+                  <RailBtn className="btn" style={{borderColor:"#888",color:"#888"}}
+                    onClick={() => setAction(null)}>Cancel</RailBtn>
+                )}
+              </>
+            )}
+            {/* ── 🧪 SLIME — lay the road (METALNESS §2, reworked 2026-08-17) ──
+                INNATE, so no `unlockedSkills` gate: this is the Monster's
+                signature, and `CHARACTER_HANDOFF` lists "arsenal, no innate
+                identity" as the gap the whole rework exists to close. Charging Db
+                for the road on top of the AP would re-open it.
+
+                ⚠️ It SETS movement rather than adding to it, so the button says
+                what you will END UP with, not what it costs. Off a thin melody
+                that number is a gain, and hiding that behind "-1 AP" would make
+                the one turn it most wants to be called look like the worst. */}
+            {!rockGodActive && acting?.id === 'Metalness_Monster' && (() => {
+              const already = !!engineState.turn?.slimingId;
+              const canCall = hasConfirmed && !already && moveStepsLeft >= SLIME_AP_COST;
+              return (
+                <RailBtn className={canCall ? 'btn active' : 'btn'}
+                  style={{borderColor:'#44ff44', color:'#8dffa0', opacity: canCall ? 1 : 0.45}}
+                  disabled={!canCall}
+                  title={already
+                    ? `🧪 Already oozing — ${moveStepsLeft} slimed step${moveStepsLeft !== 1 ? 's' : ''} left. Once a turn.`
+                    : !hasConfirmed
+                    ? '🧪 Slime — commit a melody first; the road is legs, and legs come from the melody.'
+                    : moveStepsLeft < SLIME_AP_COST
+                    ? `🧪 Slime — costs ${SLIME_AP_COST} AP and you have none left.`
+                    : `🧪 Slime — ${SLIME_AP_COST} AP, and your movement BECOMES ${SLIME_MOVE_STEPS}. Every hex you leave is slimed for ${SLIME_LIFETIME_TURNS} of your turns: 1 Vibe to any rival who steps in it, a free retreat for you, and reach for the Tentacle.`}
+                  onClick={callSlime}>
+                  🧪 Slime{already ? ` (${moveStepsLeft} left)` : ` → ${SLIME_MOVE_STEPS}`}
+                </RailBtn>
+              );
+            })()}
+            {/* ── 🐙 TENTACLE — reach through your own slime (METALNESS §4a) ──
+                It IS a Swing, so it wears the Swing's gates: a confirmed turn,
+                the Action Token unspent, 1 AP. What it does NOT need is to be
+                standing next to anybody — that is the whole ability. */}
+            {!rockGodActive && (actingNoteState?.unlockedSkills ?? []).includes('tentacle') && (() => {
+              const inReach = spirits.filter(sp =>
+                !sp.knockedOut && sp.id !== acting?.id && tentacleAim.has(sp.num));
+              const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
+              const canFire = !grayed && inReach.length > 0;
+              return (
+                <RailBtn className={canFire ? 'btn active' : 'btn'}
+                  style={{borderColor:'#5cff6a', color:'#8dffa0', opacity: canFire ? 1 : 0.45}}
+                  disabled={!canFire}
+                  title={grayed
+                    ? '🐙 Tentacle — needs a confirmed turn, your Action Token, and 1 AP.'
+                    : tentacleAim.size === 0
+                    ? '🐙 Tentacle — no trail to reach through. Walk somewhere first; the road IS the weapon.'
+                    : inReach.length === 0
+                    ? '🐙 Tentacle — the arm can reach, but nobody is standing in it.'
+                    : '🐙 Tentacle — strike from the slime. The road you reach through is spent.'}
+                  onClick={() => {
+                    if (action === 'tentacle') { setAction(null); return; }
+                    if (!canFire) return;
+                    setAction('tentacle');
+                    addLog('🐙 TENTACLE — click a rival in the lit hexes. The further down the road you reach, the more of it you spend.');
+                  }}>
+                  🐙 Tentacle{inReach.length > 0 ? ` (${inReach.length})` : ''}{grayed && moveStepsLeft < 1 ? ' (1AP)' : ''}
+                </RailBtn>
+              );
+            })()}
+            {action === 'tentacle' && (
+              <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
+                onClick={() => setAction(null)}>Cancel</RailBtn>
+            )}
+            {/* 🤘 MASTER OF MOSHPITS — Metalness Monster sacrifices 3 fans for +2 standing Drive.
+                Fan counts come from ns.casuals / ns.diehards (the fan economy's real
+                fields) — reading the non-existent casualFans/diehardFans is what kept
+                this button dead at "(0/3 fans)". */}
+            {hasConfirmed && acting?.id === 'Metalness_Monster'
+              && (actingNoteState?.unlockedSkills ?? []).includes('master_moshpits') && (() => {
+              const pool = moshableFans(actingNoteState);
+              const used = actingNoteState?.moshpitUsedThisTurn;
+              const running = !!moshCine;
+              const canMosh = !used && !running && pool.total >= MOSH_FAN_COST;
+              const standing = actingNoteState?.moshDrive ?? 0;
+              return (
+                <RailBtn className={canMosh ? 'btn active' : 'btn'}
+                  style={{borderColor: canMosh ? '#ffcc00' : '#3a3000', color: canMosh ? '#ffcc00' : '#3a3000'}}
+                  disabled={!canMosh}
+                  title={used
+                    ? "Master of Moshpits — already moshed this turn."
+                    : pool.total < MOSH_FAN_COST
+                    ? `Master of Moshpits — needs ${MOSH_FAN_COST} fans in the stands (you have ${pool.total}). Diehards away on crew assignments can't mosh.`
+                    : `Master of Moshpits — pull ${MOSH_FAN_COST} fans onto the board for a pit. +${MOSH_DRIVE} Drive that STANDS until you call the next pit. Once per turn.`}
+                  onClick={() => { if (canMosh) resolveMasterOfMoshpits(); }}>
+                  🤘 Moshpit{used ? ' (used)' : pool.total < MOSH_FAN_COST ? ` (${pool.total}/${MOSH_FAN_COST} fans)` : ''}
+                  {standing > 0 ? ` ⚔️+${standing}` : ''}
+                </RailBtn>
+              );
+            })()}
+            {/* ── 🔊 GOES TO 11 — the dial (METALNESS §4d) ──
+                ⚠️ THE LABEL SAYS `⚔️ 11`, NOT `+11`, and that is deliberate. It
+                SETS the attack stat, so on a big turn it can turn him DOWN, and a
+                button that promised a bonus would be lying on exactly the turn
+                the joke fires. The tooltip does the arithmetic out loud. */}
+            {hasConfirmed && acting?.id === 'Metalness_Monster'
+              && (actingNoteState?.unlockedSkills ?? []).includes('goes_to_11') && (() => {
+              const cranked = !!actingNoteState?.atEleven;
+              const stack   = actingNoteState?.sustainStack ?? [];
+              const blown   = (actingNoteState?.ampBlownTurns ?? 0) > 0;
+              const canCall = !cranked && stack.length > 0 && !actionTokenUsed;
+
+              // What he would swing for if he DIDN'T touch it — so the tooltip can
+              // warn him when eleven is a downgrade rather than a payday.
+              const chordNow = (actingNoteState?.driveStack ?? []).length
+                ? spiritChord(acting.id, actingNoteState.driveStack) : null;
+              const asIs = (chordNow ? chordNow.drive : (acting?.drive ?? 7))
+                + Math.min((actingNoteState?.tempDrive ?? 0) + (actingNoteState?.moshDrive ?? 0), ATK_BONUS_CAP);
+              const quieter = asIs > ELEVEN_DRIVE;
+
+              return (
+                <RailBtn className={canCall || cranked ? 'btn active' : 'btn'}
+                  style={cranked
+                    ? {borderColor:'#ff2200', color:'#ff6644',
+                       animation:'moshpit-shudder 0.3s steps(2) infinite',
+                       filter:'drop-shadow(0 0 6px #ff2200)'}
+                    : {borderColor: canCall ? '#cc0000' : '#330000', color: canCall ? '#ff4444' : '#330000'}}
+                  disabled={!canCall}
+                  title={cranked
+                    ? `On ELEVEN — attack set to ${ELEVEN_DRIVE}, and you do not get moved.${blown ? ' Rig blown: no Sonic, bare d4 on defence.' : ''}`
+                    : actionTokenUsed
+                    ? 'Goes to 11 — your attack is already spent. Setting the dial now would do nothing.'
+                    : stack.length === 0
+                    ? 'Goes to 11 — the price is your SUSTAIN stack, and yours is empty. Voice some armour first.'
+                    : quieter
+                    ? `⚠️ Goes to 11 would turn you DOWN — you are already swinging at ⚔️${asIs}. The amp only goes to eleven. (Still buys knockback immunity, and still costs your stack ${stack.join(' ')} and your rig.)`
+                    : `Goes to 11 — set your attack to exactly ${ELEVEN_DRIVE} (from ⚔️${asIs}) and shrug off knockback. Costs your whole Sustain stack (${stack.join(' ')}) and blows your amp: no Sonic and a bare d4 on defence for a full turn.`}
+                  onClick={() => { if (canCall) callEleven(); }}>
+                  {cranked
+                    ? `🔊 ELEVEN ⚔️${ELEVEN_DRIVE}`
+                    : `🔊 Goes to 11${stack.length === 0 ? ' (no 🛡️stack)' : quieter ? ' ▼' : ''}`}
+                </RailBtn>
+              );
+            })()}
+            {/* 🌌 SPACE IS DISPLACED — Intergalactic 0 blinks 2–3 rings for 1 Db.
+                ⚠️ This button previously read a `hasRig` variable that was never
+                defined anywhere in the component, so simply RENDERING it threw a
+                ReferenceError and dropped the whole game into the error boundary
+                the moment Intergalactic 0 unlocked the skill and committed a
+                track. That bug is gone with the rework — but the lesson stands:
+                every value in this label must come from something in scope. */}
+            {hasConfirmed && acting?.id === 'intergalactic_0'
+              && (actingNoteState?.unlockedSkills ?? []).includes('displace') && (() => {
+              const dbPts   = actingNoteState?.dbPoints ?? 0;
+              const warpCd  = cooldownLeft(actingNoteState, 'displace');
+              const canWarp = canFire(actingNoteState, 'displace');
+              return (
+                <>
+                  <RailBtn className={canWarp ? 'btn active' : 'btn'}
+                    style={{borderColor: canWarp ? '#aa55ff' : '#2a1840', color: canWarp ? '#cc88ff' : '#2a1840'}}
+                    disabled={!canWarp}
+                    title={`Space is Displaced — spend ${DISPLACE_DB_COST} Db to warp to any open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away. No Action Points, no cooldown, no rig needed — and your movement is untouched, so you can still walk after landing. Adjacent hexes don't count: he goes through the space between, not across it.`}
+                    onClick={() => {
+                      if (action === 'displace') { setAction(null); }
+                      else if (canWarp) {
+                        setAction('displace');
+                        addLog(`🌌 SPACE IS DISPLACED — click any lit hex (${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out) to warp there for ${DISPLACE_DB_COST} Db.`);
+                      }
+                    }}>
+                    🌌 Displace{canWarp ? ` (${DISPLACE_DB_COST} Db)`
+                      : warpCd > 0 ? ` (${warpCd})`
+                      : ` (${dbPts}/${DISPLACE_DB_COST} Db)`}
+                  </RailBtn>
+                  {action === 'displace' && (
+                    <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
+                      onClick={() => setAction(null)}>Cancel</RailBtn>
+                  )}
+                </>
+              );
+            })()}
+            {/* 🕳️ GRAVITY CONTROL — Intergalactic 0 opens a black hole vortex */}
+            {hasConfirmed && acting?.id === 'intergalactic_0'
+              && (actingNoteState?.unlockedSkills ?? []).includes('gravity_control') && (() => {
+              const dbPts   = actingNoteState?.dbPoints ?? 0;
+              const isOpen  = !!actingNoteState?.gravityVortex;
+              const gravCd  = cooldownLeft(actingNoteState, 'gravity_control');
+              const canOpen = canFire(actingNoteState, 'gravity_control') && !isOpen;
+              return (
+                <>
+                  <RailBtn className={canOpen ? 'btn active' : 'btn'}
+                    style={{borderColor: canOpen ? '#aa55ff' : '#2a1840', color: canOpen ? '#cc88ff' : '#2a1840'}}
+                    disabled={!canOpen}
+                    title={isOpen
+                      ? `A vortex is already open on hex #${actingNoteState?.gravityVortex?.hex}. Only one singularity at a time — it collapses when the turn order comes back to you.`
+                      : `Gravity Control — spend ${GRAVITY_DB_COST} Db to tear open a black hole on any hex within ${GRAVITY_PLACE_RINGS} rings (you can drop it right on top of someone). Every rival within ${GRAVITY_PULL_RINGS} rings is dragged ${GRAVITY_PULL_HEXES} hex toward it; anyone pulled all the way in loses ${GRAVITY_NOTE_DRAIN} notes off next turn's refill. It hangs for one full round and takes anyone who wanders close. It never touches you.`}
+                    onClick={() => {
+                      if (action === 'gravity_control') { setAction(null); }
+                      else if (canOpen) {
+                        setAction('gravity_control');
+                        addLog(`🕳️ GRAVITY CONTROL — click any lit hex (within ${GRAVITY_PLACE_RINGS} rings) to tear open the vortex for ${GRAVITY_DB_COST} Db.`);
+                      }
+                    }}>
+                    🕳️ Gravity{isOpen
+                      ? ` (open #${actingNoteState?.gravityVortex?.hex})`
+                      : gravCd > 0 ? ` (${gravCd})`
+                      : dbPts < GRAVITY_DB_COST ? ` (${dbPts}/${GRAVITY_DB_COST} Db)` : ` (${GRAVITY_DB_COST} Db)`}
+                  </RailBtn>
+                  {action === 'gravity_control' && (
+                    <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
+                      onClick={() => setAction(null)}>Cancel</RailBtn>
+                  )}
+                </>
+              );
+            })()}
+            {/* 💻 CODE INJECTION — Intergalactic 0's hidden commit.
+                ⚠️ This button, and the (n) counter on it, are the ONLY surface
+                the armed state ever gets. It renders inside the acting Spirit's
+                own HUD, so only the player holding Intergalactic 0 can see it.
+                Do not mirror this onto the standee, the board, or any shared
+                banner — the entire ability is that rivals cannot tell. */}
+            {hasConfirmed && acting?.id === 'intergalactic_0'
+              && (actingNoteState?.unlockedSkills ?? []).includes('code_injection') && (() => {
+              const dbPts   = actingNoteState?.dbPoints ?? 0;
+              const armed   = (actingNoteState?.codeInjectTurns ?? 0) > 0;
+              const hackCd  = cooldownLeft(actingNoteState, 'code_injection');
+              const canHack = canFire(actingNoteState, 'code_injection') && !armed;
+              return (
+                <RailBtn className={canHack ? 'btn active' : 'btn'}
+                  style={{borderColor: canHack ? '#44ffaa' : armed ? '#1d5c44' : '#12301f',
+                          color: canHack ? '#88ffcc' : armed ? '#44ffaa' : '#12301f'}}
+                  disabled={!canHack}
+                  title={armed
+                    ? `A patch is live and nobody else can see it. The next rival whose attack would beat you gets their dice thrown out and re-rolled. Lapses when the turn order comes back to you.`
+                    : `Code Injection — spend ${CODE_INJECT_DB_COST} Db in secret. For one round, the first rival whose attack WOULD land on you has their dice re-rolled and must live with the second result. No tell, no aura: rivals cannot tell whether you've committed. If nobody lands a hit, the Db is gone — that's the bet.`}
+                  onClick={() => { if (canHack) resolveCodeInjection(); }}>
+                  💻 Inject{armed ? ' ✅ LIVE'
+                    : hackCd > 0 ? ` (${hackCd})`
+                    : dbPts < CODE_INJECT_DB_COST ? ` (${dbPts}/${CODE_INJECT_DB_COST} Db)` : ` (${CODE_INJECT_DB_COST} Db)`}
+                </RailBtn>
+              );
+            })()}
+            {/* 🌀 PSYCHO BUSHIDO — Shredding Ronin dash attack */}
+            {hasConfirmed && acting?.id === 'cosmic_ronin'
+              && (actingNoteState?.unlockedSkills ?? []).includes('psycho_bushido') && (() => {
+              const cd    = cooldownLeft(actingNoteState, 'psycho_bushido');
+              const dbPts = actingNoteState?.dbPoints ?? 0;
+              const poor  = dbPts < PSYCHO_BUSHIDO_DB_COST;
+              const canDash = cd <= 0 && !poor && moveStepsLeft >= 1 && !actionTokenUsed;
+              return (
+                <>
+                  <RailBtn className={canDash ? 'btn active' : 'btn'}
+                    style={{borderColor: canDash ? '#4488ff' : '#1a2840', color: canDash ? '#88bbff' : '#1a2840'}}
+                    disabled={!canDash}
+                    title={`Psycho Bushido — dash in a straight line from your facing and strike whoever you reach. The ground you cover becomes bonus Drive on that blow. Costs ${PSYCHO_BUSHIDO_DB_COST} Db and the whole of your remaining AP. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
+                    onClick={() => {
+                      if (action === 'psycho_bushido') { setAction(null); }
+                      else if (canDash) { setAction('psycho_bushido'); addLog('🌀 PSYCHO BUSHIDO — click a rival in your line of sight to dash-strike!'); }
+                    }}>
+                    {/* ⚠️ THE LABEL SAYS WHICH REFUSAL IS BITING. A greyed button
+                        that only ever reads "Bushido" teaches the player nothing
+                        — recharging and skint are different problems with
+                        different answers, and the Db one is new as of the
+                        2026-08-22 rule. */}
+                    🌀 Bushido{cd > 0 ? ` (${cd})` : poor ? ` (${dbPts}/${PSYCHO_BUSHIDO_DB_COST} Db)` : ''}
+                  </RailBtn>
+                  {action === 'psycho_bushido' && (
+                    <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
+                      onClick={() => setAction(null)}>Cancel</RailBtn>
+                  )}
+                </>
+              );
+            })()}
+            {/* 👤 SHADOW ILLUSION — Shredding Ronin decoy */}
+            {hasConfirmed && acting?.id === 'cosmic_ronin'
+              && (actingNoteState?.unlockedSkills ?? []).includes('shadow_illusion') && (() => {
+              const hasShadow = !!(actingNoteState?.shadowIllusion);
+              const cd    = cooldownLeft(actingNoteState, 'shadow_illusion');
+              const dbPts = actingNoteState?.dbPoints ?? 0;
+              const sus   = actingNoteState?.tempSustain ?? 0;
+              const poor  = dbPts < SHADOW_ILLUSION_DB_COST;
+              // 👤 THE SUSTAIN CHECK IS A SUMMON CONDITION, not just a drain. A
+              // double conjured with an empty guard starves at the very next
+              // turn-start, so the Db would buy a body that never stands.
+              const starving = sus < SHADOW_ILLUSION_SUSTAIN_DRAIN;
+              const canSummon = !hasShadow && cd <= 0 && !poor && !starving;
+              // No hex to pick any more — the double is born on top of the
+              // Ronin, so this is a single-click action.
+              return (
+                <RailBtn className={canSummon ? 'btn active' : 'btn'}
+                  style={{borderColor: canSummon ? '#4488ff' : '#1a2840', color: canSummon ? '#88bbff' : '#1a2840'}}
+                  disabled={!canSummon}
+                  title={`Shadow Illusion — split into a second, identical Ronin right where you stand (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). You start stacked, so nobody sees which one appeared; walk them apart on separate legs and let rivals waste a turn on the wrong body. ⚠️ It feeds on you: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it falls apart the moment you have none to give.`}
+                  onClick={() => { if (canSummon) resolveShadowIllusion(); }}>
+                  👤 Shadow{hasShadow
+                    ? ` (${actingNoteState?.shadowIllusion?.turnsLeft ?? 0}t · −${SHADOW_ILLUSION_SUSTAIN_DRAIN}🛡️)`
+                    : cd > 0 ? ` (${cd})`
+                    : poor ? ` (${dbPts}/${SHADOW_ILLUSION_DB_COST} Db)`
+                    : starving ? ' (no Sustain)' : ''}
+                </RailBtn>
+              );
+            })()}
+            {/* 🪦 Exorcism UI — removed 2026-08-26 */}
+            {/* 🎸 CURSED SHAMISEN — cooldown accelerator with a curse */}
+            {hasConfirmed && acting?.id === 'cosmic_ronin'
+              && (actingNoteState?.unlockedSkills ?? []).includes('cursed_shamisen') && (() => {
+              const curse   = actingNoteState?.shamisenCurse;
+              const active  = curse && curse.turnsLeft > 0;
+              const cd      = cooldownLeft(actingNoteState, 'cursed_shamisen');
+              const dbPts   = actingNoteState?.dbPoints ?? 0;
+              const poor    = dbPts < CURSED_SHAMISEN_DB_COST;
+              const canActivate = !active && cd <= 0 && !poor;
+              const canPay  = active && !curse.paidThisRound && dbPts >= CURSED_SHAMISEN_PAYOFF_COST;
+              return (
+                <>
+                <RailBtn className={canActivate ? 'btn active' : 'btn'}
+                  style={{borderColor: canActivate ? '#cc44ff' : active ? '#cc44ff44' : '#1a2840',
+                          color: canActivate ? '#dd88ff' : active ? '#cc44ff' : '#1a2840',
+                          animation: active ? 'shamisen-glow 1.2s ease-in-out infinite' : 'none'}}
+                  disabled={!canActivate}
+                  title={`Cursed Shamisen — activate the curse (${CURSED_SHAMISEN_DB_COST} Db, ${CURSED_SHAMISEN_CD}-round cooldown) to speed up ALL other ability cooldowns for ${CURSED_SHAMISEN_DURATION} rounds. ⚠️ You GLOW while it runs — take any Vibe damage and ALL cooldowns RESET to full. Pay ${CURSED_SHAMISEN_PAYOFF_COST} Db/round to protect yourself (rivals can't see whether you paid).`}
+                  onClick={() => { if (canActivate) resolveCursedShamisen(); }}>
+                  🎸 {active
+                    ? `Cursed (${curse.turnsLeft})`
+                    : cd > 0 ? `Shamisen (${cd})`
+                    : poor ? `Shamisen (${dbPts}/${CURSED_SHAMISEN_DB_COST} Db)` : 'Shamisen'}
+                </RailBtn>
+                {active && (
+                  <RailBtn className={canPay ? 'btn active' : 'btn'}
+                    style={{borderColor: canPay ? '#ffaa22' : '#1a2840', color: canPay ? '#ffcc44' : '#1a2840', fontSize: '0.85em'}}
+                    disabled={!canPay}
+                    title={`Pay ${CURSED_SHAMISEN_PAYOFF_COST} Db to protect yourself this round. Rivals cannot tell whether you paid — the glow stays either way.`}
+                    onClick={() => { if (canPay) payShamisenDebt(); }}>
+                    💰 Pay Debt{curse.paidThisRound ? ' ✓' : ` (${CURSED_SHAMISEN_PAYOFF_COST} Db)`}
+                  </RailBtn>
+                )}
+                </>
+              );
+            })()}
+            </>}
+          />
+          )}
+          {/* ✨ LIMELIGHT STANDINGS — pose rounds survived, and what the NEXT one
+              pays. This is a threat board, not a progress bar: the old "x/3"
+              read as a race to a win condition that no longer exists. What a
+              rival actually needs to know is how expensive it's getting to
+              leave this Spirit alone in the middle. */}
+          {Object.keys(limelightScores).length > 0 && (
+            <div style={{background:"#1a0a2a",border:"1px solid #ff44ff44",borderRadius:4,
+              padding:"4px 8px",marginBottom:4,fontSize:8}}>
+              <span style={{color:"#ff88ff",letterSpacing:1}}>✨ LIMELIGHT — POSE ROUNDS</span>
+              <div style={{display:"flex",gap:8,marginTop:3,flexWrap:"wrap"}}>
+                {spirits.map(s => {
+                  const score = limelightScores[s.id] ?? 0;
+                  if (score === 0) return null;
+                  const nextTier = poseTierFor(s.id);
+                  const maxed = nextTier >= POSE_FP_MAX;
+                  return (
+                    <span key={s.id} style={{color:s.color,fontSize:9}}
+                      title={`${s.name} has held a pose for ${score} round${score !== 1 ? 's' : ''}. Their next one pays ⭐${nextTier} FP${maxed ? ' — the per-turn ceiling' : ''}.`}>
+                      {s.name}: ×{score} <span style={{color: maxed ? '#ffcc44' : '#ff88ff'}}>→⭐{nextTier}{maxed ? '🔥' : ''}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          </div>{/* end step-active wrapper for actions */}
 
           {/* ── ⭐ THE RACE — shared Fame meter ──────────────────────────────
               Takes over this slot whenever the player isn't committing notes.
@@ -12990,14 +13883,22 @@ export function Game({ gameState, onReturnToLobby }) {
           })()}
 
           {/* ── NOTE STOCK PANEL ── */}
+          {/* 🎵 STEP 3: THIS PANEL STANDS DOWN — the stock is in the KEY plate's
+              drawer now (ChannelStrip.jsx). It used to collapse to a 36px strip
+              here, which spent a whole panel's worth of column on a title bar
+              directly above the rail that had just moved up to meet it.
+              ⚠️ THE ANCHOR MOVES WITH THE CONTENT, and only one copy of it may
+              exist: the drawer wears `note-stock` while it is up, so this drops
+              it for exactly that span. See the drawer's ⚠️ for why a duplicate
+              breaks Pickles silently rather than loudly. */}
           {acting && (
-            <div data-tip-anchor="note-stock"
-              className={`card${turnStep === 'melody' ? ' step-active' : turnStep === 'move_act' ? ' step-collapsed' : ''}`}
+            <div data-tip-anchor={turnStep === 'move_act' ? undefined : "note-stock"}
+              className={`card${turnStep === 'melody' ? ' step-active' : ''}`}
               style={{'--step-glow-color': turnStep === 'chord' ? '#ff66cc' : '#4488ff',
                 borderLeft:`2px solid ${turnStep === 'melody' ? '#4488ff' : '#4488ff66'}`,
                 padding:"3px 8px", marginBottom:SPIRIT_CARD.gap,
                 ...(turnStep === 'move_act'
-                  ? {maxHeight:36,overflow:'hidden',transition:'max-height 0.4s ease, opacity 0.3s'}
+                  ? {display:'none'}
                   : {overflow:'visible',flexShrink:0,minHeight:'fit-content'})}}>
               <NeonStrikeFX color={'#4488ff'}/>
               {/* ── Header: title + step controls ──────────────────────────────
@@ -13431,170 +14332,7 @@ export function Game({ gameState, onReturnToLobby }) {
               ) : turnStep === 'melody' || turnStep === 'move_act' ? (
                 <>
                 {/* Note stock grid — STEP 3: MELODY BUILDING */}
-                {(() => {
-                  // 🎯 Pitch classes that would RESOLVE a cadence if they end this track
-                  const resolvePcs = new Set(
-                    cadenceHints(actingNoteState?.finalsTrail ?? [], actingNoteState?.cadenceCooldowns ?? {})
-                      .filter(h => h.resolves).map(h => h.nextPc)
-                  );
-                  return (
-                <div style={{display:"flex",flexWrap:"wrap",gap:2,marginBottom:5}}>
-                  {noteStock.map((note,idx)=>{
-                    const notePC         = pitchIndex(note);
-                    const isTritone      = notePC === pitchIndex(tritoneNote);
-                    const isMajorThird   = notePC === pitchIndex(majorThirdNote);
-                    const isMinorSeventh = notePC === pitchIndex(minorSeventhNote);
-                    const isFourth       = notePC === pitchIndex(fourthNote);
-                    const isFifth        = notePC === pitchIndex(fifthNote);
-                    const intervalKey    = isTritone      ? 'tritone'
-                                        : isMajorThird   ? 'majorThird'
-                                        : isMinorSeventh ? 'minorSeventh'
-                                        : isFourth       ? 'fourth'
-                                        : isFifth        ? 'fifth' : null;
-                    const isIntervalNote = intervalKey !== null;
-                    const isUnlocked     = isIntervalNote && unlockedIntervalKeys.has(intervalKey);
-                    const inScaleNote    = currentScale.includes(note);
-                    const inScale        = inScaleNote;
-                    const used           = usedHas(usedStockIdx, idx);
-                    const isStaggered    = staggeredSlots.includes(idx);
-                    // Unlock gates, unchanged — only what they PAINT changed. All three
-                    // now share `UNLOCKED_DISCORD` (see its definition): the effects that
-                    // once justified three separate colours were deleted in B1 and B5, and
-                    // red and blue are spoken for now.
-                    // - tritone: needs discord_3 (out-of-scale until then → grey)
-                    // - minorSeventh: needs discord_1 (in Major it's out-of-scale without
-                    //   it; in Minor it's naturally in-scale → plain white)
-                    // - majorThird: needs discord_2 (in Minor it's out-of-scale without it;
-                    //   in Major it's naturally in-scale → plain white)
-                    // - fourth/fifth: always diatonic, still pay Db ending bonuses → keep
-                    //   their own colours
-                    const showTritoneColor      = isTritone      && discordUnlocks.includes('discord_3');
-                    const showMinorSeventhColor = isMinorSeventh && discordUnlocks.includes('discord_1') && scaleMode === 'major';
-                    const showMajorThirdColor   = isMajorThird   && discordUnlocks.includes('discord_2') && scaleMode === 'minor';
-                    const showUnlockedDiscord   = showTritoneColor || showMinorSeventhColor || showMajorThirdColor;
-                    // 🎸 B3 — CHORD CONTEXT HIGHLIGHT. A note the key calls wrong that your
-                    // stacks have made legal lights up the moment the stack qualifies it.
-                    // This highlight IS the teaching: the player never learns a note table,
-                    // they learn "lit notes are notes that pay me right now."
-                    //
-                    // It used to light gold — one colour for "some stack pardoned this,"
-                    // which answered the wrong half of the question. The player already
-                    // knows the note is clean; what they're deciding is whether to feed the
-                    // riff or the shield. So the highlight now names the payee: Drive red,
-                    // Sustain blue, and an alternating red↔blue pulse when both stacks
-                    // legalize it independently and the choice is genuinely theirs (they
-                    // make it at commit — see the payout router under the Commit Track).
-                    //
-                    // Gold is now exclusively the cadence-resolve signal, which is a strict
-                    // improvement: two unrelated mechanics were wearing the same colour on
-                    // the same grid.
-                    const ctxClaim     = noteContextClaim(note);
-                    const litByContext = ctxClaim !== null;
-                    const ctxDual      = ctxClaim?.both === true;
-                    const ctxC         = ctxClaim?.stack === 'sustain' ? SUSTAIN_C : DRIVE_C;
-                    const ctxBg        = ctxClaim?.stack === 'sustain' ? SUSTAIN_BG : DRIVE_BG;
-                    // Out-of-scale interval notes that haven't been unlocked → gray discord
-                    const showAsDiscord  = isIntervalNote && !isUnlocked && !inScaleNote && !litByContext;
-                    // ⚠️ Context wins over the interval colours, as gold did — a pardoned
-                    // note is emphatically not a wrong note, and "which stack pays me" is
-                    // live information while "you own this unlock" is not.
-                    const borderC = litByContext         ? ctxC
-                                  : showAsDiscord        ? "#444455"
-                                  : showUnlockedDiscord  ? UNLOCKED_DISCORD.border
-                                  : isFifth              ? "#ff55aa"
-                                  : isFourth             ? "#cc55ff"
-                                  : inScaleNote          ? "#c0c8d8"
-                                  : "#444455";
-                    const textC   = litByContext         ? ctxC
-                                  : showAsDiscord        ? "#555566"
-                                  : showUnlockedDiscord  ? UNLOCKED_DISCORD.text
-                                  : isFifth              ? "#ff55aa"
-                                  : isFourth             ? "#cc55ff"
-                                  : inScaleNote          ? "#e8eef8"
-                                  : "#555566";
-                    const bgC     = litByContext         ? ctxBg
-                                  : showAsDiscord        ? "#111118"
-                                  : showUnlockedDiscord  ? UNLOCKED_DISCORD.bg
-                                  : isFifth              ? "#2a0f1a"
-                                  : isFourth             ? "#1a0a2a"
-                                  : inScaleNote          ? "#1a2035"
-                                  : "#111118";
-                    const shadow  = litByContext         ? `0 0 7px ${ctxC}88`
-                                  : showAsDiscord        ? "none"
-                                  : showUnlockedDiscord  ? UNLOCKED_DISCORD.shadow
-                                  : isFifth              ? "0 0 5px #ff55aa66"
-                                  : isFourth             ? "0 0 5px #cc55ff66"
-                                  : inScaleNote          ? "0 0 4px #c0c8d844"
-                                  : "none";
-                    const lockTip = ctxDual
-                                  ? ` 🎸 BOTH stacks make this legal — you pick who gets paid at commit`
-                                  : litByContext
-                                  ? ` 🎸 Your ${ctxClaim.stack === 'sustain' ? '🛡️ Sustain' : '⚔️ Drive'} chord makes this legal — it pays ${ctxClaim.stack === 'sustain' ? 'Sustain' : 'Drive'}`
-                                  : isIntervalNote && !isUnlocked && !inScaleNote
-                                  ? ` 🔒 Locked — upgrade Discord path to unlock` : '';
-                    // 🎚️ Mixer — used slots stay tappable for one layered repeat per turn
-                    const mixerReady = used && !isStaggered
-                      && (actingNoteState?.unlockedSkills ?? []).includes('mixer')
-                      && !actingNoteState?.mixerUsedThisTurn
-                      && !hasConfirmed && !pivotPending && melodyLine.length < 8;
-                    // 🎯 This note's pitch would resolve a cadence if it ends the track
-                    const resolvesCadence = resolvePcs.has(notePC) && !used && !isStaggered;
-                    // 🕳️ A used, non-Mixer, non-staggered slot is genuinely EMPTY — no note
-                    // color, no letter — so it never reads as a (still-full-opacity) discord note.
-                    const isEmpty = used && !mixerReady && !isStaggered;
-                    // 🎵 Just refilled this turn — pop in instead of silently appearing.
-                    const isFresh = freshNoteIdx?.spiritId === acting?.id && freshNoteIdx.indices.has(idx);
-                    // ⚔️↔🛡️ Dual-legal: alternate the hex between the two stack colours so
-                    // "either of these will take it" is legible without a legend. The pulse
-                    // is deliberately slow (2.2s) — this is an invitation to choose, not an
-                    // alarm, and a fast strobe on up to eight hexes at once is unreadable.
-                    // Cadence gold still outranks it: resolving the track is the bigger
-                    // decision, and a hex can only say one thing at a time.
-                    const dualPulse = ctxDual && !used && !isStaggered && !resolvesCadence;
-                    return (
-                      <div key={idx} onClick={(e)=>{ if (isStaggered) return; if (!used || mixerReady) clickNoteStock(idx, e); }}
-                        onMouseEnter={(e)=>{ const x=e.clientX, y=e.clientY; clearTimeout(hoverScaleTimerRef.current); hoverScaleTimerRef.current=setTimeout(()=>setHoverScale({note,x,y}),1500); }}
-                        onMouseLeave={()=>{ clearTimeout(hoverScaleTimerRef.current); setHoverScale(cur=>cur?.note===note?null:cur); }}
-                        title={isStaggered ? "⚡ Staggered — unavailable"
-                             : mixerReady ? "🎚️ Mixer — tap to layer this note again"
-                             : resolvesCadence ? `🎯 End your track on this note to RESOLVE a cadence — the crowd swells (+Fans)!${lockTip}`
-                             : lockTip || undefined}
-                        style={{
-                          width:NOTE_HEX.size,height:NOTE_HEX.size,flexShrink:0,
-                          display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:(used&&!mixerReady)||isStaggered?"default":"pointer",
-                          opacity: mixerReady ? 0.55 : isStaggered ? 0.3 : 1,
-                          // ⚠️ THE BLOOM NO LONGER LIVES HERE. It is a drop-shadow on the
-                          // SVG's stroked rings inside NoteHex — a filter on THIS div would
-                          // blur the chip's whole silhouette again, which is the exact bug
-                          // that made the glow look frozen. Only the pop-in stays.
-                          animation: isFresh ? "note-pop-in .5s ease-out" : undefined,
-                          transition:"all .1s",
-                        }}>
-                        {/* 🎨 `borderC` is the SAME variable the old chip used, so all
-                            twelve colour states carry over untouched — the chip changed
-                            shape, not language. `shadow === "none"` is the existing test
-                            for "this state does not glow", reused as `dull`. */}
-                        <NoteHex
-                          hue={isStaggered ? "#ff8800" : mixerReady ? "#44ddff"
-                             : resolvesCadence ? "#ffd700" : isEmpty ? "#232b3a" : borderC}
-                          letter={isStaggered ? "\u26a1" : isEmpty ? "" : note}
-                          dull={isStaggered || isEmpty || shadow === "none"}
-                          dual={dualPulse}
-                          gold={resolvesCadence}
-                          // 🎆 ⚠️ THE FLARE TAKES `borderC`, NOT THE CHIP'S CURRENT HUE.
-                          // The commit marks the slot used in the same tick the burst
-                          // fires, so by the time this renders the chip is already the
-                          // EMPTY socket colour — and a burst that borrowed its chip's
-                          // hue would flare grey for the note that just left.
-                          burst={burstOut?.seat === `hand:${idx}` ? { ...burstOut, hue: borderC } : null}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-                  );
-                })()}
+                {stockGrid}
                 {/* 🎸 STACK COMMIT PREVIEW — hover-a-note guidance (inline, instant via hoverScale) */}
                 {!hasConfirmed && stackCommitDest && (() => {
                   const stack = stackCommitDest === 'sustain' ? (actingNoteState?.sustainStack ?? []) : (actingNoteState?.driveStack ?? []);
@@ -13780,640 +14518,6 @@ export function Game({ gameState, onReturnToLobby }) {
             </div>
           ))}
 
-          {/* ACTIONS — only show during move_act step (or always for End Turn) */}
-          {/* N13: on a rival's turn the whole action rail goes dead — the
-              handlers were already canAct-gated, but a live-looking button that
-              silently does nothing reads as a broken game, and "I pushed my
-              friend's commit button" is how the turnStep drift got reported.
-              pointerEvents:none kills the whole subtree in one line, so no
-              future button can be added here and forget its gate. */}
-          <div className={turnStep === 'move_act' && canAct ? 'step-active' : ''} style={{'--step-glow-color':'#44ff88',
-            borderRadius:6, padding: turnStep === 'move_act' ? '4px 0' : 0, transition:'all 0.3s',
-            ...(canAct ? {} : {opacity:0.32, pointerEvents:'none', filter:'grayscale(0.85)'})}}>
-          <div className="stitle" style={{marginTop:4}}>
-            {!canAct ? 'Actions — rival on stage' : turnStep === 'move_act' ? 'Step 3 — Move & Act' : 'Actions'}
-          </div>
-          {/* (bonus revoice UI removed — stack commit budget replaces it) */}
-          {turnStep !== 'move_act' && canAct && (
-            <div style={{marginBottom:3}}>
-              <button className="btn end" data-tip-anchor="end-turn" onClick={endTurn} style={{width:'100%',fontSize:9,padding:'5px 0'}}>End Turn ⏭</button>
-            </div>
-          )}
-          <div data-tip-anchor="actions-bar" style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:5,
-            ...((turnStep !== 'move_act') ? {display:'none'} : {})}}>
-            <button className={`btn${action==="move"?" on":""}`}
-              onClick={() => {
-                if (action === "move") { setAction(null); }
-                else if (moveStepsLeft > 0) { setAction("move"); addLog(`🚶 ${acting?.name} enters move mode — ${moveStepsLeft} hex${moveStepsLeft!==1?"es":""} available`); }
-                else addLog(`🎵 Build and confirm your Melody Line first.`);
-              }}
-              disabled={!acting}>Move {moveStepsLeft>0?`(${moveStepsLeft} hex)`:""}</button>
-            {action === "move" && (
-              <button className="btn" style={{borderColor:"#44cc88",color:"#44cc88"}}
-                onClick={() => { if (!canAct) return; setAction(null); dispatch(beatsSpent(0, false, { all: true })); addLog(`🚶 ${acting.name} stops moving.`); }}>
-                ✓ End Move</button>
-            )}
-            {/* 👤 MOVE SHADOW — the double walks on its OWN legs: same range as
-                the Ronin, separate pool, so it never eats his AP. Only the
-                Ronin ever sees this button. */}
-            {acting?.id === 'cosmic_ronin' && shadowIllusion && (
-              <>
-                <button className={`btn${action === "move_shadow" ? " on" : ""}`}
-                  style={{borderColor: action === "move_shadow" ? "#88bbff" : "#1a2840",
-                    color: action === "move_shadow" ? "#88bbff" : "#4a6a90"}}
-                  disabled={shadowSteps < 1}
-                  title="Move Shadow — your double moves on its own steps, refreshed each turn to match your own movement range. It costs you no Action Points."
-                  onClick={() => {
-                    if (action === "move_shadow") { setAction(null); }
-                    else if (shadowSteps > 0) {
-                      setAction("move_shadow");
-                      addLog(`👤 Moving the SHADOW — ${shadowSteps} step${shadowSteps!==1?"s":""} of its own (your AP is untouched).`);
-                    }
-                  }}>
-                  👤 Move Shadow{shadowSteps > 0 ? ` (${shadowSteps} hex)` : " (spent)"}
-                </button>
-                {action === "move_shadow" && (
-                  <button className="btn" style={{borderColor:"#888",color:"#888"}}
-                    onClick={() => setAction(null)}>Cancel</button>
-                )}
-              </>
-            )}
-            {/* FACE TURN — costs 1 move step */}
-            {acting && moveStepsLeft > 0 && (
-              <button className={`btn${action === "face" ? " on" : ""}`}
-                style={{borderColor: action === "face" ? "#44ccff" : "#0a3044",
-                  color: action === "face" ? "#44ccff" : "#1a5066"}}
-                onClick={() => {
-                  if (action === "face") { setAction(null); }
-                  else {
-                    setAction("face");
-                    addLog(`🔄 ${acting.name} — click any adjacent hex to face that direction (costs 1 step)`);
-                  }
-                }}>
-                🔄 Face{action === "face" ? "…" : ""}
-              </button>
-            )}
-            {action === "face" && (
-              <button className="btn" style={{borderColor:"#888",color:"#888"}}
-                onClick={() => setAction(null)}>Cancel</button>
-            )}
-            {/* ✨ Pose button — Limelight hex + a confirmed turn. NO skill gate
-                (2026-08): the centre-stage economy is open to everyone, because
-                a board objective only some characters can touch teaches nobody
-                anything. The button states its own price and payout so the
-                trade is legible before the click, not after. */}
-            {acting?.num === LIMELIGHT_HEX && hasConfirmed && (() => {
-              const on      = !!posing[acting?.id];
-              const nextTier = poseTierFor(acting?.id);
-              const sLeft   = (actingNoteState?.sustainStack ?? []).length;
-              return (
-                <button className={`btn${on ? " on" : ""}`}
-                  style={{borderColor:"#ff88ff",color: on ? "#ff88ff" : "#aa55cc",
-                    ...(on ? { animation:'crew-ready-glow 1.6s ease-in-out infinite' } : {})}}
-                  title={on
-                    ? `Posing — end your turn here for ⭐${nextTier} FP (×crowd) and −${POSE_SUSTAIN_COST} Sustain note. Your defence die is ZERO until you drop it.`
-                    : `Strike a Pose: end your turn on the Limelight for ⭐${nextTier} FP (×crowd). Costs ${POSE_SUSTAIN_COST} Sustain note per round${sLeft === 0 ? ' — and you have NONE left' : ''}, and you roll NO defence die while posing.`}
-                  onClick={togglePose}>
-                  {on ? `✨ Posing! ⭐${nextTier}${sLeft === 0 ? ' 💀' : ''}` : `✨ Pose (⭐${nextTier})`}
-                </button>
-              );
-            })()}
-            {/* 🤘 STRIKE THE GOD — the ONLY attack while the Rock God stands.
-                Clicking his hex also works; this button makes the affordance
-                impossible to miss (bugfix 2026-07-16: players couldn't find
-                the attack — PvP buttons had no targets and went dark). */}
-            {rockGodActive && rockGod && !actionTokenUsed && (() => {
-              const def = ROCK_GODS[rockGod.id] ?? {};
-              const spHex = acting ? HEX_BY_NUM[acting.num] : null;
-              const godHex = HEX_BY_NUM[rockGod.num];
-              const adjacent = spHex && godHex && axialDist(spHex.q, spHex.r, godHex.q, godHex.r) <= 1;
-              const inBeam = actingRig.inRange && acting && getSonicBeam(acting).has(rockGod.num);
-              const canMelee = adjacent && moveStepsLeft >= 1;
-              const canBeam  = inBeam && moveStepsLeft >= 2;
-              const canStrike = canMelee || canBeam;
-              const why = canStrike ? ''
-                : (adjacent || inBeam) ? ` (${adjacent ? '1AP' : '2AP'})`
-                : ' — get adjacent or line up your beam';
-              return (
-                <button className={canStrike ? 'btn active' : 'btn'}
-                  style={{borderColor: canStrike ? (def.color ?? '#ffcc22') : '#443300',
-                    color: canStrike ? (def.color ?? '#ffcc22') : '#443300',
-                    fontWeight: 700,
-                    ...(canStrike ? { animation:'crew-ready-glow 1.6s ease-in-out infinite' } : {})}}
-                  disabled={!canStrike}
-                  title={`Strike ${def.name ?? 'the God'} — your chord's Drive lands straight as damage AND Fame (no dice). Melee adjacent (1 AP) or Sonic beam (2 AP, needs Amp I). Clicking his hex works too.`}
-                  onClick={() => canStrike && attackRockGod(acting.id)}>
-                  🤘 STRIKE {def.name ? def.name.toUpperCase() : 'THE GOD'}{canStrike ? ` (${canMelee ? '⚔️ 1AP' : '🔊 2AP'})` : why}
-                </button>
-              );
-            })()}
-            {/* SWING — baseline attack, always visible & lit (PvP is off during the God fight).
-                Hover previews the cone. GRAYED = no AP / token spent; FADED = no rival in range. */}
-            {!rockGodActive && (() => {
-              const cone = acting ? getSwingCone(acting) : new Set();
-              const rivals = acting ? getRivalsInCone(acting) : [];
-              // 👤 The double counts as a target here. If the button read "(0)"
-              // while a Ronin standee sat in the cone, the count would be the
-              // tell — so it's tallied exactly like a real rival.
-              const shadowCounts = shadowInRange('cone') ? 1 : 0;
-              const targetCount = rivals.length + shadowCounts;
-              const grayed = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
-              const canSwing = !grayed && targetCount > 0;
-              return (
-                <div style={{position:'relative',display:'inline-block'}}
-                  onMouseEnter={() => setHoverPreview('swing')}
-                  onMouseLeave={() => setHoverPreview(p => p === 'swing' ? null : p)}>
-                  <button className={canSwing ? 'btn active' : 'btn'}
-                    style={grayed
-                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6, position:'relative'}
-                      : {borderColor:'#ff4444', color:'#ff6666',
-                          opacity: canSwing ? 1 : 0.4, position:'relative'}}
-                    disabled={!canSwing}
-                    title={grayed
-                      ? "The jab (1 AP) — grayed out: needs a confirmed turn, your Action Token, and at least 1 AP."
-                      : canSwing
-                      ? "The jab — cheap (1 AP) & defended. Drives your chord into them and can land Thrash statuses."
-                      : "The jab (1 AP) — no rival in your cone. Hover to see the swing range."}
-                    onClick={() => {
-                      if (action === 'swing') { setAction(null); }
-                      else if (canSwing) {
-                        setAction('swing');
-                        addLog('⚔️ SWING — click a rival in your cone to attack! (1 AP)');
-                      }
-                    }}>
-                    ⚔️ Swing{targetCount > 0 ? ` (${targetCount})` : ''} {!canSwing && moveStepsLeft < 1 ? '(1AP)' : ''}
-                  </button>
-                </div>
-              );
-            })()}
-            {action === 'swing' && (
-              <button className="btn" style={{borderColor:'#888',color:'#888'}}
-                onClick={() => setAction(null)}>Cancel</button>
-            )}
-            {/* 🎸 THE SMASH (melee) — or 🌀 BLASTER OF RA (ranged, piercing) for Intergalactic 0 */}
-            {!rockGodActive && (() => {
-              const ns = actingNoteState ?? {};
-              // 🌀 Once Blaster of Ra is unlocked, it REPLACES the Smash: ranged beam, pierces all.
-              const hasBlaster = acting?.id === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
-              const rivals = acting ? (hasBlaster ? getRivalsInBeam(acting) : getRivalsInCone(acting)) : [];
-              // 👤 The Shadow Illusion is a legal target here too — it has to be,
-              // or the button greying out would reveal it as a fake.
-              const shadowSeen = shadowInRange(hasBlaster ? 'beam' : 'cone');
-              const unused = (ns.noteStock ?? []).filter((_, i) => !usedHas(ns.usedStockIdx, i)).length;
-              const driveNotes = (ns.driveStack ?? []).length;
-              // 🎸 The Smash's fuel gate: 1+ unused note AND a voiced Drive stack
-              // (it spends the whole thing). The Blaster keeps the old 2-note bar.
-              const fuelOk  = hasBlaster ? unused >= 2 : (unused >= 1 && driveNotes >= 1);
-              const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
-              const canFire = !grayed && (rivals.length > 0 || shadowSeen) && fuelOk;
-              const mode    = hasBlaster ? 'blaster' : 'smash';
-              const baseTitle = hasBlaster
-                ? "Blaster of Ra (2 AP) — a ranged, piercing bass-drop down the beam: undefendable, scatters & knocks back EVERY rival in line. Ends your movement, leaves you Exposed. Hurls your unused stock."
-                : `The all-out front (${SMASH_AP_COST} AP) — you spend EVERYTHING: every unused note, your WHOLE Drive stack, and ${SMASH_SELF_SUSTAIN} off your Sustain. Undefendable in return: −${SMASH_DAMAGE} Vibe, ${SMASH_SUSTAIN_STRIP} notes torn off their Sustain stack, hurled back ${SMASH_KNOCKBACK} hexes. Ends all your movement.`;
-              return (
-                <div style={{position:'relative',display:'inline-block'}}
-                  onMouseEnter={() => setHoverPreview(mode)}
-                  onMouseLeave={() => setHoverPreview(p => p === mode ? null : p)}>
-                  <button className={canFire ? 'btn active' : 'btn'}
-                    style={grayed
-                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
-                      : {borderColor:'#ff33aa', color:'#ff66cc', opacity: canFire ? 1 : 0.4}}
-                    disabled={!canFire}
-                    title={grayed
-                      ? `${baseTitle} — grayed out: needs a confirmed turn, your Action Token, and 2 AP.`
-                      : canFire ? baseTitle
-                      : !fuelOk
-                      ? (hasBlaster
-                          ? `${baseTitle} — faded: you need at least 2 unused stock notes to hurl.`
-                          : `${baseTitle} — faded: you need an unused note to hurl AND a voiced Drive stack to swing.`)
-                      : `${baseTitle} — no rival in range. Hover to see the ${hasBlaster ? 'beam' : 'melee'} range.`}
-                    onClick={() => {
-                      if (action === mode) { setAction(null); }
-                      else if (canFire) {
-                        setAction(mode);
-                        addLog(hasBlaster
-                          ? `🌀💥 BLASTER OF RA — click a rival in your beam to fire down the line! (${unused} notes to hurl)`
-                          : `🎸💥 THE SMASH — click an adjacent rival to bring it down! Everything goes: ${unused} note${unused !== 1 ? 's' : ''} + your whole Drive stack.`);
-                      }
-                    }}>
-                    {hasBlaster ? '🌀 Blaster of Ra' : '🎸 Smash'}{(rivals.length > 0 || shadowSeen) ? ` (${unused})` : ''} {!canFire && moveStepsLeft < 2 ? '(2AP)' : ''}
-                  </button>
-                </div>
-              );
-            })()}
-            {(action === 'smash' || action === 'blaster') && (
-              <button className="btn" style={{borderColor:'#888',color:'#888'}}
-                onClick={() => setAction(null)}>Cancel</button>
-            )}
-            {/* ── 🧪 SLIME — lay the road (METALNESS §2, reworked 2026-08-17) ──
-                INNATE, so no `unlockedSkills` gate: this is the Monster's
-                signature, and `CHARACTER_HANDOFF` lists "arsenal, no innate
-                identity" as the gap the whole rework exists to close. Charging Db
-                for the road on top of the AP would re-open it.
-
-                ⚠️ It SETS movement rather than adding to it, so the button says
-                what you will END UP with, not what it costs. Off a thin melody
-                that number is a gain, and hiding that behind "-1 AP" would make
-                the one turn it most wants to be called look like the worst. */}
-            {!rockGodActive && acting?.id === 'Metalness_Monster' && (() => {
-              const already = !!engineState.turn?.slimingId;
-              const canCall = hasConfirmed && !already && moveStepsLeft >= SLIME_AP_COST;
-              return (
-                <button className={canCall ? 'btn active' : 'btn'}
-                  style={{borderColor:'#44ff44', color:'#8dffa0', opacity: canCall ? 1 : 0.45}}
-                  disabled={!canCall}
-                  title={already
-                    ? `🧪 Already oozing — ${moveStepsLeft} slimed step${moveStepsLeft !== 1 ? 's' : ''} left. Once a turn.`
-                    : !hasConfirmed
-                    ? '🧪 Slime — commit a melody first; the road is legs, and legs come from the melody.'
-                    : moveStepsLeft < SLIME_AP_COST
-                    ? `🧪 Slime — costs ${SLIME_AP_COST} AP and you have none left.`
-                    : `🧪 Slime — ${SLIME_AP_COST} AP, and your movement BECOMES ${SLIME_MOVE_STEPS}. Every hex you leave is slimed for ${SLIME_LIFETIME_TURNS} of your turns: 1 Vibe to any rival who steps in it, a free retreat for you, and reach for the Tentacle.`}
-                  onClick={callSlime}>
-                  🧪 Slime{already ? ` (${moveStepsLeft} left)` : ` → ${SLIME_MOVE_STEPS}`}
-                </button>
-              );
-            })()}
-            {/* ── 🐙 TENTACLE — reach through your own slime (METALNESS §4a) ──
-                It IS a Swing, so it wears the Swing's gates: a confirmed turn,
-                the Action Token unspent, 1 AP. What it does NOT need is to be
-                standing next to anybody — that is the whole ability. */}
-            {!rockGodActive && (actingNoteState?.unlockedSkills ?? []).includes('tentacle') && (() => {
-              const inReach = spirits.filter(sp =>
-                !sp.knockedOut && sp.id !== acting?.id && tentacleAim.has(sp.num));
-              const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
-              const canFire = !grayed && inReach.length > 0;
-              return (
-                <button className={canFire ? 'btn active' : 'btn'}
-                  style={{borderColor:'#5cff6a', color:'#8dffa0', opacity: canFire ? 1 : 0.45}}
-                  disabled={!canFire}
-                  title={grayed
-                    ? '🐙 Tentacle — needs a confirmed turn, your Action Token, and 1 AP.'
-                    : tentacleAim.size === 0
-                    ? '🐙 Tentacle — no trail to reach through. Walk somewhere first; the road IS the weapon.'
-                    : inReach.length === 0
-                    ? '🐙 Tentacle — the arm can reach, but nobody is standing in it.'
-                    : '🐙 Tentacle — strike from the slime. The road you reach through is spent.'}
-                  onClick={() => {
-                    if (action === 'tentacle') { setAction(null); return; }
-                    if (!canFire) return;
-                    setAction('tentacle');
-                    addLog('🐙 TENTACLE — click a rival in the lit hexes. The further down the road you reach, the more of it you spend.');
-                  }}>
-                  🐙 Tentacle{inReach.length > 0 ? ` (${inReach.length})` : ''}{grayed && moveStepsLeft < 1 ? ' (1AP)' : ''}
-                </button>
-              );
-            })()}
-            {action === 'tentacle' && (
-              <button className="btn" style={{borderColor:'#888',color:'#888'}}
-                onClick={() => setAction(null)}>Cancel</button>
-            )}
-            {/* SONIC ATTACK — always wired (Main Amp); hover previews beam + rig range ring */}
-            {!rockGodActive && (() => {
-              const beam    = acting ? getSonicBeam(acting) : new Set();
-              const targets = acting ? getRivalsInBeam(acting) : [];
-              const poolNow = actingRig.pool;
-              const poolDisplay = poolNow;
-              const diceLabel = rigPoolLabel(poolDisplay);
-              // 📡 Sonic is OFFLINE outside the rig's radius — the button fades.
-              // GRAYED = no AP / token spent (mechanical); FADED = out of amp
-              // range or no rival in the beam (positional). Hover shows both
-              // the beam and the rig's radius ring so the player sees why.
-              const outOfRange = !actingRig.inRange;
-              // 👤 The double reads as a beam target like any other standee.
-              const shadowSeen = shadowInRange('beam');
-              const beamCount  = targets.length + (shadowSeen ? 1 : 0);
-              const grayed   = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
-              const canSonic = !grayed && !outOfRange && beamCount > 0;
-              return (
-                <div style={{position:'relative',display:'inline-block'}}
-                  onMouseEnter={() => setHoverPreview('sonic')}
-                  onMouseLeave={() => setHoverPreview(p => p === 'sonic' ? null : p)}>
-                  <button className={canSonic ? 'btn active' : 'btn'}
-                    style={grayed
-                      ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
-                      : {borderColor:'#44aaff', color:'#66ccff',
-                          opacity: canSonic ? 1 : (outOfRange ? 0.35 : 0.4)}}
-                    disabled={!canSonic}
-                    title={grayed
-                      ? "Sonic Attack (2 AP) — grayed out: needs a confirmed turn, your Action Token, and 2 AP."
-                      : outOfRange
-                      ? "📡 Out of your amp's range — the Sonic is offline out here. Hover to see your rig's radius ring; move back inside it, or stack Drive: your rig reaches one hex further for every note on the stack."
-                      : canSonic
-                      ? `Sonic Attack (2 AP) — the ranged beam. ${diceLabel}, keep the highest. If your target is facing back down the beam AND inside their own amp range, it escalates into a RIFF-OFF; if they're stranded outside theirs, no duel — they defend on a d${SONIC_DEF_DIE_OUT_OF_RIG}.`
-                      : "Sonic Attack (2 AP) — no rival in your beam. Hover to see the beam and your rig's range ring."}
-                    onClick={() => {
-                      if (action === 'sonic') { setAction(null); }
-                      else if (canSonic) {
-                        setAction('sonic');
-                        addLog(`🔊 SONIC ATTACK — click a target in your beam! (${diceLabel} keep best)`);
-                      }
-                    }}>
-                    🔊 Sonic{outOfRange ? ' 📡' : beamCount > 0 ? ` (${beamCount})` : ''} {diceLabel}
-                    {grayed && moveStepsLeft < 2 ? ' (2AP)' : ''}
-                  </button>
-                </div>
-              );
-            })()}
-            {action === 'sonic' && (
-              <button className="btn" style={{borderColor:'#888',color:'#888'}}
-                onClick={() => setAction(null)}>Cancel</button>
-            )}
-            {/* (🎸 ACOUSTIC DUEL button REMOVED — the unplugged duel was cut.
-                A riff-off is now earned by aiming a Sonic down a shared beam
-                with both rigs live, not picked from the action bar.) */}
-            {/* 🤘 MASTER OF MOSHPITS — Metalness Monster sacrifices 3 fans for +2 standing Drive.
-                Fan counts come from ns.casuals / ns.diehards (the fan economy's real
-                fields) — reading the non-existent casualFans/diehardFans is what kept
-                this button dead at "(0/3 fans)". */}
-            {hasConfirmed && acting?.id === 'Metalness_Monster'
-              && (actingNoteState?.unlockedSkills ?? []).includes('master_moshpits') && (() => {
-              const pool = moshableFans(actingNoteState);
-              const used = actingNoteState?.moshpitUsedThisTurn;
-              const running = !!moshCine;
-              const canMosh = !used && !running && pool.total >= MOSH_FAN_COST;
-              const standing = actingNoteState?.moshDrive ?? 0;
-              return (
-                <button className={canMosh ? 'btn active' : 'btn'}
-                  style={{borderColor: canMosh ? '#ffcc00' : '#3a3000', color: canMosh ? '#ffcc00' : '#3a3000'}}
-                  disabled={!canMosh}
-                  title={used
-                    ? "Master of Moshpits — already moshed this turn."
-                    : pool.total < MOSH_FAN_COST
-                    ? `Master of Moshpits — needs ${MOSH_FAN_COST} fans in the stands (you have ${pool.total}). Diehards away on crew assignments can't mosh.`
-                    : `Master of Moshpits — pull ${MOSH_FAN_COST} fans onto the board for a pit. +${MOSH_DRIVE} Drive that STANDS until you call the next pit. Once per turn.`}
-                  onClick={() => { if (canMosh) resolveMasterOfMoshpits(); }}>
-                  🤘 Moshpit{used ? ' (used)' : pool.total < MOSH_FAN_COST ? ` (${pool.total}/${MOSH_FAN_COST} fans)` : ''}
-                  {standing > 0 ? ` ⚔️+${standing}` : ''}
-                </button>
-              );
-            })()}
-            {/* ── 🔊 GOES TO 11 — the dial (METALNESS §4d) ──
-                ⚠️ THE LABEL SAYS `⚔️ 11`, NOT `+11`, and that is deliberate. It
-                SETS the attack stat, so on a big turn it can turn him DOWN, and a
-                button that promised a bonus would be lying on exactly the turn
-                the joke fires. The tooltip does the arithmetic out loud. */}
-            {hasConfirmed && acting?.id === 'Metalness_Monster'
-              && (actingNoteState?.unlockedSkills ?? []).includes('goes_to_11') && (() => {
-              const cranked = !!actingNoteState?.atEleven;
-              const stack   = actingNoteState?.sustainStack ?? [];
-              const blown   = (actingNoteState?.ampBlownTurns ?? 0) > 0;
-              const canCall = !cranked && stack.length > 0 && !actionTokenUsed;
-
-              // What he would swing for if he DIDN'T touch it — so the tooltip can
-              // warn him when eleven is a downgrade rather than a payday.
-              const chordNow = (actingNoteState?.driveStack ?? []).length
-                ? spiritChord(acting.id, actingNoteState.driveStack) : null;
-              const asIs = (chordNow ? chordNow.drive : (acting?.drive ?? 7))
-                + Math.min((actingNoteState?.tempDrive ?? 0) + (actingNoteState?.moshDrive ?? 0), ATK_BONUS_CAP);
-              const quieter = asIs > ELEVEN_DRIVE;
-
-              return (
-                <button className={canCall || cranked ? 'btn active' : 'btn'}
-                  style={cranked
-                    ? {borderColor:'#ff2200', color:'#ff6644',
-                       animation:'moshpit-shudder 0.3s steps(2) infinite',
-                       filter:'drop-shadow(0 0 6px #ff2200)'}
-                    : {borderColor: canCall ? '#cc0000' : '#330000', color: canCall ? '#ff4444' : '#330000'}}
-                  disabled={!canCall}
-                  title={cranked
-                    ? `On ELEVEN — attack set to ${ELEVEN_DRIVE}, and you do not get moved.${blown ? ' Rig blown: no Sonic, bare d4 on defence.' : ''}`
-                    : actionTokenUsed
-                    ? 'Goes to 11 — your attack is already spent. Setting the dial now would do nothing.'
-                    : stack.length === 0
-                    ? 'Goes to 11 — the price is your SUSTAIN stack, and yours is empty. Voice some armour first.'
-                    : quieter
-                    ? `⚠️ Goes to 11 would turn you DOWN — you are already swinging at ⚔️${asIs}. The amp only goes to eleven. (Still buys knockback immunity, and still costs your stack ${stack.join(' ')} and your rig.)`
-                    : `Goes to 11 — set your attack to exactly ${ELEVEN_DRIVE} (from ⚔️${asIs}) and shrug off knockback. Costs your whole Sustain stack (${stack.join(' ')}) and blows your amp: no Sonic and a bare d4 on defence for a full turn.`}
-                  onClick={() => { if (canCall) callEleven(); }}>
-                  {cranked
-                    ? `🔊 ELEVEN ⚔️${ELEVEN_DRIVE}`
-                    : `🔊 Goes to 11${stack.length === 0 ? ' (no 🛡️stack)' : quieter ? ' ▼' : ''}`}
-                </button>
-              );
-            })()}
-            {/* 🌌 SPACE IS DISPLACED — Intergalactic 0 blinks 2–3 rings for 1 Db.
-                ⚠️ This button previously read a `hasRig` variable that was never
-                defined anywhere in the component, so simply RENDERING it threw a
-                ReferenceError and dropped the whole game into the error boundary
-                the moment Intergalactic 0 unlocked the skill and committed a
-                track. That bug is gone with the rework — but the lesson stands:
-                every value in this label must come from something in scope. */}
-            {hasConfirmed && acting?.id === 'intergalactic_0'
-              && (actingNoteState?.unlockedSkills ?? []).includes('displace') && (() => {
-              const dbPts   = actingNoteState?.dbPoints ?? 0;
-              const warpCd  = cooldownLeft(actingNoteState, 'displace');
-              const canWarp = canFire(actingNoteState, 'displace');
-              return (
-                <>
-                  <button className={canWarp ? 'btn active' : 'btn'}
-                    style={{borderColor: canWarp ? '#aa55ff' : '#2a1840', color: canWarp ? '#cc88ff' : '#2a1840'}}
-                    disabled={!canWarp}
-                    title={`Space is Displaced — spend ${DISPLACE_DB_COST} Db to warp to any open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away. No Action Points, no cooldown, no rig needed — and your movement is untouched, so you can still walk after landing. Adjacent hexes don't count: he goes through the space between, not across it.`}
-                    onClick={() => {
-                      if (action === 'displace') { setAction(null); }
-                      else if (canWarp) {
-                        setAction('displace');
-                        addLog(`🌌 SPACE IS DISPLACED — click any lit hex (${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out) to warp there for ${DISPLACE_DB_COST} Db.`);
-                      }
-                    }}>
-                    🌌 Displace{canWarp ? ` (${DISPLACE_DB_COST} Db)`
-                      : warpCd > 0 ? ` (${warpCd})`
-                      : ` (${dbPts}/${DISPLACE_DB_COST} Db)`}
-                  </button>
-                  {action === 'displace' && (
-                    <button className="btn" style={{borderColor:'#888',color:'#888'}}
-                      onClick={() => setAction(null)}>Cancel</button>
-                  )}
-                </>
-              );
-            })()}
-            {/* 🕳️ GRAVITY CONTROL — Intergalactic 0 opens a black hole vortex */}
-            {hasConfirmed && acting?.id === 'intergalactic_0'
-              && (actingNoteState?.unlockedSkills ?? []).includes('gravity_control') && (() => {
-              const dbPts   = actingNoteState?.dbPoints ?? 0;
-              const isOpen  = !!actingNoteState?.gravityVortex;
-              const gravCd  = cooldownLeft(actingNoteState, 'gravity_control');
-              const canOpen = canFire(actingNoteState, 'gravity_control') && !isOpen;
-              return (
-                <>
-                  <button className={canOpen ? 'btn active' : 'btn'}
-                    style={{borderColor: canOpen ? '#aa55ff' : '#2a1840', color: canOpen ? '#cc88ff' : '#2a1840'}}
-                    disabled={!canOpen}
-                    title={isOpen
-                      ? `A vortex is already open on hex #${actingNoteState?.gravityVortex?.hex}. Only one singularity at a time — it collapses when the turn order comes back to you.`
-                      : `Gravity Control — spend ${GRAVITY_DB_COST} Db to tear open a black hole on any hex within ${GRAVITY_PLACE_RINGS} rings (you can drop it right on top of someone). Every rival within ${GRAVITY_PULL_RINGS} rings is dragged ${GRAVITY_PULL_HEXES} hex toward it; anyone pulled all the way in loses ${GRAVITY_NOTE_DRAIN} notes off next turn's refill. It hangs for one full round and takes anyone who wanders close. It never touches you.`}
-                    onClick={() => {
-                      if (action === 'gravity_control') { setAction(null); }
-                      else if (canOpen) {
-                        setAction('gravity_control');
-                        addLog(`🕳️ GRAVITY CONTROL — click any lit hex (within ${GRAVITY_PLACE_RINGS} rings) to tear open the vortex for ${GRAVITY_DB_COST} Db.`);
-                      }
-                    }}>
-                    🕳️ Gravity{isOpen
-                      ? ` (open #${actingNoteState?.gravityVortex?.hex})`
-                      : gravCd > 0 ? ` (${gravCd})`
-                      : dbPts < GRAVITY_DB_COST ? ` (${dbPts}/${GRAVITY_DB_COST} Db)` : ` (${GRAVITY_DB_COST} Db)`}
-                  </button>
-                  {action === 'gravity_control' && (
-                    <button className="btn" style={{borderColor:'#888',color:'#888'}}
-                      onClick={() => setAction(null)}>Cancel</button>
-                  )}
-                </>
-              );
-            })()}
-            {/* 💻 CODE INJECTION — Intergalactic 0's hidden commit.
-                ⚠️ This button, and the (n) counter on it, are the ONLY surface
-                the armed state ever gets. It renders inside the acting Spirit's
-                own HUD, so only the player holding Intergalactic 0 can see it.
-                Do not mirror this onto the standee, the board, or any shared
-                banner — the entire ability is that rivals cannot tell. */}
-            {hasConfirmed && acting?.id === 'intergalactic_0'
-              && (actingNoteState?.unlockedSkills ?? []).includes('code_injection') && (() => {
-              const dbPts   = actingNoteState?.dbPoints ?? 0;
-              const armed   = (actingNoteState?.codeInjectTurns ?? 0) > 0;
-              const hackCd  = cooldownLeft(actingNoteState, 'code_injection');
-              const canHack = canFire(actingNoteState, 'code_injection') && !armed;
-              return (
-                <button className={canHack ? 'btn active' : 'btn'}
-                  style={{borderColor: canHack ? '#44ffaa' : armed ? '#1d5c44' : '#12301f',
-                          color: canHack ? '#88ffcc' : armed ? '#44ffaa' : '#12301f'}}
-                  disabled={!canHack}
-                  title={armed
-                    ? `A patch is live and nobody else can see it. The next rival whose attack would beat you gets their dice thrown out and re-rolled. Lapses when the turn order comes back to you.`
-                    : `Code Injection — spend ${CODE_INJECT_DB_COST} Db in secret. For one round, the first rival whose attack WOULD land on you has their dice re-rolled and must live with the second result. No tell, no aura: rivals cannot tell whether you've committed. If nobody lands a hit, the Db is gone — that's the bet.`}
-                  onClick={() => { if (canHack) resolveCodeInjection(); }}>
-                  💻 Inject{armed ? ' ✅ LIVE'
-                    : hackCd > 0 ? ` (${hackCd})`
-                    : dbPts < CODE_INJECT_DB_COST ? ` (${dbPts}/${CODE_INJECT_DB_COST} Db)` : ` (${CODE_INJECT_DB_COST} Db)`}
-                </button>
-              );
-            })()}
-            {/* 🌀 PSYCHO BUSHIDO — Shredding Ronin dash attack */}
-            {hasConfirmed && acting?.id === 'cosmic_ronin'
-              && (actingNoteState?.unlockedSkills ?? []).includes('psycho_bushido') && (() => {
-              const cd    = cooldownLeft(actingNoteState, 'psycho_bushido');
-              const dbPts = actingNoteState?.dbPoints ?? 0;
-              const poor  = dbPts < PSYCHO_BUSHIDO_DB_COST;
-              const canDash = cd <= 0 && !poor && moveStepsLeft >= 1 && !actionTokenUsed;
-              return (
-                <>
-                  <button className={canDash ? 'btn active' : 'btn'}
-                    style={{borderColor: canDash ? '#4488ff' : '#1a2840', color: canDash ? '#88bbff' : '#1a2840'}}
-                    disabled={!canDash}
-                    title={`Psycho Bushido — dash in a straight line from your facing and strike whoever you reach. The ground you cover becomes bonus Drive on that blow. Costs ${PSYCHO_BUSHIDO_DB_COST} Db and the whole of your remaining AP. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
-                    onClick={() => {
-                      if (action === 'psycho_bushido') { setAction(null); }
-                      else if (canDash) { setAction('psycho_bushido'); addLog('🌀 PSYCHO BUSHIDO — click a rival in your line of sight to dash-strike!'); }
-                    }}>
-                    {/* ⚠️ THE LABEL SAYS WHICH REFUSAL IS BITING. A greyed button
-                        that only ever reads "Bushido" teaches the player nothing
-                        — recharging and skint are different problems with
-                        different answers, and the Db one is new as of the
-                        2026-08-22 rule. */}
-                    🌀 Bushido{cd > 0 ? ` (${cd})` : poor ? ` (${dbPts}/${PSYCHO_BUSHIDO_DB_COST} Db)` : ''}
-                  </button>
-                  {action === 'psycho_bushido' && (
-                    <button className="btn" style={{borderColor:'#888',color:'#888'}}
-                      onClick={() => setAction(null)}>Cancel</button>
-                  )}
-                </>
-              );
-            })()}
-            {/* 👤 SHADOW ILLUSION — Shredding Ronin decoy */}
-            {hasConfirmed && acting?.id === 'cosmic_ronin'
-              && (actingNoteState?.unlockedSkills ?? []).includes('shadow_illusion') && (() => {
-              const hasShadow = !!(actingNoteState?.shadowIllusion);
-              const cd    = cooldownLeft(actingNoteState, 'shadow_illusion');
-              const dbPts = actingNoteState?.dbPoints ?? 0;
-              const sus   = actingNoteState?.tempSustain ?? 0;
-              const poor  = dbPts < SHADOW_ILLUSION_DB_COST;
-              // 👤 THE SUSTAIN CHECK IS A SUMMON CONDITION, not just a drain. A
-              // double conjured with an empty guard starves at the very next
-              // turn-start, so the Db would buy a body that never stands.
-              const starving = sus < SHADOW_ILLUSION_SUSTAIN_DRAIN;
-              const canSummon = !hasShadow && cd <= 0 && !poor && !starving;
-              // No hex to pick any more — the double is born on top of the
-              // Ronin, so this is a single-click action.
-              return (
-                <button className={canSummon ? 'btn active' : 'btn'}
-                  style={{borderColor: canSummon ? '#4488ff' : '#1a2840', color: canSummon ? '#88bbff' : '#1a2840'}}
-                  disabled={!canSummon}
-                  title={`Shadow Illusion — split into a second, identical Ronin right where you stand (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). You start stacked, so nobody sees which one appeared; walk them apart on separate legs and let rivals waste a turn on the wrong body. ⚠️ It feeds on you: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it falls apart the moment you have none to give.`}
-                  onClick={() => { if (canSummon) resolveShadowIllusion(); }}>
-                  👤 Shadow{hasShadow
-                    ? ` (${actingNoteState?.shadowIllusion?.turnsLeft ?? 0}t · −${SHADOW_ILLUSION_SUSTAIN_DRAIN}🛡️)`
-                    : cd > 0 ? ` (${cd})`
-                    : poor ? ` (${dbPts}/${SHADOW_ILLUSION_DB_COST} Db)`
-                    : starving ? ' (no Sustain)' : ''}
-                </button>
-              );
-            })()}
-            {/* 🪦 Exorcism UI — removed 2026-08-26 */}
-            {/* 🎸 CURSED SHAMISEN — cooldown accelerator with a curse */}
-            {hasConfirmed && acting?.id === 'cosmic_ronin'
-              && (actingNoteState?.unlockedSkills ?? []).includes('cursed_shamisen') && (() => {
-              const curse   = actingNoteState?.shamisenCurse;
-              const active  = curse && curse.turnsLeft > 0;
-              const cd      = cooldownLeft(actingNoteState, 'cursed_shamisen');
-              const dbPts   = actingNoteState?.dbPoints ?? 0;
-              const poor    = dbPts < CURSED_SHAMISEN_DB_COST;
-              const canActivate = !active && cd <= 0 && !poor;
-              const canPay  = active && !curse.paidThisRound && dbPts >= CURSED_SHAMISEN_PAYOFF_COST;
-              return (
-                <>
-                <button className={canActivate ? 'btn active' : 'btn'}
-                  style={{borderColor: canActivate ? '#cc44ff' : active ? '#cc44ff44' : '#1a2840',
-                          color: canActivate ? '#dd88ff' : active ? '#cc44ff' : '#1a2840',
-                          animation: active ? 'shamisen-glow 1.2s ease-in-out infinite' : 'none'}}
-                  disabled={!canActivate}
-                  title={`Cursed Shamisen — activate the curse (${CURSED_SHAMISEN_DB_COST} Db, ${CURSED_SHAMISEN_CD}-round cooldown) to speed up ALL other ability cooldowns for ${CURSED_SHAMISEN_DURATION} rounds. ⚠️ You GLOW while it runs — take any Vibe damage and ALL cooldowns RESET to full. Pay ${CURSED_SHAMISEN_PAYOFF_COST} Db/round to protect yourself (rivals can't see whether you paid).`}
-                  onClick={() => { if (canActivate) resolveCursedShamisen(); }}>
-                  🎸 {active
-                    ? `Cursed (${curse.turnsLeft})`
-                    : cd > 0 ? `Shamisen (${cd})`
-                    : poor ? `Shamisen (${dbPts}/${CURSED_SHAMISEN_DB_COST} Db)` : 'Shamisen'}
-                </button>
-                {active && (
-                  <button className={canPay ? 'btn active' : 'btn'}
-                    style={{borderColor: canPay ? '#ffaa22' : '#1a2840', color: canPay ? '#ffcc44' : '#1a2840', fontSize: '0.85em'}}
-                    disabled={!canPay}
-                    title={`Pay ${CURSED_SHAMISEN_PAYOFF_COST} Db to protect yourself this round. Rivals cannot tell whether you paid — the glow stays either way.`}
-                    onClick={() => { if (canPay) payShamisenDebt(); }}>
-                    💰 Pay Debt{curse.paidThisRound ? ' ✓' : ` (${CURSED_SHAMISEN_PAYOFF_COST} Db)`}
-                  </button>
-                )}
-                </>
-              );
-            })()}
-            <button className="btn end" data-tip-anchor="end-turn" onClick={endTurn}>End ⏭</button>
-          </div>
-          {/* ✨ LIMELIGHT STANDINGS — pose rounds survived, and what the NEXT one
-              pays. This is a threat board, not a progress bar: the old "x/3"
-              read as a race to a win condition that no longer exists. What a
-              rival actually needs to know is how expensive it's getting to
-              leave this Spirit alone in the middle. */}
-          {Object.keys(limelightScores).length > 0 && (
-            <div style={{background:"#1a0a2a",border:"1px solid #ff44ff44",borderRadius:4,
-              padding:"4px 8px",marginBottom:4,fontSize:8}}>
-              <span style={{color:"#ff88ff",letterSpacing:1}}>✨ LIMELIGHT — POSE ROUNDS</span>
-              <div style={{display:"flex",gap:8,marginTop:3,flexWrap:"wrap"}}>
-                {spirits.map(s => {
-                  const score = limelightScores[s.id] ?? 0;
-                  if (score === 0) return null;
-                  const nextTier = poseTierFor(s.id);
-                  const maxed = nextTier >= POSE_FP_MAX;
-                  return (
-                    <span key={s.id} style={{color:s.color,fontSize:9}}
-                      title={`${s.name} has held a pose for ${score} round${score !== 1 ? 's' : ''}. Their next one pays ⭐${nextTier} FP${maxed ? ' — the per-turn ceiling' : ''}.`}>
-                      {s.name}: ×{score} <span style={{color: maxed ? '#ffcc44' : '#ff88ff'}}>→⭐{nextTier}{maxed ? '🔥' : ''}</span>
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          </div>{/* end step-active wrapper for actions */}
 
         </div>
 
