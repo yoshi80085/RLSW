@@ -36,6 +36,8 @@ import { ScoreTrackOverlay } from "./ui/ScoreTrackOverlay.jsx";
 import { StatKnob } from "./ui/StatKnob.jsx";
 import { ChordStackPanel, CommitTrackPanel, PayoutRouterPanel, COMMIT_OVERLAY,
          StackNest, stackSeatPos } from "./ui/NoteCommitOverlay.jsx";
+// 🎛️ The column beside the character card — turn rail, key plate, DB meter.
+import { ChannelStrip, StripSection, TurnRail, KeyPlate, SPIRIT_CARD } from "./ui/ChannelStrip.jsx";
 import { ToneFader } from "./ui/ToneFader.jsx";
 import { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from "react";
 import React from "react";
@@ -12456,12 +12458,15 @@ export function Game({ gameState, onReturnToLobby }) {
           {acting && (() => {
             const s = acting;
             const ns = noteStates[s.id] ?? {};
+            // 📌 THE FRAME IS A RECTANGLE ON PURPOSE — there is no transform on the
+            // card. Alex looked at a skewed card and turned it down: the blue edge
+            // stands straight and every raked edge lives INSIDE it. See SPIRIT_CARD.
             return (
               <div className="card" style={{
                 borderLeft:`3px solid ${s.color}`,
                 background:"#0d1528",
                 boxShadow:`0 0 14px ${s.color}33, inset 0 0 20px ${s.color}0a`,
-                marginBottom:6, padding:0, overflow:"hidden",
+                marginBottom:SPIRIT_CARD.gap, padding:0, overflow:"hidden",
               }}>
                 <NeonStrikeFX color={s.color}/>
                 {/* Two-column card: loadout (left) · portrait + stats (right).
@@ -12473,14 +12478,31 @@ export function Game({ gameState, onReturnToLobby }) {
                     name header and stat bars float on top. A vertical wash
                     keeps text readable (dark top/bottom) while the middle
                     band stays clear so the Spirit shows through. */}
+                {/* 🃏 THE SECOND SLAB. It rakes by the same angle as the strip's
+                    faceplate, so the join between the two columns is a constant-width
+                    seam rather than a wedge. `marginRight` lifts its raked corner off
+                    the card's right edge, so the cut reads as intended rather than as
+                    the frame shaving it.
+                    ⚠️ ONE UN-SKEW LAYER, NEVER TWO — the art and the content each get
+                    the counter-skew ONCE, below. Two would shear them the other way,
+                    which reads as a rendering bug, not a design. */}
                 <div style={{width:238, flexShrink:0, order:2, marginLeft:"auto",
-                  position:"relative", overflow:"hidden", minHeight:174}}>
+                  position:"relative", overflow:"hidden",
+                  minHeight:SPIRIT_CARD.portraitMinH,
+                  marginRight:SPIRIT_CARD.inset,
+                  transform:SPIRIT_CARD.tilt ? `skewX(${SPIRIT_CARD.tilt}deg)` : undefined}}>
 
-                {/* Faded portrait backdrop */}
+                {/* Faded portrait backdrop. ⚠️ THE WIDTH OVERSHOOT IS LOAD-BEARING:
+                    un-skewing the art walks its own edges inward, and a bare band of
+                    card background down one side of the Spirit reads as a broken
+                    image rather than as a raked panel. */}
                 <img src={s.imageSrc} alt={s.name}
-                  style={{position:"absolute", inset:0, width:"100%", height:"100%",
+                  style={{position:"absolute", top:0, bottom:0, height:"100%",
+                    width:`${SPIRIT_CARD.artWidth}%`,
+                    left:`${(100 - SPIRIT_CARD.artWidth) / 2}%`,
                     objectFit:"cover", objectPosition:"top center", display:"block",
-                    opacity:0.42}}/>
+                    opacity:0.42,
+                    transform:SPIRIT_CARD.tilt ? `skewX(${-SPIRIT_CARD.tilt}deg)` : undefined}}/>
                 {/* readability wash + spirit-color tint */}
                 <div style={{position:"absolute", inset:0, pointerEvents:"none",
                   background:"linear-gradient(180deg, #0d1528e6 0%, #0d152880 24%, #0d152840 50%, #0d1528a8 72%, #0d1528f0 100%)"}}/>
@@ -12489,10 +12511,15 @@ export function Game({ gameState, onReturnToLobby }) {
                   borderLeft:`1px solid ${s.color}22`}}/>
 
                 {/* CONTENT — floats over the art */}
-                <div style={{position:"relative", display:"flex", flexDirection:"column", height:"100%"}}>
-                {/* Header: name / style · NOW / Fame */}
+                <div style={{position:"relative", display:"flex", flexDirection:"column", height:"100%",
+                  transform:SPIRIT_CARD.tilt ? `skewX(${-SPIRIT_CARD.tilt}deg)` : undefined}}>
+                {/* Header: name / style · NOW / Fame.
+                    ⚠️ THE HORIZONTAL PADDING IS THE SHEAR'S SLACK, not taste. Skew
+                    rotates the box but lays content out in the pre-skew rectangle, so
+                    without it the Spirit's name walks past the raked edge and
+                    `overflow:hidden` eats its first letter. See SPIRIT_CARD.slack. */}
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",
-                  gap:6, padding:"6px 8px 5px"}}>
+                  gap:6, padding:`${SPIRIT_CARD.padY}px ${8 + SPIRIT_CARD.slack}px 5px`}}>
                   <div style={{minWidth:0}}>
                     <div style={{fontSize:11,fontWeight:700,color:s.color,lineHeight:1.2}}>
                       {s.name}
@@ -12513,10 +12540,12 @@ export function Game({ gameState, onReturnToLobby }) {
                 </div>
 
                 {/* clear window — the Spirit shows through here */}
-                <div style={{flex:1, minHeight:44}}/>
+                <div style={{flex:1, minHeight:SPIRIT_CARD.clearWindow}}/>
 
-                {/* Stats — overlaid at the bottom, over the faded art */}
-                <div style={{padding:"6px 8px 7px", textShadow:"0 1px 3px #000c"}}>
+                {/* Stats — overlaid at the bottom, over the faded art. Same slack as
+                    the header, for the same reason and at the opposite corner. */}
+                <div style={{padding:`${SPIRIT_CARD.padY}px ${8 + SPIRIT_CARD.slack}px 7px`,
+                  textShadow:"0 1px 3px #000c"}}>
                   {/* Vibe bar removed — shown on board standee + purple maxVibe bar below */}
                   {/* ⭐ Fame — the win condition, front and centre.
                       This is NOT a stat line. It's the scoreboard, so it gets
@@ -12743,50 +12772,122 @@ export function Game({ gameState, onReturnToLobby }) {
                     consult, and it does vanish in step 3. A plate gives it a fixed
                     place to be looked up.
 
-                    Being dialled on `.scratch/hud-channel-strip.html`; do not build it
-                    straight in here. ── */}
+                    🎛️ IT IS BUILT — `ChannelStrip.jsx`, at the values Alex landed on
+                    2026-08-29. Everything below is DATA; the chrome is in that file.
+                    ⚠️ HE DIALLED STRIP WIDTH 286 AND CANNOT HAVE IT: measured at five
+                    viewport widths, this column is 238px at every one of them (the
+                    HUD grid is minmax(430,480) and the portrait beside it is a fixed
+                    238). My preview mocked the card wider than the card is. The strip
+                    flexes to the column instead; see `CHANNEL_STRIP.designWidth`. ── */}
+                {/* 📌 The DB block keeps its OWN header — it already draws
+                    "DB PROGRESS" with the target skill on the right, which is
+                    exactly the foot the preview showed. Wrapping it in a
+                    StripSection would print the words twice. */}
+                <ChannelStrip foot={<>
                 {/* ── DB PROGRESS BAR ── */}
-                {(() => {
-                  const targetId  = ns.targetSkillId;
-                  const targetDef = targetId ? SKILL_BY_ID[targetId] : null;
-                  const dbPts     = ns.dbPoints ?? 0;
-                  const targetCost = targetDef?.dbCost ?? 8;
-                  const pct       = Math.min(1, dbPts / targetCost);
-                  const routeDef  = targetDef ? SKILL_TREE.routes.find(r => r.id === targetDef.routeId) : null;
-                  const barColor  = routeDef?.color ?? '#ffcc44';
-                  return (
-                    <div data-tip-anchor="db-bar" style={{padding:"5px 8px 6px", borderTop:`1px solid ${s.color}22`}}>
-                      <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3}}>
-                        <span style={{fontSize:7, color:"#3a5a7a", letterSpacing:1}}>DB PROGRESS</span>
-                        {targetDef
-                          ? <span style={{fontSize:7, color:barColor, fontWeight:700}}>
-                              {targetDef.icon} {targetDef.label}
-                            </span>
-                          : <span style={{fontSize:7, color:"#2a3a50", fontStyle:"italic"}}>no target set</span>
-                        }
-                      </div>
-                      <div style={{display:"flex", alignItems:"center", gap:6}}>
-                        <div style={{flex:1, height:6, background:"#0a1020", borderRadius:3, overflow:"hidden",
-                          border:"1px solid #1a2a40"}}>
-                          <div style={{
-                            height:"100%", borderRadius:3,
-                            width:`${pct*100}%`,
-                            background: pct >= 1
-                              ? `linear-gradient(90deg, ${barColor}, #ffffff88)`
-                              : `linear-gradient(90deg, ${barColor}88, ${barColor})`,
-                            transition:"width 0.4s ease",
-                            boxShadow: pct >= 1 ? `0 0 8px ${barColor}` : "none",
-                          }}/>
+                  {(() => {
+                    const targetId  = ns.targetSkillId;
+                    const targetDef = targetId ? SKILL_BY_ID[targetId] : null;
+                    const dbPts     = ns.dbPoints ?? 0;
+                    const targetCost = targetDef?.dbCost ?? 8;
+                    const pct       = Math.min(1, dbPts / targetCost);
+                    const routeDef  = targetDef ? SKILL_TREE.routes.find(r => r.id === targetDef.routeId) : null;
+                    const barColor  = routeDef?.color ?? '#ffcc44';
+                    return (
+                      <div data-tip-anchor="db-bar" style={{padding:0}}>
+                        <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3}}>
+                          <span style={{fontSize:7, color:"#3a5a7a", letterSpacing:1}}>DB PROGRESS</span>
+                          {targetDef
+                            ? <span style={{fontSize:7, color:barColor, fontWeight:700}}>
+                                {targetDef.icon} {targetDef.label}
+                              </span>
+                            : <span style={{fontSize:7, color:"#2a3a50", fontStyle:"italic"}}>no target set</span>
+                          }
                         </div>
-                        <span style={{fontSize:8, color: pct>=1 ? barColor : "#4a6a7a",
-                          fontWeight: pct>=1 ? 700 : 400, whiteSpace:"nowrap"}}>
-                          {dbPts} / {targetCost}
-                        </span>
+                        <div style={{display:"flex", alignItems:"center", gap:6}}>
+                          <div style={{flex:1, height:6, background:"#0a1020", borderRadius:3, overflow:"hidden",
+                            border:"1px solid #1a2a40"}}>
+                            <div style={{
+                              height:"100%", borderRadius:3,
+                              width:`${pct*100}%`,
+                              background: pct >= 1
+                                ? `linear-gradient(90deg, ${barColor}, #ffffff88)`
+                                : `linear-gradient(90deg, ${barColor}88, ${barColor})`,
+                              transition:"width 0.4s ease",
+                              boxShadow: pct >= 1 ? `0 0 8px ${barColor}` : "none",
+                            }}/>
+                          </div>
+                          <span style={{fontSize:8, color: pct>=1 ? barColor : "#4a6a7a",
+                            fontWeight: pct>=1 ? 700 : 400, whiteSpace:"nowrap"}}>
+                            {dbPts} / {targetCost}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })()}
-
+                    );
+                  })()}
+                </>}>
+                  <StripSection title="THIS TURN">
+                    {/* 🎚️ THE THREE STEPS, and the one live number each one is really
+                        about. ⚠️ THESE ARE THE HUD'S OWN NUMBERS, not a second source:
+                        `stackCommitsThisTurn` against the budget, the track length
+                        against its 8 seats, and the engine's `moveStepsLeft`. If any
+                        of them ever disagrees with the panel it names, the panel is
+                        right and this is the bug. */}
+                    <TurnRail
+                      current={turnStep === 'chord' ? 1 : turnStep === 'melody' ? 2 : 3}
+                      steps={[
+                        { name:'CHORD STACKS', color:DRIVE_C,
+                          state:`${Math.max(0, STACK_COMMIT_BUDGET - (ns.stackCommitsThisTurn ?? 0))} of ${STACK_COMMIT_BUDGET} commits left` },
+                        { name:'BUILD MELODY', color:'#aa88ff',
+                          state:`${melodyLine.length} of 8 notes placed` },
+                        { name:'MOVE & ACT',   color:'#44ff88',
+                          state:`${moveStepsLeft} AP · ${actionTokenUsed ? 'no action' : '1 action'} left` },
+                      ]}/>
+                  </StripSection>
+                  <StripSection title="KEY" accent="#7fb0ff">
+                    {/* 🔑 ⚠️ THE COLOURS ARE THE NOTE CHIPS' OWN — 4th violet, 5th pink,
+                        and ONE amber for all three unlock-gated discords, exactly as
+                        the stock renders them. This plate is the legend for those
+                        chips; a legend in different colours from the thing it explains
+                        is worse than no legend at all. */}
+                    {/* 🔑 THE PLATE'S FOOT CARRIES THE ↻ FLIP WARNING, and that is
+                        the whole reason this is a computed node and not the one-line
+                        string it started as. ⚠️ The retired `derived-mode` block owned
+                        this signal, and it is the one thing under the portrait that
+                        the plate did NOT already say — so deleting that block without
+                        rehoming this would have silently dropped a real mechanic.
+                        Mode is derived at TURN START only (deriving mid-turn would
+                        respell the stock under notes already placed), so a player who
+                        stacks a ♭3 right now sees nothing change and concludes the
+                        feature is broken. This is what tells them when it lands. */}
+                    <KeyPlate root={rootNote} mode={scaleMode} locked={modeLocked}
+                      note={(() => {
+                        const reason = actingNoteState?.modeReason ?? 'ambiguous';
+                        const chord  = actingNoteState?.modeChordName ?? 'your stack';
+                        const why = reason === 'ambiguous'
+                          ? `${chord} — no third to read, mode held`
+                          : reason === 'locked'
+                            ? `${chord} wants minor — 🔒 unlock Minor Tonality`
+                            : `${chord} sets the key`;
+                        const next = modeFromStack(actingNoteState?.driveStack ?? [],
+                                                   actingNoteState?.unlockedSkills ?? [], scaleMode);
+                        if (next.mode === scaleMode) return why;
+                        return (<>
+                          {why}
+                          <div style={{marginTop:3,color:"#ff99dd"}}>
+                            ↻ next turn: {next.mode === 'major' ? '☀️ Major' : '🌑 Minor'} — your Drive Stack changed
+                          </div>
+                        </>);
+                      })()}
+                      intervals={[
+                        ['4th', fourthNote,        '#cc55ff'],
+                        ['5th', fifthNote,         '#ff55aa'],
+                        ['tri', tritoneNote,       UNLOCKED_DISCORD.text],
+                        ['M3',  majorThirdNote,    UNLOCKED_DISCORD.text],
+                        ['m7',  minorSeventhNote,  UNLOCKED_DISCORD.text],
+                      ]}/>
+                  </StripSection>
+                </ChannelStrip>
                 <div style={{flex:1}}/>{/* push loadout content to top */}
                 </div>{/* end left column */}
                 </div>{/* end two-column row */}
@@ -12893,36 +12994,24 @@ export function Game({ gameState, onReturnToLobby }) {
             <div data-tip-anchor="note-stock"
               className={`card${turnStep === 'melody' ? ' step-active' : turnStep === 'move_act' ? ' step-collapsed' : ''}`}
               style={{'--step-glow-color': turnStep === 'chord' ? '#ff66cc' : '#4488ff',
-                borderLeft:`2px solid ${turnStep === 'melody' ? '#4488ff' : '#4488ff66'}`,padding:"6px 8px",marginBottom:4,
+                borderLeft:`2px solid ${turnStep === 'melody' ? '#4488ff' : '#4488ff66'}`,
+                padding:"3px 8px", marginBottom:SPIRIT_CARD.gap,
                 ...(turnStep === 'move_act'
                   ? {maxHeight:36,overflow:'hidden',transition:'max-height 0.4s ease, opacity 0.3s'}
                   : {overflow:'visible',flexShrink:0,minHeight:'fit-content'})}}>
               <NeonStrikeFX color={'#4488ff'}/>
-              {/* Header: big Root Note badge + title + interval legend */}
+              {/* ── Header: title + step controls ──────────────────────────────
+                  🪦 THE BIG ROOT NOTE BADGE CAME OUT HERE, 2026-08-29. A 48px
+                  mode-coloured tile printing the root and ☀️/🌑, sitting under a
+                  KEY PLATE that prints the root at 30px with the mode beside it and
+                  the interval table under it. Two readouts of one fact, a few inches
+                  apart, and the badge was the copy with nothing the plate lacked.
+                  ⚠️ ITS TUTORIAL ANCHOR MOVED, IT DID NOT DIE: `root-note` now lives
+                  on the plate's root/mode row in `ChannelStrip.jsx`. A tip whose
+                  anchor is missing does not throw — `BeginnerTipOverlay` silently
+                  re-centres it — so an anchor deleted along with its div is a bug you
+                  find months later by noticing Pickles points at nothing. ── */}
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:5}}>
-                {/* 🎵 ROOT NOTE — big mode-colored badge */}
-                <div data-tip-anchor="root-note" title={modeLocked
-                    ? `Root Note is ${rootNote}. Your Drive Stack spells a minor chord, but Minor Tonality is locked — the song holds ${rootNote} major.`
-                    : `Root Note — your scale is ${rootNote} ${scaleMode}, set by your Drive Stack. The LAST note of your committed track becomes next turn's Root!`}
-                  style={{
-                    width:48,height:48,borderRadius:9,flexShrink:0,
-                    display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                    background: modeLocked ? "linear-gradient(135deg,#241a00,#120d00)"
-                      : scaleMode==='major' ? "linear-gradient(135deg,#0d2050,#0a1228)"
-                      : "linear-gradient(135deg,#240d45,#12091e)",
-                    border:`2px solid ${modeLocked ? "#ffcc44" : scaleMode==='major' ? "#4488ff" : "#aa55ff"}`,
-                    boxShadow:`0 0 14px ${modeLocked ? "#ffcc4466" : scaleMode==='major' ? "#4488ff66" : "#aa55ff66"}, inset 0 0 10px ${modeLocked ? "#ffcc4422" : scaleMode==='major' ? "#4488ff22" : "#aa55ff22"}`,
-                  }}>
-                  <span style={{fontSize:5.5,letterSpacing:1.5,color:"#7a90aa",fontWeight:700}}>ROOT</span>
-                  <span style={{fontSize:18,fontWeight:900,color:"#ffffff",lineHeight:1,
-                    textShadow:`0 0 10px ${modeLocked ? "#ffcc44" : scaleMode==='major' ? "#4488ff" : "#aa55ff"}`}}>
-                    {rootNote}
-                  </span>
-                  <span style={{fontSize:6,letterSpacing:1,marginTop:1,fontWeight:700,
-                    color: modeLocked ? "#ffcc44" : scaleMode==='major' ? "#88bbff" : "#cc99ff"}}>
-                    {modeLocked ? "🔒 MAJOR" : scaleMode === 'major' ? "☀️ MAJOR" : "🌑 MINOR"}
-                  </span>
-                </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
                     <div className="stitle" style={{marginBottom:0,color: canAct ? "#4488ff" : "#7a90aa"}}>
@@ -12958,26 +13047,28 @@ export function Game({ gameState, onReturnToLobby }) {
                       </div>
                     )}
                   </div>
-                  {/* N13: the legend reads the ACTING spirit's scale — on a rival's
-                      turn it isn't your legend, so it only invites misreads. */}
-                  {turnStep !== 'move_act' && canAct && (
-                  <div data-tip-anchor="interval-legend" style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-                    <span style={{fontSize:7,color:"#cc55ff"}}>4th={fourthNote}</span>
-                    <span style={{fontSize:7,color:"#ff55aa"}}>5th={fifthNote}</span>
-                    {/* One colour for all three unlock-gated discords — they behave
-                        identically now, and red/blue belong to the stacks. */}
-                    <span style={{fontSize:7,color:UNLOCKED_DISCORD.text}} title="Discords your unlocks made clean — each adds +1 Performance Score as a track ending">
-                      tri={tritoneNote} M3={majorThirdNote} m7={minorSeventhNote}
+                  {/* ── 🪦 THE INTERVAL ROW CAME OUT OF HERE, 2026-08-29 ──────────
+                      `4th=F 5th=G tri=F# M3=E m7=Bb` as a wrapping row of 7px text,
+                      tucked under the step title. The KEY plate now prints exactly
+                      those five as a two-column engraved table with dotted leaders,
+                      in the same chip colours, and it is up in all three steps
+                      instead of vanishing in step 3. `interval-legend` moved there
+                      with them (see ChannelStrip.jsx — two tutorial pages aim at it).
+
+                      ⚠️ WHAT DID NOT GO IS THE HALF BELOW, and it nearly did: the
+                      ⚔️/🛡️ key is NOT a restatement of the plate. The plate says
+                      which notes are pardoned; this says WHICH STACK GETS PAID for
+                      playing one, which appears nowhere else in the HUD. It was
+                      riding inside the interval row purely because they shared a
+                      line, so it now gets its own gate on the step it serves. ── */}
+                  {turnStep === 'melody' && canAct && (
+                  <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+                    <span style={{fontSize:7,color:"#66708a",display:"flex",gap:4,alignItems:"center"}}
+                      title="A lit note is a Discord your chord stack pardoned. Its colour is the stack that gets paid for it.">
+                      <span style={{color:DRIVE_C}}>⚔️pays Drive</span>
+                      <span style={{color:"#3a4055"}}>│</span>
+                      <span style={{color:SUSTAIN_C}}>🛡️pays Sustain</span>
                     </span>
-                    {/* The legend the player actually needs during Step 2. */}
-                    {turnStep === 'melody' && (
-                      <span style={{fontSize:7,color:"#66708a",display:"flex",gap:4,alignItems:"center"}}
-                        title="A lit note is a Discord your chord stack pardoned. Its colour is the stack that gets paid for it.">
-                        <span style={{color:"#3a4055"}}>│</span>
-                        <span style={{color:DRIVE_C}}>⚔️pays Drive</span>
-                        <span style={{color:SUSTAIN_C}}>🛡️pays Sustain</span>
-                      </span>
-                    )}
                   </div>
                   )}
                 </div>
@@ -13094,49 +13185,19 @@ export function Game({ gameState, onReturnToLobby }) {
                 </div>
               )}
               {/* ── COLLAPSED SUMMARIES for completed steps ── */}
-              {/* ── 🎸 B8: THE MODE, DERIVED ────────────────────────────────────
-                  Was two buttons plus a two-column stock preview, asking "Major or
-                  Minor?" every single turn. The stack answers that question now, so
-                  this reports the answer and CITES THE CHORD that gave it — the line
-                  has to teach what the buttons used to teach. The stock preview isn't
-                  replaced so much as made redundant: the note chips already speak the
-                  one highlight language every other B3 pardon uses.
+              {/* ── 🪦 THE DERIVED-MODE LINE CAME OUT OF HERE, 2026-08-29 ──────────
+                  `☀️ C MAJOR — C (single) — no third to read, mode held`, in a tinted
+                  pill, directly under a KEY PLATE printing `C` `MAJOR` and, at its
+                  foot, that exact sentence. The third and last of the three duplicate
+                  key readouts this panel was carrying.
 
-                  The ↻ hint matters more than it looks. Mode is derived at turn start
-                  ONLY (deriving mid-turn would respell the stock under notes already
-                  placed), so a player who stacks a ♭3 right now sees nothing change
-                  and reasonably concludes the mechanic is broken. This tells them
-                  when it lands. */}
-              {acting && (() => {
-                const reason  = actingNoteState?.modeReason ?? 'ambiguous';
-                const chord   = actingNoteState?.modeChordName ?? 'your stack';
-                const isMajor = scaleMode === 'major';
-                const locked  = reason === 'locked';
-                const col = locked ? "#ffcc44"   : isMajor ? "#88bbff"   : "#cc99ff";
-                const bg  = locked ? "#181200"   : isMajor ? "#0a1228"   : "#12091e";
-                const bd  = locked ? "#ffcc4455" : isMajor ? "#4488ff33" : "#aa55ff33";
-                const why = reason === 'quality'   ? `${chord} sets the key`
-                          : reason === 'ambiguous' ? `${chord} — no third to read, mode held`
-                          : `${chord} wants minor — 🔒 unlock Minor Tonality`;
-                // What the stack AS IT STANDS NOW would give at the next turn start.
-                const next  = modeFromStack(actingNoteState?.driveStack ?? [],
-                                            actingNoteState?.unlockedSkills ?? [], scaleMode);
-                const flips = next.mode !== scaleMode;
-                return (
-                  <div data-tip-anchor="derived-mode" style={{fontSize:8,color:col,marginBottom:4,
-                    padding:"3px 7px",background:bg,border:`1px solid ${bd}`,borderRadius:4}}>
-                    <span style={{fontWeight:700}}>
-                      {locked ? '🔒' : isMajor ? '☀️' : '🌑'} {rootNote} {isMajor ? 'MAJOR' : 'MINOR'}
-                    </span>
-                    <span style={{opacity:0.75}}> — {why}</span>
-                    {flips && (
-                      <div style={{marginTop:2,color:"#ff99dd"}}>
-                        ↻ next turn: {next.mode === 'major' ? '☀️ Major' : '🌑 Minor'} — your Drive Stack changed
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+                  ⚠️ IT WAS NOT PURELY A DUPLICATE, and that is the part worth
+                  remembering: it also owned the `↻ next turn` warning, which nothing
+                  else in the HUD said. That moved INTO the plate's foot (see the
+                  KeyPlate call in the channel strip above) before this went, and the
+                  `derived-mode` tutorial anchor moved with it. B8's history — two
+                  Major/Minor buttons and a two-column stock preview, ~140 lines,
+                  replaced by a read-only line — now lives on the plate. ── */}
               {turnStep !== 'chord' && !hasConfirmed && (() => {
                 const dStack = actingNoteState?.driveStack ?? [];
                 const sStack = actingNoteState?.sustainStack ?? [];

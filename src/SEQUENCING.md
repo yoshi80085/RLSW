@@ -254,7 +254,44 @@ here and it is the one thing the harness still cannot see, because `smash` and
 > ✅ **GREEN.** `check:bundle` 0 warnings · `client` 6 · `render` 8/8 · `arch` 8 ·
 > `determinism` 22 · `turnflow` 73 · `melody` 159 · `engine` selftest.
 >
-> ▶️ **NEXT.** **(1) Dial the strip** and port the numbers. **(2) The valve-amp
+> 🎛️ **THE STRIP IS BUILT — `src/ui/ChannelStrip.jsx`**, at the values Alex
+> landed: chamfered lamps 35px with a 4px gap, lit both (edge + fill) at 50%
+> glow, off-depth 56%, plain numerals, substate on; engraved plate, root 30px,
+> bevel 55%, intervals in two columns, mode line on; section gap 12, faceplate
+> 75%, rivets on, DB meter at the foot, **tilt -4°**. 📌 I argued for tilt 0 and
+> he looked at both and chose -4, so -4 ships — recorded because it contradicts
+> the "the HUD is a column of square cards" reasoning I wrote a message earlier.
+>
+> ⚠️ **ONE OF HIS VALUES COULD NOT SHIP, AND IT WAS MY MISTAKE THAT HE SET IT.**
+> He dialled STRIP WIDTH to 286px. MEASURED at viewport widths 720 / 980 / 1440 /
+> 1600 / 1920: the card is **480px**, the portrait column **238**, and this column
+> **238** at every single one. (The HUD grid is `minmax(430px, 480px)` and takes
+> its 480 max at every width tested — the 430 floor never actually occurs, the
+> board column absorbs the difference.) **My preview page mocked the card wider
+> than the card is** — the exact failure CLAUDE.md's "show it in the real
+> container" rule exists to prevent, walked straight into, and it cost him a
+> dial-in against the wrong geometry. The strip flexes to the column instead.
+> 🎯 To actually get 286 the HUD grid's max must go 480 → 528 and the board gives
+> up 48px. That is a real trade and it is Alex's call, not a fix to apply quietly.
+>
+> ✅ **AND THE PORTRAIT KEPT ITS ROOM** — which is what he asked to be sure of.
+> 238px before, 238px after, card 480 before and after, verified by measuring the
+> rendered client rather than by looking at it.
+>
+> 📌 **THE STRIP IS SHELL-ONLY**, the same split as `NoteCommitOverlay.jsx`: every
+> number and every "which step is live" rule arrives as props from the client, so
+> a mistake in the chrome can misdraw a lamp but cannot reach the turn state.
+> The rail's three substates read the HUD's own numbers — `stackCommitsThisTurn`
+> against `STACK_COMMIT_BUDGET`, `melodyLine.length` against the 8 seats, and the
+> engine's `moveStepsLeft`. ⚠️ If one of them ever disagrees with the panel it
+> names, the panel is right and the rail is the bug.
+>
+> ⚠️ **STILL OWED: DELETE THE INLINE INTERVAL LEGEND.** The plate now shows
+> `4th / 5th / tri / M3 / m7` permanently; the wrapping 7px row under the step
+> panel still shows the same five. Two copies of a legend is worse than either
+> one — that row goes in the next pass.
+>
+> ▶️ **NEXT.** **(1) Delete the inline interval legend** now the plate has it. **(2) The valve-amp
 > direction for the stacks and track** — bezel wells on the empty seats and a
 > single light source (`SKIN.bezel` / `SKIN.light`, both dialled at 0 today), the
 > track as a luminous baseline rather than a row of sockets, faceplates darker
