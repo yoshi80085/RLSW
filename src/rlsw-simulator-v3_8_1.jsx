@@ -133,7 +133,7 @@ import { startTurnNotes, refillDrawCount } from "./engine/systems/turnFlow.js";
 // 🎼 THE COMMIT'S ECONOMY — the single source of truth for what a melody is
 // worth. `confirmNoteTrack` is a shell over this; see the header there.
 import { commitMelodyEconomy, MIC_VOICE_ROLL_PASS } from "./engine/systems/melodyCommit.js";
-import { STYLE_DEFS, styleOf, styleDef } from "./data/styles.js";
+import { STYLE_DEFS, styleOf } from "./data/styles.js";
 import {
   BOT_PERSONALITIES, BOT_PERSONA_KEYS, BOT_SKILL_PRIORITY_BASE, BOT_SPIRIT_SKILLS,
   SPIRIT_ONLY_ROUTE, BOT_RIFF_PROFILE,
@@ -13147,15 +13147,24 @@ export function Game({ gameState, onReturnToLobby }) {
           <div className={turnStep === 'move_act' && canAct ? 'step-active' : ''} style={{'--step-glow-color':'#44ff88',
             borderRadius:6, padding: turnStep === 'move_act' ? '4px 0' : 0, transition:'all 0.3s',
             ...(canAct ? {} : {opacity:0.32, pointerEvents:'none', filter:'grayscale(0.85)'})}}>
-          <div className="stitle" style={{marginTop:4}}>
-            {!canAct ? 'Actions — rival on stage' : turnStep === 'move_act' ? 'Step 3 — Move & Act' : 'Actions'}
-          </div>
-          {/* (bonus revoice UI removed — stack commit budget replaces it) */}
-          {turnStep !== 'move_act' && canAct && (
-            <div style={{marginBottom:3}}>
-              <button className="btn end" data-tip-anchor="end-turn" onClick={endTurn} style={{width:'100%',fontSize:9,padding:'5px 0'}}>End Turn ⏭</button>
+          {/* 🪦 THE BARE 'ACTIONS' HEADING AND ITS End Turn ⏭ BUTTON CAME OUT HERE,
+              Alex 2026-08-29. In steps 1 and 2 this rail had nothing in it — the
+              ActionRail below is move_act-only — so all it contributed was a title
+              over a full-width button, wedged between the character card and the
+              panel the player is actually working in. That is ~34px of nothing
+              pushing the NOTE POOL down the column, and the note pool is the one
+              thing that wants to be under the badge that says what you can afford.
+              ⚠️ END TURN DID NOT DIE — the Step 3 rail still carries it, WITH the
+              `end-turn` tutorial anchor on it (see RailBtn below). Deleting the
+              last live copy of an anchor is how a tip ends up pointing at nothing.
+              📌 The heading now renders ONLY in move_act, so the rail's own step
+              title appears exactly when the rail does. ── */}
+          {turnStep === 'move_act' && (
+            <div className="stitle" style={{marginTop:4}}>
+              {!canAct ? 'Actions — rival on stage' : 'Step 3 — Move & Act'}
             </div>
           )}
+          {/* (bonus revoice UI removed — stack commit budget replaces it) */}
           {/* ── ⑤ THE SPLIT, Alex 2026-08-29 ────────────────────────────────
               LEFT is the move set EVERY Spirit has; RIGHT is what THIS one owns.
               ⚠️ "SIGNATURE" IS NOT "UNLOCKED", and the difference is load-bearing:
@@ -13920,6 +13929,21 @@ export function Game({ gameState, onReturnToLobby }) {
                         : turnStep === 'chord' ? 'Step 1 — Chord Stack'
                         : turnStep === 'melody' ? 'Step 2 — Build Melody' : 'Note Stock'}
                     </div>
+                    {/* ⚔️/🛡️ PAYS KEY — rides the title line, Alex 2026-08-29.
+                        It used to own a row of its own directly under this one. It is
+                        five words of legend; a whole line of column height for five
+                        words is the kind of spend that pushes the note pool off the
+                        fold. 📌 It sits BEFORE the mic block, which keeps its
+                        marginLeft:'auto' and so still pins itself to the right edge —
+                        the legend just fills the slack that was already there. */}
+                    {turnStep === 'melody' && canAct && (
+                      <span style={{fontSize:7,color:"#66708a",display:"flex",gap:4,alignItems:"center",flexShrink:0}}
+                        title="A lit note is a Discord your chord stack pardoned. Its colour is the stack that gets paid for it.">
+                        <span style={{color:DRIVE_C}}>⚔️pays Drive</span>
+                        <span style={{color:"#3a4055"}}>│</span>
+                        <span style={{color:SUSTAIN_C}}>🛡️pays Sustain</span>
+                      </span>
+                    )}
                     {/* 🎤 MIC — only offered during the step it can actually act on */}
                     {turnStep === 'melody' && !hasConfirmed && (
                       <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
@@ -13962,36 +13986,26 @@ export function Game({ gameState, onReturnToLobby }) {
                       playing one, which appears nowhere else in the HUD. It was
                       riding inside the interval row purely because they shared a
                       line, so it now gets its own gate on the step it serves. ── */}
-                  {turnStep === 'melody' && canAct && (
-                  <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-                    <span style={{fontSize:7,color:"#66708a",display:"flex",gap:4,alignItems:"center"}}
-                      title="A lit note is a Discord your chord stack pardoned. Its colour is the stack that gets paid for it.">
-                      <span style={{color:DRIVE_C}}>⚔️pays Drive</span>
-                      <span style={{color:"#3a4055"}}>│</span>
-                      <span style={{color:SUSTAIN_C}}>🛡️pays Sustain</span>
-                    </span>
-                  </div>
-                  )}
+                  {/* 🪦 the ⚔️/🛡️ key's own row lived here until 2026-08-29 — it is
+                      now inline on the title row above, same markup, no extra line. */}
                 </div>
               </div>
-              {/* ✨ STYLE — "how you earn" hint, visible while building the melody
-                  (STYLE_SYSTEM_HANDOFF.md §5 — the intuitiveness fix: never guess your lane). */}
-              {turnStep === 'melody' && acting && (() => {
-                const sDef = styleDef(acting.id);
-                if (!sDef) return null;
-                return (
-                  <div title={sDef.tagline}
-                    style={{display:"flex",alignItems:"center",gap:5,marginBottom:5,
-                      padding:"3px 7px",borderRadius:4,
-                      background:`${sDef.color}14`,border:`1px solid ${sDef.color}44`}}>
-                    <span style={{fontSize:11}}>{sDef.icon}</span>
-                    <span style={{fontSize:7,fontWeight:700,color:sDef.color,letterSpacing:1}}>{sDef.label.toUpperCase()}</span>
-                    <span style={{fontSize:7,color:"#7090a0",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                      {sDef.tagline}
-                    </span>
-                  </div>
-                );
-              })()}
+              {/* ── 🪦 THE ✨ STYLE TAGLINE ROW CAME OUT OF HERE, 2026-08-29 ────────
+                  A tinted pill printing `⚡ SHRED — Fast, far, and never sorry`, on its
+                  own line, every turn of every melody step.
+                  ⚠️ THE STYLE ITSELF DID NOT GO ANYWHERE — it is on the standee, above
+                  the Vibe bar, in the same icon and the same colour, where it is
+                  visible in ALL THREE steps instead of just this one. This was the
+                  second copy, and the only thing it added was the tagline: a line of
+                  flavour that reads once and then costs a row forever.
+                  📌 THE TAGLINE IS NOW RENDERED NOWHERE. That is deliberate and it is
+                  the one real loss here — `STYLE_DEFS[...].tagline` is live data with
+                  no reader left, exactly like `earnDesc`/`bonusDesc` beside it (see the
+                  header note in data/styles.js). If a character sheet ever wants the
+                  flavour back, that is its home; it should not come back to a step
+                  panel the player reads eight times a turn.
+                  (STYLE_SYSTEM_HANDOFF.md §5 wanted the lane LEGIBLE, not printed
+                  twice — the standee tag, visible in all three steps, satisfies it.) */}
               {/* ⚡ DISSONANCE EDGE — REMOVED (system cut) */}
               {/* 🎛️ AMP TONE PANEL relocated → now flanks the Commit Track above the board. */}
               {/* Active effect badges — only show during melody step */}
@@ -14099,18 +14113,18 @@ export function Game({ gameState, onReturnToLobby }) {
                   `derived-mode` tutorial anchor moved with it. B8's history — two
                   Major/Minor buttons and a two-column stock preview, ~140 lines,
                   replaced by a read-only line — now lives on the plate. ── */}
-              {turnStep !== 'chord' && !hasConfirmed && (() => {
-                const dStack = actingNoteState?.driveStack ?? [];
-                const sStack = actingNoteState?.sustainStack ?? [];
-                const dCh = spiritChord(acting?.id, dStack);
-                const sCh = spiritChord(acting?.id, sStack);
-                return (
-                  <div className="step-collapsed" style={{fontSize:8,color:"#ff99dd",marginBottom:4,
-                    padding:"3px 7px",background:"#0c0a18",border:"1px solid #ff66cc33",borderRadius:4}}>
-                    ✓ Drive: {dStack.join(' ')} · ⚔️{dCh.drive} | Sustain: {sStack.join(' ')} · 🛡️{sCh.sustain}
-                  </div>
-                );
-              })()}
+              {/* ── 🪦 THE STEP-1 COLLAPSED SUMMARY CAME OUT OF HERE, 2026-08-29 ────
+                  `✓ Drive: E B · ⚔️5 | Sustain: E · 🛡️3` — a pink recap row confirming
+                  what step 1 committed, carried through the whole of step 2.
+                  ⚠️ IT WAS THE FOURTH READOUT OF THOSE TWO NUMBERS. The ⚔️/🛡️ dials on
+                  the character card print `drive` and `sustain` live and larger; the
+                  CHORD STACKS row in the step list is ticked `done`; and the stacks
+                  themselves are drawn as notes on the standee. Nothing here was load-
+                  bearing — the tick is in the step list, the numbers are on the card.
+                  📌 This was the LAST user of the `step-collapsed` class name, and that
+                  class never had a CSS rule behind it — it was a label, not a style.
+                  Nothing to clean up in GameStyles; if you grep for it and find only
+                  this comment, that is the expected state. ── */}
 
               {/* ── 🎸 B8: the Major/Minor prompt used to live here ──────────────
                   Two buttons and a side-by-side "how would your stock look in each
