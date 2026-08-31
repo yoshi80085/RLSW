@@ -285,6 +285,21 @@ export function GameStyles() {
           0%,100% { opacity: 0.30; }
           50%     { opacity: 0.85; }
         }
+        /* ❤️ life-pulse — the breathing used by the last-life pips in the HUD,
+           the respawn ring on a standee, the Master of Moshpits fan ellipse and
+           the fan-gain ring.
+           ⚠️ IT LIVED IN ScoreTrackOverlay.jsx UNTIL 2026-08-31, inside a
+           <style> tag nested in that overlay's <g>. Three of its four callers
+           are on the board and have nothing to do with lives, so all three were
+           silently depending on a corner blip being rendered: the overlay bails
+           early for a knocked-out or zero-life spirit, and if every spirit had
+           bailed the <style> went with them and four animations across the app
+           quietly froze mid-cycle. Nothing here is new behaviour — this is the
+           rule finally living somewhere that is always mounted. */
+        @keyframes life-pulse {
+          from { opacity: 0.25; }
+          to   { opacity: 0.7; }
+        }
         /* 6️⃣ BERSERK — the Beast is loose and the standee burns for it.
            berserk-glow pulses the aura and the tag; berserk-standee pushes the
            art hot and red; berserk-wash rides a red screen layer over the top;

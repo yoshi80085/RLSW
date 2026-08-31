@@ -53,11 +53,22 @@ export const CHANNEL_STRIP = {
   minWidth:    182,   // below this the lamp names would clip rather than wrap
   tilt:         -4,   // degrees. See 📌 above.
   faceplate:  0.75,   // how dark the strip's own ground is over the card
-  sectionGap:   12,   // px between the rail, the plate and the meter
+  sectionGap:    9,   // px between the rail, the plate and the meter
   rivets:     true,
 
-  lampHeight:   34,
-  lampGap:       4,
+  /* 🎚️ TWO LAMP HEIGHTS, NOT ONE — Alex 2026-08-31. The rail used to be three
+     34px lamps whether or not you could act on them, which is 110px of fixed
+     column spent so that two dead steps could print a state line each. ⚠️ THE
+     SECOND HEIGHT IS THE POINT OF THE WHOLE CHANGE: an unlit lamp collapses to
+     `lampHeightOff` and drops its substate, so the rail costs 76px and the lit
+     step is unmistakably the loud one. Keep `lampHeight` as the LIT height —
+     several sizes below are still derived from it on purpose (see the numeral
+     column note in TurnRail) and swapping their roles silently misaligns the
+     three names. */
+  lampHeight:   34,   // the LIT lamp
+  lampHeightOff: 18,  // done / not-yet — name + numeral + LED, no state line
+  lampOffText: 8.5,   // px. NOT derived from lampHeightOff — see ⚠️ in TurnRail
+  lampGap:       3,
   glow:       0.50,   // multiplier on the lit lamp's outer bloom
   offDepth:   0.56,   // how deep an UNLIT lamp's recess reads
   shape:  'chamfer',  // 'chamfer' | 'bar' | 'notch'
@@ -186,10 +197,17 @@ export function TurnRail({ steps, current }) {
         const c = st.color;
         const filled = CS.lit === "fill" || CS.lit === "both";
         const edge   = CS.lit === "edge" || CS.lit === "both";
+        // 🎚️ THE COLLAPSE. Only the live step is full height and only the live
+        // step carries a state line — a finished step's state was the constant
+        // string "✓ done", and an unreached step's was a number you cannot act
+        // on yet. Neither is worth 34px of the column the board panels want.
+        const h  = on ? CS.lampHeight : CS.lampHeightOff;
+        const showState = CS.substate && on;
         return (
           <div key={st.name} style={{
             position: "relative", display: "flex", alignItems: "center", gap: 8,
-            padding: "0 9px", height: CS.lampHeight, overflow: "hidden", borderRadius: 3,
+            padding: "0 9px", height: h, overflow: "hidden", borderRadius: 3,
+            transition: "height .18s ease",
             clipPath: CLIP[CS.shape],
             border: on ? `1px solid ${c}` : "1px solid #16202f",
             background: on
@@ -202,24 +220,34 @@ export function TurnRail({ steps, current }) {
               : `inset 0 2px ${Math.round(5 * CS.offDepth)}px #000c, inset 0 -1px 0 #1a2434`,
           }}>
             {numerals[i] && (
+              /* ⚠️ THE COLUMN WIDTH IS DERIVED FROM `lampHeight`, NOT FROM `h`.
+                 It has to be the same on all three lamps or the three names step
+                 left and right as the turn advances, which reads as the rail
+                 twitching. Only the GLYPH shrinks with the lamp.
+                 📌 A DONE STEP SHOWS ✓ WHERE ITS NUMERAL WAS. That tick is the
+                 surviving half of the "✓ done" substate the collapse removed —
+                 the information moved, it was not dropped. */
               <div style={{ flexShrink: 0, textAlign: "center",
                 fontFamily: "'Saira Stencil One',sans-serif",
-                fontSize: Math.round(CS.lampHeight * 0.42), width: Math.round(CS.lampHeight * 0.5),
+                fontSize: Math.max(9, Math.round(h * 0.42)),
+                width: Math.round(CS.lampHeight * 0.5),
                 color: on ? c : done ? "#2f3f56" : "#232f42",
-                textShadow: on ? `0 0 8px ${c}aa` : "none" }}>{numerals[i]}</div>
+                textShadow: on ? `0 0 8px ${c}aa` : "none" }}>
+                {done ? "\u2713" : numerals[i]}
+              </div>
             )}
             <div style={{ minWidth: 0, lineHeight: 1.15 }}>
               <div style={{ fontFamily: "'Saira Stencil One',sans-serif", letterSpacing: 1.3,
                 whiteSpace: "nowrap",
-                fontSize: CS.substate ? Math.min(10, CS.lampHeight * 0.26)
-                                      : Math.min(11, CS.lampHeight * 0.32),
+                fontSize: on ? (showState ? Math.min(10, h * 0.26) : Math.min(11, h * 0.32))
+                             : CS.lampOffText,
                 color: on ? c : done ? "#3d4d64" : "#2c3a4e",
                 textShadow: on ? `0 0 9px ${c}77` : "none" }}>{st.name}</div>
-              {CS.substate && (
+              {showState && (
                 <div style={{ fontSize: 7, letterSpacing: .4, marginTop: 2, whiteSpace: "nowrap",
                   overflow: "hidden", textOverflow: "ellipsis",
-                  color: on ? "#8fa3bd" : done ? "#334357" : "#28344a" }}>
-                  {done ? "✓ done" : st.state}
+                  color: "#8fa3bd" }}>
+                  {st.state}
                 </div>
               )}
             </div>

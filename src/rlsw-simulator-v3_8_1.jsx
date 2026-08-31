@@ -32,7 +32,9 @@ import { Riffbook } from "./ui/Riffbook.jsx";
 import { BoardFX } from "./ui/BoardFX.jsx";
 import { VoiceRollDie } from "./ui/VoiceRollDie.jsx";
 import { NeonStrikeFX } from "./ui/NeonStrikeFX.jsx";
-import { ScoreTrackOverlay } from "./ui/ScoreTrackOverlay.jsx";
+import { LifePips } from "./ui/ScoreTrackOverlay.jsx";
+import { TopMenu } from "./ui/TopMenu.jsx";
+import { FameRace } from "./ui/FameRace.jsx";
 import { StatKnob } from "./ui/StatKnob.jsx";
 import { ChordStackPanel, CommitTrackPanel, PayoutRouterPanel, COMMIT_OVERLAY,
          StackNest, stackSeatPos } from "./ui/NoteCommitOverlay.jsx";
@@ -1394,7 +1396,9 @@ export function Game({ gameState, onReturnToLobby }) {
   // reads it. Keep it that way — the moment a skin affects anything but pixels
   // it has to become engine state.
   const [stageSkin, setStageSkin] = useState(loadStageSkin);
-  const [skinPickerOpen, setSkinPickerOpen] = useState(false);
+  /* 🪦 `skinPickerOpen` retired 2026-08-31 — the stage-skin swatch list is a
+     submenu inside TopMenu now, and TopMenu owns which submenu is expanded. One
+     open/closed flag per popup, held by the popup, is the point of that split. */
   useEffect(() => { saveStageSkin(stageSkin); }, [stageSkin]);
   // The stock skin keeps the ORIGINAL, untinted filter — identical pixels to
   // before this feature existed, and one less filter stage for the default case.
@@ -12215,28 +12219,86 @@ export function Game({ gameState, onReturnToLobby }) {
         <span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:17,color:"#f6ad55",letterSpacing:3,
           textShadow:"0 0 12px #f6ad5566, 0 0 28px #f6ad5522"}}>⚡ RLSW</span>
         <span style={{fontSize:10,color:"#3a5a7a"}}>v3.6</span>
-        <button onClick={() => setShowRiffbook(true)} data-tip-anchor="riffbook" title="The Cadence Book — the endings that pay"
-          style={{fontFamily:'inherit', fontSize:9, padding:'2px 9px', cursor:'pointer',
-            background:'#14110a', border:'1px solid #ffd70066', borderRadius:10, color:'#ffd700'}}>
-          🎯 CADENCES
-        </button>
+        {/* ── ☰ THE MENU, Alex 2026-08-31 ──────────────────────────────────
+            Eight controls used to sit out here as eight chips. They are rows in
+            one panel now; see TopMenu.jsx for why, and for what each row `kind`
+            means. Everything below is DATA — the shell knows none of it.
+            🎓 ⚠️ THE `riffbook` TIP ANCHOR MOVED ONTO THE ☰ BUTTON, and it had to.
+            Two tutorial pages (~2308, ~2310) point at it, and its old home — the
+            🎯 CADENCES button — is now inside a panel that is CLOSED when a tip
+            fires. `BeginnerTipOverlay` does not throw on a missing anchor, it
+            silently re-centres, so the failure would have been Pickles pointing
+            at nothing until somebody noticed months later. Pointing at the menu
+            that contains the book is the honest answer. ── */}
         {(() => {
-          // Show only when the acting Spirit has an exclusive (spiritOnly) route.
+          // Only the acting Spirit's own exclusive (spiritOnly) route, if any.
           const sigRoute = acting ? SKILL_TREE.routes.find(r => r.spiritOnly === acting.id) : null;
-          if (!sigRoute) return null;
+          const skin = STAGE_SKIN_BY_ID[stageSkin] ?? STAGE_SKIN_BY_ID[DEFAULT_SKIN_ID];
           return (
-            <button onClick={() => setSignatureSpirit(acting.id)}
-              title={`${acting.name}'s signature abilities`}
-              style={{fontFamily:'inherit', fontSize:9, padding:'2px 9px', cursor:'pointer',
-                background:'#0a1424', border:`1px solid ${sigRoute.color}88`, borderRadius:10, color:sigRoute.color}}>
-              {sigRoute.icon} {acting.name?.split(' ')[0]?.toUpperCase()} ABILITIES
-            </button>
+            <TopMenu tipAnchor="riffbook" items={[
+              { kind:'action', icon:'🎯', label:'Cadences', color:'#ffd700',
+                title:'The Cadence Book — the endings that pay',
+                onClick:() => setShowRiffbook(true) },
+              sigRoute && { kind:'action', icon:sigRoute.icon, color:sigRoute.color,
+                label:`${acting.name?.split(' ')[0]} abilities`,
+                title:`${acting.name}'s signature abilities`,
+                onClick:() => setSignatureSpirit(acting.id) },
+              { kind:'sep' },
+              { kind:'cycle', icon:'⏩', label:'Game speed', color:'#7db0ff',
+                value:`${gameSpeed}×`, hot: gameSpeed !== 1,
+                title:'Fast-forward: cycle game speed 1× → 2× → 4×. Presentation only — the rules do not change.',
+                onClick: cycleGameSpeed },
+              { kind:'toggle', icon:'⏭', label:'Fast battles', color:'#ccff44', on: skipBattleIntros,
+                title:'Compress the pre-die battle animations (swings, sonics & riff-off intros). The die-click itself is never skipped.',
+                onClick:() => setSkipBattleIntros(v => !v) },
+              { kind:'toggle', icon:'🎨', label:'Lite FX', color:'#ffaa22', on: liteFx,
+                title:'Reduce GPU-heavy visual effects in battles (filters, shadows, blend modes). Helps if battles stutter or freeze.',
+                onClick:() => setLiteFx(v => !v) },
+              /* 🎨 THE SWATCH LIST STAYS A LIST OF SWATCHES. The old picker
+                 argued, correctly, that choosing a board colour is a thing you do
+                 BY LOOKING AT THE BOARD — so it expanded inline instead of opening
+                 a modal. A submenu row keeps that: the panel is 208px in one
+                 corner and the board is still there behind it, and picking applies
+                 instantly without closing anything. */
+              { kind:'submenu', icon:skin.icon, label:'Stage skin', color:skin.accent, value:skin.label,
+                title:`Stage Skin — recolour the board. Currently: ${skin.label}. Cosmetic and local to this machine; other players keep their own.`,
+                options: STAGE_SKINS.map(sk => ({ id:sk.id, label:sk.label, icon:sk.icon,
+                  accent:sk.accent, blurb:sk.blurb, on: sk.id === stageSkin })),
+                onPick: setStageSkin },
+              { kind:'toggle', icon:'🎓', label:'Beginner tips', color:'#44ff88', on: beginnerEnabled,
+                title: beginnerEnabled ? 'Beginner tips are ON — click to turn off' : 'Beginner tips are OFF — click to turn on (resets seen tips)',
+                onClick:() => { setBeginnerEnabled(b => !b); if (!beginnerEnabled) setBeginnerTipsSeen(new Set()); } },
+              { kind:'sep' },
+              { kind:'action', icon:'↩', label:'Return to Lobby', color:'#ff8877',
+                title:'Leave the match and go back to the Lobby',
+                onClick: onReturnToLobby },
+            ]}/>
           );
         })()}
-        <span style={{fontSize:9, padding:'2px 9px', background:'#0a1020', border:'1px solid #1e3a5f',
-          borderRadius:10, color:'#6a8aaa'}} title="First spirit to reach the Fame target wins">
-          🏆 first to ⭐{fameToWin} FP wins
-        </span>
+
+        {/* ── ⭐ THE RACE, up top and shared ────────────────────────────────
+            🪦 IT REPLACES TWO THINGS. The "🏆 first to ⭐N FP wins" chip that used
+            to sit here — a sentence restating a rule, printed every frame of every
+            game — and the four-lane RACE card down in the HUD column, which was
+            gated to step 3 and so was absent for the whole of the part of the turn
+            where the standings should be steering what you play. The finish line
+            is labelled ⭐N, which is the chip's entire content in three characters.
+            📌 IT ALSO ABSORBS THE "▶ <name>" BADGE. Whose turn it is now reads off
+            the ringed, breathing blip — the same fact, attached to the position it
+            describes rather than floating next to it. See FameRace.jsx. ── */}
+        {(() => {
+          const fps    = spirits.map(sp => noteStates?.[sp.id]?.fame ?? 0);
+          const sorted = [...fps].sort((a, b) => b - a);
+          // Same rule grantFame uses: reaching the target without this much
+          // daylight summons the Rock God instead of ending the game.
+          const contested = (sorted[0] ?? 0) >= fameToWin - 4
+            && ((sorted[0] ?? 0) - (sorted[1] ?? 0)) < ROCK_GOD_RUNAWAY_LEAD;
+          return (
+            <FameRace spirits={spirits} fameToWin={fameToWin}
+              fameOf={id => noteStates?.[id]?.fame ?? 0}
+              actingId={acting?.id} thresholds={stageFxThresholds} contested={contested}/>
+          );
+        })()}
         {flamingHexes.roundsLeft > 0 && (
           <span style={{fontSize:9,padding:"2px 8px",background:"#1a0800",border:"1px solid #ff6622",borderRadius:10,color:"#ff8844",
             animation:"marqueeBlink 1.4s ease-in-out infinite"}}>
@@ -12269,9 +12331,9 @@ export function Game({ gameState, onReturnToLobby }) {
               👆 Click a lit hex to move ({moveStepsLeft} step{moveStepsLeft !== 1 ? "s" : ""} left)
             </span>
           )}
-          <span style={{fontSize:10,padding:"2px 10px",background:"#0a1020",border:"1px solid #f6ad55",borderRadius:10,color:"#f6ad55"}}>
-            ▶ {acting?.name}
-          </span>
+          {/* 🪦 the "▶ <name>" badge was here until 2026-08-31 — whose turn it is
+              is now the ringed, breathing blip on the race track to the left, which
+              says the same thing AND says where they are in the game. */}
           {/* 🎤 CROWD blip — relocated from the old right panel: Fame multiplier + fan counts */}
           {acting && (() => {
             const ns = noteStates[acting.id] ?? {};
@@ -12287,97 +12349,17 @@ export function Game({ gameState, onReturnToLobby }) {
             );
           })()}
           {/* BGM Controls — disabled (custom music only) */}
-          {/* ⏩ FAST-FORWARD — cycle 1× / 2× / 4× presentation speed (rules
-              untouched). Lives IN the HUD row — it used to be position:fixed
-              at top-right, where it sat on top of the ↩ Lobby button. */}
-          <button onClick={cycleGameSpeed}
-            title="Fast-forward: cycle game speed 1× → 2× → 4×"
-            style={{fontFamily:"inherit",fontSize:9,padding:"3px 8px",borderRadius:4,cursor:"pointer",fontWeight:700,
-              background: gameSpeed === 1 ? "#0a1020" : "linear-gradient(180deg,#2d6cdf,#1b3f8f)",
-              border:`1px solid ${gameSpeed === 1 ? "#1e3a5f" : "#7db0ff"}`,
-              color: gameSpeed === 1 ? "#3a5a7a" : "#e2e8f0",
-              boxShadow: gameSpeed === 1 ? "none" : "0 0 10px #2d6cdf88"}}>
-            ⏩ {gameSpeed}×
-          </button>
-          {/* ⏭ Skip-cinematics toggle — reachable from any game, governs swings,
-              sonics & riff-off intros. Same state the riff-off countdown card uses. */}
-          <button onClick={() => setSkipBattleIntros(v => !v)}
-            title="Compress the pre-die battle animations (swings, sonics & riff-off intros). The die-click itself is never skipped."
-            style={{fontFamily:"inherit",fontSize:9,padding:"3px 8px",borderRadius:4,cursor:"pointer",
-              background: skipBattleIntros ? "#1a2a00" : "#0a1020",
-              border:`1px solid ${skipBattleIntros ? "#aacc00" : "#1e3a5f"}`,
-              color: skipBattleIntros ? "#ccff44" : "#3a5a7a"}}>
-            ⏭ {skipBattleIntros ? "fast battles: ON" : "fast battles"}
-          </button>
-          <button onClick={() => setLiteFx(v => !v)}
-            title="Reduce GPU-heavy visual effects in battles (filters, shadows, blend modes). Helps if battles stutter or freeze."
-            style={{fontFamily:"inherit",fontSize:9,padding:"3px 8px",borderRadius:4,cursor:"pointer",
-              background: liteFx ? "#2a1a00" : "#0a1020",
-              border:`1px solid ${liteFx ? "#cc8800" : "#1e3a5f"}`,
-              color: liteFx ? "#ffaa22" : "#3a5a7a"}}>
-            🎨 {liteFx ? "lite FX: ON" : "lite FX"}
-          </button>
-          {/* 🎨 STAGE SKIN PICKER — the swatch row expands inline rather than
-              opening a modal, because choosing a board colour is a thing you do
-              by LOOKING AT THE BOARD. A modal would cover the one surface the
-              decision is about. Clicking a preset applies it instantly with the
-              board still visible behind the row. */}
-          {(() => {
-            const cur = STAGE_SKIN_BY_ID[stageSkin] ?? STAGE_SKIN_BY_ID[DEFAULT_SKIN_ID];
-            return (
-              <div style={{position:"relative",display:"inline-block"}}>
-                <button onClick={() => setSkinPickerOpen(o => !o)}
-                  title={`Stage Skin — recolour the board. Currently: ${cur.label}. Cosmetic and local to this machine; other players keep their own.`}
-                  style={{fontFamily:"inherit",fontSize:9,padding:"3px 8px",borderRadius:4,cursor:"pointer",
-                    background: skinPickerOpen ? "#121a2e" : "#0a1020",
-                    border:`1px solid ${skinPickerOpen ? cur.accent : "#1e3a5f"}`,
-                    color: skinPickerOpen ? cur.accent : "#3a5a7a",
-                    display:"flex",alignItems:"center",gap:5}}>
-                  <span style={{width:8,height:8,borderRadius:2,background:cur.accent,
-                    boxShadow:`0 0 5px ${cur.accent}`,flexShrink:0}}/>
-                  {cur.icon} {skinPickerOpen ? cur.label : "stage skin"}
-                </button>
-                {skinPickerOpen && (
-                  <div style={{position:"absolute",top:"calc(100% + 5px)",left:0,zIndex:60,
-                    background:"#060b16",border:"1px solid #1e3a5f",borderRadius:6,
-                    padding:6,display:"flex",flexDirection:"column",gap:2,
-                    minWidth:186,boxShadow:"0 8px 24px #000a"}}>
-                    <div style={{fontSize:7.5,letterSpacing:1.6,color:"#3a5a7a",padding:"2px 6px 4px"}}>
-                      🎨 STAGE SKIN — LOCAL, COSMETIC
-                    </div>
-                    {STAGE_SKINS.map(sk => {
-                      const on = sk.id === stageSkin;
-                      return (
-                        <button key={sk.id} onClick={() => setStageSkin(sk.id)} title={sk.blurb}
-                          style={{fontFamily:"inherit",fontSize:9,letterSpacing:0.6,cursor:"pointer",
-                            textAlign:"left",padding:"5px 7px",borderRadius:4,
-                            display:"flex",alignItems:"center",gap:7,
-                            background: on ? `${sk.accent}14` : "transparent",
-                            border:`1px solid ${on ? sk.accent : "transparent"}`,
-                            color: on ? sk.accent : "#7a97b5"}}>
-                          <span style={{width:9,height:9,borderRadius:2,flexShrink:0,
-                            background:sk.accent,boxShadow:`0 0 6px ${sk.accent}aa`}}/>
-                          <span style={{fontSize:11,flexShrink:0}}>{sk.icon}</span>
-                          <span style={{whiteSpace:"nowrap"}}>{sk.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-          <button onClick={() => { setBeginnerEnabled(b => !b); if (!beginnerEnabled) setBeginnerTipsSeen(new Set()); }}
-            title={beginnerEnabled ? "Beginner tips are ON — click to turn off" : "Beginner tips are OFF — click to turn on (resets seen tips)"}
-            style={{fontFamily:"inherit",fontSize:9,padding:"3px 8px",background: beginnerEnabled ? "#1a2a10" : "#0a1020",
-              border:`1px solid ${beginnerEnabled ? "#44cc66" : "#1e3a5f"}`,borderRadius:4,
-              color: beginnerEnabled ? "#44ff88" : "#3a5a7a",cursor:"pointer"}}>
-            🎓 {beginnerEnabled ? 'tips ON' : 'tips OFF'}
-          </button>
-          <button onClick={onReturnToLobby}
-            style={{fontFamily:"inherit",fontSize:9,padding:"3px 8px",background:"#0a1020",border:"1px solid #1e3a5f",borderRadius:4,color:"#3a5a7a",cursor:"pointer"}}>
-            ↩ Lobby
-          </button>
+          {/* 🪦 SIX CONTROLS CAME OUT OF THIS ROW, 2026-08-31: ⏩ game speed,
+              ⏭ fast battles, 🎨 lite FX, 🎪 stage skin (with its inline swatch
+              popup), 🎓 tips and ↩ Lobby. All six are rows in the ☰ menu at the
+              far left of this strip now — same handlers, same state, same
+              tooltips, passed to TopMenu as data.
+              ⚠️ WHAT THEY WERE COSTING WAS NOT PIXELS, IT WAS RANK. They were
+              drawn at the same weight as the live readouts beside them, so a
+              once-a-session preference toggle competed for the eye with the
+              crowd multiplier and the DISCO INFERNO countdown. What is left on
+              this strip is exactly the things that CHANGE ON THEIR OWN and want
+              to be noticed when they do. ── */}
           {/* N6: spectator badge */}
           {netRef.current?.spectator && (
             <span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:9,padding:"3px 10px",background:"#301520",
@@ -12846,9 +12828,19 @@ export function Game({ gameState, onReturnToLobby }) {
                     <StatKnob label="SUSTAIN" value={spiritChord(s.id, ns.sustainStack ?? []).sustain} boost={(ns.tempSustain ?? 0) - edgeCombatMods(ns).sustainPenalty} color="#44aaff"/>
                     <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
                       <div data-tip-anchor="vibe-bar">
-                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:1}}>
+                        {/* ❤️ LIVES RIDE THE VIBE LABEL. They are not a second health
+                            readout — Vibe is the bar you lose THIS knockdown, lives are
+                            how many knockdowns are left in you, and the second number is
+                            meaningless without the first. Two tutorial pages already aim
+                            `vibe-bar` at exactly this pairing (~2316, ~2317).
+                            📌 `marginLeft:auto` on the count is what keeps the x/y hard
+                            right after the pips joined the row — the old
+                            `justifyContent:space-between` would have spread three
+                            children instead of two and floated the pips into the gap. */}
+                        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
                           <span style={{fontSize:7,color:"#cc66ff"}}>💗 VIBE</span>
-                          <span style={{fontSize:7,color:"#cc66ff"}}>{s.vibe}/{s.maxVibe ?? 5}</span>
+                          <LifePips lives={s.lives} startingLives={startingLives} color={s.color} size={5}/>
+                          <span style={{fontSize:7,color:"#cc66ff",marginLeft:"auto"}}>{s.vibe}/{s.maxVibe ?? 5}</span>
                         </div>
                         <div className="bar"><div className="bar-f" style={{width:`${((s.maxVibe??5)/8)*100}%`,background:"#8844cc"}}/></div>
                       </div>
@@ -13797,99 +13789,21 @@ export function Game({ gameState, onReturnToLobby }) {
           )}
           </div>{/* end step-active wrapper for actions */}
 
-          {/* ── ⭐ THE RACE — shared Fame meter ──────────────────────────────
-              Takes over this slot whenever the player isn't committing notes.
-              Steps 1–2 belong to the Chord Stack / Melody build; the moment
-              that work is done (Step 3, or nobody acting) the panel becomes
-              the scoreboard, so the question "am I actually winning?" is
-              always on screen during the part of the turn where you decide
-              what to DO about it. Lanes are sorted by Fame — leader on top. */}
-          {(!acting || turnStep === 'move_act') && (() => {
-            const board = spirits.map(sp => ({
-              sp,
-              fp: noteStates?.[sp.id]?.fame ?? 0,
-            })).sort((a, b) => b.fp - a.fp);
-            const leadFp = board[0]?.fp ?? 0;
-            const runner = board[1]?.fp ?? 0;
-            // Same rule grantFame uses: hitting the target without this much
-            // daylight summons the Rock God instead of ending the game.
-            const contested = leadFp >= fameToWin - 4 && (leadFp - runner) < ROCK_GOD_RUNAWAY_LEAD;
-            return (
-              <div className="card" style={{
-                borderLeft:`2px solid ${contested ? '#ff4422' : '#ffd700'}`,
-                padding:"6px 8px", marginBottom:4, position:"relative",
-                background: contested ? "#170a06" : undefined}}>
-                <NeonStrikeFX color={contested ? '#ff4422' : '#ffd700'}/>
-
-                {/* Header */}
-                <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:5}}>
-                  <span className="stitle" style={{marginBottom:0,
-                    color: contested ? "#ff8855" : "#ffd700", letterSpacing:1.4}}>
-                    ⭐ THE RACE TO {fameToWin}
-                  </span>
-                  {contested && (
-                    <span style={{fontSize:6,fontWeight:800,letterSpacing:.6,color:"#ff8855",
-                      textShadow:"0 0 6px #ff440088",
-                      animation:"fame-crown 1.4s ease-in-out infinite"}}>
-                      🤘 FINALE PENDING
-                    </span>
-                  )}
-                </div>
-
-                {/* Lanes */}
-                <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                  {board.map(({ sp, fp }, i) => {
-                    const pct     = Math.min(100, (fp / fameToWin) * 100);
-                    const out     = sp.knockedOut;
-                    const isLead  = i === 0 && fp > 0;
-                    const gap     = fp - leadFp;   // 0 for the leader, negative behind
-                    const isYou   = acting?.id === sp.id;
-                    return (
-                      <div key={sp.id} style={{display:"flex",alignItems:"center",gap:4,
-                        opacity: out ? 0.32 : 1}}>
-                        {/* Who */}
-                        <span style={{width:11,fontSize:8,textAlign:"center",flexShrink:0}}>
-                          {out ? "💀" : isLead ? "👑" : ""}
-                        </span>
-                        <span style={{width:40,flexShrink:0,fontSize:7,fontWeight:700,
-                          color: sp.color, whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
-                          textShadow: isYou ? `0 0 7px ${sp.color}aa` : undefined}}>
-                          {sp.name.split(" ")[0]}{isYou ? " ◂" : ""}
-                        </span>
-
-                        {/* Lane track */}
-                        <div style={{position:"relative",flex:1,height:8,borderRadius:4,
-                          background:"#0a0f1c",overflow:"hidden",
-                          border:`1px solid ${isLead ? "#5a4410" : "#16202f"}`,
-                          boxShadow:"inset 0 1px 2px #000a"}}>
-                          <div style={{position:"absolute",inset:0,width:`${pct}%`,
-                            borderRadius:"3px 2px 2px 3px",
-                            background:`linear-gradient(90deg,${sp.color}55,${sp.color})`,
-                            boxShadow:`0 0 8px ${sp.color}99`,
-                            transition:"width .5s cubic-bezier(.2,.9,.3,1)"}}/>
-                          {/* 🎇 Stage Effect thresholds — same notches as the card bar */}
-                          {stageFxThresholds.filter(t => t < fameToWin).map(t => (
-                            <div key={t} style={{position:"absolute",top:0,bottom:0,
-                              left:`${(t / fameToWin) * 100}%`, width:1,
-                              background: fp >= t ? "#fff6d0aa" : "#ffffff1f"}}/>
-                          ))}
-                        </div>
-
-                        {/* Score + gap to leader */}
-                        <span style={{width:15,flexShrink:0,textAlign:"right",fontSize:9,fontWeight:900,
-                          color: isLead ? "#ffd700" : "#c0d0e0",
-                          textShadow: isLead ? "0 0 7px #ffd70088" : undefined}}>{fp}</span>
-                        <span style={{width:17,flexShrink:0,fontSize:6,fontWeight:700,
-                          color: gap < 0 ? "#5a6a7a" : "#7d6a3a"}}>
-                          {gap < 0 ? gap : "—"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
+          {/* ── 🪦 THE FOUR-LANE RACE CARD STOOD HERE UNTIL 2026-08-31 ────────
+              One horizontal bar per spirit, stacked and sorted by Fame, gated to
+              `!acting || turnStep === 'move_act'` — so the scoreboard was absent
+              for the whole of steps 1 and 2, which is where you decide what to
+              play, and present only in step 3, where the decision is already made.
+              ⚠️ IT WAS NOT MOVED, IT WAS RESHAPED. The header has room for one row
+              and not four, and the lanes were the wrong shape anyway: four bars
+              from four separate origins made "who is ahead, and by how much" a
+              thing you reconstructed by eye. One shared track puts the gap on
+              screen as a distance. See `FameRace` in the header, and FameRace.jsx
+              for the full argument.
+              📌 WHAT WAS ACTUALLY LOST: the per-lane numeric gap and the 💀/👑
+              column. Both live on the blips' hover title now. If they turn out to
+              be wanted at a glance rather than on demand, they belong in a hover
+              card off the track — NOT back in this column. ── */}
 
           {/* ── NOTE STOCK PANEL ── */}
           {/* 🎵 STEP 3: THIS PANEL STANDS DOWN — the stock is in the KEY plate's
@@ -14457,6 +14371,13 @@ export function Game({ gameState, onReturnToLobby }) {
                   <span style={{fontSize:7,color:"#3a5a7a",whiteSpace:"nowrap"}}>
                     {s.vibe}/{s.maxVibe}
                   </span>
+                  {/* ❤️ Same pips, same reasoning as the player card — and the reason
+                      the rival rows get them at all: the corner blips were the ONLY
+                      place a rival's life count was ever shown, so dropping them
+                      without this row would have made "who is one hit from out"
+                      unknowable. Smaller (4px) because this row is a glance, not a
+                      dashboard. */}
+                  <LifePips lives={s.lives} startingLives={startingLives} color={s.color} size={4}/>
                   <span style={{fontSize:7,color:"#ffd700",whiteSpace:"nowrap",marginLeft:2}} title="Fame Points">
                     ⭐{ns.fame ?? 0}
                   </span>
@@ -16376,7 +16297,21 @@ export function Game({ gameState, onReturnToLobby }) {
                 );
               })}
 
-              <ScoreTrackOverlay spirits={spirits} startingLives={startingLives} />
+              {/* 🪦 THE LIVES BLIPS CAME OFF THE BOARD HERE, 2026-08-31.
+                  `<ScoreTrackOverlay/>` parked a 4.5px dot on the five-slot track
+                  painted into each corner of the board art; which slot it sat on
+                  WAS the life count. Alex's call: a number encoded as a position,
+                  against an unlabelled track, in the corner of a board nobody is
+                  looking at, is not a readout. Lives now show as pips beside the
+                  💗 VIBE label on the player card and on every rival row — next to
+                  the bar whose emptying is what spends one. See ScoreTrackOverlay.jsx
+                  (kept: it holds `LifePips` and the hand-measured corner coordinates).
+                  ⚠️ THAT OVERLAY WAS ALSO CARRYING `@keyframes life-pulse` for the
+                  whole app, in a <style> inside its <g> — the respawn ring, the
+                  Moshpits fan ellipse and the fan-gain ring all animate on it and
+                  none of them are about lives. The rule moved to GameStyles.jsx
+                  BEFORE this line went, which is the only reason removing it did
+                  not silently freeze three board animations. ── */}
 
               {/* ── NEON FACING ARROW — top layer, hover only ── */}
               {(() => {
