@@ -43,12 +43,13 @@ If the session runs short on budget, stop after any completed feature.
   `allAssigned`, `mode`). Sections: player count (2/3/4) → per-corner spirit
   buttons with 🤖 CPU checkboxes → mode (FFA / Team at 4P) → starting lives
   (1–5) → START.
-- **The contract that must not change:** `Lobby({ onStart, onTutorial })`;
+- **The contract that must not change:** `Lobby({ onStart, onBackToMenu })`;
+  ⚠️ *`onTutorial` was removed 2026-09-01 with the How to Play page.*
   `handleStart()` builds
   `spirits = [{ ...SPIRIT_DEFS[id], num: homeNum, facing, corner, color: cornerColor, cpu }]`
   and calls `onStart({ spirits, mode, teams, startingLives, beginnerMode })`.
   Also preserve: the 🧪 TESTING GROUNDS fixed button (`startTestingGrounds`),
-  📖 HOW TO PLAY (`onTutorial`), 🎓 BEGINNER MODE toggle, the 2-player
+  🎓 BEGINNER MODE toggle, the 2-player
   corner rule (`["blue","red"]` — opposite corners), and the CPU-default
   effect (non-first corners default to CPU).
 - Data: `data/spirits.js` — `SPIRIT_DEFS` (4 spirits, each has `imageSrc`

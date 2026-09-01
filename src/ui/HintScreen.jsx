@@ -36,7 +36,7 @@ export const HINTS = [
   "Get knocked down and 7–10 casual fans flee on the spot — a couple straight to whoever flattened you.",
   "A Spirit glowing RED is BERSERK: uncapped Drive, immune to knockback, bleeding a Vibe per swing. Let it burn out.",
   "⚡ Charge Zones do two things: the floor charge stops your dice rolling low, the ceiling charge grows every die a size.",
-  "Reach the Fame target without a comfortable lead and the ROCK GOD descends on everyone. Win big, or win together.",
+  "The Fame target is a hard finish line: touch it and the crown is yours, however narrow the lead.",
 ];
 
 export default function HintScreen({ onDone }) {

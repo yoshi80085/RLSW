@@ -43,7 +43,6 @@ Three things are happening at once on your turn:
 |---|---|---|
 | **Fame** | first to **24 Fame** wins | `FAME_TO_WIN` |
 | **Limelight** | hold the centre hex (**hex 56**) for **3 of your turns** | `LIMELIGHT_TO_WIN`, `LIMELIGHT_HEX` |
-| **Rock God** | if summoned, killing him ends it (see §11) | — |
 
 **Fame is capped at 4 per turn** (`FAME_PER_TURN_CAP`) — so a single monster turn
 cannot end the game, and consistency beats a spike. Riff-off fame has its own,
@@ -378,20 +377,18 @@ whether it walks to a marquee at all.
 
 ---
 
-## 11. The Rock God (the endgame boss)
+## 11. 🪦 The Rock God — ARCHIVED 2026-09-01
 
-If someone runs away with the game — a lead of **3** (`ROCK_GOD_RUNAWAY_LEAD`) — a
-Rock God descends and everyone has a common enemy.
+This section described an endgame boss who descended when someone reached the Fame
+target without a comfortable lead, turning the last stretch into a co-op fight.
+**It is gone**, code and all — see `docs/archive/ROCK_GODS_DESIGN.md` for the
+design if it ever comes back as an add-on.
 
-- **HP = 20 per Spirit** (`ROCK_GOD_HP_PER_SPIRIT`).
-- **Timer: 45 seconds** (`ROCK_GOD_TIMER_SECONDS`) — ⚠️ **he runs on wall-clock
-  time, not turns.** The deliberate exception to everything in §4. Dawdle and he
-  swings again.
-- Difficulty presets: **chill** 30s/60s, **standard** 20s/45s, **brutal** 12s/30s.
-- Vengeance damage **2**, killing blow pays **3 Fame** (`ROCK_GOD_VENGEANCE_DMG`,
-  `ROCK_GOD_KILL_BLOW_FP`).
-- **Only one god of four is implemented** — Bardbarian. Feedback Warlock, Sonic
-  Sorceress and Glam Reaper exist as definitions and fall back to Bardbarian.
+⚠️ **The rule it changes is §2.** Reaching the Fame target now wins, full stop, at
+any margin and at any number of lives. There is no second condition and no way to
+be over the line with the game still running.
+
+📌 The section number is kept so older notes still line up.
 
 ---
 
@@ -605,4 +602,3 @@ Worth respecting in anything you propose:
 | Melody payout | `scoreTrackDB` (length ÷2 −1, endings +3/+2/+1), lock bands (+1/+2/+3) |
 | Discord pressure | grace 1, floor −3 |
 | Limelight race | `LIMELIGHT_TO_WIN` (3), `POSE_FP_STEP` (1), `POSE_FP_MAX` (4) |
-| Boss pressure | `ROCK_GOD_*` (lead 3, 20 HP/Spirit, 45s) |

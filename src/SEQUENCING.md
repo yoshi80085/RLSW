@@ -13,6 +13,80 @@
 
 ---
 
+## 5-clean. 🧭 START HERE — session handoff, 2026-09-01 (the clear-out)
+
+**Three cuts, all Alex's call, all landed. `npm run test:all` green, `check:bundle`
+at zero warnings, and `test:arch` green for the first time in weeks.**
+
+### 🪦 1. The Rock God is ARCHIVED, not shelved
+
+He had been shelved behind `ROCK_GODS_SHELVED` since 2026-08-18. He is now DELETED:
+`data/rockGods.js`, `engine/systems/rockGod.js`, `board/rockGodFx.js`,
+`ui/RockGodLayer.jsx`, `hooks/useRockGod.js`, the `state.rockGod` slice, the seven
+`GOD_*` actions and creators, the `rockGodActive` view flag, the `summonRockGod`
+hook, the bot's boss-converge branch, the lobby's difficulty dial, the Testing
+Grounds boss panel and every assertion that covered any of it. The design survives
+at `docs/archive/ROCK_GODS_DESIGN.md`, headed with what it is and is not.
+
+**⚠️ THE ONE RULE CHANGE, and it is the whole point.** Reaching the Fame target now
+crowns you outright at ANY margin. Both copies of `grantFame` — the engine's
+(`systems/battleFlow.js`) and the client's (monolith, `FAME POINTS`) — lost their
+close-race branch. That branch is what produced "I was on ⭐27/21 and the finishing
+screen never came" (2026-08-19, §5-aug19): the summon was a ONE-WAY DOOR, and
+`rockGod.summoned` then gated the Fame win forever after. There is no door now.
+
+**📌 THE HORIZON IS RECLAIMED FOR REAL.** `matchConfig`'s three-life default was
+already restored on 2026-08-18, but the comment above it still explained the
+two-life era as a live constraint. It is history now, and `play.js` says so.
+
+**One survivor, and it is cosmetic.** `FAME_RACE_CONTESTED_LEAD` (3) in
+`data/gameConstants.js` replaces `ROCK_GOD_RUNAWAY_LEAD` at the two places it
+picked a COLOUR — the Fame meter's red state and the spirit card's "🔥 NECK AND
+NECK" badge (was "🤘 ROCK GOD WATCH"). Nothing mechanical reads it. Retune freely.
+
+### 📖 2. How to Play is GONE, to be rebuilt from the ground up
+
+`src/tutorial/content.jsx` (1,159 lines) deleted, with the HOW TO PLAY entries on
+`TitleMenu.jsx` and `Lobby.jsx` and the `showTutorial` branch in the app shell.
+
+⚠️ **THE ANCHORS ARE STILL LIVE AND STILL LOAD-BEARING.** The `data-tip-anchor`
+attributes scattered through the monolith and `ui/` are shared with 🎓 Beginner
+Mode, which was NOT touched. So the "four tutorial pages point at this name"
+comments in `ActionRail.jsx`, `ChannelStrip.jsx`, `ScoreTrackOverlay.jsx` and the
+monolith are still true — of the tips. Do not delete an anchor on the strength of
+the tutorial being gone.
+
+Two Beginner tips were rewritten rather than left teaching a dead mechanic: the
+note-stock "only the Rock Gods know" line, and the fame-bar page that warned about
+the finale.
+
+### 🧹 3. General cleanup
+
+Dead strays, unreferenced modules and stale docs — see §5-clean.C below.
+
+### 📌 Suites, and every count that moved
+
+| suite | before | after | why |
+|---|---:|---:|---|
+| legal | 582 | 577 | −5: the `rockGodActive` PvP-off block. No state suppresses the attack family wholesale any more. |
+| harness | 1663 | 1662 | −1: `HARNESS_GAPS.summonRockGod`, a declared gap for a subsystem that no longer exists. |
+| determinism | 22 | 20 | −2: `freeNeighborHex(seeded)`, which lived in the deleted `board/rockGodFx.js`. **And `MATH_RANDOM_BUDGET` 44 → 43** — the boss taunt draw left with him. It is cosmetic; the pin is documented in the file. |
+| arch | ❌ | ✅ | was ALREADY red at session start — `ui/FameRace.jsx` and `ui/TopMenu.jsx` (both landed 2026-08-31) had no rows. Both written up properly. |
+
+Every other suite is identical. `engine`, `eval`, `transition`, `turnflow`,
+`battleflow`, `melody`, `slime`, `eleven`, `score`, `riffparity` (127,598),
+`skilltree`, `shamisen`, `client`, `render`, `b0`, `riff` (70,970), `trace` (1,834).
+
+### 🎯 NEXT
+
+Unchanged from §5-hud: **measure the real client's strip column.** `ChannelStrip.jsx`
+claims 238px at every width; the shipped declarations say the flex row breaks below
+532px. One of the two is wrong and the rail is sized against it.
+
+Then: rebuild How to Play. It starts from nothing, and the anchors are the map.
+
+---
+
 ## 5-hud. 🧭 session handoff, 2026-08-29 — the step-3 rail
 
 **Landed.** Four HUD changes that are one design, dialled by Alex on
@@ -241,7 +315,7 @@ here and it is the one thing the harness still cannot see, because `smash` and
 
 ---
 
-## 5. 🧭 START HERE — session handoff, 2026-08-29 (the HUD cuts, and a strip on a preview)
+## 5. 🧭 session handoff, 2026-08-29 (the HUD cuts, and a strip on a preview)
 
 > 🪦 **THREE SECTIONS CAME OUT OF THE COLUMN BESIDE THE CHARACTER CARD**, at
 > Alex's call, and each was a different kind of dead weight worth naming:

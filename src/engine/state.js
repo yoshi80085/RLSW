@@ -179,16 +179,6 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
     boardCards: null,
     unsurePool: null,
     battle: null,
-    // Phase 6c: Rock God (engine-owned)
-    rockGod: {
-      summoned: false,
-      god: null,
-      outcome: null,
-      lastPick: null,
-      lastHit: null,
-      lastAct: null,
-      lastTimerExpiry: null,
-    },
     // Phase 6b: stage FX (fully engine-owned)
     stageFx: {
       deck: stageFxDeck,

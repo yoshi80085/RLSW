@@ -614,7 +614,7 @@ export function botMoveCtx(state, self, persona) {
  * hold position. Pure over engine state + amps (passed separately since
  * amps aren't engine-owned yet).
  *
- * `state` = { spirits, noteStates, rockGod, board }
+ * `state` = { spirits, noteStates, board }
  * `self`  = the acting spirit object
  * `persona` = the bot's personality object
  * `amps` = [{ hexNum }] array (from React state)
@@ -629,30 +629,6 @@ export function botPlanMove(state, self, persona, amps) {
     .map(({ q, r }) => HEX_BY_QR[`${q},${r}`])
     .filter(h => h && !occupied.has(h.num) && !ampHexes.has(h.num));
   if (!neighbors.length) return null;
-
-  // 🪦 SHELVED 2026-08-18 — ROCK GODS ARE OFF THE ROADMAP (Alex's call). This is
-  // the ONLY Rock-God-aware behaviour the bot has ever had: when a God is on the
-  // board, PvP is off (`legalActions`' `rockGodActive` gate) and everyone walks
-  // at it. It is left standing rather than cut, because it is four lines that
-  // cannot fire while nothing summons a God — `state.rockGod.summoned` is the
-  // whole guard — and deleting a working rule to express a scheduling decision
-  // is how a shelf turns into a rewrite. ⚠️ DO NOT BUILD ON IT: no evaluator
-  // term, no search branch and no bench number should assume a God exists. If
-  // the finale comes back, this is the seam it comes back through.
-  //
-  // Boss fight: converge on the God.
-  const bossGod = state.rockGod?.god;
-  if (state.rockGod?.summoned && bossGod && !state.rockGod?.outcome) {
-    const gh = HEX_BY_NUM[bossGod.num];
-    if (gh) {
-      const toward = neighbors
-        .filter(h => h.num !== bossGod.num)
-        .map(h => ({ num: h.num, d: axialDist(h.q, h.r, gh.q, gh.r) }))
-        .sort((a, b) => a.d - b.d)[0];
-      const hereD = axialDist(from.q, from.r, gh.q, gh.r);
-      return toward && toward.d < hereD ? toward.num : null;
-    }
-  }
 
   const ctx = botMoveCtx(state, self, persona);
   if (!ctx) return null;

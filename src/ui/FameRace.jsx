@@ -33,8 +33,9 @@
  * @param fameToWin  the target; the right end of the track
  * @param actingId   whose turn it is — their blip gets the ring
  * @param thresholds Stage-FX Fame thresholds, notched into the track
- * @param contested  leader is in range of the target WITHOUT a runaway lead, so
- *                   reaching it summons the Rock God instead of ending the game
+ * @param contested  the leader is inside striking distance of the target and a
+ *                   rival is right behind them — presentation only, see
+ *                   FAME_RACE_CONTESTED_LEAD in data/gameConstants.js
  */
 export function FameRace({ spirits, fameOf, fameToWin, actingId, thresholds = [], contested = false }) {
   const BLIP = 9;

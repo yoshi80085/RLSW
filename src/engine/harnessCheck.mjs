@@ -59,7 +59,7 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
   // base-kit match while `runMatch` played with unlocks — two different games
   // under one file, and the §9 assertions below would have been measuring the
   // wrong one.
-  let v = { amps: [], shadowHex: null, rockGodActive: false, skillById: SKILL_BY_ID };
+  let v = { amps: [], shadowHex: null, skillById: SKILL_BY_ID };
   const log = [];
   for (let i = 0; i < turns && !state.winner && state.acting; i++) {
     state = startSpiritTurn(state, rng);
@@ -190,8 +190,8 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
   ok(decided.length >= seeds.length / 2,
      `⚠️ most matches reach a winner (${decided.length}/${seeds.length}) — a bench of timeouts is measuring its own ceiling`);
 
-  // The Rock God is sidestepped by construction (short games crown outright),
-  // so a finished match must have a real winner rather than a summoned finale.
+  // Reaching the Fame target crowns outright, so a finished match must name a
+  // real seat rather than stalling above the line with nothing able to end it.
   for (const r of decided) {
     ok([RONIN, ZERO].includes(r.winner), 'the winner is a seat at the table');
     ok(r.turns > 0 && r.turns <= 400, 'and it took a plausible number of turns');
@@ -254,7 +254,6 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
      '⚡ sudden death is NO LONGER a gap — `transition.js` escalates on `verdict.close`, the client\'s own gate (§6.6.9)');
   ok(HARNESS_GAPS.riffRound2Speed,
      '…but what replaced it is declared: the 0.58× Round-2 chart is played at Round-1 difficulty, because `simulateRiffPerformance` has no tempo term');
-  ok(HARNESS_GAPS.summonRockGod, 'the sidestepped finale is declared');
   ok(!('legacy' in POLICIES),
      '⚠️ there is no `legacy` policy — a stub by that name would be cited as "the current bot" by the first person who read a table without reading the file');
 }

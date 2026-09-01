@@ -118,19 +118,20 @@ export function underdogBonus(winnerFame, loserFame, baseFp) {
 // STANCE_SYSTEM_DESIGN.md.)
 
 /**
- * decideWinner (Phase 3c kernel) — boss-aware win check.
+ * decideWinner (Phase 3c kernel) — last-Spirit-standing win check.
+ *
+ * 📌 `hasWinner` is accepted and ignored: it used to suppress the check while an
+ * endgame boss held the gate (archived 2026-09-01). Callers still pass it, and a
+ * decided match never reaches here twice, so it costs nothing to keep the shape.
  */
-export function decideWinner(spirits, { godSummoned = false, attackerId = null, hasWinner = false } = {}) {
+export function decideWinner(spirits, { attackerId = null, hasWinner = false } = {}) {   // eslint-disable-line no-unused-vars
   const survivors = spirits.filter(s => !s.knockedOut);
-  if (godSummoned && !hasWinner) {
-    return { winnerId: null, godTriumphs: survivors.length === 0 };
-  }
-  if (survivors.length === 1) return { winnerId: survivors[0].id, godTriumphs: false };
+  if (survivors.length === 1) return { winnerId: survivors[0].id };
   if (survivors.length === 0 && attackerId) {
     const atk = spirits.find(s => s.id === attackerId && !s.knockedOut);
-    if (atk) return { winnerId: atk.id, godTriumphs: false };
+    if (atk) return { winnerId: atk.id };
   }
-  return { winnerId: null, godTriumphs: false };
+  return { winnerId: null };
 }
 
 /**

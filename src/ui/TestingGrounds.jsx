@@ -4,8 +4,7 @@
 // =============================================================================
 import React from "react";
 
-export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiritId, devFireStageFx, devFireSignature, devGrant, devDamage, devOpen, devUnlockSkill, noteStates, setDevOpen, spiritById, spirits, testMode, devSummonGod, devHurtGod, devGodAct, rockGod, bossOutcome, devExportLog }) {
-  const godAlive = !!(rockGod && rockGod.hp > 0 && !bossOutcome);
+export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiritId, devFireStageFx, devFireSignature, devGrant, devDamage, devOpen, devUnlockSkill, noteStates, setDevOpen, spiritById, spirits, testMode, devExportLog }) {
   return (<>
       {testMode && (
         <>
@@ -57,39 +56,6 @@ export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiri
                   </div>
                 );
               })}
-
-              <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,margin:'12px 0 4px'}}>🤘 ROCK GOD (BOSS)</div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:4}}>
-                <button onClick={devSummonGod} disabled={!!rockGod}
-                  title={rockGod ? 'One god per game — already summoned' : "Summon the boss now (picked from the acting spirit's playstyle — Bardbarian for now)"}
-                  style={{background: rockGod ? '#0a0814' : '#332208', border:`1px solid ${rockGod ? '#4a2a60' : '#ffcc22'}`,
-                    color: rockGod ? '#6a5a85' : '#ffcc22', borderRadius:5, fontSize:9, padding:'5px 9px',
-                    cursor: rockGod ? 'default' : 'pointer', fontFamily:'inherit'}}>
-                  ⚡ SUMMON{rockGod ? 'ED ✓' : ''}
-                </button>
-                <button onClick={devHurtGod} disabled={!godAlive}
-                  title="Deal 10 damage to the god (no FP) — exercises the winded/kill flows"
-                  style={{background:'#0a0814', border:'1px solid #4a2a60', color:'#d0c0e0',
-                    borderRadius:5, fontSize:9, padding:'5px 9px', opacity: godAlive ? 1 : 0.5,
-                    cursor: godAlive ? 'pointer' : 'default', fontFamily:'inherit'}}>
-                  🗡️ −10 HP
-                </button>
-                <button onClick={devGodAct} disabled={!godAlive}
-                  title="Force the god's end-of-turn action now (telegraph → resolve)"
-                  style={{background:'#0a0814', border:'1px solid #4a2a60', color:'#d0c0e0',
-                    borderRadius:5, fontSize:9, padding:'5px 9px', opacity: godAlive ? 1 : 0.5,
-                    cursor: godAlive ? 'pointer' : 'default', fontFamily:'inherit'}}>
-                  🎬 ACT
-                </button>
-              </div>
-              {rockGod && (
-                <div style={{fontSize:8,color:'#9a7ab5',marginBottom:8}}>
-                  {godAlive
-                    ? <>HP <span style={{color:'#ffcc22'}}>{rockGod.hp}/{rockGod.maxHp}</span>
-                        {rockGod.winded ? ' · 😵 winded' : ''}{rockGod.telegraph ? ` · ⚠️ ${rockGod.telegraph.label} armed` : ''}</>
-                    : <>fight over — {bossOutcome === 'god' ? 'the God kept the crown' : 'the God fell'}</>}
-                </div>
-              )}
 
               <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,margin:'12px 0 4px'}}>SIGNATURE SKILLS</div>
               {Object.entries(SIGNATURE_TESTS).map(([sid, route]) => {

@@ -264,7 +264,7 @@ are already drawn every frame.
   - Assign Stagehand when an owned amp is unplugged or > unplug-range behind.
   - Deploy Heckler when a rival has ≥ 3 Casuals (worth zeroing).
   - Recall everyone when Fame multiplier matters most (bot is in the lead-chase
-    endgame, `ROCK_GOD_RUNAWAY_LEAD` logic already reads the fame gap).
+    endgame; the Fame gap is already read for the meter's contested state).
 
 ---
 

@@ -8,7 +8,6 @@ import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT,
          RIFF_SPEED_MIN, RIFF_SPEED_MAX, RIFF_SPEED_DEFAULT,
          loadRiffSpeed, saveRiffSpeed, riffSpeedLabel } from "../riff/fallingNotes.js";
 import { fpPerLife } from "../data/gameConstants.js";
-import { ROCK_GOD_DIFFICULTY, ROCK_GOD_DIFFICULTY_DEFAULT } from "../data/rockGods.js";
 import menuSong3 from "../Menu_song_3.mp3";
 import boardImg from "../board.png";
 import boardOutlineImg from "../board_outline.png";
@@ -37,7 +36,7 @@ const cornersFor = (n) => n === 2 ? ["blue", "red"] : n ? CORNERS_ORDER.slice(0,
 /** Corner 0 is the human; everyone else starts as a bot. Smash's rule. */
 const seedCpu = (n) => Object.fromEntries(cornersFor(n).map((c, i) => [c, i !== 0]));
 
-export function Lobby({ onStart, onTutorial, onBackToMenu }) {
+export function Lobby({ onStart, onBackToMenu }) {
   /* 🎮 TWO PLAYERS IS THE STANDING ASSUMPTION, Alex 2026-08-31 — the Smash Bros
      rule: the match already exists, you are adjusting it.
      🪦 THIS WAS `null`, and null meant an EMPTY SCREEN. Every section below is
@@ -90,19 +89,6 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
   function pickRiffDiff(k) {
     setRiffDiff(k);
     try { localStorage.setItem('rlsw.riffDifficulty', k); } catch {}
-  }
-  // 🤘 Rock God difficulty — how fast the boss swings during the finale. Unlike
-  // the riff dial this one is a MATCH setting, not a per-player preference: the
-  // God runs on a wall clock and only the acting client drives him, so every
-  // machine in a room has to agree. It rides in the start config; localStorage
-  // only remembers the host's last choice.
-  const [godDiff, setGodDiff] = useState(() => {
-    try { const v = localStorage.getItem('rlsw.godDifficulty'); if (v && ROCK_GOD_DIFFICULTY[v]) return v; } catch {}
-    return ROCK_GOD_DIFFICULTY_DEFAULT;
-  });
-  function pickGodDiff(k) {
-    setGodDiff(k);
-    try { localStorage.setItem('rlsw.godDifficulty', k); } catch {}
   }
   // 🐢 Riff-off TEMPO — shared with the practice trainer (same localStorage
   // key), so a speed dialled in while practising is the speed duels run at.
@@ -165,8 +151,8 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
   useEffect(()=>{if(!playerCount)return;setCpuCorners(prev=>{const next={...prev};activeCorners.forEach((c,i)=>{if(next[c]===undefined)next[c]=i!==0;});return next;});},[playerCount]);
   useEffect(()=>{if(!playerCount){setChoosingCorner(null);return;}const f=activeCorners.find(c=>!assignments[c]);setChoosingCorner(f??null);},[playerCount]);
   function assign(corner,spiritId){setAssignments(a=>({...a,[corner]:spiritId}));const sp=SPIRIT_DEFS[spiritId];if(sp){if(announcerTimer.current)clearTimeout(announcerTimer.current);setAnnouncer({name:sp.name,color:sp.color});announcerTimer.current=setTimeout(()=>setAnnouncer(null),700);}const nA={...assignments,[corner]:spiritId};setChoosingCorner(activeCorners.find(c=>!nA[c])??null);}
-  function handleStart(){const spirits=activeCorners.map(corner=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:!!cpuCorners[corner],botPolicy:(cpuCorners[corner]&&cpuSearcher[corner])?"searcher":"legacy"};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;onStart({spirits,mode,teams,startingLives,beginnerMode,godDifficulty:godDiff});}
-  function handleStartOnline(){const hs=netRoom.seats.filter(s=>!s.isBot);const spirits=activeCorners.map((corner,ci)=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:ci>=hs.length};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;const config={spirits,mode,teams,startingLives,beginnerMode,godDifficulty:godDiff};const seatMap=hs.map((s,i)=>({seatId:s.seatId,spiritId:activeCorners[i]?assignments[activeCorners[i]]:null}));const botSeats=activeCorners.slice(hs.length).map(c=>({name:SPIRIT_DEFS[assignments[c]]?.name??"Bot",spiritId:assignments[c]}));netClient.startGame(config,{seatMap,botSeats:botSeats.length?botSeats:undefined});}
+  function handleStart(){const spirits=activeCorners.map(corner=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:!!cpuCorners[corner],botPolicy:(cpuCorners[corner]&&cpuSearcher[corner])?"searcher":"legacy"};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;onStart({spirits,mode,teams,startingLives,beginnerMode});}
+  function handleStartOnline(){const hs=netRoom.seats.filter(s=>!s.isBot);const spirits=activeCorners.map((corner,ci)=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:ci>=hs.length};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;const config={spirits,mode,teams,startingLives,beginnerMode};const seatMap=hs.map((s,i)=>({seatId:s.seatId,spiritId:activeCorners[i]?assignments[activeCorners[i]]:null}));const botSeats=activeCorners.slice(hs.length).map(c=>({name:SPIRIT_DEFS[assignments[c]]?.name??"Bot",spiritId:assignments[c]}));netClient.startGame(config,{seatMap,botSeats:botSeats.length?botSeats:undefined});}
   function startTestingGrounds(){onStart(buildTestingGroundsConfig({beginnerMode}));}
   const iBase={fontFamily:"inherit",background:"#0a1020",border:"1px solid #1e3a5f",borderRadius:4,color:"#c0d0e0",fontSize:11,padding:"8px 10px",outline:"none"};
   const seg=(on,ac="#4488ff")=>({fontFamily:"'Saira Stencil One',sans-serif",cursor:"pointer",borderRadius:4,padding:"6px 14px",fontSize:10,letterSpacing:1,transition:"all .15s",border:"1px solid",background:on?ac+"22":"#0a1020",borderColor:on?ac:"#1e3a5f",color:on?ac:"#5a7a9a"});
@@ -255,7 +241,6 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
           <span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:20,color:"#f6ad55",letterSpacing:4,fontWeight:700}}>RLSW</span>
           <span style={{fontSize:10,color:"#3a5a7a",letterSpacing:2}}>SPIRIT WARS</span></div>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={onTutorial} style={{fontFamily:"inherit",cursor:"pointer",background:"#0a1020",border:"1px solid #2a4a6a",borderRadius:4,color:"#5a8aaa",fontSize:9,padding:"6px 14px",letterSpacing:1,transition:"all .15s"}} onMouseEnter={e=>{e.target.style.borderColor="#4488ff";e.target.style.color="#88bbff";}} onMouseLeave={e=>{e.target.style.borderColor="#2a4a6a";e.target.style.color="#5a8aaa";}}>HOW TO PLAY</button>
           <button onClick={()=>setBeginnerMode(b=>!b)} style={{fontFamily:"inherit",cursor:"pointer",background:beginnerMode?"#1a2a10":"#0a1020",border:"1px solid "+(beginnerMode?"#44cc66":"#2a4a6a"),borderRadius:4,color:beginnerMode?"#44ff88":"#5a8aaa",fontSize:9,padding:"6px 14px",letterSpacing:1,transition:"all .15s"}}>BEGINNER {beginnerMode?'ON':'OFF'}</button></div>
       </div>
       {/* BODY */}
@@ -372,18 +357,6 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
               {Object.entries(RIFF_FALL_DIFFICULTY).map(([k,p])=>
                 <button key={k} onClick={()=>pickRiffDiff(k)} title={`${p.label} — ${p.blurb}`}
                   style={{...seg(riffDiff===k,"#f6ad55"),padding:"6px 10px"}}>{p.icon} {RIFF_DIFF_SHORT[k] ?? k.toUpperCase()}</button>)}
-            </div>
-            <div style={{width:1,height:20,background:"#1a2a40"}}/>
-            {/* 🤘 ROCK GOD — how fast the boss swings in the finale. A MATCH
-                setting, not a personal one: the God runs on a wall clock, so
-                everyone in the room plays to the host's dial. */}
-            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}
-              title="How hard the Rock God finale pushes. He acts on real time, not on the turn order — dawdle and he swings again.">
-              <span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>🤘 ROCK GOD</span>
-              {Object.entries(ROCK_GOD_DIFFICULTY).map(([k,p])=>
-                <button key={k} onClick={()=>pickGodDiff(k)}
-                  title={`${p.label} — ${p.blurb} (swing every ${p.actSeconds}s · ${p.turnSeconds}s turn clock)`}
-                  style={{...seg(godDiff===k,"#ffcc22"),padding:"6px 10px"}}>{p.icon} {p.label}</button>)}
             </div>
             <div style={{width:1,height:20,background:"#1a2a40"}}/>
             {/* 🐢 TEMPO — the calibration dial. Difficulty above chooses WHAT you

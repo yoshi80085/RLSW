@@ -163,7 +163,6 @@ export function facingOptions(spirit) {
  *   · `amps`       [{ hexNum }]          — amp furniture blocks movement, React state
  *   · `shadowHex`  number|null           — 👤 the decoy blocks like a body
  *   · `skillById`  { [id]: skill }       — SKILL_TREE still lives in the monolith
- *   · `rockGodActive` bool               — PvP is off during the God fight
  * @returns {action[]} `{ kind, apCost, ... }`, in no meaningful order
  *
  * Returns `[]` for a Spirit who is not `state.acting`: they have no AP, no
@@ -173,7 +172,7 @@ export function facingOptions(spirit) {
 export function legalActions(state, spiritId, view = {}) {
   const {
     amps = [], shadowHex = null,
-    skillById = null, rockGodActive = false,
+    skillById = null,
   } = view;
   const posing = posingMap(state);
 
@@ -326,7 +325,7 @@ export function legalActions(state, spiritId, view = {}) {
   // attacked does nothing at all — offering it there would be offering a button
   // that lies. And gated on a non-empty Sustain stack by `canCallEleven`: if the
   // price is "your Sustain stack", an empty stack makes it free.
-  if (!tokenSpent && !rockGodActive && ns.hasConfirmed && canCallEleven(state, spiritId)
+  if (!tokenSpent && ns.hasConfirmed && canCallEleven(state, spiritId)
       && (ns.unlockedSkills ?? []).includes('goes_to_11')) {
     out.push({ kind: 'eleven', apCost: 0 });
   }
@@ -401,9 +400,8 @@ export function legalActions(state, spiritId, view = {}) {
     }
   }
 
-  // ── ATTACKS — at most ONE per turn (`actionTokenUsed`), and PvP is switched
-  // off entirely while the Rock God is on the board: the table is united.
-  if (!tokenSpent && !rockGodActive) {
+  // ── ATTACKS — at most ONE per turn (`actionTokenUsed`).
+  if (!tokenSpent) {
     const cone = swingCone(self);
     const beam = sonicBeam(self);
 

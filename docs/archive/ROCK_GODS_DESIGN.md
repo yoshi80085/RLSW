@@ -1,3 +1,23 @@
+> # 🪦 ARCHIVED — 2026-09-01
+>
+> **The Rock God is not in the game.** Alex archived the whole finale on
+> 2026-09-01: `data/rockGods.js`, `engine/systems/rockGod.js`,
+> `board/rockGodFx.js`, `ui/RockGodLayer.jsx` and `hooks/useRockGod.js` were
+> deleted, along with the `state.rockGod` slice, the seven `GOD_*` actions, the
+> `rockGodActive` gate and every test that covered them. It had already been
+> shelved behind a flag since 2026-08-18; this is the deletion.
+>
+> **What changed in play:** reaching the Fame target now crowns you outright at
+> any margin. It used to summon a boss on a close race, and that summon was a
+> one-way door — once the God stood, the Fame win was unreachable for the rest of
+> the match.
+>
+> **This file is kept because the design is good and the boss may come back as an
+> add-on.** ⚠️ Read every code reference below as HISTORY. None of the modules,
+> exports or line numbers it names still exist; a session building this would be
+> building the whole subsystem from scratch, starting from `git log` around
+> 2026-09-01 for what was removed. It is a design, not a map.
+
 # ROCK_GODS_DESIGN — the rest of the pantheon, build-ready
 
 > **For a future AI session.** The Feedback Warlock, Sonic Sorceress, and

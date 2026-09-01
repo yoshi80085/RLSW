@@ -389,13 +389,12 @@ const faceRivalAt = (st, rivalId, step = 0) => {
   ok(!kinds(legalActions(already, RONIN)).has('pose'),
      '...but a pose is a COMMITMENT already running, not a tap to re-tap');
 
-  // PvP is switched off entirely while the Rock God is on the board.
-  const armed = faceRivalAt(confirmed(baseState()), METAL);
-  const god = legalActions(armed, RONIN, { rockGodActive: true });
-  for (const k of ['swing', 'sonic', 'smash', 'blaster']) {
-    eq(ofKind(god, k).length, 0, `🤘 the Spirits stand UNITED — no ${k} at each other during the God fight`);
-  }
-  ok(ofKind(god, 'move').length > 0, '...they can still move');
+  // 🪦 The five assertions that lived here checked `rockGodActive`, the view flag
+  // that switched PvP off while the endgame boss held the stage. The boss was
+  // archived on 2026-09-01 and the flag went with it — there is no longer any
+  // state in which the attack family is suppressed wholesale, so there is nothing
+  // left to assert. The per-attack gates (token spent, AP, range, facing) are
+  // covered above and are the real rules.
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

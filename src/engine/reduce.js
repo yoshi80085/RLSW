@@ -17,8 +17,6 @@ import {
   DEBUFFS_TICKED, BURN_TICKED,
   HEADLINER_CHANGED,
   STAGE_FX_DRAWN, STAGE_FX_ACTIVATED, STAGE_FX_TURN_TICKED, STAGE_FX_ROUND_TICKED,
-  GOD_ATTACK_PICKED, GOD_SUMMONED, GOD_DAMAGED, GOD_ACTED,
-  GOD_DEFEATED, GOD_TRIUMPHED, GOD_TIMER_EXPIRED,
   BOARD_SYNCED,
   SPOTLIGHT_HEALED, SPOTLIGHT_MOVED, TOKENS_SCATTERED, THRASH_TOKENS_SPAWNED, FLAMING_DECAYED,
   EVENT_RESPAWN_TICKED, EVENT_HEX_SPAWNED, CHARGE_ZONES_TICKED,
@@ -51,10 +49,6 @@ import {
   applyStageFxDrawn, applyStageFxActivated,
   applyStageFxTurnTicked, applyStageFxRoundTicked,
 } from "./systems/stageFx.js";
-import {
-  applyGodAttackPicked, applyGodSummoned, applyGodDamaged, applyGodActed,
-  applyGodDefeated, applyGodTriumphed, applyGodTimerExpired,
-} from "./systems/rockGod.js";
 import {
   applyBoardSynced,
   applySpotlightHealed, applySpotlightMoved,
@@ -133,15 +127,6 @@ function reduce(state, action, rng) {
     case STAGE_FX_ACTIVATED:     return applyStageFxActivated(state, action, rng);
     case STAGE_FX_TURN_TICKED:   return applyStageFxTurnTicked(state, action, rng);
     case STAGE_FX_ROUND_TICKED:  return applyStageFxRoundTicked(state, action, rng);
-
-    // -- Phase 6c: Rock God --
-    case GOD_ATTACK_PICKED:      return applyGodAttackPicked(state, action, rng);
-    case GOD_SUMMONED:           return applyGodSummoned(state, action);
-    case GOD_DAMAGED:            return applyGodDamaged(state, action);
-    case GOD_ACTED:              return applyGodActed(state, action, rng);
-    case GOD_DEFEATED:           return applyGodDefeated(state, action);
-    case GOD_TRIUMPHED:          return applyGodTriumphed(state);
-    case GOD_TIMER_EXPIRED:      return applyGodTimerExpired(state, action);
 
     // -- Phase 6a: board state --
     case BOARD_SYNCED:           return applyBoardSynced(state, action);

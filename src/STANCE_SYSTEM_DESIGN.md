@@ -474,7 +474,7 @@ prompted an audit of stacked bonuses. Changes:
 - **`ATK_BONUS_CAP = 5`** (gameConstants) — hard ceiling on
   `tempDrive + Edge + stance` for both attack types (was theoretically +10).
 - **Demolition capped at `THRASH_DAMAGE_CAP`** (+4 max bonus, was uncapped).
-- **`ROCK_GOD_RUNAWAY_LEAD` 5 → 3** — the boss finale is for close races only;
+- **`ROCK_GOD_RUNAWAY_LEAD` 5 → 3** — 🪦 *the constant is gone (2026-09-01) along with the boss; kept as a record of the 2026-07-16 balance pass.* The boss finale was for close races only;
   plus a stale-fame-read bug in the runaway check was fixed (it compared the
   lead using a client mirror that lagged the engine by a grant or more).
 

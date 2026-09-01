@@ -345,12 +345,21 @@ export function fpPerLife(playerCount) { return Math.max(5, 10 - playerCount); }
 export const FAME_TO_WIN      = 24;   // legacy fallback (3 lives × 8) — runtime uses startingLives × fpPerLife(playerCount)
 
 // HARD per-turn FP ceiling (2026-07-16 balance pass). Overlapping FP systems
-// (sonic margin + spotlight + rider + groove, riff replays, Azrael, Limelight,
-// boss damage) compounded with the underdog/crowd multipliers into 20+ FP
-// turns. Every grant flows through grantFame, which clamps the TOTAL a spirit
-// can earn inside one turn window (any spirit's turn) to this. Overflow is
-// DISCARDED — the crowd can only scream so loud. Applies to boss-fight FP too.
+// (sonic margin + spotlight + rider + groove, riff replays, Azrael, Limelight)
+// compounded with the underdog/crowd multipliers into 20+ FP turns. Every grant
+// flows through grantFame, which clamps the TOTAL a spirit can earn inside one
+// turn window (any spirit's turn) to this. Overflow is DISCARDED — the crowd can
+// only scream so loud.
 export const FAME_PER_TURN_CAP = 4;
+
+// 🔥 PRESENTATION ONLY — how small a lead counts as "neck and neck" once someone
+// is inside four points of the crown. The Fame meter and the spirit card's Fame
+// bar both go red on it. ⚠️ NOTHING MECHANICAL HANGS OFF THIS. It is the last
+// living trace of the Rock God finale, where a lead under this number summoned
+// an endgame boss instead of ending the game; the boss was archived on
+// 2026-09-01 and the Fame target now crowns outright at any margin. Retune it
+// freely — the only thing it can break is a colour.
+export const FAME_RACE_CONTESTED_LEAD = 3;
 
 // 🎤 THE DUEL'S OWN CEILING (2026-08-18) — and it is a HIGHER cap, not an
 // exemption. `awardRiffFame` builds a payout out of six terms and then hands it

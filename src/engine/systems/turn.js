@@ -1,6 +1,6 @@
 // ─── ENGINE SYSTEM: TURN ─────────────────────────────────────────────────────
 // Turn queue, beats (AP), limelight tracking, turn/round counters (Phase 2).
-// The many END-TURN *ticks* (debuffs, burn, fans, stage FX, Rock God, spawns)
+// The many END-TURN *ticks* (debuffs, burn, fans, stage FX, spawns)
 // still run in React — they join the engine with their slices in Phases 5–6.
 // TURN_ENDED writes `turn.lastReport` so the client knows what to run:
 //   { type, endedId, nextId, limelightHeld, roundCompleted }

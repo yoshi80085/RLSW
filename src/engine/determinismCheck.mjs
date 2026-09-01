@@ -25,7 +25,6 @@ import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { makeRng } from "./rng.js";
 import { randomNote, refillStock } from "../music/cadence.js";
-import { freeNeighborHex } from "../board/rockGodFx.js";
 import { makeInitialState } from "./state.js";
 import { applyAction } from "./reduce.js";
 
@@ -72,13 +71,10 @@ reproducibleAndRandom(
      'randomNote with NO rng is still unseeded — rules must never call it that way');
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// 2. The god's displacement hex takes a seeded rand.
-// ═════════════════════════════════════════════════════════════════════════════
-reproducibleAndRandom(
-  seed => { const r = makeRng(seed); return Array.from({ length: 6 }, () => freeNeighborHex(56, [], r)); },
-  'freeNeighborHex(seeded)',
-);
+// 🪦 §2 was the boss's displacement hex (`freeNeighborHex`, seeded). The Rock God
+// was archived on 2026-09-01 and `board/rockGodFx.js` went with it; nothing else
+// in the game draws a free neighbour hex, so the two assertions retired rather
+// than moving. Numbering left alone so older handoffs still line up.
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 3. RANDOM_BATCH_DRAWN — the transport every client-side rule draw now uses.
@@ -189,9 +185,9 @@ reproducibleAndRandom(
      `every randomNote() in the client must be handed an rng — found ${unseeded.length}: ${unseeded.join(' | ')}`);
 
   // ── 6b. Pinned Math.random inventory ─────────────────────────────────────
-  // 44 remain and every one is PRESENTATION: audio jitter and detune, React
+  // 43 remain and every one is PRESENTATION: audio jitter and detune, React
   // keys, die SPIN faces (the landed value comes from the engine), dance names,
-  // god taunt timing, log-line flavour.
+  // log-line flavour.
   //
   // 43 → 44 (2026-08-15): 🐙 the Tentacle's FX remount key. It is a React key on
   // a purely cosmetic overlay — the hexes were already spent and the blow
@@ -199,12 +195,16 @@ reproducibleAndRandom(
   // an outcome. The strike itself rolls through `attackRolled` on the seeded
   // stream like every other Swing.
   //
+  // 44 → 43 (2026-09-01): the boss taunt draw left with the Rock God. It was the
+  // one that picked which line the God spat when he landed — cosmetic, and now
+  // there is no God to spit it.
+  //
   // This number is pinned ON PURPOSE. If it moves, someone added a draw and has
   // to answer one question: can it change an outcome? If yes it belongs on the
   // seeded stream via drawSeeded/drawSeededInt/drawSeededChance/drawSeededNotes.
   // If it is genuinely cosmetic, bump this number and say so in the commit.
   // A silently-growing count is how the last ten got in.
-  const MATH_RANDOM_BUDGET = 44;
+  const MATH_RANDOM_BUDGET = 43;
   const found = (monolith.match(/Math\.random\(\)/g) ?? []).length;
   ok(found === MATH_RANDOM_BUDGET,
      `Math.random() count changed: ${found} vs pinned ${MATH_RANDOM_BUDGET}. ` +

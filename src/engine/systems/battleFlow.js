@@ -27,7 +27,7 @@
 //   { kind:'log',    text }          player-facing line; no rule meaning
 //   { kind:'fx',     name, ... }     presentation only; harness drops it
 //   { kind:'hook',   name, ... }     a sequence still owned by the client this
-//                                    pass (demolishFans, summonRockGod, knockOut,
+//                                    pass (demolishFans, knockOut,
 //                                    dismissShadowIllusion). The
 //                                    ORDER is shared even though the body isn't
 //                                    yet — that is the point of naming them.
@@ -52,7 +52,6 @@ import {
   FAME_PER_TURN_CAP, RIFF_FP_TURN_CAP, FAN_DIEHARD_START, LIMELIGHT_HEX,
   SONIC_LIMELIGHT_FP, POSE_SUSTAIN_COST, fpPerLife,
 } from "../../data/gameConstants.js";
-import { ROCK_GOD_RUNAWAY_LEAD, ROCK_GODS_SHELVED } from "../../data/rockGods.js";
 import { RIFF_BOTH_PAID_QUALITY } from "./riffOff.js";
 import { canFire, firePatch } from "./cooldowns.js";
 
@@ -339,31 +338,24 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
 
   if (myFame < target) return { granted: finalFp, fameThisTurn: nextWindow };
 
-  // A Rock God already holds the gate — Fame alone can't end it now.
-  if (state.rockGod?.summoned) return { granted: finalFp, fameThisTurn: nextWindow };
-
-  // 🤘 THE RULE OF THE GODS — a runaway lead is crowned outright; a close race
-  // summons a God to settle it. Read rivals from the state we just wrote, not a
-  // pre-dispatch mirror: back-to-back grants in one beat (riff payouts, Azrael
-  // chains) left the old client copy stale and summoned the God into a blowout.
+  // ⭐ REACHING THE TARGET IS THE WIN, at any margin and at any number of lives.
+  // Read rivals from the state we just wrote, not a pre-dispatch mirror: it is
+  // only the log line now, but back-to-back grants in one beat (riff payouts,
+  // Azrael chains) make a captured copy stale within the same turn.
+  //
+  // 📌 There used to be a second branch here. A close race at the target summoned
+  // an endgame boss to settle the finale instead of crowning anyone, and because
+  // the harness could not drive that boss, the bench was pinned to TWO-LIFE
+  // matches purely to keep the branch unreachable — which under-rates every
+  // investment term in BOT_STRATEGY_HANDOFF §3.2/§3.6, since those are about the
+  // horizon. The boss was archived on 2026-09-01; the horizon is real again.
   const rivalBest = Math.max(0, ...state.spirits
     .filter(s => s.id !== spiritId && !s.knockedOut)
     .map(s => nsOf(state, s.id).fame ?? 0));
   const lead = myFame - rivalBest;
-  const shortGame = (state.config?.startingLives ?? 3) < 3;
 
-  // 🪦 SHELVED 2026-08-18 — while `ROCK_GODS_SHELVED` holds, the Fame target
-  // always crowns and the finale is never summoned. It is a DISJUNCT rather than
-  // a deletion so the close-race branch below stays readable and one constant
-  // brings it back. ⚠️ This is also what frees the bench from two-life matches:
-  // `matchConfig` was playing short games purely to keep this branch unreachable.
-  if (ROCK_GODS_SHELVED || lead >= ROCK_GOD_RUNAWAY_LEAD || shortGame) {
-    yield log(`🌟🌟🌟 ${nameOf(state, spiritId)} reaches ${target} Fame — ⭐${myFame} vs ⭐${rivalBest}, a runaway lead of ${lead}. A LEGEND IS BORN! 🌟🌟🌟`);
-    yield hook('declareWinner', { spiritId });
-  } else {
-    yield log(`⭐ ${nameOf(state, spiritId)} hits ${target} Fame — but ⭐${myFame} vs ⭐${rivalBest} is only a ${lead}-point lead (needs ${ROCK_GOD_RUNAWAY_LEAD}). The Gods demand a FINALE.`);
-    yield hook('summonRockGod', { spiritId });
-  }
+  yield log(`🌟🌟🌟 ${nameOf(state, spiritId)} reaches ${target} Fame — ⭐${myFame} vs ⭐${rivalBest}, a lead of ${lead}. A LEGEND IS BORN! 🌟🌟🌟`);
+  yield hook('declareWinner', { spiritId });
   return { granted: finalFp, fameThisTurn: nextWindow };
 }
 

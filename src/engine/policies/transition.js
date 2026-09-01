@@ -330,7 +330,7 @@ export function applyBotAction(state, action, ctx = {}) {
           next = applyAction(next, fansChanged(fx.spiritId, fx.fans), rng);
         } else if (fx.type === 'fame') {
           // Through `battleFlow.grantFame` so the 4/turn cap, the crowd
-          // multiplier and the Rock God gate all apply in exactly one place.
+          // multiplier both apply in exactly one place.
           const run = runBattleFlow(
             grantFame({ state: next, spiritId: fx.spiritId, fp: fx.fp, reason: fx.reason,
                         fameThisTurn: nextView.fameThisTurn ?? {} }),

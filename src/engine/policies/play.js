@@ -110,20 +110,6 @@ export const HARNESS_GAPS = {
   // the match. That one was not an unpaid bonus; it was a live penalty welded
   // on, on a Spirit who never chose it. It is a rule in `battleFlow.js` now.
 
-  // See `matchConfig` — the Rock God finale is sidestepped by construction.
-  //
-  // 🪦 AND AS OF 2026-08-18 IT IS SHELVED, NOT PENDING (Alex's call). That
-  // changes what this entry MEANS rather than whether it is here: it used to
-  // name work the harness owed the game, and it now names a subsystem the game
-  // is not currently shipping.
-  //
-  // ✅ AND THE CONSTRAINT IT IMPOSED IS RECLAIMED. The finale used to be
-  // sidestepped by playing TWO-LIFE matches, which `matchConfig` was very clear
-  // under-rates every investment term in §3.2 and §3.6. `grantFame` now crowns on
-  // the Fame target at any number of lives, so `matchConfig` defaults to THREE
-  // and the bench finally measures the horizon the game is played on.
-  summonRockGod: '🪦 SHELVED 2026-08-18 — `ROCK_GODS_SHELVED`; the Fame target crowns outright at any number of lives',
-
   // ── 🎤 NEW 2026-08-17 — the riff-off runs, with one modelled part ──────────
   //
   // ⚠️ THE RULES ARE REAL; THE HANDS ARE NOT. Both charts come out of
@@ -799,17 +785,14 @@ export function playTurn(state, view, policy, ctx) {
  * ✅ FULL-LENGTH GAMES BY DEFAULT SINCE 2026-08-18 — and the change is a
  * constraint being RETIRED, not a preference.
  *
- * ~~⚠️ SHORT GAMES BY DEFAULT, AND IT IS LOAD-BEARING RATHER THAN IMPATIENT.
- * `grantFame` branches on `shortGame = startingLives < 3`: under three lives a
- * Spirit who reaches the Fame target is crowned outright, and above it a close
- * race summons a Rock God to settle the finale instead. The God is a whole
- * subsystem the harness does not drive, so a 3-life match can reach the target
- * and then run forever with nothing able to end it. Two lives sidesteps that by
- * construction rather than by patching the rule.~~
- *
- * 🪦 The Rock God finale is SHELVED (`ROCK_GODS_SHELVED`, Alex 2026-08-18), so
- * `grantFame` now crowns on the Fame target at any number of lives and there is
- * nothing left to sidestep. The warning that made two lives a cost worth paying:
+ * The bench used to run TWO-LIFE matches on purpose. `grantFame` branched on
+ * `startingLives < 3`: under three lives the Fame target crowned outright, and
+ * above it a close race summoned an endgame boss the harness could not drive —
+ * so a 3-life match could reach the target and then run forever with nothing
+ * able to end it. Two lives sidestepped that by construction. The boss was
+ * shelved on 2026-08-18 and archived on 2026-09-01, `grantFame` crowns at any
+ * number of lives, and there is nothing left to sidestep. The warning that made
+ * two lives a cost worth paying, kept because the horizon is still the variable:
  *
  * > ⚠️ THE COST IS REAL AND MUST BE QUOTED WITH ANY RESULT: `fameToWin` is
  * > `lives × fpPerLife(count)`, so a 2-life match has a materially shorter
@@ -864,7 +847,7 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
   // ✨ `posing: {}` is GONE from here (§6.6.8) — it is engine state now, and
   // leaving a dead copy in `view` would be a second source of truth that only
   // ever agreed by accident.
-  let v = { amps: [], shadowHex: null, rockGodActive: false, skillById: SKILL_BY_ID, ...view };
+  let v = { amps: [], shadowHex: null, skillById: SKILL_BY_ID, ...view };
   let turns = 0;
   // 🎤 The duel ledger — see `playTurn`. `round2` is the one that matters: it is
   // the difference between a rule being present and a rule being reachable.

@@ -10,7 +10,6 @@ import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "./data/corners.js";
 import { HEX_SIZE, SCALE, SVG_W, SVG_H } from "./board/constants.js";
 import { HEX_BY_NUM, HEX_BY_QR, ALL_HEXES } from "./board/hexMap.js";
 import { pointyCorners, axialDist, axialNeighbors, getFlatTopNeighborSlots, angleTo, angleDiff, neighborInDirection, grandstandSeat, grandstandArc, grandstandRowSpan } from "./board/hexGeometry.js";
-import { Tutorial } from "./tutorial/content.jsx";
 import { useRiffState } from "./hooks/useRiffState.js";
 import { useFanEconomy } from "./hooks/useFanEconomy.js";
 import { useBgmState } from "./hooks/useBgmState.js";
@@ -73,17 +72,13 @@ import HintScreen from "./ui/HintScreen.jsx";
 import { BeginnerTipOverlay } from "./ui/BeginnerTipOverlay.jsx";
 import { isMirrorFacing, MIRROR_SPRITES, mobileColorStyle, GameErrorBoundary } from "./ui/GameErrorBoundary.jsx";
 import { useStageEffects } from "./hooks/useStageEffects.js";
-import { useRockGod } from "./hooks/useRockGod.js";
-import { ROCK_GODS, ROCK_GODS_SHELVED, ROCK_GOD_RUNAWAY_LEAD, ROCK_GOD_VENGEANCE_DMG, ROCK_GOD_KILL_BLOW_FP, rockGodPace, pickRockGod, godTauntLine } from "./data/rockGods.js"; // HP scaling moved into the engine (Phase 6c)
-import { freeNeighborHex } from "./board/rockGodFx.js"; // AoE/slide/shove geometry moved into the engine (Phase 6c)
-import { RockGodBoardLayer, RockGodHUD, GodVictoryOverlay } from "./ui/RockGodLayer.jsx";
 import { STAGE_FX_META, SMOKE_ROUNDS, LASER_ROUNDS, LASER_DAMAGE, PYRO_WAVES, PYRO_DAMAGE, PYRO_BURN_TURNS, ANIMATRONIC_ROUNDS, ANIMATRONIC_DAMAGE } from "./data/stageEffects.js"; // tuning the engine consumes directly (counts/radii/waves) moved with the 6b flip
 import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn rolls moved into the engine (Phase 6b)
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
 import { bankLostChord, chargeSparkPatch } from "./engine/systems/board.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, godSummoned as godSummonedAction, godDamaged as godDamagedAction, godActed as godActedAction, godDefeated as godDefeatedAction, godTriumphed as godTriumphedAction, godTimerExpired as godTimerExpiredAction, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted,
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted,
   // 🧪 the slime trail (METALNESS_REWORK_DESIGN.md §3)
   slimeDecayed, slimeCleared, spiritSlid, slimeCalled, elevenCalled,
   // ✨ the Limelight (§3.3) — engine state since 2026-08-17, §6.6.8
@@ -364,7 +359,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
-import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, FAME_PER_TURN_CAP, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, THRASH_DIE, THRASH_CEIL_DIE, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, THRASH_DIE, THRASH_CEIL_DIE, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -669,15 +664,13 @@ function riffSideFrom(riff, extra = {}) {
 
 export default function RLSWSimulator() {
   const [gameState, setGameState] = useState(null);
-  const [showTutorial, setShowTutorial] = useState(false);
   const [practiceMode, setPracticeMode] = useState(null); // null | { mode: 'riff'|'fretboard'|'discord', diff? }
   const [introDone, setIntroDone] = useState(false);
   // 🏝️ TITLE MENU — the Zelda-style front door. Everything hangs off it:
   //   null    → the title menu itself
   //   'normal'→ the match lobby (player count, Spirit select, settings)
   //   'riff'  → the Riff Mode submenu (practice modes live in there)
-  // Rock God Challenge is on the menu but locked until it's built out; Testing
-  // Grounds and How to Play launch straight from the menu without a branch.
+  // Testing Grounds launches straight from the menu without a branch.
   const [menuRoute, setMenuRoute] = useState(null);
   // 💡 HINT SCREEN — an intentional ~5s beat between Lobby and Game so a
   // random gameplay hint can be read. Reset on return-to-lobby so every match
@@ -688,9 +681,6 @@ export default function RLSWSimulator() {
   // 🎬 Opening movie — plays on every launch, any input skips (attract style).
   if (!introDone) {
     return <div style={isMobile ? mobileColorStyle : {}}><OpeningMovie onDone={() => setIntroDone(true)} /></div>;
-  }
-  if (showTutorial) {
-    return <div style={isMobile ? mobileColorStyle : {}}><Tutorial onBack={() => setShowTutorial(false)} /></div>;
   }
   if (practiceMode) {
     const pm = practiceMode;
@@ -709,7 +699,6 @@ export default function RLSWSimulator() {
       onNormal={() => setMenuRoute('normal')}
       onRiff={() => setMenuRoute('riff')}
       onTestingGrounds={() => setGameState(buildTestingGroundsConfig())}
-      onHowToPlay={() => setShowTutorial(true)}
     /></div>;
   }
   if (!gameState && menuRoute === 'riff') {
@@ -721,7 +710,6 @@ export default function RLSWSimulator() {
   if (!gameState) {
     return <div style={isMobile ? mobileColorStyle : {}}><Lobby
       onStart={gs => setGameState(gs)}
-      onTutorial={() => setShowTutorial(true)}
       onPractice={p => setPracticeMode(p)}
       onBackToMenu={() => setMenuRoute(null)}
     /></div>;
@@ -1976,21 +1964,6 @@ export function Game({ gameState, onReturnToLobby }) {
     return !!(fx?.smoke || fx?.laser || fx?.pyro || fx?.animatronics);
   }
 
-  // ─── 🤘 ROCK GOD ── (ENGINE-owned — Phase 6c flip; clock stays React) ───────
-  // Endgame boss: summoned from grantFame when 25 FP is reached WITHOUT a
-  // runaway lead. The god object + outcome live in engineState.rockGod (views
-  // below; async/timeout reads use engineRef.current.rockGod — the old
-  // rockGodRef/godSummonedRef mirrors are gone). Rules: engine/systems/rockGod.js.
-  const {
-    bossTimer, setBossTimer,
-    bossTimerExpired, setBossTimerExpired,
-    godBanner, setGodBanner,
-  } = useRockGod();
-  const rockGod = engineState.rockGod.god;
-  const bossOutcome = engineState.rockGod.outcome;
-  // The fight is LIVE while the god stands and neither side has won.
-  const rockGodActive = !!(rockGod && rockGod.hp > 0 && !bossOutcome && !winner);
-
   // ─── BOARD MINI-GOALS — Lost Chords ── (ENGINE-owned — Phase 6a, migrated) ──
   const boardTokens = engineState.board.boardTokens;
 
@@ -2245,7 +2218,7 @@ export function Game({ gameState, onReturnToLobby }) {
       title: '🔴 Red & Blue Notes',
       pages: [
         { body: 'A RED note means that note lines up with your DRIVE chord stack — extra Drive for you. You know what BLUE means.', anchor: 'note-stock', emote: 'drive' },
-        { body: 'A note flashing blue AND red? Only the Rock Gods know.', anchor: 'note-stock', mood: 'wow' },
+        { body: 'A note flashing blue AND red? It pays into both stacks — take the hint.', anchor: 'note-stock', mood: 'wow' },
       ],
     },
     // ✳️ Fires once the track is committed — the moment the last note stops
@@ -2329,8 +2302,7 @@ export function Game({ gameState, onReturnToLobby }) {
         { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, ✨ holding centre-stage Limelight a full turn. (🎼 Cadences and 🧠 trivia pay FANS, not FP — the crowd is how you amplify everything else.)',
                  'Every payout is multiplied by your crowd (up to ×2), and if you\'re trailing badly the underdog bonus inflates it up to ×2.5. The comeback is canon.',
                  `But the arena has a volume limit: at most ${FAME_PER_TURN_CAP} FP banked per turn. Spread your legend across the set, not one blowout.`], anchor: 'fame-bar' },
-        { body: [`One final WARNING — reach ${fameToWin} FP without winning comfortably and the ROCK GODS become undecided about your Victory. Probably they just want an excuse to jump in the fray.`,
-                 'Anyways: they become EVERYONE\'S Rival. Your Spirit buddies become your allies. Temporarily. Good luck with that!',
+        { body: [`So: get to ${fameToWin} FP before anyone knocks the last life out of you, and the crown is yours outright — no margin required.`,
                  'Sorry to impede your playing. Go get \'em, little Rocker!! 🐯🎸'], anchor: 'fame-bar' },
       ],
     },
@@ -4115,8 +4087,8 @@ export function Game({ gameState, onReturnToLobby }) {
       if (fx.type === 'fans') {
         dispatch(fansChanged(fx.spiritId, fx.fans));
       } else if (fx.type === 'fame') {
-        // Through `grantFame` so the 4/turn cap, the crowd multiplier and the
-        // Rock God gate all apply in exactly one place.
+        // Through `grantFame` so the 4/turn cap and the crowd multiplier both
+        // apply in exactly one place.
         grantFame(fx.spiritId, fx.fp, fx.reason);
       } else if (fx.type === 'unsurePool') {
         // ❓ The undecided crowd is client state; the kernel hands back a delta.
@@ -5817,32 +5789,6 @@ export function Game({ gameState, onReturnToLobby }) {
     applyVibeDamage(targetId, dmg, '🧪 test damage', devCurrentSpiritId());
   }
 
-  // 🧪🤘 ROCK GOD test levers — summon the boss on demand (skipping the Fame
-  // trigger entirely) and poke his HP to exercise the winded/kill flows.
-  function devSummonGod() {
-    if (engineRef.current.rockGod.summoned) { addLog('🧪 A Rock God has already been summoned this game.'); return; }
-    const id = devCurrentSpiritId(); if (!id) return;
-    addLog(`🧪 TEST → summoning a Rock God (keyed off ${spiritById[id]?.name}'s playstyle)…`);
-    summonRockGod(id);
-  }
-  function devHurtGod() {
-    const god = engineRef.current.rockGod.god;
-    if (!god || god.hp <= 0 || engineRef.current.rockGod.outcome) { addLog('🧪 No living Rock God to hurt.'); return; }
-    const id = devCurrentSpiritId(); if (!id) return;
-    const def = ROCK_GODS[god.id];
-    const dmg = Math.min(10, god.hp);
-    addLog(`🧪 TEST → ${dmg} damage to ${def.name} (no FP granted).`);
-    triggerDamageNumber(god.num, `−${dmg}`, def.color);
-    // NOTE: raw damage — the engine doubles it if he's winded (same as a real hit).
-    const hit = dispatch(godDamagedAction(id, dmg)).rockGod.lastHit;
-    if (hit?.defeated) godDefeated(id);
-  }
-  function devGodAct() {
-    if (!rockGodActive) { addLog('🧪 No living Rock God — summon one first.'); return; }
-    addLog('🧪 TEST → forcing the Rock God to act.');
-    rockGodAct();
-  }
-
   // Unlock a signature skill (and any prereqs) for a specific spirit, applying
   // the same side-effects the skill tree would.
   function devUnlockSkill(spiritId, skillId, pre = []) {
@@ -6081,267 +6027,6 @@ export function Game({ gameState, onReturnToLobby }) {
   // blacking it out on top of that would hide the recovery UI.
   const isBlinded = blindTurnsLeft > 0 && !netSync;
 
-  // ─── 🤘 ROCK GOD SYSTEM ──────────────────────────────────────────────────────
-  // The endgame boss. Reaching fameToWin with a lead < ROCK_GOD_RUNAWAY_LEAD
-  // summons ONE god (picked from the leader's playstyle) to the Limelight.
-  // Rules: no overlays — Drive = damage = FP (1:1, unamplified), the god acts at
-  // the end of EVERY turn, big attacks telegraph one turn ahead, human turns are
-  // timed, PvP is off. God falls → kill-blow bonus, FP leader crowned. Spirits
-  // wiped → the God keeps the crown. Tuning: data/rockGods.js.
-
-  function godTaunt(kind) {
-    const def = ROCK_GODS[engineRef.current.rockGod.god?.id];
-    const line = def ? godTauntLine(def, kind) : null;
-    if (line) addLog(`${def.icon} ${line}`);
-  }
-
-  function summonRockGod(leaderId) {
-    if (engineRef.current.rockGod.summoned) return;
-    const leader = spirits.find(s => s.id === leaderId);
-    const ns = engineRef.current.noteStates?.[leaderId] ?? {};
-    // The god pick reads amps (still React-owned) — computed here, carried in
-    // the GOD_SUMMONED payload; the engine owns the flag/god object and scales
-    // HP off its own living-spirit count (Phase 6c).
-    const godId = pickRockGod({
-      unlockedSkills: ns.unlockedSkills ?? [],
-      ampsOwned: amps.filter(a => a.ownerId === leaderId).length,
-      livesLost: Math.max(0, (startingLives ?? 3) - (leader?.lives ?? startingLives ?? 3)),
-    });
-    const def = ROCK_GODS[godId];
-    const alive = spirits.filter(sp => !sp.knockedOut);
-    dispatch(godSummonedAction(leaderId, godId));
-
-    // Clear the Limelight — anyone standing there is blasted to a neighbour hex.
-    const squatter = alive.find(sp => sp.num === LIMELIGHT_HEX);
-    if (squatter) {
-      const occupied = [...spirits.map(sp => sp.num), ...amps.map(a => a.hexNum),
-        ...(shadowHex != null ? [shadowHex] : [])];
-      // Seeded: where the god's arrival shoves a Spirit is a rule, not flavour.
-      const destDraw = drawSeeded(1)[0] ?? 0;
-      const dest = freeNeighborHex(LIMELIGHT_HEX, occupied, () => destDraw);
-      if (dest) setSpirits(prev => prev.map(sp => sp.id === squatter.id ? { ...sp, num: dest } : sp));
-      addLog(`💥 ${squatter.name} is hurled off the Limelight by the shockwave — 1 Vibe!`);
-      setTimeout(() => applyVibeDamage(squatter.id, 1, 'Divine Shockwave'), 300);
-    }
-
-    addLog(`🌩️🌩️🌩️ ${leader?.name} reaches ${fameToWin} Fame — but the race is TOO CLOSE. The sky splits open…`);
-    addLog(`${def.icon} ${def.name.toUpperCase()} — ${def.title} — DESCENDS TO THE LIMELIGHT!`);
-    addLog(`🤝 The Spirits stand united! Drive = damage = Fame. Watch the clock — ${godPace.turnSeconds}s a turn or face his VENGEANCE, and he swings every ${godPace.actSeconds}s whether you're ready or not. ${godPace.icon} ${godPace.label}.`);
-    setGodBanner({ key: Date.now() });
-    setTimeout(() => setGodBanner(null), 6500);
-    setTimeout(() => godTaunt('summon'), 900);
-    focusOnHex(LIMELIGHT_HEX, 1600, 0.55, true);
-  }
-
-  // A Spirit strikes the God — melee (adjacent) or Sonic beam (needs Amp I,
-  // facing him, ≤ beam reach). Chord Drive = damage, dealt straight, no dice.
-  function attackRockGod(spiritId) {
-    const god = engineRef.current.rockGod.god;
-    if (!god || god.hp <= 0 || engineRef.current.rockGod.outcome || winner) return;
-    const sp = spirits.find(s => s.id === spiritId);
-    if (!sp || sp.knockedOut) return;
-    if (actionTokenUsedRef.current) { addLog(`⚔️ ${sp.name} has already taken their shot this turn!`); return; }
-
-    const spHex = HEX_BY_NUM[sp.num], godHex = HEX_BY_NUM[god.num];
-    if (!spHex || !godHex) return;
-    const adjacent = axialDist(spHex.q, spHex.r, godHex.q, godHex.r) <= 1;
-    // 📡 THE GATE USED TO BE `unlockedSkills.includes('amp_1')`, WHICH WAS
-    //    ALWAYS TRUE — every Spirit was granted `amp_1` at setup, so the check
-    //    read as "do you have the thing everybody has". With the rig off the tree
-    //    there is no such id; the honest gate is the one every other Sonic in the
-    //    game uses, so striking a God down the beam now asks whether your rig
-    //    actually reaches from where you are standing.
-    const inBeam   = rigForSpirit(sp).inRange && getSonicBeam(sp).has(god.num);
-    const steps    = moveStepsLeftRef.current ?? 0;
-
-    let cost, via;
-    if (adjacent && steps >= 1)    { cost = 1; via = 'melee'; }
-    else if (inBeam && steps >= 2) { cost = 2; via = 'sonic'; }
-    else if (adjacent || inBeam)   { addLog(`⚡ Not enough steps left to strike the God! (melee 1 · sonic 2)`); return; }
-    else { addLog(`🤘 Get in his face, or line your Sonic beam up on him!`); return; }
-
-    const def = ROCK_GODS[god.id];
-    const ns = engineRef.current.noteStates?.[spiritId] ?? {};
-    const chord = ns.driveStack?.length ? spiritChord(spiritId, ns.driveStack) : null;
-    const raw = (chord ? chord.drive : (sp.drive ?? 6)) + (ns.tempDrive ?? 0) + (ns.moshDrive ?? 0);
-    const winded = god.winded;
-    // Phase 6c — the hit lands in the ENGINE (it owns the winded ×2 + HP floor);
-    // the report carries the final number for the log/FP.
-    const hit = dispatch(godDamagedAction(spiritId, raw)).rockGod.lastHit;
-    const dmg = hit?.dmg ?? raw;
-
-    addLog(`${via === 'melee' ? '⚔️' : '🔊'} ${sp.name} ${via === 'melee' ? 'smashes into' : 'blasts'} ${def.name}${chord ? ` — ${chord.name} rings out (⚔️${chord.drive})` : ''}${winded ? ' — HE’S WINDED, DOUBLE DAMAGE' : ''}: ${dmg} damage!`);
-    triggerDamageNumber(god.num, `−${dmg}`, def.color);
-    focusOnHex(god.num, 850, 0.4, true);
-    dispatch(beatsSpent(cost, true));
-    grantFame(spiritId, dmg, `${def.icon} rocked ${def.name}`, false);
-
-    if (hit?.defeated) {
-      godDefeated(spiritId);
-    } else {
-      if (Math.random() < 0.5) setTimeout(() => godTaunt(dmg >= 9 ? 'bigHit' : 'hit'), 500);
-    }
-  }
-
-  function godDefeated(killerId) {
-    const def = ROCK_GODS[engineRef.current.rockGod.god?.id] ?? {};
-    const killer = spirits.find(s => s.id === killerId);
-    addLog(`🌩️💥 ${def.name} STAGGERS… drops to one knee… and POWERSLIDES INTO LEGEND.`);
-    godTaunt('defeat');
-    addLog(`⭐ ${killer?.name} lands the KILLING BLOW — +${ROCK_GOD_KILL_BLOW_FP} Fame flourish!`);
-    grantFame(killerId, ROCK_GOD_KILL_BLOW_FP, 'the killing blow', false);
-    dispatch(godDefeatedAction(killerId)); // Phase 6c — outcome locks in the engine
-    // Crown the FP leader once the kill-blow fame settles.
-    setTimeout(() => {
-      const board = spirits.map(sp => ({ id: sp.id, fame: engineRef.current.noteStates?.[sp.id]?.fame ?? 0 }))
-        .sort((a, b) => b.fame - a.fame);
-      const champ = board[0];
-      const champName = spirits.find(s => s.id === champ.id)?.name;
-      addLog(`👑 The Gods are satisfied. ${champName} stands tallest at ⭐${champ.fame} — A LEGEND IS BORN!`);
-      setTimeout(() => {
-        dispatch(winnerDeclared(champ.id)); // N5: engine winner slice → derived `winner` renders on all clients
-      }, 700);
-    }, 600);
-  }
-
-  function godTriumphs() {
-    if (engineRef.current.rockGod.outcome) return;
-    godTaunt('victory');
-    addLog(`💀 Every Spirit lies silent. The crown stays with the GODS.`);
-    dispatch(godTriumphedAction()); // Phase 6c — outcome locks in the engine
-  }
-
-  // The God answers at the end of EVERY player turn: resolve an armed telegraph,
-  // shake off the winded window, or open a new attack. Phase 6c — the whole
-  // answer is an ENGINE rule (GOD_ACTED: the weighted pick rolls on engine rng,
-  // telegraphs/winded/mosh shoves mutate engine state); this renders the report:
-  // logs, flashes, damage timing, camera, hazard checks on shoved Spirits.
-  function rockGodAct() {
-    const rgBefore = engineRef.current.rockGod;
-    if (!rgBefore.god || rgBefore.god.hp <= 0 || rgBefore.outcome || winner) return;
-    const st = dispatch(godActedAction()).rockGod;
-    const act = st.lastAct;
-    if (!act) return;
-    const god = st.god;
-    const def = ROCK_GODS[god.id];
-    const nameOf = id => engineRef.current.spirits.find(s => s.id === id)?.name;
-
-    // 1) An armed telegraph RESOLVED.
-    if (act.kind === 'resolved') {
-      if (act.attackId === 'thunderclap') {
-        addLog(`${def.icon}⚡ ${def.name} SLAMS the stage — ${act.label}!`);
-        if (!act.caught.length) addLog(`💨 …and hits nothing but stage. The Spirits scattered in time!`);
-        act.caught.forEach((id, i) => setTimeout(() => {
-          addLog(`⚡ ${nameOf(id)} is caught in the shockwave — ${act.dmg} Vibe!`);
-          triggerEffectFlash(id, '⚡', 'THUNDERCLAP!', def.color);
-          applyVibeDamage(id, act.dmg, act.label);
-        }, 350 + i * 400));
-        focusOnHex(god.num, 1100, 0.5, true);
-      } else if (act.attackId === 'power_slide') {
-        addLog(`${def.icon}🛝 ${def.name} DROPS AND SLIDES — ${act.label}!`);
-        if (!act.caught.length) addLog(`💨 …the line was clear. He glides to a stop, striking a pose.`);
-        act.caught.forEach((id, i) => setTimeout(() => {
-          addLog(`🛝 ${nameOf(id)} is bowled over — ${act.dmg} Vibe!`);
-          triggerEffectFlash(id, '🛝', 'POWER SLIDE!', def.color);
-          applyVibeDamage(id, act.dmg, act.label);
-        }, 350 + i * 400));
-        addLog(`😵 ${def.name} is WINDED from the slide — he takes DOUBLE DAMAGE until he acts again!`);
-        focusOnHex(act.end, 1100, 0.5, true);
-      }
-      return;
-    }
-
-    // 2) Winded → he spent the beat recovering (the punish window closed).
-    if (act.kind === 'recovered') {
-      godTaunt('winded');
-      addLog(`🤘 ${def.name} hauls himself upright. The window closes.`);
-      return;
-    }
-
-    // 3) A new attack OPENED.
-    if (act.kind === 'telegraph') {
-      if (act.attackId === 'thunderclap') addLog(`${def.icon}⚡ ${act.warn}`);
-      else addLog(`${def.icon}🛝 ${act.warn} (he's eyeing ${nameOf(act.targetId)}…)`);
-    } else if (act.kind === 'melted') {
-      addLog(`${def.icon}🎸 ${def.name} rips a FACE-MELTER SOLO straight at ${nameOf(act.targetId)} — ${act.dmg} Vibe!`);
-      triggerEffectFlash(act.targetId, '🎸', 'FACE-MELTER!', def.color);
-      setTimeout(() => applyVibeDamage(act.targetId, act.dmg, act.label), 350);
-    } else if (act.kind === 'moshed') {
-      addLog(`${def.icon}🌊 ${def.name} bellows "MOSH!" — the whole stage SURGES outward!`);
-      act.crushed.forEach(id => setTimeout(() => {
-        addLog(`🌊 ${nameOf(id)} is crushed against the crowd — ${act.dmg} Vibe!`);
-        applyVibeDamage(id, act.dmg, act.label);
-      }, 400));
-      // Positions already moved in the engine; shoved Spirits can land in
-      // stage hazards — same rule as any push.
-      act.moves.forEach((mv, i) => setTimeout(() => checkStageFxHex(mv.id, mv.to), 450 + i * 120));
-    }
-    // (act.kind === 'fizzled' — the slide had no line; he shrugs it off silently.)
-  }
-
-  // 🤘 The God's pace, from the lobby's difficulty dial (rides in the game
-  // config so every client in a room agrees — see data/rockGods.js).
-  const godPace = rockGodPace(gameState.godDifficulty);
-
-  // ── ⏰ THE GOD'S CLOCK — human turns are timed while the fight is live.
-  useEffect(() => {
-    if (!rockGodActive || !acting || isBot(acting) || acting.knockedOut || winner) {
-      setBossTimer(null);
-      return;
-    }
-    setBossTimer(godPace.turnSeconds);
-    const iv = setInterval(() => {
-      setBossTimer(prev => {
-        if (prev == null) return prev;
-        if (prev <= 1) { clearInterval(iv); setBossTimerExpired(true); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(iv);
-  }, [rockGodActive, acting?.id, godPace.turnSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── 🤘 THE GOD'S OWN CLOCK — he answers on WALL-CLOCK time ─────────────────
-  // The 2026-08-05 round-clock pass moved every board effect onto the round so
-  // nobody eats damage before they've moved. The God is the exception the owner
-  // asked for: "a different beast — everyone's gotta be quick on their feet."
-  // He no longer waits for the turn order at all. Every `actSeconds` of real
-  // time, he acts: an armed telegraph lands, or a new one opens.
-  //
-  // Only the client driving the acting Spirit runs this (rockGodAct dispatches
-  // engine actions — two machines running the timer would double his turns, and
-  // a spectator's tab would inject actions nobody asked for). The interval is
-  // rebuilt whenever the turn passes, so the God's clock restarts with each
-  // player: taking your turn briskly is what buys you a free one.
-  useEffect(() => {
-    if (!rockGodActive || winner || !canAct) return;
-    if (battleState) return;               // mid-cinematic — let it finish first
-    const iv = setInterval(() => {
-      // Re-read live state: the fight can end inside the interval.
-      const rg = engineRef.current.rockGod;
-      if (!rg?.god || rg.god.hp <= 0 || rg.outcome || winnerRef.current) return;
-      if (battleStateRef.current) return;  // don't cut across a battle overlay
-      addLog(`⏱️ The God doesn't wait for anyone.`);
-      rockGodAct();
-    }, Math.max(4, godPace.actSeconds) * 1000);
-    return () => clearInterval(iv);
-  }, [rockGodActive, acting?.id, canAct, winner, !!battleState, godPace.actSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Expiry resolves in a FRESH render closure (endTurn reads live state).
-  useEffect(() => {
-    if (!bossTimerExpired) return;
-    setBossTimerExpired(false);
-    if (!rockGodActive || !acting || winner) return;
-    dispatch(godTimerExpiredAction(acting.id)); // replay-log seam — the countdown itself stays client
-    const def = ROCK_GODS[engineRef.current.rockGod.god?.id] ?? {};
-    addLog(`⏰ TOO SLOW! ${def.name ?? 'The God'}'s attention snaps to ${acting.name} — VENGEANCE! ${ROCK_GOD_VENGEANCE_DMG} Vibe!`);
-    triggerEffectFlash(acting.id, '⚡', 'VENGEANCE!', def.color ?? '#ffcc22');
-    applyVibeDamage(acting.id, ROCK_GOD_VENGEANCE_DMG, 'Divine Vengeance');
-    const punishedId = acting.id;
-    setTimeout(() => {
-      if (actingRef.current?.id === punishedId && !battleStateRef.current) endTurn();
-    }, 700);
-  }, [bossTimerExpired]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // ─── FAME POINTS ──────────────────────────────────────────────────────────────
   // Winning a battle earns Fame. Bigger margins, bigger legend. fameFromMargin
   // (and the underdog ramp math) now live in the engine —
@@ -6363,7 +6048,7 @@ export function Game({ gameState, onReturnToLobby }) {
     const ns = noteStates[spiritId] ?? {};
     // 🎤 Fans amplify the value of every deed (wins, riffs, cadences). The crowd
     // doesn't convert TO Fame — it multiplies the Fame you earn. Pass amplify=false
-    // for non-deed awards (e.g. the future Rock Gods finale payout) to skip this.
+    // for non-deed awards (a flat scripted grant, say) to skip this.
     const assigned = (ns.assignments ?? []).length;
     const mult    = amplify ? crowdMultiplier(ns.diehards ?? FAN_DIEHARD_START, ns.casuals ?? 0, assigned) : 1;
     const uncapped = amplify ? Math.max(fp, Math.round(fp * mult)) : fp;
@@ -6396,37 +6081,28 @@ export function Game({ gameState, onReturnToLobby }) {
     // check saw a smaller lead than reality and summoned the God into a blowout.
     const myFame = engineRef.current.noteStates?.[spiritId]?.fame ?? newFame;
     if (myFame >= fameToWin) {
-      if (engineRef.current.rockGod.summoned) {
-        // 🤘 A Rock God holds the gate — Fame alone can't end it now. Victory
-        // flows only through the boss fight (godDefeated crowns the FP leader).
-      } else {
-        // 🤘 THE RULE OF THE GODS — a runaway lead is crowned outright; only a
-        // genuinely close race summons a Rock God to settle it (data/rockGods.js).
+      // ⭐ THE FAME TARGET IS THE WIN. Reaching it crowns you outright, at any
+      // number of lives and at any margin.
+      //
+      // 📌 It did not always. Until the Rock God finale was archived (2026-09-01)
+      // a close race at the target summoned an endgame boss instead of ending
+      // the game, and the summon was a ONE-WAY DOOR: once the God stood, the Fame
+      // win was unreachable for the rest of the match. That is the shape of "I
+      // was on ⭐27/21 and the finishing screen never came" (2026-08-19). The
+      // branch is gone, not merely shelved, so there is nothing left to fall
+      // through. ⚠️ The engine keeps its own copy of this rule
+      // (engine/systems/battleFlow.js §grantFame) — the two must agree: Fame
+      // banked inside a BATTLE flows through the engine's generator, Fame banked
+      // anywhere else (a riff-off payout, a cadence, an Azrael streak, a
+      // Limelight pose) flows through here.
+      {
         const rivalBest = Math.max(0, ...spirits.filter(s => s.id !== spiritId && !s.knockedOut)
           .map(s => engineRef.current.noteStates?.[s.id]?.fame ?? 0));
         const lead = myFame - rivalBest;
-        // 🪦 SHELVED 2026-08-18 (`ROCK_GODS_SHELVED`) — while the shelf holds, the
-        // Fame target ALWAYS crowns and the finale is never summoned.
-        // ⚠️ THIS DISJUNCT WAS ADDED TO THE ENGINE'S COPY OF THIS RULE ON THE DAY
-        // OF THE CALL (engine/systems/battleFlow.js §grantFame) AND NOT TO THIS
-        // ONE, and the two copies are not interchangeable: Fame banked inside a
-        // BATTLE flows through the engine's generator, Fame banked anywhere else
-        // — a riff-off payout, a cadence, an Azrael streak, a Limelight pose —
-        // flows through here. So a player could cross the target off a duel and
-        // summon a boss the design had retired. And the summon is a ONE-WAY DOOR:
-        // `rockGod.summoned` gates the branch above forever after, so the Fame
-        // win becomes unreachable for the rest of the match. That is the shape of
-        // "I was on ⭐27/21 and the finishing screen never came" (2026-08-19).
-        if (ROCK_GODS_SHELVED || lead >= ROCK_GOD_RUNAWAY_LEAD || startingLives < 3) {
-          // Rock Gods only descend in games with 3+ lives (≥24 FP). Shorter games crown outright.
-          addLog(`🌟🌟🌟 ${sp?.name} reaches ${fameToWin} Fame — ⭐${myFame} vs ⭐${rivalBest}, a runaway lead of ${lead}. A LEGEND IS BORN! 🌟🌟🌟`);
-          setTimeout(() => {
-            dispatch(winnerDeclared(spiritId)); // N5: engine winner slice → derived `winner` renders on all clients
-          }, 600);
-        } else {
-          addLog(`⭐ ${sp?.name} hits ${fameToWin} Fame — but ⭐${myFame} vs ⭐${rivalBest} is only a ${lead}-point lead (needs ${ROCK_GOD_RUNAWAY_LEAD}). The Gods demand a FINALE.`);
-          summonRockGod(spiritId);
-        }
+        addLog(`🌟🌟🌟 ${sp?.name} reaches ${fameToWin} Fame — ⭐${myFame} vs ⭐${rivalBest}, a lead of ${lead}. A LEGEND IS BORN! 🌟🌟🌟`);
+        setTimeout(() => {
+          dispatch(winnerDeclared(spiritId)); // N5: engine winner slice → derived `winner` renders on all clients
+        }, 600);
       }
     }
   }
@@ -6441,8 +6117,7 @@ export function Game({ gameState, onReturnToLobby }) {
   // asks again. There are at least three such routes today:
   //   · ⛔ the per-turn cap (`finalFp <= 0`) returns before the check;
   //   · `checkStageFxThresholds` runs before it, so a throw in a stage effect
-  //     eats the win as well as the effect;
-  //   · a summoned Rock God gates it permanently, and the God is SHELVED.
+  //     eats the win as well as the effect.
   // A test that only fires on a TRANSITION cannot notice a state the game is
   // already IN. This is the backstop: whoever is over the line at the top of ANY
   // turn is crowned then, whatever happened on the beat they crossed it.
@@ -6455,10 +6130,6 @@ export function Game({ gameState, onReturnToLobby }) {
     // trust. N7: one client crowns — the same rule the bot driver follows.
     if (netSyncRef.current) return false;
     if (netRef.current && (!netRef.current.isHost || netRef.current.spectator)) return false;
-    // 🤘 The same gate `grantFame` uses, for the same reason: while a God holds
-    // the stage the Fame target does not end the match, the boss fight does.
-    if (engineRef.current.rockGod?.summoned) return false;
-
     // ⚠️ SORTED, NOT `Math.max`, because the runner-up is half the rule. Ties
     // fall to `spirits` order, which is engine-owned and identical on every
     // client — `Array.prototype.sort` is stable, so this cannot disagree across
@@ -6473,12 +6144,6 @@ export function Game({ gameState, onReturnToLobby }) {
     const rivalBest = board[1]?.fame ?? 0;
     const lead = top.fame - rivalBest;
     const nm = spirits.find(s => s.id === top.id)?.name;
-    // Same disjunct as `grantFame` — one shelf, read in both places.
-    if (!(ROCK_GODS_SHELVED || lead >= ROCK_GOD_RUNAWAY_LEAD || startingLives < 3)) {
-      addLog(`⭐ ${nm} is standing on ${top.fame} Fame — but ⭐${top.fame} vs ⭐${rivalBest} is only a ${lead}-point lead (needs ${ROCK_GOD_RUNAWAY_LEAD}). The Gods demand a FINALE.`);
-      summonRockGod(top.id);
-      return false;
-    }
     addLog(`🌟🌟🌟 ${nm} stands at ⭐${top.fame}/${fameToWin} — ⭐${top.fame} vs ⭐${rivalBest}, a lead of ${lead}. A LEGEND IS BORN! 🌟🌟🌟`);
     dispatch(winnerDeclared(top.id)); // N5: engine winner slice → derived `winner` renders on all clients
     return true;
@@ -6777,8 +6442,8 @@ export function Game({ gameState, onReturnToLobby }) {
     flashFanFx(spiritId, 'gain', deed.gain);
   }
 
-  // Total committed crowd across the arena — the gauge that will summon the
-  // Rock Gods finale once that boss layer is built. (No trigger wired yet.)
+  // Total committed crowd across the arena — a read-only gauge of how much of
+  // the room is committed to somebody. Nothing consumes it yet.
   function arenaFans() {
     return Object.values(noteStates).reduce((sum, ns) =>
       sum + (ns?.diehards ?? 0) + (ns?.casuals ?? 0), unsurePool);
@@ -6884,11 +6549,6 @@ export function Game({ gameState, onReturnToLobby }) {
       };
     }
     return ch;
-  }
-
-  // ⚡ Dissonance Edge — REMOVED. Returns zero mods for backward compat.
-  function edgeCombatMods() {
-    return { drive: 0, sustainPenalty: 0 };
   }
 
   // Returns hex nums in the forward attack cone of a spirit
@@ -7179,7 +6839,6 @@ export function Game({ gameState, onReturnToLobby }) {
    */
   function initiateSwing(targetId, tent = null) {
     if (!acting) return;
-    if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
 
     // ⚠️ THE LIVE MIRROR, NOT THE RENDER SNAPSHOT — the same trap `defenderPosing`
     // was fixed for further down, in this same function. Every caller but one
@@ -7260,13 +6919,11 @@ export function Game({ gameState, onReturnToLobby }) {
     // being written outside it.
     const cranked  = !!nsA.atEleven;
     const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0) + skillMods.pyroBonus;
-    const atkEdge  = edgeCombatMods(nsA);
-    const defEdge   = edgeCombatMods(nsD);
     // ⚖️ Stacked bonuses cap at ATK_BONUS_CAP — no single turn should assemble
     // a +6-and-up tower on top of the chord (balance audit, 2026-07-16).
     // 🤘 moshDrive rides in here too: it's a standing buff, but it still has to
     // live under the same ceiling as everything else.
-    const rawAtkBonus = (nsA.tempDrive ?? 0) + (nsA.moshDrive ?? 0) + atkEdge.drive;
+    const rawAtkBonus = (nsA.tempDrive ?? 0) + (nsA.moshDrive ?? 0);
     const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
     if (rawAtkBonus > atkBonus) addLog(`⚖️ The rig can only take so much — attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
     // 🔊 GOES TO 11 — the SET. It overwrites the finished total, so it neither
@@ -7275,7 +6932,7 @@ export function Game({ gameState, onReturnToLobby }) {
     // is where he gets turned down.
     const atkStat  = cranked ? ELEVEN_DRIVE : atkBase + atkBonus;
     const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
-    const defBonus = (nsD.tempSustain ?? 0) - defEdge.sustainPenalty;
+    const defBonus = (nsD.tempSustain ?? 0);
     const defStat  = defBase + defBonus;
     // ⚠️ THE LIVE MIRROR, NOT THE RENDER SNAPSHOT. `posing` up top is a view of
     // the last render; a rival shoved off the Limelight earlier in this same tick
@@ -7460,7 +7117,6 @@ export function Game({ gameState, onReturnToLobby }) {
   // Universal 2-AP finisher (Style rework) — Blaster of Ra replaces it for Intergalactic 0.
   function resolveSmash(targetId) {
     if (!acting) return;
-    if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
     const target = spirits.find(s => s.id === targetId);
     if (!target || target.knockedOut) return;
     if (moveStepsLeft < SMASH_AP_COST) { addLog(`🎸 Not enough Action Points — the Smash costs ${SMASH_AP_COST} AP.`); return; }
@@ -8173,7 +7829,6 @@ export function Game({ gameState, onReturnToLobby }) {
     // the strike is attempted. Every other refusal that function can raise is
     // already covered below (token, AP, a live target); this one was not, and an
     // unmirrored refusal now means a Ronin who has dashed and paid for nothing.
-    if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
     const ns = actingNoteState ?? {};
     const bushidoCd = cooldownLeft(ns, 'psycho_bushido');
     if (bushidoCd > 0) {
@@ -8183,8 +7838,8 @@ export function Game({ gameState, onReturnToLobby }) {
     // 💿 THE Db REFUSAL BELONGS WITH THE OTHER PRE-DASH REFUSALS, not after the
     // warp. Everything from here down commits the turn, and a Ronin who has
     // dashed and then been told he cannot afford the strike has paid his entire
-    // AP pool for nothing — the same class of bug as the unmirrored `rockGod`
-    // check directly above.
+    // AP pool for nothing — the same class of bug as any refusal that fires
+    // after the state has already been committed.
     if ((ns.dbPoints ?? 0) < PSYCHO_BUSHIDO_DB_COST) {
       addLog(`🌀 Not enough Db for Psycho Bushido — costs ${PSYCHO_BUSHIDO_DB_COST} Db.`);
       return;
@@ -8744,7 +8399,6 @@ export function Game({ gameState, onReturnToLobby }) {
 
   function initiateSonicAttack(targetId) {
     if (!acting) return;
-    if (rockGodActive) { addLog(`🤘 The Spirits stand UNITED — take it to the God!`); return; }
     if (actionTokenUsed) { addLog('🔊 Already used your Action Token this turn!'); return; }
     // (Main Amp — every Spirit is always wired from turn 1; no "unplugged" check.)
 
@@ -8844,10 +8498,8 @@ export function Game({ gameState, onReturnToLobby }) {
     const cranked  = !!nsA.atEleven;
     const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0)
                    + skillMods.pyroBonus;
-    const atkEdge  = edgeCombatMods(nsA);
-    const defEdge   = edgeCombatMods(nsD);
     // ⚖️ Same stacked-bonus cap as Thrash (balance audit, 2026-07-16).
-    const rawAtkBonus = (nsA.tempDrive ?? 0) + (nsA.moshDrive ?? 0) + atkEdge.drive;
+    const rawAtkBonus = (nsA.tempDrive ?? 0) + (nsA.moshDrive ?? 0);
     const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
     if (rawAtkBonus > atkBonus) addLog(`⚖️ The rig can only take so much — attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
     // 🔊 GOES TO 11 — the SET. It overwrites the finished total, so it neither
@@ -8856,7 +8508,7 @@ export function Game({ gameState, onReturnToLobby }) {
     // is where he gets turned down.
     const atkStat  = cranked ? ELEVEN_DRIVE : atkBase + atkBonus;
     const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
-    const defBonus = (nsD.tempSustain ?? 0) - defEdge.sustainPenalty;
+    const defBonus = (nsD.tempSustain ?? 0);
     const defStat  = defBase + defBonus;
     // ⚠️ THE LIVE MIRROR, NOT THE RENDER SNAPSHOT. `posing` up top is a view of
     // the last render; a rival shoved off the Limelight earlier in this same tick
@@ -9959,7 +9611,6 @@ export function Game({ gameState, onReturnToLobby }) {
         if (!spirits.find(s => s.id === e.spiritId)?.cpu) showTip('fame');
       },
       declareWinner:         (e) => dispatch(winnerDeclared(e.spiritId)),
-      summonRockGod:         (e) => summonRockGod(e.spiritId),
     };
   }
 
@@ -10237,7 +9888,7 @@ export function Game({ gameState, onReturnToLobby }) {
                 const kd = engineRef.current.spirits.find(sp => sp.id === acting.id);
                 if (kd?.knockedOut) {
                   dispatch(spiritEliminated(acting.id));
-                  const w = decideWinner(engineRef.current.spirits, engineRef.current.rockGod);
+                  const w = decideWinner(engineRef.current.spirits);
                   if (w) dispatch(winnerDeclared(w));
                 }
               }, 80);
@@ -10642,7 +10293,6 @@ export function Game({ gameState, onReturnToLobby }) {
     return {
       amps,                       // ⚠️ the Phase-2 stub ([]) — the same value the human UI uses
       shadowHex,
-      rockGodActive,
       skillById: SKILL_BY_ID,
       unsurePool,
       // 🎤 THE LIVE CAP WINDOW, not a fresh `{}`. `grantFame` clips at
@@ -10899,7 +10549,6 @@ export function Game({ gameState, onReturnToLobby }) {
     if (step === 'committed' || step === 'moving') {
       botStepRef.current = 'moving';
       const steps = moveStepsLeftRef.current ?? 0;
-      const myHex = HEX_BY_NUM[self.num];
 
       // 2a) FREE GEAR (no AP cost). Each condition self-disables after use, so the
       //     bot fires each at most once and then falls through to movement.
@@ -10912,14 +10561,7 @@ export function Game({ gameState, onReturnToLobby }) {
       //     attack from it without moving off). Otherwise stop to take a shot.
       const hurt = (liveSelf.vibe ?? 9) <= Math.ceil((liveSelf.maxVibe ?? 5) * 0.4);
       const onHealHex = hurt && typeof spotlightHex === 'number' && self.num === spotlightHex;
-      // 🤘 Boss fight: "in range" means the GOD is in reach (adjacent or beamed).
-      const bossGod = engineRef.current.rockGod.god;
-      const godHex = rockGodActive ? HEX_BY_NUM[bossGod?.num] : null;
-      const godInReach = !!(godHex && myHex && (
-        axialDist(myHex.q, myHex.r, godHex.q, godHex.r) <= 1
-        || (ampsInRangeRef.current >= 1 && getSonicBeam(self).has(bossGod.num))
-      ));
-      const rivalInRange = godInReach || getRivalsInCone(self).length > 0
+      const rivalInRange = getRivalsInCone(self).length > 0
         || (ampsInRangeRef.current >= 1 && getRivalsInBeam(self).length > 0);
       const canAttackNow = rivalInRange && steps >= 2;
       if (steps < 1 || canAttackNow || (steps < 2 && rivalInRange) || onHealHex) {
@@ -10956,27 +10598,6 @@ export function Game({ gameState, onReturnToLobby }) {
       // beating one ahead of us triggers the underdog comeback Fame. Attacking
       // doesn't move us, so a shot taken from the spotlight still banks the heal.
       if (!usedToken) {
-        // 🤘 Boss fight — strike the God if lined up, re-aim if close, else march on.
-        if (rockGodActive && engineRef.current.rockGod.god) {
-          const god = engineRef.current.rockGod.god;
-          const gh = HEX_BY_NUM[god.num], mh = HEX_BY_NUM[self.num];
-          const adjacent = gh && mh && axialDist(mh.q, mh.r, gh.q, gh.r) <= 1;
-          const inBeam = ampsInRangeRef.current >= 1 && getSonicBeam(self).has(god.num);
-          if ((adjacent && steps >= 1) || (inBeam && steps >= 2)) {
-            botStepRef.current = 'ending';
-            schedule(guard(() => attackRockGod(self.id)));
-            return;
-          }
-          // In beam-distance but not aimed? Spend a step to face the God.
-          if (steps >= 3 && gh && mh && ampsInRangeRef.current >= 1
-              && axialDist(mh.q, mh.r, gh.q, gh.r) <= 3) {
-            schedule(aimFace(angleTo(mh, gh))); return;
-          }
-          // Out of reach — wrap up and close the gap next turn.
-          botStepRef.current = 'ending';
-          schedule(guard(() => { endTurn(); botStepRef.current = 'idle'; }));
-          return;
-        }
         // ── COMBAT DECISIONS ─────────────────────────────────────────────
         const selfHex   = HEX_BY_NUM[self.num];
         const usedSet   = ns.usedStockIdx;
@@ -11285,15 +10906,9 @@ export function Game({ gameState, onReturnToLobby }) {
     // captured-`tgt` transform, with no stale-closure risk.
 
     function checkWinner(updated) {
-      // 🏆 The boss-aware decision now lives in the engine (Phase 3c kernel);
-      // the client just runs the resulting timers.
-      const { winnerId, godTriumphs: godWins } = decideWinner(updated, {
-        godSummoned: engineRef.current.rockGod.summoned, hasWinner: !!winner, attackerId: atkId,
-      });
-      if (engineRef.current.rockGod.summoned && !winner) {
-        if (godWins) setTimeout(() => godTriumphs(), 400);
-        return;
-      }
+      // 🏆 The decision lives in the engine (Phase 3c kernel); the client just
+      // runs the resulting timers.
+      const { winnerId } = decideWinner(updated, { hasWinner: !!winner, attackerId: atkId });
       // N5: engine winner slice → derived `winner` renders on all clients
       if (winnerId) setTimeout(() => { dispatch(winnerDeclared(winnerId)); }, 0);
     }
@@ -11360,12 +10975,6 @@ export function Game({ gameState, onReturnToLobby }) {
   function onHexClick(num) {
     if (!acting || !canAct) return; // N4/N7: gate — only the acting client drives moves
     // 🪦 CURSED SHAMISEN EXORCISM — removed 2026-08-26. No board token to exorcise.
-    // 🤘 ROCK GOD — clicking the God IS the attack (melee if adjacent, Sonic
-    // beam if lined up). Overrides every other action; commit fast, hit hard.
-    if (rockGodActive && rockGod && num === rockGod.num) {
-      attackRockGod(acting.id);
-      return;
-    }
     if (action === "swing") {
       // 👤 Swinging at the double looks exactly like swinging at the Ronin —
       // right up until the blade meets nothing.
@@ -12126,10 +11735,6 @@ export function Game({ gameState, onReturnToLobby }) {
           🧠 REVIEW ({botJournalRef.current.length})
         </button>
       )}
-      {/* 🤘 Total wipe — the Rock God keeps the crown */}
-      <GodVictoryOverlay god={rockGod} bossOutcome={bossOutcome} spirits={spirits}
-        noteStates={noteStates} onReturnToLobby={onReturnToLobby} />
-
       <GameStyles />
 
       {/* 🎓 BEGINNER TIP POPUP — paged walkthroughs with HUD-pointing arrows
@@ -12287,12 +11892,13 @@ export function Game({ gameState, onReturnToLobby }) {
             the ringed, breathing blip — the same fact, attached to the position it
             describes rather than floating next to it. See FameRace.jsx. ── */}
         {(() => {
+          // 🔥 CONTESTED = somebody is inside four points of the crown and the
+          // runner-up is still within striking distance. It is a presentation
+          // flag only — the race is tight, so the meter should read tight.
           const fps    = spirits.map(sp => noteStates?.[sp.id]?.fame ?? 0);
           const sorted = [...fps].sort((a, b) => b - a);
-          // Same rule grantFame uses: reaching the target without this much
-          // daylight summons the Rock God instead of ending the game.
           const contested = (sorted[0] ?? 0) >= fameToWin - 4
-            && ((sorted[0] ?? 0) - (sorted[1] ?? 0)) < ROCK_GOD_RUNAWAY_LEAD;
+            && ((sorted[0] ?? 0) - (sorted[1] ?? 0)) < FAME_RACE_CONTESTED_LEAD;
           return (
             <FameRace spirits={spirits} fameToWin={fameToWin}
               fameOf={id => noteStates?.[id]?.fame ?? 0}
@@ -12587,11 +12193,6 @@ export function Game({ gameState, onReturnToLobby }) {
         spiritById={spiritById}
         spirits={spirits}
         testMode={testMode}
-        devSummonGod={devSummonGod}
-        devHurtGod={devHurtGod}
-        devGodAct={devGodAct}
-        rockGod={rockGod}
-        bossOutcome={bossOutcome}
       />
       {/* ── 🗡️ SIGNATURE ABILITIES — per-spirit exclusive-route reference ── */}
       <SignatureAbilities
@@ -12718,7 +12319,7 @@ export function Game({ gameState, onReturnToLobby }) {
                       its own block: marquee readout, a thick track with the
                       Stage-FX thresholds notched in, and the per-turn cap pips
                       underneath. Goes white-hot as you close on the crown and
-                      red when you're in Rock God territory without the lead. */}
+                      red when a rival is close enough to take it off you. */}
                   {(() => {
                     const fp        = ns.fame ?? 0;
                     const pct       = Math.min(100, (fp / fameToWin) * 100);
@@ -12729,10 +12330,10 @@ export function Game({ gameState, onReturnToLobby }) {
                     const rivalBest = Math.max(0, ...spirits.filter(o => o.id !== s.id)
                                         .map(o => noteStates?.[o.id]?.fame ?? 0));
                     const lead      = fp - rivalBest;
-                    // In striking distance of the crown but WITHOUT the runaway
-                    // lead — reaching the target here summons the boss instead
-                    // of ending the game. The bar should feel like a warning.
-                    const danger    = fp >= fameToWin - 4 && lead < ROCK_GOD_RUNAWAY_LEAD;
+                    // In striking distance of the crown with a rival right on
+                    // your heels. Nothing mechanical hangs off it — the bar just
+                    // should feel like a warning, because the race is that close.
+                    const danger    = fp >= fameToWin - 4 && lead < FAME_RACE_CONTESTED_LEAD;
                     const hot       = pct >= 75;
                     const fill      = danger
                       ? "linear-gradient(90deg,#7a1500,#ff4400,#ff9955)"
@@ -12743,7 +12344,7 @@ export function Game({ gameState, onReturnToLobby }) {
                     return (
                       <div data-tip-anchor="fame-bar" style={{marginTop:6, marginBottom:2}}
                         title={danger
-                          ? `⭐${fp} / ${fameToWin} — lead of ${lead} (needs ${ROCK_GOD_RUNAWAY_LEAD} to win outright). Hit the target now and the ROCK GOD descends!`
+                          ? `⭐${fp} / ${fameToWin} — only a ${lead}-point lead. One good turn from a rival and the crown changes hands.`
                           : `Fame Points — first to ${fameToWin} wins the game!`}>
 
                         {/* Marquee readout */}
@@ -12811,7 +12412,7 @@ export function Game({ gameState, onReturnToLobby }) {
                           {danger && (
                             <span style={{marginLeft:"auto",fontSize:6,fontWeight:800,letterSpacing:.6,
                               color:"#ff8855",textShadow:"0 0 6px #ff440088"}}>
-                              🤘 ROCK GOD WATCH
+                              🔥 NECK AND NECK
                             </span>
                           )}
                         </div>
@@ -12821,11 +12422,11 @@ export function Game({ gameState, onReturnToLobby }) {
                   {/* 🎛️ Drive & Sustain come from the player's Chord Stack now (not a static sheet) */}
                   <div data-tip-anchor="stat-knobs" style={{display:"flex",gap:9,marginTop:5,alignItems:"center"}}>
                     {/* boost = every live modifier on this stat, summed — pattern-boost tempDrive/
-                        tempSustain PLUS the Dissonance Edge stage delta (edgeCombatMods), so the
-                        dial always reflects the stat you'd actually fight with right now. */}
+                        tempSustain, so the dial always reflects the stat you'd actually fight
+                        with right now. */}
                     <StatKnob label="DRIVE" value={spiritChord(s.id, ns.driveStack ?? []).drive}
-                      boost={(ns.tempDrive ?? 0) + (ns.moshDrive ?? 0) + edgeCombatMods(ns).drive} color="#ff6644"/>
-                    <StatKnob label="SUSTAIN" value={spiritChord(s.id, ns.sustainStack ?? []).sustain} boost={(ns.tempSustain ?? 0) - edgeCombatMods(ns).sustainPenalty} color="#44aaff"/>
+                      boost={(ns.tempDrive ?? 0) + (ns.moshDrive ?? 0)} color="#ff6644"/>
+                    <StatKnob label="SUSTAIN" value={spiritChord(s.id, ns.sustainStack ?? []).sustain} boost={(ns.tempSustain ?? 0)} color="#44aaff"/>
                     <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
                       <div data-tip-anchor="vibe-bar">
                         {/* ❤️ LIVES RIDE THE VIBE LABEL. They are not a second health
@@ -13223,38 +12824,9 @@ export function Game({ gameState, onReturnToLobby }) {
                 </RailBtn>
               );
             })()}
-            {/* 🤘 STRIKE THE GOD — the ONLY attack while the Rock God stands.
-                Clicking his hex also works; this button makes the affordance
-                impossible to miss (bugfix 2026-07-16: players couldn't find
-                the attack — PvP buttons had no targets and went dark). */}
-            {rockGodActive && rockGod && !actionTokenUsed && (() => {
-              const def = ROCK_GODS[rockGod.id] ?? {};
-              const spHex = acting ? HEX_BY_NUM[acting.num] : null;
-              const godHex = HEX_BY_NUM[rockGod.num];
-              const adjacent = spHex && godHex && axialDist(spHex.q, spHex.r, godHex.q, godHex.r) <= 1;
-              const inBeam = actingRig.inRange && acting && getSonicBeam(acting).has(rockGod.num);
-              const canMelee = adjacent && moveStepsLeft >= 1;
-              const canBeam  = inBeam && moveStepsLeft >= 2;
-              const canStrike = canMelee || canBeam;
-              const why = canStrike ? ''
-                : (adjacent || inBeam) ? ` (${adjacent ? '1AP' : '2AP'})`
-                : ' — get adjacent or line up your beam';
-              return (
-                <RailBtn className={canStrike ? 'btn active' : 'btn'}
-                  style={{borderColor: canStrike ? (def.color ?? '#ffcc22') : '#443300',
-                    color: canStrike ? (def.color ?? '#ffcc22') : '#443300',
-                    fontWeight: 700,
-                    ...(canStrike ? { animation:'crew-ready-glow 1.6s ease-in-out infinite' } : {})}}
-                  disabled={!canStrike}
-                  title={`Strike ${def.name ?? 'the God'} — your chord's Drive lands straight as damage AND Fame (no dice). Melee adjacent (1 AP) or Sonic beam (2 AP, needs Amp I). Clicking his hex works too.`}
-                  onClick={() => canStrike && attackRockGod(acting.id)}>
-                  🤘 STRIKE {def.name ? def.name.toUpperCase() : 'THE GOD'}{canStrike ? ` (${canMelee ? '⚔️ 1AP' : '🔊 2AP'})` : why}
-                </RailBtn>
-              );
-            })()}
-            {/* SWING — baseline attack, always visible & lit (PvP is off during the God fight).
+            {/* SWING — baseline attack, always visible & lit.
                 Hover previews the cone. GRAYED = no AP / token spent; FADED = no rival in range. */}
-            {!rockGodActive && (() => {
+            {(() => {
               const cone = acting ? getSwingCone(acting) : new Set();
               const rivals = acting ? getRivalsInCone(acting) : [];
               // 👤 The double counts as a target here. If the button read "(0)"
@@ -13296,7 +12868,7 @@ export function Game({ gameState, onReturnToLobby }) {
                 onClick={() => setAction(null)}>Cancel</RailBtn>
             )}
             {/* 🎸 THE SMASH (melee) — or 🌀 BLASTER OF RA (ranged, piercing) for Intergalactic 0 */}
-            {!rockGodActive && (() => {
+            {(() => {
               const ns = actingNoteState ?? {};
               // 🌀 Once Blaster of Ra is unlocked, it REPLACES the Smash: ranged beam, pierces all.
               const hasBlaster = acting?.id === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
@@ -13351,7 +12923,7 @@ export function Game({ gameState, onReturnToLobby }) {
                 onClick={() => setAction(null)}>Cancel</RailBtn>
             )}
             {/* SONIC ATTACK — always wired (Main Amp); hover previews beam + rig range ring */}
-            {!rockGodActive && (() => {
+            {(() => {
               const beam    = acting ? getSonicBeam(acting) : new Set();
               const targets = acting ? getRivalsInBeam(acting) : [];
               const poolNow = actingRig.pool;
@@ -13442,7 +13014,7 @@ export function Game({ gameState, onReturnToLobby }) {
                 what you will END UP with, not what it costs. Off a thin melody
                 that number is a gain, and hiding that behind "-1 AP" would make
                 the one turn it most wants to be called look like the worst. */}
-            {!rockGodActive && acting?.id === 'Metalness_Monster' && (() => {
+            {acting?.id === 'Metalness_Monster' && (() => {
               const already = !!engineState.turn?.slimingId;
               const canCall = hasConfirmed && !already && moveStepsLeft >= SLIME_AP_COST;
               return (
@@ -13465,7 +13037,7 @@ export function Game({ gameState, onReturnToLobby }) {
                 It IS a Swing, so it wears the Swing's gates: a confirmed turn,
                 the Action Token unspent, 1 AP. What it does NOT need is to be
                 standing next to anybody — that is the whole ability. */}
-            {!rockGodActive && (actingNoteState?.unlockedSkills ?? []).includes('tentacle') && (() => {
+            {(actingNoteState?.unlockedSkills ?? []).includes('tentacle') && (() => {
               const inReach = spirits.filter(sp =>
                 !sp.knockedOut && sp.id !== acting?.id && tentacleAim.has(sp.num));
               const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
@@ -14341,9 +13913,9 @@ export function Game({ gameState, onReturnToLobby }) {
               </div>
             );
             const ns = noteStates[s.id] ?? {};
-            // Same combined-modifier total as the acting spirit's own dial (tempSustain +
-            // Edge stage delta) — this row is exactly the "rivals can read the stance" surface.
-            const rivalSustainDelta = (ns.tempSustain ?? 0) - edgeCombatMods(ns).sustainPenalty;
+            // Same modifier total as the acting spirit's own dial — this row is
+            // exactly the "rivals can read the stance" surface.
+            const rivalSustainDelta = (ns.tempSustain ?? 0);
             return (
               <div key={s.id} className="card" style={{
                 padding:"4px 7px", marginBottom:3,
@@ -16388,9 +15960,6 @@ export function Game({ gameState, onReturnToLobby }) {
                 );
               })()}
 
-              {/* ── 🤘 ROCK GOD — telegraphs + the God's standee + HP bar ── */}
-              <RockGodBoardLayer god={rockGod} HS={HS} SCALE={SCALE} />
-
               {/* ── 🎇 STAGE EFFECTS — smoke cloud / lasers / pyro / animatronics.
                   Mounted late so the smoke draws OVER the standees. ── */}
               <StageFXBoardLayer smokeFx={smokeFx} laserFx={laserFx} pyroFx={pyroFx}
@@ -16499,9 +16068,6 @@ export function Game({ gameState, onReturnToLobby }) {
             {/* 🎇 Stage Effect activation marquee + active-effect status pills */}
             <StageFXBanner banner={stageFxBanner} smokeFx={smokeFx} laserFx={laserFx}
               pyroFx={pyroFx} animatronics={animatronics} />
-            {/* 🤘 Rock God descent marquee + HP / clock / telegraph warnings */}
-            <RockGodHUD god={rockGod} banner={godBanner} timer={bossTimer}
-              bossOutcome={bossOutcome} />
           </div>
         </div>
 

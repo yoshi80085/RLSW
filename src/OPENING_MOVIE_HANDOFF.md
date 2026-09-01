@@ -33,7 +33,7 @@ effect syncs to narration beats. It also weighs ~nothing vs a 120s m4v.
 | Hero artwork (island in space) | `src/assets/opening_island.png` | ⚠️ OWNER MUST SAVE IT HERE (2521×2600 PNG from design session) |
 | Spirit silhouettes | `src/standees/cosmic_ronin.png`, `Glamarchy.png`, `Intergalactic_0.png`, `Metalness_monster.png` (⚠️ the case is exact — Linux builds do not forgive it) | exists — silhouette via `filter: brightness(0) drop-shadow(...)` |
 | Fan/crowd silhouettes | `src/groupie_fans.PNG`, `src/crowd_blue.png`, `src/crowd_pink.png` | exists — same silhouette treatment |
-| Rock God silhouette | `src/hydra.PNG` (plus custom SVG towering figures) | partial — draw 2 generic towering horned/winged figures as inline SVG paths |
+| ~~Rock God silhouette~~ | — | 🪦 **DROPPED 2026-09-01** with the Rock God. What beat 5 actually renders is `TOWER_CONFIG` — the four PLAYABLE Spirits, towering behind the island. The flag was misleadingly named `showRockGods`; it is `showTowers` now. |
 | Instrument silhouettes | none | draw inline SVG: flying-V guitar, keytar, drum kit + sticks, mic on stand (simple filled paths, ~40 pts each) |
 
 ## Image geometry map (percent of image width/height — resolution independent)
@@ -115,7 +115,7 @@ Anchor every effect to these regions of `opening_island.png`:
 | 2 | 16–26s | "These Spirits have mastered… their power." | 1.12→1.25, drift toward stage | on "instruments are their weapons": 4 instrument silhouettes flash in sequence next to their Spirits, one RGB-split pulse per flash |
 | 3 | 26–30s | ★ "Each claimed to be the best. The illest. The littest GOAT maxxing mofo in the Cosmos." | quick settle, micro zoom-out 1.25→1.22 | all 4 silhouettes pulse once in unison; stage rim brightens |
 | 4 | 30–42s | "For eons, Genre Gate-keepers… greatest." | lateral pan L→R across clouds, hold 1.22 | fan-crowd silhouettes fill opposing clouds (blue vs pink, from `crowd_*.png`); alternating flicker glow = the bickering; micro-arcs jump BETWEEN cloud groups |
-| 5 | 42–50s | "To settle the debate… edge of the Cosmos." | punch-in 1.22→1.55 onto the island | biggest lightning burst + white flash on "deployed"; 2 Rock God silhouettes tower BEHIND the island (scale ~2× island height, backlit violet); hex grid ripple (opacity wave across the deck region) |
+| 5 | 42–50s | "To settle the debate… edge of the Cosmos." | punch-in 1.22→1.55 onto the island | biggest lightning burst + white flash on "deployed"; the four Spirits tower BEHIND the island as backlit silhouettes (`TOWER_CONFIG`); hex grid ripple (opacity wave across the deck region) |
 | 6 | 50–62s | "This isn't just a battle… await its Victor." | slow push 1.55→1.85 into the Limelight hex | heartbeat sync: clouds, bolts, stage rim all pulse on a shared 1.1s cycle; glitch bursts ramp in frequency |
 | 7 | 62–66s | ★ "The amps are humming. The Cosmos is listening." | hold 1.85, slight shake | silhouettes dissolve INTO the stage; distortion ramps to max |
 | 8 | 66–72s | — | snap back to 1.3 on the strike | mega bolt strikes the Limelight → white flash → **ROCK LEGENDS** title blast + sparks; `SPIRIT WARS` subtitle; hold; fade to black → existing `logo` scene |
@@ -133,7 +133,7 @@ owner tunes the movie by editing that array only, same philosophy as
 - [ ] Plays on launch before Spirit Select; any input skips instantly
 - [ ] No aspect-ratio letterbox bugs at 16:9, 16:10, and a phone-ish portrait window
 - [ ] All 8 beats fire with captions matching the script above
-- [ ] Silhouettes: 4 Spirits, 4 instruments, 2 crowd factions, 2 Rock Gods
+- [ ] Silhouettes: 4 Spirits, 4 instruments, 2 crowd factions
 - [ ] Ken Burns is continuous — no visible jumps except the intended beat-8 snap
 - [ ] Title blast lands with lightning + flash + shake, holds ≥ 2.5s
 - [ ] 60fps-friendly: transforms/opacity only (no layout animation); `feTurbulence` filters active only during bursts

@@ -9,7 +9,7 @@
 // ⚠️ READ `HARNESS_GAPS` BEFORE QUOTING ANY NUMBER THIS PRINTS. ~~Base kits~~ —
 // unlocks have been live since the SKILL_TREE extraction — but there is still no
 // Smash and no Blaster (both unmodelled), the games are SHORT (two lives, to
-// sidestep the Rock God finale), the client's fan hooks are absent, and as of
+// sidestep an endgame boss that no longer exists), the client's fan hooks are absent, and as of
 // 2026-08-17 the riff-off's two PERFORMANCES are modelled rather than played. A win rate out of this is
 // evidence about the searcher, not a balance reading about the roster — and
 // §4.3's rule still stands regardless: Metalness's eval weights are not

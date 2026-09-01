@@ -28,7 +28,7 @@ index.html
   └─ main.jsx                  React root, StrictMode, imports index.css
        └─ App.jsx              thin wrapper, renders <RLSWSimulator/>
             └─ rlsw-simulator-v3_8_1.jsx
-                 ├─ RLSWSimulator()   app shell: Title → Lobby → Tutorial → Game
+                 ├─ RLSWSimulator()   app shell: Title → Lobby → Game
                  └─ Game()            the gameplay component (~15,700 lines)
 ```
 
@@ -53,10 +53,9 @@ client-only until 2026-08-20 and did nothing at all in every bench match ever ru
 | `data/` | 3,702 | Pure game data: spirits, corners, events, the skill tree, trivia, tuning constants. |
 | `music/` | 3,516 | Music theory: scales, chords, the chord-context ladder, cadence scoring, key detection. |
 | `audio/` | 3,344 | Web-Audio SFX, BGM, the amp voice, mic pitch, chroma analysis. |
-| `tutorial/` | 1,160 | The illustrated in-game tutorial. |
-| `board/` | 997 | Hex geometry, the 111-hex map, board helpers, stage-effect and boss geometry. |
+| `board/` | 910 | Hex geometry, the 111-hex map, board helpers, stage-effect geometry. |
 | `net/` | 522 | 🌐 The multiplayer client and the Ear Spy riff wire. |
-| `hooks/` | 168 | Seven thin React state slices. ⚠️ Nearly empty by design — see `hooks/` below. |
+| `hooks/` | 144 | Six thin React state slices. ⚠️ Nearly empty by design — see `hooks/` below. |
 | `App.jsx`, `main.jsx` | 20 | Vite/React entry wiring. |
 | `standees/`, `bgm/`, `sfx/` | — | Character PNGs (normal + `_mirror`), music, sound effects. |
 
@@ -99,7 +98,6 @@ leaving.
 | `slime.js` | 314 | `applySlimeDropped`, `applySlimeDecayed`, `applySlimeCalled`, `applySpiritSlid`, `trailOf`, `slimeAt`, `slimeBites`, `slideTarget`, `canCallSlime`, `SLIME_LIFETIME` | 🧪 The Metalness Monster's trail — where it is, what it costs to walk through, and where it slides you. |
 | `eleven.js` | 112 | `atEleven`, `ampBlown`, `canCallEleven`, `applyElevenCalled`, `elevenDrive` | 🔊 Going to eleven, and the blown amp that follows. |
 | `stageFx.js` | 221 | `applyStageFxDrawn`, `applyStageFxActivated`, `applyStageFxTurnTicked`, `applyStageFxRoundTicked` | 🎇 Smoke, lasers, pyro, animatronics — deck seeded once at init, each threshold firing exactly once. |
-| `rockGod.js` | 272 | `applyGodSummoned`, `applyGodAttackPicked`, `applyGodDamaged`, `applyGodActed`, `applyGodDefeated`, `applyGodTriumphed`, `applyGodTimerExpired` | 🤘 The endgame boss as engine state. `GOD_ACTED` is the whole end-of-turn answer. ⚠️ His clock is wall-clock and stays client-side — the deliberate exception. |
 
 ### `engine/policies/` — the bot, and the headless game
 
@@ -158,7 +156,7 @@ before and after touching it, and navigate by banner.
 | Layer | From | What is there |
 |---|---:|---|
 | Module-level | 1 | Imports, the fan crowd SVG, cadence hints, the Discord upgrade path, stack colours, per-ability tuning, riff-off scoring constants. |
-| `RLSWSimulator()` | 680 | The app shell: Title → Lobby → Tutorial → Game. |
+| `RLSWSimulator()` | 676 | The app shell: Title → Lobby → Game. |
 | `Game()` | 766 | Everything else — state, handlers, cinematics, and the render. |
 
 **Named banners inside `Game`, in order** — these are the search targets:
@@ -171,7 +169,6 @@ before and after touching it, and navigate by banner.
 | `EVENT SPACES SYSTEM` | 4761 | The marquee hexes and the quiz card. |
 | `BATTLE SYSTEM` | 5827 | Attack orchestration and the spin overlays. |
 | `STAGE EFFECTS SYSTEM` | 5834 | Smoke/laser/pyro/animatronic cinematics off the engine reports. |
-| `ROCK GOD SYSTEM` | 6027 | Boss cinematics and the wall-clock timer. |
 | `RIFF-OFF ENGINE` | 8959 | The falling run, miss timers, Riff Slayer lurch, E-Rush ghosts. |
 | `RENDER` | 11891 | The whole render tree, to end of file. |
 
@@ -192,7 +189,6 @@ mirror for rendering — change the rule in `engine/systems/`, not here.
 | `hexGeometry.js` | 114 | `pointyCorners`, `axialDist`, `axialNeighbors`, `facingAngle`, `angleTo`, `angleDiff`, `neighborInDirection`, `getFlatTopNeighborSlots`, `fanGesture`, `grandstandSeat` | Pure hex math, plus the grandstand seating the crowd sits in. |
 | `boardHelpers.js` | 117 | `cornerFacing`, `advanceTurnQueue`, `makeBoardToken`, `hexRingFromCenter`, `crowdMultiplier`, `advanceDB`, `SPOTLIGHT_POOL`, `EVENT_HEX_POOL`, `eventHexCandidates` | Board utilities and the pools the spotlight and marquees are drawn from. |
 | `stageFx.js` | 144 | `smokeHexNums`, `hexInSmoke`, `rollLaserBeams`, `hexInBeams`, `rollPyroHexes`, `spawnAnimatronics`, `animatronicStep` | 🎇 Stage-effect geometry. ⚠️ The rollers take an injectable `rand` and **avoid occupied hexes** — hazards never start on a player. |
-| `rockGodFx.js` | 87 | `hexesWithin`, `slideLine`, `shoveAwayHex`, `nearestSpiritTo`, `freeNeighborHex` | 🤘 Boss geometry: AoE rings, Power Slide, Mosh shove. |
 | `stageSkins.js` | 169 | `STAGE_SKINS`, `STAGE_SKIN_BY_ID`, `DEFAULT_SKIN_ID`, `loadStageSkin`, `saveStageSkin`, `stageSkinPlateFilter`, `stageSkinLineMatrix` | 🎨 Board colour schemes. Deliberately **local and cosmetic**, not engine state, so players in one match can run different skins. |
 | `ampDecks.jsx` | 278 | `CORNER_DECKS` | The corner amp-stack art. |
 | `ampKnobs.js` | 10 | `AMP_KNOBS` | Tone-knob defaults for note playback. |
@@ -208,7 +204,6 @@ mirror for rendering — change the rule in `engine/systems/`, not here.
 | `events.js` | 64 | `EVENT_DECK`, `EVENT_BY_ID` | The event-space definitions. |
 | `corners.js` | 18 | `CORNERS`, `CORNER_LABELS`, `CORNERS_ORDER` | Home hexes per corner. |
 | `stageEffects.js` | 80 | `STAGE_FX_THRESHOLDS`, `STAGE_FX_META`, `shuffledStageFxDeck`, `SMOKE_ROUNDS`, `LASER_*`, `PYRO_*`, `ANIMATRONIC_*` | 🎇 Stage-effect tuning. Fired once each at ⭐8/16/24 from a per-game shuffled deck. |
-| `rockGods.js` | 193 | `ROCK_GODS`, `ROCK_GOD_IMPLEMENTED`, `ROCK_GOD_DIFFICULTY`, `ROCK_GOD_HP_PER_SPIRIT`, `ROCK_GOD_TIMER_SECONDS`, `pickRockGod`, `pickGodAttack`, `godTauntLine` | 🤘 The boss pantheon and all its tuning. |
 | `styles.js` | 43 | `STYLE_DEFS`, `styleOf`, `styleDef` | ⚠️ **FLAVOUR ONLY.** Style stopped affecting scoring — icon, colour and tagline are all that is live. See below. |
 | `matchSetup.js` | 52 | `cornersForCount`, `seatSpirit`, `buildTestingGroundsConfig` | Seat assignment and the Testing Grounds config. |
 
@@ -291,7 +286,6 @@ is being written in the client.
 | `useBoardState.js` | 19 | Pending pickup and roadie actions. |
 | `useTransientFx.js` | 30 | Knockback slides, respawn flashes, rumble, floating damage. |
 | `useStageEffects.js` | 15 | 🎇 The activation banner only — the effects are engine state. |
-| `useRockGod.js` | 24 | 🤘 The boss turn-clock and descent banner only. |
 
 ### `ui/` — presentational components
 
@@ -319,8 +313,9 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | `BotReview.jsx` | 299 | 📓 Reads the bot journal back as prose. |
 | `RiffMenu.jsx` | 279 | Riff Mode room list. `RIFF_MODES_UNLOCKED` (module-local) gates which rooms playtesters see. |
 | `EventModal.jsx` | 274 | 🎪 The marquee ticket — lane × difficulty chosen **before** the question is drawn. |
-| `TitleMenu.jsx` | 258 | Title screen. |
-| `RockGodLayer.jsx` | 253 | 🤘 `RockGodBoardLayer`, `RockGodHUD`, `GodVictoryOverlay`. |
+| `TopMenu.jsx` | 178 | ☰ The header's fold-away control menu — Cadences, Abilities, speed, fast battles, lite FX, stage skin, tips, Lobby. Exports `TopMenu`. 🎛️ **Shell only, same doctrine as `ChannelStrip.jsx`**: every label, colour and handler arrives in `items`, so a mistake here can misdraw a row but cannot reach game state. ⚠️ Row kind `'action'` closes the menu and `'toggle'`/`'cycle'`/`'submenu'` do not — that is a rule about intent, not a style. |
+| `TitleMenu.jsx` | 249 | Title screen. |
+| `FameRace.jsx` | 139 | ⭐ The scoreboard: ONE shared track, one blip per Spirit, living in the header since 2026-08-31. Exports `FameRace`. Replaced four stacked per-spirit bars — four parallel bars cannot show a race, because the gap has to be reconstructed by eye across four origins. ⚠️ **The tie fan is load-bearing, not polish**: every match starts with everyone on ⭐0, so without it the opening screen of every game shows one blip and three invisible ones. `contested` is presentation only (`FAME_RACE_CONTESTED_LEAD`). |
 | `TentacleFX.jsx` | 250 | 🧪 Metalness Monster tentacle visuals. |
 | `TestingGrounds.jsx` | 137 | The sandbox launcher. |
 | `Riffbook.jsx` | 127 | Discovery codex and cadence list. |
@@ -340,12 +335,6 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | `NoteFlyChip.jsx` | 137 | 🎵 A committed note in flight — a real `NoteHex` on a bowed arc from the note stock to its seat, morphing to the seat's size, its bracket ring spinning, shedding rings behind it. Exports `NoteFlyChip` and the `NOTE_FLIGHT` tuning block (dialled on `.scratch/note-commit-overlay.html`). ⚠️ The path is driven through the Web Animations API, not CSS: the endpoints are wherever the seat is, and a keyframe cannot be told that. |
 | `CadenceToast.jsx` | 45 | "Cadence resolved" toast. |
 | `BoardFX.jsx` | 24 | Board effect wrapper. |
-
-### `tutorial/`
-
-| File | Lines | Exports | Purpose |
-|------|------:|---------|---------|
-| `content.jsx` | 1,160 | `Tutorial` | The full illustrated tutorial overlay. Self-contained. |
 
 ---
 
@@ -377,7 +366,6 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | 🧪 The slime trail | `engine/systems/slime.js` + `data/gameConstants.js` → `SLIME_*`. See `METALNESS_REWORK_DESIGN.md`. |
 | 🔊 Going to eleven | `engine/systems/eleven.js` + `ELEVEN_DRIVE`, `ELEVEN_AMP_BLOWN_TURNS` |
 | 🎇 Stage Effects | `data/stageEffects.js` (tuning) + `engine/systems/stageFx.js` (rules) + `board/stageFx.js` (geometry) + `ui/StageFXLayer.jsx` (visuals) |
-| 🤘 Rock God boss | `data/rockGods.js` (all tuning) + `engine/systems/rockGod.js` (rules) + `board/rockGodFx.js` (geometry) + `ui/RockGodLayer.jsx` (visuals). New gods: add to `ROCK_GODS`, list in `ROCK_GOD_IMPLEMENTED`, extend `applyGodActed`. See `ROCK_GODS_DESIGN.md`. |
 | 🎸 Cursed Shamisen | `resolveCursedShamisen` / `payShamisenDebt` / `tickCursedShamisen` / `checkShamisenCursePenalty` — self-buff that accelerates other cooldowns; no board token |
 | Event spaces | `data/events.js` + `EVENT SPACES SYSTEM` banner in `Game` |
 | Trivia questions | `data/trivia.js` — write against `TRIVIA_CONTENT_BRIEF.md` |
@@ -401,7 +389,6 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | Board overlay: Commit Track / Chord Stack / Voicing Panel | Monolith, `RENDER` banner → search `COMMIT TRACK`, `CHORD STACK`, `FLOATING VOICING PANEL` |
 | A specific overlay or modal's look | The matching file in `ui/` |
 | CSS keyframes / global styles | `ui/GameStyles.jsx` |
-| Tutorial content | `tutorial/content.jsx` |
 | BGM tracks / riff SFX | `audio/bgm.js` / `audio/riffSfx.js` |
 
 ### 🪦 Rows that used to be here, and what happened to them
@@ -415,7 +402,9 @@ look for these, and "it moved" is a cheaper answer than a silent absence.
 | 🎵 Styles → `styleCommitDb`, `detectStyleRun`, `detectContourTurn`, `detectCellRepeat`, `detectResolvedDiscords` | **All five deleted with the Style system.** Style pays nothing now; it is an icon, a colour and a tagline. The tombstones in `music/cadence.js` and `engine/systems/economy.js` explain why: they re-scored gestures the Drive and Sustain boosts already pay for. `STYLE_SYSTEM_HANDOFF.md` describes the deleted system and is history, not instructions. |
 | Skill tree → `SKILL_TREE` (main file, module-level) | Moved to `data/skillTree.js`. `DISCORD_UPGRADE_TIERS` is still module-level in the monolith. |
 | Riff-off feel → `RIFF_LEN`, `RIFF_NOTE_WINDOW` (main file) | `RIFF_NOTE_WINDOW` lives in `riff/riffGeneration.js`; `RIFF_LEN` is still module-level in the monolith. |
-| Dissonance Edge → `EDGE_*` + `Game.edgeCombatMods` | ⚠️ **THE MECHANIC IS REMOVED AND THE ROW WAS SENDING PEOPLE TO A STUB.** No `EDGE_*` tuning constant exists anywhere (the `EDGE_HEX_NUMS` / `EDGE_DIST` in `board/` and `evaluate.js` are board-edge *distance*, unrelated). `edgeCombatMods` survives at monolith line ~6833 as a function whose own comment reads *"Dissonance Edge — REMOVED. Returns zero mods for backward compat"*, still called from four sites. `DESIGN_AUDIT_v2.md` §9 describes the design it used to have. |
+| Dissonance Edge → `EDGE_*` + `Game.edgeCombatMods` | ⚠️ **THE MECHANIC IS GONE AND SO IS THE STUB (2026-09-01).** No `EDGE_*` tuning constant exists anywhere (the `EDGE_HEX_NUMS` / `EDGE_DIST` in `board/` and `evaluate.js` are board-edge *distance*, unrelated). `edgeCombatMods` outlived the mechanic for a while as a function returning `{ drive: 0, sustainPenalty: 0 }` from seven call sites — two battle resolvers, both stat knobs, the rival row — and adding `+ 0` in seven places is exactly the kind of scaffolding that invites someone to "fix" the bot by tuning a system that does not exist. It was deleted with its call sites. `DESIGN_AUDIT_v2.md` §9 describes the design it used to have. |
+| 🤘 Rock God boss → `data/rockGods.js`, `engine/systems/rockGod.js`, `board/rockGodFx.js`, `ui/RockGodLayer.jsx`, `hooks/useRockGod.js` | **All five deleted 2026-09-01, and the `state.rockGod` slice, the seven `GOD_*` actions and the `rockGodActive` view flag went with them.** The endgame boss is parked as a possible add-on, not shelved-in-place: the design survives at `docs/archive/ROCK_GODS_DESIGN.md`, the code does not. What changed in play: reaching the Fame target now crowns you outright at any margin — it used to summon the boss on a close race, and that summon was a one-way door that made the Fame win unreachable for the rest of the match. `FAME_RACE_CONTESTED_LEAD` in `data/gameConstants.js` is the one survivor, and it only picks a colour. |
+| 📖 How to Play → `tutorial/content.jsx` | **Deleted 2026-09-01** — the illustrated rulebook and its two menu entries (TitleMenu, Lobby). To be rebuilt from the ground up. ⚠️ The `data-tip-anchor` attributes it aimed at are STILL LIVE and still load-bearing: 🎓 Beginner Mode uses the same anchors, so the "four tutorial pages point at this name" comments through `ui/` and the monolith remain true of the tips. |
 | `engine/systems/skills.js` → `ULTIMATE_PREREQS` | **Deleted 2026-08-20** — it named three ids that were not in the tree, and no skill carried the matching `prereq`, so the Ultimate branch was unreachable in both directions while the test was green against a fake tree. |
 
 ---
@@ -444,9 +433,8 @@ for the round.***
 - **Durations were RESTATED, not relabelled** — see the ⏱️ comments in
   `data/stageEffects.js` and `data/gameConstants.js`. Animatronics went 5
   player-turns → 2 rounds; pyro 3 waves → 2.
-- **The Rock God is the deliberate exception.** He is not board weather: he acts on
-  WALL-CLOCK time (`ROCK_GOD_DIFFICULTY.actSeconds`), driven only by the client
-  controlling the acting Spirit. Dawdle and he swings again.
+- **Everything on the board now runs on one of those two clocks.** The one exception
+  was the Rock God, who ran on WALL-CLOCK time; he was archived on 2026-09-01.
 
 **Hazards never start on a player.** Laser beams and pyro charges are rolled around
 occupied hexes (`rollLaserBeams`, `rollPyroHexes`), and nothing deals damage at roll

@@ -29,7 +29,7 @@ const MENU_PINK  = '#ff44ff';
 const MENU_GREEN = '#44ff88';
 
 export default function TitleMenu({
-  onNormal, onRiff, onRockGod, onTestingGrounds, onHowToPlay,
+  onNormal, onRiff, onTestingGrounds,
 }) {
   const ITEMS = [
     {
@@ -43,24 +43,9 @@ export default function TitleMenu({
       onSelect: onRiff,
     },
     {
-      // Locked until the mode exists. Passing an `onRockGod` handler is all it
-      // takes to light it up — no other change needed here.
-      id: 'rockgod', label: 'ROCK GOD CHALLENGE', icon: '👁️', color: '#ff44dd',
-      blurb: onRockGod
-        ? 'Face the Rock God. One boss, no allies, nowhere to hide.'
-        : 'Still being built. The God is not ready to receive you.',
-      locked: !onRockGod,
-      onSelect: onRockGod,
-    },
-    {
       id: 'testing', label: 'TESTING GROUNDS', icon: '🧪', color: '#cc66ff',
       blurb: 'Sandbox. Skip setup, drop straight onto the board with dev tools on.',
       onSelect: onTestingGrounds,
-    },
-    {
-      id: 'howto', label: 'HOW TO PLAY', icon: '📖', color: '#44cc88',
-      blurb: 'The illustrated rulebook, front to back.',
-      onSelect: onHowToPlay,
     },
   ];
 

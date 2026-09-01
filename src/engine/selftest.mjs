@@ -16,8 +16,6 @@ import {
   noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked,
   debuffsTicked, burnTicked,
   stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked,
-  godAttackPicked, godSummoned, godDamaged, godActed,
-  godDefeated, godTriumphed, godTimerExpired,
   spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed,
   eventRespawnTicked, eventHexSpawned, chargeZonesTicked,
   eventHexTriggered, tokenPickedUp, chargeZoneUsed, flamingHexesSet,
@@ -43,8 +41,6 @@ import {
 } from "../music/cadence.js";
 import { styleOf, styleDef, STYLE_DEFS } from "../data/styles.js";
 import { CORNERS } from "../data/corners.js";
-import { pickGodAttack, godTauntLine, pickRockGod, ROCK_GODS, ROCK_GOD_HP_PER_SPIRIT } from "../data/rockGods.js";
-import { applyGodActed } from "./systems/rockGod.js";
 import {
   shuffledStageFxDeck, STAGE_FX_IDS,
   SMOKE_START_RADIUS, SMOKE_ROUNDS, LASER_ROUNDS, LASER_BEAM_COUNT,
@@ -584,23 +580,18 @@ const config = {
   // one survivor wins
   assert.deepEqual(
     decideWinner([sp("a", { knockedOut: true }), sp("b")]),
-    { winnerId: "b", godTriumphs: false }, "last standing wins");
+    { winnerId: "b" }, "last standing wins");
   // more than one alive → no winner yet
   assert.deepEqual(decideWinner([sp("a"), sp("b")]),
-    { winnerId: null, godTriumphs: false }, "two alive → undecided");
-
-  // boss on board: last-standing does NOT win while the God holds the gate
+    { winnerId: null }, "two alive → undecided");
+  // a total wipe with an attacker still named leaves nobody standing
   assert.deepEqual(
-    decideWinner([sp("a", { knockedOut: true }), sp("b")], { godSummoned: true }),
-    { winnerId: null, godTriumphs: false }, "God holds — no PvP winner");
-  // boss on board + total wipe → God triumphs
-  assert.deepEqual(
-    decideWinner([sp("a", { knockedOut: true }), sp("b", { knockedOut: true })], { godSummoned: true }),
-    { winnerId: null, godTriumphs: true }, "total wipe → God triumphs");
-  // once a winner already exists the God branch is bypassed
+    decideWinner([sp("a", { knockedOut: true }), sp("b", { knockedOut: true })]),
+    { winnerId: null }, "total wipe → nobody wins");
+  // ...unless the attacker survived it, which is the mutual-KO tiebreak
   assert.equal(
-    decideWinner([sp("a"), sp("b", { knockedOut: true })], { godSummoned: true, hasWinner: true }).winnerId,
-    "a", "existing winner bypasses the God hold");
+    decideWinner([sp("a"), sp("b", { knockedOut: true })], { attackerId: "a" }).winnerId,
+    "a", "the surviving attacker takes it");
 
   // resolveKnockdown — respawn to home corner with full Vibe, one life spent
   const cornerId = Object.keys(CORNERS)[0];
@@ -1210,163 +1201,13 @@ const config = {
   }
 }
 
-// -- Phase 6c: GOD_ATTACK_PICKED — the boss's attack pick on engine rng ---------
-{
-  const s0 = makeInitialState(config, 1717);
-
-  // determinism: same state+seed → same pick; picks are valid deck entries
-  const p1 = applyAction(s0, godAttackPicked("bardbarian"));
-  const p2 = applyAction(s0, godAttackPicked("bardbarian"));
-  assert.deepEqual(p1.rockGod.lastPick, p2.rockGod.lastPick, "same seed → same pick");
-  assert.ok(ROCK_GODS.bardbarian.attacks.some(a => a.id === p1.rockGod.lastPick.attackId),
-    "pick is a real attack of the god");
-  assert.equal(p1.rockGod.lastPick.godId, "bardbarian");
-  assert.ok(p1.rng.cursor > s0.rng.cursor, "the pick consumes engine rng");
-
-  // no immediate repeat across many seeds
-  for (let seed = 1; seed <= 120; seed++) {
-    const last = ROCK_GODS.bardbarian.attacks[seed % ROCK_GODS.bardbarian.attacks.length].id;
-    const pick = applyAction(makeInitialState(config, seed), godAttackPicked("bardbarian", last))
-      .rockGod.lastPick.attackId;
-    assert.notEqual(pick, last, `no immediate repeat (seed ${seed})`);
-  }
-
-  // unknown god / empty deck → null pick
-  assert.equal(applyAction(s0, godAttackPicked("nobody")).rockGod.lastPick, null, "unknown god → null");
-  assert.equal(applyAction(s0, godAttackPicked("glam_reaper")).rockGod.lastPick, null, "empty deck → null");
-
-  // replayable byte-for-byte (rng cursor rides in state)
-  const logG = [godAttackPicked("bardbarian"), godAttackPicked("bardbarian", "thunderclap")];
-  const liveG = logG.reduce((st, a) => applyAction(st, a), s0);
-  assert.equal(snapshot(replay(restore(snapshot(s0)), logG)), snapshot(liveG), "GOD_ATTACK_PICKED replays byte-identically");
-  assert.equal(assertJsonSafe(liveG), true, "rockGod pick slice is JSON-safe");
-}
-
-// -- Phase 6c: Rock God state ownership (summon / damage / act / outcome) -------
-// The boss is engine state now: GOD_SUMMONED / GOD_DAMAGED (winded ×2 + HP
-// floor) / GOD_ACTED (telegraph resolve → winded recovery → weighted open;
-// mosh moves the engine spirits) / GOD_DEFEATED / GOD_TRIUMPHED /
-// GOD_TIMER_EXPIRED. Rules ported verbatim from the client ROCK GOD SYSTEM.
-{
-  const cornerId = Object.keys(CORNERS)[0];
-  const seedSpirits = (base, positions) => applyAction(base, spiritsSynced([
-    { id: "wildaxe", num: positions.wildaxe, facing: 2, corner: cornerId, lives: 3, vibe: 10, maxVibe: 10, knockedOut: false },
-    { id: "vera",    num: positions.vera,    facing: 5, corner: cornerId, lives: 3, vibe: 8,  maxVibe: 8,  knockedOut: false },
-  ]));
-  const s0 = seedSpirits(makeInitialState(config, 6606), { wildaxe: 40, vera: 105 });
-
-  // 🌩️ SUMMON — one god per game; HP scales with the engine's living spirits
-  const up = applyAction(s0, godSummoned("wildaxe", "bardbarian"));
-  assert.equal(up.rockGod.summoned, true, "summoned flag set");
-  assert.equal(up.rockGod.god.id, "bardbarian");
-  assert.equal(up.rockGod.god.num, LIMELIGHT_HEX, "god descends to the Limelight");
-  assert.equal(up.rockGod.god.hp, ROCK_GOD_HP_PER_SPIRIT * 2, "HP = per-spirit × living spirits");
-  assert.equal(up.rockGod.god.hp, up.rockGod.god.maxHp);
-  assert.deepEqual(
-    { winded: up.rockGod.god.winded, telegraph: up.rockGod.god.telegraph, lastAttack: up.rockGod.god.lastAttack },
-    { winded: false, telegraph: null, lastAttack: null }, "fresh god state");
-  assert.equal(up.rng.cursor, s0.rng.cursor, "summon consumes no rng");
-  const dup = applyAction(up, godSummoned("vera", "glam_reaper"));
-  assert.equal(dup.rockGod.god.id, "bardbarian", "second summon is a no-op — one god per game, ever");
-
-  // ⚔️ DAMAGE — raw subtract; winded doubles; floor at 0 clears the telegraph
-  const hit1 = applyAction(up, godDamaged("wildaxe", 7));
-  assert.equal(hit1.rockGod.god.hp, up.rockGod.god.hp - 7, "raw damage lands");
-  assert.deepEqual(hit1.rockGod.lastHit, { spiritId: "wildaxe", dmg: 7, defeated: false }, "hit reported");
-  const windedUp = { ...hit1, rockGod: { ...hit1.rockGod, god: { ...hit1.rockGod.god, winded: true, telegraph: { attackId: "thunderclap", label: "T", warn: "w", hexes: [], dmg: 2 } } } };
-  const hit2 = applyAction(windedUp, godDamaged("vera", 5));
-  assert.equal(hit2.rockGod.god.hp, windedUp.rockGod.god.hp - 10, "winded → double damage");
-  assert.equal(hit2.rockGod.lastHit.dmg, 10, "report carries the doubled number");
-  const kill = applyAction(windedUp, godDamaged("vera", 999));
-  assert.deepEqual(
-    { hp: kill.rockGod.god.hp, telegraph: kill.rockGod.god.telegraph, defeated: kill.rockGod.lastHit.defeated },
-    { hp: 0, telegraph: null, defeated: true }, "killing blow floors HP + clears the telegraph");
-  assert.equal(hit1.rng.cursor, up.rng.cursor, "damage consumes no rng");
-
-  // 🤘 ACT 1 — an armed THUNDERCLAP resolves: caught from engine positions
-  const armed = { ...up, rockGod: { ...up.rockGod, god: { ...up.rockGod.god, telegraph: { attackId: "thunderclap", label: "THUNDERCLAP", warn: "w", hexes: [40, 41], dmg: 2 } } } };
-  const clap = applyAction(armed, godActed());
-  assert.deepEqual(clap.rockGod.lastAct,
-    { kind: "resolved", attackId: "thunderclap", label: "THUNDERCLAP", dmg: 2, caught: ["wildaxe"] },
-    "thunderclap resolve reports who's caught");
-  assert.equal(clap.rockGod.god.telegraph, null, "telegraph cleared");
-  assert.equal(clap.rockGod.god.lastAttack, "thunderclap");
-  assert.equal(clap.rng.cursor, armed.rng.cursor, "telegraph resolve consumes no rng");
-
-  // 🛝 ACT 1b — an armed POWER SLIDE resolves: god moves to `end`, WINDED
-  const slideArmed = { ...up, rockGod: { ...up.rockGod, god: { ...up.rockGod.god, telegraph: { attackId: "power_slide", label: "POWER SLIDE", warn: "w", hexes: [105], end: 99, dmg: 3 } } } };
-  const slid = applyAction(slideArmed, godActed());
-  assert.deepEqual(
-    { num: slid.rockGod.god.num, winded: slid.rockGod.god.winded, last: slid.rockGod.god.lastAttack },
-    { num: 99, winded: true, last: "power_slide" }, "slide moves the god + leaves him winded");
-  assert.deepEqual(slid.rockGod.lastAct.caught, ["vera"], "spirit on the line is bowled over");
-  assert.equal(slid.rockGod.lastAct.end, 99, "report carries the stop hex");
-
-  // 😵 ACT 2 — winded god recovers instead of attacking
-  const recovered = applyAction(slid, godActed());
-  assert.deepEqual(recovered.rockGod.lastAct, { kind: "recovered" }, "recovery beat");
-  assert.equal(recovered.rockGod.god.winded, false, "window closes");
-
-  // 🎲 ACT 3 — a new attack OPENS on engine rng (weighted, no immediate repeat).
-  // Direct-call the reducer with pinned rands to hit each bucket (w 3/3/2/2).
-  const open = v => applyGodActed(up, {}, () => v).rockGod;
-  assert.equal(open(0.0).lastAct.attackId, "thunderclap", "bucket 1 → thunderclap telegraph");
-  assert.equal(open(0.0).lastAct.kind, "telegraph");
-  assert.ok(open(0.0).god.telegraph.hexes.length > 0, "AoE hexes armed");
-  const ps = open(0.4);
-  assert.equal(ps.lastAct.attackId, "power_slide", "bucket 2 → power slide telegraph");
-  assert.equal(ps.lastAct.targetId, "vera", "slide aims at the slowest spirit (vera = last in turnQueue)");
-  assert.ok(ps.god.telegraph.end != null, "slide line armed with a stop hex");
-  const fm = open(0.65);
-  assert.equal(fm.lastAct.kind, "melted", "bucket 3 → face-melter (no telegraph)");
-  assert.ok(["wildaxe", "vera"].includes(fm.lastAct.targetId), "melts the nearest spirit");
-  assert.equal(fm.god.lastAttack, "face_melter");
-  const mosh = applyGodActed(up, {}, () => 0.85);
-  assert.equal(mosh.rockGod.lastAct.kind, "moshed", "bucket 4 → mosh command");
-  const { moves, crushed } = mosh.rockGod.lastAct;
-  assert.deepEqual([...moves.map(m => m.id), ...crushed].sort(), ["vera", "wildaxe"],
-    "every living spirit is either shoved or crushed");
-  for (const mv of moves) {
-    assert.equal(mosh.spirits.find(sp => sp.id === mv.id).num, mv.to,
-      "mosh shove moves the ENGINE spirit");
-  }
-  // via applyAction the open consumes the main rng stream
-  const opened = applyAction(up, godActed());
-  assert.ok(opened.rng.cursor > up.rng.cursor, "opening an attack consumes engine rng");
-  assert.deepEqual(applyAction(up, godActed()).rockGod.lastAct, opened.rockGod.lastAct,
-    "same seed → same answer");
-
-  // 🏁 OUTCOME + timer seam
-  const won = applyAction(up, godDefeated("wildaxe"));
-  assert.equal(won.rockGod.outcome, "spirits", "defeat locks outcome");
-  assert.equal(applyAction(won, godTriumphed()).rockGod.outcome, "spirits", "outcome can't flip");
-  assert.equal(applyAction(up, godTriumphed()).rockGod.outcome, "god", "wipe → the God keeps the crown");
-  assert.deepEqual(applyAction(up, godTimerExpired("wildaxe")).rockGod.lastTimerExpiry,
-    { spiritId: "wildaxe" }, "timer expiry is recorded for the replay log");
-  assert.equal(applyAction(won, godActed()).rockGod.lastAct, null, "no act once the fight is decided");
-
-  // 📼 the whole boss lifecycle replays byte-for-byte + stays JSON-safe
-  const logB = [
-    godSummoned("wildaxe", "bardbarian"),
-    godActed(), godActed(), godActed(),       // open/resolve a few beats (rng)
-    godDamaged("wildaxe", 6), godDamaged("vera", 9),
-    godTimerExpired("wildaxe"),
-    godDamaged("wildaxe", 999),
-    godDefeated("wildaxe"),
-  ];
-  const liveB = logB.reduce((st, a) => applyAction(st, a), s0);
-  assert.equal(snapshot(replay(restore(snapshot(s0)), logB)), snapshot(liveB),
-    "boss lifecycle replays byte-identically");
-  assert.equal(assertJsonSafe(liveB), true, "rockGod slice is JSON-safe");
-}
-
 // -- Phase 8 (partial): cross-system determinism / replay proof ----------------
 // The mission's exit criterion, over every system that's engine-owned today:
 // a scripted log spanning turn → move → attack (rng) → counter (rng) → damage →
 // knockdown → winner → riff-off (rng-heavy generation) must reproduce identically
 // when replayed from a SERIALIZED start, and must be resumable mid-game. This is
 // the real "a server replays the log and gets the same game" guarantee — it will
-// widen to note-track/skill/event/god actions as those systems land.
+// widen to note-track/skill/event actions as those systems land.
 {
   const s0 = makeInitialState(config, 20260706);
   const cornerId = Object.keys(CORNERS)[0];
@@ -1481,54 +1322,6 @@ const config = {
   bites("undefined at state.acting", (b) => { b.acting = undefined; });
   bites("Date at state.rng.at", (b) => { b.rng.at = new Date(); });
   bites("non-JSON function at state.config.fn", (b) => { b.config.fn = Math.max; });
-}
-
-// -- Phase 6c prep: Rock God rng determinism ----------------------------------
-// pickGodAttack / godTauntLine now take an injectable `rand` (default
-// Math.random). These lock the weighted-draw math, the no-immediate-repeat rule,
-// and determinism so the eventual GOD_ATTACKED action replays byte-identically.
-{
-  const bard = ROCK_GODS.bardbarian;   // attacks: thunderclap/power_slide (w3) + face_melter/mosh_command (w2); total 10
-
-  // exact weighted-draw boundaries at cumulative weight 3 / 6 / 8 / 10
-  const at = v => pickGodAttack(bard, undefined, () => v).id;
-  assert.equal(at(0.00), "thunderclap",  "roll 0.0 → first bucket");
-  assert.equal(at(0.29), "thunderclap",  "just below the 3/10 edge");
-  assert.equal(at(0.31), "power_slide",  "just above the 3/10 edge");
-  assert.equal(at(0.59), "power_slide",  "just below the 6/10 edge");
-  assert.equal(at(0.61), "face_melter",  "just above the 6/10 edge");
-  assert.equal(at(0.79), "face_melter",  "just below the 8/10 edge");
-  assert.equal(at(0.81), "mosh_command", "top bucket");
-
-  // no immediate repeat: excluding the last id draws from the rest
-  assert.equal(pickGodAttack(bard, "thunderclap", () => 0).id, "power_slide",
-    "lastId is excluded from the pool");
-  // ...unless it's the ONLY attack — then repeats are unavoidable (never null)
-  assert.equal(pickGodAttack({ attacks: [{ id: "solo", weight: 1 }] }, "solo", () => 0).id, "solo",
-    "single-attack deck falls back to the only attack");
-
-  // determinism: same rand stream → identical sequence
-  const mkFeed = () => { const seq = [0.1, 0.7, 0.9, 0.4, 0.05]; let i = 0; return () => seq[i++ % seq.length]; };
-  let last1 = null;
-  const run = feed => Array.from({ length: 5 }, () => (last1 = pickGodAttack(bard, last1, feed)?.id));
-  const seqA = run(mkFeed()); last1 = null;
-  const seqB = run(mkFeed());
-  assert.deepEqual(seqA, seqB, "same rand stream → same attack sequence");
-
-  // empty deck → null (unimplemented gods)
-  assert.equal(pickGodAttack(ROCK_GODS.glam_reaper, undefined, () => 0.5), null, "empty deck → null");
-
-  // taunt selection is rng-indexed + deterministic
-  assert.equal(godTauntLine(bard, "summon", () => 0),    bard.taunts.summon[0], "taunt idx floor(0)");
-  assert.equal(godTauntLine(bard, "summon", () => 0.99), bard.taunts.summon[1], "taunt idx floor(0.99·2)=1");
-  assert.equal(godTauntLine(bard, "nonexistent", () => 0), null, "missing taunt kind → null");
-
-  // pickRockGod (pure): playstyle scores pick a god; unimplemented falls back
-  assert.equal(pickRockGod({ unlockedSkills: ["master_moshpits", "azrael"] }), "bardbarian",
-    "brawler signature skills → Bardbarian");
-  assert.equal(pickRockGod({ livesLost: 10 }), "bardbarian",
-    "Glam Reaper would score highest but isn't implemented → Bardbarian fallback");
-  assert.equal(pickRockGod({}), "bardbarian", "empty profile → default Bardbarian");
 }
 
 // -- Phase 6b prep: stage-FX deck shuffle determinism -------------------------
@@ -2341,7 +2134,7 @@ const config = {
 // The mission's exit criterion (§1): "a server replaying the log gets the same
 // game." One scripted log spanning EVERY engine-owned system — turn/move, combat
 // (swing + counter + damage + knockdown), riff-off, economy (fame/fans/noteSheet/
-// fanTick), stage FX (draw + activate + ticks), Rock God (summon + damage + act),
+// fanTick), stage FX (draw + activate + ticks),
 // debuffs, burn, board (spotlight/tokens/events/charge/flaming), and random-batch
 // draws — replayed from a SERIALIZED start, resumable mid-game, JSON-safe.
 {
@@ -2401,11 +2194,6 @@ const config = {
     stageFxDrawn(16),
     stageFxActivated("smoke_machine"),
     stageFxRoundTicked(),
-
-    // ── ROCK GOD ──
-    godSummoned("wildaxe", "bardbarian"),
-    godDamaged("wildaxe", 5),
-    godActed(),
 
     // ── DEBUFFS + BURN ──
     debuffsTicked("vera"),

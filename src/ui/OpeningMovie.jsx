@@ -403,7 +403,7 @@ function CinematicLayer({ visible }) {
   const introPhase = beat >= 0 && beat <= 2;         // blank-screen intro
   const islandUp = beat >= 3;                        // island cinematic
   const showCrowds = beat >= 4 && beat <= 7;
-  const showRockGods = beat >= 5 && beat <= 7;
+  const showTowers = beat >= 5 && beat <= 7;   // the Spirits' own silhouettes, TOWER_CONFIG
   const dissolving = beat === 7;
   const showSkyBolts = beat === 8; // lightning strikes only at the title reveal
   const heartbeat = beat === 6;
@@ -587,7 +587,7 @@ function CinematicLayer({ visible }) {
               position: 'absolute',
               left: `${tw.x - 5}%`, top: `${tw.y}%`,
               width: '12%', height: '35%',
-              opacity: !showRockGods ? 0 : dissolving ? 0 : 0.7,
+              opacity: !showTowers ? 0 : dissolving ? 0 : 0.7,
               transition: dissolving ? 'opacity 2s ease-out' : 'opacity 2s ease-in',
               filter: `brightness(0) drop-shadow(0 0 18px ${tw.color})`,
               transform: tw.sc !== 1 ? `scale(${tw.sc})` : 'none',

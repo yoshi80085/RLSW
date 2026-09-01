@@ -20,8 +20,9 @@
 //     pyroBonus:0, laserActive:false` — the stage-effect battle buffs were
 //     RETIRED when Stage Effects moved onto the board. The flags survive only
 //     so downstream visuals don't crash.
-//   · `edgeCombatMods()` returns `{ drive: 0, sustainPenalty: 0 }` — the
-//     Dissonance Edge is removed.
+//   · ~~`edgeCombatMods()`~~ — the Dissonance Edge stub was DELETED on
+//     2026-09-01. It returned `{ drive: 0, sustainPenalty: 0 }` from seven call
+//     sites; the mechanic itself went in the 2026-08 audit (DESIGN_AUDIT_v2 §9).
 // They are therefore NOT re-implemented here. This is a deliberate simplification
 // of dead branches, not an oversight: reproducing `+ 0` in four places would
 // imply those systems still exist and invite someone to "fix" the bot by tuning

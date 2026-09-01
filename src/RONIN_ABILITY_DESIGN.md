@@ -575,7 +575,8 @@ resolver will refuse is a searcher planning turns it cannot play, and the refusa
 would land *after* the dash has already committed the turn.
 
 ⚠️ **AND THE Db REFUSAL MOVED ABOVE THE WARP** in `resolvePsychoBushido`, next to
-the `rockGodActive` check. Everything below that point commits the turn; a Ronin
+the other pre-dash refusals. (It sat beside a `rockGodActive` check until the Rock
+God was archived on 2026-09-01.) Everything below that point commits the turn; a Ronin
 told he cannot afford the strike *after* dashing has paid his whole AP pool for
 nothing. Same class as the unmirrored refusal already documented there.
 
