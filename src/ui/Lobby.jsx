@@ -21,8 +21,37 @@ const RIFF_DIFF_SHORT = { rookie: 'INFLUENCER', gigging: 'GIGGING', shredder: 'S
 
 const MENU_SONGS = [menuSong3];
 
+/* 🎮 THE OPENING STATE OF A MATCH, Alex 2026-08-31.
+   ⚠️ THESE THREE ARE ONE FACT SPLIT ACROSS THREE useStates, which is exactly why
+   they are derived from a shared helper instead of typed out three times: the
+   player count, which corners that count uses, and which of those corners is
+   waiting on a pick. Get them out of step — seed `cpuCorners` for two corners
+   while `activeCorners` builds three, say — and the lobby renders a chair nobody
+   is sitting in.
+   📌 2P IS OPPOSITE CORNERS, not the first two of CORNERS_ORDER (which would put
+   both players on adjacent walls). That rule lived as an inline ternary at the
+   one place `activeCorners` was computed; it is a function now because the
+   initial state below needs the same answer before any effect has run. */
+const DEFAULT_PLAYERS = 2;
+const cornersFor = (n) => n === 2 ? ["blue", "red"] : n ? CORNERS_ORDER.slice(0, n) : [];
+/** Corner 0 is the human; everyone else starts as a bot. Smash's rule. */
+const seedCpu = (n) => Object.fromEntries(cornersFor(n).map((c, i) => [c, i !== 0]));
+
 export function Lobby({ onStart, onTutorial, onBackToMenu }) {
-  const [playerCount, setPlayerCount] = useState(null);
+  /* 🎮 TWO PLAYERS IS THE STANDING ASSUMPTION, Alex 2026-08-31 — the Smash Bros
+     rule: the match already exists, you are adjusting it.
+     🪦 THIS WAS `null`, and null meant an EMPTY SCREEN. Every section below is
+     gated `{playerCount && …}` — the roster, the corner row, the settings block
+     — so the first thing the lobby ever showed was a row of 2P/3P/4P buttons
+     over nothing, and picking a number did not start anything, it merely
+     revealed the screen you came here for. A modal step whose only outcome is
+     "now you may begin" is a door, not a choice.
+     📌 THE COUNT IS STILL FULLY LIVE. 3P/4P (once the roster supports them) and
+     the online host's ± Bot buttons all still write it; two is only where it
+     starts. `activeCorners` reads 2 → ["blue","red"], and the cpuCorners effect
+     below seats corner 0 as the human and the rest as bots, so the default the
+     player lands in is P1 vs one CPU — a playable match, one click from starting. */
+  const [playerCount, setPlayerCount] = useState(2);
   // 🏁 FFA is the STANDING DEFAULT, not a button you have to remember to press.
   // It reads from a persisted setting rather than a hardcoded literal so that
   // when multiplayer lands and Team opens up, a chosen mode can stick — FFA
@@ -36,7 +65,7 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
     return 'ffa';
   });
   const [assignments, setAssignments] = useState({});
-  const [cpuCorners, setCpuCorners] = useState({});
+  const [cpuCorners, setCpuCorners] = useState(() => seedCpu(DEFAULT_PLAYERS));
   // 🧠 WHICH BOT IS IN THE CHAIR. Unchecked = the legacy step-machine that has
   // always shipped; checked = `engine/policies/play.js`'s searcher, the one
   // BOT_STRATEGY_HANDOFF §6.6 has been tuning against the bench. Per-corner
@@ -45,7 +74,13 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
   const [step, setStep] = useState("count");
   const [startingLives, setStartingLives] = useState(3);
   const [beginnerMode, setBeginnerMode] = useState(true);
-  const [choosingCorner, setChoosingCorner] = useState(null);
+  /* ⚠️ SEEDED, NOT LEFT TO THE EFFECT BELOW. A roster tile is clickable only
+     while `choosingCorner` is set (see the tile's onClick and its cursor), so if
+     this started null the first paint of the lobby would be a full roster that
+     does nothing, correcting itself a frame later when the effect fires. That is
+     the same "looks ready, isn't" the player-count gate used to be, just shorter.
+     The effect still owns every LATER change; this owns the first render. */
+  const [choosingCorner, setChoosingCorner] = useState(() => cornersFor(DEFAULT_PLAYERS)[0] ?? null);
   // 🎸 Riff-off difficulty — chosen here on the Spirit select screen and
   // persisted; the Game reads it at mount (localStorage 'rlsw.riffDifficulty').
   const [riffDiff, setRiffDiff] = useState(() => {
@@ -99,8 +134,17 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
     const audio = new Audio(src);
     audio.loop = true;
     audio.volume = 0.45;
-    audio.play().catch(() => {});
-    menuAudioRef.current = audio;
+    /* ⚠️ THE LATCH IS RELEASED ON FAILURE, and that is new. `active` is now true
+       on mount rather than on the player-count click, so this fires one gesture
+       further from the user's last one. Reaching the lobby always costs a click
+       on the title menu, so the document has sticky activation and autoplay is
+       allowed — but if a browser ever refuses anyway, latching `menuSongStarted`
+       eagerly would mean the menu music never plays again for the whole visit.
+       Releasing it lets the next player-count change — a real gesture — retry,
+       which is exactly what used to start the song. */
+    audio.play()
+      .then(() => { menuAudioRef.current = audio; })
+      .catch(() => { menuSongStarted.current = false; });
   }, [playerCount, netStatus]);
   useEffect(() => () => {
     if (menuAudioRef.current) { menuAudioRef.current.pause(); menuAudioRef.current = null; }
@@ -115,7 +159,7 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
   useEffect(()=>{if(netStatus==="in-room"&&netRoom&&isHost){const n=netRoom.seats.filter(s=>!s.isBot).length;if(n>=2&&n<=4){setPlayerCount(n);setAssignments({});}}},[netStatus,netRoom?.seats?.length]);
   async function goOnline(kind){const name=playerName.trim()||"Player";try{localStorage.setItem("rlsw.net.name",name);}catch{}setNetStatus("connecting");setNetError("");const c=makeNetClient();c.on("ROOM_STATE",f=>setNetRoom(f));c.on("ERROR",f=>setNetError(f.code+": "+f.msg));c.on("net:close",()=>setNetDropped(true));c.on("net:open",()=>setNetDropped(false));try{await c.connect();if(kind==="create")c.createRoom(name);else c.joinRoom(joinCode.trim().toUpperCase(),{name});await c.waitFor("WELCOME");setNetClient(c);setNetStatus("in-room");}catch(e){c.close();setNetStatus("idle");setNetError(String(e.message??e));}}
   function leaveRoom(){netClient?.leave();setNetClient(null);setNetRoom(null);setNetStatus("idle");setNetDropped(false);}
-  const activeCorners = playerCount===2?["blue","red"]:playerCount?CORNERS_ORDER.slice(0,playerCount):[];
+  const activeCorners = cornersFor(playerCount);
   const usedSpirits = new Set(Object.values(assignments));
   const allAssigned = activeCorners.every(c=>assignments[c]);
   useEffect(()=>{if(!playerCount)return;setCpuCorners(prev=>{const next={...prev};activeCorners.forEach((c,i)=>{if(next[c]===undefined)next[c]=i!==0;});return next;});},[playerCount]);
@@ -250,7 +294,14 @@ export function Lobby({ onStart, onTutorial, onBackToMenu }) {
                 const tooMany=n>MAX_PLAYERS;
                 return<button key={n} disabled={tooMany}
                   title={tooMany?`Needs ${n} finished Spirits — only ${MAX_PLAYERS} are built out right now.`:`${n}-player match`}
-                  onClick={()=>{if(tooMany)return;setPlayerCount(n);setAssignments({});setStep("assign");}}
+                  /* ⚠️ THE NO-OP CLICK IS GUARDED, and it matters more now than it
+                     did: changing the count clears every Spirit pick (the corners
+                     themselves change — 2P is blue/red, 3P is the first three of
+                     CORNERS_ORDER), and with 2P now PRE-SELECTED the obvious
+                     gesture for a player who has just chosen two Spirits is to
+                     press the lit 2P button to confirm. Without this that press
+                     silently wiped both picks. */
+                  onClick={()=>{if(tooMany||n===playerCount)return;setPlayerCount(n);setAssignments({});setStep("assign");}}
                   style={{...seg(playerCount===n),...(tooMany?{opacity:0.3,cursor:"not-allowed",borderColor:"#1a2a40",color:"#2a3a4a"}:{})}}>{n}P</button>;})}</div>
               {MAX_PLAYERS<4&&<span style={{fontSize:8,color:"#3a5a7a"}}>🚧 {4-MAX_PLAYERS} Spirit{4-MAX_PLAYERS!==1?'s':''} still in development</span>}</>}
             {online&&isHost&&playerCount&&<><span style={{fontSize:9,color:"#3a5a7a",letterSpacing:2,fontFamily:"'Saira Stencil One',sans-serif"}}>{playerCount} PLAYERS</span>
