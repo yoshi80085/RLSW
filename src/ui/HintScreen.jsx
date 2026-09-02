@@ -23,7 +23,7 @@ export const HINTS = [
   "A RIFF-OFF only fires when BOTH Spirits are inside their own amp range, beam to beam. A duel needs two live rigs.",
   "Catch a rival stranded outside their amp range and the beam just hits: no duel, and they defend on a bare d4.",
   "There's only one road to a riff-off: line up a Sonic beam-to-beam with a rival, both rigs live. Set it up on purpose.",
-  "Fans never pay FP directly — they MULTIPLY everything you earn, up to ×2 with a full house.",
+  "Fans never pay FP directly — they MULTIPLY everything you earn, up to ×5 with a full house.",
   "Commit clean tracks near the centre rings to draw a crowd. The back row pays zero.",
   "Climbing Music Theory doesn't raise your numbers — it changes which notes count as wrong.",
   "The TRITONE stops breaking your harmony once you've earned it, and lights your feedback charge. The devil's interval knows what it is.",

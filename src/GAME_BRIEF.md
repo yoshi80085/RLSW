@@ -299,8 +299,14 @@ The crowd is a separate economy from Fame, and it *multiplies* Fame.
 
 - Two fan types: **casuals** (cap 14) and **diehards** (cap 6). You start with
   **0 casuals, 2 diehards** (`FAN_CASUAL_START`, `FAN_DIEHARD_START`).
-- **Crowd multiplier** = `1 + 0.1 × diehards + 0.03 × casuals`, **capped at 2.0×**
+- **Crowd multiplier** = `1 + 0.4 × diehards + 0.12 × casuals`, **capped at 5.0×**
   (`FAN_DIEHARD_WEIGHT`, `FAN_CASUAL_WEIGHT`, `FAN_MULT_CAP`).
+  🎤 **RE-WEIGHTED 2026-09-02** from `0.1 / 0.03 / ×2.0`. ⚠️ The old ×2.0 was not
+  a cap at all — at the fan caps it was the formula's own ceiling (2.02), so it
+  bound nothing. The real problem was that `grantFame` rounds to whole Fame and
+  one Casual at 0.03 changed the payout at **no** grant size the game pays.
+  Measured effect: the crowd runs at ×2.42 in real play (was ×1.40), with match
+  length and win margin unchanged. See `PROGRESSION_REWRITE_DESIGN.md` §7.7.
 - **Where you stand matters.** Fan gain by ring: **main +2, pit +1, floor +1,
   back +0** (`FAN_GAIN_BY_RING`). Playing to the centre pays.
 - **Promotion:** every **3rd** consecutive turn spent in the centre converts a
@@ -596,7 +602,7 @@ Worth respecting in anything you propose:
 | Combat lethality | the `marginToDamage` table; `ATK_BONUS_CAP` (5) |
 | How far beams reach | `RIG_RADIUS_FLOOR` (3), `SONIC_BEAM_REACH` (3) |
 | How fast a rig decays | `RIG_ATROPHY_TURNS` (3) 🎲 |
-| Crowd influence | `FAN_MULT_CAP` (2.0), `FAN_*_WEIGHT` (0.1 / 0.03) |
+| Crowd influence | `FAN_MULT_CAP` (5.0), `FAN_*_WEIGHT` (0.4 / 0.12) — re-weighted 2026-09-02 |
 | Skill pace | `DB_UPGRADE_THRESHOLD` (4), the per-skill `dbCost` values |
 | Chord risk curve | `CHORD_TEMPLATES` drive/sustain/rank table |
 | Melody payout | `scoreTrackDB` (length ÷2 −1, endings +3/+2/+1), lock bands (+1/+2/+3) |

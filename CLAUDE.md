@@ -39,6 +39,10 @@ pass as the code:
 - `src/THEORY_ARCHITECTURE.md` / `THEORY_ROUTES_DESIGN.md` — the music theory routes
 - `src/PROGRESSION_REWRITE_DESIGN.md` — 🎼 Theory comes off the tree: board-found
   stack slots, free pardons, Db-vs-fans melody payout, per-ability upgrade streams
+- `src/WIN_CONDITIONS_DESIGN.md` — 🏆 Legend Run vs 🎸 Battle of the Bands: how a
+  match ends becomes a setting, and elimination becomes its own axis
+- `src/FAME_TRACK_REDESIGN.md` — ⭐ the header race track with no finish line to
+  race to: margin instead of progress. ⚠️ Visual — preview page first
 - `src/CHARACTER_HANDOFF.md` — per-character state
 
 `src/ARCHITECTURE.md` is the map of the code itself — every module, what it

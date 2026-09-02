@@ -400,9 +400,36 @@ export const TOKEN_DRIFT_TURNS   = 1; // rounds an uncollected Lost Chord sits b
 // -- FAN ECONOMY --
 // Fans never convert to Fame -- they MULTIPLY the Fame every deed is worth.
 // Two bands: Diehards (loyal core, stable) and Casuals (fickle, volatile).
-export const FAN_DIEHARD_WEIGHT  = 0.10;  // multiplier added per Diehard (loyal core -- worth ~3 casuals)
-export const FAN_CASUAL_WEIGHT   = 0.03;  // multiplier added per Casual (fickle fringe)
-export const FAN_MULT_CAP        = 2.0;   // hard ceiling -- a full house tops out at x2
+// 🎤 RE-WEIGHTED 2026-09-02 (Alex's call: "fans should actually mean something").
+//
+// ⚠️ THE OLD `FAN_MULT_CAP` OF 2.0 WAS NOT A CAP. It was the formula's own
+// ceiling written down twice: at the fan caps below, 1 + 0.10x6 + 0.03x14 =
+// 2.02, so the clamp only ever shaved 0.02 off a LITERAL FULL HOUSE and bound
+// nothing else in the game, ever. Raising that number on its own would have
+// been a pure no-op -- the weights are what the multiplier is made of.
+//
+// 📌 AND THE REAL COMPLAINT WAS INTEGER ROUNDING, NOT THE CEILING. `grantFame`
+// does `Math.round(fp * mult)`. At the old 0.03, one Casual moved a 3 FP payout
+// from 3.87 to 3.96 -- both round to 4. Measured at a typical crowd, ONE CASUAL
+// FAN CHANGED THE PAYOUT AT NO GRANT SIZE THE GAME ACTUALLY PAYS (1,2,3,4,6);
+// only at 8 did it ever cross a boundary. A fan you cannot feel is not an
+// economy, and no amount of raising the clamp above it would have helped.
+//
+// So the weights are scaled to put a full house just past the new ceiling --
+// 1 + 0.40x6 + 0.12x14 = 5.08 vs the 5.0 clamp -- which is the SAME SHAPE the
+// old numbers had (2.02 vs 2.0), just with room in it. The ~3.3:1 Diehard:Casual
+// ratio is deliberately preserved: a Diehard is still worth about three Casuals.
+// One Casual is now +0.12 and one Diehard +0.40, both of which move a real
+// payout across a rounding boundary.
+//
+// ⚠️ THIS PUSHES HARD ON `FAME_PER_TURN_CAP`, WHICH IS THE POINT OF FRICTION.
+// A heavier crowd multiplies every deed into a per-turn window that is still 4.
+// See PROGRESSION_REWRITE_DESIGN.md §7.7 for what that measured out at -- the
+// discard is the number to watch, and it is Alex's call whether the window
+// moves with the crowd.
+export const FAN_DIEHARD_WEIGHT  = 0.40;  // multiplier added per Diehard (loyal core -- worth ~3 casuals)
+export const FAN_CASUAL_WEIGHT   = 0.12;  // multiplier added per Casual (fickle fringe)
+export const FAN_MULT_CAP        = 5.0;   // hard ceiling -- a full house reaches 5.08 and is clamped here
 export const FAN_DIEHARD_CAP     = 6;
 export const FAN_CASUAL_CAP      = 14;
 export const FAN_DIEHARD_START   = 2;

@@ -9,8 +9,15 @@
 > of the agreed order (instrument, measure, then tune) shipped on 2026-09-01:
 > `grantFame` now reports what the per-turn cap discards, the harness pays and
 > scatters fans like the client does, and a bench run can be pinned to a fixed
-> horizon with the cap lifted. **§7.1 has the numbers and §7.2 says what they
-> change** — in short, the crowd multiplier is not the lever, the cap is.
+> horizon with the cap lifted. **§7.1 has the numbers.**
+>
+> 🪦 **AND §7.2's CONCLUSION WAS WRONG — see §7.5, measured 2026-09-02.** §7.2
+> said the cap is the lever because matches end on knockouts rather than on
+> Fame. With the finish line ON, **82% end on Fame in 9 turns per player**;
+> the knockout reading was an artifact of an instrument that had removed the
+> finish line. §7.5/§7.6 replace the recommendation: **the cap is a catch-up
+> brake and a shock absorber, and raising it would SHRINK the crowd that §3
+> wants to pay in.**
 >
 > Companion to `GAME_BRIEF.md` (§8 the music economy, §16 known problems #1),
 > `THEORY_ARCHITECTURE.md`, `THEORY_ROUTES_DESIGN.md`, `SEQUENCING.md`.
@@ -246,6 +253,9 @@ see §7.3.
 - 🎤 **THE CROWD RUNS AT A QUARTER OF ITS RANGE.** Diehards average 2.1–2.7
   against `FAN_DIEHARD_CAP` 6; the effective multiplier is 1.37–1.51 against
   `FAN_MULT_CAP` 2.0. It barely moves with the horizon.
+  ⚠️ **These crowd figures are pre-2026-09-02 weights** (0.10 / 0.03 / ×2.0) and
+  are not comparable to anything measured after §7.7's re-weight. The reading
+  they support — that the crowd had headroom — is what §7.7 acted on.
 
 **The cap curve at 15 tpp** — `fameCap` scales every ceiling, so `RIFF_FP_TURN_CAP`
 stays at ×2 throughout:
@@ -258,6 +268,18 @@ stays at ×2 throughout:
 | discarded | 30.0% | 22.6% | 16.6% | 8.6% | 3.9% | 0% |
 
 ### 7.2 🎯 WHAT THIS DOES TO §8's PLAN, AND IT IS A REORDERING
+
+> 🪦 **PARTLY RETRACTED 2026-09-02 — read §7.5 before acting on this section.**
+> The paragraph below beginning "📌 And the Fame target is set just past the
+> horizon the board allows" is **WRONG**, and so is everything that follows from
+> it. It was read off `famedist.mjs`, which sets `fameTarget: ∞` — so in that
+> instrument a knockout was the ONLY way a match could end, and "most matches
+> end on a knockout" was a property of the measurement, not of the game. With
+> the finish line ON, **82% of matches are won on Fame, at a median of 9.0 turns
+> per player.** The first paragraph — that the cap discards a third of awarded
+> Fame and that the crowd has headroom — still stands; it is measured. What does
+> not stand is the conclusion that the cap is therefore the lever to move.
+> §7.5 has the replacement.
 
 **Raising the crowd multiplier pushes on the wrong end of the pipe.** A third of
 what the crowd already amplifies is destroyed before it lands, and the discard
@@ -311,6 +333,169 @@ seeded. Evidence for one session; not suites.
 
 ---
 
+### 7.5 🏁 THE RACE, WITH THE FINISH LINE ON — measured 2026-09-02
+
+`.scratch/famerace.mjs` + `.scratch/_famerace_results.md`. 200 matches per cell,
+2 seats, 3 lives, searcher v searcher, **no `fameTarget` override** — the finish
+line is `fpPerLife`, exactly as shipped. `fameCap` is the only constant moved.
+
+**§7.1 measured the ECONOMY and had to remove the finish line to do it. That is
+the right instrument for "how much Fame does this game produce" and the wrong
+one for "how does a match end" — and §7.2 read the second answer off the first.**
+
+| cap | ends on FAME | med turns/player | ⭐win | ⭐lose | margin | discard | crowd × | ♥ |
+|:---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **4 (today)** | **82%** | **9.0** | 24.2 | 9.4 | 14.8 | 28% | 1.40 | 2.3 |
+| 5   | 89% | 7.5 | 25.4 | 9.2 | 16.1 | 17% | 1.36 | 2.1 |
+| 6   | 92% | 6.5 | 25.8 | 9.4 | 16.4 | 10% | 1.32 | 2.0 |
+| 8   | 93% | 6.0 | 26.9 | 9.0 | 17.9 |  4% | 1.30 | 1.9 |
+| 12  | 94% | 6.0 | 27.0 | 9.2 | 17.8 |  1% | 1.29 | 1.9 |
+| off | 94% | 6.0 | 27.0 | 8.7 | 18.3 |  0% | 1.28 | 1.9 |
+
+- ⛔ **THE FAME RACE IS NOT BLOCKED.** It is how four matches in five already
+  end, and it ends them in nine turns per player, not the sixteen §7.2's
+  arithmetic predicted. The arithmetic used the *seat average* 1.5 FP/turn; the
+  **winner** is not the average seat, and the loser (⭐9) is what drags that mean
+  down.
+- 📉 **SO RAISING THE CAP DOES NOT UNBLOCK ANYTHING — IT SHORTENS THE MATCH.**
+  4 → 6 takes the median from 9.0 to 6.5 turns per player. That is the real
+  effect of the change §7.2 recommended, and it is not the effect it wanted.
+- 🎤 ⚠️ **AND IT SHRINKS THE CROWD, MONOTONE, ALL THE WAY TO CAP OFF.** ×1.40 →
+  ×1.28, ♥2.3 → ♥1.9. Fans accumulate over turns and a shorter match is a
+  smaller crowd. **§3 pays a whole new route in fans. Raising the cap works
+  against §3** — which is the exact opposite of the reason §7.2 put the cap
+  first.
+- ↔️ **THE CAP IS A CATCH-UP BRAKE.** ⭐lose sits at 8.7–9.4 across the entire
+  range while ⭐win climbs 24.2 → 27.0. Whatever the cap stops banking, it stops
+  the Spirit who is *already ahead* from banking. Lifting it widens the margin
+  14.8 → 18.3 and buys the trailing player nothing.
+
+**The pair that preserves the race**, if the 28% discard is judged worth removing
+for its own sake (150 matches/cell):
+
+| cap | target | ends on FAME | med turns/player | margin | discard | crowd × |
+|:---:|:---:|---:|---:|---:|---:|---:|
+| 4 | 24 (shipped) | 81% | 9.0 | 14.5 | 27% | 1.40 |
+| **6** | **30** | **82%** | **8.5** | 18.8 | **12%** | **1.40** |
+
+Cap and target move together and the match you get back is the one you had, with
+the pipe open. It costs a wider margin (18.8 vs 14.5) — the catch-up brake again.
+
+### 7.6 🎯 SO WHAT THE CAP DECISION ACTUALLY IS
+
+Not "unblock the Fame race" — it is not blocked. The cap does exactly two things
+worth deciding about:
+
+1. **It is a catch-up brake.** Keeping it keeps matches closer. That is a
+   legitimate reason to keep it at 4 and has nothing to do with Fame supply.
+2. **It is 28% of headroom that absorbs a new payment source without
+   recalibrating anything else.** §3 is about to add one. A pipe already
+   clipping a third of what it carries takes a new fan route and clips a little
+   more, instead of the new route inflating the game.
+
+📌 **Reading 2 is an argument for leaving the cap where it is until §3 exists**,
+and then measuring the discard again with the fan route live. The cap is the
+shock absorber, not the blockage — and §8's original worry ("adding a new fan
+source is the most likely balance blowout") is answered by the cap being there,
+not by moving it.
+
+⚠️ **What should NOT be tuned against any of this: the absolute FP-per-turn
+numbers.** They move with every kit, payout and board change still open in this
+doc, and they will settle by being played. The columns that carry the finding are
+the comparative ones — ending mix, match length, margin, crowd.
+
+⚠️ **The 4–11% of matches that hit the harness turn ceiling are a BOT artifact,
+not a game property.** Nothing in the game caps turns; `MAX_TURNS` (400) is a
+safety net in `runMatch`. Those are the searcher failing to close, the share
+falls as the cap rises, and they belong in `BOT_STRATEGY_HANDOFF`.
+
+---
+
+### 7.7 🎤 THE FAN RE-WEIGHT — SHIPPED 2026-09-02, and it half-works
+
+**Alex's call: "a player can't tell much difference at all from gaining a few
+fans — it's percentages of a percentage point. They should actually mean
+something." Correct, and the reason turned out not to be the ceiling.**
+
+⚠️ **`FAN_MULT_CAP = 2.0` WAS NEVER A CAP.** At the fan caps
+(`FAN_DIEHARD_CAP` 6, `FAN_CASUAL_CAP` 14) the formula's own ceiling is
+`1 + 0.10×6 + 0.03×14 = 2.02`. The clamp shaved 0.02 off a literal full house
+and bound **nothing else in the game, ever**. Raising that number alone would
+have been a pure no-op.
+
+📌 **The actual culprit was integer rounding.** `grantFame` does
+`Math.round(fp × mult)`. At a typical crowd, one Casual at 0.03 moved a 3 FP
+payout from 3.87 to 3.96 — both round to 4. Checked across every grant size the
+game pays (1, 2, 3, 4, 6, 8): **one Casual changed the payout at none of them
+except 8.** A fan you cannot feel is not an economy.
+
+**What shipped** (`data/gameConstants.js`): `FAN_DIEHARD_WEIGHT` 0.10 → **0.40**,
+`FAN_CASUAL_WEIGHT` 0.03 → **0.12**, `FAN_MULT_CAP` 2.0 → **5.0**. The weights
+are scaled to put a full house just past the new ceiling (5.08 vs 5.0), which is
+the same shape the old pair had (2.02 vs 2.0), and the ~3.3:1 Diehard:Casual
+ratio is preserved. One Casual now moves the payout at **4 of the 6** grant
+sizes; one Diehard at all of them.
+
+| at the shipped per-turn cap of 4 | crowd × | ♥ | ends on FAME | med turns/player | margin | discard |
+|---|---:|---:|---:|---:|---:|---:|
+| old weights | 1.40 | 2.3 | 82% | 9.0 | **14.8** | 28% |
+| **new weights** | **2.42** | 2.1 | 90% | 8.0 | **14.7** | **48%** |
+
+✅ **The re-weight is free on match shape.** +73% crowd, length 9.0 → 8.0 turns
+per player, and **the margin does not move** (14.8 → 14.7).
+
+#### ⛔ But the crowd now saturates against `FAME_PER_TURN_CAP`
+
+**A 2 FP deed at ×2.42 is already 5, clipped to 4.** So above roughly ×1.4 the
+crowd stops scaling anything and becomes a switch — *do I clear the window in one
+deed or two*. **48% of every Fame point the rules award is discarded.**
+
+🎯 **So fans are no longer weightless at the bottom, and are still weightless at
+the top.** Half of Alex's complaint is fixed. The other half is now provably a
+`FAME_PER_TURN_CAP` problem rather than a fan-weight problem — which §7.6 parked
+as "re-measure the discard once §3's fan route exists". The re-weight arrived
+first and did the same job.
+
+| per-turn cap | target | crowd × | ends on FAME | med turns/player | margin | discard |
+|:---:|:---:|---:|---:|---:|---:|---:|
+| **4 (today)** | 24 | 2.42 | 90% | **8.0** | **14.7** | 48% |
+| 6 | 24 | 2.06 | 98% | 5.0 | 19.0 | 28% |
+| 8 | 24 | 1.98 | 99% | 4.5 | 22.6 | 18% |
+| 6 | 32 | 2.41 | 87% | 7.5 | 20.4 | 33% |
+| 8 | 32 | 2.17 | 94% | 6.0 | 23.7 | 19% |
+| 6 | 40 | 2.74 | 77% | 9.5 | 22.0 | 38% |
+| 8 | 40 | 2.48 | 87% | 8.0 | 26.3 | 23% |
+
+↔️ ⚠️ **EVERY ROUTE TO AN UNSATURATED CROWD WIDENS THE MARGIN.** 14.7 → 19.0 →
+22.6 as the window opens, and 20.4 → 26.3 when the target rises with it. §7.5
+found the per-turn cap is a catch-up brake; a heavier crowd rewards whoever is
+already ahead; the two compound. **Nothing measured buys a bigger crowd effect
+without a more lopsided game.** That is the trade, and it is Alex's call:
+
+- **Leave the cap at 4** — closest match, crowd saturates, 48% discarded.
+- **(6, 32)** — the least-bad opening: ×2.41 and 7.5 turns/player, margin 20.4.
+- **(8, 40)** — holds today's 8.0-turn length at 23% discard, margin 26.3.
+
+📌 **A third option nothing here measures: make the window scale with the crowd**
+(`4 × mult` rather than a flat 4). That keeps the brake against a *small* crowd
+while letting a *big* one land, which is the only shape that gets both halves of
+what Alex asked for. It is a rule change rather than a constant, so it wants its
+own design pass.
+
+#### ⚠️ 7.7 D — knock-on flagged, NOT fixed
+
+`evaluate.js:907` normalises the bot's `fanMult` term against `FAN_MULT_CAP - 1`,
+so the divisor moved 1.0 → 4.0 and the term's shape survived — but fans are worth
+~70% more Fame in real play than when that weight was tuned. **The bot will
+under-invest in crowd work, and every bench number from 2026-09-02 on is a
+reading of a bot that does not know fans got better.** Retuning it is its own
+pass with its own bench; do not fold it into a constants change.
+
+📌 Measurements in `.scratch/_fanweight_results.md`, raw in
+`_fanweight_raw_A/B.log`.
+
+---
+
 ## 8. Traps and knock-ons
 
 - 🎪 ~~**Fans have NO per-turn cap** and multiply Fame up to 2.0×. Adding a whole
@@ -322,8 +507,13 @@ seeded. Evidence for one session; not suites.
   the horizon. What IS binding is the thing on the other side of it:
   `FAME_PER_TURN_CAP` destroys 26–33% of every Fame point the rules award, and
   the share grows with the crowd. **A new fan source is not the blowout risk —
-  it is a payment into a pipe that is already 30% blocked.** Decide the cap
-  first; §7.2 has the curve to decide it against.
+  it is a payment into a pipe that is already 30% blocked.** ✅ **AND §7.5
+  (2026-09-02) says the pipe being 30% blocked is the FEATURE here:** the cap is
+  a shock absorber that takes a new fan source without inflating the game, and a
+  catch-up brake besides. ⚠️ Raising it SHRINKS the crowd (×1.40 → ×1.28) because
+  it shortens the match — so "decide the cap first" resolves to **leave it at 4
+  and re-measure the discard once §3's fan route exists.** §7.5/§7.6 replace
+  §7.2's recommendation.
 - 🔊 **`radius = RIG_RADIUS_FLOOR + stack length`.** That formula was tuned against a
   slot ladder costing 38 Db. If slots 5 and 6 become genuinely reachable, beams reach
   8–9 hexes on a 111-hex board and Dom13 (Drive 10) arrives in real matches for the
@@ -363,7 +553,11 @@ seeded. Evidence for one session; not suites.
 | 📏 The ledger channel (`kind:'ledger'`) | `engine/systems/battleFlow.js` header + `runBattleFlow` |
 | 📏 Fixed-length + cap-off instruments | `config.fameTarget` / `config.fameCap` — `matchConfig`, `runMatch`, `engine/state.js`'s config whitelist |
 | 🎤 The harness's fan hooks | `engine/policies/play.js` — `harnessHooks` |
-| 📏 The measurement itself | `.scratch/famedist.mjs`, `.scratch/_famedist_results.md` |
+| 📏 The economy measurement (finish line OFF) | `.scratch/famedist.mjs`, `.scratch/_famedist_results.md` |
+| 🏁 The race measurement (finish line ON) | `.scratch/famerace.mjs`, `.scratch/_famerace_results.md` |
+| 🎤 The fan re-weight and its knock-ons | `.scratch/_fanweight_results.md` |
+| 🎤 Fan weights, the crowd ceiling | `data/gameConstants.js` — `FAN_DIEHARD_WEIGHT`, `FAN_CASUAL_WEIGHT`, `FAN_MULT_CAP` |
+| 🎤 The multiplier itself | `board/boardHelpers.js` — `crowdMultiplier` |
 
 ⚠️ **The stack seats are a VISUAL change**, so the remove-a-note affordance goes to a
 standalone preview page in `.scratch/` first — see `CLAUDE.md`. Good news: the seat

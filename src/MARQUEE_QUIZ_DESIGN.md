@@ -168,7 +168,8 @@ hard: 4 }`.
 ⚠️ **BUT THE RATE DOUBLES, AND FANS ARE THE ONE ECONOMY WITH NO PER-TURN CAP.**
 `FAME_PER_TURN_CAP` clamps Fame and does not touch fans, because fans *multiply*
 Fame rather than being it. Two marquees roughly doubles trivia throughput, and
-the fastest route to a x2 crowd multiplier (`FAN_MULT_CAP = 2.0`) should not be
+the fastest route to a maxed crowd multiplier (`FAN_MULT_CAP`, **5.0 since
+2026-09-02** — see `PROGRESSION_REWRITE_DESIGN.md` §7.7) should not be
 "answer quiz questions". Either trim the payouts when the count goes to two, or
 make the second marquee the cheaper one. This needs a bench run, not a guess.
 
@@ -354,6 +355,10 @@ fourth front. Taking its own medicine, in order:
    consumed in one round lit only one back, permanently and silently.
    ⚠️ The throughput question in §3 is now *measurable* and still **unmeasured**
    — nobody has benched what doubled quiz income does to `FAN_MULT_CAP`.
+   ⚠️ **AND THE STAKES ROSE ON 2026-09-02.** The fan weights were rescaled
+   (diehard 0.10 → 0.40, casual 0.03 → 0.12, cap 2.0 → 5.0), so quiz-won fans
+   are worth roughly four times what they were when this was written. Still
+   unbenched, now more urgently.
 2. ✅ **DONE, 2026-08-20 (evening)** — the lane × difficulty card, and it pays
    the REAL rewards on both lanes rather than fans on both: the rig rework landed
    in the same pass, so there was nothing to stub. `EventModal` gained a `choice`

@@ -19,6 +19,11 @@ The game moved decisively toward the v1 thesis ("protect the spine, cut the nois
 - **Skill tree slimmed** to ~6 legible routes (Theory, Electric, CQC, Crew + two
   Signature arsenals) from the old sprawling eight.
 - **Fan multiplier reconciled** — code (`FAN_MULT_CAP = 2.0`) and tutorial (×2) now agree.
+  ⚠️ **RE-BROKEN AND RE-FIXED 2026-09-02.** The re-weight moved the cap to 5.0 and
+  `ui/HintScreen.jsx` was still teaching ×2 — the exact contradiction this line
+  records closing. Caught by an audit sweep, not by a test. 📌 **Nothing checks
+  that in-game copy matches the constants**, which is why it broke silently; that
+  is a real gap and a candidate suite.
 - **Instant Limelight win removed** and folded into a Fame faucet (as recommended).
   Win conditions are now cleanly two: Fame Legend (25) and Last Spirit Standing.
 - **Dischord softened** from a blanket zero to −1 HC — a little dissonance is now affordable.

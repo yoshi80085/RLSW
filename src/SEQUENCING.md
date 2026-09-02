@@ -13,7 +13,362 @@
 
 ---
 
-## 5-fame. 🧭 START HERE — session handoff, 2026-09-01 (the instrument)
+## 5-win. 🧭 START HERE — session handoff, 2026-09-02c (the win conditions)
+
+**Design only. ⛔ NOTHING BUILT — no config key, no buzzer, no menu button. One
+new doc, `src/WIN_CONDITIONS_DESIGN.md`, plus its line in `CLAUDE.md`'s map.**
+
+### 5-win.A The idea, and what it is NOT
+
+Alex, 2026-09-02: **how a match ends becomes a setting.** 🏆 **Legend Run** is
+the game that ships today — first to the Fame target, or last Spirit standing.
+🎸 **Battle of the Bands** runs a fixed number of rounds, biggest Fame at the
+buzzer wins, and **nobody is eliminated**.
+
+⚠️ **AND THE PROGRESSION REWRITE IS NOT A SECOND GAME EITHER** — worth pinning,
+because the question came up. `PROGRESSION_REWRITE_DESIGN.md` moves the Theory
+branch off the skill tree and re-cuts the melody payout. It does not touch how a
+match ends, and neither did any of §7's Fame work. Both modes play the same game
+with the same board, kits and economy.
+
+### 5-win.B 🎯 THE DECISION EVERYTHING HANGS OFF — three axes, not one flag
+
+| axis | values | meaning | status |
+|---|---|---|---|
+| `config.mode` | `ffa`/`team` | table structure → turn order | **exists**, read by `turn.js` |
+| `config.winCondition` | `fame`/`rounds` | how the match ends | 🆕 |
+| `config.elimination` | `on`/`off` | does running out of lives remove you | 🆕 |
+
+⚠️ **Do not fold the win condition into `config.mode`.** It already means table
+structure at two `advanceTurnQueue` call sites. Two meanings in one field is how
+`legalActionsCheck` §15 happened.
+
+📌 **Elimination is a SEPARATE axis on Alex's explicit instruction** — *"later
+on, in higher difficulty levels, the KO literally means the player is out"*. So
+`rounds + elimination off` is a **default pairing, not a coupling**; a future
+difficulty setting must be able to turn elimination on without touching the win
+condition.
+
+⚠️ **And do not build it out of `config.fameTarget` + `maxTurns`.** Those are the
+bench instruments and both carry an explicit "a run with this set is not a game"
+warning. Shipping on top of them makes the game indistinguishable from a probe
+and turns those comments into lies.
+
+### 5-win.C ✅ The round clock is already built, and already careful
+
+`state.js:130–145` + `turn.js:71–95`. A round is one full revolution, tracked by
+**anchor** rather than `count % aliveCount` — which drifts exactly when a Spirit
+is knocked out or a turn is skipped — with `roundPending` so a round closed by a
+skipped turn is never dropped. **The buzzer is `turn.round > roundLimit` and
+nothing else needs building.**
+
+### 5-win.D ⚠️ THE FAILURE MODE TO DESIGN AGAINST, and the answer
+
+With elimination off, the reason to attack is gone, and **Battle of the Bands
+collapses into two players farming Fame in separate corners and never touching.**
+
+🎤 **The answer is already in the game: a knockdown scatters the victim's crowd.**
+`demolishFans` takes 2–3 casuals off the victim, **defects 2 of them to the
+attacker**, resets their centre streak and locks them out of crowd gain for 3 of
+their own turns. So combat becomes **crowd denial rather than removal** — you are
+not killing them, you are stealing their audience.
+
+📌 **The 2026-09-02b fan re-weight is what makes this land.** Three casuals were
+worth 0.09 on a multiplier yesterday and are worth **0.36** today. The mode needs
+the re-weight, and the re-weight found its best use in the mode. ⚠️ **Unbenched
+— it is an argument, not a measurement.** The number to watch once the mode
+exists: does a searcher still choose to attack when attacking cannot win?
+
+### 5-win.E ⚠️ Couplings that break (§4 of the new doc has all of them)
+
+- 🎯 **Lives and the Fame target are ONE dial today** — `fameToWin =
+  startingLives × fpPerLife`, and `Lobby.jsx:381` says so on screen. In Battle of
+  the Bands there is no target and no lives, so **that dial becomes the ROUNDS
+  dial** — same control, two labels, nothing added to the screen.
+- ⚠️ **`ui/FameRace.jsx` takes `fameToWin` as "the right end of the track".** No
+  target, no scale. **Open, and VISUAL → `.scratch/` preview page first.**
+- **`decideWinner` stays and simply never fires.** Gate `resolveKnockdown`'s
+  lives-to-zero branch instead — that is the one place removal happens.
+- **`FAME_PER_TURN_CAP` means something different per mode**: a catch-up brake in
+  a race (§5-race), a score flattener in a fixed-length game. Open. ⚠️ Not to be
+  settled by argument — the intuitive answer about this constant has been wrong
+  twice already.
+
+### 5-win.F 💰 Why this de-risks the FP inflation Alex wants
+
+In Legend Run, FP is a **finish line**, so inflating it means re-deriving
+`fameToWin` and re-checking length, margin and discard. In Battle of the Bands
+FP is a **score**, and a score can be any size — nobody calibrates it.
+
+🎯 **So the order:** inflate FP → play Battle of the Bands to find a satisfying
+score curve → *then* set `fpPerLife` from what a good game produced. That is
+Alex's "I'd need to play the game", turned into a procedure.
+
+### 5-win.G ⭐ THE HEADER TRACK NEEDS A REDESIGN, AND IT HAS ITS OWN DOC
+
+Alex, same conversation: *"it's not a race to the finish anymore — it'll have to
+be redesigned to show by 'how much' the winner is winning."* Correct, and bigger
+than it looks. **`src/FAME_TRACK_REDESIGN.md`.**
+
+⚠️ **`fameToWin` is load-bearing in SEVEN places in a 139-line component** — the
+position mapping, the threshold filter, the finish-line element, the tie-fan
+direction rule, both tooltips and the right-hand label. **It is the coordinate
+system, not a prop**, so this is a redesign rather than a swap.
+
+⚠️⚠️ **And the obvious answer is the wrong one.** Anchoring the right end to the
+leader shows the gap perfectly and makes **every other blip slide sideways when
+the leader scores, though nobody else lost anything.** Motion on that strip
+currently means "somebody scored"; a rescaling track makes it ambiguous. That is
+the same class of lie the component's own tie-fan note was written to prevent, and
+§2 of the doc says any candidate is judged on it first.
+
+📌 **Three candidate scales, and the doc deliberately does NOT pick one** — they
+go on the preview page as a button row and Alex chooses by looking: leader-anchored
+(with a quantisation lever), fixed-at-match-start (no false motion, but the value
+is unknown until the FP inflation lands), and a pace line (rescales with the clock
+only). ✅ **And there is a free slot for the margin readout** — the right-hand
+`⭐{fameToWin}` label has nothing to say once there is no finish line.
+
+⚠️ **Two traps the doc pins:** the round clock would collide with the existing
+`🔥💿 DISCO INFERNO — N rounds left` chip sitting in the same strip in the same
+pill shape; and the track's width is **not fixed** — it is `flex:1, minWidth:190`
+competing with up to seven sibling chips, so the preview must show it at its
+narrowest and widest, not at one comfortable width.
+
+### 5-win.H 🎯 NEXT
+
+`WIN_CONDITIONS_DESIGN.md` §6 lists what is open (default round count, the
+buzzer tie-break, the cap per mode, the HUD track, the last-round beat, the
+stage-FX thresholds) and §8 has the build order: **steps 1–5 are headless and
+safe; step 6 is the menu and carries the standing preview rule.**
+
+📌 The two visual pieces — the mode toggle in the lobby and the track — can share
+one preview page or be two; the track is much the larger of them and
+`FAME_TRACK_REDESIGN.md` §8/§9 already lists its states and levers.
+
+### 5-win.I 🔍 AUDIT SWEEP — and it caught a live bug
+
+Every file path, line citation and cross-doc `§` reference written this session
+was checked mechanically rather than by eye. **21/21 line citations resolve** and
+every new cross-doc reference points at a heading that exists.
+
+🐛 **AND IT FOUND ONE THE TESTS DID NOT.** `ui/HintScreen.jsx:26` was teaching
+players *"Fans … MULTIPLY everything you earn, up to ×2 with a full house"* —
+false the moment `FAME_MULT_CAP` moved to 5.0 that morning. **Fixed to ×5.**
+
+⚠️ **THIS IS A REPEAT, AND `DESIGN_AUDIT_v2.md:21` IS THE RECORD OF IT BEING
+CLOSED THE FIRST TIME.** The original `DESIGN_AUDIT` flagged "code caps at 1.8,
+tutorial promises ×3 — rules-as-coded and rules-as-taught disagree"; v2 recorded
+it reconciled; a constants change re-broke it inside one session.
+
+🎯 **📌 NOTHING CHECKS THAT IN-GAME COPY MATCHES THE CONSTANTS.** That is why it
+broke silently both times, and it is a real gap — a suite that greps the hint and
+tutorial strings for numbers and asserts them against `gameConstants.js` would
+have caught it in `test:all`. **Candidate for the next session**, and cheap.
+
+📌 Also updated for the re-weight: `MARQUEE_QUIZ_DESIGN.md` §"the fastest route to
+a maxed crowd multiplier" and its unbenched-quiz-income warning (the stakes rose
+~4× with the new weights).
+
+⚠️ **Pre-existing drift found and NOT edited** (per `CLAUDE.md` — say so plainly
+rather than editing around it): `SEQUENCING.md:688` and `:3845` cite
+`THEORY_ROUTES_DESIGN.md` **§4.2** and **§4.3**, and that doc's §4 has no
+subsections. Both are inside archived handoffs, so rewriting them would be
+rewriting history; flagged here instead.
+
+⚠️ **And `npm run test:all` died mid-sweep three times** on the VM memory ceiling.
+All 21 suites were run in batches and are green — engine, legal 577, eval 154,
+transition 248, turnflow 73, determinism 20, battleflow 65, melody 159, slime 127,
+eleven 38, score 122, harness 1633, riffparity 127598, skilltree 159, shamisen 34,
+client 6, render 8/8, b0 55✓, riff 70970, trace 1256, arch 8. `check:bundle` at
+**zero warnings**. 📌 If `test:all` keeps dying, batch it rather than trusting a
+truncated log — a sweep that stopped at `test:render` looks identical to one that
+passed unless you count the suites.
+
+---
+
+## 5-fans. 🧭 session handoff, 2026-09-02b (the fan re-weight)
+
+**Alex's call: fans should actually mean something. SHIPPED — three constants in
+`data/gameConstants.js`. `test:all` green (see the count note below),
+`check:bundle` at zero warnings. Read `5-race` beneath this for the measurement
+it builds on.**
+
+### 5-fans.A ⚠️ THE OLD ×2.0 "CAP" WAS NOT A CAP
+
+📏 At the fan caps (`FAN_DIEHARD_CAP` 6, `FAN_CASUAL_CAP` 14) the multiplier
+formula's own ceiling is `1 + 0.10×6 + 0.03×14 = **2.02**`. `FAN_MULT_CAP` 2.0
+shaved 0.02 off a literal full house and **bound nothing else in the game,
+ever**. Raising that one number — the literal instruction — would have been a
+pure no-op, so it was raised *and* the weights it clamps were rescaled to reach
+it.
+
+📌 **The complaint's real cause was integer rounding.** `grantFame` does
+`Math.round(fp × mult)`. One Casual at 0.03 moved a 3 FP payout from 3.87 to
+3.96 — both round to 4. Across every grant size the game pays (1, 2, 3, 4, 6, 8)
+one Casual changed the payout at **none of them except 8**. That is the
+"percentages of a percentage point" Alex could feel, and no ceiling change would
+have touched it.
+
+### 5-fans.B What shipped, and what it measured out at
+
+`FAN_DIEHARD_WEIGHT` 0.10 → **0.40** · `FAN_CASUAL_WEIGHT` 0.03 → **0.12** ·
+`FAN_MULT_CAP` 2.0 → **5.0**. Scaled so a full house lands just past the ceiling
+(5.08 vs 5.0) — the same shape the old pair had — with the ~3.3:1
+Diehard:Casual ratio preserved. One Casual now moves the payout at **4 of 6**
+grant sizes; one Diehard at all of them.
+
+| at the shipped per-turn cap of 4 | crowd × | ends on FAME | med turns/player | margin | discard |
+|---|---:|---:|---:|---:|---:|
+| old weights | 1.40 | 82% | 9.0 | **14.8** | 28% |
+| **new weights** | **2.42** | 90% | 8.0 | **14.7** | **48%** |
+
+✅ **Free on match shape**: +73% crowd, length 9.0 → 8.0 turns per player, and
+**the margin does not move**.
+
+### 5-fans.C ⛔ THE OPEN PROBLEM — the crowd now saturates instantly
+
+**A 2 FP deed at ×2.42 is already 5, clipped to 4 by `FAME_PER_TURN_CAP`.** Above
+roughly ×1.4 the crowd stops scaling and becomes a switch — *do I clear the
+window in one deed or two* — and **48% of awarded Fame is discarded**.
+
+🎯 **Fans are no longer weightless at the bottom and are still weightless at the
+top.** Half the complaint is fixed; the other half is now provably a per-turn-cap
+problem, not a fan-weight one.
+
+↔️ ⚠️ **And every route to an unsaturated crowd widens the margin** — 14.7 → 19.0
+→ 22.6 as the window opens, 20.4 → 26.3 when the target rises with it. §5-race
+found the per-turn cap is a catch-up brake; a heavier crowd rewards the leader;
+they compound. **Nothing measured buys a bigger crowd effect without a more
+lopsided game.** `PROGRESSION_REWRITE_DESIGN.md` §7.7 has the full grid and the
+three options. ⚠️ **Alex's call, nothing further touched.**
+
+📌 **The option nothing has measured yet** is a window that scales with the crowd
+(`4 × mult` instead of a flat 4) — the only shape that keeps the brake against a
+small crowd while letting a big one land. A rule change, not a constant; it wants
+its own design pass and is the strongest candidate for the next session.
+
+### 5-fans.D 📌 SUITE COUNTS, and one that dropped
+
+`test:all` green. ⚠️ **`harness` 1731 → 1633, a drop of 98 — verified, not
+assumed.** Reverting the three constants and re-running gave 1731 back
+immediately, so this is the documented seeded-stream mechanism from §5-fame.C:
+the crowd multiplier feeds `grantFame`, which changes Fame, which changes
+decisions, which changes how many loop-driven assertions execute. **No check was
+lost.** Every other suite is identical (`eval` 154, `battleflow` 65, `legal` 577,
+`transition` 248, `harness`-adjacent riffparity 127598, `riff` 70970, `trace`
+1256, `arch` 8) — and `eval` and `battleflow` were each confirmed unchanged
+against the reverted constants too.
+
+⚠️ **`test:all` stopped after `test:render` on the first attempt** — the VM
+restarted under memory pressure, the ceiling CLAUDE.md warns about. `b0`, `riff`,
+`trace` and `arch` were run separately and are green. If it happens again, run
+the tail four by hand rather than assuming the sweep passed.
+
+### 5-fans.E ⚠️ KNOCK-ON FLAGGED, NOT FIXED — the bot does not know
+
+`evaluate.js:907` normalises the `fanMult` term against `FAN_MULT_CAP - 1`, so
+the divisor moved 1.0 → 4.0 and the term's shape survived — **but fans are worth
+~70% more Fame in real play than when that weight was tuned.** The bot will
+under-invest in crowd work, and **every bench number from 2026-09-02b on is a
+reading of a bot that does not know fans got better.** Retuning it is its own
+pass with its own bench; it was deliberately not folded into a constants change.
+
+### 5-fans.F Docs updated in the same pass
+
+`GAME_BRIEF.md` §8 + the constants table, `BOT_STRATEGY_HANDOFF.md`'s currency
+table and its ×2.0 line (now carrying the eval warning),
+`PROGRESSION_REWRITE_DESIGN.md` §7.7 + §9's code map, and §7.1's crowd figures
+marked as pre-re-weight and not comparable.
+
+---
+
+## 5-race. 🧭 session handoff, 2026-09-02 (the race)
+
+**Design and measurement only. NOTHING IN THE GAME CHANGED — no constant, no
+rule, no source file outside the two docs and one new `.scratch/` probe.
+`PROGRESSION_REWRITE_DESIGN.md` §7.5/§7.6 are new; §7.2 is partly retracted.**
+
+### 5-race.A ⛔ THE FINDING — the Fame race was never blocked
+
+📏 **With the finish line ON, 82% of matches are won on Fame, at a median of 9.0
+turns per player.** Not on knockouts, and not at the ~16 turns §7.2's arithmetic
+predicted.
+
+⚠️ **§7.2 got this wrong for an instructive reason, and it is the §5.A pattern
+in a new costume.** It read "most matches end on a knockout" off
+`.scratch/famedist.mjs` — which sets `fameTarget: ∞`. In that instrument a
+knockout is the ONLY way a match can end. The finding was a property of the
+measurement. §7.1's economy numbers (the 26–33% discard, the crowd at a quarter
+of its range) are untouched and still measured; only the conclusion drawn from
+them is retracted.
+
+📌 **And the arithmetic error underneath it is worth remembering.** §7.2 divided
+the target by the *seat average* of 1.5 FP/turn. The winner is not the average
+seat — the loser finishes on ⭐9 and is what drags that mean down.
+
+### 5-race.B 🎯 SO WHAT MOVING THE CAP ACTUALLY DOES
+
+Sweeping `fameCap` 4 → off against the shipped finish line (200 matches/cell,
+`.scratch/famerace.mjs`, full tables in `PROGRESSION_REWRITE_DESIGN.md` §7.5):
+
+1. 📉 **It shortens the match.** Median 9.0 → 6.5 turns per player at cap 6, 6.0
+   at cap 8 and above. The Fame ending share only moves 82% → 92% because it was
+   never the thing in the way.
+2. 🎤 ⚠️ **It shrinks the crowd, monotonically.** ×1.40 → ×1.28, ♥2.3 → ♥1.9.
+   Fans accumulate over turns; a shorter match is a smaller crowd. **§3 of the
+   progression rewrite pays a whole new route in fans, so raising the cap works
+   against the design that asked for it.**
+3. ↔️ **The cap is a catch-up brake.** ⭐lose is flat at 8.7–9.4 across the entire
+   range while ⭐win climbs 24.2 → 27.0. What the cap stops banking, it stops the
+   Spirit already ahead from banking; lifting it widens the margin 14.8 → 18.3
+   and buys the trailing player nothing.
+
+**The recommendation is therefore to leave `FAME_PER_TURN_CAP` at 4** and
+re-measure the discard once §3's fan route exists. The cap is the shock absorber
+that lets a new fan source land without inflating the game — which answers §8's
+original worry by the cap *being there*, not by moving it. §7.6 states this as
+the decision; ⚠️ **it is still Alex's call and no constant has been touched.**
+
+📌 If the 28% discard is judged worth removing for its own sake, the pair
+**(cap 6, target 30)** reproduces today's race almost exactly — 82% Fame endings,
+8.5 turns per player, crowd ×1.40 — at a 12% discard. It costs a wider margin
+(18.8 vs 14.5). That is a step-4 decision, not a step-3 one.
+
+### 5-race.C What landed
+
+| what | where |
+|---|---|
+| 🏁 The race probe — finish line ON, `fameCap` swept, endings classified | `.scratch/famerace.mjs` |
+| The tables and the caveats | `.scratch/_famerace_results.md`, raw in `_famerace_raw_A/B/C.log` |
+| §7.5 (the race), §7.6 (what the decision actually is) | `PROGRESSION_REWRITE_DESIGN.md` |
+| §7.2 marked partly retracted, in place, with the reason | `PROGRESSION_REWRITE_DESIGN.md` |
+| §8's first bullet and the header banner re-pointed at §7.5 | `PROGRESSION_REWRITE_DESIGN.md` |
+
+⚠️ **No test run is quoted in this handoff because no source file changed.**
+`.scratch/famerace.mjs` is evidence for one session, not a suite, and a run with
+`fameCap` or `fameTarget` set is not a game.
+
+### 5-race.D 🎯 NEXT, AND TWO THINGS NOT TO CHASE
+
+Step 3 resolves to **leave the cap alone and build §3**, so the next real step is
+a design one: the **per-character gesture table** (§3), which is the only part of
+the payout split with nothing decided beyond the Ronin's run. Everything else in
+§3 is re-pointing functions that already exist.
+
+⚠️ **Do not tune against absolute FP-per-turn figures.** They move with every
+kit, payout and board change still open in the rewrite, and they settle by being
+played. The comparative columns are the finding; the levels are not.
+
+⚠️ **The 4–11% of matches that hit the harness turn ceiling are a BOT artifact,
+not a game property.** Nothing in the game caps turns — `MAX_TURNS` (400) is a
+safety net in `runMatch`, and the share falls as the cap rises. That is the
+searcher failing to close a won position and it belongs in
+`BOT_STRATEGY_HANDOFF`, not in a Fame decision.
+
+---
+
+## 5-fame. 🧭 session handoff, 2026-09-01 (the instrument)
 
 **Step 1 of `PROGRESSION_REWRITE_DESIGN.md`'s agreed order — instrument, measure,
 then tune — is done. Nothing about the GAME changed; what changed is that the
@@ -100,7 +455,7 @@ off one.
 
 ---
 
-## 5-clean. 🧭 START HERE — session handoff, 2026-09-01 (the clear-out)
+## 5-clean. 🧭 session handoff, 2026-09-01 (the clear-out)
 
 **Three cuts, all Alex's call, all landed. `npm run test:all` green, `check:bundle`
 at zero warnings, and `test:arch` green for the first time in weeks.**

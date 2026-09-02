@@ -91,7 +91,7 @@ always feeds melody arrives everywhere with nothing to hit with.
 | **Db (Decibills)** | melody commits (`scoreTrackDB` + context) | skill unlocks **and** per-use ability fuel | threshold 4 (`DB_UPGRADE_THRESHOLD`); mean ≈2.6/commit | **unlock vs. fire** — see §3.2 |
 | **HC (Harmonic Charge)** | performance quality only | skill route progress | `scoreTrackHC` + `perfHcBonus` | performance vs. tempo |
 | **FP (Fame)** | battles only, + Pose + Azrael | **winning** | **4/turn hard cap** (`FAME_PER_TURN_CAP`) | overflow is DISCARDED |
-| **Fans** | performance, ring position, trivia, cadences | multiply *all* FP | ×2.0 cap; diehard 0.10, casual 0.03 | centre pays, centre kills |
+| **Fans** | performance, ring position, trivia, cadences | multiply *all* FP | ×5.0 cap; diehard 0.40, casual 0.12 | centre pays, centre kills |
 | **Vibe** | — (it's health) | survival | 4–5 by Spirit | the only truly scarce thing |
 | **Charge (⚡)** | 2 fixed lightning hexes | die floor (≥3) or die ceiling (d6→d8) | 2 turns, dies on any battle | **roam vs. fight** |
 
@@ -185,7 +185,16 @@ Intergalactic 0 this is not a boost but his **entire mobility identity** (§4.2)
 ### 3.6 Position: fans vs. safety
 `FAN_GAIN_BY_RING` pays main 2 / pit 1 / floor 1 / **back 0**, and after
 `FAN_BORED_AFTER` 3 turns in the outer ring `FAN_DECAY` sheds 2 casuals/turn.
-Fans cap at ×2.0 on *every* FP payout.
+Fans cap at ×5.0 on *every* FP payout (re-weighted 2026-09-02 from ×2.0 /
+0.10 / 0.03 — the old ceiling was the formula's own and bound nothing).
+
+⚠️ **AND THE `fanMult` EVAL TERM HAS NOT BEEN RETUNED FOR IT.**
+`evaluate.js:907` normalises against `FAN_MULT_CAP - 1`, so the divisor moved
+1.0 → 4.0 and the term's shape survived — but fans are worth roughly 70% more
+Fame in real play than when that weight was set, and the bot does not know.
+**Expect the bot to under-invest in crowd work, and read every bench number
+since 2026-09-02 with that in mind.** Retuning it is its own pass with its own
+bench; see `PROGRESSION_REWRITE_DESIGN.md` §7.7 D.
 **Verdict:** the fan multiplier is a compounding lead, so early centre-stage
 turns are worth more than late ones. But centre is also the Limelight, i.e. the
 most contested hex on the board. The bot should treat fan multiplier as an
