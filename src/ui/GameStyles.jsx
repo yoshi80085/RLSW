@@ -211,6 +211,17 @@ export function GameStyles() {
           0%,100% { opacity: 0.55; filter: drop-shadow(0 0 3px currentColor); }
           50%     { opacity: 1;    filter: drop-shadow(0 0 9px currentColor); }
         }
+        /* 🔓 THE HUNT MARKER — the hex holding the Lost Chord that opens your next
+           stack seat. Dialled by Alex on the scratch unlock-glow preview page,
+           2026-09-02, against the real board art at the real scale.
+           ⚠️ NOT event-hex-pulse. It dips further (0.45 vs 0.55) and blooms
+           harder (10px vs 9px) on purpose: the marker has to win against a board
+           that is already full of pulsing cyan, and it is drawn at hex size
+           rather than chip size, so the same numbers do not read the same. */
+        @keyframes unlock-hex-pulse {
+          0%,100% { opacity: 0.45; filter: drop-shadow(0 0 3px currentColor); }
+          50%     { opacity: 1;    filter: drop-shadow(0 0 10px currentColor); }
+        }
         @keyframes slimePulse {
           0%,100% { opacity: 0.5; }
           50%     { opacity: 0.85; }

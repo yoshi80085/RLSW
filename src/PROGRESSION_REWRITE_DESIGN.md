@@ -176,6 +176,27 @@ cooperative.
 
 ---
 
+### ✅ 🔓 AND THE HEX YOU ARE HUNTING LIGHTS UP — built 2026-09-02g
+
+The whole hex, in the colour of the seat the find would fill (`DRIVE_C` / `SUSTAIN_C`,
+from `unlockClaim` so the marker and the payout cannot disagree), pulsing 0.45→1
+with a 3→10px bloom, plus a ×1.15 bump on the chip. Dialled by Alex on
+`.scratch/unlock-glow-preview.html`; `SEQUENCING.md` §5-glow has the reasoning and
+the three bugs the SSR diff caught.
+
+⚠️ **RIVAL SEATS ARE NOT MARKED**, and that is a deliberate narrowing of §2's
+"denial is real". The rule is unchanged — anyone may still take anyone's Lost Chord,
+and `liveUnlockPcs` still answers for the whole table — but only the ACTING Spirit's
+hunt is drawn. Marking four Spirits at once is four colours of noise on a 111-hex
+board, and the design audience is now stated: **the ultimate beginner.**
+
+📌 **A find fills exactly one seat, so "a note both my stacks want" is not a state.**
+`unlockClaim`'s lower-seat-wins tie-break settles it before anything renders. A
+consequence: the board reads mostly-red early, because Drive's seat is usually the
+lower one and ties go to Drive.
+
+---
+
 ## 3. 🅱️ The pardon ladder becomes universal; the fans pay for style
 
 ### The gate comes off, the mechanic stays

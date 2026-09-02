@@ -359,7 +359,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
-import { SLOT_LADDER, stackRoot, nextRung, applyUnlockClaim } from "./music/stackSlots.js";
+import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim } from "./music/stackSlots.js";
 import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, THRASH_DIE, THRASH_CEIL_DIE, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
@@ -509,6 +509,32 @@ const SUSTAIN_C = "#44aaff";
 // Dimmed backings for the same pair, for hex interiors and chip fills.
 const DRIVE_BG   = "#2a0f0a";
 const SUSTAIN_BG = "#08202e";
+
+// ── 🔓 THE HUNT MARKER — the Lost Chord that opens your next seat ────────────
+// `PROGRESSION_REWRITE_DESIGN.md` §2 put stack slots on the board and
+// `SEQUENCING.md` §5-seats.D left the player no way to SEE which hex was theirs.
+// This is that marker, dialled by Alex on `.scratch/unlock-glow-preview.html`
+// (2026-09-02) against the real board art at the real scale.
+//
+// 🎯 THE WHOLE HEX LIGHTS, NOT THE TOKEN. He tried a halo ring around the chip,
+// rays, and a 🔓 badge, and threw all three away for the same reason: at HS=21
+// the token is 6.7px across, so anything drawn AROUND it is a second object
+// competing with it rather than a property of it. The hex is the one shape on
+// the board that is already the right size, and the charge zones already prove
+// it reads at this scale.
+//
+// ⚠️ THE COLOUR IS THE STACK'S, AND IT COMES FROM `unlockClaim`, NOT FROM A
+// SECOND GUESS AT THE LADDER. Which seat a find actually fills is a real rule
+// with a real tie-break (lower seat wins, ties to Drive), and a marker that
+// picked its own colour would be red on a hex that opens a blue seat the moment
+// Drive gets ahead. One function decides both, so they cannot disagree.
+const UNLOCK_GLOW = {
+  hexR:      0.9,     // × HS — the charge zones' polygon radius, deliberately
+  width:     1.2,     // px
+  fillAlpha: "14",    // 8% — a tint. The board art has to stay readable under it
+  bump:      1.15,    // the token grows too, so the marker survives a busy hex
+  period:    1.6,     // s — a hair slower than the token's own 1.6s pulse ⚠️ see below
+};
 
 // ── THE UNLOCKED-DISCORD LOOK ────────────────────────────────────────────────
 // The tritone, the ♭7 and the major 3rd each used to own a colour (red, blue,
@@ -15812,20 +15838,49 @@ export function Game({ gameState, onReturnToLobby }) {
                 });
               })()}
 
-              {/* ── BOARD TOKENS — Lost Chords (free notes into your stock) ── */}
+              {/* ── BOARD TOKENS — Lost Chords (free notes into your stock) ──
+                  🔓 and the one that opens YOUR next stack seat lights its hex.
+                  ⚠️ IT IS THE ACTING SPIRIT'S HUNT, NOT EVERY PLAYER'S. `liveUnlockPcs`
+                  deliberately answers for the whole table (the spawner weights toward
+                  all of it, because denial is a real play) — but a board that lit up
+                  for four Spirits at once would be four colours of noise and would
+                  tell the player nothing about their own turn. Alex's call on the
+                  preview page, 2026-09-02: rival seats are NOT marked. */}
               {boardTokens.map(tok => {
                 const hex = HEX_BY_NUM[tok.num];
                 if (!hex) return null;
                 const cx = Math.round(hex.px * SCALE);
                 const cy = Math.round(hex.py * SCALE);
-                const r  = HS * 0.32;
+                // 🎯 ONE CALL, AND IT IS THE SAME FUNCTION THE FIND ITSELF USES.
+                // `applyUnlockClaim` (the pickup) is `unlockClaim` plus a patch, so a
+                // hex that glows is a hex that pays, by construction rather than by
+                // two rules that happen to agree today.
+                const claim = actingNoteState ? unlockClaim(actingNoteState, tok.note) : null;
+                const glow  = claim ? (claim.which === 'sustain' ? SUSTAIN_C : DRIVE_C) : null;
+                const r  = HS * 0.32 * (claim ? UNLOCK_GLOW.bump : 1);
                 return (
-                  <g key={`tok-${tok.num}`} style={{pointerEvents:'none',
-                    animation:'event-hex-pulse 1.6s ease-in-out infinite',
-                    animationDelay:`${(tok.num % 7) * 0.18}s`}}>
-                    <circle cx={cx} cy={cy} r={r} fill="#0a1828" stroke="#44ccff" strokeWidth={1} opacity={0.96}/>
-                    <text x={cx} y={cy + r*0.34} textAnchor="middle" fontSize={r*1.05}
-                      fontFamily="'Share Tech Mono',monospace" fontWeight="700" fill="#7fe0ff">{tok.note}</text>
+                  <g key={`tok-${tok.num}`} style={{pointerEvents:'none'}}>
+                    {/* ⚠️ THE HEX SITS OUTSIDE THE CHIP'S ANIMATED GROUP, AND HAS TO.
+                        `event-hex-pulse` animates OPACITY on the group, and a nested
+                        opacity animation MULTIPLIES with its parent's — the marker
+                        would have bottomed out at 0.45 × 0.55 = 0.25 and beaten
+                        against the chip's own per-token `animationDelay` at a
+                        difference frequency. Two siblings, two clocks, no interference. */}
+                    {claim && (
+                      <polygon points={pointyCorners(cx, cy, HS * UNLOCK_GLOW.hexR)}
+                        fill={`${glow}${UNLOCK_GLOW.fillAlpha}`} stroke={glow}
+                        strokeWidth={UNLOCK_GLOW.width}
+                        style={{color: glow,
+                          animation:`unlock-hex-pulse ${UNLOCK_GLOW.period}s ease-in-out infinite`}}/>
+                    )}
+                    <g style={{animation:'event-hex-pulse 1.6s ease-in-out infinite',
+                      animationDelay:`${(tok.num % 7) * 0.18}s`}}>
+                      <circle cx={cx} cy={cy} r={r} fill="#0a1828" stroke={glow ?? "#44ccff"}
+                        strokeWidth={1} opacity={0.96}/>
+                      <text x={cx} y={cy + r*0.34} textAnchor="middle" fontSize={r*1.05}
+                        fontFamily="'Share Tech Mono',monospace" fontWeight="700"
+                        fill={glow ?? "#7fe0ff"}>{tok.note}</text>
+                    </g>
                   </g>
                 );
               })}

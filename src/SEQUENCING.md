@@ -13,7 +13,112 @@
 
 ---
 
-## 5-seats. 🧭 START HERE — session handoff, 2026-09-02f (🅰️ Theory comes off the tree)
+## 5-glow. 🧭 START HERE — session handoff, 2026-09-02g (the hunt marker)
+
+🔓 **THE HEX HOLDING YOUR NEXT STACK SEAT NOW LIGHTS UP.** §5-seats.D called this
+"the single highest-value next step"; it is built, dialled on a preview page, and
+verified against the shipped render through SSR.
+
+### 5-glow.A What Alex asked for, and the frame he set
+
+*"Let's make the note that can potentially upgrade a stack glow a bit and stand
+out — we're designing this game with the ultimate beginner as the focus for now,
+so this is an absolute must."*
+
+📌 **"THE ULTIMATE BEGINNER" IS NOW THE STATED DESIGN AUDIENCE.** Worth carrying
+into every visual call after this one, and it is what settled the two open
+questions below without a debate.
+
+### 5-glow.B What shipped
+
+- **`.scratch/unlock-glow-preview.html`** — the dial-in page, per `CLAUDE.md`'s
+  standing rule. Real board art, the real 111-hex map, the real `SCALE`, `HS = 21`
+  and token `r = 6.7px`. Six stackable treatments, each with its own sliders; which
+  hexes light is computed from `stackSlots.js`' real ladder rather than hardcoded,
+  so changing a root re-points the hunt on the page exactly as the Drive spend
+  re-points it in play.
+- **The marker is THE WHOLE HEX, not the chip.** Alex tried the halo ring, the
+  rays and the 🔓 badge and threw all three away. ⚠️ The reason generalises: at
+  `HS = 21` the token is 6.7px across, so anything drawn *around* it reads as a
+  second object competing with it rather than as a property of it. The hex is the
+  one shape on the board that is already the right size, and the charge zones
+  already prove that shape reads at this scale.
+- **The colour is the seat's, and it comes from `unlockClaim`.** `UNLOCK_GLOW` in
+  the client + `unlock-hex-pulse` in `GameStyles.jsx`. Stroke `DRIVE_C` / `SUSTAIN_C`
+  (the game's own constants, per the "one source, everywhere" comment at their
+  declaration — the preview's near-miss red was NOT ported), fill at 8%, opacity
+  0.45→1 with a 3→10px bloom over 1.6s, plus a ×1.15 size bump on the chip itself.
+- **Rival seats are NOT marked.** Alex's call. `liveUnlockPcs` still answers for
+  the whole table — the spawner needs that, and denial is a real play — but four
+  Spirits' hunts drawn at once is four colours of noise, and the acting player
+  learns nothing about their own turn from it.
+
+### 5-glow.C ⛔ THREE BUGS THE VERIFICATION CAUGHT, AND ONLY ONE WAS IN THE PORT
+
+`CLAUDE.md` says render the shipped component through SSR and diff it against the
+preview. Doing it caught three things, and the direction is the interesting part:
+**the preview was wrong twice and the port was wrong once.**
+
+- 🐛 **THE PREVIEW'S HEXAGON WAS ROTATED 30° OFF THE BOARD'S OWN GRID.** It carried
+  its own `hexPoints` with a `60*i - 30` vertex angle; the game's `pointyCorners`
+  uses `60*i`. So the marker Alex approved did not sit on the hex it was marking,
+  and nobody could see that at 21px on a screenshot. The SSR diff is what found it.
+  ⚠️ **A preview page that re-implements board geometry is a preview of something
+  else.** It now uses the real formula and the two agree to the game's own 1dp
+  rounding. The corrected board was sent back to Alex and he has seen it.
+- 🐛 **TWO SLIDERS ON THE PAGE WERE INERT** — "outline opacity" and "dim ordinary
+  tokens". Both set `opacity` as an attribute or inline style on an element whose
+  CSS animation *also* animates `opacity`, and the animation wins. Measured in a
+  headless browser rather than reasoned about: the polygon's computed opacity swung
+  0.45→1.0 while the attribute read `0.35`. ⚠️ **So `dimOthers` was never evaluated
+  and is deliberately NOT in the shipped port**, even though the box was ticked in
+  the screenshot Alex sent. Both are now real controls on the page.
+- 🐛 **THE PORT'S FIRST DRAFT NESTED THE MARKER INSIDE THE CHIP'S ANIMATED GROUP.**
+  `event-hex-pulse` animates opacity on that group, nested opacity animations
+  MULTIPLY, and the group carries a per-token `animationDelay` — so the marker
+  would have bottomed out at 0.45 × 0.55 = 0.25 and beaten against the chip at a
+  difference frequency. They are siblings now, with a comment saying why.
+
+### 5-glow.D 📌 What the SSR pass established about the rule itself
+
+**A find only ever fills ONE seat, so the "opens both my stacks" state does not
+exist.** The preview offered a split red/blue ring for it; `unlockClaim` resolves
+it — lower seat wins, ties to Drive — so a pitch both stacks want is simply the
+lower seat's colour. The split-ring control was a fiction the real function had
+already settled, and nothing was ported for it.
+
+⚠️ **A consequence worth knowing before anyone tunes this: the marker will read as
+mostly-red in early play.** Drive and Sustain climb the same ladder independently,
+Drive's seat is usually the lower one, and ties go to Drive. Blue appears when
+Drive is ahead. That is the rule working, not a bug — but if the board looks
+monochrome in a playtest, this is why.
+
+### 5-glow.E ✅ Verification
+
+- `npm run check:bundle` — clean, **zero warnings**.
+- `npm run test:all` — see the counts quoted in the session message.
+- SSR diff (`.scratch/_glowssr.jsx`) — the shipped block's geometry printed through
+  `react-dom/server` and compared against the preview's live DOM at Alex's settings.
+  Centres, polygon vertices, token radii, stroke width and fill alpha all agree.
+
+### 5-glow.F 🎯 NEXT
+
+1. 🎲 **The three gated endings are still unreachable** (§5-seats.C). `melodyCommit.js`
+   reads `discordUnlocks` at four sites for a flag nothing can ever set, worth +1
+   Performance Score. Either delete the reads or build §4's fork. **Not urgent** — a
+   bonus that quietly never pays, not a broken rule — but it should not sit forever.
+2. 🎸 **§3's per-character gesture table** is the last undesigned arm of the
+   progression rewrite, and Alex has an idea for it he wants to talk through.
+3. 📌 **`dimOthers` is unevaluated, not rejected.** The page can now show it honestly
+   if the marker turns out not to carry on a busy board.
+4. 🪦 **Glamarchy is being cut for a new character**, so §5-seats.C's "she can buy
+   nothing" hole is moot and §5's Db upgrade streams lose their urgency with it.
+   ⚠️ The `skillTreeCheck` §7 / `selftest` `botPickSkillTarget` alarms still stand —
+   they now point at whoever replaces her.
+
+---
+
+## 5-seats. 🧭 session handoff, 2026-09-02f (🅰️ Theory comes off the tree)
 
 🎼 **THE MUSIC THEORY BRANCH IS DELETED AND STACK SEATS ARE FOUND ON THE BOARD.**
 `PROGRESSION_REWRITE_DESIGN.md` §2 and the first half of §3 are built. This closes
@@ -115,6 +220,9 @@ open, and both are now holes in the shipped game rather than ideas in a doc.
 
 ### 5-seats.D ⚠️ What is NOT built, deliberately
 
+- ✅ **THE BOARD HIGHLIGHT IS BUILT — see §5-glow.** What follows was true when this
+  section was written and is kept for the reasoning; the hex marker landed 2026-09-02g.
+  📌 The NOTE STOCK highlight is still not built — only the board is marked.
 - ⛔ **No HUD highlight for the note you are hunting.** `unlockTargets` exists and is
   ready for it, but the note stock and the stack seats are VISUAL, and `CLAUDE.md`'s
   standing rule is a `.scratch/` preview page first, dialled in by Alex, then ported.
