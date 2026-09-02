@@ -55,6 +55,7 @@ import { SKILL_BY_ID } from "../../data/skillTree.js";
 import { rigTiers } from "../systems/sonicRig.js";
 import { startTurnNotes, refillDrawCount } from "../systems/turnFlow.js";
 import { decideWinner } from "../systems/combat.js";
+import { buzzerReached, buzzerVerdict } from "../systems/battleFlow.js";
 import { legalActions, beamActions } from "./legalActions.js";
 import { traceKey } from "./botJournal.js";
 import { makeActionScorer } from "./actionScore.js";
@@ -925,7 +926,9 @@ export function playTurn(state, view, policy, ctx) {
  * horizon is the variable §3.2 and §3.6 are about. Do not compare a three-life
  * reading to a two-life one and call the difference a policy change.
  */
-export function matchConfig(spirits, { startingLives = 3, mode = 'ffa', fameTarget, fameCap } = {}) {
+export function matchConfig(spirits, { startingLives = 3, mode = 'ffa', fameTarget, fameCap,
+                                       fameWindowScale,
+                                       winCondition, elimination, roundLimit } = {}) {
   // 📏 `fameTarget` / `fameCap` ARE MEASUREMENT INSTRUMENTS AND ARE UNDEFINED BY
   // DEFAULT — see `battleFlow.fameToWin` and `grantFame`. They exist so a bench
   // run can ask what the Fame economy PRODUCES over a fixed horizon, which the
@@ -936,6 +939,18 @@ export function matchConfig(spirits, { startingLives = 3, mode = 'ffa', fameTarg
   const cfg = { mode, startingLives, spirits: structuredClone(spirits) };
   if (fameTarget != null) cfg.fameTarget = fameTarget;
   if (fameCap    != null) cfg.fameCap    = fameCap;
+  // 📏 `fameWindowScale` — how much of the crowd multiplier the per-turn window
+  // inherits. 0/undefined is the shipped flat window; see `battleFlow.grantFame`.
+  if (fameWindowScale != null) cfg.fameWindowScale = fameWindowScale;
+  // 🏆🎸 HOW THE MATCH ENDS — real game axes, NOT instruments. Undefined here
+  // means today's game: `makeInitialState` defaults `winCondition:'fame'` and
+  // `elimination:'on'`. ⚠️ These are deliberately not built out of `fameTarget`
+  // and `maxTurns` (`WIN_CONDITIONS_DESIGN.md` §1): those two carry an explicit
+  // "a run with this set is not a game" warning, and shipping the mode on top of
+  // them would make the game indistinguishable from a probe.
+  if (winCondition != null) cfg.winCondition = winCondition;
+  if (elimination  != null) cfg.elimination  = elimination;
+  if (roundLimit   != null) cfg.roundLimit   = roundLimit;
   return cfg;
 }
 
@@ -951,9 +966,11 @@ export const MAX_TURNS = 400;
  *   timeouts as losses is measuring its own ceiling.
  */
 export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns = MAX_TURNS,
-                           fameTarget, fameCap }) {
+                           fameTarget, fameCap, fameWindowScale,
+                           winCondition, elimination, roundLimit }) {
   const rng = makeRng(seed >>> 0);
-  const config = matchConfig(spirits, { startingLives: lives, fameTarget, fameCap });
+  const config = matchConfig(spirits, { startingLives: lives, fameTarget, fameCap, fameWindowScale,
+                                       winCondition, elimination, roundLimit });
   let state = makeInitialState(config, seed >>> 0);
   // 🎪 One box per match, shared by the demolition hook (which fills it) and
   // `playTurn` (which lends it to `view` for the turn and takes it back).
@@ -975,6 +992,8 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
   // 🎤 The duel ledger — see `playTurn`. `round2` is the one that matters: it is
   // the difference between a rule being present and a rule being reachable.
   const duels = { fought: 0, round2: 0, ties: 0, bothPaid: 0, fp: 0, fpRound2: 0 };
+  // 🎸 Set by the buzzer, below. Null in a Legend Run, which has no buzzer.
+  let verdict = null;
   // ⭐ THE FAME LEDGER — see `fameLedger` on the result, below.
   const fameLedger = {};
 
@@ -1011,6 +1030,19 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
     if (t.stalled) {
       return { winner: state.winner ?? null, turns, duels, fameLedger, reason: 'stalled', anomaly: t.refused };
     }
+
+    // 🎸 THE BUZZER. Checked here rather than inside `applyTurnEnded` because
+    // ending a MATCH is not a turn reducer's job — the reducer closes the round,
+    // this reads the clock. The client's turn-end path will call the same two
+    // functions, which is the point of them being exported from `battleFlow`
+    // rather than written inline: one definition of when the set is over.
+    // ⚠️ Legend Run never reaches this — `buzzerReached` is false whenever
+    // `winCondition` is not 'rounds'.
+    if (!state.winner && buzzerReached(state)) {
+      verdict = buzzerVerdict(state);
+      if (verdict.winnerId) state = applyAction(state, winnerDeclared(verdict.winnerId), rng);
+      break;
+    }
     // `endTurn` already rotated the queue; a policy that returned early on a
     // winner did not, and does not need to.
   }
@@ -1040,7 +1072,18 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
   return {
     winner: state.winner ?? null,
     turns,
-    reason: state.winner ? 'winner' : 'turnCap',
+    // 🎸 'buzzer' IS ITS OWN REASON AND IT IS NOT 'turnCap'. A fixed-length match
+    // that reaches its round limit ENDED CORRECTLY; `turnCap` means the harness
+    // safety net fired and the result is not a game. A probe that folded the two
+    // together would count every clean Battle of the Bands as an anomaly.
+    // ⚠️ A drawn buzzer (`verdict.tied` non-empty) has NO winner and is still
+    // 'buzzer' — the tie is a legitimate ending, not a failure to finish.
+    reason: verdict ? 'buzzer' : (state.winner ? 'winner' : 'turnCap'),
+    // 🎸 The full standings and WHICH RUNG settled it — see `buzzerVerdict`.
+    verdict,
+    // 💥 Vibe damage dealt and taken per seat. The tie-break's third rung, and
+    // the first damage telemetry this project has had.
+    damage: { ...(state.damageLedger ?? {}) },
     fame,
     // ⭐📏 WHAT THE RULES AWARDED vs WHAT ANYBODY KEPT, per seat. `fame` above is
     // the second number only. Every grant in the match reports six fields:
@@ -1108,7 +1151,8 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
  * preferred a line but never why.
  */
 export function runBench({ seeds, spirits, a = 'searcher', b = 'unranked', opts = {}, view, lives,
-                           maxTurns, fameTarget, fameCap }) {
+                           maxTurns, fameTarget, fameCap, fameWindowScale,
+                           winCondition, elimination, roundLimit }) {
   const seatIds = spirits.map(s => s.id);
   const results = [];
   const wins = { [a]: 0, [b]: 0 };
@@ -1125,7 +1169,8 @@ export function runBench({ seeds, spirits, a = 'searcher', b = 'unranked', opts 
     const policies = Object.fromEntries(
       seatIds.map(id => [id, POLICIES[assign[id]](opts)]));
 
-    const r = runMatch({ seed: seeds[i], spirits, policies, view, lives, maxTurns, fameTarget, fameCap });
+    const r = runMatch({ seed: seeds[i], spirits, policies, view, lives, maxTurns, fameTarget, fameCap,
+                         fameWindowScale, winCondition, elimination, roundLimit });
     const winnerPolicy = r.winner ? assign[r.winner] : null;
     if (winnerPolicy) wins[winnerPolicy]++; else inconclusive++;
     results.push({ ...r, assign, winnerPolicy, seed: seeds[i] });

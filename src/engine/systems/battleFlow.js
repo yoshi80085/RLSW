@@ -58,7 +58,8 @@ import { HEX_BY_NUM } from "../../board/hexMap.js";
 import { neighborInDirection, angleTo, angleDiff } from "../../board/hexGeometry.js";
 import { hexRingFromCenter, crowdMultiplier } from "../../board/boardHelpers.js";
 import {
-  FAME_PER_TURN_CAP, RIFF_FP_TURN_CAP, FAN_DIEHARD_START, LIMELIGHT_HEX,
+  FAME_PER_TURN_CAP, FAME_PER_TURN_CAP_ROUNDS, ROUND_LIMIT_DEFAULT,
+  RIFF_FP_TURN_CAP, FAN_DIEHARD_START, LIMELIGHT_HEX,
   SONIC_LIMELIGHT_FP, POSE_SUSTAIN_COST, fpPerLife,
 } from "../../data/gameConstants.js";
 import { RIFF_BOTH_PAID_QUALITY } from "./riffOff.js";
@@ -129,8 +130,103 @@ const nameOf   = (state, id) => spiritOf(state, id)?.name ?? id;
  */
 export function fameToWin(state) {
   if (state.config?.fameTarget != null) return state.config.fameTarget;
+  // 🎸 BATTLE OF THE BANDS HAS NO FINISH LINE, so there is no target to reach
+  // and `grantFame` can never crown anybody: the buzzer decides it instead
+  // (`buzzerVerdict`). Returning Infinity rather than branching in `grantFame`
+  // keeps ONE definition of "have they won yet" — a second crowning path is how
+  // you get a match that ends twice.
+  // ⚠️ `ui/FameRace.jsx` reads this as "the right end of the track" in seven
+  // places and Infinity is not a scale. That component is a KNOWN, UNBUILT
+  // coupling — `WIN_CONDITIONS_DESIGN.md` §4.2 and `FAME_TRACK_REDESIGN.md` —
+  // and nothing in the client can select this mode yet, so nothing reaches it.
+  if (state.config?.winCondition === 'rounds') return Infinity;
   const lives = state.config?.startingLives ?? 3;
   return lives * fpPerLife(state.spirits.length);
+}
+
+/**
+ * 🎸 THE PER-TURN FAME CAP, WHICH IS A MODE-DEPENDENT RULE.
+ *
+ * `WIN_CONDITIONS_DESIGN.md` §4.4: in a RACE the cap is a catch-up brake that
+ * keeps the finish close (`PROGRESSION_REWRITE_DESIGN.md` §7.5). In a
+ * FIXED-LENGTH game every seat gets the same number of turns, so the same
+ * constant is a SCORE FLATTENER — it compresses everyone toward
+ * `roundLimit × cap` and makes a big crowd worthless. §7.7 measured 48% of all
+ * awarded Fame discarded at today's fan weights, and §7.8 measured that no
+ * setting of the window buys that back without widening the margin. **A score
+ * game has no margin to widen**, so it runs uncapped and the crowd finally
+ * lands in full.
+ *
+ * ⚠️ PRECEDENCE: the bench instrument `config.fameCap` still wins, because a
+ * sweep must be able to pin the cap in either mode. That ordering is why this
+ * is one function rather than a branch at the call site.
+ */
+export function famePerTurnCap(state) {
+  if (state?.config?.fameCap != null) return state.config.fameCap;
+  return state?.config?.winCondition === 'rounds'
+    ? FAME_PER_TURN_CAP_ROUNDS
+    : FAME_PER_TURN_CAP;
+}
+
+/** Rounds before the buzzer — null in Legend Run, which has no clock. */
+export function roundLimitFor(state) {
+  if (state?.config?.winCondition !== 'rounds') return null;
+  return state.config.roundLimit ?? ROUND_LIMIT_DEFAULT;
+}
+
+/**
+ * 🎸 Has the buzzer gone? `turn.round` is one-based and increments as a
+ * revolution CLOSES, so "round > limit" means the last round has been played
+ * out in full — every seat has had the same number of turns, which is the whole
+ * point of a fixed-length mode and the reason this is not `>=`.
+ */
+export function buzzerReached(state) {
+  const limit = roundLimitFor(state);
+  return limit != null && (state?.turn?.round ?? 1) > limit;
+}
+
+/**
+ * 🎸 THE VERDICT AT THE BUZZER — most Fame, and Alex's tie ladder under it.
+ *
+ *   1. ⭐ Fame          the score, and the point of the mode
+ *   2. 🎤 Diehards      the loyal core. Thematically exact — if the scores are
+ *                       level, the band with the bigger hard-core crowd took it —
+ *                       and it costs no extra turns, unlike a sudden-death round.
+ *   3. 💥 Net Vibe damage (dealt − taken). If the crowds are level too, the band
+ *                       that actually did the damage takes it. 📌 In a mode where
+ *                       combat cannot remove anybody, this is a SECOND reason to
+ *                       fight on top of §3's crowd denial.
+ *   4. otherwise both bands headline — `winnerId` null, `tied` names them.
+ *
+ * ⚠️ `decidedOn` IS PART OF THE RESULT ON PURPOSE. A tie-break that fires
+ * invisibly is a tie-break nobody can tell from a bug, and the end screen and
+ * the bench both need to say WHICH rung settled it.
+ */
+export function buzzerVerdict(state) {
+  const standings = (state?.spirits ?? [])
+    .filter(s => !s.knockedOut)
+    .map(s => {
+      const ns = nsOf(state, s.id);
+      const d  = state.damageLedger?.[s.id] ?? { dealt: 0, taken: 0 };
+      return {
+        id: s.id,
+        fame: ns.fame ?? 0,
+        diehards: ns.diehards ?? FAN_DIEHARD_START,
+        net: (d.dealt ?? 0) - (d.taken ?? 0),
+      };
+    });
+  if (standings.length === 0) return { winnerId: null, decidedOn: null, tied: [], standings };
+
+  let field = standings;
+  let decidedOn = null;
+  for (const rung of ['fame', 'diehards', 'net']) {
+    const best = Math.max(...field.map(r => r[rung]));
+    field = field.filter(r => r[rung] === best);
+    if (field.length === 1) { decidedOn = rung; break; }
+  }
+  return field.length === 1
+    ? { winnerId: field[0].id, decidedOn, tied: [], standings }
+    : { winnerId: null, decidedOn: null, tied: field.map(r => r.id), standings };
 }
 
 /** Was this blow landed on the defender's rear wedge? */
@@ -329,9 +425,14 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
 
   const ns       = nsOf(state, spiritId);
   const assigned = (ns.assignments ?? []).length;
-  const mult     = amplify
-    ? crowdMultiplier(ns.diehards ?? FAN_DIEHARD_START, ns.casuals ?? 0, assigned)
-    : 1;
+  // 🎤 THE CROWD IS READ ONCE, FOR TWO JOBS, and deliberately NOT gated on
+  // `amplify`. It scales the PAYOUT only when the payout is amplified — but the
+  // per-turn WINDOW is a property of the Spirit's turn, not of any one payout, so
+  // an unamplified grant lands in the same window every other grant shares.
+  // See `config.fameWindowScale` below; with it unset this is exactly the old
+  // expression with the ternary moved one line down.
+  const crowd    = crowdMultiplier(ns.diehards ?? FAN_DIEHARD_START, ns.casuals ?? 0, assigned);
+  const mult     = amplify ? crowd : 1;
   const uncapped = amplify ? Math.max(fp, Math.round(fp * mult)) : fp;
 
   // 📏 `config.fameCap` RESTATES THE GENERAL CEILING FOR ONE RUN, AND IS A
@@ -350,8 +451,38 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
   // the relationship the constants define.
   //
   // ⚠️ A run with this set is not a game. Do not quote a win rate off one.
-  const capScale    = state.config?.fameCap != null ? state.config.fameCap / FAME_PER_TURN_CAP : 1;
-  const effCap      = capScale === 1 ? cap : cap * capScale;
+  // 🎸 The BASE ceiling is the mode's, not the constant's — see `famePerTurnCap`.
+  // It scales rather than replaces for the same reason `fameCap` does, so
+  // `RIFF_FP_TURN_CAP` keeps its defined ×2 relationship in both modes (and
+  // `Infinity × 2` is still Infinity, which is the right answer).
+  const baseCap     = famePerTurnCap(state);
+  const capScale    = baseCap === FAME_PER_TURN_CAP ? 1 : baseCap / FAME_PER_TURN_CAP;
+
+  // 📏 `config.fameWindowScale` — THE SECOND INSTRUMENT, AND IT MEASURES A RULE
+  // CHANGE RATHER THAN A CONSTANT. Same posture as `fameCap` above: undefined in
+  // every real game, and ⚠️ a run with it set is not a game.
+  //
+  // THE FLAT WINDOW AND THE CROWD FIGHT EACH OTHER. `grantFame` amplifies first
+  // and clips second, so at the 2026-09-02 fan weights a ×2.4 crowd turns a 2 FP
+  // deed into 5 and the window throws one away. Above roughly ×1.4 the crowd
+  // stops scaling anything and becomes a switch — do I clear the window in one
+  // deed or two (`PROGRESSION_REWRITE_DESIGN.md` §7.7). Scaling the window by the
+  // same crowd that scaled the payout makes the window bind on RAW DEED VOLUME
+  // instead: four deeds' worth a turn, whatever they are worth to your audience.
+  //
+  // `k` is how much of the crowd the window inherits — 0 is today's flat window,
+  // 1 is fully scaled, between is a partial. ⚠️ It multiplies `cap`, so
+  // `RIFF_FP_TURN_CAP` rides along at its defined ×2 for the same reason
+  // `fameCap` scales rather than replaces: two ceilings that stop moving together
+  // stop meaning what the constants say they mean.
+  const k           = state.config?.fameWindowScale ?? 0;
+  const windowScale = k ? 1 + k * (crowd - 1) : 1;
+  const effCap      = (capScale === 1 && windowScale === 1) ? cap : cap * capScale * windowScale;
+  // 📌 A scaled window is fractional. The ledger keeps the real number; only
+  // the player-facing line rounds, and with no instrument set it is an integer
+  // and the string is byte-identical to what it always was.
+  const capLabel    = effCap === Infinity ? '∞'
+                    : Number.isInteger(effCap) ? effCap : effCap.toFixed(1);
   const earnedSoFar = fameThisTurn[spiritId] ?? 0;
   const room        = Math.max(0, effCap - earnedSoFar);
   const finalFp     = Math.min(uncapped, room);
@@ -359,7 +490,7 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
 
   if (finalFp <= 0) {
     yield ledger('fame', { spiritId, reason, asked: fp, mult, uncapped, granted: 0, clipped, cap: effCap });
-    yield log(`⭐🚫 ${nameOf(state, spiritId)} is already at the ${effCap} FP turn cap — the crowd can only scream so loud${reason ? ` (${reason} lost to the noise)` : ''}.`);
+    yield log(`⭐🚫 ${nameOf(state, spiritId)} is already at the ${capLabel} FP turn cap — the crowd can only scream so loud${reason ? ` (${reason} lost to the noise)` : ''}.`);
     return { granted: 0, clipped, uncapped, mult, fameThisTurn };
   }
 
@@ -373,9 +504,12 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
 
   const target   = fameToWin(state);
   const crowdStr = (amplify && uncapped !== fp) ? ` (${fp} ×🎤${mult.toFixed(2)} crowd)` : '';
-  const capStr   = clipped > 0 ? ` ⛔ capped at ${effCap}/turn (${clipped} lost to the noise)` : '';
+  const capStr   = clipped > 0 ? ` ⛔ capped at ${capLabel}/turn (${clipped} lost to the noise)` : '';
   const myFame   = nsOf(state, spiritId).fame ?? (fameBefore + finalFp);
-  yield log(`⭐ ${nameOf(state, spiritId)} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${capStr}${reason ? ` — ${reason}` : ''}! (${Math.min(myFame, target)}/${target})`);
+  // 🎸 A SCORE HAS NO DENOMINATOR. "(12/Infinity)" is worse than useless, so a
+  // fixed-length match reports the running total and lets the buzzer be the clock.
+  const progress = target === Infinity ? `⭐${myFame}` : `${Math.min(myFame, target)}/${target}`;
+  yield log(`⭐ ${nameOf(state, spiritId)} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${capStr}${reason ? ` — ${reason}` : ''}! (${progress})`);
 
   yield hook('stageFxThresholds', { spiritId, from: fameBefore, to: myFame });
 
@@ -646,15 +780,25 @@ export function* vibeDamage({ state, targetId, dmg, sourceLabel, attackerId = nu
     }
   }
 
-  state = yield act(damageApplied(targetId, dmg));
+  // 🎸 `attackerId` rides along so `applyDamageApplied` can keep the scoreboard
+  // the Battle of the Bands tie-break reads. Nothing else about the hit changes.
+  state = yield act(damageApplied(targetId, dmg, attackerId));
 
   const tgt = spiritOf(state, targetId);
   if (!tgt || tgt.vibe > 0) return { knockedDown: false, fameThisTurn };
 
   // ── Vibe hit 0 — KNOCK DOWN ──
-  const newLives = (tgt.lives ?? 1) - 1;
+  // 🎸 ELIMINATION IS AN AXIS, AND THIS IS THE BRANCH IT GATES.
+  // `WIN_CONDITIONS_DESIGN.md` §4.3: with it off a knockdown still costs you
+  // everything it cost before EXCEPT your place in the match — the crowd still
+  // scatters (`demolishFans`, the mechanic the whole mode leans on), Azrael
+  // still feeds, the 1 FP tax still lands, the Vibe still resets, you still get
+  // up in your corner. Only the removal is gone, and with it the life it spent.
+  const elimination = state.config?.elimination !== 'off';
+  const newLives = elimination ? (tgt.lives ?? 1) - 1 : (tgt.lives ?? 1);
   const fellOn   = tgt.num;   // respawn moves them after this; the crowd scatters where they FELL
-  yield log(`💥 ${tgt.name} is KNOCKED DOWN! (${newLives} life${newLives !== 1 ? 's' : ''} left)`);
+  const livesStr = elimination ? ` (${newLives} life${newLives !== 1 ? 's' : ''} left)` : '';
+  yield log(`💥 ${tgt.name} is KNOCKED DOWN!${livesStr}`);
   yield hook('demolishFans', { targetId, attackerId, hexNum: fellOn });
 
   // 6️⃣ CUT — Berserk used to end here, either way round: the charge landed, or
@@ -677,7 +821,11 @@ export function* vibeDamage({ state, targetId, dmg, sourceLabel, attackerId = nu
     }
   }
 
-  if (newLives <= 0) {
+  // 🎸 `elimination &&` is belt to the braces above: with the axis off `newLives`
+  // is never decremented so this can't be reached anyway, but a Spirit who
+  // somehow arrives here already at 0 must still not be removed in a mode that
+  // has no removal. One rule, gated wherever it can be read.
+  if (elimination && newLives <= 0) {
     yield hook('knockOut', { spiritId: targetId });
     return { knockedDown: true, knockedOut: true, fameThisTurn };
   }

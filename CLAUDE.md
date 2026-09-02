@@ -40,7 +40,8 @@ pass as the code:
 - `src/PROGRESSION_REWRITE_DESIGN.md` — 🎼 Theory comes off the tree: board-found
   stack slots, free pardons, Db-vs-fans melody payout, per-ability upgrade streams
 - `src/WIN_CONDITIONS_DESIGN.md` — 🏆 Legend Run vs 🎸 Battle of the Bands: how a
-  match ends becomes a setting, and elimination becomes its own axis
+  match ends becomes a setting, and elimination becomes its own axis.
+  ✅ **BUILT HEADLESS** — steps 1–5 done, `test:winconditions`. ⛔ No menu, no HUD
 - `src/FAME_TRACK_REDESIGN.md` — ⭐ the header race track with no finish line to
   race to: margin instead of progress. ⚠️ Visual — preview page first
 - `src/CHARACTER_HANDOFF.md` — per-character state

@@ -236,8 +236,18 @@ export function attackRerolled() {
  * today). Damage magnitude is decided upstream (`marginToDamage`, riff verdict);
  * this just applies it.
  */
-export function damageApplied(targetId, dmg) {
-  return { type: DAMAGE_APPLIED, targetId, dmg };
+/**
+ * 🎸 `attackerId` IS CARRIED SO THE SCOREBOARD CAN BE KEPT AT THE ONE CHOKE
+ * POINT. Battle of the Bands breaks a tie on net Vibe damage (dealt minus
+ * taken), and nothing in this project tracked damage before 2026-09-02d. The
+ * tally lives in `applyDamageApplied` rather than in the callers because this
+ * reducer is the single place every landed hit passes through — a tally kept by
+ * the callers would be a tally that misses whichever caller is added next.
+ * ⚠️ Optional and defaulted, so every existing call site is unchanged; a hit
+ * with no attacker (hazards, self-inflicted) counts as taken by nobody's hand.
+ */
+export function damageApplied(targetId, dmg, attackerId = null) {
+  return { type: DAMAGE_APPLIED, targetId, dmg, attackerId };
 }
 
 /**

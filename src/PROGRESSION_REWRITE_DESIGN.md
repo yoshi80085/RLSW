@@ -11,6 +11,13 @@
 > scatters fans like the client does, and a bench run can be pinned to a fixed
 > horizon with the cap lifted. **§7.1 has the numbers.**
 >
+> ⛔ **AND §7.7's PARTING SUGGESTION IS CLOSED — see §7.8, measured 2026-09-02d.**
+> The "make the window scale with the crowd" option lands on the **same**
+> margin-per-discard curve as simply raising the flat cap, cell for cell. Only
+> the ROOM the window leaves is the variable; the mechanism is not. The cap
+> decision is the three-way in §7.7 and nothing else. ✅ The instrument for it
+> (`config.fameWindowScale`) shipped; no game rule did.
+>
 > 🪦 **AND §7.2's CONCLUSION WAS WRONG — see §7.5, measured 2026-09-02.** §7.2
 > said the cap is the lever because matches end on knockouts rather than on
 > Fame. With the finish line ON, **82% end on Fame in 9 turns per player**;
@@ -476,11 +483,19 @@ without a more lopsided game.** That is the trade, and it is Alex's call:
 - **(6, 32)** — the least-bad opening: ×2.41 and 7.5 turns/player, margin 20.4.
 - **(8, 40)** — holds today's 8.0-turn length at 23% discard, margin 26.3.
 
+⚠️ **AND §7.8 CLOSES THE FOURTH.** These three are the whole menu.
+
 📌 **A third option nothing here measures: make the window scale with the crowd**
 (`4 × mult` rather than a flat 4). That keeps the brake against a *small* crowd
 while letting a *big* one land, which is the only shape that gets both halves of
 what Alex asked for. It is a rule change rather than a constant, so it wants its
 own design pass.
+
+> 🪦 **MEASURED 2026-09-02d, AND IT IS NOT A THIRD OPTION — see §7.8.** The
+> scaled window and the flat window land on the **same** margin-per-discard
+> curve, cell for cell. It buys nothing the flat cap does not, and it costs the
+> same. The paragraph above is the reasoning, and the reasoning was wrong; the
+> shape it describes does not exist in the numbers.
 
 #### ⚠️ 7.7 D — knock-on flagged, NOT fixed
 
@@ -493,6 +508,112 @@ pass with its own bench; do not fold it into a constants change.
 
 📌 Measurements in `.scratch/_fanweight_results.md`, raw in
 `_fanweight_raw_A/B.log`.
+
+---
+
+### 7.8 ⛔ THE SCALED WINDOW IS NOT A THIRD OPTION — measured 2026-09-02d
+
+`.scratch/famewindow.mjs` + `.scratch/_famewindow_results.md`. 150 matches per
+cell, 2 seats, 3 lives, searcher v searcher, **finish line ON**, stalemate bound
+40 turns/player. Instrument: `config.fameWindowScale` = `k`, the share of the
+crowd multiplier the per-turn window inherits — `k = 0` is today's flat window,
+`k = 1` is fully scaled. ⚠️ A run with it set is not a game.
+
+**§7.7 ended on a hunch and the hunch was good enough to be worth a day.** The
+flat window clips two different things at once — *how much you did this turn* and
+*how loud your audience is* — and §7.7 could only ever move both together.
+Scaling the window by the same crowd that scaled the payout separates them: the
+window binds on **raw deed volume** (four deeds' worth a turn, whatever they are
+worth to your audience) and stops binding on the crowd at all. If §7.7's margin
+widening came from deed volume, the scaled window buys the crowd effect cheaply
+and answers both halves of Alex's complaint at once.
+
+✅ **The flat sweep reproduces §7.7 cell for cell** (cap 4 → 48% / 14.7 / 8.0 /
+×2.42; cap 6 → 28% / 19.0 / 5.0 / ×2.06; cap 8 → 18% / 22.6 / 4.5), so the
+instrument is measuring the same game the last two sessions measured.
+
+⛔ **AND THE TWO MECHANISMS LIE ON ONE CURVE.** Sorted by how much room the
+window leaves, flat and scaled cells *interleave*:
+
+| mechanism | window | discard | margin | med tpp | crowd × |
+|---|---|---:|---:|---:|---:|
+| flat | cap 4 (today) | 48% | 14.7 | 8.0 | 2.42 |
+| flat | cap 5 | 38% | 16.6 | 6.5 | 2.22 |
+| **scaled** | 4 × k0.25 | 37% | 17.4 | 6.5 | 2.20 |
+| **scaled** | 4 × k0.50 | 29% | 19.7 | 5.5 | 2.06 |
+| flat | cap 6 | 28% | 19.0 | 5.0 | 2.06 |
+| **scaled** | 4 × k0.75 | 22% | 22.0 | 5.0 | 2.00 |
+| flat | cap 8 | 18% | 22.6 | 4.5 | 1.98 |
+| **scaled** | 4 × k1.00 | 16% | 22.8 | 4.5 | 1.97 |
+| flat | cap 12 |  4% | 22.4 | 3.5 | 1.94 |
+
+At matched discard the pairs are identical to within noise — margin 16.6 vs 17.4,
+19.0 vs 19.7, 22.6 vs 22.8; match length 6.5 vs 6.5, 5.0 vs 5.5, 4.5 vs 4.5;
+crowd ×2.22 vs ×2.20, ×2.06 vs ×2.06, ×1.98 vs ×1.97. Holding the **finish line**
+matched instead of the window says the same thing: scaled (4×k1, 40) is 28.1
+margin at 18% discard against flat (8, 40)'s 26.3 at 23% — further along the same
+curve, never off it.
+
+🎯 **SO ONLY THE ROOM IS THE VARIABLE, AND THE MECHANISM IS NOT.** Whatever opens
+the window, the game pays the same price for the same opening. The §7.6 reading
+survives untouched: the window is a catch-up brake, and un-braking it is the
+entire cost, regardless of which rule does the un-braking.
+
+**Two things the curve says that §7.7 could not:**
+
+- 📉 **THE CROWD SHRINKS ALONG THE WHOLE CURVE**, ×2.42 → ×1.94. Every route that
+  lets the crowd land also shortens the match, and a shorter match grows a
+  smaller crowd. **"Let the crowd land" and "have a big crowd" are opposed**, and
+  no setting of this window separates them. That is a stronger statement than
+  §7.5's version of it, because it now holds across a rule change as well as a
+  constant change.
+- 🧱 **THE MARGIN COST SATURATES BY cap 8 / k1.** cap 8 → cap 12 removes another
+  14 points of discard and moves the margin by −0.2. The entire lopsidedness is
+  bought in the *first half* of the opening — **there is no cheap region to sit
+  in**, which is exactly what a "partial" like `k = 0.25` was hoping to find.
+- 🔇 📌 **And `silenced` never leaves 2–4%.** Grants that bank literally nothing
+  are rare even at 48% discard, so the discard is overwhelmingly **partial
+  clipping of amplified payouts**, not deeds lost whole. §7.7's "the crowd becomes
+  a switch" is a payout landing 4 instead of 5 — worth restating precisely,
+  because "half the Fame is thrown away" sounds like whole events vanishing and
+  it is not that.
+
+#### 🎯 SO THE DECISION IS THE THREE-WAY IN §7.7, AND IT IS STILL ALEX'S
+
+Nothing here changes the menu; it removes the fourth item people would keep
+reaching for. §7.6's reading 2 is now the strongest argument on the table:
+**leave the window at 4 and re-measure once §3's fan route exists**, because a
+pipe already clipping half of what it carries absorbs a new payment source
+without recalibrating anything else — and every alternative to it costs margin at
+a rate that does not improve however you pay.
+
+⚠️ **AND THE REAL LEVER MAY NOT BE IN THIS DOC AT ALL.** Margin is only a defect
+because Legend Run is a **race** — a lopsided race is decided early and stops
+being a game. `WIN_CONDITIONS_DESIGN.md`'s 🎸 Battle of the Bands has no finish
+line, so FP is a **score**, and a wide scoreline is not the same defect at all:
+the buzzer still lands where it was always going to land. **Every cell on the
+curve above that was rejected for widening the margin may simply be fine in a
+fixed-length mode**, which would let the crowd land fully in one mode and stay
+braked in the other. ✅ **MEASURED 2026-09-02e, AND IT HOLDS.** Battle of the
+Bands was built headless and benched with the cap off (`WIN_CONDITIONS_DESIGN.md`
+§9, `.scratch/_bandsbench_results.md`): **0% of awarded Fame discarded at every
+set length, a crowd of ×2.90 at ten rounds against today's ×2.28 — and a
+PROPORTIONAL margin of 0.50 against today's 0.48**, flat across four to sixteen
+rounds. ⚠️ The absolute margins are much larger and that is not the same thing:
+the scores are larger. **The lopsidedness every cell on the curve above was
+rejected for does not appear in a score game**, because it was a race's problem
+all along. 📌 And the crowd grows with SET LENGTH — the only lever measured
+anywhere in this project that makes it bigger rather than smaller. 📌 It also gives `SEQUENCING`'s
+§5-win.E open item ("`FAME_PER_TURN_CAP` means something different per mode") a
+concrete first hypothesis to test rather than an intuition, and §5-win.E's own
+warning applies — **the intuitive answer about this constant has been wrong
+twice already.**
+
+✅ **What shipped for this: the instrument only.** `config.fameWindowScale`, in
+`grantFame` beside `fameCap`, threaded through `state.js`'s config whitelist and
+`matchConfig`/`runMatch`/`runBench`. Defaulted off; with it unset `grantFame` is
+byte-identical in behaviour and in log output. ⚠️ **No game rule changed** — the
+doc's standing invariant holds.
 
 ---
 
@@ -556,6 +677,9 @@ pass with its own bench; do not fold it into a constants change.
 | 📏 The economy measurement (finish line OFF) | `.scratch/famedist.mjs`, `.scratch/_famedist_results.md` |
 | 🏁 The race measurement (finish line ON) | `.scratch/famerace.mjs`, `.scratch/_famerace_results.md` |
 | 🎤 The fan re-weight and its knock-ons | `.scratch/_fanweight_results.md` |
+| ⛔ The scaled-window measurement (§7.8) | `.scratch/famewindow.mjs`, `.scratch/_famewindow_results.md` |
+| 📏 The window-scale instrument | `config.fameWindowScale` — `grantFame`, `engine/state.js`, `matchConfig` |
+| 🎸 The score game where the crowd lands | `WIN_CONDITIONS_DESIGN.md` §9, `.scratch/bandsbench.mjs`, `.scratch/_bandsbench_results.md` |
 | 🎤 Fan weights, the crowd ceiling | `data/gameConstants.js` — `FAN_DIEHARD_WEIGHT`, `FAN_CASUAL_WEIGHT`, `FAN_MULT_CAP` |
 | 🎤 The multiplier itself | `board/boardHelpers.js` — `crowdMultiplier` |
 

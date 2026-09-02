@@ -137,8 +137,19 @@ export function decideWinner(spirits, { attackerId = null, hasWinner = false } =
 /**
  * resolveKnockdown (Phase 3c kernel) — respawn/KO state transform.
  */
-export function resolveKnockdown(spirit, corners = CORNERS) {
-  const livesLeft = (spirit.lives ?? 1) - 1;
+/**
+ * 🎸 `elimination` GATES THE LIVES-TO-ZERO BRANCH AND NOTHING ELSE.
+ * `WIN_CONDITIONS_DESIGN.md` §4.3: with elimination off, a knockdown still
+ * costs you — the crowd scatters, the Vibe resets, you respawn in your corner
+ * and the attacker still banks the Fame — it just never removes you from the
+ * match. ⚠️ Lives are not decremented at all in that mode rather than being
+ * decremented and floored: a life is not a resource in a game you cannot be put
+ * out of, and a counter that ticks to 0 and stops would leave `lives === 0`
+ * sitting in state for `decideWinner` and `evaluate.js` to read as "nearly
+ * dead". Inert is safer than floored.
+ */
+export function resolveKnockdown(spirit, corners = CORNERS, { elimination = true } = {}) {
+  const livesLeft = elimination ? (spirit.lives ?? 1) - 1 : (spirit.lives ?? 1);
   if (livesLeft > 0) {
     const homeNum   = spirit.corner ? corners[spirit.corner]?.homeNum : spirit.num;
     const newFacing = spirit.corner ? cornerFacing(homeNum) : spirit.facing;
@@ -154,9 +165,24 @@ export function resolveKnockdown(spirit, corners = CORNERS) {
  * DAMAGE_APPLIED (Phase 5c) — subtract Vibe from target, floored at 0.
  */
 export function applyDamageApplied(state, action) {
-  const { targetId, dmg = 0 } = action;
+  const { targetId, dmg = 0, attackerId = null } = action;
+  // 🎸 THE SCOREBOARD (2026-09-02d). Battle of the Bands breaks a tie at the
+  // buzzer on net Vibe damage, so every landed hit is tallied both ways here —
+  // the one reducer every hit passes through. `dealt` is only credited when
+  // there is an attacker and it is not a self-hit: `economy.js`'s coin-flip
+  // Vibe loss and board hazards are damage TAKEN by nobody's hand, and crediting
+  // them to the victim would let a Spirit win a tie-break by hurting himself.
+  const ledger = { ...(state.damageLedger ?? {}) };
+  const bump = (id, key) => {
+    if (!id || dmg <= 0) return;
+    const row = ledger[id] ?? { dealt: 0, taken: 0 };
+    ledger[id] = { ...row, [key]: row[key] + dmg };
+  };
+  bump(targetId, 'taken');
+  if (attackerId && attackerId !== targetId) bump(attackerId, 'dealt');
   return {
     ...state,
+    damageLedger: ledger,
     spirits: state.spirits.map(s =>
       s.id === targetId ? { ...s, vibe: Math.max(0, (s.vibe ?? 0) - dmg) } : s),
   };
@@ -178,7 +204,12 @@ export function applyKnockdownResolved(state, action, corners = CORNERS) {
   const { targetId } = action;
   const spirit = state.spirits.find(s => s.id === targetId);
   if (!spirit) return state;
-  const { next } = resolveKnockdown(spirit, corners);
+  // 🎸 The reducer reads the axis too, not only `vibeDamage`'s branch. Two
+  // gates on one rule is deliberate: this is the state transform that actually
+  // writes `knockedOut`, and a future caller reaching it by another road must
+  // not be able to eliminate anybody in a mode that has no elimination.
+  const elimination = state.config?.elimination !== 'off';
+  const { next } = resolveKnockdown(spirit, corners, { elimination });
   const dropped = isPosing(state, targetId)
     ? applyPoseSet(state, { spiritId: targetId, on: false })
     : state;

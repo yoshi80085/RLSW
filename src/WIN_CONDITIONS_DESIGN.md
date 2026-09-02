@@ -1,9 +1,21 @@
 # WIN CONDITIONS — 🏆 Legend Run and 🎸 Battle of the Bands
 
 > **Design sketch, 2026-09-02. Alex's call, out of the Fame-economy conversation.**
-> ⛔ **NOTHING HERE IS BUILT.** Not a config key, not a buzzer, not a menu
-> button. The game ships exactly one win condition today and this doc exists so
-> the next session starts from the decisions instead of re-deriving them.
+>
+> ✅ **BUILT HEADLESS 2026-09-02e — §8 steps 1–5 are DONE.** The three axes, the
+> elimination gate, the buzzer, Alex's tie ladder, a damage scoreboard, a suite
+> (`test:winconditions`, 79 assertions, wired into `test:all`) and the first
+> bench. **The mode is playable from `runMatch` today.**
+>
+> ⛔ **STEP 6 IS NOT BUILT AND MUST NOT BE RUSHED.** There is no menu button and
+> no HUD change — nothing in the client can select a win condition, which is
+> also why `ui/FameRace.jsx` reading a now-infinite `fameToWin` cannot break
+> anything yet. §4.2 and `FAME_TRACK_REDESIGN.md` still stand, and the standing
+> `.scratch/` preview rule is on both pieces.
+>
+> 🎯 **SETTLED BY ALEX, 2026-09-02e:** the per-turn Fame cap is **GONE** in
+> Battle of the Bands (§4.4 closed — see §9), the default set is **10 rounds**,
+> and a tie is broken by **most Diehards, then net Vibe damage** (§6.2 closed).
 >
 > Companion to `GAME_BRIEF.md` (§8 the music economy), `PROGRESSION_REWRITE_DESIGN.md`
 > (§7 the Fame economy, measured), `SEQUENCING.md`.
@@ -118,9 +130,20 @@ multiplier — nothing. At `FAN_CASUAL_WEIGHT` 0.12 they are worth **0.36**, plu
 `PROGRESSION_REWRITE_DESIGN.md` §7.7. **The mode needs the re-weight to work,
 and the re-weight found its best use in the mode.**
 
-⚠️ **UNBENCHED.** Everything in this section is an argument, not a measurement.
-`.scratch/famerace.mjs` can be pointed at it once the mode exists: the number to
-watch is how often a searcher chooses to attack when attacking cannot win.
+✅ **BENCHED 2026-09-02e — see §9, and the claim HOLDS BUT ONLY HALF.** The
+searcher does not stop fighting when fighting cannot remove anybody: crowd denial
+keeps roughly **half** the violence (Vibe damage per turn 1.00 in Legend Run →
+0.52 at ten rounds). The mode does not collapse into two players in separate
+corners. But it IS measurably more peaceful, and more so the longer the set
+(0.75 at four rounds → 0.39 at sixteen), as compounding crowd work outbids
+interrupting it.
+
+⚠️ **That reading is a FLOOR, for two reasons that both point the same way.**
+The bot's `fanMult` weight has not been retuned since the fan re-weight
+(`PROGRESSION_REWRITE_DESIGN.md` §7.7 D), so this searcher under-values the very
+thing the mode is built on; and it has **no model of the buzzer**, so it never
+makes an end-of-set push or denies a leader in the last round. Both would raise
+the engagement number, neither has been run.
 
 ---
 
@@ -184,10 +207,19 @@ constant is a **score flattener**: it compresses everyone toward
 `roundLimit × cap` and makes a big crowd worthless (§7.7 measured 48% of awarded
 Fame already discarded at the new fan weights).
 
-🎯 **So the cap probably wants a different value per mode, or the crowd-scaled
-window §7.7 proposes** (`4 × mult` rather than a flat 4). **Open.** ⚠️ It should
-NOT be settled by argument — §7.5 and §7.7 both exist because the intuitive
-answer about this constant was wrong twice.
+✅ **SETTLED 2026-09-02e: THE CAP IS GONE IN BATTLE OF THE BANDS.** Alex's call,
+and §9 benched it rather than arguing it — which matters, because §7.5 and §7.7
+both exist precisely because the intuitive answer about this constant was wrong
+twice, and §7.8 closed the crowd-scaled window this section used to nominate as
+the alternative.
+
+**The measured result: 0% of awarded Fame discarded at every set length, a crowd
+of ×2.90 at ten rounds against today's ×2.28 — and a PROPORTIONAL margin of 0.50
+against today's 0.48.** The lopsidedness every flat and scaled route bought in
+§7.7/§7.8 simply does not appear here, because it was a race's problem.
+
+📌 Read it through `battleFlow.famePerTurnCap(state)`, never through a raw import
+of `FAME_PER_TURN_CAP` — a raw import is a per-turn cap that ignores the mode.
 
 ---
 
@@ -215,15 +247,19 @@ pass must state which mode it was tuned in.
 
 ## 6. ❓ Open — decide before building
 
-1. **Default round count.** Nothing measured. §7.5 says a Legend Run lasts a
-   median of 8–9 turns per player, so ~8 rounds is the like-for-like length —
-   but a Battle of the Bands has no early finish, so it will *feel* longer than
-   a Legend Run of the same nominal length. Needs playing, not arithmetic.
-2. **Tie at the buzzer.** Sudden-death round? Most Diehards? Shared win? A tie
-   in a two-player game is likelier than it sounds once the per-turn cap is
-   compressing scores (§4.4).
-3. **The per-turn cap per mode** (§4.4).
-4. **The Fame Race HUD** (§4.2) — preview page first.
+1. ✅ **CLOSED — default round count is 10** (`ROUND_LIMIT_DEFAULT`). Alex's
+   call, and §9's bench says it costs nothing in proportional fairness while
+   buying a ×2.90 crowd against today's ×2.28. ⚠️ It is a starting point, not a
+   measurement: §5's own procedure says this number is settled by playing.
+2. ✅ **CLOSED — the tie ladder is ⭐ Fame → 🎤 most Diehards → 💥 net Vibe
+   damage (dealt − taken) → both bands headline.** Alex's call. No sudden-death
+   round: it costs real code (the buzzer stops being one comparison and the
+   round clock has to be able to un-stop) and §9 measured draws at **0% from 8
+   rounds up**, so the ladder is a safety net rather than a live rule.
+   📌 Net damage as the third rung is a *second reason to fight* in a mode where
+   combat cannot remove anybody — see §3.
+3. ✅ **CLOSED — the cap is GONE in Battle of the Bands** (§4.4, §9).
+4. **The Fame Race HUD** (§4.2) — preview page first. **STILL OPEN.**
 5. **Does the round limit show as a countdown, and does anything change in the
    final round?** A last-round klaxon is the obvious dramatic beat and costs
    nothing mechanically. Flagged, not designed.
@@ -252,22 +288,58 @@ pass must state which mode it was tuned in.
 
 ---
 
+## 9. 📏 BENCHED — the first numbers, 2026-09-02e
+
+`.scratch/bandsbench.mjs` + `.scratch/_bandsbench_results.md`. 120 matches per
+cell, 2 seats, 3 lives, searcher v searcher, cap off. The 🏆 row is the control:
+same seats, same seeds, today's game.
+
+| set length | 💥dmg/turn | ⭐total | margin | **rel** | **closeRel** | discard | crowd × | ♥ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 🏆 **Legend Run** | **1.00** | 34.8 | 14.9 | **0.48** | **11%** | **48%** | 2.28 | 1.9 |
+| 4 rounds | 0.75 | 20.0 | 11.8 | 0.55 | 15% | 0% | 1.98 | 2.0 |
+| 6 rounds | 0.67 | 33.5 | 17.1 | 0.51 | 12% | 0% | 2.20 | 2.1 |
+| 8 rounds | 0.58 | 48.1 | 23.8 | 0.48 | 16% | 0% | 2.54 | 2.5 |
+| **10 rounds** | **0.52** | 64.8 | 33.6 | **0.50** | **17%** | **0%** | **2.90** | 3.0 |
+| 12 rounds | 0.46 | 81.8 | 42.2 | 0.51 | 16% | 0% | 3.28 | 3.5 |
+| 16 rounds | 0.39 | 118.4 | 67.4 | 0.53 | 18% | 0% | 4.01 | 4.5 |
+
+- ✅ **THE CROWD LANDS IN FULL AND KEEPS GROWING.** 0% discarded at every length,
+  and ×1.98 → ×4.01 as the set lengthens (Diehards 2.0 → 4.5 of 6). **More rounds
+  is the only lever measured anywhere in this project that makes the crowd
+  BIGGER** — §7.8 found every route through the window makes it smaller.
+- ✅ **AND IT IS NOT MORE LOPSIDED THAN TODAY'S GAME.** ⚠️ The absolute margins
+  look alarming and are not: 33.6 against the control's 14.9, on scores of 65
+  against 35. Scale-free, `rel` sits at **0.48–0.55 across the entire range**,
+  level with the control's 0.48, and `closeRel` is if anything better.
+  🎯 **This measures `PROGRESSION_REWRITE_DESIGN.md` §7.8's parting argument and
+  it holds: the margin cost of an uncapped crowd was a RACE's problem.**
+- ⚠️ **`close` (within 4 Fame absolute) IS NOT COMPARABLE ACROSS SET LENGTHS** and
+  the probe was one column away from reporting it as if it were — 4 Fame is a
+  fifth of a four-round game and a thirtieth of a sixteen-round one. `rel` and
+  `closeRel` exist because of it. Same class of error as §7.2's.
+- 🎤 **Draws: 3% at four rounds, 1% at six, 0% from eight up.** §6.2's tie worry
+  is a short-set phenomenon, and the cap being gone largely dissolved it by
+  spreading the scores out.
+
+---
+
 ## 8. 🧭 Build order, when it is time
 
-1. **`config.winCondition` + `config.elimination` as real axes**, defaulted so
+1. ✅ **DONE** — **`config.winCondition` + `config.elimination` as real axes**, defaulted so
    every existing caller gets today's game unchanged. Whitelist them in
    `engine/state.js` in the same pass — that is the step `fameTarget`/`fameCap`
    needed and it is easy to miss.
-2. **Gate `resolveKnockdown`'s lives-to-zero branch** on `elimination`. Nothing
+2. ✅ **DONE** — **Gate `resolveKnockdown`'s lives-to-zero branch** on `elimination`. Nothing
    else about knockdowns changes: the scatter, the respawn, the Vibe reset and
    the attacker's Fame all still fire.
-3. **The buzzer** — `runMatch` and the client's turn-end path stop on
+3. ✅ **DONE** — **The buzzer** — `runMatch` and the client's turn-end path stop on
    `turn.round > roundLimit` and declare the highest Fame.
-4. **Tests in the same pass**, and give them a script — `CLAUDE.md`'s standing
+4. ✅ **DONE** (`test:winconditions`, 79 assertions) — **Tests in the same pass**, and give them a script — `CLAUDE.md`'s standing
    rule. A round-limit ending that no suite runs is not a rule.
-5. **The bench**, pointed at the §3 question: does a searcher still fight when
+5. ✅ **DONE** (§9) — **The bench**, pointed at the §3 question: does a searcher still fight when
    fighting cannot win?
-6. **The menu, LAST, and via a `.scratch/` preview page** — both the mode toggle
+6. ⛔ **NOT BUILT** — **The menu, LAST, and via a `.scratch/` preview page** — both the mode toggle
    and whatever replaces the Fame Race track.
 
 ⚠️ **Steps 1–5 are headless and safe. Step 6 is the one with the standing rule

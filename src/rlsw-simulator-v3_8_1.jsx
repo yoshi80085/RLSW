@@ -6635,7 +6635,13 @@ export function Game({ gameState, onReturnToLobby }) {
     // does the identical max(0, vibe−dmg) floor on the engine spirits (now the
     // source of truth). The knockdown check below reads the freshly-reduced
     // engine spirits (engineRef is updated synchronously by dispatch).
-    dispatch(damageApplied(targetId, dmg));
+    // 🎸 `attackerId` IS PASSED THROUGH so `applyDamageApplied` can keep the
+    // damage scoreboard (`state.damageLedger`) the Battle of the Bands tie-break
+    // reads. ⚠️ It was already a parameter of this function and was being dropped
+    // here — which would have tallied every client hit as TAKEN by somebody and
+    // DEALT by nobody, and the tie-break's third rung would have been dead in the
+    // shipped game while passing every headless test.
+    dispatch(damageApplied(targetId, dmg, attackerId ?? null));
     // Check for knock-down after state settles
     setTimeout(() => {
       // Phase 5c slice 2b: read the freshly-reduced engine spirits directly

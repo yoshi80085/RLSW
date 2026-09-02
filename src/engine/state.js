@@ -17,7 +17,8 @@ import { makeLimelightState } from "./systems/limelight.js";
 import { shuffledStageFxDeck } from "../data/stageEffects.js";
 import { makeBoardToken, SPOTLIGHT_POOL, eventHexCandidates } from "../board/boardHelpers.js";
 import { ALL_HEXES } from "../board/hexMap.js";
-import { TOKEN_MAX, TOKEN_BASE_POOL, EVENT_HEX_COUNT, CHARGE_ZONE_COUNT, LIMELIGHT_HEX, LIGHTNING_TRACK_HEXES } from "../data/gameConstants.js";
+import { TOKEN_MAX, TOKEN_BASE_POOL, EVENT_HEX_COUNT, CHARGE_ZONE_COUNT, LIMELIGHT_HEX, LIGHTNING_TRACK_HEXES, ROUND_LIMIT_DEFAULT,
+} from "../data/gameConstants.js";
 
 /**
  * @param {object} gameConfig  Lobby's onStart payload:
@@ -86,6 +87,30 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       startingLives,
       beginnerMode: !!gameConfig.beginnerMode,
       testMode: !!gameConfig.testMode,
+      // 🏆🎸 HOW THE MATCH ENDS — three axes, deliberately NOT one mode flag.
+      // `WIN_CONDITIONS_DESIGN.md` §1: `mode` above already means TABLE
+      // STRUCTURE and `advanceTurnQueue` reads it at two sites. A field with two
+      // meanings is how this codebase's older bugs were written.
+      //
+      //   winCondition  'fame'   🏆 Legend Run — first to the Fame target, or last
+      //                           Spirit standing. The game that shipped.
+      //                 'rounds' 🎸 Battle of the Bands — most Fame at the buzzer.
+      //   elimination   'on'|'off'  does running out of lives remove you
+      //   roundLimit    rounds before the buzzer, `winCondition:'rounds'` only
+      //
+      // 📌 ELIMINATION IS ITS OWN AXIS, NOT A PROPERTY OF THE MODE — Alex's
+      // explicit instruction, because a later difficulty setting must be able to
+      // turn it ON inside Battle of the Bands without touching `winCondition`.
+      // The pairing below is a DEFAULT, not a coupling.
+      //
+      // ⚠️ DEFAULTS ARE TODAY'S GAME. Every existing caller that names neither
+      // gets Legend Run with elimination on, unchanged.
+      winCondition: gameConfig.winCondition === 'rounds' ? 'rounds' : 'fame',
+      elimination:  gameConfig.elimination === 'off'
+        ? 'off'
+        : (gameConfig.elimination === 'on' ? 'on'
+           : (gameConfig.winCondition === 'rounds' ? 'off' : 'on')),
+      roundLimit: gameConfig.roundLimit ?? ROUND_LIMIT_DEFAULT,
       // 📏 BENCH INSTRUMENTS, UNDEFINED IN EVERY REAL GAME. `fameTarget`
       // replaces `lives × fpPerLife` in `battleFlow.fameToWin`; `fameCap`
       // replaces `FAME_PER_TURN_CAP` in `grantFame`. Both exist so a
@@ -103,8 +128,21 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       // add its line here in the same pass.
       ...(gameConfig.fameTarget != null ? { fameTarget: gameConfig.fameTarget } : {}),
       ...(gameConfig.fameCap    != null ? { fameCap:    gameConfig.fameCap    } : {}),
+      // 📏 `fameWindowScale` is the third of the same family and the only one
+      // that measures a RULE rather than a constant: how much of the crowd
+      // multiplier the per-turn window inherits (0 = today's flat window).
+      // See `battleFlow.grantFame`.
+      ...(gameConfig.fameWindowScale != null ? { fameWindowScale: gameConfig.fameWindowScale } : {}),
     },
     rng: { seed: seed >>> 0, cursor: 0 },
+
+    // 🎸 THE SCOREBOARD — Vibe damage dealt and taken, per Spirit, for the
+    // Battle of the Bands tie-break (`battleFlow.buzzerVerdict`). Written in one
+    // place only, `combat.applyDamageApplied`, which is the reducer every landed
+    // hit passes through. Empty until somebody actually hits somebody.
+    // 📌 It is kept in EVERY mode, not only the fixed-length one: it costs two
+    // integers a hit and it is the first damage telemetry this project has had.
+    damageLedger: {},
 
     spirits,
     turnQueue: spirits.map(s => s.id),

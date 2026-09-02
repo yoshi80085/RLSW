@@ -13,7 +13,319 @@
 
 ---
 
-## 5-win. 🧭 START HERE — session handoff, 2026-09-02c (the win conditions)
+## 5-bands. 🧭 START HERE — session handoff, 2026-09-02e (Battle of the Bands, BUILT)
+
+🎸 **THE SECOND WIN CONDITION IS REAL AND HEADLESS.** `WIN_CONDITIONS_DESIGN.md`
+§8 steps 1–5 are done: three axes, the elimination gate, the buzzer, Alex's tie
+ladder, a damage scoreboard, a suite in `test:all`, and the first bench.
+⛔ **Step 6 — the menu and the HUD — is NOT built, deliberately.**
+
+### 5-bands.A What Alex asked for, and what it is
+
+*"Can we get the game where the high score is the point on a fixed number of
+rounds with the FP cap gone?"* Yes, and it is the answer §7.8 pointed at:
+**margin is only a defect in a RACE.** With no finish line, FP is a score, a wide
+scoreline is not a game decided early, and the uncapped crowd finally lands.
+
+Settled by Alex this session: **the cap is gone in this mode**, the default set is
+**10 rounds**, and a tie goes **⭐ Fame → 🎤 most Diehards → 💥 net Vibe damage
+(dealt − taken) → both bands headline.**
+
+### 5-bands.B What shipped
+
+- **`config.winCondition`** `'fame'|'rounds'`, **`config.elimination`** `'on'|'off'`,
+  **`config.roundLimit`** (default `ROUND_LIMIT_DEFAULT` = 10). ⚠️ Three axes, not
+  one flag — `config.mode` already means TABLE STRUCTURE at two `advanceTurnQueue`
+  sites, and a field with two meanings is how `legalActionsCheck` §15 happened.
+  📌 Elimination defaults off in `rounds` and on in `fame`, but is independently
+  settable in both: Alex's instruction that a later difficulty level must be able
+  to turn it ON inside Battle of the Bands.
+  ⚠️ Whitelisted in `engine/state.js` in the same pass — the step `fameTarget`
+  and `fameCap` needed, and §1 of the suite asserts it, because a config field
+  that never reaches the state produces an instrument-off run that looks like a
+  finding.
+- **`battleFlow.famePerTurnCap(state)`** — the cap is now a MODE-DEPENDENT rule.
+  `FAME_PER_TURN_CAP` in a race, `FAME_PER_TURN_CAP_ROUNDS` (Infinity) in a score
+  game, and ⚠️ the bench instrument `config.fameCap` still overrides both so a
+  sweep can pin it either way. It SCALES rather than replaces, so
+  `RIFF_FP_TURN_CAP` keeps its defined ×2 in both modes.
+  ⚠️ **Never import `FAME_PER_TURN_CAP` raw for a per-turn decision again** —
+  that is a cap that ignores the mode.
+- **`fameToWin` returns Infinity in `rounds`**, so `grantFame` can never crown
+  anybody and the buzzer is the only ending. One definition of "have they won
+  yet"; a second crowning path is how you get a match that ends twice.
+- **`buzzerReached` / `buzzerVerdict`**, exported from `battleFlow` so the client
+  will call the same two functions rather than writing its own copy. The buzzer is
+  `turn.round > roundLimit` — ⚠️ `>` not `>=`, so the last round is played out in
+  full and every seat gets the same number of turns, which is the whole point.
+  `verdict.decidedOn` names the rung, because a tie-break that fires invisibly is
+  one nobody can tell from a bug.
+- **Elimination gated in two places** — `vibeDamage`'s lives-to-zero branch AND
+  `applyKnockdownResolved`, which is the transform that actually writes
+  `knockedOut`. ⚠️ **Lives are inert, not floored, when elimination is off**: a
+  life is not a resource in a game you cannot be put out of, and `lives: 0`
+  sitting in state reads as "nearly dead" to `decideWinner` and `evaluate.js`.
+  Everything else about a knockdown still fires — the crowd scatter the mode
+  leans on, Azrael, the 1 FP tax, the Vibe reset, the corner respawn.
+- **💥 A DAMAGE SCOREBOARD, and it is this project's first damage telemetry.**
+  `state.damageLedger[id] = { dealt, taken }`, written in `applyDamageApplied`
+  alone — the one reducer every landed hit passes through, so a caller added
+  later cannot miss it. `damageApplied` carries an optional `attackerId`.
+  ⚠️ An unattributed hit (board hazard, `economy.js`'s coin-flip Vibe loss) is
+  TAKEN by nobody's hand: crediting it would let a Spirit win a tie-break by
+  hurting himself, and the suite asserts it.
+- **`runMatch` reports `reason: 'buzzer'`**, plus `verdict` and `damage`.
+  ⚠️ **'buzzer' is NOT 'turnCap'** — a fixed-length match reaching its limit ended
+  CORRECTLY, while `turnCap` means the harness safety net fired and the result is
+  not a game. A probe folding the two together would count every clean Battle of
+  the Bands as an anomaly. A drawn buzzer is still 'buzzer'.
+- **`test:winconditions` — 79 assertions, wired into `test:all`** (after
+  `battleflow`). §1 is the one that matters most: **the DEFAULT game is
+  unchanged** — fame, elimination on, target 24, cap 4, and no buzzer at any
+  round number. A mode switch that quietly moves the default game is the worst
+  possible outcome of this change and nothing else would catch it.
+
+### 5-bands.C 📏 THE BENCH — and it answers §7.8's parting argument
+
+`.scratch/bandsbench.mjs` + `_bandsbench_results.md`. 120 matches/cell, 2 seats,
+searcher v searcher, cap off. The 🏆 row is the control: same seats, same seeds,
+today's game.
+
+| set length | 💥dmg/turn | ⭐total | margin | **rel** | **closeRel** | discard | crowd × | ♥ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 🏆 **Legend Run** | **1.00** | 34.8 | 14.9 | **0.48** | **11%** | **48%** | 2.28 | 1.9 |
+| 4 rounds | 0.75 | 20.0 | 11.8 | 0.55 | 15% | 0% | 1.98 | 2.0 |
+| 6 rounds | 0.67 | 33.5 | 17.1 | 0.51 | 12% | 0% | 2.20 | 2.1 |
+| 8 rounds | 0.58 | 48.1 | 23.8 | 0.48 | 16% | 0% | 2.54 | 2.5 |
+| **10 rounds** | **0.52** | 64.8 | 33.6 | **0.50** | **17%** | **0%** | **2.90** | 3.0 |
+| 12 rounds | 0.46 | 81.8 | 42.2 | 0.51 | 16% | 0% | 3.28 | 3.5 |
+| 16 rounds | 0.39 | 118.4 | 67.4 | 0.53 | 18% | 0% | 4.01 | 4.5 |
+
+- ✅ **The crowd lands in full and keeps growing** — 0% discarded everywhere,
+  ×1.98 → ×4.01 as the set lengthens, Diehards 2.0 → 4.5 of 6. **Set length is
+  the only lever measured in this project that makes the crowd BIGGER**; §7.8
+  found every route through the window makes it smaller.
+- ✅ **And it is no more lopsided than today's game.** ⚠️ The absolute margins
+  look alarming and are not — 33.6 against 14.9, on scores of 65 against 35.
+  Scale-free, `rel` sits at 0.48–0.55 across the whole range against the
+  control's 0.48. 🎯 **That is §7.8's parting argument, measured.**
+- ⚠️ **`close` (within 4 Fame, absolute) IS NOT COMPARABLE ACROSS SET LENGTHS**
+  and this probe was one column away from reporting it as though it were —
+  4 Fame is a fifth of a four-round game and a thirtieth of a sixteen-round one.
+  `rel`/`closeRel` were added for exactly that. Same class of error as §7.2's.
+- ⚠️ **COMBAT THINS — §3's failure mode is HALF real.** Vibe damage per turn
+  1.00 → 0.52 at ten rounds → 0.39 at sixteen. The mode does NOT collapse into
+  two players in separate corners; crowd denial keeps roughly half the violence.
+  But it is measurably more peaceful, and more so the longer the set.
+  📌 **That reading is a FLOOR twice over**: the bot's `fanMult` weight has not
+  been retuned since the re-weight (§7.7 D), so this searcher under-values the
+  very thing the mode is built on — and it has **no model of the buzzer**, so it
+  never pushes at the end of a set or denies a leader in the last round.
+- 🎤 **Draws: 3% at four rounds, 1% at six, 0% from eight up.** The tie ladder is
+  a safety net, and §6.2's tie worry was a short-set phenomenon.
+
+### 5-bands.D ⚠️ What is NOT built, and the traps waiting in it
+
+- ⛔ **No menu.** Nothing in the client can select a win condition. That is also
+  what makes the next item harmless *for now*.
+- ⚠️ **`ui/FameRace.jsx` WILL BREAK THE MOMENT ONE EXISTS.** It reads `fameToWin`
+  as the right end of the track in seven places and that value is now `Infinity`
+  in this mode — it is the coordinate system, not a prop. `FAME_TRACK_REDESIGN.md`
+  has the three candidate scales and the states the preview page needs, and the
+  standing rule applies: **`.scratch/` preview page first, Alex dials it in,
+  numbers ported after.** ⚠️ And the round clock collides with the existing
+  `🔥💿 DISCO INFERNO — N rounds left` chip in the same strip in the same pill.
+- ⚠️ **`stageFxThresholds` still fires on absolute Fame** (§6.6), which is
+  arbitrary in a score game and about to be more so — scores now reach 118.
+- 📌 **`GameOverOverlay.jsx` has never seen a draw.** `verdict.tied` names both
+  bands and nothing renders it yet.
+- 🐛 **AND THE GREP FOR THAT FOUND A LIVE ONE, FIXED IN THIS PASS.** The
+  client's `applyVibeDamage` already took an `attackerId` and was **dropping it**
+  at `dispatch(damageApplied(targetId, dmg))`. Every hit in the shipped client
+  would have been tallied as TAKEN by somebody and DEALT by nobody — the
+  tie-break's third rung dead in the real game while passing every headless test,
+  which is `legalActionsCheck` §15's exact shape. One argument, plumbed through.
+  📌 The dev-tool `vdn` path (`:5753`) still writes Vibe directly and is not
+  tallied; that is a dev tool and is left alone deliberately.
+
+### 5-bands.F ✅ Verification
+
+All **22** suites green, batched per the VM memory note: engine ✅, legal 577,
+eval 154, transition 248, turnflow 73, determinism 20, battleflow 65,
+**winconditions 79 (new)**, melody 159, slime 127, eleven 38, score 122,
+harness 1633, riffparity 127598, skilltree 159, shamisen 34, client 6,
+render 8/8, b0 55✓, riff 70970, trace 1256, arch 8. `check:bundle` at **zero
+warnings**. No count dropped.
+
+📌 **Two machine notes.** `test:render` reliably times out in the foreground on
+this box and passes in ~90s detached — bundle and run it as two steps if it looks
+hung. And, carried from 5-window.E: **never run a bench and the suites at the
+same time** — cells that take 5 seconds alone sat for ten minutes when they
+competed.
+
+### 5-bands.E 🎯 NEXT — and there is now a natural order
+
+1. 🤖 **Retune the bot's `fanMult` weight** (§7.7 D). It is owed from two
+   sessions ago, it biases **every** number in 5-bands.C downward, and it is the
+   single measurement most likely to change the engagement reading. Its own pass,
+   its own bench.
+2. 💰 **The FP inflation Alex wants.** §5 of `WIN_CONDITIONS_DESIGN.md` is now
+   a live procedure rather than a plan: inflate FP, play Battle of the Bands to
+   find a satisfying score curve, then set `fpPerLife` from what a good game
+   produced. **The mode that makes it free now exists.**
+3. 🖥️ **Step 6, the visuals** — the lobby toggle and the Fame track, both via
+   `.scratch/` preview pages.
+4. The progression rewrite's own arms are untouched and unchanged: §3's
+   per-character gesture table, §2's board supply, §5's Db upgrade streams.
+
+---
+
+## 5-window. 🧭 session handoff, 2026-09-02d (the scaled window)
+
+**One instrument shipped, one design option CLOSED. ⛔ No game rule changed** —
+`PROGRESSION_REWRITE_DESIGN.md`'s standing invariant still holds. New: §7.8 of
+that doc, `.scratch/famewindow.mjs`, `.scratch/_famewindow_results.md`, and
+`config.fameWindowScale` in `grantFame`.
+
+### 5-window.A What was open, and why it was worth a session
+
+§7.7 shipped the fan re-weight on 2026-09-02b and found it **half-works**: fans
+are no longer weightless at the bottom of the range and are still weightless at
+the top, because `grantFame` **amplifies first and clips second** — at a ×2.4
+crowd a 2 FP deed is already 5 and the flat window of 4 throws one away. 48% of
+every Fame point the rules award is discarded.
+
+§7.7's grid then found the trap. **Every flat route to an unsaturated crowd
+widens the margin** (14.7 → 19.0 → 22.6), because §7.5 established the window is
+a *catch-up brake* and a heavier crowd rewards whoever is already ahead. Nothing
+measured bought a bigger crowd without a more lopsided game — so §7.7 ended by
+naming a fourth option nothing had measured: **make the window scale with the
+crowd** (`4 × mult` instead of a flat 4), keeping the brake against a small
+audience while letting a big one land.
+
+🎯 **The hypothesis was real and testable.** A flat window clips two different
+things at once — *how much you did this turn* and *how loud your audience is* —
+and §7.7 could only move both together. Scaling the window by the same crowd that
+scaled the payout separates them: the window binds on **raw deed volume** and
+stops binding on the crowd. If §7.7's margin widening came from deed volume, the
+scaled window buys the crowd effect cheaply.
+
+### 5-window.B ⛔ THE ANSWER: one curve, two mechanisms, no difference
+
+`.scratch/famewindow.mjs`, 150 matches/cell, 2 seats, 3 lives, searcher v
+searcher, finish line ON. ✅ **The flat sweep reproduces §7.7 cell for cell**
+(cap 4 → 48% / margin 14.7 / 8.0 tpp / ×2.42), so it is measuring the same game.
+
+Sorted by how much room the window leaves, flat and scaled cells **interleave**:
+
+| mechanism | window | discard | margin | med tpp | crowd × |
+|---|---|---:|---:|---:|---:|
+| flat | cap 4 (today) | 48% | 14.7 | 8.0 | 2.42 |
+| flat | cap 5 | 38% | 16.6 | 6.5 | 2.22 |
+| **scaled** | 4 × k0.25 | 37% | 17.4 | 6.5 | 2.20 |
+| **scaled** | 4 × k0.50 | 29% | 19.7 | 5.5 | 2.06 |
+| flat | cap 6 | 28% | 19.0 | 5.0 | 2.06 |
+| **scaled** | 4 × k0.75 | 22% | 22.0 | 5.0 | 2.00 |
+| flat | cap 8 | 18% | 22.6 | 4.5 | 1.98 |
+| **scaled** | 4 × k1.00 | 16% | 22.8 | 4.5 | 1.97 |
+| flat | cap 12 |  4% | 22.4 | 3.5 | 1.94 |
+
+🎯 **ONLY THE ROOM IS THE VARIABLE. THE MECHANISM IS NOT.** Whatever opens the
+window, the game pays the same price for the same opening. **So the cap decision
+is the three-way already in §7.7 — leave it at 4, (6, 32), or (8, 40) — and
+there is no fourth item.**
+
+Two readings the curve supports that §7.7 could not:
+
+- 📉 **The crowd shrinks along the whole curve** (×2.42 → ×1.94): every route that
+  lets the crowd land shortens the match, and a shorter match grows a smaller
+  crowd. **"Let the crowd land" and "have a big crowd" are opposed**, and that now
+  holds across a rule change as well as a constant change.
+- 🧱 **The margin cost saturates by cap 8 / k1** — cap 8 → 12 removes 14 more
+  points of discard for −0.2 margin. The lopsidedness is all bought in the first
+  half of the opening, so **there is no cheap region** — which is exactly what a
+  partial like `k = 0.25` was hoping to find.
+- 🔇 **`silenced` never leaves 2–4%.** The discard is overwhelmingly *partial
+  clipping of amplified payouts*, not deeds lost whole. Worth restating precisely:
+  "half the Fame is thrown away" sounds like whole events vanishing and is not
+  that — it is a payout landing 4 instead of 5.
+
+### 5-window.C 🎸 THE LIVE IDEA THIS LEAVES, AND IT BELONGS TO §5-win
+
+⚠️ **Margin is only a defect because Legend Run is a RACE.** A lopsided race is
+decided early and stops being a game. **Battle of the Bands has no finish line**,
+so FP is a *score* — and a wide scoreline is not that defect: the buzzer lands
+where it was always going to land. **Every cell on the curve above that was
+rejected for widening the margin may simply be fine in a fixed-length mode**,
+which would let the crowd land fully in one mode and stay braked in the other.
+
+📌 This gives §5-win.E's open item — *"`FAME_PER_TURN_CAP` means something
+different per mode"* — a concrete first hypothesis instead of an intuition. ⚠️ It
+is an ARGUMENT, not a measurement, exactly like §5-win.D's crowd-denial claim,
+and it cannot be run until the mode exists. §5-win.E's own warning stands:
+**the intuitive answer about this constant has been wrong twice already.**
+
+### 5-window.D What shipped, and it is an instrument
+
+`config.fameWindowScale` = `k`, the share of the crowd multiplier the per-turn
+window inherits (0 = today's flat window, 1 = fully scaled). Same posture and the
+same warnings as `config.fameCap` beside it.
+
+- `engine/systems/battleFlow.js` — `grantFame` reads the crowd **once**, for two
+  jobs, and deliberately **not** gated on `amplify`: the multiplier scales a
+  payout only when the payout is amplified, but the window is a property of the
+  Spirit's TURN, not of any one payout. ⚠️ It multiplies `cap`, so
+  `RIFF_FP_TURN_CAP` rides along at its defined ×2 — the same reason `fameCap`
+  scales rather than replaces, and the same trap that produced a believable wrong
+  answer the first time.
+- `engine/state.js` — the config whitelist, per the ⚠️ already sitting on it
+  ("if you add a config field, add its line here in the same pass"). A field
+  missing from that list sets cleanly, never reaches the state, and produces an
+  instrument-off run that looks like a finding.
+- `engine/policies/play.js` — `matchConfig`, `runMatch`, `runBench`.
+
+✅ **With it unset, `grantFame` is unchanged in behaviour AND in log output** —
+`effCap` stays an integer and the cap string is byte-identical. That is what the
+`capLabel` line is for.
+
+### 5-window.E ⚠️ A probe-cost note, not a rule
+
+`famewindow.mjs` runs a 40-turn-per-player stalemate bound rather than
+`famerace.mjs`'s 60. Same reasoning `famerace.mjs` gives at length: a match still
+undecided at 40 tpp was never going to be decided (Fame winners land at a median
+under 10), and the searcher grows dramatically more expensive per turn, so a
+handful of ceiling-length matches cost more than all the others together. It
+moves the "hit the turn ceiling" column and nothing else — those are the searcher
+failing to close and belong to `BOT_STRATEGY_HANDOFF`.
+
+📌 And a machine note for the next session: **running a bench and `npm run
+test:all` at the same time stalls both.** Two cells that take 5 and 11 seconds
+alone sat for ten minutes each with the suites running alongside. Same VM memory
+ceiling `CLAUDE.md` already warns about; run the bench with the box to itself.
+
+### 5-window.F 🎯 NEXT
+
+The progression rewrite's open arms are unchanged and none of them is the cap:
+
+1. **§3's per-character gesture table** — the biggest undecided block. Only the
+   Ronin's driving run is settled, and the one law (*one gesture pays one
+   currency, WHICH currency depends on the character*) is what keeps it out of
+   the room the Style system was deleted in. It also carries the standing call on
+   whether the −1-per-unpardoned-note penalty survives at all.
+2. **§2's board supply** — the weighted-spawn share, `unlockTargets(noteState)`
+   as the single function feeding both spawn and HUD, and Alex's confirmation
+   that **denial is intended counterplay**.
+3. **§5's Db upgrade streams** — shallow, one or two steps, on the abilities that
+   actually get bought.
+4. 📌 **The §7.7 D retune is still owed**: the bot's `fanMult` weight has not moved
+   since the re-weight, so every bench number from 2026-09-02 on — **including
+   every cell in §7.8** — is a bot that does not know fans got better. Uniformly
+   biased down, survivable for a comparison, fatal for an absolute. Its own pass,
+   its own bench.
+
+---
+
+## 5-win. 🧭 session handoff, 2026-09-02c (the win conditions)
 
 **Design only. ⛔ NOTHING BUILT — no config key, no buzzer, no menu button. One
 new doc, `src/WIN_CONDITIONS_DESIGN.md`, plus its line in `CLAUDE.md`'s map.**

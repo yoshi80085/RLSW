@@ -352,6 +352,34 @@ export const FAME_TO_WIN      = 24;   // legacy fallback (3 lives × 8) — runt
 // only scream so loud.
 export const FAME_PER_TURN_CAP = 4;
 
+// 🎸 BATTLE OF THE BANDS — the per-turn cap is a MODE-DEPENDENT rule, and the
+// two modes want opposite things from it. `WIN_CONDITIONS_DESIGN.md` §4.4:
+// in a RACE the cap is a catch-up brake — it holds the leader back and keeps the
+// finish close (`PROGRESSION_REWRITE_DESIGN.md` §7.5, measured). In a
+// FIXED-LENGTH game every seat gets the same number of turns, so the same
+// constant is a SCORE FLATTENER: it compresses everyone toward
+// `roundLimit × cap` and makes a big crowd worthless — §7.7 measured 48% of all
+// awarded Fame already discarded at the current fan weights, and §7.8 measured
+// that no setting of the window buys the crowd back without widening the margin.
+// A score game has no margin to widen. So it runs UNCAPPED.
+//
+// ⚠️ READ IT THROUGH `battleFlow.famePerTurnCap(state)`, NOT DIRECTLY. A raw
+// import of the constant is a per-turn cap that ignores the mode, which is the
+// bug this comment exists to prevent.
+export const FAME_PER_TURN_CAP_ROUNDS = Infinity;
+
+// 🎸 How many ROUNDS a Battle of the Bands runs before the buzzer. A round is
+// one full revolution of the turn order (`turn.js` `rollRound`), so this is
+// ~`roundLimit` turns for every seat regardless of player count.
+//
+// 📌 10 IS ALEX'S CALL AND IT IS A STARTING POINT, NOT A MEASUREMENT.
+// `PROGRESSION_REWRITE_DESIGN.md` §7.5 measured a Legend Run at a median 8-9
+// turns per player, so 10 is a little longer than today's match — deliberately,
+// because §7.8 found the crowd grows with match LENGTH and this is the mode that
+// wants a big crowd. ⚠️ A fixed-length match has no early finish, so it will FEEL
+// longer than a Legend Run of the same nominal length. Retune from play.
+export const ROUND_LIMIT_DEFAULT = 10;
+
 // 🔥 PRESENTATION ONLY — how small a lead counts as "neck and neck" once someone
 // is inside four points of the crown. The Fame meter and the spirit card's Fame
 // bar both go red on it. ⚠️ NOTHING MECHANICAL HANGS OFF THIS. It is the last
