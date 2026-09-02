@@ -301,7 +301,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // ⚠️ `keyScale` and the stacks' pardons stay SEPARATE, permanently. The pardon
   // changes what a wrong note COSTS; it must not change what COUNTS as one.
   const intervals    = getIntervalNotes(rootNote, scaleMode);
-  const currentScale = playableScale(rootNote, scaleMode, unlockedSkills);
+  const currentScale = playableScale(rootNote, scaleMode);
   const unlockedIntervalKeys = new Set(
     DISCORD_INTERVAL_MAP
       .filter(t => discordUnlocks.includes(t.id))
@@ -314,7 +314,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // 🌀 Intergalactic 0's first wrong note each turn lands intentional, not wrong.
   const freestylePardon = spiritId === 'intergalactic_0';
   const trackClassified = classifyTrack(
-    melodyLine, keyScale, driveStack, sustainStack, unlockedSkills, ns.payoutRouting ?? {});
+    melodyLine, keyScale, driveStack, sustainStack, ns.payoutRouting ?? {});
   const unpardonedDiscord = countUnpardoned(trackClassified);
   const contextPardons    = countPardonedByStack(trackClassified);
   const effectiveDiscord  = Math.max(0, unpardonedDiscord - (freestylePardon ? 1 : 0));
@@ -425,8 +425,16 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const edgeResolvedThisTurn = false, newEdgeStage = 0;
 
   // ── 🎭 PERFORMANCE SCORE P ────────────────────────────────────────────────
-  const perfSusEnd = unlockedSkills.includes('theory_sus')
-    && (lastNote === semitonesUpSpelled(rootNote, scaleMode, 2) || lastNote === intervals.fourth);
+  // 🪦 `perfSusEnd` WAS A GHOST AND IS NOW PINNED FALSE. It gated on `theory_sus`
+  // — an id NO ROUTE IN THE SKILL TREE HAS EVER SOLD. `notes.js` documented it as
+  // "ending flair" and `economy.js` listed `susEnd` among the Performance Score's
+  // sources; both described a rung that did not exist, so this term has been
+  // reading `false` on every commit since the tree was written. Found while
+  // deleting the Theory branch, 2026-09-02.
+  // ⚠️ PINNED RATHER THAN DELETED so the Performance Score still reads as the
+  // single tally it is, exactly like `edgeDbCost` above. If a suspended ending is
+  // wanted, it needs a rule — not a flag nobody grants.
+  const perfSusEnd = false;
   // B3: score the SETTLED count, not the placement counter — a note the chord
   // legalized was never a wrong note, so it must not drag the flair score either.
   // 🎭 PER-SPIRIT STYLE — did this line sound like THIS character? One point per

@@ -86,6 +86,7 @@ import {
 import { CHARGE_ZONE_BOOST_TURNS } from "../../data/gameConstants.js";
 import { firePatch } from "../systems/cooldowns.js";
 import { randomNote } from "../../music/cadence.js";
+import { applyUnlockClaim } from "../../music/stackSlots.js";
 import { commitMelodyEconomy } from "../systems/melodyCommit.js";
 import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 
@@ -151,6 +152,12 @@ const patchNs = (state, spiritId, patch, rng) =>
  * is unspent. That is a second decision the client raises as a modal, so the
  * headless path always banks — the conservative half, and the one that does not
  * hand a searcher free stack slots it never chose.
+ *
+ * 🔓 THE FOUND SEAT IS THE ONE EXCEPTION, AND IT IS NOT A CHOICE. If the note
+ * opens a stack seat (`music/stackSlots.js`) it fills that seat instead of
+ * banking — there is no modal in the client either, because unlock and payoff are
+ * one gesture. Both paths call `applyUnlockClaim`, so the bench and the game
+ * cannot disagree about which finds are upgrades.
  */
 function collectPickups(state, spiritId, hexNum, rng) {
   if (hexNum == null) return { state, logs: [] };
@@ -160,6 +167,11 @@ function collectPickups(state, spiritId, hexNum, rng) {
   const tok = tokenAt(next, hexNum);
   if (tok) {
     const ns = next.noteStates?.[spiritId] ?? {};
+    // 🔓 A found SEAT short-circuits the bank — the note takes the seat it opened
+    // rather than landing in the stock. ⚠️ THIS READ CONSUMES NO RNG, so it may
+    // sit before the Ronin's draw without moving anything in the stream; the draw
+    // below stays unconditional for the reason its own comment gives.
+    const found = applyUnlockClaim(ns, tok.note);
     // 🗡️ The Ronin hears a second note in the same find (~50%). ⚠️ DRAWN HERE,
     // unconditionally ordered before the patch, because the client draws it
     // before its state updater for the same reason — a draw whose position in
@@ -168,10 +180,25 @@ function collectPickups(state, spiritId, hexNum, rng) {
     const extra = greed
       ? randomNote(ns.rootNote, ns.scaleMode, () => rng())
       : null;
-    const { noteStock } = bankLostChord(ns.noteStock, usedList(ns.usedStockIdx), tok.note, extra);
+    // ⚠️ THE SEAT TAKES THE NOTE, SO ONLY THE RONIN'S EXTRA GOES TO THE STOCK.
+    // Banking the found note as well would pay the find twice — the seat AND the
+    // reservoir slot — which is exactly the "one gesture, one currency" line
+    // `GAME_BRIEF.md` §17 exists to hold.
+    // ⚠️ `bankLostChord` places its `note` UNCONDITIONALLY, so handing it a null
+    // would write a null into a stock slot and hand the Spirit an unplayable hex.
+    // The found-seat branch therefore banks the Ronin's extra, or nothing at all.
+    const { noteStock } = !found
+      ? bankLostChord(ns.noteStock, usedList(ns.usedStockIdx), tok.note, extra)
+      : extra
+        ? bankLostChord(ns.noteStock, usedList(ns.usedStockIdx), extra, null)
+        : { noteStock: ns.noteStock };
     next = applyAction(next, tokenPickedUp(spiritId, hexNum), rng);
-    next = patchNs(next, spiritId, { noteStock }, rng);
-    logs.push(`🎵 Lost Chord (${tok.note}) picked up on #${hexNum}`);
+    next = patchNs(next, spiritId, found ? { ...found.patch, noteStock } : { noteStock }, rng);
+    if (found) {
+      logs.push(`🔓 Lost Chord (${tok.note}) on #${hexNum} opens ${found.which === 'sustain' ? 'Sustain' : 'Drive'} seat ${found.slot} — and takes it`);
+    } else {
+      logs.push(`🎵 Lost Chord (${tok.note}) picked up on #${hexNum}`);
+    }
     if (extra) logs.push(`🗡️ a second note (${extra}) came with it`);
   }
 

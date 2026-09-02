@@ -25,32 +25,26 @@
 // revive an Ultimate fails loudly instead of silently gating on ghosts. If a
 // capstone is ever wanted, write the prereq list against skills that exist.
 
-// THE LADDER — climbing a Theory skill also grants the colour-note capabilities
-// (discordUnlocks + the matching unlockedSkills flags) the scoring logic reads.
-// Pure lookup: skillId → discord-tier ids to grant.
+// 🪦 `THEORY_DISCORD_GRANTS` WAS DELETED HERE ON 2026-09-02, WITH THE BRANCH.
 //
-// ⚠️ WHAT THESE IDS DO **NOT** DO ANY MORE. They are purely SCALE-EXPANSION flags
-// gating `playableScale` — which notes the game will deal you and paint as clean.
-// Every other job they once held is gone:
-//   • B1 removed the four combat riders (Mojo Drain, Burn, cleanse/shield, Stagger).
-//   • B3 moved the real mechanic to the chord-context ladder, which reads
-//     `unlockedSkills` directly via `CONTEXT_TIERS` and never looks at these ids.
-//   • B5 deleted the tritone's damage effect; `discord_3` now only makes the
-//     tritone clean and pays +1 Performance Score.
-//   • B6 turned `discord_4`'s chromatic pardon into a Db PAYOUT (`chromaticPayout`)
-//     and deleted the blanket "whole track counts as clean" rule it used to apply.
-// So: adding an id here widens the PALETTE. It does not widen the pardon, and it
-// does not pay anything. The pardon lives in `music/context.js`.
+// It was `{ theory_dom7: ['discord_1'], theory_modes: ['discord_3'],
+// theory_chromatic: ['discord_2','discord_4'] }` — the table that turned a Theory
+// purchase into the colour-note ids `playableScale` and the ending bonuses read.
+// All three keys are ids no route sells any more, so the table could only ever
+// have looked up nothing.
 //
-// ⚠️ AND NOTE THE ASYMMETRY: `theory_minor` is absent from this table but is the
-// FIRST rung of the context ladder (Chord Tone Pardon). Its scale expansion is
-// handled directly in `playableScale` rather than through a discord id. Don't read
-// this table as the list of Theory tiers — it isn't one.
-export const THEORY_DISCORD_GRANTS = {
-  theory_dom7:      ["discord_1"],              // ♭7 clean
-  theory_modes:     ["discord_3"],              // tritone clean
-  theory_chromatic: ["discord_2", "discord_4"], // maj3 + chromatic clean
-};
+// ⚠️ `discordUnlocks` ITSELF IS STILL LIVE AND STILL READ. `melodyCommit.js` uses
+// it for the gated endings (minor-7th, major-3rd, tritone) via
+// `DISCORD_INTERVAL_MAP`, and nothing granted those ids except this table — so
+// **those three endings are now unreachable for every Spirit**, exactly as the
+// six Theory unlock logs are unprintable. That is a real hole rather than dead
+// code, and it is `PROGRESSION_REWRITE_DESIGN.md` §4's job: the ending becomes a
+// fork (resolve for Db, or land on colour for Drive/Sustain) and colour notes stop
+// being something you unlock at all. ⛔ §4 IS NOT BUILT. Until it is, the ending
+// bonus is the plain `scoreTrackDB` one for everybody.
+//
+// Deleted rather than emptied, so archived code reviving a Theory grant fails to
+// import instead of quietly granting nothing.
 
 // (CQC_SWING_MAP removed — the CQC branch + %-proc swing effects were CUT in
 // the Stance rework; see STANCE_SYSTEM_DESIGN.md §8.)

@@ -289,7 +289,7 @@ export function makeActionScorer(state, spiritId, view = {}) {
     ns, spiritId, persona,
     self.vibe ?? def.maxVibe ?? 5,
     self.maxVibe ?? def.maxVibe ?? 5,
-    stackCapFor(ns.unlockedSkills ?? []),
+    { drive: stackCapFor(ns, 'drive'), sustain: stackCapFor(ns, 'sustain') },
   );
   const commitRank = rankMap(commitPlan.map(c => `${c.dest}:${c.note}`));
 

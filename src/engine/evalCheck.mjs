@@ -209,19 +209,29 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 7. STACK QUALITY IS MEASURED AGAINST THE EARNED CAP (§1's resolved drift).
-//    Against a flat cap of 5 the Theory route's slot rungs would read as free,
-//    and the bot would systematically under-buy the ladder that pays for them.
+// 7. STACK QUALITY IS MEASURED AGAINST THE FOUND CAP, PER STACK.
+//    Against a flat cap of 5 a found seat would read as free, and the bot would
+//    systematically under-value the Lost Chords that open them.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const st    = baseState();
   const stack = ['A', 'C', 'E'];
-  const small = withNs(st, RONIN, { driveStack: stack, unlockedSkills: ['amp_1'] });
-  const big   = withNs(st, RONIN, { driveStack: stack, unlockedSkills: ['amp_1', 'theory_dom7', 'theory_modes'] });
+  const small = withNs(st, RONIN, { driveStack: stack });
+  const big   = withNs(st, RONIN, { driveStack: stack, driveSlots: 2 });
 
-  eq(term(small, RONIN, 'drive'), 1, 'a full 3-slot stack at base cap reads as full');
+  eq(term(small, RONIN, 'drive'), 1, 'a full 3-seat stack at base cap reads as full');
   ok(term(big, RONIN, 'drive') < 1,
-     'the SAME three notes read as unfinished once the cap is earned up — slots are the point');
+     'the SAME three notes read as unfinished once two seats are found — seats are the point');
+
+  // 🎯 AND THE TWO STACKS ARE DIVIDED SEPARATELY. One shared divisor would report
+  // the stack that found seats as roomy and the one that did not as roomy too —
+  // the Spirit would look like they had capacity they never walked to.
+  const lopsided = withNs(st, RONIN, {
+    driveStack: stack, sustainStack: stack, driveSlots: 3, sustainSlots: 0,
+  });
+  eq(term(lopsided, RONIN, 'sustain'), 1, 'Sustain found nothing — 3 of 3 is full');
+  ok(term(lopsided, RONIN, 'drive') < term(lopsided, RONIN, 'sustain'),
+     '...while Drive, at 3 of 6, is visibly unfinished on the same three notes');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

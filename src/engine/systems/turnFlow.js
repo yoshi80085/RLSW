@@ -74,7 +74,7 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
   // ⚠️ DERIVED AT TURN START ONLY, never on stack commit. Re-deriving mid-turn
   // would respell the note stock underneath notes the player has already placed.
   // A stack committed this turn changes the mode NEXT turn.
-  const derived     = modeFromStack(ns.driveStack ?? [], ns.unlockedSkills ?? [], ns.scaleMode ?? 'major');
+  const derived     = modeFromStack(ns.driveStack ?? [], ns.scaleMode ?? 'major');
   const derivedMode = derived.mode;
   const derivedRoot = canonicalRoot(ns.rootNote, derivedMode);
   const modePool    = getSpelledPool(derivedRoot, derivedMode);

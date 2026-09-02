@@ -33,7 +33,11 @@ const allSkills = () => Object.values(SKILL_BY_ID);
 // 1. THE SHAPE — every skill is reachable, and carries where it came from.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  ok(SKILL_TREE.routes.length >= 4, 'the tree has its routes');
+  // ⛔ THREE ROUTES, AND ALL THREE ARE EXCLUSIVE. The Theory branch — the last
+  // SHARED ladder in the game — was deleted on 2026-09-02
+  // (`PROGRESSION_REWRITE_DESIGN.md`), and the rig branch went on 2026-08-20
+  // before it. §6 below is the assertion that carries what that means.
+  ok(SKILL_TREE.routes.length === 3, 'the tree has its three surviving routes');
 
   // 🎯 THE FLAT LOOKUP HOLDS EXACTLY WHAT THE ROUTES DECLARE — derived, not a
   // magic number. This used to assert `>= 20`, which is the kind of threshold
@@ -116,14 +120,22 @@ const allSkills = () => Object.values(SKILL_BY_ID);
   eq(gate(tentacle, RONIN), false, '⚠️ …and nobody else may');
   eq(gate(SKILL_BY_ID.blaster_of_ra, RONIN), false, 'nor may the Ronin take the Blaster');
   eq(gate(SKILL_BY_ID.blaster_of_ra, ZERO), true, 'its owner may');
-  // 📌 The shared-rung arm used `amp_2` until 2026-08-20. The rig branch is gone,
-  //    so the shared ladder in the game is Theory — same assertion, live data.
-  eq(gate(SKILL_BY_ID.theory_minor, RONIN, ['theory_major']), true, 'shared rungs stay shared');
-  eq(gate(SKILL_BY_ID.theory_minor, MM, ['theory_major']), true, '…for everyone');
-  eq(gate(SKILL_BY_ID.theory_minor, RONIN, []).valueOf(), false,
-     '…and an unmet prereq still blocks it, which is a DIFFERENT refusal from ownership');
-  eq(skillEligibility(SKILL_BY_ID.theory_minor, [], { ownerRoute: null, selfId: RONIN }).reason, 'prereq',
-     'the rule names which of the two refused');
+  // ⛔ THE SHARED-RUNG ARM HAS NO LIVE DATA LEFT TO STAND ON. It used `amp_2`
+  // until 2026-08-20 and `theory_minor` until 2026-09-02; both ladders are
+  // deleted and every surviving route is exclusive, so there is no shared rung in
+  // the game to assert about. ⚠️ IT IS NOT REPLACED WITH A FIXTURE — a shared-rung
+  // assertion passing against an invented skill is `legalActionsCheck` §15 exactly,
+  // and it would read as evidence the game still has a shared ladder. §6 asserts
+  // the truth instead: it does not.
+  //
+  // The `prereq` refusal is in the same position — nothing in the tree chains any
+  // more — so the reason-naming assertion is tested on a LABELLED unit fixture and
+  // says so.
+  const unitChild = { id: 'unit_child', routeId: 'unit', prereq: 'unit_root', spiritOnly: null };
+  eq(skillEligibility(unitChild, [], { ownerRoute: null, selfId: RONIN }).reason, 'prereq',
+     '🧪 UNIT: the rule still names a prereq refusal — no shipped route exercises this');
+  eq(skillEligibility(unitChild, ['unit_root'], { ownerRoute: null, selfId: RONIN }).ok, true,
+     '🧪 UNIT: …and clears once the prereq is held');
   eq(skillEligibility(tentacle, [], { ownerRoute: tentacle.spiritOnly, selfId: RONIN }).reason, 'owner',
      '⚠️ …and ownership refuses by NAME, so a future bug here is legible rather than silent');
 }
@@ -163,31 +175,44 @@ const allSkills = () => Object.values(SKILL_BY_ID);
      '⚠️ THE REGRESSION: the Ronin is NOT offered the Tentacle — this gate read an always-undefined field until the tree was extracted');
   ok(!toRonin.has('goes_to_11'), '…nor the dial');
   ok(!toMonster.has('blaster_of_ra'), '…and the Monster is not offered the Blaster');
-  ok(toRonin.has('theory_major') && toMonster.has('theory_major'), 'shared rungs are offered to both');
-  ok(toRonin.has('psycho_bushido'), 'and each Spirit IS offered their own exclusive route');
+  ok(toRonin.has('psycho_bushido'), 'each Spirit IS offered their own exclusive route');
   ok(toMonster.has('goes_to_11') && toMonster.has('master_moshpits'),
      '…including the Monster\'s whole rework, which is the point of the extraction');
   ok(!toMonster.has('psycho_bushido'), 'the Monster is not offered the Ronin\'s route either — the gate cuts both ways');
 
-  // 📌 A rung a Spirit ALREADY OWNS is offered to nobody, which is right rather
-  // than a gap — `skillEligibility` returns `already`. This used to be pinned on
-  // `amp_1` (granted to everyone at setup); the rig branch is gone, so it is
-  // pinned on the Ronin's free `theory_minor` instead. Worth keeping, because
-  // "rung missing from the list" is otherwise indistinguishable from a broken
-  // gate.
-  ok(!toRonin.has('theory_minor'),
-     'the Ronin is not offered `theory_minor` — he was born with it, which is not the same as being blocked');
-  ok(toMonster.has('theory_major'),
-     '…while the Monster, who was born with nothing, is offered the root of the ladder');
+  // 📌 A rung a Spirit ALREADY OWNS is offered to nobody — `skillEligibility`
+  // returns `already`. This was pinned on `amp_1` (granted to everyone at setup)
+  // until the rig branch went, then on the Ronin's free `theory_minor` until the
+  // Theory branch went. ⚠️ **NOBODY IS BORN HOLDING A SKILL ANY MORE**
+  // (`economy.js` seeds `unlockedSkills: []` for the whole roster), so the rule is
+  // exercised by handing a Spirit a rung and checking it leaves the list. Worth
+  // keeping, because "rung missing from the list" is otherwise indistinguishable
+  // from a broken gate.
+  const ownedAlready = new Set(
+    legalActions(
+      (() => { const st = rich(RONIN);
+               return { ...st, noteStates: { ...st.noteStates,
+                 [RONIN]: { ...st.noteStates[RONIN], unlockedSkills: ['psycho_bushido'] } } }; })(),
+      RONIN, { skillById: SKILL_BY_ID })
+      .filter(a => a.kind === 'skillTarget').map(a => a.skillId));
+  ok(!ownedAlready.has('psycho_bushido'),
+     'a rung already held is not offered again — `already`, not a broken gate');
+  ok(ownedAlready.has('shadow_illusion'),
+     '…while the rest of his own route still is');
 
   // 🛑 AND NOTHING FROM THE DELETED RIG BRANCH IS OFFERED TO ANYBODY. This is the
   // assertion that would have caught a half-finished deletion: the ids are gone
   // from the tree, so the family cannot emit them, so no Spirit can aim Db at a
   // rung that does nothing.
   for (const dead of ['amp_1', 'amp_2', 'amp_3', 'power_1', 'power_2', 'power_3',
-                      'range_1', 'range_2', 'range_3', 'overcharge']) {
+                      'range_1', 'range_2', 'range_3', 'overcharge',
+                      // 🅰️ and the Theory branch, deleted 2026-09-02 — stack seats
+                      // are FOUND on the board now (`music/stackSlots.js`), and
+                      // the pardon ladder is universal and free.
+                      'theory_major', 'theory_minor', 'theory_dom7',
+                      'theory_modes', 'theory_chromatic', 'theory_sus']) {
     ok(!toRonin.has(dead) && !toMonster.has(dead) && !SKILL_BY_ID[dead],
-       `🛑 ${dead} is gone from the tree — the rig is trained at the marquee, not bought`);
+       `🛑 ${dead} is gone from the tree — nobody can aim Db at a rung that does nothing`);
   }
 
   // 📌 And the family really is ABSENT without a tree — §6a's rule, which is
@@ -216,6 +241,34 @@ const allSkills = () => Object.values(SKILL_BY_ID);
   }
   eq(SKILL_BY_ID.tentacle.dbCost, 10, 'the Tentacle still costs what the design doc says');
   eq(SKILL_BY_ID.master_moshpits.dbCost, 8, 'Master of Moshpits still costs 8');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 7. ⛔ THERE IS NO SHARED LADDER LEFT, AND THAT IS A FINDING, NOT A RULE.
+//
+//    Both universal routes are deleted — the rig on 2026-08-20, Music Theory on
+//    2026-09-02 — so what a Spirit may buy is now entirely a function of WHO THEY
+//    ARE. 🎀 Glamarchy owns no route, so **she can buy nothing at all**, and every
+//    Db she earns banks forever.
+//
+//    🎯 `PROGRESSION_REWRITE_DESIGN.md` §5 is the answer (per-ability upgrade
+//    streams on the abilities characters already have) and §5 IS NOT BUILT. These
+//    assertions are the alarm for that, pinned where somebody reading the tree
+//    will trip over them. **When §5 lands they are EXPECTED TO FAIL**, and the fix
+//    is to assert what each Spirit can buy — not to delete the block.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  ok(SKILL_TREE.routes.every(r => r.spiritOnly),
+     '⛔ every surviving route is exclusive — no shared ladder is left in the game');
+
+  const routeOwners = new Set(SKILL_TREE.routes.map(r => r.spiritOnly));
+  ok(!routeOwners.has('Glamarchy'),
+     '⛔ 🎀 Glamarchy owns no route — §5 has not given her one yet');
+
+  const offeredToGlam = allSkills().filter(sk =>
+    skillEligibility(sk, [], { ownerRoute: sk.spiritOnly ?? null, selfId: 'Glamarchy' }).ok);
+  eq(offeredToGlam.length, 0,
+     '⛔ …so nothing in the tree is eligible for her at all — every Db she earns banks forever');
 }
 
 console.log(`✅ skillTreeCheck: ${count} assertions passed`);

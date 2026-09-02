@@ -98,11 +98,18 @@ export const MAX_EDGE_DIST = ALL_HEXES.reduce((mx, h) => {
 // 🎓 The starting kit — what a Spirit is BORN with, which must not be scored as
 // investment or the Ronin looks richer than everybody else from turn one.
 //
-// 📌 `amp_1` left this set on 2026-08-20 with the rig branch. It is not that the
-// free rig went away — every Spirit still opens at `RIG_POOL_FLOOR`, 2d6 in
-// range — it is that the floor is not a SKILL any more, so there is no id here
-// to exclude. What remains is the Ronin's `theory_minor`.
-export const STARTING_SKILLS = new Set(['theory_minor']);
+// 📌 `amp_1` left this set on 2026-08-20 with the rig branch, and the Ronin's
+// `theory_minor` left it on 2026-09-02 with the Theory branch. Neither departure
+// took anything from a Spirit: every Spirit still opens at `RIG_POOL_FLOOR`, and
+// the Chord Tone Pardon the Ronin was born holding is now free for everybody
+// (`music/context.js`) — so there is nothing left that is a SKILL and free.
+//
+// ⚠️ THE SET STAYS, EMPTY, RATHER THAN THE LOGIC BEING DELETED. `kit` subtracts
+// it from `unlockedSkills` before pricing investment, and §5's per-ability
+// upgrade streams will hand somebody a free first rung the moment they exist.
+// An empty set is a correct answer; a missing subtraction is a Spirit who looks
+// richer than everybody else from turn one.
+export const STARTING_SKILLS = new Set();
 
 // 🎓 How much Db invested in the kit counts as "fully equipped". Not a rule —
 // a normaliser, chosen as roughly two mid-tier unlocks, which is what a Spirit
@@ -910,12 +917,14 @@ export function evaluate(state, spiritId, view = {}) {
   //    a slope teaches the Ronin to drift toward 4 and collect nothing.
   terms.perfCliff = (ns.perfScore ?? 0) >= PERF_CLIFF ? 1 : 0;
 
-  // 5/6. STACK QUALITY — measured against the EARNED cap (`stackCapFor`), never
-  //    a flat 5. The stale flat cap is exactly what would over-rate the Theory
-  //    route's early rungs (§1's resolved doc drift).
-  const cap = Math.max(1, stackCapFor(ns.unlockedSkills ?? []));
-  terms.drive   = clamp01((ns.driveStack   ?? []).length / cap);
-  terms.sustain = clamp01((ns.sustainStack ?? []).length / cap);
+  // 5/6. STACK QUALITY — measured against the FOUND cap (`stackCapFor`), never
+  //    a flat 5, and now PER STACK. A Spirit who has opened Drive's 4th seat and
+  //    not Sustain's is 3/4 full on one and 3/3 on the other; one shared divisor
+  //    would report the full stack as having room and the roomy one as full.
+  const capD = Math.max(1, stackCapFor(ns, 'drive'));
+  const capS = Math.max(1, stackCapFor(ns, 'sustain'));
+  terms.drive   = clamp01((ns.driveStack   ?? []).length / capD);
+  terms.sustain = clamp01((ns.sustainStack ?? []).length / capS);
 
   // 7. AP BANKED — only the acting Spirit has a live pool. For everyone else
   //    this is unknowable, not zero, so it is neutralised rather than guessed.

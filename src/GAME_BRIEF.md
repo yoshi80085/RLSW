@@ -63,7 +63,7 @@ and `MAX_PLAYERS` is currently **3**.
 
 | Spirit | Vibe (HP) | Drive | Sustain | Speed | Style | Identity |
 |---|---:|---:|---:|---:|---|---|
-| **Shredding Ronin** (`cosmic_ronin`) | 5 | 8 | 5 | 5 | Shred | Glass cannon. Highest Drive, lowest Sustain. Starts holding `theory_minor` free. |
+| **Shredding Ronin** (`cosmic_ronin`) | 5 | 8 | 5 | 5 | Shred | Glass cannon. Highest Drive, lowest Sustain. ⚠️ Started holding `theory_minor` free until 2026-09-02; the pardon ladder is free for everybody now, so his head start is the roster's floor and he is **weaker relative to the field**. |
 | **Intergalactic 0** (`intergalactic_0`) | 4 | 6 | 7 | 4 | Groove | Fragile controller. **Innate: +1 Sustain on every chord voicing, and a cluster also reads +1 Drive.** |
 | **Metalness Monster** (`Metalness_Monster`) | 5 | 7 | 6 | 4 | Shred | Bruiser. Leaves a poison slime trail. |
 | **Glamarchy** (`Glamarchy`) | 4 | 5 | 8 | 5 | Flair | ⚠️ **NOT PLAYABLE YET.** Highest Sustain, lowest Drive. |
@@ -266,30 +266,49 @@ where you came to rest, whether that landing was inside your chord, how many not
 fought the key. It deliberately stopped paying for "was that interesting?" — that
 question moved wholesale to the crowd (§9), where being impressionistic is correct.
 
-### The Theory ladder — the pardon economy
+### The pardon economy — free, and the seats are found on the board
 
 This is the one genuinely novel mechanic. **Your chord stack decides which notes
 are legal.** Notes that would be Discord against the song's key stop being Discord
-when the chord you built makes them legal. Each Theory rung widens how far that
-permission reaches.
+when the chord you built makes them legal.
 
-| Rung | Db | What it widens |
-|---|---:|---|
-| `theory_major` — The Full Scale | 6 | Adds 4th & 7th; completes the Major scale |
-| `theory_minor` — Minor Tonality | 8 | **Chord-tone pardon**: any note in your Drive or Sustain stack is never Discord |
-| `theory_dom7` — Blues / Dominant 7th | 10 | **Play the changes**: pardon widens to your stack's *implied* chord completed to its 7th. **+1 stack slot (4)** |
-| `theory_modes` — Modal Colour | 12 | **Extensions** by chord quality: ♯4 over major, ♮6 over minor, ♭9/9 over dominant. **+1 stack slot (5)** |
-| `theory_chromatic` — Chromatic Mastery | 16 | **Approach notes**: any note is clean if the next lands on a chord tone. **+1 stack slot (6)** |
+🎼 **THE MUSIC THEORY LADDER WAS DELETED ON 2026-09-02, AND THE MECHANIC SURVIVED
+IT INTACT.** The five rungs cost 52 Db and gated all of this; what was wrong was
+the price tag, not the idea. Where the five jobs went
+(`PROGRESSION_REWRITE_DESIGN.md`):
 
-**Total ladder cost: 52 Db.** The Ronin starts holding `theory_minor` free.
+| What the rung sold | Where it is now |
+|---|---|
+| **Chord-tone pardon** — a note in your stack is never Discord | 🅱️ Free, turn one, everybody |
+| **Play the changes** — the pardon widens to your stack's *implied* chord completed to its 7th | 🅱️ Free, turn one, everybody |
+| **Extensions** by chord quality — ♯4 over major, ♮6 over minor, ♭9/9 over dominant | 🅱️ Free, turn one, everybody |
+| **Approach notes** — any note is clean if the next lands on a chord tone | 🅱️ Free, turn one, everybody |
+| **Stack seats 4, 5 and 6** | 🅰️ **FOUND ON THE BOARD** — see below |
+| **Scale expansion**, pentatonic → Major → modal | 🪦 Gone entirely. Everybody plays the Major Pentatonic (natural minor in minor) and the CHORD widens it |
+| **52 Db of sink** | ⛔ **Still open.** §16 problem #1 |
 
-⚠️ **KNOWN DESIGN PROBLEM, AND IT IS THE BIGGEST ONE OPEN.** Theory now gates: the
-stat ceiling, the melody palette, the Db payout, chord capacity, *and* the pardon
-economy. The competing "Electric/amp" route that used to absorb 110 Db **has been
-deleted** — the rig is won at the quiz now (§10). So **Theory is close to the only
-ladder in the game, and buying it is close to automatic.** The design note says
-each other route needs "one thing nobody else can grant." **This is the most
-valuable open problem to think about.**
+🅰️ **STACK SEATS ARE FOUND, NOT BOUGHT.** Each stack's ROOT is the first note still
+standing in it. Walk onto a Lost Chord that extends that root and the seat it opens
+is the seat it fills — one gesture, free of the three-per-turn commit budget:
+
+| Seat | The note you hunt | What it makes buildable |
+|---:|---|---|
+| 4 | **a 7th** of your root (♭7, ♮7 or the 𝄫7 — all three count) | Dom7 / Min7 / Maj7 / Dim7 / m7♭5 |
+| 5 | **the 9th** | Dom9 / Min9 |
+| 6 | **the 11th or the 13th** | Min11 / Dom13 |
+
+**Per stack** — Drive and Sustain have different roots, so two different notes on
+the board are live for you at any moment. **A seat, once found, is never lost** — not
+to fray, not to the Drive spend, not to removing the note that opened it. The board
+helps: a share of new Lost Chords roll a note that opens a seat for somebody, and a
+token that is somebody's live seat never drifts away. ⚠️ **Anyone can take it** —
+denying the B♭ your rival needs is a real play.
+
+⚠️ **AND THE SCALE DID NOT WIDEN, DELIBERATELY.** Handing everybody the top of the
+old ladder would have DELETED the colour payout: a merely in-scale note pays nothing,
+while a note your stack pardons pays Drive or Sustain. So the key stays small and
+your chord is what makes things legal — which is the mechanic, stated as a rule
+instead of sold as a purchase.
 
 ---
 
@@ -466,7 +485,14 @@ note names appear in the combined Drive+Sustain stack**, granting +1 `tempDrive`
 things: it granted the Ronin `theory_minor` — the Chord Tone Pardon — **free from
 turn one**, so his signature became the amplifier on an instinct he was born with
 rather than a gimmick the Theory tree had obsoleted; it rewrote the card text to say
-so; and it fixed a real bug — the call site read `driveStack ?? sustainStack`, and
+so; and it fixed a real bug
+
+⚠️ **AND B10's GRANT IS GONE AS OF 2026-09-02 — NOT REVOKED, OVERTAKEN.** The pardon
+ladder is free for the whole roster now, so what he was born with is what everyone
+opens with. Wa no Koe still works exactly as designed — it is still the amplifier —
+but it amplifies something nobody has to earn, and **he lost a head start no other
+Spirit has to make up.** Whether the character needs something back is a design
+question, flagged here and in `CHARACTER_HANDOFF.md` rather than patched blind. — the call site read `driveStack ?? sustainStack`, and
 since `??` only falls through on null/undefined while **both stacks are always
 arrays**, *Wa no Koe had never once seen the Sustain stack.* It now passes both.
 
@@ -547,10 +573,17 @@ as everything else. Riff fame is capped at **8 per turn**.
 
 If you want to work on something that matters, work here.
 
-1. 🕳️ **Theory is close to the only ladder.** It gates the stat ceiling, the
-   palette, the Db payout, chord capacity and the pardon economy at once, and the
-   110 Db competing route was deleted. Each other route needs one thing nobody
-   else can grant. **The most valuable open problem.**
+1. ✅ ~~🕳️ **Theory is close to the only ladder.**~~ **CLOSED 2026-09-02** by
+   deleting the branch and rehoming its five jobs (§8, `PROGRESSION_REWRITE_DESIGN.md`).
+   ⛔ **AND IT LEFT TWO HOLES THAT ARE NOW THE MOST VALUABLE OPEN PROBLEMS:**
+   - 🕳️ **52 Db of sink went with it, and there is no shared ladder left at all.**
+     The three surviving routes are exclusive, so what you may buy is entirely who
+     you are — and 🎀 **Glamarchy owns none, so she can buy nothing.** Every Db she
+     earns banks forever. §5's per-ability upgrade streams are the answer and are
+     not built. `skillTreeCheck` §7 is pinned as the alarm.
+   - 🕳️ **The three unlock-gated endings are unreachable.** `discordUnlocks` still
+     gates the minor-7th, major-3rd and tritone endings and the Theory table was
+     their only granter. §4's ending fork is the replacement and is not built.
 2. 🎛️ **Nobody trains their rig.** 85% of simulated Spirits end at the floor;
    ~0.5 marquee visits per match. The system that hands out dice is almost never
    used, and the reason is probably positional, not numeric.

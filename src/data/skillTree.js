@@ -38,44 +38,43 @@ import {
 
 export const SKILL_TREE = {
   routes: [
-    // ── THE LADDER — Music Theory (universal spine: the consonance→dissonance arc) ──
-    // Everyone starts on the Major Pentatonic. Climbing the ladder unlocks a wider,
-    // riskier, higher-Fame palette. This route ABSORBS the old Discord path — the
-    // colour notes (Blues 7th, Devil's Interval, Chromatic, Borrowed Chord) arrive
-    // as you learn the theory that justifies them (see applySkillEffects).
-    // B1 stripped their combat riders; B3 gives the same tiers a real mechanic —
-    // each one widens how far your chord's permission reaches into the melody.
-    {
-      id: 'theory',
-      label: 'Music Theory',
-      icon: '🎼',
-      color: '#66ccff',
-      // B9: was "Start on the Major Pentatonic", which contradicted the free
-      // theory_major grant. (For most of this branch's life the blurb was accurate
-      // by accident, because the grant was broken — see the initial-skill effect.)
-      desc: 'The spine of the game. You start with the full Major scale. Each rung does two things: it widens what your CHORD can make legal, and it gives you room to build a bigger chord — and the bigger the chord, the more it pays to land your line on it.',
-      skills: [
-        // B9: every desc now states all three things a tier can give — the SCALE
-        // expansion (what the key allows), the CONTEXT TIER (what your stacks
-        // pardon, B3's ladder) and the SLOT unlock (B0b). Before B9 they mentioned
-        // only the first, which left the branch's actual mechanic undocumented in
-        // the one place a player goes to read about it.
-        { id:'theory_major',     label:'The Full Scale',       icon:'🎼', dbCost:6,  gated:true, prereq:null,
-          desc:'Adds the 4th & 7th, completing the Major (Ionian) scale — those two notes stop costing Discord.' },
-        { id:'theory_minor',     label:'Minor Tonality',       icon:'🌑', dbCost:8,  gated:true, prereq:'theory_major',
-          desc:'Unlocks the Minor scale — stack a minor third and the song follows you into a darker key, Discord-free. And it opens the ladder: CHORD TONE PARDON — any note sitting in your Drive or Sustain stack is never Discord, whatever the key says. Colour notes your chord legalizes pay Drive or Sustain.' },
-        { id:'theory_dom7',      label:'Blues / Dominant 7th', icon:'🎷', dbCost:10, gated:true, prereq:'theory_minor',
-          desc:'The ♭7 joins your clean palette. PLAY THE CHANGES — the pardon widens from the notes you placed to your stack\'s whole implied chord, completed to its seventh: a C-E-G stack makes B clean though you never stacked it. +1 STACK SLOT (4) — the lesson that teaches you the blues note also lets you build the dominant 7th.' },
-        { id:'theory_modes',     label:'Modal Colour',         icon:'🌀', dbCost:12, gated:true, prereq:'theory_dom7',
-          desc:"Lydian ♯4 & Mixolydian ♭7 become clean, and the tritone never breaks harmony. EXTENSIONS — the pardon reaches your chord's available tensions by quality: ♯4 over major, natural 6 over minor, ♭9 and 9 over dominant. +1 STACK SLOT (5) — room for 9th chords, and a 9th is worth +2 to land on." },
-        // ⚠️ REWRITTEN. This used to headline the chromatic-run Db payout, which
-        // fired on 1% of commits — 16 Db for something the player would never see.
-        // The capstone now sells the sixth slot, which is the lever that actually
-        // moves the ladder: bigger chord, bigger target for Harmonic Lock.
-        { id:'theory_chromatic', label:'Chromatic Mastery',    icon:'⚡', dbCost:16, gated:true, prereq:'theory_modes',
-          desc:'CAPSTONE — +1 STACK SLOT (6). The biggest chords in the game are yours alone, and a bigger chord is a bigger thing to land your line on. APPROACH NOTES too: any note is clean if the next one lands on a chord tone, so you can walk in from anywhere. Also brings the Major 3rd (Borrowed Chord) online in Minor.' },
-      ],
-    },
+    // ── 🛑 THE MUSIC THEORY BRANCH IS GONE (2026-09-02) ─────────────────────
+    //
+    // There was a `theory` route here: The Full Scale, Minor Tonality,
+    // Blues / Dominant 7th, Modal Colour and Chromatic Mastery — 52 Db, and after
+    // the rig branch went it was the LAST shared ladder in the game.
+    //
+    // 🎯 IT WAS DELETED BECAUSE IT WAS TOO GOOD, NOT BECAUSE IT WAS BAD.
+    // `GAME_BRIEF.md` §16 problem #1 — "Theory is close to the only ladder, and
+    // buying it is close to automatic" — was the most valuable open problem in the
+    // project, and it is closed by moving the branch's five jobs somewhere better
+    // rather than by re-pricing a purchase nobody was really choosing:
+    //
+    //   stack seats 4/5/6   → 🅰️ FOUND ON THE BOARD. Walk onto a Lost Chord that
+    //                         extends your stack's root and the seat it opens is
+    //                         the seat it fills. `music/stackSlots.js`.
+    //   the pardon ladder   → 🅱️ UNIVERSAL AND FREE, from turn one. Chord-tone
+    //                         pardon, play the changes, extensions, approach
+    //                         notes. `music/context.js` — `tiersFor` no longer
+    //                         asks what you own.
+    //   scale expansion     → 🅱️ THE GATE IS GONE AND THE WIDENING WENT WITH IT.
+    //                         Everyone opens on the Major Pentatonic (natural
+    //                         minor in minor) and your CHORD legalises the rest.
+    //                         ⚠️ Alex's call, 2026-09-02, and it is the opposite
+    //                         of the obvious read: handing everyone the full modal
+    //                         palette would have DELETED the colour payout, because
+    //                         a note that is merely in-scale pays nothing while a
+    //                         note your stack pardons pays Drive or Sustain.
+    //   52 Db of sink       → 🅳 STILL OPEN. Per-ability upgrade streams,
+    //                         `PROGRESSION_REWRITE_DESIGN.md` §5. ⚠️ NOT BUILT —
+    //                         until it is, Db has one less place to go and a
+    //                         Spirit who buys nothing banks everything.
+    //
+    // ⚠️ DELETED RATHER THAN DEPRECATED, exactly as the rig branch was. Anything
+    // still asking for `theory_major`, `theory_minor`, `theory_dom7`,
+    // `theory_modes` or `theory_chromatic` must now fail loudly instead of quietly
+    // buying nothing. 📌 `theory_sus` never existed in this tree at all — it was
+    // read by `melodyCommit.js` for months against a skill no route sold.
     // ── 🛑 THE RIG BRANCH IS GONE (2026-08-20) ──────────────────────────────
     //
     // There was an `electric` route here: Amp I–III, Power I–III, Range I–III and

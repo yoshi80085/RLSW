@@ -168,32 +168,39 @@ export function getFourthFifth(root, mode = 'major') {
   return { fourth: i.fourth, fifth: i.fifth };
 }
 
-// ─── PLAYABLE SCALE (Theory unlocks) ─────────────────────────────────────────
-// The set of notes a spirit can use WITHOUT a Discord penalty, given which Theory
-// skills they've unlocked. Everyone starts on the MAJOR PENTATONIC; the rest of
-// the palette is earned. `unlocks` is the spirit's unlockedSkills (array or Set).
-//   theory_major  → completes the Major scale (adds the 4th & 7th)
-//   theory_minor  → unlocks the Minor scale + the Major/Minor pivot
-//   theory_dom7   → the ♭7 (dominant / blues color)
-//   theory_modes  → modal color tones: Lydian ♯4 + Mixolydian ♭7 (Dorian 6 in minor)
-// (theory_sus = ending flair. theory_chromatic adds no scale tones at all — it is
-//  the Approach Notes pardon tier plus B6's chromatic-run payout, both of which live
-//  in music/context.js and are applied at commit, not in the playable pool.)
-export function playableScale(rootNote, mode, unlocks = []) {
-  const u = unlocks instanceof Set ? unlocks : new Set(unlocks || []);
+// ─── PLAYABLE SCALE — THE KEY, AND ONLY THE KEY ──────────────────────────────
+// The set of notes a spirit can use WITHOUT a Discord penalty. This is what the
+// SONG allows; what your CHORD allows is a separate question with a separate
+// answer (`music/context.js`), and the two must never be folded together — see
+// the C4 landmine at the top of that file.
+//
+// ⚠️ IT NO LONGER TAKES A GATE, AND THE WIDENING WENT WITH THE GATE. This used to
+// climb pentatonic → Major → +♭7 → +♯4 as the Theory branch was bought. The branch
+// is deleted, and the obvious migration — hand everybody the top of the ladder —
+// is the WRONG one. Alex's call, 2026-09-02, and here is the reason in one line:
+//
+//   🎯 A NOTE THAT IS MERELY IN-SCALE PAYS NOTHING. A note your STACK pardons pays
+//      Drive or Sustain (`melodyCommit.js`'s `colorDrive` / `colorSustain`).
+//
+// So widening the key does not enrich the player, it DELETES the colour payout and
+// takes the reason to build a stack with it — nine clean notes out of twelve leaves
+// the chord-tone pardon almost nothing to pardon. The palette therefore stays at
+// the base and the chord does the widening, which is the whole thesis of
+// `PROGRESSION_REWRITE_DESIGN.md`: your stack defines the local key.
+//
+// 📌 Minor gets the NATURAL MINOR, not a minor pentatonic. That is what
+// `theory_minor` used to sell and it is the mode `modeFromStack` flips you into by
+// stacking a minor third — arriving there and finding a SMALLER palette than you
+// left would read as a punishment for playing minor.
+//
+// ⚠️ THE THIRD ARGUMENT IS GONE RATHER THAN IGNORED. A caller still passing
+// `unlockedSkills` would otherwise keep compiling forever while meaning nothing.
+export function playableScale(rootNote, mode) {
   const pool = getSpelledPool(rootNote, mode);
   const rootIdx = pitchIndex(rootNote);
   if (rootIdx < 0) return [];
-  let degs;
-  if (mode === 'minor' && u.has('theory_minor')) {
-    degs = [0, 2, 3, 5, 7, 8, 10];               // natural minor
-    if (u.has('theory_modes')) degs = degs.concat(9);   // Dorian color (natural 6)
-  } else {
-    degs = [0, 2, 4, 7, 9];                      // MAJOR PENTATONIC — the starting palette
-    if (u.has('theory_major')) degs = [0, 2, 4, 5, 7, 9, 11]; // full Major (adds 4th & 7th)
-    if (u.has('theory_dom7'))  degs = degs.concat(10);        // dominant / blues ♭7
-    if (u.has('theory_modes')) degs = degs.concat([6, 10]);   // Lydian ♯4 + Mixolydian ♭7
-  }
-  const uniq = [...new Set(degs)].sort((a, b) => a - b);
-  return uniq.map(n => pool[(rootIdx + n) % 12]);
+  const degs = mode === 'minor'
+    ? [0, 2, 3, 5, 7, 8, 10]     // natural minor
+    : [0, 2, 4, 7, 9];           // MAJOR PENTATONIC — the palette everyone opens on
+  return degs.map(n => pool[(rootIdx + n) % 12]);
 }

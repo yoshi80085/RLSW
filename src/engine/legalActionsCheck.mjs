@@ -154,7 +154,8 @@ const faceRivalAt = (st, rivalId, step = 0) => {
 // ═════════════════════════════════════════════════════════════════════════════
 // 5. THE TWO STACK CEILINGS. Conflating them is the classic bug:
 //    `stackCommitsThisTurn` is a per-TURN budget shared across BOTH stacks;
-//    `stackCapFor()` is a per-STACK capacity that is EARNED, never a flat 5.
+//    `stackCapFor()` is a per-STACK capacity that is FOUND ON THE BOARD, never a
+//    flat 5 — and since 2026-09-02 the two stacks find their seats SEPARATELY.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const st = baseState();
@@ -165,20 +166,33 @@ const faceRivalAt = (st, rivalId, step = 0) => {
   eq(ofKind(legalActions(spent, RONIN), 'stackCommit').length, 0,
      `the per-turn budget of ${STACK_COMMIT_BUDGET} closes BOTH stacks at once`);
 
-  // Fill the drive stack to its earned cap; sustain must stay open.
-  const cap = stackCapFor(st.noteStates[RONIN].unlockedSkills ?? []);
+  // Fill the drive stack to its found cap; sustain must stay open.
+  const cap = stackCapFor(st.noteStates[RONIN] ?? {}, 'drive');
   const fullDrive = withNs(st, RONIN, { driveStack: Array(cap).fill('A') });
   const acts = ofKind(legalActions(fullDrive, RONIN), 'stackCommit');
   eq(acts.filter(a => a.dest === 'drive').length, 0, 'a full drive stack takes no more');
   ok(acts.filter(a => a.dest === 'sustain').length > 0, '...and that does not close sustain');
 
-  // The cap is EARNED — the same stack length reads full or not depending on Theory.
-  const earned = withNs(st, RONIN, {
+  // 🅰️ The cap is FOUND — the same stack length reads full or not depending on how
+  // many seats that stack has opened on the board.
+  const found = withNs(st, RONIN, {
     driveStack: Array(cap).fill('A'),
-    unlockedSkills: ['amp_1', 'theory_dom7', 'theory_modes'],
+    driveSlots: 2,
   });
-  ok(ofKind(legalActions(earned, RONIN), 'stackCommit').some(a => a.dest === 'drive'),
-     'earning slots re-opens a stack that was full — slots are what the Theory ladder buys');
+  ok(ofKind(legalActions(found, RONIN), 'stackCommit').some(a => a.dest === 'drive'),
+     'finding seats re-opens a stack that was full — seats are what a Lost Chord buys now');
+
+  // ⚠️ AND THE TWO STACKS ARE INDEPENDENT. A Drive seat found on the board must
+  // not silently widen Sustain — one shared cap is the bug this replaced, and the
+  // quiet version of it hands every Spirit three free seats they never found.
+  const lopsided = withNs(st, RONIN, {
+    driveSlots: 2, sustainSlots: 0,
+    driveStack: Array(4).fill('A'), sustainStack: Array(3).fill('A'),
+  });
+  const lop = ofKind(legalActions(lopsided, RONIN), 'stackCommit');
+  ok(lop.some(a => a.dest === 'drive'), 'Drive with two found seats still has room at 4 of 5');
+  eq(lop.filter(a => a.dest === 'sustain').length, 0,
+     '...while Sustain, which found none, is full at 3');
 
   // ⚡ A pending Major/Minor declaration freezes every note action.
   const pivot = withNs(st, RONIN, { pivotPending: true, melodyLine: ['A'] });

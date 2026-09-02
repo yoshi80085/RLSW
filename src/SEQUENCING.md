@@ -13,7 +13,128 @@
 
 ---
 
-## 5-bands. 🧭 START HERE — session handoff, 2026-09-02e (Battle of the Bands, BUILT)
+## 5-seats. 🧭 START HERE — session handoff, 2026-09-02f (🅰️ Theory comes off the tree)
+
+🎼 **THE MUSIC THEORY BRANCH IS DELETED AND STACK SEATS ARE FOUND ON THE BOARD.**
+`PROGRESSION_REWRITE_DESIGN.md` §2 and the first half of §3 are built. This closes
+`GAME_BRIEF.md` §16 problem #1 — *"Theory is close to the only ladder, and buying it
+is close to automatic"* — which the brief calls the most valuable open problem in
+the project.
+
+### 5-seats.A What Alex asked for
+
+*"Let's finally get around to removing Theory from the skill tree, have the Stack
+upgrades be found on the board — with the notes. Find the right note for your stack
+and get a permanent upgrade to your stack with a new unlocked slot."*
+
+Four decisions settled with him this session, all of them the recommended option:
+
+- **The fixed root reaches the HUNT, not the SCORING.** `evaluateChord` stays
+  order-free; no chord in the game was re-priced. §7.4 measured that root-anchored
+  scoring leaves 67–92% of stacks spelling no chord once a root is consumed.
+- **Both supply fixes ship** — weighted spawn AND the pin rule.
+- **Denial is real.** Anyone may take any Lost Chord, including one that is
+  somebody else's live unlock.
+- **Scope: the tree, the seats, and the gate off the pardon ladder.** §3's payout
+  split, §4's ending fork and §5's Db streams stay unbuilt.
+
+And a fifth, asked mid-build because the doc was genuinely ambiguous and it is the
+biggest balance call in the pass: **everyone keeps the pentatonic base.** §3's
+"scale expansion — gone as a gate" reads as *hand everybody the top of the ladder*,
+and that would have **deleted the colour payout** — a merely in-scale note pays
+nothing, while a note your stack pardons pays Drive or Sustain. The palette stays at
+the base and the CHORD widens it, which is the design's own thesis.
+
+### 5-seats.B What shipped
+
+- **`music/stackSlots.js`** — the seat ladder. Seat 4 ← a 7th of your root (♭7, ♮7
+  or the 𝄫7, all three, or a Maj7 builder can never open the seat holding his own
+  chord); seat 5 ← the 9th; seat 6 ← the 11th or 13th. They are the existing
+  `CHORD_TEMPLATES` rank bands in order, so every seat opens a chord that already
+  exists. `unlockTargets` is the one function the spawner, the pin rule and the bot
+  all read.
+- **🎯 THE ROOT IS `stack[0]`, DERIVED — NOT A STATE FIELD.** The design said "the
+  first note committed", which reads like new state; it IS the first element, because
+  commits push. ⚠️ Storing it would have been a second field that must agree with an
+  array, written by both the client and the engine — §5.A's shape exactly. And it
+  re-points itself for free under rules that already exist: the Drive spend takes the
+  root (so spending your foundation moves your hunt, which is §6's remove-to-re-point),
+  and Sustain frays from the tail (so a Sustain hunt is stable across three opponents'
+  turns).
+- **`stackCapFor` is now PER STACK and THROWS on the old signature.** Drive and
+  Sustain have different roots and open their seats independently — that asymmetry is
+  half of why the design doubles supply for free. ⚠️ An `unlockedSkills` array reaching
+  it throws a `TypeError` naming the migration: the quiet version of that failure caps
+  every stack at 3 forever and nothing in the game would say so.
+- **The find is one gesture.** It fills the seat it opened, costs no stack commit,
+  and does NOT also bank — paying the seat AND a reservoir slot is the "one gesture,
+  one currency" line `GAME_BRIEF.md` §17 exists to hold. Same function
+  (`applyUnlockClaim`) in `transition.js` and the client, so the bench and the game
+  cannot disagree about which finds are upgrades.
+- **Weighted spawn** (`TOKEN_UNLOCK_SPAWN_SHARE` 0.35) and **the pin rule**.
+  ⚠️ `makeBoardToken` draws TWICE unconditionally — a generator that consumed one
+  number with no live targets and two with them would desync every seat downstream in
+  a seeded replay.
+- **🅱️ The pardon ladder is universal and free.** `tiersFor` takes no argument and
+  returns every tier; `chordContext`, `contextClaim` and `classifyTrack` lost their
+  `unlockedSkills` parameter rather than letting it rot in three public signatures.
+  The red/blue colouring in the note stock now answers for every Spirit instead of
+  returning `null` for anyone who had not bought the first rung.
+- **`playableScale` lost its gate AND its widening** — Major Pentatonic, natural
+  minor in minor, for everybody, and the third argument is removed rather than ignored.
+- **`test:stackslots` — 115 assertions, wired into `test:all`** (after
+  `winconditions`). ⚠️ It is also the ONLY place that can assert
+  `STACK_CAP_BASE + SLOT_LADDER.length === STACK_CAP_MAX`; `gameConstants.js` cannot
+  import the ladder without making `data` and `music` mutually dependent.
+
+### 5-seats.C ⛔ THE HOLES THIS OPENED — read before building anything else
+
+Deleting a branch that was doing five jobs and rehoming three of them leaves two
+open, and both are now holes in the shipped game rather than ideas in a doc.
+
+- ⛔ **🎀 GLAMARCHY CAN BUY NOTHING AT ALL.** Theory was the last SHARED ladder; the
+  three surviving routes are all exclusive and she owns none. Every Db she earns
+  banks forever. `BOT_SKILL_PRIORITY_BASE` is empty and every persona's `skillOrder`
+  with it. **§5's per-ability upgrade streams are the answer and are NOT BUILT.**
+  📌 `skillTreeCheck` §7 and `selftest`'s `botPickSkillTarget` block are pinned as
+  ALARMS — they are **expected to fail when §5 lands**, and the fix is to assert what
+  she can buy, not to delete them.
+- ⛔ **THE THREE GATED ENDINGS ARE UNREACHABLE.** `melodyCommit.js` still reads
+  `discordUnlocks` for the minor-7th, major-3rd and tritone endings, and
+  `THEORY_DISCORD_GRANTS` was their only granter. **§4's ending fork** — resolve for
+  Db, or land on colour for Drive/Sustain — is the replacement and is not built.
+- ⚠️ **THE RONIN IS WEAKER RELATIVE TO THE FIELD.** He opened one rung up the shared
+  ladder (`theory_minor`, free) and the ladder is gone; his head start is now
+  everybody's floor. Wa no Koe still stacks on top exactly as designed. Whether he
+  needs something back is a CHARACTER question — `CHARACTER_HANDOFF.md`, not a
+  migration patch.
+- ⚠️ **`radius = RIG_RADIUS_FLOOR + stack length` WAS TUNED AGAINST A 38 Db LADDER.**
+  Seats 5 and 6 are genuinely reachable now, so beams reach 8–9 hexes on a 111-hex
+  board and Dom13 (Drive 10) can arrive in real matches for the first time.
+  📌 **Nothing has been benched.** That is the next measurement, not a guess.
+
+### 5-seats.D ⚠️ What is NOT built, deliberately
+
+- ⛔ **No HUD highlight for the note you are hunting.** `unlockTargets` exists and is
+  ready for it, but the note stock and the stack seats are VISUAL, and `CLAUDE.md`'s
+  standing rule is a `.scratch/` preview page first, dialled in by Alex, then ported.
+  What DID land is text-only and safe: the locked seat's tooltip names the note that
+  opens it instead of the skill that used to be sold for it, and the "stack is full"
+  log line says what to hunt. **A player currently has no at-a-glance way to see which
+  hex on the board is their seat.** That is the single highest-value next step and it
+  is a preview-page job.
+- ⛔ **No bench.** Every number in §7 of the design doc predates this change. Seats
+  4–6 have gone from a 38 Db purchase to a walk, and nothing has measured how often
+  they are actually reached. `TOKEN_UNLOCK_SPAWN_SHARE` is the dial and it has never
+  been swept.
+- 📌 **The bot hunts its own seats only.** `botHexScore` pays +22 for ARRIVING on one
+  and shaves only 1.5 per hex of distance — deliberately shallower than the ordinary
+  token pull, because §8's warning is that paying for the approach funds ORBITING
+  rather than arriving. It has no model of denial.
+
+---
+
+## 5-bands. 🧭 session handoff, 2026-09-02e (Battle of the Bands, BUILT)
 
 🎸 **THE SECOND WIN CONDITION IS REAL AND HEADLESS.** `WIN_CONDITIONS_DESIGN.md`
 §8 steps 1–5 are done: three axes, the elimination gate, the buzzer, Alex's tie

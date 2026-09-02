@@ -17,30 +17,42 @@ export const STOCK_REFILL_RATE = 6;
 // -- DRIVE / SUSTAIN STACK SPLIT (DRIVE_SUSTAIN_SPLIT_DESIGN.md) --
 export const STACK_COMMIT_BUDGET = 3;   // max notes committed to stacks per turn (split freely between Drive & Sustain)
 
-// -- STACK CAPACITY IS EARNED (THEORY_REWRITE_LOG B0b) --
-// The cap is no longer a global constant. Slots 1-3 are baseline; slot 4 is
-// bought with `theory_dom7` and slot 5 with `theory_modes`. The skill named
-// "Blues / Dominant 7th" is the same purchase that lets you BUILD a dominant
-// 7th — melody permission and harmony capacity arrive together.
-export const STACK_CAP_BASE = 3;   // slots available with no Theory investment
-export const STACK_CAP_MAX  = 6;   // ceiling once all three gating tiers are owned
+// -- 🅰️ STACK CAPACITY IS FOUND ON THE BOARD (PROGRESSION_REWRITE_DESIGN §2) --
+//
+// ⚠️ IT USED TO BE BOUGHT, AND THAT IS THE CHANGE. Slot 4 came with
+// `theory_dom7`, slot 5 with `theory_modes`, slot 6 with `theory_chromatic` —
+// 38 Db up a ladder `GAME_BRIEF.md` §16 called "close to the only ladder, and
+// buying it is close to automatic". The Theory branch is deleted; the same three
+// seats are now FOUND, by walking onto a Lost Chord that extends your stack's
+// root. `music/stackSlots.js` owns the ladder and the hunt.
+export const STACK_CAP_BASE = 3;   // seats every Spirit opens with
+export const STACK_CAP_MAX  = 6;   // ceiling once all three seats are found
+// 📌 STACK_CAP_BASE + SLOT_LADDER.length must equal STACK_CAP_MAX. Asserted in
+// `stackSlotsCheck.mjs` §1 — this file cannot import the ladder to check it
+// itself without making `data` and `music` mutually dependent.
 
-// Single source of truth for the derived cap. DO NOT inline this rule — every
-// read of "how many slots does this spirit have" must come through here.
-// ⚠️ `theory_chromatic` NOW GRANTS A SLOT — it is the whole reason to buy it.
-// Measured over 15,000 simulated commits, the capstone used to pay LESS than the
-// rung below it (−0.04 Db): its only lever was the approach-note pardon, which
-// shaved an already-tiny discord penalty, and its headline chromatic payout fired
-// on 1% of commits. Meanwhile the audit showed stack SLOTS are what actually make
-// the Theory ladder pay — Harmonic Lock climbs 0.00 → 0.83 Db on slots alone,
-// because a bigger stack is a bigger chord to land in. So the most expensive skill
-// in the game now sells the only 6-note stack there is.
-export function stackCapFor(unlockedSkills = []) {
-  let cap = STACK_CAP_BASE;
-  if (unlockedSkills.includes('theory_dom7'))      cap += 1;
-  if (unlockedSkills.includes('theory_modes'))     cap += 1;
-  if (unlockedSkills.includes('theory_chromatic')) cap += 1;
-  return Math.min(STACK_CAP_MAX, cap);
+// 🎯 THE SINGLE SOURCE OF TRUTH, AND IT IS NOW PER STACK. Every read of "how many
+// seats does this stack have" must come through here; never compare against
+// STACK_CAP_MAX (that is the RENDER ceiling, used only to draw the locked seats).
+//
+// ⚠️ THE SIGNATURE CHANGED ON 2026-09-02 AND IT THROWS RATHER THAN COPING.
+// It used to take `unlockedSkills`; it now takes the whole note sheet plus WHICH
+// stack, because Drive and Sustain have different roots and therefore find their
+// seats independently — that asymmetry is half of why the design doubles the
+// board's supply for free. An array reaching this function is an un-migrated
+// caller, and the quiet version of that failure is every stack silently capped at
+// 3 forever. `legalActionsCheck` §15 is what a quiet version of this looks like
+// after six months, so it is loud instead.
+export function stackCapFor(noteState, which = 'drive') {
+  if (Array.isArray(noteState)) {
+    throw new TypeError(
+      'stackCapFor(noteState, which) — an ARRAY was passed. This took `unlockedSkills` ' +
+      'until 2026-09-02; stack seats are now found on the board and live on the note ' +
+      'sheet as `driveSlots` / `sustainSlots`. Pass the note sheet and the stack.');
+  }
+  const ns    = noteState ?? {};
+  const found = which === 'sustain' ? (ns.sustainSlots ?? 0) : (ns.driveSlots ?? 0);
+  return Math.min(STACK_CAP_MAX, STACK_CAP_BASE + Math.max(0, Math.floor(found || 0)));
 }
 
 // NOTE: the old flat `STACK_CAP = 5` export is GONE on purpose. Anything that
@@ -411,6 +423,23 @@ export const FAME_RACE_CONTESTED_LEAD = 3;
 // banked 3 FP this turn and then wins a duel takes 5, not 8 — and once they are
 // above 4 for the turn, every ordinary payout after it banks nothing.
 export const RIFF_FP_TURN_CAP = FAME_PER_TURN_CAP * 2;
+
+// -- 🔓 WEIGHTED SPAWN — the board is not allowed to gate you by chance ------
+//
+// ⚠️ SUPPLY IS WHAT KILLS §2 IF IT IS IGNORED, AND THE MARQUEE IS THE PROOF.
+// `makeBoardToken` rolls a UNIFORM pitch class out of 12 and `TOKEN_MAX` is 6, so
+// a specific note is on the board at all roughly 41% of the time — and then you
+// still have to walk to it. The marquee is TWO permanent, published, central
+// hexes and it is visited ~0.5 times a match; 85% of simulated Spirits finish at
+// the rig floor because of it (`GAME_BRIEF.md` §16). A drifting 1-in-12 token is
+// a harder target than the thing nobody already goes to.
+//
+// So this share of newly scattered Lost Chords rolls a pitch class that would
+// open a seat FOR SOMEBODY — not for the Spirit who is about to move, for anyone.
+// 🎯 A TUNING NUMBER, NOT A RULE. The rule is `music/stackSlots.js`; this decides
+// only how generous the board is about it, and it is the first dial to turn if a
+// bench says seats 5 and 6 are never reached (or are reached by turn three).
+export const TOKEN_UNLOCK_SPAWN_SHARE = 0.35;
 
 // UNDERDOG comeback tuning -- see awardFame/underdogBonus.
 export const UNDERDOG_MIN_DEFICIT    = 6;    // must be trailing the loser by at least this much Fame

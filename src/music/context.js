@@ -44,12 +44,24 @@
 import { pitchIndex } from "./notes.js";
 import { evaluateChord, CHORD_TEMPLATES } from "./chords.js";
 
-// ── TIER FLAGS ───────────────────────────────────────────────────────────────
-// Each tier is checked against its own skill id rather than assuming the ladder
-// was bought in order. The tree happens to enforce the order today, but B10 grants
-// Cosmic Ronin the `theory_minor` tier for free from turn one — so a spirit can
-// legitimately hold a tier without the ones "below" it. Callers grant a free tier
-// by appending its id to the list they pass in; there is no second code path.
+// ── 🅱️ THE GATE CAME OFF — 2026-09-02 ────────────────────────────────────────
+//
+// The four tiers used to be `theory_minor` / `theory_dom7` / `theory_modes` /
+// `theory_chromatic`, bought in that order for 46 Db. The Theory branch is
+// deleted (`PROGRESSION_REWRITE_DESIGN.md` §3) and **the whole ladder is now
+// universal and free, from turn one, for everybody.**
+//
+// 🎯 THE MECHANIC IS NOT WHAT WAS DELETED — THE PRICE TAG IS. "Your chord decides
+// which notes are legal" is the best idea in the game and it survives intact:
+// chord-tone pardon, play the changes, extensions and approach notes all still
+// work exactly as documented above, and the red/blue colouring in the note stock
+// (`contextClaim`) now returns a real answer for every Spirit instead of `null`
+// for anyone who had not bought the first rung.
+//
+// 📌 THIS IS A SMALLER CHANGE THAN IT SOUNDS, and that was the design's bet:
+// everything already routed through one function, so one function is all that
+// changed. `CONTEXT_TIERS` is kept as documentation of which rung was which,
+// because five other files' comments still name those ids.
 export const CONTEXT_TIERS = {
   literal:   'theory_minor',
   chord:     'theory_dom7',
@@ -61,21 +73,19 @@ export const CONTEXT_TIERS = {
 // several could, and to keep B4's routing deterministic.
 export const PARDON_ORDER = ['literal', 'chord', 'extension', 'approach'];
 
-function tiersFor(unlockedSkills = []) {
-  const u = unlockedSkills instanceof Set ? unlockedSkills : new Set(unlockedSkills || []);
-  return {
-    literal:   u.has(CONTEXT_TIERS.literal)   || u.has(CONTEXT_TIERS.chord) ||
-               u.has(CONTEXT_TIERS.extension) || u.has(CONTEXT_TIERS.approach),
-    chord:     u.has(CONTEXT_TIERS.chord)     || u.has(CONTEXT_TIERS.extension) ||
-               u.has(CONTEXT_TIERS.approach),
-    extension: u.has(CONTEXT_TIERS.extension) || u.has(CONTEXT_TIERS.approach),
-    approach:  u.has(CONTEXT_TIERS.approach),
-  };
+// ⚠️ EVERY TIER, UNCONDITIONALLY. The frozen object is deliberate: this used to be
+// per-caller state and is now a constant, and a caller that tries to switch a tier
+// off should fail rather than quietly succeed for one Spirit.
+const ALL_TIERS = Object.freeze({ literal: true, chord: true, extension: true, approach: true });
+
+// ⚠️ THE ARGUMENT IS GONE, NOT IGNORED. `tiersFor(unlockedSkills)` with the list
+// still threaded through would have kept compiling forever while meaning nothing,
+// and the `unlockedSkills` parameter would have rotted in six public signatures.
+// It is removed from those signatures too — see `chordContext`, `contextClaim` and
+// `classifyTrack` below.
+function tiersFor() {
+  return ALL_TIERS;
 }
-// Note the cumulative OR above: a higher tier implies every tier beneath it.
-// "Play the Changes" that could not also pardon a note you literally placed would
-// be a strict downgrade at the moment of purchase, which is the one thing an
-// upgrade may never be.
 
 // ── COMPLETION TO THE SEVENTH (theory_dom7) ──────────────────────────────────
 // ⚠️ CORRECTION TO THE B3 SPEC. As written, "Play the Changes" was a no-op.
@@ -171,10 +181,9 @@ export function stackContext(stack = []) {
  *  track. Use `classifyTrack` for scoring. This function is the right one for the
  *  note-stock highlight, where "would this note be clean right now" is the
  *  question — an approach note isn't clean until you commit to landing it. */
-export function chordContext(driveStack = [], sustainStack = [], unlockedSkills = []) {
-  const t   = tiersFor(unlockedSkills);
+export function chordContext(driveStack = [], sustainStack = []) {
+  const t   = tiersFor();
   const out = new Set();
-  if (!t.literal) return out;   // no tiers → no context, melody judged against the key alone
   for (const stack of [driveStack, sustainStack]) {
     const c = stackContext(stack);
     for (const pc of c.literal) out.add(pc);
@@ -222,9 +231,8 @@ function claimAt(pc, tier, dCtx, sCtx) {
  *  Approach Notes are deliberately absent, for the reason given on `chordContext`:
  *  that tier is a conditional on the note you play NEXT, so it has no meaning for a
  *  hex sitting unplayed in the stock. */
-export function contextClaim(pc, driveStack = [], sustainStack = [], unlockedSkills = []) {
-  const t = tiersFor(unlockedSkills);
-  if (!t.literal) return null;
+export function contextClaim(pc, driveStack = [], sustainStack = []) {
+  const t = tiersFor();
   const dCtx = stackContext(driveStack);
   const sCtx = stackContext(sustainStack);
   for (const tier of ['literal', 'chord', 'extension']) {
@@ -262,8 +270,8 @@ export function contextClaim(pc, driveStack = [], sustainStack = [], unlockedSki
  *                   or the live placement counter and the commit score will
  *                   disagree in front of the player. Accepts note names or pcs.
  *                   ⚠️ Never pass a scale that has had the context folded into it. */
-export function classifyTrack(track = [], keyScale = [], driveStack = [], sustainStack = [], unlockedSkills = [], routing = {}) {
-  const t     = tiersFor(unlockedSkills);
+export function classifyTrack(track = [], keyScale = [], driveStack = [], sustainStack = [], routing = {}) {
+  const t     = tiersFor();
   const scale = new Set((keyScale || []).map(pcOf).filter(p => p >= 0));
   const dCtx  = stackContext(driveStack);
   const sCtx  = stackContext(sustainStack);
@@ -321,19 +329,17 @@ const MAJOR_QUALITY = new Set(['maj', 'maj7', 'dom7', 'dom9', 'aug']);
 
 /** The mode implied by the Drive Stack. Pure.
  *  @param currentMode  held when the stack implies nothing (no third to read).
- *  @returns { mode, reason } — `reason` ∈ 'quality' | 'ambiguous' | 'locked'.
- *    'locked' means the stack wants minor but `theory_minor` isn't unlocked yet:
- *    hold major and let the caller say so. That's a far better advertisement for
- *    the skill than a greyed-out button ever was — the player can HEAR the minor
- *    chord and is told the game can't spell it yet. */
-export function modeFromStack(driveStack = [], unlockedSkills = [], currentMode = 'major') {
-  const u  = unlockedSkills instanceof Set ? unlockedSkills : new Set(unlockedSkills || []);
+ *  @returns { mode, reason } — `reason` ∈ 'quality' | 'ambiguous'.
+ *
+ *  🪦 `reason: 'locked'` IS GONE (2026-09-02). It meant "your stack wants minor but
+ *  you have not bought `theory_minor`", and it was the one place the game could
+ *  advertise the branch — the player heard the minor chord and was told the game
+ *  could not spell it yet. There is nothing left to sell: stack a minor third and
+ *  the song follows you, from turn one, for everybody. ⚠️ A caller still branching
+ *  on 'locked' is now dead code — that branch can never be taken again. */
+export function modeFromStack(driveStack = [], currentMode = 'major') {
   const id = evaluateChord((driveStack || []).filter(Boolean)).id;
-  if (MINOR_QUALITY.has(id)) {
-    return u.has('theory_minor')
-      ? { mode: 'minor',    reason: 'quality' }
-      : { mode: 'major',    reason: 'locked'  };
-  }
+  if (MINOR_QUALITY.has(id)) return { mode: 'minor', reason: 'quality' };
   if (MAJOR_QUALITY.has(id)) return { mode: 'major', reason: 'quality' };
   return { mode: currentMode, reason: 'ambiguous' };
 }

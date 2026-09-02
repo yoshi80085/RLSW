@@ -16,29 +16,39 @@ import { scoreTrackDB } from "../music/cadence.js";
 import { getSpelledPool, pitchIndex, PITCH_INDEX, canonicalRoot } from "../music/notes.js";
 import { chordContext, contextClaim, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, stackContext, discordPenaltyFor } from "../music/context.js";
 import { detectChromaticRun } from "../music/cadence.js";
-import { skillEligibility, THEORY_DISCORD_GRANTS } from "../engine/systems/skills.js";
+import { skillEligibility } from "../engine/systems/skills.js";
+import { SKILL_BY_ID } from "../data/skillTree.js";
+import { readFileSync } from "node:fs";
 import assert from "node:assert";
 
-// ── B0b: derived cap ──
-// ⚠️ `theory_chromatic` grants the 6th slot — that is now the capstone's whole
-// reason to exist. It used to pay LESS than the rung below it (−0.04 Db measured);
-// slots are what make the Theory ladder pay, because a bigger stack is a bigger
-// chord for Harmonic Lock to land in.
+// ── 🅰️ B0b: THE DERIVED CAP, PER STACK ──
+// ⚠️ THE THREE SEATS ARE FOUND ON THE BOARD, NOT BOUGHT. `theory_chromatic` used
+// to sell the sixth; the branch is deleted and a Lost Chord that extends the
+// stack's root opens the seat instead (`music/stackSlots.js`, and the ladder's own
+// suite is `stackSlotsCheck.mjs`). What is pinned here is the CHOKE POINT: the one
+// function every "is this stack full?" test in the game goes through.
 const cases = [
-  [[], 3], [undefined, 3], [['amp_1'], 3], [['theory_major'], 3], [['theory_minor'], 3],
-  [['theory_dom7'], 4], [['theory_modes'], 4], [['theory_chromatic'], 4],
-  [['theory_dom7','theory_modes'], 5],
-  [['theory_dom7','theory_chromatic'], 5], [['theory_modes','theory_chromatic'], 5],
-  [['theory_dom7','theory_modes','theory_chromatic'], 6],
-  [['theory_major','theory_minor','theory_dom7','theory_modes','theory_chromatic'], 6],
+  [{}, 'drive', 3], [undefined, 'drive', 3], [{}, 'sustain', 3],
+  [{ driveSlots: 1 }, 'drive', 4], [{ driveSlots: 2 }, 'drive', 5], [{ driveSlots: 3 }, 'drive', 6],
+  [{ sustainSlots: 1 }, 'sustain', 4], [{ sustainSlots: 3 }, 'sustain', 6],
+  // 🎯 The two stacks are independent — Drive's finds never widen Sustain.
+  [{ driveSlots: 3 }, 'sustain', 3], [{ sustainSlots: 3 }, 'drive', 3],
+  // Clamped at the render ceiling: a seat the HUD cannot draw is not a seat.
+  [{ driveSlots: 9 }, 'drive', STACK_CAP_MAX],
+  [{ driveSlots: -2 }, 'drive', STACK_CAP_BASE],
 ];
-// The capstone is the ONLY route to six, and the ladder never goes backwards.
-assert.equal(stackCapFor(['theory_dom7','theory_modes','theory_chromatic']), STACK_CAP_MAX,
-  'the full Theory ladder reaches the ceiling');
-assert.ok(stackCapFor(['theory_dom7','theory_modes']) < STACK_CAP_MAX,
-  'slot 6 must be unreachable without theory_chromatic — it is the capstone\'s only product');
-for (const [sk, want] of cases) assert.equal(stackCapFor(sk), want, `stackCapFor(${JSON.stringify(sk)}) → ${want}`);
-console.log("✓ stackCapFor: all", cases.length, "unlock combinations correct");
+for (const [ns, which, want] of cases) {
+  assert.equal(stackCapFor(ns, which), want,
+    `stackCapFor(${JSON.stringify(ns)}, '${which}') → ${want}`);
+}
+assert.equal(stackCapFor({ driveSlots: 3 }), STACK_CAP_MAX, 'three found seats reach the ceiling');
+assert.ok(stackCapFor({ driveSlots: 2 }, 'drive') < STACK_CAP_MAX,
+  'seat 6 must stay unreachable until the third find — it is the last rung, not a rounding');
+// ⚠️ An array is an un-migrated caller and must fail LOUDLY. The quiet version of
+// this caps every stack at 3 forever and nothing in the game would say so.
+assert.throws(() => stackCapFor(['theory_dom7']), /ARRAY was passed/,
+  'the old unlockedSkills signature throws rather than silently capping at 3');
+console.log("✓ stackCapFor: all", cases.length, "per-stack cases correct, and the old signature throws");
 
 // ── B0a: single-note seed ──
 for (const id of ["test_spirit", "cosmic_ronin"]) {
@@ -97,12 +107,15 @@ assert.ok(dom7.drive+dom7.sustain > maj.drive+maj.sustain);
 assert.ok(maj.drive+maj.sustain > pow.drive+pow.sustain);
 console.log(`✓ total power is monotonic in note count: power ${pow.drive+pow.sustain} < triad ${maj.drive+maj.sustain} < dom7 ${dom7.drive+dom7.sustain} < dom9 ${dom9.drive+dom9.sustain}`);
 
-// ── Gate coherence: a 4-note chord is unreachable until theory_dom7 ──
-assert.ok(4 > stackCapFor([]), "dom7 unreachable at baseline");
-assert.ok(4 <= stackCapFor(['theory_dom7']), "theory_dom7 makes dom7 buildable");
-assert.ok(5 > stackCapFor(['theory_dom7']), "dom9 still unreachable at 4 slots");
-assert.ok(5 <= stackCapFor(['theory_dom7','theory_modes']), "theory_modes makes dom9 buildable");
-console.log("✓ B0b gate lines up with Task A: each Theory tier unlocks exactly the chord sizes it licenses");
+// ── 🅰️ Gate coherence: each FOUND seat licenses exactly the chord size it opens.
+// The rung → chord mapping itself is `stackSlotsCheck.mjs`; what is pinned here is
+// that Task A's note-count curve and the seat ladder still agree.
+assert.ok(4 > stackCapFor({}, 'drive'), "dom7 unreachable at baseline");
+assert.ok(4 <= stackCapFor({ driveSlots: 1 }, 'drive'), "seat 4 makes dom7 buildable");
+assert.ok(5 > stackCapFor({ driveSlots: 1 }, 'drive'), "dom9 still unreachable at 4 seats");
+assert.ok(5 <= stackCapFor({ driveSlots: 2 }, 'drive'), "seat 5 makes dom9 buildable");
+assert.ok(6 <= stackCapFor({ driveSlots: 3 }, 'drive'), "seat 6 makes the 11th/13th buildable");
+console.log("✓ B0b gate lines up with Task A: each seat found on the board licenses exactly the chord sizes it opens");
 
 // ─── B2: MELODY DB RESCORE ──────────────────────────────────────────────────
 // Base halved (floor(len/2) - 1, floored at 0); endings 5th +3 / 4th +2 / oct +1.
@@ -124,100 +137,148 @@ console.log("✓ B2 endings: 5th +3 / 4th +2 / octave +1 — best-case track now
 assert.deepEqual(scoreTrackDB(['G','D','G'], 'F', 'G').breakdown.filter(b => b.includes('end')), ['5th end +3']);
 console.log("✓ B2: ending bonuses are exclusive — a 5th that is also an octave pays once");
 
-// ─── B3: THE CHORD CONTEXT LADDER ───────────────────────────────────────────
-const NONE   = [];
-const MINOR  = ['theory_minor'];
-const DOM7   = ['theory_minor','theory_dom7'];
-const MODES  = ['theory_minor','theory_dom7','theory_modes'];
-const CHROM  = ['theory_minor','theory_dom7','theory_modes','theory_chromatic'];
+// ─── B3: THE CHORD CONTEXT LADDER — 🅱️ UNIVERSAL AND FREE SINCE 2026-09-02 ──
+//
+// ⚠️ THIS SECTION USED TO BE A TIER TEST AND IS NOW A MECHANIC TEST, and the
+// difference matters. It ran every assertion at five tier levels — NONE, MINOR,
+// DOM7, MODES, CHROM — and roughly a third of them asserted that a pardon was
+// **withheld** below the rung that sold it ("maj7 NOT pardoned at theory_minor").
+// The Theory branch is deleted; every tier is live for every Spirit from turn one
+// (`PROGRESSION_REWRITE_DESIGN.md` §3), so those withholding assertions describe
+// a rule the game no longer has and are removed rather than inverted.
+//
+// 🎯 What survives is everything that was ever about the MUSIC — which pitch each
+// tier reaches, and why — because that is what was actually valuable here and none
+// of it changed. `tiersFor` returning all four is asserted once, at the top, since
+// it is now the premise the rest of the section rests on.
 const pcs = s => [...s].sort((a,b)=>a-b);
 const Bb = 10, E = 4, G = 7, C = 0, Fs = 6, A = 9, Db_ = 1, D = 2, B = 11;
 
-// No tiers → no context at all.
-assert.deepEqual(pcs(chordContext(['C','E','G','A#'], ['C'], NONE)), []);
-console.log("✓ B3 tier 0: no Theory → the stacks pardon nothing, melody is judged against the key alone");
+// The premise: no stack, no context. ⚠️ NOT "no tiers, no context" any more —
+// there is no tier to be without. An empty pair of stacks pardons nothing because
+// there is no chord to pardon anything WITH, which is a different and better rule.
+assert.deepEqual(pcs(chordContext([], [])), []);
+console.log("✓ B3: empty stacks pardon nothing — the melody is judged against the key alone");
 
-// theory_minor — Chord Tone Pardon: literal notes only.
-assert.deepEqual(pcs(chordContext(['C','E','G'], [], MINOR)), [C, E, G]);
-console.log("✓ B3 theory_minor: literal stack notes are pardoned, and nothing else");
+// Chord Tone Pardon — literal notes, free, turn one.
+assert.deepEqual(pcs(chordContext(['C','E','G'], [])), pcs(new Set([C, E, G, B, Fs])));
+console.log("✓ B3 literal: notes sitting in a stack are never Discord — and it costs nobody anything now");
 
-// theory_dom7 — Play the Changes. The SPEC CASE: a C-E-G stack pardons the 7th
-// the player never placed. (Spec said ♭7 off a C-E-G-B♭ stack, which is
-// self-contradictory under subset matching — see context.js. A major triad
-// completes to maj7, so the earned note is B; the ♭7 case is the minor triad.)
-assert.ok(!chordContext(['C','E','G'], [], MINOR).has(B),  "maj7 NOT pardoned at theory_minor");
-assert.ok( chordContext(['C','E','G'], [], DOM7 ).has(B),  "maj7 pardoned at theory_dom7");
-assert.ok(!chordContext(['C','D#','G'], [], MINOR).has(Bb), "♭7 NOT pardoned at theory_minor");
-assert.ok( chordContext(['C','D#','G'], [], DOM7 ).has(Bb), "♭7 pardoned at theory_dom7");
-console.log("✓ B3 theory_dom7: triads hand over their implied 7th — the tier is no longer a no-op");
+// Play the Changes. THE SPEC CASE: a C-E-G stack pardons the 7th the player never
+// placed. (The spec said ♭7 off a C-E-G-B♭ stack, which is self-contradictory
+// under subset matching — see context.js. A major triad completes to maj7, so the
+// earned note is B; the ♭7 case is the minor triad.)
+assert.ok(chordContext(['C','E','G'], []).has(B),   "a major triad hands over its maj7");
+assert.ok(chordContext(['C','D#','G'], []).has(Bb), "a minor triad hands over its ♭7");
+console.log("✓ B3 chord: triads hand over their implied 7th — the completion is the tier, and everyone has it");
 // A power chord has no third, so no quality to complete — it earns nothing here.
-assert.deepEqual(pcs(chordContext(['C','G'], [], DOM7)), [C, G]);
-// Already-complete chords gain nothing either; their reward is the 4th slot.
-assert.deepEqual(pcs(chordContext(['C','E','G','A#'], [], DOM7)), [C, E, G, Bb]);
-console.log("✓ B3 theory_dom7: power chords and complete 7ths gain no extra tones (slot 4 is their payoff)");
+// ⚠️ THIS EXCLUSION IS LOAD-BEARING NOW IN A WAY IT WAS NOT BEFORE. It used to be
+// balanced by a 46-Db price tag; free, it would hand the ♭7 to the one stack every
+// player holds from turn one, for nothing. It is the last thing standing between
+// "your chord decides" and "the ♭7 is just clean".
+assert.deepEqual(pcs(chordContext(['C','G'], [])), [C, G]);
+// Already-complete chords gain no seventh either — theirs is already there.
+assert.deepEqual(pcs(chordContext(['C','E','G','A#'], [])), pcs(new Set([C, E, G, Bb, Db_, D])));
+console.log("✓ B3 chord: power chords complete to nothing, and complete 7ths gain no phantom eighth");
 
-// theory_modes — Extensions by quality: ♯4 over major, nat 6 over minor, ♭9+9 over dom.
-assert.ok( chordContext(['C','E','G'],      [], MODES).has(Fs), "♯4 over major");
-assert.ok( chordContext(['C','D#','G'],     [], MODES).has(A),  "nat 6 over minor");
-assert.ok( chordContext(['C','E','G','A#'], [], MODES).has(Db_), "♭9 over dominant");
-assert.ok( chordContext(['C','E','G','A#'], [], MODES).has(D),  "9 over dominant");
-assert.ok(!chordContext(['C','E','G'],      [], DOM7 ).has(Fs), "♯4 NOT pardoned below theory_modes");
-console.log("✓ B3 theory_modes: tensions arrive by chord quality, not as a flat note list");
+// Extensions by quality: ♯4 over major, nat 6 over minor, ♭9+9 over dom.
+assert.ok(chordContext(['C','E','G'],      []).has(Fs),  "♯4 over major");
+assert.ok(chordContext(['C','D#','G'],     []).has(A),   "nat 6 over minor");
+assert.ok(chordContext(['C','E','G','A#'], []).has(Db_), "♭9 over dominant");
+assert.ok(chordContext(['C','E','G','A#'], []).has(D),   "9 over dominant");
+// ⚠️ AND THE QUALITIES WITH NO TENSION TABLE STILL CONTRIBUTE NOTHING. dim, aug,
+// sus and power stay at their chord tones — that is what keeps the extension tier
+// from quietly pardoning most of the chromatic scale now that it is free.
+assert.deepEqual(pcs(chordContext(['C','D#','F#'], [])), pcs(new Set([C, 3, Fs, A])));
+console.log("✓ B3 extension: tensions arrive by chord quality, and the untabled qualities stay shut");
 
-// Tiers are cumulative — buying up never removes a pardon you already had.
-for (const higher of [DOM7, MODES, CHROM]) {
-  for (const pc of chordContext(['C','E','G'], ['D'], MINOR)) {
-    assert.ok(chordContext(['C','E','G'], ['D'], higher).has(pc), "higher tier keeps lower pardons");
+// ⛔ MONOTONICITY IS GONE, AND IT DID NOT SURVIVE IN ANY FORM. WORTH READING.
+//
+// The old assertion was "buying up never removes a pardon you already had" — the
+// one property an UPGRADE may never break, and `tiersFor`'s cumulative OR existed
+// to guarantee it. Nothing is bought any more, so the obvious replacement is
+// "committing a note never removes a pardon". ⚠️ **THAT IS FALSE, and it is false
+// by design.** The pardon set is a function of the chord's QUALITY, so changing
+// the quality trades one set of legal notes for another:
+//
+//   C-E-G   → maj  → completes to B (maj7), extends to F♯ (Lydian ♯4)
+//   +A♯     → dom7 → already complete, so no B; extends to D♭/D (♭9, 9) instead
+//
+// The B and the F♯ go grey the instant the B♭ lands. That is `context.js`'s whole
+// thesis — "stack a ♭3 and watch which notes go grey" — and B8 deleted the
+// declare-your-mode prompt specifically to move that decision into the stack.
+//
+// 🎯 SO THE INVARIANT WORTH PINNING IS THE DIFFERENT ONE: whatever else moves, a
+// note you have LITERALLY PLACED is pardoned, always, at every quality. That is
+// the floor the player can reason about without knowing any theory, and it is the
+// thing a future "simplification" of `stackContext` would break first.
+for (const stack of [['C','E','G'], ['C','E','G','A#'], ['C','D#','G'], ['C','G'], ['C','C#','F#']]) {
+  const ctx = chordContext(stack, []);
+  for (const n of stack) {
+    assert.ok(ctx.has(pitchIndex(n)),
+      `a note literally in the stack ${JSON.stringify(stack)} is always pardoned (${n})`);
   }
 }
-console.log("✓ B3: the ladder is monotonic — no purchase is ever a downgrade");
+// And the quality trade is REAL, not theoretical — pinned so it cannot regress
+// into silence.
+{
+  const maj = chordContext(['C','E','G'], []);
+  const dom = chordContext(['C','E','G','A#'], []);
+  assert.ok(maj.has(B) && !dom.has(B),
+    '🎯 committing the ♭7 takes the maj7 away — the chord decides, and the decision has a cost');
+  assert.ok(maj.has(Fs) && !dom.has(Fs),
+    '🎯 …and swaps Lydian\'s ♯4 for the dominant\'s ♭9/9');
+  assert.ok(dom.has(Db_) && dom.has(D), '…which are genuinely there in exchange');
+}
+console.log("✓ B3: literal notes are pardoned at every quality — and a commit TRADES pardons rather than only adding them");
 
 // ── classifyTrack: provenance and B4 routing ──
 const keyC = ['C','D','E','F','G','A','B'];
-let cls = classifyTrack(['C','D','A#'], keyC, ['C','E','G','A#'], [], DOM7);
+let cls = classifyTrack(['C','D','A#'], keyC, ['C','E','G','A#'], []);
 assert.deepEqual(cls.map(c => c.inScale), [true, true, false]);
 assert.deepEqual(cls.map(c => c.pardonedBy), [null, null, 'literal']);
 assert.deepEqual(cls.map(c => c.stack), [null, null, 'drive']);
 console.log("✓ B3 classifyTrack: in-scale notes are pardoned by nobody and pay nobody");
 
 // Routing: legal in BOTH → higher chord rank wins.
-cls = classifyTrack(['A#'], keyC, ['C','A#'], ['C','E','G','A#'], DOM7);
+cls = classifyTrack(['A#'], keyC, ['C','A#'], ['C','E','G','A#']);
 assert.equal(cls[0].stack, 'sustain', "dom7 (rank 6) outranks the drive cluster");
 // Tie goes to Drive.
-cls = classifyTrack(['A#'], keyC, ['C','E','G','A#'], ['C','E','G','A#'], DOM7);
+cls = classifyTrack(['A#'], keyC, ['C','E','G','A#'], ['C','E','G','A#']);
 assert.equal(cls[0].stack, 'drive', "equal rank → Drive");
 console.log("✓ B4 routing: higher chord rank claims the note, ties go to Drive");
 
 // Unpardoned notes are what B7 will count.
-cls = classifyTrack(['C','C#','F#'], keyC, ['C','E','G'], [], MINOR);
-assert.equal(countUnpardoned(cls), 2, "two off-scale notes, neither in the stacks");
-assert.equal(countUnpardoned(classifyTrack(['C','D','E'], keyC, [], [], NONE)), 0);
+cls = classifyTrack(['C','C#','G#'], keyC, ['C','E','G'], []);
+assert.equal(countUnpardoned(cls), 2, "two off-scale notes, neither reachable from the stacks");
+assert.equal(countUnpardoned(classifyTrack(['C','D','E'], keyC, [], [])), 0);
 console.log("✓ B7 input: countUnpardoned isolates exactly the notes still owed a penalty");
 
 // ── Approach Notes: conditional on the NEXT note, so the last note can't use it ──
 // C# is chromatic garbage, but E (a chord tone of the C-E-G stack) follows it.
-cls = classifyTrack(['C','C#','E'], keyC, ['C','E','G'], [], CHROM);
+cls = classifyTrack(['C','C#','E'], keyC, ['C','E','G'], []);
 assert.equal(cls[1].pardonedBy, 'approach', "C# pardoned — it lands on E");
 assert.equal(countUnpardoned(cls), 0);
 // Same note at the END of the track has no next note and stays a discord.
-cls = classifyTrack(['C','E','C#'], keyC, ['C','E','G'], [], CHROM);
+cls = classifyTrack(['C','E','C#'], keyC, ['C','E','G'], []);
 assert.equal(cls[2].pardonedBy, null, "a trailing chromatic note is never pardoned");
 assert.equal(countUnpardoned(cls), 1);
-console.log("✓ B3 theory_chromatic: approach notes must LAND — the final note can never be pardoned by them");
-// And the approach tier does nothing without the unlock.
-assert.equal(classifyTrack(['C','C#','E'], keyC, ['C','E','G'], [], MODES)[1].pardonedBy, null);
-console.log("✓ B3: total chromatic freedom stays locked behind theory_chromatic");
+console.log("✓ B3 approach: approach notes must LAND — the final note can never be pardoned by them");
 
 // ── C4 LANDMINE GUARD ──
 // The context must never be folded into the key scale. If it were, an off-scale
 // note would come back inScale:true and Flair's discord detector would see nothing.
-cls = classifyTrack(['A#'], keyC, ['C','E','G','A#'], [], MODES);
+// ⚠️ THIS GUARD MATTERS MORE NOW, NOT LESS. The temptation the deletion creates is
+// "the ladder is free, so just widen `playableScale` and delete the pardon" — which
+// is the C4 collapse with a fresh coat of paint, and it would also delete the
+// colour payout (`melodyCommit.js`'s `colorDrive`/`colorSustain`).
+cls = classifyTrack(['A#'], keyC, ['C','E','G','A#'], []);
 assert.equal(cls[0].inScale, false, "⚠️ C4: a pardoned note is still OFF-SCALE — pardon ≠ classification");
 assert.equal(cls[0].pardonedBy, 'literal');
 console.log("✓ C4 landmine: pardoned notes still report inScale:false — scoring changes, classification doesn't");
 
 const { drive, sustain } = countPardonedByStack(
-  classifyTrack(['A#','F#','C#'], keyC, ['C','E','G','A#'], ['D','F#','A'], MODES));
+  classifyTrack(['A#','F#','C#'], keyC, ['C','E','G','A#'], ['D','F#','A']));
 assert.ok(drive >= 1 && sustain >= 1, "both stacks can earn in one track");
 console.log(`✓ B4 tally: countPardonedByStack → drive ${drive}, sustain ${sustain} (B4 caps each at +2 at the call site)`);
 
@@ -267,7 +328,7 @@ assert.deepEqual(modeSensitive, ['Db','Ab'], "only the split roots still read mo
 console.log("✓ speller: mode-free for 10 of 12 roots — the last two are the split roots themselves");
 
 // ─── MODE DERIVED FROM THE DRIVE STACK (B8 revision) ────────────────────────
-const mk = (stack, unlocks = MINOR, cur = 'major') => modeFromStack(stack, unlocks, cur);
+const mk = (stack, cur = 'major') => modeFromStack(stack, cur);
 assert.deepEqual(mk(['C','D#','G']),      { mode:'minor', reason:'quality'   }, "minor triad → minor");
 assert.deepEqual(mk(['C','D#','G','A#']), { mode:'minor', reason:'quality'   }, "min7 → minor");
 assert.deepEqual(mk(['C','D#','F#']),     { mode:'minor', reason:'quality'   }, "dim → minor");
@@ -277,17 +338,16 @@ console.log("✓ B8: the Drive Stack's chord quality sets the mode — no prompt
 
 // Quality-ambiguous shapes hold the current mode instead of forcing one.
 for (const stack of [['C','G'], ['C','D','G'], ['C','F','G'], ['C'], [], ['C','C#','D']]) {
-  assert.equal(mk(stack, MINOR, 'minor').mode, 'minor', `${stack.join('-')||'empty'} holds minor`);
-  assert.equal(mk(stack, MINOR, 'major').mode, 'major', `${stack.join('-')||'empty'} holds major`);
+  assert.equal(mk(stack, 'minor').mode, 'minor', `${stack.join('-')||'empty'} holds minor`);
+  assert.equal(mk(stack, 'major').mode, 'major', `${stack.join('-')||'empty'} holds major`);
   assert.equal(mk(stack).reason, 'ambiguous');
 }
 console.log("✓ B8: power/sus/single/cluster have no third to read — they hold the mode, never flip it");
 
-// A spirit without theory_minor can't be dragged into minor by their own stack.
-assert.deepEqual(mk(['C','D#','G'], []), { mode:'major', reason:'locked' },
-  "minor stack without theory_minor → hold major, flagged 'locked'");
-assert.equal(mk(['C','D#','G'], ['theory_minor']).mode, 'minor');
-console.log("✓ B8: theory_minor still gates minor — 'locked' lets the UI advertise the skill at the exact moment it's wanted");
+// 🅱️ EVERY Spirit is dragged into minor by their own stack now — the gate is gone.
+assert.deepEqual(mk(['C','D#','G']), { mode:'minor', reason:'quality' },
+  "a minor stack turns the song minor, unconditionally");
+console.log("✓ B8: minor is not gated — the stack decides the key for everybody, from turn one");
 
 // Turn one, post-B0: the stack is a single seeded note, so nothing is forced.
 assert.equal(mk([makeInitialNoteState('test_spirit', () => 0.5).rootNote]).reason, 'ambiguous');
@@ -306,7 +366,7 @@ for (const id of ["test_spirit", "cosmic_ronin"]) {
   for (const r of [0.0, 0.31, 0.5, 0.87, 0.99]) {
     const ns = makeInitialNoteState(id, () => r);
     assert.equal(ns.pivotPending, false, `${id}: no pivot to pend at init`);
-    const d = modeFromStack(ns.driveStack, ns.unlockedSkills ?? [], ns.scaleMode);
+    const d = modeFromStack(ns.driveStack, ns.scaleMode);
     assert.equal(d.mode,   ns.scaleMode,  `${id}: seeded mode is the derived mode`);
     assert.equal(d.reason, ns.modeReason, `${id}: seeded reason matches`);
   }
@@ -317,13 +377,11 @@ console.log("✓ B8 wiring: the initial sheet ships a derived mode, not a pendin
 // `currentMode`. If derivation weren't a fixed point, an untouched stack would
 // oscillate the key every turn all by itself — respelling the stock each time.
 for (const stack of [['C','E','G'], ['C','D#','G'], ['C','G'], ['C'], [], ['C','D','G'], ['C','C#','D']]) {
-  for (const unlocks of [[], MINOR]) {
-    let mode = 'major';
-    for (let turn = 0; turn < 5; turn++) {
-      const next = modeFromStack(stack, unlocks, mode).mode;
-      if (turn > 0) assert.equal(next, mode, `${stack.join('-')||'empty'}: mode drifts on turn ${turn}`);
-      mode = next;
-    }
+  let mode = 'major';
+  for (let turn = 0; turn < 5; turn++) {
+    const next = modeFromStack(stack, mode).mode;
+    if (turn > 0) assert.equal(next, mode, `${stack.join('-')||'empty'}: mode drifts on turn ${turn}`);
+    mode = next;
   }
 }
 console.log("✓ B8 wiring: derivation is a fixed point — an unchanged stack never drifts the key");
@@ -343,17 +401,21 @@ for (const root of SPELL_ROOTS) {
 }
 console.log("✓ B8 wiring: turn-start respell is stable — held notes never rename themselves");
 
-// UNLOCKING MINOR IS A PROMOTION, NEVER A DEMOTION. A 'locked' stack must read
-// minor the moment theory_minor lands, and no unlock may ever move a spirit the
-// other way (from minor back to major) on the same stack.
+// 🪦 'LOCKED' IS GONE — THERE IS NOTHING LEFT TO UNLOCK. The block here asserted
+// that buying Minor Tonality promoted a stack out of `reason: 'locked'` and never
+// demoted another. Minor is free for everybody from turn one (2026-09-02), so the
+// promotion has no before-state — every minor stack reads minor immediately.
+// ⚠️ Pinned as an ABSENCE, because the client still has a `modeLocked` read and a
+// dead amber-badge branch behind it: if 'locked' ever comes back, that badge
+// starts firing again for a skill that does not exist.
 for (const stack of [['C','D#','G'], ['C','D#','G','A#'], ['C','D#','F#'], ['C','E','G'], ['C','G']]) {
-  const before = modeFromStack(stack, [], 'major');
-  const after  = modeFromStack(stack, MINOR, before.mode);
-  assert.notEqual(after.reason, 'locked', `${stack.join('-')}: still locked after unlocking`);
-  if (before.mode === 'minor') assert.equal(after.mode, 'minor', `${stack.join('-')}: unlock demoted to major`);
-  if (before.reason === 'locked') assert.equal(after.mode, 'minor', `${stack.join('-')}: unlock didn't deliver minor`);
+  const m = modeFromStack(stack, 'major');
+  assert.notEqual(m.reason, 'locked',
+    `${stack.join('-')}: nothing is locked any more — the branch is unreachable`);
 }
-console.log("✓ B8 wiring: buying Minor Tonality promotes a locked stack and never demotes any other");
+assert.equal(modeFromStack(['C','D#','G'], 'major').mode, 'minor',
+  '🎯 a minor stack turns the song minor on turn one, for every Spirit, free');
+console.log("✓ B8 wiring: 'locked' is unreachable — a minor stack delivers minor immediately, for everyone");
 
 // ── B4: COLOR NOTES PAY THE STACK THAT AUTHORIZED THEM ──────────────────────
 // The payout itself lives in confirmNoteTrack (React state, not reachable from
@@ -389,8 +451,8 @@ const b4stacks = [
 let b4checked = 0;
 for (const track of b4tracks) {
   for (const [ds, ss] of b4stacks) {
-    for (const unlocks of [[], MINOR, DOM7, MODES, CHROM]) {
-      const cl   = classifyTrack(track, CMAJ, ds, ss, unlocks);
+    {
+      const cl   = classifyTrack(track, CMAJ, ds, ss);
       const paid = countPardonedByStack(cl);
       const pardoned = cl.filter(c => c.pardonedBy !== null).length;
       assert.equal(paid.drive + paid.sustain, pardoned,
@@ -410,7 +472,7 @@ for (const track of b4tracks) {
     }
   }
 }
-console.log("✓ B4 routing:", b4checked, "track×stack×tier combinations — every pardon pays exactly one stack");
+console.log("✓ B4 routing:", b4checked, "track×stack combinations — every pardon pays exactly one stack");
 
 // RANK BREAKS THE TIE, AND THE TIE GOES TO DRIVE. A note legal against both
 // stacks must be routed to the more sophisticated chord — that's what makes
@@ -418,37 +480,42 @@ console.log("✓ B4 routing:", b4checked, "track×stack×tier combinations — e
 // Drive deterministically rather than by set-iteration accident.
 // Both stacks below literally contain D#; only their rank differs.
 {
-  const dHigh = classifyTrack(['D#'], CMAJ, ['C','D#','F#','A'], ['C','D#','G'], DOM7);
+  const dHigh = classifyTrack(['D#'], CMAJ, ['C','D#','F#','A'], ['C','D#','G']);
   assert.equal(dHigh[0].stack, 'drive',   'B4: higher-ranked Drive stack should claim the note');
-  const sHigh = classifyTrack(['D#'], CMAJ, ['C','D#','G'], ['C','D#','F#','A'], DOM7);
+  const sHigh = classifyTrack(['D#'], CMAJ, ['C','D#','G'], ['C','D#','F#','A']);
   assert.equal(sHigh[0].stack, 'sustain', 'B4: higher-ranked Sustain stack should claim the note');
   // Same chord id on both sides → same rank → Drive.
-  const tie = classifyTrack(['D#'], CMAJ, ['C','D#','G'], ['C','D#','G'], DOM7);
+  const tie = classifyTrack(['D#'], CMAJ, ['C','D#','G'], ['C','D#','G']);
   assert.equal(tie[0].stack, 'drive', 'B4: rank tie must go to Drive');
   // Run the tie 20× to be sure it is decided by rank, not by iteration order.
   for (let i = 0; i < 20; i++) {
-    assert.equal(classifyTrack(['D#'], CMAJ, ['C','D#','G'], ['C','D#','G'], DOM7)[0].stack,
+    assert.equal(classifyTrack(['D#'], CMAJ, ['C','D#','G'], ['C','D#','G'])[0].stack,
       'drive', 'B4: tie-break is not deterministic');
   }
 }
 console.log("✓ B4 routing: higher chord rank claims a shared note, ties resolve to Drive every time");
 
-// A PARDON IS A PROMOTION HERE TOO. Buying a tier may add payees but must never
-// remove one — if a note paid Drive at theory_dom7 and paid nobody at
-// theory_modes, the purchase would have cost the player income.
+// 🪦 "BUYING A TIER NEVER REDUCES WHAT THE TRACK PAYS" — no tiers, no purchases,
+// nothing left to assert. ⚠️ AND ITS REPLACEMENT DOES NOT HOLD: a stack COMMIT can
+// reduce a track's payout, because changing the chord's quality trades one pardon
+// set for another (see the monotonicity note in the B3 section above).
+//
+// 🎯 SO THE INVARIANT THAT REPLACES IT IS AN ACCOUNTING ONE, and it is the one
+// the payout actually depends on: the two stacks' tallies always sum to the number
+// of pardoned notes, and neither can be negative — a routing bug that paid a note
+// twice, or paid a stack that did not authorise it, shows up here rather than as a
+// quiet Db surplus in play. (The per-combination version of this runs above; this
+// pins the boundary cases the loop's stack list does not reach.)
 for (const track of b4tracks) {
   for (const [ds, ss] of b4stacks) {
-    let prev = null;
-    for (const unlocks of [MINOR, DOM7, MODES, CHROM]) {
-      const paid = countPardonedByStack(classifyTrack(track, CMAJ, ds, ss, unlocks));
-      const total = paid.drive + paid.sustain;
-      if (prev !== null) assert.ok(total >= prev,
-        `B4: ${track.join('-')} / ${ds.join('-')||'∅'} — payout dropped from ${prev} to ${total} on unlock`);
-      prev = total;
-    }
+    const cl   = classifyTrack(track, CMAJ, ds, ss);
+    const paid = countPardonedByStack(cl);
+    assert.ok(paid.drive >= 0 && paid.sustain >= 0, 'B4: a stack was paid a negative number of notes');
+    assert.equal(paid.drive + paid.sustain, cl.filter(c => c.pardonedBy !== null).length,
+      `B4: ${track.join('-')} / ${ds.join('-')||'∅'} — the tallies do not sum to the pardons`);
   }
 }
-console.log("✓ B4 routing: buying a higher tier never reduces what the track pays");
+console.log("✓ B4 routing: the two stacks' tallies always sum to the pardons — no note pays twice, none pays nobody");
 
 // ── B5: HARMONIC LOCK ───────────────────────────────────────────────────────
 // The rank bands, restated from the spec so a template rank change trips here.
@@ -630,27 +697,32 @@ console.log("✓ B5: scoreTrackDB reports endingBonus/endingKind — the gate B5
 console.log("✓ B7: per-note discord penalty — first free, floored at 3, monotonic, never negative");
 
 // B7 must score from classifyTrack's SETTLED count, not a placement counter. The
-// contract that makes that possible: countUnpardoned only counts notes the chord
-// context declined to pardon, so buying a tier can only ever LOWER the penalty.
+// contract that makes that possible: `countUnpardoned` only counts notes the chord
+// context declined to pardon.
+//
+// 🅱️ THE TIER SWEEP IS GONE — the ladder is universal and free (2026-09-02), so
+// "buying up never raises the penalty" has no purchases to sweep. **THE STACK IS
+// THE LEVER NOW**, and that is the far better assertion: the same wrong notes cost
+// a Spirit who built the right chord less than they cost a Spirit holding nothing.
+// It used to take 46 Db to make that true; it now takes playing well.
 {
   const keyC  = [0,2,4,5,7,9,11];
   const track = ['C','C#','D#','F#','A#','C'];   // four off-scale notes in C major
-  const stack = ['C','E','G','A#'];              // C7 — pardons C#/D#/F#/A# by tier
-  let prev = Infinity;
-  for (const tier of [NONE, MINOR, DOM7, MODES, CHROM]) {
-    const n = countUnpardoned(classifyTrack(track, keyC, stack, [], tier));
-    const p = discordPenaltyFor(n);
-    assert.ok(p <= prev,
-      `B7: buying up the ladder must never RAISE the discord penalty (tier ${JSON.stringify(tier)}: ${p} > ${prev})`);
-    prev = p;
+  const bare  = discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, [], [])));
+  const built = discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, ['C','E','G','A#'], [])));
+  assert.equal(bare, 3,
+    'B7: with nothing stacked, four wrong notes pay the full floor of 3');
+  assert.ok(built < bare,
+    `B7: the SAME track costs less against a C7 stack (${built} < ${bare}) — the chord is what buys the pardon now`);
+  // ⚠️ And a stack cannot make things WORSE than holding nothing. This is the one
+  // direction that must never invert: a player who commits notes and finds their
+  // melody more expensive would be being punished for engaging with the mechanic.
+  for (const ds of [['C'], ['C','G'], ['C','E','G'], ['C','D#','G'], ['C','E','G','A#'], ['C','D#','F#','A']]) {
+    const p = discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, ds, [])));
+    assert.ok(p <= bare, `B7: stacking ${ds.join('-')} RAISED the penalty (${p} > ${bare})`);
   }
-  // And at tier 0 this track is expensive — the tax the ladder is sold against.
-  assert.equal(discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, stack, [], NONE))), 3,
-    'B7: an untutored spirit playing four wrong notes pays the full floor of 3');
-  assert.ok(discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, stack, [], CHROM))) < 3,
-    'B7: the same track costs the capstone spirit less — which is what the 46-Db ladder buys');
 }
-console.log("✓ B7: penalty falls monotonically as the pardon ladder widens — 3 at tier 0, less at the capstone");
+console.log("✓ B7: the STACK is what lowers the penalty now — 3 with nothing built, less with a chord, never more");
 
 // ═══ THE Db PAYOUT — FOUR SOURCES ═══════════════════════════════════════════
 // The commit-site arithmetic, in full:
@@ -667,11 +739,11 @@ console.log("✓ B7: penalty falls monotonically as the pardon ladder widens —
   const keyC = [0,2,4,5,7,9,11], F = 'F', G = 'G';
   const stack = ['C','E','G'];
   // The commit's arithmetic, transcribed. Keep in step with confirmNoteTrack.
-  const commitDb = (track, skills, ds = stack, ss = []) => {
+  const commitDb = (track, ds = stack, ss = []) => {
     const base = scoreTrackDB(track, F, G);
     const lock = base.endingBonus > 0
       ? harmonicLock(track[track.length - 1], ds, ss).bonus : 0;
-    const pen  = discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, ds, ss, skills)));
+    const pen  = discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, ds, ss)));
     return { total: Math.max(0, base.points + lock - pen),
              length: base.points - base.endingBonus, ending: base.endingBonus, lock, pen };
   };
@@ -679,210 +751,194 @@ console.log("✓ B7: penalty falls monotonically as the pardon ladder widens —
   // 1. A clean line that lands on the 5th of the chord you built pays all three
   //    positive terms — and a triad is enough. This is the headline case, and the
   //    one that used to pay nothing because rank 4 was banded out of the Lock.
-  const good = commitDb(['C','D','E','F','G'], NONE);
+  const good = commitDb(['C','D','E','F','G']);
   assert.ok(good.length > 0, 'four-source: length pays');
   assert.equal(good.ending, 3,   'four-source: a 5th ending pays 3');
-  assert.equal(good.lock,   1,   'four-source: landing in a MAJOR TRIAD pays 1 — from turn one, no Theory');
+  assert.equal(good.lock,   1,   'four-source: landing in a MAJOR TRIAD pays 1 — from turn one, with nothing found');
   assert.equal(good.pen,    0,   'four-source: a diatonic line owes nothing');
   assert.equal(good.total,  good.length + 3 + 1, 'four-source: the terms simply add');
 
-  // 2. Every term is reachable at tier 0. A ladder whose first rung is a
-  //    prerequisite for being paid at all is the bug this replaced.
-  assert.ok(good.total > 0, 'four-source: a tier-0 spirit can earn from every positive term');
+  // 2. Every term is reachable on turn one, with nothing found and nothing bought.
+  //    A ladder whose first rung is a prerequisite for being paid at all is the bug
+  //    this replaced — and there is no ladder left to be at the bottom of.
+  assert.ok(good.total > 0, 'four-source: a turn-one Spirit can earn from every positive term');
 
   // 3. The penalty is the only negative, it can zero a track but never invert it.
   for (const t of [['C#','D#','F#','G#','A#'], ['C#'], ['C#','D#'], []]) {
-    const r = commitDb(t, NONE);
+    const r = commitDb(t);
     assert.ok(r.total >= 0, `four-source: ${t.join('-')||'empty'} floored at 0, never negative`);
   }
 
-  // 4. Theory can only ever help. Buying a tier widens the pardon, which can only
-  //    shrink the penalty — the one thing an upgrade may never do is cost you.
+  // 4. 🅱️ Building a chord can only ever help THE PENALTY. The tier sweep this
+  //    replaced asserted the same shape about purchases; the lever is the stack now.
+  //    ⚠️ Stated about the PENALTY specifically, not the total — the total also
+  //    carries Harmonic Lock, which legitimately moves both ways as the chord's
+  //    quality changes what the line lands in.
   const colourful = ['C','Eb','E','F','G'];
-  let prev = -1;
-  for (const tier of [NONE, MINOR, DOM7, MODES, CHROM]) {
-    const r = commitDb(colourful, tier);
-    assert.ok(r.total >= prev,
-      `four-source: buying Theory LOWERED the payout (${prev} → ${r.total}) on ${colourful.join('-')}`);
-    prev = r.total;
+  const barePen = commitDb(colourful, []).pen;
+  for (const ds of [['C'], ['C','E','G'], ['C','D#','G'], ['C','E','G','Bb'], ['C','D#','G','A#','D']]) {
+    assert.ok(commitDb(colourful, ds).pen <= barePen,
+      `four-source: stacking ${ds.join('-')} RAISED the discord bill on ${colourful.join('-')}`);
   }
 
   // 5. The chord is load-bearing: the SAME line pays more into a real chord than
   //    into a single note. This is the chord↔melody link, reduced to one assertion.
-  const intoChord  = commitDb(['C','D','E','F','G'], NONE, ['C','E','G']);
-  const intoNote   = commitDb(['C','D','E','F','G'], NONE, ['C']);
-  const intoSeventh= commitDb(['C','D','E','F','G'], NONE, ['C','E','G','Bb']);
+  const intoChord  = commitDb(['C','D','E','F','G'], ['C','E','G']);
+  const intoNote   = commitDb(['C','D','E','F','G'], ['C']);
+  const intoSeventh= commitDb(['C','D','E','F','G'], ['C','E','G','Bb']);
   assert.ok(intoChord.total > intoNote.total,
     'four-source: building a chord must beat holding a single note');
   assert.ok(intoSeventh.total > intoChord.total,
-    'four-source: and a seventh must beat a triad — the slot ladder has to slope');
+    'four-source: and a seventh must beat a triad — the seat ladder has to slope, or finding one is pointless');
 }
-console.log("✓ Db payout: four sources — length + ending + lock − penalty, all reachable at tier 0");
-console.log("✓ Db payout: Theory never lowers it, and a bigger chord always pays more than a smaller one");
+console.log("✓ Db payout: four sources — length + ending + lock − penalty, all reachable on turn one");
+console.log("✓ Db payout: building a chord never raises the discord bill, and a bigger chord always pays more");
 
-// ─── B10: RONIN OWNS THE FIRST RUNG OF THE LADDER ───────────────────────────
-// He starts holding `theory_minor` so Wa no Koe amplifies the chord-context system
-// instead of being obsoleted by it. Asserted here because the grant is a single
-// literal in makeInitialNoteState and nothing else in the codebase would notice if
-// it silently disappeared.
+// ─── 🪦 B10: THE RONIN'S FREE RUNG IS EVERYBODY'S FLOOR NOW ─────────────────
+//
+// He started holding `theory_minor` so Wa no Koe amplified the chord-context
+// system instead of being obsoleted by it. The pardon ladder is universal and free
+// as of 2026-09-02, so his head start is the whole roster's baseline: he lost a
+// grant and gained nothing, and everybody else gained what he had.
+//
+// ⚠️ HE IS MEASURABLY WEAKER RELATIVE TO THE FIELD FOR IT — he opened one rung up
+// the game's only shared ladder and that ladder is gone. Wa no Koe still stacks on
+// top exactly as designed; whether the character needs something back is a
+// CHARACTER question (`CHARACTER_HANDOFF.md`), not something to patch here.
+//
+// 🎯 What is asserted instead is the property B10 was really protecting: **the
+// pardon reaches the ladder on turn one with no purchases.** It used to be true
+// for one Spirit and is now true for all of them, which is a strictly stronger
+// version of the same check.
 {
-  const ronin = makeInitialNoteState('cosmic_ronin', () => 0.5);
-  const other = makeInitialNoteState('Metalness_Monster', () => 0.5);
-  assert.ok(ronin.unlockedSkills.includes('theory_minor'),
-    'B10: Ronin must start holding theory_minor');
-  assert.ok(!other.unlockedSkills.includes('theory_minor'),
-    'B10: no other spirit starts with a Theory tier');
-  // 🛑 THIS PAIR USED TO PIN `amp_1` — that every Spirit started holding it, and
-  //    that the Ronin's Theory grant had not displaced it. The rig came off the
-  //    skill tree on 2026-08-20 and `amp_1` no longer exists, so the seed is now
-  //    EMPTY for everyone but the Ronin. Nobody lost a free amp: `rigPool` starts
-  //    at `RIG_POOL_FLOOR`, which is the same 2d6 the rung used to grant.
-  assert.deepEqual(other.unlockedSkills, [],
-    'B10: every other spirit starts with NO skills at all');
-  assert.deepEqual(ronin.unlockedSkills, ['theory_minor'],
-    'B10: …and the Ronin with exactly his one free Theory tier');
-
-  // The grant must actually reach the pardon ladder — the whole point of it.
-  const keyC  = [0,2,4,5,7,9,11];
-  const stack = ronin.driveStack;              // [root]
-  const offNote = ['C#','D#','F#','G#','A#'].find(n => !stack.includes(n)) ?? 'C#';
-  // A note LITERALLY in his stack must be pardoned from turn one, with no purchases.
-  const cls = classifyTrack([stack[0]], keyC, stack, [], ronin.unlockedSkills);
-  const inKey = keyC.includes(pitchIndex(stack[0]));
-  if (!inKey) {
-    assert.equal(cls[0].pardonedBy, 'literal',
-      'B10: Ronin\'s own stack note must be pardoned by the literal tier on turn one');
+  const keyC = [0,2,4,5,7,9,11];
+  for (const id of ['cosmic_ronin', 'Metalness_Monster', 'intergalactic_0', 'Glamarchy']) {
+    const ns = makeInitialNoteState(id, () => 0.5);
+    assert.deepEqual(ns.unlockedSkills, [],
+      `${id}: nobody is born holding a skill any more — not even the Ronin`);
+    const stack = ns.driveStack;                 // [root]
+    const inKey = keyC.includes(pitchIndex(stack[0]));
+    const cls   = classifyTrack([stack[0]], keyC, stack, []);
+    if (!inKey) {
+      assert.equal(cls[0].pardonedBy, 'literal',
+        `${id}: a note literally in the stack is pardoned on turn one, with nothing bought`);
+    }
   }
-  // And a spirit WITHOUT the grant must not get that pardon on the same input.
-  const clsOther = classifyTrack([stack[0]], keyC, stack, [], other.unlockedSkills);
-  if (!inKey) {
-    assert.equal(clsOther.pardonedBy ?? clsOther[0].pardonedBy, null,
-      'B10: the same note is unpardoned for a spirit without the tier — the grant is what differs');
-  }
-  void offNote;
+  // 🎯 AND THE ASYMMETRY IS GONE. The old pair asserted the Ronin got a pardon the
+  // Monster did not; pinned in reverse now, because a grant creeping back in for
+  // one character is exactly the kind of thing nobody notices.
+  const roninNs   = makeInitialNoteState('cosmic_ronin', () => 0.5);
+  const monsterNs = makeInitialNoteState('Metalness_Monster', () => 0.5);
+  assert.deepEqual(roninNs.unlockedSkills, monsterNs.unlockedSkills,
+    '🎯 every Spirit opens with the SAME empty kit — no free tier survives for anyone');
 }
-console.log("✓ B10: Ronin starts holding theory_minor — and it reaches the pardon ladder on turn one");
+console.log("✓ 🅱️ the pardon reaches the ladder on turn one for EVERY Spirit, with nothing bought");
 
-// B10 must not break the B0a mode invariant: the free tier lets modeFromStack FLIP
-// to minor, so it matters that his seed stack is still quality-ambiguous. If the
-// grant ever accidentally arrived alongside a minor-third seed, turn one would
-// force-flip his key.
+// The B0a mode invariant still has to hold, and it matters more now that minor is
+// free: if the seed stack ever grew a third, turn one would force-flip the key for
+// the whole roster rather than for one character.
 {
   const ronin = makeInitialNoteState('cosmic_ronin', () => 0.5);
   assert.deepEqual(ronin.driveStack, [ronin.rootNote],
-    'B10: Ronin\'s stack still seeds with the root alone');
-  const m = modeFromStack(ronin.driveStack, ronin.unlockedSkills, ronin.scaleMode);
+    'B0a: the stack still seeds with the root alone');
+  const m = modeFromStack(ronin.driveStack, ronin.scaleMode);
   assert.equal(m.reason, 'ambiguous',
-    'B10: a single-note seed has no third to read, so it stays ambiguous even WITH theory_minor');
+    'B0a: a single-note seed has no third to read, so it stays ambiguous');
   assert.equal(m.mode, ronin.scaleMode,
-    'B10: so turn one never force-flips his mode despite the free tier');
-  // But the tier IS live: give him a real minor stack and he flips, where an
-  // ungranted spirit would be held at major with reason 'locked'.
-  assert.equal(modeFromStack(['C','D#','G'], ronin.unlockedSkills, 'major').mode, 'minor',
-    'B10: a minor third in his stack DOES turn the song minor from turn one');
-  assert.equal(modeFromStack(['C','D#','G'], ['amp_1'], 'major').reason, 'locked',
-    'B10: the same stack is held at major for a spirit without the tier');
+    'B0a: so turn one never force-flips anybody\'s mode');
+  assert.equal(modeFromStack(['C','D#','G'], 'major').mode, 'minor',
+    '🅱️ …but a real minor third DOES turn the song minor, for everybody, from turn one');
 }
-console.log("✓ B10: the free tier is live but B0a's ambiguous seed still holds — turn one can't force-flip his key");
+console.log("✓ B0a holds under a free minor: the ambiguous seed still can't force-flip a key on turn one");
 
-// ⚠️ B10's ACCEPTED CONSEQUENCE, asserted so it can't drift into a surprise:
-// holding theory_minor satisfies theory_dom7's prereq, so Ronin's ladder is 8 Db
-// cheaper than everyone else's. This test DOCUMENTS that as intended.
+// 🪦 B10's ACCEPTED CONSEQUENCE IS MOOT — there is no ladder to skip a rung of.
+// This block asserted that holding `theory_minor` satisfied `theory_dom7`'s prereq,
+// so the Ronin's climb cost 38 Db against everyone else's 46, and pinned the 52 /
+// 46 / 38 arithmetic the design docs quote. All three numbers now describe a
+// ladder that does not exist.
+//
+// ⛔ AND THE HOLE THEY LEAVE IS THE FINDING: **52 Db of sink left the game with
+// the branch.** `PROGRESSION_REWRITE_DESIGN.md` §5 — per-ability upgrade streams
+// on the abilities characters already have — is what replaces it, and §5 IS NOT
+// BUILT. Pinned as an alarm rather than deleted quietly, because "Db piles up
+// against a tree that cannot absorb it" is a balance state that reads as fine in
+// every individual test.
 {
-  const ronin = makeInitialNoteState('cosmic_ronin', () => 0.5);
-  const dom7  = { id:'theory_dom7', prereq:'theory_minor', dbCost:10 };
-  const minor = { id:'theory_minor', prereq:'theory_major', dbCost:8 };
-  assert.ok(skillEligibility(dom7, ronin.unlockedSkills).ok,
-    'B10: Ronin may target theory_dom7 immediately — accepted consequence of the full grant');
-  assert.equal(skillEligibility(dom7, ['amp_1']).reason, 'prereq',
-    'B10: a spirit without the tier is blocked on the prereq');
-  assert.equal(skillEligibility(minor, ronin.unlockedSkills).reason, 'already',
-    'B10: and he cannot re-buy the tier he was given');
-  // The arithmetic, in the frame THEORY_REWRITE_LOG uses. The doc calls this "a 46-Db
-  // ladder", which is list price MINUS theory_major — because theory_major is
-  // supposed to be granted free at the start of a spirit's first turn. Both numbers
-  // are asserted so the two frames can't be confused for a discrepancy.
-  const ladder = { theory_major:6, theory_minor:8, theory_dom7:10, theory_modes:12, theory_chromatic:16 };
-  const list = Object.values(ladder).reduce((a,b)=>a+b, 0);
-  assert.equal(list, 52, 'B10: all five rungs total 52 Db at list price');
-  assert.equal(list - ladder.theory_major, 46,
-    'B10: with theory_major free at start, the climb is the 46 Db the doc quotes');
-  assert.equal(list - ladder.theory_major - ladder.theory_minor, 38,
-    'B10: Ronin skips the 8 Db rung on top of that — his climb is 38, the price of the flagship');
+  const priced = Object.values(SKILL_BY_ID).reduce((a, sk) => a + (sk.dbCost ?? 0), 0);
+  assert.ok(priced > 0, 'the surviving exclusive routes are still priced in Db');
+  // 🎯 What a Spirit with NO exclusive route can spend Db on, in total.
+  const forGlam = Object.values(SKILL_BY_ID)
+    .filter(sk => skillEligibility(sk, [], { ownerRoute: sk.spiritOnly ?? null, selfId: 'Glamarchy' }).ok)
+    .reduce((a, sk) => a + (sk.dbCost ?? 0), 0);
+  assert.equal(forGlam, 0,
+    '⛔ 🎀 Glamarchy has 0 Db of sink available — the shared ladder is gone and §5 has not replaced it');
 }
-console.log("✓ B10: the free tier's accepted cost — Ronin skips a rung, documented not accidental");
+console.log("✓ ⛔ 52 Db of shared sink left with the branch — §5's upgrade streams are the unbuilt replacement");
 
-// ─── THE INITIAL-SKILL GRANT INVARIANT (bug found during the B9 pass) ───────
-// `theory_major` is granted free at the start of a spirit's first turn, and every
-// price above assumes it ("the 46-Db ladder" = 52 list − 6). The grant used to be
-// gated on `unlockedSkills.length === 0`, which `amp_1` made permanently false, so
-// it NEVER FIRED and every spirit played the pentatonic.
+// ─── 🪦 THE INITIAL-SKILL GRANT INVARIANT — THE GRANT IS GONE, THE LESSON ISN'T ──
 //
-// 🛑 AND THE TRAP CHANGED SHAPE ON 2026-08-20 RATHER THAN GOING AWAY. The rig came
-// off the skill tree, `amp_1` stopped existing, and most Spirits now start with an
-// EMPTY skill list — so the old emptiness gate would fire for them. It would still
-// be a bug, and a nastier one: the Ronin starts holding `theory_minor`, so the
-// emptiness test is now ASYMMETRIC. Revive it and every Spirit gets the full scale
-// except the Ronin, who quietly plays the pentatonic all match. One character
-// broken instead of all four is far harder to notice.
+// `theory_major` used to be granted free at the start of a Spirit's first turn,
+// and this block pinned the gate that decided when. The Theory branch is deleted
+// (2026-09-02), so there is no grant left to gate — everyone opens on the Major
+// Pentatonic BY DESIGN now, and the chord widens it (`music/notes.js`).
 //
-// The real gate can't be imported (it's a useEffect inside the component), so what
-// is pinned here is that the CONDITION THE FIXED CODE USES opens for everybody, and
-// that the emptiness shortcut disagrees with it for at least one Spirit.
+// 🎯 THE BUG THIS BLOCK EXISTED FOR IS WORTH RE-PINNING IN ITS NEW FORM, because
+// it has now bitten twice and the second bite was invisible for a year. The grant
+// was gated on `unlockedSkills.length === 0`, and `makeInitialNoteState` seeded
+// `["amp_1"]` for everybody — so the gate read true on turn one, always, and the
+// grant NEVER FIRED while every price in the design docs assumed it had. When the
+// rig branch went, the seed became asymmetric (`theory_minor` for the Ronin
+// alone), which would have broken exactly one character and been far harder to
+// spot.
+//
+// ⚠️ THE SEED IS NOW UNIFORMLY EMPTY FOR THE WHOLE ROSTER — nobody is born
+// holding a skill. That is the most dangerous version of this trap yet: an
+// "emptiness means turn one" shortcut would now be RIGHT for every Spirit on turn
+// one and WRONG the moment anybody buys anything, with no asymmetry to give it
+// away. So what is pinned is the seed itself, and the fact that emptiness is a
+// statement about purchases rather than about time.
 {
   for (const id of ['test_spirit', 'cosmic_ronin', 'Metalness_Monster', 'intergalactic_0']) {
     const ns = makeInitialNoteState(id, () => 0.5);
-    assert.ok(!ns.unlockedSkills.includes('theory_major'),
-      `${id}: does NOT start holding theory_major — the grant must still have work to do`);
+    assert.deepEqual(ns.unlockedSkills, [],
+      `${id}: starts holding NOTHING — no Spirit is born with a skill any more`);
     assert.ok(!ns.initialPickDone,
-      `${id}: initialPickDone starts falsy so the grant is reachable on turn one`);
+      `${id}: initialPickDone starts falsy`);
+    // 🅰️ And no seats are found yet — the board has not been walked.
+    assert.equal(ns.driveSlots, 0,   `${id}: opens with no found Drive seats`);
+    assert.equal(ns.sustainSlots, 0, `${id}: opens with no found Sustain seats`);
   }
-  // And the grant's own condition, evaluated the way the fixed code evaluates it.
+  // ⚠️ THE REGRESSION WITNESS. Emptiness is now uniform, so it can no longer be
+  // caught by asymmetry — it is caught by saying out loud that a NON-empty list
+  // means "has bought something", never "is past turn one".
+  const bought = { ...makeInitialNoteState('test_spirit', () => 0.5), unlockedSkills: ['tentacle'] };
+  assert.equal((bought.unlockedSkills ?? []).length === 0, false,
+    '🎯 a Spirit who has bought something is not empty — which is the ONLY thing emptiness has ever meant');
+  assert.ok(!bought.initialPickDone,
+    '🎯 …and they can still be on turn one. Emptiness is not a clock. Do not write a third version of this bug.');
+}
+console.log("✓ initial state: every Spirit opens with no skills and no found seats — the amp_1 emptiness trap is pinned in its third form");
+
+// 🪦 The `THEORY_DISCORD_GRANTS` block lived here — it asserted that the palette
+// table granted no context tiers. The table is deleted with the branch
+// (`systems/skills.js`), and the hole it leaves is asserted instead: the three
+// unlock-gated endings it fed are now unreachable, which is
+// `PROGRESSION_REWRITE_DESIGN.md` §4's job and §4 is not built.
+{
   for (const id of ['test_spirit', 'cosmic_ronin', 'Metalness_Monster', 'intergalactic_0']) {
     const ns = makeInitialNoteState(id, () => 0.5);
-    const hasScale = (ns.unlockedSkills ?? []).includes('theory_major');
-    assert.ok(!hasScale && !ns.targetSkillId && !(ns.upgradesPending ?? 0) && !ns.initialPickDone,
-      `${id}: the fixed gate MUST open on turn one`);
+    assert.deepEqual(ns.discordUnlocks ?? [], [],
+      `${id}: opens with no colour-note unlocks`);
   }
-  // ⚠️ THE REGRESSION WITNESS, REWRITTEN FOR THE NEW SHAPE. The old shortcut and
-  //    the real gate must be shown to DISAGREE — if they ever agree for every
-  //    Spirit, somebody has quietly made the seed uniform again and the shortcut
-  //    is one refactor away from coming back and looking harmless.
-  {
-    const emptiness = (id) => ((makeInitialNoteState(id, () => 0.5).unlockedSkills?.length ?? 0) === 0);
-    assert.equal(emptiness('Metalness_Monster'), true,
-      'a Spirit with no free grants now starts EMPTY — the old shortcut would fire for him');
-    assert.equal(emptiness('cosmic_ronin'), false,
-      '🎯 …but NOT for the Ronin, who holds theory_minor. The emptiness test is asymmetric: revive it and he alone never gets the full scale');
-  }
-// Idempotence: once granted, the gate must close.
-  const granted = { ...makeInitialNoteState('test_spirit', () => 0.5) };
-  granted.unlockedSkills = [...granted.unlockedSkills, 'theory_major'];
-  assert.ok((granted.unlockedSkills).includes('theory_major'),
-    'the gate closes once the scale is held — no double grant');
+  // ⛔ AND NOTHING IN THE GAME GRANTS ONE ANY MORE. The only writer was the Theory
+  // ladder. Pinned as a FINDING: when §4's ending fork lands, this is expected to
+  // fail and the fix is to assert the new rule.
+  const src = readFileSync(new URL('./systems/skills.js', import.meta.url), 'utf8');
+  assert.ok(!/export const THEORY_DISCORD_GRANTS/.test(src),
+    '⛔ the palette table is deleted, not emptied — reviving a Theory grant must fail to import');
 }
-console.log("✓ initial grant: theory_major's gate opens on turn one for every spirit (the amp_1 emptiness bug is pinned)");
+console.log("✓ ⛔ colour-note unlocks have no granter left — §4's ending fork is the replacement and is NOT built");
 
-// The grants table is not the list of Theory tiers — `theory_minor` is the first
-// rung of the context ladder and is deliberately absent from it. Asserted because
-// the two look like they should match and a future reader may try to "fix" it.
-{
-  assert.ok(!('theory_minor' in THEORY_DISCORD_GRANTS),
-    'B9: theory_minor grants no discord id — its scale expansion is handled in playableScale');
-  assert.ok(!('theory_major' in THEORY_DISCORD_GRANTS),
-    'B9: theory_major grants no discord id either');
-  assert.deepEqual(THEORY_DISCORD_GRANTS.theory_chromatic, ['discord_2', 'discord_4'],
-    'B9: the capstone still grants maj3 + chromatic palette flags');
-  // Every id the table hands out is a discord_N flag, never a skill id — mixing the
-  // two would silently grant a context tier through the palette table.
-  for (const [skill, ids] of Object.entries(THEORY_DISCORD_GRANTS)) {
-    for (const id of ids) {
-      assert.match(id, /^discord_\d+$/,
-        `B9: ${skill} grants "${id}" — the table may only hand out discord_N palette flags`);
-    }
-  }
-}
-console.log("✓ B9: THEORY_DISCORD_GRANTS is a palette table only — it grants no context tiers, by design");
 
 // ═══ STACK-COLOURED NOTE STOCK — contextClaim + payout routing ══════════════
 // The note stock stopped lighting pardoned notes gold and started lighting them
@@ -895,32 +951,33 @@ console.log("✓ B9: THEORY_DISCORD_GRANTS is a palette table only — it grants
 // only true as long as both keep routing through `claimAt`. These assertions are
 // what will fail if someone "optimizes" one of them into its own logic.
 {
-  const NONE  = [];
-  const MINOR = ['theory_minor'];
-  const DOM7  = ['theory_minor', 'theory_dom7'];
   const [C, Cs, D, Eb, E, F, Fs, G, Ab, A, Bb, B] = [0,1,2,3,4,5,6,7,8,9,10,11];
   void Cs; void D; void F; void Fs; void A;
 
-  // ── Tier gating: no tiers, no claim. Matches chordContext returning empty. ──
-  assert.equal(contextClaim(E, ['C','E','G'], [], NONE), null,
-    'contextClaim: below theory_minor nothing is claimed — melody is judged against the key alone');
+  // ── 🅱️ NO STACKS, NO CLAIM. This used to read "below theory_minor nothing is
+  //    claimed"; the tier is free now, so what makes a claim impossible is having
+  //    built nothing to claim WITH. ⚠️ The `null` return is load-bearing either way
+  //    — the note stock paints its hexes off it, and `null` is what "leave this hex
+  //    plain" means.
+  assert.equal(contextClaim(E, [], []), null,
+    'contextClaim: with nothing stacked nothing is claimed — the melody is judged against the key alone');
 
   // ── Single-stack attribution, both directions. ──
-  const dOnly = contextClaim(Eb, ['C','Eb','G'], ['C','E','G'], MINOR);
+  const dOnly = contextClaim(Eb, ['C','Eb','G'], ['C','E','G']);
   assert.equal(dOnly?.stack, 'drive',   'a note only the Drive stack holds pays Drive');
   assert.equal(dOnly?.both,  false,     '…and is not dual-legal');
-  const sOnly = contextClaim(Eb, ['C','E','G'], ['C','Eb','G'], MINOR);
+  const sOnly = contextClaim(Eb, ['C','E','G'], ['C','Eb','G']);
   assert.equal(sOnly?.stack, 'sustain', 'a note only the Sustain stack holds pays Sustain');
   assert.equal(sOnly?.both,  false,     '…and is not dual-legal');
 
   // ── `both` fires only when each stack legalizes the pitch INDEPENDENTLY. ──
   // Identical stacks: every literal note is claimed twice, tie → Drive.
-  const dual = contextClaim(G, ['C','E','G'], ['C','E','G'], MINOR);
+  const dual = contextClaim(G, ['C','E','G'], ['C','E','G']);
   assert.equal(dual?.both,  true,    'a pitch in BOTH stacks is dual-legal');
   assert.equal(dual?.stack, 'drive', '…and defaults to Drive on a rank tie');
   // Rank tie-break: the Sustain stack spells a richer chord, so it claims a note
   // both reach — the highlight must follow the payout, not alphabetical order.
-  const ranked = contextClaim(Bb, ['C','E','G','Bb'], ['C','E','G','Bb','D'], DOM7);
+  const ranked = contextClaim(Bb, ['C','E','G','Bb'], ['C','E','G','Bb','D']);
   assert.equal(ranked?.both, true, 'shared ♭7 is dual-legal at the chord tier');
   assert.equal(ranked?.stack, 'sustain',
     'the higher-ranked chord claims a shared note — same rule classifyTrack settles with');
@@ -930,12 +987,19 @@ console.log("✓ B9: THEORY_DISCORD_GRANTS is a palette table only — it grants
   // is re-derived rather than shared. keyScale is empty so nothing is in-scale and
   // every pardon is visible.
   {
-    const drive = ['C','E','G'], sustain = ['C','Eb','G','Bb'];
-    for (const tiers of [MINOR, DOM7, ['theory_minor','theory_dom7','theory_modes']]) {
+    // 🅱️ The tier sweep is gone; the STACK PAIRS are the sweep now, which is a
+    // wider net than the tiers ever were — each pair reaches a different rung.
+    for (const [drive, sustain] of [
+      [['C','E','G'],      ['C','Eb','G','Bb']],   // maj triad vs min7
+      [['C','G'],          ['C','E','G','Bb']],    // power (completes to nothing) vs dom7
+      [['C','Eb','Gb'],    ['C','E','G']],         // dim (no tensions) vs maj
+      [['C'],              []],                    // single note vs nothing
+      [['C','E','G','Bb','D'], ['C','Eb','G','Bb','D']],  // dom9 vs min9
+    ]) {
       for (let pc = 0; pc < 12; pc++) {
         const note = getSpelledPool('C', 'major')[pc];
-        const claim = contextClaim(pc, drive, sustain, tiers);
-        const [settled] = classifyTrack([note], [], drive, sustain, tiers);
+        const claim = contextClaim(pc, drive, sustain);
+        const [settled] = classifyTrack([note], [], drive, sustain);
         assert.equal(claim === null, settled.pardonedBy === null,
           `pc ${pc}: the hex lights iff the note is actually pardoned`);
         if (claim) {
@@ -951,13 +1015,12 @@ console.log("✓ B9: THEORY_DISCORD_GRANTS is a palette table only — it grants
 console.log("✓ note stock: contextClaim and classifyTrack agree on every pitch — the hex colour IS the payee");
 
 {
-  const DOM7  = ['theory_minor', 'theory_dom7'];
   const drive = ['C','E','G'], sustain = ['C','E','G'];   // identical → everything dual
   const track = ['E', 'G', 'E'];                          // three dual-legal notes
 
   // Omitting `routing` must reproduce the old behaviour exactly. Anything else
   // silently rescores every existing save and every bot turn.
-  const base = classifyTrack(track, [], drive, sustain, DOM7);
+  const base = classifyTrack(track, [], drive, sustain);
   assert.deepEqual(base.map(c => c.stack), ['drive','drive','drive'],
     'no routing map → the claimAt default stands, unchanged');
   assert.deepEqual(countPardonedByStack(base), { drive: 3, sustain: 0 },
@@ -965,7 +1028,7 @@ console.log("✓ note stock: contextClaim and classifyTrack agree on every pitch
 
   // Routing is keyed by TRACK INDEX, not by note — the same pitch at two positions
   // must be independently routable, or a repeated note becomes un-splittable.
-  const split = classifyTrack(track, [], drive, sustain, DOM7, { 0: 'sustain', 2: 'drive' });
+  const split = classifyTrack(track, [], drive, sustain, { 0: 'sustain', 2: 'drive' });
   assert.deepEqual(split.map(c => c.stack), ['sustain','drive','drive'],
     'routing is per-index — the same pitch can pay different stacks at different positions');
   assert.deepEqual(countPardonedByStack(split), { drive: 2, sustain: 1 },
@@ -979,9 +1042,9 @@ console.log("✓ note stock: contextClaim and classifyTrack agree on every pitch
     const d = ['C','E','G'], s = ['D','F#','A'];
     for (let pc = 0; pc < 12; pc++) {
       const note = getSpelledPool('C', 'major')[pc];
-      const [plain] = classifyTrack([note], [], d, s, DOM7);
+      const [plain] = classifyTrack([note], [], d, s);
       for (const forced of ['drive', 'sustain']) {
-        const [bent] = classifyTrack([note], [], d, s, DOM7, { 0: forced });
+        const [bent] = classifyTrack([note], [], d, s, { 0: forced });
         assert.equal(bent.pardonedBy, plain.pardonedBy,
           `pc ${pc}: routing must never change WHETHER a note is pardoned`);
         if (!plain.both) {
@@ -993,16 +1056,16 @@ console.log("✓ note stock: contextClaim and classifyTrack agree on every pitch
   }
 
   // Garbage in the map is inert — a stale key, a bad value, a negative index.
-  const junk = classifyTrack(track, [], drive, sustain, DOM7,
+  const junk = classifyTrack(track, [], drive, sustain,
     { 0: 'bass', 7: 'sustain', '-1': 'sustain', x: 'sustain' });
   assert.deepEqual(junk.map(c => c.stack), base.map(c => c.stack),
     'a malformed or stale routing map changes nothing');
-  assert.deepEqual(classifyTrack(track, [], drive, sustain, DOM7, null).map(c => c.stack),
+  assert.deepEqual(classifyTrack(track, [], drive, sustain, null).map(c => c.stack),
     base.map(c => c.stack), 'a null routing map is the same as none');
 
   // In-scale notes are nobody's to route — they were never Discord, so no stack
   // earned them and none may be paid for them.
-  const inScale = classifyTrack(['E'], ['E'], drive, sustain, DOM7, { 0: 'sustain' });
+  const inScale = classifyTrack(['E'], ['E'], drive, sustain, { 0: 'sustain' });
   assert.equal(inScale[0].inScale, true);
   assert.equal(inScale[0].stack, null, 'an in-scale note cannot be routed to a stack');
   assert.equal(inScale[0].both,  false, 'and is never marked dual-legal');

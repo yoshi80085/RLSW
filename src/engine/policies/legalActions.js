@@ -265,11 +265,14 @@ export function legalActions(state, spiritId, view = {}) {
       // Stack commits. TWO independent ceilings, and conflating them is the
       // classic bug: `stackCommitsThisTurn` is a per-TURN budget of 3 shared
       // across both stacks, while `stackCapFor()` is a per-STACK capacity that
-      // is EARNED (3 → 6 on Theory rungs), never a flat 5.
+      // is FOUND on the board (3 → 6 as each stack's seats are opened), never a
+      // flat 5. ⚠️ AND IT IS READ PER STACK NOW — Drive and Sustain have
+      // different roots, so they open their seats independently and one being
+      // full says nothing about the other.
       const commitsLeft = STACK_COMMIT_BUDGET - (ns.stackCommitsThisTurn ?? 0);
       if (commitsLeft > 0) {
-        const cap = stackCapFor(ns.unlockedSkills ?? []);
         for (const dest of ['drive', 'sustain']) {
+          const cap   = stackCapFor(ns, dest);
           const stack = (dest === 'sustain' ? ns.sustainStack : ns.driveStack) ?? [];
           if (stack.length >= cap) continue;
           for (const { note, idx } of unused) {

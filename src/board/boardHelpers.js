@@ -1,7 +1,7 @@
 import { HEX_BY_NUM, ALL_HEXES } from "./hexMap.js";
 import { axialDist, getFlatTopNeighborSlots, angleTo, angleDiff } from "./hexGeometry.js";
 import { NOTE_POOL } from "../music/notes.js";
-import { LIMELIGHT_HEX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_START, DB_UPGRADE_THRESHOLD, EVENT_MIN_SEPARATION } from "../data/gameConstants.js";
+import { LIMELIGHT_HEX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_START, DB_UPGRADE_THRESHOLD, EVENT_MIN_SEPARATION, TOKEN_UNLOCK_SPAWN_SHARE } from "../data/gameConstants.js";
 
 // ── Hex pools for board placement (engine + client) ──
 // Non-edge hexes minus the Limelight — where the spotlight roams.
@@ -75,11 +75,27 @@ export function advanceTurnQueue(queue, spirits, mode, teams) {
   return [...aliveRest.slice(0, insertAt), acted, ...aliveRest.slice(insertAt)];
 }
 
-// 🎵 A board mini-goal token: a Lost Chord (grants a note to your stock). Lighters
-// (direct Fame, no performance required) were cut -- unearned FP, per the STICs +
-// Earned checklist in ARCHITECTURE.md. See ECONOMY_HANDOFF.md for the full history.
-export function makeBoardToken(num, rand = Math.random) {
-  return { num, kind: 'chord', note: NOTE_POOL[Math.floor(rand() * NOTE_POOL.length)], turnsOnBoard: 0 };
+// 🎵 A board mini-goal token: a Lost Chord (grants a note to your stock, or opens
+// a stack seat — see `music/stackSlots.js`). Lighters (direct Fame, no performance
+// required) were cut -- unearned FP, per the STICs + Earned checklist in
+// ARCHITECTURE.md. See ECONOMY_HANDOFF.md for the full history.
+//
+// 🔓 `targetPcs` is the set of pitch classes that would open a seat for SOMEBODY
+// right now (`liveUnlockPcs`). `TOKEN_UNLOCK_SPAWN_SHARE` of new tokens roll from
+// it instead of from the uniform twelve.
+//
+// ⚠️ THE DRAW HAPPENS UNCONDITIONALLY, BEFORE THE BRANCH, and that is not style —
+// it is determinism. `determinismCheck` replays a match off a seeded stream, and a
+// generator that consumes one number on some boards and two on others desyncs
+// every seat downstream of the first token that had no live targets.
+export function makeBoardToken(num, rand = Math.random, targetPcs = null) {
+  const roll   = rand();          // ← always drawn
+  const pick   = rand();          // ← always drawn
+  const live   = targetPcs && targetPcs.size ? [...targetPcs].sort((a, b) => a - b) : null;
+  const note   = (live && roll < TOKEN_UNLOCK_SPAWN_SHARE)
+    ? NOTE_POOL[live[Math.floor(pick * live.length)] % 12]
+    : NOTE_POOL[Math.floor(pick * NOTE_POOL.length)];
+  return { num, kind: 'chord', note, turnsOnBoard: 0 };
 }
 
 // Which centre ring a hex sits in, measured from the Limelight (hex 56).

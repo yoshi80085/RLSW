@@ -32,10 +32,26 @@ Pick-up notes for continuing the Spirit-identity work. Read this + `DESIGN_AUDIT
 > the bot policy.
 >
 > ⏸️ **ON HOLD (Alex, 2026-08-22):** the **bot strategy** work — designing a bot around a
-> game still in flux is a fool's errand — **Metalness Monster**, which is getting a
-> redesign, and the **theory-off-the-ladder** change. Don't spend a session on any of the
-> three. Amps are already off the ladder; theory is not, and its capstone still sells the
-> 6th stack slot, so that slot needs a new home whenever theory does move.
+> game still in flux is a fool's errand — and **Metalness Monster**, which is getting a
+> redesign. Don't spend a session on either.
+>
+> ✅ **THE THEORY-OFF-THE-LADDER CHANGE SHIPPED 2026-09-02** and is no longer on this
+> list. The 6th stack slot found its new home: seats 4–6 are **found on the board** by
+> walking onto a Lost Chord that extends your stack's root (`music/stackSlots.js`,
+> `PROGRESSION_REWRITE_DESIGN.md` §2). Two character consequences land here:
+>
+> - 🗡️ **THE RONIN LOST HIS HEAD START.** B10 gave him `theory_minor` — the Chord Tone
+>   Pardon — free from turn one, so Wa no Koe amplified an instinct he was born with.
+>   The pardon ladder is free for everybody now, so what he was born with is the
+>   roster's floor. Nothing of his broke; he is simply **weaker relative to the field**,
+>   and no other Spirit had to give anything up. ⚠️ Whether he gets something back is a
+>   CHARACTER decision — it belongs in this doc, not in a migration patch, and nothing
+>   has been done about it.
+> - 🎀 **GLAMARCHY CAN NOW BUY NOTHING AT ALL.** She owns no exclusive route and Theory
+>   was the last shared one, so every Db she earns banks forever. That is
+>   `PROGRESSION_REWRITE_DESIGN.md` §5's job (per-ability upgrade streams) and §5 is not
+>   built — but she is the Spirit it hurts first, so the shape of her kit is a character
+>   question before it is an economy one.
 
 ---
 

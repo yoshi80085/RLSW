@@ -69,7 +69,10 @@ export function usedAdd(used, ...idxs) {
 //                         from music/spiritStyle.js). See `perfBig` below.
 //   earned              — base DB points earned (feeds the small length nudge)
 //   edgeResolved        — the Dissonance Edge resolved this turn (+2 flair)
-//   susEnd              — theory_sus suspended ending (+1 flair)
+//   susEnd              — 🪦 ALWAYS FALSE. It gated on `theory_sus`, an id no route
+//                         in the skill tree has ever sold, so this flair point has
+//                         never once been paid. Pinned in `melodyCommit.js`; see
+//                         the note there. Do not wire it back up without a rule.
 //   discordCount        — raw off-scale note count this track
 //   freestylePardon     — Intergalactic 0's first-wrong-note pardon is active
 export function performanceScore({
@@ -251,39 +254,47 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     smashExposed:    false,
     // (displaceCd REMOVED — Space is Displaced has no cooldown any more; it is
     // metered purely by its per-warp Db cost. Nothing reads the field.)
+    // 🅰️ FOUND STACK SEATS (PROGRESSION_REWRITE_DESIGN §2). Seats beyond the
+    // baseline three, per stack, opened by walking onto a Lost Chord that extends
+    // that stack's root. ⚠️ THEY ONLY EVER GO UP — a seat is never lost to fray,
+    // to the Drive spend, or to removing the note that opened it. `stackCapFor`
+    // is the only thing that should read them; `music/stackSlots.js` owns the
+    // rule that raises them.
+    driveSlots:      0,
+    sustainSlots:    0,
     dbPoints:        0,
     totalDB:         0,
     upgradesPending: 0,
     skillRoute:      null,
     // 🔊 Amp I is the starting Main Amp — 2d6 from turn 1.
-    // ── 🗡️ B10: RONIN OWNS THE FIRST RUNG OF THE LADDER ──────────────────────
-    // Wa no Koe (melody/chord alignment → +1 Drive/Sustain) was this whole system
-    // as one character's signature, written before the system existed. B3 turned it
-    // into a tier every spirit can buy, which would have left Ronin's flagship
-    // passive as the thing the tree obsoleted. So he starts holding `theory_minor`
-    // and Wa no Koe stacks on top as his personal amplifier: he is the spirit who
-    // plays over the changes natively, and he is the branch's in-game tutorial.
+    // ── 🪦 B10's FREE RUNG IS GONE, AND NOBODY LOST ANYTHING ─────────────────
     //
-    // ⚠️ THIS IS THE WHOLE SKILL, NOT JUST THE TIER, and that is a deliberate
-    // choice with three consequences we accept rather than engineer around:
-    //   1. He gets Chord Tone Pardon from turn one — the B10 ask.
-    //   2. He also gets the MINOR SCALE in `playableScale` and lets `modeFromStack`
-    //      flip his key to minor. Fitting for the character; not separable without
-    //      a second code path.
-    //   3. `theory_dom7`'s prereq is satisfied, so his ladder costs 38 Db, not 46.
-    // `music/context.js` documents the mechanism: a caller grants a free tier by
-    // putting its id in the list it passes, and there is exactly ONE code path. A
-    // spirit may therefore legitimately hold a tier without the ones "below" it —
-    // `tiersFor` is a set of independent checks, not an ordered walk, for this
-    // reason. Do not "fix" that by assuming the ladder was bought in order.
-    // 🛑 `amp_1` LEFT THIS SEED ON 2026-08-20 with the rig branch. Nobody lost a
-    // free amp — every Spirit still opens at `RIG_POOL_FLOOR` (2d6 in range,
-    // 1d6 out), it is simply not a SKILL any more. ⚠️ Which means most Spirits
-    // now start with an EMPTY `unlockedSkills`, and code that treats "has bought
-    // nothing yet" as a proxy for "turn one" will behave differently than it did
-    // for the last year. That proxy was already a bug once (the B9 grant that
-    // never fired, because `amp_1` made the list non-empty on turn one).
-    unlockedSkills:  spiritId === "cosmic_ronin" ? ["theory_minor"] : [],
+    // The Ronin used to open holding `theory_minor` — the Chord Tone Pardon —
+    // because Wa no Koe, his flagship passive, WAS that mechanic as one
+    // character's signature, written before the system existed. B3 turned it into
+    // a tier everyone could buy, so B10 gave him the tier for free and made Wa no
+    // Koe the amplifier on top of it.
+    //
+    // ✅ THE PARDON LADDER IS UNIVERSAL AND FREE FOR EVERYBODY AS OF 2026-09-02
+    // (`music/context.js`), so his head start is now everybody's floor. Wa no Koe
+    // still stacks on top exactly as designed — it is still the amplifier, it just
+    // amplifies something the whole roster has. ⚠️ HE IS MEASURABLY WEAKER
+    // RELATIVE TO THE FIELD for it: he opened one rung up the game's only shared
+    // ladder and that ladder is gone. Whether he needs something back is a
+    // CHARACTER question, not a migration one — flagged in
+    // `CHARACTER_HANDOFF.md`, not patched here.
+    //
+    // 🛑 `amp_1` left this seed on 2026-08-20 with the rig branch. Nobody lost a
+    // free amp then either — every Spirit still opens at `RIG_POOL_FLOOR` (2d6 in
+    // range, 1d6 out), it is simply not a SKILL any more.
+    //
+    // ⚠️ SO EVERY SPIRIT NOW STARTS WITH AN EMPTY `unlockedSkills`, WITHOUT
+    // EXCEPTION, and code that treats "has bought nothing yet" as a proxy for
+    // "turn one" is now wrong for the whole roster rather than for three quarters
+    // of it. That proxy has already been a bug twice — the B9 grant that never
+    // fired because `amp_1` made the list non-empty, and the client's initial-skill
+    // effect that inherited the same shape. Do not write a third.
+    unlockedSkills:  [],
     targetSkillId:   null,
     diceLevel:       0,
     ampOwned:        false,

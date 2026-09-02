@@ -9,6 +9,8 @@
 import { SPOTLIGHT_POOL, eventHexCandidates, makeBoardToken } from "../../board/boardHelpers.js";
 import { ALL_HEXES } from "../../board/hexMap.js";
 import { TOKEN_MAX, TOKEN_BASE_POOL, TOKEN_PER_ROUND_BASE, TOKEN_DRIFT_TURNS, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, CHARGE_ZONE_COOLDOWN, LIMELIGHT_HEX } from "../../data/gameConstants.js";
+import { liveUnlockPcs } from "../../music/stackSlots.js";
+import { pitchIndex } from "../../music/notes.js";
 
 // All valid hex nums for token scatter (exclude nothing -- exclusions come in `occupied`)
 const ALL_HEX_NUMS = ALL_HEXES.filter(h => h.num !== LIMELIGHT_HEX).map(h => h.num);
@@ -79,10 +81,13 @@ export function applyTokensScattered(state, { occupied, aliveCount, totalPlayers
   const available = ALL_HEX_NUMS.filter(n => !occ.has(n));
   const out = [...tokens];
   const added = [];
+  // 🔓 What would open a seat for ANYBODY right now. Read once for the whole
+  // scatter — a Spirit's targets cannot change while the round end resolves.
+  const targets = liveUnlockPcs(state.noteStates);
   for (let i = 0; i < scatterCount && out.length < cap && available.length > 0; i++) {
     const k = Math.floor(rng() * available.length);
     const num = available.splice(k, 1)[0];
-    out.push(makeBoardToken(num, rng));
+    out.push(makeBoardToken(num, rng, targets));
     added.push(num);
   }
   if (added.length === 0) {
@@ -120,10 +125,11 @@ export function applyThrashTokensSpawned(state, { defenderHex, occupied, crashTi
 
   const tokens = [...state.board.boardTokens];
   const added = [];
+  const targets = liveUnlockPcs(state.noteStates);
   for (let i = 0; i < count && adjNums.length > 0; i++) {
     const k = Math.floor(rng() * adjNums.length);
     const num = adjNums.splice(k, 1)[0];
-    tokens.push(makeBoardToken(num, rng));
+    tokens.push(makeBoardToken(num, rng, targets));
     added.push(num);
   }
   return {
@@ -148,14 +154,37 @@ export function applyTokenPickedUp(state, { spiritId, hexNum }) {
 /** Tick token ages and relocate stale ones.
  *  Called once per spirit turn. Each token's `turnsOnBoard` increments by 1.
  *  Tokens that hit TOKEN_DRIFT_TURNS relocate to a new random unoccupied hex
- *  (same note, reset age). If no free hex exists the token stays put. */
+ *  (same note, reset age). If no free hex exists the token stays put.
+ *
+ *  ── 📌 THE PIN RULE (§2), AND THE DESIGN DOC HAD IT SLIGHTLY WRONG ──────────
+ *
+ *  §2 asks that a token which is a live unlock for any player is "never rotated
+ *  out — it may still drift to a new hex; it may not vanish." ⚠️ NOTHING IN THIS
+ *  FILE EVER ROTATED A TOKEN OUT. Tokens leave the board by being PICKED UP and
+ *  by nothing else; drift only relocates. So the rule as written was already
+ *  satisfied and would have been a no-op — the kind of change that ships, passes,
+ *  and protects against nothing.
+ *
+ *  🎯 The failure it was reaching for is real, and it is the other half: a token
+ *  you are three hexes from TELEPORTING ACROSS THE BOARD as you approach. That is
+ *  the drifting-1-in-12 problem §2 opens with, and it is what actually makes the
+ *  board tease. So a live unlock does not drift AT ALL — it holds its hex, ages
+ *  frozen, until somebody takes it. The board holds the opportunity open.
+ *
+ *  ⚠️ It is everyone's targets, not the acting Spirit's: denial is a real play
+ *  (Alex, 2026-09-02), so a note pinned for your rival is pinned for you too. */
 export function applyTokensDrifted(state, { occupied }, rng) {
   const tokens = state.board.boardTokens;
   if (tokens.length === 0) return { ...state, board: { ...state.board, lastTokensDrifted: null } };
   const occ = new Set(occupied);
   const moved = [];
+  const pinned = liveUnlockPcs(state.noteStates);
   const out = tokens.map(t => {
     const age = (t.turnsOnBoard ?? 0) + 1;
+    // 📌 Pinned tokens hold BOTH hex and age — resetting the age instead would
+    // let one drift the instant its owner's root moved on, which is precisely
+    // when the player has stopped watching it.
+    if (pinned.has(((pitchIndex(t.note) % 12) + 12) % 12)) return t;
     if (age < TOKEN_DRIFT_TURNS) return { ...t, turnsOnBoard: age };
     // Time to relocate — find a free hex
     const usedNums = new Set([...occ, ...tokens.map(tk => tk.num), ...moved.map(m => m.to)]);

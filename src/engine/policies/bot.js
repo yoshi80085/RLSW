@@ -18,6 +18,7 @@ import { LIMELIGHT_HEX, stackCapFor } from "../../data/gameConstants.js";
 import { buildScale, getIntervalNotes, pitchIndex } from "../../music/notes.js";
 import { cadenceHints } from "../../music/cadence.js";
 import { evaluateChord } from "../../music/chords.js";
+import { unlockTargets } from "../../music/stackSlots.js";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -28,21 +29,29 @@ import { evaluateChord } from "../../music/chords.js";
 // personality, and it's the one the Mosh Lord should have.
 export const BOT_PERSONALITIES = {
   maestro:  { name:'The Maestro',  emoji:'🎼', note:'musical',
-    blurb:'wins on pure musicianship — Theory, clean tracks, cadences & riffs.',
+    blurb:'wins on pure musicianship — clean tracks, big chords, cadences & riffs.',
     move:{ center:1.2, rival:0.4, token:1.4, spotlight:1.1, edgeFear:1.6, rear:0.5, rearFear:1.3 },
-    skillOrder:['theory_major','theory_minor','theory_dom7','theory_modes','theory_chromatic'] },
+    // ⛔ `skillOrder` IS EMPTY ON EVERY PERSONA SINCE 2026-09-02 — it held the five
+    // Theory rungs and the branch is deleted. 📌 The field stays because it is the
+    // right hook for §5's per-ability upgrade streams, which is where a persona's
+    // taste in purchases belongs next; an empty list means "no preference beyond
+    // my own exclusive route", which `botPickSkillTarget` already handles.
+    // ⚠️ The Maestro's musicianship is NOT lost with it: his `token` weight of 1.4
+    // is the highest on the roster, and Lost Chords are now how stack seats are
+    // found — he hunts the ladder on the board instead of buying it.
+    skillOrder:[] },
   moshlord: { name:'The Mosh Lord', emoji:'🤘', note:'combat',
     blurb:'pure aggression — Thrash, hunts the wounded and the leader, swings for knockouts.',
     move:{ center:1.0, rival:1.9, token:0.6, spotlight:0.8, edgeFear:0.5, rear:1.7, rearFear:0.4 },
-    skillOrder:['theory_major','theory_minor'] },
+    skillOrder:[] },
   diva:     { name:'The Diva',     emoji:'✨', note:'clean',
     blurb:'owns the spotlight — holds centre stage, works the crowd, grabs Lost Chords.',
     move:{ center:1.9, rival:0.7, token:1.2, spotlight:1.4, edgeFear:1.2, rear:0.7, rearFear:1.5 },
-    skillOrder:['theory_major','theory_minor'] },
+    skillOrder:[] },
   saboteur: { name:'The Saboteur', emoji:'🪤', note:'disrupt', targetLeader:true,
     blurb:'controls the board — ranged Sonic, zoning, drains & staggers the leader.',
     move:{ center:0.9, rival:1.1, token:0.8, spotlight:0.9, edgeFear:1.0, rear:1.5, rearFear:1.1 },
-    skillOrder:['theory_major','theory_minor','theory_dom7','theory_modes'] },
+    skillOrder:[] },
 };
 
 // How far away a rival still has to be worth turning to face. Beyond this the
@@ -66,10 +75,22 @@ export const BOT_PERSONA_KEYS = ['maestro','moshlord','diva','saboteur'];
 // `moshlord` and `diva` are down to two rungs each. The personality survives in
 // the `move` weights and in `EVAL_WEIGHTS`, but if the ABILITY tree grows to
 // absorb the Db hole (design doc §7), this is the table that should express it.
-export const BOT_SKILL_PRIORITY_BASE = [
-  'theory_major', 'theory_minor',
-  'theory_dom7', 'theory_modes', 'theory_chromatic',
-];
+// ⛔ EMPTY SINCE 2026-09-02, AND THE EMPTINESS IS THE FINDING, NOT AN OVERSIGHT.
+// This was the five Theory rungs — the one ladder every Spirit could buy. The
+// branch is deleted (`data/skillTree.js`), so what is left in the tree is three
+// EXCLUSIVE routes and nothing shared.
+//
+// ⚠️ WHICH MEANS 🎀 GLAMARCHY CAN BUY NOTHING AT ALL. She owns no route, and the
+// route that used to be everybody's is gone. Every Db she earns banks forever.
+// That is `PROGRESSION_REWRITE_DESIGN.md` §5's job — per-ability upgrade streams —
+// and §5 IS NOT BUILT. Until it is, this list stays empty rather than being
+// padded with somebody else's exclusives, because a bot that targets a skill it
+// can never be sold spins on an ineligible target every turn.
+//
+// 📌 `botPickSkillTarget` returning null is the correct, already-handled answer:
+// `evaluate.js`'s `dbHorizon` falls back to `DB_UPGRADE_THRESHOLD` when nothing
+// is targeted, so a Spirit with no ladder banks Db and is scored honestly for it.
+export const BOT_SKILL_PRIORITY_BASE = [];
 
 // Exclusive-route passives, slotted in up front for the spirit that owns them.
 export const BOT_SPIRIT_SKILLS = {
@@ -166,7 +187,9 @@ export function botPickTarget(candidates, noteStates, selfNum = null) {
  * Score a destination hex by everything that actually wins the game.
  * Pure — all data in `ctx` (built by the caller from engine state).
  * ctx: { p (persona), center (hex obj), hurt (bool), myFame, spot (hex obj),
- *        tokens [{num, q, r}], events [{num, q, r}],
+ *        tokens [{num, q, r}], unlocks [{num, q, r}] (the tokens that would open
+ *        one of MY stack seats — optional; omit and the term is skipped),
+ *        events [{num, q, r}],
  *        rivals [{r (spirit), h (hex), fame}],
  *        from (hex obj — where the mover is standing now),
  *        selfFacing (radians — its facing if it doesn't move) }
@@ -186,6 +209,24 @@ export function botHexScore(h, ctx) {
   }
   if (ctx.tokens.some(t => t.num === h.num)) s += 22 * m.token;
   else if (ctx.tokens.length) s -= Math.min(...ctx.tokens.map(t => axialDist(h.q, h.r, t.q, t.r))) * 2 * m.token;
+  // 🔓 A LOST CHORD THAT OPENS A STACK SEAT, on top of the ordinary token value.
+  //
+  // ⚠️ THE BONUS IS FOR ARRIVING, AND THE GRADIENT IS DELIBERATELY SHALLOW.
+  // `PROGRESSION_REWRITE_DESIGN.md` §8's warning, learned the hard way: paying the
+  // bot for the APPROACH funds ORBITING rather than arriving — it made the searcher
+  // spin in place when good facing was priced. So landing on the hex is worth a
+  // full extra token (+22) and each hex of distance is shaved by only 1.5, against
+  // the 2.0 the ordinary token pull already applies. The seat is the prize; the
+  // walk toward it is not.
+  //
+  // 📌 It also scores the SEAT, not the resulting chord, and that is not the same
+  // shortcut §8 warns about: the chord the found note spells is scored a moment
+  // later by `evaluate`'s `drive`/`sustain` terms once the note is in the stack.
+  // Pricing it here as well would pay the same gesture twice.
+  if (ctx.unlocks?.length) {
+    if (ctx.unlocks.some(t => t.num === h.num)) s += 22 * m.token;
+    else s -= Math.min(...ctx.unlocks.map(t => axialDist(h.q, h.r, t.q, t.r))) * 1.5 * m.token;
+  }
   if (ctx.events.some(t => t.num === h.num)) s += 18 * m.token;
   else if (ctx.events.length) s -= Math.min(...ctx.events.map(t => axialDist(h.q, h.r, t.q, t.r))) * 1.2 * m.token;
   if (ctx.rivals.length) {
@@ -464,17 +505,24 @@ export function botPlanRevoice(noteState, spiritId, persona) {
  * favor Sustain when low Vibe or defensive style. Splits evenly otherwise.
  * Pure over noteState + spiritId + persona + vibe + cap.
  *
- * `cap` is the spirit's DERIVED stack capacity (B0b) — slots 1-3 baseline, +1 for
- * theory_dom7, +1 for theory_modes. It is passed in rather than read from a
- * constant so this stays pure and so bots respect the same gate players do.
- * Callers should supply `stackCapFor(noteState.unlockedSkills)`; the default
- * derives it from the note sheet so an un-updated caller still behaves correctly.
+ * `caps` is the spirit's FOUND stack capacity — seats 1-3 baseline, one more for
+ * each seat that stack has opened on the board (`music/stackSlots.js`). It is
+ * passed in rather than read from a constant so this stays pure and so bots
+ * respect the same ceiling players do.
+ *
+ * ⚠️ TWO CAPS, NOT ONE, SINCE 2026-09-02. Drive and Sustain have different roots
+ * and find their seats independently, so a single number here would let the
+ * planner pour notes into a stack that is already full — or refuse a stack that
+ * has room — depending on which of the two it happened to be given. Accepts
+ * `{ drive, sustain }`; a bare number is read as BOTH, so an un-migrated caller
+ * degrades to the old behaviour rather than crashing mid-turn.
  */
-export function botPlanStackCommit(noteState, spiritId, persona, vibe = 10, maxVibe = 10, cap = null) {
+export function botPlanStackCommit(noteState, spiritId, persona, vibe = 10, maxVibe = 10, caps = null) {
   const ns = noteState ?? {};
   const budget = 3 - (ns.stackCommitsThisTurn ?? 0);
   if (budget <= 0) return [];
-  const stackCap = cap ?? stackCapFor(ns.unlockedSkills ?? []);
+  const capDrive = typeof caps === 'number' ? caps : (caps?.drive   ?? stackCapFor(ns, 'drive'));
+  const capSust  = typeof caps === 'number' ? caps : (caps?.sustain ?? stackCapFor(ns, 'sustain'));
 
   const drive   = ns.driveStack   ?? [];
   const sustain = ns.sustainStack ?? [];
@@ -501,8 +549,8 @@ export function botPlanStackCommit(noteState, spiritId, persona, vibe = 10, maxV
 
   for (let i = 0; i < Math.min(budget, avail.length); i++) {
     // pick the best destination
-    const dFull = dStack.length >= stackCap;
-    const sFull = sStack.length >= stackCap;
+    const dFull = dStack.length >= capDrive;
+    const sFull = sStack.length >= capSust;
     if (dFull && sFull) break;
 
     let dest;
@@ -598,6 +646,21 @@ export function botMoveCtx(state, self, persona) {
     myFame: state?.noteStates?.[self.id]?.fame ?? 0,
     spot:   (typeof spotlightHex === 'number') ? HEX_BY_NUM[spotlightHex] : null,
     tokens: boardTokens.map(t => HEX_BY_NUM[t.num]).filter(Boolean),
+    // 🔓 The subset of those tokens that would open one of MY stack seats. Scored
+    // separately in `botHexScore` because a seat is worth far more than a note in
+    // the reservoir, and the bot cannot see that from the hex alone.
+    // ⚠️ MY targets, not everybody's — the spawner and the pin rule use the whole
+    // board's (denial is a real play for a HUMAN), but a bot walking three hexes
+    // to spite a rival is not a behaviour anyone asked for and is not measurable.
+    // 📌 That asymmetry is deliberate and is the first thing to revisit if bench
+    // matches read as too cooperative.
+    unlocks: (() => {
+      const want = unlockTargets(state?.noteStates?.[self.id] ?? {}).all;
+      return want.size
+        ? boardTokens.filter(t => want.has(((pitchIndex(t.note) % 12) + 12) % 12))
+            .map(t => HEX_BY_NUM[t.num]).filter(Boolean)
+        : [];
+    })(),
     events: eventHexes.map(n => HEX_BY_NUM[n]).filter(Boolean),
     rivals: live.filter(s => !s.knockedOut && s.id !== self.id)
       .map(r => ({ r, h: HEX_BY_NUM[r.num], fame: state?.noteStates?.[r.id]?.fame ?? 0 }))

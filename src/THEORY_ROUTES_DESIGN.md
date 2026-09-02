@@ -1,5 +1,19 @@
 # THEORY ROUTES DESIGN — 🎼 making the ladder a technique instead of a licence
 
+> 🪦 **SUPERSEDED IN PART, 2026-09-02 — THE THEORY BRANCH IS DELETED.**
+> `PROGRESSION_REWRITE_DESIGN.md` §2/§3 shipped: the five rungs are gone from
+> `data/skillTree.js`, the pardon ladder is **universal and free for everybody
+> from turn one**, and stack seats 4–6 are **found on the board** by walking onto a
+> Lost Chord that extends your stack's root (`music/stackSlots.js`).
+>
+> ⚠️ **READ THIS DOC FOR THE MECHANIC, NOT FOR THE LADDER.** Everything it says
+> about *what each pardon tier reaches* — literal notes, the implied seventh,
+> extensions by quality, approach notes — is still exactly true of the shipped
+> game and is still the best written explanation of it. Everything it says about
+> **prices, rungs, gating or purchase order describes a ladder that no longer
+> exists.** The tier IDs (`theory_minor` and friends) survive only as the keys of
+> `CONTEXT_TIERS`, kept as documentation of which rung was which.
+
 > **For AI editors + Alex.** A proposal to split the Theory skill ladder into a
 > shared capacity spine and a per-Spirit technique branch. Written 2026-08-15
 > out of a design conversation. Companion to `BOT_STRATEGY_HANDOFF.md` §3.2 (Db:

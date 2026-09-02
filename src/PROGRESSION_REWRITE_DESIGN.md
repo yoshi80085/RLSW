@@ -1,9 +1,17 @@
 # PROGRESSION REWRITE — the Theory branch comes off the tree
 
 > **Design sketch, 2026-09-01. Alex's call, out of a long conversation.**
-> **NO GAME RULE HERE IS BUILT.** Not a stack slot, not a pardon, not a payout —
-> the game plays exactly as it did. This doc exists so the next session starts
-> from the decisions instead of re-deriving them.
+>
+> ✅ **🅰️ §2 AND THE FIRST HALF OF 🅱️ §3 ARE BUILT — 2026-09-02.** The Theory
+> branch is deleted; stack seats 4–6 are found on the board; the pardon ladder is
+> universal and free. `music/stackSlots.js`, `test:stackslots` (115 assertions),
+> and the corrections §2 needed are marked inline below.
+>
+> ⛔ **STILL UNBUILT, AND EACH IS NOW A HOLE RATHER THAN AN IDEA:**
+> **§3's payout split** (fans for characterful playing) · **§4's ending fork** —
+> ⚠️ its three gated endings are currently UNREACHABLE, because the Theory table
+> was their only granter · **§5's Db streams** — ⚠️ 52 Db of sink left with the
+> branch and 🎀 **Glamarchy can now buy nothing at all** · **§6's remove-a-note**.
 >
 > ✅ **WHAT HAS LANDED IS THE INSTRUMENTATION, and it moved the plan.** Step 1
 > of the agreed order (instrument, measure, then tune) shipped on 2026-09-01:
@@ -52,11 +60,21 @@ is how you delete the best idea in the game by accident.
 
 | Job it did | Where it goes now |
 |---|---|
-| **Stack slots 4, 5, 6** (`theory_dom7/modes/chromatic`) | 🅰️ Found on the board (§2) |
-| **Chord-tone pardon** — a note in your stack is never Discord | 🅱️ Universal, free, turn one (§3) |
-| **Play the changes / extensions / approach notes** | 🅱️ Universal, free, turn one (§3) |
-| **Scale expansion** — pentatonic → major → minor → modal | 🅱️ Gone as a gate. Play anything; clean pays, Discord doesn't (§3) |
-| **52 Db of sink** | 🅳 Per-ability upgrade streams (§5) |
+| **Stack slots 4, 5, 6** (`theory_dom7/modes/chromatic`) | ✅ 🅰️ Found on the board (§2) — **BUILT** |
+| **Chord-tone pardon** — a note in your stack is never Discord | ✅ 🅱️ Universal, free, turn one (§3) — **BUILT** |
+| **Play the changes / extensions / approach notes** | ✅ 🅱️ Universal, free, turn one (§3) — **BUILT** |
+| **Scale expansion** — pentatonic → major → minor → modal | ✅ 🅱️ Gone as a gate — **BUILT**, and read the ⚠️ below, because the obvious reading was wrong |
+| **52 Db of sink** | ⛔ 🅳 Per-ability upgrade streams (§5) — **NOT BUILT. The Db has nowhere to go and one Spirit has nothing to buy.** |
+
+⚠️ **THE SCALE ROW ALMOST WENT THE WRONG WAY, AND IT IS WORTH THE PARAGRAPH.**
+"Gone as a gate — play anything" reads as *hand everybody the top of the ladder*
+(full Major, ♭7, ♯4 — nine clean notes of twelve). **That would have deleted the
+colour payout.** A note that is merely in-scale pays NOTHING; a note your stack
+pardons pays Drive or Sustain (`melodyCommit.js`'s `colorDrive`/`colorSustain`).
+Widen the key and every pardon you used to be paid for becomes free scenery, and
+the chord-tone pardon is left with almost nothing to pardon. So the palette stays
+at the base — Major Pentatonic, natural minor in minor — **and the CHORD does the
+widening**, which is the doc's own thesis. Alex's call, 2026-09-02.
 
 ---
 
@@ -88,6 +106,28 @@ Rules, as decided:
 - **A slot, once earned, is never lost** — not to fray, not to removing the note
   that opened it.
 
+✅ **BUILT, WITH TWO CORRECTIONS THE CODE FORCED:**
+
+1. 🎯 **THE ROOT IS NOT A STATE FIELD. It is `stack[0]`, derived.** "The first note
+   committed" IS the first element, because commits push — and storing it as a
+   second field that must agree with an array is the exact shape of every desync
+   this project has had (`SEQUENCING.md` §5.A), with the client and the engine both
+   writing the stacks. Better still, it re-points itself under rules that already
+   exist: ⚔️ the Drive spend takes the root, so spending your foundation hands the
+   hunt to the next note up — which is §6's "removing the root is how you re-point
+   what you are hunting", for free; 🛡️ Sustain frays from the tail, so a Sustain
+   hunt stays stable across three opponents' turns.
+2. ⚠️ **THE FIXED ROOT DOES NOT REACH SCORING.** `evaluateChord` is still order-free
+   and no chord in the game was re-priced. §7.4 measured that root-anchored
+   *scoring* leaves 67–92% of stacks spelling no chord once a root is consumed;
+   Alex's call was that the root decides only WHICH NOTE YOU ARE HUNTING.
+
+📌 And two details the build settled: the seat is opened **free of the stack-commit
+budget** (a Spirit who has spent their three must still be able to walk onto their
+own seat), and the found note **does not also bank** — paying the find twice, the
+seat and a reservoir slot, is the "one gesture, one currency" line §17 exists to
+hold.
+
 ### The board is not allowed to gate you by chance
 
 Supply is the thing that kills this design if it is ignored. `makeBoardToken` rolls
@@ -109,10 +149,30 @@ Two rules fix it, both small:
    rotated out** by `applyTokensDrifted`. It may still drift to a new hex; it may
    not vanish. The board holds the opportunity open instead of teasing with it.
 
-**Open, and worth deciding deliberately:** anyone can pick up a pinned note, which
-makes denial a real play — I take the B♭ you need though it is useless to me. That
-reads as good counterplay and it makes the board contested. Confirm it is intended
-rather than discovering it in a bench run.
+✅ **BOTH BUILT — and the pin rule as written was a no-op.**
+⚠️ **NOTHING IN `applyTokensDrifted` EVER ROTATED A TOKEN OUT.** Tokens leave the
+board by being picked up and by nothing else; drift only relocates. The rule above
+was already satisfied and would have shipped, passed, and protected against
+nothing. 🎯 The failure it was reaching for is the *other* half — a token you are
+three hexes from teleporting across the board as you approach — so what was built
+is: **a live unlock does not drift at all.** It holds its hex and its age until
+somebody takes it. (Freezing the age matters too: resetting it would let the token
+drift the instant its hunter's root moved on, which is exactly when the player has
+stopped watching it.)
+📌 The spawn share is `TOKEN_UNLOCK_SPAWN_SHARE`, 0.35, and it is the first dial to
+turn if a bench says seats 5 and 6 are never reached — or are reached by turn three.
+⚠️ `makeBoardToken` now draws TWICE, unconditionally, so a board with no live
+targets consumes the same stream as one with them. A generator that forked there
+would desync every seat downstream in a replay.
+
+✅ **DENIAL IS INTENDED — Alex's call, 2026-09-02.** Anyone can pick up any token,
+so taking the B♭ your rival needs though it is useless to you is legitimate
+counterplay, and it makes the board contested. `liveUnlockPcs` is therefore
+deliberately everybody's targets at once, and both the spawner and the pin rule
+read it that way. 🤖 The BOT is the one asymmetry: it hunts only its own seats,
+because a bot walking three hexes to spite a rival is not a behaviour anyone asked
+for and is not measurable. First thing to revisit if bench matches read as too
+cooperative.
 
 ---
 
@@ -128,6 +188,22 @@ everything through `tiersFor(unlockedSkills)`, which returns which pardon tiers 
 live. Make it return all tiers unconditionally and the whole ladder is universal —
 including the red/blue note colouring in the stock, which today returns `null` for
 anyone without `theory_minor` (`contextClaim`'s first line).
+
+✅ **BUILT, AND IT WAS EXACTLY THAT SMALL** — one function, plus dropping the now
+meaningless `unlockedSkills` parameter from `chordContext`, `contextClaim` and
+`classifyTrack` rather than letting it rot in three public signatures.
+
+⛔ **BUT ONE PROPERTY DID NOT SURVIVE, AND IT IS WORTH KNOWING.** The old ladder was
+**monotonic**: buying a tier could never take a pardon away, which `tiersFor`'s
+cumulative OR guaranteed. The obvious replacement — "committing a note never takes
+a pardon away" — **is false, by design.** The pardon set is a function of the
+chord's QUALITY, so `C-E-G` (completes to B, extends to F♯) becomes `C-E-G-B♭`
+(already complete, so no B; extends to D♭/D instead) and two notes go grey the
+instant the B♭ lands. That is `context.js`'s own thesis — *stack a ♭3 and watch
+which notes go grey* — and B8 deleted the declare-your-mode prompt specifically to
+move that decision into the stack. The invariant that replaced it in `b0check` is
+the one a player can actually reason about: **a note you literally placed is
+pardoned, at every quality, always.**
 
 ### The new payout split
 
@@ -188,6 +264,15 @@ one gesture paying one currency, per the law above.
 
 Each character ability gets its own short upgrade stream rather than a new ladder.
 Psycho Bushido: a longer dash, or a shorter cooldown. Same for the rest.
+
+⛔ **NOT BUILT — AND IT IS NOW THE MOST URGENT ITEM IN THIS DOC, NOT THE LAST.**
+Deleting the branch removed 52 Db of sink and the game's last SHARED ladder in one
+move. What is left in `SKILL_TREE` is three exclusive routes, so what a Spirit may
+buy is now entirely a function of who they are — and 🎀 **Glamarchy owns no route,
+so she can buy nothing at all.** Every Db she earns banks forever. `skillTreeCheck`
+§7 and `selftest`'s `botPickSkillTarget` block are pinned as alarms for this and are
+**expected to fail when §5 lands**; the fix is to assert what she can buy, not to
+delete them.
 
 ⚠️ **GO SHALLOW.** The brief's own numbers: ~2.7 skills bought per player per match,
 and matches run ~11 turns per player. Intergalactic 0's route is already 44 Db across
@@ -661,6 +746,13 @@ doc's standing invariant holds.
 
 | Thing | File |
 |---|---|
+| 🅰️ The seat ladder, the root, the hunt | `music/stackSlots.js` — `SLOT_LADDER`, `unlockTargets`, `unlockClaim`, `applyUnlockClaim` |
+| 🅰️ The per-stack cap (the choke point) | `data/gameConstants.js` — `stackCapFor(noteSheet, which)`; ⚠️ throws on the old array |
+| 🅰️ Found seats on the sheet | `engine/systems/economy.js` — `driveSlots` / `sustainSlots`, and they only go up |
+| 🅰️ The find, headless and in the client | `engine/policies/transition.js` `collectPickups` · `rlsw-simulator-v3_8_1.jsx` `checkTokenPickup` |
+| 🔓 Weighted spawn / the pin rule | `board/boardHelpers.js` `makeBoardToken` · `engine/systems/board.js` `applyTokensDrifted` · `TOKEN_UNLOCK_SPAWN_SHARE` |
+| 🤖 The bot's hunt | `engine/policies/bot.js` — `botMoveCtx`'s `unlocks`, scored in `botHexScore` |
+| ✅ The suite | `engine/stackSlotsCheck.mjs`, `npm run test:stackslots` |
 | Chord templates, `evaluateChord` | `music/chords.js` |
 | Pardon tiers, `tiersFor`, `contextClaim`, `classifyTrack` | `music/context.js` |
 | Gesture detectors (live + the deleted Style ones, documented in place) | `music/cadence.js` |

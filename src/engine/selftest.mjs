@@ -33,7 +33,7 @@ import {
   usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState,
 } from "./systems/economy.js";
 import { RIFF_CLOSE_QUALITY_GAP, RIFF_BOTH_PAID_QUALITY } from "./systems/riffOff.js";
-import { skillEligibility, THEORY_DISCORD_GRANTS } from "./systems/skills.js";
+import { skillEligibility } from "./systems/skills.js";
 import { SKILL_BY_ID } from "../data/skillTree.js";
 import { pitchIndex, playableScale } from "../music/notes.js";
 import {
@@ -814,8 +814,13 @@ const config = {
     }
   }
 
-  // grant tables intact
-  assert.deepEqual(THEORY_DISCORD_GRANTS.theory_chromatic, ["discord_2", "discord_4"]);
+  // 🪦 The `THEORY_DISCORD_GRANTS` assertion lived here. The table was deleted
+  // with the Theory branch (2026-09-02) — see `systems/skills.js`. What replaces
+  // it is the assertion below, which is the one that would actually have caught
+  // the deletion going wrong: **no route sells a `theory_*` id any more.**
+  assert.ok(
+    !Object.keys(SKILL_BY_ID).some(id => id.startsWith('theory_')),
+    "🎯 no Theory rung survives in the tree — capacity is found on the board now");
 }
 
 // -- Phase 5c foundation: combat-ownership actions on engine spirits ------------
@@ -1820,22 +1825,53 @@ const config = {
   }
 
   // ── botSkillEligible ──
-  // 📌 The fixture was `amp_1` + `theory_minor` until 2026-08-20; the rig branch
-  //    is gone, so the ROOT of the queue is `theory_major` now.
+  //
+  // ⛔ THE PREREQ GATE IS NOW UNEXERCISED BY THE SHIPPED GAME, AND THAT IS THE
+  // FINDING. Deleting the Theory branch (2026-09-02) removed the last chained
+  // route: every skill in every surviving route is prereq-free, so
+  // `skillEligibility`'s `reason: 'prereq'` branch can no longer be reached in
+  // play. Asserted against the REAL tree, because a suite that quietly kept
+  // testing a fake chain is `legalActionsCheck` §15 exactly — green for months
+  // against a mechanic the game does not have.
+  assert.ok(
+    Object.values(SKILL_BY_ID).every(sk => !sk.prereq),
+    "⛔ no surviving route chains anything — skillEligibility's prereq gate is dead code in the shipped tree");
+
+  // The prereq rule is still worth a UNIT test, and this fixture is LABELLED as
+  // one: it describes `skillEligibility`'s contract, not the game's content. 📌 If
+  // §5's upgrade streams give an ability a second rung, delete this and assert
+  // against the real chain instead — that is what the block above is watching for.
   const fakeSkillById = {
-    theory_major: { id: "theory_major", routeId: "theory", prereq: null },
-    theory_minor: { id: "theory_minor", routeId: "theory", prereq: "theory_major" },
+    unit_root:  { id: "unit_root",  routeId: "unit", prereq: null },
+    unit_child: { id: "unit_child", routeId: "unit", prereq: "unit_root" },
   };
-  assert.ok(botMod.botSkillEligible("theory_major", [], "wildaxe", fakeSkillById),
-    "theory_major eligible with no prereqs");
-  assert.ok(!botMod.botSkillEligible("theory_minor", [], "wildaxe", fakeSkillById),
-    "theory_minor NOT eligible without theory_major");
-  assert.ok(botMod.botSkillEligible("theory_minor", ["theory_major"], "wildaxe", fakeSkillById),
-    "theory_minor eligible WITH theory_major");
+  assert.ok(botMod.botSkillEligible("unit_root", [], "wildaxe", fakeSkillById),
+    "a root with no prereqs is eligible");
+  assert.ok(!botMod.botSkillEligible("unit_child", [], "wildaxe", fakeSkillById),
+    "a child is NOT eligible without its prereq");
+  assert.ok(botMod.botSkillEligible("unit_child", ["unit_root"], "wildaxe", fakeSkillById),
+    "…and IS with it");
+
+  // ⚠️ THE OWNER GATE IS THE ONLY GATE LEFT IN THE GAME, so it is tested against
+  // the real tree rather than a fixture.
+  assert.ok(botMod.botSkillEligible("psycho_bushido", [], "cosmic_ronin", SKILL_BY_ID),
+    "a Spirit may buy from their own exclusive route");
+  assert.ok(!botMod.botSkillEligible("psycho_bushido", [], "Glamarchy", SKILL_BY_ID),
+    "somebody else's exclusive route stays shut");
 
   // ── botPickSkillTarget ──
-  const pick = botMod.botPickSkillTarget("wildaxe", [], "maestro", fakeSkillById);
-  assert.equal(pick, "theory_major", "maestro's first eligible skill is theory_major — the rig is not a purchase any more");
+  // ⛔ 🎀 GLAMARCHY CAN TARGET NOTHING AT ALL, AND THIS ASSERTION IS THE ALARM.
+  // She owns no exclusive route, `BOT_SKILL_PRIORITY_BASE` is empty since the
+  // Theory branch was deleted, and `PROGRESSION_REWRITE_DESIGN.md` §5 — the
+  // per-ability upgrade streams meant to replace 52 Db of sink — IS NOT BUILT.
+  // Every Db she earns banks forever.
+  //
+  // 🎯 Pinned as a FINDING, not as an intended rule. When §5 lands this assertion
+  // is EXPECTED TO FAIL, and the fix is to assert what she can buy.
+  assert.equal(botMod.botPickSkillTarget("Glamarchy", [], "maestro", SKILL_BY_ID), null,
+    "⛔ Glamarchy has nothing to buy — §5's upgrade streams are not built yet");
+  assert.equal(botMod.botPickSkillTarget("cosmic_ronin", [], "maestro", SKILL_BY_ID), "psycho_bushido",
+    "a Spirit WITH a route still targets the head of it");
 
   // ── botRiffResults ──
   // determinism: same rng sequence → same results
@@ -2518,23 +2554,27 @@ const config = {
   assert.equal(STACK_CAP_MAX, 6, "STACK_CAP_MAX = 6");
   assert.equal(STACK_COMMIT_BUDGET, 3, "STACK_COMMIT_BUDGET = 3");
 
-  // ── B0b: stackCapFor — capacity is EARNED, one slot per gating tier ──
-  assert.equal(stackCapFor([]), 3, "no Theory → 3 slots");
-  assert.equal(stackCapFor(undefined), 3, "undefined skills → 3 slots (safe default)");
-  assert.equal(stackCapFor(['amp_1']), 3, "unrelated skills don't grant slots");
-  assert.equal(stackCapFor(['theory_minor']), 3, "theory_minor grants no slot");
-  assert.equal(stackCapFor(['theory_dom7']), 4, "theory_dom7 → slot 4");
-  assert.equal(stackCapFor(['theory_modes']), 4, "theory_modes alone → 4 (slots aren't ordered)");
-  assert.equal(stackCapFor(['theory_dom7', 'theory_modes']), 5, "both tiers → 5 slots");
-  // theory_chromatic is the third gating tier — the capstone sells the only
-  // 6-note stack in the game, so it must grant a slot of its own.
-  assert.equal(stackCapFor(['theory_chromatic']), 4, "theory_chromatic alone → 4");
-  assert.equal(
-    stackCapFor(['theory_dom7', 'theory_modes', 'theory_chromatic']),
-    6, "all three gating tiers → 6 slots");
-  assert.equal(
-    stackCapFor(['theory_major', 'theory_minor', 'theory_dom7', 'theory_modes', 'theory_chromatic']),
-    6, "full Theory branch is capped at STACK_CAP_MAX");
+  // ── 🅰️ stackCapFor — capacity is FOUND ON THE BOARD, and it is PER STACK ──
+  // ⚠️ The signature changed on 2026-09-02: it took `unlockedSkills` and now takes
+  // the note sheet plus which stack. The ladder itself is covered by
+  // `stackSlotsCheck.mjs`; what is asserted here is the choke point's contract.
+  assert.equal(stackCapFor({}), 3, "an empty sheet → 3 seats");
+  assert.equal(stackCapFor(undefined), 3, "undefined sheet → 3 seats (safe default)");
+  assert.equal(stackCapFor({ driveSlots: 1 }, 'drive'), 4, "one found seat → 4");
+  assert.equal(stackCapFor({ driveSlots: 3 }, 'drive'), 6, "all three found → 6");
+  assert.equal(stackCapFor({ driveSlots: 9 }, 'drive'), STACK_CAP_MAX,
+    "clamped at the render ceiling — a seat the HUD cannot draw is not a seat");
+  // 🎯 THE ASYMMETRY IS THE POINT. Drive and Sustain have different roots, so they
+  // find their seats independently; one shared number is the bug this replaced.
+  const split = { driveSlots: 2, sustainSlots: 0 };
+  assert.equal(stackCapFor(split, 'drive'),   5, "Drive found two seats");
+  assert.equal(stackCapFor(split, 'sustain'), 3, "…and Sustain still has three");
+  assert.equal(stackCapFor(split), stackCapFor(split, 'drive'),
+    "the default stack is Drive");
+  // ⚠️ AN ARRAY IS AN UN-MIGRATED CALLER AND MUST THROW. The quiet version of this
+  // failure caps every stack at 3 forever, and nothing in the game would say so.
+  assert.throws(() => stackCapFor(['theory_dom7']), /ARRAY was passed/,
+    "passing unlockedSkills fails loudly rather than silently capping at 3");
 
   // ── sonicDriveSpend — always pops 1 from Drive ──
   assert.deepEqual(sonicDriveSpend(['C', 'E', 'G']), { driveStack: ['C', 'E'] }, "sonic pops last Drive note");

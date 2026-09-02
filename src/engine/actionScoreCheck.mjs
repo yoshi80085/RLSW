@@ -189,7 +189,8 @@ function walk(startNum, n) {
 
   const ns = st.noteStates[RONIN];
   const self = st.spirits.find(s => s.id === RONIN);
-  const plan = botPlanStackCommit(ns, RONIN, persona, self.vibe, self.maxVibe, stackCapFor(ns.unlockedSkills ?? []));
+  const plan = botPlanStackCommit(ns, RONIN, persona, self.vibe, self.maxVibe,
+    { drive: stackCapFor(ns, 'drive'), sustain: stackCapFor(ns, 'sustain') });
   ok(plan.length > 0, 'the planner wants to commit something');
 
   const score = makeActionScorer(st, RONIN, { persona: 'moshlord' });

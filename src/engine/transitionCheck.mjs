@@ -41,6 +41,7 @@ import { axialNeighbors, angleTo } from "../board/hexGeometry.js";
 import { sonicBeam } from "./policies/legalActions.js";
 import { makeBoardToken } from "../board/boardHelpers.js";
 import { usedList } from "./systems/economy.js";
+import { NOTE_POOL, pitchIndex } from "../music/notes.js";
 
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks++; };
@@ -626,6 +627,46 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
     ok(after.length >= before, '🎵 …and the note lands in the stock');
     eq(usedList(r.state.noteStates[RONIN].usedStockIdx).length, usedBefore,
        '🎵 …a picked-up note is UNSPENT — it refills a slot, it does not consume one');
+  }
+
+  // 🔓 A Lost Chord that OPENS A STACK SEAT — 🅰️ PROGRESSION_REWRITE_DESIGN §2.
+  //
+  // ⚠️ THIS IS THE SAME CLASS OF BUG AS THE ONE ABOVE, ONE LAYER UP. The seat rule
+  // lives in `music/stackSlots.js` and the CLIENT calls it in `checkTokenPickup`;
+  // if `collectPickups` did not, a headless Spirit would walk over their own
+  // upgrade, bank it as an ordinary note, and every bench number about stack size
+  // would describe a game where seats 4–6 are unreachable. Absence of a payout is
+  // the quietest bug in this repo, and this is its newest hiding place.
+  {
+    const ns0 = st0.noteStates[RONIN];
+    const root = ns0.driveStack?.[0];
+    ok(root, 'fixture: the Ronin has a rooted Drive stack to hunt from');
+    // The ♭7 of his root — one of the three notes that opens seat 4.
+    const seventh = NOTE_POOL[(((pitchIndex(root) + 10) % 12) + 12) % 12];
+    const st = {
+      ...st0,
+      board: { ...st0.board, boardTokens: [{ num: nb.num, kind: 'chord', note: seventh, turnsOnBoard: 0 }] },
+      turn: { ...st0.turn, moveStepsLeft: 3 },
+    };
+    const driveBefore = (st.noteStates[RONIN].driveStack ?? []).length;
+    const stockBefore = (st.noteStates[RONIN].noteStock ?? []).length;
+    const r = applyBotAction(st, { kind: 'move', to: nb.num, apCost: 1 }, { rng: rngOf(), view: {} });
+    eq(r.ok, true, '🔓 the step is legal');
+    const ns = r.state.noteStates[RONIN];
+    eq(r.state.board.boardTokens.length, 0, '🔓 …the Lost Chord leaves the board');
+    eq(ns.driveSlots, 1, '🔓 …the Drive stack opens seat 4');
+    eq((ns.driveStack ?? []).length, driveBefore + 1,
+       '🔓 …and the note that opened it TAKES the seat — unlock and payoff are one gesture');
+    eq(ns.driveStack[ns.driveStack.length - 1], seventh, '🔓 …with the found note in it');
+    // ⚠️ IT DOES NOT ALSO BANK. Paying the find twice — the seat AND a reservoir
+    // slot — is the "one gesture, one currency" line `GAME_BRIEF.md` §17 exists to
+    // hold, and the Style system was deleted for breaking it.
+    eq((ns.noteStock ?? []).length, stockBefore,
+       '⚠️ …and the stock is untouched: one gesture pays one currency');
+    // ⚠️ AND IT COSTS NO STACK COMMIT. A Spirit who had already spent their three
+    // must still be able to walk onto their own seat.
+    eq(ns.stackCommitsThisTurn ?? 0, st.noteStates[RONIN].stackCommitsThisTurn ?? 0,
+       '⚠️ …and the turn\'s commit budget is not charged for a find');
   }
 
   // ⚡ A lit Charge Zone on that hex.

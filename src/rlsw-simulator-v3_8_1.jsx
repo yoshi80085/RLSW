@@ -118,7 +118,7 @@ import {
 import {
   usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState, fansFromDeed,
 } from "./engine/systems/economy.js";
-import { skillEligibility, THEORY_DISCORD_GRANTS } from "./engine/systems/skills.js";
+import { skillEligibility } from "./engine/systems/skills.js";
 import {
   battleConsequences, chordFray as chordFrayFlow, runBattleFlow, poseConsequences,
 } from "./engine/systems/battleFlow.js";
@@ -359,6 +359,7 @@ function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unuse
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
+import { SLOT_LADDER, stackRoot, nextRung, applyUnlockClaim } from "./music/stackSlots.js";
 import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, THRASH_DIE, THRASH_CEIL_DIE, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
@@ -2432,13 +2433,17 @@ export function Game({ gameState, onReturnToLobby }) {
 
   // Convenience: pull the acting character's note state (falls back to empty defaults)
   const actingNoteState = acting ? (noteStates[acting.id] ?? makeInitialNoteState(acting.id)) : null;
-  // 🎸 B0b — stack capacity is EARNED. Slots 1–3 are baseline, slot 4 comes with
-  // `theory_dom7` and slot 5 with `theory_modes`. Every "is this stack full?" test
-  // must go through here; never compare against STACK_CAP_MAX (that's the render
-  // ceiling, used only to draw the locked slots).
-  const stackCapOf = (spiritId) =>
-    stackCapFor(noteStates[spiritId]?.unlockedSkills ?? []);
-  const actingStackCap = stackCapFor(actingNoteState?.unlockedSkills ?? []);
+  // 🎸 🅰️ STACK CAPACITY IS FOUND ON THE BOARD. Seats 1–3 are baseline; seats
+  // 4, 5 and 6 are opened by walking onto a Lost Chord that extends that stack's
+  // root (`music/stackSlots.js`). Every "is this stack full?" test must go
+  // through here; never compare against STACK_CAP_MAX (that's the render
+  // ceiling, used only to draw the locked seats).
+  // ⚠️ PER STACK, NOT PER SPIRIT. Drive and Sustain have different roots and open
+  // their seats independently, so `stackCapOf(id)` needs to be told which one.
+  const stackCapOf = (spiritId, which = 'drive') =>
+    stackCapFor(noteStates[spiritId] ?? {}, which);
+  const actingStackCapDrive   = stackCapFor(actingNoteState ?? {}, 'drive');
+  const actingStackCapSustain = stackCapFor(actingNoteState ?? {}, 'sustain');
   const noteStock    = actingNoteState?.noteStock    ?? [];
   const melodyLine    = actingNoteState?.melodyLine    ?? [];
   // 🔁 Parallel to melodyLine: which noteStock slot each placed note came from.
@@ -2465,10 +2470,11 @@ export function Game({ gameState, onReturnToLobby }) {
   // Drive Stack at turn start). Its read sites are left in place on purpose —
   // they now all read false and gate nothing. Don't reintroduce a writer.
   const pivotPending  = actingNoteState?.pivotPending ?? false;
-  // 🔒 B8 'locked': the Drive Stack spells a minor chord but theory_minor isn't
-  // unlocked, so the mode holds major. The HUD gets to advertise the skill at the
-  // one moment the player actively wants it — this inherits the amber treatment
-  // the old "PICK MODE" badge used.
+  // 🪦 B8 'locked' MEANT "your stack spells minor but you have not bought Minor
+  // Tonality". `modeFromStack` cannot return it any more — the branch is deleted
+  // and every Spirit follows their stack into minor from turn one. Kept reading
+  // false, like `pivotPending` above, so the amber badge's plumbing stays intact
+  // for whatever wants it next. ⚠️ Don't reintroduce a writer.
   const modeLocked    = (actingNoteState?.modeReason ?? '') === 'locked';
   // ── SONIC RIG (AMP_DECK_DESIGN.md §2, MARQUEE_QUIZ_DESIGN.md §0.1) ────────
   // Every Spirit has a Main Amp at their corner from turn 1. Pool size and die
@@ -2601,7 +2607,7 @@ export function Game({ gameState, onReturnToLobby }) {
     }));
   }
 
-  const currentScale = playableScale(rootNote, scaleMode, actingNoteState?.unlockedSkills ?? []);
+  const currentScale = playableScale(rootNote, scaleMode);
   const intervals = getIntervalNotes(rootNote, scaleMode);
   const { fourth: fourthNote, fifth: fifthNote,
           tritone: tritoneNote, majorThird: majorThirdNote,
@@ -2628,11 +2634,11 @@ export function Game({ gameState, onReturnToLobby }) {
   ])];
   const actingDriveStack   = actingNoteState?.driveStack   ?? [];
   const actingSustainStack = actingNoteState?.sustainStack ?? [];
-  // Pitch classes the stacks have legalized right now, at the player's tiers. This
-  // re-derives every render from the stack in front of them — the player never
+  // Pitch classes the stacks have legalized right now. 🅱️ Every tier is live for
+  // everybody since 2026-09-02, so this is no longer "at the player's tiers" — it
+  // re-derives every render from the stack in front of them, and the player never
   // learns a note list, they learn "whatever my chord made legal."
-  const contextPcs = chordContext(
-    actingDriveStack, actingSustainStack, actingNoteState?.unlockedSkills ?? []);
+  const contextPcs = chordContext(actingDriveStack, actingSustainStack);
   // A note the context has legalized that the key alone would not have. This is the
   // set the note stock lights up: the highlight IS the teaching for this mechanic.
   function isNoteInContext(note) {
@@ -2648,8 +2654,7 @@ export function Game({ gameState, onReturnToLobby }) {
   // Returns null for in-scale notes and for anything the stacks don't reach.
   function noteContextClaim(note) {
     if (!isNoteInContext(note)) return null;
-    return contextClaim(pitchIndex(note), actingDriveStack, actingSustainStack,
-                        actingNoteState?.unlockedSkills ?? []);
+    return contextClaim(pitchIndex(note), actingDriveStack, actingSustainStack);
   }
   // ── PAYOUT ROUTING (dual-legal notes) ──────────────────────────────────────
   // { [trackIndex]: 'drive' | 'sustain' } — the player's answer for notes BOTH
@@ -2667,8 +2672,7 @@ export function Game({ gameState, onReturnToLobby }) {
   // commit will use, so the router row below the Commit Track is showing the
   // player the actual settlement and not a lookalike of it.
   const liveClassified = classifyTrack(
-    melodyLine, keyScale, actingDriveStack, actingSustainStack,
-    actingNoteState?.unlockedSkills ?? [], payoutRouting);
+    melodyLine, keyScale, actingDriveStack, actingSustainStack, payoutRouting);
 
   // (C1's live Style preview lived here — it read `styleCommitDb` on every render
   //  and rendered the payout on the Commit Track as the track was built. Deleted
@@ -3666,9 +3670,13 @@ export function Game({ gameState, onReturnToLobby }) {
       const dest = stackCommitDest
         || (typeof _forceChordMode === 'string' ? _forceChordMode : 'drive');
       const stack = dest === 'sustain' ? (actingNoteState?.sustainStack ?? []) : (actingNoteState?.driveStack ?? []);
-      if (stack.length >= actingStackCap) {
-        const locked = actingStackCap < STACK_CAP_MAX;
-        addLog(`🎸 ${dest === 'sustain' ? 'Sustain' : 'Drive'} stack is full (${actingStackCap} slot${actingStackCap !== 1 ? 's' : ''}).${locked ? ' 📖 More Theory unlocks more slots.' : ''}`);
+      const destCap = dest === 'sustain' ? actingStackCapSustain : actingStackCapDrive;
+      if (stack.length >= destCap) {
+        const locked = destCap < STACK_CAP_MAX;
+        // 🅰️ The hint names the BOARD now, not the tree. Seats 4–6 are found by
+        // walking onto a Lost Chord that extends this stack's root.
+        const hunting = stackRoot(stack);
+        addLog(`🎸 ${dest === 'sustain' ? 'Sustain' : 'Drive'} stack is full (${destCap} seat${destCap !== 1 ? 's' : ''}).${locked && hunting ? ` 🔓 Find ${nextRung(dest === 'sustain' ? (actingNoteState?.sustainSlots ?? 0) : (actingNoteState?.driveSlots ?? 0))?.label} of ${hunting} on the board to open the next one.` : ''}`);
         return;
       }
       const note = noteStock[idx];
@@ -4292,64 +4300,39 @@ export function Game({ gameState, onReturnToLobby }) {
   // reset, so any path that hit without calling this left the charge lit forever.
   // A future version should reset at turn start instead of relying on one call site.
 
-  // ─── INITIAL SKILL — auto-grant THE FULL SCALE at the very start of a spirit's first turn ───
-  // The old flow opened the Theory Tree as the very first thing a player saw —
-  // dull AND confusing. Now every spirit starts with theory_major (the full
-  // Major scale) for free, no modal. The tree first opens when the DB bar
-  // fills (default threshold) — see the upgradesPending → UpgradeModal path.
+  // ─── 🎓 THE OPENING WALKTHROUGH ─────────────────────────────────────────────
+  //
+  // 🪦 THIS USED TO AUTO-GRANT `theory_major` ("The Full Scale") on a Spirit's
+  // first turn, and there is nothing left to grant: the Theory branch is deleted
+  // (2026-09-02) and the palette everyone opens on is the Major Pentatonic by
+  // design — the CHORD widens it now, not a purchase. See `music/notes.js`.
+  //
+  // ⚠️ THE HISTORY IS WORTH KEEPING because it is `CLAUDE.md`'s standing warning
+  // twice over. The grant was gated on `unlockedSkills.length === 0`, and
+  // `makeInitialNoteState` seeded `["amp_1"]` for everybody — so the gate read
+  // "true" on turn one, always, and **the grant never fired once** for the whole
+  // life of the feature, while the skill's own `desc`, `GAME_BRIEF.md` §8 and
+  // every "46-Db ladder" figure in the design docs all assumed it had. A "has the
+  // player bought anything yet?" test is only ever as true as the free grants
+  // underneath it. Do not write another one.
+  //
+  // What is left is the part that was actually doing something: showing a human
+  // the welcome card, once, and queueing the chord tip behind it.
   useEffect(() => {
     if (!acting) return;
-    // OWNERSHIP: only the client that controls the acting spirit may write to
-    // its tree — remote clients would otherwise dispatch a duplicate
-    // NOTE_SHEET_PATCHED and relay it (desync). They receive the acting
-    // client's write via the ACTION relay instead.
+    // OWNERSHIP: only the client that controls the acting spirit may write to its
+    // sheet — remote clients would otherwise dispatch a duplicate
+    // NOTE_SHEET_PATCHED and relay it (desync).
     if (!canAct) return;
     const ns = noteStates[acting.id] ?? {};
-    // ⚠️ BUG FIX (B9 pass). This used to read:
-    //     const hasSkills = (ns.unlockedSkills?.length ?? 0) > 0;
-    //   ... && !hasSkills && ...
-    // but `makeInitialNoteState` seeded `unlockedSkills: ["amp_1"]` for every
-    // spirit, so `hasSkills` was true on turn one, always, and **this grant never
-    // fired once**. 📌 The seed is EMPTY as of 2026-08-20 (the rig came off the
-    // tree and `amp_1` no longer exists), so that particular trap is defused —
-    // but the shape of it is worth keeping: a "has the player bought anything
-    // yet?" test is only ever as true as the free grants underneath it. Every spirit has been playing the Major PENTATONIC — no 4th, no 7th —
-    // while the comment above, the skill's own `desc`, and every "46-Db ladder"
-    // figure in THEORY_REWRITE_LOG (= 52 list price − theory_major's 6) all assume the
-    // full scale is free from the start.
-    //
-    // It also got quietly more expensive in the B6/B7 pass: B7 charges discord PER
-    // NOTE now, and two of the notes it was charging for are notes the player was
-    // supposed to already own.
-    //
-    // The correct gate is "do they hold the scale", not "is their skill list empty".
-    // ⚠️ AND THE EMPTINESS SHORTCUT IS MORE DANGEROUS NOW, NOT LESS. With `amp_1`
-    // deleted (2026-08-20) most Spirits DO start empty, so reviving it would look
-    // like it worked — except for the Ronin, who starts holding `theory_minor` and
-    // would be the only character in the game quietly stuck on the pentatonic.
-    // `b0check.mjs` pins that asymmetry deliberately.
-    const hasTarget   = !!ns.targetSkillId;
-    const hasScale    = (ns.unlockedSkills ?? []).includes('theory_major');
-    const hasPending  = (ns.upgradesPending ?? 0) > 0;
-    const alreadyPrompted = !!ns.initialPickDone;
-    // Only grant once, and only if they don't already hold the full scale.
-    if (!hasTarget && !hasScale && !hasPending && !alreadyPrompted) {
-      setNoteStates(prev => ({
-        ...prev,
-        [acting.id]: {
-          ...prev[acting.id],
-          unlockedSkills: [...(prev[acting.id]?.unlockedSkills ?? []), 'theory_major'],
-          initialPickDone: true,
-        }
-      }));
-      applySkillEffects(acting.id, 'theory_major'); // logs "THE FULL SCALE!" (no discord grants at this tier)
-      // 🎓 Welcome walkthrough for humans only (bots don't read), then the
-      // chord tip queued so it appears right after the welcome card closes.
-      // (Was the pivot tip — B8 deleted that step and folded its lesson in.)
-      if (!acting.cpu) {
-        setTimeout(() => showTip('welcome'), 400);
-        if (!pendingTipsRef.current.includes('chord')) pendingTipsRef.current.push('chord');
-      }
+    if (ns.initialPickDone) return;
+    setNoteStates(prev => ({
+      ...prev,
+      [acting.id]: { ...prev[acting.id], initialPickDone: true },
+    }));
+    if (!acting.cpu) {
+      setTimeout(() => showTip('welcome'), 400);
+      if (!pendingTipsRef.current.includes('chord')) pendingTipsRef.current.push('chord');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acting?.id]);
@@ -4467,29 +4450,17 @@ export function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn. ⚠️ It drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain every turn it stands, and dies when you have none left.`);
     if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Activate the curse (${CURSED_SHAMISEN_DB_COST} Db) to speed up ALL other ability cooldowns for ${CURSED_SHAMISEN_DURATION} rounds. ⚠️ You GLOW while it runs — take any Vibe damage and ALL cooldowns RESET. Pay ${CURSED_SHAMISEN_PAYOFF_COST} Db per round to protect yourself, but rivals can't see whether you paid.`);
     if (skillId === 'wa_no_koe')      addLog(`🎵 ${spirit?.name} — WA NO KOE! Half your melody inside your stacks now pays +1 Drive or Sustain for 3 rounds — the amplifier on the Chord Tone Pardon he already owns.`);
-    // B9: the unlock logs name the CONTEXT TIER too, matching the descs. Each line
-    // is the one moment the player is guaranteed to be looking, so it's where the
-    // ladder's rule gets taught — not just the scale note that came with it.
-    if (skillId === 'theory_major')     addLog(`🎼 ${spirit?.name} — THE FULL SCALE! The 4th & 7th are now Discord-free — your Major scale is complete.`);
-    if (skillId === 'theory_minor')     addLog(`🌑 ${spirit?.name} — MINOR TONALITY! A minor third in your Drive Stack turns the song minor. And CHORD TONE PARDON is live: notes sitting in your stacks are never Discord, whatever the key says.`);
-    if (skillId === 'theory_sus')       addLog(`🕊️ ${spirit?.name} — SUSPENSIONS! Ending on the 2nd or 4th now rings out for bonus Flair.`);
-    if (skillId === 'theory_dom7')      addLog(`🎷 ${spirit?.name} — DOMINANT 7th! The ♭7 joins your clean palette and your stacks open a 4th slot. PLAY THE CHANGES: your stack's whole implied chord is clean now, seventh included — even the notes you never stacked.`);
-    if (skillId === 'theory_modes')     addLog(`🌀 ${spirit?.name} — MODAL SHIFT! Lydian ♯4 and Mixolydian ♭7 go clean, stacks open a 5th slot. EXTENSIONS: your chord's own tensions are pardoned too — ♯4 over major, nat-6 over minor, ♭9 and 9 over dominant.`);
-    if (skillId === 'theory_chromatic') addLog(`⚡ ${spirit?.name} — CHROMATIC MASTERY! Approach notes are clean, and a chromatic run of 3+ now PAYS (+3 Db, up to +5).`);
-    // THE LADDER absorbs the old Discord path: climbing Theory grants the colour-note
-    // capabilities the combat logic checks for (discordUnlocks + unlockedSkills flags).
-    // Table is now the pure `THEORY_DISCORD_GRANTS` from engine/systems/skills.js.
-    if (THEORY_DISCORD_GRANTS[skillId]) {
-      const grants = THEORY_DISCORD_GRANTS[skillId];
-      setNoteStates(prev => {
-        const ns2 = prev[spiritId] ?? {};
-        const du  = new Set(ns2.discordUnlocks ?? []);
-        const us  = new Set(ns2.unlockedSkills ?? []);
-        grants.forEach(g => { du.add(g); us.add(g); });
-        return { ...prev, [spiritId]: { ...ns2, discordUnlocks: [...du], unlockedSkills: [...us] } };
-      });
-      addLog(`🎨 ${spirit?.name} — colour notes online: ${grants.map(g => DISCORD_UPGRADE_TIERS.find(t => t.id === g)?.label ?? g).join(', ')}.`);
-    }
+    // 🪦 THE SIX THEORY UNLOCK LOGS AND THE DISCORD-GRANT TABLE WENT WITH THE
+    // BRANCH (2026-09-02). They taught the pardon ladder at the moment of
+    // purchase; the ladder is universal and free now (`music/context.js`), so
+    // there is no purchase to hang the lesson on. ⚠️ THE LESSON STILL HAS TO LAND
+    // SOMEWHERE — the note stock's red/blue colouring is live for every Spirit
+    // from turn one now instead of returning `null`, and the 'chord' beginner tip
+    // is what explains it. If a player ever reports not knowing why a grey note
+    // went clean, that tip is the thing to fix, not this deleted table.
+    //
+    // 📌 `theory_sus` had a log line here too, for a skill NO ROUTE HAS EVER SOLD.
+    // It could never have printed. Same family as `legalActionsCheck` §15.
     // (hydra removed — Ronin rework)
     if (skillId === 'blaster_of_ra') addLog(`🌀 ${spirit?.name} — BLASTER OF RA! Your Smash becomes a ranged, piercing bass-drop down the beam — undefendable, scatters & knocks back every rival in line.`);
     if (skillId === 'displace')      addLog(`🌌 ${spirit?.name} — SPACE IS DISPLACED! ${DISPLACE_DB_COST} Db to blink to any open hex ${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out, then ${DISPLACE_CD} turn to settle. No AP. He doesn't run — he transcends space.`);
@@ -5048,6 +5019,41 @@ export function Game({ gameState, onReturnToLobby }) {
     // 🗡️ SHREDDING RONIN — the virtuoso finds more music in it: ~50% of the time he
     // pockets a SECOND (fresh in-scale) note from the same find. Roll once, here.
     const roninGreed = spiritId === 'cosmic_ronin' && drawSeededChance(0.5);
+
+    // ── 🔓 THE FOUND SEAT — 🅰️ PROGRESSION_REWRITE_DESIGN §2 ─────────────────
+    //
+    // ⚠️ THIS IS CHECKED FIRST, BEFORE THE BUDGET AND BEFORE THE MODAL, and both
+    // are deliberate. "The found note fills the seat it opened" — unlock and
+    // payoff are ONE gesture, so there is nothing to ask the player about, and
+    // charging a stack commit for it would mean a Spirit who had already spent
+    // their three walked onto their own seat and was told no.
+    //
+    // 📌 The rule lives in `music/stackSlots.js` and the headless path calls the
+    // same function from `policies/transition.js`. Two copies of a payout rule is
+    // how `checkWaNoKoe` drifted; this one has exactly one.
+    {
+      const ns = noteStates[spiritId] ?? {};
+      const found = applyUnlockClaim(ns, tok.note);
+      if (found) {
+        const sp = spirits.find(s => s.id === spiritId);
+        const ch = spiritChord(spiritId, found.chordStack);
+        setNoteStates(prev => {
+          const cur = prev[spiritId]; if (!cur) return prev;
+          // Re-derived against the LIVE sheet rather than reusing the patch above:
+          // the read that built `found` is a render-time snapshot, and a stack that
+          // moved since would otherwise be overwritten with a stale array.
+          const live = applyUnlockClaim(cur, tok.note);
+          return live ? { ...prev, [spiritId]: { ...cur, ...live.patch } } : prev;
+        });
+        addLog(`🔓 ${sp?.name} finds ${tok.note} — the ${found.which === 'sustain' ? 'Sustain' : 'Drive'} Stack opens seat ${found.slot}, and ${tok.note} takes it: ${ch.name} (⚔️${ch.drive} 🛡️${ch.sustain}).`);
+        triggerEffectFlash(spiritId, '🔓', `SEAT ${found.slot}!`, found.which === 'sustain' ? SUSTAIN_C : DRIVE_C);
+        // 🗡️ The Ronin's second note still lands in the stock — the seat only ever
+        // takes the note that opened it.
+        if (roninGreed) bankLostChordNote(spiritId, drawSeededNotes(1, ns.rootNote, ns.scaleMode)[0], false);
+        return;
+      }
+    }
+
     const budgetSpent = (noteStates[spiritId]?.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET;
     if (budgetSpent) {
       bankLostChordNote(spiritId, tok.note, roninGreed);
@@ -5059,10 +5065,11 @@ export function Game({ gameState, onReturnToLobby }) {
       const ns = noteStates[spiritId] ?? {};
       const drive = ns.driveStack ?? [];
       const sustain = ns.sustainStack ?? [];
-      const cap = stackCapOf(spiritId);
+      const capDrive = stackCapOf(spiritId, 'drive');
+      const capSust  = stackCapOf(spiritId, 'sustain');
       // Try drive stack first
       let placed = false;
-      if (drive.length < cap) {
+      if (drive.length < capDrive) {
         const curW = botSpiritChord(spiritId, drive);
         const newW = botSpiritChord(spiritId, [...drive, tok.note]);
         if (newW.drive > curW.drive) {
@@ -5076,7 +5083,7 @@ export function Game({ gameState, onReturnToLobby }) {
           placed = true;
         }
       }
-      if (!placed && sustain.length < cap) {
+      if (!placed && sustain.length < capSust) {
         const curW = botSpiritChord(spiritId, sustain);
         const newW = botSpiritChord(spiritId, [...sustain, tok.note]);
         if (newW.sustain > curW.sustain) {
@@ -5137,7 +5144,7 @@ export function Game({ gameState, onReturnToLobby }) {
       const ns = noteStates[spiritId] ?? {};
       const stackKey = choice === 'sustain' ? 'sustainStack' : 'driveStack';
       const stack = ns[stackKey] ?? [];
-      if (stack.length >= stackCapOf(spiritId)) { bankLostChordNote(spiritId, note, roninGreed); return; }
+      if (stack.length >= stackCapOf(spiritId, choice === 'sustain' ? 'sustain' : 'drive')) { bankLostChordNote(spiritId, note, roninGreed); return; }
       setNoteStates(prev => {
         const cur = prev[spiritId]; if (!cur) return prev;
         return { ...prev, [spiritId]: { ...cur, [stackKey]: [...(cur[stackKey] ?? []), note], stackCommitsThisTurn: (cur.stackCommitsThisTurn ?? 0) + 1 } };
@@ -10210,7 +10217,8 @@ export function Game({ gameState, onReturnToLobby }) {
     // are written via setNoteField which only updates React state, not engineRef.
     const ns = noteStates[self.id] ?? engineRef.current.noteStates?.[self.id] ?? {};
     const sp = self;
-    return _botPlanStackCommit(ns, self.id, botPersona(self), sp.vibe ?? 10, sp.maxVibe ?? 10, stackCapOf(self.id));
+    return _botPlanStackCommit(ns, self.id, botPersona(self), sp.vibe ?? 10, sp.maxVibe ?? 10,
+      { drive: stackCapOf(self.id, 'drive'), sustain: stackCapOf(self.id, 'sustain') });
   }
 
   function botExecuteStackCommits(self, commits) {
@@ -10222,10 +10230,11 @@ export function Game({ gameState, onReturnToLobby }) {
     let sStack = [...(ns.sustainStack ?? [])];
     let commitsUsed = ns.stackCommitsThisTurn ?? 0;
 
-    const cap = stackCapFor(ns.unlockedSkills ?? []);
+    const capDrive = stackCapFor(ns, 'drive');
+    const capSust  = stackCapFor(ns, 'sustain');
     for (const { note, dest } of commits) {
       const stack = dest === 'sustain' ? sStack : dStack;
-      if (stack.length >= cap) continue;
+      if (stack.length >= (dest === 'sustain' ? capSust : capDrive)) continue;
       if (commitsUsed >= STACK_COMMIT_BUDGET) break;
       stack.push(note);
       commitsUsed++;
@@ -11766,9 +11775,8 @@ export function Game({ gameState, onReturnToLobby }) {
       {pendingLostChordPickup && (() => {
         const sp = spirits.find(s => s.id === pendingLostChordPickup.spiritId);
         const ns = noteStates[pendingLostChordPickup.spiritId] ?? {};
-        const pickupCap = stackCapFor(ns.unlockedSkills ?? []);
-        const driveFull = (ns.driveStack?.length ?? 0) >= pickupCap;
-        const sustainFull = (ns.sustainStack?.length ?? 0) >= pickupCap;
+        const driveFull = (ns.driveStack?.length ?? 0) >= stackCapFor(ns, 'drive');
+        const sustainFull = (ns.sustainStack?.length ?? 0) >= stackCapFor(ns, 'sustain');
         const budgetSpent = (ns.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET;
         // Compute benefit advice: compare chord stats with the note added to each stack
         const theNote = pendingLostChordPickup.note;
@@ -12669,8 +12677,7 @@ export function Game({ gameState, onReturnToLobby }) {
                         has not moved the root yet. */}
                     {(() => {
                     const nextKey = turnStep === 'move_act' && hasConfirmed;
-                    const derived = modeFromStack(actingNoteState?.driveStack ?? [],
-                                                  actingNoteState?.unlockedSkills ?? [], scaleMode);
+                    const derived = modeFromStack(actingNoteState?.driveStack ?? [], scaleMode);
                     const plateMode = nextKey ? derived.mode : scaleMode;
                     const plateIvs  = nextKey ? getIntervalNotes(rootNote, plateMode) : intervals;
                     const unusedLeft = (noteStock ?? [])
@@ -12685,11 +12692,12 @@ export function Game({ gameState, onReturnToLobby }) {
                       note={(() => {
                         const reason = actingNoteState?.modeReason ?? 'ambiguous';
                         const chord  = actingNoteState?.modeChordName ?? 'your stack';
+                        // 🪦 The 'locked' arm is gone with the Theory branch —
+                        // `modeFromStack` can no longer return it, so a Spirit whose
+                        // stack wants minor always gets minor.
                         const why = reason === 'ambiguous'
                           ? `${chord} — no third to read, mode held`
-                          : reason === 'locked'
-                            ? `${chord} wants minor — 🔒 unlock Minor Tonality`
-                            : `${chord} sets the key`;
+                          : `${chord} sets the key`;
                         /* 🔑 ONCE THE PLATE IS SHOWING THE NEXT KEY, this line stops
                            being a forecast and becomes the RECEIPT for it. ⚠️ The old
                            "↻ next turn: 🌑 Minor" warning must not survive into step 3
@@ -13701,8 +13709,8 @@ export function Game({ gameState, onReturnToLobby }) {
                   const sCh = spiritChord(acting?.id, sStack);
                   const commitsUsed = actingNoteState?.stackCommitsThisTurn ?? 0;
                   const budgetLeft = STACK_COMMIT_BUDGET - commitsUsed;
-                  const dFull = dStack.length >= actingStackCap;
-                  const sFull = sStack.length >= actingStackCap;
+                  const dFull = dStack.length >= actingStackCapDrive;
+                  const sFull = sStack.length >= actingStackCapSustain;
                   return (
                     <div style={{marginBottom:5}}>
                       <div className="step-active" style={{'--step-glow-color':'#ff66cc',background:"#0c0a18",border:"1.5px solid #ff66cc",borderRadius:6,padding:"8px 10px"}}>
@@ -13850,7 +13858,7 @@ export function Game({ gameState, onReturnToLobby }) {
                 {/* 🎸 STACK COMMIT PREVIEW — hover-a-note guidance (inline, instant via hoverScale) */}
                 {!hasConfirmed && stackCommitDest && (() => {
                   const stack = stackCommitDest === 'sustain' ? (actingNoteState?.sustainStack ?? []) : (actingNoteState?.driveStack ?? []);
-                  const full  = stack.length >= actingStackCap;
+                  const full  = stack.length >= (stackCommitDest === 'sustain' ? actingStackCapSustain : actingStackCapDrive);
                   const hn    = hoverScale?.note;
                   const next  = hn ? spiritChord(acting?.id, [...stack, hn]) : null;
                   const label = stackCommitDest === 'sustain' ? 'Sustain' : 'Drive';
@@ -14318,7 +14326,7 @@ export function Game({ gameState, onReturnToLobby }) {
               const isChordStep = turnStep === 'chord';
               // 🎸 ONE STACK, drawn inside the flanking panel Alex dialled on the
               // preview page. ⚠️ THE CONTENTS ARE UNCHANGED from the single-panel
-              // version — same slots, same lock gate (i >= actingStackCap), same
+              // version — same slots, same lock gate (i >= this side's seat cap), same
               // commit button, same budget hint, same tip anchors. Only the box
               // around them moved. See NoteCommitOverlay.jsx for why the split is
               // shell-vs-content and not "move the whole panel over".
@@ -14327,7 +14335,8 @@ export function Game({ gameState, onReturnToLobby }) {
                 const stack   = isDrive ? dStack : sStack;
                 const ch      = isDrive ? dCh : sCh;
                 const col     = isDrive ? DRIVE_C : SUSTAIN_C;
-                const full    = stack.length >= actingStackCap;
+                const seatCap = isDrive ? actingStackCapDrive : actingStackCapSustain;
+                const full    = stack.length >= seatCap;
                 const spent   = budgetLeft <= 0;
                 // 📌 THE KNOB'S `boost` IS THE HOVER PREVIEW, not the combat mods —
                 // the HUD's copy of this dial already spends `boost` on those, and
@@ -14373,13 +14382,26 @@ export function Game({ gameState, onReturnToLobby }) {
                     <StackNest>
                       {/* B0b: every slot renders, but slots past the earned cap show as
                           LOCKED (🔒) so the gate reads as progression rather than as a
-                          missing feature. Slot 4 = theory_dom7, slot 5 = theory_modes. */}
+                          missing feature. 🅰️ Seats 4–6 are now FOUND ON THE BOARD —
+                          see `music/stackSlots.js` — so the tooltip names the note to
+                          hunt rather than the skill that used to be sold. */}
                       {Array.from({length:STACK_CAP_MAX}).map((_,i) => {
                         const note = stack[i];
-                        const locked = i >= actingStackCap;
+                        const locked = i >= seatCap;
+                        // 🅰️ A locked seat now names the NOTE that opens it, not the
+                        // skill that used to be sold for it. `nextRung` is only the
+                        // right answer for the FIRST locked seat — the ones above it
+                        // are two and three finds away, so they say so rather than
+                        // naming a note that would not actually open them.
+                        const seatRung = SLOT_LADDER[i - STACK_CAP_BASE];
+                        const seatRoot = stackRoot(stack);
+                        const lockTitle = !locked ? undefined
+                          : i === seatCap && seatRoot ? `🔓 Seat ${i + 1} — find ${seatRung?.label} of ${seatRoot} (${seatRung?.chords}) on the board`
+                          : i === seatCap ? `🔓 Seat ${i + 1} — commit a note to set this stack's root, then hunt ${seatRung?.label} of it`
+                          : `🔒 Seat ${i + 1} — ${seatRung?.label} (${seatRung?.chords}); open seat ${seatCap + 1} first`;
                         return (
                           <div key={`${side}${i}`} data-stack-slot={i}
-                            title={locked ? (i === 3 ? '🔒 Slot 4 — unlock with Blues / Dominant 7th' : '🔒 Slot 5 — unlock with Modes') : undefined}
+                            title={lockTitle}
                             style={{
                               ...stackSeatPos(side, i),
                               cursor:'default',
