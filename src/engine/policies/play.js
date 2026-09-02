@@ -41,9 +41,15 @@
 import { applyAction } from "../reduce.js";
 import { makeRng } from "../rng.js";
 import {
-  turnStarted, noteSheetPatched,
+  turnStarted, noteSheetPatched, fansChanged,
   knockdownResolved, spiritEliminated, winnerDeclared,
 } from "../actions.js";
+import { fansFromDeed } from "../systems/economy.js";
+import { hexRingFromCenter, crowdMultiplier } from "../../board/boardHelpers.js";
+import {
+  FAN_DIEHARD_START, FAN_CASUAL_CAP, FAN_RECOVERY_LAG,
+  FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR,
+} from "../../data/gameConstants.js";
 import { makeInitialState } from "../state.js";
 import { SKILL_BY_ID } from "../../data/skillTree.js";
 import { rigTiers } from "../systems/sonicRig.js";
@@ -86,11 +92,31 @@ export const HARNESS_GAPS = {
   skillEffects: 'the STATE half of an unlock lands; applySkillEffects is client-owned',
 
   // The client's own hooks. Absent hooks are skipped by `runBattleFlow`, which
-  // is what the harness wants for theatre — but these two carry real economy.
-  demolishFans: 'crowd scatter on a knockdown — client-owned, skipped',
-  gainFans: 'deed-driven fan gains — client-owned, skipped',
+  // is what the harness wants for theatre.
+  //
+  // ~~demolishFans / gainFans — crowd scatter and deed fans, client-owned,
+  // skipped.~~
+  //
+  // ✅ CLOSED 2026-09-01 — the keys are DELETED, not softened, so §8's
+  // "declared, not silently absent" sweep keeps meaning what it says. Both are
+  // implemented in `harnessHooks` below.
+  //
+  // ⚠️ THESE TWO WERE NOT THEATRE AND THE COMMENT ABOVE THEM SAID SO FOR MONTHS
+  // ("these two carry real economy") while nothing acted on it. FANS MULTIPLY
+  // FAME — up to `FAN_MULT_CAP` 2.0× — so a harness that pays no fans and
+  // scatters no crowds is not measuring a quieter version of the game, it is
+  // measuring a game with the Fame multiplier pinned near its floor. Every bench
+  // number taken before this date is a reading of that game.
   hexHazards: 'hazard hexes along a knockback path — client-owned, skipped',
   stageFxThresholds: 'stage FX draws at Fame thresholds — client-owned, skipped',
+  // 🎪 What is left of the fan economy, and it is one number rather than a
+  // subsystem. The UNSURE POOL (fans a demolished act leaves loose on the centre,
+  // recruitable by whoever plays there next) is client state, so the harness owns
+  // its own copy: `runMatch` keeps a box, `playTurn` reads it into `view` at turn
+  // start and writes it back at turn end. A demolition is therefore recruitable
+  // from the NEXT turn rather than instantly. It is a latency, not a leak — the
+  // pool conserves — and it is declared here rather than assumed harmless.
+  unsurePoolLatency: 'the Unsure crowd is client state; the harness banks it per turn, so a demolition is recruitable from the next turn',
 
   // ~~The pose's per-round FP tick and Sustain toll ride the client turn clock
   // (`transition.js` gap 3), so a `pose` here flips a flag and pays nothing.~~
@@ -165,9 +191,74 @@ export const HARNESS_GAPS = {
  * the out-of-lives branch only yields the hook, because who gets removed from
  * the rotation and what that means for the match is the caller's business.
  */
-export function harnessHooks({ rng }) {
+export function harnessHooks({ rng, crowd = { unsure: 0 } }) {
   const act = (state, action) => applyAction(state, action, rng);
   return {
+    // ── 🎤 THE FAN ECONOMY, NO LONGER A GAP ────────────────────────────────
+    //
+    // ⚠️ WHY THIS IS NOT COSMETIC. Fans do not convert to Fame; they MULTIPLY
+    // it, by up to `FAN_MULT_CAP` 2.0×, inside `grantFame` itself. A harness
+    // with these two hooks missing therefore ran every Spirit on a crowd that
+    // only ever grew from melody commits and never scattered — and priced every
+    // Fame payout in the game against it. Both bodies are transcriptions of the
+    // monolith's, arithmetic first (`fansFromDeed` is already shared).
+    //
+    // 📌 The client keeps the logging, the bursts and the camera swing. This
+    // keeps the rule.
+    gainFans: (state, e) => {
+      const sp = (state.spirits ?? []).find(s => s.id === e.spiritId);
+      if (!sp) return state;
+      const deed = fansFromDeed(state.noteStates?.[e.spiritId] ?? {}, hexRingFromCenter(sp.num), e.n);
+      return deed.patch ? act(state, fansChanged(e.spiritId, deed.patch)) : state;
+    },
+
+    // 💔 A public beating in the spotlight scatters the crowd — and hands some
+    // of it straight to the winner, which is why this is a Fame swing and not
+    // just a punishment.
+    //
+    // ⚠️ IT ONLY FIRES IN THE CENTRE (`main`/`pit`). A knockdown in the cheap
+    // seats costs the loser nothing, because nobody saw it — that gate is the
+    // whole reason the middle of the board is dangerous rather than merely good.
+    demolishFans: (state, e) => {
+      const ring = hexRingFromCenter(e.hexNum);
+      if (ring !== 'main' && ring !== 'pit') return state;
+      const ns = state.noteStates?.[e.targetId];
+      if (!ns) return state;
+      // 😎 A DIVINE MISSION blessing eats the whole demolition, and is spent.
+      if (ns.divineShield) return act(state, fansChanged(e.targetId, { divineShield: 0 }));
+
+      let diehards = ns.diehards ?? FAN_DIEHARD_START;
+      let casuals  = ns.casuals ?? 0;
+      // ⚠️ ASSIGNED Diehards are backstage and cannot be shaken — only the crowd
+      // out front wavers. Reading `assignments` rather than the raw count is the
+      // difference between a crew being worth having and being a liability.
+      const unassigned = Math.max(0, diehards - ((ns.assignments ?? []).length));
+      const shaken = Math.min(2, unassigned);
+      diehards -= shaken; casuals += shaken;
+
+      // The one seeded draw in this hook. ⚠️ IT MOVES THE STREAM: every bench
+      // number after this date is drawn from a different sequence than before
+      // it, so a win-rate difference across 2026-09-01 is not a policy result.
+      const flee = Math.min(casuals, FAN_FLEE_MIN + Math.floor(rng() * (FAN_FLEE_MAX - FAN_FLEE_MIN + 1)));
+      casuals -= flee;
+
+      const toVictor = (e.attackerId && e.attackerId !== e.targetId) ? Math.min(FAN_DEFECT_TO_VICTOR, flee) : 0;
+      const toUnsure = flee - toVictor;
+
+      let next = act(state, fansChanged(e.targetId,
+        { diehards, casuals, centerStreak: 0, fanLag: FAN_RECOVERY_LAG }));
+      const atk = next.noteStates?.[e.attackerId];
+      if (toVictor > 0 && atk) {
+        next = act(next, fansChanged(e.attackerId,
+          { casuals: Math.min(FAN_CASUAL_CAP, (atk.casuals ?? 0) + toVictor) }));
+      }
+      // The rest go loose on the centre for whoever plays there next. See
+      // `HARNESS_GAPS.unsurePoolLatency` — this box is the harness's copy of a
+      // client slice, and `playTurn` folds it into `view` at turn start.
+      crowd.unsure += toUnsure;
+      return next;
+    },
+
     declareWinner: (state, e) => act(state, winnerDeclared(e.spiritId)),
     knockOut: (state, e) => {
       // `knockdownResolved` runs the same `resolveKnockdown` kernel the
@@ -723,8 +814,20 @@ export function playTurn(state, view, policy, ctx) {
   let cur = state;
   // The FP-per-turn window is per turn and per Spirit; the client clears it at
   // turn start and `grantFame` reads it to enforce FAME_PER_TURN_CAP.
-  let v = { ...view, fameThisTurn: {} };
+  // 🎪 THE UNSURE CROWD comes in off the harness's box and goes back out at the
+  // end of the turn — see `HARNESS_GAPS.unsurePoolLatency`. `melodyCommit` reads
+  // `view.unsurePool` to size the recruit and `transition.js` writes the
+  // decrement back, so the two halves of the pool (fans lost to a demolition,
+  // fans won over by a commit) meet here and nowhere else.
+  let v = { ...view, fameThisTurn: {}, unsurePool: ctx.crowd?.unsure ?? view.unsurePool ?? 0 };
   const actions = [];
+  // 📏 THE MEASUREMENT CHANNEL — see `battleFlow.js`'s EFFECT KINDS. Every Fame
+  // grant in the turn drops one entry here saying what was asked for, what the
+  // crowd multiplied it to, and what the per-turn cap threw away. ⚠️ The last
+  // number is the one that has never been measured: `FAME_PER_TURN_CAP`
+  // DISCARDS overflow, so "Fame earned" and "Fame the rules awarded" are two
+  // different quantities and only the first was ever visible.
+  const ledger = [];
   // 🎤 EVERY DUEL FOUGHT THIS TURN, as the verdict that ended it. ⚠️ A RIFF-OFF
   // COUNTED IS NOT A ROUND 2 REACHED — the same distinction `limelightScores`
   // exists for. Counting `riffOff` actions would report a thriving sudden-death
@@ -733,8 +836,13 @@ export function playTurn(state, view, policy, ctx) {
   // the three fields a payout depends on and drops the charts.
   const duels = [];
 
+  // ⚠️ EVERY EXIT FROM THIS LOOP HAS TO BANK THE POOL, including the stalls —
+  // a turn that ends on a refusal still happened, and the fans it scattered are
+  // on the floor either way.
+  const bank = (r) => { if (ctx.crowd) ctx.crowd.unsure = r.view?.unsurePool ?? ctx.crowd.unsure; return r; };
+
   for (let i = 0; i < MAX_ACTIONS_PER_TURN; i++) {
-    if (cur.winner) return { state: cur, view: v, actions, duels, stalled: false };
+    if (cur.winner) return bank({ state: cur, view: v, actions, duels, ledger, stalled: false });
 
     // ⚠️ A POLICY MAY ANSWER WITH A LINE, NOT JUST A STEP. The composition phase
     // is a plan whose whole payoff lands on its last action (`confirmMelody`),
@@ -743,7 +851,7 @@ export function playTurn(state, view, policy, ctx) {
     // refusal check below still sees every action individually.
     const answer = policy(cur, spiritId, v, ctx) ?? { kind: 'endTurn', apCost: 0 };
     const chunk = Array.isArray(answer) ? answer : [answer];
-    if (!chunk.length) return { state: cur, view: v, actions, duels, stalled: true, refused: { reason: 'empty plan' } };
+    if (!chunk.length) return bank({ state: cur, view: v, actions, duels, ledger, stalled: true, refused: { reason: 'empty plan' } });
 
     for (const action of chunk) {
       const before = cur;
@@ -753,10 +861,11 @@ export function playTurn(state, view, policy, ctx) {
         // straight from `legalActions`, so `illegal` means the generator and the
         // transition have drifted — §6's contract, broken. The run reports it
         // rather than quietly ending the turn and averaging the damage away.
-        return { state: cur, view: v, actions, duels, stalled: true, refused: { action, reason: r.reason, detail: r.detail } };
+        return bank({ state: cur, view: v, actions, duels, ledger, stalled: true, refused: { action, reason: r.reason, detail: r.detail } });
       }
       cur = r.state; v = r.view ?? v;
       actions.push(action);
+      if (r.ledger?.length) ledger.push(...r.ledger);
       if (action.kind === 'riffOff' && r.battle?.verdict) {
         const vd = r.battle.verdict;
         // ⚠️ `fp` IS THE POINT OF THIS LEDGER, not a nicety. A duel RESOLVED and
@@ -772,11 +881,11 @@ export function playTurn(state, view, policy, ctx) {
           bothStrong: !!vd.bothStrong, fp: fpOf(r.state) - fpOf(before),
         });
       }
-      if (action.kind === 'endTurn') return { state: cur, view: v, actions, duels, stalled: false };
-      if (cur.winner) return { state: cur, view: v, actions, duels, stalled: false };
+      if (action.kind === 'endTurn') return bank({ state: cur, view: v, actions, duels, ledger, stalled: false });
+      if (cur.winner) return bank({ state: cur, view: v, actions, duels, ledger, stalled: false });
     }
   }
-  return { state: cur, view: v, actions, duels, stalled: true, refused: { reason: 'turn ceiling' } };
+  return bank({ state: cur, view: v, actions, duels, ledger, stalled: true, refused: { reason: 'turn ceiling' } });
 }
 
 // ── One match ───────────────────────────────────────────────────────────────
@@ -816,8 +925,18 @@ export function playTurn(state, view, policy, ctx) {
  * horizon is the variable §3.2 and §3.6 are about. Do not compare a three-life
  * reading to a two-life one and call the difference a policy change.
  */
-export function matchConfig(spirits, { startingLives = 3, mode = 'ffa' } = {}) {
-  return { mode, startingLives, spirits: structuredClone(spirits) };
+export function matchConfig(spirits, { startingLives = 3, mode = 'ffa', fameTarget, fameCap } = {}) {
+  // 📏 `fameTarget` / `fameCap` ARE MEASUREMENT INSTRUMENTS AND ARE UNDEFINED BY
+  // DEFAULT — see `battleFlow.fameToWin` and `grantFame`. They exist so a bench
+  // run can ask what the Fame economy PRODUCES over a fixed horizon, which the
+  // ordinary rules make unanswerable: a match ends the moment somebody clears
+  // the target, so every distribution is truncated at the finish line, and
+  // `FAME_PER_TURN_CAP` throws ~29% of the awards away before anyone can count
+  // them. ⚠️ A run with either set is not a game and its win rate means nothing.
+  const cfg = { mode, startingLives, spirits: structuredClone(spirits) };
+  if (fameTarget != null) cfg.fameTarget = fameTarget;
+  if (fameCap    != null) cfg.fameCap    = fameCap;
+  return cfg;
 }
 
 /** A match that never ends is a result, not a hang. */
@@ -831,12 +950,16 @@ export const MAX_TURNS = 400;
  *   must be reported rather than folded into a win rate — a bench that counts
  *   timeouts as losses is measuring its own ceiling.
  */
-export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns = MAX_TURNS }) {
+export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns = MAX_TURNS,
+                           fameTarget, fameCap }) {
   const rng = makeRng(seed >>> 0);
-  const config = matchConfig(spirits, { startingLives: lives });
+  const config = matchConfig(spirits, { startingLives: lives, fameTarget, fameCap });
   let state = makeInitialState(config, seed >>> 0);
-  const hooks = harnessHooks({ rng });
-  const ctx = { rng, hooks };
+  // 🎪 One box per match, shared by the demolition hook (which fills it) and
+  // `playTurn` (which lends it to `view` for the turn and takes it back).
+  const crowd = { unsure: 0 };
+  const hooks = harnessHooks({ rng, crowd });
+  const ctx = { rng, hooks, crowd };
 
   // ⚠️ THE REAL TREE BY DEFAULT. `legalActions` emits the `skillTarget` family
   // only when handed one (§6a: absent rather than guessed), and until the tree
@@ -852,6 +975,8 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
   // 🎤 The duel ledger — see `playTurn`. `round2` is the one that matters: it is
   // the difference between a rule being present and a rule being reachable.
   const duels = { fought: 0, round2: 0, ties: 0, bothPaid: 0, fp: 0, fpRound2: 0 };
+  // ⭐ THE FAME LEDGER — see `fameLedger` on the result, below.
+  const fameLedger = {};
 
   while (!state.winner && turns < maxTurns) {
     if (!state.acting) break;
@@ -863,6 +988,18 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
     const t = playTurn(state, v, policy, ctx);
     state = t.state; v = t.view;
     turns++;
+    for (const e of t.ledger ?? []) {
+      if (e.name !== 'fame') continue;
+      const row = fameLedger[e.spiritId] ??= {
+        grants: 0, silenced: 0, asked: 0, amplified: 0, banked: 0, discarded: 0 };
+      row.grants    += 1;
+      row.asked     += e.asked ?? 0;
+      row.amplified += e.uncapped ?? 0;
+      row.banked    += e.granted ?? 0;
+      row.discarded += e.clipped ?? 0;
+      // A grant the cap ate WHOLE — the crowd screamed and nothing landed at all.
+      if ((e.granted ?? 0) === 0) row.silenced += 1;
+    }
     for (const d of t.duels ?? []) {
       duels.fought++;
       duels.fp += d.fp ?? 0;
@@ -872,7 +1009,7 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
     }
 
     if (t.stalled) {
-      return { winner: state.winner ?? null, turns, duels, reason: 'stalled', anomaly: t.refused };
+      return { winner: state.winner ?? null, turns, duels, fameLedger, reason: 'stalled', anomaly: t.refused };
     }
     // `endTurn` already rotated the queue; a policy that returned early on a
     // winner did not, and does not need to.
@@ -905,6 +1042,22 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
     turns,
     reason: state.winner ? 'winner' : 'turnCap',
     fame,
+    // ⭐📏 WHAT THE RULES AWARDED vs WHAT ANYBODY KEPT, per seat. `fame` above is
+    // the second number only. Every grant in the match reports six fields:
+    //   · grants     how many payouts fired
+    //   · silenced   how many banked ZERO because the turn window was already full
+    //   · asked      the sum before the crowd multiplier
+    //   · amplified  ...and after it — `amplified / asked` is the crowd's real
+    //                effective multiplier, not the theoretical `FAN_MULT_CAP`
+    //   · banked     what actually landed (sums to `fame`)
+    //   · discarded  what `FAME_PER_TURN_CAP` threw on the floor
+    //
+    // ⚠️ `discarded` HAS NEVER BEEN MEASURED IN THIS PROJECT and every Fame
+    // number quoted before 2026-09-01 was blind to it. It is the term that says
+    // whether the cap is a safety rail nobody touches or a wall the economy is
+    // already flat against — and PROGRESSION_REWRITE_DESIGN §8 wants to add a
+    // whole new fan source on top of it.
+    fameLedger,
     limelightScores,
     duels,
     rig,
@@ -912,6 +1065,22 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
     // for every rig number above. `rig` reports where a Spirit ENDED, and
     // atrophy means that is not where they peaked.
     marquees: (state.board?.usedTrivia ?? []).length,
+    // 🎤 THE CROWD AS IT ENDED, per seat, plus what is loose on the centre.
+    //
+    // ⚠️ NEW 2026-09-01 WITH THE FAN HOOKS, and it is the denominator for every
+    // Fame number above it: fans MULTIPLY Fame (`crowdMultiplier`, up to
+    // `FAN_MULT_CAP` 2.0×). A win rate quoted without knowing whether the winner
+    // was playing to six Diehards or to nobody is a reading of the crowd, not of
+    // the policy — the same warning `rig` carries, in the other economy.
+    fans: Object.fromEntries((state.spirits ?? []).map(s => [s.id, {
+      diehards: state.noteStates?.[s.id]?.diehards ?? 0,
+      casuals:  state.noteStates?.[s.id]?.casuals ?? 0,
+      mult: crowdMultiplier(
+        state.noteStates?.[s.id]?.diehards ?? FAN_DIEHARD_START,
+        state.noteStates?.[s.id]?.casuals ?? 0,
+        (state.noteStates?.[s.id]?.assignments ?? []).length),
+    }])),
+    unsure: crowd.unsure,
     // 💰 UNSPENT Db AND WHAT IT BOUGHT, per seat — added 2026-08-20 with the
     // tree deletion. MARQUEE_QUIZ_DESIGN.md §7 parks a known hole: the rig branch
     // was the largest sink in the game and nothing replaced it yet, so Db is
@@ -938,7 +1107,8 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
  * §5's own warning applies to this file too: a single number tells you the bot
  * preferred a line but never why.
  */
-export function runBench({ seeds, spirits, a = 'searcher', b = 'unranked', opts = {}, view, lives }) {
+export function runBench({ seeds, spirits, a = 'searcher', b = 'unranked', opts = {}, view, lives,
+                           maxTurns, fameTarget, fameCap }) {
   const seatIds = spirits.map(s => s.id);
   const results = [];
   const wins = { [a]: 0, [b]: 0 };
@@ -955,7 +1125,7 @@ export function runBench({ seeds, spirits, a = 'searcher', b = 'unranked', opts 
     const policies = Object.fromEntries(
       seatIds.map(id => [id, POLICIES[assign[id]](opts)]));
 
-    const r = runMatch({ seed: seeds[i], spirits, policies, view, lives });
+    const r = runMatch({ seed: seeds[i], spirits, policies, view, lives, maxTurns, fameTarget, fameCap });
     const winnerPolicy = r.winner ? assign[r.winner] : null;
     if (winnerPolicy) wins[winnerPolicy]++; else inconclusive++;
     results.push({ ...r, assign, winnerPolicy, seed: seeds[i] });

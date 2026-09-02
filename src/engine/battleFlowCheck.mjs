@@ -291,6 +291,73 @@ const battle = (over = {}) => ({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// 5c. 📏 THE LEDGER — the cap's DISCARD is now a number, not a log line.
+//
+// ⚠️ THE THING THIS PINS IS THAT NOTHING SILENTLY EATS THE OVERFLOW. Until
+// 2026-09-01 the only trace of clipped Fame was the sentence "(lost to the
+// noise)", so the bench could measure what a Spirit KEPT and nothing could
+// measure what the rules AWARDED — and PROGRESSION_REWRITE_DESIGN §8 wants to
+// add a new fan source (fans multiply Fame) on top of that cap. A ledger entry
+// changes no state and no branch reads one back; it exists to be counted.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  // A grant that overflows reports both halves, and they add up to what the
+  // crowd amplified it to. `granted + clipped === uncapped` is the invariant:
+  // it is what makes "discarded" a complete account rather than a sample.
+  const over = drive(
+    st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 10, reason: 'x', amplify: false }),
+    freshState(2024),
+  );
+  eq(over.result.granted, FAME_PER_TURN_CAP, '📏 the grant banks the cap…');
+  eq(over.result.clipped, 10 - FAME_PER_TURN_CAP, '📏 …and REPORTS the rest instead of dropping it silently');
+  eq(over.result.granted + over.result.clipped, over.result.uncapped,
+     '📏 granted + clipped === uncapped — the account is complete, not a sample');
+
+  // A grant that fits reports a zero discard rather than nothing at all. A
+  // missing field and a measured zero read the same to a summing bench, so the
+  // quiet case has to be explicit too.
+  const under = drive(
+    st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 1, reason: 'x', amplify: false }),
+    freshState(2024),
+  );
+  eq(under.result.clipped, 0, '📏 a grant that fits reports clipped 0, not undefined');
+
+  // The FULLY silenced case — the window is already full — is the one that used
+  // to return `{ granted: 0 }` and nothing else. It is also the one that matters
+  // most: it is a whole payout the rules awarded and nobody ever saw.
+  const full = drive(
+    st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 3, reason: 'late deed',
+                      amplify: false, fameThisTurn: { cosmic_ronin: FAME_PER_TURN_CAP } }),
+    freshState(2024),
+  );
+  eq(full.result.granted, 0, '📏 a payout into a full window banks nothing…');
+  eq(full.result.clipped, 3, '📏 …and the whole 3 FP is reported as discarded');
+
+  // `runBattleFlow` COLLECTS the entries whether or not the caller asked, which
+  // is the difference from `fx` — the harness passes no `onLedger` and must
+  // still get the numbers.
+  const run = runBattleFlow(
+    grantFame({ state: freshState(2024), spiritId: 'cosmic_ronin', fp: 10, reason: 'x', amplify: false }),
+    freshState(2024),
+    { applyAction: (st, a) => applyAction(st, a, makeRng(1)) },
+  );
+  ok(Array.isArray(run.ledger), '📏 runBattleFlow always returns a ledger array');
+  eq(run.ledger.length, 1, '📏 one entry per grant');
+  eq(run.ledger[0].name, 'fame', '📏 …named for what it measures');
+  eq(run.ledger[0].clipped, 10 - FAME_PER_TURN_CAP, '📏 …carrying the discard the caller would otherwise have to parse out of a log line');
+
+  // ⚠️ A LEDGER EFFECT IS NOT A RULE. Driving the same generator with the entries
+  // dropped must produce the same STATE — otherwise the measurement channel has
+  // become load-bearing and the client (which skips them) plays a different game.
+  const base = freshState(2024);
+  const withLedger = drive(
+    st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 2, reason: 'x', amplify: false }), base);
+  eq(withLedger.state.noteStates.cosmic_ronin.fame - (base.noteStates.cosmic_ronin.fame ?? 0),
+     withLedger.result.granted,
+     '📏 the ledger changed no state — the Fame written is exactly what was granted');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // 5b. UNDERDOG — the comeback tax on closing out (handoff §3.7).
 //     ⚠️ This is one of the two blind spots §5 calls out. A LEADING Spirit that
 //     beats up the last-place Spirit PAYS them: the deficit multiplier fires on

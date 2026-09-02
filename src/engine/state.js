@@ -86,6 +86,23 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       startingLives,
       beginnerMode: !!gameConfig.beginnerMode,
       testMode: !!gameConfig.testMode,
+      // 📏 BENCH INSTRUMENTS, UNDEFINED IN EVERY REAL GAME. `fameTarget`
+      // replaces `lives × fpPerLife` in `battleFlow.fameToWin`; `fameCap`
+      // replaces `FAME_PER_TURN_CAP` in `grantFame`. Both exist so a
+      // fixed-length run can measure what the Fame economy PRODUCES, which the
+      // ordinary rules make unanswerable — a match ends the moment somebody
+      // clears the target, so every distribution is truncated at the finish
+      // line, and the per-turn cap discards ~29% of the awards before anyone
+      // can count them.
+      //
+      // ⚠️ THIS WHITELIST IS WHY THEY HAD TO BE ADDED HERE AND NOT ONLY IN
+      // `matchConfig`. It copies named fields and silently drops the rest, so
+      // the first version of these two set cleanly on the config object, never
+      // reached the state, and produced a cap-off run IDENTICAL to a cap-on one
+      // — a measurement that looked like a finding. If you add a config field,
+      // add its line here in the same pass.
+      ...(gameConfig.fameTarget != null ? { fameTarget: gameConfig.fameTarget } : {}),
+      ...(gameConfig.fameCap    != null ? { fameCap:    gameConfig.fameCap    } : {}),
     },
     rng: { seed: seed >>> 0, cursor: 0 },
 

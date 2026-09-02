@@ -320,6 +320,7 @@ export function applyBotAction(state, action, ctx = {}) {
 
       let next = patchNs(state, spiritId, commit.patch, rng);
       let logs = [...commit.logs];
+      let ledger = [];
       let nextView = view;
 
       // Walk the ordered effects. ⚠️ DO NOT REORDER — the riff's Fame is
@@ -339,6 +340,7 @@ export function applyBotAction(state, action, ctx = {}) {
           );
           next = run.state;
           logs = logs.concat(run.logs);
+          ledger = ledger.concat(run.ledger ?? []);
           if (run.result?.fameThisTurn) nextView = { ...nextView, fameThisTurn: run.result.fameThisTurn };
         } else if (fx.type === 'unsurePool') {
           // The undecided crowd is client state; hand back the delta rather than
@@ -352,7 +354,7 @@ export function applyBotAction(state, action, ctx = {}) {
 
       return {
         state: next, view: nextView, ok: true, reason: null,
-        report: commit.report, flashLines: commit.flashLines, logs,
+        report: commit.report, flashLines: commit.flashLines, logs, ledger,
       };
     }
 
@@ -524,7 +526,18 @@ export function applyBotAction(state, action, ctx = {}) {
         { applyAction: (s, a) => applyAction(s, a, rng), hooks },
       );
 
-      return { state: run.state, view, ok: true, reason: null, logs: run.logs, battle };
+      // ⚠️ THE WINDOW COMES BACK OUT. `battleConsequences` returns the
+      // `fameThisTurn` it advanced, and this line used to throw it away — so a
+      // Spirit who won a thrash for 3 FP walked into their next payout of the
+      // same turn with an EMPTY window and banked the lot. The per-turn cap was
+      // therefore per-ACTION in the harness and per-turn in the client, silently,
+      // which makes every headless Fame number an over-count. `confirmMelody`
+      // and `endTurn` always threaded it; the two battle cases did not.
+      const nextView = run.result?.fameThisTurn
+        ? { ...view, fameThisTurn: run.result.fameThisTurn }
+        : view;
+      return { state: run.state, view: nextView, ok: true, reason: null,
+               logs: run.logs, ledger: run.ledger, battle };
     }
 
     // ── EVERYTHING ELSE ────────────────────────────────────────────────────
@@ -643,9 +656,14 @@ export function applyBotAction(state, action, ctx = {}) {
       // ⚠️ CLEAR THE BATTLE SLICE. `battle` is a live-duel marker the rest of the
       // engine reads; leaving it set would have every later action in the turn
       // think a duel is still on the board.
+      // ⚠️ AND THE WINDOW COMES BACK OUT HERE TOO — see the `attack` case above.
+      // This one mattered more: `RIFF_FP_TURN_CAP` is 8, so a duel banked up to
+      // eight and then left the next payout of the turn a clean slate.
       return {
-        state: applyRiffClosed(run.state), view, ok: true, reason: null,
-        logs: run.logs, battle: next.battle,
+        state: applyRiffClosed(run.state),
+        view: run.result?.fameThisTurn ? { ...view, fameThisTurn: run.result.fameThisTurn } : view,
+        ok: true, reason: null,
+        logs: run.logs, ledger: run.ledger, battle: next.battle,
       };
     }
 
@@ -711,7 +729,7 @@ export function applyBotAction(state, action, ctx = {}) {
       const nextView = run.result?.fameThisTurn
         ? { ...view, fameThisTurn: run.result.fameThisTurn }
         : view;
-      return { state: run.state, view: nextView, ok: true, reason: null, logs: run.logs };
+      return { state: run.state, view: nextView, ok: true, reason: null, logs: run.logs, ledger: run.ledger };
     }
 
     default:

@@ -701,6 +701,47 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
 
   const fameAfter = (r.state.noteStates[RONIN].fame ?? 0) + (r.state.noteStates[METAL].fame ?? 0);
   ok(fameAfter > 0, '🎤 SOMEBODY gets paid — the duel is the biggest Fame play in the rules');
+
+  // ⚠️⚠️ THE WINDOW MUST COME BACK OUT, and for months it did not.
+  //
+  // `riffOffConsequences` and `battleConsequences` both RETURN the
+  // `fameThisTurn` they advanced, and both battle cases used to drop it on the
+  // floor and hand back the caller's `view` unchanged. `confirmMelody` and
+  // `endTurn` always threaded it. The consequence is not a missing feature: the
+  // per-turn Fame cap became per-ACTION in the harness and stayed per-turn in
+  // the client, silently, so every headless Fame reading in this repo's history
+  // over-counts — a Spirit could bank 8 from a duel and then bank a further 4
+  // from a pose in the same turn, which the shipped game does not allow.
+  //
+  // 📏 Measured the day it was found: 29.6% of all the Fame the rules award is
+  // discarded by the cap, so the term this was hiding is a large one.
+  ok(Object.values(r.view?.fameThisTurn ?? {}).some(v => v > 0),
+     '🎤📏 the duel hands the Fame WINDOW back — the cap is per turn, not per action');
+  eq(Object.values(r.view.fameThisTurn).reduce((a, b) => a + b, 0), fameAfter,
+     '🎤📏 …and what it says was banked is what actually landed on the sheets');
+
+  // The same property on an ordinary attack. Two cases dropped it; both are
+  // pinned, because fixing one and not the other reads as fixed from any single
+  // assertion.
+  {
+    // ⚠️ A POSING RIVAL CANNOT RIFF BACK, so the beam degrades to a plain Sonic
+    // — which is exactly the `attack` case, and the only way to reach it from
+    // this fixture (the duel REPLACES the Sonic when both rigs are live).
+    const posed = { ...st, limelight: { posing: { [METAL]: true }, scores: {} } };
+    const swing = ofKind(legalActions(posed, RONIN), 'sonic').find(a => a.targetId === METAL);
+    ok(swing, '⚔️ a plain Sonic is reachable from this fixture (guards the assertion below)');
+    const ra = applyBotAction(posed, swing, { rng: rngOf(7), view: { fameThisTurn: {} } });
+    const paid = Object.values(ra.state.noteStates).reduce((n, ns) => n + (ns.fame ?? 0), 0);
+    eq(Object.values(ra.view?.fameThisTurn ?? {}).reduce((a, b) => a + b, 0), paid,
+       '⚔️📏 an attack hands the Fame window back too — same bug, second site');
+  }
+
+  // 📏 AND THE DISCARD IS REPORTED. A battle action carries its ledger out, so
+  // the bench can count what the rules awarded and nobody kept. Absent this the
+  // only trace is a log line, which is not a measurement.
+  ok(Array.isArray(r.ledger), '📏 a battle action returns a ledger array');
+  ok(r.ledger.every(e => e.name === 'fame' && typeof e.clipped === 'number'),
+     '📏 …and every entry in it says what the cap threw away');
   ok(r.state.headliner === RONIN || r.state.headliner === METAL,
      '👑 …and the winner takes the Headliner belt');
 

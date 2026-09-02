@@ -30,6 +30,8 @@ import { UNMODELLED_KINDS } from "./policies/transition.js";
 import { SLIME_INNATE_OWNER } from "./systems/slime.js";
 import { SKILL_BY_ID } from "../data/skillTree.js";
 import { MELODY_MAX } from "./policies/legalActions.js";
+import { fameToWin } from "./systems/battleFlow.js";
+import { fpPerLife } from "../data/gameConstants.js";
 
 let count = 0;
 const ok = (cond, msg) => { count++; assert.ok(cond, msg); };
@@ -254,8 +256,50 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
      '⚡ sudden death is NO LONGER a gap — `transition.js` escalates on `verdict.close`, the client\'s own gate (§6.6.9)');
   ok(HARNESS_GAPS.riffRound2Speed,
      '…but what replaced it is declared: the 0.58× Round-2 chart is played at Round-1 difficulty, because `simulateRiffPerformance` has no tempo term');
+  ok(!HARNESS_GAPS.demolishFans,
+     '🎤 the crowd scatter is NO LONGER a gap — `harnessHooks` implements it (2026-09-01)');
+  ok(!HARNESS_GAPS.gainFans,
+     '🎤 deed fans are NO LONGER a gap — `harnessHooks` implements them off the shared `fansFromDeed`');
+  ok(HARNESS_GAPS.unsurePoolLatency,
+     '…but what replaced them is declared: the Unsure crowd is client state, banked per turn, so a demolition is recruitable from the NEXT turn');
   ok(!('legacy' in POLICIES),
      '⚠️ there is no `legacy` policy — a stub by that name would be cited as "the current bot" by the first person who read a table without reading the file');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 8b. 📏 THE MEASUREMENT INSTRUMENTS — off by default, and provably so.
+//
+// `fameTarget` and `fameCap` change the RULES of a match, which is exactly what
+// they are for and exactly why they are dangerous: a bench run that quietly
+// carried one would report a game nobody plays. Two properties matter — that an
+// ordinary match has neither, and that a match asked for one actually gets it.
+//
+// ⚠️ THE SECOND ONE IS NOT PARANOIA. The first version of these set cleanly on
+// the config object and never reached the state at all, because
+// `makeInitialState` copies a WHITELIST of config fields and silently drops the
+// rest — so a cap-off run came out byte-identical to a cap-on one and looked
+// like a finding rather than a bug.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  const plain = matchConfig(DUEL);
+  ok(!('fameTarget' in plain), 'an ordinary match sets no Fame target override…');
+  ok(!('fameCap' in plain), '…and no Fame cap override');
+  eq(fameToWin(makeInitialState(plain, 5)), 3 * fpPerLife(DUEL.length),
+     '…so the target is `lives × fpPerLife`, the rule');
+
+  const rigged = matchConfig(DUEL, { fameTarget: 999, fameCap: 99 });
+  eq(makeInitialState(rigged, 5).config.fameTarget, 999,
+     '📏 an override asked for SURVIVES `makeInitialState`\'s config whitelist…');
+  eq(makeInitialState(rigged, 5).config.fameCap, 99, '📏 …both of them');
+  eq(fameToWin(makeInitialState(rigged, 5)), 999, '📏 …and `fameToWin` reads it');
+
+  // A fixed-length run must actually run its length rather than stopping at the
+  // Fame target — that is the whole point of the instrument.
+  const policies = Object.fromEntries(DUEL.map(sp => [sp.id, POLICIES.random()]));
+  const capped = runMatch({ seed: 99, spirits: DUEL, policies, maxTurns: 8, fameTarget: Infinity });
+  ok(capped.turns <= 8, '📏 a fixed-length match stops at its horizon');
+  ok(!capped.winner || capped.reason !== 'winner' || capped.turns < 8,
+     '📏 …and nothing was crowned on Fame with the target at Infinity');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

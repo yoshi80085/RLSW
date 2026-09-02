@@ -6,14 +6,27 @@
 // BOT_STRATEGY_HANDOFF §6.6's ~2000 matches. NOT a test — it prints evidence.
 // `harnessCheck.mjs` is what guards the instrument; this drives it.
 //
-// ⚠️ READ `HARNESS_GAPS` BEFORE QUOTING ANY NUMBER THIS PRINTS. ~~Base kits~~ —
-// unlocks have been live since the SKILL_TREE extraction — but there is still no
-// Smash and no Blaster (both unmodelled), the games are SHORT (two lives, to
-// sidestep an endgame boss that no longer exists), the client's fan hooks are absent, and as of
-// 2026-08-17 the riff-off's two PERFORMANCES are modelled rather than played. A win rate out of this is
+// ⚠️ READ `HARNESS_GAPS` BEFORE QUOTING ANY NUMBER THIS PRINTS. Three of the old
+// caveats are gone and it is worth saying which, because the numbers moved with
+// them: ~~base kits~~ (unlocks live since the SKILL_TREE extraction), ~~two-life
+// games~~ (three by default since 2026-08-18; the boss that forced it was
+// archived 2026-09-01), and ~~the client's fan hooks are absent~~ (`gainFans`
+// and `demolishFans` are in `harnessHooks` since 2026-09-01 — and that one was
+// not cosmetic: fans MULTIPLY Fame by up to ×2.0 inside `grantFame`, so a
+// harness that paid none was pricing every Fame payout in the game against a
+// crowd that could only grow).
+//
+// What is still missing: no Smash and no Blaster (both unmodelled), the Unsure
+// crowd is banked per turn rather than instantly, and the riff-off's two
+// PERFORMANCES are modelled rather than played. A win rate out of this is
 // evidence about the searcher, not a balance reading about the roster — and
 // §4.3's rule still stands regardless: Metalness's eval weights are not
 // tunable against the other two until his kit is finished.
+//
+// ⚠️ EVERY NUMBER FROM BEFORE 2026-09-01 IS DRAWN FROM A DIFFERENT SEEDED
+// SEQUENCE. The demolition hook takes one seeded draw per scatter, so the
+// stream diverges from the first knockdown in the centre onwards. A win-rate
+// difference across that date is not a policy result.
 
 import { runBench, HARNESS_GAPS, POLICIES } from "./policies/play.js";
 
@@ -126,8 +139,63 @@ console.log('');
 const n = bench.decided || 1;
 const se = Math.sqrt(bench.rate * (1 - bench.rate) / n);
 console.log(`  ±${(1.96 * se * 100).toFixed(1)} points at 95% on ${n} decided matches`);
-console.log(`  mean match length: ${mean.toFixed(0)} turns`);
+// ⚠️ THE PLAIN MEAN AVERAGES THE TURN CAP IN, and at a 12% stall rate that is
+// most of it: 5 matches parked at MAX_TURNS contribute more turns than the 35
+// that finished. Quoting it as "how long a game runs" over-states the horizon by
+// a factor of three, which matters because §3.2/§3.6 make the horizon the
+// strategic variable. Decided-only and the median are the honest numbers.
+const decidedTurns = bench.results.filter(r => r.reason === 'winner').map(r => r.turns).sort((x, y) => x - y);
+const meanDecided = decidedTurns.reduce((s2, t) => s2 + t, 0) / (decidedTurns.length || 1);
+const median = decidedTurns.length
+  ? (decidedTurns.length % 2
+      ? decidedTurns[(decidedTurns.length - 1) / 2]
+      : (decidedTurns[decidedTurns.length / 2 - 1] + decidedTurns[decidedTurns.length / 2]) / 2)
+  : 0;
+const seats = DUEL.length;
+console.log(`  match length — all: ${mean.toFixed(0)} turns (the turn cap is averaged in)`);
+console.log(`               decided: mean ${meanDecided.toFixed(0)}, median ${median} spirit-turns`
+  + `  = ${(meanDecided / seats).toFixed(0)} per player over ${seats} seats`);
 console.log('');
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⭐📏 THE FAME LEDGER — what the rules awarded vs what anybody kept.
+//
+// ⚠️ THIS HAD NEVER BEEN PRINTED. `FAME_PER_TURN_CAP` DISCARDS overflow, so
+// "Fame earned" and "Fame awarded" are two different quantities and the bench
+// only ever saw the first. PROGRESSION_REWRITE_DESIGN §8 wants to add a whole
+// new fan source (fans multiply Fame) on top of a cap nobody had measured.
+//
+// `crowd ×` is the EFFECTIVE multiplier — amplified ÷ asked, over every grant
+// in every match. It is not `FAN_MULT_CAP` and should not be compared to it:
+// most grants happen on a small crowd, and this is the average one.
+// ═══════════════════════════════════════════════════════════════════════════
+const led = {};
+for (const r of bench.results) {
+  for (const [id, row] of Object.entries(r.fameLedger ?? {})) {
+    const t = led[id] ??= { grants: 0, silenced: 0, asked: 0, amplified: 0, banked: 0, discarded: 0 };
+    for (const k of Object.keys(t)) t[k] += row[k] ?? 0;
+  }
+}
+const all = Object.values(led).reduce((t, row) => {
+  for (const k of Object.keys(t)) t[k] += row[k] ?? 0;
+  return t;
+}, { grants: 0, silenced: 0, asked: 0, amplified: 0, banked: 0, discarded: 0 });
+
+if (all.grants > 0) {
+  const awarded = all.banked + all.discarded;
+  console.log('⭐ FAME LEDGER — awarded vs kept');
+  console.log('─'.repeat(64));
+  console.log(`  grants:      ${all.grants}  (${(all.grants / N).toFixed(1)} per match)`);
+  console.log(`  asked:       ${all.asked}   → amplified: ${all.amplified}  (crowd ×${(all.amplified / (all.asked || 1)).toFixed(2)} effective)`);
+  console.log(`  banked:      ${all.banked}`);
+  console.log(`  DISCARDED:   ${all.discarded}  — ${pct(all.discarded / (awarded || 1))} of everything the rules awarded, lost to the ${'FAME_PER_TURN_CAP'}`);
+  console.log(`  silenced:    ${all.silenced} grants banked ZERO  (${pct(all.silenced / all.grants)} of grants)`);
+  for (const [id, row] of Object.entries(led)) {
+    const aw = row.banked + row.discarded;
+    console.log(`    ${id.padEnd(18)} banked ${String(row.banked).padStart(5)}  discarded ${String(row.discarded).padStart(5)}  (${pct(row.discarded / (aw || 1))})`);
+  }
+  console.log('');
+}
 if (!JSON_LINE) {
   console.log('⚠️ what this did NOT measure:');
   for (const [k, why] of Object.entries(HARNESS_GAPS)) console.log(`   · ${k}: ${why}`);

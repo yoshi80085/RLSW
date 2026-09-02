@@ -9539,6 +9539,14 @@ export function Game({ gameState, onReturnToLobby }) {
           break;
         case 'peek':
           break;
+        case 'ledger':
+          // 📏 A MEASUREMENT, and the client already has the human version of it
+          // — every ledger entry is accompanied by the log line that says the
+          // same thing in words. The bench is what reads these (it counts the
+          // Fame the per-turn cap discards); a player does not need a second
+          // copy. ⚠️ Skipped DELIBERATELY, not by omission: without this case
+          // the interpreter's `default` would warn on a legal effect kind.
+          break;
         case 'fx':
           key = `fx:${e.name}`;
           playBattleFlowFx(e);

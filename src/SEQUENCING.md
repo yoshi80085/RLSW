@@ -13,6 +13,93 @@
 
 ---
 
+## 5-fame. 🧭 START HERE — session handoff, 2026-09-01 (the instrument)
+
+**Step 1 of `PROGRESSION_REWRITE_DESIGN.md`'s agreed order — instrument, measure,
+then tune — is done. Nothing about the GAME changed; what changed is that the
+Fame economy can now be seen. `test:all` green across all 21 suites,
+`check:bundle` at zero warnings.**
+
+### 5-fame.A 🎯 THE FINDING — the crowd is not the lever, the cap is
+
+📏 **`FAME_PER_TURN_CAP` (4) discards 26–33% of every Fame point the rules
+award**, and the share rises with the horizon. Nobody knew, because `grantFame`
+reported the discard only in a log line. Measured over 150 matches per cell with
+the finish line removed — full tables in `PROGRESSION_REWRITE_DESIGN.md` §7.1,
+raw output in `.scratch/_famedist_results.md`.
+
+Three readings, in order of how much they change the plan:
+
+1. 🧱 **The cap is a wall, not a rail.** 4 → 6 buys +27% banked Fame. Meanwhile
+   the crowd is running at a QUARTER of its range (♥2.1–2.7 of a cap of 6,
+   ×1.37–1.51 of a `FAN_MULT_CAP` of 2.0) — so **the agreed step 3, "raise the
+   crowd multiplier", pushes on the wrong end of the pipe**: a third of what the
+   crowd already amplifies is destroyed before it lands, and the discard share
+   grows WITH the crowd. §7.2 argues the reorder; it is Alex's call.
+2. ⏳ **The horizon saturates at ~15 turns per player.** A 30-turn horizon plays
+   15.4 — 130 of 150 matches end on a KNOCKOUT first. **20 and 30 are not
+   horizons this roster reaches.** Tuning for them is tuning for a game nobody
+   plays.
+3. 🎯 **The Fame target is set one turn past the horizon the board allows.**
+   `fameToWin` is 24 at 2 players × 3 lives; at the measured 1.5 FP/turn that
+   needs ~16 turns per player and the match lasts ~15. That is why matches end
+   on knockouts rather than on Fame.
+
+### 5-fame.B 🐛 Two bugs, found by building the instrument
+
+- ⚠️ **The Fame window was leaking, and every headless Fame number in this
+  repo's history over-counts.** `transition.js` threw away the `fameThisTurn`
+  that `battleConsequences` and `riffOffConsequences` RETURN, on the `attack`
+  and `riffOff` cases — `confirmMelody` and `endTurn` always threaded it. So the
+  per-turn cap was per-ACTION headlessly and per-turn in the client: a Spirit
+  could bank 8 from a duel and 4 more from a pose in the same turn. §5.A's
+  pattern again — a rule that existed, in a place half the engine could not
+  read. Pinned at both sites in `transitionCheck`.
+- ⚠️ **The two fan hooks were declared gaps whose own comment said they were not
+  cosmetic** ("these two carry real economy") and nothing acted on it for
+  months. **Fans MULTIPLY Fame** — up to ×2.0, inside `grantFame` — so a bench
+  that paid no deed fans and scattered no crowds was pricing every Fame payout
+  in the game against a crowd that could only ever grow. Both implemented in
+  `harnessHooks`; the `HARNESS_GAPS` keys are DELETED, not softened.
+
+### 5-fame.C What shipped (uncommitted)
+
+| what | where |
+|---|---|
+| 📏 A new effect kind, `{ kind:'ledger' }` — a measurement, never dropped (the difference from `fx`) | `engine/systems/battleFlow.js` header, `runBattleFlow` |
+| `grantFame` returns `clipped` / `uncapped` / `mult` and emits one ledger entry per grant | `engine/systems/battleFlow.js` |
+| The Fame window threaded back out of the two battle cases | `engine/policies/transition.js` |
+| `gainFans` + `demolishFans` implemented; the Unsure pool banked per turn | `engine/policies/play.js` — `harnessHooks`, `playTurn`, `runMatch` |
+| `runMatch` reports `fameLedger` (grants/silenced/asked/amplified/banked/discarded) and `fans` per seat | `engine/policies/play.js` |
+| 📏 `config.fameTarget` / `config.fameCap` — fixed-length and cap-off runs | `matchConfig`, `runMatch`, and **`engine/state.js`'s config whitelist** |
+| The bench prints the ledger, and an honest match length (the plain mean averages the turn cap in) | `engine/bench.mjs` |
+| The sweep itself | `.scratch/famedist.mjs`, `.scratch/_famedist_results.md` |
+
+📌 **Suite counts that moved, and why.** `battleflow` 54 → **65** and
+`transition` 242 → **248** are the new assertions on the instrument and on the
+window fix. `harness` 1662 → **1731** is **+11 new assertions and +58 from the
+seeded stream moving**: `demolishFans` takes one seeded draw per scatter, so
+every match after the first centre knockdown plays out differently. That is the
+same reason ⚠️ **no win rate from before 2026-09-01 is comparable to one after
+it.** Every other suite is identical.
+
+### 5-fame.D 🎯 NEXT
+
+Step 2 of the agreed order is done; **step 3 is the one the measurement
+questions.** The order as agreed was: instrument → measure → raise the crowd
+multiplier → re-scale every Fame constant in one pass. §7.2 says the crowd
+multiplier is the wrong lever and the cap is the right one, with a curve
+(cap 4/5/6/8/12/off) to pick a value against. ⚠️ **That is a design call, not a
+finding — Alex decides whether step 3 becomes "move the cap" or stays as
+written.** Step 4 (re-scale every Fame constant in ONE pass) is unaffected
+either way, and `fameToWin` versus the ~15-turn horizon belongs in it.
+
+⚠️ **`.scratch/famedist.mjs` is evidence for one session, not a suite** — and a
+run with `fameTarget` or `fameCap` set is not a game. Do not quote a win rate
+off one.
+
+---
+
 ## 5-clean. 🧭 START HERE — session handoff, 2026-09-01 (the clear-out)
 
 **Three cuts, all Alex's call, all landed. `npm run test:all` green, `check:bundle`
@@ -79,7 +166,16 @@ Every other suite is identical. `engine`, `eval`, `transition`, `turnflow`,
 
 ### 🎯 NEXT
 
-Unchanged from §5-hud: **measure the real client's strip column.** `ChannelStrip.jsx`
+🎼 **A DESIGN DECISION LANDED 2026-09-01 AND IT OUTRANKS EVERYTHING BELOW:** the
+Music Theory branch comes off the skill tree. Stack slots move onto the board and
+are found; the pardon ladder becomes universal and free; melody payout splits
+between Db (clean notes) and fans (characterful playing); the Db that Theory
+absorbed goes into upgrade streams on existing character abilities. **Read
+`PROGRESSION_REWRITE_DESIGN.md` before starting anything.** Nothing is built —
+that doc holds the decisions, the measurements already taken, and the two traps
+(the deleted Style system's double-scoring sin, and the uncapped fan economy).
+
+Still open from §5-hud, and smaller: **measure the real client's strip column.** `ChannelStrip.jsx`
 claims 238px at every width; the shipped declarations say the flex row breaks below
 532px. One of the two is wrong and the rail is sized against it.
 

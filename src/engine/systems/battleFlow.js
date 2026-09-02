@@ -26,6 +26,15 @@
 //   { kind:'patch',  spiritId, patch } noteStates merge -> NOTE_SHEET_PATCHED
 //   { kind:'log',    text }          player-facing line; no rule meaning
 //   { kind:'fx',     name, ... }     presentation only; harness drops it
+//   { kind:'ledger', name, ... }     a MEASUREMENT: a fact about what the rules
+//                                    just did that no state records. ⚠️ NEVER
+//                                    DROPPED — that is the whole difference
+//                                    from 'fx', which the harness throws away.
+//                                    Added 2026-09-01 because the Fame the
+//                                    per-turn cap DISCARDS existed only in a
+//                                    log line, i.e. nowhere a bench could count
+//                                    it. A ledger effect changes no state and
+//                                    no branch reads one back.
 //   { kind:'hook',   name, ... }     a sequence still owned by the client this
 //                                    pass (demolishFans, knockOut,
 //                                    dismissShadowIllusion). The
@@ -100,14 +109,26 @@ const patch = (spiritId, p)     => ({ kind: 'patch', spiritId, patch: p });
 const log   = (text)            => ({ kind: 'log', text });
 const fx    = (name, props={})  => ({ kind: 'fx', name, ...props });
 const hook  = (name, props={})  => ({ kind: 'hook', name, ...props });
+const ledger= (name, props={})  => ({ kind: 'ledger', name, ...props });
 
 // ── small readers (kept local so callers can't drift on lookup shape) ────────
 const spiritOf = (state, id) => state.spirits.find(s => s.id === id) ?? null;
 const nsOf     = (state, id) => state.noteStates?.[id] ?? {};
 const nameOf   = (state, id) => spiritOf(state, id)?.name ?? id;
 
-/** Fame needed to win, per BOT_STRATEGY_HANDOFF §2. */
+/**
+ * Fame needed to win, per BOT_STRATEGY_HANDOFF §2.
+ *
+ * 📏 `config.fameTarget` OVERRIDES IT, AND IS A MEASUREMENT INSTRUMENT ONLY.
+ * Set it to `Infinity` and no Fame grant can ever crown anybody, which is what
+ * a FIXED-LENGTH bench run needs: a match that ends the moment somebody clears
+ * the target measures the race, never the economy, because every distribution
+ * it produces is truncated at the finish line. Nothing in the shipped game sets
+ * this — `matchConfig` leaves it undefined and `fpPerLife` is the rule.
+ * ⚠️ A run with this set is NOT a game. Do not quote a win rate off one.
+ */
 export function fameToWin(state) {
+  if (state.config?.fameTarget != null) return state.config.fameTarget;
   const lives = state.config?.startingLives ?? 3;
   return lives * fpPerLife(state.spirits.length);
 }
@@ -313,14 +334,33 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
     : 1;
   const uncapped = amplify ? Math.max(fp, Math.round(fp * mult)) : fp;
 
+  // 📏 `config.fameCap` RESTATES THE GENERAL CEILING FOR ONE RUN, AND IS A
+  // MEASUREMENT INSTRUMENT ONLY — same posture as `fameTarget` above.
+  // `FAME_PER_TURN_CAP` discards ~29% of everything the rules award (measured
+  // 2026-09-01), and the only way to see the distribution UNDERNEATH that
+  // clipping is to move it. `Infinity` lifts it entirely.
+  //
+  // ⚠️ IT SCALES EVERY CEILING, IT DOES NOT REPLACE THEM, and the first version
+  // got this wrong in a way that produced a believable wrong answer. Overriding
+  // `cap` outright flattened `RIFF_FP_TURN_CAP` (8, defined in the constants as
+  // `FAME_PER_TURN_CAP * 2`) down onto whatever the run asked for — so a sweep
+  // at cap 5 quietly cut duel payouts from 8 to 5 and banked LESS Fame than the
+  // cap-4 baseline. A cap that clips can only ever remove Fame as it rises;
+  // seeing the opposite is what exposed it. Scaling keeps the two ceilings in
+  // the relationship the constants define.
+  //
+  // ⚠️ A run with this set is not a game. Do not quote a win rate off one.
+  const capScale    = state.config?.fameCap != null ? state.config.fameCap / FAME_PER_TURN_CAP : 1;
+  const effCap      = capScale === 1 ? cap : cap * capScale;
   const earnedSoFar = fameThisTurn[spiritId] ?? 0;
-  const room        = Math.max(0, cap - earnedSoFar);
+  const room        = Math.max(0, effCap - earnedSoFar);
   const finalFp     = Math.min(uncapped, room);
   const clipped     = uncapped - finalFp;
 
   if (finalFp <= 0) {
-    yield log(`⭐🚫 ${nameOf(state, spiritId)} is already at the ${cap} FP turn cap — the crowd can only scream so loud${reason ? ` (${reason} lost to the noise)` : ''}.`);
-    return { granted: 0, fameThisTurn };
+    yield ledger('fame', { spiritId, reason, asked: fp, mult, uncapped, granted: 0, clipped, cap: effCap });
+    yield log(`⭐🚫 ${nameOf(state, spiritId)} is already at the ${effCap} FP turn cap — the crowd can only scream so loud${reason ? ` (${reason} lost to the noise)` : ''}.`);
+    return { granted: 0, clipped, uncapped, mult, fameThisTurn };
   }
 
   const nextWindow = { ...fameThisTurn, [spiritId]: earnedSoFar + finalFp };
@@ -328,15 +368,18 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
 
   state = yield act(fameChanged(spiritId, finalFp));
 
+  // 📏 ONE ENTRY PER GRANT, emitted before the win branch so both exits carry it.
+  yield ledger('fame', { spiritId, reason, asked: fp, mult, uncapped, granted: finalFp, clipped, cap: effCap });
+
   const target   = fameToWin(state);
   const crowdStr = (amplify && uncapped !== fp) ? ` (${fp} ×🎤${mult.toFixed(2)} crowd)` : '';
-  const capStr   = clipped > 0 ? ` ⛔ capped at ${cap}/turn (${clipped} lost to the noise)` : '';
+  const capStr   = clipped > 0 ? ` ⛔ capped at ${effCap}/turn (${clipped} lost to the noise)` : '';
   const myFame   = nsOf(state, spiritId).fame ?? (fameBefore + finalFp);
   yield log(`⭐ ${nameOf(state, spiritId)} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${capStr}${reason ? ` — ${reason}` : ''}! (${Math.min(myFame, target)}/${target})`);
 
   yield hook('stageFxThresholds', { spiritId, from: fameBefore, to: myFame });
 
-  if (myFame < target) return { granted: finalFp, fameThisTurn: nextWindow };
+  if (myFame < target) return { granted: finalFp, clipped, uncapped, mult, fameThisTurn: nextWindow };
 
   // ⭐ REACHING THE TARGET IS THE WIN, at any margin and at any number of lives.
   // Read rivals from the state we just wrote, not a pre-dispatch mirror: it is
@@ -356,7 +399,7 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
 
   yield log(`🌟🌟🌟 ${nameOf(state, spiritId)} reaches ${target} Fame — ⭐${myFame} vs ⭐${rivalBest}, a lead of ${lead}. A LEGEND IS BORN! 🌟🌟🌟`);
   yield hook('declareWinner', { spiritId });
-  return { granted: finalFp, fameThisTurn: nextWindow };
+  return { granted: finalFp, clipped, uncapped, mult, fameThisTurn: nextWindow };
 }
 
 /** Thrash win: flat 1, plus Headliner and stage-FX riders, then underdog. */
@@ -812,10 +855,15 @@ export function* clearBattleBuffs({ attackerId, defenderId }) {
  * @param {function} [opts.onFx]       play a presentation effect (default: drop).
  *   The harness never passes this. The client does, for the short sequences it
  *   needs to run to completion synchronously (chord fray) rather than paced.
- * @returns {{ state: object, result: any, logs: string[] }}
+ * @returns {{ state: object, result: any, logs: string[], ledger: object[] }}
+ *   ⚠️ `ledger` IS COLLECTED WHETHER OR NOT ANYONE ASKED, unlike `fx`. It is the
+ *   measurement channel (see EFFECT KINDS at the top of this file): a caller
+ *   that ignores it pays nothing, and one that wants to count what the rules
+ *   discarded no longer has to parse a log line to do it.
  */
 export function runBattleFlow(gen, state, { applyAction, hooks = {}, onLog, onFx } = {}) {
   const logs = [];
+  const entries = [];
   let res = gen.next(state);
   while (!res.done) {
     const e = res.value;
@@ -833,6 +881,9 @@ export function runBattleFlow(gen, state, { applyAction, hooks = {}, onLog, onFx
       case 'fx':
         onFx?.(e);
         break;
+      case 'ledger':
+        entries.push(e);
+        break;
       case 'peek':
         break;                              // state re-read only
       case 'hook': {
@@ -847,5 +898,5 @@ export function runBattleFlow(gen, state, { applyAction, hooks = {}, onLog, onFx
     }
     res = gen.next(state);
   }
-  return { state, result: res.value, logs };
+  return { state, result: res.value, logs, ledger: entries };
 }

@@ -37,6 +37,8 @@ pass as the code:
 - `src/SEQUENCING.md` — what order the open design arms get built in
 - `src/METALNESS_REWORK_DESIGN.md` — the Metalness Monster kit redesign
 - `src/THEORY_ARCHITECTURE.md` / `THEORY_ROUTES_DESIGN.md` — the music theory routes
+- `src/PROGRESSION_REWRITE_DESIGN.md` — 🎼 Theory comes off the tree: board-found
+  stack slots, free pardons, Db-vs-fans melody payout, per-ability upgrade streams
 - `src/CHARACTER_HANDOFF.md` — per-character state
 
 `src/ARCHITECTURE.md` is the map of the code itself — every module, what it
