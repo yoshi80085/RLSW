@@ -52,6 +52,26 @@ Pick-up notes for continuing the Spirit-identity work. Read this + `DESIGN_AUDIT
 >   `PROGRESSION_REWRITE_DESIGN.md` §5's job (per-ability upgrade streams) and §5 is not
 >   built — but she is the Spirit it hurts first, so the shape of her kit is a character
 >   question before it is an economy one.
+>
+> 🎼 **AND THE MELODY-LEVEL IDENTITY ARM OPENED 2026-09-02 —
+> `MELODY_IDENTITY_DESIGN.md`.** *How* each Spirit is incentivised to play, to
+> their own fans: four verbs (🗡️ **KATA** · 👹 **DISSONANCE** · 📻 **LOOP** ·
+> 🐀 **HOOK**), one parameterised motif detector instead of thirty rules, and
+> modes returning as a single resolved off-palette note rather than a scale gate.
+> Three things in it land squarely on THIS doc:
+>
+> - 🐀 **IT ASSUMES RIFF RAT REPLACED GLAMARCHY, AND THAT IS STILL AN OPEN CALL
+>   HERE.** `RIFF_RAT_DESIGN.md` §0 *proposes* the swap and says nothing is
+>   implemented; the Status table below still lists her. A four-column balance
+>   sheet with Rat in it and Glamarchy absent decides it by implication. ⚠️ Make
+>   it a decision or the sheet is built on a roster the game does not have.
+> - 🗡️ **THE RONIN'S `perfExciteGain` CLIFF IS THE ONE BUILT PRECEDENT FOR A
+>   PER-CHARACTER CROWD** (P ≥ 5 wins ~double, below it sheds fans; everyone else
+>   gets one flat slope). That doc's §10.2 wants to generalise it — the crowd's
+>   *reaction curve* becomes a character dial alongside the ability kit.
+> - 👹 **METALNESS'S MUSICAL IDENTITY IS THE MOST CONFIDENT SECTION IN IT**, and
+>   he is ON HOLD pending `METALNESS_REWORK_DESIGN.md`. It should land IN that
+>   redesign, not beside it.
 
 ---
 
@@ -373,6 +393,12 @@ afflicted spirit's own turn, which is what makes a `1` cost a full turn (see `bl
 **Crowd / Fame mechanics:** the seam is `confirmNoteTrack`'s **Performance Score** (`perfScore`,
 0–10) → `perfExciteGain` → casual/diehard fans, and `effectiveDiscord` (discord pardon). Ronin's
 virtuosity and Intergalactic's Freestyle both ride this. Glamarchy's crowd kit will too.
+🎼 **And this is the seam `MELODY_IDENTITY_DESIGN.md` builds on** — its §10 argues the whole arm
+is reachable by making `performanceScore`'s existing capped seats (`perfShape` / `perfPalette` /
+`perfGest` / `perfMotif` / `perfBig`) **per-character weight vectors**, rather than by adding a
+second scoring system beside the first. ⚠️ Read that doc's §3 before assuming a gesture is
+unpaid: `detectSkipClimb` (the arpeggio) and `detectChromaticRun` already pay the crowd and
+nothing else, which is the opposite of what a first reading suggests.
 
 **Knockback:** `battleKnockback(fromId, targetId, spaces)` — per-spirit resistance goes at the top
 (see the `intergalactic_0` −1).

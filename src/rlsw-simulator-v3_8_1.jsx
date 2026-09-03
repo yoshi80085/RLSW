@@ -131,6 +131,9 @@ import { startTurnNotes, refillDrawCount } from "./engine/systems/turnFlow.js";
 // worth. `confirmNoteTrack` is a shell over this; see the header there.
 import { commitMelodyEconomy, MIC_VOICE_ROLL_PASS } from "./engine/systems/melodyCommit.js";
 import { STYLE_DEFS, styleOf } from "./data/styles.js";
+// ⭐ Gold means Fame. One table, shared with ui/FameRace.jsx so the header track
+// and the HUD bar cannot drift into two different golds — see data/fameTheme.js.
+import { FAME, FAME_CONTESTED, FAME_NEUTRAL, fameSet, fameFill } from "./data/fameTheme.js";
 import {
   BOT_PERSONALITIES, BOT_PERSONA_KEYS, BOT_SKILL_PRIORITY_BASE, BOT_SPIRIT_SKILLS,
   SPIRIT_ONLY_ROUTE, BOT_RIFF_PROFILE,
@@ -9348,10 +9351,10 @@ export function Game({ gameState, onReturnToLobby }) {
       if (prevHeadliner && prevHeadliner !== winnerId) {
         const prevName = spirits.find(x => x.id === prevHeadliner)?.name;
         addLog(`👑 ${winnerName} SEIZES the Headliner title from ${prevName}!`);
-        triggerEffectFlash(winnerId, '👑', 'HEADLINER!', '#ffd700');
+        triggerEffectFlash(winnerId, '👑', 'HEADLINER!', FAME.mark);
       } else if (!prevHeadliner) {
         addLog(`👑 ${winnerName} claims the Headliner title!`);
-        triggerEffectFlash(winnerId, '👑', 'HEADLINER!', '#ffd700');
+        triggerEffectFlash(winnerId, '👑', 'HEADLINER!', FAME.mark);
       }
       // (B5: consumeAttackCharges call removed — nothing left to consume.)
     }
@@ -11540,12 +11543,12 @@ export function Game({ gameState, onReturnToLobby }) {
         100% { transform: translateX(320%); }
       }
       @keyframes fame-danger {
-        0%,100% { box-shadow: 0 0 6px #ff2200aa, inset 0 0 8px #ff440055; border-color: #ff4422; }
+        0%,100% { box-shadow: 0 0 6px #ff2200aa, inset 0 0 8px #ff440055; border-color: ${FAME_CONTESTED.edge}; }
         50%     { box-shadow: 0 0 16px #ff4400ee, inset 0 0 14px #ff660088; border-color: #ff8844; }
       }
       @keyframes fame-crown {
-        0%,100% { text-shadow: 0 0 4px #ffd70088; }
-        50%     { text-shadow: 0 0 10px #fff3c4, 0 0 18px #ffd700aa; }
+        0%,100% { text-shadow: 0 0 4px ${FAME.glow}88; }
+        50%     { text-shadow: 0 0 10px ${FAME.flare}, 0 0 18px ${FAME.glow}aa; }
       }
       @keyframes fame-pip-pop {
         0%   { transform: scale(0.4); opacity: 0.2; }
@@ -12383,12 +12386,13 @@ export function Game({ gameState, onReturnToLobby }) {
                     // should feel like a warning, because the race is that close.
                     const danger    = fp >= fameToWin - 4 && lead < FAME_RACE_CONTESTED_LEAD;
                     const hot       = pct >= 75;
-                    const fill      = danger
-                      ? "linear-gradient(90deg,#7a1500,#ff4400,#ff9955)"
-                      : hot
-                        ? "linear-gradient(90deg,#cc9900,#ffd700 55%,#fff6d0)"
-                        : "linear-gradient(90deg,#aa7700,#ffd700)";
-                    const accent    = danger ? "#ff8855" : "#ffd700";
+                    /* 🎨 ONE TERNARY, AT THE TOP — same rule as ui/FameRace.jsx.
+                       `P` is the whole Fame palette in the state this bar is in,
+                       and `fameFill` owns the ramp so the hot and rest variants
+                       cannot drift apart. data/fameTheme.js. */
+                    const P         = fameSet(danger);
+                    const fill      = fameFill({ hot, contested: danger });
+                    const accent    = P.value;
                     return (
                       <div data-tip-anchor="fame-bar" style={{marginTop:6, marginBottom:2}}
                         title={danger
@@ -12399,32 +12403,32 @@ export function Game({ gameState, onReturnToLobby }) {
                         <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:3}}>
                           <span style={{fontSize:8,letterSpacing:1.6,fontWeight:800,color:accent,
                             animation: hot && !danger ? "fame-crown 1.8s ease-in-out infinite" : undefined,
-                            textShadow:"0 0 6px #ffd70055"}}>
+                            textShadow:`0 0 6px ${FAME.glow}55`}}>
                             ⭐ FAME
                           </span>
                           <span style={{display:"flex",alignItems:"baseline",gap:1}}>
                             <span style={{fontSize:17,fontWeight:900,lineHeight:1,color:accent,
-                              textShadow:`0 0 9px ${danger ? "#ff440099" : "#ffd70099"}, 0 1px 2px #000`}}>{fp}</span>
-                            <span style={{fontSize:9,fontWeight:700,color:"#7d6a3a"}}>/{fameToWin}</span>
+                              textShadow:`0 0 9px ${P.numGlow}99, 0 1px 2px #000`}}>{fp}</span>
+                            <span style={{fontSize:9,fontWeight:700,color:FAME.label}}>/{fameToWin}</span>
                           </span>
                         </div>
 
                         {/* Track */}
                         <div style={{position:"relative",height:11,borderRadius:6,overflow:"hidden",
-                          background:"#0a0f1c",
-                          border:`1px solid ${danger ? "#ff4422" : "#5a4410"}`,
-                          boxShadow: danger ? undefined : "inset 0 1px 3px #000a, 0 0 8px #ffd70022",
+                          background:P.ground,
+                          border:`1px solid ${P.edge}`,
+                          boxShadow: danger ? undefined : `inset 0 1px 3px #000a, 0 0 8px ${FAME.glow}22`,
                           animation: danger ? "fame-danger 1.1s ease-in-out infinite" : undefined}}>
 
                           {/* Fill */}
                           <div style={{position:"absolute",inset:0,width:`${pct}%`,background:fill,
                             borderRadius:"5px 3px 3px 5px",
-                            boxShadow:`0 0 10px ${danger ? "#ff5500cc" : "#ffd700aa"}`,
+                            boxShadow:`0 0 10px ${danger ? "#ff5500cc" : `${FAME.glow}aa`}`,
                             transition:"width .45s cubic-bezier(.2,.9,.3,1)"}}>
                             {/* travelling sheen — the stage lights sweeping the bar */}
                             {pct > 4 && (
                               <div style={{position:"absolute",top:0,bottom:0,width:"28%",
-                                background:"linear-gradient(90deg,transparent,#ffffff66,transparent)",
+                                background:`linear-gradient(90deg,transparent,${FAME_NEUTRAL.sheen},transparent)`,
                                 animation:"fame-sheen 2.6s linear infinite"}}/>
                             )}
                           </div>
@@ -12433,8 +12437,8 @@ export function Game({ gameState, onReturnToLobby }) {
                           {stageFxThresholds.filter(t => t < fameToWin).map(t => (
                             <div key={t} style={{position:"absolute",top:0,bottom:0,
                               left:`${(t / fameToWin) * 100}%`, width:1.5,
-                              background: fp >= t ? "#fff6d0cc" : "#ffffff26",
-                              boxShadow: fp >= t ? "0 0 5px #fff6d0" : undefined}}/>
+                              background: fp >= t ? `${FAME.lit}cc` : FAME_NEUTRAL.notchUnlit,
+                              boxShadow: fp >= t ? `0 0 5px ${FAME.lit}` : undefined}}/>
                           ))}
                         </div>
 
@@ -12446,14 +12450,14 @@ export function Game({ gameState, onReturnToLobby }) {
                               const lit = i < banked;
                               return (
                                 <span key={i} style={{fontSize:7,lineHeight:1,
-                                  color: lit ? "#ffd700" : "#2b3444",
-                                  textShadow: lit ? "0 0 6px #ffd700cc" : undefined,
+                                  color: lit ? FAME.mark : FAME_NEUTRAL.pipUnlit,
+                                  textShadow: lit ? `0 0 6px ${FAME.glow}cc` : undefined,
                                   animation: lit ? "fame-pip-pop .32s ease-out" : undefined}}>★</span>
                               );
                             })}
                           </div>
                           {banked >= FAME_PER_TURN_CAP && (
-                            <span style={{fontSize:6,fontWeight:700,color:"#ff7755",letterSpacing:.5}}>
+                            <span style={{fontSize:6,fontWeight:700,color:FAME_NEUTRAL.capped,letterSpacing:.5}}>
                               ⛔ CAPPED
                             </span>
                           )}
@@ -13998,7 +14002,7 @@ export function Game({ gameState, onReturnToLobby }) {
                       unknowable. Smaller (4px) because this row is a glance, not a
                       dashboard. */}
                   <LifePips lives={s.lives} startingLives={startingLives} color={s.color} size={4}/>
-                  <span style={{fontSize:7,color:"#ffd700",whiteSpace:"nowrap",marginLeft:2}} title="Fame Points">
+                  <span style={{fontSize:7,color:FAME.value,whiteSpace:"nowrap",marginLeft:2}} title="Fame Points">
                     ⭐{ns.fame ?? 0}
                   </span>
                   <span style={{fontSize:7,color:"#44aaff",whiteSpace:"nowrap",marginLeft:2}} title="Sustain">

@@ -207,6 +207,7 @@ mirror for rendering — change the rule in `engine/systems/`, not here.
 | `corners.js` | 18 | `CORNERS`, `CORNER_LABELS`, `CORNERS_ORDER` | Home hexes per corner. |
 | `stageEffects.js` | 80 | `STAGE_FX_THRESHOLDS`, `STAGE_FX_META`, `shuffledStageFxDeck`, `SMOKE_ROUNDS`, `LASER_*`, `PYRO_*`, `ANIMATRONIC_*` | 🎇 Stage-effect tuning. Fired once each at ⭐8/16/24 from a per-game shuffled deck. |
 | `styles.js` | 43 | `STYLE_DEFS`, `styleOf`, `styleDef` | ⚠️ **FLAVOUR ONLY.** Style stopped affecting scoring — icon, colour and tagline are all that is live. See below. |
+| `fameTheme.js` | 94 | `FAME`, `FAME_CONTESTED`, `FAME_NEUTRAL`, `fameSet`, `fameFill` | ⭐ **Gold means Fame — the one colour table for the Fame readouts.** Extracted 2026-09-03 from ~60 hex literals across five files. `FAME_CONTESTED` carries the SAME role keys as `FAME`, so a component picks a family once (`fameSet(contested)`) and never branches on state again below that line — which is what stops the header race track and the HUD Fame bar drifting into two different golds. ⚠️ `#ffd700` knowingly sits one step from Metalness Monster's `#ffcc00`; every alternative collided with a different Spirit instead. |
 | `matchSetup.js` | 52 | `cornersForCount`, `seatSpirit`, `buildTestingGroundsConfig` | Seat assignment and the Testing Grounds config. |
 
 ### `music/` — the music rules
@@ -393,6 +394,7 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | Board overlay: Commit Track / Chord Stack / Voicing Panel | Monolith, `RENDER` banner → search `COMMIT TRACK`, `CHORD STACK`, `FLOATING VOICING PANEL` |
 | A specific overlay or modal's look | The matching file in `ui/` |
 | CSS keyframes / global styles | `ui/GameStyles.jsx` |
+| ⭐ Fame gold — the race track, the HUD bar, the ⭐FP readouts | `data/fameTheme.js` → `FAME`, `FAME_CONTESTED`, `FAME_NEUTRAL`, `fameFill`. ⚠️ Gold that means "premium chrome" rather than Fame (Riffbook's panel border, RiffMenu's LEGEND LESSONS, the riff-off cards in `BattleMeterOverlay.jsx`, the FINISH button) is deliberately NOT routed through it. |
 | BGM tracks / riff SFX | `audio/bgm.js` / `audio/riffSfx.js` |
 
 ### 🪦 Rows that used to be here, and what happened to them

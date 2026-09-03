@@ -10,6 +10,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import openingIsland from "../assets/opening_island.png";
 import thunderSfx from "../thunder.mp3";
+import { FAME } from "../data/fameTheme.js";
 
 // ── bolt generator (same math as OpeningMovie) ──────────────────────────────
 function seededRand(seed) {
@@ -268,8 +269,8 @@ export function GameOverOverlay({
           }}>
             <div style={{
               fontSize: 'clamp(13px, 2.2vw, 22px)', letterSpacing: 4, textTransform: 'uppercase',
-              color: isFameWin ? '#ffd700' : isLimelight ? '#ff88ff' : '#ffcc00',
-              textShadow: isFameWin ? '0 0 24px #ffd700, 0 0 48px #ffd70088'
+              color: isFameWin ? FAME.mark : isLimelight ? '#ff88ff' : '#ffcc00',
+              textShadow: isFameWin ? `0 0 24px ${FAME.glow}, 0 0 48px ${FAME.glow}88`
                         : isLimelight ? '0 0 20px #ff44ff, 0 0 40px #ff44ff88'
                         : '0 0 20px #ffcc0088',
               animation: 'vs-name-glow 2.2s ease-in-out infinite',
@@ -343,8 +344,8 @@ export function GameOverOverlay({
                 <div key={s.id} style={{
                   padding: '7px 8px 6px', borderRadius: 8, marginBottom: 4,
                   background: s.isWinner ? '#14100a' : '#0a101f',
-                  border: `1px solid ${s.isWinner ? '#ffd700aa' : '#1e3a5f'}`,
-                  boxShadow: s.isWinner ? '0 0 14px #ffd70044' : 'none',
+                  border: `1px solid ${s.isWinner ? `${FAME.glow}aa` : '#1e3a5f'}`,
+                  boxShadow: s.isWinner ? `0 0 14px ${FAME.glow}44` : 'none',
                   animation: `vs-row-in 0.4s ease-out ${0.15 + i * 0.12}s both`,
                 }}>
                   <div style={{
@@ -362,7 +363,7 @@ export function GameOverOverlay({
                       </span>
                     </span>
                     <span style={{ textAlign: 'right', fontSize: 13, fontWeight: 700,
-                      color: s.isWinner ? '#ffd700' : '#e2e8f0' }}>{s.fame}</span>
+                      color: s.isWinner ? FAME.value : '#e2e8f0' }}>{s.fame}</span>
                     <span style={{ textAlign: 'right', fontSize: 9, color: '#8aa0c0',
                       fontFamily: "'Share Tech Mono', monospace" }}>👥{s.casuals} ♥{s.diehards}</span>
                     <span style={{ textAlign: 'right', fontSize: 10, color: s.lives > 0 ? '#e2e8f0' : '#5a3a3a' }}>

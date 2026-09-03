@@ -648,4 +648,47 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
   ok(!('committedHasRiff' in r.patch), '🪦 …and nothing stashes a riff flag for the riff-off');
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// 🎯 THE FOUR UNGATED FLAGS — 2026-09-02i. `discordUnlocks` IS EMPTY HERE
+// AND THAT IS THE WHOLE POINT.
+//
+// `composed()` sets `discordUnlocks: []`, which is what every Spirit in the
+// shipped game has and can never stop having: `THEORY_DISCORD_GRANTS` was the
+// only writer and it went with the branch. Before the ungating, these four
+// assertions were unwritable — `hasGatedEnding` was `false` by construction on
+// every possible input, and `chromClimbActive` could not be reached at all.
+//
+// ⚠️ THIS IS THE CHECK THAT WOULD HAVE CAUGHT THE ORIGINAL HOLE. The endings and
+// the pardon were only ever exercised through a skill purchase, so deleting the
+// granter left four rules with no test standing on them — `MELODY_IDENTITY_DESIGN.md`
+// §5.6's "four dead flags, not three". These stand on the RULE instead.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  // ♭7 in major: C major, land on Bb (the spelling `getIntervalNotes` returns).
+  const m7 = run(composed(['C', 'D', 'E', 'Bb']));
+  ok(m7.report.hasGatedEnding,
+     '🎯 the ♭7 ending pays its crowd seat with nothing unlocked — it was dead for every Spirit until 2026-09-02i');
+
+  // The tritone, in either mode: C major, land on F#.
+  const tt = run(composed(['C', 'D', 'E', 'F#']));
+  ok(tt.report.hasGatedEnding, '🎯 …and so does the tritone ending');
+
+  // ⚠️ AND AN ORDINARY ENDING STILL DOES NOT. Without this the two above would
+  // pass just as happily against `hasGatedEnding = true`, which is the failure
+  // mode `legalActionsCheck` §15 is named for.
+  const plain = run(composed(['C', 'D', 'E', 'G']));
+  ok(!plain.report.hasGatedEnding,
+     '🎯 …while landing on the 5th does NOT — the flag reads the ending, not the commit');
+
+  // 🎤 THE PARDON. A chromatic run of 3+ declares the track clean to the CROWD —
+  // `MELODY_IDENTITY_DESIGN.md` §5.5's "the crowd forgives THIS kind of wrong
+  // note", which had not executed once since the branch came off.
+  const chrom = run(composed(['C', 'C#', 'D', 'D#']));
+  ok(chrom.report.chromClimbActive, '🎤 a chromatic run of 3+ is live with nothing unlocked');
+  ok(chrom.report.allInScale,
+     '🎤 …and it forces `allInScale`, so `positionFanGain` pays a dirty track — the per-character seam');
+  ok(chrom.report.unpardonedDiscord > 0,
+     '⚠️ …while the Db side still counts the dirt — the pardon is the CROWD\'s, not the ledger\'s');
+}
+
 console.log(`✅ melodyCommitCheck — ${checks} assertions passed`);

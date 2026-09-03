@@ -33,15 +33,25 @@
 // All three keys are ids no route sells any more, so the table could only ever
 // have looked up nothing.
 //
-// ⚠️ `discordUnlocks` ITSELF IS STILL LIVE AND STILL READ. `melodyCommit.js` uses
-// it for the gated endings (minor-7th, major-3rd, tritone) via
-// `DISCORD_INTERVAL_MAP`, and nothing granted those ids except this table — so
-// **those three endings are now unreachable for every Spirit**, exactly as the
-// six Theory unlock logs are unprintable. That is a real hole rather than dead
-// code, and it is `PROGRESSION_REWRITE_DESIGN.md` §4's job: the ending becomes a
-// fork (resolve for Db, or land on colour for Drive/Sustain) and colour notes stop
-// being something you unlock at all. ⛔ §4 IS NOT BUILT. Until it is, the ending
-// bonus is the plain `scoreTrackDB` one for everybody.
+// ✅ AND `discordUnlocks` IS NO LONGER READ BY THE MELODY KERNEL — 2026-09-02i.
+//
+// This note used to say the three gated endings (minor-7th, major-3rd, tritone)
+// were unreachable for every Spirit. Both halves of that were wrong by omission:
+// the set was FOUR, and the fourth mattered most. `discord_4` gated
+// `chromClimbActive`, the `allInScale` override that lets the CROWD forgive a
+// chromatic run — cited in `MELODY_IDENTITY_DESIGN.md` §5.5 as the working
+// precedent for characterful dirt, and it had never once executed. Its knock-on:
+// `hasGatedEnding` was a permanently-`false` input to `performanceScore`, so one
+// of `perfGest`'s six flags could not fire in a seat §10.1 wants to re-weight per
+// character.
+//
+// All four are unconditional now, and `melodyCommit.js` reads this array nowhere.
+// ⚠️ THE GATE MUST NOT COME BACK, and the reason is not sentiment: the same ids
+// also drive `keyScale`, so re-granting them to wake the endings would widen the
+// clean palette for everybody and delete the colour payout that §5-seats' fifth
+// decision deliberately preserved. `b0check` pins the kernel against exactly that.
+// 📌 `PROGRESSION_REWRITE_DESIGN.md` §4's ending fork still replaces this rule
+// wholesale when it lands; ungating is the honest interim, not the destination.
 //
 // Deleted rather than emptied, so archived code reviving a Theory grant fails to
 // import instead of quietly granting nothing.

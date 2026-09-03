@@ -51,7 +51,6 @@ import {
 import { performanceScore } from "./economy.js";
 import { detectSpiritStyle } from "../../music/spiritStyle.js";
 import { hexRingFromCenter, crowdMultiplier, advanceDB } from "../../board/boardHelpers.js";
-import { DISCORD_INTERVAL_MAP } from "../policies/bot.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import {
   DB_UPGRADE_THRESHOLD,
@@ -224,7 +223,6 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const rootNote       = ns.rootNote  ?? 'C';
   const scaleMode      = ns.scaleMode ?? 'major';
   const unlockedSkills = ns.unlockedSkills ?? [];
-  const discordUnlocks = ns.discordUnlocks ?? [];
   const driveStack     = ns.driveStack   ?? [];
   const sustainStack   = ns.sustainStack ?? [];
   const melodyFreq     = ns.melodyFreq   ?? [];
@@ -300,16 +298,26 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // ── 🎸 CHORD CONTEXT — THE SINGLE PASS (B3) ───────────────────────────────
   // ⚠️ `keyScale` and the stacks' pardons stay SEPARATE, permanently. The pardon
   // changes what a wrong note COSTS; it must not change what COUNTS as one.
+  //
+  // 🪦 THE PALETTE-WIDENING READ WAS DELETED HERE 2026-09-02i, AND IT WAS A
+  // PROVABLE NO-OP. `keyScale` used to be `currentScale` plus whatever interval
+  // keys `DISCORD_INTERVAL_MAP` matched against `discordUnlocks`. That array is
+  // written at exactly ONE site (`rlsw-simulator-v3_8_1.jsx:4518`), which fires
+  // only on purchasing a skill whose id is `discord_1..4` — and `data/skillTree.js`
+  // has contained no such id since the Theory branch came off. The set was
+  // therefore always empty and `keyScale === currentScale` on every commit the
+  // shipped game has ever scored.
+  //
+  // ⚠️ IT IS DELETED RATHER THAN REVIVED, AND THE DIRECTION IS THE POINT.
+  // Widening the clean palette is the one thing this read must never do:
+  // `SEQUENCING.md` §5-seats' fifth decision is that everyone keeps the pentatonic
+  // base, because a wider palette means fewer notes need pardoning and THE PARDON
+  // IS THE COLOUR PAYOUT. Re-granting the `discord_*` ids to wake the dead ending
+  // flags below would have deleted that payout by the back door — which is why
+  // the flags are ungated at their own site instead.
   const intervals    = getIntervalNotes(rootNote, scaleMode);
   const currentScale = playableScale(rootNote, scaleMode);
-  const unlockedIntervalKeys = new Set(
-    DISCORD_INTERVAL_MAP
-      .filter(t => discordUnlocks.includes(t.id))
-      .flatMap(t => t.notesByMode?.[scaleMode] ?? t.notes ?? []));
-  const keyScale = [...new Set([
-    ...currentScale,
-    ...[...unlockedIntervalKeys].map(k => intervals[k]).filter(Boolean),
-  ])];
+  const keyScale     = [...new Set(currentScale)];
 
   // 🌀 Intergalactic 0's first wrong note each turn lands intentional, not wrong.
   const freestylePardon = spiritId === 'intergalactic_0';
@@ -345,19 +353,57 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // ── INTERVAL EFFECTS ──────────────────────────────────────────────────────
   const trackHasTritone    = melodyLine.includes(intervals.tritone);
   const isOctaveResolution = hexes >= 2 && firstNote === lastNote;
-  const hasBlues     = discordUnlocks.includes('discord_1');
-  const hasBorrowed  = discordUnlocks.includes('discord_2');
-  const hasTritoneUp = discordUnlocks.includes('discord_3');
-  const hasChromClimb = discordUnlocks.includes('discord_4');
-  const isMinorSeventhEnd = hasBlues && scaleMode === 'major' && lastNote === intervals.minorSeventh;
-  const isMajorThirdEnd   = hasBorrowed && scaleMode === 'minor' && allInScale && lastNote === intervals.majorThird;
-  const isTritoneEnd      = hasTritoneUp && lastNote === intervals.tritone;
+  // ── 🎯 THE THREE COLOUR ENDINGS — UNGATED 2026-09-02i ──────────────
+  // They read `discordUnlocks.includes('discord_1'|'_2'|'_3')`, and the only
+  // thing that ever wrote that array was `THEORY_DISCORD_GRANTS`, deleted with
+  // the branch on 2026-09-02 (`systems/skills.js`). All three had been dead for
+  // every Spirit on every commit since — and `hasGatedEnding`, which is their OR,
+  // was therefore a permanently-`false` input to `performanceScore`.
+  //
+  // ⚠️ THAT IS WHY THEY ARE UNGATED RATHER THAN DELETED. `perfGest` is one of the
+  // seats `MELODY_IDENTITY_DESIGN.md` §10.1 proposes turning into a per-character
+  // weight vector. Weighting a seat one of whose six flags CANNOT FIRE is
+  // calibrating against a rule the game does not have — `CLAUDE.md`'s §15 warning,
+  // and the same shape as `perfSusEnd` below. Connect the knob before turning it.
+  //
+  // 📌 Universal is the answer §5-seats already gave the pardon ladder when this
+  // same granter died under it: the tier stops being something you BUY and becomes
+  // something the music does. `PROGRESSION_REWRITE_DESIGN.md` §4's ending fork
+  // replaces this rule wholesale; until it lands, landing on the colour note IS
+  // the gated ending, for everybody.
+  //
+  // 📌 All three finals are OFF the pentatonic base, so each of these endings
+  // still costs discord — they pay a crowd seat for a risk, they are not free.
+  const isMinorSeventhEnd = scaleMode === 'major' && lastNote === intervals.minorSeventh;
+  const isMajorThirdEnd   = scaleMode === 'minor' && allInScale && lastNote === intervals.majorThird;
+  const isTritoneEnd      = lastNote === intervals.tritone;
 
   // B6: the chromatic run's Db payout was DELETED (it fired on 1% of commits).
   // The run still flips `allInScale`, which is what the CROWD reads — flair pays
   // fans now, not Decibills.
+  //
+  // 🎤 UNGATED 2026-09-02i, AND THIS IS THE ONE THAT MATTERED. `chromClimbActive`
+  // required `discord_4`; nothing has granted that id since the branch came off,
+  // so the `allInScale` override below had not executed once — while
+  // `MELODY_IDENTITY_DESIGN.md` §5.5 cites this exact line as the working precedent
+  // for "the crowd forgives THIS kind of wrong note". It was a precedent that had
+  // never fired. It fires now.
+  //
+  // 📌 THIS IS THE PER-CHARACTER SEAM, AND IT IS LEFT UNIVERSAL ON PURPOSE.
+  // §5.5's plan is that the per-character rule BECOMES the granter — a Spirit whose
+  // idiom is the chromatic smear gets the pardon and the others do not. That table
+  // is deliberately not written here: the four verbs are not locked
+  // (`SEQUENCING.md` §5-ident.E step 1) and a taste table written before the
+  // hit-rate probe is a guess. Universal is the honest placeholder — it makes the
+  // mechanism live and therefore MEASURABLE, which is what the probe needs.
+  //
+  // ⚠️ ORDER IS LOAD-BEARING AND PRE-DATES THIS CHANGE: `isMajorThirdEnd` above
+  // reads `allInScale` BEFORE the override, so a chromatic run pardons the track
+  // for the crowd but not for the major-3rd ending. Both flags were dead when that
+  // ordering was written, so this asymmetry has never actually run. Left as-is
+  // rather than quietly "fixed" — it is §4's call, not this pass's.
   const chromRunLen      = detectChromaticRun(melodyLine);
-  const chromClimbActive = hasChromClimb && chromRunLen >= 3;
+  const chromClimbActive = chromRunLen >= 3;
   if (chromClimbActive) allInScale = true;
 
   const diatonicRunLen = detectDiatonicRun(melodyLine, currentScale);

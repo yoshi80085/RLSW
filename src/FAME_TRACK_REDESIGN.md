@@ -232,11 +232,55 @@ the two will be read as one cluster of numbers.
 
 ---
 
+## 9.5 🎨 The colour — asked, tested, and now a file (2026-09-03)
+
+**Question, from Alex:** could the strip be built out closer to the board's own
+colours — purple / magenta / blues?
+
+**Answered by looking, not by arguing.** The preview page grew a **rail palette**
+switch — `gold` / `board violet` / `board magenta` / `stage cyan`, furniture only —
+and all four were rendered across §8's states. The board hues are **sampled**, not
+invented: `src/board.png` reduces to a near-black `#131612` ground with `#371336` /
+`#4d1d4c` deep violet and `#a148a0` / `#dfabde` neon.
+
+⚠️ **The preview was lying about the fourth Spirit** and it mattered. Its
+`SPIRITS` table carried a placeholder `#ff55aa` pink for the fourth seat, a colour
+no Spirit has. That made a magenta rail look like a collision it is not, and hid
+that the real fourth (Glamarchy, `#ff6600`) sits beside a WARM rail. Fixed in the
+same pass — the preview now carries the four real colours off `data/spirits.js`.
+
+**Alex's call: gold stays.** Fame is the score, the score is a crown, a crown is
+gold — nobody has to be told what the gold thing on the strip is. The alternatives
+were legible but had to earn a meaning gold already has.
+
+⚠️ **The known collision, kept on purpose.** `#ffd700` sits one hue-step from
+Metalness Monster's `#ffcc00`, so on the HUD bar the gold fill and one player are
+nearly the same colour. **There is no free hue with four Spirits on the board** —
+violet collides with Intergalactic 0's `#aa55ff`, cyan with Shredding Ronin's
+`#4488ff`. This is a chosen collision, not an oversight.
+
+📌 **And gold became a file.** `data/fameTheme.js` now owns it: `FAME`,
+`FAME_CONTESTED` (the same role keys under threat), `FAME_NEUTRAL` and
+`fameFill()`. The header track and the HUD bar read the same table, so the two
+readouts of the same score cannot drift into two different golds — the same
+failure mode §4's threshold notches exist to prevent. The extraction was proved a
+**pixel no-op**: `.scratch/_famethemessr.jsx` SSRs `FameRace` at HEAD against the
+migrated one over six states and diffs the markup byte for byte, then asserts all
+29 deleted literals against the token expressions that replaced them.
+
+⚠️ **If the colour question ever reopens**, the palette switch is still in the
+preview page and `data/fameTheme.js` is the one file that has to change.
+
+---
+
 ## 10. Where the code is
 
 | Thing | File |
 |---|---|
 | The component | `ui/FameRace.jsx` (139 lines) |
+| ⭐ The gold — every Fame colour | `data/fameTheme.js` (§9.5) |
+| The colour experiment, still switchable | `.scratch/fame-track-preview.html` → 🎨 Rail palette |
+| Proof the extraction moved nothing | `.scratch/_famethemessr.jsx` |
 | Where it mounts, and the `contested` computation | `rlsw-simulator-v3_8_1.jsx` ~11902–11913 |
 | The strip it lives in, and its sibling chips | `rlsw-simulator-v3_8_1.jsx` ~11790–11985 |
 | The target it is built around | `engine/systems/battleFlow.js` — `fameToWin` |

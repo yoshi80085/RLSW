@@ -34,6 +34,16 @@
 > brake and a shock absorber, and raising it would SHRINK the crowd that §3
 > wants to pay in.**
 >
+> 🎼 **AND §3's OPEN GESTURE TABLE NOW HAS ITS OWN DOC — `MELODY_IDENTITY_DESIGN.md`,
+> 2026-09-02.** It fills the one open line in §3 and, in doing so, proposes
+> **removing** two payouts rather than adding four: melody SHAPE stops paying
+> Drive/Sustain for everybody (which collapses §3's per-character currency law
+> into a plain rule), and modes return as one resolved off-palette note rather
+> than as a scale gate. ⚠️ **Two findings there change THIS doc:** §5 below is
+> now a PREREQUISITE for §3's trade rather than the last item, and §3's
+> "delete the discord penalty" recommendation is contested — a sacrifice you
+> cannot feel is not a sacrifice.
+>
 > Companion to `GAME_BRIEF.md` (§8 the music economy, §16 known problems #1),
 > `THEORY_ARCHITECTURE.md`, `THEORY_ROUTES_DESIGN.md`, `SEQUENCING.md`.
 
@@ -236,7 +246,14 @@ pardoned, at every quality, always.**
 
 - **Discord is not a punishment, it is an absence of payment.** 🎲 Decide whether
   the current −1-per-unpardoned-note penalty (grace 1, floor −3) survives at all.
-  Recommendation: delete it. "No Db for that note" is the whole cost, and it makes
+  Recommendation: delete it.
+  ⚠️ **CONTESTED 2026-09-02 — `MELODY_IDENTITY_DESIGN.md` §5.4.** If the fan
+  route is a TRADE ("play dirty, lose Db, gain crowd"), a penalty you cannot
+  feel makes the dip free, and the sacrifice stops being one. That doc's §5.3
+  also found the shipped wiring is the exact INVERSE of this dichotomy: an
+  off-palette note costs almost no Db (`scoreTrackDB` step A is blind to
+  cleanliness, first discord free) and costs your ENTIRE crowd
+  (`positionFanGain` returns null unless clean). Decide the pair together. "No Db for that note" is the whole cost, and it makes
   the fan route a real alternative instead of a fine you are buying your way out of.
 - **The fan route can pay for Discord.** A character whose genre likes it gets paid
   in fans for notes that pay no Db. That is the dichotomy, and it is characterful.
@@ -266,7 +283,18 @@ boost; `detectMotifRepeat` feeds the Performance Score, which feeds the crowd. T
 Ronin's "driving string of notes" *is* `detectDiatonicRun`. This is re-pointing
 existing functions per character, not writing new ones.
 
-**Open:** the per-character gesture table. Nothing is decided beyond the Ronin's run.
+✅ **THE PER-CHARACTER GESTURE TABLE MOVED TO `MELODY_IDENTITY_DESIGN.md`
+(2026-09-02).** It is no longer an open line in this doc; it is an arm with its
+own measured constraints, a first-pass balance sheet, and an audit of that sheet
+against source. Read its §2 (what the pitch-class data cannot carry) and §3 (the
+corrected who-pays-what ledger) before proposing a number here.
+
+⚠️ **AND IT ARGUES THIS SECTION'S LAW OUT OF EXISTENCE.** If melody shape pays
+NOBODY Drive or Sustain — that doc's §4, Alex's direction of 2026-09-02 — then
+"which currency depends on the character" collapses to the plain rule *melody
+shape pays the crowd*, and the character difference lives entirely in WHICH
+shapes a crowd likes. Same outcome, one fewer rule to maintain. ⛔ Not locked:
+it needs the joint Drive-supply bench in that doc's §4.3.
 
 ---
 
@@ -279,6 +307,18 @@ Currently: ending on the 5th +3 Db, the 4th +2, octave +1, plus Harmonic Lock
 ends on one decision — *resolve for money, or land on colour for power* — and it is
 one gesture paying one currency, per the law above.
 
+✅ **THE THREE GATED ENDINGS ARE REACHABLE AGAIN AS OF 2026-09-02i** — ungated
+rather than re-granted, because the same ids also widen `keyScale` and re-granting
+them would have deleted the colour payout §2 keeps (`SEQUENCING.md` §5-flags).
+⚠️ **This does not build §4 and does not pre-empt it.** Ungating is the honest
+interim: it makes `hasGatedEnding` a live input to the crowd score so the seat can
+be tuned. 📏 But the first measurement says the endings are **scenery** — the
+searcher lands them no more often than random play does — so §4's fork is what
+would give them a reason to be aimed at, and it is still unbuilt.
+📌 §4 also inherits one live ordering asymmetry: `isMajorThirdEnd` reads
+`allInScale` BEFORE the chromatic override, so a run pardons the track for the
+crowd but not for that ending. Both flags were dead when that order was written.
+
 ---
 
 ## 5. 🅳 The Db sink: upgrade streams on the abilities you already have
@@ -287,6 +327,34 @@ Each character ability gets its own short upgrade stream rather than a new ladde
 Psycho Bushido: a longer dash, or a shorter cooldown. Same for the rest.
 
 ⛔ **NOT BUILT — AND IT IS NOW THE MOST URGENT ITEM IN THIS DOC, NOT THE LAST.**
+
+✅ **IT HAS ITS OWN DOC AS OF 2026-09-02i — `UPGRADE_SHOP_DESIGN.md`.** Scope is
+🗡️ Ronin and 🌀 Intergalactic 0 (Alex's call; 👹 Metalness needs his rewiring
+first). Three things there change what this section says:
+
+- 📏 **THE BUDGET IS MEASURED NOW** (`.scratch/dbbudget.mjs`): a seat earns a
+  **median 19 Db** a match, spends 12 on the tree and 4 on ability uses, and
+  leaves 3. The "~2.7 skills bought" figure in this doc is a mean over a
+  distribution the harness turn ceiling skews badly; the median is **2**.
+- ⛔ **THE ARSENALS ARE BOUGHT IN PRICE ORDER, NOT VALUE ORDER.** Every 6 Db
+  skill is taken by 70–98% of seats; everything at 10 Db and above by ~10–17%.
+  That is `GAME_BRIEF.md` §16 problem #1 — *"buying it is close to automatic"* —
+  alive and well in the exclusive routes, and nobody had measured it because
+  until the tree left the monolith no bench could see a purchase at all.
+- 🎯 **SO AN UPGRADE MUST BE A TRADE AND MUST NOT BE CHEAP.** A strictly-better
+  step at a reachable price is an automatic buy; a cheap one starves ☀️ Sunbeam
+  (10%) and 🌀 Blaster of Ra (17%), which barely get bought as it is.
+
+📌 And the build is smaller than this section assumes: `skillEligibility` already
+supports `prereq` and **nothing in the tree uses it**, so the streams are data
+rows. The one real code cost is routing every upgradeable number through a single
+`abilityParams` resolver, on the `applyUnlockClaim` precedent.
+
+🎯 **AND IT IS A PREREQUISITE FOR §3, NOT A SEQUEL TO IT (2026-09-02).**
+§3's fan route is a *trade* — sacrifice Db to please the crowd — and a trade
+prices Db against **what Db buys**. With no sink, the trade is free for the
+Spirits who can buy nothing and expensive for the Ronin, so the exchange rate
+cannot be set at all. `MELODY_IDENTITY_DESIGN.md` §5.5.
 Deleting the branch removed 52 Db of sink and the game's last SHARED ladder in one
 move. What is left in `SKILL_TREE` is three exclusive routes, so what a Spirit may
 buy is now entirely a function of who they are — and 🎀 **Glamarchy owns no route,
@@ -777,6 +845,10 @@ doc's standing invariant holds.
 | Chord templates, `evaluateChord` | `music/chords.js` |
 | Pardon tiers, `tiersFor`, `contextClaim`, `classifyTrack` | `music/context.js` |
 | Gesture detectors (live + the deleted Style ones, documented in place) | `music/cadence.js` |
+| 🎼 The per-character gesture table, the modal dip, the crowd's taste | `MELODY_IDENTITY_DESIGN.md` |
+| 🎼 Per-spirit style detection + the searcher's steering half | `music/spiritStyle.js` |
+| ⛔ The inverted fan gate (dirty track earns no fans at all) | `engine/systems/melodyCommit.js` — `positionFanGain`, `allInScale`, `chromClimbActive` |
+| ✅ The four ungated colour flags + the revival guard | `engine/systems/melodyCommit.js`, `engine/systems/skills.js`, `engine/b0check.mjs` |
 | Playable scale, `NOTE_POOL` | `music/notes.js` |
 | `stackCapFor`, `STACK_CAP_*`, `STACK_COMMIT_BUDGET` | `data/gameConstants.js` |
 | The Theory branch itself | `data/skillTree.js` |

@@ -10,6 +10,7 @@
 // Presentational: all values/handlers via props, zero app imports.
 // =============================================================================
 import React from "react";
+import { FAME } from "../data/fameTheme.js";
 
 export function Riffbook({ CADENCE_OBJECTIVES, PC_PLAY_NAMES, acting, noteStates, setShowRiffbook, showRiffbook }) {
   return (<>
@@ -91,7 +92,7 @@ export function Riffbook({ CADENCE_OBJECTIVES, PC_PLAY_NAMES, acting, noteStates
                           {cad.name} <span style={{color:'#7a9a8a', fontWeight:400}}>· {cad.formula}</span>
                         </span>
                         {cd > 0 && <span style={{fontSize:8, color:'#ff8800'}}>⏳ {cd}t cooldown</span>}
-                        <span style={{fontSize:9, color:'#ffd700', fontWeight:700}}>⭐{cad.fp}</span>
+                        <span style={{fontSize:9, color:FAME.value, fontWeight:700}}>⭐{cad.fp}</span>
                       </div>
                       <div style={{display:'flex', gap:4, alignItems:'center', marginTop:5, flexWrap:'wrap'}}>
                         <span style={{fontSize:7, color:'#3a5a7a', letterSpacing:1, width:62}}>e.g. IN C</span>

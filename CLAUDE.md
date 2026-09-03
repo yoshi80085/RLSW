@@ -44,6 +44,13 @@ pass as the code:
   ✅ **BUILT HEADLESS** — steps 1–5 done, `test:winconditions`. ⛔ No menu, no HUD
 - `src/FAME_TRACK_REDESIGN.md` — ⭐ the header race track with no finish line to
   race to: margin instead of progress. ⚠️ Visual — preview page first
+- `src/MELODY_IDENTITY_DESIGN.md` — 🎼 what each Spirit's FANS came to hear: the
+  four verbs (Kata / Dissonance / Loop / Hook), melody shape paying the crowd
+  instead of Drive/Sustain, and the modal dip. ⛔ Nothing built; read its §2 and
+  §3 before proposing a number
+- `src/UPGRADE_SHOP_DESIGN.md` — 💰 what Db is FOR: one upgrade step per ability,
+  every step a TRADE. ⛔ Design only. Read its §1 (the measured budget) and §3
+  (the base kit Alex changed) before pricing anything
 - `src/CHARACTER_HANDOFF.md` — per-character state
 
 `src/ARCHITECTURE.md` is the map of the code itself — every module, what it

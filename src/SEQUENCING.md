@@ -13,7 +13,230 @@
 
 ---
 
-## 5-glow. 🧭 START HERE — session handoff, 2026-09-02g (the hunt marker)
+## 5-flags. 🧭 START HERE — session handoff, 2026-09-02i (the four dead flags)
+
+🎯 **THE CROWD SEAT THAT COULD NOT FIRE, FIXED — AND IT WAS NEVER JUST A COMMENT
+FIX.** §5-ident.E's melody-identity arm is blocked on three prerequisites (Alex,
+this session). This is the third of them, taken first **because the other two both
+change what the bot should value**, and the bot retune is a benched pass: doing it
+before the economy settles means benching it twice.
+
+🤖 **AND THE BOT IS PARKED, DELIBERATELY.** Alex's call: *"if I keep having to
+recalibrate how the bots think after every implementation, I'd be doubling my
+work."* Correct, and §5-fans.E already concedes every bench since 2026-09-02b
+reads a bot that does not know fans got better. ⚠️ **The one place it is not just
+an opponent is §5-ident.E step 2's hit-rate probe, whose "steering" column IS the
+bot.** When that arm runs, give the probe a local weight override for that run
+rather than retuning the shipped weights.
+
+### 5-flags.A What was actually broken
+
+`melodyCommit.js` ANDed four flags with membership of `discordUnlocks`, and
+`THEORY_DISCORD_GRANTS` — deleted with the branch — was its only writer.
+`data/skillTree.js` has held no `discord_*` id since, so **the array was provably
+always empty**. `MELODY_IDENTITY_DESIGN.md` §5.6 caught that the set was FOUR, not
+the three every other doc recorded, and that the fourth carried the knock-on:
+`hasGatedEnding` was a permanently-`false` input to `performanceScore`, so one of
+`perfGest`'s six flags could not fire — in a seat §10.1 wants to re-weight per
+character. **Weighting a seat whose terms cannot fire is calibrating against a
+rule the game does not have.**
+
+### 5-flags.B ⛔ THE TRAP IN THE OBVIOUS FIX, AND IT IS THE FINDING
+
+**Re-granting the four ids would have deleted the colour payout.** Those same ids
+feed `keyScale` as well as the endings: `unlockedIntervalKeys` widens what counts
+as CLEAN. §5-seats' fifth decision — everyone keeps the pentatonic base — exists
+because a wider palette means fewer notes need pardoning, **and the pardon IS the
+colour payout**. So "wake the dead flags by granting the ids" quietly undoes the
+biggest balance call of the previous session, by the back door.
+
+✅ The two jobs are therefore split at their own sites: the palette read is
+**deleted** (a provable no-op — the set was always empty), and the four flags are
+**ungated** where they are used. The gate cannot come back: `b0check` now asserts
+`melodyCommit.js` reads `discordUnlocks` on no live line at all.
+
+### 5-flags.C What shipped
+
+- **`engine/systems/melodyCommit.js`** — palette-widening read deleted (with the
+  backwards `systems → policies` import of `DISCORD_INTERVAL_MAP` that went with
+  it); `isMinorSeventhEnd` / `isMajorThirdEnd` / `isTritoneEnd` and
+  `chromClimbActive` ungated, each with the reasoning in place.
+  📌 A pre-existing ordering asymmetry is now live and is documented rather than
+  silently fixed: `isMajorThirdEnd` reads `allInScale` BEFORE the chromatic
+  override, so a run pardons the track for the crowd but not for that ending.
+  Both flags were dead when that order was written. **It is §4's call.**
+- **`engine/systems/skills.js`** and **`b0check`** — their recorded conclusion
+  ("those three endings are now unreachable") was stale and is rewritten, with the
+  revival guard above.
+- **`melodyCommitCheck` +6** — the rule now has tests standing on it, `discordUnlocks`
+  empty, including the negative case (landing on the 5th must NOT set the flag).
+
+### 5-flags.D 📏 MEASURED — `.scratch/_gatedflags_results.md`
+
+Every row of the fire-rate table read **0.00% before**, by construction.
+
+| flag | RANDOM | STEERED | gap |
+|---|---:|---:|---:|
+| `isMinorSeventhEnd` | 8.27% | 7.58% | −0.68pp |
+| `isTritoneEnd` | 8.27% | 6.88% | −1.39pp |
+| **`chromClimbActive`** | **3.80%** | **19.40%** | **+15.60pp** |
+| `hasGatedEnding` (lower bd) | 16.53% | 14.46% | −2.07pp |
+
+⛔ **`music/context.js` says the chromatic run fires on "1% OF COMMITS". It is
+19.4% under the searcher.** The figures are not directly comparable (the old one
+counted a payout that also needed a 16 Db purchase), but the *reasoning* built on
+it — "a run eats 3+ of your 8 slots, so almost nobody plays one" — does not
+survive the bot, which plays one on nearly one commit in five as a side effect of
+its ascending note preference.
+
+🎯 **AND THE THREE ENDINGS ARE SCENERY, NOT TARGETS.** Their gaps are at or below
+zero: the searcher lands them no more often than chance. That is §5-ident.E step
+2's instrument giving its first reading, and it says the three endings are not yet
+worth a character's taste weight — the chromatic pardon is.
+
+**The A/B (120 matches/arm, same seeds):** crowd ×2.90 → ×2.99, diehards +4%,
+casuals +5% — and **banked Fame 4313 → 4305, i.e. unmoved.** The extra crowd went
+into a discard that was already 55.7%. ⚠️ **Restoring a whole fan mechanism was
+free on match outcome, and the reason is §5-fans.C: no per-character crowd tuning
+can pay while the per-turn cap eats half the amplified Fame.** The scaled window
+(§7.7/§7.8) is that same question, again.
+
+### 5-flags.E 🪦 A SUITE THAT WAS PASSING ON LUCK
+
+`harnessCheck` §9's `ok(Math.max(...owned) > 2)` went red. It is a single-seed
+threshold and `.scratch/prograte.mjs` measured its exact configuration over 40
+seeds: **only 20% of seeds have a seat that passes 2.** Seed 4242 was one of the
+lucky one-in-five; the line broke on the first unrelated change to touch the
+stream, while progression itself did not move (2.20 → 2.18 skills/seat over 240
+seats, both arms). Its threshold never matched its own message either — "past
+their starting kit" is `> 0`, and every Spirit opens with none.
+
+✅ Rewritten as a wide margin on an aggregate over eight fixed seeds.
+⚠️ **The replacement floor was ALSO mis-calibrated on the first attempt** — set
+from a duel bench played to a winner and applied to a trio over 20 turns each.
+§5-race.A's lesson, live: the finding would have been a property of the
+measurement. That is what `prograte.mjs` exists to have prevented.
+
+### 5-flags.F ✅ Verification
+
+`test:all` green. `melody` 159 → **165** (+6, the new block). `harness` **1674 →
+1559** — verified by reverting the kernel and re-running, the documented
+seeded-stream mechanism (§5-fans.D), assertion list identical. 📌 The 1633 in
+§5-fans.D is stale; 1674 is the control on today's code. `trace` 1205 in both
+arms. Every other suite identical. `check:bundle` **zero warnings**.
+⚠️ `test:all` again stopped after `test:render` under VM memory pressure; `b0`,
+`riff`, `trace`, `arch` were run by hand and are green.
+
+### 5-flags.G 🎯 NEXT
+
+1. ⛔ **THE CLIENT STILL WON'T COLOUR THE THREE ENDINGS.**
+   `rlsw-simulator-v3_8_1.jsx` ~11624 and ~13804 gate `showTritoneColor` /
+   `showMinorSeventhColor` / `showMajorThirdColor` on the dead ids. **The engine
+   now pays an ending the note stock refuses to mark**, which for "the ultimate
+   beginner" (§5-glow.A) is worse than both being off. Not done here because it is
+   VISUAL and `CLAUDE.md`'s standing rule is a `.scratch/` preview first.
+2. 💰 **The Db sink (`PROGRESSION_REWRITE_DESIGN.md` §5)** — prerequisite #2, and
+   the next thing in dependency order.
+3. 🤖 The bot retune stays parked (see the header), except as a local override for
+   the hit-rate probe.
+4. 📌 **`music/context.js`'s 1% figure should be corrected or dated** — it is load
+   bearing for a retirement decision and it is off by more than an order of
+   magnitude against today's searcher.
+
+---
+
+## 5-ident. 🧭 session handoff, 2026-09-02h (the melody identity arm)
+
+🎼 **A NEW ARM OPENED, AND IT IS DESIGN ONLY — `MELODY_IDENTITY_DESIGN.md`.**
+No code changed this session. It fills `PROGRESSION_REWRITE_DESIGN.md` §3's one
+open line (*"the per-character gesture table"*) and, in filling it, proposes
+**removing** two payouts rather than adding four.
+
+### 5-ident.A What Alex asked for
+
+*"How we could make each character more special and individualized by HOW they
+are incentivized to play — to their fans. The fans WANT to hear music as it
+should be played by the specific Spirit character."*
+
+📌 **That is a stronger claim than the doc had.** §3 said characters play
+differently; this says **the crowd has a taste**, and the same line should land
+differently depending on who played it.
+
+### 5-ident.B What the conversation produced
+
+- 🎯 **Four verbs** — 🗡️ **KATA** · 👹 **DISSONANCE** · 📻 **LOOP** · 🐀 **HOOK**.
+  Master / break / hack / make-them-remember the instrument. `MELODY_IDENTITY_DESIGN.md` §1.
+- 🅰️ **Alex's call in flight: melody SHAPE should stop paying Drive and Sustain.**
+  The stack and the ending colour note already do that job. §4 of the new doc.
+- 🅱️ **The modal dip** — modes return as ONE resolved off-palette note (♭7, ♭2,
+  ♮6), never as a scale gate. §5.
+- 📋 **A 33-row balance sheet, preserved with an audit against source.** §8.
+
+### 5-ident.C ⛔ THE FOUR FINDINGS THAT MOVE OTHER DOCS
+
+1. 🎯 **THE WITHDRAWAL DISSOLVES §3's HARDEST RULE.** §3's law is *"one gesture
+   pays one currency, WHICH depends on the character"* — a per-character
+   partition somebody must maintain forever. If melody shape pays **nobody**
+   Drive, it collapses to *melody shape pays the crowd*, and the character
+   difference lives entirely in which shapes a crowd likes. Same outcome, one
+   fewer rule. ⛔ Needs a joint Drive-supply bench (§4.3) — the `radius =
+   RIG_RADIUS_FLOOR + stack length` re-bench is already owed for slot supply
+   moving the OTHER way, and these are one question asked from both ends.
+2. ⛔ **THE Db-vs-FANS DICHOTOMY IS WIRED BACKWARDS IN THE SHIPPED GAME.** An
+   off-palette note costs almost no Db — `scoreTrackDB` step A is
+   `floor(len/2)-1`, **blind to cleanliness**, and `DISCORD_GRACE` is 1 — while
+   `positionFanGain` returns `null` unless `clean`, so a dirty track earns **no
+   positional fans at all**. **Playing dirty is nearly free in Db and fatal in
+   fans**, which is the exact inverse of the trade Alex wants.
+   ✅ **And the fix already exists for one gesture:** `melodyCommit.js:361`
+   forces `allInScale = true` for a chromatic run — dirt declared not-dirt, crowd
+   paid anyway. Generalising that flag per Spirit **is** the feature.
+3. 🎯 **`PROGRESSION_REWRITE_DESIGN.md` §5 IS NOW A PREREQUISITE, NOT A SEQUEL.**
+   A trade prices Db against what Db BUYS. With no sink, the dip is free for the
+   Spirits who can buy nothing and expensive for the Ronin — the exchange rate
+   cannot be set at all.
+4. ⚠️ **A THIRD OF A 33-ROW SHEET DESCRIBES DATA THE GAME DOES NOT HAVE.**
+   `melodyLine` is pitch classes, no octave, no rhythm, intervals folded to ±6 —
+   so *large leap*, *octave jump*, *escalation*, *root→5th→octave* and *rhythmic
+   repetition* cannot be built, and *perfect 5th* / *minor 2nd* / *repeated note*
+   / *A–B–A* fire on 40–70% of random tracks. 🪦 Both already measured here: the
+   Ronin's "leap, answered" fired on **87%** of his commits, the bare tritone on
+   **67%**. **What survives is pattern space** — transposition, sequence,
+   symmetry, palindrome, variation — and it splits four ways on its own.
+
+### 5-ident.D ⚠️ What is NOT decided
+
+Nothing is. Specifically: the verbs are not locked; the withdrawal has no bench;
+the modal dip is a proposal; the **discord penalty decision now has two docs
+arguing opposite ways** (§3 says delete it, the new §5.4 says keep a small one,
+and they cannot both hold); 📻 **Intergalactic 0's Freestyle makes his dip free**
+and that is either a bug or his identity; and 🐀 **the sheet decides the Riff Rat
+/ Glamarchy swap by implication** while `CHARACTER_HANDOFF.md` still lists it
+open.
+
+### 5-ident.E 🎯 NEXT — and the order is deliberate
+
+1. **Lock the four verbs**, and record the Rat/Glamarchy swap as a decision.
+   Cheap, and it constrains everything downstream. (`SEQUENCING`'s own thesis.)
+2. **Build the hit-rate probe before assigning a single number.** One `.scratch/`
+   instrument, the §7.1 pattern: run every candidate detector over a few thousand
+   real committed tracks and print, per detector per Spirit, hit rate under
+   RANDOM play (>~25% = scenery) beside hit rate with the searcher STEERING
+   (<~2% = unreachable). ⭐ **The GAP between those columns is the number that
+   should be equal across characters** — equalising the taste values equalises
+   nothing. 🪦 The evidence this exists to prevent: 180 landings for one gesture
+   against 11–19 for five others, over 536 commits.
+3. **Then 🌀 the cross-turn motif** (`MELODY_IDENTITY_DESIGN.md` §7) — the only
+   proposal in the arm that changes a resource DECISION rather than scoring a
+   track after the fact, and its state seat (`committedMelody`) already exists.
+
+⚠️ **AND NOT BEFORE `PROGRESSION_REWRITE_DESIGN.md` §5.** The Db sink is the
+prerequisite (finding 3) — and 🎀 Glamarchy / 🐀 Riff Rat can still buy nothing
+at all, which is the same hole seen from the character side.
+
+---
+
+## 5-glow. 🧭 session handoff, 2026-09-02g (the hunt marker)
 
 🔓 **THE HEX HOLDING YOUR NEXT STACK SEAT NOW LIGHTS UP.** §5-seats.D called this
 "the single highest-value next step"; it is built, dialled on a preview page, and

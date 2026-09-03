@@ -326,9 +326,53 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
   // not the action's, so this is the assertion that the two halves actually
   // meet: a searcher that targeted skills but never received them would pass
   // the line above and still be measuring a game with no progression in it.
-  const owned = TRIO.map(sp => (state.noteStates?.[sp.id]?.unlockedSkills ?? []).length);
-  ok(Math.max(...owned) > 2,
-     `⚠️ …and the Db bar actually PAYS OUT — somebody climbed past their starting kit (${owned.join('/')})`);
+  //
+  // 🪦 IT WAS `Math.max(...owned) > 2` ON SEED 4242 ALONE, AND IT WAS PASSING ON
+  // LUCK (rewritten 2026-09-02i). `.scratch/prograte.mjs` measured this suite's
+  // EXACT configuration — TRIO, searcher, 60 turns total — over 40 seeds:
+  //
+  //     mean skills per seat      1.625
+  //     seats owning >= 1         96.7%
+  //     seats owning >  2          9.2%
+  //     seeds whose MAX seat > 2  20.0%   <- what the old line needed
+  //
+  // ⛔ SO THE OLD ASSERTION FAILED ON FOUR SEEDS IN FIVE. Seed 4242 was one of the
+  // lucky one-in-five, and the line duly went red the first time an UNRELATED change
+  // (the 2026-09-02i `discord_*` ungating) moved the seeded stream by one decision —
+  // while the progression it exists to guard had not moved: 2.20 → 2.18 skills per
+  // seat across 240 duel seats in both arms of `.scratch/gatedflagsab.mjs`.
+  //
+  // ⚠️ AND ITS THRESHOLD NEVER MATCHED ITS OWN MESSAGE. "Climbed past their starting
+  // kit" is `> 0` — `b0check` pins that every Spirit opens with NO skills — so
+  // `> 2` was asserting something
+  // three times stricter than the sentence next to it, which is why the failure
+  // printed "(2/1/1)" as if two purchases were a failure to purchase.
+  //
+  // 📌 THE FIX IS NOT A LOWER THRESHOLD AND NOT A LUCKIER SEED. Either leaves the
+  // suite unable to tell drift from regression (`CLAUDE.md`'s §15, cheapest form).
+  // The claim is about the ECONOMY, so it is asserted like one: a wide margin on an
+  // aggregate over eight fixed seeds. ⚠️ The floor was ALSO mis-calibrated on the
+  // first attempt — set from a DUEL bench played to a winner (2.18/seat) and applied
+  // to a trio over 20 turns each. The finding would have been a property of the
+  // measurement, §5-race.A exactly. Hence `prograte.mjs`, in this configuration.
+  const PROGRESSION_SEEDS = Array.from({ length: 8 }, (_, i) => (i * 2654435761 + 4242) >>> 0);
+  const ownedSeats = [];
+  for (const ps of PROGRESSION_SEEDS) {
+    // Seed 4242 is the stride's own first element — its trace is already in hand,
+    // and re-running it would be the same game twice.
+    const st = ps === 4242 ? state
+      : traceMatch({ seed: ps, spirits: TRIO, policyName: 'searcher', turns: 60 }).state;
+    for (const sp of TRIO) ownedSeats.push((st.noteStates?.[sp.id]?.unlockedSkills ?? []).length);
+  }
+  const ownedMean = ownedSeats.reduce((a, b) => a + b, 0) / ownedSeats.length;
+  const ownedAny  = ownedSeats.filter(n => n >= 1).length;
+  // 📌 Floors are 1.0 against a measured 1.625 and 75% against a measured 96.7%.
+  // Both are ~40% clear of the reading and both are far above the failure they
+  // guard — skills aimed at and never awarded, which drives each to zero.
+  ok(ownedMean >= 1.0,
+     `⚠️ …and the Db bar actually PAYS OUT — mean ${ownedMean.toFixed(3)} skills/seat over ${ownedSeats.length} seats (${ownedSeats.join('/')})`);
+  ok(ownedAny >= 0.75 * ownedSeats.length,
+     `⚠️ …and it pays out BROADLY, not to one runaway seat — ${ownedAny}/${ownedSeats.length} seats own at least one skill`);
 
   const ownedBy = { psycho_bushido: RONIN, shadow_illusion: RONIN, cursed_shamisen: RONIN, wa_no_koe: RONIN,
                     tentacle: MM, goes_to_11: MM, master_moshpits: MM, azrael: MM,

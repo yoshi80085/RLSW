@@ -26,6 +26,9 @@
 // vertical room is the one thing it does not have, and a pack bunched at the
 // start line is the correct picture anyway.
 
+// ⭐ Gold means Fame — the shared colour table, also used by the HUD Fame bar.
+import { FAME, FAME_NEUTRAL, fameSet } from "../data/fameTheme.js";
+
 /**
  * @param spirits    the live spirit list (needs id, name, color, knockedOut)
  * @param fameOf     (spiritId) => current Fame — passed in so this file never
@@ -53,21 +56,25 @@ export function FameRace({ spirits, fameOf, fameToWin, actingId, thresholds = []
   const byScore = new Map();
   board.forEach(b => { const k = b.fp; byScore.set(k, [...(byScore.get(k) ?? []), b]); });
 
-  const rail = contested ? "#ff4422" : "#5a4410";
+  /* 🎨 ONE TERNARY, AT THE TOP. `FAME` and `FAME_CONTESTED` carry the same role
+     keys (data/fameTheme.js), so nothing below this line branches on `contested`
+     again — which is what keeps this readout and the HUD Fame bar from drifting
+     into two different reds. */
+  const P = fameSet(contested);
 
   return (
     <div style={{ flex: 1, minWidth: 190, display: "flex", alignItems: "center", gap: 7 }}
       title={`The Fame race — first to ${fameToWin} FP is crowned a Legend`}>
       <span style={{ fontSize: 7, letterSpacing: 1.4, fontWeight: 800, flexShrink: 0,
-        color: contested ? "#ff8855" : "#7d6a3a" }}>
+        color: P.label }}>
         {contested ? "🤘 FINALE" : "⭐ RACE"}
       </span>
 
       <div style={{ position: "relative", flex: 1, height: BLIP + 4, minWidth: 90 }}>
         {/* the rail */}
         <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 5,
-          transform: "translateY(-50%)", borderRadius: 3, background: "#0a0f1c",
-          border: `1px solid ${rail}`, boxShadow: "inset 0 1px 2px #000a",
+          transform: "translateY(-50%)", borderRadius: 3, background: P.ground,
+          border: `1px solid ${P.edge}`, boxShadow: "inset 0 1px 2px #000a",
           animation: contested ? "fame-danger 1.1s ease-in-out infinite" : undefined }}/>
 
         {/* 🎇 Stage-FX thresholds — the same notches the card bar draws, so the
@@ -75,14 +82,14 @@ export function FameRace({ spirits, fameOf, fameToWin, actingId, thresholds = []
         {thresholds.filter(t => t < fameToWin).map(t => (
           <div key={t} style={{ position: "absolute", top: "50%", height: 9,
             transform: "translateY(-50%)", width: 1.5, left: at(t),
-            background: leadFp >= t ? "#fff6d0aa" : "#ffffff26" }}/>
+            background: leadFp >= t ? `${P.lit}aa` : FAME_NEUTRAL.notchUnlit }}/>
         ))}
 
         {/* the finish line */}
         <div style={{ position: "absolute", top: "50%", height: 11, width: 2,
           transform: "translateY(-50%)", right: 0, borderRadius: 1,
-          background: contested ? "#ff6644" : "#ffd700",
-          boxShadow: `0 0 6px ${contested ? "#ff4422" : "#ffd700"}aa` }}/>
+          background: P.mark,
+          boxShadow: `0 0 6px ${P.glow}aa` }}/>
 
         {[...byScore.values()].map(group => group.map((b, i) => {
           const { sp, fp } = b;
@@ -119,7 +126,11 @@ export function FameRace({ spirits, fameOf, fameToWin, actingId, thresholds = []
               {isLead && (
                 <span style={{ position: "absolute", left: "50%", bottom: "calc(100% + 1px)",
                   transform: "translateX(-50%)", fontSize: 7, lineHeight: 1,
-                  pointerEvents: "none", textShadow: "0 0 5px #ffd700" }}>👑</span>
+                  /* ⚠️ `FAME`, NOT `P` — the crown stays gold even in the FINALE.
+                     It is not furniture reporting the state of the race, it is
+                     the thing being raced FOR, and a red crown reads as "the
+                     crown is in danger" rather than "the lead is". */
+                  pointerEvents: "none", textShadow: `0 0 5px ${FAME.glow}` }}>👑</span>
               )}
             </div>
           );
@@ -130,8 +141,8 @@ export function FameRace({ spirits, fameOf, fameToWin, actingId, thresholds = []
           "first to ⭐N FP wins"; a race track with its finish line labelled says
           the same thing in three characters and cannot be read as a button. */}
       <span style={{ fontSize: 8.5, fontWeight: 900, flexShrink: 0, letterSpacing: 0.4,
-        color: contested ? "#ff8855" : "#ffd700",
-        textShadow: `0 0 7px ${contested ? "#ff442288" : "#ffd70066"}` }}>
+        color: P.value,
+        textShadow: `0 0 7px ${P.glow}${P.haloA}` }}>
        ⭐{fameToWin}
       </span>
     </div>

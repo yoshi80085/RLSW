@@ -921,9 +921,21 @@ console.log("✓ initial state: every Spirit opens with no skills and no found s
 
 // 🪦 The `THEORY_DISCORD_GRANTS` block lived here — it asserted that the palette
 // table granted no context tiers. The table is deleted with the branch
-// (`systems/skills.js`), and the hole it leaves is asserted instead: the three
-// unlock-gated endings it fed are now unreachable, which is
-// `PROGRESSION_REWRITE_DESIGN.md` §4's job and §4 is not built.
+// (`systems/skills.js`).
+//
+// ✅ UPDATED 2026-09-02i — THE HOLE IT LEFT IS CLOSED, AND IT WAS BIGGER THAN
+// THIS FILE RECORDED. The note said "the three unlock-gated endings are now
+// unreachable". The set was FOUR (`MELODY_IDENTITY_DESIGN.md` §5.6): the fourth,
+// `discord_4`, gated `chromClimbActive` — the `allInScale` override that lets a
+// chromatic run be forgiven by the CROWD. Its knock-on was that `hasGatedEnding`
+// became a permanently-`false` input to `performanceScore`, i.e. a crowd seat the
+// game was about to re-weight per character could not fire.
+//
+// ⚠️ SO THE THING TO PIN IS NO LONGER "NOTHING GRANTS THESE IDS" — that is still
+// true and still asserted below, but it is no longer load-bearing. What must not
+// come back is the GATE: `melodyCommit.js` must not read `discordUnlocks` at all,
+// because re-granting the ids to wake the endings would also widen `keyScale` and
+// delete the colour payout §5-seats deliberately kept (everyone stays pentatonic).
 {
   for (const id of ['test_spirit', 'cosmic_ronin', 'Metalness_Monster', 'intergalactic_0']) {
     const ns = makeInitialNoteState(id, () => 0.5);
@@ -936,8 +948,19 @@ console.log("✓ initial state: every Spirit opens with no skills and no found s
   const src = readFileSync(new URL('./systems/skills.js', import.meta.url), 'utf8');
   assert.ok(!/export const THEORY_DISCORD_GRANTS/.test(src),
     '⛔ the palette table is deleted, not emptied — reviving a Theory grant must fail to import');
+
+  // ✅ AND THE KERNEL NO LONGER ASKS. Four flags used to be ANDed with membership
+  // of this array; all four are unconditional now, so the endings and the crowd's
+  // chromatic pardon depend on the MUSIC rather than on a purchase nobody can make.
+  // ⚠️ A source assertion rather than a behavioural one because the failure being
+  // guarded is a REVIVAL — someone "fixing" the dead ids by re-granting them, which
+  // would quietly widen `keyScale` and take the colour payout with it.
+  const kernel = readFileSync(new URL('./systems/melodyCommit.js', import.meta.url), 'utf8');
+  const live = kernel.split('\n').filter(l => l.includes('discordUnlocks') && !l.trimStart().startsWith('//'));
+  assert.deepEqual(live, [],
+    `⛔ the melody kernel must not gate on \`discordUnlocks\` — found: ${live.join(' | ')}`);
 }
-console.log("✓ ⛔ colour-note unlocks have no granter left — §4's ending fork is the replacement and is NOT built");
+console.log("✓ ✅ the four colour flags are UNGATED — the endings and the crowd's chromatic pardon no longer need a purchase nobody can make");
 
 
 // ═══ STACK-COLOURED NOTE STOCK — contextClaim + payout routing ══════════════
