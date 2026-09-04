@@ -39,7 +39,7 @@ import { legalActions } from "./policies/legalActions.js";
 import { applyBotAction, PARTIAL_KINDS } from "./policies/transition.js";
 import {
   commitMelodyEconomy, positionFanGain, deedFanGain, performanceFanGain,
-  checkWaNoKoe, CLIENT_OWNED, COLOR_PAYOUT_CAP, RONIN_PERF_CLIFF,
+  CLIENT_OWNED, COLOR_PAYOUT_CAP, RONIN_PERF_CLIFF,
   MIC_VOICE_ROLL_DIE, MIC_VOICE_ROLL_PASS, SPEED_CAP,
 } from "./systems/melodyCommit.js";
 import { performanceScore } from "./systems/economy.js";
@@ -446,31 +446,47 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 13. 🎵 WA NO KOE — and the bug it is FAITHFUL TO.
+// 13. 🪦 WA NO KOE IS CUT — and this section is the REVIVAL GUARD.
+//     Alex cut the ability on 2026-09-04 (`RONIN_ABILITY_DESIGN.md` §2.4). What
+//     used to live here was coverage of `checkWaNoKoe` plus a pin on the
+//     B10-shaped overwrite bug the kernel deliberately reproduced. Both are gone
+//     with the rule.
+//     ⚠️ THE ASSERTIONS ARE NOT DELETED, THEY ARE INVERTED — same move as §14,
+//     and for the same reason. §B5's cut ran past its own end with eighteen
+//     suites green, and a deletion with nothing standing on it is exactly that
+//     shape again: the next session re-adds a `waNoKoeBuffs` seat "for
+//     compatibility" and nothing anywhere goes red. So the CUT is what has a
+//     test now.
+//     📌 If the ability comes back in Alex's new form (`IDEAS_INBOX.md`), it
+//     comes back as a NEW rule with a new name and new coverage — not by
+//     reviving these symbols. Delete this section then, deliberately.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  eq(checkWaNoKoe(['C', 'E', 'G'], ['C', 'E', 'G'], {}), null, 'locked without the skill');
-  eq(checkWaNoKoe(['C', 'E', 'G'], [], { unlockedSkills: ['wa_no_koe'] }), null, 'an empty chord aligns with nothing');
-  eq(checkWaNoKoe(['A', 'B', 'D'], ['C', 'E', 'G'], { unlockedSkills: ['wa_no_koe'] }), null, 'under half is not alignment');
-  const fired = checkWaNoKoe(['C', 'E', 'A'], ['C', 'E', 'G'], { unlockedSkills: ['wa_no_koe'], driveStack: ['C', 'E', 'G'] });
-  eq(fired.stat, 'drive', 'the bigger stack takes the boost, ties to Drive');
-  eq(fired.turnsLeft, 3, '…for three rounds');
+  const kernelSrc = readFileSync(
+    fileURLToPath(new URL('./systems/melodyCommit.js', import.meta.url)), 'utf8');
+  ok(!/waNoKoe/i.test(kernelSrc),
+     '🪦 the Wa no Koe RULE is gone from the kernel — no function, no patch field, no report field');
 
-  // ⚠️ THE BUG, PINNED. In Game, `applyWaNoKoe` reads `curTemp` off the
-  // PRE-commit sheet and writes `curTemp + 1` over the tempDrive the commit just
-  // set — so a turn that earns BOTH a Drive boost and Wa no Koe silently
-  // discards the boost. Reproduced deliberately; see BOT_STRATEGY_HANDOFF §7.
-  const st = composed(['C', 'D', 'E', 'F', 'G'], {
+  const economySrc = readFileSync(
+    fileURLToPath(new URL('./systems/economy.js', import.meta.url)), 'utf8');
+  ok(!/waNoKoeBuffs/.test(economySrc),
+     '🪦 …and its seat is gone from the initial note state — a dead seat is how a cut ability keeps costing');
+
+  // The commit itself must not carry the field, on the Ronin, with the id set.
+  // ⚠️ Reading the REPORT rather than the source is the half that survives a
+  // rename: an ability re-added under any spelling shows up here as a patch key.
+  const r = run(composed(['C', 'E', 'G'], {
     unlockedSkills: ['wa_no_koe'], driveStack: ['C', 'E', 'G'], tempDrive: 0,
-  });
-  const r = run(st);
-  if (r.report.waNoKoe?.stat === 'drive') {
-    ok(r.report.diatonicRunLen >= 3, 'this track does earn a Drive boost');
-    eq(r.patch.tempDrive, 1, '⚠️ …and Wa no Koe OVERWRITES it with prevTempDrive + 1 — faithful to the shipped bug');
-  }
-  // A non-Ronin never fires it, whatever they have unlocked.
-  const metal = run(composed(['C', 'E', 'G'], { unlockedSkills: ['wa_no_koe'], driveStack: ['C', 'E', 'G'] }, METAL), METAL);
-  eq(metal.report.waNoKoe, null, 'Wa no Koe is the Ronin’s, and only his');
+  }));
+  eq(r.report.waNoKoe, undefined, '🪦 the commit report has no Wa no Koe seat');
+  ok(!Object.keys(r.patch).some(k => /waNoKoe/i.test(k)),
+     '🪦 …and the patch writes no buff list, even when the dead skill id is unlocked');
+  // ⚠️ THE NUMBER IS THE POINT. `C-E-G` is the Ronin's own chord stack, which
+  // under the old rule was a guaranteed fire: +1 Drive for 3 rounds. The track
+  // earns no Drive boost of its own, so 0 here is the ability being gone, and a
+  // 1 is it back — by any spelling, from any file.
+  eq(r.patch.tempDrive, 0,
+     '🪦 a melody sitting entirely inside the Ronin\'s own stack now pays nothing extra');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -520,10 +536,16 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
   // Two decisions the kernel already made, which the client must not re-make.
   ok(!src.includes('awardTargetSkill(acting.id)'),
      '⚠️ awardTargetSkill at the commit site would find targetSkillId already cleared and silently skip applySkillEffects');
+  // 🪦 CUT 2026-09-04. These two used to say "the kernel owns this rule, don't
+  // copy it here". They now say "this rule does not exist" — the strictly
+  // stronger claim, and the one that catches a revival by copy-paste from the
+  // archive rather than from the kernel.
   ok(!src.includes('function applyWaNoKoe('),
-     '⚠️ Wa no Koe is written by the commit patch — a second application would double the buff');
+     '🪦 Wa no Koe is CUT — a client-side application would resurrect it where no kernel rule answers');
   ok(!src.includes('function checkWaNoKoe('),
-     '⚠️ the Wa no Koe RULE lives in the kernel; a client copy is a third one');
+     '🪦 …and so would a client-side copy of the rule');
+  ok(!src.includes('function tickWaNoKoe('),
+     '🪦 …and the expiry tick went with it — a tick with no writer walks an always-empty list forever');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

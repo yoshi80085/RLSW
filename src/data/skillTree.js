@@ -32,6 +32,7 @@ import {
   DISPLACE_CD, GRAVITY_CD, CODE_INJECT_CD, SUNBEAM_CD,
   PSYCHO_BUSHIDO_CD, SHADOW_ILLUSION_CD, CURSED_SHAMISEN_CD,
   PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
+  SHUKUCHI_CD, SHUKUCHI_DB_COST, SHUKUCHI_MAX_HOPS, SHUKUCHI_HOP_RINGS, SHUKUCHI_AP_PER_HOP,
   SHADOW_ILLUSION_SUSTAIN_DRAIN,
   CURSED_SHAMISEN_DURATION, CURSED_SHAMISEN_PAYOFF_COST,
 } from "./gameConstants.js";
@@ -118,14 +119,26 @@ export const SKILL_TREE = {
       desc: 'The way of the blade meets the way of the riff. An exclusive arsenal only the Ronin can wield.',
       spiritOnly: 'cosmic_ronin',
       skills: [
+        // 🌀 SHUKUCHI IS FIRST IN THE ROUTE, AND THAT IS DELIBERATE. It is the
+        // cheapest thing in his kit and the only one that does not need a rival
+        // on the board to be worth anything, so a Ronin who buys nothing else
+        // still has a reason to walk somewhere. ⚠️ The `desc` sells the AP bill
+        // in the first sentence: the trap for a new player is reading "six hexes"
+        // and not "three of your steps".
+        { id:'shukuchi',        label:'Shukuchi Arpeggio (縮地)', icon:'🌀', dbCost:6, gated:false,
+          desc:`Shrink the earth — each step you take becomes a ${SHUKUCHI_HOP_RINGS}-hex LEAP, up to ${SHUKUCHI_MAX_HOPS} of them, and each leap still costs ${SHUKUCHI_AP_PER_HOP} Action Point exactly like walking. ⚠️ THREE LEAPS IS THREE OF YOUR STEPS — six hexes of ground for the price of three, not for free. You may take one, two or three, and each one picks its own direction. 🌀 NOTHING STOPS YOU IN THE AIR: bodies, hazards, walls and 🐙 poison slime all pass underneath, and only the hex you LAND on has to be empty. 🎵 Every landing picks up a Lost Chord note you touch down on. ⚠️ You end up facing the way you last leapt, so line up the strike with your final hop. ${SHUKUCHI_DB_COST} Db to call it, ${SHUKUCHI_CD}-round cooldown — and the clock starts on the FIRST leap, so a Ronin who hops once and thinks better of it has spent the whole ability.` },
         { id:'psycho_bushido',  label:'Psycho Bushido',  icon:'🌀', dbCost:6,  gated:false,
           desc:`Iaijutsu dash — charge in a straight line from your facing and strike whoever you reach. Whatever AP you did not need for the run-up is added to THAT strike as bonus Drive. ⚠️ It powers the blow and expires with the battle — it does not join your Drive stack, and it shares the +5 ceiling with every other attack bonus. ${PSYCHO_BUSHIDO_DB_COST} Db a charge, ${PSYCHO_BUSHIDO_CD}-round cooldown — and it spends every Action Point you have left, so a charge from next door is worse than the Swing it replaces.` },
         { id:'shadow_illusion', label:'Shadow Illusion', icon:'👤', dbCost:6,  gated:false,
           desc:`Split into a second, identical Ronin, born stacked on your own hex (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown) — nobody sees which one appeared. Rivals cannot tell the double from the real you: it blocks, it faces, and it walks the board on its own steps, refreshed each turn to match your movement range at no cost to your Action Points. 🎵 It can also PICK UP LOST CHORD NOTES for you — an illusion made of sound can carry a sound. It cannot take ⚡ charge zones or 🎪 event spaces, and hazards pass straight through it. ⚠️ IT FEEDS ON YOU: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it comes apart the moment you have none to give — you are at your most fragile exactly while nobody can tell which body to hit. Lasts 3 turns. Pops if it is struck, if you attack, or if you are attacked. Whoever swings at it burns their AP and Action Token for nothing.` },
+        // ⚠️ THE SHAMISEN'S `desc` NAMES BUSHIDO AND SHADOW ILLUSION AND STOPS,
+        // AND THAT IS NOW THE WHOLE LIST. It used to name Wa no Koe too, which
+        // had no cooldown to accelerate — `tickShamisen` only walks entries that
+        // already exist in `abilityCd`, so there was never anything to speed up.
+        // 🪦 Wa no Koe was CUT 2026-09-04 (`RONIN_ABILITY_DESIGN.md` §2.4). The
+        // kit is three until 🌀 Shukuchi lands; add it here when it does.
         { id:'cursed_shamisen', label:'Cursed Shamisen', icon:'🎸', dbCost:8,  gated:false,
-          desc:`Invoke the cursed strings (${CURSED_SHAMISEN_DB_COST} Db, ${CURSED_SHAMISEN_CD}-round cooldown). For ${CURSED_SHAMISEN_DURATION} rounds, ALL of the Ronin's OTHER ability cooldowns tick at 2× speed — Bushido, Shadow Illusion and Wa no Koe all come back in half the time. While the curse is active the Ronin GLOWS purple on the board: everyone can see he is exposed, but nobody knows if he paid the debt. ⚠️ THE CURSE: if the Ronin takes ANY Vibe damage in battle while glowing and has NOT paid ${CURSED_SHAMISEN_PAYOFF_COST} Db that round, ALL of his cooldowns RESET to their full duration — the acceleration backfires. He can pay ${CURSED_SHAMISEN_PAYOFF_COST} Db each round to protect himself, but the glow stays regardless, so rivals can never tell whether an attack will punish him or not. That is the bluff.` },
-        { id:'wa_no_koe',       label:'Wa no Koe (和の声)', icon:'🎵', dbCost:12, gated:false,
-          desc:'Voice of Harmony — when half your melody or more sits inside your Drive or Sustain stack, the alignment pays +1 Drive or Sustain for 3 rounds. The Ronin already starts holding CHORD TONE PARDON, so those same notes are never Discord for him either: this is the amplifier on top of an instinct he was born with.' },
+          desc:`Invoke the cursed strings (${CURSED_SHAMISEN_DB_COST} Db, ${CURSED_SHAMISEN_CD}-round cooldown). For ${CURSED_SHAMISEN_DURATION} rounds, ALL of the Ronin's OTHER ability cooldowns tick at 2× speed — Bushido and Shadow Illusion both come back in half the time. While the curse is active the Ronin GLOWS purple on the board: everyone can see he is exposed, but nobody knows if he paid the debt. ⚠️ THE CURSE: if the Ronin takes ANY Vibe damage in battle while glowing and has NOT paid ${CURSED_SHAMISEN_PAYOFF_COST} Db that round, ALL of his cooldowns RESET to their full duration — the acceleration backfires. He can pay ${CURSED_SHAMISEN_PAYOFF_COST} Db each round to protect himself, but the glow stays regardless, so rivals can never tell whether an attack will punish him or not. That is the bluff.` },
       ],
     },
     {

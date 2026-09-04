@@ -164,23 +164,6 @@ export function performanceFanGain(fans, gained, promotions, lost) {
   return { casuals, diehards };
 }
 
-// ─── 🎵 WA NO KOE — Ronin's harmony passive ─────────────────────────────────
-/**
- * Melody aligned with the chord stack (≥ half the notes) converts to +1 Drive or
- * Sustain for 3 rounds. Pure; returns `null` when it does not fire.
- */
-export function checkWaNoKoe(melodyLine, chordStack, ns = {}) {
-  if (!(ns.unlockedSkills ?? []).includes('wa_no_koe')) return null;
-  if (!melodyLine || melodyLine.length === 0 || !chordStack) return null;
-  const chordNotes = new Set((chordStack ?? []).map(n => typeof n === 'string' ? n.replace(/\d/g, '') : n));
-  if (chordNotes.size === 0) return null;
-  const melodyNotes = melodyLine.map(n => typeof n === 'string' ? n.replace(/\d/g, '') : n);
-  const matchCount  = melodyNotes.filter(n => chordNotes.has(n)).length;
-  if (matchCount / melodyNotes.length < 0.5) return null;
-  const stat = (ns.driveStack ?? []).length >= (ns.sustainStack ?? []).length ? 'drive' : 'sustain';
-  return { stat, turnsLeft: 3 };
-}
-
 // ─── THE COMMIT ──────────────────────────────────────────────────────────────
 /**
  * Run the economic half of a melody commit.
@@ -592,28 +575,6 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     }
   }
 
-  // ── 🎵 WA NO KOE ──────────────────────────────────────────────────────────
-  // ⚠️ FAITHFUL TO A BUG. In Game, `applyWaNoKoe` reads `curTemp` off the
-  // RENDER-SCOPED `actingNoteState` — i.e. the PRE-commit value — and writes
-  // `curTemp + 1` over the `tempDrive`/`tempSustain` the commit patch just set.
-  // So on a turn where the Ronin earns both a Drive boost AND Wa no Koe, the
-  // boost is SILENTLY DISCARDED and he ends on `oldTempDrive + 1`.
-  //
-  // Reproduced rather than fixed, because this file's job is to match the game
-  // that ships, and a kernel that quietly plays a better game than the client is
-  // the same failure as an invented rule. Fix it in ONE place when it is fixed
-  // — see BOT_STRATEGY_HANDOFF §7.
-  let waNoKoe = null;
-  if (isRonin) {
-    waNoKoe = checkWaNoKoe(melodyLine, [...driveStack, ...sustainStack], ns);
-    if (waNoKoe) {
-      patch.waNoKoeBuffs = [...(ns.waNoKoeBuffs ?? []), waNoKoe];
-      if (waNoKoe.stat === 'drive') patch.tempDrive   = prevTempDrive   + 1;
-      else                          patch.tempSustain = prevTempSustain + 1;
-      logs.push(`🎵 WA NO KOE! Melody harmonizes with the chord — +1 ${waNoKoe.stat === 'drive' ? 'Drive' : 'Sustain'} for 3 rounds.`);
-    }
-  }
-
   // ── THE ORDERED EFFECTS ───────────────────────────────────────────────────
   // Client timing: position fans 0ms, performance fans 0ms, riff Fame 500ms,
   // cadence fans 700ms. Fans are folded SEQUENTIALLY (never summed) so each cap
@@ -735,7 +696,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
       // rather than only in a log line so a check, a searcher, or a HUD can
       // read it without re-detecting — one reading, three consumers.
       style: { score: style.score, hits: style.hits, labels: style.labels },
-      lowPerfStreak, waNoKoe,
+      lowPerfStreak,
       totalNotes, usableMoves, overflow, canBank, bankedNote: newBankedNote, speed,
       newRootRaw, newMode, fans,
       positionFans: pos ? { ring: pos.ring, base: pos.base, recruit: pos.recruit, promoted: pos.promoted } : null,

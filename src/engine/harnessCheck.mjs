@@ -374,7 +374,8 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
   ok(ownedAny >= 0.75 * ownedSeats.length,
      `⚠️ …and it pays out BROADLY, not to one runaway seat — ${ownedAny}/${ownedSeats.length} seats own at least one skill`);
 
-  const ownedBy = { psycho_bushido: RONIN, shadow_illusion: RONIN, cursed_shamisen: RONIN, wa_no_koe: RONIN,
+  // 🪦 `wa_no_koe: RONIN` was the fourth entry until 2026-09-04 — CUT.
+  const ownedBy = { psycho_bushido: RONIN, shadow_illusion: RONIN, cursed_shamisen: RONIN,
                     tentacle: MM, goes_to_11: MM, master_moshpits: MM, azrael: MM,
                     blaster_of_ra: ZERO };
   for (const b of aimed) {

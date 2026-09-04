@@ -120,6 +120,12 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
     committedMelody:  null,   // Phase R1: clear last turn's stashed melody
     committedFreq:    null,
     stackCommitsThisTurn: 0,  // 🎸 fresh stack commit budget each turn
+    // 🌀 THE HOP BUDGET IS PER TURN, THE COOLDOWN IS PER ROUND, and they are
+    // different clocks on purpose. One activation buys up to three hops in the
+    // turn it was fired; anything left over does NOT carry, or a Ronin could
+    // bank a hop against a turn he had not paid for. The 3-round cooldown below
+    // is what stops him firing again.
+    shukuchiHopsLeft: 0,
     usedStockIdx: carriedUsed,
     discordCount: 0,
     payoutRouting: {},        // dies with the track it indexes into

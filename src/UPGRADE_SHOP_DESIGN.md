@@ -1,5 +1,11 @@
 # 💰 THE UPGRADE SHOP — what Db is FOR
 
+> ⛔ **READ §0⃣ FIRST — THE PRICING PREMISE CHANGED 2026-09-04.** Flat base cost
+> for every ability, one ability free at setup, and rising per-ability upgrade
+> prices. **R2 and R3 of §2 are superseded and §3.1's price column is void.** The
+> measured work in §1 is still good — better than good, it is what makes the new
+> rule obviously right — but the shop it prices is not the shop any more.
+>
 > **Design only. Nothing is built.** Fills `PROGRESSION_REWRITE_DESIGN.md` §5
 > (*"the Db sink: upgrade streams on the abilities you already have"*), which that
 > doc marks ⛔ **NOT BUILT — AND THE MOST URGENT ITEM IN THIS DOC**, and which
@@ -9,6 +15,98 @@
 > ⚠️ **SCOPE IS TWO SPIRITS.** 🗡️ Shredding Ronin and 🌀 Intergalactic 0.
 > 👹 Metalness Monster is excluded on Alex's instruction — he needs rewiring first
 > (`METALNESS_REWORK_DESIGN.md`). 🎀 Glamarchy is being cut (§5-glow.F).
+
+---
+
+## 0⃣ THE 2026-09-04 RULE CHANGE — ⭐ FLAT BASE COST, ONE FREE ABILITY, RISING DEPTH
+
+**Alex, 2026-09-04.** Three rules, and they replace this doc's pricing premise:
+
+1. ⭐ **EVERY BASE ABILITY COSTS THE SAME.** No ability's unlock price is higher
+   than another's, on any Spirit.
+2. ⭐ **EVERY SEAT STARTS WITH ONE ABILITY ALREADY ACTIVE**, chosen at setup.
+3. ⭐ **UPGRADE PRICES RISE PER ABILITY.** Each further step *on that same ability*
+   costs more than the last. Depth gets expensive; breadth stays flat.
+
+### 0⃣.1 🎯 RULE 1 IS THE FIX FOR §1.1, AND §1.1 IS THIS DOC'S CENTRAL FINDING
+
+§1.1 measured that the arsenals are bought in **price order, not value order** — a
+near-perfect inverse ranking, every 6 Db skill taken by 70–98% of seats and every
+skill over 10 Db by about one in ten, *"with no reference to what the ability
+does."* It called that `GAME_BRIEF.md` §16 problem #1 wearing a different hat.
+
+⭐ **A FLAT BASE PRICE DELETES THE MECHANISM THAT PRODUCED THAT TABLE.** When
+every ability costs the same, price cannot sort them, so **the only thing left to
+choose on is what the ability DOES.** That is not a mitigation of the finding; it
+removes the variable the finding is about.
+
+⚠️ **AND IT INVALIDATES R2, WHICH WAS BUILT ON THE OLD WORLD.** R2 said *"an
+upgrade costs AT LEAST what its base ability cost"*, reasoning that *"price IS the
+purchase order."* Under rule 1 price is no longer any order at all, so R2's
+justification is gone. **Rule 3 replaces it and does the job better:** a rising
+per-ability ladder makes depth self-limiting through cost instead of through a
+hand-set floor.
+
+⚠️ **R3 IS ALSO SUPERSEDED.** R3 said *go shallow — ONE step per ability*, because
+*"a second step is balance surface nobody reaches."* That was a workaround for a
+19 Db median income against flat-priced steps. **A rising ladder handles it
+natively** — step 2 is unreachable for most seats *because it is expensive*, not
+because the design forbids it, and the seat that does reach it has made a real
+choice. 🎯 **Rule 3 is strictly better than R3: same outcome, no arbitrary cap,
+and a ceiling for a rich seat to actually play toward.**
+
+✅ **R1 SURVIVES UNTOUCHED** — *an upgrade is a TRADE, never a strict improvement*
+— and is now the only one of the three rules still standing. 📌 It is also the one
+that was never about price.
+
+### 0⃣.2 🎯 RULE 2 FIXES THE OTHER HALF OF §1.1
+
+§1.2 flagged that 🌀 Blaster of Ra (17%) and ☀️ Sunbeam (10%) *"barely get seen as
+it is."* An ability almost nobody buys is content that was built and is not being
+played. **Starting every seat with one ability active guarantees at least one
+arsenal ability is in play from turn one, on every seat, in every match** — and
+because rule 1 makes them all cost the same, the free one can be **any** of them.
+
+📌 **It also front-loads the fun**, which is Alex's stated reason: a seat opens
+with something to *do*, rather than several turns of saving up before the
+character has a kit at all.
+
+### 0⃣.3 ⚠️ WHAT THESE RULES OPEN — genuinely undecided
+
+- ⛔ **What IS the flat number?** Today's spread is 6–14. A flat price near the
+  bottom makes the whole arsenal reachable and Db loses its bite; near the top and
+  a seat on a 19 Db median buys one ability all match. **This is the single number
+  the whole economy now turns on**, and §1's measured budget is the instrument for
+  setting it.
+- ⛔ **Does the free ability still cost Db later, or is it genuinely free?**
+- ⛔ **What does the rising ladder look like** — +2 per step, doubling, something
+  else? And is there a cap, or does it just run away?
+- ⚠️ **Do the Ronin's respecced prices (§3.1: 6 / 8 / 10) survive?** They cannot —
+  rule 1 flattens them. **§3.1's price column is void as of this rule**; its
+  mechanics, AP, ranges and cooldowns are unaffected.
+- 📌 **Do per-use costs flatten too?** Alex said *base abilities*, which reads as
+  unlock price only. Per-use Db (§0 of `RONIN_ABILITY_DESIGN.md`) is a separate
+  rule and is assumed untouched.
+
+### 0⃣.4 🧊 BALANCE IS DEFERRED, DELIBERATELY — Alex, 2026-09-04
+
+> *"Moving things around necessarily means that balance is going to go into whack
+> during the process. That's fine for now. This is a problem for when everything
+> gets built out. Until that time, nothing is 'lost' as it were, since things are
+> still in flux."*
+
+🎯 **THIS IS A STANDING INSTRUCTION AND IT APPLIES TO EVERY DOC IN THIS REPO, NOT
+JUST THIS ONE.** While the kit is in flux, a measured imbalance is **information,
+not a defect**, and a design pass should record it and move on rather than stopping
+to compensate for it. ⚠️ **Do not open a session by proposing to rebalance a
+character.** The Ronin's "three straight nerfs" ledger
+(`RONIN_ABILITY_DESIGN.md` §2.4.2) is the worked example: it is real, it is
+correctly recorded, and **it is explicitly not to be acted on yet.**
+
+📌 **What still IS worth flagging:** a change that makes something *impossible*
+rather than merely weak — an ability that cannot fire, a purchase nobody can make,
+a flag that can never be true. Those are bugs wearing balance's clothes, and §5 of
+`SEQUENCING.md` is a list of what they cost when they go unnoticed.
 
 ---
 
@@ -100,6 +198,20 @@ thing nobody else can grant**.
 
 ## 3. ⚠️ BEFORE THE SHOP — the base kit Alex specified is NOT what ships
 
+> ✅ **PROMOTED 2026-09-04 — `RONIN_ABILITY_DESIGN.md` §2 IS NOW THE CANONICAL
+> COPY OF §3.1, AND IT HAS MOVED ON.** This table was right and was in the wrong
+> house: a *pricing* doc is not where anyone looks up what an ability does, so for
+> two days the canonical Ronin doc called the old four "FIRM DECISIONS" and had
+> never heard of Shukuchi. **Read §2 of that file, not §3.1 of this one.**
+>
+> ⛔ **AND THE SHAMISEN LINE BELOW IS ALREADY SUPERSEDED.** Alex reworked it again
+> on 2026-09-04: it is no longer *"all CDs −1 turn"* on himself but a **SIPHON**
+> that steals cooldown off a rival (`RONIN_ABILITY_DESIGN.md` §2.3.0). **§4 #4 of
+> this doc prices an upgrade on the version that is being deleted** — "the deeper
+> debt" buys CD relief −1 → −2 on an ability that no longer relieves his own
+> cooldowns at all. ⚠️ **That upgrade must be re-cut against the siphon before
+> anything in §4 is built.**
+
 The abilities Alex described in this conversation differ from the shipped ones in
 ways the shop sits directly on top of. **The shop cannot be priced against numbers
 that are about to change**, so this table is a decision, not a footnote.
@@ -122,17 +234,20 @@ CD 2), 💻 Code Injection (6, use 1, CD 2), ☀️ Sunbeam (14, use 2/hit, CD 2
 
 ### 3.3 ⛔ Three things §3 forces, and none of them are shop questions
 
-- 🪦 **CUTTING WA NO KOE IS A DELETION PASS, NOT A LINE.** It has a real
-  footprint: `checkWaNoKoe` + `waNoKoeBuffs` in `melodyCommit.js`, its own seat in
-  `economy.js`'s initial note state, the Ronin's `skillOrder` in `bot.js`, **5
-  client references**, and live assertions in `melodyCommitCheck`, `shamisenCheck`
-  and `harnessCheck`. ⚠️ Delete it properly or it becomes the next `combat.js`
-  dead-function scar (§6 of the rewrite).
+- ✅ **CUTTING WA NO KOE WAS A DELETION PASS, AND IT IS DONE (2026-09-04).** The
+  footprint this section measured — `checkWaNoKoe` + `waNoKoeBuffs` in
+  `melodyCommit.js`, the seat in `economy.js`, the Ronin's `skillOrder` in
+  `bot.js`, **5 client references**, live assertions in `melodyCommitCheck`,
+  `shamisenCheck` and `harnessCheck` — was accurate, and every item is gone.
+  📌 **The 12 Db slot is empty**, which is a shop question: the Ronin's ladder is
+  three deep and his most expensive rung no longer exists.
 - ⚠️ **AND IT MAKES THE RONIN WEAKER AGAIN.** §5-seats.C already flagged that
   losing the shared Theory ladder cost him his head start, and explicitly noted
   *"Wa no Koe still stacks on top exactly as designed"* as the thing he had left.
-  Shukuchi (6 Db) arrives as Wa no Koe (12 Db) leaves. 📌 That is a
-  `CHARACTER_HANDOFF.md` question and it should be answered there, not here.
+  Shukuchi (6 Db) arrives as Wa no Koe (12 Db) leaves. ✅ **ANSWERED-AS-ASKED:
+  the ledger is now written up in `CHARACTER_HANDOFF.md` under "THE RONIN
+  LEDGER", where it can be decided.** It is not a shop question and it is not
+  answered here.
 - ⚠️ **PSYCHO BUSHIDO'S REWRITE DELETES ITS BEST IDEA.** The shipped
   "whatever AP you did not need becomes bonus Drive" is what makes a charge from
   across the board better than a charge from next door — it prices the run-up.
@@ -149,10 +264,19 @@ One step each, priced at R2, each a trade per R1.
 
 | # | upgrade | Db | what it gives | ⚠️ what it takes |
 |---|---|---:|---|---|
-| 1 | 🌀 **Shukuchi · "the fourth step"** | 6 | a **4th** jump on the movement turn | use cost **1 → 2 Db** |
+| 1 | 🌀 **Shukuchi · "the fourth step"** ⚠️ **RE-CUT ME** | 6 | a **4th** jump on the movement turn | use cost **1 → 2 Db** |
 | 2 | 🗡️ **Bushido · "Iai — the drawn cut"** | 8 | AP **3 → 2** (Alex's own "less AP" lever) | Drive bonus **+3 → +2** |
 | 3 | 👤 **Shadow Illusion · "the long shadow"** | 10 | lasts **2 → 3** turns | Sustain drain **1 → 2 per round** |
 | 4 | 🎸 **Cursed Shamisen · "the deeper debt"** | 8 | cooldown relief **−1 → −2 turns** | use cost **1 → 2 Db**, and on Vibe loss the **two** soonest abilities restart, not one |
+
+⚠️ **#1 WAS PRICED AGAINST AN ABILITY THAT DID NOT EXIST, AND NOW IT DOES.**
+Shukuchi was built 2026-09-04 and its rule is **1 AP per hop**
+(`RONIN_ABILITY_DESIGN.md` §2.5.0), not "the movement turn". So a fourth step is
+not one more hex of value — it is a **fourth AP**, only reachable on a turn he has
+the pool for, and it competes directly with the strike he was hopping toward. The
+"what it takes" column is also doubtful now: the Db is charged **per activation**,
+so 1 → 2 Db is a flat +1 on the whole ability rather than a per-hop tax. 📌 Both
+halves of this row want re-cutting before anyone quotes it.
 
 🎯 **#3 is the one to keep whatever else changes.** It does not make the illusion
 bigger, it makes it *more itself* — the ability's stated identity is already *"IT

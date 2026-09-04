@@ -28,6 +28,8 @@
 
 import {
   PSYCHO_BUSHIDO_CD,
+  SHUKUCHI_CD,
+  SHUKUCHI_DB_COST,
   SHADOW_ILLUSION_CD,
   CURSED_SHAMISEN_CD,
   PSYCHO_BUSHIDO_DB_COST,
@@ -51,6 +53,11 @@ import {
  */
 export const ABILITY_CD = {
   psycho_bushido:  PSYCHO_BUSHIDO_CD,
+  // 🌀 ⚠️ THE CLOCK STARTS ON THE FIRST HOP, NOT THE LAST. One activation buys
+  // up to three hops in the same turn (`ns.shukuchiHopsLeft`), and only the
+  // first of them passes through `firePatch` — so a Ronin who hops once and
+  // thinks better of it has spent the ability. §2.5.0a.
+  shukuchi:        SHUKUCHI_CD,
   shadow_illusion: SHADOW_ILLUSION_CD,
   cursed_shamisen: CURSED_SHAMISEN_CD,
   displace:        DISPLACE_CD,
@@ -82,6 +89,10 @@ export const ABILITY_CD = {
  */
 export const ABILITY_DB_COST = {
   psycho_bushido:  PSYCHO_BUSHIDO_DB_COST,
+  // 🌀 PER ACTIVATION, NOT PER HOP — §2.5 says "1 Db per use" and §2.5.0a
+  // records that the sentence had two readings once hops were billed
+  // individually. Per-hop is one constant away if the AP bill proves too weak.
+  shukuchi:        SHUKUCHI_DB_COST,
   shadow_illusion: SHADOW_ILLUSION_DB_COST,
   cursed_shamisen: CURSED_SHAMISEN_DB_COST,
   displace:        DISPLACE_DB_COST,

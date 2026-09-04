@@ -131,7 +131,7 @@ exist. Read out of source 2026-09-02.
 | Diatonic step run | `detectDiatonicRun` | **Drive** (`driveBoostFromRun` → `tempDrive`) |
 | Repeat pattern | `detectRepeatPattern` | **Sustain** (`sustainBoostFromPattern` → `tempSustain`) |
 | Chord-pardoned notes, anywhere in the line | `countPardonedByStack` | **Drive/Sustain** (`colorDrive`/`colorSustain`, cap 2) |
-| Melody ⊂ stack (Ronin) | `checkWaNoKoe` | +1 Drive **or** Sustain, 3 rounds — *being replaced* |
+| 🪦 ~~Melody ⊂ stack (Ronin)~~ | ~~`checkWaNoKoe`~~ | **NOTHING — the ability was CUT and deleted 2026-09-04.** The Ronin is paid no differently from anyone else for playing inside his own chord. ⚠️ Any §5 weighting that assumed this seat exists is weighting a rule the game does not have |
 | Skip climb / arpeggio | `detectSkipClimb` | ❗ **CROWD ONLY** — one point in `perfGest`. It does NOT pay Drive. |
 | Chromatic run | `detectChromaticRun` | ❗ **NOTHING in Db.** `chromaticPayout` was DELETED — it fired on 1% of commits, worth 0.02 Db each over 15,000 commits. It now only flips `allInScale` (see §5.3). |
 | Tritone present | `trackHasTritone` | Crowd (`perfGest`) |

@@ -134,6 +134,28 @@ export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
 export const PSYCHO_BUSHIDO_CD     = 2;   // rounds, ticked in turnFlow
 export const PSYCHO_BUSHIDO_MIN_AP = 2;   // 1 hex of run-up + the Swing's own AP
 
+// ─── 🌀 SHUKUCHI ARPEGGIO — 縮地, "shrinking the earth" ───────────────────────
+//
+// An arpeggio is one chord played as separate notes in sequence, and that is
+// exactly the movement: one distance, taken as three strikes of the foot.
+// `RONIN_ABILITY_DESIGN.md` §2.5 and §2.5.0.
+//
+// ⭐ IT IS A MOVEMENT MODE, NOT A MOVEMENT TURN (Alex, 2026-09-04). The first
+// sketch spent the whole turn for six hexes. What ships bills each hop out of
+// the SAME `moveStepsLeft` pool as walking, Swinging and Bushido — so three hops
+// is a Bushido he did not throw, and the ability competes with the rest of his
+// turn instead of sitting outside it.
+//
+// ⚠️ THE HOP JUMPS OVER EVERYTHING — bodies, hazards, walls, 🐙 the slime trail
+// (Alex, §2.5.2 #1). Only the LANDING hex has to be clear. That is knowingly a
+// hard counter to area denial; the accepted brake is the AP bill, NOT a hazard
+// exception, because a Shukuchi that stops at slime is walking with a Db cost.
+export const SHUKUCHI_CD         = 3;  // rounds, ticked in turnFlow
+export const SHUKUCHI_DB_COST    = 1;  // Db charged ONCE per activation — see §2.5.0a
+export const SHUKUCHI_MAX_HOPS   = 3;  // hops available for the rest of the turn, once fired
+export const SHUKUCHI_HOP_RINGS  = 2;  // every hop is EXACTLY this far — not "up to"
+export const SHUKUCHI_AP_PER_HOP = 1;  // ⭐ the whole balance of the ability lives on this line
+
 // ─── 🕒💿 EVERY ABILITY COSTS Db AND TAKES A COOLDOWN ────────────────────────
 //
 // Alex's rule, 2026-08-22 (`RONIN_ABILITY_DESIGN.md` §0): an ability with no

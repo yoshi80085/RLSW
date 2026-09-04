@@ -49,7 +49,6 @@ ok(ABILITY_CD['shadow_illusion'] > 0,
     psycho_bushido: 4,
     shadow_illusion: 3,
     cursed_shamisen: 3,
-    wa_no_koe: 2,
   }};
 
   const result = tickShamisen(ns);
@@ -58,8 +57,6 @@ ok(ABILITY_CD['shadow_illusion'] > 0,
     '🎸 Bushido ticks DOWN by 1 extra');
   eq(result['shadow_illusion'], 2,
     '🎸 Shadow Illusion ticks DOWN by 1 extra');
-  eq(result['wa_no_koe'], 1,
-    '🎸 Wa no Koe ticks DOWN by 1 extra');
   eq(result['cursed_shamisen'], 3,
     '⚠️ THE SHAMISEN\'S OWN COOLDOWN IS UNTOUCHED — it must NOT accelerate itself, or you get a recursive loop that makes the ability free');
 }
@@ -109,7 +106,9 @@ ok(ABILITY_CD['shadow_illusion'] > 0,
     shadow_illusion: 0,
     cursed_shamisen: 2,
   }};
-  const unlocked = ['psycho_bushido', 'shadow_illusion', 'cursed_shamisen', 'wa_no_koe'];
+  // 🪦 `wa_no_koe` was the fourth id here until 2026-09-04. It is CUT
+  // (RONIN_ABILITY_DESIGN §2.4) and the guard below replaces the row it had.
+  const unlocked = ['psycho_bushido', 'shadow_illusion', 'cursed_shamisen'];
   const result = resetAllCooldowns(ns, unlocked);
 
   eq(result['psycho_bushido'], ABILITY_CD['psycho_bushido'],
@@ -118,8 +117,14 @@ ok(ABILITY_CD['shadow_illusion'] > 0,
     '💀 Shadow Illusion resets to full even though it was already ready');
   eq(result['cursed_shamisen'], ABILITY_CD['cursed_shamisen'],
     '💀 the Shamisen ITSELF resets too — the punishment is total');
-  ok(result['wa_no_koe'] === undefined || result['wa_no_koe'] === (ABILITY_CD['wa_no_koe'] ?? 0),
-    '🎸 Wa no Koe: if it has a CD in ABILITY_CD it resets, otherwise it stays as-is');
+  // ⚠️ THE CUT, GUARDED AT THE COOLDOWN TABLE. The Ronin's kit is THREE until
+  // 🌀 Shukuchi lands. A `wa_no_koe` row appearing in `ABILITY_CD` again would
+  // mean the ability came back through the cooldown door — the one place a dead
+  // id can start ticking without anybody adding a skill row.
+  eq(ABILITY_CD['wa_no_koe'], undefined,
+    '🪦 Wa no Koe holds no cooldown seat — it is cut, not merely un-purchasable');
+  eq(result['wa_no_koe'], undefined,
+    '🪦 …and resetAllCooldowns writes nothing under its id');
 }
 
 {

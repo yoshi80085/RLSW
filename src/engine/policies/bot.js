@@ -94,7 +94,13 @@ export const BOT_SKILL_PRIORITY_BASE = [];
 
 // Exclusive-route passives, slotted in up front for the spirit that owns them.
 export const BOT_SPIRIT_SKILLS = {
-  cosmic_ronin:      ['psycho_bushido', 'shadow_illusion', 'cursed_shamisen', 'wa_no_koe'],
+  // 🪦 `wa_no_koe` was the fourth entry until 2026-09-04 (RONIN_ABILITY_DESIGN
+  // §2.4) and is CUT. 🌀 `shukuchi` replaced it in the ladder the same day.
+  // 📌 IT IS LISTED FIRST BECAUSE IT IS THE CHEAPEST AND THE MOST SELF-CONTAINED
+  // — the bot buys ~2.7 skills a match (§7b.2), so a fourth entry is bought
+  // almost never and a first entry is bought almost always. Order here is
+  // effectively "which one does the bench actually see".
+  cosmic_ronin:      ['shukuchi', 'psycho_bushido', 'shadow_illusion', 'cursed_shamisen'],
   Metalness_Monster: ['goes_to_11', 'master_moshpits', 'tentacle', 'azrael'],
 };
 
@@ -721,6 +727,11 @@ export const BOT_CLIENT_KINDS = new Set([
   // 🌀 The Ronin's dash — `resolvePsychoBushido` is a one-argument client
   // function that already existed; wiring it was one switch case.
   'psychoBushido',
+  // 🌀 The Ronin's hop — wired 2026-09-04e. `resolveShukuchiHop` is reached the
+  // same way `move` is (set the action for the overlay, then call the resolver),
+  // and it deliberately reads the landing set as a FUNCTION rather than as the
+  // render memo, so a same-tick bot call cannot be refused by a stale highlight.
+  'shukuchi',
   // 🧪 Metalness's trail and his dial. `.scratch/clientkinds.mjs` is why these
   // are here rather than in the gap list: he reaches for them constantly.
   'slime', 'eleven', 'slide',
@@ -733,4 +744,10 @@ export const BOT_CLIENT_KINDS = new Set([
 //     transition.js), so the legacy bot's best attack is absent from searcher
 //     play entirely. That is the single biggest behavioural difference between
 //     the two bots and it belongs in any comparison of them.
+// 🌀 SHUKUCHI CAME OFF THIS LIST 2026-09-04e, when the overlay was ported and
+// `resolveShukuchiHop` gave the searcher a client path. ⚠️ Ronin bench numbers
+// from 2026-09-04c and 2026-09-04d were read against a client that could NOT
+// take the hops the searcher planned; they are not comparable with anything
+// measured after this line changed, and re-benching is the only way to close
+// that gap rather than assuming it closed itself.
 export const BOT_CLIENT_GAPS = new Set(['smash', 'blaster']);

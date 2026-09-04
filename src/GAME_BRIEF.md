@@ -458,10 +458,11 @@ Each playable Spirit has an exclusive route nobody else can buy.
 
 | Ability | Db | What |
 |---|---:|---|
+| 🌀 Shukuchi Arpeggio (縮地) | 6 | ⭐ **NEW 2026-09-04.** Each step becomes a **2-hex leap**, up to **3** a turn, and **each leap still costs 1 AP** — six hexes of ground for three of your steps, not for free. Any direction, one at a time. **Nothing stops him in the air**: bodies, hazards, walls and 🐙 slime all pass underneath, and only the LANDING hex must be clear. Every landing picks up a Lost Chord. He ends facing his last leap. 1 Db per activation, 3-round cooldown, and the clock starts on the FIRST leap (`SHUKUCHI_*`). ⛔ **Built headless — no button yet** |
 | Psycho Bushido | 6 | Iaijutsu dash in a straight line; **unused AP becomes bonus Drive on that strike**. Cooldown 2 turns, min 2 AP (`PSYCHO_BUSHIDO_CD/MIN_AP`) |
 | Shadow Illusion | 6 | A decoy |
 | Cursed Shamisen | 8 | Minor-key haunt — ticks **once per round**, only touches Spirits in a minor scale mode |
-| Wa no Koe (和の声) | 12 | ≥half your melody sitting inside your stack pays +1 Drive or Sustain for 3 rounds. **Reworked in B10** (Ronin now gets Chord Tone Pardon free, so this amplifies it). ⚠️ One bug survived that rework — see below |
+| ~~Wa no Koe (和の声)~~ | ~~12~~ | 🪦 **CUT AND DELETED 2026-09-04.** See the tombstone below. The 12 Db mastery slot is **empty** |
 
 **🧪 Metalness Monster**
 
@@ -475,63 +476,40 @@ Each playable Spirit has an exclusive route nobody else can buy.
 Plus the slime trail (innate): 3-turn lifetime, max 6 tiles, 3 move steps,
 2 slide steps per turn (`SLIME_*`, `SLIDE_STEPS_PER_TURN`).
 
-### ⚠️ Wa no Koe — reworked once, and one bug of the same shape survived it
+### 🪦 Wa no Koe — CUT 2026-09-04, and deleted from the code the same day
 
-The 12 Db Ronin capstone. It fires on a melody commit when **≥50% of the melody's
-note names appear in the combined Drive+Sustain stack**, granting +1 `tempDrive` or
-`tempSustain` and pushing a 3-turn entry onto `waNoKoeBuffs`.
+The 12 Db Ronin capstone: ≥50% of the committed melody's note names appearing in
+his Drive+Sustain stack paid +1 `tempDrive` or `tempSustain` for 3 rounds. **Alex
+cut it** (`RONIN_ABILITY_DESIGN.md` §2.4) and the deletion pass landed — no
+kernel function, no buff seat, no skill row, no bot entry. 🌀 Shukuchi Arpeggio
+(6 Db) is the kit's fourth slot now, and it is not this ability's heir.
 
-**It was reworked in the Theory rewrite (task B10, shipped).** That pass did three
-things: it granted the Ronin `theory_minor` — the Chord Tone Pardon — **free from
-turn one**, so his signature became the amplifier on an instinct he was born with
-rather than a gimmick the Theory tree had obsoleted; it rewrote the card text to say
-so; and it fixed a real bug
+⚠️ **THREE BUGS DIED WITH IT AND ONE DID NOT.**
 
-⚠️ **AND B10's GRANT IS GONE AS OF 2026-09-02 — NOT REVOKED, OVERTAKEN.** The pardon
-ladder is free for the whole roster now, so what he was born with is what everyone
-opens with. Wa no Koe still works exactly as designed — it is still the amplifier —
-but it amplifies something nobody has to earn, and **he lost a head start no other
-Spirit has to make up.** Whether the character needs something back is a design
-question, flagged here and in `CHARACTER_HANDOFF.md` rather than patched blind. — the call site read `driveStack ?? sustainStack`, and
-since `??` only falls through on null/undefined while **both stacks are always
-arrays**, *Wa no Koe had never once seen the Sustain stack.* It now passes both.
+- 🪦 B10's `driveStack ?? sustainStack` — the call site that meant *Wa no Koe had
+  never once seen the Sustain stack.* Fixed in the rewrite, now moot.
+- 🪦 The overwrite: the commit set `tempDrive` to the run/colour boost (up to
+  **+3**), then Wa no Koe wrote *pre-commit* `tempDrive + 1` over it, so **a
+  5-note diatonic run that earned +3 ended at +1** — a net −2 on the turn he
+  played best. Reproduced in the kernel on purpose and pinned in
+  `melodyCommitCheck`. Both the bug and the pin are gone. 📌
+  **`BOT_STRATEGY_HANDOFF` §7 was waiting on this one-place fix and should stop
+  waiting.**
+- 🪦 The stat was chosen by stack SIZE, not by which stack the melody matched, so
+  a melody inside the Sustain stack could pay Drive. Accepted-possibly-intended;
+  now nothing.
+- 🔴 **STILL LIVE, AND IT WAS NEVER ABOUT THIS ABILITY.** `clearBattleBuffs`
+  zeroes the attacker's `tempDrive` and the defender's `tempSustain` after every
+  battle, so **any** "for N rounds" Drive buff dies the moment he swings — the
+  thing it was bought for — while the counter keeps running and on expiry
+  subtracts 1 from whatever is there by then, shaving a point off an unrelated
+  later bonus. ⚠️ **This appears in no design doc.** It reads as battle-scoping
+  the card text never caught up with, and it applies to every temp buff in the
+  game. Worth a decision, and it survived the cut.
 
-⚠️ **BUT A SECOND BUG OF EXACTLY THE SAME SHAPE SURVIVED, AND IS STILL OPEN.** The
-project's own bot handoff says as much, in as many words — *"this is the second bug
-of exactly this shape in this one function — B10's `driveStack ?? sustainStack` was
-the first."*
-
-🔴 **THE LIVE BUG — IT CAN LEAVE HIM WEAKER.** The commit sets `tempDrive` to the
-run/colour Drive boost (keep-highest, up to **+3**). Wa no Koe then overwrites it
-with *pre-commit* `tempDrive + 1`. On a normal turn that pre-commit value is 0, so a
-**5-note diatonic run that earned +3 Drive ends at +1** — a net −2 on exactly the
-turn he played best, because a long run sitting inside his chord is precisely the
-melody that trips both. The on-screen flash still reports the +3 he did not get.
-📌 Reproduced in the engine on purpose ("a kernel that quietly plays a better game
-than the client is the same failure as an invented rule"), pinned in
-`melodyCommitCheck`. **Now a one-place edit**: read the patch's `newTempDrive`
-instead of `prevTempDrive`, and drop the pin.
-
-📌 **Two more behaviours that are NOT logged as bugs anywhere** — flagged here so
-they are decisions rather than surprises:
-
-- **The stat is chosen by stack SIZE, not by which stack the melody matched**
-  (`driveStack.length >= sustainStack.length ? 'drive' : 'sustain'`, ties to Drive).
-  A melody sitting entirely inside the Sustain stack pays **+1 Drive** when the
-  Drive stack holds more notes. This is original behaviour and B10 explicitly
-  noticed the function reads both stacks, so treat it as **accepted, possibly
-  intended** — "the stack you invested in" is a defensible rule. It just is not
-  what the card's wording implies.
-- **"3 rounds" is closer to "until your next fight."** `clearBattleBuffs` zeroes the
-  attacker's `tempDrive` and the defender's `tempSustain` after every battle, so a
-  Drive buff dies the moment he swings — the thing he bought it for. The counter
-  keeps running and on expiry subtracts 1 from whatever `tempDrive` is there by
-  then, so a stale entry can shave a point off an unrelated later bonus.
-  ⚠️ **This one appears in no design doc** — it may be intended battle-scoping that
-  the card never caught up with, or it may be unexamined. Worth a decision.
-
-📌 The bot queues it **last** of the Ronin's four and buys ~2.7 skills a match, so
-almost no simulation has ever seen it fire.
+📌 The bot queued Wa no Koe **last** of the Ronin's four and buys ~2.7 skills a
+match, so **almost no simulation ever saw it fire** — which is why cutting it
+moved no bench number.
 
 **🪐 Intergalactic 0** — innate +1 Sustain on every voicing.
 

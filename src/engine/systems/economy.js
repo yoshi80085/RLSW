@@ -326,7 +326,11 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     // 🪦 The old `cursedShamisen: { hex, range, roundsLeft, touched[] }` seed
     // outlived the mechanic by a commit. See RONIN_ABILITY_DESIGN.md §2.3.
     shamisenCurse:    null,
-    waNoKoeBuffs:     [],      // 🎵 Wa no Koe: [{ stat:'drive'|'sustain', turnsLeft }]
+    // 🌀 Hops left in the CURRENT turn once Shukuchi has been fired. 0 = not
+    // mid-move, which is also what a fresh sheet and every new turn carry —
+    // `turnFlow` resets it. ⚠️ One counter, no companion "active" flag: two
+    // fields can disagree about whether the ability is running, one cannot.
+    shukuchiHopsLeft: 0,
     discordUnlocks:  [],
     tripped:         false,
     instrumentDropped: false,

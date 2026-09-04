@@ -43,9 +43,10 @@ import { skillEligibility } from "../systems/skills.js";
 import { rigFor } from "../systems/attackParams.js";
 import { canCallEleven } from "../systems/eleven.js";
 import { canFire } from "../systems/cooldowns.js";
+import { canHop, shukuchiLandings } from "../systems/shukuchi.js";
 import { posingMap } from "../systems/limelight.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
-import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH, PSYCHO_BUSHIDO_MIN_AP } from "../../data/gameConstants.js";
+import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH, PSYCHO_BUSHIDO_MIN_AP, SHUKUCHI_AP_PER_HOP } from "../../data/gameConstants.js";
 import { CONE_HALF_ARC, SPIRIT_ONLY_ROUTE } from "./bot.js";
 // 📻 The Boom Box rule — Intergalactic 0 reads distance 0 while charged, which
 // is what keeps his Sonic legal out on the board — used to be imported here as
@@ -313,6 +314,30 @@ export function legalActions(state, spiritId, view = {}) {
     for (const { q, r } of axialNeighbors(here.q, here.r)) {
       const h = HEX_BY_QR[`${q},${r}`];
       if (h && !blocked.has(h.num)) out.push({ kind: 'move', to: h.num, apCost: MOVE_AP_COST });
+    }
+  }
+
+  // 🌀 SHUKUCHI ARPEGGIO — the same 1 AP as a step, for two hexes and no regard
+  // for what is in between (`RONIN_ABILITY_DESIGN.md` §2.5.0).
+  //
+  // ⚠️ IT SITS BESIDE `move`, NOT INSIDE THE SKILL BLOCK BELOW, and the placement
+  // is the rule. Shukuchi is not an action he takes INSTEAD of moving — it is
+  // what a move step buys while it is up, billed from the same pool. Emitting it
+  // here is what makes a line like [hop, hop, swing] reachable to the searcher;
+  // in the ability block it would read as a one-shot and the beam would price it
+  // against Bushido rather than against walking.
+  //
+  // 💿🕒 `canHop` asks the Db-and-clock question ONCE, and asks the right one:
+  // the first hop needs `canFire`, the second and third need only the budget on
+  // the sheet. ⚠️ A continuation that re-checked `canFire` would find the clock
+  // it just started and refuse — a three-hop ability that could only ever hop
+  // once. See `shukuchi.js`.
+  //
+  // 📌 `blocked` is passed for the LANDING only. `shukuchiLandings` never looks
+  // between the two hexes, which is the whole ability.
+  if (here && ap >= SHUKUCHI_AP_PER_HOP && canHop(ns)) {
+    for (const to of shukuchiLandings(state, spiritId, blocked)) {
+      out.push({ kind: 'shukuchi', to, apCost: SHUKUCHI_AP_PER_HOP });
     }
   }
 

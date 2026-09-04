@@ -1,0 +1,860 @@
+<title>Spirit Wars Systems Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root{
+    --bg:#F1F3F6;
+    --surface:#FFFFFF;
+    --surface-2:#E9ECF1;
+    --ink:#14171D;
+    --muted:#59616F;
+    --faint:#8A93A3;
+    --line:#D5DAE2;
+    --line-strong:#B6BEC9;
+    --accent:#2F62C4;
+    --accent-soft:#E4EBF9;
+
+    --ronin:#2E6FD6;
+    --ronin-chip:#4488ff;
+    --intergalactic:#8B3FDD;
+    --metalness:#A87C00;
+    --glamarchy:#C8500B;
+
+    --built:#1F7A54;
+    --built-bg:#DCEFE6;
+    --warn:#9A6206;
+    --warn-bg:#F8ECD5;
+    --stop:#B03028;
+    --stop-bg:#F8E2E0;
+
+    --shadow:0 1px 2px rgba(20,23,29,.06), 0 6px 18px rgba(20,23,29,.05);
+    --r:6px;
+  }
+
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0D1014;
+      --surface:#161A20;
+      --surface-2:#1D222A;
+      --ink:#E7EAEF;
+      --muted:#9BA4B3;
+      --faint:#6D7686;
+      --line:#252B34;
+      --line-strong:#39414D;
+      --accent:#6FA3FF;
+      --accent-soft:#1A2436;
+
+      --ronin:#6FA3FF;
+      --ronin-chip:#4488ff;
+      --intergalactic:#B77BF0;
+      --metalness:#E5B93B;
+      --glamarchy:#FF8B45;
+
+      --built:#4ECF95;
+      --built-bg:#12291F;
+      --warn:#E0A93F;
+      --warn-bg:#2A2114;
+      --stop:#FF7A70;
+      --stop-bg:#2E1917;
+
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.28);
+    }
+  }
+
+  :root[data-theme="dark"]{
+    --bg:#0D1014;
+    --surface:#161A20;
+    --surface-2:#1D222A;
+    --ink:#E7EAEF;
+    --muted:#9BA4B3;
+    --faint:#6D7686;
+    --line:#252B34;
+    --line-strong:#39414D;
+    --accent:#6FA3FF;
+    --accent-soft:#1A2436;
+
+    --ronin:#6FA3FF;
+    --ronin-chip:#4488ff;
+    --intergalactic:#B77BF0;
+    --metalness:#E5B93B;
+    --glamarchy:#FF8B45;
+
+    --built:#4ECF95;
+    --built-bg:#12291F;
+    --warn:#E0A93F;
+    --warn-bg:#2A2114;
+    --stop:#FF7A70;
+    --stop-bg:#2E1917;
+
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.28);
+  }
+
+  *{box-sizing:border-box;}
+
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size:15px;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .wrap{
+    max-width:1080px;
+    margin:0 auto;
+    padding:40px 24px 72px;
+    display:flex;
+    flex-direction:column;
+    gap:44px;
+  }
+
+  .cond{font-family:"Barlow Condensed", "Arial Narrow", ui-sans-serif, sans-serif;}
+  .mono{font-family:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;}
+
+  /* ── masthead ─────────────────────────────────────────── */
+  .masthead{display:flex;flex-direction:column;gap:14px;}
+
+  .eyebrow{
+    font-family:"IBM Plex Mono", ui-monospace, monospace;
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--faint);
+  }
+
+  h1{
+    font-family:"Barlow Condensed", "Arial Narrow", sans-serif;
+    font-weight:700;
+    font-size:clamp(38px, 7vw, 62px);
+    line-height:.94;
+    letter-spacing:-.005em;
+    margin:0;
+    text-wrap:balance;
+    text-transform:uppercase;
+  }
+
+  .standfirst{
+    max-width:62ch;
+    color:var(--muted);
+    font-size:16px;
+    margin:0;
+  }
+
+  .statbar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:0;
+    border:1px solid var(--line);
+    border-radius:var(--r);
+    background:var(--surface);
+    overflow:hidden;
+  }
+  .stat{
+    flex:1 1 150px;
+    padding:12px 16px;
+    border-right:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    gap:1px;
+  }
+  .stat:last-child{border-right:none;}
+  .stat b{
+    font-family:"Barlow Condensed", sans-serif;
+    font-size:27px;
+    font-weight:700;
+    line-height:1;
+    font-variant-numeric:tabular-nums;
+  }
+  .stat span{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:10.5px;
+    letter-spacing:.09em;
+    text-transform:uppercase;
+    color:var(--faint);
+  }
+  .stat.is-stop b{color:var(--stop);}
+  .stat.is-built b{color:var(--built);}
+
+  /* ── sections ─────────────────────────────────────────── */
+  section{display:flex;flex-direction:column;gap:16px;}
+
+  .sechead{
+    display:flex;
+    align-items:baseline;
+    gap:12px;
+    border-bottom:2px solid var(--ink);
+    padding-bottom:7px;
+  }
+  .sechead h2{
+    font-family:"Barlow Condensed", sans-serif;
+    text-transform:uppercase;
+    font-weight:700;
+    font-size:23px;
+    letter-spacing:.02em;
+    margin:0;
+    line-height:1;
+  }
+  .sechead .note{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:10.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--faint);
+    margin-left:auto;
+    text-align:right;
+  }
+
+  p{margin:0;max-width:68ch;}
+  .lede{color:var(--muted);}
+
+  /* ── diagram ──────────────────────────────────────────── */
+  .plot{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--r);
+    padding:8px 8px 4px;
+    overflow-x:auto;
+    box-shadow:var(--shadow);
+  }
+  .plot svg{display:block;min-width:820px;width:100%;height:auto;}
+
+  .callout{
+    display:flex;
+    gap:12px;
+    align-items:flex-start;
+    border-left:3px solid var(--stop);
+    background:var(--stop-bg);
+    padding:12px 16px;
+    border-radius:0 var(--r) var(--r) 0;
+  }
+  .callout p{font-size:14.5px;}
+  .callout strong{color:var(--stop);}
+
+  .callout.is-built{border-left-color:var(--built);background:var(--built-bg);}
+  .callout.is-built strong{color:var(--built);}
+  .callout.is-warn{border-left-color:var(--warn);background:var(--warn-bg);}
+  .callout.is-warn strong{color:var(--warn);}
+
+  /* ── the decision board ───────────────────────────────── */
+  .board{
+    border:1px solid var(--line);
+    border-radius:var(--r);
+    background:var(--surface);
+    box-shadow:var(--shadow);
+    overflow:hidden;
+  }
+  .board .brow{
+    display:grid;
+    grid-template-columns:74px 1fr 210px;
+    gap:14px;
+    padding:13px 16px;
+    border-bottom:1px solid var(--line);
+    align-items:baseline;
+  }
+  .board .brow:last-child{border-bottom:none;}
+  .board .brow.settled{background:var(--built-bg);}
+  .board .since{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:11px;letter-spacing:.04em;color:var(--faint);white-space:nowrap;
+  }
+  .board .settled .since{color:var(--built);}
+  .board .q{font-size:14.5px;}
+  .board .q b{font-weight:600;}
+  .board .q em{color:var(--muted);font-style:normal;display:block;font-size:13px;margin-top:2px;}
+  .board .cost{
+    font-size:13px;color:var(--muted);
+    border-left:2px solid var(--line-strong);
+    padding-left:12px;
+  }
+  .board .cost b{color:var(--stop);font-weight:600;}
+  .board .settled .cost{border-left-color:var(--built);}
+  .board .settled .cost b{color:var(--built);}
+  @media (max-width:720px){
+    .board .brow{grid-template-columns:1fr;gap:5px;}
+    .board .cost{border-left:none;padding-left:0;border-top:1px dotted var(--line-strong);padding-top:7px;}
+  }
+
+  /* ── roster ───────────────────────────────────────────── */
+  .roster{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(232px, 1fr));
+    gap:14px;
+  }
+  .spirit{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-top:3px solid var(--hue);
+    border-radius:var(--r);
+    padding:14px 16px 16px;
+    display:flex;
+    flex-direction:column;
+    gap:9px;
+    box-shadow:var(--shadow);
+  }
+  .spirit-top{display:flex;align-items:center;gap:9px;}
+  .glyph{font-size:19px;line-height:1;}
+  .spirit h3{
+    font-family:"Barlow Condensed", sans-serif;
+    text-transform:uppercase;
+    font-size:20px;
+    font-weight:700;
+    margin:0;
+    line-height:1;
+    color:var(--hue);
+  }
+  .arche{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:10.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--faint);
+  }
+  .spirit p{font-size:13.5px;color:var(--muted);}
+  .hex{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:10.5px;
+    color:var(--faint);
+    margin-top:auto;
+    padding-top:8px;
+    border-top:1px dotted var(--line-strong);
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .swatch{width:9px;height:9px;border-radius:2px;background:var(--chip);display:inline-block;}
+
+  /* ── state chips ──────────────────────────────────────── */
+  .chip{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:10px;
+    letter-spacing:.07em;
+    text-transform:uppercase;
+    padding:2.5px 7px;
+    border-radius:3px;
+    white-space:nowrap;
+    display:inline-block;
+    font-weight:500;
+  }
+  .chip.built{background:var(--built-bg);color:var(--built);border:1px solid var(--built);}
+  .chip.head{background:transparent;color:var(--built);border:1px dashed var(--built);}
+  .chip.spec{background:transparent;color:var(--warn);border:1px solid var(--warn);}
+  .chip.absent{background:transparent;color:var(--faint);border:1px dashed var(--line-strong);}
+  .chip.cut{background:transparent;color:var(--faint);border:1px solid var(--line);text-decoration:line-through;}
+  .chip.parked{background:var(--surface-2);color:var(--muted);border:1px dashed var(--line-strong);}
+  .chip.stop{background:var(--stop-bg);color:var(--stop);border:1px solid var(--stop);}
+
+  .legend{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+  .legend .lbl{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);
+    margin-right:2px;
+  }
+
+  /* ── tables ───────────────────────────────────────────── */
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);box-shadow:var(--shadow);}
+  table{border-collapse:collapse;width:100%;min-width:560px;}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+  tr:last-child td{border-bottom:none;}
+  thead th{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);font-weight:500;
+    background:var(--surface-2);
+    border-bottom:1px solid var(--line-strong);
+  }
+  td.what{font-weight:500;}
+  td .id{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:11.5px;color:var(--faint);display:block;margin-top:1px;
+  }
+  td.small{font-size:13.5px;color:var(--muted);}
+  td.num{font-variant-numeric:tabular-nums;font-family:"IBM Plex Mono", monospace;font-size:12px;color:var(--muted);white-space:nowrap;}
+  .cutrow td.what{text-decoration:line-through;color:var(--faint);}
+  .newrow td.what{color:var(--ronin);}
+
+  /* ── the ledger ───────────────────────────────────────── */
+  .ledger{
+    border:1px solid var(--stop);
+    border-left-width:3px;
+    border-radius:0 var(--r) var(--r) 0;
+    background:var(--surface);
+    overflow:hidden;
+  }
+  .ledger .lhead{
+    padding:12px 16px 10px;
+    border-bottom:1px solid var(--line);
+    background:var(--stop-bg);
+    display:flex;flex-direction:column;gap:3px;
+  }
+  .ledger .lhead b{
+    font-family:"Barlow Condensed", sans-serif;
+    text-transform:uppercase;font-size:19px;font-weight:700;line-height:1.05;color:var(--stop);
+  }
+  .ledger .lhead span{font-size:13.5px;color:var(--muted);}
+  .ledger ol{
+    margin:0;padding:0;list-style:none;counter-reset:n;
+  }
+  .ledger li{
+    counter-increment:n;
+    display:grid;
+    grid-template-columns:26px 78px 1fr;
+    gap:12px;
+    padding:11px 16px;
+    border-bottom:1px solid var(--line);
+    align-items:baseline;
+  }
+  .ledger li:last-child{border-bottom:none;}
+  .ledger li::before{
+    content:counter(n);
+    font-family:"Barlow Condensed", sans-serif;
+    font-weight:700;font-size:19px;line-height:1;color:var(--faint);
+    font-variant-numeric:tabular-nums;
+  }
+  .ledger .when{
+    font-family:"IBM Plex Mono", monospace;font-size:11px;color:var(--faint);
+    letter-spacing:.04em;
+  }
+  .ledger .what{font-size:14px;}
+  .ledger .what em{color:var(--muted);font-style:normal;}
+  .ledger .ask{
+    padding:13px 16px;background:var(--surface-2);
+    font-size:14.5px;
+  }
+  .ledger .ask b{color:var(--ink);}
+
+  /* ── next steps ───────────────────────────────────────── */
+  ol.steps{
+    list-style:none;
+    counter-reset:s;
+    margin:0;padding:0;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  ol.steps li{
+    counter-increment:s;
+    display:flex;gap:14px;align-items:flex-start;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--r);
+    padding:13px 16px;
+  }
+  ol.steps li::before{
+    content:counter(s);
+    font-family:"Barlow Condensed", sans-serif;
+    font-weight:700;font-size:22px;line-height:1;
+    color:var(--accent);
+    min-width:20px;
+    font-variant-numeric:tabular-nums;
+  }
+  ol.steps b{display:block;font-weight:600;}
+  ol.steps span{font-size:13.5px;color:var(--muted);}
+  ol.steps li.done{opacity:.62;}
+  ol.steps li.done::before{color:var(--built);}
+  ol.steps li.done b{text-decoration:line-through;}
+
+  footer{
+    border-top:1px solid var(--line);
+    padding-top:16px;
+    font-family:"IBM Plex Mono", monospace;
+    font-size:11px;
+    color:var(--faint);
+    line-height:1.7;
+  }
+  footer code{color:var(--muted);}
+
+  a{color:var(--accent);}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  @media (max-width:620px){
+    .stat{flex:1 1 50%;}
+    .sechead .note{display:none;}
+    .ledger li{grid-template-columns:22px 1fr;}
+    .ledger .when{grid-column:2;}
+    .ledger .what{grid-column:2;}
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Rock Legends: Spirit Wars &nbsp;·&nbsp; state as of 4 Sep 2026, late &nbsp;·&nbsp; handoff 5-hopui</div>
+    <h1>The Stage Plot</h1>
+    <p class="standfirst">Everything that exists, everything that's only written down, and the seven things waiting on you. Built from the code and the design set — not from either alone.</p>
+
+    <div class="statbar">
+      <div class="stat"><b>4</b><span>Spirits &middot; 2 settled</span></div>
+      <div class="stat"><b>13</b><span>abilities on paper</span></div>
+      <div class="stat is-built"><b>8</b><span>priced &amp; cooled</span></div>
+      <div class="stat"><b>24</b><span>test suites green</span></div>
+      <div class="stat is-stop"><b>7</b><span>on your desk</span></div>
+    </div>
+  </header>
+
+  <section>
+    <div class="sechead">
+      <h2>On your desk</h2>
+      <div class="note">newest first &middot; two closed 4 Sep</div>
+    </div>
+    <p class="lede">Every call currently waiting on you, including the ones filed quietly inside a design doc rather than in anyone's way. Nothing here is a rebalance — balance is parked on purpose while the kit moves.</p>
+
+    <div class="board">
+      <div class="brow settled">
+        <div class="since">✅ 4 Sep</div>
+        <div class="q"><b>Shukuchi's 1 Db — per use, or per hop?</b><em>Answered: per activation. Hop 1 pays the Db and starts the clock; hops 2 and 3 are free, and the Action Point bill is the only brake.</em></div>
+        <div class="cost"><b>Closed.</b> The spec section that asked it is now marked settled rather than open.</div>
+      </div>
+      <div class="brow settled">
+        <div class="since">✅ 4 Sep</div>
+        <div class="q"><b>How does a hop feel in the client?</b><em>Answered: per-hop targeting. The landing hexes light up, you click one, three times — and ordinary walking can be mixed in with no toggling.</em></div>
+        <div class="cost"><b>Closed.</b> Nobody had asked this before today; a client pass would have answered it by accident.</div>
+      </div>
+
+      <div class="brow">
+        <div class="since">4 Sep</div>
+        <div class="q"><b>Psycho Bushido: flat +3, or +2/+3/+4 across the window?</b><em>The respec makes every legal charge pay the same. The spec's own first line says the attack gets stronger the farther the target is — <em>"this is the ability."</em></em></div>
+        <div class="cost">Blocks the Bushido and Illusion respec, which is otherwise two constants. <b>The ability's stated thesis stops being true the day it ships, silently.</b></div>
+      </div>
+      <div class="brow">
+        <div class="since">2 Sep</div>
+        <div class="q"><b>The Ronin ledger — is he owed the empty 12 Db slot?</b><em>Four passes made him weaker and each deferred the compensation to the next. Building Shukuchi did not close it: 6 Db of mobility where a 12 Db payout used to be.</em></div>
+        <div class="cost">Blocks what goes in that slot — including your own new Wa no Koe form, sitting in the ideas inbox. <b>A fifth pass would defer it to a sixth.</b></div>
+      </div>
+      <div class="brow">
+        <div class="since">4 Sep</div>
+        <div class="q"><b>What is the flat unlock number?</b><em>Plus its two riders, both open and both filed only as prose: does the free ability still cost Db later, and what shape is the rising ladder — capped, or runaway?</em></div>
+        <div class="cost">Blocks the Db sink, then melody identity, then the bot retune — the whole second chain. <b>The measured budget to set it with already exists and is sitting unused.</b></div>
+      </div>
+      <div class="brow">
+        <div class="since">4 Sep</div>
+        <div class="q"><b>Metalness before the Shamisen, or the Shamisen first anyway?</b><em>The siphon steals cooldown off a rival, and Metalness has none to steal. A parked side project is across the Ronin's path.</em></div>
+        <div class="cost">The Ronin's kit cannot finish either way. <b>This only decides which arm waits — and it is cheaper decided than discovered.</b></div>
+      </div>
+      <div class="brow">
+        <div class="since">15 Aug</div>
+        <div class="q"><b>The roster: Glamarchy out, Riff Rat in?</b><em>And its rider: does the Rat inherit her 5/8/5/4? Eight Sustain is the highest in the game and reads as a tank — the opposite of a fast, fragile, underhand rat.</em></div>
+        <div class="cost">Two docs already assume yes. <b>Every balance sheet in the repo is being written against a roster the game does not have.</b></div>
+      </div>
+      <div class="brow">
+        <div class="since">22 Aug</div>
+        <div class="q"><b>Is 🌀 Blaster of Ra an ability at all?</b><em>It replaces the Smash rather than adding a button, so pricing it leaves a Spirit with no basic attack while it recharges. Three ways out are written up.</em></div>
+        <div class="cost">Holds the per-use-Db and cooldown rule at 8 of 13. <b>A universal rule with a permanent exemption in it is not universal.</b></div>
+      </div>
+      <div class="brow">
+        <div class="since">undated</div>
+        <div class="q"><b>Posing fell from 1054 to 224 and nobody knows why.</b><em>An earlier change did it; the cause was never chased. Recorded in the game brief as unexamined.</em></div>
+        <div class="cost">Blocks nothing today. <b>But the next pose tweak would be measured against a baseline no one can explain.</b></div>
+      </div>
+    </div>
+
+    <div class="callout is-built">
+      <p><strong>One row came off the board by being dead, not by being answered.</strong> The stance doc still asks whether Intergalactic 0's stance should be "Behind the Back" — but the whole Stance system was cut and that doc is doubly superseded. It read as a live question to anyone searching, and reached this board as a real row. It is now marked dead in place: <em>a doc that reads as current and is not is worse than no doc.</em></p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sechead">
+      <h2>What's blocking what</h2>
+      <div class="note">two chains &middot; one shared stall</div>
+    </div>
+    <p class="lede">Almost every open thread runs through one of two chains. The top chain is stalled on a character who was parked as a side project — and quietly became load-bearing. One branch of it came free on 4 Sep and was built the same day; its client half is now a preview page sitting in your browser.</p>
+
+    <div class="plot">
+      <svg viewBox="0 0 900 452" role="img" aria-label="Dependency diagram. Chain A, the Ronin's kit: universal cooldowns and the parked Metalness rework both feed the Cursed Shamisen siphon, which gates the Ronin's kit; separately Shukuchi Arpeggio is built headless and feeds the kit directly, with its client half now previewed and awaiting Alex's settings. Chain B, the economy: the Db sink feeds melody identity, which feeds the parked bot retune.">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,1 L9,5 L0,9 z" fill="var(--line-strong)"></path>
+          </marker>
+          <marker id="ah-stop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,1 L9,5 L0,9 z" fill="var(--stop)"></path>
+          </marker>
+          <marker id="ah-built" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,1 L9,5 L0,9 z" fill="var(--built)"></path>
+          </marker>
+        </defs>
+
+        <!-- lane A label -->
+        <text x="12" y="22" class="mono" font-size="10.5" letter-spacing="1.4" fill="var(--faint)">CHAIN A — THE RONIN'S KIT</text>
+
+        <!-- edges A -->
+        <path d="M212,66 C268,66 268,110 326,110" fill="none" stroke="var(--line-strong)" stroke-width="1.6" marker-end="url(#ah)"></path>
+        <path d="M212,158 C268,158 268,114 326,114" fill="none" stroke="var(--stop)" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah-stop)"></path>
+        <path d="M506,112 L586,112" fill="none" stroke="var(--line-strong)" stroke-width="1.6" marker-end="url(#ah)"></path>
+        <text x="248" y="150" class="mono" font-size="10" letter-spacing=".8" fill="var(--stop)" font-weight="500">BLOCKS</text>
+
+        <!-- node: universal cooldowns -->
+        <rect x="12" y="38" width="200" height="56" rx="5" fill="var(--surface-2)" stroke="var(--warn)" stroke-width="1.4"></rect>
+        <text x="26" y="60" class="cond" font-size="17" font-weight="700" fill="var(--ink)">Universal cooldowns</text>
+        <text x="26" y="78" class="mono" font-size="10.5" fill="var(--muted)">rule decided &middot; not built</text>
+
+        <!-- node: metalness (parked + blocking) -->
+        <rect x="12" y="130" width="200" height="56" rx="5" fill="var(--stop-bg)" stroke="var(--stop)" stroke-width="1.4" stroke-dasharray="6 4"></rect>
+        <text x="26" y="152" class="cond" font-size="17" font-weight="700" fill="var(--ink)">Metalness rework</text>
+        <text x="26" y="170" class="mono" font-size="10.5" fill="var(--stop)">PARKED — and blocking</text>
+
+        <!-- node: siphon -->
+        <rect x="326" y="84" width="180" height="56" rx="5" fill="var(--surface)" stroke="var(--warn)" stroke-width="1.4"></rect>
+        <text x="340" y="106" class="cond" font-size="17" font-weight="700" fill="var(--ink)">The Siphon</text>
+        <text x="340" y="124" class="mono" font-size="10.5" fill="var(--muted)">Cursed Shamisen, v3</text>
+
+        <!-- node: ronin kit -->
+        <rect x="586" y="84" width="200" height="56" rx="5" fill="var(--surface)" stroke="var(--ronin)" stroke-width="1.8"></rect>
+        <text x="600" y="106" class="cond" font-size="17" font-weight="700" fill="var(--ronin)">The Ronin's kit</text>
+        <text x="600" y="124" class="mono" font-size="10.5" fill="var(--muted)">4 abilities &middot; 1 built</text>
+
+        <!-- the branch that came free -->
+        <path d="M212,232 L326,232" fill="none" stroke="var(--built)" stroke-width="1.8" marker-end="url(#ah-built)"></path>
+        <path d="M506,232 C560,232 566,180 686,146" fill="none" stroke="var(--built)" stroke-width="1.8" marker-end="url(#ah-built)"></path>
+
+        <rect x="12" y="204" width="200" height="56" rx="5" fill="var(--built-bg)" stroke="var(--built)" stroke-width="1.4"></rect>
+        <text x="26" y="226" class="cond" font-size="17" font-weight="700" fill="var(--ink)">🌀 Shukuchi</text>
+        <text x="26" y="244" class="mono" font-size="10.5" fill="var(--built)">BUILT — engine + suite</text>
+
+        <rect x="326" y="204" width="180" height="56" rx="5" fill="var(--built-bg)" stroke="var(--built)" stroke-width="1.6"></rect>
+        <text x="340" y="224" class="cond" font-size="17" font-weight="700" fill="var(--ink)">Its client half</text>
+        <text x="340" y="240" class="mono" font-size="10" fill="var(--built)">DIALLED IN — ready to port</text>
+        <text x="340" y="252" class="mono" font-size="9.5" fill="var(--muted)">your settings, captured</text>
+
+        <!-- divider -->
+        <line x1="12" y1="296" x2="888" y2="296" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 5"></line>
+
+        <!-- lane B label -->
+        <text x="12" y="328" class="mono" font-size="10.5" letter-spacing="1.4" fill="var(--faint)">CHAIN B — THE ECONOMY</text>
+
+        <!-- edges B -->
+        <path d="M212,372 L326,372" fill="none" stroke="var(--line-strong)" stroke-width="1.6" marker-end="url(#ah)"></path>
+        <path d="M506,372 L586,372" fill="none" stroke="var(--line-strong)" stroke-width="1.6" marker-end="url(#ah)"></path>
+
+        <rect x="12" y="344" width="200" height="56" rx="5" fill="var(--surface-2)" stroke="var(--warn)" stroke-width="1.4"></rect>
+        <text x="26" y="366" class="cond" font-size="17" font-weight="700" fill="var(--ink)">The Db sink</text>
+        <text x="26" y="384" class="mono" font-size="10.5" fill="var(--muted)">upgrade shop &middot; design only</text>
+
+        <rect x="326" y="344" width="180" height="56" rx="5" fill="var(--surface)" stroke="var(--warn)" stroke-width="1.4"></rect>
+        <text x="340" y="366" class="cond" font-size="17" font-weight="700" fill="var(--ink)">Melody identity</text>
+        <text x="340" y="384" class="mono" font-size="10.5" fill="var(--muted)">4 verbs &middot; not built</text>
+
+        <rect x="586" y="344" width="200" height="56" rx="5" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1.4" stroke-dasharray="6 4"></rect>
+        <text x="600" y="366" class="cond" font-size="17" font-weight="700" fill="var(--muted)">Bot retune</text>
+        <text x="600" y="384" class="mono" font-size="10.5" fill="var(--faint)">PARKED on purpose</text>
+      </svg>
+    </div>
+
+    <div class="callout">
+      <p><strong>Metalness is still the stall.</strong> His four abilities have no cooldowns at all — so the Ronin's new Shamisen, which steals cooldown off a rival, would do literally nothing against him. A redesign that was a parallel side project is sitting across the Ronin's path. If the Shamisen is wanted before Metalness, that's a trade worth making on purpose rather than discovering halfway through.</p>
+    </div>
+
+    <div class="callout is-built">
+      <p><strong>And the built branch is now a port away, not a decision away.</strong> Shukuchi runs in the engine and has its own suite; the button, the arc and the landing overlay were previewed and checked against the real engine at 896 assertions, so the picture cannot quietly disagree with the game — and you dialled it in the same day. Your settings live in the Ronin doc, not in the preview, which keeps no state. Until the port lands, the search bot still plans hops a human can't take.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sechead">
+      <h2>The roster</h2>
+      <div class="note">colours are the real ones, from data/spirits.js</div>
+    </div>
+    <div class="roster">
+
+      <article class="spirit" style="--hue:var(--ronin);--chip:var(--ronin-chip);">
+        <div class="spirit-top"><span class="glyph">🗡️</span><h3>Shredding Ronin</h3></div>
+        <div class="arche">Burst · virtuoso</div>
+        <div><span class="chip head">1 of 4 built</span></div>
+        <p>Owns melody line and space. Punished for being close, paid for reach. Kit rewritten 4 Sep — and it's the only Spirit with an open compensation question against it.</p>
+        <div class="hex"><span class="swatch"></span>#4488ff · vibe 5 · speed 5</div>
+      </article>
+
+      <article class="spirit" style="--hue:var(--intergalactic);--chip:#aa55ff;">
+        <div class="spirit-top"><span class="glyph">🌀</span><h3>Intergalactic 0</h3></div>
+        <div class="arche">Control · zoner</div>
+        <div><span class="chip built">Done &amp; shipped</span></div>
+        <p>Five abilities, all priced and cooled. The only Spirit finished end to end — and the reference for what "done" looks like.</p>
+        <div class="hex"><span class="swatch"></span>#aa55ff · vibe 4 · speed 4</div>
+      </article>
+
+      <article class="spirit" style="--hue:var(--metalness);--chip:#ffcc00;">
+        <div class="spirit-top"><span class="glyph">👹</span><h3>Metalness Monster</h3></div>
+        <div class="arche">Bruiser</div>
+        <div><span class="chip stop">Parked — and blocking</span></div>
+        <p>Arsenal with no innate identity. Four abilities, <strong>zero cooldowns between them</strong> — which is what stalls Chain A.</p>
+        <div class="hex"><span class="swatch"></span>#ffcc00 · vibe 5 · speed 4</div>
+      </article>
+
+      <article class="spirit" style="--hue:var(--glamarchy);--chip:#ff6600;">
+        <div class="spirit-top"><span class="glyph">🎀</span><h3>Glamarchy</h3></div>
+        <div class="arche">Star</div>
+        <div><span class="chip cut">Being cut</span></div>
+        <p>🐀 Riff Rat proposed as her replacement — but the swap was never formally decided, and two design docs already assume it happened.</p>
+        <div class="hex"><span class="swatch"></span>#ff6600 · vibe 4 · speed 5</div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sechead">
+      <h2>The Ronin's kit</h2>
+      <div class="note">one built, one deleted, two respecs pending</div>
+    </div>
+
+    <div class="legend">
+      <span class="lbl">Reading the states</span>
+      <span class="chip built">shipped</span>
+      <span class="chip head">engine only, no client</span>
+      <span class="chip spec">spec'd, differs from code</span>
+      <span class="chip cut">cut</span>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Ability</th><th>Db</th><th>What it does</th><th>State</th></tr>
+        </thead>
+        <tbody>
+          <tr class="newrow">
+            <td class="what">🌀 Shukuchi Arpeggio<span class="id">shukuchi · 縮地</span></td>
+            <td class="num">6 · 1 · CD 3</td>
+            <td class="small">Every step becomes a <strong>two-hex leap</strong>, up to three a turn, each freely aimed — and <strong>each leap still costs one Action Point, exactly like walking</strong>. Six hexes of ground for three of your steps, not for free. Nothing stops him in the air: bodies, hazards, walls and slime all pass underneath, and only the hex he <em>lands</em> on has to be clear. Every landing pockets a Lost Chord. He ends facing his last leap. <strong>The 1 Db is paid once, on the first leap</strong> — the other two are free, and the clock starts on the first.</td>
+            <td><span class="chip head">engine built · overlay dialled in</span></td>
+          </tr>
+          <tr>
+            <td class="what">🗡️ Psycho Bushido<span class="id">psycho_bushido</span></td>
+            <td class="num">6 → 8</td>
+            <td class="small">Charge a rival 3–5 hexes directly in front. Flat +3 Drive, spends 2 off the Drive stack.</td>
+            <td><span class="chip spec">ships with a different payout</span></td>
+          </tr>
+          <tr>
+            <td class="what">👤 Shadow Illusion<span class="id">shadow_illusion</span></td>
+            <td class="num">6 → 10</td>
+            <td class="small">A body double that walks, blocks and pockets notes — and drinks his Sustain the whole time.</td>
+            <td><span class="chip spec">ships with other numbers</span></td>
+          </tr>
+          <tr>
+            <td class="what">🎸 Cursed Shamisen<span class="id">cursed_shamisen</span></td>
+            <td class="num">8</td>
+            <td class="small">Play over an area, pick a rival's ability with no readout. If it's recharging they're pushed <strong>+1</strong> further from ready and his own cooldowns drop by however many turns it had left.</td>
+            <td><span class="chip spec">a different ability entirely</span></td>
+          </tr>
+          <tr class="cutrow">
+            <td class="what">🎵 Wa no Koe</td>
+            <td class="num">12</td>
+            <td class="small">Harmony bonus on stack alignment. <strong>Deleted from the code 4 Sep</strong> — kernel rule, buff seat, client tick, skill row, bot entry and three suites' worth of assertions. The suites that stood on it were <em>inverted</em> into a guard against it coming back. <strong>The 12 Db mastery slot is now empty.</strong></td>
+            <td><span class="chip cut">gone</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sechead">
+      <h2>The Ronin ledger</h2>
+      <div class="note">open decision · nobody's answered it yet</div>
+    </div>
+    <p class="lede">Four consecutive passes have made this character weaker, and each one deferred the compensation to the next. No single change looks unreasonable, which is exactly the problem — so it's written down here rather than deferred a fifth time.</p>
+
+    <div class="ledger">
+      <div class="lhead">
+        <b>Four subtractions, one addition</b>
+        <span>Filed 4 Sep in <code class="mono">CHARACTER_HANDOFF.md</code>. Not a rebalance proposal — balance is parked on purpose. This is a slot question.</span>
+      </div>
+      <ol>
+        <li>
+          <span class="when">2 Sep</span>
+          <span class="what">The Chord Tone Pardon he was <em>born with</em> became the roster's floor when the Theory ladder went universal. He lost a head start; <em>nobody else gave anything up.</em></span>
+        </li>
+        <li>
+          <span class="when">3 Sep</span>
+          <span class="what">The drift sweep found his card text still selling that head start as his. Corrected — <em>honest text, no compensation.</em></span>
+        </li>
+        <li>
+          <span class="when">4 Sep</span>
+          <span class="what">Wa no Koe (12 Db) cut. Meanwhile Bushido 6→8 and Illusion 6→10 got <em>dearer</em>, and Bushido, Illusion and the Shamisen all got <em>slower</em>.</span>
+        </li>
+        <li>
+          <span class="when">4 Sep</span>
+          <span class="what">The deletion landed. The stated consolation for #1 was <em>"Wa no Koe still stacks on top exactly as designed"</em> — that sentence is now void.</span>
+        </li>
+        <li>
+          <span class="when">4 Sep</span>
+          <span class="what">🌀 Shukuchi built, so he's back to four abilities. <strong>This does not close the ledger:</strong> it's a 6 Db mobility tool where a 12 Db payout used to be, it pays no Drive, no Sustain and no Fame, and the 12 Db slot is still empty.</span>
+        </li>
+      </ol>
+      <div class="ask">
+        <b>The question, in one line:</b> the Ronin is now a four-ability Spirit whose kit costs more and cools slower than it did a week ago, with his most expensive rung removed — is that the intended shape of a burst character, or is he owed a slot?
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sechead">
+      <h2>Rules decided, not yet true</h2>
+      <div class="note">the gap between the design set and the build</div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Rule</th><th>Decided</th><th>In the code?</th></tr></thead>
+        <tbody>
+          <tr><td class="what">Every ability costs at least 1 Db per use</td><td class="small mono">22 Aug</td><td><span class="chip built">8 of 13</span></td></tr>
+          <tr><td class="what">Every ability has a cooldown</td><td class="small mono">22 Aug</td><td><span class="chip built">8 of 13</span></td></tr>
+          <tr><td class="what">Every Spirit gets one — most 3–4 turns</td><td class="small mono">4 Sep</td><td><span class="chip stop">not built · gates the siphon</span></td></tr>
+          <tr class="newrow"><td class="what">🌀 A Shukuchi hop costs 1 AP, like a step<span class="id">three hops is a Bushido he didn't throw — this one line is the whole balance of the ability</span></td><td class="small mono">4 Sep</td><td><span class="chip built">built</span></td></tr>
+          <tr class="newrow"><td class="what">🌀 The hop clears everything in the way<span class="id">knowingly a hard counter to area denial — the accepted brake is the AP bill, not a hazard exception</span></td><td class="small mono">4 Sep</td><td><span class="chip built">built</span></td></tr>
+          <tr class="newrow"><td class="what">🌀 The 1 Db is charged per <em>activation</em>, not per hop<span class="id">hop 1 pays and starts the clock; hops 2 and 3 are free — so a Ronin who hops once and thinks better of it has spent the ability</span></td><td class="small mono">4 Sep</td><td><span class="chip built">built &amp; now decided</span></td></tr>
+          <tr class="newrow"><td class="what">🌀 A hop is targeted, one click each<span class="id">not a mode you toggle — the landings light up and walking can be mixed in freely, which is what the engine already allowed</span></td><td class="small mono">4 Sep</td><td><span class="chip spec">dialled in, not ported</span></td></tr>
+          <tr><td class="what">Every base ability costs the same to unlock</td><td class="small mono">4 Sep</td><td><span class="chip absent">not built</span></td></tr>
+          <tr><td class="what">Every seat starts with one ability active</td><td class="small mono">4 Sep</td><td><span class="chip absent">not built</span></td></tr>
+          <tr><td class="what">Upgrade prices rise per ability</td><td class="small mono">4 Sep</td><td><span class="chip absent">not built</span></td></tr>
+          <tr><td class="what">Is 🌀 Blaster of Ra an ability at all?<span class="id">it replaces the Smash, so pricing it leaves a Spirit with no basic attack</span></td><td class="small mono">—</td><td><span class="chip spec">open — your call</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="lede">Balance is deliberately parked while the kit moves. The one thing still worth stopping for is anything that makes something <em>impossible</em> rather than merely weak — an ability that can't fire, a purchase nobody can make, a flag that can never be true. Those are bugs wearing balance's clothes.</p>
+  </section>
+
+  <section>
+    <div class="sechead">
+      <h2>Systems</h2>
+      <div class="note">what runs vs. what's written down</div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>System</th><th>Note</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td class="what">Engine, board, combat, turn flow</td><td class="small">24 suites, one command</td><td><span class="chip built">built</span></td></tr>
+          <tr><td class="what">🕒 The cooldown system</td><td class="small">One map, one tick, one gate. Adding a cooldown is now a data edit.</td><td><span class="chip built">built</span></td></tr>
+          <tr class="newrow"><td class="what">🌀 Shukuchi Arpeggio</td><td class="small">Its own module and its own suite (<code class="mono">test:shukuchi</code>, 68 assertions). The overlay, the arc and the rail were previewed and dialled in — and a second probe (<code class="mono">shukuchiparity</code>, 896 assertions) checks that the page's board and landing rule are the engine's, not a lookalike.</td><td><span class="chip head">engine built · overlay dialled in</span></td></tr>
+          <tr><td class="what">🏆 Win conditions</td><td class="small">Legend Run and Battle of the Bands, playable from <code class="mono">runMatch</code> — but no menu and no HUD</td><td><span class="chip head">headless only</span></td></tr>
+          <tr><td class="what">🎼 Theory off the tree</td><td class="small">Pardon ladder universal and free; stack seats 4–6 found on the board</td><td><span class="chip built">built</span></td></tr>
+          <tr><td class="what">💰 The Db sink / upgrade shop</td><td class="small">Premise changed 4 Sep — two of its three rules superseded, its price table void, and its Shukuchi row was priced against an ability that didn't exist yet</td><td><span class="chip spec">design only</span></td></tr>
+          <tr><td class="what">🎼 Melody identity</td><td class="small">Four verbs, one motif detector instead of thirty rules</td><td><span class="chip spec">design only</span></td></tr>
+          <tr><td class="what">⭐ Fame track redesign</td><td class="small">Visual — goes to a preview page first, never straight into the client</td><td><span class="chip spec">design only</span></td></tr>
+          <tr><td class="what">🤖 The bot</td><td class="small">Parked on purpose. Every bench since 2 Sep reads a bot that doesn't know fans got better — and now one that plans hops the player can't take.</td><td><span class="chip parked">parked</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sechead">
+      <h2>Shortest useful next steps</h2>
+      <div class="note">order matters — each unblocks the next</div>
+    </div>
+    <ol class="steps">
+      <li><div><b>Port Shukuchi's overlay — now unblocked.</b><span>Your settings are captured: Ronin blue, no landing marker, the arc drawn <em>over</em> the hexes it clears, a segmented budget bar and no "free" label. Two of those are bets rather than preferences, and both are written down as such. The port gets diffed against the preview through a server render rather than eyeballed.</span></div></li>
+      <li><div><b>Respec Bushido and Shadow Illusion.</b><span>Pure number edits on shipped abilities: a constants change plus the 3–5 window. Waiting on one call from you — whether the Bushido bonus really goes flat +3.</span></div></li>
+      <li><div><b>Answer the Ronin ledger.</b><span>Four passes down, still open, and building Shukuchi didn't close it. The 12 Db slot is empty and your new Wa no Koe idea is sitting in the inbox as a candidate for it.</span></div></li>
+      <li><div><b>Pick the flat unlock number.</b><span>The whole economy now turns on it. Today's spread is 6–14 against a 19 Db median income — and the measured budget to set it with already exists.</span></div></li>
+      <li><div><b>Decide the roster.</b><span>Glamarchy out, Riff Rat in? Two docs already assume yes. Until it's called, every balance sheet is built on a roster the game doesn't have.</span></div></li>
+      <li class="done"><div><b>Delete Wa no Koe properly.</b><span>Done 4 Sep. The last cut in that same file ran past its own end and took a whole function with it, so this one went in five steps — and the suites that watched the ability now watch the hole.</span></div></li>
+      <li class="done"><div><b>Build Shukuchi.</b><span>Done 4 Sep, engine side. Your "each hop costs 1 AP" turned it from a whole movement turn into a movement <em>mode</em> — and made the price the brake instead of a geometry rule.</span></div></li>
+      <li class="done"><div><b>Preview the hop's overlay and rail — and dial it in.</b><span>Done 4 Sep. Twelve button states, the real 238px column with all four of his buttons in it, and a lever for every taste call — plus a probe that proves the drawn board is the played board. Settings captured the same session.</span></div></li>
+    </ol>
+  </section>
+
+  <footer>
+    Assembled from the code and the design set, 4 Sep 2026 (late) — abilities, prices and colours read from <code>data/spirits.js</code>, <code>data/skillTree.js</code>, <code>data/gameConstants.js</code> and <code>engine/systems/cooldowns.js</code>; states from the design docs and the suites that passed.<br>
+    Live text: <code>src/STATE_OF_PLAY.md</code> · findings: <code>src/SEQUENCING.md</code> §B · handoff: §A <code>5-hopui</code> · ideas: <code>src/IDEAS_INBOX.md</code> · the Ronin: <code>src/RONIN_ABILITY_DESIGN.md</code> · the preview: <code>.scratch/shukuchi-hop-preview.html</code>
+  </footer>
+
+</div>

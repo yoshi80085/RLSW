@@ -2700,19 +2700,20 @@ which zeroes for the same reason.
   lock Theory's architecture** (the spine/branch split and the three slot-rung
   renames), because it is Spirit-agnostic, cheap, and constrains every rung
   written after it.
-- **🐛 WA NO KOE SILENTLY EATS THE DRIVE BOOST, and the kernel reproduces it.**
-  In Game, `applyWaNoKoe` reads `curTemp` off the *render-scoped* `actingNoteState`
-  — the PRE-commit value — and writes `curTemp + 1` over the `tempDrive` the
-  commit patch just set. So on a turn where the Ronin earns **both** a diatonic
-  Drive boost and Wa no Koe, the boost is discarded and he ends on
-  `oldTempDrive + 1`. It is reproduced in `melodyCommit.js` on purpose: a kernel
-  that quietly plays a *better* game than the client is the same class of failure
-  as an invented rule. ✅ **The rewire landed, so this IS now a one-place edit** —
-  change `melodyCommit.js`'s Wa no Koe block to read the patch's `newTempDrive`
-  instead of `prevTempDrive`, and drop the pin in `melodyCommitCheck` §13. The
-  monolith's own `applyWaNoKoe` is gone, so there is nothing left to keep in
-  step. (This is the second bug of exactly this shape in this one function —
-  B10's `driveStack ?? sustainStack` was the first.)
+- ~~**🐛 WA NO KOE SILENTLY EATS THE DRIVE BOOST**~~ — 🪦 **CLOSED 2026-09-04:
+  THE ABILITY IS CUT.** The bug was real (the pre-commit `tempDrive` was read off
+  the render-scoped sheet and written back over the boost the same commit had
+  just earned, so a diatonic run worth +3 ended at +1), it was reproduced in
+  `melodyCommit.js` on purpose, and it was pinned in `melodyCommitCheck` §13.
+  **All three are gone with the rule** — there is no one-place edit left to make,
+  and this item is not waiting on anything. `RONIN_ABILITY_DESIGN.md` §2.4.
+  ⚠️ **THE SHAPE IS NOT CLOSED, ONLY THIS INSTANCE.** Reading a render-scoped
+  `noteState` and writing back over a fresh patch was the second bug of exactly
+  this form in one function (B10's `driveStack ?? sustainStack` was the first),
+  and it stays flagged where the pattern still occurs —
+  `rlsw-simulator-v3_8_1.jsx` ~7959, the Bushido bonus, which reads the LIVE
+  sheet specifically to avoid it. 📌 If a third turns up, it is a class, not a
+  coincidence, and it wants a lint rather than a comment.
 - **Opponent replies need a second mode.** Both `legalActions` (returns `[]`)
   and `evaluate` (`apBanked` → 0) deliberately refuse to speak for a Spirit who
   is not `state.acting`. That is right for a one-ply generator and wrong for

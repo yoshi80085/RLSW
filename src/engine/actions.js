@@ -15,6 +15,7 @@ export const MOVE_BUDGET_SET = "MOVE_BUDGET_SET";
 export const MOVE_STEP       = "MOVE_STEP";
 export const BEATS_SPENT     = "BEATS_SPENT";
 export const SPIRIT_WARPED   = "SPIRIT_WARPED";
+export const SHUKUCHI_HOPPED = "SHUKUCHI_HOPPED";
 export const SPIRIT_FACED      = "SPIRIT_FACED";
 export const SPIRIT_ELIMINATED = "SPIRIT_ELIMINATED";
 export const SPIRITS_SYNCED  = "SPIRITS_SYNCED"; // TEMP bridge — remove in Phase 3
@@ -124,6 +125,16 @@ export function beatsSpent(n, exhaustToken = false, { all = false } = {}) {
 /** Teleport (Displace): position change + AP cost, no facing change. */
 export function spiritWarped(spiritId, toNum, cost = 0) {
   return { type: SPIRIT_WARPED, spiritId, toNum, cost };
+}
+
+/**
+ * 🌀 One Shukuchi hop — exactly 2 hexes, over anything in between.
+ * ⚠️ Carries no cost argument: the AP is fixed at `SHUKUCHI_AP_PER_HOP` inside
+ * the reducer, because a caller that could choose the price is a caller that can
+ * make the ability free — which is the failure `cooldowns.js` exists to stop.
+ */
+export function shukuchiHopped(spiritId, toNum) {
+  return { type: SHUKUCHI_HOPPED, spiritId, toNum };
 }
 
 /** Turn in place to aim — costs 1 step (human "face" action + bot aimFace). */

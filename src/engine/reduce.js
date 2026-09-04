@@ -7,7 +7,7 @@
 import {
   GAME_INIT,
   TURN_STARTED, TURN_ENDED, TURN_SKIPPED,
-  MOVE_BUDGET_SET, MOVE_STEP, BEATS_SPENT, SPIRIT_WARPED, SPIRITS_SYNCED,
+  MOVE_BUDGET_SET, MOVE_STEP, BEATS_SPENT, SPIRIT_WARPED, SHUKUCHI_HOPPED, SPIRITS_SYNCED,
   SPIRIT_FACED, SPIRIT_ELIMINATED, SPIRIT_PATCHED,
   RIFF_OFF_STARTED, RIFF_RESULTS_SUBMITTED, RIFF_RESOLVED,
   RIFF_ROUND2_STARTED, RIFF_CLOSED,
@@ -32,6 +32,7 @@ import {
   applySpiritEliminated, applySpiritPatched,
 } from "./systems/turn.js";
 import { applyMoveStep, applySpiritWarped, applySpiritFaced } from "./systems/movement.js";
+import { applyShukuchiHop } from "./systems/shukuchi.js";
 import {
   applyAttackRolled, applyAttackRerolled,
   applyDamageApplied, applyKnockdownResolved, applyWinnerDeclared,
@@ -86,6 +87,7 @@ function reduce(state, action, rng) {
     case MOVE_STEP:       return applyMoveStep(state, action, rng);
     case BEATS_SPENT:     return applyBeatsSpent(state, action);
     case SPIRIT_WARPED:   return applySpiritWarped(state, action);
+    case SHUKUCHI_HOPPED: return applyShukuchiHop(state, action);
     case SPIRIT_FACED:    return applySpiritFaced(state, action);
     case SPIRIT_ELIMINATED: return applySpiritEliminated(state, action);
     case SPIRITS_SYNCED:  return applySpiritsSynced(state, action);

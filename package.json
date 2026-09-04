@@ -12,7 +12,7 @@
     "dev": "vite",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:all": "npm run test:engine && npm run test:legal && npm run test:eval && npm run test:transition && npm run test:turnflow && npm run test:determinism && npm run test:battleflow && npm run test:winconditions && npm run test:stackslots && npm run test:melody && npm run test:slime && npm run test:eleven && npm run test:score && npm run test:harness && npm run test:riffparity && npm run test:skilltree && npm run test:shamisen && npm run test:client && npm run test:render && npm run test:b0 && npm run test:riff && npm run test:trace && npm run test:arch",
+    "test:all": "npm run test:engine && npm run test:legal && npm run test:eval && npm run test:transition && npm run test:turnflow && npm run test:determinism && npm run test:battleflow && npm run test:winconditions && npm run test:stackslots && npm run test:melody && npm run test:slime && npm run test:eleven && npm run test:score && npm run test:harness && npm run test:riffparity && npm run test:skilltree && npm run test:shamisen && npm run test:shukuchi && npm run test:shukuchiui && npm run test:client && npm run test:render && npm run test:b0 && npm run test:riff && npm run test:trace && npm run test:arch",
     "test:arch": "node --import ./src/engine/testAssetStub.mjs src/engine/architectureCheck.mjs",
     "test:b0": "node --import ./src/engine/testAssetStub.mjs src/engine/b0check.mjs",
     "test:battleflow": "node --import ./src/engine/testAssetStub.mjs src/engine/battleFlowCheck.mjs",
@@ -30,6 +30,7 @@
     "test:riff": "node --import ./src/engine/testAssetStub.mjs src/riff/arrowHighwayEngine.test.mjs && node --import ./src/engine/testAssetStub.mjs src/riff/guitarMap.test.mjs && node --import ./src/engine/testAssetStub.mjs src/riff/neonNeck.test.mjs && node --import ./src/engine/testAssetStub.mjs src/riff/riffArchetypes.test.mjs && node --import ./src/engine/testAssetStub.mjs src/riff/riffPerformance.test.mjs",
     "test:riffparity": "node --import ./src/engine/testAssetStub.mjs src/riff/riffOffParity.test.mjs",
     "test:score": "node --import ./src/engine/testAssetStub.mjs src/engine/actionScoreCheck.mjs",
+    "test:shukuchi": "node --import ./src/engine/testAssetStub.mjs src/engine/shukuchiCheck.mjs",
     "test:shamisen": "node --import ./src/engine/testAssetStub.mjs src/engine/shamisenCheck.mjs",
     "test:skilltree": "node --import ./src/engine/testAssetStub.mjs src/engine/skillTreeCheck.mjs",
     "test:stackslots": "node --import ./src/engine/testAssetStub.mjs src/engine/stackSlotsCheck.mjs",
@@ -38,7 +39,8 @@
     "test:transition": "node --import ./src/engine/testAssetStub.mjs src/engine/transitionCheck.mjs",
     "test:winconditions": "node --import ./src/engine/testAssetStub.mjs src/engine/winConditionsCheck.mjs",
     "test:turnflow": "node --import ./src/engine/testAssetStub.mjs src/engine/turnFlowCheck.mjs",
-    "test:vision": "node src/vision/neckGeometrySelftest.mjs"
+    "test:vision": "node src/vision/neckGeometrySelftest.mjs",
+    "test:shukuchiui": "esbuild src/engine/shukuchiOverlayCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/shukuchiOverlayCheck.mjs --loader:.png=empty --loader:.jpg=empty --loader:.svg=empty --log-level=warning && node node_modules/.cache/rlsw/shukuchiOverlayCheck.mjs"
   },
   "dependencies": {
     "react": "^19.2.5",

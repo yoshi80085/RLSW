@@ -186,7 +186,13 @@ zoner. Sits back, controls space with Sonic and Blaster of Ra, builds the wave, 
 unleashes. The teleport (Displace) helps them reposition to avoid getting rushed down
 before the counter peaks.
 
-> **OPEN QUESTION:** "Behind the Back" is the most unconventional guitar stance, which
+> 🩦 **DEAD QUESTION, NOT AN OPEN ONE — flagged 2026-09-04d.** The whole
+> Stance system is CUT (see the banner at the top of this file), so nothing below
+> is waiting on a call. It is left in place as history. ⚠️ It read as live to a
+> grep for months and reached a decision board as a real row — `SEQUENCING.md`
+> §B1: a doc that reads as current and is not is worse than no doc.
+>
+> **OPEN QUESTION (v1, DEAD):** "Behind the Back" is the most unconventional guitar stance, which
 > fits Intergalactic 0's cosmic weirdness. But if it doesn't land thematically, alternatives:
 > "Hip Slung" (funk/groove association), "Seated" (sit down and lock in — Hendrix at
 > Monterey before the burn), or simply "Locked In" as a stance name that communicates the

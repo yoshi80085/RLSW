@@ -1,5 +1,44 @@
 # Working on rlsw-sim
 
+> # 🧭 READ THESE TWO, IN THIS ORDER, BEFORE ANYTHING ELSE
+>
+> 1. **`src/STATE_OF_PLAY.md`** — ~150 lines. The whole game as it stands: roster,
+>    every ability and its state, rules decided but not yet built, what is blocked
+>    on what. **The entry point. Read it even for a one-line fix.**
+> 2. **`src/SEQUENCING.md` §B — THE FINDINGS.** Ten lessons that each cost real
+>    money and each became a test. ⚠️ **Read §B before your first destructive
+>    change**, especially any deletion.
+>
+> 💡 And **`src/IDEAS_INBOX.md`** is where a half-formed idea goes — if Alex raises
+> something mid-session that is not what you are working on, capture it there in
+> three lines and carry on. **Do not design it. Do not file it into whichever doc
+> happens to be open.**
+>
+> 📌 Everything below is *how to work here* — house style, testing, the preview
+> rule. Those files are *what is true*. You need both.
+
+## 🗺️ THE SYSTEMS MAP — Alex's picture of the game, and it is a DELIVERABLE
+
+**`https://claude.ai/code/artifact/c43fa72a-e92b-4219-9619-41e0933fb494`** —
+*Spirit Wars Systems Map*, a published Artifact. It is `STATE_OF_PLAY.md` drawn:
+the two dependency chains, the roster, the Ronin's kit, the rules decided but not
+true, the open decisions, and the next steps. 🎯 **Alex reads the game through
+it.** A session that changed the game and not the map has not finished.
+
+⚠️ **DO NOT OPEN IT AT THE START OF A SESSION.** It is ~30 KB of HTML and it
+tells you nothing `STATE_OF_PLAY.md` does not — reading it to *orient* is paying
+for the same facts twice. **Read it once, at the END**, with the Artifact tool's
+`action:"read"` and that URL (a page this size comes back as a local file, not as
+context), edit that file, and republish to the **same URL** with `url:`.
+
+📌 **THERE IS DELIBERATELY NO COPY OF IT IN THE REPO.** Two copies of a design
+doc is the exact drift this project keeps paying for (§B1, §B9). The artifact is
+the only copy; `STATE_OF_PLAY.md` is the source it is drawn from.
+
+✅ **Update it in the same pass as `STATE_OF_PLAY.md` and `SEQUENCING.md` §A** —
+those three are one ritual, not three chores. Keep its title, its favicon and its
+design system; change the content and the dated line in the masthead.
+
 ## ⚠️ ALWAYS END AN UPDATE WITH AN ELI5
 
 Every time you report a change — a commit, a feature, a bug fix, a bench run,
@@ -27,6 +66,41 @@ What the ELI5 should do:
 Do this **every time**, unprompted, in every session. If a message reports more
 than one distinct change, one combined ELI5 covering the lot is fine.
 
+## 🧭 The three files above — why they are split that way
+
+`STATE_OF_PLAY.md` is **state**: what is true right now, no history, no argument.
+`SEQUENCING.md` is **narrative**: what happened and what it taught.
+`IDEAS_INBOX.md` is **intake**: unprocessed, deliberately messy, promoted into a
+real doc only when Alex picks it up.
+
+🎯 **Keeping them apart is the whole trick.** They were one file before, and a
+session had to read four thousand lines of finished history to learn three live
+facts. ⚠️ **If you find yourself adding history to `STATE_OF_PLAY.md`, or current
+state to `SEQUENCING.md`, that is the merge starting again** — put it in the
+other one.
+
+📌 **What each one holds:**
+
+- `src/SEQUENCING.md` — **§A** the live handoff · **§B** 🎓 **THE FINDINGS**, ten
+  lessons that each cost real money and each became a test · **§C** a dated index
+  of all 31 past handoffs. ⚠️ **Read §B before your first destructive change.**
+- `src/IDEAS_INBOX.md` — 💡 **where a half-formed idea goes.** If Alex raises
+  something mid-session that is not what you are working on, **capture it there in
+  three lines and carry on.** Do not design it, do not price it, and above all do
+  not file it into whichever doc happens to be open — that is exactly how a whole
+  character respec spent two days invisible (`SEQUENCING.md` §B9).
+
+⚠️ **`SEQUENCING.md` was 4,763 lines on 2026-09-04** — 31 stacked handoffs, of
+which 132 lines were live — and it was the doc every session was told to read
+first. The full original is `docs/archive/SEQUENCING-full-through-2026-09-04.md`,
+unedited and searchable by section id. **Nothing was deleted, only moved.**
+
+🧊 **AND BALANCE IS DEFERRED ON PURPOSE** while the kit is in flux (Alex,
+2026-09-04). Record an imbalance and move on; **do not open a session proposing to
+rebalance a character.** The exception is anything that makes a thing *impossible*
+rather than merely weak — an ability that cannot fire, a purchase nobody can make,
+a flag that can never be true. Those are bugs wearing balance's clothes.
+
 ## The docs are the map
 
 This repo carries its design in Markdown next to the code, and those files are
@@ -34,7 +108,9 @@ the real handoff. Read before changing anything, and update them in the same
 pass as the code:
 
 - `src/BOT_STRATEGY_HANDOFF.md` — the bot/searcher work, the cost web, the kits
-- `src/SEQUENCING.md` — what order the open design arms get built in
+- `src/STATE_OF_PLAY.md` — 🧭 **the entry point: what is true right now**
+- `src/SEQUENCING.md` — the live handoff, 🎓 the findings, the index of past ones
+- `src/IDEAS_INBOX.md` — 💡 half-formed ideas, captured cheaply, promoted deliberately
 - `src/METALNESS_REWORK_DESIGN.md` — the Metalness Monster kit redesign
 - `src/THEORY_ARCHITECTURE.md` / `THEORY_ROUTES_DESIGN.md` — the music theory routes
 - `src/PROGRESSION_REWRITE_DESIGN.md` — 🎼 Theory comes off the tree: board-found
@@ -105,14 +181,18 @@ evidence that it looks right.
 
 ## Testing
 
-**`npm run test:all`** is the full sweep — twenty-one suites, one command,
+**`npm run test:all`** is the full sweep — **twenty-five suites**, one command,
 stops on the first red. Run it before reporting anything as done, and quote the
 assertion counts. If a count drops, explain why rather than letting it pass
 unremarked.
 
 Individual suites are `npm run test:<suite>`: engine, legal, eval, transition,
-turnflow, determinism, battleflow, melody, slime, eleven, score, harness,
-riffparity, skilltree, shamisen, client, render, b0, riff, trace, arch. `npm run bench:bot` runs the §6.6 bot
+turnflow, determinism, battleflow, winconditions, stackslots, melody, slime,
+eleven, score, harness, riffparity, skilltree, shamisen, shukuchi, shukuchiui,
+client, render, b0, riff, trace, arch.
+⚠️ **`test:all` will not finish inside a 2-minute shell** on this VM, and
+`test:render` alone can take longer than that cold (it esbuilds the monolith
+first). Run the suites in batches rather than reading a timeout as a failure. `npm run bench:bot` runs the §6.6 bot
 bench (not a test — it prints evidence), and `.scratch/` holds one-off probes,
 which are evidence for one session and never a suite.
 
@@ -147,5 +227,10 @@ checking whether the engine matches the game, read the CLIENT
 
 ## Where the work is
 
-`src/SEQUENCING.md` §5 always holds the current next step and why. Read it
-first; it is kept up to date at the end of each session.
+**`src/STATE_OF_PLAY.md` §7 holds the shortest useful next steps**, and its §6 the
+bottleneck they hang off. `src/SEQUENCING.md` §A holds the current handoff — what
+just happened, in detail. Both are kept up to date at the end of each session.
+
+⚠️ **§A is ONE handoff, not a stack.** When you write a new one, the previous §A
+moves to the archive and gains a row in §C. **Do not let this file grow back to
+4,763 lines** — that is what the restructure was for.

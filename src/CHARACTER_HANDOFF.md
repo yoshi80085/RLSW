@@ -3,6 +3,32 @@
 Pick-up notes for continuing the Spirit-identity work. Read this + `DESIGN_AUDIT_v2.md`
 (design thesis) + `ARCHITECTURE.md` (where things live) and you're caught up.
 
+> 🗡️ **2026-09-04 — THE RONIN'S KIT WAS RESPECCED. FIVE ABILITIES, NOT FOUR.**
+> 🌀 **Shukuchi Arpeggio** is new (jump 2 hexes ×3 as the movement turn, 6/1/CD 3),
+> 🎵 **Wa no Koe is CUT**, 🎸 **Cursed Shamisen becomes a SIPHON** — Swing-area,
+> pick a rival's ability with **no cooldown readout**, and if it is recharging the
+> rival is pushed **+1 further from ready** while Ronin's own cooldowns drop by
+> however many turns it had left. **`RONIN_ABILITY_DESIGN.md` §2 is the spec and
+> §8.1 is the build order. NOTHING IS BUILT.**
+>
+> ⭐ **AND THE ECONOMY CHANGED UNDER ALL OF IT (2026-09-04).** Every base ability
+> costs the same, **every seat starts with one ability already active**, and
+> upgrade prices rise per ability — so the 6/8/10/12 unlock spread is gone
+> roster-wide, not just on the Ronin (`UPGRADE_SHOP_DESIGN.md` §0⃣).
+> 🧊 **Balance is deliberately deferred while the kit is in flux** (§0⃣.4) — the
+> nerf ledger below stays recorded and is NOT to be acted on yet.
+>
+> 🪦 **AND THE SPEC SPENT TWO DAYS FILED WHERE NOBODY WOULD LOOK.** It was captured
+> on 2026-09-02i as `UPGRADE_SHOP_DESIGN.md` §3.1 — a *pricing* doc — while this
+> file and the Ronin doc both went on describing the old four. Not a stale doc: a
+> **misfiled** one, which reads exactly like the decision was never made.
+>
+> ⛔ **THE NERF LEDGER IS NOW THREE DEEP AND THIS FILE OWES THE ANSWER.** The
+> pardon head start (2026-09-02), the text that oversold it (2026-09-03), and now
+> Wa no Koe at 12 Db cut for Shukuchi at 6 Db — while his other three got more
+> expensive. Each pass deferred compensation to the next. **`RONIN_ABILITY_DESIGN.md`
+> §2.4.2 lays it out; the decision belongs HERE and has not been made.**
+
 > ⚠️ **2026-08-22 — TWO GAME-WIDE RULES LANDED, AND THE RONIN IS NO LONGER "COMPLETE".**
 > Alex's call: **every ability costs at least 1 Db per use, and every ability has a
 > cooldown.** **`RONIN_ABILITY_DESIGN.md` is the canonical statement of all of it**,
@@ -160,9 +186,14 @@ and three of them no longer match what they are supposed to be. Read the status 
     — ✅ **FULLY REWORKED 2026-08-26.** Spec: `RONIN_ABILITY_DESIGN.md` §2.3.
     🪦 The old board-token design (phrase feeding, wandering AI, growing aura, exorcism) is
     entirely gone. The Shamisen is now a **self-buff that accelerates all OTHER ability
-    cooldowns for 3 rounds** (`CURSED_SHAMISEN_DURATION`). While active, Bushido, Shadow
-    Illusion and Wa no Koe tick at **2× speed** — one extra tick per round via `tickShamisen`
+    cooldowns for 3 rounds** (`CURSED_SHAMISEN_DURATION`). While active, **Bushido and Shadow
+    Illusion** tick at **2× speed** — one extra tick per round via `tickShamisen`
     in `cooldowns.js`. The Shamisen's own cooldown is excluded (no recursive loop).
+    🪦 **This line used to name Wa no Koe as a third beneficiary, and the skill `desc`
+    said so to the player.** Wa no Koe is a passive with no entry in `ABILITY_CD`, and
+    `tickShamisen` only walks keys already present in `abilityCd` — so there was never
+    anything there to accelerate. Corrected in code and doc 2026-09-03. 📌 It goes back
+    in the sentence the day §2.4's replacement gives it a cooldown.
     **The curse:** while glowing, if Ronin takes **any Vibe damage in battle** and has **not
     paid 1 Db** (`CURSED_SHAMISEN_PAYOFF_COST`) that round, **ALL cooldowns RESET to full
     duration** (`resetAllCooldowns`). The glow stays for the full 3 rounds regardless of
@@ -172,17 +203,52 @@ and three of them no longer match what they are supposed to be. Read the status 
     `checkShamisenCursePenalty`, `playShamisenStrum`.
     ✅ **Under test:** `engine/shamisenCheck.mjs` / `npm run test:shamisen`, 34 assertions
     covering acceleration, reset, constants and design invariants.
-    - **Wa no Koe** (12 Db, **no per-use cost, no cooldown**) — Passive: when **half or more** of the
-    committed melody sits inside the Drive+Sustain stacks, it pays **+1 Drive or Sustain for 3 rounds**
-    (whichever stack is longer). ⚠️ The rule is a pure function in the **kernel** —
-    `checkWaNoKoe` in `engine/systems/melodyCommit.js` — not in this file; the monolith keeps only
-    `tickWaNoKoe` (expiry is a turn-start rule, not a commit rule). The kernel deliberately reproduces
-    the shipped B10 bug where pre-commit `tempDrive` overwrites the boost the same commit just earned
-    (one-place fix, `BOT_STRATEGY_HANDOFF` §7).
-    🚨 **THIS ABILITY IS BEING REPLACED, NOT TUNED** — the designed Wa no Koe makes **one chosen note
-    Resonant board-wide** and puts Ronin in a vulnerable **Harmony** state. It shares only the name and
-    the 12 Db. See `RONIN_ABILITY_DESIGN.md` §2.4. 📌 Don't spend a session fixing the B10 bug first;
-    the replacement makes it moot.
+    - 🪦 **Wa no Koe — CUT, AND NOW DELETED (2026-09-04).** The 12 Db capstone is gone
+    from the code as well as the design: no `checkWaNoKoe`, no `waNoKoeBuffs` seat, no
+    `tickWaNoKoe`, no skill row, no bot ladder entry. `melodyCommitCheck` §13 is now the
+    REVIVAL GUARD rather than its coverage. **The 12 Db mastery slot is EMPTY.**
+    - 🌀 **Shukuchi Arpeggio** (6 Db unlock, **1 Db per activation**, **3-round cooldown**)
+    — ⭐ **BUILT HEADLESS 2026-09-04**, and the first new ability in the kit since the
+    respec. Each step becomes a **2-hex leap**, up to **3 a turn**, each freely aimed,
+    and ⭐ **each leap costs 1 AP out of the same pool as walking, the Swing and Bushido**
+    (`RONIN_ABILITY_DESIGN.md` §2.5.0). That one line is the whole balance: three hops is
+    a Bushido he did not throw. ⚠️ **Nothing stops him in the air** — bodies, hazards,
+    walls and 🐙 slime pass underneath and only the LANDING hex is checked, which is
+    knowingly a hard counter to area denial. 🎵 Every landing picks up a Lost Chord, on a
+    Spirit who already has a double-note roll and a decoy that collects for him.
+    ⚠️ **He re-faces down the direction of travel, like walking and unlike the warp** —
+    otherwise he lands beside a rival still aimed down the lane he came from, which is the
+    free half of a Bushido setup.
+    ⛔ **NO CLIENT HALF.** No button, no animation, no target overlay — the hop is a
+    visual, and `CLAUDE.md` sends a visual to a `.scratch/` preview first. It is named in
+    `BOT_CLIENT_GAPS`, so **the bench and the played game disagree about this ability**
+    until that pass lands. Rule lives in `engine/systems/shukuchi.js`; `test:shukuchi`
+    is the only thing standing on it.
+
+#### 🚨 THE RONIN LEDGER — four passes, four subtractions, no answer
+
+⛔ **THIS IS THE OPEN CHARACTER QUESTION AND IT BELONGS HERE, NOT IN A PRICING DOC.**
+`RONIN_ABILITY_DESIGN.md` §2.4.2 names three straight nerfs and warns that each pass
+deferred the compensation to the next. **The deletion pass is the fourth.** No single
+change looks unreasonable, which is exactly the problem:
+
+| # | date | what he lost | what he got back |
+|---|---|---|---|
+| 1 | 2026-09-02 | The Chord Tone Pardon he was **born with** became the roster's floor when the Theory ladder went universal | nothing — nobody else gave anything up |
+| 2 | 2026-09-03 | The drift sweep corrected his skill text, which was still selling that head start as his | honest text |
+| 3 | 2026-09-04 | 🪦 Wa no Koe (**12 Db**) cut. Bushido 6→8 and Illusion 6→10 got dearer; Bushido 2→4, Illusion 3→4, Shamisen 3→4 got slower | 🌀 Shukuchi (**6 Db**) — half the slot, and a mobility tool, not a payout |
+| 4 | 2026-09-04 | The deletion landed. The explicit consolation for #1 was *"Wa no Koe still stacks on top exactly as designed"* — **that sentence is now void** | — |
+| 5 | 2026-09-04 | 🌀 Shukuchi **BUILT** — so he is back to four abilities | ⚠️ **AND THIS DOES NOT CLOSE THE LEDGER.** It is a 6 Db mobility tool where a 12 Db payout used to be, it pays no Drive, no Sustain and no Fame, and **the 12 Db slot is still empty** |
+
+🎯 **THE QUESTION FOR ALEX, IN ONE LINE:** the Ronin is now a three-ability Spirit
+whose kit costs more and cools slower than it did a week ago — is that the intended
+shape of a burst character, or is he owed a slot?
+
+🧊 ⚠️ **AND THIS IS NOT A REBALANCE PROPOSAL.** `SEQUENCING.md` §B10 stands: while
+the kit is in flux, imbalance is information. This is filed as a **decision waiting
+for its owner**, which is the one thing three previous passes each assumed a later
+one would do. 📌 The empty 12 Db mastery slot is where an answer would go — and
+Alex's new Wa no Koe form (`IDEAS_INBOX.md`, 2026-09-04) is a candidate for it.
 
 ### Intergalactic 0 — the slow forgiving cosmic controller (done · UNLOCKED 2026-08-08)
 - **Innate:** speed 4; knockback −1 ("Rolls Hard"); **Freestyle** (first out-of-scale note/turn

@@ -61,6 +61,7 @@ import { applyAction } from "../reduce.js";
 import {
   moveStep, spiritFaced, beatsSpent, moveBudgetSet, turnEnded,
   noteSheetPatched, attackRolled, fansChanged, spiritSlid, slimeCleared, slimeCalled,
+  shukuchiHopped,
   elevenCalled, posed, spiritWarped,
 } from "../actions.js";
 import {
@@ -85,6 +86,7 @@ import {
 } from "../../data/trivia.js";
 import { CHARGE_ZONE_BOOST_TURNS } from "../../data/gameConstants.js";
 import { firePatch } from "../systems/cooldowns.js";
+import { SHUKUCHI_SKILL, hopBudgetPatch, hopIsActivation } from "../systems/shukuchi.js";
 import { randomNote } from "../../music/cadence.js";
 import { applyUnlockClaim } from "../../music/stackSlots.js";
 import { commitMelodyEconomy } from "../systems/melodyCommit.js";
@@ -93,7 +95,7 @@ import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 /** Kinds this file can actually run headlessly. */
 export const MODELLED_KINDS = new Set([
   'melodyNote', 'stackCommit', 'confirmMelody',
-  'move', 'slide', 'face', 'swing', 'sonic', 'tentacle', 'psychoBushido', 'pose', 'skillTarget', 'endTurn',
+  'move', 'shukuchi', 'slide', 'face', 'swing', 'sonic', 'tentacle', 'psychoBushido', 'pose', 'skillTarget', 'endTurn',
   'riffOff',
   'slime', 'eleven',
 ]);
@@ -395,6 +397,38 @@ export function applyBotAction(state, action, ctx = {}) {
       // ⚠️ WHERE HE ACTUALLY LANDED, NOT WHERE HE AIMED. The Dazed rule can
       // redirect a step to a different neighbour, so reading `action.to` here
       // would collect a token off a hex nobody is standing on.
+      const landedOn = (next.spirits ?? []).find(s => s.id === spiritId)?.num ?? null;
+      const { state: picked, logs } = collectPickups(next, spiritId, landedOn, rng);
+      return { state: picked, view, ok: true, reason: null, logs };
+    }
+
+    // 🌀 SHUKUCHI — a move step that buys two hexes and ignores what is between.
+    //
+    // ⚠️ THE ORDER HERE IS LOAD-BEARING AND IT IS THE OPPOSITE OF BUSHIDO'S.
+    // `hopIsActivation` and `hopBudgetPatch` both read the sheet as it was
+    // BEFORE this hop, so they are computed first and written together. Reading
+    // the sheet back after the hop would ask "is this an activation?" of a sheet
+    // that had already been told it was mid-move, and the first hop would never
+    // charge — the exact class of read-order bug `GAME_BRIEF.md` records against
+    // the retired Wa no Koe, and `melodyCommit.js`'s standing warning.
+    //
+    // 💿🕒 THE Db AND THE CLOCK ARE PAID ONCE, ON THE FIRST HOP. §2.5.0a: "1 Db
+    // per use" and a use is the activation, not the hop. `firePatch` is the same
+    // helper the client resolvers call, so the searcher cannot play a cheaper
+    // game than the player.
+    case 'shukuchi': {
+      const nsSelf = state?.noteStates?.[spiritId] ?? {};
+      const fired  = hopIsActivation(nsSelf);
+      let next = patchNs(state, spiritId, {
+        ...hopBudgetPatch(nsSelf),
+        ...(fired ? firePatch(nsSelf, SHUKUCHI_SKILL) : {}),
+      }, rng);
+      next = applyAction(next, shukuchiHopped(spiritId, action.to), rng);
+      // 🎵 EVERY LANDING PAYS, exactly as walking on does (§2.5.2 #5) — same
+      // helper, so charge zones and event hexes behave identically. ⚠️ Read
+      // where he ACTUALLY is rather than `action.to`: the hop cannot be
+      // redirected today, but `move` learned that lesson the expensive way and
+      // there is no reason for the two to differ.
       const landedOn = (next.spirits ?? []).find(s => s.id === spiritId)?.num ?? null;
       const { state: picked, logs } = collectPickups(next, spiritId, landedOn, rng);
       return { state: picked, view, ok: true, reason: null, logs };

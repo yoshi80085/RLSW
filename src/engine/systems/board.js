@@ -369,8 +369,9 @@ export function applyFlamingDecayed(state) {
 //
 // 📌 The kernels live HERE, next to the reducers that own the board half, and
 // the client is rewired onto them in the same pass. Two copies of a payout rule
-// is how `checkWaNoKoe` drifted (`SEQUENCING.md` §3) and it is not worth
-// repeating for the sake of a smaller diff.
+// is how Wa no Koe's payout rule drifted (`SEQUENCING.md` §3, archived) before
+// the ability was cut, and it is not worth repeating for the sake of a smaller
+// diff. 🪦 The ability is gone; the lesson it paid for is not.
 
 /**
  * 🎵 A Lost Chord lands in the stock.

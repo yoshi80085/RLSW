@@ -1870,8 +1870,14 @@ const config = {
   // is EXPECTED TO FAIL, and the fix is to assert what she can buy.
   assert.equal(botMod.botPickSkillTarget("Glamarchy", [], "maestro", SKILL_BY_ID), null,
     "⛔ Glamarchy has nothing to buy — §5's upgrade streams are not built yet");
-  assert.equal(botMod.botPickSkillTarget("cosmic_ronin", [], "maestro", SKILL_BY_ID), "psycho_bushido",
-    "a Spirit WITH a route still targets the head of it");
+  // ⚠️ THE HEAD MOVED ON 2026-09-04 AND THE NUMBER IS THE ASSERTION. It was
+  // `psycho_bushido` until 🌀 Shukuchi was added ahead of it in
+  // `BOT_SPIRIT_SKILLS`. That order is not cosmetic: the bot buys ~2.7 skills a
+  // match, so the head of a route is bought almost always and the tail almost
+  // never — moving an ability up or down the list is the difference between the
+  // bench seeing it and the bench never seeing it at all.
+  assert.equal(botMod.botPickSkillTarget("cosmic_ronin", [], "maestro", SKILL_BY_ID), "shukuchi",
+    "a Spirit WITH a route still targets the head of it — and the head is now Shukuchi");
 
   // ── botRiffResults ──
   // determinism: same rng sequence → same results

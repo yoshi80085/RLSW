@@ -98,6 +98,16 @@ import { SUNBEAM_DB_COST, SUNBEAM_BLIND_TURNS, SUNBEAM_LINGER_CHANCE, SUNBEAM_MA
          DISPLACE_DB_COST, DISPLACE_MIN_RINGS, DISPLACE_MAX_RINGS,
          GRAVITY_DB_COST, GRAVITY_PLACE_RINGS, GRAVITY_PULL_RINGS, GRAVITY_PULL_HEXES, GRAVITY_NOTE_DRAIN,
          CODE_INJECT_DB_COST } from "./data/gameConstants.js";
+// 🌀 SHUKUCHI ARPEGGIO — 縮地. The RULES live in the engine and are imported,
+// never re-derived here: a highlight with its own notion of "2 rings" is how you
+// get a hex that lights up and then refuses the click (the same reasoning
+// `displaceTargets` carries, and the reason `shukuchiLandings` is shared).
+import { SHUKUCHI_CD, SHUKUCHI_DB_COST, SHUKUCHI_MAX_HOPS,
+         SHUKUCHI_AP_PER_HOP } from "./data/gameConstants.js";
+import { canHop, shukuchiLandings, hopIsActivation, hopBudgetPatch,
+         shukuchiHopsLeft, SHUKUCHI_SKILL } from "./engine/systems/shukuchi.js";
+import { shukuchiHopped } from "./engine/actions.js";
+import { SHUKUCHI_LOOK, ShukuchiArcs, ShukuchiBudget } from "./ui/ShukuchiOverlay.jsx";
 import { SKILL_TREE, SKILL_BY_ID } from "./data/skillTree.js";
 import { tentacleOptions, legalActions } from "./engine/policies/legalActions.js";
 // 🧠 THE SEARCHER — the headless bot from the §6.6 bench, wired into the chair.
@@ -405,10 +415,10 @@ function bttpStageData(key) {
 // marks the ones with a self-contained trigger we can run on the spot.
 const SIGNATURE_TESTS = {
   cosmic_ronin: { name: 'Shredding Ronin', color: '#4488ff', skills: [
+    { id:'shukuchi',         label:'🌀 Shukuchi Arpeggio', pre:[] },
     { id:'psycho_bushido',   label:'🌀 Psycho Bushido',   pre:[] },
     { id:'shadow_illusion',  label:'👤 Shadow Illusion',  pre:[] },
     { id:'cursed_shamisen',  label:'🎸 Cursed Shamisen',  pre:[] },
-    { id:'wa_no_koe',        label:'🎵 Wa no Koe',        pre:[] },
   ]},
   Metalness_Monster: { name: 'Metalness Monster', color: '#ffcc00', skills: [
     { id:'goes_to_11',          label:'🔊 Goes to 11',          pre:[] },
@@ -661,6 +671,14 @@ const RIFF_COMMIT_BEAT = 2800;
 // that has genuinely stopped. See the ⏱️ block in `riffStartRun` for why the
 // watchdog has to exist at all — the play card has no button to escape with.
 const RIFF_RUN_WATCHDOG_MS = 2500;
+
+/* 🌀 SHUKUCHI'S LOOK lives in `ui/ShukuchiOverlay.jsx` with the geometry it
+   belongs to — one source for the dial-in, and a component the SSR check can
+   actually render. Only the two board-paint colours are pulled out here, because
+   `hexFill`/`hexStroke` are plain functions on this side of the fence. */
+const SHUKUCHI_FILL     = SHUKUCHI_LOOK.fill;
+const SHUKUCHI_STROKE   = SHUKUCHI_LOOK.stroke;
+const SHUKUCHI_STROKE_W = SHUKUCHI_LOOK.strokeW;
 
 // ── ONE SIDE OF A DUEL, AS THE OVERLAY NEEDS IT ──────────────────────────────
 // Engine riff → the shape battleState.atkRiff / defRiff carry. There are four
@@ -1934,6 +1952,10 @@ export function Game({ gameState, onReturnToLobby }) {
   const [freshNoteIdx, setFreshNoteIdx] = useState(null);
 
   const [pulsingHex, setPulsingHex] = useState(null); // hex num that glows on turn start
+  // 🌀 THE HOP TRAIL — this activation's arcs, oldest first. Client-only, and
+  // it has to be: the engine keeps ONE `turn.lastMove`, and §2.5.0c wants the
+  // whole activation on the board at once — three arcs, the oldest faded.
+  const [shukuchiTrail, setShukuchiTrail] = useState([]);
   // ─── BOARD DEPLOYABLES ── (moved to ./hooks/useBoardState.js)
   const {
     boardCards, setBoardCards,
@@ -2459,6 +2481,11 @@ export function Game({ gameState, onReturnToLobby }) {
       }
     }
   }, [acting?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 🌀 A NEW TURN IS A NEW ACTIVATION — drop last turn's arcs. ⚠️ Keyed on the
+  // ACTING id rather than the round: the Ronin's arcs must not still be hanging
+  // over the board while a rival is deciding where to walk.
+  useEffect(() => { setShukuchiTrail([]); }, [acting?.id]);
 
   // Convenience: pull the acting character's note state (falls back to empty defaults)
   const actingNoteState = acting ? (noteStates[acting.id] ?? makeInitialNoteState(acting.id)) : null;
@@ -4163,9 +4190,6 @@ export function Game({ gameState, onReturnToLobby }) {
     }
     if (report.deedFans) flashFanFx(acting.id, 'gain', report.deedFans.gain);
     if (report.perfFansGained > 0) showTip('fans');
-    // 🎵 WA NO KOE — the buff itself is in the patch (faithful to the B10-shaped
-    // bug the kernel deliberately reproduces); this is just the flash.
-    if (report.waNoKoe) triggerEffectFlash(acting.id, '🎵', '和', '#4488ff');
 
     if (flashLines.length > 0) {
       setPointsFlash({ lines: flashLines, key: Date.now() });
@@ -4314,7 +4338,6 @@ export function Game({ gameState, onReturnToLobby }) {
       } else if (report.shadowSustainDrained > 0) {
         addLog(`👤 The double drinks — −${report.shadowSustainDrained} Sustain to keep two Ronins on the stage.`);
       }
-      tickWaNoKoe();
     }
   }
 
@@ -4478,7 +4501,6 @@ export function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Dash in a straight line and strike — the ground you cover powers the blow. ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_CD}-round cooldown, and it spends every Action Point you have left.`);
     if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn. ⚠️ It drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain every turn it stands, and dies when you have none left.`);
     if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Activate the curse (${CURSED_SHAMISEN_DB_COST} Db) to speed up ALL other ability cooldowns for ${CURSED_SHAMISEN_DURATION} rounds. ⚠️ You GLOW while it runs — take any Vibe damage and ALL cooldowns RESET. Pay ${CURSED_SHAMISEN_PAYOFF_COST} Db per round to protect yourself, but rivals can't see whether you paid.`);
-    if (skillId === 'wa_no_koe')      addLog(`🎵 ${spirit?.name} — WA NO KOE! Half your melody inside your stacks now pays +1 Drive or Sustain for 3 rounds — the amplifier on the Chord Tone Pardon he already owns.`);
     // 🪦 THE SIX THEORY UNLOCK LOGS AND THE DISCORD-GRANT TABLE WENT WITH THE
     // BRANCH (2026-09-02). They taught the pardon ladder at the moment of
     // purchase; the ladder is universal and free now (`music/context.js`), so
@@ -5059,7 +5081,8 @@ export function Game({ gameState, onReturnToLobby }) {
     //
     // 📌 The rule lives in `music/stackSlots.js` and the headless path calls the
     // same function from `policies/transition.js`. Two copies of a payout rule is
-    // how `checkWaNoKoe` drifted; this one has exactly one.
+    // how Wa no Koe's payout rule drifted before it was cut (SEQUENCING §3,
+    // archived); this one has exactly one.
     {
       const ns = noteStates[spiritId] ?? {};
       const found = applyUnlockClaim(ns, tok.note);
@@ -7865,6 +7888,83 @@ export function Game({ gameState, onReturnToLobby }) {
   // Remaining AP after reaching the target converts to bonus Drive. 2-round CD.
   // The Ronin warps to the hex adjacent to the target along the charge line,
   // then initiates a swing with Drive boosted by leftover AP.
+  // 🌀 SHUKUCHI ARPEGGIO — one hop, and the client half of §2.5.0a/§2.5.0b.
+  //
+  // ⚠️ THE Db AND THE CLOCK ARE PAID ONCE, ON THE FIRST HOP — and the branch
+  // that decides which hop that is, is `hopIsActivation`. This resolver mirrors
+  // `transition.js`'s `shukuchi` case line for line: same budget patch, same
+  // `firePatch`, same order, same pickups. 🎯 That symmetry is not tidiness —
+  // it is what stops the searcher playing a cheaper game than the player
+  // (§B2: when you want to know whether the engine matches the game, read the
+  // client). If one of the two ever changes, change both in the same pass.
+  //
+  // ⚠️ AND THE CONTINUATION MUST NOT RE-CHECK READINESS. Hop 1 starts a 3-round
+  // cooldown, so hops 2 and 3 would find the ability recharging and refuse —
+  // and it would be a 2-hex blink that advertised three. `canHop` already knows
+  // this; call it, do not re-derive it.
+  function resolveShukuchiHop(hexNum) {
+    if (!acting) return;
+    const ns = actingNoteState ?? {};
+    if (!canHop(ns)) {
+      const cd = cooldownLeft(ns, SHUKUCHI_SKILL);
+      if (cd > 0) addLog(`🌀 The earth has not settled — ${cd} round${cd > 1 ? 's' : ''} before Shukuchi can shrink it again.`);
+      else addLog(`🌀 Not enough Db — Shukuchi costs ${SHUKUCHI_DB_COST} Db to open (you have ${ns.dbPoints ?? 0}).`);
+      return;
+    }
+    if (moveStepsLeft < SHUKUCHI_AP_PER_HOP) {
+      addLog(`🌀 No Action Points left — a hop costs ${SHUKUCHI_AP_PER_HOP}, exactly like a step.`);
+      return;
+    }
+    // Re-checked here rather than trusted from the highlight: the board can move
+    // between aiming and clicking (a knockback, a bot turn). Same guard shape as
+    // `resolveDisplace`.
+    // ⚠️ `shukuchiLandingSet()`, NOT `shukuchiTargets` — the memo is a render's
+    // worth of paint and the searcher calls this before the next one. See the
+    // note on the function.
+    if (!shukuchiLandingSet().has(hexNum)) {
+      addLog('🌀 Click a lit hex — every hop is exactly 2 rings, straight over whatever is in between.');
+      return;
+    }
+    const fired   = hopIsActivation(ns);
+    const fromHex = acting.num;
+
+    triggerEffectFlash(acting.id, '🌀', 'SHUKUCHI', SHUKUCHI_LOOK.color);
+    // The reducer owns position, facing and the AP; the sheet owns the budget,
+    // the Db and the clock. Two writes, in the engine's own order.
+    dispatch(shukuchiHopped(acting.id, hexNum));
+    setNoteField(acting.id, {
+      ...hopBudgetPatch(ns),
+      ...(fired ? firePatch(ns, SHUKUCHI_SKILL) : {}),
+    });
+
+    // A fresh activation starts a fresh trail, so two activations' arcs never
+    // share the board and the fade always reads as "this leap, just now".
+    setShukuchiTrail(prev => (fired ? [] : prev).concat({ from: fromHex, to: hexNum }));
+
+    const left = fired ? SHUKUCHI_MAX_HOPS - 1 : shukuchiHopsLeft(ns) - 1;
+    addLog(fired
+      ? `🌀 ${acting.name} — SHUKUCHI ARPEGGIO! The earth shrinks and he lands on #${hexNum}, straight over everything between. (−${SHUKUCHI_DB_COST} Db · ${SHUKUCHI_CD}-round cooldown · ${left} hop${left !== 1 ? 's' : ''} left this turn)`
+      : `🌀 ${acting.name} hops to #${hexNum} — ${left} hop${left !== 1 ? 's' : ''} left.`);
+
+    // 🎵 EVERY LANDING PAYS, exactly as walking on does (§2.5.2 #5) — the same
+    // checks `move` runs, in the same order. ⚠️ A hop that skipped one would be
+    // a way to land on a hazard for free, which is a rule nobody wrote.
+    checkPoisonSlime(acting.id, hexNum);
+    checkGravityVortex(acting.id, hexNum);
+    checkFlamingDisc(acting.id, hexNum);
+    checkStageFxHex(acting.id, hexNum);
+    checkTokenPickup(acting.id, hexNum);
+    checkChargeZonePickup(acting.id, hexNum);
+    checkEventTrigger(acting.id, hexNum);
+
+    // ⭐ STAY IN HOP-TARGET MODE — §2.5.0c. Three hops is three CLICKS, not
+    // press-click-press-click-press-click. Drop out only when the budget or the
+    // AP is spent, so the rail never sits armed on an ability that cannot fire.
+    // 📌 `moveStepsLeft` here is the pre-dispatch read, so the post-hop pool is
+    // it minus this hop — deliberate, not a stale-state bug.
+    if (left <= 0 || (moveStepsLeft - SHUKUCHI_AP_PER_HOP) < SHUKUCHI_AP_PER_HOP) setAction(null);
+  }
+
   function resolvePsychoBushido(targetId) {
     if (!acting || acting.id !== 'cosmic_ronin') return;
     // ⚠️ MIRRORED FROM `initiateSwing`, because the dash commits the turn before
@@ -7960,7 +8060,8 @@ export function Game({ gameState, onReturnToLobby }) {
 
     // 🌀 THE BONUS LANDS BEFORE THE BLOW, which is the whole point of the
     // ability. Read from the live sheet, not the render-scoped `ns` — that is the
-    // same overwrite that §7 records against `applyWaNoKoe`.
+    // same overwrite that BOT_STRATEGY_HANDOFF §7 records against the retired
+    // `applyWaNoKoe`. 🪦 That ability is cut; the read-order trap is not.
     const liveNs = engineRef.current.noteStates[acting.id] ?? {};
     const prevTemp = liveNs.tempDrive ?? 0;
     const newTemp = prevTemp + bonusDrive;
@@ -8040,8 +8141,17 @@ export function Game({ gameState, onReturnToLobby }) {
   //   - the decoy is attacked (the attacker's AP + Action Token are burned)
   //   - the real Ronin attacks
   //   - the real Ronin is attacked
-  // The decoy cannot interact with board elements (no note pickups, no amp
-  // placement, no hazard triggers) — it isn't really there.
+  // 🪦 THIS COMMENT USED TO READ "the decoy cannot interact with board elements
+  // (no note pickups, no amp placement, no hazard triggers)". IT PICKS UP NOTES.
+  // That is the ability's teeth and it was added deliberately — the reasoning for
+  // notes-ONLY lives on `moveShadowIllusion` below, next to the `checkTokenPickup`
+  // call that does it. ⚠️ The comment outlived the change that falsified it and
+  // read as current for months, while the `desc` two files away advertised the
+  // pickup correctly. The behaviour was never the bug.
+  //
+  // What it really cannot touch: ⚡ charge zones, 🎪 event hexes, 🧪 hazards.
+  // A note is a sound, and sound is the one thing an illusion made of sound can
+  // carry — for everything else it isn't really there.
   const SHADOW_ILLUSION_TURNS = 3;
 
   // The double is born STACKED on the Ronin — it peels out of his own body on
@@ -8399,41 +8509,6 @@ export function Game({ gameState, onReturnToLobby }) {
     } catch (e) { /* audio is best-effort */ }
   }
 
-    // 🎵 WA NO KOE (和の声) — Voice of Harmony. RETIRED FROM THIS FILE.
-  // `checkWaNoKoe` and `applyWaNoKoe` both lived here and both were copies:
-  // the rule is in `engine/systems/melodyCommit.js` (`checkWaNoKoe`), and the
-  // WRITE is part of the commit patch, bug and all — the kernel deliberately
-  // reproduces the shipped B10-shaped bug where the pre-commit `tempDrive` is
-  // read and overwrites the Drive boost the same commit just earned. Fixing
-  // that is now a ONE-place edit (BOT_STRATEGY_HANDOFF §7). `tickWaNoKoe`
-  // below is untouched: expiry is a turn-start rule, not a commit rule.
-
-  // Tick down Wa no Koe buffs at turn start (remove expired, decrement remaining)
-  function tickWaNoKoe() {
-    const ns = noteStates['cosmic_ronin'] ?? {};
-    const buffs = ns.waNoKoeBuffs ?? [];
-    if (buffs.length === 0) return;
-    const updated = buffs
-      .map(b => ({ ...b, turnsLeft: b.turnsLeft - 1 }))
-      .filter(b => b.turnsLeft > 0);
-    // Expired buffs lose their bonus
-    const expired = buffs.filter(b => b.turnsLeft <= 1);
-    let driveLoss = 0, sustainLoss = 0;
-    expired.forEach(b => {
-      if (b.stat === 'drive') driveLoss++;
-      else sustainLoss++;
-    });
-    const patch = { waNoKoeBuffs: updated };
-    if (driveLoss > 0) {
-      patch.tempDrive = Math.max(0, (ns.tempDrive ?? 0) - driveLoss);
-      addLog(`🎵 Wa no Koe fades — Drive bonus -${driveLoss}.`);
-    }
-    if (sustainLoss > 0) {
-      patch.tempSustain = Math.max(0, (ns.tempSustain ?? 0) - sustainLoss);
-      addLog(`🎵 Wa no Koe fades — Sustain bonus -${sustainLoss}.`);
-    }
-    setNoteField('cosmic_ronin', patch);
-  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // END SHREDDING RONIN REWORK
@@ -10422,6 +10497,10 @@ export function Game({ gameState, onReturnToLobby }) {
       case 'stackCommit':   clickNoteStock(a.stockIdx, null, a.dest === 'sustain' ? 'sustain' : 'drive'); return true;
       case 'confirmMelody': confirmNoteTrack(); return true;
       case 'move':          setAction('move'); move(a.to); return true;
+      // 🌀 One hop. `setAction` is for the overlay only — `resolveShukuchiHop`
+      // reads `shukuchiLandingSet()` rather than the memo, precisely so this
+      // same-tick call cannot be refused by a stale highlight.
+      case 'shukuchi':      setAction('shukuchi'); resolveShukuchiHop(a.to); return true;
       case 'face':          dispatch(spiritFaced(self.id, a.facing)); addLog(`🧠 ${self.name} takes aim.`); return true;
       case 'swing':         initiateSwing(a.targetId); return true;
       // 🐙 The Tentacle IS a Swing thrown from the trail — same AP, same token,
@@ -11112,6 +11191,7 @@ export function Game({ gameState, onReturnToLobby }) {
       else addLog("🐙 Click a rival standing in the arm's reach — the lit hexes off your slime trail.");
       return;
     }
+    if (action === "shukuchi") { resolveShukuchiHop(num); return; }
     if (action === "move") {
       // 🧪 THE SLIDE WINS THE TIE, and it has to. The retreat hex is adjacent, so
       // it is usually also a legal WALK — and walking there costs AP and re-faces
@@ -11156,6 +11236,42 @@ export function Game({ gameState, onReturnToLobby }) {
     return out;
   }, [action, acting, spirits, shadowHex]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 🌀 WHERE A HOP MAY LAND. Delegated straight to `shukuchiLandings` — the
+  // engine's landing set and the lit hexes are ONE expression, so the board can
+  // never offer a hop `transition.js` would refuse.
+  //
+  // ⚠️ `blocked` covers THE LANDING HEX ONLY. Nothing between the two hexes is
+  // consulted, and that absence IS the ability (§2.5.2 #1): he passes over
+  // bodies, hazards, walls and 🐙 the slime trail. Do not "fix" this by
+  // filtering the crossing — a Shukuchi that stops at slime is walking with a Db
+  // cost, and §2.5.1 says that ability has no reason to exist.
+  // 🌀 THE LANDING SET, COMPUTED ON DEMAND.
+  //
+  // ⚠️ THIS IS A FUNCTION AND NOT ONLY A MEMO, AND THE REASON IS THE BOT. The
+  // searcher executes through `botSearcherExecute`, which does `setAction(...)`
+  // and calls the resolver IN THE SAME TICK — so a resolver that gated on a
+  // memo keyed off `action` would read the PREVIOUS render's empty set and
+  // refuse every hop the searcher planned. 🎯 That is §B2's shape exactly: the
+  // engine says the hop is legal, the bench counts it, and the played game
+  // quietly cannot take it. `move` is safe from this only because it never reads
+  // its own highlight. The memo below is for the PAINT; this is for the RULE.
+  function shukuchiLandingSet() {
+    if (!acting) return new Set();
+    const blocked = new Set(spirits.filter(sp => !sp.knockedOut).map(sp => sp.num));
+    if (shadowHex != null) blocked.add(shadowHex);   // 👤 the decoy blocks like a body
+    return new Set(shukuchiLandings(engineState, acting.id, blocked));
+  }
+
+  const shukuchiTargets = useMemo(() => {
+    if (action !== 'shukuchi' || !acting) return new Set();
+    // ⚠️ AP IS CHECKED HERE TOO, not just in the resolver. A lit board with no
+    // AP behind it is the "budget left, nothing to spend it with" trap from the
+    // preview's states gallery, wearing a friendlier face.
+    if (moveStepsLeft < SHUKUCHI_AP_PER_HOP) return new Set();
+    return shukuchiLandingSet();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [action, acting, spirits, shadowHex, moveStepsLeft, engineState]);
+
   // 🕳️ Valid vortex sites while aiming Gravity Control: every hex within
   // GRAVITY_PLACE_RINGS, INCLUDING occupied ones and his own hex. A black hole
   // is not a body — it opens in the same space something is already standing in,
@@ -11194,6 +11310,11 @@ export function Game({ gameState, onReturnToLobby }) {
     if (gravityVortex && hex.num === gravityVortex.hex) return "#05000c";
     if (action === 'gravity_control' && gravityTargets.has(hex.num)) return "#7733cc33";
     if (action === 'move_shadow' && shadowReachable.has(hex.num)) return "#ffffff18";
+    // 🌀 Ring 2, lit. ⚠️ Sits ABOVE `reachable` on purpose: while the hop is
+    // armed the walk highlight is off anyway, and reading the two in the other
+    // order would let a 1-hex walk tint outrank a landing hex if both were ever
+    // live at once.
+    if (action === 'shukuchi' && shukuchiTargets.has(hex.num)) return SHUKUCHI_FILL;
     if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return "#4488ff33";
     // 🪦 Cursed Shamisen aura — removed 2026-08-26. No board token, no rings.
     if (reachable.has(hex.num)) return "#ffffff18";
@@ -11247,6 +11368,7 @@ export function Game({ gameState, onReturnToLobby }) {
     if (action === 'displace' && displaceTargets.has(hex.num)) return "#cc88ffcc";
     if (gravityVortex && hex.num === gravityVortex.hex) return "#cc66ff";
     if (action === 'gravity_control' && gravityTargets.has(hex.num)) return "#aa66ffcc";
+    if (action === 'shukuchi' && shukuchiTargets.has(hex.num)) return SHUKUCHI_STROKE;
     if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return "#4488ffcc";
     if (reachable.has(hex.num)) return "#ffffff88";
     // Swing / Smash cone stroke
@@ -11288,6 +11410,12 @@ export function Game({ gameState, onReturnToLobby }) {
     if (shadowDecoy && hex.num === shadowDecoy.num) {
       return acting?.id === 'cosmic_ronin' ? Math.round(3 / SCALE * 0.13) : 1.5;
     }
+    // 🌀 ABOVE the `hex.stage` catch-all, and that is the whole reason it is
+    // here rather than beside Bushido's line below. The stage hex is a legal
+    // landing like any other; read in the other order it would be the one hex on
+    // the board that lit up thinner than its neighbours, which is exactly the
+    // kind of single-hex exception nobody would ever find by eye.
+    if (action === 'shukuchi' && shukuchiTargets.has(hex.num)) return SHUKUCHI_STROKE_W;
     if (spVisible || reachable.has(hex.num) || shadowReachable.has(hex.num) || hex.stage) return 1.5;
     if (action === 'displace' && displaceTargets.has(hex.num)) return 2;
     if (gravityVortex && hex.num === gravityVortex.hex) return 2.5;
@@ -13284,6 +13412,54 @@ export function Game({ gameState, onReturnToLobby }) {
                     : hackCd > 0 ? ` (${hackCd})`
                     : dbPts < CODE_INJECT_DB_COST ? ` (${dbPts}/${CODE_INJECT_DB_COST} Db)` : ` (${CODE_INJECT_DB_COST} Db)`}
                 </RailBtn>
+              );
+            })()}
+            {/* 🌀 SHUKUCHI ARPEGGIO — the Ronin's movement MODE, not a movement
+                turn. It is billed out of the same AP pool as walking, so it sits
+                on the signature side but behaves like a step: no action token,
+                no attack gate. */}
+            {hasConfirmed && acting?.id === 'cosmic_ronin'
+              && (actingNoteState?.unlockedSkills ?? []).includes(SHUKUCHI_SKILL) && (() => {
+              const cd    = cooldownLeft(actingNoteState, SHUKUCHI_SKILL);
+              const dbPts = actingNoteState?.dbPoints ?? 0;
+              const left  = shukuchiHopsLeft(actingNoteState);
+              const mid   = left > 0;
+              const poor  = dbPts < SHUKUCHI_DB_COST;
+              const noAp  = moveStepsLeft < SHUKUCHI_AP_PER_HOP;
+              const live  = canHop(actingNoteState ?? {}) && !noAp;
+              const armed = action === 'shukuchi';
+
+              /* Recharging or skint, the budget is not the story — the refusal
+                 is, and the label carries that. Same rule the preview used. */
+              const showBudget = mid || (cd <= 0 && !poor);
+              return (
+                <>
+                  <RailBtn className={live ? 'btn active' : 'btn'}
+                    style={{borderColor: live ? SHUKUCHI_LOOK.color : '#1a2840',
+                            color: live ? '#88bbff' : '#1a2840'}}
+                    disabled={!live}
+                    title={`Shukuchi Arpeggio (縮地, "shrinking the earth") — leap exactly 2 hexes, straight OVER bodies, hazards, walls and slime. Up to ${SHUKUCHI_MAX_HOPS} hops a turn; each one costs ${SHUKUCHI_AP_PER_HOP} Action Point, the same as a step, and each landing picks up. ${SHUKUCHI_DB_COST} Db and the ${SHUKUCHI_CD}-round cooldown are charged ONCE, on the first hop — so hops 2 and 3 are free, and stopping after one still spends the ability.`}
+                    onClick={() => {
+                      if (armed) { setAction(null); return; }
+                      if (!live) return;
+                      setAction('shukuchi');
+                      addLog(mid
+                        ? `🌀 SHUKUCHI — ${left} hop${left !== 1 ? 's' : ''} left. Click a lit hex.`
+                        : '🌀 SHUKUCHI ARPEGGIO — ring 2 is lit. Click a hex to leap over everything in between.');
+                    }}>
+                    {/* ⚠️ THE LABEL SAYS WHICH REFUSAL IS BITING, exactly as
+                        Bushido's does — recharging, skint and out of AP are
+                        three different problems with three different answers,
+                        and a button that only ever reads "Shukuchi" teaches the
+                        player none of them. */}
+                    🌀 Shukuchi{cd > 0 && !mid ? ` 🕒${cd}` : poor && !mid ? ` (${dbPts}/${SHUKUCHI_DB_COST} Db)` : ''}
+                    {showBudget && <ShukuchiBudget hopsLeft={left} mid={mid} />}
+                  </RailBtn>
+                  {armed && (
+                    <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
+                      onClick={() => setAction(null)}>Cancel</RailBtn>
+                  )}
+                </>
               );
             })()}
             {/* 🌀 PSYCHO BUSHIDO — Shredding Ronin dash attack */}
@@ -15693,6 +15869,23 @@ export function Game({ gameState, onReturnToLobby }) {
                   </g>
                 );
               })}
+
+              {/* ── 🌀 SHUKUCHI ARCS ─────────────────────────────────────────
+                  ⭐ RENDERED HERE, AFTER THE HEX MAP, AND THAT PLACEMENT IS THE
+                  IDENTITY CALL (§2.5.0c). The arcs pass OVER the hexes and the
+                  standees they clear, so the picture says "he went over it".
+                  ⚠️ The standees are drawn INSIDE the hex map above, so "after
+                  the map" is the only place in this file where that is true —
+                  move this block up and the arc vanishes behind the very body
+                  the hop was proving it could clear. */}
+              {acting?.id === 'cosmic_ronin' && (
+                <ShukuchiArcs
+                  trail={shukuchiTrail}
+                  ghostFrom={acting.num}
+                  ghostTo={(action === 'shukuchi' && hovered != null
+                            && shukuchiTargets.has(hovered)) ? hovered : null}
+                  hs={HS} />
+              )}
 
               {/* Slide-off animations */}
               {Object.values(slideOffAnimations).map(anim => {
