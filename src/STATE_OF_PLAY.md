@@ -6,7 +6,7 @@
 > is lives in its own design doc; what it *taught us* lives in `SEQUENCING.md` §B.
 > **This file answers one question: what is true right now?**
 >
-> 📌 **Written 2026-09-04**, last updated **2026-09-04f**, when the design set
+> 📌 **Written 2026-09-04**, last updated **2026-09-05**, when the design set
 > reached 37 files and 222,000
 > words and no single view of the game existed. Keep it short or it stops being
 > read — if a section needs a paragraph, it belongs in its own doc with a link
@@ -48,7 +48,7 @@ Spec: `RONIN_ABILITY_DESIGN.md` §2. Build order: its §8.1.
 | ability | verb | state |
 |---|---|---|
 | 🌀 **Shukuchi Arpeggio** | a step that leaps **2 hexes** and clears everything between, **up to 3 per turn, 1 AP each**, any direction; every landing picks up | ✅ **DONE — HEADLESS *AND* IN THE CLIENT, 2026-09-04e.** `test:shukuchi` 68 · `test:shukuchiui` 80. Button, ring-2 targeting, arcs, hover ghost, budget rail. 🎯 **Out of `BOT_CLIENT_GAPS`** — the bench and the played game agree about it again |
-| 🗡️ **Psycho Bushido** | draw on a rival **3–5 hexes** directly in front, ⭐ **+2 / +3 / +4 Drive across the window**, **3 AP flat**, **−2 off the Drive stack** | ✅ **DONE — HEADLESS *AND* IN THE CLIENT, 2026-09-04f.** `test:bushido` 82. Window, ladder, flat bill, stack price, and all three lane-walks agree. 🚩 **A draw really costs 4 stack notes** — 2 for the ability, 2 for the Swing at the end of it |
+| 🗡️ **Psycho Bushido** | draw on a rival **3–5 hexes** directly in front, ⭐ **+2 / +3 / +4 Drive across the window**, **3 AP flat**, **−2 off the Drive stack** | ✅ **BUILT HEADLESS AND IN THE CLIENT.** `test:bushido` **91**. Shared lane geometry and pre-Swing payment in `engine/systems/bushido.js`. ⚠️ Occupancy policies still differ: client click ignores blockers, highlight stops at live spirits, bot also blocks amps/decoys. 🚩 **A draw costs up to 4 stack notes** — 2 for the ability, 2 for the Swing |
 | 👤 **Shadow Illusion** | body double, **2 turns**, drinks Sustain | ✅ **DONE 2026-09-04f.** CD 3→4, per-use 2→1 Db, duration 3→2. `SHADOW_ILLUSION_TURNS` hoisted out of the monolith. ⚠️ §6.3's rider rides with it: the duration was cut with all three pop conditions still live |
 | 🎸 **Cursed Shamisen** | ⭐ **SIPHON** — Swing-area, pick a rival's ability; if recharging, they are pushed **+1** and Ronin's cooldowns drop by **N** = turns it had left | 🚨 **a different ability entirely from what ships** |
 | 🎵 ~~Wa no Koe~~ | — | 🪦 **CUT, AND DELETED 2026-09-04.** Gone from kernel, client, data, bot and 3 suites. `melodyCommitCheck` §13 is now the revival guard. The **12 Db mastery slot is empty** |
@@ -88,13 +88,14 @@ makes a thing *impossible* rather than weak is a bug, not balance.
 
 **✅ BUILT AND UNDER TEST**
 
-- The engine kernel, board, combat, turn flow, economy — `test:all`, **26 suites**
+- The engine kernel, board, combat, turn flow, economy — `test:all`, **27 groups passing**, including a DOM melody-to-next-turn journey
 - 🕒 **The cooldown system** (`cooldowns.js`) — one map, one tick, one gate
 - 🌀 **Shukuchi Arpeggio** — `shukuchi.js` + `ui/ShukuchiOverlay.jsx`. ✅ **Played, not just simulated.** `test:shukuchi` (the rule) and `test:shukuchiui` (the picture, an SSR diff against the preview). ⚠️ **Ronin bench numbers from 2026-09-04c/d were read against a client that could not take the hops the searcher planned** — they are not comparable with anything measured after this, and only a re-bench closes that
 - 🏆 **Win conditions** — Legend Run + Battle of the Bands, headless, playable from `runMatch`. ⛔ **No menu, no HUD**
 - 🎼 **Theory off the tree** — pardon ladder universal and free; stack seats 4–6 found on the board
 - 🔦 **The hunt marker** — the hex holding your next seat lights up
-- 🗡️👤 **The Ronin's respec** — `bushidoCheck.mjs` (`test:bushido`, 82). ⭐ **26 suites now, not 25.** The window, the ladder's *rise*, the flat AP bill and the Drive-stack spend, plus 👤's constants and ⭐ the flat unlock price
+- 🗡️👤 **The Ronin's respec** — `bushidoCheck.mjs` (`test:bushido`, **91**). The window, ladder, flat AP bill, Drive-stack spend, shared extraction contracts, Shadow constants and flat unlock price
+- 🧱 **Refactor foundation** — app shell and crowd drawing extracted; Windows build/render verification restored; lint baseline enforced by `lint:baseline` (334 errors, 16 warnings). Ability/battle journeys, replay coverage and browser profiling remain open. See `docs/refactor-verification.md`
 - ⭐ **The flat unlock price** — `FLAT_ABILITY_UNLOCK_DB = 6`. 🎯 It deletes the variable behind `UPGRADE_SHOP_DESIGN.md` §1.1's central finding (arsenals bought in *price* order, not value order): with one price, the only thing left to choose on is what the ability does
 
 **⛔ DESIGNED, NOT BUILT** *(8 docs say "design only")*
