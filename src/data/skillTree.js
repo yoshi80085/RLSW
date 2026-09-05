@@ -31,6 +31,8 @@ import {
   CODE_INJECT_DB_COST,
   DISPLACE_CD, GRAVITY_CD, CODE_INJECT_CD, SUNBEAM_CD,
   PSYCHO_BUSHIDO_CD, SHADOW_ILLUSION_CD, CURSED_SHAMISEN_CD,
+  PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE, PSYCHO_BUSHIDO_AP_COST,
+  PSYCHO_BUSHIDO_STACK_COST, SHADOW_ILLUSION_TURNS,
   PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
   SHUKUCHI_CD, SHUKUCHI_DB_COST, SHUKUCHI_MAX_HOPS, SHUKUCHI_HOP_RINGS, SHUKUCHI_AP_PER_HOP,
   SHADOW_ILLUSION_SUSTAIN_DRAIN,
@@ -111,6 +113,22 @@ export const SKILL_TREE = {
     // takes the ordinary 50/50 spark — which is also what the headless path has
     // always done, so the client and the engine agree for the first time.
     // ── SIGNATURE ARSENALS — one compact route per Spirit (hidden from the others) ──
+    //
+    // ⭐ EVERY `dbCost` BELOW IS 6, AND THE UNIFORMITY IS THE RULE, NOT A COPY-PASTE
+    // SLIP. Alex, 2026-09-04f: every ability costs the same to unlock.
+    // `UPGRADE_SHOP_DESIGN.md` §0⃣ rule 1 · `FLAT_ABILITY_UNLOCK_DB` in
+    // `data/gameConstants.js` · `skillTreeCheck.mjs` §the flat-price guard.
+    //
+    // 🎯 IT IS THE FIX FOR THAT DOC'S CENTRAL MEASURED FINDING. §1.1 measured the
+    // arsenals being bought in PRICE order rather than value order — a near-perfect
+    // inverse ranking, "with no reference to what the ability does." A flat price
+    // removes the variable, so what an ability DOES is the only thing left to pick on.
+    //
+    // ⚠️ DO NOT RE-SPREAD THESE TO "BALANCE" AN ABILITY. The spread that was here
+    // (6 / 8 / 10 / 12 / 14) is exactly what the rule deleted, and ☀️ Sunbeam at 14
+    // and 💀 Azrael at 12 were the two least-bought skills in the game because of it.
+    // 📌 Per-USE Db (`ABILITY_DB_COST`) is a separate rule and is still varied — that
+    // is where an ability's ongoing price belongs now.
     {
       id: 'shredding_ronin',
       label: 'Shredding Ronin',
@@ -128,16 +146,16 @@ export const SKILL_TREE = {
         { id:'shukuchi',        label:'Shukuchi Arpeggio (縮地)', icon:'🌀', dbCost:6, gated:false,
           desc:`Shrink the earth — each step you take becomes a ${SHUKUCHI_HOP_RINGS}-hex LEAP, up to ${SHUKUCHI_MAX_HOPS} of them, and each leap still costs ${SHUKUCHI_AP_PER_HOP} Action Point exactly like walking. ⚠️ THREE LEAPS IS THREE OF YOUR STEPS — six hexes of ground for the price of three, not for free. You may take one, two or three, and each one picks its own direction. 🌀 NOTHING STOPS YOU IN THE AIR: bodies, hazards, walls and 🐙 poison slime all pass underneath, and only the hex you LAND on has to be empty. 🎵 Every landing picks up a Lost Chord note you touch down on. ⚠️ You end up facing the way you last leapt, so line up the strike with your final hop. ${SHUKUCHI_DB_COST} Db to call it, ${SHUKUCHI_CD}-round cooldown — and the clock starts on the FIRST leap, so a Ronin who hops once and thinks better of it has spent the whole ability.` },
         { id:'psycho_bushido',  label:'Psycho Bushido',  icon:'🌀', dbCost:6,  gated:false,
-          desc:`Iaijutsu dash — charge in a straight line from your facing and strike whoever you reach. Whatever AP you did not need for the run-up is added to THAT strike as bonus Drive. ⚠️ It powers the blow and expires with the battle — it does not join your Drive stack, and it shares the +5 ceiling with every other attack bonus. ${PSYCHO_BUSHIDO_DB_COST} Db a charge, ${PSYCHO_BUSHIDO_CD}-round cooldown — and it spends every Action Point you have left, so a charge from next door is worse than the Swing it replaces.` },
+          desc:`Iaijutsu draw — strike a rival standing ${PSYCHO_BUSHIDO_MIN_RANGE} to ${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT of you. ⭐ THE FARTHER THE DRAW, THE HARDER THE BLOW: +2 Drive at ${PSYCHO_BUSHIDO_MIN_RANGE} hexes, +3 at 4, +4 at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ TOO CLOSE AND YOU CANNOT DRAW AT ALL — there is no run-up, and a rival at 1 or 2 hexes is simply not a target. Any body in the lane blocks it, your own 👤 shadow included. ⚠️ The bonus powers the blow and expires with the battle — it does not join your Drive stack, and it shares the +5 ceiling with every other attack bonus. ${PSYCHO_BUSHIDO_DB_COST} Db a draw, ${PSYCHO_BUSHIDO_AP_COST} Action Points flat, ${PSYCHO_BUSHIDO_CD}-round cooldown — and ⭐ IT BURNS ${PSYCHO_BUSHIDO_STACK_COST} NOTES OFF THE BOTTOM OF YOUR DRIVE STACK before the strike — and the strike then spends more, like any Swing. Losing your foundation RE-POINTS what you are hunting on the board, so a draw is a choice about your chord as well as about your rival.` },
         { id:'shadow_illusion', label:'Shadow Illusion', icon:'👤', dbCost:6,  gated:false,
-          desc:`Split into a second, identical Ronin, born stacked on your own hex (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown) — nobody sees which one appeared. Rivals cannot tell the double from the real you: it blocks, it faces, and it walks the board on its own steps, refreshed each turn to match your movement range at no cost to your Action Points. 🎵 It can also PICK UP LOST CHORD NOTES for you — an illusion made of sound can carry a sound. It cannot take ⚡ charge zones or 🎪 event spaces, and hazards pass straight through it. ⚠️ IT FEEDS ON YOU: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it comes apart the moment you have none to give — you are at your most fragile exactly while nobody can tell which body to hit. Lasts 3 turns. Pops if it is struck, if you attack, or if you are attacked. Whoever swings at it burns their AP and Action Token for nothing.` },
+          desc:`Split into a second, identical Ronin, born stacked on your own hex (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown) — nobody sees which one appeared. Rivals cannot tell the double from the real you: it blocks, it faces, and it walks the board on its own steps, refreshed each turn to match your movement range at no cost to your Action Points. 🎵 It can also PICK UP LOST CHORD NOTES for you — an illusion made of sound can carry a sound. It cannot take ⚡ charge zones or 🎪 event spaces, and hazards pass straight through it. ⚠️ IT FEEDS ON YOU: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it comes apart the moment you have none to give — you are at your most fragile exactly while nobody can tell which body to hit. Lasts ${SHADOW_ILLUSION_TURNS} turns. Pops if it is struck, if you attack, or if you are attacked. Whoever swings at it burns their AP and Action Token for nothing.` },
         // ⚠️ THE SHAMISEN'S `desc` NAMES BUSHIDO AND SHADOW ILLUSION AND STOPS,
         // AND THAT IS NOW THE WHOLE LIST. It used to name Wa no Koe too, which
         // had no cooldown to accelerate — `tickShamisen` only walks entries that
         // already exist in `abilityCd`, so there was never anything to speed up.
         // 🪦 Wa no Koe was CUT 2026-09-04 (`RONIN_ABILITY_DESIGN.md` §2.4). The
         // kit is three until 🌀 Shukuchi lands; add it here when it does.
-        { id:'cursed_shamisen', label:'Cursed Shamisen', icon:'🎸', dbCost:8,  gated:false,
+        { id:'cursed_shamisen', label:'Cursed Shamisen', icon:'🎸', dbCost:6,  gated:false,
           desc:`Invoke the cursed strings (${CURSED_SHAMISEN_DB_COST} Db, ${CURSED_SHAMISEN_CD}-round cooldown). For ${CURSED_SHAMISEN_DURATION} rounds, ALL of the Ronin's OTHER ability cooldowns tick at 2× speed — Bushido and Shadow Illusion both come back in half the time. While the curse is active the Ronin GLOWS purple on the board: everyone can see he is exposed, but nobody knows if he paid the debt. ⚠️ THE CURSE: if the Ronin takes ANY Vibe damage in battle while glowing and has NOT paid ${CURSED_SHAMISEN_PAYOFF_COST} Db that round, ALL of his cooldowns RESET to their full duration — the acceleration backfires. He can pay ${CURSED_SHAMISEN_PAYOFF_COST} Db each round to protect himself, but the glow stays regardless, so rivals can never tell whether an attack will punish him or not. That is the bluff.` },
       ],
     },
@@ -151,11 +169,11 @@ export const SKILL_TREE = {
       skills: [
         { id:'goes_to_11',      label:'Goes to 11',         icon:'🔊', dbCost:6, gated:false,
           desc:'SETS your attack to exactly 11 for the turn — not a bonus, a setting, so it beats the bonus cap. ⚠️ If you were already louder than 11, it turns you DOWN: the amp only goes to eleven. You also shrug off knockback. It costs your whole Sustain stack, and it blows your amp — no Sonic at all and a bare d4 on defence until your rig comes back a turn later.' },
-        { id:'master_moshpits', label:'Master of Moshpits', icon:'🤘', dbCost:8,  gated:false,
+        { id:'master_moshpits', label:'Master of Moshpits', icon:'🤘', dbCost:6,  gated:false,
           desc:'Pulls 3 fans out of the stands and onto the board for a pit. +2 Drive that STANDS — it survives battles and lasts until you call the next pit. Once per turn.' },
-        { id:'tentacle',        label:'Tentacle',           icon:'🐙', dbCost:10, gated:false,
+        { id:'tentacle',        label:'Tentacle',           icon:'🐙', dbCost:6, gated:false,
           desc:'Swing from any hex of your SLIME TRAIL instead of from where you stand — and the trail you reach THROUGH is consumed. Next to the nearest slime costs 1 hex; three hexes down the road costs 3. It does not move you and it does not turn you, so reaching behind means the rival in front is hitting your back. Range is real, and you pay for it in road.' },
-        { id:'azrael',          label:'Azrael',             icon:'💀', dbCost:12, gated:false,
+        { id:'azrael',          label:'Azrael',             icon:'💀', dbCost:6, gated:false,
           desc:'Each rival you knock down feeds Fame equal to your knockdown streak (1st→1, 2nd→2…). Resets when YOU go down.' },
       ],
     },
@@ -167,15 +185,15 @@ export const SKILL_TREE = {
       desc: 'Cosmic groove and weaponized sound. An exclusive arsenal only Intergalactic 0 can wield.',
       spiritOnly: 'intergalactic_0',
       skills: [
-        { id:'blaster_of_ra', label:'Blaster of Ra', icon:'🌀', dbCost:10, gated:false,
+        { id:'blaster_of_ra', label:'Blaster of Ra', icon:'🌀', dbCost:6, gated:false,
           desc:'REPLACES the Smash. A ranged, PIERCING bass-drop: hurl your unused stock down the forward beam, hammering EVERY rival in line — undefendable, scattering their stock and knocking them back. Leaves you Exposed.' },
-        { id:'displace', label:'Space is Displaced', icon:'🌌', dbCost:8,  gated:false,
+        { id:'displace', label:'Space is Displaced', icon:'🌌', dbCost:6,  gated:false,
           desc:`He can't run — he warps. Spend ${DISPLACE_DB_COST} Db to fold space and appear instantly on any open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away. ${DISPLACE_CD}-turn cooldown, no Action Points, no rig required. Too close doesn't count: he steps THROUGH the space between, not across it.` },
         { id:'gravity_control', label:'Gravity Control', icon:'🕳️', dbCost:6, gated:false,
           desc:`Spend ${GRAVITY_DB_COST} Db (${GRAVITY_CD}-turn cooldown) to tear open a BLACK HOLE VORTEX on any hex within ${GRAVITY_PLACE_RINGS} rings. Every rival within ${GRAVITY_PULL_RINGS} rings is dragged ${GRAVITY_PULL_HEXES} hex toward it — and anyone pulled all the way INTO it watches ${GRAVITY_NOTE_DRAIN} notes get swallowed, ${GRAVITY_NOTE_DRAIN} fewer in their pool next turn. The vortex hangs there for one full round, catching anyone who wanders too close, then collapses. Gravity is his to command: it never touches him.` },
         { id:'code_injection', label:'Code Injection', icon:'💻', dbCost:6, gated:false,
           desc:`Spend ${CODE_INJECT_DB_COST} Db (${CODE_INJECT_CD}-turn cooldown) to slip a patch into the fabric of the fight — then say nothing. For one full round, the FIRST rival whose attack would beat you has their dice thrown out and re-rolled, and they live with whatever comes up second. Nobody can see that you've committed: no aura, no tell, no marker on your standee. If nobody swings, or nobody lands, the Db is simply gone. That's the bet.` },
-        { id:'sunbeam', label:'Sunbeam', icon:'☀️', dbCost:14, gated:false,
+        { id:'sunbeam', label:'Sunbeam', icon:'☀️', dbCost:6, gated:false,
           desc:`Spend ${SUNBEAM_DB_COST} Db on a connecting attack (then ${SUNBEAM_CD} turns to recharge) and the stage goes SUPERNOVA — the rival's whole world whites out for ${SUNBEAM_BLIND_TURNS} turn. They can't see the board, the standees, their own stack. Nothing. ${Math.round(SUNBEAM_LINGER_CHANCE * 100)}% of the time the burn stays seared in for a second turn (${SUNBEAM_MAX_BLIND_TURNS} turns is the ceiling — the sun always sets).` },
       ],
     },

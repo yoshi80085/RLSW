@@ -205,7 +205,11 @@ reproducibleAndRandom(
   // If it is genuinely cosmetic, bump this number and say so in the commit.
   // A silently-growing count is how the last ten got in.
   const MATH_RANDOM_BUDGET = 43;
-  const found = (monolith.match(/Math\.random\(\)/g) ?? []).length;
+  // Keep the existing textual inventory across the extracted client modules.
+  // It includes the crowd helper's "NO Math.random()" comment, not just calls.
+  const clientSources = monolith + ['../ui/fanPawnShape.jsx', '../app/RLSWSimulator.jsx']
+    .map(path => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n');
+  const found = (clientSources.match(/Math\.random\(\)/g) ?? []).length;
   ok(found === MATH_RANDOM_BUDGET,
      `Math.random() count changed: ${found} vs pinned ${MATH_RANDOM_BUDGET}. ` +
      `If the new draw can change an outcome it must use the seeded helpers; ` +

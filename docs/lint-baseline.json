@@ -1,0 +1,22 @@
+{
+  "date": "2026-09-05",
+  "scope": [
+    "src",
+    "server"
+  ],
+  "errors": 334,
+  "warnings": 16,
+  "counts": {
+    "2:no-unused-vars": 201,
+    "2:react-refresh/only-export-components": 30,
+    "2:no-undef": 4,
+    "1:parse": 7,
+    "1:react-hooks/exhaustive-deps": 9,
+    "2:no-empty": 14,
+    "2:react-hooks/set-state-in-effect": 12,
+    "2:no-useless-assignment": 2,
+    "2:react-hooks/preserve-manual-memoization": 2,
+    "2:react-hooks/refs": 59,
+    "2:react-hooks/purity": 10
+  }
+}

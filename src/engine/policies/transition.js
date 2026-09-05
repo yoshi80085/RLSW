@@ -1,3 +1,4 @@
+import { bushidoDrawPatch } from "../systems/bushido.js";
 // ─── BOT TRANSITION ─────────────────────────────────────────────────────────
 // `applyBotAction(state, action, ctx) -> { state, view, ok, reason, logs }`
 // BOT_STRATEGY_HANDOFF §6 — the link between §6.1 and §5.
@@ -84,13 +85,56 @@ import { rigSpendable, rigTierSpend, rigTiers } from "../systems/sonicRig.js";
 import {
   drawTrivia, bestTriviaDifficulty, TRIVIA_REWARD, TRIVIA_TIER_GRANT, TRIVIA_BOT_ODDS,
 } from "../../data/trivia.js";
-import { CHARGE_ZONE_BOOST_TURNS } from "../../data/gameConstants.js";
+import {
+  CHARGE_ZONE_BOOST_TURNS,
+  PSYCHO_BUSHIDO_AP_COST,
+} from "../../data/gameConstants.js";
 import { firePatch } from "../systems/cooldowns.js";
 import { SHUKUCHI_SKILL, hopBudgetPatch, hopIsActivation } from "../systems/shukuchi.js";
 import { randomNote } from "../../music/cadence.js";
 import { applyUnlockClaim } from "../../music/stackSlots.js";
 import { commitMelodyEconomy } from "../systems/melodyCommit.js";
 import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
+
+/**
+ * ⭐ 🗡️ SPEND `n` NOTES OFF A DRIVE STACK — Psycho Bushido's second price
+ * (Alex, 2026-09-04f). Returns a NEW array; does not mutate.
+ *
+ * ⚠️ IT TAKES FROM THE FRONT, AND THE FIRST DRAFT OF THIS FUNCTION TOOK FROM THE
+ * BACK. The reasoning for the back was that `music/stackSlots.js` derives the
+ * root from `stack[0]`, so eating the root would re-point what the player is
+ * hunting — which sounded like a side effect an attack should not have.
+ *
+ * 🎯 IT IS NOT A SIDE EFFECT. IT IS THE GAME'S EXISTING RULE. Every Swing in the
+ * game already spends `SWING_DRIVE_SPEND` off the FRONT of the Drive stack
+ * (`attackParams.js` → `driveStack.slice(SWING_DRIVE_SPEND)`), and
+ * `stackSlots.js` documents that as deliberate: "spending your foundation hands
+ * the root to the next note up, and your hunt on the board moves with it… the
+ * design's own 'removing the root is how you re-point what you are hunting'."
+ * Two directions for one stack inside one action — Bushido eating the tail and
+ * its own strike eating the head — is precisely the kind of second convention
+ * this repo keeps paying for. One stack, one direction.
+ *
+ * ⚠️ AND AN EMPTY DRIVE STACK IS A LEGAL STATE, NOT AN IMPOSSIBLE ONE. Any Swing
+ * can already empty a two-note stack; `battleFlow` logs it as "drive exhausted
+ * (base stats until committed)" and the next commit re-roots it. So this is not
+ * §B10's "impossible rather than weak" exception, which is what the back-taking
+ * draft was defending against.
+ *
+ * 🚩 WHAT THIS MEANS FOR THE ABILITY'S REAL PRICE, MEASURED RATHER THAN INTENDED:
+ * a Bushido's strike IS a Swing, so the Swing's own `SWING_DRIVE_SPEND` lands on
+ * top of this one. **A draw costs 4 notes of Drive stack where an ordinary Swing
+ * costs 2** — and because this bill is paid BEFORE `attackParams` reads the
+ * sheet, the chord powering the blow is computed from what is left. The ladder
+ * pays more the farther you draw; the stack bill takes the chord that would have
+ * paid alongside it. That is a real and interesting trade, it is uncosted, and
+ * `SEQUENCING.md` §B10 says to record it and move on rather than tune it.
+ */
+export function spendDriveStack(stack = [], n = 0) {
+  const src = Array.isArray(stack) ? stack : [];
+  if (n <= 0 || src.length === 0) return src;
+  return src.slice(Math.round(n));
+}
 
 /** Kinds this file can actually run headlessly. */
 export const MODELLED_KINDS = new Set([
@@ -509,19 +553,26 @@ export function applyBotAction(state, action, ctx = {}) {
       // still. Paying the whole bill here would leave the strike insolvent.
       if (isBushido) {
         const dist  = action.dist ?? 1;
-        const bonus = Math.max(0, dist - 1);          // the ground he covered
+        // ⭐ THE LADDER, NOT `dist - 1` — §2.1.1, Alex 2026-09-04e. One shared
+        // function so the kernel and the client cannot pay different bonuses for
+        // the same charge; `legalActions` has already refused anything outside
+        // the 3–5 window, so an out-of-window dist here would be a bug and the
+        // helper answers 0 rather than inventing a rung.
         if (action.to != null) pre = applyAction(pre, spiritWarped(spiritId, action.to, 0), rng);
-        if (dist > 1) pre = applyAction(pre, beatsSpent(dist - 1, false), rng);
+        // ⭐ THE BILL IS FLAT AND THE SWING PAYS ITS OWN SHARE OF IT. The dash
+        // takes `PSYCHO_BUSHIDO_AP_COST - SWING_AP_COST`; the strike below takes
+        // the rest, exactly as it does for a blow thrown standing still. This
+        // used to be `dist - 1` — the ground covered — so a long charge cost more
+        // than a short one. It no longer does, which is what "3 AP flat" means.
+        const dashAp = Math.max(0, PSYCHO_BUSHIDO_AP_COST - SWING_AP_COST);
+        if (dashAp > 0) pre = applyAction(pre, beatsSpent(dashAp, false), rng);
         const nsSelf = pre?.noteStates?.[spiritId] ?? {};
         // ⚠️ `firePatch` PAYS THE Db AND STARTS THE COOLDOWN IN ONE PLACE, and
         // the searcher must use the same one the client does. A kernel that
         // charged less than the client would quietly play a cheaper game — the
         // same failure `melodyCommit.js` warns about, and the reason every
         // Bushido number in the §6.6 bench predates the ability having a price.
-        pre = patchNs(pre, spiritId, {
-          tempDrive: (nsSelf.tempDrive ?? 0) + bonus,
-          ...firePatch(nsSelf, 'psycho_bushido'),
-        }, rng);
+        pre = patchNs(pre, spiritId, bushidoDrawPatch(nsSelf, dist), rng);
       }
 
       const params = attackParams(pre, spiritId, action.targetId, rollKind, view);

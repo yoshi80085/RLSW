@@ -73,4 +73,6 @@ ok('both stacks rendered their slots', slots > 0, `found ${slots} slot elements`
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} clientRenderCheck: ${checks - failed}/${checks} checks passed`);
 console.log('⏳ NOT COVERED: clicking, committing a track, or ending a turn — needs a DOM (see the header).');
-if (failed) process.exit(1);
+// All assertions above are synchronous SSR checks. React's bundled scheduler
+// can keep Node alive on Windows after the report, blocking the remaining suites.
+process.exit(failed ? 1 : 0);

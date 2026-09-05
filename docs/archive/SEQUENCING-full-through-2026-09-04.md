@@ -5340,3 +5340,160 @@ question for Alex.
    untouched for a **fourth** session and still true.
 
 ---
+
+---
+
+## 5-hopport. session handoff, 2026-09-04e (the board can be asked for the decisions; Shukuchi is PLAYED)
+
+🎯 **THE ABILITY IS NO LONGER HEADLESS.** 🌀 Shukuchi Arpeggio has a button, a
+target overlay, arcs, a hover ghost and a budget rail, and the searcher can take
+the hops it plans. That last clause is the one that mattered: for two sessions
+the bench and the played game disagreed about this ability, and the disagreement
+was invisible because every suite was green.
+
+⚡ **AND THE BOARD RAN A SECOND TIME, WHICH IS WHY IT IS WORTH KEEPING AS A
+RITUAL.** §5-hopui.A invented the decision board; this session was asked for it
+again before any code. Eleven live calls, two of them findable only as prose
+inside a design doc.
+
+### 5-hopport.A ⭐ THE BOARD, AND THE ONE DECISION TAKEN OFF IT
+
+**Eleven open calls**, newest first, against nine last session — and the
+arithmetic is the interesting part, not the total: two closed (§5-hopui.B), one
+was struck as dead, and **five appeared that had never been enumerated**. Three
+of the five are the riders on the flat unlock number, filed as bullet points in
+`UPGRADE_SHOP_DESIGN.md` §0⃣.3 and named nowhere else; one is the Fame per-turn
+cap, measured to three options on 2026-09-02d and never chosen; one is the
+Metalness-vs-siphon ordering trade.
+
+🚩 **THE PATTERN IS THE SAME ONE §B9 IS ABOUT, AND IT IS GETTING CLEARER.** A
+decision does not go missing by being wrong. It goes missing by being **correctly
+recorded in a doc nobody greps for it in.** The board is the only instrument this
+repo has that reads the whole set at once, and it has now found something new
+both times it has been run.
+
+📌 **IT IS STILL NOT A DOC, AND THAT IS STILL DELIBERATE.** A tenth file to keep
+in sync is the exact drift being paid for (§B1, §B9). What it earns each time is
+rows in `STATE_OF_PLAY.md` §4 and §7 — which is where it earned them this time.
+
+| ⁉️ was open | ✅ Alex, 2026-09-04e | where it now lives |
+|---|---|---|
+| 🗡️ Does Psycho Bushido pay **+3 flat**, or the **+2 / +3 / +4** ladder across its 3–5 window? | **The ladder.** The window is the legality rule; the payout is a gradient inside it. | `RONIN_ABILITY_DESIGN.md` §2.1.1, now closed · `STATE_OF_PLAY.md` §4 |
+
+🎯 **BOTH HALVES OF THAT ARGUMENT WERE RIGHT AND THE ANSWER TAKES BOTH.** §2.1
+said the ability *is* the distance gradient; the respec said a bright line teaches
+better than a curve nobody notices. A window that refuses the close charge
+outright **and** pays more the further out you start is the only shape that is
+both. ⚠️ The cost is three numbers to read where the flat version had one, and
+that is the first thing to look at if the window turns out to be doing the work
+alone.
+
+### 5-hopport.B 🖥️ WHAT SHIPPED — and why the overlay is its own file
+
+🌀 **`src/ui/ShukuchiOverlay.jsx`** (191 lines) — the arcs, the hover ghost with
+its facing arrow, the budget readout, and `SHUKUCHI_LOOK`, which is Alex's
+fifteen-lever dial-in in one object.
+
+⚠️ **IT IS A SEPARATE FILE FOR A REASON THAT IS NOT TIDINESS.** `CLAUDE.md`:
+*"verify the port, don't assume it — render the shipped component through React
+SSR and diff it against the preview."* **A geometry inlined in a 15,000-line
+component cannot be rendered on its own, so it cannot be diffed, so the rule
+cannot be obeyed.** `.scratch/_glowssr.jsx` is what the alternative looks like:
+faced with an un-renderable component it *re-implemented* the geometry in order
+to print it, which proves two transcriptions agree and says nothing about the
+screen. The extraction is what makes the check honest.
+
+In the client: the rail button (with its `🕒` / `Db` / `AP` refusal labels), the
+ring-2 paint, `resolveShukuchiHop`, the click branch, and the arc layer — placed
+**after** the hex map, because the standees are drawn inside it and the arc
+passing **over** the body it clears is the identity call of §2.5.0c.
+
+### 5-hopport.C 🚩 THE BUG THE PORT FOUND IN THE THING IT WAS PORTING
+
+The preview derived *"spent"* from `MAX_HOPS − hopsLeft`, and a **ready** ability
+carries `hopsLeft === 0`. So the page drew a ready Shukuchi with **every mark
+greyed out** — a full budget displayed as an empty bar.
+
+🎯 **IT IS NOT COSMETIC, AND THE REASON IS §2.5.0c.** Alex switched the "FREE"
+label OFF and bet that the segmented bar alone would teach §2.5.0a's trap: the
+clock starts on hop **1**, so hops 2–3 are free and a Ronin who hops once and
+stops has spent the ability. **A bar that starts empty cannot carry that bet.**
+Both sides now read forward — three before you fire, counting down as you spend —
+and `test:shukuchiui` §5 pins it so it cannot revert quietly.
+
+📌 **The preview page now also opens on Alex's landing instead of factory
+defaults.** `CLAUDE.md` warns that a fresh copy wipes a dial-in; once the dial-in
+exists, the cheapest fix is for the defaults to *be* it. The page's levers and
+`SHUKUCHI_LOOK` are diffed against each other, so they cannot drift in silence.
+
+### 5-hopport.D 🐛 THE BUG THAT WOULD HAVE SHIPPED — the bot's hop, refused
+
+The first draft gated `resolveShukuchiHop` on `shukuchiTargets`, a `useMemo` keyed
+on `action === 'shukuchi'`. **The searcher executes by calling `setAction(...)`
+and the resolver in the SAME TICK**, so it would have read the previous render's
+empty set and been refused every single time.
+
+⚠️ **AND NOTHING WOULD HAVE CAUGHT IT.** `test:legal` §16 asserts a client path
+is *declared*, not that it works; the suites are headless; the bench would have
+gone on reporting hops. It is §B2 exactly — *a passing test is not evidence a
+rule is real* — and the only reason it surfaced is that wiring the bot meant
+reading the resolver as the bot would run it. ✅ The landing set is now a
+**function** (`shukuchiLandingSet()`), with the memo kept for the paint alone.
+
+📌 `move` is safe from this only because it never reads its own highlight. Any
+future resolver that does is exposed to the same trap.
+
+### 5-hopport.E ✅ Verification
+
+`check:bundle` **zero warnings**. **All 25 suites green**, run in batches:
+`shukuchi` 68 · 🆕 `shukuchiui` **80** · `legal` **581** ·
+`transition` 257 · `harness` 1537 · `trace` 1205 · `skilltree` 135 ·
+`melody` 163 · `stackslots` 115 · `slime` 127 · `eleven` 38 · `score` 122 ·
+`eval` 156 · `winconditions` 79 · `turnflow` 73 · `battleflow` 65 ·
+`determinism` 20 · `shamisen` 34 · `riffparity` 127,598 · `riff` 70,970 ·
+`render` 8/8 · `client` 6 · `arch` 8 · `engine`, `b0` green.
+
+**Two counts moved and both were checked rather than waved through:**
+
+- `legal` 580 → **581**. §16 walks `BOT_CLIENT_KINDS` asserting each is a kind
+  the rules still emit; `shukuchi` moving out of the gap list and into that set
+  adds exactly one.
+- `shukuchi` stayed at **68** — but one assertion **inverted**. It used to assert
+  the client gap was *declared*; it now asserts the gap is *closed*. 🎯 Same move
+  `melodyCommitCheck` §13 made when Wa no Koe was cut: a check standing on an
+  absence becomes the guard on its presence rather than being deleted.
+
+🆕 **`test:shukuchiui` — 80 assertions, and it bites.** It slices a new DOM-free
+**OVERLAY REGION** out of the preview page and diffs it against the shipped
+component: the fifteen levers, the arc path from **every** hex to **every** one of
+its ring-2 landings (1,046 pairs), the trail fade, the twelve gallery states of
+the budget bar, and the rendered SVG itself. ⚠️ **Confirmed red on a deliberate
+one-unit change to the arc rise** — a suite nobody has watched fail is a suite
+nobody should quote (§B3).
+
+⚠️ **`test:render` again exceeded a 2-minute shell and passed 8/8 when given its
+own.** Exactly as `CLAUDE.md` warns. A timeout there is not a failure.
+
+⏳ **WHAT IS STILL NOT COVERED.** `test:shukuchiui` diffs geometry, colour and
+mark-state — it can say the arc is the height Alex set, never that the height is
+right. And nothing renders the rail BUTTON: `ShukuchiBudget` is checked, the
+`<RailBtn>` around it is not. That is the same DOM-shaped hole `test:render`'s
+header already admits to.
+
+### 5-hopport.F 🎯 NEXT
+
+1. 🗡️👤 **Step (c) — respec Bushido and Shadow Illusion.** ✅ **NO LONGER
+   BLOCKED** (.A). The 3–5 window, the +2/+3/+4 ladder, and the new unlock and
+   cooldown constants. ⚠️ It is a RULE, so it wants its suite in the same pass —
+   and `bushidowindow.mjs` / `bushidouse.mjs` in `.scratch/` are the probes the
+   old payout was measured with, worth re-running against the ladder.
+2. 🤖 **RE-BENCH THE RONIN, and treat it as a correction rather than a
+   refresh.** Every Ronin number from `5-hop` and `5-hopui` was measured while
+   the searcher could plan hops the client would refuse. Those numbers are not
+   comparable with anything taken now, and nothing but a re-run closes that.
+3. 💰 **The flat unlock number**, and the three riders that travel with it —
+   board rows 3, 4 and 5, all filed only as prose in `UPGRADE_SHOP_DESIGN.md`
+   §0⃣.3.
+4. 🚨 **The Ronin ledger** — board row 6, six passes deep, still nobody's.
+5. ⛔ **The client still won't colour the three endings** — `5-flags.G` item 1,
+   untouched for a **fifth** session and still true.

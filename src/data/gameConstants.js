@@ -128,11 +128,73 @@ export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
 // by `turnFlow` and stored by `economy` long before the move was reachable to a
 // bot; these two are the rest of its rule, hoisted out of the monolith so the
 // engine and the client cannot drift.
-// ⚠️ THE BONUS IS THE GROUND HE COVERED — `dist - 1` — and the sign matters. It
-// used to be `apLeft - dist`, which paid MOST for a charge of zero hexes and
-// nothing for a full-length one. Alex caught it 2026-08-20.
-export const PSYCHO_BUSHIDO_CD     = 2;   // rounds, ticked in turnFlow
-export const PSYCHO_BUSHIDO_MIN_AP = 2;   // 1 hex of run-up + the Swing's own AP
+// ⚠️ THE BONUS IS THE GROUND HE COVERED, AND THE SIGN MATTERS. It used to be
+// `apLeft - dist`, which paid MOST for a charge of zero hexes and nothing for a
+// full-length one. Alex caught it 2026-08-20 by reading the payout table, and
+// that is `SEQUENCING.md` §B8. ⚠️ THE LADDER BELOW MUST STAY MONOTONIC — the
+// day it pays more at 3 than at 5, the sign has flipped back in a new costume.
+//
+// ⭐ RESPECCED 2026-09-04f — `RONIN_ABILITY_DESIGN.md` §2.1.1.
+// The old rule policed range with a PAYOUT CURVE: a charge from next door was
+// legal but strictly worse than the Swing it replaced, because the dash spent
+// the whole AP pool. The new rule polices it with a WINDOW — a charge from next
+// door is not legal at all — and pays a gradient INSIDE that window.
+//
+// 🎯 BOTH HALVES OF THE ARGUMENT WERE RIGHT AND ALEX TOOK BOTH. The window is
+// the legality rule ("the ultimate beginner" can read a bright line); the ladder
+// is the payout ("farther is stronger" is what §2.1 says the ability IS). A flat
+// bonus inside a window would have deleted the second one.
+// ─── ⭐ THE FLAT UNLOCK PRICE — Alex, 2026-09-04f ────────────────────────────
+//
+// EVERY ability in the game costs the SAME to unlock, and the number is 6.
+// `UPGRADE_SHOP_DESIGN.md` §0⃣ rule 1, and §0⃣.3's "what IS the flat number?" is
+// now answered. The spread it replaces was 6–14.
+//
+// 🎯 WHY IT IS A RULE AND NOT A BALANCE TWEAK. §1.1 of that doc MEASURED the
+// arsenals being bought in PRICE order, not value order — a near-perfect inverse
+// ranking, every 6 Db skill taken by 70–98% of seats and every skill over 10 Db
+// by about one in ten, "with no reference to what the ability does." A flat price
+// does not mitigate that finding; it deletes the variable the finding is about.
+// When every ability costs the same, the only thing left to choose on is what the
+// ability DOES.
+//
+// ⚠️ THIS IS THE UNLOCK PRICE ONLY — `dbCost` in `data/skillTree.js`, paid once.
+// PER-USE Db (`ABILITY_DB_COST` in `engine/systems/cooldowns.js`) is a separate
+// rule and is deliberately NOT flattened; §0⃣.3 files that as its own open call.
+// 📌 It is exported so a suite can assert the tree against it. Nothing reads it
+// at runtime — the tree carries the literal, and the check is what keeps them
+// equal, because a tree that computed its own prices could not be checked at all.
+export const FLAT_ABILITY_UNLOCK_DB = 6;
+
+export const PSYCHO_BUSHIDO_CD        = 4;  // rounds, ticked in turnFlow — was 2
+export const PSYCHO_BUSHIDO_MIN_RANGE = 3;  // ⭐ closer than this is ILLEGAL, not merely bad
+export const PSYCHO_BUSHIDO_MAX_RANGE = 5;  // ⭐ farther than this is out of the lane
+// ⭐ FLAT, NOT "EVERYTHING YOU HAVE LEFT". The dash used to bill `apLeft`, which
+// made the ability cost a different amount every time it was thrown and made the
+// close charge self-policing. The window does that job now, so the bill is a
+// number: 3 AP total, of which the Swing at the end spends `SWING_AP_COST`.
+// ⚠️ IT COMES OUT OF THE SAME `moveStepsLeft` POOL as walking, Shukuchi and the
+// Swing — "3 AP flat" and "movement consumed" in §2.1.1's table are one line,
+// not two. If they were two rules the flat number would mean nothing.
+export const PSYCHO_BUSHIDO_AP_COST   = 3;
+// ⭐ AND IT SPENDS 2 OFF THE DRIVE STACK (Alex, 2026-09-04f). This is the only
+// price in the game paid in PROGRESSION currency rather than combat currency:
+// `music/stackSlots.js` reads `driveStack[0]` as the root that decides which
+// note opens your next seat, so a charge does not just cost Db and tempo — it
+// can cost you the chord you were building. ⚠️ Uncosted by design (the ledger
+// says so): balance is deferred (§B10), so this is recorded, not tuned.
+export const PSYCHO_BUSHIDO_STACK_COST = 2;
+// The bonus Drive by charge distance: 3 → +2, 4 → +3, 5 → +4.
+// 📌 ONE FUNCTION, READ BY THE KERNEL AND THE CLIENT BOTH. The bonus lived as a
+// bare `dist - 1` expression in three files; three copies of an arithmetic rule
+// is how `PSYCHO_BUSHIDO_CD` and a literal `2` described the same cooldown in
+// two places for months. Out of the window it pays 0 — a caller that has not
+// checked legality gets nothing rather than a negative or a NaN.
+export const PSYCHO_BUSHIDO_DRIVE_LADDER = [2, 3, 4];
+export function psychoBushidoBonus(dist) {
+  const i = Math.round(dist) - PSYCHO_BUSHIDO_MIN_RANGE;
+  return PSYCHO_BUSHIDO_DRIVE_LADDER[i] ?? 0;
+}
 
 // ─── 🌀 SHUKUCHI ARPEGGIO — 縮地, "shrinking the earth" ───────────────────────
 //
@@ -182,7 +244,19 @@ export const SHUKUCHI_AP_PER_HOP = 1;  // ⭐ the whole balance of the ability l
 // exemption. Boom Box, Poison Slime, crowd virtuosity and Freestyle are not
 // things you DO — there is no moment of use to charge for. An innate is the
 // character; an active is a choice, and the rule exists to make choices cost.
-export const SHADOW_ILLUSION_CD    = 3;   // rounds — see the note below
+export const SHADOW_ILLUSION_CD    = 4;   // rounds — was 3, respecced 2026-09-04f
+// ⭐ HOW MANY OF RONIN'S TURNS THE DOUBLE STANDS. Respecced 3 → 2 (§2.2.1):
+// dearer to own, cheaper to fire, gone sooner — a bluff that stands for three
+// turns stops being a bluff and becomes a fact.
+// ⚠️ IT WAS A BARE `const SHADOW_ILLUSION_TURNS = 3` INSIDE THE 15,000-LINE
+// MONOLITH, which is why it is here now: `turnFlow.js` ticks the double down and
+// could not see the number that set it, so the kernel and the client agreed only
+// by luck. That is the exact shape of the drift `PSYCHO_BUSHIDO_CD` cost.
+// 📌 THE UPKEEP DID NOT NEED A CHANGE. §2.2.1 moves it from "1 Sustain per turn"
+// to "per round" — but `tickShadowIllusion` is called from `advanceTurnNotes`,
+// which fires at the start of the OWNER's turn, so it has ALWAYS been per round
+// by `cooldowns.js`'s convention. The doc was describing the code it already had.
+export const SHADOW_ILLUSION_TURNS = 2;
 // 🎸 CURSED SHAMISEN — the curse is a debt, not a board token. Activation speeds
 // up ALL OTHER ability cooldowns for CURSED_SHAMISEN_DURATION rounds. While
 // active, Ronin glows — if he loses ANY Vibe in battle, all cooldowns RESET to
@@ -222,7 +296,7 @@ export const SUNBEAM_CD       = 2;
 // 👤 The double is the dearest because it is the most versatile: it collects
 //    notes, it soaks a whole rival turn, and it baits the Bushido lane.
 export const PSYCHO_BUSHIDO_DB_COST  = 1;
-export const SHADOW_ILLUSION_DB_COST = 2;
+export const SHADOW_ILLUSION_DB_COST = 1;   // was 2 — respecced 2026-09-04f
 export const CURSED_SHAMISEN_DB_COST = 2;   // unchanged — it was already paying
 
 // 👤 SHADOW ILLUSION — Sustain drain, replacing the 1 Drive token it used to

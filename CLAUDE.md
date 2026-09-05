@@ -5,7 +5,7 @@
 > 1. **`src/STATE_OF_PLAY.md`** — ~150 lines. The whole game as it stands: roster,
 >    every ability and its state, rules decided but not yet built, what is blocked
 >    on what. **The entry point. Read it even for a one-line fix.**
-> 2. **`src/SEQUENCING.md` §B — THE FINDINGS.** Ten lessons that each cost real
+> 2. **`src/SEQUENCING.md` §B — THE FINDINGS.** Twelve lessons that each cost real
 >    money and each became a test. ⚠️ **Read §B before your first destructive
 >    change**, especially any deletion.
 >
@@ -81,7 +81,7 @@ other one.
 
 📌 **What each one holds:**
 
-- `src/SEQUENCING.md` — **§A** the live handoff · **§B** 🎓 **THE FINDINGS**, ten
+- `src/SEQUENCING.md` — **§A** the live handoff · **§B** 🎓 **THE FINDINGS**, twelve
   lessons that each cost real money and each became a test · **§C** a dated index
   of all 31 past handoffs. ⚠️ **Read §B before your first destructive change.**
 - `src/IDEAS_INBOX.md` — 💡 **where a half-formed idea goes.** If Alex raises
@@ -181,7 +181,7 @@ evidence that it looks right.
 
 ## Testing
 
-**`npm run test:all`** is the full sweep — **twenty-five suites**, one command,
+**`npm run test:all`** is the full sweep — **twenty-six suites**, one command,
 stops on the first red. Run it before reporting anything as done, and quote the
 assertion counts. If a count drops, explain why rather than letting it pass
 unremarked.
@@ -189,7 +189,7 @@ unremarked.
 Individual suites are `npm run test:<suite>`: engine, legal, eval, transition,
 turnflow, determinism, battleflow, winconditions, stackslots, melody, slime,
 eleven, score, harness, riffparity, skilltree, shamisen, shukuchi, shukuchiui,
-client, render, b0, riff, trace, arch.
+bushido, client, render, b0, riff, trace, arch.
 ⚠️ **`test:all` will not finish inside a 2-minute shell** on this VM, and
 `test:render` alone can take longer than that cold (it esbuilds the monolith
 first). Run the suites in batches rather than reading a timeout as a failure. `npm run bench:bot` runs the §6.6 bot

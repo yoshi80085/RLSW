@@ -1,3 +1,4 @@
+import { bushidoLane } from "../systems/bushido.js";
 // ─── LEGAL ACTIONS ──────────────────────────────────────────────────────────
 // `legalActions(state, spiritId, view) -> action[]` — BOT_STRATEGY_HANDOFF §6.1.
 //
@@ -46,7 +47,7 @@ import { canFire } from "../systems/cooldowns.js";
 import { canHop, shukuchiLandings } from "../systems/shukuchi.js";
 import { posingMap } from "../systems/limelight.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
-import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH, PSYCHO_BUSHIDO_MIN_AP, SHUKUCHI_AP_PER_HOP } from "../../data/gameConstants.js";
+import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH, PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, SHUKUCHI_AP_PER_HOP } from "../../data/gameConstants.js";
 import { CONE_HALF_ARC, SPIRIT_ONLY_ROUTE } from "./bot.js";
 // 📻 The Boom Box rule — Intergalactic 0 reads distance 0 while charged, which
 // is what keeps his Sonic legal out on the board — used to be imported here as
@@ -440,11 +441,17 @@ export function legalActions(state, spiritId, view = {}) {
     // same dice — so this emits a target and a distance and lets `transition.js`
     // fall through into the combat path rather than growing a second one.
     //
-    // ⚠️ THE DISTANCE IS THE PAYLOAD, NOT THE COST OF REACHING IT. `dist - 1`
-    // becomes bonus Drive on the strike, so a long charge hits harder — and
-    // because the move spends the whole remaining pool, a charge from next door
-    // is strictly worse than the 1 AP Swing it replaces. That self-policing is
-    // why there is no minimum-range rule here beyond having room to move at all.
+    // ⚠️ THE DISTANCE IS THE PAYLOAD, NOT THE COST OF REACHING IT. It selects a
+    // rung of `PSYCHO_BUSHIDO_DRIVE_LADDER`, so a long charge hits harder.
+    //
+    // ⭐ AND SINCE 2026-09-04f THERE IS A MINIMUM RANGE, WHICH THERE DELIBERATELY
+    // WAS NOT BEFORE. The old rule let the close charge be legal and merely bad
+    // (it spent the whole AP pool for +0). The bill is now FLAT, so "bad" would
+    // have become "free" — a flat 3 AP charge from next door would be a Swing
+    // with a Drive bonus attached. §2.1.1: the window is the legality rule.
+    // ⚠️ A BODY INSIDE THE WINDOW STILL BLOCKS THE LANE WITHOUT BEING A TARGET,
+    // which is what makes standing at range 2 a defence against this ability —
+    // and what makes the 👤 decoy worth parking in front of a Ronin.
     //
     // 📌 GATED ON THE SKILL, NOT ON THE SPIRIT. `psycho_bushido` is `spiritOnly`
     // in the tree, so the roster gate already exists one layer up; reading the
@@ -455,27 +462,16 @@ export function legalActions(state, spiritId, view = {}) {
     // the resolver would then refuse for want of 1 Db is a searcher planning
     // turns it cannot play, and the refusal happens after the dash has already
     // committed the turn.
-    if (ap >= PSYCHO_BUSHIDO_MIN_AP
+    if (ap >= PSYCHO_BUSHIDO_AP_COST
         && (ns.unlockedSkills ?? []).includes('psycho_bushido')
         && canFire(ns, 'psycho_bushido')) {
-      const step = neighborInDirection(here, self.facing ?? 0);
-      if (step) {
-        const dq = step.q - here.q, dr = step.r - here.r;
-        let q = here.q, r = here.r, prev = here.num;
-        for (let d = 1; d <= ap; d++) {
-          q += dq; r += dr;
-          const h = HEX_BY_QR[`${q},${r}`];
-          if (!h) break;                       // the charge runs off the stage
-          if (blocked.has(h.num)) {
-            // ⚠️ ANY body stops it, but only a RIVAL is a target — an amp or the
-            // 👤 decoy blocks the lane without offering a blow, which is what
-            // makes the decoy worth standing behind.
-            const rival = rivals.find(x => x.num === h.num);
-            if (rival) out.push({ kind: 'psychoBushido', targetId: rival.id, to: prev, dist: d, apCost: d });
-            break;
-          }
-          prev = h.num;
+      for (const step of bushidoLane(self, blocked)) {
+        if (!blocked.has(step.num)) continue;
+        const rival = rivals.find(x => x.num === step.num);
+        if (rival && step.dist >= PSYCHO_BUSHIDO_MIN_RANGE) {
+          out.push({ kind: 'psychoBushido', targetId: rival.id, to: step.to, dist: step.dist, apCost: PSYCHO_BUSHIDO_AP_COST });
         }
+        break;
       }
     }
 

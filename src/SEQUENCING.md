@@ -13,7 +13,7 @@
 > |---|---|
 > | **A** | 🧭 **the current handoff** — what just happened and what is next |
 > | **B** | 🎓 **the findings** — lessons that cost real money to learn, kept because each one is now a live defence in the test suite |
-> | **C** | 📇 **the index** — all 34 handoffs, dated, one line each, pointing into the archive |
+> | **C** | 📇 **the index** — all 36 handoffs, dated, one line each, pointing into the archive |
 >
 > ⚠️ **NOTHING WAS DELETED.** If a line below is too short to act on, the full
 > text is in the archive under the same section id.
@@ -26,160 +26,171 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-## 5-hopport. 🧭 START HERE — session handoff, 2026-09-04e (the board can be asked for the decisions; Shukuchi is PLAYED)
+## 5-draw. 🧭 START HERE — session handoff, 2026-09-04f (the draw; and one price for everything)
 
-🎯 **THE ABILITY IS NO LONGER HEADLESS.** 🌀 Shukuchi Arpeggio has a button, a
-target overlay, arcs, a hover ghost and a budget rail, and the searcher can take
-the hops it plans. That last clause is the one that mattered: for two sessions
-the bench and the played game disagreed about this ability, and the disagreement
-was invisible because every suite was green.
+🗡️ **THE RONIN'S KIT IS NOW THREE-QUARTERS BUILT AND ALL OF IT IS PLAYABLE.**
+Step (c) landed: 🌀 Psycho Bushido is a **draw** on a rival 3–5 hexes in front,
+paying **+2 / +3 / +4** across that window for a **flat 3 AP** and **2 notes off
+the Drive stack**; 👤 Shadow Illusion is dearer to own, cheaper to fire and gone
+sooner. Only 🎸 the siphon is left, and it is still behind Metalness.
 
-⚡ **AND THE BOARD RAN A SECOND TIME, WHICH IS WHY IT IS WORTH KEEPING AS A
-RITUAL.** §5-hopui.A invented the decision board; this session was asked for it
-again before any code. Eleven live calls, two of them findable only as prose
-inside a design doc.
+💰 **AND THE ECONOMY'S ONE OPEN NUMBER WAS ANSWERED IN PASSING.** Alex, choosing
+between options on Shadow Illusion's price: *"it's not 10 Db, everything should
+be 6 Db, not varied among different abilities."* That is board row 4 — *"the
+single number the whole economy now turns on"* — closed inside an answer to a
+different question. **All thirteen unlock prices are now 6**, down from a 6–14
+spread, and two suites assert the uniformity rather than trusting it.
 
-### 5-hopport.A ⭐ THE BOARD, AND THE ONE DECISION TAKEN OFF IT
+### 5-draw.A ⭐ THE BOARD, ITS THIRD RUN — and the finding moved again
 
-**Eleven open calls**, newest first, against nine last session — and the
-arithmetic is the interesting part, not the total: two closed (§5-hopui.B), one
-was struck as dead, and **five appeared that had never been enumerated**. Three
-of the five are the riders on the flat unlock number, filed as bullet points in
-`UPGRADE_SHOP_DESIGN.md` §0⃣.3 and named nowhere else; one is the Fame per-turn
-cap, measured to three options on 2026-09-02d and never chosen; one is the
-Metalness-vs-siphon ordering trade.
+**Fifteen open calls**, against eleven last session. One closed (Bushido's
+ladder), **five were new** — and where they came from is the point:
 
-🚩 **THE PATTERN IS THE SAME ONE §B9 IS ABOUT, AND IT IS GETTING CLEARER.** A
-decision does not go missing by being wrong. It goes missing by being **correctly
-recorded in a doc nobody greps for it in.** The board is the only instrument this
-repo has that reads the whole set at once, and it has now found something new
-both times it has been run.
+🚩 **THREE OF THE FIVE WERE INSIDE THE STEP THAT WAS MARKED "UNBLOCKED".** Both
+`STATE_OF_PLAY.md` §7 and §5-hopport.F called step (c) *"a pure number edit, ✅ no
+longer blocked."* Reading the respec table against the code turned up three calls
+that had to be made before a constant could be typed: Bushido's 8 Db unlock
+against the flat-cost rule that voids it; the brand-new *"−2 off the Drive
+stack"*, which §2.1.1 itself says **nobody has costed**; and Shadow Illusion's
+3 → 2 turns against §6.3's warning that duration is *"the first dial to turn"*.
 
-📌 **IT IS STILL NOT A DOC, AND THAT IS STILL DELIBERATE.** A tenth file to keep
-in sync is the exact drift being paid for (§B1, §B9). What it earns each time is
-rows in `STATE_OF_PLAY.md` §4 and §7 — which is where it earned them this time.
+🎯 **THIS IS §B9's LESSON WITH A NEW FAILURE MODE, AND IT IS WORTH NAMING.** §B9
+is about a decision filed in the wrong doc. These three were filed in the RIGHT
+doc, in the right section — and still read as no decision, because they sat
+**underneath a ⬅️ NEXT arrow**. A step labelled unblocked is read as a step with
+nothing to ask. **The label outranked the contents.**
 
-| ⁉️ was open | ✅ Alex, 2026-09-04e | where it now lives |
+| ⁉️ was open | ✅ Alex, 2026-09-04f | where it now lives |
 |---|---|---|
-| 🗡️ Does Psycho Bushido pay **+3 flat**, or the **+2 / +3 / +4** ladder across its 3–5 window? | **The ladder.** The window is the legality rule; the payout is a gradient inside it. | `RONIN_ABILITY_DESIGN.md` §2.1.1, now closed · `STATE_OF_PLAY.md` §4 |
+| 🗡️ Ship Bushido's 8 Db unlock, or leave the price alone? | **Leave it alone — ship mechanics.** | superseded within the hour by the row below |
+| 🗡️ Build the −2 Drive stack cost, or file it? | **Build it.** *"I like the +2/+3/+4 ladder, it opens up a real space strategy. But it should also take out 2 of the Drive stack in the process."* | `gameConstants.js` → `PSYCHO_BUSHIDO_STACK_COST` · §4 |
+| 👤 Shadow Illusion: 2 turns, or hold at 3? | **2 turns** — and ⭐ *"it's not 10 Db, everything should be 6 Db, not varied among different abilities."* | `FLAT_ABILITY_UNLOCK_DB` · §4 · closes `UPGRADE_SHOP_DESIGN.md` §0⃣.3's first bullet |
 
-🎯 **BOTH HALVES OF THAT ARGUMENT WERE RIGHT AND THE ANSWER TAKES BOTH.** §2.1
-said the ability *is* the distance gradient; the respec said a bright line teaches
-better than a curve nobody notices. A window that refuses the close charge
-outright **and** pays more the further out you start is the only shape that is
-both. ⚠️ The cost is three numbers to read where the flat version had one, and
-that is the first thing to look at if the window turns out to be doing the work
-alone.
+📌 **THE THIRD ANSWER OVERTOOK THE FIRST AND THAT IS FINE.** "Leave the unlock
+price alone" was a way of not typing a number the flat rule would delete. Two
+answers later the flat number existed, so 6 was typed — and Bushido was already 6,
+so the two answers never actually disagreed.
 
-### 5-hopport.B 🖥️ WHAT SHIPPED — and why the overlay is its own file
+### 5-draw.B 🚩 THE BUG THE STACK BILL FOUND IN THE GAME'S OWN RULES
 
-🌀 **`src/ui/ShukuchiOverlay.jsx`** (191 lines) — the arcs, the hover ghost with
-its facing arrow, the budget readout, and `SHUKUCHI_LOOK`, which is Alex's
-fifteen-lever dial-in in one object.
+The first draft of `spendDriveStack` took the 2 notes off the **back** of the
+stack, and the comment above it was a confident paragraph explaining why: the root
+is `stack[0]`, everything downstream hunts from it, and eating the root would
+re-point the player's hunt as a side effect of an attack.
 
-⚠️ **IT IS A SEPARATE FILE FOR A REASON THAT IS NOT TIDINESS.** `CLAUDE.md`:
-*"verify the port, don't assume it — render the shipped component through React
-SSR and diff it against the preview."* **A geometry inlined in a 15,000-line
-component cannot be rendered on its own, so it cannot be diffed, so the rule
-cannot be obeyed.** `.scratch/_glowssr.jsx` is what the alternative looks like:
-faced with an un-renderable component it *re-implemented* the geometry in order
-to print it, which proves two transcriptions agree and says nothing about the
-screen. The extraction is what makes the check honest.
+⛔ **EVERY WORD OF THAT WAS RIGHT AND THE CONCLUSION WAS BACKWARDS.** Every Swing
+in the game already spends `SWING_DRIVE_SPEND` off the **front**
+(`attackParams.js` → `driveStack.slice(2)`), and `music/stackSlots.js` documents
+the consequence as the intended mechanic in as many words: *"spending your
+foundation hands the root to the next note up, and your hunt on the board moves
+with it… the design's own 'removing the root is how you re-point what you are
+hunting'."*
 
-In the client: the rail button (with its `🕒` / `Db` / `AP` refusal labels), the
-ring-2 paint, `resolveShukuchiHop`, the click branch, and the arc layer — placed
-**after** the hex map, because the standees are drawn inside it and the arc
-passing **over** the body it clears is the identity call of §2.5.0c.
+🎯 **SO THE SAFE-LOOKING CHOICE WAS THE DRIFTING ONE.** Bushido eating the tail
+while its own strike ate the head would have put **two directions on one stack
+inside a single action**. The bill now takes from the front, and `test:bushido`
+asserts it against `SWING_DRIVE_SPEND` itself rather than against a literal — so
+the day the two diverge, one line says so.
 
-### 5-hopport.C 🚩 THE BUG THE PORT FOUND IN THE THING IT WAS PORTING
+🚩 **AND IT REVEALED THE ABILITY'S REAL PRICE, WHICH NOTHING HAD STATED.** A
+Bushido's strike **is** a Swing. So a draw costs **4 notes of Drive stack** — 2
+for the ability, 2 for the strike — where an ordinary Swing costs 2. The bill is
+also paid *before* `attackParams` reads the sheet, so **the chord backing the blow
+is whatever survives it**. The ladder pays more the further you draw; the stack
+bill takes the chord that would have paid alongside it. 🧊 That is a real trade,
+it is uncosted, and §B10 says record it rather than tune it. It is recorded.
 
-The preview derived *"spent"* from `MAX_HOPS − hopsLeft`, and a **ready** ability
-carries `hopsLeft === 0`. So the page drew a ready Shukuchi with **every mark
-greyed out** — a full budget displayed as an empty bar.
+### 5-draw.C ⭐ WHAT THE FLAT PRICE DID, MEASURED ON THE FIRST TRACE
 
-🎯 **IT IS NOT COSMETIC, AND THE REASON IS §2.5.0c.** Alex switched the "FREE"
-label OFF and bet that the segmented bar alone would teach §2.5.0a's trap: the
-clock starts on hop **1**, so hops 2–3 are free and a Ronin who hops once and
-stops has spent the ability. **A bar that starts empty cannot carry that bet.**
-Both sides now read forward — three before you fire, counting down as you spend —
-and `test:shukuchiui` §5 pins it so it cannot revert quietly.
+`UPGRADE_SHOP_DESIGN.md` §1.1's central finding is that the arsenals are bought in
+**price order, not value order** — *"with no reference to what the ability does."*
+§0⃣.1 predicted a flat price would delete the mechanism rather than mitigate it.
+The first traced match after the change says it did:
 
-📌 **The preview page now also opens on Alex's landing instead of factory
-defaults.** `CLAUDE.md` warns that a fresh copy wipes a dial-in; once the dial-in
-exists, the cheapest fix is for the defaults to *be* it. The page's levers and
-`SHUKUCHI_LOOK` are diffed against each other, so they cannot drift in silence.
+| seed 4242, searcher, 60 turns | skills aimed at |
+|---|---|
+| **before** (6–14 spread) | shukuchi · goes_to_11 · gravity_control · psycho_bushido · shadow_illusion · code_injection · master_moshpits |
+| **after** (flat 6) | shukuchi · goes_to_11 · **blaster_of_ra** · psycho_bushido · shadow_illusion |
 
-### 5-hopport.D 🐛 THE BUG THAT WOULD HAVE SHIPPED — the bot's hop, refused
+🎯 **🌀 BLASTER OF RA APPEARS, AND IT IS ONE OF THE TWO SKILLS §1.2 NAMED AS
+BARELY GETTING SEEN** (17%, against ☀️ Sunbeam's 10%). It cost 10 Db and was not
+saved for; it costs 6 and is.
 
-The first draft gated `resolveShukuchiHop` on `shukuchiTargets`, a `useMemo` keyed
-on `action === 'shukuchi'`. **The searcher executes by calling `setAction(...)`
-and the resolver in the SAME TICK**, so it would have read the previous render's
-empty set and been refused every single time.
+⚠️ **AND IT MAKES BOARD ROW 15 MORE URGENT, NOT LESS.** *Is Blaster of Ra an
+ability at all?* It **replaces** the Smash, so it is deliberately absent from
+`ABILITY_CD` and `ABILITY_DB_COST`. It is now the same price as everything else
+and being bought more — an unpriced, uncooled ability with a rising share of play.
 
-⚠️ **AND NOTHING WOULD HAVE CAUGHT IT.** `test:legal` §16 asserts a client path
-is *declared*, not that it works; the suites are headless; the bench would have
-gone on reporting hops. It is §B2 exactly — *a passing test is not evidence a
-rule is real* — and the only reason it surfaced is that wiring the bot meant
-reading the resolver as the bot would run it. ✅ The landing set is now a
-**function** (`shukuchiLandingSet()`), with the memo kept for the paint alone.
+### 5-draw.D ⚠️ `test:harness` DROPPED 1537 → 1530, AND THE REASON IS §B4
 
-📌 `move` is safe from this only because it never reads its own highlight. Any
-future resolver that does is exposed to the same trap.
+`CLAUDE.md` says explain a dropped count rather than letting it pass. This one is
+**not a lost assertion.** `harnessCheck`'s last block loops over the `skillTarget`
+actions a traced match actually emitted (`for (const b of aimed)`), so its count is
+a property of the **trace**, not of the rule. Flat prices changed the searcher's
+saving order — `skillTarget` is a *saving* action, and under a spread it re-aimed
+whenever a cheaper skill became the better save. With every price equal there is
+no cheaper option to switch to, so it picks once and sticks: 7 → 5 aims.
 
-### 5-hopport.E ✅ Verification
+🎓 **THAT IS §B4 IN A NEW PLACE.** *"A finding can be a property of the measurement
+rather than of the game."* Here it is the **assertion count itself** that is a
+property of the measurement. 📌 Worth knowing before the next session reads a
+number move as a regression: this count will keep drifting with bot behaviour, and
+the two floors underneath it (`ownedMean ≥ 1.0`, `ownedAny ≥ 75%`) are the
+assertions that actually guard anything. Both passed.
 
-`check:bundle` **zero warnings**. **All 25 suites green**, run in batches:
-`shukuchi` 68 · 🆕 `shukuchiui` **80** · `legal` **581** ·
-`transition` 257 · `harness` 1537 · `trace` 1205 · `skilltree` 135 ·
+### 5-draw.E ✅ Verification
+
+`check:bundle` **zero warnings**, before and after the monolith. **All 26 suites
+green**, run in batches:
+🆕 `bushido` **82** · `legal` 581 · `skilltree` **147** · `transition` 257 ·
+`harness` **1530** · `trace` 1205 · `shukuchi` 68 · `shukuchiui` 80 ·
 `melody` 163 · `stackslots` 115 · `slime` 127 · `eleven` 38 · `score` 122 ·
 `eval` 156 · `winconditions` 79 · `turnflow` 73 · `battleflow` 65 ·
 `determinism` 20 · `shamisen` 34 · `riffparity` 127,598 · `riff` 70,970 ·
 `render` 8/8 · `client` 6 · `arch` 8 · `engine`, `b0` green.
 
-**Two counts moved and both were checked rather than waved through:**
+**Three counts moved and all three were checked rather than waved through:**
 
-- `legal` 580 → **581**. §16 walks `BOT_CLIENT_KINDS` asserting each is a kind
-  the rules still emit; `shukuchi` moving out of the gap list and into that set
-  adds exactly one.
-- `shukuchi` stayed at **68** — but one assertion **inverted**. It used to assert
-  the client gap was *declared*; it now asserts the gap is *closed*. 🎯 Same move
-  `melodyCommitCheck` §13 made when Wa no Koe was cut: a check standing on an
-  absence becomes the guard on its presence rather than being deleted.
+- 🆕 **`test:bushido` — 82 assertions, and it bites.** Confirmed red on three
+  deliberate breaks: a descending ladder, dropping the min-range gate in
+  `legalActions`, and restoring `apCost: d`. ⚠️ A suite nobody has watched fail is
+  a suite nobody should quote (§B3).
+- `skilltree` 135 → **147**. Two assertions pinning the old spread (`tentacle` 10,
+  `master_moshpits` 8) were **inverted** into the flat-price guard — 13 per-skill
+  assertions plus one asserting the whole tree holds exactly one price. Same move
+  `melodyCommitCheck` §13 and `shukuchiCheck` both made: a check standing on a
+  number becomes the guard on the rule that replaced it.
+- `harness` 1537 → **1530**. §D above.
 
-🆕 **`test:shukuchiui` — 80 assertions, and it bites.** It slices a new DOM-free
-**OVERLAY REGION** out of the preview page and diffs it against the shipped
-component: the fifteen levers, the arc path from **every** hex to **every** one of
-its ring-2 landings (1,046 pairs), the trail fade, the twelve gallery states of
-the budget bar, and the rendered SVG itself. ⚠️ **Confirmed red on a deliberate
-one-unit change to the arc rise** — a suite nobody has watched fail is a suite
-nobody should quote (§B3).
+⏳ **WHAT IS STILL NOT COVERED.** `test:bushido` is headless — it asserts that the
+kernel's lane and the client's lane are described by the same constants, not that
+the client's two lane-walks *run* the same. ⚠️ **THE LANE IS NOW WALKED IN THREE
+PLACES** (`legalActions`, `resolvePsychoBushido`, `getPsychoBushidoTargets`) and
+only a bench or a played turn can prove all three agree. The re-bench is next for
+that reason as well as the obvious one.
 
-⚠️ **`test:render` again exceeded a 2-minute shell and passed 8/8 when given its
-own.** Exactly as `CLAUDE.md` warns. A timeout there is not a failure.
+### 5-draw.F 🎯 NEXT
 
-⏳ **WHAT IS STILL NOT COVERED.** `test:shukuchiui` diffs geometry, colour and
-mark-state — it can say the arc is the height Alex set, never that the height is
-right. And nothing renders the rail BUTTON: `ShukuchiBudget` is checked, the
-`<RailBtn>` around it is not. That is the same DOM-shaped hole `test:render`'s
-header already admits to.
-
-### 5-hopport.F 🎯 NEXT
-
-1. 🗡️👤 **Step (c) — respec Bushido and Shadow Illusion.** ✅ **NO LONGER
-   BLOCKED** (.A). The 3–5 window, the +2/+3/+4 ladder, and the new unlock and
-   cooldown constants. ⚠️ It is a RULE, so it wants its suite in the same pass —
-   and `bushidowindow.mjs` / `bushidouse.mjs` in `.scratch/` are the probes the
-   old payout was measured with, worth re-running against the ladder.
-2. 🤖 **RE-BENCH THE RONIN, and treat it as a correction rather than a
-   refresh.** Every Ronin number from `5-hop` and `5-hopui` was measured while
-   the searcher could plan hops the client would refuse. Those numbers are not
-   comparable with anything taken now, and nothing but a re-run closes that.
-3. 💰 **The flat unlock number**, and the three riders that travel with it —
-   board rows 3, 4 and 5, all filed only as prose in `UPGRADE_SHOP_DESIGN.md`
-   §0⃣.3.
-4. 🚨 **The Ronin ledger** — board row 6, six passes deep, still nobody's.
+1. 🤖 **RE-BENCH THE RONIN — and it is now overdue twice.** §5-hopport.F already
+   flagged that every number from `5-hop` and `5-hopui` was taken against a client
+   that refused the hops the searcher planned. **His kit has since changed shape
+   again**, and the three-way lane duplication above wants a played turn.
+2. 💰 **The three surviving riders on the flat number** — `UPGRADE_SHOP_DESIGN.md`
+   §0⃣.3, board rows 5, 6 and 7. The rising ladder has no shape and no cap, and
+   until it does a rich seat still has nowhere to put Db. 🎯 **The sink was never
+   one problem — it was breadth and depth, and only breadth got answered.**
+3. ⚠️ **Re-measure ☀️ Sunbeam (14 → 6) and 💀 Azrael (12 → 6)**, the two abilities
+   the flat rule made cheapest-fastest. 🧊 A measurement, not a rebalance.
+4. 🚨 **The Ronin ledger** — board row 10, six passes deep, still nobody's. ⚠️ And
+   note what today did to it: he got *more expensive to fire* (4-round CD, 4 stack
+   notes a draw) and *cheaper to own* (every unlock 6). Neither is the 12 Db slot.
 5. ⛔ **The client still won't colour the three endings** — `5-flags.G` item 1,
-   untouched for a **fifth** session and still true.
+   untouched for a **sixth** session and still true.
+6. 🔧 **A stale `.git/index.lock` is sitting in the repo** (0 bytes, no git process
+   running). `git stash` and `git checkout --` fail against it silently — `stash`
+   exits 1 with no message, which is how it went unnoticed. Everything else works.
+   ⚠️ This session could not remove it (the bridge cannot delete files); deleting
+   it by hand restores both commands.
 
 
 # B. 🎓 THE FINDINGS — what this project has learned the expensive way
@@ -268,15 +279,46 @@ a change that makes something *impossible* rather than merely weak — an abilit
 that cannot fire, a purchase nobody can make, a flag that can never be true. Those
 are bugs wearing balance's clothes and B6 is what they cost.
 
+### B11. 🏷️ A step labelled "unblocked" is read as a step with nothing to ask *(2026-09-04f)*
+
+Both `STATE_OF_PLAY.md` §7 and `SEQUENCING.md` §5-hopport.F called step (c) *"a
+pure number edit, ✅ no longer blocked."* It carried **three** live decisions —
+an unlock price the flat-cost rule already voided, a brand-new Drive-stack cost
+its own doc says *"nobody has costed"*, and a duration cut that turns the exact
+dial §6.3 warned about. All three were correctly written down, in the right doc,
+in the right section.
+
+🎯 **§B9 IS ABOUT A DECISION FILED AT THE WRONG ADDRESS. THIS IS THE SAME FAILURE
+AT THE RIGHT ONE.** The ⬅️ **NEXT** arrow outranked the paragraph underneath it,
+because a reader looking for what to do next stops reading at the label.
+✅ **The defence is the decision board**, which reads the whole set at once and has
+now found something new on all three of its runs — and, this time, found it inside
+the very step it was standing next to.
+
+### B12. 🎸 The safe-looking convention can be the drifting one *(2026-09-04f)*
+
+Psycho Bushido's new Drive-stack bill was first written to take notes off the
+**back** of the stack, to avoid re-pointing the player's hunt as a side effect of
+an attack. The reasoning was sound and the conclusion was backwards: **every Swing
+in the game already spends off the front**, and `music/stackSlots.js` documents
+that as the design's own way of re-pointing a hunt. Taking from the back would
+have put two directions on one stack inside a single action.
+
+✅ `test:bushido` now asserts the direction **against `SWING_DRIVE_SPEND` itself**
+rather than against a literal, so the two cannot diverge in silence.
+📌 And the check found the ability's real price while it was there: a draw costs
+**4** notes of Drive stack, not 2, because the strike at the end of it is a Swing.
+
 ---
 
-# C. 📇 THE INDEX — 35 handoffs, in `docs/archive/SEQUENCING-full-through-2026-09-04.md`
+# C. 📇 THE INDEX — 36 handoffs, in `docs/archive/SEQUENCING-full-through-2026-09-04.md`
 
 Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
-| `5-hopport` | 2026-09-04e | 🔼 **LIVE — §A above.** The board run a second time (11 calls, 5 newly enumerated); ✅ Bushido's +2/+3/+4 ladder settled; 🌀 Shukuchi's overlay PORTED and SSR-diffed at 80 assertions; the searcher's hop un-refused |
+| `5-draw` | 2026-09-04f | 🔼 **LIVE — §A above.** The board's third run (15 calls, 3 of the 5 new ones found INSIDE the step marked unblocked); 🗡️ Bushido respecced to a 3–5 draw with the ladder, a flat 3 AP bill and a Drive-stack price; 👤 Illusion respecced; ⭐ **the flat unlock number answered — 6, for everything** |
+| `5-hopport` | 2026-09-04e | The board run a second time (11 calls, 5 newly enumerated); ✅ Bushido's +2/+3/+4 ladder settled; 🌀 Shukuchi's overlay PORTED and SSR-diffed at 80 assertions; the searcher's hop un-refused |
 | `5-hopui` | 2026-09-04d | The decision board's first run; ✅ per-activation Db and ✅ per-hop targeting settled; Shukuchi's overlay previewed and parity-probed at 896 assertions |
 | `5-hop` | 2026-09-04c | 🌀 Shukuchi BUILT HEADLESS. 1 AP a hop turned it from a movement turn into a movement mode; two canaries fired and both were right |
 | `5-cut` | 2026-09-04b | 🪦 Wa no Koe DELETED; the three suites that stood on it inverted into a revival guard, and the Ronin ledger filed |

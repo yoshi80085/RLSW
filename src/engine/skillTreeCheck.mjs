@@ -16,6 +16,7 @@
 import assert from "node:assert";
 import { SKILL_TREE, SKILL_BY_ID, SPIRIT_ONLY_ROUTE } from "../data/skillTree.js";
 import { skillEligibility } from "./systems/skills.js";
+import { FLAT_ABILITY_UNLOCK_DB } from "../data/gameConstants.js";
 import { legalActions } from "./policies/legalActions.js";
 import { makeInitialState } from "./state.js";
 import { moveBudgetSet } from "./actions.js";
@@ -239,8 +240,25 @@ const allSkills = () => Object.values(SKILL_BY_ID);
   for (const sk of allSkills()) {
     ok(sk.dbCost >= 0 && sk.dbCost < 100, `${sk.id}'s Db price is sane (${sk.dbCost})`);
   }
-  eq(SKILL_BY_ID.tentacle.dbCost, 10, 'the Tentacle still costs what the design doc says');
-  eq(SKILL_BY_ID.master_moshpits.dbCost, 8, 'Master of Moshpits still costs 8');
+  // ⭐ THE FLAT-PRICE GUARD — Alex, 2026-09-04f.
+  //
+  // 🪦 THESE TWO LINES USED TO PIN THE SPREAD: `tentacle` at 10 and
+  // `master_moshpits` at 8, "what the design doc says". The rule changed, so they
+  // are INVERTED rather than deleted — the same move `melodyCommitCheck` §13 made
+  // when Wa no Koe was cut, and `shukuchiCheck` made when the client gap closed.
+  // A check standing on a number becomes the guard on the rule that replaced it.
+  //
+  // 🎯 WHY IT IS WORTH A SUITE AT ALL. `UPGRADE_SHOP_DESIGN.md` §1.1 MEASURED the
+  // arsenals being bought in price order, not value order. A flat price deletes
+  // the variable that finding is about — and a single re-spread price, added in
+  // good faith to "balance" one ability, quietly puts it back. Nothing else in
+  // the repo can tell.
+  for (const sk of Object.values(SKILL_BY_ID)) {
+    eq(sk.dbCost, FLAT_ABILITY_UNLOCK_DB,
+      `⭐ ${sk.id} unlocks at the flat price (${FLAT_ABILITY_UNLOCK_DB} Db) — every ability costs the same`);
+  }
+  eq(new Set(Object.values(SKILL_BY_ID).map(sk => sk.dbCost)).size, 1,
+    '⭐ there is exactly ONE unlock price in the whole tree — price cannot sort the arsenal');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

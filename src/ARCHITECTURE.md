@@ -21,6 +21,26 @@
 
 ---
 
+## Audit refactor — 2026-09-05
+
+| Module | Exports | Responsibility |
+|---|---|---|
+| `app/RLSWSimulator.jsx` | default | Opening movie, menus, practice routing, hint gate and network return-to-lobby lifecycle; static imports preserved. |
+| `ui/fanPawnShape.jsx` | `fanPawnShape` | Pure seeded crowd SVG drawing; markup and timing unchanged. |
+| `engine/clientJourneyCheck.jsx` | — | DOM interaction regression: start, build and commit melody, enter movement, end turn, next player builds and commits. Audio/animation rendering stubbed. |
+| `engine/systems/bushido.js` | `bushidoLane`, `bushidoDrawPatch` | Shared facing-lane geometry and pre-Swing payment. Warp, AP dispatch, logs and Swing sequencing remain at their existing call sites. |
+
+Bushido compatibility boundary: the click resolver historically ignores blockers;
+the highlight stops at live spirits; the planner also blocks amps and decoys.
+The shared walk accepts each caller's existing occupancy set. Unifying that policy
+requires an intentional gameplay change; this extraction does not silently fix it.
+Cooldown, token, confirmation and skill gates also remain with their callers.
+
+Verification uses `check:bundle` (portable, media-stubbed, zero warnings), render
+checks and `test:journey` (real DOM clicks with audio/animation stubs). The journey
+covers melody-to-next-turn handoff, not a complete battle or online reconnect.
+Do not move battle, network, or timer orchestration until those journeys exist.
+
 ## Boot flow
 
 ```
@@ -28,7 +48,7 @@ index.html
   └─ main.jsx                  React root, StrictMode, imports index.css
        └─ App.jsx              thin wrapper, renders <RLSWSimulator/>
             └─ rlsw-simulator-v3_8_1.jsx
-                 ├─ RLSWSimulator()   app shell: Title → Lobby → Game
+                 ├─ app/RLSWSimulator.jsx   app shell: Title → Lobby → Game
                  └─ Game()            the gameplay component (~15,700 lines)
 ```
 
@@ -46,7 +66,7 @@ client-only until 2026-08-20 and did nothing at all in every bench match ever ru
 | Path | Lines | Contents |
 |------|------:|----------|
 | `engine/` | 21,595 | 🎮 **The authoritative game core.** The reducer, seeded rng, snapshot/replay, 17 rule modules in `systems/`, the bot and evaluator in `policies/`, and the test suites. |
-| `rlsw-simulator-v3_8_1.jsx` | 16,455 | The monolith: module-level data, the `RLSWSimulator` shell, and `Game` — all rendering, all cinematics, and the shrinking set of rules not yet extracted. |
+| `rlsw-simulator-v3_8_1.jsx` | ~16,000 | `Game`: rendering, cinematics, and remaining client rules; re-exports the extracted shell for entry-point compatibility. Crowd drawing and Bushido geometry/payment now have separate homes. |
 | `ui/` | 13,508 | Presentational React components lifted out of `Game`'s render. |
 | `riff/` | 4,338 | Riff generation, the falling-note highway, guitar-neck voicing. |
 | `vision/` | 4,039 | 📷 Camera fretboard detection — neck geometry, homography, fusion with audio. |
@@ -137,6 +157,7 @@ green for months while nothing ran it). Everything below has a script, and
 | `elevenCheck.mjs` | `test:eleven` | Eleven and the blown amp. |
 | `shamisenCheck.mjs` | `test:shamisen` | 🎸 The Cursed Shamisen's cooldown acceleration (`tickShamisen`), cooldown reset (`resetAllCooldowns`), activation cost, and design invariants. 34 assertions. |
 | `shukuchiOverlayCheck.jsx` | `test:shukuchiui` | 🌀 The SSR diff the OVERLAY port owed. Slices the DOM-free `OVERLAY REGION` out of `.scratch/shukuchi-hop-preview.html` and diffs it against the shipped `ui/ShukuchiOverlay.jsx`: Alex's fifteen dial-in levers, the arc path from **every** hex to **every** ring-2 landing (1046 pairs), the trail fade, the twelve gallery states of the budget bar, and the rendered SVG itself. 80 assertions. ⚠️ It is `.jsx`, so it is esbuilt into `node_modules/.cache/` before it runs — which is why it locates the preview page from `process.cwd()` and not from `import.meta.url`. ⚠️ It diffs GEOMETRY, not taste: it can tell you the arc is the height Alex set, never that the height is right. |
+| `bushidoCheck.mjs` | `test:bushido` | 🗡️👤 **The 2026-09-04f respec** — Psycho Bushido's 3–5 window as a *refusal*, the +2/+3/+4 ladder (and that it RISES, because §B8's sign has flipped once already), the flat 3 AP bill asserted against reach and against the AP pool, the Drive-stack spend and its direction, and Shadow Illusion's constants. 82 assertions. ⚠️ Also the **flat unlock price** guard's second home: `FLAT_ABILITY_UNLOCK_DB` against the tree. 🚩 It is the only place that states a draw's real price — **4 notes of Drive stack**, this bill plus the strike's own Swing spend. |
 | `shukuchiCheck.mjs` | `test:shukuchi` | 🌀 Shukuchi Arpeggio: the AP bill, the ring-2 landing set, the jump-over rule asserted with a body in the way, one-activation-three-hops, and the pickup on every landing. 68 assertions. ⚠️ **The ability is built HEADLESS**, so this file is the only thing standing on the rule. |
 | `actionScoreCheck.mjs` | `test:score` | Per-action scoring and persona strides. |
 | `harnessCheck.mjs` | `test:harness` | That the headless harness mounts and every knob is live — **and that each gap is declared**. |
@@ -153,7 +174,7 @@ green for months while nothing ran it). Everything below has a script, and
 
 ---
 
-## The monolith — `rlsw-simulator-v3_8_1.jsx` (16,455 lines)
+## The monolith — `rlsw-simulator-v3_8_1.jsx` (~16,000 lines)
 
 Three layers. ⚠️ **It cannot be eyeballed** — verify with `npm run check:bundle`
 before and after touching it, and navigate by banner.
@@ -161,7 +182,7 @@ before and after touching it, and navigate by banner.
 | Layer | From | What is there |
 |---|---:|---|
 | Module-level | 1 | Imports, the fan crowd SVG, cadence hints, the Discord upgrade path, stack colours, per-ability tuning, riff-off scoring constants. |
-| `RLSWSimulator()` | 676 | The app shell: Title → Lobby → Game. |
+| `RLSWSimulator()` | separate module | The app shell now lives in `app/RLSWSimulator.jsx`: Title → Lobby → Game. |
 | `Game()` | 766 | Everything else — state, handlers, cinematics, and the render. |
 
 **Named banners inside `Game`, in order** — these are the search targets:
@@ -359,6 +380,9 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | Combat maths — damage, knockback, Fame from margin, the underdog ramp | `engine/systems/combat.js` → `marginToDamage`, `knockbackSpaces`, `fameFromMargin`, `underdogBonus` |
 | What a fight *does* afterwards — Fame grants, stack loss, slides | `engine/systems/battleFlow.js` → `battleConsequences`, `runBattleFlow` |
 | What an attack costs and rolls | `engine/systems/attackParams.js` → `attackParams` (⚠️ the one place; do not re-derive) |
+| 🗡️ Psycho Bushido's window, ladder, AP bill or Drive-stack price | `data/gameConstants.js` → `PSYCHO_BUSHIDO_MIN_RANGE`, `PSYCHO_BUSHIDO_MAX_RANGE`, `PSYCHO_BUSHIDO_DRIVE_LADDER`, `psychoBushidoBonus`, `PSYCHO_BUSHIDO_AP_COST`, `PSYCHO_BUSHIDO_STACK_COST`. ⚠️ **The lane is walked in THREE places** — `engine/policies/legalActions.js`, `engine/policies/transition.js` and `resolvePsychoBushido`/`getPsychoBushidoTargets` in the monolith. Change one, change three; `test:bushido` is what says so. |
+| ⭐ What an ability costs to UNLOCK | `data/gameConstants.js` → `FLAT_ABILITY_UNLOCK_DB`, and every `dbCost` in `data/skillTree.js` must equal it. ⚠️ **The uniformity is the rule** (Alex, 2026-09-04f): a flat price is what stops the arsenal being bought in price order rather than value order. Guarded by `test:skilltree` and `test:bushido`. |
+| 👤 How long the Shadow Illusion stands | `data/gameConstants.js` → `SHADOW_ILLUSION_TURNS`. ⚠️ It was a bare local `3` inside the monolith until 2026-09-04f, invisible to the `turnFlow` tick that counts it down. |
 | 🕒💿 What an ability costs per use, or how long it recharges | `data/gameConstants.js` for the numbers, `engine/systems/cooldowns.js` for the mechanism → `ABILITY_CD`, `ABILITY_DB_COST`, `firePatch`. ⚠️ `dbCost` in `data/skillTree.js` is the **one-time unlock**, a different number. And an ability missing from those tables is free and uncooled — nine still are; `RONIN_ABILITY_DESIGN.md` §0.2 is the ledger. |
 | 🎛️ Amp dice pool / die size / radius | `engine/systems/sonicRig.js` → `rigTiers`, `rigRadius`; floors in `data/gameConstants.js` → `RIG_RADIUS_FLOOR`, `RIG_POOL_FLOOR`, `RIG_ATROPHY_TURNS`. ⚠️ Radius **breathes with your stacks** — Drive on your turn, Sustain on theirs. There is no Range skill any more. |
 | 🎪 The marquee quiz — payouts, lanes, atrophy | `data/trivia.js` (`TRIVIA_REWARD`, `TRIVIA_TIER_GRANT`, the bank) + `ui/EventModal.jsx` (the card) + `engine/policies/transition.js` (the headless resolve). See `MARQUEE_QUIZ_DESIGN.md`. |

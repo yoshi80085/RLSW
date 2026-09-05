@@ -1,3 +1,4 @@
+import { bushidoLane, bushidoDrawPatch } from "./engine/systems/bushido.js";
 import boardImg from "./board.png";
 import boardOutlineImg from "./board_outline.png";
 import battleMeterImg from "./Battle_Meter.png";
@@ -58,19 +59,8 @@ import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./r
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset,
          loadRiffSpeed, scalePresetForSpeed, scaleTimelineForSpeed } from "./riff/fallingNotes.js";
 import { voiceRiff, nearestPositionForKey } from "./riff/guitarMap.js";
-import { Lobby } from "./ui/Lobby.jsx";
-import TitleMenu from "./ui/TitleMenu.jsx";
-import RiffMenu from "./ui/RiffMenu.jsx";
-import { buildTestingGroundsConfig } from "./data/matchSetup.js";
-import { RiffPractice } from "./ui/RiffPractice.jsx";
-import { FretboardRecon } from "./ui/FretboardRecon.jsx";
-import { ListenNeck } from "./ui/ListenNeck.jsx";
-import { DiscordCoach } from "./ui/DiscordCoach.jsx";
-import { LegendLessons } from "./ui/LegendLessons.jsx";
-import OpeningMovie from "./ui/OpeningMovie.jsx";
-import HintScreen from "./ui/HintScreen.jsx";
 import { BeginnerTipOverlay } from "./ui/BeginnerTipOverlay.jsx";
-import { isMirrorFacing, MIRROR_SPRITES, mobileColorStyle, GameErrorBoundary } from "./ui/GameErrorBoundary.jsx";
+import { isMirrorFacing, MIRROR_SPRITES } from "./ui/GameErrorBoundary.jsx";
 import { useStageEffects } from "./hooks/useStageEffects.js";
 import { STAGE_FX_META, SMOKE_ROUNDS, LASER_ROUNDS, LASER_DAMAGE, PYRO_WAVES, PYRO_DAMAGE, PYRO_BURN_TURNS, ANIMATRONIC_ROUNDS, ANIMATRONIC_DAMAGE } from "./data/stageEffects.js"; // tuning the engine consumes directly (counts/radii/waves) moved with the 6b flip
 import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn rolls moved into the engine (Phase 6b)
@@ -90,6 +80,8 @@ import { slimeBites, slideTarget, SLIME_VIBE_DAMAGE } from "./engine/systems/sli
 import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX, ELEVEN_DRIVE } from "./data/gameConstants.js";
 import { cooldownLeft, canFire, firePatch, tickShamisen, resetAllCooldowns } from "./engine/systems/cooldowns.js";
 import { PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
+         PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE,
+         PSYCHO_BUSHIDO_STACK_COST, psychoBushidoBonus, SHADOW_ILLUSION_TURNS,
          SHADOW_ILLUSION_SUSTAIN_DRAIN, PSYCHO_BUSHIDO_CD, SHADOW_ILLUSION_CD,
          CURSED_SHAMISEN_CD, CURSED_SHAMISEN_DURATION, CURSED_SHAMISEN_PAYOFF_COST,
          DISPLACE_CD, GRAVITY_CD, CODE_INJECT_CD,
@@ -162,213 +154,7 @@ import {
 // token; it is a self-buff on the Ronin. The vector placeholder, `SHAMISEN_ART`,
 // and `shamisenPlaceholder()` are all deleted. See `RONIN_ABILITY_DESIGN.md` §2.3.
 
-// 🎟️ A fan = a geometric "pawn": a detached round head above a downward-pointing
-// triangle body. All fans share the same shape; `filled` marks a diehard (solid) vs
-// a casual (hollow outline). Centred vertically on (x, y), owner colour from spirit.
-//
-// BEHAVIOUR CYCLING — every fan has ALL behaviours baked in and cycles through them
-// via CSS. Fans are mostly settled (rest ~74% of the time); actions appear briefly
-// and at pseudo-random intervals. Each fan gets a unique cycle DURATION (38–60 s)
-// and phase offset derived from a seeded hash, so the crowd drifts out of sync and
-// never looks patterned. Pass `forcePose` to pin a fan to one behaviour (walk-off,
-// pop-in, flying); pass null to let it self-animate.
-//
-// NO Math.random() — all timing is hash-derived so the crowd is stable across renders.
-function fanPawnShape(x, y, r, color, filled, sw = 1.2, op = 1, seed = 0, _unused = false, forcePose = null) {
-  r = r * 1.15;
-  const headR  = r * 0.40;
-  const headCy = y - r * 0.88;
-  const detail = headR > 2.0;
-  const ink    = filled ? '#0a0e18' : color;
-
-  // ── BODY — downward-pointing triangle (wide top, point at bottom) ──
-  const topY = y - r * 0.28, botY = y + r * 0.72, halfW = r * 0.60;
-  const bodyD = `M ${x - halfW} ${topY} L ${x + halfW} ${topY} L ${x} ${botY} Z`;
-
-  // ── SEEDED HASH — stable pseudo-random [0,1) per (seed, offset) pair ──
-  const s = typeof seed === 'number' ? ((seed % 997) + 997) % 997 : 0;
-  const h = (n) => { const v = Math.sin(s * 127.1 + n * 311.7) * 43758.5453; return v - Math.floor(v); };
-
-  // ── TIMING — each fan gets its own durations so the crowd drifts apart ──
-  const cycleDur  = (38 + h(0) * 22).toFixed(2);               // 38–60 s full behaviour cycle
-  const cycDelay  = (h(1) * parseFloat(cycleDur)).toFixed(2);   // random phase within cycle
-  const bobDur    = (3.5 + h(2) * 2.0).toFixed(2);             // 3.5–5.5 s head bob
-  const bobDelay  = (h(3) * 3).toFixed(2);
-  const blinkDur  = (4.0 + h(4) * 3.0).toFixed(2);             // 4–7 s blink period
-  const blinkDel  = (h(5) * 4).toFixed(2);
-  const lookDur   = (12 + h(6) * 10).toFixed(2);               // 12–22 s look-around
-  const lookDel   = (h(7) * 8).toFixed(2);
-  const tiltDur   = (20 + h(8) * 18).toFixed(2);               // 20–38 s head tilt
-  const tiltDel   = (h(9) * 12).toFixed(2);
-  const lookRange = (headR * 0.14).toFixed(2);
-  const hbob      = (headR * 0.18).toFixed(2);                  // gentler bob
-  const tiltDeg   = (6 + Math.floor(h(10) * 8)).toFixed(0);
-
-  // ── EYE geometry — simple filled circles (no outline/pupil) ──
-  const eyeY   = headCy - headR * 0.05;
-  const eyeDX  = headR * 0.36;
-  const eyeR   = headR * 0.18;
-
-  // ── HAND geometry — positions relative to the wide-top body ──
-  const handR    = headR * 0.42;
-  const hFill    = filled ? color : 'none';
-  const restY    = topY + (botY - topY) * 0.25;      // ¼ down the body (shoulder level)
-  const restDX   = halfW * 0.78;                      // at the body edges
-  const waveY    = headCy - headR * 0.65;
-  const waveDX   = halfW * 1.0;
-  const sway     = headR * 0.5;
-  const fistY    = headCy - headR * 1.05;
-  const fistX    = x + halfW * 0.35;
-  const lighterY = headCy - headR * 0.85;
-  const lighterX = x - halfW * 0.28;
-  const phoneY   = headCy - headR * 1.1;
-  const phoneX   = x - halfW * 0.3;
-  const hornW    = Math.max(sw * 0.9, r * 0.14);
-
-  const animate = !forcePose && detail;
-
-  // ── helper: a single hand circle ──
-  const handCircle = (cx, cy, key) => (
-    <circle key={key} cx={cx} cy={cy} r={handR}
-      fill={hFill} stroke={color} strokeWidth={sw} opacity={op}/>
-  );
-
-  // ── FORCED-POSE HANDS (pop-in / walk-off / flying fans) ──
-  let forcedHands = null;
-  if (forcePose && detail) {
-    if (forcePose === 'wave') {
-      forcedHands = (
-        <g>
-          <g style={{animation:'fan-wave 1.4s ease-in-out infinite',
-            ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
-            {handCircle(x - waveDX, waveY, 'wl')}
-          </g>
-          <g style={{animation:'fan-wave 1.4s ease-in-out infinite', animationDelay:'-0.7s',
-            ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
-            {handCircle(x + waveDX, waveY, 'wr')}
-          </g>
-        </g>
-      );
-    } else if (forcePose === 'fist') {
-      forcedHands = (
-        <g>
-          {handCircle(x - restDX, restY, 'rl')}
-          <g style={{animation:'fan-fist 1.0s ease-in-out infinite', ['--pump']:`${-(headR * 1.4)}px`}}>
-            {handCircle(fistX, fistY, 'fh')}
-          </g>
-        </g>
-      );
-    } else {
-      forcedHands = <g>{handCircle(x - restDX, restY, 'rl')}{handCircle(x + restDX, restY, 'rr')}</g>;
-    }
-  }
-
-  // ── SELF-ANIMATING HANDS — five behaviour groups, CSS cycles opacity ──
-  // Rest is visible ~74% of the time; each action gets ~5–6%. Per-fan cycle
-  // durations (38–60 s) drift apart so actions appear random across the crowd.
-  let cyclingHands = null;
-  if (animate) {
-    // Negative delay = animation starts already in progress at the offset
-    // position, so there's never a gap where all groups default to opacity 1.
-    const actStyle = (idx) => ({
-      animation: `fan-act-${idx} ${cycleDur}s linear infinite`,
-      animationDelay: `-${cycDelay}s`
-    });
-
-    cyclingHands = (
-      <g>
-        {/* Act 0: rest — both hands at sides */}
-        <g style={actStyle(0)}>
-          {handCircle(x - restDX, restY, 'r0l')}
-          {handCircle(x + restDX, restY, 'r0r')}
-        </g>
-        {/* Act 1: wave — both hands up, swaying in opposite phase */}
-        <g style={actStyle(1)}>
-          <g style={{animation:'fan-wave 1.4s ease-in-out infinite',
-            ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
-            {handCircle(x - waveDX, waveY, 'w1l')}
-          </g>
-          <g style={{animation:'fan-wave 1.4s ease-in-out infinite', animationDelay:'-0.7s',
-            ['--swA']:`${-sway}px`, ['--swB']:`${sway}px`}}>
-            {handCircle(x + waveDX, waveY, 'w1r')}
-          </g>
-        </g>
-        {/* Act 2: fist pump — one hand pumping, the other rests */}
-        <g style={actStyle(2)}>
-          {handCircle(x - restDX, restY, 'f2l')}
-          <g style={{animation:'fan-fist 1.0s ease-in-out infinite', ['--pump']:`${-(headR * 1.4)}px`}}>
-            {handCircle(fistX, fistY, 'f2r')}
-            {detail && <g stroke={color} strokeWidth={hornW} strokeLinecap="round" opacity={op}>
-              <line x1={fistX - handR * 0.55} y1={fistY - handR * 0.3} x2={fistX - handR * 0.85} y2={fistY - handR * 1.5}/>
-              <line x1={fistX + handR * 0.55} y1={fistY - handR * 0.3} x2={fistX + handR * 0.85} y2={fistY - handR * 1.5}/>
-            </g>}
-          </g>
-        </g>
-        {/* Act 3: lighter — one hand holds a flickering flame */}
-        <g style={actStyle(3)}>
-          {handCircle(x + restDX, restY, 'l3r')}
-          {handCircle(lighterX, lighterY, 'l3h')}
-          <g style={{animation:'fan-flame 0.6s ease-in-out infinite',
-            transformBox:'fill-box', transformOrigin:'center bottom',
-            filter:'drop-shadow(0 0 2px #ff7a00)'}}>
-            <ellipse cx={lighterX} cy={lighterY - handR * 1.5} rx={handR * 0.5} ry={handR * 0.95} fill="#ff9a2e"/>
-            <ellipse cx={lighterX} cy={lighterY - handR * 1.3} rx={handR * 0.26} ry={handR * 0.5} fill="#ffe28a"/>
-          </g>
-        </g>
-        {/* Act 4: phone — a glowing rectangle held high, swaying slowly */}
-        <g style={actStyle(4)}>
-          {handCircle(x + restDX, restY, 'p4r')}
-          <g style={{animation:'fan-phone-sway 3.0s ease-in-out infinite'}}>
-            <rect x={phoneX - handR * 0.42} y={phoneY - handR * 0.9}
-              width={handR * 0.84} height={handR * 1.3} rx={handR * 0.2}
-              fill="#cfe0ff" opacity={op} style={{filter:'drop-shadow(0 0 2px #cfe0ff)'}}/>
-          </g>
-        </g>
-      </g>
-    );
-  }
-
-  // ── EYES — simple filled circles that blink and look around ──
-  let eyes = null;
-  if (detail) {
-    eyes = (
-      <g style={{
-        animation: `fan-blink ${blinkDur}s ease-in-out infinite`,
-        animationDelay: `-${blinkDel}s`,
-        transformBox: 'fill-box', transformOrigin: 'center'
-      }}>
-        <g style={{animation: `fan-look ${lookDur}s ease-in-out infinite`,
-          animationDelay: `-${lookDel}s`, ['--look']: `${lookRange}px`}}>
-          <circle cx={x - eyeDX} cy={eyeY} r={eyeR} fill={ink} opacity={op}/>
-          <circle cx={x + eyeDX} cy={eyeY} r={eyeR} fill={ink} opacity={op}/>
-        </g>
-      </g>
-    );
-  }
-
-  return (
-    <>
-      {/* Body — downward-pointing triangle */}
-      <path d={bodyD} fill={filled ? color : 'none'} stroke={color} strokeWidth={sw}
-        strokeLinejoin="round" opacity={op}/>
-      {/* Head — circle, with slow internal bob + tilt */}
-      <g style={detail ? {
-        animation: `fan-head-bob ${bobDur}s ease-in-out infinite, fan-tilt ${tiltDur}s ease-in-out infinite`,
-        animationDelay: `-${bobDelay}s, -${tiltDel}s`,
-        ['--hbob']: `${-hbob}px`, ['--hbob2']: `${-hbob * 0.35}px`,
-        ['--tilt']: `${h(11) > 0.5 ? '' : '-'}${tiltDeg}deg`,
-        transformBox: 'fill-box', transformOrigin: 'center bottom'
-      } : undefined}>
-        <circle cx={x} cy={headCy} r={headR} fill={filled ? color : '#0a0e18'}
-          stroke={color} strokeWidth={sw} opacity={op}/>
-        {eyes}
-      </g>
-      {/* Hands */}
-      {animate ? cyclingHands : forcedHands}
-    </>
-  );
-}
-
+import { fanPawnShape } from "./ui/fanPawnShape.jsx";
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
@@ -710,83 +496,9 @@ function riffSideFrom(riff, extra = {}) {
   };
 }
 
-export default function RLSWSimulator() {
-  const [gameState, setGameState] = useState(null);
-  const [practiceMode, setPracticeMode] = useState(null); // null | { mode: 'riff'|'fretboard'|'discord', diff? }
-  const [introDone, setIntroDone] = useState(false);
-  // 🏝️ TITLE MENU — the Zelda-style front door. Everything hangs off it:
-  //   null    → the title menu itself
-  //   'normal'→ the match lobby (player count, Spirit select, settings)
-  //   'riff'  → the Riff Mode submenu (practice modes live in there)
-  // Testing Grounds launches straight from the menu without a branch.
-  const [menuRoute, setMenuRoute] = useState(null);
-  // 💡 HINT SCREEN — an intentional ~5s beat between Lobby and Game so a
-  // random gameplay hint can be read. Reset on return-to-lobby so every match
-  // start gets a fresh hint.
-  const [hintDone, setHintDone] = useState(false);
-  const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-
-  // 🎬 Opening movie — plays on every launch, any input skips (attract style).
-  if (!introDone) {
-    return <div style={isMobile ? mobileColorStyle : {}}><OpeningMovie onDone={() => setIntroDone(true)} /></div>;
-  }
-  if (practiceMode) {
-    const pm = practiceMode;
-    // Backing out of a trainer returns to the Riff Mode menu it was launched
-    // from, not all the way to the title screen — you almost always want another go.
-    const back = () => setPracticeMode(null);
-    if (pm.mode === 'fretboard') return <div style={isMobile ? mobileColorStyle : {}}><FretboardRecon onBack={back} /></div>;
-    if (pm.mode === 'discord')   return <div style={isMobile ? mobileColorStyle : {}}><DiscordCoach onBack={back} /></div>;
-    if (pm.mode === 'listen')    return <div style={isMobile ? mobileColorStyle : {}}><ListenNeck onBack={back} /></div>;
-    if (pm.mode === 'legend')    return <div style={isMobile ? mobileColorStyle : {}}><LegendLessons onBack={back} /></div>;
-    return <div style={isMobile ? mobileColorStyle : {}}><RiffPractice initialDiff={pm.diff || pm} onBack={back} /></div>;
-  }
-  // 🏝️ Title menu — shown whenever no match is running and no route is chosen.
-  if (!gameState && menuRoute === null) {
-    return <div style={isMobile ? mobileColorStyle : {}}><TitleMenu
-      onNormal={() => setMenuRoute('normal')}
-      onRiff={() => setMenuRoute('riff')}
-      onTestingGrounds={() => setGameState(buildTestingGroundsConfig())}
-    /></div>;
-  }
-  if (!gameState && menuRoute === 'riff') {
-    return <div style={isMobile ? mobileColorStyle : {}}><RiffMenu
-      onPractice={p => setPracticeMode(p)}
-      onBack={() => setMenuRoute(null)}
-    /></div>;
-  }
-  if (!gameState) {
-    return <div style={isMobile ? mobileColorStyle : {}}><Lobby
-      onStart={gs => setGameState(gs)}
-      onPractice={p => setPracticeMode(p)}
-      onBackToMenu={() => setMenuRoute(null)}
-    /></div>;
-  }
-  // 💡 Match is starting — hold on the hint screen for ~5s before the board mounts.
-  if (!hintDone) {
-    return <div style={isMobile ? mobileColorStyle : {}}><HintScreen onDone={() => setHintDone(true)} /></div>;
-  }
-  // Netcode: leaving the Game must CLOSE the socket (keeping the saved session),
-  // or the old connection keeps holding the seat and the Lobby's auto-rejoin
-  // falls through to spectator-of-a-dead-game. `resetRoom` also flips the room
-  // back to phase:lobby server-side so everyone can start a fresh match.
-  // Error-boundary resets DON'T reset the room — rejoining a live game via
-  // CATCH_UP is the correct recovery there.
-  const returnToLobby = ({ resetRoom = true } = {}) => {
-    const net = gameState.net;
-    if (net?.client) {
-      if (resetRoom && !net.spectator) net.client.send({ t: "RETURN_TO_LOBBY" });
-      net.client.close(); // keeps rlsw.net.session — Lobby auto-rejoin reclaims the seat
-    }
-    setGameState(null);
-    setHintDone(false); // 💡 next match start shows a fresh hint
-  };
-  return (
-    <GameErrorBoundary onReset={() => returnToLobby({ resetRoom: false })}>
-      <div style={isMobile ? mobileColorStyle : {}}><Game key={JSON.stringify(gameState.spirits.map(s=>s.num))} gameState={gameState} onReturnToLobby={returnToLobby} /></div>
-    </GameErrorBoundary>
-  );
-}
+// Preserve the existing entry-point API while the shell lives in its own module.
+// eslint-disable-next-line react-refresh/only-export-components
+export { default } from "./app/RLSWSimulator.jsx";
 
 // ─── GAME ─────────────────────────────────────────────────────────────────────
 // 🎯 EXPORTED SO A TEST CAN MOUNT IT. SEQUENCING.md §5 ended three handoffs in
@@ -4498,7 +4210,7 @@ export function Game({ gameState, onReturnToLobby }) {
     if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull 3 fans onto the board for a pit — +2 Drive that stands until the next pit.`);
     if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Swing from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
     if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
-    if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Dash in a straight line and strike — the ground you cover powers the blow. ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_CD}-round cooldown, and it spends every Action Point you have left.`);
+    if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes directly in front and strike — the farther the draw, the harder the blow (+2 / +3 / +4). ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_AP_COST} AP, ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack, ${PSYCHO_BUSHIDO_CD}-round cooldown.`);
     if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn. ⚠️ It drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain every turn it stands, and dies when you have none left.`);
     if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Activate the curse (${CURSED_SHAMISEN_DB_COST} Db) to speed up ALL other ability cooldowns for ${CURSED_SHAMISEN_DURATION} rounds. ⚠️ You GLOW while it runs — take any Vibe damage and ALL cooldowns RESET. Pay ${CURSED_SHAMISEN_PAYOFF_COST} Db per round to protect yourself, but rivals can't see whether you paid.`);
     // 🪦 THE SIX THEORY UNLOCK LOGS AND THE DISCORD-GRANT TABLE WENT WITH THE
@@ -7999,84 +7711,103 @@ export function Game({ gameState, onReturnToLobby }) {
     if (!originHex || !targetHex) return;
 
     // Verify target is on the facing line
-    const first = neighborInDirection(originHex, attacker.facing ?? 0);
-    if (!first) { addLog('🌀 No clear path ahead.'); return; }
-    const dq = first.q - originHex.q;
-    const dr = first.r - originHex.r;
-
-    // Walk the line to find the target
-    let distToTarget = 0;
-    let q = originHex.q, r = originHex.r;
-    for (let i = 1; i <= moveStepsLeft; i++) {
-      q += dq; r += dr;
-      const hex = HEX_BY_QR[`${q},${r}`];
-      if (!hex) break;
-      if (hex.num === defender.num) { distToTarget = i; break; }
-    }
+    const lane = bushidoLane(attacker);
+    if (!lane.length) { addLog('🌀 No clear path ahead.'); return; }
+    const targetStep = lane.find(step => step.num === defender.num);
+    const distToTarget = targetStep?.dist ?? 0;
     if (distToTarget === 0) {
-      addLog('🌀 Target is not in your line of sight, or out of AP range!');
+      addLog(`🌀 Not in the lane — Psycho Bushido strikes a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes directly in front of you.`);
+      return;
+    }
+    // ⭐ THE WINDOW, AND IT IS A REFUSAL RATHER THAN A POOR PAYOUT. Before
+    // 2026-09-04f the close charge was legal and simply bad; with a flat AP bill
+    // "bad" would be "free", so §2.1.1 made it illegal. ⚠️ THE MESSAGE NAMES THE
+    // NUMBER — a rival standing at 2 is the single most confusing refusal this
+    // ability can produce, because he is visibly right there in the lane.
+    if (distToTarget < PSYCHO_BUSHIDO_MIN_RANGE) {
+      addLog(`🌀 Too close to draw — Psycho Bushido needs ${PSYCHO_BUSHIDO_MIN_RANGE} hexes of run-up. Back off, or Swing.`);
+      return;
+    }
+    // ⚡ THE AP BILL IS FLAT, SO IT CAN BE CHECKED BEFORE THE DASH COMMITS.
+    if (moveStepsLeft < PSYCHO_BUSHIDO_AP_COST) {
+      addLog(`🌀 Not enough Action Points — the charge costs ${PSYCHO_BUSHIDO_AP_COST} AP and you have ${moveStepsLeft}.`);
       return;
     }
 
-    // 🌀 THE BONUS IS THE GROUND HE COVERED, NOT THE GROUND HE DIDN'T.
+    // ⭐ THE LADDER — +2 / +3 / +4 ACROSS THE 3–5 WINDOW. Alex, 2026-09-04e.
     //
-    // ⚠️ THIS WAS `apLeft - distToTarget` AND IT WAS EXACTLY BACKWARDS. The dash
-    // warps to `distToTarget - 1`, so an ADJACENT rival meant a charge of zero
-    // hexes — and paid the MAXIMUM bonus (+4 at speed 5), while the full-length
-    // charge paid nothing. The ability rewarded standing still and called it
-    // lightning. Alex found it by reading the payout table, 2026-08-20.
+    // ⚠️ THE SIGN IS STILL THE THING TO GUARD. This was `apLeft - distToTarget`
+    // and it was exactly backwards: an ADJACENT rival paid the MAXIMUM bonus and
+    // the full-length charge paid nothing — "the ability rewarded standing still
+    // and called it lightning." Alex found it by reading the payout table,
+    // 2026-08-20 (`SEQUENCING.md` §B8). The ladder keeps the sign the right way
+    // round by construction, and `psychoBushidoBonus` is the only place it lives.
     //
-    // 🎯 AND THE INVERSION IS WHY IT NEEDS NO MINIMUM RANGE. The move already
-    // consumes ALL remaining AP, so with the sign the right way round it polices
-    // itself: charging from next door spends five AP for +0 — strictly worse than
-    // the 1 AP Swing it replaces — while charging four hexes spends the same five
-    // for +4, and you paid for that bonus in the movement you gave up. The cost
-    // scales with the reward without a rule anyone has to be taught.
-    // 📌 `distToTarget <= apLeft <= speed`, so this can never exceed
-    // ATK_BONUS_CAP on its own; it can still clip when stacked with moshDrive,
-    // and `initiateSwing` logs it when it does.
-    const apLeft = moveStepsLeft;
-    const bonusDrive = Math.max(0, distToTarget - 1);
+    // 🎯 WHY A LADDER AND NOT THE FLAT +3 THE RESPEC FIRST ASKED FOR. §2.1 says
+    // the ability IS the distance gradient; the respec said a bright line teaches
+    // "the ultimate beginner" better than a curve nobody notices. A window that
+    // REFUSES the close charge and still pays more the further out you start is
+    // the only shape that is both, and it is what Alex took.
+    // 📌 `distToTarget <= PSYCHO_BUSHIDO_MAX_RANGE`, so the top rung is +4 and
+    // this can never exceed ATK_BONUS_CAP on its own; it can still clip when
+    // stacked with moshDrive, and `initiateSwing` logs it when it does.
+    const bonusDrive = psychoBushidoBonus(distToTarget);
 
     // Warp Ronin to the hex just before the target
-    const landQ = originHex.q + dq * (distToTarget - 1);
-    const landR = originHex.r + dr * (distToTarget - 1);
-    const landHex = HEX_BY_QR[`${landQ},${landR}`];
+    const landHex = HEX_BY_NUM[targetStep.to];
     if (landHex && landHex.num !== originHex.num) {
       dispatch(spiritWarped(acting.id, landHex.num, 0));
     }
 
-    // 🌀 SPEND EVERYTHING EXCEPT THE SWING'S OWN 1 AP, and do NOT touch the
-    // Action Token here. `initiateSwing` refuses a strike with either already
-    // spent, and this used to pay the whole bill up front — dash, AP and token —
-    // and then ask for a blow the turn could no longer afford.
+    // ⭐ SPEND THE DASH'S SHARE OF A FLAT 3 AP, and do NOT touch the Action
+    // Token here. `initiateSwing` refuses a strike with either already spent, and
+    // this used to pay the whole bill up front — dash, AP and token — and then
+    // ask for a blow the turn could no longer afford.
     //
-    // ⚠️ THE TOTAL IS UNCHANGED: the strike below spends the last point and
-    // burns the token itself, so the Ronin still ends the turn at zero with his
-    // Action spent. What changed is only that the bill is paid by whoever incurs
-    // it. `distToTarget <= apLeft` is guaranteed by the walk above, so `apLeft-1`
-    // is never negative and the Swing's point is always there to spend.
-    dispatch(beatsSpent(apLeft - 1, false));
+    // ⚠️ THE RONIN NO LONGER ENDS THE TURN AT ZERO, AND THAT IS THE CHANGE. The
+    // dash used to swallow `apLeft`; it now takes 2 and leaves the Swing its 1,
+    // so a fast Ronin can charge AND still walk. That is the respec's real gift
+    // and it is the first thing to look at if the ability reads as too strong —
+    // `PSYCHO_BUSHIDO_AP_COST` is the one dial, and the 4-round cooldown and the
+    // Drive-stack bill are the brakes that were put on in exchange.
+    dispatch(beatsSpent(Math.max(0, PSYCHO_BUSHIDO_AP_COST - 1), false));
 
     // 🌀 THE BONUS LANDS BEFORE THE BLOW, which is the whole point of the
     // ability. Read from the live sheet, not the render-scoped `ns` — that is the
     // same overwrite that BOT_STRATEGY_HANDOFF §7 records against the retired
     // `applyWaNoKoe`. 🪦 That ability is cut; the read-order trap is not.
     const liveNs = engineRef.current.noteStates[acting.id] ?? {};
-    const prevTemp = liveNs.tempDrive ?? 0;
-    const newTemp = prevTemp + bonusDrive;
     // 💿🕒 One helper pays the Db and starts the clock, and it is the SAME helper
     // `transition.js` calls — see `engine/systems/cooldowns.js`. The cooldown
     // used to be a bare `2` written here, which is how the number and
     // `PSYCHO_BUSHIDO_CD` in gameConstants managed to describe the same rule in
     // two places for months.
-    setNoteField(acting.id, {
-      ...firePatch(liveNs, 'psycho_bushido'),
-      tempDrive: newTemp,
-    });
+    // ⭐ AND THE DRIVE STACK PAYS TOO — `PSYCHO_BUSHIDO_STACK_COST` off the FRONT.
+    //
+    // ⚠️ THE FRONT, BECAUSE THAT IS WHERE EVERY OTHER DRIVE SPEND IN THE GAME
+    // TAKES FROM. `attackParams.js` slices `SWING_DRIVE_SPEND` off the head on
+    // every Swing, and `music/stackSlots.js` documents the consequence as the
+    // intended mechanic: eating your foundation hands the root to the next note
+    // up and moves your hunt with it. A second direction for one stack is the
+    // drift, not the safety. `spendDriveStack` in `transition.js` is the same
+    // rule — and the kernel and the client MUST charge identically or the
+    // searcher is playing a cheaper game than the player.
+    //
+    // 🚩 SO A DRAW COSTS 4 NOTES, NOT 2: this bill, and then the strike's own
+    // Swing spend on top of it. It is also paid BEFORE the blow is rolled, so the
+    // chord backing the strike is whatever survives. Uncosted on purpose (§B10).
+    const curStack = liveNs.driveStack ?? [];
+    const spentNotes = Math.min(curStack.length, PSYCHO_BUSHIDO_STACK_COST);
+    setNoteField(acting.id, bushidoDrawPatch(liveNs, distToTarget));
 
     triggerEffectFlash(acting.id, '🌀', 'BUSHIDO!', '#4488ff');
-    addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} dashes ${distToTarget} hex${distToTarget > 1 ? 'es' : ''} — +${bonusDrive} bonus Drive from ${apLeft} remaining AP! (−${PSYCHO_BUSHIDO_DB_COST} Db)`);
+    addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} draws from ${distToTarget} hexes — +${bonusDrive} bonus Drive on the strike. (−${PSYCHO_BUSHIDO_DB_COST} Db, −${PSYCHO_BUSHIDO_AP_COST} AP${spentNotes > 0 ? `, −${spentNotes} off the Drive stack` : ''})`);
+    // ⚠️ THE STACK BILL GETS ITS OWN LINE WHEN IT BITES. It is the only price in
+    // the game paid in PROGRESSION currency, and a player who loses a seat he was
+    // two notes from opening deserves to be told which attack took it.
+    if (spentNotes > 0) {
+      addLog(`🎸 The draw burns his foundation — ${spentNotes} note${spentNotes > 1 ? 's' : ''} off the bottom of his Drive stack, and the strike will spend more. What is left is what he is hunting from now.`);
+    }
 
     // 🌀 SYNCHRONOUS, AND THAT IS THE FIX. The delay was there so "the warp
     // settles", but a warp settles in ENGINE state the instant it is dispatched —
@@ -8095,25 +7826,14 @@ export function Game({ gameState, onReturnToLobby }) {
     // 💿 No Db, no lane. The highlight has to agree with `resolvePsychoBushido`'s
     // refusals or the board offers a strike the click will bounce.
     if (!canFire(ns, 'psycho_bushido')) return new Set();
-    const originHex = HEX_BY_NUM[acting.num];
-    if (!originHex) return new Set();
-    const first = neighborInDirection(originHex, acting.facing ?? 0);
-    if (!first) return new Set();
-    const dq = first.q - originHex.q;
-    const dr = first.r - originHex.r;
+    if (moveStepsLeft < PSYCHO_BUSHIDO_AP_COST) return new Set();
     const targets = new Set();
     const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
-    let q = originHex.q, r = originHex.r;
-    for (let i = 1; i <= moveStepsLeft; i++) {
-      q += dq; r += dr;
-      const hex = HEX_BY_QR[`${q},${r}`];
-      if (!hex) break;
-      // Can only target a rival on the line
-      if (occupied.has(hex.num) && hex.num !== acting.num) {
-        const rival = spirits.find(s => s.num === hex.num && s.id !== acting.id && !s.knockedOut);
-        if (rival) targets.add(hex.num);
-        break; // stop at first occupied hex
-      }
+    for (const step of bushidoLane(acting, occupied)) {
+      if (!occupied.has(step.num) || step.num === acting.num) continue;
+      const rival = spirits.find(s => s.num === step.num && s.id !== acting.id && !s.knockedOut);
+      if (rival && step.dist >= PSYCHO_BUSHIDO_MIN_RANGE) targets.add(step.num);
+      break;
     }
     return targets;
   }
@@ -8152,7 +7872,12 @@ export function Game({ gameState, onReturnToLobby }) {
   // What it really cannot touch: ⚡ charge zones, 🎪 event hexes, 🧪 hazards.
   // A note is a sound, and sound is the one thing an illusion made of sound can
   // carry — for everything else it isn't really there.
-  const SHADOW_ILLUSION_TURNS = 3;
+  // 👤 ⚠️ `SHADOW_ILLUSION_TURNS` WAS A BARE LOCAL `3` RIGHT HERE, and that is
+  // why it moved to `data/gameConstants.js` in the 2026-09-04f respec. The
+  // kernel ticks the double down in `turnFlow.js` and could not see the number
+  // that set it, so the two agreed only by coincidence — the same two-places
+  // drift that let a literal `2` and `PSYCHO_BUSHIDO_CD` describe one cooldown
+  // for months. It is now 2, not 3 (§2.2.1), and it is imported at the top.
 
   // The double is born STACKED on the Ronin — it peels out of his own body on
   // his own hex, so at the instant of the split there is visibly one Ronin, not
@@ -10614,9 +10339,9 @@ export function Game({ gameState, onReturnToLobby }) {
 
     // Shared per-cycle reads (fresh every fire — the nudge re-runs this effect).
     const ns        = engineRef.current.noteStates?.[self.id] ?? {};
-    // React state mirror — fields written via setNoteField (driveStack, sustainStack,
-    // stackCommitsThisTurn) only land here, not in engineRef. Always prefer reactNs
-    // for those fields to avoid stale reads / infinite loops.
+    // Render-scoped mirror retained for this driver's existing decisions.
+    // setNoteField dispatches synchronously into engineRef too; this is not a
+    // second state owner. Migrating these reads belongs with driver journey tests.
     const reactNs   = noteStates[self.id] ?? {};
     const unlocked  = ns.unlockedSkills ?? [];
     const liveSelf  = engineRef.current.spirits.find(s => s.id === self.id) ?? self;
@@ -13474,7 +13199,7 @@ export function Game({ gameState, onReturnToLobby }) {
                   <RailBtn className={canDash ? 'btn active' : 'btn'}
                     style={{borderColor: canDash ? '#4488ff' : '#1a2840', color: canDash ? '#88bbff' : '#1a2840'}}
                     disabled={!canDash}
-                    title={`Psycho Bushido — dash in a straight line from your facing and strike whoever you reach. The ground you cover becomes bonus Drive on that blow. Costs ${PSYCHO_BUSHIDO_DB_COST} Db and the whole of your remaining AP. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
+                    title={`Psycho Bushido — draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT and strike. The farther the draw, the harder the blow: +2 at ${PSYCHO_BUSHIDO_MIN_RANGE}, +3 at 4, +4 at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ Too close and you cannot draw at all, and any body in the lane blocks it. Costs ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_AP_COST} AP and ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
                     onClick={() => {
                       if (action === 'psycho_bushido') { setAction(null); }
                       else if (canDash) { setAction('psycho_bushido'); addLog('🌀 PSYCHO BUSHIDO — click a rival in your line of sight to dash-strike!'); }
