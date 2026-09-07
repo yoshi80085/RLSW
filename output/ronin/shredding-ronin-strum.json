@@ -1,0 +1,69 @@
+{
+  "image": "shredding-ronin-strum-sheet.png",
+  "columns": 4,
+  "rows": 2,
+  "frameCount": 8,
+  "durationMs": [
+    350,
+    160,
+    140,
+    110,
+    140,
+    160,
+    180,
+    250
+  ],
+  "loop": true,
+  "background": "opaque black",
+  "status": "animation concept; not rigged production art",
+  "frames": [
+    {
+      "x": 0,
+      "y": 0,
+      "w": 444,
+      "h": 444
+    },
+    {
+      "x": 444,
+      "y": 0,
+      "w": 443,
+      "h": 444
+    },
+    {
+      "x": 887,
+      "y": 0,
+      "w": 443,
+      "h": 444
+    },
+    {
+      "x": 1330,
+      "y": 0,
+      "w": 444,
+      "h": 444
+    },
+    {
+      "x": 0,
+      "y": 444,
+      "w": 444,
+      "h": 443
+    },
+    {
+      "x": 444,
+      "y": 444,
+      "w": 443,
+      "h": 443
+    },
+    {
+      "x": 887,
+      "y": 444,
+      "w": 443,
+      "h": 443
+    },
+    {
+      "x": 1330,
+      "y": 444,
+      "w": 444,
+      "h": 443
+    }
+  ]
+}

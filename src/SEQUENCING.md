@@ -13,7 +13,7 @@
 > |---|---|
 > | **A** | 🧭 **the current handoff** — what just happened and what is next |
 > | **B** | 🎓 **the findings** — lessons that cost real money to learn, kept because each one is now a live defence in the test suite |
-> | **C** | 📇 **the index** — all 37 handoffs, dated, one line each, pointing into the archive |
+> | **C** | 📇 **the index** — all 38 handoffs, dated, one line each, pointing into the archive |
 >
 > ⚠️ **NOTHING WAS DELETED.** If a line below is too short to act on, the full
 > text is in the archive under the same section id.
@@ -26,38 +26,125 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-## 5-refactor. Verification and low-risk extractions — 2026-09-05
+## 7-immersive-hud. Structure complete; stop for Medium — 2026-09-07
 
-Existing uncommitted game changes were preserved. Windows esbuild and render
-verification now work; the production build succeeds. Added a real DOM journey
-covering a three-note melody, commit, movement phase, end turn and the next
-player's melody/commit. All 27 test groups pass; Bushido has 91 assertions.
-The lint ceiling is 334 errors and 16 warnings, with no increased categories.
-Full evidence and limits: docs/refactor-verification.md.
+Alex authorized the initial restructuring and asked to stop once remaining work
+suits lower reasoning. The optional 3D view now fills the play area, with stable
+Turn / Spirit / Rivals regions, a floating phase/AP summary and a separate board
+preparation region. The original controls and SVG stay mounted across views.
+No game rules or renderer input handlers were moved. Narrow screens put controls
+below the board; tutorials disclose and scroll their original anchors into view.
 
-The app shell and seeded crowd drawing now have separate modules; their bodies
-match the pre-refactor working-tree source exactly. Bushido shares lane geometry
-and the pre-Swing payment patch. Dispatch/log/animation order was retained.
+**Next: use Medium for presentation refinement.** Read
+`../docs/immersive-hud-handoff.md` for exact files, contracts, remaining visual
+work and verification scope. The current panel internals retain their existing
+appearance. No further visual polish, commit or deployment was done this pass.
 
-⚠️ Shared geometry does not mean shared eligibility. Bushido's existing client
-click ignores blockers, its highlight stops at live spirits, and the bot also
-stops at amps/decoys. Those policies were preserved to avoid an unrequested rule
-change. The STATE_OF_PLAY claim that all targeting agreed has been corrected.
+Full `test:all` passed, including the extended immersive client journey and
+actual WebGL fallback. Render check remains 8/8; architecture 8; Bushido overlay
+331; existing rule/parity assertion counts did not drop. `check:bundle` has zero
+warnings. Production build passes with its existing large-chunk advisory.
+`lint:baseline` passes at 334 errors / 16 warnings, zero increased categories;
+the executable arena test has a local Fast Refresh exception.
 
-Next engineering stage: extend client journeys to a representative ability and
-completed battle before moving orchestration. Networking needs replay/reconnect
-coverage before extraction. Browser profiling and further ability/turn migration
-remain open; no runtime speedup is claimed.
+Actual browser checks covered drafting, drawer access, commit, legal movement
+for one AP, camera controls without AP spend, state-preserving 2D recovery and
+next-player controls. Widths checked: 1280, 800 and 390px. Phone action-state
+layout had no horizontal overflow. Dedicated phone camera/touch polish remains.
+The external Systems Map artifact tool is unavailable; repository docs are current.
 
-Game-design dependencies are unchanged: universal cooldowns/Metalness work gate
-the Shamisen siphon; upgrade depth gates melody identity; bot retuning is parked.
-The Ronin re-bench, roster decision, starting-ability policy and upgrade ladder
-remain open. Shukuchi, Bushido, Shadow updates and flat 6 Db unlocks are shipped.
+Previous live handoffs are preserved in
+`../docs/archive/SEQUENCING-before-immersive-hud-2026-09-07.md`.
 
-Systems Map synchronization: local source and handoff prepared on 2026-09-05.
-The saved Claude artifact URL returns "Page not found" in the signed-out browser;
-its Sign in link is open. Publication remains pending authenticated access or a
-corrected editable map link. The published map has not been changed.
+---
+# B. ✅ Alex's two calls
+
+1. ⭐ **ANY BODY BLOCKS.** A live spirit, an amp or the 👤 decoy stops the draw
+   dead. This is the searcher's policy of the three, promoted to the only one —
+   so the client click gets **stricter** than it was, and a shot that worked
+   yesterday can be refused today. That is the point: it is what makes standing at
+   range 2 a defence, and what makes parking the decoy in front of a Ronin worth
+   doing.
+2. ⭐ **BRIGHTNESS IS THE PAYOUT, AND THE LANE SHOWS ONLY WHEN ARMED.** The ramp
+   carries the **+2 / +3 / +4** ladder rather than raw distance, hexes 1–2 render
+   as a visibly refused run-up, and the overlay appears on arming like every other
+   targeting highlight. 📌 The always-on threat line was considered and not taken —
+   a permanent bright stripe competes with the hunt marker and the note hexes for
+   the same attention.
+
+### C. 🖥️ Built: the rule, with its suite in the same pass
+
+- `engine/systems/bushido.js` gains **`bushidoBlockers({spirits, amps, shadowHex,
+  selfId})`** — one set, built in one place, handed to all three callers. Self is
+  excluded *there* rather than re-checked inside each caller's own loop.
+- `policies/legalActions.js` builds its movement `blocked` set from it too, and
+  the sharing is deliberate: a hex you cannot walk through must not be one the
+  draw pretends is empty.
+- The client's **highlight** was live-spirits-only and now uses the shared set.
+- The client's **resolver** passed *no blocker set at all* — `bushidoLane(attacker)`
+  — so a click would fire straight through a body the highlight beside it refused
+  to light. It now walks the blocked lane, and it says **"Screened — the draw
+  stops at the first body in the lane"** rather than *"not in the lane"*, which is
+  a different sentence about a rival the player can plainly see standing straight
+  ahead.
+
+⚠️ **A BODY AT 3–5 IS NOT A SCREEN, IT IS A NEARER TARGET.** The draw retargets to
+it and is paid *its* rung, not the far one — so screening a Ronin with a
+throwaway body at 4 hands him a +3 instead of denying him a +4. Asserted,
+because it is the difference between a defence and a donation.
+
+### D. 🎨 The lane picture — previewed, NOT ported
+
+`.scratch/bushido-lane-preview.html`, per `CLAUDE.md`'s standing rule. Old look
+beside new look; the geometry and `bushidoLane` transcribed verbatim inside a
+marked parity region (§5-glow.C); ten states including all three rungs, both
+refusals, each of the three screens, the retarget, an empty lane and a lane that
+runs off the board; the real 238px HUD column with the button's four states.
+Levers: the ramp (near / far / gamma), edge alpha and width, bloom, run-up
+treatment (dim/hatch/bar/none), stop treatment (bar/cap/none), ghosting beyond
+the blocker, the spine and its taper, rung labels, the target ring, pulse, hue.
+⛔ **Nothing is ported until Alex screenshots the panel.**
+
+### E. 🧪 Evidence — and what was NOT run
+
+`test:bushido` **91 → 108**. `test:legal` 581 · `test:shukuchi` 68 ·
+`test:transition` 257 · `test:turnflow` 73 · `test:battleflow` 65 ·
+`test:score` 122 · `test:trace` 1205 — all green, all re-run because
+`legalActions.js` moved.
+
+⚠️ **AND HERE IS WHAT WAS NOT RUN, PLAINLY.** The Linux workspace on the machine
+would not start this session (*"the isolated Linux environment on this device
+failed to start"*), so those suites ran against a **file-by-file copy** of the
+source, and **`test:all`, `check:bundle` and `lint:baseline` did not run at
+all.** The monolith was verified to transpile through esbuild with zero
+warnings, which is weaker than `check:bundle` and is not a substitute for it.
+🎯 **Run `npm run check:bundle` and `npm run test:all` before trusting these
+counts** — §B3 and §B7 are both about numbers nobody re-ran.
+
+📌 `test:determinism` could not run in that copy either: it reads
+`ui/fanPawnShape.jsx`, which was not among the copied files. An environment gap,
+not a red suite.
+
+### F. ⬅️ NEXT
+
+1. 🎨 **Lane port complete in the resumed pass above.** The next engineering
+   guard is a completed client battle journey before combat orchestration moves.
+2. 🤖 **Re-bench the Ronin** — overdue twice, and now three times: this changed
+   what the searcher may plan.
+3. The rest of the board is unchanged and lives in `STATE_OF_PLAY.md` §7.
+
+📌 **Systems Map:** republished 2026-09-05 from this session, same URL.
+
+### G. 🪦 Two stale lines, reported rather than edited around
+
+- `RONIN_ABILITY_DESIGN.md` §2.1.1's "now" column still says **unlock 8 Db** and
+  **Drive bonus +3 flat**. The game ships **6 Db** (the flat rule) and the
+  **+2/+3/+4** ladder. The box above the table is right; the table is a week out.
+- §3's playtest bucket still calls the Shamisen's unlock price *"the one number
+  Alex has not given."* The flat-6 rule answered it on 2026-09-04f.
+
+⛔ **Both left as found**, per `CLAUDE.md`: a session that quietly edits a doc it
+was not asked to touch is how two copies of one decision start.
 
 ---
 
@@ -177,15 +264,38 @@ rather than against a literal, so the two cannot diverge in silence.
 📌 And the check found the ability's real price while it was there: a draw costs
 **4** notes of Drive stack, not 2, because the strike at the end of it is a Swing.
 
+### B13. 🏷️ A discrepancy "preserved on purpose" still needs an OWNER *(2026-09-05)*
+
+§5-refactor found that one ability answered *"what stops the lane?"* three
+different ways — the client click passed no blockers, the highlight passed live
+spirits, the searcher passed spirits + amps + the decoy — and **wrote it down
+correctly, in the right file, in the right words**, then preserved it rather than
+resolving it inside a refactor. That instinct was right. What was missing was one
+sentence: **whose call is it?**
+
+🎯 **§B9 IS A DECISION AT THE WRONG ADDRESS; §B11 IS A DECISION UNDER A LABEL THAT
+SAYS "NOTHING TO ASK"; THIS IS A DECISION WITH NO NAME ON IT.** All three are the
+same failure — a fact that is true, findable and correctly filed, and still does
+not reach the one person who can settle it. A discrepancy that is deliberately
+kept is a **decision waiting for its owner**, and it belongs on the board.
+
+✅ The defence is `bushidoCheck` §7: the counting assertion
+(`bushidoLane(` calls vs blocked ones) makes a *fourth* answer impossible to add
+in silence, and three of its checks read the CLIENT source rather than the
+kernel, because the split lived in the half no headless run reaches (§B2).
+
 ---
 
-# C. 📇 THE INDEX — 37 handoffs, in `docs/archive/SEQUENCING-full-through-2026-09-04.md`
+# C. 📇 THE INDEX — 38 handoffs, in `docs/archive/SEQUENCING-full-through-2026-09-04.md`
 
 Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
-| `5-refactor` | 2026-09-05 | 🔼 **LIVE — §A above.** Windows verification, DOM turn journey, shell/crowd extraction and shared Bushido geometry/payment |
+| `7-immersive-hud` | 2026-09-07 | **LIVE — §A above.** Full-width arena, stable HUD regions, turn disclosure, responsive fallback; stop for Medium presentation pass. |
+| `6-arena-live`, `6-arena`, `5-lane` (resumed) | 2026-09-05–06 | Prior live handoffs preserved in `../docs/archive/SEQUENCING-before-immersive-hud-2026-09-07.md`: arena study, live integration, lane port and verification. |
+| `5-lane` | 2026-09-05 | Archived in the 2026-09-07 handoff snapshot. The board's fourth run (14 calls, 2 newly named, both inside 🗡️ Bushido); ⭐ **one occupancy policy — ANY BODY BLOCKS**, shared by the click, the highlight and the searcher; the lane previewed as a payout-graded glow |
+| `5-refactor` | 2026-09-05 | Windows verification, DOM turn journey, shell/crowd extraction and shared Bushido geometry/payment. ⚠️ Its preserved three-way targeting split became `5-lane`'s first decision |
 | `5-draw` | 2026-09-04f | The board's third run (15 calls, 3 of the 5 new ones found INSIDE the step marked unblocked); 🗡️ Bushido respecced to a 3–5 draw with the ladder, a flat 3 AP bill and a Drive-stack price; 👤 Illusion respecced; ⭐ **the flat unlock number answered — 6, for everything** |
 | `5-hopport` | 2026-09-04e | The board run a second time (11 calls, 5 newly enumerated); ✅ Bushido's +2/+3/+4 ladder settled; 🌀 Shukuchi's overlay PORTED and SSR-diffed at 80 assertions; the searcher's hop un-refused |
 | `5-hopui` | 2026-09-04d | The decision board's first run; ✅ per-activation Db and ✅ per-hop targeting settled; Shukuchi's overlay previewed and parity-probed at 896 assertions |

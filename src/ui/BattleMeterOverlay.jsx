@@ -1204,7 +1204,7 @@ export function BattleMeterOverlay({
         const hasAnyGear   = hasMicGear || hasPedalGear || hasMixerGear;
 
         return (
-          <div style={{
+          <div data-battle-phase={phase} style={{
             position:'fixed', inset:0, background:'#000000f2', zIndex:9980,
             display:'flex', flexDirection:'column', alignItems:'center',
             // 'safe center' keeps content centered but never clips the top/bottom;

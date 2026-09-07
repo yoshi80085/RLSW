@@ -1,0 +1,12 @@
+Generated using built-in image_gen, 2026-09-05. Concept based on the user's original src/standees/cosmic_ronin.png and the first generated rendition.
+
+Use case: style-transfer. Asset: revised Shredding Ronin full-body 2D game sprite concept.
+Reference 1 is the previous concept to CORRECT, not an identity lock on its malformed head. Reference 2 is the user's original drawing.
+User corrections take priority: crisp anime CEL SHADING, bold clean ink outlines, flat color fills and just two or three hard-edged shadow tones. No painterly textures, no realistic rendering, no gradients on clothing.
+NORMAL human skull and authentic stylized samurai CHONMAGE haircut: natural rounded shaved crown, black hair along sides and back swept into a short tied folded black topknot lying toward the crown. Clearly distinguish BLACK HAIR from normal skin. Absolutely no cone head, no elongated skull, no skin spike.
+Opaque soft BLACK CLOTH BLINDFOLD fully covering both eyes, wrapped around head and tied at back with two short fabric tails, like the cloth blindfold aesthetic of Satoru Gojo or Steve Vai's Inviolate look. No armored visor, no glasses, no visible eyes or glowing eye slits.
+Remove ALL spectral arms and hands. Exactly two human arms and two human hands, both playing the shamisen. Instead sharp branching electric lightning arcs around his shoulders, arms and instrument, an explosive speed/lightning feeling inspired by Zenitsu, but keep this character's charcoal kimono and hakama, no borrowed costume. Lightning white core and cyan/blue/violet edges echoing original drawing, controlled sparse angular bolts with no fog and no ghost limbs.
+Keep strong wide-legged playing stance, Japanese wooden SHAMISEN with rectangular pale skin soundbox, slender neck, three strings and three tuning pegs; one hand fretting, one holding a bachi pick. Confident angular adult male face, dark loose kimono, broad hakama shapes, sandals. Full body, all feet and lightning inside frame with padding. Readable at small game scale. One character only.
+Transparent background with actual alpha. Do not DRAW a checkerboard: checkerboard pattern is forbidden. No backdrop, no floor, no text, no watermark.
+
+Output note: the generator still baked a checkerboard into the RGB image. This is a concept preview, not yet a transparent production sprite or animation.

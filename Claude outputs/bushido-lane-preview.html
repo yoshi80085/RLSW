@@ -1,0 +1,811 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>🗡️ Psycho Bushido — the lane, and what it should glow</title>
+<!--
+  ─── PREVIEW PAGE, per CLAUDE.md's standing rule ───────────────────────────
+  RONIN_ABILITY_DESIGN.md §2.1 / §2.1.1 · STATE_OF_PLAY.md §3 · SEQUENCING.md §A.
+  Nothing here is ported until Alex lands on values.
+
+  ⚠️ THE GEOMETRY IS THE SHIPPED BOARD'S, COPIED VERBATIM. `COLUMNS`,
+  `COL_TOP_OFFSETS`, `COL0_X`, `ROW0_Y`, `HEX_SIZE`, `COL_SPACING`,
+  `ROW_SPACING`, `buildHexMap`, `pointyCorners`, `axialNeighbors`, `angleTo`,
+  `angleDiff` and `neighborInDirection` are transcribed from `board/hexMap.js`,
+  `board/constants.js` and `board/hexGeometry.js` unchanged — and `bushidoLane`
+  is transcribed from `engine/systems/bushido.js`. §5-glow.C's scar: a preview
+  page that RE-IMPLEMENTS geometry is a preview of something else, and nobody
+  can see a lane error on a screenshot.
+
+  ⚠️ TWO DECISIONS ARE ALREADY MADE AND ARE NOT LEVERS HERE (Alex, 2026-09-05):
+    · ANY BODY BLOCKS. A live spirit, an amp or the 👤 decoy stops the lane
+      dead; hexes beyond it never light. This is the bot's policy today and it
+      becomes the ONE policy — the client click and the highlight move to it.
+    · BRIGHTNESS IS THE PAYOUT, AND THE LANE SHOWS ONLY WHEN ARMED. The ramp
+      carries the +2 / +3 / +4 ladder; hexes 1–2 render as a visibly refused
+      run-up; the whole thing appears on arming, like every other overlay.
+  Everything else on this page is a lever, which is what a lever is for.
+-->
+<style>
+  :root{
+    --bg:#070b14; --panel:#0d1424; --edge:#1d2942; --ink:#c9d6ee; --dim:#7d8aa6;
+    --gold:#ffd700; --ronin:#4488ff; --danger:#ff4422; --ok:#44cc88;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:12px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  h1{font-size:15px;margin:0 0 4px;letter-spacing:.3px}
+  h2{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);
+    margin:18px 0 7px;font-weight:800}
+  h3{font-size:10px;letter-spacing:.8px;color:var(--dim);margin:12px 0 5px;font-weight:800}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#8fa2c4}
+  .wrap{display:grid;grid-template-columns:300px 1fr;gap:16px;padding:14px;align-items:start}
+  .panel{background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:12px}
+  .controls{position:sticky;top:14px;max-height:calc(100vh - 28px);overflow:auto}
+  .warn{background:#2a1408;border:1px solid #6b3410;color:#ffcc99;border-radius:6px;
+    padding:8px 10px;margin:0 0 12px;font-size:11px}
+  .warn b{color:#ffdd88}
+  .decided{background:#08221a;border:1px solid #1d5c44;color:#9fe8c8;border-radius:6px;
+    padding:8px 10px;margin:0 0 12px;font-size:11px}
+  .decided b{color:#c8ffe6}
+  label{display:block;font-size:10.5px;color:var(--dim);margin:9px 0 3px;font-weight:700;
+    letter-spacing:.4px}
+  input[type=range]{width:100%;accent-color:#4488ff}
+  .row{display:flex;gap:5px;flex-wrap:wrap}
+  button.opt{background:#111a2e;border:1px solid var(--edge);color:var(--ink);
+    border-radius:5px;padding:4px 8px;font-size:10.5px;cursor:pointer;font-weight:700;
+    font-family:inherit}
+  button.opt[aria-pressed=true]{background:#4488ff22;border-color:var(--ronin);color:#a8ccff}
+  .val{float:right;color:var(--gold);font-weight:800;font-variant-numeric:tabular-nums}
+  .chk{display:flex;align-items:center;gap:6px;margin:5px 0;font-size:11px;color:var(--ink)}
+  .note{font-size:10px;color:var(--dim);margin:4px 0 0;line-height:1.4}
+  .note b{color:#9fb0cc}
+  hr{border:0;border-top:1px solid var(--edge);margin:14px 0 2px}
+
+  .stage{background:#05080f;border:1px solid var(--edge);border-radius:6px;padding:10px}
+  .boards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .bcase{background:#05080f;border:1px solid #16203a;border-radius:6px;padding:8px}
+  .bname{font-size:9.5px;font-weight:800;letter-spacing:.6px;color:#8fa2c4;margin-bottom:6px}
+  .bname em{color:#5f6d88;font-style:normal;font-weight:600}
+  .bname .old{color:#8a7a5a}
+  svg.board{display:block;width:100%;height:auto;background:#04060c;border-radius:4px}
+
+  /* the real HUD column, 238px, dashed so the width pressure is honest */
+  .hudwrap{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+  .hudcol{width:238px;flex:0 0 238px;border:1px dashed #3a4a6a;border-radius:6px;padding:8px;
+    background:#070c16}
+  .hudcol .cap{font-size:9px;letter-spacing:1px;color:#5f6d88;font-weight:800;margin-bottom:6px}
+  .rail{display:flex;flex-wrap:wrap;gap:4px}
+  .rbtn{background:#0b1220;border:1px solid #2a3a58;color:#8fa2c4;border-radius:5px;
+    padding:4px 7px;font-size:10.5px;font-weight:800;white-space:nowrap;cursor:pointer;
+    font-family:inherit}
+  .rbtn.on{background:#4488ff28;border-color:#7fc0ff;color:#cfe6ff}
+  .rbtn.dead{opacity:.45;cursor:not-allowed;border-color:#3a3a44;color:#8a8a95}
+  .rbtn.cool{border-color:#5a4410;color:#c9a24a}
+  .undercap{font-size:9.5px;color:#7fb0ee;margin-top:5px;font-weight:700;letter-spacing:.3px}
+  .undercap .sp{color:#4a5872}
+
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:8px}
+  .gcase{background:#05080f;border:1px solid #16203a;border-radius:6px;padding:8px}
+  .gname{font-size:9.5px;font-weight:800;letter-spacing:.5px;color:#8fa2c4;margin-bottom:5px}
+  .gname em{color:#5f6d88;font-style:normal;font-weight:600;display:block;margin-top:2px;
+    letter-spacing:0}
+  .gname .bad{color:#ff8877}
+  .gname .good{color:#7fe0b0}
+
+  .readout{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#8fa2c4;
+    background:#04060c;border:1px solid #16203a;border-radius:4px;padding:8px 10px;margin-top:8px;
+    white-space:pre-wrap;line-height:1.55}
+  .readout b{color:#c9d6ee}
+  .readout .bad{color:#ff8877}
+  .readout .good{color:#7fe0b0}
+  .readout .gold{color:var(--gold)}
+
+  .swatches{display:flex;gap:3px;margin-top:6px}
+  .sw{flex:1;height:26px;border-radius:3px;border:1px solid #16203a;position:relative}
+  .sw span{position:absolute;inset:auto 0 2px 0;text-align:center;font-size:9px;font-weight:800;
+    color:#dbe6fa;text-shadow:0 1px 2px #000}
+
+  @keyframes lane-pulse{0%,100%{opacity:.72}50%{opacity:1}}
+</style>
+
+<div class="wrap">
+
+<!-- ════════════════════════ CONTROLS ════════════════════════ -->
+<div class="panel controls">
+  <h1>🗡️ Psycho Bushido — the lane</h1>
+  <div class="note" style="margin-bottom:10px">
+    Preview only. Screenshot this panel <b>before</b> opening any new copy —
+    a fresh file loads with defaults and wipes your dial-in.
+  </div>
+
+  <div class="decided">
+    <b>Settled 2026-09-05, not levers:</b> any body blocks (spirit · amp · decoy);
+    brightness carries the <b>+2/+3/+4</b> ladder; the lane shows only while armed.
+  </div>
+
+  <h2>The glow ramp</h2>
+  <label>Fill at range 3 &nbsp;<span class="val" id="v_a3"></span></label>
+  <input type="range" id="a3" min="0" max="0.6" step="0.01">
+  <label>Fill at range 5 &nbsp;<span class="val" id="v_a5"></span></label>
+  <input type="range" id="a5" min="0" max="0.9" step="0.01">
+  <label>Ramp shape &nbsp;<span class="val" id="v_gamma"></span></label>
+  <input type="range" id="gamma" min="0.4" max="2.6" step="0.05">
+  <p class="note">1.0 is a straight line from near to far. Below 1 the far hex
+  pulls away early (the +4 shouts); above 1 the three rungs stay close and only
+  the last one opens up.</p>
+
+  <label>Edge at range 3 &nbsp;<span class="val" id="v_s3"></span></label>
+  <input type="range" id="s3" min="0" max="1" step="0.02">
+  <label>Edge at range 5 &nbsp;<span class="val" id="v_s5"></span></label>
+  <input type="range" id="s5" min="0" max="1" step="0.02">
+  <label>Edge width, far end &nbsp;<span class="val" id="v_sw"></span></label>
+  <input type="range" id="sw" min="0.8" max="6" step="0.1">
+  <div class="chk"><input type="checkbox" id="swramp"><label for="swramp"
+    style="margin:0;color:var(--ink)">…and thicken it with distance too</label></div>
+
+  <label>Bloom radius &nbsp;<span class="val" id="v_bloom"></span></label>
+  <input type="range" id="bloom" min="0" max="60" step="1">
+  <label>Bloom strength &nbsp;<span class="val" id="v_bstr"></span></label>
+  <input type="range" id="bstr" min="0" max="1" step="0.02">
+
+  <hr>
+  <h2>The run-up — hexes 1 and 2</h2>
+  <div class="row" id="runupMode">
+    <button class="opt" data-v="dim">dim tint</button>
+    <button class="opt" data-v="hatch">hatched</button>
+    <button class="opt" data-v="bar">barred</button>
+    <button class="opt" data-v="none">nothing</button>
+  </div>
+  <label>Run-up strength &nbsp;<span class="val" id="v_ra"></span></label>
+  <input type="range" id="ra" min="0" max="0.4" step="0.01">
+  <p class="note">This is the <b>refusal</b> made visible: too close to draw.
+  "nothing" is honest but silent — the beginner then has to learn the 3-hex
+  minimum by being told no.</p>
+
+  <hr>
+  <h2>Where the lane stops</h2>
+  <div class="row" id="blockMode">
+    <button class="opt" data-v="wall">stop bar</button>
+    <button class="opt" data-v="cap">dark cap</button>
+    <button class="opt" data-v="none">nothing</button>
+  </div>
+  <div class="chk"><input type="checkbox" id="ghost"><label for="ghost"
+    style="margin:0;color:var(--ink)">Ghost the hexes beyond the blocker</label></div>
+  <p class="note">Ghosting shows the shot you <b>would</b> have had. It teaches
+  the block; it also puts light on hexes you cannot hit.</p>
+
+  <hr>
+  <h2>The spine</h2>
+  <div class="chk"><input type="checkbox" id="spine"><label for="spine"
+    style="margin:0;color:var(--ink)">Draw a line down the lane</label></div>
+  <label>Spine width &nbsp;<span class="val" id="v_spw"></span></label>
+  <input type="range" id="spw" min="1" max="30" step="0.5">
+  <label>Spine strength &nbsp;<span class="val" id="v_spa"></span></label>
+  <input type="range" id="spa" min="0" max="1" step="0.02">
+  <div class="chk"><input type="checkbox" id="spineTaper"><label for="spineTaper"
+    style="margin:0;color:var(--ink)">Widen the spine as it goes out</label></div>
+  <div class="chk"><input type="checkbox" id="arrow"><label for="arrow"
+    style="margin:0;color:var(--ink)">Arrowhead at the far end</label></div>
+
+  <hr>
+  <h2>What it says</h2>
+  <div class="chk"><input type="checkbox" id="rungs"><label for="rungs"
+    style="margin:0;color:var(--ink)">Print +2 / +3 / +4 on the hexes</label></div>
+  <label>Label size &nbsp;<span class="val" id="v_lab"></span></label>
+  <input type="range" id="lab" min="40" max="170" step="5">
+  <div class="chk"><input type="checkbox" id="ring"><label for="ring"
+    style="margin:0;color:var(--ink)">Ring a rival who is actually hittable</label></div>
+  <div class="chk"><input type="checkbox" id="pulse"><label for="pulse"
+    style="margin:0;color:var(--ink)">Breathe the far hex</label></div>
+
+  <hr>
+  <h2>Colour</h2>
+  <div class="row" id="hue">
+    <button class="opt" data-v="#4488ff">Ronin blue</button>
+    <button class="opt" data-v="#ffd700">gold</button>
+    <button class="opt" data-v="#ff4422">danger red</button>
+    <button class="opt" data-v="#a8ccff">pale steel</button>
+  </div>
+  <div class="chk"><input type="checkbox" id="hotFar"><label for="hotFar"
+    style="margin:0;color:var(--ink)">Shift toward white at the far end</label></div>
+  <div class="swatches" id="swatches"></div>
+
+  <hr>
+  <h2>The board underneath</h2>
+  <label>Facing &nbsp;<span class="val" id="v_dir"></span></label>
+  <input type="range" id="dir" min="0" max="5" step="1">
+  <label>Rival stands at &nbsp;<span class="val" id="v_rival"></span></label>
+  <input type="range" id="rival" min="0" max="5" step="1">
+  <label>Blocker at &nbsp;<span class="val" id="v_block"></span></label>
+  <input type="range" id="block" min="0" max="5" step="1">
+  <div class="row" id="blockKind">
+    <button class="opt" data-v="spirit">a spirit</button>
+    <button class="opt" data-v="amp">an amp</button>
+    <button class="opt" data-v="decoy">his decoy</button>
+  </div>
+  <div class="chk"><input type="checkbox" id="showAll"><label for="showAll"
+    style="margin:0;color:var(--ink)">Show the whole board, not just the lane's corner</label></div>
+
+  <div class="readout" id="readout"></div>
+</div>
+
+<!-- ════════════════════════ STAGE ════════════════════════ -->
+<div>
+  <div class="warn">
+    <b>⚠️ What ships today draws no lane at all.</b> One hex gets tinted —
+    the rival's, and only if he is standing on a legal rung. The run-up, the
+    reach and the ladder are invisible, so <em>"do not enter Ronin's line of
+    sight"</em> is a sentence in a design doc that the board never says out loud.
+  </div>
+
+  <div class="stage">
+    <div class="boards">
+      <div class="bcase">
+        <div class="bname"><span class="old">TODAY — what ships</span>
+          <em>one hex, one tint, no path</em></div>
+        <svg class="board" id="boardOld" viewBox="0 0 100 100"></svg>
+      </div>
+      <div class="bcase">
+        <div class="bname">PROPOSED — the lane, glowing outward
+          <em>brightness = the payout</em></div>
+        <svg class="board" id="boardNew" viewBox="0 0 100 100"></svg>
+      </div>
+    </div>
+  </div>
+
+  <h2>The states — not one happy example</h2>
+  <div class="gallery" id="gallery"></div>
+
+  <h2>The real HUD column, 238px</h2>
+  <div class="hudwrap">
+    <div class="hudcol">
+      <div class="cap">ACTION RAIL — READY</div>
+      <div class="rail">
+        <span class="rbtn">👣 Move</span><span class="rbtn">🗡️ Swing</span>
+        <span class="rbtn">🌀 Shukuchi</span><span class="rbtn">🗡️ Bushido</span>
+        <span class="rbtn">👤 Illusion</span>
+      </div>
+      <div class="undercap">3 AP · 4 Db<span class="sp"> · lane hidden</span></div>
+    </div>
+    <div class="hudcol">
+      <div class="cap">ARMED — THE LANE IS ON THE BOARD</div>
+      <div class="rail">
+        <span class="rbtn">👣 Move</span><span class="rbtn">🗡️ Swing</span>
+        <span class="rbtn">🌀 Shukuchi</span><span class="rbtn on">🗡️ Bushido</span>
+        <span class="rbtn">👤 Illusion</span>
+      </div>
+      <div class="undercap">click a rival on a lit hex<span class="sp"> · −1 Db −3 AP −2 stack</span></div>
+    </div>
+    <div class="hudcol">
+      <div class="cap">RECHARGING · SKINT · OUT OF AP</div>
+      <div class="rail">
+        <span class="rbtn cool">🗡️ Bushido (3)</span>
+        <span class="rbtn dead">🗡️ Bushido (0/1 Db)</span>
+        <span class="rbtn dead">🗡️ Bushido — 2 AP</span>
+      </div>
+      <div class="undercap sp">no lane in any of the three — the overlay agrees with the refusal</div>
+    </div>
+  </div>
+
+  <div class="readout" id="foot" style="margin-top:14px"></div>
+</div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   BOARD GEOMETRY — transcribed VERBATIM from the shipped source.
+   board/constants.js · board/hexMap.js · board/hexGeometry.js
+   Do not "simplify" any of this. §5-glow.C.
+   ═════════════════════════════════════════════════════════════════════════ */
+/* ---8<--- PARITY REGION START — DOM-FREE ON PURPOSE ---8<---
+   A future `.scratch/bushidoparity.mjs` slices exactly this region out of this
+   file and diffs it against the real engine. ⚠️ Everything between the two
+   markers must stay free of `document`, `window` and every lever in `L` — the
+   moment a taste call leaks in here, the parity probe stops being able to run
+   and the page goes back to being unverifiable. §5-glow.C.                  */
+const IMG_W=6522, IMG_H=4839, HEX_SIZE=195, COL_SPACING=330, ROW_SPACING=390;
+const COLUMNS=[
+  [1,2,3,4,5],
+  [6,7,8,9,10,11,12,13],
+  [14,15,16,17,18,19,20,21,22],
+  [23,24,25,26,27,28,29,30,31,32],
+  [33,34,35,36,37,38,39,40,41],
+  [42,43,44,45,46,47,48,49,50,51],
+  [52,53,54,55,56,57,58,59,60],
+  [61,62,63,64,65,66,67,68,69,70],
+  [71,72,73,74,75,76,77,78,79],
+  [80,81,82,83,84,85,86,87,88,89],
+  [90,91,92,93,94,95,96,97,98],
+  [99,100,101,102,103,104,105,106],
+  [107,108,109,110,111],
+];
+const COL_TOP_OFFSETS=[4,2,2,1,2,1,2,1,2,1,2,2,4];
+const COL0_X=1275, ROW0_Y=75;
+const EDGE_HEX_NUMS=new Set([1,2,3,4,5,6,13,14,22,23,32,33,41,42,51,52,60,61,70,
+  71,79,80,89,90,98,99,100,105,106,107,108,109,110,111]);
+
+function buildHexMap(){
+  const map={}, byQR={};
+  COLUMNS.forEach((col,colIdx)=>{
+    const offset=COL_TOP_OFFSETS[colIdx];
+    const cxImg=COL0_X+colIdx*COL_SPACING;
+    const colYOffset=(colIdx%2===1)?HEX_SIZE:0;
+    col.forEach((num,rowInCol)=>{
+      const rowAbs=offset+rowInCol;
+      const cyImg=ROW0_Y+rowAbs*ROW_SPACING+colYOffset;
+      const q=colIdx-6;
+      const r=rowAbs-(colIdx-(colIdx&1))/2;
+      const hex={num,q,r:Math.round(r),col:colIdx,row:rowAbs,
+        px:Math.round(cxImg),py:Math.round(cyImg),
+        edge:EDGE_HEX_NUMS.has(num),stage:num===56};
+      map[num]=hex; byQR[`${hex.q},${hex.r}`]=hex;
+    });
+  });
+  return {map,byQR};
+}
+const {map:HEX_BY_NUM,byQR:HEX_BY_QR}=buildHexMap();
+const ALL_HEXES=Object.values(HEX_BY_NUM);
+
+function pointyCorners(cx,cy,size){
+  return Array.from({length:6},(_,i)=>{
+    const a=(Math.PI/180)*(60*i);
+    return `${(cx+size*Math.cos(a)).toFixed(1)},${(cy+size*Math.sin(a)).toFixed(1)}`;
+  }).join(" ");
+}
+const axialNeighbors=(q,r)=>[[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]].map(([dq,dr])=>({q:q+dq,r:r+dr}));
+const getFlatTopNeighborSlots=o=>axialNeighbors(o.q,o.r).map(({q,r})=>HEX_BY_QR[`${q},${r}`]).filter(Boolean);
+const angleTo=(f,t)=>Math.atan2(t.py-f.py,t.px-f.px);
+function angleDiff(a,b){let d=a-b;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;return Math.abs(d);}
+function neighborInDirection(originHex,angle){
+  return getFlatTopNeighborSlots(originHex).reduce((best,nb)=>{
+    const diff=angleDiff(angle,angleTo(originHex,nb));
+    if(!best||diff<best.diff) return {hex:nb,diff};
+    return best;
+  },null)?.hex;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE ABILITY — data/gameConstants.js and engine/systems/bushido.js.
+   Same numbers, same walk, same order.
+   ═════════════════════════════════════════════════════════════════════════ */
+const PSYCHO_BUSHIDO_CD=4, PSYCHO_BUSHIDO_DB_COST=1, PSYCHO_BUSHIDO_AP_COST=3,
+      PSYCHO_BUSHIDO_MIN_RANGE=3, PSYCHO_BUSHIDO_MAX_RANGE=5,
+      PSYCHO_BUSHIDO_STACK_COST=2;
+const PSYCHO_BUSHIDO_DRIVE_LADDER=[2,3,4];
+function psychoBushidoBonus(dist){
+  const i=Math.round(dist)-PSYCHO_BUSHIDO_MIN_RANGE;
+  return PSYCHO_BUSHIDO_DRIVE_LADDER[i] ?? 0;
+}
+
+/** bushidoLane — VERBATIM from engine/systems/bushido.js. One geometric walk;
+    the blocked hex is INCLUDED and then stops the walk, so callers keep their
+    refusal messages. */
+function bushidoLane(spirit, blocked=new Set()){
+  const origin=HEX_BY_NUM[spirit?.num];
+  if(!origin) return [];
+  const first=neighborInDirection(origin, spirit.facing ?? 0);
+  if(!first) return [];
+  const dq=first.q-origin.q, dr=first.r-origin.r;
+  const lane=[];
+  let previous=origin.num;
+  for(let dist=1; dist<=PSYCHO_BUSHIDO_MAX_RANGE; dist++){
+    const hex=HEX_BY_QR[`${origin.q+dq*dist},${origin.r+dr*dist}`];
+    if(!hex) break;
+    lane.push({num:hex.num, to:previous, dist});
+    if(blocked.has(hex.num)) break;
+    previous=hex.num;
+  }
+  return lane;
+}
+
+/** ⭐ THE 2026-09-05 RULE, and the reason this page exists: ONE blocker set,
+    built in one place, handed to every caller. Today the client click passes
+    nothing, the highlight passes live spirits, and the searcher passes
+    spirits + amps + the decoy — three answers to one question. */
+function bushidoBlockers({spirits=[], amps=[], shadowHex=null, selfId=null}={}){
+  return new Set([
+    ...spirits.filter(s=>!s.knockedOut && s.id!==selfId).map(s=>s.num),
+    ...amps.map(a=>a.hexNum),
+    ...(shadowHex!=null ? [shadowHex] : []),
+  ]);
+}
+
+/** The one target, if there is one: first blocked hex in the lane, and only
+    if a rival is standing on it at or beyond the minimum range. */
+function bushidoTarget(lane, blockers, rivalsByNum){
+  for(const step of lane){
+    if(!blockers.has(step.num)) continue;
+    const rival=rivalsByNum[step.num];
+    if(rival && step.dist>=PSYCHO_BUSHIDO_MIN_RANGE) return {step, rival};
+    return null;               // a body is in the way and it is not a target
+  }
+  return null;
+}
+/* ---8<--- PARITY REGION END ---8<--- */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LEVERS — every taste call on this page is one of these.
+   ═════════════════════════════════════════════════════════════════════════ */
+const L={
+  a3:0.14, a5:0.46, gamma:1.0,          // the ramp: fill at range 3 → range 5
+  s3:0.34, s5:0.92, sw:3.2, swramp:true, // the edge
+  bloom:26, bstr:0.55,                   // the glow around it
+  runupMode:'dim', ra:0.07,              // hexes 1–2, the refused run-up
+  blockMode:'wall', ghost:false,         // where the lane stops
+  spine:true, spw:9, spa:0.5, spineTaper:true, arrow:true,
+  rungs:true, lab:110, ring:true, pulse:true,
+  hue:'#4488ff', hotFar:true,
+  dir:0, rival:5, block:0, blockKind:'spirit', showAll:false,
+};
+
+const START=55;                                  // Ronin's hex, board centre-ish
+const RONIN_COLOR='#4488ff', RIVAL_COLOR='#ff44aa', AMP_COLOR='#ffcc44';
+
+const el=(t,a={})=>{const e=document.createElementNS("http://www.w3.org/2000/svg",t);
+  for(const k in a) e.setAttribute(k,a[k]); return e;};
+const $=id=>document.getElementById(id);
+
+/* facing angle for a direction index, read off the real neighbour list so it
+   can never disagree with `neighborInDirection`. */
+function facingFor(dirIdx){
+  const o=HEX_BY_NUM[START];
+  const ns=getFlatTopNeighborSlots(o).slice().sort((a,b)=>angleTo(o,a)-angleTo(o,b));
+  const nb=ns[dirIdx % ns.length];
+  return angleTo(o,nb);
+}
+
+/* ── the ramp. t is 0 at range 3 and 1 at range 5. ─────────────────────────── */
+const rung=d=>Math.max(0,Math.min(1,(d-PSYCHO_BUSHIDO_MIN_RANGE)/
+  (PSYCHO_BUSHIDO_MAX_RANGE-PSYCHO_BUSHIDO_MIN_RANGE)));
+const ramp=(d,lo,hi)=>lo+(hi-lo)*Math.pow(rung(d),L.gamma);
+const hex2=v=>Math.round(Math.max(0,Math.min(1,v))*255).toString(16).padStart(2,'0');
+function laneColor(d){
+  if(!L.hotFar) return L.hue;
+  const t=Math.pow(rung(d),L.gamma);
+  const c=L.hue.replace('#','');
+  const r=parseInt(c.slice(0,2),16),g=parseInt(c.slice(2,4),16),b=parseInt(c.slice(4,6),16);
+  const mix=(x)=>Math.round(x+(255-x)*0.42*t);
+  return `#${hex2(mix(r)/255)}${hex2(mix(g)/255)}${hex2(mix(b)/255)}`;
+}
+
+/* ── build one scene: who is where, and what the rules say about it ───────── */
+function scene(o={}){
+  const dir=o.dir??L.dir, rivalAt=o.rival??L.rival,
+        blockAt=o.block??L.block, blockKind=o.blockKind??L.blockKind;
+  const self={num:START, facing:facingFor(dir), id:'cosmic_ronin'};
+  const fullLane=bushidoLane(self);                       // geometry only
+  const at=d=>fullLane.find(s=>s.dist===d)?.num ?? null;
+
+  const spirits=[{id:'cosmic_ronin',num:START,knockedOut:false}];
+  const amps=[]; let shadowHex=null;
+  const rivalNum=rivalAt>0?at(rivalAt):null;
+  if(rivalNum) spirits.push({id:'rival',num:rivalNum,knockedOut:false});
+  const blockNum=blockAt>0?at(blockAt):null;
+  if(blockNum && blockNum!==rivalNum){
+    if(blockKind==='amp') amps.push({hexNum:blockNum});
+    else if(blockKind==='decoy') shadowHex=blockNum;
+    else spirits.push({id:'blocker',num:blockNum,knockedOut:false});
+  }
+  const blockers=bushidoBlockers({spirits,amps,shadowHex,selfId:'cosmic_ronin'});
+  const lane=bushidoLane(self,blockers);
+  const rivalsByNum={}; for(const s of spirits) if(s.id!=='cosmic_ronin') rivalsByNum[s.num]=s;
+  const hit=bushidoTarget(lane,blockers,rivalsByNum);
+  return {self,dir,fullLane,lane,blockers,spirits,amps,shadowHex,rivalNum,blockNum,
+          blockKind,hit,rivalAt,blockAt};
+}
+
+/* ── draw ─────────────────────────────────────────────────────────────────── */
+function draw(svg, S, mode, opts={}){
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  const small=!!opts.small;
+
+  // viewBox: the lane's corner unless asked for the whole board
+  const shown = (L.showAll && !small) ? ALL_HEXES
+    : ALL_HEXES.filter(h=>{
+        const o=HEX_BY_NUM[START];
+        return Math.hypot(h.px-o.px,h.py-o.py) < HEX_SIZE*11.5;
+      });
+  const pad=HEX_SIZE*1.5;
+  const xs=shown.map(h=>h.px), ys=shown.map(h=>h.py);
+  const x0=Math.min(...xs)-pad, y0=Math.min(...ys)-pad;
+  const w=Math.max(...xs)-Math.min(...xs)+pad*2, h=Math.max(...ys)-Math.min(...ys)+pad*2;
+  svg.setAttribute("viewBox",`${x0} ${y0} ${w} ${h}`);
+
+  const defs=el("defs");
+  if(L.bloom>0 && L.bstr>0 && mode==='new'){
+    const f=el("filter",{id:"bl"+(opts.id??''),x:"-60%",y:"-60%",width:"220%",height:"220%"});
+    f.appendChild(el("feGaussianBlur",{stdDeviation:L.bloom,result:"b"}));
+    const m=el("feMerge"); m.appendChild(el("feMergeNode",{in:"b"}));
+    m.appendChild(el("feMergeNode",{in:"SourceGraphic"})); f.appendChild(m);
+    defs.appendChild(f);
+  }
+  svg.appendChild(defs);
+
+  // ⚠️ FOUR LAYERS, AND THE ORDER IS THE POINT. The rung labels sit ABOVE the
+  // standees: the +4 hex is by definition the one with a rival parked on it, so
+  // a label drawn under the pieces is invisible on exactly the shot that matters.
+  const gBase=el("g"), gLane=el("g"), gTop=el("g"), gLabels=el("g");
+  if(L.bloom>0 && L.bstr>0 && mode==='new')
+    gLane.setAttribute("filter",`url(#bl${opts.id??''})`);
+  svg.appendChild(gBase); svg.appendChild(gLane); svg.appendChild(gTop);
+  svg.appendChild(gLabels);
+
+  const laneByNum={}; for(const s of S.lane) laneByNum[s.num]=s;
+  const stopped = S.lane.length && S.blockers.has(S.lane[S.lane.length-1].num)
+                  && !(S.hit && S.hit.step.num===S.lane[S.lane.length-1].num);
+
+  // ── the board itself
+  for(const hx of shown){
+    gBase.appendChild(el("polygon",{points:pointyCorners(hx.px,hx.py,HEX_SIZE*0.93),
+      fill: hx.stage?"#2a0f2a":"#0b1020",
+      stroke: hx.stage?"#ff44ff55":"#1a2440","stroke-width":6}));
+  }
+
+  // ── the lane
+  if(mode==='new'){
+    // the spine, under the hexes' own glow
+    if(L.spine && S.lane.length){
+      const o=HEX_BY_NUM[START];
+      const segs=S.lane.filter(s=>!(stopped && s.num===S.lane[S.lane.length-1].num) || L.blockMode==='none');
+      let prev=o;
+      for(const s of segs){
+        const hxx=HEX_BY_NUM[s.num];
+        const wNear=L.spineTaper?L.spw*(0.45+0.55*Math.pow(rung(s.dist-1),L.gamma)):L.spw;
+        const wFar =L.spineTaper?L.spw*(0.45+0.55*Math.pow(rung(s.dist),L.gamma)):L.spw;
+        const legal=s.dist>=PSYCHO_BUSHIDO_MIN_RANGE;
+        const a=legal?L.spa*ramp(s.dist,0.55,1):L.spa*0.28;
+        // a tapering segment drawn as a quad
+        const ang=angleTo(prev,hxx), nx=-Math.sin(ang), ny=Math.cos(ang);
+        gLane.appendChild(el("polygon",{points:
+          `${prev.px+nx*wNear},${prev.py+ny*wNear} ${hxx.px+nx*wFar},${hxx.py+ny*wFar} `+
+          `${hxx.px-nx*wFar},${hxx.py-ny*wFar} ${prev.px-nx*wNear},${prev.py-ny*wNear}`,
+          fill:laneColor(s.dist), opacity:a.toFixed(3)}));
+        prev=hxx;
+      }
+      if(L.arrow && S.lane.length){
+        const last=S.lane[S.lane.length-1], hxx=HEX_BY_NUM[last.num];
+        const ang=angleTo(HEX_BY_NUM[last.to],hxx), sz=L.spw*3.4;
+        const tipx=hxx.px+Math.cos(ang)*HEX_SIZE*0.55, tipy=hxx.py+Math.sin(ang)*HEX_SIZE*0.55;
+        gLane.appendChild(el("polygon",{points:
+          `${tipx},${tipy} ${tipx-Math.cos(ang-0.5)*sz},${tipy-Math.sin(ang-0.5)*sz} `+
+          `${tipx-Math.cos(ang+0.5)*sz},${tipy-Math.sin(ang+0.5)*sz}`,
+          fill:laneColor(last.dist), opacity:(L.spa).toFixed(3)}));
+      }
+    }
+
+    for(const s of S.lane){
+      const hxx=HEX_BY_NUM[s.num];
+      const isStop = stopped && s.num===S.lane[S.lane.length-1].num;
+      const legal  = s.dist>=PSYCHO_BUSHIDO_MIN_RANGE;
+      const pts=pointyCorners(hxx.px,hxx.py,HEX_SIZE*0.93);
+
+      if(isStop){
+        if(L.blockMode==='cap')
+          gLane.appendChild(el("polygon",{points:pts,fill:"#000000",opacity:"0.55"}));
+        if(L.blockMode==='wall'){
+          const ang=angleTo(HEX_BY_NUM[s.to],hxx), nx=-Math.sin(ang), ny=Math.cos(ang);
+          const bx=hxx.px-Math.cos(ang)*HEX_SIZE*0.72, by=hxx.py-Math.sin(ang)*HEX_SIZE*0.72;
+          gLane.appendChild(el("line",{x1:bx+nx*HEX_SIZE*0.8,y1:by+ny*HEX_SIZE*0.8,
+            x2:bx-nx*HEX_SIZE*0.8,y2:by-ny*HEX_SIZE*0.8,
+            stroke:"#ff5533","stroke-width":26,"stroke-linecap":"round",opacity:"0.9"}));
+        }
+        continue;
+      }
+      if(!legal){
+        if(L.runupMode==='none') continue;
+        if(L.runupMode==='dim')
+          gLane.appendChild(el("polygon",{points:pts,fill:L.hue,opacity:L.ra.toFixed(3)}));
+        if(L.runupMode==='hatch'){
+          gLane.appendChild(el("polygon",{points:pts,fill:L.hue,opacity:(L.ra*0.5).toFixed(3)}));
+          for(let k=-2;k<=2;k++){
+            const off=k*HEX_SIZE*0.42;
+            gLane.appendChild(el("line",{x1:hxx.px-HEX_SIZE*0.7+off,y1:hxx.py-HEX_SIZE*0.7,
+              x2:hxx.px+HEX_SIZE*0.7+off,y2:hxx.py+HEX_SIZE*0.7,
+              stroke:L.hue,"stroke-width":9,opacity:(L.ra*2.2).toFixed(3)}));
+          }
+        }
+        if(L.runupMode==='bar'){
+          gLane.appendChild(el("polygon",{points:pts,fill:L.hue,opacity:(L.ra*0.6).toFixed(3)}));
+          gLane.appendChild(el("line",{x1:hxx.px-HEX_SIZE*0.5,y1:hxx.py,
+            x2:hxx.px+HEX_SIZE*0.5,y2:hxx.py,stroke:L.hue,"stroke-width":16,
+            opacity:(L.ra*3).toFixed(3),"stroke-linecap":"round"}));
+        }
+        gLane.appendChild(el("polygon",{points:pts,fill:"none",stroke:L.hue,
+          "stroke-width":1.6*HEX_SIZE*0.02*30/2,opacity:(L.ra*1.6).toFixed(3)}));
+        continue;
+      }
+
+      const fillA=ramp(s.dist,L.a3,L.a5), strokeA=ramp(s.dist,L.s3,L.s5);
+      const strokeW=(L.swramp? L.sw*(0.42+0.58*Math.pow(rung(s.dist),L.gamma)) : L.sw)*8;
+      const g=el("g");
+      if(L.pulse && s.dist===PSYCHO_BUSHIDO_MAX_RANGE)
+        g.setAttribute("style","animation:lane-pulse 1.9s ease-in-out infinite");
+      g.appendChild(el("polygon",{points:pts,fill:laneColor(s.dist),
+        opacity:(fillA*(1+L.bstr*0.3)).toFixed(3)}));
+      g.appendChild(el("polygon",{points:pts,fill:"none",stroke:laneColor(s.dist),
+        "stroke-width":strokeW,opacity:strokeA.toFixed(3)}));
+      gLane.appendChild(g);
+
+      if(L.rungs){
+        // occupied hex → the label lifts clear of the standee rather than
+        // hiding behind it or sitting on top of its face.
+        const taken=S.blockers.has(s.num);
+        const dy=taken? -HEX_SIZE*0.62 : L.lab*0.36;
+        const t=el("text",{x:hxx.px,y:hxx.py+dy,"text-anchor":"middle",
+          "font-size":L.lab,"font-weight":"800",fill:"#ffffff",
+          stroke:"#02040a","stroke-width":L.lab*0.11,"paint-order":"stroke",
+          opacity:(0.35+0.65*Math.pow(rung(s.dist),L.gamma)).toFixed(2),
+          "font-family":"ui-sans-serif,system-ui,sans-serif"});
+        t.textContent=`+${psychoBushidoBonus(s.dist)}`;
+        gLabels.appendChild(t);
+      }
+    }
+
+    // ghosts beyond the blocker
+    if(L.ghost && stopped){
+      const stopDist=S.lane[S.lane.length-1].dist;
+      for(const s of S.fullLane){
+        if(s.dist<=stopDist || s.dist<PSYCHO_BUSHIDO_MIN_RANGE) continue;
+        const hxx=HEX_BY_NUM[s.num];
+        gLane.appendChild(el("polygon",{points:pointyCorners(hxx.px,hxx.py,HEX_SIZE*0.93),
+          fill:"none",stroke:L.hue,"stroke-width":10,"stroke-dasharray":"22 26",
+          opacity:"0.30"}));
+      }
+    }
+  } else {
+    // ── TODAY: exactly one tint, and only on a hittable rival's hex
+    if(S.hit){
+      const hxx=HEX_BY_NUM[S.hit.step.num];
+      const pts=pointyCorners(hxx.px,hxx.py,HEX_SIZE*0.93);
+      gLane.appendChild(el("polygon",{points:pts,fill:"#4488ff",opacity:"0.2"}));
+      gLane.appendChild(el("polygon",{points:pts,fill:"none",stroke:"#4488ff",
+        "stroke-width":16,opacity:"0.8"}));
+    }
+  }
+
+  // ── the pieces
+  for(const a of S.amps){
+    const hxx=HEX_BY_NUM[a.hexNum];
+    gTop.appendChild(el("rect",{x:hxx.px-HEX_SIZE*0.38,y:hxx.py-HEX_SIZE*0.38,
+      width:HEX_SIZE*0.76,height:HEX_SIZE*0.76,rx:HEX_SIZE*0.12,fill:AMP_COLOR,
+      stroke:"#000","stroke-width":6}));
+  }
+  if(S.shadowHex!=null){
+    const hxx=HEX_BY_NUM[S.shadowHex];
+    gTop.appendChild(el("circle",{cx:hxx.px,cy:hxx.py,r:HEX_SIZE*0.42,
+      fill:RONIN_COLOR,opacity:"0.5",stroke:"#cfe6ff","stroke-width":6,
+      "stroke-dasharray":"18 14"}));
+  }
+  for(const s of S.spirits){
+    if(s.id==='cosmic_ronin') continue;
+    const hxx=HEX_BY_NUM[s.num];
+    gTop.appendChild(el("circle",{cx:hxx.px,cy:hxx.py,r:HEX_SIZE*0.42,
+      fill:s.id==='rival'?RIVAL_COLOR:"#8899aa",stroke:"#000","stroke-width":6}));
+  }
+  if(L.ring && mode==='new' && S.hit){
+    const hxx=HEX_BY_NUM[S.hit.step.num];
+    const r=el("circle",{cx:hxx.px,cy:hxx.py,r:HEX_SIZE*0.72,fill:"none",
+      stroke:laneColor(S.hit.step.dist),"stroke-width":14,opacity:"0.95"});
+    r.setAttribute("style","animation:lane-pulse 1.2s ease-in-out infinite");
+    gTop.appendChild(r);
+  }
+  // the Ronin, and his facing
+  const rh=HEX_BY_NUM[START];
+  gTop.appendChild(el("circle",{cx:rh.px,cy:rh.py,r:HEX_SIZE*0.42,fill:RONIN_COLOR,
+    stroke:"#cfe6ff","stroke-width":8}));
+  const fa=facingFor(S.dir);
+  gTop.appendChild(el("line",{x1:rh.px,y1:rh.py,
+    x2:rh.px+Math.cos(fa)*HEX_SIZE*0.95,y2:rh.py+Math.sin(fa)*HEX_SIZE*0.95,
+    stroke:"#cfe6ff","stroke-width":14,"stroke-linecap":"round"}));
+}
+
+/* ── the states gallery — every case that has ever been a bug ─────────────── */
+const CASES=[
+  {n:'The far shot',      d:'rival at 5 — <span class="good">+4</span>',      o:{rival:5,block:0}},
+  {n:'The middle rung',   d:'rival at 4 — +3',                                o:{rival:4,block:0}},
+  {n:'The near rung',     d:'rival at 3 — +2, the floor',                     o:{rival:3,block:0}},
+  {n:'Too close',         d:'rival at 2 — <span class="bad">refused</span>',  o:{rival:2,block:0}},
+  {n:'Nose to nose',      d:'rival at 1 — <span class="bad">refused</span>',  o:{rival:1,block:0}},
+  {n:'⭐ Screened by a body',   d:'a spirit at 2, rival at 5 — <span class="bad">no shot</span>', o:{rival:5,block:2,blockKind:'spirit'}},
+  {n:'⭐ Screened by an amp',   d:'amp at 4 — <span class="bad">no shot</span>',                 o:{rival:5,block:4,blockKind:'amp'}},
+  {n:'⭐ His own decoy',        d:'the double at 2 blocks him',                                  o:{rival:5,block:2,blockKind:'decoy'}},
+  {n:'The nearer body wins',   d:'a spirit at 3 in front of the rival — <span class="good">+2</span>, not +4', o:{rival:5,block:3,blockKind:'spirit'}},
+  {n:'Empty lane',        d:'nobody there — pure threat',                     o:{rival:0,block:0}},
+  {n:'Lane off the board',d:'a short direction — only 3 hexes, <span class="bad">no legal rung but one</span>', o:{rival:0,block:0,dir:1}},
+];
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WIRING
+   ═════════════════════════════════════════════════════════════════════════ */
+const SLIDERS=['a3','a5','gamma','s3','s5','sw','bloom','bstr','ra','spw','spa',
+               'lab','dir','rival','block'];
+const CHECKS=['swramp','ghost','spine','spineTaper','arrow','rungs','ring','pulse',
+              'hotFar','showAll'];
+const GROUPS={runupMode:'runupMode',blockMode:'blockMode',hue:'hue',blockKind:'blockKind'};
+
+function syncPanel(){
+  for(const k of SLIDERS){ $(k).value=L[k]; }
+  for(const k of CHECKS){ $(k).checked=!!L[k]; }
+  for(const g in GROUPS){
+    for(const b of $(GROUPS[g]).querySelectorAll('button'))
+      b.setAttribute('aria-pressed', String(b.dataset.v===L[g]));
+  }
+  $('v_a3').textContent=L.a3.toFixed(2);
+  $('v_a5').textContent=L.a5.toFixed(2);
+  $('v_gamma').textContent=L.gamma.toFixed(2);
+  $('v_s3').textContent=L.s3.toFixed(2);
+  $('v_s5').textContent=L.s5.toFixed(2);
+  $('v_sw').textContent=L.sw.toFixed(1);
+  $('v_bloom').textContent=L.bloom;
+  $('v_bstr').textContent=L.bstr.toFixed(2);
+  $('v_ra').textContent=L.ra.toFixed(2);
+  $('v_spw').textContent=L.spw.toFixed(1);
+  $('v_spa').textContent=L.spa.toFixed(2);
+  $('v_lab').textContent=L.lab;
+  $('v_dir').textContent=`dir ${L.dir}`;
+  $('v_rival').textContent=L.rival===0?'nowhere':`${L.rival} hex${L.rival>1?'es':''} out`;
+  $('v_block').textContent=L.block===0?'nowhere':`${L.block} hex${L.block>1?'es':''} out`;
+
+  const sw=$('swatches'); sw.innerHTML='';
+  for(const d of [3,4,5]){
+    const c=document.createElement('div'); c.className='sw';
+    c.style.background=laneColor(d);
+    c.style.opacity=(0.25+ramp(d,L.a3,L.a5)*1.4).toFixed(2);
+    c.innerHTML=`<span>+${psychoBushidoBonus(d)}</span>`;
+    sw.appendChild(c);
+  }
+}
+
+function render(){
+  syncPanel();
+  const S=scene();
+  draw($('boardOld'),S,'old',{id:'o'});
+  draw($('boardNew'),S,'new',{id:'n'});
+
+  const g=$('gallery'); g.innerHTML='';
+  CASES.forEach((c,i)=>{
+    const box=document.createElement('div'); box.className='gcase';
+    box.innerHTML=`<div class="gname">${c.n}<em>${c.d}</em></div>`;
+    const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+    svg.setAttribute("class","board"); box.appendChild(svg); g.appendChild(box);
+    draw(svg,scene(c.o),'new',{id:'g'+i,small:true});
+  });
+
+  const rows=[3,4,5].map(d=>
+    `  range ${d} → +${psychoBushidoBonus(d)} Drive · fill ${ramp(d,L.a3,L.a5).toFixed(3)}`+
+    ` · edge ${ramp(d,L.s3,L.s5).toFixed(2)}`+
+    ` · ${(L.swramp?(L.sw*(0.42+0.58*Math.pow(rung(d),L.gamma))):L.sw).toFixed(1)}px`+
+    ` · ${laneColor(d)}`).join('\n');
+  const contrast=(ramp(5,L.a3,L.a5)/Math.max(0.001,ramp(3,L.a3,L.a5))).toFixed(2);
+  $('readout').innerHTML =
+    `<b>THE RAMP</b>\n${rows}\n\n`+
+    `far ÷ near = <span class="gold">${contrast}×</span>`+
+    `${contrast<1.6?'  <span class="bad">← the three rungs may read as one</span>':''}\n`+
+    `run-up (1–2): <b>${L.runupMode}</b> @ ${L.ra.toFixed(2)}\n`+
+    `stop: <b>${L.blockMode}</b>${L.ghost?' + ghosts':''}`;
+
+  const S2=scene();
+  const laneNums=S2.lane.map(s=>`${s.num}(${s.dist})`).join(' → ') || '—';
+  const full=S2.fullLane.map(s=>s.num).join(' → ') || '—';
+  $('foot').innerHTML =
+    `<b>WHAT THE ENGINE SAYS, THIS SCENE</b>\n`+
+    `  Ronin on ${START}, facing dir ${S2.dir}\n`+
+    `  geometric lane : ${full}\n`+
+    `  lane after blockers : ${laneNums}\n`+
+    `  blockers : {${[...S2.blockers].filter(n=>n!==START).join(', ')||'—'}}\n`+
+    `  target : ${S2.hit
+        ? `<span class="good">hex ${S2.hit.step.num} at ${S2.hit.step.dist} → +${psychoBushidoBonus(S2.hit.step.dist)} Drive</span>`
+        : '<span class="bad">none — nothing legal in the lane</span>'}\n`+
+    `  bill : ${PSYCHO_BUSHIDO_DB_COST} Db · ${PSYCHO_BUSHIDO_AP_COST} AP · `+
+    `${PSYCHO_BUSHIDO_STACK_COST} off the Drive stack · ${PSYCHO_BUSHIDO_CD}-round cooldown\n`+
+    `  🚩 and the Swing at the end spends its own stack too — a draw costs 4 notes.`;
+}
+
+for(const k of SLIDERS) $(k).addEventListener('input',e=>{L[k]=+e.target.value;render();});
+for(const k of CHECKS)  $(k).addEventListener('change',e=>{L[k]=e.target.checked;render();});
+for(const g in GROUPS)
+  $(GROUPS[g]).addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return; L[g]=b.dataset.v; render();
+  });
+
+render();
+</script>

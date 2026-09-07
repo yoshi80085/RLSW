@@ -58,10 +58,11 @@ console.log('\n§3 the commit overlay panels are step-gated');
 // assertion for months and stopped being the right one the moment the panels
 // earned a step to belong to. 📌 The track's own render can only be reached
 // through a click, which nothing here can do; §5 of SEQUENCING says why.
-ok('the Drive stack rendered',    html.includes('data-tip-anchor="drive-stack"'));
-ok('the Sustain stack rendered',  html.includes('data-tip-anchor="sustain-stack"'));
-ok('the chord-stack anchor survived the split', html.includes('data-tip-anchor="chord-stack"'));
-ok('the Commit Track is NOT up during step 1', !html.includes('data-tip-anchor="commit-track"'));
+ok('the Drive stack rendered',    /<[^>]+data-tip-anchor="drive-stack"/.test(html));
+ok('the Sustain stack rendered',  /<[^>]+data-tip-anchor="sustain-stack"/.test(html));
+ok('the chord-stack anchor survived the split', /<[^>]+data-tip-anchor="chord-stack"/.test(html));
+// CSS may reference an anchor that is not mounted in this phase.
+ok('the Commit Track is NOT up during step 1', !/<[^>]+data-tip-anchor="commit-track"/.test(html));
 
 console.log('\n§4 the amp knob is on the stack panels');
 // StatKnob's cap carries the stat colour at 55% alpha — one per stack panel,

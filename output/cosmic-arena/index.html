@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RLSW · Cosmic Arena</title><link rel="stylesheet" href="./arena.css"></head>
+<body>
+  <main id="world" aria-label="Interactive 3D cosmic arena"></main>
+  <header class="topbar">
+    <div class="brand"><span class="sigil">ϟ</span><div><b>RLSW<span class="slash"> / </span><span class="brand-sub">COSMIC ARENA</span></b><small>LIVE MATCH <span class="dot">●</span> TURN 04</small></div></div>
+    <div class="match-status"><span class="eyebrow">CURRENT OBJECTIVE</span><b>REACH THE LIMELIGHT</b><small>MOVE A SPIRIT TO AN AMPLIFIER</small></div>
+    <nav aria-label="Camera views"><button data-view="arena" class="active">Arena</button><button data-view="tactical">Tactical</button><button data-view="underside">Underside</button><button data-view="amps">Amps</button></nav>
+    <div class="top-actions"><button id="hud-toggle" aria-pressed="false">Player HUD ◈</button><button id="reference">2D references ↗</button><button id="settings-toggle" aria-expanded="true" aria-controls="settings">Tune scene ☷</button></div>
+  </header>
+  <div class="world-label"><span class="eyebrow">AT THE EDGE OF THE COSMOS</span><h1>The last<br><em>loud place.</em></h1><p>111 hexes. Eight amps. One floating stage.</p></div>
+  <div class="score-chip glass"><span class="eyebrow">SCORE</span><b>04</b><i>—</i><b class="pink">02</b><small>RONIN <em>VS</em> GLAMARCHY</small></div>
+  <aside class="event-feed glass" aria-label="Match events"><span class="eyebrow">MATCH FEED</span><p><b class="cyan">RONIN</b> entered the arena <small>NOW</small></p><p><b class="pink">GLAMARCHY</b> captured AMP SE <small>1M</small></p><p>Limelight phase begins <small>2M</small></p></aside>
+  <aside id="settings" class="glass settings">
+    <div class="panel-heading"><div><span class="eyebrow">ART DIRECTION</span><h2>Shape the atmosphere</h2></div><span class="tiny-mark">✦</span></div>
+    <label class="slider-label">Stage glow <output id="glow-value">1.0</output><input id="glow" type="range" min="0.25" max="1.8" value="1" step="0.05"></label>
+    <label class="slider-label">Rock illumination <output id="rock-value">1.0</output><input id="rock" type="range" min="0.25" max="2" value="1" step="0.05"></label>
+    <label class="slider-label">Amp height <output id="height-value">1.0</output><input id="height" type="range" min="0.65" max="1.6" value="1" step="0.05"></label>
+    <label class="slider-label">Energy fissures <output id="cracks-value">1.0</output><input id="cracks" type="range" min="0" max="2" value="1" step="0.05"></label>
+    <div class="toggle-row"><span>Concert beams</span><input type="checkbox" id="lights" checked aria-label="Concert beams"></div>
+    <div class="toggle-row"><span>Floating wreckage</span><input type="checkbox" id="debris" checked aria-label="Floating wreckage"></div>
+    <div class="toggle-row"><span>Slow camera orbit</span><input type="checkbox" id="orbit" aria-label="Slow camera orbit"></div>
+    <div class="toggle-row"><span>Hex numbers</span><input type="checkbox" id="numbers" aria-label="Hex numbers"></div>
+    <div class="toggle-row"><span>High detail</span><input type="checkbox" id="quality" checked aria-label="High detail"></div>
+    <div class="panel-buttons"><button id="save-settings">Save settings ↓</button><button id="reset-settings">Reset</button></div>
+    <p class="panel-note">Amps sit on anchored rock foundations.<br>Atmosphere settings save on this device.</p>
+  </aside>
+  <section class="glass play-panel" aria-label="Movement and effects preview">
+    <div class="play-heading"><span class="eyebrow">MOVEMENT & FX SANDBOX</span><span class="status-led">PREVIEW</span></div>
+    <div class="spirit-info"><span id="spirit-dot"></span><div><b id="spirit-name">Shredding Ronin</b><small id="position">HEX 47 · 6 STEPS</small></div><button id="next-spirit" title="Select next spirit">Next spirit →</button></div>
+    <p id="hint" role="status" aria-live="polite">Click a lit neighboring hex to move.</p>
+    <div class="fx-buttons"><button id="shockwave"><span>◎</span>Sonic pulse</button><button id="amp-beam"><span>ϟ</span>Amp beam</button><button id="knockoff"><span>↘</span>Knock-off</button></div>
+    <div class="play-footer"><span id="amp-name">AMP NW SELECTED</span><button id="reset-drill">Reset drill</button></div>
+  </section>
+  <footer class="bottom-bar"><span>DRAG TO ORBIT <i>·</i> SCROLL TO ZOOM <i>·</i> RIGHT-DRAG TO PAN</span><span id="render-status">LOADING WORLD</span><span class="turn-chip">YOUR TURN <b>06</b> STEPS</span></footer>
+  <div id="loading"><div class="load-orbit"></div><b>ASSEMBLING THE ARENA</b><span id="load-detail">Loading the Blender environment…</span></div>
+  <dialog id="reference-dialog"><div class="dialog-head"><div><span class="eyebrow">DESIGN REFERENCES</span><h2>From the board into space</h2></div><button id="close-reference" aria-label="Close references">✕</button></div><div class="references"><figure><img src="./current-board.png" alt="Existing RLSW 2D board"><figcaption>Existing board</figcaption></figure><figure><img src="./amp-reference.png" alt="User's board2 reference with eight angular amps fitted to the board edge"><figcaption>Your new amp silhouettes and placement</figcaption></figure></div><p>The new cabinets wrap around the stage corners and sit on rock-supported platforms. Speaker detail follows the finished upper-left reference. Heights and concealed faces are interpreted for this 3D study.</p></dialog>
+  <script>
+    if (location.protocol === 'file:') {
+      document.getElementById('load-detail').textContent = 'Open with the local preview server: node scripts/cosmic-arena/serve.mjs, then visit http://127.0.0.1:4318/';
+      document.getElementById('render-status').textContent = 'LOCAL SERVER REQUIRED';
+    }
+  </script>
+  <script type="module" src="./arena.js"></script>
+  <script>
+    // Keep the HUD mockup toggle available even when the exported arena bundle
+    // has not been rebuilt yet.
+    window.__hudToggleBound = true;
+    document.getElementById('hud-toggle')?.addEventListener('click', function () {
+      const enabled = document.body.classList.toggle('player-hud');
+      this.textContent = enabled ? 'Studio Preview ◈' : 'Player HUD ◈';
+      this.setAttribute('aria-pressed', String(enabled));
+    });
+  </script>
+</body></html>

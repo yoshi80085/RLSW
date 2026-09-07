@@ -1,4 +1,4 @@
-import { bushidoLane } from "../systems/bushido.js";
+import { bushidoLane, bushidoBlockers } from "../systems/bushido.js";
 // ─── LEGAL ACTIONS ──────────────────────────────────────────────────────────
 // `legalActions(state, spiritId, view) -> action[]` — BOT_STRATEGY_HANDOFF §6.1.
 //
@@ -304,11 +304,11 @@ export function legalActions(state, spiritId, view = {}) {
 
   const here    = HEX_BY_NUM[self.num];
   const rivals  = (state.spirits ?? []).filter(s => s.id !== spiritId && !s.knockedOut);
-  const blocked = new Set([
-    ...rivals.map(s => s.num),
-    ...(amps ?? []).map(a => a.hexNum),
-    ...(shadowHex != null ? [shadowHex] : []),   // 👤 the decoy blocks like a body
-  ]);
+  // 👤 the decoy blocks like a body, and so does an amp.
+  // ⭐ BUILT BY `bushidoBlockers` SINCE 2026-09-05, and the sharing is the rule:
+  // movement and 🗡️ Bushido's lane must agree about what a body is, or a hex you
+  // cannot walk through is one the draw pretends is empty. Same set, one place.
+  const blocked = bushidoBlockers({ spirits: rivals, amps: amps ?? [], shadowHex });
 
   // MOVEMENT — one hex at a time into an unoccupied neighbour.
   if (here && ap >= MOVE_AP_COST) {

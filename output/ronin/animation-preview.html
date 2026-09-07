@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shredding Ronin — strum animation</title>
+<style>
+body{margin:0;background:#090c14;color:#e9eefb;font:16px system-ui;display:grid;place-items:center;min-height:100vh}main{width:min(92vw,680px);padding:24px 0}h1{font-size:25px;margin:0 0 5px}p{color:#aab5cc;font-size:14px}canvas{display:block;width:100%;background:black;border-radius:12px}section{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:18px}button,select{font:inherit;background:#212b40;color:white;border:1px solid #50617e;border-radius:6px;padding:9px 15px}label{display:flex;align-items:center;gap:8px}output{font-variant-numeric:tabular-nums;color:#aab5cc}
+</style>
+<main>
+<h1>Shredding Ronin</h1><p>Shamisen strum · lightning burst · motion study</p>
+<canvas width="560" height="560" role="img" aria-label="Cel shaded samurai with a cloth blindfold raising his pick, striking the shamisen and releasing blue lightning"></canvas>
+<section><button id="play" type="button">Pause</button><label>Speed <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option></select></label><output id="frame">Loading…</output></section>
+<p>Eight generated poses. Opaque black background; frame alignment and foot cropping need cleanup before game integration.</p>
+</main>
+<script>
+const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');
+const play=document.getElementById('play'),speed=document.getElementById('speed'),label=document.getElementById('frame');
+const sheet=new Image(),durations=[350,160,140,110,140,160,180,250];
+let playing=!matchMedia('(prefers-reduced-motion: reduce)').matches,frame=0,elapsed=0,last=0;
+play.textContent=playing?'Pause':'Play';
+function draw(){const c=frame%4,r=Math.floor(frame/4),w=sheet.width/4,h=sheet.height/2;ctx.fillStyle='#000';ctx.fillRect(0,0,560,560);ctx.drawImage(sheet,Math.round(c*w),Math.round(r*h),Math.round((c+1)*w)-Math.round(c*w),Math.round((r+1)*h)-Math.round(r*h),0,0,560,560);label.textContent=`Frame ${frame+1} / 8`;}
+function tick(now){const dt=last?Math.min(now-last,100):0;last=now;if(playing){elapsed+=dt*Number(speed.value);while(elapsed>=durations[frame]){elapsed-=durations[frame];frame=(frame+1)%8;}draw();}requestAnimationFrame(tick);}
+play.onclick=()=>{playing=!playing;play.textContent=playing?'Pause':'Play';};
+sheet.onload=()=>{draw();requestAnimationFrame(tick);};sheet.onerror=()=>{label.textContent='Could not load sprite sheet';};sheet.src='shredding-ronin-strum-sheet.png';
+</script>
+</html>

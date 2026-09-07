@@ -1,4 +1,4 @@
-import { bushidoLane, bushidoDrawPatch } from "./engine/systems/bushido.js";
+import { bushidoLane, bushidoDrawPatch, bushidoBlockers } from "./engine/systems/bushido.js";
 import boardImg from "./board.png";
 import boardOutlineImg from "./board_outline.png";
 import battleMeterImg from "./Battle_Meter.png";
@@ -30,6 +30,8 @@ import { TRIVIA_REWARD, TRIVIA_TIER_GRANT, TRIVIA_BOT_ODDS,
          drawTrivia, bestTriviaDifficulty } from "./data/trivia.js";
 import { Riffbook } from "./ui/Riffbook.jsx";
 import { BoardFX } from "./ui/BoardFX.jsx";
+import { BoardViewport } from "./ui/BoardViewport.jsx";
+import { MatchSurface, HudRegion } from "./ui/MatchSurface.jsx";
 import { VoiceRollDie } from "./ui/VoiceRollDie.jsx";
 import { NeonStrikeFX } from "./ui/NeonStrikeFX.jsx";
 import { LifePips } from "./ui/ScoreTrackOverlay.jsx";
@@ -100,6 +102,7 @@ import { canHop, shukuchiLandings, hopIsActivation, hopBudgetPatch,
          shukuchiHopsLeft, SHUKUCHI_SKILL } from "./engine/systems/shukuchi.js";
 import { shukuchiHopped } from "./engine/actions.js";
 import { SHUKUCHI_LOOK, ShukuchiArcs, ShukuchiBudget } from "./ui/ShukuchiOverlay.jsx";
+import { BushidoOverlay } from './ui/BushidoOverlay.jsx';
 import { SKILL_TREE, SKILL_BY_ID } from "./data/skillTree.js";
 import { tentacleOptions, legalActions } from "./engine/policies/legalActions.js";
 // 🧠 THE SEARCHER — the headless bot from the §6.6 bench, wired into the chair.
@@ -506,7 +509,7 @@ export { default } from "./app/RLSWSimulator.jsx";
 // client bugs that every engine suite was blind to. A component nothing can
 // import is a component nothing can check; this one word is what `test:render`
 // stands on. Nothing else imports it — the app still renders it internally.
-export function Game({ gameState, onReturnToLobby }) {
+export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const { mode, teams } = gameState;
   const startingLives = gameState.startingLives ?? 3;
   const playerCount = gameState.spirits.length;
@@ -560,6 +563,7 @@ export function Game({ gameState, onReturnToLobby }) {
     const next = applyAction(engineRef.current, engineAction);
     engineRef.current = next;
     setEngineState(next);
+    onEngineState?.(next, engineAction);
     // N4: relay to server when online (N6: spectators never send actions)
     if (netRef.current && !netRef.current.spectator) {
       netRef.current.client.sendAction(engineAction, cursorBefore);
@@ -1633,6 +1637,7 @@ export function Game({ gameState, onReturnToLobby }) {
   const isPanningRef = useRef(false);
   const panStartRef  = useRef(null);
   const svgRef       = useRef(null);
+  const [board3D, setBoard3D] = useState(false);
   const boardDivRef  = useRef(null);
 
   const addLog = useCallback(m => {
@@ -7711,10 +7716,24 @@ export function Game({ gameState, onReturnToLobby }) {
     if (!originHex || !targetHex) return;
 
     // Verify target is on the facing line
-    const lane = bushidoLane(attacker);
+    // ⭐ AND THAT THE LANE ACTUALLY REACHES HIM. Until 2026-09-05 this call
+    // passed NO blocker set, so the click alone would fire straight through a
+    // rival, an amp or his own 👤 decoy while the highlight beside it refused to
+    // light — one ability answering "what stops the lane?" three ways. Alex's
+    // call: ANY BODY BLOCKS, and `bushidoBlockers` is the one place that says so.
+    const laneBlockers = bushidoBlockers({ spirits, amps, shadowHex, selfId: attacker.id });
+    const lane = bushidoLane(attacker, laneBlockers);
     if (!lane.length) { addLog('🌀 No clear path ahead.'); return; }
     const targetStep = lane.find(step => step.num === defender.num);
     const distToTarget = targetStep?.dist ?? 0;
+    // ⚠️ "SCREENED" AND "NOT IN THE LANE" ARE DIFFERENT SENTENCES, and the
+    // player can see the difference on the board — the rival is plainly straight
+    // ahead. Telling him he is "not in the lane" when a body is in front of him
+    // is the refusal most likely to read as a bug.
+    if (distToTarget === 0 && bushidoLane(attacker).some(step => step.num === defender.num)) {
+      addLog('🌀 Screened — the draw stops at the first body in the lane. Move, or clear the way.');
+      return;
+    }
     if (distToTarget === 0) {
       addLog(`🌀 Not in the lane — Psycho Bushido strikes a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes directly in front of you.`);
       return;
@@ -7828,9 +7847,12 @@ export function Game({ gameState, onReturnToLobby }) {
     if (!canFire(ns, 'psycho_bushido')) return new Set();
     if (moveStepsLeft < PSYCHO_BUSHIDO_AP_COST) return new Set();
     const targets = new Set();
-    const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
+    // ⭐ THE SAME SET THE RESOLVER AND THE SEARCHER USE, since 2026-09-05. It
+    // was live spirits only here, which meant an amp or the 👤 decoy stopped the
+    // searcher's lane and the planner's, but not this highlight's.
+    const occupied = bushidoBlockers({ spirits, amps, shadowHex, selfId: acting.id });
     for (const step of bushidoLane(acting, occupied)) {
-      if (!occupied.has(step.num) || step.num === acting.num) continue;
+      if (!occupied.has(step.num)) continue;
       const rival = spirits.find(s => s.num === step.num && s.id !== acting.id && !s.knockedOut);
       if (rival && step.dist >= PSYCHO_BUSHIDO_MIN_RANGE) targets.add(step.num);
       break;
@@ -10938,6 +10960,14 @@ export function Game({ gameState, onReturnToLobby }) {
 
   // ─── HEX VISUAL HELPERS ───────────────────────────────────────────────────────
   const HS = Math.round(HEX_SIZE * SCALE * 0.88);
+  const bushidoArmed = action === 'psycho_bushido' && acting?.id === 'cosmic_ronin'
+    && hasConfirmed && !actionTokenUsed && moveStepsLeft >= PSYCHO_BUSHIDO_AP_COST
+    && canFire(actingNoteState ?? {}, 'psycho_bushido');
+  const bushidoPaint = bushidoArmed ? {
+    spirit: acting,
+    blockers: bushidoBlockers({ spirits, amps, shadowHex, selfId: acting.id }),
+    targets: getPsychoBushidoTargets(),
+  } : null;
 
   // 🌌 Valid warp landing hexes while aiming Space is Displaced: every open hex
   // in the DISPLACE_MIN_RINGS..DISPLACE_MAX_RINGS band. This deliberately scans
@@ -11040,7 +11070,7 @@ export function Game({ gameState, onReturnToLobby }) {
     // order would let a 1-hex walk tint outrank a landing hex if both were ever
     // live at once.
     if (action === 'shukuchi' && shukuchiTargets.has(hex.num)) return SHUKUCHI_FILL;
-    if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return "#4488ff33";
+    // Bushido's ramp is painted by BushidoOverlay, not a second target tint.
     // 🪦 Cursed Shamisen aura — removed 2026-08-26. No board token, no rings.
     if (reachable.has(hex.num)) return "#ffffff18";
     // Swing / Smash cone highlight
@@ -11094,7 +11124,6 @@ export function Game({ gameState, onReturnToLobby }) {
     if (gravityVortex && hex.num === gravityVortex.hex) return "#cc66ff";
     if (action === 'gravity_control' && gravityTargets.has(hex.num)) return "#aa66ffcc";
     if (action === 'shukuchi' && shukuchiTargets.has(hex.num)) return SHUKUCHI_STROKE;
-    if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return "#4488ffcc";
     if (reachable.has(hex.num)) return "#ffffff88";
     // Swing / Smash cone stroke
     if ((previewAction === 'swing' || previewAction === 'smash') && acting) {
@@ -11145,7 +11174,6 @@ export function Game({ gameState, onReturnToLobby }) {
     if (action === 'displace' && displaceTargets.has(hex.num)) return 2;
     if (gravityVortex && hex.num === gravityVortex.hex) return 2.5;
     if (action === 'gravity_control' && gravityTargets.has(hex.num)) return 2;
-    if (action === 'psycho_bushido' && getPsychoBushidoTargets().has(hex.num)) return 2;
     return 0.8;
   }
 
@@ -11234,6 +11262,12 @@ export function Game({ gameState, onReturnToLobby }) {
   useEffect(() => {
     const W = SVG_W, H = SVG_H;
     const fullVB = `0 0 ${W} ${H}`;
+    if (board3D) {
+      if (vbAnimRef.current) cancelAnimationFrame(vbAnimRef.current);
+      animatedVBRef.current = fullVB;
+      if (svgRef.current) svgRef.current.setAttribute('viewBox', fullVB);
+      return;
+    }
     if (!animatedVBRef.current) {
       animatedVBRef.current = fullVB;
       if (svgRef.current) svgRef.current.setAttribute("viewBox", fullVB);
@@ -11270,15 +11304,15 @@ export function Game({ gameState, onReturnToLobby }) {
     }
     vbAnimRef.current = requestAnimationFrame(tick);
     return () => { if (vbAnimRef.current) cancelAnimationFrame(vbAnimRef.current); };
-  }, [cameraView]); // eslint-disable-line
+  }, [cameraView, board3D]); // eslint-disable-line
 
   useEffect(() => {
-    if (!cameraView && manualVBRef.current) {
+    if (!board3D && !cameraView && manualVBRef.current) {
       const str = manualVBRef.current.map(n => n.toFixed(2)).join(" ");
       animatedVBRef.current = str;
       if (svgRef.current) svgRef.current.setAttribute("viewBox", str);
     }
-  }, [cameraView]);
+  }, [cameraView, board3D]);
 
   function zoomReset(delay = 0) {
     gt(() => setCameraView(null), delay);
@@ -11316,6 +11350,7 @@ export function Game({ gameState, onReturnToLobby }) {
   }
 
   function handleBoardWheel(evt) {
+    if (board3D) return;
     evt.preventDefault();
     const vbParts = animatedVBRef.current?.split(" ").map(Number) ?? [0, 0, SVG_W, SVG_H];
     let [vx, vy, vw, vh] = vbParts;
@@ -11339,6 +11374,7 @@ export function Game({ gameState, onReturnToLobby }) {
   }
 
   function handleBoardMouseDown(evt) {
+    if (board3D) return;
     if (evt.button === 1 || evt.button === 2 || (evt.button === 0 && !action)) {
       const vbParts = animatedVBRef.current?.split(" ").map(Number) ?? [0, 0, SVG_W, SVG_H];
       isPanningRef.current = true;
@@ -11348,6 +11384,7 @@ export function Game({ gameState, onReturnToLobby }) {
   }
 
   function handleBoardMouseMove(evt) {
+    if (board3D) return;
     if (!isPanningRef.current || !panStartRef.current) return;
     const { clientX: sx, clientY: sy, vb } = panStartRef.current;
     const [vx, vy, vw, vh] = vb;
@@ -11607,7 +11644,7 @@ export function Game({ gameState, onReturnToLobby }) {
     : null;
 
   return (
-    <div className={beginnerEnabled ? 'beginner-glow' : ''} style={{ fontFamily:"'Share Tech Mono','Courier New',monospace",
+    <div className={`${beginnerEnabled ? 'beginner-glow' : ''}${board3D ? ' immersive-match' : ''}`} style={{ fontFamily:"'Share Tech Mono','Courier New',monospace",
       background:"radial-gradient(ellipse at 50% -10%, #0a1226 0%, #050810 55%)",
       color:"#e2e8f0", minHeight:"100vh", display:"flex", flexDirection:"column", padding:10, boxSizing:"border-box" }}>
       <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Saira+Stencil+One&family=Saira:wght@400;600;700&display=swap" rel="stylesheet"/>
@@ -11724,7 +11761,7 @@ export function Game({ gameState, onReturnToLobby }) {
       })()}
 
       {/* ── HEADER ── */}
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,paddingBottom:7,borderBottom:"1px solid #1a2a40"}}>
+      <div className="match-header" style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,paddingBottom:7,borderBottom:"1px solid #1a2a40"}}>
         <span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:17,color:"#f6ad55",letterSpacing:3,
           textShadow:"0 0 12px #f6ad5566, 0 0 28px #f6ad5522"}}>⚡ RLSW</span>
         <span style={{fontSize:10,color:"#3a5a7a"}}>v3.6</span>
@@ -11835,7 +11872,7 @@ export function Game({ gameState, onReturnToLobby }) {
             🤝 {spirits.filter(s=>teams.a.includes(s.corner)).map(s=>s.name.split(" ")[0]).join("+")} vs {spirits.filter(s=>teams.b.includes(s.corner)).map(s=>s.name.split(" ")[0]).join("+")}
           </span>
         )}
-        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+        <div className="match-header-status" style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
           {action === "move" && (
             <span style={{fontSize:10,padding:"2px 8px",background:"#1a2a00",border:"1px solid #aacc00",borderRadius:10,color:"#ccff44"}}>
               👆 Click a lit hex to move ({moveStepsLeft} step{moveStepsLeft !== 1 ? "s" : ""} left)
@@ -11885,7 +11922,8 @@ export function Game({ gameState, onReturnToLobby }) {
           columns always sit side-by-side (never wrap onto the portrait); max
           620px lets it stretch toward full-screen on wide monitors. The board
           column flexes and the board SVG scales to whatever remains. */}
-      <div style={{display:"grid",gridTemplateColumns:"minmax(430px,480px) minmax(0,1fr)",gap:12,alignItems:"start",flex:1,minWidth:0}}>
+      <MatchSurface immersive={board3D} spirit={acting} step={turnStep}
+        turnNumber={engineState.turn.count} canAct={canAct} ap={moveStepsLeft} tutorial={!!activeTip}>
 
       {/* ── N8: NET STATUS BANNERS — desync, own socket, rival disconnects ── */}
       {netRef.current && (() => {
@@ -12123,7 +12161,8 @@ export function Game({ gameState, onReturnToLobby }) {
         upgradesPending={upgradesPending}
       />}
       {/* ── LEFT PANEL ── */}
-        <div style={{display:"flex",flexDirection:"column",gap:0}}>
+        <div className="match-hud-column">
+          <HudRegion name="spirit">
 
           {/* ── ACTIVE SPIRIT — full portrait card ── */}
           {acting && (() => {
@@ -12133,7 +12172,7 @@ export function Game({ gameState, onReturnToLobby }) {
             // card. Alex looked at a skewed card and turned it down: the blue edge
             // stands straight and every raked edge lives INSIDE it. See SPIRIT_CARD.
             return (
-              <div className="card" style={{
+              <div className="card" data-spirit-id={s.id} data-vibe={s.vibe} style={{
                 borderLeft:`3px solid ${s.color}`,
                 background:"#0d1528",
                 boxShadow:`0 0 14px ${s.color}33, inset 0 0 20px ${s.color}0a`,
@@ -12622,6 +12661,8 @@ export function Game({ gameState, onReturnToLobby }) {
             );
           })()}
 
+          </HudRegion>
+          <HudRegion name="turn">
           {/* ── 🎛️ THE ACTION RAIL — moved up here 2026-08-29 ────────────────
               It used to be the LAST thing in this column, under the RACE meter,
               the Note Stock and every rival's row. ⚠️ THAT WAS NOT A LAYOUT
@@ -13851,11 +13892,13 @@ export function Game({ gameState, onReturnToLobby }) {
             </div>
           )}
 
+          </HudRegion>
+          <HudRegion name="rivals">
           {/* ── RIVAL SPIRITS — collapsed rows ── */}
           {spirits.filter(s => !s.knockedOut && acting?.id !== s.id).map(s => {
             // 💨 SMOKE — completely erase any sign of this spirit
             if (isHiddenBySmoke(s)) return (
-              <div key={s.id} className="card" style={{
+              <div key={s.id} className="card" data-spirit-id={s.id} data-vibe={s.vibe} style={{
                 padding:"4px 7px", marginBottom:3,
                 borderLeft:"2px solid #33445566",
                 opacity:0.4, background:"#080f1e",
@@ -13870,7 +13913,7 @@ export function Game({ gameState, onReturnToLobby }) {
             // exactly the "rivals can read the stance" surface.
             const rivalSustainDelta = (ns.tempSustain ?? 0);
             return (
-              <div key={s.id} className="card" style={{
+              <div key={s.id} className="card" data-spirit-id={s.id} data-vibe={s.vibe} style={{
                 padding:"4px 7px", marginBottom:3,
                 borderLeft:`2px solid ${s.color}66`,
                 opacity: s.knockedOut ? 0.25 : 0.75,
@@ -13979,10 +14022,11 @@ export function Game({ gameState, onReturnToLobby }) {
           ))}
 
 
+          </HudRegion>
         </div>
 
         {/* ── CENTER: BOARD ── */}
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",position:"relative"}}>
+        <div className="match-board-column">
 
           {/* ── POINTS FLASH OVERLAY ── */}
           <style>{`
@@ -14056,7 +14100,8 @@ export function Game({ gameState, onReturnToLobby }) {
 
           <div
             ref={boardDivRef}
-            style={{position:"relative",width:"100%",maxWidth:1040,overflow:"visible",borderRadius:8,border:"1px solid #1a2a40",cursor:isPanningRef.current?"grabbing":"default",
+            className="match-board-frame"
+            style={{cursor:isPanningRef.current?"grabbing":"default",
               ...(boardDiveBomb ? {animation:'board-divebomb 1.1s cubic-bezier(0.22,1,0.36,1) forwards', transformOrigin:'center center'} : {}),
             }}
             onMouseDown={handleBoardMouseDown}
@@ -14065,6 +14110,7 @@ export function Game({ gameState, onReturnToLobby }) {
             onMouseLeave={handleBoardMouseUp}
             onContextMenu={e => e.preventDefault()}
           >
+            <div className="match-board-preparation">
             {/* ── COMMIT TRACK — overlaid on the board SVG ──
                 🎼 STEP 2 ONLY, for the same reason the chord stacks are step 1
                 only: eight seats spanning the top of the board are worth that
@@ -14399,6 +14445,7 @@ export function Game({ gameState, onReturnToLobby }) {
                 </div>
               );
             })()}
+            </div>
             {/* 🎛️ FLOATING VOICING PANEL — toggle button + collapsible tone controls */}
             {acting && (
               <button className="btn" onClick={()=>setVoicingOpen(v=>!v)}
@@ -14456,6 +14503,9 @@ export function Game({ gameState, onReturnToLobby }) {
                   title="VERB — reverb. Double-click resets."/>
               </div>
             )}
+            {!board3D && <button className="btn" onClick={() => { handleBoardMouseUp(); resetManualZoom(); setBoard3D(true); }}
+              style={{position:'absolute',right:8,bottom:8,zIndex:20}}>3D board</button>}
+            <BoardViewport enabled={board3D} immersive={board3D} onDisable={() => setBoard3D(false)}>
             <svg
               ref={svgRef}
               width={SVG_W}
@@ -15012,6 +15062,14 @@ export function Game({ gameState, onReturnToLobby }) {
                 aiming={action === 'sonic' || hoverPreview === 'sonic'} thumpFx={deckThump}/>
 
 
+              {/* While armed, paint the hex bases first, then the lane, then
+                  pieces. Transparent hit polygons below keep existing clicks. */}
+              {bushidoPaint && <g style={{ pointerEvents: 'none' }}>
+                {ALL_HEXES.map(hex => <polygon key={hex.num}
+                  points={pointyCorners(Math.round(hex.px * SCALE), Math.round(hex.py * SCALE), HS)}
+                  fill={hexFill(hex)} stroke={hexStroke(hex)} strokeWidth={hexStrokeW(hex)} />)}
+                <BushidoOverlay {...bushidoPaint} />
+              </g>}
               {/* Hexes */}
               {ALL_HEXES.map(hex => {
                 const cx = Math.round(hex.px * SCALE);
@@ -15019,14 +15077,14 @@ export function Game({ gameState, onReturnToLobby }) {
                 const sp = spiritByNum[hex.num];
 
                 return (
-                  <g key={hex.num} className="hex-g"
+                  <g key={hex.num} className="hex-g" data-hex-num={hex.num}
                     onClick={() => onHexClick(hex.num)}
                     onMouseEnter={() => setHovered(hex.num)}
                     onMouseLeave={() => setHovered(null)}>
                     <polygon
                       points={pointyCorners(cx, cy, HS)}
-                      fill={hexFill(hex)}
-                      stroke={hexStroke(hex)}
+                      fill={bushidoPaint ? 'transparent' : hexFill(hex)}
+                      stroke={bushidoPaint ? 'none' : hexStroke(hex)}
                       strokeWidth={hexStrokeW(hex)}
                     />
                     {/* 🔪 REAR-WEDGE TELL — while you're aiming, any rival whose
@@ -15612,6 +15670,8 @@ export function Game({ gameState, onReturnToLobby }) {
                   hs={HS} />
               )}
 
+              {bushidoPaint && <BushidoOverlay {...bushidoPaint} layer="labels" />}
+
               {/* Slide-off animations */}
               {Object.values(slideOffAnimations).map(anim => {
                 const cornerColor = anim.corner ? (CORNER_LABELS[anim.corner]?.color ?? anim.color) : anim.color;
@@ -16078,6 +16138,7 @@ export function Game({ gameState, onReturnToLobby }) {
                 );
               })()}
             </svg>
+            </BoardViewport>
             {/* 🎇 Stage Effect activation marquee + active-effect status pills */}
             <StageFXBanner banner={stageFxBanner} smokeFx={smokeFx} laserFx={laserFx}
               pyroFx={pyroFx} animatronics={animatronics} />
@@ -16085,7 +16146,7 @@ export function Game({ gameState, onReturnToLobby }) {
         </div>
 
         {/* Right panel removed — Crowd → header blip · Mod Cards → spirit card banner · Turn Order/Log dropped. */}
-      </div>
+      </MatchSurface>
     </div>
   );
 }

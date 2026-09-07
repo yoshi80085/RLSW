@@ -5667,3 +5667,42 @@ that reason as well as the obvious one.
    exits 1 with no message, which is how it went unnoticed. Everything else works.
    ⚠️ This session could not remove it (the bridge cannot delete files); deleting
    it by hand restores both commands.
+
+---
+
+## 5-refactor. Verification and low-risk extractions — 2026-09-05
+
+*(Archived 2026-09-05 when `5-lane` became the live §A.)*
+
+Existing uncommitted game changes were preserved. Windows esbuild and render
+verification now work; the production build succeeds. Added a real DOM journey
+covering a three-note melody, commit, movement phase, end turn and the next
+player's melody/commit. All 27 test groups pass; Bushido has 91 assertions.
+The lint ceiling is 334 errors and 16 warnings, with no increased categories.
+Full evidence and limits: docs/refactor-verification.md.
+
+The app shell and seeded crowd drawing now have separate modules; their bodies
+match the pre-refactor working-tree source exactly. Bushido shares lane geometry
+and the pre-Swing payment patch. Dispatch/log/animation order was retained.
+
+⚠️ Shared geometry does not mean shared eligibility. Bushido's existing client
+click ignores blockers, its highlight stops at live spirits, and the bot also
+stops at amps/decoys. Those policies were preserved to avoid an unrequested rule
+change. The STATE_OF_PLAY claim that all targeting agreed has been corrected.
+📌 **Resolved the next day — see `5-lane`.** Alex's call was the searcher's
+policy, promoted to the only one.
+
+Next engineering stage: extend client journeys to a representative ability and
+completed battle before moving orchestration. Networking needs replay/reconnect
+coverage before extraction. Browser profiling and further ability/turn migration
+remain open; no runtime speedup is claimed.
+
+Game-design dependencies are unchanged: universal cooldowns/Metalness work gate
+the Shamisen siphon; upgrade depth gates melody identity; bot retuning is parked.
+The Ronin re-bench, roster decision, starting-ability policy and upgrade ladder
+remain open. Shukuchi, Bushido, Shadow updates and flat 6 Db unlocks are shipped.
+
+Systems Map synchronization: local source and handoff prepared on 2026-09-05.
+The saved Claude artifact URL returns "Page not found" in the signed-out browser;
+its Sign in link is open. Publication remains pending authenticated access or a
+corrected editable map link. The published map has not been changed.

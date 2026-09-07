@@ -12,7 +12,7 @@
     "dev": "vite",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:all": "npm run test:engine && npm run test:legal && npm run test:eval && npm run test:transition && npm run test:turnflow && npm run test:determinism && npm run test:battleflow && npm run test:winconditions && npm run test:stackslots && npm run test:melody && npm run test:slime && npm run test:eleven && npm run test:score && npm run test:harness && npm run test:riffparity && npm run test:skilltree && npm run test:shamisen && npm run test:shukuchi && npm run test:shukuchiui && npm run test:bushido && npm run test:client && npm run test:render && npm run test:b0 && npm run test:riff && npm run test:trace && npm run test:arch && npm run test:journey",
+    "test:all": "npm run test:engine && npm run test:legal && npm run test:eval && npm run test:transition && npm run test:turnflow && npm run test:determinism && npm run test:battleflow && npm run test:winconditions && npm run test:stackslots && npm run test:melody && npm run test:slime && npm run test:eleven && npm run test:score && npm run test:harness && npm run test:riffparity && npm run test:skilltree && npm run test:shamisen && npm run test:shukuchi && npm run test:shukuchiui && npm run test:bushido && npm run test:client && npm run test:render && npm run test:b0 && npm run test:riff && npm run test:trace && npm run test:arch && npm run test:journey && npm run test:battlejourney && npm run test:bushidoui && npm run test:arena",
     "test:arch": "node --import ./src/engine/testAssetStub.mjs src/engine/architectureCheck.mjs",
     "test:b0": "node --import ./src/engine/testAssetStub.mjs src/engine/b0check.mjs",
     "test:battleflow": "node --import ./src/engine/testAssetStub.mjs src/engine/battleFlowCheck.mjs",
@@ -43,11 +43,15 @@
     "test:vision": "node src/vision/neckGeometrySelftest.mjs",
     "test:shukuchiui": "esbuild src/engine/shukuchiOverlayCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/shukuchiOverlayCheck.mjs --loader:.png=empty --loader:.jpg=empty --loader:.svg=empty --log-level=warning && node node_modules/.cache/rlsw/shukuchiOverlayCheck.mjs",
     "test:journey": "esbuild src/engine/clientJourneyCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/journey.mjs --loader:.png=empty --loader:.jpg=empty --loader:.svg=empty --loader:.mp3=empty --loader:.wav=empty --log-level=warning && node node_modules/.cache/rlsw/journey.mjs",
-    "lint:baseline": "node scripts/check-lint-baseline.mjs"
+    "test:battlejourney": "esbuild src/engine/clientBattleJourneyCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/battleJourney.mjs --loader:.png=empty --loader:.jpg=empty --loader:.svg=empty --loader:.mp3=empty --loader:.wav=empty --log-level=warning && node node_modules/.cache/rlsw/battleJourney.mjs",
+    "lint:baseline": "node scripts/check-lint-baseline.mjs",
+    "test:bushidoui": "esbuild src/engine/bushidoOverlayCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/bushidoOverlayCheck.mjs --log-level=warning && node node_modules/.cache/rlsw/bushidoOverlayCheck.mjs",
+    "test:arena": "node src/board/arenaDomCheck.mjs && esbuild src/board/arenaFallbackCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/arenaFallbackCheck.mjs --log-level=warning && node node_modules/.cache/rlsw/arenaFallbackCheck.mjs"
   },
   "dependencies": {
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "three": "0.180.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

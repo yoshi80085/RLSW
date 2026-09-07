@@ -223,6 +223,14 @@ export function BeginnerTipOverlay({ tip, onClose, onDisable, gates = {} }) {
   // 📐 Measure the anchor now, again after HUD panels finish animating, and on
   // resize. Panels slide/collapse (.step-active etc.), so one measure lies.
   useLayoutEffect(() => {
+    // Immersive HUD details share a scroll drawer during tutorials. Bring this
+    // page's anchor into view before measuring it; otherwise later pages point
+    // at controls below the drawer's clipped edge. Classic layout is untouched.
+    if (cur.anchor) {
+      const anchor = [...document.querySelectorAll('[data-hud-tutorial] [data-tip-anchor]')]
+        .find(el => el.dataset.tipAnchor === cur.anchor);
+      anchor?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    }
     const measure = () => setTarget(findAnchorRect(cur.anchor, rootRef.current, cardRef.current));
     measure();
     const t1 = setTimeout(measure, 350);

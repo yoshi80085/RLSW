@@ -25,15 +25,16 @@
 
 | Module | Exports | Responsibility |
 |---|---|---|
+| `ui/MatchSurface.jsx` | `MatchSurface`, `HudRegion` | Stable classic/immersive layout, floating turn summary, turn/spirit/rivals disclosure. Owns presentation state only; children and gameplay handlers stay mounted across view switches. |
 | `app/RLSWSimulator.jsx` | default | Opening movie, menus, practice routing, hint gate and network return-to-lobby lifecycle; static imports preserved. |
 | `ui/fanPawnShape.jsx` | `fanPawnShape` | Pure seeded crowd SVG drawing; markup and timing unchanged. |
 | `engine/clientJourneyCheck.jsx` | — | DOM interaction regression: start, build and commit melody, enter movement, end turn, next player builds and commits. Audio/animation rendering stubbed. |
-| `engine/systems/bushido.js` | `bushidoLane`, `bushidoDrawPatch` | Shared facing-lane geometry and pre-Swing payment. Warp, AP dispatch, logs and Swing sequencing remain at their existing call sites. |
+| `engine/systems/bushido.js` | `bushidoLane`, `bushidoDrawPatch`, `bushidoBlockers` | Shared facing-lane geometry, any-body blocker policy and pre-Swing payment. Warp, AP dispatch, logs and Swing sequencing remain at their existing call sites. |
+| `ui/BushidoOverlay.jsx` | `BUSHIDO_LOOK`, `BushidoOverlay` | Screenshot-selected payout ramp, dim run-up, stop bar, spine and labels. Original board units scaled once; glow beneath pieces, labels above. |
+| `engine/bushidoOverlayCheck.jsx` | — | SSR paint/geometry parity against the recovered preview at the screenshot settings: 11 scenarios × 6 facings. Writes a local comparison page. |
 
-Bushido compatibility boundary: the click resolver historically ignores blockers;
-the highlight stops at live spirits; the planner also blocks amps and decoys.
-The shared walk accepts each caller's existing occupancy set. Unifying that policy
-requires an intentional gameplay change; this extraction does not silently fix it.
+Bushido's occupancy discrepancy was resolved in the subsequent 2026-09-05 work:
+all three callers now use bushidoBlockers; any live spirit, amp or decoy blocks.
 Cooldown, token, confirmation and skill gates also remain with their callers.
 
 Verification uses `check:bundle` (portable, media-stubbed, zero warnings), render
@@ -419,6 +420,10 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | 📷 Camera fretboard detection | `vision/neckDetect.js` (finding it), `vision/neckGeometry.js` (the maths), `vision/fretFusion.js` (fusing with audio). `GUITAR_NECK_HANDOFF.md`. |
 | 🎨 Board colour schemes | `board/stageSkins.js` → `STAGE_SKINS`. ⚠️ Hue angles are MEASURED against the real art — read the file header before adding one. |
 | Board map / hex layout | `board/hexMap.js`, `board/constants.js` |
+| Live 2D/3D board view | `ui/BoardViewport.jsx` (`BoardViewport`), `board/arenaRenderer.js` (`mountArena`): lazy arena scenery and camera, existing React SVG interaction layers |
+| Arena interaction lifecycle | `board/arenaDom.js` (`preserveTacticalLayer`, `keepGameplayClicks`); `board/arenaDomCheck.mjs` guards view restoration and camera/game input separation |
+| Arena graphics fallback | `board/arenaFallbackCheck.jsx`: actual WebGL constructor failure and React recovery with board state preserved |
+| Client battle regression | `engine/clientBattleJourneyCheck.jsx`: completed battle and turn handoff through the mounted client |
 | Board overlay: Commit Track / Chord Stack / Voicing Panel | Monolith, `RENDER` banner → search `COMMIT TRACK`, `CHORD STACK`, `FLOATING VOICING PANEL` |
 | A specific overlay or modal's look | The matching file in `ui/` |
 | CSS keyframes / global styles | `ui/GameStyles.jsx` |

@@ -59,7 +59,8 @@ import { SKILL_BY_ID } from "../data/skillTree.js";
 import { CORNERS } from "../data/corners.js";
 import { HEX_BY_NUM, HEX_BY_QR } from "../board/hexMap.js";
 import { neighborInDirection } from "../board/hexGeometry.js";
-import { bushidoLane, bushidoDrawPatch } from './systems/bushido.js';
+import { bushidoLane, bushidoDrawPatch, bushidoBlockers } from './systems/bushido.js';
+import { readFileSync } from 'node:fs';
 
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks++; };
@@ -379,6 +380,82 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
   eq(patch.tempDrive, 6, 'draw adds its bonus to existing temporary Drive');
   eq(patch.dbPoints, 9, 'draw pays one Db');
   eq(patch.abilityCd, { other: 2, psycho_bushido: 4 }, 'draw preserves other cooldowns');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 7. ⭐ ONE OCCUPANCY POLICY — ANY BODY BLOCKS. Alex, 2026-09-05.
+//
+// ⚠️ THIS SECTION EXISTS BECAUSE THE ABILITY HAD THREE ANSWERS TO ONE QUESTION.
+// `SEQUENCING.md` §A recorded it and preserved it deliberately: the client click
+// passed NO blocker set, the client highlight passed live spirits, and the
+// searcher passed spirits + amps + the 👤 decoy. So the board refused to light a
+// hex the click would happily fire through, and the bot planned a third game.
+// Alex's call is the searcher's policy, promoted to the only one.
+//
+// 🎯 AND THE POINT OF THE ASSERTIONS BELOW IS THE *SHARING*, not the geometry.
+// §B2: a passing test is not evidence a rule is real when the test was written
+// from the same misunderstanding as the code — so the last four read the CLIENT
+// source, which is the half no headless run can reach.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  const ronin = { id: RONIN, num: START, facing: 0, knockedOut: false };
+
+  // ── the set itself
+  eq([...bushidoBlockers({ spirits: [ronin] })], [START],
+    '🧱 a lone spirit is a blocker…');
+  eq([...bushidoBlockers({ spirits: [ronin], selfId: RONIN })], [],
+    '🧱 …but never yourself — the caller no longer re-checks that in its own loop');
+  eq([...bushidoBlockers({ spirits: [{ id: ZERO, num: LANE[3], knockedOut: true }] })], [],
+    '🧱 a knocked-out spirit is not a body');
+  eq([...bushidoBlockers({ amps: [{ hexNum: LANE[3] }] })], [LANE[3]],
+    '🎚️ an amp is a body');
+  eq([...bushidoBlockers({ shadowHex: LANE[2] })], [LANE[2]],
+    '👤 the decoy is a body — which is the whole reason to park it in front of him');
+  eq([...bushidoBlockers()], [], '🧱 nothing in, nothing out — no undefined crash');
+
+  // ── the lane obeys all three, not just the first
+  const laneNums = b => bushidoLane(ronin, b).map(s => s.num);
+  eq(laneNums(bushidoBlockers({ amps: [{ hexNum: LANE[3] }] })), LANE.slice(1, 4),
+    '🎚️ an amp at 3 stops the walk at 3 — it used to be walked straight through');
+  eq(laneNums(bushidoBlockers({ shadowHex: LANE[2] })), LANE.slice(1, 3),
+    '👤 the decoy at 2 stops the walk at 2');
+
+  // ── and `legalActions` refuses the shot behind each of them
+  // ⚠️ `amps` AND `shadowHex` ARRIVE IN THE **VIEW**, NOT THE STATE — they are
+  // React-owned furniture the kernel is shown rather than owns. A fixture that
+  // put them on the state would pass this section while proving nothing, which
+  // is §B2 in one line.
+  const drawsWith = (st, view = {}) =>
+    legalActions(st, RONIN, view).filter(a => a.kind === 'psychoBushido');
+
+  eq(drawsWith(boardAt(5), { amps: [{ hexNum: LANE[3], ownerId: METAL }] }).length, 0,
+    '🎚️ an amp at 3 screens the rival at 5 — no draw');
+  eq(drawsWith(boardAt(5), { shadowHex: LANE[2] }).length, 0,
+    '👤 his own decoy at 2 screens the rival at 5 — no draw');
+  {
+    const st = boardAt(5);
+    const withBody = {
+      ...st,
+      spirits: st.spirits.map(s => s.id === METAL ? { ...s, num: LANE[4] } : s),
+    };
+    const nearer = drawsWith(withBody);
+    eq(nearer.length, 1,
+      '🛡️ a BODY at 4 is not a screen, it is a nearer target — the draw retargets rather than refusing');
+    eq(nearer[0].targetId, METAL, '🛡️ …and it is the NEARER body that gets hit');
+    eq(nearer[0].dist, 4, '🛡️ …at its own distance, so it is paid the +3 rung, not the +4');
+  }
+
+  // ── 🖥️ THE CLIENT HALF. §B2: read the client, not the test.
+  const CLIENT = readFileSync(new URL('../rlsw-simulator-v3_8_1.jsx', import.meta.url), 'utf8');
+  ok(/bushidoBlockers/.test(CLIENT),
+    '🖥️ the client imports the shared blocker builder rather than rolling its own');
+  ok(!/const lane = bushidoLane\(attacker\);/.test(CLIENT),
+    '🖥️ ⭐ the RESOLVER no longer walks an unblocked lane — this is the line that let a click fire through a body while the highlight refused');
+  ok(/Screened/.test(CLIENT),
+    '🖥️ …and it says "screened" rather than "not in the lane", which is a different sentence about a rival the player can plainly see');
+  eq((CLIENT.match(/bushidoLane\(/g) ?? []).length,
+     (CLIENT.match(/bushidoLane\([^)]*(?:Blockers|occupied)\)/g) ?? []).length + 1,
+    '🖥️ exactly ONE unblocked `bushidoLane` call survives — the "was he geometrically in front of me?" question the screened message needs');
 }
 
 console.log(`\n✅ bushidoCheck: ${checks} assertions passed`);

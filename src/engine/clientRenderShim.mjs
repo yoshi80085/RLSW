@@ -71,7 +71,10 @@ set('sessionStorage', storage);
 set('location', { href: 'http://localhost/', search: '', hash: '', pathname: '/', origin: 'http://localhost', reload: noop });
 set('history', { pushState: noop, replaceState: noop });
 set('matchMedia', () => ({ matches: false, addEventListener: noop, removeEventListener: noop, addListener: noop, removeListener: noop }));
-set('requestAnimationFrame', cb => setTimeout(() => cb(Date.now()), 0));
+// Approximate a 60 Hz browser frame. A 0 ms loop looks harmless for SSR, but a
+// client journey that reaches camera focus can enqueue hundreds of thousands of
+// frames before Date.now() advances enough, exhausting Node's memory.
+set('requestAnimationFrame', cb => setTimeout(() => cb(Date.now()), 16));
 set('cancelAnimationFrame', clearTimeout);
 set('getComputedStyle', () => ({ getPropertyValue: () => '' }));
 set('scrollTo', noop);
