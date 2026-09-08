@@ -46,7 +46,7 @@
     "test:battlejourney": "esbuild src/engine/clientBattleJourneyCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/battleJourney.mjs --loader:.png=empty --loader:.jpg=empty --loader:.svg=empty --loader:.mp3=empty --loader:.wav=empty --log-level=warning && node node_modules/.cache/rlsw/battleJourney.mjs",
     "lint:baseline": "node scripts/check-lint-baseline.mjs",
     "test:bushidoui": "esbuild src/engine/bushidoOverlayCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/bushidoOverlayCheck.mjs --log-level=warning && node node_modules/.cache/rlsw/bushidoOverlayCheck.mjs",
-    "test:arena": "node src/board/arenaDomCheck.mjs && esbuild src/board/arenaFallbackCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/arenaFallbackCheck.mjs --log-level=warning && node node_modules/.cache/rlsw/arenaFallbackCheck.mjs"
+    "test:arena": "node --import ./src/engine/testAssetStub.mjs src/board/arenaPresentationCheck.mjs && node src/board/arenaDomCheck.mjs && esbuild src/board/arenaFallbackCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/arenaFallbackCheck.mjs --log-level=warning && node node_modules/.cache/rlsw/arenaFallbackCheck.mjs"
   },
   "dependencies": {
     "react": "^19.2.5",

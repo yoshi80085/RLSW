@@ -1,5 +1,10 @@
 # Immersive HUD — handoff for Medium reasoning
 
+**2026-09-08 update:** the live preview-fidelity pass is now implemented. Materials,
+lighting, debris, live rigs, effects, quality controls and preview mouse gestures
+are described in [Cosmic arena](cosmic-arena.md). The structural contracts below
+still apply; their original visual-work list is historical.
+
 2026-09-07. User authorized the initial structural work, then explicitly asked
 to stop when the remaining work suits lower reasoning. That stopping point is
 here. The next pass is presentation refinement, not another gameplay refactor.

@@ -31,6 +31,7 @@ import { TRIVIA_REWARD, TRIVIA_TIER_GRANT, TRIVIA_BOT_ODDS,
 import { Riffbook } from "./ui/Riffbook.jsx";
 import { BoardFX } from "./ui/BoardFX.jsx";
 import { BoardViewport } from "./ui/BoardViewport.jsx";
+import { arenaFrame } from "./board/arenaFrame.js";
 import { MatchSurface, HudRegion } from "./ui/MatchSurface.jsx";
 import { VoiceRollDie } from "./ui/VoiceRollDie.jsx";
 import { NeonStrikeFX } from "./ui/NeonStrikeFX.jsx";
@@ -14505,7 +14506,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             )}
             {!board3D && <button className="btn" onClick={() => { handleBoardMouseUp(); resetManualZoom(); setBoard3D(true); }}
               style={{position:'absolute',right:8,bottom:8,zIndex:20}}>3D board</button>}
-            <BoardViewport enabled={board3D} immersive={board3D} onDisable={() => setBoard3D(false)}>
+            <BoardViewport enabled={board3D} immersive={board3D} onDisable={() => setBoard3D(false)}
+              sceneFrame={board3D ? arenaFrame({
+                spirits:spirits.filter(s => !isHiddenBySmoke(s)), noteStates,
+                actingId:acting?.id, turn:engineState.turn.count, battle:battleState,
+                slides:slideOffAnimations, flashes:effectFlashes, thump:deckThump,
+                laser:laserFx, pyro:pyroFx, smoke:smokeFx, slime:slimeTiles,
+                fire:flamingHexes, vortex:gravityVortex, bots:animatronics,
+                spotlight:spotlightHex, tentacle:tentacleFx, lite:liteFx,
+              }) : undefined}>
             <svg
               ref={svgRef}
               width={SVG_W}
@@ -15676,7 +15685,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               {Object.values(slideOffAnimations).map(anim => {
                 const cornerColor = anim.corner ? (CORNER_LABELS[anim.corner]?.color ?? anim.color) : anim.color;
                 return (
-                  <g key={anim.id} style={{
+                  <g key={anim.id} data-arena-flat="fall" style={{
                     transform: `translate(${anim.dx}px, ${anim.dy}px)`,
                     transition: "transform 4s cubic-bezier(0.3, 0, 1, 0.7)",
                     animation: "slideOff 4s ease-in forwards",

@@ -1,5 +1,46 @@
 # Cosmic arena — interactive environment study
 
+## Live visual layer — 2026-09-08
+
+The live match now includes the preview's dark indigo stage, fractured island,
+violet fissures, detailed live-tier cabinets, planets/atmosphere, 48 floating rocks
+and seven metal shards. Moving spotlights illuminate the board through visible
+beams; bloom and restrained sparkles complement the authored materials. Movement,
+resolved battles, falling standees, status/ability pulses, tentacles and hazards
+consume a read-only public frame. The original SVG retains gameplay targets and
+smoke masks. Cabinet count and power follow the canonical rig rules and atrophy.
+
+**Quality:** use Arena detail at bottom-right. High forces full arena effects,
+even with Lite FX enabled. Standard keeps all scenery and beams but uses 1× pixel
+ratio, a 30 FPS cap, fewer stars and no bloom/glints. Auto respects Lite FX and may
+downgrade once for performance; the toolbar reports its actual level and reason.
+Hidden/offscreen scenes pause, and reduced motion freezes ambient animation.
+All 48 rocks share one instanced draw.
+
+**Camera:** left-drag orbits, right-drag pans, middle-drag/wheel zooms, matching
+the preview. A simple click still plays; dragging six pixels suppresses the
+gameplay click. Tactical, Arena, Focus spirit and zoom buttons remain available.
+
+**Direct comparison:** the scratch prototype and exported preview share their
+scene source; live and preview GLBs have identical SHA-256 hashes. Opened both
+views in the browser. Removed an added bright room reflection that washed out
+the stage. Preserved authored colors, roughness and metalness, and matched the
+inspected preview's 0.9 glow, 1.35 rock light and 1.3 fissure settings. Restored
+the atmosphere, metal shards and full debris field in Standard as well as High.
+
+Verified melody composition, commit, movement 7 → 16 for one AP, view-switch
+state preservation, camera/detail controls and a real Testing Grounds laser show.
+No browser errors observed. Tests use the actual GLB to guard palette, eight rig
+stations, upgrade/atrophy, public-state privacy and effect lifetime, alongside
+input/graphics recovery. Full gameplay suite and targeted arena checks pass;
+bundle check has zero warnings and production build retains its large-chunk advisory.
+
+Ordinary characters and tactical overlays still use flat SVG above scenery.
+Falling standees are 3D sprites. Full character models, tactical depth occlusion
+and bespoke 3D animation for every ability remain separate work.
+
+The sections below document the original preview and first integration.
+
 Live HUD update, 2026-09-07: 3D mode now uses the full play-area width with
 floating Turn / Spirit / Rivals regions. Drafts and board controls stay mounted
 when switching views. The initial structural pass is complete; the next Medium
@@ -55,7 +96,7 @@ browser `(x, y, z) = ((px - 3255)/200, height, -(py - 2415)/200)`.
 ## Live match integration (2026-09-06)
 
 Start the game normally and choose **3D board** at the bottom-right of the board.
-**Tactical** and **Arena** change the camera; right-drag or middle-drag orbit/pan,
+**Tactical** and **Arena** change the camera; left-drag orbits and right-drag pans,
 the wheel and +/− buttons zoom, and **2D board** returns to the original view.
 Touch devices use taps for gameplay and the camera buttons for view/zoom.
 

@@ -43,6 +43,133 @@ already built is fine — say so and move on.
 
 ## 🆕 OPEN — not yet promoted
 
+## 🗂️ FUTURE EDITS — indexed by importance
+
+> Priority is Alex's ranking: **1 = do soon**, **5 = can wait until after the game is mainly done**. These are capture-only entries; they are not implementation decisions.
+
+### 2026-09-08 — [P1] Everyone starts with a basic ability
+Everyone picks a basic ability to start out with.
+
+### 2026-09-08 — [P1] Gate stack upgrades and scale Drive with stack size
+Fix the stack upgrades. They can currently be upgraded from turn 1, possibly twice, if found near the player in the right order. Add a gate behind which upgrades can be found on the board through scattered notes; plan what that gate should be. Also fix cases where gaining a 4th/5th note stack does not scale Drive and it stays the same.
+
+### 2026-09-08 — [P1] Remove notes from Drive/Sustain stacks
+Add a button for removal of notes from the Drive/Sustain stacks.
+
+### 2026-09-08 — [P1] Ability cooldown neon fill
+Show ability cooldowns as the button itself becoming more and more neon-filled, telling the player how much longer until the ability is available.
+
+### 2026-09-08 — [P1] Remove the end-move button
+The end-move button is not necessary. The player will simply stop moving and do an action or end their turn; get rid of the button.
+
+### 2026-09-08 — [P1] Larger Drive/Sustain HUD dials
+Make the Drive/Sustain dials a bit bigger in the HUD.
+
+### 2026-09-08 — [P1] Animated Drive/Sustain dial changes
+Show the Drive/Sustain dials slowly ticking up/down with any action affecting them.
+
+### 2026-09-08 — [P2] Tune performance-power meter
+Build out a meter when committing a tune that tells the player how much performance power the tune has: the relationship between using notes in scale, resolving a Discord, and playing what a certain character’s audience wants to hear. It should tell beginner players how much Db and how many fans they can expect, and how to make the most of the notes they have.
+
+### 2026-09-08 — [P2] Auto-complete note commits and collapsible hints
+Add auto-complete for committing notes based on the highest possible outcome for Db/fans/Drive/Sustain. Make commit hints collapsible and concise rather than unnecessarily wordy.
+
+### 2026-09-08 — [P2] Story reason for board notes
+Develop a solid story for why there are notes on the board to “get.”
+
+### 2026-09-08 — [P2] Character-specific charge zones
+Change what charge zones do. For example, they could give a special benefit to Intergalactic 0 through his boom box. Every character should have something like this instead of charge zones simply raising the floor/ceiling.
+
+### 2026-09-08 — [P2] Simultaneous split-screen Riff Offs
+Make Riff Offs happen more simultaneously with split-screen play. Players watch for their own notes and bring notes down faster; make sure the system has all the nuts and bolts of the scratch preview. Each player plays to their own style while remaining musically similar. Start with only a few notes, then gradually become more sophisticated and faster if both players keep pace. The Riff Off ends if one player cannot keep up or the battle concludes. In a decisive battle, both players can potentially score FP; one player is still blown away and loses some Vibe.
+
+### 2026-09-08 — [P2] Backing abilities
+Introduce backing abilities, potentially as another type of board hex. There are three non-unique abilities every player can get, but only one can be held at a time, and they cost more AP than normal: *Rest* (spend 2 AP to recover Vibe), *Break* (spend 2 AP to disrupt a Rival’s Sustain), and *Solo* (spend 2 AP to charge an attack by increasing the Dice pool and Dice number, replacing the old charge mechanic).
+
+### 2026-09-08 — [P2] Discord-note usage by character
+Discuss whether it matters how Discord notes are used, per character.
+
+### 2026-09-08 — [P3] Famous-riff acknowledgements
+Quietly acknowledge famous riffs as generic reactions such as “Super Riff!” or “I’ve heard that one before!” Award extra points such as fans, or trigger explosions of excitement. Build an archive of hundreds of riffs that trigger a small in-game acknowledgement without explicitly naming the tune.
+
+### 2026-09-08 — [P3] Marquee spaces by category
+Make marquee spaces something that is not chosen. Since the choice layer is often a pain and gets chosen randomly, show different marquee areas on the board differently: some as equipment marquee zones, others as general trivia questions. These may be split up more later; flag for now.
+
+### 2026-09-08 — [P3] Pickles replaces Picky as a beginner music-fit tool
+Rename Picky to Pickles. Pickles is picky about what kind of music gets played and, as a beginner tool, helps players find the right fit for the tune being played, showing how to maximize both economic and performative value with the available notes.
+
+### 2026-09-08 — [P3] AI finger/guitar mapping for animated characters
+See if the AI/Ear Spy mechanic can map the player’s fingers and guitar and convey that into the game as characters in an animated setting. Explore using the player’s mapping for the game’s 3D character asset animation, including movement. This was discussed previously.
+
+### 2026-09-07 — [P1] Melody scale-building guidance and rewards
+Help players learn to build melody scales for the biggest effect in gaining fans/Db (the notes committed in the middle of the melody track) or Sustain/Drive/Db (the last note committed).
+
+### 2026-09-07 — [P2] Comic-style fan blurbs
+Add comic-style “blurbs” to fans so players can hear what they say when satisfied, excited, or unhappy.
+
+### 2026-09-07 — [P2] Randomized animatronics
+Build animatronics out in a random fashion, varying their color, size, and shape.
+
+### 2026-09-07 — [P2] Edge push-off FP bonus
+Pushing a player off the edge grants more FP than normal.
+
+### 2026-09-07 — [P2] Customizable stage colors
+Make the stage colors customizable.
+
+### 2026-09-07 — [P2] Dynamic 3D battle overlay
+Replace the current battle overlay with a dynamic overlay where camera angles show the 3D assets fighting on the stage itself.
+
+### 2026-09-07 — [P2] 3D dice renders
+Make the dice 3D renders.
+
+### 2026-09-07 — [P2] Drive/Sustain tower battle meter
+Make a tower instead of the battle meter that swings back and forth with the pick: two towers run next to each other and rise together, representing Drive and Sustain. Attacks connect; the question is whether they are strong enough to break through rather than missing/whiffing. Dice appear, resolve the tower, and show the rival’s tower clearly so the winner is visible.
+
+### 2026-09-07 — [P3] Team play and Spirit harmonies
+Add team play where harmonies matching up power the Spirits. Db as a resource depends on the Spirits playing in harmony with each other.
+
+### 2026-09-07 — [P3] Zoom-reactive fan voices
+Add mini voices to the fans. They normally cannot really be heard, but can be heard when the player zooms in on them.
+
+### 2026-09-07 — [P3] Stage events
+Add stage events: *Bat Snack* (bats fly around; if they get the player from behind, they take a bite and the player loses 1 Vibe; if approached, the player bites off the bat’s head and gains fans), *Orb of Pure Evil* (avoid it; if it approaches, fans melt to green goo), *Satanic Panic*, *Labyrinth*, *Crossroads Deal* (possibly trade Vibe for increased Drive/Sustain), *Sledgehammer Duel (Streets of Fire)*, and *Perfect Pitch (Rock and Rule)*.
+
+### 2026-09-07 — [P3] Spirit-specific fan use
+Give each Spirit unique ways to use fans/diehards, such as Groupies.
+
+### 2026-09-07 — [P3] How to Play rewrite
+Redo the How to Play section.
+
+### 2026-09-07 — [P3] Riff Off upgrades
+Give players upgrades that affect the Riff Off in some way.
+
+### 2026-09-07 — [P3] Timed commit strategy and difficulty rules
+Make the chord/melody commit a timed strategy for normal levels. Beginner levels are not timed. Default to beginner. Hard mode offers no colored hints. Extreme mode has a timer and no color hints.
+
+### 2026-09-07 — [P3] Guitar lessons aligned to game theory
+The guitar lessons section should cover everything related to the game first and foremost, helping players realize exactly which theory steps are used in the game and translating these into guitar theory lessons.
+
+### 2026-09-07 — [P4] Japanese language option
+Make an option for Japanese language.
+
+### 2026-09-07 — [P4] Riff Listener / Ear Spy
+Attempt to finish out Ear Spy as a tool. Add a Riff Listener (Ear Spy) that can pick up the root note, how the passage ended, and give hints on how to riff off the played passage, like online with another player.
+
+### 2026-09-07 — [P4] Freeze-frame battle moments
+Freeze-frame action/battles as they are taking place: slow down, zoom in, and blur, like the slow-motion attack mechanic in newer Legend of Zelda games. Slow it down to just before the hit/not breaking through is confirmed.
+
+### 2026-09-07 — [P5] Collectibles
+Add collectibles for the game: outfits, instruments, pedals that can affect the sound, cards, and more.
+
+### 2026-09-07 — [P5] Overworld note-tile puzzler
+Turn the overworld idea into a puzzler with random notes: a sandbox randomly generated with note tiles where the player decides how to move/end movement. No hints; clicking the wrong hex incurs a penalty.
+
+### 2026-09-07 — [P5] Chord inversion Note Recon
+Do a chord inversion version of Note Recon.
+
+### 2026-09-07 — [P5] Riff Listener character/filter mode
+Build out Riff Listener so the player can become one of the playable characters, with their avatar playing back from the screen. It needs tracking/filters and may be an addition after the game is completed.
+
 ### 2026-09-04 — 🎵 Wa no Koe, new form: the notes come to him
 
 Declared by pushing the ability button. If any space on the board holds a note

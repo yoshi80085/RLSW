@@ -423,6 +423,10 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | Live 2D/3D board view | `ui/BoardViewport.jsx` (`BoardViewport`), `board/arenaRenderer.js` (`mountArena`): lazy arena scenery and camera, existing React SVG interaction layers |
 | Arena interaction lifecycle | `board/arenaDom.js` (`preserveTacticalLayer`, `keepGameplayClicks`); `board/arenaDomCheck.mjs` guards view restoration and camera/game input separation |
 | Arena graphics fallback | `board/arenaFallbackCheck.jsx`: actual WebGL constructor failure and React recovery with board state preserved |
+| Arena public presentation | `board/arenaFrame.js` (`arenaFrame`): filtered visual frame, canonical rig values, no private note stock or engine mutation |
+| Cosmic environment | `board/arenaEnvironment.js` (`createArenaEnvironment`, `polishArenaModel`): preview sky/debris, spotlights/beams, reflected materials, sparkles and fissures |
+| Live 3D effects | `board/arenaVisuals.js` (`arenaPoint`, `createArenaVisuals`, `releaseArenaObject`): live cabinet tiers, movement/combat/fall/ability effects, hazards and resource cleanup |
+| Arena presentation checks | `board/arenaPresentationCheck.mjs`: actual GLB contracts, public frame, canonical rig values, event deduplication, hidden trails and hazard lifecycle |
 | Client battle regression | `engine/clientBattleJourneyCheck.jsx`: completed battle and turn handoff through the mounted client |
 | Board overlay: Commit Track / Chord Stack / Voicing Panel | Monolith, `RENDER` banner → search `COMMIT TRACK`, `CHORD STACK`, `FLOATING VOICING PANEL` |
 | A specific overlay or modal's look | The matching file in `ui/` |

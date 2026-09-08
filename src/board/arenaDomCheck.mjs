@@ -28,9 +28,13 @@ let captures = 0, clicks = 0;
 camera.addEventListener('pointerdown', () => captures++);
 document.querySelector('main').addEventListener('click', () => clicks++);
 const release = keepGameplayClicks(camera);
+dom.window.PointerEvent ??= class extends dom.window.MouseEvent {
+  constructor(type,options){super(type,options);Object.defineProperties(this,{pointerId:{value:options.pointerId},pointerType:{value:options.pointerType}});}
+};
 const down = (pointerType, button) => {
   const event = new dom.window.MouseEvent('pointerdown', { bubbles: true, button });
   Object.defineProperty(event, 'pointerType', { value: pointerType });
+  Object.defineProperty(event, 'pointerId', { value: 1 });
   layer.firstChild.dispatchEvent(event);
 };
 for (const type of ['mouse', 'touch', 'pen']) {
@@ -41,7 +45,18 @@ assert.equal(captures, 0, 'camera never captures gameplay taps');
 assert.equal(clicks, 3, 'gameplay clicks still reach the React root container');
 down('mouse', 2); down('mouse', 1);
 assert.equal(captures, 2, 'right and middle gestures still reach camera controls');
+down('mouse',0);
+layer.firstChild.dispatchEvent(new dom.window.PointerEvent('pointermove',{bubbles:true,pointerId:1,clientX:3,clientY:2}));
+assert.equal(captures,2,'small hand jitter remains a click');
+layer.firstChild.dispatchEvent(new dom.window.PointerEvent('pointermove',{bubbles:true,pointerId:1,clientX:30,clientY:2}));
+assert.equal(captures,3,'left drag starts orbit only after the threshold');
+layer.firstChild.dispatchEvent(new dom.window.PointerEvent('pointerup',{bubbles:true,pointerId:1}));
+layer.firstChild.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));
+assert.equal(clicks,3,'orbit release never dispatches a gameplay click');
+down('mouse',0);layer.firstChild.dispatchEvent(new dom.window.PointerEvent('pointerup',{bubbles:true,pointerId:1}));
+layer.firstChild.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));
+assert.equal(clicks,4,'the next intentional click still works');
 release(); down('mouse', 0);
-assert.equal(captures, 3, 'unmount removes interception');
+assert.equal(captures, 4, 'unmount removes interception');
 dom.window.close();
 console.log('PASS: repeated 2D/3D restoration, removed sibling, style preservation, mouse/touch/pen clicks, camera gestures, cleanup');

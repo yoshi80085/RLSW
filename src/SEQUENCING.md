@@ -26,35 +26,37 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-## 7-immersive-hud. Structure complete; stop for Medium — 2026-09-07
+## 8-arena-fidelity. Live preview scenery and effects — 2026-09-08
 
-Alex authorized the initial restructuring and asked to stop once remaining work
-suits lower reasoning. The optional 3D view now fills the play area, with stable
-Turn / Spirit / Rivals regions, a floating phase/AP summary and a separate board
-preparation region. The original controls and SVG stay mounted across views.
-No game rules or renderer input handlers were moved. Narrow screens put controls
-below the board; tutorials disclose and scroll their original anchors into view.
+The live arena now carries the preview's authored indigo materials, fractured
+island, fissures, detailed live-tier cabinets, moving spotlights/beams, planets,
+48 floating rocks and seven metal shards. Movement, resolved attacks, falling
+standees, status/ability pulses, tentacles and hazards have a public-state 3D
+presentation layer. Game rules and original SVG input targets remain authoritative.
 
-**Next: use Medium for presentation refinement.** Read
-`../docs/immersive-hud-handoff.md` for exact files, contracts, remaining visual
-work and verification scope. The current panel internals retain their existing
-appearance. No further visual polish, commit or deployment was done this pass.
+Alex asked for direct comparison with the scratch preview. Opened the exported
+preview and live game; their GLBs are byte-identical. Removed the new bright room
+reflection that washed out the palette. Matched the inspected preview lighting
+(0.9 glow / 1.35 rock / 1.3 fissures), restored planet atmosphere and shards, and
+instanced all 48 rocks so Standard retains the full scenery. High now explicitly
+overrides Lite FX; Auto explains its effective quality in the toolbar.
 
-Full `test:all` passed, including the extended immersive client journey and
-actual WebGL fallback. Render check remains 8/8; architecture 8; Bushido overlay
-331; existing rule/parity assertion counts did not drop. `check:bundle` has zero
-warnings. Production build passes with its existing large-chunk advisory.
-`lint:baseline` passes at 334 errors / 16 warnings, zero increased categories;
-the executable arena test has a local Fast Refresh exception.
+Alex also requested preview gestures: left-drag orbits, right-drag pans, wheel
+zooms. A six-pixel drag threshold hands capture to OrbitControls; simple clicks
+retain their actual SVG target, while drag releases cannot dispatch gameplay.
 
-Actual browser checks covered drafting, drawer access, commit, legal movement
-for one AP, camera controls without AP spend, state-preserving 2D recovery and
-next-player controls. Widths checked: 1280, 800 and 390px. Phone action-state
-layout had no horizontal overflow. Dedicated phone camera/touch polish remains.
+Verification: full test:all passed, then targeted arena checks cover the final
+palette/scenery/gesture changes. The actual GLB is tested for palette, station
+binding and tier changes; privacy, effect lifetime, DOM restoration and real
+WebGL failure are covered too. Browser checks exercised melody, commit, 7 → 16
+for one AP, 2D recovery, detail/camera controls and a live laser show. Build and
+zero-warning bundle checks pass; Vite retains its large-chunk advisory.
+
+The renderer remains hybrid: ordinary characters and tactical overlays are flat
+SVG above the scene. Full character models, tactical depth occlusion and bespoke
+animation for every ability are future work. See ../docs/cosmic-arena.md.
 The external Systems Map artifact tool is unavailable; repository docs are current.
-
-Previous live handoffs are preserved in
-`../docs/archive/SEQUENCING-before-immersive-hud-2026-09-07.md`.
+Previous structural handoff: ../docs/archive/SEQUENCING-hud-2026-09-07.md.
 
 ---
 # B. ✅ Alex's two calls
@@ -292,7 +294,8 @@ Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
-| `7-immersive-hud` | 2026-09-07 | **LIVE — §A above.** Full-width arena, stable HUD regions, turn disclosure, responsive fallback; stop for Medium presentation pass. |
+| `8-arena-fidelity` | 2026-09-08 | **LIVE — §A above.** Preview materials/scenery, live rigs/FX, explicit quality and preview camera gestures. |
+| `7-immersive-hud` | 2026-09-07 | Structural handoff archived in `../docs/archive/SEQUENCING-hud-2026-09-07.md`. |
 | `6-arena-live`, `6-arena`, `5-lane` (resumed) | 2026-09-05–06 | Prior live handoffs preserved in `../docs/archive/SEQUENCING-before-immersive-hud-2026-09-07.md`: arena study, live integration, lane port and verification. |
 | `5-lane` | 2026-09-05 | Archived in the 2026-09-07 handoff snapshot. The board's fourth run (14 calls, 2 newly named, both inside 🗡️ Bushido); ⭐ **one occupancy policy — ANY BODY BLOCKS**, shared by the click, the highlight and the searcher; the lane previewed as a payout-graded glow |
 | `5-refactor` | 2026-09-05 | Windows verification, DOM turn journey, shell/crowd extraction and shared Bushido geometry/payment. ⚠️ Its preserved three-way targeting split became `5-lane`'s first decision |

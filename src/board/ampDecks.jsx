@@ -117,7 +117,7 @@ function DeckStack({ pos, stage, powT, rangeT, thump, seed, onHover }) {
   const baseY = a.top ? y + H * 0.04 : y + H * 0.96;   // the planted end
 
   return (
-    <g style={{ animation: `amp-hover-float ${3.5 + (seed % 3) * 0.5}s ease-in-out infinite`,
+    <g data-arena-flat="amp-art" style={{ animation: `amp-hover-float ${3.5 + (seed % 3) * 0.5}s ease-in-out infinite`,
         animationDelay: `${((seed * 0.4) % 2).toFixed(2)}s` }}>
       <g key={`stack-${stage}`}
          style={{ animation: "amp-drop-in 0.55s cubic-bezier(.5,1.5,.6,1) both",

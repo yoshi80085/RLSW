@@ -90,7 +90,7 @@ makes a thing *impossible* rather than weak is a bug, not balance.
 
 **✅ BUILT AND UNDER TEST**
 
-- 🌌 **3D cosmic arena** — optional **3D board** button now opens a full-width scene with floating Turn / Spirit / Rivals regions and phase/AP summary. Stable controls retain drafts and targeting across 2D/3D switches; narrow screens put controls below the board. Structural pass complete; Medium presentation handoff at `../docs/immersive-hud-handoff.md`. The GLB supplies scenery while the original React SVG supplies live pieces, targeting, hazards and effects. Characters remain flat artwork and tactical overlays draw above scenery; this is a hybrid renderer, not full 3D characters/occlusion. The isolated study remains at `output/cosmic-arena`. See `../docs/cosmic-arena.md`.
+- 🌌 **3D cosmic arena** — full-width live scene with floating HUD, preview indigo materials, fractured island/fissures, planets, 48 rocks + seven shards, moving beams, live-tier cabinets and 3D movement/combat/hazard effects. High detail forces full effects; Standard retains scenery; Auto reports its effective level. Left-drag orbits, right-drag pans, wheel zooms; simple clicks retain gameplay targeting. Stable controls survive 2D/3D switches. Ordinary characters/tactical overlays remain flat SVG without scene-depth occlusion. See `../docs/cosmic-arena.md`.
 
 - The engine kernel, board, combat, turn flow, economy — `test:all`, **28 groups passing** (⚠️ last full `test:all` was 2026-09-05 morning; the 2026-09-05 lane pass could not run it — see `SEQUENCING.md` §5-lane.E), including a DOM melody-to-next-turn journey
 - 🕒 **The cooldown system** (`cooldowns.js`) — one map, one tick, one gate
