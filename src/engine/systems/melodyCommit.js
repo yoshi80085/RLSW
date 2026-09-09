@@ -41,15 +41,16 @@ import {
   semitonesUpSpelled, ENHARMONIC_RESPELL,
 } from "../../music/notes.js";
 import {
-  detectCadence, detectChromaticRun, detectDiatonicRun, detectSkipClimb,
-  detectRepeatPattern, driveBoostFromRun, sustainBoostFromPattern, scoreTrackDB,
+  detectCadence, detectDiatonicRun, detectSkipClimb,
+  detectRepeatPattern, scoreTrackDB,
 } from "../../music/cadence.js";
 import {
   classifyTrack, countUnpardoned, countPardonedByStack,
-  harmonicLock, discordPenaltyFor,
+  harmonicLock,
 } from "../../music/context.js";
 import { performanceScore } from "./economy.js";
 import { detectSpiritStyle } from "../../music/spiritStyle.js";
+import { melodyModeFor } from "../../music/melodyIdentity.js";
 import { hexRingFromCenter, crowdMultiplier, advanceDB } from "../../board/boardHelpers.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import {
@@ -204,7 +205,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const name = spirit.name ?? spiritId;
 
   const rootNote       = ns.rootNote  ?? 'C';
-  const scaleMode      = ns.scaleMode ?? 'major';
+  const scaleMode      = ns.paletteMode ?? melodyModeFor(spiritId);
   const unlockedSkills = ns.unlockedSkills ?? [];
   const driveStack     = ns.driveStack   ?? [];
   const sustainStack   = ns.sustainStack ?? [];
@@ -227,6 +228,28 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
       logs.push(`🎤 Voice roll ${voiceRoll} — the crowd drowns you out. No bonus note.`);
     }
   }
+
+  // One classification owns every answer about the committed notes. The
+  // Spirit's mode is the clean palette; chord pardons are tracked separately
+  // for the red/blue ending carrot and never become clean notes.
+  const intervals    = getIntervalNotes(rootNote, scaleMode);
+  const currentScale = playableScale(rootNote, scaleMode);
+  const trackClassified = classifyTrack(
+    melodyLine, currentScale, driveStack, sustainStack, ns.payoutRouting ?? {});
+  const unpardonedDiscord = countUnpardoned(trackClassified);
+  const contextPardons    = countPardonedByStack(trackClassified);
+  const cleanNoteCount    = trackClassified.filter(note => note.inScale).length;
+  const endingClean       = !!trackClassified.at(-1)?.inScale;
+  const allInScale        = cleanNoteCount === melodyLine.length;
+  const cleanRuns = [];
+  for (const note of trackClassified) {
+    if (note.inScale) {
+      if (!cleanRuns.length || cleanRuns.at(-1).closed) cleanRuns.push({ notes: [] });
+      cleanRuns.at(-1).notes.push(note.note);
+    } else if (cleanRuns.length) cleanRuns.at(-1).closed = true;
+  }
+  const cleanPhrase = cleanRuns.reduce(
+    (best, run) => run.notes.length > best.length ? run.notes : best, []);
 
   // ── 🪦 LEGENDARY RIFFS — RETIRED 2026-08-17 ───────────────────────────────
   //
@@ -263,7 +286,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const cooldowns = ns.cadenceCooldowns ?? {};
   const lastPc = pitchIndex(melodyLine[melodyLine.length - 1]);
   let cadenceResolved = false, cadence = null, trailPatch = {};
-  if (lastPc >= 0) {
+  if (endingClean && lastPc >= 0) {
     const newTrail = [...(ns.finalsTrail ?? []), lastPc].slice(-6);
     cadence = detectCadence(newTrail, cooldowns);
     if (cadence) {
@@ -298,25 +321,9 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // IS THE COLOUR PAYOUT. Re-granting the `discord_*` ids to wake the dead ending
   // flags below would have deleted that payout by the back door — which is why
   // the flags are ungated at their own site instead.
-  const intervals    = getIntervalNotes(rootNote, scaleMode);
-  const currentScale = playableScale(rootNote, scaleMode);
-  const keyScale     = [...new Set(currentScale)];
-
-  // 🌀 Intergalactic 0's first wrong note each turn lands intentional, not wrong.
-  const freestylePardon = spiritId === 'intergalactic_0';
-  const trackClassified = classifyTrack(
-    melodyLine, keyScale, driveStack, sustainStack, ns.payoutRouting ?? {});
-  const unpardonedDiscord = countUnpardoned(trackClassified);
-  const contextPardons    = countPardonedByStack(trackClassified);
-  const effectiveDiscord  = Math.max(0, unpardonedDiscord - (freestylePardon ? 1 : 0));
-  let allInScale = effectiveDiscord === 0;
-
   const lastNote   = melodyLine[melodyLine.length - 1];
   const firstNote  = melodyLine[0];
-  // B8: the mode is DERIVED at the start of the next turn (`startNewTurnNotes` →
-  // `modeFromStack`), so what is written here is a placeholder turn start will
-  // overwrite. ⚠️ This is why "modeDerivation" was never really missing from the
-  // transition — `turnFlow.js` already owns it.
+  // The root follows the ending, while the Spirit's mode stays fixed.
   const newMode       = scaleMode;
   const newPivotPending = false;
   const newRootRaw    = ENHARMONIC_RESPELL[lastNote] ?? lastNote;
@@ -334,64 +341,12 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const isMojoDrained = (ns.mojoDrain ?? 0) > 0;
 
   // ── INTERVAL EFFECTS ──────────────────────────────────────────────────────
-  const trackHasTritone    = melodyLine.includes(intervals.tritone);
-  const isOctaveResolution = hexes >= 2 && firstNote === lastNote;
-  // ── 🎯 THE THREE COLOUR ENDINGS — UNGATED 2026-09-02i ──────────────
-  // They read `discordUnlocks.includes('discord_1'|'_2'|'_3')`, and the only
-  // thing that ever wrote that array was `THEORY_DISCORD_GRANTS`, deleted with
-  // the branch on 2026-09-02 (`systems/skills.js`). All three had been dead for
-  // every Spirit on every commit since — and `hasGatedEnding`, which is their OR,
-  // was therefore a permanently-`false` input to `performanceScore`.
-  //
-  // ⚠️ THAT IS WHY THEY ARE UNGATED RATHER THAN DELETED. `perfGest` is one of the
-  // seats `MELODY_IDENTITY_DESIGN.md` §10.1 proposes turning into a per-character
-  // weight vector. Weighting a seat one of whose six flags CANNOT FIRE is
-  // calibrating against a rule the game does not have — `CLAUDE.md`'s §15 warning,
-  // and the same shape as `perfSusEnd` below. Connect the knob before turning it.
-  //
-  // 📌 Universal is the answer §5-seats already gave the pardon ladder when this
-  // same granter died under it: the tier stops being something you BUY and becomes
-  // something the music does. `PROGRESSION_REWRITE_DESIGN.md` §4's ending fork
-  // replaces this rule wholesale; until it lands, landing on the colour note IS
-  // the gated ending, for everybody.
-  //
-  // 📌 All three finals are OFF the pentatonic base, so each of these endings
-  // still costs discord — they pay a crowd seat for a risk, they are not free.
-  const isMinorSeventhEnd = scaleMode === 'major' && lastNote === intervals.minorSeventh;
-  const isMajorThirdEnd   = scaleMode === 'minor' && allInScale && lastNote === intervals.majorThird;
-  const isTritoneEnd      = lastNote === intervals.tritone;
-
-  // B6: the chromatic run's Db payout was DELETED (it fired on 1% of commits).
-  // The run still flips `allInScale`, which is what the CROWD reads — flair pays
-  // fans now, not Decibills.
-  //
-  // 🎤 UNGATED 2026-09-02i, AND THIS IS THE ONE THAT MATTERED. `chromClimbActive`
-  // required `discord_4`; nothing has granted that id since the branch came off,
-  // so the `allInScale` override below had not executed once — while
-  // `MELODY_IDENTITY_DESIGN.md` §5.5 cites this exact line as the working precedent
-  // for "the crowd forgives THIS kind of wrong note". It was a precedent that had
-  // never fired. It fires now.
-  //
-  // 📌 THIS IS THE PER-CHARACTER SEAM, AND IT IS LEFT UNIVERSAL ON PURPOSE.
-  // §5.5's plan is that the per-character rule BECOMES the granter — a Spirit whose
-  // idiom is the chromatic smear gets the pardon and the others do not. That table
-  // is deliberately not written here: the four verbs are not locked
-  // (`SEQUENCING.md` §5-ident.E step 1) and a taste table written before the
-  // hit-rate probe is a guess. Universal is the honest placeholder — it makes the
-  // mechanism live and therefore MEASURABLE, which is what the probe needs.
-  //
-  // ⚠️ ORDER IS LOAD-BEARING AND PRE-DATES THIS CHANGE: `isMajorThirdEnd` above
-  // reads `allInScale` BEFORE the override, so a chromatic run pardons the track
-  // for the crowd but not for the major-3rd ending. Both flags were dead when that
-  // ordering was written, so this asymmetry has never actually run. Left as-is
-  // rather than quietly "fixed" — it is §4's call, not this pass's.
-  const chromRunLen      = detectChromaticRun(melodyLine);
-  const chromClimbActive = chromRunLen >= 3;
-  if (chromClimbActive) allInScale = true;
-
-  const diatonicRunLen = detectDiatonicRun(melodyLine, currentScale);
-  const skipClimbLen   = detectSkipClimb(melodyLine, currentScale);
-  const repeatPatLen   = detectRepeatPattern(melodyLine, currentScale);
+  const trackHasTritone    = cleanPhrase.includes(intervals.tritone);
+  const isOctaveResolution = cleanPhrase.length >= 2
+    && cleanPhrase[0] === cleanPhrase.at(-1);
+  const diatonicRunLen = detectDiatonicRun(cleanPhrase, currentScale);
+  const skipClimbLen   = detectSkipClimb(cleanPhrase, currentScale);
+  const repeatPatLen   = detectRepeatPattern(cleanPhrase, currentScale);
 
   // ── B4: COLOR NOTES PAY THE STACK THAT AUTHORIZED THEM ────────────────────
   // In Drive/Sustain, never in Db. Db is the ENDING's payout; Drive/Sustain is
@@ -399,10 +354,13 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // rather than added afterwards, so colour flows through the same
   // highest-wins/discard machinery as every other boost — otherwise it would be
   // the one boost in the game that cannot be discarded.
-  const colorDrive   = !isMojoDrained ? Math.min(COLOR_PAYOUT_CAP, contextPardons.drive)   : 0;
-  const colorSustain = !isMojoDrained ? Math.min(COLOR_PAYOUT_CAP, contextPardons.sustain) : 0;
+  const endingChoice = ctx.endingChoice === 'color' ? 'color' : 'db';
+  const colorDrive   = endingChoice === 'color' && !isMojoDrained
+    ? Math.min(COLOR_PAYOUT_CAP, contextPardons.drive) : 0;
+  const colorSustain = endingChoice === 'color' && !isMojoDrained
+    ? Math.min(COLOR_PAYOUT_CAP, contextPardons.sustain) : 0;
 
-  const rawDriveBoost = !isMojoDrained ? driveBoostFromRun(diatonicRunLen) + colorDrive : 0;
+  const rawDriveBoost = colorDrive;
   const prevTempDrive = ns.tempDrive ?? 0;
   let newTempDrive = prevTempDrive, driveOverflowToDB = 0;
   if (rawDriveBoost > 0) {
@@ -410,7 +368,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     else                               { driveOverflowToDB = rawDriveBoost; }
   }
 
-  const rawSustainBoost = !isMojoDrained ? sustainBoostFromPattern(repeatPatLen) + colorSustain : 0;
+  const rawSustainBoost = colorSustain;
   const prevTempSustain = ns.tempSustain ?? 0;
   let newTempSustain = prevTempSustain, sustainOverflowToDB = 0;
   if (rawSustainBoost > 0) {
@@ -426,27 +384,20 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const newDieFloorBoost = !isMojoDrained && isOctaveResolution ? 2 : 0;
   const newStatusEffects = [...(ns.statusEffects ?? [])];
 
-  // ── THE Db PAYOUT — FOUR SOURCES, AND THAT IS THE POINT ───────────────────
-  //   length  — how much did you play?          (scoreTrackDB step A)
-  //   ending  — where did you come to rest?     (scoreTrackDB step B)
-  //   lock    — was that landing in YOUR CHORD? (harmonicLock)
-  //   penalty — how many notes fought the key?  (discordPenaltyFor)
-  // Db pays for FACTS, not for taste. Everything cut was some version of trying
-  // to score taste; that judgement moved to the crowd, where being
-  // impressionistic is correct. See `perfScore` — it now feeds fans alone.
-  const discordPenalty = discordPenaltyFor(effectiveDiscord);
-  const baseScore = scoreTrackDB(melodyLine, intervals.fourth, intervals.fifth);
-  // ⚠️ Harmonic Lock ESCALATES the ending bonus, so it REQUIRES one. No ending
-  // bonus → no lock, even when the final note is a chord tone.
+  // Clean notes always create the length slope. At the ending the player chooses
+  // either the Db cadence/lock boost or the stack's red/blue carrot. Discord is
+  // inert: it creates movement, but neither income nor a resolution.
+  const baseScore = scoreTrackDB(melodyLine, intervals.fourth, intervals.fifth, {
+    cleanNoteCount,
+    endingClean: endingChoice === 'db' && endingClean,
+  });
   const lock = baseScore.endingBonus > 0
     ? harmonicLock(lastNote, driveStack, sustainStack)
     : { bonus: 0, stack: null, rank: 0, chordName: null };
 
   const breakdown = [...baseScore.breakdown];
   if (lock.bonus > 0) breakdown.push(`🔒 ${lock.chordName} +${lock.bonus}`);
-  const preDiscordPoints = baseScore.points + lock.bonus;
-  const earned = Math.max(0, preDiscordPoints - discordPenalty);
-  if (discordPenalty > 0 && preDiscordPoints > 0) breakdown.push(`−${discordPenalty} discord`);
+  const earned = baseScore.points + lock.bonus;
 
   // ── ⚡ DISSONANCE EDGE — REMOVED. Pinned at 0 rather than deleted from the
   // arithmetic below, so the Db pot still reads as the single pot it is.
@@ -474,15 +425,13 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // ⚠️ READ OFF `melodyLine`, THE COMMITTED TRACK, and nothing else — no stock,
   // no draw, no rng. That is the property the riffs failed: a payout that reads
   // the hand you were dealt is a lottery wearing a skill's clothes.
-  const style = detectSpiritStyle(spiritId, melodyLine);
-  const { score: perfScore, freestyle: perfFreestyle } = performanceScore({
-    melodyLine,
+  const style = detectSpiritStyle(spiritId, cleanPhrase);
+  const { score: perfScore } = performanceScore({
+    melodyLine: cleanPhrase,
     trackHasTritone, isOctaveResolution,
     diatonicRunLen, repeatPatLen, skipClimbLen,
-    hasGatedEnding: isMinorSeventhEnd || isMajorThirdEnd || isTritoneEnd,
     cadenceResolved, styleBig: style.score,
     earned, edgeResolved: edgeResolvedThisTurn, susEnd: perfSusEnd,
-    discordCount: unpardonedDiscord, freestylePardon,
   });
 
   // ⚠️ P NO LONGER PAYS Db — IT PAYS THE CROWD, AND ONLY THE CROWD. Nobody minds
@@ -536,6 +485,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     pivotPending:  newPivotPending,
     rootNote:      newRootRaw,
     scaleMode:     newMode,
+    paletteMode:   newMode,
     dbPoints:      newDBPoints,
     totalDB:       (ns.totalDB ?? 0) + earnedTotal,
     edgeStage:     newEdgeStage,
@@ -643,20 +593,18 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   if (rawSustainBoost > 0) flashLines.push(`🛡️ Sustain +${newTempSustain}`);
   if (lock.bonus > 0)      flashLines.push(`🔒 Harmonic Lock — ${lock.chordName} · DB +${lock.bonus}`);
   if (isOctaveResolution)  flashLines.push('🎶 Octave — DB +2');
-  if (chromRunLen >= 3)    flashLines.push(`⚡ Chromatic run ×${chromRunLen} — the crowd eats it up`);
   const pardonedTotal = contextPardons.drive + contextPardons.sustain;
   if (pardonedTotal > 0) {
     const paidTo = [];
     if (colorDrive   > 0) paidTo.push(`⚔️ +${colorDrive}`);
     if (colorSustain > 0) paidTo.push(`🛡️ +${colorSustain}`);
-    flashLines.push(`🎸 Your chord legalized ${pardonedTotal} note${pardonedTotal !== 1 ? 's' : ''}`
-      + (paidTo.length > 0 ? ` — ${paidTo.join(' ')}` : isMojoDrained ? ' — Mojo Drain, no payout' : ''));
+    flashLines.push(`🎸 ${pardonedTotal} note${pardonedTotal !== 1 ? 's' : ''} engaged your chord`
+      + (paidTo.length > 0 ? ` — ${paidTo.join(' ')}`
+        : endingChoice === 'db' ? ' — Db ending chosen' : isMojoDrained ? ' — Mojo Drain, no payout' : ''));
   }
-  if (perfFreestyle > 0) flashLines.push('🌀 Freestyle — first wrong note landed perfect!');
   if (canBank)           flashLines.push(`💾 Banked: ${newBankedNote.note}`);
   if (totalNotes > speed && !canBank) flashLines.push(`⚠️ ${totalNotes - speed} note(s) discarded (bank full)`);
-  if (discordPenalty > 0) flashLines.push(`⚡ ${unpardonedDiscord} Dischord — −${discordPenalty} DB (1st free)`);
-  else if (unpardonedDiscord > 0) flashLines.push(`⚡ ${unpardonedDiscord} Dischord — free this turn`);
+  if (unpardonedDiscord > 0) flashLines.push(`⚡ ${unpardonedDiscord} Discord — movement only`);
   for (const label of style.labels) {
     flashLines.push(`🎸 ${label} — that's your sound`);
     logs.push(`🎸 ${name} lands ${label} — the crowd knows that sound.`);
@@ -667,7 +615,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
 
   const scoreStr = earned > 0
     ? ` · 🎯 +${earned}pts (${breakdown.join(', ')})${upgradeTriggered ? ` · 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!` : ` · DB [${newDBPoints}/${targetCost}]`}`
-    : (discordPenalty > 0 ? ` · ⚡ ${unpardonedDiscord} Dischord — −${discordPenalty}, no points` : ` · DB [${newDBPoints}/${targetCost}]`);
+    : ` · DB [${newDBPoints}/${targetCost}]`;
   const speedMsg = totalNotes > speed
     ? ` · SPD ${speed}/${totalNotes}${canBank ? ` · 💾 ${newBankedNote.note} banked` : ' · bank full'}`
     : ` · SPD ${hexes}/${speed}`;
@@ -684,14 +632,14 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     report: {
       melodyLine, baseTrack, voiceRoll, micBonusNote,
       cadence: cadence ? { id: cadence.id, name: cadence.name, fp: cadence.fp } : null,
-      unpardonedDiscord, effectiveDiscord, contextPardons, allInScale,
+      unpardonedDiscord, contextPardons, allInScale, cleanNoteCount, endingClean,
+      cleanPhrase, endingChoice,
       colorDrive, colorSustain, discarded, dbOverflow,
-      diatonicRunLen, repeatPatLen, skipClimbLen, chromRunLen, chromClimbActive,
+      diatonicRunLen, repeatPatLen, skipClimbLen,
       trackHasTritone, isOctaveResolution,
-      hasGatedEnding: isMinorSeventhEnd || isMajorThirdEnd || isTritoneEnd,
-      baseScore, lock, discordPenalty, breakdown,
+      baseScore, lock, breakdown,
       earned, earnedTotal, newDBPoints, targetCost, upgradeTriggered, awardedSkillId,
-      perfScore, perfFreestyle, perfExciteGain, perfFansGained, perfPromotions, perfFansLost,
+      perfScore, perfExciteGain, perfFansGained, perfPromotions, perfFansLost,
       // 🎭 Which of this Spirit's own gestures the line landed. On the report
       // rather than only in a log line so a check, a searcher, or a HUD can
       // read it without re-detecting — one reading, three consumers.

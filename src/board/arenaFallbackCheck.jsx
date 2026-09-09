@@ -55,13 +55,21 @@ try {
   // Revisit the SAME spirit/phase on a later turn: an old drawer choice must
   // not resurface. No WebGL needed for this layout ownership contract.
   const surface = (turnNumber, tutorial = false) => <MatchSurface immersive
-    spirit={{ id: 'ronin', name: 'Ronin' }} turnNumber={turnNumber} step="chord" canAct tutorial={tutorial}>
+    spirit={{ id: 'ronin', name: 'Ronin', color: '#7fe0ff' }} turnNumber={turnNumber} step="chord" canAct tutorial={tutorial}
+    hud={{ vibe: 4, maxVibe: 5, drive: 6, sustain: 3, db: 8, fans: 5, noteCount: 9 }}>
     <HudRegion name="turn"><input defaultValue="draft" /></HudRegion>
     <HudRegion name="spirit">Details</HudRegion>
     <HudRegion name="rivals">Rivals</HudRegion>
   </MatchSurface>;
   await act(async () => root.render(surface(1)));
   const draft = document.querySelector('input');
+  assert.equal(document.querySelector('[data-match-step]').dataset.matchStep, 'chord', 'surface exposes its phase to the HUD skin');
+  assert.match(document.querySelector('.match-player-pocket').textContent, /Ronin.*VIBE 4\/5.*DRIVE6.*SUSTAIN3.*Db8.*FANS5/s,
+    'compact player pocket reads authoritative live values');
+  assert.match(document.querySelector('.match-phase-rail [data-state="now"]').textContent, /BUILD CHORD/i,
+    'phase rail marks the live step');
+  assert.match(document.querySelector('.match-turn-summary').textContent, /9 notes available/,
+    'compact status reports the live hand without copying controls');
   await click([...document.querySelectorAll('button')].find(el => el.textContent === 'Spirit'));
   assert.equal(document.querySelector('[data-hud-region="turn"]').hidden, true);
   await act(async () => root.render(surface(4)));

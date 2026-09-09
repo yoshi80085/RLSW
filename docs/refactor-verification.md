@@ -23,6 +23,35 @@ no stash, reset or checkout was used.
 4. Extracted Bushido's lane geometry and pre-Swing payment patch. All three
    callers share the walk, and client/headless execution share the payment.
    Existing warp/AP/patch/log/Swing order and caller-specific gates remain intact.
+5. Added a completed client battle journey. It enters the action rail, targets a
+   legal Swing, advances both dice through the real battle overlay, closes the
+   result, and verifies the deterministic Vibe consequence plus the spent Action
+   Token. The current immersive-HUD cursor styling now falls back to `/` when
+   these Node-bundled checks do not provide Vite's `BASE_URL`.
+6. Extended the immersive client journey through an actual Shukuchi activation.
+   It arms the ability after the Bushido presentation check, selects a legal
+   ring-two landing, and verifies position, origin, movement marker and the
+   shared one-AP spend. The order intentionally retains three AP for Bushido's
+   own targeting precondition before the hop consumes one.
+7. Extended that same journey through Shadow Illusion. The fixture gives Ronin
+   its required Sustain, invokes the live rail control after a Shukuchi landing,
+   and verifies that the decoy begins stacked on Ronin with duration and an
+   independent movement budget. The active control must show that duration.
+8. Extended the journey through Cursed Shamisen activation and its live debt
+   control. It verifies the timed curse begins unpaid, then that paying the debt
+   updates authoritative state and the control's confirmation mark. The existing
+   headless Shamisen suite continues to cover later-round cooldown and penalty
+   behavior.
+9. Added a mounted-client CATCH_UP journey. A network fixture supplies an
+   authoritative action log after the game has mounted; the client rebuilds its
+   live state from that log and must not relay historical actions back to the
+   server. Engine-level snapshot/replay proofs remain the broader determinism
+   coverage; this is the missing UI integration boundary.
+10. Extended the mounted network journey through local socket loss/recovery and
+    ROOM_STATE presence updates. It verifies the reconnecting banner appears and
+    clears for the local seat, while a rival disconnect/reconnect appears and
+    clears independently. Together with CATCH_UP, this covers the intended
+    reconnect path at the client boundary.
 
 ## Verification results
 
@@ -51,8 +80,7 @@ Its eligibility gates also remain at callers; this is a geometry/payment pilot,
 not a completed unified ability operation.
 
 Before moving battle, ability activation, network, bot scheduling or turn-timer
-orchestration, extend the DOM journeys to representative abilities and a completed
-battle, and add replay/reconnect coverage for networking. Migrate subsequent
-abilities individually, then retire compatibility setters only when their callers
-are gone. Browser profiling of crowded boards, bot audit on/off, loading requests
-and long-session memory remains to be done. No runtime optimization is claimed.
+orchestration, migrate subsequent abilities individually and retire compatibility
+setters only when their callers are gone. Browser profiling of crowded boards,
+bot audit on/off, loading requests and long-session memory remains to be done.
+No runtime optimization is claimed.

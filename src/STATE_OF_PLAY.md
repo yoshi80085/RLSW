@@ -30,7 +30,7 @@ audience is *"the ultimate beginner"* — someone who does not read music.
 | Spirit | archetype | state |
 |---|---|---|
 | 🗡️ **Shredding Ronin** | Burst / virtuoso | **Respec partly shipped:** Shukuchi, Bushido and Shadow updates built; Shamisen siphon pending. §3 |
-| 🌀 **Intergalactic 0** | Control / zoner | ✅ **Done and shipped.** 5 abilities, all priced and cooled |
+| 🌀 **Intergalactic 0** | Control / zoner | ✅ **Done and shipped.** 5 abilities, all priced and cooled. 🪦 **But his Freestyle innate is CUT 2026-09-09** and nothing replaces it — `MELODY_IDENTITY_DESIGN.md` §11.1 |
 | 👹 **Metalness Monster** | Bruiser | ⏸️ **ON HOLD pending redesign.** ⛔ His 4 abilities have **no cooldowns at all** |
 | 🎀 **Glamarchy** | Star | 🪦 **BEING CUT.** 🐀 Riff Rat proposed as her replacement — ⁉️ **never formally decided** |
 
@@ -78,6 +78,15 @@ nothing against Metalness. That is the one hard ordering constraint in the kit.
 | ⭐ **Every seat starts with ONE ability already active** | 2026-09-04 | ⛔ not built |
 | ⭐ **Upgrade prices rise per ability** (depth costs more) | 2026-09-04 | ⛔ not built — ⁉️ **and its SHAPE is still open** (+2/step? doubling? a cap?) |
 | Innate passives are **out of scope** for both rules | 2026-08-22 | ✅ n/a |
+| ⭐ 🎼 **CLEAN IS THE SPIRIT'S OWN MODE** — one palette per Spirit, derived from nothing | 2026-09-09 | ⛔ **not built.** The whole melody-identity decision is `MELODY_IDENTITY_DESIGN.md` §5⃣.0 |
+| ⭐ 🪦 **`modeFromStack` IS DELETED** — no major/minor derived from the Drive Stack | 2026-09-09 | ⛔ not built. ⚠️ **Not a one-line deletion** — touches `turnFlow.js`, note spelling, `canonicalRoot`'s split roots, `b0check`, `turnFlowCheck`, `selftest` and the client |
+| ⭐ **DISCORD NOTES ARE INERT** — no Db, no fans, no power to resolve an ending | 2026-09-09 | ⛔ not built. 🎯 Their only uses are **held for a later turn** or **spent as movement fuel** |
+| ⭐ **Db LENGTH MUST COUNT CLEAN NOTES, NOT RAW LENGTH** | 2026-09-09 | ⛔ **not built, and MANDATORY** — `scoreTrackDB` step A is `floor(len/2) - 1`, blind to cleanliness, so junk still pays. Without this the decision above is decorative |
+| ⭐ **FANS PAY FOR *HOW*; Db PAYS FOR *WHICH* AND *WHERE*** — asked at different moments, so they stop competing | 2026-09-09 | ⛔ not built. ✅ This is `MELODY_IDENTITY_DESIGN.md` §4's withdrawal, now decided |
+| ⭐ **THE ENDING IS A FORK** — the Db boost **or** the red/blue Drive/Sustain carrot, chosen at commit | 2026-09-09 | ⛔ not built. ⚠️ Must not inherit the Harmonic Lock cliff — see §5.3 of that doc |
+| ⭐ 🎚️ **DIFFICULTY CHANGES THE ASSIST, NEVER THE RULES OR THE SCORE** — beginner: one mode, colours on; unassisted: two modes, no colours | 2026-09-09 | 📇 **INDEXED, not built.** Rides `WIN_CONDITIONS_DESIGN.md`'s settings surface, which also has ⛔ no menu. ⚠️ The bot always plays unassisted, so every bench number describes expert play |
+| ⭐ 🗡️ **The Ronin's beginner mode is LYDIAN** | 2026-09-09 | ⛔ not built. The other three Spirits' modes are ⁉️ **open** |
+| 🪦 **🌀 Intergalactic 0's Freestyle is CUT** | 2026-09-09 | ⛔ not built — still live in `melodyCommit.js` / `economy.js`. ⚠️ `attackParams.js:85` says "Freestyle" too and is a **different** mechanic; do not delete it with the pardon |
 | ⁉️ Is 🌀 Blaster of Ra an ability at all? | — | ⛔ **OPEN — Alex's call.** It *replaces* the Smash, so pricing it leaves a Spirit with no basic attack |
 
 🧊 **BALANCE IS DELIBERATELY DEFERRED while the kit is in flux** (Alex,
@@ -90,7 +99,7 @@ makes a thing *impossible* rather than weak is a bug, not balance.
 
 **✅ BUILT AND UNDER TEST**
 
-- 🌌 **3D cosmic arena** — full-width live scene with floating HUD, preview indigo materials, fractured island/fissures, planets, 48 rocks + seven shards, moving beams, live-tier cabinets and 3D movement/combat/hazard effects. High detail forces full effects; Standard retains scenery; Auto reports its effective level. Left-drag orbits, right-drag pans, wheel zooms; simple clicks retain gameplay targeting. Stable controls survive 2D/3D switches. Ordinary characters/tactical overlays remain flat SVG without scene-depth occlusion. See `../docs/cosmic-arena.md`.
+- 🌌 **3D cosmic arena** — full-width live scene with the approved space-saving HUD: a permanent player/resource pocket, phase rail, edge-mounted chord/melody controls, separate floating melody track, shallow Step 3 dock, and compact camera strip. Preview indigo materials, fractured island/fissures, planets, 48 rocks + seven shards, moving beams, live-tier cabinets and 3D movement/combat/hazard effects remain live. High detail forces full effects; Standard retains scenery; Auto reports its effective level. Left-drag orbits, right-drag pans, wheel zooms; simple clicks retain gameplay targeting. Stable controls survive 2D/3D switches. Ordinary characters/tactical overlays remain flat SVG without scene-depth occlusion. See `../docs/cosmic-arena.md` and `../docs/immersive-hud-handoff.md`.
 
 - The engine kernel, board, combat, turn flow, economy — `test:all`, **28 groups passing** (⚠️ last full `test:all` was 2026-09-05 morning; the 2026-09-05 lane pass could not run it — see `SEQUENCING.md` §5-lane.E), including a DOM melody-to-next-turn journey
 - 🕒 **The cooldown system** (`cooldowns.js`) — one map, one tick, one gate
@@ -111,6 +120,7 @@ makes a thing *impossible* rather than weak is a bug, not balance.
 | ⭐ **Fame track redesign** | `FAME_TRACK_REDESIGN.md` | visual — **preview page first** |
 | 👹 **Metalness rework** | `METALNESS_REWORK_DESIGN.md` | ⏸️ on hold — but now on the Ronin's critical path |
 | 🐀 **Riff Rat** | `RIFF_RAT_DESIGN.md` | least resolved of any doc |
+| 🕺 **Mocap → character animation** | `MOCAP_DESIGN.md` | ⛔ **blocked on a rigged character**, and on nothing else — it is off the §6 bottleneck entirely |
 
 **⏸️ PARKED ON PURPOSE**
 

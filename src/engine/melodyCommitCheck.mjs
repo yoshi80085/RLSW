@@ -44,7 +44,6 @@ import {
 } from "./systems/melodyCommit.js";
 import { performanceScore } from "./systems/economy.js";
 import { scoreTrackDB } from "../music/cadence.js";
-import { discordPenaltyFor } from "../music/context.js";
 import { advanceDB } from "../board/boardHelpers.js";
 import { CORNERS } from "../data/corners.js";
 import {
@@ -81,7 +80,8 @@ const nsOf = (st, id) => st.noteStates[id];
 
 /** A Spirit standing on a clean C-major sheet with `track` composed. */
 const composed = (track, extra = {}, id = RONIN, st = baseState()) => withNs(st, id, {
-  melodyLine: track, rootNote: 'C', scaleMode: 'major',
+  melodyLine: track, rootNote: 'C', scaleMode: extra.scaleMode ?? 'major',
+  paletteMode: extra.scaleMode ?? 'major',
   unlockedSkills: [], discordUnlocks: [], driveStack: [], sustainStack: [],
   dbPoints: 0, totalDB: 0, excitement: 0, loyalty: 0, recentP: [], lowPerfStreak: 0,
   finalsTrail: [], cadenceCooldowns: {}, bankedNote: null, tempDrive: 0, tempSustain: 0,
@@ -164,15 +164,15 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 5. THE FOUR Db SOURCES — length, ending, lock, penalty. No fifth.
+// 5. Db reads clean length plus the chosen clean ending.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const track = ['C', 'D', 'E', 'G'];        // ends on the 5th
   const r = run(composed(track));
-  const base = scoreTrackDB(track, 'F', 'G');
+  const base = scoreTrackDB(track, 'F', 'G', { cleanNoteCount: 4, endingClean: true });
   eq(r.report.baseScore.points, base.points, 'length + ending come from scoreTrackDB, untouched');
-  eq(r.report.earned, Math.max(0, base.points + r.report.lock.bonus - r.report.discordPenalty),
-     'earned = length+ending + lock − penalty, and nothing else');
+  eq(r.report.earned, base.points + r.report.lock.bonus,
+     'earned = clean length + chosen ending + lock, and nothing else');
   eq(r.report.dbOverflow, 0, '⚠️ the discarded boost NO LONGER feeds Db (13% of income, deleted)');
   eq(r.report.earnedTotal, r.report.earned, 'with the Edge and P-topup gone, the pot is just `earned`');
 
@@ -188,25 +188,24 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 6. B7 — THE DISCORD PENALTY HAS TEETH. First one free, per note, floored.
+// 6. DISCORD IS INERT — movement survives; Db and endings do not.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const one = run(composed(['C', 'D', 'C#', 'G']));
   eq(one.report.unpardonedDiscord, 1, 'one out-of-scale note');
-  eq(one.report.discordPenalty, discordPenaltyFor(1), 'the penalty comes from the shared curve');
-  eq(one.report.discordPenalty, 0, '…and the first wrong note is free');
+  eq(one.hexes, 4, 'the discord note still buys movement');
+  eq(one.report.cleanNoteCount, 3, 'but it is absent from the Db length count');
 
   const three = run(composed(['C', 'C#', 'D#', 'F#', 'G']));
   eq(three.report.unpardonedDiscord, 3, 'three out-of-scale notes');
-  ok(three.report.discordPenalty > 0, '…and past the grace they cost');
-  eq(three.report.discordPenalty, discordPenaltyFor(3), 'still the shared curve, not a local copy');
-
-  // 🌀 Freestyle stacks WITH the grace — two free notes for Intergalactic 0.
   const zeroSt = composed(['C', 'C#', 'D#', 'F#', 'G'], {}, ZERO);
   const zeroR  = run(zeroSt, ZERO);
-  eq(zeroR.report.effectiveDiscord, 2, "Intergalactic 0's freestyle pardons the first wrong note");
-  ok(zeroR.report.discordPenalty < three.report.discordPenalty,
-     '…so the same track costs him strictly less');
+  eq(zeroR.report.cleanNoteCount, three.report.cleanNoteCount,
+     'Intergalactic 0 has no Freestyle exception');
+
+  const dirtyEnd = run(composed(['C', 'D', 'E', 'F#']));
+  eq(dirtyEnd.report.endingClean, false, 'a discord final is identified');
+  eq(dirtyEnd.report.baseScore.endingBonus, 0, 'and cannot resolve an ending');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -215,7 +214,7 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 {
   // A stack that legalizes an out-of-scale note turns it from a tax into income.
   const bare  = run(composed(['C', 'D', 'D#', 'E', 'G']));
-  const chord = run(composed(['C', 'D', 'D#', 'E', 'G'], { driveStack: ['C', 'D#', 'G'] }));
+  const chord = run(composed(['C', 'D', 'D#', 'E', 'G'], { driveStack: ['C', 'D#', 'G'] }), RONIN, { endingChoice: 'color' });
   ok(chord.report.contextPardons.drive >= bare.report.contextPardons.drive,
      'a chord containing the grey note legalizes it');
   ok(chord.report.colorDrive <= COLOR_PAYOUT_CAP, 'colour is capped per stack per commit');
@@ -234,13 +233,12 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
   const track = ['C', 'G', 'E', 'C', 'A', 'F'];
   const r = run(composed(track));
   const direct = performanceScore({
-    melodyLine: track,
+    melodyLine: r.report.cleanPhrase,
     trackHasTritone: r.report.trackHasTritone,
     isOctaveResolution: r.report.isOctaveResolution,
     diatonicRunLen: r.report.diatonicRunLen,
     repeatPatLen: r.report.repeatPatLen,
     skipClimbLen: r.report.skipClimbLen,
-    hasGatedEnding: r.report.hasGatedEnding,
     cadenceResolved: !!r.report.cadence,
     // 🎭 The per-Spirit style score is an INPUT to P, so re-deriving P without it
     // is re-deriving a different number. Reading it off the report rather than
@@ -248,7 +246,6 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
     // report announces is the same one that was paid for.
     styleBig: r.report.style.score,
     earned: r.report.earned, edgeResolved: false, susEnd: false,
-    discordCount: r.report.unpardonedDiscord, freestylePardon: false,
   });
   eq(r.report.perfScore, direct.score, 'P comes from economy.js’s kernel, not a second copy');
   ok(r.report.perfScore >= 0 && r.report.perfScore <= 10, 'P is clamped to 0..10');
@@ -268,26 +265,30 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 // commit off the note DRAW. Anything that reinstates a Fame payout here has
 // re-created the mechanic, and it will look like a balance tweak in the diff.
 {
-  const plain  = run(composed(['C', 'D', 'E', 'F'],  {}, METAL), METAL);
-  const styled = run(composed(['C', 'F#', 'G', 'A'], {}, METAL), METAL);
+  const plain  = run(composed(['C', 'Eb', 'F', 'G'],  { scaleMode: 'phrygian' }, METAL), METAL);
+  const styled = run(composed(['C', 'Db', 'Eb', 'F'], { scaleMode: 'phrygian' }, METAL), METAL);
   deep(plain.report.style.hits, [], 'a line with none of his gestures scores no style');
-  deep(styled.report.style.hits, ['diabolus'], 'C→F# is a tritone, and G walks away from it');
-  ok(styled.report.perfScore > plain.report.perfScore,
-     'landing your Spirit’s gesture raises the Performance Score');
+  deep(styled.report.style.hits, ['phrygian_bite'], 'C→Db states the Phrygian bite, and Eb walks away');
+  ok(styled.report.style.score > plain.report.style.score,
+     'landing your Spirit’s gesture fills its dedicated crowd seat');
 
   // The SAME track read from another seat scores nothing — this is what makes
   // the commit phase distinguish the roster, which THEORY_ARCHITECTURE.md §2
   // names as the one place four characters used to play identically.
-  const wrongSeat = run(composed(['C', 'F#', 'G', 'A'], {}, RONIN), RONIN);
-  deep(wrongSeat.report.style.hits, [], 'the tritone is Metalness’s gesture, not the Ronin’s');
+  const wrongSeat = run(composed(['C', 'Db', 'Eb', 'F'], { scaleMode: 'phrygian' }, RONIN), RONIN);
+  ok(!wrongSeat.report.style.hits.includes('phrygian_bite'),
+     'the Phrygian bite is Metalness’s gesture, not the Ronin’s');
 
-  const roninRun = run(composed(['C', 'D', 'E', 'F'], {}, RONIN), RONIN);
+  const roninRun = run(composed(['C', 'D', 'E', 'F#'], { scaleMode: 'lydian' }, RONIN), RONIN);
   ok(roninRun.report.style.hits.includes('run'), 'four stepwise notes is the Ronin’s run');
+
+  const zeroLoop = run(composed(['C', 'D', 'Eb', 'C', 'D', 'Eb'], { scaleMode: 'dorian' }, ZERO), ZERO);
+  ok(zeroLoop.report.style.hits.includes('loop3'), 'A-B-C-A-B-C is Intergalactic 0’s three-note loop');
 
   // 🪦 THE RULE THE RIFFS BROKE.
   eq(styled.patch.fame ?? 0, plain.patch.fame ?? 0, 'style pays no Fame — not one point');
-  ok((styled.report.perfExciteGain ?? 0) > (plain.report.perfExciteGain ?? 0),
-     '…it pays the CROWD, through P’s excitement, where it can only multiply');
+  ok(styled.report.perfScore >= styled.report.style.score,
+     '…it feeds Performance Score and therefore the crowd, never direct Fame');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -671,46 +672,17 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 🎯 THE FOUR UNGATED FLAGS — 2026-09-02i. `discordUnlocks` IS EMPTY HERE
-// AND THAT IS THE WHOLE POINT.
-//
-// `composed()` sets `discordUnlocks: []`, which is what every Spirit in the
-// shipped game has and can never stop having: `THEORY_DISCORD_GRANTS` was the
-// only writer and it went with the branch. Before the ungating, these four
-// assertions were unwritable — `hasGatedEnding` was `false` by construction on
-// every possible input, and `chromClimbActive` could not be reached at all.
-//
-// ⚠️ THIS IS THE CHECK THAT WOULD HAVE CAUGHT THE ORIGINAL HOLE. The endings and
-// the pardon were only ever exercised through a skill purchase, so deleting the
-// granter left four rules with no test standing on them — `MELODY_IDENTITY_DESIGN.md`
-// §5.6's "four dead flags, not three". These stand on the RULE instead.
+// THE ENDING FORK — Db cadence/lock OR the red/blue stack carrot.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  // ♭7 in major: C major, land on Bb (the spelling `getIntervalNotes` returns).
-  const m7 = run(composed(['C', 'D', 'E', 'Bb']));
-  ok(m7.report.hasGatedEnding,
-     '🎯 the ♭7 ending pays its crowd seat with nothing unlocked — it was dead for every Spirit until 2026-09-02i');
-
-  // The tritone, in either mode: C major, land on F#.
-  const tt = run(composed(['C', 'D', 'E', 'F#']));
-  ok(tt.report.hasGatedEnding, '🎯 …and so does the tritone ending');
-
-  // ⚠️ AND AN ORDINARY ENDING STILL DOES NOT. Without this the two above would
-  // pass just as happily against `hasGatedEnding = true`, which is the failure
-  // mode `legalActionsCheck` §15 is named for.
-  const plain = run(composed(['C', 'D', 'E', 'G']));
-  ok(!plain.report.hasGatedEnding,
-     '🎯 …while landing on the 5th does NOT — the flag reads the ending, not the commit');
-
-  // 🎤 THE PARDON. A chromatic run of 3+ declares the track clean to the CROWD —
-  // `MELODY_IDENTITY_DESIGN.md` §5.5's "the crowd forgives THIS kind of wrong
-  // note", which had not executed once since the branch came off.
-  const chrom = run(composed(['C', 'C#', 'D', 'D#']));
-  ok(chrom.report.chromClimbActive, '🎤 a chromatic run of 3+ is live with nothing unlocked');
-  ok(chrom.report.allInScale,
-     '🎤 …and it forces `allInScale`, so `positionFanGain` pays a dirty track — the per-character seam');
-  ok(chrom.report.unpardonedDiscord > 0,
-     '⚠️ …while the Db side still counts the dirt — the pardon is the CROWD\'s, not the ledger\'s');
+  const state = composed(['C', 'D', 'Eb', 'G'], { driveStack: ['C', 'Eb', 'G'] });
+  const db = run(state, RONIN, { endingChoice: 'db' });
+  const color = run(state, RONIN, { endingChoice: 'color' });
+  eq(db.report.endingChoice, 'db', 'Db is the default ending choice');
+  ok(db.report.baseScore.endingBonus > 0, 'Db choice can take the cadence ending');
+  eq(db.report.colorDrive, 0, 'Db choice refuses the stack carrot');
+  eq(color.report.baseScore.endingBonus, 0, 'stack choice refuses the Db ending');
+  ok(color.report.colorDrive > 0, 'stack choice takes the red carrot');
 }
 
 console.log(`✅ melodyCommitCheck — ${checks} assertions passed`);

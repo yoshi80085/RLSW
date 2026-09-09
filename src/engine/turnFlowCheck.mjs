@@ -6,7 +6,7 @@
 // commit — so the cases here are about the ECONOMY, not the plumbing:
 //   · unused notes carry over; only SPENT slots recharge, oldest first
 //   · the rate is halved / drained / floored, and both penalties are consumed
-//   · the mode is derived from the Drive Stack and the stock is respelled into it
+//   · the Spirit's palette is stable and the stock is respelled into it
 //   · every per-turn reset and cooldown tick actually fires
 //   · the function is PURE — same input twice, same output, no mutation
 
@@ -126,16 +126,16 @@ const run = (ns, seed = 5) => startTurnNotes(ns, { draws: drawsFor(ns, seed) });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 5. MODE DERIVATION — the Drive Stack declares it, and the stock is respelled.
+// 5. SPIRIT PALETTE — chord quality cannot change it; stock is respelled.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  // A minor triad in the Drive Stack should pull the sheet minor.
+  // A minor triad in the Drive Stack cannot pull the Ronin out of Lydian.
   const minor = sheet({ driveStack: ['C', 'Eb', 'G'], scaleMode: 'major', rootNote: 'C' });
   const { patch, report } = run(minor);
-  eq(patch.scaleMode, 'minor', 'a minor triad in the Drive Stack declares the mode minor');
-  eq(report.modeChanged, true, 'and the report flags the flip so the HUD can say so');
-  ok(patch.modeChordName?.length > 0, 'the chord that decided it is named for the HUD');
-  eq(patch.pendingModeBonus.mode, 'minor', 'the Db bonus is STAGED, not paid — the caller owns that');
+  eq(patch.scaleMode, 'lydian', 'the Ronin keeps his Lydian palette');
+  eq(report.modeChanged, true, 'legacy major state migrates to the explicit palette');
+  eq(patch.modeChordName, null, 'no chord is credited with choosing the palette');
+  eq(patch.pendingModeBonus, null, 'there is no mode-switch Db bonus to stage');
 
   // Carried-over (unspent) notes are respelled into the derived key rather than
   // left in last turn's spelling.

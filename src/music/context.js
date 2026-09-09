@@ -321,29 +321,6 @@ export function classifyTrack(track = [], keyScale = [], driveStack = [], sustai
 // stack defines the local key — applied to the one remaining place the player was
 // being asked to state it out loud. The decision doesn't disappear, it moves into
 // the thing they're already manipulating: stack a ♭3 and watch which notes go grey.
-const MINOR_QUALITY = new Set(['min', 'min7', 'min9', 'dim', 'dim7', 'm7b5']);
-const MAJOR_QUALITY = new Set(['maj', 'maj7', 'dom7', 'dom9', 'aug']);
-// Everything else — power, sus2, sus4, single, cluster — is quality-AMBIGUOUS and
-// holds the current mode rather than forcing one. A power chord has no third; that
-// is precisely why rock leans on it, and the game shouldn't pretend otherwise.
-
-/** The mode implied by the Drive Stack. Pure.
- *  @param currentMode  held when the stack implies nothing (no third to read).
- *  @returns { mode, reason } — `reason` ∈ 'quality' | 'ambiguous'.
- *
- *  🪦 `reason: 'locked'` IS GONE (2026-09-02). It meant "your stack wants minor but
- *  you have not bought `theory_minor`", and it was the one place the game could
- *  advertise the branch — the player heard the minor chord and was told the game
- *  could not spell it yet. There is nothing left to sell: stack a minor third and
- *  the song follows you, from turn one, for everybody. ⚠️ A caller still branching
- *  on 'locked' is now dead code — that branch can never be taken again. */
-export function modeFromStack(driveStack = [], currentMode = 'major') {
-  const id = evaluateChord((driveStack || []).filter(Boolean)).id;
-  if (MINOR_QUALITY.has(id)) return { mode: 'minor', reason: 'quality' };
-  if (MAJOR_QUALITY.has(id)) return { mode: 'major', reason: 'quality' };
-  return { mode: currentMode, reason: 'ambiguous' };
-}
-
 /** Convenience readers over a classifyTrack result — so B4, B5 and B7 all count
  *  from the same single pass instead of re-deriving the pardon three times. */
 export function countUnpardoned(classified = []) {
@@ -450,35 +427,3 @@ export function harmonicLock(lastNote, driveStack = [], sustainStack = []) {
 // cadence.js and still flips `allInScale`, which feeds `gainFans`. A chromatic
 // smear now reads to the CROWD as showmanship — which is where flair belongs, now
 // that Db pays only for facts.
-
-// ── B7: THE DISCORD PENALTY, PER NOTE ────────────────────────────────────────
-// It used to be a flat −1 for the whole track no matter how many notes were wrong.
-// That made the entire pardon economy worth at most one point — the tree would be
-// selling a 46-Db ladder to dodge a one-point tax. Now each wrong note costs, with
-// two guard rails:
-//
-//   penalty = min(3, max(0, unpardoned − 1))
-//
-//  • THE FIRST DISCORD IS FREE, and the grace is load-bearing. A strong track
-//    under B2+B5 is worth ~5 Db. Without the grace, one grey note a player hasn't
-//    learned to see yet takes 20% of the turn; `freestylePardon` (Intergalactic 0)
-//    already established the "one pardoned wrong note" pattern and this
-//    generalizes it to everyone.
-//  • THE FLOOR IS 3, so a genuinely lost track loses most of a turn but never
-//    goes negative-spiral. Db is already floored at 0 downstream.
-//
-// Count from `classifyTrack`, never from the placement-time `discordCount`: at
-// `theory_chromatic` the Approach Notes tier can only be resolved once the NEXT
-// note is known, so placement over-counts. The placement counter stays as live UI
-// feedback and the two legitimately disagree at that one tier.
-const DISCORD_GRACE = 1, DISCORD_FLOOR = 3;
-
-/** B7 — per-note discord penalty. Pure.
- *  @param unpardoned  count of notes that are off-scale AND unpardoned, i.e.
- *                     `countUnpardoned(classifyTrack(...))`, with any
- *                     spirit-specific pardon (freestyle) already subtracted.
- *  @returns the Db to deduct: 0, 1, 2 or 3. */
-export function discordPenaltyFor(unpardoned = 0) {
-  const n = Number.isFinite(unpardoned) ? Math.floor(unpardoned) : 0;
-  return Math.min(DISCORD_FLOOR, Math.max(0, n - DISCORD_GRACE));
-}

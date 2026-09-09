@@ -26,6 +26,26 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
+## 9-immersive-hud. Space-saving live HUD — 2026-09-09
+
+Alex approved the second immersive HUD study for the game. Its composition is
+now live in 3D mode: a 238px upper-left player pocket carries portrait, Vibe,
+Drive, Sustain, Db and Fans; chord/melody controls unfold directly below it; the
+existing melody track floats independently over the board; and Step 3 uses a
+shallow centered action dock. Turn/Spirit/Rivals tabs live at upper right and the
+camera strip at lower right. The board remains the largest surface in every step.
+
+This is still one live control tree. MatchSurface only arranges disclosure and
+read-only summaries; the client retains every handler, tutorial anchor, note
+flight endpoint and action permission. The 2D layout is unchanged. At phone
+width the board stays above the mounted drawers and the camera controls condense.
+
+Verification: browser review at desktop Chord and Melody states and 390×844;
+`test:arena`, `test:journey`, `test:render`, `test:arch` and the zero-warning
+bundle check pass. See `../docs/immersive-hud-handoff.md`.
+
+---
+
 ## 8-arena-fidelity. Live preview scenery and effects — 2026-09-08
 
 The live arena now carries the preview's authored indigo materials, fractured

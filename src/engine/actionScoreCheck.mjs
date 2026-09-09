@@ -550,8 +550,8 @@ function walk(startNum, n) {
   //    differently from a different seat. This is the first term in the commit
   //    phase that distinguishes the roster at all.
   {
-    const metalLine = ['C', 'F#', 'G'];
-    ok(detectSpiritStyle(MM, metalLine).hits.length > 0, '🎭 the walked tritone is Metalness\'s');
+    const metalLine = ['C', 'Db', 'Eb'];
+    ok(detectSpiritStyle(MM, metalLine).hits.length > 0, '🎭 the Phrygian bite is Metalness\'s');
     eq(detectSpiritStyle(RONIN, metalLine).hits.length, 0, '🎭 …and means nothing to the Ronin');
   }
 }

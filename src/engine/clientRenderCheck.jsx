@@ -28,6 +28,7 @@ import './clientRenderShim.mjs';           // ⚠️ MUST BE FIRST — installs 
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Game } from '../rlsw-simulator-v3_8_1.jsx';
 import { buildTestingGroundsConfig } from '../data/matchSetup.js';
+import NoteHex from '../ui/NoteHex.jsx';
 
 let checks = 0, failed = 0;
 const ok = (label, cond, detail = '') => {
@@ -71,6 +72,19 @@ const caps = (html.match(/border:1\.5px solid #(?:ff6644|44aaff)55/g) || []).len
 ok('at least one amp knob per stack panel', caps >= 2, `found ${caps} knob cap borders`);
 const slots = (html.match(/data-stack-slot=/g) || []).length;
 ok('both stacks rendered their slots', slots > 0, `found ${slots} slot elements`);
+
+console.log('\n§5 support notes keep their hue and carry internal payout carets');
+const supportHex = renderToStaticMarkup(
+  <NoteHex hue="#c0c8d8" letter="G♭" stackSupport="both" />
+);
+ok('a dual-support note exposes both payout carets',
+  supportHex.includes('data-note-support="both"')
+    && supportHex.includes('notehex-support-drive')
+    && supportHex.includes('notehex-support-sustain'));
+ok('support does not replace the note ring hue',
+  supportHex.includes('class="notehex-ring"')
+    && supportHex.includes('stroke="#c0c8d8"')
+    && !supportHex.includes('notehex-dual'));
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} clientRenderCheck: ${checks - failed}/${checks} checks passed`);
 console.log('⏳ NOT COVERED: clicking, committing a track, or ending a turn — needs a DOM (see the header).');

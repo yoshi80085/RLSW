@@ -1,5 +1,30 @@
 # Immersive HUD — handoff for Medium reasoning
 
+**2026-09-09 implementation:** the approved space-saving Study 02 composition is
+now live in the game. In 3D mode a 238px player pocket keeps portrait, Vibe,
+Drive, Sustain, Db and Fans at the upper-left edge. Chord and melody controls sit
+directly beneath it, while the existing eight-seat melody track remains a
+separate floating board overlay. Step 3 becomes a centered shallow command dock.
+Turn/Spirit/Rivals disclosure moved to the upper-right and the camera controls to
+a quieter lower-right strip, so those two control families no longer collide.
+The phone fallback keeps the board above the mounted drawers and uses a compact
+camera row. The 2D layout and all original live controls remain unchanged.
+
+The compact displays read live game values; they do not own or calculate rules.
+No note, action or tutorial control was copied. Browser checks covered desktop
+Chord and Melody plus a 390×844 responsive view. Arena, journey, render,
+architecture and zero-warning bundle checks pass.
+
+**2026-09-09 completion pass:** the classic interiors have now been separated
+from the immersive presentation as well. The compact sound pocket uses dedicated
+amp-style Drive/Sustain dials; Chord and Melody share one edge-mounted glass note
+workspace; the Melody destination is an independent centred floating track; and
+Step 3 uses an unskewed, shallow command dock that collapses an empty Signature
+side. The two large 2D chord-stack panels no longer cover the 3D arena. They stay
+mounted invisibly for stable state/tutorial ownership, while note flights land on
+the live immersive dial readout. Returning to 2D restores the original panels and
+styling without remounting the match.
+
 **2026-09-08 update:** the live preview-fidelity pass is now implemented. Materials,
 lighting, debris, live rigs, effects, quality controls and preview mouse gestures
 are described in [Cosmic arena](cosmic-arena.md). The structural contracts below
@@ -78,7 +103,7 @@ coverage. It also checks a repeated spirit/phase on a later turn resets the
 drawer, preserves child identity and discloses tutorial content. The executable
 fixture has a local Fast Refresh lint exception, since it is not an app module.
 
-The render check still has 8 assertions. Anchor checks now match actual HTML
+The render check now has 10 assertions. Anchor checks now match actual HTML
 elements, so CSS selectors cannot create false positives or false failures.
 
 Browser checks at 1280×720 and 800×900 covered the full scene, composing three
@@ -96,8 +121,25 @@ in this session; the repository documents carry the current handoff.
 
 Final results: full `test:all` passes; `check:bundle` has zero warnings;
 `lint:baseline` passes at 334 existing errors / 16 warnings with no increased
-categories; production build passes. Render remains 8/8, architecture 8 checks,
+categories; production build passes. Render is 10/10, architecture 8 checks,
 Bushido overlay 331. No existing gameplay/parity assertion counts were reduced.
 
 The working tree already contained arena, Bushido and earlier refactor changes
 when this pass started. They were retained. No commit or deployment was made.
+
+## Follow-up polish — 2026-09-09
+
+- Drive/Sustain payout support no longer recolours or pulses the whole note.
+  Supported notes keep their established note ring—fourths remain purple,
+  fifths remain pink, and other playable notes remain neutral—and carry a small
+  red or blue caret inside the hex; dual support shows both carets. The same cue
+  follows a note from stock into the draft track.
+- Immersive player, resource, drawer, note-stock, track, turn-summary, navigation,
+  and camera windows now use lighter-alpha layered glass with a directional gloss
+  highlight, stronger blur/saturation and a restrained inset reflection.
+- The currently disclosed HUD drawer has a faint cyan bloom. The Move & Act
+  window keeps that bloom when it becomes the active action dock.
+- Runtime inspection confirmed real support notes used a neutral `#c0c8d8` ring
+  with only the internal caret carrying Drive red. The action window resolved to
+  translucent layered backgrounds, 20px blur and the intended cyan outer glow.
+  No browser errors were reported.

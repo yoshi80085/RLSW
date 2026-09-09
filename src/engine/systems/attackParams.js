@@ -82,7 +82,7 @@ export const SONIC_DRIVE_SPEND = 1;
  * collapse into it when their files are next touched.
  *
  * 🪐 Intergalactic 0's innate rides here: +1 Sustain on every voicing, and a
- * cluster reads as +1 Drive too (his Freestyle identity — the 8/2 cluster read).
+ * cluster reads as +1 Drive too (his special 8/2 cluster read).
  */
 export function spiritChord(spiritId, notes) {
   const ch = evaluateChord(notes);

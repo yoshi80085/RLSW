@@ -289,14 +289,15 @@ export function KeyPlate({ root, mode, intervals, note, locked = false,
       : { background: "linear-gradient(168deg,#111827,#0a0f1b 65%)", border: "1px solid #1e2b3f",
           boxShadow: `inset 0 1px 0 rgba(255,255,255,${(0.07 * bv).toFixed(3)}),`
                    + `inset 0 -1px 0 rgba(0,0,0,${(0.8 * bv).toFixed(2)}),0 1px 0 rgba(255,255,255,.03)` };
-  const isMajor = String(mode).toLowerCase() === "major";
+  const modeName = String(mode || '').toUpperCase();
+  const brightMode = ['major', 'ionian', 'lydian', 'mixolydian'].includes(String(mode).toLowerCase());
   /* 🔒 B8 'locked' — the Drive Stack spells a minor chord but Minor Tonality is not
      unlocked, so the mode holds major. ⚠️ THIS AMBER IS NOT A NEW FLOURISH: it is the
      treatment the retired ROOT badge wore, inherited in turn from the old "PICK MODE"
      badge, and it is the HUD advertising the skill at the one moment the player
      actively wants it. The plate is the last readout of the mode, so if it prints a
      placid blue MAJOR here that thread of the design ends. */
-  const modeColor = locked ? "#ffcc44" : isMajor ? "#ffd06a" : "#8fa8d8";
+  const modeColor = locked ? "#ffcc44" : brightMode ? "#ffd06a" : "#8fa8d8";
   const pt = CS.plateTilt;
   /* ⚠️ ONE UN-SKEW LAYER, NEVER TWO — the same rule as the strip and the board
      panels. The plate's BOX rakes; everything printed on it stays upright, because
@@ -319,7 +320,7 @@ export function KeyPlate({ root, mode, intervals, note, locked = false,
                                              : "0 1px 0 #000, 0 0 10px #4488ff33" }}>{root}</span>
         <span style={{ fontFamily: "'Saira Stencil One',sans-serif", fontSize: 8, letterSpacing: 2.4,
           color: modeColor, textShadow: locked ? "0 0 8px #ffcc4466" : undefined }}>
-          {locked ? "🔒 " : ""}{isMajor ? "MAJOR" : "MINOR"}</span>
+          {locked ? "🔒 " : ""}{modeName}</span>
         {/* ↻ ⚠️ THIS BADGE IS THE FIX FOR A SILENT SWITCH, not a decoration.
             Committing the melody REWRITES `rootNote` on the spot — the track's
             last note becomes the next round's root (melodyCommit.js) — so from

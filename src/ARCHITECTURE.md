@@ -29,6 +29,7 @@
 | `app/RLSWSimulator.jsx` | default | Opening movie, menus, practice routing, hint gate and network return-to-lobby lifecycle; static imports preserved. |
 | `ui/fanPawnShape.jsx` | `fanPawnShape` | Pure seeded crowd SVG drawing; markup and timing unchanged. |
 | `engine/clientJourneyCheck.jsx` | — | DOM interaction regression: start, build and commit melody, enter movement, end turn, next player builds and commits. Audio/animation rendering stubbed. |
+| `engine/clientReplayJourneyCheck.jsx` | — | Mounted-client network regression: CATCH_UP rebuild without action echo, local socket reconnect banner, and rival ROOM_STATE presence banner. |
 | `engine/systems/bushido.js` | `bushidoLane`, `bushidoDrawPatch`, `bushidoBlockers` | Shared facing-lane geometry, any-body blocker policy and pre-Swing payment. Warp, AP dispatch, logs and Swing sequencing remain at their existing call sites. |
 | `ui/BushidoOverlay.jsx` | `BUSHIDO_LOOK`, `BushidoOverlay` | Screenshot-selected payout ramp, dim run-up, stop bar, spine and labels. Original board units scaled once; glow beneath pieces, labels above. |
 | `engine/bushidoOverlayCheck.jsx` | — | SSR paint/geometry parity against the recovered preview at the screenshot settings: 11 scenarios × 6 facings. Writes a local comparison page. |
@@ -38,9 +39,11 @@ all three callers now use bushidoBlockers; any live spirit, amp or decoy blocks.
 Cooldown, token, confirmation and skill gates also remain with their callers.
 
 Verification uses `check:bundle` (portable, media-stubbed, zero warnings), render
-checks and `test:journey` (real DOM clicks with audio/animation stubs). The journey
-covers melody-to-next-turn handoff, not a complete battle or online reconnect.
-Do not move battle, network, or timer orchestration until those journeys exist.
+checks, `test:journey` (real DOM gameplay clicks with audio/animation stubs),
+`test:battlejourney`, and `test:replayjourney` (mounted CATCH_UP replay without
+network action echo, socket reconnect status, and ROOM_STATE presence). The
+network journey gate is complete; browser profiling remains before performance
+claims.
 
 ## Boot flow
 
@@ -239,10 +242,11 @@ mirror for rendering — change the rule in `engine/systems/`, not here.
 
 | File | Lines | Key exports | Purpose |
 |------|------:|-------------|---------|
-| `notes.js` | 194 | `NOTE_POOL`, `canonicalRoot`, `getSpelledPool`, `pitchIndex`, `buildScale`, `semitonesUp`, `getIntervalNotes`, `getFourthFifth`, `playableScale`, `MAJOR_SCALES`, `MINOR_SCALES`, `ENHARMONIC_RESPELL` | Scales, note spelling, intervals. ⚠️ `playableScale` **lost its `unlocks` argument 2026-09-02** — the key is the Major Pentatonic (natural minor in minor) for everybody and the CHORD widens it. Widening the base scale instead would have deleted the colour payout; the file header has the reasoning. |
+| `melodyIdentity.js` | — | `MELODY_DIFFICULTY`, `MODE_INTERVALS`, `SPIRIT_MELODY_MODES`, `BEGINNER_FALLBACK_MODE`, `melodyModeFor`, `modeIntervals`, `modeFamily` | 🎼 The single owner of Spirit palettes and the indexed melody-difficulty axis. Live: Ronin=Lydian, Monster=Phrygian, Zero=Dorian; unresolved seats use the beginner Lydian fallback. |
+| `notes.js` | 194 | `NOTE_POOL`, `canonicalRoot`, `getSpelledPool`, `pitchIndex`, `buildScale`, `semitonesUp`, `getIntervalNotes`, `getFourthFifth`, `playableScale`, `MAJOR_SCALES`, `MINOR_SCALES`, `ENHARMONIC_RESPELL` | Scales, note spelling, intervals. Live Spirit modes use full seven-note modal palettes; legacy major/minor remain readable for saves and focused fixtures. |
 | `chords.js` | 100 | `CHORD_TEMPLATES`, `evaluateChord`, `PC_NAMES` | **Chord → Drive/Sustain.** ⚠️ `evaluateChord` is still ORDER-FREE — the stack root introduced by `stackSlots.js` decides what you HUNT, never what your stack scores. |
 | `stackSlots.js` | 190 | `SLOT_LADDER`, `SLOT_LADDER_MAX`, `STACK_KEYS`, `stackRoot`, `nextRung`, `targetsForStack`, `unlockTargets`, `liveUnlockPcs`, `unlockClaim`, `applyUnlockClaim` | 🅰️ **Stack seats 4–6 are FOUND on the board.** Which note extends which stack's root, and what a find does. The root is `stack[0]` — derived, never stored. `PROGRESSION_REWRITE_DESIGN.md` §2. |
-| `context.js` | 486 | `CONTEXT_TIERS`, `stackContext`, `chordContext`, `contextClaim`, `classifyTrack`, `modeFromStack`, `harmonicLock`, `discordPenaltyFor`, `countUnpardoned`, `countPardonedByStack`, `PARDON_ORDER` | 🎼 **The chord-context ladder** — the best idea in the game: your stack decides which notes are legal. 🅱️ **Universal and free since 2026-09-02** — `tiersFor` takes no argument and returns every tier, and `chordContext` / `contextClaim` / `classifyTrack` lost their `unlockedSkills` parameter with it. `CONTEXT_TIERS` survives as documentation of which rung was which. `modeFromStack` can no longer return `'locked'`. See `THEORY_ARCHITECTURE.md`. |
+| `context.js` | 486 | `CONTEXT_TIERS`, `stackContext`, `chordContext`, `contextClaim`, `classifyTrack`, `harmonicLock`, `countUnpardoned`, `countPardonedByStack`, `PARDON_ORDER` | 🎼 Chord context and payout attribution. A stack may engage a note for the red/blue ending carrot, but it neither makes that note palette-clean nor chooses the Spirit's mode. |
 | `cadence.js` | 358 | `CADENCE_OBJECTIVES`, `CADENCE_BY_ID`, `cadenceHints`, `detectCadence`, `detectChromaticRun`, `detectDiatonicRun`, `driveBoostFromRun`, `detectSkipClimb`, `detectRepeatPattern`, `sustainBoostFromPattern`, `scoreTrackDB`, `analyseTrack`, `randomNote`, `refillStock`, `detectMotifRepeat` | Cadence goals and melody scoring. 🪦 Four `shamisen*` exports removed 2026-08-26 — the Shamisen is no longer a board token with a phrase. |
 | `spiritStyle.js` | 366 | `detectSpiritStyle`, `styleProgress`, `styleGain`, `styleProgressWithNote`, `STYLE_GESTURES`, `gesturesFor` | Gesture detection for the character-sheet style read (flavour, not payout). |
 | `keyDetect.js` | 433 | `detectKey`, `makeKeyTracker`, `keyToScale`, `keyPitchClasses`, `chordCandidates`, `detectPalette`, `listenFrame`, `SCALE_SHAPES` | 👂 Ear Spy: what key is being played. |
@@ -389,7 +393,7 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | 🎪 The marquee quiz — payouts, lanes, atrophy | `data/trivia.js` (`TRIVIA_REWARD`, `TRIVIA_TIER_GRANT`, the bank) + `ui/EventModal.jsx` (the card) + `engine/policies/transition.js` (the headless resolve). See `MARQUEE_QUIZ_DESIGN.md`. |
 | ✨ Limelight / Strike a Pose economy | `data/gameConstants.js` → `POSE_FP_STEP`, `POSE_FP_MAX`, `POSE_SUSTAIN_COST` + `engine/systems/limelight.js` → `posePayout`. ⚠️ Standing on the hex pays nothing; only a pose does. `LIMELIGHT_FAME` is legacy and no longer granted. |
 | 💰 What a committed melody pays | `engine/systems/melodyCommit.js` → `commitMelodyEconomy`; the scoring itself in `music/cadence.js` → `scoreTrackDB`. ⚠️ Read `CLIENT_OWNED` first — some of it is still in `Game.confirmNoteTrack`. |
-| 🎼 Which notes are legal / the pardon ladder | `music/context.js` → `classifyTrack`, `discordPenaltyFor`. 🅱️ Free for everybody — there is no gate to check. See `THEORY_ARCHITECTURE.md`; history in `THEORY_REWRITE_LOG.md`. |
+| 🎼 Which notes are clean | `music/melodyIdentity.js` chooses the Spirit mode; `music/notes.js` builds its palette; `music/context.js` → `classifyTrack` keeps stack engagement separate. Discord has no penalty curve and buys movement only. |
 | 🅰️ How many seats a stack has / what note opens the next one | `music/stackSlots.js` → `unlockTargets`, `unlockClaim`. The cap read is `data/gameConstants.js` → `stackCapFor(noteSheet, 'drive'\|'sustain')` — ⚠️ **per stack**, and it throws if handed the old `unlockedSkills` array. |
 | Chord → Drive/Sustain | `music/chords.js` → `CHORD_TEMPLATES`, `evaluateChord` |
 | Cadence objectives | `music/cadence.js` → `CADENCE_OBJECTIVES` |
@@ -450,7 +454,6 @@ look for these, and "it moved" is a cheaper answer than a silent absence.
 | 📖 How to Play → `tutorial/content.jsx` | **Deleted 2026-09-01** — the illustrated rulebook and its two menu entries (TitleMenu, Lobby). To be rebuilt from the ground up. ⚠️ The `data-tip-anchor` attributes it aimed at are STILL LIVE and still load-bearing: 🎓 Beginner Mode uses the same anchors, so the "four tutorial pages point at this name" comments through `ui/` and the monolith remain true of the tips. |
 | `data/skillTree.js` → the `theory` route | **Deleted 2026-09-02** — five rungs, 52 Db, and the last shared ladder in the game. Its five jobs were rehomed rather than dropped: stack seats 4–6 → found on the board (`music/stackSlots.js`); the pardon ladder → universal and free (`music/context.js`); scale expansion → gone as a gate, the chord widens the key instead; the 52 Db of sink → ⛔ **still open**, `PROGRESSION_REWRITE_DESIGN.md` §5. Closes `GAME_BRIEF.md` §16 problem #1. |
 | `engine/systems/skills.js` → `THEORY_DISCORD_GRANTS` | **Deleted 2026-09-02** with the branch. ⚠️ It was the ONLY writer of `discordUnlocks`, which `melodyCommit.js` still reads for the three gated endings (minor-7th, major-3rd, tritone) — so **those three endings are now unreachable for every Spirit**. That is a real hole, and it is `PROGRESSION_REWRITE_DESIGN.md` §4's job (the ending becomes a fork); §4 is not built. |
-| `music/context.js` → `modeFromStack`'s `'locked'` | **Unreachable from 2026-09-02.** It meant "your stack spells minor but you have not bought Minor Tonality". The client's `modeLocked` read and its amber-badge branch survive, reading false — like `pivotPending`. ⚠️ Do not reintroduce a writer. |
 | `melodyCommit.js` → `perfSusEnd` / `theory_sus` | **Pinned false 2026-09-02.** It gated on an id NO ROUTE HAS EVER SOLD, so this Performance Score flair point has never once been paid, while `notes.js` and `economy.js` both documented it as live. Found while deleting the branch. |
 | `engine/systems/skills.js` → `ULTIMATE_PREREQS` | **Deleted 2026-08-20** — it named three ids that were not in the tree, and no skill carried the matching `prereq`, so the Ultimate branch was unreachable in both directions while the test was green against a fake tree. |
 

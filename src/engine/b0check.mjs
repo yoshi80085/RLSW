@@ -13,9 +13,9 @@ import { STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "../data/gameConstant
 import { makeInitialNoteState } from "../engine/systems/economy.js";
 import { evaluateChord, CHORD_TEMPLATES } from "../music/chords.js";
 import { scoreTrackDB } from "../music/cadence.js";
-import { getSpelledPool, pitchIndex, PITCH_INDEX, canonicalRoot } from "../music/notes.js";
-import { chordContext, contextClaim, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, stackContext, discordPenaltyFor } from "../music/context.js";
-import { detectChromaticRun } from "../music/cadence.js";
+import { getSpelledPool, pitchIndex, PITCH_INDEX, canonicalRoot, playableScale } from "../music/notes.js";
+import { chordContext, contextClaim, classifyTrack, countUnpardoned, countPardonedByStack, harmonicLock, stackContext } from "../music/context.js";
+import { melodyModeFor } from "../music/melodyIdentity.js";
 import { skillEligibility } from "../engine/systems/skills.js";
 import { SKILL_BY_ID } from "../data/skillTree.js";
 import { readFileSync } from "node:fs";
@@ -132,6 +132,10 @@ assert.equal(scoreTrackDB(['C','D','C'], 'F', 'G').points, 1, "octave end +1");
 assert.equal(scoreTrackDB(['C','D','E'], 'F', 'G').points, 0, "no cadence, no ending bonus");
 assert.equal(scoreTrackDB(['C','D','E','A','B','D','E','G'], 'F', 'G').points, 6, "best case: 8 notes + 5th end = 6");
 assert.equal(scoreTrackDB([], 'F', 'G').points, 0);
+assert.equal(scoreTrackDB(['C','X','D','Y'], 'F', 'G', 2).points, 0,
+  "dirty padding does not create Db length points");
+assert.equal(scoreTrackDB(['C','D','E','F'], 'F', 'G', 4).points, 3,
+  "clean-note count preserves the clean track slope and ending bonus");
 console.log("✓ B2 endings: 5th +3 / 4th +2 / octave +1 — best-case track now 6 Db (was 9)");
 // Ending bonus does not double-count as an octave when it is also the 5th
 assert.deepEqual(scoreTrackDB(['G','D','G'], 'F', 'G').breakdown.filter(b => b.includes('end')), ['5th end +3']);
@@ -327,64 +331,20 @@ const modeSensitive = SPELL_ROOTS.filter(r =>
 assert.deepEqual(modeSensitive, ['Db','Ab'], "only the split roots still read mode");
 console.log("✓ speller: mode-free for 10 of 12 roots — the last two are the split roots themselves");
 
-// ─── MODE DERIVED FROM THE DRIVE STACK (B8 revision) ────────────────────────
-const mk = (stack, cur = 'major') => modeFromStack(stack, cur);
-assert.deepEqual(mk(['C','D#','G']),      { mode:'minor', reason:'quality'   }, "minor triad → minor");
-assert.deepEqual(mk(['C','D#','G','A#']), { mode:'minor', reason:'quality'   }, "min7 → minor");
-assert.deepEqual(mk(['C','D#','F#']),     { mode:'minor', reason:'quality'   }, "dim → minor");
-assert.deepEqual(mk(['C','E','G']),       { mode:'major', reason:'quality'   }, "major triad → major");
-assert.deepEqual(mk(['C','E','G','A#']),  { mode:'major', reason:'quality'   }, "dom7 → major");
-console.log("✓ B8: the Drive Stack's chord quality sets the mode — no prompt, no theory quiz");
-
-// Quality-ambiguous shapes hold the current mode instead of forcing one.
-for (const stack of [['C','G'], ['C','D','G'], ['C','F','G'], ['C'], [], ['C','C#','D']]) {
-  assert.equal(mk(stack, 'minor').mode, 'minor', `${stack.join('-')||'empty'} holds minor`);
-  assert.equal(mk(stack, 'major').mode, 'major', `${stack.join('-')||'empty'} holds major`);
-  assert.equal(mk(stack).reason, 'ambiguous');
+// ─── THE SPIRIT OWNS THE MODE ───────────────────────────────────────────────
+assert.equal(melodyModeFor('cosmic_ronin'), 'lydian', 'Ronin brings Lydian');
+assert.equal(melodyModeFor('Metalness_Monster'), 'phrygian', 'Monster brings Phrygian');
+assert.equal(melodyModeFor('intergalactic_0'), 'dorian', 'Intergalactic 0 brings Dorian');
+assert.deepEqual(playableScale('C', 'lydian'),   ['C','D','E','F#','G','A','B']);
+assert.deepEqual(playableScale('C', 'phrygian'), ['C','Db','Eb','F','G','Ab','Bb']);
+assert.deepEqual(playableScale('C', 'dorian'),   ['C','D','Eb','F','G','A','Bb']);
+for (const id of ['cosmic_ronin', 'Metalness_Monster', 'intergalactic_0']) {
+  const ns = makeInitialNoteState(id, () => 0.5);
+  assert.equal(ns.scaleMode, melodyModeFor(id), `${id}: sheet uses its own palette`);
+  assert.equal(ns.paletteMode, melodyModeFor(id), `${id}: palette is explicit state`);
+  assert.equal(ns.modeReason, 'spirit', `${id}: chord quality did not choose the mode`);
 }
-console.log("✓ B8: power/sus/single/cluster have no third to read — they hold the mode, never flip it");
-
-// 🅱️ EVERY Spirit is dragged into minor by their own stack now — the gate is gone.
-assert.deepEqual(mk(['C','D#','G']), { mode:'minor', reason:'quality' },
-  "a minor stack turns the song minor, unconditionally");
-console.log("✓ B8: minor is not gated — the stack decides the key for everybody, from turn one");
-
-// Turn one, post-B0: the stack is a single seeded note, so nothing is forced.
-assert.equal(mk([makeInitialNoteState('test_spirit', () => 0.5).rootNote]).reason, 'ambiguous');
-console.log("✓ B8: the B0 single-note seed reads as ambiguous — turn one never force-flips a spirit's mode");
-
-// ─── B8 WIRING: the derived mode reaches the turn flow ──────────────────────
-// These cover the invariants the wiring depends on. The React plumbing itself
-// (the pendingModeBonus effect, the read-only HUD line) isn't reachable from
-// bare node — what IS reachable is every property that plumbing assumes, so if
-// one of them stops holding, the failure surfaces here instead of in play.
-
-// The sheet no longer ships a pending pivot, and what it does ship agrees with
-// what modeFromStack would derive from its own seeded stack. (If B0's seed ever
-// grows a third, this is the check that notices.)
-for (const id of ["test_spirit", "cosmic_ronin"]) {
-  for (const r of [0.0, 0.31, 0.5, 0.87, 0.99]) {
-    const ns = makeInitialNoteState(id, () => r);
-    assert.equal(ns.pivotPending, false, `${id}: no pivot to pend at init`);
-    const d = modeFromStack(ns.driveStack, ns.scaleMode);
-    assert.equal(d.mode,   ns.scaleMode,  `${id}: seeded mode is the derived mode`);
-    assert.equal(d.reason, ns.modeReason, `${id}: seeded reason matches`);
-  }
-}
-console.log("✓ B8 wiring: the initial sheet ships a derived mode, not a pending prompt");
-
-// IDEMPOTENCE ACROSS TURNS. Turn start feeds the previous turn's mode back in as
-// `currentMode`. If derivation weren't a fixed point, an untouched stack would
-// oscillate the key every turn all by itself — respelling the stock each time.
-for (const stack of [['C','E','G'], ['C','D#','G'], ['C','G'], ['C'], [], ['C','D','G'], ['C','C#','D']]) {
-  let mode = 'major';
-  for (let turn = 0; turn < 5; turn++) {
-    const next = modeFromStack(stack, mode).mode;
-    if (turn > 0) assert.equal(next, mode, `${stack.join('-')||'empty'}: mode drifts on turn ${turn}`);
-    mode = next;
-  }
-}
-console.log("✓ B8 wiring: derivation is a fixed point — an unchanged stack never drifts the key");
+console.log('✓ melody identity: Ronin Lydian · Monster Phrygian · Zero Dorian');
 
 // RESPELL STABILITY. Turn start respells the carried stock through
 // getSpelledPool(canonicalRoot(root, mode), mode). Doing that on five
@@ -400,22 +360,6 @@ for (const root of SPELL_ROOTS) {
   }
 }
 console.log("✓ B8 wiring: turn-start respell is stable — held notes never rename themselves");
-
-// 🪦 'LOCKED' IS GONE — THERE IS NOTHING LEFT TO UNLOCK. The block here asserted
-// that buying Minor Tonality promoted a stack out of `reason: 'locked'` and never
-// demoted another. Minor is free for everybody from turn one (2026-09-02), so the
-// promotion has no before-state — every minor stack reads minor immediately.
-// ⚠️ Pinned as an ABSENCE, because the client still has a `modeLocked` read and a
-// dead amber-badge branch behind it: if 'locked' ever comes back, that badge
-// starts firing again for a skill that does not exist.
-for (const stack of [['C','D#','G'], ['C','D#','G','A#'], ['C','D#','F#'], ['C','E','G'], ['C','G']]) {
-  const m = modeFromStack(stack, 'major');
-  assert.notEqual(m.reason, 'locked',
-    `${stack.join('-')}: nothing is locked any more — the branch is unreachable`);
-}
-assert.equal(modeFromStack(['C','D#','G'], 'major').mode, 'minor',
-  '🎯 a minor stack turns the song minor on turn one, for every Spirit, free');
-console.log("✓ B8 wiring: 'locked' is unreachable — a minor stack delivers minor immediately, for everyone");
 
 // ── B4: COLOR NOTES PAY THE STACK THAT AUTHORIZED THEM ──────────────────────
 // The payout itself lives in confirmNoteTrack (React state, not reachable from
@@ -667,132 +611,18 @@ console.log("✓ B5: scoreTrackDB reports endingBonus/endingKind — the gate B5
 // `allInScale`, which feeds the crowd.
 
 
-// ─── B7: THE DISCORD PENALTY GETS TEETH ─────────────────────────────────────
-// penalty = min(3, max(0, unpardoned − 1)). The grace and the floor are both
-// load-bearing; see `discordPenaltyFor`.
+// Discord has no penalty curve. Db reads clean count and a clean ending only.
 {
-  const want = { 0:0, 1:0, 2:1, 3:2, 4:3, 5:3, 6:3, 8:3 };
-  for (const [n, p] of Object.entries(want)) {
-    assert.equal(discordPenaltyFor(Number(n)), p,
-      `B7: ${n} unpardoned discord${n === '1' ? '' : 's'} must cost ${p}`);
-  }
-  assert.equal(discordPenaltyFor(1), 0, 'B7: THE FIRST DISCORD IS FREE — the grace is load-bearing');
-  assert.equal(discordPenaltyFor(99), 3, 'B7: THE FLOOR IS 3 — a lost track never spirals');
-  // Monotonic: more wrong notes may never cost less.
-  for (let n = 1; n <= 20; n++) {
-    assert.ok(discordPenaltyFor(n) >= discordPenaltyFor(n - 1),
-      `B7: ${n} discords must not cost less than ${n - 1}`);
-  }
-  // Never negative, never NaN — this is subtracted from the Db meter.
-  for (const junk of [undefined, null, NaN, -5, -1, 'two', {}, Infinity]) {
-    const p = discordPenaltyFor(junk);
-    assert.ok(Number.isFinite(p) && p >= 0 && p <= 3,
-      `B7: ${String(junk)} must yield a penalty in 0..3, got ${p}`);
-  }
-  // The old behaviour, stated so the change is unmistakable: it used to be a flat
-  // 1 for any number of wrong notes. Two of the eight rows above now differ.
-  assert.notEqual(discordPenaltyFor(1), 1, 'B7: one wrong note no longer costs 1 (was flat −1)');
-  assert.notEqual(discordPenaltyFor(4), 1, 'B7: four wrong notes no longer cost 1 (was flat −1)');
+  const dirty = scoreTrackDB(['C','C#','D','G'], 'F', 'G', {
+    cleanNoteCount: 3, endingClean: true,
+  });
+  const junkEnding = scoreTrackDB(['C','D','E','G'], 'F', 'G', {
+    cleanNoteCount: 3, endingClean: false,
+  });
+  assert.equal(dirty.points, 3, 'three clean notes plus a clean fifth ending pay 3');
+  assert.equal(junkEnding.endingBonus, 0, 'a discord ending cannot resolve');
 }
-console.log("✓ B7: per-note discord penalty — first free, floored at 3, monotonic, never negative");
-
-// B7 must score from classifyTrack's SETTLED count, not a placement counter. The
-// contract that makes that possible: `countUnpardoned` only counts notes the chord
-// context declined to pardon.
-//
-// 🅱️ THE TIER SWEEP IS GONE — the ladder is universal and free (2026-09-02), so
-// "buying up never raises the penalty" has no purchases to sweep. **THE STACK IS
-// THE LEVER NOW**, and that is the far better assertion: the same wrong notes cost
-// a Spirit who built the right chord less than they cost a Spirit holding nothing.
-// It used to take 46 Db to make that true; it now takes playing well.
-{
-  const keyC  = [0,2,4,5,7,9,11];
-  const track = ['C','C#','D#','F#','A#','C'];   // four off-scale notes in C major
-  const bare  = discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, [], [])));
-  const built = discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, ['C','E','G','A#'], [])));
-  assert.equal(bare, 3,
-    'B7: with nothing stacked, four wrong notes pay the full floor of 3');
-  assert.ok(built < bare,
-    `B7: the SAME track costs less against a C7 stack (${built} < ${bare}) — the chord is what buys the pardon now`);
-  // ⚠️ And a stack cannot make things WORSE than holding nothing. This is the one
-  // direction that must never invert: a player who commits notes and finds their
-  // melody more expensive would be being punished for engaging with the mechanic.
-  for (const ds of [['C'], ['C','G'], ['C','E','G'], ['C','D#','G'], ['C','E','G','A#'], ['C','D#','F#','A']]) {
-    const p = discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, ds, [])));
-    assert.ok(p <= bare, `B7: stacking ${ds.join('-')} RAISED the penalty (${p} > ${bare})`);
-  }
-}
-console.log("✓ B7: the STACK is what lowers the penalty now — 3 with nothing built, less with a chord, never more");
-
-// ═══ THE Db PAYOUT — FOUR SOURCES ═══════════════════════════════════════════
-// The commit-site arithmetic, in full:
-//
-//   earned = max(0, length + ending + lock − penalty)
-//
-// Four terms. It used to be nine. This group asserts the shape of the whole
-// economy rather than any one mechanic, because the failure this project actually
-// suffered was not a broken mechanic — every mechanic passed its own tests — it
-// was mechanics quietly stacking up until nobody could read the total.
-//
-// ⚠️ IF YOU ADD A FIFTH TERM, THIS GROUP SHOULD FAIL AND MAKE YOU JUSTIFY IT.
-{
-  const keyC = [0,2,4,5,7,9,11], F = 'F', G = 'G';
-  const stack = ['C','E','G'];
-  // The commit's arithmetic, transcribed. Keep in step with confirmNoteTrack.
-  const commitDb = (track, ds = stack, ss = []) => {
-    const base = scoreTrackDB(track, F, G);
-    const lock = base.endingBonus > 0
-      ? harmonicLock(track[track.length - 1], ds, ss).bonus : 0;
-    const pen  = discordPenaltyFor(countUnpardoned(classifyTrack(track, keyC, ds, ss)));
-    return { total: Math.max(0, base.points + lock - pen),
-             length: base.points - base.endingBonus, ending: base.endingBonus, lock, pen };
-  };
-
-  // 1. A clean line that lands on the 5th of the chord you built pays all three
-  //    positive terms — and a triad is enough. This is the headline case, and the
-  //    one that used to pay nothing because rank 4 was banded out of the Lock.
-  const good = commitDb(['C','D','E','F','G']);
-  assert.ok(good.length > 0, 'four-source: length pays');
-  assert.equal(good.ending, 3,   'four-source: a 5th ending pays 3');
-  assert.equal(good.lock,   1,   'four-source: landing in a MAJOR TRIAD pays 1 — from turn one, with nothing found');
-  assert.equal(good.pen,    0,   'four-source: a diatonic line owes nothing');
-  assert.equal(good.total,  good.length + 3 + 1, 'four-source: the terms simply add');
-
-  // 2. Every term is reachable on turn one, with nothing found and nothing bought.
-  //    A ladder whose first rung is a prerequisite for being paid at all is the bug
-  //    this replaced — and there is no ladder left to be at the bottom of.
-  assert.ok(good.total > 0, 'four-source: a turn-one Spirit can earn from every positive term');
-
-  // 3. The penalty is the only negative, it can zero a track but never invert it.
-  for (const t of [['C#','D#','F#','G#','A#'], ['C#'], ['C#','D#'], []]) {
-    const r = commitDb(t);
-    assert.ok(r.total >= 0, `four-source: ${t.join('-')||'empty'} floored at 0, never negative`);
-  }
-
-  // 4. 🅱️ Building a chord can only ever help THE PENALTY. The tier sweep this
-  //    replaced asserted the same shape about purchases; the lever is the stack now.
-  //    ⚠️ Stated about the PENALTY specifically, not the total — the total also
-  //    carries Harmonic Lock, which legitimately moves both ways as the chord's
-  //    quality changes what the line lands in.
-  const colourful = ['C','Eb','E','F','G'];
-  const barePen = commitDb(colourful, []).pen;
-  for (const ds of [['C'], ['C','E','G'], ['C','D#','G'], ['C','E','G','Bb'], ['C','D#','G','A#','D']]) {
-    assert.ok(commitDb(colourful, ds).pen <= barePen,
-      `four-source: stacking ${ds.join('-')} RAISED the discord bill on ${colourful.join('-')}`);
-  }
-
-  // 5. The chord is load-bearing: the SAME line pays more into a real chord than
-  //    into a single note. This is the chord↔melody link, reduced to one assertion.
-  const intoChord  = commitDb(['C','D','E','F','G'], ['C','E','G']);
-  const intoNote   = commitDb(['C','D','E','F','G'], ['C']);
-  const intoSeventh= commitDb(['C','D','E','F','G'], ['C','E','G','Bb']);
-  assert.ok(intoChord.total > intoNote.total,
-    'four-source: building a chord must beat holding a single note');
-  assert.ok(intoSeventh.total > intoChord.total,
-    'four-source: and a seventh must beat a triad — the seat ladder has to slope, or finding one is pointless');
-}
-console.log("✓ Db payout: four sources — length + ending + lock − penalty, all reachable on turn one");
-console.log("✓ Db payout: building a chord never raises the discord bill, and a bigger chord always pays more");
+console.log('✓ Db payout: clean-note length + clean ending; discord is inert');
 
 // ─── 🪦 B10: THE RONIN'S FREE RUNG IS EVERYBODY'S FLOOR NOW ─────────────────
 //
@@ -834,22 +664,14 @@ console.log("✓ Db payout: building a chord never raises the discord bill, and 
 }
 console.log("✓ 🅱️ the pardon reaches the ladder on turn one for EVERY Spirit, with nothing bought");
 
-// The B0a mode invariant still has to hold, and it matters more now that minor is
-// free: if the seed stack ever grew a third, turn one would force-flip the key for
-// the whole roster rather than for one character.
+// B0a still seeds a single root, but that stack has no authority over the mode.
 {
   const ronin = makeInitialNoteState('cosmic_ronin', () => 0.5);
   assert.deepEqual(ronin.driveStack, [ronin.rootNote],
     'B0a: the stack still seeds with the root alone');
-  const m = modeFromStack(ronin.driveStack, ronin.scaleMode);
-  assert.equal(m.reason, 'ambiguous',
-    'B0a: a single-note seed has no third to read, so it stays ambiguous');
-  assert.equal(m.mode, ronin.scaleMode,
-    'B0a: so turn one never force-flips anybody\'s mode');
-  assert.equal(modeFromStack(['C','D#','G'], 'major').mode, 'minor',
-    '🅱️ …but a real minor third DOES turn the song minor, for everybody, from turn one');
+  assert.equal(ronin.scaleMode, 'lydian', 'B0a: the Ronin opens in his Lydian palette');
 }
-console.log("✓ B0a holds under a free minor: the ambiguous seed still can't force-flip a key on turn one");
+console.log("✓ B0a: stack seed and Spirit palette are independent");
 
 // 🪦 B10's ACCEPTED CONSEQUENCE IS MOOT — there is no ladder to skip a rung of.
 // This block asserted that holding `theory_minor` satisfied `theory_dom7`'s prereq,
@@ -1112,4 +934,3 @@ console.log("✓ payout routing: per-index, redirect-only, inert on garbage — 
 //    99.7% of draws, so it generated almost exclusively descending runs while
 //    reporting 4000 cases of coverage. Any future fuzz in this file must take the
 //    HIGH bits (`seed >>> 15`). Cheap mistake, invisible symptom, worthless test.
-

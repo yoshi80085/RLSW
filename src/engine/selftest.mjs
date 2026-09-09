@@ -663,68 +663,16 @@ const config = {
     "usedStockIdx is plain-JSON serializable");
 }
 
-// -- Phase 5a: performanceScore kernel ≡ old inline confirmNoteTrack math --------
+// -- Performance Score is pure and no longer contains Discord/Freestyle math. --
 {
-  // The reference is the ORIGINAL inline P formula, verbatim. Extraction is a
-  // no-op on behavior iff the kernel matches it for every track+flag combo.
-  const POOL = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
-  // ⚠️ THIS IS A DRIFT GUARD, NOT A SPEC. `oldP` transcribes the client's inline
-  // Performance math as it stood when `performanceScore` was extracted, and its
-  // job is to catch an ACCIDENTAL divergence. 🪦 The riff term (`f.riff ? 3 : 0`)
-  // was cut from BOTH sides on 2026-08-17 when the riff library was retired —
-  // a deliberate rule change, so the guard moves with it. If you are here
-  // because this failed, the question to ask first is "did somebody MEAN to
-  // change the rule", and only then "which copy is wrong".
-  const oldP = (ml, f) => {
-    const pc = ml.map(pitchIndex).filter(p => p >= 0);
-    const diff = [];
-    for (let i = 1; i < pc.length; i++) { let d = ((pc[i]-pc[i-1])%12+12)%12; if (d>6) d-=12; diff.push(d); }
-    let dc = 0, pd = 0;
-    for (const d of diff) { const s = Math.sign(d); if (s && pd && s !== pd) dc++; if (s) pd = s; }
-    const leaps = diff.filter(d => Math.abs(d) >= 3).length;
-    const intdiv = new Set(diff.filter(d => d).map(d => Math.abs(d))).size;
-    const dpc = new Set(pc).size;
-    let r3 = false;
-    for (let i = 2; i < ml.length; i++) if (ml[i]===ml[i-1] && ml[i-1]===ml[i-2]) { r3 = true; break; }
-    const shape = Math.min(2,dc) + Math.min(2,leaps) + (intdiv>=2?1:0) + (intdiv>=3?1:0);
-    const pal = (dpc>=3 && !r3 ? 1:0) + (dpc>=5?1:0);
-    const gest = Math.min(3, (f.tri?1:0)+(f.oct?1:0)+(f.dia>=3?1:0)+(f.rep>=3?1:0)+(f.skip>=3?1:0)+(f.gated?1:0));
-    const m0 = detectMotifRepeat(ml); const motif = (m0.period>=3?2:0) + (m0.reps>=3?1:0);
-    const big = (f.cad?1:0);   // 🪦 `(f.riff?3:0) +` retired with the riff library
-    const len = Math.floor(f.earned/3);
-    const pdisc = f.free ? Math.max(0, f.disc-1) : f.disc;
-    const pfree = (f.free && f.disc>=1) ? 1 : 0;
-    const score = Math.max(0, Math.min(10, shape+pal+gest+motif+big+len+(f.edge?2:0)+(f.sus?1:0)+pfree-pdisc));
-    return { score, freestyle: pfree };
-  };
-  let seed = 12345; const rnd = () => { seed = (seed*1103515245+12345) & 0x7fffffff; return seed/0x7fffffff; };
-  for (let t = 0; t < 3000; t++) {
-    const len = Math.floor(rnd()*9);
-    const ml = Array.from({ length: len }, () => POOL[Math.floor(rnd()*12)]);
-    const f = {
-      tri: rnd()<.4, oct: rnd()<.3, dia: Math.floor(rnd()*6), rep: Math.floor(rnd()*6), skip: Math.floor(rnd()*6),
-      gated: rnd()<.5, cad: rnd()<.3, earned: Math.floor(rnd()*12),
-      edge: rnd()<.25, sus: rnd()<.2, disc: Math.floor(rnd()*4), free: rnd()<.3,
-    };
-    assert.deepEqual(
-      performanceScore({ melodyLine: ml, trackHasTritone: f.tri, isOctaveResolution: f.oct,
-        diatonicRunLen: f.dia, repeatPatLen: f.rep, skipClimbLen: f.skip, hasGatedEnding: f.gated,
-        cadenceResolved: f.cad, earned: f.earned, edgeResolved: f.edge,
-        susEnd: f.sus, discordCount: f.disc, freestylePardon: f.free }),
-      oldP(ml, f), `performanceScore matches old inline math (trial ${t})`);
-  }
-  // clamp + freestyle spot checks
-  assert.equal(performanceScore({ melodyLine: [], trackHasTritone: false, isOctaveResolution: false,
-    diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0, hasGatedEnding: false,
-    cadenceResolved: false, earned: 0, edgeResolved: false, susEnd: false, discordCount: 5,
-    freestylePardon: false }).score, 0, "P floors at 0 under heavy discord");
-  assert.deepEqual(performanceScore({ melodyLine: ["C","D"], trackHasTritone: false, isOctaveResolution: false,
-    diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0, hasGatedEnding: false,
-    cadenceResolved: false, earned: 0, edgeResolved: false, susEnd: false, discordCount: 2,
-    freestylePardon: true }), performanceScore({ melodyLine: ["C","D"], trackHasTritone: false,
-    isOctaveResolution: false, diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0, hasGatedEnding: false,
-    cadenceResolved: false, earned: 0, edgeResolved: false, susEnd: false, discordCount: 2,
-    freestylePardon: true }), "deterministic (pure)");
+  const input = { melodyLine: ["C","D","E","G"], trackHasTritone: false,
+    isOctaveResolution: false, diatonicRunLen: 3, repeatPatLen: 0,
+    skipClimbLen: 0, cadenceResolved: false, styleBig: 1,
+    earned: 3, edgeResolved: false, susEnd: false };
+  const a = performanceScore(input), b = performanceScore(input);
+  assert.deepEqual(a, b, "performanceScore is deterministic (pure)");
+  assert.ok(a.score >= 0 && a.score <= 10, "P stays clamped to 0..10");
+  assert.equal('freestyle' in a, false, "Intergalactic 0's Freestyle score is deleted");
 }
 
 // -- Phase 5b: skillEligibility ≡ old bot + human gating ------------------------
@@ -877,11 +825,9 @@ const config = {
   assert.equal(ns.sustainStack.length, 1, "opens on a single note in Sustain (B0a)");
   assert.deepEqual(ns.driveStack, ns.sustainStack, "both stacks start on the same seed note");
   assert.equal(ns.stackCommitsThisTurn, 0, "stack commits start at 0");
-  assert.equal(ns.scaleMode, "major");
-  // B8: no Major/Minor prompt — the Drive Stack decides, and a single note is
-  // quality-ambiguous, so turn one holds major without asking.
-  assert.equal(ns.pivotPending, false, "B8: nothing pends a pivot any more");
-  assert.equal(ns.modeReason, 'ambiguous', "B8: a single-note seed has no third to read");
+  assert.equal(ns.scaleMode, "lydian", "unsettled fixtures use the beginner Lydian fallback");
+  assert.equal(ns.pivotPending, false, "nothing pends a mode choice");
+  assert.equal(ns.modeReason, 'spirit', "the palette belongs to the Spirit, not the stack");
 
   // building note sheets must NOT consume the main rng stream (it forks) → cursor 0,
   // so every existing roll downstream is byte-identical to before this landed.

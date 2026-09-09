@@ -241,7 +241,7 @@ export const SHUKUCHI_AP_PER_HOP = 1;  // ⭐ the whole balance of the ability l
 // argument with no end, "how long should this one be?" is a number.
 //
 // ⏸️ INNATE PASSIVES ARE OUT OF SCOPE, and that is a scope line, not an
-// exemption. Boom Box, Poison Slime, crowd virtuosity and Freestyle are not
+// exemption. Boom Box, Poison Slime and crowd virtuosity are not
 // things you DO — there is no moment of use to charge for. An innate is the
 // character; an active is a choice, and the rule exists to make choices cost.
 export const SHADOW_ILLUSION_CD    = 4;   // rounds — was 3, respecced 2026-09-04f

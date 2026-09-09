@@ -1,4 +1,6 @@
 // =============================================================================
+
+import { modeFamily, modeIntervals } from "./melodyIdentity.js";
 // music/notes.js  —  NOTE SYSTEM + interval helpers (pure music theory)
 // Extracted from the main file. No external dependencies.
 // =============================================================================
@@ -38,7 +40,7 @@ export const ENHARMONIC_RESPELL = {
 
 // Returns the canonical Root Note spelling given raw note + mode
 export function canonicalRoot(rawNote, mode) {
-  if (SPLIT_ROOT_SPELLING[rawNote]) return SPLIT_ROOT_SPELLING[rawNote][mode];
+  if (SPLIT_ROOT_SPELLING[rawNote]) return SPLIT_ROOT_SPELLING[rawNote][modeFamily(mode)];
   if (ENHARMONIC_RESPELL[rawNote])  return ENHARMONIC_RESPELL[rawNote];
   return rawNote;
 }
@@ -119,9 +121,9 @@ export function semitonesUpSpelled(root, mode, n) {
 
 // Build scale notes from root + mode using interval formula, correctly spelled
 export function buildScale(rootNote, mode) {
-  const intervals = mode === 'major'
-    ? [0,2,4,5,7,9,11]   // W W H W W W H
-    : [0,2,3,5,7,8,10];  // W H W W H W W (natural minor)
+  const intervals = mode === 'major' ? [0,2,4,5,7,9,11]
+    : mode === 'minor' ? [0,2,3,5,7,8,10]
+    : modeIntervals(mode);
   const pool = getSpelledPool(rootNote, mode);
   const rootIdx = pitchIndex(rootNote);
   if (rootIdx === -1) return [];
@@ -188,10 +190,8 @@ export function getFourthFifth(root, mode = 'major') {
 // the base and the chord does the widening, which is the whole thesis of
 // `PROGRESSION_REWRITE_DESIGN.md`: your stack defines the local key.
 //
-// 📌 Minor gets the NATURAL MINOR, not a minor pentatonic. That is what
-// `theory_minor` used to sell and it is the mode `modeFromStack` flips you into by
-// stacking a minor third — arriving there and finding a SMALLER palette than you
-// left would read as a punishment for playing minor.
+// Legacy major/minor remain readable for old saves and focused fixtures. Live
+// sheets use the Spirit modes from `melodyIdentity.js`.
 //
 // ⚠️ THE THIRD ARGUMENT IS GONE RATHER THAN IGNORED. A caller still passing
 // `unlockedSkills` would otherwise keep compiling forever while meaning nothing.
@@ -199,8 +199,8 @@ export function playableScale(rootNote, mode) {
   const pool = getSpelledPool(rootNote, mode);
   const rootIdx = pitchIndex(rootNote);
   if (rootIdx < 0) return [];
-  const degs = mode === 'minor'
-    ? [0, 2, 3, 5, 7, 8, 10]     // natural minor
-    : [0, 2, 4, 7, 9];           // MAJOR PENTATONIC — the palette everyone opens on
+  const degs = mode === 'major' ? [0, 2, 4, 7, 9]
+    : mode === 'minor' ? [0, 2, 3, 5, 7, 8, 10]
+    : modeIntervals(mode);
   return degs.map(n => pool[(rootIdx + n) % 12]);
 }

@@ -23,10 +23,9 @@
 // React may invoke a functional update more than once and a live draw in here
 // would advance the engine cursor once per invocation. See determinismCheck.mjs.
 
-import { modeFromStack } from "../../music/context.js";
 import { canonicalRoot, getSpelledPool, pitchIndex } from "../../music/notes.js";
+import { melodyModeFor } from "../../music/melodyIdentity.js";
 import { randomNote } from "../../music/cadence.js";
-import { evaluateChord } from "../../music/chords.js";
 import { usedList } from "./economy.js";
 import { STOCK_REFILL_RATE, SHADOW_ILLUSION_SUSTAIN_DRAIN } from "../../data/gameConstants.js";
 import { rigAtrophyTick } from "./sonicRig.js";
@@ -67,18 +66,13 @@ export function refillDrawCount(ns = {}) {
  *   which is deterministic but degenerate; the caller should not rely on it.
  * @returns {{ patch: object, report: object }} patch merges onto the sheet.
  */
-export function startTurnNotes(ns, { draws = [] } = {}) {
+export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
   if (!ns) return { patch: null, report: null };
 
-  // ── 🎸 B8: THE CHORD DECLARES THE MODE ────────────────────────────────────
-  // ⚠️ DERIVED AT TURN START ONLY, never on stack commit. Re-deriving mid-turn
-  // would respell the note stock underneath notes the player has already placed.
-  // A stack committed this turn changes the mode NEXT turn.
-  const derived     = modeFromStack(ns.driveStack ?? [], ns.scaleMode ?? 'major');
-  const derivedMode = derived.mode;
-  const derivedRoot = canonicalRoot(ns.rootNote, derivedMode);
-  const modePool    = getSpelledPool(derivedRoot, derivedMode);
-  const driveChord  = evaluateChord((ns.driveStack ?? []).filter(Boolean));
+  // The Spirit's palette is stable. Chord quality never changes the mode.
+  const paletteMode = ns.paletteMode ?? melodyModeFor(spiritId);
+  const paletteRoot = canonicalRoot(ns.rootNote, paletteMode);
+  const modePool    = getSpelledPool(paletteRoot, paletteMode);
 
   // ── 🎵 GRADUAL REFILL ─────────────────────────────────────────────────────
   // Unused notes CARRY OVER; only spent slots recharge, and only up to the rate.
@@ -95,7 +89,7 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
   const newStock = (ns.noteStock ?? []).map((note, idx) => {
     if (refreshing.has(idx)) {
       const draw = draws[cursor++] ?? 0;
-      return randomNote(derivedRoot, derivedMode, () => draw);
+      return randomNote(paletteRoot, paletteMode, () => draw);
     }
     const pi = pitchIndex(note);
     return pi !== -1 ? modePool[pi] : note;
@@ -171,16 +165,13 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
       .filter(c => !(c.oneShot && c.exhausted))
       .map(c => ({ ...c, exhausted: false })),
 
-    // 🎸 B8: the derived mode lands here. The Db bonus it earns is STAGED, not
-    // paid — paying it needs side effects the caller owns (advanceDB /
-    // awardTargetSkill), and this function must stay callable twice with the
-    // same result.
-    rootNote:      derivedRoot,
-    scaleMode:     derivedMode,
-    modeReason:    derived.reason,    // 'quality' | 'ambiguous' | 'locked'
-    modeChordName: driveChord.name,   // e.g. "C Minor triad" — the HUD cites it
-    pivotPending:  false,             // ⚠️ never true again; guards stay, harmless
-    pendingModeBonus: { mode: derivedMode, reason: derived.reason, root: derivedRoot },
+    rootNote:      paletteRoot,
+    scaleMode:     paletteMode,
+    paletteMode,
+    modeReason:    'spirit',
+    modeChordName: null,
+    pivotPending:  false,
+    pendingModeBonus: null,
 
     // 👤 Shadow Illusion counts the Ronin's OWN turns, so a 3-turn double
     // survives three full rounds of rivals guessing wrong — and CHARGES HIM
@@ -198,10 +189,10 @@ export function startTurnNotes(ns, { draws = [] } = {}) {
       halvedByAxeSwing: !!ns.halfRefillNextTurn,
       drainedByVortex:  ns.refillDrain ?? 0,
       rigShed: rigAtrophy.shed,   // 🏋️ 'pool' | 'power' | null
-      derivedMode,
-      derivedRoot,
-      modeReason:  derived.reason,
-      modeChanged: derivedMode !== (ns.scaleMode ?? 'major'),
+      derivedMode: paletteMode,
+      derivedRoot: paletteRoot,
+      modeReason:  'spirit',
+      modeChanged: paletteMode !== (ns.scaleMode ?? paletteMode),
       // The PRE-tick value, so the caller can announce a double melting away —
       // by the time it reads the patch the illusion is already gone.
       shadowExpiring: !!ns.shadowIllusion && (ns.shadowIllusion.turnsLeft ?? 1) <= 1,

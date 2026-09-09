@@ -19,6 +19,8 @@
 // `rlsw-simulator-v3_8_1.jsx`. A mistake in this file can misdraw the rail; it
 // cannot let you swing twice.
 
+import { Fragment, isValidElement } from 'react';
+
 /** 🎛️ ALEX'S DIAL-IN, 2026-08-29, read off the preview page's readout bar.
  *  ⚠️ DO NOT NUDGE THESE BY EYE. Re-open `.scratch/hud-step3-rail.html`, move
  *  the slider, screenshot the readout, port the line. That loop exists because
@@ -94,6 +96,17 @@ export const RAIL_VARS = {
 
 const LABELS = { words: ['UNIVERSAL', 'SIGNATURE'], short: ['ALL', 'YOURS'], none: null };
 
+// A signature slot is passed as a Fragment because the game owns its many
+// conditional abilities. Treat a Fragment containing only false/null children
+// as empty so the immersive dock does not reserve most of the screen for a
+// column with no controls in it.
+function hasRenderableChild(node) {
+  if (node == null || typeof node === 'boolean') return false;
+  if (Array.isArray(node)) return node.some(hasRenderableChild);
+  if (isValidElement(node) && node.type === Fragment) return hasRenderableChild(node.props.children);
+  return true;
+}
+
 function SideLabel({ text, color }) {
   if (!text) return null;
   return (
@@ -123,9 +136,9 @@ function SideLabel({ text, color }) {
  * the SLOT is universal, and a rival looking at that rail still sees "he has an
  * attack there", which is the thing the left half is for.
  */
-export function ActionRail({ universal, signature }) {
+export function ActionRail({ universal, signature, immersive = false }) {
   const lab = LABELS[R.labels];
-  const hasSig = !!signature;
+  const hasSig = hasRenderableChild(signature);
 
   const uniSide = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
@@ -154,14 +167,14 @@ export function ActionRail({ universal, signature }) {
 
   if (R.split === 'off' || !hasSig) {
     return (
-      <div className="arail" style={RAIL_VARS}>
+      <div className={`arail${immersive ? ' immersive-arail' : ''}`} style={RAIL_VARS}>
         <div className="arail-row" data-tip-anchor="actions-bar">{universal}{signature}</div>
       </div>
     );
   }
   if (R.split === 'rows') {
     return (
-      <div className="arail" style={{ ...RAIL_VARS, display: 'flex',
+      <div className={`arail${immersive ? ' immersive-arail' : ''}`} style={{ ...RAIL_VARS, display: 'flex',
         flexDirection: 'column', gap: R.gap + 3 }}>
         {uniSide}
         {R.seam !== 'none' && (
@@ -172,7 +185,7 @@ export function ActionRail({ universal, signature }) {
     );
   }
   return (
-    <div className="arail" style={{ ...RAIL_VARS, display: 'flex',
+    <div className={`arail${immersive ? ' immersive-arail' : ''}`} style={{ ...RAIL_VARS, display: 'flex',
       alignItems: 'stretch', gap: GUTTER }}>
       <div style={{ flex: `0 0 ${R.splitPct}%`, minWidth: 0 }}>{uniSide}</div>
       {seam}

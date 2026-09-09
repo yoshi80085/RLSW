@@ -47,6 +47,9 @@ already built is fine — say so and move on.
 
 > Priority is Alex's ranking: **1 = do soon**, **5 = can wait until after the game is mainly done**. These are capture-only entries; they are not implementation decisions.
 
+### 2026-09-08 — [P1] Reshape HUD for the 3D Cosmic Arena
+Reshape the HUD so it reflects the 3D Cosmic Arena’s full-screen display and visual style.
+
 ### 2026-09-08 — [P1] Everyone starts with a basic ability
 Everyone picks a basic ability to start out with.
 
@@ -89,6 +92,9 @@ Introduce backing abilities, potentially as another type of board hex. There are
 ### 2026-09-08 — [P2] Discord-note usage by character
 Discuss whether it matters how Discord notes are used, per character.
 
+### ~~2026-09-08 — [P2] Recorded motion-capture animation pipeline~~
+→ **`MOCAP_DESIGN.md`** (2026-09-08).
+
 ### 2026-09-08 — [P3] Famous-riff acknowledgements
 Quietly acknowledge famous riffs as generic reactions such as “Super Riff!” or “I’ve heard that one before!” Award extra points such as fans, or trigger explosions of excitement. Build an archive of hundreds of riffs that trigger a small in-game acknowledgement without explicitly naming the tune.
 
@@ -98,8 +104,8 @@ Make marquee spaces something that is not chosen. Since the choice layer is ofte
 ### 2026-09-08 — [P3] Pickles replaces Picky as a beginner music-fit tool
 Rename Picky to Pickles. Pickles is picky about what kind of music gets played and, as a beginner tool, helps players find the right fit for the tune being played, showing how to maximize both economic and performative value with the available notes.
 
-### 2026-09-08 — [P3] AI finger/guitar mapping for animated characters
-See if the AI/Ear Spy mechanic can map the player’s fingers and guitar and convey that into the game as characters in an animated setting. Explore using the player’s mapping for the game’s 3D character asset animation, including movement. This was discussed previously.
+### ~~2026-09-08 — [P3] AI finger/guitar mapping for animated characters~~
+→ **`MOCAP_DESIGN.md`** §2c and §9 (2026-09-08).
 
 ### 2026-09-07 — [P1] Melody scale-building guidance and rewards
 Help players learn to build melody scales for the biggest effect in gaining fans/Db (the notes committed in the middle of the melody track) or Sustain/Drive/Db (the last note committed).
@@ -184,6 +190,17 @@ name, and it would take the empty 12 Db mastery slot.
 ---
 
 ## ✅ PROMOTED — where things went
+
+### ~~2026-09-08 — the mocap pipeline, and the finger/guitar mapping~~
+→ **`MOCAP_DESIGN.md`.** Body, face and guitar as **three separate captures** —
+and the guitar is not a capture at all, it is solved from the two wrists. Recorded
+once and baked to animation clips, so ⭐ **no player ever needs a webcam**; the
+live-camera version is deferred in its §8. ⛔ Blocked on a rigged character and on
+nothing else.
+
+⚠️ **[P5] *Riff Listener character/filter mode* deliberately stays OPEN above.**
+It is the live-camera toy, which `MOCAP_DESIGN.md` §8 defers rather than adopts —
+folding it in here would be filing a decision that was not made (§B9).
 
 ### ~~2026-09-04 — the Cursed Shamisen becomes a siphon~~
 → **`RONIN_ABILITY_DESIGN.md` §2.3.0.** Swing-area, pick a rival's ability with no

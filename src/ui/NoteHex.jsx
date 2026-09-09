@@ -154,7 +154,11 @@ export function deepen(hex) {
  * @param dull   locked discord / staggered / empty — thin, dim, NO halo. 🎯 This
  *               is load-bearing: if every chip glowed, the panel would lose the
  *               one distinction it most needs to make at a glance.
- * @param dual   both stacks legalise this pitch — pulses red↔blue.
+ * @param stackSupport which chord stack makes this note legal. This is drawn as
+ *               a small caret INSIDE the otherwise normally-coloured note, so
+ *               payout information never replaces the note's musical state.
+ *               `'both'` draws the Drive and Sustain carets side by side.
+ * @param dual   legacy whole-chip dual pulse. New payout cues use stackSupport.
  * @param gold   resolves a cadence — outranks everything, keeps its own pulse.
  */
 /** 🎆 The burst's two halves, built here so they share the chip's viewBox.
@@ -221,7 +225,7 @@ function burstLayers(burst, flat, chipHue) {
 }
 
 export default function NoteHex({
-  hue, letter = '', dull = false, dual = false, gold = false,
+  hue, letter = '', dull = false, dual = false, gold = false, stackSupport = null,
   size = NOTE_HEX.size, cfg = NOTE_HEX, burst = null,
 }) {
   const flat = cfg.flatTop;
@@ -243,6 +247,7 @@ export default function NoteHex({
 
   return (
     <svg className={`notehex${dual ? ' notehex-dual' : ''}`} width={size} height={size}
+      data-note-support={stackSupport || undefined}
       viewBox={`0 0 ${VB} ${VB}`} style={{ overflow: 'visible', display: 'block' }}
       aria-hidden="true" focusable="false">
       {/* ⚠️ A transparent fill, NOT `fill="none"`. The hex is hollow, and `none`
@@ -292,6 +297,24 @@ export default function NoteHex({
             : `drop-shadow(0 0 ${g(2.5)}px ${lg}) drop-shadow(0 0 ${g(7)}px ${lg}cc)` }}>
           {letter}
         </text>
+      )}
+      {/* A payout hint belongs inside the note, not in the note's ring colour.
+          The open chevron stays legible at the smallest in-game chip size and
+          leaves enough air around flat/sharp note names. */}
+      {letter !== '' && stackSupport && (
+        <g className="notehex-support" fill="none" strokeWidth={3.6}
+          strokeLinecap="round" strokeLinejoin="round">
+          {(stackSupport === 'drive' || stackSupport === 'both') && (
+            <path className="notehex-support-drive"
+              d={stackSupport === 'both' ? 'M45 88 L51 82 L57 88' : 'M52 88 L60 80 L68 88'}
+              stroke="#ff6644" style={{ filter:'drop-shadow(0 0 3px #ff6644aa)' }} />
+          )}
+          {(stackSupport === 'sustain' || stackSupport === 'both') && (
+            <path className="notehex-support-sustain"
+              d={stackSupport === 'both' ? 'M63 88 L69 82 L75 88' : 'M52 88 L60 80 L68 88'}
+              stroke="#44aaff" style={{ filter:'drop-shadow(0 0 3px #44aaffaa)' }} />
+          )}
+        </g>
       )}
       {burstOver}
     </svg>

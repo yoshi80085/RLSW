@@ -230,7 +230,7 @@ export function sustainBoostFromPattern(patLen) {
 
 // ── DB SCORING ───────────────────────────────────────────────────────────────
 // Layer 1 (DB points — feeds upgrade counter):
-//   Step A: max(0, floor(totalNotes / 2) - 1)  — all notes including last
+//   Step A: max(0, floor(cleanNotes / 2) - 1)  — palette-clean notes only
 //   Step B: ending bonus — 4th=+2, 5th=+3, Octave=+1
 // Layer 2 (Drive/Sustain patterns) runs in confirmNoteTrack and is untouched.
 //
@@ -253,7 +253,7 @@ export function sustainBoostFromPattern(patLen) {
 // to know without string-matching `breakdown`, which is display copy and will
 // change. `endingBonus` is 0 when the line didn't come to rest on the 5th, 4th or
 // its own first note; `endingKind` is null in that case, else 'fifth'|'fourth'|'octave'.
-export function scoreTrackDB(track, fourthNote, fifthNote) {
+export function scoreTrackDB(track, fourthNote, fifthNote, clean = {}) {
   if (!track || track.length === 0) {
     return { points: 0, breakdown: [], endingBonus: 0, endingKind: null };
   }
@@ -261,20 +261,24 @@ export function scoreTrackDB(track, fourthNote, fifthNote) {
   let points = 0;
 
   // Step A — placement points
-  const placementPts = Math.max(0, Math.floor(track.length / 2) - 1);
+  const opts = typeof clean === 'number' ? { cleanNoteCount: clean } : clean;
+  const cleanCount = Math.max(0, Math.min(track.length,
+    Number(opts.cleanNoteCount ?? track.length) || 0));
+  const placementPts = Math.max(0, Math.floor(cleanCount / 2) - 1);
   if (placementPts > 0) {
-    breakdown.push(`${track.length} notes → +${placementPts}`);
+    breakdown.push(`${cleanCount} clean notes → +${placementPts}`);
     points += placementPts;
   }
 
   // Step B — ending bonus (clean tracks only — caller guards this)
   const last = track[track.length - 1];
   const first = track[0];
-  const isOctave = track.length >= 2 && first === last;
+  const endingClean = opts.endingClean ?? true;
+  const isOctave = endingClean && track.length >= 2 && first === last;
   let endingBonus = 0;
   let endingKind  = null;
-  if (last === fifthNote)       { breakdown.push(`5th end +3`);    endingBonus = 3; endingKind = 'fifth';  }
-  else if (last === fourthNote) { breakdown.push(`4th end +2`);    endingBonus = 2; endingKind = 'fourth'; }
+  if (endingClean && last === fifthNote)       { breakdown.push(`5th end +3`);    endingBonus = 3; endingKind = 'fifth';  }
+  else if (endingClean && last === fourthNote) { breakdown.push(`4th end +2`);    endingBonus = 2; endingKind = 'fourth'; }
   else if (isOctave)            { breakdown.push(`octave end +1`); endingBonus = 1; endingKind = 'octave'; }
   points += endingBonus;
 

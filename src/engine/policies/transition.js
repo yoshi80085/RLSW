@@ -155,7 +155,7 @@ export const UNMODELLED_KINDS = new Set(['smash', 'blaster']);
  * to be gaps at all on inspection, and that is worth recording rather than
  * quietly dropping:
  *   · `modeDerivation` was never this action's job. B8 moved it to the START of
- *     the next turn (`turnFlow.js` → `modeFromStack`); the mode written at
+ *     the next turn (`turnFlow.js`); the mode written at
  *     commit is a placeholder turn start overwrites.
  *   · `bankedNote` was three lines of speed-overflow arithmetic, not a system.
  * The real work was `dbPayout`, `perfScore` and `fanGain`.

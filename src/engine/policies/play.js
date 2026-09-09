@@ -296,7 +296,7 @@ export function startSpiritTurn(state, rng) {
   const ns = next.noteStates?.[id];
   if (!ns) return next;
   const draws = Array.from({ length: refillDrawCount(ns) }, () => rng());
-  const { patch } = startTurnNotes(ns, { draws });
+  const { patch } = startTurnNotes(ns, { draws, spiritId: id });
   return patch ? applyAction(next, noteSheetPatched(id, patch), rng) : next;
 }
 

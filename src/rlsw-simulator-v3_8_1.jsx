@@ -239,8 +239,8 @@ import { NoteFlyChip } from "./ui/NoteFlyChip.jsx";
 // turn is your "final". String the right finals together across consecutive
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
-import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, detectChromaticRun, detectDiatonicRun, driveBoostFromRun, detectSkipClimb, detectRepeatPattern, sustainBoostFromPattern, scoreTrackDB, randomNote } from "./music/cadence.js";
-import { chordContext, contextClaim, classifyTrack, countUnpardoned, countPardonedByStack, modeFromStack, harmonicLock, discordPenaltyFor } from "./music/context.js";
+import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, randomNote } from "./music/cadence.js";
+import { chordContext, contextClaim, classifyTrack } from "./music/context.js";
 import { evaluateChord } from "./music/chords.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
@@ -1373,6 +1373,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const [tauntDisplay, setTauntDisplay] = useState(null); // { line, name, color, key }
   const moveStepsLeft = engineState.turn.moveStepsLeft; // engine-owned (Phase 2)
   const [stackCommitDest, setStackCommitDest] = useState(null); // 🎸 null = melody mode, 'drive' | 'sustain' = stack commit mode
+  const [endingChoice, setEndingChoice] = useState('db');
   /* 🎵 THE KEY PLATE'S NOTE-STOCK DRAWER. Owned here, not in ChannelStrip, so a
      re-render (and there are many per turn) cannot silently re-fold it under the
      player. It seeds from CHANNEL_STRIP.drawerOpen — Alex landed it closed. */
@@ -1393,6 +1394,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (stepOwnerRef.current === engineState.acting) return;
     stepOwnerRef.current = engineState.acting;
     setTurnStep('chord');
+    setEndingChoice('db');
     setStackCommitDest(null);
   }, [engineState.acting]);
   // 🎵 FLY NOTE — animated chip that flies from Note Stock to the commit track
@@ -1436,6 +1438,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // centre of the screen. See the fly block in commitNoteToStack.
   const driveStackRef   = useRef(null);
   const sustainStackRef = useRef(null);
+  const immersiveDriveRef = useRef(null);
+  const immersiveSustainRef = useRef(null);
   // 🎯 THE ROUTER SITS UNDER THE TRACK, WHATEVER HEIGHT THE TRACK CAME OUT AT.
   // Ported from the preview page's `place()`. A constant `top:52` was fine while
   // the track was a compact centred pill; it now spans the board at `left:3%`,
@@ -1950,7 +1954,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         // chord, change what plays clean.") is CUT. The line above already says
         // the stack picks the key; restating that nothing else picks it is a
         // page spent on a non-event. Don't reinstate it.
-        { body: 'Your DRIVE Stack also picks the KEY. (For the music nerds out there —) Stack a MAJ 3rd, and the tune becomes Major (bright, +1 Db). Stack a min 3rd and it turns minor (dark, +1 Sustain — needs an upgrade first!).', anchor: 'derived-mode' },
+        { body: 'Your Spirit brings their own musical palette. Your stacks shape combat and the red/blue ending boost, but they never change which mode belongs to you.', anchor: 'derived-mode' },
         // 🪦 A TRANSPOSE page stood here ("Root feels wrong? That's what your
         // TRANSPOSE card is for…"). ⚠️ A TUTORIAL THAT NAMES A CONTROL THAT IS
         // NOT ON SCREEN is worse than no tutorial: the player looks for it,
@@ -1962,13 +1966,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       pages: [
         { body: 'Now spend your remaining notes on your MELODY LINE. Each note = 1 hex of movement, up to your Spirit\'s Speed stat.', anchor: 'note-stock', act: 'travel' },
         { body: 'In-scale notes — the ones that light up — also earn Db.', anchor: 'note-stock', emote: 'paid' },
-        // ⚡ The discord COST was never stated anywhere in the tips — the next
-        // page asks whether burning one is worth it, which is not a question you
-        // can answer without a price. Matches discordPenaltyFor(): a grace of 1,
-        // then −1 Db per extra, floored at −3. Keep these numbers in step with
-        // DISCORD_GRACE / DISCORD_FLOOR in music/context.js.
-        { body: ['The greyed-out ones are DISCORD notes. They still move you — they just fight the key, and that costs you Db.',
-                 'Your first discord each turn is FREE. Every one after that is −1 Db off what the track pays, down to −3. Play three wrong notes and you\'ve worked a whole turn for nothing.'], anchor: 'note-stock' },
+        { body: ['The greyed-out ones are DISCORD notes. They still buy one hex of movement, but they earn no Db and the crowd ignores them.',
+                 'A discord final cannot resolve your ending. Use one when the extra distance is worth giving up the music payout.'], anchor: 'note-stock' },
         { body: ['Do you commit your best Db-earning notes to your Chord Stacks? Do you burn a discord just to move farther?',
                  'These are choices you make while playing. Just don\'t second-guess yourself. Play it HARD!'], anchor: 'note-stock' },
       ],
@@ -1979,7 +1978,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       title: '💜 The 4th & the 5th',
       pages: [
         { body: ['First time seeing the purple and pink notes? Those are the 4th and the 5th — your harmonic balance notes.',
-                 'End your melody commit on one to earn *even MORE* Db. Purple = some. Pink = even more.',
+                 'At commit, choose the Db ending or trade it for your red/blue stack boost.',
                  'These notes bring balance to the Force... of Music.'], anchor: 'interval-legend' },
       ],
     },
@@ -2244,12 +2243,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // Drive Stack at turn start). Its read sites are left in place on purpose —
   // they now all read false and gate nothing. Don't reintroduce a writer.
   const pivotPending  = actingNoteState?.pivotPending ?? false;
-  // 🪦 B8 'locked' MEANT "your stack spells minor but you have not bought Minor
-  // Tonality". `modeFromStack` cannot return it any more — the branch is deleted
-  // and every Spirit follows their stack into minor from turn one. Kept reading
-  // false, like `pivotPending` above, so the amber badge's plumbing stays intact
-  // for whatever wants it next. ⚠️ Don't reintroduce a writer.
-  const modeLocked    = (actingNoteState?.modeReason ?? '') === 'locked';
   // ── SONIC RIG (AMP_DECK_DESIGN.md §2, MARQUEE_QUIZ_DESIGN.md §0.1) ────────
   // Every Spirit has a Main Amp at their corner from turn 1. Pool size and die
   // upgrades come from the rig tiers; the effective radius BREATHES with the
@@ -2419,11 +2412,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const pc = pitchIndex(note);
     return pc >= 0 && contextPcs.has(pc) && !keyScale.some(n => pitchIndex(n) === pc);
   }
-  // WHICH stack pardoned it — the note stock paints Drive red and Sustain blue off
-  // this, and alternates the two when `both`. Attribution comes from `contextClaim`
-  // rather than being re-derived here on purpose: it runs the same tier ladder and
-  // the same tie-break `classifyTrack` settles the payout with, so the color on the
-  // hex and the Db the note earns cannot drift apart. If you ever find yourself
+  // WHICH stack pardoned it — the note stock draws a small red/blue caret inside
+  // the hex (both when `both`) without replacing the note's normal colour.
+  // Attribution comes from `contextClaim` rather than being re-derived here on
+  // purpose: it runs the same tier ladder and the same tie-break `classifyTrack`
+  // settles the payout with, so the cue and the Db the note earns cannot drift
+  // apart. If you ever find yourself
   // reimplementing "is it in the Drive stack?" in this file, that's the bug.
   // Returns null for in-scale notes and for anything the stacks don't reach.
   function noteContextClaim(note) {
@@ -3463,7 +3457,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // the chip in empty space — and nothing in the suite would have said so,
       // because no test drives this animation. Querying the real slot is correct
       // under ANY future layout, which is the point.
-      const flyPanelEl = (dest === 'sustain' ? sustainStackRef : driveStackRef).current;
+      const flyPanelEl = board3D
+        ? (dest === 'sustain' ? immersiveSustainRef : immersiveDriveRef).current
+        : (dest === 'sustain' ? sustainStackRef : driveStackRef).current;
       if (typeof _flyEvent === 'object' && _flyEvent && flyPanelEl) {
         const src = _flyEvent.currentTarget?.getBoundingClientRect?.();
         const slotIdx = stack.length; // about to become this index
@@ -3485,10 +3481,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             // from the 26px grid in step 1's HUD, and a chip that pops to the
             // wrong size on frame 1 breaks the illusion that the thing flying is
             // the thing you touched.
-            size0: Math.max(24, Math.round(src.width)), size1: COMMIT_OVERLAY.stackChip, key: Date.now(),
+            size0: Math.max(24, Math.round(src.width)), size1: board3D ? 34 : COMMIT_OVERLAY.stackChip, key: Date.now(),
             // 🎯 the arrival burst is the flight's own business — it fires from
             // `onDone`, so the flare and the chip land on the same frame.
-            land: { seat: `${dest}:${slotIdx}`, letter: note } });
+            land: board3D ? null : { seat: `${dest}:${slotIdx}`, letter: note } });
         }
       }
       const stackKey = dest === 'sustain' ? 'sustainStack' : 'driveStack';
@@ -3852,6 +3848,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
     const commit = commitMelodyEconomy(engineRef.current, acting.id, {
       rng:  commitRng,
+      endingChoice,
       view: { skillById: SKILL_BY_ID, unsurePool },
     });
     if (!commit.ok) { addLog(`❌ ${commit.reason}`); return; }
@@ -3913,7 +3910,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       setPointsFlash({ lines: flashLines, key: Date.now() });
       setTimeout(() => setPointsFlash(null), 4500);
     }
-    if (report.trackHasTritone || report.hasGatedEnding || report.isOctaveResolution) showTip('intervals');
+    if (report.trackHasTritone || report.isOctaveResolution) showTip('intervals');
 
     // ── 4. THE SKILL AWARD — the half the kernel declares CLIENT_OWNED ───────
     // ⚠️ `awardTargetSkill` MUST NOT run here. The STATE half is already in the
@@ -4013,7 +4010,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // the match is misaligned — a desync that shows up as nothing at all until
     // a replay diverges. turnFlowCheck.mjs pins the two together.
     const draws = drawSeeded(refillDrawCount(ns));
-    const { patch, report } = startTurnNotes(ns, { draws });
+    const { patch, report } = startTurnNotes(ns, { draws, spiritId });
     if (!patch) return;
     setNoteField(spiritId, patch);
 
@@ -6314,7 +6311,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
   // 🌀 Per-spirit chord read — evaluateChord plus a spirit's innate harmony tweaks. Use this
   // (not raw evaluateChord) anywhere combat or the HUD reads a spirit's Drive/Sustain.
-  // INTERGALACTIC 0 — "Rolls Hard": +1 Sustain on every voicing. "Freestyle": a tone cluster
+  // INTERGALACTIC 0 — "Rolls Hard": +1 Sustain on every voicing. His tone cluster
   // (pure chaos) drives 7→8, so even a random string of notes hits dangerously hard (8/2).
   function spiritChord(spiritId, notes) {
     const ch = evaluateChord(notes);
@@ -11519,58 +11516,49 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         const showMinorSeventhColor = isMinorSeventh && discordUnlocks.includes('discord_1') && scaleMode === 'major';
                         const showMajorThirdColor   = isMajorThird   && discordUnlocks.includes('discord_2') && scaleMode === 'minor';
                         const showUnlockedDiscord   = showTritoneColor || showMinorSeventhColor || showMajorThirdColor;
-                        // 🎸 B3 — CHORD CONTEXT HIGHLIGHT. A note the key calls wrong that your
-                        // stacks have made legal lights up the moment the stack qualifies it.
-                        // This highlight IS the teaching: the player never learns a note table,
-                        // they learn "lit notes are notes that pay me right now."
-                        //
-                        // It used to light gold — one colour for "some stack pardoned this,"
-                        // which answered the wrong half of the question. The player already
-                        // knows the note is clean; what they're deciding is whether to feed the
-                        // riff or the shield. So the highlight now names the payee: Drive red,
-                        // Sustain blue, and an alternating red↔blue pulse when both stacks
-                        // legalize it independently and the choice is genuinely theirs (they
-                        // make it at commit — see the payout router under the Commit Track).
-                        //
-                        // Gold is now exclusively the cadence-resolve signal, which is a strict
-                        // improvement: two unrelated mechanics were wearing the same colour on
-                        // the same grid.
+                        // 🎸 B3 — CHORD CONTEXT CUE. A note the key calls wrong that your
+                        // stacks have made legal keeps its established note skin. Fourths stay
+                        // purple, fifths stay pink, and other supported notes use the neutral
+                        // playable-note skin. A small caret inside it names the payee: Drive red,
+                        // Sustain blue, or both side by side. This keeps payout information from
+                        // overwriting the note's colour language. Gold remains exclusively the
+                        // cadence-resolve signal.
                         const ctxClaim     = noteContextClaim(note);
                         const litByContext = ctxClaim !== null;
                         const ctxDual      = ctxClaim?.both === true;
-                        const ctxC         = ctxClaim?.stack === 'sustain' ? SUSTAIN_C : DRIVE_C;
-                        const ctxBg        = ctxClaim?.stack === 'sustain' ? SUSTAIN_BG : DRIVE_BG;
                         // Out-of-scale interval notes that haven't been unlocked → gray discord
                         const showAsDiscord  = isIntervalNote && !isUnlocked && !inScaleNote && !litByContext;
-                        // ⚠️ Context wins over the interval colours, as gold did — a pardoned
-                        // note is emphatically not a wrong note, and "which stack pays me" is
-                        // live information while "you own this unlock" is not.
-                        const borderC = litByContext         ? ctxC
+                        // Context makes the note playable, but no longer paints it with a stack
+                        // colour. The internal caret carries that information instead.
+                        // Interval identity outranks the payout cue. A fourth or
+                        // fifth can still carry a support caret, but its ring keeps
+                        // the purple/pink language players already learned.
+                        const borderC = isFifth              ? "#ff55aa"
+                                      : isFourth             ? "#cc55ff"
+                                      : litByContext         ? "#c0c8d8"
                                       : showAsDiscord        ? "#444455"
                                       : showUnlockedDiscord  ? UNLOCKED_DISCORD.border
-                                      : isFifth              ? "#ff55aa"
-                                      : isFourth             ? "#cc55ff"
                                       : inScaleNote          ? "#c0c8d8"
                                       : "#444455";
-                        const textC   = litByContext         ? ctxC
+                        const textC   = isFifth              ? "#ff55aa"
+                                      : isFourth             ? "#cc55ff"
+                                      : litByContext         ? "#e8eef8"
                                       : showAsDiscord        ? "#555566"
                                       : showUnlockedDiscord  ? UNLOCKED_DISCORD.text
-                                      : isFifth              ? "#ff55aa"
-                                      : isFourth             ? "#cc55ff"
                                       : inScaleNote          ? "#e8eef8"
                                       : "#555566";
-                        const bgC     = litByContext         ? ctxBg
+                        const bgC     = isFifth              ? "#2a0f1a"
+                                      : isFourth             ? "#1a0a2a"
+                                      : litByContext         ? "#1a2035"
                                       : showAsDiscord        ? "#111118"
                                       : showUnlockedDiscord  ? UNLOCKED_DISCORD.bg
-                                      : isFifth              ? "#2a0f1a"
-                                      : isFourth             ? "#1a0a2a"
                                       : inScaleNote          ? "#1a2035"
                                       : "#111118";
-                        const shadow  = litByContext         ? `0 0 7px ${ctxC}88`
+                        const shadow  = isFifth              ? "0 0 5px #ff55aa66"
+                                      : isFourth             ? "0 0 5px #cc55ff66"
+                                      : litByContext         ? "0 0 4px #c0c8d844"
                                       : showAsDiscord        ? "none"
                                       : showUnlockedDiscord  ? UNLOCKED_DISCORD.shadow
-                                      : isFifth              ? "0 0 5px #ff55aa66"
-                                      : isFourth             ? "0 0 5px #cc55ff66"
                                       : inScaleNote          ? "0 0 4px #c0c8d844"
                                       : "none";
                         const lockTip = ctxDual
@@ -11591,13 +11579,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         const isEmpty = used && !mixerReady && !isStaggered;
                         // 🎵 Just refilled this turn — pop in instead of silently appearing.
                         const isFresh = freshNoteIdx?.spiritId === acting?.id && freshNoteIdx.indices.has(idx);
-                        // ⚔️↔🛡️ Dual-legal: alternate the hex between the two stack colours so
-                        // "either of these will take it" is legible without a legend. The pulse
-                        // is deliberately slow (2.2s) — this is an invitation to choose, not an
-                        // alarm, and a fast strobe on up to eight hexes at once is unreadable.
-                        // Cadence gold still outranks it: resolving the track is the bigger
-                        // decision, and a hex can only say one thing at a time.
-                        const dualPulse = ctxDual && !used && !isStaggered && !resolvesCadence;
                         return (
                           <div key={idx} onClick={(e)=>{ if (isStaggered) return; if (!used || mixerReady) clickNoteStock(idx, e); }}
                             onMouseEnter={(e)=>{ const x=e.clientX, y=e.clientY; clearTimeout(hoverScaleTimerRef.current); hoverScaleTimerRef.current=setTimeout(()=>setHoverScale({note,x,y}),1500); }}
@@ -11627,7 +11608,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                  : resolvesCadence ? "#ffd700" : isEmpty ? "#232b3a" : borderC}
                               letter={isStaggered ? "\u26a1" : isEmpty ? "" : note}
                               dull={isStaggered || isEmpty || shadow === "none"}
-                              dual={dualPulse}
+                              stackSupport={!used && !isStaggered && !resolvesCadence && litByContext
+                                ? (ctxDual ? 'both' : ctxClaim.stack) : null}
                               gold={resolvesCadence}
                               // 🎆 ⚠️ THE FLARE TAKES `borderC`, NOT THE CHIP'S CURRENT HUE.
                               // The commit marks the slot used in the same tick the burst
@@ -11924,7 +11906,20 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           620px lets it stretch toward full-screen on wide monitors. The board
           column flexes and the board SVG scales to whatever remains. */}
       <MatchSurface immersive={board3D} spirit={acting} step={turnStep}
-        turnNumber={engineState.turn.count} canAct={canAct} ap={moveStepsLeft} tutorial={!!activeTip}>
+        turnNumber={engineState.turn.count} canAct={canAct} ap={moveStepsLeft} tutorial={!!activeTip}
+        hud={acting ? {
+          imageSrc: acting.imageSrc,
+          vibe: acting.vibe,
+          maxVibe: acting.maxVibe,
+          db: dbPoints,
+          fans: (actingNoteState?.casuals ?? 0) + (actingNoteState?.diehards ?? FAN_DIEHARD_START),
+          drive: spiritChord(acting.id, actingDriveStack).drive,
+          sustain: spiritChord(acting.id, actingSustainStack).sustain,
+          noteCount: canAct ? noteStock.length - usedStockIdx.length : null,
+          action,
+          driveRef: immersiveDriveRef,
+          sustainRef: immersiveSustainRef,
+        } : null}>
 
       {/* ── N8: NET STATUS BANNERS — desync, own socket, rival disconnects ── */}
       {netRef.current && (() => {
@@ -12600,50 +12595,27 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         has not moved the root yet. */}
                     {(() => {
                     const nextKey = turnStep === 'move_act' && hasConfirmed;
-                    const derived = modeFromStack(actingNoteState?.driveStack ?? [], scaleMode);
-                    const plateMode = nextKey ? derived.mode : scaleMode;
+                    const plateMode = scaleMode;
                     const plateIvs  = nextKey ? getIntervalNotes(rootNote, plateMode) : intervals;
                     const unusedLeft = (noteStock ?? [])
                       .filter((_, i) => !usedHas(usedStockIdx, i)).length;
                     return (
-                    <KeyPlate root={rootNote} mode={plateMode} locked={modeLocked && !nextKey}
+                    <KeyPlate root={rootNote} mode={plateMode}
                       next={nextKey}
                       stock={nextKey ? stockGrid : null}
                       stockOpen={stockDrawer}
                       stockLeft={unusedLeft}
                       onStock={() => setStockDrawer(v => !v)}
                       note={(() => {
-                        const reason = actingNoteState?.modeReason ?? 'ambiguous';
-                        const chord  = actingNoteState?.modeChordName ?? 'your stack';
-                        // 🪦 The 'locked' arm is gone with the Theory branch —
-                        // `modeFromStack` can no longer return it, so a Spirit whose
-                        // stack wants minor always gets minor.
-                        const why = reason === 'ambiguous'
-                          ? `${chord} — no third to read, mode held`
-                          : `${chord} sets the key`;
-                        /* 🔑 ONCE THE PLATE IS SHOWING THE NEXT KEY, this line stops
-                           being a forecast and becomes the RECEIPT for it. ⚠️ The old
-                           "↻ next turn: 🌑 Minor" warning must not survive into step 3
-                           alongside a plate that has already flipped — a warning about
-                           a change that is on screen reads as a second, different
-                           change, and the player goes looking for it. */
                         if (nextKey) return (<>
                           <div style={{color:"#ff99dd"}}>
                             ↻ your track ended on {rootNote} — that opens the next round
                           </div>
                           <div style={{marginTop:3}}>
-                            {derived.mode === scaleMode
-                              ? `${chord} holds the mode`
-                              : `${chord} turns it ${derived.mode === 'major' ? '☀️ Major' : '🌑 Minor'} at turn start`}
+                            Your {scaleMode} palette stays with you
                           </div>
                         </>);
-                        if (derived.mode === scaleMode) return why;
-                        return (<>
-                          {why}
-                          <div style={{marginTop:3,color:"#ff99dd"}}>
-                            ↻ next turn: {derived.mode === 'major' ? '☀️ Major' : '🌑 Minor'} — your Drive Stack changed
-                          </div>
-                        </>);
+                        return <>Your clean palette: {scaleMode}</>;
                       })()}
                       intervals={[
                         ['4th', plateIvs.fourth,        '#cc55ff'],
@@ -12717,7 +12689,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               unlock: it does not add a button, it takes the Smash's slot, and the
               slot is universal. See ActionRail.jsx for the full argument. ── */}
           {turnStep === 'move_act' && (
-          <ActionRail
+          <ActionRail immersive={board3D}
             universal={<>
             <RailBtn className={`btn${action==="move"?" on":""}`}
               onClick={() => {
@@ -13383,7 +13355,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               breaks Pickles silently rather than loudly. */}
           {acting && (
             <div data-tip-anchor={turnStep === 'move_act' ? undefined : "note-stock"}
-              className={`card${turnStep === 'melody' ? ' step-active' : ''}`}
+              className={`match-note-stock card${turnStep === 'melody' ? ' step-active' : ''}`}
               style={{'--step-glow-color': turnStep === 'chord' ? '#ff66cc' : '#4488ff',
                 borderLeft:`2px solid ${turnStep === 'melody' ? '#4488ff' : '#4488ff66'}`,
                 padding:"3px 8px", marginBottom:SPIRIT_CARD.gap,
@@ -13419,10 +13391,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         the legend just fills the slack that was already there. */}
                     {turnStep === 'melody' && canAct && (
                       <span style={{fontSize:7,color:"#66708a",display:"flex",gap:4,alignItems:"center",flexShrink:0}}
-                        title="A lit note is a Discord your chord stack pardoned. Its colour is the stack that gets paid for it.">
-                        <span style={{color:DRIVE_C}}>⚔️pays Drive</span>
+                        title="A caret marks a Discord your chord stack pardoned. Red pays Drive; blue pays Sustain.">
+                        <span style={{color:DRIVE_C}}>⌃ pays Drive</span>
                         <span style={{color:"#3a4055"}}>│</span>
-                        <span style={{color:SUSTAIN_C}}>🛡️pays Sustain</span>
+                        <span style={{color:SUSTAIN_C}}>⌃ pays Sustain</span>
                       </span>
                     )}
                     {/* 🎤 MIC — only offered during the step it can actually act on */}
@@ -13878,7 +13850,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       onClick={useBankedNote}>▶ Use</button>
                   </div>
                 )}
-                {discordCount>0 && <div style={{fontSize:8,color:"#ff6600",marginBottom:3}}>⚡ {discordCount} Dischord note{discordCount!==1?"s":""}</div>}
+                {discordCount>0 && <div style={{fontSize:8,color:"#ff6600",marginBottom:3}}>⚡ {discordCount} Discord note{discordCount!==1?"s":""} — movement only</div>}
+                <div style={{display:"flex",gap:3,marginBottom:4}}>
+                  <button className="btn" onClick={() => setEndingChoice('db')}
+                    style={{flex:1,fontSize:7,borderColor:endingChoice==='db'?'#44ff88':'#335544',color:endingChoice==='db'?'#44ff88':'#779988'}}>
+                    🎯 Db ending
+                  </button>
+                  <button className="btn" onClick={() => setEndingChoice('color')}
+                    style={{flex:1,fontSize:7,borderColor:endingChoice==='color'?'#ff6688':'#553344',color:endingChoice==='color'?'#ff99bb':'#997788'}}>
+                    🔴🔵 Stack boost
+                  </button>
+                </div>
                 <div style={{display:"flex",gap:3}}>
                   <button className="btn" style={{flex:1,borderColor:"#44ff88",color:"#44ff88",fontSize:8}}
                     onClick={confirmNoteTrack}
@@ -14123,7 +14105,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 button — a control for panning the board cannot live inside a
                 panel that is only up for one step of the turn. */}
             {turnStep === 'melody' && (
-            <CommitTrackPanel panelRef={commitTrackRef} tipAnchor="commit-track"
+            <CommitTrackPanel panelRef={commitTrackRef} tipAnchor="commit-track" immersive={board3D}
               className={turnStep === 'melody' ? 'step-active' : ''}
               active={turnStep === 'melody'}>
               <div className="stitle" style={{marginBottom:0,color:"#aa88ff",flexShrink:0,fontSize:7,
@@ -14146,24 +14128,22 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 const isFifth        = note && note === fifthNote;
                 const inScale        = note && currentScale.includes(note);
                 // 🎸 The placed note's settled payee, read straight off the live
-                // classification the commit will use — so a hex in the track is the
-                // same colour as the hex in the stock it came from, and both match
-                // the Db it will actually earn. Root green still outranks everything:
-                // the first note is next turn's Root, which is a bigger fact about it.
+                // classification the commit will use. It is shown by the same small
+                // internal caret as the stock, never by replacing the note's hue.
+                // Root green, fifth pink and fourth purple all outrank the neutral
+                // support skin, while the caret remains visible independently.
                 const cls       = liveClassified[i];
                 const paidBy    = note && !cls?.inScale && cls?.pardonedBy ? cls.stack : null;
                 const isDual    = !!(paidBy && cls?.both);
-                const paidC     = paidBy === 'sustain' ? SUSTAIN_C  : DRIVE_C;
-                const paidBgC   = paidBy === 'sustain' ? SUSTAIN_BG : DRIVE_BG;
                 // Same demotion as the note stock — one look for all three
                 // unlock-gated discords. See UNLOCKED_DISCORD.
                 const showUnlocked = (isTritone || isMinorSeventh || isMajorThird) && !paidBy;
                 const borderC = !note          ? "#2a1a5060"
                   : isRoot         ? "#44ff88"
-                  : paidBy         ? paidC
-                  : showUnlocked   ? UNLOCKED_DISCORD.border
                   : isFifth        ? "#ff55aa"
                   : isFourth       ? "#cc55ff"
+                  : paidBy         ? "#c0c8d8"
+                  : showUnlocked   ? UNLOCKED_DISCORD.border
                   : inScale        ? "#c0c8d8"
                   : "#444455";
                 // 🎨 `borderC` ABOVE IS NOW THE WHOLE COLOUR STORY. The old chip
@@ -14175,7 +14155,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 // from the drop-shadow on its own STROKED rings, and a second
                 // filter on this wrapper would blur the chip's whole silhouette —
                 // the exact bug that made the old glow look frozen (NoteHex.jsx).
-                // 📌 `paidBgC` is still read by the router row below.
                 // 🔁 The track is a draft until it's confirmed — a placed note
                 // can be clicked to lift it back out and reclaim its slot.
                 const editable = !!note && !hasConfirmed && canAct;
@@ -14200,6 +14179,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   }}>
                     <NoteHex size={COMMIT_OVERLAY.trackChip}
                       hue={note ? borderC : SOCKET_HUE} letter={note || ""} dull={!note}
+                      stackSupport={paidBy ? (isDual ? 'both' : paidBy) : null}
                       burst={burstIn?.seat === `track:${i}` ? burstIn : null} />
                   </div>
                 );
@@ -14347,7 +14327,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     // identically pink boxes at opposite ends of the board is the
                     // one thing the outline exists to prevent.
                     glowColor={col}
-                    borderColor={col}>
+                    borderColor={col}
+                    immersive={board3D && !activeTip}>
                     {/* 🎸 THE SEATS. ⚠️ THE INLINE TITLE AND THE ⚔️/🛡️ READOUT ARE
                         GONE ON PURPOSE, AND NOT AS A TASTE CALL — THE ROW RAN OUT
                         OF ROOM. The dial to the right of these seats is a StatKnob,
@@ -14513,7 +14494,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 slides:slideOffAnimations, flashes:effectFlashes, thump:deckThump,
                 laser:laserFx, pyro:pyroFx, smoke:smokeFx, slime:slimeTiles,
                 fire:flamingHexes, vortex:gravityVortex, bots:animatronics,
-                spotlight:spotlightHex, tentacle:tentacleFx, lite:liteFx,
+                spotlight:spotlightHex, tentacle:tentacleFx,
+                shadowDecoy, lite:liteFx,
               }) : undefined}>
             <svg
               ref={svgRef}
@@ -15215,7 +15197,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       const imgOffX = useMirror ? -imgOffset.x : imgOffset.x;
                       const nsR = noteStates['cosmic_ronin'] ?? {};
                       return (
-                        <g key="shadow-token"
+                        <g key="shadow-token" data-arena-flat="spirit"
                           style={{ ...(isRumbling ? {animation:"rumble 0.08s linear infinite"} : {}) }}>
                           {/* Base plate shadow */}
                           <ellipse cx={cx+2} cy={cy+3} rx={baseR} ry={baseR*0.32}
@@ -15341,7 +15323,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       // being deleted and rebuilt under a new name.
                       const cranked = !!noteStates[sp.id]?.atEleven;
                       return (
-                        <g key="spirit-token"
+                        <g key="spirit-token" data-arena-flat="spirit"
                           style={{
                             ...(isRumbling ? {animation:"rumble 0.08s linear infinite"} : {}),
                           }}>

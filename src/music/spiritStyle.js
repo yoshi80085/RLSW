@@ -106,7 +106,6 @@ function bestRun(diffs, ok) {
 }
 
 const stepwise = (d) => d !== 0 && Math.abs(d) <= 2;
-const chromatic = (d) => Math.abs(d) === 1;
 // A third, give or take — the interval an arpeggio moves by.
 const thirdish  = (d) => Math.abs(d) >= 3 && Math.abs(d) <= 4;
 
@@ -167,24 +166,19 @@ export const STYLE_GESTURES = {
       progress: (pcs) => (pcs.length ? Math.min(PEDAL_HITS, pedalCount(pcs)) / PEDAL_HITS : 0),
     },
     {
-      // ⚠️ THREE NOTES, NOT TWO, AND THE THIRD IS THE WHOLE POINT. As a bare
-      // adjacent tritone this fired on 67% of all commits — it is one interval
-      // out of twelve and any two notes spell something, so "did a tritone
-      // happen" is close to a coin toss rather than a decision. Requiring it to
-      // be ANSWERED — stated, then stepped away from — makes it a gesture
-      // somebody plays on purpose, which is the entire distinction this file
-      // exists to draw between a style and the note draw.
-      id: 'diabolus', label: 'the tritone, walked', notes: 3,
+      // A Phrygian half-step stated, then walked away from. The third note keeps
+      // this a gesture rather than paying for a half-step that happened by draw.
+      id: 'phrygian_bite', label: 'the Phrygian bite', notes: 3,
       detect: (_pcs, diffs) => {
         for (let i = 1; i < diffs.length; i++) {
-          if (Math.abs(diffs[i - 1]) === 6 && stepwise(diffs[i])) return true;
+          if (Math.abs(diffs[i - 1]) === 1 && stepwise(diffs[i])) return true;
         }
         return false;
       },
       progress: (pcs, diffs) => {
         const d1 = last(diffs), d2 = last(diffs, 1);
-        if (d2 != null && Math.abs(d2) === 6 && stepwise(d1)) return 1;
-        if (d1 != null && Math.abs(d1) === 6) return 2 / 3;
+        if (d2 != null && Math.abs(d2) === 1 && stepwise(d1)) return 1;
+        if (d1 != null && Math.abs(d1) === 1) return 2 / 3;
         return 0;
       },
     },
@@ -218,14 +212,34 @@ export const STYLE_GESTURES = {
     },
   ],
 
-  // 📻 THE CONTROLLER — sideways motion. The chromatic slide is the natural home
-  // for his Freestyle innate (the first out-of-scale note per turn is free), and
-  // the two-note motif is what "Groove" means when you only have pitches.
+  // 📻 THE CONTROLLER — repetition and return. His Dorian palette supplies the
+  // colour; the gesture supplies LOOP. Discord is inert, so the old chromatic
+  // slide was retired with Freestyle rather than kept as a hidden exception.
   intergalactic_0: [
     {
-      id: 'slide', label: 'the chromatic slide', notes: 4,
-      detect: (_pcs, diffs) => bestRun(diffs, chromatic) >= 3,
-      progress: (pcs, diffs) => (pcs.length ? Math.min(3, trailingRun(diffs, chromatic)) / 3 : 0),
+      // A B C A B C — a three-note phrase sampled and replayed. The pitches are
+      // unconstrained, so many draws can spell it; identity comes from the act
+      // of looping, not from being dealt one exact riff.
+      id: 'loop3', label: 'the three-note loop', notes: 6,
+      detect: (pcs) => {
+        for (let i = 5; i < pcs.length; i++) {
+          if (pcs[i - 5] === pcs[i - 2]
+            && pcs[i - 4] === pcs[i - 1]
+            && pcs[i - 3] === pcs[i]) return true;
+        }
+        return false;
+      },
+      progress: (pcs) => {
+        if (pcs.length >= 6
+          && last(pcs, 5) === last(pcs, 2)
+          && last(pcs, 4) === last(pcs, 1)
+          && last(pcs, 3) === last(pcs)) return 1;
+        if (pcs.length >= 5
+          && last(pcs, 4) === last(pcs, 1)
+          && last(pcs, 3) === last(pcs)) return 4 / 5;
+        if (pcs.length >= 4 && last(pcs, 3) === last(pcs)) return 3 / 5;
+        return 0;
+      },
     },
     {
       // A B A B — up, back, up. The middle interval is the exact inverse of the

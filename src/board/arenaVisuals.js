@@ -10,6 +10,34 @@ const pointXY=(x,y,height=.2)=>new THREE.Vector3((x/SCALE-3255)/200,height,(y/SC
 const STATIONS={blue:['NW','W-N'],purple:['SW','W-S'],yellow:['NE','E-N'],red:['SE','E-S']};
 const glow=(color,opacity=.8)=>new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
 
+// These are the authored preview miniatures, moved into the match renderer.
+// They deliberately remain presentation-only: React's projected SVG continues
+// to own hit targets, rules, labels, and ability overlays.
+function solid(geometry,color,metalness=.5,emission=0) {
+  return new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color,metalness,roughness:.38,emissive:color,emissiveIntensity:emission}));
+}
+function spiritMiniature(spirit) {
+  const g=new THREE.Group();g.name=`Spirit miniature: ${spirit.id}`;
+  const color=new THREE.Color(spirit.color ?? '#88ccff');
+  const base=solid(new THREE.CylinderGeometry(.37,.43,.12,6),0x1b2840);base.position.y=.03;g.add(base);
+  const halo=solid(new THREE.TorusGeometry(.39,.024,6,36),color,.2,2);halo.rotation.x=Math.PI/2;halo.position.y=.11;g.add(halo);
+  const torso=solid(new THREE.BoxGeometry(.39,.47,.24),0x222c49);torso.position.y=.73;g.add(torso);
+  const chest=solid(new THREE.BoxGeometry(.075,.33,.25),color,.3,.65);chest.position.y=.75;g.add(chest);
+  for(const x of [-.13,.13]) {const leg=solid(new THREE.BoxGeometry(.14,.35,.15),0x1d243b);leg.position.set(x,.3,0);g.add(leg);}
+  const head=solid(new THREE.IcosahedronGeometry(.19,1),0x8a95ad,.8);head.position.y=1.13;g.add(head);
+  const visor=solid(new THREE.BoxGeometry(.29,.045,.06),color,.2,2);visor.position.set(0,1.14,.155);g.add(visor);
+  if(spirit.id==='cosmic_ronin') {const hat=solid(new THREE.ConeGeometry(.36,.12,6),0x172339);hat.position.y=1.31;g.add(hat);}
+  if(spirit.id==='Metalness_Monster') {
+    for(const x of [-.2,.2]) {const horn=solid(new THREE.ConeGeometry(.085,.28,5),0xc3ac8c);horn.position.set(x,1.3,0);horn.rotation.z=-Math.sign(x)*.5;g.add(horn);}
+    torso.scale.x=1.3;
+  }
+  const instrument=new THREE.Group();
+  instrument.add(solid(new THREE.BoxGeometry(.27,.33,.09),color,.7,.15));
+  const neck=solid(new THREE.BoxGeometry(.055,.62,.07),0xd6d7dd,.7);neck.position.y=.42;instrument.add(neck);
+  instrument.position.set(.16,.62,.26);instrument.rotation.z=-.65;g.add(instrument);
+  return g;
+}
+
 export function releaseArenaObject(object) {
   // Cloned cabinets share geometry; dispose each resource once per subtree.
   const resources=new Set();
@@ -22,8 +50,8 @@ export function releaseArenaObject(object) {
 export function createArenaVisuals(scene) {
   const root=new THREE.Group();root.name='Live match effects';scene.add(root);
   const hazards=new THREE.Group();root.add(hazards);
-  const effects=[],rigs=new Map(),seen=new Set();
-  let previous=null,hazardKey='',frame={},clock=0,disposed=false;
+  const effects=[],rigs=new Map(),pawns=new Map(),seen=new Set();
+  let previous=null,hazardKey='',frame={},clock=0,lastTick=0,disposed=false;
   const pulse=(point,color,owners=[],kind='pulse')=>{
     if(!point)return;
     const mesh=new THREE.Mesh(new THREE.TorusGeometry(.45,.035,6,40),glow(color));
@@ -93,6 +121,27 @@ export function createArenaVisuals(scene) {
       }
     }
   }
+  function updatePawns(next) {
+    const live=new Set();
+    for(const spirit of next.spirits??[]) {
+      live.add(spirit.id);
+      let pawn=pawns.get(spirit.id);
+      if(!pawn) {
+        pawn=spiritMiniature(spirit);
+        const start=arenaPoint(spirit.num,.2);
+        pawn.position.copy(start ?? new THREE.Vector3());
+        pawn.userData.target=start?.clone() ?? new THREE.Vector3();
+        pawn.userData.targetFacing=(spirit.facing ?? 0)+Math.PI/2;
+        root.add(pawn);pawns.set(spirit.id,pawn);
+      }
+      const target=arenaPoint(spirit.num,.2);if(target)pawn.userData.target.copy(target);
+      pawn.userData.targetFacing=(spirit.facing ?? 0)+Math.PI/2;
+      pawn.userData.knockedOut=!!spirit.knockedOut;
+      pawn.userData.active=spirit.id===next.actingId;
+      pawn.visible=true;
+    }
+    for(const [id,pawn] of pawns)if(!live.has(id)) {root.remove(pawn);releaseArenaObject(pawn);pawns.delete(id);}
+  }
   function attachModel(model) {
     for(const ids of Object.values(STATIONS))for(const id of ids) {
       const original=model.getObjectByName(`Amp_${id}`);if(!original)continue;
@@ -114,6 +163,7 @@ export function createArenaVisuals(scene) {
       const [fx]=effects.splice(i,1);root.remove(fx.mesh);releaseArenaObject(fx.mesh);
     }
     updateHazards(frame);
+    updatePawns(frame);
     for(const [station,rig] of rigs) {
       const owner=frame.rigs?.find(r=>STATIONS[r.corner]?.includes(station));
       rig.owner=owner;
@@ -162,7 +212,18 @@ export function createArenaVisuals(scene) {
   return {
     attachModel,update,
     tick(time,reduced=false) {
-      clock=time;
+      const dt=Math.min(.05,Math.max(0,time-lastTick));lastTick=time;clock=time;
+      for(const pawn of pawns.values()) {
+        const target=pawn.userData.target;
+        pawn.position.lerp(target,reduced?1:1-Math.exp(-dt*14));
+        const turn=pawn.userData.targetFacing;
+        pawn.rotation.y=THREE.MathUtils.damp(pawn.rotation.y,turn,14,dt);
+        const knocked=pawn.userData.knockedOut;
+        pawn.rotation.z=THREE.MathUtils.damp(pawn.rotation.z,knocked?Math.PI*.48:0,10,dt);
+        const scale=knocked ? .72 : 1+(pawn.userData.active&&!reduced?Math.sin(time*4)*.025:0);
+        pawn.scale.setScalar(scale);
+        pawn.position.y=(target?.y ?? .2)+(knocked ? .02 : !reduced?Math.sin(time*2.4+pawn.position.x)*.025:0);
+      }
       for(const rig of rigs.values())rig.levels.forEach((level,i)=>{
         const thump=!reduced&&clock<(rig.thumpUntil??0)?1+Math.sin((rig.thumpUntil-clock)*30)*.025:1;
         level.scale.setScalar(thump);
@@ -186,7 +247,7 @@ export function createArenaVisuals(scene) {
       }
     },
     diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length,hazards:hazards.children.length}),
-    dispose(){disposed=true;clearEffects();},
+    dispose(){disposed=true;clearEffects();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     get disposed(){return disposed;},
   };
 }

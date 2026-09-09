@@ -7,6 +7,10 @@
 > This doc fills that hole and, in doing so, proposes **removing** two payouts
 > rather than adding four.
 >
+> ✅ **§5⃣.0 IS A DECISION, TAKEN 2026-09-09, AND IT REPLACES THE MODAL-DIP ARM.**
+> Read it before §4 or §5 — it supersedes §5.1 and §5.2 outright and changes what
+> §4's withdrawal means. Everything else below is unchanged and still design-only.
+>
 > ⚠️ **STATUS: NOTHING HERE IS BUILT.** §1 and §6 are a direction Alex has
 > stated; §4 and §5 are proposals he raised and asked for a read on; §8 is his
 > own first-pass table, preserved verbatim so the audit in §9 can be checked
@@ -200,7 +204,7 @@ entirely in *which shapes a crowd likes*. Same outcome, one fewer rule.
 
 ---
 
-## 5. 🅱️ THE MODAL DIP — the exotic note as a purchase, not a key
+## 5. 🅱️ THE MODAL DIP — 🪦 **SUPERSEDED BY §5⃣.0 BELOW, 2026-09-09**
 
 > **Alex, 2026-09-02:** *"Which do you play/sacrifice — play cleanly in scale
 > and earn your harmony Db points, or play to your fans, perhaps playing an
@@ -210,7 +214,149 @@ entirely in *which shapes a crowd likes*. Same outcome, one fewer rule.
 >
 > ⚠️ **DESIGNED HERE, NOT DECIDED.**
 
-### 5.1 Don't detect the mode. Detect its characteristic MOVE.
+---
+
+## 5⃣.0 ✅ THE DECISION — 2026-09-09, AND IT REPLACES §5.1 AND §5.2
+
+> **Alex, 2026-09-09.** A conversation that opened on *"the major/minor limbo is
+> not intuitive"* and ended by deleting the arm this whole section was built on.
+> ⚠️ **§5.1 and §5.2 are SUPERSEDED.** They are kept, not cut: their reasoning
+> about noise floors and ordered pairs is still correct and still constrains
+> anything built here. Their *conclusion* — a per-Spirit colour tone that pays the
+> crowd for a resolved dip — is no longer the design.
+
+🎯 **THE ONE-LINE VERSION: a Spirit's mode IS its clean palette, discord is
+inert, and the game never tries to judge whether a wrong note sounded good.**
+
+### 5⃣.0.0 The rules, as decided
+
+1. ⭐ **A SPIRIT BRINGS TWO THINGS: a PALETTE (one mode) and a WAY OF PLAYING
+   IT** — the gestures already in `music/spiritStyle.js`. The fans want both:
+   *which* notes, and *how* they were used.
+2. ⭐ **CLEAN IS THE SPIRIT'S OWN MODE.** Not derived from anything.
+3. ⭐ **`modeFromStack` IS DELETED.** Deriving major/minor from the Drive Stack's
+   chord quality is *"just too arbitrary"* (Alex). ⚠️ Not a one-line deletion —
+   see §5⃣.0.3.
+4. ⭐ **DISCORD NOTES ARE INERT.** No Db, no fan value, **and no power to resolve
+   anything at the ending.** Two uses only: **held** for a later turn, or **spent
+   as movement fuel** — every note in a track buys a hex
+   (`usableMoves = min(totalNotes, speed)`), so padding a line with junk trades
+   fans for distance. 🎯 **That is the whole sacrifice mechanic and it already
+   works mechanically** — it needs only the Db fix in §5⃣.0.3.
+5. 🪦 **THE "EXPERIMENT WITH SOUND" ARM IS CUT.** No resolved dissonance, no
+   characteristic-move payout, no clever dip. ⚠️ **Alex's reason should survive
+   every future proposal to reopen it: the game cannot predict what subjectively
+   sounds good.** What sounds good is what the fans want, and what they want is
+   baked into the mode plus the gesture.
+6. ⭐ **EVERY SPIRIT SHIPS WITH ONE MODE.** ⚠️ Two live at once is not a balance
+   question, it is an arithmetic one: C Lydian ∪ C Aeolian is **11 of 12 pitch
+   classes**, and `getSpelledPool` draws the stock from all twelve — so ~92% of the
+   hand reads clean and rule 4 has nothing left to trade.
+   📌 **And the "sharps vs flats cannot share a pool" instinct is not the
+   reason.** `getSpelledPool` names all twelve **by degree, not by key signature**
+   — F♯ (the ♯4) and E♭/A♭/B♭ (the ♭3/♭6/♭7) coexist, correctly spelled. The
+   arithmetic is the reason. 📌 One real spelling collision does exist: the tritone
+   is always rendered ♯4, never ♭5 (`notes.js`, a deliberate rock bias), so a dark
+   mode's flat-five will *look* like a bright mode's sharp-four on the chip.
+7. ⭐ **THE SECOND MODE IS A DIFFICULTY TIER, NOT A PURCHASE** — §5⃣.0.1.
+   📇 Indexed, not built.
+8. ⭐ **TWO MODES ARE SCORED BEST-FIT.** No declaration, no toggle, no prompt: at
+   commit the track is scored in whichever of the owner's modes makes it cleanest,
+   and everything outside that one is discord. 📌 **This is what makes B8's
+   deletion permanent** — the per-turn Major/Minor question cannot come back in
+   through a settings menu.
+9. ⭐ **DIFFICULTY CHANGES THE ASSIST, NEVER THE RULES** — §5⃣.0.2.
+10. ⭐ **THE ENDING IS A FORK**: commit for the **Db** boost, or take the
+    **red/blue carrot** — a temporary Drive/Sustain boost earned by the notes that
+    engaged the chord stack. One or the other, chosen at commit. This is
+    `PROGRESSION_REWRITE_DESIGN.md` §4's ending fork, finally concrete.
+11. ⭐ **FANS PAY FOR *HOW*; Db PAYS FOR *WHICH* AND *WHERE*.** 🎯 They stop
+    competing because **they are asked at different moments**, not because anything
+    was re-weighted. Shape → the crowd, mid-line. Clean notes and the landing → Db,
+    at the end. ✅ **This closes §4's open question: the withdrawal ships.**
+12. 🪦 **🌀 INTERGALACTIC 0's FREESTYLE IS CUT** (Alex, 2026-09-09 — *"just bin
+    it, I don't feel bad"*). A pardon buys nothing once discord carries no penalty.
+    ⛔ **He is now a Spirit with a hole where an innate was** — §11's first open call.
+
+### 5⃣.0.1 🎚️ The second mode is a DIFFICULTY TIER — not a purchase
+
+> **Alex, 2026-09-09:** *"Keep the 2 modes in the difficulty setting, for beginner
+> (default for now) — keep only Lydian scale. It's best not to confuse the player,
+> and its not something that needs to be 'bought' for with Db either, just keep it
+> out of the beginner game. Index it for when difficulty settings get built out."*
+
+⭐ **ONE AXIS, NOT TWO.** The second mode arrives with the unassisted difficulty
+tier and with nothing else. It is **not** bought, **not** unlocked by play, and
+**not** on any ladder. A beginner simply never meets it.
+
+- ⭐ **The beginner tier is the DEFAULT and, today, the only tier that exists.**
+- ⭐ **🗡️ The Ronin's beginner mode is LYDIAN.** 📌 This reverses a sketch that
+  briefly stood in this section — he does **not** open in Aeolian and climb to
+  Lydian. There is no climb.
+- 📇 **INDEXED, NOT BUILT.** The two-mode tier is deferred to whenever difficulty
+  settings are actually built out. `WIN_CONDITIONS_DESIGN.md` already made "how a
+  match ends" a setting and it is ⛔ **built headless, with no menu and no HUD** —
+  the same surface and the same missing menu. **This is the entry to build against
+  when that menu happens.**
+
+⚠️ **AND THIS GIVES THE Db SINK NOTHING — read this before quoting §5 at §6.** An
+earlier draft of this section proposed the second mode as the sink's missing
+*depth* rung. **That is withdrawn.** `STATE_OF_PLAY.md` §6's hole is exactly as open
+as it was — *"a seat with surplus Db still has nowhere to put it"* — and nothing in
+§5⃣.0 answers it. 🎯 **Do not let this section be read as having closed the sink.**
+
+### 5⃣.0.2 🎚️ Difficulty changes the ASSIST, never the rules
+
+> **Alex, 2026-09-09:** *"For beginners, they use 1 mode. For better players, they
+> get 2 modes, no assist, and must correctly use the notes in a way that makes
+> musical sense — or they hear it from their fans."*
+
+| tier | modes | what the player is shown |
+|---|---|---|
+| **beginner** — ⭐ the default, and the only tier that exists today | **one** (🗡️ Ronin: Lydian) | the note stock colours the clean notes; the mode is named |
+| **unassisted** — 📇 indexed, not built | **two** | **no colours.** Both modes' notes sit unlabelled in the hand and must be told apart by knowledge |
+
+🎯 **The scoring is IDENTICAL on both settings.** One engine, one balance, one set
+of suites. Difficulty is a UI variable, not a rules variable — and that is what
+makes it cheap.
+
+⭐ **THE MODE COUNT IS THE DIFFICULTY, so there is only one axis to reason about.**
+An earlier draft split it in two — a purchase for *what you have* and a setting for
+*what you are shown*. 📌 That split is gone: the tier grants the second mode **and**
+removes the colours together, as one step.
+
+⚠️ **THE ROOT MUST STAY VISIBLE ON EVERY SETTING.** The root moves every turn
+(`melodyCommit.js` → `newRootRaw = lastNote`), so there is nothing to memorise — a
+player computes their palette *from the root*, every turn. Hide the colours and it
+is a theory workout; hide the root as well and it is not hard, it is impossible.
+
+⚠️ **AND THE BOT ALWAYS PLAYS UNASSISTED.** The searcher reads legality and score,
+never colours, so it is untouched by the setting. Two consequences: **difficulty
+must never touch scoring**, or every bench number in the repo becomes
+difficulty-dependent and nothing is comparable with anything (`SEQUENCING.md` §B's
+recurring lesson); and every bench number describes *expert* play, which should be
+written down before someone reads one as the average game.
+
+📌 `WIN_CONDITIONS_DESIGN.md` already made "how a match ends" a setting and it is
+built headless with ⛔ no menu and no HUD. **This rides on that same settings
+surface** rather than spawning its own.
+
+### 5⃣.0.3 ⚠️ WHAT THIS COSTS — read before touching anything
+
+Deletion is the expensive operation in this repo (`SEQUENCING.md` §B). What the
+decision above actually moves:
+
+| what | where | note |
+|---|---|---|
+| ⛔ **Db length must count CLEAN notes, not raw length** | `cadence.js` `scoreTrackDB` step A | **MANDATORY, not optional.** It is `floor(len/2) - 1` today — blind to cleanliness — so as written, padding a line with junk still pays Db. Rule 4 says junk pays nothing. Without this the whole design is decorative |
+| 🪦 the discord penalty | `discordPenaltyFor`, `DISCORD_GRACE`, `DISCORD_FLOOR` | retires — discord pays nothing rather than costing something |
+| 🪦 the mode derivation | `modeFromStack`, `scaleMode` as derived state | touches `turnFlow.js:77`, note **spelling** (`getSpelledPool` takes a mode), `b0check.mjs`, `turnFlowCheck.mjs`, `selftest.mjs:880` and the client |
+| ⚠️ **split-root spelling** | `canonicalRoot(rawNote, mode)` | uses mode to name G♯/A♭ and C♯/D♭. With derived mode gone it needs the Spirit's mode — a two-line fix that **fails silently rather than loudly** if missed |
+| the three gated endings | `isMinorSeventhEnd`, `isMajorThirdEnd`, `isTritoneEnd` | all read `scaleMode`. Re-point at the palette or delete |
+| 🪦 Freestyle | `melodyCommit.js:306/311/478-485/655/694`, `economy.js:146-152` | ⚠️ **`attackParams.js:85` also says "Freestyle" and is a DIFFERENT mechanic** (his 8/2 cluster reading +1 Drive). Do not delete it with the pardon |
+| the pardon tiers | `classifyTrack`, `CONTEXT_TIERS` | stop making a note *clean* and instead size the rule-10 carrot |
+
+### 5.1 🪦 SUPERSEDED — Don't detect the mode. Detect its characteristic MOVE.
 
 The version that fails is *"Ronin +3 for playing Mixolydian"*: a key-signature
 bonus needing a mode you cannot infer from eight notes and a declaration B8
@@ -232,7 +378,7 @@ feature is a rule that says THIS wrong note, for THIS Spirit, pays the crowd.**
 No mode inference, no declaration, no palette widening, and no pardon is
 devalued.
 
-### 5.2 It must be a move — §2.2's rule, and it is musically the honest version
+### 5.2 🪦 SUPERSEDED — It must be a move (the REASONING still binds; the conclusion does not)
 
 A single pitch class shows up in ~50% of random eight-note tracks, so "played
 the ♭2" is a coin toss. **A ♭2 that does not lean onto the tonic is not
@@ -259,10 +405,23 @@ what the dichotomy assumes:
 
 - **An off-palette note costs almost no Db.** `scoreTrackDB`'s step A is
   `Math.floor(track.length / 2) - 1` — pure length, **blind to cleanliness**.
-  `DISCORD_GRACE` is 1 (`context.js:474`), so the first offender is free. And the
-  ending bonus is **not** gated on `allInScale` in the kernel, despite the
-  comment above `scoreTrackDB` saying the caller guards it — 📌 **verify whether
-  the client still does; it changes the arithmetic.**
+  `DISCORD_GRACE` is 1 (`context.js:474`), so the first offender is free.
+  ✅ **AND THE ENDING BONUS IS GUARDED BY NOBODY — VERIFIED 2026-09-09.**
+  `cadence.js:270` says *"ending bonus (clean tracks only — caller guards this)"*.
+  **The caller does not.** `melodyCommit.js:438` calls `scoreTrackDB`
+  unconditionally, and `scoreTrackDB` has **no other caller anywhere in `src/`
+  outside the test suites** — the client has no second scoring path. ⚠️ **The
+  comment is stale.** A dirty track collects the full 5th-ending +3, less a penalty
+  graced at 1 and floored at 3.
+- ⛔ **AND HARMONIC LOCK IS GATED ON THE ENDING BONUS — the other half of the
+  price, documented nowhere but one inline comment.** `melodyCommit.js:441` reads
+  `baseScore.endingBonus > 0 ? harmonicLock(…) : 0`. A non-standard ending is not
+  the 4th, 5th or octave, so it scores 0 — **and that disqualifies the lock too,
+  worth up to +3.** 🎯 **A colour ending costs up to 6 Db, not 3.** That explains
+  §5.6.1's negative steering gaps far better than *"no character has a reason to aim
+  at it"*: the searcher was avoiding a hole, not ignoring a flavour. 📌 Under
+  §5⃣.0 the colour-ending category is gone — but **rule 10's fork must not inherit
+  this cliff.**
 - **It costs you your entire crowd.** `positionFanGain` returns `null` unless
   `clean` (`melodyCommit.js:102`), so a dirty track earns **no positional fans
   at all** and does not even advance the promotion streak.
@@ -602,20 +761,35 @@ by playing well. Rat = a big fickle casual flood, cheap to win and cheap to lose
 
 ## 11. ❓ OPEN CALLS — nothing below is decided
 
-1. **Lock the four verbs** (§1) — and with them, record the Riff Rat /
-   Glamarchy swap as a decision.
-2. **Does the withdrawal (§4) ship?** Needs the joint bench of §4.3.1.
-3. **Does the discord penalty survive?** §5.4 argues yes, small;
-   `PROGRESSION_REWRITE_DESIGN.md` §3 argues no. They cannot both hold.
-4. **Is Intergalactic 0's free dip a bug or his identity?** (§5.4)
-5. **Does the crowd's taste get a HUD surface?** The stated design audience is
-   *the ultimate beginner* (`SEQUENCING.md` §5-glow.A). A hidden scoring rule is
-   not a taste the player can play toward; the unlock-hex glow is the precedent
-   for making one visible.
+1. 🌀 **What replaces Intergalactic 0's innate?** Freestyle is cut (§5⃣.0 rule 12)
+   and nothing stands in its place. Two directions were raised and neither chosen:
+   he **holds a discord note across turns for free** (fits *Loop*, and `bankedNote`
+   already exists), or **his junk notes buy movement at a better rate** — the one
+   who gets somewhere on wrong notes.
+2. 🎼 **Which single mode does each Spirit play on the beginner tier?** Only the
+   🗡️ Ronin is decided: **Lydian**. 👹 Metalness, 📻 Zero and the fourth seat are
+   open — as is each Spirit's *dark* counterpart for the unassisted tier.
+3. 🎚️ **How many assist steps?** §5⃣.0.2 names two. The note stock's colouring
+   carries **two** signals — *is this note in my palette* and *is it in my chord* —
+   and those are different skills. Three steps (full / palette hidden / everything
+   hidden) may be the honest split.
+4. 💰 **The Db sink's depth hole is STILL OPEN.** §5⃣.0.1 explicitly **withdraws**
+   the second mode as an answer to it. `STATE_OF_PLAY.md` §6 is unchanged, and this
+   doc no longer offers it a candidate.
+5. **Lock the four verbs** (§1) — and with them, record the Riff Rat / Glamarchy
+   swap as a decision.
 6. **Can you play to a RIVAL's crowd and steal it?** `FAN_DEFECT_TO_VICTOR`
    already swings 2 casuals to a demolisher, and `CREW_SYSTEM_DESIGN.md` has a
    Heckler. This is the fan-economy twin of §2's denial rule, and it is
    completely unexplored.
+
+🪦 **CLOSED BY §5⃣.0, and none of these should be re-opened without re-reading it:**
+*"Does the withdrawal (§4) ship?"* — **yes**, rule 11. *"Does the discord penalty
+survive?"* — **no**, rule 4 makes discord **inert** rather than costly, which is a
+different answer from both sides of the old argument. *"Is Zero's free dip a bug or
+his identity?"* — **moot, it is cut.** *"Does the crowd's taste get a HUD surface?"*
+— **yes, and the surface IS the difficulty setting** (§5⃣.0.2); what it shows on the
+beginner end is open call 3 above.
 
 ---
 

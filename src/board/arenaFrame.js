@@ -4,11 +4,14 @@ import { rigRadius, rigTiers } from '../engine/systems/sonicRig.js';
 // hidden spirits BEFORE passing them here; no note stock or hidden state crosses.
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
-  bots = [], spotlight, tentacle, lite = false }) {
+  bots = [], spotlight, tentacle, shadowDecoy = null, lite = false }) {
   const visible = new Set(spirits.map(s => s.id));
   return {
     spirits: spirits.map(s => ({ id:s.id, num:s.num, color:s.color, corner:s.corner,
-      imageSrc:s.imageSrc, knockedOut:!!s.knockedOut })),
+      facing:s.facing ?? 0, imageSrc:s.imageSrc, knockedOut:!!s.knockedOut })),
+    decoys:shadowDecoy ? [{ id:`${shadowDecoy.id}:shadow`, sourceId:shadowDecoy.id,
+      num:shadowDecoy.num, color:shadowDecoy.color, corner:shadowDecoy.corner,
+      facing:shadowDecoy.facing ?? 0, shadow:true }] : [],
     rigs: spirits.filter(s => !s.knockedOut).map(s => ({ id:s.id, corner:s.corner,
       color:s.color, ...rigTiers(noteStates[s.id]),
       radius:rigRadius(noteStates[s.id], s.id === actingId), active:s.id === actingId })),

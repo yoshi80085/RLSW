@@ -2,6 +2,7 @@
 // Phase 5a: contract fixes ahead of the full economy extraction (Phase 5c flip).
 
 import { pitchIndex, NOTE_POOL, canonicalRoot } from "../../music/notes.js";
+import { melodyModeFor } from "../../music/melodyIdentity.js";
 import { detectMotifRepeat, refillStock } from "../../music/cadence.js";
 import { FAN_DIEHARD_START, FAN_CASUAL_START, FAN_BORED_AFTER, FAN_DECAY,
          FAN_CASUAL_CAP, FAN_DIEHARD_CAP, FAN_PROMOTE_EVERY, RIG_POOL_FLOOR } from "../../data/gameConstants.js";
@@ -54,16 +55,12 @@ export function usedAdd(used, ...idxs) {
 // palette, recognized gestures, repeated motifs) with track length only a small
 // nudge; it routes to crowd growth / DB top-up / intimidation downstream.
 //
-// Returns { score, freestyle }: `score` is P clamped to 0..10; `freestyle` is the
-// Freestyle flair flag (Intergalactic 0's pardoned first wrong note), which the
-// caller also needs for its flash/log — returned here so the discord/freestyle
-// arithmetic lives in ONE place and can't drift.
+// Returns { score }: `score` is P clamped to 0..10.
 //
 // Inputs (all already computed by the caller):
 //   melodyLine          — the committed note track (array of note names)
 //   trackHasTritone, isOctaveResolution           — interval-effect flags
 //   diatonicRunLen, repeatPatLen, skipClimbLen     — detected run lengths
-//   hasGatedEnding      — minor-7th | major-3rd | tritone unlock-gated ending
 //   cadenceResolved     — a cadence objective completed this commit
 //   styleBig            — completed PER-SPIRIT STYLE gestures this commit (0-2,
 //                         from music/spiritStyle.js). See `perfBig` below.
@@ -73,15 +70,12 @@ export function usedAdd(used, ...idxs) {
 //                         in the skill tree has ever sold, so this flair point has
 //                         never once been paid. Pinned in `melodyCommit.js`; see
 //                         the note there. Do not wire it back up without a rule.
-//   discordCount        — raw off-scale note count this track
-//   freestylePardon     — Intergalactic 0's first-wrong-note pardon is active
 export function performanceScore({
   melodyLine,
   trackHasTritone, isOctaveResolution,
   diatonicRunLen, repeatPatLen, skipClimbLen,
-  hasGatedEnding, cadenceResolved, styleBig = 0,
+  cadenceResolved, styleBig = 0,
   earned, edgeResolved, susEnd,
-  discordCount, freestylePardon,
 }) {
   const perfPc = melodyLine.map(pitchIndex).filter(p => p >= 0);
   const perfDiff = [];
@@ -108,7 +102,6 @@ export function performanceScore({
     + (diatonicRunLen >= 3 ? 1 : 0)
     + (repeatPatLen   >= 3 ? 1 : 0)
     + (skipClimbLen   >= 3 ? 1 : 0)
-    + (hasGatedEnding ? 1 : 0)
   );
   const perfMotif0 = detectMotifRepeat(melodyLine);
   const perfMotif  = (perfMotif0.period >= 3 ? 2 : 0) + (perfMotif0.reps >= 3 ? 1 : 0);
@@ -143,13 +136,11 @@ export function performanceScore({
   // term's headroom rather than reading as a big turn.
   const perfBig      = Math.min(3, (cadenceResolved ? 1 : 0) + Math.max(0, styleBig));
   const perfLenNudge = Math.floor(earned / 3);                          // length is only a small nudge
-  const perfDiscord   = freestylePardon ? Math.max(0, discordCount - 1) : discordCount;
-  const perfFreestyle = (freestylePardon && discordCount >= 1) ? 1 : 0;
   const score = Math.max(0, Math.min(10,
     perfShape + perfPalette + perfGest + perfMotif + perfBig + perfLenNudge
-      + (edgeResolved ? 2 : 0) + (susEnd ? 1 : 0) + perfFreestyle - perfDiscord
+      + (edgeResolved ? 2 : 0) + (susEnd ? 1 : 0)
   ));
-  return { score, freestyle: perfFreestyle };
+  return { score };
 }
 
 // ─── INITIAL NOTE STATE (per-spirit economy sheet) ───────────────────────────
@@ -164,7 +155,7 @@ export function performanceScore({
 // 0..1 PRNG — the engine passes its seeded rng; it defaults to Math.random.
 export function makeInitialNoteState(spiritId, rand = Math.random) {
   const rawRoot = NOTE_POOL[Math.floor(rand() * NOTE_POOL.length)];
-  const initMode = "major";
+  const initMode = melodyModeFor(spiritId);
   const root = canonicalRoot(rawRoot, initMode);
   // 🗡️ SHREDDING RONIN carries a deeper well: 11 stock slots instead of 10.
   const stockSize = spiritId === "cosmic_ronin" ? 11 : 10;
@@ -184,16 +175,11 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     usedStockIdx:    [], // insertion-ordered array of spent stock-slot indices (JSON-safe; was a Set)
     rootNote:        root,
     scaleMode:       initMode,
-    // 🎸 B8: no Major/Minor prompt any more — the Drive Stack's chord quality
-    // decides, re-derived at the start of every turn. No need to call
-    // modeFromStack here: B0a seeds the stack with the root ALONE, which reads as
-    // a Single note, which is quality-AMBIGUOUS (no third to hear), so it holds
-    // whatever mode it is given — `initMode` — and turn one can never force-flip a
-    // spirit's mode. That invariant is asserted in b0check.mjs, so if the seed ever
-    // stops being a single note the test will say so.
+    paletteMode:     initMode,
+    melodyDifficulty: 'beginner',
     pivotPending:    false,
-    modeReason:      'ambiguous',
-    modeChordName:   `${root} (single)`,
+    modeReason:      'spirit',
+    modeChordName:   null,
     diceTier:        0,
     tierPoints:      0,
     discordCount:    0,

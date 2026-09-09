@@ -127,6 +127,10 @@ pass as the code:
 - `src/UPGRADE_SHOP_DESIGN.md` — 💰 what Db is FOR: one upgrade step per ability,
   every step a TRADE. ⛔ Design only. Read its §1 (the measured budget) and §3
   (the base kit Alex changed) before pricing anything
+- `src/MOCAP_DESIGN.md` — 🕺 Alex's own movement becomes the characters': body,
+  face and guitar as three separate captures, recorded once and baked to clips so
+  ⭐ **no player needs a webcam**. ⛔ Design only. Read its §0 rulings and its §3
+  — the rig, which blocks every other step — before proposing anything
 - `src/CHARACTER_HANDOFF.md` — per-character state
 
 `src/ARCHITECTURE.md` is the map of the code itself — every module, what it

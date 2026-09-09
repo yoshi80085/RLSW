@@ -7,6 +7,7 @@ import { buildTestingGroundsConfig } from '../data/matchSetup.js';
 import assert from 'node:assert/strict';
 import process from 'node:process';
 import { noteSheetPatched } from './actions.js';
+import { shukuchiLandings } from './systems/shukuchi.js';
 
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
 // jsdom has no Web Animations renderer; gameplay handlers still run normally.
@@ -20,9 +21,15 @@ const config = buildTestingGroundsConfig({ beginnerMode: false });
 config.seed = 4242;
 // Use the existing replay entry point to give the fixture an owned ability.
 config.catchUp = { log: [{ action: noteSheetPatched('cosmic_ronin', {
-  unlockedSkills: ['psycho_bushido'], dbPoints: 10,
+  unlockedSkills: ['shukuchi', 'psycho_bushido', 'shadow_illusion', 'cursed_shamisen'],
+  dbPoints: 10, tempSustain: 1,
 }) }] };
 config.spirits = config.spirits.map(spirit => ({ ...spirit, cpu: false }));
+const roninId = 'cosmic_ronin';
+const shukuchiLanding = shukuchiLandings(config, roninId,
+  new Set(config.spirits.map(spirit => spirit.num)))[0];
+assert.ok(shukuchiLanding, 'fixture provides an unoccupied ring-two Shukuchi landing');
+let observedState = null;
 const click = async element => {
   assert.ok(element, 'click target exists');
   assert.equal(element.closest('[hidden]'), null, 'click target is not in a closed drawer');
@@ -30,7 +37,8 @@ const click = async element => {
 };
 const button = text => [...document.querySelectorAll('button')].find(el => el.textContent.includes(text));
 try {
-  await act(async () => root.render(<Game gameState={config} onReturnToLobby={() => {}} />));
+  await act(async () => root.render(<Game gameState={config} onReturnToLobby={() => {}}
+    onEngineState={state => { observedState = state; }} />));
   assert.ok(document.querySelector('[data-tip-anchor="drive-stack"]'));
   console.log('Mounted match');
   await click(button('Continue to Melody'));
@@ -45,6 +53,7 @@ try {
   const board = document.querySelector('[data-board-view] .arena-tactical > svg');
   await click(button('3D board'));
   assert.equal(document.querySelector('[data-match-layout]').dataset.matchLayout, 'immersive');
+  assert.ok(document.querySelector('[data-immersive-track]'), '3D melody uses the immersive floating track');
   assert.equal(document.querySelector('[data-tip-anchor="note-stock"]'), stock, '3D retains the dealt hand DOM');
   assert.equal(document.querySelector('[data-board-view] .arena-tactical > svg'), board, '3D retains the board DOM');
   assert.ok(button('Commit (3 notes'), 'draft survives entering immersive mode');
@@ -58,6 +67,7 @@ try {
   assert.equal(document.querySelector('[data-tip-anchor="note-stock"]'), stock, 'drawers do not remount controls');
   await click(button('Commit (3 notes'));
   assert.equal(document.querySelector('[data-hud-region="turn"]').hidden, false, 'new phase shows its controls');
+  assert.ok(document.querySelector('.immersive-arail'), '3D action phase uses the immersive command dock');
   assert.ok(document.querySelector('[data-tip-anchor="end-turn"]'), 'commit opens movement/actions');
   assert.equal(document.querySelector('[data-bushido-layer]'), null, 'lane stays hidden until armed');
   await click(button('🌀 Bushido'));
@@ -65,11 +75,38 @@ try {
   assert.ok(document.querySelector('[data-bushido-layer="labels"]'), 'rung labels have their own top layer');
   await click(button('Cancel'));
   assert.equal(document.querySelector('[data-bushido-layer]'), null, 'cancelling removes both layers');
+  const startingHex = config.spirits.find(spirit => spirit.id === roninId).num;
+  await click(button('🌀 Shukuchi'));
+  await click(document.querySelector(`[data-hex-num="${shukuchiLanding}"]`));
+  const hoppedRonin = observedState?.spirits.find(spirit => spirit.id === roninId);
+  assert.equal(hoppedRonin?.num, shukuchiLanding, 'Shukuchi moves Ronin to the chosen ring-two landing');
+  assert.equal(observedState?.turn?.lastMove?.from, startingHex, 'Shukuchi records its true origin');
+  assert.equal(observedState?.turn?.lastMove?.shukuchi, true, 'Shukuchi keeps its distinct movement marker');
+  assert.equal(observedState?.turn?.moveStepsLeft, 2, 'one Shukuchi hop costs one shared Action Point');
+  assert.ok(button('🌀 Shukuchi'), 'the paid ability remains available for its remaining hops');
+  await click(button('👤 Shadow'));
+  const shadow = observedState?.noteStates?.[roninId]?.shadowIllusion;
+  assert.equal(shadow?.hex, shukuchiLanding, 'Shadow Illusion begins stacked on Ronin');
+  assert.ok(shadow?.turnsLeft > 0, 'Shadow Illusion receives its configured duration');
+  assert.ok(shadow?.stepsLeft > 0, 'Shadow Illusion receives an independent movement budget');
+  assert.ok(button('👤 Shadow')?.textContent.includes(`${shadow.turnsLeft}t`),
+    'the live ability control reports the active Shadow duration');
+  await click(button('🎸 Shamisen'));
+  const curse = observedState?.noteStates?.[roninId]?.shamisenCurse;
+  assert.ok(curse?.turnsLeft > 0, 'Cursed Shamisen starts its timed curse');
+  assert.equal(curse?.paidThisRound, false, 'Cursed Shamisen begins with its debt unpaid');
+  assert.ok(button('💰 Pay Debt'), 'the active curse exposes its live debt control');
+  await click(button('💰 Pay Debt'));
+  assert.equal(observedState?.noteStates?.[roninId]?.shamisenCurse?.paidThisRound, true,
+    'Pay Debt protects the active curse for this round');
+  assert.ok(button('💰 Pay Debt')?.textContent.includes('✓'), 'the debt control confirms payment');
   // Inspect details, then return through the same controls a player uses.
   await click(panelButton('Spirit'));
   await click(panelButton('Turn'));
   await click(document.querySelector('[data-tip-anchor="end-turn"]'));
   assert.equal(document.querySelector('[data-hud-region="turn"]').hidden, false, 'next player gets turn controls');
+  assert.equal(document.querySelectorAll('[data-immersive-hidden]').length, 2,
+    '3D chord phase retires the two classic board-sized stack panels');
   assert.ok(button('Continue to Melody'), 'next player gets the chord step');
   await click(button('Continue to Melody'));
   const nextNote = [...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')]
@@ -83,7 +120,7 @@ try {
   assert.equal(document.querySelector('[data-board-view] .arena-tactical > svg'), board, '2D recovery retains original board');
   for (const region of document.querySelectorAll('[data-hud-region]')) assert.equal(region.hidden, false, 'classic shows every HUD region');
   assert.ok(document.querySelector('[data-tip-anchor="end-turn"]'), 'view switch does not reset the phase');
-  console.log('PASS: melody, immersive layout/drawers, preserved live controls, commit, Bushido arm/cancel, next-turn reset, second commit, 2D recovery');
+  console.log('PASS: melody, immersive layout/drawers, preserved live controls, Shukuchi hop, Shadow summon, Shamisen debt, Bushido arm/cancel, next-turn reset, second commit, 2D recovery');
 } finally {
   await act(async () => root.unmount());
   dom.window.close();

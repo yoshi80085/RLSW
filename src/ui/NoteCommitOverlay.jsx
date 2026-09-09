@@ -105,11 +105,11 @@ function ScaledKnob({ side, label, value, boost, color }) {
    that would make the stat WORSE gets StatKnob's red docked dots for free —
    something the phantom needle never expressed. */
 export function ChordStackPanel({ side, value, boost = 0, panelRef, tipAnchor,
-                                  className, glowColor, borderColor, children }) {
+                                  className, glowColor, borderColor, immersive = false, children }) {
   const isDrive = side === "drive";
   const color   = isDrive ? DRIVE_C : SUSTAIN_C;
   return (
-    <div ref={panelRef} data-tip-anchor={tipAnchor} className={className}
+    <div ref={panelRef} data-tip-anchor={tipAnchor} data-immersive-hidden={immersive || undefined} className={className}
       style={{ "--step-glow-color": glowColor ?? color,
         position:"absolute", bottom:"3%", [isDrive ? "left" : "right"]:"3%",
         width:"45%", padding:"8px 11px", borderRadius:5, zIndex:5,
@@ -127,7 +127,8 @@ export function ChordStackPanel({ side, value, boost = 0, panelRef, tipAnchor,
                 + `inset 0 0 12px ${color}22`,
         background: isDrive ? "linear-gradient(120deg,#2a0f0add,#12060abb)"
                             : "linear-gradient(240deg,#08202edd,#06121ebb)",
-        border:`1px solid ${borderColor ?? color}` }}>
+        border:`1px solid ${borderColor ?? color}`,
+        ...(immersive ? { visibility:'hidden', pointerEvents:'none' } : {}) }}>
       <ScaledKnob side={side} label={isDrive ? "DRIVE" : "SUSTAIN"}
                   value={value} boost={boost} color={color} />
       <Unskew>{children}</Unskew>
@@ -165,20 +166,23 @@ export function stackSeatPos(side, col, row = 0) {
 /* 🎼 THE COMMIT TRACK, spanning the top of the board rather than floating
    centred. The preview widened it because eight seats plus the payout colours
    were being squeezed into "auto" width and wrapping on a narrow board. */
-export function CommitTrackPanel({ panelRef, tipAnchor, className, active, children }) {
+export function CommitTrackPanel({ panelRef, tipAnchor, className, active, immersive = false, children }) {
   return (
-    <div ref={panelRef} data-tip-anchor={tipAnchor} className={className}
+    <div ref={panelRef} data-tip-anchor={tipAnchor} data-immersive-track={immersive || undefined} className={className}
       style={{ "--step-glow-color":"#aa88ff",
-        transform:`skewX(${COMMIT_OVERLAY.tilt}deg)`,
-        position:"absolute", top:"2%", left:"3%", right:"3%",
+        transform:immersive ? 'translateX(-50%)' : `skewX(${COMMIT_OVERLAY.tilt}deg)`,
+        position:"absolute",
+        ...(immersive
+          ? { top:'auto', bottom:16, left:'50%', right:'auto', width:'min(760px,calc(100% - 32px))', boxSizing:'border-box' }
+          : { top:'2%', left:'3%', right:'3%' }),
         padding:"7px 12px 8px", borderRadius:5, zIndex:5,
-        backdropFilter:"blur(5px)", boxShadow:"0 3px 16px #000000aa",
-        background:"#060a10dd", display:"flex", alignItems:"center", gap:6,
-        border:`1px solid ${active ? "#aa88ff55" : "#1a2a4044"}` }}>
+        backdropFilter:immersive ? 'blur(18px) saturate(1.25)' : "blur(5px)", boxShadow:immersive ? '0 8px 30px #0007,0 0 18px #aa88ff1c,inset 0 1px #ffffff24,inset 0 -20px 34px #05071420' : "0 3px 16px #000000aa",
+        background:immersive ? 'linear-gradient(155deg,#f2ebff20 0%,#cbb8ff08 28%,transparent 48%),linear-gradient(110deg,#17172bb2,#0a10219c)' : "#060a10dd", display:"flex", alignItems:"center", gap:6,
+        border:`1px solid ${active ? "#aa88ff55" : "#1a2a4044"}`, ...(immersive ? { borderRadius:10 } : {}) }}>
       {/* ⚠️ The un-skew wrapper is a FLEX ROW here, because the track's children
           are flex items of the panel itself — wrapping them in a plain div would
           take them out of that row and stack the eight seats vertically. */}
-      <div style={{ transform:`skewX(${-COMMIT_OVERLAY.tilt}deg)`, display:"flex",
+      <div style={{ transform:immersive ? undefined : `skewX(${-COMMIT_OVERLAY.tilt}deg)`, display:"flex",
         alignItems:"center", gap:6, width:"100%" }}>{children}</div>
     </div>
   );
