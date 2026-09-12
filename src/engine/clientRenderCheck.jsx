@@ -66,9 +66,9 @@ ok('the chord-stack anchor survived the split', /<[^>]+data-tip-anchor="chord-st
 ok('the Commit Track is NOT up during step 1', !/<[^>]+data-tip-anchor="commit-track"/.test(html));
 
 console.log('\n§4 the amp knob is on the stack panels');
-// StatKnob's cap carries the stat colour at 55% alpha — one per stack panel,
-// plus the two in the HUD column. Fewer than four means a knob went missing.
-const caps = (html.match(/border:1\.5px solid #(?:ff6644|44aaff)55/g) || []).length;
+// Each cap exposes a semantic marker so presentation changes do not make this
+// render-presence check depend on one exact border alpha.
+const caps = (html.match(/data-stat-knob-cap/g) || []).length;
 ok('at least one amp knob per stack panel', caps >= 2, `found ${caps} knob cap borders`);
 const slots = (html.match(/data-stack-slot=/g) || []).length;
 ok('both stacks rendered their slots', slots > 0, `found ${slots} slot elements`);

@@ -122,7 +122,6 @@ export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
     shukuchiHopsLeft: 0,
     usedStockIdx: carriedUsed,
     discordCount: 0,
-    payoutRouting: {},        // dies with the track it indexes into
     hasConfirmed: false,
     dieFloorBoost: 0,
     smashExposed: false,        // 🎸💥 exposure clears at the start of your own turn

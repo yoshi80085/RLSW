@@ -15,7 +15,7 @@ import { makeRng } from "./rng.js";
 import { makeInitialNoteState } from "./systems/economy.js";
 import { makeLimelightState } from "./systems/limelight.js";
 import { shuffledStageFxDeck } from "../data/stageEffects.js";
-import { makeBoardToken, SPOTLIGHT_POOL, eventHexCandidates } from "../board/boardHelpers.js";
+import { makeBoardToken, eventHexCandidates } from "../board/boardHelpers.js";
 import { ALL_HEXES } from "../board/hexMap.js";
 import { TOKEN_MAX, TOKEN_BASE_POOL, EVENT_HEX_COUNT, CHARGE_ZONE_COUNT, LIMELIGHT_HEX, LIGHTNING_TRACK_HEXES, ROUND_LIMIT_DEFAULT,
 } from "../data/gameConstants.js";
@@ -41,9 +41,6 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
   // Phase 6a: board state (engine-owned, seeded)
   const boardRng = makeRng(seed >>> 0).fork("boardInit");
   const startHexNums = new Set(spirits.map(s => s.num));
-
-  // Spotlight: random interior hex
-  const spotlightHex = SPOTLIGHT_POOL[Math.floor(boardRng() * SPOTLIGHT_POOL.length)];
 
   // Event hexes: avoid spirit start positions, and keep the marquees apart.
   // ⚠️ SETUP AND RESPAWN MUST AGREE. `eventHexCandidates` is the same helper the
@@ -198,7 +195,6 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
 
     // Phase 6a: board state (engine-owned, seeded)
     board: {
-      spotlightHex,
       eventHexes,
       eventRespawnIn: 0,
       // 🎪 Questions already drawn this match. Per-BUCKET recycling lives in
@@ -218,8 +214,6 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       // picked up on move-onto-hex (spends Action, grants Vibe).
       letters: [],
       // reports
-      lastSpotlightHeal: null,
-      lastSpotlightMove: null,
       lastTokensScattered: null,
       lastThrashTokens: null,
       lastFlamingDecay: null,

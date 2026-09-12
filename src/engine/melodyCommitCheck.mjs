@@ -38,18 +38,13 @@ import { applyAction } from "./reduce.js";
 import { legalActions } from "./policies/legalActions.js";
 import { applyBotAction, PARTIAL_KINDS } from "./policies/transition.js";
 import {
-  commitMelodyEconomy, positionFanGain, deedFanGain, performanceFanGain,
-  CLIENT_OWNED, COLOR_PAYOUT_CAP, RONIN_PERF_CLIFF,
+  commitMelodyEconomy, CLIENT_OWNED,
   MIC_VOICE_ROLL_DIE, MIC_VOICE_ROLL_PASS, SPEED_CAP,
 } from "./systems/melodyCommit.js";
-import { performanceScore } from "./systems/economy.js";
-import { scoreTrackDB } from "../music/cadence.js";
 import { advanceDB } from "../board/boardHelpers.js";
 import { CORNERS } from "../data/corners.js";
 import {
-  DB_UPGRADE_THRESHOLD, FAN_CASUAL_CAP, FAN_DIEHARD_CAP, FAN_PROMOTE_EVERY,
-  FAN_GAIN_BY_RING, FAN_BORED_AFTER, FAN_DECAY, EXCITE_PER_CASUAL,
-  LIMELIGHT_HEX, FAME_PER_TURN_CAP,
+  DB_UPGRADE_THRESHOLD, FAME_PER_TURN_CAP,
 } from "../data/gameConstants.js";
 
 let checks = 0;
@@ -86,7 +81,7 @@ const composed = (track, extra = {}, id = RONIN, st = baseState()) => withNs(st,
   dbPoints: 0, totalDB: 0, excitement: 0, loyalty: 0, recentP: [], lowPerfStreak: 0,
   finalsTrail: [], cadenceCooldowns: {}, bankedNote: null, tempDrive: 0, tempSustain: 0,
   casuals: 0, diehards: 2, centerStreak: 0, fanLag: 0, mojoDrain: 0,
-  targetSkillId: null, upgradesPending: 0, payoutRouting: {}, ...extra,
+  targetSkillId: null, upgradesPending: 0, ...extra,
 });
 
 const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
@@ -164,27 +159,33 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 5. Db reads clean length plus the chosen clean ending.
+// 5. Layer 2/3 — clean notes, clean streaks, and the final resolution.
 // ═════════════════════════════════════════════════════════════════════════════
 {
+  const threeClean = run(composed(['C', 'D', 'E']));
+  eq(threeClean.report.baseScore.points, 2,
+     'three clean notes pay 1.5 Db plus the 0.5 Db clean-streak award');
+
   const track = ['C', 'D', 'E', 'G'];        // ends on the 5th
   const r = run(composed(track));
-  const base = scoreTrackDB(track, 'F', 'G', { cleanNoteCount: 4, endingClean: true });
-  eq(r.report.baseScore.points, base.points, 'length + ending come from scoreTrackDB, untouched');
-  eq(r.report.earned, base.points + r.report.lock.bonus,
-     'earned = clean length + chosen ending + lock, and nothing else');
+  eq(r.report.baseScore.points, 5.5, 'four clean notes (2 Db) plus 3-note streak (0.5 Db) plus fifth (3 Db)');
+  eq(r.report.earned, 5.5, 'the three-layer payout has no hidden harmonic-lock bonus');
   eq(r.report.dbOverflow, 0, '⚠️ the discarded boost NO LONGER feeds Db (13% of income, deleted)');
   eq(r.report.earnedTotal, r.report.earned, 'with the Edge and P-topup gone, the pot is just `earned`');
 
-  // 🔒 Harmonic Lock ESCALATES the ending bonus, so it REQUIRES one.
+  // A built stack no longer changes Db. Only its root can create the carrot.
   const locked = run(composed(track, { driveStack: ['C', 'E', 'G'] }));
-  ok(locked.report.lock.bonus > 0, 'landing on a chord tone with an ending bonus locks');
-  ok(locked.report.earned > r.report.earned, '…and pays more than the same track with no chord');
+  eq(locked.report.lock.bonus, 0, 'harmonic lock is retired');
+  eq(locked.report.earned, r.report.earned, 'the fifth payout is independent of the stack');
 
-  const noEnding = ['C', 'D', 'E', 'A'];     // A is neither 4th nor 5th nor octave
-  const noLock = run(composed(noEnding, { driveStack: ['A', 'C', 'E'] }));
-  eq(noLock.report.baseScore.endingBonus, 0, 'no ending bonus on this track');
-  eq(noLock.report.lock.bonus, 0, '⚠️ no ending bonus ⇒ NO LOCK, even on a chord tone');
+  const tonic = run(composed(['D', 'E', 'F', 'C'], { driveStack: ['C', 'E', 'G'] }));
+  eq(tonic.report.baseScore.endingKind, 'tonic', 'the line can resolve to the palette tonic');
+  eq(tonic.report.colorDrive, 1, 'ending on the Drive stack root grants a red carrot');
+  eq(tonic.patch.tempDrive, 1, 'the carrot is a temporary Drive point');
+
+  const lydianFourth = run(composed(['C', 'D', 'E', 'F#'], { scaleMode: 'lydian' }));
+  eq(lydianFourth.report.baseScore.endingKind, 'fourth', 'a mode’s fourth degree resolves even when Lydian raises it');
+  eq(lydianFourth.report.baseScore.endingBonus, 2, 'the clean Lydian fourth receives the harmonic balance bonus');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -209,54 +210,46 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 7. B4 — COLOUR PAYS THE STACK THAT AUTHORIZED IT, in Drive/Sustain, never Db.
+// 7. A red/blue carrot belongs only to the clean final stack root.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  // A stack that legalizes an out-of-scale note turns it from a tax into income.
-  const bare  = run(composed(['C', 'D', 'D#', 'E', 'G']));
-  const chord = run(composed(['C', 'D', 'D#', 'E', 'G'], { driveStack: ['C', 'D#', 'G'] }), RONIN, { endingChoice: 'color' });
-  ok(chord.report.contextPardons.drive >= bare.report.contextPardons.drive,
-     'a chord containing the grey note legalizes it');
-  ok(chord.report.colorDrive <= COLOR_PAYOUT_CAP, 'colour is capped per stack per commit');
-  eq(chord.report.dbOverflow, 0, '⚠️ colour never pays Db — that is the ENDING’s job');
+  const middleRoot = run(composed(['C', 'D', 'C', 'E'], { driveStack: ['C', 'E', 'G'] }));
+  eq(middleRoot.report.colorDrive, 0, 'a stack-root note in the middle has no carrot');
+  const finalRoot = run(composed(['D', 'E', 'F', 'C'], { driveStack: ['C', 'E', 'G'] }));
+  eq(finalRoot.report.colorDrive, 1, 'the final Drive root earns the red carrot');
+  eq(finalRoot.report.endingChoice, 'tonic', 'the same final note resolves the line harmonically');
 
-  // Mojo Drain suppresses the colour payout entirely.
-  const drained = run(composed(['C', 'D', 'D#', 'E', 'G'], { driveStack: ['C', 'D#', 'G'], mojoDrain: 2 }));
+  const drained = run(composed(['D', 'E', 'F', 'C'], { driveStack: ['C', 'E', 'G'], mojoDrain: 2 }));
   eq(drained.report.colorDrive, 0, 'Mojo Drain eats the colour payout');
   eq(drained.patch.tempDrive, 0, '…and the Drive boost with it');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 8. 🎭 PERFORMANCE SCORE — the shared kernel, and P PAYS THE CROWD ALONE.
+// 8. Layer 1 — each Spirit's decided structure awards melody fans.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  const track = ['C', 'G', 'E', 'C', 'A', 'F'];
-  const r = run(composed(track));
-  const direct = performanceScore({
-    melodyLine: r.report.cleanPhrase,
-    trackHasTritone: r.report.trackHasTritone,
-    isOctaveResolution: r.report.isOctaveResolution,
-    diatonicRunLen: r.report.diatonicRunLen,
-    repeatPatLen: r.report.repeatPatLen,
-    skipClimbLen: r.report.skipClimbLen,
-    cadenceResolved: !!r.report.cadence,
-    // 🎭 The per-Spirit style score is an INPUT to P, so re-deriving P without it
-    // is re-deriving a different number. Reading it off the report rather than
-    // re-detecting is the point of the assertion: it pins that the style the
-    // report announces is the same one that was paid for.
-    styleBig: r.report.style.score,
-    earned: r.report.earned, edgeResolved: false, susEnd: false,
-  });
-  eq(r.report.perfScore, direct.score, 'P comes from economy.js’s kernel, not a second copy');
-  ok(r.report.perfScore >= 0 && r.report.perfScore <= 10, 'P is clamped to 0..10');
-  eq(r.patch.perfScore, r.report.perfScore, 'P lands on the sheet for the crowd to read');
+  const scalar = run(composed(['C', 'D#', 'D', 'E'], { casuals: 0 }));
+  deep(scalar.report.style.hits, ['scalar_shred'], 'Ronin climbs by letter with a free same-letter inflection');
+  eq(scalar.report.perfFansGained, 1, 'a completed scalar shred wins one casual fan');
+  ok(scalar.effects.some(e => e.type === 'fans' && e.fans.casuals === 1), 'the fan award reaches the reducer effect');
 
-  // ⚠️ P must not appear anywhere in the Db arithmetic.
-  eq(r.report.earnedTotal - r.report.earned, 0, 'P contributes exactly 0 Db');
-  deep(r.patch.recentP.slice(-1), [r.report.perfScore], 'recentP keeps the last two shows');
+  const skip = run(composed(['C', 'E', 'G'], { casuals: 0 }));
+  deep(skip.report.style.hits, ['even_skip'], 'Ronin can instead climb or fall by even letter skips');
+  eq(skip.report.perfFansGained, 1, 'the even skip also wins one casual fan');
+
+  const chug = run(composed(['C', 'Db', 'C'], { scaleMode: 'phrygian', casuals: 0 }, METAL), METAL);
+  deep(chug.report.style.hits, ['pedal_chug'], 'Metalness earns fans by returning to a chug anchor');
+  eq(chug.report.perfFansGained, 1, 'a pedal chug wins one casual fan');
+
+  const signals = run(composed(['C', 'Db', 'C', 'F', 'G', 'F'], { scaleMode: 'phrygian', casuals: 0 }, ZERO), ZERO);
+  deep(signals.report.style.hits, ['signal_circle'], 'Intergalactic 0 recognises a signal circle');
+  eq(signals.report.perfFansGained, 2, 'two non-overlapping signal circles in one line win two casual fans');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// Retired melody-economy checks retained below only as historical reference;
+// the active contract is the three-layer coverage immediately above.
+if (false) {
 // 8b. 🎭 PER-SPIRIT STYLE — the riff library's replacement.
 // ═════════════════════════════════════════════════════════════════════════════
 //
@@ -397,6 +390,7 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
   ok(r.effects.every(e => e.spiritId === RONIN), 'every effect names its Spirit');
 }
 
+}
 // ═════════════════════════════════════════════════════════════════════════════
 // 12. 🎤 THE MIC — the voice roll SHADOWS the track, and it costs rng draws.
 //     ⚠️ Everything scores the shadowed line: a bonus note the player never
@@ -527,7 +521,6 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
     ['const earnedTotal = earned + dbOverflow + perfDbBonus + edgeDbBonus - edgeDbCost;', 'the Db pot'],
     ['const colorDrive = !isMojoDrained ? Math.min(2, contextPardons.drive) : 0;', 'the colour cap'],
     ['const newDieFloorBoost = !isMojoDrained && isOctaveResolution ? 2 : 0;', 'the octave die floor'],
-    ['perfScore >= 5',                                    `the Ronin cliff (now ${RONIN_PERF_CLIFF}, kernel-side only)`],
   ];
   for (const [needle, what] of goneFromClient) {
     ok(!src.includes(needle),
@@ -633,6 +626,9 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// Retired cadence and ending-fork assertions (the final note now owns the full
+// resolution rule) are kept below as history only.
+if (false) {
 // 17. 🎯 CADENCES & 🎼 RIFFS — the trail, the cooldown, and who pays what.
 // ═════════════════════════════════════════════════════════════════════════════
 {
@@ -683,6 +679,7 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
   eq(db.report.colorDrive, 0, 'Db choice refuses the stack carrot');
   eq(color.report.baseScore.endingBonus, 0, 'stack choice refuses the Db ending');
   ok(color.report.colorDrive > 0, 'stack choice takes the red carrot');
+}
 }
 
 console.log(`✅ melodyCommitCheck — ${checks} assertions passed`);

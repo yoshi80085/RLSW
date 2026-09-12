@@ -206,6 +206,20 @@ export function ActionRail({ universal, signature, immersive = false }) {
  * way to counter-skew a text node, which is why every rail button goes through
  * here instead of the raw `.btn` class.
  */
-export function RailBtn({ children, ...rest }) {
-  return <button {...rest}><span className="rb-in">{children}</span></button>;
+export function RailBtn({ children, cooldown = null, style, ...rest }) {
+  const left = Math.max(0, cooldown?.left ?? 0);
+  const max = Math.max(1, cooldown?.max ?? 1);
+  const fill = Math.round(Math.max(0, Math.min(1, (max - left) / max)) * 100);
+  const color = cooldown?.color ?? 'currentColor';
+  return (
+    <button {...rest} style={{ position:'relative', ...style }}>
+      {cooldown && <span aria-hidden="true" style={{
+        position:'absolute', inset:0, width:`${fill}%`, pointerEvents:'none',
+        background:`linear-gradient(90deg, ${color}55, ${color}18)`,
+        boxShadow: fill ? `inset 0 0 12px ${color}88, 0 0 8px ${color}55` : 'none',
+        transition:'width .35s ease-out, box-shadow .35s ease-out',
+      }} />}
+      <span className="rb-in" style={{ position:'relative', zIndex:1 }}>{children}</span>
+    </button>
+  );
 }

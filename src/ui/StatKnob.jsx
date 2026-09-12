@@ -9,6 +9,7 @@
 export function StatKnob({ label, value = 0, boost = 0, max = 10, color = "#ffcc44" }) {
   const baseFrac  = Math.max(0, Math.min(1, value / max));
   const totalFrac = Math.max(0, Math.min(1, (value + boost) / max));
+  const needleAngle = -135 + totalFrac * 270;
   const isPenalty = boost < 0;
   const ticks = Array.from({ length: 11 }, (_, i) => {
     const frac = i / 10;
@@ -30,10 +31,16 @@ export function StatKnob({ label, value = 0, boost = 0, max = 10, color = "#ffcc
             background: t.boosted ? "#ffffff" : t.docked ? "#ff3344" : t.lit ? color : "#22304a",
             boxShadow:  t.boosted ? "0 0 4px #ffffff" : t.docked ? "0 0 4px #ff334488" : t.lit ? `0 0 3px ${color}` : "none" }}/>
         ))}
-        <div style={{ position:"absolute", left:4, top:4, width:30, height:30, borderRadius:"50%",
-          background:"radial-gradient(circle at 35% 28%, #1a2236, #0a0e1a 72%)",
-          border:`1.5px solid ${(isPenalty ? "#ff3344" : color)}55`, display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <span style={{ fontSize:13, fontWeight:800, color, lineHeight:1, textShadow:`0 0 6px ${color}99` }}>
+        <div data-stat-knob-cap data-dial-value={value + boost} style={{ position:"absolute", left:4, top:4, width:30, height:30, borderRadius:"50%",
+          background:`radial-gradient(circle at 31% 22%, #ffffffc8 0 3%, #dff8ff55 4% 10%, transparent 25%), radial-gradient(circle at 52% 58%, ${color}22 0 38%, #08111b66 68%, #020711aa 100%)`,
+          border:`1.5px solid ${(isPenalty ? "#ff3344" : color)}aa`,
+          boxShadow:`inset 2px 3px 6px #ffffff30, inset -4px -5px 8px #0008, 0 0 5px ${isPenalty ? "#ff3344" : color}, 0 0 12px ${(isPenalty ? "#ff3344" : color)}55`,
+          display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <span aria-hidden="true" style={{ position:"absolute", left:"calc(50% - 1px)", top:4, width:2, height:8,
+            borderRadius:2, background:`linear-gradient(#fff, ${isPenalty ? "#ff3344" : color})`,
+            boxShadow:`0 0 3px #fff, 0 0 6px ${isPenalty ? "#ff3344" : color}`,
+            transformOrigin:"1px 11px", transform:`rotate(${needleAngle}deg)`, transition:"transform .35s cubic-bezier(.2,.8,.2,1)" }}/>
+          <span style={{ position:"relative", fontSize:13, fontWeight:800, color, lineHeight:1, textShadow:`0 0 6px ${color}99` }}>
             {value}
             {boost > 0 && <span style={{ fontSize:8, color:"#ffffff", verticalAlign:"super" }}>+{boost}</span>}
             {boost < 0 && <span style={{ fontSize:8, color:"#ff5566", verticalAlign:"super" }}>{boost}</span>}

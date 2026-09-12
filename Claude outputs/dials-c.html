@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Circuit ring — detailing pass</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Saira+Stencil+One&family=Saira:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{ --drive:#ff6644; --sustain:#44aaff; --ink:#dceaff; --dim:#7187a4; }
+  *{box-sizing:border-box}
+  body{margin:0;background:#04070f;color:var(--ink);font:400 13px/1.5 'Saira',system-ui,sans-serif;
+    background-image:radial-gradient(120% 90% at 20% 0%,#0d2148 0%,#04070f 62%);min-height:100vh}
+  header,.wrap{max-width:1210px;margin:0 auto;padding:0 24px}
+  header{padding-top:22px}
+  h1{font:400 21px 'Saira Stencil One',sans-serif;letter-spacing:2px;color:#bfe4ff;margin:0 0 6px;text-shadow:0 0 18px #2a86ff55}
+  .sub{color:var(--dim);font-size:11px;letter-spacing:.4px;max-width:840px}
+  .wrap{padding-bottom:60px}
+  .controls{display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin:18px 0 8px;
+    padding:12px 14px;border:1px solid #1d3a63;border-radius:9px;background:#070e1e99}
+  .controls label{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:1.4px;color:var(--dim)}
+  .controls input[type=range]{width:150px;accent-color:#44aaff}
+  .controls b{color:var(--ink);font:700 13px 'Share Tech Mono',monospace;width:22px;text-align:right}
+  button{font:600 10px 'Saira',sans-serif;letter-spacing:1.4px;text-transform:uppercase;
+    background:#0a1428;border:1px solid #26497d;color:#9fc9f5;padding:7px 13px;border-radius:5px;cursor:pointer}
+  button:hover{border-color:#4fc8ff;color:#d9f1ff;box-shadow:0 0 14px #2a9dff33}
+  h2{font:400 12px 'Saira Stencil One',sans-serif;letter-spacing:3px;color:#7fb2e8;margin:32px 0 4px;
+     border-bottom:1px solid #14294a;padding-bottom:7px}
+  .note{color:var(--dim);font-size:10.5px;margin:0 0 14px;max-width:880px}
+  .note em{color:#9ec4ea;font-style:normal}
+
+  .arena{position:relative;border:1px solid #16294a;border-radius:12px;overflow:hidden;
+    background:radial-gradient(80% 60% at 72% 34%,#123a72 0%,transparent 60%),
+      radial-gradient(50% 40% at 20% 88%,#2a1348 0%,transparent 60%),#050a17;
+    padding:20px;display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+  .arena::before{content:'';position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg,#ffffff06 0 1px,transparent 1px 3px);opacity:.5}
+  .pocket{width:238px;flex:none;position:relative;z-index:1}
+  .pocket-title{font-size:8px;letter-spacing:2px;color:#5d7ba3;margin-bottom:6px}
+  .readout{width:100%;border:1px solid #bdd7ff38;border-radius:9px;
+    background:linear-gradient(155deg,#edf6ff17 0%,#9fc8ff06 27%,transparent 47%),linear-gradient(125deg,#111a318f,#070d1d78);
+    box-shadow:0 10px 36px #0005,inset 0 1px #ffffff20,inset 0 -18px 32px #0207131f;
+    backdrop-filter:blur(14px) saturate(1.22);
+    padding:10px;display:grid;grid-template-columns:1fr 1fr 42px;grid-template-rows:1fr 1fr;gap:6px;min-height:92px}
+  .readout > span{min-width:0;padding-right:6px;border-right:1px solid #93acd21f}
+  .readout > span:last-child{border:0;padding:0}
+  .readout small{display:block;color:#7187a4;font-size:6px;letter-spacing:.8px}
+  .readout b{display:block;margin-top:3px;color:#dceaff;font-size:12px}
+  .readout .cell{grid-row:1/3;position:relative;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;padding:0 1px;border-right:1px solid #93acd21f}
+  .drive{color:var(--drive)} .sustain{color:var(--sustain)}
+
+  /* ══ TODAY ═══════════════════════════════════════════════════════════════ */
+  .now .cell{justify-content:flex-end;padding:0 5px 2px}
+  .now .cell::before{content:'';position:absolute;top:1px;left:50%;width:48px;height:48px;transform:translateX(-50%);
+    border-radius:50%;
+    background:radial-gradient(circle at 32% 23%,#ffffffb8 0 3%,#dff8ff52 4% 10%,transparent 26%),
+      radial-gradient(circle at 50% 55%,color-mix(in srgb,currentColor 18%,transparent) 0 38%,#07101a52 68%,#0207118c 100%),
+      repeating-conic-gradient(from 225deg,currentColor 0 2deg,transparent 2deg 25deg);
+    border:1px solid color-mix(in srgb,currentColor 72%,#eaffff);
+    box-shadow:inset 3px 4px 9px #ffffff29,inset -5px -7px 12px #0007,0 0 6px currentColor,0 0 18px color-mix(in srgb,currentColor 38%,transparent);
+    opacity:.94}
+  .now .cell::after{content:'';position:absolute;top:6px;left:calc(50% - 1px);width:2px;height:13px;border-radius:2px;
+    background:linear-gradient(#fff,currentColor 38%,currentColor);box-shadow:0 0 3px #fff,0 0 9px currentColor;
+    transform-origin:1px 19px;transform:rotate(var(--dial-angle,-135deg));transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+  .now .cell small{position:relative;z-index:1;margin-top:auto;color:currentColor}
+  .now .cell b{position:absolute;z-index:1;top:14px;left:0;right:0;margin:0;text-align:center;font-size:13px;
+    color:currentColor;text-shadow:0 1px 4px #000}
+
+  /* ══ THE DIAL ════════════════════════════════════════════════════════════
+     No SVG filters: the bloom is a wide faint stroke under a hot core stroke.
+     A filter would re-rasterise over the live WebGL arena on every change. */
+  .dial{display:block;overflow:visible}
+  .dial .num{font:400 17px 'Saira Stencil One',sans-serif;fill:#fff;letter-spacing:.4px;
+    paint-order:stroke;stroke:#03060e;stroke-width:2.8px;stroke-linejoin:round}
+  .dial .cap{font:400 5.8px 'Saira Stencil One',sans-serif;fill:currentColor;letter-spacing:1.8px;opacity:.95}
+  .dial .seg-off{stroke:color-mix(in srgb,currentColor 26%,#16253f)}
+  .dial .seg-on{stroke:currentColor;transition:opacity .16s linear}
+  .dial .head{transition:opacity .18s linear}
+  @keyframes ring-charge{0%{opacity:.46}100%{opacity:.17}}
+  .dial .bloom{opacity:.17}
+  .dial .bloom.charge{animation:ring-charge .3s ease-out}
+
+  .zooms{display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;margin-top:14px}
+  .zoomcell{text-align:center}
+  .zoomcell .frame{width:250px;height:250px;display:flex;align-items:center;justify-content:center;
+    border:1px solid #16294a;border-radius:10px;
+    background:radial-gradient(70% 70% at 40% 30%,#102a55 0%,#050a17 72%);overflow:hidden}
+  .zoomcell .frame > *{transform:scale(3);transform-origin:center;display:block}
+  .zoomcell .cap2{font-size:9px;letter-spacing:1.6px;color:var(--dim);margin-top:9px;text-transform:uppercase}
+  .strip{display:flex;gap:14px;align-items:flex-end}
+  .strip .t{font:600 8px 'Saira';letter-spacing:1.3px;color:#5e7799;text-align:center;display:block;margin-top:2px}
+</style>
+</head>
+<body>
+<header>
+  <h1>C · CIRCUIT RING — DETAILING PASS</h1>
+  <p class="sub">You picked C. Its one real weakness was that the containment frame crowded the ring at true size,
+  so this pass fixes exactly that: the frame is now <em>bright at the corners and nearly dark along the edges</em>
+  (a bracket, not a box), its bottom edge breaks open so the label sits in the gap as a nameplate, and the ring
+  grew back to full size inside it. <em>C1 is the one I'd ship.</em></p>
+</header>
+
+<div class="wrap">
+  <div class="controls">
+    <label>DRIVE <input id="rd" type="range" min="0" max="10" step="1" value="6"><b id="vd">6</b></label>
+    <label>SUSTAIN <input id="rs" type="range" min="0" max="10" step="1" value="3"><b id="vs">3</b></label>
+    <button id="sweep">Sweep 0 → 10</button>
+    <button id="rand">Random</button>
+  </div>
+
+  <h2>AT GAME SIZE</h2>
+  <p class="note">C0 is what you saw and picked. C1 is the same idea detailed properly. C2 adds the circuit stubs
+  running off into the panel, if you want it louder.</p>
+  <div class="arena" id="arena"></div>
+
+  <h2>AT 3×</h2>
+  <div class="zooms" id="zooms"></div>
+
+  <h2>THE EXTREMES — 0, 1, 5, 10</h2>
+  <p class="note">A gauge is only honest if <em>empty reads empty and full reads full</em>.</p>
+  <div class="arena" id="states" style="gap:30px"></div>
+</div>
+
+<script>
+const START=-135, SWEEP=270, MAX=10;
+const pol=(c,r,deg)=>{const a=(deg-90)*Math.PI/180;return [c+r*Math.cos(a), c+r*Math.sin(a)];};
+function arc(c,r,a0,a1){
+  const [x0,y0]=pol(c,r,a0),[x1,y1]=pol(c,r,a1);
+  return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${Math.abs(a1-a0)>180?1:0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+
+/* ══ the containment frame ═══════════════════════════════════════════════
+   Drawn as SEVEN pieces, not one octagon, because the whole trick is that
+   the corners are hot and the edges are nearly dark — that is what reads as
+   a bracket instead of a box, and it is what stops the frame competing with
+   the ring at 74px. The bottom edge is deliberately missing its middle: the
+   label lives in that gap like a nameplate. */
+function frameParts(size, cut, inset, capGap){
+  const a=inset, b=size-inset, run=cut+6;            // corner bracket arm length
+  const mid=size/2;
+  return {
+    corners:[
+      `M${a} ${a+run} L${a} ${a+cut} L${a+cut} ${a} L${a+run} ${a}`,
+      `M${b-run} ${a} L${b-cut} ${a} L${b} ${a+cut} L${b} ${a+run}`,
+      `M${b} ${b-run} L${b} ${b-cut} L${b-cut} ${b} L${b-run} ${b}`,
+      `M${a+run} ${b} L${a+cut} ${b} L${a} ${b-cut} L${a} ${b-run}`,
+    ].join(' '),
+    edges:[
+      `M${a+run} ${a} L${b-run} ${a}`,                        // top
+      `M${a} ${a+run} L${a} ${b-run}`,                        // left
+      `M${b} ${a+run} L${b} ${b-run}`,                        // right
+      `M${a+run} ${b} L${mid-capGap} ${b}`,                   // bottom-left of the gap
+      `M${mid+capGap} ${b} L${b-run} ${b}`,                   // bottom-right of the gap
+    ].join(' '),
+  };
+}
+
+/* ══ the dial ════════════════════════════════════════════════════════════ */
+function circuitRing(id, {size=74, stubs=false, tight=false}={}){
+  const c=size/2, r=size*(tight?0.325:0.352), seg=SWEEP/MAX, gap=3.8, w=tight?5:5.4;
+  const blk=i=>arc(c,r,START+i*seg+gap/2,START+(i+1)*seg-gap/2);
+  let off='',glow='',core='',head='';
+  for(let i=0;i<MAX;i++){
+    off  += `<path class="seg-off" data-i="${i}" d="${blk(i)}"/>`;
+    glow += `<path class="seg-on"  data-i="${i}" d="${blk(i)}"/>`;
+    core += `<path class="seg-on"  data-i="${i}" d="${blk(i)}"/>`;
+    head += `<path class="head"    data-i="${i}" d="${blk(i)}"/>`;
+  }
+  const F = frameParts(size, tight?9:10, 1.2, tight?0:17);
+  return `<svg class="dial" data-dial="${id}" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <defs><radialGradient id="core${id}">
+      <stop offset="0" stop-color="currentColor" stop-opacity=".24"/>
+      <stop offset="70%" stop-color="currentColor" stop-opacity=".06"/>
+      <stop offset="100%" stop-color="currentColor" stop-opacity="0"/></radialGradient></defs>
+    <circle cx="${c}" cy="${c}" r="${(r-3).toFixed(1)}" fill="url(#core${id})"/>
+    ${stubs?`<g stroke="currentColor" stroke-width=".8" opacity=".42">
+      <path d="M${size-1.2} ${c-4.5} L${size+3.6} ${c-4.5}"/><path d="M${size-1.2} ${c+4.5} L${size+3.6} ${c+4.5}"/>
+      <path d="M1.2 ${c-4.5} L${-3.6} ${c-4.5}"/><path d="M1.2 ${c+4.5} L${-3.6} ${c+4.5}"/></g>`:''}
+    <path d="${F.edges}" fill="none" stroke="currentColor" stroke-width=".8" opacity="${tight?.34:.17}"/>
+    <path d="${F.corners}" fill="none" stroke="currentColor" stroke-width="1.1" opacity="${tight?.34:.72}"
+      stroke-linecap="round" stroke-linejoin="round"/>
+    <g fill="none" stroke-width="${w}" stroke-linecap="butt">${off}</g>
+    <g class="bloom" fill="none" stroke-width="${w+3.4}" stroke-linecap="butt">${glow}</g>
+    <g fill="none" stroke-width="${w}" stroke-linecap="butt">${core}</g>
+    <g fill="none" stroke="#ffffff" stroke-width="1.4" stroke-linecap="butt">${head}</g>
+    <circle cx="${c}" cy="${c}" r="${(r-6.2).toFixed(1)}" fill="none" stroke="currentColor" stroke-width=".5" opacity=".3"/>
+    <text class="num" x="${c}" y="${c+0.5}" text-anchor="middle" dominant-baseline="middle">0</text>
+    <text class="cap" x="${c}" y="${(size-(tight?3.5:1.2)).toFixed(1)}" text-anchor="middle"
+      dominant-baseline="${tight?'auto':'middle'}">LABEL</text>
+  </svg>`;
+}
+
+const VARIANTS = {
+  C0:{opts:{size:70,tight:true},  name:'C0 · as you picked it'},
+  C1:{opts:{size:74},             name:'C1 · bracket frame, nameplate'},
+  C2:{opts:{size:74,stubs:true},  name:'C2 · C1 + circuit stubs'},
+};
+
+function setDial(svg, v){
+  v=Math.max(0,Math.min(MAX,v));
+  svg.querySelector('.num').textContent=v;
+  const lit=Math.ceil(v), headIdx=lit-1;
+  svg.querySelectorAll('.seg-off').forEach((p,i)=>{p.style.opacity = i<lit?'.18':'1';});
+  svg.querySelectorAll('.seg-on').forEach(p=>{
+    const i=+p.dataset.i;
+    p.style.opacity = i<lit?'':'0';
+    p.style.transitionDelay=`${i*22}ms`;
+  });
+  svg.querySelectorAll('.head').forEach(p=>{p.style.opacity=(+p.dataset.i===headIdx)?'.95':'0';});
+  const bloom=svg.querySelector('.bloom');
+  if(bloom && svg.dataset.last !== String(v)){
+    bloom.classList.remove('charge'); void bloom.offsetWidth; bloom.classList.add('charge');
+  }
+  svg.dataset.last=String(v);
+}
+
+const STATS=[['drive','DRIVE'],['sustain','SUSTAIN']];
+const arena=document.getElementById('arena'), zooms=document.getElementById('zooms'), states=document.getElementById('states');
+const pocket=(t,cls,body)=>`<div class="pocket"><div class="pocket-title">${t}</div>
+  <div class="readout ${cls}">${body}<span><small>Db</small><b>7</b></span><span><small>FANS</small><b>12</b></span></div></div>`;
+
+arena.insertAdjacentHTML('beforeend', pocket('TODAY · amp knob','now',
+  STATS.map(([k,l])=>`<span class="cell ${k}" data-now="${k}"><small>${l}</small><b>0</b></span>`).join('')));
+
+for(const key of Object.keys(VARIANTS)){
+  const {opts,name}=VARIANTS[key];
+  arena.insertAdjacentHTML('beforeend', pocket(name.toUpperCase(),'next',
+    STATS.map(([k,l])=>`<span class="cell ${k}">${circuitRing(key+k,opts).replace('>LABEL<','>'+l+'<')}</span>`).join('')));
+  zooms.insertAdjacentHTML('beforeend',
+    `<div class="zoomcell"><div class="frame"><span class="drive">${circuitRing(key+'z',opts).replace('>LABEL<','>DRIVE<')}</span></div>
+      <div class="cap2">${name}</div></div>`);
+  states.insertAdjacentHTML('beforeend',
+    `<div style="position:relative;z-index:1"><div class="pocket-title">${name.toUpperCase()}</div>
+      <div class="strip">${[0,1,5,10].map(v=>
+        `<div><span class="drive" style="display:block">${circuitRing('x'+key+'_'+v,opts).replace('<svg ','<svg data-fixed="'+v+'" ').replace('>LABEL<','>DRIVE<')}</span>
+          <span class="t">${v} / 10</span></div>`).join('')}</div></div>`);
+}
+document.querySelectorAll('[data-fixed]').forEach(svg=>setDial(svg, +svg.dataset.fixed));
+
+const rd=document.getElementById('rd'), rs=document.getElementById('rs');
+const vd=document.getElementById('vd'), vs=document.getElementById('vs');
+function paint(){
+  const d=+rd.value, s=+rs.value; vd.textContent=d; vs.textContent=s;
+  document.querySelectorAll('.dial').forEach(svg=>{
+    if(svg.dataset.dial.startsWith('x')) return;      // the extremes strip is pinned
+    setDial(svg, svg.dataset.dial.endsWith('sustain')?s:d);
+  });
+  document.querySelectorAll('[data-now]').forEach(el=>{
+    const v = el.dataset.now==='sustain'?s:d;
+    el.style.setProperty('--dial-angle',(START+(v/MAX)*SWEEP)+'deg');
+    el.querySelector('b').textContent=v;
+  });
+}
+rd.oninput=paint; rs.oninput=paint;
+document.getElementById('rand').onclick=()=>{rd.value=Math.floor(Math.random()*11);rs.value=Math.floor(Math.random()*11);paint();};
+document.getElementById('sweep').onclick=()=>{let i=0;const t=setInterval(()=>{rd.value=i;rs.value=10-i;paint();if(++i>10)clearInterval(t);},190);};
+paint();
+</script>
+</body>
+</html>

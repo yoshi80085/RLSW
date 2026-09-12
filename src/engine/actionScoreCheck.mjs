@@ -492,17 +492,16 @@ function walk(startNum, n) {
 // ═════════════════════════════════════════════════════════════════════════════
 //
 // ⚠️ THE FIRST ASSERTION IS THE ONE THAT WOULD HAVE CAUGHT THE BUG THIS SHIPPED
-// WITH. Every gesture climbs in THIRDS, and the floor was originally set at
-// 0.34 — just above a third — so five of the six gestures were silently
-// unreachable and the sixth looked like the only style anybody had. A ladder
+// WITH. The floor must admit a partial phrase as well as a completed one;
+// otherwise the bot never receives a musical reason to start the line. A ladder
 // whose rungs are all below its own floor is not a weak ladder, it is no ladder,
 // and nothing about it fails.
 {
   ok(STYLE_GAIN_FLOOR < 1 / 3,
-     '🎭 the floor admits a one-third gain — every gesture climbs in thirds');
+     '🎭 the floor admits a partial-phrase gain');
 
-  // Each Spirit's gestures must be REACHABLE: some note completes each one.
-  for (const id of [MM, RONIN, ZERO]) {
+  // Every live Spirit now has a distinct, compact fan structure.
+  for (const id of [RONIN, MM, ZERO]) {
     for (const g of gesturesFor(id)) {
       ok(g.notes <= 8, `🎭 ${id}/${g.id} fits inside MELODY_MAX`);
     }
@@ -510,11 +509,10 @@ function walk(startNum, n) {
   }
   eq(gesturesFor('Glamarchy'), [],
      '🎭 a Spirit with no kit gets no gestures — never another character\'s');
-
-  // ── The Ronin's run: C D E is two-thirds of it, and F finishes it.
-  const track = ['C', 'D', 'E'];
-  ok(styleProgress(RONIN, track, 5) > 0, '🎭 three stepwise notes is real progress');
-  const good = styleGain(RONIN, track, 'F', 4);
+  // ── The Ronin's run: C D is live progress, and E finishes the phrase.
+  const track = ['C', 'D'];
+  ok(styleProgress(RONIN, track, 5) > 0, '🎭 two stepwise notes are real progress');
+  const good = styleGain(RONIN, track, 'E', 4);
   const bad  = styleGain(RONIN, track, 'A#', 4);
   ok(good > bad, '🎭 the note that continues the run gains more than one that breaks it');
   ok(good >= STYLE_GAIN_FLOOR, '🎭 …and it clears the floor, so it actually steers');
@@ -522,7 +520,7 @@ function walk(startNum, n) {
 
   // ⚠️ A GESTURE THAT CANNOT FIT MUST NOT STEER. Scoring it small does not help:
   // a small score still steers. With no slots left it must drop out entirely.
-  ok(styleGain(RONIN, track, 'F', 0) > 0,
+  ok(styleGain(RONIN, track, 'E', 0) > 0,
      '🎭 the LAST slot still lands a shape that only needs one more note');
   eq(styleGain(RONIN, ['C'], 'D', 0), 0,
      '🎭 …but a shape needing two more notes with one slot left stops pulling entirely');
@@ -532,27 +530,28 @@ function walk(startNum, n) {
   {
     let st = { ...base, acting: RONIN };
     st = withNs(st, RONIN, {
-      melodyLine: ['C', 'D', 'E'],
-      noteStock: ['A#', 'G#', 'F', 'B'],
+      melodyLine: ['C', 'D'],
+      noteStock: ['A#', 'G#', 'E', 'B'],
       usedStockIdx: [],
     });
     const score = makeActionScorer(st, RONIN, {});
     const notes = legalActions(st, RONIN, {}).filter(a => a.kind === 'melodyNote');
     ok(notes.length >= 2, 'fixture: several notes are on offer');
     const best = notes.map(a => ({ a, s: score(a) })).sort((x, y) => y.s - x.s)[0];
-    eq(best.a.note, 'F', '🎭 the beam ranks the note that lands the gesture first');
-    const others = notes.filter(a => a.note !== 'F').map(a => score(a));
+    eq(best.a.note, 'E', '🎭 the beam ranks the note that lands the gesture first');
+    const others = notes.filter(a => a.note !== 'E').map(a => score(a));
     ok(Math.max(...others) + STYLE_RANK_STRIDE <= best.s,
        '🎭 …by a full stride, so the planners tie-break rather than overrule');
   }
 
-  // ── Style is per-Spirit, and that is the point: THE SAME TRACK reads
-  //    differently from a different seat. This is the first term in the commit
-  //    phase that distinguishes the roster at all.
+  // ── Each Spirit hears its own musicality, never Ronin's in a new coat.
   {
-    const metalLine = ['C', 'Db', 'Eb'];
-    ok(detectSpiritStyle(MM, metalLine).hits.length > 0, '🎭 the Phrygian bite is Metalness\'s');
-    eq(detectSpiritStyle(RONIN, metalLine).hits.length, 0, '🎭 …and means nothing to the Ronin');
+    const roninLine = ['C', 'D', 'E'];
+    ok(detectSpiritStyle(RONIN, roninLine).hits.length > 0, '🎭 Ronin owns the scalar shred');
+    eq(detectSpiritStyle(MM, roninLine).hits.length, 0, '🎭 …and Metalness does not borrow the shred');
+    eq(detectSpiritStyle(MM, ['C', 'D', 'C']).hits, ['pedal_chug'], '🎭 Metalness owns the pedal chug');
+    eq(detectSpiritStyle(ZERO, ['C', 'D', 'C', 'F', 'G', 'F']).score, 2,
+       '🎭 Intergalactic 0 can stack two non-overlapping signal circles');
   }
 }
 

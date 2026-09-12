@@ -4,6 +4,7 @@
 // Render builds on Linux, where the same import cannot resolve at all. Latent
 // deploy break, found by `node src/engine/importcheck.mjs`.
 import RLSWSimulator from "./rlsw-simulator-v3_8_1";
+import GlobalCursor from "./ui/GlobalCursor.jsx";
 export default function App() {
-  return <RLSWSimulator />;
+  return <><GlobalCursor /><RLSWSimulator /></>;
 }

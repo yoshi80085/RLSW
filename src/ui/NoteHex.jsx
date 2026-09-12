@@ -37,7 +37,45 @@ export const NOTE_HEX = {
   bracketEvery: 2,         // 2 = three alternating corners. 🎯 SEE THE NOTE BELOW.
   outerEdges:   0,         // extra faint rings OUTSIDE the main one
   letterGlow:   null,      // null = the letter glows in the STATE'S OWN HUE, not violet
+
+  /* ♯♭ THE ACCIDENTAL PAIR — Alex's dial-in, 2026-09-12, read off the control
+     panel of `.scratch/note-hex-accidentals.html` ("B · typeset pair"). He
+     picked it over a uniform shrink, over a condense and over real ♭/♯ glyphs.
+
+     🎯 THE RULE IT ENCODES: **the LETTER never changes size.** A two-glyph note
+     is not a smaller note — it is a letter with a mark beside it, which is how
+     music has always set it. So `A♭` and `C` carry the same 34px letter and a
+     grid of chips keeps one rhythm, which is the thing a uniform shrink gives
+     away (an `Ab` beside a `C` reads as the lesser note, most visibly in the
+     stock where they sit in a grid).
+
+     ⚠️ THE SQUEEZE IS PURELY HORIZONTAL, AND THAT IS WHY THIS WORKS. Measured on
+     the preview in the real face: a plain letter spends ~44% of the bracket
+     ring's 55.8 of clearance, a two-glyph note spends 75–82% — while the hex's
+     VERTICAL room goes almost unused. `accRise` spends the axis that has room to
+     buy back the axis that does not. */
+  accScale:   0.60,        // the accidental's size, as a fraction of the letter's
+  accRise:       4,        // px the accidental lifts above the letter's centre line
+  accKern:      -1,        // px of extra tracking between the letter and the mark
 };
+
+/** ♯♭ The accidentals a note name can end in. ⚠️ A DELIBERATE WHITELIST, NOT
+ *  `length > 1`. `letter` is not always a note: the staggered seat passes `⚡`
+ *  (`rlsw-simulator-v3_8_1.jsx` ~11548), and anything else added later would be
+ *  silently typeset as "a letter plus an accidental" if the test were length
+ *  alone. `PITCH_INDEX` tops out at two characters, so this is the whole set.
+ *  📌 ♭ and ♯ are here even though nothing SPELLS notes with them today — the
+ *  probe on the preview page decides whether Saira Stencil One can draw them,
+ *  and if that is ever switched on this function needs no second edit. */
+const ACCIDENTALS = new Set(['b', '#', '♭', '♯']);
+
+/** Splits `Ab` into `A` + `b`, and leaves everything else whole. */
+function splitNote(letter) {
+  const s = String(letter);
+  const acc = s.length === 2 && ACCIDENTALS.has(s[1]) ? s[1] : '';
+  return { base: acc ? s[0] : s, acc };
+}
+
 
 /** 🎆 THE COMMIT BURST — Alex's dial-in, read off the preview's BURST row.
  *  📌 `variant` is fixed at the "overdrive" preset he selected: flash + core +
@@ -80,6 +118,52 @@ export const NOTE_BURST = {
 // collapses to 36px during move_act. That is the whole trade.
 
 const VB = 120, C = 60, R = 34;   // viewBox is square; the hex is centred in it
+
+/**
+ * ♯♭ THE LETTER, TYPESET — the one place a note name is drawn.
+ *
+ * ⚠️ THIS EXISTS BECAUSE THERE WERE **TWO** HARDCODED `fontSize={34}` SITES: the
+ * chip's own letter and the BURST's lifted copy, the one that peels off the chip
+ * when you commit it. Changing only the first made the note change size at the
+ * exact moment of the click — a glitch in the one animation the game most wants
+ * to feel solid. One function now serves both, so they cannot drift again. It is
+ * the same lesson `SEQUENCING.md` §12-board paid for with the amp knob: *finding
+ * every mount is the work.*
+ *
+ * 📌 THE GEOMETRY IS THE PREVIEW'S, TRANSCRIBED — not re-derived. `0.52` is the
+ * assumed advance of the accidental and `0.34` the letter's half-advance; both
+ * were dialled by eye against the real face and a "tidier" derivation from
+ * `getComputedTextLength` would move the pair off the values Alex actually
+ * approved (and would force a measure pass on every chip, every render).
+ *
+ * @param letter the note name, e.g. `C` or `Ab`
+ * @param glow   the `filter` string for the halo — applied to the PAIR, so the
+ *               two glyphs share one filter region instead of blooming apart
+ */
+function noteLetter(letter, glow, cfg = NOTE_HEX, extraStyle = undefined) {
+  const { base, acc } = splitNote(letter);
+  // a natural is unchanged from what shipped before this pass: one centred text
+  if (!acc) {
+    return (
+      <text x={C} y={C} textAnchor="middle" dominantBaseline="central"
+        fontSize={34} fill="#ffffff" style={{ filter: glow, ...extraStyle }}>{base}</text>
+    );
+  }
+  const as  = 34 * cfg.accScale;
+  // the pair is centred as a UNIT: the letter shifts left by half the mark's
+  // advance so the GROUP sits on the hex's axis. Centring the letter instead
+  // pushes the pair right and the mark rides the bracket ring.
+  const adv = as * 0.52 + cfg.accKern;
+  return (
+    <g style={{ filter: glow, ...extraStyle }}>
+      <text x={(C - adv / 2).toFixed(2)} y={C} textAnchor="middle"
+        dominantBaseline="central" fontSize={34} fill="#ffffff">{base}</text>
+      <text x={(C - adv / 2 + 34 * 0.34 + cfg.accKern).toFixed(2)}
+        y={(C - cfg.accRise).toFixed(2)} textAnchor="start" dominantBaseline="central"
+        fontSize={as.toFixed(1)} fill="#ffffff" opacity=".92">{acc}</text>
+    </g>
+  );
+}
 
 /** Corner list. Flat-top steps 0°, 60°, …; pointy-top is the same rotated 30°. */
 function corners(cx, cy, r, flatTop) {
@@ -199,14 +283,15 @@ function burstLayers(burst, flat, chipHue) {
                        + `drop-shadow(0 0 ${(16 * i).toFixed(1)}px ${hue})`,
           animation: anim('b-flash', D, B.ease, IN ? Math.round(D * 0.5) : 0) }} />
       {/* The letter peels off the chip on the way out. There is nothing to peel
-          on the way in — the letter is arriving, not leaving. */}
-      {!IN && burst.letter && (
-        <text x={C} y={C} textAnchor="middle" dominantBaseline="central"
-          fontSize={34} fill="#ffffff"
-          style={{ filter: `drop-shadow(0 0 ${(5 * i).toFixed(1)}px ${hue}) `
-                         + `drop-shadow(0 0 ${(13 * i).toFixed(1)}px ${hue}cc)`,
-            animation: anim('b-lift', D, 'cubic-bezier(.2,.8,.3,1)') }}>{burst.letter}</text>
-      )}
+          on the way in — the letter is arriving, not leaving.
+          ⚠️ THIS GOES THROUGH `noteLetter` FOR ONE REASON: it must be the SAME
+          typesetting as the chip's own letter. It used to carry its own
+          `fontSize={34}`, so an accidental set one way on the chip and another
+          way here would have changed shape at the instant of the click. */}
+      {!IN && burst.letter && noteLetter(burst.letter,
+        `drop-shadow(0 0 ${(5 * i).toFixed(1)}px ${hue}) `
+        + `drop-shadow(0 0 ${(13 * i).toFixed(1)}px ${hue}cc)`,
+        NOTE_HEX, { animation: anim('b-lift', D, 'cubic-bezier(.2,.8,.3,1)') })}
       {NOTE_HEX.brackets && (
         <path d={bracketPath(C, C, R * NOTE_HEX.bracketR, NOTE_HEX.bracketArm,
                              NOTE_HEX.bracketEvery, flat)}
@@ -290,14 +375,10 @@ export default function NoteHex({
         </g>
       )}
 
-      {letter !== '' && (
-        <text x={C} y={C} textAnchor="middle" dominantBaseline="central"
-          fontSize={34} fill="#ffffff"
-          style={{ filter: dull ? 'none'
-            : `drop-shadow(0 0 ${g(2.5)}px ${lg}) drop-shadow(0 0 ${g(7)}px ${lg}cc)` }}>
-          {letter}
-        </text>
-      )}
+      {letter !== '' && noteLetter(letter,
+        dull ? 'none'
+          : `drop-shadow(0 0 ${g(2.5)}px ${lg}) drop-shadow(0 0 ${g(7)}px ${lg}cc)`,
+        cfg)}
       {/* A payout hint belongs inside the note, not in the note's ring colour.
           The open chevron stays legible at the smallest in-game chip size and
           leaves enough air around flat/sharp note names. */}

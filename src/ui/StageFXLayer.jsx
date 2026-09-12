@@ -33,7 +33,7 @@ export function StageFXBoardLayer({ smokeFx, laserFx, pyroFx, animatronics, HS, 
   };
 
   return (
-    <g style={{ pointerEvents: 'none' }}>
+    <g data-arena-flat="stage-fx" style={{ pointerEvents: 'none' }}>
       <defs>
         <filter id="stagefx-smoke-blur" x="-60%" y="-60%" width="220%" height="220%">
           <feGaussianBlur stdDeviation={HS * 0.55} />

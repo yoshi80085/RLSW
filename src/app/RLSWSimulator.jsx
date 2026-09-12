@@ -10,7 +10,6 @@ import { ListenNeck } from "../ui/ListenNeck.jsx";
 import { DiscordCoach } from "../ui/DiscordCoach.jsx";
 import { LegendLessons } from "../ui/LegendLessons.jsx";
 import OpeningMovie from "../ui/OpeningMovie.jsx";
-import HintScreen from "../ui/HintScreen.jsx";
 import { buildTestingGroundsConfig } from "../data/matchSetup.js";
 
 export default function RLSWSimulator() {
@@ -23,10 +22,6 @@ export default function RLSWSimulator() {
   //   'riff'  → the Riff Mode submenu (practice modes live in there)
   // Testing Grounds launches straight from the menu without a branch.
   const [menuRoute, setMenuRoute] = useState(null);
-  // 💡 HINT SCREEN — an intentional ~5s beat between Lobby and Game so a
-  // random gameplay hint can be read. Reset on return-to-lobby so every match
-  // start gets a fresh hint.
-  const [hintDone, setHintDone] = useState(false);
   const isMobile = /Mobi|Android/i.test(navigator.userAgent);
 
   // 🎬 Opening movie — plays on every launch, any input skips (attract style).
@@ -65,10 +60,6 @@ export default function RLSWSimulator() {
       onBackToMenu={() => setMenuRoute(null)}
     /></div>;
   }
-  // 💡 Match is starting — hold on the hint screen for ~5s before the board mounts.
-  if (!hintDone) {
-    return <div style={isMobile ? mobileColorStyle : {}}><HintScreen onDone={() => setHintDone(true)} /></div>;
-  }
   // Netcode: leaving the Game must CLOSE the socket (keeping the saved session),
   // or the old connection keeps holding the seat and the Lobby's auto-rejoin
   // falls through to spectator-of-a-dead-game. `resetRoom` also flips the room
@@ -82,7 +73,6 @@ export default function RLSWSimulator() {
       net.client.close(); // keeps rlsw.net.session — Lobby auto-rejoin reclaims the seat
     }
     setGameState(null);
-    setHintDone(false); // 💡 next match start shows a fresh hint
   };
   return (
     <GameErrorBoundary onReset={() => returnToLobby({ resetRoom: false })}>

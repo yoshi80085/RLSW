@@ -1,5 +1,31 @@
 # RLSW — Economy & Board-Objectives Handoff
 
+> # 🪦 SUPERSEDED IN FULL — 2026-09-10. SEE `DB_ECONOMY_DESIGN.md`.
+>
+> ⚠️ **DO NOT QUOTE THIS DOC AT A NEW PROPOSAL.** It was last touched **4 July
+> 2026** and its central frame — *"three currencies: FP / HC / Fans"* — rests on
+> a currency called **Harmonic Charge (HC)** that ⛔ **does not exist anywhere in
+> the source**: `scoreTrackHC`, `perfHcBonus`, `harmonicCharge`, `HC` all return
+> **zero occurrences**. Every payout row naming HC describes a currency the game
+> does not have. The performance currency is **Db**, and `DB_ECONOMY_DESIGN.md`
+> is where it is specified.
+>
+> 🪦 **Its one open question is moot.** *"Legendary riffs still pay FP directly
+> (`grantFame` off `detectRiff`) — 💬 open, don't change without asking"* — the
+> **riff library was retired 2026-08-17**. `detectRiff` survives in two comments
+> and nothing else. There is nothing left to decide.
+>
+> ✅ **WHAT IS STILL LIVE AND STILL BINDING — keep quoting these two:**
+> · the **STICs + Earned** checklist every payout must pass (`ARCHITECTURE.md`);
+> · the fix pattern in *"Design lenses used throughout"* — **hand out raw
+> material freely, but keep the DECISION the player's.** That is the best line in
+> this doc and it outlived the ledger around it.
+>
+> 📌 The ✅ board-objective rows (charge zones, Overcharge chord-assist, Lost
+> Chord choice-on-pickup, Lighters removed) describe **shipped board work** and
+> are still an accurate record of what was built. It is the **currency model**
+> that died, not the objectives.
+
 Pick-up notes for continuing the FP / HC / Fan separation work. Read this +
 `ARCHITECTURE.md` (where things live) + `DESIGN_AUDIT_v2.md` (combat thesis)
 and you're caught up — this doc exists so the fan/FP design conversation

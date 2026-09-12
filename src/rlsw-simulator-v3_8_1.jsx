@@ -39,13 +39,14 @@ import { LifePips } from "./ui/ScoreTrackOverlay.jsx";
 import { TopMenu } from "./ui/TopMenu.jsx";
 import { FameRace } from "./ui/FameRace.jsx";
 import { StatKnob } from "./ui/StatKnob.jsx";
-import { ChordStackPanel, CommitTrackPanel, PayoutRouterPanel, COMMIT_OVERLAY,
+import { ChordStackPanel, CommitTrackPanel, COMMIT_OVERLAY,
          StackNest, stackSeatPos } from "./ui/NoteCommitOverlay.jsx";
 // 🎛️ The column beside the character card — turn rail, key plate, DB meter.
 import { ChannelStrip, StripSection, TurnRail, KeyPlate, SPIRIT_CARD, CHANNEL_STRIP } from "./ui/ChannelStrip.jsx";
+import { SpiritStyleCoach } from "./ui/SpiritStyleCoach.jsx";
 import { ActionRail, RailBtn, ACTION_RAIL } from "./ui/ActionRail.jsx";
 import { ToneFader } from "./ui/ToneFader.jsx";
-import { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import React from "react";
 import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
 import { micAvailable, startMicListening } from "./audio/micPitch.js";
@@ -54,7 +55,7 @@ import battleSong  from "./battle_song.mp3";
 import moshpitSong from "./Master_of_Moshpits_song.mp3";   // 🤘 Master of Moshpits cinematic
 import { sonicRig, rigPoolLabel, rigTiers, rigTierSpend, rigSpendable } from "./engine/systems/sonicRig.js";
 import AmpDecks from "./board/ampDecks.jsx";
-import { hexRingFromCenter, crowdMultiplier, advanceDB, SPOTLIGHT_POOL } from "./board/boardHelpers.js";
+import { hexRingFromCenter, crowdMultiplier, advanceDB } from "./board/boardHelpers.js";
 import { STAGE_SKINS, STAGE_SKIN_BY_ID, DEFAULT_SKIN_ID, loadStageSkin, saveStageSkin, stageSkinPlateFilter, stageSkinLineMatrix } from "./board/stageSkins.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRiffMiss, playBeamClash, playBeamSurge, playBeamBreak, playFanPop } from "./audio/riffSfx.js";
 import { TONE_KNOB_DEFAULTS, SPIRIT_TONES, TONE_VOICE_ORDER, TONE_VOICES, getAmpBuses, playAmpNote, makeDistortionCurve } from "./audio/ampVoice.js";
@@ -71,7 +72,7 @@ import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
 import { bankLostChord, chargeSparkPatch } from "./engine/systems/board.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, spotlightHealed, spotlightMoved, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted,
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted,
   // 🧪 the slime trail (METALNESS_REWORK_DESIGN.md §3)
   slimeDecayed, slimeCleared, spiritSlid, slimeCalled, elevenCalled,
   // ✨ the Limelight (§3.3) — engine state since 2026-08-17, §6.6.8
@@ -81,7 +82,7 @@ import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineM
 // player sees and the hex an ability will accept have to be the same read.
 import { slimeBites, slideTarget, SLIME_VIBE_DAMAGE } from "./engine/systems/slime.js";
 import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX, ELEVEN_DRIVE } from "./data/gameConstants.js";
-import { cooldownLeft, canFire, firePatch, tickShamisen, resetAllCooldowns } from "./engine/systems/cooldowns.js";
+import { ABILITY_CD, cooldownLeft, canFire, firePatch, tickShamisen, resetAllCooldowns } from "./engine/systems/cooldowns.js";
 import { PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
          PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE,
          PSYCHO_BUSHIDO_STACK_COST, psychoBushidoBonus, SHADOW_ILLUSION_TURNS,
@@ -167,7 +168,6 @@ import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, 
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
-// SPOTLIGHT_POOL is imported from board/boardHelpers.js (EVENT_HEX_POOL moved to engine)
 // (shared with the engine's makeInitialState for seeded placement).
 
 import { EVENT_DECK, EVENT_BY_ID } from "./data/events.js";
@@ -231,6 +231,8 @@ import { PC_PLAY_NAMES } from "./music/pitchNames.js";
 // 🎵 The Note Stock chip. SVG rings, not clip-path divs — NoteHex.jsx opens with
 // the reason why, and it is a reason worth reading before touching the chip.
 import NoteHex, { NOTE_HEX, NOTE_BURST } from "./ui/NoteHex.jsx";
+import Bracket from "./ui/Bracket.jsx";
+import ArenaDial from "./ui/ArenaDial.jsx";
 // 🎵 The note in flight — a real NoteHex on a bowed arc, not the old flat chip.
 import { NoteFlyChip } from "./ui/NoteFlyChip.jsx";
 
@@ -307,6 +309,16 @@ const SOCKET_HUE = "#2a1a50";
 // because a stroked ring with a halo carries further than a filled slab. Do not
 // "fix" that by growing it without counting the rows again.
 const STACK_GRID_CHIP = 34;
+/* 🎸 THE STEP-1 DRAWER'S OWN TWO SIZES — Alex's dial-in, 2026-09-12, off
+   `.scratch/stack-commit-drawer.html`; he took the page's defaults.
+   ⚠️ NOT `COMMIT_OVERLAY.stackChip` (72) AND NOT `dialSize` (72). Those are the
+   BOARD panels' numbers, dialled against a 45%-of-1040px panel. This drawer
+   lives in the 238px player pocket, where six 72px seats cannot even sit in one
+   row — which is the whole reason it needs sizes of its own rather than
+   borrowing the board's. 📌 The stock grid below keeps `STACK_GRID_CHIP`; it was
+   already 34 and the preview put it within 2px, so it was left alone. */
+const STACK_DRAWER_CHIP = 30;   // a committed note in the Drive/Sustain rows
+const STACK_DRAWER_DIAL = 38;   // the ArenaDial at the end of each row
 const DRIVE_C   = "#ff6644";
 const SUSTAIN_C = "#44aaff";
 // Dimmed backings for the same pair, for hex interiors and chip fills.
@@ -1373,7 +1385,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const [tauntDisplay, setTauntDisplay] = useState(null); // { line, name, color, key }
   const moveStepsLeft = engineState.turn.moveStepsLeft; // engine-owned (Phase 2)
   const [stackCommitDest, setStackCommitDest] = useState(null); // 🎸 null = melody mode, 'drive' | 'sustain' = stack commit mode
-  const [endingChoice, setEndingChoice] = useState('db');
   /* 🎵 THE KEY PLATE'S NOTE-STOCK DRAWER. Owned here, not in ChannelStrip, so a
      re-render (and there are many per turn) cannot silently re-fold it under the
      player. It seeds from CHANNEL_STRIP.drawerOpen — Alex landed it closed. */
@@ -1394,7 +1405,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (stepOwnerRef.current === engineState.acting) return;
     stepOwnerRef.current = engineState.acting;
     setTurnStep('chord');
-    setEndingChoice('db');
     setStackCommitDest(null);
   }, [engineState.acting]);
   // 🎵 FLY NOTE — animated chip that flies from Note Stock to the commit track
@@ -1440,28 +1450,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const sustainStackRef = useRef(null);
   const immersiveDriveRef = useRef(null);
   const immersiveSustainRef = useRef(null);
-  // 🎯 THE ROUTER SITS UNDER THE TRACK, WHATEVER HEIGHT THE TRACK CAME OUT AT.
-  // Ported from the preview page's `place()`. A constant `top:52` was fine while
-  // the track was a compact centred pill; it now spans the board at `left:3%`,
-  // and its height moves with the "click to undo" subtitle, so a fixed number
-  // would either sit on top of the track or float away from it.
-  // ⚠️ THE GUARD IS LOAD-BEARING. Setting state unconditionally from a layout
-  // effect with no dependency array re-renders forever; only write when the
-  // measurement actually changed.
-  const [routerTop, setRouterTop] = useState('11%');
-  // ⚠️ ISOMORPHIC ON PURPOSE. `test:render` renders this component through
-  // react-dom/server, where React warns that useLayoutEffect does nothing. The
-  // measurement is a browser-only concern anyway, so fall back to useEffect off
-  // the browser and keep the suite's output clean enough that a REAL warning
-  // would stand out.
-  const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
-  useIsoLayoutEffect(() => {
-    const t = commitTrackRef.current, b = t?.offsetParent;
-    if (!t || !b) return;
-    const bh = b.getBoundingClientRect().height || 620;
-    const next = ((t.offsetTop + t.getBoundingClientRect().height + 8) / bh * 100).toFixed(2) + '%';
-    setRouterTop(cur => (cur === next ? cur : next));
-  });
   // 🎛️ FLOATING VOICING PANEL — toggle show/hide
   const [voicingOpen, setVoicingOpen] = useState(false);
   const [hoverScale, setHoverScale] = useState(null); // 🎼 { note, x, y } | null — stock note hover → scale-peek popup
@@ -1696,15 +1684,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     unsurePool, setUnsurePool,
     unsureFx, setUnsureFx,
     fanFx, setFanFx,
-  } = useFanEconomy(SPOTLIGHT_POOL);
+  } = useFanEconomy();
   // ── ✨ THE LIMELIGHT ── (ENGINE-owned — Phase 6d, fully migrated) ──────────
   // ⚠️ RENDER VIEWS. Anything inside a timeout chain must read
   // `engineRef.current.limelight` instead — the same rule the board slices
   // carry, and for the same reason: these two are a snapshot of the last render.
   const posing = engineState.limelight.posing;
   const limelightScores = engineState.limelight.scores;
-  // ── SPOTLIGHT ── (ENGINE-owned — Phase 6a, fully migrated) ─────────────────
-  const spotlightHex = engineState.board.spotlightHex;
+  // The roaming spotlight is retired. Vibe recovery will return as a new,
+  // deliberately designed system rather than a random board pickup.
+  const spotlightHex = null;
   // 💥 Floating combat numbers (e.g. −2 ❤️) that drift up over an affected hex.
   const [damageFx, setDamageFx] = useState([]); // [{ key, hexNum, text, color }]
   // turnCount lives in the engine now (engineState.turn.count)
@@ -2401,6 +2390,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   ])];
   const actingDriveStack   = actingNoteState?.driveStack   ?? [];
   const actingSustainStack = actingNoteState?.sustainStack ?? [];
+  // The red/blue caret is no longer a general chord-pardon marker. It shows the
+  // ending opportunity: a CLEAN final note that is the first/root note of one
+  // stack grants temporary Drive or Sustain when committed.
+  function endingStackSupport(note) {
+    const pc = pitchIndex(note);
+    if (pc < 0 || !currentScale.some(n => pitchIndex(n) === pc)) return null;
+    if (pc === pitchIndex(actingDriveStack[0])) return 'drive';
+    if (pc === pitchIndex(actingSustainStack[0])) return 'sustain';
+    return null;
+  }
   // Pitch classes the stacks have legalized right now. 🅱️ Every tier is live for
   // everybody since 2026-09-02, so this is no longer "at the player's tiers" — it
   // re-derives every render from the stack in front of them, and the player never
@@ -2424,23 +2423,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (!isNoteInContext(note)) return null;
     return contextClaim(pitchIndex(note), actingDriveStack, actingSustainStack);
   }
-  // ── PAYOUT ROUTING (dual-legal notes) ──────────────────────────────────────
-  // { [trackIndex]: 'drive' | 'sustain' } — the player's answer for notes BOTH
-  // stacks legalized. Keyed by track index rather than by note because the same
-  // pitch can appear twice in one track and the player is entitled to split it.
-  // Absent index = take the default (`claimAt`'s higher-rank-wins, tie to Drive),
-  // which is why an empty map is a complete and correct state and nothing has to
-  // seed it. Cleared with the track at turn start.
-  const payoutRouting = actingNoteState?.payoutRouting ?? {};
-  function setPayoutRoute(i, stack) {
-    if (!acting || hasConfirmed) return;
-    setNoteField(acting.id, { payoutRouting: { ...payoutRouting, [i]: stack } });
-  }
-  // The live read of the track as it stands — same function, same arguments the
-  // commit will use, so the router row below the Commit Track is showing the
-  // player the actual settlement and not a lookalike of it.
+  // The live read of the track uses the same clean palette as the commit.
   const liveClassified = classifyTrack(
-    melodyLine, keyScale, actingDriveStack, actingSustainStack, payoutRouting);
+    melodyLine, keyScale, actingDriveStack, actingSustainStack);
 
   // (C1's live Style preview lived here — it read `styleCommitDb` on every render
   //  and rendered the payout on the Commit Track as the track was built. Deleted
@@ -3577,25 +3562,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const newFreq    = melodyFreq.filter((_, k) => k !== i);
     const newDiscord = newTrack.reduce((n, nt) => n + (isNotePlayable(nt) ? 0 : 1), 0);
 
-    // ⚠️ payoutRouting is keyed by TRACK INDEX, so pulling a note out of the
-    // middle shifts every choice made after it. Left unremapped, the note that
-    // slides into slot 3 would silently inherit slot 3's old routing and get
-    // paid to the wrong stack. Drop the removed index, shift everything above
-    // it down one.
-    const oldRouting = actingNoteState?.payoutRouting ?? {};
-    const newRouting = {};
-    for (const [k, v] of Object.entries(oldRouting)) {
-      const k2 = Number(k);
-      if (k2 === i) continue;
-      newRouting[k2 > i ? k2 - 1 : k2] = v;
-    }
-
     const patch = {
       melodyLine:    newTrack,
       melodySrcIdx:  newSrc,
       melodyFreq:    newFreq,
       discordCount:  newDiscord,
-      payoutRouting: newRouting,
     };
 
     if (src === 'bank') {
@@ -3779,9 +3750,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       melodyFreq: [],
       usedStockIdx: [],
       discordCount: 0,
-      // Routing is keyed by track index, so it MUST die with the track — a stale
-      // map would silently reroute whatever note lands on index 3 next.
-      payoutRouting: {},
       // pivotPending intentionally NOT cleared — must still be resolved if active
     });
     addLog('✕ Melody Line cleared');
@@ -3848,7 +3816,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
     const commit = commitMelodyEconomy(engineRef.current, acting.id, {
       rng:  commitRng,
-      endingChoice,
       view: { skillById: SKILL_BY_ID, unsurePool },
     });
     if (!commit.ok) { addLog(`❌ ${commit.reason}`); return; }
@@ -3927,17 +3894,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
     // ── 5. HUD FLOW & THE AP GRANT (§1's mechanical half) ────────────────────
     setTurnStep('move_act'); // advance HUD flow → movement & actions
-    // 🎓 The last note only becomes a real idea once it's been committed — up to
-    // that moment it's just "the note on the end". Reads the PRE-commit trail
-    // off the render-scoped `actingNoteState` on purpose: the patch above has
-    // already moved the real one, and the tip is about the track just played.
     if (!acting?.cpu) {
-      const goldWasLive = cadenceHints(
-        actingNoteState?.finalsTrail ?? [],
-        actingNoteState?.cadenceCooldowns ?? {},
-      ).some(h => h.resolves);
       setTimeout(() => showTip('last_note'), 250);
-      if (goldWasLive) setTimeout(() => showTip('gold_hex'), 450);
     }
     // ⏱️ Fires LAST of the three commit tips on purpose. All three queue rather
     // than fight (see showTip), and the queue drains in fire order — so this
@@ -4275,6 +4233,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const ns    = noteStates[spiritId] ?? {};
     const skill = SKILL_BY_ID[skillId];
     if (!skill) return;
+    const spirit = spirits.find(s => s.id === spiritId);
 
     const unlocked = ns.unlockedSkills ?? [];
     if (unlocked.includes(skillId)) return;
@@ -4293,6 +4252,29 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       return;
     }
 
+    // Initial loadout: the first skill is a real starting ability, selected
+    // before the Spirit's first turn. Do not route it through the Db target
+    // flow; that would leave the player with an empty kit until earning Db.
+    if ((ns.upgradesPending ?? 0) > 0 && unlocked.length === 0 && !ns.targetSkillId
+        && !ns.pendingAwardSkillId && (engineRef.current.turn?.round ?? 1) === 1) {
+      setNoteStates(prev => ({
+        ...prev,
+        [spiritId]: {
+          ...prev[spiritId],
+          unlockedSkills: [skillId],
+          targetSkillId: null,
+          pendingAwardSkillId: null,
+          upgradesPending: 0,
+          skillRoute: null,
+          dbPoints: prev[spiritId]?.dbPoints ?? 0,
+        }
+      }));
+      addLog(`🎸 ${spirit?.name ?? 'Spirit'} starts with: ${skill.icon} ${skill.label}!`);
+      applySkillEffects(spiritId, skillId);
+      if (turnStep === 'chord') setTimeout(() => showTip('chord'), 400);
+      return;
+    }
+
     setNoteStates(prev => ({
       ...prev,
       [spiritId]: {
@@ -4305,7 +4287,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       }
     }));
 
-    const spirit = spirits.find(s => s.id === spiritId);
     addLog(`🎯 ${spirit?.name} is saving toward: ${skill.icon} ${skill.label} (${skill.dbCost} DB)`);
     if (turnStep === 'chord') setTimeout(() => showTip('chord'), 400);
   }
@@ -9774,7 +9755,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
     // ── ⏱️ WHAT TICKS WHEN (2026-08-05 round-clock pass) ─────────────────────
     // PERSONAL clocks stay here, on the owner's own turn end — debuffs, Burn,
-    // your crowd, your spotlight heal. They're yours; they can only fire on
+    // your crowd. It can only fire on
     // your watch, and you always get to act before and after them.
     // SHARED BOARD clocks (stage FX, the marquee, charge zones, drifting
     // tokens) moved into the `roundCompleted` block below. On a 4-player board
@@ -9794,23 +9775,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // Positional boredom: fans drift only after lingering on the outer edge; tick recovery lag.
     tickFans(acting.id, acting.num);
 
-    // ── SPOTLIGHT HEAL CHECK (engine rule — Phase 6a) ──────────────────────────
-    // Engine owns the +1 Vibe heal (applySpotlightHealed checks position + KO).
-    {
-      dispatch(spotlightHealed(acting.id));
-      const healReport = engineRef.current.board.lastSpotlightHeal;
-      if (healReport) addLog(`💡 ${s.name} steps into the spotlight — +1 Vibe!`);
-    }
-
-    // ── SPOTLIGHT MOVE: advance every full round (engine rng — Phase 6a) ─────
     if (report.roundCompleted) {
-      {
-        const occupied = [...spirits.map(sp => sp.num),
-          ...(shadowHex != null ? [shadowHex] : [])]; // 👤 the double holds its tile
-        dispatch(spotlightMoved(occupied));
-        const moveReport = engineRef.current.board.lastSpotlightMove;
-        if (moveReport) addLog(`💡 The spotlight shifts to hex #${moveReport.to}!`);
-      }
       // ── BOARD TOKENS: scatter fresh Lost Chords each round (engine rng) ───
       // The stage resonates with overlapping frequencies — harmonic interference
       // crystallises stray notes. Fewer Spirits = thinner resonance = more fragments.
@@ -9823,7 +9788,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           ...eventHexes,
           ...boardTokens.map(t => t.num),
           ...(shadowHex != null ? [shadowHex] : []), // 👤 no Lost Chord under the double
-          spotlightHex, LIMELIGHT_HEX,
+          LIMELIGHT_HEX,
         ];
         dispatch(tokensScattered(occupied, aliveSpirits.length, spirits.length));
         const scatterReport = engineRef.current.board.lastTokensScattered;
@@ -9872,7 +9837,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             ...boardCards.map(c => c.hexNum),
             ...engineRef.current.board.chargeZones.map(z => z.num),
             ...engineRef.current.board.eventHexes,
-            engineRef.current.board.spotlightHex,
           ];
           dispatch(eventHexSpawned(occupied));
           const evReport = engineRef.current.board.lastEventRespawn;
@@ -10432,22 +10396,18 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       if (hasSkill('ultimate') && !ns.ultimateUsed && botRivalsWithin(self, 4).length >= 2) {
         schedule(() => fireUltimate(self.id)); return;
       }
-      // 2b) Keep moving, or stop. Standing on the spotlight while hurt is worth
-      //     holding for — ending the turn there banks +1 Vibe (and we can still
-      //     attack from it without moving off). Otherwise stop to take a shot.
-      const hurt = (liveSelf.vibe ?? 9) <= Math.ceil((liveSelf.maxVibe ?? 5) * 0.4);
-      const onHealHex = hurt && typeof spotlightHex === 'number' && self.num === spotlightHex;
+      // 2b) Keep moving, or stop to take a shot.
       const rivalInRange = getRivalsInCone(self).length > 0
         || (ampsInRangeRef.current >= 1 && getRivalsInBeam(self).length > 0);
       const canAttackNow = rivalInRange && steps >= 2;
-      if (steps < 1 || canAttackNow || (steps < 2 && rivalInRange) || onHealHex) {
+      if (steps < 1 || canAttackNow || (steps < 2 && rivalInRange)) {
         botStepRef.current = 'acting';
         schedule(() => {}); // brief beat, then re-enter at 'acting'
         return;
       }
 
-      // 2c) Move where it actually pays off: the spotlight (heal), tokens, events,
-      //     a central spot (fans don't get bored), or a rival worth fighting.
+      // 2c) Move where it actually pays off: tokens, events, a central spot
+      //     (fans don't get bored), or a rival worth fighting.
       const dest = botPlanMove(self);
       if (dest == null) { botStepRef.current = 'acting'; schedule(() => {}); return; }
       schedule(() => {
@@ -11048,7 +11008,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // hovering a HUD attack button previews its range like the live mode
     const previewAction = action ?? hoverPreview;
     if (hex.num === LIMELIGHT_HEX) return "#ff44ff18";
-    if (hex.num === spotlightHex)  return "#ffffff14";
     const sp = spiritByNum[hex.num];
     // 💨 Smoke-hidden spirits are invisible — don't colour their hex
     if (sp && !isHiddenBySmoke(sp)) return sp.color + "44";
@@ -11110,7 +11069,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function hexStroke(hex) {
     const previewAction = action ?? hoverPreview;
     if (hex.num === LIMELIGHT_HEX) return "#ff44ff";
-    if (hex.num === spotlightHex)  return "#ffffaacc";
     const sp = spiritByNum[hex.num];
     // 💨 Smoke-hidden spirits are invisible — don't stroke their hex
     if (sp && !isHiddenBySmoke(sp) && acting?.id === sp.id) return sp.color;
@@ -11476,11 +11434,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
      during step 1. */
   const stockGrid = (acting && (turnStep === 'melody' || turnStep === 'move_act'))
     ? (() => {
-                      // 🎯 Pitch classes that would RESOLVE a cadence if they end this track
-                      const resolvePcs = new Set(
-                        cadenceHints(actingNoteState?.finalsTrail ?? [], actingNoteState?.cadenceCooldowns ?? {})
-                          .filter(h => h.resolves).map(h => h.nextPc)
-                      );
                       return (
                     <div style={{display:"flex",flexWrap:"wrap",gap:2,marginBottom:5}}>
                       {noteStock.map((note,idx)=>{
@@ -11562,9 +11515,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                       : inScaleNote          ? "0 0 4px #c0c8d844"
                                       : "none";
                         const lockTip = ctxDual
-                                      ? ` 🎸 BOTH stacks make this legal — you pick who gets paid at commit`
+                                      ? ` 🎸 BOTH stacks make this legal`
                                       : litByContext
-                                      ? ` 🎸 Your ${ctxClaim.stack === 'sustain' ? '🛡️ Sustain' : '⚔️ Drive'} chord makes this legal — it pays ${ctxClaim.stack === 'sustain' ? 'Sustain' : 'Drive'}`
+                                      ? ` 🎸 Your ${ctxClaim.stack === 'sustain' ? '🛡️ Sustain' : '⚔️ Drive'} chord makes this legal`
                                       : isIntervalNote && !isUnlocked && !inScaleNote
                                       ? ` 🔒 Locked — upgrade Discord path to unlock` : '';
                         // 🎚️ Mixer — used slots stay tappable for one layered repeat per turn
@@ -11572,8 +11525,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                           && (actingNoteState?.unlockedSkills ?? []).includes('mixer')
                           && !actingNoteState?.mixerUsedThisTurn
                           && !hasConfirmed && !pivotPending && melodyLine.length < 8;
-                        // 🎯 This note's pitch would resolve a cadence if it ends the track
-                        const resolvesCadence = resolvePcs.has(notePC) && !used && !isStaggered;
+                        const resolvesCadence = false;
                         // 🕳️ A used, non-Mixer, non-staggered slot is genuinely EMPTY — no note
                         // color, no letter — so it never reads as a (still-full-opacity) discord note.
                         const isEmpty = used && !mixerReady && !isStaggered;
@@ -11585,7 +11537,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                             onMouseLeave={()=>{ clearTimeout(hoverScaleTimerRef.current); setHoverScale(cur=>cur?.note===note?null:cur); }}
                             title={isStaggered ? "⚡ Staggered — unavailable"
                                  : mixerReady ? "🎚️ Mixer — tap to layer this note again"
-                                 : resolvesCadence ? `🎯 End your track on this note to RESOLVE a cadence — the crowd swells (+Fans)!${lockTip}`
                                  : lockTip || undefined}
                             style={{
                               width:NOTE_HEX.size,height:NOTE_HEX.size,flexShrink:0,
@@ -11608,8 +11559,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                  : resolvesCadence ? "#ffd700" : isEmpty ? "#232b3a" : borderC}
                               letter={isStaggered ? "\u26a1" : isEmpty ? "" : note}
                               dull={isStaggered || isEmpty || shadow === "none"}
-                              stackSupport={!used && !isStaggered && !resolvesCadence && litByContext
-                                ? (ctxDual ? 'both' : ctxClaim.stack) : null}
+                              stackSupport={!used && !isStaggered ? endingStackSupport(note) : null}
                               gold={resolvesCadence}
                               // 🎆 ⚠️ THE FLARE TAKES `borderC`, NOT THE CHIP'S CURRENT HUE.
                               // The commit marks the slot used in the same tick the burst
@@ -12698,11 +12648,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 else addLog(`🎵 Build and confirm your Melody Line first.`);
               }}
               disabled={!acting}>Move {moveStepsLeft>0?`(${moveStepsLeft} hex)`:""}</RailBtn>
-            {action === "move" && (
-              <RailBtn className="btn" style={{borderColor:"#44cc88",color:"#44cc88"}}
-                onClick={() => { if (!canAct) return; setAction(null); dispatch(beatsSpent(0, false, { all: true })); addLog(`🚶 ${acting.name} stops moving.`); }}>
-                ✓ End Move</RailBtn>
-            )}
             {/* FACE TURN — costs 1 move step */}
             {acting && moveStepsLeft > 0 && (
               <RailBtn className={`btn${action === "face" ? " on" : ""}`}
@@ -13071,6 +13016,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <RailBtn className={canWarp ? 'btn active' : 'btn'}
+                    cooldown={{left:warpCd, max:ABILITY_CD.displace, color:'#aa55ff'}}
                     style={{borderColor: canWarp ? '#aa55ff' : '#2a1840', color: canWarp ? '#cc88ff' : '#2a1840'}}
                     disabled={!canWarp}
                     title={`Space is Displaced — spend ${DISPLACE_DB_COST} Db to warp to any open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away. No Action Points, no cooldown, no rig needed — and your movement is untouched, so you can still walk after landing. Adjacent hexes don't count: he goes through the space between, not across it.`}
@@ -13082,7 +13028,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       }
                     }}>
                     🌌 Displace{canWarp ? ` (${DISPLACE_DB_COST} Db)`
-                      : warpCd > 0 ? ` (${warpCd})`
+                      : warpCd > 0 ? ` (🕒 ${warpCd}t)`
                       : ` (${dbPts}/${DISPLACE_DB_COST} Db)`}
                   </RailBtn>
                   {action === 'displace' && (
@@ -13102,6 +13048,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <RailBtn className={canOpen ? 'btn active' : 'btn'}
+                    cooldown={{left:gravCd, max:ABILITY_CD.gravity_control, color:'#aa55ff'}}
                     style={{borderColor: canOpen ? '#aa55ff' : '#2a1840', color: canOpen ? '#cc88ff' : '#2a1840'}}
                     disabled={!canOpen}
                     title={isOpen
@@ -13116,7 +13063,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     }}>
                     🕳️ Gravity{isOpen
                       ? ` (open #${actingNoteState?.gravityVortex?.hex})`
-                      : gravCd > 0 ? ` (${gravCd})`
+                      : gravCd > 0 ? ` (🕒 ${gravCd}t)`
                       : dbPts < GRAVITY_DB_COST ? ` (${dbPts}/${GRAVITY_DB_COST} Db)` : ` (${GRAVITY_DB_COST} Db)`}
                   </RailBtn>
                   {action === 'gravity_control' && (
@@ -13140,6 +13087,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const canHack = canFire(actingNoteState, 'code_injection') && !armed;
               return (
                 <RailBtn className={canHack ? 'btn active' : 'btn'}
+                  cooldown={{left:hackCd, max:ABILITY_CD.code_injection, color:'#44ffaa'}}
                   style={{borderColor: canHack ? '#44ffaa' : armed ? '#1d5c44' : '#12301f',
                           color: canHack ? '#88ffcc' : armed ? '#44ffaa' : '#12301f'}}
                   disabled={!canHack}
@@ -13148,7 +13096,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     : `Code Injection — spend ${CODE_INJECT_DB_COST} Db in secret. For one round, the first rival whose attack WOULD land on you has their dice re-rolled and must live with the second result. No tell, no aura: rivals cannot tell whether you've committed. If nobody lands a hit, the Db is gone — that's the bet.`}
                   onClick={() => { if (canHack) resolveCodeInjection(); }}>
                   💻 Inject{armed ? ' ✅ LIVE'
-                    : hackCd > 0 ? ` (${hackCd})`
+                    : hackCd > 0 ? ` (🕒 ${hackCd}t)`
                     : dbPts < CODE_INJECT_DB_COST ? ` (${dbPts}/${CODE_INJECT_DB_COST} Db)` : ` (${CODE_INJECT_DB_COST} Db)`}
                 </RailBtn>
               );
@@ -13174,6 +13122,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <RailBtn className={live ? 'btn active' : 'btn'}
+                    cooldown={{left:cd, max:ABILITY_CD[SHUKUCHI_SKILL], color:SHUKUCHI_LOOK.color}}
                     style={{borderColor: live ? SHUKUCHI_LOOK.color : '#1a2840',
                             color: live ? '#88bbff' : '#1a2840'}}
                     disabled={!live}
@@ -13211,6 +13160,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <RailBtn className={canDash ? 'btn active' : 'btn'}
+                    cooldown={{left:cd, max:ABILITY_CD.psycho_bushido, color:'#4488ff'}}
                     style={{borderColor: canDash ? '#4488ff' : '#1a2840', color: canDash ? '#88bbff' : '#1a2840'}}
                     disabled={!canDash}
                     title={`Psycho Bushido — draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT and strike. The farther the draw, the harder the blow: +2 at ${PSYCHO_BUSHIDO_MIN_RANGE}, +3 at 4, +4 at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ Too close and you cannot draw at all, and any body in the lane blocks it. Costs ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_AP_COST} AP and ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
@@ -13223,7 +13173,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         — recharging and skint are different problems with
                         different answers, and the Db one is new as of the
                         2026-08-22 rule. */}
-                    🌀 Bushido{cd > 0 ? ` (${cd})` : poor ? ` (${dbPts}/${PSYCHO_BUSHIDO_DB_COST} Db)` : ''}
+                    🌀 Bushido{cd > 0 ? ` (🕒 ${cd}t)` : poor ? ` (${dbPts}/${PSYCHO_BUSHIDO_DB_COST} Db)` : ''}
                   </RailBtn>
                   {action === 'psycho_bushido' && (
                     <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
@@ -13249,13 +13199,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               // Ronin, so this is a single-click action.
               return (
                 <RailBtn className={canSummon ? 'btn active' : 'btn'}
+                  cooldown={{left:cd, max:ABILITY_CD.shadow_illusion, color:'#4488ff'}}
                   style={{borderColor: canSummon ? '#4488ff' : '#1a2840', color: canSummon ? '#88bbff' : '#1a2840'}}
                   disabled={!canSummon}
                   title={`Shadow Illusion — split into a second, identical Ronin right where you stand (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). You start stacked, so nobody sees which one appeared; walk them apart on separate legs and let rivals waste a turn on the wrong body. ⚠️ It feeds on you: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it falls apart the moment you have none to give.`}
                   onClick={() => { if (canSummon) resolveShadowIllusion(); }}>
                   👤 Shadow{hasShadow
                     ? ` (${actingNoteState?.shadowIllusion?.turnsLeft ?? 0}t · −${SHADOW_ILLUSION_SUSTAIN_DRAIN}🛡️)`
-                    : cd > 0 ? ` (${cd})`
+                    : cd > 0 ? ` (🕒 ${cd}t)`
                     : poor ? ` (${dbPts}/${SHADOW_ILLUSION_DB_COST} Db)`
                     : starving ? ' (no Sustain)' : ''}
                 </RailBtn>
@@ -13275,6 +13226,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                 <RailBtn className={canActivate ? 'btn active' : 'btn'}
+                  cooldown={{left:cd, max:ABILITY_CD.cursed_shamisen, color:'#cc44ff'}}
                   style={{borderColor: canActivate ? '#cc44ff' : active ? '#cc44ff44' : '#1a2840',
                           color: canActivate ? '#dd88ff' : active ? '#cc44ff' : '#1a2840',
                           animation: active ? 'shamisen-glow 1.2s ease-in-out infinite' : 'none'}}
@@ -13283,7 +13235,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   onClick={() => { if (canActivate) resolveCursedShamisen(); }}>
                   🎸 {active
                     ? `Cursed (${curse.turnsLeft})`
-                    : cd > 0 ? `Shamisen (${cd})`
+                    : cd > 0 ? `Shamisen (🕒 ${cd}t)`
                     : poor ? `Shamisen (${dbPts}/${CURSED_SHAMISEN_DB_COST} Db)` : 'Shamisen'}
                 </RailBtn>
                 {active && (
@@ -13377,12 +13329,21 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:5}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                    <div className="stitle" style={{marginBottom:0,color: canAct ? "#4488ff" : "#7a90aa"}}>
-                      {!canAct ? "🎧 Rival's Turn"
-                        : turnStep === 'chord' ? 'Step 1 — Chord Stack'
-                        : turnStep === 'melody' ? 'Step 2 — Build Melody' : 'Note Stock'}
-                    </div>
-                    {/* ⚔️/🛡️ PAYS KEY — rides the title line, Alex 2026-08-29.
+                    {/* 🪦 'STEP 1 — CHORD STACK' NO LONGER PRINTS HERE, and only
+                        here: the step-1 drawer below is a Bracket whose nameplate
+                        says CHORD STACK one line lower, so this was the same words
+                        twice — the third time this file has retired a duplicate
+                        title for that reason (see the 2026-08 chord-stack and
+                        key-plate notes). ⚠️ STEPS 2 AND 3 STILL NEED IT: their
+                        panels carry no nameplate of their own, so the condition is
+                        on the chord step alone and not on the element. */}
+                    {!(canAct && turnStep === 'chord') && (
+                      <div className="stitle" style={{marginBottom:0,color: canAct ? "#4488ff" : "#7a90aa"}}>
+                        {!canAct ? "🎧 Rival's Turn"
+                          : turnStep === 'melody' ? 'Step 2 — Build Melody' : 'Note Stock'}
+                      </div>
+                    )}
+                    {/* ⚔️/🛡️ ENDING KEY — rides the title line, Alex 2026-08-29.
                         It used to own a row of its own directly under this one. It is
                         five words of legend; a whole line of column height for five
                         words is the kind of spend that pushes the note pool off the
@@ -13391,10 +13352,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         the legend just fills the slack that was already there. */}
                     {turnStep === 'melody' && canAct && (
                       <span style={{fontSize:7,color:"#66708a",display:"flex",gap:4,alignItems:"center",flexShrink:0}}
-                        title="A caret marks a Discord your chord stack pardoned. Red pays Drive; blue pays Sustain.">
-                        <span style={{color:DRIVE_C}}>⌃ pays Drive</span>
+                        title="A caret marks a clean stack-root ending. Red grants temporary Drive; blue grants temporary Sustain.">
+                        <span style={{color:DRIVE_C}}>⌃ root → Drive</span>
                         <span style={{color:"#3a4055"}}>│</span>
-                        <span style={{color:SUSTAIN_C}}>⌃ pays Sustain</span>
+                        <span style={{color:SUSTAIN_C}}>⌃ root → Sustain</span>
                       </span>
                     )}
                     {/* 🎤 MIC — only offered during the step it can actually act on */}
@@ -13658,55 +13619,103 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   const sFull = sStack.length >= actingStackCapSustain;
                   return (
                     <div style={{marginBottom:5}}>
-                      <div className="step-active" style={{'--step-glow-color':'#ff66cc',background:"#0c0a18",border:"1.5px solid #ff66cc",borderRadius:6,padding:"8px 10px"}}>
-                        <div style={{fontSize:9,color:"#ff99dd",fontWeight:700,marginBottom:4,letterSpacing:1}}>
-                          🎸 STACK COMMIT — shape your combat stacks
-                        </div>
-                        <div style={{fontSize:7,color:"#6a8a9a",marginBottom:6}}>
+                      {/* ⌐ THE STEP-1 DRAWER JOINED THE BRACKET SYSTEM, 2026-09-12.
+                          Ported from `.scratch/stack-commit-drawer.html` at the
+                          defaults Alex took. 🎯 IT IS THE LAST 2D PANEL IN THE
+                          ARENA, and it mattered more than it looked: the board's
+                          two ChordStackPanels are `visibility:hidden` in 3D (see
+                          NoteCommitOverlay), so THIS is the Drive/Sustain
+                          interface during step 1 and every stack commit in the
+                          game goes through it.
+                          ⚠️ EVERYTHING BELOW IS FRAME. Not one line reaches
+                          `setStackCommitDest`, `clickNoteStock` or `setTurnStep`
+                          — the same line `NoteCommitOverlay.jsx`'s header holds,
+                          and for the same §5 reason: a mistake in chrome must not
+                          be able to lose a state setter. */}
+                      <Bracket className="step-active stack-commit" color="#80e8ff"
+                        plate="CHORD STACK"
+                        plateRight={
+                          /* 🎚️ THE BUDGET, AS SEGMENTS. It was a sentence on its
+                             own row ("3 commits left — pick a stack then tap a
+                             note"); the hint survives below, the COUNT moves onto
+                             the frame line and costs no column. Same grammar as
+                             the phase rail's bars and VIBE's pips. */
+                          <span className="stack-budget"
+                            aria-label={`${budgetLeft} of ${STACK_COMMIT_BUDGET} commits left`}>
+                            {Array.from({length: STACK_COMMIT_BUDGET}, (_, i) =>
+                              <i key={i} data-on={i < budgetLeft || undefined} />)}
+                          </span>}
+                        style={{'--step-glow-color':'#80e8ff'}}>
+                      <div style={{padding:"11px 11px 9px"}}>
+                        <div style={{fontSize:7,color:"#6a8a9a",marginBottom:7}}>
                           {budgetLeft <= 0 ? `✓ budget spent (${STACK_COMMIT_BUDGET}/${STACK_COMMIT_BUDGET}) — continue below`
                            : `${budgetLeft} commit${budgetLeft !== 1 ? 's' : ''} left — pick a stack then tap a note`}
                         </div>
-                        {/* Drive stack display */}
-                        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:4}}>
-                          <button className="btn" data-tip-anchor="drive-btn" onClick={()=>setStackCommitDest('drive')} disabled={dFull || budgetLeft <= 0}
-                            style={{fontSize:10,padding:"4px 10px",fontWeight:700,borderColor: stackCommitDest === 'drive' ? '#ff6644' : '#aa4422',
-                              color: stackCommitDest === 'drive' ? '#ff6644' : '#aa6644',
-                              background: stackCommitDest === 'drive' ? '#2a0c08' : 'transparent',
-                              opacity: (dFull || budgetLeft <= 0) ? 0.4 : 1,
-                              ...(engineState.turn.count <= 8 && !(dFull || budgetLeft <= 0) ? {'--glow-color':'#ff6644', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}>
-                            {stackCommitDest === 'drive' ? '⚔️ DRIVE' : '⚔️ Drive'}
-                          </button>
-                          <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-                            {dStack.map((n,i)=>(
-                              <span key={i}
-                                style={{fontSize:11,fontWeight:700,color:"#ff9966",background:"#1a0c08",border:"1px solid #ff664466",borderRadius:4,padding:"2px 7px"}}>{n}</span>
-                            ))}
-                          </div>
-                          <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:"#ff6644"}}>⚔️{dCh.drive}</span>
-                        </div>
-                        {/* Sustain stack display */}
-                        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
-                          <button className="btn" data-tip-anchor="sustain-btn" onClick={()=>setStackCommitDest('sustain')} disabled={sFull || budgetLeft <= 0}
-                            style={{fontSize:10,padding:"4px 10px",fontWeight:700,borderColor: stackCommitDest === 'sustain' ? '#44aaff' : '#2266aa',
-                              color: stackCommitDest === 'sustain' ? '#44aaff' : '#4488aa',
-                              background: stackCommitDest === 'sustain' ? '#0a1828' : 'transparent',
-                              opacity: (sFull || budgetLeft <= 0) ? 0.4 : 1,
-                              ...(engineState.turn.count <= 8 && !(sFull || budgetLeft <= 0) ? {'--glow-color':'#44aaff', animation:'stack-btn-glow 1.5s ease-in-out infinite'} : {})}}>
-                            {stackCommitDest === 'sustain' ? '🛡️ SUSTAIN' : '🛡️ Sustain'}
-                          </button>
-                          <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-                            {sStack.map((n,i)=>(
-                              <span key={i}
-                                style={{fontSize:11,fontWeight:700,color:"#88ccff",background:"#081828",border:"1px solid #44aaff66",borderRadius:4,padding:"2px 7px"}}>{n}</span>
-                            ))}
-                          </div>
-                          <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:"#44aaff"}}>🛡️{sCh.sustain}</span>
-                        </div>
+                        {/* 🔴🔵 ONE ROW PER STACK, each in its own bracket wearing
+                            its own stat's colour — the same job the colour does on
+                            the board panels, which is to say which stack you are
+                            looking at without reading a word. */}
+                        {['drive','sustain'].map(side => {
+                          const isD    = side === 'drive';
+                          const stack  = isD ? dStack : sStack;
+                          const ch     = isD ? dCh : sCh;
+                          const col    = isD ? DRIVE_C : SUSTAIN_C;
+                          const cap    = isD ? actingStackCapDrive : actingStackCapSustain;
+                          const dis    = (isD ? dFull : sFull) || budgetLeft <= 0;
+                          const on     = stackCommitDest === side;
+                          return (
+                            <Bracket key={side} corner="sm" color={col}
+                              plate={isD ? 'DRIVE' : 'SUSTAIN'}
+                              plateRight={`${stack.length} / ${cap}`}
+                              className={on ? 'step-active' : ''}
+                              style={{marginBottom:6}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 9px"}}>
+                                {/* ⚠️ `data-tip-anchor` IS NOT DECORATION — four
+                                    BeginnerTipOverlay pages point at `drive-btn`
+                                    and `sustain-btn`, and a missing anchor does
+                                    not throw, it silently re-centres the tip. */}
+                                <button type="button" className="stack-chip"
+                                  data-tip-anchor={isD ? 'drive-btn' : 'sustain-btn'}
+                                  disabled={dis}
+                                  aria-pressed={on}
+                                  onClick={()=>setStackCommitDest(side)}
+                                  style={{color: on ? col : undefined,
+                                    background: on ? col : undefined,
+                                    ...(engineState.turn.count <= 8 && !dis
+                                      ? {'--glow-color':col, animation:'stack-btn-glow 1.5s ease-in-out infinite'}
+                                      : {})}}>
+                                  {isD ? 'Drive' : 'Sustain'}
+                                </button>
+                                {/* 🎵 REAL NoteHexes, not the rounded <span> pills
+                                    this row used to draw. Every other note in the
+                                    game has been a NoteHex since 2026-08-28 and
+                                    this row was the last holdout. */}
+                                <span style={{display:"flex",gap:2,flexWrap:"wrap",flex:1,minWidth:0}}>
+                                  {stack.map((n,i)=>(
+                                    <NoteHex key={`${side}${i}`} size={STACK_DRAWER_CHIP}
+                                      hue={col} letter={n} />
+                                  ))}
+                                </span>
+                                {/* 🎛️ THE SAME `ArenaDial` THE POCKET AND THE BOARD
+                                    DRAW, replacing a `⚔️5` / `🛡️3` emoji readout.
+                                    One component, every mount — SEQUENCING §12-board
+                                    paid for that lesson with the amp knob. */}
+                                <span style={{flexShrink:0,color:col,lineHeight:0}}>
+                                  <ArenaDial stat={`drawer-${side}`}
+                                    value={isD ? ch.drive : ch.sustain}
+                                    size={STACK_DRAWER_DIAL} />
+                                </span>
+                              </div>
+                            </Bracket>
+                          );
+                        })}
                         {/* Note stock for stack editing — visible when a dest is selected and budget remains */}
                         {stackCommitDest && budgetLeft > 0 && (
-                          <div data-tip-anchor="stack-note-grid"
-                            style={{marginBottom:6,padding:"4px 7px",background:"#140a18",border:"1px solid #ff66cc33",borderRadius:4}}>
-                            <div style={{display:"flex",flexWrap:"wrap",gap:2}}>
+                          <Bracket corner="sm" color="#8daee5" plate="STOCK"
+                            data-tip-anchor="stack-note-grid"
+                            plateRight={`${noteStock.filter((_, i) => !usedHas(usedStockIdx, i)).length} left`}
+                            style={{marginBottom:7}}>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:2,padding:"8px 8px 7px"}}>
                               {noteStock.map((note,idx)=>{
                                 const used = usedHas(usedStockIdx, idx);
                                 /* Interval-based colors — same as melody step */
@@ -13780,19 +13789,26 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                 );
                               })}
                             </div>
-                          </div>
+                          </Bracket>
                         )}
                         {/* N13: canAct guard — this button only moves LOCAL HUD
                             state, which is exactly why it was dangerous: it was
                             the one control on the acting panel that changed
                             something without going near the engine, so nothing
-                            stopped a rival from advancing their own step with it. */}
-                        <button className="btn" onClick={()=>{ if (!canAct) return; setStackCommitDest(null); setTurnStep('melody'); setTimeout(() => showTip('melody'), 300); }}
-                          style={{width:"100%",fontSize:9,padding:"6px 0",borderColor:"#44ff88",color:"#44ff88",fontWeight:700,
-                            background:"#0a1a10",boxShadow:"0 0 8px #44ff8833"}}>
+                            stopped a rival from advancing their own step with it.
+                            ⚠️ ITS LABEL IS A TEST CONTRACT. `clientJourneyCheck`
+                            and `clientBattleJourneyCheck` both click it with
+                            `textContent.includes('Continue to Melody')`, in BOTH
+                            states. The chip renders uppercase through CSS
+                            `text-transform`, which does not touch `textContent` —
+                            so do not "tidy" these strings to match what is drawn. */}
+                        <button type="button" className="stack-chip is-go"
+                          onClick={()=>{ if (!canAct) return; setStackCommitDest(null); setTurnStep('melody'); setTimeout(() => showTip('melody'), 300); }}
+                          style={{width:"100%"}}>
                           {budgetLeft <= 0 ? '✓ Stacks set — Continue to Melody ->' : 'Continue to Melody ->'}
                         </button>
                       </div>
+                      </Bracket>
                     </div>
                   );
                 })()
@@ -13851,15 +13867,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   </div>
                 )}
                 {discordCount>0 && <div style={{fontSize:8,color:"#ff6600",marginBottom:3}}>⚡ {discordCount} Discord note{discordCount!==1?"s":""} — movement only</div>}
-                <div style={{display:"flex",gap:3,marginBottom:4}}>
-                  <button className="btn" onClick={() => setEndingChoice('db')}
-                    style={{flex:1,fontSize:7,borderColor:endingChoice==='db'?'#44ff88':'#335544',color:endingChoice==='db'?'#44ff88':'#779988'}}>
-                    🎯 Db ending
-                  </button>
-                  <button className="btn" onClick={() => setEndingChoice('color')}
-                    style={{flex:1,fontSize:7,borderColor:endingChoice==='color'?'#ff6688':'#553344',color:endingChoice==='color'?'#ff99bb':'#997788'}}>
-                    🔴🔵 Stack boost
-                  </button>
+                <SpiritStyleCoach spiritId={acting.id} melodyLine={melodyLine} />
+                <div style={{fontSize:7,color:"#9fb6ca",marginBottom:4}}>
+                  🎯 Finish clean on the tonic, 4th, or 5th for Db. A clean stack-root finish adds its red/blue boost.
                 </div>
                 <div style={{display:"flex",gap:3}}>
                   <button className="btn" style={{flex:1,borderColor:"#44ff88",color:"#44ff88",fontSize:8}}
@@ -14107,10 +14117,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             {turnStep === 'melody' && (
             <CommitTrackPanel panelRef={commitTrackRef} tipAnchor="commit-track" immersive={board3D}
               className={turnStep === 'melody' ? 'step-active' : ''}
-              active={turnStep === 'melody'}>
+              active={turnStep === 'melody'}
+              // 🌊 the melody's wave reads its length from here. The seat map
+              // below is `Array.from({length:8})`, so the 8 is the same 8.
+              filled={melodyLine.length} total={8}>
               <div className="stitle" style={{marginBottom:0,color:"#aa88ff",flexShrink:0,fontSize:7,
                 display:"flex",flexDirection:"column",lineHeight:1.15}}>
-                <span>TRACK</span>
+                {/* 🪦 The inline "TRACK" caption was deleted 2026-09-12 — the
+                    panel's own nameplate says MELODY one line above it, and this
+                    is the same duplication that cost the chord stacks their
+                    inline titles in 2026-08. The draft hint below stays: nothing
+                    else says it. */}
                 {/* The draft state is only obvious if you say so. */}
                 {!hasConfirmed && melodyLine.length > 0 && (
                   <span style={{fontSize:5.5,letterSpacing:.4,color:"#6a5a8a",fontWeight:400}}>
@@ -14135,6 +14152,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 const cls       = liveClassified[i];
                 const paidBy    = note && !cls?.inScale && cls?.pardonedBy ? cls.stack : null;
                 const isDual    = !!(paidBy && cls?.both);
+                const finalStackSupport = i === melodyLine.length - 1 ? endingStackSupport(note) : null;
                 // Same demotion as the note stock — one look for all three
                 // unlock-gated discords. See UNLOCKED_DISCORD.
                 const showUnlocked = (isTritone || isMinorSeventh || isMajorThird) && !paidBy;
@@ -14179,7 +14197,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   }}>
                     <NoteHex size={COMMIT_OVERLAY.trackChip}
                       hue={note ? borderC : SOCKET_HUE} letter={note || ""} dull={!note}
-                      stackSupport={paidBy ? (isDual ? 'both' : paidBy) : null}
+                      stackSupport={finalStackSupport}
                       burst={burstIn?.seat === `track:${i}` ? burstIn : null} />
                   </div>
                 );
@@ -14194,48 +14212,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 style={{position:"absolute",left:44,bottom:8,zIndex:20,fontSize:7,padding:"2px 6px",
                   borderColor:"#3a5a7a",color:"#7090b0",background:"#0a1020cc"}}>⌖</button>
             )}
-            {/* ── ⚔️↔🛡️ PAYOUT ROUTER ────────────────────────────────────────────
-                Notes both stacks legalized independently. The tie-break (higher
-                chord rank, tie to Drive) picks a default so the player can ignore
-                this entirely and still be scored sanely; this row exists to let
-                them override it, per note, once they can see the whole track.
-
-                Deliberately at COMMIT rather than at placement. The question "do I
-                feed the riff or the shield" is a read of the board — how much
-                pressure you're under, what you're setting up next turn — and none
-                of that is settled while you're still choosing note four of eight.
-                Asking mid-build would interrupt the melody with a tactics question
-                eight times a turn; asking here asks it once, with the answer
-                visible. The row simply doesn't render when nothing is dual-legal,
-                which is most turns early on.                                   */}
-            {turnStep === 'melody' && !hasConfirmed && (() => {
-              const dual = liveClassified
-                .map((c, i) => ({ ...c, i }))
-                .filter(c => c.both && c.pardonedBy && !c.inScale);
-              if (!dual.length) return null;
-              return (
-                <PayoutRouterPanel top={routerTop}>
-                  <span style={{fontSize:7,color:"#b09ad0",fontWeight:700,letterSpacing:0.5,flexShrink:0}}>
-                    ⚔️↔🛡️ BOTH QUALIFY — WHO GETS PAID?
-                  </span>
-                  {dual.map(c => (
-                    <div key={c.i} style={{display:"flex",alignItems:"center",gap:2}}>
-                      <span style={{fontSize:8,fontWeight:700,color:"#e8eef8",minWidth:14,textAlign:"right"}}>{c.note}</span>
-                      {[['drive','⚔️',DRIVE_C],['sustain','🛡️',SUSTAIN_C]].map(([dest,icon,col]) => (
-                        <button key={dest} className="btn"
-                          title={`${c.note} (note ${c.i + 1}) pays ${dest === 'drive' ? 'Drive' : 'Sustain'}`}
-                          onClick={() => setPayoutRoute(c.i, dest)}
-                          style={{fontSize:7,padding:"0 4px",lineHeight:"14px",
-                            borderColor: c.stack === dest ? col : "#33384a",
-                            color:       c.stack === dest ? col : "#5a6070",
-                            background:  c.stack === dest ? `${col}22` : "transparent",
-                            boxShadow:   c.stack === dest ? `0 0 5px ${col}55` : "none"}}>{icon}</button>
-                      ))}
-                    </div>
-                  ))}
-                </PayoutRouterPanel>
-              );
-            })()}
             {noteScaleTip && (() => {
               const maj = buildScale(canonicalRoot(noteScaleTip.note, 'major'), 'major');
               const min = buildScale(canonicalRoot(noteScaleTip.note, 'minor'), 'minor');
@@ -14282,6 +14258,25 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const commitsUsed = actingNoteState?.stackCommitsThisTurn ?? 0;
               const budgetLeft = STACK_COMMIT_BUDGET - commitsUsed;
               const isChordStep = turnStep === 'chord';
+              const removeStackNote = (side, stackIndex) => {
+                const key = side === 'sustain' ? 'sustainStack' : 'driveStack';
+                const stack = side === 'sustain' ? sStack : dStack;
+                const note = stack[stackIndex];
+                if (!note) return;
+                // Return the matching stock slot to the hand. Stack notes are
+                // currently stored by pitch rather than source slot, so use
+                // the first matching consumed slot; this preserves duplicates
+                // without changing the replay/state shape. Index zero is the
+                // root seeded when the match begins, not a note taken from stock.
+                const stockAt = stackIndex === 0 ? -1
+                  : (actingNoteState?.noteStock ?? []).findIndex((n, i) => n === note && usedHas(actingNoteState?.usedStockIdx ?? [], i));
+                const used = usedList(actingNoteState?.usedStockIdx);
+                setNoteField(acting.id, {
+                  [key]: [...stack.slice(0, stackIndex), ...stack.slice(stackIndex + 1)],
+                  ...(stockAt >= 0 ? { usedStockIdx: used.filter(i => i !== stockAt) } : {}),
+                });
+                addLog(`↩️ ${note} removed from ${side} stack.`);
+              };
               // 🎸 ONE STACK, drawn inside the flanking panel Alex dialled on the
               // preview page. ⚠️ THE CONTENTS ARE UNCHANGED from the single-panel
               // version — same slots, same lock gate (i >= this side's seat cap), same
@@ -14382,6 +14377,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                               hue={locked ? "#2a2a3a" : note ? col : SOCKET_HUE}
                               letter={locked ? "" : (note || "")} dull={locked || !note}
                               burst={burstIn?.seat === `${side}:${i}` ? burstIn : null} />
+                            {note && !locked && (
+                              <button type="button"
+                                aria-label={`Remove ${note} from ${side} stack`}
+                                title={`Remove ${note} from ${side} stack`}
+                                onClick={() => removeStackNote(side, i)}
+                                style={{position:'absolute', right:-4, top:-4, zIndex:2,
+                                  width:15, height:15, padding:0, borderRadius:'50%',
+                                  border:`1px solid ${col}`, background:'#080f1e', color:col,
+                                  fontSize:11, lineHeight:'12px', cursor:'pointer'}}>×</button>
+                            )}
                             {locked && (
                               <span style={{position:"absolute",inset:0,display:"flex",
                                 alignItems:"center",justifyContent:"center",
@@ -14494,7 +14499,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 slides:slideOffAnimations, flashes:effectFlashes, thump:deckThump,
                 laser:laserFx, pyro:pyroFx, smoke:smokeFx, slime:slimeTiles,
                 fire:flamingHexes, vortex:gravityVortex, bots:animatronics,
-                spotlight:spotlightHex, tentacle:tentacleFx,
+                tentacle:tentacleFx,
                 shadowDecoy, lite:liteFx,
               }) : undefined}>
             <svg

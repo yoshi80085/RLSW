@@ -4,7 +4,8 @@
 // `PROGRESSION_REWRITE_DESIGN.md` §2. Chord capacity used to be BOUGHT: slot 4
 // came with `theory_dom7`, slot 5 with `theory_modes`, slot 6 with
 // `theory_chromatic`, 38 Db for the three of them. The Theory branch is gone and
-// the same three slots are now FOUND — you walk onto the right Lost Chord and
+// the same three slots are now FOUND — after the relevant ability-upgrade
+// milestone and a full current stack. You walk onto the right Lost Chord and
 // the seat it opens is the seat it fills.
 //
 // 🎯 THE LADDER IS NOT NEW MUSIC. These are the existing `CHORD_TEMPLATES` rank
@@ -70,9 +71,9 @@ import { pitchIndex } from "./notes.js";
  *  `slot` is the seat number a player sees (4, 5, 6); the index in this array
  *  is how many extra slots you already hold. */
 export const SLOT_LADDER = [
-  { slot: 4, degrees: [9, 10, 11], label: 'a 7th',            chords: 'Dom7 / Min7 / Maj7 / Dim7 / m7♭5' },
-  { slot: 5, degrees: [2],         label: 'the 9th',          chords: 'Dom9 / Min9' },
-  { slot: 6, degrees: [5, 9],      label: 'the 11th or 13th', chords: 'Min11 / Dom13' },
+  { slot: 4, degrees: [9, 10, 11], upgradesRequired: 1, label: 'a 7th',            chords: 'Dom7 / Min7 / Maj7 / Dim7 / m7♭5' },
+  { slot: 5, degrees: [2],         upgradesRequired: 2, label: 'the 9th',          chords: 'Dom9 / Min9' },
+  { slot: 6, degrees: [5, 9],      upgradesRequired: 4, label: 'the 11th or 13th', chords: 'Min11 / Dom13' },
 ];
 
 /** How many extra slots there are to find. Derived, so a fourth rung added above
@@ -116,6 +117,21 @@ export function targetsForStack(stack = [], earned = 0) {
   return out;
 }
 
+/** Number of distinct ability upgrades a Spirit has earned. A duplicate entry
+ * cannot accidentally count as two upgrades. */
+function upgradeUnlockCount(ns = {}) {
+  return new Set((ns?.unlockedSkills ?? []).filter(Boolean)).size;
+}
+
+/** A rung becomes a live board target only after the stack has filled every
+ * earlier seat and the Spirit has reached its upgrade milestone. */
+function canHuntRung(ns = {}, stack = [], rung = null) {
+  if (!rung) return false;
+  const filled = (stack ?? []).filter(Boolean).length;
+  // The capacity immediately before seat N opens is N - 1: 3, 4, then 5.
+  return filled >= rung.slot - 1 && upgradeUnlockCount(ns) >= rung.upgradesRequired;
+}
+
 /** 🎯 THE ONE FUNCTION THE BOARD AND THE HUD BOTH READ (§2's `unlockTargets`).
  *  Everything downstream — the weighted spawn, the pin rule, the bot's hunt and
  *  (when it is built) the note-stock highlight — comes through here, so the hex
@@ -129,7 +145,9 @@ export function unlockTargets(ns = {}) {
     const earned = ns?.[slots] ?? 0;
     const rung = nextRung(earned);
     if (!rung) continue;
-    const pcs = targetsForStack(ns?.[stack] ?? [], earned);
+    const chordStack = ns?.[stack] ?? [];
+    if (!canHuntRung(ns, chordStack, rung)) continue;
+    const pcs = targetsForStack(chordStack, earned);
     if (pcs.size === 0) continue;
     out[which] = { slot: rung.slot, pcs };
     for (const pc of pcs) out.all.add(pc);
@@ -172,7 +190,9 @@ export function unlockClaim(ns = {}, note = null) {
     const earned = ns?.[slots] ?? 0;
     const rung = nextRung(earned);
     if (!rung) continue;
-    if (!targetsForStack(ns?.[stack] ?? [], earned).has(pc)) continue;
+    const chordStack = ns?.[stack] ?? [];
+    if (!canHuntRung(ns, chordStack, rung)) continue;
+    if (!targetsForStack(chordStack, earned).has(pc)) continue;
     const claim = { which, slot: rung.slot, slotsKey: slots, stackKey: stack, rung };
     // lower seat wins; Drive is first in STACK_KEYS, so a tie keeps Drive
     if (!best || claim.slot < best.slot) best = claim;

@@ -250,7 +250,10 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     sustainSlots:    0,
     dbPoints:        0,
     totalDB:         0,
-    upgradesPending: 0,
+    // Every Spirit chooses one basic signature ability before turn one. The
+    // existing skill-picker modal consumes this pending choice immediately;
+    // later upgrades continue to use the same modal after a Db threshold.
+    upgradesPending: 1,
     skillRoute:      null,
     // 🔊 Amp I is the starting Main Amp — 2d6 from turn 1.
     // ── 🪦 B10's FREE RUNG IS GONE, AND NOBODY LOST ANYTHING ─────────────────

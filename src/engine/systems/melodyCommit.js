@@ -36,28 +36,17 @@
 //   · `unsurePool` — the undecided crowd is client state. Pass it in via
 //     `ctx.view.unsurePool`; the recruit it funds comes back as an effect.
 
-import {
-  pitchIndex, buildScale, playableScale, getIntervalNotes,
-  semitonesUpSpelled, ENHARMONIC_RESPELL,
-} from "../../music/notes.js";
-import {
-  detectCadence, detectDiatonicRun, detectSkipClimb,
-  detectRepeatPattern, scoreTrackDB,
-} from "../../music/cadence.js";
+import { buildScale, playableScale, ENHARMONIC_RESPELL } from "../../music/notes.js";
 import {
   classifyTrack, countUnpardoned, countPardonedByStack,
-  harmonicLock,
 } from "../../music/context.js";
-import { performanceScore } from "./economy.js";
-import { detectSpiritStyle } from "../../music/spiritStyle.js";
 import { melodyModeFor } from "../../music/melodyIdentity.js";
-import { hexRingFromCenter, crowdMultiplier, advanceDB } from "../../board/boardHelpers.js";
+import { melodyPayoutFor } from "../../music/melodyPayout.js";
+import { advanceDB } from "../../board/boardHelpers.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import {
   DB_UPGRADE_THRESHOLD,
-  FAN_GAIN_BY_RING, FAN_PROMOTE_EVERY, FAN_BORED_AFTER, FAN_DECAY,
-  FAN_CASUAL_CAP, FAN_DIEHARD_CAP, FAN_DIEHARD_START, FAN_CASUAL_START,
-  EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD,
+  FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START,
 } from "../../data/gameConstants.js";
 
 /** Speed caps at 5 (`Math.min(5, …)` in Game). Inert today — no Spirit exceeds
@@ -68,102 +57,10 @@ export const SPEED_CAP = 5;
 export const MIC_VOICE_ROLL_DIE = 6;
 export const MIC_VOICE_ROLL_PASS = 4;
 
-/** Colour notes pay at most +2 per stack per commit (B4). */
-export const COLOR_PAYOUT_CAP = 2;
-
-/** ⚠️ Ronin's virtuoso cliff. Same 5 as `evaluate.js`'s `PERF_CLIFF`, and the
- *  same reason it does not live in `gameConstants`: there is no per-Spirit
- *  innate-numbers module yet (§7). If a second innate needs a threshold, that
- *  is the moment to make one rather than scatter a third copy. */
-export const RONIN_PERF_CLIFF = 5;
-
-/** Below this Performance Score a non-Ronin Spirit is building a boredom streak. */
-export const LOW_PERF_FLOOR = 4;
-
 /** What this kernel still does not do. Read it; do not remember it. */
 export const CLIENT_OWNED = [
   'applySkillEffects', 'presentation', 'unsurePoolWrite',
 ];
-
-// ─── FAN FOLDS ───────────────────────────────────────────────────────────────
-// Two pure transforms over the fan bands, lifted from `gainFans` and
-// `gainFansFromDeed`. They are separate functions because they are separate
-// rules — position pays for WHERE you played, the deed pays for WHAT you landed
-// — and because the client applies them at different moments (see the ordering
-// note above). Both fold rather than sum: casuals are capped at each step, so
-// adding the two gains together first would let a commit exceed the cap.
-
-/**
- * 🎤 Position fans — a clean track played in the centre rings pulls a crowd.
- * Returns `null` when the rules pay nothing at all, which is NOT the same as
- * paying zero: `gainFans` early-returns before touching `centerStreak`, so a
- * discordant track does not even advance the promotion clock.
- */
-export function positionFanGain(fans, hexNum, clean, unsurePool = 0) {
-  const ring = hexRingFromCenter(hexNum);
-  const inCentre   = ring === 'main' || ring === 'pit';
-  const inGainZone = inCentre || ring === 'floor';
-  if (!clean || !inGainZone || (fans.fanLag ?? 0) > 0) return null;
-
-  const base    = FAN_GAIN_BY_RING[ring] ?? 0;
-  // Only the spotlight (main/pit) wins over the undecided crowd on the centre.
-  const recruit = inCentre ? Math.min(Math.max(0, unsurePool), base) : 0;
-  let casuals   = Math.min(FAN_CASUAL_CAP, (fans.casuals ?? 0) + base + recruit);
-  let diehards  = fans.diehards ?? FAN_DIEHARD_START;
-  let streak    = fans.centerStreak ?? 0;
-  let promoted  = false;
-  if (inCentre) {
-    streak += 1;
-    if (streak % FAN_PROMOTE_EVERY === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
-      casuals -= 1; diehards += 1; promoted = true;
-    }
-  }
-  return {
-    fans: { casuals, diehards, centerStreak: streak, fanActedThisTurn: inCentre },
-    ring, base, recruit, promoted,
-  };
-}
-
-/**
- * 🎯 Deed fans — a cadence resolved is a melody-line feat, so it builds crowd,
- * never Fame. The centre bonus stacks on top of the deed's own value.
- */
-export function deedFanGain(fans, hexNum, baseAmount) {
-  if (!(baseAmount > 0)) return null;
-  const ring = hexRingFromCenter(hexNum);
-  const inCentre    = ring === 'main' || ring === 'pit';
-  const centreBonus = ring === 'main' ? 2 : ring === 'pit' ? 1 : ring === 'floor' ? 1 : 0;
-  const gain = baseAmount + centreBonus;
-  let casuals  = Math.min(FAN_CASUAL_CAP, (fans.casuals ?? 0) + gain);
-  let diehards = fans.diehards ?? FAN_DIEHARD_START;
-  let streak   = fans.centerStreak ?? 0;
-  let promoted = false;
-  if (inCentre) {
-    streak += 1;
-    if (streak % FAN_PROMOTE_EVERY === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
-      casuals -= 1; diehards += 1; promoted = true;
-    }
-  }
-  return {
-    fans: { casuals, diehards, centerStreak: streak, fanActedThisTurn: true, fanLag: 0 },
-    ring, gain, promoted,
-  };
-}
-
-/**
- * 🎭 Performance fans — P drives excitement (new casuals) and loyalty (casual →
- * diehard). ⚠️ P NEVER PAYS FAME. Fans only ever MULTIPLY earned FP.
- */
-export function performanceFanGain(fans, gained, promotions, lost) {
-  let casuals  = fans.casuals  ?? FAN_CASUAL_START;
-  let diehards = fans.diehards ?? FAN_DIEHARD_START;
-  casuals = Math.min(FAN_CASUAL_CAP, casuals + gained);
-  for (let i = 0; i < promotions; i++) {
-    if (casuals > 0 && diehards < FAN_DIEHARD_CAP) { casuals -= 1; diehards += 1; }
-  }
-  casuals = Math.max(0, casuals - lost);   // 🗡️ bored fans walk (Ronin's weak shows)
-  return { casuals, diehards };
-}
 
 // ─── THE COMMIT ──────────────────────────────────────────────────────────────
 /**
@@ -232,10 +129,10 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // One classification owns every answer about the committed notes. The
   // Spirit's mode is the clean palette; chord pardons are tracked separately
   // for the red/blue ending carrot and never become clean notes.
-  const intervals    = getIntervalNotes(rootNote, scaleMode);
   const currentScale = playableScale(rootNote, scaleMode);
+  const harmonicScale = buildScale(rootNote, scaleMode);
   const trackClassified = classifyTrack(
-    melodyLine, currentScale, driveStack, sustainStack, ns.payoutRouting ?? {});
+    melodyLine, currentScale, driveStack, sustainStack);
   const unpardonedDiscord = countUnpardoned(trackClassified);
   const contextPardons    = countPardonedByStack(trackClassified);
   const cleanNoteCount    = trackClassified.filter(note => note.inScale).length;
@@ -282,24 +179,10 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // 📌 Until that lands there is a real hole in the Fame economy and it is
   // measured rather than guessed: see `BOT_STRATEGY_HANDOFF.md` §6.6.5.
 
-  // ── 🎯 CADENCE — the track's FINAL note is this turn's "final" ─────────────
-  const cooldowns = ns.cadenceCooldowns ?? {};
-  const lastPc = pitchIndex(melodyLine[melodyLine.length - 1]);
-  let cadenceResolved = false, cadence = null, trailPatch = {};
-  if (endingClean && lastPc >= 0) {
-    const newTrail = [...(ns.finalsTrail ?? []), lastPc].slice(-6);
-    cadence = detectCadence(newTrail, cooldowns);
-    if (cadence) {
-      cadenceResolved = true;
-      trailPatch = {
-        finalsTrail: [lastPc],              // the resolution starts a fresh run
-        cadenceCooldowns: { ...cooldowns, [cadence.id]: 3 },
-      };
-      logs.push(`🎯✨ ${name} resolves ${cadence.name} (${cadence.formula})!`);
-    } else {
-      trailPatch = { finalsTrail: newTrail };
-    }
-  }
+  // Resolutions are now entirely local to the final note. The retired
+  // cross-turn cadence trail remains untouched on old saves, but no longer
+  // adds a second melody reward.
+  const trailPatch = {};
 
   // ── 🎸 CHORD CONTEXT — THE SINGLE PASS (B3) ───────────────────────────────
   // ⚠️ `keyScale` and the stacks' pardons stay SEPARATE, permanently. The pardon
@@ -341,24 +224,23 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const isMojoDrained = (ns.mojoDrain ?? 0) > 0;
 
   // ── INTERVAL EFFECTS ──────────────────────────────────────────────────────
-  const trackHasTritone    = cleanPhrase.includes(intervals.tritone);
-  const isOctaveResolution = cleanPhrase.length >= 2
-    && cleanPhrase[0] === cleanPhrase.at(-1);
-  const diatonicRunLen = detectDiatonicRun(cleanPhrase, currentScale);
-  const skipClimbLen   = detectSkipClimb(cleanPhrase, currentScale);
-  const repeatPatLen   = detectRepeatPattern(cleanPhrase, currentScale);
-
-  // ── B4: COLOR NOTES PAY THE STACK THAT AUTHORIZED THEM ────────────────────
-  // In Drive/Sustain, never in Db. Db is the ENDING's payout; Drive/Sustain is
-  // the INTERIOR's, and colour is an interior gesture. Folded into the RAW boost
-  // rather than added afterwards, so colour flows through the same
-  // highest-wins/discard machinery as every other boost — otherwise it would be
-  // the one boost in the game that cannot be discarded.
-  const endingChoice = ctx.endingChoice === 'color' ? 'color' : 'db';
-  const colorDrive   = endingChoice === 'color' && !isMojoDrained
-    ? Math.min(COLOR_PAYOUT_CAP, contextPardons.drive) : 0;
-  const colorSustain = endingChoice === 'color' && !isMojoDrained
-    ? Math.min(COLOR_PAYOUT_CAP, contextPardons.sustain) : 0;
+  // ── THE THREE-LAYER MELODY ECONOMY ─────────────────────────────────────────
+  // 1. Spirit structure → fans (Ronin only until the other identities are set).
+  // 2. Clean notes + clean streak → Db.
+  // 3. The final note → harmonic Db bonus and, when it is a stack root, a
+  //    red/blue temporary-stat carrot.
+  const stackRootDrive = driveStack[0] ?? null;
+  const stackRootSustain = sustainStack[0] ?? null;
+  const payout = melodyPayoutFor(spiritId, melodyLine, currentScale, {
+    // These are scale degrees, not fixed chromatic intervals: Ronin's Lydian
+    // fourth is ♯4, and it must remain a clean resolving note.
+    tonic: rootNote,
+    fourth: harmonicScale[3], fifth: harmonicScale[4],
+    driveRoot: stackRootDrive, sustainRoot: stackRootSustain,
+  });
+  const endingChoice = payout.ending;
+  const colorDrive = !isMojoDrained && payout.chordRootCarrot === 'drive' ? 1 : 0;
+  const colorSustain = !isMojoDrained && payout.chordRootCarrot === 'sustain' ? 1 : 0;
 
   const rawDriveBoost = colorDrive;
   const prevTempDrive = ns.tempDrive ?? 0;
@@ -381,19 +263,18 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const dbOverflow = 0;
   const discarded  = driveOverflowToDB + sustainOverflowToDB;
 
-  const newDieFloorBoost = !isMojoDrained && isOctaveResolution ? 2 : 0;
+  const newDieFloorBoost = 0;
   const newStatusEffects = [...(ns.statusEffects ?? [])];
 
-  // Clean notes always create the length slope. At the ending the player chooses
-  // either the Db cadence/lock boost or the stack's red/blue carrot. Discord is
-  // inert: it creates movement, but neither income nor a resolution.
-  const baseScore = scoreTrackDB(melodyLine, intervals.fourth, intervals.fifth, {
-    cleanNoteCount,
-    endingClean: endingChoice === 'db' && endingClean,
-  });
-  const lock = baseScore.endingBonus > 0
-    ? harmonicLock(lastNote, driveStack, sustainStack)
-    : { bonus: 0, stack: null, rank: 0, chordName: null };
+  const baseScore = {
+    points: payout.db,
+    breakdown: [
+      `${payout.cleanCount} clean notes → +${payout.cleanDb}`,
+      ...(payout.streakDb ? [`clean streak → +${payout.streakDb}`] : []),
+      ...(payout.ending !== 'normal' ? [`${payout.ending} resolve → +${payout.endingDb}`] : []),
+    ], endingBonus: payout.endingDb, endingKind: payout.ending,
+  };
+  const lock = { bonus: 0, stack: null, rank: 0, chordName: null };
 
   const breakdown = [...baseScore.breakdown];
   if (lock.bonus > 0) breakdown.push(`🔒 ${lock.chordName} +${lock.bonus}`);
@@ -404,61 +285,18 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const edgeDbCost = 0, edgeDbBonus = 0, edgeFanCost = 0, edgeCollapseFans = 0;
   const edgeResolvedThisTurn = false, newEdgeStage = 0;
 
-  // ── 🎭 PERFORMANCE SCORE P ────────────────────────────────────────────────
-  // 🪦 `perfSusEnd` WAS A GHOST AND IS NOW PINNED FALSE. It gated on `theory_sus`
-  // — an id NO ROUTE IN THE SKILL TREE HAS EVER SOLD. `notes.js` documented it as
-  // "ending flair" and `economy.js` listed `susEnd` among the Performance Score's
-  // sources; both described a rung that did not exist, so this term has been
-  // reading `false` on every commit since the tree was written. Found while
-  // deleting the Theory branch, 2026-09-02.
-  // ⚠️ PINNED RATHER THAN DELETED so the Performance Score still reads as the
-  // single tally it is, exactly like `edgeDbCost` above. If a suspended ending is
-  // wanted, it needs a rule — not a flag nobody grants.
-  const perfSusEnd = false;
-  // B3: score the SETTLED count, not the placement counter — a note the chord
-  // legalized was never a wrong note, so it must not drag the flair score either.
-  // 🎭 PER-SPIRIT STYLE — did this line sound like THIS character? One point per
-  // completed gesture, into `performanceScore`'s `perfBig` seat, which pays the
-  // CROWD and never Fame. See `music/spiritStyle.js` for why it replaced the
-  // riff library rather than reinstating it.
-  //
-  // ⚠️ READ OFF `melodyLine`, THE COMMITTED TRACK, and nothing else — no stock,
-  // no draw, no rng. That is the property the riffs failed: a payout that reads
-  // the hand you were dealt is a lottery wearing a skill's clothes.
-  const style = detectSpiritStyle(spiritId, cleanPhrase);
-  const { score: perfScore } = performanceScore({
-    melodyLine: cleanPhrase,
-    trackHasTritone, isOctaveResolution,
-    diatonicRunLen, repeatPatLen, skipClimbLen,
-    cadenceResolved, styleBig: style.score,
-    earned, edgeResolved: edgeResolvedThisTurn, susEnd: perfSusEnd,
-  });
-
-  // ⚠️ P NO LONGER PAYS Db — IT PAYS THE CROWD, AND ONLY THE CROWD. Nobody minds
-  // a fickle audience; everybody minds a fickle upgrade bar.
+  // Layer 1: finished Spirit structures are the whole melody-to-fans bridge.
+  // Monster and Intergalactic deliberately return zero until their rules exist.
+  const style = payout.style;
+  const perfScore = style.score;
+  const perfExciteGain = 0;
+  const perfExcitement = ns.excitement ?? 0;
+  const perfLoyalty = ns.loyalty ?? 0;
+  const perfFansGained = style.score;
+  const perfPromotions = 0;
+  const perfFansLost = 0;
+  const lowPerfStreak = 0;
   const perfDbBonus = 0;
-  const perfVibeFactor = (spirit.maxVibe ?? 5) / 5;
-  // 🗡️ SHREDDING RONIN — the fans came for a masterpiece. P≥5 wins ~double the
-  // crowd; short of it the meter COOLS (negative) and sustained mediocrity sheds
-  // a casual. It is a CLIFF, not a slope — §5's highest-weighted term for him.
-  const isRonin = spiritId === 'cosmic_ronin';
-  const perfExciteGain = isRonin
-    ? (perfScore >= RONIN_PERF_CLIFF
-        ? (perfScore - (RONIN_PERF_CLIFF - 1)) * perfVibeFactor * 2
-        : (perfScore - RONIN_PERF_CLIFF) * perfVibeFactor * 0.5)
-    : Math.max(0, perfScore - (RONIN_PERF_CLIFF - 1)) * perfVibeFactor;
-  let perfExcitement = (ns.excitement ?? 0) + perfExciteGain;
-  let perfLoyalty    = Math.max(0, (ns.loyalty ?? 0) + perfExciteGain);
-  let perfFansGained = 0, perfPromotions = 0, perfFansLost = edgeFanCost + edgeCollapseFans;
-  while (perfExcitement >= EXCITE_PER_CASUAL)  { perfExcitement -= EXCITE_PER_CASUAL;  perfFansGained += 1; }
-  while (perfLoyalty    >= LOYALTY_PER_DIEHARD) { perfLoyalty   -= LOYALTY_PER_DIEHARD; perfPromotions += 1; }
-  while (perfExcitement <= -EXCITE_PER_CASUAL) { perfExcitement += EXCITE_PER_CASUAL;  perfFansLost   += 1; }
-
-  // 🥱 Sustained mediocrity (everyone except Ronin, who has the instant version
-  // above) — same FAN_BORED_AFTER / FAN_DECAY shape as positional boredom.
-  const prevLowPerfStreak = ns.lowPerfStreak ?? 0;
-  const lowPerfStreak = (!isRonin && perfScore < LOW_PERF_FLOOR) ? prevLowPerfStreak + 1 : 0;
-  if (!isRonin && lowPerfStreak >= FAN_BORED_AFTER) perfFansLost += FAN_DECAY;
 
   // Four sources in, one number out.
   const earnedTotal = earned + dbOverflow + perfDbBonus + edgeDbBonus - edgeDbCost;
@@ -525,10 +363,9 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     }
   }
 
-  // ── THE ORDERED EFFECTS ───────────────────────────────────────────────────
-  // Client timing: position fans 0ms, performance fans 0ms, riff Fame 500ms,
-  // cadence fans 700ms. Fans are folded SEQUENTIALLY (never summed) so each cap
-  // bites in turn, then emitted as one write — same arithmetic, one dispatch.
+  // ── LAYER 1 EFFECTS ───────────────────────────────────────────────────────
+  // The commit has one fan source: the Spirit's completed structure. Position,
+  // performance-score and cadence fan awards were retired with the old economy.
   const effects = [];
   let fans = {
     casuals: ns.casuals ?? FAN_CASUAL_START,
@@ -537,51 +374,19 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     fanLag: ns.fanLag ?? 0,
   };
 
-  const pos = positionFanGain(fans, spirit.num, allInScale, view.unsurePool ?? 0);
   let fanWrite = null;
-  // (`pos` and `deed` are re-exported on `report` below — a client needs `base`,
-  //  `recruit` and `gain` to size its fan bursts, and re-deriving them would put
-  //  the ring arithmetic back in two places.)
-  if (pos) {
-    fans = { ...fans, ...pos.fans };
-    fanWrite = { ...pos.fans };
-    if (pos.recruit > 0) effects.push({ type: 'unsurePool', spiritId, delta: -pos.recruit });
-    // ⚠️ The multiplier is part of this line on purpose: it is the moment the
-    // player can see WHY a crowd is worth having. Derived here rather than in the
-    // client, so the sentence and the number cannot drift apart.
-    const mult = crowdMultiplier(fans.diehards, fans.casuals, (ns.assignments ?? []).length);
-    logs.push(`🎤 ${name} works ${pos.ring === 'main' ? 'the Mainstage' : pos.ring === 'pit' ? 'the Pit' : 'the neutral floor'} — casuals +${pos.base}${pos.recruit > 0 ? ` (+${pos.recruit} won over)` : ''} → ♥${fans.diehards}·👥${fans.casuals} (×${mult.toFixed(2)})`);
-    if (pos.promoted) logs.push(`🎤 A casual hardens into a Diehard for ${name}! (${fans.diehards}♥)`);
-  }
-  if (perfFansGained > 0 || perfPromotions > 0 || perfFansLost > 0) {
-    const perf = performanceFanGain(fans, perfFansGained, perfPromotions, perfFansLost);
-    fans = { ...fans, ...perf };
-    fanWrite = { ...(fanWrite ?? {}), ...perf };
-    if (perfFansGained > 0) logs.push(`🎤 ${name}'s performance wins over ${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''}!`);
-    if (perfPromotions > 0) logs.push(`💜 ${perfPromotions} of ${name}'s casuals harden into Diehards!`);
-    if (perfFansLost   > 0) logs.push(`😴 ${name}'s show falls flat — ${perfFansLost} bored fan${perfFansLost !== 1 ? 's' : ''} drift off.`);
+  if (perfFansGained > 0) {
+    const structureFans = {
+      casuals: Math.min(FAN_CASUAL_CAP, fans.casuals + perfFansGained),
+      diehards: fans.diehards,
+    };
+    fans = { ...fans, ...structureFans };
+    fanWrite = { ...(fanWrite ?? {}), ...structureFans };
+    if (perfFansGained > 0) logs.push(`🎤 ${name}'s ${style.labels.join(' + ')} wins ${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''}!`);
   }
   if (fanWrite) effects.push({ type: 'fans', spiritId, fans: fanWrite });
 
-  // 🪦 The riff's Fame effect lived here and is retired with it (see above).
-  //
-  // ⚠️ THE COMMIT NOW PAYS NO FAME AT ALL, and the ordering note that used to sit
-  // here still matters for whatever pays next: a Fame effect must be emitted
-  // AFTER the two fan writes above, because `grantFame` multiplies by the crowd
-  // and must see the fans this commit just won — not the cadence fans that land
-  // after it. The effects list is ordered for that reason, not for looks.
-
-  // 🎯 Cadences are a melody-line feat, not a battle — they build crowd, not Fame.
-  let deedReport = null;
-  if (cadence) {
-    const deed = deedFanGain(fans, spirit.num, cadence.fp);
-    if (deed) {
-      deedReport = { ring: deed.ring, gain: deed.gain, promoted: deed.promoted };
-      fans = { ...fans, ...deed.fans };
-      effects.push({ type: 'fans', spiritId, fans: deed.fans });
-      logs.push(`🎤 ${name} wins the crowd — 🎯 ${cadence.name} — +${deed.gain} casual fan${deed.gain !== 1 ? 's' : ''}!`);
-    }
-  }
+  const deedReport = null;
 
   // ── FLASH (presentation; transcribed so a rewired client recomputes nothing) ──
   if (earned > 0) {
@@ -591,17 +396,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   }
   if (rawDriveBoost > 0)   flashLines.push(`⚔️ Drive +${newTempDrive}`);
   if (rawSustainBoost > 0) flashLines.push(`🛡️ Sustain +${newTempSustain}`);
-  if (lock.bonus > 0)      flashLines.push(`🔒 Harmonic Lock — ${lock.chordName} · DB +${lock.bonus}`);
-  if (isOctaveResolution)  flashLines.push('🎶 Octave — DB +2');
-  const pardonedTotal = contextPardons.drive + contextPardons.sustain;
-  if (pardonedTotal > 0) {
-    const paidTo = [];
-    if (colorDrive   > 0) paidTo.push(`⚔️ +${colorDrive}`);
-    if (colorSustain > 0) paidTo.push(`🛡️ +${colorSustain}`);
-    flashLines.push(`🎸 ${pardonedTotal} note${pardonedTotal !== 1 ? 's' : ''} engaged your chord`
-      + (paidTo.length > 0 ? ` — ${paidTo.join(' ')}`
-        : endingChoice === 'db' ? ' — Db ending chosen' : isMojoDrained ? ' — Mojo Drain, no payout' : ''));
-  }
+  if (payout.ending !== 'normal') flashLines.push(`🎯 ${payout.ending} resolve — DB +${payout.endingDb}`);
   if (canBank)           flashLines.push(`💾 Banked: ${newBankedNote.note}`);
   if (totalNotes > speed && !canBank) flashLines.push(`⚠️ ${totalNotes - speed} note(s) discarded (bank full)`);
   if (unpardonedDiscord > 0) flashLines.push(`⚡ ${unpardonedDiscord} Discord — movement only`);
@@ -609,8 +404,8 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     flashLines.push(`🎸 ${label} — that's your sound`);
     logs.push(`🎸 ${name} lands ${label} — the crowd knows that sound.`);
   }
-  flashLines.push(`🎭 Performance ${perfScore}/10`);
-  if (perfFansGained > 0) flashLines.push(`🎤 +${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''} won over!`);
+  flashLines.push(`🎭 Structure ${perfScore}`);
+  if (perfFansGained > 0) flashLines.push(`🎤 ${style.labels.join(' + ')} · +${perfFansGained} fan${perfFansGained !== 1 ? 's' : ''}`);
   if (perfPromotions > 0) flashLines.push(`💜 ${perfPromotions} fan${perfPromotions !== 1 ? 's' : ''} → Diehard!`);
 
   const scoreStr = earned > 0
@@ -622,8 +417,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   logs.unshift(`✓ Committed · ${hexes} hexes${scoreStr}`
     + (rawDriveBoost > 0 ? ` · ⚔️ Drive +${newTempDrive}` : '')
     + (rawSustainBoost > 0 ? ` · 🛡️ Sustain +${newTempSustain}` : '')
-    + (lock.bonus > 0 ? ` · 🔒 Harmonic Lock ${lock.chordName} DB+${lock.bonus}` : '')
-    + (isOctaveResolution ? ' · 🎶 Octave DB+2' : '')
+    + (payout.ending !== 'normal' ? ` · 🎯 ${payout.ending} DB+${payout.endingDb}` : '')
     + `${speedMsg} · Next RN: ${newRootRaw}`);
 
   return {
@@ -631,12 +425,12 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     patch, effects, hexes, logs, flashLines,
     report: {
       melodyLine, baseTrack, voiceRoll, micBonusNote,
-      cadence: cadence ? { id: cadence.id, name: cadence.name, fp: cadence.fp } : null,
+      cadence: null,
       unpardonedDiscord, contextPardons, allInScale, cleanNoteCount, endingClean,
       cleanPhrase, endingChoice,
       colorDrive, colorSustain, discarded, dbOverflow,
-      diatonicRunLen, repeatPatLen, skipClimbLen,
-      trackHasTritone, isOctaveResolution,
+      diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0,
+      trackHasTritone: false, isOctaveResolution: false,
       baseScore, lock, breakdown,
       earned, earnedTotal, newDBPoints, targetCost, upgradeTriggered, awardedSkillId,
       perfScore, perfExciteGain, perfFansGained, perfPromotions, perfFansLost,
@@ -647,7 +441,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
       lowPerfStreak,
       totalNotes, usableMoves, overflow, canBank, bankedNote: newBankedNote, speed,
       newRootRaw, newMode, fans,
-      positionFans: pos ? { ring: pos.ring, base: pos.base, recruit: pos.recruit, promoted: pos.promoted } : null,
+      positionFans: null,
       deedFans: deedReport,
       clientOwned: CLIENT_OWNED,
     },

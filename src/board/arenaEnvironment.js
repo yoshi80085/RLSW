@@ -84,11 +84,9 @@ export function createArenaEnvironment(scene) {
     const pool=new THREE.Mesh(new THREE.CircleGeometry(1,32),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.12,depthWrite:false,blending:THREE.AdditiveBlending}));pool.rotation.x=-Math.PI/2;root.add(pool);
     lights.push({source,target,light,cone,pool,sx,sz});
   }
-  const follow=new THREE.SpotLight(0xd8f0ff,55,30,.2,.7,1.7);follow.position.set(-7,9,-6);
-  root.add(follow,follow.target);
   const scratch=new THREE.Vector3(),down=new THREE.Vector3(0,-1,0);
   return {
-    update(time,{lite=false,reduced=false,spotlight=null}={}) {
+    update(time,{lite=false,reduced=false}={}) {
       glints.visible=!lite&&!reduced;glintMat.uniforms.time.value=time;
       starsGeo.setDrawRange(0,lite?900:2200);
       // Keep the complete silhouette in Standard too; 48 rocks cost one draw.
@@ -105,7 +103,6 @@ export function createArenaEnvironment(scene) {
         l.pool.position.copy(l.target.position);l.pool.scale.setScalar(1.05);
         l.cone.visible=true;l.light.intensity=12;
       }
-      follow.visible=!!spotlight;if(spotlight) follow.target.position.copy(spotlight);
     },
     dispose(){},
   };

@@ -45,8 +45,18 @@ export function BoardViewport({ enabled, immersive = false, sceneFrame, onDisabl
     <style>{`
       [data-board-view="3d"] .arena-tactical { width:${SVG_W}px; height:${SVG_H}px; }
       [data-board-view="3d"] .arena-tactical > svg { width:${SVG_W}px !important; height:${SVG_H}px !important; overflow:visible; }
-      [data-board-view="3d"] .arena-tactical > svg > image { display:none; }
+      /* The SVG stays mounted only as the input/targeting surface.  Its painted
+         plate and hex outlines otherwise sit in the CSS3D layer above WebGL and
+         slice through the physical standees. */
+      [data-board-view="3d"] .arena-tactical > svg > image,
+      [data-board-view="3d"] .arena-tactical .board-outline-glow,
+      [data-board-view="3d"] .arena-tactical .board-outline-img { display:none; }
+      [data-board-view="3d"] .arena-tactical .hex-g > polygon { stroke:transparent; }
       [data-arena-ready] [data-arena-flat="spirit"] { display:none; }
+      /* The WebGL arena owns equivalent smoke, laser, pyro, and bot effects.
+         Leaving the SVG copy above the canvas makes it draw through its 3D
+         stand-ins, so suppress that duplicate only once the arena is ready. */
+      [data-arena-ready] [data-arena-flat="stage-fx"] { display:none; }
       [data-board-view="3d"] .arena-tactical { pointer-events:auto; }
       [data-arena-ready] [data-arena-flat="amp-art"] { opacity:0; }
       [data-arena-ready] [data-arena-flat="fall"] { visibility:hidden; }

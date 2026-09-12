@@ -42,6 +42,11 @@ export function applySpotlightHealed(state, { spiritId }) {
 /** Spotlight moves to a new random interior hex at round end. */
 export function applySpotlightMoved(state, { occupied }, rng) {
   const prev = state.board.spotlightHex;
+  // Compatibility no-op for replays created before the roaming spotlight was
+  // retired. New matches have no spotlight field and cannot revive it.
+  if (!Number.isInteger(prev)) {
+    return { ...state, board: { ...state.board, lastSpotlightMove: null } };
+  }
   const occ = new Set(occupied);
   const pool = SPOTLIGHT_POOL.filter(n => n !== prev && !occ.has(n));
   if (pool.length === 0) {

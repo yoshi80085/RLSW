@@ -47,23 +47,23 @@ already built is fine — say so and move on.
 
 > Priority is Alex's ranking: **1 = do soon**, **5 = can wait until after the game is mainly done**. These are capture-only entries; they are not implementation decisions.
 
-### 2026-09-08 — [P1] Reshape HUD for the 3D Cosmic Arena
-Reshape the HUD so it reflects the 3D Cosmic Arena’s full-screen display and visual style.
+### ~~2026-09-08 — [P1] Reshape HUD for the 3D Cosmic Arena~~
+✅ **Done for now — 2026-09-11.** Reshape the HUD so it reflects the 3D Cosmic Arena’s full-screen display and visual style.
 
-### 2026-09-08 — [P1] Everyone starts with a basic ability
-Everyone picks a basic ability to start out with.
+### ~~2026-09-08 — [P1] Everyone starts with a basic ability~~
+✅ **Done — 2026-09-11.** Everyone picks one basic signature ability before the first turn.
 
-### 2026-09-08 — [P1] Gate stack upgrades and scale Drive with stack size
-Fix the stack upgrades. They can currently be upgraded from turn 1, possibly twice, if found near the player in the right order. Add a gate behind which upgrades can be found on the board through scattered notes; plan what that gate should be. Also fix cases where gaining a 4th/5th note stack does not scale Drive and it stays the same.
+### ~~2026-09-08 — [P1] Gate stack upgrades and scale Drive with stack size~~
+✅ **Done — 2026-09-11.** Fix the stack upgrades. They can currently be upgraded from turn 1, possibly twice, if found near the player in the right order. Add a gate behind which upgrades can be found on the board through scattered notes; plan what that gate should be. Also fix cases where gaining a 4th/5th note stack does not scale Drive and it stays the same.
 
-### 2026-09-08 — [P1] Remove notes from Drive/Sustain stacks
-Add a button for removal of notes from the Drive/Sustain stacks.
+### ~~2026-09-08 — [P1] Remove notes from Drive/Sustain stacks~~
+✅ **Done — 2026-09-11.** Each occupied Drive/Sustain stack seat has a remove button; it returns that note to the player's available note stock.
 
-### 2026-09-08 — [P1] Ability cooldown neon fill
-Show ability cooldowns as the button itself becoming more and more neon-filled, telling the player how much longer until the ability is available.
+### ~~2026-09-08 — [P1] Ability cooldown neon fill~~
+✅ **Done — 2026-09-11.** Cooldown-backed ability buttons fill with their neon colour as they recharge and show exact turns remaining.
 
-### 2026-09-08 — [P1] Remove the end-move button
-The end-move button is not necessary. The player will simply stop moving and do an action or end their turn; get rid of the button.
+### ~~2026-09-08 — [P1] Remove the end-move button~~
+✅ **Done — 2026-09-11.** The redundant End Move button is removed; players can select another action or end their turn.
 
 ### 2026-09-08 — [P1] Larger Drive/Sustain HUD dials
 Make the Drive/Sustain dials a bit bigger in the HUD.

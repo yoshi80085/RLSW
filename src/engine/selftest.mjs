@@ -1454,25 +1454,6 @@ const config = {
 {
   const s0 = makeInitialState(config, 7070);
 
-  // SPOTLIGHT_HEALED — spirit on the spotlight hex gets +1 Vibe
-  const spotHex = s0.board.spotlightHex;
-  const onSpot = applyAction(s0, spiritsSynced(
-    s0.spirits.map(x => x.id === "wildaxe" ? { ...x, num: spotHex, vibe: 3, maxVibe: 8, knockedOut: false } : x)));
-  const healed = applyAction(onSpot, spotlightHealed("wildaxe"));
-  assert.equal(healed.spirits.find(s => s.id === "wildaxe").vibe, 4, "SPOTLIGHT_HEALED: +1 Vibe");
-  assert.deepEqual(healed.board.lastSpotlightHeal, { spiritId: "wildaxe" }, "report written");
-  // Off-spotlight: no heal
-  const offSpot = applyAction(s0, spotlightHealed("wildaxe"));
-  assert.equal(offSpot.board.lastSpotlightHeal, null, "off-spotlight → null report");
-  assert.equal(offSpot.rng.cursor, s0.rng.cursor, "SPOTLIGHT_HEALED consumes no rng");
-
-  // SPOTLIGHT_MOVED — moves to a new hex on engine rng
-  const moved = applyAction(s0, spotlightMoved([]));
-  assert.notEqual(moved.board.spotlightHex, s0.board.spotlightHex, "spotlight moved");
-  assert.ok(moved.board.lastSpotlightMove, "report written");
-  assert.equal(moved.board.lastSpotlightMove.from, s0.board.spotlightHex, "report.from correct");
-  assert.ok(moved.rng.cursor > s0.rng.cursor, "SPOTLIGHT_MOVED consumes rng");
-
   // TOKENS_SCATTERED — adds tokens on engine rng (up to TOKEN_MAX)
   // Deplete some tokens first so the scatter has room to add
   const depleted1 = applyAction(applyAction(s0,

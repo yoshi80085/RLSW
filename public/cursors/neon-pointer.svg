@@ -1,12 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-  <defs>
-    <filter id="halo" x="-80%" y="-80%" width="260%" height="260%">
-      <feGaussianBlur stdDeviation="2.25" result="blur"/>
-      <feFlood flood-color="#38aaff" flood-opacity=".9" result="blue"/>
-      <feComposite in="blue" in2="blur" operator="in" result="glow"/>
-      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-  </defs>
-  <path d="M4 2.5 5.6 25l6.2-6.2 4.5 9.7 4.1-1.9-4.6-9.8 8.7-.3L4 2.5Z"
-    fill="#05070d" stroke="#8edbff" stroke-width="1.15" stroke-linejoin="round" filter="url(#halo)"/>
+<!-- Static twin of ui/GlobalCursor.jsx's arrowhead, for anywhere a real
+     CSS `cursor:url()` is needed. ⚠️ The four points and the rim width are
+     fitted measurements — if GlobalCursor's PATH/RIM change, change them here
+     in the same pass or the two pointers drift apart. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30">
+  <path d="M4 3 L26.9 13.4 L16.8 17.8 L10.5 27.2 Z" fill="#000"
+    stroke="#eefcff" stroke-width="2.95" stroke-linejoin="round"/>
 </svg>

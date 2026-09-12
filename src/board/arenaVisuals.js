@@ -13,28 +13,41 @@ const glow=(color,opacity=.8)=>new THREE.MeshBasicMaterial({color,transparent:tr
 // These are the authored preview miniatures, moved into the match renderer.
 // They deliberately remain presentation-only: React's projected SVG continues
 // to own hit targets, rules, labels, and ability overlays.
+//
+// The pawns are intentionally in the final transparent pass at full opacity.
+// Board VFX are translucent meshes, so ordinary opaque depth rendering lets a
+// long laser or smoke plane visually slice through a Spirit. Rendering this
+// solid miniature after those VFX gives the player an unambiguous foreground
+// actor without making the board's hazards disappear elsewhere.
 function solid(geometry,color,metalness=.5,emission=0) {
-  return new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color,metalness,roughness:.38,emissive:color,emissiveIntensity:emission}));
+  const material=new THREE.MeshStandardMaterial({
+    color,metalness,roughness:.38,emissive:color,emissiveIntensity:emission,
+    transparent:true,opacity:1,depthTest:false,depthWrite:false,
+  });
+  const mesh=new THREE.Mesh(geometry,material);mesh.renderOrder=100;return mesh;
 }
 function spiritMiniature(spirit) {
   const g=new THREE.Group();g.name=`Spirit miniature: ${spirit.id}`;
+  // Pawns are the foreground read in the 3D board. A deliberately chunky scale
+  // makes them legible against the island and from the default arena camera.
+  g.renderOrder=100;g.scale.setScalar(1.28);
   const color=new THREE.Color(spirit.color ?? '#88ccff');
-  const base=solid(new THREE.CylinderGeometry(.37,.43,.12,6),0x1b2840);base.position.y=.03;g.add(base);
-  const halo=solid(new THREE.TorusGeometry(.39,.024,6,36),color,.2,2);halo.rotation.x=Math.PI/2;halo.position.y=.11;g.add(halo);
-  const torso=solid(new THREE.BoxGeometry(.39,.47,.24),0x222c49);torso.position.y=.73;g.add(torso);
-  const chest=solid(new THREE.BoxGeometry(.075,.33,.25),color,.3,.65);chest.position.y=.75;g.add(chest);
-  for(const x of [-.13,.13]) {const leg=solid(new THREE.BoxGeometry(.14,.35,.15),0x1d243b);leg.position.set(x,.3,0);g.add(leg);}
-  const head=solid(new THREE.IcosahedronGeometry(.19,1),0x8a95ad,.8);head.position.y=1.13;g.add(head);
-  const visor=solid(new THREE.BoxGeometry(.29,.045,.06),color,.2,2);visor.position.set(0,1.14,.155);g.add(visor);
+  const base=solid(new THREE.CylinderGeometry(.46,.52,.16,6),0x111a2d,.65,.08);base.position.y=.03;g.add(base);
+  const halo=solid(new THREE.TorusGeometry(.57,.055,6,36),color,.2,3.4);halo.rotation.x=Math.PI/2;halo.position.y=.16;g.add(halo);
+  const torso=solid(new THREE.BoxGeometry(.53,.58,.32),color.clone().multiplyScalar(.42),.55,.18);torso.position.y=.82;g.add(torso);
+  const chest=solid(new THREE.BoxGeometry(.12,.42,.34),color,.3,1.2);chest.position.y=.84;g.add(chest);
+  for(const x of [-.17,.17]) {const leg=solid(new THREE.BoxGeometry(.17,.42,.18),0x151b2d,.6,.06);leg.position.set(x,.34,0);g.add(leg);}
+  const head=solid(new THREE.IcosahedronGeometry(.235,1),0xb8c4d8,.8,.12);head.position.y=1.31;g.add(head);
+  const visor=solid(new THREE.BoxGeometry(.37,.06,.08),color,.2,3.2);visor.position.set(0,1.32,.19);g.add(visor);
   if(spirit.id==='cosmic_ronin') {const hat=solid(new THREE.ConeGeometry(.36,.12,6),0x172339);hat.position.y=1.31;g.add(hat);}
   if(spirit.id==='Metalness_Monster') {
     for(const x of [-.2,.2]) {const horn=solid(new THREE.ConeGeometry(.085,.28,5),0xc3ac8c);horn.position.set(x,1.3,0);horn.rotation.z=-Math.sign(x)*.5;g.add(horn);}
     torso.scale.x=1.3;
   }
   const instrument=new THREE.Group();
-  instrument.add(solid(new THREE.BoxGeometry(.27,.33,.09),color,.7,.15));
-  const neck=solid(new THREE.BoxGeometry(.055,.62,.07),0xd6d7dd,.7);neck.position.y=.42;instrument.add(neck);
-  instrument.position.set(.16,.62,.26);instrument.rotation.z=-.65;g.add(instrument);
+  instrument.add(solid(new THREE.BoxGeometry(.32,.39,.11),color,.7,.4));
+  const neck=solid(new THREE.BoxGeometry(.065,.72,.08),0xe5e9f4,.7,.08);neck.position.y=.48;instrument.add(neck);
+  instrument.position.set(.21,.72,.34);instrument.rotation.z=-.65;g.add(instrument);
   return g;
 }
 
@@ -128,13 +141,13 @@ export function createArenaVisuals(scene) {
       let pawn=pawns.get(spirit.id);
       if(!pawn) {
         pawn=spiritMiniature(spirit);
-        const start=arenaPoint(spirit.num,.2);
+        const start=arenaPoint(spirit.num,.34);
         pawn.position.copy(start ?? new THREE.Vector3());
         pawn.userData.target=start?.clone() ?? new THREE.Vector3();
         pawn.userData.targetFacing=(spirit.facing ?? 0)+Math.PI/2;
         root.add(pawn);pawns.set(spirit.id,pawn);
       }
-      const target=arenaPoint(spirit.num,.2);if(target)pawn.userData.target.copy(target);
+      const target=arenaPoint(spirit.num,.34);if(target)pawn.userData.target.copy(target);
       pawn.userData.targetFacing=(spirit.facing ?? 0)+Math.PI/2;
       pawn.userData.knockedOut=!!spirit.knockedOut;
       pawn.userData.active=spirit.id===next.actingId;

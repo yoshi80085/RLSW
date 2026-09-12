@@ -11,12 +11,23 @@
 > Read it before §4 or §5 — it supersedes §5.1 and §5.2 outright and changes what
 > §4's withdrawal means. Everything else below is unchanged and still design-only.
 >
-> ⚠️ **STATUS: NOTHING HERE IS BUILT.** §1 and §6 are a direction Alex has
+> 🪦 **THE "NOTHING IS BUILT" LINE BELOW IS NO LONGER TRUE — CORRECTED 2026-09-10.**
+> `DB_ECONOMY_DESIGN.md` §5.4 audited §5⃣.0.3's cost table against source: the
+> clean-note Db slope, the ending fork, the discord-penalty retirement,
+> `modeFromStack`, `checkWaNoKoe` and the Freestyle pardon are **all already
+> done**. ⚠️ Read that section before treating anything here as unbuilt work.
+>
+> ⚠️ **STATUS (STALE — see the correction above): NOTHING HERE IS BUILT.** §1 and §6 are a direction Alex has
 > stated; §4 and §5 are proposals he raised and asked for a read on; §8 is his
 > own first-pass table, preserved verbatim so the audit in §9 can be checked
 > against it. Every claim about *current* behaviour was read out of source and
 > is cited to a file. Read §2 and §3 before proposing a single number — they are
 > the two sections that kill ideas.
+>
+> 💰 **THE Db ECONOMY THIS DOC ASSUMES IS NOW SPECIFIED SEPARATELY** in
+> `DB_ECONOMY_DESIGN.md` — the flat clean-note dividend, the letter-contour run,
+> the no-cap rule, and the code audit of what still contradicts them. Read it
+> alongside §5⃣.0.
 >
 > Companions: `PROGRESSION_REWRITE_DESIGN.md` (§3 payout split, §4 ending fork,
 > §5 the Db sink), `CHARACTER_HANDOFF.md` (the kits), `RIFF_RAT_DESIGN.md`,
@@ -155,7 +166,13 @@ smaller than the conversation implied.
 > already have systems that have an effect on these — namely the Chord stacks
 > and finishing the melody line on a blue or red note."*
 >
-> ⚠️ **DIRECTION STATED, NOT YET LOCKED — it needs the bench in §4.3.**
+> 🪦 **SUPERSEDED 2026-09-10 — THE WITHDRAWAL ALREADY SHIPPED.**
+> `driveBoostFromRun` and `sustainBoostFromPattern` are **definitions with no
+> callers** (`cadence.js:143` / `:224`), and `analyseTrack` is orphaned and returns
+> `{points: 0}`. Melody shape no longer pays Drive or Sustain. See
+> `DB_ECONOMY_DESIGN.md` §5.3. The status line below is nine weeks stale.
+>
+> ⚠️ ~~**DIRECTION STATED, NOT YET LOCKED — it needs the bench in §4.3.**~~
 
 ### 4.1 The change
 

@@ -96,7 +96,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality 
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
       try {
-        environment.update(elapsed,{lite,reduced,spotlight:arenaPoint(frame.spotlight)});
+        environment.update(elapsed,{lite,reduced});
         visuals.tick(elapsed,reduced);
         for(const e of emissives)if(e.crack)e.material.emissiveIntensity=e.base*(reduced?1:1+.08*Math.sin(elapsed*.75));
         renderer.info.reset();composer.render();overlay.render(overlayScene,camera);dirty=false;

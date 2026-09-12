@@ -8,7 +8,6 @@ export function GameStyles() {
   // This is a public asset and the app's Vite base is fixed at /RLSW/. Keeping
   // the URL literal lets the Node-based DOM and render checks run without a
   // Vite-only import.meta.env shim.
-  const neonPointer = '/RLSW/cursors/neon-pointer.svg';
   return (
       <style>{`
         * { box-sizing:border-box }
@@ -28,9 +27,7 @@ export function GameStyles() {
            a div following mouse events: it remains immediate over WebGL, SVG,
            overlays and camera controls, and it never interferes with clicks.
            Keep text entry native so room codes and other inputs stay legible. */
-        body { cursor:url('${neonPointer}') 4 3, default; }
-        button, a, [role="button"], .btn, .hex-g { cursor:url('${neonPointer}') 4 3, pointer; }
-        input, textarea, [contenteditable="true"] { cursor:text; }
+        /* GlobalCursor renders the neon arrowhead and owns its press bob. */
         ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#2d3748;border-radius:2px}
         .btn{background:#0a1020;border:1px solid #1e3a5f;color:#c0d0e0;padding:4px 8px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:10px;transition:all .15s;white-space:nowrap}
         .btn{transition:all .12s}
