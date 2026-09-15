@@ -615,7 +615,7 @@ export function applyBotAction(state, action, ctx = {}) {
       if (rollKind === 'sonic') {
         const stack = pre?.noteStates?.[spiritId]?.driveStack ?? [];
         if (stack.length) {
-          next = patchNs(next, spiritId, { driveStack: stack.slice(SONIC_DRIVE_SPEND) }, rng);
+          next = patchNs(next, spiritId, { driveStack: [] }, rng);
         }
       } else {
         next = patchNs(next, spiritId, { swingExposed: true }, rng);

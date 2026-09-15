@@ -285,14 +285,22 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const edgeDbCost = 0, edgeDbBonus = 0, edgeFanCost = 0, edgeCollapseFans = 0;
   const edgeResolvedThisTurn = false, newEdgeStage = 0;
 
-  // Layer 1: finished Spirit structures are the whole melody-to-fans bridge.
+  // Layer 1: finished Spirit structures — the IDENTITY half of the crowd's ear.
   // Monster and Intergalactic deliberately return zero until their rules exist.
+  // Layer 1b: CRAFT — the universal half. A clean, same-direction run of four or
+  // more pays whether or not it is this Spirit's named shape. See the long note
+  // above `CRAFT_FAN_FLOOR` in `music/melodyPayout.js` for why the ladder starts
+  // at four and what deliberately did NOT come back with it.
+  // ⚠️ `perfScore` STAYS IDENTITY-ONLY. It is the Structure readout and it feeds
+  // `recentP`; folding craft into it would relabel a universal payout as this
+  // Spirit's sound. Only `perfFansGained` is the sum.
   const style = payout.style;
+  const craftFans = payout.craftFans;
   const perfScore = style.score;
   const perfExciteGain = 0;
   const perfExcitement = ns.excitement ?? 0;
   const perfLoyalty = ns.loyalty ?? 0;
-  const perfFansGained = style.score;
+  const perfFansGained = style.score + craftFans;
   const perfPromotions = 0;
   const perfFansLost = 0;
   const lowPerfStreak = 0;
@@ -382,7 +390,12 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     };
     fans = { ...fans, ...structureFans };
     fanWrite = { ...(fanWrite ?? {}), ...structureFans };
-    if (perfFansGained > 0) logs.push(`🎤 ${name}'s ${style.labels.join(' + ')} wins ${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''}!`);
+    // ⚠️ THE REASON IS BUILT, NOT ASSUMED. A craft-only commit has NO style
+    // labels, and the old line read "🎤 Ronin's  wins 1 new fan!" with a hole in
+    // it the moment fans could arrive without a named gesture.
+    const fanReasons = [...style.labels,
+      ...(craftFans > 0 ? [`a ${payout.craftRun}-note run`] : [])];
+    logs.push(`🎤 ${name}'s ${fanReasons.join(' + ')} wins ${perfFansGained} new fan${perfFansGained !== 1 ? 's' : ''}!`);
   }
   if (fanWrite) effects.push({ type: 'fans', spiritId, fans: fanWrite });
 
@@ -405,7 +418,8 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     logs.push(`🎸 ${name} lands ${label} — the crowd knows that sound.`);
   }
   flashLines.push(`🎭 Structure ${perfScore}`);
-  if (perfFansGained > 0) flashLines.push(`🎤 ${style.labels.join(' + ')} · +${perfFansGained} fan${perfFansGained !== 1 ? 's' : ''}`);
+  if (craftFans > 0) flashLines.push(`🎤 ${payout.craftRun}-note run · +${craftFans} fan${craftFans !== 1 ? 's' : ''}`);
+  if (style.score > 0) flashLines.push(`🎤 ${style.labels.join(' + ')} · +${style.score} fan${style.score !== 1 ? 's' : ''}`);
   if (perfPromotions > 0) flashLines.push(`💜 ${perfPromotions} fan${perfPromotions !== 1 ? 's' : ''} → Diehard!`);
 
   const scoreStr = earned > 0
@@ -434,6 +448,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
       baseScore, lock, breakdown,
       earned, earnedTotal, newDBPoints, targetCost, upgradeTriggered, awardedSkillId,
       perfScore, perfExciteGain, perfFansGained, perfPromotions, perfFansLost,
+      craftRun: payout.craftRun, craftFans,
       // 🎭 Which of this Spirit's own gestures the line landed. On the report
       // rather than only in a log line so a check, a searcher, or a HUD can
       // read it without re-detecting — one reading, three consumers.

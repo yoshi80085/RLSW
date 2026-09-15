@@ -31,6 +31,10 @@ import { STOCK_REFILL_RATE, SHADOW_ILLUSION_SUSTAIN_DRAIN } from "../../data/gam
 import { rigAtrophyTick } from "./sonicRig.js";
 import { tickCooldowns } from "./cooldowns.js";
 
+// Shield upkeep is bounded independently of how many projectiles were fired.
+// At speed 3 this leaves at least one new note for Drive or the bank.
+export const SUSTAIN_FRAY_CAP = 2;
+
 /**
  * How many stock slots recharge for this sheet this turn.
  *
@@ -106,6 +110,20 @@ export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
   // the time anyone reads the patch it is already gone.
   const shadow = tickShadowIllusion(ns.shadowIllusion, ns.tempSustain ?? 0);
 
+  const sustainBefore = ns.sustainStack ?? [];
+  const pendingAttacks = Math.max(0, ns.pendingSonicAttacks ?? 0);
+  const frayAmount = Math.min(SUSTAIN_FRAY_CAP, Math.max(1, pendingAttacks));
+  // One note MUST survive both turn-start upkeep and Swing fray. Otherwise a
+  // volley cascade can force zero defence instead of making it a player's
+  // choice. Trim the tail so the root and its board hunt remain stable.
+  const frayed = Math.min(frayAmount, Math.max(0, sustainBefore.length - 1));
+  const sustainAfter = sustainBefore.slice(0, sustainBefore.length - frayed);
+  const sustainFray = {
+    pendingAttacks, amount: frayAmount, frayed,
+    lostNotes: frayed ? sustainBefore.slice(-frayed) : [],
+    before: [...sustainBefore], after: sustainAfter,
+  };
+
   const patch = {
     noteStock:    newStock,
     melodyLine:   [],
@@ -124,6 +142,8 @@ export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
     discordCount: 0,
     hasConfirmed: false,
     dieFloorBoost: 0,
+    sustainStack: sustainAfter,
+    pendingSonicAttacks: 0,
     smashExposed: false,        // 🎸💥 exposure clears at the start of your own turn
     halfRefillNextTurn: false,  // 🪓 Axe Swing whiff penalty consumed
     refillDrain: 0,             // 🕳️ vortex drain consumed (applied to the rate above)
@@ -185,6 +205,7 @@ export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
       refreshedIdx:   [...refreshing],
       refreshedCount: refreshing.size,
       refillRate,
+      sustainFray,
       halvedByAxeSwing: !!ns.halfRefillNextTurn,
       drainedByVortex:  ns.refillDrain ?? 0,
       rigShed: rigAtrophy.shed,   // 🏋️ 'pool' | 'power' | null

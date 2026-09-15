@@ -26,6 +26,339 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
+## 17-riffoff. We went looking for the Swing and found the duel's currency — 2026-09-14
+
+⚠️ **A DESIGN SESSION. NOTHING WAS BUILT, NO SUITE WAS RUN, AND NO CODE MOVED.**
+Four documents changed and that is the whole output. Do not read any count below
+as a test result.
+
+### 🎬 How it went sideways, and why that was worth it
+
+Alex opened on the **Sonic**: replace the Sustain threshold with **rolled Sustain
+dice that become shield HP**, worn down by Drive projectiles until it busts — and
+then, *"where does Swing earn its place?"* with the **Smack-down** image (Drive
+energy driven into the instrument for an all-out blow) and *"I think it still earns
+its place as the big Vibe hitter."*
+
+🚩 **Both halves collided with §5.3**, which had closed *"the two attacks compete"*
+by **separating their targets** — Sonic attacks the Spirit, Swing attacks the chord.
+A Sonic that busts shields takes the Swing's exclusive; a Swing whose job is Vibe is
+the reversal §5.3 explicitly recorded going the other way. ⚠️ **Either change alone
+is arguable. Both together collapse the two attacks back into one system with two
+animations.**
+
+🪦 **The Sonic HP idea was set aside, not rejected** — filed in `IDEAS_INBOX.md`
+with the two objections it must answer. ⛔ **And the Swing question was never
+answered.** `PROJECTILE_COMBAT_DESIGN.md` §14.8 says so in those words, because a
+question that merely stops being discussed reads exactly like one that was settled.
+
+### 📊 The thing that unstuck it — Alex's own 2D grid
+
+Alex recalled the original 2D design: **three attack modes rated across five axes**
+(Sustain drain · knockback · Fame · Vibe · own Drive drain), and asked whether the
+foundation could survive. **It can, and it is now §13** — every cell re-read out of
+the code rather than out of memory.
+
+⭐ **His recall of the Swing row was five for five.** The Sonic row was four of five.
+🚩 **The Riff-Off row was wrong on two axes, both in the same direction** — he had it
+as the showy, low-violence option, and it is the most violent thing in the game:
+the *same* `sonicKnockback` (not a lesser one), the *largest* Vibe number in the
+rules, the largest Fame payout under a doubled cap — against one inherited note of
+Drive. **Three peaks and one cost.** `battleFlow.js:748` had said so for months, in
+a comment.
+
+🎯 **The grid's real job is that this spec has been doing grid reasoning without a
+grid.** §3.3's *"three jobs and no fourth"* is a budget written as a scold because
+there was nothing to point at; §5.3's crisis and its fix are a grid operation; §4.1
+is a column with one row in it. ⭐ **A sixth column — MISS COST — was added**, and it
+is where §4.2's open risk question finally has somewhere to sit.
+
+### 🎤 Where it landed: the duel is a BET, and it runs on the MELODY
+
+Alex, following the grid down: *"would the riff off live off of Drive at all? Since
+these are basically chords."*
+
+⭐ **He was right, and the code already agreed.** `rlsw-simulator-v3_8_1.jsx:8442`
+builds the attacker's riff from `committedMelody` — the *Rhythm Creation Device* —
+and `riffSkill` keys the bot off the last commit's Performance Score. **Drive's only
+involvement is the one note the Sonic already spent on the way in.**
+
+🎸 **The argument underneath it is musical and it is the reason to trust it: a chord
+is SIMULTANEOUS, a riff is SEQUENTIAL.** The Drive stack is a voicing — notes with
+no order and no rhythm. Only the melody line is riff-shaped.
+
+⭐ **Which produces the result worth keeping.** `DRIVE_SUSTAIN_SPLIT_DESIGN.md` §1's
+three commit destinations map one-to-one onto the three modes: **Drive** powers the
+two attacks, **Sustain** defends against both, **the Melody Line** powers the duel.
+🎯 **That is why the duel has no shield** — not a preference, a structure. It is fed
+by the destination that *clears every turn* rather than the two that persist. **It
+was never in the same economy.**
+
+### 🎓 And `riff/melodyRiff.js` had written the thesis already
+
+> *"the melody you build is your combat… The attacker rehearsed this riff all turn —
+> the defender sight-reads it. Complexity is a weapon paid for in preparation."*
+
+⚠️ **But the shipped lever and Alex's proposed one run on different axes**, and the
+session's most useful correction was refusing to conflate them: shipped complexity
+moves **how hard the chart is**; proposed cleanliness moves **what a landed note is
+worth**. §14.3 keeps them in separate rows on purpose.
+
+### 💡 The risk answer, made of something already counted
+
+Alex: *"Could it be retrospective? A melody line that doesn't get committed well
+could become a risk of not producing 'strong' notes for the riff off."*
+
+⭐ **Discord notes become weak projectiles that get swatted in the collision.** 🎯
+`STATE_OF_PLAY.md` §4's *"DISCORD NOTES ARE INERT"* (decided 2026-09-09, unbuilt)
+gave them two uses, both consolation prizes; **this is a third and a real one, and
+it costs nothing to build because the game already counts them.** Play a sloppy line
+on Tuesday, lose the duel on Thursday.
+
+⚠️ **§14.4 carries the rider that will otherwise become a bug report**: *inert* means
+a discord note does not **pay**, not that it does not **exist**. 📌 And the obvious
+input is the wrong one — `perfScore` is **identity-only** by an explicit warning at
+`melodyCommit.js:294`, even though it is what `riffSkill` already reads.
+
+### ⭐ THE ONE RULING
+
+**The first caller keeps their advantage.** In Alex's alternating structure — A
+calls with their line, B answers, then B calls with theirs — the caller rehearsed
+and the answerer sight-reads, so whoever opens has an edge and the loser is nearly
+always answering. Alex: *"that is also their positioning that landed them with the
+attack that gets them a free go. I think that is fine as it is."*
+
+🎯 **It is paid for in board position.** 🪦 The ruling **closes** all three
+compensations that were offered: a warm-up opening exchange, a defender ante as a
+fairness fix, and end-only-on-a-completed-answer.
+
+### 🚩 Two code findings, reported rather than edited around
+
+1. ⚠️ **The Riff-Off's Vibe runs on a table the codebase declared superseded.**
+   `combat.js:18` — *"LEGACY damage table… New code should use thrashDamage /
+   sonicDamage."* Swing and Sonic were both migrated; **the riff-off never was**, so
+   it is the only attack still paying out of `marginToDamage` (cap 5). Drift, not a
+   design choice. §13.5.
+2. ⚠️ **A comment describes a clear that could not be found.**
+   `melodyCommit.js:325`: *"the riff-off reads these; turn start clears them"* — and
+   **no code clearing `committedMelody`** turned up in the engine or the client.
+   📌 It matters: §14.5's alternating duel needs the defender's line to still be
+   there. ⛔ **Not fixed, not assumed** — `turn.js` / `turnFlow.js` were not read
+   this session. **Verify before building on it.**
+
+### 🚨 THE BLOCKER, AND IT IS NOT A BALANCE ITEM
+
+`riffOff.js:389` declares it against itself: `riffSkill` **has no tempo term**, so a
+Spirit plays Round 2 exactly as well as Round 1 on a chart that got 1.7× faster —
+`HARNESS_GAPS.riffRound2Speed`. Today that is a bench inconvenience. ⛔ **Under an
+escalating go-until-somebody-fails duel it is a bot immune to the difficulty ramp
+the mode is built on, compounding every exchange.**
+
+🎯 **§B10 does not cover this.** It does not make the bot *strong*; it makes the
+mode's central mechanic *not apply* to half the table — impossible rather than
+weak, which is the stated exception. **Decide it before building escalation.**
+
+### 🪦 Rejected in the pass
+
+- **Simultaneous two-sided performance with live collision** — `RIFF_RESULTS_SUBMITTED`
+  submits a completed array *after* a performance; live mutual resolution is the
+  exact seeded-RNG/desync cost §11 rejected the hidden bid over. It also discards
+  `generateDefenderRiff`: play at once and there is no *call* to answer. 💡 **The
+  free version is recorded** — keep call-and-response, render it on two tracks with
+  their side playing back a *recording*. The projectiles still collide; no netcode moves.
+- **The note pool as the duel's currency** — it feeds Drive, Sustain *and* melody,
+  so spending it there **starves the system that feeds the duel.** Survives only as
+  an ante candidate, and ⭐ the first-caller ruling removed the fairness case for one.
+
+### ⬅️ NEXT
+
+0. 🎼 **Name the ending constant and put Alex's two reasons on it** (§14.9.5). The
+   cheapest high-value job here: it is about to price two systems and its rationale
+   lives only in a design doc.
+1. ⁉️ **What is actually wagered** (§14.6), and ⁉️ **what surviving collision weight
+   does** (§14.9.2). The row still has no cost column: a melody is spent, paid and
+   cleared before the duel begins. Two candidates recorded, neither decided.
+2. 🚨 **§14.7's tempo gap**, before any escalation is built.
+3. 📌 **Two cheap verifications**: does anything clear `committedMelody`; is the
+   melody's Fame paid before `startRiffOff` reads the stash.
+4. ⛔ **The Swing still has no answer**, and the question is now ten days old.
+
+### 🎼 LATER THE SAME DAY — the strength model, and a rationale recovered
+
+Alex, on what makes a note strong: *"I honestly like music for the subjectivity of
+it, I'm not so strong in answering objectivity — ie. Theory."*
+
+⭐ **The answer was to stop looking for a new judgement.** `melodyPayout.js` records
+that the game already made this call — the subjective half (`excitement`,
+`loyalty`, promotions, *"a mood model that decided whether you had been
+entertaining and took fans away when it judged you dull"*) was **cut on purpose**
+and stays pinned at 0: *"only the arithmetic returns."* 🎯 **And the game has
+exactly ONE per-note judgement — `scale.includes(note)`. Everything else it
+measures belongs to the LINE.** So: do not grade notes; **read the grade the line
+already gave them.** §14.9's four tiers are dud 0 / plain 1 / strong 2 (inside the
+craft run) / **+ the ending value for the hook**, stacking where they overlap — and
+every input is arithmetic the commit already performs.
+
+⭐ **The split that makes it work: hands decide IF a note fires, the melody decides
+what it WEIGHS.** Flawless hands on a sloppy line throw featherweights; a beautiful
+line played badly never leaves the amp. 🎯 **This is what finally closes the
+objection that killed the Drive version** — a currency paying the entry fee to a
+contest it has no say in.
+
+### 🎓 AND THE REAL FIND WAS NOT A DESIGN
+
+Asked why the fifth pays triple the tonic, Alex answered from memory — **and
+neither reason existed in any file.** `endingDb` is a bare ternary with no comment
+in `melodyPayout.js`, `melodyCommit.js` or `MELODY_IDENTITY_DESIGN.md`.
+
+1. 🎸 *"Nothing is as strong for Rock as the 5th."*
+2. ⭐ *"I also wanted to have the players change chords often, so that was another
+   reason it was stronger than say the tonic."*
+
+🚨 **Reason 2 makes that number a lever on the CHORD ECONOMY, not melody flavour**
+— and it is unreconstructable. Reason 1 a stranger could guess; reason 2 was one
+message from being gone. 🎓 **§B9 caught live rather than archaeologically:** the
+decision had been made, and for months it read exactly like one that had not.
+
+⛔ **It is still not in the code.** §14.9.5 says where it belongs — `endingDb` has
+to become a **named constant** before it prices both the Db payout and the duel's
+hook, because one number doing two jobs cannot be tuned apart. That is now
+`STATE_OF_PLAY.md` §7 item 3, and it is the cheapest high-value job on the list.
+
+### 🚩 One trap caught before it was built
+
+Alex's shape was *"each bringing a score together to work out a strength
+variable."* ⛔ **Summing them breaks on arithmetic already in the file:**
+`craftFans` caps at **2**, `endingDb` at **3** — so a flawless eight-note run would
+score less than four notes ending on the fifth, after a whole craft layer was built
+to make the middle pay.
+
+⭐ **The cause was reading the wrong number.** `craftRunFor` returns the run's
+*length*; the cap is applied afterwards and its own comment says why —
+**`CRAFT_FAN_CAP = 2` ⚠️ fans feed FAME.** It is a brake on the crowd economy and
+has nothing to do with duels. 🎯 **So the duel reads the run LENGTH and the Fame
+route keeps its cap** — one measurement, two consumers, each with its own ceiling.
+The two halves then become **quantity and quality** rather than a total: the middle
+decides how much you throw, the ending decides whether you finish them off.
+
+🧊 **Alex: *"sounds like a satisfying answer — for now at least."*** Recorded as
+**provisionally accepted**. The tonic's rise from 1 is ⁉️ **not settled** (*"2 times
+or so, 1.5 even"*), and ⚠️ at 2 it becomes the same rung as the fourth.
+
+### 📁 Changed
+
+`PROJECTILE_COMBAT_DESIGN.md` (**§13, §14 and §14.9 new**, header block, §10's
+deferred table, §14.4's pointer) · `STATE_OF_PLAY.md` (§4 five rulings + the
+reopened Swing row, §7 items 3–4, renumbered) · `IDEAS_INBOX.md` (the Sonic HP
+fork) · this file · the Systems Map.
+
+### ⚠️ AND THIS FILE IS STACKING AGAIN — REPORTED, NOT FIXED
+
+**§A now holds ten handoffs** (`17` down to `8-arena-fidelity`) against its own rule
+that §A is ONE. 📌 `15-drawer`'s §C row still read **"LIVE — §A above"** while two
+newer handoffs existed — **the exact B1 drift that already happened to
+`8-arena-fidelity` in September** — and is corrected below. ⛔ **The archival pass
+itself was NOT done**: moving nine handoffs out is a destructive change nobody asked
+for this session. **It is worth an explicit half hour.**
+
+---
+
+## 16-ringbeam. The Sonic projectile, decided — 2026-09-13
+
+Alex, on the sonic rework preview: *"Instead of 'chevrons' lets use rings that
+build out into a beam-like shape. The rings should move more fluidly like the
+waveform instead of the zig zag patterns."* Built, dialled in by him on the
+page, and **signed off**: *"This was the best version by far."*
+
+⭐ **THE PROJECTILE IS NOW A DECISION, not a proposal** — recorded at its own
+address as `PROJECTILE_COMBAT_DESIGN.md` **§12.1c**. ⛔ **Still nothing in
+`src/`.** The port is one pass and its brief is
+`.scratch/sonic-rework/RING_BEAM_BRIEF.md`.
+
+**What it is.** Hoops at fixed stations along the flight path ignite in turn and
+then **inflate** as the wavefront pulls away, so a beam grows backwards out of the
+head — tight nose, full body, tapering tail, necking into the impact. It undulates
+instead of zigzagging: a sine plus a quiet harmonic on two perpendicular axes,
+with the phase advancing on the clock, so the wave runs forward *through* the beam
+rather than sitting frozen while the head slides along it.
+
+🎯 **THE CADENCE HAD TO CHANGE WITH THE SHAPE, AND THAT IS THE WHOLE FINDING.** A
+smooth wave running on a staccato flight curve reads as a *wobble* — the eye reads
+the tick, not the flow. `sonicFlightCurve` gained a `smooth` flag that drops the
+per-leg dash-and-ease and keeps the growing legs, so the shot still crosses the
+arena early and crawls the approach. ⚠️ **Total flight time is unchanged**, so
+`sonicVolleyDuration` reports the same number and §12.1b's pacing table, the
+result scheduling and the per-die audio stagger all still hold.
+
+**Three rebuilds it took, each now a comment at its own site** — and each is the
+generic version of a mistake, not a quirk of this shot:
+
+1. Rings oriented to the **path's** tangent leave every hoop facing the same way
+   while their centres snake between them: a corkscrew spring, not a beam. They
+   have to be square to the **displaced** curve, differenced either side.
+2. A **fixed hairline** band turns the beam into a wireframe drawing of itself.
+   Thickness has to be a fraction of the radius.
+3. Twenty additive hoops at a single stroke's opacity and lightness **clip to
+   white** before the bloom pass runs, and the volley loses its tint. A beam made
+   of many marks runs at about a third of what one mark can afford.
+
+⭐ **Alex's dial-in is in the code with a date and an owner on it**, as
+`RING_TUNING` in `board/sonicZigzagVisuals.js`, applied on `strokeStyle:'rings'`
+alone so the call site configures nothing. 📌 **Deliberately NOT folded into
+`SONIC_TUNING`**: that block is the zigzag/chevron baseline that
+`sonicZigzagCheck.mjs` asserts a tested curve against, and seven anonymous numbers
+in a shared defaults block read as arbitrary and get tidied. The direction behind
+them, which is the part worth keeping in prose: **thinner and sparser but longer**,
+brighter filament, far bigger detonation, much slower approach. **Mass came out;
+contrast went in.**
+
+### 🧪 Evidence
+
+`sonicZigzagCheck.mjs` passes **unmodified** against the ring build — the cadence,
+power ramp, mitred banding, the camera hand-off at 1/2/5/11 dice and single-dispose
+are all untouched by it. New `sonicRingCheck.mjs` covers the fluid cadence **at
+RING_TUNING's own slow-motion value** rather than the library default (§B2), the
+nose/body/tail beam profile, determinism under seeking and single-dispose.
+
+⭐ **And one assertion is there specifically to stop a tidy-up reverting the
+look**: it builds one ring volley with no tuning and one with `RING_TUNING`
+explicitly and asserts the geometry is byte-identical. **Mutation-tested** — unhook
+the overlay and it goes red naming that assertion.
+
+⚠️ **Neither suite has run inside the repo, and `test:all` did not run.** The
+Linux workspace on the machine would not start again this session (*"the isolated
+Linux environment on this device failed to start"* — the same wall as `5-lane.E`),
+so both checks ran against a file-by-file copy, with `three` installed
+standalone. The preview itself was driven headless through Playwright at each
+step — real render, console clean — which is how the three rebuilds above were
+found, but it is not `check:bundle` and it is not `test:all`.
+
+### ⚠️ ONE APPROVED VALUE HAS NOWHERE TO LAND
+
+He took the contact push-in to **0.95**, the top of the slider. In the preview
+that is the page's own camera. **`arenaRenderer.js`'s `stageSonicCamera` has no
+push-in at all** — it frames a static box per phase and never tightens onto the
+impact. The volley module exposes `getFocus()` for exactly this, and brief §4 has
+the two lines, but until they are wired **the port delivers the beam and not the
+shot**. 🎯 Filed loudly rather than as a footnote: §B11 is a step whose label said
+there was nothing left to ask.
+
+### ⬅️ NEXT
+
+1. 🔊 **The port** — `.scratch/sonic-rework/RING_BEAM_BRIEF.md`, one pass. It
+   carries the whole sonic rework, not just the beam: the four earlier changes
+   (readable dice, the ROLL gate, the camera fix, `diceHits`) have been sitting
+   drafted and unapplied since 2026-09-13 morning.
+2. 🎥 **The push-in**, above. Same pass if there is room; named in the handoff if
+   not.
+3. The rest of the board is unchanged and lives in `STATE_OF_PLAY.md` §7.
+
+📌 **Systems Map:** not republished — nothing in the roster, the rules, the
+bottleneck or the open decisions moved. This is a presentation treatment that is
+still preview-only.
+
+---
+
 ## 15-drawer. The last 2D panel in the arena — 2026-09-12
 
 Alex: *"it seems like the stack commit is still using old windows — I'd like
@@ -700,7 +1033,9 @@ Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
-| `15-drawer` | 2026-09-12 | **LIVE — §A above.** ⌐ The step-1 stack-commit drawer joined the bracket system — the last 2D panel in the arena, and the one every stack commit goes through. 🐛 The flush-left gutter bug fixed by construction. ⚠️ Nearly broke two journey suites by lowercasing a button label the mockup had restyled |
+| `17-riffoff` | 2026-09-14 | **LIVE — §A above.** 📊 Alex's 2D **attack axis grid** recovered and verified against the code (§13), a sixth column — **miss cost** — added. 🎤 The **Riff-Off is a BET, not an attack**, and it runs on the **melody line**, not Drive — which the code already did. 🎼 **Note strength solved without a new judgement** (§14.9): dud / plain / strong / hook, all from arithmetic the commit already performs — hands decide IF a note fires, the melody decides what it WEIGHS. ⭐ Two rulings: the first caller keeps their advantage; the duel reads the craft run's LENGTH while the Fame cap stays a Fame cap. 🎓 **And the fifth's rationale was recovered from Alex before it was lost** — it is stronger than the tonic to push chord changes, which makes `endingDb` a lever on the chord economy and existed in no file. 🚩 Three findings: riff-off Vibe still on the legacy `marginToDamage`; a `committedMelody` clear that is documented but could not be found; `endingDb` unnamed and uncommented. ⛔ **Design only — nothing built, and the Swing question it opened with is still unanswered** |
+| `16-ringbeam` | 2026-09-13 | Still written out in full below §A. ⭐ The Sonic projectile decided — the **ring beam**, dialled in by Alex on a live preview and signed off. ⛔ Nothing in `src/`; the one-pass brief is `.scratch/sonic-rework/RING_BEAM_BRIEF.md`. ⚠️ The approved contact push-in still has no home in the renderer |
+| `15-drawer` | 2026-09-12 | Still written out in full below §A. ⌐ The step-1 stack-commit drawer joined the bracket system — the last 2D panel in the arena, and the one every stack commit goes through. 🐛 The flush-left gutter bug fixed by construction. ⚠️ Nearly broke two journey suites by lowercasing a button label the mockup had restyled |
 | `14-accidentals` | 2026-09-12 | ♯♭ A two-glyph note is TYPESET rather than shrunk — the letter holds 34px, the accidental is a smaller raised mark. 🐛 Two hardcoded `fontSize={34}`s, the second on the burst's lifted letter. 🙈 And the finding that cost the least and taught the most: **my own preview had misdrawn the component**, so half the reported problem was not in the game |
 | `13-hud` | 2026-09-12 | The HUD joined the bracket system and all five frosted slabs went; 🌊 the melody line gained three overtones at deliberately non-round ratios and a pulse train. 🐛 Source of the backtick-in-a-template-literal lesson |
 | `12-board` | 2026-09-12 | ⌐ ⌐ The bracket language reached the board: one `Bracket` primitive, both chord stacks, the melody track. 🌊 The melody drawn as a wave — the one thing deliberately off the grid. 🐛 Closed `11-dials`' own leftover: the board was still drawing the amp knob it had replaced |

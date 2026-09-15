@@ -684,6 +684,48 @@ export function GameStyles() {
           0%, 100% { box-shadow: 0 0 6px var(--glow-color, #ff6644), 0 0 14px var(--glow-color, #ff6644)44; }
           50%      { box-shadow: 0 0 12px var(--glow-color, #ff6644), 0 0 28px var(--glow-color, #ff6644)66; }
         }
+
+        /* ── 🎚️ THE VOLUME FADERS (ui/TopMenu.jsx → Fader) ──────────────────
+           ⚠️ THIS CANNOT BE AN INLINE STYLE, which is why it lives here rather
+           than next to the component it dresses. A range input is drawn by its
+           pseudo-elements — ::-webkit-slider-thumb and friends — and React's
+           style prop cannot reach a pseudo-element at all. Left inline, the
+           faders silently fall back to the browser's default blue slider, which
+           is the one control in the game that would not be ours.
+           Track height 6px, thumb 13px — Alex's dial-in, 2026-09-14. */
+        input[type="range"].rlsw-fader {
+          -webkit-appearance: none; appearance: none;
+          width: 100%; margin: 0; padding: 0; display: block;
+          background: transparent; cursor: pointer;
+        }
+        input[type="range"].rlsw-fader:focus-visible {
+          outline: 2px solid var(--acc, #7a97b5); outline-offset: 3px; border-radius: 3px;
+        }
+        /* The filled portion is painted into the track as a hard-stop gradient —
+           Chrome has no ::-moz-range-progress equivalent, so --fill carries it. */
+        input[type="range"].rlsw-fader::-webkit-slider-runnable-track {
+          height: 6px; border-radius: 4px; border: 1px solid #142440;
+          background: linear-gradient(90deg,
+            var(--acc, #7a97b5) var(--fill, 0%), #0d1526 var(--fill, 0%));
+        }
+        input[type="range"].rlsw-fader::-webkit-slider-thumb {
+          -webkit-appearance: none; appearance: none;
+          width: 13px; height: 13px; border-radius: 50%;
+          background: var(--acc, #7a97b5); border: 1px solid #06101e;
+          box-shadow: 0 0 6px var(--acc, #7a97b5);
+          margin-top: -3.5px;   /* centres a 13px thumb on a 6px track (+2px border) */
+        }
+        input[type="range"].rlsw-fader::-moz-range-track {
+          height: 6px; border-radius: 4px; border: 1px solid #142440; background: #0d1526;
+        }
+        input[type="range"].rlsw-fader::-moz-range-progress {
+          height: 6px; border-radius: 4px; background: var(--acc, #7a97b5);
+        }
+        input[type="range"].rlsw-fader::-moz-range-thumb {
+          width: 13px; height: 13px; border-radius: 50%;
+          background: var(--acc, #7a97b5); border: 1px solid #06101e;
+          box-shadow: 0 0 6px var(--acc, #7a97b5);
+        }
       `}</style>
   );
 }

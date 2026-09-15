@@ -335,6 +335,8 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     // ── 🎤 FAN ECONOMY ──
     diehards:         FAN_DIEHARD_START,
     casuals:          FAN_CASUAL_START,
+    peakCasuals:      FAN_CASUAL_START,
+    pendingSonicAttacks: 0,
     centerStreak:     0,
     outerStreak:      0,
     fanLag:           0,
@@ -358,7 +360,8 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
  * legacy setNoteStates site keeps working unchanged.
  */
 export function applyNoteStatesSynced(state, { noteStates }) {
-  return { ...state, noteStates };
+  return { ...state, noteStates:Object.fromEntries(Object.entries(noteStates).map(([id,ns])=>[id,
+    {...ns,peakCasuals:Math.max(state.noteStates?.[id]?.peakCasuals??0,state.noteStates?.[id]?.casuals??0,ns.peakCasuals??0,ns.casuals??0)}])) };
 }
 
 /**
@@ -393,7 +396,7 @@ export function applyHeadlinerChanged(state, { spiritId }) {
  * spirit has no sheet.
  */
 export const FAN_FIELDS = [
-  "diehards", "casuals", "centerStreak", "outerStreak",
+  "diehards", "casuals", "peakCasuals", "centerStreak", "outerStreak",
   "fanLag", "fanActedThisTurn", "divineShield",
 ];
 /**
@@ -423,6 +426,7 @@ export function fansFromDeed(ns = {}, ring, base = 0) {
   const gain = base + centreBonus;
 
   let casuals  = Math.min(FAN_CASUAL_CAP, (ns.casuals ?? 0) + gain);
+  const peakCasuals=Math.max(ns.peakCasuals??0,casuals); // capture before promotion spends a casual
   let diehards = ns.diehards ?? FAN_DIEHARD_START;
   let streak   = ns.centerStreak ?? 0;
   let promoted = false;
@@ -433,7 +437,7 @@ export function fansFromDeed(ns = {}, ring, base = 0) {
     }
   }
   return {
-    patch: { casuals, diehards, centerStreak: streak, fanActedThisTurn: true, fanLag: 0 },
+    patch: { casuals, peakCasuals, diehards, centerStreak: streak, fanActedThisTurn: true, fanLag: 0 },
     gain, promoted,
   };
 }
@@ -443,6 +447,7 @@ export function applyFansChanged(state, { spiritId, fans = {} }) {
   if (!ns) return state;
   const patch = {};
   for (const k of FAN_FIELDS) if (k in fans) patch[k] = fans[k];
+  patch.peakCasuals=Math.max(ns.peakCasuals??0,ns.casuals??0,patch.peakCasuals??0,patch.casuals??0);
   return {
     ...state,
     noteStates: { ...state.noteStates, [spiritId]: { ...ns, ...patch } },
@@ -461,7 +466,8 @@ export function applyNoteSheetPatched(state, { spiritId, patch = {} }) {
   if (!ns) return state;
   return {
     ...state,
-    noteStates: { ...state.noteStates, [spiritId]: { ...ns, ...patch } },
+    noteStates: { ...state.noteStates, [spiritId]: { ...ns, ...patch,
+      peakCasuals:Math.max(ns.peakCasuals??0,ns.casuals??0,patch.peakCasuals??0,patch.casuals??0) } },
   };
 }
 

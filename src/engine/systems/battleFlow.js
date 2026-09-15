@@ -52,10 +52,10 @@ import {
 import { isPosing, poseRounds, posePayout } from "./limelight.js";
 import {
   thrashKnockback, sonicKnockback, chordFrayAmount, underdogBonus,
-  thrashFame, sonicFame, isRearHit,
+  thrashFame, sonicFame, sonicVolleyFame, isRearHit,
 } from "./combat.js";
 import { HEX_BY_NUM } from "../../board/hexMap.js";
-import { neighborInDirection, angleTo, angleDiff } from "../../board/hexGeometry.js";
+import { neighborInDirection, straightNeighborInDirection, angleTo, angleDiff } from "../../board/hexGeometry.js";
 import { hexRingFromCenter, crowdMultiplier } from "../../board/boardHelpers.js";
 import {
   FAME_PER_TURN_CAP, FAME_PER_TURN_CAP_ROUNDS, ROUND_LIMIT_DEFAULT,
@@ -298,7 +298,7 @@ export function* chordFray({ state, targetId, margin, fromBehind = false, chordO
 // Yields a 'hazard' hook per hex entered so the client's existing checks stay
 // authoritative this pass, in the right order.
 // ═════════════════════════════════════════════════════════════════════════════
-export function* knockback({ state, fromId, targetId, spaces, amps = [] }) {
+export function* knockback({ state, fromId, targetId, spaces, amps = [], allowRingOut = false, fameThisTurn = {}, direction, sonicHits }) {
   const fromSp = spiritOf(state, fromId);
   const target = spiritOf(state, targetId);
   if (!fromSp || !target || target.knockedOut || spaces <= 0) return { path: [] };
@@ -334,9 +334,10 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [] }) {
   const tgtHex  = HEX_BY_NUM[target.num];
   if (!fromHex || !tgtHex) return { path: [] };
 
-  const angle = fromSp.num === target.num
+  const angle = direction ?? (fromSp.num === target.num
     ? (fromSp.facing ?? 0)
-    : angleTo(fromHex, tgtHex);
+    : angleTo(fromHex, tgtHex));
+  const contacts=sonicHits?.flatMap((hit,index)=>hit?[index]:[]);
 
   yield log(`💢 ${target.name} is KNOCKED BACK ${spaces} hex${spaces !== 1 ? 'es' : ''}!`);
   yield fx('rumble', { spiritId: targetId });
@@ -345,10 +346,22 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [] }) {
   let curNum = target.num;
 
   for (let step = 0; step < spaces; step++) {
+    if(contacts) state = yield fx('sonicContact',{shotIndex:contacts[step],spiritId:targetId});
     const curHex = HEX_BY_NUM[curNum];
     if (!curHex) break;
-    const nextHex = neighborInDirection(curHex, angle);
+    const nextHex = straightNeighborInDirection(curHex, angle);
     if (!nextHex) {
+      if (allowRingOut) {
+        const falling = spiritOf(state, targetId);
+        if (!falling || falling.knockedOut) break;
+        yield log(`🔊 ${falling.name} is blasted OFF THE STAGE!`);
+        yield fx('ringOut', { spiritId: targetId, fromHexNum: curNum, angle });
+        const result = yield* vibeDamage({
+          state, targetId, dmg: falling.vibe ?? 0,
+          sourceLabel: 'Sonic ring-out', attackerId: fromId, fameThisTurn,
+        });
+        return { path, ringOut: true, endedByKnockdown: true, fameThisTurn: result.fameThisTurn };
+      }
       yield log(`💥 ${target.name} slams into the edge of the stage at #${curNum}!`);
       break;
     }
@@ -397,6 +410,15 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [] }) {
 
     // Rules, not decoration — and they can end the slide.
     state = yield hook('hexHazards', { spiritId: targetId, hexNum: nextHex.num });
+    const afterHazard = spiritOf(state, targetId);
+    const endedByKnockdown = !afterHazard || afterHazard.knockedOut
+      || (afterHazard.vibe ?? 0) <= 0
+      || (afterHazard.lives ?? 1) < (live.lives ?? 1)
+      || (afterHazard.knockdownCount ?? 0) !== (live.knockdownCount ?? 0);
+    const targetRelocated = !!afterHazard && afterHazard.num !== curNum;
+    if (endedByKnockdown || targetRelocated) {
+      return { path, endedByKnockdown, targetRelocated };
+    }
   }
 
   return { path };
@@ -621,18 +643,19 @@ export function* poseConsequences({ state, spiritId, fameThisTurn = {} }) {
   return { ...res, rounds, shed };
 }
 
-/** Sonic win: margin-scaled, plus a Limelight-ring bonus. */
-export function* awardSonicFame({ state, spiritId, loserId, margin, centerBonus = 0, fameThisTurn }) {
+/** A projectile volley pays for hits; old callers may still pass a margin. */
+export function* awardSonicFame({ state, spiritId, loserId, margin, hitCount = null, centerBonus = 0, fameThisTurn }) {
   const rider   = headlinerRider(state, spiritId);
   const fxBonus = anyStageEffectActive(state) ? 1 : 0;
-  const base    = sonicFame(margin) + rider + fxBonus + centerBonus;
+  const base    = (hitCount == null ? sonicFame(margin) : sonicVolleyFame(hitCount)) + rider + fxBonus + centerBonus;
 
   const { fp, deficit, mult } = underdogBonus(
     nsOf(state, spiritId).fame ?? 0,
     nsOf(state, loserId).fame ?? 0,
     base,
   );
-  const tag = `sonic win (margin ${margin})${rider ? ' +👑' : ''}${fxBonus ? ' +🎇' : ''}${centerBonus ? ' +🎤' : ''}`;
+  const score = hitCount == null ? `margin ${margin}` : `${hitCount} through`;
+  const tag = `sonic win (${score})${rider ? ' +👑' : ''}${fxBonus ? ' +🎇' : ''}${centerBonus ? ' +🎤' : ''}`;
 
   let amount = base;
   if (deficit > 0 && fp > base) {
@@ -856,9 +879,17 @@ export function* vibeDamage({ state, targetId, dmg, sourceLabel, attackerId = nu
 // is exported separately so the caller keeps that ordering.
 export function* battleConsequences({ state, battle, chordOf, amps = [], fameThisTurn = {} }) {
   const {
-    attackerWon, damage, margin, attackerId, defenderId, sonicAttack,
+    attackerWon, damage, margin, attackerId, defenderId,
     swingChordLeft = [], swingChordSpent = [],
   } = battle;
+  const sonicAttack = battle.attackKind === 'sonic' || !!battle.sonicAttack;
+  const hitCount = sonicAttack ? (battle.hitCount ?? (attackerWon ? margin : 0)) : null;
+
+  if (sonicAttack && hitCount <= 0) {
+    yield log(`🛡️ ${nameOf(state, defenderId)} absorbs the entire Sonic volley. The shield holds until their next turn.`);
+    yield* clearBattleBuffs({ attackerId, defenderId });
+    return { fameThisTurn };
+  }
 
   if (!attackerWon) {
     // ── ATTACKER LOST ──
@@ -897,25 +928,36 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
   }
 
   // ── KNOCKBACK, routed by attack kind ──
-  const def = spiritOf(state, defenderId);
   const spaces = sonicAttack
-    ? sonicKnockback(margin, def?.vibe ?? 1, def?.maxVibe ?? 1)
+    ? hitCount
     : thrashKnockback(margin);
-  yield* knockback({ state, fromId: attackerId, targetId: defenderId, spaces, amps });
+  const shove = yield* knockback({
+    state, fromId: attackerId, targetId: defenderId, spaces, amps,
+    allowRingOut: sonicAttack, fameThisTurn,
+    // Old replay snapshots lack facing; retain their original attacker/target bearing.
+    direction:sonicAttack ? battle.sonicFacing : undefined,
+    sonicHits:sonicAttack ? battle.diceHits : undefined,
+  });
+  fameThisTurn = shove.fameThisTurn ?? fameThisTurn;
   state = yield ({ kind: 'peek' });
 
-  const rd = yield* vibeDamage({
-    state, targetId: defenderId, dmg: damage,
-    sourceLabel: nameOf(state, attackerId), attackerId, fameThisTurn,
-  });
-  fameThisTurn = rd.fameThisTurn;
+  // A ring-out or a lethal hazard already resolved the knockdown. Never apply
+  // the volley's chip damage to the fresh Spirit who just respawned at home.
+  const interruptedSonic = sonicAttack && (shove.endedByKnockdown || shove.targetRelocated);
+  if (!interruptedSonic) {
+    const rd = yield* vibeDamage({
+      state, targetId: defenderId, dmg: damage,
+      sourceLabel: nameOf(state, attackerId), attackerId, fameThisTurn,
+    });
+    fameThisTurn = rd.fameThisTurn;
+  }
   state = yield ({ kind: 'peek' });
 
   // ── FP — Sonic is the Fame engine; Thrash earns a flat 1 ──
   if (sonicAttack) {
     const ring = hexRingFromCenter(spiritOf(state, attackerId)?.num ?? -1);
     const centerBonus = (ring === 'main' || ring === 'pit') ? SONIC_LIMELIGHT_FP : 0;
-    const r = yield* awardSonicFame({ state, spiritId: attackerId, loserId: defenderId, margin, centerBonus, fameThisTurn });
+    const r = yield* awardSonicFame({ state, spiritId: attackerId, loserId: defenderId, margin, hitCount, centerBonus, fameThisTurn });
     fameThisTurn = r.fameThisTurn;
   } else {
     const r = yield* awardThrashFame({ state, spiritId: attackerId, loserId: defenderId, fameThisTurn });
@@ -949,7 +991,7 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
   // Math.random: replays and the online desync tripwire both compare rng
   // cursors. This is exactly the branch that made a plan-then-apply list
   // unworkable — see the header.
-  if (attackerId === 'intergalactic_0') {
+  if (attackerId === 'intergalactic_0' && !interruptedSonic) {
     const atkNs = nsOf(state, attackerId);
     // 🕒 AND IT NOW RECHARGES. Sunbeam is the only ability in the game that fires
     // AUTOMATICALLY on any connecting hit — the player never chooses it — so the
@@ -974,7 +1016,7 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
   }
 
   yield* clearBattleBuffs({ attackerId, defenderId });
-  return { fameThisTurn };
+  return { fameThisTurn, ...(sonicAttack ? {sonicInterrupted:interruptedSonic} : {}) };
 }
 
 /** Temp buffs are battle-scoped and expire with it, win or lose. */

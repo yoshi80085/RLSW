@@ -1,12 +1,96 @@
-import { createContext, useContext, useId, useState } from 'react';
+import { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
 import ArenaDial, { DIAL_CSS } from './ArenaDial.jsx';
 import Bracket, { BRACKET_CSS } from './Bracket.jsx';
+import NoteHex from './NoteHex.jsx';
 // ⚠️ The board's own panels live in NoteCommitOverlay, but their CSS ships
 // here: `.match-surface` renders in BOTH layouts and is always an ancestor of
 // them, so the arena keeps ONE stylesheet instead of three.
 import { COMMIT_CSS } from './NoteCommitOverlay.jsx';
 
 const SurfaceContext = createContext({ immersive: false, panel: 'turn' });
+// The pocket's own internal gap. The step-1 drawer sits below the pocket, so it
+// is separated from SOUND by the same air SOUND is separated from SPIRIT by —
+// which is what makes the three read as one column of frames rather than a stack
+// with one panel resting on another.
+const HUD_POCKET_GAP = 7;
+// 🟢 THE ROOT'S COLOUR IS NOT A NEW CHOICE. Seat 0 of the commit track has drawn
+// the root in '#44ff88' since the track existed; the badge borrows it so the
+// letter in the pocket and the letter on the bar are visibly the same fact.
+// 🩷 And '#ff99dd' is the KEY PLATE's own "your track ended on X" pink, for the
+// span where this is next round's root rather than this one's.
+const ROOT_C = '#44ff88', NEXT_ROOT_C = '#ff99dd';
+
+/* 🔑 THE ROOT IN THE SPIRIT CARD — why it is here, and why that is not the badge
+ * that was retired.
+ *
+ * 📌 A 48px root badge came out of the note-stock panel on 2026-08-29 for
+ * duplicating the KEY PLATE a few inches below it. This is not that: the plate
+ * lives in `HudRegion name="spirit"`, and in the arena exactly ONE region is
+ * disclosed at a time. During the chord and melody steps the Turn region is the
+ * one that is up, so the root — the note every choice in those two steps is
+ * measured against — is behind a nav chip. Alex, 2026-09-12, looking at the gap
+ * beside the portrait: *"can you put the Root note for the melody for that turn
+ * here?"*
+ * ⚠️ THE ONE STATE WHERE BOTH ARE ON SCREEN is a tutorial, which discloses every
+ * region at once. That is transient and supervised; the 2026-08 complaint was a
+ * permanent side-by-side in one column.
+ *
+ * ⚠️ AND THE ROOT MEANS TWO DIFFERENT THINGS DEPENDING ON WHEN YOU ASK. Commit
+ * writes the track's last note straight into `rootNote`, so from the commit
+ * onward this is NEXT round's letter, not the one the turn was played against.
+ * `KeyPlate` already solved that by saying so; the badge says so the same way
+ * rather than inventing a second policy, or quietly printing a letter that is
+ * true of a turn you have already finished. */
+function RootBadge({ root, next }) {
+  if (!root) return null;
+  return <span className="match-player-key" data-next={next || undefined}
+    aria-label={`${next ? 'Next round root note' : 'Root note'} ${root}`}>
+    <NoteHex hue={next ? NEXT_ROOT_C : ROOT_C} letter={root} size={40} />
+    <small>{next ? 'NEXT' : 'ROOT'}</small>
+  </span>;
+}
+
+/* 📌 THE DRAWER MEASURES THE POCKET; IT DOES NOT ASSUME IT.
+ *
+ * ⚠️ THIS REPLACED A HARDCODED `top:266px`, AND THE NUMBER WAS THE BUG. The
+ * pocket is SPIRIT + 7px + SOUND, absolutely positioned at 58px, and 266 was the
+ * sum of those boxes at the one font stack and one spirit the number was read
+ * on. Every input to that sum is live: SOUND's height is driven by `ArenaDial`'s
+ * `max-width:74px` against whatever column the pocket's width leaves it, the
+ * card carries a spirit name and a VIBE rail of `maxVibe` pips, and both
+ * breakpoints move the pocket and narrow it. Any of those growing past 208px of
+ * content puts the drawer's frame — and its nameplate, which straddles its top
+ * edge — on top of SOUND. A measured floor cannot drift; a constant did.
+ *
+ * 📌 `ResizeObserver` IS GUARDED and the CSS keeps `266px` as its fallback: the
+ * DOM journey suites run this component under jsdom, where the observer does not
+ * exist, and SSR never runs the effect at all. Both get today's layout rather
+ * than a drawer stuck at the top of the arena.
+ *
+ * ⚠️ BOTH ELEMENTS SHARE ONE OFFSET PARENT — the surface root, which
+ * `[data-match-layout="immersive"]` makes `position:relative`. That is the only
+ * reason `offsetTop + offsetHeight` is directly comparable with the drawer's
+ * `top`; a positioned element introduced between them would need this to switch
+ * to `getBoundingClientRect` against the root. */
+function usePocketFloor(immersive) {
+  const rootRef = useRef(null);
+  const pocketRef = useRef(null);
+  useEffect(() => {
+    const root = rootRef.current, pocket = pocketRef.current;
+    if (!immersive || !root || !pocket) return undefined;
+    const measure = () => root.style.setProperty('--hud-pocket-floor',
+      `${Math.round(pocket.offsetTop + pocket.offsetHeight + HUD_POCKET_GAP)}px`);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    // The pocket grows with its CONTENT (a longer spirit name, more VIBE pips)
+    // and with the ROOT (both breakpoints narrow it, which makes the dials
+    // shorter), so both are watched.
+    const ro = new ResizeObserver(measure);
+    ro.observe(pocket); ro.observe(root);
+    return () => ro.disconnect();
+  }, [immersive]);
+  return [rootRef, pocketRef];
+}
 const STEPS = { chord: '1 · Build chord', melody: '2 · Compose melody', move_act: '3 · Move & act' };
 const STEP_ORDER = ['chord', 'melody', 'move_act'];
 const ACTION_LABELS = {
@@ -27,8 +111,25 @@ export function MatchSurface({ immersive, spirit, turnNumber, step, canAct, ap, 
   // Tutorials can point at any original HUD anchor, including collapsed details.
   // Show all panels during a walkthrough so its internal page changes stay valid.
   const context = { immersive, panel, tutorial, id };
+  /* 🪦 THE "NOW" WINDOW IS GONE, 2026-09-12, AND THIS IS WHAT IT KNEW.
+   * It was a third bracket at bottom-centre whose headline was the STEP NAME —
+   * which the phase rail above already prints, and which the step-3 drawer
+   * prints again on its own title row. Three statements of one fact, and the
+   * bottom-centre one overlapped both the drawer and the arena camera strip.
+   * Alex: *"I'm not really sure the Now window really needs to even exist."*
+   * 🎯 SO ONLY THE TWO LIVE FACTS SURVIVE, and they move ONTO the rail's active
+   * step rather than into a window of their own — the rail was already saying
+   * WHICH step, so it is the one place where "and here is how much of it you
+   * have left" is not a repetition.
+   * ⚠️ THE TARGETING PROMPT OUTRANKS THE COUNT. "Choose a Swing target" is a
+   * question the game is waiting on an answer to; AP remaining is background. */
+  const liveDetail = !canAct ? 'Watching their turn'
+    : ACTION_LABELS[hud?.action]
+      ?? (step === 'move_act' ? `${ap} AP remaining`
+        : hud?.noteCount != null ? `${hud.noteCount} notes available` : null);
+  const [rootRef, pocketRef] = usePocketFloor(immersive);
   return <SurfaceContext.Provider value={context}>
-    <div className="match-surface" data-match-layout={immersive ? 'immersive' : 'classic'}
+    <div ref={rootRef} className="match-surface" data-match-layout={immersive ? 'immersive' : 'classic'}
       data-match-step={step} data-hud-tutorial={tutorial || undefined}>
       <style>{SURFACE_CSS}</style>
       {immersive && <>
@@ -40,13 +141,14 @@ export function MatchSurface({ immersive, spirit, turnNumber, step, canAct, ap, 
             return <Bracket key={name} corner="sm" open={state !== 'now'}
               className="match-phase-step" data-state={state}>
               <span><i>{String(index + 1).padStart(2, '0')}</i>{STEPS[name].split(' · ')[1]}</span>
+              {state === 'now' && liveDetail && <em className="match-phase-live">{liveDetail}</em>}
               <b className="match-phase-bars" aria-hidden="true">
                 {[0, 1, 2].map(k => <i key={k} data-on={state === 'done' || (state === 'now' && k < 2) || undefined} />)}
               </b>
             </Bracket>;
           })}
         </div>
-        <aside className="match-player-pocket" aria-label="Active spirit summary">
+        <aside ref={pocketRef} className="match-player-pocket" aria-label="Active spirit summary">
           <Bracket plate="SPIRIT" className="match-player-frame" color="var(--hud-spirit,#7fe0ff)"
             style={{ '--hud-spirit': spirit?.color || '#7fe0ff' }}>
           <button className="match-player-card" onClick={() => select('spirit')}
@@ -63,6 +165,7 @@ export function MatchSurface({ immersive, spirit, turnNumber, step, canAct, ap, 
                   })}
                 </i>VIBE {hud?.vibe ?? '—'}/{hud?.maxVibe ?? '—'}</span>
             </span>
+            <RootBadge root={hud?.root} next={hud?.rootIsNext} />
             <span className="match-player-more">＋</span>
           </button>
           </Bracket>
@@ -80,10 +183,6 @@ export function MatchSurface({ immersive, spirit, turnNumber, step, canAct, ap, 
           </Bracket>
         </aside>
         <div className="match-hud-bar">
-          <Bracket plate="NOW" className="match-turn-summary" role="status" aria-live="polite">
-            <strong>{ACTION_LABELS[hud?.action] ?? (canAct ? STEPS[step] : 'Watching their turn')}</strong>
-            <span>{step === 'move_act' ? `${ap} AP remaining` : hud?.noteCount != null ? `${hud.noteCount} notes available` : 'The stage is live'}</span>
-          </Bracket>
           <nav aria-label="Arena panels" className="match-panel-nav">
             {[['turn', 'Turn'], ['spirit', 'Spirit'], ['rivals', 'Rivals']].map(([name, label]) =>
               <button key={name} className="match-nav-chip" aria-expanded={tutorial || panel === name}
@@ -114,7 +213,11 @@ const SURFACE_CSS = `
   [data-hud-region] { min-width:0; }
   .match-board-column { display:flex; flex-direction:column; align-items:center; position:relative; min-width:0; }
   .match-board-frame { position:relative; width:100%; max-width:1040px; overflow:visible; border-radius:8px; border:1px solid #1a2a40; }
-  [data-match-layout="immersive"] { --hud-edge:12px; --hud-pocket:238px; position:relative; display:block; height:calc(100dvh - 76px); min-height:640px; flex:none; isolation:isolate; }
+  /* 🔑 '--root-hex' RIDES WITH THE OTHER LAYOUT CONSTANTS ON PURPOSE, so the
+     badge follows the pocket down through both breakpoints from one place and a
+     preview page can drive it live by setting the variable on this element.
+     Dialled on '.scratch/root-note-size.html'. */
+  [data-match-layout="immersive"] { --hud-edge:12px; --hud-pocket:238px; --root-hex:52px; position:relative; display:block; height:calc(100dvh - 76px); min-height:640px; flex:none; isolation:isolate; }
   [data-match-layout="immersive"] .match-hud-column { display:contents; }
   [data-match-layout="immersive"] .match-board-column,
   [data-match-layout="immersive"] .match-board-frame { position:absolute; inset:0; width:100%; height:100%; max-width:none; }
@@ -140,6 +243,10 @@ const SURFACE_CSS = `
   .match-player-frame, .match-sound-frame { width:100%; box-sizing:border-box }
   .match-player-frame { --brk-scrim:rgba(6,12,26,.44) }
   .match-sound-frame { --brk-scrim:rgba(6,12,26,.34) }
+  /* ⭐ THE CARD GROWS WITH THE BADGE, AND THAT IS SAFE NOW. 'min-height' not
+     'height': a taller root hex makes this card taller, which pushes SOUND down,
+     which moves the step-1 drawer — all of which 'usePocketFloor' measures rather
+     than assumes. Before that hook this constant could not have moved at all. */
   .match-player-card { min-height:72px; padding:9px; display:flex; align-items:stretch; gap:9px;
     color:#dceaff; text-align:left; cursor:pointer; background:none; border:0; width:100%; font:inherit }
   .match-player-frame:hover > .rlsw-brk-c { opacity:1 }
@@ -157,6 +264,17 @@ const SURFACE_CSS = `
   .match-vibe > i > b[data-on] { background:currentColor; box-shadow:0 0 6px currentColor }
   .match-vibe > i > b[data-head] { background:#fff }
   .match-player-more { align-self:flex-start; color:#7790b0; font-size:13px; }
+  /* 🔑 THE ROOT BADGE, in the air the copy column leaves beside the name.
+     📌 THE SVG IS SIZED IN CSS, NOT BY THE 'size' PROP. NoteHex writes width and
+     height as ATTRIBUTES, which CSS outranks without !important — so the badge
+     can follow the pocket down through both breakpoints from here instead of
+     needing a hand-written size at each one, exactly as '.rlsw-dial' does. */
+  .match-player-key { flex:none; align-self:center; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:1px; color:${ROOT_C}; }
+  .match-player-key[data-next] { color:${NEXT_ROOT_C} }
+  .match-player-key svg { width:var(--root-hex,52px); height:var(--root-hex,52px) }
+  .match-player-key small { font:400 5.6px 'Saira Stencil One',sans-serif;
+    letter-spacing:1.7px; color:currentColor; opacity:.92; }
   .match-sound-readout { padding:10px; display:grid; grid-template-columns:1fr 1fr 42px; grid-template-rows:1fr 1fr; gap:6px; min-height:92px; }
   .match-sound-readout > span { min-width:0; padding-right:6px; border-right:1px solid #93acd21f; }
   .match-sound-readout > span:last-child { border:0; padding:0; }
@@ -195,11 +313,12 @@ const SURFACE_CSS = `
   ${BRACKET_CSS}
   ${COMMIT_CSS}
   .match-hud-bar { position:absolute; inset:0; z-index:43; pointer-events:none; }
-  .match-turn-summary { position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
-    min-width:190px; color:#80e8ff; --brk-scrim:rgba(6,12,26,.5) }
-  .match-turn-summary > .rlsw-brk-body { display:flex; flex-direction:column; gap:3px; padding:9px 14px }
-  .match-turn-summary strong { color:#dceaff; font-size:10px; }
-  .match-turn-summary span { color:#7890ad; font-size:7px; letter-spacing:.6px; }
+  /* 🪦 '.match-turn-summary' — the NOW window — stood here. See the note beside
+     'liveDetail'. Its two live facts are the line below; its headline was the
+     step name, which two other elements were already printing. */
+  .match-phase-live { display:block; margin-top:4px; max-width:210px; font-style:normal;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-size:7.5px; letter-spacing:.6px; color:#dceaff; }
   .match-panel-nav { position:absolute; top:58px; right:var(--hud-edge); display:flex; gap:6px; align-items:flex-start; pointer-events:auto; }
   /* the nav chips: a 45° chamfer drawn as two stacked clip-paths, because a real
      CSS border cannot follow one. ⚠️ THE BUTTON KEEPS THE LABEL AS ITS ONLY TEXT
@@ -226,16 +345,77 @@ const SURFACE_CSS = `
   [data-match-layout="immersive"] [data-hud-region][data-hud-current] { box-shadow:inset 0 0 0 1px #80e8ff4d,0 0 26px -8px #80e8ff }
   [data-match-layout="immersive"] [data-hud-region][hidden] { display:none; }
   [data-match-layout="immersive"] [data-hud-region="turn"] { max-height:48%; }
-  [data-match-layout="immersive"][data-match-step="move_act"] [data-hud-region="turn"] { left:calc(50% + var(--hud-pocket) / 2); bottom:58px; width:min(740px,calc(100% - var(--hud-pocket) - 56px)); transform:translateX(-50%); max-height:34%; }
+  /* 🪦 THE FLOATING STEP-3 DOCK IS GONE, 2026-09-12. It sat bottom-centre over
+     the arena at 'min(740px, …)' wide — which it had to, while steps 1 and 2
+     owned the HUD column. But once the chord and melody panels come down the
+     column below SOUND is empty for the whole of step 3. Alex: *"once the
+     chord/melody commits are done and out of the way the space opens back up
+     below the Sound window — lets put the Move and Act window below that."*
+     Dialled on '.scratch/step3-dock.html'.
+     🎯 SO ALL THREE STEPS DOCK IN ONE PLACE — the rule below is a selector list,
+     not three positions. The step changes WHAT is in the column, never where the
+     column is, and the arena floor is left to the arena.
+     ⭐ IT ALSO RETIRED A NUMBER COUPLED TO ANOTHER FILE. The old dock had to clear
+     '.arena-camera-toolbar' in 'ui/BoardViewport.jsx' by hand, so that toolbar
+     growing a row would silently break this one. It no longer goes near it: the
+     coupling is deleted rather than tuned.
+     ⚠️ AND IT IS WHY 'ActionRail' TAKES 'stack'. At 238px the rail's 40/60 column
+     split leaves UNIVERSAL about 84px — narrower than the 'Sonic 4d6 (2AP)'
+     button on its own. The arena passes 'stack={board3D}'; the 2D board's rail is
+     ~470px and keeps its columns. */
+  /* ⚠️ 266px IS THE FALLBACK, NOT THE NUMBER. '--hud-pocket-floor' is written by
+     'usePocketFloor' from the pocket's real rendered bottom plus its own 7px gap
+     — see the note above the hook for why a constant could not hold this. The
+     72px below is the bottom furniture (the turn summary and its margin) that
+     the drawer must not run into, and is unrelated to the pocket. */
   [data-match-layout="immersive"][data-match-step="chord"] [data-hud-region="turn"],
-  [data-match-layout="immersive"][data-match-step="melody"] [data-hud-region="turn"] { top:266px; bottom:auto; width:var(--hud-pocket); max-height:calc(100% - 338px); padding:0; overflow:visible; background:none; border:0; box-shadow:none; clip-path:none; }
+  [data-match-layout="immersive"][data-match-step="melody"] [data-hud-region="turn"],
+  [data-match-layout="immersive"][data-match-step="move_act"] [data-hud-region="turn"] { top:var(--hud-pocket-floor,266px); bottom:auto; width:var(--hud-pocket); max-height:calc(100% - var(--hud-pocket-floor,266px) - 72px); padding:7px 0 2px; overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; background:none; border:0; box-shadow:none; clip-path:none; }
+  /* ⚠️ THE DRAWER IS THE ONE SCROLLER, AND THAT IS THE WHOLE FIX FOR THE BLEED.
+     It used to be 'overflow:visible' with '.match-note-stock' inside doing the
+     scrolling against its OWN max-height — and the two were measured off
+     DIFFERENT BOXES: this one is 100% of the arena root, that one was 100dvh of
+     the VIEWPORT. The root is 'calc(100dvh - 76px)' with a 'min-height:640px'
+     floor, so on any short window the inner box was allowed to be hundreds of
+     pixels taller than the outer one, and being 'visible' the outer one let it
+     hang straight out of the bottom of the arena. Alex, 2026-09-12, with a
+     screenshot of the note pool sitting on his editor's status bar: *"the note
+     pool area bleeds way off the 3D arena into the bottom… make sure nothing
+     ever bleeds out of the immersive 3D board area."*
+     🎯 SO THERE IS NOW EXACTLY ONE MAX-HEIGHT AND ONE OVERFLOW IN THIS CHAIN,
+     both on this element, both measured against the root. A second scroller
+     inside it can only ever disagree with it again.
+     📌 The 7px of top padding is the bracket nameplate's clearance, moved here
+     with the overflow — a scroller with no top padding slices 'CHORD STACK'
+     through the middle. It is clearance, not spacing; the horizontal padding
+     must stay 0 or the frames stop lining up with SPIRIT and SOUND. */
+  /* 🪦 THE OUTER WINDOW DIED HERE, 2026-09-12c. This rule wrapped the step-1
+     drawer in a SECOND chamfered box — a flat scrim, a 1px cyan outline and its
+     own 9px clip-path — around the CHORD STACK bracket, which draws all three of
+     those things itself. Two frames deep, and its 12px of horizontal padding made
+     the inner one 214px against SPIRIT and SOUND's 238px, so it read as a panel
+     inside a panel rather than the third frame in one column. Alex, 2026-09-12:
+     *"I'd like this window gone so the Chord stack window can match up with the
+     other 2."*
+     ⚠️ WHAT IT STILL HAS TO DO IS SCROLL. The stock grid is eleven notes for the
+     Ronin in a 238px column, so this element is the scroller whether or not it is
+     also a box — which is why the overflow and the max-height survive while every
+     painted property goes.
+     ⚠️ AND THE REMAINING VERTICAL PADDING IS NOT SPACING, IT IS CLEARANCE. The
+     bracket's nameplate straddles its own top edge ('translateY(-50%)'), so a
+     scroller with no top padding clips "CHORD STACK" through the middle. The
+     HORIZONTAL padding is the one that has to be 0, or the frames stop lining up
+     again — which was the whole complaint. */
+  /* 🪦 ITS MAX-HEIGHT, ITS OVERFLOW AND ITS PADDING ALL MOVED UP TO THE DRAWER,
+     2026-09-12 — see the note there. This element is now only the step-1 panel's
+     transparent wrapper; it measures nothing and clips nothing. */
   [data-match-layout="immersive"] .match-note-stock { box-sizing:border-box; margin:0 !important;
-    padding:12px !important; overflow-y:auto !important; overflow-x:hidden !important;
-    max-height:calc(100dvh - 346px); border:0 !important; border-radius:0 !important;
-    background:rgba(6,12,26,.44) !important; box-shadow:inset 0 0 0 1px #80e8ff1f !important;
-    clip-path:polygon(9px 0,calc(100% - 9px) 0,100% 9px,100% calc(100% - 9px),
-      calc(100% - 9px) 100%,9px 100%,0 calc(100% - 9px),0 9px); scrollbar-width:thin }
-  [data-match-layout="immersive"] [data-hud-region="turn"][data-hud-current] .match-note-stock { box-shadow:inset 0 0 0 1px #80e8ff4d,0 0 24px -8px #80e8ff !important }
+    padding:0 !important; overflow:visible !important; max-height:none !important;
+    border:0 !important; border-radius:0 !important;
+    background:none !important; box-shadow:none !important; clip-path:none; scrollbar-width:thin }
+  /* 🪦 And the focus ring that lit that box when the drawer was the open panel.
+     The CHORD STACK bracket already brightens its own corners through
+     '.step-active', which is the system's way of saying the same thing. */
   [data-match-layout="immersive"] .match-note-stock > div:first-of-type { margin-bottom:8px !important; }
   [data-match-layout="immersive"] .match-note-stock .stitle { color:#a9b9d3 !important; font-size:7px !important; letter-spacing:1.45px; }
   /* 🪦 TWO OVERRIDES DIED HERE, 2026-09-12, AND THEIR TARGETS DIED WITH THEM.
@@ -247,11 +427,13 @@ const SURFACE_CSS = `
      needs no immersive special-casing at all, which is the point of putting it
      in the system. */
   [data-match-layout="immersive"] .match-note-stock .stack-commit { margin-bottom:2px }
-  [data-match-layout="immersive"][data-match-step="chord"] .match-turn-summary,
-  [data-match-layout="immersive"][data-match-step="melody"] .match-turn-summary { display:none; }
-  [data-match-layout="immersive"][data-match-step="move_act"] [data-hud-region="turn"] { padding:12px 14px;
-    background:rgba(6,12,26,.46); box-shadow:inset 0 0 0 1px #80e8ff33,0 0 24px -10px #80e8ff }
-  [data-match-layout="immersive"][data-match-step="move_act"] [data-hud-region="turn"] > div > .stitle { margin:0 0 7px !important; color:#aabbd4; font-size:7px; letter-spacing:1.5px; }
+  /* 🪦 Two rules hid the NOW window during steps 1 and 2 — it only ever showed
+     during step 3. They went with it; a selector for a class nothing wears is
+     indistinguishable from one that matters. */
+  /* 🪦 The dock's own scrim, outline and title rule went with it. The step-3
+     panel is a Bracket now, like the three frames above it, so a second box drawn
+     around it would be the 'window inside a window' the chord drawer just lost —
+     and the '.stitle' those rules styled no longer exists (the nameplate says it). */
   [data-match-layout="immersive"] .immersive-arail { gap:12px !important; }
   [data-match-layout="immersive"] .immersive-arail .arail-row { gap:5px; }
   /* ⚠️ '.arail''s own rule shears these buttons and counter-shears their labels;
@@ -273,8 +455,12 @@ const SURFACE_CSS = `
   [data-match-layout="immersive"] .match-board-preparation [data-tip-anchor="chord-stack"] { pointer-events:none; }
   [data-match-layout="immersive"] .match-board-preparation [data-tip-anchor="commit-track"] { left:0 !important; right:0 !important; }
   [data-match-layout="immersive"] .match-board-preparation [data-immersive-track] { left:50% !important; right:auto !important; }
-  [data-match-layout="immersive"] .match-board-preparation [data-tip-anchor="drive-stack"],
-  [data-match-layout="immersive"] .match-board-preparation [data-tip-anchor="sustain-stack"] { bottom:0 !important; }
+  /* 🪦 A 'bottom:0 !important' ON BOTH STACK ANCHORS DIED HERE, 2026-09-12b. It
+     dates from when the panels were 'visibility:hidden' in 3D and only a
+     tutorial tip ever revealed them, so where they landed barely mattered. They
+     are permanent arena furniture now and carry the preview's own 'bottom:3%',
+     which is the number Alex saw; an !important here would quietly overrule it
+     and pin them to the floor of the preparation box. */
   /* Small screens keep a real board above controls. Overlays must never cover
      every legal target just because a phone cannot fit two desktop panels. */
   @media (max-width:1000px) {
@@ -286,11 +472,10 @@ const SURFACE_CSS = `
     [data-match-layout="immersive"][data-match-step] [data-hud-region] { left:auto; right:auto; top:auto; bottom:auto; width:100%; max-width:none; transform:none; }
     [data-match-layout="immersive"] .match-board-preparation { inset:12px 16px 68px; }
     .match-player-pocket { top:43px; left:12px; width:208px; }
+    [data-match-layout="immersive"] { --root-hex:44px }
     .match-sound-readout { grid-template-columns:1fr 1fr 34px; }
     .match-phase-rail { top:13px; }
     .match-panel-nav { top:43px; }
-    .match-turn-summary { padding:6px 10px; font-size:10px; }
-    .match-turn-summary strong { font-size:12px; }
   }
   @media (max-width:600px) {
     .immersive-match .match-header { flex-wrap:wrap; }
@@ -300,12 +485,15 @@ const SURFACE_CSS = `
     .match-phase-rail { width:calc(100% - 24px); justify-content:center; gap:5px; }
     .match-phase-step > .rlsw-brk-body > span { font-size:0; gap:3px }
     .match-phase-step i { font-size:7px }
+    /* ⚠️ The label collapses to font-size:0 at this width; the live line must NOT
+       go with it — it is the only thing left saying what the game wants next. */
+    .match-phase-live { max-width:140px; font-size:7px }
     .match-player-pocket { width:160px; }
     .match-player-card { min-height:58px; padding:6px; }
     .match-player-art { display:none; }
+    [data-match-layout="immersive"] { --root-hex:38px }
     .match-player-copy strong { margin:3px 0 5px; font-size:10px; }
     .match-sound-readout { padding:6px; grid-template-columns:1fr 1fr 30px; min-height:76px; }
     .match-sound-readout b { font-size:9px; }
-    .match-turn-summary { display:none; }
   }
 `;

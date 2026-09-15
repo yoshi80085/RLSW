@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import openingIsland from "../assets/opening_island.png";
-import menuSong3 from "../Menu_song_3.mp3";
+import menuSong3 from "../music/Menu_song_3.mp3";
+import { musicVol } from "../audio/mixer.js";
 
 // ─── 🏝️ TITLE MENU ───────────────────────────────────────────────────────────
 // The Zelda-style front door: the floating island holds the whole frame while a
@@ -57,7 +58,7 @@ export default function TitleMenu({
   // ── Menu music ──
   useEffect(() => {
     const a = new Audio(menuSong3);
-    a.loop = true; a.volume = 0.4;
+    a.loop = true; a.volume = musicVol(0.4);   // 🎚️ 0.4 is the song's mix level; the fader scales it
     a.play().catch(() => {});   // blocked until first gesture on some browsers; harmless
     audioRef.current = a;
     return () => { a.pause(); audioRef.current = null; };

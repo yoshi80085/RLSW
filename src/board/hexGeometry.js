@@ -2,6 +2,7 @@
 // Pure geometry helpers extracted from the main file. fanPawnShape (a JSX render
 // helper) intentionally stays in the main file; only math/data lives here.
 import { HEX_BY_QR } from "./hexMap.js";
+import { COL_SPACING, ROW_SPACING } from './constants.js';
 
 export function pointyCorners(cx, cy, size) {
   return Array.from({ length: 6 }, (_, i) => {
@@ -110,4 +111,14 @@ export function neighborInDirection(originHex, angle) {
     if (!best || diff < best.diff) return { hex: nb, diff };
     return best;
   }, null)?.hex;
+}
+
+// Choose among all six directions, including missing edge cells. A shove must
+// stop (or ring out) at the edge instead of bending toward an existing neighbor.
+export function straightNeighborInDirection(originHex, angle) {
+  const step=axialNeighbors(0,0).reduce((best,cell)=>{
+    const diff=angleDiff(angle,Math.atan2((cell.r+cell.q/2)*ROW_SPACING,cell.q*COL_SPACING));
+    return !best||diff<best.diff ? {...cell,diff} : best;
+  },null);
+  return HEX_BY_QR[`${originHex.q+step.q},${originHex.r+step.r}`];
 }

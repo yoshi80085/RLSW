@@ -581,8 +581,8 @@ export const TOKEN_DRIFT_TURNS   = 1; // rounds an uncollected Lost Chord sits b
 // discard is the number to watch, and it is Alex's call whether the window
 // moves with the crowd.
 export const FAN_DIEHARD_WEIGHT  = 0.40;  // multiplier added per Diehard (loyal core -- worth ~3 casuals)
-export const FAN_CASUAL_WEIGHT   = 0.12;  // multiplier added per Casual (fickle fringe)
-export const FAN_MULT_CAP        = 5.0;   // hard ceiling -- a full house reaches 5.08 and is clamped here
+export const FAN_CASUAL_WEIGHT = 0; // casuals now grow permanent Sonic die size
+export const FAN_MULT_CAP = 3.0; // diehard multiplier cap, reached by five active diehards
 export const FAN_DIEHARD_CAP     = 6;
 export const FAN_CASUAL_CAP      = 14;
 export const FAN_DIEHARD_START   = 2;
@@ -594,9 +594,9 @@ export const FAN_DECAY           = 2;     // casuals bored off per turn once the
 export const FAN_BORED_AFTER     = 3;     // consecutive turns in the OUTER ring before fans start drifting off
 export const FAN_PROMOTE_EVERY   = 3;     // consecutive centre-perform turns to harden 1 casual -> diehard
 export const FAN_RECOVERY_LAG    = 3;     // your turns locked out of crowd-gain after a demolition
-export const FAN_FLEE_MIN        = 2;     // casuals that scatter on a knockdown (low end)
-export const FAN_FLEE_MAX        = 3;     // (high end)
-export const FAN_DEFECT_TO_VICTOR = 2;    // of the fled casuals, how many swing straight to the demolisher
+export const FAN_FLEE_MIN = 1; // light crowd scatter; earned die size survives
+export const FAN_FLEE_MAX = 2; // light crowd scatter
+export const FAN_DEFECT_TO_VICTOR = 0; // fans cannot be stolen
 
 // -- EVENT SPACES --
 // 🎪 TWO MARQUEES, NOT ONE (2026-08-20, MARQUEE_QUIZ_DESIGN.md §1). One event

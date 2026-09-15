@@ -39,6 +39,15 @@ import {
   SONIC_BASE_DIE, SONIC_UPGRADED_DIE, RIG_RADIUS_FLOOR,
   RIG_TIER_MAX, RIG_POOL_FLOOR, RIG_ATROPHY_TURNS,
 } from "../../data/gameConstants.js";
+import { evaluateChord } from '../../music/chords.js';
+import { ampBlown } from './eleven.js';
+
+// First projectile playtest: permanent crowd milestones, independent of losses
+// and promotion. Chord value buys dice; cabinet count never substitutes for it.
+export function sonicDieSides(ns = {}) {
+  const peak=Math.max(ns.peakCasuals??0,ns.casuals??0);
+  return peak>=12?12:peak>=7?10:peak>=3?8:6;
+}
 
 /**
  * The two workout tiers, read off the note sheet with the floor applied.
@@ -82,7 +91,8 @@ export function rigStack(ns = {}, onTurn = false) {
  * of the board but never all of it. Being far from home always costs something.
  */
 export function rigRadius(ns = {}, onTurn = false) {
-  return RIG_RADIUS_FLOOR + rigStack(ns, onTurn).length;
+  void ns;void onTurn;
+  return 0; // No amp radius. The Spirit still aims along its three-hex beam.
 }
 
 /**
@@ -101,32 +111,22 @@ export function rigRadius(ns = {}, onTurn = false) {
  *   inRange — whether the spirit is inside their rig's live radius
  *   radius  — that radius, so callers can DRAW it without recomputing the rule
  */
-export function sonicRig(ns = {}, distFromHome, chargeBoost = 0, onTurn = false) {
-  const { pool: ampT, power: powT } = rigTiers(ns);
-
-  const radius  = rigRadius(ns, onTurn);
-  const inRange = distFromHome <= radius;
-
-  // Base pool: 1 die + pool tiers (only counted when in range).
-  // The FLOOR tier is the Main Amp — board-wide, so its die survives out of
-  // range (everyone sits at 2d6 everywhere, trained or not).
-  const size = 1 + (inRange ? ampT : Math.min(ampT, RIG_POOL_FLOOR));
-
-  // Power upgrades: convert d6 → d8 (only in range), plus charge d8s (anywhere)
-  const d8s = (inRange ? Math.min(powT, size) : 0) + chargeBoost;
-
-  const pool = Array.from(
-    { length: size + chargeBoost },
-    (_, i) => i < d8s ? SONIC_UPGRADED_DIE : SONIC_BASE_DIE,
-  );
-
-  return { pool, inRange, radius };
+export function sonicRig(ns = {}, distFromHome, chargeBoost = 0, onTurn = false, spiritId = null) {
+  void distFromHome;void chargeBoost;void onTurn;
+  const chord=evaluateChord(ns.driveStack??[]);
+  const innate=spiritId==='intergalactic_0'&&chord.id==='cluster'?1:0;
+  const bonus=Math.min(2,(ns.tempDrive??0)+(ns.moshDrive??0));
+  // Empty charge must not fall back to the old, stronger static stat sheet.
+  const count=ns.driveStack?.length?Math.max(0,ns.atEleven?11:chord.drive+innate+bonus-(ns.instrumentDropped?1:0)):0;
+  const sides=Math.min(12,sonicDieSides(ns)+((ns.chargeCeilTurns??0)>0?2:0));
+  return {pool:Array.from({length:count},()=>sides),inRange:!ampBlown(ns),radius:0};
 }
 
 /**
  * Pretty label for a dice pool: [6,6]→"2d6", [6,6,8]→"2d6+d8", [8,8,8]→"3d8".
  */
 export function rigPoolLabel(pool) {
+  if(!pool.length)return '0 dice';
   const counts = {};
   pool.forEach(s => { counts[s] = (counts[s] || 0) + 1; });
   return Object.keys(counts).sort((a, b) => a - b)

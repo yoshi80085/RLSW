@@ -1,23 +1,25 @@
-// ── BGM DISABLED ──────────────────────────────────────────────────────────────
-// BGM tracks removed from the build — using custom music only.
-// Original imports and shuffle logic preserved below (commented) for re-enabling.
+// ── BGM ───────────────────────────────────────────────────────────────────────
+// The background bed the game plays under everything else. One track today:
+// `atmospheric-sound.mp3`, the default music (Alex, 2026-09-14).
 //
-// import bgm1 from "../bgm/bgm_1.mp3";
-// import bgm2 from "../bgm/bgm_2.mp3";
-// import bgm3 from "../bgm/bgm_3.mp3";
-// import bgm4 from "../bgm/bgm_4.mp3";
-// import bgm5 from "../bgm/bgm_5.mp3";
-// import bgm6 from "../bgm/bgm_6.mp3";
-// import bgm7 from "../bgm/bgm_7.mp3";
-// import bgm8 from "../bgm/bgm_8.mp3";
-//
-// export const BGM_TRACKS = [bgm1, bgm2, bgm3, bgm4, bgm5, bgm6, bgm7, bgm8];
+// 📌 The old eight-track shuffle is preserved commented at the bottom. It is the
+//    shape this file goes back to the moment there is a second bed — the
+//    consumer contract (`BGM_TRACKS` + `nextBgmTrack`) is deliberately unchanged
+//    from the shuffle era so that re-expanding costs nothing at the call site.
+import atmospheric from "../music/atmospheric-sound.mp3";
 
-export const BGM_TRACKS = [];
+export const BGM_TRACKS = [atmospheric];
 
-// No-op — nothing to queue when tracks are empty.
-export function nextBgmTrack(/* lastIdx */) { return -1; }
+// ⚠️ WITH ONE TRACK THERE IS NOTHING TO SHUFFLE, and that is not a bug to fix
+//    with a random pick — a single-entry queue that "chooses" still returns 0,
+//    it just burns a call doing it. Returns -1 on an empty list so the caller's
+//    `if (idx < 0) return` guard keeps working if the array is ever emptied
+//    again (that is how this file spent the last five months).
+export function nextBgmTrack(/* lastIdx */) {
+  return BGM_TRACKS.length ? 0 : -1;
+}
 
+// ── The shuffle, for when there is more than one bed ──────────────────────────
 // function shuffleBgm(arr) {
 //   const a = [...arr];
 //   for (let i = a.length - 1; i > 0; i--) {

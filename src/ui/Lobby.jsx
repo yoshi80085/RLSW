@@ -8,7 +8,8 @@ import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT,
          RIFF_SPEED_MIN, RIFF_SPEED_MAX, RIFF_SPEED_DEFAULT,
          loadRiffSpeed, saveRiffSpeed, riffSpeedLabel } from "../riff/fallingNotes.js";
 import { fpPerLife } from "../data/gameConstants.js";
-import menuSong3 from "../Menu_song_3.mp3";
+import menuSong3 from "../music/Menu_song_3.mp3";
+import { musicVol } from "../audio/mixer.js";
 import boardImg from "../board.png";
 import boardOutlineImg from "../board_outline.png";
 import boardStarsImg from "../board_stars_animated.png";
@@ -119,7 +120,7 @@ export function Lobby({ onStart, onBackToMenu }) {
     const src = MENU_SONGS[Math.floor(Math.random() * MENU_SONGS.length)];
     const audio = new Audio(src);
     audio.loop = true;
-    audio.volume = 0.45;
+    audio.volume = musicVol(0.45);   // 🎚️ 0.45 is the song's mix level; the fader scales it
     /* ⚠️ THE LATCH IS RELEASED ON FAILURE, and that is new. `active` is now true
        on mount rather than on the player-count click, so this fires one gesture
        further from the user's last one. Reaching the lobby always costs a click

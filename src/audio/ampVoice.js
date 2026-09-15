@@ -18,6 +18,8 @@
 // =============================================================================
 
 // ── Knob defaults + Spirit signature tones ───────────────────────────────────
+import { getLevel, onMixChange } from "./mixer.js";
+
 export const TONE_KNOB_DEFAULTS = { drive: 0.45, tone: 0.35, echo: 0.55, verb: 0.18, voice: 'saw' };
 
 // 🎚️ Each Spirit's out-of-the-box rig (mirrored from the tone panel design).
@@ -66,11 +68,29 @@ export function getAmpBuses(ctx) {
     const master = ctx.createDynamicsCompressor();
     master.threshold.value = -16; master.knee.value = 22;
     master.ratio.value = 5; master.attack.value = 0.003; master.release.value = 0.25;
-    master.connect(ctx.destination);
+
+    // 🎚️ THE NOTES FADER LIVES HERE, and it is the last thing before the
+    // speakers on purpose — AFTER the compressor, not before it. Putting a
+    // player-controlled gain in FRONT of a compressor makes the compressor undo
+    // it: turn the guitar down and the limiter simply stops limiting, so the
+    // first two thirds of the fader would do almost nothing.
+    const notesGain = ctx.createGain();
+    notesGain.gain.value = getLevel('notes');
+    master.connect(notesGain);
+    notesGain.connect(ctx.destination);
+
     const verbBus = ctx.createConvolver();
     verbBus.buffer = getReverbImpulse(ctx);
     verbBus.connect(master);
-    ctx.__rlswBuses = { master, verbBus };
+
+    // The fader follows the mixer for as long as this context lives. Ramped,
+    // not set: a step change on a sounding note is an audible click.
+    onMixChange(mix => {
+      try { notesGain.gain.setTargetAtTime(mix.notes, ctx.currentTime, 0.02); }
+      catch { notesGain.gain.value = mix.notes; }
+    });
+
+    ctx.__rlswBuses = { master, verbBus, notesGain };
   }
   return ctx.__rlswBuses;
 }

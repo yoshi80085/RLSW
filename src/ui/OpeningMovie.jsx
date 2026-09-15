@@ -6,9 +6,10 @@ import intergalactic0 from "../standees/Intergalactic_0.png";
 import metalnessMonster from "../standees/Metalness_monster.png";
 import crowdBlue from "../crowd_blue.png";
 import crowdPink from "../crowd_pink.png";
-import rlMovieSong from "../rl_movie_song.mp3";
-import thunderSfx from "../thunder.mp3";
-import rumbleSfx from "../rumble.mp3";
+import rlMovieSong from "../music/rl_movie_song.mp3";
+import thunderSfx from "../sfx/thunder.mp3";
+import rumbleSfx from "../sfx/rumble.mp3";
+import { musicVol, sfxVol } from "../audio/mixer.js";
 
 /* ─── 🎬 OPENING MOVIE (v2) ─────────────────────────────────────────────────
  * Skippable cinematic before Spirit Select. Any key/click/tap skips.
@@ -239,7 +240,9 @@ function CinematicLayer({ visible }) {
   const playSfx = (src, vol = 0.6) => {
     try {
       const a = new Audio(src);
-      a.volume = vol;
+      // 🎚️ playSfx is only ever used for thunder and rumble here, so the SFX
+      //    fader is the right channel; `vol` stays each cue's own mix level.
+      a.volume = sfxVol(vol);
       a.play().catch(() => {});
       return a;
     } catch { return null; }
@@ -865,7 +868,7 @@ export default function OpeningMovie({ onDone }) {
   useEffect(() => {
     const audio = new Audio(rlMovieSong);
     audio.loop = false;
-    audio.volume = 0.7;
+    audio.volume = musicVol(0.7);   // 🎚️ the movie's theme rides the music fader
     bgmRef.current = audio;
     let disposed = false; // StrictMode guard: promise may settle post-cleanup
     audio.play()

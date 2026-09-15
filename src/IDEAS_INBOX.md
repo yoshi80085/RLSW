@@ -43,6 +43,23 @@ already built is fine — say so and move on.
 
 ## 🆕 OPEN — not yet promoted
 
+### ✅ PROMOTED 2026-09-15 → `PROJECTILE_COMBAT_DESIGN.md` §3.6
+### 2026-09-14 — The Sustain shield as rolled HP, not a target number
+Instead of every Sonic die having to beat a flat Sustain number, **Sustain rolls
+dice too**, and those rolls become the shield's **HP**. Drive dice arrive as
+projectiles of varying strength and wear the HP down, until the shield either
+survives the barrage or gets **busted**. "The defender should get to do something."
+
+🎯 **Changes something decided:** `PROJECTILE_COMBAT_DESIGN.md` §3 — *the Sonic gets
+PAST the shield, it does not dismantle it* — and §3.5's *the stack is untouched for
+the whole round*. Set aside mid-session when the conversation turned to the
+Riff-Off; the two objections it has to answer are written up at §14.8.
+✅ **Both answered at §3.6.3, and the idea is now spec.** ⭐ Alex ruled on
+2026-09-15: damage `through / 3` into a Vibe pool re-based to ~15, and a break
+knocks one note off the tail of the Sustain stack. ⛔ **Five items remain open at
+§3.6.5** — chief among them what produces the Sustain pool at all. ⚠️ **Do not
+add to this entry; it is closed.** New thinking goes in §3.6.
+
 ## 🗂️ FUTURE EDITS — indexed by importance
 
 > Priority is Alex's ranking: **1 = do soon**, **5 = can wait until after the game is mainly done**. These are capture-only entries; they are not implementation decisions.

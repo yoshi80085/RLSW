@@ -24,6 +24,7 @@
 //   'cycle'   — { label, icon, value, onClick, color? }  fires, stays open
 //   'submenu' — { label, icon, value?, color?, options:[{ id, label, icon,
 //                 accent, blurb, on }], onPick }         expands in place
+//   'fader'   — { label, icon, value, onChange, color?, title? }  0..1 slider
 //   'sep'     — a rule
 // ⚠️ 'action' CLOSES AND THE OTHERS DO NOT, and that is a rule about intent, not
 // a style. An action takes you somewhere else (a book, a modal, the lobby) so the
@@ -33,7 +34,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const PANEL_W = 208;
+// 216, not 208: the three volume faders need the extra 8px to sit comfortably
+// with their label, readout and full-width slider (Alex's dial-in, 2026-09-14).
+const PANEL_W = 216;
 
 /** Shared chrome for one row — the hover wash is the only thing that moves. */
 function Row({ children, onClick, title, accent = "#7a97b5", on = false, tall = false }) {
@@ -65,6 +68,42 @@ function Pip({ on, accent }) {
       color: on ? accent : "#3a5a7a" }}>
       {on ? "ON" : "OFF"}
     </span>
+  );
+}
+
+/** 🎚️ A volume fader row — label and readout on one line, slider beneath.
+ *
+ *  ⚠️ STACKED, NOT INLINE, and that is a measurement rather than a taste. Put the
+ *  slider on the same line as the label and the readout and it is left with about
+ *  90px of the panel's 216 — wide enough to look like a control, too narrow to
+ *  land a value on. Alex chose this off the preview page with both side by side.
+ *
+ *  📌 NO MUTE BUTTON: zero IS mute (his call). See audio/mixer.js for why adding
+ *  one later is not a free change.
+ */
+function Fader({ icon, label, value, onChange, accent = "#7a97b5", title }) {
+  const [hot, setHot] = useState(false);
+  const pct = Math.round(value * 100);
+  return (
+    <div title={title}
+      onMouseEnter={() => setHot(true)} onMouseLeave={() => setHot(false)}
+      style={{ padding: "5px 8px", borderRadius: 4,
+        background: hot ? "#111b2c" : "transparent", transition: "background .12s" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <span style={{ fontSize: 11, flexShrink: 0 }}>{icon}</span>
+        <span style={{ fontSize: 9.5, letterSpacing: 0.5, color: accent, whiteSpace: "nowrap" }}>{label}</span>
+        <span style={{ marginLeft: "auto", fontSize: 9, flexShrink: 0,
+          fontFamily: "'Share Tech Mono',monospace", fontVariantNumeric: "tabular-nums",
+          color: pct === 0 ? "#3a5a7a" : accent }}>
+          {pct}%
+        </span>
+      </div>
+      <input type="range" min="0" max="100" step="1" value={pct}
+        aria-label={`${label} volume`}
+        onChange={e => onChange(Number(e.target.value) / 100)}
+        className="rlsw-fader"
+        style={{ "--acc": accent, "--fill": `${pct}%`, marginTop: 5 }}/>
+    </div>
   );
 }
 
@@ -147,6 +186,10 @@ export function TopMenu({ items, tipAnchor }) {
                   )}
                 </div>
               );
+            }
+            if (it.kind === "fader") {
+              return <Fader key={it.label} icon={it.icon} label={it.label} title={it.title}
+                value={it.value} onChange={it.onChange} accent={accent}/>;
             }
             /* action | toggle | cycle */
             return (

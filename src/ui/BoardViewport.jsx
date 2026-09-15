@@ -39,7 +39,7 @@ export function BoardViewport({ enabled, immersive = false, sceneFrame, onDisabl
     };
   }, [enabled]);
 
-  return <div data-board-view={enabled ? '3d' : '2d'} data-arena-ready={enabled && status === 'ready' || undefined} style={enabled
+  return <div data-board-view={enabled ? '3d' : '2d'} data-sonic-phase={sceneFrame?.battle?.volley ? sceneFrame.battle.phase : undefined} data-arena-ready={enabled && status === 'ready' || undefined} style={enabled
     ? { position: 'relative', width: '100%', ...(immersive ? { height: '100%' } : { aspectRatio: `${SVG_W}/${SVG_H}` }), minHeight: 360, overflow: 'hidden', background: '#030611', borderRadius: 8 }
     : { display: 'contents' }}>
     <style>{`

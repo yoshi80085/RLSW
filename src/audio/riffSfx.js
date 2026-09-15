@@ -1,3 +1,5 @@
+import { getLevel, onMixChange } from "./mixer.js";
+
 const RIFF_NATURALS     = ['a','b','c','d','e','f','g'];
 const RIFF_SHARPABLE    = new Set(['a','c','d','f','g']);  // no B♯ / E♯
 const RIFF_NAT_SEMIS    = [0, 2, 3, 5, 7, 8, 10];          // a b c d e f g — A natural minor
@@ -13,6 +15,28 @@ export function getRiffAudio() {
     if (riffAudioCtx.state === 'suspended') riffAudioCtx.resume();
     return riffAudioCtx;
   } catch { return null; }
+}
+
+// ─── 🎚️ THE SFX BUS ──────────────────────────────────────────────────────────
+// Every sound in this file used to connect straight to the context destination — nine
+// separate places, which is exactly why there was nothing to turn down. They all
+// go through one gain now, and that gain is the SFX fader.
+//
+// ⚠️ ONE BUS PER CONTEXT, cached on the context itself (same doctrine as
+//    `getAmpBuses`). Building a second one would silently split the channel in
+//    half: some sounds on the fader, some not, and no way to tell by listening.
+function getSfxBus(ctx) {
+  if (!ctx.__rlswSfxBus) {
+    const bus = ctx.createGain();
+    bus.gain.value = getLevel('sfx');
+    bus.connect(ctx.destination);
+    onMixChange(mix => {
+      try { bus.gain.setTargetAtTime(mix.sfx, ctx.currentTime, 0.02); }
+      catch { bus.gain.value = mix.sfx; }
+    });
+    ctx.__rlswSfxBus = bus;
+  }
+  return ctx.__rlswSfxBus;
 }
 
 // Pitch comes from the UNWRAPPED scale degree, so an ascending run truly
@@ -45,7 +69,7 @@ export function playRiffWrong(letter) {
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.2, t);
   g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-  osc.connect(f); f.connect(g); g.connect(ctx.destination);
+  osc.connect(f); f.connect(g); g.connect(getSfxBus(ctx));
   osc.start(t); osc.stop(t + 0.4);
 }
 
@@ -77,7 +101,7 @@ export function playRiffMiss() {
   const src = ctx.createBufferSource(); src.buffer = buf;
   const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 300; f.Q.value = 0.8;
   const g = ctx.createGain(); g.gain.value = 0.22;
-  src.connect(f); f.connect(g); g.connect(ctx.destination);
+  src.connect(f); f.connect(g); g.connect(getSfxBus(ctx));
   src.start();
 }
 
@@ -93,7 +117,7 @@ export function playBeamClash(intense = false) {
   master.gain.setValueAtTime(0.0001, t);
   master.gain.exponentialRampToValueAtTime(intense ? 0.5 : 0.36, t + 0.18);
   master.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  master.connect(ctx.destination);
+  master.connect(getSfxBus(ctx));
   // Two detuned saws sweeping UP as the beams collide
   [0, 7].forEach((det) => {
     const o = ctx.createOscillator(); o.type = 'sawtooth';
@@ -134,7 +158,7 @@ export function playBeamSurge() {
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(0.4, t + 0.3);
   g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
-  o.connect(f); f.connect(g); g.connect(ctx.destination);
+  o.connect(f); f.connect(g); g.connect(getSfxBus(ctx));
   o.start(t); o.stop(t + 1.45);
   const o2 = ctx.createOscillator(); o2.type = 'triangle';
   o2.frequency.setValueAtTime(600, t);
@@ -143,7 +167,7 @@ export function playBeamSurge() {
   g2.gain.setValueAtTime(0.0001, t);
   g2.gain.exponentialRampToValueAtTime(0.16, t + 0.4);
   g2.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
-  o2.connect(g2); g2.connect(ctx.destination);
+  o2.connect(g2); g2.connect(getSfxBus(ctx));
   o2.start(t); o2.stop(t + 1.35);
 }
 
@@ -162,7 +186,7 @@ export function playBeamBreak(intense = false) {
   const g = ctx.createGain();
   g.gain.setValueAtTime(intense ? 0.7 : 0.55, t);
   g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-  src.connect(lp); lp.connect(g); g.connect(ctx.destination);
+  src.connect(lp); lp.connect(g); g.connect(getSfxBus(ctx));
   src.start(t);
   // Downward boom sweep
   const o = ctx.createOscillator(); o.type = 'sawtooth';
@@ -171,7 +195,7 @@ export function playBeamBreak(intense = false) {
   const og = ctx.createGain();
   og.gain.setValueAtTime(intense ? 0.55 : 0.4, t);
   og.gain.exponentialRampToValueAtTime(0.0001, t + (intense ? 0.8 : 0.6));
-  o.connect(og); og.connect(ctx.destination);
+  o.connect(og); og.connect(getSfxBus(ctx));
   o.start(t); o.stop(t + 0.9);
 }
 
@@ -193,7 +217,7 @@ export function playFanPop(n = 1) {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(0.26, t + 0.012);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
-    o.connect(g); g.connect(ctx.destination);
+    o.connect(g); g.connect(getSfxBus(ctx));
     o.start(t); o.stop(t + 0.2);
     // Transient — a tiny high-passed noise tick gives the lip-pop snap
     const len = 0.03;
@@ -203,7 +227,7 @@ export function playFanPop(n = 1) {
     const src = ctx.createBufferSource(); src.buffer = buf;
     const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
     const ng = ctx.createGain(); ng.gain.value = 0.16;
-    src.connect(hp); hp.connect(ng); ng.connect(ctx.destination);
+    src.connect(hp); hp.connect(ng); ng.connect(getSfxBus(ctx));
     src.start(t);
   }
 }

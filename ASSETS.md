@@ -56,11 +56,12 @@ wrong entry here is worse than an honest "unsure".**
 
 | Asset | Notes |
 |---|---|
-| `src/Master_of_Moshpits_song.mp3` | Metalness Monster's Sustain theme |
-| `src/Menu_song_3.mp3` | Menu |
-| `src/Riff_off_song.mp3` | Riff-off |
-| `src/battle_song.mp3` | Battle |
-| `src/rl_movie_song.mp3` | Opening movie |
+| `src/music/Master_of_Moshpits_song.mp3` | Metalness Monster's Sustain theme |
+| `src/music/Menu_song_3.mp3` | Menu |
+| `src/music/Riff_off_song.mp3` | Riff-off |
+| `src/music/battle_song.mp3` | Battle |
+| `src/music/rl_movie_song.mp3` | Opening movie |
+| `src/music/atmospheric-sound.mp3` | ⚠️ **Provenance not stated.** Added 2026-09-14 as the default background bed. Re-encoded from 192 kbps CBR to VBR (13.75 MB → 5.03 MB) on the same day; the re-encode is a derivative, so whatever is true of the source is true of it. **If this is not yoshi80085's own work it does not belong in this table** — move it to Third-party and record the source. |
 
 ### Code and writing
 
@@ -117,8 +118,8 @@ incomplete and these files carry unknown obligations.
 | `src/sfx/scratch.mp3` | *unknown — to identify* | *unknown* |
 | `src/sfx/shred.mp3` | *unknown — to identify* | *unknown* |
 | `src/sfx/spray.mp3` | *unknown — to identify* | *unknown* |
-| `src/rumble.mp3` | *unknown — to identify* | *unknown* |
-| `src/thunder.mp3` | *unknown — to identify* | *unknown* |
+| `src/sfx/rumble.mp3` | *unknown — to identify* | *unknown* |
+| `src/sfx/thunder.mp3` | *unknown — to identify* | *unknown* |
 
 ### Software and fonts
 

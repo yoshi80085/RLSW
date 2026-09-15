@@ -8,7 +8,10 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
   const visible = new Set(spirits.map(s => s.id));
   return {
     spirits: spirits.map(s => ({ id:s.id, num:s.num, color:s.color, corner:s.corner,
-      facing:s.facing ?? 0, imageSrc:s.imageSrc, knockedOut:!!s.knockedOut })),
+      facing:s.facing ?? 0, imageSrc:s.imageSrc, knockedOut:!!s.knockedOut,
+      pendingSustainFray:(noteStates[s.id]?.pendingSonicAttacks??0)>0
+        ? Math.min(2,noteStates[s.id].pendingSonicAttacks,Math.max(0,(noteStates[s.id].sustainStack?.length??0)-1)):0,
+    })),
     decoys:shadowDecoy ? [{ id:`${shadowDecoy.id}:shadow`, sourceId:shadowDecoy.id,
       num:shadowDecoy.num, color:shadowDecoy.color, corner:shadowDecoy.corner,
       facing:shadowDecoy.facing ?? 0, shadow:true }] : [],
@@ -18,7 +21,18 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
     actingId, turn, lite,
     battle: battle && visible.has(battle.attackerId) && visible.has(battle.defenderId)
       ? { attackerId:battle.attackerId, defenderId:battle.defenderId,
-          phase:battle.phase, sonic:!!battle.sonicAttack, round:battle.round ?? 1 } : null,
+          phase:battle.phase, sonic:!!battle.sonicAttack, round:battle.round ?? 1,
+          ...(battle.sonicAttack && !battle.riffOff && battle.diceHits ? {
+            volley:true, key:battle.sonicId ?? `${turn}:${battle.attackerId}:${battle.defenderId}`,
+            sonicStartedAt:battle.sonicStartedAt,sonicInterrupted:battle.sonicInterrupted,
+            dicePool:[...(battle.dicePool ?? [])], diceVals:[...(battle.diceVals ?? [])],
+            diceHits:[...battle.diceHits], shieldValue:battle.shieldValue,
+            sonicChordNotes:[...(battle.sonicChordNotes ?? [])],
+            sustainChordNotes:[...(battle.sustainChordNotes ?? [])],
+            hitCount:battle.hitCount, damage:battle.damage,
+            fame:battle.sonicFame, knockback:battle.knockback,
+          } : {}),
+        } : null,
     slides:Object.values(slides).filter(s => visible.has(s.id)).map(s => ({
       id:s.id, cx:s.cx, cy:s.cy, dx:s.dx, dy:s.dy, color:s.color, imageSrc:s.imageSrc })),
     flashes:flashes.filter(f => visible.has(f.spiritId)).map(f => ({

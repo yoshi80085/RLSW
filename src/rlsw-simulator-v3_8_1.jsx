@@ -31,6 +31,7 @@ import { TRIVIA_REWARD, TRIVIA_TIER_GRANT, TRIVIA_BOT_ODDS,
 import { Riffbook } from "./ui/Riffbook.jsx";
 import { BoardFX } from "./ui/BoardFX.jsx";
 import { BoardViewport } from "./ui/BoardViewport.jsx";
+import { SonicRollPrompt } from "./ui/SonicRollPrompt.jsx";
 import { arenaFrame } from "./board/arenaFrame.js";
 import { MatchSurface, HudRegion } from "./ui/MatchSurface.jsx";
 import { VoiceRollDie } from "./ui/VoiceRollDie.jsx";
@@ -40,19 +41,25 @@ import { TopMenu } from "./ui/TopMenu.jsx";
 import { FameRace } from "./ui/FameRace.jsx";
 import { StatKnob } from "./ui/StatKnob.jsx";
 import { ChordStackPanel, CommitTrackPanel, COMMIT_OVERLAY,
-         StackNest, stackSeatPos } from "./ui/NoteCommitOverlay.jsx";
+         StackNest, stackSeatPos,
+         poolSeatPos, poolNestHeight, usePoolColumns } from "./ui/NoteCommitOverlay.jsx";
 // 🎛️ The column beside the character card — turn rail, key plate, DB meter.
 import { ChannelStrip, StripSection, TurnRail, KeyPlate, SPIRIT_CARD, CHANNEL_STRIP } from "./ui/ChannelStrip.jsx";
-import { SpiritStyleCoach } from "./ui/SpiritStyleCoach.jsx";
+import { detectSpiritStyle, gesturesFor } from "./music/spiritStyle.js";
 import { ActionRail, RailBtn, ACTION_RAIL } from "./ui/ActionRail.jsx";
 import { ToneFader } from "./ui/ToneFader.jsx";
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import React from "react";
 import { BGM_TRACKS, nextBgmTrack } from "./audio/bgm.js";
+import { MIX_CHANNELS, getMix, setLevel, onMixChange, musicVol } from "./audio/mixer.js";
 import { micAvailable, startMicListening } from "./audio/micPitch.js";
-import riffOffSong from "./Riff_off_song.mp3";
-import battleSong  from "./battle_song.mp3";
-import moshpitSong from "./Master_of_Moshpits_song.mp3";   // 🤘 Master of Moshpits cinematic
+import riffOffSong from "./music/Riff_off_song.mp3";
+import battleSong  from "./music/battle_song.mp3";
+import moshpitSong from "./music/Master_of_Moshpits_song.mp3";   // 🤘 Master of Moshpits cinematic
+import { attackParams, rigFor } from "./engine/systems/attackParams.js";
+import { scheduleSonicVolley } from "./board/sonicPresentation.js";
+import { SONIC_SEQUENCE, sonicContactTime } from './board/sonicSequence.js';
+import { playSonicBeamAudio } from "./audio/sonicBeamAudio.js";
 import { sonicRig, rigPoolLabel, rigTiers, rigTierSpend, rigSpendable } from "./engine/systems/sonicRig.js";
 import AmpDecks from "./board/ampDecks.jsx";
 import { hexRingFromCenter, crowdMultiplier, advanceDB } from "./board/boardHelpers.js";
@@ -232,7 +239,6 @@ import { PC_PLAY_NAMES } from "./music/pitchNames.js";
 // the reason why, and it is a reason worth reading before touching the chip.
 import NoteHex, { NOTE_HEX, NOTE_BURST } from "./ui/NoteHex.jsx";
 import Bracket from "./ui/Bracket.jsx";
-import ArenaDial from "./ui/ArenaDial.jsx";
 // 🎵 The note in flight — a real NoteHex on a bowed arc, not the old flat chip.
 import { NoteFlyChip } from "./ui/NoteFlyChip.jsx";
 
@@ -317,8 +323,10 @@ const STACK_GRID_CHIP = 34;
    row — which is the whole reason it needs sizes of its own rather than
    borrowing the board's. 📌 The stock grid below keeps `STACK_GRID_CHIP`; it was
    already 34 and the preview put it within 2px, so it was left alone. */
-const STACK_DRAWER_CHIP = 30;   // a committed note in the Drive/Sustain rows
-const STACK_DRAWER_DIAL = 38;   // the ArenaDial at the end of each row
+// 🪦 `STACK_DRAWER_CHIP` (30) and `STACK_DRAWER_DIAL` (38) LIVED HERE. They sized
+// the committed notes and the gauge the Drive/Sustain rows used to carry; both
+// came out 2026-09-12c when those rows stopped repeating the stacks. See the
+// headstone on the rows themselves.
 const DRIVE_C   = "#ff6644";
 const SUSTAIN_C = "#44aaff";
 // Dimmed backings for the same pair, for hex interiors and chip fills.
@@ -810,7 +818,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // ── MELEE: remote client opens the battle overlay on a swing/sonic roll
       if (aType === "ATTACK_ROLLED") {
         const eb = next.battle;
-        if (eb) {
+        if (eb && frame.action.kind === 'sonic') startSonicPresentation(eb,true);
+        if (eb && frame.action.kind !== 'sonic') {
           const { attackerId, defenderId } = frame.action;
           const isSonic = frame.action.kind === 'sonic';
           playBattleMusic(isSonic ? riffOffSong : battleSong, 0.7);
@@ -1045,7 +1054,30 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   //   //   counterSuccess, counterFace, counterReady, counterDmg, counterMargin }
   const [battleState, setBattleState] = useState(null);
   const battleStateRef = useRef(null); // mirrors battleState for use in async callbacks
+  // The Sonic volley waits on the local attacker's ROLL. `sonicRollRef` holds
+  // the continuation for the CURRENT volley only; it is cleared whenever a new
+  // presentation starts or the overlay closes, so a stale click cannot fire an
+  // expired timeline.
+  const [sonicRollPrompt, setSonicRollPrompt] = useState(null);
+  const sonicRollRef = useRef(null);
+  const sonicAudioRef = useRef(null);
+  const clearSonicRollPrompt = () => { sonicRollRef.current = null; setSonicRollPrompt(null); };
+  function rollSonicVolley() {
+    const start = sonicRollRef.current;
+    clearSonicRollPrompt();
+    // Unlock the shared context inside the actual ROLL gesture.
+    try { getAudioCtx(); } catch { /* silent browser */ }
+    start?.();
+  }
   const battleTimersRef = useRef([]);   // intro-cinematic setTimeout ids (so a Skip can cancel them)
+  useEffect(() => () => {
+    sonicAudioRef.current?.();sonicRollRef.current=null;
+    battleStateRef.current=null;
+    battleTimersRef.current.forEach(clearTimeout);
+  }, []);
+  useEffect(() => {
+    if(!battleState?.sonicAttack){sonicAudioRef.current?.();sonicAudioRef.current=null;sonicRollRef.current=null;setSonicRollPrompt(null);}
+  }, [battleState?.sonicAttack]);
   const dieSettledRef = useRef({ atk: false, def: false }); // ⛔ one settle chain per die per battle (see handleAtkDieClick)
   // 🎬 Board dive-bomb: triggers when a battle opens, clears after anim finishes
   const [boardDiveBomb, setBoardDiveBomb] = useState(false);
@@ -1541,8 +1573,65 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // ─── BGM ── (state moved to ./hooks/useBgmState.js)
   const { audioRef, currentTrackIdxRef, bgmMuted, setBgmMuted, bgmVolume, setBgmVolume, bgmTrackNum, setBgmTrackNum } = useBgmState();
 
+  // ─── 🎚️ BGM DUCKING ────────────────────────────────────────────────────────
+  // The atmospheric bed does not STOP for a battle, it gets out of the way:
+  // while a battle or riff-off song plays, the bed drops to BGM_DUCK of the
+  // player's chosen volume and rides underneath it, then comes back up when the
+  // battle closes (Alex, 2026-09-14).
+  //
+  // ⚠️ RAMP, DO NOT JUMP. A hard volume change on a sustained ambient pad is
+  //    audible as a click — which is the one thing a bed exists not to do. The
+  //    fade is a plain interval rather than a WebAudio gain ramp because the bed
+  //    is an <audio> element, not a graph node; routing it through WebAudio just
+  //    for this would put the whole bed behind an AudioContext that needs its
+  //    own unlock gesture, and that is a second failure mode for no gain.
+  const BGM_DUCK    = 0.15;   // fraction of the player's volume while battle music plays
+  const BGM_FADE_MS = 450;
+  // ⚠️ THE DUCK AND THE VOLUME SLIDER FIGHT unless both read the same two facts.
+  //    Refs, not state: the fade ticks on an interval and must see the CURRENT
+  //    volume, not the one captured when the fade started.
+  const bgmVolumeRef = useRef(bgmVolume);
+  const bgmDuckedRef = useRef(false);
+  const bgmFadeRef   = useRef(null);
+
+  // 🎚️ THE MIXER drives all three channels. Notes and SFX reach their gain nodes
+  // on their own (audio/mixer.js → ampVoice/riffSfx subscribe); music has no
+  // graph to reach, so the bed's volume is recomputed here whenever it moves.
+  //
+  // ⚠️ `bgmVolume` IS STILL THE BED'S OWN MIX LEVEL, not the player's control.
+  //    The fader multiplies it, the same way it multiplies the 0.7 a battle song
+  //    carries — that is what keeps the bed quieter than the battle after the
+  //    player has touched the slider, instead of flattening both to one number.
+  const [mix, setMix] = useState(() => getMix());
+  useEffect(() => onMixChange(setMix), []);
+  useEffect(() => {
+    bgmVolumeRef.current = bgmVolume * mix.music;
+    if (audioRef.current) fadeBgmTo(bgmTargetVolume(), 120);
+    if (battleAudioRef.current) battleAudioRef.current.volume = musicVol(battleBaseVolRef.current);
+  }, [bgmVolume, mix.music]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function bgmTargetVolume() {
+    return bgmVolumeRef.current * (bgmDuckedRef.current ? BGM_DUCK : 1);
+  }
+  function fadeBgmTo(target, ms = BGM_FADE_MS) {
+    const audio = audioRef.current;
+    if (bgmFadeRef.current) { clearInterval(bgmFadeRef.current); bgmFadeRef.current = null; }
+    if (!audio) return;
+    const from = audio.volume, delta = target - from;
+    if (Math.abs(delta) < 0.001) { audio.volume = Math.max(0, Math.min(1, target)); return; }
+    const t0 = performance.now();
+    bgmFadeRef.current = setInterval(() => {
+      const k = Math.min(1, (performance.now() - t0) / ms);
+      audio.volume = Math.max(0, Math.min(1, from + delta * k));
+      if (k >= 1) { clearInterval(bgmFadeRef.current); bgmFadeRef.current = null; }
+    }, 30);
+  }
+  function duckBgm()   { bgmDuckedRef.current = true;  fadeBgmTo(bgmTargetVolume()); }
+  function unduckBgm() { bgmDuckedRef.current = false; fadeBgmTo(bgmTargetVolume()); }
+
   // ─── BATTLE / RIFF-OFF MUSIC ──────────────────────────────────────────────
-  const battleAudioRef = useRef(null);
+  const battleAudioRef   = useRef(null);
+  const battleBaseVolRef = useRef(0.5);   // the song's own mix level, pre-fader
 
   // ⚡ PERF — audio elements are CACHED, never rebuilt.
   //
@@ -1579,10 +1668,19 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (liteFx) return;   // 🎨 lite FX: skip audio decoding to save CPU
     stopBattleMusic();
     const audio = getCachedAudio(src);
-    audio.volume = volume;
+    // 🎚️ `volume` stays the song's own mix level; the fader scales it. The base
+    // is remembered so that moving the fader DURING a battle re-scales the song
+    // that is already sounding — otherwise the control would look dead for the
+    // one stretch of the game with the most music in it.
+    battleBaseVolRef.current = volume;
+    audio.volume = musicVol(volume);
     audio.currentTime = 0;
     audio.play().catch(() => {});
     battleAudioRef.current = audio;
+    // 📌 Ducked AFTER stopBattleMusic() above has already un-ducked. Both calls
+    //    land in the same tick and fadeBgmTo cancels the in-flight fade before
+    //    it ticks once, so a battle→battle handoff never audibly swells.
+    duckBgm();
   }
   function stopBattleMusic() {
     if (battleAudioRef.current) {
@@ -1592,6 +1690,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // cache with its decoded buffer intact, ready for the next battle.
       battleAudioRef.current = null;
     }
+    unduckBgm();
   }
   // Stop battle/riff-off music whenever the battle closes
   useEffect(() => {
@@ -1751,42 +1850,62 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     cadenceToast, setCadenceToast,
   } = useRiffState();
 
-  // ─── BGM DISABLED ────────────────────────────────────────────────────────────
-  // BGM tracks removed — using custom music only.  Uncomment to re-enable.
-  //
-  // useEffect(() => {
-  //   const idx = nextBgmTrack();
-  //   currentTrackIdxRef.current = idx;
-  //   setBgmTrackNum(idx + 1);
-  //   const audio = new Audio(BGM_TRACKS[idx]);
-  //   audio.volume = bgmVolume;
-  //   audio.loop = false;
-  //   audioRef.current = audio;
-  //   audio.play().catch(() => {});
-  //   function handleEnded() {
-  //     const next = nextBgmTrack(currentTrackIdxRef.current);
-  //     currentTrackIdxRef.current = next;
-  //     setBgmTrackNum(next + 1);
-  //     audio.src = BGM_TRACKS[next];
-  //     audio.play().catch(() => {});
-  //   }
-  //   audio.addEventListener("ended", handleEnded);
-  //   return () => { audio.removeEventListener("ended", handleEnded); audio.pause(); };
-  // }, []); // eslint-disable-line
-  //
-  // useEffect(() => { if (audioRef.current) audioRef.current.muted = bgmMuted; }, [bgmMuted]);
-  // useEffect(() => { if (audioRef.current) audioRef.current.volume = bgmVolume; }, [bgmVolume]);
-  //
-  // const bgmSkip = useCallback(() => {
-  //   const audio = audioRef.current;
-  //   if (!audio) return;
-  //   const next = nextBgmTrack(currentTrackIdxRef.current);
-  //   currentTrackIdxRef.current = next;
-  //   setBgmTrackNum(next + 1);
-  //   audio.src = BGM_TRACKS[next];
-  //   if (!bgmMuted) audio.play().catch(() => {});
-  // }, [bgmMuted]);
-  const bgmSkip = () => {}; // no-op stub
+  // ─── BGM — the atmospheric bed ───────────────────────────────────────────────
+  // One looping track under the whole game (Alex, 2026-09-14). It is deliberately
+  // NOT gated on `liteFx`: lite FX exists to stop the per-battle MP3 re-decode
+  // stutter, and a single element looping one bed costs nothing per frame.
+  useEffect(() => {
+    const idx = nextBgmTrack();
+    if (idx < 0) return;                       // no beds registered — nothing to play
+    currentTrackIdxRef.current = idx;
+    setBgmTrackNum(idx + 1);
+
+    const audio = new Audio(BGM_TRACKS[idx]);
+    // ⚠️ LOOP THE ELEMENT, don't re-queue on "ended". The old eight-track code
+    //    swapped `audio.src` in an ended handler; with one bed that would tear
+    //    down and re-decode the same 5 MB file every ten minutes, mid-game.
+    audio.loop   = true;
+    bgmVolumeRef.current = bgmVolume * getMix().music;
+    audio.volume = bgmTargetVolume();
+    audio.muted  = bgmMuted;
+    audioRef.current = audio;
+
+    // ⚠️ AUTOPLAY IS REFUSED UNTIL THE PAGE HAS BEEN TOUCHED. Chrome, Safari and
+    //    Firefox all reject play() on a fresh load with no user gesture, and the
+    //    old code swallowed that rejection with `.catch(() => {})` — which is why
+    //    "the music just doesn't start" is not a bug anyone could see. So: try
+    //    once, and if it is refused, arm the first gesture to start it. The
+    //    listeners remove themselves the moment playback actually begins.
+    let armed = [];
+    function disarm() {
+      armed.forEach(([ev, fn]) => window.removeEventListener(ev, fn));
+      armed = [];
+    }
+    function tryPlay() {
+      const p = audio.play();
+      if (p && typeof p.then === 'function') p.then(disarm).catch(() => {});
+    }
+    const onGesture = () => tryPlay();
+    tryPlay();
+    ['pointerdown', 'keydown', 'touchstart'].forEach(ev => {
+      window.addEventListener(ev, onGesture, { passive: true });
+      armed.push([ev, onGesture]);
+    });
+
+    return () => {
+      disarm();
+      if (bgmFadeRef.current) { clearInterval(bgmFadeRef.current); bgmFadeRef.current = null; }
+      audio.pause();
+      audioRef.current = null;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (audioRef.current) audioRef.current.muted = bgmMuted; }, [bgmMuted]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 📌 One bed means there is nothing to skip TO. Kept as a stub so the (still
+  //    commented) BGM control row and anything else holding the prop keep their
+  //    shape; restore the real body from git alongside the shuffle in bgm.js.
+  const bgmSkip = () => {};
 
   // Attach wheel listener as non-passive
   useEffect(() => {
@@ -1959,6 +2078,55 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                  'A discord final cannot resolve your ending. Use one when the extra distance is worth giving up the music payout.'], anchor: 'note-stock' },
         { body: ['Do you commit your best Db-earning notes to your Chord Stacks? Do you burn a discord just to move farther?',
                  'These are choices you make while playing. Just don\'t second-guess yourself. Play it HARD!'], anchor: 'note-stock' },
+      ],
+    },
+    // 🎤 WHAT THE FANS WANT — the melody panel's teaching, moved into Pickles.
+    // 🪦 It used to be PERMANENT PROSE: `SpiritStyleCoach` printed a sentence of
+    // lesson under every gesture, and a fixed "finish clean on the tonic" line
+    // sat below it, on every melody step of every turn forever. Alex,
+    // 2026-09-12: *"lets have this information something Pickles comes out and
+    // says once and maybe a short reminder later — make sure its not too wordy."*
+    // 🎯 SHOW, DON'T LIST — and here that is also what keeps it honest. The
+    // patterns are ALREADY on screen in the panel, one per gesture, and each
+    // Spirit has its own set (Intergalactic 0 has one where the Ronin has two).
+    // A page that typed them out would be three-quarters wrong the first time
+    // anyone edits `spiritStyle.js`, so he points at the panel instead.
+    // ⚠️ ✳️ CONDITIONAL — fired only for a Spirit that HAS gestures. Pointing at
+    // an empty panel and calling it the crowd's demands teaches nothing.
+    fan_phrases: {
+      title: '🎤 What Your Fans Want',
+      pages: [
+        { body: 'Your fans don\'t care about notes. They want PHRASES — shapes they can hum back at you.', crowd: true },
+        // ⚠️ BUILT FROM `gesturesFor`, NOT TYPED OUT, and it has to be: every
+        // Spirit has its own shapes and Intergalactic 0 has one where the Ronin
+        // has two, so a hand-written page would be wrong for three of the four
+        // the day anyone edits `spiritStyle.js`.
+        // 📌 `actingRef` IS SAFE HERE AND `acting` IS NOT. `acting` is a `const`
+        // declared ~350 lines below this object, so naming it would throw a
+        // temporal-dead-zone error on every render; the ref is declared at the
+        // top of the component. The tip fires from a `setTimeout`, so by the time
+        // anyone reads this the ref is the current Spirit.
+        // 🪦 This page used to read *"yours are right here"* and point at the
+        // 🎤 YOUR FANS WANT panel. That panel is gone, and a tip whose anchor is
+        // missing does not throw — `BeginnerTipOverlay` silently re-centres it —
+        // so the page would have kept saying "right here" about nothing.
+        { body: gesturesFor(actingRef.current?.id)
+            .map(g => `${g.label.toUpperCase()} — ${g.pattern}. ${g.lesson}`),
+          anchor: 'note-stock' },
+        { body: 'Then finish CLEAN — tonic, 4th or 5th. That\'s where the Db is.', anchor: 'commit-track', emote: 'paid' },
+      ],
+    },
+    // 🔁 THE ONE REMINDER, and the moment is the whole point: it fires the first
+    // time a committed line lands NO phrase at all. Told then, it is a note about
+    // the line they just played; told on a timer, it is the same lecture again.
+    fan_phrases_again: {
+      title: '🎤 Phrase Check',
+      pages: [
+        // ⚠️ GENERIC ON PURPOSE. "Three notes, one direction" was the Ronin's
+        // shape stated as if it were everyone's; the Monster's is a return, not a
+        // run. The reminder names no shape — page two of `fan_phrases` already
+        // named this Spirit's, and this fires only after that has been seen.
+        { body: 'No phrase that time — the crowd stayed put. Get one of your shapes into the line and they bite.', anchor: 'note-stock' },
       ],
     },
     // ✳️ CONDITIONAL — only fires the first time a 4th or 5th is actually
@@ -2281,7 +2449,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // so the radius breathes on their Drive stack (§5.H⁶). Everyone else's rig is
   // read through `rigForSpirit` below, which passes false and gets Sustain.
   const actingRig = acting
-    ? sonicRig(actingNoteState ?? {}, distFromHome, elevenBoost, true)
+    ? sonicRig(actingNoteState ?? {}, distFromHome, elevenBoost, true, acting.id)
     : { pool: [6], inRange: true, radius: 0 };
   // Backward compat: ampsInRange ≥ 1 always (Main Amp — unplugged state is gone).
   // Old callers that checked `ampsInRange >= 1` will see "plugged in" universally.
@@ -2290,22 +2458,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // paths (and the bot's scheduled closures) must not trust `actingRig`, which
   // is a render-time snapshot of the acting Spirit only — and the defender's
   // rig now decides both the riff-off gate and their defence die.
-  function rigForSpirit(sp, chargeBoost = 0) {
-    if (!sp) return { pool: [SONIC_BASE_DIE], inRange: false };
-    // 📻 Boom Box — must be applied HERE as well as in `distFromHome` above.
-    // This is the function every COMBAT path uses (the defender's rig decides
-    // the riff-off gate and their defence die); `actingRig` is only a
-    // render-time snapshot of the acting Spirit. Applying the passive to one
-    // and not the other would mean his portable rig worked on attack but
-    // silently vanished on defence — which is the half the passive is FOR.
-    if (boomBoxLit(sp.id)) {
-      return sonicRig(noteStates[sp.id] ?? {}, 0, chargeBoost, sp.id === acting?.id);
-    }
-    const homeHex = HEX_BY_NUM[CORNERS[sp.corner]?.homeNum];
-    const hex     = HEX_BY_NUM[sp.num];
-    const dist    = (homeHex && hex)
-      ? axialDist(homeHex.q, homeHex.r, hex.q, hex.r) : 0;
-    return sonicRig(noteStates[sp.id] ?? {}, dist, chargeBoost, sp.id === acting?.id);
+  function rigForSpirit(sp) {
+    return rigFor(sp,engineRef.current.noteStates?.[sp?.id]??{},engineRef.current);
   }
   // 🤖 keep the bot's live-state mirrors fresh
   useEffect(() => { moveStepsLeftRef.current = moveStepsLeft; }, [moveStepsLeft]);
@@ -3878,6 +4032,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       setTimeout(() => setPointsFlash(null), 4500);
     }
     if (report.trackHasTritone || report.isOctaveResolution) showTip('intervals');
+    // 🎤 THE PHRASE REMINDER. ⚠️ GATED ON HAVING TAUGHT IT FIRST — without the
+    // `beginnerTipsSeen` check a player whose very first line misses would get
+    // the reminder before the lesson, which reads as the game telling them off
+    // for not knowing a rule it never mentioned. `showTip` retires it after this
+    // single outing, so it is one nudge and never a nag.
+    if (!acting?.cpu && beginnerTipsSeen.has('fan_phrases')
+        && gesturesFor(acting?.id).length
+        && detectSpiritStyle(acting?.id, report.melodyLine).score === 0) {
+      setTimeout(() => showTip('fan_phrases_again'), 450);
+    }
 
     // ── 4. THE SKILL AWARD — the half the kernel declares CLIENT_OWNED ───────
     // ⚠️ `awardTargetSkill` MUST NOT run here. The STATE half is already in the
@@ -3974,6 +4138,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
     // ── Theatre, off the report — no rules re-derived from the patch ─────────
     const nm = spirits.find(s => s.id === spiritId)?.name;
+    if(report.sustainFray?.frayed) {
+      showSpentNotes(spiritId,report.sustainFray.lostNotes,'sustain');
+      addLog('🛡️ '+nm+' releases '+report.sustainFray.frayed+' fading Sustain note(s); the root holds.');
+    }
     if (report.halvedByAxeSwing && report.refreshedCount > 0) {
       addLog(`🪓 Axe Swing whiff — stock recovery halved this turn!`);
     }
@@ -8240,245 +8408,97 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // END SHREDDING RONIN REWORK
   // ═══════════════════════════════════════════════════════════════════════════
 
-  function initiateSonicAttack(targetId) {
-    if (!acting) return;
-    if (actionTokenUsed) { addLog('🔊 Already used your Action Token this turn!'); return; }
-    // (Main Amp — every Spirit is always wired from turn 1; no "unplugged" check.)
-
-    const attacker = spirits.find(s => s.id === acting.id);
-    const defender = spirits.find(s => s.id === targetId);
-    if (!attacker || !defender) return;
-
-    if (moveStepsLeft < 2) {
-      addLog(`🔊 Not enough Action Points — Sonic Attack costs 2 AP.`);
-      return;
-    }
-
-    // 👤 Ronin attacking dismisses shadow
-    if (acting.id === 'cosmic_ronin') dismissShadowIllusion('the Ronin attacked');
-
-    // 📡 RANGE GATE — outside your rig's radius the Sonic is OFFLINE entirely.
-    // (Computed fresh from BOTH positions: bot calls arrive via scheduled
-    // closures that may hold a stale render's actingRig, and the defender's
-    // rig decides both the riff-off gate and their defence die below.)
-    const atkRigLive = rigForSpirit(attacker);
-    const defRigLive = rigForSpirit(defender);
-    if (!atkRigLive.inRange) {
-      addLog(`📡 ${attacker.name} is out of amp range — the rig can't reach this far. Move closer to home or buy Range.`);
-      return;
-    }
-
-    dispatch(beatsSpent(2, true));
-    setAction(null);
-    setDeckThump({ id: attacker.id, key: Date.now() }); // corner stack thumps with the beam
-
-    // 🔊 Sonic chord is saved for playback at the RESULT moment (beam blast/fizzle).
-    // Moved from here to the result phase so the chord rings when the beam fires.
-    const sonicChordNotes = [...(actingNoteState?.driveStack ?? [])];
-
-    // ── RIFF-OFF TRIGGER ─────────────────────────────────────────────────────
-    // A riff-off is a DUEL: both rigs have to be live for it to happen. Three
-    // conditions, all required:
-    //   1. the defender sits in the attacker's beam (already true to get here),
-    //   2. the attacker sits in the defender's beam — they're facing each other
-    //      down the same line,
-    //   3. BOTH Spirits are inside their OWN rig's radius. A rival caught
-    //      outside their amp range has nothing to answer with, so there's no
-    //      duel — the Sonic lands as a plain attack and they defend on a d4.
-    // (AP + Action Token were already spent above, same cost as a Sonic Attack.)
-    if (!engineRef.current.limelight.posing[targetId] && getSonicBeam(defender).has(attacker.num)) {
-      if (defRigLive.inRange) {
-        // ⚡ A riff-off is still a battle — charges burn off (no dice to boost here).
-        burnChargesAfterBattle([attacker.id, targetId], 'the riff-off spent it');
-        startRiffOff(attacker, defender);
-        return;
-      }
-      addLog(`📡 ${defender.name} is beam-to-beam but OUT OF AMP RANGE — no rig to riff back with. No duel: the beam just hits, and they scramble a d4 defence.`);
-    }
-
-    const nsA     = noteStates[attacker.id] ?? {};
-    const nsD     = noteStates[targetId]    ?? {};
-
-    // ── Stage Effects / skill mods ────────────────────────────────────────────
-    const skillMods = getBattleSkillMods(attacker.id, targetId);
-    if (skillMods.laserActive)  addLog(`🔴 Laser Show fires! Defender's die will be halved.`);
-    if (skillMods.fogActive)    addLog(`🌫️ Fog Machine fires! Defender -1 Drive, -1 Sustain this battle.`);
-    if (skillMods.pyroBonus > 0)addLog(`🔥 Pyrotechnics! +${skillMods.pyroBonus} bonus added to Drive roll.`);
-
-    // ── Rig pool (AMP_DECK_DESIGN.md §2) ────────────────────────────────────
-    // The pool comes from `sonicRig`, which reads the workout tiers off the sheet.
-    //
-    // 🛑 TWO DEAD BONUSES WERE REMOVED HERE ON 2026-08-20. `pedalBonus` keyed on
-    //    `pedal_dist` and `powerBonus` on `power_chords`; NEITHER ID IS IN THE
-    //    SKILL TREE and neither has been for a long time, so both were reliably
-    //    zero and their log lines could never print. They also derived an
-    //    `ampTier` from `amp_*` unlocks, which is the thing this session deleted.
-    //    Removed rather than ported: a bonus nothing can grant is not a rule.
-
-    // 🎸 Harmony → combat: Drive from driveStack, Sustain from sustainStack
-    // (falls back to the static spirit stat until a stack has been played).
-    const atkChord = (nsA.driveStack?.length) ? spiritChord(attacker.id, nsA.driveStack) : null;
-    const defChord = (nsD.sustainStack?.length) ? spiritChord(targetId, nsD.sustainStack) : null;
-    const atkChordDrive   = atkChord ? atkChord.drive   : (attacker.drive ?? 6);
-    let   defChordSustain = defChord ? defChord.sustain : (defender.sustain ?? 5);
-    // 💥 SMASH EXPOSURE — a Smashed rival is wide open: this blow ignores their Sustain, then clears.
-    if (nsD.smashExposed) { defChordSustain = 0; setNoteField(targetId, { smashExposed: false }); addLog(`💥 ${defender.name} is Exposed — the hit lands clean!`); }
-    if (atkChord) addLog(`🎸 ${attacker.name}'s chord: ${atkChord.name} (⚔️${atkChord.drive})${defChord ? ` vs ${defender.name}'s ${defChord.name} (🛡️${defChord.sustain})` : ''}`);
-    // 🛡️ Chord fray moved POST-ROLL (Stance rework) — see after the verdict below.
-    // 🔊 Sonic attack spends 1 note from driveStack hit-or-miss.
-    // Defender loses 1 from sustainStack on hit (handled by fray).
-    const sonicSpendN     = 1;  // always 1 in the new system
-    const sonicChordLeft  = (nsA.driveStack ?? []).slice(sonicSpendN);
-    const sonicChordSpent = (nsA.driveStack ?? []).slice(0, sonicSpendN);
-    if (sonicChordSpent.length) {
-      setNoteField(attacker.id, { driveStack: sonicChordLeft });
-      // 🎵 The note leaves the Spirit — show it tearing off the standee.
-      showSpentNotes(attacker.id, sonicChordSpent, 'drive');
-      addLog(`🎸 ${attacker.name} projects ${sonicChordSpent.join('')} from the drive stack — ${sonicChordLeft.length ? spiritChord(attacker.id, sonicChordLeft).name : 'drive exhausted (base stats until committed)'}.`);
-    }
-
-    // 🔊 Same treatment as the Thrash path: the dial SETS the total below.
-    const cranked  = !!nsA.atEleven;
-    const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0)
-                   + skillMods.pyroBonus;
-    // ⚖️ Same stacked-bonus cap as Thrash (balance audit, 2026-07-16).
-    const rawAtkBonus = (nsA.tempDrive ?? 0) + (nsA.moshDrive ?? 0);
-    const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
-    if (rawAtkBonus > atkBonus) addLog(`⚖️ The rig can only take so much — attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
-    // 🔊 GOES TO 11 — the SET. It overwrites the finished total, so it neither
-    // participates in the tower nor needs an exemption from its cap, and it is a
-    // CEILING as much as a floor: if the honest number was already louder, this
-    // is where he gets turned down.
-    const atkStat  = cranked ? ELEVEN_DRIVE : atkBase + atkBonus;
-    const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
-    const defBonus = (nsD.tempSustain ?? 0);
-    const defStat  = defBase + defBonus;
-    // ⚠️ THE LIVE MIRROR, NOT THE RENDER SNAPSHOT. `posing` up top is a view of
-    // the last render; a rival shoved off the Limelight earlier in this same tick
-    // would still read as posing here, and a posing defender rolls NO defence
-    // die — so the stale read is a free clean hit on somebody who has their guard
-    // back up. It was React state before §6.6.8 and carried the same hazard with
-    // no way to fix it.
-    const defenderPosing = engineRef.current.limelight.posing[targetId];
-
-    // Every Spirit is wired (Main Amp) — "plugged in" universally.
-    const defHex = HEX_BY_NUM[defender.num];
-
-    // Is the target at range (not directly adjacent)?
-    const atkHex    = HEX_BY_NUM[attacker.num];
-    const isAtRange = atkHex && defHex
-      ? axialDist(atkHex.q, atkHex.r, defHex.q, defHex.r) > 1
-      : false;
-
-    // Retaliation: both wired, so only blocked when defender is out of their own
-    // rig range (baseline 1d6 can't project a counter-beam). Check defender's rig.
-    const defRig = defRigLive;
-    const retaliationBlocked = isAtRange && defRig.pool.length <= 1;
-
-    // 🛡️ DEFENCE DIE — inside their own rig radius the rival braces against the
-    // beam with their amp behind them (d6). Outside it there's no rig to answer
-    // with, so they scramble a bare d4. Same rule that just blocked the riff-off.
-    const defOutOfRig = !defRig.inRange;
-    const defDieSonic = defOutOfRig ? SONIC_DEF_DIE_OUT_OF_RIG : SONIC_DEF_DIE;
-    if (defOutOfRig) {
-      addLog(`📡🛡️ ${defender.name} is outside their own amp range — no rig to brace with. They defend on a d${SONIC_DEF_DIE_OUT_OF_RIG} instead of a d${SONIC_DEF_DIE}.`);
-    }
-
-    // Roll — attacker's pool from sonicRig (computed at render).
-    let   dicePool    = [...actingRig.pool];
-    // ⚡ CHARGE ZONE charges — attacks only. Ceiling grows EVERY die in the pool
-    // one size (d6→d8, d8→d10, capped d12); floor clamps every die's result to
-    // at least 1+CHARGE_FLOOR_BONUS. The dormant dieFloorBoost (octave
-    // resolution / Spinal Tap) wires in too — strongest floor wins, no stacking.
-    const chargeFloorA = (nsA.chargeFloorTurns ?? 0) > 0;
-    const chargeCeilA  = (nsA.chargeCeilTurns  ?? 0) > 0;
-    if (chargeCeilA) dicePool = dicePool.map(s => Math.min(12, s + 2));
-    const atkFloor    = Math.max(chargeFloorA ? CHARGE_FLOOR_BONUS : 0, nsA.dieFloorBoost ?? 0);
-    if (chargeFloorA) addLog(`⚡ ${attacker.name}'s floor charge crackles — no die reads below ${1 + CHARGE_FLOOR_BONUS}!`);
-    if (chargeCeilA)  addLog(`⚡ ${attacker.name}'s ceiling charge surges — every die in the pool grows a size!`);
-    const diceLabel   = rigPoolLabel(dicePool);
-    const dieSides    = Math.max(...dicePool); // fallback for single-die animation paths
-    // 💻 Code Injection gets its say between the roll and the verdict read.
-    const rollState = maybeCodeInjection(dispatch(attackRolled('sonic', attacker.id, targetId, {
-      atkStat, defStat,
-      posing: defenderPosing,
-      halveDef: skillMods.halveDef,
-      dicePool, atkFloor,
-      defDie: defDieSonic,   // d6 in rig range, d4 when the rival is stranded
-    })), attacker.id, targetId);
-    const {
-      atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin, diceVals, keptIdx,
-    } = rollState.battle;
-    let damage = rollState.battle.damage;
-    recordBattleTotals(attacker.id, targetId, atkTotal, defTotal, attackerWon); // 📊 scoreboard
-    // (Hydra log removed — Ronin rework)
-
-    // 🛡️ Fray on the verdict — the defender's chord takes real damage only when
-    // the beam lands (margin-scaled, +1 from the rear wedge; see applyChordFray).
-    // A beam to the back of the head counts: the rear wedge is about which way
-    // the DEFENDER is braced, not how far away the attacker was standing.
-    if (attackerWon) applyChordFray(targetId, margin, isHitFromBehind(attacker, defender));
-
-    if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on dropped instrument — Drive -1!`);
-    addLog(`🔊 ${attacker.name} launches SONIC ATTACK at ${defender.name}! (${diceLabel} keep best vs d${defDieSonic}${actingRig.inRange ? '' : ' · baseline'}${retaliationBlocked ? ' — TARGET OUT OF RIG RANGE, CANNOT RETALIATE!' : ''})`);
-    // ⚡ A battle ensued — Charge Zone charges burn off for BOTH combatants.
-    burnChargesAfterBattle([attacker.id, targetId], 'the Sonic battle spent it');
-    // (☀️🔥 SUNBEAM's scorched-earth fire trail was REMOVED in the rework. Sunbeam
-    // no longer touches the board at all — it blinds the DEFENDER, and it resolves
-    // in closeBattleOverlay on a connecting hit, alongside Slime. Don't re-add a
-    // flamingHexesSet call here.)
-    // ⚠️ READS `nsA.unlockedSkills` DIRECTLY. It used to read a local
-    // `atkSkills`, which "clearing old clutter" (52e16a2) deleted along with the
-    // amp-tier bonuses above it — and missed this one surviving use. The line then
-    // sat here throwing a ReferenceError every time INTERGALACTIC 0 fired a Sonic
-    // Attack, and only him, because `attacker.id` short-circuits for everyone
-    // else. Nothing caught it: esbuild reads a free name as a global. Found by
-    // `test:client` 2026-08-26.
-    const hasSunbeam = attacker.id === 'intergalactic_0' && (nsA.unlockedSkills ?? []).includes('sunbeam');
-
-    playBattleMusic(battleSong, 0.7);
-    dieSettledRef.current = { atk: false, def: false }; // fresh battle, fresh dice
-    setBattleState({
-      phase: 'enter_attacker',
-      attackerId: acting.id, defenderId: targetId,
-      atkStat, defStat, atkBase, atkBonus, defBase, defBonus,
-      atkRoll, defRoll, atkTotal, defTotal,
-      attackerWon, margin, damage,
-      posing: defenderPosing,
-      pickPos: 0,
-      spinFaceAtk: 1, spinFaceDef: 1,
-      atkDieReady: false, defDieReady: false,
-      sonicAttack: true,
-      ampCount: rigTiers(nsA).pool,   // 🎛️ the workout tier, not a skill count
-      dieSides,                  // = max(dicePool); fallback for single-die anim paths
-      defDieSides: defDieSonic,  // Sonic: d6 in rig range, d4 stranded outside it
-      defOutOfRig,               // 📡 drives the "no rig" tell on the battle overlay
-      dicePool,                  // 🔊 keep-highest pool: die sizes, e.g. [6,6,8]
-      diceVals,                  // rolled values (length === dicePool.length)
-      diceSpin: diceVals,        // animated faces while spinning (seeded to the result)
-      keptIdx,                   // index of the kept (max) die
-      diceLabel,                 // "2d6" / "2d6+d8" / "3d8"
-      // (hydra flag removed — Ronin rework)
-      sunbeam: hasSunbeam,       // ☀️ purely cosmetic golden over-lit beam — the tell that a Sunbeam owner is firing. The BLIND itself resolves in closeBattleOverlay.
-      retaliationBlocked,
-      skillMods,
-      sonicChordNotes, // 🔊 chord notes saved for playback at beam fire
+  // One clock for the whole live-arena performance. Dice settle before amps
+  // fire. Cosmetic timers never draw RNG or apply combat consequences twice.
+  function startSonicPresentation(verdict, remoteView = false) {
+    sonicAudioRef.current?.();sonicAudioRef.current=null;
+    battleTimersRef.current.forEach(clearTimeout);
+    battleTimersRef.current=[];
+    clearSonicRollPrompt();
+    const sonicId = String(Date.now()) + ':' + verdict.attackerId;
+    // ⭐ THE ROLL IS THE PLAYER'S TO THROW — and it is PRESENTATION ONLY.
+    // The engine already rolled: `verdict` carries every face, hit and the
+    // shield value before this function exists (§12.0 — Sonic reveals its dice
+    // before firing). Pressing ROLL therefore decides WHEN the table sees the
+    // result, never what it is, so determinism and replay are untouched.
+    // Only the local attacker is gated. A bot's volley and a remote player's
+    // volley run the old automatic clock, so no turn ever waits on a click that
+    // has to happen on somebody else's screen.
+    const attacker=engineRef.current?.spirits?.find(s=>s.id===verdict.attackerId);
+    const link=netRef.current;
+    const mine=!remoteView&&!isBot(attacker)&&!link?.spectator
+      &&(!link||link.mySpiritId===verdict.attackerId);
+    const scene={...verdict,sonicId,sonicAttack:true,remoteView,phase:mine?'sonic_armed':'sonic_ready',
+      sonicFame:verdict.hitCount,knockback:verdict.hitCount};
+    battleStateRef.current=scene;setBattleState(scene);setDiceDisplay(null);
+    setBoard3D(true);
+    const T=(fn,ms)=>{const timer=setTimeout(()=>{
+      if(battleStateRef.current?.sonicId===sonicId)fn();
+    },ms);battleTimersRef.current.push(timer);};
+    const phase=value=>{
+      const current=battleStateRef.current;if(current?.sonicId!==sonicId)return;
+      const next={...current,phase:value};battleStateRef.current=next;setBattleState(next);
+    };
+    // Everything from the tumble onward is one clock, shared by both paths, so
+    // an armed volley and an automatic volley resolve through identical timing.
+    const runFromRoll=offset=>scheduleSonicVolley({
+      count:verdict.diceVals.length,schedule:T,phase,offset,
+      charge:()=>{
+        try {
+          const ctx=getAudioCtx();
+          sonicAudioRef.current=playSonicBeamAudio(ctx,getAudioBuses(ctx).master,{
+            notes:verdict.sonicChordNotes,defence:verdict.sustainChordNotes,shieldValue:verdict.shieldValue,
+            dice:verdict.diceVals.map((value,i)=>({value,sides:verdict.dicePool[i],passed:verdict.diceHits[i]})),
+          });
+        } catch { /* the presentation completes even without audio */ }
+      },
+      launch:()=>{
+        const current={...battleStateRef.current,sonicStartedAt:performance.now()};
+        battleStateRef.current=current;setBattleState(current);
+        setDeckThump({id:verdict.attackerId,key:Date.now()});
+        if(!remoteView)resolveSonicSequence(current);
+      },
+      close:()=>closeBattleOverlay(),
     });
-    setDiceDisplay({ atk: null, def: null, rolling: null });
+    if(mine) {
+      sonicRollRef.current=()=>{
+        if(battleStateRef.current?.sonicId!==sonicId)return;
+        phase('sonic_roll');runFromRoll(0);
+      };
+      setSonicRollPrompt({sonicId,dice:verdict.diceVals.length,shield:verdict.shieldValue,
+        defenderName:engineRef.current?.spirits?.find(s=>s.id===verdict.defenderId)?.name??'the Rival',
+        color:attacker?.color??'#66dcff'});
+      return;
+    }
+    T(()=>phase('sonic_roll'),700);
+    runFromRoll(700);
+  }
 
-    // ⏭ Auto-skip compresses the pre-die cinematic ~10× (slides still play in
-    // order; only the die-click stays full-speed).
-    const skipCine = skipBattleIntrosRef.current;
-    battleTimersRef.current = [];
-    const T = (fn, ms) => { const id = gt(fn, skipCine ? ms * 0.1 : ms); battleTimersRef.current.push(id); return id; };
-    T(() => setBattleState(p => p ? { ...p, phase: 'flash_drive' }                                         : p), 700);
-    T(() => setBattleState(p => p ? { ...p, phase: 'pick_drive_slide', pickPos: -atkStat }                 : p), 1400);
-    T(() => setBattleState(p => p ? { ...p, phase: 'enter_defender' }                                      : p), 2800);
-    T(() => setBattleState(p => p ? { ...p, phase: 'flash_sustain' }                                       : p), 3500);
-    T(() => setBattleState(p => p ? { ...p, phase: 'pick_sustain_slide', pickPos: -atkStat + defStat }      : p), 4200);
-    // ⚡ PERF: NeonDie self-animates its spin faces (incl. every pool die) —
-    // no more 80 ms whole-app re-render interval during the spin.
-    T(() => setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p), 5600);
+  function initiateSonicAttack(targetId) {
+    const live=engineRef.current;
+    const attacker=live.spirits.find(s=>s.id===live.acting);
+    const defender=live.spirits.find(s=>s.id===targetId&&!s.knockedOut);
+    if(!canAct||!attacker||!defender||battleStateRef.current||live.turn.actionTokenUsed)return;
+    if(moveStepsLeft<2||!getSonicBeam(attacker).has(defender.num))return;
+    const nsA=live.noteStates[attacker.id]??{};
+    const rig=rigFor(attacker,nsA,live);
+    if(!rig.inRange||!rig.pool.length){addLog('🔊 Build Drive and use a working amp before firing.');return;}
+    if(attacker.id==='cosmic_ronin')dismissShadowIllusion('the Ronin attacked');
+    dispatch(beatsSpent(2,true));setAction(null);
+    if(!live.limelight.posing[targetId]&&getSonicBeam(defender).has(attacker.num)&&rigForSpirit(defender).inRange) {
+      burnChargesAfterBattle([attacker.id,targetId],'the riff-off spent it');
+      startRiffOff(attacker,defender);return;
+    }
+    // Derive from the full charge before paying it. Both client and headless
+    // attacks use this payload, so the displayed dice are the dice that count.
+    const params=attackParams(live,attacker.id,targetId,'sonic');
+    const {_derived,...rollOptions}=params;
+    if(_derived.consumedSmashExposed)setNoteField(targetId,{smashExposed:false});
+    setNoteField(attacker.id,{driveStack:[]});
+    const rolled=maybeCodeInjection(dispatch(attackRolled('sonic',attacker.id,targetId,rollOptions)),attacker.id,targetId).battle;
+    burnChargesAfterBattle([attacker.id,targetId],'the Sonic volley spent it');
+    addLog('🔊 '+attacker.name+' projects '+rigPoolLabel(rolled.dicePool)+' at '+defender.name+' — each die must beat Sustain '+rolled.shieldValue+'.');
+    startSonicPresentation(rolled);
   }
 
   // ── (ACOUSTIC DUEL — REMOVED) ───────────────────────────────────────────────
@@ -9352,8 +9372,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
    * @param {Generator} gen
    * @param {object} [opts] { hooks, onDone }
    */
-  function runBattleFlowPaced(gen, { hooks = {}, onDone } = {}) {
+  function runBattleFlowPaced(gen, { hooks = {}, onDone, waitForFx, isCurrent=()=>true } = {}) {
     const step = (input) => {
+      if(!isCurrent()){gen.return?.();return;}
       let res;
       try {
         res = gen.next(input);
@@ -9405,8 +9426,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
       // Every step resumes from the LIVE engine state, never from a closure —
       // dispatch() updates engineRef synchronously, so this is always current.
-      const ms = (key && BEAT_MS[key]) || 0;
-      if (ms > 0) gt(() => step(engineRef.current), ms);
+      const syncedMs=waitForFx?.(e);
+      const ms = syncedMs ?? ((key && BEAT_MS[key]) || 0);
+      // Sonic contacts share the audio/render wall clock even in fast-bot mode.
+      if (ms > 0) {
+        if(syncedMs!=null)battleTimersRef.current.push(setTimeout(()=>step(engineRef.current),ms));
+        else gt(() => step(engineRef.current), ms);
+      }
       else step(engineRef.current);
     };
     step(engineRef.current);
@@ -9415,6 +9441,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   /** Presentation-only effects. The harness drops every one of these. */
   function playBattleFlowFx(e) {
     switch (e.name) {
+      case 'ringOut': {
+        const sp=engineRef.current.spirits.find(s=>s.id===e.spiritId),h=HEX_BY_NUM[e.fromHexNum];
+        if(sp&&h) {
+          setSlideOffAnimations(prev=>({...prev,[sp.id]:{id:sp.id,cx:h.px*SCALE,cy:h.py*SCALE,
+            dx:Math.cos(e.angle)*HEX_SIZE*SCALE*14,dy:Math.sin(e.angle)*HEX_SIZE*SCALE*14,
+            color:sp.color,imageSrc:sp.imageSrc,corner:sp.corner}}));
+          setTimeout(()=>setSlideOffAnimations(prev=>{const next={...prev};delete next[sp.id];return next;}),4000);
+        }
+        break;
+      }
       case 'spentNotes':   showSpentNotes(e.spiritId, e.notes, e.stack); break;
       case 'rumble':       triggerRumble(e.spiritId); break;
       case 'damageNumber': triggerDamageNumber(e.hexNum, e.text, e.color); break;
@@ -9473,14 +9509,48 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // Slime, Sunbeam, buff cleanup. This function's whole job is to hand that
   // sequence the client's pacing and the client's hooks. The rules moved; the
   // theatre stayed. Anything rule-shaped added below belongs in the engine.
+  function resolveSonicSequence(scene) {
+    const initialTarget=engineRef.current.spirits.find(s=>s.id===scene.defenderId);
+    const active={...scene,sonicResolving:true};battleStateRef.current=active;setBattleState(active);
+    runBattleFlowPaced(battleConsequences({state:engineRef.current,battle:scene,chordOf:spiritChord,
+      amps,fameThisTurn:fameThisTurnRef.current}),{
+      hooks:battleFlowHooks(),isCurrent:()=>battleStateRef.current?.sonicId===scene.sonicId,
+      waitForFx:e=>e.kind==='fx'&&e.name==='sonicContact'
+        ? Math.max(0,scene.sonicStartedAt+(sonicContactTime(e.shotIndex)+SONIC_SEQUENCE.impact)*1000-performance.now())
+        : e.kind==='fx'&&e.name==='rumble'?0:undefined,
+      onDone:out=>{
+        if(out?.fameThisTurn)fameThisTurnRef.current=out.fameThisTurn;
+        const current=battleStateRef.current;if(current?.sonicId!==scene.sonicId)return;
+        const target=engineRef.current.spirits.find(s=>s.id===scene.defenderId);
+        const interrupted=out?.sonicInterrupted||!target||target.knockedOut
+          || (target.knockdownCount??0)!==(initialTarget?.knockdownCount??0);
+        if(interrupted){sonicAudioRef.current?.();sonicAudioRef.current=null;}
+        const next={...current,sonicResolved:true,sonicInterrupted:interrupted};
+        battleStateRef.current=next;setBattleState(next);
+        if(current.sonicCloseRequested){battleStateRef.current=null;setBattleState(null);}
+      },
+    });
+  }
+
   function closeBattleOverlay() {
     const s = battleStateRef.current;
-    if (!s || s.phase !== 'result') { setBattleState(null); setDiceDisplay(null); return; }
+    clearSonicRollPrompt();
+    if(s?.phase==='sonic_aftermath')return;
+    if(s?.sonicResolving){
+      if(!s.sonicResolved){battleStateRef.current={...s,sonicCloseRequested:true};return;}
+      battleStateRef.current=null;setBattleState(null);setDiceDisplay(null);return;
+    }
+    if (!s || s.phase !== 'result') { sonicAudioRef.current?.();battleStateRef.current=null;setBattleState(null);setDiceDisplay(null);return; }
 
+    if(s.sonicAttack&&s.diceHits&&s.remoteView) {
+      battleStateRef.current=null;setBattleState(null);setDiceDisplay(null);return;
+    }
+    const sonicAftermath=s.sonicAttack&&s.diceHits;
+    battleStateRef.current=sonicAftermath?{...s,phase:'sonic_aftermath'}:null;
     // The overlay comes down NOW, not when the sequence finishes: knockback
     // slides and knockdowns play out on the board behind it, which is what the
     // old nested-setTimeout version did too.
-    setBattleState(null);
+    setBattleState(battleStateRef.current);
     setDiceDisplay(null);
 
     runBattleFlowPaced(
@@ -9498,6 +9568,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         hooks: battleFlowHooks(),
         onDone: (out) => {
           if (out?.fameThisTurn) fameThisTurnRef.current = out.fameThisTurn;
+          if(sonicAftermath&&battleStateRef.current?.sonicId===s.sonicId) {
+            battleStateRef.current=null;setBattleState(null);
+          }
         },
       },
     );
@@ -11432,10 +11505,29 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
      📌 The guard is not an optimisation, it is the old gate preserved: this used
      to sit inside `turnStep === 'melody' || 'move_act'`, so it must not evaluate
      during step 1. */
+  // 🍯 The pool's column count is MEASURED, not assumed: the arena's column is
+  // 238px and the 2D board's is far wider, and how many chips fit across is the
+  // one number the honeycomb's whole shape turns on.
+  // ⚠️ AN UNCONDITIONAL HOOK, ABOVE THE CONDITIONAL THAT USES IT. `stockGrid` is
+  // gated on the step; the hook must not be, or the hook order changes with the
+  // turn and React tears the component down.
+  const [poolNestRef, poolCols] = usePoolColumns(NOTE_HEX.size);
+
   const stockGrid = (acting && (turnStep === 'melody' || turnStep === 'move_act'))
     ? (() => {
                       return (
-                    <div style={{display:"flex",flexWrap:"wrap",gap:2,marginBottom:5}}>
+                    /* 🍯 THE POOL IS A HONEYCOMB, 2026-09-12 — absolutely
+                       positioned seats instead of a wrapping flex row, so the
+                       chips interlock on their flat edges instead of squaring off
+                       against each other. See `poolSeatPos` in
+                       NoteCommitOverlay.jsx for the geometry and why the numbers
+                       are the chord stack's.
+                       ⚠️ THE NEST RESERVES ITS OWN HEIGHT. Absolute seats
+                       contribute none, so without `poolNestHeight` the Commit row
+                       slides up underneath the notes. */
+                    <div ref={poolNestRef}
+                      style={{position:"relative", width:"100%", marginBottom:5,
+                        height: poolNestHeight(noteStock.length, poolCols, NOTE_HEX.size)}}>
                       {noteStock.map((note,idx)=>{
                         const notePC         = pitchIndex(note);
                         const isTritone      = notePC === pitchIndex(tritoneNote);
@@ -11539,7 +11631,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                  : mixerReady ? "🎚️ Mixer — tap to layer this note again"
                                  : lockTip || undefined}
                             style={{
-                              width:NOTE_HEX.size,height:NOTE_HEX.size,flexShrink:0,
+                              ...poolSeatPos(idx, poolCols, NOTE_HEX.size),
                               display:"flex",alignItems:"center",justifyContent:"center",
                               cursor:(used&&!mixerReady)||isStaggered?"default":"pointer",
                               opacity: mixerReady ? 0.55 : isStaggered ? 0.3 : 1,
@@ -11748,6 +11840,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 title: beginnerEnabled ? 'Beginner tips are ON — click to turn off' : 'Beginner tips are OFF — click to turn on (resets seen tips)',
                 onClick:() => { setBeginnerEnabled(b => !b); if (!beginnerEnabled) setBeginnerTipsSeen(new Set()); } },
               { kind:'sep' },
+              /* 🎚️ VOLUME — three faders, flat in the menu rather than folded
+                 behind a 🔊 Volume ▸ row (Alex, 2026-09-14). They are the only
+                 rows here you adjust BY LISTENING, and a submenu puts a click
+                 between every nudge and the sound you are judging it against. */
+              ...MIX_CHANNELS.map(ch => ({
+                kind:'fader', icon:ch.icon, label:ch.label, color:ch.color,
+                title:`${ch.label} volume — ${ch.title} Drag to 0 to silence it.`,
+                value: mix[ch.id],
+                onChange: v => setLevel(ch.id, v),
+              })),
+              { kind:'sep' },
               { kind:'action', icon:'↩', label:'Return to Lobby', color:'#ff8877',
                 title:'Leave the match and go back to the Lobby',
                 onClick: onReturnToLobby },
@@ -11866,6 +11969,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           drive: spiritChord(acting.id, actingDriveStack).drive,
           sustain: spiritChord(acting.id, actingSustainStack).sustain,
           noteCount: canAct ? noteStock.length - usedStockIdx.length : null,
+          // 🔑 THE ROOT, FOR THE POCKET'S BADGE. ⚠️ `rootIsNext` IS THE SAME TEST
+          // THE KEY PLATE MAKES, and it is not optional: `melodyCommit` writes the
+          // track's last note into `rootNote`, so from the commit onward this is
+          // next round's letter. Without the flag the card would spend all of step
+          // 3 printing a root the turn was never played against, with nothing
+          // saying so. See `RootBadge` in MatchSurface.jsx.
+          root: rootNote,
+          rootIsNext: turnStep === 'move_act' && hasConfirmed,
           action,
           driveRef: immersiveDriveRef,
           sustainRef: immersiveSustainRef,
@@ -11911,7 +12022,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         SKILL_BY_ID={SKILL_BY_ID}
         battleMeterImg={battleMeterImg}
         battlePickImg={battlePickImg}
-        battleState={battleState}
+        battleState={battleState?.diceHits && !battleState.riffOff ? null : battleState}
         closeBattleOverlay={closeBattleOverlay}
         closeRiffOff={closeRiffOff}
         enterRiffAnte={enterRiffAnte}
@@ -12621,11 +12732,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               last live copy of an anchor is how a tip ends up pointing at nothing.
               📌 The heading now renders ONLY in move_act, so the rail's own step
               title appears exactly when the rail does. ── */}
-          {turnStep === 'move_act' && (
-            <div className="stitle" style={{marginTop:4}}>
-              {!canAct ? 'Actions — rival on stage' : 'Step 3 — Move & Act'}
-            </div>
-          )}
+          {/* 🪦 THE INLINE 'Step 3 — Move & Act' HEADING CAME OUT, 2026-09-12.
+              The panel is a Bracket now and its nameplate says the same words one
+              line higher — the fourth time this file has retired a duplicate
+              title for that reason (see the chord-stack, key-plate and step-1
+              notes). ⚠️ THE RIVAL STATE DID NOT DIE WITH IT: 'Actions — rival on
+              stage' is the plate's other face, because a dead-looking rail with
+              no explanation is how the turnStep drift got reported. */}
           {/* (bonus revoice UI removed — stack commit budget replaces it) */}
           {/* ── ⑤ THE SPLIT, Alex 2026-08-29 ────────────────────────────────
               LEFT is the move set EVERY Spirit has; RIGHT is what THIS one owns.
@@ -12638,8 +12751,27 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               🌀 Blaster of Ra stays on the LEFT even though it is an Intergalactic
               unlock: it does not add a button, it takes the Smash's slot, and the
               slot is universal. See ActionRail.jsx for the full argument. ── */}
+          {/* ⌐ THE STEP-3 PANEL JOINED THE BRACKET SYSTEM, 2026-09-12, when the
+              dock moved out of the arena floor and into the HUD column under
+              SOUND. It is the third frame in that column now, so it wears what
+              SPIRIT, SOUND and CHORD STACK wear.
+              ⚠️ THE BRACKET WRAPS THE RAIL ONLY — not the '.step-active' div it
+              sits in. That div also holds the ✨ LIMELIGHT board, which is NOT
+              step-gated, so framing the whole wrapper would draw an empty green
+              frame around a pose table during steps 1 and 2. Wrapping 670 lines
+              is also the exact shape of the 2026-08-26 Shamisen mistake
+              (SEQUENCING §5): this is a pure wrap at two anchors and reaches no
+              state setter.
+              ⚠️ IT IS UNSCOPED, like the step-1 drawer's — the 2D board gets the
+              frame too. That is deliberate and matches `MatchSurface.jsx`'s note
+              on the chord drawer; if the flat board should keep the bare rail,
+              this is the one prop to gate, not the CSS. */}
           {turnStep === 'move_act' && (
-          <ActionRail immersive={board3D}
+          <Bracket className={canAct ? 'step-active' : ''} color="#44ff88"
+            plate={!canAct ? 'RIVAL ON STAGE' : 'MOVE & ACT'}
+            style={{'--step-glow-color':'#44ff88', marginBottom:4}}>
+          <div style={{padding:'10px 11px 9px'}}>
+          <ActionRail immersive={board3D} stack={board3D}
             universal={<>
             <RailBtn className={`btn${action==="move"?" on":""}`}
               onClick={() => {
@@ -12802,7 +12934,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const shadowSeen = shadowInRange('beam');
               const beamCount  = targets.length + (shadowSeen ? 1 : 0);
               const grayed   = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
-              const canSonic = !grayed && !outOfRange && beamCount > 0;
+              const canSonic = !grayed && !outOfRange && poolNow.length > 0 && beamCount > 0;
               return (
                 <div style={{position:'relative',display:'inline-block'}}
                   onMouseEnter={() => setHoverPreview('sonic')}
@@ -12816,15 +12948,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     title={grayed
                       ? "Sonic Attack (2 AP) — grayed out: needs a confirmed turn, your Action Token, and 2 AP."
                       : outOfRange
-                      ? "📡 Out of your amp's range — the Sonic is offline out here. Hover to see your rig's radius ring; move back inside it, or stack Drive: your rig reaches one hex further for every note on the stack."
+                      ? "The amp is blown. Recover it before firing Sonic."
                       : canSonic
-                      ? `Sonic Attack (2 AP) — the ranged beam. ${diceLabel}, keep the highest. If your target is facing back down the beam AND inside their own amp range, it escalates into a RIFF-OFF; if they're stranded outside theirs, no duel — they defend on a d${SONIC_DEF_DIE_OUT_OF_RIG}.`
-                      : "Sonic Attack (2 AP) — no rival in your beam. Hover to see the beam and your rig's range ring."}
+                      ? `Sonic Attack (2 AP) — the forward volley. ${diceLabel}; each die must beat Sustain. Each hit pushes one hex. Spends your whole Drive charge. Facing rivals with working amps trigger a RIFF-OFF.`
+                      : "Sonic Attack (2 AP) — build Drive and aim at a rival within three hexes directly ahead."}
                     onClick={() => {
                       if (action === 'sonic') { setAction(null); }
                       else if (canSonic) {
                         setAction('sonic');
-                        addLog(`🔊 SONIC ATTACK — click a target in your beam! (${diceLabel} keep best)`);
+                        addLog(`🔊 SONIC ATTACK — click a target in your beam! (${diceLabel}; beat their Sustain)`);
                       }
                     }}>
                     🔊 Sonic{outOfRange ? ' 📡' : beamCount > 0 ? ` (${beamCount})` : ''} {diceLabel}
@@ -13252,6 +13384,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             })()}
             </>}
           />
+          </div>
+          </Bracket>
           )}
           {/* ✨ LIMELIGHT STANDINGS — pose rounds survived, and what the NEXT one
               pays. This is a threat board, not a progress bar: the old "x/3"
@@ -13622,11 +13756,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       {/* ⌐ THE STEP-1 DRAWER JOINED THE BRACKET SYSTEM, 2026-09-12.
                           Ported from `.scratch/stack-commit-drawer.html` at the
                           defaults Alex took. 🎯 IT IS THE LAST 2D PANEL IN THE
-                          ARENA, and it mattered more than it looked: the board's
-                          two ChordStackPanels are `visibility:hidden` in 3D (see
-                          NoteCommitOverlay), so THIS is the Drive/Sustain
-                          interface during step 1 and every stack commit in the
-                          game goes through it.
+                          ARENA. 📌 IT USED TO BE THE ONLY STACK INTERFACE IN
+                          3D, because the board's two ChordStackPanels were
+                          `visibility:hidden` there. They are drawn in the arena
+                          again as of 2026-09-12b (see NoteCommitOverlay), so
+                          this drawer is now the place you COMMIT from and those
+                          panels are what you READ — which is the same division
+                          of labour the 2D board has always had.
                           ⚠️ EVERYTHING BELOW IS FRAME. Not one line reaches
                           `setStackCommitDest`, `clickNoteStock` or `setTurnStep`
                           — the same line `NoteCommitOverlay.jsx`'s header holds,
@@ -13658,7 +13794,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         {['drive','sustain'].map(side => {
                           const isD    = side === 'drive';
                           const stack  = isD ? dStack : sStack;
-                          const ch     = isD ? dCh : sCh;
                           const col    = isD ? DRIVE_C : SUSTAIN_C;
                           const cap    = isD ? actingStackCapDrive : actingStackCapSustain;
                           const dis    = (isD ? dFull : sFull) || budgetLeft <= 0;
@@ -13679,32 +13814,31 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                   disabled={dis}
                                   aria-pressed={on}
                                   onClick={()=>setStackCommitDest(side)}
-                                  style={{color: on ? col : undefined,
+                                  style={{flex:1,
+                                    color: on ? col : undefined,
                                     background: on ? col : undefined,
                                     ...(engineState.turn.count <= 8 && !dis
                                       ? {'--glow-color':col, animation:'stack-btn-glow 1.5s ease-in-out infinite'}
                                       : {})}}>
                                   {isD ? 'Drive' : 'Sustain'}
                                 </button>
-                                {/* 🎵 REAL NoteHexes, not the rounded <span> pills
-                                    this row used to draw. Every other note in the
-                                    game has been a NoteHex since 2026-08-28 and
-                                    this row was the last holdout. */}
-                                <span style={{display:"flex",gap:2,flexWrap:"wrap",flex:1,minWidth:0}}>
-                                  {stack.map((n,i)=>(
-                                    <NoteHex key={`${side}${i}`} size={STACK_DRAWER_CHIP}
-                                      hue={col} letter={n} />
-                                  ))}
-                                </span>
-                                {/* 🎛️ THE SAME `ArenaDial` THE POCKET AND THE BOARD
-                                    DRAW, replacing a `⚔️5` / `🛡️3` emoji readout.
-                                    One component, every mount — SEQUENCING §12-board
-                                    paid for that lesson with the amp knob. */}
-                                <span style={{flexShrink:0,color:col,lineHeight:0}}>
-                                  <ArenaDial stat={`drawer-${side}`}
-                                    value={isD ? ch.drive : ch.sustain}
-                                    size={STACK_DRAWER_DIAL} />
-                                </span>
+                                {/* 🪦 THE COMMITTED NOTES AND THE GAUGE CAME OUT HERE,
+                                    2026-09-12c. This row drew the stack as NoteHexes
+                                    and closed with an `ArenaDial` — and once the
+                                    board's own stack panels came back in 3D, the same
+                                    Drive chord was being reported in THREE places at
+                                    once: here, on the board panel, and on the pocket's
+                                    SOUND dial. Alex: *"they now appear in 3 different
+                                    places… let's remove them from the Chord Stack
+                                    window."*
+                                    🎯 SO THE ROW IS A DESTINATION SWITCH AND NOTHING
+                                    ELSE. What you are BUILDING is on the board panel;
+                                    what you HAVE is on the pocket's dial; this only
+                                    answers "which stack does the next note go to".
+                                    📌 The `n / cap` on the frame line stays — it is a
+                                    FILL COUNT, not a copy of the stack, and it is the
+                                    one thing the board panel cannot say from across
+                                    the arena while you are looking down here. */}
                               </div>
                             </Bracket>
                           );
@@ -13803,7 +13937,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                             `text-transform`, which does not touch `textContent` —
                             so do not "tidy" these strings to match what is drawn. */}
                         <button type="button" className="stack-chip is-go"
-                          onClick={()=>{ if (!canAct) return; setStackCommitDest(null); setTurnStep('melody'); setTimeout(() => showTip('melody'), 300); }}
+                          onClick={()=>{ if (!canAct) return; setStackCommitDest(null); setTurnStep('melody');
+                            setTimeout(() => showTip('melody'), 300);
+                            // 📌 20ms BEHIND `melody`, NOT INSTEAD OF IT. Both queue
+                            // and drain in fire order, so this lands as the page-turn
+                            // after the melody tip rather than racing it.
+                            if (gesturesFor(acting?.id).length) setTimeout(() => showTip('fan_phrases'), 320); }}
                           style={{width:"100%"}}>
                           {budgetLeft <= 0 ? '✓ Stacks set — Continue to Melody ->' : 'Continue to Melody ->'}
                         </button>
@@ -13866,11 +14005,29 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       onClick={useBankedNote}>▶ Use</button>
                   </div>
                 )}
-                {discordCount>0 && <div style={{fontSize:8,color:"#ff6600",marginBottom:3}}>⚡ {discordCount} Discord note{discordCount!==1?"s":""} — movement only</div>}
-                <SpiritStyleCoach spiritId={acting.id} melodyLine={melodyLine} />
-                <div style={{fontSize:7,color:"#9fb6ca",marginBottom:4}}>
-                  🎯 Finish clean on the tonic, 4th, or 5th for Db. A clean stack-root finish adds its red/blue boost.
-                </div>
+                {/* 🪦 TWO HINTS LEFT THE COLUMN HERE, 2026-09-12. The discord
+                    reminder ('⚡ N Discord note — movement only') and the whole
+                    🎤 YOUR FANS WANT panel. Both restated something Pickles
+                    already teaches — the `melody` tip's third page is the discord
+                    rule verbatim, and `fan_phrases` is the phrase rule — and both
+                    sat under the note pool on every melody step of every turn.
+                    ⚠️ THIS WAS A SPACE DECISION WITH A MEASUREMENT BEHIND IT, not
+                    a tidy-up. In the arena the step-2 column is 311px tall at
+                    720p and its content was 422px, so the ✓ Commit button — the
+                    one control the step exists to reach — sat below the fold.
+                    These two were 59px of that 111px. Alex, 2026-09-12: *"the
+                    hints are supposed to be written out and spoken by Pickles —
+                    but they take up room below the notes."*
+                    📌 `ui/SpiritStyleCoach.jsx` AND `styleCoachFor` IN
+                    `music/spiritStyle.js` ARE NOW CALLERLESS. They are left in the
+                    tree deliberately, not forgotten — see the headstone on the
+                    component. `detectSpiritStyle` is untouched and still pays. */}
+                {/* 🪦 A FIXED LINE OF PROSE STOOD HERE — "🎯 Finish clean on the
+                    tonic, 4th, or 5th for Db. A clean stack-root finish adds its
+                    red/blue boost." It was true, unchanging, and printed on every
+                    melody step of every turn. It is page three of the `fan_phrases`
+                    tip now. 📌 `harmonic_45` still carries the 4th/5th half for the
+                    player who meets those notes before Pickles gets here. */}
                 <div style={{display:"flex",gap:3}}>
                   <button className="btn" style={{flex:1,borderColor:"#44ff88",color:"#44ff88",fontSize:8}}
                     onClick={confirmNoteTrack}
@@ -14323,7 +14480,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     // one thing the outline exists to prevent.
                     glowColor={col}
                     borderColor={col}
-                    immersive={board3D && !activeTip}>
+                    // 🌌 3D NO LONGER MEANS "GONE" — it means arena width. The
+                    // '&& !activeTip' went with the hiding it was working
+                    // around: it existed so a tutorial tip could reveal a panel
+                    // the arena otherwise refused to draw, and a tip should not
+                    // now be able to snap a visible panel back to 2D's 45%.
+                    immersive={board3D}>
                     {/* 🎸 THE SEATS. ⚠️ THE INLINE TITLE AND THE ⚔️/🛡️ READOUT ARE
                         GONE ON PURPOSE, AND NOT AS A TASTE CALL — THE ROW RAN OUT
                         OF ROOM. The dial to the right of these seats is a StatKnob,
@@ -14490,6 +14652,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   title="VERB — reverb. Double-click resets."/>
               </div>
             )}
+            <SonicRollPrompt prompt={sonicRollPrompt} onRoll={rollSonicVolley} />
             {!board3D && <button className="btn" onClick={() => { handleBoardMouseUp(); resetManualZoom(); setBoard3D(true); }}
               style={{position:'absolute',right:8,bottom:8,zIndex:20}}>3D board</button>}
             <BoardViewport enabled={board3D} immersive={board3D} onDisable={() => setBoard3D(false)}

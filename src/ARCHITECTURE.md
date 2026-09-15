@@ -81,7 +81,7 @@ client-only until 2026-08-20 and did nothing at all in every bench match ever ru
 | `net/` | 522 | 🌐 The multiplayer client and the Ear Spy riff wire. |
 | `hooks/` | 144 | Six thin React state slices. ⚠️ Nearly empty by design — see `hooks/` below. |
 | `App.jsx`, `main.jsx` | 20 | Vite/React entry wiring. |
-| `standees/`, `bgm/`, `sfx/` | — | Character PNGs (normal + `_mirror`), music, sound effects. |
+| `standees/`, `music/`, `sfx/` | — | Character PNGs (normal + `_mirror`), music, sound effects. ⚠️ `music/` holds BOTH the theory modules and the `.mp3` files as of 2026-09-14; `bgm/` is gone. |
 
 📌 **156 source modules.** `ui/` being the second-largest directory is the shape of
 a healthy extraction: rendering left the monolith first, and rules are still
@@ -212,6 +212,48 @@ mirror for rendering — change the rule in `engine/systems/`, not here.
 
 ### `board/` — geometry & the map
 
+Sonic presentation, integrated 2026-09-13 from the reviewed ring workshop:
+
+Reusable 3D dice: `combatDice.js` exports `createCombatDie` and
+`COMBAT_DICE_SIDES` (d4/d6/d8/d10/d12/d20). Numbers are printed on physical faces;
+each deterministic tumble settles the supplied result toward the reader.
+Number atlases are shared by die size and reference-counted on disposal.
+`combatDiceDisplay.js` exports `createCombatDiceDisplay`, two responsive 3D
+results trays for Drive and Sustain with totals and a steady orthographic view.
+The barrage scratch now uses `arenaDiceSequence.js` (`createArenaDiceSequence`)
+for staggered floor throws, grounded resting poses, continuous gathering and
+per-arrival totals in the arena scene. `arenaDiceSequenceCheck.mjs` verifies
+floor clearance, deterministic seeking, progressive sums and preview controls.
+The overlay remains available for other consumers. `combatDiceCheck.mjs`
+checks all faces/results, opposite numbering, reduced motion and 22-die layouts.
+
+Sequential impacts added 2026-09-14: `sonicSequence.js` exports
+`SONIC_SEQUENCE`, `sonicShotStart`, `sonicContactTime`, `sonicSequenceDuration`.
+Each packet approaches for 2.4 seconds, followed by a 0.8-second impact/shove beat.
+`sonicSequenceVisuals.js` exports `createSonicSequenceVisuals`: one live packet,
+aim frozen per launch, next launch aimed at the Rival's new position. The engine
+emits `sonicContact` boundaries before each successful one-hex step; the client
+waits on the shared clock. Headless resolution consumes the same generator.
+Facing is frozen in the attack verdict, and straight axial movement allows a
+true edge crossing without bending the shove toward an existing neighbor.
+
+| File | Exports / purpose |
+|------|-------------------|
+| `sonicZigzagVisuals.js` | `createSonicZigzagVisuals`, `SONIC_TUNING`, `RING_TUNING`, `RING_CAMERA_ZOOM`, `sonicFlightCurve`, `sonicFlightInverse`, `sonicShotIntensity` — the shipped ring beam, per-die power, compression and Sustain surface ripple. Ring tuning overlays the comparison treatments. The path and barrier share the clamped stand-off distance. |
+| `sonicVolleyVisuals.js` | `buildSonicPath`, `sonicVolleyDuration`, `createSonicVolleyVisuals` — retained path/timing dependency and original waveform treatment. |
+| `sonicFluid.js` | Fluid field for the retained waveform treatment. |
+| `sonicDiceVisuals.js` | `createSonicDiceVisuals`, `sonicSceneLabel`, `sonicDiceHeight` — readable numbered dice, explicit HIT/HELD comparisons, pre-launch fade. |
+| `sonicPresentation.js` | `scheduleSonicVolley`, `SONIC_PRESENTATION` — shared roll/reveal/charge/launch clock and half-second result hold; presentation only. Local humans press ROLL; bots, spectators and remote views auto-play. |
+| `sonicCamera.js` | `createSonicCamera` — per-frame first-shot focus, 0.95 contact zoom with five-unit viewing clearance, result hold, reduced-motion handling and eased restoration of the saved orbit/control preferences. |
+| `sonicVolleyVisualsCheck.mjs`, `sonicZigzagCheck.mjs`, `sonicRingCheck.mjs`, `sonicDiceVisualsCheck.mjs` | `test:sonicfx` — path, geometry, approved defaults, deterministic seeking and disposal. |
+| `sonicIntegrationCheck.mjs` | `test:sonicfx` — authored GLB/call-site wiring, adjacent barrier, dice clearance, compression/ripple, camera restoration and audio lifetime checks. |
+| `engine/sonicVolleyCheck.mjs` | `test:sonic` — existing Sonic rules/consequences regression, now included in `test:all`. |
+| `engine/clientSonicJourneyCheck.jsx` | `test:sonicjourney` — mounted game: target selection, frozen verdict, local ROLL gate, stale click and completion. |
+
+All three Sonic test scripts run from `test:all`. `arenaVisuals.js` supplies the
+camera and updates the public battle frame's focus every animation tick;
+`arenaRenderer.js` consumes it every frame rather than only on React updates.
+
 | File | Lines | Key exports | Purpose |
 |------|------:|-------------|---------|
 | `constants.js` | 10 | `HEX_SIZE`, `SCALE`, `SVG_W`, `SVG_H`, `IMG_W`, `IMG_H`, `COL_SPACING`, `ROW_SPACING` | Board image dimensions. |
@@ -276,13 +318,22 @@ mirror for rendering — change the rule in `engine/systems/`, not here.
 
 ### `audio/` — sound
 
+`sonicBeamAudio.js` exports `playSonicBeamAudio`, `sonicChordVoices`: the whole
+Drive chord sounds together at stable pitches through the game's master limiter.
+Each projectile owns a voice release at contact, opening on a hit or choking on
+absorption. Extra chord tones share releases when notes outnumber dice. Scheduled
+stops and explicit cancellation release all nodes; pause/seek preserve pitch.
+
 | File | Lines | Key exports | Purpose |
 |------|------:|-------------|---------|
 | `chroma.js` | 1,040 | `CHROMA_DEFAULTS`, `chromaFromPeaks`, `chromaFromSpectrum`, `fftMagnitudes`, `pickPeaks`, `inferVirtualFundamentals`, `freqToMidiFloat`, `normalize` | 👂 The listening pipeline. ⚠️ **Every gate threshold is MEASURED, not guessed** — `npm run test:chroma` prints the table it came from. |
 | `micPitch.js` | 342 | `startMicListening`, `micAvailable`, `MIC_DEFAULTS`, `pitchToMidi`, `midiToFreq` | Microphone capture and pitch tracking. |
 | `ampVoice.js` | 234 | `playAmpNote`, `playAmpPowerChord`, `getAmpBuses`, `makeDistortionCurve`, `SPIRIT_TONES`, `TONE_VOICES`, `TONE_KNOB_DEFAULTS` | The distorted guitar voice notes are played through. |
 | `riffSfx.js` | 210 | `getRiffAudio`, `riffDegreeFreq`, `playRiffMiss`, `playRiffWrong`, `playBeamClash`, `playBeamSurge`, `playBeamBreak`, `pickGlitchRiffNote` | Duel and beam sound effects. |
-| `bgm.js` | 42 | `BGM_TRACKS`, `nextBgmTrack` | Background music tracks. |
+| `bgm.js` | 43 | `BGM_TRACKS`, `nextBgmTrack` | The background bed. One track — `music/atmospheric-sound.mp3` — looping under the whole game. |
+| `bgmDuckCheck.mjs` | 175 | — | `test:bgm` — the bed is registered, and it ducks under battle music without clicking. Reads the duck block out of the monolith rather than copying it. |
+| `mixer.js` | 111 | `MIX_DEFAULTS`, `MIX_CHANNELS`, `getMix`, `getLevel`, `setLevel`, `resetMix`, `onMixChange`, `musicVol`, `sfxVol` | 🎚️ The three volume channels — music / notes / sfx. Levels are MULTIPLIERS on each sound's own mix level, persisted to localStorage. |
+| `mixerCheck.mjs` | 232 | — | `test:mix` — the store, the clamping, persistence, and that the notes gain sits AFTER the compressor and no SFX emitter escapes the bus. |
 | `chromaSelftest.mjs` | 1,476 | — | `test:chroma` — asserts the measured separation still holds. |
 
 ### `vision/` — 📷 the camera fretboard
@@ -322,6 +373,9 @@ is being written in the client.
 | `useStageEffects.js` | 15 | 🎇 The activation banner only — the effects are engine state. |
 
 ### `ui/` — presentational components
+
+`SonicRollPrompt.jsx` exports `SonicRollPrompt`, the local attacker's one-shot
+ROLL control. It reveals an existing engine verdict and never dispatches a roll.
 
 Each takes everything via props. ⚠️ **They hold no game rules.**
 
@@ -441,6 +495,8 @@ Each takes everything via props. ⚠️ **They hold no game rules.**
 | CSS keyframes / global styles | `ui/GameStyles.jsx` |
 | ⭐ Fame gold — the race track, the HUD bar, the ⭐FP readouts | `data/fameTheme.js` → `FAME`, `FAME_CONTESTED`, `FAME_NEUTRAL`, `fameFill`. ⚠️ Gold that means "premium chrome" rather than Fame (Riffbook's panel border, RiffMenu's LEGEND LESSONS, the riff-off cards in `BattleMeterOverlay.jsx`, the FINISH button) is deliberately NOT routed through it. |
 | BGM tracks / riff SFX | `audio/bgm.js` / `audio/riffSfx.js` |
+| 🎚️ How loud the bed sits under a battle | `rlsw-simulator-v3_8_1.jsx` → `BGM_DUCK` (0.15) and `BGM_FADE_MS`, just above `playBattleMusic`. Covered by `test:bgm`. |
+| 🎚️ The volume faders — levels, defaults, channels | `audio/mixer.js`. The ☰ rows are built from `MIX_CHANNELS`; the slider itself is `ui/TopMenu.jsx` → `Fader`, dressed by the `.rlsw-fader` CSS in `ui/GameStyles.jsx`. |
 
 ### 🪦 Rows that used to be here, and what happened to them
 

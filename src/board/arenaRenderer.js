@@ -10,6 +10,7 @@ import { SCALE, SVG_W, SVG_H } from './constants.js';
 import { preserveTacticalLayer, keepGameplayClicks } from './arenaDom.js';
 import { createArenaEnvironment, polishArenaModel } from './arenaEnvironment.js';
 import { arenaPoint, createArenaVisuals, releaseArenaObject } from './arenaVisuals.js';
+import { createSonicCamera } from './sonicCamera.js';
 
 // The SVG remains the only gameplay input surface. WebGL consumes a filtered,
 // read-only presentation frame; neither camera nor effects can dispatch actions.
@@ -53,6 +54,8 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality 
     const media=window.matchMedia?.('(prefers-reduced-motion: reduce)');
     let reduced=!!media?.matches,quality='auto',qualityLabel='',lite=false,autoLite=false,dirty=true,inView=true;
     let elapsed=0,last=performance.now(),lastDraw=0,sampleStart=last,samples=0,fps=0;
+    const sonicCamera=createSonicCamera({camera,controls,pointFor:arenaPoint});
+    cleanups.push(()=>sonicCamera.dispose());
     const motion=()=>{reduced=!!media?.matches;controls.enableDamping=!reduced;dirty=true;};motion();
     media?.addEventListener?.('change',motion);cleanups.push(()=>media?.removeEventListener?.('change',motion));
     const fit=aspect=>Math.max(1,(SVG_W/SVG_H)/aspect);
@@ -88,16 +91,18 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality 
     function render(now) {
       if(disposed||failed)return;
       raf=requestAnimationFrame(render);
-      const dt=Math.min((now-last)/1000,.05);last=now;
+      const wallDt=Math.max(0,(now-last)/1000),dt=Math.min(wallDt,.05);last=now;
       if(document.hidden||!inView)return;
-      elapsed+=dt;controls.update();
-      const moving=visuals.diagnostics().effects>0;
+      elapsed+=wallDt;
+      // Focus is refreshed every frame from the same clock as the projectiles.
+      visuals.tick(elapsed,reduced,camera);
+      if(!sonicCamera.update(frame,model,dt,reduced))controls.update();
+      const moving=visuals.diagnostics().effects>0||sonicCamera.active;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
       try {
         environment.update(elapsed,{lite,reduced});
-        visuals.tick(elapsed,reduced);
         for(const e of emissives)if(e.crack)e.material.emissiveIntensity=e.base*(reduced?1:1+.08*Math.sin(elapsed*.75));
         renderer.info.reset();composer.render();overlay.render(overlayScene,camera);dirty=false;
         samples++;

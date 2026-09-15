@@ -68,8 +68,16 @@ try {
     'compact player pocket reads authoritative live values');
   assert.match(document.querySelector('.match-phase-rail [data-state="now"]').textContent, /BUILD CHORD/i,
     'phase rail marks the live step');
-  assert.match(document.querySelector('.match-turn-summary').textContent, /9 notes available/,
-    'compact status reports the live hand without copying controls');
+  // 🪦 THIS USED TO READ '.match-turn-summary' — the NOW window, retired
+  // 2026-09-12. Its headline was the step name, which the rail below and the
+  // step-3 drawer were both already printing; only its two LIVE facts survived,
+  // onto the rail's active step. So the contract moves with them rather than
+  // being deleted: something must still report the live hand without copying a
+  // control, and now it is the step you are on that says so.
+  assert.match(document.querySelector('.match-phase-rail [data-state="now"]').textContent, /9 notes available/,
+    'the live step carries the hand count the NOW window used to');
+  assert.equal(document.querySelector('.match-turn-summary'), null,
+    'the retired NOW window stays retired');
   await click([...document.querySelectorAll('button')].find(el => el.textContent === 'Spirit'));
   assert.equal(document.querySelector('[data-hud-region="turn"]').hidden, true);
   await act(async () => root.render(surface(4)));

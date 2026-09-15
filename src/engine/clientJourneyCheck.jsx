@@ -105,8 +105,14 @@ try {
   await click(panelButton('Turn'));
   await click(document.querySelector('[data-tip-anchor="end-turn"]'));
   assert.equal(document.querySelector('[data-hud-region="turn"]').hidden, false, 'next player gets turn controls');
-  assert.equal(document.querySelectorAll('[data-immersive-hidden]').length, 2,
-    '3D chord phase retires the two classic board-sized stack panels');
+  const arenaStacks = [...document.querySelectorAll('[data-immersive-stack]')];
+  assert.equal(arenaStacks.length, 2,
+    '3D chord phase keeps both board stack panels, at arena width');
+  // ⚠️ MOUNTED IS NOT DRAWN, and this suite learned that the expensive way: the
+  // assertion above passed for the whole period the panels were
+  // 'visibility:hidden', which is precisely when the arena was not showing them.
+  assert.ok(arenaStacks.every(el => el.style.visibility !== 'hidden'),
+    'the arena stack panels are drawn, not merely mounted');
   assert.ok(button('Continue to Melody'), 'next player gets the chord step');
   await click(button('Continue to Melody'));
   const nextNote = [...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')]

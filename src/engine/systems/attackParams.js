@@ -114,7 +114,7 @@ export function rigFor(spirit, ns = {}, state = null) {
   if (ampBlown(ns)) return { pool: [SONIC_BASE_DIE], inRange: false, radius: 0 };
   const chargeBoost = (ns.chargeCeilTurns ?? 0) > 0 ? 1 : 0;
   const onTurn = !!spirit && state?.acting === spirit.id;
-  return sonicRig(ns, distFromHome(spirit, ns), chargeBoost, onTurn);
+  return sonicRig(ns, distFromHome(spirit, ns), chargeBoost, onTurn, spirit?.id);
 }
 
 /**
@@ -218,7 +218,7 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
     // The attacker throws their rig's pool; the ceiling charge grows EVERY die
     // one size (d6→d8, d8→d10), capped.
     const pool = rigFor(attacker, nsA, state).pool;
-    const dicePool = chargeCeil ? pool.map(s => Math.min(CHARGE_DIE_CEILING, s + 2)) : [...pool];
+    const dicePool = [...pool]; // rigFor applies the ceiling exactly once.
 
     // 🛡️ Inside their own rig radius the rival braces against the beam with
     // their amp behind them (d6). Stranded outside it there is no rig to answer
@@ -226,8 +226,13 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
     const defInRig = rigFor(defender, nsD, state).inRange;
     return {
       ...base,
+      atkStat:dicePool.length,
+      defStat:Math.max(0,(nsD.smashExposed?0:(nsD.sustainStack?.length?spiritChord(defenderId,nsD.sustainStack).sustain:0))
+        -(nsD.swingExposed?1:0)+(nsD.tempSustain??0)),
       dicePool,
-      defDie: defInRig ? SONIC_DEF_DIE : SONIC_DEF_DIE_OUT_OF_RIG,
+      defDie: 0,
+      sonicChordNotes:[...(nsA.driveStack??[])],
+      sustainChordNotes:[...(nsD.sustainStack??[])],
       _derived: { ...base._derived, defInRig, poolBeforeCharge: pool },
     };
   }

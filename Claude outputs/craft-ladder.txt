@@ -1,0 +1,36 @@
+
+  cosmic_ronin                         run  identity  craft  TOTAL   (was)
+  one note                       0         0      0      0      0
+  three of the same note         0         0      0      0      0
+  three-note step run            3         1      0      1      1
+  four-note step run             4         1      1      2      1
+  five-note step run             5         1      2      3      1
+  seven-note step run            7         1      2      3      1
+  three-note third run           3         1      0      1      1
+  four-note third run            4         1      1      2      1
+  alternating pair               0         0      0      0      0
+  up then down                   3         1      0      1      1
+  run broken by a discord        3         1      0      1      1
+  five-note run, descending      5         1      2      3      1
+
+  Metalness_Monster                         run  identity  craft  TOTAL   (was)
+  one note                       0         0      0      0      0
+  three of the same note         0         0      0      0      0
+  three-note step run            3         0      0      0      0
+  four-note step run             4         0      1      1      0
+  five-note step run             5         0      2      2      0
+  seven-note step run            7         0      2      2      0
+  three-note third run           3         0      0      0      0
+  four-note third run            4         0      1      1      0
+  alternating pair               0         1      0      1      1
+  up then down                   3         1      0      1      1
+  run broken by a discord        3         0      0      0      0
+  five-note run, descending      5         0      2      2      0
+
+  ladder: floor 4, cap 2 -> 0:0  1:0  2:0  3:0  4:1  5:2  6:2  7:2  8:2
+  melodyCommitCheck:233  scalar shred    expects 1  ->  identity 1 + craft 0 (run 0)  holds
+  melodyCommitCheck:238  even skip       expects 1  ->  identity 1 + craft 0 (run 3)  holds
+  melodyCommitCheck:242  pedal chug      expects 1  ->  identity 1 + craft 0 (run 0)  holds
+  melodyCommitCheck:246  two signals     expects 2  ->  identity 2 + craft 0 (run 0)  holds
+
+✅ all four existing fan assertions still hold

@@ -117,6 +117,26 @@ export function detectChromaticRun(track) {
 // Returns the longest run of consecutive ascending OR descending diatonic steps
 // (adjacent indices in currentScale) found in the track.
 // Only notes IN the scale count — out-of-scale notes break the run.
+/** One scale-degree move, as a DIRECTION — or 0 if it is not the span asked for.
+ *
+ * ⚠️ THE MODULO IS A BUG FIX, 2026-09-12, AND IT IS NOT COSMETIC. Both detectors
+ * below compared raw `currentScale.indexOf` positions, so a run that crossed the
+ * array's end broke: in C major, C→B is index 0→6, which read as +6 and ended the
+ * run. `E D C B A` — five notes, one direction, plainly a descending scale — came
+ * back as a run of THREE. Descending lines were under-counted by however much of
+ * them lay the far side of the tonic, which is roughly half of them.
+ * 🎯 It went unnoticed because both functions had NO CALLERS from the 2026-09-10
+ * withdrawal until the craft payout in `melodyPayout.js` gave them one. A dead
+ * function cannot be wrong out loud.
+ * 📌 `spiritStyle.js`'s `contourRun` has always done this correctly with the same
+ * `(b - a + 7) % 7`, which is why the Ronin's identity gesture fired on that line
+ * while the craft ladder said nothing. Two detectors, one line, two answers —
+ * that disagreement is what this closes. */
+function degreeStep(a, b, size, span) {
+  const raw = (b - a + size) % size;
+  return raw === span ? 1 : raw === size - span ? -1 : 0;
+}
+
 export function detectDiatonicRun(track, currentScale) {
   if (!track || track.length < 3) return 0;
   let maxRun = 0;
@@ -128,8 +148,8 @@ export function detectDiatonicRun(track, currentScale) {
       const a = currentScale.indexOf(track[i + runLen - 1]);
       const b = currentScale.indexOf(track[i + runLen]);
       if (a === -1 || b === -1) break;
-      const step = b - a;
-      if (Math.abs(step) !== 1) break;
+      const step = degreeStep(a, b, currentScale.length, 1);
+      if (!step) break;
       if (dir === 0) dir = step;
       else if (step !== dir) break;
       runLen++;
@@ -163,8 +183,8 @@ export function detectSkipClimb(track, currentScale) {
       const a = currentScale.indexOf(track[i + runLen - 1]);
       const b = currentScale.indexOf(track[i + runLen]);
       if (a === -1 || b === -1) break;
-      const step = b - a;
-      if (Math.abs(step) !== 2) break;
+      const step = degreeStep(a, b, currentScale.length, 2);
+      if (!step) break;
       if (dir === 0) dir = step;
       else if (step !== dir) break;
       runLen++;

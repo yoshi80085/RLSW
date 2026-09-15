@@ -130,13 +130,22 @@ function SideLabel({ text, color }) {
  *        the split answers is "is this mine, or is this everyone's". A rival can
  *        predict the left half of your rail and cannot predict the right.
  *
+ * @param stack force the ROWS layout regardless of `ACTION_RAIL.split`.
+ *        ⚠️ THIS IS A WIDTH FACT, NOT A TASTE ONE, which is why it is a prop and
+ *        not a new entry in `ACTION_RAIL`. The arena's step-3 dock moved into the
+ *        238px HUD pocket on 2026-09-12; at that width the 40/60 column split
+ *        gives UNIVERSAL about 84px, and one button reading "Sonic 4d6 (2AP)" is
+ *        wider than that on its own. The 2D board's rail is ~470px and keeps the
+ *        columns. Same component, same buttons, one layout question answered by
+ *        the container instead of by a constant.
+ *
  * 🌀 THE ONE GENUINELY AMBIGUOUS BUTTON is Intergalactic 0's Blaster of Ra: an
  * unlock, Spirit-specific, and therefore signature by the rule above — but it
  * does not ADD a button, it REPLACES the Smash. It is filed universal because
  * the SLOT is universal, and a rival looking at that rail still sees "he has an
  * attack there", which is the thing the left half is for.
  */
-export function ActionRail({ universal, signature, immersive = false }) {
+export function ActionRail({ universal, signature, immersive = false, stack = false }) {
   const lab = LABELS[R.labels];
   const hasSig = hasRenderableChild(signature);
 
@@ -172,7 +181,10 @@ export function ActionRail({ universal, signature, immersive = false }) {
       </div>
     );
   }
-  if (R.split === 'rows') {
+  // 📌 `stack` JOINS THE EXISTING BRANCH rather than adding a third layout. The
+  // rows arrangement was already built and dialled; a narrow container wants
+  // exactly it, so this is a second door into one room.
+  if (R.split === 'rows' || stack) {
     return (
       <div className={`arail${immersive ? ' immersive-arail' : ''}`} style={{ ...RAIL_VARS, display: 'flex',
         flexDirection: 'column', gap: R.gap + 3 }}>

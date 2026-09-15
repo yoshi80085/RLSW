@@ -516,8 +516,8 @@ export function legalActions(state, spiritId, view = {}) {
     // second cost lands on exactly the gate §3.1 already built, and this file
     // needs no idea that the ability exists.
     if (ap >= SONIC_AP_COST) {
-      const { inRange } = rigFor(self, ns, state);
-      if (inRange) {
+      const { inRange, pool } = rigFor(self, ns, state);
+      if (inRange && pool.length > 0) {
         for (const r of rivals) {
           if (!beam.has(r.num)) continue;
           // 🎤 THE RIFF-OFF IS THE SAME BUTTON, and that is why it is emitted in

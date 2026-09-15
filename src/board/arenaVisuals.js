@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { HEX_BY_NUM } from './hexMap.js';
 import { SCALE } from './constants.js';
 import { LIMELIGHT_HEX } from '../data/gameConstants.js';
+import { pitchIndex } from '../music/notes.js';
+import { createSonicSequenceVisuals } from './sonicSequenceVisuals.js';
+import { createSonicDiceVisuals, sonicSceneLabel } from './sonicDiceVisuals.js';
 
 export function arenaPoint(num, height=.18) {
   const h=HEX_BY_NUM[num];return h?new THREE.Vector3((h.px-3255)/200,height,(h.py-2415)/200):null;
@@ -64,7 +67,45 @@ export function createArenaVisuals(scene) {
   const root=new THREE.Group();root.name='Live match effects';scene.add(root);
   const hazards=new THREE.Group();root.add(hazards);
   const effects=[],rigs=new Map(),pawns=new Map(),seen=new Set();
-  let previous=null,hazardKey='',frame={},clock=0,lastTick=0,disposed=false;
+  let previous=null,hazardKey='',frame={},clock=0,lastTick=0,disposed=false,sonic=null;
+  const clearSonic=()=>{
+    if(!sonic)return;
+    root.remove(sonic.dice.group,sonic.volley.group);
+    sonic.dice.dispose();sonic.volley.dispose();sonic=null;
+  };
+  function updateSonic(battle) {
+    if(!battle?.volley){clearSonic();return;}
+    if(sonic?.key!==battle.key) {
+      clearSonic();
+      const a=frame.spirits?.find(s=>s.id===battle.attackerId),b=frame.spirits?.find(s=>s.id===battle.defenderId);
+      const attackerPosition=arenaPoint(a?.num,1),defenderPosition=arenaPoint(b?.num,1);
+      if(!attackerPosition||!defenderPosition)return;
+      // Fire from the real cabinets after their authored world transform,
+      // including the model's Z flip. A corner approximation visibly misses.
+      const ampOrigins=[];
+      for(const station of STATIONS[a.corner]??[]) {
+        const cabinet=rigs.get(station)?.levels[0];if(!cabinet)continue;
+        cabinet.updateWorldMatrix(true,true);
+        const bounds=new THREE.Box3().setFromObject(cabinet);
+        const origin=bounds.getCenter(new THREE.Vector3());
+        origin.y=bounds.min.y+(bounds.max.y-bounds.min.y)*.62;
+        ampOrigins.push(origin);
+      }
+      if(!ampOrigins.length)return; // model is still loading; retry on attach
+      const common={attackerPosition,defenderPosition,color:a.color,shieldColor:b.color,hitCount:battle.hitCount,damage:battle.damage,
+        chordPitches:(battle.sonicChordNotes??[]).map(pitchIndex),shieldValue:battle.shieldValue};
+      const dice=createSonicDiceVisuals({...common,dicePool:battle.dicePool,diceVals:battle.diceVals,diceHits:battle.diceHits});
+      const volley=createSonicSequenceVisuals({...common,ampOrigins,clearance:1.15,shieldRadius:2.4,shieldSize:2.1,strokeStyle:'rings',intensityMode:'margin',
+        dice:battle.diceVals.map((value,i)=>({value,passed:battle.diceHits[i],sides:battle.dicePool[i]}))});
+      root.add(dice.group,volley.group);
+      sonic={key:battle.key,dice,volley,phase:battle.phase,phaseStart:clock,launch:null};
+    }
+    if(sonic.phase!==battle.phase){sonic.phase=battle.phase;sonic.phaseStart=clock;}
+    if(battle.phase==='sonic_volley'&&sonic.launch==null) {
+      sonic.launch=clock;
+      for(const rig of rigs.values())if(rig.owner?.id===battle.attackerId)rig.thumpUntil=clock+.6;
+    }
+  }
   const pulse=(point,color,owners=[],kind='pulse')=>{
     if(!point)return;
     const mesh=new THREE.Mesh(new THREE.TorusGeometry(.45,.035,6,40),glow(color));
@@ -151,6 +192,16 @@ export function createArenaVisuals(scene) {
       pawn.userData.targetFacing=(spirit.facing ?? 0)+Math.PI/2;
       pawn.userData.knockedOut=!!spirit.knockedOut;
       pawn.userData.active=spirit.id===next.actingId;
+      if(spirit.pendingSustainFray>0&&!pawn.userData.wearLabel) {
+        const badge=sonicSceneLabel('',spirit.color??'#aaddff',3.2,.4);
+        badge.sprite.position.y=1.85;pawn.add(badge.sprite);pawn.userData.wearLabel=badge;
+      }
+      const badge=pawn.userData.wearLabel;
+      if(badge) {
+        badge.sprite.visible=spirit.pendingSustainFray>0;
+        const text=`SUSTAIN −${spirit.pendingSustainFray} NEXT TURN`;
+        if(badge.sprite.userData.text!==text)badge.write(text);
+      }
       pawn.visible=true;
     }
     for(const [id,pawn] of pawns)if(!live.has(id)) {root.remove(pawn);releaseArenaObject(pawn);pawns.delete(id);}
@@ -194,8 +245,9 @@ export function createArenaVisuals(scene) {
         const old=previous.spirits?.find(p=>p.id===s.id);
         if(old&&!s.knockedOut&&!old.knockedOut&&s.num!==old.num&&!frame.slides?.some(a=>a.id===s.id))trail(arenaPoint(old.num),arenaPoint(s.num),s.color,s.id);
       }
-      if(!frame.battle&&previous.battle)attack(previous.battle);
+      if(!frame.battle&&previous.battle&&!previous.battle.volley)attack(previous.battle);
     }
+    updateSonic(frame.battle);
     if(frame.thump)once(`thump:${frame.thump.id}:${frame.thump.key}`,()=>{
       for(const rig of rigs.values())if(rig.owner?.id===frame.thump.id)rig.thumpUntil=clock+.45;
     });
@@ -224,8 +276,17 @@ export function createArenaVisuals(scene) {
   }
   return {
     attachModel,update,
-    tick(time,reduced=false) {
+    tick(time,reduced=false,camera=null) {
       const dt=Math.min(.05,Math.max(0,time-lastTick));lastTick=time;clock=time;
+      if(sonic) {
+        sonic.dice.update(time-sonic.phaseStart,{phase:sonic.phase,reduced});
+        const flightTime=sonic.launch==null?-1:frame.battle?.sonicStartedAt!=null
+          ? (performance.now()-frame.battle.sonicStartedAt)/1000 : time-sonic.launch;
+        const defender=frame.spirits?.find(s=>s.id===frame.battle?.defenderId);
+        sonic.volley.update(flightTime,{reduced,camera,defenderPosition:arenaPoint(defender?.num,1)??undefined,
+          interrupted:frame.battle?.sonicInterrupted});
+        if(frame.battle?.key===sonic.key)frame.battle.focus=sonic.volley.getFocus(flightTime,{reduced});
+      }
       for(const pawn of pawns.values()) {
         const target=pawn.userData.target;
         pawn.position.lerp(target,reduced?1:1-Math.exp(-dt*14));
@@ -259,8 +320,8 @@ export function createArenaVisuals(scene) {
         } else {fx.mesh.material.opacity=(1-t)*.8;if(fx.kind==='pulse')fx.mesh.scale.setScalar(reduced?1:1+t*4);}
       }
     },
-    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length,hazards:hazards.children.length}),
-    dispose(){disposed=true;clearEffects();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0),sonicPhase:sonic?.phase??null,hazards:hazards.children.length}),
+    dispose(){disposed=true;clearSonic();clearEffects();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     get disposed(){return disposed;},
   };
 }

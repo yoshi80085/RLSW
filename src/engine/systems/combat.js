@@ -63,6 +63,7 @@ export function thrashFame() {
  * SONIC_VIBE_CAP (2). Most hits deal 1.
  */
 export function sonicDamage(margin) {
+  if (margin <= 0) return 0;
   if (margin <= 4) return 1;
   return Math.min(SONIC_VIBE_CAP, 2);
 }
@@ -86,6 +87,11 @@ export function sonicKnockback(margin, vibe, maxVibe) {
  */
 export function sonicFame(margin) {
   return Math.max(1, Math.ceil(margin / 2));
+}
+
+/** Projectile volleys pay for beams that penetrate, before crowd/venue riders. */
+export function sonicVolleyFame(hitCount) {
+  return Math.max(0, Math.floor(hitCount));
 }
 
 // ─── LEGACY knockback / fame (kept for Smash, riff-off, etc.) ────────────────
@@ -215,7 +221,11 @@ export function applyKnockdownResolved(state, action, corners = CORNERS) {
     : state;
   return {
     ...dropped,
-    spirits: dropped.spirits.map(s => (s.id === targetId ? next : s)),
+    // A hazard can knock down and respawn a Spirit onto the very same hex,
+    // with unchanged lives in a non-elimination match. The generation lets an
+    // in-flight shove recognize that recovery and stop before hitting it again.
+    spirits: dropped.spirits.map(s => (s.id === targetId
+      ? { ...next, knockdownCount: (spirit.knockdownCount ?? 0) + 1 } : s)),
   };
 }
 
@@ -238,8 +248,8 @@ export function smashOutcome(thrown) {
 
 /**
  * ATTACK_ROLLED (Phase 3b) — roll attack dice on the engine's seeded rng.
- * Swing = single die (d4 base for Thrash, or atkDie). Sonic = keep-highest pool.
- * Defender rolls defDie (d4 for Thrash, d6 for Sonic).
+ * Swing keeps its opposed roll. Sonic rolls every Drive die independently
+ * against a fixed Sustain shield; ties absorb and the defender draws no RNG.
  */
 export function applyAttackRolled(state, action, rng) {
   const {
@@ -248,6 +258,37 @@ export function applyAttackRolled(state, action, rng) {
     dicePool = null, atkFloor = 0, atkDie = 6, defDie = 6,
     swingChordLeft = [], swingChordSpent = [],
   } = action;
+
+  if (kind === 'sonic') {
+    const pool = Array.isArray(dicePool) ? [...dicePool]
+      : Array.from({ length: Math.max(0, Math.floor(atkStat)) }, () => atkDie);
+    const shieldValue = posing ? 0 : Math.max(0, defStat);
+    const volley = rollSonicVolley(pool, shieldValue, atkFloor, rng);
+    const defenderNotes = state.noteStates?.[defenderId];
+    return {
+      ...state,
+      // Holding off a volley costs one note at the defender's next turn even
+      // if every wave is absorbed. Rerolls never charge this declaration twice.
+      ...(defenderNotes ? { noteStates: {
+        ...state.noteStates,
+        [defenderId]: {
+          ...defenderNotes,
+          pendingSonicAttacks: (defenderNotes.pendingSonicAttacks ?? 0) + 1,
+        },
+      } } : {}),
+      battle: {
+        kind: 'attack', attackKind: 'sonic', sonicAttack: true,
+        attackerId, defenderId, atkStat, defStat, shieldValue,
+        sonicFacing:state.spirits.find(s=>s.id===attackerId)?.facing ?? 0,
+        ...volley,
+        rawDefRoll: 0, defRoll: 0, defDie: 0, defTotal: shieldValue,
+        dicePool: pool, atkFloor, atkDie, keptIdx: null,
+        sonicChordNotes:[...(action.sonicChordNotes??[])],
+        sustainChordNotes:[...(action.sustainChordNotes??[])],
+        swingChordLeft: [], swingChordSpent: [], rerolled: false,
+      },
+    };
+  }
 
   const clampFloor = v => Math.max(v, 1 + atkFloor);
 
@@ -302,6 +343,19 @@ export function applyAttackRolled(state, action, rng) {
   };
 }
 
+/** One seeded draw per projectile; used unchanged by Code Injection rerolls. */
+function rollSonicVolley(pool, shieldValue, atkFloor, rng) {
+  const diceVals = pool.map(sides => Math.max(rng.int(sides) + 1, 1 + atkFloor));
+  const diceHits = diceVals.map(value => value > shieldValue);
+  const hitCount = diceHits.filter(Boolean).length;
+  return {
+    diceVals, diceHits, hitCount, attackerWon: hitCount > 0,
+    // Legacy presentation fields carry the hit count, never an opposed sum.
+    atkRoll: hitCount, atkTotal: hitCount, margin: hitCount,
+    damage: sonicDamage(hitCount),
+  };
+}
+
 /**
  * ATTACK_REROLLED (Code Injection — Intergalactic 0) — re-draw the ATTACKER'S
  * dice and re-resolve the whole verdict. The defender's roll is untouched.
@@ -324,6 +378,22 @@ export function applyAttackRolled(state, action, rng) {
 export function applyAttackRerolled(state, action, rng) {
   const b = state.battle;
   if (!b || b.kind !== "attack") return state;
+
+  if (b.attackKind === 'sonic' || b.sonicAttack) {
+    const shieldValue = b.shieldValue ?? b.defTotal ?? Math.max(0, b.defStat ?? 0);
+    return {
+      ...state,
+      battle: {
+        ...b,
+        ...rollSonicVolley(b.dicePool ?? [], shieldValue, b.atkFloor ?? 0, rng),
+        shieldValue, keptIdx: null, rerolled: true,
+        preRerollAtkRoll: b.atkRoll,
+        preRerollWon: b.attackerWon,
+        preRerollDamage: b.damage,
+        preRerollDiceVals: b.diceVals,
+      },
+    };
+  }
 
   const clampFloor = v => Math.max(v, 1 + (b.atkFloor ?? 0));
 

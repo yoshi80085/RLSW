@@ -9,7 +9,8 @@
 // =============================================================================
 import React, { useEffect, useRef, useState } from "react";
 import openingIsland from "../assets/opening_island.png";
-import thunderSfx from "../thunder.mp3";
+import thunderSfx from "../sfx/thunder.mp3";
+import { sfxVol } from "../audio/mixer.js";
 import { FAME } from "../data/fameTheme.js";
 
 // ── bolt generator (same math as OpeningMovie) ──────────────────────────────
@@ -83,7 +84,7 @@ export function GameOverOverlay({
       setTimeout(() => fl('0'), 380);
       try {
         const a = new Audio(thunderSfx);
-        a.volume = firstStrikeRef.current ? 0.85 : 0.35;
+        a.volume = sfxVol(firstStrikeRef.current ? 0.85 : 0.35);   // 🎚️ thunder is SFX, not music
         a.play().catch(() => {});
       } catch { /* autoplay blocked — silent lightning is still lightning */ }
       firstStrikeRef.current = false;

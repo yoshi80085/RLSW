@@ -31,6 +31,24 @@
 // (never two — a nested un-skew shears the inner content the other way), and
 // the dial left OUTSIDE that wrapper so it stays upright on a leaning faceplate.
 //
+// 🪦 **`visibility:hidden` ON BOTH BOARD STACKS IN 3D, 2026-09-12b.** The arena
+// drew the melody track and refused to draw the chord stacks, so the bracket
+// pass landed on the 2D board and nowhere else — the one panel Alex was looking
+// at. `immersive` now RESIZES the panel instead of hiding it, which is what
+// `CommitTrackPanel` two functions down has always done with the same flag.
+// ⚠️ **THE FLAG STILL HAS TO DO SOMETHING.** A 45% panel is ~468px on the 2D
+// board's 1040px frame and ~730px in the arena, where the preparation area is
+// the screen minus the HUD pocket — the seats would sit in a third of their own
+// box. `arenaStackWidth` is the fixed width that preview was authored at.
+//
+// 🪦 **THE MELODY PULSE, 2026-09-12b.** Alex: *"sometimes a pill shaped object
+// floats into the wave."* It was `.rlsw-wave-pulse` — a 13%-of-a-wavelength dash
+// on a second copy of the main line, 7px wide with round caps. At eight seats
+// that is a ~32×7px capsule on a wave whose crests are ~150px apart, so the
+// glint never read as a glint; it read as an object riding the string. Removed
+// at his call. ⚠️ **TO BRING IT BACK, THIN IT FIRST** — the dash has to be long
+// relative to its own stroke width or the round caps close it into a pill again.
+//
 // 🪦 **Every frosted slab.** `backdrop-filter: blur(5px)`, the gradient fills
 // and the coloured box glows are gone. A blurred panel destroys the detail
 // behind it even at low alpha, and these three panels sit directly on the
@@ -59,6 +77,10 @@ export const COMMIT_OVERLAY = {
   dialY:     9,      // px down from the panel's top edge
   ghostBoost: true,  // hover preview rides ArenaDial's `boost` channel
   trackChip: 69,     // px box per commit-track seat  ("TRACK CHIP")
+  poolChip:  60,     // px box per NOTE POOL seat. ⚠️ Mirrors `NOTE_HEX.size` —
+                     // the pool draws chips at the component's own default, so
+                     // these two must move together or the honeycomb's spacing
+                     // stops matching the hexes it is spacing.
   stackChip: 72,     // px box per chord-stack seat   ("STACK CHIP")
   // 🔷 THE HONEYCOMB. A column steps 0.78× the chip box across and odd columns
   // drop 0.45× down, which is what makes the seats INTERLOCK instead of sitting
@@ -72,7 +94,12 @@ export const COMMIT_OVERLAY = {
   // in the arena that is not on the grid.
   waveAmp:    9,     // px of swing above and below the seat line
   waveTravel: 5.2,   // seconds for the wave to move one whole wavelength
-  wavePulse:  1.9,   // seconds for one PULSE to run a wavelength down the line
+  // 🪦 `wavePulse: 1.9` LIVED HERE. See the pulse's headstone in the header.
+  // 🌌 THE ARENA'S STACK WIDTH. Straight from `.scratch/melody-and-chord-stacks
+  // .html`'s arena section, which lays both panels out at `width:440` against
+  // `left/right:3%` and `bottom:3%` — the same 3% this panel already carries, so
+  // the only number the port had to bring across is the width.
+  arenaStackWidth: 440,
   // 🎼 THE OVERTONES. Thin, dim lines riding the same run at wavelengths that
   // are DELIBERATELY NOT MULTIPLES of the main one. Nothing here is a round
   // ratio: 1.5 would re-sync every other crest, 2 every crest, and the pair
@@ -214,18 +241,9 @@ function MelodyWave({ filled, total, span }) {
           <path d={d} className="rlsw-wave-bloom" vectorEffect="non-scaling-stroke" />
           <path d={d} className="rlsw-wave-core" vectorEffect="non-scaling-stroke" />
         </g>
-        {/* 🫀 THE PULSE. A short bright dash repeating every wavelength, on its
-            own copy of the main line, sliding faster than the swell underneath
-            it — so what you see is a glint running down the track rather than
-            the whole line moving. 📌 It is a DASH ON A TRANSLATED PATH, never an
-            animated `stroke-dashoffset`: offsets repaint the region every frame,
-            a transform does not, and this is sitting on the live WebGL arena. */}
-        <g className="rlsw-wave-travel" style={travelStyle(lambda, COMMIT_OVERLAY.wavePulse)}>
-          <path d={d} className="rlsw-wave-pulse" vectorEffect="non-scaling-stroke"
-            style={{ strokeDasharray: `${(lambda * 0.13).toFixed(2)} ${(lambda * 0.87).toFixed(2)}` }} />
-          <path d={d} className="rlsw-wave-pulse-core" vectorEffect="non-scaling-stroke"
-            style={{ strokeDasharray: `${(lambda * 0.07).toFixed(2)} ${(lambda * 0.93).toFixed(2)}` }} />
-        </g>
+        {/* 🪦 THE PULSE SAT HERE — a third travelling group, dashed, running the
+            same path faster than the swell. It is gone; the swell and the three
+            overtones are what the committed run moves with now. */}
       </g>}
       {span && filled > 0 && (
         <circle cx={headX} cy={WAVE_H / 2} r="2.6" className="rlsw-wave-head"
@@ -248,12 +266,20 @@ export function ChordStackPanel({ side, value, boost = 0, panelRef, tipAnchor,
   const color   = isDrive ? DRIVE_C : SUSTAIN_C;
   return (
     <Bracket innerRef={panelRef} data-tip-anchor={tipAnchor}
-      data-immersive-hidden={immersive || undefined} className={className}
+      data-immersive-stack={immersive || undefined} className={className}
       color={borderColor ?? color}
       style={{ "--step-glow-color": glowColor ?? color,
         position:"absolute", bottom:"3%", [isDrive ? "left" : "right"]:"3%",
-        width:"45%", zIndex:5,
-        ...(immersive ? { visibility:'hidden', pointerEvents:'none' } : {}) }}>
+        zIndex:5,
+        // 🌌 THE ARENA GETS THE SAME PANEL AT A FIXED WIDTH, NOT A HIDDEN ONE.
+        // ⚠️ `maxWidth` IS NOT DECORATION: the two panels grow toward each other
+        // from opposite edges, so on a narrow arena a fixed 440 each would have
+        // them overlap in the middle with no warning. Half the box, less the two
+        // 3% insets and a gutter, is the width at which they can only ever meet.
+        ...(immersive
+          ? { width: COMMIT_OVERLAY.arenaStackWidth,
+              maxWidth: 'calc(50% - 24px)', boxSizing: 'border-box' }
+          : { width: "45%" }) }}>
       {/* 🔴🔵 THE FRAME WEARS ITS OWN STAT'S COLOUR — Drive red, Sustain blue —
           and it is still the ONLY thing that says which stack you are looking at
           from across the board. The bracket keeps that job and spends far less
@@ -298,6 +324,77 @@ export function stackSeatPos(side, col, row = 0) {
     top: row * K.stackChip * K.nestRowY + (col % 2) * K.stackChip * K.nestDropY,
     width: K.stackChip, height: K.stackChip,
   };
+}
+
+/* 🍯 THE NOTE POOL'S HONEYCOMB — the same three numbers, a rectangle instead of
+   a row.
+   🎯 A HEX ONLY TILES IF EVERY OTHER COLUMN DROPS. `NOTE_HEX.flatTop` puts the
+   vertices at 3 and 9 o'clock, so a neighbour sits 0.75 chips across and 0.433
+   down and a whole row steps 0.866 — which is why a plain grid wastes the notch
+   on both sides of every chip. Alex, 2026-09-12: *"could we perhaps save some
+   space by staggering them so that they are more aligned with the hex's flat
+   parts."* At the shipped 60px chip in the arena's 238px column that is FOUR per
+   row where the grid fits three, and 195px where the grid needs 246.
+   📌 IT REUSES `nestStepX/nestDropY/nestRowY` DELIBERATELY. Those are Alex's
+   2026-08 dial-in for the chord stack seats; the pool now speaks the grammar the
+   stacks and the board already speak instead of a second opinion about one shape.
+   ⚠️ THE SAVING IS NOT MONOTONIC IN CHIP SIZE, so do not "optimise" this by
+   shrinking the chip. Column count steps, and at a width that fits five columns
+   but still needs three rows you pay the half-row drop and buy nothing — 52px
+   measured 9px WORSE than the grid while 60px measured 51px better. Dial it on
+   `.scratch/note-pool-nest.html`, which prints the comparison. */
+
+/** How many honeycombed columns fit in `width`. ⚠️ Only the LAST column needs a
+ *  full chip; every earlier one needs just its step, which is what lets a fourth
+ *  column into a width that fits three squares. */
+export function poolColumns(width, chip = COMMIT_OVERLAY.poolChip) {
+  if (!width || width < chip) return 1;
+  return Math.max(1, Math.floor((width - chip) / (chip * COMMIT_OVERLAY.nestStepX)) + 1);
+}
+
+/** Where pool seat `i` sits, as absolute-position styles. Row-major, so reading
+ *  order is left to right exactly as the flex grid it replaces. */
+export function poolSeatPos(i, cols, chip = COMMIT_OVERLAY.poolChip) {
+  const K = COMMIT_OVERLAY;
+  const col = i % cols, row = Math.floor(i / cols);
+  return {
+    position: "absolute",
+    left: col * chip * K.nestStepX,
+    top:  row * chip * K.nestRowY + (col % 2) * chip * K.nestDropY,
+    width: chip, height: chip,
+  };
+}
+
+/** ⚠️ THE NEST HAS NO INTRINSIC HEIGHT — its seats are absolute. Reserve it here
+ *  or everything below the pool slides up underneath it. The `dropY` term is the
+ *  odd columns hanging half a row below the last full row. */
+export function poolNestHeight(count, cols, chip = COMMIT_OVERLAY.poolChip) {
+  const K = COMMIT_OVERLAY;
+  const rows = Math.max(1, Math.ceil(count / Math.max(1, cols)));
+  return (rows - 1) * chip * K.nestRowY + chip * (1 + K.nestDropY);
+}
+
+/** Measures the pool's own box, because its width is not one number: the arena
+ *  column is 238px and the 2D board's is far wider, and the column count is what
+ *  the whole layout turns on.
+ *  📌 GUARDED AND FALLING BACK TO THE ARENA'S FOUR. `ResizeObserver` does not
+ *  exist under jsdom, where the DOM journey suites run, and SSR never runs the
+ *  effect at all — both get a four-wide honeycomb, which is a correct picture of
+ *  the arena rather than a broken one. */
+export function usePoolColumns(chip = COMMIT_OVERLAY.poolChip) {
+  const ref = useRef(null);
+  const [cols, setCols] = useState(4);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const measure = () => setCols(poolColumns(el.clientWidth, chip));
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [chip]);
+  return [ref, cols];
 }
 
 /* 🎼 THE COMMIT TRACK, spanning the top of the board in 2D and floating at the
@@ -359,8 +456,6 @@ export const COMMIT_CSS = `
   .rlsw-wave-core { fill:none; stroke:${MELODY_C}; stroke-width:2.4; stroke-linecap:round; }
   .rlsw-wave-head { fill:#fff; stroke:${MELODY_C}; stroke-width:2; }
   .rlsw-wave-overtone { fill:none; stroke:${MELODY_C}; stroke-linecap:round; }
-  .rlsw-wave-pulse { fill:none; stroke:${MELODY_C}; stroke-width:7; opacity:.5; stroke-linecap:round; }
-  .rlsw-wave-pulse-core { fill:none; stroke:#fff; stroke-width:2.6; opacity:.95; stroke-linecap:round; }
   .rlsw-wave-travel { animation-name:rlsw-wave-travel; animation-timing-function:linear;
     animation-iteration-count:infinite; animation-duration:${COMMIT_OVERLAY.waveTravel}s; }
   @keyframes rlsw-wave-travel {
