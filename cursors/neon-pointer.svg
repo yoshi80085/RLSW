@@ -1,0 +1,8 @@
+<!-- Static twin of ui/GlobalCursor.jsx's arrowhead, for anywhere a real
+     CSS `cursor:url()` is needed. ⚠️ The four points and the rim width are
+     fitted measurements — if GlobalCursor's PATH/RIM change, change them here
+     in the same pass or the two pointers drift apart. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30">
+  <path d="M4 3 L26.9 13.4 L16.8 17.8 L10.5 27.2 Z" fill="#000"
+    stroke="#eefcff" stroke-width="2.95" stroke-linejoin="round"/>
+</svg>
