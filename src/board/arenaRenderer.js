@@ -97,7 +97,9 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality 
       // Focus is refreshed every frame from the same clock as the projectiles.
       visuals.tick(elapsed,reduced,camera);
       if(!sonicCamera.update(frame,model,dt,reduced))controls.update();
-      const moving=visuals.diagnostics().effects>0||sonicCamera.active;
+      // A head dial mid-change is motion too: under reduced motion the loop only
+      // draws when something moves, and a dial that appears must also DISAPPEAR.
+      const stats=visuals.diagnostics(),moving=stats.effects>0||stats.headDials>0||sonicCamera.active;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;

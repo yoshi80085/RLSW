@@ -188,14 +188,39 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
   ok(runs.every(r => r.anomaly == null), `no match reported an anomaly: ${JSON.stringify(runs.find(r => r.anomaly)?.anomaly)}`);
   ok(runs.every(r => r.reason !== 'stalled'), 'no match stalled');
 
-  const decided = runs.filter(r => r.reason === 'winner');
-  ok(decided.length >= seeds.length / 2,
-     `⚠️ most matches reach a winner (${decided.length}/${seeds.length}) — a bench of timeouts is measuring its own ceiling`);
+  /* 🎸 A BUZZER ENDING IS A FINISH — and this check said otherwise for as
+     long as Battle of the Bands has been the default (2026-09-15).
 
-  // Reaching the Fame target crowns outright, so a finished match must name a
-  // real seat rather than stalling above the line with nothing able to end it.
+     ⚠️ `play.js`'s own `reason` field carries the warning verbatim: *"'buzzer'
+     IS ITS OWN REASON AND IT IS NOT 'turnCap' — a probe that folded the two
+     together would count every clean Battle of the Bands as an anomaly."* This
+     probe folded them together anyway, because it was written when Legend Run
+     was the only mode and `'winner'` was the only way a match could be decided.
+     **The comment was right and the check was wrong.** All eight seeds end
+     `reason:'buzzer'` at turn 20 with a named winner; nothing is broken and the
+     suite was red.
+
+     🎯 WHAT THIS ASSERTION IS ACTUALLY FOR is "the match ended because the
+     RULES ended it, not because the harness gave up" — so the test is *not
+     `turnCap`, not `stalled`*, which is what it now asks. */
+  const decided = runs.filter(r => r.reason === 'winner' || r.reason === 'buzzer');
+  ok(decided.length >= seeds.length / 2,
+     `⚠️ most matches reach a decided ending (${decided.length}/${seeds.length}) — ` +
+     `a bench of timeouts is measuring its own ceiling. ` +
+     `reasons: ${JSON.stringify(runs.map(r => r.reason))}`);
+
   for (const r of decided) {
-    ok([RONIN, ZERO].includes(r.winner), 'the winner is a seat at the table');
+    /* ⚠️ A DRAWN BUZZER HAS NO WINNER AND IS STILL CORRECT. `buzzerVerdict`'s
+       fourth rung leaves `winnerId` null and names the tied bands instead, so
+       only a `'winner'` ending is obliged to name a seat. Asserting a seat
+       unconditionally would make a legitimate draw look like a bug — the same
+       mistake one level down. */
+    if (r.reason === 'winner' || r.winner != null) {
+      ok([RONIN, ZERO].includes(r.winner), 'the winner is a seat at the table');
+    } else {
+      ok(Array.isArray(r.verdict?.tied) && r.verdict.tied.length >= 2,
+         'a drawn buzzer names the bands that tied');
+    }
     ok(r.turns > 0 && r.turns <= 400, 'and it took a plausible number of turns');
   }
 }
@@ -284,8 +309,21 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
   const plain = matchConfig(DUEL);
   ok(!('fameTarget' in plain), 'an ordinary match sets no Fame target override…');
   ok(!('fameCap' in plain), '…and no Fame cap override');
-  eq(fameToWin(makeInitialState(plain, 5)), 3 * fpPerLife(DUEL.length),
-     '…so the target is `lives × fpPerLife`, the rule');
+  /* 🎸 AN ORDINARY MATCH IS BATTLE OF THE BANDS NOW, AND IT HAS NO TARGET.
+     This asserted `lives × fpPerLife` for the DEFAULT config, which stopped
+     being Legend Run on 2026-09-15: `state.js` normalises an unspecified
+     `winCondition` to `'rounds'`, and `fameToWin` returns Infinity there **by
+     design**, so `grantFame` can never crown anybody and the buzzer decides
+     instead. The suite was red because the default moved, not because the rule
+     broke.
+     ⚠️ The property this was really guarding — *"with no override, the target
+     is the RULE rather than a number somebody typed"* — still matters, so it is
+     now asserted where the rule actually applies. Both modes, both facts. */
+  eq(fameToWin(makeInitialState(plain, 5)), Infinity,
+     '…and an ordinary 🎸 Battle of the Bands match has no Fame target at all');
+  eq(fameToWin(makeInitialState(matchConfig(DUEL, { winCondition: 'fame' }), 5)),
+     3 * fpPerLife(DUEL.length),
+     '…while 🏆 Legend Run\'s target is `lives × fpPerLife`, the rule');
 
   const rigged = matchConfig(DUEL, { fameTarget: 999, fameCap: 99 });
   eq(makeInitialState(rigged, 5).config.fameTarget, 999,

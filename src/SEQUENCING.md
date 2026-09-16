@@ -26,6 +26,245 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
+> ⚠️ **§A HAS RESTACKED AND THIS ENTRY MAKES TWELVE.** `CLAUDE.md` says §A is ONE
+> handoff and the previous one moves to the archive with a row in §C. That ritual
+> has not run since 2026-09-04; entries 8 through 19 are all still here. 📌
+> **Deliberately not fixed in this pass** — archiving is destructive and §B says
+> read it first — but it is the exact regrowth the restructure existed to stop,
+> and the next session that touches this file should do it. 🚩 **Flagged twice
+> now (18-coreloop, 19-cheapest). A warning that is always there stops being
+> read — the same failure `check:bundle`'s "6 warnings" taught.**
+
+## 20-lever. The mode flipped, and one constant had been quietly lying for weeks — 2026-09-15
+
+⭐ **ALEX: *"I'd really like for the game to be turn based instead of FP race
+based, with FP as a tracker to determine who is winning at the moment instead of
+who is closest to the finish line."*** That is R1, and this session built §0's
+lever — **all four steps in one pass, because they cannot be split.**
+
+### ✅ What shipped
+
+1. 🎸 **Battle of the Bands is the DEFAULT.** One normalising ternary in
+   `state.js`. Every downstream reader tests `state.config.winCondition`, which
+   is always explicitly set there, so the codebase has exactly one default.
+   🏆 The race survives as `winCondition:'fame'` (§2.4, Alex's ruling).
+2. 🎤 **Fans pay Fame again** — `FAN_CASUAL_WEIGHT` 0 → **0.12**, `FAN_MULT_CAP`
+   3.0 → **5.0**.
+3. 🎲 **The Sonic die ladder is DELETED** — `sonicDieSides` plus `peakCasuals`
+   across **seven** sites (the brief said six).
+4. ✨ **The pose ceiling rides the mode** — `POSE_FP_MAX_ROUNDS = Infinity`.
+
+📏 `test:winconditions` **87** · `test:turnflow` **73** · `test:determinism` **20**
+· `test:battleflow` **65** · `test:sonic` **75**. ⚠️ Run in an isolated container
+against staged copies — `test:all`, `check:bundle` and `lint:baseline` still have
+not run. `esbuild` parse of the monolith: exit 0, zero warnings.
+
+### 🎓 THE FINDINGS, AND THERE ARE THREE
+
+⭐ **1. A CONSTANT THAT SAYS IT "MATCHES" ANOTHER DOES NOT FOLLOW IT.**
+`POSE_FP_MAX`'s own comment read *"Matches `FAME_PER_TURN_CAP`"*. That stopped
+being true the day `FAME_PER_TURN_CAP_ROUNDS` was added: `RIFF_FP_TURN_CAP` was
+taught to follow the mode, the pose ceiling never was. So in a round-limited
+match every other Fame source ran uncapped into the hundreds while a maxed pose
+stayed pinned at **4** — the Limelight economy quietly worthless in the mode that
+was about to become the default. 🎯 **Nothing errored and no suite went red**,
+because the comment described a relationship the code had never actually had.
+**It copied the number once, and the copy rotted.**
+
+⭐ **2. THE COMMENT WAS RIGHT AND THE CODE WAS WRONG, FOR TWO WEEKS.**
+`gameConstants.js`'s 2026-09-02 block *derives* 0.12 and 5.0 in full, complete
+with the arithmetic (`1 + 0.40×6 + 0.12×14 = 5.08`), and the constants
+underneath it read `0` and `3.0` anyway — because the per-turn cap made the
+correct numbers unusable. 🎯 **The fix was never the weight; it was the
+constraint.** ⚠️ **If you find yourself zeroing a value whose own comment
+explains why it should not be zero, change the constraint instead.**
+📌 Proof it was really broken: restoring the weight **turned an already-red
+`evalCheck` assertion green** — *"more fans → higher multiplier term"* had been
+failing because fans did nothing.
+
+⭐ **3. A FLIPPED DEFAULT TURNS EVERY OMITTED ARGUMENT INTO A BEHAVIOUR CHANGE.**
+`battleFlowCheck`'s Fame-economy fixture named no mode, so it had silently
+stopped testing the Fame economy and started asserting against Infinity.
+`winConditionsCheck`'s Legend Run **control** — the row commented *"if this row
+ever changes, the mode leaked"* — became the same match twice. Both are now
+pinned to `'fame'` explicitly. 🎯 **The suites caught all of it, which is the
+system working**; the danger was never the failures, it was the fixtures that
+would have kept passing while measuring nothing.
+
+### 🚨 The trap the brief got backwards
+
+Phase 1 item 2 said *"remove `FAME_PER_TURN_CAP`"* and warned two dependent caps
+would go silently uncapped. The real shape: `RIFF_FP_TURN_CAP` already looked
+after itself, `POSE_FP_MAX` was already broken before anyone touched anything,
+and `FAME_PER_TURN_CAP` **must stay** because the race survives and the cap is
+that mode's catch-up brake. Trap 3 is corrected in place.
+
+### ⛔ What is NOT done, and one of it is user-visible
+
+- 🚨 **THE MATCH IS ROUND-LIMITED WITH NOTHING ON SCREEN SAYING SO.** No
+  rounds-remaining readout, no lobby toggle. ⚠️ **And `ui/FameRace.jsx` still
+  draws a finish line at `fameToWin`, which is Infinity in the default mode** —
+  the HUD is now actively lying. `FAME_TRACK_REDESIGN.md` is the job, and
+  `.scratch/fame-track-preview.html` already exists from 2026-09-02.
+- ⚠️ **R8 is unsatisfied.** The charge-zone `+2` still raises the **roof**.
+  Phase 2 item 2, flagged at the site.
+- 🐛 **`evalCheck` and `selftest` were ALREADY RED before this pass** and still
+  are — `evalCheck` at *"a charge alone does not carry anyone else's rig"*,
+  `selftest` at *"keeps the highest die"*. 📌 Verified against a pristine tree,
+  and `evalCheck`'s failure point MOVED LATER because this pass fixed one of its
+  assertions. **Neither is caused by this work.**
+- 🗺️ **The Systems Map is now behind by THREE sessions.**
+
+## 19-cheapest. Three cheap things, and one of them was a rule that never existed — 2026-09-15
+
+⭐ **THE FIRST BUILDING SESSION AFTER `18-coreloop`.** Alex asked for the idea box
+and the core-loop rulings **cheapest first**, and chose the zero-risk trio:
+Phase 0's Face button, the `endingDb` naming job, and the dead
+`pendingSonicAttacks` counter. ⛔ **Nothing from Phases 1–6 was built.**
+
+⚠️ **NO REPO SUITE RAN.** The 2026-09-08 Windows update still stops the Cowork
+workspace mounting the repo, so `test:all`, `check:bundle`, `lint:baseline` and
+`bench:bot` **did not run**. Files were staged out, edited and written back. What
+DID run: two `.scratch/` probes in an isolated container, and an `esbuild` parse
+of the monolith (**exit 0, zero warnings**). 📌 **Run the suites in Claude Code
+before trusting any count.**
+
+### What shipped
+
+1. 🎨 **The Face button.** Inline override deleted; Face wears `.btn`/`.btn.on`
+   like every other rail button. 🎯 **THE FINDING THAT MATTERED:** the brief
+   priced this as a **contrast** defect (2.15:1 vs 12.04:1) — but
+   `.arail .btn` builds its wash, bloom and `inset 2px 0 0` left spine out of
+   **`currentColor`**, so the dim colour **put the lamp out** rather than greying
+   the label. ⚠️ A pure WCAG reading would have under-sold it, and a shade picked
+   to clear 4.5:1 would have left the button dimmer than the rail it sits in.
+   **When a design system keys off `currentColor`, a colour override is a
+   component override.** ⚠️ Cost, taken knowingly: the cyan `#44ccff` armed state
+   is gone with it; one prop restores it and the site says how.
+2. 🎼 **`ENDING_DB` is named and exported** (`music/melodyPayout.js`), carrying
+   §14.9.3's two reasons, §14.9.5's cost and §14.9.4's unsettled tonic.
+   `PROJECTILE_COMBAT_DESIGN.md` §14.9.5 now points AT the comment and is marked
+   historical, so the rationale has **one** live home (§B9). Verified inert:
+   **28,807 assertions, 0 failures.**
+3. 🔊 **`pendingSonicAttacks` is reset** at the defender's own turn end.
+
+### 🎓 The one worth keeping
+
+⭐ **A COUNTER NOBODY READS IS A RULE THAT DOES NOT EXIST — AND IT LOOKS EXACTLY
+LIKE ONE THAT DOES.** `pendingSonicAttacks` was incremented at one site, read at
+none, reset at none. Its comment described §3.5.1's turn-start shield bill in the
+present tense, `PROJECTILE_COMBAT_DESIGN.md` §3.5.5 argued *from* that bill that
+*"defence stops being free"* — and **the bill was never charged.** An entire
+design argument rested on a line of code that only incremented an integer.
+
+🎯 **This is §B's "a suite nobody runs" in a second costume**, and the costume is
+the point: the first one was a *test* that asserted nothing, this one is a
+*counter* that fed nothing. Both passed every reading a human gave them, because
+both were syntactically alive. 📌 **The cheap defence is the same in both cases —
+grep for the READ, not the write.** A write with no read is the tell.
+
+⭐ **AND THE FIX ANSWERED A SECOND QUESTION FOR FREE.** Clearing at the
+*defender's own* turn end — beside the slime decay, for the reason `turn.js`
+already documents about spirit-turns vs turns — makes the window "attacks since I
+last acted", which is one lap of rivals at **any player count**. That is §3.5.1's
+bill *and* R12's diminishing-FP window, **including Alex's actual worry: three
+different attackers milking one low-Sustain player, which a per-attacker counter
+would have missed entirely.** 🎯 The boundary that was correct for the old rule
+turned out to be correct for the new one, because both are really asking *"what
+happened to me while I could not act?"*
+
+### ⁉️ What Alex ruled in passing
+
+⭐ **The Fame race SURVIVES — rounds becomes the default, the race stays
+selectable** (brief §2.4, previously open). ⚠️ **It is not a free answer:**
+keeping the race means `fpPerLife` and friends must keep working at
+hundreds-scale Fame, which **converts the brief's trap 8 from a consequence into
+a job.**
+
+### ⛔ What the next session must not assume
+
+- **No suite has seen any of this.** `test:render`, `test:turnflow`,
+  `test:determinism` and `check:bundle` are all unverified against it.
+- The two probes are **`.scratch/` evidence, not suites** — deliberately, per
+  `CLAUDE.md`. 🎯 `sonicTallyCheck.mjs`'s assertions belong in **`test:barrage`**
+  when Phase 3 writes it, beside R12, the consumer they are really about.
+- 🗺️ **The Systems Map has NOT been republished** — and it is now behind by two
+  sessions, `18-coreloop`'s changes included.
+
+## 18-coreloop. The loop got decided, and four changes turned out to be one — 2026-09-15
+
+⚠️ **A DESIGN SESSION. NOTHING WAS BUILT, NO SUITE WAS RUN, NO CODE MOVED.**
+Documents changed and a build brief was written. Do not read any number below as
+a test result — they are simulation output, not assertions.
+
+⭐ **THE OUTPUT IS `CORE_LOOP_REWORK_BRIEF.md`** — 22 rulings, 8 open questions,
+6 phases. 🎯 Point the next session there.
+
+### 🎓 What the session actually found
+
+⭐ **FOUR CHANGES ALEX RAISED SEPARATELY ARE ONE LEVER.** Round-limited play →
+the per-turn Fame cap has no job → a heavy crowd multiplier becomes safe →
+casuals go back to Fame → the Sonic die ladder has nothing left to pay for.
+⚠️ **In any other order, each step looks like it is breaking something.**
+
+🚨 **AND THE REPO HALF-AGREED ALREADY.** `FAN_CASUAL_WEIGHT = 0` carries the
+comment *"casuals now grow permanent Sonic die size"* — sitting directly beneath
+a 2026-09-02 block, **Alex's own call**, that derived the correct weights
+(Diehard 0.40, Casual 0.12, cap 5.0) and warned *"THIS PUSHES HARD ON
+`FAME_PER_TURN_CAP`, WHICH IS THE POINT OF FRICTION."* The weights were walked
+back to fund the die ladder. **Removing the cap removes the reason they were.**
+
+✅ **ROUND-LIMITED PLAY IS BUILT AND SWITCHED OFF.** `WIN_CONDITIONS_DESIGN.md`
+§9 item 1 is CLOSED — `ROUND_LIMIT_DEFAULT = 10`, `FAME_PER_TURN_CAP_ROUNDS =
+Infinity`, headless, `test:winconditions` green. Missing: the lobby toggle, the
+HUD readout, and the default. 📌 Alex believed it unbuilt; it is unswitched.
+
+🐛 **`pendingSonicAttacks` IS WRITTEN AND NEVER READ.** One site in the repo —
+the increment at `combat.js:276`. Nothing consumes it, nothing resets it. Two
+consequences: §3.5.1's turn-start shield bill **is a doc-only rule and does not
+exist in the game**, so every argument in §3.5.5 is unpaid-for; and the counter is
+a lifetime tally wearing a per-round name, so the first thing to read it is wrong.
+🎯 It is also exactly the counter Alex's new diminishing-FP rule needs.
+
+🐛 **THE FACE BUTTON IS A REAL DEFECT.** Alex reported it as looking
+unselectable. `rlsw-simulator-v3_8_1.jsx:12785` hardcodes idle `#1a5066` on
+`#0a1020` — **2.15:1** against every other rail button's **12.04:1**, at 10px
+where WCAG wants 4.5:1. ⚠️ And `.btn:disabled` is `opacity:.3`, landing in the
+same visual place — **so it is styled like the one state it never renders in**,
+since Face only appears when `moveStepsLeft > 0`.
+
+### ⭐ The rulings, in one line each
+
+Round-limited, no FP caps ever, Fame in the hundreds, fans multiply Fame · the fan
+die ladder is cut · the marquee pays a temporary card (d8/d10/d12 by question
+difficulty) · charge zones raise the floor only, never the roof · the Swing
+converts contact into damage at the cost of committing to the brawl · **the Riff
+Off is not chosen but TRIGGERED by mutual facing in Sonic range**, 1 AP and no
+Drive note, running off the last committed melody · **and every special ability
+is parked until the loop is solid.**
+
+### 🎯 Why the Riff Off ruling matters more than it looks
+
+⭐ **Facing becomes the mode switch.** Square up and your Sonic is a duel; attack
+from an angle and it is a barrage. 🎯 **That closes a hole the barrage opened** —
+the rolled shield and the duel both answered *"the defender should get to do
+something"* and overlapped. Under the ruling they do not: face them and you answer
+with melody, turn away and you answer with your Sustain roll. **One choice, made
+in advance, about which kind of fight you are in.** ⚠️ And it relocates combat
+choice into the movement pillar — to fire a plain Sonic at someone facing you,
+you must move.
+
+### ⚠️ What was NOT decided, and must not be assumed
+
+What produces the Sustain pool (**the most sensitive number in the rework** — one
+die of defence outweighs the whole damage divisor) · whether a note-break triggers
+on *emptied* or *overwhelmed* · the marquee card's wrong-answer cost, its
+add-vs-upgrade shape, and its duration · whether the Fame-race mode survives at
+all · the Swing divisor and its re-scaled whiff · whether a duel spends the
+melody. 🚨 **All eight are in the brief's §2, labelled as recommendations rather
+than rulings. Keep that label.**
+
+
 ## 17-riffoff. We went looking for the Swing and found the duel's currency — 2026-09-14
 
 ⚠️ **A DESIGN SESSION. NOTHING WAS BUILT, NO SUITE WAS RUN, AND NO CODE MOVED.**

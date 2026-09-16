@@ -22,6 +22,27 @@
 
 ---
 
+> ⭐ **UPDATE 2026-09-15 — BATTLE OF THE BANDS IS NOW THE DEFAULT MODE.**
+> Alex: *"I'd really like for the game to be turn based instead of FP race
+> based, with FP as a tracker to determine who is winning at the moment instead
+> of who is closest to the finish line."*
+>
+> ✅ **The engine half is BUILT.** `state.js` normalises `winCondition` to
+> `'rounds'` unless `'fame'` is named, so §4.4's uncapped window, §3's buzzer and
+> the Infinity `fameToWin` are what an unspecified match now gets.
+> `test:winconditions` **87**.
+>
+> 🏆 **THE RACE IS NOT DELETED** — it is opt-in (`winCondition:'fame'`), and §1b
+> of the suite exists to prove it stays reachable.
+>
+> ⛔ **§8's build order items 2 and 3 (the menu and the HUD) ARE STILL OPEN**, and
+> that now MATTERS more than it did: the match is round-limited with **nothing on
+> screen saying so**, and §4.2's Fame-race HUD still draws a finish line at
+> `fameToWin` — which is Infinity in the default mode. `FAME_TRACK_REDESIGN.md`.
+>
+> ⚠️ **§8 item 1's promise — *"defaulted so every existing caller gets today's
+> game unchanged"* — is deliberately NO LONGER TRUE.** That was the point.
+
 ## 0. The one-line version
 
 **How a match ends becomes a setting.** 🏆 **Legend Run** is the game that ships
@@ -339,9 +360,43 @@ same seats, same seeds, today's game.
    rule. A round-limit ending that no suite runs is not a rule.
 5. ✅ **DONE** (§9) — **The bench**, pointed at the §3 question: does a searcher still fight when
    fighting cannot win?
-6. ⛔ **NOT BUILT** — **The menu, LAST, and via a `.scratch/` preview page** — both the mode toggle
-   and whatever replaces the Fame Race track.
+6. ✅ **DONE 2026-09-16** (`test:buzzer` 81, `test:fametrack` 9 states) — **The menu, LAST, and via a
+   `.scratch/` preview page** — both the mode toggle and whatever replaces the
+   Fame Race track. Both were built in `.scratch/fame-track-preview.html` first;
+   Alex signed off the segment-row treatment and deferred the rest of the look to
+   the 3D pass.
 
 ⚠️ **Steps 1–5 are headless and safe. Step 6 is the one with the standing rule
 on it**: do not edit the HUD, the board or any visual element straight into the
 client.
+
+---
+
+## 8b. 🚨 WHAT STEP 6 ACTUALLY FOUND — steps 1–5 were only half the mode
+
+⚠️ **THE CLIENT WAS NEVER PLAYING THIS MODE.** Steps 1–5 were checked headless
+and were all genuinely correct. The client was not, and no suite compared them:
+
+- **The buzzer had no client path at all.** Step 3 above says "`runMatch` and the
+  client's turn-end path stop on `turn.round > roundLimit`". Only `runMatch` ever
+  did — `buzzerReached`/`buzzerVerdict` appeared nowhere in
+  `rlsw-simulator-v3_8_1.jsx`. This doc's own §8 step 3 and
+  `winConditionsCheck.mjs`'s header both recorded the intent; neither was built.
+- **So the only surviving ending was the Fame crown**, and it was firing on a
+  target this mode does not have: the client computed its own
+  `startingLives × fpPerLife(playerCount)` (⭐18 at 4P) rather than calling
+  `battleFlow.fameToWin`, which returns **Infinity** here precisely so nothing
+  can be crowned. With elimination off nobody can be knocked out either, so
+  **every match ended as a Legend Run, roughly half-played** — measured leaders
+  bank ⭐38–47 by round 10, so ⭐18 falls somewhere near the midpoint.
+- 📌 **The lesson, and it is §B material.** Infinity was chosen so that "one
+  definition of have they won yet" could never fork. It could not fork *inside
+  the engine*. The client had quietly kept a second copy of the rule, and a
+  plausible wrong number (⭐18) survives where a visible `Infinity` would have
+  been found in a day. **A constant the client re-derives is a second
+  implementation of the rule, whatever the comment above it says.**
+
+✅ **Fixed 2026-09-16**: the client reads `fameToWin(state)` for the RULE and a
+separate measured `fameScaleFor(players, roundLimit)` for the RULER (anything
+drawn). `test:buzzer` asserts the crown is unreachable in a score game, and its
+mutation test confirms re-introducing a finite target turns the suite red.

@@ -174,9 +174,34 @@ What makes a preview page useful:
 - **Old look beside new look**, so the comparison is honest.
 
 📌 **YOU CANNOT SEE WHERE HE LANDS.** The page runs in his browser and no state
-comes back. Ask for a screenshot of the control panel and read the values off it
-— and warn him to screenshot BEFORE opening any new copy you send, because a
-fresh file loads with defaults and wipes his dial-in.
+comes back across the gap. **So build the page so it can hand its own state back**
+— two things, and they are not the same thing:
+
+1. 💾 **`localStorage`, written from `render()`** — the one chokepoint every
+   control already passes through, so a lever added later persists for free.
+   ⚠️ On restore you must also push the state back onto the *inputs*; they carry
+   their values in the HTML, so a restored page otherwise draws a strip that
+   disagrees with every slider beside it. This protects his work between HIS
+   reloads. **It never reaches you.**
+2. 📋 **A "copy dial-in" button** — this is the actual handoff. A block he
+   pastes into the session, and it must **mark changed-vs-default**, because
+   *"he chose 60"* and *"he never touched that slider"* are different facts and a
+   port that cannot tell them apart will enshrine an accident as a decision.
+   ⚠️ Show the text in a selectable box FIRST and treat `navigator.clipboard`
+   as the convenience — a `file://` page is not a secure origin everywhere, so
+   the copy can simply reject.
+
+📌 **A screenshot is the fallback, not the mechanism.** It was the mechanism
+until 2026-09-16 and it cost a whole dial-in: `fame-track-preview.html` was built
+2026-09-02, tuned, never screenshotted, and two weeks later the values were gone
+and the port was still blocked on them. **If you are about to write "screenshot
+the panel before you open any new copy" into a preview page, build the two things
+above instead.** `.scratch/fame-track-preview.html` is the worked example and
+`.scratch/fameDialInCheck.mjs` proves it still works — including the assumption
+the whole design rests on, that a `file://` page can write `localStorage` at all.
+
+⚠️ **Storage is keyed to the file's location**, so it survives a reload but not
+a move or a rename. Say so on the page, and tell him to copy before moving it.
 
 ⚠️ **VERIFY THE PORT, DON'T ASSUME IT.** Render the shipped component through
 React SSR (`esbuild --jsx=automatic` + `react-dom/server`) and diff it against

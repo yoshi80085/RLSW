@@ -58,7 +58,7 @@ import { HEX_BY_NUM } from "../../board/hexMap.js";
 import { neighborInDirection, straightNeighborInDirection, angleTo, angleDiff } from "../../board/hexGeometry.js";
 import { hexRingFromCenter, crowdMultiplier } from "../../board/boardHelpers.js";
 import {
-  FAME_PER_TURN_CAP, FAME_PER_TURN_CAP_ROUNDS, ROUND_LIMIT_DEFAULT,
+  FAME_PER_TURN_CAP, FAME_PER_TURN_CAP_ROUNDS, famePerTurnCapFor, ROUND_LIMIT_DEFAULT,
   RIFF_FP_TURN_CAP, FAN_DIEHARD_START, LIMELIGHT_HEX,
   SONIC_LIMELIGHT_FP, POSE_SUSTAIN_COST, fpPerLife,
 } from "../../data/gameConstants.js";
@@ -163,9 +163,10 @@ export function fameToWin(state) {
  */
 export function famePerTurnCap(state) {
   if (state?.config?.fameCap != null) return state.config.fameCap;
-  return state?.config?.winCondition === 'rounds'
-    ? FAME_PER_TURN_CAP_ROUNDS
-    : FAME_PER_TURN_CAP;
+  // 📌 The mode test itself lives in `gameConstants.famePerTurnCapFor` as of
+  // 2026-09-15, so the pose ceiling's twin (`poseFpMaxFor`) cannot drift from
+  // it. This function keeps the `fameCap` precedence above and nothing else.
+  return famePerTurnCapFor(state?.config?.winCondition);
 }
 
 /** Rounds before the buzzer — null in Legend Run, which has no clock. */
@@ -613,7 +614,9 @@ export function* poseConsequences({ state, spiritId, fameThisTurn = {} }) {
   if (!isPosing(state, spiritId)) return { granted: 0, rounds: 0, shed: 0, fameThisTurn };
 
   const rounds = poseRounds(state, spiritId) + 1;
-  const tier   = posePayout(rounds - 1);
+  // 🎸 `state` carries the mode, and the pose ceiling rides it — in a
+  // round-limited match this ladder no longer stops at 4. See `POSE_FP_MAX_ROUNDS`.
+  const tier   = posePayout(rounds - 1, state);
 
   state = yield act(poseRoundBanked(spiritId));
 

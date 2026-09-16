@@ -807,8 +807,21 @@ export function selfPoseValue(state, self, rivals) {
 
   // The rung this pose is HEADING FOR, not the one under its feet — see
   // POSE_LOOKAHEAD for why that is a fix rather than an inflation.
+  // 🚨 THE DIVISOR IS THE FINITE CONSTANT ON PURPOSE, AND IT MUST STAY THAT WAY.
+  // `posePayout` became mode-aware on 2026-09-15 and returns an UNCAPPED ladder
+  // in a round-limited match (`POSE_FP_MAX_ROUNDS = Infinity`). This line is a
+  // NORMALISER — it wants a pose expressed as 0..1 — so dividing by the live
+  // ceiling would be `n / Infinity === 0` and the searcher would stop valuing
+  // the Limelight entirely, silently, with every suite still green.
+  //
+  // ✅ AND PASSING `state` HERE CHANGES NOTHING TODAY, which is why it is safe:
+  // `clamp01` already saturates at 1.0 from pose round 3 (4/4), so the extra
+  // headroom the uncapped ladder grants is clamped away. It is passed anyway so
+  // the evaluator reads the same function the game bills through — `limelight.js`'s
+  // header is about exactly this class of divergence. ⚠️ If `clamp01` is ever
+  // removed, this becomes an unbounded term.
   const payoff = clamp01(
-    posePayout(poseRounds(state, self.id) + POSE_LOOKAHEAD) / POSE_FP_MAX);
+    posePayout(poseRounds(state, self.id) + POSE_LOOKAHEAD, state) / POSE_FP_MAX);
 
   // Nearest live rival, in hexes. Nobody on the board ⇒ nothing can punish it.
   let reach = Infinity;
@@ -1030,7 +1043,8 @@ export function evaluate(state, spiritId, view = {}) {
   //     earns a full turn's FP ceiling standing still, which makes them the
   //     table's problem, not just their neighbour's. NEGATIVE by definition.
   terms.rivalPose = -clamp01(rivals.reduce((worst, r) => (
-    posing[r.id] ? Math.max(worst, posePayout(poseRounds(state, r.id)) / POSE_FP_MAX) : worst
+    // 📌 Finite divisor, same reason as `payoff` above — this is a normaliser.
+    posing[r.id] ? Math.max(worst, posePayout(poseRounds(state, r.id), state) / POSE_FP_MAX) : worst
   ), 0));
 
   // 15. TARGET UPSIDE (NEW — replaces §3.7's "underdog-target penalty", which

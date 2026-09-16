@@ -54,7 +54,19 @@ export function GameOverOverlay({
   onReturnToLobby,
   fameToWin,
   LIMELIGHT_TO_WIN,
+  /* 🎸 THE BUZZER VERDICT — `battleFlow.buzzerVerdict`, or null in 🏆 Legend
+     Run. `{ winnerId, decidedOn, tied, standings }`. ⚠️ `decidedOn` is the whole
+     reason this prop exists: a tie-break that fires invisibly is one nobody can
+     tell from a bug, and Battle of the Bands can be settled on DIEHARDS or on
+     NET DAMAGE, neither of which the player can see coming. */
+  verdict = null,
+  roundLimit = null,
 }) {
+  /* ⚖️ A DRAWN BUZZER HAS NO WINNER AND THE MATCH IS STILL OVER. `winnerId`
+     is null on rung 4 (`buzzerVerdict`), so a guard of `if (!winner) return
+     null` would leave the board sitting there forever with no end screen — the
+     game over, and nothing saying so. */
+  const isDraw = !winner && (verdict?.tied?.length ?? 0) > 0;
   const [phase, setPhase] = useState('cinematic'); // 'cinematic' | 'score'
   const [strike, setStrike] = useState(null);      // { key, x, main, b1, b2 }
   const flashRef = useRef(null);
@@ -63,7 +75,7 @@ export function GameOverOverlay({
 
   // ── ⚡ THUNDER LOOP — random strikes forever, until Return to Lobby ──
   useEffect(() => {
-    if (!winner) return;
+    if (!winner && !isDraw) return;
     let disposed = false;
     const rng = seededRand(Date.now());
     const fire = () => {
@@ -94,16 +106,46 @@ export function GameOverOverlay({
     return () => { disposed = true; clearTimeout(timerRef.current); };
   }, [winner]);
 
-  if (!winner) return null;
+  if (!winner && !isDraw) return null;
   const w = spirits.find(s => s.id === winner);
-  const isFameWin   = (noteStates[winner]?.fame ?? 0) >= fameToWin;
-  const isLimelight = !isFameWin && (limelightScores?.[winner] ?? 0) >= LIMELIGHT_TO_WIN;
-  const winColor    = w?.color ?? '#ffd700';
-  const winLine = isFameWin
-    ? `reached ${fameToWin} Fame Points — their name is written in lights forever!`
-    : isLimelight
-      ? `held the Limelight for ${LIMELIGHT_TO_WIN} turns and DOMINATED the stage!`
-      : 'is the last Spirit standing!';
+  /* 🎸 A BUZZER WIN IS ITS OWN ENDING AND IT USED TO FALL THROUGH TO THE
+     WRONG ONE. `isFameWin` tests the leader against the scoreboard's scale, and
+     in Battle of the Bands the winner is usually BELOW it — so the old ladder
+     dropped past Fame, past Limelight, and announced "is the last Spirit
+     standing!" about a match in which nobody can be knocked out at all. */
+  const isBuzzer    = !!verdict;
+  const isFameWin   = !isBuzzer && (noteStates[winner]?.fame ?? 0) >= fameToWin;
+  const isLimelight = !isBuzzer && !isFameWin && (limelightScores?.[winner] ?? 0) >= LIMELIGHT_TO_WIN;
+  const winColor    = isDraw ? '#ffd700' : (w?.color ?? '#ffd700');
+
+  /* 🎯 NAME THE RUNG, AND QUOTE THE NUMBERS THAT SETTLED IT. "Most Fame"
+     needs no explanation; the other two absolutely do — losing on net damage
+     after leading on nothing visible reads as arbitrary unless the screen says
+     so out loud. */
+  const vRow = (id) => verdict?.standings?.find(r => r.id === id);
+  const runnerUp = isBuzzer && !isDraw
+    ? (verdict.standings ?? []).filter(r => r.id !== winner)
+        .sort((a, b) => b.fame - a.fame)[0]
+    : null;
+  const buzzerLine = () => {
+    const me = vRow(winner);
+    if (!me) return 'takes it at the buzzer!';
+    if (verdict.decidedOn === 'diehards') {
+      return `tied on Fame at ⭐${me.fame} and took it on DIEHARDS, ${me.diehards} to ${runnerUp?.diehards ?? 0} — the hardcore decided it.`;
+    }
+    if (verdict.decidedOn === 'net') {
+      return `level on Fame AND on diehards — took it on NET DAMAGE, ${me.net > 0 ? '+' : ''}${me.net} to ${runnerUp?.net ?? 0}. They did the hitting.`;
+    }
+    const lead = me.fame - (runnerUp?.fame ?? 0);
+    return `tops the bill at the buzzer with ⭐${me.fame}${lead > 0 ? `, ${lead} clear` : ''} — ${roundLimit ?? '?'} rounds, and the loudest band wins!`;
+  };
+  const winLine = isBuzzer
+    ? buzzerLine()
+    : isFameWin
+      ? `reached ${fameToWin} Fame Points — their name is written in lights forever!`
+      : isLimelight
+        ? `held the Limelight for ${LIMELIGHT_TO_WIN} turns and DOMINATED the stage!`
+        : 'is the last Spirit standing!';
 
   // ── FINAL STANDINGS — sorted by Fame, winner always on top ──
   const board = spirits
@@ -317,7 +359,9 @@ export function GameOverOverlay({
             <div style={{ textAlign: 'center', marginBottom: 4,
               fontSize: 15, letterSpacing: 3, color: winColor,
               textShadow: `0 0 16px ${winColor}88` }}>
-              {isFameWin ? '⭐' : isLimelight ? '✨' : '🏆'} {w?.name?.toUpperCase()} TAKES THE CROWN
+              {isDraw
+                ? `⚖️ A DEAD HEAT — ${(verdict.tied ?? []).map(id => spirits.find(s2 => s2.id === id)?.name?.toUpperCase()).filter(Boolean).join(' & ')} BOTH HEADLINE`
+                : `${isBuzzer ? '⏱️' : isFameWin ? '⭐' : isLimelight ? '✨' : '🏆'} ${w?.name?.toUpperCase()} TAKES THE CROWN`}
             </div>
             <div style={{ textAlign: 'center', marginBottom: 14, fontSize: 9,
               color: '#8aa0c0', letterSpacing: 1, fontFamily: "'Share Tech Mono', monospace" }}>

@@ -78,6 +78,9 @@ nothing against Metalness. That is the one hard ordering constraint in the kit.
 | ⭐ **Every seat starts with ONE ability already active** | 2026-09-04 | ⛔ not built |
 | ⭐ **Upgrade prices rise per ability** (depth costs more) | 2026-09-04 | ⛔ not built — ⁉️ **and its SHAPE is still open** (+2/step? doubling? a cap?) |
 | Innate passives are **out of scope** for both rules | 2026-08-22 | ✅ n/a |
+| ⭐ 🎲 **THE FAN-DRIVEN SONIC DIE LADDER IS CUT** — `sonicDieSides` and `peakCasuals` deleted; both sides roll a **d6 baseline** and only the COUNT varies (the chord's job) | 2026-09-15 | ✅ **BUILT.** R5 — runaway risk. 🎯 Half of one change: the ladder was what Casual fans bought, so it ships with the fan-weight restore below. ⚠️ **The charge-zone `+2` die bump SURVIVES and R8 says it should not** — charge should raise the FLOOR, never the roof. That is Phase 2 item 2, ⛔ **not done**, flagged at the site |
+| ⭐ 🎤 **FANS PAY FAME AGAIN** — `FAN_CASUAL_WEIGHT` 0 → **0.12**, `FAN_MULT_CAP` 3.0 → **5.0** | 2026-09-15 | ✅ **BUILT.** The numbers were already derived in `gameConstants.js`'s own 2026-09-02 comment block and walked back anyway, because the per-turn cap made them unusable. 🎓 **The comment and the code disagreed for two weeks and only the comment was true.** ⭐ Restoring this FIXED an already-red assertion in `evalCheck` — *"more fans → higher multiplier term"* — which had been failing because fans did nothing |
+| ⭐ ✨ **THE POSE CEILING RIDES THE MODE** — `POSE_FP_MAX_ROUNDS = Infinity` | 2026-09-15 | ✅ **BUILT.** 🐛 `POSE_FP_MAX`'s own comment claimed it *"matches `FAME_PER_TURN_CAP`"*, and that match broke silently the day `FAME_PER_TURN_CAP_ROUNDS` was added: the riff cap learned to follow the mode, the pose ceiling never did. In a round-limited match every other Fame source ran uncapped while a maxed pose stayed pinned at **4**. 🎓 **A constant defined as "matches X" does not follow X — it copies X once, and the copy rots** |
 | ⭐ 🎼 **CLEAN IS THE SPIRIT'S OWN MODE** — one palette per Spirit, derived from nothing | 2026-09-09 | ⛔ **not built.** The whole melody-identity decision is `MELODY_IDENTITY_DESIGN.md` §5⃣.0 |
 | ⭐ 🪦 **`modeFromStack` IS DELETED** — no major/minor derived from the Drive Stack | 2026-09-09 | ⛔ not built. ⚠️ **Not a one-line deletion** — touches `turnFlow.js`, note spelling, `canonicalRoot`'s split roots, `b0check`, `turnFlowCheck`, `selftest` and the client |
 | ⭐ **DISCORD NOTES ARE INERT** — no Db, no fans, no power to resolve an ending | 2026-09-09 | ⛔ not built. 🎯 Their only uses are **held for a later turn** or **spent as movement fuel** |
@@ -92,6 +95,7 @@ nothing against Metalness. That is the one hard ordering constraint in the kit.
 | ⭐ 🎼 **THE FIFTH PAYS MOST ON PURPOSE, AND FOR TWO REASONS** — it is the rock interval, **and it is stronger than the tonic to push players into changing chords often** | recovered 2026-09-14 | ✅ **BUILT — the number is live; the REASONS were not written anywhere.** 🚨 Reason 2 makes `endingDb` a lever on the **chord economy**, not melody flavour. `PROJECTILE_COMBAT_DESIGN.md` §14.9.3. ⛔ Its real home is a comment on the constant — not yet written |
 | ⭐ 🎼 **NOTE STRENGTH = the line's own arithmetic, read twice** — dud 0 / plain 1 / strong 2 (inside the craft run) / **+ the ending value for the hook**, stacking where they overlap | 2026-09-14 | ⛔ not built. ⭐ **Hands decide IF a note fires, the melody decides what it WEIGHS.** §14.9 |
 | ⁉️ 🎼 **The tonic rises from 1 to 2** | provisional 2026-09-14 | ⛔ not built, and ⁉️ **not settled** — Alex said *"2 times or so, 1.5 even"*. ⚠️ At 2 the tonic and the fourth become the same rung. §14.9.4 |
+| ⭐ 🏆 **THE FAME RACE SURVIVES — rounds becomes the DEFAULT, the race stays selectable** | **2026-09-15** | ✅ **BUILT 2026-09-15.** One line in `state.js` — `winCondition` normalises to `'rounds'` unless `'fame'` is named. `test:winconditions` **87** (§1 inverted, §1b added to prove the race is still reachable).⚠️ **The blast radius is real and deliberate:** anything that used to arrive with `winCondition` undefined — old saves, bench harnesses, fixtures — now plays a 10-round set. `battleFlowCheck`'s Fame-economy fixture had to be pinned to `'fame'` or it asserted against Infinity. ~~⛔ not built.~~ ✅ **Closes `CORE_LOOP_REWORK_BRIEF.md` §2.4**, which was Phase 1's first blocker. ⚠️ **It is not a free answer:** `FAME_TO_WIN`, `fpPerLife`, `FAME_RACE_CONTESTED_LEAD` and `underdogBonus` all stay alive and must keep working once Fame runs in the **hundreds** (R3) — trap 8 notes `fpPerLife` becomes noise at that scale. 🎯 The large simplification is **declined on purpose** |
 | ⁉️ Is 🌀 Blaster of Ra an ability at all? | — | ⛔ **OPEN — Alex's call.** It *replaces* the Smash, so pricing it leaves a Spirit with no basic attack |
 | ⁉️ 🗡️ **What does the Swing DO to a shield?** Alex's *Smack-down*: *"still the big Vibe hitter"* | reopened 2026-09-14 | ⛔ **OPEN, and it is §5.3's closed decision proposed in REVERSE.** ⚠️ The session that reopened it ended up reworking the Riff-Off instead and never answered it. §14.8 |
 
@@ -115,6 +119,10 @@ makes a thing *impossible* rather than weak is a bug, not balance.
 - 🔦 **The hunt marker** — the hex holding your next seat lights up
 - 🗡️👤 **The Ronin's respec** — `bushidoCheck.mjs` (`test:bushido`, **108**). The window, ladder, flat AP bill, Drive-stack spend, shared extraction contracts, Shadow constants, flat unlock price and ⭐ **the one blocker policy** — three of whose assertions read the CLIENT source, because that is where the split lived
 - 🧱 **Refactor foundation** — app shell and crowd drawing extracted; Windows build/render verification restored; lint baseline enforced by `lint:baseline` (334 errors, 16 warnings). Ability/battle journeys, replay coverage and browser profiling remain open. See `docs/refactor-verification.md`
+- 🔊 **The per-lap Sonic tally** — ⭐ **NEW 2026-09-15.** `noteStates[id].pendingSonicAttacks` is written by `combat.js` and now **cleared at the defender's OWN turn end** (`turn.js` → `applyTurnEnded`), so the window is one full lap of rivals at any player count. 🐛 **It was written and never read or reset** — a lifetime tally wearing a per-round name, which made `PROJECTILE_COMBAT_DESIGN.md` §3.5.1's turn-start shield bill a **doc-only rule the game never had**. ⛔ **Nothing CONSUMES it yet**; it is the input §3.5.1 and R12 both want, now correct instead of wrong. `.scratch/sonicTallyCheck.mjs`, 20 assertions, mutation-tested
+- 🎨 **The Face button reads as available** — 🐛 fixed 2026-09-15. Idle was hardcoded at **2.15:1** against every other rail button's 12.04:1, and because `.arail .btn` builds its wash, bloom and left spine out of `currentColor`, the dim colour **put the lamp out** rather than merely greying the label. ⚠️ The inline override is gone entirely (Alex's call), so Face now wears `.btn`/`.btn.on` like Move, Sonic and Swing — **which surrenders the cyan `#44ccff` armed state** for `.btn.on`'s `#88bbff`. One prop restores it; the site says how
+- 🎛️ **A dial pops over the head of the Spirit whose Drive/Sustain changed** — ⭐ **NEW 2026-09-16.** In the 3D arena only; ticks on the pocket's timing, lingers 0.9 s, fades. ⭐ **Every Spirit's Drive and Sustain is now public** — a rival's Drive was shown nowhere before (Alex's call). `board/headDial.js` + `headDialVisuals.js`, fed through `arenaFrame`. Alex's dial-in (all 23 levers left at default). `test:headdial` **67**, and `test:arena`'s presentation suite still passes with the real GLB. ⚠️ Adjacent pawns' dials can overlap from the wide Arena camera — accepted in the dial-in. ⚠️ Same caveat as below: `test:all`, `check:bundle`, `lint:baseline` not run on the device
+- ⏱️ **The Drive/Sustain dials TICK** — ⭐ **NEW 2026-09-16.** A change waits a beat, then steps one block at a time (white flash gained, red flash lost, the number counting along), capped at ~1.1 s for any jump; a turn handoff and reduced motion snap. `ui/dialTick.js` + `ui/ArenaDial.jsx`, Alex's dial-in (every lever left at its default). `test:dialtick` **43 + 19**. ⚠️ **Written while the device shell was down** — both halves passed in the cloud against copies with React/jsdom installed standalone; `test:all`, `test:arena`, `check:bundle` and `lint:baseline` **did not run**
 - ⭐ **The flat unlock price** — `FLAT_ABILITY_UNLOCK_DB = 6`. 🎯 It deletes the variable behind `UPGRADE_SHOP_DESIGN.md` §1.1's central finding (arsenals bought in *price* order, not value order): with one price, the only thing left to choose on is what the ability does
 
 **⛔ DESIGNED, NOT BUILT** *(8 docs say "design only")*
@@ -123,7 +131,7 @@ makes a thing *impossible* rather than weak is a bug, not balance.
 |---|---|---|
 | 💰 **The Db sink / upgrade shop** | `UPGRADE_SHOP_DESIGN.md` | ⚠️ **premise changed 2026-09-04**, R2/R3 superseded. ✅ **Rule 1 is now BUILT at 6 Db**, so §0⃣.3's first bullet is closed — the other three riders are not |
 | 🎼 **Melody identity** (4 verbs) | `MELODY_IDENTITY_DESIGN.md` | blocked on the Db sink |
-| ⭐ **Fame track redesign** | `FAME_TRACK_REDESIGN.md` | visual — **preview page first** |
+| ⭐ **Fame track redesign** | `FAME_TRACK_REDESIGN.md` | ✅ **BUILT 2026-09-16** — §12. 🎨 due a 3D-aesthetic pass |
 | 👹 **Metalness rework** | `METALNESS_REWORK_DESIGN.md` | ⏸️ on hold — but now on the Ronin's critical path |
 | 🐀 **Riff Rat** | `RIFF_RAT_DESIGN.md` | least resolved of any doc |
 | 🕺 **Mocap → character animation** | `MOCAP_DESIGN.md` | ⛔ **blocked on a rigged character**, and on nothing else — it is off the §6 bottleneck entirely |
@@ -162,9 +170,56 @@ and only breadth was answered.**
 
 ## 7. 🎯 THE SHORTEST USEFUL NEXT STEPS
 
+> 🚨 **0. ⭐ BUILD THE CORE LOOP REWORK — `CORE_LOOP_REWORK_BRIEF.md`. THIS IS
+> THE JOB.** A long design conversation on 2026-09-15 ruled on the Sonic
+> barrage, the Swing's identity, the Riff Off's trigger, the dice sources, the
+> charge zones and the match's whole scoring shape. **22 rulings, 8 open
+> questions, 6 phases, one brief.**
+>
+> ⚠️ **AND IT PARKS EVERYTHING BELOW THAT TOUCHES AN ABILITY** (Alex): *"the
+> core loop needs to be strong and solid before we worry about the abilities
+> that are meant to break it."* Items 5–9 of this list are **on hold** — they are
+> not cancelled, and the roster question in §6 stops blocking anything while the
+> freeze holds.
+>
+> 🎯 **Start at the brief's §0** — four changes that look independent are one
+> lever pulled in sequence, and doing them out of order makes each look like it
+> is breaking something.
+>
+> ✅ **§0's LEVER IS PULLED, 2026-09-15.** All four steps shipped together:
+> rounds is the default → the per-turn cap has no job → the fan weights are
+> restored → the Sonic die ladder is deleted. 🎯 They had to land in ONE pass:
+> stopping after the fan restore would have left casuals paying **twice**
+> (Fame multiplier *and* permanent die size), which is the runaway R5 exists to
+> prevent.
+>
+> ⛔ **PHASES 2 (rest), 3, 4, 5, 6 ARE STILL OPEN** — the charge FLOOR rework and
+> the marquee card, the barrage port, the Swing rewrite, the Riff-Off trigger,
+> presentation.
+>
+> ✅ **PHASE 1's HUD HALF IS DONE, 2026-09-16** — rounds readout, lobby toggle and
+> the Fame track's rework all shipped. `test:buzzer` **81**, `test:fametrack`
+> **9 states**, `test:harness` back to green at **1816**.
+>
+> 🚨 **AND IT FOUND THAT THE CLIENT WAS NEVER PLAYING THE MODE.** The buzzer had
+> no client path at all — `buzzerReached`/`buzzerVerdict` appeared nowhere in
+> `rlsw-simulator-v3_8_1.jsx` — so the only surviving ending was a Fame crown
+> firing on `startingLives × fpPerLife` (⭐18 at 4P), a target this mode does not
+> have. With elimination off nothing else could end a match either.
+> **Every match was ending as a Legend Run, roughly half-played** (measured
+> leaders bank ⭐38–47 by round 10). `WIN_CONDITIONS_DESIGN.md` §8b has the
+> anatomy.
+
+
 1. 🎨 **Bushido lane port complete.** Recovered the saved preview and applied the three 2026-09-05 screenshots. `test:bushidoui`: 331 checks across 11 scenarios × 6 facings. `test:journey` verifies arm/cancel and turn handoff. Next engineering work: a completed client battle journey before extracting combat orchestration.
-2. 🔊 **Port the Sonic ring beam** — ⭐ **the projectile is DECIDED** (2026-09-13, off a live preview; `PROJECTILE_COMBAT_DESIGN.md` §12.1c). ⛔ **Nothing is in `src/` yet.** The whole sonic rework — readable dice, the player-pressed ROLL gate, the camera fix and now the beam — is drafted and checked in `.scratch/sonic-rework/`, and the one-pass build brief is that folder's `RING_BEAM_BRIEF.md`. ⚠️ One approved value, the contact push-in, has **no home in the renderer yet** — see its §4 before reporting the port complete.
-3. 🎼 **Name the ending constant, and write Alex's rationale onto it** — ⭐ **the cheapest high-value job on this list.** `endingDb` is an anonymous inline ternary in `music/melodyPayout.js` that is about to price both the Db payout **and** the duel's hook, and its two reasons (§14.9.3) exist in no file. 🚨 **Reason 2 — the fifth is stronger than the tonic to push chord changes — makes it a lever on the chord economy**, and anyone tuning the duel would have flattened it blind. Do this before the tonic number moves.
+2. ⚠️ **STALE — THE RING BEAM IS PORTED.** `sonicZigzagVisuals.js` (72KB),
+   `sonicRingCheck.mjs`, `arenaDiceSequence.js` and `combatDice.js` are all in
+   `src/` as of 2026-09-15. 📌 The project doc `claude/sonic-volley-rework-handoff.md`
+   is stale the same way. ⛔ **What remains unported is the contact push-in**, which
+   still has no home in `stageSonicCamera` — `RING_BEAM_BRIEF.md` §4. The original
+   entry follows, kept only so the claim can be traced:
+   ~~🔊 **Port the Sonic ring beam** — ⭐ **the projectile is DECIDED** (2026-09-13, off a live preview; `PROJECTILE_COMBAT_DESIGN.md` §12.1c). ⛔ **Nothing is in `src/` yet.** The whole sonic rework — readable dice, the player-pressed ROLL gate, the camera fix and now the beam — is drafted and checked in `.scratch/sonic-rework/`, and the one-pass build brief is that folder's `RING_BEAM_BRIEF.md`.~~
+3. ~~🎼 **Name the ending constant, and write Alex's rationale onto it.**~~ ✅ **DONE 2026-09-15.** `music/melodyPayout.js` → **`ENDING_DB`**, exported, carrying both §14.9.3 reasons, §14.9.5's one-number-two-jobs cost and §14.9.4's unsettled tonic in the comment above it. Rename verified behaviourally inert — `.scratch/endingDbCheck.mjs`, **28,807 assertions, 0 failures**, old ternary vs new map over 9,600 random lines × 8 keys × 3 Spirits. Indexed in `ARCHITECTURE.md`'s export row **and** its "where do I change X?" table. 🎯 **The tonic number (§14.9.4) may now move safely** — the thing that had to happen first has happened.
 4. 🎤 **Decide the Riff-Off's wager, then its knockback** — ⭐ **NEW 2026-09-14**, `PROJECTILE_COMBAT_DESIGN.md` **§14**. ✅ §14.9 now answers the *strength* half — dud/plain/strong/hook, all from arithmetic the commit already performs, with the duel reading the craft run's **length** while the Fame route keeps its cap. ⁉️ **Still open: what surviving collision weight actually does**, and the tonic's number. The duel is settled as a *bet* powered by the **melody line**, and the first-caller ruling is Alex's. ⁉️ **What is actually at stake is not decided** (§14.6) — a melody is spent, paid and cleared before the duel begins, so the row has no cost column. 🚨 **And §14.7 is a blocker, not a balance item**: `riffSkill` has no tempo term, so an escalating duel makes bots immune to its own difficulty ramp. **Answer that before building escalation.** 📌 Two cheap verifications first: does anything actually clear `committedMelody` (§14.5), and is the melody's Fame paid before `startRiffOff` reads the stash (§14.6)?
 5. 🤖 **Re-bench the Ronin** — **OVERDUE THREE TIMES NOW.** Every Ronin number from 2026-09-04c/d was taken while the client refused hops the searcher planned; his whole kit changed shape again on 2026-09-04f; and on 2026-09-05 the lane rule changed what the searcher may plan at all. Nothing but a re-run is comparable with anything.
 6. 💰 **The three riders on the flat number**, now that the number itself is 6 and built. Filed only as prose in `UPGRADE_SHOP_DESIGN.md` §0⃣.3: ⁉️ is the free starting ability free later · ⁉️ what shape is the rising ladder, and is there a cap · ⁉️ do per-use costs flatten too (assumed **no**, and `test:bushido` asserts the assumption so it cannot drift silently).

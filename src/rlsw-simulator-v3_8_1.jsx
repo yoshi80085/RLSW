@@ -135,6 +135,10 @@ import {
 import { skillEligibility } from "./engine/systems/skills.js";
 import {
   battleConsequences, chordFray as chordFrayFlow, runBattleFlow, poseConsequences,
+  // 🏆 THE MODE, AS THE ENGINE DEFINES IT. Imported rather than re-derived: the
+  // client computing its own answer to "what wins here" is exactly what left a
+  // finish line drawn, and fired, in a mode that has none.
+  fameToWin as fameToWinOf, roundLimitFor, buzzerReached, buzzerVerdict,
 } from "./engine/systems/battleFlow.js";
 // ✨ The pose ladder, in ONE place. There used to be three transcriptions of it
 // (here, `evaluate.js`, and whatever the turn clock actually billed) and they
@@ -171,7 +175,7 @@ import { fanPawnShape } from "./ui/fanPawnShape.jsx";
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
 import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim } from "./music/stackSlots.js";
-import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, THRASH_DIE, THRASH_CEIL_DIE, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, THRASH_DIE, THRASH_CEIL_DIE, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -534,14 +538,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const { mode, teams } = gameState;
   const startingLives = gameState.startingLives ?? 3;
   const playerCount = gameState.spirits.length;
-  const fameToWin = startingLives * fpPerLife(playerCount);
-
-  // 🎇 Stage FX fires once per life, evenly spaced across the FP target.
-  const stageFxThresholds = (() => {
-    const count = startingLives;
-    const interval = fameToWin / (count + 1);
-    return Array.from({ length: count }, (_, i) => Math.round(interval * (i + 1)));
-  })();
 
   // ── ENGINE STATE (see src/MULTIPLAYER_HANDOFF.md) ─────────────────────────
   // The authoritative, serializable game state. The engine owns the turn queue,
@@ -565,6 +561,55 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     return state;
   });
   const engineRef = useRef(engineState); // live mirror so dispatch works inside timeout chains
+
+  // ═══ 🏆 THE RULE AND THE RULER ARE TWO DIFFERENT NUMBERS ═══════════════════
+  //
+  // 🚨 CONFLATING THEM IS THE BUG THIS BLOCK EXISTS TO KILL. There used to be
+  // one line here — `const fameToWin = startingLives * fpPerLife(playerCount)`
+  // — and it was BOTH the win condition and the scoreboard's denominator. When
+  // 🎸 Battle of the Bands became the default (2026-09-15) the engine stopped
+  // having a Fame target at all (`battleFlow.fameToWin` → Infinity, so nothing
+  // can be crowned and the buzzer decides), but this line never asked the
+  // engine. It kept computing ⭐18 out of lives × player count, and the client
+  // kept BOTH drawing a finish line at it AND ending the match on it — in a
+  // mode with neither. Matches were ending around half-played, as Legend Runs,
+  // on a target the rules had removed.
+  //
+  // 📌 SO: `fameTarget` is the RULE — read from the engine, Infinity in Battle
+  // of the Bands, and every win check compares against it. Because it is
+  // Infinity there, `myFame >= fameTarget` is simply never true and the two
+  // crowning paths below switch themselves off. That is the engine's own
+  // design: "returning Infinity rather than branching keeps ONE definition of
+  // have they won yet — a second crowning path is how you get a match that
+  // ends twice."
+  //
+  // 📏 `fameScale` is the RULER — what anything DRAWN divides by. It is the
+  // target in Legend Run (where reaching it is the game) and a measured,
+  // round-aware scale in Battle of the Bands. ⚠️ Never compare a score to it.
+  const roundLimit    = roundLimitFor(engineState);          // null in Legend Run
+  const isRoundsMode  = roundLimit != null;
+  const fameTarget    = fameToWinOf(engineState);            // Infinity in rounds
+  const fameScale     = isRoundsMode ? fameScaleFor(playerCount, roundLimit) : fameTarget;
+  /* 🪦 `fameToWin` KEPT AS A NAME, BOUND TO THE RULER. Forty-odd call sites read
+     it and almost all of them are display — the HUD bar's denominator, the
+     tutorial copy, the game-over card. Renaming every one in this pass would
+     bury the actual fix in noise. ⚠️ The handful that are WIN CHECKS have been
+     moved to `fameTarget` explicitly; if you add another, use `fameTarget`. */
+  const fameToWin     = fameScale;
+
+  /* 🎇 Stage FX fires once per life, evenly spaced across the scale.
+     ⚠️ IT DIVIDES BY THE RULER, NOT THE RULE. Against Infinity every threshold
+     would be Infinity and the stage effects would silently never fire again —
+     a whole subsystem switched off by a mode flip, with nothing on screen to
+     say so. ❓ WIN_CONDITIONS_DESIGN.md §6 item 6 asks whether absolute-Fame
+     thresholds mean anything in a score game at all; until that is settled they
+     spread across the scale, which keeps them firing and keeps them meaning
+     "you are doing well". */
+  const stageFxThresholds = (() => {
+    const count = startingLives;
+    const interval = fameScale / (count + 1);
+    return Array.from({ length: count }, (_, i) => Math.round(interval * (i + 1)));
+  })();
   // ⛔ FP banked per spirit inside the CURRENT turn window — grantFame clamps
   // against FAME_PER_TURN_CAP; startNewTurnNotes resets the whole map. A ref
   // (not state): it's bookkeeping for timeout-chained grants, never rendered.
@@ -1504,6 +1549,19 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // (devEventId removed — Testing Grounds now fires stage FX directly)
   // N5: winner derives from engine state so remote clients see it via N4 relay
   const winner = engineState.winner;
+  /* ⏱️ THE BUZZER, DERIVED RATHER THAN RELAYED.
+     `endTurn` runs on the ACTING client alone, so anything it alone computes
+     would have to be pushed to everyone else. This does not have to be: every
+     client holds the same engine state, and `buzzerReached` is a pure function
+     of `turn.round` and the round limit — so all of them reach the same answer
+     on the same frame with nothing crossing the wire.
+     ⚠️ AND IT IS WHAT MAKES A DRAW END. A drawn buzzer leaves `winnerId` null,
+     so `winner` alone can never gate the end screen: the match would be over
+     with nothing on screen saying so. `matchOver` is the gate; `winner` is only
+     who, if anyone, won. */
+  const buzzerDone   = buzzerReached(engineState);
+  const matchVerdict = buzzerDone ? buzzerVerdict(engineState) : null;
+  const matchOver    = !!winner || buzzerDone;
   const [hovered, setHovered] = useState(null);
   // ─── TRANSIENT BOARD FX ── (moved to ./hooks/useTransientFx.js)
   const {
@@ -4609,7 +4667,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // rather than blind. `engine/systems/limelight.js` owns it; everything asks
   // that. This wrapper stays only so the four call sites below read the same.
   function poseTierFor(spiritId) {
-    return posePayout(engineRef.current.limelight.scores[spiritId] ?? 0);
+    // 🎸 The engine state carries the mode, and the pose ceiling rides it
+    // (`POSE_FP_MAX_ROUNDS`) — without it the HUD would keep promising 4.
+    return posePayout(engineRef.current.limelight.scores[spiritId] ?? 0,
+                      engineRef.current);
   }
 
   // Roadie action flow — board amps removed (Phase 2); roadie move is a no-op.
@@ -6003,7 +6064,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // payouts, Azrael chains) left `newFame` one-plus grants stale — the runaway
     // check saw a smaller lead than reality and summoned the God into a blowout.
     const myFame = engineRef.current.noteStates?.[spiritId]?.fame ?? newFame;
-    if (myFame >= fameToWin) {
+    /* 🏆 `fameTarget`, NOT `fameToWin` — the RULE, not the ruler. In 🎸 Battle
+       of the Bands this is Infinity, so the branch is dead and no amount of
+       Fame crowns anybody: the buzzer does it, in `endTurn`'s roundCompleted
+       block. ⚠️ This compared against the SCOREBOARD's denominator until
+       2026-09-16, which is why a round-limited match still ended at ⭐18. */
+    if (myFame >= fameTarget) {
       // ⭐ THE FAME TARGET IS THE WIN. Reaching it crowns you outright, at any
       // number of lives and at any margin.
       //
@@ -6062,7 +6128,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       .map(s => ({ id: s.id, fame: engineRef.current.noteStates?.[s.id]?.fame ?? 0 }))
       .sort((a, b) => b.fame - a.fame);
     const top = board[0];
-    if (!top || top.fame < fameToWin) return false;
+    /* 🏆 THE SECOND CROWNING PATH, AND IT NEEDED THE SAME FIX. `fameTarget`
+       is Infinity in 🎸 Battle of the Bands, so this returns false every time
+       and the sweep is inert there — which is correct: a score game is decided
+       once, at the buzzer. Two live crowning paths in one mode is how a match
+       ends twice. */
+    if (!top || top.fame < fameTarget) return false;
 
     const rivalBest = board[1]?.fame ?? 0;
     const lead = top.fame - rivalBest;
@@ -9982,6 +10053,41 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     //  moved into the roundCompleted block above — a marquee that relights
     //  three times before your first move isn't an objective, it's weather.)
 
+    /* ⏱️🎸 THE BUZZER — the only way a Battle of the Bands match can end.
+       ⚠️ THIS DID NOT EXIST UNTIL 2026-09-16, and its absence is why the mode
+       was never really being played. `winConditionsCheck.mjs` records the
+       intent in its header — "the client's turn-end path must call the same
+       `buzzerReached`/`buzzerVerdict`" — and only `runMatch` ever did. The
+       client had no round-limit check at all, so the sole remaining ending was
+       the Fame crown above, firing on a target the mode does not have.
+       📌 IT GOES LAST, AFTER EVERY ROUND TICK. The verdict reads diehards and
+       the damage ledger, so it must see the round fully closed — scoring one
+       beat early would settle the match on a board that is still moving.
+       📌 `turn.round` is one-based and increments as a revolution CLOSES, so
+       `round > limit` means the last round was played out IN FULL and every
+       seat had the same number of turns — which is the entire point of a
+       fixed-length mode, and the reason `buzzerReached` is not `>=`. */
+    if (report.roundCompleted && !engineRef.current.winner && buzzerReached(engineRef.current)) {
+      const v = buzzerVerdict(engineRef.current);
+      const nameOf = (id) => spirits.find(sp => sp.id === id)?.name ?? id;
+      const top = [...(v.standings ?? [])].sort((a, b) => b.fame - a.fame);
+      addLog(`⏱️ THE BUZZER! ${roundLimit} rounds are up — the crowd decides.`);
+      addLog(`📊 Final standings: ${top.map(r => `${nameOf(r.id)} ⭐${r.fame}`).join(' · ')}`);
+      if (v.winnerId) {
+        const rung = v.decidedOn === 'diehards' ? ' on DIEHARDS (level on Fame)'
+                   : v.decidedOn === 'net'      ? ' on NET DAMAGE (level on Fame and diehards)'
+                   : '';
+        addLog(`🌟🌟🌟 ${nameOf(v.winnerId)} tops the bill${rung} — A LEGEND IS BORN! 🌟🌟🌟`);
+      } else {
+        addLog(`⚖️ A DEAD HEAT — ${(v.tied ?? []).map(nameOf).join(' & ')} both headline. Nobody could separate them.`);
+      }
+      /* ⚠️ DISPATCHED EVEN WHEN null. The winner slice takes `winnerId ?? null`,
+         so a draw writes null and `matchOver` (above) is what actually raises
+         the end screen. Dispatching anyway keeps ONE path to "the match
+         stopped" rather than a second, quieter one for draws. */
+      setTimeout(() => { dispatch(winnerDeclared(v.winnerId ?? null)); }, 600);
+    }
+
     // Board card respawn countdown — per ROUND now, same reason.
     if (report.roundCompleted) {
       setCardRespawnIn(prev => {
@@ -10373,7 +10479,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (netRef.current && !amIBotController) return;
     // N8: frozen while resyncing — a bot driving a stale engine would fork reality
     if (netSyncRef.current) return;
-    if (winner) return;                          // game's over
+    /* ⚠️ `matchOver`, NOT `winner` — a DRAWN BUZZER HAS NO WINNER. Gating the
+       bots on `winner` alone would leave them cheerfully playing on past the
+       final round of a match that ended level, which is both wrong and
+       unstoppable: nothing later would ever set `winner` either. */
+    if (matchOver) return;                       // game's over
     if (noteStates[self.id]?.recovering) return; // recovery skip handled elsewhere
     // Never act in the middle of a battle/riff-off cinematic — those resolve via
     // their own bot hooks (auto-die-click / synthetic riff-off) below.
@@ -11677,6 +11787,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       {/* ── GAME OVER OVERLAY ── */}
       <GameOverOverlay
         winner={winner}
+        verdict={matchVerdict}
+        roundLimit={roundLimit}
         spirits={spirits}
         noteStates={noteStates}
         limelightScores={limelightScores}
@@ -11879,7 +11991,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           return (
             <FameRace spirits={spirits} fameToWin={fameToWin}
               fameOf={id => noteStates?.[id]?.fame ?? 0}
-              actingId={acting?.id} thresholds={stageFxThresholds} contested={contested}/>
+              actingId={acting?.id} thresholds={stageFxThresholds} contested={contested}
+              /* ⏳ The clock. `roundLimit` is null in Legend Run, which is the
+                 component's mode switch — it draws a finish line then, and a
+                 countdown plus a margin readout when it is a number. */
+              round={engineState.turn?.round ?? 1} roundLimit={roundLimit}/>
           );
         })()}
         {flamingHexes.roundsLeft > 0 && (
@@ -12780,11 +12896,28 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 else addLog(`🎵 Build and confirm your Melody Line first.`);
               }}
               disabled={!acting}>Move {moveStepsLeft>0?`(${moveStepsLeft} hex)`:""}</RailBtn>
-            {/* FACE TURN — costs 1 move step */}
+            {/* 🔄 FACE TURN — costs 1 move step.
+                🐛 THE INLINE COLOURS ARE GONE, AND THAT WAS A DEFECT FIX, NOT A
+                TASTE CALL (2026-09-15, Alex: *"it doesn't look selectable"*).
+                Idle was hardcoded to 'color:#1a5066' on '#0a1020' — 2.15:1,
+                against every other rail button's 12.04:1, at 10px, where WCAG
+                wants 4.5:1. ⚠️ AND '.btn:disabled' is 'opacity:.3', which lands
+                in the same visual place — so the button was painted like
+                "disabled" while being the one state it NEVER renders in: it only
+                mounts when 'moveStepsLeft > 0', i.e. it looked unavailable
+                exactly when it was available.
+                ⚠️ THE CONTRAST TABLE UNDERSTATES IT. '.arail .btn' builds its
+                whole neon treatment out of 'currentColor' — the wash gradient,
+                the bloom, and the 'inset 2px 0 0 currentColor' left spine — so a
+                dim 'color' did not merely grey the label, it put out the lamp.
+                That is why it read as dead rather than as quiet.
+                📌 Dropping the override entirely (Alex's call) makes Face wear
+                '.btn' and '.btn.on' like Move, Sonic and Swing — which also
+                SURRENDERS the cyan '#44ccff' armed state for '.btn.on's
+                '#88bbff'. If the cyan is wanted back it is one prop: keep only
+                the 'action === "face"' branch and let idle fall through. */}
             {acting && moveStepsLeft > 0 && (
               <RailBtn className={`btn${action === "face" ? " on" : ""}`}
-                style={{borderColor: action === "face" ? "#44ccff" : "#0a3044",
-                  color: action === "face" ? "#44ccff" : "#1a5066"}}
                 onClick={() => {
                   if (action === "face") { setAction(null); }
                   else {
@@ -14664,6 +14797,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 fire:flamingHexes, vortex:gravityVortex, bots:animatronics,
                 tentacle:tentacleFx,
                 shadowDecoy, lite:liteFx,
+                // 🎛️ The head dial's numbers — the SAME read the pocket dial makes
+                // (spiritChord, no temp modifiers), so the two can never disagree.
+                stats:Object.fromEntries(spirits.map(s => [s.id, {
+                  drive: spiritChord(s.id, noteStates[s.id]?.driveStack ?? []).drive,
+                  sustain: spiritChord(s.id, noteStates[s.id]?.sustainStack ?? []).sustain,
+                }])),
               }) : undefined}>
             <svg
               ref={svgRef}

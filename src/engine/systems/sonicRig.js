@@ -42,12 +42,25 @@ import {
 import { evaluateChord } from '../../music/chords.js';
 import { ampBlown } from './eleven.js';
 
-// First projectile playtest: permanent crowd milestones, independent of losses
-// and promotion. Chord value buys dice; cabinet count never substitutes for it.
-export function sonicDieSides(ns = {}) {
-  const peak=Math.max(ns.peakCasuals??0,ns.casuals??0);
-  return peak>=12?12:peak>=7?10:peak>=3?8:6;
-}
+// 🪦 `sonicDieSides` IS DELETED — R5, 2026-09-15. It read the high-water mark of
+// your Casual crowd and grew every Sonic die permanently: 3 casuals → d8, 7 →
+// d10, 12 → d12. Alex cut it for *"a potential runaway problem with a player who
+// has stronger dice, even if just for a round or two before the other players
+// catch up."*
+//
+// ⭐ BOTH SIDES NOW ROLL A d6 BASELINE and the only question left is HOW MANY —
+// which is the chord's job (R6) and has always been. Die size stops being an
+// axis at all.
+//
+// 🎯 THIS IS HALF OF ONE CHANGE, NOT A DELETION ON ITS OWN. The ladder was what
+// Casual fans BOUGHT — `FAN_CASUAL_WEIGHT` was zeroed to fund it, with the note
+// *"casuals now grow permanent Sonic die size"*. Cutting this without restoring
+// that weight would leave casuals doing literally nothing; restoring the weight
+// without cutting this would have them paid twice. **They ship together.**
+// `CORE_LOOP_REWORK_BRIEF.md` §0 is the order and the reasoning.
+//
+// 📌 `peakCasuals` went with it (`economy.js`) — that field existed ONLY to make
+// this ladder permanent and irreversible.
 
 /**
  * The two workout tiers, read off the note sheet with the floor applied.
@@ -118,7 +131,17 @@ export function sonicRig(ns = {}, distFromHome, chargeBoost = 0, onTurn = false,
   const bonus=Math.min(2,(ns.tempDrive??0)+(ns.moshDrive??0));
   // Empty charge must not fall back to the old, stronger static stat sheet.
   const count=ns.driveStack?.length?Math.max(0,ns.atEleven?11:chord.drive+innate+bonus-(ns.instrumentDropped?1:0)):0;
-  const sides=Math.min(12,sonicDieSides(ns)+((ns.chargeCeilTurns??0)>0?2:0));
+  // 🎲 d6 baseline for everyone (R5 — the crowd-driven ladder is gone).
+  //
+  // ⚠️ THE CHARGE-ZONE `+2` IS STILL A CEILING AND R8 SAYS IT SHOULD NOT BE.
+  // Alex ruled charge zones *"raise the FLOOR, never the roof"* — 1 zone → lowest
+  // face 2, 2 zones → lowest face 3, capped at 2 zones — and the floor mechanism
+  // ALREADY EXISTS (`attackParams`'s `atkFloor`, applied in `combat.js`). Removing
+  // this bump and scaling the floor by zone count is ⛔ **Phase 2 item 2 and is
+  // NOT done**: it was outside the scope agreed for this pass, which was the
+  // ladder deletion. Left deliberately, flagged loudly, so a charged Sonic still
+  // rolls d8 until someone finishes R8.
+  const sides=Math.min(12,SONIC_BASE_DIE+((ns.chargeCeilTurns??0)>0?2:0));
   return {pool:Array.from({length:count},()=>sides),inRange:!ampBlown(ns),radius:0};
 }
 

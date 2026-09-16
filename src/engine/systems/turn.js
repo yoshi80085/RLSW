@@ -107,8 +107,44 @@ export function applyTurnEnded(state) {
   // number the player experiences, at any player count.
   const decayed = applySlimeDecayed(state, { ownerId: endedId });
 
+  // 🔊 THE SONIC TALLY CLEARS ON ITS OWNER'S TURN END, FOR THE SAME REASON THE
+  // ROAD AGES THERE — see the ⚠️ directly above.
+  //
+  // 🐛 WHAT THIS FIXES: `pendingSonicAttacks` (written at `combat.js`'s sonic
+  // branch) was INCREMENTED AND NEVER READ OR RESET. A repo-wide grep found one
+  // site — the increment. So it was a LIFETIME tally wearing a per-round name,
+  // and anything that started reading it would have been wrong on first use.
+  // `PROJECTILE_COMBAT_DESIGN.md` §3.5.1's turn-start shield bill — the rule
+  // §3.5.5 calls *"defence stops being free"* — was therefore a DOC-ONLY RULE
+  // that never existed in the game. 🎓 `SEQUENCING.md` §B's "a suite nobody
+  // runs", in a different costume: a counter nobody reads.
+  //
+  // ⭐ WHY THIS BOUNDARY SERVES BOTH RULES AT ONCE, AND WHY THAT IS NOT LUCK.
+  // Clearing at the DEFENDER's own turn end means the tally covers exactly
+  // "attacks I took since I last acted" — which in a round-robin queue is one
+  // full lap of rivals, at ANY player count. That is §3.5.1's bill (still
+  // standing when the turn starts, so it can be charged) and it is also R12's
+  // per-round window for diminishing FP — including Alex's actual worry, *"the
+  // 4th player milking the player with low Sustain"*, which is three different
+  // attackers and which a per-attacker counter would have missed entirely.
+  //
+  // ⚠️ DELIBERATELY NOT CLEARED IN `applyTurnSkipped`. A skipped turn runs NO
+  // end-of-turn ticks — the ooze does not decay there either — and a Spirit on
+  // the floor has not answered for the barrage that put him there.
+  //
+  // 📌 It writes only when there is something to clear, so a turn that took no
+  // Sonic leaves `noteStates` byte-identical and replay cursors do not move.
+  const endedNotes = decayed.noteStates?.[endedId];
+  const clearsSonicTally = !!endedNotes?.pendingSonicAttacks;
+
   return {
     ...decayed,
+    ...(clearsSonicTally ? {
+      noteStates: {
+        ...decayed.noteStates,
+        [endedId]: { ...endedNotes, pendingSonicAttacks: 0 },
+      },
+    } : {}),
     turnQueue,
     acting: nextId,
     turn: {

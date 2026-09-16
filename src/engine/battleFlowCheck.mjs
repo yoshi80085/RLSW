@@ -36,6 +36,14 @@ const eq = (a, b, msg) => { assert.equal(a, b, msg); checks++; };
 const CONFIG = {
   mode: 'ffa',
   startingLives: 3,
+  // 🏆 PINNED TO THE RACE ON PURPOSE, 2026-09-15. This suite asserts the Fame
+  // ECONOMY — `fameToWin`, the per-turn cap, the crown — and all three of those
+  // only exist in Legend Run. The default flipped to Battle of the Bands
+  // (`state.js`), where `fameToWin` is Infinity and there is no cap, so a
+  // fixture that names no mode stopped testing what it was written to test.
+  // ⚠️ Do NOT "fix" a future failure here by relaxing the numbers: if this line
+  // is removed the suite goes green against Infinity and asserts nothing.
+  winCondition: 'fame',
   spirits: [
     { id: 'cosmic_ronin',     name: 'Ronin',     num: 40, corner: 0, facing: 0, vibe: 5, maxVibe: 5, cpu: true },
     { id: 'intergalactic_0',  name: 'Zero',      num: 41, corner: 1, facing: 3.14, vibe: 4, maxVibe: 4, cpu: true },

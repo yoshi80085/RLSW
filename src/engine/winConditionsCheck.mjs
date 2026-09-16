@@ -54,17 +54,50 @@ const st = (cfg = {}) => makeInitialState(matchConfig(DUEL, { startingLives: 3, 
 const seats = () => Object.fromEntries(DUEL.map(s => [s.id, POLICIES.searcher({})]));
 
 // ═════════════════════════════════════════════════════════════════════════════
-// §1. 🏆 THE DEFAULT IS TODAY'S GAME
+// §1. 🎸 THE DEFAULT IS BATTLE OF THE BANDS — FLIPPED 2026-09-15
 // ═════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ THIS SECTION ASSERTED THE OPPOSITE UNTIL 2026-09-15, AND IT WAS RIGHT TO.
+// It read *"🏆 winCondition defaults to fame — Legend Run is what ships"* and it
+// FAILED the moment the default flipped, which is exactly what it was for. Alex
+// ruled the game round-limited (`CORE_LOOP_REWORK_BRIEF.md` R1), so the guard is
+// INVERTED rather than deleted — the race must still be REACHABLE, and §1b below
+// is the half that proves it.
 {
   const s = st();
-  eq(s.config.winCondition, 'fame',  '🏆 winCondition defaults to fame — Legend Run is what ships');
-  eq(s.config.elimination,  'on',    '🏆 elimination defaults to on');
-  eq(fameToWin(s), 24,               '🏆 the finish line is still lives × fpPerLife = 24 at 2P × 3 lives');
-  eq(famePerTurnCap(s), FAME_PER_TURN_CAP, '🏆 the per-turn cap is still 4');
-  eq(roundLimitFor(s), null,         '🏆 Legend Run has no round clock');
+  eq(s.config.winCondition, 'rounds', '🎸 winCondition defaults to ROUNDS — Battle of the Bands is what ships');
+  eq(s.config.elimination,  'off',    '🎸 elimination defaults OFF with it — the documented pairing survives the flip');
+  eq(fameToWin(s), Infinity,          '🎸 no finish line by default — Fame is a score, not a race');
+  eq(famePerTurnCap(s), Infinity,     '🎸 NO PER-TURN FAME CAP BY DEFAULT — R2, "no more FP caps"');
+  eq(roundLimitFor(s), ROUND_LIMIT_DEFAULT, '🎸 the default set is 10 rounds');
+
+  // 🚨 THE REGRESSION THIS PAIR EXISTS TO CATCH. The elimination fallback used to
+  // re-derive the mode from the RAW `gameConfig.winCondition`, which was correct
+  // only while raw-undefined meant 'fame'. Left alone through the flip it would
+  // have produced rounds + elimination ON — the one pairing the design says is
+  // NOT the default — out of two lines disagreeing about what "unspecified" means.
+  eq(st({}).config.elimination, 'off',
+     '🚨 an UNSPECIFIED match is rounds + elimination OFF, not rounds + elimination on');
+  eq(st({ elimination: 'on' }).config.elimination, 'on',
+     '🚨 …and elimination is still its own axis — ON inside Battle of the Bands on request');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// §1b. 🏆 THE RACE SURVIVES — it is opt-in, not deleted
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// ⭐ Alex ruled on 2026-09-15 that the Fame race stays a selectable mode
+// (`CORE_LOOP_REWORK_BRIEF.md` §2.4 — the large simplification was DECLINED).
+// Every assertion below is the old §1, now reached by asking for it explicitly.
+{
+  const s = st({ winCondition: 'fame' });
+  eq(s.config.winCondition, 'fame', '🏆 winCondition:"fame" still selects Legend Run');
+  eq(s.config.elimination,  'on',   '🏆 elimination still defaults ON in a race');
+  eq(fameToWin(s), 24,              '🏆 the finish line is still lives × fpPerLife = 24 at 2P × 3 lives');
+  eq(famePerTurnCap(s), FAME_PER_TURN_CAP, '🏆 the per-turn cap is still 4 in a race — it is the catch-up brake');
+  eq(roundLimitFor(s), null,        '🏆 Legend Run has no round clock');
   eq(buzzerReached({ ...s, turn: { ...s.turn, round: 999 } }), false,
-     '🏆 ⚠️ NO BUZZER IN A RACE, at any round number — this is the assertion that stops a mode leaking into the default game');
+     '🏆 ⚠️ NO BUZZER IN A RACE, at any round number — the assertion that stops a mode leaking across');
 
   // ⚠️ The whitelist trap `fameTarget`/`fameCap` fell into: a config field that
   // sets cleanly on the object and never reaches the state.
@@ -72,6 +105,10 @@ const seats = () => Object.fromEntries(DUEL.map(s => [s.id, POLICIES.searcher({}
   eq(r.config.winCondition, 'rounds', '⚠️ winCondition SURVIVES the state.js config whitelist');
   eq(r.config.roundLimit, 3,          '⚠️ roundLimit survives the whitelist');
   eq(r.config.elimination, 'off',     '🎸 elimination defaults OFF in Battle of the Bands (a default, not a coupling)');
+
+  // 📌 An UNRECOGNISED value falls to the new default, not to the old one.
+  eq(st({ winCondition: 'legend-run' }).config.winCondition, 'rounds',
+     '📌 an unknown winCondition falls through to ROUNDS — the ternary names "fame" as the special case now');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -202,7 +239,14 @@ const seats = () => Object.fromEntries(DUEL.map(s => [s.id, POLICIES.searcher({}
 // ═════════════════════════════════════════════════════════════════════════════
 {
   // 🏆 The control. If this row ever changes, the mode leaked.
-  const legend = runMatch({ seed: 12345, spirits: DUEL, policies: seats(), lives: 3 });
+  //
+  // ⚠️ `winCondition:'fame'` IS NOW LOAD-BEARING HERE AND IT USED TO BE ABSENT.
+  // The control relied on the default being a race; since 2026-09-15 it is not,
+  // and an unspecified `runMatch` plays a 10-round set. This line is the
+  // difference between a control and the same match twice. 🎓 A default that
+  // flips turns every "I just won't pass it" into a silent behaviour change.
+  const legend = runMatch({ seed: 12345, spirits: DUEL, policies: seats(), lives: 3,
+                            winCondition: 'fame' });
   eq(legend.reason, 'winner', '🏆 a Legend Run still ends on a winner');
   eq(legend.verdict, null,    '🏆 …and carries no buzzer verdict');
   ok(Math.max(...Object.values(legend.fame)) >= 24, '🏆 …who reached the finish line');

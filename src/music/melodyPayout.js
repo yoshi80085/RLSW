@@ -51,6 +51,45 @@ export function craftFansFromRun(run) {
   return Math.min(CRAFT_FAN_CAP, Math.max(0, (run ?? 0) - (CRAFT_FAN_FLOOR - 1)));
 }
 
+// ── 🎼 THE ENDING LADDER — WHY THE FIFTH PAYS MOST ───────────────────────────
+//
+// 🪦 THIS WAS AN ANONYMOUS INLINE TERNARY FOR MONTHS, WITH NO COMMENT ANYWHERE —
+// not here, not in `melodyCommit.js`, not in `MELODY_IDENTITY_DESIGN.md`. A
+// deliberate design decision read exactly like an arbitrary number. That is
+// `SEQUENCING.md` §B9 in its purest form, and it is why this block exists.
+// Alex's own rationale, recovered 2026-09-14 (`PROJECTILE_COMBAT_DESIGN.md`
+// §14.9.3) — TWO reasons, and only the first is guessable:
+//
+//   1. 🎸 THE ROCK ARGUMENT. *"Usually nothing is as strong for Rock as the
+//      5th."* Harmonic structure, and the genre the game is about.
+//   2. ⭐ THE SYSTEMS ARGUMENT, AND NOBODY COULD HAVE RECONSTRUCTED THIS ONE.
+//      *"I also wanted to have the players change chords often, so that was
+//      another reason it was stronger than say the tonic."*
+//
+// 🚨 REASON 2 MAKES THIS A LEVER ON THE CHORD ECONOMY, NOT MELODY FLAVOUR.
+// Flatten the ladder and you silently switch off the pressure that makes players
+// move between chords — the thing the number was invented to do. ⚠️ Anyone
+// tuning the ending for feel would have done exactly that without knowing.
+//
+// 🎯 AND IT IS ABOUT TO DO A SECOND JOB. §14.9.5 rules that the fifth's Db
+// payout is ALSO the duel's hook weight — *"the note you are taught to aim for
+// in a melody should be the note that wins duels."* One lesson, learned once.
+// ⚠️ THE COST, STATED HONESTLY: a number doing two jobs cannot be tuned apart.
+// If the fifth proves too strong in duels, the only lever also moves the Db
+// economy, and with it Alex's chord-change pressure. **That is the trade. Do not
+// discover it by accident.**
+//
+// 📌 THE TONIC IS PROVISIONALLY UNDER REVIEW at 2 (§14.9.4, Alex: *"2 times or
+// so, 1.5 even"*) and is NOT settled. ⚠️ At 2 the tonic and the fourth become
+// the same rung and the fourth stops meaning anything distinct — so moving it is
+// a three-rung decision, not a one-number one. Read §14.9.4 before you touch it.
+export const ENDING_DB = {
+  fifth:  3,   // ⭐ the rock interval, AND the chord-change pressure — reason 2
+  fourth: 2,   // the plagal landing
+  tonic:  1,   // ⁉️ provisionally under review at 2 — §14.9.4, unsettled
+  normal: 0,   // ⭐ an unresolved line has NO hook, and no ending Db. No new rule.
+};
+
 export const CLEAN_NOTE_DB = 0.5;
 export const CLEAN_STREAK_DB = 0.5;
 export const CLEAN_STREAK_MIN = 3;
@@ -88,7 +127,7 @@ export function melodyPayoutFor(spiritId, line, scale, {
   const samePitch = (a, b) => pitchIndex(a) >= 0 && pitchIndex(a) === pitchIndex(b);
   const ending = !scale.includes(last) ? 'normal'
     : samePitch(last, tonic) ? 'tonic' : samePitch(last, fifth) ? 'fifth' : samePitch(last, fourth) ? 'fourth' : 'normal';
-  const endingDb = ending === 'fifth' ? 3 : ending === 'fourth' ? 2 : ending === 'tonic' ? 1 : 0;
+  const endingDb = ENDING_DB[ending] ?? 0;
   return {
     cleanCount,
     longestCleanRun: longestRun,

@@ -267,8 +267,19 @@ export function applyAttackRolled(state, action, rng) {
     const defenderNotes = state.noteStates?.[defenderId];
     return {
       ...state,
-      // Holding off a volley costs one note at the defender's next turn even
-      // if every wave is absorbed. Rerolls never charge this declaration twice.
+      // 🔊 THE PER-LAP SONIC TALLY ON THE DEFENDER. Counts every volley aimed at
+      // them since they last acted; `turn.js`'s `applyTurnEnded` clears it at
+      // THEIR OWN turn end, so the window is one full lap of rivals at any
+      // player count. Rerolls never charge this declaration twice.
+      //
+      // ⚠️ THIS COMMENT USED TO STATE A RULE THE GAME DOES NOT HAVE. It read
+      // *"holding off a volley costs one note at the defender's next turn"* —
+      // `PROJECTILE_COMBAT_DESIGN.md` §3.5.1's shield bill — but NOTHING read
+      // this counter and nothing reset it, so the bill was never charged and the
+      // tally was a lifetime total wearing a per-round name. The reset is now
+      // real (2026-09-15); ⛔ THE BILL ITSELF IS STILL NOT BUILT, and neither is
+      // R12's diminishing FP. 📌 This counter is the input BOTH of them want —
+      // it is now correct and unread, rather than wrong and unread.
       ...(defenderNotes ? { noteStates: {
         ...state.noteStates,
         [defenderId]: {

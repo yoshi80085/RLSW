@@ -43,6 +43,26 @@ already built is fine — say so and move on.
 
 ## 🆕 OPEN — not yet promoted
 
+### 2026-09-15 — The Swing hits several targets, and sweeps notes and charges
+Alex: the Swing could hit **multiple targets** in its field of view, and also
+**sweep through a charge or a loose note** occupying the same space.
+⚠️ **Flagged against `bushido.js` before it is built:** the base Swing is 1 AP,
+Psycho Bushido is 3 AP with *"any body in the lane stops it"* — give the ordinary
+Swing a cone that passes through bodies and the signature move is strictly worse
+for triple the cost. 📌 **Parked by the 2026-09-15 ability freeze**, which is the
+right order: the verb leads and the ability answers to it later.
+⁉️ Unresolved if picked up: does a swept note get **collected**, **destroyed**, or
+**scattered**? (A previous session argued scattered — collecting turns the Swing
+into a farming move, which fights the commitment identity.) And does damage split
+across targets, or land in full on each?
+
+### 2026-09-15 — The cornered payoff
+Alex, explicitly *"later"*: a small **crush bonus** when the target cannot retreat
+— board edge, wall, amp, or another body behind them. 🎯 Worth noting it makes the
+verbs **chain**: the Sonic's push is what creates the corner the Swing crushes in,
+and in four-player the player who pins is not the player who crushes.
+
+
 ### ✅ PROMOTED 2026-09-15 → `PROJECTILE_COMBAT_DESIGN.md` §3.6
 ### 2026-09-14 — The Sustain shield as rolled HP, not a target number
 Instead of every Sonic die having to beat a flat Sustain number, **Sustain rolls
@@ -82,11 +102,11 @@ add to this entry; it is closed.** New thinking goes in §3.6.
 ### ~~2026-09-08 — [P1] Remove the end-move button~~
 ✅ **Done — 2026-09-11.** The redundant End Move button is removed; players can select another action or end their turn.
 
-### 2026-09-08 — [P1] Larger Drive/Sustain HUD dials
-Make the Drive/Sustain dials a bit bigger in the HUD.
+### ~~2026-09-08 — [P1] Larger Drive/Sustain HUD dials~~
+✅ **Closed, no change — 2026-09-16.** Alex: the dials are fine as they are. Make the Drive/Sustain dials a bit bigger in the HUD.
 
-### 2026-09-08 — [P1] Animated Drive/Sustain dial changes
-Show the Drive/Sustain dials slowly ticking up/down with any action affecting them.
+### ~~2026-09-08 — [P1] Animated Drive/Sustain dial changes~~
+✅ **Done — 2026-09-16.** Dialled in off `.scratch/drive-sustain-dial-tick.html` (all defaults accepted), built into `ui/ArenaDial.jsx` with the timing in `ui/dialTick.js`, `test:dialtick`. Show the Drive/Sustain dials slowly ticking up/down with any action affecting them.
 
 ### 2026-09-08 — [P2] Tune performance-power meter
 Build out a meter when committing a tune that tells the player how much performance power the tune has: the relationship between using notes in scale, resolving a Discord, and playing what a certain character’s audience wants to hear. It should tell beginner players how much Db and how many fans they can expect, and how to make the most of the notes they have.

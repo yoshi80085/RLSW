@@ -545,7 +545,11 @@ not the size:
 | 8d6 vs 5d6 | 3.22 | 4.7 |
 
 📌 **~7 Sonics to a knockdown** is close to today's pacing (cap 2 against a pool
-of 4–5 is 3–5 hits) while being far more legible. ⛔ **The mechanism that
+of 4–5 is 3–5 hits) while being far more legible. 📌 **UPDATE 2026-09-15 — R5 SIMPLIFIES THIS QUESTION.** The fan-driven die
+ladder (`sonicDieSides`) is **cut**, so both sides roll **d6 baseline** and the
+only variable left is *how many dice*. See `CORE_LOOP_REWORK_BRIEF.md` §2.1.
+
+⛔ **The mechanism that
 produces "Drive − 2" is NOT decided here** — whether it falls out of chord
 sustain value, of `sustainStack.length`, or of a `sustainRig()` mirroring
 `sonicRig()`, is §3.6.5's first open item.
@@ -712,9 +716,71 @@ knockback comes off the count. Those are ruled.
 
 ## 4. 🗡️ THE SWING — concentrated
 
-> **Deferred design discussion.** The old 4–5 Vibe comparisons and proposed
-> penalties in this section are historical rationale, not new Sonic rules or a
-> finished Swing specification. Revisit them against §0.3's Vibe band next.
+### 4.0 ⭐ WHAT THE SWING IS — ruled 2026-09-15
+
+> 🚨 **READ THIS BEFORE THE REST OF §4.** Everything below §4.0 was written
+> against the pre-barrage model and a Vibe band of 4–5. It is **historical
+> rationale**, kept for its reasoning, and it is **not a current specification**.
+
+⭐ **THE SWING CONVERTS CONTACT INTO DAMAGE, AT THE COST OF COMMITTING YOURSELF
+TO THE BRAWL** (Alex, 2026-09-15).
+
+🎯 **THE DIFFERENTIATOR IS COST, NOT EFFECT** — and that is what finally
+settles §5.3-versus-§14.8. Those two sections deadlocked because both tried to
+tell the Swing apart by *what it does*: §5.3 said the shield-break was the point,
+§14.8 recorded Alex reversing to *"still the big Vibe hitter."* **It is both.**
+What stops it eating the Sonic's lunch is that you have to be standing in the fire
+to use it. ⚠️ **It must not compete with the Sonic on range or on Fame.**
+
+| | 🔊 Sonic | 🗡️ Swing |
+|---|---|---|
+| **verb** | project force | commit to physical dominance |
+| **damage** | low | **high** |
+| **push** | **high** (1–5) | low |
+| **Fame** | **the engine** | almost none |
+| **cost** | 1 AP + 1 Drive note, hit or miss | 1 AP + **2** Drive notes, hit or miss |
+| **failure** | ⭐ **a spent shot** — nothing happens | ⭐ self-damage, displacement, **Fame to the defender** |
+
+⭐ **When you reach for it:** the rival is low on Vibe and needs finishing · you
+want to damage rather than push · their Sustain stack is large and worth fraying ·
+a Sonic would shove them out of reach · you have a positional lock (adjacent,
+behind them, near a wall or another body). 📌 **"Behind them" already pays** —
+`isRearHit` and `REAR_FRAY_BONUS` are wired.
+
+⚠️ **DO NOT ADD PUNISHMENT** (Alex): *"The risk should be readable as 'I may lose
+the exchange and get shoved out,' not 'one failed Swing destroys my character.'"*
+🚨 **But the Vibe re-base to 15 REMOVED punishment without anyone choosing to** —
+`THRASH_WHIFF_DMG` is a flat **1**, which was 20–25% of a 4–5 pool and is **6.7%**
+of 15. 🎯 **The ruling is satisfied by RE-SCALING what exists, not by adding
+anything.** See `CORE_LOOP_REWORK_BRIEF.md` §2.6.
+
+⚠️ **AND §4'S OWN BRANCH NEEDS REWORDING.** *"Count them, or add them up"* is no
+longer literally true — §3.6 makes the Sonic sum too. The replacement: ⭐ **the
+Sonic spends its dice ONE AT A TIME; the Swing spends them ALL AT ONCE.** Many
+small, or one big. 📌 §3.6.3 carries the full argument.
+
+⚠️ **§4.1 IS NOW PARTLY REVERSED.** *"A SONIC CANNOT REACH A HELD CHORD. A SWING
+CAN"* stopped being absolute when §3.6.2 gave the Sonic a one-note break. Degree,
+not kind — but §4.1's own argument still applies at reduced force and is
+**unanswered**, not waived.
+
+⚠️ **AND IN A ROUND-LIMITED MATCH, §4 ITEM 1 IS FALSE.** *"It is how a match
+ENDS"* — nothing ends the match but the buzzer. ⭐ **The Swing is how you take a
+scoring turn away from a rival who was about to out-earn you**, which fits the
+ruling better and puts the value on timing: a knockdown on round 9 is worth far
+more than the same knockdown on round 2.
+
+⛔ **Open, and listed at `CORE_LOOP_REWORK_BRIEF.md` §2.5–§2.6:** the divisor
+(1:2 as ruled gives ~4.5 Swings to a knockdown against the Sonic's 7.2; 1:1 gives
+~2.2), whether the Swing sums against the **rolled** shield, and the re-scaled
+whiff number. ⛔ **Deferred by the ability freeze:** multi-target and
+note-sweeping — `IDEAS_INBOX.md`.
+
+---
+
+> **Deferred design discussion — ⚠️ HISTORICAL, SUPERSEDED BY §4.0 ABOVE.** The old
+> 4–5 Vibe comparisons and proposed penalties in this section are historical
+> rationale, not new Sonic rules or a finished Swing specification.
 
 ⭐ **Alex's image:** the amps fire the charge **into the player** instead of at
 the rival — the guitarist winds up on the feedback and swings. 📌 This is
@@ -1816,11 +1882,27 @@ wins duels.** One lesson, learned once.
 the fifth proves too strong in duels, the only lever also moves the Db economy —
 and with it Alex's chord-change pressure.
 
-🎯 **THE ANSWER IS NOT A SECOND NUMBER. IT IS A NAMED ONE.** Today it is an
-anonymous inline ternary. Before it prices both the Db payout and the hook it must
-become a named, exported constant carrying §14.9.3's two reasons in the comment
-above it. **Then the next person can see what they are about to break.** 📌 That
-comment is the real home of the rationale; this section is the interim record.
+🎯 **THE ANSWER IS NOT A SECOND NUMBER. IT IS A NAMED ONE.**
+
+✅ **DONE 2026-09-15 — THE RATIONALE HAS REACHED ITS REAL HOME.** The anonymous
+inline ternary is now **`ENDING_DB`**, exported from `music/melodyPayout.js`,
+with §14.9.3's two reasons, §14.9.5's one-number-two-jobs cost and §14.9.4's
+unsettled tonic written in the comment above it, and indexed twice in
+`ARCHITECTURE.md`. **The next person can now see what they are about to break.**
+
+📌 **THAT COMMENT IS CANONICAL FROM HERE; THIS SECTION IS THE INTERIM RECORD AND
+IS NOW HISTORICAL.** ⚠️ New thinking about the ladder goes in the comment, not
+here — two live copies of a rationale is the exact drift `SEQUENCING.md` §B9
+charges for, and §14.9.3 exists precisely because this number had none at all.
+
+✅ The rename is verified **behaviourally inert**: `.scratch/endingDbCheck.mjs`
+replays the old ternary against the new map — **28,807 assertions, 0 failures**
+over 9,600 random lines across 8 keys and 3 Spirits, checking `endingDb`, that
+`db` still reconciles as `cleanDb + streakDb + endingDb`, and that `resolved`
+still tracks a non-`normal` ending.
+
+🎯 **§14.9.4's tonic number may now move safely** — the thing that had to happen
+first has happened.
 
 #### 14.9.6 🚩 THE FAN CAP IS A FAME BRAKE, NOT A QUALITY CEILING
 

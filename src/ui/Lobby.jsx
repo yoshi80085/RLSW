@@ -7,7 +7,7 @@ import { makeNetClient } from "../net/client.js";
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT,
          RIFF_SPEED_MIN, RIFF_SPEED_MAX, RIFF_SPEED_DEFAULT,
          loadRiffSpeed, saveRiffSpeed, riffSpeedLabel } from "../riff/fallingNotes.js";
-import { fpPerLife } from "../data/gameConstants.js";
+import { fpPerLife, ROUND_LIMIT_CHOICES, ROUND_LIMIT_DEFAULT, fameScaleFor } from "../data/gameConstants.js";
 import menuSong3 from "../music/Menu_song_3.mp3";
 import { musicVol } from "../audio/mixer.js";
 import boardImg from "../board.png";
@@ -72,6 +72,16 @@ export function Lobby({ onStart, onBackToMenu }) {
   // rather than global so the two can be played against each other.
   const [cpuSearcher, setCpuSearcher] = useState({});
   const [step, setStep] = useState("count");
+  /* 🎸🏆 HOW THE MATCH ENDS — a setting as of 2026-09-16.
+     ⚠️ BATTLE OF THE BANDS IS THE DEFAULT, and that is not a new preference:
+     the ENGINE has defaulted to it since 2026-09-15 (`state.js` normalises an
+     unspecified `winCondition` to 'rounds'). The lobby simply never said so and
+     never passed one, so every match ran round-limited underneath while the
+     client still crowned a Legend on a Fame target the mode had removed.
+     📌 Legend Run is NOT retired — Alex, 2026-09-16: "I don't want to totally
+     throw out all of that". It is the other button. */
+  const [winCondition, setWinCondition] = useState('rounds');
+  const [roundLimit, setRoundLimit] = useState(ROUND_LIMIT_DEFAULT);
   const [startingLives, setStartingLives] = useState(3);
   const [beginnerMode, setBeginnerMode] = useState(true);
   /* ⚠️ SEEDED, NOT LEFT TO THE EFFECT BELOW. A roster tile is clickable only
@@ -152,8 +162,8 @@ export function Lobby({ onStart, onBackToMenu }) {
   useEffect(()=>{if(!playerCount)return;setCpuCorners(prev=>{const next={...prev};activeCorners.forEach((c,i)=>{if(next[c]===undefined)next[c]=i!==0;});return next;});},[playerCount]);
   useEffect(()=>{if(!playerCount){setChoosingCorner(null);return;}const f=activeCorners.find(c=>!assignments[c]);setChoosingCorner(f??null);},[playerCount]);
   function assign(corner,spiritId){setAssignments(a=>({...a,[corner]:spiritId}));const sp=SPIRIT_DEFS[spiritId];if(sp){if(announcerTimer.current)clearTimeout(announcerTimer.current);setAnnouncer({name:sp.name,color:sp.color});announcerTimer.current=setTimeout(()=>setAnnouncer(null),700);}const nA={...assignments,[corner]:spiritId};setChoosingCorner(activeCorners.find(c=>!nA[c])??null);}
-  function handleStart(){const spirits=activeCorners.map(corner=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:!!cpuCorners[corner],botPolicy:(cpuCorners[corner]&&cpuSearcher[corner])?"searcher":"legacy"};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;onStart({spirits,mode,teams,startingLives,beginnerMode});}
-  function handleStartOnline(){const hs=netRoom.seats.filter(s=>!s.isBot);const spirits=activeCorners.map((corner,ci)=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:ci>=hs.length};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;const config={spirits,mode,teams,startingLives,beginnerMode};const seatMap=hs.map((s,i)=>({seatId:s.seatId,spiritId:activeCorners[i]?assignments[activeCorners[i]]:null}));const botSeats=activeCorners.slice(hs.length).map(c=>({name:SPIRIT_DEFS[assignments[c]]?.name??"Bot",spiritId:assignments[c]}));netClient.startGame(config,{seatMap,botSeats:botSeats.length?botSeats:undefined});}
+  function handleStart(){const spirits=activeCorners.map(corner=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:!!cpuCorners[corner],botPolicy:(cpuCorners[corner]&&cpuSearcher[corner])?"searcher":"legacy"};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;onStart({spirits,mode,teams,startingLives,beginnerMode,winCondition,roundLimit});}
+  function handleStartOnline(){const hs=netRoom.seats.filter(s=>!s.isBot);const spirits=activeCorners.map((corner,ci)=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:ci>=hs.length};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;const config={spirits,mode,teams,startingLives,beginnerMode,winCondition,roundLimit};const seatMap=hs.map((s,i)=>({seatId:s.seatId,spiritId:activeCorners[i]?assignments[activeCorners[i]]:null}));const botSeats=activeCorners.slice(hs.length).map(c=>({name:SPIRIT_DEFS[assignments[c]]?.name??"Bot",spiritId:assignments[c]}));netClient.startGame(config,{seatMap,botSeats:botSeats.length?botSeats:undefined});}
   function startTestingGrounds(){onStart(buildTestingGroundsConfig({beginnerMode}));}
   const iBase={fontFamily:"inherit",background:"#0a1020",border:"1px solid #1e3a5f",borderRadius:4,color:"#c0d0e0",fontSize:11,padding:"8px 10px",outline:"none"};
   const seg=(on,ac="#4488ff")=>({fontFamily:"'Saira Stencil One',sans-serif",cursor:"pointer",borderRadius:4,padding:"6px 14px",fontSize:10,letterSpacing:1,transition:"all .15s",border:"1px solid",background:on?ac+"22":"#0a1020",borderColor:on?ac:"#1e3a5f",color:on?ac:"#5a7a9a"});
@@ -348,8 +358,46 @@ export function Lobby({ onStart, onBackToMenu }) {
                 style={{...seg(false,"#aa55ff"),opacity:0.3,cursor:"not-allowed",borderColor:"#1a2a40",color:"#2a3a4a"}}>TEAM 🔒</button>
               <span style={{fontSize:8,color:"#3a5a7a"}}>standard</span></div>
             <div style={{width:1,height:20,background:"#1a2a40"}}/>
-            <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>KDs</span>
-              {[1,2,3,4,5].map(n=><button key={n} onClick={()=>setStartingLives(n)} style={{...seg(startingLives===n,"#ff4488"),padding:"6px 10px"}}>{n}</button>)}</div>
+            {/* 🎸🏆 HOW THE MATCH ENDS. Drawn as a segment row — the shape MODE
+                and KDs already use — because Alex signed that treatment off on
+                2026-09-16 off the preview page, noting the whole lobby gets a
+                3D pass later. `.scratch/fame-track-preview.html` → 🏆 Lobby mode
+                toggle still carries the two alternatives (cards, single pill).
+                ⚠️ WIN_CONDITIONS_DESIGN.md §8 step 6 put this control under the
+                preview rule, which is why it was built there first. */}
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>🏆 WIN</span>
+              <button onClick={()=>setWinCondition('rounds')}
+                title="Battle of the Bands — a fixed number of rounds, then the buzzer. Most Fame wins. Nobody is knocked out."
+                style={{...seg(winCondition==='rounds',"#ff8a2a")}}>🎸 ROUNDS</button>
+              <button onClick={()=>setWinCondition('fame')}
+                title="Legend Run — the original: first to the Fame target is crowned, and knock-downs can put you out for good."
+                style={{...seg(winCondition==='fame',"#ffd700")}}>🏆 FAME</button>
+            </div>
+            {winCondition==='rounds'&&<>
+              <div style={{width:1,height:20,background:"#1a2a40"}}/>
+              <div style={{display:"flex",alignItems:"center",gap:6}}
+                title="How many rounds before the buzzer. Every Spirit gets the same number of turns.">
+                <span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>⏳ ROUNDS</span>
+                {ROUND_LIMIT_CHOICES.map(n=><button key={n} onClick={()=>setRoundLimit(n)}
+                  style={{...seg(roundLimit===n,"#ff8a2a"),padding:"6px 10px"}}>{n}</button>)}</div>
+            </>}
+            <div style={{width:1,height:20,background:"#1a2a40"}}/>
+            {/* 🚨 KDs IN A MODE WHERE NOTHING IS KNOCKED OUT. Battle of the Bands
+                runs with elimination OFF (`state.js` pairs them), so lives are
+                never decremented at all — a knock-down still scatters your
+                notes, resets your Vibe and pays the attacker, it just cannot end
+                your match. The control is DIMMED rather than hidden: the number
+                still shapes the Stage-FX thresholds, and hiding a setting that
+                is still doing something is its own kind of lie. */}
+            <div style={{display:"flex",alignItems:"center",gap:6,opacity:winCondition==='rounds'?0.45:1}}
+              title={winCondition==='rounds'
+                ?"Nobody is eliminated in Battle of the Bands — a knock-down still costs you the crowd and your Vibe, but it cannot end your match."
+                :"How many knock-downs before a Spirit is out for good."}>
+              <span style={{fontSize:8,color:"#3a5a7a",letterSpacing:1}}>KDs</span>
+              {[1,2,3,4,5].map(n=><button key={n} onClick={()=>setStartingLives(n)} style={{...seg(startingLives===n,"#ff4488"),padding:"6px 10px"}}>{n}</button>)}
+              {winCondition==='rounds'&&<span style={{fontSize:8,color:"#5a7a9a"}}>— no KO this mode</span>}
+            </div>
             <div style={{width:1,height:20,background:"#1a2a40"}}/>
             {/* 🎸 Riff-off difficulty — still settable here because it changes
                 how duels play in THIS match, but the trainers that share the
@@ -379,7 +427,16 @@ export function Lobby({ onStart, onBackToMenu }) {
                   style={{...seg(false,"#f6ad55"),padding:"4px 7px"}}>↺</button>}
             </div>
             <div style={{width:1,height:20,background:"#1a2a40"}}/>
-            <span style={{fontSize:8,color:"#3a5a7a",flex:1,minWidth:100}}>{startingLives===1?`Sudden death — ${fpPerLife(playerCount ?? 2)} FP to win`:`${startingLives} Knock Downs = KO — ${startingLives*fpPerLife(playerCount ?? 2)} FP to win`}{startingLives>=3?" 🤘":""}</span>
+            {/* 📝 THE LINE YOU READ BEFORE PRESSING START — and until 2026-09-16
+                BOTH HALVES OF IT WERE FALSE. It said "3 Knock Downs = KO — 18 FP
+                to win" in a mode with no KOs and no target, because it was
+                written when Legend Run was the only game. It now says what the
+                match you are about to play actually does. */}
+            <span style={{fontSize:8,color:"#3a5a7a",flex:1,minWidth:100}}>
+              {winCondition==='rounds'
+                ? <>{roundLimit} rounds, then the buzzer — <b style={{color:"#ff8a2a"}}>most Fame wins</b> · nobody is knocked out · ties go to diehards, then damage 🤘</>
+                : <>{startingLives===1?`Sudden death — ${fpPerLife(playerCount ?? 2)} FP to win`:`${startingLives} Knock Downs = KO — ${startingLives*fpPerLife(playerCount ?? 2)} FP to win`}{startingLives>=3?" 🤘":""}</>}
+            </span>
             <button onClick={online?handleStartOnline:handleStart} disabled={!canGo} style={{fontFamily:"'Saira Stencil One',sans-serif",cursor:canGo?"pointer":"not-allowed",borderRadius:6,padding:"10px 28px",fontSize:13,fontWeight:700,letterSpacing:3,transition:"all .2s",border:"2px solid",background:canGo?"#1a3020":"#0a1020",borderColor:canGo?"#44cc66":"#1e3a5f",color:canGo?"#44ff88":"#2a3a4a",boxShadow:canGo?"0 0 20px #44cc6633":"none",opacity:canGo?1:0.5}}>{online?"START ONLINE":"START"}</button>
           </div>}
         </>}

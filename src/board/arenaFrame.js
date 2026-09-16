@@ -4,11 +4,17 @@ import { rigRadius, rigTiers } from '../engine/systems/sonicRig.js';
 // hidden spirits BEFORE passing them here; no note stock or hidden state crosses.
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
-  bots = [], spotlight, tentacle, shadowDecoy = null, lite = false }) {
+  bots = [], spotlight, tentacle, shadowDecoy = null, lite = false, stats = {} }) {
   const visible = new Set(spirits.map(s => s.id));
   return {
     spirits: spirits.map(s => ({ id:s.id, num:s.num, color:s.color, corner:s.corner,
       facing:s.facing ?? 0, imageSrc:s.imageSrc, knockedOut:!!s.knockedOut,
+      // 🎛️ For the head dial. ⭐ PUBLIC FOR EVERY SPIRIT (Alex, 2026-09-16) — a
+      // rival's Drive was shown nowhere before this; he chose to reveal it. The
+      // CLIENT computes these (spiritChord), so this file stays free of rules.
+      // Only visible spirits reach this map, so smoke still hides the numbers.
+      drive:Number.isFinite(stats[s.id]?.drive) ? stats[s.id].drive : null,
+      sustain:Number.isFinite(stats[s.id]?.sustain) ? stats[s.id].sustain : null,
       pendingSustainFray:(noteStates[s.id]?.pendingSonicAttacks??0)>0
         ? Math.min(2,noteStates[s.id].pendingSonicAttacks,Math.max(0,(noteStates[s.id].sustainStack?.length??0)-1)):0,
     })),

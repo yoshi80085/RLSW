@@ -24,7 +24,7 @@
 // a surviving pose (the FP grant and the Sustain toll) is not here — it is a
 // consequence sequence and lives with the others in `battleFlow.js`.
 
-import { POSE_FP_STEP, POSE_FP_MAX } from "../../data/gameConstants.js";
+import { POSE_FP_STEP, POSE_FP_MAX, poseFpMaxFor } from "../../data/gameConstants.js";
 
 /** The empty slice, so `state.js` and any migration agree on the shape. */
 export function makeLimelightState() {
@@ -40,9 +40,20 @@ export function makeLimelightState() {
  * the same rate when they fight their way back. You lose the tempo, not the
  * reputation.
  */
-export function posePayout(rounds = 0) {
-  return Math.min((rounds + 1) * POSE_FP_STEP, POSE_FP_MAX);
+export function posePayout(rounds = 0, state = null) {
+  return Math.min((rounds + 1) * POSE_FP_STEP,
+                  poseFpMaxFor(state?.config?.winCondition));
 }
+
+// 📌 `state` is OPTIONAL on purpose: a caller with no state gets the Legend-Run
+// ceiling, which is the conservative answer and the one every pre-2026-09-15
+// caller already assumed. ⚠️ But "conservative" means WRONG in a round-limited
+// match, so a caller that HAS state must pass it. All three live callers do —
+// `battleFlow.js`'s pose bank, the client's `poseTierFor`, and `evaluate.js`.
+//
+// ⚠️ `POSE_FP_MAX` IS STILL IMPORTED ABOVE AND THAT IS NOT LEFTOVER. `evaluate.js`
+// divides by the FINITE constant to normalise a pose into 0..1, which is the one
+// job the mode-aware ceiling cannot do — see the 🚨 at that call site.
 
 /** Is this Spirit mid-pose right now? */
 export function isPosing(state, spiritId) {

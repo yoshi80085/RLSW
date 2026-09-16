@@ -5,10 +5,14 @@
 > anymore, it'll have to be redesigned to show by 'how much' the winner is
 > winning."*
 >
-> ⛔ **NOTHING HERE IS BUILT.** ⚠️ **AND NOTHING HERE MAY BE BUILT STRAIGHT INTO
-> THE CLIENT** — this is a HUD element, so it goes to a standalone interactive
-> preview page in `.scratch/` first, Alex dials it in, and only the numbers he
-> lands on get ported. `CLAUDE.md`, standing rule since 2026-08-26.
+> ✅ **BUILT 2026-09-16.** `ui/FameRace.jsx` draws two scoreboards now — see
+> §12 at the foot of this doc for what shipped, what was decided and by whom.
+> The preview page stays: it is where the next change to this strip starts.
+>
+> ⚠️ **NOTHING HERE MAY BE BUILT STRAIGHT INTO THE CLIENT** — this is a HUD
+> element, so it goes to a standalone interactive preview page in `.scratch/`
+> first, Alex dials it in, and only the numbers he lands on get ported.
+> `CLAUDE.md`, standing rule since 2026-08-26.
 >
 > Companion to `WIN_CONDITIONS_DESIGN.md` (§4.2 raises this; this doc answers it).
 
@@ -301,3 +305,98 @@ preview page and `data/fameTheme.js` is the one file that has to change.
   React SSR (`esbuild --jsx=automatic` + `react-dom/server`) and diff it against
   the preview at the same settings. `.scratch/_portcheck.jsx` and
   `.scratch/_geomdiff.jsx` are the working examples.
+
+
+---
+
+## 12. ✅ WHAT SHIPPED — 2026-09-16
+
+### The scale: 🅱️ FIXED, and the reason is §2 rather than taste
+
+§3 asks for all three candidates as a toggle and for Alex to choose by looking.
+He built neither preference into the page — on the day he deferred the whole
+look to a later 3D pass — so the call was made on §2's own terms, which are not
+aesthetic: **a fixed scale is the only candidate on which a blip moves if and
+only if that Spirit scored.** 🅱️ also survives a reskin; 🅰️ and 🅲️ are
+behaviours, and a 3D pass would inherit their false motion untouched.
+
+📌 **🅰️ and 🅲️ are still in the preview page.** If the fixed scale ever feels
+wrong in play, they are one click away and this section is the thing to reopen.
+
+### The right-hand end: measured, not guessed — and it moves with the CLOCK
+
+§3🅱️'s one objection was that the number is unknowable until the FP economy
+settles. So it was measured: 1080 matches, `.scratch/famescale.mjs`, searcher v
+searcher at the shipped rules. Leader's final Fame, mean (p90):
+
+|      | 10 rounds | 15 rounds | 20 rounds |
+|------|-----------|-----------|-----------|
+| 2P   | 37.4 (58) | 60.1 (92) | 96.5 (168) |
+| 3P   | 47.1 (71) | 70.6 (101)| 105.3 (188) |
+| 4P   | 43.2 (62) | 62.2 (90) | 85.2 (118) |
+
+⚠️ **Two findings that changed the shape of the answer.**
+
+1. **It is SUPER-LINEAR in rounds.** Fame per round climbs (3.74 → 4.01 → 4.83
+   at 2P) because fans accumulate and the crowd multiplier compounds on top of
+   them. A "rate × rounds" constant — the obvious shape, and the one this nearly
+   shipped as — puts 18% of long 2P matches off the chart against a 10% target.
+   `fameScaleFor` carries an exponent (1.27) for exactly this.
+2. **It is not monotonic in player count.** 3P scores HIGHEST, above 4P and well
+   above 2P: every seat plays the same number of turns whatever the table size,
+   so what moves is the crowd — three bands split the fans into workable piles,
+   two never get the multiplier up, four dilute it again. A single value for all
+   three seat counts puts the median leader anywhere from 53% to 82% along the
+   rail depending on who turned up; the per-count table holds it at 62–64%.
+
+### §1's seven `fameToWin` roles, re-derived
+
+| # | Role | What it became |
+|---|---|---|
+| 1 | `at(fp)` — the scale | `fameScaleFor(players, roundLimit)` in rounds; the target in Legend Run |
+| 2 | threshold filter | filters against the scale |
+| 3 | **the finish line** | ⛔ **not drawn at all** in Battle of the Bands |
+| 4 | tie-fan direction | re-derived against the scale — `fp / Infinity` is 0, which would have fanned every group the same way and walked the top of the pack off the rail |
+| 5 | per-blip tooltip | `⭐N · leading by M` / `· N behind` — no denominator, because a score has none |
+| 6 | the ⭐N label | §5's margin readout: `+N`, `=` at a dead heat, `–` at 0–0 |
+| 7 | container tooltip | names the mode and the round |
+
+### §5 margin · §6 clock
+
+**Margin** took the vacated right-hand slot as `+N`, narrower than the `⭐N` it
+replaced — which matters at the `minWidth:190` §7 warns about. Plus the shaded
+span on the rail, so the gap is a shape as well as a number.
+
+**The clock took the LEFT label**, which §6 did not consider and which is better
+than either option it did: that slot already said "⭐ RACE" about a race that is
+not happening, so it was free. `⏳ 6/10`, and `🔥 LAST CALL` on the final round.
+It cannot be mistaken for the `🔥💿 DISCO INFERNO` chip §6 warns about — different
+shape, different rank, pinned to one end — and it costs zero strip width. A muted
+wash inside the rail carries the peripheral sense of time running out.
+
+### §4's "must not be redesigned away" — all five intact
+
+Linearity, one row, the tie fan (re-derived, not carried over), the acting ring,
+and the threshold notches. ⚠️ The notches needed catching: they divide by the
+scale, and against Infinity every threshold becomes Infinity — **the Stage-FX
+subsystem would have silently switched itself off**, with nothing on screen to
+say so. ❓ §6 item 6 of `WIN_CONDITIONS_DESIGN.md` still asks whether absolute-Fame
+thresholds mean anything in a score game; until that is settled they spread
+across the scale.
+
+### 🐛 The bug SSR caught that the eye would not
+
+A dead heat at ⭐28 reported a margin of **+28** and shaded the whole rail. The
+runner-up was found by filtering for scores strictly BELOW the leader — a set
+that is empty exactly when the top is tied, collapsing second place to 0. The
+strip looked perfectly fine; the number was a lie. **§11's "verify the port,
+don't assume it" is now a suite** — `test:fametrack`, nine states, asserting what
+the player reads rather than the markup.
+
+### 📌 Still open
+
+- ❓ The over-run treatment is `pin + »`. §3🅱️'s "hang half off" alternative was
+  never judged against a real match.
+- ❓ §9.5's colour question stays closed (gold), and `data/fameTheme.js` is still
+  the one file to change if it reopens.
+- ❓ The whole strip is due a 3D-aesthetic pass — Alex, 2026-09-16.

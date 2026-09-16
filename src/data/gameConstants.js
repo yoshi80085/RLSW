@@ -441,6 +441,43 @@ export const POSE_FP_STEP = 1;   // FP added per pose round survived
 export const POSE_FP_MAX  = 4;   // ...capped here. Matches FAME_PER_TURN_CAP -- a
                                  // maxed poser earns a whole turn's FP ceiling by
                                  // standing still with their guard down.
+
+// ✨🎸 THE POSE CEILING RIDES THE MODE, 2026-09-15 — Alex's call, *"ride the
+// mode, like the riff cap."*
+//
+// 🐛 WHAT THIS FIXES, AND IT WAS A REAL ONE. `POSE_FP_MAX` says in its own
+// comment that it MATCHES `FAME_PER_TURN_CAP` — and that match silently broke
+// the day `FAME_PER_TURN_CAP_ROUNDS` was added. `RIFF_FP_TURN_CAP` was taught to
+// follow the mode (`battleFlow.grantFame`'s `capScale`); the pose ceiling never
+// was. So in a round-limited match every other Fame source ran uncapped into the
+// hundreds while a maxed pose stayed pinned at 4 — the Limelight economy
+// quietly becoming worthless in the mode that is now the DEFAULT.
+//
+// ⚠️ IT WAS NOT A BUG YOU COULD SEE. Nothing errored, no suite went red, and the
+// constant's comment went on describing a relationship that had stopped being
+// true. The 🎓 general form: **a constant defined as "matches X" does not follow
+// X — it copies X once, and the copy rots when X learns something new.**
+export const POSE_FP_MAX_ROUNDS = Infinity;
+
+/**
+ * 🎸 The per-turn Fame ceiling for a mode. ⭐ THE SINGLE SOURCE OF THE MODE RULE.
+ *
+ * ⚠️ READ THE MODE THROUGH THIS, NEVER BY TESTING THE STRING YOURSELF.
+ * `limelight.js`'s own header records what the third transcription of a rule
+ * costs: *"they agreed, which is exactly why the duplication was safe to keep
+ * and dangerous to leave."* This is that lesson applied before the fact —
+ * `battleFlow.famePerTurnCap` layers the `fameCap` bench instrument on top of
+ * this, and `poseFpMaxFor` is the same rule for the pose ladder, but the
+ * `=== 'rounds'` test itself lives in exactly one place: here.
+ */
+export function famePerTurnCapFor(winCondition) {
+  return winCondition === 'rounds' ? FAME_PER_TURN_CAP_ROUNDS : FAME_PER_TURN_CAP;
+}
+
+/** ✨ The pose ceiling for a mode — `famePerTurnCapFor`'s twin. */
+export function poseFpMaxFor(winCondition) {
+  return winCondition === 'rounds' ? POSE_FP_MAX_ROUNDS : POSE_FP_MAX;
+}
 // A pose costs a Sustain note per round -- posturing is not playing defence, and
 // the armour audibly decays while you hold it. Camping the middle therefore
 // erodes the exact stat that keeps you alive there. A Spirit with an empty
@@ -451,6 +488,68 @@ export const POSE_SUSTAIN_COST = 1;
 // 2P → 8, 3P → 7, 4P → 6.  fameToWin = startingLives × fpPerLife(playerCount).
 export function fpPerLife(playerCount) { return Math.max(5, 10 - playerCount); }
 export const FAME_TO_WIN      = 24;   // legacy fallback (3 lives × 8) — runtime uses startingLives × fpPerLife(playerCount)
+
+// ─── ⭐📏 THE FAME TRACK'S RIGHT-HAND END, IN BATTLE OF THE BANDS ───────────
+//
+// 🎸 A SCORE GAME HAS NO TARGET, SO THE SCOREBOARD NEEDS A SCALE INSTEAD.
+// `battleFlow.fameToWin` returns Infinity in this mode by design, and Infinity
+// is not a coordinate system — `ui/FameRace.jsx` maps every blip through it.
+// This is what it maps through instead. It is furniture, not a rule: nothing in
+// the match reads it, and a Spirit who beats it is drawn "off the chart" rather
+// than stopped.
+//
+// 🎯 MEASURED, NOT GUESSED. `FAME_TRACK_REDESIGN.md` §3🅱️ is explicit that this
+// "is set from whatever a played Battle of the Bands actually produces — not
+// guessed now". 120 matches per cell × 3 seat counts × 3 round limits = 1080
+// matches, searcher v searcher, at the rules as they ship (elimination off,
+// per-turn cap OFF in this mode, fans at 0.12/5.0). `.scratch/famescale.mjs`,
+// 2026-09-16. Leader's final Fame, mean (p90):
+//
+//              10 rounds      15 rounds      20 rounds
+//     2P       37.4 (58)      60.1 (92)      96.5 (168)
+//     3P       47.1 (71)      70.6 (101)    105.3 (188)
+//     4P       43.2 (62)      62.2 (90)      85.2 (118)
+//
+// ⚠️ IT IS SUPER-LINEAR IN ROUNDS, WHICH IS THE WHOLE REASON THIS IS A CURVE
+// AND NOT A RATE. Fame per round is not constant — at 2P it climbs 3.74 → 4.01
+// → 4.83 as the match lengthens — because fans ACCUMULATE and the crowd
+// multiplier compounds on top of them. A "Fame per round × rounds" constant,
+// which is the obvious shape and the one this nearly shipped as, under-scales a
+// long match badly: it puts 18% of 20-round 2P matches off the chart against a
+// 10% target. The exponent is what carries the compounding.
+//
+// ⚠️ AND IT IS KEYED ON PLAYER COUNT, WHICH IS NOT MONOTONIC. 3P scores
+// HIGHEST — above 4P and well above 2P. Every seat plays the same number of
+// turns whatever the table size, so what moves is the crowd: three bands split
+// the fans into workable piles, two never get the multiplier up, four dilute it
+// again. Do not "simplify" this to a single constant; it was checked.
+//
+// 📌 SIZED SO OVER-RUN ≈ 10% — §3🅱️ wants beating the scale to be a flourish,
+// which needs it rare. The fit lands 7–15% across the nine measured cells.
+//
+// ⚠️ RE-MEASURE WHEN THE FAME ECONOMY MOVES. §3🅱️ calls this the fixed scale's
+// one weakness and it is real: any change to the fan weights, the crowd
+// multiplier cap, the per-turn cap or the round limit invalidates the table
+// above. Re-run `.scratch/famescale.mjs` rather than nudging these by feel.
+const FAME_SCALE_K = { 2: 3.26, 3: 3.74, 4: 2.95 };
+const FAME_SCALE_EXP = 1.27;
+export const ROUND_LIMIT_CHOICES = [10, 15, 20];
+
+/**
+ * ⭐📏 The Fame track's right-hand end for a round-limited match.
+ * @param playerCount how many Spirits are at the table
+ * @param roundLimit  rounds before the buzzer
+ */
+/* 📌 `ROUND_LIMIT_DEFAULT` is declared BELOW this line and that is safe: a
+   default parameter is evaluated per CALL, not at definition, and every importer
+   runs after this module finishes initialising. Do not "fix" it by inlining 10
+   — two copies of the round limit is exactly the drift this file keeps paying
+   for (see POSE_FP_MAX, which claimed to match FAME_PER_TURN_CAP and did not). */
+export function fameScaleFor(playerCount, roundLimit = ROUND_LIMIT_DEFAULT) {
+  const k = FAME_SCALE_K[playerCount] ?? FAME_SCALE_K[4];
+  const raw = k * Math.pow(Math.max(1, roundLimit), FAME_SCALE_EXP);
+  return Math.max(5, Math.round(raw / 5) * 5);   // 5s, so the number reads as furniture
+}
 
 // HARD per-turn FP ceiling (2026-07-16 balance pass). Overlapping FP systems
 // (sonic margin + spotlight + rider + groove, riff replays, Azrael, Limelight)
@@ -580,9 +679,30 @@ export const TOKEN_DRIFT_TURNS   = 1; // rounds an uncollected Lost Chord sits b
 // See PROGRESSION_REWRITE_DESIGN.md §7.7 for what that measured out at -- the
 // discard is the number to watch, and it is Alex's call whether the window
 // moves with the crowd.
+//
+// ✅ 2026-09-15 — THAT FRICTION IS GONE, AND THESE TWO NUMBERS ARE RESTORED TO
+// WHAT THE BLOCK ABOVE ALREADY DERIVED. The warning was written on 2026-09-02
+// and it was right: the window was 4, so a heavier crowd just fed the discard.
+// `CORE_LOOP_REWORK_BRIEF.md` §0 is the resolution — the default match is now
+// ROUND-LIMITED (`state.js`), where `famePerTurnCap` returns Infinity, so there
+// is no window left to overflow and `WIN_CONDITIONS_DESIGN.md` §9 measured 0%
+// discarded at every set length.
+//
+// 🎓 THE LESSON WORTH KEEPING: the derivation in the comment block above was
+// correct and complete on 2026-09-02, and the constants underneath it were walked
+// back to 0 and 3.0 anyway — because the CAP made the right numbers unusable. The
+// comment and the code disagreed for two weeks and only the comment was true.
+// ⚠️ If you find yourself zeroing a weight whose own comment explains why it
+// should not be zero, the thing to change is the constraint, not the weight.
+//
+// 🪦 `FAN_CASUAL_WEIGHT` READ 0 WITH THE NOTE *"casuals now grow permanent Sonic
+// die size"*. That ladder (`sonicDieSides`) is DELETED as of 2026-09-15 (R5,
+// runaway risk), so casuals had nothing left to buy — restoring this weight is
+// the step that gives them a job again, and the deletion is what makes it safe.
+// **The two are one change; `CORE_LOOP_REWORK_BRIEF.md` §0 is the order.**
 export const FAN_DIEHARD_WEIGHT  = 0.40;  // multiplier added per Diehard (loyal core -- worth ~3 casuals)
-export const FAN_CASUAL_WEIGHT = 0; // casuals now grow permanent Sonic die size
-export const FAN_MULT_CAP = 3.0; // diehard multiplier cap, reached by five active diehards
+export const FAN_CASUAL_WEIGHT = 0.12;    // ⭐ restored 2026-09-15 — a full house is 1 + 0.40×6 + 0.12×14 = 5.08
+export const FAN_MULT_CAP = 5.0;          // ⭐ restored 2026-09-15 — sits just under 5.08, the same shape 2.0 had against 2.02
 export const FAN_DIEHARD_CAP     = 6;
 export const FAN_CASUAL_CAP      = 14;
 export const FAN_DIEHARD_START   = 2;
@@ -594,7 +714,13 @@ export const FAN_DECAY           = 2;     // casuals bored off per turn once the
 export const FAN_BORED_AFTER     = 3;     // consecutive turns in the OUTER ring before fans start drifting off
 export const FAN_PROMOTE_EVERY   = 3;     // consecutive centre-perform turns to harden 1 casual -> diehard
 export const FAN_RECOVERY_LAG    = 3;     // your turns locked out of crowd-gain after a demolition
-export const FAN_FLEE_MIN = 1; // light crowd scatter; earned die size survives
+// 🪦 THIS COMMENT USED TO READ *"light crowd scatter; earned die size survives"*.
+// That clause was the whole reason the scatter was kept LIGHT — losing fans was
+// survivable because `peakCasuals` meant your die size never fell back. Both are
+// deleted (R5, 2026-09-15), so ⚠️ a scatter now costs live Fame multiplier with
+// nothing ratcheted behind it. 📌 The number is unchanged and flagged, not
+// retuned: `CLAUDE.md`'s balance freeze holds, and this is a balance question.
+export const FAN_FLEE_MIN = 1; // light crowd scatter
 export const FAN_FLEE_MAX = 2; // light crowd scatter
 export const FAN_DEFECT_TO_VICTOR = 0; // fans cannot be stolen
 

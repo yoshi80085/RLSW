@@ -28,6 +28,11 @@ import { TOKEN_MAX, TOKEN_BASE_POOL, EVENT_HEX_COUNT, CHARGE_ZONE_COUNT, LIMELIG
 export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
   const startingLives = gameConfig.startingLives ?? 3;
 
+  // 🎸 Normalised ONCE, here, because two lines in the config block below need
+  // the same answer and the elimination default used to re-derive it from the
+  // raw argument. See the ⚠️ on `winCondition` in that block.
+  const winCondition = gameConfig.winCondition === 'fame' ? 'fame' : 'rounds';
+
   const spirits = gameConfig.spirits.map(s => ({ ...s, lives: startingLives }));
 
   // Phase 5c foundation: engine builds + OWNS the per-spirit note sheets
@@ -100,13 +105,39 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       // turn it ON inside Battle of the Bands without touching `winCondition`.
       // The pairing below is a DEFAULT, not a coupling.
       //
-      // ⚠️ DEFAULTS ARE TODAY'S GAME. Every existing caller that names neither
-      // gets Legend Run with elimination on, unchanged.
-      winCondition: gameConfig.winCondition === 'rounds' ? 'rounds' : 'fame',
+      // ⭐ THE DEFAULT IS 🎸 BATTLE OF THE BANDS AS OF 2026-09-15 — Alex's call:
+      // *"I'd really like for the game to be turn based instead of FP race
+      // based, with FP as a tracker to determine who is winning at the moment
+      // instead of who is closest to the finish line."* That is R1 of
+      // `CORE_LOOP_REWORK_BRIEF.md`, and this line is where the mode actually
+      // flips: every downstream reader tests `state.config.winCondition`, which
+      // is ALWAYS explicitly set here, so there is exactly one default in the
+      // codebase and it is this ternary.
+      //
+      // 🏆 **THE RACE IS NOT DELETED** (brief §2.4, ruled 2026-09-15) — pass
+      // `winCondition:'fame'` and Legend Run is back, finish line and all.
+      //
+      // ⚠️ THE TERNARY IS INVERTED, NOT EDITED, AND THAT MATTERS. It now names
+      // 'fame' as the special case, so an unrecognised value falls to 'rounds'.
+      // Anything that used to arrive here as undefined — an old save, a bench
+      // harness, a test fixture written before this line moved — now gets a
+      // round-limited match. **That is the intended blast radius; it is not a
+      // small one.** `WIN_CONDITIONS_DESIGN.md` §8's *"defaulted so every
+      // existing caller gets today's game unchanged"* is deliberately no longer
+      // true, which is the whole point of the flip.
+      //
+      // 🚨 AND THE ELIMINATION FALLBACK HAD TO BE REWIRED IN THE SAME BREATH.
+      // It used to read `gameConfig.winCondition` — the RAW argument — which was
+      // fine only while raw-undefined meant 'fame'. Left alone, an unspecified
+      // match would now be round-limited with elimination ON: the one pairing
+      // the block above says is NOT the default, arrived at by two lines
+      // disagreeing about what "unspecified" means. It reads the NORMALISED
+      // value below instead, so the documented pairing survives the flip.
+      winCondition,
       elimination:  gameConfig.elimination === 'off'
         ? 'off'
         : (gameConfig.elimination === 'on' ? 'on'
-           : (gameConfig.winCondition === 'rounds' ? 'off' : 'on')),
+           : (winCondition === 'rounds' ? 'off' : 'on')),
       roundLimit: gameConfig.roundLimit ?? ROUND_LIMIT_DEFAULT,
       // 📏 BENCH INSTRUMENTS, UNDEFINED IN EVERY REAL GAME. `fameTarget`
       // replaces `lives × fpPerLife` in `battleFlow.fameToWin`; `fameCap`

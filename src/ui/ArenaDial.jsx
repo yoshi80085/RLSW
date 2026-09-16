@@ -23,9 +23,25 @@
 // two nodes reads as `6DRIVE` and fails the suite. They do not overlap on
 // screen, so source order is free to serve the contract.
 //
+// ⏱️ **IT TICKS, 2026-09-16.** A change no longer jumps: the dial waits a beat
+// and steps one block at a time, each block flashing white as it is gained or
+// red as it is lost, and the number counts along. Timing is `dialTick.js` —
+// Alex's dial-in off `.scratch/drive-sustain-dial-tick.html`. `useDialTick`
+// below is only the timer glue. ⚠️ **THE FIRST RENDER IS ALWAYS THE REAL
+// VALUE** — the tick starts from a value already on screen, never from zero —
+// so SSR and `arenaFallbackCheck`'s `DRIVE6` read the authoritative number, and
+// a dial that mounts mid-match does not count up from nothing.
+// ⚠️ **A NEW `snapKey` SNAPS.** The pocket shows whoever is acting, so a turn
+// handoff changes both dials at once to someone else's numbers; ticking there
+// would animate a change that nobody's action caused (Alex: snap).
+// 📌 Under prefers-reduced-motion every change snaps, as before.
+//
 // 📌 Sizing is CSS, not props: the svg is `width:100%; max-width:74px`, so the
 // dial follows the pocket down through both narrow breakpoints instead of
 // needing a hand-written size at each one, which is what the old knob did.
+
+import { useEffect, useRef, useState } from 'react';
+import { DIAL_TICK, dialTickInterval, dialTickStep, dialTickFlash } from './dialTick.js';
 
 const SIZE = 74;                  // the viewBox, and the dial's max CSS width
 const MAX = 10;                   // the stat scale — 0..10, same as the old knob
@@ -70,6 +86,60 @@ const FRAME_EDGES = [
   `M${B} ${A + RUN} L${B} ${B - RUN}`,
 ].join(' ');
 
+const clampValue = (value) => (value != null && Number.isFinite(Number(value))
+  ? Math.max(0, Math.min(MAX, Number(value))) : null);
+const prefersReducedMotion = () => typeof window !== 'undefined'
+  && !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+
+/**
+ * The value the dial DRAWS, travelling toward the value it was given.
+ * Returns `{ shown, flash }` — `flash` is `{ index, dir, n }` for the block that
+ * just changed, `n` a counter used as a React key so the flash replays.
+ *
+ * ⚠️ A RETARGET MID-RUN CARRIES ON FROM WHERE THE DIAL STANDS, with no second
+ * wait — "+1 three times, 150 ms apart" reads as one run of three, and a change
+ * of mind turns round instead of finishing the old trip first.
+ */
+function useDialTick(value, snapKey) {
+  const target = clampValue(value);
+  const [shown, setShown] = useState(target);
+  const [flash, setFlash] = useState(null);
+  const shownRef = useRef(target);
+  const timer = useRef(null);
+  const running = useRef(false);
+  const keyRef = useRef(snapKey);
+  const seq = useRef(0);
+
+  useEffect(() => {
+    const clear = () => { if (timer.current != null) { clearTimeout(timer.current); timer.current = null; } };
+    const keyChanged = keyRef.current !== snapKey;
+    keyRef.current = snapKey;
+    // Snap: no value to travel from or to, a different player's numbers, or
+    // an OS request for less motion.
+    if (target == null || shownRef.current == null || keyChanged || prefersReducedMotion()) {
+      clear(); running.current = false;
+      shownRef.current = target; setShown(target); setFlash(null);
+      return undefined;
+    }
+    if (shownRef.current === target) { clear(); running.current = false; return undefined; }
+    const every = dialTickInterval(target - shownRef.current);
+    const tick = () => {
+      const prev = shownRef.current, next = dialTickStep(prev, target);
+      shownRef.current = next;
+      setShown(next);
+      const f = dialTickFlash(prev, next);
+      if (f) setFlash({ ...f, n: ++seq.current });
+      if (next === target) { timer.current = null; running.current = false; }
+      else timer.current = setTimeout(tick, every);
+    };
+    timer.current = setTimeout(tick, running.current ? every : DIAL_TICK.delayMs);
+    running.current = true;
+    return clear;   // a retarget or an unmount cancels the pending step, never the position
+  }, [target, snapKey]);
+
+  return { shown, flash };
+}
+
 /**
  * @param {string} stat    unique key for this instance — it keys the gradient id,
  *                         so the pocket and the board must not share one
@@ -80,10 +150,16 @@ const FRAME_EDGES = [
  *                         Positive lights the blocks it would add in white;
  *                         negative turns the blocks it would cost red.
  * @param {number} [size]  px. Omit to let CSS size it (the pocket does).
+ * @param {*}      [snapKey] whose numbers these are. When it changes the dial
+ *                         SNAPS instead of ticking — pass the acting player.
  */
-export default function ArenaDial({ stat, label, value, boost = 0, size }) {
-  const live = value != null && Number.isFinite(Number(value));
-  const v = live ? Math.max(0, Math.min(MAX, Number(value))) : null;
+export default function ArenaDial({ stat, label, value, boost = 0, size, snapKey }) {
+  // ⏱️ `v` is the DRAWN value — it trails `value` by up to ~1.2 s while ticking.
+  // Anything that must read the authoritative number reads the prop, not this
+  // (MatchSurface's `data-dial-value` and aria-label both do).
+  const { shown, flash } = useDialTick(value, snapKey);
+  const live = shown != null;
+  const v = shown;
   const lit = live ? Math.ceil(v) : 0;
   const head = lit - 1;
   const coreId = `rlsw-dial-core-${stat}`;
@@ -117,13 +193,16 @@ export default function ArenaDial({ stat, label, value, boost = 0, size }) {
       </g>
       {/* the bloom. `key` is the VALUE, so React remounts this group on every
           change and the charge flare replays — no timers, no refs. */}
-      <g key={lit} className="rlsw-dial-bloom" fill="none" strokeWidth={WIDTH + 3.4} strokeLinecap="butt">
+      <g key={`bloom-${lit}`} className="rlsw-dial-bloom" fill="none" strokeWidth={WIDTH + 3.4} strokeLinecap="butt">
         {BLOCKS.map((d, i) => <path key={i} className="rlsw-dial-on" d={d}
-          opacity={i < lit ? 1 : 0} style={{ transitionDelay: `${i * 22}ms` }} />)}
+          opacity={i < lit ? 1 : 0} />)}
       </g>
+      {/* 🪦 The 22 ms-per-block `transitionDelay` ripple is gone: it was a jump's
+          stand-in for travel, and under a real tick it delayed block 9 by 198 ms —
+          longer than a whole step, so the high blocks lagged behind their own tick. */}
       <g fill="none" strokeWidth={WIDTH} strokeLinecap="butt">
         {BLOCKS.map((d, i) => <path key={i} className="rlsw-dial-on" d={d}
-          opacity={i < lit ? 1 : 0} style={{ transitionDelay: `${i * 22}ms` }} />)}
+          opacity={i < lit ? 1 : 0} />)}
       </g>
       {/* the boost preview: what this note WOULD add, or WOULD cost */}
       {gain && <g fill="none" stroke="#ffffff" strokeWidth={WIDTH} strokeLinecap="butt" opacity=".55">
@@ -132,6 +211,14 @@ export default function ArenaDial({ stat, label, value, boost = 0, size }) {
       {drop && <g fill="none" stroke="#ff3344" strokeWidth={WIDTH} strokeLinecap="butt" opacity=".9">
         {BLOCKS.map((d, i) => <path key={i} d={d} opacity={i >= ghostLit && i < lit ? 1 : 0} />)}
       </g>}
+      {/* ⏱️ the tick flash: the block that just lit (white) or went dark (red).
+          `key` is the step counter, so every tick remounts it and replays.
+          ⚠️ BOTH REPLAY KEYS ARE PREFIXED (`bloom-` / `flash-`): they are siblings
+          under one <svg>, and as bare numbers the bloom's `lit` and this counter
+          collided the first time they were equal — React warned "two children
+          with the same key" on a change of mind. Found by mounting it, not by eye. */}
+      {flash && <path key={`flash-${flash.n}`} className={`rlsw-dial-flash ${flash.dir > 0 ? 'gain' : 'loss'}`}
+        d={BLOCKS[flash.index]} fill="none" strokeWidth={WIDTH + 1.2} strokeLinecap="butt" />}
       {/* the head block's white line — where you just got to */}
       <g fill="none" stroke="#ffffff" strokeWidth="1.4" strokeLinecap="butt">
         {BLOCKS.map((d, i) => <path key={i} className="rlsw-dial-head" d={d} opacity={i === head ? 0.95 : 0} />)}
@@ -159,13 +246,17 @@ export const DIAL_CSS = `
     paint-order:stroke; stroke:#03060e; stroke-width:2.8px; stroke-linejoin:round; }
   .rlsw-dial .rlsw-dial-cap { font:400 5.8px 'Saira Stencil One',sans-serif; fill:currentColor;
     letter-spacing:1.8px; opacity:.95; }
-  .rlsw-dial .rlsw-dial-off { stroke:color-mix(in srgb,currentColor 26%,#16253f); transition:opacity .16s linear; }
-  .rlsw-dial .rlsw-dial-on { stroke:currentColor; transition:opacity .16s linear; }
+  .rlsw-dial .rlsw-dial-off { stroke:color-mix(in srgb,currentColor 26%,#16253f); transition:opacity ${DIAL_TICK.fadeMs}ms linear; }
+  .rlsw-dial .rlsw-dial-on { stroke:currentColor; transition:opacity ${DIAL_TICK.fadeMs}ms linear; }
   .rlsw-dial .rlsw-dial-head { transition:opacity .18s linear; }
-  .rlsw-dial .rlsw-dial-bloom { opacity:.17; animation:rlsw-dial-charge .3s ease-out; }
-  @keyframes rlsw-dial-charge { 0% { opacity:.46 } 100% { opacity:.17 } }
+  .rlsw-dial .rlsw-dial-bloom { opacity:.17; animation:rlsw-dial-charge ${DIAL_TICK.flareMs}ms ease-out; }
+  @keyframes rlsw-dial-charge { 0% { opacity:${DIAL_TICK.flarePeak} } 100% { opacity:.17 } }
+  .rlsw-dial .rlsw-dial-flash { opacity:0; }
+  .rlsw-dial .rlsw-dial-flash.gain { stroke:#ffffff; animation:rlsw-dial-flash ${DIAL_TICK.gainFlashMs}ms ease-out forwards; }
+  .rlsw-dial .rlsw-dial-flash.loss { stroke:#ff3344; animation:rlsw-dial-flash ${DIAL_TICK.lossFlashMs}ms ease-out forwards; }
+  @keyframes rlsw-dial-flash { 0% { opacity:1 } 100% { opacity:0 } }
   @media (prefers-reduced-motion: reduce) {
-    .rlsw-dial .rlsw-dial-bloom { animation:none; }
+    .rlsw-dial .rlsw-dial-bloom, .rlsw-dial .rlsw-dial-flash { animation:none; }
     .rlsw-dial .rlsw-dial-off, .rlsw-dial .rlsw-dial-on, .rlsw-dial .rlsw-dial-head { transition:none; }
   }
 `;

@@ -5,6 +5,7 @@ import { LIMELIGHT_HEX } from '../data/gameConstants.js';
 import { pitchIndex } from '../music/notes.js';
 import { createSonicSequenceVisuals } from './sonicSequenceVisuals.js';
 import { createSonicDiceVisuals, sonicSceneLabel } from './sonicDiceVisuals.js';
+import { createHeadDials } from './headDialVisuals.js';
 
 export function arenaPoint(num, height=.18) {
   const h=HEX_BY_NUM[num];return h?new THREE.Vector3((h.px-3255)/200,height,(h.py-2415)/200):null;
@@ -67,7 +68,10 @@ export function createArenaVisuals(scene) {
   const root=new THREE.Group();root.name='Live match effects';scene.add(root);
   const hazards=new THREE.Group();root.add(hazards);
   const effects=[],rigs=new Map(),pawns=new Map(),seen=new Set();
-  let previous=null,hazardKey='',frame={},clock=0,lastTick=0,disposed=false,sonic=null;
+  let previous=null,hazardKey='',frame={},clock=0,lastTick=0,disposed=false,sonic=null,reducedMotion=false;
+  // 🎛️ Drive/Sustain over the head of whichever Spirit's number moved — see
+  // headDial.js. Fed from the same public frame as the pawns, on the same clock.
+  const headDials=createHeadDials(root);
   const clearSonic=()=>{
     if(!sonic)return;
     root.remove(sonic.dice.group,sonic.volley.group);
@@ -228,6 +232,7 @@ export function createArenaVisuals(scene) {
     }
     updateHazards(frame);
     updatePawns(frame);
+    headDials.update(frame.spirits,clock*1000,{reduced:reducedMotion});
     for(const [station,rig] of rigs) {
       const owner=frame.rigs?.find(r=>STATIONS[r.corner]?.includes(station));
       rig.owner=owner;
@@ -277,7 +282,7 @@ export function createArenaVisuals(scene) {
   return {
     attachModel,update,
     tick(time,reduced=false,camera=null) {
-      const dt=Math.min(.05,Math.max(0,time-lastTick));lastTick=time;clock=time;
+      const dt=Math.min(.05,Math.max(0,time-lastTick));lastTick=time;clock=time;reducedMotion=reduced;
       if(sonic) {
         sonic.dice.update(time-sonic.phaseStart,{phase:sonic.phase,reduced});
         const flightTime=sonic.launch==null?-1:frame.battle?.sonicStartedAt!=null
@@ -319,9 +324,10 @@ export function createArenaVisuals(scene) {
           fx.mesh.position.y-=reduced?0:t*t*22;fx.mesh.material.rotation=reduced?0:t*3;fx.mesh.material.opacity=1-t;
         } else {fx.mesh.material.opacity=(1-t)*.8;if(fx.kind==='pulse')fx.mesh.scale.setScalar(reduced?1:1+t*4);}
       }
+      headDials.tick(time*1000,camera,pawns,{reduced});
     },
-    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0),sonicPhase:sonic?.phase??null,hazards:hazards.children.length}),
-    dispose(){disposed=true;clearSonic();clearEffects();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0),sonicPhase:sonic?.phase??null,hazards:hazards.children.length,headDials:headDials.active(clock*1000)}),
+    dispose(){disposed=true;clearSonic();clearEffects();headDials.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     get disposed(){return disposed;},
   };
 }

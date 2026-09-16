@@ -173,10 +173,10 @@ export function MatchSurface({ immersive, spirit, turnNumber, step, canAct, ap, 
           <div className="match-sound-readout">
             <span className="drive" data-immersive-stack="drive" data-dial-value={hud?.drive ?? undefined}
               role="img" aria-label={`Drive ${hud?.drive ?? "unknown"} of 10`} ref={hud?.driveRef}>
-              <ArenaDial stat="drive" label="DRIVE" value={hud?.drive} /></span>
+              <ArenaDial stat="drive" label="DRIVE" value={hud?.drive} snapKey={spirit?.id} /></span>
             <span className="sustain" data-immersive-stack="sustain" data-dial-value={hud?.sustain ?? undefined}
               role="img" aria-label={`Sustain ${hud?.sustain ?? "unknown"} of 10`} ref={hud?.sustainRef}>
-              <ArenaDial stat="sustain" label="SUSTAIN" value={hud?.sustain} /></span>
+              <ArenaDial stat="sustain" label="SUSTAIN" value={hud?.sustain} snapKey={spirit?.id} /></span>
             <span><small>Db</small><b>{hud?.db ?? '—'}</b></span>
             <span><small>FANS</small><b>{hud?.fans ?? '—'}</b></span>
           </div>
