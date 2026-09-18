@@ -255,7 +255,8 @@ inert, and the game never tries to judge whether a wrong note sounded good.**
    chord quality is *"just too arbitrary"* (Alex). ⚠️ Not a one-line deletion —
    see §5⃣.0.3.
 4. ⭐ **DISCORD NOTES ARE INERT.** No Db, no fan value, **and no power to resolve
-   anything at the ending.** Two uses only: **held** for a later turn, or **spent
+   anything at the ending.** ✅ *Fan half built 2026-09-17: a discord note BREAKS a
+   Spirit's shape (Alex's ruling over "skipped"), `music/spiritStyle.js`.* Two uses only: **held** for a later turn, or **spent
    as movement fuel** — every note in a track buys a hex
    (`usableMoves = min(totalNotes, speed)`), so padding a line with junk trades
    fans for distance. 🎯 **That is the whole sacrifice mechanic and it already
@@ -307,9 +308,33 @@ tier and with nothing else. It is **not** bought, **not** unlocked by play, and
 **not** on any ladder. A beginner simply never meets it.
 
 - ⭐ **The beginner tier is the DEFAULT and, today, the only tier that exists.**
-- ⭐ **🗡️ The Ronin's beginner mode is LYDIAN.** 📌 This reverses a sketch that
-  briefly stood in this section — he does **not** open in Aeolian and climb to
-  Lydian. There is no climb.
+- ⭐ **🗡️ The Ronin's beginner mode is HIRAJOSHI + THE PERFECT 4th** — 1 2 ♭3 4 5 ♭6
+  (C D E♭ F G A♭). **Alex, 2026-09-16:** *"change his sound to that one of a more
+  Japanese nature — the Hirajoshi scale with a perfect 4th."* ✅ **Built** —
+  `music/melodyIdentity.js` `hirajoshi`, `test:ronintone`.
+  - 📌 **Which Hirajoshi:** the form guitarists play, 1 2 ♭3 5 ♭6, plus the 4th Alex
+    asked for. Two other published forms exist (1 ♭2 4 5 ♭6 already *has* a 4th;
+    1 3 ♯4 5 7 would put F and F♯ side by side) — neither fits "five notes plus a 4th".
+  - ⚠️ **SIX clean notes, not seven** — on a uniform draw half his hand would be
+    discord. ✅ **Answered the same day by weighting the draw (Alex, 2026-09-16).**
+    `STOCK_PALETTE_GUARANTEE` = 0.5: half of every note drawn into a Spirit's own
+    hand (opening stock, turn refill, the Ronin's extra find note) is picked
+    straight from the palette, the other half from all twelve. Never applied to
+    shared board tokens. Real rate: **75%** for the Ronin, **~79%** for seven notes.
+    - ⭐ **Why this shape, in Alex's words:** *"I still like the idea of some
+      variance. And if there are basically guaranteed enough notes in a scale to
+      cover moving, the argument of needing to use Discord notes to possibly move
+      is moot."* 🎯 **This softens rule 4's sacrifice mechanic by his choice** —
+      discord-as-movement-fuel is no longer something the draw protects the supply of.
+    - 🪦 *Superseded the same day:* a flat 75% for every Spirit (equal regardless of
+      palette size). Also considered and turned down: 2/3 guaranteed (83% / 86%).
+    - 📌 It shapes NEW notes: carried-over notes are respelled, not redrawn, so after
+      the root moves a real hand sits a little lower.
+  - ⚠️ **The 4th is load-bearing in the code, not just the ear.** `melodyCommit.js`
+    reads the resolving 4th and 5th as degree seats 3 and 4; bare five-note
+    Hirajoshi would silently move both endings.
+  - 🪦 *Superseded:* Lydian (2026-09-09 → 2026-09-16). That ruling had itself
+    reversed a sketch where he opened in Aeolian and climbed to Lydian.
 - 📇 **INDEXED, NOT BUILT.** The two-mode tier is deferred to whenever difficulty
   settings are actually built out. `WIN_CONDITIONS_DESIGN.md` already made "how a
   match ends" a setting and it is ⛔ **built headless, with no menu and no HUD** —
@@ -330,7 +355,7 @@ as it was — *"a seat with surplus Db still has nowhere to put it"* — and not
 
 | tier | modes | what the player is shown |
 |---|---|---|
-| **beginner** — ⭐ the default, and the only tier that exists today | **one** (🗡️ Ronin: Lydian) | the note stock colours the clean notes; the mode is named |
+| **beginner** — ⭐ the default, and the only tier that exists today | **one** (🗡️ Ronin: Hirajoshi + P4) | the note stock colours the clean notes; the mode is named |
 | **unassisted** — 📇 indexed, not built | **two** | **no colours.** Both modes' notes sit unlabelled in the hand and must be told apart by knowledge |
 
 🎯 **The scoring is IDENTICAL on both settings.** One engine, one balance, one set
@@ -784,7 +809,7 @@ by playing well. Rat = a big fickle casual flood, cheap to win and cheap to lose
    already exists), or **his junk notes buy movement at a better rate** — the one
    who gets somewhere on wrong notes.
 2. 🎼 **Which single mode does each Spirit play on the beginner tier?** Only the
-   🗡️ Ronin is decided: **Lydian**. 👹 Metalness, 📻 Zero and the fourth seat are
+   🗡️ Ronin is decided: **Hirajoshi + P4** (was Lydian until 2026-09-16). 👹 Metalness, 📻 Zero and the fourth seat are
    open — as is each Spirit's *dark* counterpart for the unassisted tier.
 3. 🎚️ **How many assist steps?** §5⃣.0.2 names two. The note stock's colouring
    carries **two** signals — *is this note in my palette* and *is it in my chord* —

@@ -70,6 +70,7 @@ import {
 import { stackCapFor } from "../../data/gameConstants.js";
 import { MELODY_MAX } from "./legalActions.js";
 import { styleGain } from "../../music/spiritStyle.js";
+import { paletteScaleFor } from "../../music/notes.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 
 // ── The neutral seat ────────────────────────────────────────────────────────
@@ -272,6 +273,7 @@ export function makeActionScorer(state, spiritId, view = {}) {
   // re-reading it per candidate would be the same lookup twenty times over.
   const track     = ns.melodyLine ?? [];
   const slotsLeft = Math.max(0, MELODY_MAX - track.length - 1);
+  const palette   = paletteScaleFor(spiritId, ns);   // discord breaks a shape
 
   // 📌 The scorer is rebuilt PER COMPOSITION STEP, not per turn — `composePhase`
   // calls `makeActionScorer(cur, …)` inside its loop with the state after each
@@ -312,7 +314,7 @@ export function makeActionScorer(state, spiritId, view = {}) {
       // shipped judgement decides, exactly as before.
       case 'melodyNote': {
         const base = noteRank.get(action.stockIdx) ?? 0;
-        const gain = styleGain(spiritId, track, action.note, slotsLeft);
+        const gain = styleGain(spiritId, track, action.note, slotsLeft, palette);
         // ⚠️ `gain` is quantised to tenths before it is strided, so two notes
         // that close a shape by the same amount land on the SAME rung and fall
         // through to the planner's tie-break — which is the whole point of

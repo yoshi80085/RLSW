@@ -9,12 +9,13 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SCALE, SVG_W, SVG_H } from './constants.js';
 import { preserveTacticalLayer, keepGameplayClicks } from './arenaDom.js';
 import { createArenaEnvironment, polishArenaModel } from './arenaEnvironment.js';
-import { arenaPoint, createArenaVisuals, releaseArenaObject } from './arenaVisuals.js';
+import { arenaPoint, pointXY, createArenaVisuals, releaseArenaObject } from './arenaVisuals.js';
 import { createSonicCamera } from './sonicCamera.js';
+import { CAMERA_DIRECTOR, createCameraDirector, createCameraSubjects } from './cameraDirector.js';
 
 // The SVG remains the only gameplay input surface. WebGL consumes a filtered,
 // read-only presentation frame; neither camera nor effects can dispatch actions.
-export function mountArena(host, tacticalElement, { onReady, onError, onQuality }) {
+export function mountArena(host, tacticalElement, { onReady, onError, onQuality, onCamera }) {
   const cleanups=[];
   let disposed=false,failed=false,raf=0,model=null,frame={},emissives=[];
   const dispose=()=>{
@@ -56,15 +57,31 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality 
     let elapsed=0,last=performance.now(),lastDraw=0,sampleStart=last,samples=0,fps=0;
     const sonicCamera=createSonicCamera({camera,controls,pointFor:arenaPoint});
     cleanups.push(()=>sonicCamera.dispose());
+    // 🎥 THE AUTO CAMERA (cameraDirector.js). Plain {x,y,z} in and out, so it
+    // never holds a live Vector3 the renderer might mutate under it.
+    const plain=v=>v&&{x:v.x,y:v.y,z:v.z};
+    const subjects=createCameraSubjects({pointFor:num=>plain(arenaPoint(num,.34)),pointXY:(x,y)=>plain(pointXY(x,y))});
+    let director=createCameraDirector(),autoCamera=true,cameraShot=null,cameraReport='';
+    // ⚠️ THE PLAYER'S HANDS ARE ORBITCONTROLS' OWN start/end, not raw pointer
+    // events. keepGameplayClicks (arenaDom.js) only forwards a LEFT press to the
+    // controls once it has become a 6px drag, so a click that picks a hex never
+    // reaches here and never steals the camera. Wheel and pinch fire start+end.
+    const takeOver=()=>director.userStart(performance.now()),letGo=()=>director.userEnd(performance.now());
+    controls.addEventListener('start',takeOver);controls.addEventListener('end',letGo);
+    cleanups.push(()=>{controls.removeEventListener('start',takeOver);controls.removeEventListener('end',letGo);});
     const motion=()=>{reduced=!!media?.matches;controls.enableDamping=!reduced;dirty=true;};motion();
     media?.addEventListener?.('change',motion);cleanups.push(()=>media?.removeEventListener?.('change',motion));
     const fit=aspect=>Math.max(1,(SVG_W/SVG_H)/aspect);
+    // A narrow screen already pulls view()'s cameras back by fit(); the director's
+    // distances get the same stretch or a portrait phone would crop the battle.
+    const DIRECTOR_DISTANCES=['idleDistance','wideDistance','heroDistance','moveDistance','battlePad','eventDistance'];
+    const tuneDirector=()=>{const k=fit(Math.max(camera.aspect,.25));director.retune(Object.fromEntries(DIRECTOR_DISTANCES.map(key=>[key,CAMERA_DIRECTOR[key]*k])));};
     function resize() {
       const {width,height}=host.getBoundingClientRect();if(!width||!height)return;
       const aspect=width/height;
       camera.position.sub(controls.target).multiplyScalar(fit(aspect)/fit(camera.aspect)).add(controls.target);
       camera.aspect=aspect;camera.updateProjectionMatrix();
-      renderer.setSize(width,height);composer.setSize(width,height);overlay.setSize(width,height);dirty=true;
+      renderer.setSize(width,height);composer.setSize(width,height);overlay.setSize(width,height);tuneDirector();dirty=true;
     }
     function applyQuality() {
       const next=quality==='standard'||(quality==='auto'&&(autoLite||!!frame.lite));
@@ -80,7 +97,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality 
       const visibility=new IntersectionObserver(entries=>{inView=entries[0]?.isIntersecting??true;dirty=true;});
       visibility.observe(host);cleanups.push(()=>visibility.disconnect());
     }
-    function view(name) {
+    function frameView(name) {
       const point=name==='focus'?arenaPoint(frame.spirits?.find(s=>s.id===frame.actingId)?.num):null;
       controls.target.copy(point??new THREE.Vector3(name==='arena'?1:0,name==='arena'?-2.8:0,0));
       const distance=(point?18:35)*fit(Math.max(camera.aspect,.25));
@@ -96,10 +113,26 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality 
       elapsed+=wallDt;
       // Focus is refreshed every frame from the same clock as the projectiles.
       visuals.tick(elapsed,reduced,camera);
-      if(!sonicCamera.update(frame,model,dt,reduced))controls.update();
+      // Subjects are read EVERY frame, even under a Sonic shot, or a move made
+      // during the volley would be missed and the hex bookkeeping go stale.
+      const cameraSubjects=subjects.read(frame,now);
+      cameraShot=null;
+      if(!sonicCamera.update(frame,model,dt,reduced)) {
+        // wallDt, not the 50 ms-capped dt: the director caps at 100 ms itself, and a
+        // slow machine must not also get a camera that crawls at a fraction of speed.
+        cameraShot=autoCamera?director.update({dtMs:wallDt*1000,now,subjects:cameraSubjects,camera:{position:camera.position,target:controls.target},reduced}):null;
+        if(cameraShot?.driving) {
+          // ⚠️ NO controls.update() on a frame the director drives: with damping
+          // on, OrbitControls would ease the camera back toward its own last pose.
+          controls.target.set(cameraShot.target.x,cameraShot.target.y,cameraShot.target.z);
+          camera.position.set(cameraShot.position.x,cameraShot.position.y,cameraShot.position.z);
+          camera.lookAt(controls.target);dirty=true;
+        } else controls.update();
+      }
+      reportCamera(sonicCamera.active?'sonic':!autoCamera||!cameraShot||cameraShot.mode==='off'?'off':cameraShot.mode,cameraShot?.resumeInMs);
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
-      const stats=visuals.diagnostics(),moving=stats.effects>0||stats.headDials>0||sonicCamera.active;
+      const stats=visuals.diagnostics(),moving=stats.effects>0||stats.headDials>0||stats.moveTiles>0||sonicCamera.active||!!cameraShot?.driving;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
@@ -119,11 +152,19 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality 
         }
       } catch(error) {failed=true;cancelAnimationFrame(raf);console.error('Arena rendering stopped',error);onError();}
     }
+    // The badge in BoardViewport's toolbar. Reported only when what it SAYS
+    // changes (a tenth of a second on the countdown), never sixty times a second.
+    function reportCamera(mode,resumeInMs) {
+      const tenths=mode==='manual'?Math.max(0,Math.ceil((resumeInMs??0)/100)):0,key=`${mode}:${tenths}`;
+      if(key===cameraReport)return;cameraReport=key;
+      host.dataset.arenaCamera=mode;
+      onCamera?.({mode,resumeInS:tenths/10});
+    }
     const visible=()=>{last=performance.now();sampleStart=last;samples=0;dirty=true;};
     document.addEventListener('visibilitychange',visible);cleanups.push(()=>document.removeEventListener('visibilitychange',visible));
     const lost=event=>{event.preventDefault();failed=true;cancelAnimationFrame(raf);onError();};
     renderer.domElement.addEventListener('webglcontextlost',lost);cleanups.push(()=>renderer.domElement.removeEventListener('webglcontextlost',lost));
-    resize();view('arena');raf=requestAnimationFrame(render);
+    resize();frameView('arena');raf=requestAnimationFrame(render);
     new GLTFLoader().load(`${import.meta.env.BASE_URL}cosmic-arena/cosmic-arena.glb`,gltf=>{
       if(disposed){releaseArenaObject(gltf.scene);return;}
       try {
@@ -132,10 +173,16 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality 
       }catch(error){console.error('Arena model setup failed',error);onError();}
     },undefined,()=>{if(!disposed)onError();});
     return {
-      view,dispose,
+      // The toolbar's camera buttons are the player choosing a shot: they count
+      // as taking over (the preview's "Count as taking over", left as default).
+      view(name){frameView(name);director.userNudge(performance.now());},
+      dispose,
       update(next){if(disposed||failed)return;frame=next??{};applyQuality();visuals.update(frame);dirty=true;},
       quality(value){if(value===quality)return;quality=value;autoLite=false;applyQuality();dirty=true;},
-      zoom(factor){camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target);controls.update();dirty=true;},
+      zoom(factor){camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target);controls.update();director.userNudge(performance.now());dirty=true;},
+      // ☰ Auto camera switch. Turning it back ON starts a fresh director so it
+      // picks up from wherever the camera is now, not from a pose it held before.
+      autoCamera(on){on=!!on;if(on===autoCamera)return;autoCamera=on;if(on){director=createCameraDirector();tuneDirector();}dirty=true;},
     };
   } catch(error) {dispose();throw error;}
 }

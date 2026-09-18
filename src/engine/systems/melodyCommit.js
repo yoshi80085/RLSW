@@ -232,8 +232,10 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const stackRootDrive = driveStack[0] ?? null;
   const stackRootSustain = sustainStack[0] ?? null;
   const payout = melodyPayoutFor(spiritId, melodyLine, currentScale, {
-    // These are scale degrees, not fixed chromatic intervals: Ronin's Lydian
-    // fourth is ♯4, and it must remain a clean resolving note.
+    // These are scale degrees, not fixed chromatic intervals: a Lydian fourth is
+    // ♯4 and must remain a clean resolving note. ⚠️ Index 3/4 assumes the mode
+    // HAS a 4th and a 5th at those seats — the Ronin's six-note Hirajoshi does
+    // (C D E♭ F G A♭); see the note on `hirajoshi` in melodyIdentity.js.
     tonic: rootNote,
     fourth: harmonicScale[3], fifth: harmonicScale[4],
     driveRoot: stackRootDrive, sustainRoot: stackRootSustain,

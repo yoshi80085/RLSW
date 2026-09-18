@@ -24,7 +24,7 @@ export const TONE_KNOB_DEFAULTS = { drive: 0.45, tone: 0.35, echo: 0.55, verb: 0
 
 // 🎚️ Each Spirit's out-of-the-box rig (mirrored from the tone panel design).
 export const SPIRIT_TONES = {
-  cosmic_ronin:      { drive: 0.55, tone: 0.62, echo: 0.40, verb: 0.18, voice: 'saw' },      // bright cutting lead
+  cosmic_ronin:      { drive: 0.72, tone: 0.58, echo: 0.34, verb: 0.24, voice: 'ronin' },    // 🗡️ singing katana lead (was saw @ 0.55 drive until 2026-09-16)
   intergalactic_0:   { drive: 0.30, tone: 0.42, echo: 0.55, verb: 0.38, voice: 'triangle' }, // mellow cosmic groove
   Metalness_Monster: { drive: 0.82, tone: 0.30, echo: 0.20, verb: 0.14, voice: 'fuzz' },     // heavy fuzz
   Glamarchy:         { drive: 0.45, tone: 0.55, echo: 0.62, verb: 0.42, voice: 'square' },   // glam shimmer
@@ -32,14 +32,74 @@ export const SPIRIT_TONES = {
 
 // 🎙️ VOICE — oscillator character. Each voice swaps waveforms (and how hard it
 // drives) for a genuinely different timbre, cycling order:
-export const TONE_VOICE_ORDER = ['saw', 'square', 'triangle', 'sine', 'fuzz'];
+export const TONE_VOICE_ORDER = ['saw', 'square', 'triangle', 'sine', 'fuzz', 'ronin'];
+
+// 🗡️ RONIN_LEAD — the extra stages behind the Ronin's KATANA voice (2026-09-16).
+// Alex: *"more drive and punch… I want his guitar to sing in a distorted
+// magnificence."* Every number here is a dial-in lever
+// (`.scratch/ronin-tone-preview.html`). ⚠️ These stages run ONLY for a voice that
+// carries `lead` — the other five voices build exactly the graph they always did,
+// and `roninToneCheck` §4 counts the nodes to hold that line.
+export const RONIN_LEAD = Object.freeze({
+  // PUNCH — tighten the low end BEFORE the clipper, so the palm-heavy bottom
+  // stops blooming into mud and every pick lands as a hit.
+  tightHz:    240,    // pre-drive highpass
+  punch:      1.35,   // pick overshoot above the note's volume
+  punchTime:  0.07,   // s — how fast the overshoot settles to the hold
+  pickBright: 1.8,    // the lowpass opens this much on the pick, then closes to TONE
+  // SING — a mid hump into the clipper (the classic lead-boost shape) and a
+  // compressed hold, so the note keeps its voice instead of dying after the pick.
+  humpHz:     820,
+  humpDb:     9,
+  humpQ:      0.9,
+  sustain:    0.92,   // held level after the pick (stock voices settle to 0.82)
+  // DRIVE — a second, softer clipping stage after the first. More harmonics, more
+  // sustain, and the cab shelf below keeps the double clip from fizzing.
+  stage2:     0.55,   // 0 = single stage
+  fizzHz:     5600,
+  fizzDb:     -9,
+  outTrim:    0.95,   // level back-off for the hotter chain
+  // ⚠️ 0.95 IS A LEVEL MATCH, NOT A TASTE CALL. Rendered offline at C4 the KATANA's
+  // held RMS is 0.133 against the old saw rig's 0.132, so a before/after compares
+  // CHARACTER — louder always wins a quick A/B, and 0.78 made the new rig lose
+  // 15% of its level while claiming "more drive".
+  // 🎌 THE JAPANESE INFLECTION — every note slides up into pitch, and a held
+  // note grows a slow, wide vibrato only after it has spoken.
+  scoopCents: -40,
+  scoopTime:  0.06,
+  vibDelay:   0.30,   // s — notes shorter than this never wobble (shred stays straight)
+  vibRamp:    0.40,
+  vibRate:    5.6,    // Hz
+  vibCents:   16,
+  // MAGNIFICENCE — on long holds an octave harmonic swells in under the clipper,
+  // the way a cranked amp blooms into feedback.
+  bloom:      0.07,
+  bloomTime:  0.9,
+});
 export const TONE_VOICES = {
   saw:      { label: 'LEAD',   osc1: 'sawtooth', osc2: 'sawtooth', sub: 'square',   driveMul: 1.0,  octave: false },
   square:   { label: 'BUZZ',   osc1: 'square',   osc2: 'square',   sub: 'square',   driveMul: 0.9,  octave: false },
   triangle: { label: 'MELLOW', osc1: 'triangle', osc2: 'triangle', sub: 'sine',     driveMul: 0.7,  octave: false },
   sine:     { label: 'CLEAN',  osc1: 'sine',     osc2: 'sine',     sub: 'sine',     driveMul: 0.5,  octave: false },
   fuzz:     { label: 'FUZZ',   osc1: 'square',   osc2: 'sawtooth', sub: 'square',   driveMul: 1.5,  octave: true  },
+  // ⚠️ `playScratchAtom` in the main file reads osc1/osc2/sub/driveMul/octave off
+  // any voice and ignores `lead` — so the KATANA still scratches, just without
+  // its extra stages.
+  ronin:    { label: 'KATANA', osc1: 'sawtooth', osc2: 'sawtooth', sub: 'square',   driveMul: 1.2,  octave: false, lead: RONIN_LEAD },
 };
+
+// Soft, symmetric tanh curve — the KATANA's second clipping stage. Rounder than
+// `makeDistortionCurve`, so stacking it adds sustain rather than more rasp.
+export function makeSoftClipCurve(amount = 3) {
+  const samples = 1024;
+  const curve = new Float32Array(samples);
+  const norm = Math.tanh(amount);
+  for (let i = 0; i < samples; i++) {
+    const x = (i * 2) / (samples - 1) - 1;
+    curve[i] = Math.tanh(amount * x) / norm;
+  }
+  return curve;
+}
 
 // ── Per-context shared resources ─────────────────────────────────────────────
 // Cached noise impulse response for the reverb convolver (built once per ctx).
@@ -115,6 +175,10 @@ export function makeDistortionCurve(amount = 300) {
  *   when     — schedule on the AUDIO clock (sample-accurate; sequence players
  *              pass future times so a stressed render loop can't bunch notes).
  *   knobs    — { drive, tone, echo, verb, voice }; defaults TONE_KNOB_DEFAULTS.
+ *   bend     — semitones the note STARTS away from pitch and bends into (e.g. -2
+ *              is a whole-step bend up). Any voice. `bendTime` defaults 0.18 s.
+ *   lead     — partial RONIN_LEAD override (dial-in preview only); applies only
+ *              to a voice that already carries `lead`.
  */
 export function playAmpNote(ctx, freq, opts = {}) {
   try {
@@ -130,6 +194,8 @@ export function playAmpNote(ctx, freq, opts = {}) {
 
     // 🎙️ VOICE — wave character (defaults to the classic saw lead)
     const V = TONE_VOICES[kn.voice] ?? TONE_VOICES.saw;
+    // 🗡️ Lead stages exist only on a voice that declares them.
+    const L = V.lead ? { ...V.lead, ...(opts.lead ?? {}) } : null;
 
     // Two detuned oscillators for thickness — waveform set by the VOICE
     const osc1 = ctx.createOscillator();
@@ -161,8 +227,19 @@ export function playAmpNote(ctx, freq, opts = {}) {
 
     // Pre-distortion gain — DRIVE knob, scaled by the voice (1× clean → ~11× scorching)
     const drive = ctx.createGain(); drive.gain.value = (1 + kn.drive * 10) * V.driveMul;
-    oscGain1.connect(drive); oscGain2.connect(drive); subGain.connect(drive);
-    if (octGain) octGain.connect(drive);
+    // 🗡️ KATANA: tight highpass → mid hump → drive. Everyone else mixes straight in.
+    let preDrive = drive;
+    if (L) {
+      const tight = ctx.createBiquadFilter();
+      tight.type = 'highpass'; tight.frequency.value = L.tightHz; tight.Q.value = 0.7;
+      const hump = ctx.createBiquadFilter();
+      hump.type = 'peaking'; hump.frequency.value = L.humpHz;
+      hump.gain.value = L.humpDb; hump.Q.value = L.humpQ;
+      tight.connect(hump); hump.connect(drive);
+      preDrive = tight;
+    }
+    oscGain1.connect(preDrive); oscGain2.connect(preDrive); subGain.connect(preDrive);
+    if (octGain) octGain.connect(preDrive);
 
     // Waveshaper distortion — curve hardness follows DRIVE (wider, gnarlier range)
     const shaper = ctx.createWaveShaper();
@@ -170,12 +247,30 @@ export function playAmpNote(ctx, freq, opts = {}) {
     shaper.oversample = '4x';
     drive.connect(shaper);
 
+    // 🗡️ KATANA: second, softer clipping stage for sustain.
+    let clipOut = shaper;
+    if (L && L.stage2 > 0) {
+      const s2gain = ctx.createGain(); s2gain.gain.value = 1 + L.stage2 * 6;
+      const shaper2 = ctx.createWaveShaper();
+      shaper2.curve = makeSoftClipCurve(1 + L.stage2 * 3);
+      shaper2.oversample = '4x';
+      shaper.connect(s2gain); s2gain.connect(shaper2);
+      clipOut = shaper2;
+    }
+
     // Tone stack — TONE knob opens the lowpass (1.2kHz dark → 6.5kHz bright)
     const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = 1200 + kn.tone * 5300; lp.Q.value = 0.9;
+    const lpHz = 1200 + kn.tone * 5300;
+    lp.type = 'lowpass'; lp.frequency.value = lpHz; lp.Q.value = 0.9;
+    if (L) {
+      // PUNCH: the filter flares open on the pick, then settles to the TONE knob.
+      const nyq = ctx.sampleRate / 2 - 100;
+      lp.frequency.setValueAtTime(Math.min(nyq, lpHz * L.pickBright), now);
+      lp.frequency.exponentialRampToValueAtTime(lpHz, now + attackTime + L.punchTime * 1.6);
+    }
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass'; hp.frequency.value = 120;
-    shaper.connect(lp); lp.connect(hp);
+    clipOut.connect(lp); lp.connect(hp);
 
     // Presence mid boost — a touch more presence as TONE opens up
     const mid = ctx.createBiquadFilter();
@@ -186,8 +281,48 @@ export function playAmpNote(ctx, freq, opts = {}) {
     // Hotter drive compensation — a gentle backoff; the master limiter below
     // catches the peaks, so DRIVE can roar much harder than before
     const comp = ctx.createGain();
-    comp.gain.value = 1 - kn.drive * 0.12;
-    mid.connect(comp);
+    comp.gain.value = (1 - kn.drive * 0.12) * (L ? L.outTrim : 1);
+    if (L) {
+      // 🗡️ KATANA cab shelf — takes the fizz off the double clip.
+      const fizz = ctx.createBiquadFilter();
+      fizz.type = 'highshelf'; fizz.frequency.value = L.fizzHz; fizz.gain.value = L.fizzDb;
+      mid.connect(fizz); fizz.connect(comp);
+    } else {
+      mid.connect(comp);
+    }
+
+    // ── Pitch motion: bend (any voice, opt-in) · scoop + vibrato + bloom (KATANA) ─
+    const pitched = [osc1, osc2, sub];
+    let lfo = null, bloomOsc = null;
+    if (L && L.bloom > 0 && holdTime >= 0.5) {
+      bloomOsc = ctx.createOscillator(); bloomOsc.type = 'sine';
+      bloomOsc.frequency.setValueAtTime(freq * 2, now);
+      const bloomGain = ctx.createGain();
+      bloomGain.gain.setValueAtTime(0, now);
+      bloomGain.gain.linearRampToValueAtTime(L.bloom, now + Math.min(holdTime, L.bloomTime));
+      bloomOsc.connect(bloomGain); bloomGain.connect(preDrive);
+      pitched.push(bloomOsc);
+    }
+    const bendCents = Number.isFinite(opts.bend) ? opts.bend * 100 : 0;
+    const startCents = bendCents || (L ? L.scoopCents : 0);
+    if (startCents) {
+      const glide = bendCents ? (opts.bendTime ?? 0.18) : L.scoopTime;
+      for (const o of pitched) {
+        o.detune.setValueAtTime(startCents, now);
+        o.detune.linearRampToValueAtTime(0, now + glide);
+      }
+    }
+    if (L && holdTime >= L.vibDelay && L.vibCents > 0) {
+      lfo = ctx.createOscillator(); lfo.type = 'sine';
+      lfo.frequency.value = L.vibRate;
+      const depth = ctx.createGain();
+      const vibAt = now + L.vibDelay + (bendCents ? (opts.bendTime ?? 0.18) : 0);
+      depth.gain.setValueAtTime(0, now);
+      depth.gain.setValueAtTime(0, vibAt);
+      depth.gain.linearRampToValueAtTime(L.vibCents, vibAt + L.vibRamp);
+      lfo.connect(depth);
+      for (const o of pitched) depth.connect(o.detune);
+    }
 
     // 🔊 MASTER LIMITER — shared bus; tames peaks so cranked drive/voices stay
     // punchy. Everything (dry + echo + verb) feeds it.
@@ -195,10 +330,14 @@ export function playAmpNote(ctx, freq, opts = {}) {
 
     // Amp envelope: pick (or slow swell) → hold at volume → slow fade
     const ampEnv = ctx.createGain();
+    // 🗡️ KATANA picks harder (overshoot) and holds higher (compressed sustain).
+    const peak   = volume * (L ? L.punch : 1);
+    const held   = volume * (L ? L.sustain : 0.82);
+    const settle = L ? attackTime + L.punchTime : Math.max(0.06, attackTime + 0.05);
     ampEnv.gain.setValueAtTime(0,              now);
-    ampEnv.gain.linearRampToValueAtTime(volume,            now + attackTime); // pick attack / swell
-    ampEnv.gain.linearRampToValueAtTime(volume * 0.82,     now + Math.max(0.06, attackTime + 0.05)); // slight settle
-    ampEnv.gain.setValueAtTime(volume * 0.82,              now + Math.max(holdTime, attackTime + 0.1)); // hold
+    ampEnv.gain.linearRampToValueAtTime(peak,              now + attackTime); // pick attack / swell
+    ampEnv.gain.linearRampToValueAtTime(held,              now + settle); // settle
+    ampEnv.gain.setValueAtTime(held,                       now + Math.max(holdTime, L ? settle + 0.05 : attackTime + 0.1)); // hold
     ampEnv.gain.exponentialRampToValueAtTime(0.001,        now + Math.max(totalTime, attackTime + 0.2)); // slow release
 
     // ECHO knob — slapback delay level + regenerating repeats (lusher range)
@@ -239,6 +378,8 @@ export function playAmpNote(ctx, freq, opts = {}) {
     osc2.stop(now + totalTime + tail);
     sub.stop(now + totalTime + tail);
     if (oct) oct.stop(now + totalTime + tail);
+    if (lfo) { lfo.start(now); lfo.stop(now + totalTime + tail); }
+    if (bloomOsc) { bloomOsc.start(now); bloomOsc.stop(now + totalTime + tail); }
   } catch (_) { /* audio unavailable — silent fail */ }
 }
 

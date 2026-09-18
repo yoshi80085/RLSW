@@ -219,6 +219,16 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
   eq(finalRoot.report.colorDrive, 1, 'the final Drive root earns the red carrot');
   eq(finalRoot.report.endingChoice, 'tonic', 'the same final note resolves the line harmonically');
 
+  // ⚠️ BOTH colours need the clean final. The in-scale guard once covered Drive only.
+  const blue = run(composed(['C', 'D', 'E', 'G'], { sustainStack: ['G', 'B', 'D'] }));
+  eq(blue.report.colorSustain, 1, 'the clean final Sustain root earns the blue carrot');
+  const dirtyBlue = run(composed(['C', 'D', 'E', 'F#'], { sustainStack: ['F#', 'A#', 'C#'] }));
+  eq(dirtyBlue.report.endingClean, false, 'F# is a discord final here');
+  eq(dirtyBlue.report.colorSustain, 0, 'a DISCORD final on the Sustain root earns no blue carrot');
+  eq(dirtyBlue.patch.tempSustain ?? 0, 0, '…and no temporary Sustain');
+  const dirtyRed = run(composed(['C', 'D', 'E', 'F#'], { driveStack: ['F#', 'A#', 'C#'] }));
+  eq(dirtyRed.report.colorDrive, 0, 'the same discord final on the Drive root earns no red carrot either');
+
   const drained = run(composed(['D', 'E', 'F', 'C'], { driveStack: ['C', 'E', 'G'], mojoDrain: 2 }));
   eq(drained.report.colorDrive, 0, 'Mojo Drain eats the colour payout');
   eq(drained.patch.tempDrive, 0, '…and the Drive boost with it');
@@ -228,8 +238,14 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 // 8. Layer 1 — each Spirit's decided structure awards melody fans.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  const scalar = run(composed(['C', 'D#', 'D', 'E'], { casuals: 0 }));
-  deep(scalar.report.style.hits, ['scalar_shred'], 'Ronin climbs by letter with a free same-letter inflection');
+  // 🪦 THIS WAS `C D# D E` → shred, "a free same-letter inflection". D# is out of
+  // C major, and discord now BREAKS a shape (Alex, 2026-09-17, rule 4), so the
+  // inflection only survives where both spellings are clean — which no palette
+  // in the game has today. Superseded, not forgotten.
+  const scalar = run(composed(['C', 'D', 'E'], { casuals: 0 }));
+  deep(scalar.report.style.hits, ['scalar_shred'], 'Ronin climbs by letter through clean notes');
+  const inflected = run(composed(['C', 'D#', 'D', 'E'], { casuals: 0 }));
+  deep(inflected.report.style.hits, [], 'a discord inflection breaks the climb — discord earns no fans');
   eq(scalar.report.perfFansGained, 1, 'a completed scalar shred wins one casual fan');
   ok(scalar.effects.some(e => e.type === 'fans' && e.fans.casuals === 1), 'the fan award reaches the reducer effect');
 
@@ -272,7 +288,7 @@ if (false) {
   ok(!wrongSeat.report.style.hits.includes('phrygian_bite'),
      'the Phrygian bite is Metalness’s gesture, not the Ronin’s');
 
-  const roninRun = run(composed(['C', 'D', 'E', 'F#'], { scaleMode: 'lydian' }, RONIN), RONIN);
+  const roninRun = run(composed(['C', 'D', 'Eb', 'F'], { scaleMode: 'hirajoshi' }, RONIN), RONIN);
   ok(roninRun.report.style.hits.includes('run'), 'four stepwise notes is the Ronin’s run');
 
   const zeroLoop = run(composed(['C', 'D', 'Eb', 'C', 'D', 'Eb'], { scaleMode: 'dorian' }, ZERO), ZERO);

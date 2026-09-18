@@ -1,6 +1,15 @@
 // A Spirit's fan rule is a small, explicit melody structure. These are not
 // Db rules: fans reward a recognisable identity; clean notes and endings have
 // their own payout layers in melodyPayout.js.
+//
+// ⭐ DISCORD BREAKS A SHAPE (Alex, 2026-09-17 — MELODY_IDENTITY_DESIGN.md
+// §5⃣.0.0 rule 4, "discord notes are inert: no fans"). Every public reader takes
+// the clean palette as `scale`; an out-of-palette note is blanked before any
+// gesture looks at the line, so it resets a contour and cannot be either end or
+// the middle of a return phrase — exactly how the craft run already treats it.
+// 🪦 Before this, D♭ B♭ G♭ was a paid Ronin skip in C major.
+// ⚠️ `scale` omitted = no palette check. Only fixtures should rely on that; every
+// live caller passes it (payout, bot, finder, crowd coach).
 
 import { pitchIndex } from './notes.js';
 
@@ -8,9 +17,15 @@ const LETTERS = Object.freeze(['C', 'D', 'E', 'F', 'G', 'A', 'B']);
 const letterIndex = note => LETTERS.indexOf(String(note ?? '')[0]);
 
 /** The longest one-direction letter-name run. Accidentals are inflections:
- * C → D♭ → E still climbs; C → C♯ does not create a chromatic shortcut. */
+ * C → D♭ → E still climbs; C → C♯ does not create a chromatic shortcut.
+ * `trailing` returns the run still OPEN at the end of the line instead.
+ * ⚠️ It used to reverse the notes first and then return the last run it saw —
+ * which is the run at the line's START. `G C D` read 0 (should be 1) and
+ * `C D G` read 1 (should be 0), so the coach and the bot's `styleGain` chased a
+ * run the line had already broken. A run's length does not depend on which way
+ * you read it, so there is nothing to reverse. `actionScoreCheck` pins both. */
 function contourRun(line, span, trailing = false) {
-  const notes = trailing ? [...(line ?? [])].reverse() : (line ?? []);
+  const notes = line ?? [];
   let best = 0, run = 0, direction = 0;
   for (let i = 1; i < notes.length; i += 1) {
     const a = letterIndex(notes[i - 1]);
@@ -28,6 +43,12 @@ function contourRun(line, span, trailing = false) {
   return trailing ? run : best;
 }
 
+/** The line as the crowd hears it: discord notes become holes (null). */
+function heard(line, scale) {
+  const notes = line ?? [];
+  return scale ? notes.map(n => (scale.includes(n) ? n : null)) : notes;
+}
+
 function samePitch(a, b) {
   const aPc = pitchIndex(a), bPc = pitchIndex(b);
   return aPc >= 0 && aPc === bPc;
@@ -39,7 +60,7 @@ function returnPhrases(line) {
   let count = 0;
   for (let i = 0; i + 2 < (line?.length ?? 0);) {
     const [a, b, c] = line.slice(i, i + 3);
-    if (samePitch(a, c) && !samePitch(a, b)) { count += 1; i += 3; }
+    if (b != null && samePitch(a, c) && !samePitch(a, b)) { count += 1; i += 3; }
     else i += 1;
   }
   return count;
@@ -47,7 +68,7 @@ function returnPhrases(line) {
 
 function returnProgress(line) {
   const tail = line?.slice(-2) ?? [];
-  return tail.length === 2 && !samePitch(tail[0], tail[1]) ? 0.5 : 0;
+  return tail.length === 2 && tail[0] != null && tail[1] != null && !samePitch(tail[0], tail[1]) ? 0.5 : 0;
 }
 
 export const STYLE_GESTURES = Object.freeze({
@@ -95,11 +116,12 @@ function hitCount(gesture, line) {
 /** Completed structures earn one casual fan each. Intergalactic 0's signal
  * circles are deliberately repeatable; the other identities earn once per
  * named gesture per committed line. */
-export function detectSpiritStyle(spiritId, melodyLine) {
+export function detectSpiritStyle(spiritId, melodyLine, scale = null) {
   const hits = [], labels = [];
   let score = 0;
+  const line = heard(melodyLine, scale);
   for (const gesture of gesturesFor(spiritId)) {
-    const count = hitCount(gesture, melodyLine);
+    const count = hitCount(gesture, line);
     if (!count) continue;
     hits.push(gesture.id);
     labels.push(count > 1 ? `${gesture.label} ×${count}` : gesture.label);
@@ -119,16 +141,17 @@ function steerValue(gesture, line, slotsLeft) {
   return notesStillNeeded(gesture, progress) <= slotsLeft ? progress : 0;
 }
 
-export function styleProgress(spiritId, melodyLine, slotsLeft = Infinity) {
+export function styleProgress(spiritId, melodyLine, slotsLeft = Infinity, scale = null) {
   let best = 0;
+  const line = heard(melodyLine, scale);
   for (const gesture of gesturesFor(spiritId)) {
-    best = Math.max(best, steerValue(gesture, melodyLine, slotsLeft));
+    best = Math.max(best, steerValue(gesture, line, slotsLeft));
   }
   return best;
 }
 
-export function styleProgressWithNote(spiritId, melodyLine, note, slotsLeft = Infinity) {
-  const line = [...(melodyLine ?? []), note];
+export function styleProgressWithNote(spiritId, melodyLine, note, slotsLeft = Infinity, scale = null) {
+  const line = heard([...(melodyLine ?? []), note], scale);
   let best = 0;
   for (const gesture of gesturesFor(spiritId)) {
     best = Math.max(best, steerValue(gesture, line, slotsLeft));
@@ -138,10 +161,11 @@ export function styleProgressWithNote(spiritId, melodyLine, note, slotsLeft = In
 
 /** The bot needs the increase in completed phrases too: a second Intergalactic
  * signal is worth pursuing even though the first already filled the meter. */
-export function styleGain(spiritId, melodyLine, note, slotsLeft = Infinity) {
+export function styleGain(spiritId, melodyLine, note, slotsLeft = Infinity, scale = null) {
+  const beforeLine = heard(melodyLine, scale);
   const before = gesturesFor(spiritId).reduce(
-    (sum, gesture) => sum + steerValue(gesture, melodyLine, slotsLeft + 1), 0);
-  const afterLine = [...(melodyLine ?? []), note];
+    (sum, gesture) => sum + steerValue(gesture, beforeLine, slotsLeft + 1), 0);
+  const afterLine = heard([...(melodyLine ?? []), note], scale);
   const after = gesturesFor(spiritId).reduce(
     (sum, gesture) => sum + steerValue(gesture, afterLine, slotsLeft), 0);
   return Math.max(0, after - before);
@@ -149,10 +173,11 @@ export function styleGain(spiritId, melodyLine, note, slotsLeft = Infinity) {
 
 /** Presentation-safe copy of the rule state. The UI can teach the player from
  * this without reimplementing a detector or predicting a payout itself. */
-export function styleCoachFor(spiritId, melodyLine, slotsLeft = Infinity) {
+export function styleCoachFor(spiritId, melodyLine, slotsLeft = Infinity, scale = null) {
+  const line = heard(melodyLine, scale);
   return gesturesFor(spiritId).map(gesture => {
-    const hits = hitCount(gesture, melodyLine);
-    const progress = gesture.progress(melodyLine);
+    const hits = hitCount(gesture, line);
+    const progress = gesture.progress(line);
     return {
       id: gesture.id, label: gesture.label, pattern: gesture.pattern,
       lesson: gesture.lesson, accent: gesture.accent, repeatable: Boolean(gesture.repeatable),

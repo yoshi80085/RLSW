@@ -1,7 +1,8 @@
 // =============================================================================
 // music/cadence.js  —  CADENCE objectives + note-track scoring (pure logic)
 // =============================================================================
-import { NOTE_POOL, getSpelledPool, pitchIndex } from "./notes.js";
+import { NOTE_POOL, getSpelledPool, pitchIndex, playableScale } from "./notes.js";
+import { STOCK_PALETTE_GUARANTEE } from "../data/gameConstants.js";
 import { PC_PLAY_NAMES } from "./pitchNames.js";
 
 export const CADENCE_OBJECTIVES = [
@@ -318,12 +319,32 @@ export function analyseTrack(track, currentScale, fourthNote, fifthNote) {
 // seeded engine. Defaults to Math.random so every existing caller is unchanged;
 // the Phase-5c flip will pass the engine rng so note stock is replay-deterministic
 // (same treatment as riff/riffGeneration.js's optional `rand` param in Phase 4).
-export function randomNote(rootNote, mode, rand = Math.random) {
-  const pool = rootNote ? getSpelledPool(rootNote, mode) : NOTE_POOL;
-  return pool[Math.floor(rand() * pool.length)];
+//
+// 🎼 HALF GUARANTEED, HALF CHANCE (2026-09-16). With a root, the note is picked
+// from `playableScale(root, mode)` with probability `guarantee` (default
+// `STOCK_PALETTE_GUARANTEE`, 0.5), and otherwise from all twelve — so the random
+// half can land in tune too, and the real in-palette share is
+// guarantee + (1 − guarantee) × paletteSize / 12. Without a root there is no
+// palette, and the draw stays uniform over twelve.
+//
+// ⚠️ EXACTLY ONE `rand()` PER NOTE, AND THAT IS THE CONTRACT, NOT A STYLE CHOICE.
+// The engine pre-draws one float per refreshed slot (`refillDrawCount`), the
+// client batches `drawSeeded(n)` for n notes, and `determinismCheck` replays the
+// stream. A two-step pick that spent two numbers would desync every seat after
+// the first refill. So one uniform `u` does both jobs: `u < guarantee` chooses the
+// branch, and the same `u`, rescaled into that branch's slice, chooses the note.
+export function randomNote(rootNote, mode, rand = Math.random, guarantee = STOCK_PALETTE_GUARANTEE) {
+  if (!rootNote) return NOTE_POOL[Math.floor(rand() * NOTE_POOL.length)];
+  const pool = getSpelledPool(rootNote, mode);
+  const u = rand();
+  const inside = playableScale(rootNote, mode);
+  const g = Math.min(1, Math.max(0, Number.isFinite(guarantee) ? guarantee : STOCK_PALETTE_GUARANTEE));
+  if (inside.length && u < g) return inside[Math.min(inside.length - 1, Math.floor((u / g) * inside.length))];
+  const rest = inside.length ? (u - g) / (1 - g) : u;
+  return pool[Math.min(pool.length - 1, Math.floor(rest * pool.length))];
 }
-export function refillStock(rootNote, mode, size = 8, rand = Math.random) {
-  return Array.from({length: size}, () => randomNote(rootNote, mode, rand));
+export function refillStock(rootNote, mode, size = 8, rand = Math.random, guarantee = STOCK_PALETTE_GUARANTEE) {
+  return Array.from({length: size}, () => randomNote(rootNote, mode, rand, guarantee));
 }
 
 

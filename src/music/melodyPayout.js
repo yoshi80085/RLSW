@@ -122,7 +122,7 @@ export function melodyPayoutFor(spiritId, line, scale, {
   const craftRun = craftRunFor(line, scale);
   const craftFans = craftFansFromRun(craftRun);
   const streakBonus = cleanStreakCount(line, scale) * CLEAN_STREAK_DB;
-  const style = detectSpiritStyle(spiritId, line);
+  const style = detectSpiritStyle(spiritId, line, scale);   // discord breaks a shape
   const last = line?.at(-1);
   const samePitch = (a, b) => pitchIndex(a) >= 0 && pitchIndex(a) === pitchIndex(b);
   const ending = !scale.includes(last) ? 'normal'
@@ -139,7 +139,12 @@ export function melodyPayoutFor(spiritId, line, scale, {
     ending,
     endingDb,
     resolved: ending !== 'normal',
-    chordRootCarrot: scale.includes(last) && samePitch(last, driveRoot) ? 'drive'
+    // ⚠️ THE IN-SCALE TEST GUARDS BOTH COLOURS. It used to bind to the Drive
+    // branch alone (`a && b ? 'drive' : c ? 'sustain'`), so a DISCORD final that
+    // matched the Sustain root still paid the blue carrot — against "discord is
+    // inert". `melodyCommitCheck` §7 pins both colours.
+    chordRootCarrot: !scale.includes(last) ? null
+      : samePitch(last, driveRoot) ? 'drive'
       : samePitch(last, sustainRoot) ? 'sustain' : null,
     db: cleanCount * CLEAN_NOTE_DB + streakBonus + endingDb,
   };

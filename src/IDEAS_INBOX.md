@@ -84,6 +84,51 @@ add to this entry; it is closed.** New thinking goes in §3.6.
 
 > Priority is Alex's ranking: **1 = do soon**, **5 = can wait until after the game is mainly done**. These are capture-only entries; they are not implementation decisions.
 
+### ~~2026-09-16 — [P1] Beginner chord finder~~
+✅ **Green-lit by Alex — 2026-09-17:** *"it seems to work fine on my end."* Playtest passed; still to promote into a design doc (write-up lives in `SEQUENCING.md` 24-crowdfix). Open small calls unchanged: the `glowSrc` lever, bug 2 (empty stack → sheet stat 8).
+Develop the system that finds the strongest possible chord shape and structure (for fans, Db or Drive) out of a beginner's pool of notes.
+🎯 Overlaps [P2] *Auto-complete note commits* and [P2] *Tune performance-power meter* (2026-09-08).
+🚧 **Picked up 2026-09-16.** Step 1, the brain: ✅ built (`engine/policies/playFinder.js`). Step 2: ✅ logic built (`ui/crowdCoach.js`), preview dialled in by Alex (6 of 33 levers moved). Step 3: ✅ **ported 2026-09-16** (`ui/CrowdBubble.jsx`, beginner mode only). ✅ **2026-09-17: verified on Alex's machine, three coach bugs fixed** (`SEQUENCING.md` 24-crowdfix). 🎤 2026-09-17: the fans got their own *Fan hints* menu switch, apart from Pickles' tips (Alex found turning tips off killed the fans). ⏳ **Awaiting Alex's playtest** (`.scratch/crowd-coach-playtest.md`), then promote into a design doc. Alex's delivery idea: the fans say what melody they want in **speech bubbles**; the finder decides what they ask for. 🎯 Overlaps [P2] *Comic-style fan blurbs*.
+
+### 2026-09-16 — [P2] 3D fan design
+Build the fans out as 3D. Alex, while planning the fan speech bubbles — parked behind them on purpose: the bubbles only need the seat position, so they survive the swap.
+
+### 2026-09-16 — [P1] Sort out the marquee squares
+Sort out the marquee squares.
+🎯 See [P3] *Marquee spaces by category* (2026-09-08).
+
+### ~~2026-09-16 — [P1] Crank up Ronin's overdrive~~
+✅ **Built same day, pending Alex's dial-in — 2026-09-16.** → `audio/ampVoice.js` `RONIN_LEAD` (the KATANA voice), tuned on `.scratch/ronin-tone-preview.html`. Crank up the overdrive for Ronin.
+
+### ~~2026-09-16 — [P1] Ronin's melody tool is Hirajoshi~~
+✅ **Built — 2026-09-16.** → `music/melodyIdentity.js` (`hirajoshi` = 1 2 ♭3 4 5 ♭6) and `MELODY_IDENTITY_DESIGN.md` §5⃣.0.1. Ronin uses the Japanese Hirajoshi scale (the 5 notes plus a perfect 4th) as his main melody tool.
+
+### ~~2026-09-17 — [P1] Camera stays on the Spirit; readable move tiles~~
+✅ **Built — 2026-09-17** → `board/cameraDirector.js` v2 (Ken Burns moves, wide only after quiet) and `board/moveTiles.js` (magenta tiles + step pips), dialled in on `.scratch/camera-move-tiles-preview.html`; `SEQUENCING.md` §A 26-camtiles. Alex: movement *"more subtle, like a ken burns effect"*, wide *"only … when action has ceased"*; move tiles *"nearly the same color as the tiles in the 3D arena"*; *"Pink instead of gold."*
+
+### 2026-09-16 — [P2] Any Spirit, even if already taken
+Players can choose any Spirit, even one another player has already picked — e.g. two Ronins fighting each other.
+
+### ~~2026-09-16 — [P2→P1] The camera moves with the action~~
+✅ **Built — 2026-09-17.** Preview dialled in by Alex with every lever at default (*"I wouldn't change a thing"*), then wired in → `board/cameraDirector.js`, `arenaRenderer.js`, the ☰ *Auto camera* switch; `test:cameradirector`; `SEQUENCING.md` §A 25-autocam.
+🚧 **Picked up 2026-09-17, raised to P1.** Alex: *"a 'moving camera' that instinctively follows the action … never quite just 'sitting' in one spot … let players take control if they want to — this turns 'off' the moving camera function. But if its sitting idle, let the camera start to move on its own again — perhaps after 6 or 7 seconds."* Step 1: preview `.scratch/auto-camera-preview.html` (director logic written port-ready) ✅ dialled in, ✅ ported.
+The camera shouldn't just sit still. It moves around whenever an action occurs, whether movement or battle.
+
+### 2026-09-16 — [P3] Spotlight as an area of control
+A player's spotlight (shown in the 3D arena) becomes an area of control: if a Spirit from another area plays there, they get a chance to steal fans from that area. Perhaps — other ideas for it welcome.
+
+### 2026-09-16 — [P3] Build out Swing, Sonic and Riff Off in Astra
+Build out Swing, Sonic and Riff Off in Astra.
+
+### 2026-09-16 — [P3] Home-spotlight boost
+Possibly get a boost (Drive / FP / fans?) when playing or battling from one's home spotlight.
+
+### 2026-09-16 — [P4] Build out the skill tree
+Build out the skill tree.
+
+### 2026-09-16 — [P5] How exactly pieces move around the board
+Determine how exactly the pieces move around the board. One idea: like the Wizard's Chess in Harry Potter — they move around as "pieces", then come alive when attacking.
+
 ### ~~2026-09-08 — [P1] Reshape HUD for the 3D Cosmic Arena~~
 ✅ **Done for now — 2026-09-11.** Reshape the HUD so it reflects the 3D Cosmic Arena’s full-screen display and visual style.
 
@@ -144,7 +189,8 @@ Rename Picky to Pickles. Pickles is picky about what kind of music gets played a
 ### ~~2026-09-08 — [P3] AI finger/guitar mapping for animated characters~~
 → **`MOCAP_DESIGN.md`** §2c and §9 (2026-09-08).
 
-### 2026-09-07 — [P1] Melody scale-building guidance and rewards
+### ~~2026-09-07 — [P1] Melody scale-building guidance and rewards~~
+✅ **Closed, no change — 2026-09-17.** Alex: likely redundant given the beginner chord finder and the fans' speech bubbles, which already guide this. Reopen if playtests say otherwise.
 Help players learn to build melody scales for the biggest effect in gaining fans/Db (the notes committed in the middle of the melody track) or Sustain/Drive/Db (the last note committed).
 
 ### 2026-09-07 — [P2] Comic-style fan blurbs

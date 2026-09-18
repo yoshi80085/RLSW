@@ -1,6 +1,6 @@
 // =============================================================================
 
-import { modeFamily, modeIntervals } from "./melodyIdentity.js";
+import { modeFamily, modeIntervals, melodyModeFor } from "./melodyIdentity.js";
 // music/notes.js  —  NOTE SYSTEM + interval helpers (pure music theory)
 // Extracted from the main file. No external dependencies.
 // =============================================================================
@@ -195,6 +195,14 @@ export function getFourthFifth(root, mode = 'major') {
 //
 // ⚠️ THE THIRD ARGUMENT IS GONE RATHER THAN IGNORED. A caller still passing
 // `unlockedSkills` would otherwise keep compiling forever while meaning nothing.
+/** A note sheet's clean palette — the ONE reading of "which notes are clean for
+ *  this Spirit right now". `melodyCommit.js` and the finder's `readHand` spell it
+ *  out inline; the bot's style gain and the crowd coach call this so a fourth
+ *  copy never drifts. */
+export function paletteScaleFor(spiritId, ns = {}) {
+  return playableScale(ns?.rootNote ?? 'C', ns?.paletteMode ?? melodyModeFor(spiritId));
+}
+
 export function playableScale(rootNote, mode) {
   const pool = getSpelledPool(rootNote, mode);
   const rootIdx = pitchIndex(rootNote);

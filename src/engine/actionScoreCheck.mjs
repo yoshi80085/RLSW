@@ -518,6 +518,15 @@ function walk(startNum, n) {
   ok(good >= STYLE_GAIN_FLOOR, '🎭 …and it clears the floor, so it actually steers');
   eq(bad, 0, '🎭 a note that closes nothing gains exactly nothing');
 
+  // ⚠️ PROGRESS IS THE RUN OPEN AT THE END OF THE LINE, not the one at its start.
+  // `contourRun(…, trailing)` once reversed the line and returned the START run.
+  eq(styleProgress(RONIN, ['G', 'C', 'D'], 5), 0.5,
+     '🎭 G C D: the C→D step at the end is live shred progress');
+  eq(styleProgress(RONIN, ['C', 'D', 'G'], 5), 0,
+     '🎭 C D G: the opening step was broken by the leap — nothing left to extend');
+  ok(styleGain(RONIN, ['G', 'C', 'D'], 'E', 4) > 0,
+     '🎭 …so E after G C D pays off the run that is actually open');
+
   // ⚠️ A GESTURE THAT CANNOT FIT MUST NOT STEER. Scoring it small does not help:
   // a small score still steers. With no slots left it must drop out entirely.
   ok(styleGain(RONIN, track, 'E', 0) > 0,
@@ -530,18 +539,35 @@ function walk(startNum, n) {
   {
     let st = { ...base, acting: RONIN };
     st = withNs(st, RONIN, {
+      // ⚠️ E♭, not E: the Ronin's palette is Hirajoshi (C D E♭ F G A♭), and a
+      // discord E would break the shape rather than land it (2026-09-17).
+      rootNote: 'C', paletteMode: 'hirajoshi',
       melodyLine: ['C', 'D'],
-      noteStock: ['A#', 'G#', 'E', 'B'],
+      noteStock: ['A#', 'G#', 'Eb', 'B'],
       usedStockIdx: [],
     });
     const score = makeActionScorer(st, RONIN, {});
     const notes = legalActions(st, RONIN, {}).filter(a => a.kind === 'melodyNote');
     ok(notes.length >= 2, 'fixture: several notes are on offer');
     const best = notes.map(a => ({ a, s: score(a) })).sort((x, y) => y.s - x.s)[0];
-    eq(best.a.note, 'E', '🎭 the beam ranks the note that lands the gesture first');
-    const others = notes.filter(a => a.note !== 'E').map(a => score(a));
+    eq(best.a.note, 'Eb', '🎭 the beam ranks the note that lands the gesture first');
+    const others = notes.filter(a => a.note !== 'Eb').map(a => score(a));
     ok(Math.max(...others) + STYLE_RANK_STRIDE <= best.s,
        '🎭 …by a full stride, so the planners tie-break rather than overrule');
+  }
+
+  // ⚠️ AND THE BOT HEARS THE PALETTE. E finishes C D by letter, but it is discord
+  // in the Ronin's Hirajoshi — so it must not earn the style stride (2026-09-17).
+  {
+    let st = { ...base, acting: RONIN };
+    st = withNs(st, RONIN, {
+      rootNote: 'C', paletteMode: 'hirajoshi',
+      melodyLine: ['C', 'D'], noteStock: ['E', 'A#', 'B'], usedStockIdx: [],
+    });
+    const score = makeActionScorer(st, RONIN, {});
+    const e = legalActions(st, RONIN, {}).find(a => a.kind === 'melodyNote' && a.note === 'E');
+    ok(e && score(e) < STYLE_RANK_STRIDE,
+       '🎭 a discord note that completes a shape by letter gains no style rank');
   }
 
   // ── Each Spirit hears its own musicality, never Ronin's in a new coat.
@@ -552,6 +578,27 @@ function walk(startNum, n) {
     eq(detectSpiritStyle(MM, ['C', 'D', 'C']).hits, ['pedal_chug'], '🎭 Metalness owns the pedal chug');
     eq(detectSpiritStyle(ZERO, ['C', 'D', 'C', 'F', 'G', 'F']).score, 2,
        '🎭 Intergalactic 0 can stack two non-overlapping signal circles');
+
+    // ⭐ DISCORD BREAKS A SHAPE (Alex, 2026-09-17). C major's clean notes only.
+    const CMAJ = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+    eq(detectSpiritStyle(RONIN, ['D♭', 'B♭', 'G♭']).hits, ['even_skip'],
+       '🎭 control: with no palette, the letter shape D♭ B♭ G♭ reads as a skip');
+    eq(detectSpiritStyle(RONIN, ['Db', 'Bb', 'Gb'], CMAJ).score, 0,
+       '🎭 …but out of key it is three discord notes, and discord earns no fans');
+    eq(detectSpiritStyle(RONIN, ['C', 'Db', 'E'], CMAJ).score, 0,
+       '🎭 one discord note in the middle breaks the shred');
+    eq(detectSpiritStyle(RONIN, ['C', 'D', 'E'], CMAJ).hits, ['scalar_shred'],
+       '🎭 the same shape in key still pays');
+    eq(detectSpiritStyle(MM, ['C', 'F#', 'C'], CMAJ).score, 0,
+       '🎭 a pedal chug cannot hinge on a discord note');
+    eq(detectSpiritStyle(MM, ['C', 'D', 'C'], CMAJ).hits, ['pedal_chug'],
+       '🎭 …and in key it still does');
+    eq(detectSpiritStyle(ZERO, ['C#', 'D', 'C#'], CMAJ).score, 0,
+       '🎭 a signal circle cannot start and end on discord');
+    eq(styleGain(RONIN, ['C', 'D'], 'E', 4, CMAJ) > 0, true,
+       '🎭 the bot still chases the in-key finish');
+    eq(styleProgress(RONIN, ['C', 'Db'], 5, CMAJ), 0,
+       '🎭 …and a discord last note leaves nothing to extend');
   }
 }
 

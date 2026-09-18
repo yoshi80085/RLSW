@@ -4,7 +4,7 @@ import { rigRadius, rigTiers } from '../engine/systems/sonicRig.js';
 // hidden spirits BEFORE passing them here; no note stock or hidden state crosses.
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
-  bots = [], spotlight, tentacle, shadowDecoy = null, lite = false, stats = {} }) {
+  bots = [], spotlight, tentacle, shadowDecoy = null, lite = false, stats = {}, reach = null }) {
   const visible = new Set(spirits.map(s => s.id));
   return {
     spirits: spirits.map(s => ({ id:s.id, num:s.num, color:s.color, corner:s.corner,
@@ -25,6 +25,13 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
       color:s.color, ...rigTiers(noteStates[s.id]),
       radius:rigRadius(noteStates[s.id], s.id === actingId), active:s.id === actingId })),
     actingId, turn, lite,
+    // 🟪 Where the acting Spirit (or its Shadow) can step — moveTiles.js. Board
+    // geometry the SVG already shows, so nothing new is revealed; dropped when the
+    // owner is smoke-hidden, or the Shadow's decoy is not in the frame.
+    reach:reach && (reach.kind === 'shadow' ? !!shadowDecoy : visible.has(reach.ownerId))
+      ? { kind:reach.kind === 'shadow' ? 'shadow' : 'move', ownerId:reach.ownerId, turn:reach.turn,
+          near:[...(reach.near ?? [])], steps:reach.steps ?? 0,
+          ...(Number.isFinite(reach.max) ? { max:reach.max } : {}), hover:reach.hover ?? null } : null,
     battle: battle && visible.has(battle.attackerId) && visible.has(battle.defenderId)
       ? { attackerId:battle.attackerId, defenderId:battle.defenderId,
           phase:battle.phase, sonic:!!battle.sonicAttack, round:battle.round ?? 1,

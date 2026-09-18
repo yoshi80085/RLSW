@@ -332,9 +332,10 @@ assert.deepEqual(modeSensitive, ['Db','Ab'], "only the split roots still read mo
 console.log("✓ speller: mode-free for 10 of 12 roots — the last two are the split roots themselves");
 
 // ─── THE SPIRIT OWNS THE MODE ───────────────────────────────────────────────
-assert.equal(melodyModeFor('cosmic_ronin'), 'lydian', 'Ronin brings Lydian');
+assert.equal(melodyModeFor('cosmic_ronin'), 'hirajoshi', 'Ronin brings Hirajoshi + P4 (Lydian until 2026-09-16)');
 assert.equal(melodyModeFor('Metalness_Monster'), 'phrygian', 'Monster brings Phrygian');
 assert.equal(melodyModeFor('intergalactic_0'), 'dorian', 'Intergalactic 0 brings Dorian');
+assert.deepEqual(playableScale('C', 'hirajoshi'), ['C','D','Eb','F','G','Ab']);
 assert.deepEqual(playableScale('C', 'lydian'),   ['C','D','E','F#','G','A','B']);
 assert.deepEqual(playableScale('C', 'phrygian'), ['C','Db','Eb','F','G','Ab','Bb']);
 assert.deepEqual(playableScale('C', 'dorian'),   ['C','D','Eb','F','G','A','Bb']);
@@ -344,7 +345,7 @@ for (const id of ['cosmic_ronin', 'Metalness_Monster', 'intergalactic_0']) {
   assert.equal(ns.paletteMode, melodyModeFor(id), `${id}: palette is explicit state`);
   assert.equal(ns.modeReason, 'spirit', `${id}: chord quality did not choose the mode`);
 }
-console.log('✓ melody identity: Ronin Lydian · Monster Phrygian · Zero Dorian');
+console.log('✓ melody identity: Ronin Hirajoshi · Monster Phrygian · Zero Dorian');
 
 // RESPELL STABILITY. Turn start respells the carried stock through
 // getSpelledPool(canonicalRoot(root, mode), mode). Doing that on five
@@ -669,7 +670,7 @@ console.log("✓ 🅱️ the pardon reaches the ladder on turn one for EVERY Spi
   const ronin = makeInitialNoteState('cosmic_ronin', () => 0.5);
   assert.deepEqual(ronin.driveStack, [ronin.rootNote],
     'B0a: the stack still seeds with the root alone');
-  assert.equal(ronin.scaleMode, 'lydian', 'B0a: the Ronin opens in his Lydian palette');
+  assert.equal(ronin.scaleMode, 'hirajoshi', 'B0a: the Ronin opens in his Hirajoshi palette');
 }
 console.log("✓ B0a: stack seed and Spirit palette are independent");
 

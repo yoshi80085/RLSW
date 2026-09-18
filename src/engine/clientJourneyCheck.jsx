@@ -105,9 +105,19 @@ try {
   await click(panelButton('Turn'));
   await click(document.querySelector('[data-tip-anchor="end-turn"]'));
   assert.equal(document.querySelector('[data-hud-region="turn"]').hidden, false, 'next player gets turn controls');
-  const arenaStacks = [...document.querySelectorAll('[data-immersive-stack]')];
+  // ⚠️ `data-immersive-stack` is carried by TWO kinds of element: the chord-phase
+  // board panels (`ChordStackPanel`, value "true") and the pocket HUD dials
+  // (`MatchSurface`, value "drive"/"sustain" — the 3D note-flight landing target,
+  // SEQUENCING.md). Counting the bare attribute read 4 the day the pocket dials
+  // gained it and failed with a panel count that had not changed. Count each kind.
+  const arenaStacks = [...document.querySelectorAll('[data-immersive-stack="true"]')];
   assert.equal(arenaStacks.length, 2,
     '3D chord phase keeps both board stack panels, at arena width');
+  assert.deepEqual(
+    [...document.querySelectorAll('[data-immersive-stack]:not([data-immersive-stack="true"])')]
+      .map(el => el.dataset.immersiveStack).sort(),
+    ['drive', 'sustain'],
+    'the pocket Drive/Sustain dials stay tagged as the 3D note-flight landing targets');
   // ⚠️ MOUNTED IS NOT DRAWN, and this suite learned that the expensive way: the
   // assertion above passed for the whole period the panels were
   // 'visibility:hidden', which is precisely when the arena was not showing them.

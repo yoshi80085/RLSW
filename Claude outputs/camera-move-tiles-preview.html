@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Camera + move tiles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Saira+Stencil+One&family=Saira:wght@400;600;700&display=swap" rel="stylesheet">
+<!--
+  🎥🟪 PREVIEW v2 — Alex, 2026-09-17, after playing the shipped auto camera:
+  "the camera should probably mainly focus on the Spirit in question - for
+  movement - make it more subtle, like a ken burns effect. The wide shot should
+  only really be used when action has ceased for a period of time - default
+  camera pan should remain on the character or its surroundings." And: the move
+  tiles "are nearly the same color as the tiles in the 3D arena". Tile colour:
+  "Pink instead of gold."
+
+  📌 v1 (`auto-camera-preview.html`) is left untouched on purpose: the shipped
+  test:cameradirector diffs src/board/cameraDirector.js against it, and this
+  page's director is a CHANGE. The port moves that parity check to this file.
+
+  ⚠️ WHY THE TILES VANISH TODAY: the client paints a reachable hex #ffffff18
+  (9% white) with a #ffffff88 stroke — and BoardViewport.jsx sets
+  `.hex-g > polygon { stroke:transparent }` in 3D. The stroke never shows.
+  "Tiles: TODAY'S" below draws exactly the 9% fill.
+
+  ── v1 notes follow ──
+  🎥 PREVIEW — Alex, 2026-09-17: "a 'moving camera' that instinctively follows
+  the action - make it interactive so that its never quite just 'sitting' in one
+  spot … let players take control if they want to - this turns 'off' the moving
+  camera function. But if its sitting idle, let the camera start to move on its
+  own again - perhaps after 6 or 7 seconds or so."
+
+  What is REAL here, copied from src/: the 111-hex layout (hexMap.js) and its
+  world mapping (arenaPoint), the pawn miniature (arenaVisuals.js), the camera
+  (fov 43, the OrbitControls limits and the Arena / Focus / Tactical views from
+  arenaRenderer.js), tone mapping and bloom.
+  What is a STAND-IN: the stage (flat hexes, file:// cannot fetch the GLB), and
+  the "match" — pawns hop, a battle is a lunge and two bursts, an effect is a
+  pillar. Only the CAMERA is under test.
+
+  ⭐ THE DIRECTOR BLOCK BELOW IS THE PORT. It touches no THREE object and no
+  DOM: plain {x,y,z} in, a camera pose out. It is written to be lifted verbatim
+  into src/board/cameraDirector.js, so the thing Alex dials in is the thing that
+  ships — not a look-alike rebuilt afterwards.
+
+  📌 Hands state back via localStorage (written from render()) and a copy
+  dial-in block marking changed-vs-default (CLAUDE.md preview rule).
+-->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+} }
+</script>
+<style>
+  :root{ --ink:#dceaff; --dim:#7187a4; }
+  *{box-sizing:border-box}
+  body{margin:0;background:#04070f;color:var(--ink);font:400 13px/1.5 'Saira',system-ui,sans-serif;
+    background-image:radial-gradient(120% 90% at 20% 0%,#0d2148 0%,#04070f 62%);min-height:100vh}
+  header,.wrap{max-width:1280px;margin:0 auto;padding:0 16px}
+  header{padding-top:20px}
+  h1{font:400 21px 'Saira Stencil One',sans-serif;letter-spacing:2px;color:#bfe4ff;margin:0 0 6px;text-shadow:0 0 18px #2a86ff55}
+  .sub{color:var(--dim);font-size:11px;letter-spacing:.4px;max-width:920px;margin:0 0 6px}
+  .sub em{color:#9ec4ea;font-style:normal}
+  .wrap{padding-bottom:60px}
+  h2{font:400 12px 'Saira Stencil One',sans-serif;letter-spacing:3px;color:#7fb2e8;margin:24px 0 6px;border-bottom:1px solid #14294a;padding-bottom:7px}
+  h3{font:600 10px 'Saira',sans-serif;letter-spacing:2px;text-transform:uppercase;color:#5f86b3;margin:14px 0 6px;grid-column:1/-1}
+  .note{color:var(--dim);font-size:10.5px;margin:0 0 10px;max-width:920px}
+  button{font:600 10px 'Saira',sans-serif;letter-spacing:1.2px;text-transform:uppercase;
+    background:#0a1428;border:1px solid #26497d;color:#9fc9f5;padding:7px 11px;border-radius:5px;cursor:pointer}
+  button:hover{border-color:#4fc8ff;color:#d9f1ff;box-shadow:0 0 14px #2a9dff33}
+  button.on{background:#12305a;border-color:#4fc8ff;color:#fff}
+
+  .stage{position:relative;height:min(66vh,660px);min-height:320px;border:1px solid #16294a;border-radius:12px;overflow:hidden;background:#030611;touch-action:none}
+  .stage canvas{display:block;width:100%;height:100%}
+  .cam{position:absolute;right:10px;bottom:10px;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+  .cam button{padding:5px 8px;font-size:9px;background:#07101fcc}
+  .legend{position:absolute;left:10px;top:10px;display:flex;flex-direction:column;gap:2px;font-size:10px;letter-spacing:1px;
+    background:#050b18b3;border:1px solid #1d3a63;border-radius:6px;padding:6px 9px;pointer-events:none}
+  .legend b{font-weight:600}
+  .badge{position:absolute;right:10px;top:10px;pointer-events:none;font:400 11px 'Share Tech Mono',monospace;letter-spacing:.5px;
+    background:#050b18cc;border:1px solid #1d3a63;border-radius:14px;padding:4px 11px;display:flex;align-items:center;gap:7px;transition:opacity .3s}
+  .badge .dot{width:7px;height:7px;border-radius:50%;background:#4fc8ff;box-shadow:0 0 8px #4fc8ff}
+  .badge.manual .dot{background:#ffd166;box-shadow:0 0 8px #ffd166}
+  .badge.resume .dot{background:#7fe3a0;box-shadow:0 0 8px #7fe3a0}
+  .badge .bar{width:46px;height:3px;background:#1a2c4a;border-radius:2px;overflow:hidden}
+  .badge .bar i{display:block;height:100%;background:#ffd166;width:0}
+  .ctl{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center}
+  .ctl .sep{width:1px;height:22px;background:#1d3a63;margin:0 4px}
+  .ctl label{font-size:10px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+  .ctl input[type=range]{width:110px;accent-color:#44aaff}
+  .status{font:400 11px 'Share Tech Mono',monospace;color:#8fb3da;margin-top:8px;min-height:16px}
+
+  .levers{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px 22px;
+    padding:4px 14px 14px;border:1px solid #1d3a63;border-radius:9px;background:#070e1e99}
+  .lever{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .lever .top{display:flex;justify-content:space-between;gap:8px;font-size:9.5px;letter-spacing:1.3px;color:var(--dim);text-transform:uppercase}
+  .lever .top b{color:var(--ink);font:700 12px 'Share Tech Mono',monospace;text-align:right;white-space:nowrap}
+  .lever .top b.changed{color:#ffd166}
+  .lever input[type=range]{width:100%;accent-color:#44aaff}
+  .lever .row{display:flex;flex-wrap:wrap;gap:4px}
+  .lever .row button{padding:4px 8px;font-size:9px}
+  .lever .hint{font-size:9.5px;color:#56708f;line-height:1.35}
+  .dialin{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start}
+  textarea{width:100%;min-height:300px;background:#050b18;color:#cfe3ff;border:1px solid #1d3a63;border-radius:8px;
+    font:400 11.5px/1.5 'Share Tech Mono',monospace;padding:10px;resize:vertical}
+  .dialin .btns{display:flex;flex-direction:column;gap:6px}
+  #copyMsg{font-size:10px;color:#7fe3a0;min-height:14px}
+  #err{display:none;color:#ff8a8a;font-size:12px;padding:10px;border:1px solid #6b2a2a;border-radius:8px;margin-top:8px}
+  @media (max-width:640px){ .dialin{grid-template-columns:1fr} .dialin .btns{flex-direction:row;flex-wrap:wrap} .ctl .sep{display:none} }
+</style>
+</head>
+<body>
+<header>
+  <h1>CAMERA + MOVE TILES</h1>
+  <p class="sub"><em>Camera:</em> a move is now a slow push-in on the Spirit that keeps the camera's angle, like a Ken Burns effect, instead of a swing to the side. Between actions it stays on the acting Spirit and its surroundings. <em>The wide shot only comes in after nothing has happened for a while</em> (20 s to start).</p>
+  <p class="sub"><em>Move tiles:</em> the hexes you can step to are raised pink plates that glow, rimmed in the Spirit's colour. Tiles you could reach later this turn are dimmer. The ring of pips at the Spirit's feet is the steps you have left; it empties as you walk. <em>Click a lit tile to step there.</em> Use <em>Tiles: TODAY'S</em> to compare with what the game draws now.</p>
+  <p class="sub">Press <em>▶ Autoplay match</em>, or play it by hand. Drag or scroll to take the camera. Tune the levers, then <em>Copy dial-in</em> and paste it back.
+  💾 Settings save in this browser, tied to this file's location, so copy before moving or renaming it.</p>
+</header>
+<div class="wrap">
+  <div class="stage" id="stage">
+    <div class="legend" id="legend"></div>
+    <div class="badge" id="badge"><span class="dot"></span><span id="badgeText">AUTO</span><span class="bar" id="badgeBar"><i></i></span></div>
+    <div class="cam">
+      <button data-view="arena">Arena</button><button data-view="focus">Focus acting</button><button data-view="tactical">Tactical</button>
+    </div>
+  </div>
+  <div id="err"></div>
+  <div class="ctl">
+    <button id="autoplay">▶ Autoplay match</button>
+    <label>Pause between turns <input type="range" id="gap" min="1" max="20" step="0.5" value="9"><span id="gapOut">9 s</span></label>
+    <span class="sep"></span>
+    <button id="mMove">Walk acting (uses steps)</button><button id="mBattle">Battle nearest rival</button><button id="mEvent">Effect on a rival</button><button id="mTurn">Next turn</button>
+    <span class="sep"></span>
+    <label>Steps each turn <input type="range" id="steps" min="1" max="6" step="1" value="3"><span id="stepsOut">3</span></label>
+    <button id="mSteps0">Use up all steps</button><button id="mCrowd">Rival steps next to acting</button>
+    <span class="sep"></span>
+    <button id="tileCompare" class="on">Tiles: NEW</button>
+    <button id="washBtn" class="on">Stage-light wash: ON</button>
+    <span class="sep"></span>
+    <button id="compare" class="on">Auto camera: ON</button>
+    <button id="reducedSim">Simulate reduced motion: OFF</button>
+  </div>
+  <div class="status" id="status"></div>
+
+  <h2>LEVERS</h2>
+  <p class="note">⭐ = new or changed since the version you approved. Distances are world units (the board is ~22 across; the game's zoom limits are 12 to 110). Tilt is degrees down from straight overhead — 0 is looking straight down, 77 is the game's lowest allowed angle.</p>
+  <div class="levers" id="levers"></div>
+
+  <h2>DIAL-IN</h2>
+  <div class="dialin">
+    <textarea id="dialin" readonly spellcheck="false"></textarea>
+    <div class="btns">
+      <button id="copy">📋 Copy dial-in</button>
+      <button id="reset">Reset to defaults</button>
+      <div id="copyMsg"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const STORE_KEY = 'rlsw.cameraMoveTiles.v1';
+const PAGE = '.scratch/camera-move-tiles-preview.html';
+const errBox = document.getElementById('err');
+window.addEventListener('error', e => { errBox.style.display = 'block'; errBox.textContent = 'Preview error: ' + e.message; });
+
+// ════════════════════════════════════════════════════════════════════════════
+// ⭐ DIRECTOR — port source for src/board/cameraDirector.js. Pure: no THREE, no
+// DOM, no clock of its own. Subjects in, a pose out. Keep it that way; the
+// renderer adapter is the only thing that knows about OrbitControls.
+// ════════════════════════════════════════════════════════════════════════════
+const TAU = Math.PI * 2;
+const wrapAngle = a => ((a + Math.PI) % TAU + TAU) % TAU - Math.PI;
+const smooth01 = p => p <= 0 ? 0 : p >= 1 ? 1 : p * p * (3 - 2 * p);
+const rad = d => d * Math.PI / 180;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+// Azimuth convention matches OrbitControls: the direction from target to camera,
+// measured as atan2(x, z). flatAz(a, b) is "the way from a toward b".
+const flatAz = (a, b) => Math.atan2(b.x - a.x, b.z - a.z);
+const flatDist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+const midpoint = (a, b) => ({ x:(a.x + b.x) / 2, y:(a.y + b.y) / 2, z:(a.z + b.z) / 2 });
+
+const CAMERA_DIRECTOR = {
+  resumeAfterMs:6500, resumeBlendMs:1600, viewButtons:'pause', reducedMotion:'still', zoomMemory:'director',
+  followRate:3.2, swingRate:1.6, afterHoldMs:1400, lookHeight:0.9,
+  driftDegPerSec:4, actionDrift:0.35, breathe:0.06, breathPeriodS:11,
+  idleShots:'cycle', shotHoldS:7, idleDistance:24, idleTilt:52, wideDistance:48, wideTilt:62, heroDistance:15, heroTilt:70,
+  moveDistance:20, moveTilt:50, moveLead:0.4, chase:0.25,
+  // 🎞️ v2: a move is a slow push-in that keeps the camera's angle (Alex: "like a ken burns effect").
+  moveAngle:'keep', kbPush:0.12, kbMs:2600, kbPanDeg:5, moveFollowRate:2.4,
+  // 🎞️ v2: the wide shot waits for real quiet; idle stays on the Spirit and its surroundings.
+  wideAfterS:20, longIdle:'hold', rivalMaxGap:9,
+  battlePad:10, battleTilt:56, battleSkew:20,
+  reactToEvents:'on', eventDistance:20,
+  // Not levers: the renderer's OrbitControls limits, so the director can never
+  // hand the player a camera their own mouse could not have produced.
+  minDistance:12, maxDistance:110, minPolar:0.08, maxPolar:Math.PI * 0.43,
+};
+// 🪦 v1 had the wide shot in the idle cycle; v2 keeps it out until wideAfterS of quiet.
+const IDLE_PROGRAMS = { cycle:['mid','rival','hero'], orbit:['mid'] };
+
+function createCameraDirector(tuning = {}) {
+  const T = { ...CAMERA_DIRECTOR, ...tuning };
+  let mode = 'auto', interacting = false, lastInput = -Infinity, resumeStart = 0;
+  let cur = null, shot = null, afterUntil = -Infinity, programIdx = 0, programSince = 0;
+  let clock = 0, zoomScale = 1, measureZoom = false, shotCount = 0, lastActing = null, restartProgram = false;
+  let lastActionAt = null, lastProgramKey = '';
+
+  const fromCamera = (p, t) => {
+    const x = p.x - t.x, y = p.y - t.y, z = p.z - t.z, r = Math.hypot(x, y, z) || 1;
+    return { tx:t.x, ty:t.y, tz:t.z, r, pol:Math.acos(clamp(y / r, -1, 1)), az:Math.atan2(x, z) };
+  };
+  const lift = p => ({ x:p.x, y:p.y + T.lookHeight, z:p.z });
+  const nearer = (a, b, ref) => Math.abs(wrapAngle(a - ref)) <= Math.abs(wrapAngle(b - ref)) ? a : b;
+  const nearestRival = s => {
+    if (!s.acting) return null;   // ⚠️ the acting Spirit can be knocked out or smoke-hidden
+    let best = null, bd = Infinity;
+    for (const r of s.rivals ?? []) { const d = flatDist(r.point, s.acting.point); if (d < bd) { bd = d; best = r; } }
+    return best;
+  };
+
+  // Which shot does this moment call for? Returns a descriptor with a stable key;
+  // a new key is a new shot. Priority: battle > move > effect > the idle program.
+  function chooseShot(s, now) {
+    if (s.battle) return { kind:'battle', key:`battle:${s.battle.key}`, action:true };
+    if (s.moves?.length) return { kind:'move', key:`move:${s.moves[0].key}`, action:true };
+    if (T.reactToEvents === 'on' && s.events?.length) { const e = s.events[s.events.length - 1]; return { kind:'event', key:`event:${e.key}`, action:true }; }
+    // ⚠️ The after-hold: a battle that just resolved must not be abandoned the
+    // same frame — the result IS the action. Hold the last action shot a beat.
+    if (shot?.action && now < afterUntil) return { ...shot, held:true };
+    // 🎞️ The wide shot is earned by QUIET, not reached by cycling (Alex, v2).
+    // 'hold' parks on it until something happens; 'mix' lets it join the cycle.
+    const base = IDLE_PROGRAMS[T.idleShots] ?? IDLE_PROGRAMS.cycle;
+    const quiet = now - lastActionAt >= T.wideAfterS * 1000;
+    const program = !quiet ? base : T.longIdle === 'hold' ? ['wide'] : [...base.slice(0, 2), 'wide', ...base.slice(2)];
+    const programKey = program.join(',');
+    if (restartProgram || shot?.action || s.acting?.id !== lastActing || programKey !== lastProgramKey) { programIdx = 0; programSince = now; restartProgram = false; }
+    else if (now - programSince >= T.shotHoldS * 1000) { programIdx = (programIdx + 1) % program.length; programSince = now; }
+    lastProgramKey = programKey;
+    const kind = program[programIdx % program.length];
+    return { kind, key:`idle:${kind}:${s.acting?.id}:${programSince}`, action:false };
+  }
+
+  // Fix the things that must NOT be re-decided every frame — which side of a
+  // battle line we stand on — once, when the shot starts. Re-picking them per
+  // frame makes the camera flip sides the moment the line crosses 90°.
+  function beginShot(next, s, now) {
+    shotCount++;
+    const drift = shotCount % 2 ? 1 : -1;   // alternate the drift direction, so idle never becomes a turntable
+    const base = { ...next, orbit:0, drift, last:null, startedAt:now };
+    if (next.kind === 'battle') {
+      const th = flatAz(s.battle.attacker, s.battle.defender), off = rad(90 + T.battleSkew);
+      base.az = nearer(th + off, th - off, cur.az);
+    } else if (next.kind === 'move') {
+      if (T.moveAngle === 'side') {
+        const m = s.moves[0], th = flatAz(m.from, m.to);
+        const side = nearer(th + Math.PI / 2, th - Math.PI / 2, cur.az);
+        base.az = side + T.chase * wrapAngle(th + Math.PI - side);
+        base.kbR = T.moveDistance; base.kbPol = rad(T.moveTilt);
+      } else {
+        // 🎞️ KEN BURNS: keep the angle, start from roughly where the camera
+        // already is (clamped near moveDistance, so no zoom lurch), then push in.
+        base.az = cur.az;
+        base.kbR = clamp(cur.r, T.moveDistance * 0.85, T.moveDistance * 1.25);
+        base.kbPol = clamp(cur.pol, rad(T.moveTilt - 10), rad(T.moveTilt + 10));
+      }
+    } else if (next.kind === 'rival') {
+      const r = nearestRival(s);
+      base.az = r ? nearer(flatAz(s.acting.point, r.point) + Math.PI / 2, flatAz(s.acting.point, r.point) - Math.PI / 2, cur.az) : cur.az;
+    } else if (next.kind === 'hero') {
+      // Stand between the Spirit and the middle of the stage, looking out at it.
+      base.az = s.acting ? flatAz(s.acting.point, s.center) : cur.az;
+    } else base.az = cur.az;     // mid / wide / event: keep the angle we already have
+    return base;
+  }
+
+  // The pose this shot wants THIS frame. Subjects move (a hopping pawn), so the
+  // target is recomputed; the angle was fixed in beginShot.
+  function poseFor(sh, s, now, cuts) {
+    let p = null;
+    if (sh.kind === 'battle' && s.battle) {
+      const { attacker:a, defender:b } = s.battle;
+      p = { t:lift(midpoint(a, b)), r:Math.max(T.minDistance + 1, flatDist(a, b) * 1.25 + T.battlePad), pol:rad(T.battleTilt) };
+    } else if (sh.kind === 'move' && s.moves?.length) {
+      const m = s.moves[0], th = flatAz(m.from, m.to);
+      // ⚠️ Eased on the SHOT's clock, so extra steps inside one move keep pushing
+      // rather than restarting; it stops at kbPush however long the walk runs.
+      const k = cuts ? 0 : smooth01((now - sh.startedAt) / Math.max(1, T.kbMs));
+      p = { t:lift({ x:m.point.x + Math.sin(th) * T.moveLead, y:m.point.y, z:m.point.z + Math.cos(th) * T.moveLead }),
+            r:sh.kbR * (1 - T.kbPush * k), pol:sh.kbPol, azOff:cuts ? 0 : rad(T.kbPanDeg) * k * sh.drift };
+    } else if (sh.kind === 'event' && s.events?.length) {
+      p = { t:lift(s.events[s.events.length - 1].point), r:T.eventDistance, pol:rad(T.idleTilt) };
+    } else if (sh.kind === 'wide') {
+      p = { t:{ ...s.center }, r:T.wideDistance, pol:rad(T.wideTilt) };
+    } else if (sh.kind === 'hero' && s.acting) {
+      p = { t:lift(s.acting.point), r:T.heroDistance, pol:rad(T.heroTilt) };
+    } else if (sh.kind === 'rival' && s.acting) {
+      // 🎞️ v2 "or its surroundings": a far rival no longer drags the frame across
+      // the board — the camera leans toward them from the acting Spirit instead.
+      const r = nearestRival(s), gap = r ? flatDist(s.acting.point, r.point) : Infinity;
+      const a = s.acting.point, lean = r ? { x:a.x + (r.point.x - a.x) * 0.25, y:a.y, z:a.z + (r.point.z - a.z) * 0.25 } : a;
+      p = r && gap <= T.rivalMaxGap ? { t:lift(midpoint(a, r.point)), r:Math.max(T.idleDistance, gap * 1.25 + T.battlePad), pol:rad(T.idleTilt) }
+            : { t:lift(lean), r:T.idleDistance * 1.15, pol:rad(T.idleTilt) };
+    } else if (sh.kind === 'mid' && s.acting) {
+      p = { t:lift(s.acting.point), r:T.idleDistance, pol:rad(T.idleTilt) };
+    }
+    // The subject left the frame (battle over, pawn knocked out): keep the last pose.
+    if (!p) return sh.last;
+    sh.last = p;
+    return p;
+  }
+
+  function pose() {
+    const sp = Math.sin(cur.pol);
+    return { position:{ x:cur.tx + cur.r * sp * Math.sin(cur.az), y:cur.ty + cur.r * Math.cos(cur.pol), z:cur.tz + cur.r * sp * Math.cos(cur.az) },
+             target:{ x:cur.tx, y:cur.ty, z:cur.tz } };
+  }
+
+  return {
+    retune(next) { Object.assign(T, next); },
+    // ── the player's hands. A click with no drag never calls these (the adapter's
+    // job): picking a hex must not steal the camera from the director.
+    userStart(now) { interacting = true; mode = 'manual'; lastInput = now; },
+    userEnd(now) { if (!interacting) return; interacting = false; lastInput = now; },
+    userNudge(now) { mode = 'manual'; lastInput = now; },   // wheel, view buttons: one-shot inputs
+    get mode() { return mode; },
+
+    update({ dtMs, now, subjects:s, camera, reduced = false }) {
+      const dt = Math.max(0, Math.min(dtMs, 100)) / 1000;
+      if (reduced && T.reducedMotion === 'still') { cur = null; shot = null; return { driving:false, mode:'off' }; }
+      if (mode === 'manual') {
+        const waited = now - lastInput;
+        if (interacting || waited < T.resumeAfterMs)
+          return { driving:false, mode, resumeInMs:interacting ? T.resumeAfterMs : T.resumeAfterMs - waited };
+        // ⚠️ Pick up from where the PLAYER left the camera, not from where the
+        // director last had it — otherwise resuming is a teleport.
+        // 📌 Coming back always opens on the acting Spirit (the idle program's
+        // first shot), not wherever the cycle had reached while the player drove.
+        mode = 'resume'; resumeStart = now; cur = fromCamera(camera.position, camera.target); shot = null; restartProgram = true;
+        lastActionAt = now;   // the player just did something — the quiet clock starts over
+        measureZoom = T.zoomMemory === 'keep';
+      }
+      if (!cur) cur = fromCamera(camera.position, camera.target);
+      if (mode === 'resume' && now - resumeStart >= T.resumeBlendMs) mode = 'auto';
+      clock += dt;
+
+      if (lastActionAt == null) lastActionAt = now;
+      // A new turn is not quiet: the next Spirit is who we want to see.
+      if ((s.acting?.id ?? null) !== lastActing) lastActionAt = now;
+      const next = chooseShot(s, now);
+      const isNew = !shot || next.key !== shot.key;
+      if (isNew) shot = beginShot(next, s, now);
+      // Only a LIVE action extends the hold; a held shot re-arming it would hold forever.
+      if (shot.action && !next.held) { afterUntil = now + T.afterHoldMs; lastActionAt = now; }
+      lastActing = s.acting?.id ?? null;
+
+      const cuts = reduced && T.reducedMotion === 'cuts';
+      const want = poseFor(shot, s, now, cuts);
+      if (!want) return { driving:false, mode, shot:shot.kind };
+      if (measureZoom) { zoomScale = clamp(cur.r / want.r, 0.5, 2); measureZoom = false; }
+      if (T.zoomMemory !== 'keep') zoomScale = 1;
+
+      // The Ken Burns pan replaces the drift on a move; breathing would fight the push.
+      const kb = shot.kind === 'move' && T.moveAngle !== 'side';
+      if (!cuts && !kb) shot.orbit += rad(T.driftDegPerSec) * dt * (shot.action ? T.actionDrift : 1) * shot.drift;
+      const breath = cuts || kb ? 0 : T.breathe;
+      const wantR = clamp(want.r * zoomScale * (1 + breath * Math.sin(clock * TAU / T.breathPeriodS)), T.minDistance, T.maxDistance);
+      const wantPol = clamp(want.pol + breath * 0.5 * Math.sin(clock * TAU / T.breathPeriodS * 0.73 + 1.1), T.minPolar, T.maxPolar);
+      const wantAz = shot.az + shot.orbit + (want.azOff ?? 0);
+
+      if (cuts && isNew) { cur = { tx:want.t.x, ty:want.t.y, tz:want.t.z, r:wantR, pol:wantPol, az:wantAz }; return { driving:true, mode, shot:shot.kind, ...pose() }; }
+      // Resume eases the director's grip in from zero, so the hand-off from the
+      // player is a lean, not a lurch.
+      const grip = mode === 'resume' ? Math.max(0.02, smooth01((now - resumeStart) / Math.max(1, T.resumeBlendMs))) : 1;
+      const kf = 1 - Math.exp(-dt * (shot.kind === 'move' ? T.moveFollowRate : T.followRate) * grip), ks = 1 - Math.exp(-dt * T.swingRate * grip);
+      cur.tx += (want.t.x - cur.tx) * kf; cur.ty += (want.t.y - cur.ty) * kf; cur.tz += (want.t.z - cur.tz) * kf;
+      cur.r += (wantR - cur.r) * ks; cur.pol += (wantPol - cur.pol) * ks;
+      cur.az += wrapAngle(wantAz - cur.az) * ks;
+      return { driving:true, mode, shot:shot.kind, quietMs:now - lastActionAt, ...pose() };
+    },
+  };
+}
+// ════════════════════════════ end of the port ═══════════════════════════════
+
+// ── LEVERS ─────────────────────────────────────────────────────────────────
+const LEVERS = [
+  { group:'Taking over and letting go' },
+  { key:'resumeAfterMs', label:'Auto camera comes back after', type:'range', min:2000, max:20000, step:250, unit:'ms', def:6500,
+    hint:'Counted from the moment you let go of the mouse. You said 6 or 7 seconds.' },
+  { key:'resumeBlendMs', label:'Easing back in', type:'range', min:0, max:5000, step:100, unit:'ms', def:1600,
+    hint:'How long the camera takes to get its full grip back, starting from where you left it.' },
+  { key:'zoomMemory', label:'When it comes back', type:'buttons', def:'director',
+    options:[['director','Uses its own zoom'],['keep','Keeps your zoom level']],
+    hint:'“Keeps your zoom” scales every shot by how far in or out you had zoomed.' },
+  { key:'viewButtons', label:'Arena / Focus / Tactical buttons', type:'buttons', def:'pause',
+    options:[['pause','Count as taking over'],['ignore','Don’t']],
+    hint:'“Don’t” lets the auto camera swing away straight after you press one.' },
+  { key:'badge', label:'On-screen camera badge', type:'buttons', def:'on',
+    options:[['on','Always'],['manual','Only while you have it'],['off','Never']],
+    hint:'Top-right of the stage. Shows the countdown back to auto.' },
+  { key:'menuSwitch', label:'A menu switch to turn it off for good', type:'buttons', def:'yes',
+    options:[['yes','Yes'],['no','No']], hint:'Not drawn here. Recorded so the port knows.' },
+  { key:'reducedMotion', label:'Players who asked for reduced motion', type:'buttons', def:'still',
+    options:[['still','Auto camera off'],['cuts','Jumps to each action, no drifting']],
+    hint:'Use “Simulate reduced motion” above to see it.' },
+
+  { group:'How it moves' },
+  { key:'followRate', label:'Keeps up with the action', type:'range', min:0.6, max:8, step:0.1, unit:'', def:3.2,
+    hint:'How fast the aim point chases what it is looking at. Higher is snappier.' },
+  { key:'swingRate', label:'Swings to a new angle', type:'range', min:0.3, max:5, step:0.1, unit:'', def:1.6,
+    hint:'How fast it changes angle, zoom and tilt. Lower is more cinematic.' },
+  { key:'driftDegPerSec', label:'Idle drift', type:'range', min:0, max:15, step:0.5, unit:'°/s', def:4,
+    hint:'The slow orbit that keeps it from ever sitting still. Changes direction every shot.' },
+  { key:'actionDrift', label:'Drift during action', type:'range', min:0, max:1, step:0.05, unit:'× idle', def:0.35 },
+  { key:'breathe', label:'Breathing (slow zoom and tilt sway)', type:'range', min:0, max:0.2, step:0.005, unit:'', def:0.06 },
+  { key:'breathPeriodS', label:'One breath', type:'range', min:4, max:30, step:0.5, unit:'s', def:11 },
+  { key:'afterHoldMs', label:'Stays on an action after it ends', type:'range', min:0, max:5000, step:100, unit:'ms', def:1400,
+    hint:'So a battle result is actually seen before the camera wanders off.' },
+  { key:'lookHeight', label:'Aim height above the board', type:'range', min:0, max:2.5, step:0.05, unit:'', def:0.9 },
+
+  { group:'When nothing is happening' },
+  { key:'idleShots', label:'⭐ Idle shots', type:'buttons', def:'cycle',
+    options:[['cycle','Cycle: close · surroundings · hero'],['orbit','Just circle the acting Spirit']],
+    hint:'The wide shot is no longer in the cycle — see the next two levers.' },
+  { key:'wideAfterS', label:'⭐ Wide shot only after this much quiet', type:'range', min:5, max:90, step:1, unit:'s', def:20,
+    hint:'No move, battle, effect, new turn or camera grab for this long.' },
+  { key:'longIdle', label:'⭐ Once it is quiet', type:'buttons', def:'hold',
+    options:[['hold','Hold the wide shot until something happens'],['mix','Add the wide shot to the cycle']] },
+  { key:'rivalMaxGap', label:'⭐ Surroundings shot — rival counts if within', type:'range', min:3, max:25, step:0.5, unit:'', def:9,
+    hint:'Farther than this, the camera leans toward them from the acting Spirit instead of framing both.' },
+  { key:'shotHoldS', label:'Change idle shot every', type:'range', min:3, max:30, step:0.5, unit:'s', def:7 },
+  { key:'idleDistance', label:'Close shot distance', type:'range', min:12, max:60, step:0.5, unit:'', def:24 },
+  { key:'idleTilt', label:'Close shot tilt', type:'range', min:10, max:77, step:1, unit:'°', def:52 },
+  { key:'wideDistance', label:'Wide shot distance', type:'range', min:25, max:110, step:1, unit:'', def:48 },
+  { key:'wideTilt', label:'Wide shot tilt', type:'range', min:10, max:77, step:1, unit:'°', def:62 },
+  { key:'heroDistance', label:'Hero shot distance', type:'range', min:12, max:35, step:0.5, unit:'', def:15,
+    hint:'Low and close on the acting Spirit, from the middle of the stage.' },
+  { key:'heroTilt', label:'Hero shot tilt', type:'range', min:30, max:77, step:1, unit:'°', def:70 },
+
+  { group:'Moves, battles and effects' },
+  { key:'moveAngle', label:'⭐ During a move', type:'buttons', def:'keep',
+    options:[['keep','Ken Burns: keep the angle, slow push-in'],['side','v1: swing to watch from the side']] },
+  { key:'kbPush', label:'⭐ Push-in amount', type:'range', min:0, max:0.35, step:0.01, unit:'× distance', def:0.12 },
+  { key:'kbMs', label:'⭐ Push-in takes', type:'range', min:600, max:8000, step:100, unit:'ms', def:2600 },
+  { key:'kbPanDeg', label:'⭐ Slow pan across the move', type:'range', min:0, max:20, step:0.5, unit:'°', def:5 },
+  { key:'moveFollowRate', label:'⭐ Stays centred on the mover', type:'range', min:0.6, max:8, step:0.1, unit:'', def:2.4,
+    hint:'Lower glides behind the hops; higher keeps the Spirit dead centre.' },
+  { key:'moveDistance', label:'⭐ Following a move — distance', type:'range', min:12, max:50, step:0.5, unit:'', def:20, hint:'Was 22.' },
+  { key:'moveTilt', label:'Following a move — tilt', type:'range', min:10, max:77, step:1, unit:'°', def:50 },
+  { key:'moveLead', label:'⭐ Looks ahead of the mover', type:'range', min:0, max:4, step:0.1, unit:'', def:0.4, hint:'Was 1.2.' },
+  { key:'chase', label:'Side swing angle (v1 mode only)', type:'range', min:0, max:1, step:0.05, unit:'', def:0.25,
+    hint:'0 watches from the side, 1 chases from behind.' },
+  { key:'battlePad', label:'Battle — room around the two', type:'range', min:2, max:30, step:0.5, unit:'', def:10 },
+  { key:'battleTilt', label:'Battle — tilt', type:'range', min:10, max:77, step:1, unit:'°', def:56 },
+  { key:'battleSkew', label:'Battle — over the attacker’s shoulder', type:'range', min:0, max:70, step:1, unit:'°', def:20,
+    hint:'0 is square side-on to the two fighters.' },
+  { key:'reactToEvents', label:'Swing to effects (lasers, pyro…)', type:'buttons', def:'on', options:[['on','Yes'],['off','No']] },
+  { key:'eventDistance', label:'Effect shot distance', type:'range', min:12, max:50, step:0.5, unit:'', def:20 },
+
+  { group:'⭐ Move tiles (all new)' },
+  { key:'tileColor', label:'Tile colour', type:'color', def:'#ff4fa8',
+    presets:[['#ff4fa8','Hot pink'],['#ff3df2','Magenta'],['#ff8fc8','Soft pink'],['#ff2d6f','Rose']],
+    hint:'Watch the pink centre hex: a move tile must not read as part of it.' },
+  { key:'tileStyle', label:'Tile shape', type:'buttons', def:'plate',
+    options:[['plate','Raised glowing plate'],['outline','Glowing outline only'],['fill','Flat fill']] },
+  { key:'rimColor', label:'Rim', type:'buttons', def:'spirit',
+    options:[['spirit','Spirit colour'],['pink','Same pink'],['white','White'],['none','None']] },
+  { key:'brightness', label:'Glow (feeds the bloom)', type:'range', min:0.4, max:3, step:0.05, unit:'×', def:1.6 },
+  { key:'nearOpacity', label:'Next-step tile strength', type:'range', min:0.1, max:1, step:0.01, unit:'', def:0.7 },
+  { key:'plateHeight', label:'Plate raised by', type:'range', min:0, max:0.35, step:0.01, unit:'', def:0.08 },
+  { key:'plateInset', label:'Plate size', type:'range', min:0.6, max:1, step:0.01, unit:'× hex', def:0.86 },
+  { key:'pulseS', label:'Pulse — one beat', type:'range', min:0.6, max:4, step:0.1, unit:'s', def:1.6 },
+  { key:'pulseDepth', label:'Pulse — depth', type:'range', min:0, max:0.8, step:0.01, unit:'', def:0.35 },
+  { key:'farReach', label:'Tiles reachable later this turn', type:'buttons', def:'dim',
+    options:[['dim','Show them, dimmer'],['off','Next step only']] },
+  { key:'farOpacity', label:'Later-tile strength', type:'range', min:0.03, max:0.6, step:0.01, unit:'', def:0.1,
+    hint:'Later tiles lie flat with no rim; only next-step tiles are raised.' },
+  { key:'hoverBoost', label:'Tile under the mouse lifts and brightens', type:'range', min:0, max:1, step:0.05, unit:'', def:0.5 },
+  { key:'pips', label:'Steps left, at the Spirit’s feet', type:'buttons', def:'ring',
+    options:[['ring','Ring of pips'],['number','Number'],['both','Both'],['off','Off']] },
+  { key:'boardDim', label:'Dim the rest of the board while moving', type:'range', min:0, max:0.7, step:0.01, unit:'', def:0.25 },
+  { key:'fadeMs', label:'Tiles fade in/out', type:'range', min:0, max:600, step:10, unit:'ms', def:180 },
+];
+const REAL = LEVERS.filter(l => l.key);
+const DEF = Object.fromEntries(REAL.map(l => [l.key, l.def]));
+const S = { ...DEF };
+try {
+  const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+  if (saved && saved.S) for (const k of Object.keys(DEF)) if (k in saved.S && typeof saved.S[k] === typeof DEF[k]) S[k] = saved.S[k];
+} catch (_) {}
+
+// ── the real hex map (hexMap.js) and its world mapping (arenaPoint) ─────────
+const HEX_SIZE = 195, COL_SPACING = 330, ROW_SPACING = 390, COL0_X = 1275, ROW0_Y = 75;
+const COLUMNS = [[1,2,3,4,5],[6,7,8,9,10,11,12,13],[14,15,16,17,18,19,20,21,22],[23,24,25,26,27,28,29,30,31,32],
+  [33,34,35,36,37,38,39,40,41],[42,43,44,45,46,47,48,49,50,51],[52,53,54,55,56,57,58,59,60],[61,62,63,64,65,66,67,68,69,70],
+  [71,72,73,74,75,76,77,78,79],[80,81,82,83,84,85,86,87,88,89],[90,91,92,93,94,95,96,97,98],[99,100,101,102,103,104,105,106],[107,108,109,110,111]];
+const COL_TOP_OFFSETS = [4,2,2,1,2,1,2,1,2,1,2,2,4];
+const HEX = {};
+COLUMNS.forEach((col, ci) => col.forEach((num, ri) => {
+  HEX[num] = { px: COL0_X + ci * COL_SPACING, py: ROW0_Y + (COL_TOP_OFFSETS[ci] + ri) * ROW_SPACING + (ci % 2 ? HEX_SIZE : 0) };
+}));
+const arenaPoint = (num, h = .18) => { const x = HEX[num]; return x ? new THREE.Vector3((x.px - 3255) / 200, h, (x.py - 2415) / 200) : null; };
+const SVG_ASPECT = Math.round(6522 * .12) / Math.round(4839 * .12);
+const NUMS = Object.keys(HEX).map(Number);
+const NEIGHBORS = Object.fromEntries(NUMS.map(n => [n, NUMS.filter(m => m !== n && arenaPoint(m).distanceTo(arenaPoint(n)) < 2.1)]));
+
+// ── renderer, matching arenaRenderer.js ────────────────────────────────────
+const host = document.getElementById('stage');
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#030611');
+const camera = new THREE.PerspectiveCamera(43, 1, .1, 500);
+const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance', preserveDrawingBuffer:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+host.prepend(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.mouseButtons = { LEFT:THREE.MOUSE.ROTATE, MIDDLE:THREE.MOUSE.DOLLY, RIGHT:THREE.MOUSE.PAN };
+controls.touches = { ONE:THREE.TOUCH.ROTATE, TWO:THREE.TOUCH.DOLLY_PAN };
+controls.minDistance = 12; controls.maxDistance = 110; controls.minPolarAngle = .08; controls.maxPolarAngle = Math.PI * .43;
+controls.enableDamping = true; controls.dampingFactor = .09;
+const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), .396, .55, 1.05); composer.addPass(bloom); composer.addPass(new OutputPass());
+
+let boardMat, boardRim;
+const BOARD_COLOR = 0x1a2c62, BOARD_EMISSIVE = 0.45, RIM_OPACITY = 0.5;
+scene.add(new THREE.HemisphereLight(0x8fb4ff, 0x1a0b2e, 1.1));
+const keyLight = new THREE.DirectionalLight(0xbfd8ff, 2.2); keyLight.position.set(10, 22, 14); scene.add(keyLight);
+const rimLight = new THREE.PointLight(0x9a4dff, 60, 60); rimLight.position.set(-12, 8, -10); scene.add(rimLight);
+{
+  const hexGeo = new THREE.CylinderGeometry(.93, .93, .16, 6); hexGeo.rotateY(Math.PI / 6);
+  // 📌 Closer to the arena GLB than v1's stand-in (blue tops, pale cyan edges, a pink
+  // centre hex), because the whole question is whether pink reads against THAT.
+  const hexMat = boardMat = new THREE.MeshStandardMaterial({ color:BOARD_COLOR, metalness:.35, roughness:.55, emissive:0x14245c, emissiveIntensity:BOARD_EMISSIVE });
+  const inst = new THREE.InstancedMesh(hexGeo, hexMat, NUMS.length);
+  const m = new THREE.Matrix4();
+  NUMS.forEach((n, i) => { const p = arenaPoint(n, 0); m.makeTranslation(p.x, p.y, p.z); inst.setMatrixAt(i, m); });
+  scene.add(inst);
+  const ring = new THREE.EdgesGeometry(new THREE.CylinderGeometry(.9, .9, .001, 6).rotateY(Math.PI / 6));
+  const rimMat = boardRim = new THREE.LineBasicMaterial({ color:0xbfe6ff, transparent:true, opacity:RIM_OPACITY });
+  for (const n of NUMS) { const l = new THREE.LineSegments(ring, rimMat); l.position.copy(arenaPoint(n, .09)); scene.add(l); }
+  const centre = NUMS.reduce((b, n) => arenaPoint(n).length() < arenaPoint(b).length() ? n : b, NUMS[0]);
+  const lime = new THREE.Mesh(new THREE.RingGeometry(.72, .9, 6), new THREE.MeshBasicMaterial({ color:0xff44ff, transparent:true, opacity:.85, side:THREE.DoubleSide, depthWrite:false }));
+  lime.rotation.x = -Math.PI / 2; lime.position.copy(arenaPoint(centre, .1)); scene.add(lime);
+  const limeDot = new THREE.Mesh(new THREE.CircleGeometry(.22, 6), new THREE.MeshBasicMaterial({ color:0xff66ee }));
+  limeDot.rotation.x = -Math.PI / 2; limeDot.position.copy(arenaPoint(centre, .1)); scene.add(limeDot);
+  const island = new THREE.Mesh(new THREE.CylinderGeometry(15, 11, 3, 10), new THREE.MeshStandardMaterial({ color:0x0a0f22, roughness:.9 }));
+  island.position.y = -1.6; scene.add(island);
+  // four amp towers at the corners, so an orbit has something to reveal
+  for (const [x, z, c] of [[-10.5,-8,0x4488ff],[10.5,-8,0xffcc00],[-10.5,8,0xaa55ff],[10.5,8,0xff5fbf]]) {
+    const amp = new THREE.Mesh(new THREE.BoxGeometry(1.6, 3.2, 1.2), new THREE.MeshStandardMaterial({ color:0x0e1528, metalness:.6, roughness:.4, emissive:c, emissiveIntensity:.25 }));
+    amp.position.set(x, 1.3, z); scene.add(amp);
+    const grille = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), new THREE.MeshBasicMaterial({ color:c }));
+    grille.position.set(x, 1.6, z + (z < 0 ? .61 : -.61)); grille.rotation.y = z < 0 ? 0 : Math.PI; scene.add(grille);
+  }
+}
+
+// ── the pawns — arenaVisuals.js `spiritMiniature` ──────────────────────────
+function solid(geometry, color, metalness = .5, emission = 0) {
+  const material = new THREE.MeshStandardMaterial({ color, metalness, roughness:.38, emissive:color, emissiveIntensity:emission,
+    transparent:true, opacity:1, depthTest:false, depthWrite:false });
+  const mesh = new THREE.Mesh(geometry, material); mesh.renderOrder = 100; return mesh;
+}
+function spiritMiniature(spirit) {
+  const g = new THREE.Group(); g.renderOrder = 100; g.scale.setScalar(1.28);
+  const color = new THREE.Color(spirit.color);
+  const base = solid(new THREE.CylinderGeometry(.46, .52, .16, 6), 0x111a2d, .65, .08); base.position.y = .03; g.add(base);
+  const halo = solid(new THREE.TorusGeometry(.57, .055, 6, 36), color, .2, 3.4); halo.rotation.x = Math.PI / 2; halo.position.y = .16; g.add(halo);
+  const torso = solid(new THREE.BoxGeometry(.53, .58, .32), color.clone().multiplyScalar(.42), .55, .18); torso.position.y = .82; g.add(torso);
+  const chest = solid(new THREE.BoxGeometry(.12, .42, .34), color, .3, 1.2); chest.position.y = .84; g.add(chest);
+  for (const x of [-.17, .17]) { const leg = solid(new THREE.BoxGeometry(.17, .42, .18), 0x151b2d, .6, .06); leg.position.set(x, .34, 0); g.add(leg); }
+  const head = solid(new THREE.IcosahedronGeometry(.235, 1), 0xb8c4d8, .8, .12); head.position.y = 1.31; g.add(head);
+  const visor = solid(new THREE.BoxGeometry(.37, .06, .08), color, .2, 3.2); visor.position.set(0, 1.32, .19); g.add(visor);
+  if (spirit.id === 'cosmic_ronin') { const hat = solid(new THREE.ConeGeometry(.36, .12, 6), 0x172339); hat.position.y = 1.31; g.add(hat); }
+  if (spirit.id === 'Metalness_Monster') {
+    for (const x of [-.2, .2]) { const horn = solid(new THREE.ConeGeometry(.085, .28, 5), 0xc3ac8c); horn.position.set(x, 1.3, 0); horn.rotation.z = -Math.sign(x) * .5; g.add(horn); }
+    torso.scale.x = 1.3;
+  }
+  const instrument = new THREE.Group();
+  instrument.add(solid(new THREE.BoxGeometry(.32, .39, .11), color, .7, .4));
+  const neck = solid(new THREE.BoxGeometry(.065, .72, .08), 0xe5e9f4, .7, .08); neck.position.y = .48; instrument.add(neck);
+  instrument.position.set(.21, .72, .34); instrument.rotation.z = -.65; g.add(instrument);
+  return g;
+}
+
+const SPIRITS = [
+  { id:'cosmic_ronin',      name:'Shredding Ronin',   color:'#4488ff', hex:23 },
+  { id:'Metalness_Monster', name:'Metalness Monster', color:'#ffcc00', hex:99 },
+  { id:'intergalactic_0',   name:'Intergalactic 0',   color:'#aa55ff', hex:32 },
+  { id:'Glamarchy',         name:'Glamarchy',         color:'#ff5fbf', hex:106 },   // colour is a stand-in
+];
+for (const s of SPIRITS) { s.pawn = spiritMiniature(s); s.pawn.position.copy(arenaPoint(s.hex, .34)); scene.add(s.pawn); }
+let actingIdx = 0;
+
+// ═══ MOVE TILES ═══════════════════════════════════════════════════════════════
+// 🟪 Drawn IN the 3D scene, not on the flat SVG layer: in the game that layer is
+// the click surface, and its outlines are hidden in 3D (BoardViewport.jsx), which
+// is why today's move highlight is a 9% white fill and nothing else.
+const turn = { steps:3, armed:true };
+let stepsPerTurn = 3, stepping = false, tileMode = 'new', washOn = true, hoverHex = null;
+let nearSet = new Set(), farSet = new Set(), moveVis = 0;
+const plateGeo = new THREE.CylinderGeometry(.93, .93, 1, 6).rotateY(Math.PI / 6).translate(0, .5, 0);
+const ringGeo = new THREE.RingGeometry(.8, .93, 6).rotateX(-Math.PI / 2);
+const additive = () => new THREE.MeshBasicMaterial({ transparent:true, opacity:0, depthWrite:false, blending:THREE.AdditiveBlending, toneMapped:false, side:THREE.DoubleSide });
+const tiles = new Map();
+for (const n of NUMS) {
+  const plate = new THREE.Mesh(plateGeo, additive()), rim = new THREE.Mesh(ringGeo, additive());
+  plate.position.copy(arenaPoint(n, .09)); rim.position.copy(arenaPoint(n, .1));
+  plate.visible = rim.visible = false; plate.renderOrder = rim.renderOrder = 60;
+  scene.add(plate, rim); tiles.set(n, { plate, rim, a:0, lift:0 });
+}
+const pipGroup = new THREE.Group(); scene.add(pipGroup);
+const pipGeo = new THREE.SphereGeometry(.17, 16, 10);
+const numberSprite = (() => {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map:texture, transparent:true, depthTest:false, toneMapped:false }));
+  sprite.renderOrder = 175; sprite.scale.setScalar(.8); scene.add(sprite);
+  return { canvas, texture, sprite, last:'' };
+})();
+const washes = [0x40d8ff, 0x9a55ff].map(c => { const m = new THREE.Mesh(new THREE.CircleGeometry(3.4, 40).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color:c, transparent:true, opacity:.2, depthWrite:false, blending:THREE.AdditiveBlending })); m.position.y = .115; scene.add(m); return m; });
+
+function occupiedHexes(except) { return new Set(SPIRITS.filter(o => o !== except).map(o => o.hex)); }
+function reachSets() {
+  const s = SPIRITS[actingIdx], blocked = occupiedHexes(s);
+  const live = turn.armed && turn.steps > 0 && !active.battle && !stepping;
+  if (!live) return [new Set(), new Set()];
+  const near = new Set(NEIGHBORS[s.hex].filter(n => !blocked.has(n)));
+  const far = new Set(); let frontier = [...near]; const seen = new Set([s.hex, ...near]);
+  for (let d = 2; d <= turn.steps; d++) {
+    const nextF = [];
+    for (const h of frontier) for (const n of NEIGHBORS[h]) if (!seen.has(n) && !blocked.has(n)) { seen.add(n); far.add(n); nextF.push(n); }
+    frontier = nextF;
+  }
+  return [near, far];
+}
+function updateTiles(now, dt) {
+  [nearSet, farSet] = reachSets();
+  const s = SPIRITS[actingIdx], today = tileMode === 'today';
+  const pink = new THREE.Color(S.tileColor), glowCol = pink.clone().multiplyScalar(S.brightness);
+  const rimCol = S.rimColor === 'spirit' ? new THREE.Color(s.color).multiplyScalar(S.brightness)
+    : S.rimColor === 'white' ? new THREE.Color(1, 1, 1).multiplyScalar(S.brightness) : glowCol;
+  const pulse = 1 - S.pulseDepth * (.5 + .5 * Math.sin(now / 1000 * Math.PI * 2 / S.pulseS));
+  const k = S.fadeMs <= 0 ? 1 : 1 - Math.exp(-dt / (S.fadeMs / 3));
+  for (const [n, t] of tiles) {
+    const near = nearSet.has(n), far = S.farReach === 'dim' && farSet.has(n), hot = near && n === hoverHex;
+    let want = 0, lift = 0;
+    if (today) want = near ? .09 : 0;
+    else if (near) { want = S.nearOpacity * pulse; if (hot) { want += S.hoverBoost * (1 - want); lift = S.hoverBoost * .15; } }
+    else if (far) want = S.farOpacity;
+    t.a += (want - t.a) * k; t.lift += (lift - t.lift) * k;
+    const on = t.a > .004;
+    t.plate.visible = on; t.rim.visible = on && !today && S.rimColor !== 'none' || on && !today && S.tileStyle === 'outline';
+    if (!on) continue;
+    if (today) {
+      t.plate.material.color.setRGB(1, 1, 1); t.plate.material.blending = THREE.NormalBlending; t.plate.material.opacity = t.a;
+      t.plate.scale.set(1, .012, 1); t.plate.position.y = .09; continue;
+    }
+    t.plate.material.blending = THREE.AdditiveBlending;
+    // Later tiles lie flat with no rim, so "next step" and "later" read apart by SHAPE, not just strength.
+    const h = S.tileStyle === 'plate' && near ? Math.max(.012, S.plateHeight) : .012;
+    const inset = S.plateInset;
+    t.plate.scale.set(inset, h, inset); t.plate.position.y = .09 + t.lift;
+    t.plate.material.color.copy(glowCol);
+    t.plate.material.opacity = S.tileStyle === 'outline' ? t.a * .15 : t.a;
+    const nearish = near ? 1 : 0;
+    t.rim.scale.setScalar(inset); t.rim.position.y = .09 + h + t.lift + .005;
+    t.rim.material.color.copy(S.tileStyle === 'outline' && S.rimColor === 'none' ? glowCol : rimCol);
+    t.rim.material.opacity = Math.min(1, t.a * (S.tileStyle === 'outline' ? 2.2 : 1.6) * nearish);
+  }
+  // board dim + the pips follow the same fade as the tiles
+  const showMove = !today && turn.armed && !active.battle;
+  moveVis += ((showMove && (nearSet.size || stepping) ? 1 : 0) - moveVis) * k;
+  const dim = S.boardDim * moveVis;
+  boardMat.color.setHex(BOARD_COLOR).multiplyScalar(1 - dim); boardMat.emissiveIntensity = BOARD_EMISSIVE * (1 - dim);
+  boardRim.opacity = RIM_OPACITY * (1 - dim * .8);
+  // pips: one per step this turn, lit = steps left; greys out at zero
+  const wantRing = showMove && (S.pips === 'ring' || S.pips === 'both');
+  if (pipGroup.children.length !== stepsPerTurn) {
+    pipGroup.clear();
+    for (let i = 0; i < stepsPerTurn; i++) { const m = new THREE.Mesh(pipGeo, new THREE.MeshBasicMaterial({ toneMapped:false, transparent:true, depthTest:false })); m.renderOrder = 120; pipGroup.add(m); }
+  }
+  pipGroup.visible = wantRing;
+  const base = s.pawn.position;
+  pipGroup.children.forEach((m, i) => {
+    // An arc on the camera's side of the pawn, so the pawn never hides its own pips.
+    const toCam = Math.atan2(camera.position.z - base.z, camera.position.x - base.x);
+    const ang = toCam + (i - (stepsPerTurn - 1) / 2) * .42;
+    m.position.set(base.x + Math.cos(ang) * 1.3, .45, base.z + Math.sin(ang) * 1.3);
+    const lit = i < turn.steps;
+    // Pips float above the tiles and burn hotter than them, so pink-on-pink never swallows them.
+    m.material.color.copy(lit ? glowCol.clone().lerp(new THREE.Color(2, 2, 2), .35) : new THREE.Color(0x3a4666));
+    m.material.opacity = lit ? 1 : .8;
+  });
+  const wantNum = showMove && (S.pips === 'number' || S.pips === 'both');
+  numberSprite.sprite.visible = wantNum;
+  if (wantNum) {
+    const label = `${turn.steps}|${S.tileColor}`;
+    if (label !== numberSprite.last) {
+      numberSprite.last = label; const c = numberSprite.canvas.getContext('2d'); c.clearRect(0, 0, 128, 128);
+      c.fillStyle = 'rgba(4,7,16,.8)'; c.beginPath(); c.arc(64, 64, 44, 0, Math.PI * 2); c.fill();
+      c.lineWidth = 6; c.strokeStyle = turn.steps ? S.tileColor : '#3a4666'; c.stroke();
+      c.font = "700 54px 'Saira', sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillStyle = turn.steps ? '#fff' : '#6d7a99'; c.fillText(String(turn.steps), 64, 68); numberSprite.texture.needsUpdate = true;
+    }
+    numberSprite.sprite.position.set(base.x + 1.1, 1.9, base.z);
+  }
+  washes.forEach((w, i) => { w.visible = washOn; const t = now / 1000 * (.22 + i * .07) + i * 2; w.position.x = Math.sin(t) * 6 + (i ? -2 : 2); w.position.z = Math.cos(t * 1.3) * 4; });
+}
+
+async function stepTo(s, hex) {
+  if (stepping || turn.steps < 1) return false;
+  stepping = true;
+  const now = performance.now(), a = arenaPoint(s.hex, .34), b = arenaPoint(hex, .34);
+  // One move record per walk: a further step inside 900 ms extends it, like
+  // createCameraSubjects in the game, so the Ken Burns push does not restart.
+  let mv = active.moves.find(m => m.s === s && now < m.until);
+  if (mv) { mv.to = b; mv.until = Infinity; } else { mv = { key:`${++seq}`, s, from:a, to:b, until:Infinity }; active.moves.push(mv); }
+  turn.steps--;
+  await animate(300, p => { s.pawn.position.lerpVectors(a, b, p); s.pawn.position.y = .34 + Math.sin(p * Math.PI) * .45; });
+  s.hex = hex; stepping = false;
+  mv.until = performance.now() + 900;
+  return true;
+}
+let stepGapMs = 650;
+async function walk(s, n, my = token) {
+  for (let i = 0; i < n && turn.steps > 0; i++) {
+    const [near] = reachSets(); if (!near.size) break;
+    const opts = [...near].sort((a, b) => (arenaPoint(a).length() - arenaPoint(b).length()) + (Math.random() - .5) * 3);
+    await stepTo(s, opts[0]); if (my !== token) return;
+    await sleep(stepGapMs);
+  }
+}
+const legend = document.getElementById('legend');
+const drawLegend = () => { legend.innerHTML = SPIRITS.map((s, i) => `<span style="color:${s.color}">${i === actingIdx ? '▶ ' : '&nbsp;&nbsp;'}<b>${s.name}</b></span>`).join(''); };
+
+// ── the stand-in match: what the director is fed ───────────────────────────
+const active = { moves:[], battle:null, events:[] };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let seq = 0;
+const occupied = () => new Set(SPIRITS.map(s => s.hex));
+const nearestRivalOf = s => SPIRITS.filter(o => o !== s).sort((a, b) => arenaPoint(a.hex).distanceTo(arenaPoint(s.hex)) - arenaPoint(b.hex).distanceTo(arenaPoint(s.hex)))[0];
+const glow = color => new THREE.MeshBasicMaterial({ color, transparent:true, opacity:.9, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide });
+const anims = [];   // {t0, dur, step(p), done()}
+const animate = (dur, step) => new Promise(res => anims.push({ t0:performance.now(), dur, step, done:res }));
+
+async function moveSpirit(s, steps) {
+  // a walk that heads roughly toward the middle so pawns do not pile on an edge
+  const path = [s.hex], taken = occupied();
+  for (let i = 0; i < steps; i++) {
+    const here = path[path.length - 1];
+    const opts = NEIGHBORS[here].filter(n => !taken.has(n) && !path.includes(n));
+    if (!opts.length) break;
+    opts.sort((a, b) => (arenaPoint(a).length() - arenaPoint(b).length()) + (Math.random() - .5) * 3);
+    path.push(opts[0]);
+  }
+  if (path.length < 2) return;
+  const mv = { key:`${++seq}`, s, from:arenaPoint(path[0], .34), to:arenaPoint(path[path.length - 1], .34) };
+  active.moves.push(mv);
+  for (let i = 1; i < path.length; i++) {
+    const a = arenaPoint(path[i - 1], .34), b = arenaPoint(path[i], .34);
+    await animate(300, p => { s.pawn.position.lerpVectors(a, b, p); s.pawn.position.y = .34 + Math.sin(p * Math.PI) * .45; });
+    s.hex = path[i];
+  }
+  active.moves = active.moves.filter(m => m !== mv);
+}
+async function battle(a, b) {
+  const key = `${++seq}`;
+  active.battle = { key, a, b };
+  const pa = a.pawn.position.clone(), pb = b.pawn.position.clone(), dir = pb.clone().sub(pa).setY(0).normalize();
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, 1, 8, 1, true), glow(a.color));
+  beam.visible = false; scene.add(beam);
+  const burst = new THREE.Mesh(new THREE.RingGeometry(.5, .75, 40), glow(a.color)); burst.rotation.x = -Math.PI / 2; burst.visible = false; scene.add(burst);
+  await animate(2600, p => {
+    const lunge = p < .25 ? Math.sin(p / .25 * Math.PI) * .5 : 0;
+    a.pawn.position.copy(pa).addScaledVector(dir, lunge);
+    const hitP = p > .3 && p < .75 ? (p - .3) / .45 : -1;
+    beam.visible = hitP >= 0;
+    if (beam.visible) {
+      const from = pa.clone().setY(1.2), to = pb.clone().setY(1.2), mid = from.clone().lerp(to, .5);
+      beam.position.copy(mid); beam.scale.set(1, from.distanceTo(to), 1);
+      beam.lookAt(to); beam.rotateX(Math.PI / 2); beam.material.opacity = .9 * Math.sin(hitP * Math.PI);
+    }
+    for (const at of [.45, .65]) {
+      if (p > at && p < at + .25) { const q = (p - at) / .25; burst.visible = true; burst.position.copy(pb).setY(.3); burst.scale.setScalar(1 + q * 3); burst.material.opacity = 1 - q; }
+    }
+    b.pawn.position.copy(pb); if (p > .45 && p < .8) b.pawn.position.x += Math.sin(p * 90) * .06;
+  });
+  scene.remove(beam, burst);
+  active.battle = null;
+}
+async function effectAt(hex, color = '#ff7a3d') {
+  const e = { key:`${++seq}`, point:arenaPoint(hex, .18) };
+  active.events.push(e);
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(.7, .9, 6, 20, 1, true), glow(color)); pillar.position.copy(e.point).setY(3); scene.add(pillar);
+  await animate(1700, p => { pillar.scale.set(1 + p * .3, Math.sin(Math.min(1, p * 1.6) * Math.PI / 2), 1 + p * .3); pillar.material.opacity = .85 * (1 - p * p); });
+  scene.remove(pillar);
+  active.events = active.events.filter(x => x !== e);
+}
+const nextTurn = () => { actingIdx = (actingIdx + 1) % SPIRITS.length; turn.steps = stepsPerTurn; turn.armed = true; drawLegend(); };
+
+const v3 = p => ({ x:p.x, y:p.y, z:p.z });
+function subjects() {
+  const acting = SPIRITS[actingIdx];
+  const nowMs = performance.now();
+  active.moves = active.moves.filter(m => m.until > nowMs);
+  return {
+    center:{ x:1, y:-2.8, z:0 },
+    acting:{ id:acting.id, point:v3(acting.pawn.position) },
+    rivals:SPIRITS.filter(s => s !== acting).map(s => ({ id:s.id, point:v3(s.pawn.position) })),
+    moves:active.moves.map(m => ({ key:m.key, id:m.s.id, from:v3(m.from), to:v3(m.to), point:v3(m.s.pawn.position) })),
+    battle:active.battle ? { key:active.battle.key, attacker:v3(active.battle.a.pawn.position), defender:v3(active.battle.b.pawn.position) } : null,
+    events:active.events.map(e => ({ key:e.key, point:v3(e.point) })),
+  };
+}
+
+// ── autoplay ───────────────────────────────────────────────────────────────
+let playing = false, token = 0;
+let gapS = 9;
+async function playLoop(my) {
+  while (playing && my === token) {
+    const s = SPIRITS[actingIdx];
+    turn.armed = true;
+    await sleep(1800); if (my !== token) return;          // "thinking" with the tiles up
+    await walk(s, 1 + Math.floor(Math.random() * stepsPerTurn), my); if (my !== token) return;
+    await sleep(700);
+    turn.armed = false;                                      // done moving: the tiles go
+    const r = Math.random();
+    if (r < .55) await battle(s, nearestRivalOf(s));
+    else if (r < .85) await effectAt(nearestRivalOf(s).hex, ['#ff7a3d','#42ff9e','#ff3355'][Math.floor(Math.random() * 3)]);
+    await sleep(gapS * 1000); if (my !== token) return;
+    nextTurn();
+  }
+}
+const autoBtn = document.getElementById('autoplay');
+autoBtn.onclick = () => {
+  playing = !playing; token++;
+  autoBtn.textContent = playing ? '■ Stop autoplay' : '▶ Autoplay match'; autoBtn.classList.toggle('on', playing);
+  if (playing) playLoop(token);
+};
+const gapEl = document.getElementById('gap');
+gapEl.oninput = () => { gapS = Number(gapEl.value); document.getElementById('gapOut').textContent = `${gapS} s`; };
+document.getElementById('mMove').onclick = () => { turn.armed = true; walk(SPIRITS[actingIdx], turn.steps); };
+document.getElementById('mBattle').onclick = () => { if (!active.battle) battle(SPIRITS[actingIdx], nearestRivalOf(SPIRITS[actingIdx])); };
+const stepsEl = document.getElementById('steps');
+stepsEl.oninput = () => { stepsPerTurn = Number(stepsEl.value); turn.steps = stepsPerTurn; turn.armed = true; document.getElementById('stepsOut').textContent = stepsPerTurn; };
+document.getElementById('mSteps0').onclick = () => { turn.steps = 0; turn.armed = true; };
+document.getElementById('mCrowd').onclick = () => {
+  const s = SPIRITS[actingIdx], r = nearestRivalOf(s), free = NEIGHBORS[s.hex].filter(n => !occupiedHexes().has(n));
+  if (!free.length) return; r.hex = free[0]; r.pawn.position.copy(arenaPoint(r.hex, .34));
+};
+const tileBtn = document.getElementById('tileCompare');
+tileBtn.onclick = () => { tileMode = tileMode === 'new' ? 'today' : 'new'; tileBtn.textContent = `Tiles: ${tileMode === 'new' ? 'NEW' : 'TODAY’S (9% white, outline hidden)'}`; tileBtn.classList.toggle('on', tileMode === 'new'); };
+const washBtn = document.getElementById('washBtn');
+washBtn.onclick = () => { washOn = !washOn; washBtn.textContent = `Stage-light wash: ${washOn ? 'ON' : 'OFF'}`; washBtn.classList.toggle('on', washOn); };
+document.getElementById('mEvent').onclick = () => effectAt(nearestRivalOf(SPIRITS[actingIdx]).hex);
+document.getElementById('mTurn').onclick = nextTurn;
+let autoOn = true, simReduced = false;
+const cmpBtn = document.getElementById('compare');
+cmpBtn.onclick = () => { autoOn = !autoOn; cmpBtn.textContent = `Auto camera: ${autoOn ? 'ON' : 'OFF (today’s fixed camera)'}`; cmpBtn.classList.toggle('on', autoOn); };
+const redBtn = document.getElementById('reducedSim');
+redBtn.onclick = () => { simReduced = !simReduced; redBtn.textContent = `Simulate reduced motion: ${simReduced ? 'ON' : 'OFF'}`; redBtn.classList.toggle('on', simReduced); };
+
+// ── the adapter: the part of the port that knows about OrbitControls ────────
+const director = createCameraDirector(S);
+// ⚠️ A click with no drag is a gameplay click (picking a hex) and must NOT take
+// the camera. Only a drag past a few pixels, a wheel, or a pinch counts.
+const DRAG_PX = 5;
+let press = null;
+const el = renderer.domElement;
+el.addEventListener('pointerdown', e => { press = { x:e.clientX, y:e.clientY, id:e.pointerId, taken:false }; });
+el.addEventListener('pointermove', e => {
+  if (!press || press.taken || e.pointerId !== press.id) return;
+  if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > DRAG_PX) { press.taken = true; director.userStart(performance.now()); }
+});
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), -.09), hitP = new THREE.Vector3();
+function hexAt(clientX, clientY) {
+  const rect = el.getBoundingClientRect();
+  ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera); if (!ray.ray.intersectPlane(floor, hitP)) return null;
+  let best = null, bd = .95;
+  for (const n of NUMS) { const d = Math.hypot(arenaPoint(n).x - hitP.x, arenaPoint(n).z - hitP.z); if (d < bd) { bd = d; best = n; } }
+  return best;
+}
+el.addEventListener('pointermove', e => { hoverHex = hexAt(e.clientX, e.clientY); el.style.cursor = nearSet.has(hoverHex) ? 'pointer' : ''; });
+el.addEventListener('pointerleave', () => { hoverHex = null; });
+// ⚠️ A click with no drag is a gameplay click: it steps, and never takes the camera.
+const release = e => { if (press && e.pointerId === press.id) {
+  if (press.taken) director.userEnd(performance.now());
+  else if (e.type === 'pointerup') { const h = hexAt(e.clientX, e.clientY); if (nearSet.has(h)) { turn.armed = true; stepTo(SPIRITS[actingIdx], h); } }
+  press = null; } };
+window.addEventListener('pointerup', release); window.addEventListener('pointercancel', release);
+el.addEventListener('wheel', () => director.userNudge(performance.now()), { passive:true });
+
+const fit = aspect => Math.max(1, SVG_ASPECT / aspect);
+function view(name) {
+  const point = name === 'focus' ? arenaPoint(SPIRITS[actingIdx].hex) : null;
+  controls.target.copy(point ?? new THREE.Vector3(name === 'arena' ? 1 : 0, name === 'arena' ? -2.8 : 0, 0));
+  const distance = (point ? 18 : 35) * fit(Math.max(camera.aspect, .25));
+  if (name === 'arena') camera.position.set(27, 20.8, 37).multiplyScalar(fit(Math.max(camera.aspect, .25))).add(controls.target);
+  else camera.position.set(0, distance * .94, distance * .34).add(controls.target);
+  controls.update();
+}
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { view(b.dataset.view); if (S.viewButtons === 'pause') director.userNudge(performance.now()); });
+function resize() {
+  const { width, height } = host.getBoundingClientRect(); if (!width || !height) return;
+  camera.aspect = width / height; camera.updateProjectionMatrix();
+  renderer.setSize(width, height, false); composer.setSize(width, height); bloom.setSize(width, height);
+}
+new ResizeObserver(resize).observe(host); resize(); view('arena');
+
+const badge = document.getElementById('badge'), badgeText = document.getElementById('badgeText'), badgeBar = document.getElementById('badgeBar');
+const statusEl = document.getElementById('status');
+const SHOT_NAMES = { mid:'close on acting', rival:'surroundings', wide:'whole arena (quiet)', hero:'hero shot', move:'Ken Burns on the mover', battle:'battle', event:'effect' };
+let last = performance.now(), lastOut = { mode:'auto' };
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dtMs = now - last; last = now;
+  for (let i = anims.length - 1; i >= 0; i--) { const a = anims[i], p = Math.min(1, (now - a.t0) / a.dur); a.step(p); if (p >= 1) { anims.splice(i, 1); a.done(); } }
+  updateTiles(now, Math.min(dtMs, 100));
+  const out = autoOn ? director.update({ dtMs, now, subjects:subjects(), camera:{ position:camera.position, target:controls.target }, reduced:simReduced })
+                     : { driving:false, mode:'off' };
+  if (out.driving) {
+    controls.target.set(out.target.x, out.target.y, out.target.z);
+    camera.position.set(out.position.x, out.position.y, out.position.z);
+    camera.lookAt(controls.target);
+  } else controls.update();
+  lastOut = out;
+  // badge + status
+  const show = autoOn && out.mode !== 'off' && (S.badge === 'on' || (S.badge === 'manual' && out.mode === 'manual'));
+  badge.style.opacity = show ? 1 : 0;
+  badge.className = `badge ${out.mode}`;
+  if (out.mode === 'manual') {
+    badgeText.textContent = `✋ YOURS · auto in ${(Math.max(0, out.resumeInMs) / 1000).toFixed(1)} s`;
+    badgeBar.style.display = ''; badgeBar.firstElementChild.style.width = `${100 * (1 - Math.max(0, out.resumeInMs) / S.resumeAfterMs)}%`;
+  } else { badgeText.textContent = out.mode === 'resume' ? '🎥 AUTO · easing back in' : '🎥 AUTO'; badgeBar.style.display = 'none'; }
+  statusEl.textContent = !autoOn ? 'Auto camera off — this is today’s camera: it only moves when you move it.'
+    : out.mode === 'off' ? 'Reduced motion: auto camera is off (lever “Players who asked for reduced motion”).'
+    : out.mode === 'manual' ? `You have the camera. Let go and it comes back in ${(Math.max(0, out.resumeInMs) / 1000).toFixed(1)} s.`
+    : `Auto camera · ${SHOT_NAMES[out.shot] ?? out.shot ?? '—'}${out.mode === 'resume' ? ' · easing back in' : ''} · quiet ${((out.quietMs ?? 0) / 1000).toFixed(0)} s / wide at ${S.wideAfterS} s`;
+  statusEl.textContent += ` · ${SPIRITS[actingIdx].name}: ${turn.steps} step${turn.steps === 1 ? '' : 's'} left`;
+  composer.render();
+}
+requestAnimationFrame(loop);
+drawLegend();
+
+// ── levers UI + render() chokepoint + dial-in ──────────────────────────────
+const leversEl = document.getElementById('levers'); const inputs = {};
+const fmt = (l, v) => l.type === 'color' ? v : l.type === 'range' ? `${l.step < 1 ? Number(v).toFixed(l.step < .01 ? 3 : l.step < .1 ? 2 : 1) : v}${l.unit ? ' ' + l.unit : ''}` : (l.options.find(o => o[0] === v) || [v, v])[1];
+for (const l of LEVERS) {
+  if (l.group) { const h = document.createElement('h3'); h.textContent = l.group; leversEl.appendChild(h); continue; }
+  const w = document.createElement('div'); w.className = 'lever';
+  w.innerHTML = `<div class="top"><span>${l.label}</span><b></b></div>`;
+  if (l.type === 'range') {
+    const r = document.createElement('input'); Object.assign(r, { type:'range', min:l.min, max:l.max, step:l.step, value:S[l.key] });
+    r.oninput = () => { S[l.key] = Number(r.value); render(); }; w.appendChild(r); inputs[l.key] = { l, r, w };
+  } else if (l.type === 'color') {
+    const row = document.createElement('div'); row.className = 'row';
+    const c = document.createElement('input'); c.type = 'color'; c.value = S[l.key]; c.style.cssText = 'width:34px;height:24px;border:0;background:none;padding:0';
+    c.oninput = () => { S[l.key] = c.value; render(); }; row.appendChild(c);
+    for (const [val, txt] of l.presets) { const b = document.createElement('button'); b.textContent = txt; b.dataset.val = val; b.style.borderColor = val; b.onclick = () => { S[l.key] = val; render(); }; row.appendChild(b); }
+    w.appendChild(row); inputs[l.key] = { l, c, row, w };
+  } else {
+    const row = document.createElement('div'); row.className = 'row';
+    for (const [val, txt] of l.options) { const b = document.createElement('button'); b.textContent = txt; b.dataset.val = val; b.onclick = () => { S[l.key] = val; render(); }; row.appendChild(b); }
+    w.appendChild(row); inputs[l.key] = { l, row, w };
+  }
+  if (l.hint) { const h = document.createElement('div'); h.className = 'hint'; h.textContent = l.hint; w.appendChild(h); }
+  leversEl.appendChild(w);
+}
+function render() {
+  for (const [k, { l, r, c, row, w }] of Object.entries(inputs)) {
+    // ⚠️ push state back onto the inputs, or a restored page disagrees with its sliders
+    if (r && Number(r.value) !== S[k]) r.value = S[k];
+    if (c && c.value !== S[k]) c.value = S[k];
+    if (row) row.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.val === S[k]));
+    const out = w.querySelector('.top b'); out.textContent = fmt(l, S[k]); out.classList.toggle('changed', S[k] !== DEF[k]);
+  }
+  director.retune(S);
+  document.getElementById('dialin').value = dialIn();
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ S })); } catch (_) {}
+}
+function dialIn() {
+  const pad = (s, n) => (s + ' '.repeat(n)).slice(0, n);
+  const lines = [`CAMERA + MOVE TILES DIAL-IN — ${PAGE} — ${new Date().toISOString().slice(0, 10)}`,
+    `changed ${REAL.filter(l => S[l.key] !== DEF[l.key]).length} of ${REAL.length}`, ''];
+  for (const l of LEVERS) {
+    if (l.group) { lines.push(`— ${l.group} —`); continue; }
+    const v = S[l.key], ch = v !== DEF[l.key];
+    lines.push(`${ch ? '★' : ' '} ${pad(l.key, 15)} ${pad(String(v), 9)} ${ch ? `← CHANGED (default ${DEF[l.key]})` : '(default, untouched)'}`);
+  }
+  return lines.join('\n');
+}
+document.getElementById('copy').onclick = async () => {
+  const ta = document.getElementById('dialin'), msg = document.getElementById('copyMsg'); ta.focus(); ta.select();
+  // ⚠️ the selectable box is the mechanism; the clipboard is a convenience that file:// can refuse
+  try { await navigator.clipboard.writeText(ta.value); msg.textContent = 'Copied.'; }
+  catch (_) { try { msg.textContent = document.execCommand('copy') ? 'Copied.' : 'Selected, press Ctrl+C.'; } catch (__) { msg.textContent = 'Selected, press Ctrl+C.'; } }
+};
+document.getElementById('reset').onclick = () => { Object.assign(S, DEF); render(); };
+render();
+window.__autoCam = { S, SPIRITS, director, active, subjects, moveSpirit, battle, effectAt, nextTurn, view, camera, controls,
+  turn, stepTo, walk, hexAt, tiles, get near() { return [...nearSet]; }, get far() { return [...farSet]; }, get acting() { return SPIRITS[actingIdx]; },
+  setTileMode(m) { if (m !== tileMode) tileBtn.click(); }, pipGroup, numberSprite, boardMat,
+  get out() { return lastOut; }, setAuto(v) { if (v !== autoOn) cmpBtn.click(); }, setReduced(v) { if (v !== simReduced) redBtn.click(); } };
+</script>
+</body>
+</html>

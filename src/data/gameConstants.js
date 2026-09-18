@@ -14,6 +14,38 @@ export const DB_UPGRADE_THRESHOLD = 4;
 // over; only this many spent slots recharge per turn.
 export const STOCK_REFILL_RATE = 6;
 
+// -- 🎼 WEIGHTED STOCK DRAW — half guaranteed in tune, half left to chance ----
+//
+// Every note drawn into a Spirit's OWN hand — the opening stock, the turn-start
+// refill, the Ronin's second note on a find — is, with this probability, picked
+// straight from the palette (`playableScale(root, mode)`). Otherwise it is picked
+// from all twelve, exactly as the draw always was, and may land in tune anyway.
+//
+// 🎯 THE RESULTING IN-PALETTE SHARE IS  g + (1 − g) × paletteSize / 12:
+//   Ronin, six-note Hirajoshi  → 0.50 + 0.50 × 6/12 = **75%**
+//   seven-note modes           → 0.50 + 0.50 × 7/12 = **~79%**
+// (Uniform over twelve it was 50% and 58%.)
+//
+// ⭐ ALEX'S CALL, 2026-09-16, AND THE REASONING IS HIS. The first build was a flat
+// 75% for every Spirit. He preferred this shape: *"I still like the idea of some
+// variance. And if there are basically guaranteed enough notes in a scale to
+// cover moving, the argument of needing to use Discord notes to possibly move is
+// moot. I'd like to try … 50% guaranteed and 50% random."* So:
+//   · the guaranteed half makes a playable line close to certain;
+//   · the random half keeps hands genuinely different from each other;
+//   · a seven-note palette ends ~4 points ahead of the Ronin's six — accepted, and
+//     it is the price of the random half being honestly random.
+// 2/3 guaranteed (83% / 86%) was also on the table — his own first proposal —
+// and he chose the half.
+//
+// ⚠️ THE BOARD IS NOT WEIGHTED, AND MUST NOT BE. Lost Chord tokens are shared by
+// every Spirit, and there is no one palette to lean them toward — they have
+// their own lean, `TOKEN_UNLOCK_SPAWN_SHARE` below.
+//
+// 📌 This shapes NEW notes. Carried-over notes are respelled, not redrawn, so when
+// the root moves some of them stop fitting and a real hand sits a little lower.
+export const STOCK_PALETTE_GUARANTEE = 0.5;
+
 // -- DRIVE / SUSTAIN STACK SPLIT (DRIVE_SUSTAIN_SPLIT_DESIGN.md) --
 export const STACK_COMMIT_BUDGET = 3;   // max notes committed to stacks per turn (split freely between Drive & Sustain)
 

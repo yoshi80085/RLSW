@@ -129,10 +129,13 @@ const run = (ns, seed = 5) => startTurnNotes(ns, { draws: drawsFor(ns, seed) });
 // 5. SPIRIT PALETTE — chord quality cannot change it; stock is respelled.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  // A minor triad in the Drive Stack cannot pull the Ronin out of Lydian.
-  const minor = sheet({ driveStack: ['C', 'Eb', 'G'], scaleMode: 'major', rootNote: 'C' });
-  const { patch, report } = run(minor);
-  eq(patch.scaleMode, 'lydian', 'the Ronin keeps his Lydian palette');
+  // A MAJOR triad in the Drive Stack cannot pull the Ronin out of Hirajoshi.
+  // ⚠️ The chord is major on purpose: Hirajoshi carries a ♭3, so a minor triad
+  // would agree with the palette and prove nothing. (Until 2026-09-16 the Ronin
+  // was Lydian and this fixture was a minor triad, for the same reason.)
+  const major = sheet({ driveStack: ['C', 'E', 'G'], scaleMode: 'major', rootNote: 'C' });
+  const { patch, report } = run(major);
+  eq(patch.scaleMode, 'hirajoshi', 'the Ronin keeps his Hirajoshi palette');
   eq(report.modeChanged, true, 'legacy major state migrates to the explicit palette');
   eq(patch.modeChordName, null, 'no chord is credited with choosing the palette');
   eq(patch.pendingModeBonus, null, 'there is no mode-switch Db bonus to stage');

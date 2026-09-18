@@ -242,6 +242,8 @@ import { PC_PLAY_NAMES } from "./music/pitchNames.js";
 // 🎵 The Note Stock chip. SVG rings, not clip-path divs — NoteHex.jsx opens with
 // the reason why, and it is a reason worth reading before touching the chip.
 import NoteHex, { NOTE_HEX, NOTE_BURST } from "./ui/NoteHex.jsx";
+import { CrowdBubble, useCrowdCoach, crowdCss } from "./ui/CrowdBubble.jsx";
+import { crowdAsks, chordGlow, crowdStockMarks, CROWD_BUBBLE } from "./ui/crowdCoach.js";
 import Bracket from "./ui/Bracket.jsx";
 // 🎵 The note in flight — a real NoteHex on a bowed arc, not the old flat chip.
 import { NoteFlyChip } from "./ui/NoteFlyChip.jsx";
@@ -1230,6 +1232,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     try { return localStorage.getItem('rlsw.liteFx') === '1'; } catch { return false; }
   });
   useEffect(() => { try { localStorage.setItem('rlsw.liteFx', liteFx ? '1' : '0'); } catch { /* non-fatal */ } }, [liteFx]);
+  // 🎥 AUTO CAMERA — the 3D arena's camera follows the action and drifts between
+  // shots (board/cameraDirector.js). ON by default; the ☰ switch turns it off for
+  // good, which Alex asked for on the preview page (2026-09-17). Local to this
+  // machine, like Lite FX: it is how YOU like to watch, not a match setting.
+  const [autoCamera, setAutoCamera] = useState(() => {
+    try { return localStorage.getItem('rlsw.autoCamera') !== '0'; } catch { return true; }
+  });
+  useEffect(() => { try { localStorage.setItem('rlsw.autoCamera', autoCamera ? '1' : '0'); } catch { /* non-fatal */ } }, [autoCamera]);
 
   // 🎨 STAGE SKIN — which colour scheme the board is wearing. Purely cosmetic
   // and purely LOCAL: this deliberately does NOT ride in the match config or
@@ -1536,6 +1546,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // 🎓 BEGINNER MODE — tutorial tip popups that fire once per event type
   const [beginnerEnabled, setBeginnerEnabled] = useState(gameState.beginnerMode ?? true);
   const [beginnerTipsSeen, setBeginnerTipsSeen] = useState(new Set());
+  // 🎤 THE FANS' HINTS HAVE THEIR OWN SWITCH (Alex, 2026-09-17). Pickles' tips
+  // are a read-once walkthrough; the crowd coach is something a player keeps on
+  // until they know their Spirit. ⚠️ One flag for both meant dismissing the tips
+  // silently muted the fans too. Both start from the lobby's Beginner choice;
+  // after that they are independent — the tip's "turn off" touches tips only.
+  const [fanCoachEnabled, setFanCoachEnabled] = useState(gameState.fanCoach ?? gameState.beginnerMode ?? true);
   const [activeTip, setActiveTip] = useState(null); // { id, title, body } or null
   // The very first tip (welcome) is triggered by the initial Full Scale grant
   // useEffect, which also queues the chord tip to follow it. The skill_tree tip
@@ -2780,6 +2796,38 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const mojoDrain      = actingNoteState?.mojoDrain      ?? 0;
   const staggeredSlots = stagger?.slots ?? [];
 
+  // ─── 🎤 THE CROWD COACH — IDEAS_INBOX [P1] beginner finder, step 3 ─────────
+  // Beginner mode only, the acting HUMAN only, and only while there is still a
+  // build to coach (chord or melody step, not yet confirmed). Melody step: the
+  // Spirit's own fans say what to play next in a speech bubble. Chord step: the
+  // notes worth stacking glow red/blue in the stock. Alex's calls, 2026-09-16:
+  // own crowd only · a glow for chords · the crowd picks the goal.
+  // ⚠️ THE CLIENT DECIDES NOTHING HERE. `useCrowdCoach` runs the finder in a
+  // Worker (a hand costs up to ~1.3 s — never on the render path), `crowdAsks` /
+  // `chordGlow` turn its plays into words and colours, and every number comes
+  // from the game's own scorers. The dial-in is `CROWD_BUBBLE` in ui/crowdCoach.js.
+  // ⚠️ Hooks: these calls must stay UNCONDITIONAL — the gate is the `null` request.
+  const crowdCoachOn = !!(fanCoachEnabled && acting && !acting.cpu && canAct && !hasConfirmed
+    && (turnStep === 'melody' || turnStep === 'chord'));
+  const crowdCoach = useCrowdCoach(crowdCoachOn ? {
+    spiritId: acting.id, ns: actingNoteState,
+    goals: turnStep === 'melody' ? ['fans', 'db'] : ['drive', 'sustain'],
+    unavailable: turnStep === 'melody' ? staggeredSlots : [],
+  } : null);
+  const [crowdShown, setCrowdShown] = useState(null);
+  const crowdAsksNow = crowdCoachOn && turnStep === 'melody' && crowdCoach.plays
+    ? crowdAsks(acting.id, actingNoteState, crowdCoach.plays,
+        { voice: CROWD_BUBBLE.voice, chips: CROWD_BUBBLE.chips, dbBubble: CROWD_BUBBLE.dbBubble, ending: CROWD_BUBBLE.ending })
+    : [];
+  // 📍 stock index → 'fans' | 'db' (the note the bubble names next) or 'drive' | 'sustain' (chord glow)
+  const crowdMarks = !crowdCoachOn ? new Map()
+    : turnStep === 'melody' ? crowdStockMarks(crowdShown)
+    : crowdCoach.plays ? chordGlow(crowdCoach.plays, CROWD_BUBBLE.glowSrc, {
+        drive: spiritChord(acting.id, actingNoteState?.driveStack ?? []).drive,
+        sustain: spiritChord(acting.id, actingNoteState?.sustainStack ?? []).sustain,
+      })
+    : new Map();
+
   const spiritByNum = useMemo(() => {
     const m = {};
     spirits.forEach(s => { if (!s.knockedOut) m[s.num] = s; });
@@ -3100,9 +3148,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // variation, and (4+ note tracks) an accelerating ascending run capped by
   // the money note. Scheduling is budgeted to ≈2.5s so turn pacing matches
   // the normal groove. Math.random() here is audio flavour only — never a
-  // rule — so it needs no engine rng. His amp voice is already 'saw'; this
-  // only changes the PHRASING.
+  // rule — so it needs no engine rng. His amp voice is the KATANA
+  // (`audio/ampVoice.js` RONIN_LEAD); this only changes the PHRASING.
+  // 🎌 Both ringing endings BEND UP A WHOLE STEP into the final note (2026-09-16)
+  // — the pushed-string cry of a koto or a shakuhachi's rising breath, played
+  // on a distorted guitar. `RONIN_MONEY_BEND` is the lever.
   function playShredSequence(track) {
+    const RONIN_MONEY_BEND = -2;                       // semitones below; bends up into pitch
     const n = track.length;
     if (!n) return;
     const jitter = () => (Math.random() - 0.5) * 18;   // human, not quantised
@@ -3159,6 +3211,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       const last = track[n - 1];                       // …but the ending still rings.
       playNoteSound(last, {
         holdTime: 1.0, fadeTime: 0.9, volume: 0.19,
+        bend: RONIN_MONEY_BEND,
         when: at(tMs + 90),
       });
       return;
@@ -3189,6 +3242,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     playNoteSound(last, {
       holdTime: 1.1, fadeTime: 1.0, volume: 0.2,
       freq: lastF ? lastF * 2 : undefined,
+      bend: RONIN_MONEY_BEND,
       when: at(tMs + 40),
     });
   }
@@ -4097,7 +4151,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // single outing, so it is one nudge and never a nag.
     if (!acting?.cpu && beginnerTipsSeen.has('fan_phrases')
         && gesturesFor(acting?.id).length
-        && detectSpiritStyle(acting?.id, report.melodyLine).score === 0) {
+        // Read the commit's own verdict — it already knows discord breaks a shape.
+        && (report.style?.score ?? detectSpiritStyle(acting?.id, report.melodyLine).score) === 0) {
       setTimeout(() => showTip('fan_phrases_again'), 450);
     }
 
@@ -11734,7 +11789,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         // 🎵 Just refilled this turn — pop in instead of silently appearing.
                         const isFresh = freshNoteIdx?.spiritId === acting?.id && freshNoteIdx.indices.has(idx);
                         return (
-                          <div key={idx} onClick={(e)=>{ if (isStaggered) return; if (!used || mixerReady) clickNoteStock(idx, e); }}
+                          <div key={idx} data-coach={!used && !isStaggered ? crowdMarks.get(idx) : undefined}
+                            onClick={(e)=>{ if (isStaggered) return; if (!used || mixerReady) clickNoteStock(idx, e); }}
                             onMouseEnter={(e)=>{ const x=e.clientX, y=e.clientY; clearTimeout(hoverScaleTimerRef.current); hoverScaleTimerRef.current=setTimeout(()=>setHoverScale({note,x,y}),1500); }}
                             onMouseLeave={()=>{ clearTimeout(hoverScaleTimerRef.current); setHoverScale(cur=>cur?.note===note?null:cur); }}
                             title={isStaggered ? "⚡ Staggered — unavailable"
@@ -11815,6 +11871,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         </button>
       )}
       <GameStyles />
+
+      {/* 🎤 THE CROWD COACH — the stylesheet for the stock marks, and the fans'
+          bubble. ⚠️ Hidden while a Pickles tip is open: the tip is modal, and a
+          bubble talking over it would be two teachers at once. */}
+      {crowdCoachOn && <style>{crowdCss(acting.color ?? '#8fd8ff')}</style>}
+      {crowdCoachOn && turnStep === 'melody' && !activeTip && (
+        <CrowdBubble asks={crowdAsksNow} color={acting.color ?? '#8fd8ff'} thinking={crowdCoach.thinking}
+          inScale={n => currentScale.includes(n)} onShow={setCrowdShown} />
+      )}
 
       {/* 🎓 BEGINNER TIP POPUP — paged walkthroughs with HUD-pointing arrows
           (ui/BeginnerTipOverlay.jsx; anchors = data-tip-anchor attributes) */}
@@ -11937,6 +12002,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               { kind:'toggle', icon:'🎨', label:'Lite FX', color:'#ffaa22', on: liteFx,
                 title:'Reduce GPU-heavy visual effects in battles (filters, shadows, blend modes). Helps if battles stutter or freeze.',
                 onClick:() => setLiteFx(v => !v) },
+              { kind:'toggle', icon:'🎥', label:'Auto camera', color:'#66ddff', on: autoCamera,
+                title: autoCamera ? 'Auto camera is ON — the 3D camera follows moves and battles and drifts when idle. Grab it any time; it comes back 6.5 s after you let go. Click to turn off for good'
+                  : 'Auto camera is OFF — the 3D camera only moves when you move it. Click to have it follow the action again',
+                onClick:() => setAutoCamera(v => !v) },
               /* 🎨 THE SWATCH LIST STAYS A LIST OF SWATCHES. The old picker
                  argued, correctly, that choosing a board colour is a thing you do
                  BY LOOKING AT THE BOARD — so it expanded inline instead of opening
@@ -11951,6 +12020,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               { kind:'toggle', icon:'🎓', label:'Beginner tips', color:'#44ff88', on: beginnerEnabled,
                 title: beginnerEnabled ? 'Beginner tips are ON — click to turn off' : 'Beginner tips are OFF — click to turn on (resets seen tips)',
                 onClick:() => { setBeginnerEnabled(b => !b); if (!beginnerEnabled) setBeginnerTipsSeen(new Set()); } },
+              { kind:'toggle', icon:'🎤', label:'Fan hints', color:'#ff66cc', on: fanCoachEnabled,
+                title: fanCoachEnabled ? 'Fan hints are ON — your fans suggest notes and the stock glows. Click to turn off'
+                  : 'Fan hints are OFF — click to have your fans suggest what to play again',
+                onClick:() => setFanCoachEnabled(v => !v) },
               { kind:'sep' },
               /* 🎚️ VOLUME — three faders, flat in the menu rather than folded
                  behind a 🔊 Volume ▸ row (Alex, 2026-09-14). They are the only
@@ -14033,7 +14106,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                         DEPARTURE flare fires here too, so the chain
                                         from click → flare → flight → landing flare is
                                         unbroken for the first time. */}
-                                    <div onClick={(e)=>{ if (!used) clickNoteStock(idx, e, true); }}
+                                    <div data-coach={!used ? crowdMarks.get(idx) : undefined}
+                                      onClick={(e)=>{ if (!used) clickNoteStock(idx, e, true); }}
                                       style={{width:STACK_GRID_CHIP,height:STACK_GRID_CHIP,flexShrink:0,
                                         display:"flex",alignItems:"center",justifyContent:"center",
                                         cursor:used?"default":"pointer",opacity:used?0.5:1,
@@ -14788,7 +14862,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             <SonicRollPrompt prompt={sonicRollPrompt} onRoll={rollSonicVolley} />
             {!board3D && <button className="btn" onClick={() => { handleBoardMouseUp(); resetManualZoom(); setBoard3D(true); }}
               style={{position:'absolute',right:8,bottom:8,zIndex:20}}>3D board</button>}
-            <BoardViewport enabled={board3D} immersive={board3D} onDisable={() => setBoard3D(false)}
+            <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera} onDisable={() => setBoard3D(false)}
               sceneFrame={board3D ? arenaFrame({
                 spirits:spirits.filter(s => !isHiddenBySmoke(s)), noteStates,
                 actingId:acting?.id, turn:engineState.turn.count, battle:battleState,
@@ -14797,6 +14871,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 fire:flamingHexes, vortex:gravityVortex, bots:animatronics,
                 tentacle:tentacleFx,
                 shadowDecoy, lite:liteFx,
+                // 🟪 The move tiles (board/moveTiles.js): the same `reachable` sets the
+                // SVG click layer uses, so the picture can never offer a step the
+                // click refuses. Sent whenever a walk is armed — at zero steps the
+                // pips still show, greyed, so "no movement left" is visible too.
+                reach: action === 'move' && acting
+                  ? { kind:'move', ownerId:acting.id, turn:engineState.turn.count, near:[...reachable], steps:moveStepsLeft, hover:hovered }
+                  : action === 'move_shadow' && acting && shadowDecoy
+                    ? { kind:'shadow', ownerId:acting.id, turn:engineState.turn.count, near:[...shadowReachable], steps:shadowSteps, max:shadowIllusion?.stepsMax, hover:hovered }
+                    : null,
                 // 🎛️ The head dial's numbers — the SAME read the pocket dial makes
                 // (spiritChord, no temp modifiers), so the two can never disagree.
                 stats:Object.fromEntries(spirits.map(s => [s.id, {
@@ -15198,7 +15281,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       const delay = -(((i * 0.37) % dur)).toFixed(2);
                       const bang = i % 5 === 2;   // ~20% of the crowd headbangs instead of bobbing
                       return (
-                        <g key={i} style={{
+                        <g key={i} data-crowd-speaker={s.id === acting?.id && i === 0 ? '' : undefined} style={{
                           animation: bang
                             ? `fan-headbang ${(0.62 + (i % 3) * 0.07).toFixed(2)}s ease-in-out infinite`
                             : `fan-bob ${dur}s ease-in-out infinite`,
@@ -15381,6 +15464,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     onMouseLeave={() => setHovered(null)}>
                     <polygon
                       points={pointyCorners(cx, cy, HS)}
+                      data-move-tile={reachable.has(hex.num) || shadowReachable.has(hex.num) ? '' : undefined}
                       fill={bushidoPaint ? 'transparent' : hexFill(hex)}
                       stroke={bushidoPaint ? 'none' : hexStroke(hex)}
                       strokeWidth={hexStrokeW(hex)}

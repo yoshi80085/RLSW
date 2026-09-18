@@ -6,14 +6,20 @@ import { pitchIndex } from '../music/notes.js';
 import { createSonicSequenceVisuals } from './sonicSequenceVisuals.js';
 import { createSonicDiceVisuals, sonicSceneLabel } from './sonicDiceVisuals.js';
 import { createHeadDials } from './headDialVisuals.js';
+import { createMoveTiles } from './moveTiles.js';
+import { createStandee, STANDEE, STANDEE_Y, standeeYaw } from './standee.js';
 
 export function arenaPoint(num, height=.18) {
   const h=HEX_BY_NUM[num];return h?new THREE.Vector3((h.px-3255)/200,height,(h.py-2415)/200):null;
 }
-const pointXY=(x,y,height=.2)=>new THREE.Vector3((x/SCALE-3255)/200,height,(y/SCALE-2415)/200);
+export const pointXY=(x,y,height=.2)=>new THREE.Vector3((x/SCALE-3255)/200,height,(y/SCALE-2415)/200);
 const STATIONS={blue:['NW','W-N'],purple:['SW','W-S'],yellow:['NE','E-N'],red:['SE','E-S']};
 const glow=(color,opacity=.8)=>new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
 
+// 🎭 PAWNS ARE STANDEES NOW (Alex, 2026-09-18) — `standee.js`: each Spirit's own
+// art, cut out of acrylic and stood on the board. `spiritMiniature` below is the
+// FALLBACK, kept on purpose and still the thing a Spirit with no art gets.
+//
 // These are the authored preview miniatures, moved into the match renderer.
 // They deliberately remain presentation-only: React's projected SVG continues
 // to own hit targets, rules, labels, and ability overlays.
@@ -72,6 +78,8 @@ export function createArenaVisuals(scene) {
   // 🎛️ Drive/Sustain over the head of whichever Spirit's number moved — see
   // headDial.js. Fed from the same public frame as the pawns, on the same clock.
   const headDials=createHeadDials(root);
+  // 🟪 The hexes you can step to, as magenta tiles in the scene (moveTiles.js).
+  const moveTiles=createMoveTiles(root,{pointFor:arenaPoint});
   const clearSonic=()=>{
     if(!sonic)return;
     root.remove(sonic.dice.group,sonic.volley.group);
@@ -185,20 +193,31 @@ export function createArenaVisuals(scene) {
       live.add(spirit.id);
       let pawn=pawns.get(spirit.id);
       if(!pawn) {
-        pawn=spiritMiniature(spirit);
-        const start=arenaPoint(spirit.num,.34);
+        // ⚠️ A standee STANDS ON the deck; the block pawn floated at .34 because
+        // it had no stand of its own. Mixing the two heights buries a standee's
+        // base in the board, so the height comes from whichever pawn this is.
+        const standee=spirit.imageSrc ? createStandee(spirit) : null;
+        pawn=standee?standee.group:spiritMiniature(spirit);
+        const start=arenaPoint(spirit.num,standee?STANDEE_Y:.34);
         pawn.position.copy(start ?? new THREE.Vector3());
         pawn.userData.target=start?.clone() ?? new THREE.Vector3();
-        pawn.userData.targetFacing=(spirit.facing ?? 0)+Math.PI/2;
+        pawn.userData.targetFacing=standeeYaw(spirit.facing);
+        pawn.rotation.y=pawn.userData.targetFacing;   // no spin-up from 0 on the first frame
         root.add(pawn);pawns.set(spirit.id,pawn);
       }
-      const target=arenaPoint(spirit.num,.34);if(target)pawn.userData.target.copy(target);
-      pawn.userData.targetFacing=(spirit.facing ?? 0)+Math.PI/2;
+      const standee=pawn.userData.standee;
+      const target=arenaPoint(spirit.num,standee?STANDEE_Y:.34);if(target)pawn.userData.target.copy(target);
+      // ⭐ ONE CONVENTION FOR BOTH PAWNS, and it lives in `standeeYaw`. The
+      // block used `facing + π/2`, which is the correct mapping MIRRORED about
+      // the x axis — 90° out on every diagonal, 180° out north/south. It never
+      // showed on a block (no readable front); on a standee it is the difference
+      // between looking at a Spirit and looking at its edge.
+      pawn.userData.targetFacing=standeeYaw(spirit.facing);
       pawn.userData.knockedOut=!!spirit.knockedOut;
       pawn.userData.active=spirit.id===next.actingId;
       if(spirit.pendingSustainFray>0&&!pawn.userData.wearLabel) {
         const badge=sonicSceneLabel('',spirit.color??'#aaddff',3.2,.4);
-        badge.sprite.position.y=1.85;pawn.add(badge.sprite);pawn.userData.wearLabel=badge;
+        badge.sprite.position.y=pawn.userData.standee?STANDEE.height+.4:1.85;pawn.add(badge.sprite);pawn.userData.wearLabel=badge;
       }
       const badge=pawn.userData.wearLabel;
       if(badge) {
@@ -233,6 +252,7 @@ export function createArenaVisuals(scene) {
     updateHazards(frame);
     updatePawns(frame);
     headDials.update(frame.spirits,clock*1000,{reduced:reducedMotion});
+    moveTiles.update(frame.reach,frame.spirits);
     for(const [station,rig] of rigs) {
       const owner=frame.rigs?.find(r=>STATIONS[r.corner]?.includes(station));
       rig.owner=owner;
@@ -298,6 +318,18 @@ export function createArenaVisuals(scene) {
         const turn=pawn.userData.targetFacing;
         pawn.rotation.y=THREE.MathUtils.damp(pawn.rotation.y,turn,14,dt);
         const knocked=pawn.userData.knockedOut;
+        const standee=pawn.userData.standee;
+        if(standee) {
+          // ⚠️ THE CARRIER OWNS WHERE IT STANDS AND WHICH WAY IT TURNS; THE
+          // STANDEE OWNS EVERYTHING ELSE. Leaving the block's rotation.z, scale
+          // pulse and bob on here would fight its own lean, fall and sway — and
+          // the tip-back under a high camera needs the camera, which only
+          // `frame` is given. Nothing below this line may touch the group.
+          standee.frame(time,{knockedOut:knocked,active:pawn.userData.active,
+            acting:pawn.userData.active,reduced,cameraPos:camera?.position ?? null});
+          pawn.position.y=target?.y ?? STANDEE_Y;
+          continue;
+        }
         pawn.rotation.z=THREE.MathUtils.damp(pawn.rotation.z,knocked?Math.PI*.48:0,10,dt);
         const scale=knocked ? .72 : 1+(pawn.userData.active&&!reduced?Math.sin(time*4)*.025:0);
         pawn.scale.setScalar(scale);
@@ -325,9 +357,10 @@ export function createArenaVisuals(scene) {
         } else {fx.mesh.material.opacity=(1-t)*.8;if(fx.kind==='pulse')fx.mesh.scale.setScalar(reduced?1:1+t*4);}
       }
       headDials.tick(time*1000,camera,pawns,{reduced});
+      moveTiles.tick(time*1000,camera,pawns,{reduced});
     },
-    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0),sonicPhase:sonic?.phase??null,hazards:hazards.children.length,headDials:headDials.active(clock*1000)}),
-    dispose(){disposed=true;clearSonic();clearEffects();headDials.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0),sonicPhase:sonic?.phase??null,hazards:hazards.children.length,headDials:headDials.active(clock*1000),moveTiles:moveTiles.active(),moveTileDetail:moveTiles.diagnostics()}),
+    dispose(){disposed=true;clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     get disposed(){return disposed;},
   };
 }
