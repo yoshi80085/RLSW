@@ -1,3 +1,4 @@
+import { BARRAGE_LAUNCH, barrageLanded } from '../board/sonicBarrageTiming.js';
 import './clientRenderShim.mjs';
 import { JSDOM } from 'jsdom';
 import { act } from 'react';
@@ -7,13 +8,11 @@ import { Game } from '../rlsw-simulator-v3_8_1.jsx';
 import { buildTestingGroundsConfig } from '../data/matchSetup.js';
 import { HEX_BY_NUM } from '../board/hexMap.js';
 import { angleTo, neighborInDirection } from '../board/hexGeometry.js';
-import { sonicContactTime } from '../board/sonicSequence.js';
-import { SONIC_PRESENTATION } from '../board/sonicPresentation.js';
 import { sonicChordVoices } from '../audio/sonicBeamAudio.js';
 
 // Observe actual audio calls through the mounted game's shared context.
 const audioSources=[];
-for(const method of ['createGain','createBiquadFilter','createOscillator']){
+for(const method of ['createGain','createBiquadFilter','createOscillator','createDynamicsCompressor','createBufferSource']){
   const original=AudioContext.prototype[method];
   AudioContext.prototype[method]=function(){
     const n=original.call(this);n.disconnect=()=>{};
@@ -22,7 +21,7 @@ for(const method of ['createGain','createBiquadFilter','createOscillator']){
       for(const name of ['setValueAtTime','linearRampToValueAtTime','exponentialRampToValueAtTime'])p[name]=(v,t)=>p.events.push([v,t]);
       p.cancelScheduledValues=()=>{};
     }
-    if(method==='createOscillator'){n.start=t=>{n.startTime=t;audioSources.push(n);};n.stop=t=>{n.stopTime=t;};}
+    if(method==='createOscillator'){n.start=t=>{n.startTime=t;audioSources.push(n);};n.stop=t=>{if(Number.isFinite(t))n.stopTime=t;};}
     return n;
   };
 }
@@ -31,7 +30,7 @@ const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost/'});
 dom.window.Element.prototype.animate=()=>({cancel(){},finished:Promise.resolve()});
 for(const name of ['document','HTMLElement','Element','Node','MutationObserver'])Object.defineProperty(globalThis,name,{configurable:true,value:dom.window[name]});
 globalThis.IS_REACT_ACT_ENVIRONMENT=true;
-const config=buildTestingGroundsConfig({beginnerMode:false});config.seed=4242;
+const config=buildTestingGroundsConfig({beginnerMode:false});config.seed=44;
 config.spirits=config.spirits.map(s=>({...s,cpu:false}));
 const a=HEX_BY_NUM[config.spirits[0].num],b=neighborInDirection(a,0);
 assert.ok(b);config.spirits[0]={...config.spirits[0],facing:angleTo(a,b)};
@@ -60,7 +59,7 @@ const roll=await until(()=>document.querySelector('.sonic-roll-prompt button'),'
 assert.ok(state.battle?.diceHits,'engine verdict exists before ROLL');
 const verdict=JSON.stringify({dice:state.battle.diceVals,hits:state.battle.diceHits});
 const frozen=state.battle;
-assert.ok(frozen.hitCount>0,'seeded fixture must exercise a connecting volley');
+assert.ok(frozen.hitCount>0,JSON.stringify(frozen));
 await wait(850);assert.ok(document.querySelector('.sonic-roll-prompt'),'local gate does not auto-roll');
 assert.equal(JSON.stringify({dice:state.battle.diceVals,hits:state.battle.diceHits}),verdict,'gate does not reroll');
 const sourceOffset=audioSources.length;rollAt=performance.now();
@@ -70,12 +69,14 @@ await until(()=>!document.querySelector('[data-sonic-phase]'),'volley and conseq
 assert.ok(!document.querySelector('.sonic-roll-prompt'),'prompt stays cleared');
 assert.equal(button('🔊 Sonic')?.disabled,true,'action stays spent after presentation');
 assert.ok(moves.length>0,'live game applies knockback');
-const firstHit=frozen.diceHits.indexOf(true),launch=SONIC_PRESENTATION.roll+SONIC_PRESENTATION.reveal+SONIC_PRESENTATION.charge;
-assert.ok(moves[0].at>=(launch+sonicContactTime(firstHit))*1000-60,'the Rival cannot move before contact');
+const launch=BARRAGE_LAUNCH;
+assert.ok(moves[0].at>=(launch+barrageLanded(frozen))*1000-60,'the Rival cannot move before contact');
 assert.ok(moves.every(m=>m.phase==='sonic_volley'),'shoves occur during flight, before the result phase');
-for(let i=1;i<moves.length;i++)assert.ok(moves[i].at-moves[i-1].at>3000,'successive shoves leave a readable beat');
-const voices=audioSources.slice(sourceOffset).filter(n=>n.type==='triangle'&&n.stopTime-n.startTime>2);
+assert.ok(moves.at(-1).at-moves[0].at<2500,'the shove is one combined movement after the barrage');
+const voices=audioSources.slice(sourceOffset).filter(n=>n.type==='sawtooth'&&n.stopTime-n.startTime>2);
 assert.deepEqual(voices.map(n=>n.frequency.events[0][0]),sonicChordVoices(frozen.sonicChordNotes,frozen.diceVals.length).map(v=>v.frequency),'mounted game plays the spent Drive chord');
+assert.ok(audioSources.slice(sourceOffset).some(n=>n.type==='square'),'dice landing clacks are scheduled');
+assert.ok(audioSources.slice(sourceOffset).some(n=>n.type==='triangle'),'the defending Sustain chord is scheduled');
 await act(async()=>root.unmount());
-console.log('PASS: live Sonic target, frozen chord/verdict, manual ROLL, spaced contact-time shoves, full Drive audio, completion and spent action');
+console.log('PASS: live Sonic target, frozen chord/verdict, manual ROLL, combined post-barrage shove, full Drive audio, completion and spent action');
 process.exit(0);

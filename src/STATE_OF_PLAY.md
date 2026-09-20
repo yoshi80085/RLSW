@@ -12,6 +12,19 @@
 > read — if a section needs a paragraph, it belongs in its own doc with a link
 > from here.
 
+**2026-09-19 Sonic integration:** The approved Shieldbreaker barrage is now live:
+red Drive and blue Sustain floor dice, a two-second totals hold, automatic ring
+barrage, shield breakup and one final shove. Sustain rolls one d6 per effective
+point into fresh HP each attack. Spillover penetrates; exact breaks do not push.
+Per today's explicit confirmation, Vibe damage keeps the current hit-count chip
+scale. The broader through/3 and Vibe-pool rebalance in PROJECTILE_COMBAT_DESIGN
+§3.6.1 remains deferred. Legacy replay actions retain their old resolution.
+
+**2026-09-20 battle presentation:** Larger corner stacks are Drive; smaller stacks
+are Sustain. Drive fires the ring/chord barrage; Sustain visibly feeds the shield
+and plays its defending chord. Dice audio uses SFX. Battle cameras permit manual
+orbit/pan/zoom, with **Follow battle** to resume automatic action tracking.
+
 ---
 
 ## 1. 🎸 WHAT THE GAME IS

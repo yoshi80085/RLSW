@@ -383,7 +383,7 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [], allowRi
 
     const fromNum = curNum;
     state = yield act(spiritsSynced(
-      state.spirits.map(s => s.id === targetId ? { ...s, num: nextHex.num } : s)
+      state.spirits.map(s => s.id === targetId ? { ...s, num: nextHex.num, hitBackCount:(s.hitBackCount??0)+1 } : s)
     ));
     curNum = nextHex.num;
     path.push(curNum);
@@ -861,8 +861,8 @@ export function* vibeDamage({ state, targetId, dmg, sourceLabel, attackerId = nu
   // Not rebound to `state`: the interpreter owns the running state and nothing
   // below re-reads it. Anything added after these MUST take the yield's return.
   yield act(fameChanged(targetId, -1));
-  yield patch(targetId, { recovering: false, knockStreak: 0 });
-  yield log(`💸 ${tgt.name} loses 1 FP and gets straight back up in their home corner!`);
+  yield patch(targetId, { recovering: false, fallen: true, recoveryNotesOwed: 2, knockStreak: 0 });
+  yield log(`💸 ${tgt.name} loses 1 FP and stays down in their home corner until next turn. Getting up costs 2 notes.`);
   yield fx('respawnFlash', { spiritId: targetId });
   yield act(knockdownResolved(targetId));
 
@@ -886,10 +886,34 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
     swingChordLeft = [], swingChordSpent = [],
   } = battle;
   const sonicAttack = battle.attackKind === 'sonic' || !!battle.sonicAttack;
+  if(battle.swingClash) {
+    if(margin===0) {
+      yield log('⚔️ Equal Drive — the clash breaks evenly. No damage or knockback.');
+      yield* clearBattleBuffs({attackerId,defenderId});
+      return {fameThisTurn};
+    }
+    const winner=attackerWon?attackerId:defenderId,loser=attackerWon?defenderId:attackerId;
+    const stack=nsOf(state,winner).driveStack??[];
+    state=yield patch(winner,{driveStack:stack.slice(2)});
+    yield fx('spentNotes',{spiritId:winner,notes:stack.slice(0,2),stack:'drive'});
+    const shove=yield* knockback({state,fromId:winner,targetId:loser,spaces:1,amps,fameThisTurn});
+    state=yield {kind:'peek'};
+    if(!shove.endedByKnockdown&&!shove.targetRelocated) {
+      const hit=yield* vibeDamage({state,targetId:loser,dmg:damage,sourceLabel:'Swing clash',attackerId:winner,fameThisTurn});
+      fameThisTurn=hit.fameThisTurn;
+    }
+    state=yield {kind:'peek'};
+    const reward=yield* awardThrashFame({state,spiritId:winner,loserId:loser,fameThisTurn});
+    yield* clearBattleBuffs({attackerId,defenderId});
+    return {fameThisTurn:reward.fameThisTurn};
+  }
   const hitCount = sonicAttack ? (battle.hitCount ?? (attackerWon ? margin : 0)) : null;
 
+  if (sonicAttack && battle.sonicVersion === 2) {
+    state = yield fx('sonicBarrageLanded', { spiritId: defenderId });
+  }
   if (sonicAttack && hitCount <= 0) {
-    yield log(`🛡️ ${nameOf(state, defenderId)} absorbs the entire Sonic volley. The shield holds until their next turn.`);
+    yield log(`🛡️ ${nameOf(state, defenderId)} absorbs the entire Sonic volley. No strength reaches the Rival.`);
     yield* clearBattleBuffs({ attackerId, defenderId });
     return { fameThisTurn };
   }
@@ -939,7 +963,7 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
     allowRingOut: sonicAttack, fameThisTurn,
     // Old replay snapshots lack facing; retain their original attacker/target bearing.
     direction:sonicAttack ? battle.sonicFacing : undefined,
-    sonicHits:sonicAttack ? battle.diceHits : undefined,
+    sonicHits:sonicAttack && battle.sonicVersion !== 2 ? battle.diceHits : undefined,
   });
   fameThisTurn = shove.fameThisTurn ?? fameThisTurn;
   state = yield ({ kind: 'peek' });
@@ -1019,7 +1043,7 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
   }
 
   yield* clearBattleBuffs({ attackerId, defenderId });
-  return { fameThisTurn, ...(sonicAttack ? {sonicInterrupted:interruptedSonic} : {}) };
+  return { fameThisTurn, ...(sonicAttack ? {sonicInterrupted:interruptedSonic, sonicPushed:shove.path.length} : {}) };
 }
 
 /** Temp buffs are battle-scoped and expire with it, win or lose. */

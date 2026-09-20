@@ -1,3 +1,5 @@
+import { ARENA_DICE_READ_AT } from './arenaDiceSequence.js';
+import { BARRAGE_LAUNCH, barrageLanded } from './sonicBarrageTiming.js';
 import { sonicSequenceDuration } from './sonicSequence.js';
 
 // Seconds, shared by the dice, camera, audio and client presentation clock.
@@ -14,4 +16,12 @@ export function scheduleSonicVolley({ count, schedule, phase, charge, launch, cl
   schedule(()=>{phase('sonic_volley');launch?.();},launchAt);
   schedule(()=>phase('result'),resultAt);
   schedule(close,resultAt+SONIC_PRESENTATION.hold*1000);
+}
+
+export function scheduleSonicBarrage({battle, reduced=false, schedule, phase, launch, close, offset=0}) {
+  schedule(()=>phase('sonic_reveal'),offset+ARENA_DICE_READ_AT*1000);
+  schedule(()=>{phase('sonic_volley');launch?.();},offset+BARRAGE_LAUNCH*1000);
+  const end=offset+(BARRAGE_LAUNCH+barrageLanded(battle,reduced)+1.25)*1000;
+  schedule(()=>phase('result'),end);
+  schedule(close,end+2000);
 }

@@ -197,7 +197,7 @@ export function riffClosed() {
  * @param {number}  p.defStat         defender's pre-roll total
  * @param {boolean} [p.posing]        defender is posing → rolls no die (0)
  * @param {boolean} [p.halveDef]      Laser Show → defender's die halved (min 1)
- * @param {number[]} [p.dicePool]     SONIC keep-highest pool of die sizes
+ * @param {number[]} [p.dicePool]     SONIC Drive pool of die sizes
  *                                     (e.g. [6,6], [6,6,8], [8,8,8]); omit for a
  *                                     plain swing (single d6).
  * @param {number}  [p.atkFloor]      ⚡ attacker die floor — every attacker die
@@ -216,11 +216,13 @@ export function riffClosed() {
  */
 export function attackRolled(kind, attackerId, defenderId,
   { atkStat, defStat, posing = false, halveDef = false, dicePool = null,
-    atkFloor = 0, atkDie = 6, defDie = 6,
+    atkFloor = 0, atkDie = 6, defDie = 6, sonicChordNotes = [], sustainChordNotes = [],
     swingChordLeft = [], swingChordSpent = [] }) {
   return {
     type: ATTACK_ROLLED, kind, attackerId, defenderId,
-    atkStat, defStat, posing, halveDef, dicePool, atkFloor, atkDie, defDie,
+    ...(kind === 'sonic' ? { sonicVersion: 2 } : {}),
+    ...(kind === 'swing' ? { swingVersion: 2 } : {}),
+    atkStat, defStat, posing, halveDef, dicePool, atkFloor, atkDie, defDie, sonicChordNotes, sustainChordNotes,
     // 🎸 The Swing's deferred chord burn — spent by `battleConsequences` on a
     // HIT ONLY. ⚠️ It travels on the ACTION rather than being re-derived in the
     // reducer because the stack must be read BEFORE the blow; re-deriving it

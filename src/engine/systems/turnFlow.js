@@ -199,9 +199,20 @@ export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
     ...(shadow.drained > 0 ? { tempSustain: shadow.sustainLeft } : {}),
   };
 
+  // Recovery spends refreshed stock, so the refill cannot refund the cost.
+  const recoveryDue=ns.recoveryNotesOwed??0;
+  const recoverySlots=(patch.noteStock??ns.noteStock??[]).map((_,i)=>i)
+    .filter(i=>!patch.usedStockIdx.includes(i)).slice(0,recoveryDue);
+  patch.recoveryStockIdx=recoverySlots;
+  if(ns.fallen||recoveryDue>0) {
+    patch.fallen=false;
+    patch.usedStockIdx=[...patch.usedStockIdx,...recoverySlots];
+    patch.recoveryNotesOwed=Math.max(0,recoveryDue-recoverySlots.length);
+  }
   return {
     patch,
     report: {
+      recoveryPaid: recoverySlots.length,
       refreshedIdx:   [...refreshing],
       refreshedCount: refreshing.size,
       refillRate,

@@ -288,7 +288,7 @@ console.log('§3 the renderer wiring');
   ok('no controls.update() on a frame the director drives', /if\(cameraShot\?\.driving\) \{[^}]*camera\.lookAt\(controls\.target\);dirty=true;\s*\} else controls\.update\(\);/.test(r));
   ok('the player\'s hands are OrbitControls start/end', /controls\.addEventListener\('start',takeOver\)/.test(r) && /controls\.addEventListener\('end',letGo\)/.test(r) && /removeEventListener\('start',takeOver\)/.test(r));
   ok('a click that picks a hex cannot reach them (keepGameplayClicks still guards the overlay)', /keepGameplayClicks\(overlay\.domElement\)/.test(r) && /OrbitControls\(camera,overlay\.domElement\)/.test(r));
-  ok('toolbar view buttons and zoom count as taking over', /view\(name\)\{frameView\(name\);director\.userNudge/.test(r) && /zoom\(factor\)\{[^}]*director\.userNudge/.test(r));
+  ok('toolbar view buttons and zoom count as taking over', /view\(name\)\{sonicCamera\.userNudge\(\);frameView\(name\);director\.userNudge/.test(r) && /zoom\(factor\)\{[^}]*director\.userNudge/.test(r));
   ok('mounting frames the arena WITHOUT counting as the player taking over', /resize\(\);frameView\('arena'\);/.test(r));
   ok('reduced-motion rendering keeps drawing while the director moves', /moving=stats\.effects>0\|\|stats\.headDials>0\|\|stats\.moveTiles>0\|\|sonicCamera\.active\|\|!!cameraShot\?\.driving/.test(r));
   ok('narrow screens stretch the director\'s distances like view() does', /tuneDirector\(\);dirty=true;/.test(r) && /CAMERA_DIRECTOR\[key\]\*k/.test(r));

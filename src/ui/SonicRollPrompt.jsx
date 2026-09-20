@@ -8,7 +8,7 @@
 // a match can never stall waiting on somebody else's click.
 export function SonicRollPrompt({ prompt, onRoll }) {
   if (!prompt) return null;
-  const { dice = 0, shield = 0, defenderName = 'the Rival', color = '#66dcff' } = prompt;
+  const { dice = 0, shield = 0, sustainDice, defenderName = 'the Rival', color = '#66dcff' } = prompt;
   const pool = `${dice} ${dice === 1 ? 'die' : 'dice'}`;
   return (
     <div className="sonic-roll-prompt" role="group" aria-label="Sonic volley roll">
@@ -47,7 +47,7 @@ export function SonicRollPrompt({ prompt, onRoll }) {
       `}</style>
       <div className="srp-copy">
         <span className="srp-lead">Volley charged</span>
-        <span className="srp-sub">{pool} · each must beat <b>Sustain {shield}</b> on {defenderName}</span>
+        <span className="srp-sub">{pool} · {sustainDice!=null?<>{sustainDice} Sustain dice form {defenderName}’s shield</>:<>each must beat <b>Sustain {shield}</b> on {defenderName}</>}</span>
       </div>
       <button type="button" style={{ '--srp-accent': color }} onClick={onRoll} autoFocus>
         Roll {dice}

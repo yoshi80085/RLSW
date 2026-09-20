@@ -24,10 +24,10 @@ function floorLabel(color,width,height){
 
 // Authored gravity arcs and damped bounces preserve the already-resolved roll.
 // One scene group: these dice use the arena camera, floor and depth buffer.
-export function createArenaDiceSequence({drive=[],sustain=[],driveSides=6,sustainSides=6}={}){
+export function createArenaDiceSequence({drive=[],sustain=[],driveSides=6,sustainSides=6,defenderTitle='SUSTAIN'}={}){
  const group=new THREE.Group();group.name='Arena floor dice';const entries=[],labels=[],totals=[];
  const shadowGeometry=new THREE.CircleGeometry(.6,24),shadowMaterial=new THREE.MeshBasicMaterial({color:'#000209',transparent:true,opacity:.48,depthWrite:false});
- for(const [pool,values,sides,color,title] of [[0,drive,driveSides,'#ff6644','DRIVE'],[1,sustain,sustainSides,'#44aaff','SUSTAIN']]){
+ for(const [pool,values,sides,color,title] of [[0,drive,driveSides,'#ff6644','DRIVE'],[1,sustain,sustainSides,'#44aaff',defenderTitle]]){
   const header=floorLabel(color,6.6,.5),sum=floorLabel(color,6.6,.5);
   header.set(`${title} · ${values.length}d${sides}`);header.mesh.position.set(1,.022,pool?6.95:3);sum.mesh.position.set(1,.022,pool?10.4:6.4);group.add(header.mesh,sum.mesh);labels.push(header,sum);totals.push(sum);
   values.forEach((value,index)=>{
@@ -73,7 +73,7 @@ export function createArenaDiceSequence({drive=[],sustain=[],driveSides=6,sustai
    const size=i?sustain.length:drive.length,header=labels[i*2];
    header.mesh.visible=time>=ARENA_DICE_GATHER_AT;
    totals[i].mesh.visible=time>=ARENA_DICE_GATHER_AT;
-   totals[i].set(counts[i]===size?`${sums[i]} ${i?'SHIELD HP':'TOTAL STRENGTH'}`:terms[i].length?`${terms[i].join(' + ')} = ${sums[i]}`:'ADDING…');
+   totals[i].set(counts[i]===size?`${sums[i]} ${i&&defenderTitle==='SUSTAIN'?'SHIELD HP':'TOTAL STRENGTH'}`:terms[i].length?`${terms[i].join(' + ')} = ${sums[i]}`:'ADDING…');
   }
   return {counts,sums,phase:time<ARENA_DICE_TIMING.roll?'rolling':time<ARENA_DICE_GATHER_AT?'landed':time<ARENA_DICE_READ_AT?'gathering':'reading'};
  }

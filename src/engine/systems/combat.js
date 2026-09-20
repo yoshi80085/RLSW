@@ -1,3 +1,5 @@
+import { resolveSonicBarrage } from './sonicBarrage.js';
+import { rollSwingClash, clashVerdict } from './swingClash.js';
 // ─── ENGINE SYSTEM: COMBAT ───────────────────────────────────────────────────
 // Phase 3a: the pure combat MATH — damage/knockback/fame tables — extracted
 // verbatim from Game so a server can score battles identically. No actions,
@@ -249,9 +251,10 @@ export function smashOutcome(thrown) {
 /**
  * ATTACK_ROLLED (Phase 3b) — roll attack dice on the engine's seeded rng.
  * Swing keeps its opposed roll. Sonic rolls every Drive die independently
- * against a fixed Sustain shield; ties absorb and the defender draws no RNG.
+ * into a freshly rolled Sustain HP shield, with excess strength spilling through.
  */
 export function applyAttackRolled(state, action, rng) {
+  if(action.kind==='swing' && action.swingVersion===2) return rollSwingClash(state,action,rng);
   const {
     kind, attackerId, defenderId,
     atkStat = 0, defStat = 0, posing = false, halveDef = false,
@@ -260,10 +263,15 @@ export function applyAttackRolled(state, action, rng) {
   } = action;
 
   if (kind === 'sonic') {
+    const modern=action.sonicVersion===2;
     const pool = Array.isArray(dicePool) ? [...dicePool]
       : Array.from({ length: Math.max(0, Math.floor(atkStat)) }, () => atkDie);
-    const shieldValue = posing ? 0 : Math.max(0, defStat);
-    const volley = rollSonicVolley(pool, shieldValue, atkFloor, rng);
+    const sustainPool = Array.from({ length: posing || !modern ? 0 : Math.max(0, Math.floor(defStat)) }, () => defDie > 0 ? defDie : 6);
+    // Preserve attack-first draw order; defence is rolled once per declaration.
+    const diceVals = pool.map(sides => Math.max(rng.int(sides) + 1, 1 + atkFloor));
+    const sustainRolls = sustainPool.map(sides => rng.int(sides) + 1);
+    const shieldValue = modern ? sustainRolls.reduce((sum, value) => sum + value, 0) : posing ? 0 : Math.max(0, defStat);
+    const volley = modern ? resolveVolley(diceVals, shieldValue) : resolveLegacyVolley(diceVals, shieldValue);
     const defenderNotes = state.noteStates?.[defenderId];
     return {
       ...state,
@@ -288,11 +296,11 @@ export function applyAttackRolled(state, action, rng) {
         },
       } } : {}),
       battle: {
-        kind: 'attack', attackKind: 'sonic', sonicAttack: true,
+        kind: 'attack', attackKind: 'sonic', sonicAttack: true, sonicVersion: modern ? 2 : 1, sustainPool, sustainRolls,
         attackerId, defenderId, atkStat, defStat, shieldValue,
         sonicFacing:state.spirits.find(s=>s.id===attackerId)?.facing ?? 0,
         ...volley,
-        rawDefRoll: 0, defRoll: 0, defDie: 0, defTotal: shieldValue,
+        rawDefRoll: modern ? shieldValue : 0, defRoll: modern ? shieldValue : 0, defDie: modern ? defDie || 6 : 0, defTotal: shieldValue,
         dicePool: pool, atkFloor, atkDie, keptIdx: null,
         sonicChordNotes:[...(action.sonicChordNotes??[])],
         sustainChordNotes:[...(action.sustainChordNotes??[])],
@@ -355,14 +363,24 @@ export function applyAttackRolled(state, action, rng) {
 }
 
 /** One seeded draw per projectile; used unchanged by Code Injection rerolls. */
-function rollSonicVolley(pool, shieldValue, atkFloor, rng) {
+function rollSonicVolley(pool, shieldValue, atkFloor, rng, modern = true) {
   const diceVals = pool.map(sides => Math.max(rng.int(sides) + 1, 1 + atkFloor));
-  const diceHits = diceVals.map(value => value > shieldValue);
+  return modern ? resolveVolley(diceVals, shieldValue) : resolveLegacyVolley(diceVals, shieldValue);
+}
+
+function resolveLegacyVolley(diceVals, shieldValue) {
+  const diceHits=diceVals.map(v=>v>shieldValue),hitCount=diceHits.filter(Boolean).length;
+  return {diceVals,diceHits,hitCount,attackerWon:hitCount>0,atkRoll:hitCount,atkTotal:hitCount,margin:hitCount,damage:sonicDamage(hitCount)};
+}
+
+function resolveVolley(diceVals, shieldValue) {
+  const ledger = resolveSonicBarrage(diceVals, shieldValue);
+  const diceHits = ledger.shots.map(shot => shot.through > 0);
   const hitCount = diceHits.filter(Boolean).length;
   return {
-    diceVals, diceHits, hitCount, attackerWon: hitCount > 0,
-    // Legacy presentation fields carry the hit count, never an opposed sum.
-    atkRoll: hitCount, atkTotal: hitCount, margin: hitCount,
+    ...ledger, diceVals, diceHits, hitCount, attackerWon: hitCount > 0,
+    atkRoll: diceVals.reduce((sum, value) => sum + value, 0),
+    atkTotal: diceVals.reduce((sum, value) => sum + value, 0), margin: hitCount,
     damage: sonicDamage(hitCount),
   };
 }
@@ -389,6 +407,10 @@ function rollSonicVolley(pool, shieldValue, atkFloor, rng) {
 export function applyAttackRerolled(state, action, rng) {
   const b = state.battle;
   if (!b || b.kind !== "attack") return state;
+  if(b.swingClash) {
+    const values=b.dicePool.map(s=>Math.min(s,Math.max(1+(b.atkFloor??0),rng.int(s)+1)));
+    return {...state,battle:{...b,...clashVerdict(values,b.defenderDiceVals),rerolled:true}};
+  }
 
   if (b.attackKind === 'sonic' || b.sonicAttack) {
     const shieldValue = b.shieldValue ?? b.defTotal ?? Math.max(0, b.defStat ?? 0);
@@ -396,7 +418,7 @@ export function applyAttackRerolled(state, action, rng) {
       ...state,
       battle: {
         ...b,
-        ...rollSonicVolley(b.dicePool ?? [], shieldValue, b.atkFloor ?? 0, rng),
+        ...rollSonicVolley(b.dicePool ?? [], shieldValue, b.atkFloor ?? 0, rng, b.sonicVersion===2),
         shieldValue, keptIdx: null, rerolled: true,
         preRerollAtkRoll: b.atkRoll,
         preRerollWon: b.attackerWon,

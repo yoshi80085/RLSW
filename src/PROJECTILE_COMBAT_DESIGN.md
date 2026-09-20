@@ -1,5 +1,14 @@
 # 🎸 PROJECTILE COMBAT — Design Spec
 
+> **Live integration update, 2026-09-19:** The approved barrage preview is wired
+> into the game. Alex explicitly confirmed one Sustain die per effective Sustain
+> point, a fresh shield each attack, and retaining the current Vibe chip scale
+> based on penetrating projectile count. This supersedes the proposed through/3
+> damage rebalance in §3.6.1 for this integration. Defender rolls remain fixed on
+> Code Injection rerolls. The final combined shove uses existing collisions,
+> hazards, immunities and ring-outs. Versioned actions preserve legacy replays.
+
+
 > **Status: Sonic design consolidated 2026-09-13. A partial prototype exists;
 > implementation and verification are unfinished. This pass changes the design
 > only. Swing and marquee redesigns are deferred to later sessions.**

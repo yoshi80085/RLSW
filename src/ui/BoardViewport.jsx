@@ -45,7 +45,7 @@ export function BoardViewport({ enabled, immersive = false, sceneFrame, autoCame
     };
   }, [enabled]);
 
-  return <div data-board-view={enabled ? '3d' : '2d'} data-sonic-phase={sceneFrame?.battle?.volley ? sceneFrame.battle.phase : undefined} data-arena-ready={enabled && status === 'ready' || undefined} style={enabled
+  return <div data-board-view={enabled ? '3d' : '2d'} data-swing-phase={sceneFrame?.battle?.swingClash ? sceneFrame.battle.phase : undefined} data-sonic-phase={sceneFrame?.battle?.volley ? sceneFrame.battle.phase : undefined} data-arena-ready={enabled && status === 'ready' || undefined} style={enabled
     ? { position: 'relative', width: '100%', ...(immersive ? { height: '100%' } : { aspectRatio: `${SVG_W}/${SVG_H}` }), minHeight: 360, overflow: 'hidden', background: '#030611', borderRadius: 8 }
     : { display: 'contents' }}>
     <style>{`
@@ -63,6 +63,7 @@ export function BoardViewport({ enabled, immersive = false, sceneFrame, autoCame
          Leaving the SVG copy above the canvas makes it draw through its 3D
          stand-ins, so suppress that duplicate only once the arena is ready. */
       [data-arena-ready] [data-arena-flat="stage-fx"] { display:none; }
+      [data-arena-ready] [data-arena-flat="crowd"] { display:none; }
       [data-board-view="3d"] .arena-tactical { pointer-events:auto; }
       [data-arena-ready] [data-arena-flat="amp-art"] { opacity:0; }
       [data-arena-ready] [data-arena-flat="fall"] { visibility:hidden; }
@@ -90,6 +91,7 @@ export function BoardViewport({ enabled, immersive = false, sceneFrame, autoCame
           the top-right is the HUD's. Hidden when the auto camera is switched off
           or a Sonic shot owns the camera. */}
       {cameraBadge(cameraState, autoCamera)}
+      {autoCamera&&cameraState?.mode==='battle-manual'&&<button className="btn" onClick={()=>runtime.current?.followBattle()}>Follow battle</button>}
       {status && status !== 'ready' && <span role="status" style={{ color: '#ffd89b', background: '#090e20ee', padding: 6, fontSize: 11 }}>{status}</span>}
       <button className="btn" title="Straight-down tactical camera" onClick={() => runtime.current?.view('tactical')}>⌗ Top</button>
       <button className="btn" title="Reset to the arena camera" onClick={() => runtime.current?.view('arena')}>◈ Arena</button>
@@ -111,7 +113,7 @@ export function BoardViewport({ enabled, immersive = false, sceneFrame, autoCame
 function cameraBadge(state, autoCamera) {
   if (!autoCamera || !state || state.mode === 'off' || state.mode === 'sonic') return null;
   const wait = CAMERA_DIRECTOR.resumeAfterMs / 1000;
-  const label = state.mode === 'manual' ? `✋ Yours · auto in ${state.resumeInS.toFixed(1)} s`
+  const label = state.mode === 'battle-manual' ? '✋ Yours · battle' : state.mode === 'manual' ? `✋ Yours · auto in ${state.resumeInS.toFixed(1)} s`
     : state.mode === 'resume' ? '🎥 Auto · easing back in' : '🎥 Auto camera';
   return <span className="arena-camera-badge" data-mode={state.mode} role="status" aria-live="off">
     <i />{label}

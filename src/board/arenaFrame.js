@@ -4,11 +4,15 @@ import { rigRadius, rigTiers } from '../engine/systems/sonicRig.js';
 // hidden spirits BEFORE passing them here; no note stock or hidden state crosses.
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
-  bots = [], spotlight, tentacle, shadowDecoy = null, lite = false, stats = {}, reach = null }) {
+  bots = [], spotlight, tentacle, shadowDecoy = null, lite = false, stats = {}, reach = null, crowdSpirits = spirits }) {
   const visible = new Set(spirits.map(s => s.id));
   return {
+    crowds:crowdSpirits.filter(s=>!s.knockedOut).map(s=>({id:s.id,corner:s.corner,color:s.color,
+      diehards:noteStates[s.id]?.diehards??0,casuals:noteStates[s.id]?.casuals??0})),
     spirits: spirits.map(s => ({ id:s.id, num:s.num, color:s.color, corner:s.corner,
       facing:s.facing ?? 0, imageSrc:s.imageSrc, knockedOut:!!s.knockedOut,
+      vibe:s.vibe,maxVibe:s.maxVibe,fallen:!!noteStates[s.id]?.fallen,
+      hitBackCount:s.hitBackCount??0,
       // 🎛️ For the head dial. ⭐ PUBLIC FOR EVERY SPIRIT (Alex, 2026-09-16) — a
       // rival's Drive was shown nowhere before this; he chose to reveal it. The
       // CLIENT computes these (spiritChord), so this file stays free of rules.
@@ -35,11 +39,20 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
     battle: battle && visible.has(battle.attackerId) && visible.has(battle.defenderId)
       ? { attackerId:battle.attackerId, defenderId:battle.defenderId,
           phase:battle.phase, sonic:!!battle.sonicAttack, round:battle.round ?? 1,
+          ...(battle.swingClash ? {swingClash:true,key:battle.swingKey,swingStartedAt:battle.swingStartedAt,
+            diceVals:[...battle.diceVals],defenderDiceVals:[...battle.defenderDiceVals],
+            dicePool:[...battle.dicePool],defenderDicePool:[...battle.defenderDicePool],
+            atkTotal:battle.atkTotal,defTotal:battle.defTotal,damage:battle.damage,tied:battle.tied,
+            attackerWon:battle.attackerWon} : {}),
           ...(battle.sonicAttack && !battle.riffOff && battle.diceHits ? {
             volley:true, key:battle.sonicId ?? `${turn}:${battle.attackerId}:${battle.defenderId}`,
             sonicStartedAt:battle.sonicStartedAt,sonicInterrupted:battle.sonicInterrupted,
             dicePool:[...(battle.dicePool ?? [])], diceVals:[...(battle.diceVals ?? [])],
             diceHits:[...battle.diceHits], shieldValue:battle.shieldValue,
+            sonicVersion:battle.sonicVersion, sonicRollStartedAt:battle.sonicRollStartedAt,
+            sustainRolls:[...(battle.sustainRolls??[])], sustainPool:[...(battle.sustainPool??[])],
+            shots:battle.shots?.map(s=>({...s})), breakIndex:battle.breakIndex,
+            shieldRemaining:battle.shieldRemaining,strengthThrough:battle.strengthThrough,
             sonicChordNotes:[...(battle.sonicChordNotes ?? [])],
             sustainChordNotes:[...(battle.sustainChordNotes ?? [])],
             hitCount:battle.hitCount, damage:battle.damage,

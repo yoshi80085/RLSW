@@ -1,3 +1,7 @@
+import { BARRAGE_LAUNCH } from './sonicBarrageTiming.js';
+import { createSwingClashVisuals, knockbackWobble } from './swingClashVisuals.js';
+import { createSonicBarrageVisuals } from './sonicBarrageVisuals.js';
+import { createArenaDiceSequence } from './arenaDiceSequence.js';
 import * as THREE from 'three';
 import { HEX_BY_NUM } from './hexMap.js';
 import { SCALE } from './constants.js';
@@ -13,7 +17,8 @@ export function arenaPoint(num, height=.18) {
   const h=HEX_BY_NUM[num];return h?new THREE.Vector3((h.px-3255)/200,height,(h.py-2415)/200):null;
 }
 export const pointXY=(x,y,height=.2)=>new THREE.Vector3((x/SCALE-3255)/200,height,(y/SCALE-2415)/200);
-const STATIONS={blue:['NW','W-N'],purple:['SW','W-S'],yellow:['NE','E-N'],red:['SE','E-S']};
+export const AMP_ROLES={blue:{drive:'NW',sustain:'W-N'},purple:{drive:'SW',sustain:'W-S'},yellow:{drive:'NE',sustain:'E-N'},red:{drive:'SE',sustain:'E-S'}};
+const STATIONS=Object.fromEntries(Object.entries(AMP_ROLES).map(([corner,roles])=>[corner,Object.values(roles)]));
 const glow=(color,opacity=.8)=>new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
 
 // 🎭 PAWNS ARE STANDEES NOW (Alex, 2026-09-18) — `standee.js`: each Spirit's own
@@ -70,11 +75,31 @@ export function releaseArenaObject(object) {
   for(const r of resources)r.dispose();
 }
 
-export function createArenaVisuals(scene) {
+export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
   const root=new THREE.Group();root.name='Live match effects';scene.add(root);
+  const actors=new THREE.Group();actors.name='Foreground spirits';foregroundScene.add(actors);
   const hazards=new THREE.Group();root.add(hazards);
   const effects=[],rigs=new Map(),pawns=new Map(),seen=new Set();
   let previous=null,hazardKey='',frame={},clock=0,lastTick=0,disposed=false,sonic=null,reducedMotion=false;
+  let swing=null;
+  const clearSwing=()=>{if(swing){actors.remove(swing.group);swing.dispose();swing=null;}for(const pawn of pawns.values())pawn.visible=true;};
+  function updateSwing(battle) {
+    if(!battle?.swingClash){clearSwing();return;}
+    if(swing?.key!==battle.key){
+      clearSwing();
+      const attacker=frame.spirits.find(s=>s.id===battle.attackerId),defender=frame.spirits.find(s=>s.id===battle.defenderId);
+      if(!attacker||!defender)return;
+      const ampOrigins=[attacker,defender].map(s=>{
+        const cabinet=rigs.get(AMP_ROLES[s.corner]?.drive)?.levels[0];
+        if(!cabinet)return null;
+        cabinet.updateWorldMatrix(true,true);return new THREE.Box3().setFromObject(cabinet).getCenter(new THREE.Vector3());
+      });
+      swing=createSwingClashVisuals({battle,attacker,defender,ampOrigins,pointFor:arenaPoint});
+      swing.key=battle.key;swing.start=clock;actors.add(swing.group);
+    }
+    for(const id of [battle.attackerId,battle.defenderId]){const pawn=pawns.get(id);if(pawn)pawn.visible=false;}
+    battle.swingBounds=battle.phase==='swing_roll'?swing.diceBounds:[];
+  }
   // 🎛️ Drive/Sustain over the head of whichever Spirit's number moved — see
   // headDial.js. Fed from the same public frame as the pawns, on the same clock.
   const headDials=createHeadDials(root);
@@ -95,7 +120,7 @@ export function createArenaVisuals(scene) {
       // Fire from the real cabinets after their authored world transform,
       // including the model's Z flip. A corner approximation visibly misses.
       const ampOrigins=[];
-      for(const station of STATIONS[a.corner]??[]) {
+      for(const station of (battle.sonicVersion===2?[AMP_ROLES[a.corner]?.drive]:STATIONS[a.corner])??[]) {
         const cabinet=rigs.get(station)?.levels[0];if(!cabinet)continue;
         cabinet.updateWorldMatrix(true,true);
         const bounds=new THREE.Box3().setFromObject(cabinet);
@@ -104,18 +129,33 @@ export function createArenaVisuals(scene) {
         ampOrigins.push(origin);
       }
       if(!ampOrigins.length)return; // model is still loading; retry on attach
+      const sustainCabinet=rigs.get(AMP_ROLES[b.corner]?.sustain)?.levels[0];
+      let sustainOrigin=null;
+      if(sustainCabinet){sustainCabinet.updateWorldMatrix(true,true);const bounds=new THREE.Box3().setFromObject(sustainCabinet);
+        sustainOrigin=bounds.getCenter(new THREE.Vector3());sustainOrigin.y=bounds.min.y+(bounds.max.y-bounds.min.y)*.62;}
       const common={attackerPosition,defenderPosition,color:a.color,shieldColor:b.color,hitCount:battle.hitCount,damage:battle.damage,
         chordPitches:(battle.sonicChordNotes??[]).map(pitchIndex),shieldValue:battle.shieldValue};
-      const dice=createSonicDiceVisuals({...common,dicePool:battle.dicePool,diceVals:battle.diceVals,diceHits:battle.diceHits});
-      const volley=createSonicSequenceVisuals({...common,ampOrigins,clearance:1.15,shieldRadius:2.4,shieldSize:2.1,strokeStyle:'rings',intensityMode:'margin',
+      const modern=battle.sonicVersion===2;
+      const dice=modern?createArenaDiceSequence({drive:battle.diceVals,sustain:battle.sustainRolls,
+        driveSides:battle.dicePool[0]??6,sustainSides:battle.sustainPool[0]??6})
+        :createSonicDiceVisuals({...common,dicePool:battle.dicePool,diceVals:battle.diceVals,diceHits:battle.diceHits});
+      if(modern){
+        dice.group.scale.setScalar(.8);
+        dice.group.position.copy(attackerPosition).lerp(defenderPosition,.5).setY(.22);
+        const lane=defenderPosition.clone().sub(attackerPosition).setY(0).normalize();
+        dice.group.position.add(new THREE.Vector3(-lane.z,0,lane.x).multiplyScalar(3.5));
+        dice.group.position.x=THREE.MathUtils.clamp(dice.group.position.x,-9,9)-.8;
+        dice.group.position.z=THREE.MathUtils.clamp(dice.group.position.z,-9,9)-5.05;
+      }
+      const volley=(modern?createSonicBarrageVisuals:createSonicSequenceVisuals)({...common,battle,ampOrigins,sustainOrigin,clearance:1.15,shieldRadius:2.4,shieldSize:2.1,strokeStyle:'rings',intensityMode:'margin',
         dice:battle.diceVals.map((value,i)=>({value,passed:battle.diceHits[i],sides:battle.dicePool[i]}))});
       root.add(dice.group,volley.group);
-      sonic={key:battle.key,dice,volley,phase:battle.phase,phaseStart:clock,launch:null};
+      sonic={key:battle.key,dice,volley,modern,phase:battle.phase,phaseStart:clock,launch:null};
     }
     if(sonic.phase!==battle.phase){sonic.phase=battle.phase;sonic.phaseStart=clock;}
     if(battle.phase==='sonic_volley'&&sonic.launch==null) {
       sonic.launch=clock;
-      for(const rig of rigs.values())if(rig.owner?.id===battle.attackerId)rig.thumpUntil=clock+.6;
+      for(const rig of rigs.values())if(rig.owner?.id===battle.attackerId&&(!sonic.modern||rig.role==='drive'))rig.thumpUntil=clock+.6;
     }
   }
   const pulse=(point,color,owners=[],kind='pulse')=>{
@@ -203,7 +243,7 @@ export function createArenaVisuals(scene) {
         pawn.userData.target=start?.clone() ?? new THREE.Vector3();
         pawn.userData.targetFacing=standeeYaw(spirit.facing);
         pawn.rotation.y=pawn.userData.targetFacing;   // no spin-up from 0 on the first frame
-        root.add(pawn);pawns.set(spirit.id,pawn);
+        actors.add(pawn);pawns.set(spirit.id,pawn);
       }
       const standee=pawn.userData.standee;
       const target=arenaPoint(spirit.num,standee?STANDEE_Y:.34);if(target)pawn.userData.target.copy(target);
@@ -213,7 +253,10 @@ export function createArenaVisuals(scene) {
       // showed on a block (no readable front); on a standee it is the difference
       // between looking at a Spirit and looking at its edge.
       pawn.userData.targetFacing=standeeYaw(spirit.facing);
-      pawn.userData.knockedOut=!!spirit.knockedOut;
+      if(pawn.userData.hitBackCount!=null&&pawn.userData.hitBackCount!==spirit.hitBackCount) pawn.userData.wobbleUntil=clock+1.7;
+      pawn.userData.hitBackCount=spirit.hitBackCount;
+      pawn.userData.num=spirit.num;pawn.userData.vibe=spirit.vibe;pawn.userData.maxVibe=spirit.maxVibe;
+      pawn.userData.knockedOut=!!spirit.knockedOut||!!spirit.fallen;
       pawn.userData.active=spirit.id===next.actingId;
       if(spirit.pendingSustainFray>0&&!pawn.userData.wearLabel) {
         const badge=sonicSceneLabel('',spirit.color??'#aaddff',3.2,.4);
@@ -227,9 +270,10 @@ export function createArenaVisuals(scene) {
       }
       pawn.visible=true;
     }
-    for(const [id,pawn] of pawns)if(!live.has(id)) {root.remove(pawn);releaseArenaObject(pawn);pawns.delete(id);}
+    for(const [id,pawn] of pawns)if(!live.has(id)) {actors.remove(pawn);releaseArenaObject(pawn);pawns.delete(id);}
   }
   function attachModel(model) {
+    model.updateWorldMatrix(true,true); // include the arena Z flip in stack labels and origins
     for(const ids of Object.values(STATIONS))for(const id of ids) {
       const original=model.getObjectByName(`Amp_${id}`);if(!original)continue;
       const levels=[original];
@@ -239,7 +283,11 @@ export function createArenaVisuals(scene) {
         const own=[];
         level.traverse(o=>{if(!o.material)return;const clone=m=>{const c=m.clone();c.userData.baseEmission=c.emissiveIntensity;own.push(c);return c;};o.material=Array.isArray(o.material)?o.material.map(clone):clone(o.material);});materials.push(own);
       }
-      rigs.set(id,{levels,materials});
+      const role=Object.values(AMP_ROLES).some(r=>r.drive===id)?'drive':'sustain';
+      const badge=sonicSceneLabel(role.toUpperCase(),role==='drive'?'#ff6644':'#44aaff',2.1,.4);
+      const bounds=new THREE.Box3().setFromObject(original);
+      badge.sprite.position.copy(bounds.getCenter(new THREE.Vector3())).setY(bounds.max.y+.35);root.add(badge.sprite);
+      rigs.set(id,{levels,materials,role,badge});
     }
   }
   function update(next) {
@@ -255,12 +303,12 @@ export function createArenaVisuals(scene) {
     moveTiles.update(frame.reach,frame.spirits);
     for(const [station,rig] of rigs) {
       const owner=frame.rigs?.find(r=>STATIONS[r.corner]?.includes(station));
-      rig.owner=owner;
+      rig.owner=owner;rig.badge.sprite.visible=!!owner;
       rig.levels.forEach((level,i)=>{
         level.visible=!!owner&&i<owner.pool;
         for(const m of rig.materials[i]) {
           if(/Rim|Status|Hex cyan/.test(m.name)) {
-            m.emissive.set(owner?.color??0x445577);m.emissiveIntensity=owner?(i<owner.power?2.8:.7):.15;
+            m.emissive.set(owner?(rig.role==='drive'?0xff6644:0x44aaff):0x445577);m.emissiveIntensity=owner?(i<owner.power?2.8:.7):.15;
           }
         }
       });
@@ -270,11 +318,12 @@ export function createArenaVisuals(scene) {
         const old=previous.spirits?.find(p=>p.id===s.id);
         if(old&&!s.knockedOut&&!old.knockedOut&&s.num!==old.num&&!frame.slides?.some(a=>a.id===s.id))trail(arenaPoint(old.num),arenaPoint(s.num),s.color,s.id);
       }
-      if(!frame.battle&&previous.battle&&!previous.battle.volley)attack(previous.battle);
+      if(!frame.battle&&previous.battle&&!previous.battle.volley&&!previous.battle.swingClash)attack(previous.battle);
     }
     updateSonic(frame.battle);
+    updateSwing(frame.battle);
     if(frame.thump)once(`thump:${frame.thump.id}:${frame.thump.key}`,()=>{
-      for(const rig of rigs.values())if(rig.owner?.id===frame.thump.id)rig.thumpUntil=clock+.45;
+      for(const rig of rigs.values())if(rig.owner?.id===frame.thump.id&&rig.role==='drive')rig.thumpUntil=clock+.45;
     });
     for(const f of frame.flashes??[])once(`flash:${f.key}`,()=>pulse(arenaPoint(frame.spirits.find(s=>s.id===f.spiritId)?.num),f.color,[f.spiritId]));
     if(frame.tentacle)once(`arm:${frame.tentacle.key}`,()=>{
@@ -304,8 +353,17 @@ export function createArenaVisuals(scene) {
     tick(time,reduced=false,camera=null) {
       const dt=Math.min(.05,Math.max(0,time-lastTick));lastTick=time;clock=time;reducedMotion=reduced;
       if(sonic) {
-        sonic.dice.update(time-sonic.phaseStart,{phase:sonic.phase,reduced});
-        const flightTime=sonic.launch==null?-1:frame.battle?.sonicStartedAt!=null
+        if(sonic.modern){
+          const started=frame.battle?.sonicRollStartedAt;
+          const t=started==null?0:(performance.now()-started)/1000;
+          const visible=['sonic_roll','sonic_reveal'].includes(sonic.phase);
+          sonic.dice.update(t,{visible,reduced});
+          frame.battle.diceFocus=sonic.dice.group.position.clone().add(new THREE.Vector3(.8,0,5.3));
+          frame.battle.diceBounds=(t<3.85?[[-6.5,0,2],[8,4,11]]:[[-3,0,3],[5,1,10.8]])
+            .map(v=>new THREE.Vector3(...v).multiplyScalar(.8).add(sonic.dice.group.position));
+        }else sonic.dice.update(time-sonic.phaseStart,{phase:sonic.phase,reduced});
+        const flightTime=sonic.launch==null?(sonic.modern&&frame.battle?.sonicRollStartedAt!=null
+          ?(performance.now()-frame.battle.sonicRollStartedAt)/1000-BARRAGE_LAUNCH:-BARRAGE_LAUNCH):frame.battle?.sonicStartedAt!=null
           ? (performance.now()-frame.battle.sonicStartedAt)/1000 : time-sonic.launch;
         const defender=frame.spirits?.find(s=>s.id===frame.battle?.defenderId);
         sonic.volley.update(flightTime,{reduced,camera,defenderPosition:arenaPoint(defender?.num,1)??undefined,
@@ -318,6 +376,8 @@ export function createArenaVisuals(scene) {
         const turn=pawn.userData.targetFacing;
         pawn.rotation.y=THREE.MathUtils.damp(pawn.rotation.y,turn,14,dt);
         const knocked=pawn.userData.knockedOut;
+        const wobble=reduced?0:Math.max(0,(pawn.userData.wobbleUntil??0)-time)/1.7
+          *knockbackWobble(pawn.userData.vibe,pawn.userData.maxVibe)*Math.sin(time*23);
         const standee=pawn.userData.standee;
         if(standee) {
           // ⚠️ THE CARRIER OWNS WHERE IT STANDS AND WHICH WAY IT TURNS; THE
@@ -328,17 +388,23 @@ export function createArenaVisuals(scene) {
           standee.frame(time,{knockedOut:knocked,active:pawn.userData.active,
             acting:pawn.userData.active,reduced,cameraPos:camera?.position ?? null});
           pawn.position.y=target?.y ?? STANDEE_Y;
+          pawn.rotation.z=wobble;
           continue;
         }
-        pawn.rotation.z=THREE.MathUtils.damp(pawn.rotation.z,knocked?Math.PI*.48:0,10,dt);
+        pawn.rotation.z=THREE.MathUtils.damp(pawn.rotation.z,knocked?Math.PI*.48:wobble,10,dt);
         const scale=knocked ? .72 : 1+(pawn.userData.active&&!reduced?Math.sin(time*4)*.025:0);
         pawn.scale.setScalar(scale);
         pawn.position.y=(target?.y ?? .2)+(knocked ? .02 : !reduced?Math.sin(time*2.4+pawn.position.x)*.025:0);
       }
+      if(swing)frame.battle.swingFocus=swing.update(frame.battle?.swingStartedAt!=null?(performance.now()-frame.battle.swingStartedAt)/1000:time-swing.start,{reduced});
       for(const rig of rigs.values())rig.levels.forEach((level,i)=>{
-        const thump=!reduced&&clock<(rig.thumpUntil??0)?1+Math.sin((rig.thumpUntil-clock)*30)*.025:1;
+        const b=frame.battle;
+        const energized=(b?.swingClash&&rig.role==='drive'&&[b.attackerId,b.defenderId].includes(rig.owner?.id)&&['swing_charge','swing_clash'].includes(b.phase))||b?.sonicVersion===2&&(rig.role==='drive'
+          ?rig.owner?.id===b.attackerId&&b.phase==='sonic_volley'&&(b.focus?.time??0)<b.diceVals.length*.22
+          :rig.owner?.id===b.defenderId&&['sonic_reveal','sonic_volley'].includes(b.phase)&&(b.focus?.shieldHp??b.shieldValue)>0);
+        const thump=energized&&!reduced?1+.025*Math.sin(time*28):!reduced&&clock<(rig.thumpUntil??0)?1+Math.sin((rig.thumpUntil-clock)*30)*.025:1;
         level.scale.setScalar(thump);
-        for(const m of rig.materials[i])if(/Status/.test(m.name)&&rig.owner)m.emissiveIntensity=(i<rig.owner.power?2.8:.7)*(1+(reduced?0:.1*Math.sin(time*2+rig.owner.radius)));
+        for(const m of rig.materials[i])if(/Status/.test(m.name)&&rig.owner)m.emissiveIntensity=(energized?3.2:i<rig.owner.power?2.8:.7)*(1+(reduced?0:.1*Math.sin(time*2+rig.owner.radius)));
       });
       for(const o of hazards.children) {
         const kind=o.userData.kind,t=reduced?0:time;
@@ -359,8 +425,8 @@ export function createArenaVisuals(scene) {
       headDials.tick(time*1000,camera,pawns,{reduced});
       moveTiles.tick(time*1000,camera,pawns,{reduced});
     },
-    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0),sonicPhase:sonic?.phase??null,hazards:hazards.children.length,headDials:headDials.active(clock*1000),moveTiles:moveTiles.active(),moveTileDetail:moveTiles.diagnostics()}),
-    dispose(){disposed=true;clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0),sonicPhase:sonic?.phase??null,hazards:hazards.children.length,headDials:headDials.active(clock*1000),moveTiles:moveTiles.active(),moveTileDetail:moveTiles.diagnostics()}),
+    dispose(){disposed=true;clearSwing();clearSonic();clearEffects();for(const rig of rigs.values()){rig.badge.texture?.dispose();releaseArenaObject(rig.badge.sprite);}headDials.dispose();moveTiles.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     get disposed(){return disposed;},
   };
 }

@@ -148,6 +148,14 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
 
   const nsA = state?.noteStates?.[attackerId] ?? {};
   const nsD = state?.noteStates?.[defenderId] ?? {};
+  if(kind==='swing') {
+    const dicePool=sonicRig(nsA,0,0,true,attackerId).pool;
+    const defenderDicePool=sonicRig(nsD,0,0,true,defenderId).pool;
+    return {atkStat:dicePool.length,defStat:defenderDicePool.length,dicePool,defenderDicePool,
+      atkFloor:Math.max((nsA.chargeFloorTurns??0)>0?CHARGE_FLOOR_BONUS:0,nsA.dieFloorBoost??0),
+      swingChordLeft:(nsA.driveStack??[]).slice(2),swingChordSpent:(nsA.driveStack??[]).slice(0,2),
+      _derived:{consumedSmashExposed:false}};
+  }
   const defA = SPIRIT_DEFS[attackerId] ?? {};
   const defD = SPIRIT_DEFS[defenderId] ?? {};
 
@@ -220,9 +228,8 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
     const pool = rigFor(attacker, nsA, state).pool;
     const dicePool = [...pool]; // rigFor applies the ceiling exactly once.
 
-    // 🛡️ Inside their own rig radius the rival braces against the beam with
-    // their amp behind them (d6). Stranded outside it there is no rig to answer
-    // with and they scramble a bare d4 — the same rule that blocks the riff-off.
+    // Sustain rolls one baseline d6 per effective point into fresh shield HP.
+    // Rig status remains useful to callers for the separate riff-off gate.
     const defInRig = rigFor(defender, nsD, state).inRange;
     return {
       ...base,
@@ -230,7 +237,7 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
       defStat:Math.max(0,(nsD.smashExposed?0:(nsD.sustainStack?.length?spiritChord(defenderId,nsD.sustainStack).sustain:0))
         -(nsD.swingExposed?1:0)+(nsD.tempSustain??0)),
       dicePool,
-      defDie: 0,
+      defDie: 6,
       sonicChordNotes:[...(nsA.driveStack??[])],
       sustainChordNotes:[...(nsD.sustainStack??[])],
       _derived: { ...base._derived, defInRig, poolBeforeCharge: pool },

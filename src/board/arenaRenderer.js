@@ -11,6 +11,7 @@ import { preserveTacticalLayer, keepGameplayClicks } from './arenaDom.js';
 import { createArenaEnvironment, polishArenaModel } from './arenaEnvironment.js';
 import { arenaPoint, pointXY, createArenaVisuals, releaseArenaObject } from './arenaVisuals.js';
 import { createSonicCamera } from './sonicCamera.js';
+import { createArenaCrowd } from './arenaCrowd.js';
 import { CAMERA_DIRECTOR, createCameraDirector, createCameraSubjects } from './cameraDirector.js';
 
 // The SVG remains the only gameplay input surface. WebGL consumes a filtered,
@@ -27,6 +28,9 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     cleanups.push(restoreLayer);
     const scene=new THREE.Scene();scene.background=new THREE.Color('#030611');
     const overlayScene=new THREE.Scene();
+    const foregroundScene=new THREE.Scene();
+    foregroundScene.add(new THREE.HemisphereLight(0xddeaff,0x34314f,2.5));
+    const actorLight=new THREE.DirectionalLight(0xffffff,2);actorLight.position.set(5,12,7);foregroundScene.add(actorLight);
     const camera=new THREE.PerspectiveCamera(43,1,.1,500);
     const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
     cleanups.push(()=>{releaseArenaObject(scene);renderer.dispose();renderer.forceContextLoss();renderer.domElement.remove();});
@@ -35,7 +39,16 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.info.autoReset=false;
     host.appendChild(renderer.domElement);
     const overlay=new CSS3DRenderer();
-    Object.assign(overlay.domElement.style,{position:'absolute',inset:'0'});host.appendChild(overlay.domElement);
+    Object.assign(overlay.domElement.style,{position:'absolute',inset:'0',zIndex:'1'});host.appendChild(overlay.domElement);
+    // CSS3D is a DOM layer: WebGL renderOrder cannot draw across it. A tiny
+    // transparent actor pass above it keeps standees solid without blocking taps.
+    const foreground=new THREE.WebGLRenderer({alpha:true,antialias:true,powerPreference:'low-power'});
+    foreground.setClearColor(0x000000,0);foreground.toneMapping=renderer.toneMapping;
+    foreground.outputColorSpace=THREE.SRGBColorSpace;
+    foreground.domElement.dataset.arenaForeground='spirits';
+    Object.assign(foreground.domElement.style,{position:'absolute',inset:'0',zIndex:'2',pointerEvents:'none'});
+    host.appendChild(foreground.domElement);
+    cleanups.push(()=>{releaseArenaObject(foregroundScene);foreground.dispose();foreground.forceContextLoss();foreground.domElement.remove();});
     cleanups.push(()=>{restoreLayer();overlay.domElement.remove();});
     const plane=new CSS3DObject(tacticalElement);
     plane.scale.setScalar(1/(200*SCALE));plane.rotation.x=-Math.PI/2;
@@ -51,7 +64,8 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     const output=new OutputPass();composer.addPass(bloom);composer.addPass(output);
     cleanups.push(()=>{bloom.dispose();output.dispose();composer.dispose();});
     const environment=createArenaEnvironment(scene);cleanups.push(()=>environment.dispose());
-    const visuals=createArenaVisuals(scene);cleanups.push(()=>visuals.dispose());
+    const visuals=createArenaVisuals(scene,{foregroundScene});cleanups.push(()=>visuals.dispose());
+    const crowd=createArenaCrowd(scene);crowd.group.visible=false;cleanups.push(()=>crowd.dispose());
     const media=window.matchMedia?.('(prefers-reduced-motion: reduce)');
     let reduced=!!media?.matches,quality='auto',qualityLabel='',lite=false,autoLite=false,dirty=true,inView=true;
     let elapsed=0,last=performance.now(),lastDraw=0,sampleStart=last,samples=0,fps=0;
@@ -66,7 +80,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     // events. keepGameplayClicks (arenaDom.js) only forwards a LEFT press to the
     // controls once it has become a 6px drag, so a click that picks a hex never
     // reaches here and never steals the camera. Wheel and pinch fire start+end.
-    const takeOver=()=>director.userStart(performance.now()),letGo=()=>director.userEnd(performance.now());
+    const takeOver=()=>{sonicCamera.userStart();director.userStart(performance.now());},letGo=()=>director.userEnd(performance.now());
     controls.addEventListener('start',takeOver);controls.addEventListener('end',letGo);
     cleanups.push(()=>{controls.removeEventListener('start',takeOver);controls.removeEventListener('end',letGo);});
     const motion=()=>{reduced=!!media?.matches;controls.enableDamping=!reduced;dirty=true;};motion();
@@ -81,7 +95,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       const aspect=width/height;
       camera.position.sub(controls.target).multiplyScalar(fit(aspect)/fit(camera.aspect)).add(controls.target);
       camera.aspect=aspect;camera.updateProjectionMatrix();
-      renderer.setSize(width,height);composer.setSize(width,height);overlay.setSize(width,height);tuneDirector();dirty=true;
+      renderer.setSize(width,height);foreground.setPixelRatio(renderer.getPixelRatio());foreground.setSize(width,height);composer.setSize(width,height);overlay.setSize(width,height);tuneDirector();dirty=true;
     }
     function applyQuality() {
       const next=quality==='standard'||(quality==='auto'&&(autoLite||!!frame.lite));
@@ -129,7 +143,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
           camera.lookAt(controls.target);dirty=true;
         } else controls.update();
       }
-      reportCamera(sonicCamera.active?'sonic':!autoCamera||!cameraShot||cameraShot.mode==='off'?'off':cameraShot.mode,cameraShot?.resumeInMs);
+      reportCamera(sonicCamera.manual?'battle-manual':sonicCamera.active?'sonic':!autoCamera||!cameraShot||cameraShot.mode==='off'?'off':cameraShot.mode,cameraShot?.resumeInMs);
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
       const stats=visuals.diagnostics(),moving=stats.effects>0||stats.headDials>0||stats.moveTiles>0||sonicCamera.active||!!cameraShot?.driving;
@@ -138,8 +152,9 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       lastDraw=now;
       try {
         environment.update(elapsed,{lite,reduced});
+        crowd.tick(elapsed,{reduced});
         for(const e of emissives)if(e.crack)e.material.emissiveIntensity=e.base*(reduced?1:1+.08*Math.sin(elapsed*.75));
-        renderer.info.reset();composer.render();overlay.render(overlayScene,camera);dirty=false;
+        renderer.info.reset();composer.render();overlay.render(overlayScene,camera);foreground.render(foregroundScene,camera);dirty=false;
         samples++;
         if(now-sampleStart>2500) {
           fps=Math.round(samples*1000/(now-sampleStart));samples=0;sampleStart=now;
@@ -148,6 +163,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
           host.dataset.arenaFps=String(fps);host.dataset.arenaQuality=lite?'standard':'high';
           const stats=visuals.diagnostics();host.dataset.arenaCabinets=String(stats.liveCabinets);
           host.dataset.arenaEffects=String(stats.effects);host.dataset.arenaHazards=String(stats.hazards);
+          host.dataset.arenaFans=String(crowd.count);
           host.dataset.arenaDrawCalls=String(renderer.info.render.calls);
         }
       } catch(error) {failed=true;cancelAnimationFrame(raf);console.error('Arena rendering stopped',error);onError();}
@@ -169,20 +185,21 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       if(disposed){releaseArenaObject(gltf.scene);return;}
       try {
         model=gltf.scene;model.scale.z=-1;emissives=polishArenaModel(model);
-        scene.add(model);visuals.attachModel(model);visuals.update(frame);dirty=true;onReady();
+        scene.add(model);visuals.attachModel(model);visuals.update(frame);crowd.group.visible=true;dirty=true;onReady();
       }catch(error){console.error('Arena model setup failed',error);onError();}
     },undefined,()=>{if(!disposed)onError();});
     return {
       // The toolbar's camera buttons are the player choosing a shot: they count
       // as taking over (the preview's "Count as taking over", left as default).
-      view(name){frameView(name);director.userNudge(performance.now());},
+      followBattle(){sonicCamera.autoCamera(true);dirty=true;},
+      view(name){sonicCamera.userNudge();frameView(name);director.userNudge(performance.now());},
       dispose,
-      update(next){if(disposed||failed)return;frame=next??{};applyQuality();visuals.update(frame);dirty=true;},
+      update(next){if(disposed||failed)return;frame=next??{};applyQuality();visuals.update(frame);crowd.update(frame.crowds);dirty=true;},
       quality(value){if(value===quality)return;quality=value;autoLite=false;applyQuality();dirty=true;},
-      zoom(factor){camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target);controls.update();director.userNudge(performance.now());dirty=true;},
+      zoom(factor){sonicCamera.userNudge();camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target);controls.update();director.userNudge(performance.now());dirty=true;},
       // ☰ Auto camera switch. Turning it back ON starts a fresh director so it
       // picks up from wherever the camera is now, not from a pose it held before.
-      autoCamera(on){on=!!on;if(on===autoCamera)return;autoCamera=on;if(on){director=createCameraDirector();tuneDirector();}dirty=true;},
+      autoCamera(on){on=!!on;if(on===autoCamera)return;autoCamera=on;sonicCamera.autoCamera(on);if(on){director=createCameraDirector();tuneDirector();}dirty=true;},
     };
   } catch(error) {dispose();throw error;}
 }

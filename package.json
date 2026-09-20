@@ -1,7 +1,7 @@
 {
   "name": "rlsw-sim",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "homepage": "https://yoshi80085.github.io/RLSW",
   "scripts": {
@@ -58,13 +58,14 @@
     "lint:baseline": "node scripts/check-lint-baseline.mjs",
     "test:bushidoui": "esbuild src/engine/bushidoOverlayCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/bushidoOverlayCheck.mjs --log-level=warning && node node_modules/.cache/rlsw/bushidoOverlayCheck.mjs",
     "test:arena": "node --import ./src/engine/testAssetStub.mjs src/board/arenaPresentationCheck.mjs && node src/board/arenaDomCheck.mjs && esbuild src/board/arenaFallbackCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/arenaFallbackCheck.mjs --log-level=warning && node node_modules/.cache/rlsw/arenaFallbackCheck.mjs",
-    "test:sonicfx": "node src/board/sonicVolleyVisualsCheck.mjs && node src/board/sonicZigzagCheck.mjs && node src/board/sonicRingCheck.mjs && node src/board/sonicDiceVisualsCheck.mjs && node src/board/sonicIntegrationCheck.mjs && node src/board/combatDiceCheck.mjs",
+    "test:sonicfx": "node src/board/sonicVolleyVisualsCheck.mjs && node src/board/sonicZigzagCheck.mjs && node src/board/sonicRingCheck.mjs && node src/board/sonicDiceVisualsCheck.mjs && node src/board/sonicIntegrationCheck.mjs && node src/board/combatDiceCheck.mjs && node src/board/sonicBarrageCheck.mjs",
     "test:sonic": "node --import ./src/engine/testAssetStub.mjs src/engine/sonicVolleyCheck.mjs",
     "test:sonicjourney": "esbuild src/engine/clientSonicJourneyCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/sonicJourney.mjs --loader:.png=empty --loader:.jpg=empty --loader:.svg=empty --loader:.mp3=empty --loader:.wav=empty --log-level=warning && node node_modules/.cache/rlsw/sonicJourney.mjs",
     "test:playfinder": "node --import ./src/engine/testAssetStub.mjs src/engine/playFinderCheck.mjs",
     "test:crowdcoach": "node --import ./src/engine/testAssetStub.mjs src/ui/crowdCoachCheck.mjs",
     "test:crowdbubble": "esbuild src/ui/crowdBubbleCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/crowdBubbleCheck.mjs --loader:.png=empty --log-level=warning && node node_modules/.cache/rlsw/crowdBubbleCheck.mjs",
-    "test:standee": "node src/board/standeeCheck.mjs"
+    "test:standee": "node src/board/standeeCheck.mjs",
+    "test:swing": "node --import ./src/engine/testAssetStub.mjs src/engine/swingClashCheck.mjs && esbuild src/engine/clientSwingJourneyCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/swingJourney.mjs --loader:.png=empty --loader:.jpg=empty --loader:.svg=empty --loader:.mp3=empty --loader:.wav=empty --log-level=warning && node node_modules/.cache/rlsw/swingJourney.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",

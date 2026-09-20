@@ -50,8 +50,8 @@ function fresh({ elimination = 'on', edge = false, lives = 3 } = {}) {
   return state;
 }
 const target = state => state.spirits.find(s => s.id === DEFENDER);
-const shot = (over = {}) => ({ kind: 'sonic', attackerId: ATTACKER, defenderId: DEFENDER,
-  atkStat: 5, defStat: 4, dicePool: [6, 6, 6, 6, 6], ...over });
+const shot = (over = {}) => ({ kind: 'sonic', sonicVersion:2, attackerId: ATTACKER, defenderId: DEFENDER,
+  atkStat: 5, defStat: 3, dicePool: [6, 6, 6, 6, 6], ...over });
 function draws(values) {
   let cursor = 0;
   return {
@@ -74,24 +74,24 @@ function play(state, { hooks = {}, fx = [] } = {}) {
   });
 }
 
-// The spec's worked example: ties absorb, every die remains visible, no defence draw.
+// The spec's worked example: ties absorb, every die remains visible, rolled defence HP.
 {
   const before = fresh();
-  const rng = draws([6, 6, 5, 1, 4]);
+  const rng = draws([6, 6, 5, 1, 4, 5, 4, 3]);
   const state = applyAttackRolled(before, shot(), rng);
-  eq(rng.cursor(), 5, 'a five-wave volley draws five values, with no defence die');
+  eq(rng.cursor(), 8, 'a five-wave volley draws five values, plus three defence dice');
   eq(state.battle.diceVals, [6, 6, 5, 1, 4], 'every rolled face is retained for presentation');
-  eq(state.battle.diceHits, [true, true, true, false, false], 'ties are absorbed');
-  eq(state.battle.hitCount, 3, 'three dice beat Sustain four');
-  eq(state.battle.shieldValue, 4, 'the shield is one fixed value');
+  eq(state.battle.diceHits, [false, false, true, true, true], 'exact shield break has no spillover');
+  eq(state.battle.hitCount, 3, 'three projectiles penetrate the HP shield');
+  eq(state.battle.shieldValue, 12, 'Sustain faces sum into shield HP');
   eq(state.battle.damage, 1, 'three hits cause only one Vibe chip');
   eq(state.noteStates[DEFENDER].sustainStack, sustain, 'the held chord is untouched');
   eq(state.noteStates[DEFENDER].pendingSonicAttacks, 1, 'one volley charges one deferred note');
   eq(before.noteStates[DEFENDER].pendingSonicAttacks ?? 0, 0, 'the input state remains unchanged');
-  const rerolled = applyAttackRerolled(state, {}, draws([1, 2, 3, 4, 4]));
+  const rerolled = applyAttackRerolled(state, {}, draws([1, 2, 3, 2, 4]));
   eq(rerolled.battle.hitCount, 0, 'Code Injection recomputes all projectile outcomes');
   eq(rerolled.battle.damage, 0, 'a fully absorbed volley deals zero Vibe');
-  eq(rerolled.battle.shieldValue, 4, 'reroll preserves the same Sustain shield');
+  eq(rerolled.battle.shieldValue, 12, 'reroll preserves the same Sustain shield');
   eq(rerolled.noteStates[DEFENDER].pendingSonicAttacks, 1, 'a reroll never bills a second attack');
 }
 
@@ -100,23 +100,23 @@ function play(state, { hooks = {}, fx = [] } = {}) {
   const run = () => {
     const rng = makeRng(12345);
     const state = applyAction(fresh(), attackRolled('sonic', ATTACKER, DEFENDER,
-      { atkStat: 5, defStat: 4, dicePool: [6, 6, 6, 6, 6] }), rng);
-    eq(rng.state().cursor, 5, 'initial Sonic draw cursor excludes defence');
+      { atkStat: 5, defStat: 3, dicePool: [6, 6, 6, 6, 6] }), rng);
+    eq(rng.state().cursor, 8, 'initial Sonic draws both pools');
     return applyAction(state, attackRerolled(), rng);
   };
   const a = run();
   eq(a, run(), 'seeded attack and reroll replay byte-for-byte');
-  eq(a.rng.cursor, 10, 'reroll uses only another five projectile draws');
+  eq(a.rng.cursor, 13, 'reroll uses only another five projectile draws');
 }
 
 // Posing is an explicitly dropped shield, and a ceiling/floor boost stays on every die.
 {
-  const state = applyAttackRolled(fresh(), shot({ posing: true, atkFloor: 2 }), draws([1, 1, 1, 1, 1]));
+  const state = applyAttackRolled(fresh(), shot({ posing: true, atkFloor: 2 }), draws([1, 1, 1, 1, 1, 5, 4, 3]));
   eq(state.battle.shieldValue, 0, 'a pose explicitly gives up Sustain protection');
   eq(state.battle.diceVals, [3, 3, 3, 3, 3], 'a charged floor affects all projectiles');
   eq(state.battle.hitCount, 5, 'all projectiles beat the dropped shield');
   eq(state.battle.damage, 2, 'five hits reach the small Vibe cap');
-  const empty = applyAttackRolled(fresh(), shot({ atkStat: 0, dicePool: [] }), draws([]));
+  const empty = applyAttackRolled(fresh(), shot({ atkStat: 0, dicePool: [] }), draws([5,4,3]));
   eq(empty.battle.hitCount, 0, 'an explicit empty charge never invents a fallback die');
   eq(sonicVolleyFame(0), 0, 'no hit grants no base Fame');
 }
@@ -124,7 +124,7 @@ function play(state, { hooks = {}, fx = [] } = {}) {
 // Shield wear counts declarations, not hits, then settles once at the owner's turn.
 {
   let state = fresh();
-  for (let i = 0; i < 3; i++) state = applyAttackRolled(state, shot(), draws([1, 1, 1, 1, 1]));
+  for (let i = 0; i < 3; i++) state = applyAttackRolled(state, shot(), draws([1, 1, 1, 1, 1, 5, 4, 3]));
   eq(state.noteStates[DEFENDER].pendingSonicAttacks, 3, 'even three blocked volleys accrue three declarations');
   eq(state.noteStates[DEFENDER].sustainStack, sustain, 'all rivals face the same held chord');
   const tick = startTurnNotes(state.noteStates[DEFENDER], { spiritId: DEFENDER });
@@ -143,11 +143,11 @@ function play(state, { hooks = {}, fx = [] } = {}) {
 // A absorbed volley has no retaliation; a connecting volley shoves once per hit.
 {
   const before = fresh();
-  const miss = play(applyAttackRolled(before, shot(), draws([1, 1, 2, 3, 4]))).state;
+  const miss = play(applyAttackRolled(before, shot(), draws([1, 1, 2, 3, 4, 5, 4, 3]))).state;
   eq(miss.spirits, before.spirits, 'all-blocked Sonic neither hurts nor reverse-shoves either Spirit');
   eq(miss.noteStates[ATTACKER].fame, 0, 'no attacking Fame on an absorbed volley');
   eq(miss.noteStates[DEFENDER].fame, 0, 'no counterattack Fame for defending');
-  const hit = play(applyAttackRolled(before, shot(), draws([6, 6, 5, 1, 4]))).state;
+  const hit = play(applyAttackRolled(before, shot(), draws([6, 6, 5, 1, 4, 5, 4, 3]))).state;
   eq(target(hit).num, lane[4].num, 'three beams through shove exactly three hexes');
   eq(target(hit).vibe, 11, 'the volley chips once after its shove');
   eq(hit.noteStates[DEFENDER].sustainStack, sustain, 'consequences cannot immediately fray Sustain');
@@ -157,7 +157,7 @@ function play(state, { hooks = {}, fx = [] } = {}) {
 // Sonic can ring out; other attacks keep the existing hard board edge.
 for (const elimination of ['on', 'off']) {
   const fx = [];
-  const state = play(applyAttackRolled(fresh({ edge: true, elimination }), shot(), draws([6, 6, 5, 1, 4])), { fx }).state;
+  const state = play(applyAttackRolled(fresh({ edge: true, elimination }), shot(), draws([6, 6, 5, 1, 4, 5, 4, 3])), { fx }).state;
   eq(target(state).lives, elimination === 'on' ? 2 : 3, 'ring-outs respect the elimination mode');
   eq(target(state).num, 12, 'ring-out uses the normal home respawn');
   eq(target(state).vibe, 12, 'the fresh respawn never takes the old volley chip');
@@ -170,7 +170,7 @@ for (const elimination of ['on', 'off']) {
   const stop = runBattleFlow(knockback({ state, fromId: ATTACKER, targetId: DEFENDER, spaces: 3 }), state,
     { applyAction: (s, action) => applyAction(s, action, rng) });
   eq(target(stop.state), target(state), 'ordinary knockback still stops at the stage edge');
-  const out = play(applyAttackRolled(fresh({ edge: true, lives: 1 }), shot(), draws([6, 6, 5, 1, 4]))).state;
+  const out = play(applyAttackRolled(fresh({ edge: true, lives: 1 }), shot(), draws([6, 6, 5, 1, 4, 5, 4, 3]))).state;
   eq(target(out).knockedOut, true, 'last-life ring-out follows normal elimination');
 }
 
@@ -180,7 +180,7 @@ for (const elimination of ['on', 'off']) {
   state.spirits = state.spirits.map(s => s.id === DEFENDER ? { ...s, corner: null } : s);
   let hazardEntries = 0;
   const rng = makeRng(44);
-  const result = play(applyAttackRolled(state, shot(), draws([6, 6, 5, 1, 4])), { hooks: {
+  const result = play(applyAttackRolled(state, shot(), draws([6, 6, 5, 1, 4, 5, 4, 3])), { hooks: {
     hexHazards: (live, effect) => {
       hazardEntries++;
       const victim = target(live);
@@ -200,7 +200,7 @@ for(const {q,r} of axialNeighbors(0,0)){
   const angle=Math.atan2((r+q/2)*ROW_SPACING,q*COL_SPACING);
   const before=fresh();
   before.spirits=before.spirits.map(s=>({...s,num:s.id===ATTACKER?55:56,facing:angle}));
-  const rolled=applyAttackRolled(before,shot({dicePool:[6],sonicChordNotes:['C','E','G']}),draws([6]));
+  const rolled=applyAttackRolled(before,shot({dicePool:[6],defStat:0,sonicChordNotes:['C','E','G']}),draws([6]));
   eq(rolled.battle.sonicFacing,angle,'the attacking facing is frozen');
   rolled.spirits=rolled.spirits.map(s=>s.id===ATTACKER?{...s,facing:angle+Math.PI}:s);
   // Put the attacker outside the shove destination without changing its snapshot.
@@ -208,6 +208,18 @@ for(const {q,r} of axialNeighbors(0,0)){
   const events=[];
   const after=play(rolled,{fx:events}).state;
   eq(target(after).num,straightNeighborInDirection(HEX_BY_NUM[56],angle).num,'one hit moves one hex along original facing');
-  eq(events.filter(e=>e.name==='sonicContact').map(e=>e.shotIndex),[0],'contact boundary precedes the shove');
+  eq(events.filter(e=>e.name==='sonicBarrageLanded').map(e=>e.spiritId),[DEFENDER],'contact boundary precedes the shove');
 }
-console.log(`Sonic volley: ${checks} checks passed.`);
+
+// Historical action logs have no version marker and must keep their draw cursor.
+{
+  const legacy=shot({sonicVersion:undefined,defStat:4});delete legacy.sonicVersion;
+  const rng=draws([6,6,5,1,4]);
+  const old=applyAttackRolled(fresh(),legacy,rng);
+  eq(old.battle.diceHits,[true,true,true,false,false],'legacy replay uses its fixed shield');
+  eq(rng.cursor(),5,'legacy replay draws no Sustain dice');
+  const reroll=applyAttackRerolled(old,{},draws([1,2,3,4,4]));
+  eq(reroll.battle.hitCount,0,'legacy reroll retains fixed-shield semantics');
+}
+
+console.log(`Sonic barrage: ${checks} checks passed.`);

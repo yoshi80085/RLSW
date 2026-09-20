@@ -646,3 +646,41 @@ than no doc** — if you find one that has, say so plainly rather than editing a
   the output as scenery for months.
 - 🗺️ **Update this file in the same pass as the code.** `npm run test:arch` will
   fail if you don't, which is the only reason it is still true.
+
+
+### Sonic shieldbreaker integration (2026-09-19)
+
+New `attackRolled` Sonic actions carry `sonicVersion: 2`. Both pools roll on the
+seeded engine stream; Sustain sums to fresh shield HP, Drive depletes it with
+spillover. Code Injection preserves the original Sustain roll. Unversioned old
+actions retain fixed-shield resolution and the legacy sequential presentation.
+The client waits for `sonicBarrageLanded` before running the existing collision,
+hazard, immunity and ring-out sequence as one shove. It holds the final result
+for two seconds after consequences finish. Bot resolution uses the same rules.
+Current approved balance: one d6 per effective Sustain point, current Drive
+pool/floor/ceiling, existing Vibe chip and Fame based on penetrating ring count.
+
+| Module | Responsibility |
+|---|---|
+| `engine/systems/sonicBarrage.js` | Pure shield depletion and spillover ledger. |
+| `board/sonicBarrageTiming.js` | Shared overlapping contacts and reversible shield-break slowdown. |
+| `board/sonicBarrageVisuals.js` | Preview rings, wearing shield panels, opening, debris, HP and carry-through in real arena coordinates. |
+| `board/sonicBarrageCheck.mjs` | Conservation, exact breaks, timing/audio cues and real GLTF arena wiring. |
+| `audio/sonicBarrageAudio.js` | Approved chord and dice/count/crack synthesis, routed through the game mixer and cancelled together. |
+| `ui/SonicBarrageRecord.jsx` | Persistent rolled totals and final shield/through/actual shove result. |
+
+`board/sonicPresentation.js` also exports `scheduleSonicBarrage`. Floor dice use
+`board/arenaDiceSequence.js`; the board camera frames their floor rows, then the
+ring contacts, reverse shield break and aftermath. Local Roll remains one input;
+launch follows the two-second totals hold automatically. Remote/bot views auto-roll.
+
+
+Sonic camera/amp update (2026-09-20): `arenaVisuals.js` exports `AMP_ROLES`.
+The larger NW/SW/NE/SE stack is Drive; W-N/W-S/E-N/E-S is Sustain. Red Drive
+launch halos and rings originate only at the attacking Drive stack. The smaller
+defending Sustain stack sends a blue feed into its shield, with a separate chord.
+Dice/clacks use the SFX fader; both chords use Notes. Battle orbit/pan/zoom stays
+available. Taking control holds the player's view through the rest of the battle;
+**Follow battle** resumes scripted framing. Auto-off and reduced motion remain
+manual. The camera fits Spirits plus adjacent floor dice, frames the Drive amp at
+launch, follows live projectile positions and then frames contacts/aftermath.

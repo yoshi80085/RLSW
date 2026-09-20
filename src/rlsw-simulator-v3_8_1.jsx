@@ -1,3 +1,6 @@
+import { SonicBarrageRecord } from './ui/SonicBarrageRecord.jsx';
+import { playBarrageChord, playBarrageFoley, playSustainChord } from './audio/sonicBarrageAudio.js';
+import { BARRAGE_LAUNCH, barrageContact, barrageLanded } from './board/sonicBarrageTiming.js';
 import { bushidoLane, bushidoDrawPatch, bushidoBlockers } from "./engine/systems/bushido.js";
 import boardImg from "./board.png";
 import boardOutlineImg from "./board_outline.png";
@@ -57,7 +60,8 @@ import riffOffSong from "./music/Riff_off_song.mp3";
 import battleSong  from "./music/battle_song.mp3";
 import moshpitSong from "./music/Master_of_Moshpits_song.mp3";   // 🤘 Master of Moshpits cinematic
 import { attackParams, rigFor } from "./engine/systems/attackParams.js";
-import { scheduleSonicVolley } from "./board/sonicPresentation.js";
+import { scheduleSonicVolley, scheduleSonicBarrage } from "./board/sonicPresentation.js";
+import { SWING_TIMING, SWING_BEATS } from './board/swingTiming.js';
 import { SONIC_SEQUENCE, sonicContactTime } from './board/sonicSequence.js';
 import { playSonicBeamAudio } from "./audio/sonicBeamAudio.js";
 import { sonicRig, rigPoolLabel, rigTiers, rigTierSpend, rigSpendable } from "./engine/systems/sonicRig.js";
@@ -175,7 +179,7 @@ import { fanPawnShape } from "./ui/fanPawnShape.jsx";
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
 import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim } from "./music/stackSlots.js";
-import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, THRASH_DIE, THRASH_CEIL_DIE, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -269,18 +273,6 @@ import { evaluateChord } from "./music/chords.js";
 
 // ⚠️ CQC swing-upgrade tiers + %-proc chance tables were CUT with the Stance
 // system rework (see STANCE_SYSTEM_DESIGN.md §8) — no musical connection.
-
-// Vintage dance-craze names flashed on a plain swing (no upgrade effect landed).
-// Picked once per battle (stored on battleState) so it stays stable across renders.
-const SWING_DANCE_NAMES = [
-  'TWIST','MASHED POTATO','THE JERK','WATUSI','THE HUSTLE','FUNKY CHICKEN',
-  'THE PONY','THE SWIM','THE FRUG','SHIMMY','CHARLESTON','JITTERBUG',
-  'THE MONKEY','HAND JIVE','THE STROLL','THE MADISON','THE SHAG','BOOGIE',
-];
-function pickDanceName() {
-  return SWING_DANCE_NAMES[Math.floor(Math.random() * SWING_DANCE_NAMES.length)];
-}
-
 
 // ── DISCORD UPGRADE PATH ─────────────────────────────────────────────────────
 // Three tiers unlocked via the DB upgrade system. Once a tier is unlocked,
@@ -862,11 +854,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         setDiceDisplay(null);
       }
 
+      if(aType === 'ATTACK_REROLLED' && next.battle?.sonicAttack)
+        startSonicPresentation(next.battle,true);
+      if(aType === 'ATTACK_REROLLED' && next.battle?.swingClash)
+        startSwingPresentation(next.battle,true);
+
       // ── MELEE: remote client opens the battle overlay on a swing/sonic roll
       if (aType === "ATTACK_ROLLED") {
         const eb = next.battle;
         if (eb && frame.action.kind === 'sonic') startSonicPresentation(eb,true);
-        if (eb && frame.action.kind !== 'sonic') {
+        if (eb?.swingClash) startSwingPresentation(eb,true);
+        if (eb && frame.action.kind !== 'sonic' && !eb.swingClash) {
           const { attackerId, defenderId } = frame.action;
           const isSonic = frame.action.kind === 'sonic';
           playBattleMusic(isSonic ? riffOffSong : battleSong, 0.7);
@@ -4014,7 +4012,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       melodyLine: [],
       melodySrcIdx: [],
       melodyFreq: [],
-      usedStockIdx: [],
+      usedStockIdx: engineRef.current.noteStates?.[acting.id]?.recoveryStockIdx ?? [],
       discordCount: 0,
       // pivotPending intentionally NOT cleared — must still be resolved if active
     });
@@ -4251,6 +4249,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
     // ── Theatre, off the report — no rules re-derived from the patch ─────────
     const nm = spirits.find(s => s.id === spiritId)?.name;
+    if(report.recoveryPaid) addLog(`🎸 ${nm} spends ${report.recoveryPaid} notes getting up.`);
     if(report.sustainFray?.frayed) {
       showSpentNotes(spiritId,report.sustainFray.lostNotes,'sustain');
       addLog('🛡️ '+nm+' releases '+report.sustainFray.frayed+' fading Sustain note(s); the root holds.');
@@ -6879,11 +6878,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   }
 
   // Main entry point — attacker initiates a Swing against target
-  // Cinematic sequence:
-  // enter_attacker → flash_drive → pick_drive_slide →
-  // enter_defender → flash_sustain → pick_sustain_slide →
-  // atk_die_spin → [click] → pick_atk_slide →
-  // def_die_spin → [click] → pick_def_slide → result
+  // Board sequence: raised pose → Drive dice → own-amp charge → clash → shove.
   /**
    * @param {string} targetId
    * @param {object|null} tent 🐙 `{ origin, spend, reach }` from `tentacleOptions`
@@ -6944,191 +6939,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       addLog(`🐙 ${attacker.name} reaches ${tent.reach} hex${tent.reach !== 1 ? 'es' : ''} through the slime — the road behind him is GONE.`);
     }
 
-    // ⚠️ LIVE, for the reason at the top of this function: 🌀 Psycho Bushido
-    // writes `tempDrive` immediately before it strikes, and the render snapshot
-    // does not have that write yet. This is the read that decides the blow.
-    const nsA = live.noteStates[attacker.id] ?? {};
-    const nsD = live.noteStates[targetId]    ?? {};
-
-    // ── Stage Effects / skill mods ────────────────────────────────────────────
-    const skillMods = getBattleSkillMods(attacker.id, targetId);
-    if (skillMods.laserActive)  addLog(`🔴 Laser Show fires! Defender's die will be halved.`);
-    if (skillMods.fogActive)    addLog(`🌫️ Fog Machine fires! Defender -1 Drive, -1 Sustain this battle.`);
-    if (skillMods.pyroBonus > 0)addLog(`🔥 Pyrotechnics! +${skillMods.pyroBonus} bonus added to Drive roll.`);
-
-    // 🎸 Harmony → combat: Drive from driveStack, Sustain from sustainStack
-    // (falls back to the static spirit stat until a stack has been played).
-    const atkChord = (nsA.driveStack?.length) ? spiritChord(attacker.id, nsA.driveStack) : null;
-    const defChord = (nsD.sustainStack?.length) ? spiritChord(targetId, nsD.sustainStack) : null;
-    const atkChordDrive   = atkChord ? atkChord.drive   : (attacker.drive ?? 6);
-    let   defChordSustain = defChord ? defChord.sustain : (defender.sustain ?? 5);
-    // 💥 SMASH EXPOSURE — a Smashed rival is wide open: this blow ignores their Sustain, then clears.
-    if (nsD.smashExposed) { defChordSustain = 0; setNoteField(targetId, { smashExposed: false }); addLog(`💥 ${defender.name} is Exposed — the hit lands clean!`); }
-    if (atkChord) addLog(`🎸 ${attacker.name}'s chord: ${atkChord.name} (⚔️${atkChord.drive})${defChord ? ` vs ${defender.name}'s ${defChord.name} (🛡️${defChord.sustain})` : ''}`);
-    // 🛡️ Chord fray moved POST-ROLL (Stance rework): the defender's chord frays
-    // only when the hit actually lands — see the fray step after the verdict.
-
-    // 🔊 GOES TO 11 overwrites the total further down rather than adding here —
-    // see the `cranked` clamp after the bonus cap. Nothing rides the BASE any
-    // more, which is the point: the ability it replaced broke ATK_BONUS_CAP by
-    // being written outside it.
-    const cranked  = !!nsA.atEleven;
-    const atkBase  = atkChordDrive + (nsA.instrumentDropped ? -1 : 0) + skillMods.pyroBonus;
-    // ⚖️ Stacked bonuses cap at ATK_BONUS_CAP — no single turn should assemble
-    // a +6-and-up tower on top of the chord (balance audit, 2026-07-16).
-    // 🤘 moshDrive rides in here too: it's a standing buff, but it still has to
-    // live under the same ceiling as everything else.
-    const rawAtkBonus = (nsA.tempDrive ?? 0) + (nsA.moshDrive ?? 0);
-    const atkBonus = Math.min(rawAtkBonus, ATK_BONUS_CAP);
-    if (rawAtkBonus > atkBonus) addLog(`⚖️ The rig can only take so much — attack bonus capped at +${ATK_BONUS_CAP} (was +${rawAtkBonus}).`);
-    // 🔊 GOES TO 11 — the SET. It overwrites the finished total, so it neither
-    // participates in the tower nor needs an exemption from its cap, and it is a
-    // CEILING as much as a floor: if the honest number was already louder, this
-    // is where he gets turned down.
-    const atkStat  = cranked ? ELEVEN_DRIVE : atkBase + atkBonus;
-    const defBase  = defChordSustain - (skillMods.fogActive ? 1 : 0) - (nsD.swingExposed ? 1 : 0);
-    const defBonus = (nsD.tempSustain ?? 0);
-    const defStat  = defBase + defBonus;
-    // ⚠️ THE LIVE MIRROR, NOT THE RENDER SNAPSHOT. `posing` up top is a view of
-    // the last render; a rival shoved off the Limelight earlier in this same tick
-    // would still read as posing here, and a posing defender rolls NO defence
-    // die — so the stale read is a free clean hit on somebody who has their guard
-    // back up. It was React state before §6.6.8 and carried the same hazard with
-    // no way to fix it.
-    const defenderPosing = engineRef.current.limelight.posing[targetId];
-
-    // ⚡ CHARGE ZONE charges — attacks only. Ceiling grows the Thrash die
-    // d4→d6; floor clamps every result to at least 1+CHARGE_FLOOR_BONUS. The
-    // dormant dieFloorBoost (octave resolution / Spinal Tap) finally wires in
-    // here too — strongest floor wins, they don't stack.
-    const chargeFloorA = (nsA.chargeFloorTurns ?? 0) > 0;
-    const chargeCeilA  = (nsA.chargeCeilTurns  ?? 0) > 0;
-    const atkFloor = Math.max(chargeFloorA ? CHARGE_FLOOR_BONUS : 0, nsA.dieFloorBoost ?? 0);
-    const atkDie   = chargeCeilA ? THRASH_CEIL_DIE : THRASH_DIE;   // d4 base, ceiling → d6
-    const defDie   = THRASH_DIE;                                    // defender always d4 in Thrash
-    if (chargeFloorA) addLog(`⚡ ${attacker.name}'s floor charge crackles — this die can't roll below ${1 + CHARGE_FLOOR_BONUS}!`);
-    if (chargeCeilA)  addLog(`⚡ ${attacker.name}'s ceiling charge surges — the Thrash die grows to a d${THRASH_CEIL_DIE}!`);
-
-    // 🎲 Roll the swing on the engine's seeded rng (Phase 3b). The client passes
-    // the pre-computed stats + mod flags (they read noteStates — Phase 5); the
-    // engine owns the dice + verdict. `atkStat`/`defStat` already bake in fog's
-    // -1 Sustain, edge mods, etc. The spin overlay below just displays
-    // the already-decided faces (battle.atkRoll / battle.defRoll).
-    // 💻 Code Injection gets its say between the roll and the verdict read.
-    const rollState = maybeCodeInjection(dispatch(attackRolled('swing', attacker.id, targetId, {
-      atkStat, defStat,
-      posing: defenderPosing,
-      halveDef: skillMods.halveDef,
-      atkFloor, atkDie, defDie,
-    })), attacker.id, targetId);
-    const {
-      atkRoll, defRoll, atkTotal, defTotal, attackerWon, margin,
-    } = rollState.battle;
-    let damage = rollState.battle.damage;
-    recordBattleTotals(attacker.id, targetId, atkTotal, defTotal, attackerWon); // 📊 scoreboard
-
-    // 🛡️ Fray on the verdict — the defender's chord takes real damage only when
-    // the blow lands (margin-scaled, +1 from the rear wedge; see applyChordFray).
-    // ⚠️ Measured against the positions as they stand AT THE VERDICT, not when
-    // the swing was declared — the defender may have been shoved since.
-    //
-    // 🐙 ⚠️ AND THE BLOW COMES FROM THE ORIGIN, NOT FROM HIM. `isHitFromBehind`
-    // reads the line between attacker and defender, so a tentacle that snakes
-    // around a rival hits the back they turned on the SLIME, not the back they
-    // turned on the Monster. Reaching around behind somebody is the point of
-    // having an arm, and this is the one line that makes it true.
-    const blowFrom = tent ? { ...attacker, num: tent.origin } : attacker;
-    if (attackerWon) applyChordFray(targetId, margin, isHitFromBehind(blowFrom, defender));
-
-    if (nsA.instrumentDropped) addLog(`🎸💥 ${attacker.name} playing on a dropped instrument — Drive -1!`);
-    addLog(`⚔️ ${attacker.name} SWINGS at ${defender.name}!${defenderPosing ? ' — caught posing!' : ''}`);
-    // ⚡ A battle ensued — Charge Zone charges burn off for BOTH combatants.
-    burnChargesAfterBattle([attacker.id, targetId], 'the Thrash battle spent it');
-    // 🎸 Chord note spending now deferred to closeBattleOverlay — only on a HIT.
-    // Whiffing no longer burns your drive stack. Physical spends from driveStack ON HIT ONLY.
-    const swingChordLeft = (nsA.driveStack ?? []).slice(2);
-    const swingChordSpent = (nsA.driveStack ?? []).slice(0, 2);
-    // 🥊 CQC EXPOSURE — committing to a swing drops your guard: −1 Sustain until your
-    // next turn (melee-only risk; ranged Sonic keeps you safe).
-    setNoteStates(prev => ({ ...prev, [acting.id]: { ...prev[acting.id],
-      swingExposed: true,
-    } }));
-
-    // pickPos: 0 = center. Negative = toward attacker (left). Positive = toward defender (right).
-    showTip('combat');
-    // ⏭ When auto-skip is on, the whole pre-die cinematic is compressed: the
-    // stat flashes and meter slides still play in order (so pickPos and the
-    // standee entrances stay consistent), they just whip past in ~1s instead of
-    // ~10.4s, landing on the same interactive die-spin. The die-click itself is
-    // never skipped — that's the player's moment.
-    const skipCine = skipBattleIntrosRef.current;
-    battleTimersRef.current = [];
-
-    // 🐙 THE ARM PLAYS FIRST, AND THAT IS A SEQUENCING RULE RATHER THAN A FLOURISH.
-    // `BattleMeterOverlay` mounts at `position:'fixed', inset:0` on an OPAQUE black
-    // at zIndex 9980, and everything below used to run in THIS tick — so the
-    // tentacle's whole 1.5s gesture played out underneath a black screen and the
-    // player never saw an arm. The strike landed, the road was spent, the log line
-    // printed, and the one thing that made the ability legible was invisible.
-    //
-    // Nothing about the blow moves here. It was rolled above; `TentacleFX` decides
-    // nothing (see its header). Only the curtain is late.
-    //
-    // ⚠️ THE AP AND THE ACTION TOKEN WERE SPENT BEFORE THIS DELAY, so there is no
-    // window in which a second attack can be started during the gesture.
-    // ⚠️ And a player who turned the intros OFF did not ask for a longer one, so
-    // `skipCine` skips the lead too.
-    const armLead = (tent && !skipCine) ? TENTACLE_LEAD_MS : 0;
-
-    const openBattle = () => {
-      playBattleMusic(battleSong, 0.7);
-      dieSettledRef.current = { atk: false, def: false }; // fresh battle, fresh dice
-      setBattleState({
-        phase: 'enter_attacker',
-        attackerId: acting.id, defenderId: targetId,
-        atkStat, defStat, atkBase, atkBonus, defBase, defBonus,
-        atkRoll, defRoll, atkTotal, defTotal,
-        attackerWon, margin, damage,
-        posing: defenderPosing,
-        pickPos: 0,
-        spinFaceAtk: 1, spinFaceDef: 1,
-        atkDieReady: false, defDieReady: false,
-        dieSides: atkDie, // ⚡ ceiling charge grows the Thrash die (d4 base, d6 with charge)
-        defDieSides: defDie, // Thrash: defender rolls d4
-        skillMods, // stage effects, pyro, laser, fog flags
-        // Stable dance-craze name shown when a plain swing connects.
-        danceName: pickDanceName(),
-        swingChordLeft, swingChordSpent, // deferred chord burn — only on a hit
-      });
-      setDiceDisplay({ atk: null, def: null, rolling: null });
-    };
-    if (armLead > 0) battleTimersRef.current.push(gt(openBattle, armLead));
-    else openBattle();
-
-    // Every scheduled beat rides the same lead, so the cinematic keeps its shape
-    // and simply starts when the arm has landed.
-    const T = (fn, ms) => { const id = gt(fn, armLead + (skipCine ? ms * 0.1 : ms)); battleTimersRef.current.push(id); return id; };
-
-    // 0.7s: Flash Drive stat
-    T(() => setBattleState(p => p ? { ...p, phase: 'flash_drive' } : p), 700);
-
-    // 1.4s: Pick slides toward attacker by atkStat slots
-    T(() => setBattleState(p => p ? { ...p, phase: 'pick_drive_slide', pickPos: -atkStat } : p), 1400);
-
-    // 2.8s: Defender slides in
-    T(() => setBattleState(p => p ? { ...p, phase: 'enter_defender' } : p), 2800);
-
-    // 3.5s: Flash Sustain stat
-    T(() => setBattleState(p => p ? { ...p, phase: 'flash_sustain' } : p), 3500);
-
-    // 4.2s: Pick slides right by defStat from where it landed
-    T(() => setBattleState(p => p ? { ...p, phase: 'pick_sustain_slide', pickPos: -atkStat + defStat } : p), 4200);
-
-    // 5.6s: Attacker die appears spinning — waits for click
-    // ⚡ PERF: spin faces now animate inside NeonDie (local state) — no more
-    // 80 ms setBattleState interval re-rendering the whole app during spins.
-    T(() => setBattleState(p => p ? { ...p, phase: 'atk_die_spin' } : p), 5600);
-    // Note: clicking the die triggers handleAtkDieClick (defined below)
+    const params=attackParams(engineRef.current,attacker.id,targetId,'swing');
+    const rollState=maybeCodeInjection(dispatch(attackRolled('swing',attacker.id,targetId,params)),attacker.id,targetId);
+    const verdict=rollState.battle;
+    recordBattleTotals(attacker.id,targetId,verdict.atkTotal,verdict.defTotal,verdict.attackerWon);
+    burnChargesAfterBattle([attacker.id,targetId],'the Swing clash spent it');
+    setNoteField(attacker.id,{swingExposed:true});
+    addLog('⚔️ '+attacker.name+' and '+defender.name+' clash: Drive '+verdict.atkTotal+' vs '+verdict.defTotal+'.');
+    startSwingPresentation(verdict);
   }
 
   // Random d6 face (1-6) — used during spin animation
@@ -8541,7 +8359,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     battleTimersRef.current.forEach(clearTimeout);
     battleTimersRef.current=[];
     clearSonicRollPrompt();
-    const sonicId = String(Date.now()) + ':' + verdict.attackerId;
+    const sonicId = String(Date.now()) + ':' + verdict.attackerId + ':' + !!verdict.rerolled;
     // ⭐ THE ROLL IS THE PLAYER'S TO THROW — and it is PRESENTATION ONLY.
     // The engine already rolled: `verdict` carries every face, hit and the
     // shield value before this function exists (§12.0 — Sonic reveals its dice
@@ -8567,7 +8385,32 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     };
     // Everything from the tumble onward is one clock, shared by both paths, so
     // an armed volley and an automatic volley resolve through identical timing.
-    const runFromRoll=offset=>scheduleSonicVolley({
+    const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false;
+    const runFromRoll=offset=>{
+      if(verdict.sonicVersion===2){
+        const begin=()=>{
+          const current={...battleStateRef.current,sonicRollStartedAt:performance.now(),sonicReduced:reduced};
+          battleStateRef.current=current;setBattleState(current);
+          try{
+            const ctx=getAudioCtx(),destination=getAudioBuses(ctx).master;
+            const plan={...verdict,shots:verdict.shots.map(s=>({...s,at:BARRAGE_LAUNCH+barrageContact(s.index)}))};
+            const stops=[];
+            sonicAudioRef.current=()=>stops.forEach(stop=>stop());
+            stops.push(playBarrageChord(ctx,plan,verdict.sonicChordNotes,0,1,{reduced,destination}));
+            stops.push(playSustainChord(ctx,plan,verdict.sustainChordNotes,0,1,{reduced,destination}));
+            stops.push(playBarrageFoley(ctx,plan,0,1,{reduced,destination:ctx.destination}));
+          }catch{/* audio is best effort */}
+        };
+        if(offset)T(begin,offset);else begin();
+        return scheduleSonicBarrage({battle:verdict,reduced,schedule:T,phase:p=>{if(p!=='result'||remoteView)phase(p);},offset,
+          launch:()=>{
+            const current={...battleStateRef.current,sonicStartedAt:performance.now()};
+            battleStateRef.current=current;setBattleState(current);
+            setDeckThump({id:verdict.attackerId,key:Date.now()});
+            if(!remoteView)resolveSonicSequence(current);
+          },close:()=>{if(remoteView)closeBattleOverlay();}});
+      }
+      return scheduleSonicVolley({
       count:verdict.diceVals.length,schedule:T,phase,offset,
       charge:()=>{
         try {
@@ -8586,12 +8429,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       },
       close:()=>closeBattleOverlay(),
     });
+    };
     if(mine) {
       sonicRollRef.current=()=>{
         if(battleStateRef.current?.sonicId!==sonicId)return;
         phase('sonic_roll');runFromRoll(0);
       };
-      setSonicRollPrompt({sonicId,dice:verdict.diceVals.length,shield:verdict.shieldValue,
+      setSonicRollPrompt({sonicId,dice:verdict.diceVals.length,shield:verdict.shieldValue,sustainDice:verdict.sustainPool?.length,
         defenderName:engineRef.current?.spirits?.find(s=>s.id===verdict.defenderId)?.name??'the Rival',
         color:attacker?.color??'#66dcff'});
       return;
@@ -8623,7 +8467,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     setNoteField(attacker.id,{driveStack:[]});
     const rolled=maybeCodeInjection(dispatch(attackRolled('sonic',attacker.id,targetId,rollOptions)),attacker.id,targetId).battle;
     burnChargesAfterBattle([attacker.id,targetId],'the Sonic volley spent it');
-    addLog('🔊 '+attacker.name+' projects '+rigPoolLabel(rolled.dicePool)+' at '+defender.name+' — each die must beat Sustain '+rolled.shieldValue+'.');
+    addLog('🔊 '+attacker.name+' projects '+rigPoolLabel(rolled.dicePool)+' at '+defender.name+' — Drive strength '+rolled.atkTotal+' against '+rolled.shieldValue+' rolled shield HP.');
     startSonicPresentation(rolled);
   }
 
@@ -9641,7 +9485,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     runBattleFlowPaced(battleConsequences({state:engineRef.current,battle:scene,chordOf:spiritChord,
       amps,fameThisTurn:fameThisTurnRef.current}),{
       hooks:battleFlowHooks(),isCurrent:()=>battleStateRef.current?.sonicId===scene.sonicId,
-      waitForFx:e=>e.kind==='fx'&&e.name==='sonicContact'
+      waitForFx:e=>e.kind==='fx'&&e.name==='sonicBarrageLanded'
+        ? Math.max(0,scene.sonicStartedAt+barrageLanded(scene,scene.sonicReduced)*1000-performance.now())
+        : e.kind==='fx'&&e.name==='sonicContact'
         ? Math.max(0,scene.sonicStartedAt+(sonicContactTime(e.shotIndex)+SONIC_SEQUENCE.impact)*1000-performance.now())
         : e.kind==='fx'&&e.name==='rumble'?0:undefined,
       onDone:out=>{
@@ -9651,11 +9497,30 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         const interrupted=out?.sonicInterrupted||!target||target.knockedOut
           || (target.knockdownCount??0)!==(initialTarget?.knockdownCount??0);
         if(interrupted){sonicAudioRef.current?.();sonicAudioRef.current=null;}
-        const next={...current,sonicResolved:true,sonicInterrupted:interrupted};
+        const next={...current,sonicResolved:true,sonicInterrupted:interrupted,sonicPushed:out?.sonicPushed??0,
+          ...(scene.sonicVersion===2?{phase:'result'}:{})};
         battleStateRef.current=next;setBattleState(next);
-        if(current.sonicCloseRequested){battleStateRef.current=null;setBattleState(null);}
+        if(scene.sonicVersion===2){
+          battleTimersRef.current.push(setTimeout(()=>{
+            if(battleStateRef.current?.sonicId===scene.sonicId)closeBattleOverlay();
+          },2000));
+        }else if(current.sonicCloseRequested){battleStateRef.current=null;setBattleState(null);}
       },
     });
+  }
+
+  function startSwingPresentation(verdict,remoteView=false) {
+    setBoard3D(true);
+    battleTimersRef.current.forEach(clearTimeout);
+    battleTimersRef.current=[];
+    const key=`swing:${Date.now()}:${verdict.attackerId}`;
+    const scene={...verdict,phase:'swing_attacker',swingKey:key,swingStartedAt:performance.now(),remoteView};
+    battleStateRef.current=scene;setBattleState(scene);
+    const phase=(value)=>{const b=battleStateRef.current;if(b?.swingKey!==key)return;
+      battleStateRef.current={...b,phase:value};setBattleState(battleStateRef.current);};
+    for(const [seconds,value] of SWING_BEATS)
+      battleTimersRef.current.push(gt(()=>phase(value),seconds*1000));
+    battleTimersRef.current.push(gt(()=>{if(battleStateRef.current?.swingKey===key)closeBattleOverlay();},SWING_TIMING.close*1000));
   }
 
   function closeBattleOverlay() {
@@ -9668,7 +9533,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
     if (!s || s.phase !== 'result') { sonicAudioRef.current?.();battleStateRef.current=null;setBattleState(null);setDiceDisplay(null);return; }
 
-    if(s.sonicAttack&&s.diceHits&&s.remoteView) {
+    if((s.sonicAttack&&s.diceHits||s.swingClash)&&s.remoteView) {
       battleStateRef.current=null;setBattleState(null);setDiceDisplay(null);return;
     }
     const sonicAftermath=s.sonicAttack&&s.diceHits;
@@ -12211,7 +12076,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         SKILL_BY_ID={SKILL_BY_ID}
         battleMeterImg={battleMeterImg}
         battlePickImg={battlePickImg}
-        battleState={battleState?.diceHits && !battleState.riffOff ? null : battleState}
+        battleState={(battleState?.diceHits || battleState?.swingClash) && !battleState.riffOff ? null : battleState}
         closeBattleOverlay={closeBattleOverlay}
         closeRiffOff={closeRiffOff}
         enterRiffAnte={enterRiffAnte}
@@ -13051,7 +12916,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     title={grayed
                       ? "The jab (1 AP) — grayed out: needs a confirmed turn, your Action Token, and at least 1 AP."
                       : canSwing
-                      ? "The jab — cheap (1 AP) & defended. Drives your chord into them and can land Thrash statuses."
+                      ? "Drive vs Drive (1 AP). The loser takes the total difference as Vibe damage and is pushed one hex. Ties break evenly."
                       : "The jab (1 AP) — no rival in your cone. Hover to see the swing range."}
                     onClick={() => {
                       if (action === 'swing') { setAction(null); }
@@ -13156,7 +13021,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       : outOfRange
                       ? "The amp is blown. Recover it before firing Sonic."
                       : canSonic
-                      ? `Sonic Attack (2 AP) — the forward volley. ${diceLabel}; each die must beat Sustain. Each hit pushes one hex. Spends your whole Drive charge. Facing rivals with working amps trigger a RIFF-OFF.`
+                      ? `Sonic Attack (2 AP) — the forward volley. ${diceLabel}; Drive wears down rolled Sustain HP; excess strength passes through. Each penetrating ring adds one hex to the final shove. Spends your whole Drive charge. Facing rivals with working amps trigger a RIFF-OFF.`
                       : "Sonic Attack (2 AP) — build Drive and aim at a rival within three hexes directly ahead."}
                     onClick={() => {
                       if (action === 'sonic') { setAction(null); }
@@ -14860,11 +14725,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               </div>
             )}
             <SonicRollPrompt prompt={sonicRollPrompt} onRoll={rollSonicVolley} />
+            <SonicBarrageRecord battle={battleState} />
             {!board3D && <button className="btn" onClick={() => { handleBoardMouseUp(); resetManualZoom(); setBoard3D(true); }}
               style={{position:'absolute',right:8,bottom:8,zIndex:20}}>3D board</button>}
             <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera} onDisable={() => setBoard3D(false)}
               sceneFrame={board3D ? arenaFrame({
-                spirits:spirits.filter(s => !isHiddenBySmoke(s)), noteStates,
+                spirits:spirits.filter(s => !isHiddenBySmoke(s)), noteStates, crowdSpirits:spirits,
                 actingId:acting?.id, turn:engineState.turn.count, battle:battleState,
                 slides:slideOffAnimations, flashes:effectFlashes, thump:deckThump,
                 laser:laserFx, pyro:pyroFx, smoke:smokeFx, slime:slimeTiles,
@@ -15250,7 +15116,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     fy: clamp(seat.y, 4, SVG_H - 4) });
                 }
                 return (
-                  <g key={`fans-${s.id}`} data-tip-anchor={s.id === acting?.id ? 'fan-crowd' : undefined}
+                  <g key={`fans-${s.id}`} data-arena-flat="crowd" data-tip-anchor={s.id === acting?.id ? 'fan-crowd' : undefined}
                      style={{pointerEvents:"none"}}>
                     {/* tiers — curved platform bands, back to front, tapering into the corner */}
                     {[3, 2, 1, 0].map(rw => (

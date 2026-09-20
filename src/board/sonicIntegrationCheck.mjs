@@ -43,7 +43,7 @@ const camera=new THREE.PerspectiveCamera(43,1.5,.1,500);camera.position.set(25,2
 const controls={target:new THREE.Vector3(),enabled:true,enableDamping:true,update(){}};
 const saved=camera.position.clone();const shot=createSonicCamera({camera,controls,pointFor:(num,y)=>new THREE.Vector3(num,y,0)});
 const frame={spirits:[{id:'a',num:0,corner:'blue'},{id:'b',num:9}],battle:{key:'1',volley:true,attackerId:'a',defenderId:'b',dicePool:Array(11).fill(6),phase:'sonic_armed'}};
-shot.update(frame,null,.016);assert.equal(controls.enabled,false);assert.equal(controls.enableDamping,false);
+shot.update(frame,null,.016);assert.equal(controls.enabled,true);assert.equal(controls.enableDamping,false);
 frame.battle.phase='sonic_volley';frame.battle.focus={point:new THREE.Vector3(9,1,0),target:new THREE.Vector3(9,1,0),closeness:1};
 for(let i=0;i<150;i++)shot.update(frame,null,1/60);
 assert.ok(camera.position.distanceTo(controls.target)>=5,'contact clearance outside the flash');
@@ -97,3 +97,14 @@ heldSequence.update(SONIC_SEQUENCE.flight+.15);
 assert.ok(heldSequence.getFocus(SONIC_SEQUENCE.flight+.15).target.x<b.x,'held contact keeps the camera on the barrier, not behind it');
 heldSequence.dispose();
 console.log('PASS: launch clearance, shield compression/ripple, dice fade, contact hold/return, live arena wiring and bounded distinct audio');
+
+// The user owns an orbit/zoom for the rest of a battle, including result and return.
+shot.update(frame,null,.016);shot.userStart();
+camera.position.set(17,12,4);controls.target.set(2,1,3);const manualPosition=camera.position.clone();
+shot.update(frame,null,.1);assert.ok(camera.position.equals(manualPosition));assert.equal(controls.enabled,true);
+frame.battle.phase='result';shot.update(frame,null,.1);assert.ok(camera.position.equals(manualPosition));
+shot.update({...frame,battle:null},null,.1);assert.ok(camera.position.equals(manualPosition),'no snap back after a manual battle');
+shot.autoCamera(false);shot.update(frame,null,.1);assert.ok(camera.position.equals(manualPosition),'auto-off applies during battle');
+shot.autoCamera(true);frame.battle.phase='sonic_roll';shot.update(frame,null,.1);assert.ok(!camera.position.equals(manualPosition),'Follow battle resumes composition');
+shot.userStart();camera.position.set(22,14,6);shot.update(frame,null,.1,true);assert.equal(camera.position.x,22,'reduced motion still permits manual orbit');
+shot.dispose();
