@@ -145,7 +145,7 @@ const reducedMotion = () => typeof window !== 'undefined'
 
 function anchorRect() {
   if (typeof document === 'undefined') return null;
-  const el = document.querySelector(CROWD_SPEAKER_SELECTOR) ?? document.querySelector(CROWD_STAND_SELECTOR);
+  const el = document.querySelector('[data-arena-crowd-speaker]') ?? document.querySelector(CROWD_SPEAKER_SELECTOR) ?? document.querySelector(CROWD_STAND_SELECTOR);
   const r = el?.getBoundingClientRect?.();
   return r && (r.width || r.height) ? { el, x: r.left + r.width / 2, y: r.top } : null;
 }

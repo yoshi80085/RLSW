@@ -66,6 +66,10 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     const environment=createArenaEnvironment(scene);cleanups.push(()=>environment.dispose());
     const visuals=createArenaVisuals(scene,{foregroundScene});cleanups.push(()=>visuals.dispose());
     const crowd=createArenaCrowd(scene);crowd.group.visible=false;cleanups.push(()=>crowd.dispose());
+    const crowdSpeaker=document.createElement('div');
+    Object.assign(crowdSpeaker.style,{position:'fixed',width:'2px',height:'2px',pointerEvents:'none',opacity:'0'});
+    crowdSpeaker.setAttribute('aria-hidden','true');document.body.appendChild(crowdSpeaker);
+    cleanups.push(()=>crowdSpeaker.remove());
     const media=window.matchMedia?.('(prefers-reduced-motion: reduce)');
     let reduced=!!media?.matches,quality='auto',qualityLabel='',lite=false,autoLite=false,dirty=true,inView=true;
     let elapsed=0,last=performance.now(),lastDraw=0,sampleStart=last,samples=0,fps=0;
@@ -153,6 +157,13 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       try {
         environment.update(elapsed,{lite,reduced});
         crowd.tick(elapsed,{reduced});
+        const speaker=crowd.speaker(frame.actingId);
+        if(speaker){
+          camera.updateMatrixWorld();const p=speaker.project(camera),rect=host.getBoundingClientRect();
+          crowdSpeaker.dataset.arenaCrowdSpeaker='';
+          crowdSpeaker.style.left=`${THREE.MathUtils.clamp(rect.left+(p.x+1)*rect.width/2,rect.left+24,rect.right-24)}px`;
+          crowdSpeaker.style.top=`${THREE.MathUtils.clamp(rect.top+(1-p.y)*rect.height/2,rect.top+100,rect.bottom-24)}px`;
+        }else delete crowdSpeaker.dataset.arenaCrowdSpeaker;
         for(const e of emissives)if(e.crack)e.material.emissiveIntensity=e.base*(reduced?1:1+.08*Math.sin(elapsed*.75));
         renderer.info.reset();composer.render();overlay.render(overlayScene,camera);foreground.render(foregroundScene,camera);dirty=false;
         samples++;
@@ -185,6 +196,8 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       if(disposed){releaseArenaObject(gltf.scene);return;}
       try {
         model=gltf.scene;model.scale.z=-1;emissives=polishArenaModel(model);
+        // The crowd owns the larger seats; hide the original modeled copy.
+        const oldStands=model.getObjectByName('Stands');if(oldStands)oldStands.visible=false;
         scene.add(model);visuals.attachModel(model);visuals.update(frame);crowd.group.visible=true;dirty=true;onReady();
       }catch(error){console.error('Arena model setup failed',error);onError();}
     },undefined,()=>{if(!disposed)onError();});

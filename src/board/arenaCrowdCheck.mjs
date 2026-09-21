@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import * as THREE from 'three';
+import {createArenaCrowd} from './arenaCrowd.js';
+const scene=new THREE.Scene(),crowd=createArenaCrowd(scene);
+const roster=[['cosmic_ronin','blue'],['intergalactic_0','purple'],['Metalness_Monster','yellow']].map(([id,corner])=>({id,corner,diehards:2,casuals:3}));
+crowd.update(roster);assert.equal(crowd.count,15);
+assert.equal(crowd.group.children.length,4,'empty corners retain seating');
+assert.ok(crowd.group.children.every(s=>s.scale.x===1.3));
+assert.ok(crowd.group.getObjectByName('Ronin hachimaki'));
+assert.ok(crowd.group.getObjectByName('Intergalactic gold chain'));
+const monsters=[];crowd.group.traverse(o=>{if(o.userData.fanStyle==='monster')monsters.push(o);});assert.equal(monsters.length,2);
+assert.ok(monsters[0].children.some(o=>o.children.some(m=>m.material?.color?.getHexString()==='63ff37')),'Monster green eyes');
+const body=monsters[0].getObjectByName('Curled spirit body');assert.ok(body.geometry.getAttribute('color').getW(500)<.3,'tail fades');
+const before=crowd.group.children[0];crowd.update(roster);assert.equal(crowd.group.children[0],before,'stable crowds do not rebuild');
+crowd.tick(1,{reduced:true});const speaker=crowd.speaker('cosmic_ronin');crowd.tick(5,{reduced:true});assert.deepEqual(crowd.speaker('cosmic_ronin'),speaker,'reduced motion stays still');
+crowd.update([{...roster[0],diehards:1,casuals:0}]);assert.equal(crowd.count,1);assert.equal(crowd.speaker('intergalactic_0'),null);
+crowd.dispose();assert.equal(scene.children.length,0);assert.equal(crowd.count,0);
+console.log('PASS: cosmic crowd counts, 30% seats, spirit-specific diehards, fading tails, stable updates, reduced motion and cleanup');
