@@ -1,3 +1,5 @@
+> Update 2026-09-22: The standalone 2D board and Pickles introduction are archived. The game uses 3D only; historical view-switch instructions below no longer apply. See [archive notes](archive/board-2d-pickles-2026-09-22/README.md).
+
 # Immersive HUD — handoff for Medium reasoning
 
 **2026-09-09 implementation:** the approved space-saving Study 02 composition is

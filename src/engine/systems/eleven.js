@@ -1,3 +1,4 @@
+import { canFire, firePatch } from "./cooldowns.js";
 // ─── ENGINE SYSTEM: 🔊 GOES TO 11 ────────────────────────────────────────────
 // `METALNESS_REWORK_DESIGN.md` §4d. The dial, not the bonus.
 //
@@ -67,7 +68,7 @@ export function ampBlown(ns) {
  */
 export function canCallEleven(state, spiritId) {
   const ns = state?.noteStates?.[spiritId] ?? {};
-  if (ns.atEleven) return false;
+  if (ns.atEleven || !(ns.unlockedSkills ?? []).includes('goes_to_11') || !canFire(ns, 'goes_to_11')) return false;
   return (ns.sustainStack ?? []).length > 0;
 }
 
@@ -97,6 +98,7 @@ export function applyElevenCalled(state, { spiritId }) {
       ...state.noteStates,
       [spiritId]: {
         ...ns,
+        ...firePatch(ns, 'goes_to_11'),
         atEleven:      true,
         sustainStack:  [],                          // armour into volume
         ampBlownTurns: ELEVEN_AMP_BLOWN_TURNS,

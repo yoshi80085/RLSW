@@ -1,3 +1,4 @@
+import { characterId } from "../../data/spiritIdentity.js";
 // ─── ENGINE SYSTEM: THE SLIME TRAIL ──────────────────────────────────────────
 // 🧪 Metalness Monster's innate, moved out of React and into engine state.
 // `METALNESS_REWORK_DESIGN.md` §3 — "the trail is a currency, and this is the
@@ -17,7 +18,7 @@
 //      "through" it (§4a: he stands on A, his trail runs A ← B ← C ← D). Both
 //      are questions about a PATH. A `{hex: turns}` object cannot answer them.
 //   3. **The map had no OWNER**, so "immune to his own" was a hardcoded
-//      `spiritId === 'Metalness_Monster'` string comparison rather than a rule.
+//      `characterId(spiritId) === 'Metalness_Monster'` string comparison rather than a rule.
 //
 // So the shape here is an ORDERED, OWNED path per Spirit, newest first:
 //
@@ -217,7 +218,7 @@ export function applySlimeDecayed(state, { ownerId } = {}) {
  * ⚠️ FOUND BY THE §6.6 HARNESS, 2026-08-16. `legalActions` gated the ooze on AP
  * and on `turn.slimingId` and on nothing else, so it emitted `slime` for EVERY
  * Spirit. The client never showed it — the button is behind
- * `acting?.id === 'Metalness_Monster'` in the JSX — so no player could ever have
+ * `characterId(acting?.id) === 'Metalness_Monster'` in the JSX — so no player could ever have
  * hit it, and the searcher found it on its first headless match: the Ronin and
  * Intergalactic 0 were both calling the ooze, laying road, and sliding on it.
  *
@@ -240,7 +241,7 @@ export const SLIME_INNATE_OWNER = 'Metalness_Monster';
 /** May this Spirit call the ooze at all? Ownership only — AP and the
  *  once-a-turn rule are `legalActions`' to check. */
 export function canCallSlime(spiritId) {
-  return spiritId === SLIME_INNATE_OWNER;
+  return characterId(spiritId) === SLIME_INNATE_OWNER;
 }
 
 export function applySlimeCalled(state, { spiritId }) {

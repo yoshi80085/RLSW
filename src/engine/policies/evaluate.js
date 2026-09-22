@@ -1,3 +1,4 @@
+import { characterId } from "../../data/spiritIdentity.js";
 // ─── BOT EVALUATION ─────────────────────────────────────────────────────────
 // `evaluate(state, spiritId, view) -> { score, terms }` — BOT_STRATEGY_HANDOFF §5.
 //
@@ -672,7 +673,7 @@ export const EVAL_WEIGHTS = {
 
 /** Weight column for a Spirit, falling back to the flat default. */
 export function weightsFor(spiritId, overrides = null) {
-  const base = EVAL_WEIGHTS[spiritId] ?? DEFAULT_WEIGHTS;
+  const base = EVAL_WEIGHTS[characterId(spiritId)] ?? DEFAULT_WEIGHTS;
   if (!overrides) return base;
   // 🔬 EXPERIMENT SUPPORT, and it is deliberately an ARGUMENT rather than a
   // module-level setter. This file's contract is "same inputs ⇒ same number";
@@ -725,7 +726,7 @@ export function fameToWin(state) {
  * given to a second Spirit, widen the id check in BOTH places.
  */
 export function boomBoxLit(spiritId, ns = {}) {
-  if (spiritId !== 'intergalactic_0') return false;
+  if (characterId(spiritId) !== 'intergalactic_0') return false;
   return (ns.chargeFloorTurns ?? 0) > 0 || (ns.chargeCeilTurns ?? 0) > 0;
 }
 
@@ -891,7 +892,7 @@ export function evaluate(state, spiritId, view = {}) {
   const spirits = state?.spirits ?? [];
   const self    = spirits.find(s => s.id === spiritId);
   const ns      = state?.noteStates?.[spiritId] ?? {};
-  const def     = SPIRIT_DEFS[spiritId] ?? {};
+  const def     = SPIRIT_DEFS[characterId(spiritId)] ?? {};
 
   // A dead seat is worth nothing and must never look merely bad — otherwise a
   // search can trade its own life for a rounding error somewhere else.
@@ -1112,7 +1113,7 @@ export function evaluate(state, spiritId, view = {}) {
   terms.pressure = pressureRivals.length
     ? pressureRivals.reduce((sum, r) => {
         if (r.knockedOut) return sum + 1;
-        const rMax   = r.maxVibe ?? SPIRIT_DEFS[r.id]?.maxVibe ?? 5;
+        const rMax   = r.maxVibe ?? SPIRIT_DEFS[characterId(r.id)]?.maxVibe ?? 5;
         const rLives = r.lives ?? allLivesForRivals;
         const livesTaken = clamp01(Math.max(0, allLivesForRivals - rLives) / allLivesForRivals);
         const vibeMissing = clamp01(1 - clamp01((r.vibe ?? rMax) / rMax)) / allLivesForRivals;

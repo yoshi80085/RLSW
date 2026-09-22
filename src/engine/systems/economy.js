@@ -1,3 +1,4 @@
+import { characterId } from "../../data/spiritIdentity.js";
 // ─── ENGINE SYSTEM: ECONOMY (note-track / skills) ────────────────────────────
 // Phase 5a: contract fixes ahead of the full economy extraction (Phase 5c flip).
 
@@ -158,7 +159,7 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
   const initMode = melodyModeFor(spiritId);
   const root = canonicalRoot(rawRoot, initMode);
   // 🗡️ SHREDDING RONIN carries a deeper well: 11 stock slots instead of 10.
-  const stockSize = spiritId === "cosmic_ronin" ? 11 : 10;
+  const stockSize = characterId(spiritId) === "cosmic_ronin" ? 11 : 10;
   return {
     noteStock:       refillStock(root, initMode, stockSize, rand),
     melodyLine:      [],
@@ -253,7 +254,7 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     // Every Spirit chooses one basic signature ability before turn one. The
     // existing skill-picker modal consumes this pending choice immediately;
     // later upgrades continue to use the same modal after a Db threshold.
-    upgradesPending: 1,
+    upgradesPending: 0,
     skillRoute:      null,
     // 🔊 Amp I is the starting Main Amp — 2d6 from turn 1.
     // ── 🪦 B10's FREE RUNG IS GONE, AND NOBODY LOST ANYTHING ─────────────────

@@ -1,3 +1,4 @@
+import { characterId } from "../data/spiritIdentity.js";
 import { BARRAGE_LAUNCH } from './sonicBarrageTiming.js';
 import { createSwingClashVisuals, knockbackWobble } from './swingClashVisuals.js';
 import { createSonicBarrageVisuals } from './sonicBarrageVisuals.js';
@@ -54,8 +55,8 @@ function spiritMiniature(spirit) {
   for(const x of [-.17,.17]) {const leg=solid(new THREE.BoxGeometry(.17,.42,.18),0x151b2d,.6,.06);leg.position.set(x,.34,0);g.add(leg);}
   const head=solid(new THREE.IcosahedronGeometry(.235,1),0xb8c4d8,.8,.12);head.position.y=1.31;g.add(head);
   const visor=solid(new THREE.BoxGeometry(.37,.06,.08),color,.2,3.2);visor.position.set(0,1.32,.19);g.add(visor);
-  if(spirit.id==='cosmic_ronin') {const hat=solid(new THREE.ConeGeometry(.36,.12,6),0x172339);hat.position.y=1.31;g.add(hat);}
-  if(spirit.id==='Metalness_Monster') {
+  if(characterId(spirit.id)==='cosmic_ronin') {const hat=solid(new THREE.ConeGeometry(.36,.12,6),0x172339);hat.position.y=1.31;g.add(hat);}
+  if(characterId(spirit.id)==='Metalness_Monster') {
     for(const x of [-.2,.2]) {const horn=solid(new THREE.ConeGeometry(.085,.28,5),0xc3ac8c);horn.position.set(x,1.3,0);horn.rotation.z=-Math.sign(x)*.5;g.add(horn);}
     torso.scale.x=1.3;
   }
@@ -186,7 +187,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
   };
   function clearEffects() {for(const fx of effects){root.remove(fx.mesh);releaseArenaObject(fx.mesh);}effects.length=0;}
   function updateHazards(next) {
-    const key=JSON.stringify([next.laser,next.pyro,next.smoke,next.slime,next.fire,next.vortex,next.bots]);
+    const key=JSON.stringify([next.laser,next.pyro,next.smoke,next.slime,next.fire,next.vortices ?? next.vortex,next.bots]);
     if(key===hazardKey)return;hazardKey=key;
     for(const o of [...hazards.children]){hazards.remove(o);releaseArenaObject(o);}
     const disc=(num,color,radius=.75,height=.2)=>{
@@ -207,8 +208,8 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
       const flame=new THREE.Mesh(new THREE.ConeGeometry(.35,1.4,7),glow(0xff7922,.65));flame.position.copy(p);flame.userData.kind='fire';hazards.add(flame);
       disc(n,0xff6622,.7);
     }
-    if(next.vortex) {
-      const p=arenaPoint(next.vortex.hex,.3);
+    for(const vortex of next.vortices ?? (next.vortex ? [next.vortex] : [])) {
+      const p=arenaPoint(vortex.hex,.3);
       if(p) {const m=new THREE.Mesh(new THREE.TorusGeometry(.6,.12,8,40),glow(0x9544ff));m.rotation.x=Math.PI/2;m.position.copy(p);m.userData.kind='vortex';hazards.add(m);}
     }
     for(const bot of next.bots??[]) {

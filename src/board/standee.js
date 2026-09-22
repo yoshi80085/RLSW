@@ -1,3 +1,4 @@
+import { characterId } from "../data/spiritIdentity.js";
 // 🎭 STANDEES — the Spirits' own art, cut out of acrylic and stood on the board.
 //
 // Alex, 2026-09-18: "Would you be able to take my 2D characters and make them
@@ -52,7 +53,7 @@ const PLAIN_CUT = Object.freeze({ panel:[[[0, 0], [1, 0], [1, 1], [0, 1]]], art:
 
 /** The outline record for a Spirit, and the cut `T.cut` asks for. */
 export function cutFor(id, T = STANDEE) {
-  const o = STANDEE_OUTLINES[id];
+  const o = STANDEE_OUTLINES[characterId(id)];
   if (!o) return { w:1, h:1, foot:1, ...PLAIN_CUT };
   return { w:o.w, h:o.h, foot:o.foot, ...(o[T.cut] ?? o.tight) };
 }

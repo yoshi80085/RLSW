@@ -198,7 +198,7 @@ export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
 // equal, because a tree that computed its own prices could not be checked at all.
 export const FLAT_ABILITY_UNLOCK_DB = 6;
 
-export const PSYCHO_BUSHIDO_CD        = 4;  // rounds, ticked in turnFlow — was 2
+export const PSYCHO_BUSHIDO_CD        = 2;  // rounds, ticked in turnFlow — was 2
 export const PSYCHO_BUSHIDO_MIN_RANGE = 3;  // ⭐ closer than this is ILLEGAL, not merely bad
 export const PSYCHO_BUSHIDO_MAX_RANGE = 5;  // ⭐ farther than this is out of the lane
 // ⭐ FLAT, NOT "EVERYTHING YOU HAVE LEFT". The dash used to bill `apLeft`, which
@@ -244,8 +244,8 @@ export function psychoBushidoBonus(dist) {
 // (Alex, §2.5.2 #1). Only the LANDING hex has to be clear. That is knowingly a
 // hard counter to area denial; the accepted brake is the AP bill, NOT a hazard
 // exception, because a Shukuchi that stops at slime is walking with a Db cost.
-export const SHUKUCHI_CD         = 3;  // rounds, ticked in turnFlow
-export const SHUKUCHI_DB_COST    = 1;  // Db charged ONCE per activation — see §2.5.0a
+export const SHUKUCHI_CD         = 2;  // rounds, ticked in turnFlow
+export const SHUKUCHI_DB_COST    = 5;  // Db charged ONCE per activation — see §2.5.0a
 export const SHUKUCHI_MAX_HOPS   = 3;  // hops available for the rest of the turn, once fired
 export const SHUKUCHI_HOP_RINGS  = 2;  // every hop is EXACTLY this far — not "up to"
 export const SHUKUCHI_AP_PER_HOP = 1;  // ⭐ the whole balance of the ability lives on this line
@@ -276,7 +276,7 @@ export const SHUKUCHI_AP_PER_HOP = 1;  // ⭐ the whole balance of the ability l
 // exemption. Boom Box, Poison Slime and crowd virtuosity are not
 // things you DO — there is no moment of use to charge for. An innate is the
 // character; an active is a choice, and the rule exists to make choices cost.
-export const SHADOW_ILLUSION_CD    = 4;   // rounds — was 3, respecced 2026-09-04f
+export const SHADOW_ILLUSION_CD    = 2;   // rounds — was 3, respecced 2026-09-04f
 // ⭐ HOW MANY OF RONIN'S TURNS THE DOUBLE STANDS. Respecced 3 → 2 (§2.2.1):
 // dearer to own, cheaper to fire, gone sooner — a bluff that stands for three
 // turns stops being a bluff and becomes a fact.
@@ -295,7 +295,7 @@ export const SHADOW_ILLUSION_TURNS = 2;
 // full. He can pay 1 Db per round to protect himself, but the glow stays either
 // way: rivals must guess whether he paid.
 // `RONIN_ABILITY_DESIGN.md` §2.3 is the spec.
-export const CURSED_SHAMISEN_CD    = 3;   // rounds — gap between activations
+export const CURSED_SHAMISEN_CD    = 2;   // rounds — gap between activations
 
 // 🌌🕳️💻☀️ INTERGALACTIC 0. He is the zoner: his kit is about doing a small thing
 // often, so his rates are short. The shapes justify the spread —
@@ -312,7 +312,7 @@ export const CURSED_SHAMISEN_CD    = 3;   // rounds — gap between activations
 //                 cannot infer the recharge. Do not surface it anywhere shared.
 //   Sunbeam  2  · the only one that fires AUTOMATICALLY on any connecting hit, so
 //                 it is the only one where the cooldown is the whole restraint.
-export const DISPLACE_CD      = 1;
+export const DISPLACE_CD      = 2;
 export const GRAVITY_CD       = 2;
 export const CODE_INJECT_CD   = 2;
 export const SUNBEAM_CD       = 2;
@@ -327,9 +327,9 @@ export const SUNBEAM_CD       = 2;
 //    charging it like the others would bill the same cost twice.
 // 👤 The double is the dearest because it is the most versatile: it collects
 //    notes, it soaks a whole rival turn, and it baits the Bushido lane.
-export const PSYCHO_BUSHIDO_DB_COST  = 1;
-export const SHADOW_ILLUSION_DB_COST = 1;   // was 2 — respecced 2026-09-04f
-export const CURSED_SHAMISEN_DB_COST = 2;   // unchanged — it was already paying
+export const PSYCHO_BUSHIDO_DB_COST  = 5;
+export const SHADOW_ILLUSION_DB_COST = 5;   // was 2 — respecced 2026-09-04f
+export const CURSED_SHAMISEN_DB_COST = 5;   // unchanged — it was already paying
 
 // 👤 SHADOW ILLUSION — Sustain drain, replacing the 1 Drive token it used to
 // cost at summon. Charged at the start of each of the Ronin's OWN turns while
@@ -880,7 +880,7 @@ export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
 export const SONIC_BEAM_REACH = 3;
 
 // ☀️ SUNBEAM — the whiteout.
-export const SUNBEAM_DB_COST         = 2;    // Db charged per connecting attack
+export const SUNBEAM_DB_COST         = 5;    // Db charged per connecting attack
 export const SUNBEAM_BLIND_TURNS     = 1;    // turns of whiteout on a clean proc
 export const SUNBEAM_LINGER_CHANCE   = 0.5;  // odds the burn sears in for a 2nd turn
 export const SUNBEAM_MAX_BLIND_TURNS = 2;    // hard ceiling — the sun always sets
@@ -888,16 +888,16 @@ export const SUNBEAM_MAX_BLIND_TURNS = 2;    // hard ceiling — the sun always 
 // 🌀 SPACE IS DISPLACED — the paid blink. §2 of the Metalness rework cites this
 // as the roster's only other free-ish movement, which is why its price matters
 // to a doc two directories away.
-export const DISPLACE_DB_COST   = 1;   // Db charged per warp
+export const DISPLACE_DB_COST   = 5;   // Db charged per warp
 export const DISPLACE_MIN_RINGS = 2;   // nearest legal landing ring (1 = a normal step, so it's excluded)
 export const DISPLACE_MAX_RINGS = 3;   // furthest legal landing ring
 
 // 🕳️ GRAVITY CONTROL — the black hole vortex.
-export const GRAVITY_DB_COST     = 1;  // Db charged per vortex
+export const GRAVITY_DB_COST     = 5;  // Db charged per vortex
 export const GRAVITY_PLACE_RINGS = 2;  // how far out he can drop it
 export const GRAVITY_PULL_RINGS  = 2;  // rivals this close (or closer) get dragged
 export const GRAVITY_PULL_HEXES  = 1;  // hexes each caught rival is dragged inward
 export const GRAVITY_NOTE_DRAIN  = 2;  // notes cut from NEXT turn's refill for anyone dragged INTO it
 
 // 💻 CODE INJECTION — the hidden commit.
-export const CODE_INJECT_DB_COST = 1;  // Db burned at COMMIT, win or lose
+export const CODE_INJECT_DB_COST = 5;  // Db burned at COMMIT, win or lose

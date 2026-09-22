@@ -1,3 +1,4 @@
+import { initialLoadout } from '../data/loadouts.js';
 // --- ENGINE STATE ------------------------------------------------------------
 // makeInitialState(gameConfig) -> the single plain-JSON GameState object.
 //
@@ -38,7 +39,12 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
   // Phase 5c foundation: engine builds + OWNS the per-spirit note sheets
   const noteRng = makeRng(seed >>> 0).fork("noteStatesInit");
   const noteStates = {};
-  for (const s of spirits) noteStates[s.id] = makeInitialNoteState(s.id, noteRng);
+  if (new Set(spirits.map(s => s.id)).size !== spirits.length) throw new Error('Each player must have a unique seat ID');
+  for (const s of spirits) noteStates[s.id] = {
+    ...makeInitialNoteState(s.id, noteRng),
+    unlockedSkills: initialLoadout(s),
+    loadoutLocked: true,
+  };
 
   // Phase 6b: stage-FX draw order (engine-owned, seeded)
   const stageFxDeck = shuffledStageFxDeck(makeRng(seed >>> 0).fork("stageFxDeck"));

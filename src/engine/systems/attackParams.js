@@ -1,3 +1,4 @@
+import { characterId } from "../../data/spiritIdentity.js";
 // --- ENGINE: ATTACK PARAMETERS -----------------------------------------------
 // The STAT DERIVATION that feeds `attackRolled`, extracted from the React
 // monolith's `resolveSwing` / `initiateSonicAttack` preambles.
@@ -86,7 +87,7 @@ export const SONIC_DRIVE_SPEND = 1;
  */
 export function spiritChord(spiritId, notes) {
   const ch = evaluateChord(notes);
-  if (spiritId === 'intergalactic_0') {
+  if (characterId(spiritId) === 'intergalactic_0') {
     return { ...ch, drive: ch.id === 'cluster' ? ch.drive + 1 : ch.drive, sustain: ch.sustain + 1 };
   }
   return ch;
@@ -156,8 +157,8 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
       swingChordLeft:(nsA.driveStack??[]).slice(2),swingChordSpent:(nsA.driveStack??[]).slice(0,2),
       _derived:{consumedSmashExposed:false}};
   }
-  const defA = SPIRIT_DEFS[attackerId] ?? {};
-  const defD = SPIRIT_DEFS[defenderId] ?? {};
+  const defA = SPIRIT_DEFS[characterId(attackerId)] ?? {};
+  const defD = SPIRIT_DEFS[characterId(defenderId)] ?? {};
 
   // 🎸 HARMONY → COMBAT. Drive comes off the Drive stack, Sustain off the
   // Sustain stack; the static spirit stat is only a fallback for a Spirit who

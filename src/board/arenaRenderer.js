@@ -80,10 +80,14 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     const plain=v=>v&&{x:v.x,y:v.y,z:v.z};
     const subjects=createCameraSubjects({pointFor:num=>plain(arenaPoint(num,.34)),pointXY:(x,y)=>plain(pointXY(x,y))});
     let director=createCameraDirector(),autoCamera=true,cameraShot=null,cameraReport='';
-    // ⚠️ THE PLAYER'S HANDS ARE ORBITCONTROLS' OWN start/end, not raw pointer
-    // events. keepGameplayClicks (arenaDom.js) only forwards a LEFT press to the
-    // controls once it has become a 6px drag, so a click that picks a hex never
-    // reaches here and never steals the camera. Wheel and pinch fire start+end.
+    // Every click counts as activity, including HUD clicks outside the canvas.
+    // Capture observes events without preventing gameplay or changing battle shots.
+    const noteActivity=()=>director.userNudge(performance.now());
+    for(const type of ['pointerdown','pointerup','click','auxclick']) {
+      document.addEventListener(type,noteActivity,true);
+      cleanups.push(()=>document.removeEventListener(type,noteActivity,true));
+    }
+    // OrbitControls still owns drag start/end, so held gestures cannot time out.
     const takeOver=()=>{sonicCamera.userStart();director.userStart(performance.now());},letGo=()=>director.userEnd(performance.now());
     controls.addEventListener('start',takeOver);controls.addEventListener('end',letGo);
     cleanups.push(()=>{controls.removeEventListener('start',takeOver);controls.removeEventListener('end',letGo);});

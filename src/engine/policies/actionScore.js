@@ -1,3 +1,4 @@
+import { characterId } from "../../data/spiritIdentity.js";
 // ─── ACTION SCORING ─────────────────────────────────────────────────────────
 // `makeActionScorer(state, spiritId, view) -> (action) => number`
 // BOT_STRATEGY_HANDOFF §6.3 — the `score` the beam shipped without.
@@ -241,7 +242,7 @@ export function makeActionScorer(state, spiritId, view = {}) {
   const persona = resolvePersona(view.persona);
   const self = (state?.spirits ?? []).find(s => s.id === spiritId);
   const ns   = state?.noteStates?.[spiritId] ?? {};
-  const def  = SPIRIT_DEFS[spiritId] ?? {};
+  const def  = SPIRIT_DEFS[characterId(spiritId)] ?? {};
 
   // A seat that is not on the board has no opinion about anything. Returning a
   // flat scorer rather than throwing keeps the beam's contract intact: it

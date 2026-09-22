@@ -1,3 +1,4 @@
+import { characterId } from "../../data/spiritIdentity.js";
 // --- ENGINE: BATTLE FLOW -----------------------------------------------------
 // The ORDERED CONSEQUENCE SEQUENCE of a resolved battle, extracted from the
 // React monolith so the UI and the headless harness run the SAME rules.
@@ -63,7 +64,6 @@ import {
   SONIC_LIMELIGHT_FP, POSE_SUSTAIN_COST, fpPerLife,
 } from "../../data/gameConstants.js";
 import { RIFF_BOTH_PAID_QUALITY } from "./riffOff.js";
-import { canFire, firePatch } from "./cooldowns.js";
 
 // ── Sunbeam (Intergalactic 0) ────────────────────────────────────────────────
 // Transcribed from rlsw-simulator-v3_8_1.jsx:555-558 at extraction, and this file
@@ -322,7 +322,7 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [], allowRi
   // 🌀 ROLLS HARD — Intergalactic 0 shrugs off a hex of any shove, but a floor
   // of 1 always lands or he'd be immune to Thrash's flat push and could squat
   // the centre untouchable.
-  if (targetId === 'intergalactic_0') {
+  if (characterId(targetId) === 'intergalactic_0') {
     if (spaces > 1) {
       spaces -= 1;
       yield log(`🌀 ${target.name} Rolls Hard — he digs in and eats a hex of the shove.`);
@@ -795,7 +795,7 @@ export function* riffOffConsequences({ state, battle, verdict, amps = [], fameTh
 // 4. VIBE DAMAGE — and the knockdown cascade it can open.
 // ═════════════════════════════════════════════════════════════════════════════
 export function* vibeDamage({ state, targetId, dmg, sourceLabel, attackerId = null, fameThisTurn = {} }) {
-  if (targetId === 'cosmic_ronin' && dmg > 0) {
+  if (characterId(targetId) === 'cosmic_ronin' && dmg > 0) {
     yield hook('dismissShadowIllusion', { reason: 'the Ronin was attacked' });
   }
   if (dmg > 0) {
@@ -833,19 +833,6 @@ export function* vibeDamage({ state, targetId, dmg, sourceLabel, attackerId = nu
   // conditions (you knock someone down, you go down, you heal out of the Vibe
   // gate), and the first of them is what made it fight Azrael by rule — §1b.
   // The dial just runs to the end of the turn it was called on.
-
-  // 💀 AZRAEL — a rival going down feeds Metalness Fame equal to his streak.
-  if (attackerId && attackerId !== targetId) {
-    const atkNs = nsOf(state, attackerId);
-    if ((atkNs.unlockedSkills ?? []).includes('azrael')) {
-      const streak = (atkNs.knockStreak ?? 0) + 1;
-      state = yield patch(attackerId, { knockStreak: streak });
-      yield log(`💀 AZRAEL — ${nameOf(state, attackerId)} feeds on the fallen! Knockdown streak ${streak} → +${streak} FP.`);
-      yield fx('flash', { spiritId: attackerId, icon: '💀', text: `AZRAEL ×${streak}`, color: '#ff2244' });
-      const r = yield* grantFame({ state, spiritId: attackerId, fp: streak, reason: `Azrael streak ${streak}`, fameThisTurn });
-      fameThisTurn = r.fameThisTurn;
-    }
-  }
 
   // 🎸 `elimination &&` is belt to the braces above: with the axis off `newLives`
   // is never decremented so this can't be reached anyway, but a Spirit who
@@ -1010,35 +997,6 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
       if (report?.added?.length) {
         yield log(`🎵 ${report.added.length} Lost Chord${report.added.length !== 1 ? 's' : ''} knocked loose from the impact!`);
       }
-    }
-  }
-
-  // ── ☀️ SUNBEAM (Intergalactic 0) — any connecting attack, Swing or Sonic ──
-  // ⚠️ The linger is a 50/50 and it goes through the SEEDED stream, not
-  // Math.random: replays and the online desync tripwire both compare rng
-  // cursors. This is exactly the branch that made a plan-then-apply list
-  // unworkable — see the header.
-  if (attackerId === 'intergalactic_0' && !interruptedSonic) {
-    const atkNs = nsOf(state, attackerId);
-    // 🕒 AND IT NOW RECHARGES. Sunbeam is the only ability in the game that fires
-    // AUTOMATICALLY on any connecting hit — the player never chooses it — so the
-    // cooldown is the whole of its restraint, and `canFire` is the gate rather
-    // than a bare Db check.
-    if ((atkNs.unlockedSkills ?? []).includes('sunbeam') && canFire(atkNs, 'sunbeam')) {
-      state = yield act(randomBatchDrawn(1));
-      const lingerRoll = state.lastRandomBatch?.[0] ?? 1;
-      const lingers = lingerRoll < SUNBEAM_LINGER_CHANCE;
-      const turns = Math.min(SUNBEAM_MAX_BLIND_TURNS, SUNBEAM_BLIND_TURNS + (lingers ? 1 : 0));
-
-      state = yield patch(attackerId, firePatch(atkNs, 'sunbeam'));
-      // Blinds do NOT stack — a fresh proc takes the HIGHER clock, so being hit
-      // twice in a round can never bury someone past the ceiling.
-      state = yield patch(defenderId, {
-        blindTurns: Math.max(nsOf(state, defenderId).blindTurns ?? 0, turns),
-      });
-      yield log(`☀️ SUNBEAM! ${nameOf(state, attackerId)} opens the star and ${nameOf(state, defenderId)}'s world goes WHITE — blinded for ${turns} turn${turns !== 1 ? 's' : ''}. (−${SUNBEAM_DB_COST} Db)`);
-      if (lingers) yield log(`☀️ The burn is seared in — ${nameOf(state, defenderId)} is still seeing nothing but light next turn.`);
-      yield fx('flash', { spiritId: defenderId, icon: '☀️', text: 'BLINDED!', color: '#ffffff' });
     }
   }
 

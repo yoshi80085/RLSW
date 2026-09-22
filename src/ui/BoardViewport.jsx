@@ -4,11 +4,12 @@ import { CAMERA_DIRECTOR } from '../board/cameraDirector.js';
 
 // Keep the actual React board in both views: duplicating its targeting and
 // ability layers would let a renderer offer actions the match cannot take.
-export function BoardViewport({ enabled, immersive = false, sceneFrame, autoCamera = true, onDisable, children }) {
+export function BoardViewport({ enabled = true, immersive = false, sceneFrame, autoCamera = true, children }) {
   const mount = useRef(null);
   const layer = useRef(null);
   const runtime = useRef(null);
   const [status, setStatus] = useState('');
+  const [attempt, setAttempt] = useState(0);
   const [quality, setQuality] = useState('auto');
   const [qualityLabel, setQualityLabel] = useState('');
   // 🎥 What the auto camera is doing, for the toolbar badge (cameraDirector.js).
@@ -32,18 +33,18 @@ export function BoardViewport({ enabled, immersive = false, sceneFrame, autoCame
         onReady: () => { if (!cancelled) setStatus('ready'); },
         onQuality: label => { if (!cancelled) setQualityLabel(label); },
         onCamera: state => { if (!cancelled) setCameraState(state); },
-        onError: () => { if (!cancelled) setStatus('3D unavailable. Return to 2D to continue the match.'); },
+        onError: () => { if (!cancelled) setStatus('3D unavailable. Enable WebGL in your browser, then retry the arena.'); },
       });
       runtime.current.update(latest.current.sceneFrame);
       runtime.current.quality(latest.current.quality ?? 'auto');
       runtime.current.autoCamera(latest.current.autoCamera ?? true);
-    }).catch(() => { if (!cancelled) setStatus('3D unavailable. Return to 2D to continue the match.'); });
+    }).catch(() => { if (!cancelled) setStatus('3D unavailable. Enable WebGL in your browser, then retry the arena.'); });
     return () => {
       cancelled = true;
       runtime.current?.dispose();
       runtime.current = null;
     };
-  }, [enabled]);
+  }, [enabled, attempt]);
 
   return <div data-board-view={enabled ? '3d' : '2d'} data-swing-phase={sceneFrame?.battle?.swingClash ? sceneFrame.battle.phase : undefined} data-sonic-phase={sceneFrame?.battle?.volley ? sceneFrame.battle.phase : undefined} data-arena-ready={enabled && status === 'ready' || undefined} style={enabled
     ? { position: 'relative', width: '100%', ...(immersive ? { height: '100%' } : { aspectRatio: `${SVG_W}/${SVG_H}` }), minHeight: 360, overflow: 'hidden', background: '#030611', borderRadius: 8 }
@@ -102,7 +103,7 @@ export function BoardViewport({ enabled, immersive = false, sceneFrame, autoCame
       </select>
       <button className="btn" onClick={() => runtime.current?.zoom(0.85)} aria-label="Zoom into arena">+</button>
       <button className="btn" onClick={() => runtime.current?.zoom(1.18)} aria-label="Zoom out of arena">−</button>
-      <button className="btn" onClick={onDisable}>2D board</button>
+      {status.startsWith('3D unavailable') && <button className="btn" onClick={() => { setStatus('Loading arena…'); setAttempt(n => n + 1); }}>Retry arena</button>}
       <span className="arena-camera-help">{qualityLabel} · click to play · drag to orbit · right-drag to pan · wheel to zoom{autoCamera ? ' · move it to take over' : ''}</span>
     </div>}
   </div>;

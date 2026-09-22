@@ -95,8 +95,8 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
 {
   eq(SHUKUCHI_HOP_RINGS, 2, '🌀 a hop is exactly 2 hexes');
   eq(SHUKUCHI_MAX_HOPS, 3, '🌀 three of them per activation');
-  eq(SHUKUCHI_CD, 3, '🌀 3-round cooldown');
-  eq(SHUKUCHI_DB_COST, 1, '🌀 1 Db per activation');
+  eq(SHUKUCHI_CD, 2, '🌀 2-round cooldown');
+  eq(SHUKUCHI_DB_COST, 5, '🌀 5 Db per activation');
 
   // ⭐ THE LINE THE WHOLE ABILITY BALANCES ON (§2.5.0). The first sketch made
   // Shukuchi the entire movement turn — six hexes for the turn, priced against
@@ -256,7 +256,7 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
 // 6. THE GATES — unlocked, affordable, off cooldown, and enough AP.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  const locked = withNs(base(5), RONIN, { hasConfirmed: true, dbPoints: 10 });
+  const locked = withNs(base(5), RONIN, { hasConfirmed: true, dbPoints: 10, unlockedSkills: [] });
   ok(!canHop(nsOf(locked, RONIN)), '🌀 not bought, not available');
   ok(!legalActions(locked, RONIN).some(a => a.kind === 'shukuchi'),
     '🌀 …and `legalActions` does not offer it');

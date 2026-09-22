@@ -40,7 +40,7 @@ const ok = (label, cond, detail = '') => {
 console.log('\n§1 the client renders at all');
 let html = '';
 try {
-  const gs = buildTestingGroundsConfig();
+  const gs = buildTestingGroundsConfig({ beginnerMode: true });
   html = renderToStaticMarkup(<Game gameState={gs} onReturnToLobby={() => {}} />);
   ok('Game renders without throwing', true);
 } catch (e) {
@@ -49,6 +49,9 @@ try {
 
 console.log('\n§2 the board came out with something on it');
 ok('produced markup', html.length > 2000, `got ${html.length} bytes`);
+ok('3D is the only active board', html.includes('data-board-view="3d"') && !html.includes('>2D board</button>'));
+ok('Pickles stays archived even for old beginner configs', !/class="[^"]*beginner-glow/.test(html) && !html.includes('Beginner tips'));
+ok('the old stage-skin control is archived', !html.includes('Stage skin')); 
 
 console.log('\n§3 the commit overlay panels are step-gated');
 // 📌 These are the panels the 2026-08-28 overlay port moved. A render that

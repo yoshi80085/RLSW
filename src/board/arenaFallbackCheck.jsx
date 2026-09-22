@@ -18,7 +18,7 @@ function Fixture() {
   const [steps, setSteps] = useState(3);
   return <>
     <button onClick={() => setEnabled(true)}>3D</button>
-    <BoardViewport enabled={enabled} onDisable={() => setEnabled(false)}>
+    <BoardViewport enabled={enabled} >
       <svg><g data-hex-num="16" onClick={() => setSteps(n => n - 1)}><text>{steps} AP</text></g></svg>
     </BoardViewport>
   </>;
@@ -42,15 +42,20 @@ try {
   }
   assert.match(document.querySelector('[role="status"]')?.textContent ?? '', /3D unavailable/);
   assert.equal(expectedErrors, 1, 'actual WebGL initialization was refused');
-  const back = [...document.querySelectorAll('button')].find(el => el.textContent === '2D board');
+  assert.equal([...document.querySelectorAll('button')].some(el => el.textContent === '2D board'), false);
+  const back = [...document.querySelectorAll('button')].find(el => el.textContent === 'Retry arena');
   await click(back);
-  assert.equal(document.querySelector('[data-board-view]').dataset.boardView, '2d');
-  assert.equal(document.querySelector('[data-hex-num]'), hex, 'fallback preserves the same live board node');
-  assert.equal(hex.textContent, '2 AP', 'fallback preserves game state');
+  for (let i = 0; i < 100 && expectedErrors < 2; i++) {
+    await act(async () => new Promise(resolve => setTimeout(resolve, 10)));
+  }
+  assert.equal(expectedErrors, 2, 'retry attempts a fresh renderer');
+  assert.equal(document.querySelector('[data-board-view]').dataset.boardView, '3d');
+  assert.equal(document.querySelector('[data-hex-num]'), hex, 'retry preserves the same live board node');
+  assert.equal(hex.textContent, '2 AP', 'retry preserves game state');
   await click(hex);
-  assert.equal(hex.textContent, '1 AP', 'game remains interactive after recovery');
+  assert.equal(hex.textContent, '1 AP', 'targeting remains mounted after retry');
   assert.equal(document.querySelector('canvas'), null, 'failed startup leaves no canvas behind');
-  console.log('PASS: actual WebGL failure, visible recovery, same board/state, gameplay after fallback, no canvas leak');
+  console.log('PASS: actual WebGL failure, 3D retry, no 2D switch, same board/state, no canvas leak');
 
   // Revisit the SAME spirit/phase on a later turn: an old drawer choice must
   // not resurface. No WebGL needed for this layout ownership contract.

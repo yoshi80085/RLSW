@@ -1,3 +1,4 @@
+import { characterId } from '../data/spiritIdentity.js';
 // =============================================================================
 // ui/SignatureAbilities.jsx  —  extracted verbatim from the Game render.
 // Presentational: all values/handlers via props, zero app imports.
@@ -7,7 +8,7 @@ import React from "react";
 export function SignatureAbilities({ SKILL_BY_ID, SKILL_TREE, SPIRIT_DEFS, noteStates, setSignatureSpirit, signatureSpirit, spirits }) {
   return (<>
       {signatureSpirit && (() => {
-        const route = SKILL_TREE.routes.find(r => r.spiritOnly === signatureSpirit);
+        const route = SKILL_TREE.routes.find(r => r.spiritOnly === characterId(signatureSpirit));
         const sp    = spirits.find(s => s.id === signatureSpirit)
                    || Object.values(SPIRIT_DEFS).find(s => s.id === signatureSpirit);
         if (!route) return null;
@@ -44,7 +45,7 @@ export function SignatureAbilities({ SKILL_BY_ID, SKILL_TREE, SPIRIT_DEFS, noteS
                           background: owned ? '#1c3a22' : '#241a0a',
                           border:`1px solid ${owned ? '#3fae5a' : '#caa24a'}66`,
                           color: owned ? '#7fe39a' : '#e0bd6a'}}>
-                          {owned ? '✓ UNLOCKED' : `🔒 ${sk.dbCost} DB`}
+                          {owned ? '✓ EQUIPPED' : 'NOT EQUIPPED'}
                         </span>
                         {prereqLabel && (
                           <span style={{fontSize:8.5, color:'#7a95b5'}}>needs {prereqLabel}</span>

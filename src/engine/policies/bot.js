@@ -1,3 +1,4 @@
+import { characterId } from "../../data/spiritIdentity.js";
 // ─── BOT POLICIES ───────────────────────────────────────────────────────────
 // Phase 7a+7b — pure scorer + planner functions extracted from the Game
 // component. Policies are *players*, not rules — they choose what to do given
@@ -464,7 +465,7 @@ export function botPlanNoteStep(noteState, persona) {
  */
 export function botSpiritChord(spiritId, notes) {
   const ch = evaluateChord(notes);
-  if (spiritId === 'intergalactic_0') {
+  if (characterId(spiritId) === 'intergalactic_0') {
     return {
       ...ch,
       drive:   ch.id === 'cluster' ? ch.drive + 1 : ch.drive,

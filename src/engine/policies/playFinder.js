@@ -1,3 +1,4 @@
+import { characterId } from "../../data/spiritIdentity.js";
 // =============================================================================
 // engine/policies/playFinder.js  —  🎯 THE BEGINNER FINDER: the best play in a hand
 // -----------------------------------------------------------------------------
@@ -112,7 +113,7 @@ function readHand(spiritId, ns, opts) {
   const prefix = [...(ns.melodyLine ?? [])];
   const confirmed = !!ns.hasConfirmed;
   const budget = confirmed ? 0 : Math.max(0, STACK_COMMIT_BUDGET - (ns.stackCommitsThisTurn ?? 0));
-  const speed = Math.min(SPEED_CAP, SPIRIT_DEFS[spiritId]?.speed ?? 5);
+  const speed = Math.min(SPEED_CAP, SPIRIT_DEFS[characterId(spiritId)]?.speed ?? 5);
   // Per-spelling facts the bounds read on every node, computed once.
   const info = new Map();
   for (const n of [...free.map(f => f.note), ...prefix]) {

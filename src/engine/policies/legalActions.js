@@ -1,3 +1,4 @@
+import { characterId } from "../../data/spiritIdentity.js";
 import { bushidoLane, bushidoBlockers } from "../systems/bushido.js";
 // ─── LEGAL ACTIONS ──────────────────────────────────────────────────────────
 // `legalActions(state, spiritId, view) -> action[]` — BOT_STRATEGY_HANDOFF §6.1.
@@ -40,7 +41,6 @@ import { HEX_BY_NUM, HEX_BY_QR } from "../../board/hexMap.js";
 import { slideTarget, trailRun, canCallSlime } from "../systems/slime.js";
 import { axialNeighbors, angleTo, angleDiff, getFlatTopNeighborSlots, neighborInDirection } from "../../board/hexGeometry.js";
 import { usedHas } from "../systems/economy.js";
-import { skillEligibility } from "../systems/skills.js";
 import { rigFor } from "../systems/attackParams.js";
 import { canCallEleven } from "../systems/eleven.js";
 import { canFire } from "../systems/cooldowns.js";
@@ -48,7 +48,7 @@ import { canHop, shukuchiLandings } from "../systems/shukuchi.js";
 import { posingMap } from "../systems/limelight.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH, PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, SHUKUCHI_AP_PER_HOP } from "../../data/gameConstants.js";
-import { CONE_HALF_ARC, SPIRIT_ONLY_ROUTE } from "./bot.js";
+import { CONE_HALF_ARC } from "./bot.js";
 // 📻 The Boom Box rule — Intergalactic 0 reads distance 0 while charged, which
 // is what keeps his Sonic legal out on the board — used to be imported here as
 // `distFromHome`. It is now reached through `rigFor`, which is the better
@@ -174,7 +174,7 @@ export function facingOptions(spirit) {
 export function legalActions(state, spiritId, view = {}) {
   const {
     amps = [], shadowHex = null,
-    skillById = null,
+    shadowHexes = Object.values(state.noteStates ?? {}).flatMap(ns => ns.shadowIllusion ? [ns.shadowIllusion.hex] : []),
   } = view;
   const posing = posingMap(state);
 
@@ -184,7 +184,7 @@ export function legalActions(state, spiritId, view = {}) {
   if (state?.winner) return [];
 
   const ns   = state?.noteStates?.[spiritId] ?? {};
-  const def  = SPIRIT_DEFS[spiritId] ?? {};
+  const def  = SPIRIT_DEFS[characterId(spiritId)] ?? {};
   const turn = state?.turn ?? {};
   const ap   = turn.moveStepsLeft ?? 0;
   const tokenSpent = !!turn.actionTokenUsed;
@@ -228,22 +228,7 @@ export function legalActions(state, spiritId, view = {}) {
   // and burn the whole turn without touching the board. The §6.6 harness hit its
   // per-turn ceiling on the first run after this family went live, which is
   // exactly what that ceiling is for.
-  if (skillById && !ns.targetSkillId) {
-    const unlocked = ns.unlockedSkills ?? [];
-    for (const [id, skill] of Object.entries(skillById)) {
-      if (!skill) continue;
-      // ⚠️ `skill.spiritOnly` WAS ALWAYS `undefined` UNTIL 2026-08-16, so this
-      // gate could never fire — the old round-trip through `SPIRIT_ONLY_ROUTE`
-      // was searching a map BY OWNER to recover the owner it already had, off a
-      // field the tree builder never populated. `SKILL_BY_ID` now pushes the
-      // route's owner down onto every skill, so the honest read is the direct
-      // one. Falls back to the route map for any caller passing a hand-built
-      // `skillById` that predates the push-down.
-      const ownerRoute = skill.spiritOnly ?? SPIRIT_ONLY_ROUTE[skill.routeId] ?? null;
-      if (!skillEligibility(skill, unlocked, { ownerRoute, selfId: spiritId }).ok) continue;
-      out.push({ kind: 'skillTarget', skillId: id, dbCost: skill.dbCost, apCost: 0 });
-    }
-  }
+
 
   // ═════════════════════════════════════════════════════════════════════════
   // COMPOSITION PHASE — spending stock, before the melody is confirmed.
@@ -308,7 +293,7 @@ export function legalActions(state, spiritId, view = {}) {
   // ⭐ BUILT BY `bushidoBlockers` SINCE 2026-09-05, and the sharing is the rule:
   // movement and 🗡️ Bushido's lane must agree about what a body is, or a hex you
   // cannot walk through is one the draw pretends is empty. Same set, one place.
-  const blocked = bushidoBlockers({ spirits: rivals, amps: amps ?? [], shadowHex });
+  const blocked = bushidoBlockers({ spirits: rivals, amps: amps ?? [], shadowHex, shadowHexes });
 
   // MOVEMENT — one hex at a time into an unoccupied neighbour.
   if (here && ap >= MOVE_AP_COST) {
@@ -369,7 +354,7 @@ export function legalActions(state, spiritId, view = {}) {
   // ⚠️ BUT INNATE MEANS NO PURCHASE, NOT NO OWNER — and getting that wrong is
   // how this gate shipped open. Until 2026-08-16 the only thing standing between
   // any Spirit and the ooze was a JSX render condition
-  // (`acting?.id === 'Metalness_Monster'`), which this file had nothing to
+  // (`characterId(acting?.id) === 'Metalness_Monster'`), which this file had nothing to
   // transcribe from. No player could reach it; the §6.6 harness reached it on
   // its first headless match and had the Ronin laying road. Ownership now lives
   // in `canCallSlime` beside the rest of the trail rules — see its header.
@@ -495,7 +480,7 @@ export function legalActions(state, spiritId, view = {}) {
     // and an unranked beam is just "the first 5", so a long trail would push
     // real options off the end of an arbitrary list. `spend` and `reach` ride on
     // each action so a scorer can price them the moment one exists.
-    if ((ns.unlockedSkills ?? []).includes('tentacle')) {
+    if ((ns.unlockedSkills ?? []).includes('tentacle') && canFire(ns, 'tentacle')) {
       for (const opt of tentacleOptions(state, self)) {
         for (const r of rivals) {
           if (!opt.cone.has(r.num)) continue;
@@ -558,10 +543,10 @@ export function legalActions(state, spiritId, view = {}) {
     // unused notes, no Drive-stack requirement).
     if (ap >= SMASH_AP_COST) {
       const unusedCount = (ns.noteStock ?? []).filter((_, i) => !usedHas(ns.usedStockIdx, i)).length;
-      const hasBlaster = spiritId === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
+      const hasBlaster = characterId(spiritId) === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
 
       if (hasBlaster) {
-        if (unusedCount >= 2) {
+        if (unusedCount >= 2 && canFire(ns, 'blaster_of_ra')) {
           const struck = rivals.filter(r => beam.has(r.num)).map(r => r.id);
           if (struck.length) {
             out.push({ kind: 'blaster', targetIds: struck, apCost: SMASH_AP_COST, endsMovement: true });

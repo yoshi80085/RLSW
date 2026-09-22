@@ -1,5 +1,8 @@
+import { SpiritDraft } from './SpiritDraft.jsx';
+import { validLoadout } from '../data/loadouts.js';
+import { seatId } from '../data/spiritIdentity.js';
 import { useState, useEffect, useRef } from "react";
-import { SPIRIT_DEFS, SPIRIT_OPTIONS, ROSTER_ORDER, UNLOCKED_DEFAULT, IN_DEVELOPMENT, MAX_PLAYERS } from "../data/spirits.js";
+import { SPIRIT_DEFS, UNLOCKED_DEFAULT, MAX_PLAYERS } from "../data/spirits.js";
 import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "../data/corners.js";
 import { cornerFacing } from "../board/boardHelpers.js";
 import { buildTestingGroundsConfig } from "../data/matchSetup.js";
@@ -7,7 +10,7 @@ import { makeNetClient } from "../net/client.js";
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT,
          RIFF_SPEED_MIN, RIFF_SPEED_MAX, RIFF_SPEED_DEFAULT,
          loadRiffSpeed, saveRiffSpeed, riffSpeedLabel } from "../riff/fallingNotes.js";
-import { fpPerLife, ROUND_LIMIT_CHOICES, ROUND_LIMIT_DEFAULT, fameScaleFor } from "../data/gameConstants.js";
+import { fpPerLife, ROUND_LIMIT_CHOICES, ROUND_LIMIT_DEFAULT } from "../data/gameConstants.js";
 import menuSong3 from "../music/Menu_song_3.mp3";
 import { musicVol } from "../audio/mixer.js";
 import boardImg from "../board.png";
@@ -65,13 +68,14 @@ export function Lobby({ onStart, onBackToMenu }) {
     return 'ffa';
   });
   const [assignments, setAssignments] = useState({});
+  const [loadouts, setLoadouts] = useState({});
   const [cpuCorners, setCpuCorners] = useState(() => seedCpu(DEFAULT_PLAYERS));
   // 🧠 WHICH BOT IS IN THE CHAIR. Unchecked = the legacy step-machine that has
   // always shipped; checked = `engine/policies/play.js`'s searcher, the one
   // BOT_STRATEGY_HANDOFF §6.6 has been tuning against the bench. Per-corner
   // rather than global so the two can be played against each other.
   const [cpuSearcher, setCpuSearcher] = useState({});
-  const [step, setStep] = useState("count");
+  const [, setStep] = useState("count");
   /* 🎸🏆 HOW THE MATCH ENDS — a setting as of 2026-09-16.
      ⚠️ BATTLE OF THE BANDS IS THE DEFAULT, and that is not a new preference:
      the ENGINE has defaulted to it since 2026-09-15 (`state.js` normalises an
@@ -83,7 +87,7 @@ export function Lobby({ onStart, onBackToMenu }) {
   const [winCondition, setWinCondition] = useState('rounds');
   const [roundLimit, setRoundLimit] = useState(ROUND_LIMIT_DEFAULT);
   const [startingLives, setStartingLives] = useState(3);
-  const [beginnerMode, setBeginnerMode] = useState(true);
+  const beginnerMode = false; // Pickles introduction archived.
   /* ⚠️ SEEDED, NOT LEFT TO THE EFFECT BELOW. A roster tile is clickable only
      while `choosingCorner` is set (see the tile's onClick and its cursor), so if
      this started null the first paint of the lobby would be a full roster that
@@ -106,8 +110,7 @@ export function Lobby({ onStart, onBackToMenu }) {
   // Difficulty picks the riff and the reading aids; this stretches the clock.
   const [riffSpeed, setRiffSpeed] = useState(loadRiffSpeed);
   function pickRiffSpeed(v) { setRiffSpeed(saveRiffSpeed(v)); }
-  const [announcer, setAnnouncer] = useState(null);
-  const announcerTimer = useRef(null);
+  const [announcer] = useState(null);
   const [unlocked] = useState(() => {
     try { const r=localStorage.getItem('rlsw.unlockedSpirits'); if(r){const a=JSON.parse(r);if(Array.isArray(a))return new Set(a);} } catch{}
     return new Set(UNLOCKED_DEFAULT);
@@ -157,20 +160,25 @@ export function Lobby({ onStart, onBackToMenu }) {
   async function goOnline(kind){const name=playerName.trim()||"Player";try{localStorage.setItem("rlsw.net.name",name);}catch{}setNetStatus("connecting");setNetError("");const c=makeNetClient();c.on("ROOM_STATE",f=>setNetRoom(f));c.on("ERROR",f=>setNetError(f.code+": "+f.msg));c.on("net:close",()=>setNetDropped(true));c.on("net:open",()=>setNetDropped(false));try{await c.connect();if(kind==="create")c.createRoom(name);else c.joinRoom(joinCode.trim().toUpperCase(),{name});await c.waitFor("WELCOME");setNetClient(c);setNetStatus("in-room");}catch(e){c.close();setNetStatus("idle");setNetError(String(e.message??e));}}
   function leaveRoom(){netClient?.leave();setNetClient(null);setNetRoom(null);setNetStatus("idle");setNetDropped(false);}
   const activeCorners = cornersFor(playerCount);
-  const usedSpirits = new Set(Object.values(assignments));
-  const allAssigned = activeCorners.every(c=>assignments[c]);
+  const allAssigned = activeCorners.every(c=>assignments[c] && validLoadout(assignments[c], loadouts[c]));
   useEffect(()=>{if(!playerCount)return;setCpuCorners(prev=>{const next={...prev};activeCorners.forEach((c,i)=>{if(next[c]===undefined)next[c]=i!==0;});return next;});},[playerCount]);
   useEffect(()=>{if(!playerCount){setChoosingCorner(null);return;}const f=activeCorners.find(c=>!assignments[c]);setChoosingCorner(f??null);},[playerCount]);
-  function assign(corner,spiritId){setAssignments(a=>({...a,[corner]:spiritId}));const sp=SPIRIT_DEFS[spiritId];if(sp){if(announcerTimer.current)clearTimeout(announcerTimer.current);setAnnouncer({name:sp.name,color:sp.color});announcerTimer.current=setTimeout(()=>setAnnouncer(null),700);}const nA={...assignments,[corner]:spiritId};setChoosingCorner(activeCorners.find(c=>!nA[c])??null);}
-  function handleStart(){const spirits=activeCorners.map(corner=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:!!cpuCorners[corner],botPolicy:(cpuCorners[corner]&&cpuSearcher[corner])?"searcher":"legacy"};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;onStart({spirits,mode,teams,startingLives,beginnerMode,winCondition,roundLimit});}
-  function handleStartOnline(){const hs=netRoom.seats.filter(s=>!s.isBot);const spirits=activeCorners.map((corner,ci)=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,num:homeNum,facing,corner,color:cc,cpu:ci>=hs.length};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;const config={spirits,mode,teams,startingLives,beginnerMode,winCondition,roundLimit};const seatMap=hs.map((s,i)=>({seatId:s.seatId,spiritId:activeCorners[i]?assignments[activeCorners[i]]:null}));const botSeats=activeCorners.slice(hs.length).map(c=>({name:SPIRIT_DEFS[assignments[c]]?.name??"Bot",spiritId:assignments[c]}));netClient.startGame(config,{seatMap,botSeats:botSeats.length?botSeats:undefined});}
+  function assign(corner, spiritId) {
+    setAssignments(a => ({...a, [corner]: spiritId}));
+    if (assignments[corner] !== spiritId) setLoadouts(a => ({...a, [corner]: []}));
+  }
+  function confirmSeat() {
+    setChoosingCorner(activeCorners.find(c => c !== choosingCorner && !validLoadout(assignments[c], loadouts[c])) ?? null);
+  }
+  function handleStart(){if(!allAssigned)return;const spirits=activeCorners.map(corner=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,id:seatId(def.id,corner),characterId:def.id,abilities:[...loadouts[corner]],num:homeNum,facing,corner,color:cc,cpu:!!cpuCorners[corner],botPolicy:(cpuCorners[corner]&&cpuSearcher[corner])?"searcher":"legacy"};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;onStart({spirits,mode,teams,startingLives,beginnerMode,winCondition,roundLimit});}
+  function handleStartOnline(){if(!allAssigned)return;const hs=netRoom.seats.filter(s=>!s.isBot);const spirits=activeCorners.map((corner,ci)=>{const def=SPIRIT_DEFS[assignments[corner]];const{homeNum}=CORNERS[corner];const facing=cornerFacing(homeNum);const{color:cc}=CORNER_LABELS[corner];return{...def,id:seatId(def.id,corner),characterId:def.id,abilities:[...loadouts[corner]],num:homeNum,facing,corner,color:cc,cpu:ci>=hs.length};});const teams=mode==="team"?{a:activeCorners.slice(0,2),b:activeCorners.slice(2,4)}:null;const config={spirits,mode,teams,startingLives,beginnerMode,winCondition,roundLimit};const seatMap=hs.map((s,i)=>({seatId:s.seatId,spiritId:activeCorners[i]?seatId(assignments[activeCorners[i]],activeCorners[i]):null}));const botSeats=activeCorners.slice(hs.length).map(c=>({name:SPIRIT_DEFS[assignments[c]]?.name??"Bot",spiritId:seatId(assignments[c],c)}));netClient.startGame(config,{seatMap,botSeats:botSeats.length?botSeats:undefined});}
   function startTestingGrounds(){onStart(buildTestingGroundsConfig({beginnerMode}));}
   const iBase={fontFamily:"inherit",background:"#0a1020",border:"1px solid #1e3a5f",borderRadius:4,color:"#c0d0e0",fontSize:11,padding:"8px 10px",outline:"none"};
   const seg=(on,ac="#4488ff")=>({fontFamily:"'Saira Stencil One',sans-serif",cursor:"pointer",borderRadius:4,padding:"6px 14px",fontSize:10,letterSpacing:1,transition:"all .15s",border:"1px solid",background:on?ac+"22":"#0a1020",borderColor:on?ac:"#1e3a5f",color:on?ac:"#5a7a9a"});
   const online=netStatus==="in-room", showCfg=online?isHost:true, canGo=allAssigned;  // mode is always FFA now — a full roster is the only gate
 
   return (
-    <div style={{minHeight:"100vh",background:"#050810",display:"flex",flexDirection:"column",fontFamily:"'Share Tech Mono','Courier New',monospace",overflow:"hidden",position:"relative"}}>
+    <div className="arena-lobby" style={{minHeight:"100vh",background:"#050810",display:"flex",flexDirection:"column",fontFamily:"'Share Tech Mono','Courier New',monospace",overflow:"hidden",position:"relative"}}>
       <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Saira+Stencil+One&family=Saira:wght@400;600;700&display=swap" rel="stylesheet"/>
       <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#2d3748}
 @keyframes chooser-pulse{0%,100%{box-shadow:0 0 12px #fff2}50%{box-shadow:0 0 24px #fff4,inset 0 0 12px #fff1}}
@@ -251,8 +259,7 @@ export function Lobby({ onStart, onBackToMenu }) {
           {onBackToMenu&&<button onClick={onBackToMenu} title="Back to the main menu" style={{fontFamily:"inherit",cursor:"pointer",background:"#0a1020",border:"1px solid #2a4a6a",borderRadius:4,color:"#5a8aaa",fontSize:9,padding:"6px 12px",letterSpacing:1,transition:"all .15s"}} onMouseEnter={e=>{e.target.style.borderColor="#f6ad55";e.target.style.color="#f6ad55";}} onMouseLeave={e=>{e.target.style.borderColor="#2a4a6a";e.target.style.color="#5a8aaa";}}>← MENU</button>}
           <span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:20,color:"#f6ad55",letterSpacing:4,fontWeight:700}}>RLSW</span>
           <span style={{fontSize:10,color:"#3a5a7a",letterSpacing:2}}>SPIRIT WARS</span></div>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>setBeginnerMode(b=>!b)} style={{fontFamily:"inherit",cursor:"pointer",background:beginnerMode?"#1a2a10":"#0a1020",border:"1px solid "+(beginnerMode?"#44cc66":"#2a4a6a"),borderRadius:4,color:beginnerMode?"#44ff88":"#5a8aaa",fontSize:9,padding:"6px 14px",letterSpacing:1,transition:"all .15s"}}>BEGINNER {beginnerMode?'ON':'OFF'}</button></div>
+
       </div>
       {/* BODY */}
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"auto",padding:"0 24px",position:"relative",zIndex:1}}>
@@ -304,51 +311,14 @@ export function Lobby({ onStart, onBackToMenu }) {
               {playerCount<MAX_PLAYERS&&<button onClick={()=>{setPlayerCount(p=>Math.min(MAX_PLAYERS,p+1));setAssignments({});}} style={{...seg(false),background:"#1a2a10",borderColor:"#44cc66",color:"#44ff88",cursor:"pointer"}}>+ Bot</button>}
               {playerCount>(netRoom?.seats?.filter(s=>!s.isBot).length??2)&&<button onClick={()=>{setPlayerCount(p=>Math.max(netRoom.seats.filter(s=>!s.isBot).length,p-1));setAssignments({});}} style={{...seg(false),background:"#301520",borderColor:"#ff4488",color:"#ff88bb",cursor:"pointer"}}>− Bot</button>}</>}
           </div>
-          {/* ROSTER */}
-          {playerCount&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))",gap:12,maxWidth:780,margin:"0 auto 20px",width:"100%"}}>{ROSTER_ORDER.map(id=>{
-            const sp=SPIRIT_DEFS[id];if(!unlocked.has(id))return<div key={id} style={{aspectRatio:"3/4",background:"#080f1e",border:"2px solid #1a2a40",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",opacity:0.4,cursor:"not-allowed"}}><span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:36,color:"#1e3a5f"}}>?</span></div>;
-            // 🚧 IN DEVELOPMENT — the art is done, the kit isn't. Shown so players
-            // know who's coming, but desaturated and unclickable.
-            if(IN_DEVELOPMENT.has(id))return<div key={id} title={`${sp.name} is still being built — their kit isn't finished yet.`}
-              style={{aspectRatio:"3/4",background:"#080f1e",position:"relative",border:"2px dashed #2a3a4a",borderRadius:8,overflow:"hidden",cursor:"not-allowed"}}>
-              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:"8%"}}>
-                <img src={sp.imageSrc} alt={sp.name} draggable={false} style={{width:"85%",height:"85%",objectFit:"contain",objectPosition:"top",filter:"grayscale(1) brightness(0.45)",opacity:0.55,pointerEvents:"none"}}/></div>
-              <div style={{position:"absolute",inset:0,background:"repeating-linear-gradient(-45deg,#00000000 0px,#00000000 9px,#0a1424aa 9px,#0a1424aa 18px)",pointerEvents:"none"}}/>
-              <div style={{position:"absolute",top:"46%",left:0,right:0,textAlign:"center"}}>
-                <div style={{display:"inline-block",padding:"3px 8px",background:"#0a1020ee",border:"1px solid #3a5a7a",borderRadius:3,fontFamily:"'Saira Stencil One',sans-serif",fontSize:8,letterSpacing:1.5,color:"#6a8aaa"}}>🚧 IN DEVELOPMENT</div></div>
-              <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(transparent, #050810ee 40%)",padding:"20px 8px 8px",textAlign:"center"}}>
-                <div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,fontWeight:700,color:"#3a5a7a",letterSpacing:1}}>{sp.name.toUpperCase()}</div>
-                <div style={{fontSize:8,color:"#2a4a6a",marginTop:2}}>COMING SOON</div></div>
-            </div>;
-            const tb=Object.entries(assignments).find(([,v])=>v===id)?.[0],tbo=tb&&tb!==choosingCorner,sel=choosingCorner&&assignments[choosingCorner]===id;
-            const gl=sel?sp.color:tbo?"#1e3a5f":"#1a2a40",chip=tb?CORNER_LABELS[tb]:null;
-            return<div key={id} onClick={()=>{if(!tbo&&choosingCorner)assign(choosingCorner,id);}}
-              style={{aspectRatio:"3/4",background:"#080f1e",position:"relative",border:"2px solid "+gl,borderRadius:8,overflow:"hidden",cursor:(tbo||!choosingCorner)?"not-allowed":"pointer",opacity:tbo?0.35:1,transition:"all .15s",boxShadow:sel?"0 0 20px "+sp.color+"44, inset 0 0 20px "+sp.color+"22":"none"}}
-              onMouseEnter={e=>{if(!tbo&&choosingCorner){e.currentTarget.style.transform="scale(1.04)";e.currentTarget.style.boxShadow="0 0 24px "+sp.color+"55";e.currentTarget.style.borderColor=sp.color;}}}
-              onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";if(!sel){e.currentTarget.style.boxShadow="none";e.currentTarget.style.borderColor=gl;}}}>
-              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:"8%"}}><img src={sp.imageSrc} alt={sp.name} draggable={false} style={{width:"85%",height:"85%",objectFit:"contain",objectPosition:"top",filter:tbo?"saturate(0.2)":"none",pointerEvents:"none"}}/></div>
-              <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(transparent, #050810ee 40%)",padding:"20px 8px 8px",textAlign:"center"}}>
-                <div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,fontWeight:700,color:tbo?"#3a5a7a":sp.color,letterSpacing:1,textShadow:tbo?"none":"0 0 8px "+sp.color+"88"}}>{sp.name.toUpperCase()}</div>
-                <div style={{fontSize:8,color:"#5a7a9a",marginTop:2}}>{sp.style} · D{sp.drive} S{sp.sustain} SP{sp.speed}</div></div>
-              {chip&&<div style={{position:"absolute",top:6,right:6,padding:"2px 6px",background:chip.color+"33",border:"1px solid "+chip.color,borderRadius:3,fontSize:7,color:chip.color,fontWeight:700,letterSpacing:1}}>{chip.label.split(" ")[0].toUpperCase()}</div>}
-            </div>})}</div>}
-          {/* PLAYER CARDS */}
-          {playerCount&&<div style={{display:"grid",gridTemplateColumns:"repeat("+activeCorners.length+", 1fr)",gap:12,maxWidth:900,margin:"0 auto 16px",width:"100%"}}>{activeCorners.map((corner,ci)=>{
-            const{label,color}=CORNER_LABELS[corner],sid=assignments[corner],sp=sid?SPIRIT_DEFS[sid]:null,ic=choosingCorner===corner,ir=ci>=activeCorners.length/2;
-            const sn=online&&netRoom?(()=>{const hs=netRoom.seats.filter(s=>!s.isBot);return ci>=hs.length?"BOT":hs[ci]?.name??null;})():null;
-            return<div key={corner} onClick={()=>{if(playerCount)setChoosingCorner(corner);}}
-              style={{background:"#080f1e",border:"2px solid "+(ic?color:color+"44"),borderRadius:8,padding:"12px",cursor:"pointer",minHeight:160,display:"flex",flexDirection:"column",transition:"all .2s",animation:ic?"chooser-pulse 1.5s ease-in-out infinite":"none"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,color,fontWeight:700,letterSpacing:1}}>{label.split(" ")[0].toUpperCase()}</span>{sn&&<span style={{fontSize:8,color:"#5a7a9a"}}>{sn}</span>}</div>
-                {!online&&<label style={{fontSize:8,color:cpuCorners[corner]?"#44ff88":"#3a5a7a",cursor:"pointer",display:"flex",alignItems:"center",gap:3,userSelect:"none"}} onClick={e=>e.stopPropagation()}><input type="checkbox" checked={!!cpuCorners[corner]} onChange={e=>setCpuCorners(c=>({...c,[corner]:e.target.checked}))} style={{accentColor:"#44cc66",cursor:"pointer",width:12,height:12}}/>CPU</label>}
-                {!online&&cpuCorners[corner]&&<label title="Use the searching bot (engine/policies/play.js) instead of the legacy step-machine" style={{fontSize:8,color:cpuSearcher[corner]?"#ffcc44":"#3a5a7a",cursor:"pointer",display:"flex",alignItems:"center",gap:3,userSelect:"none"}} onClick={e=>e.stopPropagation()}><input type="checkbox" checked={!!cpuSearcher[corner]} onChange={e=>setCpuSearcher(c=>({...c,[corner]:e.target.checked}))} style={{accentColor:"#ffcc44",cursor:"pointer",width:12,height:12}}/>🧠</label>}
-              </div>
-              <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                {sp?<div style={{textAlign:"center"}}><img src={sp.imageSrc} alt={sp.name} draggable={false} style={{height:80,objectFit:"contain",transform:ir?"scaleX(-1)":"none",filter:"drop-shadow(0 0 8px "+sp.color+"66)",pointerEvents:"none"}}/><div style={{fontFamily:"'Saira Stencil One',sans-serif",fontSize:10,color:sp.color,letterSpacing:1,marginTop:4,textShadow:"0 0 8px "+sp.color+"55"}}>{sp.name.toUpperCase()}</div><div style={{fontSize:8,color:"#5a7a9a",marginTop:2}}>D{sp.drive} · S{sp.sustain} · SP{sp.speed}</div></div>
-                :<div style={{textAlign:"center",opacity:0.4}}><div style={{width:50,height:70,border:"2px dashed "+color+"44",borderRadius:8,margin:"0 auto 6px"}}/><div style={{fontSize:9,color:color+"88",letterSpacing:1}}>{ic?"PICK YOUR SPIRIT":"WAITING"}</div></div>}
-              </div></div>})}</div>}
+          <SpiritDraft corners={activeCorners} assignments={assignments} loadouts={loadouts}
+            choosingCorner={choosingCorner} onChooseCorner={setChoosingCorner} onChooseSpirit={assign}
+            onLoadout={(corner, ids) => setLoadouts(v => ({...v, [corner]: ids}))} onConfirm={confirmSeat}
+            cpuCorners={cpuCorners} onCpu={(corner, value) => setCpuCorners(v => ({...v,[corner]:value}))}
+            cpuSearcher={cpuSearcher} onSearcher={(corner, value) => setCpuSearcher(v => ({...v,[corner]:value}))}
+            online={online} unlocked={unlocked}/>
           {/* SETTINGS */}
-          {playerCount&&<div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap",maxWidth:900,margin:"0 auto 20px",width:"100%",padding:"12px 16px",background:"#080f1e",borderRadius:8,border:"1px solid #1a2a40"}}>
+          {playerCount&&<div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap",maxWidth:1180,margin:"0 auto 20px",width:"100%",padding:"12px 16px",background:"#080f1e",borderRadius:8,border:"1px solid #1a2a40"}}>
             {/* MODE — FFA is on by default and stays on. TEAM is parked until
                 multiplayer is built out; it's shown disabled rather than hidden
                 so it reads as "planned", not "missing". */}
@@ -437,7 +407,7 @@ export function Lobby({ onStart, onBackToMenu }) {
                 ? <>{roundLimit} rounds, then the buzzer — <b style={{color:"#ff8a2a"}}>most Fame wins</b> · nobody is knocked out · ties go to diehards, then damage 🤘</>
                 : <>{startingLives===1?`Sudden death — ${fpPerLife(playerCount ?? 2)} FP to win`:`${startingLives} Knock Downs = KO — ${startingLives*fpPerLife(playerCount ?? 2)} FP to win`}{startingLives>=3?" 🤘":""}</>}
             </span>
-            <button onClick={online?handleStartOnline:handleStart} disabled={!canGo} style={{fontFamily:"'Saira Stencil One',sans-serif",cursor:canGo?"pointer":"not-allowed",borderRadius:6,padding:"10px 28px",fontSize:13,fontWeight:700,letterSpacing:3,transition:"all .2s",border:"2px solid",background:canGo?"#1a3020":"#0a1020",borderColor:canGo?"#44cc66":"#1e3a5f",color:canGo?"#44ff88":"#2a3a4a",boxShadow:canGo?"0 0 20px #44cc6633":"none",opacity:canGo?1:0.5}}>{online?"START ONLINE":"START"}</button>
+            <button onClick={online?handleStartOnline:handleStart} disabled={!canGo} style={{fontFamily:"'Saira Stencil One',sans-serif",cursor:canGo?"pointer":"not-allowed",borderRadius:6,padding:"10px 28px",fontSize:13,fontWeight:700,letterSpacing:3,transition:"all .2s",border:"2px solid",background:canGo?"#1a3020":"#0a1020",borderColor:canGo?"#44cc66":"#1e3a5f",color:canGo?"#44ff88":"#2a3a4a",boxShadow:canGo?"0 0 20px #44cc6633":"none",opacity:canGo?1:0.5}}>{online?"START ONLINE":"ENTER ARENA"}</button>
           </div>}
         </>}
       </div>

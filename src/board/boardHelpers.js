@@ -122,11 +122,8 @@ export function crowdMultiplier(diehards = FAN_DIEHARD_START, casuals = 0, assig
 
 // advanceDB: progress dbPoints toward a dynamic target cost.
 // Returns whether the target was reached this increment.
-export function advanceDB(dbPoints, earned, targetCost) {
-  const cost  = targetCost ?? DB_UPGRADE_THRESHOLD; // default 8 for first pick
-  const total = dbPoints + earned;
-  if (total >= cost) {
-    return { newDBPoints: total - cost, upgradeTriggered: true };
-  }
-  return { newDBPoints: total, upgradeTriggered: false };
+export function advanceDB(dbPoints, earned) {
+  // Db is a wallet: earning it never buys or selects an ability.
+  return { newDBPoints: Math.max(0, dbPoints + earned), upgradeTriggered: false };
 }
+

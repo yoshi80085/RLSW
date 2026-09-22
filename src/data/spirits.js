@@ -44,4 +44,4 @@ export function isPlayable(id) { return !IN_DEVELOPMENT.has(id); }
 
 // How many corners a match can actually fill — every Spirit is unique per
 // match, so the playable roster is a hard ceiling on player count.
-export const MAX_PLAYERS = Math.min(4, PLAYABLE_ORDER.length);
+export const MAX_PLAYERS = 4;

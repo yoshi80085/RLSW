@@ -1,3 +1,4 @@
+import { characterId } from "../data/spiritIdentity.js";
 // A Spirit's fan rule is a small, explicit melody structure. These are not
 // Db rules: fans reward a recognisable identity; clean notes and endings have
 // their own payout layers in melodyPayout.js.
@@ -106,7 +107,7 @@ export const STYLE_GESTURES = Object.freeze({
 });
 
 export function gesturesFor(spiritId) {
-  return STYLE_GESTURES[spiritId] ?? [];
+  return STYLE_GESTURES[characterId(spiritId)] ?? [];
 }
 
 function hitCount(gesture, line) {

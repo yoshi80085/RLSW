@@ -1,3 +1,4 @@
+import { characterId } from "./data/spiritIdentity.js";
 import { SonicBarrageRecord } from './ui/SonicBarrageRecord.jsx';
 import { playBarrageChord, playBarrageFoley, playSustainChord } from './audio/sonicBarrageAudio.js';
 import { BARRAGE_LAUNCH, barrageContact, barrageLanded } from './board/sonicBarrageTiming.js';
@@ -25,7 +26,7 @@ import { GameOverOverlay } from "./ui/GameOverOverlay.jsx";
 import { GameStyles } from "./ui/GameStyles.jsx";
 import { CadenceToast } from "./ui/CadenceToast.jsx";
 import { BattleMeterOverlay } from "./ui/BattleMeterOverlay.jsx";
-import { UpgradeModal } from "./ui/UpgradeModal.jsx";
+import { AbilityWallet } from "./ui/AbilityWallet.jsx";
 import { SignatureAbilities } from "./ui/SignatureAbilities.jsx";
 import { TestingGrounds } from "./ui/TestingGrounds.jsx";
 import { EventModal } from "./ui/EventModal.jsx";
@@ -67,14 +68,13 @@ import { playSonicBeamAudio } from "./audio/sonicBeamAudio.js";
 import { sonicRig, rigPoolLabel, rigTiers, rigTierSpend, rigSpendable } from "./engine/systems/sonicRig.js";
 import AmpDecks from "./board/ampDecks.jsx";
 import { hexRingFromCenter, crowdMultiplier, advanceDB } from "./board/boardHelpers.js";
-import { STAGE_SKINS, STAGE_SKIN_BY_ID, DEFAULT_SKIN_ID, loadStageSkin, saveStageSkin, stageSkinPlateFilter, stageSkinLineMatrix } from "./board/stageSkins.js";
+import { DEFAULT_SKIN_ID, stageSkinPlateFilter, stageSkinLineMatrix } from "./board/stageSkins.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRiffMiss, playBeamClash, playBeamSurge, playBeamBreak, playFanPop } from "./audio/riffSfx.js";
 import { TONE_KNOB_DEFAULTS, SPIRIT_TONES, TONE_VOICE_ORDER, TONE_VOICES, getAmpBuses, playAmpNote, makeDistortionCurve } from "./audio/ampVoice.js";
 import { RIFF_CONTOUR_LABELS, RIFF_ANSWER_LABELS, riffDegreesToNotes } from "./riff/riffGeneration.js";
 import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT, buildRiffTimeline, riffOkWindow, gradeRiffOffset,
          loadRiffSpeed, scalePresetForSpeed, scaleTimelineForSpeed } from "./riff/fallingNotes.js";
 import { voiceRiff, nearestPositionForKey } from "./riff/guitarMap.js";
-import { BeginnerTipOverlay } from "./ui/BeginnerTipOverlay.jsx";
 import { isMirrorFacing, MIRROR_SPRITES } from "./ui/GameErrorBoundary.jsx";
 import { useStageEffects } from "./hooks/useStageEffects.js";
 import { STAGE_FX_META, SMOKE_ROUNDS, LASER_ROUNDS, LASER_DAMAGE, PYRO_WAVES, PYRO_DAMAGE, PYRO_BURN_TURNS, ANIMATRONIC_ROUNDS, ANIMATRONIC_DAMAGE } from "./data/stageEffects.js"; // tuning the engine consumes directly (counts/radii/waves) moved with the 6b flip
@@ -229,7 +229,6 @@ const SIGNATURE_TESTS = {
     { id:'goes_to_11',          label:'🔊 Goes to 11',          pre:[] },
     { id:'master_moshpits',     label:'🤘 Master of Moshpits',  pre:[] },
     { id:'tentacle',            label:'🐙 Tentacle',            pre:[] },
-    { id:'azrael',              label:'💀 Azrael',               pre:[] },
   ]},
   intergalactic_0: { name: 'Intergalactic 0', color: '#aa55ff', skills: [
     { id:'blaster_of_ra', label:'🌀 Blaster of Ra', pre:[] },
@@ -238,7 +237,6 @@ const SIGNATURE_TESTS = {
     { id:'code_injection',  label:'💻 Code Injection',    pre:[] },
     // ☀️ Sunbeam is no longer the Amp-3 capstone — it's an on-hit blind with no
     // amp prerequisite, so the amp chain is NOT listed as a test prereq any more.
-    { id:'sunbeam',       label:'☀️ Sunbeam',         pre:[] },
   ]},
 };
 
@@ -1245,11 +1243,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // different coloured boards and nothing desyncs, because no rule anywhere
   // reads it. Keep it that way — the moment a skin affects anything but pixels
   // it has to become engine state.
-  const [stageSkin, setStageSkin] = useState(loadStageSkin);
+  const stageSkin = DEFAULT_SKIN_ID; // Archived skin preferences remain in browser storage.
   /* 🪦 `skinPickerOpen` retired 2026-08-31 — the stage-skin swatch list is a
      submenu inside TopMenu now, and TopMenu owns which submenu is expanded. One
      open/closed flag per popup, held by the popup, is the point of that split. */
-  useEffect(() => { saveStageSkin(stageSkin); }, [stageSkin]);
   // The stock skin keeps the ORIGINAL, untinted filter — identical pixels to
   // before this feature existed, and one less filter stage for the default case.
   const outlineFilterId = stageSkin === DEFAULT_SKIN_ID ? 'outline-crush' : 'outline-crush-skin';
@@ -1542,14 +1539,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const [movedThisTurn, setMovedThisTurn] = useState(false);
 
   // 🎓 BEGINNER MODE — tutorial tip popups that fire once per event type
-  const [beginnerEnabled, setBeginnerEnabled] = useState(gameState.beginnerMode ?? true);
+  const beginnerEnabled = false; // Pickles is archived pending a new introduction.
   const [beginnerTipsSeen, setBeginnerTipsSeen] = useState(new Set());
   // 🎤 THE FANS' HINTS HAVE THEIR OWN SWITCH (Alex, 2026-09-17). Pickles' tips
   // are a read-once walkthrough; the crowd coach is something a player keeps on
   // until they know their Spirit. ⚠️ One flag for both meant dismissing the tips
   // silently muted the fans too. Both start from the lobby's Beginner choice;
   // after that they are independent — the tip's "turn off" touches tips only.
-  const [fanCoachEnabled, setFanCoachEnabled] = useState(gameState.fanCoach ?? gameState.beginnerMode ?? true);
+  const [fanCoachEnabled, setFanCoachEnabled] = useState(gameState.fanCoach ?? true);
   const [activeTip, setActiveTip] = useState(null); // { id, title, body } or null
   // The very first tip (welcome) is triggered by the initial Full Scale grant
   // useEffect, which also queues the chord tip to follow it. The skill_tree tip
@@ -1801,7 +1798,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const isPanningRef = useRef(false);
   const panStartRef  = useRef(null);
   const svgRef       = useRef(null);
-  const [board3D, setBoard3D] = useState(false);
+  // The standalone 2D presentation is archived; keep the shared targeting layer.
+  const board3D = true;
   const boardDivRef  = useRef(null);
 
   const addLog = useCallback(m => {
@@ -2505,7 +2503,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // Duration and drawback therefore come free from a system that already exists.
   // If you ever make charges persist through battles, re-balance this first.
   function boomBoxLit(spiritId) {
-    if (spiritId !== 'intergalactic_0') return false;
+    if (characterId(spiritId) !== 'intergalactic_0') return false;
     const ns = engineRef.current.noteStates?.[spiritId] ?? noteStates[spiritId] ?? {};
     return (ns.chargeFloorTurns ?? 0) > 0 || (ns.chargeCeilTurns ?? 0) > 0;
   }
@@ -2837,27 +2835,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // Ronin — same standee, same base ring, same facing arrow, same hex tint, and
   // it occupies its hex like a real Spirit. Only the Ronin's own client gets a
   // faint tell so its controller doesn't lose track of themselves.
-  const shadowIllusion = (() => {
-    const si = noteStates['cosmic_ronin']?.shadowIllusion;
-    if (!si) return null;
-    const ronin = spirits.find(s => s.id === 'cosmic_ronin');
-    if (!ronin || ronin.knockedOut) return null;   // no Ronin, no shadow
-    return si;
-  })();
+  const shadowDecoys = useMemo(() => spirits.flatMap(sp => {
+    const si = noteStates[sp.id]?.shadowIllusion;
+    return si && !sp.knockedOut ? [{ ...sp, num: si.hex, facing: si.facing ?? 0, isShadow: true }] : [];
+  }), [spirits, noteStates]);
+  const shadowHexes = shadowDecoys.map(sp => sp.num);
+  const shadowIllusion = noteStates[acting?.id]?.shadowIllusion ?? null;
   const shadowHex = shadowIllusion?.hex ?? null;
-  // A "spirit-shaped" view of the decoy — everything the board renderer needs to
-  // draw it exactly as it draws the real Ronin.
-  const shadowDecoy = useMemo(() => {
-    if (!shadowIllusion) return null;
-    const ronin = spirits.find(s => s.id === 'cosmic_ronin');
-    if (!ronin) return null;
-    return { ...ronin, num: shadowIllusion.hex, facing: shadowIllusion.facing ?? 0, isShadow: true };
-  }, [shadowIllusion, spirits]);
-  // Only the Ronin's controller sees which standee is the fake. Online that's
-  // the seat holding the Ronin; in hotseat it's whoever is currently acting.
-  const seesShadowTell = netRef.current
-    ? netRef.current.mySpiritId === 'cosmic_ronin'
-    : acting?.id === 'cosmic_ronin';
+  const shadowDecoy = shadowDecoys.find(sp => sp.id === acting?.id) ?? null;
+  const seesShadowTell = !!shadowDecoy && (!netRef.current || netRef.current.mySpiritId === shadowDecoy.id);
 
   const spiritById = useMemo(() => {
     const m = {};
@@ -2896,7 +2882,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // lives HERE, in the UI, where it is a convenience — and not in the generator,
   // where it would be a preference invisible to tuning.
   const tentacleAim = useMemo(() => {
-    if (!acting || !(actingNoteState?.unlockedSkills ?? []).includes('tentacle')) return new Map();
+    if (!acting || !(actingNoteState?.unlockedSkills ?? []).includes('tentacle') || !canFire(actingNoteState, 'tentacle')) return new Map();
     const m = new Map();
     for (const opt of tentacleOptions(engineState, acting)) {
       for (const num of opt.cone) {
@@ -2917,7 +2903,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (action !== 'move' || !acting) return null;
     const to = slideTarget(engineState, acting.id);
     if (to == null) return null;
-    if (spiritByNum[to] || to === shadowHex) return null;   // a body on the road blocks it
+    if (spiritByNum[to] || shadowHexes.includes(to)) return null;   // a body on the road blocks it
     return to;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [action, acting?.id, engineState.board?.slime, engineState.turn?.slideStepsLeft, engineState.spirits, shadowHex]);
@@ -2932,7 +2918,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         .filter(h => {
           if (!h) return false;
           if (spiritByNum[h.num]) return false;
-          if (h.num === shadowHex) return false;  // 👤 the decoy blocks like a body
+          if (shadowHexes.includes(h.num)) return false;  // 👤 the decoy blocks like a body
           return true;
         })
         .map(h => h.num)
@@ -2969,7 +2955,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // Spirit's, and the synth plays each note in the tone of whoever is performing.
   const [toneBySpirit, setToneBySpirit] = useState(() => {
     const m = {};
-    for (const id of Object.keys(SPIRIT_DEFS)) m[id] = { ...TONE_KNOB_DEFAULTS, ...(SPIRIT_TONES[id] ?? {}) };
+    for (const id of Object.keys(SPIRIT_DEFS)) m[id] = { ...TONE_KNOB_DEFAULTS, ...(SPIRIT_TONES[characterId(id)] ?? {}) };
     return m;
   });
   const toneBySpiritRef = useRef(toneBySpirit);
@@ -4191,7 +4177,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // double that ate the Ronin's movement would be a tax on his own ability,
     // not a threat to anyone else. `lastMoveBudget` is stashed so a shadow
     // summoned later this turn can be handed a full budget too.
-    if (acting?.id === 'cosmic_ronin') {
+    if (characterId(acting?.id) === 'cosmic_ronin') {
       const si = actingNoteState?.shadowIllusion;
       // 🪦 SHAMISEN FEEDING — removed 2026-08-26. No board token to feed.
       // ⚠️ THE `setNoteField` BELOW AND EVERYTHING DOWN TO `startNewTurnNotes`
@@ -4202,7 +4188,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // the match never left turn one. Nothing catches this — esbuild reads a
       // missing function as a global and no suite drives the client. Delete INSIDE
       // these braces, never across them.
-      setNoteField('cosmic_ronin', {
+      setNoteField(acting.id, {
         lastMoveBudget: grantedSteps,
         ...(si ? { shadowIllusion: { ...si, stepsLeft: grantedSteps, stepsMax: grantedSteps } } : {}),
       });
@@ -4275,7 +4261,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // meant a 4-player table saw it play once every four turns while a duel saw
     // it play every other turn. It's a board hazard, so it moved onto the ROUND
     // clock with the rest of them (endTurn's roundCompleted block).
-    if (spiritId === 'cosmic_ronin') {
+    if (characterId(spiritId) === 'cosmic_ronin') {
       // 👤 The report carries the PRE-tick state: by the time the patch lands the
       // double is already gone, so the announcement has to read the report.
       if (report.shadowExpiring) {
@@ -4450,7 +4436,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (skillId === 'goes_to_11')   addLog(`🔊 ${spirit?.name} — GOES TO 11! Set your attack to exactly ${ELEVEN_DRIVE} and shrug off knockback — but it eats your Sustain stack and blows your amp for a turn. If you were already louder, it turns you down. That's the joke, and it's also the rule.`);
     if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull 3 fans onto the board for a pit — +2 Drive that stands until the next pit.`);
     if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Swing from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
-    if (skillId === 'azrael')       addLog(`💀 ${spirit?.name} — AZRAEL! Every rival you knock down feeds Fame equal to your knockdown streak. Resets when you go down.`);
     if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes directly in front and strike — the farther the draw, the harder the blow (+2 / +3 / +4). ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_AP_COST} AP, ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack, ${PSYCHO_BUSHIDO_CD}-round cooldown.`);
     if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn. ⚠️ It drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain every turn it stands, and dies when you have none left.`);
     if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Activate the curse (${CURSED_SHAMISEN_DB_COST} Db) to speed up ALL other ability cooldowns for ${CURSED_SHAMISEN_DURATION} rounds. ⚠️ You GLOW while it runs — take any Vibe damage and ALL cooldowns RESET. Pay ${CURSED_SHAMISEN_PAYOFF_COST} Db per round to protect yourself, but rivals can't see whether you paid.`);
@@ -4468,7 +4453,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // (hydra removed — Ronin rework)
     if (skillId === 'blaster_of_ra') addLog(`🌀 ${spirit?.name} — BLASTER OF RA! Your Smash becomes a ranged, piercing bass-drop down the beam — undefendable, scatters & knocks back every rival in line.`);
     if (skillId === 'displace')      addLog(`🌌 ${spirit?.name} — SPACE IS DISPLACED! ${DISPLACE_DB_COST} Db to blink to any open hex ${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out, then ${DISPLACE_CD} turn to settle. No AP. He doesn't run — he transcends space.`);
-    if (skillId === 'sunbeam')       addLog(`☀️ ${spirit?.name} — SUNBEAM! Land an attack and spend ${SUNBEAM_DB_COST} Db to white out your rival's entire world for a turn. Sometimes it sticks for two.`);
     if (skillId === 'code_injection') addLog(`💻 ${spirit?.name} — CODE INJECTION! ${CODE_INJECT_DB_COST} Db, committed in secret, and the next rival who lands on you gets their dice thrown out and re-rolled. Nobody can see it armed.`);
     if (skillId === 'gravity_control') addLog(`🕳️ ${spirit?.name} — GRAVITY CONTROL! ${GRAVITY_DB_COST} Db opens a black hole within ${GRAVITY_PLACE_RINGS} rings. It drags every rival nearby inward, and swallows ${GRAVITY_NOTE_DRAIN} notes from anyone it takes whole.`);
 
@@ -4509,6 +4493,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // Called when player selects a skill to target (from the overlay).
   // The previously awarded skill is already in unlockedSkills — just set the new target.
   function setSkillTarget(spiritId, skillId) {
+    if (noteStates[spiritId]?.loadoutLocked) return;
     if (!canAct) return; // OWNERSHIP: only the controlling client sets skill targets
     const ns    = noteStates[spiritId] ?? {};
     const skill = SKILL_BY_ID[skillId];
@@ -5018,7 +5003,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     //
     // ⚠️ AND IMMUNITY IS AN OWNER RULE NOW, not a name. `slimeBites` asks "is
     // this somebody ELSE'S road", so a second trail-layer's goo would still bite
-    // the Monster — something the hardcoded `spiritId === 'Metalness_Monster'`
+    // the Monster — something the hardcoded `characterId(spiritId) === 'Metalness_Monster'`
     // test this replaces could not express (systems/slime.js, §3 of its header).
     if (!slimeBites(engineRef.current, spiritId, hexNum)) return;
     const spirit = spirits.find(s => s.id === spiritId);
@@ -5048,7 +5033,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     dispatch(tokenPickedUp(spiritId, hexNum));
     // 🗡️ SHREDDING RONIN — the virtuoso finds more music in it: ~50% of the time he
     // pockets a SECOND (fresh in-scale) note from the same find. Roll once, here.
-    const roninGreed = spiritId === 'cosmic_ronin' && drawSeededChance(0.5);
+    const roninGreed = characterId(spiritId) === 'cosmic_ronin' && drawSeededChance(0.5);
 
     // ── 🔓 THE FOUND SEAT — 🅰️ PROGRESSION_REWRITE_DESIGN §2 ─────────────────
     //
@@ -5221,7 +5206,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // 📻 The zone doubles as a battery for Intergalactic 0's boom box. Announced
     // separately so it never reads as part of the ordinary charge grant — the
     // rig going portable is the bigger deal of the two.
-    if (spiritId === 'intergalactic_0') {
+    if (characterId(spiritId) === 'intergalactic_0') {
       setTimeout(() => {
         triggerEffectFlash(spiritId, '📻', 'BOOM BOX ON!', '#aa55ff');
         addLog(`📻 The batteries take — ${sp?.name}'s BOOM BOX powers up. His rig travels with him now: full pool, full defence, riff-offs anywhere on the board. It dies with the charge, and a battle drains it.`);
@@ -5910,7 +5895,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // 👤 The Shadow Illusion counts as occupied: a pyro hex or animatronic
     // spawning *underneath* a standee would out it as an empty tile.
     const occupied = [...spirits.map(s => s.num), ...amps.map(a => a.hexNum),
-      ...(shadowHex != null ? [shadowHex] : [])];
+      ...shadowHexes];
     const st = dispatch(stageFxActivated(fxId, occupied)).stageFx;
     if (fxId === 'smoke_machine') {
       addLog(`💨 Smoke floods the centre stage — Spirits in the cloud vanish from view! It spreads each round (${SMOKE_ROUNDS} rounds).`);
@@ -6517,7 +6502,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // Still pushable (and edge-able) on a committed hit — just sturdier. A floor of
     // 1 hex always lands, otherwise he'd be immune to Thrash's flat 1-hex push and
     // could squat the center untouchable.
-    if (targetId === 'intergalactic_0') {
+    if (characterId(targetId) === 'intergalactic_0') {
       if (spaces > 1) {
         spaces -= 1;
         addLog(`🌀 ${target.name} Rolls Hard — he digs in and eats a hex of the shove.`);
@@ -6589,7 +6574,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // (pure chaos) drives 7→8, so even a random string of notes hits dangerously hard (8/2).
   function spiritChord(spiritId, notes) {
     const ch = evaluateChord(notes);
-    if (spiritId === 'intergalactic_0') {
+    if (characterId(spiritId) === 'intergalactic_0') {
       return {
         ...ch,
         drive:   ch.id === 'cluster' ? ch.drive + 1 : ch.drive,
@@ -6665,11 +6650,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // knockdown-streak Fame for Metalness Monster.
   function applyVibeDamage(targetId, dmg, sourceLabel, attackerId) {
     // 👤 Ronin being attacked dismisses shadow
-    if (targetId === 'cosmic_ronin' && dmg > 0) dismissShadowIllusion('the Ronin was attacked');
+    if (characterId(targetId) === 'cosmic_ronin' && dmg > 0) dismissShadowIllusion('the Ronin was attacked', targetId);
     // 🎸 Cursed Shamisen — if Ronin takes Vibe damage while glowing and unpaid,
     // ALL cooldowns reset. ⚠️ MUST fire AFTER the shadow dismiss but BEFORE the
     // engine's damage slice, so the reset reads the pre-damage cooldown map.
-    if (targetId === 'cosmic_ronin' && dmg > 0) checkShamisenCursePenalty();
+    if (characterId(targetId) === 'cosmic_ronin' && dmg > 0) checkShamisenCursePenalty(targetId);
     // 💥 Dramatise the hit: float a red number, shake the victim, push the camera in.
     if (dmg > 0) {
       const tgtNow = spirits.find(s => s.id === targetId);
@@ -6716,26 +6701,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // Immediate, not deferred: respawn restores full Vibe a beat later, and if
       // that lands first the heal-watcher below would claim this ending with the
       // wrong line ("the danger passed"). The cannons get the credit they're due.
-
-      // 💀 AZRAEL — credit the attacker's knockdown streak (Metalness only).
-      // A rival going down feeds Metalness Fame equal to his running streak.
-      if (attackerId && attackerId !== targetId) {
-        setTimeout(() => {
-          setNoteStates(nsPrev => {
-            const atkNs = nsPrev[attackerId] ?? {};
-            if (!(atkNs.unlockedSkills ?? []).includes('azrael')) return nsPrev;
-            const newStreak = (atkNs.knockStreak ?? 0) + 1;
-            const atkName = spirits.find(s => s.id === attackerId)?.name;
-            // Grant Fame + log AFTER this updater settles (grantFame also setstates)
-            setTimeout(() => {
-              addLog(`💀 AZRAEL — ${atkName} feeds on the fallen! Knockdown streak ${newStreak} → +${newStreak} FP.`);
-              triggerEffectFlash(attackerId, '💀', `AZRAEL ×${newStreak}`, '#ff2244');
-              grantFame(attackerId, newStreak, `Azrael streak ${newStreak}`);
-            }, 0);
-            return { ...nsPrev, [attackerId]: { ...atkNs, knockStreak: newStreak } };
-          });
-        }, 120);
-      }
 
       if (newLives <= 0) {
         // True KO
@@ -6906,6 +6871,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // never staler than the render values it replaces — this is strictly safer
     // at the synchronous call sites too, not merely equivalent.
     const live = engineRef.current;
+    if (tent && !canFire(live.noteStates[acting.id], 'tentacle')) return;
     if (live.turn.actionTokenUsed) { addLog('⚔️ Already used your Action Token this turn!'); return; }
     const attacker = live.spirits.find(s => s.id === acting.id);
     const defender = live.spirits.find(s => s.id === targetId);
@@ -6917,7 +6883,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
 
     // 👤 Ronin attacking dismisses shadow
-    if (acting.id === 'cosmic_ronin') dismissShadowIllusion('the Ronin attacked');
+    if (characterId(acting.id) === 'cosmic_ronin') dismissShadowIllusion('the Ronin attacked', acting.id);
 
     // 🥊 The jab: cheap (1 AP) and chord-driven, but still your one Action this turn.
     dispatch(beatsSpent(1, true));
@@ -6928,6 +6894,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // punch (§4a); paying on hit would make a whiffed reach free, and free reach
     // is the one thing this ability must never be.
     if (tent) {
+      setNoteField(acting.id, firePatch(engineRef.current.noteStates[acting.id], 'tentacle'));
       dispatch(slimeCleared(acting.id, tent.spend));
       const pt = n => ({ x: Math.round(HEX_BY_NUM[n].px * SCALE), y: Math.round(HEX_BY_NUM[n].py * SCALE) });
       setTentacleFx({
@@ -7052,7 +7019,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // them back. Same fuel/commitment as the Smash (all stock, movement locked, Exposed), but
   // reach + multi-hit instead of melee. The slow zoner's get-off-me artillery.
   function resolveBlasterOfRa() {
-    if (!acting) return;
+    if (!acting || actionTokenUsed || !canFire(engineRef.current.noteStates[acting.id], 'blaster_of_ra')) return;
     if (moveStepsLeft < 2) { addLog('🌀 Not enough Action Points — Blaster of Ra costs 2 AP.'); return; }
     const ns    = actingNoteState ?? {};
     const stock = ns.noteStock ?? [];
@@ -7071,7 +7038,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const { damage, knockback, scatterN: scatterEach } = smashOutcome(thrown);
 
     // Hurl ALL unused stock down the beam; ride the recoil into Exposed.
-    setNoteField(acting.id, { usedStockIdx: usedAdd(used, unusedIdxs), smashExposed: true });
+    setNoteField(acting.id, { ...firePatch(ns, 'blaster_of_ra'), usedStockIdx: usedAdd(used, unusedIdxs), smashExposed: true });
 
     addLog(`🌀💥 ${acting.name} drops the BLASTER OF RA — a bass-drop shockwave screams down the beam, UNDEFENDABLE, piercing ${targets.length} rival${targets.length > 1 ? 's' : ''}!`);
     triggerEffectFlash(acting.id, '🌀', 'RA!', '#aa55ff');
@@ -7149,9 +7116,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   }
 
   function resolveMasterOfMoshpits() {
-    if (!acting || acting.id !== 'Metalness_Monster') return;
+    if (!acting || characterId(acting.id) !== 'Metalness_Monster') return;
     if (moshCineRef.current) return;                       // a pit is already running
     const ns = noteStates[acting.id] ?? {};
+    if (!canFire(ns, 'master_moshpits')) return;
     if (ns.moshpitUsedThisTurn) { addLog(`🤘 Already moshed this turn!`); return; }
     const pool = moshableFans(ns);
     if (pool.total < MOSH_FAN_COST) {
@@ -7169,6 +7137,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       ...prev,
       [acting.id]: {
         ...prev[acting.id],
+        ...firePatch(prev[acting.id], 'master_moshpits'),
         casuals:  Math.max(0, (prev[acting.id]?.casuals  ?? 0) - casualCost),
         diehards: Math.max(0, (prev[acting.id]?.diehards ?? 0) - diehardCost),
         moshpitUsedThisTurn: true,
@@ -7310,7 +7279,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // dispatches and narrates; it decides nothing. `attackParams` reads the dial,
   // `rigFor` reports the blown rig, `battleFlow.knockback` refuses to move him.
   function callEleven() {
-    if (!acting || acting.id !== 'Metalness_Monster') return;
+    if (!acting || !canFire(engineRef.current.noteStates[acting.id], 'goes_to_11')) return;
+    if (!acting || characterId(acting.id) !== 'Metalness_Monster') return;
     const ns = noteStates[acting.id] ?? {};
     if (ns.atEleven) { addLog('🔊 It is already on eleven. There is nowhere further to turn it.'); return; }
     if (!(ns.sustainStack ?? []).length) {
@@ -7376,7 +7346,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // Occupancy has to be re-checked here and not trusted from the highlight —
     // the board can change between aiming and clicking (knockback, a bot turn).
     const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
-    if (shadowHex != null) occupied.add(shadowHex); // 👤 can't warp into the Ronin's double
+    shadowHexes.forEach(n => occupied.add(n)); // 👤 can't warp into the Ronin's double
     if (occupied.has(hexNum)) { addLog('🌌 Something is already standing there.'); return; }
 
     triggerEffectFlash(acting.id, '🌌', 'WARP', '#aa55ff');
@@ -7410,7 +7380,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // does NOT survive a multiplayer session — a known pre-existing gap. The
   // Cursed Shamisen is the pattern that got this right; follow it, not slime.
   function resolveGravityControl(hexNum) {
-    if (!acting || acting.id !== 'intergalactic_0') return;
+    if (!acting || characterId(acting.id) !== 'intergalactic_0') return;
     const ns = actingNoteState ?? {};
     const dbPts = ns.dbPoints ?? 0;
     const gravityCdLeft = cooldownLeft(ns, 'gravity_control');
@@ -7461,7 +7431,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
     caught.forEach((sp, i) => {
       // Stagger the drags so four standees don't slide simultaneously.
-      setTimeout(() => gravityPull(sp.id, hexNum), 220 * i);
+      setTimeout(() => gravityPull(sp.id, hexNum, acting.id), 220 * i);
     });
   }
 
@@ -7475,7 +7445,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // resistance, meaningless here since he's immune to his own vortex) and a
   // KNOCKED BACK log line that would read backwards. Forcing a pull through it
   // by passing a mirrored phantom origin was tried and is worse than this copy.
-  function gravityPull(targetId, holeNum) {
+  function gravityPull(targetId, holeNum, ownerId) {
     const target  = spirits.find(s => s.id === targetId);
     const holeHex = HEX_BY_NUM[holeNum];
     if (!target || target.knockedOut || !holeHex) return;
@@ -7488,9 +7458,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // Mark as taken BEFORE the slide so the hazard checks the slide fires can't
     // re-enter and pull them a second time mid-animation.
     setNoteStates(prev => {
-      const g = prev['intergalactic_0']?.gravityVortex;
+      const g = prev[ownerId]?.gravityVortex;
       if (!g || (g.pulled ?? []).includes(targetId)) return prev;
-      return { ...prev, intergalactic_0: { ...prev['intergalactic_0'],
+      return { ...prev, [ownerId]: { ...prev[ownerId],
         gravityVortex: { ...g, pulled: [...(g.pulled ?? []), targetId] } } };
     });
 
@@ -7567,38 +7537,27 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // one-shot burst. Called from the same move/push sites as checkPoisonSlime.
   // The `pulled` guard means each rival is grabbed at most once per vortex.
   function checkGravityVortex(spiritId, hexNum) {
-    if (spiritId === 'intergalactic_0') return; // gravity is his to command
-    const ns = engineRef.current.noteStates?.['intergalactic_0'] ?? noteStates['intergalactic_0'] ?? {};
-    const g = ns.gravityVortex;
-    if (!g) return;
-    if ((g.pulled ?? []).includes(spiritId)) return;
-    const holeHex = HEX_BY_NUM[g.hex];
-    const hereHex = HEX_BY_NUM[hexNum];
-    if (!holeHex || !hereHex) return;
-    if (axialDist(hereHex.q, hereHex.r, holeHex.q, holeHex.r) > GRAVITY_PULL_RINGS) return;
-    // Already standing in it — swallow without a slide.
-    if (hexNum === g.hex) {
-      setNoteStates(prev => {
-        const cur = prev['intergalactic_0']?.gravityVortex;
-        if (!cur || (cur.pulled ?? []).includes(spiritId)) return prev;
-        return { ...prev, intergalactic_0: { ...prev['intergalactic_0'],
-          gravityVortex: { ...cur, pulled: [...(cur.pulled ?? []), spiritId] } } };
-      });
-      swallowNotes(spiritId);
-      return;
+    for (const [ownerId, ns] of Object.entries(engineRef.current.noteStates)) {
+      const g = ns.gravityVortex;
+      if (!g || ownerId === spiritId || (g.pulled ?? []).includes(spiritId)) continue;
+      const hole = HEX_BY_NUM[g.hex], here = HEX_BY_NUM[hexNum];
+      if (!hole || !here || axialDist(here.q,here.r,hole.q,hole.r) > GRAVITY_PULL_RINGS) continue;
+      if (hexNum === g.hex) {
+        setNoteField(ownerId, { gravityVortex: {...g, pulled:[...(g.pulled ?? []),spiritId]} });
+        swallowNotes(spiritId);
+      } else gravityPull(spiritId, g.hex, ownerId);
     }
-    setTimeout(() => gravityPull(spiritId, g.hex), 60);
   }
 
   // 🕳️ Tick the vortex down one spirit-turn. Called at the end of EVERY spirit's
   // turn (same cadence as decayPoisonSlime) so one full revolution collapses it.
-  function decayGravityVortex() {
-    const ns = engineRef.current.noteStates?.['intergalactic_0'] ?? noteStates['intergalactic_0'] ?? {};
+  function decayGravityVortex(ownerId) {
+    const ns = engineRef.current.noteStates?.[ownerId] ?? noteStates[ownerId] ?? {};
     const g = ns.gravityVortex;
     if (!g) return;
     const left = (g.turnsLeft ?? 1) - 1;
-    if (left > 0) { setNoteField('intergalactic_0', { gravityVortex: { ...g, turnsLeft: left } }); return; }
-    setNoteField('intergalactic_0', { gravityVortex: null });
+    if (left > 0) { setNoteField(ownerId, { gravityVortex: { ...g, turnsLeft: left } }); return; }
+    setNoteField(ownerId, { gravityVortex: null });
     addLog(`🕳️ The vortex folds in on itself and winks out. Space settles.`);
   }
 
@@ -7614,7 +7573,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // that true, and both are easy to break by accident:
   //   1. The armed state syncs (it rides `codeInjectTurns` on the note sheet via
   //      NOTE_SHEET_PATCHED) but must never be RENDERED for anyone but him. See
-  //      the HUD button — it is gated on `acting?.id === 'intergalactic_0'`, so
+  //      the HUD button — it is gated on `characterId(acting?.id) === 'intergalactic_0'`, so
   //      only the player holding him ever sees the counter. Syncing state and
   //      displaying it are different things; do not "helpfully" add an aura.
   //   2. The commit's log line is written by `addLog` on HIS client only. Remote
@@ -7626,7 +7585,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // living-Spirit count and ticked at the end of every spirit's turn, so it
   // covers exactly one revolution and expires as the order returns to him.
   function resolveCodeInjection() {
-    if (!acting || acting.id !== 'intergalactic_0') return;
+    if (!acting || characterId(acting.id) !== 'intergalactic_0') return;
     const ns = actingNoteState ?? {};
     const dbPts = ns.dbPoints ?? 0;
     if ((ns.codeInjectTurns ?? 0) > 0) { addLog('💻 A patch is already live — one injection at a time.'); return; }
@@ -7650,14 +7609,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   }
 
   // 💻 Tick the armed patch down one spirit-turn — same cadence as the vortex.
-  function decayCodeInjection() {
-    const ns = engineRef.current.noteStates?.['intergalactic_0'] ?? noteStates['intergalactic_0'] ?? {};
+  function decayCodeInjection(ownerId) {
+    const ns = engineRef.current.noteStates?.[ownerId] ?? noteStates[ownerId] ?? {};
     const left = (ns.codeInjectTurns ?? 0) - 1;
     if ((ns.codeInjectTurns ?? 0) <= 0) return;
-    if (left > 0) { setNoteField('intergalactic_0', { codeInjectTurns: left }); return; }
-    setNoteField('intergalactic_0', { codeInjectTurns: 0 });
+    if (left > 0) { setNoteField(ownerId, { codeInjectTurns: left }); return; }
+    setNoteField(ownerId, { codeInjectTurns: 0 });
     // Only he is told the bet lapsed — the log is local to his client.
-    if (acting?.id === 'intergalactic_0' || !netRef.current) {
+    if (characterId(acting?.id) === 'intergalactic_0' || !netRef.current) {
       addLog(`💻 The patch times out unused. ${CODE_INJECT_DB_COST} Db into the void — that was the gamble.`);
     }
   }
@@ -7670,7 +7629,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // is gated on the roll being a threat. That also means a whiffed swing does
   // not burn the patch — it stays armed for someone who can actually land.
   function maybeCodeInjection(rollState, attackerId, defenderId) {
-    if (defenderId !== 'intergalactic_0') return rollState;
+    if (characterId(defenderId) !== 'intergalactic_0') return rollState;
     const ns = engineRef.current.noteStates?.[defenderId] ?? {};
     if ((ns.codeInjectTurns ?? 0) <= 0) return rollState;
     if (!rollState?.battle?.attackerWon) return rollState;
@@ -7774,7 +7733,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   }
 
   function resolvePsychoBushido(targetId) {
-    if (!acting || acting.id !== 'cosmic_ronin') return;
+    if (!acting || characterId(acting.id) !== 'cosmic_ronin') return;
     // ⚠️ MIRRORED FROM `initiateSwing`, because the dash commits the turn before
     // the strike is attempted. Every other refusal that function can raise is
     // already covered below (token, AP, a live target); this one was not, and an
@@ -7812,7 +7771,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // rival, an amp or his own 👤 decoy while the highlight beside it refused to
     // light — one ability answering "what stops the lane?" three ways. Alex's
     // call: ANY BODY BLOCKS, and `bushidoBlockers` is the one place that says so.
-    const laneBlockers = bushidoBlockers({ spirits, amps, shadowHex, selfId: attacker.id });
+    const laneBlockers = bushidoBlockers({ spirits, amps, shadowHexes, selfId: attacker.id });
     const lane = bushidoLane(attacker, laneBlockers);
     if (!lane.length) { addLog('🌀 No clear path ahead.'); return; }
     const targetStep = lane.find(step => step.num === defender.num);
@@ -7931,7 +7890,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
   // Returns hex nums along Ronin's facing line within AP range (for highlighting)
   function getPsychoBushidoTargets() {
-    if (!acting || acting.id !== 'cosmic_ronin') return new Set();
+    if (!acting || characterId(acting.id) !== 'cosmic_ronin') return new Set();
     const ns = actingNoteState ?? {};
     // 💿 No Db, no lane. The highlight has to agree with `resolvePsychoBushido`'s
     // refusals or the board offers a strike the click will bounce.
@@ -7941,7 +7900,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // ⭐ THE SAME SET THE RESOLVER AND THE SEARCHER USE, since 2026-09-05. It
     // was live spirits only here, which meant an amp or the 👤 decoy stopped the
     // searcher's lane and the planner's, but not this highlight's.
-    const occupied = bushidoBlockers({ spirits, amps, shadowHex, selfId: acting.id });
+    const occupied = bushidoBlockers({ spirits, amps, shadowHexes, selfId: acting.id });
     for (const step of bushidoLane(acting, occupied)) {
       if (!occupied.has(step.num)) continue;
       const rival = spirits.find(s => s.num === step.num && s.id !== acting.id && !s.knockedOut);
@@ -8000,7 +7959,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // is the whole reason it isn't placed on an adjacent hex: watching a decoy
   // pop into an empty tile tells you exactly which one is the copy.
   function resolveShadowIllusion() {
-    if (!acting || acting.id !== 'cosmic_ronin') return;
+    if (!acting || characterId(acting.id) !== 'cosmic_ronin') return;
     const ns = actingNoteState ?? {};
     if (ns.shadowIllusion) { addLog('👤 A shadow is already on the board!'); return; }
     const shadowCd = cooldownLeft(ns, 'shadow_illusion');
@@ -8050,7 +8009,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // every turn it stood on the board, and the ability would read as a drawback
   // rather than a threat. Two bodies, two sets of legs — that's the point.
   function moveShadow(toNum) {
-    const si = noteStates['cosmic_ronin']?.shadowIllusion;
+    const si = noteStates[acting.id]?.shadowIllusion;
     if (!si) return;
     const stepsNow = si.stepsLeft ?? 0;
     if (stepsNow < 1) { addLog('👤 The shadow has no steps left this turn.'); return; }
@@ -8066,12 +8025,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // The double turns to face the way it walked, exactly like a real Spirit.
     const newFacing = angleTo(from, to);
     const stepsLeft = stepsNow - 1;
-    setNoteField('cosmic_ronin', {
+    setNoteField(acting.id, {
       shadowIllusion: { ...si, hex: toNum, facing: newFacing, stepsLeft },
     });
     // Deliberately worded like an ordinary Ronin move — the combat log must not
     // leak which of the two standees just moved.
-    addLog(`🚶 ${spirits.find(s => s.id === 'cosmic_ronin')?.name ?? 'Ronin'} → #${toNum} (${stepsLeft} step${stepsLeft !== 1 ? 's' : ''} left)`);
+    addLog(`🚶 ${acting?.name ?? 'Ronin'} → #${toNum} (${stepsLeft} step${stepsLeft !== 1 ? 's' : ''} left)`);
 
     // 🎵 THE DOUBLE CAN POCKET A LOST CHORD — but nothing else on the board.
     //
@@ -8096,18 +8055,18 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // routes through the ordinary checkTokenPickup: same Shredding Ronin
     // double-note roll, same Drive/Sustain/bank choice modal, same stack budget.
     if (boardTokens.some(t => t.num === toNum)) {
-      checkTokenPickup('cosmic_ronin', toNum);
+      checkTokenPickup(acting.id, toNum);
     }
 
     if (stepsLeft <= 0) setAction(null);
   }
 
   // Dismiss shadow when Ronin attacks, is attacked, or shadow is attacked
-  function dismissShadowIllusion(reason) {
-    const ns = noteStates['cosmic_ronin'] ?? {};
+  function dismissShadowIllusion(reason, ownerId = acting?.id) {
+    const ns = noteStates[ownerId] ?? {};
     if (!ns.shadowIllusion) return;
     const hex = ns.shadowIllusion.hex;
-    setNoteField('cosmic_ronin', { shadowIllusion: null });
+    setNoteField(ownerId, { shadowIllusion: null });
     triggerDamageNumber(hex, '👤 GONE', '#4488ff');
     if (action === 'move_shadow') setAction(null);
     addLog(`👤 The shadow illusion vanishes — ${reason}.`);
@@ -8117,38 +8076,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // acting Spirit is currently aiming? The Ronin can't be fooled by their own
   // double, so they're excluded. `mode` mirrors the attack's own range rule.
   function isShadowTarget(num, mode) {
-    const si = noteStates['cosmic_ronin']?.shadowIllusion;
-    if (!si || num !== si.hex) return false;
-    if (!acting || acting.id === 'cosmic_ronin') return false;
-    // Freshly summoned, the double is STACKED on the real Ronin. A blow aimed at
-    // that hex has a real body in it, so it must land for real — whiffing on a
-    // hex the Ronin is demonstrably standing on would be a free miss.
-    if (spiritByNum[num]) return false;
-    if (mode === 'cone')  return getSwingCone(acting).has(num);
-    if (mode === 'beam')  return getSonicBeam(acting).has(num);
-    if (mode === 'adjacent') {
-      const a = HEX_BY_NUM[acting.num], b = HEX_BY_NUM[num];
-      return !!a && !!b && axialDist(a.q, a.r, b.q, b.r) === 1;
-    }
-    return false;
+    if (!acting || spiritByNum[num]) return false;
+    if (!shadowDecoys.some(d => d.num === num && d.id !== acting.id)) return false;
+    if (mode === 'cone') return getSwingCone(acting).has(num);
+    if (mode === 'beam') return getSonicBeam(acting).has(num);
+    const a = HEX_BY_NUM[acting.num], b = HEX_BY_NUM[num];
+    return !!a && !!b && axialDist(a.q,a.r,b.q,b.r) === 1;
   }
-
-  // 👤 Does the decoy stand in the acting Spirit's cone / beam at all? Used for
-  // the HUD target counts — the Swing button must read "(2)" when a rival can
-  // see one real Spirit and the double, or the count itself becomes the tell.
   function shadowInRange(mode) {
-    const si = noteStates['cosmic_ronin']?.shadowIllusion;
-    if (!si || !acting || acting.id === 'cosmic_ronin') return false;
-    // While stacked on the real Ronin it isn't a separate target — counting it
-    // would show "(2)" on a hex holding one visible standee.
-    if (spiritByNum[si.hex]) return false;
-    if (mode === 'cone') return getSwingCone(acting).has(si.hex);
-    if (mode === 'beam') return getSonicBeam(acting).has(si.hex);
-    if (mode === 'adjacent') {
-      const a = HEX_BY_NUM[acting.num], b = HEX_BY_NUM[si.hex];
-      return !!a && !!b && axialDist(a.q, a.r, b.q, b.r) === 1;
-    }
-    return false;
+    return shadowDecoys.some(d => isShadowTarget(d.num, mode));
   }
 
   // 👤 A rival swung at the double. The blow passes through empty air — but the
@@ -8161,8 +8097,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   //   kind: 'swing' (1 AP) | 'sonic' (2 AP)
   //         | 'smash' | 'blaster' (2 AP minimum, then ALL movement, hurls the
   //           attacker's whole unused stock, leaves them Exposed)
-  function resolveShadowWhiff(attacker, kind, label) {
-    const si = noteStates['cosmic_ronin']?.shadowIllusion;
+  function resolveShadowWhiff(attacker, kind, label, targetNum) {
+    const ownerId = shadowDecoys.find(d => d.num === targetNum && d.id !== attacker?.id)?.id;
+    const si = noteStates[ownerId]?.shadowIllusion;
     if (!si || !attacker) return false;
     const heavy  = kind === 'smash' || kind === 'blaster';
     const apCost = kind === 'swing' ? 1 : 2;
@@ -8173,6 +8110,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
 
     const ns    = noteStates[attacker.id] ?? {};
+    if (kind === 'blaster' && !canFire(ns, 'blaster_of_ra')) return false;
+    if (kind === 'blaster') setNoteField(attacker.id, firePatch(ns, 'blaster_of_ra'));
     const used  = ns.usedStockIdx ?? [];
     const unusedIdxs = (ns.noteStock ?? []).map((_, i) => i).filter(i => !usedHas(used, i));
     if (heavy && unusedIdxs.length < 2) {
@@ -8198,7 +8137,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     } else {
       addLog(`💨 ${apCost} AP and ${attacker.name}'s Action Token, spent on nothing.`);
     }
-    dismissShadowIllusion('a rival struck it');
+    dismissShadowIllusion('a rival struck it', ownerId);
     return true;
   }
 
@@ -8279,8 +8218,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   //   · Decrement turnsLeft
   //   · Reset paidThisRound for the new round
   //   · Apply the extra cooldown tick to all OTHER abilities
-  function tickCursedShamisen() {
-    const ns = noteStates['cosmic_ronin'] ?? {};
+  function tickCursedShamisen(ownerId) {
+    const ns = noteStates[ownerId] ?? {};
     const curse = ns.shamisenCurse;
     if (!curse || curse.turnsLeft <= 0) return;
 
@@ -8291,14 +8230,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
     if (newTurns <= 0) {
       // Curse expired naturally
-      setNoteField('cosmic_ronin', {
+      setNoteField(ownerId, {
         shamisenCurse: null,
         abilityCd: boostedCd,
       });
       addLog('🎸 The curse fades. The Shamisen falls silent — cooldowns return to normal.');
     } else {
       // Curse continues — reset paidThisRound for the new round
-      setNoteField('cosmic_ronin', {
+      setNoteField(ownerId, {
         shamisenCurse: { turnsLeft: newTurns, paidThisRound: false },
         abilityCd: boostedCd,
       });
@@ -8309,8 +8248,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // ⚠️ Called from applyVibeDamage when Ronin takes ANY Vibe damage while
   // the curse is active. If he has NOT paid the debt this round, ALL cooldowns
   // reset to their full duration.
-  function checkShamisenCursePenalty() {
-    const ns = noteStates['cosmic_ronin'] ?? {};
+  function checkShamisenCursePenalty(ownerId) {
+    const ns = noteStates[ownerId] ?? {};
     const curse = ns.shamisenCurse;
     if (!curse || curse.turnsLeft <= 0) return;
     if (curse.paidThisRound) {
@@ -8320,12 +8259,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // ⚠️ UNPAID AND HIT: reset ALL cooldowns to full
     const skills = ns.unlockedSkills ?? [];
     const resetCd = resetAllCooldowns(ns, skills);
-    setNoteField('cosmic_ronin', {
+    setNoteField(ownerId, {
       abilityCd: resetCd,
       shamisenCurse: null,  // curse ends on penalty
     });
     addLog('🎸💔 The curse BITES! The Ronin took damage with an unpaid debt — ALL cooldowns RESET to full. The Shamisen screams and falls silent.');
-    triggerEffectFlash('cosmic_ronin', '🎸', 'CURSED!', '#ff2244');
+    triggerEffectFlash(ownerId, '🎸', 'CURSED!', '#ff2244');
   }
 
   // 🔊 Simple audio feedback for the curse
@@ -8375,7 +8314,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const scene={...verdict,sonicId,sonicAttack:true,remoteView,phase:mine?'sonic_armed':'sonic_ready',
       sonicFame:verdict.hitCount,knockback:verdict.hitCount};
     battleStateRef.current=scene;setBattleState(scene);setDiceDisplay(null);
-    setBoard3D(true);
+
     const T=(fn,ms)=>{const timer=setTimeout(()=>{
       if(battleStateRef.current?.sonicId===sonicId)fn();
     },ms);battleTimersRef.current.push(timer);};
@@ -8453,7 +8392,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const nsA=live.noteStates[attacker.id]??{};
     const rig=rigFor(attacker,nsA,live);
     if(!rig.inRange||!rig.pool.length){addLog('🔊 Build Drive and use a working amp before firing.');return;}
-    if(attacker.id==='cosmic_ronin')dismissShadowIllusion('the Ronin attacked');
+    if(characterId(attacker.id)==='cosmic_ronin')dismissShadowIllusion('the Ronin attacked', attacker.id);
     dispatch(beatsSpent(2,true));setAction(null);
     if(!live.limelight.posing[targetId]&&getSonicBeam(defender).has(attacker.num)&&rigForSpirit(defender).inRange) {
       burnChargesAfterBattle([attacker.id,targetId],'the riff-off spent it');
@@ -9250,7 +9189,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
   /** Pick a random one-liner for a spirit, avoiding the last one used. */
   function pickRandomOneLiner(spiritId) {
-    const pool = ONE_LINERS[spiritId] ?? ONE_LINERS.cosmic_ronin;
+    const pool = ONE_LINERS[characterId(spiritId)] ?? ONE_LINERS.cosmic_ronin;
     const last = (noteStates[spiritId] ?? {}).lastOneLiner ?? '';
     const filtered = pool.filter(l => l !== last);
     const line = filtered[Math.floor(Math.random() * filtered.length)] ?? pool[0];
@@ -9443,7 +9382,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
    */
   function battleFlowHooks() {
     return {
-      dismissShadowIllusion: (e) => dismissShadowIllusion(e.reason),
+      dismissShadowIllusion: (e) => dismissShadowIllusion(e.reason, e.spiritId ?? e.targetId),
       // 🪦 `leftLimelight` IS GONE — it is a rule inside `battleFlow.js` now
       // (§6.6.8). It was one of the hooks this list exists to make visible, and
       // it was the one that mattered most: `harnessHooks` never implemented it,
@@ -9510,7 +9449,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   }
 
   function startSwingPresentation(verdict,remoteView=false) {
-    setBoard3D(true);
+
     battleTimersRef.current.forEach(clearTimeout);
     battleTimersRef.current=[];
     const key=`swing:${Date.now()}:${verdict.attackerId}`;
@@ -9851,7 +9790,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           ...chargeZones.map(z => z.num),
           ...eventHexes,
           ...boardTokens.map(t => t.num),
-          ...(shadowHex != null ? [shadowHex] : []), // 👤 no Lost Chord under the double
+          ...shadowHexes, // 👤 no Lost Chord under the double
           LIMELIGHT_HEX,
         ];
         dispatch(tokensScattered(occupied, aliveSpirits.length, spirits.length));
@@ -9922,7 +9861,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       }
 
       // 🎸 Cursed Shamisen — tick the curse state and apply extra cooldown ticks.
-      tickCursedShamisen();
+      spirits.forEach(sp => tickCursedShamisen(sp.id));
     }
 
     // 🧪 POISON SLIME decay — seeded with the living Spirit count and ticked per
@@ -9942,12 +9881,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // 🕳️ GRAVITY VORTEX decay — identical cadence and identical reasoning:
     // seeded with the living Spirit count, ticked per spirit-turn, so the black
     // hole hangs for exactly one revolution of the turn order.
-    decayGravityVortex();
+    spirits.forEach(sp => decayGravityVortex(sp.id));
 
     // 💻 CODE INJECTION — same one-revolution cadence. Ticked here rather than in
     // startNewTurnNotes so a patch committed on his turn covers every rival's
     // turn before lapsing (the decayPoisonSlime trap, third time).
-    decayCodeInjection();
+    spirits.forEach(sp => decayCodeInjection(sp.id));
 
     // Advance queue first so we know who acts next, then replenish their used slots
     // B8: the flow now OPENS on the chord step — the pivot stage is gone, the mode
@@ -10544,7 +10483,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
         // Blaster of Ra replaces Smash for Intergalactic 0 when unlocked.
         const unlocked  = ns.unlockedSkills ?? [];
-        const hasBlaster = self.id === 'intergalactic_0' && unlocked.includes('blaster_of_ra');
+        const hasBlaster = characterId(self.id) === 'intergalactic_0' && unlocked.includes('blaster_of_ra');
         const finTargets = hasBlaster ? getRivalsInBeam(self) : getRivalsInCone(self);
 
         // 1) 🎸💥 SMASH — turtle-buster: undefendable, and it now tears notes
@@ -10917,7 +10856,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (action === "swing") {
       // 👤 Swinging at the double looks exactly like swinging at the Ronin —
       // right up until the blade meets nothing.
-      if (isShadowTarget(num, 'cone')) { resolveShadowWhiff(acting, 'swing', 'swing'); return; }
+      if (isShadowTarget(num, 'cone')) { resolveShadowWhiff(acting, 'swing', 'swing', num); return; }
       const rivals = acting ? getRivalsInCone(acting) : [];
       const target = rivals.find(r => r.num === num);
       if (target) { initiateSwing(target.id); setAction(null); }
@@ -10940,7 +10879,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       return;
     }
     if (action === "sonic") {
-      if (isShadowTarget(num, 'beam')) { resolveShadowWhiff(acting, 'sonic', 'sonic beam'); return; }
+      if (isShadowTarget(num, 'beam')) { resolveShadowWhiff(acting, 'sonic', 'sonic beam', num); return; }
       const rivals = acting ? getRivalsInBeam(acting) : [];
       const target = rivals.find(r => r.num === num);
       if (target) { initiateSonicAttack(target.id); setAction(null); }
@@ -10948,7 +10887,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       return;
     }
     if (action === "smash") {
-      if (isShadowTarget(num, 'cone')) { resolveShadowWhiff(acting, 'smash', 'Smash'); return; }
+      if (isShadowTarget(num, 'cone')) { resolveShadowWhiff(acting, 'smash', 'Smash', num); return; }
       const rivals = acting ? getRivalsInCone(acting) : [];
       const target = rivals.find(r => r.num === num);
       if (target) { resolveSmash(target.id); setAction(null); }
@@ -10963,9 +10902,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         setAction(null);
         // The beam pierces everything in the line — including the double, which
         // comes apart as the shot passes through it.
-        if (shadowInRange('beam')) dismissShadowIllusion('the Blaster of Ra tore through it');
+        shadowDecoys.filter(d => isShadowTarget(d.num, 'beam')).forEach(d => dismissShadowIllusion('the Blaster of Ra tore through it', d.id));
       }
-      else if (isShadowTarget(num, 'beam')) { resolveShadowWhiff(acting, 'blaster', 'Blaster of Ra'); }
+      else if (isShadowTarget(num, 'beam')) { resolveShadowWhiff(acting, 'blaster', 'Blaster of Ra', num); }
       else addLog("🌀 Click a rival in your beam to fire the Blaster of Ra!");
       return;
     }
@@ -11021,12 +10960,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
   // ─── HEX VISUAL HELPERS ───────────────────────────────────────────────────────
   const HS = Math.round(HEX_SIZE * SCALE * 0.88);
-  const bushidoArmed = action === 'psycho_bushido' && acting?.id === 'cosmic_ronin'
+  const bushidoArmed = action === 'psycho_bushido' && characterId(acting?.id) === 'cosmic_ronin'
     && hasConfirmed && !actionTokenUsed && moveStepsLeft >= PSYCHO_BUSHIDO_AP_COST
     && canFire(actingNoteState ?? {}, 'psycho_bushido');
   const bushidoPaint = bushidoArmed ? {
     spirit: acting,
-    blockers: bushidoBlockers({ spirits, amps, shadowHex, selfId: acting.id }),
+    blockers: bushidoBlockers({ spirits, amps, shadowHexes, selfId: acting.id }),
     targets: getPsychoBushidoTargets(),
   } : null;
 
@@ -11042,7 +10981,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const spHex = HEX_BY_NUM[acting.num];
     if (!spHex) return new Set();
     const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
-    if (shadowHex != null) occupied.add(shadowHex); // 👤 can't warp into the double
+    shadowHexes.forEach(n => occupied.add(n)); // 👤 can't warp into the double
     const out = new Set();
     for (const h of ALL_HEXES) {
       if (occupied.has(h.num)) continue;
@@ -11074,7 +11013,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function shukuchiLandingSet() {
     if (!acting) return new Set();
     const blocked = new Set(spirits.filter(sp => !sp.knockedOut).map(sp => sp.num));
-    if (shadowHex != null) blocked.add(shadowHex);   // 👤 the decoy blocks like a body
+    shadowHexes.forEach(n => blocked.add(n));   // 👤 the decoy blocks like a body
     return new Set(shukuchiLandings(engineState, acting.id, blocked));
   }
 
@@ -11105,7 +11044,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   }, [action, acting]);
 
   // 🕳️ The open vortex, read once for the board layer + HUD readout.
-  const gravityVortex = noteStates['intergalactic_0']?.gravityVortex ?? null;
+  const gravityVortices = Object.values(noteStates).map(ns => ns.gravityVortex).filter(Boolean);
+  const gravityVortex = gravityVortices[0] ?? null;
 
   function hexFill(hex) {
     // hovering a HUD attack button previews its range like the live mode
@@ -11221,7 +11161,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // 👤 When the Ronin is the acting Spirit, BOTH his standees get the thick
     // "it's my turn" outline — otherwise the ring thickness alone would out him.
     if (shadowDecoy && hex.num === shadowDecoy.num) {
-      return acting?.id === 'cosmic_ronin' ? Math.round(3 / SCALE * 0.13) : 1.5;
+      return characterId(acting?.id) === 'cosmic_ronin' ? Math.round(3 / SCALE * 0.13) : 1.5;
     }
     // 🌀 ABOVE the `hex.stage` catch-all, and that is the whole reason it is
     // here rather than beside Bushido's line below. The stage hex is a legal
@@ -11748,14 +11688,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
       {/* 🎓 BEGINNER TIP POPUP — paged walkthroughs with HUD-pointing arrows
           (ui/BeginnerTipOverlay.jsx; anchors = data-tip-anchor attributes) */}
-      {activeTip && (
-        <BeginnerTipOverlay
-          tip={activeTip}
-          gates={tipGates}
-          onClose={() => setActiveTip(null)}
-          onDisable={() => { setBeginnerEnabled(false); setActiveTip(null); }}
-        />
-      )}
 
       {/* 🎵 LOST CHORD PICKUP — bank it vs weave it into the Chord Stack */}
       {pendingLostChordPickup && (() => {
@@ -11845,8 +11777,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             that contains the book is the honest answer. ── */}
         {(() => {
           // Only the acting Spirit's own exclusive (spiritOnly) route, if any.
-          const sigRoute = acting ? SKILL_TREE.routes.find(r => r.spiritOnly === acting.id) : null;
-          const skin = STAGE_SKIN_BY_ID[stageSkin] ?? STAGE_SKIN_BY_ID[DEFAULT_SKIN_ID];
+          const sigRoute = acting ? SKILL_TREE.routes.find(r => r.spiritOnly === characterId(acting.id)) : null;
           return (
             <TopMenu tipAnchor="riffbook" items={[
               { kind:'action', icon:'🎯', label:'Cadences', color:'#ffd700',
@@ -11877,14 +11808,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                  a modal. A submenu row keeps that: the panel is 208px in one
                  corner and the board is still there behind it, and picking applies
                  instantly without closing anything. */
-              { kind:'submenu', icon:skin.icon, label:'Stage skin', color:skin.accent, value:skin.label,
-                title:`Stage Skin — recolour the board. Currently: ${skin.label}. Cosmetic and local to this machine; other players keep their own.`,
-                options: STAGE_SKINS.map(sk => ({ id:sk.id, label:sk.label, icon:sk.icon,
-                  accent:sk.accent, blurb:sk.blurb, on: sk.id === stageSkin })),
-                onPick: setStageSkin },
-              { kind:'toggle', icon:'🎓', label:'Beginner tips', color:'#44ff88', on: beginnerEnabled,
-                title: beginnerEnabled ? 'Beginner tips are ON — click to turn off' : 'Beginner tips are OFF — click to turn on (resets seen tips)',
-                onClick:() => { setBeginnerEnabled(b => !b); if (!beginnerEnabled) setBeginnerTipsSeen(new Set()); } },
               { kind:'toggle', icon:'🎤', label:'Fan hints', color:'#ff66cc', on: fanCoachEnabled,
                 title: fanCoachEnabled ? 'Fan hints are ON — your fans suggest notes and the stock glows. Click to turn off'
                   : 'Fan hints are OFF — click to have your fans suggest what to play again',
@@ -12262,15 +12185,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           spirit (canAct). Remote players/spectators must never see — let
           alone drive — another player's skill tree; its buttons write
           noteStates, which would relay duplicate actions and desync. */}
-      {canAct && <UpgradeModal
-        SKILL_BY_ID={SKILL_BY_ID}
-        SKILL_TREE={SKILL_TREE}
-        acting={acting}
-        noteStates={noteStates}
-        setNoteStates={setNoteStates}
-        setSkillTarget={setSkillTarget}
-        upgradesPending={upgradesPending}
-      />}
       {/* ── LEFT PANEL ── */}
         <div className="match-hud-column">
           <HudRegion name="spirit">
@@ -12615,49 +12529,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     "DB PROGRESS" with the target skill on the right, which is
                     exactly the foot the preview showed. Wrapping it in a
                     StripSection would print the words twice. */}
-                <ChannelStrip foot={<>
-                {/* ── DB PROGRESS BAR ── */}
-                  {(() => {
-                    const targetId  = ns.targetSkillId;
-                    const targetDef = targetId ? SKILL_BY_ID[targetId] : null;
-                    const dbPts     = ns.dbPoints ?? 0;
-                    const targetCost = targetDef?.dbCost ?? 8;
-                    const pct       = Math.min(1, dbPts / targetCost);
-                    const routeDef  = targetDef ? SKILL_TREE.routes.find(r => r.id === targetDef.routeId) : null;
-                    const barColor  = routeDef?.color ?? '#ffcc44';
-                    return (
-                      <div data-tip-anchor="db-bar" style={{padding:0}}>
-                        <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3}}>
-                          <span style={{fontSize:7, color:"#3a5a7a", letterSpacing:1}}>DB PROGRESS</span>
-                          {targetDef
-                            ? <span style={{fontSize:7, color:barColor, fontWeight:700}}>
-                                {targetDef.icon} {targetDef.label}
-                              </span>
-                            : <span style={{fontSize:7, color:"#2a3a50", fontStyle:"italic"}}>no target set</span>
-                          }
-                        </div>
-                        <div style={{display:"flex", alignItems:"center", gap:6}}>
-                          <div style={{flex:1, height:6, background:"#0a1020", borderRadius:3, overflow:"hidden",
-                            border:"1px solid #1a2a40"}}>
-                            <div style={{
-                              height:"100%", borderRadius:3,
-                              width:`${pct*100}%`,
-                              background: pct >= 1
-                                ? `linear-gradient(90deg, ${barColor}, #ffffff88)`
-                                : `linear-gradient(90deg, ${barColor}88, ${barColor})`,
-                              transition:"width 0.4s ease",
-                              boxShadow: pct >= 1 ? `0 0 8px ${barColor}` : "none",
-                            }}/>
-                          </div>
-                          <span style={{fontSize:8, color: pct>=1 ? barColor : "#4a6a7a",
-                            fontWeight: pct>=1 ? 700 : 400, whiteSpace:"nowrap"}}>
-                            {dbPts} / {targetCost}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </>}>
+                <ChannelStrip foot={<AbilityWallet ns={ns}/>}>
                   <StripSection title="THIS TURN">
                     {/* 🎚️ THE THREE STEPS, and the one live number each one is really
                         about. ⚠️ THESE ARE THE HUD'S OWN NUMBERS, not a second source:
@@ -12938,7 +12810,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             {(() => {
               const ns = actingNoteState ?? {};
               // 🌀 Once Blaster of Ra is unlocked, it REPLACES the Smash: ranged beam, pierces all.
-              const hasBlaster = acting?.id === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
+              const hasBlaster = characterId(acting?.id) === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
+              const abilityReady = !hasBlaster || ((ns.dbPoints ?? 0) >= 5 && cooldownLeft(ns, 'blaster_of_ra') === 0);
               const rivals = acting ? (hasBlaster ? getRivalsInBeam(acting) : getRivalsInCone(acting)) : [];
               // 👤 The Shadow Illusion is a legal target here too — it has to be,
               // or the button greying out would reveal it as a fake.
@@ -12949,7 +12822,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               // (it spends the whole thing). The Blaster keeps the old 2-note bar.
               const fuelOk  = hasBlaster ? unused >= 2 : (unused >= 1 && driveNotes >= 1);
               const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
-              const canFire = !grayed && (rivals.length > 0 || shadowSeen) && fuelOk;
+              const canFire = !grayed && (rivals.length > 0 || shadowSeen) && fuelOk && abilityReady;
               const mode    = hasBlaster ? 'blaster' : 'smash';
               const baseTitle = hasBlaster
                 ? "Blaster of Ra (2 AP) — a ranged, piercing bass-drop down the beam: undefendable, scatters & knocks back EVERY rival in line. Ends your movement, leaves you Exposed. Hurls your unused stock."
@@ -13049,7 +12922,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             {/* 👤 MOVE SHADOW — the double walks on its OWN legs: same range as
                 the Ronin, separate pool, so it never eats his AP. Only the
                 Ronin ever sees this button. */}
-            {acting?.id === 'cosmic_ronin' && shadowIllusion && (
+            {characterId(acting?.id) === 'cosmic_ronin' && shadowIllusion && (
               <>
                 <RailBtn className={`btn${action === "move_shadow" ? " on" : ""}`}
                   style={{borderColor: action === "move_shadow" ? "#88bbff" : "#1a2840",
@@ -13081,7 +12954,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 what you will END UP with, not what it costs. Off a thin melody
                 that number is a gain, and hiding that behind "-1 AP" would make
                 the one turn it most wants to be called look like the worst. */}
-            {acting?.id === 'Metalness_Monster' && (() => {
+            {characterId(acting?.id) === 'Metalness_Monster' && (() => {
               const already = !!engineState.turn?.slimingId;
               const canCall = hasConfirmed && !already && moveStepsLeft >= SLIME_AP_COST;
               return (
@@ -13138,12 +13011,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 Fan counts come from ns.casuals / ns.diehards (the fan economy's real
                 fields) — reading the non-existent casualFans/diehardFans is what kept
                 this button dead at "(0/3 fans)". */}
-            {hasConfirmed && acting?.id === 'Metalness_Monster'
+            {hasConfirmed && characterId(acting?.id) === 'Metalness_Monster'
               && (actingNoteState?.unlockedSkills ?? []).includes('master_moshpits') && (() => {
               const pool = moshableFans(actingNoteState);
               const used = actingNoteState?.moshpitUsedThisTurn;
               const running = !!moshCine;
-              const canMosh = !used && !running && pool.total >= MOSH_FAN_COST;
+              const canMosh = !used && !running && pool.total >= MOSH_FAN_COST && canFire(actingNoteState, 'master_moshpits');
               const standing = actingNoteState?.moshDrive ?? 0;
               return (
                 <RailBtn className={canMosh ? 'btn active' : 'btn'}
@@ -13165,12 +13038,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 SETS the attack stat, so on a big turn it can turn him DOWN, and a
                 button that promised a bonus would be lying on exactly the turn
                 the joke fires. The tooltip does the arithmetic out loud. */}
-            {hasConfirmed && acting?.id === 'Metalness_Monster'
+            {hasConfirmed && characterId(acting?.id) === 'Metalness_Monster'
               && (actingNoteState?.unlockedSkills ?? []).includes('goes_to_11') && (() => {
               const cranked = !!actingNoteState?.atEleven;
               const stack   = actingNoteState?.sustainStack ?? [];
               const blown   = (actingNoteState?.ampBlownTurns ?? 0) > 0;
-              const canCall = !cranked && stack.length > 0 && !actionTokenUsed;
+              const canCall = !cranked && stack.length > 0 && !actionTokenUsed && canFire(actingNoteState, 'goes_to_11');
 
               // What he would swing for if he DIDN'T touch it — so the tooltip can
               // warn him when eleven is a downgrade rather than a payday.
@@ -13211,7 +13084,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 the moment Intergalactic 0 unlocked the skill and committed a
                 track. That bug is gone with the rework — but the lesson stands:
                 every value in this label must come from something in scope. */}
-            {hasConfirmed && acting?.id === 'intergalactic_0'
+            {hasConfirmed && characterId(acting?.id) === 'intergalactic_0'
               && (actingNoteState?.unlockedSkills ?? []).includes('displace') && (() => {
               const dbPts   = actingNoteState?.dbPoints ?? 0;
               const warpCd  = cooldownLeft(actingNoteState, 'displace');
@@ -13242,7 +13115,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               );
             })()}
             {/* 🕳️ GRAVITY CONTROL — Intergalactic 0 opens a black hole vortex */}
-            {hasConfirmed && acting?.id === 'intergalactic_0'
+            {hasConfirmed && characterId(acting?.id) === 'intergalactic_0'
               && (actingNoteState?.unlockedSkills ?? []).includes('gravity_control') && (() => {
               const dbPts   = actingNoteState?.dbPoints ?? 0;
               const isOpen  = !!actingNoteState?.gravityVortex;
@@ -13282,7 +13155,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 own HUD, so only the player holding Intergalactic 0 can see it.
                 Do not mirror this onto the standee, the board, or any shared
                 banner — the entire ability is that rivals cannot tell. */}
-            {hasConfirmed && acting?.id === 'intergalactic_0'
+            {hasConfirmed && characterId(acting?.id) === 'intergalactic_0'
               && (actingNoteState?.unlockedSkills ?? []).includes('code_injection') && (() => {
               const dbPts   = actingNoteState?.dbPoints ?? 0;
               const armed   = (actingNoteState?.codeInjectTurns ?? 0) > 0;
@@ -13308,7 +13181,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 turn. It is billed out of the same AP pool as walking, so it sits
                 on the signature side but behaves like a step: no action token,
                 no attack gate. */}
-            {hasConfirmed && acting?.id === 'cosmic_ronin'
+            {hasConfirmed && characterId(acting?.id) === 'cosmic_ronin'
               && (actingNoteState?.unlockedSkills ?? []).includes(SHUKUCHI_SKILL) && (() => {
               const cd    = cooldownLeft(actingNoteState, SHUKUCHI_SKILL);
               const dbPts = actingNoteState?.dbPoints ?? 0;
@@ -13354,7 +13227,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               );
             })()}
             {/* 🌀 PSYCHO BUSHIDO — Shredding Ronin dash attack */}
-            {hasConfirmed && acting?.id === 'cosmic_ronin'
+            {hasConfirmed && characterId(acting?.id) === 'cosmic_ronin'
               && (actingNoteState?.unlockedSkills ?? []).includes('psycho_bushido') && (() => {
               const cd    = cooldownLeft(actingNoteState, 'psycho_bushido');
               const dbPts = actingNoteState?.dbPoints ?? 0;
@@ -13386,7 +13259,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               );
             })()}
             {/* 👤 SHADOW ILLUSION — Shredding Ronin decoy */}
-            {hasConfirmed && acting?.id === 'cosmic_ronin'
+            {hasConfirmed && characterId(acting?.id) === 'cosmic_ronin'
               && (actingNoteState?.unlockedSkills ?? []).includes('shadow_illusion') && (() => {
               const hasShadow = !!(actingNoteState?.shadowIllusion);
               const cd    = cooldownLeft(actingNoteState, 'shadow_illusion');
@@ -13417,7 +13290,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             })()}
             {/* 🪦 Exorcism UI — removed 2026-08-26 */}
             {/* 🎸 CURSED SHAMISEN — cooldown accelerator with a curse */}
-            {hasConfirmed && acting?.id === 'cosmic_ronin'
+            {hasConfirmed && characterId(acting?.id) === 'cosmic_ronin'
               && (actingNoteState?.unlockedSkills ?? []).includes('cursed_shamisen') && (() => {
               const curse   = actingNoteState?.shamisenCurse;
               const active  = curse && curse.turnsLeft > 0;
@@ -13700,7 +13573,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       new — it just spells out what being charged MEANS for him,
                       because "your rig moved" is not something a badge count
                       would ever imply on its own. */}
-                  {acting?.id === 'intergalactic_0'
+                  {characterId(acting?.id) === 'intergalactic_0'
                     && ((actingNoteState?.chargeFloorTurns ?? 0) > 0
                      || (actingNoteState?.chargeCeilTurns ?? 0) > 0) && (
                     <span title="Boom Box lit — while you hold a Charge Zone charge your Sonic rig travels with you: full dice pool, Power upgrades live, riff-offs anywhere, and you defend on a d6 instead of the stranded d4. It dies with the charge, and any battle drains it."
@@ -14726,9 +14599,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             )}
             <SonicRollPrompt prompt={sonicRollPrompt} onRoll={rollSonicVolley} />
             <SonicBarrageRecord battle={battleState} />
-            {!board3D && <button className="btn" onClick={() => { handleBoardMouseUp(); resetManualZoom(); setBoard3D(true); }}
-              style={{position:'absolute',right:8,bottom:8,zIndex:20}}>3D board</button>}
-            <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera} onDisable={() => setBoard3D(false)}
+            <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera}
               sceneFrame={board3D ? arenaFrame({
                 spirits:spirits.filter(s => !isHiddenBySmoke(s)), noteStates, crowdSpirits:spirits,
                 actingId:acting?.id, turn:engineState.turn.count, battle:battleState,
@@ -14736,7 +14607,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 laser:laserFx, pyro:pyroFx, smoke:smokeFx, slime:slimeTiles,
                 fire:flamingHexes, vortex:gravityVortex, bots:animatronics,
                 tentacle:tentacleFx,
-                shadowDecoy, lite:liteFx,
+                shadowDecoy, shadowDecoys, vortices:gravityVortices, lite:liteFx,
                 // 🟪 The move tiles (board/moveTiles.js): the same `reachable` sets the
                 // SVG click layer uses, so the picture can never offer a step the
                 // click refuses. Sent whenever a walk is armed — at zero steps the
@@ -15366,7 +15237,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     {(() => {
                       const pulseSp = (pulsingHex === hex.num && sp) ? sp
                         : (shadowDecoy && hex.num === shadowDecoy.num
-                            && pulsingHex != null && spiritByNum[pulsingHex]?.id === 'cosmic_ronin')
+                            && pulsingHex != null && characterId(spiritByNum[pulsingHex]?.id) === 'cosmic_ronin')
                           ? shadowDecoy : null;
                       if (!pulseSp) return null;
                       return (
@@ -15393,7 +15264,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         players can see exactly which hexes are dangerous without
                         counting. */}
                     {(() => {
-                      const g = noteStates['intergalactic_0']?.gravityVortex;
+                      const g = gravityVortices.find(v => v.hex === hex.num);
                       if (!g || g.hex !== hex.num) return null;
                       return (
                         <g style={{pointerEvents:"none"}}>
@@ -15436,10 +15307,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         copied off the real Ronin. If you change the standee
                         below, change this too — any divergence becomes a tell
                         that lets rivals pick the real Ronin out instantly. */}
-                    {shadowDecoy && hex.num === shadowDecoy.num && (() => {
-                      const dsp = shadowDecoy;
-                      const isActing = acting?.id === 'cosmic_ronin';
-                      const isRumbling = rumblingIds.has('cosmic_ronin');
+                    {shadowDecoys.some(d => d.num === hex.num) && (() => {
+                      const dsp = shadowDecoys.find(d => d.num === hex.num);
+                      const seesShadowTell = netRef.current ? netRef.current.mySpiritId === dsp.id : acting?.id === dsp.id;
+                      const isActing = acting?.id === dsp.id;
+                      const isRumbling = rumblingIds.has(dsp.id);
                       const sc = dsp.corner ? (CORNER_LABELS[dsp.corner]?.color ?? dsp.color) : dsp.color;
                       const baseR = HS * 0.62;
                       const cardW = HS * 3;
@@ -15448,11 +15320,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       const cardY = cy - baseR - cardH + HS * 1;
                       const useMirror = isMirrorFacing(dsp.facing ?? 0);
                       const spriteSrc = useMirror
-                        ? (MIRROR_SPRITES[dsp.id] ?? dsp.imageSrc)
+                        ? (MIRROR_SPRITES[characterId(dsp.id)] ?? dsp.imageSrc)
                         : dsp.imageSrc;
                       const imgOffset = dsp.imageOffset ?? { x: 0, y: 0 };
                       const imgOffX = useMirror ? -imgOffset.x : imgOffset.x;
-                      const nsR = noteStates['cosmic_ronin'] ?? {};
+                      const nsR = noteStates[dsp.id] ?? {};
                       return (
                         <g key="shadow-token" data-arena-flat="spirit"
                           style={{ ...(isRumbling ? {animation:"rumble 0.08s linear infinite"} : {}) }}>
@@ -15557,7 +15429,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       const cardY = cy - baseR - cardH + HS * 1;
                       const useMirror = isMirrorFacing(sp.facing ?? 0);
                       const spriteSrc = useMirror
-                        ? (MIRROR_SPRITES[sp.id] ?? sp.imageSrc)
+                        ? (MIRROR_SPRITES[characterId(sp.id)] ?? sp.imageSrc)
                         : sp.imageSrc;
                       const imgOffset = sp.imageOffset ?? { x: 0, y: 0 };
                       // The mirror sprite flips the artwork horizontally, so any
@@ -15603,7 +15475,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                           {/* 🎸 CURSED SHAMISEN GLOW — the Ronin is running
                               the curse. Purple aura so everyone can see he's
                               exposed — but nobody knows if he paid the debt. */}
-                          {sp.id === 'cosmic_ronin' && (noteStates['cosmic_ronin']?.shamisenCurse?.turnsLeft ?? 0) > 0 && (
+                          {characterId(sp.id) === 'cosmic_ronin' && (noteStates[sp.id]?.shamisenCurse?.turnsLeft ?? 0) > 0 && (
                             <g style={{pointerEvents:'none'}}>
                               <title>Cursed Shamisen active — cooldowns charging at 2× speed. If the Ronin takes Vibe damage and hasn't paid the debt this round, ALL cooldowns reset.</title>
                               <circle cx={cx} cy={cy} r={baseR * 1.75} fill="#9933ff12"
@@ -15909,7 +15781,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   the map" is the only place in this file where that is true —
                   move this block up and the arc vanishes behind the very body
                   the hop was proving it could clear. */}
-              {acting?.id === 'cosmic_ronin' && (
+              {characterId(acting?.id) === 'cosmic_ronin' && (
                 <ShukuchiArcs
                   trail={shukuchiTrail}
                   ghostFrom={acting.num}

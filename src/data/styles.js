@@ -1,3 +1,4 @@
+import { characterId } from "./spiritIdentity.js";
 // ─── STYLE — CHARACTER FLAVOUR ONLY ─────────────────────────────────────────
 // ⚠️ STYLE NO LONGER AFFECTS SCORING. It used to pay Db per commit for matching
 // the spirit's fixed pattern (`styleCommitDb`, deleted). That system was cut for
@@ -12,7 +13,7 @@
 // that no longer exist, and the two places that showed them ("earns Db: …") now
 // show the tagline instead. Delete them the moment nothing needs the history.
 //
-// Style is still fixed per Spirit and read off SPIRIT_DEFS[id].style. Combat
+// Style is still fixed per Spirit and read off SPIRIT_DEFS[characterId(id)].style. Combat
 // identity lives entirely in per-Spirit innates and Signature arsenals.
 import { SPIRIT_DEFS } from "./spirits.js";
 
@@ -33,7 +34,7 @@ export const STYLE_DEFS = {
 
 /** A spirit's style — read straight off the spirit sheet. Falls back to 'Groove'. */
 export function styleOf(spiritId) {
-  return SPIRIT_DEFS[spiritId]?.style ?? 'Groove';
+  return SPIRIT_DEFS[characterId(spiritId)]?.style ?? 'Groove';
 }
 
 /** Full style definition for a spirit. */

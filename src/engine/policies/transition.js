@@ -1,3 +1,4 @@
+import { characterId } from "../../data/spiritIdentity.js";
 import { bushidoDrawPatch } from "../systems/bushido.js";
 // ─── BOT TRANSITION ─────────────────────────────────────────────────────────
 // `applyBotAction(state, action, ctx) -> { state, view, ok, reason, logs }`
@@ -222,7 +223,7 @@ function collectPickups(state, spiritId, hexNum, rng) {
     // unconditionally ordered before the patch, because the client draws it
     // before its state updater for the same reason — a draw whose position in
     // the stream depends on a branch is a replay divergence waiting to happen.
-    const greed = spiritId === 'cosmic_ronin' && rng ? rng.chance(0.5) : false;
+    const greed = characterId(spiritId) === 'cosmic_ronin' && rng ? rng.chance(0.5) : false;
     const extra = greed
       ? randomNote(ns.rootNote, ns.scaleMode, () => rng())
       : null;
@@ -538,7 +539,10 @@ export function applyBotAction(state, action, ctx = {}) {
       // ⚠️ THE TRAIL IS SPENT BEFORE ANYTHING ELSE — and before `attackParams`,
       // so the stats are derived off the board the blow actually lands on.
       let pre = state;
-      if (isTentacle) pre = applyAction(pre, slimeCleared(spiritId, action.spend ?? []), rng);
+      if (isTentacle) {
+        pre = patchNs(pre, spiritId, firePatch(pre.noteStates[spiritId], 'tentacle'), rng);
+        pre = applyAction(pre, slimeCleared(spiritId, action.spend ?? []), rng);
+      }
 
       // 🌀 THE CHARGE, AND EVERY LINE OF IT IS ORDERED ON PURPOSE.
       //
@@ -805,14 +809,7 @@ export function applyBotAction(state, action, ctx = {}) {
     // client's own target-pick patch. Leaving a stale pending award behind would
     // let a searcher re-collect a skill it already banked by re-aiming.
     case 'skillTarget':
-      return {
-        state: patchNs(state, spiritId, {
-          targetSkillId:       action.skillId,
-          pendingAwardSkillId: null,
-          upgradesPending:     0,
-        }, rng),
-        view, ok: true, reason: null, logs: [],
-      };
+      return fail(state, view, 'illegal', 'Abilities are chosen before the match.');
 
     case 'endTurn': {
       // ✨ THE LIMELIGHT FAUCET, DRIVEN HEADLESSLY FOR THE FIRST TIME (§6.6.8).

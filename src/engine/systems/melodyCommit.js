@@ -1,3 +1,4 @@
+import { characterId } from "../../data/spiritIdentity.js";
 // ─── ENGINE SYSTEM: MELODY COMMIT (the economic half of the commit) ──────────
 // `commitMelodyEconomy(state, spiritId, ctx) -> { ok, patch, effects, hexes, report, ... }`
 // BOT_STRATEGY_HANDOFF §6b.1 — the hole this file exists to close.
@@ -212,7 +213,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const newRootRaw    = ENHARMONIC_RESPELL[lastNote] ?? lastNote;
 
   // ── SPEED & BANKING — §1's spine ──────────────────────────────────────────
-  const speed        = Math.min(SPEED_CAP, spirit.speed ?? SPIRIT_DEFS[spiritId]?.speed ?? 5);
+  const speed        = Math.min(SPEED_CAP, spirit.speed ?? SPIRIT_DEFS[characterId(spiritId)]?.speed ?? 5);
   const totalNotes   = melodyLine.length;
   const usableMoves  = Math.min(totalNotes, speed);
   const overflow     = totalNotes - usableMoves;

@@ -1,3 +1,4 @@
+import { characterId } from "../data/spiritIdentity.js";
 import * as THREE from 'three';
 import {makeGrandstand,disposeGrandstand} from './cosmicFans.js';
 
@@ -11,7 +12,7 @@ export function createArenaCrowd(scene){
     for(const corner of CORNERS){
       const crowd=crowds.find(c=>c.corner===corner);
       const options={corner,color:crowd?.color??'#8a91ff',size:1.3,
-        diehards:Math.max(0,Math.floor(crowd?.diehards??0)),casuals:Math.max(0,Math.floor(crowd?.casuals??0)),style:FAN_STYLES[crowd?.id]??null};
+        diehards:Math.max(0,Math.floor(crowd?.diehards??0)),casuals:Math.max(0,Math.floor(crowd?.casuals??0)),style:FAN_STYLES[characterId(crowd?.id)]??null};
       const key=JSON.stringify(options),previous=stands.get(corner);
       if(previous?.key===key){previous.owner=crowd?.id;continue;}
       if(previous)disposeGrandstand(previous);

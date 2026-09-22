@@ -4,7 +4,7 @@ import { rigRadius, rigTiers } from '../engine/systems/sonicRig.js';
 // hidden spirits BEFORE passing them here; no note stock or hidden state crosses.
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
-  bots = [], spotlight, tentacle, shadowDecoy = null, lite = false, stats = {}, reach = null, crowdSpirits = spirits }) {
+  bots = [], spotlight, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, crowdSpirits = spirits }) {
   const visible = new Set(spirits.map(s => s.id));
   return {
     crowds:crowdSpirits.filter(s=>!s.knockedOut).map(s=>({id:s.id,corner:s.corner,color:s.color,
@@ -22,9 +22,8 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
       pendingSustainFray:(noteStates[s.id]?.pendingSonicAttacks??0)>0
         ? Math.min(2,noteStates[s.id].pendingSonicAttacks,Math.max(0,(noteStates[s.id].sustainStack?.length??0)-1)):0,
     })),
-    decoys:shadowDecoy ? [{ id:`${shadowDecoy.id}:shadow`, sourceId:shadowDecoy.id,
-      num:shadowDecoy.num, color:shadowDecoy.color, corner:shadowDecoy.corner,
-      facing:shadowDecoy.facing ?? 0, shadow:true }] : [],
+    decoys:shadowDecoys.map(d => ({id:`${d.id}:shadow`,sourceId:d.id,num:d.num,
+      color:d.color,corner:d.corner,facing:d.facing ?? 0,shadow:true})),
     rigs: spirits.filter(s => !s.knockedOut).map(s => ({ id:s.id, corner:s.corner,
       color:s.color, ...rigTiers(noteStates[s.id]),
       radius:rigRadius(noteStates[s.id], s.id === actingId), active:s.id === actingId })),
@@ -69,6 +68,7 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
     smoke:smoke ? {radius:smoke.radius} : null,
     slime:slime.map(s => s.num ?? s.hex), fire:[...(fire?.hexes ?? [])],
     vortex:vortex ? {hex:vortex.hex} : null,
+    vortices:vortices.map(v => ({hex:v.hex})),
     bots:(bots??[]).map(b => ({hex:b.num, color:b.color})), spotlight,
     // The arm's visible trail is already public board geometry.
     tentacle:tentacle ? {key:tentacle.key, pts:tentacle.pts.map(p=>({x:p.x,y:p.y}))} : null,

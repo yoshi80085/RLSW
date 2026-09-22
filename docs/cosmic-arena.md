@@ -1,3 +1,5 @@
+> Update 2026-09-22: The standalone 2D board and Pickles introduction are archived. The game uses 3D only; historical view-switch instructions below no longer apply. See [archive notes](archive/board-2d-pickles-2026-09-22/README.md).
+
 # Cosmic arena — interactive environment study
 
 ## Live visual layer — 2026-09-08

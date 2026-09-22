@@ -27,6 +27,8 @@ orbit/pan/zoom, with **Follow battle** to resume automatic action tracking.
 
 ---
 
+**2026-09-22 presentation:** 3D is the only active board. The 2D switch, stage-skin controls and Pickles introduction/Beginner controls are archived pending a new tutorial structure. Shared SVG targeting remains; Fan hints stay independently available. [Archive and restoration notes](../docs/archive/board-2d-pickles-2026-09-22/README.md).
+
 ## 1. 🎸 WHAT THE GAME IS
 
 A **music-battle board game**. Spirits move on a hex stage, attack, pick up notes,

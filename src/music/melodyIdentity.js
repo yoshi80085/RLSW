@@ -1,3 +1,4 @@
+import { characterId } from "../data/spiritIdentity.js";
 // A Spirit owns its clean palette. The chord stacks may create a separate
 // red/blue carrot, but they never choose or widen this palette.
 
@@ -38,7 +39,7 @@ export const SPIRIT_MELODY_MODES = Object.freeze({
 export const BEGINNER_FALLBACK_MODE = 'lydian';
 
 export function melodyModeFor(spiritId) {
-  return SPIRIT_MELODY_MODES[spiritId] ?? BEGINNER_FALLBACK_MODE;
+  return SPIRIT_MELODY_MODES[characterId(spiritId)] ?? BEGINNER_FALLBACK_MODE;
 }
 
 export function modeIntervals(mode) {

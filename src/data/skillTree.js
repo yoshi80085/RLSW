@@ -156,7 +156,7 @@ export const SKILL_TREE = {
         // 🪦 Wa no Koe was CUT 2026-09-04 (`RONIN_ABILITY_DESIGN.md` §2.4). The
         // kit is three until 🌀 Shukuchi lands; add it here when it does.
         { id:'cursed_shamisen', label:'Cursed Shamisen', icon:'🎸', dbCost:6,  gated:false,
-          desc:`Invoke the cursed strings (${CURSED_SHAMISEN_DB_COST} Db, ${CURSED_SHAMISEN_CD}-round cooldown). For ${CURSED_SHAMISEN_DURATION} rounds, ALL of the Ronin's OTHER ability cooldowns tick at 2× speed — Bushido and Shadow Illusion both come back in half the time. While the curse is active the Ronin GLOWS purple on the board: everyone can see he is exposed, but nobody knows if he paid the debt. ⚠️ THE CURSE: if the Ronin takes ANY Vibe damage in battle while glowing and has NOT paid ${CURSED_SHAMISEN_PAYOFF_COST} Db that round, ALL of his cooldowns RESET to their full duration — the acceleration backfires. He can pay ${CURSED_SHAMISEN_PAYOFF_COST} Db each round to protect himself, but the glow stays regardless, so rivals can never tell whether an attack will punish him or not. That is the bluff.` },
+          desc:`Invoke the cursed strings (${CURSED_SHAMISEN_DB_COST} Db, ${CURSED_SHAMISEN_CD}-round cooldown). For ${CURSED_SHAMISEN_DURATION} rounds, ALL of the Ronin's OTHER ability cooldowns tick at 2× speed — your other selected ability recharges twice as fast. While the curse is active the Ronin GLOWS purple on the board: everyone can see he is exposed, but nobody knows if he paid the debt. ⚠️ THE CURSE: if the Ronin takes ANY Vibe damage in battle while glowing and has NOT paid ${CURSED_SHAMISEN_PAYOFF_COST} Db that round, ALL of his cooldowns RESET to their full duration — the acceleration backfires. He can pay ${CURSED_SHAMISEN_PAYOFF_COST} Db each round to protect himself, but the glow stays regardless, so rivals can never tell whether an attack will punish him or not. That is the bluff.` },
       ],
     },
     {
@@ -168,13 +168,11 @@ export const SKILL_TREE = {
       spiritOnly: 'Metalness_Monster',
       skills: [
         { id:'goes_to_11',      label:'Goes to 11',         icon:'🔊', dbCost:6, gated:false,
-          desc:'SETS your attack to exactly 11 for the turn — not a bonus, a setting, so it beats the bonus cap. ⚠️ If you were already louder than 11, it turns you DOWN: the amp only goes to eleven. You also shrug off knockback. It costs your whole Sustain stack, and it blows your amp — no Sonic at all and a bare d4 on defence until your rig comes back a turn later.' },
+          desc:'SETS your attack to exactly 11 for the turn — not a bonus, a setting, so it beats the bonus cap. ⚠️ If you were already louder than 11, it turns you DOWN: the amp only goes to eleven. You also shrug off knockback. It costs your whole Sustain stack, and it blows your amp — no Sonic at all and a bare d4 on defence until your rig comes back a turn later. Costs 5 Db; recharges in 2 rounds.' },
         { id:'master_moshpits', label:'Master of Moshpits', icon:'🤘', dbCost:6,  gated:false,
-          desc:'Pulls 3 fans out of the stands and onto the board for a pit. +2 Drive that STANDS — it survives battles and lasts until you call the next pit. Once per turn.' },
+          desc:'Pulls 3 fans out of the stands and onto the board for a pit. +2 Drive that STANDS — it survives battles and lasts until you call the next pit. Costs 5 Db per use; recharges in 2 rounds.' },
         { id:'tentacle',        label:'Tentacle',           icon:'🐙', dbCost:6, gated:false,
-          desc:'Swing from any hex of your SLIME TRAIL instead of from where you stand — and the trail you reach THROUGH is consumed. Next to the nearest slime costs 1 hex; three hexes down the road costs 3. It does not move you and it does not turn you, so reaching behind means the rival in front is hitting your back. Range is real, and you pay for it in road.' },
-        { id:'azrael',          label:'Azrael',             icon:'💀', dbCost:6, gated:false,
-          desc:'Each rival you knock down feeds Fame equal to your knockdown streak (1st→1, 2nd→2…). Resets when YOU go down.' },
+          desc:'Swing from any hex of your SLIME TRAIL instead of from where you stand — and the trail you reach THROUGH is consumed. Next to the nearest slime costs 1 hex; three hexes down the road costs 3. It does not move you and it does not turn you, so reaching behind means the rival in front is hitting your back. Range is real, and you pay for it in road. Costs 5 Db per strike; recharges in 2 rounds.' },
       ],
     },
     {
@@ -186,15 +184,13 @@ export const SKILL_TREE = {
       spiritOnly: 'intergalactic_0',
       skills: [
         { id:'blaster_of_ra', label:'Blaster of Ra', icon:'🌀', dbCost:6, gated:false,
-          desc:'REPLACES the Smash. A ranged, PIERCING bass-drop: hurl your unused stock down the forward beam, hammering EVERY rival in line — undefendable, scattering their stock and knocking them back. Leaves you Exposed.' },
+          desc:'REPLACES the Smash. A ranged, PIERCING bass-drop: hurl your unused stock down the forward beam, hammering EVERY rival in line — undefendable, scattering their stock and knocking them back. Leaves you Exposed. Costs 5 Db per use; recharges in 2 rounds.' },
         { id:'displace', label:'Space is Displaced', icon:'🌌', dbCost:6,  gated:false,
           desc:`He can't run — he warps. Spend ${DISPLACE_DB_COST} Db to fold space and appear instantly on any open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away. ${DISPLACE_CD}-turn cooldown, no Action Points, no rig required. Too close doesn't count: he steps THROUGH the space between, not across it.` },
         { id:'gravity_control', label:'Gravity Control', icon:'🕳️', dbCost:6, gated:false,
           desc:`Spend ${GRAVITY_DB_COST} Db (${GRAVITY_CD}-turn cooldown) to tear open a BLACK HOLE VORTEX on any hex within ${GRAVITY_PLACE_RINGS} rings. Every rival within ${GRAVITY_PULL_RINGS} rings is dragged ${GRAVITY_PULL_HEXES} hex toward it — and anyone pulled all the way INTO it watches ${GRAVITY_NOTE_DRAIN} notes get swallowed, ${GRAVITY_NOTE_DRAIN} fewer in their pool next turn. The vortex hangs there for one full round, catching anyone who wanders too close, then collapses. Gravity is his to command: it never touches him.` },
         { id:'code_injection', label:'Code Injection', icon:'💻', dbCost:6, gated:false,
           desc:`Spend ${CODE_INJECT_DB_COST} Db (${CODE_INJECT_CD}-turn cooldown) to slip a patch into the fabric of the fight — then say nothing. For one full round, the FIRST rival whose attack would beat you has their dice thrown out and re-rolled, and they live with whatever comes up second. Nobody can see that you've committed: no aura, no tell, no marker on your standee. If nobody swings, or nobody lands, the Db is simply gone. That's the bet.` },
-        { id:'sunbeam', label:'Sunbeam', icon:'☀️', dbCost:6, gated:false,
-          desc:`Spend ${SUNBEAM_DB_COST} Db on a connecting attack (then ${SUNBEAM_CD} turns to recharge) and the stage goes SUPERNOVA — the rival's whole world whites out for ${SUNBEAM_BLIND_TURNS} turn. They can't see the board, the standees, their own stack. Nothing. ${Math.round(SUNBEAM_LINGER_CHANCE * 100)}% of the time the burn stays seared in for a second turn (${SUNBEAM_MAX_BLIND_TURNS} turns is the ceiling — the sun always sets).` },
       ],
     },
   ],

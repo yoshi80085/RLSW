@@ -1,3 +1,4 @@
+import { characterId } from "../../data/spiritIdentity.js";
 // ─── ENGINE SYSTEM: SONIC RIG ────────────────────────────────────────────────
 // Pure function that computes the Sonic dice pool AND the rig's live radius
 // from a Spirit's note state and position.
@@ -127,7 +128,7 @@ export function rigRadius(ns = {}, onTurn = false) {
 export function sonicRig(ns = {}, distFromHome, chargeBoost = 0, onTurn = false, spiritId = null) {
   void distFromHome;void chargeBoost;void onTurn;
   const chord=evaluateChord(ns.driveStack??[]);
-  const innate=spiritId==='intergalactic_0'&&chord.id==='cluster'?1:0;
+  const innate=characterId(spiritId)==='intergalactic_0'&&chord.id==='cluster'?1:0;
   const bonus=Math.min(2,(ns.tempDrive??0)+(ns.moshDrive??0));
   // Empty charge must not fall back to the old, stronger static stat sheet.
   const count=ns.driveStack?.length?Math.max(0,ns.atEleven?11:chord.drive+innate+bonus-(ns.instrumentDropped?1:0)):0;

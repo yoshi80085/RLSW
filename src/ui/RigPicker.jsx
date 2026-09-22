@@ -1,3 +1,4 @@
+import { characterId } from "../data/spiritIdentity.js";
 // =============================================================================
 // ui/RigPicker.jsx — 🎛️ RIG PICKER — cycle through Spirit signature amp tones
 // -----------------------------------------------------------------------------
@@ -27,7 +28,7 @@ export function loadRig() {
 export function rigKnobs(rig) {
   return rig === 'default'
     ? TONE_KNOB_DEFAULTS
-    : { ...TONE_KNOB_DEFAULTS, ...(SPIRIT_TONES[rig] ?? {}) };
+    : { ...TONE_KNOB_DEFAULTS, ...(SPIRIT_TONES[characterId(rig)] ?? {}) };
 }
 
 export function playRigHit(freq, grade, rig) {

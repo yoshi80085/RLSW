@@ -19,10 +19,11 @@ import { firePatch } from './cooldowns.js';
 // 1 so the origin can never appear in it, but a caller that built the set from
 // "every spirit" and then re-checked `step.num === self.num` inside its own loop
 // is exactly the kind of duplicated policy this replaces.
-export function bushidoBlockers({ spirits = [], amps = [], shadowHex = null, selfId = null } = {}) {
+export function bushidoBlockers({ spirits = [], amps = [], shadowHex = null, shadowHexes = [], selfId = null } = {}) {
   return new Set([
     ...spirits.filter(s => !s?.knockedOut && s?.id !== selfId).map(s => s.num),
     ...amps.map(a => a.hexNum),
+    ...shadowHexes,
     ...(shadowHex != null ? [shadowHex] : []),
   ]);
 }
