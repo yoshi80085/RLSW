@@ -30,7 +30,7 @@ import {
 import { underdogBonus } from "./systems/combat.js";
 import {
   UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT, POSE_FP_MAX, POSE_FP_STEP,
-  STOCK_REFILL_RATE, DB_UPGRADE_THRESHOLD, FAN_MULT_CAP,
+  STOCK_REFILL_RATE, DB_UPGRADE_THRESHOLD, FAN_MULT_MAX,
 } from "../data/gameConstants.js";
 import { EDGE_HEX_NUMS, HEX_BY_NUM, HEX_BY_QR } from "../board/hexMap.js";
 import { LIMELIGHT_HEX } from "../data/gameConstants.js";
@@ -190,7 +190,12 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
   const few  = withNs(st, RONIN, { fame: 0, casuals: 0 });
   const many = withNs(st, RONIN, { fame: 0, casuals: 10 });
   ok(term(many, RONIN, 'fanMult') > term(few, RONIN, 'fanMult'), 'more fans → higher multiplier term');
-  ok(term(many, RONIN, 'fanMult') <= 1, `the ×${FAN_MULT_CAP} cap normalises to ≤ 1`);
+  // ⚠️ `<= 1` ALONE IS DECORATIVE — zero satisfies it, and zero is exactly what
+  // this term became when the clamp went to Infinity and the normaliser kept
+  // dividing by it. A big crowd must be worth SOMETHING as well as not too
+  // much, so both ends are asserted now.
+  ok(term(many, RONIN, 'fanMult') <= 1, `a full house normalises to <= 1 (ceiling x${FAN_MULT_MAX})`);
+  ok(term(many, RONIN, 'fanMult') > 0, 'a big crowd is worth something — guards the Infinity divide');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

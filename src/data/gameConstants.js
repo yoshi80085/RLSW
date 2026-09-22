@@ -734,9 +734,90 @@ export const TOKEN_DRIFT_TURNS   = 1; // rounds an uncollected Lost Chord sits b
 // **The two are one change; `CORE_LOOP_REWORK_BRIEF.md` §0 is the order.**
 export const FAN_DIEHARD_WEIGHT  = 0.40;  // multiplier added per Diehard (loyal core -- worth ~3 casuals)
 export const FAN_CASUAL_WEIGHT = 0.12;    // ⭐ restored 2026-09-15 — a full house is 1 + 0.40×6 + 0.12×14 = 5.08
-export const FAN_MULT_CAP = 5.0;          // ⭐ restored 2026-09-15 — sits just under 5.08, the same shape 2.0 had against 2.02
-export const FAN_DIEHARD_CAP     = 6;
-export const FAN_CASUAL_CAP      = 14;
+// ═══ 🤘 THE SEATS ARE THE CAP ════════════════════════════════════════════════
+// Alex, 2026-09-22 — first "there needs to be no gate at all to diehards", then
+// the clarification that matters: *"this was relative to how many seats allow
+// fans to grow. The number of fans allowed is the number of seats allowed.
+// Diehards can theoretically grow out to the same number — which would basically
+// have normal fans be 0, while diehards fill out every seat."*
+//
+// ⭐ SO THERE IS EXACTLY ONE CEILING NOW, AND IT IS A PLACE TO SIT. Not a
+// Diehard ceiling and a Casual ceiling and a multiplier clamp, three numbers
+// that had to be kept in agreement — one number, `FAN_TOTAL_CAP`, which IS the
+// seat count. A Spirit with 30 Diehards and no Casuals is legal and is what a
+// perfect run looks like.
+//
+// ⭐ AND THE MULTIPLIER IS NOW DERIVED RATHER THAN DECLARED. `FAN_MULT_CAP`
+// stays `Infinity` on purpose: the crowd bounds it without a second opinion. A
+// full house of Diehards is 1 + 0.40×30 = **×13.0**, and that ceiling moves by
+// itself if the grandstand ever grows another row. The old 5.0 was a number
+// someone had to remember to keep next to 5.08, and this file's own history
+// (the 2.0-vs-2.02 era) is what that costs.
+//
+// 📌 WHAT DID **NOT** CHANGE: the EARN RATE. `FAN_PROMOTE_EVERY` (3 consecutive
+// centre turns) and `LOYALTY_PER_DIEHARD` (24) are untouched. The ceiling moved;
+// the verb did not.
+
+// 🪑 THE SEATS. The arena grandstand grows a row at a time with the crowd and
+// stops here, and because the crowd stops here too, every fan has a chair.
+// ⚠️ 5 ROWS IS A MEASURED LIMIT, NOT A TASTE CALL. Past it the top row goes
+// through the lighting truss at y 3.35 and the back row floats more than a metre
+// off the island. `.scratch/arenaClearance.mjs` re-derives both.
+// ⚠️ RAISING `CROWD_ROWS_MAX` RAISES THE FAN CAP AND THE MULTIPLIER CEILING WITH
+// IT. That is the point — but it means a seating change is an economy change,
+// and `.scratch/famescale.mjs` has to be re-run behind it.
+export const CROWD_ROWS_MAX      = 5;
+export const CROWD_SEATS_PER_ROW = 6;
+export const CROWD_DRAWN_MAX     = CROWD_ROWS_MAX * CROWD_SEATS_PER_ROW;  // 30 seats
+
+/** 🎟️ Every fan a Spirit can have, of either band, because it is every seat. */
+export const FAN_TOTAL_CAP = CROWD_DRAWN_MAX;
+// 📌 Both bands can theoretically fill the house alone, so neither has a ceiling
+// of its own any more — these exist so a reader asking "how many Diehards are
+// possible" gets an answer, and they are deliberately the SAME number.
+// ⚠️ NEITHER IS A CLAMP ANY MORE. Clamping on one band in isolation is what
+// would let 30 Casuals sit on top of 6 Diehards. `addCasuals` is the only place
+// a Casual gain is bounded, and it bounds against the TOTAL.
+export const FAN_DIEHARD_CAP     = FAN_TOTAL_CAP;
+export const FAN_CASUAL_CAP      = FAN_TOTAL_CAP;
+export const FAN_MULT_CAP = Infinity;     // 🤘 derived from the crowd — see above
+
+// 🎚️ THE HIGHEST MULTIPLIER THE HOUSE CAN ACTUALLY PRODUCE — a full 30 seats of
+// Diehards, 1 + 0.40×30 = ×13.0. Derived, so it follows the seat count by itself.
+// 🚨 THIS EXISTS BECAUSE `FAN_MULT_CAP` WENT TO `Infinity` AND SOMETHING WAS
+// DIVIDING BY IT. `evaluate.js` normalised its `fanMult` term with
+// `(mult - 1) / (FAN_MULT_CAP - 1)`, which at ∞ is **0** — the bot would have
+// gone on playing while valuing fans at nothing, with no error and nothing on
+// screen to say so. SEQUENCING §B finding 5, live, inside an hour of the change.
+// ⚠️ A CLAMP AND A SCALE ARE NOT THE SAME NUMBER and must not share a constant.
+// `FAN_MULT_CAP` answers "is there a ceiling" (no). `FAN_MULT_MAX` answers "what
+// does a full house feel like" (×13.0). Anything NORMALISING wants this one.
+export const FAN_MULT_MAX = 1 + FAN_DIEHARD_WEIGHT * FAN_TOTAL_CAP;
+
+/**
+ * 🎟️ Take on `gain` Casuals, bounded by the seats the Diehards have not taken.
+ * ⭐ THE ONE PLACE A CASUAL GAIN IS CLAMPED. Every site that used to do
+ * `Math.min(FAN_CASUAL_CAP, casuals + gain)` calls this instead — five in the
+ * client and one in `economy.js` — because a per-band clamp cannot see the other
+ * band and would quietly overfill the house.
+ * 📌 Promotion needs no equivalent: hardening a Casual into a Diehard is
+ * net-zero on the total, which is exactly how Diehards climb to a full house.
+ */
+export function addCasuals(ns = {}, gain = 0) {
+  const diehards = Math.max(0, ns.diehards ?? FAN_DIEHARD_START);
+  const casuals  = Math.max(0, ns.casuals ?? 0);
+  return Math.max(0, Math.min(casuals + gain, FAN_TOTAL_CAP - diehards));
+}
+
+/** 🎟️ Harden one more Diehard, bounded by the same house. Used by the debug
+ *  grant; ordinary promotion goes through `fansFromDeed`, which spends a Casual
+ *  and therefore cannot overfill. */
+export function addDiehard(ns = {}, gain = 1) {
+  const diehards = Math.max(0, ns.diehards ?? FAN_DIEHARD_START);
+  const casuals  = Math.max(0, ns.casuals ?? 0);
+  return Math.max(0, Math.min(diehards + gain, FAN_TOTAL_CAP - casuals));
+}
+
 export const FAN_DIEHARD_START   = 2;
 export const FAN_CASUAL_START    = 0;
 export const EXCITE_PER_CASUAL   = 14;    // performance excitement to draw 1 new Casual fan

@@ -179,7 +179,7 @@ import { fanPawnShape } from "./ui/fanPawnShape.jsx";
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
 import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim } from "./music/stackSlots.js";
-import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_CAP, FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_TOTAL_CAP, addCasuals, addDiehard, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, CROWD_DRAWN_MAX, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -5531,7 +5531,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         setUnsurePool(0);
         const cur = engineRef.current.noteStates[spiritId] ?? {};
         dispatch(fansChanged(spiritId, {
-          casuals: Math.min(FAN_CASUAL_CAP, (cur.casuals ?? 0) + recalled),
+          casuals: addCasuals(cur, recalled),
           fanLag: 0,
           divineShield: 1,
         }));
@@ -5709,9 +5709,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         tally.casuals += gain;
         {
           const cur = engineRef.current.noteStates[spiritId] ?? {};
-          let casuals  = Math.min(FAN_CASUAL_CAP, (cur.casuals ?? 0) + gain);
+          let casuals  = addCasuals(cur, gain);
           let diehards = cur.diehards ?? FAN_DIEHARD_START;
-          if (passed && casuals > 0 && diehards < FAN_DIEHARD_CAP) { casuals -= 1; diehards += 1; }
+          if (passed && casuals > 0) { casuals -= 1; diehards += 1; }   // 🤘 net-zero on the house (2026-09-22)
           dispatch(fansChanged(spiritId, { casuals, diehards }));
         }
         flashFanFx(spiritId, 'gain', gain);
@@ -5769,8 +5769,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const id = devCurrentSpiritId(); if (!id) return;
     const nm = spiritById[id]?.name;
     if (kind === 'hc')       { grantDB(id, 3); addLog(`🧪 +3 DB → ${nm}`); }
-    else if (kind === 'cas') { dispatch(fansChanged(id, { casuals: Math.min(FAN_CASUAL_CAP, (engineRef.current.noteStates[id]?.casuals ?? 0) + 5) })); flashFanFx(id, 'gain', 5); addLog(`🧪 +5 Casuals → ${nm}`); }
-    else if (kind === 'die') { dispatch(fansChanged(id, { diehards: Math.min(FAN_DIEHARD_CAP, (engineRef.current.noteStates[id]?.diehards ?? FAN_DIEHARD_START) + 1) })); addLog(`🧪 +1 Diehard → ${nm}`); }
+    else if (kind === 'cas') { dispatch(fansChanged(id, { casuals: addCasuals(engineRef.current.noteStates[id] ?? {}, 5) })); flashFanFx(id, 'gain', 5); addLog(`🧪 +5 Casuals → ${nm}`); }
+    else if (kind === 'die') { dispatch(fansChanged(id, { diehards: addDiehard(engineRef.current.noteStates[id] ?? {}, 1) })); addLog(`🧪 +1 Diehard → ${nm}`); }
     else if (kind === 'uns') { setUnsurePool(p => p + 5); addLog('🧪 +5 to the Unsure pool'); }
     else if (kind === 'vup') { setSpirits(prev => prev.map(s => s.id === id ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + 1) } : s)); addLog(`🧪 +1 Vibe → ${nm}`); }
     else if (kind === 'vdn') { setSpirits(prev => prev.map(s => s.id === id ? { ...s, vibe: Math.max(0, (s.vibe ?? 0) - 1) } : s)); addLog(`🧪 −1 Vibe → ${nm}`); }
@@ -6347,7 +6347,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // Only the spotlight (main/pit) wins over the undecided crowd left on the centre.
     const recruit = inCentre ? Math.min(unsurePool, base) : 0;
     if (recruit > 0) { setUnsurePool(p => Math.max(0, p - recruit)); triggerUnsureWin(spiritId, recruit); }
-    let casuals  = Math.min(FAN_CASUAL_CAP, (ns.casuals ?? 0) + base + recruit);
+    // 🎟️ The house is the cap — see `addCasuals` in gameConstants.js.
+    let casuals  = addCasuals(ns, base + recruit);
     let diehards = ns.diehards ?? FAN_DIEHARD_START;
     // Sustained centre play hardens a Casual into a Diehard — neutral ground doesn't.
     let streak = ns.centerStreak ?? 0;
@@ -6355,7 +6356,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (inCentre) {
       streak += 1;
       const promoteEvery = FAN_PROMOTE_EVERY;
-      if (streak % promoteEvery === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
+      // 🤘 no diehard ceiling (2026-09-22) — mirrors engine/systems/economy.js
+      if (streak % promoteEvery === 0 && casuals > 0) {
         casuals -= 1; diehards += 1; promoted = true;
       }
     }
@@ -6438,7 +6440,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     {
       const atkNs = engineRef.current.noteStates[attackerId];
       if (toVictor > 0 && atkNs) {
-        dispatch(fansChanged(attackerId, { casuals: Math.min(FAN_CASUAL_CAP, (atkNs.casuals ?? 0) + toVictor) }));
+        dispatch(fansChanged(attackerId, { casuals: addCasuals(atkNs, toVictor) }));
       }
     }
     if (toUnsure > 0) setUnsurePool(p => p + toUnsure);
@@ -14974,7 +14976,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 // front rail keeps a constant gap from the board edge; the square window
                 // corner is handled by taper (rows shrink 6·5·5·4 into the dead wedge).
                 // The caps become visible capacity: diehards fill the front arc exactly.
-                const CAPACITY = FAN_DIEHARD_CAP + FAN_CASUAL_CAP;      // 20 = 6+5+5+4
+                // 🪑 SEATS AND FANS ARE THE SAME NUMBER as of 2026-09-22 —
+                // `FAN_TOTAL_CAP` IS `CROWD_DRAWN_MAX`, so the dashed empty-seat
+                // markers below are an honest readout of the room a Spirit has
+                // left to fill rather than a rendering budget.
+                const CAPACITY = CROWD_DRAWN_MAX;
                 const seatGap = HS * 0.68, rowGap = HS * 0.78;
                 const frontR = homeR + FAN_OUT;      // front row rides where the anchor sits
                 const midA = Math.atan2(oy, ox);     // the stand's centreline angle

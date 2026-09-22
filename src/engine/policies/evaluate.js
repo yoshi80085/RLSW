@@ -37,7 +37,7 @@ import {
   STOCK_REFILL_RATE, DB_UPGRADE_THRESHOLD, stackCapFor,
   fpPerLife, POSE_FP_STEP, POSE_FP_MAX,
   UNDERDOG_MIN_DEFICIT, UNDERDOG_DEFICIT_PER_STEP, UNDERDOG_MAX_MULT,
-  FAN_MULT_CAP, FAN_DIEHARD_START, SONIC_BEAM_REACH, LIMELIGHT_HEX,
+  FAN_MULT_MAX, FAN_DIEHARD_START, SONIC_BEAM_REACH, LIMELIGHT_HEX,
   RIG_POOL_FLOOR, RIG_TIER_MAX,
 } from "../../data/gameConstants.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
@@ -925,7 +925,12 @@ export function evaluate(state, spiritId, view = {}) {
 
   // 3. FAN MULTIPLIER — multiplies every FP payout, so it is an INVESTMENT.
   const mult = crowdMultiplier(ns.diehards ?? FAN_DIEHARD_START, ns.casuals ?? 0, ns.assignedDiehards ?? 0);
-  terms.fanMult = clamp01((mult - 1) / (FAN_MULT_CAP - 1)) * horizon;
+  // ⚠️ NORMALISE AGAINST THE ACHIEVABLE CEILING, NEVER THE CLAMP. The clamp is
+  // `Infinity` as of 2026-09-22 (the seats are the ceiling now), and dividing
+  // by infinity-minus-one makes this whole term 0 — the bot goes on playing
+  // while valuing fans at nothing, with no error and nothing on screen to say
+  // so. `FAN_MULT_MAX` is what a full house of Diehards is worth (x13.0).
+  terms.fanMult = clamp01((mult - 1) / (FAN_MULT_MAX - 1)) * horizon;
 
   // 4. PERFORMANCE CLIFF — deliberately a step function (§4.1). Scoring this as
   //    a slope teaches the Ronin to drift toward 4 and collect nothing.

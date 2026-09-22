@@ -11,8 +11,15 @@ export function createArenaCrowd(scene){
   function update(crowds=[]){
     for(const corner of CORNERS){
       const crowd=crowds.find(c=>c.corner===corner);
-      const options={corner,color:crowd?.color??'#8a91ff',size:1.3,
+      // 📌 `seedOffset` per corner (2026-09-22): the fan seed used to be the seat
+      // index alone, so every stand was the same crowd fan-for-fan.
+      const options={corner,color:crowd?.color??'#8a91ff',seedOffset:CORNERS.indexOf(corner)*37,
         diehards:Math.max(0,Math.floor(crowd?.diehards??0)),casuals:Math.max(0,Math.floor(crowd?.casuals??0)),style:FAN_STYLES[characterId(crowd?.id)]??null};
+      // ⚠️ THE KEY HOLDS THE FAN COUNTS, SO EVERY FAN GAIN REBUILDS THE STAND —
+      // ~20 fresh 555-vertex bodies at the exact moment the game wants a crowd
+      // reaction, and the fans pop rather than arrive. Known and NOT fixed here;
+      // it wants a build-to-capacity-and-toggle pass with an arrival animation.
+      // 🔎 It matters more now that Diehards are uncapped: the counts move more.
       const key=JSON.stringify(options),previous=stands.get(corner);
       if(previous?.key===key){previous.owner=crowd?.id;continue;}
       if(previous)disposeGrandstand(previous);

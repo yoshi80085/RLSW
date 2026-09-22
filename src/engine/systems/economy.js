@@ -6,7 +6,7 @@ import { pitchIndex, NOTE_POOL, canonicalRoot } from "../../music/notes.js";
 import { melodyModeFor } from "../../music/melodyIdentity.js";
 import { detectMotifRepeat, refillStock } from "../../music/cadence.js";
 import { FAN_DIEHARD_START, FAN_CASUAL_START, FAN_BORED_AFTER, FAN_DECAY,
-         FAN_CASUAL_CAP, FAN_DIEHARD_CAP, FAN_PROMOTE_EVERY, RIG_POOL_FLOOR } from "../../data/gameConstants.js";
+         addCasuals, FAN_PROMOTE_EVERY, RIG_POOL_FLOOR } from "../../data/gameConstants.js";
 import { hexRingFromCenter } from "../../board/boardHelpers.js";
 //
 // `usedStockIdx` — the per-spirit set of spent stock-slot indices — used to be a
@@ -429,13 +429,25 @@ export function fansFromDeed(ns = {}, ring, base = 0) {
   const centreBonus = ring === 'main' ? 2 : ring === 'pit' ? 1 : ring === 'floor' ? 1 : 0;
   const gain = base + centreBonus;
 
-  let casuals  = Math.min(FAN_CASUAL_CAP, (ns.casuals ?? 0) + gain);
+  // 🎟️ Bounded by the seats the Diehards have not taken, not by a Casual
+  // ceiling of its own — `addCasuals` is the only clamp (gameConstants.js).
+  let casuals  = addCasuals(ns, gain);
   let diehards = ns.diehards ?? FAN_DIEHARD_START;
   let streak   = ns.centerStreak ?? 0;
   let promoted = false;
   if (inCentre) {
     streak += 1;
-    if (streak % FAN_PROMOTE_EVERY === 0 && casuals > 0 && diehards < FAN_DIEHARD_CAP) {
+    // 🤘 NO DIEHARD CEILING OF ITS OWN (Alex, 2026-09-22). The old
+    // `diehards < FAN_DIEHARD_CAP` guard is GONE, not merely satisfied — the
+    // house is what bounds a crowd now, and a dead guard is how a cap gets
+    // silently reinstated by the next reader.
+    // ⭐ PROMOTION IS NET-ZERO ON THE TOTAL — it spends a Casual to make a
+    // Diehard — so it can never overfill the seats, and it is exactly how a
+    // Spirit reaches a full house of Diehards with no Casuals left.
+    // ⚠️ `casuals > 0` STAYS, and it is load-bearing: without a Casual to spend
+    // there is nothing to harden, and dropping it would mint Diehards out of an
+    // empty crowd AND out of the seat budget.
+    if (streak % FAN_PROMOTE_EVERY === 0 && casuals > 0) {
       casuals -= 1; diehards += 1; promoted = true;
     }
   }
