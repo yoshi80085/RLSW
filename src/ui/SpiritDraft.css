@@ -46,3 +46,21 @@
 @media(max-width:850px){.draft-workbench{grid-template-columns:1fr}.draft-arsenal{border-left:0;border-top:1px solid #3a4660}.draft-heading{align-items:start;flex-direction:column;gap:12px}.draft-portraits{grid-template-columns:repeat(4,minmax(0,1fr))}.draft-portrait{height:190px}.draft-portrait-caption strong{font-size:12px}.draft-seats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.draft-portraits{grid-template-columns:repeat(2,minmax(0,1fr))}.draft-roster,.draft-arsenal{padding:18px}.draft-seat strong{font-size:13px}.draft-seat .draft-eyebrow{font-size:8px}.draft-heading h1{font-size:36px}}
 @media(prefers-reduced-motion:reduce){.draft-portrait{transition:none}.draft-portrait:hover:not(:disabled),.draft-portrait.is-selected{transform:none}}
+/* 🎭 The 3D roster (Alex, 2026-09-25) — spiritPickerStage.js draws the standees on one shared canvas. */
+.draft-slot{position:relative;min-width:0}
+.draft-slot>.draft-portrait{width:100%;display:block;-webkit-touch-callout:none;user-select:none}
+.draft-portrait.is-3d{transition:border-color .2s,box-shadow .2s,filter .2s}
+.draft-portrait.is-3d:hover:not(:disabled),.draft-portrait.is-3d.is-selected{transform:none}
+.draft-portrait.is-3d.is-popped{border-color:var(--spirit-color);box-shadow:0 0 28px color-mix(in srgb,var(--spirit-color) 30%,transparent)}
+.draft-portrait.is-3d:disabled{filter:none;opacity:1}.draft-portrait.is-3d:disabled .draft-portrait-caption{opacity:.55}
+.no-halo .draft-portrait-halo{display:none}
+.draft-standee-layer{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:20}
+.draft-story{position:fixed;z-index:30;pointer-events:none;opacity:0;transform:translateY(8px);transition:opacity .28s ease,transform .28s ease;background:linear-gradient(140deg,#233149f2,#0b1221f7);border:1px solid var(--spirit-color,#8fb0ff);border-radius:14px;padding:14px 16px 16px;box-shadow:0 22px 50px #000b,0 0 24px color-mix(in srgb,var(--spirit-color,#8fb0ff) 22%,transparent);font-family:'Saira',sans-serif;color:#e8eef9}
+.draft-story.show{opacity:1;transform:none}
+.draft-story .draft-eyebrow{display:flex;justify-content:space-between}.draft-story .draft-eyebrow i{font-style:normal;color:#ffcf82}
+.draft-story h3{font:600 19px 'Saira',sans-serif;margin:6px 0 1px;color:#f2f6ff}
+.draft-story small{font:10px 'Share Tech Mono',monospace;letter-spacing:1px;color:#adc0dc}
+.draft-story p{font-size:12.5px;line-height:1.7;color:#c4d1e7;margin:8px 0 0}.draft-story .ghost{visibility:hidden}
+.draft-story-stats{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.draft-story-stats span{font:10px 'Share Tech Mono',monospace;letter-spacing:1px;padding:3px 7px;border:1px solid #3d4b66;border-radius:6px;color:#cfdcf2}.draft-story-stats b{color:var(--spirit-color)}
+@media(prefers-reduced-motion:reduce){.draft-story{transition:none}}

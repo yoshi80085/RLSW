@@ -24,6 +24,7 @@ import {
   RANDOM_BATCH_DRAWN,
   SLIME_DROPPED, SLIME_DECAYED, SLIME_CLEARED, SPIRIT_SLID, SLIME_CALLED, ELEVEN_CALLED,
   POSE_SET, POSE_ROUND_BANKED,
+  SANDBOX_SEAT_TAKEN, SANDBOX_REFILLED,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
 import {
@@ -62,6 +63,7 @@ import {
 import { applySlimeDropped, applySlimeDecayed, applySlimeCleared, applySpiritSlid, applySlimeCalled } from "./systems/slime.js";
 import { applyElevenCalled } from "./systems/eleven.js";
 import { applyPoseSet, applyPoseRoundBanked } from "./systems/limelight.js";
+import { applySandboxSeatTaken, applySandboxRefilled } from "./systems/sandbox.js";
 
 /**
  * @param {object} state   plain-JSON GameState (never mutated)
@@ -92,6 +94,10 @@ function reduce(state, action, rng) {
     case SPIRIT_ELIMINATED: return applySpiritEliminated(state, action);
     case SPIRITS_SYNCED:  return applySpiritsSynced(state, action);
     case SPIRIT_PATCHED:  return applySpiritPatched(state, action);
+
+    // -- 🧪 Testing Grounds only (sandbox.js) --
+    case SANDBOX_SEAT_TAKEN: return applySandboxSeatTaken(state, action);
+    case SANDBOX_REFILLED:   return applySandboxRefilled(state, action);
 
     // -- Phase 4: riff-off --
     case RIFF_OFF_STARTED:       return applyRiffOffStarted(state, action, rng);

@@ -5,7 +5,7 @@ import { SONIC_PRESENTATION } from './sonicPresentation.js';
 // Own only the scripted shot. Restore the exact orbit and control preferences
 // after the aftermath, or immediately when reduced motion is requested.
 export function createSonicCamera({ camera, controls, pointFor }) {
-  let shot=null,automatic=true;
+  let shot=null,automatic=true,focusDistance=null;
   const manual=()=>{if(shot){shot.manual=true;shot.returnFrom=null;controls.enableDamping=shot.damping;}};
   const fitPoints=(points,offset,pad=1.4)=>{
     const target=new THREE.Box3().setFromPoints(points).getCenter(new THREE.Vector3());
@@ -19,12 +19,22 @@ export function createSonicCamera({ camera, controls, pointFor }) {
   };
   const restore=()=>{
     if(!shot.manual){camera.position.copy(shot.savedPosition);controls.target.copy(shot.savedTarget);}
+    if(camera.fov!==shot.savedFov){camera.fov=shot.savedFov;camera.updateProjectionMatrix();}
+    focusDistance=null;
     controls.enabled=shot.enabled;controls.enableDamping=shot.damping;
     shot=null;camera.lookAt(controls.target);
   };
-  function update(frame,model,dt,reduced=false) {
+  /**
+   * @param directed 🎬 the battle director's shot for this frame
+   *   (`arenaVisuals.battleShot()` → `battleDirector.js`), or null. It keeps the
+   *   camera even after the overlay has closed — the aftermath's shove and the
+   *   winner's fans are shot with no battle on the frame at all.
+   */
+  function update(frame,model,dt,reduced=false,directed=null) {
     const battle=frame.battle;
-    if(!battle?.volley&&!battle?.swingClash){
+    const live=battle?.volley||battle?.swingClash;
+    if(!live&&!directed){
+      focusDistance=null;
       if(!shot)return false;
       if(reduced||shot.manual||!automatic){restore();return false;}
       if(!shot.returnFrom){shot.returnFrom=camera.position.clone();shot.returnTarget=controls.target.clone();shot.returnTime=0;}
@@ -32,6 +42,7 @@ export function createSonicCamera({ camera, controls, pointFor }) {
       const p=Math.min(1,shot.returnTime/SONIC_PRESENTATION.return),ease=p*p*(3-2*p);
       camera.position.lerpVectors(shot.returnFrom,shot.savedPosition,ease);
       controls.target.lerpVectors(shot.returnTarget,shot.savedTarget,ease);
+      shot.returnFov??=camera.fov;camera.fov=THREE.MathUtils.lerp(shot.returnFov,shot.savedFov,ease);camera.updateProjectionMatrix();
       camera.lookAt(controls.target);
       if(p===1){restore();return false;}
       return true;
@@ -39,12 +50,29 @@ export function createSonicCamera({ camera, controls, pointFor }) {
     if(!shot){
       const damping=controls.enableDamping;
       controls.enableDamping=false;controls.update(); // consume residual orbit motion once
-      shot={savedPosition:camera.position.clone(),savedTarget:controls.target.clone(),enabled:controls.enabled,damping,manual:!automatic};
+      shot={savedPosition:camera.position.clone(),savedTarget:controls.target.clone(),savedFov:camera.fov,enabled:controls.enabled,damping,manual:!automatic};
     }
-    if(shot.key!==battle.key){shot.key=battle.key;shot.returnFrom=null;shot.contact=null;}
+    shot.returnFrom=null;shot.returnFov=null;
+    if(live&&shot.key!==battle.key){shot.key=battle.key;shot.contact=null;}
     controls.enabled=shot.enabled;
-    if(shot.manual||!automatic||reduced){controls.enableDamping=reduced?false:shot.damping;controls.update();return true;}
+    if(shot.manual||!automatic||reduced){focusDistance=null;controls.enableDamping=reduced?false:shot.damping;controls.update();return true;}
     controls.enableDamping=false;
+    if(directed){
+      // ⭐ HARD CUTS BETWEEN SHOTS, a tight follow within one (Alex's dial-in
+      // left `glide` at 0). A cut is what makes the chair → charge → clash
+      // read as coverage rather than a camera wandering about the arena.
+      // 📳 `snap` — a hit-stop's shake lands on the frame it is asked for, or the
+      // glide would smooth it away (arenaVisuals, barrageHitstop).
+      const k=directed.key!==shot.directedKey||directed.snap?1:1-Math.exp(-dt*8);
+      shot.directedKey=directed.key;
+      camera.position.lerp(directed.pos,k);controls.target.lerp(directed.target,k);
+      if(directed.fov&&Math.abs(directed.fov-camera.fov)>.01){camera.fov+=(directed.fov-camera.fov)*k;camera.updateProjectionMatrix();}
+      camera.lookAt(controls.target);camera.updateMatrixWorld();
+      focusDistance=directed.focus??null;
+      return true;
+    }
+    focusDistance=null;
+    if(!live)return true;
     const a=frame.spirits?.find(s=>s.id===battle.attackerId),b=frame.spirits?.find(s=>s.id===battle.defenderId);
     const from=pointFor(a?.num,1),to=pointFor(b?.num,1);
     if(!from||!to)return true;
@@ -119,6 +147,11 @@ export function createSonicCamera({ camera, controls, pointFor }) {
     return true;
   }
   return {update,userStart:manual,userNudge:manual,
-    autoCamera(on){automatic=!!on;if(shot){shot.manual=!automatic;shot.contact=null;}},
-    dispose(){if(shot)restore();},get active(){return !!shot;},get manual(){return !!shot&&(shot.manual||!automatic);}};
+    // A held shot also gives back the lens's own fov at once: switching to the
+    // top-down view mid-bout must not leave it looking down a charge shot's zoom.
+    autoCamera(on){automatic=!!on;if(shot){shot.manual=!automatic;shot.contact=null;
+      if(!automatic&&camera.fov!==shot.savedFov){camera.fov=shot.savedFov;camera.updateProjectionMatrix();focusDistance=null;}}},
+    dispose(){if(shot)restore();},get active(){return !!shot;},
+    /** The distance the director wants sharp, or null (no depth of field). */
+    get focusDistance(){return focusDistance;},get manual(){return !!shot&&(shot.manual||!automatic);}};
 }

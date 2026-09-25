@@ -4,7 +4,12 @@ import { CAMERA_DIRECTOR } from '../board/cameraDirector.js';
 
 // Keep the actual React board in both views: duplicating its targeting and
 // ability layers would let a renderer offer actions the match cannot take.
-export function BoardViewport({ enabled = true, immersive = false, sceneFrame, autoCamera = true, children }) {
+// ⌗ `topView` is the top-down camera (arenaRenderer `topView`): the client owns
+// it, persists it and stamps a bout started under it as realtime. The arena
+// reports back through `onTopView(false)` when the player tilts off its axis.
+// 📌 `onAutoCamera` drives the toolbar's Hold button — the SAME setting as the
+// ☰ Auto camera switch, inverted, never a second one that could disagree.
+export function BoardViewport({ enabled = true, immersive = false, sceneFrame, autoCamera = true, onAutoCamera, topView = false, onTopView, children }) {
   const mount = useRef(null);
   const layer = useRef(null);
   const runtime = useRef(null);
@@ -16,11 +21,11 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
   const [cameraState, setCameraState] = useState(null);
   const latest = useRef({});
   useEffect(() => {
-    latest.current = { sceneFrame, quality, autoCamera };
+    latest.current = { sceneFrame, quality, autoCamera, topView, onTopView };
     runtime.current?.update(sceneFrame);
     runtime.current?.quality(quality);
     runtime.current?.autoCamera(autoCamera);
-  }, [sceneFrame, quality, autoCamera]);
+  }, [sceneFrame, quality, autoCamera, topView, onTopView]);
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
@@ -33,11 +38,14 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
         onReady: () => { if (!cancelled) setStatus('ready'); },
         onQuality: label => { if (!cancelled) setQualityLabel(label); },
         onCamera: state => { if (!cancelled) setCameraState(state); },
+        onTopView: on => { if (!cancelled) latest.current.onTopView?.(on); },
         onError: () => { if (!cancelled) setStatus('3D unavailable. Enable WebGL in your browser, then retry the arena.'); },
       });
       runtime.current.update(latest.current.sceneFrame);
       runtime.current.quality(latest.current.quality ?? 'auto');
       runtime.current.autoCamera(latest.current.autoCamera ?? true);
+      // A saved top-down choice comes back locked, straight from the first frame.
+      if (latest.current.topView) runtime.current.view('tactical');
     }).catch(() => { if (!cancelled) setStatus('3D unavailable. Enable WebGL in your browser, then retry the arena.'); });
     return () => {
       cancelled = true;
@@ -78,6 +86,7 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
       .arena-camera-badge { display:inline-flex; align-items:center; gap:6px; min-height:28px; margin-right:auto; padding:3px 9px; border:1px solid #9dbfe43b; border-radius:14px; background:#050b18b3; color:#9fc9f5; font:400 9px 'Share Tech Mono',monospace; letter-spacing:.4px; white-space:nowrap; pointer-events:none; }
       .arena-camera-badge i { width:6px; height:6px; border-radius:50%; background:#4fc8ff; box-shadow:0 0 7px #4fc8ff; }
       .arena-camera-badge[data-mode="manual"] i { background:#ffd166; box-shadow:0 0 7px #ffd166; }
+      .arena-camera-badge[data-mode="top"] i { background:#c9d8ea; box-shadow:0 0 7px #c9d8ea; }
       .arena-camera-badge[data-mode="resume"] i { background:#7fe3a0; box-shadow:0 0 7px #7fe3a0; }
       .arena-camera-badge b { display:block; width:40px; height:3px; border-radius:2px; background:#1a2c4a; overflow:hidden; }
       .arena-camera-badge b span { display:block; height:100%; background:#ffd166; }
@@ -94,9 +103,20 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
       {cameraBadge(cameraState, autoCamera)}
       {autoCamera&&cameraState?.mode==='battle-manual'&&<button className="btn" onClick={()=>runtime.current?.followBattle()}>Follow battle</button>}
       {status && status !== 'ready' && <span role="status" style={{ color: '#ffd89b', background: '#090e20ee', padding: 6, fontSize: 11 }}>{status}</span>}
-      <button className="btn" title="Straight-down tactical camera" onClick={() => runtime.current?.view('tactical')}>⌗ Top</button>
-      <button className="btn" title="Reset to the arena camera" onClick={() => runtime.current?.view('arena')}>◈ Arena</button>
-      <button className="btn" title="Frame the active spirit" onClick={() => runtime.current?.view('focus')}>◎ Spirit</button>
+      <button className="btn" aria-pressed={topView} title={topView ? 'Top-down view: the camera never wanders and battles play out from here, at full speed. Zoom and pan freely; tilting or turning the camera leaves top-down' : 'Straight-down tactical camera. No wandering, and battles play out from here. Zoom and pan keep it; tilting leaves it'}
+        style={topView ? { color: '#e6f5ff', borderColor: '#75dff0', background: '#123049cc' } : undefined}
+        onClick={() => { onTopView?.(true); runtime.current?.view('tactical'); }}>⌗ Top</button>
+      <button className="btn" title="Reset to the arena camera" onClick={() => { onTopView?.(false); runtime.current?.view('arena'); }}>◈ Arena</button>
+      <button className="btn" title="Frame the active spirit" onClick={() => { onTopView?.(false); runtime.current?.view('focus'); }}>◎ Spirit</button>
+      {/* 📌 STATIONARY, ANYWHERE (Alex, 2026-09-24: "a separate option to keep
+          stationary … from roaming camera angles as well as battle-specific
+          angles … automatically off but can be turned on"). It IS the Auto
+          camera switch turned off — no roaming, no idle drift, no battle shots —
+          so it flips that one setting rather than adding a second. */}
+      {onAutoCamera && <button className="btn" aria-pressed={!autoCamera}
+        title={autoCamera ? 'Hold the camera still wherever it is: no roaming, no battle angles. Off by default' : 'Camera held still: no roaming and no battle angles. Click to let the auto camera move it again'}
+        style={!autoCamera ? { color: '#fff4d6', borderColor: '#ffd166', background: '#3a2c0acc' } : undefined}
+        onClick={() => onAutoCamera(!autoCamera)}>📌 Hold</button>}
       <select aria-label="Arena detail" value={quality} onChange={e => setQuality(e.target.value)}
         style={{background:'#0a102099',color:'#bcd8ed',border:'1px solid #9dbfe43b',borderRadius:4}}>
         <option value="auto">Auto detail</option><option value="high">High detail</option><option value="standard">Standard detail</option>
@@ -104,7 +124,7 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
       <button className="btn" onClick={() => runtime.current?.zoom(0.85)} aria-label="Zoom into arena">+</button>
       <button className="btn" onClick={() => runtime.current?.zoom(1.18)} aria-label="Zoom out of arena">−</button>
       {status.startsWith('3D unavailable') && <button className="btn" onClick={() => { setStatus('Loading arena…'); setAttempt(n => n + 1); }}>Retry arena</button>}
-      <span className="arena-camera-help">{qualityLabel} · click to play · drag to orbit · right-drag to pan · wheel to zoom{autoCamera ? ' · move it to take over' : ''}</span>
+      <span className="arena-camera-help">{qualityLabel} · click to play · drag to orbit · right-drag to pan · wheel to zoom{autoCamera && !topView ? ' · move it to take over' : ''}</span>
     </div>}
   </div>;
 }
@@ -112,6 +132,7 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
 // 📌 Text and bar match the preview's badge. The countdown bar fills toward the
 // moment the camera comes back, measured against the director's own wait.
 function cameraBadge(state, autoCamera) {
+  if (state?.mode === 'top') return <span className="arena-camera-badge" data-mode="top" role="status" aria-live="off"><i />⌗ Top · locked</span>;
   if (!autoCamera || !state || state.mode === 'off' || state.mode === 'sonic') return null;
   const wait = CAMERA_DIRECTOR.resumeAfterMs / 1000;
   const label = state.mode === 'battle-manual' ? '✋ Yours · battle' : state.mode === 'manual' ? `✋ Yours · auto in ${state.resumeInS.toFixed(1)} s`

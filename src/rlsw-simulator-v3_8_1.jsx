@@ -1,7 +1,10 @@
 import { characterId } from "./data/spiritIdentity.js";
 import { SonicBarrageRecord } from './ui/SonicBarrageRecord.jsx';
-import { playBarrageChord, playBarrageFoley, playSustainChord } from './audio/sonicBarrageAudio.js';
-import { BARRAGE_LAUNCH, barrageContact, barrageLanded } from './board/sonicBarrageTiming.js';
+import { playBarrageChord, playBarrageFoley, playSustainChord, playShieldChord, playChordClash, barrageDelay } from './audio/sonicBarrageAudio.js';
+import { playSwingCharge, playSwingStrike } from './audio/swingStrikeAudio.js';
+import { swingBeamPower } from './board/swingClashVisuals.js';
+import { BARRAGE_LAUNCH, barrageContact, barrageLanded, SONIC_GATE, SONIC_DICE } from './board/sonicBarrageTiming.js';
+import { BATTLE_INTRO } from './board/battleRollGate.js';
 import { bushidoLane, bushidoDrawPatch, bushidoBlockers } from "./engine/systems/bushido.js";
 import boardImg from "./board.png";
 import boardOutlineImg from "./board_outline.png";
@@ -62,7 +65,7 @@ import battleSong  from "./music/battle_song.mp3";
 import moshpitSong from "./music/Master_of_Moshpits_song.mp3";   // 🤘 Master of Moshpits cinematic
 import { attackParams, rigFor } from "./engine/systems/attackParams.js";
 import { scheduleSonicVolley, scheduleSonicBarrage } from "./board/sonicPresentation.js";
-import { SWING_TIMING, SWING_BEATS } from './board/swingTiming.js';
+import { SWING_TIMING, SWING_BEATS, SWING_GATE } from './board/swingTiming.js';
 import { SONIC_SEQUENCE, sonicContactTime } from './board/sonicSequence.js';
 import { playSonicBeamAudio } from "./audio/sonicBeamAudio.js";
 import { sonicRig, rigPoolLabel, rigTiers, rigTierSpend, rigSpendable } from "./engine/systems/sonicRig.js";
@@ -114,6 +117,9 @@ import { SHUKUCHI_CD, SHUKUCHI_DB_COST, SHUKUCHI_MAX_HOPS,
 import { canHop, shukuchiLandings, hopIsActivation, hopBudgetPatch,
          shukuchiHopsLeft, SHUKUCHI_SKILL } from "./engine/systems/shukuchi.js";
 import { shukuchiHopped } from "./engine/actions.js";
+// 🧪 Testing Grounds levers — real engine actions so an exported sandbox log still replays.
+import { sandboxSeatTaken, sandboxRefilled } from "./engine/actions.js";
+import { sandboxNeedsRefill, SANDBOX_AP } from "./engine/systems/sandbox.js";
 import { SHUKUCHI_LOOK, ShukuchiArcs, ShukuchiBudget } from "./ui/ShukuchiOverlay.jsx";
 import { BushidoOverlay } from './ui/BushidoOverlay.jsx';
 import { SKILL_TREE, SKILL_BY_ID } from "./data/skillTree.js";
@@ -1112,6 +1118,71 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     try { getAudioCtx(); } catch { /* silent browser */ }
     start?.();
   }
+  // ─── 🎲 WHO THROWS, AND HOW LONG THE TABLE WAITS FOR THEM ─────────────────
+  // Alex, 2026-09-24: "For computer players, don't need to pause to roll their
+  // dice but for human players, give at least 5 seconds before auto rolling."
+  //
+  //  • a BOT throws the instant it is asked — no prompt, no wait;
+  //  • a LOCAL human gets the ROLL button, and it presses itself after 5 s;
+  //  • a REMOTE human's press arrives as a `CUE` frame (server/index.js). This
+  //    table shows who it is waiting on and rolls anyway after 5 s + slack,
+  //    because a dropped cue must cost a beat, never a stalled match.
+  // ⚠️ PRESENTATION ONLY. Every face is already in the verdict; a press decides
+  // WHEN the table sees it. Nothing here touches the engine or the RNG.
+  const ROLL_AUTO_MS = 5000, REMOTE_ROLL_SLACK_MS = 2500;
+  const cueSeenRef = useRef(new Map());   // cues that beat their presentation here
+  const cueWaitRef = useRef(new Map());   // presses this table is waiting on
+  // 📌 Deterministic across tables: both sides reach the same presentation at
+  // the same RNG cursor, so the id names ONE throw on every machine.
+  function battleCueId(kind, v, side) {
+    return `${kind}:${v.attackerId}:${v.defenderId}:${engineRef.current?.rng?.cursor ?? 0}:${v.rerolled ? 1 : 0}:${side}`;
+  }
+  // Whose chair the director's camera sits in: the local player's side of
+  // this battle, else a human's, else the attacker's.
+  function battleViewer(v) {
+    const link = netRef.current;
+    if (link?.mySpiritId === v.defenderId) return 'rival';
+    if (link?.mySpiritId === v.attackerId) return 'attacker';
+    const sp = id => engineRef.current?.spirits?.find(s => s.id === id);
+    return isBot(sp(v.attackerId)) && !isBot(sp(v.defenderId)) ? 'rival' : 'attacker';
+  }
+  function awaitBattleRoll({ id, spiritId, isCurrent, lead, sub, label, color, onRoll }) {
+    const spirit = engineRef.current?.spirits?.find(s => s.id === spiritId);
+    const link = netRef.current;
+    const local = !link || (!link.spectator && link.mySpiritId === spiritId);
+    let fired = false;
+    const fire = (relay) => {
+      if (fired || !isCurrent()) return;
+      fired = true; cueWaitRef.current.delete(id); clearSonicRollPrompt();
+      if (relay && link && !link.spectator) { try { link.client.sendCue('roll', id); } catch { /* the timeout covers it */ } }
+      onRoll();
+    };
+    if (isBot(spirit)) { fire(false); return; }
+    const autoAt = performance.now() + ROLL_AUTO_MS + (local ? 0 : REMOTE_ROLL_SLACK_MS);
+    if (local) {
+      sonicRollRef.current = () => fire(true);
+      setSonicRollPrompt({ id, lead, sub, label, color: color ?? '#66dcff', autoAt });
+      battleTimersRef.current.push(setTimeout(() => fire(true), ROLL_AUTO_MS));
+      return;
+    }
+    if (cueSeenRef.current.has(id)) { cueSeenRef.current.delete(id); fire(false); return; }
+    cueWaitRef.current.set(id, () => fire(false));
+    setSonicRollPrompt({ id, waiting: true, lead: `${spirit?.name ?? 'The Rival'} is rolling…`, sub, color: color ?? '#66dcff', autoAt });
+    battleTimersRef.current.push(setTimeout(() => fire(false), ROLL_AUTO_MS + REMOTE_ROLL_SLACK_MS));
+  }
+  // The remote half of the handshake. A cue for a throw this table has not
+  // reached yet is remembered (bounded), so a fast opponent is not ignored.
+  useEffect(() => {
+    const net = netRef.current;
+    if (!net?.client?.on) return;
+    return net.client.on('CUE', frame => {
+      if (frame.kind !== 'roll') return;
+      const id = String(frame.id ?? ''), waiting = cueWaitRef.current.get(id);
+      if (waiting) return waiting();
+      cueSeenRef.current.set(id, performance.now());
+      while (cueSeenRef.current.size > 24) cueSeenRef.current.delete(cueSeenRef.current.keys().next().value);
+    });
+  }, []);
   const battleTimersRef = useRef([]);   // intro-cinematic setTimeout ids (so a Skip can cancel them)
   useEffect(() => () => {
     sonicAudioRef.current?.();sonicRollRef.current=null;
@@ -1119,8 +1190,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     battleTimersRef.current.forEach(clearTimeout);
   }, []);
   useEffect(() => {
-    if(!battleState?.sonicAttack){sonicAudioRef.current?.();sonicAudioRef.current=null;sonicRollRef.current=null;setSonicRollPrompt(null);}
-  }, [battleState?.sonicAttack]);
+    // Both staged battles share the ROLL prompt and the audio stop — a Swing
+    // must not have its prompt torn down for not being a Sonic.
+    if(!battleState?.sonicAttack&&!battleState?.swingClash){sonicAudioRef.current?.();sonicAudioRef.current=null;sonicRollRef.current=null;setSonicRollPrompt(null);}
+  }, [battleState?.sonicAttack, battleState?.swingClash]);
   const dieSettledRef = useRef({ atk: false, def: false }); // ⛔ one settle chain per die per battle (see handleAtkDieClick)
   // 🎬 Board dive-bomb: triggers when a battle opens, clears after anim finishes
   const [boardDiveBomb, setBoardDiveBomb] = useState(false);
@@ -1236,6 +1309,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     try { return localStorage.getItem('rlsw.autoCamera') !== '0'; } catch { return true; }
   });
   useEffect(() => { try { localStorage.setItem('rlsw.autoCamera', autoCamera ? '1' : '0'); } catch { /* non-fatal */ } }, [autoCamera]);
+  // ⌗ TOP-DOWN VIEW (Alex, 2026-09-24): the camera never wanders while it is
+  // on, and a battle plays out from the same angle at full speed, every beat
+  // still shown but no hit-stops or slow-motion burst. Set by the arena
+  // toolbar's ⌗ Top; cleared by ◈ Arena / ◎ Spirit, or by the ARENA when the
+  // player tilts the camera off the top-down axis (zoom and pan keep it).
+  // Local, like Auto camera. The ref is what a battle reads when it starts.
+  const [topView, setTopView] = useState(() => {
+    try { return localStorage.getItem('rlsw.topView') === '1'; } catch { return false; }
+  });
+  const topViewRef = useRef(topView);
+  useEffect(() => { topViewRef.current = topView; try { localStorage.setItem('rlsw.topView', topView ? '1' : '0'); } catch { /* non-fatal */ } }, [topView]);
 
   // 🎨 STAGE SKIN — which colour scheme the board is wearing. Purely cosmetic
   // and purely LOCAL: this deliberately does NOT ride in the match config or
@@ -1557,6 +1641,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // config rides over the wire, so a testMode flag must never enable it in a room.
   const testMode = !!gameState.testMode && !gameState.net;
   const [devOpen, setDevOpen] = useState(false);
+  // 🆓 FREE PLAY — the acting Spirit is kept topped up (AP, action token,
+  // cooldowns, Db, full kit) so any move can be tried at any moment. Starts ON
+  // for a menu launch (`buildTestingGroundsConfig({ freePlay: true })`) and OFF
+  // for the journey suites, which drive real turns off the same config.
+  // ⚠️ `testMode &&` is load-bearing: the flag must never survive into a room.
+  const [devFreePlay, setDevFreePlay] = useState(() => testMode && !!gameState.freePlay);
+  // 📍 DROP ANYWHERE — the id of the Spirit waiting to be placed. While set, the
+  // next hex click places it (onHexClick checks this BEFORE any other mode).
+  const [devPlaceId, setDevPlaceId] = useState(null);
   // (devEventId removed — Testing Grounds now fires stage FX directly)
   // N5: winner derives from engine state so remote clients see it via N4 relay
   const winner = engineState.winner;
@@ -2425,6 +2518,19 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       }
     }
   }, [acting?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 🧪🆓 FREE PLAY — top the acting Spirit back up after every change.
+  // ⭐ REFILL, NOT BYPASS: the move is paid for through the real gates and then
+  // handed back, so what you test is the code path a player takes
+  // (engine/systems/sandbox.js explains why). ⚠️ Held while a battle resolves —
+  // the token and AP a battle spent must stay spent until its overlay closes,
+  // or a second attack could be armed on top of the first.
+  // 📌 Asks `sandboxNeedsRefill` first, so an idle board logs nothing.
+  useEffect(() => {
+    if (!testMode || !devFreePlay || !acting || winner || battleState) return;
+    if (!sandboxNeedsRefill(engineRef.current, acting.id, SANDBOX_AP)) return;
+    dispatch(sandboxRefilled(acting.id));
+  }, [testMode, devFreePlay, acting?.id, winner, battleState, engineState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 🌀 A NEW TURN IS A NEW ACTIVATION — drop last turn's arcs. ⚠️ Keyed on the
   // ACTING id rather than the round: the Ronin's arcs must not still be hanging
@@ -5777,6 +5883,64 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     else if (kind === 'fp')  { grantFame(id, 3, '🧪 test grant', false); }
   }
 
+  // 🧪🎮 PLAY AS — take the controls of any Spirit, mid-turn, with nobody's turn
+  // ending. The engine rotates the queue (`SANDBOX_SEAT_TAKEN`, so End Turn still
+  // passes to whoever really follows them), then the normal turn START runs so
+  // the incoming Spirit is dealt in instead of inheriting the last one's budget.
+  function devTakeControl(spiritId) {
+    const t = spiritById[spiritId];
+    if (!t || t.knockedOut) { addLog('🧪 That Spirit is out of the match.'); return; }
+    if (acting?.id === spiritId) return;
+    if (battleState || activeEvent || bttpChallenge) { addLog('🧪 Finish the current battle or event first.'); return; }
+    setAction(null);
+    setDevPlaceId(null);
+    // ⚠️ A Spirit still `recovering` from a knockdown would have its new turn
+    // skipped by the recovery effect the moment it became the acting one —
+    // control would bounce straight off it. The sandbox forgives the skip.
+    if (noteStates[spiritId]?.recovering) setNoteField(spiritId, { recovering: false });
+    dispatch(sandboxSeatTaken(spiritId));
+    startNewTurnNotes(spiritId);
+    setTurnStep('chord');
+    setStackCommitDest(null);
+    setPulsingHex(t.num); setTimeout(() => setPulsingHex(null), 1800);
+    addLog(`🧪🎮 Now playing as ${t.name}.`);
+  }
+
+  // 🧪📍 DROP ANYWHERE — arm with a Spirit, then click any hex. Toggling the
+  // same Spirit again disarms. Uses SPIRIT_WARPED (Displace's own action) at
+  // cost 0: a pure position write — no AP, no facing change, no pickup, no
+  // hazard trigger. A dropped Spirit is exactly where you put it, nothing more.
+  function devArmPlace(spiritId) {
+    const t = spiritById[spiritId];
+    if (!t || t.knockedOut) { addLog('🧪 That Spirit is out of the match.'); return; }
+    setAction(null);
+    setDevPlaceId(cur => cur === spiritId ? null : spiritId);
+  }
+  function devPlaceAt(num) {
+    const who = spiritById[devPlaceId];
+    if (!who || who.knockedOut) { setDevPlaceId(null); return; }
+    if (!HEX_BY_NUM[num]) return;
+    const occupant = spirits.find(s => s.num === num && s.id !== who.id && !s.knockedOut);
+    // ⚠️ Stays ARMED on a refusal — the natural next move is to click another hex.
+    if (occupant) { addLog(`🧪 Hex #${num} is taken by ${occupant.name} — pick another.`); return; }
+    dispatch(spiritWarped(who.id, num, 0));
+    setDevPlaceId(null);
+    addLog(`🧪📍 ${who.name} dropped on hex #${num}.`);
+  }
+
+  // 🧪🎚️ JUMP TO A TURN STEP. Chord / Melody re-open the build (the confirm is
+  // lifted, so a second commit is allowed — that is the point of a sandbox);
+  // Move & Act marks the melody confirmed so the action rail lights without one.
+  // 📌 With free play off, Move & Act still has no AP until a melody pays it.
+  function devJumpStep(step) {
+    if (!acting) return;
+    if (battleState) { addLog('🧪 Finish the battle first.'); return; }
+    setNoteField(acting.id, { hasConfirmed: step === 'move_act' });
+    setAction(null);
+    setStackCommitDest(null);
+    setTurnStep(step);
+  }
+
   // 🧪📼 Phase 8a — download the action log as JSON. `{seed, config} → makeInitialState`
   // plus `log` replayed through `applyAction` reproduces this exact game (the
   // engine selftest proves the byte-for-byte guarantee for engine-owned systems).
@@ -8296,6 +8460,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // One clock for the whole live-arena performance. Dice settle before amps
   // fire. Cosmetic timers never draw RNG or apply combat consequences twice.
   function startSonicPresentation(verdict, remoteView = false) {
+    // ⌗ Decided ONCE, here: a bout begun under the top-down view runs at real
+    // speed on every clock that reads it (picture, chords, rules' timers —
+    // sonicBarrageTiming `barrageRealtime`). Presentation only; no draw.
+    if(board3D&&topViewRef.current)verdict={...verdict,realtime:true};
     sonicAudioRef.current?.();sonicAudioRef.current=null;
     battleTimersRef.current.forEach(clearTimeout);
     battleTimersRef.current=[];
@@ -8306,17 +8474,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // shield value before this function exists (§12.0 — Sonic reveals its dice
     // before firing). Pressing ROLL therefore decides WHEN the table sees the
     // result, never what it is, so determinism and replay are untouched.
-    // Only the local attacker is gated. A bot's volley and a remote player's
-    // volley run the old automatic clock, so no turn ever waits on a click that
-    // has to happen on somebody else's screen.
     const attacker=engineRef.current?.spirits?.find(s=>s.id===verdict.attackerId);
+    const defender=engineRef.current?.spirits?.find(s=>s.id===verdict.defenderId);
     const link=netRef.current;
     const mine=!remoteView&&!isBot(attacker)&&!link?.spectator
       &&(!link||link.mySpiritId===verdict.attackerId);
-    const scene={...verdict,sonicId,sonicAttack:true,remoteView,phase:mine?'sonic_armed':'sonic_ready',
-      sonicFame:verdict.hitCount,knockback:verdict.hitCount};
-    battleStateRef.current=scene;setBattleState(scene);setDiceDisplay(null);
-
+    const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false;
     const T=(fn,ms)=>{const timer=setTimeout(()=>{
       if(battleStateRef.current?.sonicId===sonicId)fn();
     },ms);battleTimersRef.current.push(timer);};
@@ -8324,34 +8487,81 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       const current=battleStateRef.current;if(current?.sonicId!==sonicId)return;
       const next={...current,phase:value};battleStateRef.current=next;setBattleState(next);
     };
-    // Everything from the tumble onward is one clock, shared by both paths, so
-    // an armed volley and an automatic volley resolve through identical timing.
-    const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false;
-    const runFromRoll=offset=>{
-      if(verdict.sonicVersion===2){
-        const begin=()=>{
-          const current={...battleStateRef.current,sonicRollStartedAt:performance.now(),sonicReduced:reduced};
-          battleStateRef.current=current;setBattleState(current);
-          try{
-            const ctx=getAudioCtx(),destination=getAudioBuses(ctx).master;
-            const plan={...verdict,shots:verdict.shots.map(s=>({...s,at:BARRAGE_LAUNCH+barrageContact(s.index)}))};
-            const stops=[];
-            sonicAudioRef.current=()=>stops.forEach(stop=>stop());
-            stops.push(playBarrageChord(ctx,plan,verdict.sonicChordNotes,0,1,{reduced,destination}));
-            stops.push(playSustainChord(ctx,plan,verdict.sustainChordNotes,0,1,{reduced,destination}));
-            stops.push(playBarrageFoley(ctx,plan,0,1,{reduced,destination:ctx.destination}));
-          }catch{/* audio is best effort */}
-        };
-        if(offset)T(begin,offset);else begin();
-        return scheduleSonicBarrage({battle:verdict,reduced,schedule:T,phase:p=>{if(p!=='result'||remoteView)phase(p);},offset,
-          launch:()=>{
-            const current={...battleStateRef.current,sonicStartedAt:performance.now()};
-            battleStateRef.current=current;setBattleState(current);
-            setDeckThump({id:verdict.attackerId,key:Date.now()});
-            if(!remoteView)resolveSonicSequence(current);
-          },close:()=>{if(remoteView)closeBattleOverlay();}});
-      }
-      return scheduleSonicVolley({
+    const launch=()=>{
+      const current={...battleStateRef.current,sonicStartedAt:performance.now()};
+      battleStateRef.current=current;setBattleState(current);
+      setDeckThump({id:verdict.attackerId,key:Date.now()});
+      if(!remoteView)resolveSonicSequence(current);
+    };
+
+    if(verdict.sonicVersion===2){
+      // ⭐ TWO THROWS, TWO PRESSES (Alex, 2026-09-22 staged roll; 2026-09-24
+      // "for computer players, don't need to pause … for human players, give
+      // at least 5 seconds before auto rolling"). The Rival's Sustain is the
+      // shield, so it goes FIRST; the attacker is asked at `SONIC_GATE`, which
+      // now leaves the shield's own charge shot a proper hold. Each press is
+      // `awaitBattleRoll` — a bot throws at once, a local human gets a ROLL
+      // button that fires itself after 5 s, and a remote human's press
+      // arrives as a CUE with a timeout behind it.
+      const scene={...verdict,sonicId,sonicAttack:true,remoteView,phase:'sonic_armed_rival',
+        viewer:battleViewer(verdict),sonicFame:verdict.hitCount,knockback:verdict.hitCount};
+      battleStateRef.current=scene;setBattleState(scene);setDiceDisplay(null);
+      const isCurrent=()=>battleStateRef.current?.sonicId===sonicId;
+      const mark=fields=>{if(!isCurrent())return;const next={...battleStateRef.current,...fields};battleStateRef.current=next;setBattleState(next);};
+      const plan={...verdict,poolStart:[SONIC_GATE,0],shots:verdict.shots.map(s=>({...s,at:BARRAGE_LAUNCH+barrageContact(s.index)}))};
+      const stops=[];let shield=null;
+      sonicAudioRef.current=()=>{stops.forEach(stop=>stop());stops.length=0;};
+      const audio=fn=>{try{const ctx=getAudioCtx();fn(ctx,getAudioBuses(ctx).master);}catch{/* audio is best effort */}};
+      const dice=verdict.diceVals.length,sustainDice=verdict.sustainPool?.length??verdict.sustainRolls?.length??0;
+      // 🎯 THE BOUT OPENS ON THE PAIR (Alex, 2026-09-24): the battle director's
+      // two-shot pushes in with speed lines for `BATTLE_INTRO` before anyone is
+      // asked to throw — a bot Rival would otherwise throw on the first frame
+      // and the opening would never be seen. Presentation only; no draw.
+      T(()=>awaitBattleRoll({id:battleCueId('sonic',verdict,'rival'),spiritId:verdict.defenderId,isCurrent,
+        lead:`Raise ${defender?.name??'the Rival'}’s shield`,sub:`${sustainDice} Sustain ${sustainDice===1?'die':'dice'} · the shield ${attacker?.name??'the attacker'} must break`,
+        label:`Roll ${sustainDice}`,color:defender?.color,
+        onRoll:()=>{
+          const now=performance.now();
+          mark({sonicShieldRollAt:now,sonicRollStartedAt:now,sonicReduced:reduced,phase:'sonic_rival_roll'});
+          // 🛡️ The Rival's OWN Sustain chord rises with the shield, the moment
+          // their dice are down — the charge shot is watching it happen.
+          audio((ctx,destination)=>{
+            stops.push(playBarrageFoley(ctx,plan,0,1,{reduced,destination:ctx.destination,pools:[1],diceOnly:true}));
+            shield=playShieldChord(ctx,verdict.sustainChordNotes,{destination,delay:SONIC_DICE.landedAt[1]});
+            stops.push(()=>shield?.stop());
+          });
+          T(()=>phase('sonic_shield'),SONIC_DICE.landedAt[1]*1000);
+          T(()=>{
+            phase('sonic_armed');
+            awaitBattleRoll({id:battleCueId('sonic',verdict,'attacker'),spiritId:verdict.attackerId,isCurrent,
+              lead:'Fire the volley',sub:`${dice} Drive ${dice===1?'die':'dice'} against a ${verdict.shieldValue} shield`,
+              label:`Roll ${dice}`,color:attacker?.color,
+              onRoll:()=>{
+                mark({sonicDriveRollAt:performance.now(),phase:'sonic_roll'});
+                // ⚔️ The attacker's Drive chord fires with the amps, every shot
+                // that lands on the shield CLASHES the two chords together,
+                // and the shield chord cuts when it breaks (or fades if it holds).
+                audio((ctx,destination)=>{
+                  stops.push(playBarrageFoley(ctx,plan,SONIC_GATE,1,{reduced,destination:ctx.destination,pools:[0]}));
+                  stops.push(playBarrageChord(ctx,plan,verdict.sonicChordNotes,SONIC_GATE,1,{reduced,destination}));
+                  stops.push(playChordClash(ctx,plan,verdict.sonicChordNotes,verdict.sustainChordNotes,SONIC_GATE,{reduced,destination}));
+                  const broke=plan.shots[plan.breakIndex];
+                  const end=(broke??plan.shots.at(-1))?.at??BARRAGE_LAUNCH;
+                  shield?.release(barrageDelay(plan,end,SONIC_GATE,reduced)+(broke?0:.35),!!broke);
+                });
+                scheduleSonicBarrage({battle:verdict,reduced,schedule:T,phase:p=>{if(p!=='result'||remoteView)phase(p);},offset:0,
+                  launch,close:()=>{if(remoteView)closeBattleOverlay();}});
+              }});
+          },SONIC_GATE*1000);
+        }}),BATTLE_INTRO*1000);
+      return;
+    }
+
+    // ── The pre-staging volley (sonicVersion < 2): one press, the old clock.
+    const scene={...verdict,sonicId,sonicAttack:true,remoteView,phase:mine?'sonic_armed':'sonic_ready',
+      sonicFame:verdict.hitCount,knockback:verdict.hitCount};
+    battleStateRef.current=scene;setBattleState(scene);setDiceDisplay(null);
+    const runFromRoll=offset=>scheduleSonicVolley({
       count:verdict.diceVals.length,schedule:T,phase,offset,
       charge:()=>{
         try {
@@ -8362,23 +8572,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           });
         } catch { /* the presentation completes even without audio */ }
       },
-      launch:()=>{
-        const current={...battleStateRef.current,sonicStartedAt:performance.now()};
-        battleStateRef.current=current;setBattleState(current);
-        setDeckThump({id:verdict.attackerId,key:Date.now()});
-        if(!remoteView)resolveSonicSequence(current);
-      },
+      launch,
       close:()=>closeBattleOverlay(),
     });
-    };
     if(mine) {
       sonicRollRef.current=()=>{
         if(battleStateRef.current?.sonicId!==sonicId)return;
         phase('sonic_roll');runFromRoll(0);
       };
-      setSonicRollPrompt({sonicId,dice:verdict.diceVals.length,shield:verdict.shieldValue,sustainDice:verdict.sustainPool?.length,
-        defenderName:engineRef.current?.spirits?.find(s=>s.id===verdict.defenderId)?.name??'the Rival',
-        color:attacker?.color??'#66dcff'});
+      setSonicRollPrompt({lead:'Volley charged',sub:`${verdict.diceVals.length} dice · each must beat Sustain ${verdict.shieldValue}`,
+        label:`Roll ${verdict.diceVals.length}`,color:attacker?.color??'#66dcff'});
       return;
     }
     T(()=>phase('sonic_roll'),700);
@@ -9451,17 +9654,68 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   }
 
   function startSwingPresentation(verdict,remoteView=false) {
-
     battleTimersRef.current.forEach(clearTimeout);
     battleTimersRef.current=[];
+    clearSonicRollPrompt();
+    sonicAudioRef.current?.();sonicAudioRef.current=null;
     const key=`swing:${Date.now()}:${verdict.attackerId}`;
-    const scene={...verdict,phase:'swing_attacker',swingKey:key,swingStartedAt:performance.now(),remoteView};
+    // ⭐ TWO THROWS, TWO PRESSES — the same `awaitBattleRoll` as the Sonic, so
+    // both battles feel the same to play (Alex, 2026-09-22). The attacker throws
+    // first; the clock HOLDS at `SWING_GATE` until the Rival's throw, so every
+    // beat after it is scheduled from the Rival's press, not from wall time.
+    // `swingRollAt` / `swingRivalRollAt` are what the 3D board's gated clock
+    // runs on (`arenaVisuals.swingTime`) — the 2026-09-24 "bugged out" freeze
+    // was nothing ever setting them.
+    const scene={...verdict,phase:'swing_attacker',swingKey:key,swingStartedAt:performance.now(),
+      viewer:battleViewer(verdict),remoteView};
     battleStateRef.current=scene;setBattleState(scene);
+    const isCurrent=()=>battleStateRef.current?.swingKey===key;
     const phase=(value)=>{const b=battleStateRef.current;if(b?.swingKey!==key)return;
       battleStateRef.current={...b,phase:value};setBattleState(battleStateRef.current);};
-    for(const [seconds,value] of SWING_BEATS)
-      battleTimersRef.current.push(gt(()=>phase(value),seconds*1000));
-    battleTimersRef.current.push(gt(()=>{if(battleStateRef.current?.swingKey===key)closeBattleOverlay();},SWING_TIMING.close*1000));
+    const mark=fields=>{if(!isCurrent())return;battleStateRef.current={...battleStateRef.current,...fields};setBattleState(battleStateRef.current);};
+    const T=(fn,ms)=>battleTimersRef.current.push(gt(()=>{if(isCurrent())fn();},ms));
+    const spirit=id=>engineRef.current?.spirits?.find(s=>s.id===id);
+    const attacker=spirit(verdict.attackerId),defender=spirit(verdict.defenderId);
+    // 🎸 Each side's OWN Drive stack is what its amp slams into the instrument.
+    // The attacker's is on the verdict (split into spent/left); the Rival's
+    // is read off the live note state — the Swing never spends it.
+    const notes=[[...(verdict.swingChordSpent??[]),...(verdict.swingChordLeft??[])],
+      [...(engineRef.current?.noteStates?.[verdict.defenderId]?.driveStack??[])]];
+    const powers=[swingBeamPower(verdict.atkTotal,verdict.dicePool),swingBeamPower(verdict.defTotal,verdict.defenderDicePool)];
+    const stops=[];sonicAudioRef.current=()=>{stops.forEach(stop=>stop());stops.length=0;};
+    const audio=fn=>{try{const ctx=getAudioCtx();stops.push(fn(ctx,getAudioBuses(ctx).master));}catch{/* audio is best effort */}};
+    // The dice clacks reuse the Sonic foley with a Swing-shaped plan: pool 0
+    // is the attacker's Drive, pool 1 the Rival's, thrown a gate apart.
+    const clackPlan={shots:verdict.diceVals.map((strength,index)=>({strength,index,at:0})),
+      sustainRolls:verdict.defenderDiceVals,poolStart:[0,SWING_GATE],breakIndex:-1};
+    const beat=(value)=>{
+      phase(value);
+      if(value==='swing_attacker_charge')audio((ctx,d)=>playSwingCharge(ctx,notes[0],{power:powers[0],destination:d}));
+      if(value==='swing_rival_charge')audio((ctx,d)=>playSwingCharge(ctx,notes[1],{power:powers[1],destination:d}));
+      if(value==='swing_clash')audio((ctx,d)=>playSwingStrike(ctx,notes[0],notes[1],{powers,destination:d}));
+    };
+    const split=SWING_BEATS.findIndex(([,name])=>name==='swing_rival');
+    // 🎯 The bout opens on the pair first — see the Sonic's `BATTLE_INTRO`.
+    T(()=>awaitBattleRoll({id:battleCueId('swing',verdict,'attacker'),spiritId:verdict.attackerId,isCurrent,
+      lead:'Swing! Roll your Drive',sub:`${verdict.dicePool.length} Drive dice · ${defender?.name??'the Rival'} swings back`,
+      label:`Roll ${verdict.dicePool.length}`,color:attacker?.color,
+      onRoll:()=>{
+        mark({swingRollAt:performance.now()});
+        audio(ctx=>playBarrageFoley(ctx,clackPlan,0,1,{destination:ctx.destination,pools:[0],diceOnly:true}));
+        for(const [seconds,value] of SWING_BEATS.slice(0,split))T(()=>beat(value),seconds*1000);
+        T(()=>{
+          phase('swing_rival');
+          awaitBattleRoll({id:battleCueId('swing',verdict,'rival'),spiritId:verdict.defenderId,isCurrent,
+            lead:`${defender?.name??'The Rival'} swings back`,sub:`${verdict.defenderDicePool.length} Drive dice · Drive against Drive`,
+            label:`Roll ${verdict.defenderDicePool.length}`,color:defender?.color,
+            onRoll:()=>{
+              mark({swingRivalRollAt:performance.now()});
+              audio(ctx=>playBarrageFoley(ctx,clackPlan,SWING_GATE,1,{destination:ctx.destination,pools:[1],diceOnly:true}));
+              for(const [seconds,value] of SWING_BEATS.slice(split+1))T(()=>beat(value),(seconds-SWING_GATE)*1000);
+              T(()=>closeBattleOverlay(),(SWING_TIMING.close-SWING_GATE)*1000);
+            }});
+        },SWING_GATE*1000);
+      }}),BATTLE_INTRO*1000);
   }
 
   function closeBattleOverlay() {
@@ -10853,6 +11107,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
   // ─── HEX CLICK ───────────────────────────────────────────────────────────────
   function onHexClick(num) {
+    // 🧪📍 A pending Testing Grounds drop owns the click before any other mode —
+    // it places ANY Spirit, not just the acting one, so it sits above the gate.
+    if (testMode && devPlaceId) { devPlaceAt(num); return; }
     if (!acting || !canAct) return; // N4/N7: gate — only the acting client drives moves
     // 🪦 CURSED SHAMISEN EXORCISM — removed 2026-08-26. No board token to exorcise.
     if (action === "swing") {
@@ -11802,7 +12059,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 onClick:() => setLiteFx(v => !v) },
               { kind:'toggle', icon:'🎥', label:'Auto camera', color:'#66ddff', on: autoCamera,
                 title: autoCamera ? 'Auto camera is ON — the 3D camera follows moves and battles and drifts when idle. Grab it any time; it comes back 6.5 s after you let go. Click to turn off for good'
-                  : 'Auto camera is OFF — the 3D camera only moves when you move it. Click to have it follow the action again',
+                  : 'Auto camera is OFF (📌 Hold in the arena toolbar) — the 3D camera only moves when you move it: no roaming, no battle angles. Click to have it follow the action again',
                 onClick:() => setAutoCamera(v => !v) },
               /* 🎨 THE SWATCH LIST STAYS A LIST OF SWATCHES. The old picker
                  argued, correctly, that choosing a board colour is a thing you do
@@ -12166,6 +12423,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         devDamage={devDamage}
         devOpen={devOpen}
         devUnlockSkill={devUnlockSkill}
+        actingId={acting?.id ?? null}
+        devTakeControl={devTakeControl}
+        devPlaceId={devPlaceId}
+        devArmPlace={devArmPlace}
+        devFreePlay={devFreePlay}
+        setDevFreePlay={setDevFreePlay}
+        turnStep={turnStep}
+        devJumpStep={devJumpStep}
         noteStates={noteStates}
         setDevOpen={setDevOpen}
         spiritById={spiritById}
@@ -14601,7 +14866,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             )}
             <SonicRollPrompt prompt={sonicRollPrompt} onRoll={rollSonicVolley} />
             <SonicBarrageRecord battle={battleState} />
-            <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera}
+            <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera} onAutoCamera={setAutoCamera} topView={topView} onTopView={setTopView}
               sceneFrame={board3D ? arenaFrame({
                 spirits:spirits.filter(s => !isHiddenBySmoke(s)), noteStates, crowdSpirits:spirits,
                 actingId:acting?.id, turn:engineState.turn.count, battle:battleState,

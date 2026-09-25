@@ -20,9 +20,9 @@ console.log('🎭 standeeCheck — your 2D characters, stood up in acrylic\n');
 
 console.log('§0 the numbers are the dial-in');
 ok('STANDEE is frozen', Object.isFrozen(T));
-ok('STANDEE matches the 2026-09-18 dial-in (1 of 26 levers moved: height 2.6 → 2.8)',
+ok('STANDEE matches the dial-in (2026-09-18: height 2.6 → 2.8; 2026-09-25: cut → body)',
   JSON.stringify(T) === JSON.stringify({
-    cut:'tight', panelLook:'glass',
+    cut:'body', panelLook:'glass',
     height:2.8, thickness:0.1, lip:'lip', lipScale:1.03,
     panelTint:'#9fd8ff', panelOpacity:0.16, gloss:0.92, artLift:0.85,
     edgeColor:'spirit', edgeFixed:'#4fe8ff', edgeGlow:2, edgeSpread:0.35,
@@ -62,14 +62,33 @@ for (const id of IDS) {
     o.tight.art.flat().length >= o.body.art.flat().length,
     `tight ${o.tight.art.flat().length} vs body ${o.body.art.flat().length}`);
 }
+{
+  // 🎯 Alex, 2026-09-25: "Only the immediate physical part of the standee should
+  // be covered in the acrylic layer, other 'effect' areas should be cut off."
+  // Read off the Ronin because he is the one with effects to lose AND a thin
+  // physical part (the shamisen's headstock) that a careless cut would lose too.
+  const shoelace = r => Math.abs(r.reduce((s, [x, y], i) => { const [u, v] = r[(i + 1) % r.length]; return s + x * v - u * y; }, 0)) / 2;
+  const area = rings => rings.reduce((s, r) => s + shoelace(r), 0);
+  const R = STANDEE_OUTLINES.cosmic_ronin, rb = R.body.art.flat(), rt = R.tight.art.flat();
+  ok('Ronin: the lightning off his right side is cut away', Math.max(...rb.map(p => p[0])) < 0.93 && Math.max(...rt.map(p => p[0])) > 0.94,
+    `body reaches x ${Math.max(...rb.map(p => p[0]))}, tight ${Math.max(...rt.map(p => p[0]))}`);
+  ok('Ronin: …but the shamisen headstock, out at the far left, is kept', rb.some(([x, y]) => x < 0.06 && y < 0.35),
+    `leftmost body point x ${Math.min(...rb.map(p => p[0]))}`);
+  ok('Ronin: …and so is his topknot, the top of the figure', Math.min(...rb.map(p => p[1])) < 0.01);
+  for (const id of IDS) {
+    const o = STANDEE_OUTLINES[id];
+    ok(`${id}: the figure is never bigger than everything-in-the-art`, area(o.body.art) <= area(o.tight.art) * 1.01,
+      `body ${area(o.body.art).toFixed(3)} vs tight ${area(o.tight.art).toFixed(3)}`);
+  }
+}
 ok('a Spirit with no traced outline still gets a cut', cutFor('someone_new').art.length === 1 && cutFor('someone_new').w === 1);
 
 console.log('§2 the pure half');
 {
   const o = cutFor('cosmic_ronin');
-  ok('the cut asked for is the one returned', o.art === STANDEE_OUTLINES.cosmic_ronin.tight.art);
-  ok('…and `body` is reachable', cutFor('cosmic_ronin', { ...T, cut:'body' }).art === STANDEE_OUTLINES.cosmic_ronin.body.art);
-  ok('an unknown cut falls back to `tight` rather than throwing', cutFor('cosmic_ronin', { ...T, cut:'nope' }).art === STANDEE_OUTLINES.cosmic_ronin.tight.art);
+  ok('the shipped cut is `body`, the figure alone (Alex, 2026-09-25)', o.art === STANDEE_OUTLINES.cosmic_ronin.body.art);
+  ok('…and `tight` is still reachable', cutFor('cosmic_ronin', { ...T, cut:'tight' }).art === STANDEE_OUTLINES.cosmic_ronin.tight.art);
+  ok('an unknown cut falls back to the SHIPPED cut, never to the lightning', cutFor('cosmic_ronin', { ...T, cut:'nope' }).art === STANDEE_OUTLINES.cosmic_ronin.body.art);
   // ⚠️ y comes out of the tracer from the TOP of the image; the feet must be on 0
   ok('the top of the image is the top of the standee', outlinePoint([0.5, 0], 1, 1, 2.8)[1] === 2.8);
   ok('…and the bottom of the image is the ground', outlinePoint([0.5, 1], 1, 1, 2.8)[1] === 0);

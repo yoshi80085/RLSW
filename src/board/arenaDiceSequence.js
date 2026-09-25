@@ -2,14 +2,44 @@ import * as THREE from 'three';
 import {createCombatDie} from './combatDice.js';
 
 export const ARENA_DICE_TIMING=Object.freeze({roll:3.2,landedHold:.65,gather:2.4,read:2});
+// ⚠️ THESE TWO ARE THE SIMULTANEOUS CASE ONLY — the schedule for `poolStart`
+// [0,0], kept because the legacy single-throw call sites read them directly.
+// They are NOT the gather and read of a staged sequence: a pair whose second
+// pool starts at t=4 gathers at 7.85, not 3.85. Ask `arenaDiceSchedule`.
 export const ARENA_DICE_GATHER_AT=ARENA_DICE_TIMING.roll+ARENA_DICE_TIMING.landedHold;
 export const ARENA_DICE_READ_AT=ARENA_DICE_GATHER_AT+ARENA_DICE_TIMING.gather;
+
+// ⭐ THE TWO POOLS NO LONGER SHARE ONE CLOCK. Each throws when its own Spirit
+// throws (`poolStart`, in this sequence's seconds, `[drive, sustain]`), because
+// the table now watches one side's dice land before the other picks theirs up.
+// 🎯 The gather therefore CANNOT be a module constant: it has to wait for the
+// LAST pool to land, or a Spirit who threw second would watch their dice swept
+// into the total while they were still in the air.
+// 📌 Rounded to the millisecond. Without it the derived beats accumulate binary
+// noise (9.750000000000002), and every downstream `t < beat` comparison at a
+// beat's exact value then answers the opposite of what the table sees.
+export const diceBeat=t=>Math.round(t*1000)/1000;
+// 📌 `timing` is injectable so the dial-in preview can drive THIS function with
+// Alex's numbers rather than a copy of it — the 14-accidentals lesson, where
+// half a reported problem turned out to be in the preview's own re-draw.
+export function arenaDiceSchedule(poolStart=[0,0],timing=ARENA_DICE_TIMING){
+ const t={...ARENA_DICE_TIMING,...timing};
+ const starts=[diceBeat(Number(poolStart?.[0])||0),diceBeat(Number(poolStart?.[1])||0)];
+ const landedAt=starts.map(s=>diceBeat(s+t.roll+t.landedHold));
+ const gatherAt=Math.max(...landedAt);
+ return {poolStart:starts,landedAt,gatherAt,readAt:diceBeat(gatherAt+t.gather),
+  rollingUntil:diceBeat(Math.max(...starts)+t.roll),timing:t};
+}
 const clamp=THREE.MathUtils.clamp,ease=x=>{x=clamp(x,0,1);return x*x*(3-2*x);};
 const Y=new THREE.Vector3(0,1,0);
 const noise=n=>{const v=Math.sin(n*127.1+311.7)*43758.5453;return v-Math.floor(v);};
-export function arenaDieTiming(value,index,pool){
- const seed=index+pool*23+value*.07;
- return {seed,delay:index*.075+pool*.11,flight:.72+noise(seed+7)*.16,dockedAt:ARENA_DICE_GATHER_AT+index*.12+pool*.05+.85};
+// 📌 `pool*.11` survives the staging deliberately: with `poolStart` [0,0] every
+// number below is byte-identical to the simultaneous throw this replaced, so a
+// staged schedule is the only thing that can have changed the look.
+export function arenaDieTiming(value,index,pool,poolStart=[0,0],timing=ARENA_DICE_TIMING){
+ const schedule=arenaDiceSchedule(poolStart,timing),seed=index+pool*23+value*.07;
+ return {seed,delay:schedule.poolStart[pool]+index*.075+pool*.11,flight:.72+noise(seed+7)*.16,
+  dockedAt:schedule.gatherAt+index*.12+pool*.05+.85};
 }
 
 function floorLabel(color,width,height){
@@ -24,10 +54,15 @@ function floorLabel(color,width,height){
 
 // Authored gravity arcs and damped bounces preserve the already-resolved roll.
 // One scene group: these dice use the arena camera, floor and depth buffer.
-export function createArenaDiceSequence({drive=[],sustain=[],driveSides=6,sustainSides=6,defenderTitle='SUSTAIN'}={}){
+// 🎨 EACH PLAYER THROWS DICE IN THEIR OWN COLOUR (Alex, 2026-09-24: "Rival -
+// rolls dice (that player's color of dice)"). The Drive-red / Sustain-blue pair
+// is only the fallback now, for a caller that does not say whose dice these are.
+export function createArenaDiceSequence({drive=[],sustain=[],driveSides=6,sustainSides=6,defenderTitle='SUSTAIN',poolStart=[0,0],timing=ARENA_DICE_TIMING,
+  driveColor='#ff6644',sustainColor='#44aaff'}={}){
+ const schedule=arenaDiceSchedule(poolStart,timing);
  const group=new THREE.Group();group.name='Arena floor dice';const entries=[],labels=[],totals=[];
  const shadowGeometry=new THREE.CircleGeometry(.6,24),shadowMaterial=new THREE.MeshBasicMaterial({color:'#000209',transparent:true,opacity:.48,depthWrite:false});
- for(const [pool,values,sides,color,title] of [[0,drive,driveSides,'#ff6644','DRIVE'],[1,sustain,sustainSides,'#44aaff',defenderTitle]]){
+ for(const [pool,values,sides,color,title] of [[0,drive,driveSides,driveColor,'DRIVE'],[1,sustain,sustainSides,sustainColor,defenderTitle]]){
   const header=floorLabel(color,6.6,.5),sum=floorLabel(color,6.6,.5);
   header.set(`${title} · ${values.length}d${sides}`);header.mesh.position.set(1,.022,pool?6.95:3);sum.mesh.position.set(1,.022,pool?10.4:6.4);group.add(header.mesh,sum.mesh);labels.push(header,sum);totals.push(sum);
   values.forEach((value,index)=>{
@@ -39,7 +74,7 @@ export function createArenaDiceSequence({drive=[],sustain=[],driveSides=6,sustai
    const count=Math.min(6,values.length-Math.floor(index/6)*6);
    const dock=new THREE.Vector3(1+(index%6-(count-1)/2)*1.2,0,(pool?8.25:4.5)+Math.floor(index/6)*1.22);
    const rest=die.group.quaternion.clone(),yaw=new THREE.Quaternion().setFromAxisAngle(Y,(noise(seed+5)-.5)*1.9),landing=rest.clone().premultiply(yaw);
-   entries.push({die,shadow,pool,index,value,origin,landed,dock,rest,landing,...arenaDieTiming(value,index,pool)});
+   entries.push({die,shadow,pool,index,value,origin,landed,dock,rest,landing,...arenaDieTiming(value,index,pool,schedule.poolStart,schedule.timing)});
   });
  }
  let disposed=false;
@@ -47,10 +82,10 @@ export function createArenaDiceSequence({drive=[],sustain=[],driveSides=6,sustai
   if(disposed)return;group.visible=visible;const counts=[0,0],sums=[0,0],terms=[[],[]];
   for(const e of entries){
    const {die,origin,landed,dock}=e,local=time-e.delay,flight=e.flight;
-   const gatherLocal=time-ARENA_DICE_GATHER_AT-e.index*.12-e.pool*.05,gatherP=clamp(gatherLocal/.85,0,1);
+   const gatherLocal=time-schedule.gatherAt-e.index*.12-e.pool*.05,gatherP=clamp(gatherLocal/.85,0,1);
    const rollingEnd=flight+.36+.2+.46;
    let lift=0;die.group.visible=local>=0;e.shadow.visible=die.group.visible;
-   if(time<ARENA_DICE_GATHER_AT){
+   if(time<schedule.gatherAt){
     const travel=clamp(local/(flight+.56),0,1),move=1-(1-travel)**2;
     die.group.position.lerpVectors(origin,landed,move);
     if(local<flight){const p=clamp(local/flight,0,1);lift=2.2*(1-p)+4.2*p*(1-p);}
@@ -71,12 +106,18 @@ export function createArenaDiceSequence({drive=[],sustain=[],driveSides=6,sustai
   }
   for(let i=0;i<2;i++){
    const size=i?sustain.length:drive.length,header=labels[i*2];
-   header.mesh.visible=time>=ARENA_DICE_GATHER_AT;
-   totals[i].mesh.visible=time>=ARENA_DICE_GATHER_AT;
+   // ⭐ The HEADER arrives when THIS pool lands; the TOTAL waits for the pair.
+   // That is the staged read: you can see whose dice are down and how many,
+   // while the arithmetic still happens once, to both sides, at the gather.
+   header.mesh.visible=time>=schedule.landedAt[i];
+   totals[i].mesh.visible=time>=schedule.gatherAt;
    totals[i].set(counts[i]===size?`${sums[i]} ${i&&defenderTitle==='SUSTAIN'?'SHIELD HP':'TOTAL STRENGTH'}`:terms[i].length?`${terms[i].join(' + ')} = ${sums[i]}`:'ADDING…');
   }
-  return {counts,sums,phase:time<ARENA_DICE_TIMING.roll?'rolling':time<ARENA_DICE_GATHER_AT?'landed':time<ARENA_DICE_READ_AT?'gathering':'reading'};
+  return {counts,sums,schedule,
+   phase:time<schedule.rollingUntil?'rolling':time<schedule.gatherAt?'landed':time<schedule.readAt?'gathering':'reading'};
  }
  function dispose(){if(disposed)return;disposed=true;group.removeFromParent();entries.forEach(e=>e.die.dispose());labels.forEach(l=>l.dispose());shadowGeometry.dispose();shadowMaterial.dispose();group.clear();}
- return {group,update,dispose,entries};
+ // `headers` / `totals` are exposed so a check (and the dial-in preview) can
+ // assert WHEN each caption appears — the staged read is half the change.
+ return {group,update,dispose,entries,schedule,headers:[labels[0],labels[2]],totals};
 }

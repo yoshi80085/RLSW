@@ -6,7 +6,7 @@
 > is lives in its own design doc; what it *taught us* lives in `SEQUENCING.md` §B.
 > **This file answers one question: what is true right now?**
 >
-> 📌 **Written 2026-09-04**, last updated **2026-09-17** (the auto camera v2 and the 3D move tiles; earlier: the Ronin's palette and amp voice, the weighted note draw, the beginner finder), when the design set
+> 📌 **Written 2026-09-04**, last updated **2026-09-25** (the 3D Spirit picker and the figure-only standee cut; earlier: the staged-roll stop-gap and the battle director preview; earlier: the auto camera v2 and the 3D move tiles; earlier: the Ronin's palette and amp voice, the weighted note draw, the beginner finder), when the design set
 > reached 37 files and 222,000
 > words and no single view of the game existed. Keep it short or it stops being
 > read — if a section needs a paragraph, it belongs in its own doc with a link
@@ -26,6 +26,28 @@ and plays its defending chord. Dice audio uses SFX. Battle cameras permit manual
 orbit/pan/zoom, with **Follow battle** to resume automatic action tracking.
 
 ---
+
+**2026-09-22 staged roll:** The dice roll one Spirit at a time. 🔊 **Sonic** — the
+defending Rival's **Sustain throws first** (it is what the shield is made of),
+then the attacker's Drive, then both totals, then the amps and the barrage.
+🗡️ **Swing** — the attacker throws, raises the instrument (Figure 1), their own
+Drive cabinet fuels it; then the Rival the same; then the totals and the strike
+(Figure 2). ⭐ A stronger roll draws a bigger, brighter beam, normalised against
+that side's own maximum possible total. A human local Rival presses their own
+ROLL; bots roll on a beat; a remote Rival's press crosses as a `CUE` frame.
+✅ **2026-09-24 WIRED — both battles, both presses, the new camera, the new sounds.**
+A **bot** throws at once; a **local human** gets a ROLL button that fires itself
+after **5 s**; a **remote human's** press arrives as a `CUE` (timeout behind it).
+The Rival's shield shot holds **2.4 s** (`SONIC_SHIELD_HOLD`; the Sonic gate is
+now derived, **6.25**). 🎬 `board/battleDirector.js` films it: dice from your
+chair landing by the fight, a charge shot per Spirit with a depth-of-field pull
+to its amp and fans, the clash square-on, then the shove and the **winner's fans
+reacting**. 🎭 `board/swingStandee.js`: the Swing's stick figures in acrylic,
+holding their hexes, turning side-on and back. 🔊 The Sonic plays the players'
+**own** chords — the Rival's Sustain chord rises with the shield, the Drive
+chord fires, the two **clash** on every hit; the Swing is a **hard** Drive-vs-Drive
+power-chord strike (`audio/swingStrikeAudio.js`). Tuning lives in the preview,
+`.scratch/battle-sequence-preview.html`. Handoff: `claude/battle-director-handoff.md`.
 
 **2026-09-22 presentation:** 3D is the only active board. The 2D switch, stage-skin controls and Pickles introduction/Beginner controls are archived pending a new tutorial structure. Shared SVG targeting remains; Fan hints stay independently available. [Archive and restoration notes](../docs/archive/board-2d-pickles-2026-09-22/README.md).
 
@@ -142,8 +164,17 @@ makes a thing *impossible* rather than weak is a bug, not balance.
 - 🧱 **Refactor foundation** — app shell and crowd drawing extracted; Windows build/render verification restored; lint baseline enforced by `lint:baseline` (334 errors, 16 warnings). Ability/battle journeys, replay coverage and browser profiling remain open. See `docs/refactor-verification.md`
 - 🔊 **The per-lap Sonic tally** — ⭐ **NEW 2026-09-15.** `noteStates[id].pendingSonicAttacks` is written by `combat.js` and now **cleared at the defender's OWN turn end** (`turn.js` → `applyTurnEnded`), so the window is one full lap of rivals at any player count. 🐛 **It was written and never read or reset** — a lifetime tally wearing a per-round name, which made `PROJECTILE_COMBAT_DESIGN.md` §3.5.1's turn-start shield bill a **doc-only rule the game never had**. ⛔ **Nothing CONSUMES it yet**; it is the input §3.5.1 and R12 both want, now correct instead of wrong. `.scratch/sonicTallyCheck.mjs`, 20 assertions, mutation-tested
 - 🎨 **The Face button reads as available** — 🐛 fixed 2026-09-15. Idle was hardcoded at **2.15:1** against every other rail button's 12.04:1, and because `.arail .btn` builds its wash, bloom and left spine out of `currentColor`, the dim colour **put the lamp out** rather than merely greying the label. ⚠️ The inline override is gone entirely (Alex's call), so Face now wears `.btn`/`.btn.on` like Move, Sonic and Swing — **which surrenders the cyan `#44ccff` armed state** for `.btn.on`'s `#88bbff`. One prop restores it; the site says how
-- 🎭 **The Spirits stand on the board as acrylic standees** — ⭐ **NEW 2026-09-18.** Each Spirit's own drawing, cut out of its art, given thickness and stood on a lit base: a neon edge in the Spirit's colour, a clear glass sheet behind the print, and one print seen from both sides (no mirrored art). ⭐ **Facing is the Spirit's own facing, and the FLAT ART is the direction** (Alex, 2026-09-18) — a Spirit walking toward you is a Spirit you are looking at, and the cut edge is what you see from the side. Nothing turns a standee toward the camera, so a rival's back is their back. ⚠️ `yaw = π/2 − facing`, a MINUS: the block pawn's old `facing + π/2` is that mapping mirrored, 90° out on every diagonal, and both pawn kinds now share one function. ⚠️ The one thing the camera may move is PITCH: under the near-overhead tactical view a sheet is a line, so it tips back 35° (`steepLean`, never yaw). Cut `tight` — everything in the art, so the Ronin's lightning is spurs of acrylic. `spiritMiniature`'s block pawns survive only as the fallback for a Spirit with no art. At **Alex's dial-in** (1 of 26 levers: height 2.6 → **2.8** world units, against a 1.86-wide hex). `board/standee.js` + `standeeOutlines.js` (traced from `src/standees/*.png` by `.scratch/trace-standees.py`). `test:standee` **93**, 16/16 mutants caught; the real `mountArena` driven headless with the real art, 12/12
+- 🎭 **The Spirits stand on the board as acrylic standees** — ⭐ **NEW 2026-09-18.** Each Spirit's own drawing, cut out of its art, given thickness and stood on a lit base: a neon edge in the Spirit's colour, a clear glass sheet behind the print, and one print seen from both sides (no mirrored art). ⭐ **Facing is the Spirit's own facing, and the FLAT ART is the direction** (Alex, 2026-09-18) — a Spirit walking toward you is a Spirit you are looking at, and the cut edge is what you see from the side. Nothing turns a standee toward the camera, so a rival's back is their back. ⚠️ `yaw = π/2 − facing`, a MINUS: the block pawn's old `facing + π/2` is that mapping mirrored, 90° out on every diagonal, and both pawn kinds now share one function. ⚠️ The one thing the camera may move is PITCH: under the near-overhead tactical view a sheet is a line, so it tips back 35° (`steepLean`, never yaw). ✂️ **Cut `body` — the physical figure only** (Alex, **2026-09-25**, reversing "cut everything in the art"): no lightning, no glow, no loose drips, on the sheet OR the print; the shamisen's headstock and the topknot stay. `spiritMiniature`'s block pawns survive only as the fallback for a Spirit with no art. At **Alex's dial-in** (1 of 26 levers: height 2.6 → **2.8** world units, against a 1.86-wide hex). `board/standee.js` + `standeeOutlines.js` (traced from `src/standees/*.png` by `.scratch/trace-standees.py`). `test:standee` **93**, 16/16 mutants caught; the real `mountArena` driven headless with the real art, 12/12
+- 🎭 **The select screen shows the standees** — ⭐ **NEW 2026-09-25.** Each roster card is the Spirit's real acrylic standee (`ui/spiritPickerStage.js`, one shared canvas). Hover → it **pops** out of the card; keep hovering (1.3 s) → its **backstory** types on beside it (📖 `data/spiritStories.js`, ⚠️ **all placeholder text**); pick → it spins. No WebGL2 → today's flat art. At Alex's dial-in (2 of 31 levers). `test:spiritpicker` **63**
 - 🎥 **The 3D camera follows the action** — ⭐ **NEW 2026-09-17, reworked the same day (v2).** It stays on the acting Spirit: between actions it changes shot every **20 s** — a close shot (distance 19, tilt 44°), the Spirit's surroundings (it leans toward a rival within 9 rather than framing across the board), a low hero shot. A **move is a slow Ken Burns push-in** that keeps the camera's angle (−11% over 3.6 s, 9° pan, from distance 27). Battles and effects (lasers, pyro, falls, vortex, tentacle) still get their own shots, held 2.3 s. **The wide shot only comes after 60 s of quiet** (no action, new turn or camera grab), and then holds. ⚠️ **Calm by dial-in** (2026-09-18): swing 0.5, drift 0.5°/s, and **breathing OFF** — the slow 0.5°/s drift is the only idle movement left, so it moves, but barely. (Alex turned breathing off in a third one-lever pass the same day.) Dragging, scrolling, pinching or a camera button hands the camera to the player — **a click that picks a hex does not** — and it comes back 6.5 s after the last input. The Sonic shot still owns a volley. ☰ **Auto camera** switch (on by default, per machine); a toolbar badge shows *Auto* / *Yours · auto in N s*. Reduced motion: off. `board/cameraDirector.js`, Alex's dial-in, twice (2026-09-17 then the calmer pass 2026-09-18). `test:cameradirector` **87**. ⚠️ Built while the device shell was down — verified in the cloud on a full copy of the tree (`SEQUENCING.md` §A 26-camtiles)
+- ⌗ **Top-down is an axis, and a battle plays out on it** — ⭐ **NEW 2026-09-24**, reworked the same day. **⌗ Top** looks straight down a fixed axis (`board/topDownView.js`).
+  - **While on it,** the camera never wanders and a battle's director shots are held off: the bout plays from where you are looking.
+  - **Zooming or panning keeps top-down.** Any tilt or turn ends it, and the auto camera comes back after its usual 6.5 s. ◈ Arena / ◎ Spirit also end it.
+  - **A Sonic started under Top runs in real time:** no hit-stops and no slow-motion burst on the picture, the chords or the rules' timers (`barrageRealtime`). Every beat still plays. The ring beam's eased approach is part of how the beam looks and is unchanged. The Swing had no slow motion.
+  - **Saved per machine** (`rlsw.topView`, off by default). Badge: *⌗ Top · locked*.
+- 📌 **Hold keeps the camera still, anywhere** — ⭐ **NEW 2026-09-24.** A toolbar button that is the ☰ **Auto camera** switch turned off: no roaming, no idle drift, no battle angles. Off by default. It is one setting with two buttons, never two settings.
+- 🧱 **Amps, fans and dice are solid** — ⭐ **FIXED 2026-09-24.** Hex tints on the board's SVG layer used to paint over anything standing in front of them. The foreground canvas now copies the arena's own pixels through their silhouettes, above the SVG (`board/solidLayer.js`). Standees behind an amp are hidden by it too. Still see-through by design: the Rival's shield and label cards.
+- `test:topview` **49**.
 - 🟪 **Move tiles you can actually see in 3D** — ⭐ **NEW 2026-09-17.** The hexes the acting Spirit (or its Shadow) can step to glow **magenta** with an outline in the Spirit's own colour, pulse, and lift under the mouse; the board dims slightly while a walk is armed; a row of **step pips** at the pawn shows steps left and greys out when spent. The old 9% white SVG fill is hidden once the arena is ready. `board/moveTiles.js`, fed by `arenaFrame`'s `reach` (the client's own `reachable` sets). Alex's dial-in; the "later this turn" tiles were turned off. `test:movetiles` **41**. Shukuchi's landing tint is unchanged (still SVG only)
 - 🎛️ **A dial pops over the head of the Spirit whose Drive/Sustain changed** — ⭐ **NEW 2026-09-16.** In the 3D arena only; ticks on the pocket's timing, lingers 0.9 s, fades. ⭐ **Every Spirit's Drive and Sustain is now public** — a rival's Drive was shown nowhere before (Alex's call). `board/headDial.js` + `headDialVisuals.js`, fed through `arenaFrame`. Alex's dial-in (all 23 levers left at default). `test:headdial` **67**, and `test:arena`'s presentation suite still passes with the real GLB. ⚠️ Adjacent pawns' dials can overlap from the wide Arena camera — accepted in the dial-in. ⚠️ Same caveat as below: `test:all`, `check:bundle`, `lint:baseline` not run on the device
 - ⏱️ **The Drive/Sustain dials TICK** — ⭐ **NEW 2026-09-16.** A change waits a beat, then steps one block at a time (white flash gained, red flash lost, the number counting along), capped at ~1.1 s for any jump; a turn handoff and reduced motion snap. `ui/dialTick.js` + `ui/ArenaDial.jsx`, Alex's dial-in (every lever left at its default). `test:dialtick` **43 + 19**. ⚠️ **Written while the device shell was down** — both halves passed in the cloud against copies with React/jsdom installed standalone; `test:all`, `test:arena`, `check:bundle` and `lint:baseline` **did not run**
@@ -237,6 +268,21 @@ and only breadth was answered.**
 > anatomy.
 
 
+🚩 **`test:arch` IS RED TOO** (found 2026-09-22). **Eleven modules have no row in
+`ARCHITECTURE.md`** — the five Swing-clash ones and six from the loadout work.
+✅ The Swing five are documented as of 2026-09-22. ⛔ **The six loadout ones are
+an open call**: `loadoutCheck.mjs`, `loadoutUiCheck.jsx`, `ui/SpiritDraft.jsx`,
+`ui/AbilityWallet.jsx`, `data/loadouts.js`, `data/spiritIdentity.js`. A wrong row
+is worse than no row (§B1), so they want the session that built them.
+🎯 Nobody saw it because `test:all` stops on the first red and `test:b0` fails
+long before `test:arch` is reached.
+
+🪦 **AND TWO SUITES WERE ORPHANED** (fixed 2026-09-22): `test:swing` existed and
+`test:all` never called it; `arenaDiceSequenceCheck.mjs` was referenced by **no
+script at all** and had never run. Both are in `test:all` now, alongside the new
+`test:dice` and `test:cue`. ⛔ **All thirteen server smokes (`n2`–`n13`) remain
+unwired** — no npm script runs any of them. Textbook §B3, three times over.
+
 🚩 **`test:b0` AND `test:bushidoui` ARE RED** (2026-09-18, and they pre-date that
 session's work). `b0check.mjs:61` expects a seeded single note to read **Drive 3**
 and the engine says **1** — the 1–5 chord-table rebase that is already an open
@@ -278,3 +324,10 @@ end to end.** Neither is a balance item; both are a test disagreeing with the co
 ⚠️ **The design docs are not machine-checked and drift.** `ARCHITECTURE.md` is the
 only one a suite verifies. Read the rest with suspicion, and when one is stale,
 **say so plainly rather than editing around it.**
+
+**2026-09-24 idle camera:** Approved scratch flow is integrated: speed 1.2, sway 1.3, 6.5-second quiet delay, four-second easing into travel. Every click resets the delay. Battle/action cameras and manual control take priority. Lightning and rock changes remain scratch-only; all nine approved values are saved in `.scratch/arena-storm/approved-settings.json`.
+
+**2026-09-24 Testing Grounds revived:** every seat is human; the 🧪 panel (now on the RIGHT, clear of the Move & Act rail) has 🎮 **Play as** (take any Spirit mid-turn — `SANDBOX_SEAT_TAKEN` rotates the queue, no turn ends), 📍 **Drop** (arm, click any hex — `SPIRIT_WARPED` at cost 0) and 🆓 **Free play** (on from the menu/lobby: the acting Spirit is topped back up — AP to 10, action token, cooldowns, Db, the FULL kit — plus a Chord / Melody / Move & Act step jump). ⭐ Refill, not bypass: costs are paid through the real gates, then handed back. `engine/systems/sandbox.js`, `test:sandbox` **36**. Offline only (N8).
+
+**2026-09-24 the Sonic clash (Alex's beat list):** the ring beam is back at its signed-off `RING_TUNING` — the 2026-09-19 barrage had cut it to slow-mo 18 / burst 2.1 / 16 rings and hidden its shield, which Alex called "far lower quality". Now: each player's dice in **their own colour** (Sonic and Swing); the Rival's Sustain amp throws wide rings that **build** one shield in their colour, as **bright as the roll is strong**; every Drive hit **freezes the action 0.5 s** (hit-stop, the lens shakes) and **bursts / cracks / both** by strength against one Sustain die; the break **shatters in slow motion**; later dice hit the Spirit, each with its stop; then the push. Shots 1.25 s apart. `board/sonicClashVisuals.js`, `sonicBarrageTiming.js` (`SONIC_BEATS`, one reversible clock — audio and consequences ride it). 🎬 **Camera:** chair and side shots are FITTED to both Spirits (the "zooms way in to nothing" bug), and a **two-shot pushes in on the pair with speed lines from the screen border** at the opening (`BATTLE_INTRO` 1.6 s before the first ROLL) and once the dice line up. `board/speedLines.js`. ⏳ **Alex is to try it in the Testing Grounds and report back.** Rules unchanged.
+🐛 **Fixed after his first report (same day):** the opening two-shot stood square to the lane, so two standees facing each other were filmed almost **edge-on** (78° off their print) from **4.8 units** at adjacent range — "pointing at nothing, zoomed in extra far into the stage". It now takes a **three-quarter angle scored on each standee's print** (both ≥ 0.6 square-on) and never frames the pair closer than **8**; every **charge shot** is bent until its standee's print is at most 60° off square. 🔇 **The amps no longer pulse or jitter** — the cabinet scale-thump is gone; live amps light up and hold. `test:battledirector` **38**, `test:sonicfx` asserts no cabinet moves.

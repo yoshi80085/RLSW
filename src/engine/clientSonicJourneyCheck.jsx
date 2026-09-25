@@ -1,4 +1,4 @@
-import { BARRAGE_LAUNCH, barrageLanded } from '../board/sonicBarrageTiming.js';
+import { BARRAGE_LAUNCH, barrageLanded, SONIC_GATE } from '../board/sonicBarrageTiming.js';
 import './clientRenderShim.mjs';
 import { JSDOM } from 'jsdom';
 import { act } from 'react';
@@ -55,28 +55,36 @@ for(let i=0;i<3;i++){
 await click(button('Commit (3 notes'));
 assert.ok(!button('🔊 Sonic')?.disabled,JSON.stringify({title:button('🔊 Sonic')?.title,notes:state.noteStates?.[config.spirits[0].id],a:a.num,b:b.num}));
 await click(button('🔊 Sonic'));await click(document.querySelector(`[data-hex-num="${b.num}"]`));
-const roll=await until(()=>document.querySelector('.sonic-roll-prompt button'),'local attack reaches the ROLL gate');
+// ⭐ 2026-09-24: TWO presses. Both Spirits are human here, so the Rival is
+// asked first (their Sustain IS the shield), then the attacker at the gate.
+const roll=await until(()=>document.querySelector('.sonic-roll-prompt button'),'the Rival is asked to raise the shield');
+assert.match(document.querySelector('.sonic-roll-prompt').textContent,/shield/i,'the first throw is the Rival\'s shield');
 assert.ok(state.battle?.diceHits,'engine verdict exists before ROLL');
 const verdict=JSON.stringify({dice:state.battle.diceVals,hits:state.battle.diceHits});
 const frozen=state.battle;
 assert.ok(frozen.hitCount>0,JSON.stringify(frozen));
-await wait(850);assert.ok(document.querySelector('.sonic-roll-prompt'),'local gate does not auto-roll');
+await wait(850);assert.ok(document.querySelector('.sonic-roll-prompt button'),'a human is given time before the auto-roll');
 assert.equal(JSON.stringify({dice:state.battle.diceVals,hits:state.battle.diceHits}),verdict,'gate does not reroll');
-const sourceOffset=audioSources.length;rollAt=performance.now();
+const sourceOffset=audioSources.length;
 await click(roll);assert.ok(!document.querySelector('.sonic-roll-prompt'),'ROLL is consumed once');
 await click(roll); // stale DOM reference cannot schedule a second presentation
+await wait(SONIC_GATE*1000-400);
+assert.ok(!document.querySelector('.sonic-roll-prompt'),'the attacker is not asked before the shield has had its shot');
+const fire=await until(()=>document.querySelector('.sonic-roll-prompt button'),'the attacker is asked at the gate');
+rollAt=performance.now();await click(fire);
 await until(()=>!document.querySelector('[data-sonic-phase]'),'volley and consequences complete');
 assert.ok(!document.querySelector('.sonic-roll-prompt'),'prompt stays cleared');
 assert.equal(button('🔊 Sonic')?.disabled,true,'action stays spent after presentation');
 assert.ok(moves.length>0,'live game applies knockback');
 const launch=BARRAGE_LAUNCH;
-assert.ok(moves[0].at>=(launch+barrageLanded(frozen))*1000-60,'the Rival cannot move before contact');
+assert.ok(moves[0].at>=(launch-SONIC_GATE+barrageLanded(frozen))*1000-60,'the Rival cannot move before contact (timed from the attacker\'s throw)');
 assert.ok(moves.every(m=>m.phase==='sonic_volley'),'shoves occur during flight, before the result phase');
 assert.ok(moves.at(-1).at-moves[0].at<2500,'the shove is one combined movement after the barrage');
 const voices=audioSources.slice(sourceOffset).filter(n=>n.type==='sawtooth'&&n.stopTime-n.startTime>2);
 assert.deepEqual(voices.map(n=>n.frequency.events[0][0]),sonicChordVoices(frozen.sonicChordNotes,frozen.diceVals.length).map(v=>v.frequency),'mounted game plays the spent Drive chord');
 assert.ok(audioSources.slice(sourceOffset).some(n=>n.type==='square'),'dice landing clacks are scheduled');
 assert.ok(audioSources.slice(sourceOffset).some(n=>n.type==='triangle'),'the defending Sustain chord is scheduled');
+if(frozen.breakIndex>=0)assert.ok(audioSources.slice(sourceOffset).filter(n=>n.type==='square'&&n.frequency.value>0).length>frozen.diceVals.length*3,'the two chords clash on the shield');
 await act(async()=>root.unmount());
-console.log('PASS: live Sonic target, frozen chord/verdict, manual ROLL, combined post-barrage shove, full Drive audio, completion and spent action');
+console.log('PASS: live Sonic target, frozen chord/verdict, Rival-then-attacker ROLLs with a held shield shot, combined post-barrage shove, full Drive audio, completion and spent action');
 process.exit(0);

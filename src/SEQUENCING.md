@@ -35,6 +35,116 @@
 > now (18-coreloop, 19-cheapest). A warning that is always there stops being
 > read — the same failure `check:bundle`'s "6 warnings" taught.**
 
+## 31-picker. The select screen shows the standees, they pop, they tell a story — and the acrylic cuts the figure only — 2026-09-25
+
+Two asks, same day.
+1. *"When the mouse hovers over a character - have it 'pop out' - if it hovers over even longer, have its backstory revealed - place holder story for the time being. Change the buttons so that the 3D standee shows - not just the picture."* Dialled in on `.scratch/spirit-picker-preview.html`: **2 of 31 levers** (`panelLook` → tint; `compare` off, a preview-only switch).
+2. *"The Ronin (possibly others?) have slight details (Ronin's lightning emitting from the body) … Only the immediate physical part of the standee should be covered in the acrylic layer, other 'effect' areas should be cut off."* ⚠️ **Reverses the 2026-09-18 ruling** "cut everything in the art".
+
+### ✅ What shipped
+- 🎭 **`ui/spiritPickerStage.js`** + `SpiritDraft.jsx`'s `SpiritRoster`: each roster card shows `createStandee` (the board piece), drawn by ONE shared transparent canvas on `<body>` into the card's rect plus a 110px bleed.
+  - **Hover:** it pops after 120 ms (×1.3, lifts, turns to face you, edge glow ×2, hex ring) and the others dim.
+  - **Long hover:** after 1.3 s the backstory types on beside the card, with a stat line. Escape dismisses it; keyboard focus is the hover; a long press on touch.
+  - **Pick:** a 360° spin. Reduced motion snaps everything. The locked Spirit is a silhouette and never pops.
+  - ⚠️ **No WebGL2 → today's flat PNG**, so the picker can never go blank (jsdom in `test:loadoutui` takes this path).
+- 📖 **`data/spiritStories.js`** — ALL PLACEHOLDER. A separate file, not a `SPIRIT_DEFS` field: those entries ride every match's state and the netcode.
+- ✂️ **The standee's shipped cut is now `body`** (`STANDEE.cut`), everywhere — board, Swing, picker. `body` was re-traced (`.scratch/trace-standees.py --splice`): glow off (soft pixels further than 0.4% of the height from solid ink), strokes thinner than 0.8% off, loose crumbs off. The print is clipped to the same ring, so the lightning is gone from the print too.
+  - **Per Spirit:** Ronin loses the lightning and the blue haze, keeps the shamisen headstock, pegs and topknot. Monster loses its soft halo and the detached slime drips. Intergalactic 0 loses its orange glow rim. Glamarchy (locked) loses the hair sparks.
+  - `tight` is kept byte-for-byte as the record and as a lever on `standee-preview.html`. An unknown cut now falls back to the SHIPPED cut, never to `tight`.
+
+### 🎓 Findings
+1. ⭐ **The old `body` could not carry the new ruling.** Its 3.5% opening ate the Ronin's headstock and pegs, which are thin but physical. What separates effect from figure is not size alone: **the glow is soft and far from ink; the bolts are thin; the drips are detached.** Three tests, three steps.
+2. **Clip the pop to SCROLLERS, not to `overflow:hidden`.** The workbench is `hidden` for its corners; clipping to it would stop the pop at the panel's edge — the one edge it is meant to break.
+3. **`canUseWebGL` asks the window, not a canvas.** Asking a jsdom canvas for a context prints a "not implemented" error into every run of the suite.
+
+### 🧪 Evidence
+- `test:spiritpicker` **63** (new; 8 mutants, 8 caught after one was closed with a fake-window case). Framing is checked by projecting through a real three camera: feet within 1.5 px of `footPad`.
+- `test:standee` **100** + 1 red (§4, the pre-existing regex against the uncommitted `arenaVisuals.js`, as 30-topdown recorded). Six new assertions on the figure cut (lightning gone, headstock and topknot kept, figure never bigger than `tight`).
+- **In the cloud, real Chromium:** `SpiritDraft` mounted with the real CSS under a scrolling panel — rest, pop, story, pick → loadout, and a scroll that proves the standees clip at the header. Zero page errors. `check:bundle` and a full `main.jsx` bundle: zero warnings. eslint clean on every touched file.
+- 🚩 **Red and not touched:** `test:loadoutui` fails at the note-stock click, *after* the lobby/draft half passes (`click` asserts `disabled === false` on a `<div>`), identically with the old `SpiritDraft.jsx`. `test:arch` §1 still names the five loadout modules.
+
+### ⬅️ NEXT
+- **Alex:** write the real backstories into `data/spiritStories.js` and flip `placeholder:false`.
+- Watch the picker's cost on a low-end machine: it is one extra WebGL context, only while the roster is on screen.
+
+## 30-topdown. Top-down holds its axis, 📌 Hold keeps the camera still, and amps/fans/dice turn solid — 2026-09-24
+
+Two passes, same day.
+1. *"If the camera is set to top-down view, don't let the camera wander … same goes for the battle sequence … no slow motion or anything, but each action still plays out."*
+2. *"Make sure top-down does not 'equal' stationary. Any movement that tilts the axis means not top-down … just zooming in or out … still keeps with top-down view. A separate option to keep stationary … automatically off but can be turned on."* And: *"Make sure amps, fans, and dice are a separate and solid layer of their own — some of the spaces seem to 'shine' through them."*
+
+### ✅ What shipped
+- ⌗ **Top-down is an AXIS** (`board/topDownView.js`, pure):
+  - It is the line from the target to the lens. Dolly and pan keep it; any orbit ends it.
+  - The tolerance is 0.5°, which is float noise only.
+  - While top-down is on, `arenaRenderer` asks neither the director nor the idle flow, and holds the battle lens as if the player had grabbed it.
+  - The first `change` that leaves the axis drops top-down and tells the client (`onTopView(false)`). The auto camera then gets its normal 6.5 s resume.
+  - ◈ Arena / ◎ Spirit still clear it. `rlsw.topView` is saved per machine and is off by default.
+- ⏱️ **A Sonic started under Top plays in real time.** `verdict.realtime` is stamped once, at the start. `barrageRealtime` turns off the hit-stops and the slow break on the picture, the chords and the rules' timers together. The ring beam's own eased approach is part of how the beam looks and is unchanged. The Swing had no slow motion.
+- 📌 **Hold** (arena toolbar) is **the ☰ Auto camera switch, inverted.** Off means no roaming, no idle drift and no battle shots, which is exactly the "stationary" asked for. Hold is off by default because Auto camera defaults ON. There is one setting, never two that could disagree.
+- 🧱 **The solid layer** (`board/solidLayer.js`), with a before/after in `.scratch/solid-layer/`:
+  - The foreground canvas re-draws amps (every tier), fans and the Sonic's floor dice as silhouettes that copy the arena canvas's own pixel.
+  - It then draws the standees on the same depth, so a standee behind an amp is hidden now too.
+
+### 🎓 Findings
+1. ⭐ **"Shining through" was the layer stack, not a material.** The board's SVG is a CSS3D plane between the arena canvas (z 0) and the foreground canvas (z 2). A DOM layer has no depth, so every hex tint painted over whatever stood in front of it on screen. The move tiles had already been moved into WebGL for this reason (`26-camtiles`); the tints never were.
+2. ⭐ **The camera can never go under the board** (`maxPolarAngle` 0.43π). So anything standing on it is in front of the SVG on every pixel they share. That makes "copy the finished pixel above the SVG" exact, with no depth sorting against the DOM at all.
+3. **Copy, don't re-draw.** Sampling the arena canvas at `gl_FragCoord` brings its lighting, bloom and DOF along for free. A lit copy in the foreground would have drifted from the original on the first material change.
+4. **OrbitControls keeps a flick's damping tail in private deltas.** Pressing ⌗ Top mid-tail would tilt the brand-new preset and drop it the same frame, so `frameView` zeroes them first.
+
+### 🧪 Evidence
+**On Alex's machine:**
+- `test:topview` **49** (8 mutants caught across the two passes)
+- `test:cameradirector` 87
+- `test:battledirector` 38
+- `test:movetiles` 41
+- `test:headdial` 67
+- `test:sonicfx`, `test:arena`, `test:swing`, `test:sonicjourney`
+- `check:bundle` **zero warnings**
+
+**In the cloud** (real Chromium, real GLB, every hex magenta):
+- Before and after at the arena camera and a battle's dice.
+- Driven with the mouse: after ⌗ Top, a wheel zoom and a right-drag stay top-down; a left-drag orbit leaves it, and the camera resumes 6.5 s later.
+
+🚩 **Red and not touched:**
+- `test:standee` §4 (the regex fails on the untouched file too)
+- `test:arch` (the six loadout modules)
+- eslint `arenaVisuals.js:511` unused `i`
+
+### ⬅️ NEXT
+- **Alex:** watch it for cost on his machine. It is one extra canvas upload per drawn frame; if it is heavy, gate it to frames where a solid mesh is on screen.
+- **Not solid:** the Rival's shield (translucent by design) and label cards. Hex tints still show through those.
+
+## 29-sandbox. Testing Grounds revived, the ring beam restored, the Sonic clash and the push-in — 2026-09-24
+
+Three asks in one session, in the order Alex made them.
+
+### ✅ What shipped
+- 🧪 **Testing Grounds** — *"take any player and drop them anywhere … use any move at any time"*. All seats human; 🎮 Play as / 📍 Drop / 🆓 Free play + step jump. Two new engine actions (`SANDBOX_SEAT_TAKEN`, `SANDBOX_REFILLED`) so an exported sandbox log still replays. `buildTestingGroundsConfig({ freePlay })` — the menu/lobby pass `true`; the journey suites do not (they drive real turns).
+- 🔊 **The ring beam, restored** — *"bring those back … I didn't want those to be replaced"*. Found in git: signed off 2026-09-13, in the game 09-15 → 09-19, then wrapped by `createSonicBarrageVisuals` with `tuning:{slowmo:18,burst:2.1,ringTail:16}` and its shield hidden. The code itself was never lost — `sonicZigzagVisuals.js` is untouched since 09-15. Nothing live draws the barrage wrapper now.
+- 🛡️ **The Sonic clash** — Alex's beat list, built as `sonicClashVisuals.js` on the restored beam. The freezes are the CLOCK's, not the picture's: `barrageTime` / `barrageSimulationTime` are one exact inverse pair with a hit-stop per contact and a slow break, and the chord clashes, the crack, the push and the result beat were already scheduled through them — so they follow with no edits.
+- 🎬 **The camera** — chair/side shots fitted to both Spirits (`fitDistance`); the two-shot push-in with speed lines (`speedLines.js`, a DOM canvas) at the opening and after the dice line up; player-colour dice.
+
+### 🎓 Findings
+1. ⭐ **"Zooms in to nothing" was a FIXED camera aimed at a FUTURE thing.** The chair stood 6.5 out, 7 up, aimed at where the dice were about to land — so the first second of every bout was empty floor. A shot must be fitted to what is already there.
+2. ⭐ **The quality loss was a `tuning` override at one call site**, not lost code. The ring beam's own defaults were right all along; the barrage passed three smaller numbers to fit its cadence. `sonicBarrageCheck` now asserts the barrage wrapper is not in the live arena.
+3. **The dev panel sat on the Move & Act rail.** Found by driving the sandbox in Chromium: the Face button was unclickable under it. It opens on the right now.
+4. **Another session was editing the tree at the same time** (idle camera, `idleFlow.js`, 11:13). No clash — every edit here was a read-modify-write of the file as it stood — but a cloud copy taken earlier was missing `idleFlow.js`. Re-stage before trusting a cloud copy.
+
+### 🧪 Evidence (Alex's machine unless marked)
+`test:sandbox` 36 (7 mutants caught) · `test:battledirector` 33 (fixed-chair and zoom-to-nothing mutants caught) · `test:sonicfx` (hit-stops, slow break, hit kinds, one ring beam per die, no barrage wrapper) · `test:dice` · `test:cameradirector` 87 · `test:sonicjourney` · `test:swing` · `test:arena` · `test:render` 13 · `test:client` · `test:determinism` 20 · `check:bundle` **zero warnings**. ☁️ Real Chromium (cloud, full tree): menu → Testing Grounds → Play as → Drop → Free play → Face → Sonic, recorded; the clash rendered frame by frame beside the 09-19 barrage.
+🚩 Still red and not touched: `test:journey` (looks for the removed "3D board" button), `test:battlejourney` (old 2D Swing overlay), `test:arch` (the six loadout modules — mine are documented).
+
+### 🐛 First report back, fixed the same day
+*"The very first camera fixture after a Sonic attack is committed is buggy, pointing at nothing, zoomed in extra far into what looks like the stage. Make sure the amp itself isn't 'pulsing' or moving."*
+- 🎓 **Swiftshader hid it twice.** The cloud browser auto-drops to Standard quality, which switches the depth of field OFF, and draws ~1 frame in 2 s — so every earlier capture looked fine. Found by probing the director against the REAL arena headless (every shot, every geometry, projecting each standee and scoring how square-on its print is), then confirmed in Chromium with the downgrade disabled.
+- **Cause:** the two-shot was square to the lane. Two standees facing each other are, from there, two sheets of acrylic seen within ~12° of edge-on; at adjacent range the fit put the lens 4.8 from the floor between them. Same fault in charge shots wherever an amp sits square to the Spirit's facing (0.04 square-on measured for Intergalactic 0 at #12 → #38).
+- **Fix:** `battleDirector.js` takes the pawns' real print facings (`facings`, from `arenaVisuals` `printFacings`), picks the smallest swing off the front side that sees BOTH prints ≥ `twoGood` (.6) — scored on the ray to each standee, since perspective matters at that range — floors the distance at `twoMin` (8), and bends every charge lens with `readable()` to ≤ 60° off a print. Amp cabinets no longer scale (±2.5% jitter while energised + a kick per attack) — the status lights step up and hold.
+- Evidence: `test:battledirector` 38 (§1c new; `twoMin`, `readable` and the search all mutant-caught), `test:sonicfx` (amp scale asserted unchanged through a Sonic; jitter mutant caught), `test:dice`, `test:cameradirector`, `test:arena`, `test:sonicjourney`, `test:swing`, `check:bundle` zero warnings.
+
+### ⬅️ NEXT
+Alex plays it in the Testing Grounds and reports what feels off. The obvious levers: `SONIC_BEATS` (spacing 1.25, hit-stop .5, break rate .3), `SONIC_CLASH_LOOK` (weak/strong split, build rings), `BATTLE_DIRECTOR` two-shot (`pushFrom`, `pushTime`), `SPEED_LINES`, `BATTLE_INTRO`. Crack lines are 1 px WebGL lines — if they read too thin, they want to become meshes.
+
 ## 28-standees. Your 2D characters, stood up in acrylic — 2026-09-18
 
 ✅ **SHIPPED, SAME DAY.** Preview built, dialled in (**1 of 26 levers**: `height`

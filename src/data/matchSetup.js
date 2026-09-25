@@ -29,23 +29,34 @@ export function seatSpirit(def, corner, { cpu = false } = {}) {
 
 /**
  * 🧪 TESTING GROUNDS — the dev sandbox. Seats every PLAYABLE Spirit (one per
- * corner, seat 0 human, the rest CPU) and flips testMode on.
+ * corner) and flips testMode on.
+ *
+ * ⭐ EVERY SEAT IS HUMAN (2026-09-24, Alex: "take any player"). You drive them
+ * all — the panel's 🎮 PLAY AS jumps into any Spirit mid-turn. A bot taking its
+ * turn between your tests moves the board you were setting up. 📌 Every client
+ * journey suite already overrode `cpu:false` on this config by hand; this makes
+ * the sandbox match what the suites were testing all along.
+ *
+ * `freePlay` starts the 🆓 FREE PLAY switch on. The menu and lobby launches pass
+ * it; the journey suites do not, because they drive REAL turns off this config
+ * and a free-play refill would pay every cost they are asserting on.
  *
  * Spirits still in development are excluded on purpose: dropping a half-built
  * kit into the sandbox produces bug reports about a character that was never
  * finished, which is noise, not signal.
  */
-export function buildTestingGroundsConfig({ beginnerMode = true } = {}) {
+export function buildTestingGroundsConfig({ beginnerMode = true, freePlay = false } = {}) {
   const ids = PLAYABLE_ORDER;
   const corners = cornersForCount(Math.max(2, Math.min(4, ids.length)));
   const spirits = corners.map((corner, i) =>
-    seatSpirit(SPIRIT_DEFS[ids[i % ids.length]], corner, { cpu: i !== 0 }));
+    seatSpirit(SPIRIT_DEFS[ids[i % ids.length]], corner, { cpu: false }));
   return {
     spirits,
     mode: "ffa",
     teams: null,
     startingLives: 3,
     testMode: true,
+    freePlay: !!freePlay,
     beginnerMode,
   };
 }

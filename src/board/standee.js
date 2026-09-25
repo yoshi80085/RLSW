@@ -6,7 +6,8 @@ import { characterId } from "../data/spiritIdentity.js";
 // This replaces `spiritMiniature`'s block pawns in `arenaVisuals.js`.
 //
 // ⭐ EVERY NUMBER HERE IS ALEX'S DIAL-IN off `.scratch/standee-preview.html`
-// (2026-09-18): 1 of 26 levers moved — `height` 2.6 → 2.8. Move a number here →
+// (2026-09-18): 1 of 26 levers moved — `height` 2.6 → 2.8 — plus `cut`, ruled
+// in words on 2026-09-25 (ruling 3 below). Move a number here →
 // move it on the page too, or the next dial-in is measured against the wrong
 // defaults. `standeeCheck.mjs` §0 fails if they drift apart.
 //
@@ -23,8 +24,13 @@ import { characterId } from "../data/spiritIdentity.js";
 //  2. LOOK — "make it look acrylic with neon edges - but behind that, a
 //     transparent gloss look". An extruded sheet, a neon ribbon on the cut edge
 //     in the Spirit's colour, and real transmission behind the print.
-//  3. CUT — "cut everything in the art". `standeeOutlines.js` holds both cuts;
-//     `tight` (the default) keeps the Ronin's lightning as spurs of acrylic.
+//  3. CUT — ⚠️ REVERSED 2026-09-25. It was "cut everything in the art" (`tight`:
+//     the Ronin's lightning as spurs of acrylic). Now: "Only the immediate
+//     physical part of the standee should be covered in the acrylic layer, other
+//     'effect' areas should be cut off." So the default is `body` — the figure
+//     with its glow, its bolts and its loose drips cut away, from the print as
+//     well as the sheet (both are built from the same ring). `tight` stays in
+//     `standeeOutlines.js` as the record and as a lever on the preview page.
 //
 // 📌 TWO HALVES, like `moveTiles.js`. The top is pure — no three, no DOM, no
 // clock: where the geometry's points go, what the yaw is, how far a high camera
@@ -34,7 +40,7 @@ import * as THREE from 'three';
 import { STANDEE_OUTLINES } from './standeeOutlines.js';
 
 export const STANDEE = Object.freeze({
-  cut:'tight', panelLook:'glass',
+  cut:'body', panelLook:'glass',
   height:2.8, thickness:0.1, lip:'lip', lipScale:1.03,
   panelTint:'#9fd8ff', panelOpacity:0.16, gloss:0.92, artLift:0.85,
   edgeColor:'spirit', edgeFixed:'#4fe8ff', edgeGlow:2, edgeSpread:0.35,
@@ -55,7 +61,9 @@ const PLAIN_CUT = Object.freeze({ panel:[[[0, 0], [1, 0], [1, 1], [0, 1]]], art:
 export function cutFor(id, T = STANDEE) {
   const o = STANDEE_OUTLINES[characterId(id)];
   if (!o) return { w:1, h:1, foot:1, ...PLAIN_CUT };
-  return { w:o.w, h:o.h, foot:o.foot, ...(o[T.cut] ?? o.tight) };
+  // ⚠️ An unknown cut falls back to the SHIPPED cut, not to `tight` — a typo
+  // must not quietly put the lightning back on.
+  return { w:o.w, h:o.h, foot:o.foot, ...(o[T.cut] ?? o[STANDEE.cut] ?? o.tight) };
 }
 
 /**

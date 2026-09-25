@@ -44,7 +44,7 @@ export default function RLSWSimulator() {
     return <div style={isMobile ? mobileColorStyle : {}}><TitleMenu
       onNormal={() => setMenuRoute('normal')}
       onRiff={() => setMenuRoute('riff')}
-      onTestingGrounds={() => setGameState(buildTestingGroundsConfig())}
+      onTestingGrounds={() => setGameState(buildTestingGroundsConfig({ freePlay: true }))}
     /></div>;
   }
   if (!gameState && menuRoute === 'riff') {

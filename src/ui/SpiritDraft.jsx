@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { SPIRIT_DEFS, ROSTER_ORDER, IN_DEVELOPMENT } from '../data/spirits.js';
 import { CORNER_LABELS } from '../data/corners.js';
 import { abilitiesFor, validLoadout } from '../data/loadouts.js';
+import { canUseWebGL, createSpiritPickerStage, SPIRIT_PICKER } from './spiritPickerStage.js';
 
 export function AbilityInfo({ skill, onClose }) {
   const ref = useRef(null);
@@ -18,6 +19,48 @@ export function AbilityInfo({ skill, onClose }) {
     <p>{skill.desc}</p>
     <button className="draft-confirm" onClick={onClose} autoFocus>GOT IT</button>
   </dialog>;
+}
+
+/**
+ * 🎭 The roster: each card shows the Spirit's real acrylic standee, which POPS on
+ * hover and tells its backstory if you stay (Alex, 2026-09-25). The 3D is drawn by
+ * `spiritPickerStage.js` on one shared canvas; these cards only report hover,
+ * focus and picks to it. ⚠️ No WebGL2 (jsdom in `test:loadoutui`, an old browser,
+ * a lost context at start) → today's flat art, so the picker can never go blank.
+ * 📌 Hover is on the SLOT, not the button: a disabled button (the locked Spirit)
+ * swallows pointer events, and its story should still be readable.
+ */
+function SpiritRoster({ corner, chosen, unlocked, onChooseSpirit }) {
+  const [threeD, setThreeD] = useState(() => canUseWebGL());
+  const stage = useRef(null), cards = useRef(new Map());
+  useEffect(() => {
+    if (!threeD) return undefined;
+    try { stage.current = createSpiritPickerStage(); }
+    // 📌 A failed start (no context, a driver blocklist) is news FROM the outside
+    // world, so it lands like any other external callback — on the next tick.
+    catch { queueMicrotask(() => setThreeD(false)); return undefined; }
+    for (const [id, { el, slot }] of cards.current) stage.current.register(id, el, slot);
+    return () => { stage.current?.dispose(); stage.current = null; };
+  }, [threeD]);
+  const keep = (id, key) => node => { const c = cards.current.get(id) ?? {}; c[key] = node; cards.current.set(id, c); };
+  return <div className={`draft-portraits${threeD && SPIRIT_PICKER.halo === 'off' ? ' no-halo' : ''}`}>{ROSTER_ORDER.map(id=>{
+    const sp = SPIRIT_DEFS[id], locked = IN_DEVELOPMENT.has(id) || !unlocked.has(id);
+    const s = () => stage.current;
+    return <div key={id} className="draft-slot" ref={keep(id, 'slot')}
+      onPointerEnter={()=>s()?.hover(id)} onPointerLeave={()=>s()?.leave(id)}>
+      <button ref={keep(id, 'el')} className={`draft-portrait ${threeD?'is-3d':''} ${chosen===id?'is-selected':''}`} disabled={locked}
+        aria-pressed={chosen===id} aria-describedby={threeD ? 'spirit-story' : undefined}
+        onClick={()=>{ s()?.picked(id); onChooseSpirit(corner,id); }}
+        onFocus={()=>s()?.hover(id)} onBlur={()=>s()?.leave(id)}
+        onKeyDown={e=>{ if (e.key === 'Escape') s()?.dismiss(id); }}
+        onContextMenu={threeD ? e=>e.preventDefault() : undefined}
+        style={{'--spirit-color':sp.color}}>
+        <span className="draft-portrait-halo"/>
+        {!threeD && <><img src={sp.imageSrc} alt="" draggable={false}/><span className="draft-plinth"/></>}
+        <span className="draft-portrait-caption"><strong>{sp.name}</strong><small>{locked?'IN DEVELOPMENT':`${sp.style} / ${sp.speed} speed`}</small></span>
+      </button>
+    </div>;
+  })}</div>;
 }
 
 export function SpiritDraft({ corners, assignments, loadouts, choosingCorner, onChooseCorner, onChooseSpirit,
@@ -52,16 +95,7 @@ export function SpiritDraft({ corners, assignments, loadouts, choosingCorner, on
     </div>
     {corner ? <div className="draft-workbench">
       <div className="draft-roster"><div className="draft-eyebrow">01 / CHOOSE YOUR SPIRIT</div>
-        <div className="draft-portraits">{ROSTER_ORDER.map(id=>{
-          const sp = SPIRIT_DEFS[id], locked = IN_DEVELOPMENT.has(id) || !unlocked.has(id);
-          return <button key={id} className={`draft-portrait ${chosen===id?'is-selected':''}`} disabled={locked}
-            aria-pressed={chosen===id} onClick={()=>onChooseSpirit(corner,id)} style={{'--spirit-color':sp.color}}>
-            <span className="draft-portrait-halo"/>
-            <img src={sp.imageSrc} alt="" draggable={false}/>
-            <span className="draft-plinth"/>
-            <span className="draft-portrait-caption"><strong>{sp.name}</strong><small>{locked?'IN DEVELOPMENT':`${sp.style} / ${sp.speed} speed`}</small></span>
-          </button>;
-        })}</div>
+        <SpiritRoster corner={corner} chosen={chosen} unlocked={unlocked} onChooseSpirit={onChooseSpirit}/>
         <p className="draft-note">Same Spirit, different player. Duplicate picks welcome.</p>
       </div>
       <div className="draft-arsenal">

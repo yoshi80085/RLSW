@@ -186,12 +186,21 @@ export function fanPawn3D({color='#aa88ff',filled=true,seed=0,style=null,look=CR
   return root;
 }
 
+/**
+ * Where a corner's stand stands, and which way it faces the board. Exported
+ * so the battle director can frame a crowd without the crowd being built
+ * (`battleDirector.js` — a charge shot has the Spirit's own fans behind it).
+ */
+export function grandstandPlacement(corner='blue',look=CROWD_LOOK){
+  const signs={blue:[-1,-1],purple:[-1,1],yellow:[1,-1],red:[1,1]}[corner]??[-1,-1];
+  const origin=new THREE.Vector3(signs[0]*10.5,look.standLift,signs[1]*6.25);
+  const direction=origin.clone().setY(0).normalize().negate();
+  return {position:origin.addScaledVector(direction,look.pushOut),yaw:Math.atan2(direction.x,direction.z)};
+}
+
 export function makeGrandstand({corner='blue',color='#8a91ff',diehards=6,casuals=12,style=null,seedOffset=0,look=CROWD_LOOK}={}){
-  const signs={blue:[-1,-1],purple:[-1,1],yellow:[1,-1],red:[1,1]}[corner];
-  const group=new THREE.Group(),origin=new THREE.Vector3(signs[0]*10.5,look.standLift,signs[1]*6.25);
-  const direction=origin.clone().setY(0).normalize().negate();group.position.copy(origin);
-  group.rotation.y=Math.atan2(direction.x,direction.z);group.scale.setScalar(look.standScale);
-  group.position.addScaledVector(direction,look.pushOut);
+  const group=new THREE.Group(),placed=grandstandPlacement(corner,look);
+  group.position.copy(placed.position);group.rotation.y=placed.yaw;group.scale.setScalar(look.standScale);
   const deckMat=new THREE.MeshStandardMaterial({color:'#162439',metalness:.35,roughness:.45});
   const seatMat=new THREE.MeshStandardMaterial({color:'#354767',roughness:.5});
   const railMat=new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:1.3});
@@ -225,6 +234,17 @@ export function makeGrandstand({corner='blue',color='#8a91ff',diehards=6,casuals
   }
   return {group,fans,rows,
     tick:(t,{reduced=false}={})=>fans.forEach(f=>f.userData.tick(t,reduced)),
+    // ⭐ THE CROWD REACTS TO A BOUT (Alex, 2026-09-24: "the winner of the bout
+    // sees their fan's reactions"). `mood` +1 jumps, −1 sags, a tie a polite
+    // bounce; `amount` 0–1 eases it in. Applied ON TOP of `tick`, so it must be
+    // called after it every frame and simply not called once the bout is over.
+    react:(t,mood,amount,{reduced=false}={})=>fans.forEach((f,k)=>{
+      if(reduced||!amount||!mood){f.rotation.x=0;f.rotation.z=0;return;}   // settles back
+      const beat=Math.abs(Math.sin(t*7+k*1.3));
+      f.position.y+=mood>0?amount*mood*beat*.22:amount*mood*.06;
+      f.rotation.x=mood<0?-mood*amount*.35:0;
+      f.rotation.z=mood>0?amount*Math.sin(t*5+k)*.12:0;
+    }),
     speaker:()=>fans[0]?.localToWorld(new THREE.Vector3(0,.65,0))};
 }
 

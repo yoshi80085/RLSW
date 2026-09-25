@@ -43,6 +43,13 @@ already built is fine — say so and move on.
 
 ## 🆕 OPEN — not yet promoted
 
+### ✅ PROMOTED 2026-09-25 → built: `ui/spiritPickerStage.js` + `SpiritDraft.jsx` (handoff `SEQUENCING.md` 31-picker)
+### 2026-09-25 — The Spirit picker: 3D standees, a pop on hover, a backstory on a long hover
+Alex: hovering a character in the selection screen makes it **pop out**; hovering longer
+**reveals its backstory** (placeholder text for now); the cards show the **3D standee**, not the picture.
+🎭 **Picked up the same day** → preview `.scratch/spirit-picker-preview.html` (`npm run dev:spiritpicker`),
+awaiting Alex's dial-in. Handoff: project doc `claude/spirit-picker-handoff.md`. ⛔ Not ported.
+
 ### 2026-09-15 — The Swing hits several targets, and sweeps notes and charges
 Alex: the Swing could hit **multiple targets** in its field of view, and also
 **sweep through a charge or a loose note** occupying the same space.

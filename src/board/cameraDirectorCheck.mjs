@@ -282,13 +282,13 @@ console.log('§3 the renderer wiring');
 {
   const r = read('./arenaRenderer.js');
   ok('renderer builds a director and a subject reader', /createCameraDirector\(\)/.test(r) && /createCameraSubjects\(\{pointFor:/.test(r));
-  ok('the Sonic camera outranks it: the director is only asked when sonicCamera.update returns false', /if\(!sonicCamera\.update\(frame,model,dt,reduced\)\) \{(\s*\/\/[^\n]*)*\s*cameraShot=autoCamera\?director\.update\(/.test(r));
+  ok('the Sonic camera outranks it: the director is only asked when sonicCamera.update returns false', /if\(!sonicCamera\.update\(frame,model,dt,reduced(?:,visuals\.battleShot\(\))?\)\) \{(\s*\/\/[^\n]*)*\s*cameraShot=autoCamera(?:&&!topView)?\?director\.update\(/.test(r));
   ok('subjects are read every frame, before the Sonic check', r.indexOf('subjects.read(frame,now)') > 0 && r.indexOf('subjects.read(frame,now)') < r.indexOf('if(!sonicCamera.update('));
   ok('the director gets the real frame time (its own 100 ms cap), not the 50 ms-capped dt', /director\.update\(\{dtMs:wallDt\*1000,now,/.test(r));
   ok('no controls.update() on a frame the director drives', /if\(cameraShot\?\.driving\) \{[^}]*camera\.lookAt\(controls\.target\);dirty=true;\s*\} else controls\.update\(\);/.test(r));
   ok('the player\'s hands are OrbitControls start/end', /controls\.addEventListener\('start',takeOver\)/.test(r) && /controls\.addEventListener\('end',letGo\)/.test(r) && /removeEventListener\('start',takeOver\)/.test(r));
   ok('a click that picks a hex cannot reach them (keepGameplayClicks still guards the overlay)', /keepGameplayClicks\(overlay\.domElement\)/.test(r) && /OrbitControls\(camera,overlay\.domElement\)/.test(r));
-  ok('toolbar view buttons and zoom count as taking over', /view\(name\)\{sonicCamera\.userNudge\(\);frameView\(name\);director\.userNudge/.test(r) && /zoom\(factor\)\{[^}]*director\.userNudge/.test(r));
+  ok('toolbar view buttons and zoom count as taking over', /view\(name\)\{[\s\S]{0,260}?sonicCamera\.userNudge\(\);frameView\(name\);director\.userNudge/.test(r) && /zoom\(factor\)\{[^}]*director\.userNudge/.test(r));
   ok('mounting frames the arena WITHOUT counting as the player taking over', /resize\(\);frameView\('arena'\);/.test(r));
   ok('reduced-motion rendering keeps drawing while the director moves', /moving=stats\.effects>0\|\|stats\.headDials>0\|\|stats\.moveTiles>0\|\|sonicCamera\.active\|\|!!cameraShot\?\.driving/.test(r));
   ok('narrow screens stretch the director\'s distances like view() does', /tuneDirector\(\);dirty=true;/.test(r) && /CAMERA_DIRECTOR\[key\]\*k/.test(r));

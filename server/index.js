@@ -488,6 +488,29 @@ wss.on("connection", (ws, req) => {
         return broadcast(room, { t: "RIFF", seatId: seat.seatId, frame }, { except: ws });
       }
 
+      // ─── PRESENTATION CUES (see src/board/battleRollGate.js) ──────────────
+      // A staged battle holds its clock until a ROLL press that may belong to
+      // a player on another machine. That press is PRESENTATION — both
+      // verdicts are frozen before the dice are even built — so a cue decides
+      // WHEN a table sees a roll, never what it is.
+      //
+      // ⚠️ IT NEVER ENTERS room.log, for the same reason RIFF does not: the
+      // log is a lockstep record replayed in full to every joiner, and a cue
+      // changes no state to replay. Logging it would burn maxLog on timing
+      // trivia and hand a late joiner somebody else's dead button presses.
+      //
+      // ⚠️ AND A LOST CUE MUST NEVER STALL A MATCH. The receiving client runs
+      // its own timeout and rolls anyway, so this frame is an OPTIMISATION on
+      // a path that already works without it — which is the only safe shape
+      // for a turn that would otherwise wait forever on a dropped packet.
+      case "CUE": {
+        if (!room || room.phase !== "playing" || !seat) return;
+        const kind = String(f.kind ?? "").slice(0, 24);
+        if (!kind) return;
+        return broadcast(room, { t: "CUE", seatId: seat.seatId, kind,
+          id: String(f.id ?? "").slice(0, 64) }, { except: ws });
+      }
+
       // Who currently has the floor. Held on the room so a late joiner or a
       // rejoin after a wifi blip learns whose turn it is without waiting for
       // the next hand-over — the same reason seats and phase live here.

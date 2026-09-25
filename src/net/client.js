@@ -125,6 +125,11 @@ export function makeNetClient({ url, WebSocketImpl, storage, appVersion } = {}) 
     startGame(config, { seatMap, botSeats } = {}) { client.send({ t: "START_GAME", config, seatMap, botSeats }); }, // N3
     sendAction(action, cursorBefore) { client.send({ t: "ACTION", action, cursorBefore }); },                       // N4
     sendLogLine(text) { client.send({ t: "LOG_LINE", text }); },                                                    // N5
+    // A staged battle's ROLL press, relayed so the other tables see the dice
+    // leave the hand at the moment the player threw them. ⚠️ PRESENTATION
+    // ONLY and never logged — see the CUE case in server/index.js. A cue that
+    // never arrives costs a timeout, not a stalled match.
+    sendCue(kind, id) { client.send({ t: "CUE", kind, id }); },
     requestCatchUp() { client.send({ t: "REQUEST_CATCHUP" }); },                                                    // N8: desync recovery
 
     /** leave the room for good — forget the seat, close the socket */

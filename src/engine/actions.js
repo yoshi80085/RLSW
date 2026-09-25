@@ -613,3 +613,18 @@ export function randomBatchDrawn(count) {
 export function headlinerChanged(spiritId) {
   return { type: HEADLINER_CHANGED, spiritId };
 }
+
+// ── 🧪 Testing Grounds (sandbox only — see engine/systems/sandbox.js) ─────────
+// ⚠️ NOT GAME RULES. The client dispatches these only under `testMode`, which is
+// hard-off online (N8). They are actions at all so an exported sandbox log still
+// replays byte-for-byte.
+export const SANDBOX_SEAT_TAKEN = "SANDBOX_SEAT_TAKEN";
+/** 🧪 "Play as": rotate the turn queue so `spiritId` acts now, mid-turn, no ticks. */
+export function sandboxSeatTaken(spiritId) {
+  return { type: SANDBOX_SEAT_TAKEN, spiritId };
+}
+export const SANDBOX_REFILLED = "SANDBOX_REFILLED";
+/** 🧪 Free play: top the acting Spirit's AP, token, cooldowns, Db and kit back up. */
+export function sandboxRefilled(spiritId, ap) {
+  return ap == null ? { type: SANDBOX_REFILLED, spiritId } : { type: SANDBOX_REFILLED, spiritId, ap };
+}

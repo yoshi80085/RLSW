@@ -1,17 +1,30 @@
-// The Sonic volley's one player input. It is PRESENTATION ONLY: the engine has
-// already rolled and stored every face before this mounts (§12.0 — the dice are
-// fully revealed before firing), so pressing ROLL decides *when* the table sees
-// the result, never what it is. Nothing here dispatches an action or touches
-// the seeded random stream.
+import { useEffect, useState } from 'react';
+
+// ─── 🎲 THE BATTLE ROLL PROMPT — both staged battles, both throws ───────────
+// PRESENTATION ONLY: the engine has already rolled and stored every face before
+// this mounts, so pressing ROLL decides *when* the table sees the result, never
+// what it is. Nothing here dispatches an action or touches the seeded stream.
 //
-// Only the local attacker is gated. Bot and remote volleys never mount this, so
-// a match can never stall waiting on somebody else's click.
+// ⭐ 2026-09-24: one prompt for every throw in a Sonic or a Swing — the Rival's
+// shield, the attacker's volley, either side's Swing. `prompt` says WHO is
+// rolling and WHY (`lead`/`sub`), and:
+//   • a local human sees a ROLL button with a countdown — Alex: "give at least
+//     5 seconds before auto rolling" (the client owns the timer; `autoAt` is
+//     only what the countdown reads);
+//   • a remote human's throw shows `waiting` — the same card, no button;
+//   • a bot never mounts this at all.
 export function SonicRollPrompt({ prompt, onRoll }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!prompt?.autoAt) return;
+    const timer = setInterval(() => tick(n => n + 1), 250);
+    return () => clearInterval(timer);
+  }, [prompt?.autoAt]);
   if (!prompt) return null;
-  const { dice = 0, shield = 0, sustainDice, defenderName = 'the Rival', color = '#66dcff' } = prompt;
-  const pool = `${dice} ${dice === 1 ? 'die' : 'dice'}`;
+  const { lead = 'Roll', sub = '', label = 'Roll', color = '#66dcff', waiting = false, autoAt = null } = prompt;
+  const left = autoAt == null ? null : Math.max(0, Math.ceil((autoAt - performance.now()) / 1000));
   return (
-    <div className="sonic-roll-prompt" role="group" aria-label="Sonic volley roll">
+    <div className="sonic-roll-prompt" role="group" aria-label={waiting ? lead : `${lead} — roll`} data-roll-waiting={waiting ? "" : undefined}>
       <style>{`
         .sonic-roll-prompt {
           position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
@@ -46,12 +59,14 @@ export function SonicRollPrompt({ prompt, onRoll }) {
         }
       `}</style>
       <div className="srp-copy">
-        <span className="srp-lead">Volley charged</span>
-        <span className="srp-sub">{pool} · {sustainDice!=null?<>{sustainDice} Sustain dice form {defenderName}’s shield</>:<>each must beat <b>Sustain {shield}</b> on {defenderName}</>}</span>
+        <span className="srp-lead">{lead}</span>
+        <span className="srp-sub">{sub}{left != null ? <> · <b>{waiting ? `rolls in ${left}s` : `auto-roll in ${left}s`}</b></> : null}</span>
       </div>
-      <button type="button" style={{ '--srp-accent': color }} onClick={onRoll} autoFocus>
-        Roll {dice}
-      </button>
+      {waiting ? null : (
+        <button type="button" style={{ '--srp-accent': color }} onClick={onRoll} autoFocus>
+          {label}
+        </button>
+      )}
     </div>
   );
 }

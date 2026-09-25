@@ -36,7 +36,14 @@ function standRowCol(i) {
     if (i < start + n) return { row, col: i - start, n };
     start += n; row++;
   }
-  return null;
+  // ⚠️ PAST THE AUTHORED ROWS, KEEP STACKING at the back row's width (as
+  // `grandstandRowSpan` already does). This returned null, and the crowd
+  // became 5 × 6 = 30 seats (`CROWD_DRAWN_MAX`) against these 20 — so the
+  // flat stand's empty-seat markers read `seat.x` off null and took the
+  // whole Game render down (found by `clientSwingJourneyCheck`, 2026-09-24).
+  if (!Number.isFinite(i) || i < 0) return null;
+  const n = STAND_ROWS[STAND_ROWS.length - 1];
+  return { row: row + Math.floor((i - start) / n), col: (i - start) % n, n };
 }
 
 // Seat i → { row, x, y }. frontR = radius of row 0 from the hub; seatGap is

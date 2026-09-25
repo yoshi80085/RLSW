@@ -38,7 +38,11 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
     battle: battle && visible.has(battle.attackerId) && visible.has(battle.defenderId)
       ? { attackerId:battle.attackerId, defenderId:battle.defenderId,
           phase:battle.phase, sonic:!!battle.sonicAttack, round:battle.round ?? 1,
+          // ⚠️ The two ROLL marks MUST cross into the frame: `arenaVisuals`
+          // runs both staged clocks off them, and a frame without them is a
+          // battle frozen at t=0 (the 2026-09-24 "bugged out" report).
           ...(battle.swingClash ? {swingClash:true,key:battle.swingKey,swingStartedAt:battle.swingStartedAt,
+            swingRollAt:battle.swingRollAt,swingRivalRollAt:battle.swingRivalRollAt,viewer:battle.viewer,
             diceVals:[...battle.diceVals],defenderDiceVals:[...battle.defenderDiceVals],
             dicePool:[...battle.dicePool],defenderDicePool:[...battle.defenderDicePool],
             atkTotal:battle.atkTotal,defTotal:battle.defTotal,damage:battle.damage,tied:battle.tied,
@@ -49,6 +53,11 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
             dicePool:[...(battle.dicePool ?? [])], diceVals:[...(battle.diceVals ?? [])],
             diceHits:[...battle.diceHits], shieldValue:battle.shieldValue,
             sonicVersion:battle.sonicVersion, sonicRollStartedAt:battle.sonicRollStartedAt,
+            sonicShieldRollAt:battle.sonicShieldRollAt, sonicDriveRollAt:battle.sonicDriveRollAt,
+            // Whose chair the director films from — the local player's side.
+            viewer:battle.viewer,
+            // ⌗ Top-down bout: no hit-stops, no slow burst (sonicBarrageTiming).
+            realtime:!!battle.realtime,
             sustainRolls:[...(battle.sustainRolls??[])], sustainPool:[...(battle.sustainPool??[])],
             shots:battle.shots?.map(s=>({...s})), breakIndex:battle.breakIndex,
             shieldRemaining:battle.shieldRemaining,strengthThrough:battle.strengthThrough,

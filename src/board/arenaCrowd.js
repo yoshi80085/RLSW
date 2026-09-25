@@ -29,6 +29,13 @@ export function createArenaCrowd(scene){
   update();
   return {group,update,
     tick(time,options){for(const stand of stands.values())stand.tick(time,options);},
+    /** A bout's reaction: `winnerId`'s stand jumps, `loserId`'s sags, or both bounce on a tie. */
+    react(time,{winnerId=null,loserId=null,tie=false,amount=1}={},options={}){
+      for(const stand of stands.values()){
+        const mood=tie?.35:stand.owner&&stand.owner===winnerId?1:stand.owner&&stand.owner===loserId?-1:0;
+        stand.react(time,mood,amount,options);
+      }
+    },
     speaker(id){if(!group.visible)return null;const stand=[...stands.values()].find(s=>s.owner===id);if(!stand)return null;group.updateWorldMatrix(true,true);return stand.speaker()??stand.group.localToWorld(new THREE.Vector3(0,.5,0));},
     get count(){return [...stands.values()].reduce((sum,s)=>sum+s.fans.length,0);},
     dispose(){for(const stand of stands.values())disposeGrandstand(stand);stands.clear();group.removeFromParent();},
