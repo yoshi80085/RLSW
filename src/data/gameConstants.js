@@ -516,6 +516,35 @@ export function poseFpMaxFor(winCondition) {
 // Sustain Stack may STILL pose: they just do it with nothing between them and
 // the next swing. Their funeral.
 export const POSE_SUSTAIN_COST = 1;
+
+// ─── 🔦 THE FOUR SPOTLIGHTS (Alex, 2026-09-25) ──────────────────────────────
+// One light per corner, each OWNED by the seat in that corner, each parked on
+// one hex of its own quarter for a whole round and stepping one hex at round
+// end. Rules live in `engine/systems/spotlights.js`; these are its numbers.
+// 🧊 BALANCE IS FROZEN (CLAUDE.md) — every number below is a first placeholder,
+// written down so it can be found, not a tuned value.
+//
+// ⚠️ A POSE NO LONGER DROPS THE GUARD TO NOTHING — anywhere, the Limelight
+// included. It was "no Sustain roll at all"; Alex replaced it with Sustain −1.
+// `attackParams` folds this into `defStat` and hands the reducer `posing:false`,
+// so the reducer's legacy zero-shield branch only ever runs for old replays.
+export const POSE_SUSTAIN_PENALTY = 1;
+// Striking a pose under a spotlight costs this many Sustain notes, paid on the
+// spot (the Limelight keeps its own per-round toll above). No Fame is paid.
+export const SPOTLIGHT_POSE_SUSTAIN_COST = 1;
+// Attacking from under your OWN light: +1 Drive for that attack, i.e. one more
+// die in the pool. It is positional, so it cannot be banked or carried.
+export const SPOTLIGHT_HOME_DRIVE = 1;
+// Posing under your own light heals by how hurt you are (Alex's ladder):
+// 10+ Vibe left → +1, 5–9 → +2, 1–4 → +3. Always clamped to maxVibe.
+export const SPOTLIGHT_HEAL_LADDER = [
+  { minVibe: 10, heal: 1 },
+  { minVibe: 5,  heal: 2 },
+  { minVibe: 0,  heal: 3 },
+];
+// Posing under a RIVAL's light steals this many of their Casual fans, never
+// Diehards. Fewer if they have fewer, or if your house is full.
+export const SPOTLIGHT_STEAL_CASUALS = 2;
 // FP-per-life scales with player count: fewer players → more FP per life.
 // 2P → 8, 3P → 7, 4P → 6.  fameToWin = startingLives × fpPerLife(playerCount).
 export function fpPerLife(playerCount) { return Math.max(5, 10 - playerCount); }

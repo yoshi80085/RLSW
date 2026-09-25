@@ -112,7 +112,14 @@ export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
 
   const sustainBefore = ns.sustainStack ?? [];
   const pendingAttacks = Math.max(0, ns.pendingSonicAttacks ?? 0);
-  const frayAmount = Math.min(SUSTAIN_FRAY_CAP, Math.max(1, pendingAttacks));
+  // 🪦 NO NATURAL DECAY (Alex, 2026-09-25): *"It shouldn't just get lost every
+  // round like that."* This line was `Math.max(1, pendingAttacks)`, which billed
+  // one Sustain note at EVERY turn start whether or not anyone had fired at you.
+  // In play that read as armour leaking for no reason — the only trace was a log
+  // line and the dial ticking down. ⚠️ Do not restore the `max(1, …)` floor: a
+  // quiet turn now costs nothing, and only Sonic volleys you actually took bill
+  // the shield (one note per volley, capped at SUSTAIN_FRAY_CAP).
+  const frayAmount = Math.min(SUSTAIN_FRAY_CAP, pendingAttacks);
   // One note MUST survive both turn-start upkeep and Swing fray. Otherwise a
   // volley cascade can force zero defence instead of making it a player's
   // choice. Trim the tail so the root and its board hunt remain stable.

@@ -1,10 +1,13 @@
 import { rigRadius, rigTiers } from '../engine/systems/sonicRig.js';
+import { playerColor } from '../data/corners.js';
+
+const SPOT_CORNERS = ['blue', 'purple', 'yellow', 'red'];
 
 // This is a presentation boundary, not a second engine. Callers remove smoke-
 // hidden spirits BEFORE passing them here; no note stock or hidden state crosses.
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
-  bots = [], spotlight, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, crowdSpirits = spirits }) {
+  bots = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, crowdSpirits = spirits }) {
   const visible = new Set(spirits.map(s => s.id));
   return {
     crowds:crowdSpirits.filter(s=>!s.knockedOut).map(s=>({id:s.id,corner:s.corner,color:s.color,
@@ -79,6 +82,15 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
     vortex:vortex ? {hex:vortex.hex} : null,
     vortices:vortices.map(v => ({hex:v.hex})),
     bots:(bots??[]).map(b => ({hex:b.num, color:b.color})), spotlight,
+    // 🔦 The four corner lights (engine/systems/spotlights.js): where each is
+    // parked, its seat's colour, and whether anyone sits there (an empty seat's
+    // light is scenery, drawn dim). The hexes are public board state. Pose halos
+    // only for VISIBLE Spirits — a halo on a smoke-hidden poser would give them away.
+    spotlights:spotlights?.hexes ? {
+      lights:SPOT_CORNERS.filter(c => Number.isFinite(spotlights.hexes[c])).map(c => ({ corner:c, hex:spotlights.hexes[c],
+        color:playerColor(c), seated:crowdSpirits.some(s => s.corner === c && !s.knockedOut) })),
+      posers:Object.entries(spotlights.poses ?? {}).filter(([id]) => visible.has(id)).map(([id, p]) => ({ id, hex:p.hex })),
+    } : null,
     // The arm's visible trail is already public board geometry.
     tentacle:tentacle ? {key:tentacle.key, pts:tentacle.pts.map(p=>({x:p.x,y:p.y}))} : null,
   };

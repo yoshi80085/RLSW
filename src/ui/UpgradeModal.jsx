@@ -8,6 +8,8 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setN
   return (<>
       {acting && upgradesPending > 0 && (() => {
         const ns           = noteStates[acting.id] ?? {};
+        // 🎨 Routes carry no colour — the acting seat's PLAYER colour is the only one (2026-09-25).
+        const routeColor   = acting.color ?? '#9fb4cd';
         const unlocked     = ns.unlockedSkills ?? [];
         const pendingId    = ns.pendingAwardSkillId;
         const pendingDef   = pendingId ? SKILL_BY_ID[pendingId] : null;
@@ -128,15 +130,15 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setN
                         }))}
                         style={{
                           fontFamily:'inherit', cursor:'pointer', textAlign:'left',
-                          background:'#0a1525', border:`1px solid ${route.color}66`,
+                          background:'#0a1525', border:`1px solid ${routeColor}66`,
                           borderRadius:8, padding:'12px 16px', transition:'all .15s',
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.background=`${route.color}18`; e.currentTarget.style.borderColor=route.color; }}
-                        onMouseLeave={e => { e.currentTarget.style.background='#0a1525'; e.currentTarget.style.borderColor=`${route.color}66`; }}>
+                        onMouseEnter={e => { e.currentTarget.style.background=`${routeColor}18`; e.currentTarget.style.borderColor=routeColor; }}
+                        onMouseLeave={e => { e.currentTarget.style.background='#0a1525'; e.currentTarget.style.borderColor=`${routeColor}66`; }}>
                         <div style={{display:'flex', alignItems:'center', gap:12}}>
                           <span style={{fontSize:26}}>{route.icon}</span>
                           <div style={{flex:1}}>
-                            <div style={{fontSize:11, fontWeight:700, color:route.color, marginBottom:3}}>{route.label}</div>
+                            <div style={{fontSize:11, fontWeight:700, color:routeColor, marginBottom:3}}>{route.label}</div>
                             <div style={{fontSize:8, color:'#6a8aaa'}}>{route.desc}</div>
                           </div>
                           <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4}}>
@@ -147,8 +149,8 @@ export function UpgradeModal({ SKILL_BY_ID, SKILL_TREE, acting, noteStates, setN
                               </span>
                             )}
                             {owned > 0 && (
-                              <span style={{fontSize:7, color:route.color, background:`${route.color}18`,
-                                border:`1px solid ${route.color}44`, borderRadius:3, padding:'2px 6px'}}>
+                              <span style={{fontSize:7, color:routeColor, background:`${routeColor}18`,
+                                border:`1px solid ${routeColor}44`, borderRadius:3, padding:'2px 6px'}}>
                                 {owned} owned
                               </span>
                             )}

@@ -8,11 +8,19 @@ import cosmic_ronin from "../standees/cosmic_ronin.png";
 import intergalactic_0 from "../standees/Intergalactic_0.png";
 import metalness_monster from "../standees/Metalness_monster.png";
 
+// 🎨 NO SPIRIT HAS A COLOUR OF ITS OWN (Alex, 2026-09-25): "There should be no
+// default colors, the only colors that should be associated with any spirits is
+// the color of what player is choosing." A Spirit wears its PLAYER'S colour —
+// `CORNER_LABELS[corner].color` (P1 blue, P2 orange, then purple, yellow) —
+// stamped on by `seatSpirit` / the lobby at match start, and read by the select
+// screen from the seat that is choosing. ⚠️ Do not add `color` back here: the
+// four defaults happened to equal the four corner colours, so a P2 Ronin still
+// wore P1's blue on the picker and every effect named after him.
 export const SPIRIT_DEFS = {
-  "cosmic_ronin":      { id:"cosmic_ronin",      name:"Shredding Ronin",      imageSrc:cosmic_ronin,      color:"#4488ff", vibe:15, maxVibe:15, knockedOut:false, style:"Shred",  drive:8, sustain:5, speed:5 },
-  "intergalactic_0":   { id:"intergalactic_0",   name:"Intergalactic 0",   imageSrc:intergalactic_0,   color:"#aa55ff", vibe:12, maxVibe:12, knockedOut:false, style:"Groove", drive:6, sustain:7, speed:4 },
-  "Metalness_Monster": { id:"Metalness_Monster", name:"Metalness Monster", imageSrc:metalness_monster, color:"#ffcc00", vibe:15, maxVibe:15, knockedOut:false, style:"Shred",  drive:7, sustain:6, speed:4 },
-  "Glamarchy":         { id:"Glamarchy",         name:"Glamarchy",         imageSrc:glamarchy,         color:"#ff6600", vibe:12, maxVibe:12, knockedOut:false, style:"Flair",  drive:5, sustain:8, speed:5 },
+  "cosmic_ronin":      { id:"cosmic_ronin",      name:"Shredding Ronin",      imageSrc:cosmic_ronin,      vibe:15, maxVibe:15, knockedOut:false, style:"Shred",  drive:8, sustain:5, speed:5 },
+  "intergalactic_0":   { id:"intergalactic_0",   name:"Intergalactic 0",   imageSrc:intergalactic_0,   vibe:12, maxVibe:12, knockedOut:false, style:"Groove", drive:6, sustain:7, speed:4 },
+  "Metalness_Monster": { id:"Metalness_Monster", name:"Metalness Monster", imageSrc:metalness_monster, vibe:15, maxVibe:15, knockedOut:false, style:"Shred",  drive:7, sustain:6, speed:4 },
+  "Glamarchy":         { id:"Glamarchy",         name:"Glamarchy",         imageSrc:glamarchy,         vibe:12, maxVibe:12, knockedOut:false, style:"Flair",  drive:5, sustain:8, speed:5 },
 };
 
 export const SPIRIT_OPTIONS = Object.values(SPIRIT_DEFS);

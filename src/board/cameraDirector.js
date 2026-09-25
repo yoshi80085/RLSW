@@ -41,7 +41,9 @@ const flatDist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const midpoint = (a, b) => ({ x:(a.x + b.x) / 2, y:(a.y + b.y) / 2, z:(a.z + b.z) / 2 });
 
 export const CAMERA_DIRECTOR = Object.freeze({
-  resumeAfterMs:6500, resumeBlendMs:3000, viewButtons:'pause', reducedMotion:'still', zoomMemory:'director',
+  // ⏱️ 10 s of no input at all (key, click, wheel, mouse movement — arenaRenderer's
+  // `noteActivity`) before the auto camera takes over. Alex, 2026-09-25 (was 6.5 s).
+  resumeAfterMs:10000, resumeBlendMs:3000, viewButtons:'pause', reducedMotion:'still', zoomMemory:'director',
   followRate:3.2, swingRate:0.5, afterHoldMs:2300, lookHeight:0.45,
   driftDegPerSec:0.5, actionDrift:0.1, breathe:0, breathPeriodS:7.5,
   idleShots:'cycle', shotHoldS:20, idleDistance:19, idleTilt:44, wideDistance:36, wideTilt:38, heroDistance:15, heroTilt:70,

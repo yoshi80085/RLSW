@@ -248,9 +248,13 @@ const headlinerRider = (state, id) => (state.headliner === id ? 1 : 0);
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 1. CHORD FRAY — the defender's Sustain stack takes real damage on a landed
-//    blow. Margin-scaled, +1 from the rear wedge. A posing Spirit has no chord
-//    to fray (they gave up defence entirely, §3.3), and one note always
-//    survives so a stack is never wiped to nothing by fray alone.
+//    blow. Margin-scaled, +1 from the rear wedge. A posing Spirit is not
+//    frayed, and one note always survives so a stack is never wiped to nothing
+//    by fray alone.
+// ⁉️ OPEN (2026-09-25): the fray exemption was justified by "a posing Spirit
+//    gave up defence entirely". Alex replaced that with Sustain −1, so a poser
+//    now DOES defend with the chord — and still cannot have it frayed. Left as
+//    it was on purpose (not asked for); a question for Alex, not a bug.
 // ═════════════════════════════════════════════════════════════════════════════
 // ⚠️ `posing` IS NO LONGER A PARAMETER — it is read off `state` (2026-08-17,
 // `systems/limelight.js`). It was passed in because the flag was React state,

@@ -37,6 +37,21 @@ const environment=createArenaEnvironment(scene);environment.update(1,{lite:true}
 const wreckage=scene.getObjectByName('Floating wreckage');assert.ok(wreckage.visible,'Standard keeps floating scenery');
 assert.equal(wreckage.children[0].count,48,'all preview rocks share one instanced draw');assert.equal(wreckage.children.length,8,'seven metal shards accompany the rocks');
 assert.equal(scene.environment,null,'no bright room reflection washes out authored palette');
+// 🔦 Spotlights: aimed at the engine's hexes, seat colour, empty seat dim, halos only for visible posers.
+assert.equal(arenaFrame({spirits:[]}).spotlights,null,'no lights in state → the old decorative sweep');
+const spotSeats=[{id:'b',num:26,corner:'blue'},{id:'h',num:29,corner:'purple'}];
+const spotFrame=arenaFrame({spirits:spotSeats.slice(0,1),crowdSpirits:spotSeats,
+  spotlights:{hexes:{blue:26,purple:29,yellow:65,red:67},poses:{b:{hex:26},h:{hex:29}}}}).spotlights;
+assert.deepEqual(spotFrame.lights.map(l=>[l.corner,l.hex,l.seated]),[['blue',26,true],['purple',29,true],['yellow',65,false],['red',67,false]]);
+assert.equal(spotFrame.lights[0].color,'#4488ff','player colour');
+assert.deepEqual(spotFrame.posers,[{id:'b',hex:26}],'a smoke-hidden poser gets no halo');
+environment.update(2,{spotlights:spotFrame});
+assert.deepEqual(environment.diagnostics(),{spotHexes:{blue:26,purple:29,yellow:65,red:67},halos:1});
+const rings=[];scene.traverse(o=>{if(o.name==='Spotlight hex'&&o.visible)rings.push(o);});assert.equal(rings.length,4,'every parked light marks its hex');
+const h26=HEX_BY_NUM[26];assert.ok(Math.hypot(rings[0].position.x-(h26.px-3255)/200,rings[0].position.z-(h26.py-2415)/200)<1e-6,'blue ring sits on hex 26');
+environment.update(2.1,{spotlights:{...spotFrame,lights:spotFrame.lights.map(l=>l.corner==='blue'?{...l,hex:27}:l)}});
+assert.equal(environment.diagnostics().spotHexes.blue,27,'a round step re-aims the light');
+environment.update(3,{lite:true});assert.equal(environment.diagnostics().halos,0,'no frame lights → no halos');
 assert.ok(emissives.some(e=>e.crack),'shipped fissure material exists');
 let reflective=0;gltf.scene.traverse(o=>{if(o.material?.isMeshPhysicalMaterial)reflective++;});assert.ok(reflective>=2);
 const visuals=createArenaVisuals(scene);visuals.attachModel(gltf.scene);visuals.update(frame);

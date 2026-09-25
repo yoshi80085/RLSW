@@ -126,7 +126,7 @@ export function ShukuchiArcs({ trail = [], ghostFrom = null, ghostTo = null,
                 `applyShukuchiHop` uses, so the promise and the result cannot
                 drift apart. */}
             <polygon points={pointyCorners(tx, ty, hs * 0.68)}
-              fill="#4488ff55" stroke={look.color} strokeWidth={1.4} />
+              fill={`${look.color}55`} stroke={look.color} strokeWidth={1.4} />
             <line x1={tx} y1={ty}
               x2={tx + Math.cos(a) * hs * 0.95} y2={ty + Math.sin(a) * hs * 0.95}
               stroke="#cfe6ff" strokeWidth={2} strokeLinecap="round" />
@@ -171,7 +171,10 @@ export function shukuchiBudgetMarks(hopsLeft, mid, look = SHUKUCHI_LOOK) {
  *  the sentence the rail is trying to teach. ⚠️ After the bar was the
  *  alternative and it is worse: a fourth mark in a row of three reads as a
  *  fourth hop. */
-export function ShukuchiBudget({ hopsLeft = 0, mid = false, look = SHUKUCHI_LOOK }) {
+// 🎨 `pip` is the live pip's colour — the owner's PLAYER colour, lightened, in the
+// client (Alex, 2026-09-25: Spirits have no colour of their own). The default
+// is the dial-in's pale blue, so the preview-parity suite reads the same page.
+export function ShukuchiBudget({ hopsLeft = 0, mid = false, look = SHUKUCHI_LOOK, pip = '#7fc0ff' }) {
   const m = shukuchiBudgetMarks(hopsLeft, mid, look);
   return (
     <span style={{ display: 'inline-flex', gap: 2, marginLeft: 5,
@@ -184,7 +187,7 @@ export function ShukuchiBudget({ hopsLeft = 0, mid = false, look = SHUKUCHI_LOOK
       {m.segs.map((live, i) => (
         <i key={`sg${i}`} data-mark={live ? 'live' : 'spent'}
           style={{ width: 12, height: 5, borderRadius: 1, display: 'inline-block',
-                   background: live ? '#7fc0ff' : '#243449' }} />
+                   background: live ? pip : '#243449' }} />
       ))}
     </span>
   );

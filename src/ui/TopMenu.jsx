@@ -187,6 +187,26 @@ export function TopMenu({ items, tipAnchor }) {
                 </div>
               );
             }
+            /* 🔍 buttons — a label and a few small inline buttons (camera zoom).
+               The menu stays open: you press them while watching the board. */
+            if (it.kind === "buttons") {
+              return (
+                <div key={it.label} title={it.title}
+                  style={{ display: "flex", alignItems: "center", gap: 7, padding: "4px 8px",
+                    fontSize: 9.5, letterSpacing: 0.5, color: "#7a97b5" }}>
+                  <span style={{ fontSize: 11, flexShrink: 0 }}>{it.icon}</span>
+                  <span style={{ whiteSpace: "nowrap" }}>{it.label}</span>
+                  <span style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                    {it.buttons.map(b => (
+                      <button key={b.label} onClick={b.onClick} aria-label={b.aria ?? b.label}
+                        style={{ fontFamily: "inherit", cursor: "pointer", minWidth: 24, padding: "1px 6px",
+                          borderRadius: 4, fontSize: 11, lineHeight: "16px", color: accent,
+                          background: "#0a1020", border: `1px solid ${accent}66` }}>{b.label}</button>
+                    ))}
+                  </span>
+                </div>
+              );
+            }
             if (it.kind === "fader") {
               return <Fader key={it.label} icon={it.icon} label={it.label} title={it.title}
                 value={it.value} onChange={it.onChange} accent={accent}/>;

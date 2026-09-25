@@ -6,11 +6,15 @@
 //   { type, endedId, nextId, limelightHeld, roundCompleted }
 
 import { advanceTurnQueue } from "../../board/boardHelpers.js";
+import { stepSpotlights, resolveSpotPose } from "./spotlights.js";
 import { LIMELIGHT_HEX, SLIDE_STEPS_PER_TURN } from "../../data/gameConstants.js";
 import { applySlimeDecayed } from "./slime.js";
 
 /** TURN_STARTED — record whether the spirit begins its turn on the Limelight hex. */
-export function applyTurnStarted(state, { spiritId }) {
+export function applyTurnStarted(state0, { spiritId }) {
+  // 🔦 A spotlight pose struck last turn is judged NOW, before anything else
+  // this turn can move the body — `systems/spotlights.js`.
+  const state = resolveSpotPose(state0, spiritId);
   const sp = state.spirits.find(s => s.id === spiritId);
   return {
     ...state,
@@ -137,18 +141,23 @@ export function applyTurnEnded(state) {
   const endedNotes = decayed.noteStates?.[endedId];
   const clearsSonicTally = !!endedNotes?.pendingSonicAttacks;
 
+  // 🔦 THE LIGHTS STEP ONCE PER ROUND, on the turn end that closes it — the
+  // same boundary the round counter uses, so a skipped turn's banked round
+  // moves them too. Keyed on the NEW round number.
+  const lit = roundCompleted ? stepSpotlights(decayed, round) : decayed;
+
   return {
-    ...decayed,
+    ...lit,
     ...(clearsSonicTally ? {
       noteStates: {
-        ...decayed.noteStates,
+        ...lit.noteStates,
         [endedId]: { ...endedNotes, pendingSonicAttacks: 0 },
       },
     } : {}),
     turnQueue,
     acting: nextId,
     turn: {
-      ...decayed.turn,
+      ...lit.turn,
       count,
       round,
       roundStarterId: starter,

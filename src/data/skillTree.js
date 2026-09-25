@@ -40,6 +40,8 @@ import {
 } from "./gameConstants.js";
 
 export const SKILL_TREE = {
+  // 🎨 No route carries a colour: every route is one Spirit's, and a Spirit's only
+  // colour is its PLAYER'S (Alex, 2026-09-25). Readers use the seat's `color`.
   routes: [
     // ── 🛑 THE MUSIC THEORY BRANCH IS GONE (2026-09-02) ─────────────────────
     //
@@ -133,7 +135,6 @@ export const SKILL_TREE = {
       id: 'shredding_ronin',
       label: 'Shredding Ronin',
       icon: '🗡️',
-      color: '#4488ff',
       desc: 'The way of the blade meets the way of the riff. An exclusive arsenal only the Ronin can wield.',
       spiritOnly: 'cosmic_ronin',
       skills: [
@@ -163,7 +164,6 @@ export const SKILL_TREE = {
       id: 'metalness',
       label: 'Metalness Monster',
       icon: '🤘',
-      color: '#ffcc00',
       desc: 'Dripping poison, summoning mosh pits, invoking the Beast. An exclusive arsenal only the Monster can wield.',
       spiritOnly: 'Metalness_Monster',
       skills: [
@@ -179,7 +179,6 @@ export const SKILL_TREE = {
       id: 'intergalactic',
       label: 'Intergalactic 0',
       icon: '🌀',
-      color: '#aa55ff',
       desc: 'Cosmic groove and weaponized sound. An exclusive arsenal only Intergalactic 0 can wield.',
       spiritOnly: 'intergalactic_0',
       skills: [

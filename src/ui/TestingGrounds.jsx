@@ -130,7 +130,7 @@ export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiri
                 const unlocked = noteStates[sid]?.unlockedSkills ?? [];
                 return (
                   <div key={sid} style={{marginBottom:8,opacity:inGame?1:0.5}}>
-                    <div style={{fontSize:8,color:route.color,marginBottom:3}}>{route.name}{!inGame && ' (not in game)'}</div>
+                    <div style={{fontSize:8,color:(spirits.find(s => s.id === sid || s.id?.startsWith(`${sid}::`))?.color ?? '#d0c0e0'),marginBottom:3}}>{route.name}{!inGame && ' (not in game)'}</div>
                     <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
                       {route.skills.map(sk => {
                         const on = unlocked.includes(sk.id);

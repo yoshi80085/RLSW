@@ -83,7 +83,11 @@ try {
     'the live step carries the hand count the NOW window used to');
   assert.equal(document.querySelector('.match-turn-summary'), null,
     'the retired NOW window stays retired');
-  await click([...document.querySelectorAll('button')].find(el => el.textContent === 'Spirit'));
+  // 🎡 2026-09-25: the nav's middle chip is Scale (the wheel toggle) now; the
+  // Spirit details are reached from the SPIRIT card's ＋ instead.
+  assert.deepEqual([...document.querySelectorAll('[aria-label="Arena panels"] button')].map(b => b.textContent),
+    ['Turn', 'Scale', 'Rivals'], 'nav reads Turn · Scale · Rivals');
+  await click(document.querySelector('.match-player-card'));
   assert.equal(document.querySelector('[data-hud-region="turn"]').hidden, true);
   await act(async () => root.render(surface(4)));
   assert.equal(document.querySelector('[data-hud-region="turn"]').hidden, false, 'later turn of same spirit opens Turn');

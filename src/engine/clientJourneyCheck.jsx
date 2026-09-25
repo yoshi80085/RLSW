@@ -58,7 +58,7 @@ try {
   assert.equal(document.querySelector('[data-board-view] .arena-tactical > svg'), board, '3D retains the board DOM');
   assert.ok(button('Commit (3 notes'), 'draft survives entering immersive mode');
   const panelButton = text => [...document.querySelectorAll('[aria-label="Arena panels"] button')].find(el => el.textContent === text);
-  await click(panelButton('Spirit'));
+  await click(document.querySelector('.match-player-card')); // 🎡 Spirit details: the card's ＋ (the nav's middle chip is Scale now)
   assert.equal(document.querySelector('[data-hud-region="turn"]').hidden, true);
   assert.equal(document.querySelector('[data-hud-region="spirit"]').hidden, false);
   await click(panelButton('Rivals'));
@@ -101,7 +101,7 @@ try {
     'Pay Debt protects the active curse for this round');
   assert.ok(button('💰 Pay Debt')?.textContent.includes('✓'), 'the debt control confirms payment');
   // Inspect details, then return through the same controls a player uses.
-  await click(panelButton('Spirit'));
+  await click(document.querySelector('.match-player-card')); // 🎡 Spirit details: the card's ＋ (the nav's middle chip is Scale now)
   await click(panelButton('Turn'));
   await click(document.querySelector('[data-tip-anchor="end-turn"]'));
   assert.equal(document.querySelector('[data-hud-region="turn"]').hidden, false, 'next player gets turn controls');

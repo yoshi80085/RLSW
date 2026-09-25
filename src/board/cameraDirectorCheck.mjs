@@ -1,6 +1,6 @@
 // 🎥 cameraDirectorCheck — `test:cameradirector`. The auto camera: follows the
-// action, never sits still, hands over to the player and comes back 6.5 s after
-// they let go (Alex, 2026-09-17; dial-in off `.scratch/auto-camera-preview.html`,
+// action, never sits still, hands over to the player and comes back 10 s after
+// the last input of any kind (6.5 s until 2026-09-25) (Alex, 2026-09-17; dial-in off `.scratch/auto-camera-preview.html`,
 // all 31 levers untouched).
 //
 // Plain node on a SIMULATED clock — every assertion names an exact millisecond,
@@ -20,7 +20,7 @@ console.log('🎥 cameraDirectorCheck — the camera follows the action, and let
 console.log('§0 the numbers are the dial-in');
 ok('CAMERA_DIRECTOR is frozen', Object.isFrozen(D));
 {
-  const want = { resumeAfterMs:6500, resumeBlendMs:3000, viewButtons:'pause', reducedMotion:'still', zoomMemory:'director',
+  const want = { resumeAfterMs:10000, resumeBlendMs:3000, viewButtons:'pause', reducedMotion:'still', zoomMemory:'director',
     followRate:3.2, swingRate:0.5, afterHoldMs:2300, lookHeight:0.45, driftDegPerSec:0.5, actionDrift:0.1, breathe:0, breathPeriodS:7.5,
     idleShots:'cycle', shotHoldS:20, idleDistance:19, idleTilt:44, wideDistance:36, wideTilt:38, heroDistance:15, heroTilt:70,
     moveDistance:27, moveTilt:50, moveLead:0.4, chase:0.25,
@@ -197,7 +197,7 @@ console.log('§1 the director (the preview\'s own checks, against the shipped mo
   // input during the countdown restarts it
   const q = rig(); q.run(500); q.dir.userNudge(q.now); q.run(4000); q.dir.userNudge(q.now); q.run(4000);
   ok('a second nudge restarts the wait', q.out.mode === 'manual');
-  q.run(2700); ok('…and it resumes 6.5 s after the LAST input', q.out.mode !== 'manual');
+  q.run(6200); ok('…and it resumes 10 s after the LAST input', q.out.mode !== 'manual');
   // userEnd without userStart (a click) does nothing
   const k = rig(); k.run(500); k.dir.userEnd(k.now); k.step(); ok('userEnd with no drag is a no-op', k.out.mode === 'auto');
 }
@@ -285,7 +285,7 @@ console.log('§3 the renderer wiring');
   ok('the Sonic camera outranks it: the director is only asked when sonicCamera.update returns false', /if\(!sonicCamera\.update\(frame,model,dt,reduced(?:,visuals\.battleShot\(\))?\)\) \{(\s*\/\/[^\n]*)*\s*cameraShot=autoCamera(?:&&!topView)?\?director\.update\(/.test(r));
   ok('subjects are read every frame, before the Sonic check', r.indexOf('subjects.read(frame,now)') > 0 && r.indexOf('subjects.read(frame,now)') < r.indexOf('if(!sonicCamera.update('));
   ok('the director gets the real frame time (its own 100 ms cap), not the 50 ms-capped dt', /director\.update\(\{dtMs:wallDt\*1000,now,/.test(r));
-  ok('no controls.update() on a frame the director drives', /if\(cameraShot\?\.driving\) \{[^}]*camera\.lookAt\(controls\.target\);dirty=true;\s*\} else controls\.update\(\);/.test(r));
+  ok('no controls.update() on a frame the director drives (or the break\'s refocus eases)', /if\(cameraShot\?\.driving\) \{[^}]*camera\.lookAt\(controls\.target\);dirty=true;\s*\} else if\(refocus\) \{[\s\S]{0,700}?if\(k>=1\)refocus=null;\s*\} else controls\.update\(\);/.test(r));
   ok('the player\'s hands are OrbitControls start/end', /controls\.addEventListener\('start',takeOver\)/.test(r) && /controls\.addEventListener\('end',letGo\)/.test(r) && /removeEventListener\('start',takeOver\)/.test(r));
   ok('a click that picks a hex cannot reach them (keepGameplayClicks still guards the overlay)', /keepGameplayClicks\(overlay\.domElement\)/.test(r) && /OrbitControls\(camera,overlay\.domElement\)/.test(r));
   ok('toolbar view buttons and zoom count as taking over', /view\(name\)\{[\s\S]{0,260}?sonicCamera\.userNudge\(\);frameView\(name\);director\.userNudge/.test(r) && /zoom\(factor\)\{[^}]*director\.userNudge/.test(r));
@@ -301,7 +301,21 @@ console.log('§4 the switch and the badge');
 {
   const v = read('../ui/BoardViewport.jsx'), c = read('../rlsw-simulator-v3_8_1.jsx');
   ok('BoardViewport takes autoCamera and passes it to the runtime on mount and on change', /autoCamera = true/.test(v) && /runtime\.current\?\.autoCamera\(autoCamera\)/.test(v) && /runtime\.current\.autoCamera\(latest\.current\.autoCamera/.test(v));
-  ok('the badge reads the countdown and hides when off or during a Sonic shot', /auto in \$\{state\.resumeInS\.toFixed\(1\)\} s/.test(v) && /state\.mode === 'sonic'\) return null/.test(v));
+  // 🎛️ 2026-09-25: the toolbar (and its countdown badge) moved into the ☰ menu.
+  ok('no camera toolbar or badge on the board any more', !/arena-camera-toolbar/.test(v) && !/cameraBadge/.test(v));
+  ok('☰ has the camera rows: view (Top/Arena/Spirit), zoom, detail', /label:'Camera view'/.test(c) && /onPick: id => arenaCameraRef\.current\?\.view\(id\)/.test(c)
+    && /label:'Zoom'/.test(c) && /label:'Arena detail'/.test(c) && /cameraRef=\{arenaCameraRef\}/.test(c));
+  ok('the viewport keeps Retry arena and Follow battle on the board', /Retry arena/.test(v) && /followBattle\(\)/.test(v));
+  const r = read('./arenaRenderer.js');
+  // 🎯 2026-09-25: a break while the director / idle flow is flying eases back onto the Spirit.
+  ok('a break refocuses on the acting Spirit — only when the lens was being flown', /const broke=autoCamera&&!topView&&!sonicCamera\.active&&!!cameraShot\?\.driving&&!refocus;/.test(r)
+    && /if\(broke\)startRefocus\(now\);/.test(r) && /frame\.spirits\?\.find\(s=>s\.id===frame\.actingId\)\?\.num/.test(r));
+  ok('the refocus keeps the viewing angle and lands at the idle distance', /dir:dir\.divideScalar\(r0\),r0,r1:CAMERA_DIRECTOR\.idleDistance\*fit/.test(r)
+    && /controls\.target\.lerpVectors\(refocus\.t0,refocus\.goal,e\)/.test(r));
+  ok('a drag, a ☰ view or zoom cancels the refocus; reduced motion snaps', /const takeOver=\(\)=>\{refocus=null;/.test(r)
+    && /refocus=null;sonicCamera\.userNudge\(\);frameView\(name\)/.test(r) && /zoom\(factor\)\{refocus=null;/.test(r) && /const k=reduced\?1:/.test(r));
+  ok('ANY input is activity: keys, clicks, wheel and mouse movement, document-wide', /\['pointerdown','pointerup','click','auxclick','keydown','wheel','pointermove'\]/.test(r)
+    && /document\.addEventListener\(type,noteActivity,\{capture:true,passive:true\}\)/.test(r));
   ok('☰ menu has the Auto camera toggle (menuSwitch lever: yes)', /kind:'toggle', icon:'🎥', label:'Auto camera'/.test(c) && /onClick:\(\) => setAutoCamera\(v => !v\)/.test(c));
   ok('the switch persists locally, default ON', /localStorage\.getItem\('rlsw\.autoCamera'\) !== '0'/.test(c));
   ok('the client hands it to the arena', /<BoardViewport enabled=\{board3D\} immersive=\{board3D\} autoCamera=\{autoCamera\}/.test(c));

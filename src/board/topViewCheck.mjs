@@ -17,7 +17,7 @@ import { scheduleSonicBarrage } from './sonicPresentation.js';
 import { barrageDelay } from '../audio/sonicBarrageAudio.js';
 import { createSonicCamera } from './sonicCamera.js';
 import { TOP_OFFSET, TOP_TOLERANCE, onTopAxis, topAxisAngle } from './topDownView.js';
-import { SOLID_LAYER, isSolidMesh, markSolid } from './solidLayer.js';
+import { SOLID_LAYER, isSolidMesh, markSolid, markOccluders, OCCLUDER_LAYER } from './solidLayer.js';
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { if (cond) pass++; else { fail++; console.log('  ❌ ' + name); } };
@@ -85,10 +85,12 @@ console.log('§3 the wiring');
   ok('renderer: only ⌗ Top sets it, any other view clears it', /view\(name\)\{const top=name==='tactical';/.test(r));
   ok('renderer: "Follow battle" cannot unlock it', /followBattle\(\)\{if\(topView\)return;/.test(r));
   ok('renderer: the badge says top', /reportCamera\(topView\?'top':/.test(r));
-  ok('viewport: the buttons set and clear it, a saved choice is applied on mount', /onTopView\?\.\(true\); runtime\.current\?\.view\('tactical'\)/.test(v)
-    && /onTopView\?\.\(false\); runtime\.current\?\.view\('arena'\)/.test(v) && /onTopView\?\.\(false\); runtime\.current\?\.view\('focus'\)/.test(v)
+  // 🎛️ Since 2026-09-25 the view buttons are ☰ → Camera view rows, reaching the
+  // runtime through BoardViewport's cameraRef.view(name) with the same meanings.
+  ok('viewport: Top sets it, Arena and Spirit clear it, a saved choice is applied on mount', /if \(name === 'top'\) \{ latest\.current\.onTopView\?\.\(true\); runtime\.current\?\.view\('tactical'\); return; \}/.test(v)
+    && /latest\.current\.onTopView\?\.\(false\);\s*runtime\.current\?\.view\(name === 'spirit' \? 'focus' : 'arena'\)/.test(v)
     && /if \(latest\.current\.topView\) runtime\.current\.view\('tactical'\)/.test(v));
-  ok('viewport: a locked badge', /state\?\.mode === 'top'/.test(v));
+  ok('client: ☰ shows the lock (Camera view reads "Top", Top-down lit)', /value: topView \? 'Top' : undefined/.test(c) && /id:'top',\s+icon:'⌗', label:'Top-down', accent:'#c9d8ea', on: topView/.test(c));
   ok('client: persisted locally, default OFF', /localStorage\.getItem\('rlsw\.topView'\) === '1'/.test(c));
   ok('client: the flag is stamped once, at the start of the Sonic presentation', /function startSonicPresentation\(verdict, remoteView = false\) \{[\s\S]{0,400}if\(board3D&&topViewRef\.current\)verdict=\{\.\.\.verdict,realtime:true\};/.test(c));
   ok('client: hands the lock to the arena', /topView=\{topView\} onTopView=\{setTopView\}/.test(c));
@@ -112,7 +114,7 @@ console.log('§4 top-down is an axis: zoom and pan keep it, tilt and turn end it
   ok('a degenerate lens (on its own target) is not top-down', !onTopAxis(target, target));
 }
 
-console.log('§5 📌 Hold = the Auto camera switch, off');
+console.log('§5 📌 Hold = the Auto camera switch, off (the ☰ toggle since 2026-09-25)');
 {
   const r = read('./arenaRenderer.js'), v = read('../ui/BoardViewport.jsx'), c = read('../rlsw-simulator-v3_8_1.jsx');
   ok('renderer: leaving the axis ends top-down and tells the client', /function leaveTopIfTilted\(\)\{\s*if\(!topView\|\|onTopAxis\(camera\.position,controls\.target\)\)return;\s*topView=false;syncBattleCamera\(\);onTopView\?\.\(false\);/.test(r)
@@ -120,8 +122,11 @@ console.log('§5 📌 Hold = the Auto camera switch, off');
   ok('renderer: ⌗ Top places the lens on the SAME axis it is judged by', /camera\.position\.set\(\.\.\.TOP_OFFSET\)/.test(r) && /import \{ TOP_OFFSET, onTopAxis \} from '\.\/topDownView\.js'/.test(r));
   ok('renderer: a preset does not inherit a flick\'s damping tail', /controls\._sphericalDelta\?\.set\(0,0,0\)/.test(r));
   ok('viewport: the arena\'s "tilted off" reaches the client', /onTopView: on => \{ if \(!cancelled\) latest\.current\.onTopView\?\.\(on\); \}/.test(v));
-  ok('viewport: 📌 Hold flips the one Auto camera setting (no second switch)', /onClick=\{\(\) => onAutoCamera\(!autoCamera\)\}>📌 Hold/.test(v) && /aria-pressed=\{!autoCamera\}/.test(v));
-  ok('client: Hold is wired to setAutoCamera, and Auto camera still defaults ON (so Hold defaults OFF)', /onAutoCamera=\{setAutoCamera\}/.test(c) && /localStorage\.getItem\('rlsw\.autoCamera'\) !== '0'/.test(c));
+  // 🎛️ The toolbar's 📌 Hold was the ☰ Auto camera switch inverted; with the
+  // toolbar folded into ☰ it is not listed twice — one switch, still default ON.
+  ok('viewport: no second "Hold" switch (the ☰ Auto camera toggle is the one setting)', !/📌 Hold/.test(v) && !/onAutoCamera/.test(v));
+  ok('client: the ☰ toggle drives setAutoCamera, and Auto camera still defaults ON', /kind:'toggle', icon:'🎥', label:'Auto camera'/.test(c) && /onClick:\(\) => setAutoCamera\(v => !v\)/.test(c) && /localStorage\.getItem\('rlsw\.autoCamera'\) !== '0'/.test(c));
+  ok('⌗ Top from ☰ still turns top-down on and frames it', /if \(name === 'top'\) \{ latest\.current\.onTopView\?\.\(true\); runtime\.current\?\.view\('tactical'\)/.test(v));
   // What "held" must mean, in the renderer: no director, no idle flow, no battle shot.
   ok('held = no director (idle flow then has no shot to drift) and no battle lens', /cameraShot=autoCamera&&!topView\?director\.update\(/.test(r) && /sonicCamera\.autoCamera\(autoCamera&&!topView\)/.test(r));
 }
@@ -148,7 +153,24 @@ console.log('§6 🧱 amps, fans and dice are a solid layer above the board');
   ok('renderer: the copy runs AFTER the arena is drawn (its pixels are the source)', r.indexOf('composer.render();') < r.indexOf('solid.render(scene,camera)'));
   ok('visuals: every amp tier and the Sonic floor dice are solid roots', /solidRoots:\(\)=>\[\.\.\.\[\.\.\.rigs\.values\(\)\]\.flatMap\(r=>r\.levels\),sonic\?\.dice\?\.group\]/.test(vis));
   const src = read('./solidLayer.js');
-  ok('the copy samples the arena canvas at the same pixel, untouched', /gl_FragCoord\.xy \/ uSolidSize/.test(src) && /NoColorSpace/.test(src) && /NearestFilter/.test(src) && /toneMapped: false/.test(src));
+  // 🪦 2026-09-25: the pixel copy drew black glass on Alex's GPU. It is a re-draw now.
+  ok('the solids are RE-DRAWN with their own materials — no canvas copy', !/CanvasTexture|gl_FragCoord|uSolidSource/.test(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')));
+  ok('…depth first (a transparent fan body still hides a standee behind it), then colour with no override',
+    /scene\.overrideMaterial = depthOnly; foreground\.render\(scene, camera\);\s*camera\.layers\.set\(SOLID_LAYER\);\s*scene\.overrideMaterial = overrideMaterial; foreground\.render\(scene, camera\);/.test(src));
+  // 🪨 2026-09-25: the amps' bases are modelled half a unit INTO the Stage; the
+  // re-draw painted them on top of the board as a plinth until the ground joined
+  // the depth pass. Depth: solids + ground. Colour: solids only.
+  ok('🪨 the depth pass also holds the ground (Stage, Island) so buried amp bases stay buried',
+    /camera\.layers\.enable\(OCCLUDER_LAYER\);\s*scene\.overrideMaterial = depthOnly/.test(src)
+    && /markOccluders\(\[model\.getObjectByName\('Stage'\),model\.getObjectByName\('Island'\)\]\)/.test(r));
+  {
+    const ground = new THREE.Group(); const slab = new THREE.Mesh(box(), new THREE.MeshStandardMaterial()); ground.add(slab);
+    ok('🪨 markOccluders tags the ground on its own layer, never the solid one', markOccluders([ground, null]) === 1
+      && slab.layers.isEnabled(OCCLUDER_LAYER) && !slab.layers.isEnabled(SOLID_LAYER) && slab.layers.isEnabled(0));
+  }
+  ok('…lit by the arena\'s own lights (a light off the layer is not in the room), and only for this pass',
+    /o\.isLight && !o\.layers\.isEnabled\(SOLID_LAYER\)/.test(src) && /for \(const o of lit\) o\.layers\.disable\(SOLID_LAYER\)/.test(src));
+  ok('…at the arena\'s tone mapping and exposure', /foreground\.toneMapping = renderer\.toneMapping;/.test(src) && /foreground\.toneMappingExposure = renderer\.toneMappingExposure;/.test(src));
 }
 
 console.log(fail ? `\n❌ topViewCheck: ${fail} failed, ${pass} passed` : `\n✅ topViewCheck: ${pass} assertions passed`);

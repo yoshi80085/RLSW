@@ -24,11 +24,14 @@
 // a surviving pose (the FP grant and the Sustain toll) is not here — it is a
 // consequence sequence and lives with the others in `battleFlow.js`.
 
-import { POSE_FP_STEP, POSE_FP_MAX, poseFpMaxFor } from "../../data/gameConstants.js";
+import { POSE_FP_STEP, POSE_FP_MAX, poseFpMaxFor, LIMELIGHT_HEX } from "../../data/gameConstants.js";
+import { strikeSpotPose } from "./spotlights.js";
 
 /** The empty slice, so `state.js` and any migration agree on the shape. */
 export function makeLimelightState() {
-  return { posing: {}, scores: {} };
+  // 🔦 `spotPoses`: poses struck under a corner spotlight, judged next turn —
+  // see `systems/spotlights.js`. Absent on pre-2026-09-25 states; read with `??`.
+  return { posing: {}, scores: {}, spotPoses: {} };
 }
 
 /**
@@ -81,11 +84,20 @@ export function posingMap(state) {
  */
 export function applyPoseSet(state, { spiritId, on = true }) {
   const posing = { ...(state.limelight?.posing ?? {}) };
+  const wasPosing = !!posing[spiritId];
   if (on) posing[spiritId] = true; else delete posing[spiritId];
-  return {
+  const spotPoses = { ...(state.limelight?.spotPoses ?? {}) };
+  if (!on) delete spotPoses[spiritId];
+  const next = {
     ...state,
-    limelight: { ...(state.limelight ?? makeLimelightState()), posing },
+    limelight: { ...(state.limelight ?? makeLimelightState()), posing, spotPoses },
   };
+  // 🔦 A pose raised OFF the Limelight is a spotlight pose: record the light and
+  // bill its Sustain note now. ⚠️ Only on a fresh raise — re-raising an up pose
+  // must not bill twice. Off every light this stays the old bare flag.
+  const sp = state.spirits?.find(s => s.id === spiritId);
+  if (on && !wasPosing && sp && sp.num !== LIMELIGHT_HEX) return strikeSpotPose(next, spiritId);
+  return next;
 }
 
 /**

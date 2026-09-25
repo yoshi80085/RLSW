@@ -354,10 +354,14 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
         level.traverse(o=>{if(!o.material)return;const clone=m=>{const c=m.clone();c.userData.baseEmission=c.emissiveIntensity;own.push(c);return c;};o.material=Array.isArray(o.material)?o.material.map(clone):clone(o.material);});materials.push(own);
       }
       const role=Object.values(AMP_ROLES).some(r=>r.drive===id)?'drive':'sustain';
-      const badge=sonicSceneLabel(role.toUpperCase(),role==='drive'?'#ff6644':'#44aaff',2.1,.4);
-      const bounds=new THREE.Box3().setFromObject(original);
-      badge.sprite.position.copy(bounds.getCenter(new THREE.Vector3())).setY(bounds.max.y+.35);root.add(badge.sprite);
-      rigs.set(id,{levels,materials,role,badge});
+      // 🪦 NO LABEL ON THE AMPS (Alex, 2026-09-25). The DRIVE / SUSTAIN word
+      // plate that floated here is gone, and so is the dial that replaced it for
+      // an afternoon (in a speaker spot — "far too small to see"). What reads is
+      // the cabinet's own top-edge glow, lit red on Drive amps and blue on Sustain
+      // amps in `update()` below — *"what actually does help is the outline over
+      // top the amps"*. ⚠️ Don't add a label back without asking; the speakers
+      // stay whole.
+      rigs.set(id,{levels,materials,role});
     }
   }
   function update(next) {
@@ -373,7 +377,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
     moveTiles.update(frame.reach,frame.spirits);
     for(const [station,rig] of rigs) {
       const owner=frame.rigs?.find(r=>STATIONS[r.corner]?.includes(station));
-      rig.owner=owner;rig.badge.sprite.visible=!!owner;
+      rig.owner=owner;
       rig.levels.forEach((level,i)=>{
         level.visible=!!owner&&i<owner.pool;
         for(const m of rig.materials[i]) {
@@ -567,7 +571,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
       return {winnerId:w==null?null:st.ids[w],loserId:w==null?null:st.ids[1-w],tie:w==null,amount};
     },
     diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0),sonicPhase:sonic?.phase??null,hazards:hazards.children.length,headDials:headDials.active(clock*1000),moveTiles:moveTiles.active(),moveTileDetail:moveTiles.diagnostics()}),
-    dispose(){disposed=true;clearSwing();clearSonic();clearEffects();for(const rig of rigs.values()){rig.badge.texture?.dispose();releaseArenaObject(rig.badge.sprite);}headDials.dispose();moveTiles.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    dispose(){disposed=true;clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     get disposed(){return disposed;},
   };
 }

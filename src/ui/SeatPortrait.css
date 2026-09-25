@@ -1,0 +1,48 @@
+/* 🎭 The seat banner's head close-up (Alex, 2026-09-25) — SeatPortrait.jsx.
+   ⚠️ The seat must be `overflow:visible` for the head to BREAK OUT of the top
+   edge; the portrait rounds its own bottom-right corner to keep the card's. */
+.draft-seat.has-portrait{position:relative;overflow:visible;min-height:var(--sp-h);display:flex;flex-direction:column}
+.draft-seat.has-portrait>button{position:relative;z-index:2;flex:1;padding-right:calc(var(--sp-w) - 14%);text-shadow:0 1px 8px #000d,0 0 2px #000}
+.draft-seat.has-portrait>.draft-seat-options{position:relative;z-index:2;text-shadow:0 1px 6px #000d}
+.seat-portrait{position:absolute;right:0;top:0;bottom:0;width:var(--sp-w);pointer-events:none;z-index:1}
+
+/* The backdrop, inside the card, its left edge slanted. */
+.seat-portrait-panel{position:absolute;inset:0;border-radius:0 11px 11px 0;opacity:var(--sp-alpha);
+  clip-path:polygon(var(--sp-slant) 0,100% 0,100% 100%,0 100%)}
+.panel-stripes .seat-portrait-panel{background:
+  linear-gradient(100deg,transparent 0,color-mix(in srgb,var(--seat-color) 42%,transparent) 30%,color-mix(in srgb,var(--seat-color) 12%,transparent) 100%),
+  repeating-linear-gradient(115deg,color-mix(in srgb,var(--seat-color) 30%,transparent) 0 2px,transparent 2px 9px)}
+.panel-glow .seat-portrait-panel{background:radial-gradient(ellipse 60% 90% at var(--sp-ax) 55%,color-mix(in srgb,var(--seat-color) 60%,transparent),transparent 72%)}
+.panel-plain .seat-portrait-panel{display:none}
+
+.seat-portrait-numeral{position:absolute;right:10px;bottom:-6px;font:400 calc(var(--sp-h) * .92)/1 'Saira Stencil One',sans-serif;
+  color:transparent;-webkit-text-stroke:1.5px color-mix(in srgb,var(--seat-color) 70%,transparent);opacity:.4}
+
+/* The figure: bottom-anchored, one banner tall plus the break-out, fading in
+   from the text side so a long name can sit over its shoulder. */
+.seat-portrait-fig{position:absolute;left:0;right:0;bottom:0;height:calc(var(--sp-h) + var(--sp-break));overflow:hidden;
+  border-bottom-right-radius:11px;
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 30%);mask-image:linear-gradient(90deg,transparent 0,#000 30%)}
+.seat-portrait-svg{position:absolute;top:0;height:100%;width:200%;left:calc(var(--sp-ax) - 100%);overflow:visible}
+.seat-portrait-rim{filter:drop-shadow(0 0 3px var(--seat-color)) drop-shadow(0 6px 10px #000c)}
+.seat-portrait-edge{filter:drop-shadow(0 0 var(--sp-glow) var(--seat-color))}
+.seat-portrait-flash{position:absolute;inset:0;opacity:0;background:linear-gradient(100deg,transparent 30%,#fff 50%,transparent 70%);mix-blend-mode:screen}
+
+.enter-slide .seat-portrait-fig{animation:sp-slide var(--sp-enter) cubic-bezier(.2,.9,.25,1.15) both}
+.enter-slide .seat-portrait-flash,.enter-flash .seat-portrait-flash{animation:sp-sweep calc(var(--sp-enter) * 1.2) ease-out both}
+.enter-flash .seat-portrait-fig{animation:sp-flash var(--sp-enter) ease-out both}
+@keyframes sp-slide{from{transform:translateX(38px);opacity:0}to{transform:none;opacity:1}}
+@keyframes sp-flash{from{filter:brightness(3) saturate(0)}to{filter:none}}
+@keyframes sp-sweep{0%{opacity:.9;transform:translateX(-60%)}100%{opacity:0;transform:translateX(60%)}}
+.idle-drift .seat-portrait-svg{animation:sp-drift 7s ease-in-out infinite alternate;transform-origin:50% 55%}
+@keyframes sp-drift{from{transform:scale(1)}to{transform:scale(1.04) translateY(-1.5%)}}
+
+.inactive-dim.is-idle{filter:saturate(.35) brightness(.7)}
+.inactive-dim.is-idle .seat-portrait-panel{opacity:calc(var(--sp-alpha) * .5)}
+
+.seat-portrait-ghost{position:absolute;right:0;bottom:0;width:70%;height:100%;display:grid;place-items:center;
+  font:400 calc(var(--sp-h) * .62)/1 'Saira Stencil One',sans-serif;color:color-mix(in srgb,var(--seat-color) 40%,transparent);
+  animation:sp-ghost 2.4s ease-in-out infinite}
+@keyframes sp-ghost{50%{opacity:.45}}
+
+@media(prefers-reduced-motion:reduce){.seat-portrait-fig,.seat-portrait-svg,.seat-portrait-flash,.seat-portrait-ghost{animation:none!important}.seat-portrait-flash{display:none}}

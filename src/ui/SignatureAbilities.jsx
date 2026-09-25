@@ -13,7 +13,8 @@ export function SignatureAbilities({ SKILL_BY_ID, SKILL_TREE, SPIRIT_DEFS, noteS
                    || Object.values(SPIRIT_DEFS).find(s => s.id === signatureSpirit);
         if (!route) return null;
         const unlocked = noteStates[signatureSpirit]?.unlockedSkills ?? [];
-        const col = route.color;
+        // 🎨 The seat's PLAYER colour — a route has none of its own (2026-09-25).
+        const col = sp?.color ?? '#9fb4cd';
         return (
           <div onClick={() => setSignatureSpirit(null)} style={{position:'fixed', inset:0, zIndex:9100,
             background:'rgba(2,6,16,0.88)', display:'flex', alignItems:'center', justifyContent:'center',

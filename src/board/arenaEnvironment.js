@@ -1,9 +1,28 @@
 import * as THREE from 'three';
-import { ALL_HEXES } from './hexMap.js';
+import { ALL_HEXES, HEX_BY_NUM } from './hexMap.js';
+
+// 🔦 Alex's spotlight dial-in (2026-09-25 13:14, `.scratch/spotlight-preview.html`).
+// Changed from the preview's defaults: roam .45→.65, power 12→19, haze .11→.13,
+// poolGlow .12→.18, ringA .55→.2, ringPulse .35→1, range outline .14→0 (so no
+// range outline is built at all), halo .6→.2. Colour = player colour.
+export const SPOTLIGHT_LOOK = Object.freeze({
+  emptyDim:.35, roam:.65, speed:1, stepSecs:1.4,
+  power:19, haze:.13, coneW:1.05, poolR:1.05, poolGlow:.18,
+  ringA:.2, ringPulse:1, halo:.2, haloColor:0xff88ff,
+  hexR:1.08*.93, ringY:.21, haloY:.3,
+});
+const SPOT = SPOTLIGHT_LOOK;
 
 // Preview palette and geometry, mirrored into the live board's +Z orientation.
 // Randomness is local and seeded: scenery never consumes the match RNG.
-export function createArenaEnvironment(scene) {
+// 🔦 `overlay` — the foreground scene (`arenaRenderer.js`), drawn on the canvas
+// ABOVE the board's SVG and above the solid layer's re-drawn amps. The spotlight
+// BEAMS go there so they shine over everything (Alex, 2026-09-25: *"put the
+// light's beam over top anything else — including the amps — right now they
+// 'block' part of the glow"*). ⚠️ In the arena pass the amps are re-drawn on the
+// foreground AFTER the arena, so a beam drawn in the arena could never win,
+// whatever its depth settings. Omit `overlay` and the beams stay in `scene`.
+export function createArenaEnvironment(scene, { overlay = null } = {}) {
   const root = new THREE.Group(); root.name = 'Cosmic environment'; scene.add(root);
   root.add(new THREE.HemisphereLight(0x9fc4ff,0x363852,2));
   for (const [color,power,pos] of [[0xaad8ff,2.2,[7,20,16]],[0xae72ff,1.6,[-15,9,-12]],[0x72aaff,3.24,[4,-3,18]]]) {
@@ -69,24 +88,46 @@ export function createArenaEnvironment(scene) {
     shard.position.set(Math.cos(a)*r,-2-rand()*6,Math.sin(a)*r);shard.rotation.set(rand()*3,rand()*3,rand()*3);
     shard.userData={baseY:shard.position.y,baseRotation:shard.rotation.y,phase:rand()*6};debris.add(shard);
   }
+  // 🔦 THE FOUR CORNER SPOTLIGHTS — look dialled in by Alex on
+  // `.scratch/spotlight-preview.html` (2026-09-25 13:14). The RULES live in
+  // `engine/systems/spotlights.js`; this only draws them. Each light is aimed at
+  // its corner's hex (`frame.spotlights`, via arenaFrame), wanders gently round
+  // it, and eases to the next hex when the engine steps it at round end.
+  // Without `spotlights` (a pre-lights state, the presentation check) the old
+  // decorative roaming look is kept.
   const lights=[];
   const coneGeo=new THREE.ConeGeometry(1,1,24,1,true); coneGeo.translate(0,-.5,0);
-  for(const sx of [-1,1]) for(const sz of [-1,1]) {
-    const color=sx===sz?0x54caff:0xb854ff;
+  const hexRing=new THREE.BufferGeometry().setFromPoints(Array.from({length:6},(_,i)=>{const a=i*Math.PI/3;return new THREE.Vector3(Math.cos(a)*SPOT.hexR,0,Math.sin(a)*SPOT.hexR);}));
+  const quarters={blue:[-1,-1],purple:[-1,1],yellow:[1,-1],red:[1,1]};
+  for(const [corner,[sx,sz]] of Object.entries(quarters)) {
+    const color=sx===sz?0x54caff:0xb854ff; // the old palette, until a frame names the seat
     const source=new THREE.Vector3(sx*9.5,3.48,sz*7.5);
     const target=new THREE.Object3D();root.add(target);
     const light=new THREE.SpotLight(color,60,27,.23,.75,1.7);light.position.copy(source);light.target=target;root.add(light);
     const cone=new THREE.Mesh(coneGeo,new THREE.ShaderMaterial({transparent:true,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending,
-      uniforms:{color:{value:new THREE.Color(color)}},
+      uniforms:{color:{value:new THREE.Color(color)},haze:{value:.11}},
       vertexShader:'varying vec2 v; void main(){v=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-      fragmentShader:'varying vec2 v;uniform vec3 color;void main(){float a=sin(v.x*3.14159)*pow(v.y,0.4)*0.11;gl_FragColor=vec4(color,a);}'
-    }));cone.position.copy(source);root.add(cone);
+      fragmentShader:'varying vec2 v;uniform vec3 color;uniform float haze;void main(){float a=sin(v.x*3.14159)*pow(v.y,0.4)*haze;gl_FragColor=vec4(color,a);}'
+    }));cone.position.copy(source);
+    // ⭐ Over the top: no depth test, drawn last. Additive, so it lights what is
+    // under it rather than covering it.
+    if(overlay){cone.material.depthTest=false;cone.renderOrder=900;cone.name='Spotlight beam';overlay.add(cone);} else root.add(cone);
     const pool=new THREE.Mesh(new THREE.CircleGeometry(1,32),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.12,depthWrite:false,blending:THREE.AdditiveBlending}));pool.rotation.x=-Math.PI/2;root.add(pool);
-    lights.push({source,target,light,cone,pool,sx,sz});
+    // The lit hex's outline — which hex the light is PARKED on, as opposed to
+    // where the wandering pool happens to be this second.
+    const ring=new THREE.LineLoop(hexRing,new THREE.LineBasicMaterial({color,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}));
+    ring.name='Spotlight hex';ring.renderOrder=56;ring.visible=false;root.add(ring);
+    lights.push({corner,source,target,light,cone,pool,ring,sx,sz,phase:lights.length*1.7,hex:null,from:null,t0:0,color:new THREE.Color(color)});
   }
+  // 💃 A halo round every Spirit holding a spotlight pose (Limelight poses have
+  // their own dressing). Pooled: at most four Spirits can pose at once.
+  const haloGeo=new THREE.TorusGeometry(.62,.06,10,48);haloGeo.rotateX(Math.PI/2);
+  const halos=Array.from({length:4},()=>{const m=new THREE.Mesh(haloGeo,new THREE.MeshBasicMaterial({color:SPOT.haloColor,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}));m.name='Spotlight pose halo';m.visible=false;root.add(m);return m;});
+  const hexPoint=num=>{const h=HEX_BY_NUM[num];return h?{x:(h.px-3255)/200,z:(h.py-2415)/200}:null;};
+  const ease=k=>k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
   const scratch=new THREE.Vector3(),down=new THREE.Vector3(0,-1,0);
   return {
-    update(time,{lite=false,reduced=false}={}) {
+    update(time,{lite=false,reduced=false,spotlights=null}={}) {
       glints.visible=!lite&&!reduced;glintMat.uniforms.time.value=time;
       starsGeo.setDrawRange(0,lite?900:2200);
       // Keep the complete silhouette in Standard too; 48 rocks cost one draw.
@@ -96,15 +137,38 @@ export function createArenaEnvironment(scene) {
       }
       transforms.forEach((o,i)=>{o.updateMatrix();chunks.setMatrixAt(i,o.matrix);});chunks.instanceMatrix.needsUpdate=true;
       const t=reduced?0:time;
+      const seats=new Map((spotlights?.lights??[]).map(s=>[s.corner,s]));
       for(const l of lights) {
-        l.target.position.set(l.sx*(3.6+Math.sin(t*.22+l.sz)*1.8),.14,l.sz*(2.2+Math.cos(t*.18+l.sx)*1.3));
+        const seat=seats.get(l.corner),at=seat&&hexPoint(seat.hex);
+        if(!at) { // the old decorative sweep
+          l.target.position.set(l.sx*(3.6+Math.sin(t*.22+l.sz)*1.8),.14,l.sz*(2.2+Math.cos(t*.18+l.sx)*1.3));
+          l.cone.material.uniforms.haze.value=.11;l.light.intensity=12;l.pool.material.opacity=.12;l.ring.visible=false;l.hex=null;
+        } else {
+          if(l.hex==null){l.hex=l.from=seat.hex;l.t0=-1e9;}
+          else if(seat.hex!==l.hex){l.from=l.hex;l.hex=seat.hex;l.t0=time;}
+          const a=hexPoint(l.from)??at,k=reduced?1:ease(Math.min(1,(time-l.t0)/SPOT.stepSecs));
+          const w=SPOT.speed*3;
+          l.target.position.set(a.x+(at.x-a.x)*k+Math.sin(t*.22*w+l.phase)*SPOT.roam*.6,.14,
+            a.z+(at.z-a.z)*k+Math.cos(t*.18*w+l.phase*1.3)*SPOT.roam*.5);
+          l.color.set(seat.color);
+          const dim=seat.seated?1:SPOT.emptyDim;
+          l.cone.material.uniforms.color.value.copy(l.color);l.cone.material.uniforms.haze.value=SPOT.haze*dim;
+          l.light.color.copy(l.color);l.light.intensity=SPOT.power*dim;
+          l.pool.material.color.copy(l.color);l.pool.material.opacity=SPOT.poolGlow*dim;
+          l.ring.visible=SPOT.ringA>0;l.ring.position.set(at.x,SPOT.ringY,at.z);l.ring.material.color.copy(l.color);
+          l.ring.material.opacity=SPOT.ringA*dim*(1-SPOT.ringPulse*.5+SPOT.ringPulse*.5*Math.sin(t*3));
+        }
         scratch.copy(l.target.position).sub(l.source);const length=scratch.length();
-        l.cone.quaternion.setFromUnitVectors(down,scratch.normalize());l.cone.scale.set(1.05,length,1.05);
-        l.pool.position.copy(l.target.position);l.pool.scale.setScalar(1.05);
-        l.cone.visible=true;l.light.intensity=12;
+        l.cone.quaternion.setFromUnitVectors(down,scratch.normalize());l.cone.scale.set(SPOT.coneW,length,SPOT.coneW);
+        l.pool.position.copy(l.target.position);l.pool.scale.setScalar(SPOT.poolR);
+        l.cone.visible=true;
       }
+      const posers=spotlights?.posers??[];
+      halos.forEach((h,i)=>{const p=posers[i]&&hexPoint(posers[i].hex);h.visible=!!p&&SPOT.halo>0;
+        if(p){h.position.set(p.x,SPOT.haloY,p.z);h.material.opacity=SPOT.halo*(reduced?1:.6+.4*Math.sin(t*4));}});
     },
-    dispose(){},
+    diagnostics(){return{spotHexes:Object.fromEntries(lights.map(l=>[l.corner,l.hex])),halos:halos.filter(h=>h.visible).length};},
+    dispose(){if(overlay)for(const l of lights)overlay.remove(l.cone);},
   };
 }
 

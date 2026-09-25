@@ -101,7 +101,8 @@ const ACTION_LABELS = {
 // Layout owns only disclosure state. Game owns turns, permissions and all actions.
 // Keep these wrappers mounted in both views: conditional trees/portals here would
 // remount note controls and the live SVG while a player is composing or targeting.
-export function MatchSurface({ immersive, spirit, turnNumber, step, canAct, ap, tutorial, hud, children }) {
+export function MatchSurface({ immersive, spirit, turnNumber, step, canAct, ap, tutorial, hud,
+  scale = null, scaleOpen = false, onScaleToggle, children }) {
   const [selection, setSelection] = useState(null);
   const id = useId();
   // A new turn always brings its controls back, without remounting any content.
@@ -183,11 +184,21 @@ export function MatchSurface({ immersive, spirit, turnNumber, step, canAct, ap, 
           </Bracket>
         </aside>
         <div className="match-hud-bar">
-          <nav aria-label="Arena panels" className="match-panel-nav">
-            {[['turn', 'Turn'], ['spirit', 'Spirit'], ['rivals', 'Rivals']].map(([name, label]) =>
-              <button key={name} className="match-nav-chip" aria-expanded={tutorial || panel === name}
-                aria-controls={`${id}-${name}`} onClick={() => select(name)}>{label}</button>)}
-          </nav>
+          {/* 🎡 TURN · SCALE · RIVALS — Alex, 2026-09-25: the middle chip used to be
+              Spirit (the old 2D details, still one click away on the SPIRIT card's
+              ＋). Scale is NOT one of the exclusive regions: it is a toggle that
+              drops the Scale Wheel under this row, so the Turn controls stay up
+              while you compose against it. */}
+          <div className="match-panel-dock">
+            <nav aria-label="Arena panels" className="match-panel-nav">
+              {[['turn', 'Turn'], ['scale', 'Scale'], ['rivals', 'Rivals']].map(([name, label]) => name === 'scale'
+                ? <button key={name} className="match-nav-chip" aria-expanded={!!scaleOpen}
+                    aria-controls={`${id}-scale`} title="Scale wheel (W)" onClick={() => onScaleToggle?.()}>{label}</button>
+                : <button key={name} className="match-nav-chip" aria-expanded={tutorial || panel === name}
+                    aria-controls={`${id}-${name}`} onClick={() => select(name)}>{label}</button>)}
+            </nav>
+            {scaleOpen && scale && <div id={`${id}-scale`} className="match-scale-pop">{scale}</div>}
+          </div>
         </div>
       </>}
       {children}
@@ -319,7 +330,11 @@ const SURFACE_CSS = `
   .match-phase-live { display:block; margin-top:4px; max-width:210px; font-style:normal;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
     font-size:7.5px; letter-spacing:.6px; color:#dceaff; }
-  .match-panel-nav { position:absolute; top:58px; right:var(--hud-edge); display:flex; gap:6px; align-items:flex-start; pointer-events:auto; }
+  .match-panel-dock { position:absolute; top:58px; right:var(--hud-edge); display:flex; flex-direction:column; align-items:stretch; gap:8px; pointer-events:auto; }
+  .match-panel-nav { display:flex; gap:6px; align-items:flex-start; }
+  /* 📏 The wheel is exactly as wide as the three chips above it: width 0 +
+     min-width 100% keeps it out of the dock's intrinsic width, so the chips set it. */
+  .match-scale-pop { width:0; min-width:100%; }
   /* the nav chips: a 45° chamfer drawn as two stacked clip-paths, because a real
      CSS border cannot follow one. ⚠️ THE BUTTON KEEPS THE LABEL AS ITS ONLY TEXT
      — the arena suite finds it with 'el.textContent === 'Spirit''. */
@@ -475,7 +490,7 @@ const SURFACE_CSS = `
     [data-match-layout="immersive"] { --root-hex:44px }
     .match-sound-readout { grid-template-columns:1fr 1fr 34px; }
     .match-phase-rail { top:13px; }
-    .match-panel-nav { top:43px; }
+    .match-panel-dock { top:43px; }
   }
   @media (max-width:600px) {
     .immersive-match .match-header { flex-wrap:wrap; }

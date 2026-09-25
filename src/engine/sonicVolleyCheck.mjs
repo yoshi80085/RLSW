@@ -133,7 +133,10 @@ function play(state, { hooks = {}, fx = [] } = {}) {
   eq(tick.report.sustainFray.pendingAttacks, 3, 'the report explains the accrued attacks');
   eq(tick.patch.pendingSonicAttacks, 0, 'upkeep clears the old attack tally');
   const quiet = startTurnNotes({ ...state.noteStates[DEFENDER], ...tick.patch }, { spiritId: DEFENDER });
-  eq(quiet.patch.sustainStack, ['C', 'E'], 'an unpressured next turn pays only natural decay');
+  eq(quiet.patch.sustainStack, ['C', 'E', 'G'], '🪦 no natural decay: an unpressured turn keeps every Sustain note (Alex, 2026-09-25)');
+  eq(quiet.report.sustainFray.frayed, 0, 'a quiet turn reports nothing lost, so the client logs nothing');
+  const oneShot = startTurnNotes({ ...state.noteStates[DEFENDER], sustainStack: ['C', 'E', 'G'], pendingSonicAttacks: 1 });
+  eq(oneShot.patch.sustainStack, ['C', 'E'], 'one volley taken still bills one note');
   for (const notes of [[], ['C'], ['C', 'E']]) {
     const floor = startTurnNotes({ ...state.noteStates[DEFENDER], sustainStack: notes, pendingSonicAttacks: 99 });
     eq(floor.patch.sustainStack, notes.length ? ['C'] : [], 'the root survives even overwhelming upkeep');

@@ -24,6 +24,7 @@
 import * as THREE from 'three';
 import { createStandee, STANDEE } from '../board/standee.js';
 import { SPIRIT_DEFS, IN_DEVELOPMENT } from '../data/spirits.js';
+import { NEUTRAL_SPIRIT_COLOR } from '../data/corners.js';
 import { storyFor } from '../data/spiritStories.js';
 
 export const SPIRIT_PICKER = Object.freeze({
@@ -121,8 +122,13 @@ function scrollersOf(el) {
  * The stage. Throws if WebGL cannot start — the caller falls back to the flat art.
  * `register(id, card, slot)` hands it a card; hover/leave/dismiss/picked are the
  * card's events; `dispose()` takes the canvas, the story and every GPU buffer away.
+ *
+ * 🎨 `color` is the CHOOSING PLAYER'S colour, and every card wears it — edge,
+ * base, rim light, story panel (Alex, 2026-09-25: no Spirit has a colour of its
+ * own). `setColor` re-cuts every standee when the seat that is choosing changes;
+ * the canvas and its one WebGL context stay.
  */
-export function createSpiritPickerStage({ P = SPIRIT_PICKER } = {}) {
+export function createSpiritPickerStage({ P = SPIRIT_PICKER, color = NEUTRAL_SPIRIT_COLOR } = {}) {
   const canvas = document.createElement('canvas');
   canvas.className = 'draft-standee-layer';
   canvas.setAttribute('aria-hidden', 'true');
@@ -147,10 +153,10 @@ export function createSpiritPickerStage({ P = SPIRIT_PICKER } = {}) {
   let raf = 0, last = performance.now(), storyKey = '';
 
   function build(id, el, slot) {
-    const sp = SPIRIT_DEFS[id];
+    const sp = { ...SPIRIT_DEFS[id], color };
     const scene = new THREE.Scene();
     // 📌 The arena's foreground lights verbatim, so the sheet reads the same here
-    // as on the board — plus a rim in the Spirit's colour so the edge catches.
+    // as on the board — plus a rim in the PLAYER'S colour so the edge catches.
     const hemi = new THREE.HemisphereLight(0xddeaff, 0x34314f, 2.5);
     const key = new THREE.DirectionalLight(0xffffff, 2); key.position.set(5, 12, 7);
     const rim = new THREE.DirectionalLight(new THREE.Color(sp.color), 1.4); rim.position.set(-4, 4, -6);
@@ -282,6 +288,18 @@ export function createSpiritPickerStage({ P = SPIRIT_PICKER } = {}) {
     leave(id) { const c = cards.get(id); if (c) c.hoverSince = null; },
     dismiss(id) { const c = cards.get(id); if (c) c.dismissed = true; },
     picked(id) { const c = cards.get(id); if (c) c.spinAt = performance.now(); },
+    setColor(next) {
+      if (!next || next === color) return;
+      color = next;
+      // Rebuild in place: hover, pop and spin carry over so a switch mid-hover
+      // does not snap the card back to rest.
+      for (const [id, c] of cards) {
+        c.standee.dispose(); c.scene.clear();
+        const n = build(id, c.el, c.slot);
+        Object.assign(n, { hoverSince:c.hoverSince, p:c.p, spinAt:c.spinAt, shownAt:c.shownAt, dismissed:c.dismissed, phase:c.phase });
+        cards.set(id, n);
+      }
+    },
     dispose() {
       cancelAnimationFrame(raf);
       for (const c of cards.values()) {

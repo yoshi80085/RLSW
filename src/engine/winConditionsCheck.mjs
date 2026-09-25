@@ -262,7 +262,12 @@ const seats = () => Object.fromEntries(DUEL.map(s => [s.id, POLICIES.searcher({}
   // with both fixes, 11 with only the contour + carrot fixes. 📌 The 09-16 count
   // was 3, so the stalemate band is real and wider than it was — balance is
   // deferred, recorded here rather than tuned.
-  const legend = runMatch({ seed: 2, spirits: DUEL, policies: seats(), lives: 3,
+  // ⚠️ SEED 3 AGAIN SINCE 2026-09-25 — a fixture move for the third time. The
+  // spotlight rules (poses defend at Sustain −1 instead of nothing, +1 Drive
+  // under your own light) and the end of natural Sustain decay changed what
+  // both searchers face; seed 2 then ended on a KNOCKOUT at 17–19 Fame, which
+  // is a winner but not this row's "reached the line". Seed 3 reaches 26.
+  const legend = runMatch({ seed: 3, spirits: DUEL, policies: seats(), lives: 3,
                             winCondition: 'fame' });
   eq(legend.reason, 'winner', '🏆 a Legend Run still ends on a winner');
   eq(legend.verdict, null,    '🏆 …and carries no buzzer verdict');

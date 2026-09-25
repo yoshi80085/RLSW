@@ -2,6 +2,7 @@ import { sonicRig } from './sonicRig.js';
 import { HEX_BY_NUM } from '../../board/hexMap.js';
 import { angleTo } from '../../board/hexGeometry.js';
 import { CHARGE_FLOOR_BONUS } from '../../data/gameConstants.js';
+import { homeSpotlightDrive } from './spotlights.js';
 
 export function clashVerdict(diceVals, defenderDiceVals) {
   const atkTotal=diceVals.reduce((a,b)=>a+b,0),defTotal=defenderDiceVals.reduce((a,b)=>a+b,0);
@@ -14,7 +15,9 @@ export function rollSwingClash(state, action, rng) {
   const {attackerId,defenderId}=action;
   const a=state.spirits.find(s=>s.id===attackerId),d=state.spirits.find(s=>s.id===defenderId);
   const nsA=state.noteStates?.[attackerId]??{},nsD=state.noteStates?.[defenderId]??{};
-  const dicePool=sonicRig(nsA,0,0,true,attackerId).pool;
+  // 🔦 The ATTACKER's home light adds a die; the defender's does not — the
+  // bonus is for attacking from there (Alex, 2026-09-25).
+  const dicePool=sonicRig(nsA,0,0,true,attackerId,homeSpotlightDrive(state,attackerId)).pool;
   const defenderDicePool=sonicRig(nsD,0,0,true,defenderId).pool;
   const floor=ns=>Math.max((ns.chargeFloorTurns??0)>0?CHARGE_FLOOR_BONUS:0,ns.dieFloorBoost??0);
   const roll=(pool,ns)=>pool.map(s=>Math.min(s,Math.max(1+floor(ns),rng.int(s)+1)));

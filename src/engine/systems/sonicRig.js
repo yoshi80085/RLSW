@@ -125,13 +125,18 @@ export function rigRadius(ns = {}, onTurn = false) {
  *   inRange — whether the spirit is inside their rig's live radius
  *   radius  — that radius, so callers can DRAW it without recomputing the rule
  */
-export function sonicRig(ns = {}, distFromHome, chargeBoost = 0, onTurn = false, spiritId = null) {
+// 🔦 `extraDrive` — dice owed to WHERE the attacker stands rather than to the
+// chord: today only the home spotlight (+1, `spotlights.js`). It rides outside
+// the tempDrive/moshDrive cap of 2 because it is not a stackable buff — it is
+// one die, earned by standing in one place, and gone the moment you step off.
+// ⚠️ Not added at eleven: the amp only goes to eleven.
+export function sonicRig(ns = {}, distFromHome, chargeBoost = 0, onTurn = false, spiritId = null, extraDrive = 0) {
   void distFromHome;void chargeBoost;void onTurn;
   const chord=evaluateChord(ns.driveStack??[]);
   const innate=characterId(spiritId)==='intergalactic_0'&&chord.id==='cluster'?1:0;
   const bonus=Math.min(2,(ns.tempDrive??0)+(ns.moshDrive??0));
   // Empty charge must not fall back to the old, stronger static stat sheet.
-  const count=ns.driveStack?.length?Math.max(0,ns.atEleven?11:chord.drive+innate+bonus-(ns.instrumentDropped?1:0)):0;
+  const count=ns.driveStack?.length?Math.max(0,ns.atEleven?11:chord.drive+innate+bonus+extraDrive-(ns.instrumentDropped?1:0)):0;
   // 🎲 d6 baseline for everyone (R5 — the crowd-driven ladder is gone).
   //
   // ⚠️ THE CHARGE-ZONE `+2` IS STILL A CEILING AND R8 SAYS IT SHOULD NOT BE.

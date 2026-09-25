@@ -50,7 +50,7 @@ If you deleted everything in section 4's "Cut" list tomorrow, *this* would still
 | Win condition: Last Spirit Standing | ✓ | ✓ | ✓ | ✓ | **Keep** (natural fallback) |
 | Spotlight roaming heal | ✓ | ~ | ✓ | ~ | **Keep or merge** |
 | Event spaces (11 cards) | ~ | ✓ | ~ | ~ | **Trim & de-RNG** |
-| Back to the Past (piano mini-game) | ✗ | ~ | ✗ | ✗ | **Cut** |
+| Back to the Past (piano mini-game) | ✗ | ~ | ✗ | ✗ | **Cut** — code deleted 2026-09-25 |
 | Mod cards (3) | ~ | ~ | ~ | ✗ | **Cut to 1 or zero** |
 | Skill tree (8 routes, ~35 skills) | ✗ | ~ | ✗ | ✗ | **Cut to 3–4 routes** |
 | Stage Effects route (% procs) | ✓ | ~ | ~ | ✗ | **Cut** |

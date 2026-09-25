@@ -63,6 +63,7 @@ import {
 import { applySlimeDropped, applySlimeDecayed, applySlimeCleared, applySpiritSlid, applySlimeCalled } from "./systems/slime.js";
 import { applyElevenCalled } from "./systems/eleven.js";
 import { applyPoseSet, applyPoseRoundBanked } from "./systems/limelight.js";
+import { enforceSpotPoses } from "./systems/spotlights.js";
 import { applySandboxSeatTaken, applySandboxRefilled } from "./systems/sandbox.js";
 
 /**
@@ -72,7 +73,9 @@ import { applySandboxSeatTaken, applySandboxRefilled } from "./systems/sandbox.j
  * @returns {object} next GameState
  */
 export function applyAction(state, action, rng = restoreRng(state.rng)) {
-  const next = reduce(state, action, rng);
+  // 🔦 One invariant after EVERY action: a spotlight pose ends the moment its
+  // Spirit leaves the hex it was struck on — see `enforceSpotPoses`.
+  const next = enforceSpotPoses(reduce(state, action, rng));
   // Persist rng position so the next applyAction resumes the same stream.
   return { ...next, rng: rng.state() };
 }

@@ -726,6 +726,27 @@ export function GameStyles() {
           background: var(--acc, #7a97b5); border: 1px solid #06101e;
           box-shadow: 0 0 6px var(--acc, #7a97b5);
         }
+        /* ── 🎡 THE SCALE WHEEL (ui/ScaleWheel.jsx) — ported from the preview's
+           template at Alex's dial, 2026-09-25. --acc is the Spirit's accent. */
+        .sw-card { --brk-scrim:rgba(6,12,26,.62); box-sizing:border-box; width:100%; }
+        .sw-card .sw-body { padding:12px 4px 6px; }
+        .sw-body { display:flex; flex-direction:column; align-items:center; padding:0 8px 8px; }
+        .sw-wrap { display:flex; flex-direction:column; align-items:center; width:100%; }
+        .sw { overflow:visible; max-width:100%; height:auto; }
+        .sw-readout { display:flex; flex-direction:column; align-items:center; gap:2px; min-height:16px;
+          font:10.5px 'Share Tech Mono', monospace; }
+        .sw-pay { color:#ffd24a; } .sw-ghost { color:#ffffffaa; } .sw-dim { color:#6a7a98; }
+        .sw-slot.is-held:hover { filter:brightness(1.15); }
+        .sw-phrase, .sw-last { animation:sw-pulse 1.2s ease-in-out infinite; }
+        @keyframes sw-pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
+        .sw-spin { transform-origin:180px 180px; animation:sw-rot 60s linear infinite; }
+        .sw-spin-rev { transform-origin:180px 180px; animation:sw-rot 90s linear infinite reverse; }
+        @keyframes sw-rot { to { transform:rotate(360deg); } }
+        .sw-twinkle { animation:sw-tw 2.4s ease-in-out infinite; }
+        @keyframes sw-tw { 0%,100% { opacity:.2; transform:scale(.6); } 50% { opacity:1; transform:scale(1.1); } }
+        @media (prefers-reduced-motion: reduce) {
+          .sw-spin, .sw-spin-rev, .sw-twinkle, .sw-phrase, .sw-last { animation:none; }
+        }
       `}</style>
   );
 }

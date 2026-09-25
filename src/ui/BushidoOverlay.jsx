@@ -20,13 +20,18 @@ const rung = d => Math.max(0, Math.min(1, (d - PSYCHO_BUSHIDO_MIN_RANGE) /
   (PSYCHO_BUSHIDO_MAX_RANGE - PSYCHO_BUSHIDO_MIN_RANGE)));
 const power = d => Math.pow(rung(d), BUSHIDO_LOOK.gamma);
 const ramp = (d, lo, hi) => lo + (hi - lo) * power(d);
-const laneColor = d => '#' + BUSHIDO_LOOK.hue.slice(1).match(/../g)
+// 🎨 `hue` is the Ronin's PLAYER colour (Alex, 2026-09-25: no Spirit has a colour
+// of its own). The dial-in's ramp — hue at +2 whitening toward +4 — is kept;
+// only its starting colour follows the seat. Default = the dial-in blue, so the
+// preview-parity suite still diffs the page Alex tuned.
+const laneColorOf = (d, hue = BUSHIDO_LOOK.hue) => '#' + hue.slice(1).match(/../g)
   .map(c => { const x = parseInt(c, 16); return Math.round(x + (255 - x) * 0.42 * power(d)).toString(16).padStart(2, '0'); }).join('');
 
 // Rules and target eligibility are supplied by the client. This component only
 // paints them. Separate layers keep glow beneath pieces and labels above them.
-export function BushidoOverlay({ spirit, blockers, targets, layer = 'lane', scale = SCALE }) {
-  const L = BUSHIDO_LOOK;
+export function BushidoOverlay({ spirit, blockers, targets, layer = 'lane', scale = SCALE, hue = BUSHIDO_LOOK.hue }) {
+  const L = { ...BUSHIDO_LOOK, hue };
+  const laneColor = d => laneColorOf(d, hue);
   const lane = bushidoLane(spirit, blockers);
   if (!lane.length) return null;
   const last = lane[lane.length - 1];

@@ -35,6 +35,78 @@
 > now (18-coreloop, 19-cheapest). A warning that is always there stops being
 > read — the same failure `check:bundle`'s "6 warnings" taught.**
 
+## 33-spotlights. Four owned spotlights, poses that cost −1 instead of everything, and Sustain stops leaking — 2026-09-25
+
+Alex's ask: keep the four corner lights *"shining at a particular hex and have them roam around that hex for the turn"*, stepping to a nearby hex each round; own light → +1 Drive to attack from there and a heal for posing; a rival's light → steal fans by posing there; and a pose's "no Sustain roll" becomes Sustain −1. Rulings from the Q&A: judged at your next turn start on *still on that hex*; once per round; +1 Drive only for an attack made there that turn; heal ladder 10–14 → 1, 5–9 → 2, 1–4 → 3; steal Casuals; −1 replaces "no defence" everywhere; empty seat's light is scenery; lights keep to their quarter, never on 56, never shared; tinted player colour. Mid-session: *"take away that rule that Sustain gets lost every round."*
+
+### ✅ What shipped
+- 🔦 `engine/systems/spotlights.js` (new) — pools, forked-rng round step on `board.spotlightSeed`, ownership, `homeSpotlightDrive`, `poseSpotFor`, strike/verdict/break. Round step lives in `applyTurnEnded`; verdict in `applyTurnStarted`; `enforceSpotPoses` runs after EVERY action in `applyAction`.
+- ✨ `attackParams` — a posing defender's `defStat` is Sustain −1 and `posing` is always `false` (the reducer's zero-shield branch stays only for old replays). `sonicRig` gained `extraDrive`; `rigFor`, the Swing branch and `swingClash.js` pass the home light's die.
+- 🪦 `turnFlow.js` — `Math.max(1, pendingAttacks)` → `pendingAttacks`. No natural decay.
+- 🖥️ Client: `togglePose` asks the engine where you may pose; the existing Pose button appears on a player's light with honest text; one `useEffect` narrates the four engine reports (moved / struck / broken / judged). Dice preview counts the home die.
+- 🧪 `test:spotlight` **261**, in `test:all`. `test:sonic` flipped to guard the decay cut (80). `winConditionsCheck` control seed 2 → 3 (fixture move, commented).
+- 🎨 `.scratch/spotlight-preview.html` — the look, with levers, localStorage and a 📋 dial-in block.
+
+### 🎓 Findings
+- 🐛 **`state.rng.seed` is not the match seed.** `applyAction` overwrites `state.rng` with whatever rng the caller passed, so a system keyed on it moves differently under the harness, the tests and the client. The lights carry their own `board.spotlightSeed`.
+- 🐛 **The stack-seat × deletes old notes for free** (not fixed, awaiting Alex): it refunds only a note from this turn's stock, so on a carried-over note or the root it just deletes it — or refunds the wrong slot if the same pitch was used this turn. The likeliest "Sustain vanished" besides decay.
+- ⚠️ **Bot stack commits read the render snapshot** (`botExecuteStackCommits` prefers `noteStates` over `engineRef`), whose own comment claims `setNoteField` skips `engineRef` — no longer true. Can write a stale stack back. Bot-only; parked with the bot.
+- 🚩 **Many suites were already red before this session** and stay red for the same first assertion (compared against a HEAD copy of the touched engine files): engine/selftest, legal, eval, transition, battleflow, slime, eleven, harness, skilltree, shamisen, bushido, b0, journey, arch (the six loadout rows). `test:all` cannot run end to end.
+
+### 🧪 Evidence (Alex's machine, Linux VM; esbuild via `ESBUILD_BINARY_PATH` to a linux binary, since `node_modules` is Windows)
+`test:spotlight` 261 · `test:sonic` 80 · `test:winconditions` 87 · turnflow 73 · determinism 20 · buzzer 81 · stackslots 122 · melody 118 · score 133 · riffparity 127,598 · shukuchi 68 · riff 55,706 · trace **2,541 (was 2,197 — longer seeded matches without decay)** · client 6 · render 13 · swing · dice · sonicjourney PASS · `check:bundle` 0 warnings.
+
+### ⬅️ NEXT
+1. Alex dials in `.scratch/spotlight-preview.html` → port into `board/arenaEnvironment.js` (aim each light at `board.spotlights[corner]`, wander + step ease, player colour, ring on the lit hex, range outline, pose halo). `arenaFrame` must pass `engineState.board.spotlights` and seat corners.
+2. The × ruling, then the fix.
+3. ⁉️ Should a poser still be exempt from Swing fray?
+4. 🪦 **Amp dial — built, then PULLED the same afternoon.** Alex dialled it in (brackets on, 0.85 × a speaker), it went in (`board/ampDial.js`, 172 checks against the real GLB), then: *"the 'dial' is far too small to see anyways — what actually does help is the outline over top the amps. So — bring back the old amps, keep the red / blue outline on top."* Asked which "old": **before today's dial**, and the outline is the **top-edge glow**. Now: no label at all, all 8 speakers, the red/blue top glow unchanged. Files parked in `_to_delete/2026-09-25-amp-dial/` (module, check, WebGL probe). 🎓 Worth keeping from it: the angled amp faces run almost through the amp's bounding-box centre (use the arena middle for "out"), and a transparent card on an amp is painted over by `solidLayer`'s cabinet re-draw (use `alphaTest`).
+5. 🔦 **Beams over everything** (Alex: *"put the light's beam over top anything else — including the amps"*). ⚠️ The cause was layering, not depth: `solidLayer` re-draws the amps on the FOREGROUND canvas after the arena renders, so no depth setting in the arena could ever let a beam win. The cones now live in the foreground scene with `depthTest:false`, `renderOrder 900`, additive — they draw after the solids and the standees. Pools stay in the arena. Checked in a WebGL browser with the real `mountArena` (beams exaggerated ×5 to see them): beams cross the amps' faces. `test:arena` green, `check:bundle` 0 warnings. 📌 The spotlight PORT (preview dial-in) must keep the cones in `overlay`.
+6. 🪨 **The amp "foundations"** (Alex: *"below that is what looks like a 'foundation' … I don't think that was there before"*). He was right. Checked against the last commit and 2026-09-22: the GLB and the tier stacking are identical (GLB unchanged since 2026-09-07, stacking since 09-08). What changed is the solid layer (09-24 pixel copy, 09-25 re-draw): amps are modelled from y −0.42, the Stage top is 0.08, and the foreground re-draw had no Stage in its depth, so the buried half-unit was painted over the board. Fix: Stage + Island on `OCCLUDER_LAYER`, depth-only in the solid pass. Before/after rendered from the real `mountArena` (`.scratch/amp-compare/entry.js`; bundles in `_to_delete/2026-09-25-amp-dial/amp-compare-bundles/`). `test:topview` 55 (was 53; its depth-pass regex updated + two 🪨 checks). ⚠️ A little dark geometry still shows where a cabinet overhangs the Island's jagged rim — that is real geometry, visible in the arena pass too.
+
+## 32-colours. No Spirit has a colour of its own; the head in the banner (preview); the amps and fans stop being black glass — 2026-09-25
+
+Three asks, same day.
+1. *"There should be no default colors, the only colors that should be associated with any spirits is the color of what player is choosing. So if player 1 - it should be blue, player 2 - orange... All the standee/colors should reflect this arrangement."*
+2. *"after choosing a Spirit - That Spirit should appear in the Player window … Can you put a close up of their heads maybe in that banner area, and make it look cool?"*
+3. *"[the amps/fans] are totally black and reflect the whole arena like as if it were some kind of black glass … can you render the textures as how they should be (how they were before)"*
+
+### ✅ What shipped
+- 🎨 **The player-colour rule.** `SPIRIT_DEFS` has **no `color` field** any more, and the skill tree's three Spirit routes have none either. A Spirit's only colour is `playerColor(corner)` (`data/corners.js`), which is P1 blue `#4488ff` and P2 orange `#ff6600` (the "red" corner), then purple and yellow. In a match this was already stamped at start (`seatSpirit` / the lobby). What changed is everything that bypassed it:
+  - **The picker.** Every roster card, its halo, its 3D standee's neon edge, base and rim light, and the backstory panel wear the CHOOSING seat's colour. `createSpiritPickerStage({ color })` and `stage.setColor()` re-cut the standees when the seat changes; the canvas and its WebGL context stay.
+  - **The Game** (`seatColor(id)` beside `triggerEffectFlash`): BUSHIDO!, SHADOW!, SHUKUCHI, WARP, RA!, BLAST!, SWALLOWED!, MOSH PIT!, MIC DROP!, FIRED BACK!, BOOM BOX ON! and the Shadow's GONE / MISS! numbers. Also the rail buttons for Bushido, Shadow, Move Shadow, Shukuchi (with its budget pips), Warp, Gravity and Mosh, via `actingHue` / `actingHueLight` / `actingHueDim`. Also the warp band, Shukuchi's ring and arcs, and the **Bushido lane** (`BushidoOverlay` `hue` prop). The two lanes keep Alex's dial-in shape and alphas; only the starting hue moves. Their defaults are still the dial-in blue, so `test:bushidoui` 331 and `test:shukuchiui` 80 still diff clean against their previews.
+  - The signature-abilities modal, the upgrade modal and the Testing Grounds panel read the seat's colour instead of a route's.
+  - ⚠️ **Kept on purpose:** colours that mean a THING rather than a Spirit (slime green, damage red, pyro orange, the gravity vortex purple, the Style colours Shred/Groove/Flair) and the art itself (the Ronin's print is still the Ronin's print).
+- 🎭 **The head in the seat banner — previewed, then ✅ WIRED at Alex's dial-in the same day** ("Looks rad. Lets wire it in!"). He moved **5 of 33 levers**: height 118 → **141**, width .58 → **.73**, panelAlpha .5 → **.6**, slant 16 → **18**, enterMs 520 → **760**. Every head focus stayed at its default. `SpiritDraft` passes `portrait={SEAT_PORTRAIT}`. `seatPortraitCheck` §0 pins the numbers, and its §5 guard now fails if the portrait ever drops out. The real `SpiritDraft` was rendered in cloud Chromium with P2 choosing: the orange cards and both heads are there (`.scratch/seat-portrait-wired-2026-09-25.png`). `.scratch/seat-portrait-preview.html` (Vite, `npm run dev:seatportrait`) and `seat-portrait-preview.standalone.html` (double-click; `npm run build:seatportrait`).
+  - It draws the **real banners**: `DraftSeats` was lifted out of `SpiritDraft` for this.
+  - The head is the standee's own print, clipped to the `body` ring and edged along the `panel` ring in the player's colour. It sits on a slanted, striped backdrop with a big stroked player number, breaks out of the top edge, slides in on a pick and drifts slowly.
+  - There are 21 look levers, plus x / y / head-height for each Spirit. The page has localStorage and a changed-vs-default copy block.
+  - Modules: `ui/seatPortrait.js` (pure), `ui/SeatPortrait.jsx`, `ui/SeatPortrait.css` (through `index.css`).
+- 🧱 **The solid layer re-draws instead of copying** (`board/solidLayer.js`).
+  - The foreground draws the amps, fans and dice again with their own materials, the arena's lights (enabled on the solid layer for that pass only), its environment, tone mapping and exposure. It draws depth first, pushed back by `polygonOffset`, then colour, then the standees.
+  - The hexes still cannot paint over them, and the textures are the real ones.
+
+### 🎓 Findings
+1. ⭐ **A CPU renderer cannot vouch for a cross-context canvas read.** 30-topdown's pixel copy (`CanvasTexture` of the arena canvas, sampled at `gl_FragCoord`) passed its before/after in cloud Chromium, which renders on SwiftShader. On Alex's GPU it drew black glass. Uploading one WebGL canvas into another context takes a GPU fast path with its own orientation and freshness, and a software renderer never exercises that path. **Cloud verification of anything that reads a canvas back is not evidence for real hardware.** The re-draw was checked in the same harness (`.scratch/solid-layer/redraw-check-2026-09-25.png`), and it cannot sample the wrong place because it samples nothing.
+2. **The four default colours were the four corner colours**, in order. So the bug was invisible in every 4-player setup that happened to seat the Spirits in roster order, and obvious the first time P2 picked the Ronin.
+3. **Lights obey camera layers.** Re-drawing PBR meshes on a layer the lights are not on gives unlit meshes plus environment reflections. That is the same "black glass" look, reached from the other side.
+
+### 🧪 Evidence
+- `test:seatportrait` **66** after the port (new, in `test:all`; 6 mutants, 6 caught). `test:loadoutui` still reaches its old note-stock red, which means the draft half passes with the heads mounted. `test:topview` **52** (§6 rewritten for the re-draw; 2 mutants caught). `test:spiritpicker` **63**. `test:bushidoui` **331**, `test:shukuchiui` **80** (cloud). `test:winconditions` 87, `test:loadouts` ✅.
+- `check:bundle` **0 warnings** and the full `main.jsx` bundle **0 warnings** (cloud, media stubbed).
+- The preview was rendered in cloud Chromium at every case: zero page errors.
+- 🚩 **Red before this pass and not touched:**
+  - `test:engine` ("atkTotal = stat + roll"), `test:legal` ("without the unlock he swings the ordinary Smash") and `test:skilltree` ("the skillTarget family finally appears"). All three fail identically with this pass's `spirits.js` / `skillTree.js` swapped back to HEAD, so they come from the uncommitted working tree.
+  - `test:standee` §4.
+  - `test:loadoutui` at the note-stock click, after the draft half passes.
+  - `test:arch` §1: the five loadout modules.
+- ⛔ `test:arena` was not run. The GLB and art are not in the cloud copy, and the device cannot run esbuild.
+
+### ⬅️ NEXT
+- ✅ ~~Dial in the seat portrait~~: done and wired, as above.
+- **Alex:** look at the amps and fans in the running game. It is the first time the re-draw has been on a real GPU.
+- 🐛 **Found beside it, not fixed:** `UpgradeModal`'s route filter compares `route.spiritOnly` against `acting.id`, which is a SEAT id (`cosmic_ronin::blue`), so no Spirit route can ever match. The modal is behind "coming soon", so it is dormant. Fix it with `characterId(acting.id)` the day the shop opens.
+
 ## 31-picker. The select screen shows the standees, they pop, they tell a story — and the acrylic cuts the figure only — 2026-09-25
 
 Two asks, same day.

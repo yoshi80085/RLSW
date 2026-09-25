@@ -10,7 +10,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { BATTLE_DIRECTOR } from './battleDirector.js';
 import { createSpeedLines } from './speedLines.js';
-import { createSolidLayer, markSolid } from './solidLayer.js';
+import { createSolidLayer, markSolid, markOccluders } from './solidLayer.js';
 import { TOP_OFFSET, onTopAxis } from './topDownView.js';
 import { SCALE, SVG_W, SVG_H } from './constants.js';
 import { preserveTacticalLayer, keepGameplayClicks } from './arenaDom.js';
@@ -55,9 +55,10 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     Object.assign(foreground.domElement.style,{position:'absolute',inset:'0',zIndex:'2',pointerEvents:'none'});
     host.appendChild(foreground.domElement);
     cleanups.push(()=>{releaseArenaObject(foregroundScene);foreground.dispose();foreground.forceContextLoss();foreground.domElement.remove();});
-    // 🧱 Amps, fans and dice are copied onto this canvas too, ABOVE the board's
-    // SVG, so no hex tint can paint over them (solidLayer.js). The foreground
-    // therefore clears once per frame and draws twice, sharing one depth buffer.
+    // 🧱 Amps, fans and dice are RE-DRAWN on this canvas too, with their own
+    // materials, ABOVE the board's SVG, so no hex tint can paint over them
+    // (solidLayer.js). The foreground therefore clears once per frame and
+    // draws the solids, then the standees, sharing one depth buffer.
     const solid=createSolidLayer({renderer,foreground});foreground.autoClear=false;
     cleanups.push(()=>solid.dispose());
     cleanups.push(()=>{restoreLayer();overlay.domElement.remove();});
@@ -82,7 +83,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     bokeh.enabled=false;composer.addPass(bokeh);
     const output=new OutputPass();composer.addPass(bloom);composer.addPass(output);
     cleanups.push(()=>{bloom.dispose();bokeh.dispose();output.dispose();composer.dispose();});
-    const environment=createArenaEnvironment(scene);cleanups.push(()=>environment.dispose());
+    const environment=createArenaEnvironment(scene,{overlay:foregroundScene});cleanups.push(()=>environment.dispose());
     const visuals=createArenaVisuals(scene,{foregroundScene});cleanups.push(()=>visuals.dispose());
     const crowd=createArenaCrowd(scene);crowd.group.visible=false;cleanups.push(()=>crowd.dispose());
     const crowdSpeaker=document.createElement('div');
@@ -115,15 +116,45 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     // is the Auto camera switch turned off — a separate choice (📌 Hold).
     let topView=false;
     const syncBattleCamera=()=>sonicCamera.autoCamera(autoCamera&&!topView);
-    // Every click counts as activity, including HUD clicks outside the canvas.
-    // Capture observes events without preventing gameplay or changing battle shots.
-    const noteActivity=()=>{const now=performance.now();director.userNudge(now);idleFlow.activity(now);};
-    for(const type of ['pointerdown','pointerup','click','auxclick']) {
-      document.addEventListener(type,noteActivity,true);
-      cleanups.push(()=>document.removeEventListener(type,noteActivity,true));
+    // 🎥 ANY INPUT IS "ACTIVITY", AND 10 s OF NONE HANDS THE LENS BACK (Alex,
+    // 2026-09-25: *"stationary for 10 seconds triggers auto camera. Any keystroke,
+    // mouse click, mouse wheel roll, mouse movement counts as an 'action'"*). So
+    // the auto camera is an idle mode now: it takes over when the player has put
+    // the mouse down, and the first twitch gives the camera back where it is.
+    // Listened for on the whole document (the HUD counts, not just the canvas), in
+    // the capture phase and passively — observed, never prevented.
+    // ⚠️ Battle shots are NOT nudged by this: sonicCamera only yields to a real
+    // drag (OrbitControls start), so moving the mouse never cancels a battle angle.
+    // 🎯 A BREAK REFOCUSES ON THE SPIRIT (Alex, 2026-09-25: *"make it so that a
+    // break in the auto camera brings the focus back to the Spirit"*). When the
+    // input lands while the director or the idle flow is FLYING the lens, the
+    // camera eases (REFOCUS_MS) onto the acting Spirit instead of freezing
+    // wherever the wander had reached. It keeps its current viewing angle — only
+    // the aim and the distance change — so the break reads as "back to you", not
+    // as a cut. ⚠️ Only on the break itself: the director is manual from then on,
+    // so later mouse movement cannot re-trigger it until the auto camera has
+    // come back. A real drag (OrbitControls start), ☰ view or zoom cancels it.
+    let refocus=null;
+    const REFOCUS_MS=700;
+    function startRefocus(now){
+      const num=frame.spirits?.find(s=>s.id===frame.actingId)?.num;if(num==null)return;
+      const p=arenaPoint(num,.34);if(!p)return;
+      const dir=camera.position.clone().sub(controls.target),r0=dir.length();if(!r0)return;
+      controls._sphericalDelta?.set(0,0,0);controls._panOffset?.set(0,0,0);if('_scale' in controls)controls._scale=1;
+      refocus={start:now,t0:controls.target.clone(),goal:new THREE.Vector3(p.x,p.y+CAMERA_DIRECTOR.lookHeight,p.z),
+        dir:dir.divideScalar(r0),r0,r1:CAMERA_DIRECTOR.idleDistance*fit(Math.max(camera.aspect,.25))};
+      dirty=true;
+    }
+    const noteActivity=()=>{const now=performance.now();
+      const broke=autoCamera&&!topView&&!sonicCamera.active&&!!cameraShot?.driving&&!refocus;
+      director.userNudge(now);idleFlow.activity(now);
+      if(broke)startRefocus(now);};
+    for(const type of ['pointerdown','pointerup','click','auxclick','keydown','wheel','pointermove']) {
+      document.addEventListener(type,noteActivity,{capture:true,passive:true});
+      cleanups.push(()=>document.removeEventListener(type,noteActivity,{capture:true}));
     }
     // OrbitControls still owns drag start/end, so held gestures cannot time out.
-    const takeOver=()=>{sonicCamera.userStart();director.userStart(performance.now());},letGo=()=>director.userEnd(performance.now());
+    const takeOver=()=>{refocus=null;sonicCamera.userStart();director.userStart(performance.now());},letGo=()=>director.userEnd(performance.now());
     controls.addEventListener('start',takeOver);controls.addEventListener('end',letGo);
     cleanups.push(()=>{controls.removeEventListener('start',takeOver);controls.removeEventListener('end',letGo);});
     const motion=()=>{reduced=!!media?.matches;controls.enableDamping=!reduced;dirty=true;};motion();
@@ -197,6 +228,14 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
           controls.target.set(cameraShot.target.x,cameraShot.target.y,cameraShot.target.z);
           camera.position.set(cameraShot.position.x,cameraShot.position.y,cameraShot.position.z);
           camera.lookAt(controls.target);dirty=true;
+        } else if(refocus) {
+          // 🎯 the break's ease back onto the Spirit (startRefocus). No
+          // controls.update() here either: damping would pull against the ease.
+          const k=reduced?1:Math.min(1,(now-refocus.start)/REFOCUS_MS),e=k*k*(3-2*k);
+          controls.target.lerpVectors(refocus.t0,refocus.goal,e);
+          camera.position.copy(refocus.dir).multiplyScalar(refocus.r0+(refocus.r1-refocus.r0)*e).add(controls.target);
+          camera.lookAt(controls.target);dirty=true;
+          if(k>=1)refocus=null;
         } else controls.update();
       }
       // 💨 Only while the director is flying the lens — a player who grabbed the
@@ -207,12 +246,12 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       reportCamera(topView?'top':sonicCamera.manual?'battle-manual':sonicCamera.active?'sonic':!autoCamera||!cameraShot||cameraShot.mode==='off'?'off':cameraShot.mode,cameraShot?.resumeInMs);
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
-      const stats=visuals.diagnostics(),moving=stats.effects>0||stats.headDials>0||stats.moveTiles>0||sonicCamera.active||!!cameraShot?.driving;
+      const stats=visuals.diagnostics(),moving=stats.effects>0||stats.headDials>0||stats.moveTiles>0||sonicCamera.active||!!cameraShot?.driving||!!refocus;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
       try {
-        environment.update(elapsed,{lite,reduced});
+        environment.update(elapsed,{lite,reduced,spotlights:frame.spotlights});
         crowd.tick(elapsed,{reduced});
         // 👏 The bout's crowd reaction rides on top of the idle tick.
         crowd.react(elapsed,visuals.crowdReaction()??{amount:0},{reduced});
@@ -261,6 +300,8 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         model=gltf.scene;model.scale.z=-1;emissives=polishArenaModel(model);
         // The crowd owns the larger seats; hide the original modeled copy.
         const oldStands=model.getObjectByName('Stands');if(oldStands)oldStands.visible=false;
+        // 🪨 The ground hides the amps' buried bases in the solid re-draw too (solidLayer.js).
+        markOccluders([model.getObjectByName('Stage'),model.getObjectByName('Island')]);
         scene.add(model);visuals.attachModel(model);visuals.update(frame);crowd.group.visible=true;dirty=true;onReady();
       }catch(error){console.error('Arena model setup failed',error);onError();}
     },undefined,()=>{if(!disposed)onError();});
@@ -272,11 +313,11 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // director, which waits out the usual resume before it drives again.
       view(name){const top=name==='tactical';
         if(top!==topView){topView=top;syncBattleCamera();if(!top){director=createCameraDirector();tuneDirector();idleFlow.activity(performance.now());}}
-        sonicCamera.userNudge();frameView(name);director.userNudge(performance.now());},
+        refocus=null;sonicCamera.userNudge();frameView(name);director.userNudge(performance.now());},
       dispose,
       update(next){if(disposed||failed)return;frame=next??{};applyQuality();visuals.update(frame);crowd.update(frame.crowds);dirty=true;},
       quality(value){if(value===quality)return;quality=value;autoLite=false;applyQuality();dirty=true;},
-      zoom(factor){sonicCamera.userNudge();camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target);controls.update();director.userNudge(performance.now());dirty=true;},
+      zoom(factor){refocus=null;sonicCamera.userNudge();camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target);controls.update();director.userNudge(performance.now());dirty=true;},
       // ☰ Auto camera switch. Turning it back ON starts a fresh director so it
       // picks up from wherever the camera is now, not from a pose it held before.
       autoCamera(on){on=!!on;if(on===autoCamera)return;autoCamera=on;syncBattleCamera();if(on){director=createCameraDirector();tuneDirector();}dirty=true;},

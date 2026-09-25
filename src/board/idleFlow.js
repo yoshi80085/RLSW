@@ -1,6 +1,7 @@
 // Approved arena-storm camera dial-in, 2026-09-24. Pure presentation only.
 // Layer idle travel over the existing action director; action/battle shots retain priority.
-export const IDLE_FLOW = Object.freeze({speed:1.2,sway:1.3,idleMs:6500});
+// ⏱️ idleMs matches CAMERA_DIRECTOR.resumeAfterMs: 10 s of no input (Alex, 2026-09-25; was 6.5 s).
+export const IDLE_FLOW = Object.freeze({speed:1.2,sway:1.3,idleMs:10000});
 export function createIdleFlow() {
   let lastActivity=null,phase=0,anchor=null,blend=0;
   const activity=now=>{lastActivity=now;anchor=null;blend=0;};

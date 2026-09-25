@@ -40,6 +40,7 @@ import {
 } from "../../data/gameConstants.js";
 import { ampBlown } from "./eleven.js";
 import { isPosing } from "./limelight.js";
+import { homeSpotlightDrive, posedSustain } from "./spotlights.js";
 import { distFromHome } from "../policies/evaluate.js";
 
 // 6️⃣ CUT 2026-08-17 — `BEAST_DRIVE`, Number of the Beast's uncapped +6.
@@ -115,7 +116,10 @@ export function rigFor(spirit, ns = {}, state = null) {
   if (ampBlown(ns)) return { pool: [SONIC_BASE_DIE], inRange: false, radius: 0 };
   const chargeBoost = (ns.chargeCeilTurns ?? 0) > 0 ? 1 : 0;
   const onTurn = !!spirit && state?.acting === spirit.id;
-  return sonicRig(ns, distFromHome(spirit, ns), chargeBoost, onTurn, spirit?.id);
+  // 🔦 Only the ACTING Spirit's rig counts the home light — it is an attack
+  // bonus, and the off-turn reading is the defensive one.
+  const extra = onTurn ? homeSpotlightDrive(state, spirit.id) : 0;
+  return sonicRig(ns, distFromHome(spirit, ns), chargeBoost, onTurn, spirit?.id, extra);
 }
 
 /**
@@ -150,7 +154,7 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
   const nsA = state?.noteStates?.[attackerId] ?? {};
   const nsD = state?.noteStates?.[defenderId] ?? {};
   if(kind==='swing') {
-    const dicePool=sonicRig(nsA,0,0,true,attackerId).pool;
+    const dicePool=sonicRig(nsA,0,0,true,attackerId,homeSpotlightDrive(state,attackerId)).pool;
     const defenderDicePool=sonicRig(nsD,0,0,true,defenderId).pool;
     return {atkStat:dicePool.length,defStat:defenderDicePool.length,dicePool,defenderDicePool,
       atkFloor:Math.max((nsA.chargeFloorTurns??0)>0?CHARGE_FLOOR_BONUS:0,nsA.dieFloorBoost??0),
@@ -197,7 +201,13 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
   // drops your guard for −1 Sustain until your next turn. Ranged Sonic keeps
   // you safe — the evaluator must charge the Swing this or it over-rates melee.
   const defBase = defChordSustain - (nsD.swingExposed ? 1 : 0);
-  const defStat = defBase + (nsD.tempSustain ?? 0);
+  // ✨ A POSING DEFENDER DEFENDS AT SUSTAIN −1, NOT AT NOTHING (Alex,
+  // 2026-09-25 — Limelight and spotlight poses alike). ⚠️ This is why `posing`
+  // below is now always FALSE: the reducer's `posing:true` branch zeroes the
+  // shield, which is the retired rule, and is kept only so old replays replay.
+  const defenderPosing = isPosing(state, defenderId);
+  const unposedDef = defBase + (nsD.tempSustain ?? 0);
+  const defStat = defenderPosing ? posedSustain(unposedDef) : unposedDef;
 
   // ⚡ CHARGE ZONE — attacks only. The FLOOR clamps every result to at least
   // 1 + CHARGE_FLOOR_BONUS; the CEILING grows dice a size. The dormant
@@ -209,7 +219,7 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
 
   const base = {
     atkStat, defStat,
-    posing: isPosing(state, defenderId),
+    posing: false,                      // see ✨ above — the −1 is already in defStat
     halveDef: false,                    // retired — see the header
     atkFloor,
     _derived: {
@@ -220,6 +230,7 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
       cranked,
       crankedDown: cranked && (atkBase + atkBonus) > ELEVEN_DRIVE,
       consumedSmashExposed: exposed,    // ⚠️ caller must clear the flag — see above
+      defenderPosing,                   // 🔦 for the HUD: "guard −1", not "guard down"
     },
   };
 
@@ -235,7 +246,7 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
     return {
       ...base,
       atkStat:dicePool.length,
-      defStat:Math.max(0,(nsD.smashExposed?0:(nsD.sustainStack?.length?spiritChord(defenderId,nsD.sustainStack).sustain:0))
+      defStat:(v=>defenderPosing?posedSustain(v):Math.max(0,v))((nsD.smashExposed?0:(nsD.sustainStack?.length?spiritChord(defenderId,nsD.sustainStack).sustain:0))
         -(nsD.swingExposed?1:0)+(nsD.tempSustain??0)),
       dicePool,
       defDie: 6,

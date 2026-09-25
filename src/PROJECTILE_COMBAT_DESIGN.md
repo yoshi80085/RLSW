@@ -96,15 +96,17 @@ the cinematic; the automatic rhythm-game riff-off remains its own interaction.
   the stack is empty. Movement or loss of a pose during this volley does not
   reroll or reclassify its remaining projectiles.
 - The Sustain chord remains intact during Sonic. At the defender's next own
-  turn, remove **one tail note per incoming Sonic volley, capped at two**, with
-  **one natural decay minimum** even without an attack. Never remove the last
+  turn, remove **one tail note per incoming Sonic volley, capped at two**.
+  🪦 ~~with **one natural decay minimum** even without an attack~~ — **CUT
+  2026-09-25** (Alex: *"It shouldn't just get lost every round like that"*); a
+  quiet turn now costs nothing. Never remove the last
   surviving root. Clear the pending tally after paying it. Blocked volleys count;
   hits and rerolls do not add extra bills. Swing does not add to this tally.
 
-One incoming volley costs the same one-note upkeep as natural decay. A second
-volley raises it to two; further volleys cannot raise it again. Thus a fully
-absorbed shot does not always impose an additional cost beyond the bill already
-due. Present the actual pending loss, not a new +1 for every declaration.
+One incoming volley costs one note. A second volley raises it to two; further
+volleys cannot raise it again. (🪦 Before 2026-09-25 one note was billed even
+with no volley — "natural decay" — so a single absorbed shot cost nothing extra.
+With decay cut, every volley up to the cap now shows up in the bill.) Present the actual pending loss, not a new +1 for every declaration.
 
 ### 0.2 Contact, movement and interrupted volleys
 

@@ -14,7 +14,7 @@ import crowdPinkImg from "./crowd_pink.png";   // fan-fare — attacker (left) c
 import crowdBlueImg from "./crowd_blue.png";   // fan-fare — defender (right) cheering section
 // (hydraImg removed — Ronin rework)
 import { SPIRIT_DEFS, SPIRIT_OPTIONS } from "./data/spirits.js";
-import { CORNERS, CORNER_LABELS, CORNERS_ORDER } from "./data/corners.js";
+import { CORNERS, CORNER_LABELS, CORNERS_ORDER, playerColor, NEUTRAL_SPIRIT_COLOR } from "./data/corners.js";
 import { HEX_SIZE, SCALE, SVG_W, SVG_H } from "./board/constants.js";
 import { HEX_BY_NUM, HEX_BY_QR, ALL_HEXES } from "./board/hexMap.js";
 import { pointyCorners, axialDist, axialNeighbors, getFlatTopNeighborSlots, angleTo, angleDiff, neighborInDirection, grandstandSeat, grandstandArc, grandstandRowSpan } from "./board/hexGeometry.js";
@@ -185,6 +185,9 @@ import { fanPawnShape } from "./ui/fanPawnShape.jsx";
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
 import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim } from "./music/stackSlots.js";
+// 🔦 The four corner spotlights (Alex, 2026-09-25) — rules in the engine, read here.
+import { poseSpotFor, homeSpotlightDrive } from "./engine/systems/spotlights.js";
+import { SPOTLIGHT_POSE_SUSTAIN_COST, POSE_SUSTAIN_PENALTY, SPOTLIGHT_STEAL_CASUALS } from "./data/gameConstants.js";
 import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_TOTAL_CAP, addCasuals, addDiehard, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, CROWD_DRAWN_MAX, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
@@ -193,50 +196,22 @@ import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, 
 
 import { EVENT_DECK, EVENT_BY_ID } from "./data/events.js";
 
-// ── BACK TO THE PAST — two-stage PLAY CHALLENGE (its own mini riff engine) ────
-// Stages are scale-degree sequences (degree 0 = A3, A-natural-minor) so they
-// reuse the Note-Track letter/pitch system. All naturals → no Shift needed.
-const BTTP_STAGES = {
-  angel: {
-    name: 'SLOW-DANCE ANGEL', icon: '💫', accent: '#7fb0ff', view: 'piano',
-    blurb: 'Read the lit keys and play each chord — no labels, no second guesses.',
-    // Doo-wop changes: Am – F – C – G – Am (all natural triads → white keys)
-    chords: [['a','c','e'], ['f','a','c'], ['c','e','g'], ['g','b','d'], ['a','c','e']],
-    window: 3000, gap: 320, reward: 'hc', pbLit: 560, pbGap: 170,
-  },
-  goode: {
-    name: 'DUCKWALK DYNAMO', icon: '🦆', accent: '#ff9a3c', view: 'piano',
-    blurb: 'Same piano, faster changes — find the power chords by feel.',
-    // Berry-style power chords (root + fifth): A5 A5 C5 A5 D5 E5 A5
-    chords: [['a','e'], ['a','e'], ['c','g'], ['a','e'], ['d','a'], ['e','b'], ['a','e']],
-    window: 2200, gap: 220, reward: 'fans', pbLit: 320, pbGap: 110,
-  },
-};
-const BTTP_PASS_RATIO = 0.6; // share of chords nailed CLEANLY to "nail" a stage
-const BTTP_NAT_DEG = { a:0, b:1, c:2, d:3, e:4, f:5, g:6 }; // keystroke → scale degree
-function bttpLetterFreq(letter) { return riffDegreeFreq(BTTP_NAT_DEG[letter] ?? 0, false); }
-function bttpStageData(key) {
-  const st = BTTP_STAGES[key];
-  const rhythm = st.chords.map((_, i) => ({ window: st.window, gap: i === 0 ? 0 : st.gap }));
-  return { ...st, key, rhythm };
-}
-
 // ── 🧪 Signature-skill test registry — Ronin & Monster (the two built so far) ──
 // Each entry unlocks the named skill (+ any prereqs) for its spirit; `fire`
 // marks the ones with a self-contained trigger we can run on the spot.
 const SIGNATURE_TESTS = {
-  cosmic_ronin: { name: 'Shredding Ronin', color: '#4488ff', skills: [
+  cosmic_ronin: { name: 'Shredding Ronin', skills: [
     { id:'shukuchi',         label:'🌀 Shukuchi Arpeggio', pre:[] },
     { id:'psycho_bushido',   label:'🌀 Psycho Bushido',   pre:[] },
     { id:'shadow_illusion',  label:'👤 Shadow Illusion',  pre:[] },
     { id:'cursed_shamisen',  label:'🎸 Cursed Shamisen',  pre:[] },
   ]},
-  Metalness_Monster: { name: 'Metalness Monster', color: '#ffcc00', skills: [
+  Metalness_Monster: { name: 'Metalness Monster', skills: [
     { id:'goes_to_11',          label:'🔊 Goes to 11',          pre:[] },
     { id:'master_moshpits',     label:'🤘 Master of Moshpits',  pre:[] },
     { id:'tentacle',            label:'🐙 Tentacle',            pre:[] },
   ]},
-  intergalactic_0: { name: 'Intergalactic 0', color: '#aa55ff', skills: [
+  intergalactic_0: { name: 'Intergalactic 0', skills: [
     { id:'blaster_of_ra', label:'🌀 Blaster of Ra', pre:[] },
     { id:'displace',        label:'🌌 Space is Displaced', pre:[] },
     { id:'gravity_control', label:'🕳️ Gravity Control',   pre:[] },
@@ -250,6 +225,8 @@ import { PC_PLAY_NAMES } from "./music/pitchNames.js";
 // 🎵 The Note Stock chip. SVG rings, not clip-path divs — NoteHex.jsx opens with
 // the reason why, and it is a reason worth reading before touching the chip.
 import NoteHex, { NOTE_HEX, NOTE_BURST } from "./ui/NoteHex.jsx";
+import { ScaleWheel, ScaleWheelCard } from "./ui/ScaleWheel.jsx";
+import { WHEEL_DEFAULTS, POCKET_WHEEL } from "./ui/scaleWheelModel.js";
 import { CrowdBubble, useCrowdCoach, crowdCss } from "./ui/CrowdBubble.jsx";
 import { crowdAsks, chordGlow, crowdStockMarks, CROWD_BUBBLE } from "./ui/crowdCoach.js";
 import Bracket from "./ui/Bracket.jsx";
@@ -262,6 +239,7 @@ import { NoteFlyChip } from "./ui/NoteFlyChip.jsx";
 // turns — in any key — and you resolve a cadence for Fame. Degrees are
 // semitone offsets from the root you establish on the run's first final.
 import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, randomNote } from "./music/cadence.js";
+import { noteKeyFromEvent, stockIndexForKey, nextStackDest, keyLabel } from "./music/noteKeys.js";
 import { chordContext, contextClaim, classifyTrack } from "./music/context.js";
 import { evaluateChord } from "./music/chords.js";
 
@@ -1257,13 +1235,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // flashing note lives here (not in React state) so reaction times are
   // measured against the real flash timestamp, not a render cycle.
   const riffEngineRef = useRef(null);
-  // 🎸⏰ Back to the Past timing ref — fresh flash timestamp lives here, not in state.
-  const bttpEngineRef = useRef(null);
-  // Chosen instrument for the challenge + its input-window multiplier (guitar gets
-  // more leeway since reading a fretboard cold is harder than the piano).
-  const bttpModeRef = useRef({ view: 'piano', winMult: 1 });
-  // 🎸⏰ Back to the Past — overlay state (declared here, before its input effect)
-  const [bttpChallenge, setBttpChallenge] = useState(null);
   // 🎯/🎸/🎹 instrument used to read notes in riff-off battles (toggle on the
   // countdown card). NEON is the standard: notes land on the real neck, in the
   // position you actually play, and it is the only view a real guitar can be
@@ -1315,6 +1286,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // toolbar's ⌗ Top; cleared by ◈ Arena / ◎ Spirit, or by the ARENA when the
   // player tilts the camera off the top-down axis (zoom and pan keep it).
   // Local, like Auto camera. The ref is what a battle reads when it starts.
+  // 🎛️ The arena camera's ☰ controls (they used to be a toolbar on the board —
+  // see BoardViewport). `arenaCameraRef` is filled by BoardViewport with
+  // view(name) / zoom(factor); detail is the client's so the menu can show it.
+  const arenaCameraRef = useRef(null);
+  const [arenaQuality, setArenaQuality] = useState('auto');
+  const [arenaQualityLabel, setArenaQualityLabel] = useState('');
   const [topView, setTopView] = useState(() => {
     try { return localStorage.getItem('rlsw.topView') === '1'; } catch { return false; }
   });
@@ -1531,20 +1508,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // still serves Fretboard Recon and Discord Coach, where a bad read costs a hint
   // rather than a duel.
 
-  // 🎸⏰ BACK TO THE PAST — note input listener (armed only while a note flashes).
-  useEffect(() => {
-    if (!bttpChallenge || bttpChallenge.phase !== 'play') return;
-    const onKey = (e) => {
-      if (e.repeat) return;
-      if (e.key.length !== 1 || !/[a-gA-G]/.test(e.key)) return;
-      const eng = bttpEngineRef.current;
-      if (!eng || eng.resolved) return;
-      bttpInput(e.key.toLowerCase());
-      e.preventDefault();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [bttpChallenge?.phase, bttpChallenge?.idx, bttpChallenge?.stageKey]);
   // diceDisplay: { atk: null|number, def: null|number, rolling: 'atk'|'def'|null }
   const [diceDisplay, setDiceDisplay] = useState(null);
   // 🎤 RIFF-OFF TAUNT DISPLAY — big bold screen-wide text for one-liners
@@ -1956,6 +1919,55 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // The roaming spotlight is retired. Vibe recovery will return as a new,
   // deliberately designed system rather than a random board pickup.
   const spotlightHex = null;
+
+  // ── 🔦 THE FOUR CORNER SPOTLIGHTS — theatre only ─────────────────────────
+  // Every rule is engine-side (`engine/systems/spotlights.js`): the round step,
+  // the pose bill, the "still on your hex" verdict, the heal and the steal. The
+  // engine leaves a report object on state for each; a NEW object is the only
+  // signal that it happened. ⚠️ Watching identity (not contents) is deliberate:
+  // two identical steals in a row are two events, and a remote client that
+  // replays the action gets the same new object, so everyone reads the same log.
+  // The ref skips the mount, so a resumed match does not replay stale news.
+  const spotNewsRef = useRef(null);
+  useEffect(() => {
+    const L = engineState.limelight ?? {};
+    const B = engineState.board ?? {};
+    const now = { moved: B.lastSpotlightsMoved, struck: L.lastSpotPoseStruck, judged: L.lastSpotPose, broken: L.lastSpotPoseBroken };
+    const was = spotNewsRef.current;
+    spotNewsRef.current = now;
+    if (!was) return;
+    const nm = id => engineState.spirits.find(x => x.id === id)?.name ?? 'Someone';
+    if (now.moved && now.moved !== was.moved) {
+      addLog(`🔦 The spotlights swing to new marks for round ${now.moved.round}.`);
+    }
+    if (now.struck && now.struck !== was.struck) {
+      const k = now.struck;
+      addLog(k.kind === 'home'
+        ? `🔦 ${nm(k.spiritId)} strikes a pose in their OWN spotlight — hold it until their next turn to heal.`
+        : `🔦 ${nm(k.spiritId)} strikes a pose in a RIVAL's spotlight — hold it until their next turn to steal their fans!`);
+      addLog(k.shed?.length
+        ? `🛡️ The pose costs ${k.shed.length} Sustain note (${k.shed.join(' ')}), and they defend at Sustain −${POSE_SUSTAIN_PENALTY} while it lasts.`
+        : `💀 Posing on an EMPTY Sustain Stack — nothing but nerve.`);
+    }
+    if (now.broken && now.broken !== was.broken) {
+      for (const b of now.broken) addLog(`🔦 ${nm(b.spiritId)} is knocked out of the spotlight — the pose is broken, guard back up.`);
+    }
+    if (now.judged && now.judged !== was.judged) {
+      const j = now.judged;
+      if (!j.ok) { /* already reported when it broke */ }
+      else if (j.kind === 'home') {
+        addLog(j.heal > 0
+          ? `🔦💚 ${nm(j.spiritId)} held the pose in their own light — +${j.heal} Vibe.`
+          : `🔦 ${nm(j.spiritId)} held the pose in their own light — already at full Vibe.`);
+        if (j.heal > 0) triggerEffectFlash(j.spiritId, '💚', `+${j.heal} VIBE`, seatColor(j.spiritId));
+      } else if (j.kind === 'rival') {
+        addLog(j.stolen > 0
+          ? `🔦🎤 ${nm(j.spiritId)} owned ${nm(j.victimId)}'s spotlight — ${j.stolen} of their fans switch sides!`
+          : `🔦 ${nm(j.spiritId)} held ${nm(j.victimId)}'s spotlight, but there were no Casual fans to take.`);
+        if (j.stolen > 0) { flashFanFx(j.spiritId, 'gain', j.stolen); flashFanFx(j.victimId, 'scatter', j.stolen); }
+      }
+    }
+  }, [engineState]); // eslint-disable-line react-hooks/exhaustive-deps
   // 💥 Floating combat numbers (e.g. −2 ❤️) that drift up over an affected hex.
   const [damageFx, setDamageFx] = useState([]); // [{ key, hexNum, text, color }]
   // turnCount lives in the engine now (engineState.turn.count)
@@ -2625,7 +2637,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // so the radius breathes on their Drive stack (§5.H⁶). Everyone else's rig is
   // read through `rigForSpirit` below, which passes false and gets Sustain.
   const actingRig = acting
-    ? sonicRig(actingNoteState ?? {}, distFromHome, elevenBoost, true, acting.id)
+    // 🔦 +1 die while standing in your own spotlight — same number the engine rolls.
+    ? sonicRig(actingNoteState ?? {}, distFromHome, elevenBoost, true, acting.id, homeSpotlightDrive(engineState, acting.id))
     : { pool: [6], inRange: true, radius: 0 };
   // Backward compat: ampsInRange ≥ 1 always (Main Amp — unplugged state is gone).
   // Old callers that checked `ampsInRange >= 1` will see "plugged in" universally.
@@ -3994,6 +4007,116 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // melodyLine/usedStockIdx forever and place notes against stale state.
   useEffect(() => { micNoteHandlerRef.current = micPlaceNote; });
 
+  // ── ⌨️ KEYBOARD NOTE COMMITS ────────────────────────────────────────────────
+  // Alex, 2026-09-25: clicking every chip "gets kind of tiring". a–g commit that
+  // letter's NATURAL from the hand, Shift + a–g its SHARP OR FLAT (a hand only
+  // ever holds one altered form per letter — see music/noteKeys.js), Tab switches
+  // Drive ⇄ Sustain in the Chord Stack step, Backspace pulls the last Melody
+  // Track note back out.
+  // 🎯 SAME ENTRY POINT AS A CLICK. Every commit goes through clickNoteStock and
+  // every pull-back through removeMelodyNote, so the budget, full stacks, the
+  // 8-note track, Staggered slots and the Major/Minor declaration all gate a key
+  // press exactly as they gate the mouse. The chip's own element is handed over
+  // as the "click", so the note still flies from where it sat.
+  // ⚠️ HUMAN TURNS ONLY: `canAct` is also true on the host while it drives a
+  // bot seat, and a stray key must never play a bot's hand.
+  // The chip a note leaves from — handed to clickNoteStock as the "click" so a
+  // typed or wheel-picked note still flies from its seat in the hand.
+  function stockChipEvent(idx) {
+    const el = typeof document !== 'undefined' ? document.querySelector(`[data-stock-idx="${idx}"]`) : null;
+    return el ? { currentTarget: el } : null;
+  }
+
+  // ── 🎡 SCALE WHEEL (ui/ScaleWheel.jsx) — Alex, 2026-09-25 ─────────────────
+  // Open/closed is remembered per CHARACTER on this machine, so a hot-seat table
+  // where one player likes it open and another closed keeps both happy.
+  const WHEEL_STORE = 'rlsw.scaleWheelOpen';
+  const [wheelOpenBy, setWheelOpenBy] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(WHEEL_STORE) || '{}') ?? {}; } catch { return {}; }
+  });
+  const wheelKey  = acting ? characterId(acting.id) : null;
+  const wheelOpen = wheelKey ? (wheelOpenBy[wheelKey] ?? !WHEEL_DEFAULTS.collapsedByDefault) : false;
+  function toggleWheel() {
+    if (!wheelKey) return;
+    setWheelOpenBy(prev => {
+      const next = { ...prev, [wheelKey]: !(prev[wheelKey] ?? !WHEEL_DEFAULTS.collapsedByDefault) };
+      try { localStorage.setItem(WHEEL_STORE, JSON.stringify(next)); } catch { /* private window — session only */ }
+      return next;
+    });
+  }
+  // A wheel pick is a click on the first chip of that pitch you still hold —
+  // the same slot rule as micPlaceNote, through the same clickNoteStock.
+  function wheelPick(pc) {
+    if (!acting || !isMyTurn || netSync || isBot(acting) || hasConfirmed) return;
+    const idx = noteStock.findIndex((n, i) =>
+      !usedHas(usedStockIdx, i) && !staggeredSlots.includes(i) && pitchIndex(n) === pc);
+    if (idx >= 0) clickNoteStock(idx, stockChipEvent(idx));
+  }
+  function wheelHoverNote(slot) {
+    if (slot && POCKET_WHEEL.hoverSound) playNoteSound(slot.name, { holdTime: 0.12, fadeTime: 0.45, volume: 0.08 });
+  }
+
+  const noteKeyHandlerRef = useRef(() => false);
+  function keyboardNoteCommit(e) {
+    if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return false;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName ?? ''))) return false;
+    if (!acting || !isMyTurn || netSync || isBot(acting)) return false;
+    if (battleState || activeEvent) return false;
+    // 🎡 W is not a note letter, so it is free to open / close the scale wheel —
+    // in every step, since the wheel lives in the pocket now.
+    if (WHEEL_DEFAULTS.wKey && (e.key === 'w' || e.key === 'W')) { toggleWheel(); return true; }
+    if (hasConfirmed) return false;
+    if (turnStep !== 'chord' && turnStep !== 'melody') return false;
+    const chipFor = stockChipEvent;
+
+    if (turnStep === 'chord') {
+      const budgetLeft = STACK_COMMIT_BUDGET - (actingNoteState?.stackCommitsThisTurn ?? 0);
+      const open = {
+        driveOpen:   budgetLeft > 0 && (actingNoteState?.driveStack   ?? []).length < actingStackCapDrive,
+        sustainOpen: budgetLeft > 0 && (actingNoteState?.sustainStack ?? []).length < actingStackCapSustain,
+      };
+      if (e.key === 'Tab') {
+        const next = nextStackDest(stackCommitDest, open);
+        if (next) setStackCommitDest(next);
+        return true;
+      }
+      const want = noteKeyFromEvent(e);
+      if (!want) return false;
+      // No stack picked yet → the first one that can take a note (Drive, as a
+      // bare click in this grid has always meant). With neither open, 'drive'
+      // still goes in so clickNoteStock says WHY (budget spent / stack full).
+      const dest = stackCommitDest ?? nextStackDest(null, open) ?? 'drive';
+      const idx = stockIndexForKey(noteStock, want,
+        i => !usedHas(usedStockIdx, i) && !staggeredSlots.includes(i));
+      if (idx < 0) { addLog(`⌨️ ${keyLabel(want)} — no ${want.altered ? `sharp or flat ${want.letter}` : want.letter} left in your hand.`); return true; }
+      if (!stackCommitDest) setStackCommitDest(dest);
+      clickNoteStock(idx, chipFor(idx), dest);
+      return true;
+    }
+
+    // turnStep === 'melody'
+    if (e.key === 'Backspace') {
+      if (melodyLine.length) removeMelodyNote(melodyLine.length - 1);
+      return true;
+    }
+    const want = noteKeyFromEvent(e);
+    if (!want) return false;
+    const idx = stockIndexForKey(noteStock, want,
+      i => !usedHas(usedStockIdx, i) && !staggeredSlots.includes(i));
+    if (idx < 0) { addLog(`⌨️ ${keyLabel(want)} — no ${want.altered ? `sharp or flat ${want.letter}` : want.letter} left in your hand.`); return true; }
+    clickNoteStock(idx, chipFor(idx));
+    return true;
+  }
+  // Live handler in a ref, the listener bound once — the mic's pattern, and for
+  // the same reason: a listener bound per render would read stale hands.
+  useEffect(() => { noteKeyHandlerRef.current = keyboardNoteCommit; });
+  useEffect(() => {
+    const onKey = (e) => { if (noteKeyHandlerRef.current(e)) e.preventDefault(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // Open the stream only while the player is actually building a melody, and
   // hand it back the moment they aren't — no hot mic sitting open all game.
   useEffect(() => {
@@ -4371,7 +4494,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // 👤 The report carries the PRE-tick state: by the time the patch lands the
       // double is already gone, so the announcement has to read the report.
       if (report.shadowExpiring) {
-        triggerDamageNumber(report.shadowHexBefore, '👤 GONE', '#4488ff');
+        triggerDamageNumber(report.shadowHexBefore, '👤 GONE', seatColor(spiritId));
         addLog('👤 The shadow illusion thins out and melts back into the Ronin — the double is spent.');
       } else if (report.shadowStarved) {
         // 👤 STARVED ≠ SPENT, and the player must be able to tell. A double that
@@ -4773,8 +4896,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // price of entry, not a skill unlock.
   function togglePose() {
     if (!acting || !canAct) return; // N4/N7: gate
-    if (acting.num !== LIMELIGHT_HEX) {
-      addLog(`🎤 ${acting.name} is not on the centre stage hex!`);
+    // 🔦 The Limelight OR a spotlight that is yours or a rival's (Alex,
+    // 2026-09-25). An empty seat's light, or a teammate's, is scenery.
+    const spot = poseSpotFor(engineRef.current, acting.id);
+    const current0 = !!engineRef.current.limelight.posing[acting.id];
+    if (!spot && !current0) {
+      addLog(`🎤 ${acting.name} needs the centre stage or a player's spotlight to pose!`);
       return;
     }
     if (!hasConfirmed) {
@@ -4789,12 +4916,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     dispatch(posed(acting.id, !current));
     if (current) {
       addLog(`🎤 ${acting.name} drops the pose — guard back up.`);
+    } else if (spot !== 'limelight') {
+      // 🔦 The spotlight pose narrates itself off `lastSpotPoseStruck` (above),
+      // so a remote client and a bot read the same lines.
     } else {
       const sustainLeft = (noteStates[acting.id]?.sustainStack ?? []).length;
       addLog(`🎤 ${acting.name} STRIKES A POSE! ✨ In the Limelight — ⭐${poseTierFor(acting.id)} FP if they're still standing there at end of turn.`);
       addLog(sustainLeft > 0
-        ? `⚠️ Guard is DOWN — no defence die until they drop it, and the pose eats a Sustain note.`
-        : `💀 Guard is DOWN and the Sustain Stack is EMPTY. Anything that reaches them lands clean. Their funeral.`);
+        ? `⚠️ Guard is LOWERED — Sustain −${POSE_SUSTAIN_PENALTY} until they drop it, and the pose eats a Sustain note.`
+        : `💀 Guard is LOWERED and the Sustain Stack is EMPTY. Anything that reaches them lands clean. Their funeral.`);
     }
   }
 
@@ -5314,7 +5444,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // rig going portable is the bigger deal of the two.
     if (characterId(spiritId) === 'intergalactic_0') {
       setTimeout(() => {
-        triggerEffectFlash(spiritId, '📻', 'BOOM BOX ON!', '#aa55ff');
+        triggerEffectFlash(spiritId, '📻', 'BOOM BOX ON!', seatColor(spiritId));
         addLog(`📻 The batteries take — ${sp?.name}'s BOOM BOX powers up. His rig travels with him now: full pool, full defence, riff-offs anywhere on the board. It dies with the charge, and a battle drains it.`);
       }, 420);
     }
@@ -5656,186 +5786,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       addLog(`😎 ${spirit?.name} — DIVINE MISSION! ${recalled > 0 ? `${recalled} fans recalled, ` : ''}lockout cleared, blessed against the next hit, +1 Vibe.`);
     }
 
-    else if (eventId === 'back_to_past') {
-      setActiveEvent(null);
-      setTimeout(() => launchBackToPast(spiritId), 80);
-      return; // hands off to the dedicated play-challenge overlay
-    }
-
     setActiveEvent(prev => prev ? { ...prev, phase: 'result', resultLines: lines, rolls } : prev);
   }
 
-  // ─── 🎸⏰ BACK TO THE PAST — engine ─────────────────────────────────────────
-  // Self-contained mini riff challenge (never touches battleState). Stage 1 pays
-  // Decibills, Stage 2 pays fans. Every fumbled note shaves 1 Vibe, but the
-  // fade floors at 1 — it can NEVER knock a spirit out. Stage 2 always runs.
-  function launchBackToPast(spiritId) {
-    const sp = spirits.find(s => s.id === spiritId);
-    addLog(`🎸⏰ ${sp?.name} grabs an instrument in the wrong decade — BACK TO THE PAST!`);
-    bttpEngineRef.current = null;
-    bttpModeRef.current = { view: 'piano', winMult: 1 };
-    setBttpChallenge({
-      spiritId, stageKey: 'angel', phase: 'choose', view: 'piano',
-      idx: -1, hits: 0, misses: 0, flash: null, lastGrade: null,
-      tally: { hc: 0, casuals: 0, vibeLost: 0 }, lines: [],
-    });
-  }
-
-  // Player picks piano (standard) or guitar (harder read → more leeway time).
-  function bttpChoose(spiritId, view) {
-    const winMult = view === 'guitar' ? 1.5 : 1;
-    bttpModeRef.current = { view, winMult };
-    setBttpChallenge(prev => prev ? { ...prev, view, phase: 'countdown' } : prev);
-    setTimeout(() => bttpStartStage(spiritId, 'angel'), 1200);
-  }
-
-  function bttpStartStage(spiritId, stageKey) {
-    const mode = bttpModeRef.current;
-    // Carry the chosen instrument + leeway onto the stage data the engine threads through.
-    const data = { ...bttpStageData(stageKey), view: mode.view, winMult: mode.winMult };
-    setBttpChallenge(prev => prev ? {
-      ...prev, stageKey, view: mode.view, phase: 'play', idx: 0, hits: 0, misses: 0, flash: null, lastGrade: null,
-    } : prev);
-    setTimeout(() => bttpFlashChord(spiritId, stageKey, 0, data), 350);
-  }
-
-  // Sound a whole chord at once (a tiny roll so it reads as a chord, not a blip).
-  function bttpSoundChord(letters, volume = 0.2) {
-    letters.forEach((ltr, k) => setTimeout(() =>
-      playNoteSound(null, { freq: bttpLetterFreq(ltr), holdTime: 0.5, fadeTime: 0.5, volume }), k * 16));
-  }
-
-  // INPUT — light the chord's keys (no labels). Player presses all of them within
-  // the window. Individual presses are SILENT; only once the chord is complete does
-  // it sound. A miss/clam drains 1 Vibe (floored at 1).
-  function bttpFlashChord(spiritId, stageKey, idx, data) {
-    if (idx >= data.chords.length) {
-      // Whole progression entered — now play it back, in rhythm.
-      setBttpChallenge(prev => prev ? { ...prev, phase: 'playback', idx: 0, flash: null, lastGrade: null } : prev);
-      setTimeout(() => bttpPlayback(spiritId, stageKey, 0, data), 650);
-      return;
-    }
-    const chord = data.chords[idx];
-    const win = Math.round((data.rhythm[idx]?.window ?? 2400) * (data.winMult ?? 1));
-    bttpEngineRef.current = {
-      spiritId, stageKey, idx, need: new Set(chord), got: new Set(), wrong: false,
-      shownAt: performance.now(), window: win, resolved: false, timeoutId: null,
-    };
-    setBttpChallenge(prev => prev ? { ...prev, idx, flash: { idx, chord, got: [] }, lastGrade: null } : prev);
-    bttpEngineRef.current.timeoutId = setTimeout(() => {
-      const eng = bttpEngineRef.current;
-      if (!eng || eng.resolved || eng.idx !== idx || eng.stageKey !== stageKey) return;
-      bttpResolveChord(false, data);
-    }, win);
-  }
-
-  // Shared input — keyboard + on-screen pads. Silent per key; the chord only sounds
-  // once every required note is in. A wrong key clams the chord (no clean credit).
-  function bttpInput(letter) {
-    const eng = bttpEngineRef.current;
-    if (!eng || eng.resolved) return;
-    const data = bttpStageData(eng.stageKey);
-    if (eng.need.has(letter)) {
-      if (!eng.got.has(letter)) {
-        eng.got.add(letter);
-        const got = [...eng.got];
-        setBttpChallenge(prev => prev && prev.flash ? { ...prev, flash: { ...prev.flash, got } } : prev);
-      }
-      if (eng.got.size === eng.need.size) {
-        bttpSoundChord([...eng.need]);     // the payoff: the chord rings out, in full
-        bttpResolveChord(true, data);
-      }
-    } else {
-      eng.wrong = true; // a clam — the chord can still be completed but won't be clean
-      setBttpChallenge(prev => prev ? { ...prev, lastGrade: 'clam' } : prev);
-    }
-  }
-
-  function bttpResolveChord(complete, data) {
-    const eng = bttpEngineRef.current;
-    if (!eng || eng.resolved) return;
-    eng.resolved = true;
-    clearTimeout(eng.timeoutId);
-    const { spiritId, stageKey, idx } = eng;
-    const clean = complete && !eng.wrong;
-    if (clean) {
-      setBttpChallenge(prev => prev ? { ...prev, hits: prev.hits + 1, lastGrade: 'clean' } : prev);
-    } else {
-      let drained = 0;
-      setSpirits(prev => prev.map(s => {
-        if (s.id !== spiritId) return s;
-        const v = s.vibe ?? 1;
-        if (v <= 1) return s;
-        drained = 1;
-        return { ...s, vibe: v - 1 };
-      }));
-      playRiffMiss();
-      triggerRumble(spiritId);
-      setBttpChallenge(prev => prev ? {
-        ...prev, misses: prev.misses + 1, lastGrade: complete ? 'clam' : 'miss',
-        tally: { ...prev.tally, vibeLost: prev.tally.vibeLost + drained },
-      } : prev);
-    }
-    const gap = data.rhythm[idx + 1]?.gap ?? 300;
-    setTimeout(() => bttpFlashChord(spiritId, stageKey, idx + 1, data), gap);
-  }
-
-  // PLAYBACK — the progression as it should sound: each chord rings in rhythm and
-  // lights the keys. Then the stage resolves.
-  function bttpPlayback(spiritId, stageKey, idx, data) {
-    if (idx >= data.chords.length) { bttpEndStage(spiritId, stageKey, data); return; }
-    const chord = data.chords[idx];
-    const lit = data.pbLit ?? 500, gap = data.pbGap ?? 140;
-    setBttpChallenge(prev => prev ? { ...prev, idx, flash: { idx, chord, got: chord } } : prev);
-    bttpSoundChord(chord, 0.2);
-    setTimeout(() => {
-      setBttpChallenge(prev => prev ? { ...prev, flash: null } : prev);
-      setTimeout(() => bttpPlayback(spiritId, stageKey, idx + 1, data), gap);
-    }, lit);
-  }
-
-  function bttpEndStage(spiritId, stageKey, data) {
-    bttpEngineRef.current = null;
-    const sp = spirits.find(s => s.id === spiritId);
-    setBttpChallenge(prev => {
-      if (!prev) return prev;
-      const total  = data.chords.length;
-      const passed = prev.hits >= Math.ceil(total * BTTP_PASS_RATIO);
-      const lines  = [...prev.lines];
-      const tally  = { ...prev.tally };
-      if (data.reward === 'hc') {
-        const gain = passed ? 3 : 1;
-        tally.hc += gain;
-        setTimeout(() => grantDB(spiritId, gain), 60);
-        lines.push(passed
-          ? `💫 SLOW-DANCE ANGEL — ${prev.hits}/${total} chords clean. The floor sways. +${gain} Decibills.`
-          : `💫 SLOW-DANCE ANGEL — ${prev.hits}/${total} clean. Shaky, but you got through it. +${gain} Decibills.`);
-      } else {
-        const gain = passed ? 5 : 2;
-        tally.casuals += gain;
-        {
-          const cur = engineRef.current.noteStates[spiritId] ?? {};
-          let casuals  = addCasuals(cur, gain);
-          let diehards = cur.diehards ?? FAN_DIEHARD_START;
-          if (passed && casuals > 0) { casuals -= 1; diehards += 1; }   // 🤘 net-zero on the house (2026-09-22)
-          dispatch(fansChanged(spiritId, { casuals, diehards }));
-        }
-        flashFanFx(spiritId, 'gain', gain);
-        lines.push(passed
-          ? `🦆 DUCKWALK DYNAMO — ${prev.hits}/${total} chords clean. The kids go wild! +${gain} Casuals (one hardens into a Diehard).`
-          : `🦆 DUCKWALK DYNAMO — ${prev.hits}/${total} clean. A few heads turn. +${gain} Casuals.`);
-      }
-      return { ...prev, phase: stageKey === 'angel' ? 'stageclear' : 'done', flash: null, lines, tally };
-    });
-    addLog(`🎸⏰ ${sp?.name} finishes ${data.name}.`);
-    if (stageKey === 'angel') {
-      setTimeout(() => bttpStartStage(spiritId, 'goode'), 1600); // Stage 2 always runs
-    }
-  }
-
   // ─── 🎹🎸 Shared instrument diagram ────────────────────────────────────────
-  // Renders a chord/notes on a piano or vertical fretboard. Used by BOTH the Back
-  // to the Past challenge and riff-off battles. Note keys: lowercase = natural
+  // Renders a chord/notes on a piano or vertical fretboard. Used by riff-off
+  // battles. (Back to the Past, its other user, was deleted 2026-09-25.) Note keys: lowercase = natural
   // (white key / open-ish fret), UPPERCASE = sharp (black key / +1 fret). `got` =
   // notes already hit (drawn green). `accent` colours the lit-but-unhit notes.
   // ── Neon palette (must match ui/RiffHighway.jsx) ──────────────────────────
@@ -5853,7 +5809,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // Fire ANY event on demand for the acting spirit — works for every entry in
   // EVENT_DECK, so new events become testable the moment you add them.
   function devFireEvent(eventId) {
-    if (activeEvent || bttpChallenge) { addLog('🧪 Finish the current event before firing another.'); return; }
+    if (activeEvent) { addLog('🧪 Finish the current event before firing another.'); return; }
     const spiritId = devCurrentSpiritId();
     if (!spiritId) return;
     const ev = EVENT_BY_ID[eventId];
@@ -5891,7 +5847,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const t = spiritById[spiritId];
     if (!t || t.knockedOut) { addLog('🧪 That Spirit is out of the match.'); return; }
     if (acting?.id === spiritId) return;
-    if (battleState || activeEvent || bttpChallenge) { addLog('🧪 Finish the current battle or event first.'); return; }
+    if (battleState || activeEvent) { addLog('🧪 Finish the current battle or event first.'); return; }
     setAction(null);
     setDevPlaceId(null);
     // ⚠️ A Spirit still `recovering` from a knockdown would have its new turn
@@ -7207,7 +7163,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     setNoteField(acting.id, { ...firePatch(ns, 'blaster_of_ra'), usedStockIdx: usedAdd(used, unusedIdxs), smashExposed: true });
 
     addLog(`🌀💥 ${acting.name} drops the BLASTER OF RA — a bass-drop shockwave screams down the beam, UNDEFENDABLE, piercing ${targets.length} rival${targets.length > 1 ? 's' : ''}!`);
-    triggerEffectFlash(acting.id, '🌀', 'RA!', '#aa55ff');
+    triggerEffectFlash(acting.id, '🌀', 'RA!', seatColor(acting.id));
 
     targets.forEach(t => {
       const sc = scatterEach; // v1 Ronin double-scatter CUT (STANCE_V2_HANDOFF §2)
@@ -7218,7 +7174,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         const toScatter = tUnused.slice(0, sc);
         return { ...prev, [t.id]: { ...tns, usedStockIdx: usedAdd(tUsed, toScatter) } };
       });
-      triggerEffectFlash(t.id, '💥', 'BLAST!', '#aa55ff');
+      triggerEffectFlash(t.id, '💥', 'BLAST!', seatColor(acting.id));
       resolveWinDamage(acting.id, t.id, damage, 'Blaster of Ra');
       battleKnockback(acting.id, t.id, knockback);
       addLog(`💥 ${t.name} — −${damage} Vibe${sc > 0 ? `, ${sc} note${sc > 1 ? 's' : ''} scatter loose` : ''}.`);
@@ -7402,7 +7358,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
     const nm = spirits.find(s => s.id === spiritId)?.name ?? 'The Monster';
     addLog(`🤘 The pit ERUPTS around ${nm} — the fans are spent, but the Drive stays: +${MOSH_DRIVE} DRIVE until the next pit!`);
-    triggerEffectFlash(spiritId, '🤘', `MOSH PIT! +${MOSH_DRIVE} DRV`, '#ffcc00');
+    triggerEffectFlash(spiritId, '🤘', `MOSH PIT! +${MOSH_DRIVE} DRV`, seatColor(spiritId));
 
     const id = gt(() => { setMoshCine(null); zoomReset(0); }, 900);
     moshTimersRef.current.push(id);
@@ -7515,7 +7471,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     shadowHexes.forEach(n => occupied.add(n)); // 👤 can't warp into the Ronin's double
     if (occupied.has(hexNum)) { addLog('🌌 Something is already standing there.'); return; }
 
-    triggerEffectFlash(acting.id, '🌌', 'WARP', '#aa55ff');
+    triggerEffectFlash(acting.id, '🌌', 'WARP', seatColor(acting.id));
     // cost 0 — the warp is paid for in Db, not Action Points, so the reducer must
     // not deduct movement. He can still walk his full allowance after blinking.
     dispatch(spiritWarped(acting.id, hexNum, 0)); // reducer owns the position write
@@ -7688,7 +7644,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         refillDrain: (prev[targetId]?.refillDrain ?? 0) + GRAVITY_NOTE_DRAIN },
     }));
     addLog(`🕳️🎵 ${target?.name} is swallowed WHOLE — ${GRAVITY_NOTE_DRAIN} notes spiral off into the dark. ${GRAVITY_NOTE_DRAIN} fewer in the pool next turn!`);
-    triggerEffectFlash(targetId, '🕳️', 'SWALLOWED!', '#aa55ff');
+    triggerEffectFlash(targetId, '🕳️', 'SWALLOWED!', seatColor(acting?.id));
     // 🎵 The notes visibly tear off the standee. showSpentNotes wants real note
     // names for the glyphs, so pull the victim's last unspent stock entries —
     // what the vortex takes is what they were about to play.
@@ -7861,7 +7817,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const fired   = hopIsActivation(ns);
     const fromHex = acting.num;
 
-    triggerEffectFlash(acting.id, '🌀', 'SHUKUCHI', SHUKUCHI_LOOK.color);
+    triggerEffectFlash(acting.id, '🌀', 'SHUKUCHI', seatColor(acting.id));
     // The reducer owns position, facing and the AP; the sheet owns the budget,
     // the Db and the clock. Two writes, in the engine's own order.
     dispatch(shukuchiHopped(acting.id, hexNum));
@@ -8035,7 +7991,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const spentNotes = Math.min(curStack.length, PSYCHO_BUSHIDO_STACK_COST);
     setNoteField(acting.id, bushidoDrawPatch(liveNs, distToTarget));
 
-    triggerEffectFlash(acting.id, '🌀', 'BUSHIDO!', '#4488ff');
+    triggerEffectFlash(acting.id, '🌀', 'BUSHIDO!', seatColor(acting.id));
     addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} draws from ${distToTarget} hexes — +${bonusDrive} bonus Drive on the strike. (−${PSYCHO_BUSHIDO_DB_COST} Db, −${PSYCHO_BUSHIDO_AP_COST} AP${spentNotes > 0 ? `, −${spentNotes} off the Drive stack` : ''})`);
     // ⚠️ THE STACK BILL GETS ITS OWN LINE WHEN IT BITES. It is the only price in
     // the game paid in PROGRESSION currency, and a player who loses a seat he was
@@ -8160,7 +8116,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       },
     });
 
-    triggerEffectFlash(acting.id, '👤', 'SHADOW!', '#4488ff');
+    triggerEffectFlash(acting.id, '👤', 'SHADOW!', seatColor(acting.id));
     addLog(`👤 ${acting.name} splits — a SHADOW ILLUSION peels out of him on hex #${acting.num}. Two Ronins, one shape. Walk them apart and nobody can say which is which. (−${SHADOW_ILLUSION_DB_COST} Db)`);
     addLog(`👤 It feeds on him while it stands — ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of each of his turns, and it falls apart the moment he has none to give.`);
     setAction(null);
@@ -8233,7 +8189,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (!ns.shadowIllusion) return;
     const hex = ns.shadowIllusion.hex;
     setNoteField(ownerId, { shadowIllusion: null });
-    triggerDamageNumber(hex, '👤 GONE', '#4488ff');
+    triggerDamageNumber(hex, '👤 GONE', seatColor(ownerId));
     if (action === 'move_shadow') setAction(null);
     addLog(`👤 The shadow illusion vanishes — ${reason}.`);
   }
@@ -8295,7 +8251,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
     setAction(null);
 
-    triggerDamageNumber(si.hex, 'MISS!', '#88bbff');
+    triggerDamageNumber(si.hex, 'MISS!', seatColor(ownerId));
     focusOnHex(si.hex, 900, 0.42, true);
     addLog(`👤 ${attacker.name}'s ${label} tears straight through the Ronin — and the Ronin comes apart like smoke. It was the SHADOW.`);
     if (heavy) {
@@ -9412,14 +9368,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const atkName = spirits.find(s => s.id === bs.attackerId)?.name;
     const defName = spirits.find(s => s.id === bs.defenderId)?.name;
     addLog(`🎤 ${atkName}: "${atkLine}" 🎤🔥`);
-    triggerEffectFlash(bs.attackerId, '🎤', 'MIC DROP!', '#ff6600');
+    triggerEffectFlash(bs.attackerId, '🎤', 'MIC DROP!', seatColor(bs.attackerId));
     // 🎤 BIG BOLD TAUNT — attacker's line splashes across the screen
     const atkColor = spirits.find(s => s.id === bs.attackerId)?.color ?? '#ff6600';
     setTauntDisplay({ line: atkLine, name: atkName, color: atkColor, key: `taunt-atk-${Date.now()}` });
     setTimeout(() => setTauntDisplay(null), 2200);
     setTimeout(() => {
       addLog(`🎤 ${defName}: "${defLine}" 🎤🔥`);
-      triggerEffectFlash(bs.defenderId, '🎤', 'FIRED BACK!', '#ff6600');
+      triggerEffectFlash(bs.defenderId, '🎤', 'FIRED BACK!', seatColor(bs.defenderId));
       // 🎤 BIG BOLD TAUNT — defender's line splashes across the screen
       const defColor = spirits.find(s => s.id === bs.defenderId)?.color ?? '#44aaff';
       setTauntDisplay({ line: defLine, name: defName, color: defColor, key: `taunt-def-${Date.now()}` });
@@ -11222,7 +11178,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const bushidoArmed = action === 'psycho_bushido' && characterId(acting?.id) === 'cosmic_ronin'
     && hasConfirmed && !actionTokenUsed && moveStepsLeft >= PSYCHO_BUSHIDO_AP_COST
     && canFire(actingNoteState ?? {}, 'psycho_bushido');
+  // 🎨 The acting Spirit's PLAYER colour, for every ability-owned tint below —
+  // the rail buttons, Shukuchi's ring, the warp band, the Bushido lane. ⚠️ Hex
+  // `#rrggbb` on purpose: several readers append a 2-digit alpha to it.
+  // `actingHueLight` / `actingHueDim` replace the old per-Spirit pale and dark
+  // tints (#88bbff, #cc88ff / #1a2840, #2a1840, #3a3000).
+  const actingHue = seatColor(acting?.id);
+  const actingHueLight = `color-mix(in srgb, ${actingHue} 55%, #ffffff)`;
+  const actingHueDim = `color-mix(in srgb, ${actingHue} 18%, #0a0f1a)`;
   const bushidoPaint = bushidoArmed ? {
+    hue: actingHue,
     spirit: acting,
     blockers: bushidoBlockers({ spirits, amps, shadowHexes, selfId: acting.id }),
     targets: getPsychoBushidoTargets(),
@@ -11317,7 +11282,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // he were standing on it. This runs BEFORE every targeting highlight so the
     // decoy never lights up differently from the real body.
     if (shadowDecoy && hex.num === shadowDecoy.num) return shadowDecoy.color + "44";
-    if (action === 'displace' && displaceTargets.has(hex.num)) return "#aa55ff33";
+    if (action === 'displace' && displaceTargets.has(hex.num)) return actingHue + "33";
     // 🕳️ The open vortex reads BEFORE any aiming highlight — a black hole on the
     // board must never be repainted as a targeting tint, or it vanishes from
     // view at exactly the moment someone is deciding where to walk.
@@ -11328,7 +11293,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // armed the walk highlight is off anyway, and reading the two in the other
     // order would let a 1-hex walk tint outrank a landing hex if both were ever
     // live at once.
-    if (action === 'shukuchi' && shukuchiTargets.has(hex.num)) return SHUKUCHI_FILL;
+    if (action === 'shukuchi' && shukuchiTargets.has(hex.num)) return actingHue + SHUKUCHI_FILL.slice(7);
     // Bushido's ramp is painted by BushidoOverlay, not a second target tint.
     // 🪦 Cursed Shamisen aura — removed 2026-08-26. No board token, no rings.
     if (reachable.has(hex.num)) return "#ffffff18";
@@ -11378,10 +11343,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // 👤 Decoy hex is outlined in the Ronin's colour, same as a real standee.
     if (shadowDecoy && hex.num === shadowDecoy.num) return shadowDecoy.color;
     if (action === 'move_shadow' && shadowReachable.has(hex.num)) return "#ffffff88";
-    if (action === 'displace' && displaceTargets.has(hex.num)) return "#cc88ffcc";
+    if (action === 'displace' && displaceTargets.has(hex.num)) return actingHue + "cc";
     if (gravityVortex && hex.num === gravityVortex.hex) return "#cc66ff";
     if (action === 'gravity_control' && gravityTargets.has(hex.num)) return "#aa66ffcc";
-    if (action === 'shukuchi' && shukuchiTargets.has(hex.num)) return SHUKUCHI_STROKE;
+    if (action === 'shukuchi' && shukuchiTargets.has(hex.num)) return actingHue + SHUKUCHI_STROKE.slice(7);
     if (reachable.has(hex.num)) return "#ffffff88";
     // Swing / Smash cone stroke
     if ((previewAction === 'swing' || previewAction === 'smash') && acting) {
@@ -11477,6 +11442,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // 💥 STATUS-EFFECT BOARD VFX ─────────────────────────────────────────────────
   // Pulsing shockwave rings + a floating neon label around a spirit's standee —
   // fired the moment an ability lands so it's unmistakable WHO got hit by WHAT.
+  // 🎨 A Spirit's colour IS its player's colour (Alex, 2026-09-25: "the only
+  // colors that should be associated with any spirits is the color of what
+  // player is choosing"). Every flash named after an ability — BUSHIDO!, WARP,
+  // MOSH PIT! — wears the colour of the seat that owns it, so a P2 Ronin's
+  // Bushido is orange. ⚠️ Colours that mean a THING (slime green, damage red,
+  // pyro orange) are not Spirit colours and stay fixed.
+  function seatColor(id) {
+    const sp = spirits.find(s => s.id === id);
+    return sp ? (sp.corner ? playerColor(sp.corner) : (sp.color ?? NEUTRAL_SPIRIT_COLOR)) : NEUTRAL_SPIRIT_COLOR;
+  }
   function triggerEffectFlash(spiritId, icon, label, color, durationMs = 2800) {
     const key = `fx-${spiritId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setEffectFlashes(prev => [...prev, { key, spiritId, icon, label, color }]);
@@ -11853,7 +11828,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         // 🎵 Just refilled this turn — pop in instead of silently appearing.
                         const isFresh = freshNoteIdx?.spiritId === acting?.id && freshNoteIdx.indices.has(idx);
                         return (
-                          <div key={idx} data-coach={!used && !isStaggered ? crowdMarks.get(idx) : undefined}
+                          <div key={idx} data-stock-idx={idx} data-coach={!used && !isStaggered ? crowdMarks.get(idx) : undefined}
                             onClick={(e)=>{ if (isStaggered) return; if (!used || mixerReady) clickNoteStock(idx, e); }}
                             onMouseEnter={(e)=>{ const x=e.clientX, y=e.clientY; clearTimeout(hoverScaleTimerRef.current); hoverScaleTimerRef.current=setTimeout(()=>setHoverScale({note,x,y}),1500); }}
                             onMouseLeave={()=>{ clearTimeout(hoverScaleTimerRef.current); setHoverScale(cur=>cur?.note===note?null:cur); }}
@@ -12057,10 +12032,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               { kind:'toggle', icon:'🎨', label:'Lite FX', color:'#ffaa22', on: liteFx,
                 title:'Reduce GPU-heavy visual effects in battles (filters, shadows, blend modes). Helps if battles stutter or freeze.',
                 onClick:() => setLiteFx(v => !v) },
-              { kind:'toggle', icon:'🎥', label:'Auto camera', color:'#66ddff', on: autoCamera,
-                title: autoCamera ? 'Auto camera is ON — the 3D camera follows moves and battles and drifts when idle. Grab it any time; it comes back 6.5 s after you let go. Click to turn off for good'
-                  : 'Auto camera is OFF (📌 Hold in the arena toolbar) — the 3D camera only moves when you move it: no roaming, no battle angles. Click to have it follow the action again',
-                onClick:() => setAutoCamera(v => !v) },
               /* 🎨 THE SWATCH LIST STAYS A LIST OF SWATCHES. The old picker
                  argued, correctly, that choosing a board colour is a thing you do
                  BY LOOKING AT THE BOARD — so it expanded inline instead of opening
@@ -12071,6 +12042,38 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 title: fanCoachEnabled ? 'Fan hints are ON — your fans suggest notes and the stock glows. Click to turn off'
                   : 'Fan hints are OFF — click to have your fans suggest what to play again',
                 onClick:() => setFanCoachEnabled(v => !v) },
+              { kind:'sep' },
+              /* 🎥 THE ARENA CAMERA — moved here from the toolbar that sat on the
+                 board (Alex, 2026-09-25: "taking up way too much space on the
+                 screen for what it does"). ⚠️ The Auto camera toggle is ALSO what
+                 the toolbar's 📌 Hold was (the same setting inverted), so Hold is
+                 not re-listed: it would be one switch shown twice. */
+              { kind:'toggle', icon:'🎥', label:'Auto camera', color:'#66ddff', on: autoCamera,
+                title: autoCamera ? 'Auto camera is ON — after 10 s with no input (no key, click, wheel or mouse movement) the 3D camera takes over: it follows moves and drifts around the arena. Any input hands it back to you. Click to turn off for good'
+                  : 'Auto camera is OFF — the 3D camera only moves when you move it: no roaming, no battle angles. Click to let it take over when you are idle',
+                onClick:() => setAutoCamera(v => !v) },
+              { kind:'submenu', icon:'📷', label:'Camera view', color:'#66ddff',
+                value: topView ? 'Top' : undefined,
+                title:'Drag to orbit · right-drag to pan · wheel to zoom. ⌗ Top is the straight-down tactical view: no wandering, battles play out from there; tilting leaves it.',
+                options:[
+                  { id:'top',    icon:'⌗', label:'Top-down', accent:'#c9d8ea', on: topView,
+                    blurb:'Straight-down tactical camera. No wandering, and battles play out from here. Zoom and pan keep it; tilting leaves it' },
+                  { id:'arena',  icon:'◈', label:'Arena',    accent:'#66ddff', blurb:'Reset to the arena camera' },
+                  { id:'spirit', icon:'◎', label:'Spirit',   accent:'#80e8ff', blurb:'Frame the active Spirit' },
+                ],
+                onPick: id => arenaCameraRef.current?.view(id) },
+              { kind:'buttons', icon:'🔍', label:'Zoom', color:'#66ddff',
+                title:'Zoom the arena camera (the mouse wheel does this too)',
+                buttons:[
+                  { label:'−', aria:'Zoom out of arena', onClick:() => arenaCameraRef.current?.zoom(1.18) },
+                  { label:'+', aria:'Zoom into arena',   onClick:() => arenaCameraRef.current?.zoom(0.85) },
+                ] },
+              { kind:'cycle', icon:'🖥', label:'Arena detail', color:'#66ddff',
+                // the runtime reports e.g. "Auto: Standard · performance"; the pill has room for "Auto · Standard"
+                value: arenaQuality === 'auto' ? `Auto${/^Auto: (\w+)/.exec(arenaQualityLabel)?.[1] ? ` · ${/^Auto: (\w+)/.exec(arenaQualityLabel)[1]}` : ''}` : arenaQuality === 'high' ? 'High' : 'Standard',
+                hot: arenaQuality !== 'auto',
+                title:'3D detail: Auto picks for your machine; High and Standard force it. Click to cycle',
+                onClick:() => setArenaQuality(q => q === 'auto' ? 'high' : q === 'high' ? 'standard' : 'auto') },
               { kind:'sep' },
               /* 🎚️ VOLUME — three faders, flat in the menu rather than folded
                  behind a 🔊 Volume ▸ row (Alex, 2026-09-14). They are the only
@@ -12216,7 +12219,23 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           action,
           driveRef: immersiveDriveRef,
           sustainRef: immersiveSustainRef,
-        } : null}>
+        } : null}
+        scaleOpen={wheelOpen} onScaleToggle={toggleWheel}
+        scale={acting ? (() => {
+          // 🎡 THE SCALE WHEEL — dropped under Turn · Scale · Rivals by the middle
+          // chip (Alex, 2026-09-25). ⚠️ Your hand only on YOUR turn: a rival's (or
+          // a bot's) hand is theirs. Picks only while composing — in step 1 a bare
+          // clickNoteStock would drop a note into the melody track, not a stack.
+          const mine = isMyTurn && !netSync && !isBot(acting);
+          const composing = mine && turnStep === 'melody' && !hasConfirmed;
+          const next = turnStep === 'move_act' && hasConfirmed;
+          return <ScaleWheelCard spiritId={acting.id} root={rootNote} next={next}>
+            <ScaleWheel spiritId={acting.id} root={rootNote} opts={POCKET_WHEEL} next={next}
+              hand={mine ? noteStock : []}
+              available={i => !usedHas(usedStockIdx, i) && !staggeredSlots.includes(i)}
+              line={melodyLine} onPick={composing ? wheelPick : undefined} onHoverNote={wheelHoverNote} />
+          </ScaleWheelCard>;
+        })() : null}>
 
       {/* ── N8: NET STATUS BANNERS — desync, own socket, rival disconnects ── */}
       {netRef.current && (() => {
@@ -13014,19 +13033,34 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 a board objective only some characters can touch teaches nobody
                 anything. The button states its own price and payout so the
                 trade is legible before the click, not after. */}
-            {acting?.num === LIMELIGHT_HEX && hasConfirmed && (() => {
+            {/* 🔦 …and now ALSO a player's spotlight (2026-09-25). Same button,
+                same look; only where it appears and what it promises changed.
+                ⚠️ `spot` is the engine's answer (`poseSpotFor`), not a hex
+                check here — an empty seat's light shows no button at all. */}
+            {acting && hasConfirmed && (poseSpotFor(engineState, acting.id) || posing[acting.id]) && (() => {
               const on      = !!posing[acting?.id];
+              const spot    = on ? (engineState.limelight.spotPoses?.[acting.id]?.kind ?? 'limelight') : poseSpotFor(engineState, acting.id);
               const nextTier = poseTierFor(acting?.id);
               const sLeft   = (actingNoteState?.sustainStack ?? []).length;
+              const lime    = spot === 'limelight';
+              const payout  = lime ? `⭐${nextTier} FP (×crowd)`
+                : spot === 'home' ? 'a Vibe heal (more the more hurt you are)'
+                : `up to ${SPOTLIGHT_STEAL_CASUALS} of their Casual fans`;
               return (
                 <RailBtn className={`btn${on ? " on" : ""}`}
                   style={{borderColor:"#ff88ff",color: on ? "#ff88ff" : "#aa55cc",
                     ...(on ? { animation:'crew-ready-glow 1.6s ease-in-out infinite' } : {})}}
                   title={on
-                    ? `Posing — end your turn here for ⭐${nextTier} FP (×crowd) and −${POSE_SUSTAIN_COST} Sustain note. Your defence die is ZERO until you drop it.`
-                    : `Strike a Pose: end your turn on the Limelight for ⭐${nextTier} FP (×crowd). Costs ${POSE_SUSTAIN_COST} Sustain note per round${sLeft === 0 ? ' — and you have NONE left' : ''}, and you roll NO defence die while posing.`}
+                    ? (lime
+                      ? `Posing — end your turn here for ${payout} and −${POSE_SUSTAIN_COST} Sustain note. You defend at Sustain −${POSE_SUSTAIN_PENALTY} until you drop it.`
+                      : `Posing — still standing here at the start of your next turn wins ${payout}. You defend at Sustain −${POSE_SUSTAIN_PENALTY} until then.`)
+                    : (lime
+                      ? `Strike a Pose: end your turn on the Limelight for ${payout}. Costs ${POSE_SUSTAIN_COST} Sustain note per round${sLeft === 0 ? ' — and you have NONE left' : ''}, and you defend at Sustain −${POSE_SUSTAIN_PENALTY} while posing.`
+                      : `Strike a Pose in ${spot === 'home' ? 'YOUR' : "a RIVAL's"} spotlight: hold it until your next turn for ${payout}. Costs ${SPOTLIGHT_POSE_SUSTAIN_COST} Sustain note now${sLeft === 0 ? ' — and you have NONE left' : ''}, no Fame, and you defend at Sustain −${POSE_SUSTAIN_PENALTY} while posing.`)}
                   onClick={togglePose}>
-                  {on ? `✨ Posing! ⭐${nextTier}${sLeft === 0 ? ' 💀' : ''}` : `✨ Pose (⭐${nextTier})`}
+                  {lime
+                    ? (on ? `✨ Posing! ⭐${nextTier}${sLeft === 0 ? ' 💀' : ''}` : `✨ Pose (⭐${nextTier})`)
+                    : (on ? `🔦 Posing!${sLeft === 0 ? ' 💀' : ''}` : `🔦 Pose (${spot === 'home' ? '💚' : '🎤 steal'})`)}
                 </RailBtn>
               );
             })()}
@@ -13192,8 +13226,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             {characterId(acting?.id) === 'cosmic_ronin' && shadowIllusion && (
               <>
                 <RailBtn className={`btn${action === "move_shadow" ? " on" : ""}`}
-                  style={{borderColor: action === "move_shadow" ? "#88bbff" : "#1a2840",
-                    color: action === "move_shadow" ? "#88bbff" : "#4a6a90"}}
+                  style={{borderColor: action === "move_shadow" ? actingHueLight : actingHueDim,
+                    color: action === "move_shadow" ? actingHueLight : "#4a6a90"}}
                   disabled={shadowSteps < 1}
                   title="Move Shadow — your double moves on its own steps, refreshed each turn to match your own movement range. It costs you no Action Points."
                   onClick={() => {
@@ -13287,7 +13321,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const standing = actingNoteState?.moshDrive ?? 0;
               return (
                 <RailBtn className={canMosh ? 'btn active' : 'btn'}
-                  style={{borderColor: canMosh ? '#ffcc00' : '#3a3000', color: canMosh ? '#ffcc00' : '#3a3000'}}
+                  style={{borderColor: canMosh ? actingHue : actingHueDim, color: canMosh ? actingHue : actingHueDim}}
                   disabled={!canMosh}
                   title={used
                     ? "Master of Moshpits — already moshed this turn."
@@ -13359,8 +13393,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <RailBtn className={canWarp ? 'btn active' : 'btn'}
-                    cooldown={{left:warpCd, max:ABILITY_CD.displace, color:'#aa55ff'}}
-                    style={{borderColor: canWarp ? '#aa55ff' : '#2a1840', color: canWarp ? '#cc88ff' : '#2a1840'}}
+                    cooldown={{left:warpCd, max:ABILITY_CD.displace, color:actingHue}}
+                    style={{borderColor: canWarp ? actingHue : actingHueDim, color: canWarp ? actingHueLight : actingHueDim}}
                     disabled={!canWarp}
                     title={`Space is Displaced — spend ${DISPLACE_DB_COST} Db to warp to any open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away. No Action Points, no cooldown, no rig needed — and your movement is untouched, so you can still walk after landing. Adjacent hexes don't count: he goes through the space between, not across it.`}
                     onClick={() => {
@@ -13391,8 +13425,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <RailBtn className={canOpen ? 'btn active' : 'btn'}
-                    cooldown={{left:gravCd, max:ABILITY_CD.gravity_control, color:'#aa55ff'}}
-                    style={{borderColor: canOpen ? '#aa55ff' : '#2a1840', color: canOpen ? '#cc88ff' : '#2a1840'}}
+                    cooldown={{left:gravCd, max:ABILITY_CD.gravity_control, color:actingHue}}
+                    style={{borderColor: canOpen ? actingHue : actingHueDim, color: canOpen ? actingHueLight : actingHueDim}}
                     disabled={!canOpen}
                     title={isOpen
                       ? `A vortex is already open on hex #${actingNoteState?.gravityVortex?.hex}. Only one singularity at a time — it collapses when the turn order comes back to you.`
@@ -13465,9 +13499,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <RailBtn className={live ? 'btn active' : 'btn'}
-                    cooldown={{left:cd, max:ABILITY_CD[SHUKUCHI_SKILL], color:SHUKUCHI_LOOK.color}}
-                    style={{borderColor: live ? SHUKUCHI_LOOK.color : '#1a2840',
-                            color: live ? '#88bbff' : '#1a2840'}}
+                    cooldown={{left:cd, max:ABILITY_CD[SHUKUCHI_SKILL], color:actingHue}}
+                    style={{borderColor: live ? actingHue : actingHueDim,
+                            color: live ? actingHueLight : actingHueDim}}
                     disabled={!live}
                     title={`Shukuchi Arpeggio (縮地, "shrinking the earth") — leap exactly 2 hexes, straight OVER bodies, hazards, walls and slime. Up to ${SHUKUCHI_MAX_HOPS} hops a turn; each one costs ${SHUKUCHI_AP_PER_HOP} Action Point, the same as a step, and each landing picks up. ${SHUKUCHI_DB_COST} Db and the ${SHUKUCHI_CD}-round cooldown are charged ONCE, on the first hop — so hops 2 and 3 are free, and stopping after one still spends the ability.`}
                     onClick={() => {
@@ -13484,7 +13518,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         and a button that only ever reads "Shukuchi" teaches the
                         player none of them. */}
                     🌀 Shukuchi{cd > 0 && !mid ? ` 🕒${cd}` : poor && !mid ? ` (${dbPts}/${SHUKUCHI_DB_COST} Db)` : ''}
-                    {showBudget && <ShukuchiBudget hopsLeft={left} mid={mid} />}
+                    {showBudget && <ShukuchiBudget hopsLeft={left} mid={mid} pip={actingHueLight} />}
                   </RailBtn>
                   {armed && (
                     <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
@@ -13503,8 +13537,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <RailBtn className={canDash ? 'btn active' : 'btn'}
-                    cooldown={{left:cd, max:ABILITY_CD.psycho_bushido, color:'#4488ff'}}
-                    style={{borderColor: canDash ? '#4488ff' : '#1a2840', color: canDash ? '#88bbff' : '#1a2840'}}
+                    cooldown={{left:cd, max:ABILITY_CD.psycho_bushido, color:actingHue}}
+                    style={{borderColor: canDash ? actingHue : actingHueDim, color: canDash ? actingHueLight : actingHueDim}}
                     disabled={!canDash}
                     title={`Psycho Bushido — draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT and strike. The farther the draw, the harder the blow: +2 at ${PSYCHO_BUSHIDO_MIN_RANGE}, +3 at 4, +4 at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ Too close and you cannot draw at all, and any body in the lane blocks it. Costs ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_AP_COST} AP and ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
                     onClick={() => {
@@ -13542,8 +13576,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               // Ronin, so this is a single-click action.
               return (
                 <RailBtn className={canSummon ? 'btn active' : 'btn'}
-                  cooldown={{left:cd, max:ABILITY_CD.shadow_illusion, color:'#4488ff'}}
-                  style={{borderColor: canSummon ? '#4488ff' : '#1a2840', color: canSummon ? '#88bbff' : '#1a2840'}}
+                  cooldown={{left:cd, max:ABILITY_CD.shadow_illusion, color:actingHue}}
+                  style={{borderColor: canSummon ? actingHue : actingHueDim, color: canSummon ? actingHueLight : actingHueDim}}
                   disabled={!canSummon}
                   title={`Shadow Illusion — split into a second, identical Ronin right where you stand (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). You start stacked, so nobody sees which one appeared; walk them apart on separate legs and let rivals waste a turn on the wrong body. ⚠️ It feeds on you: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it falls apart the moment you have none to give.`}
                   onClick={() => { if (canSummon) resolveShadowIllusion(); }}>
@@ -13996,7 +14030,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       <div style={{padding:"11px 11px 9px"}}>
                         <div style={{fontSize:7,color:"#6a8a9a",marginBottom:7}}>
                           {budgetLeft <= 0 ? `✓ budget spent (${STACK_COMMIT_BUDGET}/${STACK_COMMIT_BUDGET}) — continue below`
-                           : `${budgetLeft} commit${budgetLeft !== 1 ? 's' : ''} left — pick a stack then tap a note`}
+                           : `${budgetLeft} commit${budgetLeft !== 1 ? 's' : ''} left — pick a stack then tap a note, or type it (Shift = ♯/♭ · Tab = switch stack)`}
                         </div>
                         {/* 🔴🔵 ONE ROW PER STACK, each in its own bracket wearing
                             its own stat's colour — the same job the colour does on
@@ -14111,7 +14145,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                         DEPARTURE flare fires here too, so the chain
                                         from click → flare → flight → landing flare is
                                         unbroken for the first time. */}
-                                    <div data-coach={!used ? crowdMarks.get(idx) : undefined}
+                                    <div data-stock-idx={idx} data-coach={!used ? crowdMarks.get(idx) : undefined}
                                       onClick={(e)=>{ if (!used) clickNoteStock(idx, e, true); }}
                                       style={{width:STACK_GRID_CHIP,height:STACK_GRID_CHIP,flexShrink:0,
                                         display:"flex",alignItems:"center",justifyContent:"center",
@@ -14167,6 +14201,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 <>
                 {/* Note stock grid — STEP 3: MELODY BUILDING */}
                 {stockGrid}
+                {/* ⌨️ The keyboard route (keyboardNoteCommit) — said once, quietly. */}
+                {turnStep === 'melody' && !hasConfirmed && canAct && !isBot(acting) && (
+                  <div style={{fontSize:7,color:"#6a8a9a",margin:"0 0 5px"}}>
+                    ⌨️ Type a–g to play a note · Shift = ♯/♭ · Backspace takes the last one back · W = scale wheel
+                  </div>
+                )}
                 {/* 🎸 STACK COMMIT PREVIEW — hover-a-note guidance (inline, instant via hoverScale) */}
                 {!hasConfirmed && stackCommitDest && (() => {
                   const stack = stackCommitDest === 'sustain' ? (actingNoteState?.sustainStack ?? []) : (actingNoteState?.driveStack ?? []);
@@ -14866,7 +14906,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             )}
             <SonicRollPrompt prompt={sonicRollPrompt} onRoll={rollSonicVolley} />
             <SonicBarrageRecord battle={battleState} />
-            <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera} onAutoCamera={setAutoCamera} topView={topView} onTopView={setTopView}
+            <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera} topView={topView} onTopView={setTopView}
+              quality={arenaQuality} onQualityLabel={setArenaQualityLabel} cameraRef={arenaCameraRef}
               sceneFrame={board3D ? arenaFrame({
                 spirits:spirits.filter(s => !isHiddenBySmoke(s)), noteStates, crowdSpirits:spirits,
                 actingId:acting?.id, turn:engineState.turn.count, battle:battleState,
@@ -14874,6 +14915,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 laser:laserFx, pyro:pyroFx, smoke:smokeFx, slime:slimeTiles,
                 fire:flamingHexes, vortex:gravityVortex, bots:animatronics,
                 tentacle:tentacleFx,
+                // 🔦 The corner lights + who is holding a pose under one.
+                spotlights:{ hexes:engineState.board?.spotlights, poses:engineState.limelight?.spotPoses },
                 shadowDecoy, shadowDecoys, vortices:gravityVortices, lite:liteFx,
                 // 🟪 The move tiles (board/moveTiles.js): the same `reachable` sets the
                 // SVG click layer uses, so the picture can never offer a step the
@@ -16058,7 +16101,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   ghostFrom={acting.num}
                   ghostTo={(action === 'shukuchi' && hovered != null
                             && shukuchiTargets.has(hovered)) ? hovered : null}
-                  hs={HS} />
+                  hs={HS} look={{ ...SHUKUCHI_LOOK, color: actingHue }} />
               )}
 
               {bushidoPaint && <BushidoOverlay {...bushidoPaint} layer="labels" />}

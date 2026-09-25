@@ -1,4 +1,5 @@
 import { initialLoadout } from '../data/loadouts.js';
+import { makeSpotlights } from "./systems/spotlights.js";
 // --- ENGINE STATE ------------------------------------------------------------
 // makeInitialState(gameConfig) -> the single plain-JSON GameState object.
 //
@@ -232,6 +233,15 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
 
     // Phase 6a: board state (engine-owned, seeded)
     board: {
+      // 🔦 The four corner spotlights, one hex each — `systems/spotlights.js`.
+      // Seeded on a FORKED stream, so adding them moved no other opening draw.
+      spotlights: makeSpotlights(seed >>> 0),
+      // ⚠️ The lights' OWN copy of the match seed. `state.rng.seed` is not it:
+      // `applyAction` overwrites `state.rng` with whatever rng the caller passed,
+      // and the harness and tests pass their own — so keying the round step on
+      // `state.rng` made the same match move its lights differently per caller.
+      spotlightSeed: seed >>> 0,
+      lastSpotlightsMoved: null,
       eventHexes,
       eventRespawnIn: 0,
       // 🎪 Questions already drawn this match. Per-BUCKET recycling lives in
