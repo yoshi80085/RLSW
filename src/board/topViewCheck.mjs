@@ -17,7 +17,7 @@ import { scheduleSonicBarrage } from './sonicPresentation.js';
 import { barrageDelay } from '../audio/sonicBarrageAudio.js';
 import { createSonicCamera } from './sonicCamera.js';
 import { TOP_OFFSET, TOP_TOLERANCE, onTopAxis, topAxisAngle } from './topDownView.js';
-import { SOLID_LAYER, isSolidMesh, markSolid, markOccluders, OCCLUDER_LAYER } from './solidLayer.js';
+import { SOLID_LAYER, isSolidMesh, markSolid, markOccluders, OCCLUDER_LAYER, DECAL_LAYER } from './solidLayer.js';
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { if (cond) pass++; else { fail++; console.log('  ❌ ' + name); } };
@@ -151,12 +151,12 @@ console.log('§6 🧱 amps, fans and dice are a solid layer above the board');
   ok('renderer: clear once, copy the solids, THEN the standees on the same depth', /foreground\.clear\(\);markSolid\(\[crowd\.group,\.\.\.visuals\.solidRoots\(\)\]\);solid\.render\(scene,camera\);foreground\.render\(foregroundScene,camera\);/.test(r)
     && /foreground\.autoClear=false/.test(r));
   ok('renderer: the copy runs AFTER the arena is drawn (its pixels are the source)', r.indexOf('composer.render();') < r.indexOf('solid.render(scene,camera)'));
-  ok('visuals: every amp tier and the Sonic floor dice are solid roots', /solidRoots:\(\)=>\[\.\.\.\[\.\.\.rigs\.values\(\)\]\.flatMap\(r=>r\.levels\),sonic\?\.dice\?\.group\]/.test(vis));
+  ok('visuals: every amp tier and the Sonic AND Swing floor dice are solid roots', /solidRoots:\(\)=>\[\.\.\.\[\.\.\.rigs\.values\(\)\]\.flatMap\(r=>r\.levels\),sonic\?\.dice\?\.group,swing\?\.dice\?\.group\]/.test(vis));
   const src = read('./solidLayer.js');
   // 🪦 2026-09-25: the pixel copy drew black glass on Alex's GPU. It is a re-draw now.
   ok('the solids are RE-DRAWN with their own materials — no canvas copy', !/CanvasTexture|gl_FragCoord|uSolidSource/.test(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')));
   ok('…depth first (a transparent fan body still hides a standee behind it), then colour with no override',
-    /scene\.overrideMaterial = depthOnly; foreground\.render\(scene, camera\);\s*camera\.layers\.set\(SOLID_LAYER\);\s*scene\.overrideMaterial = overrideMaterial; foreground\.render\(scene, camera\);/.test(src));
+    /scene\.overrideMaterial = depthOnly; foreground\.render\(scene, camera\);\s*camera\.layers\.set\(SOLID_LAYER\);\s*(camera\.layers\.enable\(DECAL_LAYER\);\s*)?scene\.overrideMaterial = overrideMaterial; foreground\.render\(scene, camera\);/.test(src));
   // 🪨 2026-09-25: the amps' bases are modelled half a unit INTO the Stage; the
   // re-draw painted them on top of the board as a plinth until the ground joined
   // the depth pass. Depth: solids + ground. Colour: solids only.
@@ -170,6 +170,22 @@ console.log('§6 🧱 amps, fans and dice are a solid layer above the board');
   }
   ok('…lit by the arena\'s own lights (a light off the layer is not in the room), and only for this pass',
     /o\.isLight && !o\.layers\.isEnabled\(SOLID_LAYER\)/.test(src) && /for \(const o of lit\) o\.layers\.disable\(SOLID_LAYER\)/.test(src));
+  // 🔢 2026-09-27: the dice faces were blank — the re-drawn body covered its own printed numbers.
+  {
+    const die = new THREE.Group();
+    const body = new THREE.Mesh(box(), new THREE.MeshStandardMaterial());
+    const ink = new THREE.Mesh(box(), new THREE.MeshBasicMaterial({ map: new THREE.Texture(), transparent: true, depthWrite: false }));
+    ink.userData.solidDecal = true;
+    const card = new THREE.Mesh(box(), new THREE.MeshBasicMaterial({ map: new THREE.Texture(), transparent: true }));
+    die.add(body, ink, card); markSolid([die]);
+    ok('🔢 a tagged decal (the dice numbers) joins the colour pass, never the solid/depth layer',
+      ink.layers.isEnabled(DECAL_LAYER) && !ink.layers.isEnabled(SOLID_LAYER) && body.layers.isEnabled(SOLID_LAYER));
+    ok('🔢 …and an UNtagged clear card stays off both (opt-in by tag, never by rule)', !card.layers.isEnabled(DECAL_LAYER) && !card.layers.isEnabled(SOLID_LAYER));
+    ok('🔢 the colour pass adds the decal layer; the depth pass does not',
+      /camera\.layers\.set\(SOLID_LAYER\);\s*camera\.layers\.enable\(DECAL_LAYER\);\s*scene\.overrideMaterial = overrideMaterial;/.test(src)
+      && !/enable\(DECAL_LAYER\);\s*scene\.overrideMaterial = depthOnly/.test(src));
+    ok('🔢 combatDice tags its printed numbers', /ink\.name='Printed face numbers';ink\.userData\.solidDecal=true;/.test(read('./combatDice.js')));
+  }
   ok('…at the arena\'s tone mapping and exposure', /foreground\.toneMapping = renderer\.toneMapping;/.test(src) && /foreground\.toneMappingExposure = renderer\.toneMappingExposure;/.test(src));
 }
 

@@ -1,4 +1,3 @@
-import { characterId } from "../../data/spiritIdentity.js";
 // ─── ENGINE SYSTEM: SONIC RIG ────────────────────────────────────────────────
 // Pure function that computes the Sonic dice pool AND the rig's live radius
 // from a Spirit's note state and position.
@@ -37,10 +36,11 @@ import { characterId } from "../../data/spiritIdentity.js";
 // See MARQUEE_QUIZ_DESIGN.md §0.1 for the three clocks this file now serves.
 
 import {
-  SONIC_BASE_DIE, SONIC_UPGRADED_DIE, RIG_RADIUS_FLOOR,
-  RIG_TIER_MAX, RIG_POOL_FLOOR, RIG_ATROPHY_TURNS,
+  RIG_RADIUS_FLOOR,
+  RIG_TIER_MAX, RIG_POOL_FLOOR, RIG_ATROPHY_TURNS, stackCapFor,
 } from "../../data/gameConstants.js";
-import { evaluateChord } from '../../music/chords.js';
+import { readStack } from '../../music/vocabularies.js';
+import { powerPool, withElevenDie, keepForSeats } from './dicePool.js';
 import { ampBlown } from './eleven.js';
 
 // 🪦 `sonicDieSides` IS DELETED — R5, 2026-09-15. It read the high-water mark of
@@ -120,8 +120,10 @@ export function rigRadius(ns = {}, onTurn = false) {
  *   caller who forgets it reads the DEFENSIVE rig, so the failure mode is a
  *   Spirit under-reaching on their own turn — visible, and never a phantom
  *   attack from outside the radius the rules allow.
- * @returns {{ pool: number[], inRange: boolean, radius: number }}
- *   pool    — array of die sizes, e.g. [8, 8, 6, 6]
+ * @returns {{ pool: number[], keep: number, power: number, inRange: boolean, radius: number }}
+ *   pool    — array of die sizes, e.g. [8, 8, 6, 6] — every die THROWN
+ *   keep    — how many of them count (the stack's seats, max 5)
+ *   power   — dial + buffs, before it became dice
  *   inRange — whether the spirit is inside their rig's live radius
  *   radius  — that radius, so callers can DRAW it without recomputing the rule
  */
@@ -132,23 +134,43 @@ export function rigRadius(ns = {}, onTurn = false) {
 // ⚠️ Not added at eleven: the amp only goes to eleven.
 export function sonicRig(ns = {}, distFromHome, chargeBoost = 0, onTurn = false, spiritId = null, extraDrive = 0) {
   void distFromHome;void chargeBoost;void onTurn;
-  const chord=evaluateChord(ns.driveStack??[]);
-  const innate=characterId(spiritId)==='intergalactic_0'&&chord.id==='cluster'?1:0;
+  // 🎸 CHORD_VOCABULARY_DESIGN.md: the Drive dial is the Spirit's own reading of
+  // the stack (1–10). The 🪐 Intergalactic 0 innate (+1 Drive on a cluster) is
+  // GONE (Alex, 2026-09-27: "Lets do away with it").
+  const read=ns.driveStack?.length?readStack(spiritId,ns.driveStack).drive:0;
   const bonus=Math.min(2,(ns.tempDrive??0)+(ns.moshDrive??0));
   // Empty charge must not fall back to the old, stronger static stat sheet.
-  const count=ns.driveStack?.length?Math.max(0,ns.atEleven?11:chord.drive+innate+bonus+extraDrive-(ns.instrumentDropped?1:0)):0;
-  // 🎲 d6 baseline for everyone (R5 — the crowd-driven ladder is gone).
-  //
-  // ⚠️ THE CHARGE-ZONE `+2` IS STILL A CEILING AND R8 SAYS IT SHOULD NOT BE.
-  // Alex ruled charge zones *"raise the FLOOR, never the roof"* — 1 zone → lowest
-  // face 2, 2 zones → lowest face 3, capped at 2 zones — and the floor mechanism
-  // ALREADY EXISTS (`attackParams`'s `atkFloor`, applied in `combat.js`). Removing
-  // this bump and scaling the floor by zone count is ⛔ **Phase 2 item 2 and is
-  // NOT done**: it was outside the scope agreed for this pass, which was the
-  // ladder deletion. Left deliberately, flagged loudly, so a charged Sonic still
-  // rolls d8 until someone finishes R8.
-  const sides=Math.min(12,SONIC_BASE_DIE+((ns.chargeCeilTurns??0)>0?2:0));
-  return {pool:Array.from({length:count},()=>sides),inRange:!ampBlown(ns),radius:0};
+  const power=read?Math.max(0,read+bonus+extraDrive-(ns.instrumentDropped?1:0)):0;
+  // ⚠️ THE CHARGE-ZONE CEILING (+2 sides) IS STILL A ROOF, NOT A FLOOR — R8
+  // (Phase 2 item 2) is unchanged by the vocabulary work; see git history.
+  const ceil=(ns.chargeCeilTurns??0)>0;
+  const base=powerPool(power,{ceil});
+  // 🔊 Goes to 11 swaps the Eleven die in for his weakest die (dicePool.js).
+  const pool=ns.atEleven?withElevenDie(base):base;
+  return {pool,keep:keepForSeats(stackCapFor(ns,'drive')),power,inRange:!ampBlown(ns),radius:0};
+}
+
+/**
+ * 🛡️ The Sustain side of a Sonic: the shield dice. `power` is the defender's
+ * Sustain after exposure, pose and temp buffs (attackParams works it out).
+ */
+export function sustainRig(ns = {}, power = 0) {
+  return {pool:powerPool(power),keep:keepForSeats(stackCapFor(ns,'sustain'))};
+}
+
+/**
+ * 🔊 THE AMPS SHOW THE SEATS (Alex, 2026-09-27). Each stack's amp stands one
+ * cabinet per seat past the second — 3 seats → 1, 4 → 2, 5 → 3 — and the 6th
+ * seat does not add a 4th: it makes the stack GLOW (that stack's d8s).
+ * Drive and Sustain are read separately, so the two amps can stand at
+ * different heights. Replaces `rigTiers` as what the amps draw.
+ */
+export function ampStacks(ns = {}) {
+  const one = which => {
+    const seats = stackCapFor(ns, which);
+    return { seats, levels: Math.max(1, Math.min(3, seats - 2)), glow: seats >= 6 };
+  };
+  return { drive: one('drive'), sustain: one('sustain') };
 }
 
 /**
@@ -159,7 +181,7 @@ export function rigPoolLabel(pool) {
   const counts = {};
   pool.forEach(s => { counts[s] = (counts[s] || 0) + 1; });
   return Object.keys(counts).sort((a, b) => a - b)
-    .map(s => `${counts[s] > 1 ? counts[s] : ""}d${s}`).join("+");
+    .map(s => (Number(s) === 11 ? 'the Eleven die' : `${counts[s] > 1 ? counts[s] : ""}d${s}`)).join("+");
 }
 
 // ─── 🏋️ THE WORKOUT ─────────────────────────────────────────────────────────

@@ -75,7 +75,6 @@ export const HARNESS_GAPS = {
   // so no seat ever smashes. ⚠️ §7's open question about the Smash punishing a
   // good turn therefore CANNOT be measured here yet — which is unfortunate,
   // because §7 explicitly wants to hold that fix until §6.6 can measure it.
-  smash: 'UNMODELLED in transition.js — filtered from every policy',
   blaster: 'UNMODELLED in transition.js — filtered from every policy',
 
   // ~~SKILL_TREE still lives in the monolith~~ ✅ CLOSED 2026-08-16 —
@@ -550,7 +549,7 @@ export const MELODY_SEARCH_DEPTH = 11;
  * burn N times the transitions to return the same number N times.
  */
 export const STOCHASTIC_KINDS = new Set([
-  'swing', 'sonic', 'tentacle', 'riffOff', 'smash', 'blaster',
+  'swing', 'sonic', 'tentacle', 'riffOff', 'blaster',
   // 🌀 The dash ends in a Swing, so it is judged on the same dice as one. A
   // deterministic estimate here would price a coin-flip blow as a certainty.
   'psychoBushido',

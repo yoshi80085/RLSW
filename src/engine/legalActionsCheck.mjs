@@ -23,7 +23,7 @@ import {
   SWING_AP_COST, SONIC_AP_COST, MOVE_AP_COST, MELODY_MAX, SONIC_BEAM_REACH,
 } from "./policies/legalActions.js";
 import {
-  LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST,
+  LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor,
 } from "../data/gameConstants.js";
 import { SPIRIT_DEFS } from "../data/spirits.js";
 import { MODELLED_KINDS, UNMODELLED_KINDS } from "./policies/transition.js";
@@ -228,7 +228,6 @@ const faceRivalAt = (st, rivalId, step = 0) => {
   const one = withTurn(armed, { moveStepsLeft: 1 });
   ok(ofKind(legalActions(one, RONIN), 'swing').length > 0, `1 AP affords the Swing (${SWING_AP_COST} AP)`);
   eq(ofKind(legalActions(one, RONIN), 'sonic').length, 0,  `1 AP cannot afford the Sonic (${SONIC_AP_COST} AP)`);
-  eq(ofKind(legalActions(one, RONIN), 'smash').length, 0,  `1 AP cannot afford the Smash (${SMASH_AP_COST} AP)`);
   ok(ofKind(legalActions(one, RONIN), 'move').length > 0,  `1 AP still walks (${MOVE_AP_COST} AP)`);
 }
 
@@ -309,24 +308,15 @@ const faceRivalAt = (st, rivalId, step = 0) => {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 11. THE SMASH'S FUEL GATE — "the Smash IS your chord, swung."
-//     No unused stock, or no Drive stack, and there is no haymaker to throw.
+// 11. 🪦 THE SMASH IS GONE (removed 2026-09-28, Alex: "it should no longer be
+//     in the game"). Even with every old gate met — 2 AP, the token, unused
+//     stock, a voiced Drive stack, a rival in the cone — it is never offered.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const armed = faceRivalAt(confirmed(baseState()), METAL);
-  const stock = armed.noteStates[RONIN].noteStock ?? [];
 
-  ok(ofKind(legalActions(withNs(armed, RONIN, { driveStack: ['A'] }), RONIN), 'smash').length > 0,
-     'stock in hand and a voiced chord → the Smash is live');
-  eq(ofKind(legalActions(withNs(armed, RONIN, { driveStack: [] }), RONIN), 'smash').length, 0,
-     '🎸 no Drive stack, no haymaker — only a shove');
-  eq(ofKind(legalActions(withNs(armed, RONIN, {
-    driveStack: ['A'], usedStockIdx: stock.map((_, i) => i),
-  }), RONIN), 'smash').length, 0, '🎸 nothing unused to throw → no Smash');
-
-  // It ends ALL movement, which `apCost` alone understates — so it is flagged.
-  const smash = ofKind(legalActions(withNs(armed, RONIN, { driveStack: ['A'] }), RONIN), 'smash')[0];
-  eq(smash.endsMovement, true, 'the Smash is flagged as ending movement, not just costing 2 AP');
+  eq(ofKind(legalActions(withNs(armed, RONIN, { driveStack: ['A'] }), RONIN), 'smash').length, 0,
+     '🪦 stock in hand, a voiced chord, a rival in reach — and still no Smash');
   eq(ofKind(legalActions(withNs(armed, RONIN, { driveStack: ['A'] }), RONIN), 'swing')[0].endsMovement, undefined,
      '...and the Swing is not — the difference is the whole decision');
 }
@@ -347,15 +337,16 @@ const faceRivalAt = (st, rivalId, step = 0) => {
   st = withNs(st, ZERO, { hasConfirmed: true, driveStack: ['A'] });
 
   const noBlaster = legalActions(st, ZERO);
-  ok(ofKind(noBlaster, 'smash').length > 0, 'without the unlock he swings the ordinary Smash');
+  eq(ofKind(noBlaster, 'smash').length, 0, '🪦 without the unlock there is no Smash to fall back on — it is gone');
   eq(ofKind(noBlaster, 'blaster').length, 0, '...and has no Blaster');
 
-  const armed = withNs(st, ZERO, { unlockedSkills: ['amp_1', 'blaster_of_ra'] });
+  // dbPoints: abilities cost 5 Db per use since the loadout work (`cooldowns.js`).
+  const armed = withNs(st, ZERO, { unlockedSkills: ['amp_1', 'blaster_of_ra'], dbPoints: 10 });
   eq(ofKind(legalActions(armed, ZERO), 'smash').length, 0, '🌀 the Blaster REPLACES the Smash — never both');
   const blast = ofKind(legalActions(armed, ZERO), 'blaster')[0];
   ok(blast, '🌀 the Blaster is offered');
   ok(Array.isArray(blast.targetIds), '...and it pierces: it carries a target LIST, not one target');
-  eq(blast.endsMovement, true, 'it commits the same way the Smash does');
+  eq(blast.endsMovement, true, 'it ends all movement, not just 2 AP');
 
   // Its fuel bar is 2 unused notes — and it does NOT ask for a Drive stack.
   const oneNote = withNs(armed, ZERO, {

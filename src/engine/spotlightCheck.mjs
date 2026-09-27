@@ -132,7 +132,7 @@ const pin = (s, owner, num) => ({ ...s, board: { ...s.board, spotlights: { ...s.
   eq(rigFor(sp(notMyTurn, RONIN), notMyTurn.noteStates[RONIN], notMyTurn).pool.length, off,
     'off-turn (defending) the light adds nothing — it is an attack bonus');
   const swingRoll = act({ ...s, battle: null }, attackRolled('swing', RONIN, ZERO, { swingVersion: 2 }));
-  eq(swingRoll.battle.dicePool.length, off + 1, 'the Swing REDUCER rolls the extra die, not just the preview');
+  eq(swingRoll.battle.rolledPool.length, off + 1, 'the Swing REDUCER rolls the extra die, not just the preview (it is THROWN — keep-the-best may still drop it)');
 }
 
 // ── §6. A pose defends at Sustain −1, not at nothing ────────────────────────

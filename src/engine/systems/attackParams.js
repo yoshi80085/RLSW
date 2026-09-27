@@ -29,8 +29,8 @@ import { characterId } from "../../data/spiritIdentity.js";
 // imply those systems still exist and invite someone to "fix" the bot by tuning
 // them. If a stage effect ever bites in battle again, it enters HERE, once.
 
-import { evaluateChord } from "../../music/chords.js";
-import { sonicRig } from "./sonicRig.js";
+import { readStack } from "../../music/vocabularies.js";
+import { sonicRig, sustainRig } from "./sonicRig.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import {
   ATK_BONUS_CAP, CHARGE_FLOOR_BONUS,
@@ -76,22 +76,20 @@ export const SWING_DRIVE_SPEND = 2;
 export const SONIC_DRIVE_SPEND = 1;
 
 /**
- * A Spirit's combat chord.
+ * A Spirit's combat chord — read from that Spirit's OWN ten spellings
+ * (`music/vocabularies.js`, CHORD_VOCABULARY_DESIGN.md). `.drive` is what the
+ * notes are worth in the Drive stack, `.sustain` what they are worth in the
+ * Sustain stack; the name describes the notes either way.
  *
- * ⚠️ THREE COPIES OF THIS EXIST — `spiritChord` in the monolith,
- * `botSpiritChord` in `policies/bot.js`, and this one. They are byte-identical
- * today. This is the copy a headless caller should use; the other two should
- * collapse into it when their files are next touched.
+ * ⚠️ THREE COPIES OF THIS USED TO EXIST — the monolith's and `bot.js`'s
+ * `botSpiritChord` now both delegate to `readStack` too, so they cannot drift.
  *
- * 🪐 Intergalactic 0's innate rides here: +1 Sustain on every voicing, and a
- * cluster reads as +1 Drive too (his special 8/2 cluster read).
+ * 🪦 Intergalactic 0's innate (+1 Sustain everywhere, +1 Drive on a cluster) is
+ * GONE — Alex, 2026-09-27: "a rough thought from many versions ago. Lets do
+ * away with it." Innates want a rethink of their own.
  */
 export function spiritChord(spiritId, notes) {
-  const ch = evaluateChord(notes);
-  if (characterId(spiritId) === 'intergalactic_0') {
-    return { ...ch, drive: ch.id === 'cluster' ? ch.drive + 1 : ch.drive, sustain: ch.sustain + 1 };
-  }
-  return ch;
+  return readStack(spiritId, notes);
 }
 
 /**
@@ -158,7 +156,7 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
     const defenderDicePool=sonicRig(nsD,0,0,true,defenderId).pool;
     return {atkStat:dicePool.length,defStat:defenderDicePool.length,dicePool,defenderDicePool,
       atkFloor:Math.max((nsA.chargeFloorTurns??0)>0?CHARGE_FLOOR_BONUS:0,nsA.dieFloorBoost??0),
-      swingChordLeft:(nsA.driveStack??[]).slice(2),swingChordSpent:(nsA.driveStack??[]).slice(0,2),
+      swingChordLeft:(nsA.driveStack??[]).slice(0,-SWING_DRIVE_SPEND),swingChordSpent:(nsA.driveStack??[]).slice(-SWING_DRIVE_SPEND),
       _derived:{consumedSmashExposed:false}};
   }
   const defA = SPIRIT_DEFS[characterId(attackerId)] ?? {};
@@ -237,17 +235,25 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
   if (kind === 'sonic') {
     // The attacker throws their rig's pool; the ceiling charge grows EVERY die
     // one size (d6→d8, d8→d10), capped.
-    const pool = rigFor(attacker, nsA, state).pool;
+    const rig = rigFor(attacker, nsA, state);
+    const pool = rig.pool;
     const dicePool = [...pool]; // rigFor applies the ceiling exactly once.
 
     // Sustain rolls one baseline d6 per effective point into fresh shield HP.
     // Rig status remains useful to callers for the separate riff-off gate.
     const defInRig = rigFor(defender, nsD, state).inRange;
+    const sonicDefStat=(v=>defenderPosing?posedSustain(v):Math.max(0,v))((nsD.smashExposed?0:(nsD.sustainStack?.length?spiritChord(defenderId,nsD.sustainStack).sustain:0))
+        -(nsD.swingExposed?1:0)+(nsD.tempSustain??0));
+    // 🎲 Both sides throw every die their power buys and KEEP their seats' worth
+    // (dicePool.js). The shield is the sum of the KEPT Sustain dice.
+    const shield=sustainRig(nsD,sonicDefStat);
     return {
       ...base,
       atkStat:dicePool.length,
-      defStat:(v=>defenderPosing?posedSustain(v):Math.max(0,v))((nsD.smashExposed?0:(nsD.sustainStack?.length?spiritChord(defenderId,nsD.sustainStack).sustain:0))
-        -(nsD.swingExposed?1:0)+(nsD.tempSustain??0)),
+      defStat:sonicDefStat,
+      atkKeep:rig.keep,
+      sustainPool:shield.pool,
+      defKeep:shield.keep,
       dicePool,
       defDie: 6,
       sonicChordNotes:[...(nsA.driveStack??[])],
@@ -288,7 +294,10 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
     dicePool: null,
     atkDie: chargeCeil ? THRASH_CEIL_DIE : THRASH_DIE,
     defDie: THRASH_DIE,
-    swingChordLeft:  driveStack.slice(SWING_DRIVE_SPEND),
-    swingChordSpent: driveStack.slice(0, SWING_DRIVE_SPEND),
+    // 🔝 FROM THE TOP (Alex, 2026-09-27). The stack is read against its ROOT, so
+    // spending the root scrambled the chord; spending the top two notes steps
+    // it down two rungs of its own branch instead.
+    swingChordLeft:  driveStack.slice(0, -SWING_DRIVE_SPEND),
+    swingChordSpent: driveStack.slice(-SWING_DRIVE_SPEND),
   };
 }

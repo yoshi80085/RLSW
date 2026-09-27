@@ -57,24 +57,44 @@ function floorLabel(color,width,height){
 // 🎨 EACH PLAYER THROWS DICE IN THEIR OWN COLOUR (Alex, 2026-09-24: "Rival -
 // rolls dice (that player's color of dice)"). The Drive-red / Sustain-blue pair
 // is only the fallback now, for a caller that does not say whose dice these are.
+// 🎲 KEEP-THE-BEST (dicePool.js, Alex 2026-09-27: "Dice dimming — go with the
+// recommended approach"). `drive`/`sustain` are the KEPT faces; `dropped*` are the
+// dice that were thrown and did not count. Every die flies and lands; at the
+// gather the kept dice dock and are added up, the dropped ones stay where they
+// fell and DIM — you see exactly how many dice your spelling bought you.
+// `drivePool`/`sustainPool` give each die its own size (d8s, the Eleven die).
+/** "5d6+2d8", "d6+the Eleven die" — the header's pool text. */
+function dicePoolText(sizes=[]){
+ const counts=new Map();for(const s of sizes)counts.set(s,(counts.get(s)??0)+1);
+ return [...counts].sort((a,b)=>a[0]-b[0]).map(([s,n])=>s===11?'the Eleven die':`${n}d${s}`).join('+')||'0 dice';
+}
 export function createArenaDiceSequence({drive=[],sustain=[],driveSides=6,sustainSides=6,defenderTitle='SUSTAIN',poolStart=[0,0],timing=ARENA_DICE_TIMING,
-  driveColor='#ff6644',sustainColor='#44aaff'}={}){
+  driveColor='#ff6644',sustainColor='#44aaff',drivePool=null,sustainPool=null,
+  droppedDrive=[],droppedDrivePool=[],droppedSustain=[],droppedSustainPool=[]}={}){
  const schedule=arenaDiceSchedule(poolStart,timing);
  const group=new THREE.Group();group.name='Arena floor dice';const entries=[],labels=[],totals=[];
  const shadowGeometry=new THREE.CircleGeometry(.6,24),shadowMaterial=new THREE.MeshBasicMaterial({color:'#000209',transparent:true,opacity:.48,depthWrite:false});
- for(const [pool,values,sides,color,title] of [[0,drive,driveSides,driveColor,'DRIVE'],[1,sustain,sustainSides,sustainColor,defenderTitle]]){
+ for(const [pool,values,sides,color,title,sizes,droppedVals,droppedSizes] of [[0,drive,driveSides,driveColor,'DRIVE',drivePool,droppedDrive,droppedDrivePool],[1,sustain,sustainSides,sustainColor,defenderTitle,sustainPool,droppedSustain,droppedSustainPool]]){
   const header=floorLabel(color,6.6,.5),sum=floorLabel(color,6.6,.5);
-  header.set(`${title} · ${values.length}d${sides}`);header.mesh.position.set(1,.022,pool?6.95:3);sum.mesh.position.set(1,.022,pool?10.4:6.4);group.add(header.mesh,sum.mesh);labels.push(header,sum);totals.push(sum);
-  values.forEach((value,index)=>{
-   const seed=index+pool*23+value*.07,die=createCombatDie({sides,value,color,seed,presentation:'floor'});die.group.scale.setScalar(.85);group.add(die.group);
+  const thrown=[...values.map((value,i)=>({value,sides:sizes?.[i]??sides,dropped:false})),
+    ...(droppedVals??[]).map((value,i)=>({value,sides:droppedSizes?.[i]??sides,dropped:true}))];
+  header.set(`${title} · ${dicePoolText(thrown.filter(d=>!d.dropped).map(d=>d.sides))}${thrown.length>values.length?` · best ${values.length} of ${thrown.length}`:''}`);
+  header.mesh.position.set(1,.022,pool?6.95:3);sum.mesh.position.set(1,.022,pool?10.4:6.4);group.add(header.mesh,sum.mesh);labels.push(header,sum);totals.push(sum);
+  thrown.forEach(({value,sides:dieSides,dropped},index)=>{
+   const keptIndex=dropped?-1:index;
+   const seed=index+pool*23+value*.07,die=createCombatDie({sides:dieSides,value,color,seed,presentation:'floor'});die.group.scale.setScalar(.85);group.add(die.group);
    const shadow=new THREE.Mesh(shadowGeometry,shadowMaterial);shadow.rotation.x=-Math.PI/2;group.add(shadow);
    const col=index%3,row=Math.floor(index/3);
    const landed=new THREE.Vector3((pool?1.7:-4.2)+col*1.55+(noise(seed)-.5)*.3,0,3.4+row*1.65+(noise(seed+3)-.5)*.35);
    const origin=new THREE.Vector3(pool?7.2:-6.4,0,2.1+row*1.1);
-   const count=Math.min(6,values.length-Math.floor(index/6)*6);
-   const dock=new THREE.Vector3(1+(index%6-(count-1)/2)*1.2,0,(pool?8.25:4.5)+Math.floor(index/6)*1.22);
+   const dockAt=Math.max(0,keptIndex),count=Math.min(6,values.length-Math.floor(dockAt/6)*6);
+   // A dropped die slides OFF to its own side of the row (Drive left, the Rival right) and dims there.
+   const dropAt=index-values.length;
+   const dock=dropped?new THREE.Vector3(pool?5.9+(dropAt%2)*1.1:-3.9-(dropAt%2)*1.1,0,(pool?8.25:4.5)+Math.floor(dropAt/2)*1.1)
+     :new THREE.Vector3(1+(dockAt%6-(count-1)/2)*1.2,0,(pool?8.25:4.5)+Math.floor(dockAt/6)*1.22);
    const rest=die.group.quaternion.clone(),yaw=new THREE.Quaternion().setFromAxisAngle(Y,(noise(seed+5)-.5)*1.9),landing=rest.clone().premultiply(yaw);
-   entries.push({die,shadow,pool,index,value,origin,landed,dock,rest,landing,...arenaDieTiming(value,index,pool,schedule.poolStart,schedule.timing)});
+   const fade=[];if(dropped)die.group.traverse(o=>{for(const m of [o.material].flat())if(m&&!fade.some(f=>f.m===m))fade.push({m,opacity:m.opacity??1,transparent:!!m.transparent});});
+   entries.push({die,shadow,pool,index,value,dropped,fade,origin,landed,dock,rest,landing,...arenaDieTiming(value,index,pool,schedule.poolStart,schedule.timing)});
   });
  }
  let disposed=false;
@@ -98,8 +118,11 @@ export function createArenaDiceSequence({drive=[],sustain=[],driveSides=6,sustai
     die.update(1,{reduced:true});die.group.position.lerpVectors(landed,dock,ease(gatherP));
     die.group.quaternion.copy(e.landing).slerp(e.rest,ease(gatherP));
     lift=reduced?0:Math.sin(gatherP*Math.PI)*.38;
-    if(gatherP>=1){counts[e.pool]++;sums[e.pool]+=e.value;terms[e.pool].push(e.value);}
+    if(gatherP>=1&&!e.dropped){counts[e.pool]++;sums[e.pool]+=e.value;terms[e.pool].push(e.value);}
    }
+   // 🌫️ A dropped die dims as the kept ones gather (and un-dims if scrubbed back).
+   if(e.dropped){const dim=time<schedule.gatherAt?0:ease(gatherP);
+    for(const f of e.fade){f.m.transparent=f.transparent||dim>0;f.m.opacity=f.opacity*(1-.72*dim);}}
    die.group.position.y=die.supportHeight()+.014+lift;
    e.shadow.position.set(die.group.position.x,.012,die.group.position.z);e.shadow.scale.setScalar(1+lift*.25);
    e.shadow.visible=die.group.visible&&lift<1.6;

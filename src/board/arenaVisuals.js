@@ -196,7 +196,10 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
       // ⭐ The RIVAL's Sustain throws first — it is what the shield is made of —
       // and the attacker's Drive waits at the gate for their own ROLL.
       const dice=modern?createArenaDiceSequence({drive:battle.diceVals,sustain:battle.sustainRolls,driveColor:a.color,sustainColor:b.color,
-        driveSides:battle.dicePool[0]??6,sustainSides:battle.sustainPool[0]??6,poolStart:SONIC_DICE.poolStart})
+        driveSides:battle.dicePool[0]??6,sustainSides:battle.sustainPool[0]??6,poolStart:SONIC_DICE.poolStart,
+        drivePool:battle.dicePool,sustainPool:battle.sustainPool,
+        droppedDrive:battle.droppedDiceVals??[],droppedDrivePool:battle.droppedDicePool??[],
+        droppedSustain:battle.sustainDropped??[],droppedSustainPool:battle.sustainDroppedPool??[]})
         :createSonicDiceVisuals({...common,dicePool:battle.dicePool,diceVals:battle.diceVals,diceHits:battle.diceHits});
       // ⭐ The dice land ON THE BOARD by the fight, thrown from each player's
       // chair (battleDirector.placeBattleDice) — you watch the Rival throw at you.
@@ -379,10 +382,13 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
       const owner=frame.rigs?.find(r=>STATIONS[r.corner]?.includes(station));
       rig.owner=owner;
       rig.levels.forEach((level,i)=>{
-        level.visible=!!owner&&i<owner.pool;
+        // 🔊 The height is THIS stack's seats (ampStacks: 3 → 1 cabinet … 5 → 3), and a
+        // 6th seat lights the whole stack instead of adding a 4th (Alex, 2026-09-27).
+        const amp=owner?.amps?.[rig.role]??{levels:owner?.pool??1,glow:false};
+        level.visible=!!owner&&i<amp.levels;
         for(const m of rig.materials[i]) {
           if(/Rim|Status|Hex cyan/.test(m.name)) {
-            m.emissive.set(owner?(rig.role==='drive'?0xff6644:0x44aaff):0x445577);m.emissiveIntensity=owner?(i<owner.power?2.8:.7):.15;
+            m.emissive.set(owner?(rig.role==='drive'?0xff6644:0x44aaff):0x445577);m.emissiveIntensity=owner?(amp.glow?2.8:.7):.15;
           }
         }
       });
@@ -538,7 +544,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
         // says "this amp is live" now is light alone: the status panels step up
         // and HOLD, no flicker. The blast rings leave from it; it stays put.
         level.scale.setScalar(1);
-        for(const m of rig.materials[i])if(/Status/.test(m.name)&&rig.owner)m.emissiveIntensity=energized?3.2:i<rig.owner.power?2.8:.7;
+        for(const m of rig.materials[i])if(/Status/.test(m.name)&&rig.owner)m.emissiveIntensity=energized?3.2:rig.owner.amps?.[rig.role]?.glow?2.8:.7;
       });
       for(const o of hazards.children) {
         const kind=o.userData.kind,t=reduced?0:time;
@@ -559,8 +565,8 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
       headDials.tick(time*1000,camera,pawns,{reduced});
       moveTiles.tick(time*1000,camera,pawns,{reduced});
     },
-    /** 🧱 What must never show a hex through it: every amp cabinet (all tiers) and the Sonic's floor dice (solidLayer.js). */
-    solidRoots:()=>[...[...rigs.values()].flatMap(r=>r.levels),sonic?.dice?.group].filter(Boolean),
+    /** 🧱 What must never show a hex through it: every amp cabinet (all tiers), the Sonic's floor dice and the Swing's (solidLayer.js). */
+    solidRoots:()=>[...[...rigs.values()].flatMap(r=>r.levels),sonic?.dice?.group,swing?.dice?.group].filter(Boolean),
     /** 🎬 The director's shot for this frame, or null — `sonicCamera` flies it. */
     battleShot:()=>battleShot,
     /** 👏 Which crowd is reacting to the bout just fought, and how hard (0–1). */

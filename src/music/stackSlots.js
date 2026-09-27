@@ -8,8 +8,15 @@
 // milestone and a full current stack. You walk onto the right Lost Chord and
 // the seat it opens is the seat it fills.
 //
-// 🎯 THE LADDER IS NOT NEW MUSIC. These are the existing `CHORD_TEMPLATES` rank
-// bands in order, so every slot you earn is a chord you can already spell:
+// ⭐ 2026-09-27 — THE TARGETS ARE NOW EACH SPIRIT'S OWN (CHORD_VOCABULARY_DESIGN.md
+// §5). The seat-N target is the note that makes the stack a spelling of exactly
+// N notes from THAT Spirit's vocabulary (`music/vocabularies.js` `seatTargets`),
+// on either branch — the same note that glows in the hand. A full stack of
+// loose notes has no target: seats are opened by spelling. The ladder below
+// keeps only its gates (`slot`, `upgradesRequired`); its `degrees` are history.
+//
+// 🎯 (HISTORY) THE LADDER WAS NOT NEW MUSIC. These were the old `CHORD_TEMPLATES`
+// rank bands in order, so every slot you earned was a chord you could already spell:
 //
 //   slot 4 ← a 7th of your root      → Dom7 / Min7 / Maj7 / Dim7 / m7♭5   (rank 6)
 //   slot 5 ← the 9th                 → Dom9 / Min9                        (rank 7)
@@ -35,10 +42,8 @@
 // commits push.
 //
 // And it re-points itself correctly under the two rules that already exist:
-//   ⚔️ The Drive spend takes the ROOT (`slice(SWING_DRIVE_SPEND)`) — so spending
-//      your foundation hands the root to the next note up, and your hunt on the
-//      board moves with it. That is the design's own "removing the root is how
-//      you re-point what you are hunting" (§6), for free.
+//   ⚔️ The Drive spend takes the TOP two notes since 2026-09-27 (it used to take
+//      the root) — the chord steps down its own branch and the root stays put.
 //   🛡️ Sustain frays from the TAIL, cheapest note first — so a Sustain root
 //      survives fraying and your hunt is stable across three opponents' turns,
 //      which is the half of the split that needs to be stable.
@@ -58,6 +63,7 @@
 // Pure module — no game state, no React, no rng.
 // =============================================================================
 import { pitchIndex } from "./notes.js";
+import { seatTargets } from "./vocabularies.js";
 // ⚠️ NOTHING IS IMPORTED FROM `gameConstants.js` ON PURPOSE. `stackCapFor` lives
 // there and reads `driveSlots`/`sustainSlots` directly, so the arrow points one
 // way — data → music, never back. Importing the ceiling here to re-derive the cap
@@ -71,9 +77,9 @@ import { pitchIndex } from "./notes.js";
  *  `slot` is the seat number a player sees (4, 5, 6); the index in this array
  *  is how many extra slots you already hold. */
 export const SLOT_LADDER = [
-  { slot: 4, degrees: [9, 10, 11], upgradesRequired: 1, label: 'a 7th',            chords: 'Dom7 / Min7 / Maj7 / Dim7 / m7♭5' },
-  { slot: 5, degrees: [2],         upgradesRequired: 2, label: 'the 9th',          chords: 'Dom9 / Min9' },
-  { slot: 6, degrees: [5, 9],      upgradesRequired: 4, label: 'the 11th or 13th', chords: 'Min11 / Dom13' },
+  { slot: 4, degrees: [9, 10, 11], upgradesRequired: 1, label: 'your 4-note chord', chords: "this Spirit's 4-note spellings" },
+  { slot: 5, degrees: [2],         upgradesRequired: 2, label: 'your 5-note chord', chords: "this Spirit's 5-note spellings" },
+  { slot: 6, degrees: [5, 9],      upgradesRequired: 4, label: 'your 6-note chord', chords: "this Spirit's 6-note spellings" },
 ];
 
 /** How many extra slots there are to find. Derived, so a fourth rung added above
@@ -107,14 +113,11 @@ export function nextRung(earned = 0) {
 /** 🎯 The pitch classes that would open this stack's next seat, right now.
  *  Empty when the stack has no root, or has already earned every slot.
  *  @returns Set<number> */
-export function targetsForStack(stack = [], earned = 0) {
-  const out = new Set();
+export function targetsForStack(stack = [], earned = 0, spiritId = null) {
   const rung = nextRung(earned);
-  if (!rung) return out;
-  const rootPc = pcOf(stackRoot(stack));
-  if (!(rootPc >= 0)) return out;
-  for (const d of rung.degrees) out.add((rootPc + d) % 12);
-  return out;
+  if (!rung) return new Set();
+  if (!(pcOf(stackRoot(stack)) >= 0)) return new Set();
+  return seatTargets(spiritId, stack, rung.slot);
 }
 
 /** Number of distinct ability upgrades a Spirit has earned. A duplicate entry
@@ -139,7 +142,7 @@ function canHuntRung(ns = {}, stack = [], rung = null) {
  *
  *  @returns { drive: {slot, pcs:Set}|null, sustain: {…}|null, all: Set<number> }
  */
-export function unlockTargets(ns = {}) {
+export function unlockTargets(ns = {}, spiritId = null) {
   const out = { drive: null, sustain: null, all: new Set() };
   for (const { which, stack, slots } of STACK_KEYS) {
     const earned = ns?.[slots] ?? 0;
@@ -147,7 +150,7 @@ export function unlockTargets(ns = {}) {
     if (!rung) continue;
     const chordStack = ns?.[stack] ?? [];
     if (!canHuntRung(ns, chordStack, rung)) continue;
-    const pcs = targetsForStack(chordStack, earned);
+    const pcs = targetsForStack(chordStack, earned, spiritId);
     if (pcs.size === 0) continue;
     out[which] = { slot: rung.slot, pcs };
     for (const pc of pcs) out.all.add(pc);
@@ -167,8 +170,8 @@ export function unlockTargets(ns = {}) {
  *  @returns Set<number> */
 export function liveUnlockPcs(noteStates = {}) {
   const all = new Set();
-  for (const ns of Object.values(noteStates || {})) {
-    for (const pc of unlockTargets(ns).all) all.add(pc);
+  for (const [spiritId, ns] of Object.entries(noteStates || {})) {
+    for (const pc of unlockTargets(ns, spiritId).all) all.add(pc);
   }
   return all;
 }
@@ -182,7 +185,7 @@ export function liveUnlockPcs(noteStates = {}) {
  *  Drive — the same tie-break `claimAt` uses in `context.js`, and for the same
  *  reason: one rule, written once, so the log line and the state agree. Taking
  *  the lower seat first also means a find can never skip a rung. */
-export function unlockClaim(ns = {}, note = null) {
+export function unlockClaim(ns = {}, note = null, spiritId = null) {
   const pc = pcOf(note);
   if (!(pc >= 0)) return null;
   let best = null;
@@ -192,7 +195,7 @@ export function unlockClaim(ns = {}, note = null) {
     if (!rung) continue;
     const chordStack = ns?.[stack] ?? [];
     if (!canHuntRung(ns, chordStack, rung)) continue;
-    if (!targetsForStack(chordStack, earned).has(pc)) continue;
+    if (!targetsForStack(chordStack, earned, spiritId).has(pc)) continue;
     const claim = { which, slot: rung.slot, slotsKey: slots, stackKey: stack, rung };
     // lower seat wins; Drive is first in STACK_KEYS, so a tie keeps Drive
     if (!best || claim.slot < best.slot) best = claim;
@@ -208,8 +211,8 @@ export function unlockClaim(ns = {}, note = null) {
  *  spent their three could walk onto their own unlock and be told no.
  *
  *  @returns null | { patch, which, slot, chordStack } */
-export function applyUnlockClaim(ns = {}, note = null) {
-  const claim = unlockClaim(ns, note);
+export function applyUnlockClaim(ns = {}, note = null, spiritId = null) {
+  const claim = unlockClaim(ns, note, spiritId);
   if (!claim) return null;
   const stack = [...(ns?.[claim.stackKey] ?? []), note];
   return {

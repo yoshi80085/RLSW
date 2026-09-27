@@ -56,6 +56,7 @@ export function bushidoDrawPatch(ns, dist) {
   return {
     ...firePatch(ns, 'psycho_bushido'),
     tempDrive: (ns.tempDrive ?? 0) + psychoBushidoBonus(dist),
-    driveStack: (ns.driveStack ?? []).slice(PSYCHO_BUSHIDO_STACK_COST),
+    // 🔝 Spent from the TOP (Alex, 2026-09-27) — the root stays, the chord steps down.
+    driveStack: (ns.driveStack ?? []).slice(0, Math.max(0, (ns.driveStack ?? []).length - PSYCHO_BUSHIDO_STACK_COST)),
   };
 }

@@ -30,7 +30,8 @@ function shape(sides){
  if(sides===4)return new THREE.TetrahedronGeometry(.69);
  if(sides===6)return new THREE.BoxGeometry(.94,.94,.94);
  if(sides===8)return new THREE.OctahedronGeometry(.72);
- if(sides===12)return new THREE.DodecahedronGeometry(.68);
+ // 🔊 11 is the ELEVEN DIE (gameConstants ELEVEN_DIE): a d12 body, eleven faces read 11.
+ if(sides===12||sides===11)return new THREE.DodecahedronGeometry(.68);
  if(sides===20)return new THREE.IcosahedronGeometry(.72);
  // The dual of a pentagonal antiprism is a ten-kite trapezohedron.
  const points=[];for(let i=0;i<5;i++)for(const sign of [-1,1]){
@@ -41,16 +42,17 @@ function shape(sides){
 }
 function acquireAtlas(sides){
  if(atlases.has(sides)){const a=atlases.get(sides);a.refs++;return a;}
- const columns=Math.ceil(Math.sqrt(sides)),rows=Math.ceil(sides/columns),tile=192;
+ const faces=sides===11?12:sides,label=i=>sides===11?(i===0?'1':'11'):String(i+1);
+ const columns=Math.ceil(Math.sqrt(faces)),rows=Math.ceil(faces/columns),tile=192;
  const canvas=globalThis.document?.createElement?.('canvas');let ctx;
  try{if(canvas){canvas.width=columns*tile;canvas.height=rows*tile;ctx=canvas.getContext('2d');}}catch{/* geometry tests run without a canvas */}
  let texture=null;
  if(ctx){
   ctx.textAlign='center';ctx.textBaseline='middle';
-  for(let i=0;i<sides;i++){
-   const x=(i%columns+.5)*tile,y=(Math.floor(i/columns)+.5)*tile;
-   ctx.font=`bold ${i>=9?119:145}px Arial`;ctx.fillStyle='#ffffff';ctx.shadowColor='#ffffff';ctx.shadowBlur=13;ctx.fillText(String(i+1),x,y);ctx.shadowBlur=0;ctx.fillText(String(i+1),x,y);
-   if(i===5||i===8){ctx.fillRect(x-23,y+64,46,5);}
+  for(let i=0;i<faces;i++){
+   const x=(i%columns+.5)*tile,y=(Math.floor(i/columns)+.5)*tile,text=label(i);
+   ctx.font=`bold ${text.length>1?119:145}px Arial`;ctx.fillStyle='#ffffff';ctx.shadowColor='#ffffff';ctx.shadowBlur=13;ctx.fillText(text,x,y);ctx.shadowBlur=0;ctx.fillText(text,x,y);
+   if(sides!==11&&(i===5||i===8)){ctx.fillRect(x-23,y+64,46,5);}
   }
   texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
  }
@@ -78,7 +80,7 @@ export function createCombatDie({sides=6,value=1,color='#4ccbdd',seed=0,presenta
  const source=shape(sides),faces=facesOf(source),remaining=[...faces],numbered=[];
  // Opposite faces add to sides+1 where the solid has opposite faces.
  while(remaining.length){const f=remaining.shift();numbered.push(f);if(sides!==4&&remaining.length){let idx=0;for(let i=1;i<remaining.length;i++)if(remaining[i].normal.dot(f.normal)<remaining[idx].normal.dot(f.normal))idx=i;numbered.splice(numbered.length-1,0,remaining.splice(idx,1)[0]);}}
- const ordered=[];for(let i=0;i<numbered.length;i+=2){ordered[i/2]=numbered[i];if(numbered[i+1])ordered[sides-1-i/2]=numbered[i+1];}
+ const ordered=[];for(let i=0;i<numbered.length;i+=2){ordered[i/2]=numbered[i];if(numbered[i+1])ordered[faces.length-1-i/2]=numbered[i+1];}
  const faceList=sides===4?faces:ordered;
  const group=new THREE.Group();group.name=`Combat d${sides}`;group.userData={sides,value,faceCount:faces.length};
  const bodyGeometry=sides===6?new RoundedBoxGeometry(.94,.94,.94,2,.065):source;
@@ -94,7 +96,7 @@ export function createCombatDie({sides=6,value=1,color='#4ccbdd',seed=0,presenta
   }
  });
  const printed=new THREE.BufferGeometry();printed.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));printed.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
- const ink=new THREE.Mesh(printed,new THREE.MeshBasicMaterial({map:atlas.texture,transparent:true,depthWrite:false,color:tint.clone().lerp(new THREE.Color('#ffffff'),.68),toneMapped:false,polygonOffset:true,polygonOffsetFactor:-1}));ink.name='Printed face numbers';group.add(ink);
+ const ink=new THREE.Mesh(printed,new THREE.MeshBasicMaterial({map:atlas.texture,transparent:true,depthWrite:false,color:tint.clone().lerp(new THREE.Color('#ffffff'),.68),toneMapped:false,polygonOffset:true,polygonOffsetFactor:-1}));ink.name='Printed face numbers';ink.userData.solidDecal=true;group.add(ink);
  const winner=faceList[value-1],orientation=new THREE.Quaternion().setFromUnitVectors(winner.normal,Z);
  const up=winner.up.clone().applyQuaternion(orientation);orientation.premultiply(new THREE.Quaternion().setFromAxisAngle(Z,Math.atan2(up.x,up.y)));
  // A slight tilt reveals the body while keeping the selected numeral dominant.

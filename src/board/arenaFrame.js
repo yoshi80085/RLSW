@@ -1,4 +1,4 @@
-import { rigRadius, rigTiers } from '../engine/systems/sonicRig.js';
+import { rigRadius, rigTiers, ampStacks } from '../engine/systems/sonicRig.js';
 import { playerColor } from '../data/corners.js';
 
 const SPOT_CORNERS = ['blue', 'purple', 'yellow', 'red'];
@@ -28,7 +28,7 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
     decoys:shadowDecoys.map(d => ({id:`${d.id}:shadow`,sourceId:d.id,num:d.num,
       color:d.color,corner:d.corner,facing:d.facing ?? 0,shadow:true})),
     rigs: spirits.filter(s => !s.knockedOut).map(s => ({ id:s.id, corner:s.corner,
-      color:s.color, ...rigTiers(noteStates[s.id]),
+      color:s.color, ...rigTiers(noteStates[s.id]), amps:ampStacks(noteStates[s.id]),
       radius:rigRadius(noteStates[s.id], s.id === actingId), active:s.id === actingId })),
     actingId, turn, lite,
     // 🟪 Where the acting Spirit (or its Shadow) can step — moveTiles.js. Board
@@ -48,6 +48,10 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
             swingRollAt:battle.swingRollAt,swingRivalRollAt:battle.swingRivalRollAt,viewer:battle.viewer,
             diceVals:[...battle.diceVals],defenderDiceVals:[...battle.defenderDiceVals],
             dicePool:[...battle.dicePool],defenderDicePool:[...battle.defenderDicePool],
+            // 🎲 The thrown-but-not-kept dice, drawn dimmed (dicePool.js).
+            droppedDiceVals:[...(battle.droppedDiceVals??[])],droppedDicePool:[...(battle.droppedDicePool??[])],
+            defenderDroppedVals:[...(battle.defenderDroppedVals??[])],defenderDroppedPool:[...(battle.defenderDroppedPool??[])],
+            elevenFizzled:!!battle.elevenFizzled,
             atkTotal:battle.atkTotal,defTotal:battle.defTotal,damage:battle.damage,tied:battle.tied,
             attackerWon:battle.attackerWon} : {}),
           ...(battle.sonicAttack && !battle.riffOff && battle.diceHits ? {
@@ -62,6 +66,9 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
             // ⌗ Top-down bout: no hit-stops, no slow burst (sonicBarrageTiming).
             realtime:!!battle.realtime,
             sustainRolls:[...(battle.sustainRolls??[])], sustainPool:[...(battle.sustainPool??[])],
+            droppedDiceVals:[...(battle.droppedDiceVals??[])], droppedDicePool:[...(battle.droppedDicePool??[])],
+            sustainDropped:[...(battle.sustainDropped??[])], sustainDroppedPool:[...(battle.sustainDroppedPool??[])],
+            elevenFizzled:!!battle.elevenFizzled,
             shots:battle.shots?.map(s=>({...s})), breakIndex:battle.breakIndex,
             shieldRemaining:battle.shieldRemaining,strengthThrough:battle.strengthThrough,
             sonicChordNotes:[...(battle.sonicChordNotes ?? [])],

@@ -24,7 +24,8 @@ import {
 } from "../music/stackSlots.js";
 import { STACK_CAP_BASE, STACK_CAP_MAX, TOKEN_UNLOCK_SPAWN_SHARE, TOKEN_DRIFT_TURNS } from "../data/gameConstants.js";
 import { makeBoardToken } from "../board/boardHelpers.js";
-import { CHORD_TEMPLATES, evaluateChord } from "../music/chords.js";
+import { evaluateChord } from "../music/chords.js";
+import { VOCABULARIES } from "../music/vocabularies.js";
 import { pitchIndex, NOTE_POOL } from "../music/notes.js";
 import { makeInitialNoteState } from "./systems/economy.js";
 import { applyTokensDrifted } from "./systems/board.js";
@@ -63,8 +64,9 @@ const pc = n => ((pitchIndex(n) % 12) + 12) % 12;
   // game measured a payout of −0.04 Db.)
   for (const [i, rung] of SLOT_LADDER.entries()) {
     const seats = STACK_CAP_BASE + i + 1;
-    ok(CHORD_TEMPLATES.some(t => t.ivals.length === seats),
-       `🎯 seat ${rung.slot} opens room for ${seats} notes and a ${seats}-note chord exists to fill it`);
+    for (const [id, v] of Object.entries(VOCABULARIES)) for (const b of ['drive', 'sustain'])
+      ok(v[b].some(([, iv]) => iv.length === seats),
+         `🎯 ${id} ${b}: seat ${rung.slot} opens room for ${seats} notes and a ${seats}-note spelling exists to fill it`);
   }
 }
 console.log("✓ §1 the ladder: three rungs, they sum to the render ceiling, and each opens a chord that exists");
@@ -90,13 +92,15 @@ console.log("✓ §1 the ladder: three rungs, they sum to the render ceiling, an
   eq(stackRoot(['C','E','G'].slice(0, -1)), 'C',
      '🛡️ fraying from the tail never touches the Sustain root');
 
-  // And the hunt moves with it.
-  eq([...targetsForStack(['C','E','G'], 0)].sort((a,b)=>a-b), [9, 10, 11],
-     'a C-rooted stack hunts a 7th of C: A / B♭ / B');
-  eq([...targetsForStack(['C','E','G'].slice(1), 0)].sort((a,b)=>a-b), [1, 2, 3],
-     '…and once C is spent, the same stack hunts a 7th of E instead');
+  // And the hunt moves with it. (2026-09-27: targets are the Spirit's own next
+  // spelling — `vocabularies.js`. No Spirit → the fallback ladder, whose Major
+  // climbs to Dominant 7.)
+  eq([...targetsForStack(['C','E','G'], 0)].sort((a,b)=>a-b), [10],
+     'a C-rooted Major (fallback) hunts the B♭ that makes C7');
+  eq([...targetsForStack(['C','E','G'].slice(1), 0)], [],
+     '…and a stack re-rooted onto loose notes (E G) spells nothing, so hunts nothing');
 }
-console.log("✓ §2 the root: it is stack[0], it survives fraying, and the Drive spend re-points it");
+console.log("✓ §2 the root: it is stack[0], it survives fraying, and the hunt is read from it");
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 3. WHICH NOTE OPENS WHICH SEAT.
@@ -106,31 +110,29 @@ console.log("✓ §2 the root: it is stack[0], it survives fraying, and the Driv
 //    and the Dim7 builder never opens his at all.
 // ═════════════════════════════════════════════════════════════════════════════
 {
+  // 🎸 2026-09-27 — CHORD_VOCABULARY_DESIGN.md §5: the seat-N target is the note
+  // that makes the stack a spelling of exactly N notes from THAT Spirit's list.
   const C = ['C','E','G'];
-  eq([...targetsForStack(C, 0)].sort((a,b)=>a-b), [9,10,11], 'seat 4: a 7th — 𝄫7, ♭7 or ♮7');
-  eq([...targetsForStack(C, 1)].sort((a,b)=>a-b), [2],       'seat 5: the 9th');
-  eq([...targetsForStack(C, 2)].sort((a,b)=>a-b), [5,9],     'seat 6: the 11th or the 13th');
+  eq([...targetsForStack(C, 0)].sort((a,b)=>a-b), [10], 'fallback seat 4: Major → Dominant 7 (B♭)');
+  eq([...targetsForStack([...C,'A#'], 1)].sort((a,b)=>a-b), [2], 'fallback seat 5: Dominant 7 → 9 (D)');
+  eq([...targetsForStack([...C,'A#','D'], 2)].sort((a,b)=>a-b), [9], 'fallback seat 6: Dominant 9 → 13 (A)');
   eq([...targetsForStack(C, 3)], [], 'a stack holding every seat hunts nothing');
   eq([...targetsForStack([], 0)], [], 'a rootless stack hunts nothing');
-
-  // 🎯 EVERY 4-NOTE CHORD IN THE GAME MUST BE REACHABLE THROUGH SEAT 4. This is
-  // the assertion that would have caught "the ♭7 only": build the chord on C, ask
-  // which of its notes is the one the seat wants, and require that at least one is.
-  const seat4 = targetsForStack(C, 0);
-  for (const tpl of CHORD_TEMPLATES.filter(t => t.ivals.length === 4)) {
-    ok(tpl.ivals.some(iv => seat4.has(iv % 12)),
-       `🎯 ${tpl.label} contains a note that opens seat 4 — the seat that holds it`);
+  // 🎯 A Spirit hunts ITS OWN next chord: Riff Rat's stacked 5ths on C want A.
+  eq([...targetsForStack(['C','G','D'], 0, 'riff_rat')], [9], '🐀 Riff Rat: Stacked 5ths → ×3 (A), not a jazz 7th');
+  eq([...targetsForStack(['C','G','D'], 0, 'Glamarchy')], [], '…the same notes are loose to the fallback, and hunt nothing');
+  // 🎯 EVERY 4-NOTE SPELLING OF EVERY SPIRIT MUST BE REACHABLE THROUGH SEAT 4 from
+  // the 3-note spelling beneath it — the seat that holds it.
+  for (const id of Object.keys(VOCABULARIES)) for (const b of ['drive', 'sustain']) {
+    const [[, three], [label4, four]] = VOCABULARIES[id][b];
+    const t = targetsForStack(three.map(i => NOTE_POOL[i]), 0, id);
+    ok(four.filter(i => !three.includes(i)).every(i => t.has(i)), `🎯 ${id}: ${label4} opens its own seat`);
   }
-
-  // 📌 9 IS ON TWO RUNGS (the 𝄫7 at seat 4, the 13th at seat 6). Exactly one rung
-  // is live at a time, so one pickup can never claim two seats.
-  const both = SLOT_LADDER.filter(r => r.degrees.includes(9));
-  eq(both.length, 2, '📌 the 9-semitone degree really is on two different rungs');
   const ns9 = { driveStack: C, driveSlots: 0, sustainStack: [], sustainSlots: 0,
     unlockedSkills: ['first'] };
-  eq(unlockClaim(ns9, 'A').slot, 4, '…and it claims the LOW seat, never both');
+  eq(unlockClaim(ns9, 'A#').slot, 4, '…and a find claims ONE seat, the low one');
 }
-console.log("✓ §3 the rungs: a 7th / the 9th / the 11th-or-13th, and every 4-note chord can open its own seat");
+console.log("✓ §3 the rungs: each Spirit hunts its own next spelling, and every 4-note spelling can open its own seat");
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 3b. A RUNG IS NOT LIVE MERELY BECAUSE IT EXISTS.
@@ -144,7 +146,7 @@ console.log("✓ §3 the rungs: a 7th / the 9th / the 11th-or-13th, and every 4-
 {
   const seat4RootOnly = { driveStack: ['B'], driveSlots: 0, unlockedSkills: ['first'] };
   eq(unlockTargets(seat4RootOnly).drive, null,
-     'a root alone cannot make its G♯ / A / A♯ 7ths live before Drive is full');
+     'a root alone cannot make a seat live before Drive is full');
   const seat4NoUpgrade = { driveStack: ['B','D#','F#'], driveSlots: 0, unlockedSkills: [] };
   eq(unlockTargets(seat4NoUpgrade).drive, null,
      'a full three-seat Drive still needs the first upgrade unlock');
@@ -220,7 +222,7 @@ console.log("✓ §4 the claim: per stack, lower seat first, ties to Drive, and 
   // Three finds walk the whole ladder and then stop.
   let walk = { driveStack: ['C','E','G'], driveSlots: 0, sustainStack: [], sustainSlots: 0,
     unlockedSkills: ['first'] };
-  for (const [i, note] of ['A#', 'D', 'F'].entries()) {
+  for (const [i, note] of ['A#', 'D', 'A'].entries()) {
     walk.unlockedSkills = i === 0 ? ['first'] : i === 1 ? ['first', 'second'] : ['first', 'second', 'third', 'fourth'];
     const step = applyUnlockClaim(walk, note);
     ok(step, `find ${i + 1} (${note}) opens seat ${i + 4}`);
@@ -242,8 +244,11 @@ console.log("✓ §5 the patch: the seat opens, the note takes it, the chord cha
     b: { driveStack: ['F','A','C'], driveSlots: 0, sustainStack: [], sustainSlots: 0, unlockedSkills: ['first'] },
   };
   const all = liveUnlockPcs(noteStates);
-  for (const d of [9, 10, 11]) ok(all.has((pc('C') + d) % 12), `A's hunt is on the board (C + ${d})`);
-  for (const d of [9, 10, 11]) ok(all.has((pc('F') + d) % 12), `…and so is B's (F + ${d})`);
+  ok(all.has((pc('C') + 10) % 12), "A's hunt is on the board (C7's B♭)");
+  ok(all.has((pc('F') + 10) % 12), "…and so is B's (F7's E♭)");
+  const mixed = liveUnlockPcs({ riff_rat: { driveStack: ['C','G','D'], driveSlots: 0, sustainStack: [], unlockedSkills: ['first'] },
+    Metalness_Monster: { driveStack: ['E','F','B'], driveSlots: 0, sustainStack: [], unlockedSkills: ['first'] } });
+  ok(mixed.has(pc('A')) && mixed.has(pc('G#')), '…each seat is read as its OWN Spirit (Rat hunts A, Monster hunts G♯)');
   eq(liveUnlockPcs({}), new Set(), 'no Spirits, no live targets');
   eq(liveUnlockPcs({ x: { driveStack: [], sustainStack: [] } }), new Set(),
      'rootless Spirits contribute nothing');

@@ -6,13 +6,25 @@
 > is lives in its own design doc; what it *taught us* lives in `SEQUENCING.md` §B.
 > **This file answers one question: what is true right now?**
 >
-> 📌 **Written 2026-09-04**, last updated **2026-09-25** (🔦 the four corner spotlights + no more natural Sustain decay; earlier the same day: player colours only, the seat-portrait preview and the solid layer re-draw; earlier the same day: the 3D Spirit picker and the figure-only standee cut; earlier: the staged-roll stop-gap and the battle director preview; earlier: the auto camera v2 and the 3D move tiles; earlier: the Ronin's palette and amp voice, the weighted note draw, the beginner finder), when the design set
+> 📌 **Written 2026-09-04**, last updated **2026-09-27** (🎸 chord vocabularies + keep-the-best dice + the blank-dice fix; earlier: 🔦 the four corner spotlights + no more natural Sustain decay; earlier the same day: player colours only, the seat-portrait preview and the solid layer re-draw; earlier the same day: the 3D Spirit picker and the figure-only standee cut; earlier: the staged-roll stop-gap and the battle director preview; earlier: the auto camera v2 and the 3D move tiles; earlier: the Ronin's palette and amp voice, the weighted note draw, the beginner finder), when the design set
 > reached 37 files and 222,000
 > words and no single view of the game existed. Keep it short or it stops being
 > read — if a section needs a paragraph, it belongs in its own doc with a link
 > from here.
 
-**2026-09-19 Sonic integration:** The approved Shieldbreaker barrage is now live:
+**2026-09-27 🎸 chord vocabularies, dials to 10, keep-the-best dice** (`CHORD_VOCABULARY_DESIGN.md`):
+each Spirit reads its stacks from its OWN ten spellings (`music/vocabularies.js` — root-anchored;
+`chords.js` now serves the melody only). Every note is a die; a matching-branch spelling reads
+4/6/8/10. Power → one d6 per point to 8, every point past 8 turns a d6 into a d8; each side keeps
+its best `min(seats, 5)` (`engine/systems/dicePool.js`); dropped dice land, slide aside and DIM.
+Seats 4–6 are hunted with the Spirit's own next note. Amps = seats per stack (3→1 cabinet … 5→3;
+the 6th seat glows). 🔊 Goes to 11 swaps in the Eleven die (eleven 11s, one 1 — always kept; the 1
+fizzles the throw). Swing / Psycho Bushido spend from the TOP. Intergalactic 0's innate is gone.
+🔢 The dice faces were blank — the solid layer re-drew the body over its own numbers; fixed
+(`solidLayer.js` `DECAL_LAYER`). ⏳ Marquee bonus CARDS (guaranteed faces, die bumps, +1 kept die)
+replace the RIG lane — designed, not built.
+
+ The approved Shieldbreaker barrage is now live:
 red Drive and blue Sustain floor dice, a two-second totals hold, automatic ring
 barrage, shield breakup and one final shove. Sustain rolls one d6 per effective
 point into fresh HP each attack. Spillover penetrates; exact breaks do not push.

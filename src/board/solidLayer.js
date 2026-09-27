@@ -56,6 +56,19 @@ export const SOLID_LAYER = 1;
    colour: the board's SVG and the arena still show through where they are. */
 export const OCCLUDER_LAYER = 2;
 
+/* 🔢 DECALS RIDE THE COLOUR PASS (2026-09-27 — Alex: *"the dice faces were
+   simply blank — no numbers on them"*). A die's printed numbers are a clear
+   texture card (`combatDice.js` 'Printed face numbers'), so `isSolidMesh`
+   rightly keeps them OUT of the solid layer — but the die's BODY is in it, and
+   the body is re-drawn on the foreground canvas, which sits above the arena
+   canvas the numbers were drawn on. Every face was painted over by its own die.
+   A mesh tagged `userData.solidDecal` joins the COLOUR pass only: it never
+   writes depth (so its clear rectangle hides nothing), it is depth-TESTED
+   against the solids (so a die's far-side numbers stay hidden), and it draws
+   after the opaque body because it is transparent. Opt-in by tag, never by
+   rule: a clear card anywhere else keeps its old behaviour. */
+export const DECAL_LAYER = 3;
+
 /** Mark the ground (Stage, Island) as depth-only occluders for the re-draw. */
 export function markOccluders(roots) {
   let count = 0;
@@ -76,6 +89,7 @@ export function markSolid(roots) {
   let count = 0;
   for (const root of roots) root?.traverse(o => {
     if (isSolidMesh(o)) { o.layers.enable(SOLID_LAYER); count++; } else o.layers.disable(SOLID_LAYER);
+    if (o.isMesh && o.userData?.solidDecal && o.visible !== false) o.layers.enable(DECAL_LAYER); else o.layers.disable(DECAL_LAYER);
   });
   return count;
 }
@@ -113,6 +127,7 @@ export function createSolidLayer({ renderer, foreground }) {
         camera.layers.enable(OCCLUDER_LAYER);
         scene.overrideMaterial = depthOnly; foreground.render(scene, camera);
         camera.layers.set(SOLID_LAYER);
+        camera.layers.enable(DECAL_LAYER);
         scene.overrideMaterial = overrideMaterial; foreground.render(scene, camera);
       } finally {
         scene.background = background; scene.overrideMaterial = overrideMaterial;

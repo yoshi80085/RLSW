@@ -533,31 +533,21 @@ export function legalActions(state, spiritId, view = {}) {
       }
     }
 
-    // SMASH / 🌀 BLASTER OF RA — 2 AP, and it ENDS ALL REMAINING MOVEMENT, so
+    // 🌀 BLASTER OF RA — 2 AP, and it ENDS ALL REMAINING MOVEMENT, so
     // `apCost` alone understates it. `endsMovement` is flagged rather than
     // folded into the cost because the searcher has to know the difference
     // between "2 AP" and "2 AP and everything after it".
     //
-    // The Blaster REPLACES the Smash for Intergalactic 0 — different geometry
-    // (the beam, piercing every rival in line) and a different fuel bar (2
-    // unused notes, no Drive-stack requirement).
+    // 🪦 The universal Smash that shared this slot was removed 2026-09-28 (Alex's
+    // call). Only Intergalactic 0's unlocked Blaster is offered here now.
     if (ap >= SMASH_AP_COST) {
       const unusedCount = (ns.noteStock ?? []).filter((_, i) => !usedHas(ns.usedStockIdx, i)).length;
       const hasBlaster = characterId(spiritId) === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
 
-      if (hasBlaster) {
-        if (unusedCount >= 2 && canFire(ns, 'blaster_of_ra')) {
-          const struck = rivals.filter(r => beam.has(r.num)).map(r => r.id);
-          if (struck.length) {
-            out.push({ kind: 'blaster', targetIds: struck, apCost: SMASH_AP_COST, endsMovement: true });
-          }
-        }
-      } else if (unusedCount >= 1 && (ns.driveStack ?? []).length >= 1) {
-        // 🎸 The fuel gate: the Smash IS your chord, swung. No stack, no haymaker.
-        for (const r of rivals) {
-          if (cone.has(r.num)) {
-            out.push({ kind: 'smash', targetId: r.id, apCost: SMASH_AP_COST, endsMovement: true });
-          }
+      if (hasBlaster && unusedCount >= 2 && canFire(ns, 'blaster_of_ra')) {
+        const struck = rivals.filter(r => beam.has(r.num)).map(r => r.id);
+        if (struck.length) {
+          out.push({ kind: 'blaster', targetIds: struck, apCost: SMASH_AP_COST, endsMovement: true });
         }
       }
     }

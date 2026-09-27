@@ -354,7 +354,6 @@ export function makeActionScorer(state, spiritId, view = {}) {
       // comment between empty `case` labels reads as a fall-through to eslint.
       case 'swing':
       case 'sonic':
-      case 'smash':
       case 'riffOff':
         return targetRank.get(action.targetId) ?? 0;
 

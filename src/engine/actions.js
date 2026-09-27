@@ -217,12 +217,18 @@ export function riffClosed() {
 export function attackRolled(kind, attackerId, defenderId,
   { atkStat, defStat, posing = false, halveDef = false, dicePool = null,
     atkFloor = 0, atkDie = 6, defDie = 6, sonicChordNotes = [], sustainChordNotes = [],
-    swingChordLeft = [], swingChordSpent = [] }) {
+    swingChordLeft = [], swingChordSpent = [],
+    atkKeep = null, sustainPool = null, defKeep = null }) {
   return {
     type: ATTACK_ROLLED, kind, attackerId, defenderId,
     ...(kind === 'sonic' ? { sonicVersion: 2 } : {}),
     ...(kind === 'swing' ? { swingVersion: 2 } : {}),
     atkStat, defStat, posing, halveDef, dicePool, atkFloor, atkDie, defDie, sonicChordNotes, sustainChordNotes,
+    // 🎲 Keep-the-best (dicePool.js): how many of the thrown dice count, and the
+    // shield's own dice. `null` = an older caller → every die counts, as before.
+    ...(atkKeep != null ? { atkKeep } : {}),
+    ...(sustainPool ? { sustainPool: [...sustainPool] } : {}),
+    ...(defKeep != null ? { defKeep } : {}),
     // 🎸 The Swing's deferred chord burn — spent by `battleConsequences` on a
     // HIT ONLY. ⚠️ It travels on the ACTION rather than being re-derived in the
     // reducer because the stack must be read BEFORE the blow; re-deriving it

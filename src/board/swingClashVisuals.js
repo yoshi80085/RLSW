@@ -79,6 +79,9 @@ export function createSwingClashVisuals({battle,attacker,defender,pointFor,ampOr
   // makes the two throws separate events instead of one shared tumble.
   const dice=createArenaDiceSequence({drive:battle.diceVals,sustain:battle.defenderDiceVals,
     driveSides:battle.dicePool[0]??6,sustainSides:battle.defenderDicePool[0]??6,
+    drivePool:battle.dicePool,sustainPool:battle.defenderDicePool,
+    droppedDrive:battle.droppedDiceVals??[],droppedDrivePool:battle.droppedDicePool??[],
+    droppedSustain:battle.defenderDroppedVals??[],droppedSustainPool:battle.defenderDroppedPool??[],
     defenderTitle:'RIVAL DRIVE',poolStart:D.poolStart,timing:D.timing,
     driveColor:attacker.color,sustainColor:defender.color}); // 🎨 each player's own colour
   dice.group.scale.setScalar(.65);dice.group.position.copy(mid).add(new THREE.Vector3(-lane.z,0,lane.x).multiplyScalar(3.4));

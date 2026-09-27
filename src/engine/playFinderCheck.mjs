@@ -308,8 +308,9 @@ console.log('§4 the rules a suggestion must respect');
   ok(FINDER_GOALS.every(g => spent[g].stack.length === 0), 'a spent stack budget suggests no stack commits');
   const full = findBestPlays(ronin, sheet({ ...base, noteStock: stock, driveStack: ['C', 'E', 'G'], sustainStack: ['A', 'C', 'E'] }));
   ok(FINDER_GOALS.every(g => full[g].stack.length === 0), 'full stacks suggest no stack commits');
-  const opened = findBestPlay(ronin, sheet({ ...base, noteStock: ['Bb', 'D'], driveStack: ['C', 'E', 'G'], driveSlots: 1 }), 'drive');
-  ok(opened.stack.some(s => s.dest === 'drive' && s.note === 'Bb') && opened.result.driveChord === 'C Dominant 7', `a FOUND seat is used: C E G + Bb → ${opened.result.driveChord}`);
+  // 🎸 2026-09-27: the Ronin spells his OWN chords (vocabularies.js) — Sus4 climbs to Sus4 ♭6.
+  const opened = findBestPlay(ronin, sheet({ ...base, noteStock: ['Ab', 'D'], driveStack: ['C', 'F', 'G'], driveSlots: 1 }), 'drive');
+  ok(opened.stack.some(s => s.dest === 'drive' && s.note === 'Ab') && opened.result.driveChord === 'C Sus4 ♭6', `a FOUND seat is used: C F G + Ab → ${opened.result.driveChord}`);
   const done = findBestPlays(ronin, sheet({ ...base, noteStock: stock, melodyLine: ['C', 'D'], usedStockIdx: [], hasConfirmed: true }));
   ok(FINDER_GOALS.every(g => done[g].stack.length === 0 && done[g].melody.length === 0), 'a confirmed turn suggests nothing new');
 

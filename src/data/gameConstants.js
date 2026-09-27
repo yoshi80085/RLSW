@@ -943,6 +943,27 @@ export const ELEVEN_DRIVE = 11;
 // before he ever plays a turn without a rig. Two buys the full turn.
 export const ELEVEN_AMP_BLOWN_TURNS = 2;
 
+// ─── 🎲 THE DIALS AND THE DICE (CHORD_VOCABULARY_DESIGN.md, Alex 2026-09-27) ──
+// The Drive/Sustain dial reads 1–10 (`music/vocabularies.js`); buffs ride on
+// top. A stack's POWER (dial + buffs) turns into dice like this:
+//   · one d6 per point, up to DICE_ROLLED_MAX (8);
+//   · every point past 8 turns one of those d6s into a d8 — a six-note chord
+//     (dial 10) rolls 8 dice with two d8s, and a Moshpit on top makes it four;
+//   · the best DICE_KEPT_MAX (5) faces count, fewer if the stack has fewer
+//     seats (3 seats keep 3, 4 keep 4, 5 and 6 keep 5 — the 6th seat buys the
+//     d8s, not a sixth die).
+// 📌 d8 → d10 is a marquee CARD (not built). Charge-zone ceiling still grows
+// every attack die one size on top of this.
+export const DIAL_MAX        = 10;
+export const DICE_ROLLED_MAX = 8;
+export const DICE_KEPT_MAX   = 5;
+// 🔊 THE ELEVEN DIE (Alex, 2026-09-27): a d12 with eleven faces reading 11 and
+// one reading 1. Goes to 11 swaps it in for one of his dice; it is ALWAYS
+// kept, and its 1 is an absolute fail (≈8%). `11` in a pool array is this die
+// and nothing else — no real die has eleven sides.
+export const ELEVEN_DIE   = 11;
+export const ELEVEN_FACES = 12;
+
 export const ATK_BONUS_CAP           = 5;   // hard ceiling on stacked attack bonuses (tempDrive + stance) -- keeps the accumulative wave in check
 export const THRASH_DIE              = 4;   // base die for both attacker and defender in Thrash
 export const THRASH_CEIL_DIE         = 6;   // ceiling charge upgrades d4 → d6

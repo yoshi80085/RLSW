@@ -188,7 +188,7 @@ import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim } from 
 // 🔦 The four corner spotlights (Alex, 2026-09-25) — rules in the engine, read here.
 import { poseSpotFor, homeSpotlightDrive } from "./engine/systems/spotlights.js";
 import { SPOTLIGHT_POSE_SUSTAIN_COST, POSE_SUSTAIN_PENALTY, SPOTLIGHT_STEAL_CASUALS } from "./data/gameConstants.js";
-import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_TOTAL_CAP, addCasuals, addDiehard, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, CROWD_DRAWN_MAX, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SMASH_AP_COST, SMASH_DAMAGE, SMASH_SUSTAIN_STRIP, SMASH_KNOCKBACK, SMASH_SELF_SUSTAIN, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_TOTAL_CAP, addCasuals, addDiehard, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, CROWD_DRAWN_MAX, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -241,7 +241,7 @@ import { NoteFlyChip } from "./ui/NoteFlyChip.jsx";
 import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, randomNote } from "./music/cadence.js";
 import { noteKeyFromEvent, stockIndexForKey, nextStackDest, keyLabel } from "./music/noteKeys.js";
 import { chordContext, contextClaim, classifyTrack } from "./music/context.js";
-import { evaluateChord } from "./music/chords.js";
+import { readStack } from "./music/vocabularies.js";
 
 // ── CADENCE HINTS ────────────────────────────────────────────────────────────
 // Given the finals trail, work out which ending note(s) would advance (or
@@ -901,7 +901,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // Legendary riffs play their real rhythm — detectRiff is pure and keyed
       // off the track alone, so both machines reach the same verdict.
       // 🪦 a matched legendary riff replayed its own rhythm here — retired 2026-08-17.
-      else playTrackSequence(mel, { style: COMMIT_STYLES[actorId], freqs: ns.committedFreq ?? [] });
+      else playTrackSequence(mel, { style: COMMIT_STYLES[characterId(actorId)], freqs: ns.committedFreq ?? [] });
     };
   });
 
@@ -2343,11 +2343,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       pages: [
         { body: ['Track committed — those notes are now Action Points (AP). MOVE across hexes, FACE to turn (1 AP), and FIGHT!',
                  'Attacks fire into the cone or beam you are FACING. Sneaking up behind someone isn\'t just rude — it\'s tactics, baby! Hit a rival in the wedge behind them and they lose an EXTRA note off their Sustain stack. Watch for the 🔪 badge while you aim — that\'s a back with nobody home.'], anchor: 'actions-bar' },
-        { body: 'Three ways to RUIN someone\'s set. One — ⚔️ SWING (1 AP): the melee jab. Cheap, defended, literally using your electric instrument as a weapon. Drives your chord into them!',
+        { body: 'Two ways to RUIN someone\'s set. One — ⚔️ SWING (1 AP): the melee jab. Cheap, defended, literally using your electric instrument as a weapon. Drives your chord into them!',
           anchor: 'actions-bar', act: 'swing' },
-        { body: 'Two — 🎸 SMASH (2 AP): the all-out front. You spend every unused note, your WHOLE Drive stack and one off your Sustain. They eat 2 Vibe, lose 2 notes off their Sustain stack, and fly back 2 hexes. Commitment issues, in weapon form.',
-          anchor: 'actions-bar', act: 'smash' },
-        { body: 'Three — 🔊 SONIC (2 AP): the ranged beam off your amp rig. Less damage, way more Fame and pushback. Only fires from inside your RANGE ring (hover an amp to see it).',
+        { body: 'Two — 🔊 SONIC (2 AP): the ranged beam off your amp rig. Less damage, way more Fame and pushback. Only fires from inside your RANGE ring (hover an amp to see it).',
           anchor: 'actions-bar' },
         { body: '🔥 THE RIFF-OFF is the big one, and you don\'t pick it from a menu — you EARN it. Aim a Sonic at a rival facing straight back down the same beam and it escalates into a head-to-head rhythm duel. Straight skill.',
           anchor: 'fame-bar', emote: 'fame' },
@@ -3079,12 +3077,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   });
   const toneBySpiritRef = useRef(toneBySpirit);
   useEffect(() => { toneBySpiritRef.current = toneBySpirit; }, [toneBySpirit]);
+  // 🪑 Match ids are SEAT ids (`cosmic_ronin::red`) since the loadout work, but the
+  // map above is seeded by CHARACTER id. A seat that has never touched its knobs
+  // falls back to its character's signature tone (the Ronin's KATANA) — not the
+  // plain defaults, which is what a raw `map[seatId]` lookup silently gave.
+  function toneOf(map, id) { return map?.[id] ?? map?.[characterId(id)] ?? TONE_KNOB_DEFAULTS; }
   // Acting Spirit's tone (what the panel shows) + a writer that saves to that Spirit only.
-  const toneKnobs = toneBySpirit[acting?.id] ?? TONE_KNOB_DEFAULTS;
+  const toneKnobs = toneOf(toneBySpirit, acting?.id);
   function setToneKnobs(updater) {
     const id = acting?.id; if (!id) return;
     setToneBySpirit(prev => {
-      const cur = prev[id] ?? TONE_KNOB_DEFAULTS;
+      const cur = toneOf(prev, id);
       return { ...prev, [id]: typeof updater === 'function' ? updater(cur) : updater };
     });
   }
@@ -3137,7 +3140,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         freq = PC_FREQ_BASE[pc];
       }
       // 🎛️ Amp knob settings (live — read from ref so timeouts get fresh values)
-      const kn = toneBySpiritRef.current?.[actingRef.current?.id] ?? TONE_KNOB_DEFAULTS;
+      const kn = toneOf(toneBySpiritRef.current, actingRef.current?.id);
       playAmpNote(ctx, freq, { ...opts, knobs: kn });
     } catch (_) { /* audio unavailable — silent fail */ }
   }
@@ -3194,6 +3197,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
   // 🎸 Signature commit builds — each Spirit plays their committed track in
   // their OWN voiceprint. Unknown ids fall through to the classic groove.
+  // ⚠️ Keyed by CHARACTER id — look it up with `characterId(seatId)`. A raw seat
+  // id (`cosmic_ronin::red`) misses and every Spirit plays the plain groove
+  // (regressed 2026-09-22 with seat ids; fixed 2026-09-28).
   const COMMIT_STYLES = {
     cosmic_ronin:      'shred',      // 🗡️ lightning passes + climax run
     Metalness_Monster: 'breakdown',  // 🤘 chug gallops + slam clusters
@@ -3458,7 +3464,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     try {
       const ctx = getAudioCtx();
       const now = Math.max(ctx.currentTime, when ?? 0);
-      const kn = toneBySpiritRef.current?.[actingRef.current?.id] ?? TONE_KNOB_DEFAULTS;
+      const kn = toneOf(toneBySpiritRef.current, actingRef.current?.id);
       const V  = TONE_VOICES[kn.voice] ?? TONE_VOICES.saw;
 
       // ── Pattern durations & sweep targets ──
@@ -3798,7 +3804,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         // 🅰️ The hint names the BOARD now, not the tree. Seats 4–6 are found by
         // walking onto a Lost Chord that extends this stack's root.
         const hunting = stackRoot(stack);
-        addLog(`🎸 ${dest === 'sustain' ? 'Sustain' : 'Drive'} stack is full (${destCap} seat${destCap !== 1 ? 's' : ''}).${locked && hunting ? ` 🔓 Find ${nextRung(dest === 'sustain' ? (actingNoteState?.sustainSlots ?? 0) : (actingNoteState?.driveSlots ?? 0))?.label} of ${hunting} on the board to open the next one.` : ''}`);
+        addLog(`🎸 ${dest === 'sustain' ? 'Sustain' : 'Drive'} stack is full (${destCap} seat${destCap !== 1 ? 's' : ''}).${locked && hunting ? ` 🔓 Find the note that makes ${nextRung(dest === 'sustain' ? (actingNoteState?.sustainSlots ?? 0) : (actingNoteState?.driveSlots ?? 0))?.label} on ${hunting} — it's on the board, and it opens the next seat.` : ''}`);
         return;
       }
       const note = noteStock[idx];
@@ -4334,7 +4340,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // here instead of the plain arpeggio, wrote the Riffbook and raised a banner.
     // Retired 2026-08-17 with the library — every commit now plays as the track
     // the player actually composed.
-    playTrackSequence(report.melodyLine, { style: COMMIT_STYLES[acting?.id], freqs: melodyFreq });
+    playTrackSequence(report.melodyLine, { style: COMMIT_STYLES[characterId(acting?.id)], freqs: melodyFreq });
     // 🎯 A resolved cadence — the toast. Its crowd already landed as a `fans`
     // effect above, in the position the ordering requires.
     if (report.cadence) {
@@ -5285,7 +5291,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // archived); this one has exactly one.
     {
       const ns = noteStates[spiritId] ?? {};
-      const found = applyUnlockClaim(ns, tok.note);
+      const found = applyUnlockClaim(ns, tok.note, spiritId);
       if (found) {
         const sp = spirits.find(s => s.id === spiritId);
         const ch = spiritChord(spiritId, found.chordStack);
@@ -5294,7 +5300,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           // Re-derived against the LIVE sheet rather than reusing the patch above:
           // the read that built `found` is a render-time snapshot, and a stack that
           // moved since would otherwise be overwritten with a stale array.
-          const live = applyUnlockClaim(cur, tok.note);
+          const live = applyUnlockClaim(cur, tok.note, spiritId);
           return live ? { ...prev, [spiritId]: { ...cur, ...live.patch } } : prev;
         });
         addLog(`🔓 ${sp?.name} finds ${tok.note} — the ${found.which === 'sustain' ? 'Sustain' : 'Drive'} Stack opens seat ${found.slot}, and ${tok.note} takes it: ${ch.name} (⚔️${ch.drive} 🛡️${ch.sustain}).`);
@@ -6690,20 +6696,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // Roll a d12
   function rollD12() { return Math.floor(Math.random() * 12) + 1; }
 
-  // 🌀 Per-spirit chord read — evaluateChord plus a spirit's innate harmony tweaks. Use this
-  // (not raw evaluateChord) anywhere combat or the HUD reads a spirit's Drive/Sustain.
-  // INTERGALACTIC 0 — "Rolls Hard": +1 Sustain on every voicing. His tone cluster
-  // (pure chaos) drives 7→8, so even a random string of notes hits dangerously hard (8/2).
+  // 🌀 Per-spirit chord read — each Spirit's OWN ten spellings
+  // (music/vocabularies.js, CHORD_VOCABULARY_DESIGN.md). One reader for the
+  // engine, the bots and this client, so the dial you see is the dial that rolls.
+  // (Intergalactic 0's old innate is gone — Alex, 2026-09-27.)
   function spiritChord(spiritId, notes) {
-    const ch = evaluateChord(notes);
-    if (characterId(spiritId) === 'intergalactic_0') {
-      return {
-        ...ch,
-        drive:   ch.id === 'cluster' ? ch.drive + 1 : ch.drive,
-        sustain: ch.sustain + 1,
-      };
-    }
-    return ch;
+    return readStack(spiritId, notes);
   }
 
   // Returns hex nums in the forward attack cone of a spirit
@@ -7072,68 +7070,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       .map(s => `${counts[s] > 1 ? counts[s] : ''}d${s}`).join('+');
   }
 
-  // 🎸💥 THE SMASH — primal, undefendable melee. Hurl your unused RAW stock as pure
-  // force: it bypasses the rival's Sustain, scales with how many notes you throw,
-  // scatters their stock, and leaves YOU Exposed (your next hit taken lands clean).
-  // Draws from stock only — never your chord or cadence. Outside tonal structure.
-  // Universal 2-AP finisher (Style rework) — Blaster of Ra replaces it for Intergalactic 0.
-  function resolveSmash(targetId) {
-    if (!acting) return;
-    const target = spirits.find(s => s.id === targetId);
-    if (!target || target.knockedOut) return;
-    if (moveStepsLeft < SMASH_AP_COST) { addLog(`🎸 Not enough Action Points — the Smash costs ${SMASH_AP_COST} AP.`); return; }
-    const ns    = actingNoteState ?? {};
-    const stock = ns.noteStock ?? [];
-    const used  = ns.usedStockIdx ?? [];
-    const unusedIdxs = stock.map((_, i) => i).filter(i => !usedHas(used, i));
-    const thrown = unusedIdxs.length;
-    const dStack = ns.driveStack   ?? [];
-    const sStack = ns.sustainStack ?? [];
-    // ── THE PRICE OF THE ALL-OUT FRONT (2026-08-05) ─────────────────────────
-    // You can only go all out if you have something to go all out WITH. The
-    // Drive stack is the gate: the Smash is your chord, swung. Without one
-    // there is no haymaker to throw, only a shove.
-    if (thrown < 1) { addLog('🎸 Nothing to throw — the Smash spends every unused note you have, and you have none.'); return; }
-    if (dStack.length < 1) { addLog('🎸 No Drive stack to swing — the Smash IS your chord. Voice one first.'); return; }
-
-    // 🎸💥 The haymaker: the all-in wind-up roots you to the spot. Smash costs AP
-    // AND ends ALL remaining movement this turn — you commit everything to the blow.
-    const stepsBeforeSmash = moveStepsLeft;
-    dispatch(beatsSpent(0, true, { all: true }));
-    setAction(null);
-
-    // ── YOU SPEND EVERYTHING ────────────────────────────────────────────────
-    // Every unused note, the WHOLE Drive stack, and a note off your own
-    // Sustain. No Exposed flag any more — the cost IS the drawback, and it's a
-    // far heavier one: you walk away from this with no chord at all.
-    const sustainAfter = sStack.slice(0, Math.max(0, sStack.length - SMASH_SELF_SUSTAIN));
-    const selfSustainPaid = sStack.length - sustainAfter.length;
-    setNoteField(acting.id, {
-      usedStockIdx: usedAdd(used, unusedIdxs),
-      driveStack:   [],
-      sustainStack: sustainAfter,
-    });
-
-    // ── THEY LOSE THEIR GUARD ───────────────────────────────────────────────
-    // The payout aims at the rival's DEFENCE, not their health bar: notes come
-    // off their Sustain stack, so the hole you tear stays open on their turn.
-    // ⚠️ Read the target's stack off engineRef (the authoritative store, fresh
-    // the instant dispatch returns) rather than assigning out of a setState
-    // updater — an updater body runs later (and twice under StrictMode), so the
-    // log line below would print an empty strip list.
-    const tSustain = (engineRef.current.noteStates?.[targetId] ?? {}).sustainStack ?? [];
-    const keepSustain   = tSustain.slice(0, Math.max(0, tSustain.length - SMASH_SUSTAIN_STRIP));
-    const strippedNotes = tSustain.slice(keepSustain.length);
-    if (strippedNotes.length) setNoteField(targetId, { sustainStack: keepSustain });
-
-    addLog(`🎸💥 ${acting.name} brings the instrument DOWN — THE SMASH! Everything goes in: ${thrown} note${thrown !== 1 ? 's' : ''} hurled, the whole Drive stack (${dStack.join(' ')}) spent${selfSustainPaid > 0 ? `, ${selfSustainPaid} off their own Sustain` : ''}.`);
-    addLog(`💥 UNDEFENDABLE — −${SMASH_DAMAGE} Vibe${strippedNotes.length ? `, and ${strippedNotes.join(' ')} torn off ${target.name}'s Sustain stack` : ''}, hurled back ${SMASH_KNOCKBACK} hexes.`);
-    triggerEffectFlash(targetId, '🎸', 'SMASH!', '#ff3344');
-    resolveWinDamage(acting.id, targetId, SMASH_DAMAGE, 'The Smash');
-    battleKnockback(acting.id, targetId, SMASH_KNOCKBACK);
-    if (stepsBeforeSmash > SMASH_AP_COST) addLog(`🦶 ${acting.name} is rooted by the wind-up — no movement left this turn.`);
-    addLog(`🫗 ${acting.name} has nothing left — the Drive stack is empty. Rebuild it before anyone comes looking.`);
-  }
+  // 🪦 THE SMASH (`resolveSmash`) — removed 2026-09-28 at Alex's call ("I got rid
+  // of this ability quite a while ago"). No button, no bot use, no legal action.
+  // The Blaster of Ra below keeps its own path; `smashExposed` / `smashOutcome`
+  // are the Blaster's now and keep their old names.
 
   // 🌀💥 BLASTER OF RA — Intergalactic 0's signature; REPLACES Smash once unlocked.
   // A ranged, PIERCING bass-drop: hurl your unused stock down the forward beam and hammer
@@ -9068,7 +9008,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const track = idxs.map(i => riffNoteToPool(side.notes[i])).filter(Boolean);
     if (!track.length) return;
     const freqs = idxs.map(i => side.freqs?.[i] ?? null);
-    playTrackSequence(track, { style: COMMIT_STYLES[spiritId], freqs });
+    playTrackSequence(track, { style: COMMIT_STYLES[characterId(spiritId)], freqs });
   }
 
   // Replay a riff-off performance — the result card's ▶ HEAR THE RIFF. Routed
@@ -10696,20 +10636,18 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         // Blaster of Ra replaces Smash for Intergalactic 0 when unlocked.
         const unlocked  = ns.unlockedSkills ?? [];
         const hasBlaster = characterId(self.id) === 'intergalactic_0' && unlocked.includes('blaster_of_ra');
-        const finTargets = hasBlaster ? getRivalsInBeam(self) : getRivalsInCone(self);
+        // 🪦 The Smash is gone (2026-09-28) — only the Blaster uses this slot now.
+        const finTargets = hasBlaster ? getRivalsInBeam(self) : [];
 
-        // 1) 🎸💥 SMASH — turtle-buster: undefendable, and it now tears notes
-        // straight off a high-Sustain target's stack, which is exactly what a
-        // turtle can't answer. Fuel gate matches the button: the Smash spends
-        // the WHOLE Drive stack, so the bot won't reach for it without one.
-        const driveNotes = (ns.driveStack ?? []).length;
-        const finFuelOk  = hasBlaster ? unused >= 2 : (unused >= 1 && driveNotes >= 1);
+        // 1) 🌀💥 BLASTER — turtle-buster: undefendable, so it is what a
+        // high-Sustain target can't answer. Fuel gate matches the button.
+        const finFuelOk  = hasBlaster && unused >= 2;
         if (finTargets.length && finFuelOk && steps >= 2) {
           const t = botPickTarget(finTargets, self);
           const tSustain = spiritChord(t.id, (noteStates[t.id] ?? engineRef.current.noteStates?.[t.id])?.sustainStack ?? []).sustain;
           if (tSustain >= 6) {
             botStepRef.current = 'ending';
-            schedule(guard(() => hasBlaster ? resolveBlasterOfRa() : resolveSmash(t.id)));
+            schedule(guard(() => resolveBlasterOfRa()));
             return;
           }
         }
@@ -10732,17 +10670,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           return;
         }
 
-        // 4) 🎸💥 SMASH — closer: fire on Exposed or near-death targets. Lower
+        // 4) 🌀💥 BLASTER — closer: fire on Exposed or near-death targets. Lower
         // priority than the turtle-buster case above because it costs the bot
         // its entire chord — worth it for a kill, not for chip damage.
         if (finTargets.length && finFuelOk && steps >= 2) {
           const t = botPickTarget(finTargets, self);
           const tNs = engineRef.current.noteStates?.[t.id] ?? {};
-          // Flat payout now (SMASH_DAMAGE); the Blaster keeps the throw curve.
-          const finDamage = hasBlaster ? smashOutcome(unused).damage : SMASH_DAMAGE;
+          const finDamage = smashOutcome(unused).damage;
           if (tNs.smashExposed || (t.vibe ?? 10) <= finDamage + 1) {
             botStepRef.current = 'ending';
-            schedule(guard(() => hasBlaster ? resolveBlasterOfRa() : resolveSmash(t.id)));
+            schedule(guard(() => resolveBlasterOfRa()));
             return;
           }
         }
@@ -11101,14 +11038,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       else addLog("🔊 That spirit is not in your sonic beam!");
       return;
     }
-    if (action === "smash") {
-      if (isShadowTarget(num, 'cone')) { resolveShadowWhiff(acting, 'smash', 'Smash', num); return; }
-      const rivals = acting ? getRivalsInCone(acting) : [];
-      const target = rivals.find(r => r.num === num);
-      if (target) { resolveSmash(target.id); setAction(null); }
-      else addLog("🎸 That spirit is not in your melee range for the Smash!");
-      return;
-    }
     if (action === "blaster") {
       // 🌀 Ranged & piercing — clicking any rival in the beam fires at ALL of them.
       const rivals = acting ? getRivalsInBeam(acting) : [];
@@ -11298,7 +11227,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // 🪦 Cursed Shamisen aura — removed 2026-08-26. No board token, no rings.
     if (reachable.has(hex.num)) return "#ffffff18";
     // Swing / Smash cone highlight
-    if ((previewAction === 'swing' || previewAction === 'smash') && acting) {
+    if (previewAction === 'swing' && acting) {
       const cone = getSwingCone(acting);
       if (cone.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
@@ -11349,7 +11278,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (action === 'shukuchi' && shukuchiTargets.has(hex.num)) return actingHue + SHUKUCHI_STROKE.slice(7);
     if (reachable.has(hex.num)) return "#ffffff88";
     // Swing / Smash cone stroke
-    if ((previewAction === 'swing' || previewAction === 'smash') && acting) {
+    if (previewAction === 'swing' && acting) {
       const cone = getSwingCone(acting);
       if (cone.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
@@ -13107,27 +13036,23 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</RailBtn>
             )}
-            {/* 🎸 THE SMASH (melee) — or 🌀 BLASTER OF RA (ranged, piercing) for Intergalactic 0 */}
+            {/* 🌀 BLASTER OF RA (ranged, piercing) for Intergalactic 0 once unlocked.
+                🪦 The Smash that used to fill this slot for everyone else was removed 2026-09-28. */}
             {(() => {
               const ns = actingNoteState ?? {};
-              // 🌀 Once Blaster of Ra is unlocked, it REPLACES the Smash: ranged beam, pierces all.
               const hasBlaster = characterId(acting?.id) === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
-              const abilityReady = !hasBlaster || ((ns.dbPoints ?? 0) >= 5 && cooldownLeft(ns, 'blaster_of_ra') === 0);
-              const rivals = acting ? (hasBlaster ? getRivalsInBeam(acting) : getRivalsInCone(acting)) : [];
+              if (!hasBlaster) return null;
+              const abilityReady = (ns.dbPoints ?? 0) >= 5 && cooldownLeft(ns, 'blaster_of_ra') === 0;
+              const rivals = acting ? getRivalsInBeam(acting) : [];
               // 👤 The Shadow Illusion is a legal target here too — it has to be,
               // or the button greying out would reveal it as a fake.
-              const shadowSeen = shadowInRange(hasBlaster ? 'beam' : 'cone');
+              const shadowSeen = shadowInRange('beam');
               const unused = (ns.noteStock ?? []).filter((_, i) => !usedHas(ns.usedStockIdx, i)).length;
-              const driveNotes = (ns.driveStack ?? []).length;
-              // 🎸 The Smash's fuel gate: 1+ unused note AND a voiced Drive stack
-              // (it spends the whole thing). The Blaster keeps the old 2-note bar.
-              const fuelOk  = hasBlaster ? unused >= 2 : (unused >= 1 && driveNotes >= 1);
+              const fuelOk  = unused >= 2;
               const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
               const canFire = !grayed && (rivals.length > 0 || shadowSeen) && fuelOk && abilityReady;
-              const mode    = hasBlaster ? 'blaster' : 'smash';
-              const baseTitle = hasBlaster
-                ? "Blaster of Ra (2 AP) — a ranged, piercing bass-drop down the beam: undefendable, scatters & knocks back EVERY rival in line. Ends your movement, leaves you Exposed. Hurls your unused stock."
-                : `The all-out front (${SMASH_AP_COST} AP) — you spend EVERYTHING: every unused note, your WHOLE Drive stack, and ${SMASH_SELF_SUSTAIN} off your Sustain. Undefendable in return: −${SMASH_DAMAGE} Vibe, ${SMASH_SUSTAIN_STRIP} notes torn off their Sustain stack, hurled back ${SMASH_KNOCKBACK} hexes. Ends all your movement.`;
+              const mode    = 'blaster';
+              const baseTitle = "Blaster of Ra (2 AP) — a ranged, piercing bass-drop down the beam: undefendable, scatters & knocks back EVERY rival in line. Ends your movement, leaves you Exposed. Hurls your unused stock.";
               return (
                 <div style={{position:'relative',display:'inline-block'}}
                   onMouseEnter={() => setHoverPreview(mode)}
@@ -13141,25 +13066,21 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       ? `${baseTitle} — grayed out: needs a confirmed turn, your Action Token, and 2 AP.`
                       : canFire ? baseTitle
                       : !fuelOk
-                      ? (hasBlaster
-                          ? `${baseTitle} — faded: you need at least 2 unused stock notes to hurl.`
-                          : `${baseTitle} — faded: you need an unused note to hurl AND a voiced Drive stack to swing.`)
-                      : `${baseTitle} — no rival in range. Hover to see the ${hasBlaster ? 'beam' : 'melee'} range.`}
+                      ? `${baseTitle} — faded: you need at least 2 unused stock notes to hurl.`
+                      : `${baseTitle} — no rival in range. Hover to see the beam range.`}
                     onClick={() => {
                       if (action === mode) { setAction(null); }
                       else if (canFire) {
                         setAction(mode);
-                        addLog(hasBlaster
-                          ? `🌀💥 BLASTER OF RA — click a rival in your beam to fire down the line! (${unused} notes to hurl)`
-                          : `🎸💥 THE SMASH — click an adjacent rival to bring it down! Everything goes: ${unused} note${unused !== 1 ? 's' : ''} + your whole Drive stack.`);
+                        addLog(`🌀💥 BLASTER OF RA — click a rival in your beam to fire down the line! (${unused} notes to hurl)`);
                       }
                     }}>
-                    {hasBlaster ? '🌀 Blaster of Ra' : '🎸 Smash'}{(rivals.length > 0 || shadowSeen) ? ` (${unused})` : ''} {!canFire && moveStepsLeft < 2 ? '(2AP)' : ''}
+                    🌀 Blaster of Ra{(rivals.length > 0 || shadowSeen) ? ` (${unused})` : ''} {!canFire && moveStepsLeft < 2 ? '(2AP)' : ''}
                   </RailBtn>
                 </div>
               );
             })()}
-            {(action === 'smash' || action === 'blaster') && (
+            {action === 'blaster' && (
               <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
                 onClick={() => setAction(null)}>Cancel</RailBtn>
             )}
@@ -14764,8 +14685,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         const seatRung = SLOT_LADDER[i - STACK_CAP_BASE];
                         const seatRoot = stackRoot(stack);
                         const lockTitle = !locked ? undefined
-                          : i === seatCap && seatRoot ? `🔓 Seat ${i + 1} — find ${seatRung?.label} of ${seatRoot} (${seatRung?.chords}) on the board`
-                          : i === seatCap ? `🔓 Seat ${i + 1} — commit a note to set this stack's root, then hunt ${seatRung?.label} of it`
+                          : i === seatCap && seatRoot ? `🔓 Seat ${i + 1} — find the note that makes ${seatRung?.label} on ${seatRoot} on the board`
+                          : i === seatCap ? `🔓 Seat ${i + 1} — commit a note to set this stack's root, then hunt ${seatRung?.label} on it`
                           : `🔒 Seat ${i + 1} — ${seatRung?.label} (${seatRung?.chords}); open seat ${seatCap + 1} first`;
                         return (
                           <div key={`${side}${i}`} data-stack-slot={i}
@@ -14870,7 +14791,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     const next = TONE_VOICE_ORDER[(i + 1) % TONE_VOICE_ORDER.length];
                     setToneKnobs(k => ({ ...k, voice: next }));
                     const aid = acting?.id;
-                    if (aid) toneBySpiritRef.current = { ...toneBySpiritRef.current, [aid]: { ...(toneBySpiritRef.current[aid] ?? TONE_KNOB_DEFAULTS), voice: next } };
+                    if (aid) toneBySpiritRef.current = { ...toneBySpiritRef.current, [aid]: { ...toneOf(toneBySpiritRef.current, aid), voice: next } };
                     playNoteSound(rootNote, { holdTime: 0.3, fadeTime: 0.35, volume: 0.16 });
                   };
                   return (
@@ -16271,7 +16192,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 // `applyUnlockClaim` (the pickup) is `unlockClaim` plus a patch, so a
                 // hex that glows is a hex that pays, by construction rather than by
                 // two rules that happen to agree today.
-                const claim = actingNoteState ? unlockClaim(actingNoteState, tok.note) : null;
+                const claim = actingNoteState ? unlockClaim(actingNoteState, tok.note, acting?.id) : null;
                 const glow  = claim ? (claim.which === 'sustain' ? SUSTAIN_C : DRIVE_C) : null;
                 const r  = HS * 0.32 * (claim ? UNLOCK_GLOW.bump : 1);
                 return (

@@ -885,8 +885,10 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
     }
     const winner=attackerWon?attackerId:defenderId,loser=attackerWon?defenderId:attackerId;
     const stack=nsOf(state,winner).driveStack??[];
-    state=yield patch(winner,{driveStack:stack.slice(2)});
-    yield fx('spentNotes',{spiritId:winner,notes:stack.slice(0,2),stack:'drive'});
+    // 🔝 From the TOP (Alex, 2026-09-27): the chord steps down two rungs of its
+    // own branch instead of losing its root.
+    state=yield patch(winner,{driveStack:stack.slice(0,-2)});
+    yield fx('spentNotes',{spiritId:winner,notes:stack.slice(-2),stack:'drive'});
     const shove=yield* knockback({state,fromId:winner,targetId:loser,spaces:1,amps,fameThisTurn});
     state=yield {kind:'peek'};
     if(!shove.endedByKnockdown&&!shove.targetRelocated) {

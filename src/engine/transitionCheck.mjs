@@ -112,13 +112,20 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const st = withNs(armed(confirmed(baseState())), RONIN, { driveStack: ['A'] });
-  const smash = ofKind(legalActions(st, RONIN), 'smash')[0];
-  ok(smash, 'the fixture really does offer a legal Smash');
+  // Hand-built: the fixture need not satisfy the Blaster's unlock — the
+  // unmodelled gate refuses on KIND before any legality check runs.
+  const blaster = { kind: 'blaster', targetIds: [METAL], apCost: 2, endsMovement: true };
 
-  const r = applyBotAction(st, smash, { rng: rngOf() });
-  eq(r.ok, false, '🎸 the Smash refuses');
+  const r = applyBotAction(st, blaster, { rng: rngOf() });
+  eq(r.ok, false, '🌀 the Blaster refuses');
   eq(r.reason, 'unmodelled', '...as UNMODELLED — the rules allow it, the engine cannot run it yet');
   eq(r.state, st, 'a refusal leaves the state object untouched, by identity');
+
+  // 🪦 The Smash was removed from the game 2026-09-28: it is not a gap any more,
+  // it is an unknown kind.
+  eq(ofKind(legalActions(st, RONIN), 'smash').length, 0, '🪦 no Smash is ever offered');
+  eq(applyBotAction(st, { kind: 'smash', targetId: METAL }, { rng: rngOf() }).reason, 'illegal',
+     '🪦 a hand-built Smash is ILLEGAL, not unmodelled — the ability is gone');
 
   const bogus = applyBotAction(st, { kind: 'teleport' }, { rng: rngOf() });
   eq(bogus.reason, 'illegal', 'an invented kind is illegal, not unmodelled — a different fact');

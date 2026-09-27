@@ -37,7 +37,8 @@ import { bushidoDrawPatch } from "../systems/bushido.js";
 //     `applySkillEffects`. The STATE half of a skill award lands (the skill
 //     enters `unlockedSkills`); the side-effect chain does not. `report.clientOwned`
 //     names it at every call.
-//  2. `smash` / `blaster` are UNMODELLED. They are not `attackRolled` attacks —
+//  2. `blaster` is UNMODELLED (🪦 the Smash was removed 2026-09-28; the notes
+//     below are kept as history). They are not `attackRolled` attacks —
 //     they are undefendable, and carry a long bespoke side-effect chain (whole
 //     Drive stack spent, stock hurled, movement zeroed).
 //     ⚠️ THEY ARE ONE `kind` PAIR AND TWO DIFFERENT ACTIONS. Only the Blaster
@@ -146,7 +147,9 @@ export const MODELLED_KINDS = new Set([
 ]);
 
 /** Kinds the rules allow but the engine cannot yet run. See the header. */
-export const UNMODELLED_KINDS = new Set(['smash', 'blaster']);
+// 🪦 'smash' left this set 2026-09-28 — the Smash was removed from the game, so
+// it is an unknown (illegal) kind now, not an unmodelled one.
+export const UNMODELLED_KINDS = new Set(['blaster']);
 
 /**
  * Kinds that run, but hand part of the job back to the client.
@@ -218,7 +221,7 @@ function collectPickups(state, spiritId, hexNum, rng) {
     // rather than landing in the stock. ⚠️ THIS READ CONSUMES NO RNG, so it may
     // sit before the Ronin's draw without moving anything in the stream; the draw
     // below stays unconditional for the reason its own comment gives.
-    const found = applyUnlockClaim(ns, tok.note);
+    const found = applyUnlockClaim(ns, tok.note, spiritId);
     // 🗡️ The Ronin hears a second note in the same find (~50%). ⚠️ DRAWN HERE,
     // unconditionally ordered before the patch, because the client draws it
     // before its state updater for the same reason — a draw whose position in

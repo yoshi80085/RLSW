@@ -9,7 +9,7 @@ import { rigTiers, rigRadius } from '../engine/systems/sonicRig.js';
 import { HEX_BY_NUM } from './hexMap.js';
 
 const spirit={id:'ronin',num:7,corner:'blue',color:'#4488ff'};
-const sheet={rigPool:3,rigPower:2,driveStack:['A','B'],sustainStack:['C'],noteStock:['SECRET']};
+const sheet={rigPool:3,rigPower:2,driveSlots:2,sustainSlots:2,driveStack:['A','B'],sustainStack:['C'],noteStock:['SECRET']};
 const input={spirits:[spirit],noteStates:{ronin:sheet,hidden:{noteStock:['PRIVATE']}},actingId:'ronin',turn:1,
   battle:{attackerId:'ronin',defenderId:'hidden',phase:'result'},
   flashes:[{key:1,spiritId:'hidden',color:'#ff0000'}],
@@ -56,7 +56,7 @@ assert.ok(emissives.some(e=>e.crack),'shipped fissure material exists');
 let reflective=0;gltf.scene.traverse(o=>{if(o.material?.isMeshPhysicalMaterial)reflective++;});assert.ok(reflective>=2);
 const visuals=createArenaVisuals(scene);visuals.attachModel(gltf.scene);visuals.update(frame);
 assert.equal(visuals.diagnostics().rigStations,8,'all eight preview cabinets bind');
-assert.equal(visuals.diagnostics().liveCabinets,6,'two stations × actual pool 3');
+assert.equal(visuals.diagnostics().liveCabinets,6,'two stations × 3 cabinets (5 seats each — amps show the SEATS, 2026-09-27)');
 assert.equal(visuals.diagnostics().effects,0,'first frame does not invent a move');
 visuals.tick(1);
 const moved=arenaFrame({...input,spirits:[{...spirit,num:16}],battle:null});visuals.update(moved);
@@ -69,10 +69,12 @@ const hazards=arenaFrame({...input,laser:{beams:[{hexes:[7,16]}]},pyro:{hexes:[1
 visuals.update(hazards);const count=visuals.diagnostics().hazards;assert.ok(count>=15,'live hazards create geometry');
 visuals.update(hazards);assert.equal(visuals.diagnostics().hazards,count,'same hazards do not accumulate meshes');
 visuals.tick(3,true);visuals.update(frame);assert.equal(visuals.diagnostics().hazards,0,'expired hazards are removed');
-visuals.update(arenaFrame({...input,noteStates:{ronin:{rigPool:1,rigPower:0}}}));
-assert.equal(visuals.diagnostics().liveCabinets,2,'atrophy removes upper cabinets');
+visuals.update(arenaFrame({...input,noteStates:{ronin:{rigPool:3,rigPower:2}}}));
+assert.equal(visuals.diagnostics().liveCabinets,2,'the marquee rig tiers no longer grow the amps — 3 seats is one cabinet each');
+visuals.update(arenaFrame({...input,noteStates:{ronin:{driveSlots:1,sustainSlots:0}}}));
+assert.equal(visuals.diagnostics().liveCabinets,3,'Drive and Sustain stand at their own heights (4 seats → 2, 3 seats → 1)');
 const duel=arenaFrame({...input,spirits:[spirit,{id:'other',num:16,color:'#cc44ff'}],battle:{attackerId:'ronin',defenderId:'other',phase:'result'}});
 visuals.update(duel);visuals.update({...duel,battle:null});assert.equal(visuals.diagnostics().effects,2,'resolved battle emits an attack and impact');
 visuals.tick(5);assert.equal(visuals.diagnostics().effects,0,'transient effects expire');
 environment.dispose();visuals.dispose();releaseArenaObject(scene);
-console.log('PASS: public frame/privacy, canonical rig values, real GLB stations/materials, movement deduplication, hidden trails, live hazards, atrophy and cleanup');
+console.log('PASS: public frame/privacy, canonical rig values, real GLB stations/materials, movement deduplication, hidden trails, live hazards, amps = seats per stack and cleanup');

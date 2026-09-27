@@ -17,7 +17,7 @@ import { HEX_BY_NUM } from "./hexMap.js";
 import { SCALE, HEX_SIZE, COL_SPACING, SVG_W, SVG_H } from "./constants.js";
 import { CORNERS } from "../data/corners.js";
 import { LIMELIGHT_HEX, RIG_RADIUS_FLOOR } from "../data/gameConstants.js";
-import { rigRadius, rigTiers } from "../engine/systems/sonicRig.js";
+import { rigRadius, ampStacks } from "../engine/systems/sonicRig.js";
 import { AMP_KNOBS } from "./ampKnobs.js";
 
 import ampTl1 from "../amps/amp_tl_lv1.png";
@@ -258,16 +258,18 @@ export default function AmpDecks({ spirits, noteStates, actingId, aiming, thumpF
         // 🎛️ CABINETS AND KNOBS ARE THE WORKOUT TIERS NOW, not skill unlocks —
         // so the deck visibly grows when a RIG-lane answer lands and visibly
         // shrinks when it atrophies. Same numbers as the old Amp/Power tiers.
-        const { pool: ampT, power: powT } = rigTiers(noteStates[s.id] ?? {});
+        // 🔊 2026-09-27: the decks show the SEATS (ampStacks) — first deck Drive,
+        // second Sustain; a 6th seat lights the knobs instead of adding a cabinet.
+        const amps = ampStacks(noteStates[s.id] ?? {});
         // 📡 The base glow used to be the Range tier. Range is not a purchase
         // any more, so the deck lights by how far the rig is CURRENTLY throwing:
         // 0 at the floor, up to 3 on a full stack. The amps visibly breathe.
         const rangeT = Math.max(0, Math.min(3, rigRadius(noteStates[s.id] ?? {}, s.id === actingId) - RIG_RADIUS_FLOOR - 1));
-        const stage = Math.min(Math.max(ampT, 1), 3);   // cabinets = Amp tier
+
         const thump = thumpFx?.id === s.id ? thumpFx.key : null;
         return CORNER_DECKS[s.corner]?.map((pos, di) => (
-          <DeckStack key={`${s.id}-${pos}`} pos={pos} stage={stage}
-            powT={powT} rangeT={rangeT} thump={thump} seed={si * 2 + di + 1}
+          <DeckStack key={`${s.id}-${pos}`} pos={pos} stage={amps[di ? 'sustain' : 'drive'].levels}
+            powT={amps[di ? 'sustain' : 'drive'].glow ? 3 : 0} rangeT={rangeT} thump={thump} seed={si * 2 + di + 1}
             onHover={(on) => setHoverId((prev) =>
               on ? s.id : (prev === s.id ? null : prev))}/>
         ));

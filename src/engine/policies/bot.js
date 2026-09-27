@@ -1,4 +1,3 @@
-import { characterId } from "../../data/spiritIdentity.js";
 // ─── BOT POLICIES ───────────────────────────────────────────────────────────
 // Phase 7a+7b — pure scorer + planner functions extracted from the Game
 // component. Policies are *players*, not rules — they choose what to do given
@@ -18,7 +17,7 @@ import { usedHas } from "../systems/economy.js";
 import { LIMELIGHT_HEX, stackCapFor } from "../../data/gameConstants.js";
 import { buildScale, getIntervalNotes, pitchIndex } from "../../music/notes.js";
 import { cadenceHints } from "../../music/cadence.js";
-import { evaluateChord } from "../../music/chords.js";
+import { readStack } from "../../music/vocabularies.js";
 import { unlockTargets } from "../../music/stackSlots.js";
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -460,19 +459,12 @@ export function botPlanNoteStep(noteState, persona) {
 }
 
 /**
- * Evaluate a chord with spirit-specific overrides (Intergalactic 0 bonuses).
- * Pure — wraps evaluateChord from music/chords.js.
+ * A Spirit's chord read — its own ten spellings (`music/vocabularies.js`).
+ * Delegates, so the bot, the engine and the client can never read a stack
+ * differently.
  */
 export function botSpiritChord(spiritId, notes) {
-  const ch = evaluateChord(notes);
-  if (characterId(spiritId) === 'intergalactic_0') {
-    return {
-      ...ch,
-      drive:   ch.id === 'cluster' ? ch.drive + 1 : ch.drive,
-      sustain: ch.sustain + 1,
-    };
-  }
-  return ch;
+  return readStack(spiritId, notes);
 }
 
 /**
@@ -662,7 +654,7 @@ export function botMoveCtx(state, self, persona) {
     // 📌 That asymmetry is deliberate and is the first thing to revisit if bench
     // matches read as too cooperative.
     unlocks: (() => {
-      const want = unlockTargets(state?.noteStates?.[self.id] ?? {}).all;
+      const want = unlockTargets(state?.noteStates?.[self.id] ?? {}, self.id).all;
       return want.size
         ? boardTokens.filter(t => want.has(((pitchIndex(t.note) % 12) + 12) % 12))
             .map(t => HEX_BY_NUM[t.num]).filter(Boolean)
@@ -751,4 +743,5 @@ export const BOT_CLIENT_KINDS = new Set([
 // take the hops the searcher planned; they are not comparable with anything
 // measured after this line changed, and re-benching is the only way to close
 // that gap rather than assuming it closed itself.
-export const BOT_CLIENT_GAPS = new Set(['smash', 'blaster']);
+// 🪦 'smash' removed 2026-09-28 with the ability itself.
+export const BOT_CLIENT_GAPS = new Set(['blaster']);
