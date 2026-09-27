@@ -35,6 +35,28 @@
 > now (18-coreloop, 19-cheapest). A warning that is always there stops being
 > read — the same failure `check:bundle`'s "6 warnings" taught.**
 
+## 34-glowsticks. The crowd waves glow sticks — 2026-09-25
+
+Alex: *"Lets give the fans glow sticks to wave around and use."* Ruled: **visual only** (no rule, balance frozen) and **everyone holds one**, Casuals and Diehards alike.
+
+### ✅ What shipped
+- 🪩 `board/glowSticks.js` (new) — `GLOW_LOOK` (Alex's dial-in, 15 of 23 levers: neon mix, mixed hands and wave styles, 77 bpm, brightness 4.6), `glowPose`, `createGlowSticks`. `makeGrandstand` builds them by default; `glow: null` builds none.
+- 🎤 `board/cosmicFans.js` — hands named `Fan hand` and exposed as `userData.hands`; the stand's `tick` poses the sticks, `react` re-poses them after the fans jump or sag (a win raises the whole stand to 1.3× tempo; a loss droops and dims them to 0.35).
+- 🎨 `.scratch/glowstick-preview.html` now builds its sticks with the game's module (the preview-only copy is in `_to_delete/2026-09-25-glowstick-bundle/`). Also published as the **Glow Stick Study** artifact so Alex can open it without `npm run dev`; the arena ships as base64 there (`window.__ARENA_GLB`) because artifacts will not serve a `.glb`.
+- 🐛 Preview camera shots fixed: the blue standee sits dead on its stand's axis 2.3 m in front and filled "Blue stand"; "Close-up" parked inside the front row; "Sticks vs shipped" framed two stands that both had sticks. Shots are now built from `grandstandPlacement`.
+
+### 🎓 Findings
+- ⭐ **Instance per stand, not per stick.** The per-stick first cut measured 2,776 draw calls at the default shot with sticks in two stands; the instanced port is six draws a stand at any crowd size (705 at the same shot, same crowds).
+- ⭐ **A trail must be a function of time, not of frames.** Ghosts taken from frame history jumped half a swing on a slow frame and drew an X; `glowPose(t − trailGap)` cannot.
+- 🧱 Core and cap are solid → `solidLayer.js` re-draws them unbloomed; haze and trail are additive and never solid, so a fan re-drawn in front hides them. Seen only in Chromium/swiftshader.
+
+### 🧪 Evidence (Alex's machine, Linux VM)
+`arenaCrowdCheck` PASS, with the glow section **mutation-tested ×6** (trail from "now", dial-in drift, no loss dim, solid haze, trail never hidden, mix never both — all caught) · rest of `test:arena` PASS (presentation, DOM, fallback) · `test:topview` 55 · `check:bundle` zero warnings · eslint clean on the three touched files · `test:arch` still red on the same 5 pre-existing loadout rows only (`glowSticks.js` row added) · preview rendered headless against the shipped module, zero console errors.
+
+### ⬅️ NEXT
+1. 👀 Alex eyeballs the sticks **in the running game** on his GPU — especially the unbloomed core over the solid layer, and whether the purple neon dips under the bloom threshold on the pulse trough (0.93 vs 1.05).
+2. `test:all`, `lint:baseline` not run this pass (the VM's 2-minute ceiling); run them in batches.
+
 ## 33-spotlights. Four owned spotlights, poses that cost −1 instead of everything, and Sustain stops leaking — 2026-09-25
 
 Alex's ask: keep the four corner lights *"shining at a particular hex and have them roam around that hex for the turn"*, stepping to a nearby hex each round; own light → +1 Drive to attack from there and a heal for posing; a rival's light → steal fans by posing there; and a pose's "no Sustain roll" becomes Sustain −1. Rulings from the Q&A: judged at your next turn start on *still on that hex*; once per round; +1 Drive only for an attack made there that turn; heal ladder 10–14 → 1, 5–9 → 2, 1–4 → 3; steal Casuals; −1 replaces "no defence" everywhere; empty seat's light is scenery; lights keep to their quarter, never on 56, never shared; tinted player colour. Mid-session: *"take away that rule that Sustain gets lost every round."*

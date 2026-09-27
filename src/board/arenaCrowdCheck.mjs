@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {createArenaCrowd} from './arenaCrowd.js';
-import {CROWD_LOOK,rowsFor,rowRiseFor,makeGrandstand} from './cosmicFans.js';
+import {CROWD_LOOK,rowsFor,rowRiseFor,makeGrandstand,disposeGrandstand} from './cosmicFans.js';
+import {GLOW_LOOK,glowPose,glowMood,sticksForFan} from './glowSticks.js';
+import {isSolidMesh} from './solidLayer.js';
 import {CROWD_ROWS_MAX,CROWD_SEATS_PER_ROW,CROWD_DRAWN_MAX,FAN_TOTAL_CAP,FAN_DIEHARD_CAP,
         FAN_CASUAL_CAP,FAN_MULT_CAP,FAN_MULT_MAX,addCasuals,addDiehard} from '../data/gameConstants.js';
 import {crowdMultiplier} from './boardHelpers.js';
@@ -86,3 +88,62 @@ crowd.update([{...roster[0],diehards:1,casuals:0}]);
 assert.equal(crowd.count,1);assert.equal(crowd.speaker('intergalactic_0'),null);
 crowd.dispose();assert.equal(scene.children.length,0);assert.equal(crowd.count,0);
 console.log('PASS: the seats are the cap, seats vs fans, rake under the truss, measured walls, spirit-specific diehards, halos, reduced motion and cleanup');
+
+// ── 🪩 GLOW STICKS (Alex, 2026-09-25: visual only, everyone holds one) ────────
+// ⚠️ THE DIAL-IN, VERBATIM. 15 of 23 levers moved on the preview; a port that
+// cannot tell "he chose 77" from "he never touched it" enshrines accidents.
+const ALEX_GLOW_DIAL_IN={length:.35,thickness:.02,grip:.25,brightness:4.6,haze:.36,hazeSize:3,trail:3,trailFade:.45,
+  trailGap:.045,colorMode:'neon',hueJitter:.05,hands:'mix',bothShare:.3,style:'mix',bpm:77,amp:.38,raise:.58,sync:.35,
+  idleShare:.46,pulse:.17,winSpeed:1.3,winAmp:1.2,lossDim:.35};
+assert.deepEqual({...GLOW_LOOK},ALEX_GLOW_DIAL_IN,'GLOW_LOOK is Alex\'s dial-in');
+
+const lit=makeGrandstand({corner:'blue',color:'#4488ff',diehards:10,casuals:14});
+assert.ok(lit.sticks,'stands carry sticks by default');
+const holders=new Set();for(let k=0;k<lit.fans.length;k++)holders.add(k);
+assert.ok(lit.sticks.count>=lit.fans.length&&lit.sticks.count<=lit.fans.length*2,'every fan holds one or two');
+assert.ok(lit.fans.every(f=>f.userData.hands?.length===2&&f.userData.hands.every(h=>h.name==='Fan hand')),'hands are named, not matched by radius');
+// ⭐ The whole point of instancing: the draw cost of a stand does not grow with its crowd.
+const one=makeGrandstand({corner:'purple',diehards:1,casuals:0}),house=makeGrandstand({corner:'red',diehards:30,casuals:0});
+assert.equal(one.sticks.meshes.length,house.sticks.meshes.length,'one fan and a full house cost the same draws');
+assert.equal(house.sticks.meshes.length,3+GLOW_LOOK.trail,'core + cap + haze + one per trail ghost');
+assert.equal(makeGrandstand({corner:'yellow',glow:null}).sticks,null,'glow:null is the stick-less stand the preview compares against');
+// 'mix' really mixes: some fans hold two.
+const pairs=Array.from({length:120},(_,s)=>sticksForFan(GLOW_LOOK,s).length);
+assert.ok(pairs.includes(1)&&pairs.includes(2),'mix hands: some one, some both');
+assert.ok(new Set(Array.from({length:120},(_,s)=>sticksForFan(GLOW_LOOK,s)[0].style)).size===3,'mix style: sway, pump and circle all appear');
+
+// ⭐ THE TRAIL IS THE POSE AT AN EARLIER TIME — not frame history (see glowSticks.js).
+const [core,,,ghost0]=lit.sticks.meshes;
+lit.tick(2.4);
+const M0=glowMood(GLOW_LOOK),mat=new THREE.Matrix4(),want=new THREE.Matrix4();
+let checked=0;
+for(let k=0,i=0;k<lit.fans.length;k++)for(const st of sticksForFan(GLOW_LOOK,k)){
+  const fan=lit.fans[k],rest=new THREE.Vector3(st.sign*CROWD_LOOK.handInset,.24,.035);
+  const now=glowPose(GLOW_LOOK,st,rest,2.4,M0);
+  if(now.waving){
+    const then=glowPose(GLOW_LOOK,st,rest,2.4-GLOW_LOOK.trailGap,M0);
+    want.multiplyMatrices(fan.matrix,new THREE.Matrix4().compose(new THREE.Vector3(then.x,then.y,then.z),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(then.rx,0,then.rz)),new THREE.Vector3(1,1,1)));
+    ghost0.getMatrixAt(i,mat);assert.ok(mat.equals(want)||mat.elements.every((v,j)=>Math.abs(v-want.elements[j])<1e-5),'ghost = pose at t − trailGap (float32 buffer)');
+    checked++;
+  }
+  i++;
+}
+assert.ok(checked>0,'some sticks are waving at idle');
+// A win gets the whole stand waving; a loss dims every stick.
+const waving=M=>{let w=0;for(let k=0;k<30;k++)for(const st of sticksForFan(GLOW_LOOK,k))w+=glowPose(GLOW_LOOK,st,new THREE.Vector3(),1,M).waving;return w;};
+assert.ok(waving(glowMood(GLOW_LOOK,1,1))>waving(glowMood(GLOW_LOOK)),'a win raises more sticks than idle');
+const lum=()=>{const c=new THREE.Color();let sum=0;for(let i=0;i<lit.sticks.count;i++){core.getColorAt(i,c);sum+=c.r+c.g+c.b;}return sum;};
+lit.tick(3);const idleLum=lum();lit.react(3,-1,1);
+assert.ok(lum()<idleLum*(GLOW_LOOK.lossDim+.25),'a loss dims the sticks');
+// 🧱 What the solid layer re-draws: the stick, not its glow.
+const byName=Object.fromEntries(lit.sticks.meshes.map(m=>[m.name,m]));
+assert.ok(isSolidMesh(byName['Glow stick'])&&isSolidMesh(byName['Glow stick cap']),'core and cap are solid');
+assert.ok(!isSolidMesh(byName['Glow stick haze'])&&!isSolidMesh(byName['Glow trail']),'haze and trail are glow, never solid');
+// ♿ Reduced motion: no trail, and the sticks hold still.
+lit.tick(1,{reduced:true});const still=new THREE.Matrix4(),later=new THREE.Matrix4();core.getMatrixAt(0,still);
+ghost0.getMatrixAt(0,mat);assert.equal(mat.determinant(),0,'reduced motion hides the trail');
+lit.tick(5,{reduced:true});core.getMatrixAt(0,later);assert.ok(still.equals(later),'reduced motion: sticks hold still');
+disposeGrandstand(lit);assert.equal(lit.group.parent,null);
+for(const s of [one,house,huge,full])disposeGrandstand(s);
+console.log('PASS: glow sticks — Alex\'s dial-in, everyone holds one, draws flat in crowd size, trail = earlier pose, win/loss, solid layer, reduced motion');

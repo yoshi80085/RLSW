@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CROWD_ROWS_MAX, CROWD_SEATS_PER_ROW } from '../data/gameConstants.js';
+import { GLOW_LOOK, createGlowSticks } from './glowSticks.js';
 
 // ═══ 🎤 THE SEATED COSMIC CROWD ══════════════════════════════════════════════
 // Sized from Alex's dial-in on `.scratch/crowd-size-preview.html`, 2026-09-22,
@@ -170,7 +171,10 @@ export function fanPawn3D({color='#aa88ff',filled=true,seed=0,style=null,look=CR
   for(const x of [-.042,.042]){const eye=new THREE.Mesh(new THREE.SphereGeometry(.019,7,5),ink);eye.position.set(x,.006,.113);head.add(eye);}
   // 📌 HAND INSET IS A SIZE LEVER IN DISGUISE — a fan's footprint is set by its
   // hands, not its body, so pulling them in is what paid for the bigger fan.
-  const hands=[-1,1].map(sign=>{const h=new THREE.Mesh(new THREE.SphereGeometry(.047,10,7),material);h.position.set(sign*look.handInset,.24,.035);root.add(h);return h;});
+  // 🪩 Named and exposed (2026-09-25): the glow sticks (glowSticks.js) are held
+  // in these, left then right. The preview used to find them by sphere radius.
+  const hands=[-1,1].map(sign=>{const h=new THREE.Mesh(new THREE.SphereGeometry(.047,10,7),material);h.name='Fan hand';h.position.set(sign*look.handInset,.24,.035);root.add(h);return h;});
+  root.userData.hands=hands;
   root.scale.setScalar(BASE_ROOT*look.fanScale*(filled?look.diehardScale:1));
   root.userData.tick=(time,quiet=false)=>{const t=time+seed*.71;
     root.userData.restY??=root.position.y;
@@ -198,7 +202,8 @@ export function grandstandPlacement(corner='blue',look=CROWD_LOOK){
   return {position:origin.addScaledVector(direction,look.pushOut),yaw:Math.atan2(direction.x,direction.z)};
 }
 
-export function makeGrandstand({corner='blue',color='#8a91ff',diehards=6,casuals=12,style=null,seedOffset=0,look=CROWD_LOOK}={}){
+/** `glow` is the glow-stick look (`GLOW_LOOK`); pass `null` for a stand with no sticks. */
+export function makeGrandstand({corner='blue',color='#8a91ff',diehards=6,casuals=12,style=null,seedOffset=0,look=CROWD_LOOK,glow=GLOW_LOOK}={}){
   const group=new THREE.Group(),placed=grandstandPlacement(corner,look);
   group.position.copy(placed.position);group.rotation.y=placed.yaw;group.scale.setScalar(look.standScale);
   const deckMat=new THREE.MeshStandardMaterial({color:'#162439',metalness:.35,roughness:.45});
@@ -232,24 +237,34 @@ export function makeGrandstand({corner='blue',color='#8a91ff',diehards=6,casuals
       index++;
     }
   }
-  return {group,fans,rows,
-    tick:(t,{reduced=false}={})=>fans.forEach(f=>f.userData.tick(t,reduced)),
+  // 🪩 Everyone holds one (Alex, 2026-09-25). One InstancedMesh per part for
+  // the whole stand — see glowSticks.js for why that matters.
+  const sticks=glow?createGlowSticks(group,fans,{owner:color,look:glow,seedOffset}):null;
+  return {group,fans,rows,sticks,
+    tick:(t,{reduced=false}={})=>{fans.forEach(f=>f.userData.tick(t,reduced));sticks?.update(t,0,0,{reduced});},
     // ⭐ THE CROWD REACTS TO A BOUT (Alex, 2026-09-24: "the winner of the bout
     // sees their fan's reactions"). `mood` +1 jumps, −1 sags, a tie a polite
     // bounce; `amount` 0–1 eases it in. Applied ON TOP of `tick`, so it must be
     // called after it every frame and simply not called once the bout is over.
-    react:(t,mood,amount,{reduced=false}={})=>fans.forEach((f,k)=>{
-      if(reduced||!amount||!mood){f.rotation.x=0;f.rotation.z=0;return;}   // settles back
-      const beat=Math.abs(Math.sin(t*7+k*1.3));
-      f.position.y+=mood>0?amount*mood*beat*.22:amount*mood*.06;
-      f.rotation.x=mood<0?-mood*amount*.35:0;
-      f.rotation.z=mood>0?amount*Math.sin(t*5+k)*.12:0;
-    }),
+    react:(t,mood,amount,{reduced=false}={})=>{
+      fans.forEach((f,k)=>{
+        if(reduced||!amount||!mood){f.rotation.x=0;f.rotation.z=0;return;}   // settles back
+        const beat=Math.abs(Math.sin(t*7+k*1.3));
+        f.position.y+=mood>0?amount*mood*beat*.22:amount*mood*.06;
+        f.rotation.x=mood<0?-mood*amount*.35:0;
+        f.rotation.z=mood>0?amount*Math.sin(t*5+k)*.12:0;
+      });
+      // 🪩 The sticks are re-posed AFTER the fans move, so they ride the jump
+      // and the sag. ⚠️ Every frame, even at amount 0: the settle-back above
+      // changes the fans' rotation after `tick` already placed the sticks.
+      // A second pass over ≤60 sticks a stand is a few hundred matrix products.
+      sticks?.update(t,amount?mood:0,amount,{reduced});
+    },
     speaker:()=>fans[0]?.localToWorld(new THREE.Vector3(0,.65,0))};
 }
 
 export function disposeGrandstand(stand){
-  stand.group.removeFromParent();const resources=new Set();
+  stand.sticks?.dispose();stand.group.removeFromParent();const resources=new Set();
   stand.group.traverse(o=>{if(o.geometry)resources.add(o.geometry);for(const m of o.material?[o.material].flat():[])resources.add(m);});
   resources.forEach(r=>r.dispose());
 }
