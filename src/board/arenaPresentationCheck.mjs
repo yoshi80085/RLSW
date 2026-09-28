@@ -76,5 +76,40 @@ assert.equal(visuals.diagnostics().liveCabinets,3,'Drive and Sustain stand at th
 const duel=arenaFrame({...input,spirits:[spirit,{id:'other',num:16,color:'#cc44ff'}],battle:{attackerId:'ronin',defenderId:'other',phase:'result'}});
 visuals.update(duel);visuals.update({...duel,battle:null});assert.equal(visuals.diagnostics().effects,2,'resolved battle emits an attack and impact');
 visuals.tick(5);assert.equal(visuals.diagnostics().effects,0,'transient effects expire');
+// 🔓 THE SEAT UNLOCK (2026-09-28): the cabinet drops and lands, the rig flares,
+// the lens cuts to the amp and pushes in, the Spirit's stand jumps — and it all ends at rest.
+{
+  const seats={ronin:{driveSlots:1,sustainSlots:0}};
+  const u={key:'u1',spiritId:'ronin',which:'drive',slot:4,short:false};
+  const uf=arenaFrame({...input,battle:null,noteStates:seats,unlock:u});
+  assert.deepEqual(uf.unlock,u,'the unlock crosses into the frame');
+  assert.equal(arenaFrame({...input,battle:null,unlock:{...u,spiritId:'hidden'}}).unlock,null,'smoke hides an unlock too');
+  visuals.update(uf);visuals.tick(10);
+  assert.deepEqual(visuals.diagnostics().unlock,{id:'ronin',role:'drive',slot:4,short:false,hasRig:true},'the moment binds to the Drive rig');
+  const s0=visuals.battleShot();
+  assert.ok(s0?.key==='unlock:u1'&&s0.pos&&s0.target,'the lens is handed a shot on the amp');
+  visuals.tick(10.1);
+  assert.equal(visuals.diagnostics().liveCabinets,2,'the new cabinet waits above, unseen, before it drops');
+  const rigCabinets=()=>{const out=[];gltf.scene.traverse(o=>{if(/^Amp_NW(_tier_\d)?$/.test(o.name))out.push(o);});return out.sort((a,b)=>a.name.localeCompare(b.name));};
+  const fresh=rigCabinets()[1];
+  visuals.tick(10.45);
+  assert.ok(fresh.visible&&fresh.position.y>fresh.userData.baseY+.5,'…then falls onto the stack');
+  const midDist=visuals.battleShot().pos.distanceTo(visuals.battleShot().target);
+  assert.ok(visuals.crowdReaction()?.winnerId==='ronin'&&visuals.crowdReaction().amount>0,'the Ronin’s stand is on its feet');
+  visuals.tick(11.4);
+  assert.ok(Math.abs(fresh.position.y-fresh.userData.baseY)<1e-6,'…and lands at rest on its seat');
+  const lateDist=visuals.battleShot().pos.distanceTo(visuals.battleShot().target);
+  assert.ok(lateDist<midDist,'the lens pushes in');
+  visuals.update({...uf,unlock:null});visuals.tick(13.2);
+  assert.equal(visuals.battleShot(),null,'when it is over the camera is handed back');
+  assert.equal(visuals.diagnostics().unlock,null,'…and the moment is cleared');
+  assert.equal(visuals.diagnostics().liveCabinets,3,'two Drive cabinets and one Sustain stand at rest');
+  const bot=arenaFrame({...input,battle:null,noteStates:seats,unlock:{...u,key:'u2',short:true}});
+  visuals.update(bot);visuals.tick(14);
+  assert.equal(visuals.battleShot(),null,'a bot’s unlock never takes the camera');
+  assert.equal(visuals.crowdReaction(),null,'…nor the crowd');
+  visuals.update({...bot,unlock:null});visuals.tick(16);
+  visuals.update(frame);visuals.tick(20);
+}
 environment.dispose();visuals.dispose();releaseArenaObject(scene);
-console.log('PASS: public frame/privacy, canonical rig values, real GLB stations/materials, movement deduplication, hidden trails, live hazards, amps = seats per stack and cleanup');
+console.log('PASS: public frame/privacy, canonical rig values, real GLB stations/materials, movement deduplication, hidden trails, live hazards, amps = seats per stack, the seat-unlock moment and cleanup');

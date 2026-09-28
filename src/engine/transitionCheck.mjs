@@ -649,11 +649,11 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
     const root = ns0.driveStack?.[0];
     ok(root, 'fixture: the Ronin has a rooted Drive stack to hunt from');
     // Seat 4 is an earned opportunity, not an opening-turn freebie: fill the
-    // baseline stack and give this fixture its first ability upgrade.
+    // baseline stack and fill row 1 of the crowd (6 fans — 🎤 2026-09-28).
     const eligibleNs = {
       ...ns0,
       driveStack: [root, 'C', 'D'],
-      unlockedSkills: ['first'],
+      diehards: 2, casuals: 4,
     };
     // The ♭7 of his root — one of the three notes that opens seat 4.
     const seventh = NOTE_POOL[(((pitchIndex(root) + 10) % 12) + 12) % 12];

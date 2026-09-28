@@ -88,8 +88,14 @@ try {
     ok(sheet().sustainStack.length === len, `${missing} is not in the hand — nothing moves`);
   }
 
-  // ── melody step ──
-  await click(button('Continue to Melody'));
+  // ── melody step — ⏎ Enter is Continue to Melody (2026-09-28) ──
+  ok(button('Continue to Melody'), 'the chord step is showing its Continue button');
+  ev = await press('Enter');
+  ok(ev.defaultPrevented, 'Enter is taken in the chord step');
+  ok(!button('Continue to Melody') && button('Commit ('), '⏎ Enter moved the turn on to the Melody step');
+  ev = await press('Enter');
+  ok(ev.defaultPrevented && !sheet().hasConfirmed && sheet().melodyLine.length === 0,
+    '⏎ Enter on an EMPTY track commits nothing');
   const [m1, m2] = freeNotes();
   ok(m1 && m2, 'two distinct notes left to type');
   await press(...keyFor(m1));
@@ -113,7 +119,12 @@ try {
   ev = await press(keyFor(next)[0], { ...keyFor(next)[1], target: input });
   ok(!ev.defaultPrevented && sheet().melodyLine.length === 1, 'typing in a text field is left alone');
 
-  console.log(`PASS: ${checks} checks — Tab stack switch, stack commit, missing letter, melody typing, Shift, Backspace, Ctrl + text-field guards`);
+  input.remove();
+  ev = await press('Enter');
+  ok(ev.defaultPrevented && sheet().hasConfirmed, '⏎ Enter committed the Melody Track');
+  ok(JSON.stringify(sheet().committedMelody ?? []) === JSON.stringify([m1]), `…and the committed track is the one typed (${m1})`);
+
+  console.log(`PASS: ${checks} checks — Tab stack switch, stack commit, missing letter, Enter → Melody, melody typing, Shift, Backspace, Ctrl + text-field guards, Enter → Commit`);
 } finally {
   await act(async () => root.unmount());
   dom.window.close();

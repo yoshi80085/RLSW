@@ -65,7 +65,137 @@ export const BATTLE_DIRECTOR = Object.freeze({
   // Every framed shot assumes a screen at least this wide. The arena is always
   // wider than tall; 1.5 keeps a margin for a narrow window.
   aspect:1.5,
+  // 🐛 THE THIRD "ZOOMS REALLY FAR INTO THE ARENA — INTO NOTHING" (Alex,
+  // 2026-09-28). Measured against the real arena on 60 random bouts: half the
+  // charge shots put the OTHER Spirit's acrylic sheet a metre or two in front
+  // of the lens (up to 4× the screen's height — a wall of clear plastic), and
+  // the rest aimed so far toward a distant amp that the middle of the frame
+  // was empty floor. Two-shots, chairs and clash shots were sometimes filmed
+  // from behind a stacked amp, a grandstand or the lighting truss. Every shot
+  // now goes through `clearLens` (below): the same angle if it is clean,
+  // otherwise the nearest swing round (and, failing that, up) that is.
+  clearNear:3.4,     // no standee may stand closer to the lens than this (horizontal)
+  clearSee:.8,       // at least this share of each subject must be in clear view
+  clearYaw:[0,12,-12,24,-24,36,-36,50,-50,65,-65,80,-80,100,-100,125,-125,150,-150,180],
+  clearLift:[0,12,24],
+  // The charge shot aims at most this far from its standee toward the amp:
+  // an amp 12 units off used to pull the aim 3.6 into empty floor.
+  chargeReach:2.2, finalReach:3.6,
 });
+
+// ─── 🔭 CLEAR LENS ───────────────────────────────────────────────────────────
+// Everything a lens must not do, scored (0 = clean):
+//  · stand within `clearNear` of ANY standee — a sheet that close is a wall;
+//  · crop a subject (feet to head must be in frame);
+//  · have a standee that is NOT the subject in the foreground, nearer than
+//    the subject — the over-the-shoulder that fills half the screen;
+//  · have a subject hidden behind the other standee;
+//  · have a subject hidden behind arena furniture — `sees(from, points)` is
+//    the scene's answer (share of points in clear view), supplied by
+//    arenaVisuals; without it (tests, the preview) this part is skipped.
+function lensBasis(pos, target, fovDeg, aspect) {
+  const fwd = target.clone().sub(pos).normalize();
+  const right = new THREE.Vector3().crossVectors(fwd, Y);
+  if (right.lengthSq() < 1e-6) right.set(1, 0, 0); else right.normalize();
+  const upv = new THREE.Vector3().crossVectors(right, fwd);
+  const tanV = Math.tan(THREE.MathUtils.degToRad(fovDeg) / 2), tanH = tanV * aspect;
+  return p => { const v = p.clone().sub(pos), z = v.dot(fwd);
+    return z <= .1 ? null : { x:v.dot(right) / (z * tanH), y:v.dot(upv) / (z * tanV), z, half:.65 / (z * tanH) }; };
+}
+const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+// Does the segment lens → point pass through the standee standing at `o`?
+function hiddenBy(from, to, o, floor, height) {
+  const d = to.clone().sub(from), dh = d.x * d.x + d.z * d.z;
+  if (dh < 1e-9) return false;
+  const t = ((o.x - from.x) * d.x + (o.z - from.z) * d.z) / dh;
+  if (t <= .02 || t >= .98) return false;
+  const p = from.clone().addScaledVector(d, t);
+  return Math.hypot(p.x - o.x, p.z - o.z) < .7 && p.y > floor && p.y < floor + height;
+}
+export function lensTrouble(pos, target, { fov, aspect, spirits, subjects, floor, L, sees, budget = Infinity }) {
+  const H = L.standeeHeight, see = lensBasis(pos, target, fov, aspect);
+  const body = S => [.3, H * .5, H].map(y => S.clone().setY(floor + y));
+  let bad = 0;
+  const subjNear = subjects.length ? Math.min(...subjects.map(i => flat(pos, spirits[i]))) : Infinity;
+  spirits.forEach((S, j) => {
+    const h = flat(pos, S), pts = body(S).map(see);
+    if (subjects.includes(j)) {
+      if (h < L.clearNear) bad += 10 * (L.clearNear - h);
+      for (const s of pts) bad += !s ? 5 : 4 * (Math.max(0, Math.abs(s.x) - .96) + Math.max(0, Math.abs(s.y) - .96));
+    } else if (pts.some(s => s && Math.abs(s.x) - s.half < 1.02 && Math.abs(s.y) < 1.1)) {
+      if (h < L.clearNear || (subjects.length && h < subjNear - .25)) bad += 3 + 2 * (Math.max(L.clearNear, subjNear) - h);
+      // Half a sheet sliced by the frame's edge reads as clutter, not as a
+      // second Spirit: in the frame or out of it, not on the line.
+      else if (pts.some(s => s && Math.abs(s.x) + s.half > .98)) bad += .3;
+    }
+  });
+  for (const i of subjects) {
+    const pts = body(spirits[i]);
+    spirits.forEach((O, j) => {
+      if (j === i) return;
+      const n = pts.filter(p => hiddenBy(pos, p, O, floor, H)).length;
+      // Another SUBJECT half-covering this one is only coverage; all of it is not.
+      if (subjects.includes(j) ? n >= 2 : n) bad += n;
+    });
+  }
+  if (sees && bad < budget) bad += sightPenalty(pos, { spirits, subjects, floor, L, sees });
+  return bad;
+}
+/** The furniture part of `lensTrouble` alone — the costly part (it casts rays). */
+export function sightPenalty(pos, { spirits, subjects, floor, L, sees }) {
+  if (!sees || !subjects.length) return 0;
+  // Judged per Spirit — the WORST seen one. Pooled, a Spirit two-fifths behind a
+  // truss post averaged out against a clear one and the shot passed.
+  let v = 1;
+  for (const i of subjects) {
+    const side = new THREE.Vector3(-(pos.z - spirits[i].z), 0, pos.x - spirits[i].x).normalize();
+    const pts = [.35, 1.2, 2.0, 2.7].flatMap(y => [-.4, 0, .4].map(dx => spirits[i].clone().setY(floor + y).addScaledVector(side, dx)));
+    v = Math.min(v, sees(pos, pts));
+    if (v < L.clearSee) break;
+  }
+  return v < L.clearSee ? 6 * (L.clearSee - v) + 1 : 0;
+}
+/**
+ * The nearest clean lens to the one a shot asked for: swing round `pivot` by
+ * the `clearYaw` list (smallest first), then up by `clearLift`. The first
+ * candidate with no trouble wins; if none is clean, the least troubled.
+ * Returns the offsets, so a caller can keep them for the length of a shot
+ * (`memo`) and the lens never hunts between two answers mid-shot.
+ */
+export function clearLens({ pos, target, pivot = target, fov, aspect, spirits, subjects, floor, L, sees, retarget, yaws = L.clearYaw, extra }) {
+  const offset = pos.clone().sub(pivot);
+  const r = Math.hypot(offset.x, offset.z), el = Math.atan2(offset.y, r), len = offset.length();
+  // Two passes: the cheap geometry for every candidate first, then the scene's
+  // rays only for the best few, in order — the search costs a handful of ray
+  // batches instead of one per candidate (it runs on the frame a shot cuts in).
+  const cands = [];
+  for (const lift of L.clearLift) for (const yaw of yaws) {
+    const a = THREE.MathUtils.degToRad(yaw), e = Math.min(1.35, el + THREE.MathUtils.degToRad(lift));
+    const dirH = new THREE.Vector3(offset.x, 0, offset.z).normalize().applyAxisAngle(Y, a);
+    const p = pivot.clone().addScaledVector(dirH, Math.cos(e) * len).add(up(Math.sin(e) * len));
+    const tgt = retarget ? retarget(p) : target;
+    const cheap = lensTrouble(p, tgt, { fov, aspect, spirits, subjects, floor, L })
+      + (extra ? extra(p, tgt) : 0) + (Math.abs(yaw) + lift) * 1e-4; // ties go to the smallest change
+    cands.push({ yaw, lift, p, cheap, order:cands.length });
+  }
+  cands.sort((x, y) => x.cheap - y.cheap || x.order - y.order);
+  let best = null;
+  for (const c of cands) {
+    if (best && c.cheap >= best.bad) break;
+    const bad = c.cheap + sightPenalty(c.p, { spirits, subjects, floor, L, sees });
+    if (!best || bad < best.bad) best = { yaw:c.yaw, lift:c.lift, bad };
+    if (bad < .02) break;
+  }
+  return best;
+}
+/** Apply a `clearLens` answer to a lens position. */
+export function swingLens(pos, pivot, { yaw = 0, lift = 0 } = {}) {
+  if (!yaw && !lift) return pos.clone();
+  const offset = pos.clone().sub(pivot), r = Math.hypot(offset.x, offset.z), len = offset.length();
+  const e = Math.min(1.35, Math.atan2(offset.y, r) + THREE.MathUtils.degToRad(lift));
+  const dirH = new THREE.Vector3(offset.x, 0, offset.z).normalize().applyAxisAngle(Y, THREE.MathUtils.degToRad(yaw));
+  return pivot.clone().addScaledVector(dirH, Math.cos(e) * len).add(up(Math.sin(e) * len));
+}
 
 const up = y => new THREE.Vector3(0, y, 0);
 
@@ -169,6 +299,19 @@ export function directorShot(ctx) {
     return face.applyAxisAngle(Y, want * side).normalize();
   };
   const heads = () => spirits.flatMap(S => [S.clone().setY(mid.y), S.clone().setY(mid.y + L.standeeHeight)]);
+  // 🔭 Every shot is settled by `clearLens` ONCE, the first frame it is asked
+  // for, and holds that answer (`memo`, one per bout, kept by the caller) — so
+  // a lens that had to swing round a cabinet does not hunt back and forth.
+  const floor = mid.y, aspect = ctx.aspect ?? L.aspect, memo = ctx.memo ?? null;
+  const settle = (key, pos, target, fov, subjects, { pivot = target, extra } = {}) => {
+    let o = memo?.get(key);
+    // Re-settled only if a Spirit has since moved (a shove, a knockback).
+    if (!o || o.at?.some((p, j) => !spirits[j] || flat(p, spirits[j]) > .8)) {
+      o = { ...clearLens({ pos, target, pivot, fov, aspect, spirits, subjects, floor, L, sees:ctx.sees, extra }), at:spirits.map(S => S.clone()) };
+      memo?.set(key, o);
+    }
+    return swingLens(pos, pivot, o);
+  };
   const seatShot = (key, onFight = false) => {
     const diceAt = ctx.dice ?? mid;
     const fight = mid.clone().add(up(1)).add(ctx.shift ?? new THREE.Vector3());
@@ -177,8 +320,8 @@ export function directorShot(ctx) {
     // what has to be in frame: both Spirits, and the dice when there are dice.
     const dir = seat.clone().multiplyScalar(L.seatDist).add(up(L.seatHeight)).normalize();
     const must = onFight ? heads() : [...heads(), diceAt.clone().add(up(1.2)), diceAt.clone().addScaledVector(seat, -1.5)];
-    const dist = Math.max(Math.hypot(L.seatDist, L.seatHeight), fitDistance(must, target, dir, 46, ctx.aspect ?? L.aspect));
-    const pos = target.clone().addScaledVector(dir, dist);
+    const dist = Math.max(Math.hypot(L.seatDist, L.seatHeight), fitDistance(must, target, dir, 46, aspect));
+    const pos = settle(key, target.clone().addScaledVector(dir, dist), target, 46, [0, 1]);
     return { key, kind:'seat', pos, target, focus:pos.distanceTo(target), fov:46 };
   };
   // 🎯 THE TWO-SHOT: both Spirits, head to toe, from the front side, pushing
@@ -195,19 +338,46 @@ export function directorShot(ctx) {
     // ⚠️ Scored on the RAY FROM THE LENS TO EACH STANDEE, not on the lens's
     // own heading: at two-shot range perspective matters — a heading that is
     // 45° off both prints still sees the NEAR one edge-on once it is framed.
-    const view = h => h.clone().multiplyScalar(4).add(up(L.twoHeight)).normalize();
-    const frameAt = d => Math.max(L.twoMin, fitDistance(heads(), target, d, L.twoFov, ctx.aspect ?? L.aspect, L.twoMargin));
+    const rise = Math.atan2(L.twoHeight, 4);
+    const view = (h, lift = 0) => { const e = rise + THREE.MathUtils.degToRad(lift);
+      return h.clone().setY(0).normalize().multiplyScalar(Math.cos(e)).add(up(Math.sin(e))); };
+    const frameAt = d => Math.max(L.twoMin, fitDistance(heads(), target, d, L.twoFov, aspect, L.twoMargin));
     const score = d => { const at = target.clone().addScaledVector(d, frameAt(d));
       return Math.min(...spirits.map((S, i) => Math.abs(at.clone().sub(S).setY(0).normalize().dot(normals[i])))); };
-    let dir = view(front), bestScore = score(dir);
-    search: for (let deg = 5; deg <= L.twoSwing; deg += 5) for (const sgn of [1, -1]) {
-      if (bestScore >= L.twoGood) break search;
-      const d = view(front.clone().applyAxisAngle(Y, THREE.MathUtils.degToRad(deg * sgn))), sc = score(d);
-      if (sc > bestScore + 1e-3) { dir = d; bestScore = sc; }
+    // 🔭 …and CLEAR (2026-09-28): the smallest swing that sees both prints AND
+    // has nothing between the lens and the pair — not at the tight framing,
+    // and not at the wide one the push starts from either (the push used to
+    // begin behind a stacked amp or the truss and drive in through it). If the
+    // wide start is blocked the push starts closer, from the widest clear point.
+    let o = memo?.get(key);
+    if (!o) {
+      const cheap = p => lensTrouble(p, target, { fov:L.twoFov, aspect, spirits, subjects:[0, 1], floor, L });
+      const full = p => cheap(p) + sightPenalty(p, { spirits, subjects:[0, 1], floor, L, sees:ctx.sees });
+      const cands = [];
+      for (const lift of L.clearLift) for (let deg = 0; deg <= 90; deg += 5) for (const sgn of deg ? [1, -1] : [1]) {
+        const d = view(front.clone().applyAxisAngle(Y, THREE.MathUtils.degToRad(deg * sgn)), lift), tight = frameAt(d);
+        const base = 4 * Math.max(0, L.twoGood - score(d)) + (deg > L.twoSwing ? .3 : 0) + (deg + lift) * 1e-4;
+        cands.push({ d, tight, deg:deg * sgn, lift, base, cheap:base + cheap(target.clone().addScaledVector(d, tight)), order:cands.length });
+      }
+      cands.sort((x, y) => x.cheap - y.cheap || x.order - y.order);
+      for (const c of cands) {
+        if (o && c.cheap >= o.bad) break;
+        const near = full(target.clone().addScaledVector(c.d, c.tight));
+        if (o && c.base + near >= o.bad) continue;
+        // The widest start whose WHOLE path in is as clean as the landing.
+        let from = 1;
+        while (from < L.pushFrom - 1e-6 && full(target.clone().addScaledVector(c.d, c.tight * Math.min(L.pushFrom, from + .15))) <= near + .02)
+          from = Math.min(L.pushFrom, from + .15);
+        const bad = c.base + near + (L.pushFrom - from) * .2;
+        if (!o || bad < o.bad) o = { deg:c.deg, lift:c.lift, from, bad };
+        if (bad < .05) break;
+      }
+      memo?.set(key, o);
     }
+    const dir = view(front.clone().applyAxisAngle(Y, THREE.MathUtils.degToRad(o.deg)), o.lift);
     const tight = frameAt(dir);
     const p = ease(age / L.pushTime);
-    const dist = tight * THREE.MathUtils.lerp(L.pushFrom, 1, p);
+    const dist = tight * THREE.MathUtils.lerp(o.from, 1, p);
     const pos = target.clone().addScaledVector(dir, dist);
     return { key, kind:'two', pos, target, focus:pos.distanceTo(target), fov:L.twoFov,
       lines: ease(age / .3) * (1 - .35 * ease((age - L.pushTime) / .6)), push:p };
@@ -230,11 +400,22 @@ export function directorShot(ctx) {
     // filmed a sliver of acrylic in front of a cabinet ("pointing at nothing").
     const dir = readable(base.applyAxisAngle(Y, turn * sign), normals[i]);
     const dist = fans ? L.finalDist : L.chargeDist, height = fans ? L.finalHeight : L.chargeHeight;
-    const pos = S.clone().setY(mid.y).addScaledVector(dir, dist).add(up(height));
     // Aim part-way from the standee toward what it is about to be about — its
     // amp for a charge, its crowd for the last shot — so both are in frame.
+    // ⚠️ But never further than `chargeReach` / `finalReach` from the standee:
+    // a fixed share of the way to an amp across the arena aimed the lens at
+    // empty floor ("zooms really far into the arena — into nothing").
     const behind = fans ? G.clone().add(up(1.2)) : A.clone().setY(mid.y + 1.3);
-    const target = S.clone().setY(mid.y + 1.3).lerp(behind, fans ? L.finalFrame : L.chargeFrame);
+    const chest = S.clone().setY(mid.y + 1.3), toward = behind.clone().sub(chest);
+    const target = chest.clone().addScaledVector(toward, Math.min(fans ? L.finalFrame : L.chargeFrame,
+      (fans ? L.finalReach : L.chargeReach) / Math.max(1e-6, toward.length())));
+    // 🔭 Swung round the standee, never through the other Spirit: the old lens
+    // stood on the amp → standee line, which at close range is often exactly
+    // where the opponent is — a sheet of acrylic filling the screen.
+    const printOff = p => { const c = Math.abs(p.clone().sub(S).setY(0).normalize().dot(normals[i]));
+      return c < L.printMin ? 2 * (L.printMin - c) + .5 : 0; };
+    const pos = settle(key, S.clone().setY(mid.y).addScaledVector(dir, dist).add(up(height)), target,
+      fans ? L.finalFov : L.chargeFov, [i], { pivot:chest, extra:printOff });
     const near = pos.distanceTo(S.clone().setY(mid.y + 1.3));
     const far = fans ? pos.distanceTo(G.clone().add(up(1)))
       : (pos.distanceTo(A) + pos.distanceTo(G.clone().add(up(1)))) / 2;
@@ -246,15 +427,15 @@ export function directorShot(ctx) {
     // Fitted like the chair (2026-09-24): at a fixed 5.5 the Rival's shield —
     // up to 2.4 across — and its shatter filled the lens and hid the fight.
     const dir = front.clone().multiplyScalar(L.sideDist).add(up(.5)).normalize();
-    const dist = Math.max(L.sideDist, fitDistance(heads(), target, dir, 38, ctx.aspect ?? L.aspect, 1.3));
-    const pos = target.clone().addScaledVector(dir, dist);
+    const dist = Math.max(L.sideDist, fitDistance(heads(), target, dir, 38, aspect, 1.3));
+    const pos = settle(key, target.clone().addScaledVector(dir, dist), target, 38, [0, 1]);
     return { key, kind:'side', pos, target, focus:pos.distanceTo(target), fov:38 };
   };
   const bothCrowds = key => {
     const c = stands[0].clone().lerp(stands[1], .5);
     // Both stands are far either side of the fight, so this is WIDE and far.
-    const pos = mid.clone().addScaledVector(front, 13).add(up(6.5));
     const target = mid.clone().lerp(c, .5).add(up(1));
+    const pos = settle(key, mid.clone().addScaledVector(front, 13).add(up(6.5)), target, 52, []);
     return { key, kind:'crowds', pos, target, focus:pos.distanceTo(c), fov:52 };
   };
   const final = () => ctx.winner == null ? bothCrowds('final-tie')

@@ -205,7 +205,12 @@ reproducibleAndRandom(
   // If it is genuinely cosmetic, bump this number and say so in the commit.
   // A silently-growing count is how the last ten got in.
   // 43 → 42: the retired Swing overlay's cosmetic dance-name draw is gone.
-  const MATH_RANDOM_BUDGET = 42;
+  // 42 → 34 (2026-09-28): the four signature commit builds (shred, breakdown,
+  // scratch, strut) moved to `audio/commitStyles.js` with their eight cosmetic
+  // timing/variation draws. They are presentation only — the build that plays is
+  // picked from seat + round with NO random, so every client agrees — and they
+  // now draw through the module's `rand` (default Math.random), outside this count.
+  const MATH_RANDOM_BUDGET = 34;
   // Keep the existing textual inventory across the extracted client modules.
   // It includes the crowd helper's "NO Math.random()" comment, not just calls.
   const clientSources = monolith + ['../ui/fanPawnShape.jsx', '../app/RLSWSimulator.jsx']

@@ -19,6 +19,8 @@
 
 // ── Knob defaults + Spirit signature tones ───────────────────────────────────
 import { getLevel, onMixChange } from "./mixer.js";
+import { SHAMISEN, shamisenBuffer } from "./shamisen.js";
+export { SHAMISEN };
 
 export const TONE_KNOB_DEFAULTS = { drive: 0.45, tone: 0.35, echo: 0.55, verb: 0.18, voice: 'saw' };
 
@@ -32,7 +34,7 @@ export const SPIRIT_TONES = {
 
 // 🎙️ VOICE — oscillator character. Each voice swaps waveforms (and how hard it
 // drives) for a genuinely different timbre, cycling order:
-export const TONE_VOICE_ORDER = ['saw', 'square', 'triangle', 'sine', 'fuzz', 'ronin'];
+export const TONE_VOICE_ORDER = ['saw', 'square', 'triangle', 'sine', 'fuzz', 'ronin', 'shamisen', 'shamisen_dist', 'katana_shamisen'];
 
 // 🗡️ RONIN_LEAD — the extra stages behind the Ronin's KATANA voice (2026-09-16).
 // Alex: *"more drive and punch… I want his guitar to sing in a distorted
@@ -76,6 +78,29 @@ export const RONIN_LEAD = Object.freeze({
   bloom:      0.07,
   bloomTime:  0.9,
 });
+// 🪕 THE SHAMISEN THROUGH THE AMP (2026-09-28) — the Ronin's distorted hybrid.
+// The KATANA's stages, retuned for a plucked source: a lower tight-cut (the
+// shamisen has no low end to spare), no scoop (a shamisen SLIDES — `suri` — and
+// the commit styles ask for that on purpose with `bend`), a gentler pick, a
+// wider slower vibrato (`yuri`), and barely any bloom.
+export const SHAMISEN_LEAD = Object.freeze({
+  ...RONIN_LEAD,
+  tightHz: 160, punch: 1.15, scoopCents: 0, vibDelay: 0.35, vibRate: 5.2, vibCents: 22, bloom: 0.03,
+});
+// ⚔️🪕 KATANA × SHAMISEN (Alex, 2026-09-28: *"an option to combine Katana and
+// Shamisen sounds into 1"*). BOTH sources at once, through the full KATANA
+// chain: the rendered shamisen string gives the note its bachi strike, its
+// twang and its sawari buzz; the KATANA's oscillators swell in underneath it and
+// SING the note on. The string speaks first, the guitar carries it — a
+// crossfade in time, not a static mix.
+//   layer    — 0 = all KATANA, 1 = all shamisen (the balance of the held note)
+//   oscStart — where the KATANA starts, as a share of its level, at the pick
+//   swell    — seconds for the KATANA to swell up to its level
+// 🎛️ DIALLED IN BY ALEX on the bench, 2026-09-28: layer 0.95 (the string leads —
+// the KATANA sits under it at a tenth of its level), oscStart 1 (so the guitar is
+// there from the strike and `swell` has nothing to do; kept for the next dial-in).
+export const KATANA_SHAMISEN = Object.freeze({ layer: 0.95, oscStart: 1, swell: 0.42 });
+
 export const TONE_VOICES = {
   saw:      { label: 'LEAD',   osc1: 'sawtooth', osc2: 'sawtooth', sub: 'square',   driveMul: 1.0,  octave: false },
   square:   { label: 'BUZZ',   osc1: 'square',   osc2: 'square',   sub: 'square',   driveMul: 0.9,  octave: false },
@@ -86,6 +111,15 @@ export const TONE_VOICES = {
   // any voice and ignores `lead` — so the KATANA still scratches, just without
   // its extra stages.
   ronin:    { label: 'KATANA', osc1: 'sawtooth', osc2: 'sawtooth', sub: 'square',   driveMul: 1.2,  octave: false, lead: RONIN_LEAD },
+  // 🪕 PLUCKED VOICES (audio/shamisen.js). `pluck` swaps the three oscillators for
+  // one rendered string; `clean` skips the clipper. osc1/osc2/sub stay only
+  // because `playScratchAtom` reads them off any voice. `pluckGain` level-matches
+  // a decaying string against a sustained oscillator stack.
+  shamisen:      { label: 'SHAMISEN',     short: 'SHAMI', osc1: 'triangle', osc2: 'triangle', sub: 'sine',   driveMul: 0.4, octave: false, pluck: SHAMISEN, clean: true, pluckGain: 2.4 },
+  shamisen_dist: { label: 'ONI SHAMISEN', short: 'ONI', osc1: 'sawtooth', osc2: 'sawtooth', sub: 'square', driveMul: 1.1, octave: false, pluck: SHAMISEN, lead: SHAMISEN_LEAD, pluckGain: 1.6 },
+  // ⚔️🪕 `layer` = both sources: the string AND the oscillator stack.
+  // `short` is what fits the 36px VOICE button; `label` is the full name.
+  katana_shamisen: { label: 'KATANA × SHAMISEN', short: 'K×S', osc1: 'sawtooth', osc2: 'sawtooth', sub: 'square', driveMul: 1.2, octave: false, pluck: SHAMISEN, lead: RONIN_LEAD, pluckGain: 1.6, layer: KATANA_SHAMISEN },
 };
 
 // Soft, symmetric tanh curve — the KATANA's second clipping stage. Rounder than
@@ -179,6 +213,8 @@ export function makeDistortionCurve(amount = 300) {
  *              is a whole-step bend up). Any voice. `bendTime` defaults 0.18 s.
  *   lead     — partial RONIN_LEAD override (dial-in preview only); applies only
  *              to a voice that already carries `lead`.
+ *   out / verbOut — optional destinations for the dry+echo path and the reverb
+ *              send (default: the shared master and convolver).
  */
 export function playAmpNote(ctx, freq, opts = {}) {
   try {
@@ -187,31 +223,48 @@ export function playAmpNote(ctx, freq, opts = {}) {
     const holdTime  = opts.holdTime  ?? 1.1;   // how long it stays loud
     const fadeTime  = opts.fadeTime  ?? 0.8;   // release fade duration
     const volume    = opts.volume    ?? 0.18;
-    // attackTime — 8ms default is the pick; ambient beds pass ~1s to SWELL in
-    const attackTime = opts.attackTime ?? 0.008;
-    const totalTime = holdTime + fadeTime;
     const kn = { ...TONE_KNOB_DEFAULTS, ...(opts.knobs ?? {}) };
 
     // 🎙️ VOICE — wave character (defaults to the classic saw lead)
     const V = TONE_VOICES[kn.voice] ?? TONE_VOICES.saw;
+    // attackTime — 8ms default is the pick; ambient beds pass ~1s to SWELL in.
+    // 🪕 A plucked voice's attack is IN the rendered string (the bachi), so the
+    // envelope only needs to get out of its way.
+    const attackTime = opts.attackTime ?? (V.pluck ? 0.0015 : 0.008);
+    const totalTime = holdTime + fadeTime;
     // 🗡️ Lead stages exist only on a voice that declares them.
     const L = V.lead ? { ...V.lead, ...(opts.lead ?? {}) } : null;
 
+    // 🪕 A plucked voice is ONE rendered string instead of the oscillator stack.
+    // Everything after the source (drive, tone, envelope, echo, verb) is shared.
+    let pluckSrc = null, pluckGain = null;
+    let osc1 = null, osc2 = null, sub = null, oscGain1 = null, oscGain2 = null, subGain = null;
+    let oct = null, octGain = null;
+    // ⚔️🪕 A LAYERED voice (`V.layer`) builds BOTH: the string and, below, the
+    // oscillator stack behind a swelling bus (`oscBus`).
+    const LY = V.layer ? { ...V.layer, ...(opts.layer ?? {}) } : null;
+    let oscBus = null;
+    if (V.pluck) {
+      pluckSrc = ctx.createBufferSource();
+      pluckSrc.buffer = shamisenBuffer(ctx, freq, { ...V.pluck, ...(opts.pluck ?? {}) });
+      pluckGain = ctx.createGain(); pluckGain.gain.value = (V.pluckGain ?? 1) * (LY ? Math.min(1, Math.max(0, LY.layer)) * 2 : 1);
+      pluckSrc.connect(pluckGain);
+    }
+    if (!V.pluck || LY) {
     // Two detuned oscillators for thickness — waveform set by the VOICE
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
+    osc1 = ctx.createOscillator();
+    osc2 = ctx.createOscillator();
     osc1.type = V.osc1;
     osc2.type = V.osc2;
     osc1.frequency.setValueAtTime(freq,         now);
     osc2.frequency.setValueAtTime(freq * 1.008, now); // slight detune
 
     // Sub oscillator one octave down for body
-    const sub = ctx.createOscillator();
+    sub = ctx.createOscillator();
     sub.type = V.sub;
     sub.frequency.setValueAtTime(freq / 2, now);
 
     // Optional octave-UP oscillator — gives FUZZ its searing bite
-    let oct = null, octGain = null;
     if (V.octave) {
       oct = ctx.createOscillator(); oct.type = 'square';
       oct.frequency.setValueAtTime(freq * 2, now);
@@ -220,10 +273,11 @@ export function playAmpNote(ctx, freq, opts = {}) {
     }
 
     // Mix oscillators
-    const oscGain1 = ctx.createGain(); oscGain1.gain.value = 0.5;
-    const oscGain2 = ctx.createGain(); oscGain2.gain.value = 0.5;
-    const subGain  = ctx.createGain(); subGain.gain.value  = 0.2;
+    oscGain1 = ctx.createGain(); oscGain1.gain.value = 0.5;
+    oscGain2 = ctx.createGain(); oscGain2.gain.value = 0.5;
+    subGain  = ctx.createGain(); subGain.gain.value  = 0.2;
     osc1.connect(oscGain1); osc2.connect(oscGain2); sub.connect(subGain);
+    }
 
     // Pre-distortion gain — DRIVE knob, scaled by the voice (1× clean → ~11× scorching)
     const drive = ctx.createGain(); drive.gain.value = (1 + kn.drive * 10) * V.driveMul;
@@ -238,18 +292,32 @@ export function playAmpNote(ctx, freq, opts = {}) {
       tight.connect(hump); hump.connect(drive);
       preDrive = tight;
     }
-    oscGain1.connect(preDrive); oscGain2.connect(preDrive); subGain.connect(preDrive);
+    if (pluckGain) pluckGain.connect(preDrive);
+    if (osc1 && LY) {
+      // The KATANA swells in under the string: from `oscStart` of its level at
+      // the pick to its full share (1 − layer, doubled so 0.5 is an even blend).
+      const level = Math.min(1, Math.max(0, 1 - LY.layer)) * 2;
+      oscBus = ctx.createGain();
+      oscBus.gain.setValueAtTime(level * LY.oscStart, now);
+      oscBus.gain.linearRampToValueAtTime(level, now + Math.max(0.005, LY.swell));
+      oscGain1.connect(oscBus); oscGain2.connect(oscBus); subGain.connect(oscBus);
+      oscBus.connect(preDrive);
+    } else if (osc1) { oscGain1.connect(preDrive); oscGain2.connect(preDrive); subGain.connect(preDrive); }
     if (octGain) octGain.connect(preDrive);
 
-    // Waveshaper distortion — curve hardness follows DRIVE (wider, gnarlier range)
-    const shaper = ctx.createWaveShaper();
-    shaper.curve = makeDistortionCurve(20 + kn.drive * 900 * V.driveMul);
-    shaper.oversample = '4x';
-    drive.connect(shaper);
+    // Waveshaper distortion — curve hardness follows DRIVE (wider, gnarlier range).
+    // 🪕 A `clean` voice has no clipper at all: the drive gain feeds the tone stack.
+    let shaper = null;
+    if (!V.clean) {
+      shaper = ctx.createWaveShaper();
+      shaper.curve = makeDistortionCurve(20 + kn.drive * 900 * V.driveMul);
+      shaper.oversample = '4x';
+      drive.connect(shaper);
+    }
 
     // 🗡️ KATANA: second, softer clipping stage for sustain.
-    let clipOut = shaper;
-    if (L && L.stage2 > 0) {
+    let clipOut = shaper ?? drive;
+    if (L && L.stage2 > 0 && shaper) {
       const s2gain = ctx.createGain(); s2gain.gain.value = 1 + L.stage2 * 6;
       const shaper2 = ctx.createWaveShaper();
       shaper2.curve = makeSoftClipCurve(1 + L.stage2 * 3);
@@ -292,7 +360,7 @@ export function playAmpNote(ctx, freq, opts = {}) {
     }
 
     // ── Pitch motion: bend (any voice, opt-in) · scoop + vibrato + bloom (KATANA) ─
-    const pitched = [osc1, osc2, sub];
+    const pitched = [pluckSrc, osc1, osc2, sub].filter(Boolean);
     let lfo = null, bloomOsc = null;
     if (L && L.bloom > 0 && holdTime >= 0.5) {
       bloomOsc = ctx.createOscillator(); bloomOsc.type = 'sine';
@@ -327,12 +395,17 @@ export function playAmpNote(ctx, freq, opts = {}) {
     // 🔊 MASTER LIMITER — shared bus; tames peaks so cranked drive/voices stay
     // punchy. Everything (dry + echo + verb) feeds it.
     const { master, verbBus } = getAmpBuses(ctx);
+    // 🎭 `out` / `verbOut` let a caller put a phrase behind its OWN gain (the
+    // Spirit-select sting, so a fresh pick can cut the last one off). Unset →
+    // the shared buses, exactly as before; no extra node either way.
+    const dryOut = opts.out ?? master, verbIn = opts.verbOut ?? verbBus;
 
     // Amp envelope: pick (or slow swell) → hold at volume → slow fade
     const ampEnv = ctx.createGain();
     // 🗡️ KATANA picks harder (overshoot) and holds higher (compressed sustain).
     const peak   = volume * (L ? L.punch : 1);
-    const held   = volume * (L ? L.sustain : 0.82);
+    // 🪕 A plucked string decays by itself — the envelope holds, it does not sag.
+    const held   = volume * (L ? L.sustain : V.pluck ? 1 : 0.82);
     const settle = L ? attackTime + L.punchTime : Math.max(0.06, attackTime + 0.05);
     ampEnv.gain.setValueAtTime(0,              now);
     ampEnv.gain.linearRampToValueAtTime(peak,              now + attackTime); // pick attack / swell
@@ -353,7 +426,7 @@ export function playAmpNote(ctx, freq, opts = {}) {
 
     comp.connect(ampEnv);
     // Dry path
-    ampEnv.connect(master);
+    ampEnv.connect(dryOut);
     // Wet delay path (with feedback loop for repeats)
     if (kn.echo > 0.02) {
       ampEnv.connect(delayNode);
@@ -361,22 +434,25 @@ export function playAmpNote(ctx, freq, opts = {}) {
       delayFb.connect(delayNode);
       delayNode.connect(delayGain);
       delayGain.connect(delayFade);
-      delayFade.connect(master);
+      delayFade.connect(dryOut);
     }
     // VERB knob — send to the SHARED convolver (per-note send level)
     if (kn.verb > 0.02) {
       const revGain = ctx.createGain();
       revGain.gain.value = kn.verb * 0.85;
       ampEnv.connect(revGain);
-      revGain.connect(verbBus);
+      revGain.connect(verbIn);
     }
 
+    const tail = 0.35 + kn.echo * 1.6; // let echo repeats ring out
+    if (pluckSrc) { pluckSrc.start(now); pluckSrc.stop(now + totalTime + tail); }
+    if (osc1) {
     osc1.start(now); osc2.start(now); sub.start(now);
     if (oct) oct.start(now);
-    const tail = 0.35 + kn.echo * 1.6; // let echo repeats ring out
     osc1.stop(now + totalTime + tail);
     osc2.stop(now + totalTime + tail);
     sub.stop(now + totalTime + tail);
+    }
     if (oct) oct.stop(now + totalTime + tail);
     if (lfo) { lfo.start(now); lfo.stop(now + totalTime + tail); }
     if (bloomOsc) { bloomOsc.start(now); bloomOsc.stop(now + totalTime + tail); }

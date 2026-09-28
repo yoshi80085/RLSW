@@ -13,6 +13,8 @@ import { RIFF_FALL_DIFFICULTY, RIFF_FALL_DEFAULT,
 import { fpPerLife, ROUND_LIMIT_CHOICES, ROUND_LIMIT_DEFAULT } from "../data/gameConstants.js";
 import menuSong3 from "../music/Menu_song_3.mp3";
 import { musicVol } from "../audio/mixer.js";
+import { getRiffAudio } from "../audio/riffSfx.js";
+import { playSpiritSting, SPIRIT_STING } from "../audio/spiritSting.js";
 import boardImg from "../board.png";
 import boardOutlineImg from "../board_outline.png";
 import boardStarsImg from "../board_stars_animated.png";
@@ -163,7 +165,22 @@ export function Lobby({ onStart, onBackToMenu }) {
   const allAssigned = activeCorners.every(c=>assignments[c] && validLoadout(assignments[c], loadouts[c]));
   useEffect(()=>{if(!playerCount)return;setCpuCorners(prev=>{const next={...prev};activeCorners.forEach((c,i)=>{if(next[c]===undefined)next[c]=i!==0;});return next;});},[playerCount]);
   useEffect(()=>{if(!playerCount){setChoosingCorner(null);return;}const f=activeCorners.find(c=>!assignments[c]);setChoosingCorner(f??null);},[playerCount]);
+  /* 🎭 THE SPIRIT-SELECT STING (Alex, 2026-09-28): a pick plays that Spirit's
+     calling card (`audio/spiritSting.js`) and ducks the menu song under it.
+     ⚠️ Only here, on THIS player's click — never from room state — so an online
+     lobby does not hear every seat's pick. Re-clicking the same Spirit replays it. */
+  const duckTimer = useRef(null);
+  function playPickSting(spiritId) {
+    const ms = playSpiritSting(getRiffAudio(), spiritId);
+    const song = menuAudioRef.current;
+    if (!ms || !song) return;
+    song.volume = musicVol(0.45) * SPIRIT_STING.duck;
+    clearTimeout(duckTimer.current);
+    duckTimer.current = setTimeout(() => { if (menuAudioRef.current) menuAudioRef.current.volume = musicVol(0.45); }, ms);
+  }
+  useEffect(() => () => clearTimeout(duckTimer.current), []);
   function assign(corner, spiritId) {
+    playPickSting(spiritId);
     setAssignments(a => ({...a, [corner]: spiritId}));
     if (assignments[corner] !== spiritId) setLoadouts(a => ({...a, [corner]: []}));
   }

@@ -28,10 +28,10 @@ function facesOf(geometry){
 }
 function shape(sides){
  if(sides===4)return new THREE.TetrahedronGeometry(.69);
- if(sides===6)return new THREE.BoxGeometry(.94,.94,.94);
+ // 🔊 11 is the ELEVEN DIE (gameConstants ELEVEN_DIE): a d6 body, five faces read 11, one reads 1.
+ if(sides===6||sides===11)return new THREE.BoxGeometry(.94,.94,.94);
  if(sides===8)return new THREE.OctahedronGeometry(.72);
- // 🔊 11 is the ELEVEN DIE (gameConstants ELEVEN_DIE): a d12 body, eleven faces read 11.
- if(sides===12||sides===11)return new THREE.DodecahedronGeometry(.68);
+ if(sides===12)return new THREE.DodecahedronGeometry(.68);
  if(sides===20)return new THREE.IcosahedronGeometry(.72);
  // The dual of a pentagonal antiprism is a ten-kite trapezohedron.
  const points=[];for(let i=0;i<5;i++)for(const sign of [-1,1]){
@@ -42,7 +42,7 @@ function shape(sides){
 }
 function acquireAtlas(sides){
  if(atlases.has(sides)){const a=atlases.get(sides);a.refs++;return a;}
- const faces=sides===11?12:sides,label=i=>sides===11?(i===0?'1':'11'):String(i+1);
+ const faces=sides===11?ELEVEN_BODY:sides,label=i=>sides===11?(i===0?'1':'11'):String(i+1);
  const columns=Math.ceil(Math.sqrt(faces)),rows=Math.ceil(faces/columns),tile=192;
  const canvas=globalThis.document?.createElement?.('canvas');let ctx;
  try{if(canvas){canvas.width=columns*tile;canvas.height=rows*tile;ctx=canvas.getContext('2d');}}catch{/* geometry tests run without a canvas */}
@@ -75,15 +75,21 @@ function neonEdges(source,color){
  return {group,dispose(){geometry.dispose();core.material.dispose();halo.material.dispose();core.dispose();halo.dispose();}};
 }
 
+// 🔊 The Eleven die is a d6 body whose face 0 reads 1 and faces 1–5 read 11.
+// ⚠️ It is NOT in COMBAT_DICE_SIDES (value 1..sides would be wrong for it) — it
+// is its own legal case below. It was missing from the check entirely on
+// 2026-09-27, so a Goes to 11 throw in the arena threw 'Invalid combat die.'
+const ELEVEN_BODY=6;
+const isEleven=(sides,value)=>sides===11&&(value===1||value===11);
 export function createCombatDie({sides=6,value=1,color='#4ccbdd',seed=0,presentation='face'}={}){
- if(!COMBAT_DICE_SIDES.includes(sides)||!Number.isInteger(value)||value<1||value>sides)throw Error('Invalid combat die.');
+ if(!isEleven(sides,value)&&(!COMBAT_DICE_SIDES.includes(sides)||!Number.isInteger(value)||value<1||value>sides))throw Error('Invalid combat die.');
  const source=shape(sides),faces=facesOf(source),remaining=[...faces],numbered=[];
  // Opposite faces add to sides+1 where the solid has opposite faces.
  while(remaining.length){const f=remaining.shift();numbered.push(f);if(sides!==4&&remaining.length){let idx=0;for(let i=1;i<remaining.length;i++)if(remaining[i].normal.dot(f.normal)<remaining[idx].normal.dot(f.normal))idx=i;numbered.splice(numbered.length-1,0,remaining.splice(idx,1)[0]);}}
  const ordered=[];for(let i=0;i<numbered.length;i+=2){ordered[i/2]=numbered[i];if(numbered[i+1])ordered[faces.length-1-i/2]=numbered[i+1];}
  const faceList=sides===4?faces:ordered;
  const group=new THREE.Group();group.name=`Combat d${sides}`;group.userData={sides,value,faceCount:faces.length};
- const bodyGeometry=sides===6?new RoundedBoxGeometry(.94,.94,.94,2,.065):source;
+ const bodyGeometry=sides===6||sides===11?new RoundedBoxGeometry(.94,.94,.94,2,.065):source;
  const tint=new THREE.Color(color);
  const body=new THREE.Mesh(bodyGeometry,new THREE.MeshStandardMaterial({color:tint.clone().multiplyScalar(.075),emissive:tint,emissiveIntensity:.035,roughness:.24,metalness:.55,flatShading:true}));group.add(body);
  const edges=neonEdges(source,color);group.add(edges.group);
@@ -97,7 +103,9 @@ export function createCombatDie({sides=6,value=1,color='#4ccbdd',seed=0,presenta
  });
  const printed=new THREE.BufferGeometry();printed.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));printed.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
  const ink=new THREE.Mesh(printed,new THREE.MeshBasicMaterial({map:atlas.texture,transparent:true,depthWrite:false,color:tint.clone().lerp(new THREE.Color('#ffffff'),.68),toneMapped:false,polygonOffset:true,polygonOffsetFactor:-1}));ink.name='Printed face numbers';ink.userData.solidDecal=true;group.add(ink);
- const winner=faceList[value-1],orientation=new THREE.Quaternion().setFromUnitVectors(winner.normal,Z);
+ // The Eleven die's 11 is the face opposite its 1 (the last face).
+ const winnerIndex=sides===11?(value===1?0:faceList.length-1):value-1;
+ const winner=faceList[winnerIndex],orientation=new THREE.Quaternion().setFromUnitVectors(winner.normal,Z);
  const up=winner.up.clone().applyQuaternion(orientation);orientation.premultiply(new THREE.Quaternion().setFromAxisAngle(Z,Math.atan2(up.x,up.y)));
  // A slight tilt reveals the body while keeping the selected numeral dominant.
  const tilt=new THREE.Quaternion().setFromEuler(presentation==='floor'?new THREE.Euler(-Math.PI/2,0,0):new THREE.Euler(.16,-.2,0));orientation.premultiply(tilt);
@@ -119,5 +127,5 @@ export function createCombatDie({sides=6,value=1,color='#4ccbdd',seed=0,presenta
  // The lowest rotated body vertex keeps any die size resting on the arena.
  const vertex=new THREE.Vector3();
  function supportHeight(){let bottom=Infinity;const p=bodyGeometry.attributes.position;for(let i=0;i<p.count;i++){vertex.fromBufferAttribute(p,i).applyQuaternion(group.quaternion);bottom=Math.min(bottom,vertex.y);}return -bottom*group.scale.y;}
- update(1);return {group,update,dispose,supportHeight,faces:faceList.map((f,i)=>({value:i+1,normal:f.normal.clone()}))};
+ update(1);return {group,update,dispose,supportHeight,faces:faceList.map((f,i)=>({value:sides===11?(i===0?1:11):i+1,normal:f.normal.clone()}))};
 }

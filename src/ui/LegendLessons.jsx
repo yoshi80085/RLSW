@@ -490,7 +490,7 @@ export function LegendLessons({ onBack }) {
                   background: 'linear-gradient(135deg,#1c1230,#0e0a1e)', border: '2px solid #aa66ff',
                   boxShadow: '0 0 8px #aa66ff44, inset 0 0 4px #aa66ff22' }}>
                 <span style={{ fontSize: 5, letterSpacing: 1, color: '#b98aff', fontWeight: 700 }}>VOICE</span>
-                <span style={{ fontSize: 8, fontWeight: 900, color: '#fff', lineHeight: 1.1, marginTop: 1, textShadow: '0 0 6px #aa66ff' }}>{V.label}</span>
+                <span style={{ fontSize: 8, fontWeight: 900, color: '#fff', lineHeight: 1.1, marginTop: 1, textShadow: '0 0 6px #aa66ff' }} title={V.label}>{V.short ?? V.label}</span>
               </button>;
             })()}
             <ToneFader label="GAIN" color="#ff6644" value={tone.drive} defaultValue={TONE_KNOB_DEFAULTS.drive}
@@ -570,7 +570,7 @@ export function LegendLessons({ onBack }) {
                   background: 'linear-gradient(135deg,#1c1230,#0e0a1e)', border: '2px solid #aa66ff',
                   boxShadow: '0 0 8px #aa66ff44, inset 0 0 4px #aa66ff22' }}>
                 <span style={{ fontSize: 5, letterSpacing: 1, color: '#b98aff', fontWeight: 700 }}>VOICE</span>
-                <span style={{ fontSize: 8, fontWeight: 900, color: '#fff', lineHeight: 1.1, marginTop: 1, textShadow: '0 0 6px #aa66ff' }}>{V.label}</span>
+                <span style={{ fontSize: 8, fontWeight: 900, color: '#fff', lineHeight: 1.1, marginTop: 1, textShadow: '0 0 6px #aa66ff' }} title={V.label}>{V.short ?? V.label}</span>
               </button>;
             })()}
             <ToneFader label="GAIN" color="#ff6644" value={tone.drive} defaultValue={TONE_KNOB_DEFAULTS.drive}
@@ -678,7 +678,7 @@ export function LegendLessons({ onBack }) {
                   background: 'linear-gradient(135deg,#1c1230,#0e0a1e)', border: '2px solid #aa66ff',
                   boxShadow: '0 0 8px #aa66ff44, inset 0 0 4px #aa66ff22' }}>
                 <span style={{ fontSize: 5, letterSpacing: 1, color: '#b98aff', fontWeight: 700 }}>VOICE</span>
-                <span style={{ fontSize: 8, fontWeight: 900, color: '#fff', lineHeight: 1.1, marginTop: 1, textShadow: '0 0 6px #aa66ff' }}>{V.label}</span>
+                <span style={{ fontSize: 8, fontWeight: 900, color: '#fff', lineHeight: 1.1, marginTop: 1, textShadow: '0 0 6px #aa66ff' }} title={V.label}>{V.short ?? V.label}</span>
               </button>;
             })()}
             <ToneFader label="GAIN" color="#ff6644" value={tone.drive} defaultValue={TONE_KNOB_DEFAULTS.drive}

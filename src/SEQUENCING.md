@@ -35,6 +35,62 @@
 > now (18-coreloop, 19-cheapest). A warning that is always there stops being
 > read — the same failure `check:bundle`'s "6 warnings" taught.**
 
+## 36-clearlens. The battle camera stops filming into nothing, and an attack's reach glows on hover — 2026-09-28
+
+Alex, the **third** report: *"camera glitches at the start of the match where it seems like it zooms really far into the arena - into nothing for a few seconds before correcting … look very closely"*; then *"the bug … happens right at or near the start of the battle triggering"* and the bar: *"if the battle starts, triggers, and plays out the first 5 seconds without any camera glitches or bugs, I'd say its working fine."* Plus: *"a field of view for hovering over an attack - Swing or Sonic (or other special ability) … the spaces that glow up"*.
+
+### ✅ What shipped
+- 🐛 **THE ACTUAL CAUSE, found in Alex's screen recording:** the 2D board's battle-opening **dive-bomb** (`boardDiveBomb` → `@keyframes board-divebomb`: the whole `.match-board-frame` spun −540°, scaled to 7×, blurred 12 px and faded to opacity 0 over 1.1 s, `forwards`, cleared at 1.2 s) still ran in 3D — where that frame HOLDS THE ARENA CANVASES. Every bout opened on the correct two-shot for a few frames, then the arena spun away and the page's own space wallpaper (the "planet") showed for ~2 s on his machine, then it snapped back. Now 2D only (`boardDiveBomb && !board3D`); `test:battlelens` §0 fails if it ever plays over the arena again. 🎓 Three camera "fixes" in a row could only ever make it *better* — the camera was never the thing zooming.
+- 🔭 **`battleDirector.clearLens`** — every director shot (chair, two-shot, charge, clash, crowds) is settled once per bout (`ctx.memo`) to the nearest clean lens: no standee within `clearNear` 3.4, no non-subject standee in the foreground, no subject cropped or hidden by the other standee, and — through `ctx.sees`, `arenaVisuals`' raycast against visible amp tiers, the grandstands and the truss — no subject hidden by furniture. The two-shot's push starts from the widest point whose whole path in is clear. The charge shot aims at most `chargeReach` 2.2 past its standee (it used to aim 30% of the way to an amp across the arena — the frame's middle was empty floor). Re-settles only if a Spirit moves > .8.
+- 🗡️ **The Swing now passes its prints' real facing** (side-on, the carrier's local x) — the director had assumed they faced down the lane and filmed the first charge shot at an EDGE.
+- `arenaVisuals.sees` / `setOccluders` (the renderer hands in the crowd and the truss); sight meshes clustered per cabinet/stand/truss, the truss cut into triangle chunks, rebuilt only when the furniture changes and warmed between bouts. `pawnFor` is a test hook.
+- 🎯 **`board/attackTiles.js`** — hovering (or arming) Swing, Sonic, Blaster, Tentacle, Psycho Bushido, Gravity Control, Displace or Shukuchi lights its reach in the 3D arena in the ability's colour; a rival in reach burns brighter, rises and gets a second ring; the board dims .3 under it. Client: one `attackReachFor(kind)` built from the click layer's own sets → `arenaFrame`'s `attack`; hover wrappers (`reachHover`) on the five special-ability buttons (a disabled button fires no mouse events). The flat board gets the same hover tint for the specials.
+
+### 🎓 Findings
+- 🎥 **Ask for the recording first.** Two sessions reasoned from the description ("zooms into nothing") to the camera; the recording showed the page background in a frame the 3D scene should have filled — a DOM effect, not a lens. A frame-by-frame pull (`ffmpeg -vf fps=10,tile`) took one minute. Brightening a "black" frame ×6 is what showed it was wallpaper.
+- 📐 **It was measured, not guessed.** `battleLensHarness.mjs` plays whole bouts headless on a virtual clock through the real GLB, crowd, visuals, director and camera and asks every frame what is on screen. Before: **11 of 50 Sonics and 15 of 40 Swings** had a bad frame, nearly all in the FIRST charge shot (5.6–6 s in — "near the start"): the other Spirit's sheet 1.5–4 units from the lens (up to 4.5× the screen tall), a lens behind a stacked amp, or an aim across empty floor. After: **0 bad frames in 180 fresh bouts** (whole bout, not just the opening).
+- ⚠️ `Ray.intersectBox` from INSIDE a box returns the exit point — the truss's box is the whole arena, so a naive "does the ray cross it before `far`" skipped it. And pooling both Spirits' sight samples let one Spirit 40% behind a truss post average out against a clear one.
+- 🐢 The cloud Chromium draws ~1 frame/s (no GPU): in-browser timing-based probes are useless there. The virtual clock (performance.now + rAF replaced) is what made frame-exact screenshots possible.
+
+### 🧪 Evidence
+`test:battlelens` (new), `test:attacktiles` (new, 28), `test:battledirector` 45 (§1d: 8 new; 3 mutants caught). See the device run in STATE_OF_PLAY's 2026-09-28 camera line.
+
+### ⬅️ NEXT
+- 👀 **Alex to play a few bouts** — Testing Grounds, a Swing and a Sonic from a corner and from the middle.
+- The first bout of a session can hitch ~50 ms on the cut (cold JIT + the sight list); later bouts ~20 ms. If his machine stutters there, pre-compile the BokehPass and warm the sight list at load.
+- The attack tiles' look (colours, fill .5, dim .3) is a first pass — a dial-in page would be the house way if he wants it tuned.
+
+## 35-stings. The Eleven die is a d6, every Spirit gets a calling card, and the calling card becomes how commits sound — 2026-09-28
+
+Alex, three asks in one session: *"lets change that d12 to a d6"* (Goes to 11), *"there should be a sound when a Spirit is selected — something that signifies 'who they are'"*, and on hearing the stings: *"I'd like to make this the standard benchmark for how sounds are committed in game as well"* → ruled **one shared layer over all 12 builds**, not 12 rewrites.
+
+### ✅ What shipped
+
+1. 🔊 **The Eleven die is a d6: five 11s, one 1.** `ELEVEN_FACES` 12 → **6**; fizzle 1 in 12 → **1 in 6**. `rollDie` now reads the LAST face as the 1 (the d12 comparison `< ELEVEN_DIE` would have read every d6 face as 11 — the die could never fizzle). `combatDice.js` draws it as a rounded d6 body, the 11 opposite the 1.
+   - 🐛 **Found beside it: the 3D arena could not draw the Eleven die at all.** `createCombatDie` validated against `COMBAT_DICE_SIDES` (4/6/8/10/12/20), so `sides:11` threw *"Invalid combat die."* — every Goes to 11 throw in the arena since 2026-09-27. No suite fed the arena an 11. Fixed (its own legal case, values 1 or 11 only) and guarded in `combatDiceCheck` + `arenaDiceSequenceCheck`.
+   - ⛔ **Not re-priced.** It still costs the whole Sustain stack + a blown amp, priced for eleven d6s. Balance is frozen; recorded in `CHORD_VOCABULARY_DESIGN.md` §8 item 3.
+2. 🎭 **The Spirit-select sting** — `audio/spiritSting.js`. A 3 s calling card per Spirit built only from what is already that Spirit: its **own mode** (every note is in it, and it plays the mode's tell note — ♭6 / ♭2 / ♮6 / ♯4), its **own rig** (`SPIRIT_TONES`), plus a **character noise** (blade drawn · cabinet slam · laser + sub drop · stomp-clap-glitter). `Lobby.jsx` `assign()` plays it on THIS player's click (never from room state), ducks the menu song to 35%, and a new pick fades the last sting out (its own gains — `playAmpNote` gained optional `out`/`verbOut`, default path byte-identical, `roninToneCheck` §4 still 100).
+   - 🎛️ **Alex's dial-in shipped:** `SPIRIT_STING` notes **1.35** · fx **1.42** · tempo **1.22** (tempo stretches onsets, not notes).
+3. 🎭 **The signature layer on every commit** — `commitStyles.js` `COMMIT_LAYERS`. The build plays exactly as before; then the layer reads its **money note off what it played** (longest hold → latest → loudest) and adds: an `open` noise at the downbeat, a `land` noise under the money note, and the money note **doubled on a second voice** (the Ronin: shamisen an octave under the KATANA on his first and money notes; on Tsugaru/Iai it flips to the KATANA bent in over the string). Noises reach the game through `commitApi.fx` → `spiritSting.js` `playSpiritFx` (SFX fader). The seat-unlock fanfare passes `{ layer: 'voice' }` — the unlock hit already is that moment's noise.
+   - ⚠️ **No new onset after the build's own last note**, so §3's ~3 s turn budget is untouched (asserted, not assumed).
+4. 🎛️ **Spirit Sound Bench → v5** (artifact): stings with their levers, the layer's on/off A/B and `COMMIT_LAYER` voice/fx sliders, copy boxes that list changed-vs-default only.
+
+### 🎓 Findings
+
+⭐ **1. A die that was never drawn looked fine for a day.** The Eleven die had a body, labels and a comment in `combatDice.js` — and a validator one line above that refused it. Every piece was "done"; nothing ever asked the arena to draw an 11. 🎯 The new check feeds the arena a real Goes to 11 pool.
+⭐ **2. Changing a die's face count silently broke its roll.** `rng.int(ELEVEN_FACES) < ELEVEN_DIE` was correct only because 12 − 1 happened to equal 11. The d6 would have been a 100% 11. Caught by a per-face assertion, not a seed (§B4).
+
+### 🧪 Evidence (Alex's machine, Linux VM; esbuild via the linux binary)
+
+`test:spiritsting` **84** · `test:commitstyles` **838** (was 723) · `test:vocab` **640** · `test:ronintone` 100 · `test:determinism` 20 · `test:mix` 49 · `test:spiritpicker` 63 · `test:dice` ✅ · `test:sonicfx` ✅ · `test:client` ✅ · `test:notekeysjourney` 23 · `test:replayjourney` ✅ · `test:arch` ✅ · `check:bundle` **0 warnings**. Mutants: sting 5/5 + tempo, layer 5/5, Eleven roll 1/1. Chromium: bench runs with zero page errors, 390 px no horizontal scroll; offline renders — stings RMS 0.07–0.09 vs Shred 0.10; the layer adds ~2–15% RMS (Tsugaru roughly doubles: a clean string under a KATANA).
+🔴 Unchanged pre-existing: `test:loadoutui` (Game half, note-stock click — the lobby half passes and now clicks through the sting); `lint:baseline` 5 categories over (none from touched files).
+
+### ⬅️ NEXT
+
+- 🎧 Alex: dial the **layer** on the bench (v5) — Tsugaru's KATANA double is the loudest change. Then hear both in the real lobby / a real commit.
+- 🔊 Re-price Goes to 11 (balance-frozen; his call when balance reopens).
+- The sting phrases themselves are first guesses; Glamarchy's only plays on the bench (her card is locked).
+
 ## 34-glowsticks. The crowd waves glow sticks — 2026-09-25
 
 Alex: *"Lets give the fans glow sticks to wave around and use."* Ruled: **visual only** (no rule, balance frozen) and **everyone holds one**, Casuals and Diehards alike.

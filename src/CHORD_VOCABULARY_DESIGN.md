@@ -46,10 +46,13 @@
   guaranteed faces (4s/5s/6s), a die bump (d6 → d8 / d10), or +1 kept die. Its
   own implementation, later. The RIG lane still runs until then; its tiers no
   longer draw the amps.
-- **Goes to 11 = the Eleven die**: a d12 with eleven faces reading 11 and one
-  reading 1, swapped in for one of his dice. Built as: replaces his WEAKEST die,
+- **Goes to 11 = the Eleven die**: ~~a d12 with eleven faces reading 11 and one
+  reading 1~~ → ✅ **a d6 with five 11s and one 1 (Alex, 2026-09-28)** — fizzle
+  1 in 6. At 1 in 12 the fail almost never happened (a free +7); 50/50 with the
+  whole-throw fizzle averaged −23% to −36% against not pressing it. Swapped in
+  for one of his dice. Built as: replaces his WEAKEST die,
   is ALWAYS kept, and its **1 fizzles the whole throw** (the "absolute fail",
-  1 in 12 ≈ 8%). ⚠️ The rest of this is Claude's reading — Alex asked "what do
+  1 in 6 ≈ 17% since the d6). ⚠️ The rest of this is Claude's reading — Alex asked "what do
   you think?"; the always-kept + fizzle rule is the proposal, easy to change.
 - **Intergalactic 0's innate: removed.** Innates want a rethink of their own.
 - **Swing and Psycho Bushido spend from the top.** Built.
@@ -299,8 +302,9 @@ finder), `crowdCoach` (glow), `spice.js` (Discord Coach — imports
 2. 🃏 **Marquee bonus cards** (every lane): guaranteed faces, die bumps
    (d6→d8, d8→d10), +1 kept die. Its own design + build. Until then the RIG lane
    still pays `rigPool`/`rigPower`, which now only feed bots and the log.
-3. 🔊 **Goes to 11** — confirm the always-kept + fizzle reading, and re-price
-   it: it still costs the whole Sustain stack + a blown amp, which was priced
+3. 🔊 **Goes to 11** — ✅ the die is a d6 (five 11s, one 1), Alex 2026-09-28,
+   which implicitly keeps the always-kept + fizzle reading. ⛔ **Still to
+   re-price**: it costs the whole Sustain stack + a blown amp, which was priced
    for ELEVEN d6s. Now it is one wild die.
 4. 🐀 **Riff Rat's palette** (Mixolydian proposed) and all **chord nicknames**.
 5. 🧪 **Balance**: nothing is benched. The dial curve, the d8 threshold and the

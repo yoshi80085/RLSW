@@ -25,7 +25,7 @@ export function getRiffAudio() {
 // ⚠️ ONE BUS PER CONTEXT, cached on the context itself (same doctrine as
 //    `getAmpBuses`). Building a second one would silently split the channel in
 //    half: some sounds on the fader, some not, and no way to tell by listening.
-function getSfxBus(ctx) {
+export function getSfxBus(ctx) {
   if (!ctx.__rlswSfxBus) {
     const bus = ctx.createGain();
     bus.gain.value = getLevel('sfx');

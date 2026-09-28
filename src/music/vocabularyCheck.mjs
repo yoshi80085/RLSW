@@ -7,7 +7,7 @@ import { sonicRig, ampStacks } from '../engine/systems/sonicRig.js';
 import { spiritChord } from '../engine/systems/attackParams.js';
 import { botSpiritChord } from '../engine/policies/bot.js';
 import { unlockClaim, liveUnlockPcs } from './stackSlots.js';
-import { ELEVEN_DIE, DICE_KEPT_MAX, DICE_ROLLED_MAX } from '../data/gameConstants.js';
+import { ELEVEN_DIE, ELEVEN_FACES, DICE_KEPT_MAX, DICE_ROLLED_MAX } from '../data/gameConstants.js';
 import { applyAttackRolled, applyAttackRerolled } from '../engine/systems/combat.js';
 import { attackRolled } from '../engine/actions.js';
 
@@ -71,7 +71,7 @@ for (const id of SPIRITS) for (const b of ['drive', 'sustain']) {
 
 section('§4 seats: targets are the Spirit\'s own next spelling, and loose notes open nothing');
 {
-  const ns = { driveStack: ['E', 'F', 'B'], sustainStack: ['E'], driveSlots: 0, sustainSlots: 0, unlockedSkills: ['x'] };
+  const ns = { driveStack: ['E', 'F', 'B'], sustainStack: ['E'], driveSlots: 0, sustainSlots: 0, casuals: 4 };  // 🎤 6 fans — crowd row 1
   const t = seatTargets('Metalness_Monster', ns.driveStack, 4);
   ok('Metalness 5♭9 on E hunts G♯ (Major ♭9) — and not the jazz ladder\'s 7th (D)', t.has(8) && !t.has(2) && t.size === 1);
   ok('unlockClaim uses the Spirit', unlockClaim(ns, 'G#', 'Metalness_Monster')?.slot === 4);
@@ -96,9 +96,14 @@ ok('keep = seats, capped at 5', [3, 4, 5, 6].map(keepForSeats).join() === `3,4,5
   ok('🔊 swapped in for the weakest die', withElevenDie([8, 6, 6]).join() === `8,${ELEVEN_DIE},6`);
 }
 {
-  let seq = [0, 11, 5]; const rng = { int: () => seq.shift() };
-  ok('🔊 Eleven die: faces 0–10 read 11, face 11 reads 1, ONE rng per die',
+  let seq = [0, 5, 5]; const rng = { int: () => seq.shift() };
+  ok('🔊 Eleven die: faces 0–4 read 11, face 5 reads 1, ONE rng per die',
     rollDie(ELEVEN_DIE, rng) === 11 && rollDie(ELEVEN_DIE, rng) === 1 && rollDie(6, rng, 2) === 6 && seq.length === 0);
+  // 🔊 The d6 odds, read off every face rather than a seed (§B4: one seed passes on luck).
+  const faces = []; let asked = 0;
+  for (let f = 0; f < ELEVEN_FACES; f++) faces.push(rollDie(ELEVEN_DIE, { int: s => { asked = s; return f; } }));
+  ok('🔊 the Eleven die is a d6: five 11s and one 1 (fizzle 1 in 6)',
+    ELEVEN_FACES === 6 && asked === 6 && faces.filter(v => v === 11).length === 5 && faces.filter(v => v === 1).length === 1);
   let n = 0; const count = { int: s => { n++; return s - 1; } };
   throwPool([6, 6, 8, ELEVEN_DIE], 2, count);
   ok('one rng.int per die thrown (determinism contract)', n === 4);

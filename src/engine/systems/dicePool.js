@@ -8,7 +8,7 @@
 //
 // ⚠️ ONE `rng.int` PER DIE, in pool order, and that is the determinism
 // contract: every client replays the same stream, so the throw may never spend
-// a second number on a die (the Eleven die spends one `rng.int(12)`).
+// a second number on a die (the Eleven die spends one `rng.int(ELEVEN_FACES)`).
 import {
   DICE_ROLLED_MAX, DICE_KEPT_MAX, ELEVEN_DIE, ELEVEN_FACES, SONIC_BASE_DIE, SONIC_UPGRADED_DIE,
 } from "../../data/gameConstants.js";
@@ -36,7 +36,9 @@ export const keepForSeats = seats => Math.max(0, Math.min(DICE_KEPT_MAX, Math.fl
 
 /** One die. `floor` (charge zone) lifts low faces — never the Eleven die's 1. */
 export function rollDie(sides, rng, floor = 0) {
-  if (sides === ELEVEN_DIE) return rng.int(ELEVEN_FACES) < ELEVEN_DIE ? 11 : 1;
+  // ⚠️ The 1 is the LAST face. Comparing against ELEVEN_DIE (the d12 version)
+  // would read every face of a d6 as 11 and the die could never fizzle.
+  if (sides === ELEVEN_DIE) return rng.int(ELEVEN_FACES) < ELEVEN_FACES - 1 ? 11 : 1;
   return Math.min(sides, Math.max(1 + floor, rng.int(sides) + 1));
 }
 

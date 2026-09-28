@@ -4,8 +4,8 @@
 // `PROGRESSION_REWRITE_DESIGN.md` §2. Chord capacity used to be BOUGHT: slot 4
 // came with `theory_dom7`, slot 5 with `theory_modes`, slot 6 with
 // `theory_chromatic`, 38 Db for the three of them. The Theory branch is gone and
-// the same three slots are now FOUND — after the relevant ability-upgrade
-// milestone and a full current stack. You walk onto the right Lost Chord and
+// the same three slots are now FOUND — once your CROWD has filled the row that
+// seat asks for and the current stack is full. You walk onto the right Lost Chord and
 // the seat it opens is the seat it fills.
 //
 // ⭐ 2026-09-27 — THE TARGETS ARE NOW EACH SPIRIT'S OWN (CHORD_VOCABULARY_DESIGN.md
@@ -13,7 +13,18 @@
 // N notes from THAT Spirit's vocabulary (`music/vocabularies.js` `seatTargets`),
 // on either branch — the same note that glows in the hand. A full stack of
 // loose notes has no target: seats are opened by spelling. The ladder below
-// keeps only its gates (`slot`, `upgradesRequired`); its `degrees` are history.
+// keeps only its gates (`slot`, `row`); its `degrees` are history.
+//
+// 🎤 2026-09-28 — THE CROWD IS THE GATE (Alex: "You played it. You earned it. If
+// you want yours — you play it well as it is first before exploring the bigger
+// chords out there."). Each seat waits for a full ROW of your own grandstand:
+// row 1 (6 fans) → seat 4, row 2 (12) → seat 5, row 3 (18) → seat 6. It is the
+// CURRENT crowd, Casuals + Diehards — lose the room and the next hunt pauses,
+// but a seat already opened is never lost.
+//   ⛔ It REPLACES `upgradesRequired` (1 / 2 / 4 distinct `unlockedSkills`),
+// which the loadout draft broke: every Spirit now opens with its 2-ability kit
+// and Db never grants another, so seats 4–5 were ungated from turn 1 and seat 6
+// could never open outside the Testing Grounds.
 //
 // 🎯 (HISTORY) THE LADDER WAS NOT NEW MUSIC. These were the old `CHORD_TEMPLATES`
 // rank bands in order, so every slot you earned was a chord you could already spell:
@@ -64,7 +75,12 @@
 // =============================================================================
 import { pitchIndex } from "./notes.js";
 import { seatTargets } from "./vocabularies.js";
-// ⚠️ NOTHING IS IMPORTED FROM `gameConstants.js` ON PURPOSE. `stackCapFor` lives
+// 🎤 The crowd gate's two numbers. ✅ SAFE because `gameConstants.js` imports
+// nothing at all — the cycle warned about below needs an arrow BACK from there to
+// here, and there is none (`music/cadence.js` imports it the same way). Pulled
+// rather than copied so a grandstand re-seat moves the gate with it.
+import { FAN_DIEHARD_START, CROWD_SEATS_PER_ROW } from "../data/gameConstants.js";
+// ⚠️ NOTHING ELSE IS IMPORTED FROM `gameConstants.js` ON PURPOSE. `stackCapFor` lives
 // there and reads `driveSlots`/`sustainSlots` directly, so the arrow points one
 // way — data → music, never back. Importing the ceiling here to re-derive the cap
 // would make `gameConstants` and this file mutually dependent, and a const export
@@ -77,9 +93,9 @@ import { seatTargets } from "./vocabularies.js";
  *  `slot` is the seat number a player sees (4, 5, 6); the index in this array
  *  is how many extra slots you already hold. */
 export const SLOT_LADDER = [
-  { slot: 4, degrees: [9, 10, 11], upgradesRequired: 1, label: 'your 4-note chord', chords: "this Spirit's 4-note spellings" },
-  { slot: 5, degrees: [2],         upgradesRequired: 2, label: 'your 5-note chord', chords: "this Spirit's 5-note spellings" },
-  { slot: 6, degrees: [5, 9],      upgradesRequired: 4, label: 'your 6-note chord', chords: "this Spirit's 6-note spellings" },
+  { slot: 4, degrees: [9, 10, 11], row: 1, fansRequired: 1 * CROWD_SEATS_PER_ROW, label: 'your 4-note chord', chords: "this Spirit's 4-note spellings" },
+  { slot: 5, degrees: [2],         row: 2, fansRequired: 2 * CROWD_SEATS_PER_ROW, label: 'your 5-note chord', chords: "this Spirit's 5-note spellings" },
+  { slot: 6, degrees: [5, 9],      row: 3, fansRequired: 3 * CROWD_SEATS_PER_ROW, label: 'your 6-note chord', chords: "this Spirit's 6-note spellings" },
 ];
 
 /** How many extra slots there are to find. Derived, so a fourth rung added above
@@ -120,19 +136,25 @@ export function targetsForStack(stack = [], earned = 0, spiritId = null) {
   return seatTargets(spiritId, stack, rung.slot);
 }
 
-/** Number of distinct ability upgrades a Spirit has earned. A duplicate entry
- * cannot accidentally count as two upgrades. */
-function upgradeUnlockCount(ns = {}) {
-  return new Set((ns?.unlockedSkills ?? []).filter(Boolean)).size;
+/** 🎤 The Spirit's crowd RIGHT NOW — Diehards + Casuals, the same two numbers
+ *  the grandstand draws. Missing Diehards read as the opening crowd, exactly as
+ *  `crowdMultiplier` and `addCasuals` read them. */
+export function crowdSize(ns = {}) {
+  return Math.max(0, ns?.diehards ?? FAN_DIEHARD_START) + Math.max(0, ns?.casuals ?? 0);
+}
+
+/** Has this crowd filled the row the rung asks for? */
+export function crowdGateMet(ns = {}, rung = null) {
+  return !!rung && crowdSize(ns) >= rung.fansRequired;
 }
 
 /** A rung becomes a live board target only after the stack has filled every
- * earlier seat and the Spirit has reached its upgrade milestone. */
+ * earlier seat and the Spirit's crowd has filled that rung's row. */
 function canHuntRung(ns = {}, stack = [], rung = null) {
   if (!rung) return false;
   const filled = (stack ?? []).filter(Boolean).length;
   // The capacity immediately before seat N opens is N - 1: 3, 4, then 5.
-  return filled >= rung.slot - 1 && upgradeUnlockCount(ns) >= rung.upgradesRequired;
+  return filled >= rung.slot - 1 && crowdGateMet(ns, rung);
 }
 
 /** 🎯 THE ONE FUNCTION THE BOARD AND THE HUD BOTH READ (§2's `unlockTargets`).

@@ -7,7 +7,7 @@ const SPOT_CORNERS = ['blue', 'purple', 'yellow', 'red'];
 // hidden spirits BEFORE passing them here; no note stock or hidden state crosses.
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
-  bots = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, crowdSpirits = spirits }) {
+  bots = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null }) {
   const visible = new Set(spirits.map(s => s.id));
   return {
     crowds:crowdSpirits.filter(s=>!s.knockedOut).map(s=>({id:s.id,corner:s.corner,color:s.color,
@@ -38,6 +38,16 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
       ? { kind:reach.kind === 'shadow' ? 'shadow' : 'move', ownerId:reach.ownerId, turn:reach.turn,
           near:[...(reach.near ?? [])], steps:reach.steps ?? 0,
           ...(Number.isFinite(reach.max) ? { max:reach.max } : {}), hover:reach.hover ?? null } : null,
+    // 🎯 The reach of the attack being hovered or aimed — attackTiles.js. `near`
+    // is the same set the SVG tints (getSwingCone, getSonicBeam, …); `targets`
+    // are the hexes in it that hold a VISIBLE rival (the client leaves smoke-
+    // hidden Spirits out, and counts the Shadow's decoy like a body — a decoy
+    // that lit differently would give itself away). Dropped when the owner is hidden.
+    attack:attack && visible.has(attack.ownerId) && attack.near?.length
+      ? { kind:String(attack.kind), ownerId:attack.ownerId, near:[...attack.near], targets:[...(attack.targets ?? [])] } : null,
+    // 🔓 The seat-unlock moment (arenaVisuals SEAT_UNLOCK). Smoke hides it too.
+    unlock:unlock && visible.has(unlock.spiritId)
+      ? { key:unlock.key, spiritId:unlock.spiritId, which:unlock.which === 'sustain' ? 'sustain' : 'drive', slot:unlock.slot, short:!!unlock.short } : null,
     battle: battle && visible.has(battle.attackerId) && visible.has(battle.defenderId)
       ? { attackerId:battle.attackerId, defenderId:battle.defenderId,
           phase:battle.phase, sonic:!!battle.sonicAttack, round:battle.round ?? 1,

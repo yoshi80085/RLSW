@@ -254,8 +254,11 @@ console.log('§6 the game reaches all of it');
   const commit = read('../engine/systems/melodyCommit.js');
   ok(/fourth: harmonicScale\[3\], fifth: harmonicScale\[4\]/.test(commit), 'the endings still read degree seats 3 and 4 (§1 holds them)');
   const client = read('../rlsw-simulator-v3_8_1.jsx');
-  ok(/SPIRIT_TONES\[id\]/.test(client), 'the client seeds each Spirit’s rig from SPIRIT_TONES');
-  const shred = client.slice(client.indexOf('function playShredSequence'), client.indexOf('function playBreakdownSequence'));
+  // Seats carry suffixed ids since the loadout work, so the rig is seeded by CHARACTER id.
+  ok(/SPIRIT_TONES\[(?:characterId\()?id\)?\]/.test(client), 'the client seeds each Spirit’s rig from SPIRIT_TONES');
+  // 🎸 The shred moved to audio/commitStyles.js (2026-09-28) with the other builds.
+  const styles = read('./commitStyles.js');
+  const shred = styles.slice(styles.indexOf('function shred('), styles.indexOf('function tsugaru('));
   ok(shred.length > 0, 'the Ronin’s shred sequence exists');
   ok(/const RONIN_MONEY_BEND = -2;/.test(shred), 'the money-note bend is a whole step');
   eq((shred.match(/bend: RONIN_MONEY_BEND/g) ?? []).length, 2, 'both ringing endings bend');

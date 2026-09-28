@@ -138,6 +138,18 @@ for(const starts of [[0,4.6],[4.6,0],[0,9],[2,2]]){
  assert.equal(swing.schedule.gatherAt,diceBeat(4.4+ARENA_DICE_TIMING.roll+ARENA_DICE_TIMING.landedHold));
  swing.dispose();
 }
+// 🔊 A Goes to 11 throw reaches the arena: the Eleven die (sides 11) kept, a d6 dropped.
+// ⚠️ This threw 'Invalid combat die.' from 2026-09-27 to 09-28 — no suite fed the arena an 11.
+{
+ const seq=createArenaDiceSequence({drive:[11,6,5],sustain:[4],driveSides:6,sustainSides:6,drivePool:[11,6,6],droppedDrive:[2],droppedDrivePool:[6]});
+ const done=seq.update(ARENA_DICE_READ_AT);
+ assert.deepEqual(done.sums,[22,4],'the Eleven die counts 11');
+ const eleven=seq.entries.find(e=>e.die.group.userData.sides===11);
+ assert.ok(eleven&&eleven.die.group.userData.result===11&&eleven.die.group.userData.faceCount===6,'the Eleven die lands as a d6 body showing 11');
+ const fizz=createArenaDiceSequence({drive:[6,1],sustain:[3],driveSides:6,sustainSides:6,drivePool:[6,11]});
+ assert.deepEqual(fizz.update(ARENA_DICE_READ_AT).sums,[7,3],'a fizzled 1 still lands and reads 1');
+ seq.dispose?.();fizz.dispose?.();
+}
 // Catch the interrupted edit that previously prevented preview initialization.
 const js=readFileSync(new URL('../../.scratch/sonic-rework/barrage.mjs',import.meta.url),'utf8'),html=readFileSync(new URL('../../.scratch/sonic-rework/barrage.html',import.meta.url),'utf8');
 for(const match of js.matchAll(/\$\('([^']+)'\)\.addEventListener/g))assert.ok(html.includes(`id="${match[1]}"`),`preview control ${match[1]} exists`);

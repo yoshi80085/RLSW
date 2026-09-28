@@ -22,7 +22,7 @@ const SPOT = SPOTLIGHT_LOOK;
 // 'block' part of the glow"*). ⚠️ In the arena pass the amps are re-drawn on the
 // foreground AFTER the arena, so a beam drawn in the arena could never win,
 // whatever its depth settings. Omit `overlay` and the beams stay in `scene`.
-export function createArenaEnvironment(scene, { overlay = null } = {}) {
+export function createArenaEnvironment(scene, { overlay = null, classicScenery = true } = {}) {
   const root = new THREE.Group(); root.name = 'Cosmic environment'; scene.add(root);
   root.add(new THREE.HemisphereLight(0x9fc4ff,0x363852,2));
   for (const [color,power,pos] of [[0xaad8ff,2.2,[7,20,16]],[0xae72ff,1.6,[-15,9,-12]],[0x72aaff,3.24,[4,-3,18]]]) {
@@ -54,6 +54,7 @@ export function createArenaEnvironment(scene, { overlay = null } = {}) {
     fragmentShader:'varying float shine;void main(){vec2 p=abs(gl_PointCoord-.5);float a=max(0.,1.-length(p)*2.);float cross=pow(max(0.,1.-min(p.x,p.y)*9.),8.);gl_FragColor=vec4(.55,.8,1.,shine*a*cross*.8);}'
   });
   const glints=new THREE.Points(glintGeo,glintMat);root.add(glints);
+  if(classicScenery){
   const sky=new THREE.Mesh(new THREE.SphereGeometry(190,32,16),new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,
     vertexShader:'varying vec3 v; void main(){v=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
     fragmentShader:`varying vec3 v;
@@ -61,6 +62,7 @@ export function createArenaEnvironment(scene, { overlay = null } = {}) {
       float noise(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);}
       void main(){vec3 p=normalize(v);float n=noise(p*5.)*.6+noise(p*13.)*.25+noise(p*31.)*.15;float band=exp(-pow((p.y+.12+p.x*.2)*5.,2.));gl_FragColor=vec4(vec3(.002,.004,.011)+vec3(.034,.009,.058)*pow(n,3.)*band,1.);}`
   })); root.add(sky);
+  }
   const planet=new THREE.Mesh(new THREE.SphereGeometry(6.05,40,24),new THREE.MeshStandardMaterial({color:0x182940,roughness:1,metalness:.05}));
   planet.position.set(-65,0,-25); root.add(planet);
   const atmosphere=new THREE.Mesh(new THREE.SphereGeometry(6.182,40,24),new THREE.ShaderMaterial({transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,
@@ -71,6 +73,8 @@ export function createArenaEnvironment(scene, { overlay = null } = {}) {
   moon.position.set(1,-10,-65);root.add(moon);
   const ring=new THREE.Mesh(new THREE.RingGeometry(4.5,7.2,64),new THREE.MeshBasicMaterial({color:0x686578,side:THREE.DoubleSide,transparent:true,opacity:.16}));
   ring.position.copy(moon.position);ring.rotation.set(-1.2,.25,.3);root.add(ring);
+  let animateDebris=()=>{};
+  if(classicScenery){
   const debris=new THREE.Group();debris.name='Floating wreckage';root.add(debris);seed=scenerySeed;
   const rock=new THREE.MeshStandardMaterial({color:0x303846,metalness:.35,roughness:.83,flatShading:true});
   const geo=new THREE.IcosahedronGeometry(1,0);
@@ -87,6 +91,14 @@ export function createArenaEnvironment(scene, { overlay = null } = {}) {
     const shard=new THREE.Mesh(new THREE.BoxGeometry(1.3,.12,.7),new THREE.MeshStandardMaterial({color:0x283652,metalness:.85,roughness:.4}));
     shard.position.set(Math.cos(a)*r,-2-rand()*6,Math.sin(a)*r);shard.rotation.set(rand()*3,rand()*3,rand()*3);
     shard.userData={baseY:shard.position.y,baseRotation:shard.rotation.y,phase:rand()*6};debris.add(shard);
+  }
+  animateDebris=(time,reduced)=>{
+    for(const o of [...transforms,...debris.children.slice(1)]) {
+      o.rotation.y=o.userData.baseRotation+(reduced?0:time*.025);
+      o.position.y=o.userData.baseY+(reduced?0:Math.sin(time*.3+o.userData.phase)*.15);
+    }
+    transforms.forEach((o,i)=>{o.updateMatrix();chunks.setMatrixAt(i,o.matrix);});chunks.instanceMatrix.needsUpdate=true;
+  };
   }
   // 🔦 THE FOUR CORNER SPOTLIGHTS — look dialled in by Alex on
   // `.scratch/spotlight-preview.html` (2026-09-25 13:14). The RULES live in
@@ -130,12 +142,7 @@ export function createArenaEnvironment(scene, { overlay = null } = {}) {
     update(time,{lite=false,reduced=false,spotlights=null}={}) {
       glints.visible=!lite&&!reduced;glintMat.uniforms.time.value=time;
       starsGeo.setDrawRange(0,lite?900:2200);
-      // Keep the complete silhouette in Standard too; 48 rocks cost one draw.
-      for(const o of [...transforms,...debris.children.slice(1)]) {
-        o.rotation.y=o.userData.baseRotation+(reduced?0:time*.025);
-        o.position.y=o.userData.baseY+(reduced?0:Math.sin(time*.3+o.userData.phase)*.15);
-      }
-      transforms.forEach((o,i)=>{o.updateMatrix();chunks.setMatrixAt(i,o.matrix);});chunks.instanceMatrix.needsUpdate=true;
+      animateDebris(time,reduced);
       const t=reduced?0:time;
       const seats=new Map((spotlights?.lights??[]).map(s=>[s.corner,s]));
       for(const l of lights) {

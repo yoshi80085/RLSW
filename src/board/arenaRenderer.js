@@ -15,6 +15,7 @@ import { TOP_OFFSET, onTopAxis } from './topDownView.js';
 import { SCALE, SVG_W, SVG_H } from './constants.js';
 import { preserveTacticalLayer, keepGameplayClicks } from './arenaDom.js';
 import { createArenaEnvironment, polishArenaModel } from './arenaEnvironment.js';
+import { createRivenWorld, RIVEN_WORLD } from './rivenWorld/index.js';
 import { arenaPoint, pointXY, createArenaVisuals, releaseArenaObject } from './arenaVisuals.js';
 import { createSonicCamera } from './sonicCamera.js';
 import { createArenaCrowd } from './arenaCrowd.js';
@@ -72,7 +73,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     controls.minDistance=12;controls.maxDistance=110;controls.minPolarAngle=.08;controls.maxPolarAngle=Math.PI*.43;
     controls.enableDamping=true;controls.dampingFactor=.09;
     const composer=new EffectComposer(renderer);composer.addPass(new RenderPass(scene,camera));
-    const bloom=new UnrealBloomPass(new THREE.Vector2(1,1),.396,.55,1.05);
+    const bloom=new UnrealBloomPass(new THREE.Vector2(1,1),RIVEN_WORLD.bloom,.65,1.05);
     // 🔭 DEPTH OF FIELD, battles only (Alex, 2026-09-24: the amp and fans "out
     // of focus at first - then changing to become in focus as the Sonic charge
     // emits"). Off unless the battle director hands the camera a focus
@@ -83,7 +84,8 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     bokeh.enabled=false;composer.addPass(bokeh);
     const output=new OutputPass();composer.addPass(bloom);composer.addPass(output);
     cleanups.push(()=>{bloom.dispose();bokeh.dispose();output.dispose();composer.dispose();});
-    const environment=createArenaEnvironment(scene,{overlay:foregroundScene});cleanups.push(()=>environment.dispose());
+    const environment=createArenaEnvironment(scene,{overlay:foregroundScene,classicScenery:false});cleanups.push(()=>environment.dispose());
+    const rivenWorld=createRivenWorld(scene,camera);cleanups.push(()=>rivenWorld.dispose());
     const visuals=createArenaVisuals(scene,{foregroundScene});cleanups.push(()=>visuals.dispose());
     const crowd=createArenaCrowd(scene);crowd.group.visible=false;cleanups.push(()=>crowd.dispose());
     const crowdSpeaker=document.createElement('div');
@@ -246,12 +248,13 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       reportCamera(topView?'top':sonicCamera.manual?'battle-manual':sonicCamera.active?'sonic':!autoCamera||!cameraShot||cameraShot.mode==='off'?'off':cameraShot.mode,cameraShot?.resumeInMs);
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
-      const stats=visuals.diagnostics(),moving=stats.effects>0||stats.headDials>0||stats.moveTiles>0||sonicCamera.active||!!cameraShot?.driving||!!refocus;
+      const stats=visuals.diagnostics(),moving=stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||sonicCamera.active||!!cameraShot?.driving||!!refocus;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
       try {
         environment.update(elapsed,{lite,reduced,spotlights:frame.spotlights});
+        rivenWorld.update(elapsed,{reduced});
         crowd.tick(elapsed,{reduced});
         // 👏 The bout's crowd reaction rides on top of the idle tick.
         crowd.react(elapsed,visuals.crowdReaction()??{amount:0},{reduced});
@@ -298,11 +301,12 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       if(disposed){releaseArenaObject(gltf.scene);return;}
       try {
         model=gltf.scene;model.scale.z=-1;emissives=polishArenaModel(model);
+        rivenWorld.attachModel(model);
         // The crowd owns the larger seats; hide the original modeled copy.
         const oldStands=model.getObjectByName('Stands');if(oldStands)oldStands.visible=false;
         // 🪨 The ground hides the amps' buried bases in the solid re-draw too (solidLayer.js).
-        markOccluders([model.getObjectByName('Stage'),model.getObjectByName('Island')]);
-        scene.add(model);visuals.attachModel(model);visuals.update(frame);crowd.group.visible=true;dirty=true;onReady();
+        markOccluders([model.getObjectByName('Stage'),rivenWorld.formation]);
+        scene.add(model);visuals.attachModel(model);visuals.setOccluders([crowd.group,model.getObjectByName('Lighting')]);visuals.update(frame);crowd.group.visible=true;dirty=true;onReady();
       }catch(error){console.error('Arena model setup failed',error);onError();}
     },undefined,()=>{if(!disposed)onError();});
     return {

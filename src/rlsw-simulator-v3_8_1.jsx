@@ -1,4 +1,8 @@
 import { characterId } from "./data/spiritIdentity.js";
+import { pickCommitStyle, playCommitStyle, COMMIT_STYLE_SETS } from "./audio/commitStyles.js";
+import { playUnlockHit } from "./audio/unlockSfx.js";
+import { playSpiritFx } from "./audio/spiritSting.js";
+import { SeatUnlockBurst } from "./ui/SeatUnlockBurst.jsx";
 import { SonicBarrageRecord } from './ui/SonicBarrageRecord.jsx';
 import { playBarrageChord, playBarrageFoley, playSustainChord, playShieldChord, playChordClash, barrageDelay } from './audio/sonicBarrageAudio.js';
 import { playSwingCharge, playSwingStrike } from './audio/swingStrikeAudio.js';
@@ -149,6 +153,8 @@ import {
   // client computing its own answer to "what wins here" is exactly what left a
   // finish line drawn, and fired, in a mode that has none.
   fameToWin as fameToWinOf, roundLimitFor, buzzerReached, buzzerVerdict,
+  // ⛔ The per-turn FP window, as the ENGINE defines it for this mode (2026-09-28).
+  famePerTurnCap,
 } from "./engine/systems/battleFlow.js";
 // ✨ The pose ladder, in ONE place. There used to be three transcriptions of it
 // (here, `evaluate.js`, and whatever the turn clock actually billed) and they
@@ -184,11 +190,11 @@ import { fanPawnShape } from "./ui/fanPawnShape.jsx";
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
-import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim } from "./music/stackSlots.js";
+import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim, crowdSize, crowdGateMet, unlockTargets } from "./music/stackSlots.js";
 // 🔦 The four corner spotlights (Alex, 2026-09-25) — rules in the engine, read here.
 import { poseSpotFor, homeSpotlightDrive } from "./engine/systems/spotlights.js";
 import { SPOTLIGHT_POSE_SUSTAIN_COST, POSE_SUSTAIN_PENALTY, SPOTLIGHT_STEAL_CASUALS } from "./data/gameConstants.js";
-import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_TOTAL_CAP, addCasuals, addDiehard, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, CROWD_DRAWN_MAX, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, RIFF_FP_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_TOTAL_CAP, addCasuals, addDiehard, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, CROWD_DRAWN_MAX, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -573,6 +579,20 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
      moved to `fameTarget` explicitly; if you add another, use `fameTarget`. */
   const fameToWin     = fameScale;
 
+  /* ⛔ THE PER-TURN FP WINDOW, READ THROUGH THE ENGINE (fixed 2026-09-28).
+     `grantFame` below clipped every client-side payout — riff-offs, poses,
+     commit Fame — at the raw `FAME_PER_TURN_CAP` (4), which is exactly what
+     `gameConstants` warns against: in 🎸 Battle of the Bands the window is
+     `FAME_PER_TURN_CAP_ROUNDS` (Infinity) because a flat cap "makes a big crowd
+     worthless". Battle Fame went through the engine and was uncapped; riff and
+     commit Fame did not, so two identical deeds could pay differently and a
+     bigger crowd stopped counting past 4. The duel's own ceiling rides at its
+     defined ×2 (`RIFF_FP_TURN_CAP`), the same scaling `battleFlow.grantFame`
+     applies. */
+  const turnFameCap   = famePerTurnCap(engineState);
+  const fameCapFor    = (kind) => kind === 'riff'
+    ? turnFameCap * (RIFF_FP_TURN_CAP / FAME_PER_TURN_CAP) : turnFameCap;
+
   /* 🎇 Stage FX fires once per life, evenly spaced across the scale.
      ⚠️ IT DIVIDES BY THE RULER, NOT THE RULE. Against Infinity every threshold
      would be Infinity and the stage effects would silently never fire again —
@@ -901,7 +921,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // Legendary riffs play their real rhythm — detectRiff is pure and keyed
       // off the track alone, so both machines reach the same verdict.
       // 🪦 a matched legendary riff replayed its own rhythm here — retired 2026-08-17.
-      else playTrackSequence(mel, { style: COMMIT_STYLES[characterId(actorId)], freqs: ns.committedFreq ?? [] });
+      else playTrackSequence(mel, { seat: actorId, freqs: ns.committedFreq ?? [] });
     };
   });
 
@@ -1878,6 +1898,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const [tentacleFx, setTentacleFx] = useState(null);
   // voiceRollFx: { value:1..6, success:bool, key } — drives the animated Mic d6
   const [voiceRollFx, setVoiceRollFx] = useState(null);
+  // 🔓 The seat-unlock moment (ui/SeatUnlockBurst.jsx + arenaVisuals SEAT_UNLOCK).
+  const [seatUnlockFx, setSeatUnlockFx] = useState(null);
   // 🔊 Amp deck thump — { id, key } bumps a 300ms speaker-thump on that
   // Spirit's corner stack when their Sonic beam fires (AMP_DECK_DESIGN.md §3.2)
   const [deckThump, setDeckThump] = useState(null);
@@ -2400,7 +2422,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         { body: 'This gold bar is the only bar that matters — everything else exists to feed it. If you\'re halfway there, better have a good prayer!', anchor: 'fame-bar' },
         { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, ✨ holding centre-stage Limelight a full turn. (🎼 Cadences and 🧠 trivia pay FANS, not FP — the crowd is how you amplify everything else.)',
                  'Every payout is multiplied by your crowd (up to ×2), and if you\'re trailing badly the underdog bonus inflates it up to ×2.5. The comeback is canon.',
-                 `But the arena has a volume limit: at most ${FAME_PER_TURN_CAP} FP banked per turn. Spread your legend across the set, not one blowout.`], anchor: 'fame-bar' },
+                 Number.isFinite(turnFameCap)
+                   ? `But the arena has a volume limit: at most ${turnFameCap} FP banked per turn. Spread your legend across the set, not one blowout.`
+                   : 'And in a Battle of the Bands there is no per-turn limit — a big crowd pays in full, every time.'], anchor: 'fame-bar' },
         { body: [`So: get to ${fameToWin} FP before anyone knocks the last life out of you, and the crown is yours outright — no margin required.`,
                  'Sorry to impede your playing. Go get \'em, little Rocker!! 🐯🎸'], anchor: 'fame-bar' },
       ],
@@ -3139,9 +3163,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         if (pc === undefined) return;
         freq = PC_FREQ_BASE[pc];
       }
-      // 🎛️ Amp knob settings (live — read from ref so timeouts get fresh values)
-      const kn = toneOf(toneBySpiritRef.current, actingRef.current?.id);
-      playAmpNote(ctx, freq, { ...opts, knobs: kn });
+      // 🎛️ Amp knob settings (live — read from ref so timeouts get fresh values).
+      // `opts.seat` plays in THAT seat's rig (a riff-off answer, a remote commit);
+      // `opts.knobs` lays a build's overrides on top (the Ronin's shamisen).
+      const kn = toneOf(toneBySpiritRef.current, opts.seat ?? actingRef.current?.id);
+      playAmpNote(ctx, freq, { ...opts, knobs: opts.knobs ? { ...kn, ...opts.knobs } : kn });
     } catch (_) { /* audio unavailable — silent fail */ }
   }
 
@@ -3196,27 +3222,36 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   }
 
   // 🎸 Signature commit builds — each Spirit plays their committed track in
-  // their OWN voiceprint. Unknown ids fall through to the classic groove.
-  // ⚠️ Keyed by CHARACTER id — look it up with `characterId(seatId)`. A raw seat
-  // id (`cosmic_ronin::red`) misses and every Spirit plays the plain groove
-  // (regressed 2026-09-22 with seat ids; fixed 2026-09-28).
-  const COMMIT_STYLES = {
-    cosmic_ronin:      'shred',      // 🗡️ lightning passes + climax run
-    Metalness_Monster: 'breakdown',  // 🤘 chug gallops + slam clusters
-    intergalactic_0:   'scratch',    // 👽 80s DJ vinyl scratching
-    Glamarchy:         'strut',      // 👑 stomp-clap swagger + glitter gliss
-  };
+  // their OWN voiceprint, and since 2026-09-28 each owns THREE builds
+  // (`audio/commitStyles.js`): Alex, *"so it's not sounding the 'same' all the
+  // time."* The build is picked from the seat and the engine ROUND, so every
+  // client hears the same one and a seat never repeats itself turn to turn.
+  // Unknown Spirits fall through to the classic groove below.
+  // ⚠️ `opts.seat` is the SEAT id (`cosmic_ronin::red`); the set is looked up by
+  // `characterId(seat)` — a raw seat id misses every table (the 2026-09-22
+  // regression that silenced every signature build).
+  const commitApi = (seat) => ({
+    now: () => getAudioCtx().currentTime,
+    note: (note, o) => playNoteSound(note, { ...o, seat }),
+    lead: voiceLeadFreq,
+    pitchIndex,
+    scratch: (note, hz, pattern, when) => playScratchAtom(note, hz, pattern, when, seat),
+    // 🎭 The signature layer's character noises (commitStyles COMMIT_LAYERS) —
+    // the stings' blade / slam / laser, on the SFX fader.
+    fx: (kind, when, level) => playSpiritFx(getAudioCtx(), kind, when, level),
+  });
 
   // `opts.freqs` — index-parallel to `track`: the register each note was played
-  // in (mic), or null (clicked). Only the classic groove honours it; the four
-  // signature styles below voice the track their own way on purpose — a
-  // breakdown chugs in the low register whether or not you played it up the
-  // neck, because that's the character's voice, not yours.
+  // in (mic), or null (clicked). Only the classic groove honours it; the
+  // signature builds voice the track their own way on purpose — a breakdown
+  // chugs in the low register whether or not you played it up the neck,
+  // because that's the character's voice, not yours.
   function playTrackSequence(track, opts = {}) {
-    if (opts.style === 'shred')     { playShredSequence(track); return; }
-    if (opts.style === 'breakdown') { playBreakdownSequence(track); return; }
-    if (opts.style === 'scratch')   { playDJScratchSequence(track); return; }
-    if (opts.style === 'strut')     { playStrutSequence(track); return; }
+    if (opts.seat) {
+      const style = pickCommitStyle(characterId(opts.seat),
+        { seatId: opts.seat, round: engineRef.current?.turn?.round ?? 0 });
+      if (style && playCommitStyle(style, track, commitApi(opts.seat))) return;
+    }
     // The committed track plays as a real MELODY, not a slop of evenly
     // spaced notes. Each commit rolls a fresh groove: a mix of eighths,
     // quarters and dotted notes, the occasional breath between phrases,
@@ -3252,219 +3287,20 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     });
   }
 
-  // 🗡️ SHREDDING RONIN — he doesn't play the committed track, he SHREDS it.
-  // Same notes, ripped as 2–3 lightning passes: the statement, a mutated
-  // variation, and (4+ note tracks) an accelerating ascending run capped by
-  // the money note. Scheduling is budgeted to ≈2.5s so turn pacing matches
-  // the normal groove. Math.random() here is audio flavour only — never a
-  // rule — so it needs no engine rng. His amp voice is the KATANA
-  // (`audio/ampVoice.js` RONIN_LEAD); this only changes the PHRASING.
-  // 🎌 Both ringing endings BEND UP A WHOLE STEP into the final note (2026-09-16)
-  // — the pushed-string cry of a koto or a shakuhachi's rising breath, played
-  // on a distorted guitar. `RONIN_MONEY_BEND` is the lever.
-  function playShredSequence(track) {
-    const RONIN_MONEY_BEND = -2;                       // semitones below; bends up into pitch
-    const n = track.length;
-    if (!n) return;
-    const jitter = () => (Math.random() - 0.5) * 18;   // human, not quantised
-    const t0 = getAudioCtx().currentTime + 0.06;       // audio-clock anchor
-    const at = ms => t0 + ms / 1000;
-    let tMs = 60;
-
-    // Spacing shrinks as the track grows so all passes always fit the budget.
-    const sp1 = Math.max(58, Math.min(105, Math.round(640 / n)));
-
-    // ── PASS 1 — the statement: the track in order, brutally fast ──
-    let prev = null;
-    track.forEach((note, i) => {
-      const f = voiceLeadFreq(note, prev); if (f) prev = f;
-      playNoteSound(note, {
-        holdTime: 0.12, fadeTime: 0.08,
-        volume: i % 2 === 0 ? 0.16 : 0.13,             // alternate-picked accents
-        freq: f ?? undefined,
-        when: at(tMs + jitter()),
-      });
-      tMs += sp1;
-    });
-    tMs += 120;                                        // breath
-
-    // ── PASS 2 — the variation: ONE mutation, dealt fresh every commit ──
-    const varTrack = [...track];
-    const roll = Math.random();
-    let octIdx = -1;
-    if (roll < 0.34 && n >= 2) {                       // swap two adjacent notes
-      const k = Math.floor(Math.random() * (n - 1));
-      [varTrack[k], varTrack[k + 1]] = [varTrack[k + 1], varTrack[k]];
-    } else if (roll < 0.67) {                          // stutter-double one note
-      const k = Math.floor(Math.random() * n);
-      varTrack.splice(k, 0, varTrack[k]);
-    } else {                                           // one note leaps an octave
-      octIdx = Math.floor(Math.random() * n);
-    }
-    const sp2 = Math.max(50, Math.round(sp1 * 0.85));  // a hair faster — he's warm now
-    prev = null;
-    varTrack.forEach((note, i) => {
-      let f = voiceLeadFreq(note, prev); if (f) prev = f;
-      if (i === octIdx && f) f *= 2;
-      playNoteSound(note, {
-        holdTime: 0.11, fadeTime: 0.08,
-        volume: i % 2 === 0 ? 0.17 : 0.14,
-        freq: f ?? undefined,
-        when: at(tMs + jitter()),
-      });
-      tMs += sp2;
-    });
-
-    // Short tracks stop here — two fast passes IS the shred…
-    if (n < 4) {
-      const last = track[n - 1];                       // …but the ending still rings.
-      playNoteSound(last, {
-        holdTime: 1.0, fadeTime: 0.9, volume: 0.19,
-        bend: RONIN_MONEY_BEND,
-        when: at(tMs + 90),
-      });
-      return;
-    }
-    tMs += 130;                                        // gather for the climax
-
-    // ── PASS 3 — the climax: ascending run, accelerating, then the money note ──
-    const run = [...track].sort((a, b) => pitchIndex(a) - pitchIndex(b));
-    prev = null;
-    run.forEach((note, i) => {
-      let f = voiceLeadFreq(note, prev);
-      // Force the climb (duplicate pitches would voice-lead flat), but cap it
-      // below screech territory.
-      if (f && prev && f <= prev && f < 900) f *= 2;
-      if (f) prev = f;
-      const sp = Math.round(90 - (35 * i) / Math.max(1, run.length - 1)); // 90→55ms accelerando
-      playNoteSound(note, {
-        holdTime: 0.10, fadeTime: 0.07,
-        volume: 0.14 + (0.05 * i) / run.length,        // swelling into the peak
-        freq: f ?? undefined,
-        when: at(tMs + jitter()),
-      });
-      tMs += sp;
-    });
-    // 🎸 The money note — the track's real final note, octave up, ringing long.
-    const last = track[n - 1];
-    const lastF = voiceLeadFreq(last, prev);
-    playNoteSound(last, {
-      holdTime: 1.1, fadeTime: 1.0, volume: 0.2,
-      freq: lastF ? lastF * 2 : undefined,
-      bend: RONIN_MONEY_BEND,
-      when: at(tMs + 40),
-    });
-  }
-
-  // 🤘 METALNESS MONSTER — the commit is a BREAKDOWN: the track dropped two
-  // octaves into chug register and played in GALLOPS (da-da-DUM palm mutes),
-  // trashed up with dissonant slam clusters on the offbeats, capped by a full
-  // power-chord SLAM. His fuzz voice supplies the distortion; this supplies
-  // the violence.
-  function playBreakdownSequence(track) {
-    const n = track.length;
-    if (!n) return;
-    const t0 = getAudioCtx().currentTime + 0.06;          // audio-clock anchor
-    const at = ms => t0 + ms / 1000;
-    let tMs = 60;
-    const jitter = () => (Math.random() - 0.5) * 14;      // tight but human
-    const unit = Math.max(72, Math.min(110, Math.round(560 / n)));
-
-    let prev = null;
-    track.forEach((note, i) => {
-      const f = voiceLeadFreq(note, prev); if (f) prev = f;
-      // Two octaves down = the chug register. If laptop speakers swallow it,
-      // owner's first knob: / 4 → / 2.
-      const low = f ? f / 4 : undefined;
-      if (i === n - 1) return;                            // finale is the SLAM
-      // GALLOP — chug, chug, HIT.
-      [0, 1, 2].forEach(k => {
-        const accent = k === 2;
-        playNoteSound(note, {
-          holdTime: accent ? 0.16 : 0.08, fadeTime: 0.06,
-          volume: accent ? 0.20 : 0.13,
-          freq: low,
-          when: at(tMs + jitter()),
-        });
-        tMs += accent ? unit * 1.6 : unit * 0.7;
-      });
-      // Every third note: a trashing CLUSTER — the chug note smeared against
-      // its own detuned neighbours, struck together. Pure noise-wall.
-      if (i % 3 === 2 && low) {
-        const w = at(tMs + jitter());
-        playNoteSound(note, { holdTime: 0.10, fadeTime: 0.08, volume: 0.13, freq: low * 1.06, when: w });
-        playNoteSound(note, { holdTime: 0.10, fadeTime: 0.08, volume: 0.13, freq: low * 0.94, when: w });
-        tMs += unit * 0.9;
-      }
-    });
-
-    // ── THE SLAM — final note as a power chord (root + fifth + sub-octave),
-    // struck once after a half-beat of dead air, left to ring ugly and long.
-    const lastNote = track[n - 1];
-    const lf = voiceLeadFreq(lastNote, prev);
-    const root = lf ? lf / 2 : undefined;
-    tMs += 90;
-    const wSlam = at(tMs);
-    playNoteSound(lastNote, { holdTime: 1.2, fadeTime: 1.1, volume: 0.22, freq: root, when: wSlam });
-    playNoteSound(lastNote, { holdTime: 1.2, fadeTime: 1.1, volume: 0.15, freq: root ? root * 1.5 : undefined, when: wSlam });
-    playNoteSound(lastNote, { holdTime: 1.2, fadeTime: 1.1, volume: 0.17, freq: root ? root / 2 : undefined, when: wSlam });
-  }
-
-  // 👽 INTERGALACTIC 0 — the commit is a DJ SCRATCH SESSION: each note becomes
-  // a vinyl scratch — rapid frequency sweeps (the "wicka-wicka"), transformer
-  // cuts, chirps, and flares — all driven by the Web Audio API's frequency
-  // automation for smooth, continuous sweeps (not discrete note hops).
-  // The sequence cycles through scratch patterns on a swung hip-hop grid,
-  // finishing with a scribble scratch into a deep sub drop.
-  //
-  // Scratching bypasses playNoteSound to get CONTINUOUS frequency sweeps —
-  // each atom builds its own mini audio graph routed through the Spirit's
-  // tone knobs so drive / tone / echo / verb still apply.
-  function playDJScratchSequence(track) {
-    const n = track.length;
-    if (!n) return;
-    const BEAT = 270;                                       // ~111 BPM quarter note
-    const patterns = ['baby', 'chirp', 'transformer', 'chirp', 'flare', 'baby'];
-    const t0 = getAudioCtx().currentTime + 0.06;            // audio-clock anchor
-    const at = ms => t0 + ms / 1000;
-    let tMs = 60;
-    let prev = null;
-
-    track.forEach((note, i) => {
-      const f = voiceLeadFreq(note, prev); if (f) prev = f;
-      const base = f ?? 330;
-      const last = i === n - 1;
-
-      if (last) {
-        // Finale: scribble scratch → deep sub drop
-        playScratchAtom(note, base, 'scribble', at(tMs));
-        tMs += 380;
-        playNoteSound(note, {
-          holdTime: 0.85, fadeTime: 1.1, volume: 0.22, freq: base / 4,
-          when: at(tMs),
-        });
-        return;
-      }
-
-      const pat = patterns[i % patterns.length];
-      playScratchAtom(note, base, pat, at(tMs));
-
-      // Swung spacing — long-short pairs with tiny humanisation
-      const swing = i % 2 === 0 ? BEAT * 0.62 : BEAT * 0.38;
-      tMs += Math.round(swing + (Math.random() * 16 - 8));
-      if (i % 4 === 3) tMs += Math.round(BEAT * 0.45);     // phrase breath
-    });
-  }
+  // 🪦 playShredSequence / playBreakdownSequence / playDJScratchSequence /
+  // playStrutSequence moved to `audio/commitStyles.js` (2026-09-28), verbatim,
+  // alongside two new builds per Spirit. The scratch ATOM stays here — it needs
+  // the live tone knobs and audio buses.
 
   // ── SCRATCH ATOM — a single vinyl scratch with continuous frequency sweeps ──
   // Builds a lightweight audio graph per scratch and schedules frequency +
   // gain automation for the chosen pattern. Routes through the Spirit's tone
   // stack (drive → distortion → lowpass → echo → verb → master limiter).
-  function playScratchAtom(note, baseFreq, pattern, when) {
+  function playScratchAtom(note, baseFreq, pattern, when, seat) {
     try {
       const ctx = getAudioCtx();
       const now = Math.max(ctx.currentTime, when ?? 0);
-      const kn = toneOf(toneBySpiritRef.current, actingRef.current?.id);
+      const kn = toneOf(toneBySpiritRef.current, seat ?? actingRef.current?.id);
       const V  = TONE_VOICES[kn.voice] ?? TONE_VOICES.saw;
 
       // ── Pattern durations & sweep targets ──
@@ -3627,67 +3463,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     } catch (_) { /* audio unavailable */ }
   }
 
-  // 👑 GLAMARCHY — the commit STRUTS: stomp-stomp-CLAP stadium swagger. Each
-  // note stomps low then answers itself an octave UP (the wide theatrical
-  // leap — the Flair idea from the DESIGN_AUDIT backlog, landed here); every
-  // third pair throws a bright CLAP stab that the echo knob (0.62) turns into
-  // slapback for free. Finish: a glitter glissando up the track's own notes
-  // into a held two-octave chord — the pose, the bow.
-  function playStrutSequence(track) {
-    const n = track.length;
-    if (!n) return;
-    const t0 = getAudioCtx().currentTime + 0.06;          // audio-clock anchor
-    const at = ms => t0 + ms / 1000;
-    let tMs = 60;
-    const unit = Math.max(120, Math.min(170, Math.round(920 / n))); // half-time swagger
-    let prev = null;
-    track.forEach((note, i) => {
-      const f = voiceLeadFreq(note, prev); if (f) prev = f;
-      if (i === n - 1) return;                            // finale below
-      // STOMP — low and fat…
-      playNoteSound(note, {
-        holdTime: 0.22, fadeTime: 0.14, volume: 0.19, freq: f ? f / 2 : undefined,
-        when: at(tMs),
-      });
-      tMs += unit;
-      // …answered an octave up on the offbeat — the hip-swing.
-      playNoteSound(note, {
-        holdTime: 0.12, fadeTime: 0.10, volume: 0.13, freq: f ?? undefined,
-        when: at(tMs),
-      });
-      tMs += Math.round(unit * 0.55);
-      // Every third pair: the CLAP — two octaves up, short and bright.
-      if (i % 3 === 2) {
-        playNoteSound(note, {
-          holdTime: 0.07, fadeTime: 0.08, volume: 0.15, freq: f ? f * 2 : undefined,
-          when: at(tMs),
-        });
-        tMs += Math.round(unit * 0.6);
-      }
-    });
-    // ── GLITTER GLISS — fast run up the track's own notes into the finale.
-    const run = [...track].sort((a, b) => pitchIndex(a) - pitchIndex(b));
-    prev = null;
-    run.forEach((note, i) => {
-      let f = voiceLeadFreq(note, prev);
-      if (f && prev && f <= prev && f < 1200) f *= 2;     // force the climb, capped
-      if (f) prev = f;
-      playNoteSound(note, {
-        holdTime: 0.07, fadeTime: 0.06,
-        volume: 0.10 + (0.05 * i) / run.length,
-        freq: f ?? undefined,
-        when: at(tMs),
-      });
-      tMs += 55;
-    });
-    // ── THE POSE — final note as a wide two-octave chord, held like a bow.
-    const lastNote = track[n - 1];
-    const lf = voiceLeadFreq(lastNote, prev);
-    const wPose = at(tMs + 60);
-    playNoteSound(lastNote, { holdTime: 1.1, fadeTime: 1.0, volume: 0.18, freq: lf ?? undefined, when: wPose });
-    playNoteSound(lastNote, { holdTime: 1.1, fadeTime: 1.0, volume: 0.14, freq: lf ? lf / 2 : undefined, when: wPose });
-  }
-
   // ─── RIFF PLAYBACK ───────────────────────────────────────────────────────────
   // Plays a riff with its real rhythm — durations and rests, not a slop of
   // evenly spaced notes. Transposed to whatever pitch the player started on.
@@ -3804,7 +3579,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         // 🅰️ The hint names the BOARD now, not the tree. Seats 4–6 are found by
         // walking onto a Lost Chord that extends this stack's root.
         const hunting = stackRoot(stack);
-        addLog(`🎸 ${dest === 'sustain' ? 'Sustain' : 'Drive'} stack is full (${destCap} seat${destCap !== 1 ? 's' : ''}).${locked && hunting ? ` 🔓 Find the note that makes ${nextRung(dest === 'sustain' ? (actingNoteState?.sustainSlots ?? 0) : (actingNoteState?.driveSlots ?? 0))?.label} on ${hunting} — it's on the board, and it opens the next seat.` : ''}`);
+        const rung = nextRung(dest === 'sustain' ? (actingNoteState?.sustainSlots ?? 0) : (actingNoteState?.driveSlots ?? 0));
+        // 🎤 Crowd gate first (2026-09-28): name the row before naming the note.
+        const hint = !locked || !hunting || !rung ? ''
+          : !crowdGateMet(actingNoteState ?? {}, rung)
+          ? ` 🎤 Fill row ${rung.row} of your crowd (${crowdSize(actingNoteState ?? {})}/${rung.fansRequired} fans) and the hunt for ${rung.label} opens.`
+          : !unlockTargets(actingNoteState ?? {}, acting?.id)[dest]
+          ? ` 🎼 These notes don't spell one of your chords yet, so nothing on the board can open the next seat — swap out a stray note (×) and follow the notes that glow in your hand.`
+          : ` 🔓 Find the note that makes ${rung.label} on ${hunting} — it's on the board, and it opens the next seat.`;
+        addLog(`🎸 ${dest === 'sustain' ? 'Sustain' : 'Drive'} stack is full (${destCap} seat${destCap !== 1 ? 's' : ''}).${hint}`);
         return;
       }
       const note = noteStock[idx];
@@ -4063,12 +3846,26 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   }
 
   const noteKeyHandlerRef = useRef(() => false);
+  // ⏎ Chord Stack → Melody. One function for the button AND the Enter key
+  // (2026-09-28), so the two can never gate differently.
+  function continueToMelody() {
+    if (!canAct) return;
+    setStackCommitDest(null); setTurnStep('melody');
+    setTimeout(() => showTip('melody'), 300);
+    // 📌 20ms BEHIND `melody`, NOT INSTEAD OF IT. Both queue
+    // and drain in fire order, so this lands as the page-turn
+    // after the melody tip rather than racing it.
+    if (gesturesFor(acting?.id).length) setTimeout(() => showTip('fan_phrases'), 320);
+  }
+
   function keyboardNoteCommit(e) {
     if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return false;
     const t = e.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName ?? ''))) return false;
     if (!acting || !isMyTurn || netSync || isBot(acting)) return false;
     if (battleState || activeEvent) return false;
+    // 🔓 The seat-unlock cinematic holds the board — keys are swallowed, not typed.
+    if (seatUnlockFx && !seatUnlockFx.short) return true;
     // 🎡 W is not a note letter, so it is free to open / close the scale wheel —
     // in every step, since the wheel lives in the pocket now.
     if (WHEEL_DEFAULTS.wKey && (e.key === 'w' || e.key === 'W')) { toggleWheel(); return true; }
@@ -4082,6 +3879,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         driveOpen:   budgetLeft > 0 && (actingNoteState?.driveStack   ?? []).length < actingStackCapDrive,
         sustainOpen: budgetLeft > 0 && (actingNoteState?.sustainStack ?? []).length < actingStackCapSustain,
       };
+      // ⏎ Enter = Continue to Melody (Alex, 2026-09-28). The returned `true`
+      // preventDefaults the keydown, so a focused button is not ALSO clicked.
+      if (e.key === 'Enter') { continueToMelody(); return true; }
       if (e.key === 'Tab') {
         const next = nextStackDest(stackCommitDest, open);
         if (next) setStackCommitDest(next);
@@ -4102,6 +3902,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
 
     // turnStep === 'melody'
+    // ⏎ Enter = ✓ Commit the Melody Track (Alex, 2026-09-28). Never on an empty
+    // track — the button is disabled there, and so is the key.
+    if (e.key === 'Enter') { if (melodyLine.length) confirmNoteTrack(); return true; }
     if (e.key === 'Backspace') {
       if (melodyLine.length) removeMelodyNote(melodyLine.length - 1);
       return true;
@@ -4340,7 +4143,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // here instead of the plain arpeggio, wrote the Riffbook and raised a banner.
     // Retired 2026-08-17 with the library — every commit now plays as the track
     // the player actually composed.
-    playTrackSequence(report.melodyLine, { style: COMMIT_STYLES[characterId(acting?.id)], freqs: melodyFreq });
+    playTrackSequence(report.melodyLine, { seat: acting?.id, freqs: melodyFreq });
     // 🎯 A resolved cadence — the toast. Its crowd already landed as a `fans`
     // effect above, in the position the ordering requires.
     if (report.cadence) {
@@ -6191,7 +5994,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // grants (boss damage, kill blow) too.
   // (🌟 The old SOLOIST ×1.5 all-sources Fame mult was REMOVED here — the
   // Soloist now earns extra FANS instead; see gainFans / gainFansFromDeed.)
-  function grantFame(spiritId, fp, reason, amplify = true) {
+  function grantFame(spiritId, fp, reason, amplify = true, capKind = 'turn') {
     if (fp <= 0) return;
     const sp = spirits.find(s => s.id === spiritId);
     const ns = noteStates[spiritId] ?? {};
@@ -6203,11 +6006,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const uncapped = amplify ? Math.max(fp, Math.round(fp * mult)) : fp;
     // ⛔ Clamp against what this spirit already banked this turn window.
     const earnedSoFar = fameThisTurnRef.current[spiritId] ?? 0;
-    const room        = Math.max(0, FAME_PER_TURN_CAP - earnedSoFar);
+    const cap         = fameCapFor(capKind);
+    const capLabel    = cap === Infinity ? '∞' : cap;
+    const room        = Math.max(0, cap - earnedSoFar);
     const finalFp     = Math.min(uncapped, room);
     const clipped     = uncapped - finalFp;
     if (finalFp <= 0) {
-      addLog(`⭐🚫 ${sp?.name} is already at the ${FAME_PER_TURN_CAP} FP turn cap — the crowd can only scream so loud${reason ? ` (${reason} lost to the noise)` : ''}.`);
+      addLog(`⭐🚫 ${sp?.name} is already at the ${capLabel} FP turn cap — the crowd can only scream so loud${reason ? ` (${reason} lost to the noise)` : ''}.`);
       return;
     }
     fameThisTurnRef.current[spiritId] = earnedSoFar + finalFp;
@@ -6217,7 +6022,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // bites here). The crowd mult / thresholds / win-check below stay client.
     dispatch(fameChanged(spiritId, finalFp));
     const crowdStr = (amplify && uncapped !== fp) ? ` (${fp} ×🎤${mult.toFixed(2)} crowd)` : '';
-    const capStr   = clipped > 0 ? ` ⛔ capped at ${FAME_PER_TURN_CAP}/turn (${clipped} lost to the noise)` : '';
+    const capStr   = clipped > 0 ? ` ⛔ capped at ${capLabel}/turn (${clipped} lost to the noise)` : '';
     addLog(`⭐ ${sp?.name} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${capStr}${reason ? ` — ${reason}` : ''}! (${Math.min(newFame, fameToWin)}/${fameToWin})`);
     // 🎓 Explain FP the first time the PLAYER banks some. Firing on a bot's
     // first point would spend the tip on a moment the player wasn't part of.
@@ -6392,9 +6197,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       const nm = spirits.find(s => s.id === winnerId)?.name;
       addLog(`🔥 UNDERDOG! ${nm} was down ${deficit} Fame — the crowd ROARS! (${base} → ${fp}, ×${mult.toFixed(2)})`);
       triggerEffectFlash(winnerId, '🔥', 'UNDERDOG!', '#ffaa22');
-      grantFame(winnerId, fp, `riff-off win by ${margin}${tierTag}${riderTag}${fxTag}`);
+      grantFame(winnerId, fp, `riff-off win by ${margin}${tierTag}${riderTag}${fxTag}`, true, 'riff');
     } else {
-      grantFame(winnerId, base, `riff-off win by ${margin}${tierTag}${riderTag}${fxTag}`);
+      grantFame(winnerId, base, `riff-off win by ${margin}${tierTag}${riderTag}${fxTag}`, true, 'riff');
     }
     // 🎇 Stage FX bonus fan
     if (stageFxBonus) {
@@ -6435,7 +6240,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       addLog(`🤝 A DUEL FOR THE AGES — both played over ${RIFF_BOTH_PAID_QUALITY}% clean through TWO rounds. The crowd pays them BOTH!`);
       addLog(`🎵 ${loserName} lost the call and still earned it (${loserQual}% clean · ${loseStats.perfects ?? 0}✦) — +${loserFp} FP.`);
       triggerEffectFlash(loserId, '🎵', 'WORTHY!', '#19e6ff');
-      grantFame(loserId, loserFp, `riff-off R2 — ${loserQual}% clean set`);
+      grantFame(loserId, loserFp, `riff-off R2 — ${loserQual}% clean set`, true, 'riff');
     }
     // ── Loser consolation (Round 1 finishes): quality ≥ 80% → 1 FP ──
     // Unchanged. A duel that ended in one round didn't earn the split above,
@@ -9008,7 +8813,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const track = idxs.map(i => riffNoteToPool(side.notes[i])).filter(Boolean);
     if (!track.length) return;
     const freqs = idxs.map(i => side.freqs?.[i] ?? null);
-    playTrackSequence(track, { style: COMMIT_STYLES[characterId(spiritId)], freqs });
+    playTrackSequence(track, { seat: spiritId, freqs });
   }
 
   // Replay a riff-off performance — the result card's ▶ HEAR THE RIFF. Routed
@@ -11200,6 +11005,61 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const gravityVortices = Object.values(noteStates).map(ns => ns.gravityVortex).filter(Boolean);
   const gravityVortex = gravityVortices[0] ?? null;
 
+  // 🎯 THE REACH OF AN ATTACK (Alex, 2026-09-28: "a field of view for hovering
+  // over an attack - Swing or Sonic (or other special ability) that tells the
+  // player the 'reach' … the spaces that glow up"). ONE function for every
+  // ability, built from the SAME sets the click layer and hexFill use — the
+  // Swing cone, the Sonic beam, the Tentacle's cones, the Bushido lane, the warp
+  // and vortex rings — so the glow can never promise a hex the click refuses to
+  // reach. It is PURE READING: shown on hover whether or not the ability can be
+  // fired right now (a greyed button still tells you how far it would go).
+  // `targets` are the hexes in reach holding a VISIBLE rival; the Shadow's decoy
+  // counts like a body, as it does on the buttons' own target counts.
+  const REACH_KINDS = ['swing','sonic','blaster','tentacle','psycho_bushido','gravity_control','displace','shukuchi'];
+  function attackReachFor(kind) {
+    if (!acting || !REACH_KINDS.includes(kind)) return null;
+    const spHex = HEX_BY_NUM[acting.num];
+    if (!spHex) return null;
+    let near = new Set();
+    if (kind === 'swing') near = getSwingCone(acting);
+    else if (kind === 'sonic' || kind === 'blaster') near = getSonicBeam(acting);
+    else if (kind === 'tentacle') { for (const opt of tentacleOptions(engineState, acting)) for (const n of opt.cone) near.add(n); }
+    else if (kind === 'psycho_bushido') {
+      const occupied = bushidoBlockers({ spirits, amps, shadowHexes, selfId: acting.id });
+      for (const step of bushidoLane(acting, occupied)) near.add(step.num);
+    } else if (kind === 'gravity_control' || kind === 'displace') {
+      const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
+      shadowHexes.forEach(n => occupied.add(n));
+      for (const h of ALL_HEXES) {
+        const rings = axialDist(h.q, h.r, spHex.q, spHex.r);
+        if (kind === 'gravity_control' ? rings <= GRAVITY_PLACE_RINGS
+          : rings >= DISPLACE_MIN_RINGS && rings <= DISPLACE_MAX_RINGS && !occupied.has(h.num)) near.add(h.num);
+      }
+    } else if (kind === 'shukuchi') near = shukuchiLandingSet();
+    near.delete(acting.num);
+    // A warp or a hop LANDS — nobody is hit, so nothing is marked as a target.
+    const lands = kind === 'displace' || kind === 'shukuchi';
+    const targets = lands ? [] : [...near].filter(n =>
+      spirits.some(s => s.num === n && s.id !== acting.id && !s.knockedOut && !isHiddenBySmoke(s))
+      || shadowDecoys.some(d => d.num === n && d.id !== acting.id));
+    return { kind, ownerId: acting.id, near: [...near], targets };
+  }
+  // Hovering a button wins; otherwise whatever attack is armed (aiming).
+  const reachKind = hoverPreview ?? (REACH_KINDS.includes(action) ? action : null);
+  const attackReach = board3D && canAct && !battleState ? attackReachFor(reachKind) : null;
+  // The same hover handlers for every ability button. A DISABLED button fires no
+  // mouse events, so they go on a wrapper, exactly as Swing's and Sonic's did.
+  // The flat (2D) board already tints Swing / Sonic / Blaster on hover; the other
+  // abilities only lit while ARMED. This gives them the same hover tint there.
+  const flatReachAll = !board3D && hoverPreview && !['swing','sonic','blaster'].includes(hoverPreview) ? attackReachFor(hoverPreview) : null;
+  const flatReach = flatReachAll ? new Set(flatReachAll.near) : null;
+  const flatReachHit = flatReachAll ? new Set(flatReachAll.targets) : null;
+  const flatReachHue = { tentacle:'#5cff6a', psycho_bushido:'#ffb347', gravity_control:'#9b5cff', displace:'#c77dff', shukuchi:'#e8f4ff' }[hoverPreview] ?? '#ffffff';
+  const reachHover = kind => ({
+    onMouseEnter: () => setHoverPreview(kind),
+    onMouseLeave: () => setHoverPreview(p => p === kind ? null : p),
+  });
+
   function hexFill(hex) {
     // hovering a HUD attack button previews its range like the live mode
     const previewAction = action ?? hoverPreview;
@@ -11259,6 +11119,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (slideHex != null && hex.num === slideHex) return '#44ff4455';
     // 🧪 The road, off the engine — the same one the Slide walks.
     if (slimeByNum.has(hex.num)) return '#44ff4412';
+    if (flatReach?.has(hex.num)) return flatReachHue + (flatReachHit.has(hex.num) ? '55' : '22');
     return "transparent";
   }
 
@@ -11381,6 +11242,58 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const sp = spirits.find(s => s.id === id);
     return sp ? (sp.corner ? playerColor(sp.corner) : (sp.color ?? NEUTRAL_SPIRIT_COLOR)) : NEUTRAL_SPIRIT_COLOR;
   }
+  // ── 🔓 THE SEAT UNLOCK — the moment a stack grows a seat (2026-09-28) ─────
+  // Alex: *"there should be a good dopamine 'hit' when the player unlocks the
+  // slot — thus also unlocking the amp stack build out."* He chose the full
+  // ~3 s cinematic: flash + slam-in title + the new chord (SeatUnlockBurst), the
+  // cabinet dropping onto the amp while the lens pushes in and that Spirit's
+  // stand jumps (arenaVisuals SEAT_UNLOCK), a boom-crash-roar (unlockSfx), then
+  // the Spirit PLAYS the new chord in their signature build. A bot's unlock is
+  // the short version and never holds the board.
+  // ⚠️ IT FIRES ON THE SHEET, NOT ON THE PICKUP. Watching `driveSlots` /
+  // `sustainSlots` rise by exactly one means every client sees it for every
+  // seat — a local find, a bot's, a remote player's relayed one — and a debug or
+  // Testing Grounds jump of several seats at once does not throw a cinematic.
+  const seatSlotsSeenRef = useRef(null);
+  useEffect(() => {
+    const now = {};
+    for (const s of spirits) {
+      const ns = noteStates[s.id];
+      if (ns) now[s.id] = { drive: ns.driveSlots ?? 0, sustain: ns.sustainSlots ?? 0 };
+    }
+    const before = seatSlotsSeenRef.current;
+    seatSlotsSeenRef.current = now;
+    if (!before) return;
+    for (const [id, cur] of Object.entries(now)) {
+      const was = before[id];
+      if (!was) continue;
+      for (const which of ['drive', 'sustain']) {
+        if (cur[which] === was[which] + 1) fireSeatUnlock(id, which, STACK_CAP_BASE + cur[which]);
+      }
+    }
+  }, [noteStates]); // eslint-disable-line react-hooks/exhaustive-deps
+  function fireSeatUnlock(spiritId, which, slot) {
+    const sp = spirits.find(s => s.id === spiritId);
+    const ns = engineRef.current.noteStates?.[spiritId] ?? noteStates[spiritId] ?? {};
+    const stack = [...((which === 'sustain' ? ns.sustainStack : ns.driveStack) ?? [])];
+    const short = isBot(sp);
+    const key = `unlock:${spiritId}:${which}:${slot}:${Date.now()}`;
+    setSeatUnlockFx({ key, spiritId, which, slot, short, notes: stack, name: sp?.name,
+      chord: stack.length ? spiritChord(spiritId, stack).name : null });
+    setTimeout(() => setSeatUnlockFx(p => (p?.key === key ? null : p)), short ? 1300 : 2900);
+    try { const ctx = getAudioCtx(); playUnlockHit(ctx, getAudioBuses(ctx).master, { short }); } catch { /* audio is best effort */ }
+    if (!stack.length) return;
+    if (short) { setTimeout(() => playChord(stack), 250); return; }
+    // 🎸 The new chord, in the Spirit's SIGNATURE build (the first of their set)
+    // — the Ronin shreds it, the Monster breaks it down — once the cabinet lands.
+    const build = COMMIT_STYLE_SETS[characterId(spiritId)]?.[0];
+    setTimeout(() => {
+      // ⚠️ layer:'voice' — the unlock hit IS this moment's noise; a slam or a
+      // blade on top of its boom and crowd would be two noises fighting.
+      if (!build || !playCommitStyle(build, stack, commitApi(spiritId), { layer: 'voice' })) playChord(stack);
+    }, 800);
+  }
+
   function triggerEffectFlash(spiritId, icon, label, color, durationMs = 2800) {
     const key = `fx-${spiritId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setEffectFlashes(prev => [...prev, { key, spiritId, icon, label, color }]);
@@ -12576,9 +12489,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
                         {/* ⛔ Per-turn cap pips — how much more the crowd will take */}
                         <div style={{display:"flex",alignItems:"center",gap:3,marginTop:4}}>
+                          {/* 🎸 No window in Battle of the Bands (∞) — no meter to draw. */}
+                          {Number.isFinite(turnFameCap) && <>
                           <span style={{fontSize:6,letterSpacing:.8,color:"#5a6a7a",fontWeight:700}}>THIS TURN</span>
                           <div style={{display:"flex",gap:2.5}}>
-                            {Array.from({length: FAME_PER_TURN_CAP}, (_, i) => {
+                            {Array.from({length: turnFameCap}, (_, i) => {
                               const lit = i < banked;
                               return (
                                 <span key={i} style={{fontSize:7,lineHeight:1,
@@ -12588,11 +12503,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                               );
                             })}
                           </div>
-                          {banked >= FAME_PER_TURN_CAP && (
+                          {banked >= turnFameCap && (
                             <span style={{fontSize:6,fontWeight:700,color:FAME_NEUTRAL.capped,letterSpacing:.5}}>
                               ⛔ CAPPED
                             </span>
                           )}
+                          </>}
                           {danger && (
                             <span style={{marginLeft:"auto",fontSize:6,fontWeight:800,letterSpacing:.6,
                               color:"#ff8855",textShadow:"0 0 6px #ff440088"}}>
@@ -13205,6 +13121,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
               const canFire = !grayed && inReach.length > 0;
               return (
+                <div style={{position:'relative',display:'inline-block'}} {...reachHover('tentacle')}>
                 <RailBtn className={canFire ? 'btn active' : 'btn'}
                   style={{borderColor:'#5cff6a', color:'#8dffa0', opacity: canFire ? 1 : 0.45}}
                   disabled={!canFire}
@@ -13223,6 +13140,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   }}>
                   🐙 Tentacle{inReach.length > 0 ? ` (${inReach.length})` : ''}{grayed && moveStepsLeft < 1 ? ' (1AP)' : ''}
                 </RailBtn>
+                </div>
               );
             })()}
             {action === 'tentacle' && (
@@ -13313,6 +13231,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const canWarp = canFire(actingNoteState, 'displace');
               return (
                 <>
+                  <div style={{position:'relative',display:'inline-block'}} {...reachHover('displace')}>
                   <RailBtn className={canWarp ? 'btn active' : 'btn'}
                     cooldown={{left:warpCd, max:ABILITY_CD.displace, color:actingHue}}
                     style={{borderColor: canWarp ? actingHue : actingHueDim, color: canWarp ? actingHueLight : actingHueDim}}
@@ -13329,6 +13248,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       : warpCd > 0 ? ` (🕒 ${warpCd}t)`
                       : ` (${dbPts}/${DISPLACE_DB_COST} Db)`}
                   </RailBtn>
+                  </div>
                   {action === 'displace' && (
                     <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
                       onClick={() => setAction(null)}>Cancel</RailBtn>
@@ -13345,6 +13265,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const canOpen = canFire(actingNoteState, 'gravity_control') && !isOpen;
               return (
                 <>
+                  <div style={{position:'relative',display:'inline-block'}} {...reachHover('gravity_control')}>
                   <RailBtn className={canOpen ? 'btn active' : 'btn'}
                     cooldown={{left:gravCd, max:ABILITY_CD.gravity_control, color:actingHue}}
                     style={{borderColor: canOpen ? actingHue : actingHueDim, color: canOpen ? actingHueLight : actingHueDim}}
@@ -13364,6 +13285,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       : gravCd > 0 ? ` (🕒 ${gravCd}t)`
                       : dbPts < GRAVITY_DB_COST ? ` (${dbPts}/${GRAVITY_DB_COST} Db)` : ` (${GRAVITY_DB_COST} Db)`}
                   </RailBtn>
+                  </div>
                   {action === 'gravity_control' && (
                     <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
                       onClick={() => setAction(null)}>Cancel</RailBtn>
@@ -13419,6 +13341,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const showBudget = mid || (cd <= 0 && !poor);
               return (
                 <>
+                  <div style={{position:'relative',display:'inline-block'}} {...reachHover('shukuchi')}>
                   <RailBtn className={live ? 'btn active' : 'btn'}
                     cooldown={{left:cd, max:ABILITY_CD[SHUKUCHI_SKILL], color:actingHue}}
                     style={{borderColor: live ? actingHue : actingHueDim,
@@ -13441,6 +13364,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     🌀 Shukuchi{cd > 0 && !mid ? ` 🕒${cd}` : poor && !mid ? ` (${dbPts}/${SHUKUCHI_DB_COST} Db)` : ''}
                     {showBudget && <ShukuchiBudget hopsLeft={left} mid={mid} pip={actingHueLight} />}
                   </RailBtn>
+                  </div>
                   {armed && (
                     <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
                       onClick={() => setAction(null)}>Cancel</RailBtn>
@@ -13457,6 +13381,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const canDash = cd <= 0 && !poor && moveStepsLeft >= 1 && !actionTokenUsed;
               return (
                 <>
+                  <div style={{position:'relative',display:'inline-block'}} {...reachHover('psycho_bushido')}>
                   <RailBtn className={canDash ? 'btn active' : 'btn'}
                     cooldown={{left:cd, max:ABILITY_CD.psycho_bushido, color:actingHue}}
                     style={{borderColor: canDash ? actingHue : actingHueDim, color: canDash ? actingHueLight : actingHueDim}}
@@ -13473,6 +13398,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         2026-08-22 rule. */}
                     🌀 Bushido{cd > 0 ? ` (🕒 ${cd}t)` : poor ? ` (${dbPts}/${PSYCHO_BUSHIDO_DB_COST} Db)` : ''}
                   </RailBtn>
+                  </div>
                   {action === 'psycho_bushido' && (
                     <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
                       onClick={() => setAction(null)}>Cancel</RailBtn>
@@ -13951,7 +13877,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       <div style={{padding:"11px 11px 9px"}}>
                         <div style={{fontSize:7,color:"#6a8a9a",marginBottom:7}}>
                           {budgetLeft <= 0 ? `✓ budget spent (${STACK_COMMIT_BUDGET}/${STACK_COMMIT_BUDGET}) — continue below`
-                           : `${budgetLeft} commit${budgetLeft !== 1 ? 's' : ''} left — pick a stack then tap a note, or type it (Shift = ♯/♭ · Tab = switch stack)`}
+                           : `${budgetLeft} commit${budgetLeft !== 1 ? 's' : ''} left — pick a stack then tap a note, or type it (Shift = ♯/♭ · Tab = switch stack · Enter = continue)`}
                         </div>
                         {/* 🔴🔵 ONE ROW PER STACK, each in its own bracket wearing
                             its own stat's colour — the same job the colour does on
@@ -14104,12 +14030,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                             `text-transform`, which does not touch `textContent` —
                             so do not "tidy" these strings to match what is drawn. */}
                         <button type="button" className="stack-chip is-go"
-                          onClick={()=>{ if (!canAct) return; setStackCommitDest(null); setTurnStep('melody');
-                            setTimeout(() => showTip('melody'), 300);
-                            // 📌 20ms BEHIND `melody`, NOT INSTEAD OF IT. Both queue
-                            // and drain in fire order, so this lands as the page-turn
-                            // after the melody tip rather than racing it.
-                            if (gesturesFor(acting?.id).length) setTimeout(() => showTip('fan_phrases'), 320); }}
+                          onClick={continueToMelody}
                           style={{width:"100%"}}>
                           {budgetLeft <= 0 ? '✓ Stacks set — Continue to Melody ->' : 'Continue to Melody ->'}
                         </button>
@@ -14125,7 +14046,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 {/* ⌨️ The keyboard route (keyboardNoteCommit) — said once, quietly. */}
                 {turnStep === 'melody' && !hasConfirmed && canAct && !isBot(acting) && (
                   <div style={{fontSize:7,color:"#6a8a9a",margin:"0 0 5px"}}>
-                    ⌨️ Type a–g to play a note · Shift = ♯/♭ · Backspace takes the last one back · W = scale wheel
+                    ⌨️ Type a–g to play a note · Shift = ♯/♭ · Backspace takes the last one back · Enter = commit · W = scale wheel
                   </div>
                 )}
                 {/* 🎸 STACK COMMIT PREVIEW — hover-a-note guidance (inline, instant via hoverScale) */}
@@ -14425,7 +14346,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             ref={boardDivRef}
             className="match-board-frame"
             style={{cursor:isPanningRef.current?"grabbing":"default",
-              ...(boardDiveBomb ? {animation:'board-divebomb 1.1s cubic-bezier(0.22,1,0.36,1) forwards', transformOrigin:'center center'} : {}),
+              // 🐛 THE REAL "ZOOMS REALLY FAR INTO THE ARENA — INTO NOTHING" (Alex,
+              // 2026-09-28, found in his screen recording). The 2D board's opening
+              // flourish spins this whole frame to 7×, blurs it and fades it to
+              // nothing over 1.1 s — and in 3D this frame HOLDS THE ARENA CANVAS,
+              // so every battle opened with the arena spun away into the page's
+              // space background for a second or two before snapping back. The 3D
+              // battle director owns the opening there (its two-shot push-in), so
+              // the flourish is 2D only.
+              ...(boardDiveBomb && !board3D ? {animation:'board-divebomb 1.1s cubic-bezier(0.22,1,0.36,1) forwards', transformOrigin:'center center'} : {}),
             }}
             onMouseDown={handleBoardMouseDown}
             onMouseMove={handleBoardMouseMove}
@@ -14684,7 +14613,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         // naming a note that would not actually open them.
                         const seatRung = SLOT_LADDER[i - STACK_CAP_BASE];
                         const seatRoot = stackRoot(stack);
+                        // 🎤 The crowd gate (2026-09-28) comes first: until your
+                        // grandstand fills that seat's row there is nothing to hunt.
+                        const crowdShort = i === seatCap && seatRung && !crowdGateMet(actingNoteState ?? {}, seatRung);
+                        // 🎼 A full stack of LOOSE notes has no target at all (it must
+                        // spell one of this Spirit's chords) — say so instead of
+                        // sending the player to hunt a note that does not exist.
+                        const noTarget = i === seatCap && seatRoot && !crowdShort && stack.length >= seatCap
+                          && !unlockTargets(actingNoteState ?? {}, acting?.id)[side];
                         const lockTitle = !locked ? undefined
+                          : crowdShort ? `🎤 Seat ${i + 1} — fill row ${seatRung.row} of your crowd first (${crowdSize(actingNoteState ?? {})}/${seatRung.fansRequired} fans), then find ${seatRung.label} on the board`
+                          : noTarget ? `🎼 Seat ${i + 1} — these notes don't spell one of your chords yet, so no Lost Chord can open this seat. Swap out a stray note (×) and follow the notes that glow in your hand.`
                           : i === seatCap && seatRoot ? `🔓 Seat ${i + 1} — find the note that makes ${seatRung?.label} on ${seatRoot} on the board`
                           : i === seatCap ? `🔓 Seat ${i + 1} — commit a note to set this stack's root, then hunt ${seatRung?.label} on it`
                           : `🔒 Seat ${i + 1} — ${seatRung?.label} (${seatRung?.chords}); open seat ${seatCap + 1} first`;
@@ -14796,14 +14735,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   };
                   return (
                     <button onClick={cycle}
-                      title="VOICE — wave/character: LEAD (saw), BUZZ (square), MELLOW (triangle), CLEAN (sine), FUZZ. Click to cycle."
+                      title={`VOICE — ${V.label}. Click to cycle: ${TONE_VOICE_ORDER.map(v => TONE_VOICES[v].label).join(' · ')}.`}
                       style={{fontFamily:"'Saira Stencil One',sans-serif", cursor:"pointer",
                         display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
                         width:36, height:46, borderRadius:6, flexShrink:0,
                         background:"linear-gradient(135deg,#1c1230,#0e0a1e)", border:"2px solid #aa66ff",
                         boxShadow:"0 0 8px #aa66ff44, inset 0 0 4px #aa66ff22"}}>
                       <span style={{fontSize:5,letterSpacing:1,color:"#b98aff",fontWeight:700}}>VOICE</span>
-                      <span style={{fontSize:8,fontWeight:900,color:"#fff",lineHeight:1.1,marginTop:1,textShadow:"0 0 6px #aa66ff"}}>{V.label}</span>
+                      <span style={{fontSize:8,fontWeight:900,color:"#fff",lineHeight:1.1,marginTop:1,textShadow:"0 0 6px #aa66ff"}}>{V.short ?? V.label}</span>
                     </button>
                   );
                 })()}
@@ -14827,6 +14766,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             )}
             <SonicRollPrompt prompt={sonicRollPrompt} onRoll={rollSonicVolley} />
             <SonicBarrageRecord battle={battleState} />
+            <SeatUnlockBurst fx={seatUnlockFx} />
             <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera} topView={topView} onTopView={setTopView}
               quality={arenaQuality} onQualityLabel={setArenaQualityLabel} cameraRef={arenaCameraRef}
               sceneFrame={board3D ? arenaFrame({
@@ -14838,6 +14778,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 tentacle:tentacleFx,
                 // 🔦 The corner lights + who is holding a pose under one.
                 spotlights:{ hexes:engineState.board?.spotlights, poses:engineState.limelight?.spotPoses },
+                // 🔓 The seat-unlock moment — the cabinet drop, the push-in, the stand.
+                unlock:seatUnlockFx,
                 shadowDecoy, shadowDecoys, vortices:gravityVortices, lite:liteFx,
                 // 🟪 The move tiles (board/moveTiles.js): the same `reachable` sets the
                 // SVG click layer uses, so the picture can never offer a step the
@@ -14848,6 +14790,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   : action === 'move_shadow' && acting && shadowDecoy
                     ? { kind:'shadow', ownerId:acting.id, turn:engineState.turn.count, near:[...shadowReachable], steps:shadowSteps, max:shadowIllusion?.stepsMax, hover:hovered }
                     : null,
+                // 🎯 The reach of the hovered / armed attack (board/attackTiles.js).
+                attack:attackReach,
                 // 🎛️ The head dial's numbers — the SAME read the pocket dial makes
                 // (spiritChord, no temp modifiers), so the two can never disagree.
                 stats:Object.fromEntries(spirits.map(s => [s.id, {

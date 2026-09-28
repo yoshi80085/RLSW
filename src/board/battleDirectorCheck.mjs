@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {readFileSync} from 'node:fs';
-import {directorShot,placeBattleDice,frontSide,seatDirection,BATTLE_DIRECTOR} from './battleDirector.js';
+import {directorShot,placeBattleDice,frontSide,seatDirection,BATTLE_DIRECTOR,lensTrouble,clearLens} from './battleDirector.js';
 import {swingTimingFor,SWING_TIMING} from './swingTiming.js';
 import {SONIC_GATE,SONIC_DICE,BARRAGE_LAUNCH} from './sonicBarrageTiming.js';
 import {SONIC_SHIELD_HOLD} from './battleRollGate.js';
@@ -78,6 +78,42 @@ console.log('§1c no lens on the edge of a sheet, none down on the floor (Alex: 
   const side=directorShot({t:S.launch,kind:'sonic',you:'attacker',lane,mid,spirits,facings,
     amps:[new THREE.Vector3(-.93,1,-9),amps[1]],stands,dice:mid,beats:{S},winner:0});
   ok('a charge shot keeps its standee\'s print at most 60° off square',side.kind==='charge'&&squareness(side,0)>=BATTLE_DIRECTOR.printMin-1e-6);
+}
+
+console.log('§1d the clear lens (Alex 2026-09-28: "zooms really far into the arena - into nothing")');
+{
+  const L=BATTLE_DIRECTOR,S={gate:SONIC_GATE,dice:SONIC_DICE,launch:BARRAGE_LAUNCH};
+  // ⚠️ THE CASE THAT BROKE: the attacker's amp is behind it, and the Rival stands
+  // exactly on the far side — where the old charge lens (amp → standee, 4.6 on)
+  // put the camera, right behind the Rival's sheet.
+  const lane=new THREE.Vector3(1,0,0),mid=new THREE.Vector3(.93,.2,0);
+  const spirits=[new THREE.Vector3(0,.2,0),new THREE.Vector3(1.86,.2,0)];
+  const amps=[new THREE.Vector3(-9,1,0),new THREE.Vector3(12,1,4)],stands=[new THREE.Vector3(-10,.3,-6),new THREE.Vector3(10,.3,6)];
+  const base={kind:'sonic',you:'attacker',lane,mid,spirits,amps,stands,dice:mid,beats:{S},winner:0,aspect:1.9};
+  const shot=directorShot({...base,t:S.launch+.2});
+  const flat=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
+  ok('the charge lens never stands within clearNear of either standee',shot.kind==='charge'&&flat(shot.pos,spirits[0])>=L.clearNear-1e-6&&flat(shot.pos,spirits[1])>=L.clearNear-1e-6);
+  ok('…and the Rival is not in the foreground (nearer the lens than the subject)',flat(shot.pos,spirits[1])>=flat(shot.pos,spirits[0])-.3
+    ||lensTrouble(shot.pos,shot.target,{fov:shot.fov,aspect:1.9,spirits,subjects:[0],floor:.2,L})<.05);
+  ok('the charge aims at most chargeReach past its standee, not 30% of the way to a far amp',
+    shot.target.distanceTo(spirits[0].clone().setY(1.5))<=L.chargeReach+1e-6);
+  ok('a clean shot is left exactly where it was asked for',clearLens({pos:new THREE.Vector3(0,6,12),target:new THREE.Vector3(0,1,0),fov:46,aspect:1.9,
+    spirits,subjects:[0,1],floor:.2,L}).yaw===0);
+  // The scene says the asked-for lens is blind (behind a cabinet): it must swing.
+  const blindFrom=new THREE.Vector3(0,6,12);
+  const sees=(from)=>from.distanceTo(blindFrom)<1?0:1;
+  const r=clearLens({pos:blindFrom.clone(),target:new THREE.Vector3(0,1,0),fov:46,aspect:1.9,spirits,subjects:[0,1],floor:.2,L,sees});
+  ok('a lens the scene says is blocked swings round to the nearest clear one',r.bad<.05&&(r.yaw!==0||r.lift!==0)&&Math.abs(r.yaw)<=24);
+  // Memoised per bout: the answer is kept for the length of the shot.
+  const memo=new Map(),calls=[];
+  const counting=(from,pts)=>{calls.push(1);return 1;};
+  directorShot({...base,t:S.launch+.2,memo,sees:counting});const n=calls.length;
+  directorShot({...base,t:S.launch+.4,memo,sees:counting});
+  ok('each shot is settled once and held (no hunting, no per-frame rays)',n>0&&calls.length===n&&memo.has('charge-0'));
+  const twoMemo=new Map();
+  const intro=directorShot({...base,t:0,intro:0,memo:twoMemo,sees:(from)=>from.length()>12?0:1});
+  ok('a push-in whose wide start is blocked starts closer, from the widest clear point',
+    twoMemo.get('intro').from<L.pushFrom&&intro.pos.length()<=12.5);
 }
 
 console.log('§1b the speed lines rush in from the border');

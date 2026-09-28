@@ -20,7 +20,7 @@ import assert from "node:assert";
 import {
   SLOT_LADDER, SLOT_LADDER_MAX, STACK_KEYS,
   stackRoot, nextRung, targetsForStack, unlockTargets, liveUnlockPcs,
-  unlockClaim, applyUnlockClaim,
+  unlockClaim, applyUnlockClaim, crowdSize,
 } from "../music/stackSlots.js";
 import { STACK_CAP_BASE, STACK_CAP_MAX, TOKEN_UNLOCK_SPAWN_SHARE, TOKEN_DRIFT_TURNS } from "../data/gameConstants.js";
 import { makeBoardToken } from "../board/boardHelpers.js";
@@ -129,7 +129,7 @@ console.log("✓ §2 the root: it is stack[0], it survives fraying, and the hunt
     ok(four.filter(i => !three.includes(i)).every(i => t.has(i)), `🎯 ${id}: ${label4} opens its own seat`);
   }
   const ns9 = { driveStack: C, driveSlots: 0, sustainStack: [], sustainSlots: 0,
-    unlockedSkills: ['first'] };
+    casuals: 4 };
   eq(unlockClaim(ns9, 'A#').slot, 4, '…and a find claims ONE seat, the low one');
 }
 console.log("✓ §3 the rungs: each Spirit hunts its own next spelling, and every 4-note spelling can open its own seat");
@@ -138,40 +138,53 @@ console.log("✓ §3 the rungs: each Spirit hunts its own next spelling, and eve
 // 3b. A RUNG IS NOT LIVE MERELY BECAUSE IT EXISTS.
 //
 // A Lost Chord may fill the next seat only after the current stack is full AND
-// the player has reached that seat's upgrade milestone: 1st → 4th, 2nd → 5th,
-// 4th → 6th. This is deliberately asserted through `unlockTargets` rather than
-// its raw pitch helper: this is the contract the board, token pickup, and bot
-// all consume.
+// the Spirit's CURRENT crowd (Diehards + Casuals) has filled that seat's row of
+// the grandstand: row 1 (6) → seat 4, row 2 (12) → seat 5, row 3 (18) → seat 6
+// (Alex, 2026-09-28 — it replaced the ability-upgrade milestone the loadout draft
+// broke). Asserted through `unlockTargets`, the contract the board, the token
+// pickup and the bot all consume. Diehards default to FAN_DIEHARD_START (2).
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  const seat4RootOnly = { driveStack: ['B'], driveSlots: 0, unlockedSkills: ['first'] };
+  eq(SLOT_LADDER.map(r => r.fansRequired).join(','), '6,12,18', '🎤 one grandstand row per seat: 6 / 12 / 18 fans');
+  eq(crowdSize({}), 2, 'a fresh sheet reads as the opening crowd of 2 Diehards');
+  eq(crowdSize({ diehards: 3, casuals: 4 }), 7, 'the crowd is Diehards + Casuals');
+
+  const seat4RootOnly = { driveStack: ['B'], driveSlots: 0, casuals: 4 };
   eq(unlockTargets(seat4RootOnly).drive, null,
      'a root alone cannot make a seat live before Drive is full');
-  const seat4NoUpgrade = { driveStack: ['B','D#','F#'], driveSlots: 0, unlockedSkills: [] };
-  eq(unlockTargets(seat4NoUpgrade).drive, null,
-     'a full three-seat Drive still needs the first upgrade unlock');
-  eq(unlockTargets({ ...seat4NoUpgrade, unlockedSkills: ['first'] }).drive.slot, 4,
-     'the first upgrade plus a full Drive activates the 7th hunt for seat 4');
+  const seat4Short = { driveStack: ['B','D#','F#'], driveSlots: 0, casuals: 3 };
+  eq(unlockTargets(seat4Short).drive, null,
+     '🎤 a full three-seat Drive with 5 fans waits — row 1 is not full');
+  eq(unlockTargets({ ...seat4Short, casuals: 4 }).drive.slot, 4,
+     '🎤 the 6th fan fills row 1 and the seat-4 hunt goes live');
+  eq(unlockTargets({ ...seat4Short, diehards: 6, casuals: 0 }).drive.slot, 4,
+     '🎤 Diehards count toward the row the same as Casuals');
+  eq(unlockTargets({ ...seat4Short, unlockedSkills: ['a','b','c','d'] }).drive, null,
+     '⛔ abilities no longer open seats — only the crowd does');
 
-  const seat5 = { driveStack: ['C','E','G','A#'], driveSlots: 1, unlockedSkills: ['first'] };
-  eq(unlockTargets(seat5).drive, null, 'seat 5 stays gated until the second upgrade');
-  eq(unlockTargets({ ...seat5, unlockedSkills: ['first','second'] }).drive.slot, 5,
-     'the second upgrade plus a full four-seat stack activates seat 5');
+  const seat5 = { driveStack: ['C','E','G','A#'], driveSlots: 1, casuals: 9 };
+  eq(unlockTargets(seat5).drive, null, 'seat 5 waits at 11 fans');
+  eq(unlockTargets({ ...seat5, casuals: 10 }).drive.slot, 5,
+     'row 2 full (12) plus a full four-seat stack activates seat 5');
 
-  const seat6 = { driveStack: ['C','E','G','A#','D'], driveSlots: 2,
-    unlockedSkills: ['first','second','third'] };
-  eq(unlockTargets(seat6).drive, null, 'seat 6 stays gated through the third upgrade');
-  eq(unlockTargets({ ...seat6, unlockedSkills: ['first','second','third','fourth'] }).drive.slot, 6,
-     'the fourth upgrade plus a full five-seat stack activates seat 6');
+  const seat6 = { driveStack: ['C','E','G','A#','D'], driveSlots: 2, casuals: 15 };
+  eq(unlockTargets(seat6).drive, null, 'seat 6 waits at 17 fans');
+  eq(unlockTargets({ ...seat6, casuals: 16 }).drive.slot, 6,
+     'row 3 full (18) plus a full five-seat stack activates seat 6');
+
+  // It is the CURRENT crowd: lose the room and the hunt pauses — but a seat
+  // already opened stays opened (`driveSlots` never goes down).
+  eq(unlockTargets({ ...seat5, casuals: 1 }).drive, null,
+     '🎤 a crowd that walked out pauses the next hunt');
 }
-console.log("✓ §3b eligibility: full stack plus upgrades 1 / 2 / 4 gates seats 4 / 5 / 6");
+console.log("✓ §3b eligibility: full stack plus crowd rows 1 / 2 / 3 (6 / 12 / 18 fans) gate seats 4 / 5 / 6");
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 4. THE CLAIM — per stack, lower seat first, ties to Drive.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const ns = { driveStack: ['C','E','G'], driveSlots: 0,
-               sustainStack: ['A','C','E'], sustainSlots: 0, unlockedSkills: ['first'] };
+               sustainStack: ['A','C','E'], sustainSlots: 0, casuals: 4 };
 
   eq(unlockClaim(ns, 'A#').which, 'drive',   'B♭ is a 7th of C — Drive claims it');
   eq(unlockClaim(ns, 'G').which,  'sustain', 'G is a 7th of A — Sustain claims it');
@@ -182,10 +195,10 @@ console.log("✓ §3b eligibility: full stack plus upgrades 1 / 2 / 4 gates seat
   // 🎯 BOTH STACKS AT ONCE: the LOWER seat wins, and a true tie keeps Drive.
   // Same tie-break `claimAt` uses in `context.js`, written once.
   const same = { driveStack: ['C','E','G'], driveSlots: 0,
-    sustainStack: ['C','E','G'], sustainSlots: 0, unlockedSkills: ['first'] };
+    sustainStack: ['C','E','G'], sustainSlots: 0, casuals: 4 };
   eq(unlockClaim(same, 'A#').which, 'drive', 'identical hunts tie, and the tie goes to Drive');
   const ahead = { driveStack: ['C','E','G','B'], driveSlots: 1,
-    sustainStack: ['C','E','G'], sustainSlots: 0, unlockedSkills: ['first', 'second'] };
+    sustainStack: ['C','E','G'], sustainSlots: 0, casuals: 10 };
   eq(unlockClaim(ahead, 'A#').which, 'sustain',
      '…but a stack still on seat 4 outranks one already hunting seat 5 — a find never skips a rung');
 
@@ -201,7 +214,7 @@ console.log("✓ §4 the claim: per stack, lower seat first, ties to Drive, and 
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const ns = { driveStack: ['C','E','G'], driveSlots: 0, sustainStack: [], sustainSlots: 0,
-    unlockedSkills: ['first'] };
+    casuals: 4 };
   const found = applyUnlockClaim(ns, 'A#');
   eq(found.patch.driveSlots, 1, 'the seat opens');
   eq(found.patch.driveStack, ['C','E','G','A#'], '🎯 …and the note that opened it TAKES it — one gesture');
@@ -221,9 +234,9 @@ console.log("✓ §4 the claim: per stack, lower seat first, ties to Drive, and 
 
   // Three finds walk the whole ladder and then stop.
   let walk = { driveStack: ['C','E','G'], driveSlots: 0, sustainStack: [], sustainSlots: 0,
-    unlockedSkills: ['first'] };
+    casuals: 4 };
   for (const [i, note] of ['A#', 'D', 'A'].entries()) {
-    walk.unlockedSkills = i === 0 ? ['first'] : i === 1 ? ['first', 'second'] : ['first', 'second', 'third', 'fourth'];
+    walk.casuals = i === 0 ? 4 : i === 1 ? 10 : 16;  // 🎤 crowd rows 1 / 2 / 3
     const step = applyUnlockClaim(walk, note);
     ok(step, `find ${i + 1} (${note}) opens seat ${i + 4}`);
     walk = { ...walk, ...step.patch };
@@ -240,14 +253,14 @@ console.log("✓ §5 the patch: the seat opens, the note takes it, the chord cha
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const noteStates = {
-    a: { driveStack: ['C','E','G'], driveSlots: 0, sustainStack: [], sustainSlots: 0, unlockedSkills: ['first'] },
-    b: { driveStack: ['F','A','C'], driveSlots: 0, sustainStack: [], sustainSlots: 0, unlockedSkills: ['first'] },
+    a: { driveStack: ['C','E','G'], driveSlots: 0, sustainStack: [], sustainSlots: 0, casuals: 4 },
+    b: { driveStack: ['F','A','C'], driveSlots: 0, sustainStack: [], sustainSlots: 0, casuals: 4 },
   };
   const all = liveUnlockPcs(noteStates);
   ok(all.has((pc('C') + 10) % 12), "A's hunt is on the board (C7's B♭)");
   ok(all.has((pc('F') + 10) % 12), "…and so is B's (F7's E♭)");
-  const mixed = liveUnlockPcs({ riff_rat: { driveStack: ['C','G','D'], driveSlots: 0, sustainStack: [], unlockedSkills: ['first'] },
-    Metalness_Monster: { driveStack: ['E','F','B'], driveSlots: 0, sustainStack: [], unlockedSkills: ['first'] } });
+  const mixed = liveUnlockPcs({ riff_rat: { driveStack: ['C','G','D'], driveSlots: 0, sustainStack: [], casuals: 4 },
+    Metalness_Monster: { driveStack: ['E','F','B'], driveSlots: 0, sustainStack: [], casuals: 4 } });
   ok(mixed.has(pc('A')) && mixed.has(pc('G#')), '…each seat is read as its OWN Spirit (Rat hunts A, Monster hunts G♯)');
   eq(liveUnlockPcs({}), new Set(), 'no Spirits, no live targets');
   eq(liveUnlockPcs({ x: { driveStack: [], sustainStack: [] } }), new Set(),
@@ -315,7 +328,7 @@ console.log("✓ §7 weighted spawn: it weights, it is a preference not a guaran
   const stale = (num, note) => ({ num, kind: 'chord', note, turnsOnBoard: TOKEN_DRIFT_TURNS });
   const mkState = (tokens, noteStates) => ({ board: { boardTokens: tokens }, noteStates });
 
-  const hunter = { a: { driveStack: ['C','E','G'], driveSlots: 0, sustainStack: [], sustainSlots: 0, unlockedSkills: ['first'] } };
+  const hunter = { a: { driveStack: ['C','E','G'], driveSlots: 0, sustainStack: [], sustainSlots: 0, casuals: 4 } };
   // A♯ is a 7th of C — pinned. D is not — free to drift.
   const st = mkState([stale(10, 'A#'), stale(11, 'D')], hunter);
   const out = applyTokensDrifted(st, { occupied: [] }, () => 0.5).board.boardTokens;
@@ -328,7 +341,7 @@ console.log("✓ §7 weighted spawn: it weights, it is a preference not a guaran
 
   // ⚠️ EVERYBODY'S TARGETS, NOT THE ACTING SPIRIT'S — a note pinned for your rival
   // is pinned for you, which is what makes taking it a real play.
-  const rivalOnly = { b: { driveStack: ['C','E','G'], driveSlots: 0, sustainStack: [], sustainSlots: 0, unlockedSkills: ['first'] } };
+  const rivalOnly = { b: { driveStack: ['C','E','G'], driveSlots: 0, sustainStack: [], sustainSlots: 0, casuals: 4 } };
   const st2 = mkState([stale(10, 'A#')], rivalOnly);
   eq(applyTokensDrifted(st2, { occupied: [] }, () => 0.5).board.boardTokens[0].num, 10,
      "⚠️ a rival's live unlock is pinned for everybody — that is what makes denial a play");
@@ -373,7 +386,7 @@ console.log("✓ §9 the seed: every Spirit ships the two counters at 0 and cann
   eq(STACK_KEYS.map(k => k.which), ['drive', 'sustain'],
      'two stacks, Drive first — which is what makes the tie-break "ties to Drive"');
   for (const k of STACK_KEYS) {
-    const ns = { [k.stack]: ['C','E','G'], [k.slots]: 0, unlockedSkills: ['first'] };
+    const ns = { [k.stack]: ['C','E','G'], [k.slots]: 0, casuals: 4 };
     ok(unlockClaim(ns, 'A#')?.which === k.which, `${k.which} is reachable through the shared list`);
     const p = applyUnlockClaim(ns, 'A#').patch;
     eq(p[k.slots], 1, `${k.which}'s counter is the one that moves`);

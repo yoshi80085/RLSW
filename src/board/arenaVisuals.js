@@ -14,6 +14,7 @@ import { createSonicSequenceVisuals } from './sonicSequenceVisuals.js';
 import { createSonicDiceVisuals, sonicSceneLabel } from './sonicDiceVisuals.js';
 import { createHeadDials } from './headDialVisuals.js';
 import { createMoveTiles } from './moveTiles.js';
+import { createAttackTiles } from './attackTiles.js';
 import { createStandee, STANDEE, STANDEE_Y, standeeYaw } from './standee.js';
 import { wrapClashStandees, STICK_STANDEE } from './swingStandee.js';
 import { directorShot, placeBattleDice, frontSide, BATTLE_DIRECTOR } from './battleDirector.js';
@@ -92,6 +93,27 @@ export function releaseArenaObject(object) {
   for(const r of resources)r.dispose();
 }
 
+// 🔓 THE SEAT UNLOCK (Alex, 2026-09-28: *"there should be a good dopamine 'hit'
+// when the player unlocks the slot — thus also unlocking the amp stack build
+// out. This moment is important."*). The client puts `unlock` on the frame for
+// the length of the moment; here the new cabinet DROPS onto its stack and lands,
+// the whole rig flares in the stack's colour, the lens cuts to the amp and
+// pushes in (through `sonicCamera`'s directed-shot path, so it hands the camera
+// back exactly the way a battle does), and that Spirit's grandstand jumps.
+// A bot's unlock is `short`: the drop and the flare, no camera.
+// ⚠️ The cabinets otherwise NEVER move (2026-09-24, "make sure the amp itself
+// isn't pulsing") — this is a one-shot arrival, not a pulse, and it ends at rest.
+export const SEAT_UNLOCK=Object.freeze({
+  full:2.9, short:1.3,       // s the moment lasts
+  dropAt:.28, land:.7,       // the cabinet appears, then lands (s)
+  dropFrom:3.2,              // how far above its seat it falls from
+  bounce:.18,                // the landing's rebound height
+  flare:5.5, flareFor:1.6,   // rim/status emissive peak, and how long it takes to settle
+  dist0:11.5, dist1:7.2,     // the push-in: from, to
+  lift:1.7,                  // lens height above the rig's centre
+  lines:.7, linesFor:.55,    // speed lines on the cut
+});
+
 export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
   const root=new THREE.Group();root.name='Live match effects';scene.add(root);
   const actors=new THREE.Group();actors.name='Foreground spirits';foregroundScene.add(actors);
@@ -108,20 +130,115 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
   // shows, not the one it is easing toward a frame late.
   const printFacings=ids=>ids.map(id=>{const p=pawns.get(id);if(!p)return null;
     const y=p.userData.targetFacing??p.rotation.y;return new THREE.Vector3(Math.sin(y),0,Math.cos(y));});
+  // 🔭 WHAT THE BATTLE LENS CAN SEE (battleDirector `clearLens`). The share of
+  // `points` with nothing solid between them and `from`: the amp cabinets that
+  // are standing (stacked tiers included), plus whatever the renderer hands in
+  // (`setOccluders` — the grandstands and the lighting truss). A lens inside a
+  // solid's box counts as blind (a ray from inside meets only back faces).
+  // Asked once per shot, never per frame (the director memoises per bout).
+  let extraOccluders=[];
+  const sightRay=new THREE.Raycaster();
+  const shownInScene=o=>{for(let p=o;p;p=p.parent)if(!p.visible)return false;return true;};
+  const opaque=m=>!(Array.isArray(m)?m.every(x=>x.transparent):m?.transparent);
+  let sightList=null,sightStamp=-1;
+  // The solid meshes only (no sprites, no additive FX), each with its world box,
+  // gathered once per tick. A ray is only tested against a mesh's triangles
+  // when it crosses that box — which keeps a whole clear-lens search (hundreds
+  // of rays) to a few milliseconds instead of a visible hitch.
+  // ⚠️ A big mesh (the truss is ~1,800 triangles spanning the whole arena, so
+  // every ray crosses its box) is cut into chunks of world-space triangles with
+  // their own boxes — without that one search spent half a second in the truss.
+  const chunkCache=new WeakMap();
+  const CHUNK=48,triHit=new THREE.Vector3();
+  function chunked(mesh){
+    const g=mesh.geometry,pos=g.attributes.position,index=g.index,count=index?index.count:pos.count;
+    const world=i=>new THREE.Vector3().fromBufferAttribute(pos,index?index.getX(i):i).applyMatrix4(mesh.matrixWorld);
+    const tris=[];for(let i=0;i+2<count;i+=3){const t=[world(i),world(i+1),world(i+2)];t.c=t[0].clone().add(t[1]).add(t[2]);tris.push(t);}
+    // Sort along the longest axis so each chunk is spatially tight.
+    const box=new THREE.Box3().setFromObject(mesh),size=box.getSize(new THREE.Vector3());
+    const axis=size.x>=size.y&&size.x>=size.z?'x':size.y>=size.z?'y':'z';tris.sort((a,b)=>a.c[axis]-b.c[axis]);
+    const chunks=[];for(let i=0;i<tris.length;i+=CHUNK){const part=tris.slice(i,i+CHUNK);chunks.push({tris:part,box:new THREE.Box3().setFromPoints(part.flat())});}
+    return chunks;
+  }
+  // Rebuilt at most every couple of seconds: the furniture barely moves (a fan's
+  // bob is far below what decides a shot), and the build is the costly part.
+  // Rebuilt only when what stands on the board changes (a cabinet appears, a
+  // grandstand is rebuilt for new fans) — it is signed by the objects' ids —
+  // and warmed between bouts (`tick`), so a bout's first shot rarely pays for it.
+  const sightRoots=()=>[...[...rigs.values()].flatMap(r=>r.levels.filter(l=>l.visible)),...extraOccluders.filter(Boolean).flatMap(o=>o.children?.length&&!o.isMesh?o.children:[o])];
+  let sightSign='';
+  const sightSignature=()=>sightRoots().map(o=>o.id+(o.visible?'':'h')).join(',');
+  const sightMeshes=(sign=sightSignature())=>{
+    if(sightList&&sign===sightSign)return sightList;
+    sightSign=sign;sightStamp=clock;sightList=[];
+    // Clusters — one per cabinet, per grandstand, per truss — each with the box of
+    // everything in it, so a ray skips a whole stand of fans in one test.
+    for(const root of sightRoots()){
+      root.updateWorldMatrix(true,true);
+      const items=[];
+      root.traverse(o=>{if(!(o.isMesh&&!o.isSprite&&opaque(o.material)&&shownInScene(o)))return;
+        const tris=(o.geometry.index?.count??o.geometry.attributes.position?.count??0)/3;
+        let box;
+        if(o.isInstancedMesh||o.isSkinnedMesh)box=new THREE.Box3().setFromObject(o,false);
+        else{if(!o.geometry.boundingBox)o.geometry.computeBoundingBox();box=o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);}
+        // Too small to hide a Spirit (a fan's hand, a glow stick): not worth a ray.
+        if(box.getSize(boxHit).length()<.9)return;
+        // Chunks are world-space, so kept only while the mesh has not moved.
+        let chunks=null;
+        if(!o.isInstancedMesh&&!o.isSkinnedMesh&&tris>300&&box.getSize(boxHit).length()>8){const kept=chunkCache.get(o);
+          chunks=kept&&kept.matrix.equals(o.matrixWorld)?kept.chunks:chunked(o);chunkCache.set(o,{matrix:o.matrixWorld.clone(),chunks});}
+        items.push({mesh:o,box,chunks});});
+      if(items.length)sightList.push({box:items.reduce((b,i)=>b.union(i.box),new THREE.Box3()),items});
+    }
+    return sightList;
+  };
+  const sightHits=[],boxHit=new THREE.Vector3();
+  // ⚠️ A ray that STARTS inside a box crosses it, whatever `intersectBox` says —
+  // it reports the EXIT point then, and the truss's box is the whole arena.
+  const crosses=box=>box.containsPoint(sightRay.ray.origin)||sightRay.ray.intersectBox(box,boxHit)&&boxHit.distanceTo(sightRay.ray.origin)<=sightRay.far;
+  function sees(from,points){
+    const meshes=sightMeshes();
+    if(!meshes.length||!points.length)return 1;
+    // A lens INSIDE a solid sees nothing (a ray from inside meets only back faces).
+    if(meshes.some(c=>c.box.containsPoint(from)&&c.items.some(({box,chunks})=>!chunks&&box.containsPoint(from))))return 0;
+    const blocked=()=>{
+      for(const cluster of meshes){if(!crosses(cluster.box))continue;
+      for(const {mesh,box,chunks} of cluster.items){
+        if(!crosses(box))continue;
+        if(chunks){
+          for(const c of chunks){if(!crosses(c.box))continue;
+            for(const [a,b,d] of c.tris)if(sightRay.ray.intersectTriangle(a,b,d,false,triHit)&&triHit.distanceTo(sightRay.ray.origin)<=sightRay.far)return true;}
+          continue;
+        }
+        sightHits.length=0;mesh.raycast(sightRay,sightHits);
+        if(sightHits.some(h=>h.distance<=sightRay.far))return true;
+      }}
+      return false;
+    };
+    let clear=0;
+    for(const p of points){
+      const d=p.clone().sub(from),length=d.length();if(length<1e-6){clear++;continue;}
+      d.divideScalar(length);sightRay.near=0;sightRay.far=length-.15;
+      sightRay.set(from,d);if(blocked())continue;
+      clear++;
+    }
+    return clear/points.length;
+  }
   function battleStage(battle,attacker,defender,amps){
     const a=arenaPoint(attacker.num,.2),b=arenaPoint(defender.num,.2);
     const lane=b.clone().sub(a).setY(0).normalize(),mid=a.clone().lerp(b,.5);
     const stands=[attacker,defender].map(s=>grandstandPlacement(s.corner).position.clone());
     return {lane,mid,amps:amps.map(p=>p?.clone()??null),stands,front:frontSide(lane,mid,amps),
-      ids:[attacker.id,defender.id],you:battle.viewer??'attacker'};
+      ids:[attacker.id,defender.id],you:battle.viewer??'attacker',memo:new Map()};
   }
   // ⭐ THE AFTERMATH — the shove (the game's own consequences, played on the
   // board after the overlay closes) from your chair, then the WINNER's fans,
   // focus pulling onto them as they react. Owned here, not by the camera, so
   // the crowd and the lens read the same clock.
   let aftermath=null;
+  let unlockState=null;      // 🔓 {key,id,role,start,short,rig}
   const AFTERMATH_SECONDS=BATTLE_DIRECTOR.shoveTime+BATTLE_DIRECTOR.fanDelay+BATTLE_DIRECTOR.finalHold;
-  const beginAftermath=(stage,winner)=>{if(stage&&!aftermath)aftermath={stage,winner,since:clock};};
+  const beginAftermath=(stage,winner)=>{if(stage&&!aftermath)aftermath={stage,winner,since:clock,memo:new Map()};};
   function updateSwing(battle) {
     if(!battle?.swingClash){
       if(swing?.stage)beginAftermath(swing.stage,swing.winner);
@@ -159,6 +276,8 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
   const headDials=createHeadDials(root);
   // 🟪 The hexes you can step to, as magenta tiles in the scene (moveTiles.js).
   const moveTiles=createMoveTiles(root,{pointFor:arenaPoint});
+  // 🎯 The hexes the hovered / armed attack can reach (attackTiles.js).
+  const attackTiles=createAttackTiles(root,{pointFor:arenaPoint});
   const clearSonic=()=>{
     if(!sonic)return;
     root.remove(sonic.dice.group,sonic.volley.group);
@@ -378,6 +497,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
     updatePawns(frame);
     headDials.update(frame.spirits,clock*1000,{reduced:reducedMotion});
     moveTiles.update(frame.reach,frame.spirits);
+    attackTiles.update(frame.attack);
     for(const [station,rig] of rigs) {
       const owner=frame.rigs?.find(r=>STATIONS[r.corner]?.includes(station));
       rig.owner=owner;
@@ -433,6 +553,9 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
     tick(time,reduced=false,camera=null) {
       const dt=Math.min(.05,Math.max(0,time-lastTick));lastTick=time;clock=time;reducedMotion=reduced;
       battleShot=null;
+      // 🔭 Warm the battle lens's view of the furniture between bouts (at most
+      // every 3 s), so a bout's opening shot does not pay for building it.
+      if(!sonic&&!swing&&!aftermath&&time-sightStamp>3){const sign=sightSignature();if(sign!==sightSign)sightMeshes(sign);else sightStamp=time;}
       if(sonic) {
         if(sonic.modern){
           // ⚠️ ONE GATED CLOCK, NOT TWO. The sequence holds at `SONIC_GATE`
@@ -447,7 +570,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
           // 🎬 Where the lens goes this second (battleDirector.js).
           // 🎯 Before the Rival throws, the bout opens on the pair (twoShot).
           const sonicIntro=frame.battle?.sonicShieldRollAt==null?clock-sonic.phaseStart0:null;
-          if(!aftermath)battleShot=directorShot({t,intro:sonicIntro,facings:printFacings(sonic.stage.ids),kind:'sonic',you:sonic.stage.you,lane:sonic.stage.lane,mid:sonic.stage.mid,
+          if(!aftermath)battleShot=directorShot({t,intro:sonicIntro,facings:printFacings(sonic.stage.ids),kind:'sonic',memo:sonic.stage.memo,sees,aspect:camera?.aspect,you:sonic.stage.you,lane:sonic.stage.lane,mid:sonic.stage.mid,
             spirits:sonic.stage.ids.map((id,i)=>pawns.get(id)?.position.clone()??(i?sonic.stage.mid:sonic.stage.mid)),
             amps:sonic.stage.amps,stands:sonic.stage.stands,dice:sonic.diceCentre,
             beats:{S:{gate:SONIC_GATE,dice:SONIC_DICE,launch:BARRAGE_LAUNCH}},winner:sonic.winner});
@@ -508,7 +631,11 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
         // 🎯 Before the attacker throws, the bout opens on the pair (twoShot).
         if(swing.openedClock==null)swing.openedClock=clock;
         const swingIntro=frame.battle?.swingRollAt==null?clock-swing.openedClock:null;
-        battleShot=directorShot({t,intro:swingIntro,kind:'swing',you:swing.stage.you,lane:swing.stage.lane,mid:swing.stage.mid,
+        // ⭐ Which way the Swing's prints face: SIDE-ON (the carrier's local x),
+        // which is how they stand from half a second after the Swing opens until
+        // after the strike. Without it the director assumed they faced each other
+        // down the lane and happily filmed a charge shot straight at an edge.
+        battleShot=directorShot({t,intro:swingIntro,kind:'swing',facings:swing.figures.map(f=>new THREE.Vector3(1,0,0).applyQuaternion(f.carrier.getWorldQuaternion(new THREE.Quaternion())).setY(0).normalize()),memo:swing.stage.memo,sees,aspect:camera?.aspect,you:swing.stage.you,lane:swing.stage.lane,mid:swing.stage.mid,
           spirits:swing.figures.map(f=>f.carrier.position.clone()),amps:swing.stage.amps,stands:swing.stage.stands,
           dice:swing.diceCentre,beats:{T:swing.timing.TIMING},winner:swing.winner});
       }
@@ -517,8 +644,8 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
         // A NEW bout on the board ends the old one's aftermath at once.
         const newer=(swing&&swing.stage!==st)||(sonic?.stage&&sonic.stage!==st);
         if(since>AFTERMATH_SECONDS||newer)aftermath=null;
-        else battleShot=directorShot({t:since,kind:'aftermath',facings:printFacings(st.ids),you:st.you,lane:st.lane,mid:st.mid,
-          spirits:st.ids.map((id,i)=>pawns.get(id)?.position.clone()??st.mid.clone()),amps:st.amps,stands:st.stands,
+        else battleShot=directorShot({t:since,kind:'aftermath',memo:aftermath.memo,sees,aspect:camera?.aspect,facings:printFacings(st.ids),you:st.you,lane:st.lane,mid:st.mid,
+          spirits:st.ids.map(id=>pawns.get(id)?.position.clone()??st.mid.clone()),amps:st.amps,stands:st.stands,
           beats:{},winner:aftermath.winner});
       }
       for(const rig of rigs.values())rig.levels.forEach((level,i)=>{
@@ -546,6 +673,46 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
         level.scale.setScalar(1);
         for(const m of rig.materials[i])if(/Status/.test(m.name)&&rig.owner)m.emissiveIntensity=energized?3.2:rig.owner.amps?.[rig.role]?.glow?2.8:.7;
       });
+      // ── 🔓 THE SEAT UNLOCK ──
+      if(frame.unlock&&frame.unlock.key!==unlockState?.key){
+        const u=frame.unlock;
+        const rig=[...rigs.values()].find(r=>r.owner?.id===u.spiritId&&r.role===u.which)??null;
+        // ⚠️ How many cabinets the stack has is read ONCE, off the frame, here —
+        // re-reading "which ones are visible" every tick would find the one this
+        // moment just hid and hide the next one down as well.
+        const count=Math.max(1,Math.min(rig?.levels.length??1,rig?.owner?.amps?.[u.which]?.levels??1));
+        unlockState={key:u.key,id:u.spiritId,role:u.which,slot:u.slot,start:clock,short:!!u.short,rig,count};
+      } else if(!frame.unlock&&unlockState&&clock-unlockState.start>(unlockState.short?SEAT_UNLOCK.short:SEAT_UNLOCK.full))unlockState=null;
+      if(unlockState?.rig){
+        const u=unlockState,t=clock-u.start,rig=u.rig;
+        const shown=rig.levels.slice(0,u.count);
+        // The cabinet the seat added is the top one; seat 6 adds none (it lights the stack).
+        const fresh=u.slot<6&&u.count>1?shown[shown.length-1]:null;
+        for(const level of rig.levels){level.userData.baseY??=level.position.y;level.position.y=level.userData.baseY;}
+        if(fresh&&!reduced){
+          fresh.visible=t>=SEAT_UNLOCK.dropAt;   // both ways: `update()` may not run between ticks
+          if(t<SEAT_UNLOCK.dropAt){/* waiting above, unseen */}
+          else if(t<SEAT_UNLOCK.land){const k=(t-SEAT_UNLOCK.dropAt)/(SEAT_UNLOCK.land-SEAT_UNLOCK.dropAt);fresh.position.y=fresh.userData.baseY+SEAT_UNLOCK.dropFrom*(1-k*k);}
+          else{const k=Math.min(1,(t-SEAT_UNLOCK.land)/.35);fresh.position.y=fresh.userData.baseY+SEAT_UNLOCK.bounce*Math.sin(Math.PI*k)*(1-k);}
+          if(t>=SEAT_UNLOCK.land)once(`unlock-land:${u.key}`,()=>{
+            const box=new THREE.Box3().setFromObject(fresh);pulse(box.getCenter(new THREE.Vector3()).setY(box.min.y),u.role==='drive'?0xff6644:0x44aaff,[u.id]);
+          });
+        }
+        const flare=Math.max(0,1-Math.max(0,t-(fresh?SEAT_UNLOCK.land:0))/SEAT_UNLOCK.flareFor);
+        if(flare>0)for(const mats of rig.materials)for(const m of mats)if(/Rim|Status|Hex cyan/.test(m.name))m.emissiveIntensity=Math.max(m.emissiveIntensity,SEAT_UNLOCK.flare*flare);
+        // 🎥 The lens: cut to the rig from the stage side, then push in.
+        if(!u.short&&!battleShot&&!sonic&&!swing&&!aftermath&&t<SEAT_UNLOCK.full){
+          const box=new THREE.Box3();for(const l of shown)box.expandByObject(l);
+          if(!box.isEmpty()){
+            const c=box.getCenter(new THREE.Vector3());
+            const inward=new THREE.Vector3(-c.x,0,-c.z);if(inward.lengthSq()<1e-6)inward.set(0,0,1);inward.normalize();
+            const k=Math.min(1,t/(SEAT_UNLOCK.full*.85)),e=k*k*(3-2*k);
+            const dist=SEAT_UNLOCK.dist0+(SEAT_UNLOCK.dist1-SEAT_UNLOCK.dist0)*e;
+            battleShot={key:`unlock:${u.key}`,target:c.clone(),pos:c.clone().addScaledVector(inward,dist).add(new THREE.Vector3(0,SEAT_UNLOCK.lift,0)),
+              lines:t<SEAT_UNLOCK.linesFor?SEAT_UNLOCK.lines:0};
+          }
+        }
+      }
       for(const o of hazards.children) {
         const kind=o.userData.kind,t=reduced?0:time;
         if(kind==='fire')o.scale.y=1+Math.sin(t*8+o.position.x)*.2;
@@ -564,20 +731,34 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
       }
       headDials.tick(time*1000,camera,pawns,{reduced});
       moveTiles.tick(time*1000,camera,pawns,{reduced});
+      attackTiles.tick(time*1000,{reduced});
     },
     /** 🧱 What must never show a hex through it: every amp cabinet (all tiers), the Sonic's floor dice and the Swing's (solidLayer.js). */
     solidRoots:()=>[...[...rigs.values()].flatMap(r=>r.levels),sonic?.dice?.group,swing?.dice?.group].filter(Boolean),
     /** 🎬 The director's shot for this frame, or null — `sonicCamera` flies it. */
     battleShot:()=>battleShot,
+    /** 🔭 Scene furniture the battle lens must see past (the renderer's grandstands, the truss). */
+    setOccluders(list){extraOccluders=[...list];},/** Test hook (battleLensHarness): the pawn standing for a Spirit. */
+    /** Test hook (battleLensHarness): what stands for a Spirit on screen — its
+     *  Swing standee while a Swing is live (the pawn is hidden then), else its pawn. */
+    pawnFor:id=>{const i=swing?.stage?.ids.indexOf(id)??-1;return i>=0&&swing.figures?.[i]?swing.figures[i].carrier:pawns.get(id);},
+    /** 🔭 The battle lens's sight test (share of `points` in clear view from `from`). */
+    sees,
     /** 👏 Which crowd is reacting to the bout just fought, and how hard (0–1). */
     crowdReaction:()=>{
+      // 🔓 An unlock brings its own Spirit's stand to its feet.
+      if(!aftermath&&unlockState&&!unlockState.short){
+        const since=clock-unlockState.start;
+        const amount=Math.min(1,since/.4)*Math.min(1,Math.max(0,(SEAT_UNLOCK.full-since)/.6));
+        return amount>0?{winnerId:unlockState.id,loserId:null,tie:false,amount}:null;
+      }
       if(!aftermath)return null;
       const st=aftermath.stage,since=clock-aftermath.since,w=aftermath.winner;
       const amount=Math.min(1,since/.6)*Math.min(1,Math.max(0,(AFTERMATH_SECONDS+.6-since)/.6))*BATTLE_DIRECTOR.cheer;
       return {winnerId:w==null?null:st.ids[w],loserId:w==null?null:st.ids[1-w],tie:w==null,amount};
     },
-    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0),sonicPhase:sonic?.phase??null,hazards:hazards.children.length,headDials:headDials.active(clock*1000),moveTiles:moveTiles.active(),moveTileDetail:moveTiles.diagnostics()}),
-    dispose(){disposed=true;clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length,headDials:headDials.active(clock*1000),moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),moveTileDetail:moveTiles.diagnostics()}),
+    dispose(){disposed=true;clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     get disposed(){return disposed;},
   };
 }

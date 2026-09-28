@@ -957,12 +957,18 @@ export const ELEVEN_AMP_BLOWN_TURNS = 2;
 export const DIAL_MAX        = 10;
 export const DICE_ROLLED_MAX = 8;
 export const DICE_KEPT_MAX   = 5;
-// 🔊 THE ELEVEN DIE (Alex, 2026-09-27): a d12 with eleven faces reading 11 and
-// one reading 1. Goes to 11 swaps it in for one of his dice; it is ALWAYS
-// kept, and its 1 is an absolute fail (≈8%). `11` in a pool array is this die
-// and nothing else — no real die has eleven sides.
+// 🔊 THE ELEVEN DIE (Alex, 2026-09-27; d12 → d6 2026-09-28): a d6 with FIVE
+// faces reading 11 and ONE reading 1. Goes to 11 swaps it in for one of his
+// dice; it is ALWAYS kept, and its 1 is an absolute fail — 1 in 6 (≈17%).
+// ⚠️ Why a d6 and not the d12: at 1 in 12 the fizzle almost never happened, so
+// the move read as a free +7 and nobody sweated the throw. 1 in 6 is roughly
+// break-even on a maxed rig and a real boost on a small one (the underdog's
+// move). 📌 50/50 WITH a whole-throw fizzle was priced and rejected: −23% to
+// −36% on average against not pressing it at all.
+// `11` in a pool array is this die and nothing else — no real die has eleven
+// sides. The LAST face (index ELEVEN_FACES−1) is the 1; every other face is 11.
 export const ELEVEN_DIE   = 11;
-export const ELEVEN_FACES = 12;
+export const ELEVEN_FACES = 6;
 
 export const ATK_BONUS_CAP           = 5;   // hard ceiling on stacked attack bonuses (tempDrive + stance) -- keeps the accumulative wave in check
 export const THRASH_DIE              = 4;   // base die for both attacker and defender in Thrash
