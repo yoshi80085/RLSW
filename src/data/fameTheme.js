@@ -39,7 +39,7 @@ export const FAME = {
   value:   '#ffd700',  // a Fame NUMBER — the thing a player reads off
   glow:    '#ffd700',  // whatever the mark and the value cast
   numGlow: '#ffd700',  // the big number's own halo (parts company under threat)
-  lit:     '#fff6d0',  // a Stage-FX threshold the leader has already passed
+  lit:     '#fff6d0',  // a track notch the leader has already passed (FameRace; the game draws none since 2026-09-29)
   deep:    '#aa7700',  // dark end of the bar ramp
   deepHot: '#cc9900',  // …and the dark end once the bar is ≥75%
   flare:   '#fff3c4',  // the bright end of a pulse

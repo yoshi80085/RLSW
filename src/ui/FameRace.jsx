@@ -68,7 +68,8 @@ import { fameScaleFor } from "../data/gameConstants.js";
  * @param fameToWin  🏆 Legend Run's target. Infinity in Battle of the Bands,
  *                   where it is not used at all — see `scaleMax` below.
  * @param actingId   whose turn it is — their blip gets the ring
- * @param thresholds Stage-FX Fame thresholds, notched into the track
+ * @param thresholds Fame notches for the track. 📌 The game passes none since
+ *   2026-09-29 (Stage FX moved to a round schedule); kept for the render check.
  * @param contested  the leader is inside striking distance of the target and a
  *                   rival is right behind them — presentation only, see
  *                   FAME_RACE_CONTESTED_LEAD in data/gameConstants.js

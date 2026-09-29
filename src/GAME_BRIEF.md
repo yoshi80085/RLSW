@@ -419,8 +419,12 @@ be over the line with the game still running.
 
 ## 12. Stage effects — the board turning hostile
 
-At **8, 16 and 24 stars** (`STAGE_FX_THRESHOLDS`) one effect fires, drawn from a
-per-game shuffled deck so there are no repeats.
+On a **round schedule** (`stageFxSchedule`, 2026-09-29) one effect fires, drawn
+from a per-game shuffled deck so there are no repeats: **round 7**, then every
+5 rounds. Each lasts **3 rounds**, except the last of a timed match, which runs
+to the buzzer — 10 rounds: 7→end · 15: 7–9, 12→end · 20: 7–9, 12–14, 17→end.
+Legend Run: 7–9, 12–14, 17–19. (It used to be ⭐8/16/24 Fame.) The durations
+below are the old fixed ones, still used by the Testing Grounds button.
 
 | Effect | Damage | Spread / count | Duration |
 |---|---:|---|---|

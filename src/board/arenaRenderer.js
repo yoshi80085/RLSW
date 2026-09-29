@@ -11,6 +11,7 @@ import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { BATTLE_DIRECTOR } from './battleDirector.js';
 import { createSpeedLines } from './speedLines.js';
 import { createSolidLayer, markSolid, markOccluders } from './solidLayer.js';
+import { createBeamLayer } from './beamLayer.js';
 import { TOP_OFFSET, onTopAxis } from './topDownView.js';
 import { SCALE, SVG_W, SVG_H } from './constants.js';
 import { preserveTacticalLayer, keepGameplayClicks } from './arenaDom.js';
@@ -33,6 +34,14 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
   try {
     const restoreLayer=preserveTacticalLayer(tacticalElement);
     cleanups.push(restoreLayer);
+    // 🎬 Watched from the very first line, so no texture can start unseen (see settle()).
+    const SETTLE_CAP_MS=2500,assets=THREE.DefaultLoadingManager;
+    let assetsBusy=false;
+    const prevStart=assets.onStart,prevLoad=assets.onLoad,prevProgress=assets.onProgress;
+    assets.onStart=(...a)=>{assetsBusy=true;prevStart?.(...a);};
+    assets.onProgress=(url,done,total)=>{assetsBusy=done<total;prevProgress?.(url,done,total);};
+    assets.onLoad=(...a)=>{assetsBusy=false;prevLoad?.(...a);};
+    cleanups.push(()=>{assets.onStart=prevStart;assets.onProgress=prevProgress;assets.onLoad=prevLoad;});
     const scene=new THREE.Scene();scene.background=new THREE.Color('#030611');
     const overlayScene=new THREE.Scene();
     const foregroundScene=new THREE.Scene();
@@ -83,10 +92,15 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     const bokeh=new BokehPass(scene,camera,{focus:10,aperture:BATTLE_DIRECTOR.aperture/1000,maxblur:BATTLE_DIRECTOR.maxBlur/1000});
     bokeh.enabled=false;composer.addPass(bokeh);
     const output=new OutputPass();composer.addPass(bloom);composer.addPass(output);
+    // 🔊 The Sonic's rings are drawn LAST, over the solids and the standees, and
+    // pass behind nothing but the Spirit they loop round (beamLayer.js). It
+    // carries its own copy of this bloom, because it is no longer under it.
+    const beams=createBeamLayer({foreground,bloom:{strength:bloom.strength,radius:bloom.radius,threshold:bloom.threshold}});cleanups.push(()=>beams.dispose());
     cleanups.push(()=>{bloom.dispose();bokeh.dispose();output.dispose();composer.dispose();});
     const environment=createArenaEnvironment(scene,{overlay:foregroundScene,classicScenery:false});cleanups.push(()=>environment.dispose());
+    environment.setPlanetDistance(RIVEN_WORLD.planetDistance);
     const rivenWorld=createRivenWorld(scene,camera);cleanups.push(()=>rivenWorld.dispose());
-    const visuals=createArenaVisuals(scene,{foregroundScene});cleanups.push(()=>visuals.dispose());
+    const visuals=createArenaVisuals(scene,{foregroundScene,beamScene:beams.scene});cleanups.push(()=>visuals.dispose());
     const crowd=createArenaCrowd(scene);crowd.group.visible=false;cleanups.push(()=>crowd.dispose());
     const crowdSpeaker=document.createElement('div');
     Object.assign(crowdSpeaker.style,{position:'fixed',width:'2px',height:'2px',pointerEvents:'none',opacity:'0'});
@@ -270,7 +284,8 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         }else delete crowdSpeaker.dataset.arenaCrowdSpeaker;
         for(const e of emissives)if(e.crack)e.material.emissiveIntensity=e.base*(reduced?1:1+.08*Math.sin(elapsed*.75));
         renderer.info.reset();composer.render();overlay.render(overlayScene,camera);
-        foreground.clear();markSolid([crowd.group,...visuals.solidRoots()]);solid.render(scene,camera);foreground.render(foregroundScene,camera);dirty=false;
+        foreground.clear();markSolid([crowd.group,...visuals.solidRoots()]);solid.render(scene,camera);foreground.render(foregroundScene,camera);
+        beams.render(camera,{occluderScene:foregroundScene,occluders:visuals.beamOccluders(),bloom:bloom.enabled});dirty=false;
         samples++;
         if(now-sampleStart>2500) {
           fps=Math.round(samples*1000/(now-sampleStart));samples=0;sampleStart=now;
@@ -296,17 +311,38 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     document.addEventListener('visibilitychange',visible);cleanups.push(()=>document.removeEventListener('visibilitychange',visible));
     const lost=event=>{event.preventDefault();failed=true;cancelAnimationFrame(raf);onError();};
     renderer.domElement.addEventListener('webglcontextlost',lost);cleanups.push(()=>renderer.domElement.removeEventListener('webglcontextlost',lost));
+    // 🎬 "READY" MEANS "LOOKS FINISHED", NOT "THE GLB ARRIVED" (Alex, 2026-09-30:
+    // *"I spend a good 5 seconds … looking at all the assets trying to load"*).
+    // BoardViewport keeps a dark veil over the board until onReady, so this waits
+    // for the textures the model's arrival sets off (standees, fans — all on
+    // three's DefaultLoadingManager), compiles the shaders, and lets two frames
+    // land before the veil lifts. Nothing pops in on screen that way.
+    // ⚠️ Capped at SETTLE_CAP_MS: a texture that never answers must cost a
+    // moment, never a board stuck behind the veil.
+    function settle(){
+      const t0=performance.now();
+      const reveal=()=>{if(disposed||failed)return;dirty=true;
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{if(disposed||failed)return;
+          // The loading frames were slow on purpose; judge Auto detail from here.
+          sampleStart=performance.now();samples=0;onReady();}));};
+      const wait=()=>{if(disposed||failed)return;
+        if(assetsBusy&&performance.now()-t0<SETTLE_CAP_MS){setTimeout(wait,50);return;}
+        // Shaders compile here, behind the veil, instead of as a hitch on the first visible frame.
+        let compiled;try{compiled=Promise.all([renderer.compileAsync?.(scene,camera),foreground.compileAsync?.(foregroundScene,camera)]);}catch{compiled=null;}
+        Promise.race([Promise.resolve(compiled).catch(()=>{}),new Promise(done=>setTimeout(done,1500))]).then(reveal);};
+      wait();
+    }
     resize();frameView('arena');raf=requestAnimationFrame(render);
     new GLTFLoader().load(`${import.meta.env.BASE_URL}cosmic-arena/cosmic-arena.glb`,gltf=>{
       if(disposed){releaseArenaObject(gltf.scene);return;}
       try {
-        model=gltf.scene;model.scale.z=-1;emissives=polishArenaModel(model);
+        model=gltf.scene;model.scale.z=-1;emissives=polishArenaModel(model,{ampBrightness:RIVEN_WORLD.ampBrightness});
         rivenWorld.attachModel(model);
         // The crowd owns the larger seats; hide the original modeled copy.
         const oldStands=model.getObjectByName('Stands');if(oldStands)oldStands.visible=false;
         // 🪨 The ground hides the amps' buried bases in the solid re-draw too (solidLayer.js).
         markOccluders([model.getObjectByName('Stage'),rivenWorld.formation]);
-        scene.add(model);visuals.attachModel(model);visuals.setOccluders([crowd.group,model.getObjectByName('Lighting')]);visuals.update(frame);crowd.group.visible=true;dirty=true;onReady();
+        scene.add(model);visuals.attachModel(model);visuals.setOccluders([crowd.group,model.getObjectByName('Lighting')]);visuals.update(frame);crowd.group.visible=true;dirty=true;settle();
       }catch(error){console.error('Arena model setup failed',error);onError();}
     },undefined,()=>{if(!disposed)onError();});
     return {

@@ -284,9 +284,11 @@ pass must state which mode it was tuned in.
 5. **Does the round limit show as a countdown, and does anything change in the
    final round?** A last-round klaxon is the obvious dramatic beat and costs
    nothing mechanically. Flagged, not designed.
-6. **Do stage-FX Fame thresholds still fire?** They are keyed to absolute Fame
-   (`stageFxThresholds`), which is fine in a race and arbitrary in a score game —
-   and about to be doubly arbitrary after an FP inflation pass.
+6. ~~**Do stage-FX Fame thresholds still fire?**~~ ✅ **ANSWERED 2026-09-29
+   (Alex): no — Stage FX fire on a round schedule** (7, then every 5; the last
+   show of a timed match runs to the buzzer). `data/stageEffects.js`
+   `stageFxSchedule`. ⚠️ Legend Run has no buzzer; it got three 3-round shows
+   by default and Alex has not ruled on it.
 
 ---
 

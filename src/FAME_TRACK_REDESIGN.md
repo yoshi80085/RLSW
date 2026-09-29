@@ -119,10 +119,10 @@ Any candidate that breaks one is wrong even if it looks better.
   re-derived for every candidate scale in §3**, not carried over.
 - **The acting ring.** It absorbed the old "▶ `<name>`" badge; whose turn it is
   is now read off the ringed, breathing blip and nothing else says it.
-- **The stage-FX threshold notches**, which exist so the two readouts of the same
-  milestones cannot drift apart. ❓ `WIN_CONDITIONS_DESIGN.md` §6 item 6 already asks
-  whether absolute-Fame thresholds mean anything in a score game — settle that
-  there, not here.
+- ~~**The stage-FX threshold notches**~~ 🪦 **GONE 2026-09-29** — Stage FX left
+  Fame for a round schedule (`WIN_CONDITIONS_DESIGN.md` §6 item 6 is answered), so
+  there is no Fame milestone left to notch. `FameRace` keeps its `thresholds` prop
+  (default `[]`) for the render check; the game passes none.
 
 ---
 

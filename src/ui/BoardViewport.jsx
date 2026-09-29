@@ -15,6 +15,8 @@ import { SVG_W, SVG_H } from '../board/constants.js';
 // reports what "Auto detail" resolved to so the menu can say so.
 // 🪦 The Hold button went with the toolbar: it was the ☰ Auto camera switch inverted,
 // and with both in one menu it would be the same switch listed twice.
+const VEIL_FADE_MS = 600;
+
 export function BoardViewport({ enabled = true, immersive = false, sceneFrame, autoCamera = true, topView = false, onTopView,
   quality = 'auto', onQualityLabel, cameraRef, children }) {
   const mount = useRef(null);
@@ -25,6 +27,19 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
   // 🎥 What the camera is doing — only 'battle-manual' is read, for Follow battle.
   const [cameraState, setCameraState] = useState(null);
   const latest = useRef({});
+  // 🎬 THE LOADING VEIL (Alex, 2026-09-30: *"I spend a good 5 seconds or more
+  // looking at all the assets trying to load - the 2D first, then the 3D"*).
+  // The board is dark until the arena reports ready — which the renderer only
+  // does once the model, its textures and its shaders are all in — then the veil
+  // fades once. Nothing flat is ever painted as a placeholder any more.
+  const ready = enabled && status === 'ready';
+  const failed = status.startsWith('3D unavailable');
+  const [veilGone, setVeilGone] = useState(false);
+  useEffect(() => {
+    if (!ready) { queueMicrotask(() => setVeilGone(false)); return undefined; }
+    const t = setTimeout(() => setVeilGone(true), VEIL_FADE_MS + 50);
+    return () => clearTimeout(t);
+  }, [ready]);
   useEffect(() => {
     latest.current = { sceneFrame, quality, autoCamera, topView, onTopView, onQualityLabel };
     runtime.current?.update(sceneFrame);
@@ -73,7 +88,7 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
     };
   }, [enabled, attempt]);
 
-  return <div data-board-view={enabled ? '3d' : '2d'} data-swing-phase={sceneFrame?.battle?.swingClash ? sceneFrame.battle.phase : undefined} data-sonic-phase={sceneFrame?.battle?.volley ? sceneFrame.battle.phase : undefined} data-arena-ready={enabled && status === 'ready' || undefined} style={enabled
+  return <div data-board-view={enabled ? '3d' : '2d'} data-swing-phase={sceneFrame?.battle?.swingClash ? sceneFrame.battle.phase : undefined} data-sonic-phase={sceneFrame?.battle?.volley ? sceneFrame.battle.phase : undefined} data-arena-ready={ready || undefined} style={enabled
     ? { position: 'relative', width: '100%', ...(immersive ? { height: '100%' } : { aspectRatio: `${SVG_W}/${SVG_H}` }), minHeight: 360, overflow: 'hidden', background: '#030611', borderRadius: 8 }
     : { display: 'contents' }}>
     <style>{`
@@ -86,17 +101,22 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
       [data-board-view="3d"] .arena-tactical .board-outline-glow,
       [data-board-view="3d"] .arena-tactical .board-outline-img { display:none; }
       [data-board-view="3d"] .arena-tactical .hex-g > polygon { stroke:transparent; }
-      [data-arena-ready] [data-arena-flat="spirit"] { display:none; }
-      /* The WebGL arena owns equivalent smoke, laser, pyro, and bot effects.
-         Leaving the SVG copy above the canvas makes it draw through its 3D
-         stand-ins, so suppress that duplicate only once the arena is ready. */
-      [data-arena-ready] [data-arena-flat="stage-fx"] { display:none; }
-      [data-arena-ready] [data-arena-flat="crowd"] { display:none; }
-      /* 🎪 The arena draws the marquees itself (board/marqueeMarkers.js). */
-      [data-arena-ready] [data-arena-flat="marquee"] { display:none; }
+      /* 🎬 The flat 2D art is NEVER shown in 3D, not even while the arena loads
+         (2026-09-30). It used to stand in until ready, which is the "2D first,
+         then 3D" Alex watched for five seconds. The arena owns every one of
+         these: standees, crowd, marquees (marqueeMarkers.js), smoke / laser /
+         pyro / bot effects, amps and the fall. amp-art keeps opacity:0 rather
+         than display:none so its hit area still takes clicks. */
+      [data-board-view="3d"] [data-arena-flat="spirit"],
+      [data-board-view="3d"] [data-arena-flat="stage-fx"],
+      [data-board-view="3d"] [data-arena-flat="crowd"],
+      [data-board-view="3d"] [data-arena-flat="marquee"] { display:none; }
       [data-board-view="3d"] .arena-tactical { pointer-events:auto; }
-      [data-arena-ready] [data-arena-flat="amp-art"] { opacity:0; }
-      [data-arena-ready] [data-arena-flat="fall"] { visibility:hidden; }
+      [data-board-view="3d"] [data-arena-flat="amp-art"] { opacity:0; }
+      [data-board-view="3d"] [data-arena-flat="fall"] { visibility:hidden; }
+      /* Until the arena is up, the targeting SVG is not painted at all — before
+         the renderer adopts it, it would sit flat in the corner of the board. */
+      [data-board-view="3d"]:not([data-arena-ready]) .arena-tactical { visibility:hidden; }
       /* 🟪 The arena draws the move tiles itself (board/moveTiles.js). The SVG's
          9% white fill under them is the old highlight, so hide it once ready. */
       [data-arena-ready] .arena-tactical [data-move-tile] { fill:transparent; }
@@ -105,15 +125,26 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
       .arena-board-status { position:absolute; right:8px; bottom:8px; z-index:30; display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:flex-end; max-width:calc(100% - 16px); pointer-events:auto; }
       .arena-board-status .btn { min-height:26px; padding:4px 9px; color:#9eb7d6; background:#0b1425e6; border-color:#9dbfe43b; font-size:8px; }
       .arena-board-status .btn:hover { color:#e6f5ff; border-color:#75dff0; }
+      .arena-veil { position:absolute; inset:0; z-index:25; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+        background:radial-gradient(ellipse at 50% 55%, #0b1630 0%, #030611 70%); color:#9eb7d6; font-size:11px; letter-spacing:.32em; text-transform:uppercase;
+        opacity:1; transition:opacity ${VEIL_FADE_MS}ms ease; pointer-events:auto; }
+      .arena-veil[data-state="out"] { opacity:0; pointer-events:none; }
+      .arena-veil-bar { position:relative; width:min(220px, 50%); height:2px; overflow:hidden; background:#9dbfe41f; border-radius:2px; }
+      .arena-veil-bar::after { content:''; position:absolute; inset:0; width:40%; background:linear-gradient(90deg, transparent, #75dff0, transparent); animation:arena-veil-sweep 1.4s ease-in-out infinite; }
+      @keyframes arena-veil-sweep { from { transform:translateX(-100%); } to { transform:translateX(250%); } }
+      @media (prefers-reduced-motion: reduce) { .arena-veil { transition:none; } .arena-veil-bar::after { animation:none; width:100%; opacity:.5; } }
       .arena-board-status [role="status"] { color:#ffd89b; background:#090e20ee; padding:6px 8px; font-size:11px; border-radius:4px; }
     `}</style>
     <div ref={mount} style={enabled ? { position: 'absolute', inset: 0 } : { display: 'contents' }} />
     <div ref={layer} className="arena-tactical">{children}</div>
-    {enabled && (status && status !== 'ready' || (autoCamera && cameraState?.mode === 'battle-manual')) &&
+    {enabled && !veilGone && <div className="arena-veil" data-state={ready ? 'out' : 'in'} aria-hidden={ready || undefined}>
+      {!failed && <><span>Loading arena</span><div className="arena-veil-bar" /></>}
+    </div>}
+    {enabled && (failed || (autoCamera && cameraState?.mode === 'battle-manual')) &&
       <div className="arena-board-status" aria-label="Arena status">
         {autoCamera && cameraState?.mode === 'battle-manual' && <button className="btn" onClick={() => runtime.current?.followBattle()}>🎥 Follow battle</button>}
-        {status && status !== 'ready' && <span role="status">{status}</span>}
-        {status.startsWith('3D unavailable') && <button className="btn" onClick={() => { setStatus('Loading arena…'); setAttempt(n => n + 1); }}>Retry arena</button>}
+        {failed && <span role="status">{status}</span>}
+        {failed && <button className="btn" onClick={() => { setStatus('Loading arena…'); setAttempt(n => n + 1); }}>Retry arena</button>}
       </div>}
   </div>;
 }

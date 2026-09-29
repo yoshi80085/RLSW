@@ -6,16 +6,25 @@
 > is lives in its own design doc; what it *taught us* lives in `SEQUENCING.md` §B.
 > **This file answers one question: what is true right now?**
 >
-> 📌 **Written 2026-09-04**, last updated **2026-09-29** (📱 phones; 🌌 the title-screen arena; 🃏 marquee prize cards; earlier: 🔭 the battle camera's clear lens + 🎯 attack reach glows on hover; earlier: 🔊 the Eleven die is a d6; 🎭 the Spirit-select stings; earlier: 🎸 chord vocabularies + keep-the-best dice + the blank-dice fix; earlier: 🔦 the four corner spotlights + no more natural Sustain decay; earlier the same day: player colours only, the seat-portrait preview and the solid layer re-draw; earlier the same day: the 3D Spirit picker and the figure-only standee cut; earlier: the staged-roll stop-gap and the battle director preview; earlier: the auto camera v2 and the 3D move tiles; earlier: the Ronin's palette and amp voice, the weighted note draw, the beginner finder), when the design set
+> 📌 **Written 2026-09-04**, last updated **2026-09-30** (🔊 the Sonic's rings over everything; 🎬 the loading veil; earlier: 🗓️ stage FX on the round clock + 🗄️ phone play archived; earlier: 📱 phones; 🌌 the title-screen arena; 🃏 marquee prize cards; earlier: 🔭 the battle camera's clear lens + 🎯 attack reach glows on hover; earlier: 🔊 the Eleven die is a d6; 🎭 the Spirit-select stings; earlier: 🎸 chord vocabularies + keep-the-best dice + the blank-dice fix; earlier: 🔦 the four corner spotlights + no more natural Sustain decay; earlier the same day: player colours only, the seat-portrait preview and the solid layer re-draw; earlier the same day: the 3D Spirit picker and the figure-only standee cut; earlier: the staged-roll stop-gap and the battle director preview; earlier: the auto camera v2 and the 3D move tiles; earlier: the Ronin's palette and amp voice, the weighted note draw, the beginner finder), when the design set
 > reached 37 files and 222,000
 > words and no single view of the game existed. Keep it short or it stops being
 > read — if a section needs a paragraph, it belongs in its own doc with a link
 > from here.
 
-**2026-09-29 📱 phones** (`ui/phoneLayout.js`): the game was a white screen on every phone (the phone tint's
-`filter` collapsed each full-screen page; now on `<html>`). A phone held sideways gets the dialled-in layout: arena full
-screen, SPIRIT/SOUND rail on the left, everything you tap in a column on the right (44 px), wheel under the rail, ✓ Commit
-pinned; upright asks to be turned. Not yet: split melody fans, round action cluster, left-handed switch, touch copy.
+**2026-09-30 🔊 the Sonic's rings draw over EVERYTHING but the attacker** (`board/beamLayer.js`): the whole clash draws last on the foreground canvas, with the arena's own bloom, over amps, fans, dice and both standees; only the attacking Spirit's print can hide it, which is how the far side of the loop goes behind them. Loses the depth-of-field blur on the beam. `test:beamlayer`. ⏳ Not yet seen by Alex on a real GPU.
+
+**2026-09-30 🎬 the match board opens behind a loading veil** (`ui/BoardViewport.jsx`): dark until the arena is fully in — model, textures and shaders (`arenaRenderer.js` `settle()`, capped 2.5 s + 1.5 s) — then one 0.6 s fade. The flat 2D art (`data-arena-flat`) is never painted in 3D, not even while loading, and the title menu pre-fetches the renderer's code chunk. ⏳ Not yet seen by Alex in a real browser.
+
+**2026-09-29 🗓️ Stage Effects fire on the ROUND CLOCK, not on Fame** (`data/stageEffects.js` `stageFxSchedule`):
+round 7, then every 5; each show lasts 3 rounds, the last of a timed match runs to the buzzer — 10 rounds: 7→end ·
+15: 7–9, 12→end · 20: 7–9, 12–14, 17→end. Random from the seeded no-repeat deck. Pyro cycles for the whole show and an
+armed wave blows as the finale; smoke stops growing at 4 rings. No Fame notches on either track any more.
+⁉️ Legend Run (no buzzer) got 7–9, 12–14, 17–19 by default — not ruled. `test:stagefx` **90**.
+
+**2026-09-29 🗄️ phone play is ARCHIVED** (Alex: *"I don't think it needs to be built out now"*). **Phones are not a
+target — do not design or check for them.** The sideways layout is in `docs/archive/phone-play-2026-09-29/` with a
+restore recipe; only the white-screen fix (the phone tint on `<html>`) stays live, so a phone still loads the desktop layout.
 
 **2026-09-29 🌌 the title screen is the real arena** (`board/titleArena.js`): the match's GLB, Riven World,
 spotlights and a decorative crowd, far off on a long lens, slowly turning to the right of the menu (Alex's dial-in).
@@ -184,6 +193,7 @@ amp voice — `audio/ampVoice.js` `RONIN_LEAD`, commit endings bend up a whole s
 | ⭐ 🔦 **+1 Drive attacking from under your OWN light** — one more die, that attack only, positional | 2026-09-25 | ✅ **BUILT** — Sonic and Swing, preview dice and the reducer both |
 | ⭐ 🔦 **SPOTLIGHT POSE** — costs **1 Sustain** at once, **no Fame**; judged at the start of your next turn on *"still on that hex, still posing"* (the light has always moved by then). **Home** → heal by Vibe left (10–14 → +1, 5–9 → +2, 1–4 → +3). **Rival's** → steal **2 Casuals** (never Diehards) | 2026-09-25 | ✅ **BUILT.** Any displacement breaks it — one invariant after every action (`enforceSpotPoses`). ⚠️ **Bots do not take spotlight poses** (bot parked); they do get the +1 Drive |
 | ⭐ ✨ **A POSE DEFENDS AT SUSTAIN −1, NOT AT NOTHING** — Limelight and spotlight alike | 2026-09-25 | ✅ **BUILT** in `attackParams`. ⁉️ **Open:** a poser is still exempt from Swing fray — that exemption was justified by the old "no defence" rule (`battleFlow.js` `chordFray`) |
+| ⭐ 🗓️ **STAGE FX RUN ON A ROUND SCHEDULE** — 7, then every 5; 3 rounds each, the last of a timed match to the buzzer; random, no repeats | 2026-09-29 | ✅ **BUILT.** `stageFxSchedule` → engine draw → client asks every round. Replaces the ⭐ Fame thresholds (`WIN_CONDITIONS_DESIGN.md` §6 item 6 answered). ⁉️ Legend Run's schedule is a default, not a ruling |
 | 🪦 **NO NATURAL SUSTAIN DECAY** — a quiet turn keeps every Sustain note; only Sonic volleys you took bill the shield (1 per volley, cap 2, root survives) | 2026-09-25 | ✅ **BUILT.** `turnFlow.js`; guarded by `test:sonic` and `test:spotlight` §12. Supersedes `PROJECTILE_COMBAT_DESIGN.md` §0.1's "one natural decay minimum" |
 
 🧊 **BALANCE IS DELIBERATELY DEFERRED while the kit is in flux** (Alex,
@@ -215,6 +225,7 @@ makes a thing *impossible* rather than weak is a bug, not balance.
 - 🎛️ **The amps carry NO label** — ⭐ **2026-09-25, Alex.** The DRIVE/SUSTAIN word plates are gone; what reads is each cabinet's **top-edge glow, red on Drive amps and blue on Sustain amps** (*"what actually does help is the outline over top the amps"*). All eight speakers stay. 🪦 A dial-in-a-speaker was built and pulled the same afternoon (*"far too small to see"*); its files are in `_to_delete/2026-09-25-amp-dial/`.
 - 🪨 **The amps sit IN the stage again, not on it** — 🐛 **FIXED 2026-09-25.** Every amp is modelled from y −0.42 and the Stage top is y 0.08, so half a unit of each cabinet is buried. The solid layer's re-draw (since 2026-09-24) did not know about the Stage and painted that buried base over the board as a dark "foundation" under every amp (Alex spotted it). The Stage and Island now write depth in the solid pass (`solidLayer.js` `OCCLUDER_LAYER` / `markOccluders`). The amp model and stacking are unchanged since 2026-09-08. `test:topview` **55**.
 - 🔦 **The spotlight beams draw over everything** — ⭐ **2026-09-25.** The cones render on the foreground canvas with no depth test (`arenaEnvironment.js` `overlay`), above the board and the solid layer's re-drawn amps, so an amp no longer cuts a beam off. The floor pools stay in the arena.
+- 🔊 **The Sonic's rings draw over everything but the attacker** — ⭐ **2026-09-30.** The clash (beams, shield, build rings, shards, HP plate) is its own scene drawn LAST on the foreground canvas (`beamLayer.js`), bloomed with the arena's settings (off in Lite) and screened on; the attacker's print is its only occluder, so the loop passes behind them on its far side. No depth of field on it.
 - 🎨 **A Spirit's only colour is its PLAYER'S** — ⭐ **NEW 2026-09-25.** P1 blue, P2 orange, then purple and yellow (`playerColor(corner)`). `SPIRIT_DEFS` and the skill routes carry no colour at all. The picker cards and their standees take the colour of the player who is choosing. The standee edge, the fans' halos, every ability flash, the rail buttons, the Bushido lane and Shukuchi's ring all take the owner's colour. The same Spirit picked twice shows as two colours. Colours that mean a thing (slime, damage, pyro) are unchanged. `test:seatportrait` §1
 - 🎭 **The chosen Spirit's head in the seat banner** — ⭐ **NEW 2026-09-25, IN THE GAME at Alex's dial-in** (5 of 33 levers moved: banner 141 px tall, portrait 73% of the banner, backdrop .6, slant 18°, 760 ms slide-in). It is a close-up of the standee's print, cut the standee's way, edged in the player's colour, and it breaks out of the banner's top edge. `ui/seatPortrait.js` + `SeatPortrait.jsx`, mounted by `DraftSeats`. `test:seatportrait` **66**. The preview is `.scratch/seat-portrait-preview.standalone.html`, and a published copy of it exists too.
 - 🎥 **The 3D camera follows the action** — ⭐ **NEW 2026-09-17, reworked the same day (v2).** It stays on the acting Spirit: between actions it changes shot every **20 s** — a close shot (distance 19, tilt 44°), the Spirit's surroundings (it leans toward a rival within 9 rather than framing across the board), a low hero shot. A **move is a slow Ken Burns push-in** that keeps the camera's angle (−11% over 3.6 s, 9° pan, from distance 27). Battles and effects (lasers, pyro, falls, vortex, tentacle) still get their own shots, held 2.3 s. **The wide shot only comes after 60 s of quiet** (no action, new turn or camera grab), and then holds. ⚠️ **Calm by dial-in** (2026-09-18): swing 0.5, drift 0.5°/s, and **breathing OFF** — the slow 0.5°/s drift is the only idle movement left, so it moves, but barely. (Alex turned breathing off in a third one-lever pass the same day.) Dragging, scrolling, pinching or a camera button hands the camera to the player — **a click that picks a hex does not** — and it comes back 6.5 s after the last input. The Sonic shot still owns a volley. ☰ **Auto camera** switch (on by default, per machine); a toolbar badge shows *Auto* / *Yours · auto in N s*. Reduced motion: off. `board/cameraDirector.js`, Alex's dial-in, twice (2026-09-17 then the calmer pass 2026-09-18). `test:cameradirector` **87**. ⚠️ Built while the device shell was down — verified in the cloud on a full copy of the tree (`SEQUENCING.md` §A 26-camtiles)
@@ -358,7 +369,7 @@ end to end.** Neither is a balance item; both are a test disagreeing with the co
 8. **Decide the roster** — Glamarchy out, Riff Rat in? Two docs already assume yes.
 9. 🚨 **Answer the Ronin ledger** — `CHARACTER_HANDOFF.md` → "THE RONIN LEDGER". Four passes made him weaker and each deferred the compensation to the next. ⚠️ **Shukuchi is now built, which does NOT close it** — it is a 6 Db mobility tool where a 12 Db payout used to be, and the 12 Db slot is still empty. 🧊 §B10 does not cover this: it is a slot question, not a balance tweak.
 10. ~~🪦 Delete Wa no Koe properly.~~ ✅ **DONE 2026-09-04.** · ~~🌀 Build Shukuchi.~~ ✅ **DONE headless 2026-09-04.** · ~~🖥️ Port Shukuchi's overlay.~~ ✅ **DONE 2026-09-04e.** · ~~🗡️👤 Step (c), the respec.~~ ✅ **DONE 2026-09-04f.** · ~~💰 Pick the flat unlock number.~~ ✅ **6, DONE 2026-09-04f.** · ~~🗡️ Give Bushido's lane one blocker rule.~~ ✅ **DONE 2026-09-05.**
-11. ~~🌌 Title screen: the 3D arena, far off and turning.~~ ✅ **DONE 2026-09-29** with Alex's dial-in (`board/titleArena.js`). 📌 Portrait phones and `RiffMenu`'s island are open (SEQUENCING 41-title).
+11. ~~🌌 Title screen: the 3D arena, far off and turning.~~ ✅ **DONE 2026-09-29** with Alex's dial-in (`board/titleArena.js`). 📌 `RiffMenu`'s island is open (SEQUENCING 41-title); phones are archived, not open.
 
 ---
 
@@ -368,7 +379,7 @@ end to end.** Neither is a balance item; both are a test disagreeing with the co
 |---|---|
 | **what is true right now** | 🧭 **this file** |
 | what happened, and what it taught | `SEQUENCING.md` (§A live, §B findings, §C index) |
-| the full history | `docs/archive/SEQUENCING-full-through-2026-09-04.md` |
+| the full history | `docs/archive/SEQUENCING-full-through-2026-09-04.md`, then `docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md` |
 | where code lives / "where do I change X?" | `ARCHITECTURE.md` — 🎯 the only machine-checked doc |
 | the game explained from scratch | `GAME_BRIEF.md` |
 | a Spirit's kit | `CHARACTER_HANDOFF.md`, then the per-character design doc |

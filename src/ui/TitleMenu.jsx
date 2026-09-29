@@ -85,6 +85,22 @@ export default function TitleMenu({
     return () => arena?.dispose();
   }, []);
 
+  // ── Warm the match's arena while the menu is up (2026-09-30) ──
+  // The board's renderer is its own code chunk (BoardViewport imports it lazily),
+  // so fetching it here, while the player is still choosing, takes that wait off
+  // the match's loading screen. The GLB itself is already warm: the title arena
+  // above loads the same file. Fire-and-forget; a browser without WebGL skips it.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.WebGLRenderingContext) return undefined;
+    const warm = () => { import('../board/arenaRenderer.js').catch(() => {}); };
+    if (window.requestIdleCallback) {
+      const id = window.requestIdleCallback(warm, { timeout: 3000 });
+      return () => window.cancelIdleCallback?.(id);
+    }
+    const t = setTimeout(warm, 1500);
+    return () => clearTimeout(t);
+  }, []);
+
   // ── Menu music ──
   useEffect(() => {
     const a = new Audio(menuSong3);

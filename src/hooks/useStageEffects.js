@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 // ─── 🎇 STAGE EFFECTS STATE ──────────────────────────────────────────────────
-// Board-level show hazards fired at Fame thresholds (see data/stageEffects.js).
+// Board-level show hazards fired on a round schedule (see data/stageEffects.js).
 // Phase 6b FULL FLIP: the deck, fired thresholds, AND the active effects
 // (smoke/laser/pyro/animatronics) all live in the ENGINE now
 // (engineState.stageFx — see engine/systems/stageFx.js). The only client state

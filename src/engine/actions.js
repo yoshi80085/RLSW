@@ -384,14 +384,25 @@ export function burnTicked(spiritId) {
 }
 
 /**
- * Phase 6b — a Fame threshold (⭐8/16/24) was crossed: the engine records the
- * fired threshold (exactly-once, replacing the client firedRef Set) and draws
- * the next effect off the SEEDED deck. The client reads the report off
- * `state.stageFx.lastDraw` and runs the activation cinematic; the crossing
- * detection itself stays in grantFame until fame thresholds move engine-side.
+ * 📌 LEGACY — the old Fame-threshold draw (⭐8/16/24). Nothing in the game
+ * dispatches it since 2026-09-29; it stays so replay logs recorded before then
+ * (and the determinism fixtures built from them) still resolve identically.
+ * New code wants `stageFxScheduled`.
  */
 export function stageFxDrawn(threshold) {
   return { type: STAGE_FX_DRAWN, threshold };
+}
+
+/**
+ * 🗓️ A round opened — ask the schedule whether a Stage Effect starts on it
+ * (round 7, then every 5; `data/stageEffects.js` `stageFxSchedule`). Safe to
+ * dispatch on EVERY round: an unscheduled or already-fired round is a dead draw
+ * (`lastDraw: null`). A live draw reports `{ round, untilRound, rounds, fxId }`
+ * and the client activates `fxId` with `rounds` as its length. Same action type
+ * as the legacy draw, so the dedup and the deck are shared.
+ */
+export function stageFxScheduled(round) {
+  return { type: STAGE_FX_DRAWN, round };
 }
 
 /**
@@ -401,9 +412,15 @@ export function stageFxDrawn(threshold) {
  * animatronics must avoid (spirits + amps — amps are still client-owned, so
  * the client passes the list; the RIFF_RESULTS context pattern). The client
  * plays the activation cinematic off `state.stageFx.lastActivation`.
+ * `rounds` (from the scheduled draw) is how long the show lasts; omitted, each
+ * effect keeps its old fixed length (legacy replays, the Testing Grounds).
  */
-export function stageFxActivated(fxId, occupied = []) {
-  return { type: STAGE_FX_ACTIVATED, fxId, occupied };
+export function stageFxActivated(fxId, occupied = [], rounds) {
+  // ⚠️ `rounds` is left OFF the action when not given, rather than written as
+  // undefined, so a legacy log's action and a fresh one compare equal.
+  return rounds == null
+    ? { type: STAGE_FX_ACTIVATED, fxId, occupied }
+    : { type: STAGE_FX_ACTIVATED, fxId, occupied, rounds };
 }
 
 /**

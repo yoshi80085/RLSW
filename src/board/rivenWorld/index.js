@@ -1,15 +1,17 @@
 import * as THREE from 'three';
 import { createFormation, disposeObject } from './formation.js';
 import { createDriftingDebris } from './debris.js';
-import { createNebula } from './nebula.js';
+import { createNebula, updateNebulaFlashes } from './nebula.js';
 import { createLightning } from './lightning.js';
 
-// Approved Riven World dial-in, 2026-09-28. Game settings never read preview storage.
+// Approved Riven World dial-in, 2026-09-29. Game settings never read preview storage.
 export const RIVEN_WORLD = Object.freeze({
   depth:13.5, fracture:1.5, brightness:2.1, branches:9, interval:6.5,
   duration:1.6, nebula:.8, debris:1.5, bloom:.54, breath:.13,
   breathPeriod:12, cloudMotion:1.25, debrisDrift:1.05,
   rockBrightness:.85, rockColor:'#263a60', puffiness:1,
+  lightningSoftness:1, creviceFollow:1, planetDistance:2.3, ampBrightness:.55,
+  nebulaFlashStrength:1, nebulaFlashInterval:42,
 });
 
 export function createRivenWorld(scene, camera) {
@@ -40,6 +42,7 @@ export function createRivenWorld(scene, camera) {
       if(!reduced){time+=dt;cloudTime+=dt*RIVEN_WORLD.cloudMotion;}
       uniforms.time.value=time;uniforms.cloudTime.value=cloudTime;
       uniforms.breath.value=reduced?0:RIVEN_WORLD.breath;
+      updateNebulaFlashes(nebula,time,{reduced,strength:RIVEN_WORLD.nebulaFlashStrength,interval:RIVEN_WORLD.nebulaFlashInterval});
       debris.update(dt,{amount:RIVEN_WORLD.debris,speed:RIVEN_WORLD.debrisDrift,
         reduced,brightness:RIVEN_WORLD.rockBrightness,color:RIVEN_WORLD.rockColor});
       storm.update(time,reduced);

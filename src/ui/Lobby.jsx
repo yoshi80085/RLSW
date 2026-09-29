@@ -374,9 +374,11 @@ export function Lobby({ onStart, onBackToMenu }) {
                 runs with elimination OFF (`state.js` pairs them), so lives are
                 never decremented at all — a knock-down still scatters your
                 notes, resets your Vibe and pays the attacker, it just cannot end
-                your match. The control is DIMMED rather than hidden: the number
-                still shapes the Stage-FX thresholds, and hiding a setting that
-                is still doing something is its own kind of lie. */}
+                your match. The control is DIMMED rather than hidden.
+                📌 The reason given here used to be that the number still shaped
+                the Stage-FX thresholds; since 2026-09-29 Stage FX run on the
+                round schedule and it no longer does, so whether to hide it is
+                an open UI call, not a settled one. */}
             <div style={{display:"flex",alignItems:"center",gap:6,opacity:winCondition==='rounds'?0.45:1}}
               title={winCondition==='rounds'
                 ?"Nobody is eliminated in Battle of the Bands — a knock-down still costs you the crowd and your Vibe, but it cannot end your match."

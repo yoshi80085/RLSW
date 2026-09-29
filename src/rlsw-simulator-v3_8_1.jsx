@@ -97,7 +97,7 @@ import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
 import { bankLostChord, chargeSparkPatch } from "./engine/systems/board.js";
-import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxDrawn, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted,
+import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineMoveStep, beatsSpent, spiritWarped, spiritFaced, spiritEliminated, spiritsSynced, spiritPatched, riffOffStarted, riffResultsSubmitted, riffResolved, riffRound2Started, riffClosed, attackRolled, attackRerolled, damageApplied, knockdownResolved, winnerDeclared, noteStatesSynced, fameChanged, fansChanged, noteSheetPatched, fansTicked, debuffsTicked, burnTicked, stageFxScheduled, stageFxActivated, stageFxTurnTicked, stageFxRoundTicked, tokensScattered, flamingDecayed, eventRespawnTicked, eventHexSpawned, chargeZonesTicked, eventHexTriggered, thrashTokensSpawned, tokenPickedUp, chargeZoneUsed, flamingHexesSet, randomBatchDrawn, headlinerChanged, tokensDrifted,
   // 🧪 the slime trail (METALNESS_REWORK_DESIGN.md §3)
   slimeDecayed, slimeCleared, spiritSlid, slimeCalled, elevenCalled,
   // ✨ the Limelight (§3.3) — engine state since 2026-08-17, §6.6.8
@@ -600,19 +600,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const fameCapFor    = (kind) => kind === 'riff'
     ? turnFameCap * (RIFF_FP_TURN_CAP / FAME_PER_TURN_CAP) : turnFameCap;
 
-  /* 🎇 Stage FX fires once per life, evenly spaced across the scale.
-     ⚠️ IT DIVIDES BY THE RULER, NOT THE RULE. Against Infinity every threshold
-     would be Infinity and the stage effects would silently never fire again —
-     a whole subsystem switched off by a mode flip, with nothing on screen to
-     say so. ❓ WIN_CONDITIONS_DESIGN.md §6 item 6 asks whether absolute-Fame
-     thresholds mean anything in a score game at all; until that is settled they
-     spread across the scale, which keeps them firing and keeps them meaning
-     "you are doing well". */
-  const stageFxThresholds = (() => {
-    const count = startingLives;
-    const interval = fameScale / (count + 1);
-    return Array.from({ length: count }, (_, i) => Math.round(interval * (i + 1)));
-  })();
+  /* 🗓️ Stage FX no longer ride Fame (2026-09-29): they fire on a round schedule
+     — round 7, then every 5 — decided in the engine (`stageFxScheduled`, asked
+     from `endTurn`'s roundCompleted block). The Fame thresholds that used to
+     live here, and the notches they drew on both Fame tracks, are gone with it. */
   // ⛔ FP banked per spirit inside the CURRENT turn window — grantFame clamps
   // against FAME_PER_TURN_CAP; startNewTurnNotes resets the whole map. A ref
   // (not state): it's bookkeeping for timeout-chained grants, never rendered.
@@ -2074,7 +2065,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const flamingHexes = engineState.board.flamingHexes;
 
   // ─── 🎇 STAGE EFFECTS ── (ENGINE-owned — Phase 6b full flip) ────────────────
-  // Board hazards fired once each at ⭐8/16/24 — seeded deck, no repeats. The
+  // Board hazards fired on the round schedule (7, then every 5) — seeded deck, no repeats. The
   // active effects (smoke/laser/pyro/animatronics) now live in
   // engineState.stageFx; these are render views. Hazard checks inside timeout
   // chains read engineRef.current.stageFx (synchronously fresh — the old
@@ -4596,7 +4587,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (skillId === 'ultimate')     addLog(`💀 ${spirit?.name} — ULTIMATE ABILITY UNLOCKED!`);
     // (The old stage-effect skills — laser_show / stage_light / fog_machine /
     //  pyrotechnics — were RETIRED. Stage Effects now live on the board and fire
-    //  at Fame thresholds: see the STAGE EFFECTS SYSTEM + data/stageEffects.js.)
+    //  on the round schedule: see the STAGE EFFECTS SYSTEM + data/stageEffects.js.)
   }
 
   // Called when player selects a skill to target (from the overlay).
@@ -4856,8 +4847,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
     // ⚠️ RETIRED — the old stage-effect skill battle buffs (laser_show halving
     // the defender's die, stage_light heal-on-win, fog_machine -1/-1, and the
-    // pyrotechnics +d6) are gone. Stage Effects live ON THE BOARD now, fired at
-    // Fame thresholds (see STAGE EFFECTS SYSTEM). The flags below stay in the
+    // pyrotechnics +d6) are gone. Stage Effects live ON THE BOARD now, fired on
+    // the round schedule (see STAGE EFFECTS SYSTEM). The flags below stay in the
     // skillMods shape so downstream battle code/overlay visuals stay inert
     // rather than crashing — they are always false/0.
     const halveDef         = false;
@@ -5744,7 +5735,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const meta = STAGE_FX_META[fxId];
     if (!meta) { addLog(`🧪 Unknown stage FX: ${fxId}`); return; }
     addLog(`🧪 TEST → ${meta.icon} ${meta.name.toUpperCase()}`);
-    activateStageFx(fxId, 0);
+    activateStageFx(fxId, { round: engineRef.current.turn?.round });
   }
   // Quick resource grants to the acting spirit. Add a case here + a button below
   // to expose a new lever for testing.
@@ -5915,34 +5906,36 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // imported at the top of this file (single source of truth for the tables).
 
   // ─── 🎇 STAGE EFFECTS SYSTEM ─────────────────────────────────────────────────
-  // The production escalates with the show: the FIRST time ANY Spirit crosses
-  // ⭐8 / ⭐16 / ⭐24 total Fame, the next Stage Effect in this game's shuffled
-  // deck fires (each threshold once per game). Effects are global board
-  // spectacle/hazards — they hit everyone, bots included. Tuning lives in
+  // The production escalates with the show: on a ROUND SCHEDULE (Alex,
+  // 2026-09-29) — round 7, then every 5; each show lasts 3 rounds and the last
+  // one of a timed match runs to the buzzer — the next Stage Effect in this
+  // game's shuffled deck fires. Effects are global board spectacle/hazards —
+  // they hit everyone, bots included. The schedule and tuning live in
   // data/stageEffects.js; geometry in board/stageFx.js.
-  // (Earned-lens note: deliberately NOT a payout — a hazard tied to collective
-  // fame progress. Stated trade-off per the STICs + Earned checklist.)
+  // 🪦 Until 2026-09-29 they fired when any Spirit first crossed a Fame
+  // threshold, which let the leader's pace decide when (and whether) the show
+  // happened at all.
 
-  // Called from grantFame with the spirit's fame before/after the grant.
-  function checkStageFxThresholds(oldFame, newFame) {
-    for (const t of stageFxThresholds) {
-      if (oldFame < t && newFame >= t) {
-        // Phase 6b — the engine records the threshold (exactly-once) and draws
-        // from the SEEDED deck; a duplicate crossing reports lastDraw = null.
-        const draw = dispatch(stageFxDrawn(t)).stageFx.lastDraw;
-        if (draw?.threshold === t) {
-          // Let the fame log land first, then hit the lights.
-          setTimeout(() => activateStageFx(draw.fxId, t), 650);
-        }
-      }
-    }
+  // Called from endTurn's roundCompleted block with the round that just OPENED.
+  // ⚠️ Ask on every round and let the ENGINE say no: the schedule is decided
+  // in exactly one place (`stageFxSchedule`), and a second copy of "7, 12, 17"
+  // here is the drift §B1 is about.
+  function checkStageFxSchedule(round) {
+    const draw = dispatch(stageFxScheduled(round)).stageFx.lastDraw;
+    if (draw?.round === round) activateStageFx(draw.fxId, { round, rounds: draw.rounds, untilRound: draw.untilRound });
   }
 
-  function activateStageFx(fxId, threshold) {
+  // `show` = { round, rounds, untilRound } from a scheduled draw. The Testing
+  // Grounds button passes no `rounds`, which gives each effect its old length.
+  function activateStageFx(fxId, show = {}) {
     const meta = STAGE_FX_META[fxId];
     if (!meta) return;
-    addLog(`🎇 STAGE EFFECT — the show hits ⭐${threshold}: ${meta.icon} ${meta.name.toUpperCase()}!`);
-    setStageFxBanner({ id: fxId, threshold, key: Date.now() });
+    const { round, rounds, untilRound } = show;
+    const toBuzzer = rounds != null && roundLimit != null && untilRound === roundLimit;
+    const howLong = (legacyRounds) => toBuzzer ? 'until the final buzzer'
+      : `${rounds ?? legacyRounds} round${(rounds ?? legacyRounds) !== 1 ? 's' : ''}`;
+    addLog(`🎇 STAGE EFFECT${round != null ? ` — round ${round}` : ''}: ${meta.icon} ${meta.name.toUpperCase()}!`);
+    setStageFxBanner({ id: fxId, round, key: Date.now() });
     setTimeout(() => setStageFxBanner(prev => (prev?.id === fxId ? null : prev)), 5300);
 
     // Phase 6b — the ENGINE creates the active effect (beam patterns / pyro
@@ -5953,18 +5946,18 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // spawning *underneath* a standee would out it as an empty tile.
     const occupied = [...spirits.map(s => s.num), ...amps.map(a => a.hexNum),
       ...shadowHexes];
-    const st = dispatch(stageFxActivated(fxId, occupied)).stageFx;
+    const st = dispatch(stageFxActivated(fxId, occupied, rounds)).stageFx;
     if (fxId === 'smoke_machine') {
-      addLog(`💨 Smoke floods the centre stage — Spirits in the cloud vanish from view! It spreads each round (${SMOKE_ROUNDS} rounds).`);
+      addLog(`💨 Smoke floods the centre stage — Spirits in the cloud vanish from view! It spreads each round (${howLong(SMOKE_ROUNDS)}).`);
     }
     if (fxId === 'laser_show') {
-      addLog(`🔺 Lasers rake the stage — they thread AROUND the Spirits, but crossing a beam costs ${LASER_DAMAGE} Vibe. New pattern every round (${LASER_ROUNDS} rounds).`);
+      addLog(`🔺 Lasers rake the stage — they thread AROUND the Spirits, but crossing a beam costs ${LASER_DAMAGE} Vibe. New pattern every round (${howLong(LASER_ROUNDS)}).`);
     }
     if (fxId === 'pyrotechnics') {
-      addLog(`🎆 Pyro charges prime under ${st.pyro?.hexes.length ?? 0} empty hexes — they glow red and BLOW next round! (${PYRO_WAVES} waves)`);
+      addLog(`🎆 Pyro charges prime under ${st.pyro?.hexes.length ?? 0} empty hexes — they glow red and BLOW next round! (${rounds != null ? howLong() : `${PYRO_WAVES} waves`})`);
     }
     if (fxId === 'animatronics') {
-      addLog(`🤖 ${st.animatronics.length} animatronics wake on the stage edge — they stalk the nearest Spirit once a round (${ANIMATRONIC_ROUNDS} round${ANIMATRONIC_ROUNDS !== 1 ? 's' : ''})!`);
+      addLog(`🤖 ${st.animatronics.length} animatronics wake on the stage edge — they stalk the nearest Spirit once a round (${howLong(ANIMATRONIC_ROUNDS)})!`);
     }
   }
 
@@ -6020,7 +6013,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const pr = report.pyro;
     // 🎆 PYRO — armed hexes blew; spent flames re-arm the next wave (finale bigger).
     if (pr?.event === 'erupted') {
-      addLog(`🎆 The pyro charges BLOW — wave ${pr.wave}${pr.wave >= PYRO_WAVES ? ', the FINALE' : ''}!`);
+      addLog(`🎆 The pyro charges BLOW — wave ${pr.wave}${(pr.finale || pr.wave >= PYRO_WAVES) ? ', the FINALE' : ''}!`);
+      // 🗓️ A scheduled show's last armed wave blows AND clears in one tick.
+      if (pr.finale) setTimeout(() => addLog(`🎆 The pyrotechnics show burns out. The stage cools.`), 350 + pr.caught.length * 450);
       pr.caught.forEach((id, i) => {
         const sp = engineRef.current.spirits.find(s => s.id === id);
         setTimeout(() => {
@@ -6155,8 +6150,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // 🎓 Explain FP the first time the PLAYER banks some. Firing on a bot's
     // first point would spend the tip on a moment the player wasn't part of.
     if (!sp?.cpu) showTip('fame');
-    // 🎇 The show grows with the legend — Stage Effects fire at ⭐8/16/24.
-    checkStageFxThresholds(ns.fame ?? 0, newFame);
+    // 🗓️ (Stage Effects used to fire here on Fame thresholds; since 2026-09-29
+    //  they run on the round schedule — see checkStageFxSchedule.)
     // 🐛 FIX (2026-07-16): read MY fame from the ENGINE after the dispatch above,
     // not from the client mirror. Back-to-back grants in one beat (riff-off
     // payouts, Azrael chains) left `newFame` one-plus grants stale — the runaway
@@ -6203,8 +6198,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // skips the test, and once a Spirit is sitting ABOVE the line nothing ever
   // asks again. There are at least three such routes today:
   //   · ⛔ the per-turn cap (`finalFp <= 0`) returns before the check;
-  //   · `checkStageFxThresholds` runs before it, so a throw in a stage effect
-  //     eats the win as well as the effect.
+  //   · (until 2026-09-29) the stage-FX threshold check ran before it, so a
+  //     throw in a stage effect ate the win as well as the effect.
   // A test that only fires on a TRANSITION cannot notice a state the game is
   // already IN. This is the backstop: whoever is over the line at the top of ANY
   // turn is crowned then, whatever happened on the beat they crossed it.
@@ -9450,8 +9445,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       demolishFans:          (e) => demolishFans(e.targetId, e.attackerId, e.hexNum),
       knockOut:              (e) => knockOut(e.spiritId, null, undefined),
       gainFans:              (e) => gainFansFromDeed(e.spiritId, e.n, e.reason),
-      stageFxThresholds:     (e) => {
-        checkStageFxThresholds(e.from, e.to);
+      fameBanked:            (e) => {
         // 🎓 Explain FP the first time the PLAYER banks some. Firing on a bot's
         // first point would spend the tip on a moment they weren't part of.
         if (!spirits.find(s => s.id === e.spiritId)?.cpu) showTip('fame');
@@ -9927,6 +9921,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       //    arms→erupts one step per ROUND, animatronics take one step per
       //    ROUND. Every Spirit now gets a move between the glow and the bang.
       tickStageFxTurn();
+      // ── 🗓️ STAGE EFFECTS (schedule): the round that just OPENED may start a
+      //    show. AFTER the ticks, so a show that ends and one that starts can
+      //    never share a beat (and the new one is not ticked before anyone moves).
+      checkStageFxSchedule(engineRef.current.turn?.round);
 
       // ── 🎪 EVENT MARQUEE — respawn countdown, one tick per round ──────────
       dispatch(eventRespawnTicked());
@@ -12113,7 +12111,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           return (
             <FameRace spirits={spirits} fameToWin={fameToWin}
               fameOf={id => noteStates?.[id]?.fame ?? 0}
-              actingId={acting?.id} thresholds={stageFxThresholds} contested={contested}
+              actingId={acting?.id} contested={contested}
               /* ⏳ The clock. `roundLimit` is null in Legend Run, which is the
                  component's mode switch — it draws a finish line then, and a
                  countdown plus a margin readout when it is a number. */
@@ -12137,7 +12135,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           return m && (
             <span style={{fontSize:9,padding:"2px 8px",background:"#130f22",border:`1px solid ${m.color}`,borderRadius:10,color:m.color,
               animation:"marqueeBlink 1.4s ease-in-out infinite"}}>
-              🎇 {m.icon} {m.name.toUpperCase()} @ ⭐{stageFxBanner.threshold}
+              🎇 {m.icon} {m.name.toUpperCase()}{stageFxBanner.round != null ? ` · ROUND ${stageFxBanner.round}` : ''}
             </span>
           );
         })()}
@@ -12567,8 +12565,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   {/* Vibe bar removed — shown on board standee + purple maxVibe bar below */}
                   {/* ⭐ Fame — the win condition, front and centre.
                       This is NOT a stat line. It's the scoreboard, so it gets
-                      its own block: marquee readout, a thick track with the
-                      Stage-FX thresholds notched in, and the per-turn cap pips
+                      its own block: marquee readout, a thick track (its Stage-FX
+                      notches went with the Fame trigger, 2026-09-29), and the per-turn cap pips
                       underneath. Goes white-hot as you close on the crown and
                       red when a rival is close enough to take it off you. */}
                   {(() => {
@@ -12632,14 +12630,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                 animation:"fame-sheen 2.6s linear infinite"}}/>
                             )}
                           </div>
-
-                          {/* 🎇 Stage Effect thresholds notched into the track */}
-                          {stageFxThresholds.filter(t => t < fameToWin).map(t => (
-                            <div key={t} style={{position:"absolute",top:0,bottom:0,
-                              left:`${(t / fameToWin) * 100}%`, width:1.5,
-                              background: fp >= t ? `${FAME.lit}cc` : FAME_NEUTRAL.notchUnlit,
-                              boxShadow: fp >= t ? `0 0 5px ${FAME.lit}` : undefined}}/>
-                          ))}
                         </div>
 
                         {/* ⛔ Per-turn cap pips — how much more the crowd will take */}
@@ -14284,9 +14274,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     melody step of every turn. It is page three of the `fan_phrases`
                     tip now. 📌 `harmonic_45` still carries the 4th/5th half for the
                     player who meets those notes before Pickles gets here. */}
-                {/* 📱 `match-commit-row` is the phone layout's hook (ui/phoneLayout.js):
-                    it pins this row to the bottom of the tap column so ✓ Commit
-                    is never below the fold on a 390 px screen. */}
+                {/* 📱 `match-commit-row` was the phone layout's hook — it pinned ✓ Commit
+                    to the tap column's floor. The layout is ARCHIVED (2026-09-29,
+                    docs/archive/phone-play-2026-09-29/); the class is inert and
+                    kept so the archive can be restored without a monolith edit. */}
                 <div className="match-commit-row" style={{display:"flex",gap:3}}>
                   <button className="btn" style={{flex:1,borderColor:"#44ff88",color:"#44ff88",fontSize:8}}
                     onClick={confirmNoteTrack}

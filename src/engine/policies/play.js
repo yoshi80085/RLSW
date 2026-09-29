@@ -108,7 +108,10 @@ export const HARNESS_GAPS = {
   // measuring a game with the Fame multiplier pinned near its floor. Every bench
   // number taken before this date is a reading of that game.
   hexHazards: 'hazard hexes along a knockback path — client-owned, skipped',
-  stageFxThresholds: 'stage FX draws at Fame thresholds — client-owned, skipped',
+  fameBanked: 'the first-Fame tip — client-only UI, skipped',
+  // 📌 Stage FX are not here any more: they left the Fame beat for the round
+  // schedule (2026-09-29) and are still client-driven, so a headless match
+  // plays with no stage hazards — exactly as it did before.
   // 🎪 What is left of the fan economy, and it is one number rather than a
   // subsystem. The UNSURE POOL (fans a demolished act leaves loose on the centre,
   // recruitable by whoever plays there next) is client state, so the harness owns

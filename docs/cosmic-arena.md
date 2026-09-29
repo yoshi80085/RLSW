@@ -12,11 +12,11 @@ keeps this scenery with the existing reduced pixel ratio and disabled bloom;
 reduced motion freezes drift and disables lightning and nebula breathing.
 The modules are shared with `.scratch/epic-island` and own their resource cleanup.
 
-The follow-up dial-in remains scratch-only: lightning softness 1, crevice following 1,
+The follow-up dial-in is integrated as approved on 2026-09-29: lightning softness 1, crevice following 1,
 planet distance 2.3, amp brightness 0.55, cloud flash strength 1 and average interval
 42 seconds. Cloud flashes are localized to gas and disabled by reduced motion.
-Only preview cabinet bodies are darkened; player-colored rims and status lights retain
-their authored brightness. These settings are the preview defaults, not activated in the game.
+Only cabinet bodies are darkened; player-colored rims and status lights retain
+their authored brightness. These settings match the saved preview defaults.
 `npm run test:rivenworld` checks real-model integration, timing, motion and cleanup;
 it is also part of `test:arena`.
 

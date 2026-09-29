@@ -538,7 +538,10 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
   const progress = target === Infinity ? `⭐${myFame}` : `${Math.min(myFame, target)}/${target}`;
   yield log(`⭐ ${nameOf(state, spiritId)} earns ${finalFp} Fame Point${finalFp !== 1 ? 's' : ''}${crowdStr}${capStr}${reason ? ` — ${reason}` : ''}! (${progress})`);
 
-  yield hook('stageFxThresholds', { spiritId, from: fameBefore, to: myFame });
+  // 📌 Was 'stageFxThresholds' until 2026-09-29, when Stage Effects moved onto
+  // the round schedule. What is left for the client on this beat is the
+  // first-Fame tip.
+  yield hook('fameBanked', { spiritId, from: fameBefore, to: myFame });
 
   if (myFame < target) return { granted: finalFp, clipped, uncapped, mult, fameThisTurn: nextWindow };
 

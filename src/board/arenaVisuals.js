@@ -115,8 +115,12 @@ export const SEAT_UNLOCK=Object.freeze({
   lines:.7, linesFor:.55,    // speed lines on the cut
 });
 
-export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
+export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}={}) {
   const root=new THREE.Group();root.name='Live match effects';scene.add(root);
+  // 🔊 The Sonic's beam, shield and shards go to their own layer when the
+  // renderer has one — drawn last, over everything but the attacker (beamLayer.js).
+  // Without one (the headless checks) they stay in the arena, as before.
+  const beams=beamScene??root;
   const actors=new THREE.Group();actors.name='Foreground spirits';foregroundScene.add(actors);
   const hazards=new THREE.Group();root.add(hazards);
   const effects=[],rigs=new Map(),pawns=new Map(),seen=new Set();
@@ -283,7 +287,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
   const marqueeMarkers=createMarqueeMarkers(root,{pointFor:arenaPoint});
   const clearSonic=()=>{
     if(!sonic)return;
-    root.remove(sonic.dice.group,sonic.volley.group);
+    root.remove(sonic.dice.group);beams.remove(sonic.volley.group);
     sonic.dice.dispose();sonic.volley.dispose();sonic=null;
   };
   function updateSonic(battle) {
@@ -343,8 +347,8 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
             buildStart:SONIC_DICE.landedAt[1]-BARRAGE_LAUNCH,buildEnd:SONIC_GATE-BARRAGE_LAUNCH})
         : createSonicSequenceVisuals({...common,ampOrigins,clearance:1.15,shieldRadius:2.4,shieldSize:2.1,strokeStyle:'rings',intensityMode:'margin',
             dice:battle.diceVals.map((value,i)=>({value,passed:battle.diceHits[i],sides:battle.dicePool[i]}))});
-      root.add(dice.group,volley.group);
-      sonic={key:battle.key,dice,volley,modern,phase:battle.phase,phaseStart:clock,phaseStart0:clock,launch:null,stage,diceCentre,
+      root.add(dice.group);beams.add(volley.group);
+      sonic={key:battle.key,attackerId:battle.attackerId,dice,volley,modern,phase:battle.phase,phaseStart:clock,phaseStart0:clock,launch:null,stage,diceCentre,
         winner:(battle.breakIndex??-1)>=0?0:1};
     }
     if(sonic.phase!==battle.phase){sonic.phase=battle.phase;sonic.phaseStart=clock;}
@@ -742,6 +746,8 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
     solidRoots:()=>[...[...rigs.values()].flatMap(r=>r.levels),sonic?.dice?.group,swing?.dice?.group,marqueeMarkers.solidRoot].filter(Boolean),
     /** 🎬 The director's shot for this frame, or null — `sonicCamera` flies it. */
     battleShot:()=>battleShot,
+    /** 🌀 What the Sonic beam may pass BEHIND: the attacking Spirit it loops round (beamLayer.js). */
+    beamOccluders:()=>{const pawn=sonic&&pawns.get(sonic.attackerId);return pawn?[pawn]:[];},
     /** 🔭 Scene furniture the battle lens must see past (the renderer's grandstands, the truss). */
     setOccluders(list){extraOccluders=[...list];},/** Test hook (battleLensHarness): the pawn standing for a Spirit. */
     /** Test hook (battleLensHarness): what stands for a Spirit on screen — its

@@ -7,7 +7,7 @@
 //     pyro arming/eruptions, and animatronic tokens.
 //   • StageFXBanner — HTML marquee + persistent status pills, mounted next to
 //     the Disco Inferno banner in the board container.
-// All game logic (damage, ticking, thresholds) lives in Game.
+// All game logic (damage, ticking, the round schedule) lives in Game.
 // =============================================================================
 import React from "react";
 import { HEX_BY_NUM } from "../board/hexMap.js";
@@ -296,7 +296,7 @@ export function StageFXBanner({ banner, smokeFx, laserFx, pyroFx, animatronics }
         }}>
           <div style={{ fontSize: 10, letterSpacing: 3, color: meta.color,
             fontFamily: "'Saira Stencil One',sans-serif" }}>
-            🎇 STAGE EFFECT — THE SHOW HITS ⭐{banner.threshold}
+            🎇 STAGE EFFECT{banner.round != null ? ` — ROUND ${banner.round}` : ''}
           </div>
           <div style={{ fontSize: 19, fontWeight: 800, color: '#fff', margin: '3px 0 2px',
             fontFamily: "'Saira Stencil One',sans-serif", textShadow: `0 0 12px ${meta.color}` }}>
