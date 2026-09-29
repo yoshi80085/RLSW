@@ -6,9 +6,10 @@
 // Every reducer is pure: (state, action[, rng]) -> state. Reports live in
 // state.board.last* for the client to read for logs/FX.
 
-import { SPOTLIGHT_POOL, eventHexCandidates, makeBoardToken } from "../../board/boardHelpers.js";
+import { SPOTLIGHT_POOL, makeBoardToken } from "../../board/boardHelpers.js";
+import { marqueeCount, pickMarquee, occupiedHexes } from "./marqueeSpaces.js";
 import { ALL_HEXES } from "../../board/hexMap.js";
-import { TOKEN_MAX, TOKEN_BASE_POOL, TOKEN_PER_ROUND_BASE, TOKEN_DRIFT_TURNS, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, CHARGE_ZONE_COOLDOWN, LIMELIGHT_HEX } from "../../data/gameConstants.js";
+import { TOKEN_MAX, TOKEN_BASE_POOL, TOKEN_PER_ROUND_BASE, TOKEN_DRIFT_TURNS, CHARGE_ZONE_COOLDOWN, LIMELIGHT_HEX } from "../../data/gameConstants.js";
 import { liveUnlockPcs } from "../../music/stackSlots.js";
 import { pitchIndex } from "../../music/notes.js";
 
@@ -207,15 +208,31 @@ export function applyTokensDrifted(state, { occupied }, rng) {
 
 // -- Event hexes --------------------------------------------------------------
 
-/** Spirit steps on a marquee event hex -- hex consumed, respawn timer set. */
-export function applyEventHexTriggered(state, { hexNum, usedTrivia = null }) {
+/**
+ * Spirit steps on a marquee -- the hex burns out and ANOTHER LIGHTS AT ONCE
+ * (Alex, 2026-09-29 — `systems/marqueeSpaces.js`, `MARQUEE_QUIZ_DESIGN.md` §11):
+ * in a quadrant that has none — the one just emptied, or an unseated quadrant —
+ * at least `MARQUEE_RELIGHT_MIN_DIST` from the hex just taken. Never two in a
+ * quadrant. At four seats that is always the same quadrant (persistent).
+ *
+ * Two `rng` draws when it relights (quadrant, then hex). A board with nowhere
+ * free leaves it short; the client's round-end top-up (`applyEventHexSpawned`)
+ * tries again.
+ */
+export function applyEventHexTriggered(state, { hexNum, usedTrivia = null }, rng) {
   if (!state.board.eventHexes.includes(hexNum)) return state;
+  const left = state.board.eventHexes.filter(n => n !== hexNum);
+  const want = marqueeCount(state);
+  const relit = rng && left.length < want
+    ? pickMarquee(rng, left, { occupied: occupiedHexes(state), awayFrom: hexNum })
+    : null;
   return {
     ...state,
     board: {
       ...state.board,
-      eventHexes: state.board.eventHexes.filter(n => n !== hexNum),
-      eventRespawnIn: EVENT_RESPAWN_TURNS,
+      eventHexes: relit != null ? [...left, relit] : left,
+      eventRespawnIn: 0,
+      lastEventRespawn: relit != null ? { hexNum: relit, from: hexNum } : null,
       // 🎪 null means "the caller drew nothing" (a trigger with no question),
       // which must LEAVE the history alone rather than clearing it.
       usedTrivia: usedTrivia ?? state.board.usedTrivia ?? [],
@@ -234,47 +251,21 @@ export function applyEventRespawnTicked(state) {
 }
 
 /**
- * A new marquee event hex lights up (when the respawn counter reached 0).
- * Lights exactly ONE, and re-arms the timer if the board is still short.
- *
- * ⚠️ THE CAP USED TO BE THE LITERAL `2`. It happened to match the count we now
- * want, which is precisely why it was dangerous: raise `EVENT_HEX_COUNT` to 3
- * and the spawner would have refused to go past two, with no error, no log line
- * and a board quietly one marquee short for the rest of the match. It reads the
- * constant now, so the count has exactly one home.
- *
- * ⚠️ ONE PER CALL, NOT A FULL TOP-UP, is a pacing decision rather than a
- * limitation. `EVENT_RESPAWN_TURNS` is the cadence of a marquee LIGHTING, and
- * the client's log line ("a new marquee hex lights up") reads as one event.
- * Consume both in the same round and the board recovers over two rounds rather
- * than snapping back to full — the middle stays scarce right when the table has
- * just fought over it. Re-arming here (rather than in the client) is what makes
- * that true no matter who calls this.
+ * 🎪 TOP-UP — the fallback. A marquee normally relights the moment one is taken
+ * (`applyEventHexTriggered`); this lights ONE more if the board is still short
+ * of one per seat (nowhere was free at the time). Same quadrant rule.
+ * `occupied` (from the caller) is added to what the engine already avoids.
  */
-export function applyEventHexSpawned(state, { occupied }, rng) {
+export function applyEventHexSpawned(state, { occupied = [] } = {}, rng) {
   const evHexes = state.board.eventHexes;
-  if (evHexes.length >= EVENT_HEX_COUNT) {
+  if (evHexes.length >= marqueeCount(state)) {
     return { ...state, board: { ...state.board, lastEventRespawn: null } };
   }
-  // Separation from the marquees already lit lives in the candidate helper --
-  // see `eventHexCandidates`, which degrades to the unspaced pool rather than
-  // returning nothing on a crowded board.
-  const pool = eventHexCandidates(occupied, evHexes);
-  if (pool.length === 0) {
-    // Nowhere to go. Leave the timer where it is; the caller's "am I short?"
-    // check will bring us back next round, so a full board self-heals.
-    return { ...state, board: { ...state.board, lastEventRespawn: null } };
-  }
-  const pick = pool[Math.floor(rng() * pool.length)];
-  const next = [...evHexes, pick];
+  const pick = pickMarquee(rng, evHexes, { occupied: [...occupiedHexes(state), ...occupied] });
+  if (pick == null) return { ...state, board: { ...state.board, lastEventRespawn: null } };
   return {
     ...state,
-    board: {
-      ...state.board,
-      eventHexes: next,
-      eventRespawnIn: next.length < EVENT_HEX_COUNT ? EVENT_RESPAWN_TURNS : 0,
-      lastEventRespawn: { hexNum: pick },
-    },
+    board: { ...state.board, eventHexes: [...evHexes, pick], eventRespawnIn: 0, lastEventRespawn: { hexNum: pick } },
   };
 }
 

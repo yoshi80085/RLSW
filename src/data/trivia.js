@@ -2506,6 +2506,23 @@ export function drawTrivia(rngVal, lane, difficulty, used = []) {
   return { q: TRIVIA_BY_ID[id] ?? null, used: [...nextUsed, id] };
 }
 
+/**
+ * 🃏 THE MARQUEE'S DRAW SINCE 2026-09-29 (`MARQUEE_QUIZ_DESIGN.md` §10): every
+ * marquee is the same, so the question comes from the WHOLE deck — no lane, no
+ * difficulty to pick. No repeats until every question has been seen, then the
+ * deck recycles. Pure, same contract as `drawTrivia` (which is now the old
+ * lane × difficulty draw, kept only for its selftest).
+ */
+export function drawMarqueeQuestion(rngVal, used = []) {
+  const ids = TRIVIA_QUESTIONS.map(q => q.id);
+  if (!ids.length) return { q: null, used };
+  let nextUsed = used;
+  let avail = ids.filter(id => !used.includes(id));
+  if (avail.length === 0) { nextUsed = []; avail = ids; }
+  const id = avail[Math.min(avail.length - 1, Math.floor((Number(rngVal) || 0) * avail.length))];
+  return { q: TRIVIA_BY_ID[id] ?? null, used: [...nextUsed, id] };
+}
+
 // Fans granted for a correct answer in the 🎤 CROWD lane, by difficulty.
 export const TRIVIA_REWARD = { easy: 2, medium: 3, hard: 4 };
 

@@ -878,7 +878,10 @@ export const FAN_DEFECT_TO_VICTOR = 0; // fans cannot be stolen
 // it). Doubling the marquees roughly doubles quiz throughput, so if the crowd
 // multiplier starts topping out at `FAN_MULT_CAP` too early, the payouts in
 // `TRIVIA_REWARD` are the dial to turn — not this count.
-export const EVENT_HEX_COUNT     = 2;  // marquee hexes live at once
+export const EVENT_HEX_COUNT     = 2;  // 🪦 RETIRED 2026-09-29 — the count is one per seat now (`systems/marqueeSpaces.js`); kept for old tests
+// 🎪 A relit marquee lands at least this far from where the last one was taken
+// (`MARQUEE_QUIZ_DESIGN.md` §11) — no stepping off and straight back on.
+export const MARQUEE_RELIGHT_MIN_DIST = 2;
 export const EVENT_RESPAWN_TURNS = 1;  // ROUNDS after a trigger before a new marquee lights up (was 3 spirit-turns)
 // 🎪 Minimum axial distance between two live marquees.
 // ⚠️ TWO MARQUEES IN ONE CORNER IS WORSE THAN ONE ANYWHERE — a pair inside a
@@ -886,6 +889,13 @@ export const EVENT_RESPAWN_TURNS = 1;  // ROUNDS after a trigger before a new ma
 // failure the second hex exists to fix. Home → Limelight is 5 on this map, so 4
 // stops them sharing a neighbourhood without shoving them to opposite edges.
 export const EVENT_MIN_SEPARATION = 4;
+
+// 🃏 MARQUEE PRIZE CARDS (Alex, 2026-09-29 — `MARQUEE_QUIZ_DESIGN.md` §10).
+// Every marquee is the same: one question, no lane, no difficulty to pick, and
+// a correct answer wins ONE random card for the battle deck
+// (`engine/systems/marqueeCards.js`). A player holds at most this many; a
+// fourth means swapping one out or letting the new one go.
+export const MARQUEE_HAND_MAX = 3;
 
 // -- FLAMING DISC / GROUPIE --
 export const FLAMING_DISC_COUNT  = 6;
@@ -904,7 +914,11 @@ export const FLAMING_DISC_ROUNDS = 2;
 // CHARGE_ZONE_BOOST_TURNS of the holder's turns (≈2 rounds) or until a battle
 // ensues — fighting burns the charge, win or lose. The Overcharge skill
 // (Electric route) unlocks an alternative chord-assist payout instead.
-export const CHARGE_ZONE_COUNT       = 2;  // fixed lightning hexes on the board
+// 🪦 RETIRED FOR NOW (Alex, 2026-09-29: "Lets retire the 'charge' spaces for
+// now"). Zero zones are placed, so nothing lights, nothing is tapped and no
+// charge is ever granted; every reader already handles an empty list. Put the
+// 2 back to bring them back.
+export const CHARGE_ZONE_COUNT       = 0;  // fixed lightning hexes on the board (was 2)
 export const CHARGE_ZONE_BOOST_TURNS = 2;  // charge duration (holder's turns) on pickup
 export const CHARGE_ZONE_COOLDOWN    = 2;  // ROUNDS before a drained zone relights (was 4 spirit-turns)
 export const CHARGE_FLOOR_BONUS      = 2;  // floor charge: attack die results below 1+2 read as 3

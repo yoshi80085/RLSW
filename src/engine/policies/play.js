@@ -1067,6 +1067,11 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
   // policy, it is a reading of who found the marquee.
   const rig = Object.fromEntries(
     (state.spirits ?? []).map(s => [s.id, rigTiers(state.noteStates?.[s.id] ?? {})]));
+  // 🃏 Since 2026-09-29 the marquee pays prize CARDS and `rig` above sits at
+  // the floor for everyone (MARQUEE_QUIZ_DESIGN.md §10). This is the reading
+  // that replaces it: the hand each seat ended holding.
+  const cards = Object.fromEntries(
+    (state.spirits ?? []).map(s => [s.id, [...(state.noteStates?.[s.id]?.marqueeCards ?? [])]]));
 
   return {
     winner: state.winner ?? null,
@@ -1103,6 +1108,7 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
     limelightScores,
     duels,
     rig,
+    cards,
     // 🎪 How many marquee questions were drawn all match — the denominator
     // for every rig number above. `rig` reports where a Spirit ENDED, and
     // atrophy means that is not where they peaked.

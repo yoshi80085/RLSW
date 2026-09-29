@@ -612,9 +612,13 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
        `⚡ ${id}: holding a charge outweighs seeking one — the hand-off cannot invert`);
   }
   {
-    const zone = st.board.chargeZones[0];
+    // 🪦 Charge spaces are retired for now (CHARGE_ZONE_COUNT = 0), so the
+    // fixture lays one by hand — the term must still be right if they return.
+    const stZ = st.board.chargeZones.length ? st
+      : { ...st, board: { ...st.board, chargeZones: [{ num: 30, cooldown: 0 }] } };
+    const zone = stZ.board.chargeZones[0];
     ok(zone, 'fixture: the board has a Charge Zone');
-    const onZone  = withSpirit(st, ZERO, { num: zone.num });
+    const onZone  = withSpirit(stZ, ZERO, { num: zone.num });
     const seeking = term(onZone, ZERO, 'chargeSeek');
     ok(seeking === 1, '⚡ standing on a lit zone is maximum seek');
     const holding = term(withNs(onZone, ZERO, { chargeFloorTurns: 2 }), ZERO, 'chargeSeek');

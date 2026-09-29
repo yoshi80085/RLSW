@@ -140,6 +140,9 @@ export function applyTurnEnded(state) {
   // Sonic leaves `noteStates` byte-identical and replay cursors do not move.
   const endedNotes = decayed.noteStates?.[endedId];
   const clearsSonicTally = !!endedNotes?.pendingSonicAttacks;
+  // 🃏 An armed marquee card that was not thrown goes back into the hand at
+  // your turn end — arming is for THIS turn's attack (MARQUEE_QUIZ_DESIGN §10).
+  const disarms = endedNotes?.marqueeArmed != null;
 
   // 🔦 THE LIGHTS STEP ONCE PER ROUND, on the turn end that closes it — the
   // same boundary the round counter uses, so a skipped turn's banked round
@@ -148,10 +151,12 @@ export function applyTurnEnded(state) {
 
   return {
     ...lit,
-    ...(clearsSonicTally ? {
+    ...(clearsSonicTally || disarms ? {
       noteStates: {
         ...lit.noteStates,
-        [endedId]: { ...endedNotes, pendingSonicAttacks: 0 },
+        [endedId]: { ...endedNotes,
+          ...(clearsSonicTally ? { pendingSonicAttacks: 0 } : {}),
+          ...(disarms ? { marqueeArmed: null } : {}) },
       },
     } : {}),
     turnQueue,

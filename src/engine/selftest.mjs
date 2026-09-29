@@ -1470,62 +1470,37 @@ const config = {
   assert.ok(!picked.board.boardTokens.find(t => t.num === tok0.num), "correct token gone");
   assert.equal(picked.rng.cursor, s0.rng.cursor, "TOKEN_PICKED_UP consumes no rng");
 
-  // EVENT_HEX_TRIGGERED — removes hex, sets respawn timer
+  // 🎪 EVENT_HEX_TRIGGERED — since 2026-09-29 the hex burns out and ANOTHER
+  // LIGHTS AT ONCE, one per seat, one per quadrant (`systems/marqueeSpaces.js`).
+  // The full rule set is exercised in `test:cards` §10; this is the smoke test.
   const evHex = s0.board.eventHexes[0];
   const triggered = applyAction(s0, eventHexTriggered("wildaxe", evHex));
   assert.ok(!triggered.board.eventHexes.includes(evHex), "event hex consumed");
-  assert.equal(triggered.board.eventRespawnIn, EVENT_RESPAWN_TURNS, "respawn timer set");
+  assert.equal(triggered.board.eventHexes.length, s0.board.eventHexes.length, "…and relit at once, one per seat");
+  assert.equal(triggered.board.lastEventRespawn?.from, evHex, "the relight is reported");
+  assert.equal(triggered.board.eventRespawnIn, 0, "no respawn timer any more");
 
-  // EVENT_RESPAWN_TICKED — decrements counter
-  const withTimer = applyAction(s0, eventHexTriggered("wildaxe", evHex));
-  const ticked = applyAction(withTimer, eventRespawnTicked());
-  assert.equal(ticked.board.eventRespawnIn, EVENT_RESPAWN_TURNS - 1, "counter decremented");
-  // No-op when already 0
+  // EVENT_RESPAWN_TICKED — still decrements a counter (kept for old saves)
+  const ticked = applyAction({ ...s0, board: { ...s0.board, eventRespawnIn: 2 } }, eventRespawnTicked());
+  assert.equal(ticked.board.eventRespawnIn, 1, "counter decremented");
   assert.equal(applyAction(s0, eventRespawnTicked()).board.eventRespawnIn, 0, "0 stays 0");
 
-  // EVENT_HEX_SPAWNED — adds a new event hex on engine rng
-  const depleted = applyAction(applyAction(s0,
-    eventHexTriggered("wildaxe", s0.board.eventHexes[0])),
-    eventHexTriggered("wildaxe", s0.board.eventHexes[1] ?? s0.board.eventHexes[0]));
-  const spawned = applyAction(depleted, eventHexSpawned([]));
-  assert.ok(spawned.board.eventHexes.length > 0, "new event hex spawned");
+  // EVENT_HEX_SPAWNED — the fallback top-up for a board left short
+  const short = { ...s0, board: { ...s0.board, eventHexes: s0.board.eventHexes.slice(1) } };
+  const spawned = applyAction(short, eventHexSpawned([]));
+  assert.equal(spawned.board.eventHexes.length, s0.board.eventHexes.length, "top-up lights the missing one");
   assert.ok(spawned.board.lastEventRespawn, "report written");
-
-  // 🎪 TWO MARQUEES (MARQUEE_QUIZ_DESIGN.md §1) ------------------------------
-  // ⚠️ These four assertions exist because the old spawner passed its tests
-  // while being wrong: it capped on a LITERAL 2 that happened to match the
-  // count, and it lit exactly one hex per timer edge, so a board that lost both
-  // marquees in the same round stayed one short forever with nothing logged.
-  const marqueeDist = (a, b) =>
-    axialDist(HEX_BY_NUM[a].q, HEX_BY_NUM[a].r, HEX_BY_NUM[b].q, HEX_BY_NUM[b].r);
-
-  // Setup lights the full count, and lights them APART.
-  assert.equal(s0.board.eventHexes.length, EVENT_HEX_COUNT, "setup lights EVENT_HEX_COUNT marquees");
-  s0.board.eventHexes.forEach((a, i) => s0.board.eventHexes.slice(i + 1).forEach(b => {
-    assert.ok(marqueeDist(a, b) >= EVENT_MIN_SEPARATION,
-      `setup marquees #${a}/#${b} are ${marqueeDist(a, b)} apart, want >= ${EVENT_MIN_SEPARATION}`);
-  }));
-
-  // Spawning while STILL short re-arms the timer itself — the board recovers
-  // over two rounds rather than snapping back to full in one dispatch.
-  assert.equal(spawned.board.eventHexes.length, 1, "one marquee per spawn, not a full top-up");
-  assert.equal(spawned.board.eventRespawnIn, EVENT_RESPAWN_TURNS, "still short -> timer re-armed");
-  const refilled = applyAction(spawned, eventHexSpawned([]));
-  assert.equal(refilled.board.eventHexes.length, EVENT_HEX_COUNT, "second spawn reaches the count");
-  assert.equal(refilled.board.eventRespawnIn, 0, "back to full -> timer stands down");
-
-  // A spawn onto a board that already holds one keeps its distance.
-  assert.ok(marqueeDist(refilled.board.eventHexes[0], refilled.board.eventHexes[1]) >= EVENT_MIN_SEPARATION,
-    "respawn keeps EVENT_MIN_SEPARATION from the live marquee");
-
-  // And the cap is the CONSTANT, not a literal that merely agrees with it.
-  const atCap = applyAction(refilled, eventHexSpawned([]));
-  assert.equal(atCap.board.eventHexes.length, EVENT_HEX_COUNT, "spawn at full count is a no-op");
+  const atCap = applyAction(spawned, eventHexSpawned([]));
+  assert.equal(atCap.board.eventHexes.length, spawned.board.eventHexes.length, "spawn at full count is a no-op");
   assert.equal(atCap.board.lastEventRespawn, null, "no-op writes no report");
 
+  // 🪦 Charge spaces are retired (CHARGE_ZONE_COUNT = 0); the reducers still
+  // work on a zone put there by hand, so bringing them back is one number.
+  assert.deepEqual(s0.board.chargeZones, [], "no charge zones are placed");
+  const czBoard = { ...s0, board: { ...s0.board, chargeZones: [{ num: 30, cooldown: 0 }] } };
   // CHARGE_ZONE_USED — sets cooldown
-  const cz = s0.board.chargeZones[0];
-  const used = applyAction(s0, chargeZoneUsed("wildaxe", cz.num));
+  const cz = czBoard.board.chargeZones[0];
+  const used = applyAction(czBoard, chargeZoneUsed("wildaxe", cz.num));
   assert.equal(used.board.chargeZones.find(z => z.num === cz.num).cooldown, CHARGE_ZONE_COOLDOWN, "cooldown set");
 
   // CHARGE_ZONES_TICKED — decrements cooldowns

@@ -31,6 +31,7 @@ import { characterId } from "../../data/spiritIdentity.js";
 
 import { readStack } from "../../music/vocabularies.js";
 import { sonicRig, sustainRig } from "./sonicRig.js";
+import { cardedRig } from "./marqueeCards.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import {
   ATK_BONUS_CAP, CHARGE_FLOOR_BONUS,
@@ -152,9 +153,12 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
   const nsA = state?.noteStates?.[attackerId] ?? {};
   const nsD = state?.noteStates?.[defenderId] ?? {};
   if(kind==='swing') {
-    const dicePool=sonicRig(nsA,0,0,true,attackerId,homeSpotlightDrive(state,attackerId)).pool;
+    // 🃏 The preview shows the armed card; `rollSwingClash` re-derives the same.
+    const rigA=cardedRig(sonicRig(nsA,0,0,true,attackerId,homeSpotlightDrive(state,attackerId)),nsA);
+    const dicePool=rigA.pool;
     const defenderDicePool=sonicRig(nsD,0,0,true,defenderId).pool;
     return {atkStat:dicePool.length,defStat:defenderDicePool.length,dicePool,defenderDicePool,
+      atkKeep:rigA.keep,atkFixed:rigA.atkFixed,cardId:rigA.cardId,
       atkFloor:Math.max((nsA.chargeFloorTurns??0)>0?CHARGE_FLOOR_BONUS:0,nsA.dieFloorBoost??0),
       swingChordLeft:(nsA.driveStack??[]).slice(0,-SWING_DRIVE_SPEND),swingChordSpent:(nsA.driveStack??[]).slice(-SWING_DRIVE_SPEND),
       _derived:{consumedSmashExposed:false}};
@@ -235,7 +239,8 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
   if (kind === 'sonic') {
     // The attacker throws their rig's pool; the ceiling charge grows EVERY die
     // one size (d6→d8, d8→d10), capped.
-    const rig = rigFor(attacker, nsA, state);
+    // 🃏 …with the attacker's armed marquee card applied (marqueeCards.js).
+    const rig = cardedRig(rigFor(attacker, nsA, state), nsA);
     const pool = rig.pool;
     const dicePool = [...pool]; // rigFor applies the ceiling exactly once.
 
@@ -251,7 +256,9 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
       ...base,
       atkStat:dicePool.length,
       defStat:sonicDefStat,
-      atkKeep:rig.keep,
+      atkKeep:rig.keep ?? pool.length,
+      atkFixed:rig.atkFixed,
+      cardId:rig.cardId,
       sustainPool:shield.pool,
       defKeep:shield.keep,
       dicePool,

@@ -37,8 +37,13 @@ import { AbilityWallet } from "./ui/AbilityWallet.jsx";
 import { SignatureAbilities } from "./ui/SignatureAbilities.jsx";
 import { TestingGrounds } from "./ui/TestingGrounds.jsx";
 import { EventModal } from "./ui/EventModal.jsx";
-import { TRIVIA_REWARD, TRIVIA_TIER_GRANT, TRIVIA_BOT_ODDS,
-         drawTrivia, bestTriviaDifficulty } from "./data/trivia.js";
+import { TRIVIA_BOT_ODDS, drawMarqueeQuestion } from "./data/trivia.js";
+import { MarqueeHand } from "./ui/MarqueeHand.jsx";
+import { MarqueeCardPick } from "./ui/MarqueeCardPick.jsx";
+import { marqueeCount } from "./engine/systems/marqueeSpaces.js";
+import {
+  drawMarqueeCard, cardDef, handOf, cardedRig, botReplaceIdx, botArmIdx, applyCard, MARQUEE_CARD_IDS,
+} from "./engine/systems/marqueeCards.js";
 import { Riffbook } from "./ui/Riffbook.jsx";
 import { BoardFX } from "./ui/BoardFX.jsx";
 import { BoardViewport } from "./ui/BoardViewport.jsx";
@@ -72,7 +77,7 @@ import { scheduleSonicVolley, scheduleSonicBarrage } from "./board/sonicPresenta
 import { SWING_TIMING, SWING_BEATS, SWING_GATE } from './board/swingTiming.js';
 import { SONIC_SEQUENCE, sonicContactTime } from './board/sonicSequence.js';
 import { playSonicBeamAudio } from "./audio/sonicBeamAudio.js";
-import { sonicRig, rigPoolLabel, rigTiers, rigTierSpend, rigSpendable } from "./engine/systems/sonicRig.js";
+import { sonicRig, rigPoolLabel } from "./engine/systems/sonicRig.js";
 import AmpDecks from "./board/ampDecks.jsx";
 import { hexRingFromCenter, crowdMultiplier, advanceDB } from "./board/boardHelpers.js";
 import { DEFAULT_SKIN_ID, stageSkinPlateFilter, stageSkinLineMatrix } from "./board/stageSkins.js";
@@ -122,7 +127,7 @@ import { canHop, shukuchiLandings, hopIsActivation, hopBudgetPatch,
          shukuchiHopsLeft, SHUKUCHI_SKILL } from "./engine/systems/shukuchi.js";
 import { shukuchiHopped } from "./engine/actions.js";
 // 🧪 Testing Grounds levers — real engine actions so an exported sandbox log still replays.
-import { sandboxSeatTaken, sandboxRefilled } from "./engine/actions.js";
+import { sandboxSeatTaken, sandboxRefilled, marqueeCardWon, marqueeCardArmed, marqueeCardPlayed } from "./engine/actions.js";
 import { sandboxNeedsRefill, SANDBOX_AP } from "./engine/systems/sandbox.js";
 import { SHUKUCHI_LOOK, ShukuchiArcs, ShukuchiBudget } from "./ui/ShukuchiOverlay.jsx";
 import { BushidoOverlay } from './ui/BushidoOverlay.jsx';
@@ -194,7 +199,7 @@ import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim, crowdS
 // 🔦 The four corner spotlights (Alex, 2026-09-25) — rules in the engine, read here.
 import { poseSpotFor, homeSpotlightDrive } from "./engine/systems/spotlights.js";
 import { SPOTLIGHT_POSE_SUSTAIN_COST, POSE_SUSTAIN_PENALTY, SPOTLIGHT_STEAL_CASUALS } from "./data/gameConstants.js";
-import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, RIFF_FP_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_TOTAL_CAP, addCasuals, addDiehard, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, CROWD_DRAWN_MAX, EVENT_HEX_COUNT, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, RIFF_FP_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_TOTAL_CAP, addCasuals, addDiehard, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, CROWD_DRAWN_MAX, MARQUEE_HAND_MAX, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -1108,7 +1113,43 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const [sonicRollPrompt, setSonicRollPrompt] = useState(null);
   const sonicRollRef = useRef(null);
   const sonicAudioRef = useRef(null);
-  const clearSonicRollPrompt = () => { sonicRollRef.current = null; setSonicRollPrompt(null); };
+  // 🃏 A prompt that goes away takes an open card picker with it (a skipped or
+  // closed battle must not leave the cards on screen).
+  const clearSonicRollPrompt = () => { sonicRollRef.current = null; setSonicRollPrompt(null);
+    if (cardPickRef.current) { cardPickRef.current = false; setCardPick(null); } };
+  /** 🃏 "Use a card" above the Roll button — the held cards spin out to pick from. */
+  function openCardPick() {
+    const b = engineRef.current?.battle;
+    const spiritId = sonicRollPrompt?.spiritId;
+    if (!b || b.cardPlayed || !spiritId || b.attackerId !== spiritId || cardPickRef.current) return;
+    const pool = b.rolledPool ?? b.dicePool ?? [];
+    const keep = b.atkKeep ?? pool.length;
+    const cards = handOf(engineRef.current.noteStates?.[spiritId] ?? {})
+      .map(id => ({ card: cardDef(id), usable: !!applyCard(pool, keep, id).card }))
+      .filter(c => c.card);
+    if (!cards.length) return;
+    cardPickRef.current = true;
+    setSonicRollPrompt(p => (p ? { ...p, autoAt: null } : p));
+    setCardPick({ spiritId, cards, sub: `${pool.length} Drive ${pool.length === 1 ? 'die' : 'dice'} · ${Math.min(keep, pool.length)} count` });
+  }
+  function closeCardPick(relabel = null) {
+    cardPickRef.current = false;
+    rollDeadlineRef.current = performance.now() + ROLL_AUTO_MS;
+    setCardPick(null);
+    setSonicRollPrompt(p => (p ? { ...p, ...(relabel ?? {}), autoAt: rollDeadlineRef.current } : p));
+  }
+  function pickCard(idx) {
+    const spiritId = cardPick?.spiritId;
+    if (!spiritId) return closeCardPick();
+    const before = engineRef.current?.battle;
+    const next = dispatch(marqueeCardPlayed(spiritId, idx)).battle;
+    if (!next?.cardPlayed || next === before) return closeCardPick();
+    const sp = engineRef.current.spirits.find(x => x.id === spiritId);
+    const c = cardDef(next.cardPlayed);
+    addLog(`🃏 ${sp?.name} plays ${c?.icon} ${c?.name} — ${c?.text}`);
+    const relabel = battleCardRef.current?.apply?.(next) ?? null;
+    closeCardPick({ ...(relabel ?? {}), cards: 0 });
+  }
   function rollSonicVolley() {
     const start = sonicRollRef.current;
     clearSonicRollPrompt();
@@ -1144,7 +1185,22 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const sp = id => engineRef.current?.spirits?.find(s => s.id === id);
     return isBot(sp(v.attackerId)) && !isBot(sp(v.defenderId)) ? 'rival' : 'attacker';
   }
-  function awaitBattleRoll({ id, spiritId, isCurrent, lead, sub, label, color, onRoll }) {
+  // 🃏 THE CARD AT THE ROLL (MARQUEE_QUIZ_DESIGN §10.6). While the card picker
+  // is open the auto-roll HOLDS (`cardPickRef`), and closing it gives the
+  // player a fresh 5 s (`rollDeadlineRef`). `battleCardRef` is the live
+  // presentation's hook for adopting a re-thrown verdict.
+  const cardPickRef = useRef(false);
+  const rollDeadlineRef = useRef(0);
+  const battleCardRef = useRef(null);
+  const [cardPick, setCardPick] = useState(null);
+  // 🃏 A card played on ANOTHER table arrives as an engine action; the live
+  // presentation adopts the re-thrown verdict the same way the local pick does.
+  // (`adopted` stops the local pick from being applied twice.)
+  useEffect(() => {
+    const b = engineState?.battle, h = battleCardRef.current;
+    if (b?.cardPlayed && h && !h.adopted && b.attackerId === h.attackerId) h.apply?.(b);
+  }, [engineState?.battle?.cardPlayed]); // eslint-disable-line react-hooks/exhaustive-deps
+  function awaitBattleRoll({ id, spiritId, isCurrent, lead, sub, label, color, onRoll, cardSeat = false }) {
     const spirit = engineRef.current?.spirits?.find(s => s.id === spiritId);
     const link = netRef.current;
     const local = !link || (!link.spectator && link.mySpiritId === spiritId);
@@ -1159,8 +1215,18 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const autoAt = performance.now() + ROLL_AUTO_MS + (local ? 0 : REMOTE_ROLL_SLACK_MS);
     if (local) {
       sonicRollRef.current = () => fire(true);
-      setSonicRollPrompt({ id, lead, sub, label, color: color ?? '#66dcff', autoAt });
-      battleTimersRef.current.push(setTimeout(() => fire(true), ROLL_AUTO_MS));
+      rollDeadlineRef.current = autoAt;
+      // 🃏 The attacker's OWN throw offers the held cards — one per battle.
+      const cards = cardSeat && !engineRef.current?.battle?.cardPlayed
+        ? handOf(engineRef.current?.noteStates?.[spiritId] ?? {}).length : 0;
+      setSonicRollPrompt({ id, lead, sub, label, color: color ?? '#66dcff', autoAt, cards, spiritId });
+      // ⏱️ Polled rather than one timeout, so an open card picker can hold it.
+      const tickAuto = () => {
+        if (fired || !isCurrent()) return;
+        if (!cardPickRef.current && performance.now() >= rollDeadlineRef.current) { fire(true); return; }
+        battleTimersRef.current.push(setTimeout(tickAuto, 200));
+      };
+      battleTimersRef.current.push(setTimeout(tickAuto, 200));
       return;
     }
     if (cueSeenRef.current.has(id)) { cueSeenRef.current.delete(id); fire(false); return; }
@@ -4820,153 +4886,102 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
   // ─── EVENT SPACES SYSTEM ─────────────────────────────────────────────────────
 
-  // 🧠 Pick a fresh question from ONE bucket — no repeats until that bucket is
-  // spent. `rngVal` is a pre-drawn [0,1) engine rng value for deterministic
-  // selection; the used-question list is ENGINE STATE (`board.usedTrivia`), not
-  // a React ref, so a replay and the headless path draw the same cards.
+  // 🃏 THE MARQUEE (MARQUEE_QUIZ_DESIGN.md §10, Alex 2026-09-29): every marquee
+  // is the same. One question from the whole deck, no lane, no difficulty; a
+  // correct answer wins ONE random prize card (`engine/systems/marqueeCards.js`).
+  // `policies/transition.js`'s `collectPickups` is the headless twin — keep the
+  // draw order the same: [0] the question, [1] the bot's odds, [2] the prize.
   //
-  // ⚠️ THE CALLER MUST DISPATCH THE RETURNED `used`. `drawTrivia` is pure; it
-  // reports what the history should become and changes nothing itself. That
-  // dispatch rides on `eventHexTriggered`, which the caller was already sending.
-  function pickTrivia(rngVal, lane, difficulty) {
-    return drawTrivia(rngVal, lane, difficulty, engineRef.current.board?.usedTrivia ?? []);
-  }
-
-  // Player answered the trivia card — grade it, pay fans on a correct answer.
-  // 🎤 CROWD pays fans, 🎛️ RIG pays tiers — the split is the whole card
-  // (MARQUEE_QUIZ_DESIGN.md §2). Knowing the lore is crowd cred; knowing the
-  // gear is musicianship, and musicianship is what makes an amp loud.
-  function answerTrivia(idx) {
-    if (!activeEvent || activeEvent.phase !== 'question') return;
-    const { q, lane, spiritId } = activeEvent;
-    const correct = idx === q.answer;
-    const sp = spirits.find(s => s.id === spiritId);
-
-    if (!correct) {
-      // A wrong answer costs nothing (§2) — the difficulty choice already
-      // carried the risk, and the `sauce` is a gift rather than a consolation.
-      // ⚠️ The TRIP still resets the atrophy clock: you turned up.
-      dispatch(noteSheetPatched(spiritId, { rigIdleTurns: 0 }));
-      addLog(`🧠 ${sp?.name} blanks on the trivia — no bonus. 💡 ${q.sauce}`);
-      setActiveEvent(prev => prev ? { ...prev, phase: 'result', chosen: idx, correct: false, reward: 0 } : prev);
-      return;
-    }
-
-    if (lane === 'rig') {
-      const tiers = TRIVIA_TIER_GRANT[q.difficulty] ?? 1;
-      dispatch(noteSheetPatched(spiritId, { rigIdleTurns: 0 }));
-      addLog(`🎛️ ${sp?.name} knows their gear — ${tiers} rig tier${tiers === 1 ? '' : 's'} to spend! 💡 ${q.sauce}`);
-      // 🏋️ SPENT AT THE CARD, ONE AT A TIME (§9's simpler branch). Banking a
-      // tier for later is a better decision and needs UI that does not exist;
-      // this keeps the modal self-contained and the sheet always consistent.
-      setActiveEvent(prev => prev ? { ...prev, phase: 'spend', chosen: idx, correct: true, tiersLeft: tiers } : prev);
-      return;
-    }
-
-    const reward = TRIVIA_REWARD[q.difficulty] ?? 3;
-    gainFansFromDeed(spiritId, reward, '🧠 Trivia');
-    addLog(`🧠 ${sp?.name} nails the trivia — +${reward} fans! 💡 ${q.sauce}`);
-    setActiveEvent(prev => prev ? { ...prev, phase: 'result', chosen: idx, correct: true, reward } : prev);
-  }
-
-  /**
-   * 🏋️ Spend ONE won tier on pool or power, from the card.
-   *
-   * ⚠️ IT RE-READS THE SHEET EVERY TIME rather than batching, because
-   * `rigTierSpend` enforces "power can never exceed pool" against the CURRENT
-   * numbers. Spend three tiers off one stale snapshot and a hard answer could
-   * hand out an upgrade for a die the second tier had not bought yet.
-   */
-  function spendRigTier(track) {
-    if (!activeEvent || activeEvent.phase !== 'spend') return;
-    const spiritId = activeEvent.spiritId;
-    const sheet = engineRef.current.noteStates?.[spiritId] ?? {};
-    const patch = rigTierSpend(sheet, track);
-    if (!patch) return;   // the card offers only what `rigSpendable` allows
-    dispatch(noteSheetPatched(spiritId, patch));
-    const sp = spirits.find(s => s.id === spiritId);
-    const t  = rigTiers({ ...sheet, ...patch });
-    addLog(track === 'pool'
-      ? `🔊 ${sp?.name} adds a cabinet — the Sonic pool is ${t.pool + 1} dice.`
-      : `🎛️ ${sp?.name} drops in a bigger head — ${t.power} die/dice upgraded to d8.`);
-    setActiveEvent(prev => {
-      if (!prev) return prev;
-      const left = (prev.tiersLeft ?? 1) - 1;
-      const done = left <= 0 || !(() => { const c = rigSpendable({ ...sheet, ...patch }); return c.pool || c.power; })();
-      return { ...prev, tiersLeft: Math.max(0, left), phase: done ? 'result' : 'spend' };
-    });
-  }
-
-  // Called from move() — stepping on a marquee hex opens the CHOICE CARD.
+  // ⚠️ ALL THREE FLOATS ARE DRAWN UP FRONT, before anyone answers, so the rng
+  // stream never depends on the outcome. The prize is drawn but only SHOWN
+  // (and only dispatched) on a correct answer.
   function checkEventTrigger(spiritId, hexNum) {
     if (!eventHexes.includes(hexNum)) return;
     if (activeEvent) return; // one at a time
     const spirit = spirits.find(s => s.id === spiritId);
+    dispatch(randomBatchDrawn(3));
+    const [pickVal, oddsVal, cardVal] = engineRef.current.lastRandomBatch;
+    const { q, used } = drawMarqueeQuestion(pickVal, engineRef.current.board?.usedTrivia ?? []);
+    if (!q) return;
+    // The hex burns out as the question is drawn — there is no choice step
+    // any more to walk away from — and the next marquee lights at once.
+    dispatch(eventHexTriggered(spiritId, hexNum, used));
+    const relit = engineRef.current.board.lastEventRespawn;
+    if (relit?.from === hexNum) addLog(`🎪 A new marquee lights up at #${relit.hexNum}.`);
+    const prize = drawMarqueeCard(cardVal);
 
     if (isBot(spirit)) {
-      // 🤖 Bots can't "know" trivia — fixed odds, resolved instantly, no modal.
-      // The lane and difficulty come from the SAME rule the headless path uses
-      // (`transition.js`'s `collectPickups`): train while there is headroom,
-      // then play for the crowd; difficulty by expected value.
-      // ⚠️ Pre-draw both floats BEFORE branching — [0] picks the card, [1] is
-      // the odds roll — so the rng stream does not depend on the outcome.
-      dispatch(randomBatchDrawn(2));
-      const triviaRng = engineRef.current.lastRandomBatch;
-      const sheet = engineRef.current.noteStates?.[spiritId] ?? {};
-      const can   = rigSpendable(sheet);
-      const lane  = (can.pool || can.power) ? 'rig' : 'crowd';
-      const difficulty = bestTriviaDifficulty(lane);
-      const { q, used } = pickTrivia(triviaRng[0], lane, difficulty);
-      if (!q) return;
-      dispatch(eventHexTriggered(spiritId, hexNum, used));
-      addLog(`🎪 ${spirit?.name} steps on a marquee — ${lane === 'rig' ? '🎛️ RIG' : '🎤 CROWD'} lane, ${difficulty}. (${q.era})`);
-      const got = triviaRng[1] < (TRIVIA_BOT_ODDS[difficulty] ?? 0.5);
-      let patch = { rigIdleTurns: 0 };
-      if (got && lane === 'crowd') {
-        gainFansFromDeed(spiritId, TRIVIA_REWARD[difficulty] ?? 3, '🧠 Trivia');
-        addLog(`🧠 ${spirit?.name} answers correctly — +${TRIVIA_REWARD[difficulty] ?? 3} fans! 💡 ${q.sauce}`);
-      } else if (got) {
-        for (let i = 0; i < (TRIVIA_TIER_GRANT[difficulty] ?? 1); i++) {
-          const cur = { ...sheet, ...patch };
-          const c = rigSpendable(cur);
-          // 🎛️ Upgrade before adding — keep-highest makes a d8 in place of a d6
-          //    worth more than an extra d6 beside it on a small pool.
-          const track = c.power ? 'power' : c.pool ? 'pool' : null;
-          if (!track) break;
-          patch = { ...patch, ...rigTierSpend(cur, track) };
-        }
-        const t = rigTiers({ ...sheet, ...patch });
-        addLog(`🎛️ ${spirit?.name} knows their gear — rig now ${t.pool + 1}d, ${t.power} upgraded. 💡 ${q.sauce}`);
+      // 🤖 Bots can't "know" trivia — fixed odds by the drawn question's
+      // difficulty, resolved instantly, no modal.
+      addLog(`🎪 ${spirit?.name} steps on a marquee — a ${q.difficulty} question. (${q.era})`);
+      if (oddsVal < (TRIVIA_BOT_ODDS[q.difficulty] ?? 0.5)) {
+        const ns = engineRef.current.noteStates?.[spiritId] ?? {};
+        const replaceIdx = botReplaceIdx(ns, prize);
+        const full = handOf(ns).length >= MARQUEE_HAND_MAX;
+        if (!full || replaceIdx != null) dispatch(marqueeCardWon(spiritId, prize, replaceIdx));
+        addLog(`🃏 ${spirit?.name} answers correctly — wins ${cardDef(prize)?.icon} ${cardDef(prize)?.name}${full && replaceIdx == null ? ' (hand full — lets it go)' : ''}. 💡 ${q.sauce}`);
       } else {
-        addLog(`🧠 ${spirit?.name} guesses wrong — no bonus. 💡 ${q.sauce}`);
+        addLog(`🧠 ${spirit?.name} guesses wrong — no card. 💡 ${q.sauce}`);
       }
-      dispatch(noteSheetPatched(spiritId, patch));
       return;
     }
 
-    // 🎪 A HUMAN CHOOSES FIRST. The lane and the difficulty are picked
-    // face-down, before any question is drawn — that ordering is the entire
-    // skill component, and drawing early would leak the card.
-    //
-    // ⚠️ THE MARQUEE IS NOT CONSUMED YET, and that is deliberate: the hex burns
-    // out when the card is DRAWN (`chooseTriviaCard`), because the draw and the
-    // burn are one event and `eventHexTriggered` carries both. Nobody else can
-    // act in between — the modal owns the screen — and a player who somehow
-    // escapes it leaves the marquee lit rather than eating it for nothing.
-    addLog(`🎪 ${spirit?.name} steps on a marquee hex — 🎤 pick your lane!`);
-    setActiveEvent({ spiritId, hexNum, q: null, phase: 'choice', chosen: null });
+    addLog(`🎪 ${spirit?.name} steps on a marquee — answer for a card! (${q.era})`);
+    setActiveEvent({ spiritId, hexNum, q, phase: 'question', chosen: null, prize });
   }
 
-  /** 🎪 The card's lane × difficulty pick — draws the question it asked for. */
-  function chooseTriviaCard(lane, difficulty) {
-    if (!activeEvent || activeEvent.phase !== 'choice') return;
-    dispatch(randomBatchDrawn(1));
-    const { q, used } = pickTrivia(engineRef.current.lastRandomBatch[0], lane, difficulty);
-    if (!q) return;
-    // The hex burns out HERE, carrying the question history with it.
-    dispatch(eventHexTriggered(activeEvent.spiritId, activeEvent.hexNum, used));
-    addLog(`🎤 ${lane === 'rig' ? '🎛️ RIG' : '🎤 CROWD'} lane, ${difficulty} — (${q.era})`);
-    setActiveEvent(prev => prev ? { ...prev, q, lane, difficulty, phase: 'question' } : prev);
+  // Player answered the marquee question — a correct answer wins the prize card.
+  function answerTrivia(idx) {
+    if (!activeEvent || activeEvent.phase !== 'question') return;
+    const { q, spiritId, prize } = activeEvent;
+    const correct = idx === q.answer;
+    const sp = spirits.find(s => s.id === spiritId);
+    if (!correct) {
+      // A wrong answer costs nothing — the `sauce` is a gift, not a consolation.
+      addLog(`🧠 ${sp?.name} blanks on the marquee — no card. 💡 ${q.sauce}`);
+      setActiveEvent(prev => prev ? { ...prev, phase: 'result', chosen: idx, correct: false } : prev);
+      return;
+    }
+    const hand = handOf(engineRef.current.noteStates?.[spiritId] ?? {});
+    if (hand.length >= MARQUEE_HAND_MAX) {
+      // 🃏 Full hand: the player picks what goes (or lets the new card go).
+      setActiveEvent(prev => prev ? { ...prev, phase: 'swap', chosen: idx, correct: true } : prev);
+      return;
+    }
+    dispatch(marqueeCardWon(spiritId, prize));
+    addLog(`🃏 ${sp?.name} nails it — wins ${cardDef(prize)?.icon} ${cardDef(prize)?.name}! 💡 ${q.sauce}`);
+    setActiveEvent(prev => prev ? { ...prev, phase: 'result', chosen: idx, correct: true, kept: true } : prev);
+  }
+
+  /** 🃏 Full hand: swap card `replaceIdx` out for the prize, or null to let it go. */
+  function keepPrize(replaceIdx) {
+    if (!activeEvent || activeEvent.phase !== 'swap') return;
+    const { spiritId, prize, q } = activeEvent;
+    const sp = spirits.find(s => s.id === spiritId);
+    const hand = handOf(engineRef.current.noteStates?.[spiritId] ?? {});
+    if (replaceIdx != null) {
+      dispatch(marqueeCardWon(spiritId, prize, replaceIdx));
+      addLog(`🃏 ${sp?.name} swaps ${cardDef(hand[replaceIdx])?.name} for ${cardDef(prize)?.icon} ${cardDef(prize)?.name}. 💡 ${q.sauce}`);
+    } else {
+      addLog(`🃏 ${sp?.name} lets ${cardDef(prize)?.name} go — hand full. 💡 ${q.sauce}`);
+    }
+    setActiveEvent(prev => prev ? { ...prev, phase: 'result', kept: replaceIdx != null } : prev);
+  }
+
+  /** 🤖 A bot plays its best card that would change this throw (engine's `botArmIdx`). */
+  function botArmCard(attacker) {
+    if (!isBot(attacker)) return;
+    const live = engineRef.current;
+    const ns = live.noteStates?.[attacker.id] ?? {};
+    if (!handOf(ns).length || ns.marqueeArmed != null) return;
+    const idx = botArmIdx(ns, rigFor(attacker, ns, live));
+    if (idx != null) dispatch(marqueeCardArmed(attacker.id, idx));
+  }
+
+  /** 🃏 The log line for a card the throw just spent. */
+  function logCardPlayed(verdict, attacker) {
+    const c = cardDef(verdict?.cardPlayed);
+    if (c) addLog(`🃏 ${attacker?.name} plays ${c.icon} ${c.name} — ${c.text}`);
   }
 
   // Flaming disc hazard — called whenever a spirit ENTERS a hex (move or push)
@@ -5646,7 +5661,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     else if (kind === 'vup') { setSpirits(prev => prev.map(s => s.id === id ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + 1) } : s)); addLog(`🧪 +1 Vibe → ${nm}`); }
     else if (kind === 'vdn') { setSpirits(prev => prev.map(s => s.id === id ? { ...s, vibe: Math.max(0, (s.vibe ?? 0) - 1) } : s)); addLog(`🧪 −1 Vibe → ${nm}`); }
     else if (kind === 'fp')  { grantFame(id, 3, '🧪 test grant', false); }
+    else if (kind === 'card') {
+      // 🃏 Deal the next marquee card in deck order, so a tester meets every
+      // kind. A full hand swaps out its first card.
+      const cardId = MARQUEE_CARD_IDS[devCardRef.current++ % MARQUEE_CARD_IDS.length];
+      const full = handOf(engineRef.current.noteStates[id] ?? {}).length >= MARQUEE_HAND_MAX;
+      dispatch(marqueeCardWon(id, cardId, full ? 0 : null));
+      addLog(`🧪 🃏 ${cardDef(cardId)?.icon} ${cardDef(cardId)?.name} → ${nm}${full ? ' (swapped out the first card)' : ''}`);
+    }
   }
+  const devCardRef = useRef(0);
 
   // 🧪🎮 PLAY AS — take the controls of any Spirit, mid-turn, with nobody's turn
   // ending. The engine rotates the queue (`SANDBOX_SEAT_TAKEN`, so End Turn still
@@ -6831,10 +6855,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       addLog(`🐙 ${attacker.name} reaches ${tent.reach} hex${tent.reach !== 1 ? 'es' : ''} through the slime — the road behind him is GONE.`);
     }
 
+    botArmCard(attacker);   // 🃏 see initiateSonicAttack
     const params=attackParams(engineRef.current,attacker.id,targetId,'swing');
     const rollState=maybeCodeInjection(dispatch(attackRolled('swing',attacker.id,targetId,params)),attacker.id,targetId);
     const verdict=rollState.battle;
     recordBattleTotals(attacker.id,targetId,verdict.atkTotal,verdict.defTotal,verdict.attackerWon);
+    logCardPlayed(verdict,attacker);
     burnChargesAfterBattle([attacker.id,targetId],'the Swing clash spent it');
     setNoteField(attacker.id,{swingExposed:true});
     addLog('⚔️ '+attacker.name+' and '+defender.name+' clash: Drive '+verdict.atkTotal+' vs '+verdict.defTotal+'.');
@@ -8209,7 +8235,18 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       battleStateRef.current=scene;setBattleState(scene);setDiceDisplay(null);
       const isCurrent=()=>battleStateRef.current?.sonicId===sonicId;
       const mark=fields=>{if(!isCurrent())return;const next={...battleStateRef.current,...fields};battleStateRef.current=next;setBattleState(next);};
-      const plan={...verdict,poolStart:[SONIC_GATE,0],shots:verdict.shots.map(s=>({...s,at:BARRAGE_LAUNCH+barrageContact(s.index)}))};
+      const planOf=v=>({...v,poolStart:[SONIC_GATE,0],shots:v.shots.map(s=>({...s,at:BARRAGE_LAUNCH+barrageContact(s.index)}))});
+      let plan=planOf(verdict);
+      // 🃏 A card played at the attacker's gate RE-THROWS the Drive dice in the
+      // engine; the presentation adopts the new verdict before anyone sees it.
+      battleCardRef.current={attackerId:verdict.attackerId,adopted:false,apply:next=>{
+        if(!isCurrent()||battleCardRef.current?.adopted)return null;
+        battleCardRef.current.adopted=true;
+        verdict={...verdict,...next};plan=planOf(verdict);
+        mark({...next,sonicFame:next.hitCount,knockback:next.hitCount});
+        const n=verdict.diceVals.length;
+        return {label:`Roll ${n}`,sub:`${n} Drive ${n===1?'die':'dice'} against a ${verdict.shieldValue} shield`};
+      }};
       const stops=[];let shield=null;
       sonicAudioRef.current=()=>{stops.forEach(stop=>stop());stops.length=0;};
       const audio=fn=>{try{const ctx=getAudioCtx();fn(ctx,getAudioBuses(ctx).master);}catch{/* audio is best effort */}};
@@ -8234,7 +8271,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           T(()=>phase('sonic_shield'),SONIC_DICE.landedAt[1]*1000);
           T(()=>{
             phase('sonic_armed');
-            awaitBattleRoll({id:battleCueId('sonic',verdict,'attacker'),spiritId:verdict.attackerId,isCurrent,
+            awaitBattleRoll({id:battleCueId('sonic',verdict,'attacker'),spiritId:verdict.attackerId,isCurrent,cardSeat:true,
               lead:'Fire the volley',sub:`${dice} Drive ${dice===1?'die':'dice'} against a ${verdict.shieldValue} shield`,
               label:`Roll ${dice}`,color:attacker?.color,
               onRoll:()=>{
@@ -8306,12 +8343,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
     // Derive from the full charge before paying it. Both client and headless
     // attacks use this payload, so the displayed dice are the dice that count.
-    const params=attackParams(live,attacker.id,targetId,'sonic');
+    // 🃏 A bot arms its best card first; `attackParams` applies whatever is armed.
+    botArmCard(attacker);
+    const params=attackParams(engineRef.current,attacker.id,targetId,'sonic');
     const {_derived,...rollOptions}=params;
     if(_derived.consumedSmashExposed)setNoteField(targetId,{smashExposed:false});
     setNoteField(attacker.id,{driveStack:[]});
     const rolled=maybeCodeInjection(dispatch(attackRolled('sonic',attacker.id,targetId,rollOptions)),attacker.id,targetId).battle;
     burnChargesAfterBattle([attacker.id,targetId],'the Sonic volley spent it');
+    logCardPlayed(rolled,attacker);
     addLog('🔊 '+attacker.name+' projects '+rigPoolLabel(rolled.dicePool)+' at '+defender.name+' — Drive strength '+rolled.atkTotal+' against '+rolled.shieldValue+' rolled shield HP.');
     startSonicPresentation(rolled);
   }
@@ -9382,13 +9422,24 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // is read off the live note state — the Swing never spends it.
     const notes=[[...(verdict.swingChordSpent??[]),...(verdict.swingChordLeft??[])],
       [...(engineRef.current?.noteStates?.[verdict.defenderId]?.driveStack??[])]];
-    const powers=[swingBeamPower(verdict.atkTotal,verdict.dicePool),swingBeamPower(verdict.defTotal,verdict.defenderDicePool)];
+    let powers=[swingBeamPower(verdict.atkTotal,verdict.dicePool),swingBeamPower(verdict.defTotal,verdict.defenderDicePool)];
     const stops=[];sonicAudioRef.current=()=>{stops.forEach(stop=>stop());stops.length=0;};
     const audio=fn=>{try{const ctx=getAudioCtx();stops.push(fn(ctx,getAudioBuses(ctx).master));}catch{/* audio is best effort */}};
     // The dice clacks reuse the Sonic foley with a Swing-shaped plan: pool 0
     // is the attacker's Drive, pool 1 the Rival's, thrown a gate apart.
-    const clackPlan={shots:verdict.diceVals.map((strength,index)=>({strength,index,at:0})),
-      sustainRolls:verdict.defenderDiceVals,poolStart:[0,SWING_GATE],breakIndex:-1};
+    const clackOf=v=>({shots:v.diceVals.map((strength,index)=>({strength,index,at:0})),
+      sustainRolls:v.defenderDiceVals,poolStart:[0,SWING_GATE],breakIndex:-1});
+    let clackPlan=clackOf(verdict);
+    // 🃏 A card played at the attacker's gate re-throws his dice (see the Sonic).
+    battleCardRef.current={attackerId:verdict.attackerId,adopted:false,apply:next=>{
+      if(!isCurrent()||battleCardRef.current?.adopted)return null;
+      battleCardRef.current.adopted=true;
+      verdict={...verdict,...next};clackPlan=clackOf(verdict);
+      powers=[swingBeamPower(verdict.atkTotal,verdict.dicePool),swingBeamPower(verdict.defTotal,verdict.defenderDicePool)];
+      mark({...next});
+      const n=(verdict.rolledPool??verdict.dicePool).length;
+      return {label:`Roll ${n}`,sub:`${n} Drive dice · ${defender?.name??'the Rival'} swings back`};
+    }};
     const beat=(value)=>{
       phase(value);
       if(value==='swing_attacker_charge')audio((ctx,d)=>playSwingCharge(ctx,notes[0],{power:powers[0],destination:d}));
@@ -9397,7 +9448,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     };
     const split=SWING_BEATS.findIndex(([,name])=>name==='swing_rival');
     // 🎯 The bout opens on the pair first — see the Sonic's `BATTLE_INTRO`.
-    T(()=>awaitBattleRoll({id:battleCueId('swing',verdict,'attacker'),spiritId:verdict.attackerId,isCurrent,
+    T(()=>awaitBattleRoll({id:battleCueId('swing',verdict,'attacker'),spiritId:verdict.attackerId,isCurrent,cardSeat:true,
       lead:'Swing! Roll your Drive',sub:`${verdict.dicePool.length} Drive dice · ${defender?.name??'the Rival'} swings back`,
       label:`Roll ${verdict.dicePool.length}`,color:attacker?.color,
       onRoll:()=>{
@@ -9785,8 +9836,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // never comes back, nothing logs it, and the board is quietly short for
       // the rest of the match. A shortfall is a fact about state, so read it
       // off state. 📌 Same lesson as §5.A⁶: the stale copy is the bug.
-      if (engineRef.current.board.eventRespawnIn <= 0 &&
-          engineRef.current.board.eventHexes.length < EVENT_HEX_COUNT) {
+      // 🎪 Since 2026-09-29 a marquee relights THE MOMENT one is taken (one per
+      // seat, `systems/marqueeSpaces.js`), so this is only the fallback for a
+      // board that had nowhere free at the time.
+      if (engineRef.current.board.eventHexes.length < marqueeCount(engineRef.current)) {
         // The board is short and the cooldown is clear — light one (engine rng).
         // The engine re-arms the timer itself if it is STILL short afterwards,
         // so a double-trigger recovers over two rounds instead of snapping back.
@@ -12263,12 +12316,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       <EventModal
         activeEvent={activeEvent}
         answerTrivia={answerTrivia}
-        chooseTriviaCard={chooseTriviaCard}
-        spendRigTier={spendRigTier}
-        {...(activeEvent ? {
-          rigSpendable: rigSpendable(noteStates[activeEvent.spiritId] ?? {}),
-          rigTiers:     rigTiers(noteStates[activeEvent.spiritId] ?? {}),
-        } : {})}
+        keepPrize={keepPrize}
+        prizeCard={activeEvent ? cardDef(activeEvent.prize) : null}
+        hand={activeEvent ? handOf(noteStates[activeEvent.spiritId] ?? {}).map(cardDef) : []}
         setActiveEvent={setActiveEvent}
         spirits={spirits}
       />
@@ -12909,6 +12959,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 </RailBtn>
               );
             })()}
+            {/* 🃏 MARQUEE PRIZE CARDS — shown here, PLAYED AT THE ROLL: the
+                "Use a card" button above Roll (MARQUEE_QUIZ_DESIGN.md §10.6).
+                Bots arm their own in the engine. */}
+            {acting && !isBot(acting) && (
+              <MarqueeHand cards={handOf(actingNoteState ?? {}).map(cardDef)} />
+            )}
             {/* SWING — baseline attack, always visible & lit.
                 Hover previews the cone. GRAYED = no AP / token spent; FADED = no rival in range. */}
             {(() => {
@@ -13005,7 +13061,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const beam    = acting ? getSonicBeam(acting) : new Set();
               const targets = acting ? getRivalsInBeam(acting) : [];
               const poolNow = actingRig.pool;
-              const poolDisplay = poolNow;
+              // 🃏 The label shows the armed card's dice — what will be thrown.
+              const poolDisplay = cardedRig(actingRig, actingNoteState ?? {}).pool;
               const diceLabel = rigPoolLabel(poolDisplay);
               // 📡 Sonic is OFFLINE outside the rig's radius — the button fades.
               // GRAYED = no AP / token spent (mechanical); FADED = out of amp
@@ -14764,7 +14821,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   title="VERB — reverb. Double-click resets."/>
               </div>
             )}
-            <SonicRollPrompt prompt={sonicRollPrompt} onRoll={rollSonicVolley} />
+            <SonicRollPrompt prompt={sonicRollPrompt} onRoll={rollSonicVolley} onUseCard={openCardPick} />
+            {cardPick && <MarqueeCardPick cards={cardPick.cards} sub={cardPick.sub}
+              onPick={pickCard} onCancel={() => closeCardPick()} />}
             <SonicBarrageRecord battle={battleState} />
             <SeatUnlockBurst fx={seatUnlockFx} />
             <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera} topView={topView} onTopView={setTopView}

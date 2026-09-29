@@ -6,11 +6,25 @@
 > is lives in its own design doc; what it *taught us* lives in `SEQUENCING.md` §B.
 > **This file answers one question: what is true right now?**
 >
-> 📌 **Written 2026-09-04**, last updated **2026-09-28** (🔭 the battle camera's clear lens + 🎯 attack reach glows on hover; earlier: 🔊 the Eleven die is a d6; 🎭 the Spirit-select stings; earlier: 🎸 chord vocabularies + keep-the-best dice + the blank-dice fix; earlier: 🔦 the four corner spotlights + no more natural Sustain decay; earlier the same day: player colours only, the seat-portrait preview and the solid layer re-draw; earlier the same day: the 3D Spirit picker and the figure-only standee cut; earlier: the staged-roll stop-gap and the battle director preview; earlier: the auto camera v2 and the 3D move tiles; earlier: the Ronin's palette and amp voice, the weighted note draw, the beginner finder), when the design set
+> 📌 **Written 2026-09-04**, last updated **2026-09-29** (🃏 marquee prize cards; earlier: 🔭 the battle camera's clear lens + 🎯 attack reach glows on hover; earlier: 🔊 the Eleven die is a d6; 🎭 the Spirit-select stings; earlier: 🎸 chord vocabularies + keep-the-best dice + the blank-dice fix; earlier: 🔦 the four corner spotlights + no more natural Sustain decay; earlier the same day: player colours only, the seat-portrait preview and the solid layer re-draw; earlier the same day: the 3D Spirit picker and the figure-only standee cut; earlier: the staged-roll stop-gap and the battle director preview; earlier: the auto camera v2 and the 3D move tiles; earlier: the Ronin's palette and amp voice, the weighted note draw, the beginner finder), when the design set
 > reached 37 files and 222,000
 > words and no single view of the game existed. Keep it short or it stops being
 > read — if a section needs a paragraph, it belongs in its own doc with a link
 > from here.
+
+**2026-09-29 🎪 one marquee per seat** (`MARQUEE_QUIZ_DESIGN.md` §11): each opens in its seat's own
+quadrant; taking one relights one at once in a quadrant with none (the one just emptied, or an
+unseated one), ≥ 2 hexes away, never two per quadrant — at 4 seats it is persistent in that quadrant.
+No respawn timer. 🪦 **Charge spaces retired for now** (`CHARGE_ZONE_COUNT` = 0).
+
+**2026-09-29 🃏 marquee prize cards** (`MARQUEE_QUIZ_DESIGN.md` §10): every marquee is the same —
+one question from the whole deck, no lane, no difficulty. A correct answer wins ONE random card
+(`engine/systems/marqueeCards.js`): 🎲 Loaded 4/5/6 (the weakest die lands on that face), 🔼 Bigger Cab
+(weakest die a size up), ⏫ Full Stack (weakest die → d10), ➕ Encore (+1 kept die). Hold up to 3 (full →
+swap or let go). 🂠 **Played at the roll:** "Use a card" above the Roll button on your own throw —
+the cards (RL-logo backs) spin, deal and flip; pick one; your dice are re-thrown with it
+(`applyMarqueeCardPlayed`). Spent only if it changes the throw. Bots arm theirs before attacking. The marquee no longer pays fans or rig tiers — the
+rig workout is dormant (nothing grants it). ⏳ The marquee is still hard to see in 3D.
 
 **2026-09-27 🎸 chord vocabularies, dials to 10, keep-the-best dice** (`CHORD_VOCABULARY_DESIGN.md`):
 each Spirit reads its stacks from its OWN ten spellings (`music/vocabularies.js` — root-anchored;
@@ -21,8 +35,7 @@ Seats 4–6 are hunted with the Spirit's own next note. Amps = seats per stack (
 the 6th seat glows). 🔊 Goes to 11 swaps in the Eleven die — **a d6 since 2026-09-28: five 11s, one 1** (fizzle 1 in 6, was 1 in 12);
 always kept; the 1 fizzles the throw. ⚠️ Its price (whole Sustain stack + blown amp) is still the one set for eleven d6s. Swing / Psycho Bushido spend from the TOP. Intergalactic 0's innate is gone.
 🔢 The dice faces were blank — the solid layer re-drew the body over its own numbers; fixed
-(`solidLayer.js` `DECAL_LAYER`). ⏳ Marquee bonus CARDS (guaranteed faces, die bumps, +1 kept die)
-replace the RIG lane — designed, not built.
+(`solidLayer.js` `DECAL_LAYER`). ✅ Marquee bonus CARDS replaced the RIG lane (2026-09-29, above).
 
  The approved Shieldbreaker barrage is now live:
 red Drive and blue Sustain floor dice, a two-second totals hold, automatic ring

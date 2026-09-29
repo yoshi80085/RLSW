@@ -20,13 +20,14 @@ import {
   BOARD_SYNCED,
   SPOTLIGHT_HEALED, SPOTLIGHT_MOVED, TOKENS_SCATTERED, THRASH_TOKENS_SPAWNED, FLAMING_DECAYED,
   EVENT_RESPAWN_TICKED, EVENT_HEX_SPAWNED, CHARGE_ZONES_TICKED,
-  EVENT_HEX_TRIGGERED, TOKEN_PICKED_UP, TOKENS_DRIFTED, CHARGE_ZONE_USED, FLAMING_HEXES_SET,
+  EVENT_HEX_TRIGGERED, MARQUEE_CARD_WON, MARQUEE_CARD_ARMED, MARQUEE_CARD_PLAYED, TOKEN_PICKED_UP, TOKENS_DRIFTED, CHARGE_ZONE_USED, FLAMING_HEXES_SET,
   RANDOM_BATCH_DRAWN,
   SLIME_DROPPED, SLIME_DECAYED, SLIME_CLEARED, SPIRIT_SLID, SLIME_CALLED, ELEVEN_CALLED,
   POSE_SET, POSE_ROUND_BANKED,
   SANDBOX_SEAT_TAKEN, SANDBOX_REFILLED,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
+import { applyMarqueeCardWon, applyMarqueeCardArmed } from "./systems/marqueeCards.js";
 import {
   applyTurnStarted, applyTurnEnded, applyTurnSkipped,
   applyMoveBudgetSet, applyBeatsSpent, applySpiritsSynced,
@@ -35,7 +36,7 @@ import {
 import { applyMoveStep, applySpiritWarped, applySpiritFaced } from "./systems/movement.js";
 import { applyShukuchiHop } from "./systems/shukuchi.js";
 import {
-  applyAttackRolled, applyAttackRerolled,
+  applyAttackRolled, applyAttackRerolled, applyMarqueeCardPlayed,
   applyDamageApplied, applyKnockdownResolved, applyWinnerDeclared,
 } from "./systems/combat.js";
 import {
@@ -147,7 +148,10 @@ function reduce(state, action, rng) {
     case THRASH_TOKENS_SPAWNED:  return applyThrashTokensSpawned(state, action, rng);
     case TOKEN_PICKED_UP:        return applyTokenPickedUp(state, action);
     case TOKENS_DRIFTED:         return applyTokensDrifted(state, action, rng);
-    case EVENT_HEX_TRIGGERED:    return applyEventHexTriggered(state, action);
+    case EVENT_HEX_TRIGGERED:    return applyEventHexTriggered(state, action, rng);
+    case MARQUEE_CARD_WON:       return applyMarqueeCardWon(state, action);
+    case MARQUEE_CARD_ARMED:     return applyMarqueeCardArmed(state, action);
+    case MARQUEE_CARD_PLAYED:    return applyMarqueeCardPlayed(state, action, rng);
     case EVENT_RESPAWN_TICKED:   return applyEventRespawnTicked(state);
     case EVENT_HEX_SPAWNED:      return applyEventHexSpawned(state, action, rng);
     case CHARGE_ZONE_USED:       return applyChargeZoneUsed(state, action);

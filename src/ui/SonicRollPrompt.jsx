@@ -13,7 +13,10 @@ import { useEffect, useState } from 'react';
 //     only what the countdown reads);
 //   • a remote human's throw shows `waiting` — the same card, no button;
 //   • a bot never mounts this at all.
-export function SonicRollPrompt({ prompt, onRoll }) {
+// 🃏 `prompt.cards` > 0 (the attacker's own throw, a local human holding
+// marquee cards, none played yet this battle) adds a "Use a card" button ABOVE
+// the Roll button — Alex, 2026-09-29. It opens `MarqueeCardPick`.
+export function SonicRollPrompt({ prompt, onRoll, onUseCard }) {
   const [, tick] = useState(0);
   useEffect(() => {
     if (!prompt?.autoAt) return;
@@ -21,7 +24,7 @@ export function SonicRollPrompt({ prompt, onRoll }) {
     return () => clearInterval(timer);
   }, [prompt?.autoAt]);
   if (!prompt) return null;
-  const { lead = 'Roll', sub = '', label = 'Roll', color = '#66dcff', waiting = false, autoAt = null } = prompt;
+  const { lead = 'Roll', sub = '', label = 'Roll', color = '#66dcff', waiting = false, autoAt = null, cards = 0 } = prompt;
   const left = autoAt == null ? null : Math.max(0, Math.ceil((autoAt - performance.now()) / 1000));
   return (
     <div className="sonic-roll-prompt" role="group" aria-label={waiting ? lead : `${lead} — roll`} data-roll-waiting={waiting ? "" : undefined}>
@@ -50,6 +53,13 @@ export function SonicRollPrompt({ prompt, onRoll }) {
           animation: srp-breathe 1.9s ease-in-out infinite;
         }
         .sonic-roll-prompt button:hover { filter: brightness(1.12); }
+        .sonic-roll-prompt .srp-card {
+          position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%);
+          white-space: nowrap; color: #ffcc44; background: #1a1206ee; border-color: #ffcc44;
+          font-size: 12px; padding: 8px 18px; box-shadow: 0 0 20px -6px #ffcc44, 0 6px 20px #000a;
+          animation: none;
+        }
+        .sonic-roll-prompt .srp-card .srp-card-n { margin-left: 8px; opacity: .7; }
         .sonic-roll-prompt button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
         @keyframes srp-breathe { 50% { box-shadow: 0 0 0 1px #ffffff1f inset, 0 0 8px -4px var(--srp-accent); } }
         @media (prefers-reduced-motion: reduce) { .sonic-roll-prompt button { animation: none; } }
@@ -62,6 +72,11 @@ export function SonicRollPrompt({ prompt, onRoll }) {
         <span className="srp-lead">{lead}</span>
         <span className="srp-sub">{sub}{left != null ? <> · <b>{waiting ? `rolls in ${left}s` : `auto-roll in ${left}s`}</b></> : null}</span>
       </div>
+      {!waiting && cards > 0 && onUseCard ? (
+        <button type="button" className="srp-card" onClick={onUseCard} data-use-card="">
+          🃏 Use a card<span className="srp-card-n">×{cards}</span>
+        </button>
+      ) : null}
       {waiting ? null : (
         <button type="button" style={{ '--srp-accent': color }} onClick={onRoll} autoFocus>
           {label}

@@ -4,6 +4,7 @@ import { angleTo } from '../../board/hexGeometry.js';
 import { CHARGE_FLOOR_BONUS } from '../../data/gameConstants.js';
 import { homeSpotlightDrive } from './spotlights.js';
 import { throwPool } from './dicePool.js';
+import { cardedRig, spendArmedPatch } from './marqueeCards.js';
 
 export function clashVerdict(diceVals, defenderDiceVals) {
   const atkTotal=diceVals.reduce((a,b)=>a+b,0),defTotal=defenderDiceVals.reduce((a,b)=>a+b,0);
@@ -34,20 +35,24 @@ export function rollSwingClash(state, action, rng) {
   const nsA=state.noteStates?.[attackerId]??{},nsD=state.noteStates?.[defenderId]??{};
   // 🔦 The ATTACKER's home light adds a die; the defender's does not — the
   // bonus is for attacking from there (Alex, 2026-09-25).
-  const rigA=sonicRig(nsA,0,0,true,attackerId,homeSpotlightDrive(state,attackerId));
+  // 🃏 The attacker's armed marquee card changes what he throws (marqueeCards.js).
+  const rigA=cardedRig(sonicRig(nsA,0,0,true,attackerId,homeSpotlightDrive(state,attackerId)),nsA);
   const rigD=sonicRig(nsD,0,0,true,defenderId);
   const floor=ns=>Math.max((ns.chargeFloorTurns??0)>0?CHARGE_FLOOR_BONUS:0,ns.dieFloorBoost??0);
   // 🎲 Every die is thrown; each side keeps its seats' worth (dicePool.js). The
   // dropped dice ride along so the table can show them, dimmed.
-  const atk=throwPool(rigA.pool,rigA.keep,rng,floor(nsA));
+  const atk=throwPool(rigA.pool,rigA.keep,rng,floor(nsA),rigA.atkFixed);
   const def=throwPool(rigD.pool,rigD.keep,rng,floor(nsD));
-  return {...state,spirits:state.spirits.map(s=>{
+  // A card that changed the throw is spent; one that did nothing stays in the hand.
+  const noteStates=rigA.cardId&&state.noteStates?.[attackerId]
+    ?{...state.noteStates,[attackerId]:{...nsA,...spendArmedPatch(nsA)}}:state.noteStates;
+  return {...state,noteStates,spirits:state.spirits.map(s=>{
     const other=s.id===attackerId?d:s.id===defenderId?a:null;
     return other&&HEX_BY_NUM[s.num]&&HEX_BY_NUM[other.num]
       ? {...s,facing:angleTo(HEX_BY_NUM[s.num],HEX_BY_NUM[other.num])}:s;
   }),battle:{kind:'attack',attackKind:'swing',swingClash:true,attackerId,defenderId,
     ...swingThrowFields(atk,def,rigA,rigD),
-    atkFloor:floor(nsA),
+    atkFloor:floor(nsA),atkFixed:rigA.atkFixed,cardPlayed:rigA.cardId,
     // 🔝 Spent from the TOP (Alex, 2026-09-27) — the chord steps down two rungs.
     swingChordLeft:(nsA.driveStack??[]).slice(0,-2),swingChordSpent:(nsA.driveStack??[]).slice(-2),rerolled:false}};
 }

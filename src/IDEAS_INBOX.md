@@ -101,6 +101,7 @@ Develop the system that finds the strongest possible chord shape and structure (
 Build the fans out as 3D. Alex, while planning the fan speech bubbles — parked behind them on purpose: the bubbles only need the seat position, so they survive the swap.
 
 ### 2026-09-16 — [P1] Sort out the marquee squares
+🟡 **Half done — 2026-09-29.** *Picking is a chore* → gone: every marquee is the same, one question, a prize card (`MARQUEE_QUIZ_DESIGN.md` §10). ⏳ *Hard to see on the board* → still open (nothing marks a marquee in the 3D arena).
 Sort out the marquee squares.
 🎯 See [P3] *Marquee spaces by category* (2026-09-08).
 
@@ -187,7 +188,8 @@ Discuss whether it matters how Discord notes are used, per character.
 ### 2026-09-08 — [P3] Famous-riff acknowledgements
 Quietly acknowledge famous riffs as generic reactions such as “Super Riff!” or “I’ve heard that one before!” Award extra points such as fans, or trigger explosions of excitement. Build an archive of hundreds of riffs that trigger a small in-game acknowledgement without explicitly naming the tune.
 
-### 2026-09-08 — [P3] Marquee spaces by category
+### ~~2026-09-08 — [P3] Marquee spaces by category~~
+✅ **Answered differently — 2026-09-29.** Alex: *"gear/lore don't matter"* — no categories, every marquee is the same and pays a random battle card (`MARQUEE_QUIZ_DESIGN.md` §10).
 Make marquee spaces something that is not chosen. Since the choice layer is often a pain and gets chosen randomly, show different marquee areas on the board differently: some as equipment marquee zones, others as general trivia questions. These may be split up more later; flag for now.
 
 ### 2026-09-08 — [P3] Pickles replaces Picky as a beginner music-fit tool

@@ -191,6 +191,11 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     //  rather than deprecated, so archived code reviving it fails loudly — same
     //  treatment as STACK_CAP and FLAT_ROOTS.)
     dieFloorBoost:   0,
+    // ── 🃏 MARQUEE PRIZE CARDS (MARQUEE_QUIZ_DESIGN.md §10) ──
+    // Won at the marquee, held (max MARQUEE_HAND_MAX), armed before a Swing or
+    // Sonic and spent on it. `marqueeArmed` is an index into the hand, or null.
+    marqueeCards:    [],
+    marqueeArmed:    null,
     // ── 🎛️ THE RIG WORKOUT (MARQUEE_QUIZ_DESIGN.md §4–§5) ──
     // Pool and power are WON at the marquee's RIG lane and shed through
     // neglect. They start at the floor — `RIG_POOL_FLOOR` — which is exactly

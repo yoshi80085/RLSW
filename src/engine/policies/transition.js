@@ -75,18 +75,16 @@ import {
   applyRiffOffStarted, applyRiffResultsSubmitted, applyRiffResolved,
   applyRiffRound2Started, applyRiffClosed, simulateRiffPerformance,
 } from "../systems/riffOff.js";
-import { attackParams, spiritChord, SONIC_DRIVE_SPEND } from "../systems/attackParams.js";
+import { attackParams, rigFor, spiritChord, SONIC_DRIVE_SPEND } from "../systems/attackParams.js";
 import { usedAdd, usedList } from "../systems/economy.js";
 import {
   bankLostChord, chargeSparkPatch, tokenAt, liveChargeZoneAt,
 } from "../systems/board.js";
-import { tokenPickedUp, chargeZoneUsed, eventHexTriggered } from "../actions.js";
-import { fansFromDeed } from "../systems/economy.js";
-import { hexRingFromCenter } from "../../board/boardHelpers.js";
-import { rigSpendable, rigTierSpend, rigTiers } from "../systems/sonicRig.js";
+import { tokenPickedUp, chargeZoneUsed, eventHexTriggered, marqueeCardWon, marqueeCardArmed } from "../actions.js";
+import { drawMarqueeQuestion, TRIVIA_BOT_ODDS } from "../../data/trivia.js";
 import {
-  drawTrivia, bestTriviaDifficulty, TRIVIA_REWARD, TRIVIA_TIER_GRANT, TRIVIA_BOT_ODDS,
-} from "../../data/trivia.js";
+  drawMarqueeCard, botReplaceIdx, botArmIdx, cardDef, handOf,
+} from "../systems/marqueeCards.js";
 import {
   CHARGE_ZONE_BOOST_TURNS,
   PSYCHO_BUSHIDO_AP_COST,
@@ -209,7 +207,7 @@ const patchNs = (state, spiritId, patch, rng) =>
  * one gesture. Both paths call `applyUnlockClaim`, so the bench and the game
  * cannot disagree about which finds are upgrades.
  */
-function collectPickups(state, spiritId, hexNum, rng) {
+export function collectPickups(state, spiritId, hexNum, rng) {
   if (hexNum == null) return { state, logs: [] };
   const logs = [];
   let next = state;
@@ -261,72 +259,36 @@ function collectPickups(state, spiritId, hexNum, rng) {
     logs.push(`⚡ Charge Zone tapped on #${hexNum} — ${kind}`);
   }
 
-  // 🎪 THE MARQUEE — and until 2026-08-20 this was not here at all.
+  // 🎪 THE MARQUEE — one question, and a correct answer wins a CARD
+  // (Alex, 2026-09-29 — `MARQUEE_QUIZ_DESIGN.md` §10). No lane, no difficulty:
+  // every marquee is the same. The client's `checkEventTrigger` is this path's
+  // twin for bots in the live game; keep them in step.
   //
-  // ⚠️ THE QUIZ WAS CLIENT-ONLY, AND THAT WAS ABOUT TO BECOME A SILENT
-  // CATASTROPHE. A headless Spirit walked onto a marquee and NOTHING happened —
-  // not declared in `HARNESS_GAPS`, just absent. That was survivable while the
-  // rig was bought with Db (a bench bot could still buy Amp II). The moment the
-  // rig came off the skill tree, the marquee became the ONLY source of pool and
-  // power, so leaving this out would have frozen every bench Spirit at the
-  // floor for eternity — and every bench number since would have described a
-  // game in which nobody's amp ever grew.
+  // ⚠️ ALL THREE DRAWS HAPPEN BEFORE ANY BRANCH — the question, the odds roll
+  // and the prize. A draw whose position in the stream depends on an outcome
+  // is a replay divergence waiting to happen.
   if ((next.board?.eventHexes ?? []).includes(hexNum)) {
-    const ns = next.noteStates?.[spiritId] ?? {};
-
-    // 🤖 THE CHOICE. A bot takes the RIG lane while it still has somewhere to
-    // put a tier, and the CROWD lane once its rig is maxed — which is the same
-    // "spend on what is not yet full" reasoning a human applies at the card.
-    // The difficulty comes from expected value (`bestTriviaDifficulty`), which
-    // reads the two payout tables and the bot's own odds and disagrees between
-    // the lanes: medium for fans, hard for tiers.
-    const spend = rigSpendable(ns);
-    const lane  = (spend.pool || spend.power) ? 'rig' : 'crowd';
-    const difficulty = bestTriviaDifficulty(lane);
-
-    // ⚠️ BOTH DRAWS HAPPEN BEFORE EITHER BRANCH. A draw whose position in the
-    // stream depends on an outcome is a replay divergence waiting to happen —
-    // the same rule the Ronin's greed roll above is written to obey.
     const pickVal = rng ? rng() : 0;
     const oddsVal = rng ? rng() : 1;
+    const cardVal = rng ? rng() : 0;
 
-    const { q, used } = drawTrivia(pickVal, lane, difficulty, next.board.usedTrivia ?? []);
+    const { q, used } = drawMarqueeQuestion(pickVal, next.board.usedTrivia ?? []);
     next = applyAction(next, eventHexTriggered(spiritId, hexNum, used), rng);
-    const correct = q ? oddsVal < (TRIVIA_BOT_ODDS[difficulty] ?? 0.5) : false;
-    logs.push(`🎪 marquee on #${hexNum} — ${lane === 'rig' ? '🎛️ RIG' : '🎤 CROWD'} lane, ${difficulty}`);
+    // 🎪 …and the next marquee lights at once (`systems/marqueeSpaces.js`).
+    if (next.board.lastEventRespawn?.from === hexNum) logs.push(`🎪 a new marquee lights on #${next.board.lastEventRespawn.hexNum}`);
+    // 🤖 Bots cannot "know" trivia: fixed odds by the DRAWN question's difficulty.
+    const correct = q ? oddsVal < (TRIVIA_BOT_ODDS[q.difficulty] ?? 0.5) : false;
+    logs.push(`🎪 marquee on #${hexNum} — ${q?.difficulty ?? '?'} question`);
 
-    if (correct && lane === 'crowd') {
-      const deed = fansFromDeed(ns, hexRingFromCenter(hexNum), TRIVIA_REWARD[difficulty] ?? 3);
-      if (deed.patch) next = applyAction(next, fansChanged(spiritId, deed.patch), rng);
-      logs.push(`🧠 correct — +${deed.gain} fans`);
-    } else if (correct) {
-      // 🏋️ Spend the tiers AT THE CARD, one at a time, re-reading the sheet
-      // between each: the second tier of a hard answer must see what the first
-      // one bought, or `power ≤ pool` can be satisfied on stale numbers.
-      let patch = { rigIdleTurns: 0 };
-      let won = 0;
-      for (let i = 0; i < (TRIVIA_TIER_GRANT[difficulty] ?? 1); i++) {
-        const sheet = { ...(next.noteStates?.[spiritId] ?? {}), ...patch };
-        const can = rigSpendable(sheet);
-        // 🎛️ UPGRADE BEFORE YOU ADD, and this is EV rather than taste: the roll
-        // is keep-highest, so on a small pool a d8 in place of a d6 is worth
-        // more than an extra d6 beside it (2d6 → 5.35 for the swap, 4.96 for
-        // the extra die). It also keeps power one step behind pool naturally.
-        const track = can.power ? 'power' : can.pool ? 'pool' : null;
-        if (!track) break;
-        patch = { ...patch, ...rigTierSpend(sheet, track) };
-        won++;
-      }
-      next = patchNs(next, spiritId, patch, rng);
-      const t = rigTiers(next.noteStates?.[spiritId] ?? {});
-      logs.push(`🎛️ correct — ${won} rig tier${won === 1 ? '' : 's'} trained (pool ${t.pool}, power ${t.power})`);
+    if (correct) {
+      const cardId = drawMarqueeCard(cardVal);
+      const ns = next.noteStates?.[spiritId] ?? {};
+      const replaceIdx = botReplaceIdx(ns, cardId);
+      next = applyAction(next, marqueeCardWon(spiritId, cardId, replaceIdx), rng);
+      const kept = handOf(next.noteStates?.[spiritId] ?? {}).length !== handOf(ns).length || replaceIdx != null;
+      logs.push(`🃏 correct — won ${cardDef(cardId)?.name ?? cardId}${kept ? '' : ' (hand full — let it go)'}`);
     } else {
-      // A wrong answer costs nothing (§2) — but the TRIP still counts as going
-      // to the gym, so the atrophy clock resets either way. 📌 The alternative
-      // (only a correct answer resets it) punishes the reach twice, and the
-      // exposure of standing on a published hex is paid regardless.
-      next = patchNs(next, spiritId, { rigIdleTurns: 0 }, rng);
-      logs.push(`🧠 wrong — no bonus`);
+      logs.push(`🧠 wrong — no card`);
     }
   }
 
@@ -580,6 +542,17 @@ export function applyBotAction(state, action, ctx = {}) {
         // same failure `melodyCommit.js` warns about, and the reason every
         // Bushido number in the §6.6 bench predates the ability having a price.
         pre = patchNs(pre, spiritId, bushidoDrawPatch(nsSelf, dist), rng);
+      }
+
+      // 🃏 A bot plays its best marquee card that would change this throw
+      // (`botArmIdx`). Arming happens before `attackParams`, which applies it.
+      {
+        const nsSelf = pre.noteStates?.[spiritId] ?? {};
+        const me = pre.spirits.find(s => s.id === spiritId);
+        if (handOf(nsSelf).length && nsSelf.marqueeArmed == null && me) {
+          const armIdx = botArmIdx(nsSelf, rigFor(me, nsSelf, pre));
+          if (armIdx != null) pre = applyAction(pre, marqueeCardArmed(spiritId, armIdx), rng);
+        }
       }
 
       const params = attackParams(pre, spiritId, action.targetId, rollKind, view);

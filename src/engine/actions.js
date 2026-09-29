@@ -218,7 +218,7 @@ export function attackRolled(kind, attackerId, defenderId,
   { atkStat, defStat, posing = false, halveDef = false, dicePool = null,
     atkFloor = 0, atkDie = 6, defDie = 6, sonicChordNotes = [], sustainChordNotes = [],
     swingChordLeft = [], swingChordSpent = [],
-    atkKeep = null, sustainPool = null, defKeep = null }) {
+    atkKeep = null, sustainPool = null, defKeep = null, atkFixed = null, cardId = null }) {
   return {
     type: ATTACK_ROLLED, kind, attackerId, defenderId,
     ...(kind === 'sonic' ? { sonicVersion: 2 } : {}),
@@ -229,6 +229,10 @@ export function attackRolled(kind, attackerId, defenderId,
     ...(atkKeep != null ? { atkKeep } : {}),
     ...(sustainPool ? { sustainPool: [...sustainPool] } : {}),
     ...(defKeep != null ? { defKeep } : {}),
+    // 🃏 The armed marquee card, already applied to `dicePool`/`atkKeep` by
+    // `attackParams`; `atkFixed` is its loaded faces. The reducer spends it.
+    ...(atkFixed?.length ? { atkFixed: atkFixed.map(f => ({ ...f })) } : {}),
+    ...(cardId ? { cardId } : {}),
     // 🎸 The Swing's deferred chord burn — spent by `battleConsequences` on a
     // HIT ONLY. ⚠️ It travels on the ACTION rather than being re-derived in the
     // reducer because the stack must be read BEFORE the blow; re-deriving it
@@ -488,6 +492,31 @@ export function chargeZonesTicked() {
 export const EVENT_HEX_TRIGGERED = "EVENT_HEX_TRIGGERED";
 export function eventHexTriggered(spiritId, hexNum, usedTrivia = null) {
   return { type: EVENT_HEX_TRIGGERED, spiritId, hexNum, usedTrivia };
+}
+
+/**
+ * 🃏 A correct marquee answer wins a card (`systems/marqueeCards.js`). With a
+ * full hand, `replaceIdx` names the card thrown away for it; null lets the new
+ * card go.
+ */
+export const MARQUEE_CARD_WON = "MARQUEE_CARD_WON";
+export function marqueeCardWon(spiritId, cardId, replaceIdx = null) {
+  return { type: MARQUEE_CARD_WON, spiritId, cardId, replaceIdx };
+}
+
+/**
+ * 🃏 Play a held card (hand index) AT THE ROLL of a battle already rolled —
+ * re-throws the attacker's dice with it (`combat.js` `applyMarqueeCardPlayed`).
+ */
+export const MARQUEE_CARD_PLAYED = "MARQUEE_CARD_PLAYED";
+export function marqueeCardPlayed(spiritId, idx) {
+  return { type: MARQUEE_CARD_PLAYED, spiritId, idx };
+}
+
+/** 🃏 Arm a held card (hand index) for the next Swing or Sonic; null disarms. */
+export const MARQUEE_CARD_ARMED = "MARQUEE_CARD_ARMED";
+export function marqueeCardArmed(spiritId, idx = null) {
+  return { type: MARQUEE_CARD_ARMED, spiritId, idx };
 }
 
 /** A successful Thrash hit knocks Lost Chords loose around the defender.

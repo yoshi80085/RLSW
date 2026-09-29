@@ -38,7 +38,7 @@ import {
   fpPerLife, POSE_FP_STEP, POSE_FP_MAX,
   UNDERDOG_MIN_DEFICIT, UNDERDOG_DEFICIT_PER_STEP, UNDERDOG_MAX_MULT,
   FAN_MULT_MAX, FAN_DIEHARD_START, SONIC_BEAM_REACH, LIMELIGHT_HEX,
-  RIG_POOL_FLOOR, RIG_TIER_MAX,
+  MARQUEE_HAND_MAX,
 } from "../../data/gameConstants.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import { CORNERS } from "../../data/corners.js";
@@ -47,7 +47,7 @@ import { axialDist } from "../../board/hexGeometry.js";
 import { crowdMultiplier, hexRingFromCenter } from "../../board/boardHelpers.js";
 import { usedHas } from "../systems/economy.js";
 import { rigFor } from "../systems/attackParams.js";
-import { rigSpendable, rigTiers } from "../systems/sonicRig.js";
+import { handOf } from "../systems/marqueeCards.js";
 import { posePayout, posingMap, poseRounds, isPosing } from "../systems/limelight.js";
 import { SKILL_BY_ID } from "../../data/skillTree.js";
 // 🔊 The beam geometry, BORROWED FROM THE GENERATOR RATHER THAN RE-DERIVED. A
@@ -1252,20 +1252,21 @@ export function evaluate(state, spiritId, view = {}) {
   //      And 24 matches is nowhere near 6.6's bar of ~2000. Even the best arm
   //      leaves 42 of 48 seats finishing at the floor, so no bench reading taken
   //      today is a reading of a game where anybody's rig grew.
-  {
-    const { pool, power } = rigTiers(ns);
-    const earned = (pool - RIG_POOL_FLOOR) + power;
-    const most   = (RIG_TIER_MAX - RIG_POOL_FLOOR) + RIG_TIER_MAX;
-    terms.loud = clamp01(earned / most);
-  }
+  // 🃏 SINCE 2026-09-29 `loud` READS THE MARQUEE HAND, not the rig workout.
+  //      The marquee pays prize cards now (`MARQUEE_QUIZ_DESIGN.md` §10) and the
+  //      workout tiers are no longer won, so the old reading sat at 0 forever.
+  //      Cards held / hand size is the same idea: battle strength banked at
+  //      the marquee. ⚠️ Unbenched — the old sweep above is a reading of tiers.
+  terms.loud = clamp01(handOf(ns).length / MARQUEE_HAND_MAX);
 
   {
     const evs = (state?.board?.eventHexes ?? []).map(n => HEX_BY_NUM[n]).filter(Boolean);
     if (!evs.length || !here) {
       terms.marqueeSeek = 0;
     } else {
-      const can = rigSpendable(ns);
-      const headroom = (can.pool || can.power) ? 1 : MARQUEE_MAXED_VALUE;
+      // 🃏 A full hand still wins a card (it can swap one in), so it is worth
+      //    less, not nothing — the same shape as the old maxed rig.
+      const headroom = handOf(ns).length < MARQUEE_HAND_MAX ? 1 : MARQUEE_MAXED_VALUE;
       const d = evs.reduce((m, eh) => Math.min(m, axialDist(here.q, here.r, eh.q, eh.r)), Infinity);
       terms.marqueeSeek = Number.isFinite(d)
         ? clamp01(1 - d / MARQUEE_SEEK_REACH) * headroom

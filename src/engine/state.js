@@ -17,9 +17,10 @@ import { makeRng } from "./rng.js";
 import { makeInitialNoteState } from "./systems/economy.js";
 import { makeLimelightState } from "./systems/limelight.js";
 import { shuffledStageFxDeck } from "../data/stageEffects.js";
-import { makeBoardToken, eventHexCandidates } from "../board/boardHelpers.js";
+import { makeBoardToken } from "../board/boardHelpers.js";
+import { seatedCorners, openingMarquees } from "./systems/marqueeSpaces.js";
 import { ALL_HEXES } from "../board/hexMap.js";
-import { TOKEN_MAX, TOKEN_BASE_POOL, EVENT_HEX_COUNT, CHARGE_ZONE_COUNT, LIMELIGHT_HEX, LIGHTNING_TRACK_HEXES, ROUND_LIMIT_DEFAULT,
+import { TOKEN_MAX, TOKEN_BASE_POOL, CHARGE_ZONE_COUNT, LIMELIGHT_HEX, LIGHTNING_TRACK_HEXES, ROUND_LIMIT_DEFAULT,
 } from "../data/gameConstants.js";
 
 /**
@@ -54,18 +55,11 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
   const boardRng = makeRng(seed >>> 0).fork("boardInit");
   const startHexNums = new Set(spirits.map(s => s.num));
 
-  // Event hexes: avoid spirit start positions, and keep the marquees apart.
-  // ⚠️ SETUP AND RESPAWN MUST AGREE. `eventHexCandidates` is the same helper the
-  // respawn path uses, so opening placement obeys `EVENT_MIN_SEPARATION` too --
-  // two marquees adjacent from turn 1 would be the failure the second hex was
-  // added to prevent, arriving before anyone had a chance to contest it.
-  const startNums = [...startHexNums];
-  const eventHexes = [];
-  for (let i = 0; i < EVENT_HEX_COUNT; i++) {
-    const cand = eventHexCandidates(startNums, eventHexes);
-    if (cand.length === 0) break;
-    eventHexes.push(cand[Math.floor(boardRng() * cand.length)]);
-  }
+  // 🎪 THE MARQUEES — one per seat, each in its seat's own quadrant (Alex,
+  // 2026-09-29; `systems/marqueeSpaces.js`). On a FORKED stream, so the rest
+  // of the opening board does not move with the table size.
+  const marqueeSeats = seatedCorners(spirits);
+  const eventHexes = openingMarquees(makeRng(seed >>> 0).fork("marqueeInit"), marqueeSeats, [...startHexNums]);
 
   // Lost Chord tokens: avoid spirit starts + Limelight.
   // Fewer players -> more starting tokens so the board feels equally populated.
@@ -243,6 +237,8 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       spotlightSeed: seed >>> 0,
       lastSpotlightsMoved: null,
       eventHexes,
+      // 🎪 The corners seated at setup — one marquee each, for the whole match.
+      marqueeSeats,
       eventRespawnIn: 0,
       // 🎪 Questions already drawn this match. Per-BUCKET recycling lives in
       // `drawTrivia`; this is just the ledger it reads and rewrites.

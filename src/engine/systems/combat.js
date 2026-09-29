@@ -1,6 +1,7 @@
 import { resolveSonicBarrage } from './sonicBarrage.js';
 import { rollSwingClash, swingThrowFields } from './swingClash.js';
 import { throwPool } from './dicePool.js';
+import { spendArmedPatch, applyCard, handOf } from './marqueeCards.js';
 // ─── ENGINE SYSTEM: COMBAT ───────────────────────────────────────────────────
 // Phase 3a: the pure combat MATH — damage/knockback/fame tables — extracted
 // verbatim from Game so a server can score battles identically. No actions,
@@ -273,15 +274,24 @@ export function applyAttackRolled(state, action, rng) {
     // Preserve attack-first draw order; defence is rolled once per declaration.
     // 🎲 Every die is thrown; each side keeps its seats' worth (dicePool.js).
     // A caller with no `atkKeep`/`defKeep` (an old replay) keeps everything.
-    const atkThrow = modern ? throwPool(pool, action.atkKeep ?? pool.length, rng, atkFloor) : null;
+    // 🃏 `atkFixed` = the armed marquee card's loaded faces (marqueeCards.js).
+    const atkFixed = modern ? (action.atkFixed ?? []) : [];
+    const atkThrow = modern ? throwPool(pool, action.atkKeep ?? pool.length, rng, atkFloor, atkFixed) : null;
     const diceVals = modern ? atkThrow.vals : pool.map(sides => Math.max(rng.int(sides) + 1, 1 + atkFloor));
     const defThrow = throwPool(rolledSustain, action.defKeep ?? rolledSustain.length, rng);
     const sustainPool = defThrow.pool, sustainRolls = defThrow.vals;
     const shieldValue = modern ? sustainRolls.reduce((sum, value) => sum + value, 0) : posing ? 0 : Math.max(0, defStat);
     const volley = modern ? keptVolley(atkThrow, shieldValue) : resolveLegacyVolley(diceVals, shieldValue);
     const defenderNotes = state.noteStates?.[defenderId];
+    // 🃏 The card rode in on the action (attackParams applied it); spend it here.
+    const cardPlayed = modern && action.cardId ? action.cardId : null;
+    const attackerNotes = state.noteStates?.[attackerId];
+    const spent = cardPlayed && attackerNotes
+      ? { ...state.noteStates, [attackerId]: { ...attackerNotes, ...spendArmedPatch(attackerNotes) } }
+      : state.noteStates;
     return {
       ...state,
+      noteStates: spent,
       // 🔊 THE PER-LAP SONIC TALLY ON THE DEFENDER. Counts every volley aimed at
       // them since they last acted; `turn.js`'s `applyTurnEnded` clears it at
       // THEIR OWN turn end, so the window is one full lap of rivals at any
@@ -296,7 +306,7 @@ export function applyAttackRolled(state, action, rng) {
       // R12's diminishing FP. 📌 This counter is the input BOTH of them want —
       // it is now correct and unread, rather than wrong and unread.
       ...(defenderNotes ? { noteStates: {
-        ...state.noteStates,
+        ...spent,
         [defenderId]: {
           ...defenderNotes,
           pendingSonicAttacks: (defenderNotes.pendingSonicAttacks ?? 0) + 1,
@@ -315,6 +325,7 @@ export function applyAttackRolled(state, action, rng) {
           sustainRolledPool: rolledSustain, defKeep: action.defKeep ?? rolledSustain.length,
           sustainDropped: defThrow.droppedVals, sustainDroppedPool: defThrow.droppedPool,
           elevenFizzled: atkThrow.fizzled,
+          atkFixed, cardPlayed,
         } : {}),
         sonicChordNotes:[...(action.sonicChordNotes??[])],
         sustainChordNotes:[...(action.sustainChordNotes??[])],
@@ -377,9 +388,9 @@ export function applyAttackRolled(state, action, rng) {
 }
 
 /** One seeded draw per projectile; used unchanged by Code Injection rerolls. */
-function rollSonicVolley(pool, shieldValue, atkFloor, rng, modern = true, keep = pool.length) {
+function rollSonicVolley(pool, shieldValue, atkFloor, rng, modern = true, keep = pool.length, fixed = []) {
   if (modern) {
-    const t = throwPool(pool, keep, rng, atkFloor);
+    const t = throwPool(pool, keep, rng, atkFloor, fixed);
     return { ...keptVolley(t, shieldValue), dicePool: t.pool,
       droppedDiceVals: t.droppedVals, droppedDicePool: t.droppedPool, elevenFizzled: t.fizzled };
   }
@@ -430,13 +441,60 @@ function resolveVolley(diceVals, shieldValue) {
  * the caller owns that gate. `rerolled: true` is set so the overlay can label
  * the result, not to block a second call.
  */
+/**
+ * 🃏 MARQUEE_CARD_PLAYED — the attacker plays a held card AT THE ROLL (Alex,
+ * 2026-09-29: a "use a card" button above the roll button; the cards spin, the
+ * player picks one). `MARQUEE_QUIZ_DESIGN.md` §10.6.
+ *
+ * ⚠️ THE ENGINE HAS ALREADY THROWN THE DICE by the time the roll button shows —
+ * ATTACK_ROLLED decides the whole battle up front and the table only reveals
+ * it. So playing a card is a RE-THROW of the attacker's dice with the card
+ * applied, on fresh seeded draws, exactly like Code Injection: the defender's
+ * throw stands. Nobody has SEEN the attacker's faces yet (the gate holds them),
+ * so nothing visible is taken back.
+ *
+ * One card per battle; a card that would change nothing is refused (not spent).
+ * Swing (clash) and the staged Sonic (sonicVersion 2) only.
+ */
+export function applyMarqueeCardPlayed(state, { spiritId, idx }, rng) {
+  const b = state.battle;
+  if (!b || b.kind !== 'attack' || b.attackerId !== spiritId || b.cardPlayed) return state;
+  const sonic = (b.attackKind === 'sonic' || b.sonicAttack) && b.sonicVersion === 2;
+  if (!b.swingClash && !sonic) return state;
+  const ns = state.noteStates?.[spiritId];
+  const hand = handOf(ns ?? {});
+  const cardId = Number.isInteger(idx) ? hand[idx] : null;
+  if (!cardId) return state;
+  const pool0 = b.rolledPool ?? b.dicePool ?? [];
+  const r = applyCard(pool0, b.atkKeep ?? pool0.length, cardId);
+  if (!r.card) return state;
+  const fixed = r.fixed;
+  const armed = ns.marqueeArmed;
+  const noteStates = { ...state.noteStates, [spiritId]: { ...ns,
+    marqueeCards: hand.filter((_, j) => j !== idx),
+    marqueeArmed: armed == null || armed === idx ? null : (armed > idx ? armed - 1 : armed) } };
+  if (b.swingClash) {
+    const atk = throwPool(r.pool, r.keep, rng, b.atkFloor ?? 0, fixed);
+    const def = { vals: b.defenderDiceVals, pool: b.defenderDicePool ?? [], droppedVals: b.defenderDroppedVals ?? [],
+      droppedPool: b.defenderDroppedPool ?? [], fizzled: false };
+    return { ...state, noteStates, battle: { ...b,
+      ...swingThrowFields(atk, def, { pool: r.pool, keep: r.keep }, { pool: b.defenderRolledPool, keep: b.defKeep }),
+      atkFixed: fixed, cardPlayed: cardId } };
+  }
+  const shieldValue = b.shieldValue ?? b.defTotal ?? 0;
+  return { ...state, noteStates, battle: { ...b,
+    ...rollSonicVolley(r.pool, shieldValue, b.atkFloor ?? 0, rng, true, r.keep, fixed),
+    rolledPool: r.pool, atkKeep: r.keep, atkStat: r.pool.length, shieldValue,
+    atkFixed: fixed, cardPlayed: cardId } };
+}
+
 export function applyAttackRerolled(state, action, rng) {
   const b = state.battle;
   if (!b || b.kind !== "attack") return state;
   if(b.swingClash) {
     // 🎲 Re-throw the WHOLE pool and keep again; the defender's throw stands.
     const pool=b.rolledPool??b.dicePool;
-    const atk=throwPool(pool,b.atkKeep??pool.length,rng,b.atkFloor??0);
+    const atk=throwPool(pool,b.atkKeep??pool.length,rng,b.atkFloor??0,b.atkFixed??[]);
     const def={vals:b.defenderDiceVals,pool:b.defenderDicePool??[],droppedVals:b.defenderDroppedVals??[],droppedPool:b.defenderDroppedPool??[],fizzled:false};
     return {...state,battle:{...b,...swingThrowFields(atk,def,{pool,keep:b.atkKeep},{pool:b.defenderRolledPool,keep:b.defKeep}),rerolled:true}};
   }
@@ -448,7 +506,7 @@ export function applyAttackRerolled(state, action, rng) {
       battle: {
         ...b,
         ...rollSonicVolley(b.rolledPool ?? b.dicePool ?? [], shieldValue, b.atkFloor ?? 0, rng, b.sonicVersion===2,
-          b.atkKeep ?? (b.rolledPool ?? b.dicePool ?? []).length),
+          b.atkKeep ?? (b.rolledPool ?? b.dicePool ?? []).length, b.atkFixed ?? []),
         shieldValue, keptIdx: null, rerolled: true,
         preRerollAtkRoll: b.atkRoll,
         preRerollWon: b.attackerWon,

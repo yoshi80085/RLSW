@@ -1,5 +1,14 @@
 # 🎪 MARQUEE QUIZ & THE RIG WORKOUT — design
 
+> 🎪 **§1 (two marquees, anywhere, kept apart) IS SUPERSEDED TOO — READ §11.**
+> Since 2026-09-29 there is one marquee per seat, in the seats' own quadrants.
+>
+> 🃏 **SUPERSEDED IN PART, 2026-09-29 — READ §10 FIRST.** The lane × difficulty
+> card (§2), both payouts (§3, §4) and the workout's atrophy (§5) are no longer
+> how the marquee works. Every marquee is now the same: one question, and a
+> correct answer wins a random **prize card** for battle. §1 (two marquees, the
+> separation rule) still stands. The rest is kept as history.
+
 > ✅ **§1, §2, §4, §5 AND THE TREE DELETION ARE ALL IMPLEMENTED** as of 2026-08-20 — see §8
 > for what landed when, and `SEQUENCING.md` §5.A⁷–§5.D⁷ for the measurements.
 > **§3's throughput question is still open; §7's Db hole is now MEASURED and small
@@ -397,3 +406,183 @@ Steps 1 and 2 are independent of the whole rig question and can ship this week.
   better decision but needs UI that does not exist.
 - 📌 Does the CROWD lane want a rig-adjacent consolation, or is the fan/rig
   split clean enough to leave alone? Leaving it alone, for now.
+
+---
+
+## 10. 🃏 Prize cards — every marquee is the same (Alex, 2026-09-29)
+
+### 10.1 The rulings
+
+- *"Lets make all marquee spaces offer cards as prizes — gear/lore don't matter —
+  they all give bonuses for battle."*
+- *"No more 'difficulty' settings for marquee spaces — they all are the same, and
+  offer random prizes if correct."*
+- The cards have random effects: *"some have guaranteed rolls, some increase a
+  dice size (d6 → d8 or d10), still others let users use 1 extra dice (player
+  has access to 4 dice but only 3 are 'playable')."*
+- **Hold, then play on an attack** — arm a card before a Swing or a Sonic, the
+  way the Pose button works. **A hand of 3.**
+
+This answers the 2026-09-16 P1 *"picking is a chore"*: there is nothing left to
+pick at the marquee. (*"Hard to see on the board"* is still open — §10.5.)
+
+### 10.2 The flow
+
+1. Step on a marquee → the hex burns out and ONE question is drawn from the
+   whole deck (`drawMarqueeQuestion` — no repeats until all 180 are seen). The
+   question's own difficulty tag still exists; nobody picks it.
+2. Wrong → nothing, the `sauce` still shows. Right → one random card
+   (`drawMarqueeCard`).
+3. Hand full (3) → swap one out for it, or let it go.
+4. On your turn, click a card in the action rail to **arm** it. It is spent by
+   your next Swing or Sonic this turn; an unthrown armed card goes back in the
+   hand at turn end. **A card is spent only if it changes the throw.**
+
+Fans are no longer paid by the marquee at all (the old CROWD lane).
+
+### 10.3 The deck (placeholders — balance is frozen)
+
+| Card | Effect | Weight |
+|---|---|---|
+| 🎲 Loaded 4 | one die (the weakest) lands on 4 | 3 |
+| 🎲 Loaded 5 | … on 5 | 2 |
+| 🎲 Loaded 6 | … on 6 | 1 |
+| 🔼 Bigger Cab | the weakest die grows a size: d6 → d8, d8 → d10 | 3 |
+| ⏫ Full Stack | the weakest die becomes a d10 | 1 |
+| ➕ Encore | one more die counts (keep + 1 — may pass the usual cap of 5) | 2 |
+
+"Weakest" = the last die of the smallest size (pools are d8s then d6s), never
+the Eleven die. A loaded die is still thrown — it spends its `rng.int` — and
+only its face is set, so a card never shifts the rng stream.
+
+### 10.4 Where it lives
+
+- `engine/systems/marqueeCards.js` — the deck, `applyCard` / `cardedRig`, the
+  hand patches, the bot choices, the two reducers.
+- Actions `MARQUEE_CARD_WON` (with `replaceIdx`) and `MARQUEE_CARD_ARMED`.
+- Note sheet: `marqueeCards` (ids), `marqueeArmed` (index | null).
+- `attackParams` (Sonic + the Swing preview) and `rollSwingClash` apply the
+  armed card; `applyAttackRolled` / `rollSwingClash` spend it and record
+  `battle.cardPlayed` + `battle.atkFixed`; rerolls keep the loaded faces.
+  `applyTurnEnded` disarms.
+- `dicePool.throwPool(pool, keep, rng, floor, fixed)`.
+- Bots: answer on `TRIVIA_BOT_ODDS[q.difficulty]`, keep a won card by
+  `botReplaceIdx`, arm by `botArmIdx` (their best card that changes the throw)
+  in `transition.js` and in the client's two attack functions.
+- UI: `ui/EventModal.jsx` (ticket, prize, swap), `ui/MarqueeHand.jsx` (the rail).
+- `evaluate.js`: `loud` now reads the hand (cards / 3); `marqueeSeek` is damped
+  when the hand is full. Bench telemetry `cards` sits beside `rig`.
+- Tests: `test:cards` (`engine/marqueeCardCheck.mjs`, in `test:all`).
+
+### 10.6 🂠 Playing a card AT THE ROLL (Alex, 2026-09-29, second pass)
+
+- *"Use the logo inside the RL_Card for the backside of the card — the rest of
+  the card, build out yourself."* → `assets/marquee_card_logo.png` (the winged
+  horns cut out of `RL_Card.png`, background keyed to alpha) on a neon-framed
+  back; the face is built in `ui/MarqueeCardPick.jsx` — a ribbon by kind
+  (GUARANTEED ROLL cyan · BIGGER DIE magenta · EXTRA DIE gold), drawn dice art,
+  the name, what it does.
+- *"Give the option to 'use' a card in the form of a button — similar to the
+  roll dice button — perhaps above it."* → **🃏 Use a card ×N** sits above the
+  Roll button on the attacker's OWN throw (Swing: the first press; Sonic: the
+  Drive press, after the shield), for a local human holding cards, once per
+  battle.
+- *"Have the cards spin around a few times before presenting themselves in front
+  of the player … pick 1 card."* → the hand comes out face-down, orbits the
+  centre 2.5 turns spinning three times each (out of step), gathers into a deck,
+  deals into a row and flips face-up (~2.3 s; reduced motion jumps to the row).
+  Click one to play it; **Keep my cards** backs out. A card that would change
+  nothing on this throw is dimmed and unpickable.
+
+**How it works:** the engine rolled the whole battle at ATTACK_ROLLED, so a
+card played at the gate is `MARQUEE_CARD_PLAYED` → `combat.js`
+`applyMarqueeCardPlayed`: the attacker's dice are RE-THROWN with the card on
+fresh seeded draws (like Code Injection); the defender's throw and the Sonic
+shield stand. Nobody has seen the attacker's faces yet — the gate holds them.
+The live presentation adopts the new verdict (`battleCardRef.apply` — the
+Sonic's barrage plan, the Swing's clack plan and beam powers are rebuilt), the
+Roll label updates, and the auto-roll HOLDS while the picker is open and gives
+a fresh 5 s after it closes. A table that sees the card arrive as an engine
+action adopts it the same way (an effect on `battle.cardPlayed`) — ⚠️ untested
+online.
+
+The rail now only SHOWS the hand (`MarqueeHand`). The arm-before-attack path
+(`marqueeArmed`, `cardedRig`) stays for bots, which have no roll gate.
+
+### 10.5 Open
+
+1. 🎨 **Seeing the marquee on the board.** The 2D star + "EVENT" label is all
+   there is; nothing marks it in the 3D arena. Alex's other half of the P1.
+2. 🧮 The weights and the Encore-past-5 rule are guesses. Nothing is benched —
+   and bots visit marquees ~0.3 times a match, so a bench will mostly measure
+   that.
+3. 🏋️ **The rig workout is dormant, not deleted.** Nothing grants
+   `rigPool`/`rigPower` now, so every sheet sits at the floor and atrophy never
+   ticks. `rigTiers` / `rigTierSpend` / `rigSpendable` / `rigAtrophyTick`,
+   their selftest block, `TRIVIA_TIER_GRANT`, `TRIVIA_REWARD`, `drawTrivia` and
+   `bestTriviaDifficulty` want deleting in one sweep.
+4. 🎥 The battle overlay does not badge the card played (the log does). The
+   loaded die looks like any other die.
+5. ❓ Cards on defence were considered and not chosen (attack only).
+6. 🌐 The card at the roll is untested in an online match (the remote table's
+   adoption effect). Locally it is covered end to end by `test:cardjourney`
+   (the mounted game: deal → Use a card → held auto-roll → pick → re-throw →
+   clash), and the Testing Grounds' **+1 🃏 Card** deals cards in deck order.
+
+---
+
+## 11. 🎪 One marquee per seat, in its own quadrant (Alex, 2026-09-29)
+
+### 11.1 The ruling
+
+*"Lets retire the 'charge' spaces for now — marquee spaces — make 1 per player —
+always present on the Spirit's starting corner quadrant of the board. If 3
+players, 3 marquee spaces, if player 1 lands on a marquee space on turn 1, make
+another in that same quadrant* or *the 'empty' quadrant. If 4 players — make it
+persistent on one of the spaces of that player's quadrant (never more than 1 per
+quadrant)."*
+
+### 11.2 The rule as built (one rule for every table size)
+
+- **Count:** one marquee per seat seated at setup (`board.marqueeSeats`). It
+  does not drop when a Spirit is eliminated.
+- **Opening:** each seat's marquee lights on a random hex of its OWN quadrant.
+- **Quadrants:** the four quarters around the Limelight, the same split as the
+  spotlights (blue top-left, purple bottom-left, yellow top-right, red
+  bottom-right). A quadrant's pool is 16 hexes: not the rim, not the Limelight,
+  not a home hex; the centre lines belong to nobody.
+- **Taking one relights one AT ONCE** — no respawn timer — in a quadrant that has
+  none: the quadrant just emptied, or an unseated ("empty") quadrant, chosen
+  uniformly, then a free hex in it (not under a Spirit or a Lost Chord).
+  - 4 seats: only the quadrant just emptied qualifies → **persistent**.
+  - 3 seats: that quadrant or the empty one (Alex's example).
+  - 2 seats: that quadrant or either empty one (extrapolated).
+- **Never two in a quadrant.**
+- 📌 **Claude's call, flagged:** a relit marquee lands at least
+  `MARQUEE_RELIGHT_MIN_DIST` (2) hexes from the one just taken, so a Spirit
+  cannot step off and straight back on for a question every turn. Set it to 1 to
+  drop the rule.
+- If nowhere is free, the board stays short and the round-end top-up
+  (`applyEventHexSpawned`) tries again.
+
+### 11.3 Charge spaces retired
+
+`CHARGE_ZONE_COUNT` 2 → **0**: none are placed, so nothing lights, nothing is
+tapped and no charge is granted. The code stays (reducers, the bot's terms, the
+client's drawing all handle an empty list); the number brings them back.
+
+### 11.4 Where it lives
+
+`engine/systems/marqueeSpaces.js` (pure); `board.js` `applyEventHexTriggered`
+(now takes the rng) and `applyEventHexSpawned`; `state.js` setup (forked
+`marqueeInit` stream); the client's round-end driver now only tops up;
+`test:cards` §10 (2/3/4 seats × 30 seeds × 12 takes, 4/4 mutants caught) and the
+selftest's board block. Picture: `.scratch/marqueeQuadrants.mjs`.
+
+### 11.5 Open
+
+- Nothing in the 3D arena marks a marquee yet (§10.5 item 1) — now more pressing,
+  with one in every player's quarter.
+- 4 seats: a marquee always in your own quarter means a card every couple of
+  turns for a Spirit who stays home. Unbenched.
+- Should the 2D star take its quadrant owner's colour? Not done.

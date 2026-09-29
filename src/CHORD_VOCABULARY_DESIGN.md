@@ -299,9 +299,8 @@ finder), `crowdCoach` (glow), `spice.js` (Discord Coach — imports
 1. ✅ ~~Slot 6~~ — two d8s + the glow. ✅ ~~Buffs past 10~~ — more d8s.
    ✅ ~~Dropped dice~~ — dimmed. ✅ ~~Swing/Bushido spend~~ — the top.
    ✅ ~~Intergalactic innate~~ — removed.
-2. 🃏 **Marquee bonus cards** (every lane): guaranteed faces, die bumps
-   (d6→d8, d8→d10), +1 kept die. Its own design + build. Until then the RIG lane
-   still pays `rigPool`/`rigPower`, which now only feed bots and the log.
+2. ✅ **Marquee bonus cards** — built 2026-09-29, `MARQUEE_QUIZ_DESIGN.md` §10.
+   The RIG lane is gone; `rigPool`/`rigPower` are no longer granted.
 3. 🔊 **Goes to 11** — ✅ the die is a d6 (five 11s, one 1), Alex 2026-09-28,
    which implicitly keeps the always-kept + fizzle reading. ⛔ **Still to
    re-price**: it costs the whole Sustain stack + a blown amp, which was priced

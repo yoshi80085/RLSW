@@ -1,46 +1,64 @@
 // =============================================================================
-// ui/EventModal.jsx  —  the MARQUEE CARD (MARQUEE_QUIZ_DESIGN.md §2).
+// ui/EventModal.jsx  —  the MARQUEE TICKET (MARQUEE_QUIZ_DESIGN.md §10).
 // Presentational: all values/handlers via props, zero app imports.
 //
-// Four phases, in order:
-//   'choice'   — pick a LANE (crowd/rig) and a DIFFICULTY, face-down
-//   'question' — the drawn card, four options
-//   'spend'    — 🎛️ RIG lane only: put each won tier on pool or power
-//   'result'   — the sauce, and what it paid
+// Since 2026-09-29 every marquee is the same (Alex): no lane, no difficulty to
+// pick. One question; a correct answer wins ONE random prize card for battle.
 //
-// activeEvent: { spiritId, hexNum, q, lane, difficulty, phase, chosen, correct,
-//                reward, tiersLeft }
-//   q = { id, era, difficulty, topic, question, options[4], answer, sauce }
+// Phases, in order:
+//   'question' — the drawn question, four options
+//   'swap'     — correct, but the hand is full: swap a card out or let it go
+//   'result'   — the sauce, and the card (or nothing)
 //
-// ⚠️ THE CHOICE COMES BEFORE THE CARD IS DRAWN, and that ordering is the entire
-// skill component: betting on yourself at `hard` has to be a bet, which means it
-// cannot be made with the question already on the table.
+// activeEvent: { spiritId, hexNum, q, phase, chosen, correct, prize, kept }
+//   q     = { id, era, difficulty, topic, question, options[4], answer, sauce }
+//   prize = the card id drawn for a correct answer (drawn up front, shown only
+//           when won)
+// prizeCard / hand: card defs from `engine/systems/marqueeCards.js`, passed in.
 // =============================================================================
 import React from "react";
 
-const DIFF_COLOR = { easy: "#44cc88", medium: "#ffcc44", hard: "#ff6644" };
 const OPT_LETTER = ["A", "B", "C", "D"];
+const ACCENT = "#ff44dd";            // the marquee's own neon (the board's star)
+const CARD_GOLD = "#ffcc44";
 
-const LANES = [
-  { id: "crowd", icon: "🎤", label: "CROWD", blurb: "Lore, scandal, legend, live moments", pays: "pays FANS" },
-  { id: "rig",   icon: "🎛️", label: "RIG",   blurb: "Theory, gear, guitars, amps, studio", pays: "pays RIG TIERS" },
-];
-const DIFFS = [
-  { id: "easy",   label: "EASY",   crowd: "+2 fans", rig: "1 tier"  },
-  { id: "medium", label: "MEDIUM", crowd: "+3 fans", rig: "2 tiers" },
-  { id: "hard",   label: "HARD",   crowd: "+4 fans", rig: "3 tiers" },
-];
+/** One prize card — also used by the hand in the action rail. */
+export function MarqueeCardFace({ card, small = false, armed = false, dim = false }) {
+  if (!card) return null;
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: small ? 6 : 10,
+      padding: small ? "5px 8px" : "10px 14px", borderRadius: 8,
+      background: armed ? "#2a1c06" : "linear-gradient(160deg,#1a1030,#0c0818)",
+      border: `1.5px solid ${armed ? CARD_GOLD : CARD_GOLD + "88"}`,
+      boxShadow: armed ? `0 0 14px ${CARD_GOLD}88` : "none",
+      opacity: dim ? 0.45 : 1, textAlign: "left",
+    }}>
+      <span style={{ fontSize: small ? 14 : 24, filter: `drop-shadow(0 0 6px ${CARD_GOLD})` }}>{card.icon}</span>
+      <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.35 }}>
+        <span style={{ fontFamily: "'Saira Stencil One',sans-serif", letterSpacing: 1,
+          fontSize: small ? 9.5 : 13, color: CARD_GOLD }}>{card.name.toUpperCase()}</span>
+        {!small && <span style={{ fontSize: 9.5, color: "#c8d6e6" }}>{card.text}</span>}
+      </span>
+    </div>
+  );
+}
 
-export function EventModal({ activeEvent, answerTrivia, setActiveEvent, spirits,
-                             chooseTriviaCard, spendRigTier, rigSpendable, rigTiers }) {
-  if (!activeEvent) return null;
-  const { q, phase, chosen, correct, reward, lane } = activeEvent;
-  const isChoice = phase === "choice";
-  if (!q && !isChoice) return null;
-  const accent = isChoice ? "#ffcc44" : (DIFF_COLOR[q.difficulty] || "#ffcc44");
+export function EventModal({ activeEvent, answerTrivia, keepPrize, setActiveEvent, spirits,
+                             prizeCard, hand = [] }) {
+  if (!activeEvent?.q) return null;
+  const { q, phase, chosen, correct, kept } = activeEvent;
   const spirit = spirits.find(s => s.id === activeEvent.spiritId);
+  const isQuestion = phase === "question";
+  const isSwap = phase === "swap";
   const isResult = phase === "result";
-  const isSpend  = phase === "spend";
+  const revealed = !isQuestion;
+
+  const btn = (color) => ({
+    fontFamily: "'Saira Stencil One',sans-serif", fontSize: 11, letterSpacing: 2, cursor: "pointer",
+    padding: "8px 22px", borderRadius: 6, color, fontWeight: 700,
+    background: "transparent", border: `1.5px solid ${color}`,
+  });
 
   return (
     <div style={{
@@ -49,20 +67,20 @@ export function EventModal({ activeEvent, answerTrivia, setActiveEvent, spirits,
     }}>
       <div style={{
         background: "linear-gradient(165deg, #0c0818 0%, #080f1e 55%, #050810 100%)",
-        border: `2px solid ${accent}`, borderRadius: 12, padding: 0,
+        border: `2px solid ${ACCENT}`, borderRadius: 12, padding: 0,
         maxWidth: 420, width: "94%", overflow: "hidden",
-        boxShadow: `0 0 40px ${accent}55, inset 0 0 60px ${accent}0c`,
+        boxShadow: `0 0 40px ${ACCENT}55, inset 0 0 60px ${ACCENT}0c`,
         animation: "eventTicketIn .35s cubic-bezier(.2,1.4,.4,1)",
       }}>
         {/* Marquee strip */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          padding: "6px 0", borderBottom: `1px solid ${accent}55`,
-          background: `linear-gradient(90deg, transparent, ${accent}1e, transparent)`,
+          padding: "6px 0", borderBottom: `1px solid ${ACCENT}55`,
+          background: `linear-gradient(90deg, transparent, ${ACCENT}1e, transparent)`,
         }}>
           {[...Array(9)].map((_, i) => (
             <span key={i} style={{
-              width: 5, height: 5, borderRadius: "50%", background: accent,
+              width: 5, height: 5, borderRadius: "50%", background: ACCENT,
               opacity: .85, animation: `marqueeBlink 1.1s ${i * 0.12}s ease-in-out infinite`,
             }} />
           ))}
@@ -71,80 +89,18 @@ export function EventModal({ activeEvent, answerTrivia, setActiveEvent, spirits,
         <div style={{ padding: "16px 22px 20px" }}>
           {/* Header */}
           <div style={{ textAlign: "center", marginBottom: 12 }}>
-            <div style={{ fontSize: 26, marginBottom: 4, filter: `drop-shadow(0 0 12px ${accent})` }}>🎤</div>
+            <div style={{ fontSize: 26, marginBottom: 4, filter: `drop-shadow(0 0 12px ${ACCENT})` }}>🃏</div>
             <div style={{
-              fontFamily: "'Saira Stencil One',sans-serif", fontSize: 14, color: accent,
-              letterSpacing: 3, textShadow: `0 0 14px ${accent}aa`,
-            }}>{isChoice ? "PICK YOUR LANE" : "ROCK TRIVIA"}</div>
-            {!isChoice && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 6 }}>
-                <span style={{ fontSize: 8, color: "#7da0bf", letterSpacing: 1 }}>{q.era}</span>
-                <span style={{
-                  fontSize: 7, letterSpacing: 1, color: accent, fontWeight: 700,
-                  border: `1px solid ${accent}66`, borderRadius: 3, padding: "1px 6px",
-                  textTransform: "uppercase",
-                }}>{lane === "rig" ? "🎛️ RIG" : "🎤 CROWD"} · {q.difficulty}</span>
-              </div>
-            )}
-            <div style={{ fontSize: 8, color: "#3a5a7a", letterSpacing: 1, marginTop: 6 }}>
+              fontFamily: "'Saira Stencil One',sans-serif", fontSize: 14, color: ACCENT,
+              letterSpacing: 3, textShadow: `0 0 14px ${ACCENT}aa`,
+            }}>MARQUEE — ANSWER FOR A CARD</div>
+            <div style={{ fontSize: 8, color: "#7da0bf", letterSpacing: 1, marginTop: 6 }}>{q.era}</div>
+            <div style={{ fontSize: 8, color: "#3a5a7a", letterSpacing: 1, marginTop: 4 }}>
               for <span style={{ color: spirit?.color }}>{spirit?.name?.toUpperCase()}</span>
             </div>
           </div>
 
-          {/* ── 🎪 THE CHOICE CARD — lane × difficulty, before anything is drawn ── */}
-          {isChoice && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 4 }}>
-              {LANES.map(L => {
-                const can = L.id === "rig" ? (rigSpendable?.pool || rigSpendable?.power) : true;
-                return (
-                  <div key={L.id} style={{
-                    border: `1.5px solid ${L.id === "rig" ? "#44aaff55" : "#ffcc4455"}`, borderRadius: 8,
-                    padding: "10px 12px", background: "#0a1322", opacity: can ? 1 : 0.5,
-                  }}>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 2 }}>
-                      <span style={{ fontSize: 14 }}>{L.icon}</span>
-                      <span style={{ fontFamily: "'Saira Stencil One',sans-serif", fontSize: 12,
-                        letterSpacing: 2, color: L.id === "rig" ? "#66ccff" : "#ffcc44" }}>{L.label}</span>
-                      <span style={{ fontSize: 8, color: "#7da0bf", letterSpacing: 1 }}>{L.pays}</span>
-                    </div>
-                    <div style={{ fontSize: 9, color: "#8aa4bf", marginBottom: 8 }}>
-                      {L.blurb}
-                      {/* 🏋️ A maxed rig has nothing left to train, and the card says so
-                          rather than paying out a tier that silently evaporates. */}
-                      {L.id === "rig" && !can && " — your rig is maxed; nothing left to train."}
-                    </div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {DIFFS.map(D => (
-                        <button key={D.id}
-                          disabled={!can}
-                          onClick={() => can && chooseTriviaCard?.(L.id, D.id)}
-                          style={{
-                            flex: 1, cursor: can ? "pointer" : "not-allowed", fontFamily: "inherit",
-                            fontSize: 9, fontWeight: 700, letterSpacing: 1, lineHeight: 1.5,
-                            color: DIFF_COLOR[D.id], background: "#0c1626",
-                            border: `1.5px solid ${DIFF_COLOR[D.id]}66`, borderRadius: 6, padding: "7px 4px",
-                          }}
-                          onMouseEnter={e => { if (can) e.currentTarget.style.borderColor = DIFF_COLOR[D.id]; }}
-                          onMouseLeave={e => { if (can) e.currentTarget.style.borderColor = `${DIFF_COLOR[D.id]}66`; }}
-                        >
-                          {D.label}
-                          <div style={{ fontSize: 8, color: "#8aa4bf", fontWeight: 400 }}>
-                            {L.id === "rig" ? D.rig : D.crowd}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-              <div style={{ fontSize: 8.5, color: "#5a7088", textAlign: "center", lineHeight: 1.5 }}>
-                A wrong answer costs nothing — the bet is what you gave up by playing safe.
-              </div>
-            </div>
-          )}
-
           {/* Question */}
-          {!isChoice && (<>
           <div style={{
             fontSize: 11.5, color: "#e8eef8", lineHeight: 1.5, textAlign: "center",
             marginBottom: 14, padding: "0 4px", fontWeight: 600,
@@ -156,7 +112,6 @@ export function EventModal({ activeEvent, answerTrivia, setActiveEvent, spirits,
               const isAnswer = i === q.answer;
               const isChosen = i === chosen;
               let border = "#22344e", bg = "#0a1322", color = "#c0d0e0";
-              const revealed = isResult || isSpend;   // 🏋️ the spend step already knows the answer
               if (revealed) {
                 if (isAnswer) { border = "#44cc88"; bg = "#0c2417"; color = "#9affc4"; }
                 else if (isChosen) { border = "#ff5555"; bg = "#220c0c"; color = "#ff9c9c"; }
@@ -164,17 +119,17 @@ export function EventModal({ activeEvent, answerTrivia, setActiveEvent, spirits,
               }
               return (
                 <button key={i}
-                  onClick={() => { if (phase === "question") answerTrivia(i); }}
-                  disabled={phase !== "question"}
+                  onClick={() => { if (isQuestion) answerTrivia(i); }}
+                  disabled={!isQuestion}
                   style={{
                     display: "flex", alignItems: "center", gap: 10, width: "100%",
-                    textAlign: "left", cursor: isResult ? "default" : "pointer",
+                    textAlign: "left", cursor: isQuestion ? "pointer" : "default",
                     fontFamily: "inherit", fontSize: 10.5, color, lineHeight: 1.4,
                     background: bg, border: `1.5px solid ${border}`, borderRadius: 7,
                     padding: "9px 12px", transition: "all .12s",
                   }}
-                  onMouseEnter={e => { if (phase === "question") { e.currentTarget.style.borderColor = accent; e.currentTarget.style.background = "#101c30"; } }}
-                  onMouseLeave={e => { if (phase === "question") { e.currentTarget.style.borderColor = "#22344e"; e.currentTarget.style.background = "#0a1322"; } }}
+                  onMouseEnter={e => { if (isQuestion) { e.currentTarget.style.borderColor = ACCENT; e.currentTarget.style.background = "#101c30"; } }}
+                  onMouseLeave={e => { if (isQuestion) { e.currentTarget.style.borderColor = "#22344e"; e.currentTarget.style.background = "#0a1322"; } }}
                 >
                   <span style={{
                     flexShrink: 0, width: 18, height: 18, borderRadius: 4, fontSize: 9, fontWeight: 700,
@@ -188,84 +143,67 @@ export function EventModal({ activeEvent, answerTrivia, setActiveEvent, spirits,
             })}
           </div>
 
-          {/* ── 🏋️ THE SPEND STEP — RIG lane only, one tier at a time ── */}
-          {isSpend && (
+          {isQuestion && (
+            <div style={{ fontSize: 8.5, color: "#5a7088", textAlign: "center", lineHeight: 1.5 }}>
+              Get it right to win a random battle card. A wrong answer costs nothing.
+            </div>
+          )}
+
+          {/* ── 🃏 The prize — and, with a full hand, the swap ── */}
+          {(isSwap || (isResult && correct)) && (
             <div style={{ marginBottom: 14 }}>
               <div style={{
                 textAlign: "center", fontFamily: "'Saira Stencil One',sans-serif", fontSize: 12,
-                letterSpacing: 1, color: "#66ccff", marginBottom: 4,
-                textShadow: "0 0 12px #66ccff77",
-              }}>✓ CORRECT — {activeEvent.tiersLeft} TIER{activeEvent.tiersLeft === 1 ? "" : "S"} TO SPEND</div>
-              <div style={{ fontSize: 8.5, color: "#5a7088", textAlign: "center", marginBottom: 10 }}>
-                pool {rigTiers?.pool ?? 1} · power {rigTiers?.power ?? 0} — you keep this until you stop training
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  disabled={!rigSpendable?.pool}
-                  onClick={() => spendRigTier?.("pool")}
-                  style={{
-                    flex: 1, cursor: rigSpendable?.pool ? "pointer" : "not-allowed", fontFamily: "inherit",
-                    fontSize: 10, fontWeight: 700, letterSpacing: 1, lineHeight: 1.6,
-                    color: "#9affc4", background: "#0c2417", opacity: rigSpendable?.pool ? 1 : 0.4,
-                    border: "1.5px solid #44cc8866", borderRadius: 7, padding: "10px 6px",
-                  }}>🔊 POOL
-                  <div style={{ fontSize: 8.5, color: "#8aa4bf", fontWeight: 400 }}>one more d6 in the pool</div>
-                </button>
-                <button
-                  disabled={!rigSpendable?.power}
-                  onClick={() => spendRigTier?.("power")}
-                  style={{
-                    flex: 1, cursor: rigSpendable?.power ? "pointer" : "not-allowed", fontFamily: "inherit",
-                    fontSize: 10, fontWeight: 700, letterSpacing: 1, lineHeight: 1.6,
-                    color: "#ffd88a", background: "#241a0c", opacity: rigSpendable?.power ? 1 : 0.4,
-                    border: "1.5px solid #ffcc4466", borderRadius: 7, padding: "10px 6px",
-                  }}>🎛️ POWER
-                  <div style={{ fontSize: 8.5, color: "#8aa4bf", fontWeight: 400 }}>upgrade one die d6 → d8</div>
-                </button>
-              </div>
-              {/* ⚠️ POWER CANNOT EXCEED POOL — the old tree gated this with a
-                  prereq; with no tree left it is arithmetic, and the card simply
-                  does not offer the button rather than explaining a refusal. */}
-              {!rigSpendable?.power && (
-                <div style={{ fontSize: 8, color: "#5a7088", textAlign: "center", marginTop: 8 }}>
-                  no spare die to upgrade — add to the pool first
+                letterSpacing: 1, color: "#44cc88", marginBottom: 8, textShadow: "0 0 12px #44cc8877",
+              }}>✓ CORRECT — YOU WIN A CARD</div>
+              <MarqueeCardFace card={prizeCard} dim={isResult && !kept} />
+              {isSwap && (
+                <>
+                  <div style={{ fontSize: 9, color: "#8aa4bf", textAlign: "center", margin: "10px 0 6px" }}>
+                    Your hand is full ({hand.length}). Swap one out for it, or let it go.
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {hand.map((c, i) => (
+                      <button key={i} onClick={() => keepPrize(i)} title={`Throw away ${c?.name} for ${prizeCard?.name}`}
+                        style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer" }}>
+                        <MarqueeCardFace card={c} small />
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ textAlign: "center", marginTop: 10 }}>
+                    <button onClick={() => keepPrize(null)} style={btn("#7da0bf")}>LET IT GO</button>
+                  </div>
+                </>
+              )}
+              {isResult && (
+                <div style={{ fontSize: 8.5, color: "#5a7088", textAlign: "center", marginTop: 6 }}>
+                  {kept ? "In your hand — arm it before a Swing or a Sonic." : "Let go — your hand stays as it was."}
                 </div>
               )}
             </div>
           )}
 
-          {/* Result: reward banner + sauce + close */}
+          {/* Result: sauce + close */}
           {isResult && (
             <>
-              <div style={{
-                textAlign: "center", fontFamily: "'Saira Stencil One',sans-serif", fontSize: 12, letterSpacing: 1,
-                color: correct ? "#44cc88" : "#ff7766", marginBottom: 10,
-                textShadow: `0 0 12px ${correct ? "#44cc88" : "#ff7766"}77`,
-              }}>
-                {!correct
-                  ? "✕ NO BONUS — the crowd forgives you"
-                  : lane === "rig"
-                  ? `✓ CORRECT — rig trained: pool ${rigTiers?.pool ?? 1}, power ${rigTiers?.power ?? 0}`
-                  : `✓ CORRECT — +${reward} Fans`}
-              </div>
+              {!correct && (
+                <div style={{
+                  textAlign: "center", fontFamily: "'Saira Stencil One',sans-serif", fontSize: 12, letterSpacing: 1,
+                  color: "#ff7766", marginBottom: 10, textShadow: "0 0 12px #ff776677",
+                }}>✕ NO CARD — the crowd forgives you</div>
+              )}
               <div style={{
                 fontSize: 9.5, color: "#bcd0e4", lineHeight: 1.55, textAlign: "left",
-                background: "#0a1020", border: `1px solid ${accent}44`, borderRadius: 6,
+                background: "#0a1020", border: `1px solid ${ACCENT}44`, borderRadius: 6,
                 padding: "9px 12px", marginBottom: 16,
               }}>
-                <span style={{ color: accent, fontWeight: 700 }}>💡 </span>{q.sauce}
+                <span style={{ color: ACCENT, fontWeight: 700 }}>💡 </span>{q.sauce}
               </div>
               <div style={{ textAlign: "center" }}>
-                <button onClick={() => setActiveEvent(null)}
-                  style={{
-                    fontFamily: "'Saira Stencil One',sans-serif", fontSize: 11, letterSpacing: 2, cursor: "pointer",
-                    padding: "8px 28px", borderRadius: 6, color: accent, fontWeight: 700,
-                    background: "transparent", border: `1.5px solid ${accent}`,
-                  }}>🤘 ROCK ON</button>
+                <button onClick={() => setActiveEvent(null)} style={btn(ACCENT)}>🤘 ROCK ON</button>
               </div>
             </>
           )}
-          </>)}
         </div>
       </div>
     </div>

@@ -69,8 +69,14 @@ export function keepBest(values = [], pool = [], keep = values.length) {
   };
 }
 
-/** Throw a whole pool and keep the best. */
-export function throwPool(pool = [], keep = pool.length, rng, floor = 0) {
-  const thrown = pool.map(s => rollDie(s, rng, floor));
+/**
+ * Throw a whole pool and keep the best.
+ * 🃏 `fixed` — a marquee card's loaded faces, [{ idx, face }]. ⚠️ The loaded
+ * die is still ROLLED (one `rng.int`, like every die) and only then set, so a
+ * card never shifts the stream (see the header).
+ */
+export function throwPool(pool = [], keep = pool.length, rng, floor = 0, fixed = []) {
+  const load = new Map((fixed ?? []).map(f => [f.idx, f.face]));
+  const thrown = pool.map((s, i) => { const v = rollDie(s, rng, floor); return load.has(i) ? load.get(i) : v; });
   return { thrown, ...keepBest(thrown, pool, keep) };
 }

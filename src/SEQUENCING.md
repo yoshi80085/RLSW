@@ -35,6 +35,54 @@
 > now (18-coreloop, 19-cheapest). A warning that is always there stops being
 > read — the same failure `check:bundle`'s "6 warnings" taught.**
 
+## 38-quadrants. One marquee per seat in its own quadrant, and the charge spaces retire — 2026-09-29
+
+Alex: *"Lets retire the 'charge' spaces for now — marquee spaces — make 1 per player — always present on the Spirit's starting corner quadrant … if player 1 lands on a marquee space on turn 1, make another in that same quadrant* or *the 'empty' quadrant. If 4 players — make it persistent … (never more than 1 per quadrant)"*.
+
+### ✅ What shipped
+- 🎪 `engine/systems/marqueeSpaces.js`: one marquee per seat (`board.marqueeSeats`), each opening in its own quadrant (the spotlights' quarters, 16 hexes each). Taking one relights one AT ONCE in a quadrant with none — which reads Alex's three cases as one rule (4 seats → same quadrant; 3 → same or the empty one; 2 → same or either empty). ≥ 2 hexes from the one taken (flagged, `MARQUEE_RELIGHT_MIN_DIST`). The respawn timer is gone; the client's round-end driver is only a top-up now.
+- 🪦 `CHARGE_ZONE_COUNT` 2 → 0. Code kept; the selftest and evalCheck fixtures lay a zone by hand.
+
+### 🎓 Findings
+- 🧩 **Three sentences, one rule.** "Same quadrant or the empty one" and "persistent at four" are the same instruction once it is read as *relight in a quadrant that has none* — the four-seat table simply has no other candidate.
+
+### 🧪 Evidence (Alex's machine)
+`test:cards` 204 (§10: 2/3/4 seats × 30 seeds × 12 takes; 4/4 mutants caught). The selftest's two board blocks pass when run alone (the suite still stops at its pre-existing Thrash assertion). Green: determinism, client, render, vocab, sonic, spotlight, winconditions, stackslots, arena, `check:bundle`, and the mounted card, Swing and Sonic journeys.
+
+### ⬅️ NEXT
+- 👀 Alex to play a 3- and a 4-seat table.
+- 🎨 Mark the marquees in the 3D arena.
+
+## 37-cards. Every marquee is the same, and it pays a prize card for battle — 2026-09-29
+
+Alex: *"Lets make all marquee spaces offer cards as prizes - gear/lore don't matter - they all give bonuses for battle"*, *"no more 'difficulty' settings for marquee spaces - they all are the same, and offer random prizes if correct"*, and the effects: *"some have guaranteed rolls, some increase a dice size (d6 - d8 or d10), still others let users use 1 extra dice"*. Chosen: hold the card and play it on an attack; a hand of 3.
+
+### ✅ What shipped
+- 🃏 `engine/systems/marqueeCards.js` — six cards (Loaded 4/5/6, Bigger Cab, Full Stack, Encore), weighted draw, hand of 3 with swap-or-let-go, arm/disarm, `cardedRig` applied at `attackParams` and `rollSwingClash`, spent by the attack reducers (`battle.cardPlayed`, `battle.atkFixed`), kept through rerolls, disarmed at turn end.
+- 🎪 The marquee: one question from the whole deck (`drawMarqueeQuestion`), no lane, no difficulty; a correct answer wins a card. The ticket (`EventModal`) and the rail hand (`MarqueeHand`) are new; the choice and spend steps are gone. Fans are no longer paid at the marquee.
+- 🤖 Bots: odds by the drawn question's difficulty, keep/swap and arm by card value — in `transition.js` (headless, `collectPickups` now exported as a test hook) and the client.
+- `evaluate.js` `loud` reads the hand; `marqueeSeek` damps on a full hand.
+
+### 🎓 Findings
+- 🎲 **A card that changes nothing must not be spent.** Encore on a stack that already keeps every die, or any card with an empty Drive stack, would burn a prize for no effect. `applyCard` reports `card: null` and the reducers only spend what played.
+- 🎲 **The loaded die still rolls.** Setting its face without spending its `rng.int` would shift every draw after it — the dicePool determinism contract. The check pins it.
+
+### 🧪 Evidence (Alex's machine, Linux VM)
+`test:cards` 154 checks, 7/7 mutants caught. Green: vocab 640, determinism 20, sonic 80, swing (+ the mounted journey, which bundles the client), dice, client, render, `check:bundle` 0 warnings. 🔴 Red with pre-existing first failures unrelated to cards: engine (`atkTotal = stat + roll`, the legacy Thrash path), transition (`atkChordDrive` on the Swing branch), battleflow, legal, eval, harness; arch (the `board/rivenWorld/*` rows from the floating-island commit).
+
+### 🂠 Second pass, same day — the card at the roll
+Alex: *"use the logo inside the RL_Card for the backside of the card … Give the option to 'use' a card in the form of a button — similar to the roll dice button — perhaps above it. Have the cards spin around a few times before presenting themselves … players can pick 1 card."*
+- 🃏 **Use a card ×N** above the Roll button on the attacker's own throw → `ui/MarqueeCardPick.jsx`: face-down (the RL logo cut from `RL_Card.png` → `assets/marquee_card_logo.png`), orbit + spin, gather, deal, flip; pick one. Faces built from scratch (ribbon by kind, dice art, name, effect).
+- `MARQUEE_CARD_PLAYED` → `combat.js` `applyMarqueeCardPlayed` RE-THROWS the attacker's dice with the card (the battle was already rolled — the gate only reveals it); the presentation adopts the new verdict before the dice show; auto-roll holds while the picker is open. The rail hand is display-only; bots keep arming pre-attack.
+- 🎓 **The Roll button is presentation, so a card at the roll has to be a re-throw.** Adopting it meant turning the presentation's frozen `plan` / `clackPlan` / `powers` into rebuildable bindings; everything else already read `battleStateRef`.
+- 🧪 `test:cards` 172 (+18 at-the-roll checks); the mounted Swing and Sonic journeys still pass with the client changes; client, render, determinism, `check:bundle` green. Picker screenshots: `.scratch/card-pick/` (`preview.html?t=500`, `?prompt=1`).
+
+### ⬅️ NEXT
+- ✅ **Proved in the mounted game (third pass):** `test:cardjourney` (in `test:all`) deals cards from the new Testing Grounds **+1 🃏 Card** grant, opens a Swing, presses Use a card, holds past the 5 s auto-roll, picks Full Stack and checks the re-throw and the clash — 14 checks; un-holding the auto-roll is caught.
+- 👀 Alex to play: Testing Grounds → 🧪 TEST → **+1 🃏 Card** a few times, then Swing or Sonic and press **Use a card** above Roll.
+- 🎨 Make the marquee visible in the 3D arena (the other half of the P1).
+- 🗑️ Delete the dormant rig workout in one sweep (MARQUEE_QUIZ_DESIGN §10.5 item 3).
+
 ## 36-clearlens. The battle camera stops filming into nothing, and an attack's reach glows on hover — 2026-09-28
 
 Alex, the **third** report: *"camera glitches at the start of the match where it seems like it zooms really far into the arena - into nothing for a few seconds before correcting … look very closely"*; then *"the bug … happens right at or near the start of the battle triggering"* and the bar: *"if the battle starts, triggers, and plays out the first 5 seconds without any camera glitches or bugs, I'd say its working fine."* Plus: *"a field of view for hovering over an attack - Swing or Sonic (or other special ability) … the spaces that glow up"*.
