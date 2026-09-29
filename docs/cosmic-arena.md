@@ -2,6 +2,26 @@
 
 # Cosmic arena — interactive environment study
 
+## Riven World integration - 2026-09-28
+
+The approved Riven World preset now lives in `src/board/rivenWorld/index.js`.
+The live renderer replaces only the GLB Island with the deeper fractured blue
+formation and uses it in the ground depth pass. The purple-pink nebula, drifting
+debris, staggered rising lightning and bloom use the approved values. Standard
+keeps this scenery with the existing reduced pixel ratio and disabled bloom;
+reduced motion freezes drift and disables lightning and nebula breathing.
+The modules are shared with `.scratch/epic-island` and own their resource cleanup.
+
+The follow-up dial-in remains scratch-only: lightning softness 1, crevice following 1,
+planet distance 2.3, amp brightness 0.55, cloud flash strength 1 and average interval
+42 seconds. Cloud flashes are localized to gas and disabled by reduced motion.
+Only preview cabinet bodies are darkened; player-colored rims and status lights retain
+their authored brightness. These settings are the preview defaults, not activated in the game.
+`npm run test:rivenworld` checks real-model integration, timing, motion and cleanup;
+it is also part of `test:arena`.
+
+The earlier delivery notes below describe the original cosmic arena.
+
 ## Live visual layer — 2026-09-08
 
 The live match now includes the preview's dark indigo stage, fractured island,

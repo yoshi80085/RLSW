@@ -5,17 +5,20 @@ import { rng,disposeObject } from './formation.js';
 
 export function createLightning(scene,getRock,getSettings,camera){
   const random=rng(27181),ray=new THREE.Raycaster();let group=null,start=-100,next=2,held=false;
+  let softness=0,crevices=0;
   let surfaceRock=getRock(),surfaceTree=new Octree().fromGraphNode(surfaceRock);
   function surface(angle,y){
     const radial=new THREE.Vector3(Math.cos(angle),0,Math.sin(angle));ray.set(radial.clone().multiplyScalar(32).setY(y),radial.clone().negate());
     const hit=surfaceTree.rayIntersect(ray.ray);
-    return hit?hit.position.clone().addScaledVector(radial,.13):null;
+    return hit?hit.position.clone().addScaledVector(radial,THREE.MathUtils.lerp(.13,.055,crevices)):null;
   }
   function strike(time){
     if(group)disposeObject(group);group=new THREE.Group();group.name='Transient branching lightning';scene.add(group);
     const rock=getRock();
     if(rock!==surfaceRock){surfaceTree.clear();surfaceRock=rock;surfaceTree=new Octree().fromGraphNode(rock);}
     const settings=getSettings(),facing=Math.atan2(camera.position.z,camera.position.x);
+    softness=THREE.MathUtils.clamp(settings.lightningSoftness??0,0,1);
+    crevices=THREE.MathUtils.clamp(settings.creviceFollow??0,0,1);
     const palette=[0x279dff,0x39ff99,0xa66aff],lanes=[0,1,2];
     for(let i=lanes.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[lanes[i],lanes[j]]=[lanes[j],lanes[i]];}
     const choice=random(),boltCount=choice<.4?1:choice<.85?2:3;
@@ -27,8 +30,16 @@ export function createLightning(scene,getRock,getSettings,camera){
       for(let i=0;i<count;i++){
         // Keep each rising trunk in a narrow lane. Mean reversion prevents
         // cumulative sideways wander; small local kinks keep it electrical.
-        drift=drift*.55+(random()-.5)*.009;const a=angle+drift+(random()-.5)*.024;
-        const y=-.85-(1-i/(count-1))*settings.depth*(.95+bolt*.045);const p=surface(a,y);if(p)main.push({p,a,y});
+        drift=drift*.55+(random()-.5)*.009;const lane=angle+drift+(random()-.5)*.024;
+        const y=-.85-(1-i/(count-1))*settings.depth*(.95+bolt*.045);
+        // Prefer recessed seams within a narrow lane, with continuity up the rock.
+        let best=null,bestScore=Infinity;
+        for(const offset of crevices?[-.045,-.0225,0,.0225,.045].map(v=>v*crevices):[0]){
+          const a=lane+offset,p=surface(a,y);if(!p)continue;
+          const score=Math.hypot(p.x,p.z)+Math.abs(a-(main.at(-1)?.a??lane))*12;
+          if(score<bestScore){bestScore=score;best={p,a,y};}
+        }
+        if(best)main.push(best);
       }
       // Sample each jagged leg onto the surface again; a straight chord between
       // exposed corners would run through the cliff and disappear behind it.
@@ -53,8 +64,13 @@ export function createLightning(scene,getRock,getSettings,camera){
         part.setAttribute('radiusScale',new THREE.BufferAttribute(new Float32Array(part.attributes.position.count).fill(index?.57:1),1));
         return part;
       });
-      const geo=mergeGeometries(parts);parts.forEach(p=>p.dispose());geo.computeBoundingSphere();geo.boundingSphere.radius+=.105;
-      for(const [radius,color,opacity] of [[.105,palette[bolt],.13],[.042,palette[bolt],.8],[.014,0xeaffff,1]]){
+      const geo=mergeGeometries(parts);parts.forEach(p=>p.dispose());geo.computeBoundingSphere();geo.boundingSphere.radius+=.24;
+      // Broad, faint shells taper toward a colored core instead of a white wire.
+      const shells=[[.105,.24,0,.025],[.105,.15,0,.065],[.105,.085,.13,.16],[.042,.035,.8,.48],[.014,.009,1,.3]];
+      for(const [index,[hardRadius,softRadius,hardOpacity,softOpacity]] of shells.entries()){
+        const radius=THREE.MathUtils.lerp(hardRadius,softRadius,softness),opacity=THREE.MathUtils.lerp(hardOpacity,softOpacity,softness);
+        if(opacity===0)continue;
+        const color=index===4?new THREE.Color(0xeaffff).lerp(new THREE.Color(0xd8e8ff),softness):palette[bolt];
         const mat=new THREE.MeshBasicMaterial({color,transparent:true,opacity,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false});
         // Clip by height so forks cannot light up before the rising trunk arrives.
         mat.onBeforeCompile=shader=>{

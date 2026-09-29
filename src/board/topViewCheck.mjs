@@ -151,7 +151,9 @@ console.log('§6 🧱 amps, fans and dice are a solid layer above the board');
   ok('renderer: clear once, copy the solids, THEN the standees on the same depth', /foreground\.clear\(\);markSolid\(\[crowd\.group,\.\.\.visuals\.solidRoots\(\)\]\);solid\.render\(scene,camera\);foreground\.render\(foregroundScene,camera\);/.test(r)
     && /foreground\.autoClear=false/.test(r));
   ok('renderer: the copy runs AFTER the arena is drawn (its pixels are the source)', r.indexOf('composer.render();') < r.indexOf('solid.render(scene,camera)'));
-  ok('visuals: every amp tier and the Sonic AND Swing floor dice are solid roots', /solidRoots:\(\)=>\[\.\.\.\[\.\.\.rigs\.values\(\)\]\.flatMap\(r=>r\.levels\),sonic\?\.dice\?\.group,swing\?\.dice\?\.group\]/.test(vis));
+  ok('visuals: every amp tier and the Sonic AND Swing floor dice are solid roots', /solidRoots:\(\)=>\[\.\.\.\[\.\.\.rigs\.values\(\)\]\.flatMap\(r=>r\.levels\),sonic\?\.dice\?\.group,swing\?\.dice\?\.group[,\]]/.test(vis));
+  // 🎪 2026-09-29: the marquees' floating prize cards are solid too (marqueeMarkers.js).
+  ok('visuals: the marquee prize cards are solid roots', /solidRoots:\(\)=>\[[^\n]*marqueeMarkers\.solidRoot\]/.test(vis));
   const src = read('./solidLayer.js');
   // 🪦 2026-09-25: the pixel copy drew black glass on Alex's GPU. It is a re-draw now.
   ok('the solids are RE-DRAWN with their own materials — no canvas copy', !/CanvasTexture|gl_FragCoord|uSolidSource/.test(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')));

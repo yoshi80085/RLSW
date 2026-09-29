@@ -40,7 +40,9 @@ import { EventModal } from "./ui/EventModal.jsx";
 import { TRIVIA_BOT_ODDS, drawMarqueeQuestion } from "./data/trivia.js";
 import { MarqueeHand } from "./ui/MarqueeHand.jsx";
 import { MarqueeCardPick } from "./ui/MarqueeCardPick.jsx";
-import { marqueeCount } from "./engine/systems/marqueeSpaces.js";
+import { marqueeCount, quadrantOf, marqueeKindOf } from "./engine/systems/marqueeSpaces.js";
+import { communityParticipants, botAnswers, communityOutcome, marqueeDrawCount, roundLimitMs } from "./engine/systems/marqueeRound.js";
+import { marqueeMarkerList } from "./board/marqueeMarkers.js";
 import {
   drawMarqueeCard, cardDef, handOf, cardedRig, botReplaceIdx, botArmIdx, applyCard, MARQUEE_CARD_IDS,
 } from "./engine/systems/marqueeCards.js";
@@ -127,7 +129,7 @@ import { canHop, shukuchiLandings, hopIsActivation, hopBudgetPatch,
          shukuchiHopsLeft, SHUKUCHI_SKILL } from "./engine/systems/shukuchi.js";
 import { shukuchiHopped } from "./engine/actions.js";
 // 🧪 Testing Grounds levers — real engine actions so an exported sandbox log still replays.
-import { sandboxSeatTaken, sandboxRefilled, marqueeCardWon, marqueeCardArmed, marqueeCardPlayed } from "./engine/actions.js";
+import { sandboxSeatTaken, sandboxRefilled, marqueeCardWon, marqueeCardArmed, marqueeCardPlayed, marqueeKindSet } from "./engine/actions.js";
 import { sandboxNeedsRefill, SANDBOX_AP } from "./engine/systems/sandbox.js";
 import { SHUKUCHI_LOOK, ShukuchiArcs, ShukuchiBudget } from "./ui/ShukuchiOverlay.jsx";
 import { BushidoOverlay } from './ui/BushidoOverlay.jsx';
@@ -199,7 +201,7 @@ import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim, crowdS
 // 🔦 The four corner spotlights (Alex, 2026-09-25) — rules in the engine, read here.
 import { poseSpotFor, homeSpotlightDrive } from "./engine/systems/spotlights.js";
 import { SPOTLIGHT_POSE_SUSTAIN_COST, POSE_SUSTAIN_PENALTY, SPOTLIGHT_STEAL_CASUALS } from "./data/gameConstants.js";
-import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, RIFF_FP_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_TOTAL_CAP, addCasuals, addDiehard, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, CROWD_DRAWN_MAX, MARQUEE_HAND_MAX, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, RIFF_FP_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_TOTAL_CAP, addCasuals, addDiehard, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, CROWD_DRAWN_MAX, MARQUEE_HAND_MAX, MARQUEE_SOLO_SECONDS, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -2064,6 +2066,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const eventHexes = engineState.board.eventHexes;
   // activeEvent: { spiritId, eventId, phase:'reveal'|'result', resultLines:[], rolls? }
   const [activeEvent, setActiveEvent] = useState(null);
+  // 🎤 The round clock reads the LIVE event (its interval outlives a render).
+  const activeEventRef = useRef(null);
+  activeEventRef.current = activeEvent;
   // 🧠 Trivia: questions already asked this game (no repeats until the pool is exhausted).
   const usedTriviaRef = useRef(new Set());
   const flamingHexes = engineState.board.flamingHexes;
@@ -4895,57 +4900,148 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // ⚠️ ALL THREE FLOATS ARE DRAWN UP FRONT, before anyone answers, so the rng
   // stream never depends on the outcome. The prize is drawn but only SHOWN
   // (and only dispatched) on a correct answer.
+  // 🎤 THE MARQUEE ROUND (§13): SOLO on a 10 s clock, or COMMUNITY — everyone
+  // at this table answers on their own row, the first RIGHT answer wins, a
+  // wrong answer locks that player out, open 15 s. `engine/systems/
+  // marqueeRound.js` decides what the clicks mean; this drives the clock.
+  // 🌐 Online, only THIS table's seat answers here (plus the bots) — relaying
+  // other tables' clicks is not built yet (MARQUEE_QUIZ_DESIGN §13.5).
   function checkEventTrigger(spiritId, hexNum) {
     if (!eventHexes.includes(hexNum)) return;
     if (activeEvent) return; // one at a time
     const spirit = spirits.find(s => s.id === spiritId);
-    dispatch(randomBatchDrawn(3));
-    const [pickVal, oddsVal, cardVal] = engineRef.current.lastRandomBatch;
+    const kind = marqueeKindOf(engineRef.current.board, hexNum);
+    const link = netRef.current;
+    const participants = kind === 'community'
+      ? communityParticipants(engineRef.current.spirits, spiritId, isBot)
+          .filter(p => p.bot || !link || link.mySpiritId === p.id)
+      : [];
+    const botCount = participants.filter(p => p.bot).length;
+    dispatch(randomBatchDrawn(marqueeDrawCount(kind, botCount)));
+    const batch = engineRef.current.lastRandomBatch;
+    const [pickVal, oddsVal, cardVal] = batch;
     const { q, used } = drawMarqueeQuestion(pickVal, engineRef.current.board?.usedTrivia ?? []);
     if (!q) return;
     // The hex burns out as the question is drawn — there is no choice step
     // any more to walk away from — and the next marquee lights at once.
     dispatch(eventHexTriggered(spiritId, hexNum, used));
     const relit = engineRef.current.board.lastEventRespawn;
-    if (relit?.from === hexNum) addLog(`🎪 A new marquee lights up at #${relit.hexNum}.`);
+    if (relit?.from === hexNum) addLog(`🎪 A new ${marqueeKindOf(engineRef.current.board, relit.hexNum) === 'community' ? '🎤 community ' : ''}marquee lights up at #${relit.hexNum}.`);
     const prize = drawMarqueeCard(cardVal);
 
-    if (isBot(spirit)) {
-      // 🤖 Bots can't "know" trivia — fixed odds by the drawn question's
-      // difficulty, resolved instantly, no modal.
-      addLog(`🎪 ${spirit?.name} steps on a marquee — a ${q.difficulty} question. (${q.era})`);
-      if (oddsVal < (TRIVIA_BOT_ODDS[q.difficulty] ?? 0.5)) {
-        const ns = engineRef.current.noteStates?.[spiritId] ?? {};
-        const replaceIdx = botReplaceIdx(ns, prize);
-        const full = handOf(ns).length >= MARQUEE_HAND_MAX;
-        if (!full || replaceIdx != null) dispatch(marqueeCardWon(spiritId, prize, replaceIdx));
-        addLog(`🃏 ${spirit?.name} answers correctly — wins ${cardDef(prize)?.icon} ${cardDef(prize)?.name}${full && replaceIdx == null ? ' (hand full — lets it go)' : ''}. 💡 ${q.sauce}`);
-      } else {
-        addLog(`🧠 ${spirit?.name} guesses wrong — no card. 💡 ${q.sauce}`);
+    if (kind === 'community') {
+      const bots = botAnswers(participants, batch.slice(3), q.difficulty).map(b => ({ ...b,
+        // Presentation only: which letter a wrong bot clicks.
+        choice: b.correct ? q.answer : [0, 1, 2, 3].filter(i => i !== q.answer)[Math.floor(b.atMs / 7) % 3] }));
+      addLog(`🎤 ${spirit?.name} lights a COMMUNITY marquee — first right answer wins the card! (${q.era})`);
+      if (!participants.some(p => !p.bot)) {
+        // Bots only at this table: settle at once, like the headless path.
+        const out = communityOutcome(bots, { participants });
+        settleCommunity(out.winnerId, prize, q);
+        return;
       }
+      setActiveEvent({ kind, spiritId, hexNum, q, prize, phase: 'question', startedAt: performance.now(),
+        limitMs: roundLimitMs('community'), participants, botPlan: bots, answers: [], lockedOut: [], winnerId: null });
       return;
     }
 
-    addLog(`🎪 ${spirit?.name} steps on a marquee — answer for a card! (${q.era})`);
-    setActiveEvent({ spiritId, hexNum, q, phase: 'question', chosen: null, prize });
+    if (isBot(spirit)) {
+      // 🤖 Bots can't "know" trivia — fixed odds by the drawn question's
+      // difficulty, resolved instantly, no modal (the clock is for people).
+      addLog(`🎪 ${spirit?.name} steps on a marquee — a ${q.difficulty} question. (${q.era})`);
+      if (oddsVal < (TRIVIA_BOT_ODDS[q.difficulty] ?? 0.5)) giveMarqueeCard(spiritId, prize, q, 'answers correctly');
+      else addLog(`🧠 ${spirit?.name} guesses wrong — no card. 💡 ${q.sauce}`);
+      return;
+    }
+
+    addLog(`🎪 ${spirit?.name} steps on a marquee — ${MARQUEE_SOLO_SECONDS} seconds to answer for a card! (${q.era})`);
+    setActiveEvent({ kind, spiritId, hexNum, q, phase: 'question', chosen: null, prize,
+      startedAt: performance.now(), limitMs: roundLimitMs('solo') });
   }
+
+  /** 🃏 Hand a won card to a Spirit: bots keep or swap by value; a human with a
+   *  full hand gets the swap step (returns true when it is waiting on that). */
+  function giveMarqueeCard(winnerId, prize, q, how) {
+    const sp = engineRef.current.spirits.find(s => s.id === winnerId);
+    const ns = engineRef.current.noteStates?.[winnerId] ?? {};
+    const full = handOf(ns).length >= MARQUEE_HAND_MAX;
+    if (!isBot(sp) && full) return true;
+    const replaceIdx = isBot(sp) ? botReplaceIdx(ns, prize) : null;
+    if (!full || replaceIdx != null) dispatch(marqueeCardWon(winnerId, prize, replaceIdx));
+    addLog(`🃏 ${sp?.name} ${how} — wins ${cardDef(prize)?.icon} ${cardDef(prize)?.name}${full && replaceIdx == null ? ' (hand full — lets it go)' : ''}. 💡 ${q.sauce}`);
+    return false;
+  }
+
+  /** 🎤 A community round is over: the winner (or nobody) is known. */
+  function settleCommunity(winnerId, prize, q) {
+    if (!winnerId) { addLog(`🎤 Nobody gets it — no card. 💡 ${q.sauce}`); return 'none'; }
+    return giveMarqueeCard(winnerId, prize, q, 'answers first') ? 'swap' : 'won';
+  }
+
+  /** 🎤 A seat at this table clicks a letter on its own row. */
+  function answerCommunity(participantId, idx) {
+    setActiveEvent(prev => {
+      if (!prev || prev.kind !== 'community' || prev.phase !== 'question') return prev;
+      if (prev.answers.some(a => a.id === participantId)) return prev;   // locked in (or out) already
+      const atMs = performance.now() - prev.startedAt;
+      return { ...prev, answers: [...prev.answers, { id: participantId, choice: idx, correct: idx === prev.q.answer, atMs }] };
+    });
+  }
+
+  // 🎤⏱️ THE ROUND'S CLOCK — the bots' clicks land on schedule, the outcome is
+  // re-read every tick, and a solo round runs out at 10 s. (Presentation-side
+  // real time; every outcome it produces is an ordinary engine action.)
+  useEffect(() => {
+    if (!activeEvent || activeEvent.phase !== 'question' || activeEvent.startedAt == null) return;
+    // ⚠️ ONE SETTLE PER ROUND. The next tick can land before React has
+    // re-rendered the result, and a second settle would hand the card twice.
+    let done = false;
+    const timer = setInterval(() => {
+      const ev = activeEventRef.current;
+      if (done || !ev || ev.phase !== 'question') return;
+      const nowMs = performance.now() - ev.startedAt;
+      if (ev.kind !== 'community') {
+        if (nowMs >= ev.limitMs) {
+          done = true;
+          const sp = spirits.find(s => s.id === ev.spiritId);
+          addLog(`⏱️ ${sp?.name} runs out of time — no card. 💡 ${ev.q.sauce}`);
+          setActiveEvent(p => (p?.phase === 'question' ? { ...p, phase: 'result', correct: false, timedOut: true } : p));
+        }
+        return;
+      }
+      const landed = ev.botPlan.filter(b => b.atMs <= nowMs && !ev.answers.some(a => a.id === b.id));
+      const answers = landed.length ? [...ev.answers, ...landed] : ev.answers;
+      const out = communityOutcome(answers, { nowMs, limitMs: ev.limitMs, participants: ev.participants });
+      // Merge rather than replace: a human's click may have landed since `ev` was read.
+      const merge = p => [...p.answers, ...landed.filter(b => !p.answers.some(a => a.id === b.id))];
+      if (!out.settled) { if (landed.length) setActiveEvent(p => (p?.phase === 'question' ? { ...p, answers: merge(p) } : p)); return; }
+      done = true;
+      const how = settleCommunity(out.winnerId, ev.prize, ev.q);
+      setActiveEvent(p => (p?.phase === 'question' ? { ...p, answers: merge(p), lockedOut: out.lockedOut, winnerId: out.winnerId,
+        timedOut: !out.winnerId && nowMs >= ev.limitMs, phase: how === 'swap' ? 'swap' : 'result',
+        swapFor: how === 'swap' ? out.winnerId : null, kept: how === 'won' } : p));
+    }, 100);
+    return () => clearInterval(timer);
+  }, [activeEvent?.phase, activeEvent?.startedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Player answered the marquee question — a correct answer wins the prize card.
   function answerTrivia(idx) {
-    if (!activeEvent || activeEvent.phase !== 'question') return;
+    if (!activeEvent || activeEvent.phase !== 'question' || activeEvent.kind === 'community') return;
     const { q, spiritId, prize } = activeEvent;
-    const correct = idx === q.answer;
+    // ⏱️ A click after the clock is a wrong answer (§13) — the tick usually gets there first.
+    const late = activeEvent.startedAt != null && performance.now() - activeEvent.startedAt > activeEvent.limitMs;
+    const correct = idx === q.answer && !late;
     const sp = spirits.find(s => s.id === spiritId);
     if (!correct) {
       // A wrong answer costs nothing — the `sauce` is a gift, not a consolation.
-      addLog(`🧠 ${sp?.name} blanks on the marquee — no card. 💡 ${q.sauce}`);
-      setActiveEvent(prev => prev ? { ...prev, phase: 'result', chosen: idx, correct: false } : prev);
+      addLog(`🧠 ${sp?.name} ${late ? 'runs out of time' : 'blanks on the marquee'} — no card. 💡 ${q.sauce}`);
+      setActiveEvent(prev => prev ? { ...prev, phase: 'result', chosen: idx, correct: false, timedOut: late } : prev);
       return;
     }
     const hand = handOf(engineRef.current.noteStates?.[spiritId] ?? {});
     if (hand.length >= MARQUEE_HAND_MAX) {
       // 🃏 Full hand: the player picks what goes (or lets the new card go).
-      setActiveEvent(prev => prev ? { ...prev, phase: 'swap', chosen: idx, correct: true } : prev);
+      setActiveEvent(prev => prev ? { ...prev, phase: 'swap', chosen: idx, correct: true, swapFor: spiritId } : prev);
       return;
     }
     dispatch(marqueeCardWon(spiritId, prize));
@@ -4956,7 +5052,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   /** 🃏 Full hand: swap card `replaceIdx` out for the prize, or null to let it go. */
   function keepPrize(replaceIdx) {
     if (!activeEvent || activeEvent.phase !== 'swap') return;
-    const { spiritId, prize, q } = activeEvent;
+    const { prize, q } = activeEvent;
+    const spiritId = activeEvent.swapFor ?? activeEvent.spiritId;
     const sp = spirits.find(s => s.id === spiritId);
     const hand = handOf(engineRef.current.noteStates?.[spiritId] ?? {});
     if (replaceIdx != null) {
@@ -5661,6 +5758,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     else if (kind === 'vup') { setSpirits(prev => prev.map(s => s.id === id ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + 1) } : s)); addLog(`🧪 +1 Vibe → ${nm}`); }
     else if (kind === 'vdn') { setSpirits(prev => prev.map(s => s.id === id ? { ...s, vibe: Math.max(0, (s.vibe ?? 0) - 1) } : s)); addLog(`🧪 −1 Vibe → ${nm}`); }
     else if (kind === 'fp')  { grantFame(id, 3, '🧪 test grant', false); }
+    else if (kind === 'mqk') {
+      // 🎤 Flip every lit marquee: all community if any is solo, else all solo.
+      const b = engineRef.current.board;
+      const to = b.eventHexes.some(h => marqueeKindOf(b, h) !== 'community') ? 'community' : 'solo';
+      for (const h of b.eventHexes) dispatch(marqueeKindSet(h, to));
+      addLog(`🧪 🎤 Every marquee is ${to === 'community' ? 'COMMUNITY' : 'solo'} now.`);
+    }
     else if (kind === 'card') {
       // 🃏 Deal the next marquee card in deck order, so a tester meets every
       // kind. A full hand swaps out its first card.
@@ -12316,9 +12420,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       <EventModal
         activeEvent={activeEvent}
         answerTrivia={answerTrivia}
+        answerCommunity={answerCommunity}
         keepPrize={keepPrize}
         prizeCard={activeEvent ? cardDef(activeEvent.prize) : null}
-        hand={activeEvent ? handOf(noteStates[activeEvent.spiritId] ?? {}).map(cardDef) : []}
+        hand={activeEvent ? handOf(noteStates[activeEvent.swapFor ?? activeEvent.spiritId] ?? {}).map(cardDef) : []}
         setActiveEvent={setActiveEvent}
         spirits={spirits}
       />
@@ -14179,7 +14284,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     melody step of every turn. It is page three of the `fan_phrases`
                     tip now. 📌 `harmonic_45` still carries the 4th/5th half for the
                     player who meets those notes before Pickles gets here. */}
-                <div style={{display:"flex",gap:3}}>
+                {/* 📱 `match-commit-row` is the phone layout's hook (ui/phoneLayout.js):
+                    it pins this row to the bottom of the tap column so ✓ Commit
+                    is never below the fold on a 390 px screen. */}
+                <div className="match-commit-row" style={{display:"flex",gap:3}}>
                   <button className="btn" style={{flex:1,borderColor:"#44ff88",color:"#44ff88",fontSize:8}}
                     onClick={confirmNoteTrack}
                     disabled={melodyLine.length===0}>
@@ -14837,6 +14945,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 tentacle:tentacleFx,
                 // 🔦 The corner lights + who is holding a pose under one.
                 spotlights:{ hexes:engineState.board?.spotlights, poses:engineState.limelight?.spotPoses },
+                // 🎪 The lit marquees and whose quadrant each is in (board/marqueeMarkers.js).
+                marquees:marqueeMarkerList(eventHexes, quadrantOf, playerColor, h => marqueeKindOf(engineState.board, h)),
                 // 🔓 The seat-unlock moment — the cabinet drop, the push-in, the stand.
                 unlock:seatUnlockFx,
                 shadowDecoy, shadowDecoys, vortices:gravityVortices, lite:liteFx,
@@ -16100,21 +16210,24 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                              `Q ${cx + r*0.18} ${cy + r*0.18} ${cx} ${cy + r} ` +
                              `Q ${cx - r*0.18} ${cy + r*0.18} ${cx - r} ${cy} ` +
                              `Q ${cx - r*0.18} ${cy - r*0.18} ${cx} ${cy - r} Z`;
+                // 🎤 A community marquee (§13) is gold, so it is a routing choice.
+                const community = marqueeKindOf(engineState.board, num) === 'community';
+                const mc = community ? '#ffc233' : '#ff44dd';
                 return (
-                  <g key={`ev-${num}`} style={{pointerEvents:'none', color:'#ff44dd',
+                  <g key={`ev-${num}`} data-arena-flat="marquee" data-marquee-kind={community ? 'community' : 'solo'} style={{pointerEvents:'none', color:mc,
                     animation:'event-hex-pulse 1.8s ease-in-out infinite',
                     animationDelay:`${(num % 5) * 0.25}s`}}>
                     {/* Hex ring */}
                     <polygon
                       points={pointyCorners(cx, cy, HS * 0.96)}
-                      fill="#ff44dd14" stroke="#ff44dd" strokeWidth={1.4}
+                      fill={`${mc}14`} stroke={mc} strokeWidth={1.4}
                       strokeDasharray="5 3"/>
                     {/* Sparkle star */}
-                    <path d={star} fill="#ff88ee" stroke="#ffffff" strokeWidth={0.6} opacity={0.95}/>
+                    <path d={star} fill={community ? '#ffe08a' : '#ff88ee'} stroke="#ffffff" strokeWidth={0.6} opacity={0.95}/>
                     {/* EVENT label */}
                     <text x={cx} y={cy + HS * 0.78} textAnchor="middle"
-                      fontSize={6.5} fill="#ff88ee" letterSpacing={1.5}
-                      fontFamily="'Saira Stencil One',sans-serif" fontWeight={700}>EVENT</text>
+                      fontSize={6.5} fill={community ? '#ffe08a' : '#ff88ee'} letterSpacing={1.5}
+                      fontFamily="'Saira Stencil One',sans-serif" fontWeight={700}>{community ? 'COMMUNITY' : 'MARQUEE'}</text>
                   </g>
                 );
               })}

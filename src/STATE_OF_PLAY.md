@@ -6,16 +6,30 @@
 > is lives in its own design doc; what it *taught us* lives in `SEQUENCING.md` §B.
 > **This file answers one question: what is true right now?**
 >
-> 📌 **Written 2026-09-04**, last updated **2026-09-29** (🃏 marquee prize cards; earlier: 🔭 the battle camera's clear lens + 🎯 attack reach glows on hover; earlier: 🔊 the Eleven die is a d6; 🎭 the Spirit-select stings; earlier: 🎸 chord vocabularies + keep-the-best dice + the blank-dice fix; earlier: 🔦 the four corner spotlights + no more natural Sustain decay; earlier the same day: player colours only, the seat-portrait preview and the solid layer re-draw; earlier the same day: the 3D Spirit picker and the figure-only standee cut; earlier: the staged-roll stop-gap and the battle director preview; earlier: the auto camera v2 and the 3D move tiles; earlier: the Ronin's palette and amp voice, the weighted note draw, the beginner finder), when the design set
+> 📌 **Written 2026-09-04**, last updated **2026-09-29** (📱 phones; 🌌 the title-screen arena; 🃏 marquee prize cards; earlier: 🔭 the battle camera's clear lens + 🎯 attack reach glows on hover; earlier: 🔊 the Eleven die is a d6; 🎭 the Spirit-select stings; earlier: 🎸 chord vocabularies + keep-the-best dice + the blank-dice fix; earlier: 🔦 the four corner spotlights + no more natural Sustain decay; earlier the same day: player colours only, the seat-portrait preview and the solid layer re-draw; earlier the same day: the 3D Spirit picker and the figure-only standee cut; earlier: the staged-roll stop-gap and the battle director preview; earlier: the auto camera v2 and the 3D move tiles; earlier: the Ronin's palette and amp voice, the weighted note draw, the beginner finder), when the design set
 > reached 37 files and 222,000
 > words and no single view of the game existed. Keep it short or it stops being
 > read — if a section needs a paragraph, it belongs in its own doc with a link
 > from here.
 
+**2026-09-29 📱 phones** (`ui/phoneLayout.js`): the game was a white screen on every phone (the phone tint's
+`filter` collapsed each full-screen page; now on `<html>`). A phone held sideways gets the dialled-in layout: arena full
+screen, SPIRIT/SOUND rail on the left, everything you tap in a column on the right (44 px), wheel under the rail, ✓ Commit
+pinned; upright asks to be turned. Not yet: split melody fans, round action cluster, left-handed switch, touch copy.
+
+**2026-09-29 🌌 the title screen is the real arena** (`board/titleArena.js`): the match's GLB, Riven World,
+spotlights and a decorative crowd, far off on a long lens, slowly turning to the right of the menu (Alex's dial-in).
+The island art is only the fallback when 3D cannot run. Tune on `.scratch/title-arena-preview.html`.
+
 **2026-09-29 🎪 one marquee per seat** (`MARQUEE_QUIZ_DESIGN.md` §11): each opens in its seat's own
 quadrant; taking one relights one at once in a quadrant with none (the one just emptied, or an
 unseated one), ≥ 2 hexes away, never two per quadrant — at 4 seats it is persistent in that quadrant.
 No respawn timer. 🪦 **Charge spaces retired for now** (`CHARGE_ZONE_COUNT` = 0).
+🎪 **In 3D** each marquee is a bulb-ringed pink neon hex with a floating, turning RL prize card
+above it (`board/marqueeMarkers.js`); new ones pop in, taken ones lift away.
+🎤 **Two kinds** (§13), rolled as a marquee lights: **solo** (2 in 3, pink) — the lander alone on a
+10 s clock, late = wrong; **community** (1 in 3, gold) — everyone answers on their own A–D row, first
+right answer wins the card, wrong = locked out, 15 s. 🌐 Online, other tables' clicks are not relayed yet.
 
 **2026-09-29 🃏 marquee prize cards** (`MARQUEE_QUIZ_DESIGN.md` §10): every marquee is the same —
 one question from the whole deck, no lane, no difficulty. A correct answer wins ONE random card
@@ -344,6 +358,7 @@ end to end.** Neither is a balance item; both are a test disagreeing with the co
 8. **Decide the roster** — Glamarchy out, Riff Rat in? Two docs already assume yes.
 9. 🚨 **Answer the Ronin ledger** — `CHARACTER_HANDOFF.md` → "THE RONIN LEDGER". Four passes made him weaker and each deferred the compensation to the next. ⚠️ **Shukuchi is now built, which does NOT close it** — it is a 6 Db mobility tool where a 12 Db payout used to be, and the 12 Db slot is still empty. 🧊 §B10 does not cover this: it is a slot question, not a balance tweak.
 10. ~~🪦 Delete Wa no Koe properly.~~ ✅ **DONE 2026-09-04.** · ~~🌀 Build Shukuchi.~~ ✅ **DONE headless 2026-09-04.** · ~~🖥️ Port Shukuchi's overlay.~~ ✅ **DONE 2026-09-04e.** · ~~🗡️👤 Step (c), the respec.~~ ✅ **DONE 2026-09-04f.** · ~~💰 Pick the flat unlock number.~~ ✅ **6, DONE 2026-09-04f.** · ~~🗡️ Give Bushido's lane one blocker rule.~~ ✅ **DONE 2026-09-05.**
+11. ~~🌌 Title screen: the 3D arena, far off and turning.~~ ✅ **DONE 2026-09-29** with Alex's dial-in (`board/titleArena.js`). 📌 Portrait phones and `RiffMenu`'s island are open (SEQUENCING 41-title).
 
 ---
 

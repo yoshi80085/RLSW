@@ -26,7 +26,7 @@
 import { ALL_HEXES, HEX_BY_NUM } from "../../board/hexMap.js";
 import { axialDist } from "../../board/hexGeometry.js";
 import { CORNERS } from "../../data/corners.js";
-import { LIMELIGHT_HEX, MARQUEE_RELIGHT_MIN_DIST } from "../../data/gameConstants.js";
+import { LIMELIGHT_HEX, MARQUEE_RELIGHT_MIN_DIST, MARQUEE_COMMUNITY_SHARE } from "../../data/gameConstants.js";
 
 export const MARQUEE_CORNERS = ["blue", "purple", "yellow", "red"];
 // Same quarters as the spotlights (`systems/spotlights.js`): blue 7 and purple
@@ -109,6 +109,14 @@ export function pickMarquee(rng, eventHexes = [], { occupied = [], awayFrom = nu
   const q = open[Math.min(open.length - 1, Math.floor(rng() * open.length))];
   return q.cand[Math.min(q.cand.length - 1, Math.floor(rng() * q.cand.length))];
 }
+
+// ── 🎤 THE TWO KINDS (§13) ──────────────────────────────────────────────────
+
+/** Roll a lit marquee's kind: 'community' 1 time in 3, else 'solo'. One draw. */
+export const rollMarqueeKind = rng => (rng() < MARQUEE_COMMUNITY_SHARE ? 'community' : 'solo');
+
+/** A lit marquee's kind; anything unrolled (an older save) is solo. */
+export const marqueeKindOf = (board, hex) => (board?.marqueeKinds?.[hex] === 'community' ? 'community' : 'solo');
 
 /** Setup: one marquee in each seated corner's own quadrant. */
 export function openingMarquees(rng, seats = [], occupied = []) {

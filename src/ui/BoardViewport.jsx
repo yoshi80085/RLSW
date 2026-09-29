@@ -92,6 +92,8 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
          stand-ins, so suppress that duplicate only once the arena is ready. */
       [data-arena-ready] [data-arena-flat="stage-fx"] { display:none; }
       [data-arena-ready] [data-arena-flat="crowd"] { display:none; }
+      /* 🎪 The arena draws the marquees itself (board/marqueeMarkers.js). */
+      [data-arena-ready] [data-arena-flat="marquee"] { display:none; }
       [data-board-view="3d"] .arena-tactical { pointer-events:auto; }
       [data-arena-ready] [data-arena-flat="amp-art"] { opacity:0; }
       [data-arena-ready] [data-arena-flat="fall"] { visibility:hidden; }

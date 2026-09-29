@@ -882,6 +882,18 @@ export const EVENT_HEX_COUNT     = 2;  // 🪦 RETIRED 2026-09-29 — the count 
 // 🎪 A relit marquee lands at least this far from where the last one was taken
 // (`MARQUEE_QUIZ_DESIGN.md` §11) — no stepping off and straight back on.
 export const MARQUEE_RELIGHT_MIN_DIST = 2;
+// 🎤 TWO KINDS OF MARQUEE (Alex, 2026-09-29 — `MARQUEE_QUIZ_DESIGN.md` §13).
+// Rolled when a marquee LIGHTS and shown on the board, so it is a routing choice:
+//   · COMMUNITY (1 in 3): everyone at the table answers; the first RIGHT answer
+//     wins the card; a wrong answer locks that player out; open 15 s.
+//   · SOLO (2 in 3): the lander answers alone, on a 10 s clock; running out of
+//     time is a wrong answer.
+export const MARQUEE_COMMUNITY_SHARE = 1 / 3;
+export const MARQUEE_SOLO_SECONDS = 10;
+export const MARQUEE_COMMUNITY_SECONDS = 15;
+// 🤖 When a bot answers in a community round: uniformly inside this window
+// (seconds). Seeded, so every table sees the same bot click at the same moment.
+export const MARQUEE_BOT_ANSWER_S = [3, 12];
 export const EVENT_RESPAWN_TURNS = 1;  // ROUNDS after a trigger before a new marquee lights up (was 3 spirit-turns)
 // 🎪 Minimum axial distance between two live marquees.
 // ⚠️ TWO MARQUEES IN ONE CORNER IS WORSE THAN ONE ANYWHERE — a pair inside a

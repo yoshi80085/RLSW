@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Game } from "../rlsw-simulator-v3_8_1.jsx";
 import { mobileColorStyle, GameErrorBoundary } from "../ui/GameErrorBoundary.jsx";
 import { Lobby } from "../ui/Lobby.jsx";
@@ -24,37 +24,52 @@ export default function RLSWSimulator() {
   const [menuRoute, setMenuRoute] = useState(null);
   const isMobile = /Mobi|Android/i.test(navigator.userAgent);
 
+  // 📱 THE PHONE COLOUR TINT GOES ON THE PAGE ROOT, NOT ON A WRAPPER DIV.
+  // ⚠️ It used to be `style={mobileColorStyle}` on a div round every screen. A CSS
+  // `filter` makes its element the containing block for every `position:fixed`
+  // descendant — and every screen here (title, lobby, match) is a full-screen
+  // fixed layer inside a wrapper with no height. On any phone the whole game
+  // collapsed to a 0-px strip: a white screen, and taps landing on nothing.
+  // Found 2026-09-29 by rendering the game with an iPhone user agent. The root
+  // element is the one place the spec exempts from that rule.
+  useEffect(() => {
+    if (!isMobile) return undefined;
+    const root = document.documentElement, before = root.style.filter;
+    root.style.filter = mobileColorStyle.filter;
+    return () => { root.style.filter = before; };
+  }, [isMobile]);
+
   // 🎬 Opening movie — plays on every launch, any input skips (attract style).
   if (!introDone) {
-    return <div style={isMobile ? mobileColorStyle : {}}><OpeningMovie onDone={() => setIntroDone(true)} /></div>;
+    return <div><OpeningMovie onDone={() => setIntroDone(true)} /></div>;
   }
   if (practiceMode) {
     const pm = practiceMode;
     // Backing out of a trainer returns to the Riff Mode menu it was launched
     // from, not all the way to the title screen — you almost always want another go.
     const back = () => setPracticeMode(null);
-    if (pm.mode === 'fretboard') return <div style={isMobile ? mobileColorStyle : {}}><FretboardRecon onBack={back} /></div>;
-    if (pm.mode === 'discord')   return <div style={isMobile ? mobileColorStyle : {}}><DiscordCoach onBack={back} /></div>;
-    if (pm.mode === 'listen')    return <div style={isMobile ? mobileColorStyle : {}}><ListenNeck onBack={back} /></div>;
-    if (pm.mode === 'legend')    return <div style={isMobile ? mobileColorStyle : {}}><LegendLessons onBack={back} /></div>;
-    return <div style={isMobile ? mobileColorStyle : {}}><RiffPractice initialDiff={pm.diff || pm} onBack={back} /></div>;
+    if (pm.mode === 'fretboard') return <div><FretboardRecon onBack={back} /></div>;
+    if (pm.mode === 'discord')   return <div><DiscordCoach onBack={back} /></div>;
+    if (pm.mode === 'listen')    return <div><ListenNeck onBack={back} /></div>;
+    if (pm.mode === 'legend')    return <div><LegendLessons onBack={back} /></div>;
+    return <div><RiffPractice initialDiff={pm.diff || pm} onBack={back} /></div>;
   }
   // 🏝️ Title menu — shown whenever no match is running and no route is chosen.
   if (!gameState && menuRoute === null) {
-    return <div style={isMobile ? mobileColorStyle : {}}><TitleMenu
+    return <div><TitleMenu
       onNormal={() => setMenuRoute('normal')}
       onRiff={() => setMenuRoute('riff')}
       onTestingGrounds={() => setGameState(buildTestingGroundsConfig({ freePlay: true }))}
     /></div>;
   }
   if (!gameState && menuRoute === 'riff') {
-    return <div style={isMobile ? mobileColorStyle : {}}><RiffMenu
+    return <div><RiffMenu
       onPractice={p => setPracticeMode(p)}
       onBack={() => setMenuRoute(null)}
     /></div>;
   }
   if (!gameState) {
-    return <div style={isMobile ? mobileColorStyle : {}}><Lobby
+    return <div><Lobby
       onStart={gs => setGameState(gs)}
       onPractice={p => setPracticeMode(p)}
       onBackToMenu={() => setMenuRoute(null)}
@@ -76,7 +91,7 @@ export default function RLSWSimulator() {
   };
   return (
     <GameErrorBoundary onReset={() => returnToLobby({ resetRoom: false })}>
-      <div style={isMobile ? mobileColorStyle : {}}><Game key={JSON.stringify(gameState.spirits.map(s=>s.num))} gameState={gameState} onReturnToLobby={returnToLobby} /></div>
+      <div><Game key={JSON.stringify(gameState.spirits.map(s=>s.num))} gameState={gameState} onReturnToLobby={returnToLobby} /></div>
     </GameErrorBoundary>
   );
 }

@@ -18,7 +18,7 @@ import { makeInitialNoteState } from "./systems/economy.js";
 import { makeLimelightState } from "./systems/limelight.js";
 import { shuffledStageFxDeck } from "../data/stageEffects.js";
 import { makeBoardToken } from "../board/boardHelpers.js";
-import { seatedCorners, openingMarquees } from "./systems/marqueeSpaces.js";
+import { seatedCorners, openingMarquees, rollMarqueeKind } from "./systems/marqueeSpaces.js";
 import { ALL_HEXES } from "../board/hexMap.js";
 import { TOKEN_MAX, TOKEN_BASE_POOL, CHARGE_ZONE_COUNT, LIMELIGHT_HEX, LIGHTNING_TRACK_HEXES, ROUND_LIMIT_DEFAULT,
 } from "../data/gameConstants.js";
@@ -60,6 +60,9 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
   // of the opening board does not move with the table size.
   const marqueeSeats = seatedCorners(spirits);
   const eventHexes = openingMarquees(makeRng(seed >>> 0).fork("marqueeInit"), marqueeSeats, [...startHexNums]);
+  // 🎤 Each opening marquee's kind (1 in 3 community), on its own fork.
+  const kindRng = makeRng(seed >>> 0).fork("marqueeKinds");
+  const marqueeKinds = Object.fromEntries(eventHexes.map(h => [h, rollMarqueeKind(kindRng)]));
 
   // Lost Chord tokens: avoid spirit starts + Limelight.
   // Fewer players -> more starting tokens so the board feels equally populated.
@@ -239,6 +242,8 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       eventHexes,
       // 🎪 The corners seated at setup — one marquee each, for the whole match.
       marqueeSeats,
+      // 🎤 hex → 'community' | 'solo', rolled as each marquee lights (§13).
+      marqueeKinds,
       eventRespawnIn: 0,
       // 🎪 Questions already drawn this match. Per-BUCKET recycling lives in
       // `drawTrivia`; this is just the ledger it reads and rewrites.

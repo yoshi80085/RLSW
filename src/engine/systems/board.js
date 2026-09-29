@@ -7,7 +7,7 @@
 // state.board.last* for the client to read for logs/FX.
 
 import { SPOTLIGHT_POOL, makeBoardToken } from "../../board/boardHelpers.js";
-import { marqueeCount, pickMarquee, occupiedHexes } from "./marqueeSpaces.js";
+import { marqueeCount, pickMarquee, occupiedHexes, rollMarqueeKind } from "./marqueeSpaces.js";
 import { ALL_HEXES } from "../../board/hexMap.js";
 import { TOKEN_MAX, TOKEN_BASE_POOL, TOKEN_PER_ROUND_BASE, TOKEN_DRIFT_TURNS, CHARGE_ZONE_COOLDOWN, LIMELIGHT_HEX } from "../../data/gameConstants.js";
 import { liveUnlockPcs } from "../../music/stackSlots.js";
@@ -226,10 +226,14 @@ export function applyEventHexTriggered(state, { hexNum, usedTrivia = null }, rng
   const relit = rng && left.length < want
     ? pickMarquee(rng, left, { occupied: occupiedHexes(state), awayFrom: hexNum })
     : null;
+  // 🎤 The relit marquee rolls its kind (one more draw, after the two placing it).
+  const kinds = { ...(state.board.marqueeKinds ?? {}) }; delete kinds[hexNum];
+  if (relit != null) kinds[relit] = rollMarqueeKind(rng);
   return {
     ...state,
     board: {
       ...state.board,
+      marqueeKinds: kinds,
       eventHexes: relit != null ? [...left, relit] : left,
       eventRespawnIn: 0,
       lastEventRespawn: relit != null ? { hexNum: relit, from: hexNum } : null,
@@ -265,8 +269,16 @@ export function applyEventHexSpawned(state, { occupied = [] } = {}, rng) {
   if (pick == null) return { ...state, board: { ...state.board, lastEventRespawn: null } };
   return {
     ...state,
-    board: { ...state.board, eventHexes: [...evHexes, pick], eventRespawnIn: 0, lastEventRespawn: { hexNum: pick } },
+    board: { ...state.board, eventHexes: [...evHexes, pick], eventRespawnIn: 0, lastEventRespawn: { hexNum: pick },
+      marqueeKinds: { ...(state.board.marqueeKinds ?? {}), [pick]: rollMarqueeKind(rng) } },
   };
+}
+
+/** 🧪 MARQUEE_KIND_SET — the Testing Grounds flips a lit marquee's kind. */
+export function applyMarqueeKindSet(state, { hexNum, kind }) {
+  if (!state.board.eventHexes.includes(hexNum)) return state;
+  return { ...state, board: { ...state.board,
+    marqueeKinds: { ...(state.board.marqueeKinds ?? {}), [hexNum]: kind === 'community' ? 'community' : 'solo' } } };
 }
 
 // -- Charge zones -------------------------------------------------------------

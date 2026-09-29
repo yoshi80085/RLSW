@@ -82,6 +82,8 @@ import {
 } from "../systems/board.js";
 import { tokenPickedUp, chargeZoneUsed, eventHexTriggered, marqueeCardWon, marqueeCardArmed } from "../actions.js";
 import { drawMarqueeQuestion, TRIVIA_BOT_ODDS } from "../../data/trivia.js";
+import { marqueeKindOf } from "../systems/marqueeSpaces.js";
+import { communityParticipants, botAnswers, communityOutcome } from "../systems/marqueeRound.js";
 import {
   drawMarqueeCard, botReplaceIdx, botArmIdx, cardDef, handOf,
 } from "../systems/marqueeCards.js";
@@ -267,28 +269,41 @@ export function collectPickups(state, spiritId, hexNum, rng) {
   // ⚠️ ALL THREE DRAWS HAPPEN BEFORE ANY BRANCH — the question, the odds roll
   // and the prize. A draw whose position in the stream depends on an outcome
   // is a replay divergence waiting to happen.
+  // 🎤 SINCE §13 A MARQUEE IS SOLO (the lander, on a clock — a bot's odds do
+  // not care about the clock) OR COMMUNITY (everyone answers; first right
+  // answer wins). Headless, every participant is a bot, so a community round
+  // resolves at once from the bots' pre-drawn answers (`marqueeRound.js`).
   if ((next.board?.eventHexes ?? []).includes(hexNum)) {
+    const kind = marqueeKindOf(next.board, hexNum);
+    const participants = kind === 'community' ? communityParticipants(next.spirits, spiritId, () => true) : [];
     const pickVal = rng ? rng() : 0;
     const oddsVal = rng ? rng() : 1;
     const cardVal = rng ? rng() : 0;
+    const botFloats = participants.flatMap(() => [rng ? rng() : 1, rng ? rng() : 1]);
 
     const { q, used } = drawMarqueeQuestion(pickVal, next.board.usedTrivia ?? []);
     next = applyAction(next, eventHexTriggered(spiritId, hexNum, used), rng);
     // 🎪 …and the next marquee lights at once (`systems/marqueeSpaces.js`).
     if (next.board.lastEventRespawn?.from === hexNum) logs.push(`🎪 a new marquee lights on #${next.board.lastEventRespawn.hexNum}`);
-    // 🤖 Bots cannot "know" trivia: fixed odds by the DRAWN question's difficulty.
-    const correct = q ? oddsVal < (TRIVIA_BOT_ODDS[q.difficulty] ?? 0.5) : false;
-    logs.push(`🎪 marquee on #${hexNum} — ${q?.difficulty ?? '?'} question`);
+    logs.push(`🎪 ${kind} marquee on #${hexNum} — ${q?.difficulty ?? '?'} question`);
 
-    if (correct) {
+    let winnerId = null;
+    if (q && kind === 'community') {
+      winnerId = communityOutcome(botAnswers(participants, botFloats, q.difficulty), { participants }).winnerId;
+    } else if (q) {
+      // 🤖 Bots cannot "know" trivia: fixed odds by the DRAWN question's difficulty.
+      winnerId = oddsVal < (TRIVIA_BOT_ODDS[q.difficulty] ?? 0.5) ? spiritId : null;
+    }
+
+    if (winnerId) {
       const cardId = drawMarqueeCard(cardVal);
-      const ns = next.noteStates?.[spiritId] ?? {};
+      const ns = next.noteStates?.[winnerId] ?? {};
       const replaceIdx = botReplaceIdx(ns, cardId);
-      next = applyAction(next, marqueeCardWon(spiritId, cardId, replaceIdx), rng);
-      const kept = handOf(next.noteStates?.[spiritId] ?? {}).length !== handOf(ns).length || replaceIdx != null;
-      logs.push(`🃏 correct — won ${cardDef(cardId)?.name ?? cardId}${kept ? '' : ' (hand full — let it go)'}`);
+      next = applyAction(next, marqueeCardWon(winnerId, cardId, replaceIdx), rng);
+      const kept = handOf(next.noteStates?.[winnerId] ?? {}).length !== handOf(ns).length || replaceIdx != null;
+      logs.push(`🃏 ${winnerId === spiritId ? 'correct' : `${winnerId} answers first`} — won ${cardDef(cardId)?.name ?? cardId}${kept ? '' : ' (hand full — let it go)'}`);
     } else {
-      logs.push(`🧠 wrong — no card`);
+      logs.push(kind === 'community' ? `🧠 nobody gets it — no card` : `🧠 wrong — no card`);
     }
   }
 

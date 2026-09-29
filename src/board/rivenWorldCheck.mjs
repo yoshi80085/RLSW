@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Octree } from 'three/addons/math/Octree.js';
-import { createArenaEnvironment } from './arenaEnvironment.js';
+import { createArenaEnvironment, polishArenaModel } from './arenaEnvironment.js';
 import { createRivenWorld, RIVEN_WORLD } from './rivenWorld/index.js';
 import { createLightning } from './rivenWorld/lightning.js';
+import { updateNebulaFlashes, triggerNebulaFlash } from './rivenWorld/nebula.js';
 import { disposeObject } from './rivenWorld/formation.js';
 import { markOccluders, OCCLUDER_LAYER } from './solidLayer.js';
 
@@ -13,9 +14,19 @@ const bytes=readFileSync(new URL('../../public/cosmic-arena/cosmic-arena.glb',im
 const {scene:model}=await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'');
 const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera();camera.position.set(27,20,40);
 scene.add(model);model.scale.z=-1;
+const ampBody=model.getObjectByName('Amp_NW');let originalAmp;
+ampBody.traverse(o=>{if(o.material?.name==='Amp midnight indigo')originalAmp=o.material.color.clone();});
+polishArenaModel(model);
+ampBody.traverse(o=>{if(o.material?.name==='Amp midnight indigo')assert(o.material.color.equals(originalAmp),'game amp brightness stays unchanged');});
 const stage=model.getObjectByName('Stage'),island=model.getObjectByName('Island');
 const stageState=stage.toJSON();
 const environment=createArenaEnvironment(scene,{classicScenery:false});
+const planet=scene.getObjectByName('Distant blue planet'),planetHome=planet.position.clone();
+environment.setPlanetDistance(1.9);assert(planet.position.distanceTo(planetHome.clone().multiplyScalar(1.9))<1e-8);
+environment.setPlanetDistance(2.3);assert(planet.position.equals(planetHome.clone().multiplyScalar(2.3)),'preview planet distance');
+environment.setPlanetDistance(1);
+assert.equal(RIVEN_WORLD.lightningSoftness,undefined,'follow-up effects remain preview-only');
+assert.equal(RIVEN_WORLD.nebulaFlashStrength,undefined,'game cloud flashes remain disabled');
 assert.equal(scene.getObjectByName('Floating wreckage'),undefined,'old debris is not allocated for Riven World');
 const world=createRivenWorld(scene,camera),root=scene.getObjectByName('Riven World');
 world.update(10);assert.equal(root.visible,false,'wait for the model');
@@ -30,6 +41,7 @@ const nebula=root.getObjectByName('Storm nebula'),debris=root.getObjectByName('D
 for(let i=1;i<10;i++)world.update(10+i/30);
 assert.equal(debris.count,64,'approved debris density');
 assert.equal(nebula.material.uniforms.intensity.value,.8);assert.equal(nebula.material.uniforms.puffiness.value,1);
+assert.equal(nebula.material.uniforms.flash.value,0,'cloud flashes start with a quiet interval');
 const frozen=Array.from(debris.instanceMatrix.array),cloud=nebula.material.uniforms.cloudTime.value;
 world.update(12,{reduced:true});world.update(20,{reduced:true});
 assert.deepEqual(Array.from(debris.instanceMatrix.array),frozen,'reduced motion freezes drift in place');
@@ -65,6 +77,24 @@ for(let n=0;n<16;n++){
 assert.deepEqual([...counts].sort(),[1,2,3]);assert(overlap>0);
 storm.hold(true,400);assert(storm.update(401,true));
 storm.dispose();
+const softStorm=createLightning(scene,()=>world.formation,()=>({...RIVEN_WORLD,lightningSoftness:1,creviceFollow:1}),camera);
+softStorm.strike(0);softStorm.update(.4,false);
+for(const bolt of scene.getObjectByName('Transient branching lightning').children){
+ assert.equal(bolt.children.length,5,'soft neon has feathered glow shells');
+ assert(bolt.children.at(-1).userData.base<.5,'soft core is not a hard white line');
+}
+softStorm.dispose();
+let flashFrames=0,events=0,wasLit=false;
+for(let t=0;t<300;t+=.05){
+ updateNebulaFlashes(nebula,t,{strength:.35,interval:42});
+ const lit=nebula.material.uniforms.flash.value>0;if(lit)flashFrames++;if(lit&&!wasLit)events++;wasLit=lit;
+ assert(nebula.material.uniforms.flash.value<.25,'cloud flashes remain dim');
+}
+assert(events>=4&&events<=10,'cloud flashes are sparse');assert(flashFrames<220,'clouds are quiet for most of five minutes');
+triggerNebulaFlash(nebula,310,42,new THREE.Vector3(0,0,-1));
+updateNebulaFlashes(nebula,310.3,{strength:.35});assert(nebula.material.uniforms.flash.value>0);
+updateNebulaFlashes(nebula,310.4,{strength:.35,reduced:true});assert.equal(nebula.material.uniforms.flash.value,0);
+updateNebulaFlashes(nebula,400);assert.equal(nebula.material.uniforms.flash.value,0);
 const resources=new Set();root.traverse(o=>{if(o.geometry)resources.add(o.geometry);if(o.material)resources.add(o.material);});
 const released=new Set();for(const resource of resources)resource.addEventListener('dispose',()=>released.add(resource));
 world.dispose();world.dispose();

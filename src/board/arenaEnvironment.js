@@ -64,13 +64,13 @@ export function createArenaEnvironment(scene, { overlay = null, classicScenery =
   })); root.add(sky);
   }
   const planet=new THREE.Mesh(new THREE.SphereGeometry(6.05,40,24),new THREE.MeshStandardMaterial({color:0x182940,roughness:1,metalness:.05}));
-  planet.position.set(-65,0,-25); root.add(planet);
+  planet.name='Distant blue planet';planet.position.set(-65,0,-25); root.add(planet);
   const atmosphere=new THREE.Mesh(new THREE.SphereGeometry(6.182,40,24),new THREE.ShaderMaterial({transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,
     vertexShader:'varying vec3 n; varying vec3 p;void main(){n=normalize(normalMatrix*normal);vec4 q=modelViewMatrix*vec4(position,1.);p=q.xyz;gl_Position=projectionMatrix*q;}',
     fragmentShader:'varying vec3 n;varying vec3 p;void main(){float f=pow(1.-max(0.,dot(normalize(n),normalize(-p))),3.);gl_FragColor=vec4(.14,.35,.65,f*.45);}'
   }));atmosphere.position.copy(planet.position);root.add(atmosphere);
   const moon=new THREE.Mesh(new THREE.SphereGeometry(3.1,24,16),new THREE.MeshStandardMaterial({color:0x40354a,roughness:1}));
-  moon.position.set(1,-10,-65);root.add(moon);
+  moon.name='Distant ringed moon';moon.position.set(1,-10,-65);root.add(moon);
   const ring=new THREE.Mesh(new THREE.RingGeometry(4.5,7.2,64),new THREE.MeshBasicMaterial({color:0x686578,side:THREE.DoubleSide,transparent:true,opacity:.16}));
   ring.position.copy(moon.position);ring.rotation.set(-1.2,.25,.3);root.add(ring);
   let animateDebris=()=>{};
@@ -139,6 +139,11 @@ export function createArenaEnvironment(scene, { overlay = null, classicScenery =
   const ease=k=>k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
   const scratch=new THREE.Vector3(),down=new THREE.Vector3(0,-1,0);
   return {
+    setPlanetDistance(distance) {
+      const scale=THREE.MathUtils.clamp(distance,1,2.3);
+      planet.position.set(-65,0,-25).multiplyScalar(scale);atmosphere.position.copy(planet.position);
+      moon.position.set(1,-10,-65).multiplyScalar(scale);ring.position.copy(moon.position);
+    },
     update(time,{lite=false,reduced=false,spotlights=null}={}) {
       glints.visible=!lite&&!reduced;glintMat.uniforms.time.value=time;
       starsGeo.setDrawRange(0,lite?900:2200);
@@ -181,7 +186,7 @@ export function createArenaEnvironment(scene, { overlay = null, classicScenery =
 
 // Materials remain shared for the static island; rigs get per-cabinet copies
 // in arenaVisuals, so one player's training never changes another player's LEDs.
-export function polishArenaModel(model) {
+export function polishArenaModel(model, { ampBrightness = 1 } = {}) {
   const replacements=new Map(),emissives=[];
   model.traverse(o=>{
     if(!o.isMesh)return;
@@ -189,6 +194,9 @@ export function polishArenaModel(model) {
     const materials=original.map(m=>{
       if(replacements.has(m))return replacements.get(m);
       let next=m;
+      if(m.name==='Amp midnight indigo'&&ampBrightness!==1) {
+        next=m.clone();next.color.multiplyScalar(ampBrightness);next.emissive?.multiplyScalar(ampBrightness);
+      }
       if(/Hex ceramic|Obsidian stage/.test(m.name)) {
         // Preserve the preview's dark indigo base and authored surface response.
         // A bright RoomEnvironment had washed every material into pale silver.

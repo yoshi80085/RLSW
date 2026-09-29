@@ -20,7 +20,7 @@ import {
   BOARD_SYNCED,
   SPOTLIGHT_HEALED, SPOTLIGHT_MOVED, TOKENS_SCATTERED, THRASH_TOKENS_SPAWNED, FLAMING_DECAYED,
   EVENT_RESPAWN_TICKED, EVENT_HEX_SPAWNED, CHARGE_ZONES_TICKED,
-  EVENT_HEX_TRIGGERED, MARQUEE_CARD_WON, MARQUEE_CARD_ARMED, MARQUEE_CARD_PLAYED, TOKEN_PICKED_UP, TOKENS_DRIFTED, CHARGE_ZONE_USED, FLAMING_HEXES_SET,
+  EVENT_HEX_TRIGGERED, MARQUEE_CARD_WON, MARQUEE_CARD_ARMED, MARQUEE_CARD_PLAYED, MARQUEE_KIND_SET, TOKEN_PICKED_UP, TOKENS_DRIFTED, CHARGE_ZONE_USED, FLAMING_HEXES_SET,
   RANDOM_BATCH_DRAWN,
   SLIME_DROPPED, SLIME_DECAYED, SLIME_CLEARED, SPIRIT_SLID, SLIME_CALLED, ELEVEN_CALLED,
   POSE_SET, POSE_ROUND_BANKED,
@@ -57,7 +57,7 @@ import {
   applySpotlightHealed, applySpotlightMoved,
   applyTokensScattered, applyThrashTokensSpawned, applyTokenPickedUp,
   applyTokensDrifted,
-  applyEventHexTriggered, applyEventRespawnTicked, applyEventHexSpawned,
+  applyEventHexTriggered, applyEventRespawnTicked, applyEventHexSpawned, applyMarqueeKindSet,
   applyChargeZoneUsed, applyChargeZonesTicked,
   applyFlamingHexesSet, applyFlamingDecayed,
 } from "./systems/board.js";
@@ -152,6 +152,7 @@ function reduce(state, action, rng) {
     case MARQUEE_CARD_WON:       return applyMarqueeCardWon(state, action);
     case MARQUEE_CARD_ARMED:     return applyMarqueeCardArmed(state, action);
     case MARQUEE_CARD_PLAYED:    return applyMarqueeCardPlayed(state, action, rng);
+    case MARQUEE_KIND_SET:       return applyMarqueeKindSet(state, action);
     case EVENT_RESPAWN_TICKED:   return applyEventRespawnTicked(state);
     case EVENT_HEX_SPAWNED:      return applyEventHexSpawned(state, action, rng);
     case CHARGE_ZONE_USED:       return applyChargeZoneUsed(state, action);

@@ -67,6 +67,13 @@ export default function GlobalCursor() {
 
   const origin = `${TIP[0]}px ${TIP[1]}px`;
 
+  // 👆 NO ARROW ON A TOUCH SCREEN. A finger has no pointer to draw, and the mark
+  // would sit wherever the last tap landed, over the arena, for the whole match
+  // (found on the 2026-09-29 phone screenshots). `any-hover` so a tablet with a
+  // mouse plugged in still gets it; read per render, which is cheap and follows a
+  // mouse being connected mid-session on the next pointer move.
+  if (typeof window !== 'undefined' && window.matchMedia && !window.matchMedia('(any-hover: hover)').matches) return null;
+
   return <>
     <style>{`
       html, body, #root, #root * { cursor:none !important; }

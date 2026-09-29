@@ -101,7 +101,7 @@ Develop the system that finds the strongest possible chord shape and structure (
 Build the fans out as 3D. Alex, while planning the fan speech bubbles — parked behind them on purpose: the bubbles only need the seat position, so they survive the swap.
 
 ### 2026-09-16 — [P1] Sort out the marquee squares
-🟡 **Half done — 2026-09-29.** *Picking is a chore* → gone: every marquee is the same, one question, a prize card (`MARQUEE_QUIZ_DESIGN.md` §10). ⏳ *Hard to see on the board* → still open (nothing marks a marquee in the 3D arena).
+✅ **Done — 2026-09-29.** *Picking is a chore* → gone: every marquee is the same, one question, a prize card (`MARQUEE_QUIZ_DESIGN.md` §10). *Hard to see on the board* → one per seat in its own quadrant (§11), and in 3D a bulb-ringed neon hex with a floating prize card (§12, `board/marqueeMarkers.js`).
 Sort out the marquee squares.
 🎯 See [P3] *Marquee spaces by category* (2026-09-08).
 

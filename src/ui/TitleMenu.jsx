@@ -2,10 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import openingIsland from "../assets/opening_island.png";
 import menuSong3 from "../music/Menu_song_3.mp3";
 import { musicVol } from "../audio/mixer.js";
+import { mountTitleArena } from "../board/titleArena.js";
 
 // ─── 🏝️ TITLE MENU ───────────────────────────────────────────────────────────
-// The Zelda-style front door: the floating island holds the whole frame while a
-// short column of options sits down one side. Everything the game can do is
+// The Zelda-style front door: the Cosmic arena, far off and slowly turning, holds
+// the whole frame while a short column of options sits down one side.
+//
+// 🌌 THE ARENA IS THE REAL ONE (Alex, 2026-09-29: *"show the 3D Cosmic arena from
+// afar — slowly rotating off in the distance"*) — the match's GLB, Riven World and
+// spotlights, mounted by `board/titleArena.js` with his dial-in. ⭐ The floating
+// island art is now the FALLBACK: shown only when the 3D arena cannot run (no
+// WebGL, a lost context, a model that fails to load), so the door is never blank.
+// 📌 While the model loads the frame is simply dark, and the arena fades up
+// (`TITLE_ARENA.fadeInMs`); the island is not flashed first, or every visit would
+// open on the old picture and then swap it out. Everything the game can do is
 // reachable from here — Normal Mode drops into the existing lobby, Riff Mode
 // opens the trainer menu, and so on.
 //
@@ -54,6 +64,26 @@ export default function TitleMenu({
   const [leaving, setLeaving] = useState(null);
   const audioRef = useRef(null);
   const rootRef = useRef(null);
+  const arenaHostRef = useRef(null);
+  const [arenaFailed, setArenaFailed] = useState(false);
+
+  // ── The 3D arena behind everything ──
+  // ⚠️ DISPOSED ON UNMOUNT, and the menu unmounts on every mode pick: a WebGL
+  // context left running here would be a second one alive under the match's own.
+  useEffect(() => {
+    const host = arenaHostRef.current; if (!host) return undefined;
+    let arena = null;
+    try {
+      // The model URL is the module's default (the match's own GLB). ⚠️ Not built
+      // here: `import.meta` in a .jsx trips `test:client`'s name resolver.
+      arena = mountTitleArena(host, { onError: () => setArenaFailed(true) });
+    } catch {
+      // No WebGL at all — the island takes the frame. Deferred a tick so the
+      // effect never sets state synchronously (react-hooks/set-state-in-effect).
+      queueMicrotask(() => setArenaFailed(true));
+    }
+    return () => arena?.dispose();
+  }, []);
 
   // ── Menu music ──
   useEffect(() => {
@@ -113,9 +143,12 @@ export default function TitleMenu({
         .tm-item:hover .tm-label { color: #ffffff !important; }
       `}</style>
 
-      {/* ══ THE ISLAND — the whole point of the screen ══ */}
+      {/* ══ THE ARENA — the whole point of the screen (the island if 3D can't run) ══ */}
       <div style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
-        <div style={{
+        <div ref={arenaHostRef} data-title-arena-host="" style={{
+          position: 'absolute', inset: 0, display: arenaFailed ? 'none' : 'block',
+        }}/>
+        {arenaFailed && <div style={{
           position: 'absolute', inset: 0,
           animation: 'tm-island-float 11s ease-in-out infinite', willChange: 'transform',
         }}>
@@ -130,7 +163,7 @@ export default function TitleMenu({
             transform: 'translateX(2px)', filter: 'hue-rotate(-60deg) saturate(3)',
             mixBlendMode: 'screen', opacity: 0.10,
           }}/>
-        </div>
+        </div>}
         {/* Left-hand scrim so the option text always has something to sit on,
             whatever the art is doing underneath it. */}
         <div style={{

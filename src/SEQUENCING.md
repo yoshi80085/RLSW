@@ -35,6 +35,104 @@
 > now (18-coreloop, 19-cheapest). A warning that is always there stops being
 > read — the same failure `check:bundle`'s "6 warnings" taught.**
 
+## 42-phone. On a phone the whole game was a blank white screen — 2026-09-29
+
+Alex: *"any way you can make the game playable on a mobile device?"* Rendered the real app in Chromium with an iPhone user agent and touch, landscape 844×390 and portrait 390×844.
+
+### ✅ What shipped
+- 🐛 `app/RLSWSimulator.jsx`: the phone colour tint (`mobileColorStyle`, a CSS `filter`) moved from a wrapper div round every screen onto `<html>`. A `filter` makes its element the containing block for `position:fixed` children, and every screen is a full-screen fixed layer inside a wrapper 0 px tall — so on ANY phone (`/Mobi|Android/` UA) the title, lobby and match collapsed to nothing and taps hit `#root`. Desktop never had the wrapper style, which is why nobody saw it. The root element is exempt from that rule; the tint still applies (verified).
+
+### 🔍 What a phone shows now (evidence for the mobile pass — nothing else changed)
+- Title: fine in both orientations. Lobby and match: they render and respond to taps.
+- Match, landscape: the HUD panels fill the screen and the arena is a strip behind them; the page scrolls to 1,009 px tall.
+- Match, portrait: panels overlap (step cards over the Spirit card, TURN/SCALE/RIVALS over the step rail), and the page is 404 px wide on a 390 px screen.
+- 29 of 37 lobby controls and 13 of 14 match controls are under 36 px (the × on a stack note is 15 px, checkboxes 13 px). The copy still says "type it", "Tab", "Enter", "Shift". Hover-only things: attack reach, the picker's backstory (long press exists), tooltips. The custom arrow cursor draws on touch screens too.
+
+### 📱 Second pass, same day — the phone match preview
+Alex's scope: **phone held sideways, online (one player per phone)**, *"make it up in a scratch preview first"*. Built `.scratch/mobile-hud-preview.html` (and the "Phone Match Dial-in" artifact): the real arena behind a mock touch HUD, all five turn states, four phones at real landscape size and safe areas, thumb-reach overlay, left/right-handed, today's screenshot beside it, 14 levers, copy dial-in. `.scratch/mobile-hud/README.md` says what it proposes.
+- 🎓 Twelve 44-px note buttons only fit round a ~225-px wheel (a semitone pair touches below that), so the phone wheel makes only HELD notes buttons.
+- 🎓 Two stack trays with three fixed hexes overflow an iPhone SE's middle; the trays size their hexes from width.
+
+### 📱 Third pass, same day — the phone layout is in
+Alex: *"everything seems fine to me, lets plug these in"* — every lever at its default. `ui/phoneLayout.js` (`PHONE_HUD`, `PHONE_CSS`, `usePhoneLayout`), mounted by `MatchSurface`:
+- Applies on a touch screen with no hover whose short side is ≤ 540 px (`?phone` forces it). Tags `<html>` `rlsw-phone`; held upright during a match, `rlsw-phone-portrait` shows "Turn your phone sideways".
+- RE-DOCKS the existing panels, same components and handlers: slim top bar, arena fixed to the whole screen (no page scroll — it was 1,009 px), SPIRIT + SOUND as a 150 px rail on the off-hand side, the tap column (230 px) under the main thumb with the step drawers, Rivals and the roll prompt, and the Scale Wheel under the rail. Taps ≥ 44 px in the column; ✓ Commit pinned to the column's floor (`match-commit-row`, the one monolith edit: a className).
+- `GlobalCursor` draws nothing without `(any-hover: hover)`. `index.html` gets `viewport-fit=cover` so the safe-area insets are real.
+- 🎓 The preview's step-1 WHEEL was the wrong input: the game builds chords from the stock grid in the drawer, and the wheel only picks while composing. The port follows the game.
+- 🎓 The wheel opened OVER the column hid the melody honeycomb and ✓ Commit; under the rail it is reference beside the work. And `.match-hud-bar` is a z-index 43 stacking context, so nothing in the dock can out-rank the turn region (44) — which is why the wheel moved rather than rose.
+- 🧪 Evidence (cloud copy; this machine's esbuild is the Windows binary): iPhone UA + touch at 844×390 — all three steps render, page 844×390 (was 1,009 tall), column taps 44 px; portrait shows the rotate prompt; desktop gets no class; the roll prompt checked in isolation. eslint clean, `check:bundle` 0 warnings, `test:arch`, `test:client`, `test:render`, `test:arena` and 40+ more pass. ⚠️ 20 suites (engine, legal, eval, journey, battlejourney, standee, topview…) fail IDENTICALLY on the tree from before the phone work, several from gaps in the cloud copy (empty image stubs, missing `.scratch` files) — run `test:all` here to tell real from environmental.
+- 🐛 `test:client` caught `import.meta` in `TitleMenu.jsx` (41-title): the model URL now defaults inside `board/titleArena.js`.
+- ⛔ NOT PORTED, on purpose (they change components' shape, not where they sit): the melody hand split into two thumb fans, the round action cluster, held-notes-only wheel buttons, left-handed mode (the CSS is there behind `data-phone-hand="left"`; nothing sets it yet).
+
+### ⬅️ NEXT
+- 👀 Alex on a real phone: the tap column's text is still the desktop drawer's 7–8 px copy.
+- Touch copy for "type it / Tab / Enter / Shift"; tap-to-show for hover-only reach; a left-handed switch in ☰.
+
+## 41-title. The title screen is the real arena, far off and turning — 2026-09-29
+
+Alex: *"For the game's title screen — let's have the screen show the 3D Cosmic arena from afar — slowly rotating off in the distance."* Preview first (the house rule), then his dial-in: distance 84, fov 33, elevation 13, aim −4, bloom .5, exposure 1.45; everything else untouched.
+
+### ✅ What shipped
+- 🌌 `board/titleArena.js` (`TITLE_ARENA`, `mountTitleArena`): the match's own GLB, Riven World, spotlights (decorative sweep) and decorative fans in the four player colours, on a long lens and a slow orbit (2.4°/s). `setViewOffset` lens shift puts it right of the menu without it swinging across the frame as it turns. Reduced motion freezes the turn.
+- `ui/TitleMenu.jsx` mounts it behind the menu and disposes it on unmount (every mode pick). The island art is now the FALLBACK — shown only if WebGL is missing, the context is lost or the model fails. Loading is simply dark, then a 1.8 s fade-up.
+- `.scratch/title-arena-preview.html` re-exports the shipped module, so the preview and the game cannot drift. Published as the "Title Arena Dial-in" artifact too.
+
+### 🎓 Findings
+- 🔒 **A published Artifact cannot `fetch()` anything — not even a `data:` URL** (its CSP's connect-src). The first artifact showed the menu over black. Pages that carry a model must hand over the BYTES and `GLTFLoader.parse` them (`modelData`). Proven with a probe under the same CSP.
+- 🧨 `String.replace(x, bundle)` reads `$'` and `$&` inside a minified bundle as replacement patterns and splices the page into its own script. Use a function replacer (`build.mjs`).
+- 🗺️ `test:arch` was already RED before this session: the five `board/rivenWorld/*` effect modules (2026-09-28) had no rows. Added.
+
+### 🧪 Evidence (cloud container; this machine's esbuild is the Windows binary)
+`test:arch` 8 passed, `check:bundle` zero warnings (plus a `src/main.jsx` bundle, since `check:bundle` enters at the monolith and never reaches `TitleMenu`), `test:arena` all PASS, eslint clean. Mounted the real `<TitleMenu>` in Chromium: the arena reaches `data-title-arena="ready"`, one canvas while mounted, zero after unmount; with WebGL stubbed out the island shows and no canvas is left.
+
+### ⬅️ NEXT
+- 📱 Portrait phones: the arena sits behind the menu at push-right .2. Tune on the preview's Phone frame if it matters.
+- ⁉️ `RiffMenu.jsx` still uses the island backdrop. Should it follow?
+
+## 40-rounds. Alex's marquee size, and two kinds of round: solo on a clock, community first-right-wins — 2026-09-29
+
+Alex pasted his dial-in (size .76, cardScale .6, cardY 1.2, wall .55, halo .22, bulbs 10, bulbSize .08) and: *"1/3 of the time they are community driven — the first to get the right answer gets the card … 2/3 of the time they are non community but run on a timer — say 10 seconds."* Picks: own answer row each; mark community marquees on the board; 15 s for community.
+
+### ✅ What shipped
+- The dial-in is `MARQUEE_LOOK`'s default (the look page's "Current" rebuilt to match).
+- 🎤 `engine/systems/marqueeRound.js` + kinds on the board (`board.marqueeKinds`, rolled 1 in 3 as each marquee lights). Solo = 10 s clock, late is wrong. Community = a row per Spirit, first right answer wins (anyone), wrong = out, 15 s; bots click at a seeded 3–12 s. Gold community markers in 3D and 2D. Headless community settles from the bots' pre-drawn answers. Testing Grounds 🎤 Flip marquees.
+
+### 🎓 Findings
+- ⏱️ **One settle per round.** The round clock is an interval that can tick again before React re-renders the result; without a closure `done` flag a community card could be handed twice. And the updaters MERGE answers rather than replace them — a human's click can land between the tick's read and its write.
+- 🎲 The kind is rolled when the marquee LIGHTS, not when it is stepped on — that is what lets the board show it, and it keeps the trigger's draw count a function of state, not of outcome.
+
+### 🧪 Evidence (Alex's machine)
+`test:cards` 441 (5/5 mutants on the round rules and kinds), `test:marqueemarkers` 50, `test:marqueejourney` 14 (new, mounted), `test:cardjourney` 14, client, render, determinism, spotlight, arena (run in parts — the VM is slower than the 175 s shell limit for the whole chain), `check:bundle`. Preview: `.scratch/marquee-round-preview.html`.
+
+### ⬅️ NEXT
+- 👀 Alex to play a community round with a friend at the same screen.
+- 🌐 Relay community answers online (a CUE like the roll's, the server deciding "first").
+
+## 39-marquee3d. The marquee gets a marquee — 2026-09-29
+
+Alex: *"lets continue with the work - mark a marquee in the 3D arena"*.
+
+### ✅ What shipped
+- 🎪 `board/marqueeMarkers.js`: per marquee, a pink neon hex rim with 12 chasing warm bulbs, a pink wash, a rising light wall and an inner ring in the quadrant seat's colour; above it a floating, bobbing, turning prize card with the RL logo back. Pop-in with an overshoot; taken ones lift away. Reduced motion: still and instant.
+- Wiring: client `marqueeMarkerList` → `arenaFrame.marquees` → `arenaVisuals` (+ `solidRoots`, diagnostics) → renderer "moving". BoardViewport hides the 2D star in 3D (`data-arena-flat="marquee"`); the 2D label reads MARQUEE.
+
+### 🎓 Findings
+- 🧱 **A textured card that BLENDS is not solid.** `isSolidMesh` drops `transparent && map` meshes, and the SVG click layer then paints across them. The card is alpha-TESTED instead. The headless check has no canvas (so no texture) — the first mutant survived until the test put a texture on a clone.
+- 🖼️ **Import the art by `new URL(…, import.meta.url)`, not `import x from '*.png'`.** The node-side test bundles (`arenaFallbackCheck`) have no image loader; the URL form needs none and Vite still emits the asset.
+- 🎲 The first bulb ring sat under the rim at the same radius and vanished into it; the bulbs now ring just inside a thinner rim.
+
+### 🧪 Evidence (Alex's machine + the cloud render)
+`test:marqueemarkers` 32 (4/4 mutants). Green: arena, attacktiles, movetiles, spotlight, client, render, the mounted card journey, `check:bundle`. `test:topview` §6 updated for the new solid root; its one red check (`markOccluders([… 'Island'])`) was red at HEAD — the floating-island commit swapped Island for `rivenWorld.formation`. Screenshots of the real `mountArena` at Standard and High: `.scratch/marquee-probe/`.
+
+### 🎛️ Second pass, same day — the dial-in
+Alex: *"lets build it out in scratch first … they might be a bit too big — lets build them out with different options for their appearance."*
+- `createMarqueeMarkers(root, { pointFor, T })` now takes overrides, and the look gained switches: `floorStyle` (marquee/ring/bulbs/glow/none), `cardStyle` (card/coin/none), `colorMode` (pink/owner/gold), `size`, `cardScale`. Defaults = the look already in the game, so nothing in play changed.
+- `.scratch/marquee-look-preview.html` — the real module on a stand-in board with standee-sized cut-outs; 8 presets, **Compare four looks** (one per quadrant), every lever, four views, Standard/High, 🎯 Take one, 📋 Copy dial-in. One self-contained file (three and the logo inlined), so it also opens straight from the chat.
+- `test:marqueemarkers` 45 (+13 for the switches). Headless screenshots of the page: no console errors.
+
+### ⬅️ NEXT
+- 🎛️ **Alex to pick a look on the dial-in page** and paste the dial-in; then it becomes `MARQUEE_LOOK`.
+
 ## 38-quadrants. One marquee per seat in its own quadrant, and the charge spaces retire — 2026-09-29
 
 Alex: *"Lets retire the 'charge' spaces for now — marquee spaces — make 1 per player — always present on the Spirit's starting corner quadrant … if player 1 lands on a marquee space on turn 1, make another in that same quadrant* or *the 'empty' quadrant. If 4 players — make it persistent … (never more than 1 per quadrant)"*.

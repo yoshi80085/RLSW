@@ -15,6 +15,7 @@ import { createSonicDiceVisuals, sonicSceneLabel } from './sonicDiceVisuals.js';
 import { createHeadDials } from './headDialVisuals.js';
 import { createMoveTiles } from './moveTiles.js';
 import { createAttackTiles } from './attackTiles.js';
+import { createMarqueeMarkers } from './marqueeMarkers.js';
 import { createStandee, STANDEE, STANDEE_Y, standeeYaw } from './standee.js';
 import { wrapClashStandees, STICK_STANDEE } from './swingStandee.js';
 import { directorShot, placeBattleDice, frontSide, BATTLE_DIRECTOR } from './battleDirector.js';
@@ -278,6 +279,8 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
   const moveTiles=createMoveTiles(root,{pointFor:arenaPoint});
   // 🎯 The hexes the hovered / armed attack can reach (attackTiles.js).
   const attackTiles=createAttackTiles(root,{pointFor:arenaPoint});
+  // 🎪 The marquee spaces: a bulb-ringed neon hex and a floating prize card (marqueeMarkers.js).
+  const marqueeMarkers=createMarqueeMarkers(root,{pointFor:arenaPoint});
   const clearSonic=()=>{
     if(!sonic)return;
     root.remove(sonic.dice.group,sonic.volley.group);
@@ -498,6 +501,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
     headDials.update(frame.spirits,clock*1000,{reduced:reducedMotion});
     moveTiles.update(frame.reach,frame.spirits);
     attackTiles.update(frame.attack);
+    marqueeMarkers.update(frame.marquees);
     for(const [station,rig] of rigs) {
       const owner=frame.rigs?.find(r=>STATIONS[r.corner]?.includes(station));
       rig.owner=owner;
@@ -732,9 +736,10 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
       headDials.tick(time*1000,camera,pawns,{reduced});
       moveTiles.tick(time*1000,camera,pawns,{reduced});
       attackTiles.tick(time*1000,{reduced});
+      marqueeMarkers.tick(time*1000,{reduced});
     },
     /** 🧱 What must never show a hex through it: every amp cabinet (all tiers), the Sonic's floor dice and the Swing's (solidLayer.js). */
-    solidRoots:()=>[...[...rigs.values()].flatMap(r=>r.levels),sonic?.dice?.group,swing?.dice?.group].filter(Boolean),
+    solidRoots:()=>[...[...rigs.values()].flatMap(r=>r.levels),sonic?.dice?.group,swing?.dice?.group,marqueeMarkers.solidRoot].filter(Boolean),
     /** 🎬 The director's shot for this frame, or null — `sonicCamera` flies it. */
     battleShot:()=>battleShot,
     /** 🔭 Scene furniture the battle lens must see past (the renderer's grandstands, the truss). */
@@ -757,8 +762,8 @@ export function createArenaVisuals(scene, {foregroundScene=scene}={}) {
       const amount=Math.min(1,since/.6)*Math.min(1,Math.max(0,(AFTERMATH_SECONDS+.6-since)/.6))*BATTLE_DIRECTOR.cheer;
       return {winnerId:w==null?null:st.ids[w],loserId:w==null?null:st.ids[1-w],tie:w==null,amount};
     },
-    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length,headDials:headDials.active(clock*1000),moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),moveTileDetail:moveTiles.diagnostics()}),
-    dispose(){disposed=true;clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length,headDials:headDials.active(clock*1000),moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics()}),
+    dispose(){disposed=true;clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     get disposed(){return disposed;},
   };
 }

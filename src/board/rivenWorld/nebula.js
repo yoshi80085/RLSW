@@ -1,9 +1,30 @@
 import * as THREE from 'three';
+import { rng } from './formation.js';
+
+const flashStates=new WeakMap();
+
+export function triggerNebulaFlash(mesh,time,interval=42,direction=null) {
+  const state=flashStates.get(mesh),uniforms=mesh.material.uniforms;
+  state.start=time;state.duration=.65+state.random()*.4;
+  state.next=time+interval*(.7+state.random()*.6);
+  const angle=state.random()*Math.PI*2;
+  uniforms.flashDirection.value.set(Math.cos(angle),-.1+(state.random()-.5)*.4,Math.sin(angle)).normalize();
+  if(direction)uniforms.flashDirection.value.copy(direction).normalize();
+}
+
+export function updateNebulaFlashes(mesh,time,{reduced=false,strength=0,interval=42}={}) {
+  const state=flashStates.get(mesh),uniforms=mesh.material.uniforms;
+  if(reduced||strength===0){uniforms.flash.value=0;state.start=-Infinity;state.next=time+interval;return;}
+  if(time>=state.next)triggerNebulaFlash(mesh,time,interval);
+  const age=(time-state.start)/state.duration;
+  // Two soft, unequal pulses inside a small cloud bank, followed by long silence.
+  uniforms.flash.value=age<0||age>1?0:strength*Math.sin(Math.PI*age)**2*(.48+.22*Math.sin(age*19));
+}
 
 export function createNebula(){
-  const material=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,uniforms:{intensity:{value:1},time:{value:0},cloudTime:{value:0},breath:{value:.10},breathPeriod:{value:12},puffiness:{value:.25}},
+  const material=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,uniforms:{intensity:{value:1},time:{value:0},cloudTime:{value:0},breath:{value:.10},breathPeriod:{value:12},puffiness:{value:.25},flash:{value:0},flashDirection:{value:new THREE.Vector3(0,0,-1)}},
     vertexShader:'varying vec3 v;void main(){v=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader:`varying vec3 v;uniform float intensity;uniform float time;uniform float cloudTime;uniform float breath;uniform float breathPeriod;uniform float puffiness;
+    fragmentShader:`varying vec3 v;uniform float intensity;uniform float time;uniform float cloudTime;uniform float breath;uniform float breathPeriod;uniform float puffiness;uniform float flash;uniform vec3 flashDirection;
       float hash(vec3 p){p=fract(p*.3183099+vec3(.1,.2,.3));p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
       float noise(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);}
       float fbm(vec3 p){float f=0.,a=.5;for(int i=0;i<5;i++){f+=a*noise(p);p=p*2.07+vec3(11.7,4.1,7.3);a*=.5;}return f;}
@@ -41,7 +62,10 @@ export function createNebula(){
         vec3 farGlow=vec3(.065,.009,.14)*farAlpha;
         vec3 gasGlow=hue*nearAlpha+vec3(.14,.045,.17)*nearGas*wisps*.24;
         vec3 c=voidColor+intensity*(farGlow*(1.-nearAlpha*.4)*(1.+breath*pulse)+gasGlow*(1.+breath*1.5*pulse));
+        float flashBank=exp(-max(0.,1.-dot(p,flashDirection))*65.);
+        c+=vec3(.13,.065,.20)*flash*flashBank*(nearAlpha+farAlpha)*intensity;
         gl_FragColor=vec4(c,1.);
       }`
-  });const mesh=new THREE.Mesh(new THREE.SphereGeometry(185,32,20),material);mesh.name='Storm nebula';return mesh;
+  });const mesh=new THREE.Mesh(new THREE.SphereGeometry(185,32,20),material);mesh.name='Storm nebula';
+  flashStates.set(mesh,{random:rng(73512),start:-Infinity,next:24,duration:1});return mesh;
 }

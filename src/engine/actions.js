@@ -513,6 +513,12 @@ export function marqueeCardPlayed(spiritId, idx) {
   return { type: MARQUEE_CARD_PLAYED, spiritId, idx };
 }
 
+/** 🧪 Set a lit marquee's kind — 'community' or 'solo' (Testing Grounds). */
+export const MARQUEE_KIND_SET = "MARQUEE_KIND_SET";
+export function marqueeKindSet(hexNum, kind) {
+  return { type: MARQUEE_KIND_SET, hexNum, kind };
+}
+
 /** 🃏 Arm a held card (hand index) for the next Swing or Sonic; null disarms. */
 export const MARQUEE_CARD_ARMED = "MARQUEE_CARD_ARMED";
 export function marqueeCardArmed(spiritId, idx = null) {

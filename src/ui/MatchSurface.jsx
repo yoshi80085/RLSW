@@ -6,6 +6,8 @@ import NoteHex from './NoteHex.jsx';
 // here: `.match-surface` renders in BOTH layouts and is always an ancestor of
 // them, so the arena keeps ONE stylesheet instead of three.
 import { COMMIT_CSS } from './NoteCommitOverlay.jsx';
+// 📱 The phone re-dock (Alex's dial-in, 2026-09-29) — see the file's header.
+import { PHONE_CSS, usePhoneLayout } from './phoneLayout.js';
 
 const SurfaceContext = createContext({ immersive: false, panel: 'turn' });
 // The pocket's own internal gap. The step-1 drawer sits below the pocket, so it
@@ -129,10 +131,12 @@ export function MatchSurface({ immersive, spirit, turnNumber, step, canAct, ap, 
       ?? (step === 'move_act' ? `${ap} AP remaining`
         : hud?.noteCount != null ? `${hud.noteCount} notes available` : null);
   const [rootRef, pocketRef] = usePocketFloor(immersive);
+  usePhoneLayout();
   return <SurfaceContext.Provider value={context}>
     <div ref={rootRef} className="match-surface" data-match-layout={immersive ? 'immersive' : 'classic'}
       data-match-step={step} data-hud-tutorial={tutorial || undefined}>
-      <style>{SURFACE_CSS}</style>
+      <style>{SURFACE_CSS + PHONE_CSS}</style>
+      <div className="match-rotate" role="alert"><b aria-hidden="true">📱</b>Turn your phone sideways<small>the arena needs the long side of the screen</small></div>
       {immersive && <>
         <div className="match-phase-rail" aria-label="Turn progress">
           {STEP_ORDER.map((name, index) => {

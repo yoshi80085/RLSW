@@ -581,8 +581,122 @@ selftest's board block. Picture: `.scratch/marqueeQuadrants.mjs`.
 
 ### 11.5 Open
 
-- Nothing in the 3D arena marks a marquee yet (§10.5 item 1) — now more pressing,
-  with one in every player's quarter.
+- ✅ ~~Nothing in the 3D arena marks a marquee~~ — built 2026-09-29, §12.
 - 4 seats: a marquee always in your own quarter means a card every couple of
   turns for a Spirit who stays home. Unbenched.
 - Should the 2D star take its quadrant owner's colour? Not done.
+
+---
+
+## 12. 🎪 The marquee in the 3D arena (2026-09-29)
+
+Alex: *"mark a marquee in the 3D arena"* — the other half of the 09-16 P1
+(*"hard to see on the board"*). `board/marqueeMarkers.js`:
+
+- **The floor — a theatre marquee:** a pink neon hex rim, a ring of 12 warm
+  bulbs with two lights chasing round it, a faint pink wash and a light wall
+  rising off the hex; an inner ring in the colour of the quadrant's seat.
+- **The prize:** a card with the RL winged-horns back (the card picker's art)
+  floats at about chest height of a standee, bobbing and turning slowly, leaned
+  back a touch so it reads from high shots.
+- A new marquee **pops in** (the card drops with an overshoot); a taken one's
+  card **lifts away** and fades. Reduced motion: still, and instant.
+- Reads **without bloom** (Alex runs Auto: Standard): additive rim and bulbs
+  past 1.0. The card is **solid** (alpha-tested), so it is re-drawn above the
+  SVG click layer; BoardViewport hides the 2D star once the arena is ready (its
+  label now says MARQUEE instead of EVENT, for the 2D board).
+- Wiring: the client's `marqueeMarkerList(eventHexes, quadrantOf, playerColor)`
+  → `arenaFrame` `marquees` → `arenaVisuals` (update, tick, `solidRoots`,
+  diagnostics) → the renderer's reduced-motion "moving" check.
+- Tests: `test:marqueemarkers` (32; 4/4 mutants); `test:topview` §6 knows the
+  new solid root. Look: `.scratch/marquee-probe/` (the real `mountArena` with
+  four marquees, screenshotted headless at Standard and High).
+- 📌 Every number is in `MARQUEE_LOOK` and is a first pass.
+
+### 12.1 🎛️ The dial-in (Alex, 2026-09-29: *"they might be a bit too big — lets
+build them out with different options for their appearance"*)
+
+`.scratch/marquee-look-preview.html` (source `.scratch/marquee-look/entry.js`,
+rebuilt by `node build.mjs` there) drives the REAL module with overrides, on a
+stand-in board built from `hexMap` with standee-sized (2.9) cut-outs for scale.
+- **Switches:** floor `marquee` / `ring` / `bulbs` / `glow` / `none`; prize
+  `card` / `coin` / `none`; colour `pink` / `owner` (the quadrant seat's) / `gold`.
+- **Levers:** floor size, card size and height, rim glow, wash, light wall,
+  halo, seat ring, bulbs (count, size, radius, brightness, chase), turn, bob, lean.
+- **Presets:** Current, Compact, Small card low, Coin, Owner colour, Ring + small
+  card, Floor only, Quiet glow + coin — and **Compare four looks**, one per
+  quadrant, side by side.
+- Views: game angle, close, standee eye, top-down; Standard (no bloom) / High;
+  🎯 Take one (watch the leave and relight); reduced motion.
+- 📋 Copy dial-in writes the `MARQUEE_LOOK` overrides.
+- ✅ **Alex's pick (2026-09-29) is now the default:** size .76 · cardScale .6 ·
+  cardY 1.2 · wall .55 · halo .22 · bulbs 10 · bulbSize .08.
+
+---
+
+## 13. 🎤 Two kinds of marquee: solo on a clock, and community (Alex, 2026-09-29)
+
+### 13.1 The ruling
+
+*"1/3 of the time they are community driven — the first to get the right
+answer gets the card. Wrong answer and dont get it. The first to get the right
+answer gets it. 2/3 of the time they are non community but run on a timer —
+say 10 seconds. If the right answer isn't clicked by then, its treated the same
+as a wrong answer."* His picks: every player answers on their **own row** of
+buttons; community marquees are **marked on the board**; a community round is
+open **15 s**.
+
+### 13.2 As built
+
+- **The kind is rolled when a marquee lights** (setup, relight, top-up) —
+  community 1 in 3 (`MARQUEE_COMMUNITY_SHARE`), else solo — and kept in
+  `board.marqueeKinds`. So it is a routing choice: a community marquee is
+  **gold** on the board (3D rim, wash, wall and halo; the 2D star and a
+  COMMUNITY label), a solo one pink.
+- **Solo:** the lander answers alone on a **10 s** clock (a draining bar on
+  the ticket). No click in time = a wrong answer: no card. Bots answering solo
+  are unchanged (fixed odds, no clock).
+- **Community:** every Spirit still in the match answers — the lander first,
+  then seat order — each on its **own row of A–D buttons in its colour**. The
+  first RIGHT answer wins the card (and may be anyone, not only the lander); a
+  wrong answer locks that seat out (one try each); open **15 s**; everyone out
+  or time up = nobody. Bots click at a seeded moment 3–12 s in
+  (`MARQUEE_BOT_ANSWER_S`), right on `TRIVIA_BOT_ODDS[difficulty]`. A winner
+  with a full hand gets the swap step (a bot swaps by value).
+- The marquee burns out and relights the moment the question is drawn, as
+  before, whatever the kind.
+- **Headless** (all bots): a community round settles at once from the bots'
+  pre-drawn answers.
+- 🧪 Testing Grounds: **🎤 Flip marquees** turns every lit marquee community
+  (or back to solo).
+
+### 13.3 Where it lives
+
+`engine/systems/marqueeRound.js` (pure rules: participants, bot answers,
+`communityOutcome`, `soloOutcome`, draw counts, clocks);
+`marqueeSpaces.js` `rollMarqueeKind` / `marqueeKindOf`; `board.js` (kinds on
+relight/top-up, `applyMarqueeKindSet`); `state.js` (forked `marqueeKinds`
+stream); the client's `checkEventTrigger`, `answerCommunity` and the round-clock
+effect; `ui/EventModal.jsx` (clock, rows, winner banner); `transition.js`
+(headless); the markers (`board/marqueeMarkers.js`, `communityColor`).
+Draws per trigger: 3 (question, solo bot odds, prize) + 2 per bot in a
+community round, all before anyone answers.
+
+### 13.4 Tests
+
+`test:cards` (441; §11: kinds ~1/3 at setup and relight, the pure rules,
+headless community with rivals winning; 5/5 mutants), `test:marqueemarkers`
+(50; gold community marker, kind flip rebuild), `test:marqueejourney` (new,
+mounted: the solo clock runs out; a community round with rows, a lock-out and
+the first right answer winning). Preview: `.scratch/marquee-round-preview.html`.
+
+### 13.5 Open
+
+- 🌐 **Online:** only the local seat answers at its own table (plus the bots);
+  other players' clicks are not relayed yet, so an online community round is
+  effectively the lander vs the bots. Wants a CUE relay like the roll's, with
+  the server deciding "first".
+- Balance: a community card can go to a rival — nobody has benched what that
+  does to the lander's reason to route there.
+- Community rounds use the whole deck's questions; the lander gets no head
+  start (Alex did not ask for one).

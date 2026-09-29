@@ -17,7 +17,11 @@ import { MARQUEE_HAND_MAX, ELEVEN_DIE } from '../data/gameConstants.js';
 import { HEX_BY_NUM } from '../board/hexMap.js';
 import { neighborInDirection } from '../board/hexGeometry.js';
 import { collectPickups } from './policies/transition.js';
-import { eventHexTriggered, eventHexSpawned } from './actions.js';
+import { eventHexTriggered, eventHexSpawned, marqueeKindSet } from './actions.js';
+import { marqueeKindOf, rollMarqueeKind } from './systems/marqueeSpaces.js';
+import { botAnswers, communityOutcome, soloOutcome, communityParticipants, marqueeDrawCount, roundLimitMs } from './systems/marqueeRound.js';
+import { MARQUEE_COMMUNITY_SHARE, MARQUEE_BOT_ANSWER_S, MARQUEE_SOLO_SECONDS, MARQUEE_COMMUNITY_SECONDS } from '../data/gameConstants.js';
+import { TRIVIA_BOT_ODDS } from '../data/trivia.js';
 import { cornersForCount, seatSpirit } from '../data/matchSetup.js';
 import { SPIRIT_DEFS } from '../data/spirits.js';
 import { CORNERS } from '../data/corners.js';
@@ -290,6 +294,84 @@ const game = st => ({ battle: st.battle, noteStates: st.noteStates });
   eq('top-up: back to one per seat', filled.board.eventHexes.length, 3);
   ok('top-up: into a quadrant that had none', oneEach(filled));
   eq('top-up: a full board is left alone', applyAction(filled, eventHexSpawned([]), makeRng(3)).board.eventHexes, filled.board.eventHexes);
+}
+
+// ── 11. 🎤 Solo and community marquees (MARQUEE_QUIZ_DESIGN.md §13) ──────────
+{
+  eq('solo clock 10 s', roundLimitMs('solo'), MARQUEE_SOLO_SECONDS * 1000);
+  eq('community clock 15 s', roundLimitMs('community'), MARQUEE_COMMUNITY_SECONDS * 1000);
+  eq('community share is 1 in 3', MARQUEE_COMMUNITY_SHARE, 1 / 3);
+  eq('rollMarqueeKind: under 1/3 is community', [rollMarqueeKind(() => 0.1), rollMarqueeKind(() => 0.5)], ['community', 'solo']);
+  eq('an unrolled marquee reads solo', marqueeKindOf({}, 5), 'solo');
+
+  // Kinds on the board: every opening marquee has one; over many tables ~1/3 community.
+  const DEFS = Object.keys(SPIRIT_DEFS);
+  const table = (n, seed) => makeInitialState({ mode: 'ffa', startingLives: 3, elimination: 'off',
+    spirits: cornersForCount(n).map((c, i) => ({ ...seatSpirit({ ...SPIRIT_DEFS[DEFS[i % DEFS.length]], id: `p${i}` }, c),
+      name: `p${i}`, vibe: 30, maxVibe: 30, cpu: true })) }, seed);
+  let community = 0, total = 0;
+  for (let seed = 1; seed <= 150; seed++) {
+    const st = table(4, seed);
+    ok(`seed ${seed}: every opening marquee has a kind`, st.board.eventHexes.every(h => ['community', 'solo'].includes(st.board.marqueeKinds?.[h])));
+    community += st.board.eventHexes.filter(h => st.board.marqueeKinds[h] === 'community').length; total += st.board.eventHexes.length;
+  }
+  ok(`opening kinds are ~1/3 community (${community}/${total})`, community / total > 0.26 && community / total < 0.41);
+  // Relights roll a kind too; the taken hex's kind goes with it.
+  let st = table(4, 9), relitCommunity = 0, relits = 0;
+  for (let step = 0; step < 240; step++) {
+    const hex = st.board.eventHexes[step % st.board.eventHexes.length];
+    st = { ...st, spirits: st.spirits.map((s, i) => (i === 0 ? { ...s, num: hex } : s)) };
+    st = applyAction(st, eventHexTriggered('p0', hex, null), makeRng(1000 + step));
+    const r = st.board.lastEventRespawn;
+    if (!r) continue;
+    relits++; if (st.board.marqueeKinds[r.hexNum] === 'community') relitCommunity++;
+    if (st.board.marqueeKinds[hex] !== undefined && !st.board.eventHexes.includes(hex)) { ok('a taken marquee\'s kind is cleared', false); break; }
+    if (Object.keys(st.board.marqueeKinds).length !== st.board.eventHexes.length) { ok('one kind per lit marquee', false); break; }
+  }
+  ok(`relit kinds are ~1/3 community too (${relitCommunity}/${relits})`, relitCommunity / relits > 0.24 && relitCommunity / relits < 0.43);
+  const hx = st.board.eventHexes[0];
+  eq('MARQUEE_KIND_SET flips a lit marquee', marqueeKindOf(applyAction(st, marqueeKindSet(hx, 'community'), makeRng(1)).board, hx), 'community');
+  eq('…and ignores an unlit hex', applyAction(st, marqueeKindSet(999, 'community'), makeRng(1)).board.marqueeKinds, st.board.marqueeKinds);
+
+  // The pure round rules.
+  const P = [{ id: 'a', bot: false }, { id: 'b', bot: true }, { id: 'c', bot: true }];
+  eq('draws: solo 3', marqueeDrawCount('solo', 2), 3);
+  eq('draws: community 3 + 2 per bot', marqueeDrawCount('community', 2), 7);
+  const [lo, hi] = MARQUEE_BOT_ANSWER_S;
+  const bots = botAnswers(P, [0.1, 0, 0.99, 1], 'easy');
+  eq('bots answer in participant order', bots.map(b => b.id), ['b', 'c']);
+  eq('a bot is right under its odds, wrong over', bots.map(b => b.correct), [0.1 < TRIVIA_BOT_ODDS.easy, false]);
+  eq('bots click inside the window', bots.map(b => b.atMs), [lo * 1000, hi * 1000]);
+  eq('participants: the lander first, the knocked-out left out',
+    communityParticipants([{ id: 'x' }, { id: 'y', cpu: true }, { id: 'z', knockedOut: true }, { id: 'w' }], 'w').map(p => [p.id, p.bot]),
+    [['w', false], ['x', false], ['y', true]]);
+  const first = communityOutcome([{ id: 'a', correct: false, atMs: 1000 }, { id: 'b', correct: true, atMs: 2000 }, { id: 'c', correct: true, atMs: 1500 }]);
+  eq('the FIRST right answer wins; the wrong one before it is locked out', [first.winnerId, first.lockedOut], ['c', ['a']]);
+  eq('a player only gets one try', communityOutcome([{ id: 'a', correct: false, atMs: 100 }, { id: 'a', correct: true, atMs: 200 }], { participants: [{ id: 'a' }] }).winnerId, null);
+  eq('a right answer after 15 s does not count', communityOutcome([{ id: 'a', correct: true, atMs: 15001 }]).winnerId, null);
+  eq('ties go to the one listed first', communityOutcome([{ id: 'a', correct: true, atMs: 500 }, { id: 'b', correct: true, atMs: 500 }]).winnerId, 'a');
+  const mid = communityOutcome([{ id: 'b', correct: true, atMs: 9000 }], { nowMs: 4000, participants: P });
+  ok('a bot answer in the future has not landed yet', mid.winnerId === null && !mid.settled);
+  ok('everyone out → settled early, nobody wins', communityOutcome(P.map((p, i) => ({ id: p.id, correct: false, atMs: 100 * i })), { nowMs: 400, participants: P }).settled);
+  ok('time up → settled', communityOutcome([], { nowMs: 15000 }).settled);
+  eq('solo: right in time wins', soloOutcome({ correct: true, atMs: 9999 }), { won: true, timedOut: false });
+  eq('solo: right but late is wrong', soloOutcome({ correct: true, atMs: 10001 }), { won: false, timedOut: true });
+  eq('solo: no click is a timeout', soloOutcome({}), { won: false, timedOut: true });
+
+  // Headless community: bots race; the winner may not be the lander.
+  let otherWins = 0, landerWins = 0, nobody = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    const s0 = table(4, 3);
+    const hex = s0.board.eventHexes[0];
+    const on = applyAction({ ...s0, spirits: s0.spirits.map((s, i) => (i === 0 ? { ...s, num: hex } : s)) }, marqueeKindSet(hex, 'community'), makeRng(1));
+    const { state: out, logs } = collectPickups(on, 'p0', hex, makeRng(seed));
+    const holders = out.spirits.filter(s => handOf(out.noteStates[s.id]).length).map(s => s.id);
+    if (holders.length > 1) { ok('headless community: at most one winner', false); break; }
+    if (!holders.length) nobody++; else if (holders[0] === 'p0') landerWins++; else otherWins++;
+    ok(`headless community seed ${seed}: logged as community`, logs.some(l => l.includes('community marquee')));
+  }
+  ok(`headless community: sometimes a rival answers first (${otherWins}), sometimes the lander (${landerWins})`, otherWins > 0 && landerWins > 0);
+  ok(`headless community: sometimes nobody (${nobody})`, nobody >= 0);
 }
 
 console.log(`🃏 test:cards — ${n} marquee card checks passed.`);

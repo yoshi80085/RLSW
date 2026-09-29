@@ -7,7 +7,7 @@ const SPOT_CORNERS = ['blue', 'purple', 'yellow', 'red'];
 // hidden spirits BEFORE passing them here; no note stock or hidden state crosses.
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
-  bots = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null }) {
+  bots = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null, marquees = [] }) {
   const visible = new Set(spirits.map(s => s.id));
   return {
     crowds:crowdSpirits.filter(s=>!s.knockedOut).map(s=>({id:s.id,corner:s.corner,color:s.color,
@@ -108,6 +108,9 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
         color:playerColor(c), seated:crowdSpirits.some(s => s.corner === c && !s.knockedOut) })),
       posers:Object.entries(spotlights.poses ?? {}).filter(([id]) => visible.has(id)).map(([id, p]) => ({ id, hex:p.hex })),
     } : null,
+    // 🎪 The lit marquees (public board state) — board/marqueeMarkers.js.
+    marquees:(marquees ?? []).filter(m => Number.isFinite(m?.hex))
+      .map(m => ({ hex:m.hex, corner:m.corner ?? null, color:m.color ?? null, community:!!m.community })),
     // The arm's visible trail is already public board geometry.
     tentacle:tentacle ? {key:tentacle.key, pts:tentacle.pts.map(p=>({x:p.x,y:p.y}))} : null,
   };

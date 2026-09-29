@@ -248,7 +248,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       reportCamera(topView?'top':sonicCamera.manual?'battle-manual':sonicCamera.active?'sonic':!autoCamera||!cameraShot||cameraShot.mode==='off'?'off':cameraShot.mode,cameraShot?.resumeInMs);
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
-      const stats=visuals.diagnostics(),moving=stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||sonicCamera.active||!!cameraShot?.driving||!!refocus;
+      const stats=visuals.diagnostics(),moving=stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||sonicCamera.active||!!cameraShot?.driving||!!refocus;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
