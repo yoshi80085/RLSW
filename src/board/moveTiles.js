@@ -22,6 +22,7 @@
 // is the three.js half. Only the move tiles live here — Shukuchi's landings keep
 // their own SVG tint.
 import * as THREE from 'three';
+import { HEX_BY_NUM, COLUMNS } from './hexMap.js';
 
 export const MOVE_TILES = Object.freeze({
   color:'#ff3df2', style:'outline', rim:'spirit', brightness:2.25,
@@ -72,6 +73,43 @@ export function createStepBudget() {
 // ── three.js ─────────────────────────────────────────────────────────────────
 
 const BASE_Y = 0.2;   // the hazard discs' height: on the board, under the pawns
+
+/**
+ * 🧱 THE BOARD'S OWN FOOTPRINT — all 111 hexes, tiled edge to edge, flat on y = 0.
+ *
+ * ⚠️ WHY IT EXISTS (Alex, 2026-09-30: *"it seems like there is a dim 'ring'
+ * around the 3D arena"*). The board dim — the dark wash that makes the lit
+ * tiles read, here and in `attackTiles.js` — used to be a `CircleGeometry` of
+ * radius 15. The board is 22 × 19.5 units, so that disc hung 4–5 units past the
+ * hexes on every side (half its area was off the board) and laid a 25–30% black ellipse over the island's rim,
+ * the rocks and the nebula whenever a walk or an attack was armed: a dim ring
+ * around the arena. The dim is now cut to the hexes themselves.
+ *
+ * The cells are the map's real ones: flat-topped, half-width `a` = ⅔ of the
+ * column spacing and half-height `h` = half the row spacing, both measured off
+ * `pointFor` so they follow `arenaPoint`. With those two numbers neighbours
+ * share their edges EXACTLY — no overlap (a transparent overlap would darken
+ * twice) and no crack.
+ */
+export function boardFootprint(pointFor, nums = Object.keys(HEX_BY_NUM).map(Number)) {
+  const c0 = pointFor(COLUMNS[0][0], 0), below = pointFor(COLUMNS[0][1], 0), right = pointFor(COLUMNS[1][0], 0);
+  const h = Math.abs(below.z - c0.z) / 2, a = Math.abs(right.x - c0.x) * 2 / 3;
+  const ring = [[a, 0], [a / 2, h], [-a / 2, h], [-a, 0], [-a / 2, -h], [a / 2, -h]];
+  const pos = [];
+  for (const num of nums) {
+    const c = pointFor(num, 0);
+    if (!c) continue;
+    for (let i = 0; i < 6; i++) {
+      const [x1, z1] = ring[i], [x2, z2] = ring[(i + 1) % 6];
+      pos.push(c.x, 0, c.z, c.x + x2, 0, c.z + z2, c.x + x1, 0, c.z + z1);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  g.userData = { cellA:a, cellH:h };
+  return g;
+}
 const plateGeo = new THREE.CylinderGeometry(0.93, 0.93, 1, 6).rotateY(Math.PI / 6).translate(0, 0.5, 0);
 const ringGeo = new THREE.RingGeometry(0.8, 0.93, 6).rotateX(-Math.PI / 2);
 const pipGeo = new THREE.SphereGeometry(0.17, 16, 10);
@@ -82,10 +120,12 @@ export function createMoveTiles(root, { pointFor, T = MOVE_TILES }) {
   const group = new THREE.Group(); group.name = 'Move tiles'; root.add(group);
   const tiles = new Map(), budget = createStepBudget();
   const pips = new THREE.Group(); pips.name = 'Step pips'; group.add(pips);
-  // The board dim is a dark disc under the tiles rather than a change to the
-  // arena's materials: the GLB is shared scenery, and a disc cannot leave it dimmed.
-  const dim = new THREE.Mesh(new THREE.CircleGeometry(15, 48).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0, depthWrite:false, toneMapped:false }));
+  // The board dim is a dark sheet under the tiles rather than a change to the
+  // arena's materials: the GLB is shared scenery, and a sheet cannot leave it dimmed.
+  // ⚠️ Cut to the hexes (`boardFootprint`), NOT a disc — the old radius-15 circle
+  // dimmed a ring of space around the arena (2026-09-30).
+  const dim = new THREE.Mesh(boardFootprint(pointFor),
+    new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0, depthWrite:false, toneMapped:false, side:THREE.DoubleSide }));
   dim.position.y = BASE_Y - 0.01; dim.renderOrder = 55; dim.visible = false; group.add(dim);
   let reach = null, ownerColor = '#ffffff', lastMs = null, moveVis = 0;
   const glow = new THREE.Color(T.color).multiplyScalar(T.brightness), grey = new THREE.Color(0x3a4666), white = new THREE.Color(2, 2, 2);

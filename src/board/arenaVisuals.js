@@ -17,6 +17,10 @@ import { createAttackTiles } from './attackTiles.js';
 import { createMarqueeMarkers } from './marqueeMarkers.js';
 import { createArenaLasers } from './arenaLasers.js';
 import { createStandee, STANDEE, STANDEE_Y, standeeYaw } from './standee.js';
+import { createStandeeSteps } from './standeeSteps.js';
+import { createLandingSfx } from '../audio/landingSfx.js';
+import { axialDist } from './hexGeometry.js';
+import { MODE_INTERVALS, SPIRIT_MELODY_MODES, BEGINNER_FALLBACK_MODE } from '../music/melodyIdentity.js';
 import { wrapClashStandees, STICK_STANDEE } from './swingStandee.js';
 import { directorShot, placeBattleDice, frontSide, BATTLE_DIRECTOR } from './battleDirector.js';
 import { grandstandPlacement } from './cosmicFans.js';
@@ -281,6 +285,14 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   const headDials=createHeadDials(root);
   // 🟪 The hexes you can step to, as magenta tiles in the scene (moveTiles.js).
   const moveTiles=createMoveTiles(root,{pointFor:arenaPoint});
+  // 🎭 STANDEE STEPS (Alex's dial-in, 2026-09-30 — board/standeeMotion.js): every hex
+  // change is QUEUED and played out — a hop for a walk step, a blink for a leap, a
+  // skate back with a clack for a shove — and lands with the stone-on-glass sound,
+  // a ripple and sparkles. It replaced the silent 0.2 s lerp for standee pawns.
+  const standeeSteps=createStandeeSteps(root,{pointFor:arenaPoint,
+    distance:(a,b)=>{const h=HEX_BY_NUM[a],k=HEX_BY_NUM[b];return h&&k?axialDist(h.q,h.r,k.q,k.r):1;},
+    scaleFor:id=>MODE_INTERVALS[SPIRIT_MELODY_MODES[characterId(id)]??BEGINNER_FALLBACK_MODE],
+    sfx:typeof window!=='undefined'?createLandingSfx():null});
   // 🎯 The hexes the hovered / armed attack can reach (attackTiles.js).
   const attackTiles=createAttackTiles(root,{pointFor:arenaPoint});
   // 🎪 The marquee spaces: a bulb-ringed neon hex and a floating prize card (marqueeMarkers.js).
@@ -430,6 +442,9 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
         pawn.userData.target=start?.clone() ?? new THREE.Vector3();
         pawn.userData.targetFacing=standeeYaw(spirit.facing);
         pawn.rotation.y=pawn.userData.targetFacing;   // no spin-up from 0 on the first frame
+        // ⚠️ YAW FIRST, then the step's tilt in the standee's own frame (standeeMotion.js).
+        // With the tilt at 0 this leaves the knockback wobble on rotation.z unchanged.
+        if(standee)pawn.rotation.order='YXZ';
         actors.add(pawn);pawns.set(spirit.id,pawn);
       }
       const standee=pawn.userData.standee;
@@ -440,6 +455,10 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       // showed on a block (no readable front); on a standee it is the difference
       // between looking at a Spirit and looking at its edge.
       pawn.userData.targetFacing=standeeYaw(spirit.facing);
+      // 🎭 A HEX CHANGE IS A STEP. The knockback counter moving means it was a shove.
+      if(pawn.userData.standee&&pawn.userData.num!=null&&pawn.userData.num!==spirit.num&&!spirit.knockedOut&&!spirit.fallen)
+        standeeSteps.step(pawn,{id:spirit.id,from:pawn.userData.num,to:spirit.num,yaw:pawn.userData.targetFacing,
+          shoved:pawn.userData.hitBackCount!=null&&pawn.userData.hitBackCount!==spirit.hitBackCount,bot:!!spirit.bot,color:spirit.color});
       if(pawn.userData.hitBackCount!=null&&pawn.userData.hitBackCount!==spirit.hitBackCount) pawn.userData.wobbleUntil=clock+1.7;
       pawn.userData.hitBackCount=spirit.hitBackCount;
       pawn.userData.num=spirit.num;pawn.userData.vibe=spirit.vibe;pawn.userData.maxVibe=spirit.maxVibe;
@@ -457,7 +476,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       }
       pawn.visible=true;
     }
-    for(const [id,pawn] of pawns)if(!live.has(id)) {actors.remove(pawn);releaseArenaObject(pawn);pawns.delete(id);}
+    for(const [id,pawn] of pawns)if(!live.has(id)) {actors.remove(pawn);standeeSteps.forget(pawn);releaseArenaObject(pawn);pawns.delete(id);}
   }
   function attachModel(model) {
     model.updateWorldMatrix(true,true); // include the arena Z flip in stack labels and origins
@@ -596,9 +615,14 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       }
       for(const pawn of pawns.values()) {
         const target=pawn.userData.target;
-        pawn.position.lerp(target,reduced?1:1-Math.exp(-dt*14));
-        const turn=pawn.userData.targetFacing;
-        pawn.rotation.y=THREE.MathUtils.damp(pawn.rotation.y,turn,14,dt);
+        // 🎭 A pawn mid-step is driven by standeeSteps (position, yaw, tilt, squash);
+        // a pawn at rest (and every block pawn) eases toward its target as before.
+        const stepping=pawn.userData.standee?standeeSteps.drive(pawn,performance.now(),reduced):null;
+        if(!stepping){
+          pawn.position.lerp(target,reduced?1:1-Math.exp(-dt*14));
+          const turn=pawn.userData.targetFacing;
+          pawn.rotation.y=THREE.MathUtils.damp(pawn.rotation.y,turn,14,dt);
+        }
         const knocked=pawn.userData.knockedOut;
         const wobble=reduced?0:Math.max(0,(pawn.userData.wobbleUntil??0)-time)/1.7
           *knockbackWobble(pawn.userData.vibe,pawn.userData.maxVibe)*Math.sin(time*23);
@@ -610,9 +634,9 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
           // the tip-back under a high camera needs the camera, which only
           // `frame` is given. Nothing below this line may touch the group.
           standee.frame(time,{knockedOut:knocked,active:pawn.userData.active,
-            acting:pawn.userData.active,reduced,cameraPos:camera?.position ?? null});
-          pawn.position.y=target?.y ?? STANDEE_Y;
-          pawn.rotation.z=wobble;
+            acting:pawn.userData.active,reduced,cameraPos:camera?.position ?? null,lift:stepping?.lift??0});
+          if(!stepping)pawn.position.y=target?.y ?? STANDEE_Y;
+          pawn.rotation.z=wobble+(stepping?.roll??0);
           continue;
         }
         pawn.rotation.z=THREE.MathUtils.damp(pawn.rotation.z,knocked?Math.PI*.48:wobble,10,dt);
@@ -620,6 +644,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
         pawn.scale.setScalar(scale);
         pawn.position.y=(target?.y ?? .2)+(knocked ? .02 : !reduced?Math.sin(time*2.4+pawn.position.x)*.025:0);
       }
+      standeeSteps.update(performance.now(),dt);   // the landing ripples and sparkles
       if(swing){
         const t=swingTime(frame.battle);
         frame.battle.swingFocus=swing.update(t,{reduced});
@@ -757,8 +782,8 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       const amount=Math.min(1,since/.6)*Math.min(1,Math.max(0,(AFTERMATH_SECONDS+.6-since)/.6))*BATTLE_DIRECTOR.cheer;
       return {winnerId:w==null?null:st.ids[w],loserId:w==null?null:st.ids[1-w],tie:w==null,amount};
     },
-    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics()}),
-    dispose(){disposed=true;clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics()}),
+    dispose(){disposed=true;standeeSteps.dispose();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     get disposed(){return disposed;},
   };
 }

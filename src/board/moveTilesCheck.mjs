@@ -120,5 +120,29 @@ console.log('§5 the wiring');
   ok("…and BoardViewport hides that old 9% fill once the arena is ready", /\[data-arena-ready\] \.arena-tactical \[data-move-tile\] \{ fill:transparent; \}/.test(b));
 }
 
+console.log('§6 the board dim stays ON the board');
+{
+  // Alex, 2026-09-30: "a dim 'ring' around the 3D arena". The dim was a radius-15
+  // disc; the board is 22 × 19.5, so half the disc lay over the rim, rocks and sky.
+  const { boardFootprint } = await import('./moveTiles.js');
+  const { HEX_BY_NUM } = await import('./hexMap.js');
+  const arenaLike = (n, y = 0.18) => { const h = HEX_BY_NUM[n]; return h ? new THREE.Vector3((h.px - 3255) / 200, y, (h.py - 2415) / 200) : null; };
+  const g = boardFootprint(arenaLike); g.computeBoundingBox();
+  const b = g.boundingBox, cells = Object.keys(HEX_BY_NUM).length;
+  let maxX = 0, maxZ = 0;
+  for (const n of Object.keys(HEX_BY_NUM)) { const c = arenaLike(Number(n)); maxX = Math.max(maxX, Math.abs(c.x)); maxZ = Math.max(maxZ, Math.abs(c.z)); }
+  const { cellA:a, cellH:h } = g.userData;
+  ok('one cell per hex (six triangles each)', g.attributes.position.count === cells * 18, `${g.attributes.position.count / 18} cells`);
+  ok('the dim ends at the outermost hex edge — nothing past the board', b.max.x <= maxX + a + 1e-6 && -b.min.x <= maxX + a + 1e-6 && b.max.z <= maxZ + h + 1e-6 && -b.min.z <= maxZ + h + 1e-6,
+    `${b.min.x.toFixed(2)}…${b.max.x.toFixed(2)} × ${b.min.z.toFixed(2)}…${b.max.z.toFixed(2)}`);
+  let area = 0; const p = g.attributes.position;
+  for (let i = 0; i < p.count; i += 3) area += Math.abs((p.getX(i + 1) - p.getX(i)) * (p.getZ(i + 2) - p.getZ(i)) - (p.getX(i + 2) - p.getX(i)) * (p.getZ(i + 1) - p.getZ(i))) / 2;
+  ok('the cells tile edge to edge (area = cells × one hex: no double-darkened overlap)', Math.abs(area - cells * 3 * a * h) < 1e-3, `${area.toFixed(2)}`);
+  ok('…and the cell is the map\'s own (⅔ of the column spacing wide, half the row spacing tall)', Math.abs(a - 1.1) < 1e-6 && Math.abs(h - 0.975) < 1e-6);
+  const src = read('./moveTiles.js') + read('./attackTiles.js');
+  ok('neither tile layer builds the old radius-15 disc any more', !/CircleGeometry\(15/.test(src));
+  ok('both dims are cut from boardFootprint', (src.match(/new THREE\.Mesh\(boardFootprint\(pointFor\)/g) ?? []).length === 2);
+}
+
 console.log(fail ? `\n❌ moveTilesCheck: ${fail} failed, ${pass} passed` : `\n✅ moveTilesCheck: ${pass} assertions passed`);
 process.exit(fail ? 1 : 0);

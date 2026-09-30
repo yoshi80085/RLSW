@@ -19,6 +19,9 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
       facing:s.facing ?? 0, imageSrc:s.imageSrc, knockedOut:!!s.knockedOut,
       vibe:s.vibe,maxVibe:s.maxVibe,fallen:!!noteStates[s.id]?.fallen,
       hitBackCount:s.hitBackCount??0,
+      // 🎭 A bot's landing is quieter (standeeSteps, STANDEE_MOVE.botVol) — `cpu` is
+      // the client's own bot flag (`isBot`).
+      bot:!!s.cpu,
       // 🎛️ For the head dial. ⭐ PUBLIC FOR EVERY SPIRIT (Alex, 2026-09-16) — a
       // rival's Drive was shown nowhere before this; he chose to reveal it. The
       // CLIENT computes these (spiritChord), so this file stays free of rules.

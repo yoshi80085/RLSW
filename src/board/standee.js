@@ -183,6 +183,9 @@ export function planarUV(geo, w, h, height, scale = 1) {
  * where it stands and which way it turns. Everything the SHEET does — lean, the
  * knocked-out fall, the idle sway, the acting ring, the tip under a high camera
  * — is this object's `frame()`, so the caller must not also rotate or scale it.
+ * ⚠️ ONE EXCEPTION, 2026-09-30: while a STEP runs (`standeeSteps.js`, Alex's
+ * dial-in of the hop) the carrier also tilts and squashes the whole group, and
+ * passes `lift` here so the shadow and the acting ring stay on the deck.
  */
 export function createStandee(spirit, { T = STANDEE, loader = defaultLoader } = {}) {
   const group = new THREE.Group();
@@ -277,6 +280,7 @@ export function createStandee(spirit, { T = STANDEE, loader = defaultLoader } = 
       opacity:0.8, toneMapped:false, depthWrite:false })));
   ring.position.y = 0.01;
   shadow.scale.setScalar(Math.max(0.6, r / 0.75));
+  const shadowBase = shadow.scale.x;
 
   const api = {
     group, radius:r, height:T.height, parts,
@@ -284,7 +288,7 @@ export function createStandee(spirit, { T = STANDEE, loader = defaultLoader } = 
      * @param time seconds · `knockedOut` / `acting` from the frame · `cameraPos`
      * a THREE.Vector3 (omit it and the sheet simply never tips back).
      */
-    frame(time, { knockedOut = false, acting = false, reduced = false, cameraPos = null } = {}) {
+    frame(time, { knockedOut = false, acting = false, reduced = false, cameraPos = null, lift = 0 } = {}) {
       const sway = reduced || !T.bob ? 0 : Math.sin(time * 1.6 + group.position.x) * T.bob;
       let steep = 0;
       if (cameraPos) {
@@ -299,6 +303,12 @@ export function createStandee(spirit, { T = STANDEE, loader = defaultLoader } = 
         m.position.y = 0.02 - T.sink + (knockedOut ? 0.05 + T.sink : 0);
       }
       shadow.material.opacity = T.shadow * (knockedOut ? 0.6 : 1);
+      // 📌 IN THE AIR (a hop, a lift): the shadow and the acting ring stay on the
+      // deck and the shadow shrinks — without this they rise with the piece and
+      // nothing reads as height. `lift` is in the group's own (squashed) units.
+      shadow.position.y = -0.01 - lift;
+      shadow.scale.setScalar(shadowBase / (1 + lift * 0.6));
+      ring.position.y = 0.01 - lift;
       ring.visible = T.actingRing === 'on' && acting && !knockedOut;
       ring.material.opacity = reduced ? 0.7 : 0.55 + 0.25 * Math.sin(time * 2.2);
       if (baseMesh) baseMesh.visible = !knockedOut;

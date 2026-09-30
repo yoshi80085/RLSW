@@ -263,10 +263,11 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
        speedLines.update(sonicCamera.active&&!sonicCamera.manual?(directedShot?.lines??0):0,wallDt,reduced);
        if(speedLines.level>0)dirty=true;}
       reportCamera(topView?'top':sonicCamera.manual?'battle-manual':sonicCamera.active?'sonic':!autoCamera||!cameraShot||cameraShot.mode==='off'?'off':cameraShot.mode,cameraShot?.resumeInMs);
+      // 🎭 So is a standee's landing light (standeeSteps.js) — the hex's fade must finish.
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
       const smokeState=smoke.update(frame.smoke,elapsed,camera,{reduced});
-      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||sonicCamera.active||!!cameraShot?.driving||!!refocus;
+      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.standeeSteps>0||sonicCamera.active||!!cameraShot?.driving||!!refocus;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;

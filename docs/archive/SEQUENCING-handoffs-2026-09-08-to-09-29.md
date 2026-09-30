@@ -1,10 +1,48 @@
-# SEQUENCING §A handoffs 8 → 44, archived 2026-09-29 (43 and 44 on 2026-09-30)
+# SEQUENCING §A handoffs 8 → 45, archived 2026-09-29 (43, 44 and 45 on 2026-09-30)
 
 > Moved **unedited** out of `src/SEQUENCING.md` §A on 2026-09-29 (43-stagefx), where they had
 > restacked since 2026-09-04 despite `CLAUDE.md`'s one-handoff rule. Newest first, exactly as
 > they stood. Each has a one-line row in `src/SEQUENCING.md` §C; search here by its id
 > (e.g. `## 42-phone`). ⚠️ Relative links inside were written from `src/` — read `../` as
 > the repo root.
+
+---
+
+## 45-playtest. Melodies stop cutting off, one seat per stack per round, a gentler crowd, dice that say why — 2026-09-30
+
+Alex, after a playtest: *"1. Some of the melody lines that play out seem like they're getting 'cut off' part way through … 2. I rolled 5 die even though my Drive was a 4? … 3. Drive stack was able to upgraded twice in one round. I wonder if there should be a gate for this? 4. I was able to get a full crowd by round 7 or so - lets dial back the fan gain *slightly*. 5. It doesn't show my Db anywhere - this should be fixed."*
+
+### 🔍 What each one actually was
+1. 🧹 **The cut-offs were the AUDIO THREAD, not the phrasing.** `playAmpNote` builds a ~25-node graph per note and never disconnected it. Chrome keeps a connected `BiquadFilter` processing for its computed tail — capped at **30 s** — so the tone stack and the 4× waveshapers behind it kept rendering silence long after the oscillators stopped. Measured in cloud Chromium (real `AudioContext`, `/proc` CPU of the browser): **60 KATANA notes burned ~3.3 CPU-s per 4 s for ~25 s after the last note, then fell to idle (0.05)**. A Ronin shred is ~28 notes (tremolo ~48), so a couple of commits plus a barrage stacked hundreds of zombie voices and the next phrase dropped out mid-line. Offline, the heaviest builds already cost ~0.4× real time on their own (shred 0.41, tremolo 0.42).
+2. 🎲 **The fifth die was legal.** One die per Drive point holds (`dicePool.js` `powerPool`). The dial shows the STACK's reading; the dice are the dial **plus** its buffs — the temp Drive boost (a melody ending on your Drive root, or an event), Mosh, and 🔦 **+1 for attacking from under your own spotlight** — and nothing on screen said which. No card was involved.
+3. ⏳ **The double climb was the seat rule's own shape.** The found note sits DOWN in the seat it opens, so opening seat 4 leaves the stack full at 4 — exactly seat 5's "earlier seats filled" condition. With 12+ fans and a second Lost Chord in reach, seat 5 opened the same turn.
+4. 🎚️ **A full crowd by round 7 is the maximum rate.** Ronin: shred 1 + skip 1 + craft 2 = 4 fans a commit; 28 open seats ÷ 4 = 7. (The bot bench grows ~0.7/turn and cannot calibrate a human — used for nothing here.)
+5. 🔎 **The Db IS drawn** — in the SOUND plate, as a **6 px grey `Db` label** beside a bare number (`MatchSurface.jsx` `.match-sound-readout small`). At 1× it reads as nothing.
+
+### ✅ What shipped
+- 🧹 **`audio/ampVoice.js` — voice teardown.** The first source's `onended` cuts the front of the chain (`comp.disconnect()`: oscillators, filters, shapers leave the render); a timer then cuts the envelope, echo loop and reverb send once the echo fade has run out. **Stop times unchanged**; A/B offline render with a seeded IR differs by ≤ −49 dB (−57 Ronin), tails only. Same teardown in the monolith's `playScratchAtom` (Zero's scratch build) and `spiritSting.js` `hiss()` (the commit layer's noises). Realtime after: 0.16 → idle within 4 s.
+- ⏳ **`music/stackSlots.js` — one found seat per stack per round** (Alex's ruling: per STACK, so a round can still grow one Drive and one Sustain seat). `applyUnlockClaim` sets `driveSeatOpenedThisTurn` / `sustainSeatOpenedThisTurn`; `turnFlow.js` `startTurnNotes` clears them (one turn-start for engine AND client; a turn is a round for this purpose — you only walk on your own turn). `unlockClaim` and `unlockTargets` honour it; ⚠️ `liveUnlockPcs` passes `turnGate:false` so the board keeps the next hunt pinned instead of letting it drift. New `seatOpenedThisRound` feeds the "stack full" log and the locked-seat tooltip ("⏳ … from your next turn") so a gated stack is not told it has no target. Seeded in `economy.js`.
+- 🎚️ **`music/melodyPayout.js` — the craft +2 needs a SIX-note run** (`CRAFT_FAN_TOP = 6`; was 5). 4–5 → +1, 6+ → +2. Of three dials offered (this / cap 3 fans a commit / craft capped at +1) Alex picked the gentlest. Ceiling still 4; `craftFansFromRun` stays monotonic for the finder's bound.
+- 🎲 **`engine/systems/sonicRig.js` — `drivePowerBreakdown` / `drivePowerNote`.** The one place the dice arithmetic lives; `sonicRig` now computes its power FROM it. Arming a Sonic or a Swing logs e.g. *"🎲 5 dice: Drive 4 +1 standing in your own spotlight."*; the Sonic button's tooltip says the same. Log/tooltip text only — no layout touched.
+- 🎛️ **`.scratch/sound-plate-preview.html` — ⛔ PREVIEW, NOT PORTED.** OLD = the real shipped `MatchSurface`; NEW = the same `Bracket` + `ArenaDial` with levers: Db placement (side column / row under the dials / wallet bar), label text + size, number size, colour, the 5-Db ability price as READY or ticks; the Drive dial's extra dice (none / `+1` chip / ghost blocks / "5 DICE" caption), colour, size, hover source. States: Db 0–40, buffs none/+1/+2/−1, fans, all three pocket widths, zoom. localStorage from the one state chokepoint; a selectable dial-in box marking CHANGED vs default. Bundled from `.cl/soundPreview.jsx` in the session's cloud copy (not in the repo).
+
+### 🧪 Evidence
+- `test:voiceleak` **201** (new — `audio/voiceTeardownCheck.mjs`, in `test:all`; mutation: against the old `ampVoice.js`, 91 fail) · `test:stackslots` **161** (+§5b) · `test:spotlight` **362** (+§13: breakdown power = rig power over the whole buff grid) · `test:playfinder` **822** (§4's 5-note run now pays +1; a 6-note case added) · `test:ronintone` 100 · `test:commitstyles` 838 · `test:spiritsting` 84 · `test:mix` 49 · `test:turnflow` 73 · `test:arch` 8.
+- 🚩 **Full sweep — all 73 suites in `test:all`, each run on its own, HEAD vs HEAD + this change (cloud copy):** 51 green / 22 red, **the same 22 on both sides, each failing on the same first assertion** — 44-beamlayer's 20 plus `test:dice` and `test:shukuchiui` (they read preview files outside `src/`). The one difference is `test:voiceleak`, which is new.
+- `check:bundle` on a copy of Alex's working tree (HEAD + the uncommitted smoke work + this): no errors; its only warnings are the four standee case mismatches below, which the Windows tree does not see. On Alex's machine: `test:voiceleak` / `stackslots` / `spotlight` / `turnflow` / `ronintone` / `commitstyles` / `spiritsting` green. ⚠️ `test:arch` there is red on **3 untracked smoke modules** (`board/arenaSmoke.js`, `smokePresentation.js`, `smokeVolume.js`) from work in progress that is not this session's — green in the cloud without them.
+
+### 🎓 Findings
+- ⚠️ **In WebAudio, `stop()` is not cleanup.** A node graph with a filter in it outlives its source by the filter's tail — up to 30 s in Chrome — and costs full price the whole time. Every per-note graph needs an explicit `disconnect()`; `test:voiceleak` now holds that for `playAmpNote`. 📌 `riffSfx.js` / `unlockSfx.js` still build per-call biquads without teardown — one-shots, rare, left alone.
+- ⚠️ **The output clips.** Offline, a Ronin shred peaks at **~2.6** after the master compressor and the notes fader (1.0 is full scale). Not changed — the tone is dialled — but if a commit still sounds harsh rather than cut off, that is the next place to look.
+- 🧊 **The 7-round crowd was a human maxing every commit.** The bench's bots never get near it; a fan-rate question needs a human playtest, not `bench:bot`.
+- 🚩 **git's case is not the disk's.** `git ls-files src/standees` has `Cosmic_Ronin.png`, `Cosmic_Ronin_mirror.png`, `Metalness_Monster_mirror.png`; the Windows tree and four imports use `cosmic_ronin*.png` / `Metalness_monster_mirror.png` (`core.ignorecase=true`, so the renames never reached the index). A Linux build (Render) cannot resolve them. Reported, not fixed.
+- ⚠️ **The agent shell cannot unlink**, so a plain `git status` leaves `.git/index.lock` behind — it did this session (moved to `_to_delete/`). Use `git --no-optional-locks status` from the agent shell.
+
+### ⬅️ NEXT
+- 👂 **Alex: play two or three commits back to back** — the Ronin's shred especially — and listen for the drop-outs. If one still stutters, say which build (the log names it) and whether the 3D arena is on Lite.
+- ✅ **SOUND plate ported at Alex's dial-in** (same day): `MatchSurface.jsx` — labels 10.5 px, numbers 17 px, gold Db with READY / `/5` (`hud.dbCost`, the kit's own `ABILITY_DB_COST`; Alex's 6 in the preview was a slip, confirmed), a `+N` dice chip on the Drive dial at 10.5 px (`hud.driveBonus` / `hud.driveWhy`). Column 42 → 48 px (44 / 38 at the breakpoints). Verified by rendering the shipped component at the dial-in states; `test:arena` (pocket reads DRIVE…Db…FANS), `test:client`, `test:render`, `check:bundle`, `dialTickCheck` green. 👀 Alex: look at it in a match.
+- 🎚️ Watch the crowd pace next playtest; the next-gentlest dial, if it is still fast, is a 3-fans-a-commit cap.
+- 🚩 Decide the standee filename case (rename in git, or fix the four imports) before the next Render deploy.
 
 ---
 

@@ -254,6 +254,7 @@ import { NoteFlyChip } from "./ui/NoteFlyChip.jsx";
 // semitone offsets from the root you establish on the run's first final.
 import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, randomNote } from "./music/cadence.js";
 import { noteKeyFromEvent, stockIndexForKey, nextStackDest, keyLabel } from "./music/noteKeys.js";
+import { NUMPAD_DIRS, isNumpadMove, numpadTarget } from "./ui/numpadMove.js";
 import { chordContext, contextClaim, classifyTrack } from "./music/context.js";
 import { readStack } from "./music/vocabularies.js";
 
@@ -4001,6 +4002,45 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   useEffect(() => { noteKeyHandlerRef.current = keyboardNoteCommit; });
   useEffect(() => {
     const onKey = (e) => { if (noteKeyHandlerRef.current(e)) e.preventDefault(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // ⌨️ NUMPAD MOVES THE SPIRIT (Alex, 2026-09-30 — ui/numpadMove.js): 8/2 up and
+  // down, 7/9/1/3 the diagonals, 4/6 nothing (a flat-topped hex has no left or
+  // right neighbour), and "up" is board north whatever the camera does.
+  // ⭐ THE SAME PATH AS A CLICK on a lit hex (`onHexClick` → `move`), so every
+  // rule — the step budget, a body in the way, the dazed redirect, the free
+  // slime slide — holds for a key exactly as it does for a click. With the 👤
+  // Shadow's walk armed it walks the Shadow. Another armed action (Swing, Face,
+  // Shukuchi…) is left alone; with nothing armed, a press arms the walk AND steps.
+  const numpadHandlerRef = useRef(() => false);
+  function numpadMove(e) {
+    if (!isNumpadMove(e) || e.repeat || e.ctrlKey || e.altKey || e.metaKey) return false;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName ?? ''))) return false;
+    if (!acting || !isMyTurn || !canAct || isBot(acting)) return false;
+    if (battleState || activeEvent) return false;
+    // 🔓 The seat-unlock cinematic holds the board — keys are swallowed.
+    if (seatUnlockFx && !seatUnlockFx.short) return true;
+    if (turnStep !== 'move_act') return false;
+    if (action === 'move_shadow') {
+      const to = numpadTarget(e.code, HEX_BY_NUM[shadowHex]);
+      if (to) onHexClick(to.num);
+      return true;
+    }
+    if (action && action !== 'move') return false;
+    const to = numpadTarget(e.code, HEX_BY_NUM[acting.num]);
+    if (!to) { addLog(`⌨️ No hex ${NUMPAD_DIRS[e.code].name} of you — that's the edge of the stage.`); return true; }
+    if (action === 'move') { onHexClick(to.num); return true; }
+    if (moveStepsLeft < 1) { addLog('⌨️ No steps left this turn.'); return true; }
+    if (spiritByNum[to.num] || shadowHexes.includes(to.num)) { addLog("❌ Can't reach that hex!"); return true; }
+    setAction('move'); move(to.num);
+    return true;
+  }
+  useEffect(() => { numpadHandlerRef.current = numpadMove; });
+  useEffect(() => {
+    const onKey = (e) => { if (numpadHandlerRef.current(e)) e.preventDefault(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);

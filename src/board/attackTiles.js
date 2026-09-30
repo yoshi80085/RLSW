@@ -19,6 +19,7 @@
 // 📌 TWO HALVES, like moveTiles: the pure top (no three) is what a tile wants at
 // a given millisecond; the bottom is the three.js half.
 import * as THREE from 'three';
+import { boardFootprint } from './moveTiles.js';
 
 export const ATTACK_TILES = Object.freeze({
   // The ability's colour. ⭐ Swing red, Sonic blue — the two buttons' own colours
@@ -82,8 +83,10 @@ export function createAttackTiles(root, { pointFor, T = ATTACK_TILES }) {
   const tiles = new Map();
   // The board dim is a dark disc under the tiles (as moveTiles does): the arena's
   // own hex lines glow cyan, and a blue reach on an undimmed board disappears.
-  const dim = new THREE.Mesh(new THREE.CircleGeometry(15, 48).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0, depthWrite:false, toneMapped:false }));
+  // ⚠️ Cut to the hexes, NOT a disc: the old radius-15 circle reached past the
+  // board and dimmed a ring of space around the arena (2026-09-30).
+  const dim = new THREE.Mesh(boardFootprint(pointFor),
+    new THREE.MeshBasicMaterial({ color:0x000000, transparent:true, opacity:0, depthWrite:false, toneMapped:false, side:THREE.DoubleSide }));
   dim.position.y = BASE_Y - 0.015; dim.renderOrder = 56; dim.visible = false; group.add(dim);
   let vis = 0;
   let attack = null, color = new THREE.Color(attackColor('swing', T)), lastMs = null;
