@@ -278,9 +278,12 @@ console.log('§4 the rules a suggestion must respect');
   ok(db.line.at(-1) === 'G' && db.result.ending === 'fifth', `Db ends on the fifth (${db.line.join(' ')})`);
 
   // Fans: with no repeated pitch the Monster's chug is impossible, so his only
-  // fans are craft — and five distinct in-mode notes make the 5-note run (+2).
+  // fans are craft — and five distinct in-mode notes make the 5-note run.
+  // 🎚️ +1 since 2026-09-30: the +2 rung moved to a SIX-note run (melodyPayout.js).
   const fans = findBestPlay('Metalness_Monster', sheet({ rootNote: 'C', paletteMode: 'phrygian', noteStock: ['G', 'Db', 'F', 'C', 'Eb'] }), 'fans');
-  ok(fans.result.craftRun >= 5 && fans.result.craftFans === 2 && fans.result.fans === 2, `fans finds the 5-note run (${fans.line.join(' ')})`);
+  ok(fans.result.craftRun >= 5 && fans.result.craftFans === 1 && fans.result.fans === 1, `fans finds the 5-note run (${fans.line.join(' ')})`);
+  const six = findBestPlay('Metalness_Monster', sheet({ rootNote: 'C', paletteMode: 'phrygian', noteStock: ['G', 'Db', 'F', 'C', 'Eb', 'Ab'] }), 'fans');
+  ok(six.result.craftRun >= 6 && six.result.craftFans === 2, `…and a sixth note makes the 6-note run, the +2 rung (${six.line.join(' ')})`);
 
   // 🪤 REGRESSIONS the brute force found while the bounds were being written —
   // pinned here so they do not depend on the seed range §3 happens to run.

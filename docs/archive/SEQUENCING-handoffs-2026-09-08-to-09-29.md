@@ -1,10 +1,42 @@
-# SEQUENCING §A handoffs 8 → 43, archived 2026-09-29 (43 on 2026-09-30)
+# SEQUENCING §A handoffs 8 → 44, archived 2026-09-29 (43 and 44 on 2026-09-30)
 
 > Moved **unedited** out of `src/SEQUENCING.md` §A on 2026-09-29 (43-stagefx), where they had
 > restacked since 2026-09-04 despite `CLAUDE.md`'s one-handoff rule. Newest first, exactly as
 > they stood. Each has a one-line row in `src/SEQUENCING.md` §C; search here by its id
 > (e.g. `## 42-phone`). ⚠️ Relative links inside were written from `src/` — read `../` as
 > the repo root.
+
+---
+
+## 44-beamlayer. The Sonic's rings draw over everything but the Spirit they loop round — 2026-09-30
+
+Alex: *"For the Sonic attack - the sound form rings should be in a layer in front of everything (well... there is a moment when the attack 'circles' the attacking Spirit - it should go 'behind' it at this point) - but it seems like it loses out to some assets and gets cut out sometimes, can you fix this?"*
+
+### 🔍 Why it was cut out
+The arena is three stacked layers (arena canvas z 0 · the board's SVG on CSS3D z 1 · the foreground canvas z 2, which re-draws amps/fans/dice/crowd — the solid layer — and draws the standees). The whole Sonic clash lived in the ARENA scene, so everything on the two layers above painted over it: amps, fan stands, dice, and **both standees, always** — the beam never once crossed in front of either Spirit, and its hit flash hid behind the Rival. Its `depthTest:false` / renderOrder 137–145 only ever won inside the arena canvas.
+
+### ✅ What shipped
+- 🔊 **`board/beamLayer.js`** (new) — the clash (beams, shield, build rings, shards, HP plate) is its own scene, drawn LAST on the foreground canvas, after the solids and the standees. Depth cleared; the **attacker's print alone** is written back depth-only (alpha-tested, so the cut outline; the clear sheet never writes depth) and every beam material depth-tests against it — so the near side of the loop is in front of the attacker and the far side goes behind, and nothing else (Rival, amps, fans, board) can cover it.
+- ✨ **It keeps its glow.** The additive parts render into a HalfFloat target with the arena's OWN bloom (same strength/radius/threshold; off in Lite like the arena's), are tone-mapped with the renderer's ACES + exposure, and are **screened** onto the canvas (premultiplied, alpha = brightest channel). The normal-blended parts (only the shield's HP plate today) go on `BEAM_FLAT_LAYER` and draw straight on. An unlit bout (the dice beats) costs nothing — no clear, no bloom.
+- 🔌 `arenaVisuals.createArenaVisuals(scene, {foregroundScene, beamScene})` puts the clash there when given one (headless checks without one keep it in the arena, unchanged) and exposes `beamOccluders()` → the attacker's pawn. `arenaRenderer.js` makes the layer from its own bloom's settings and draws it right after `foreground.render(foregroundScene)`.
+- 🧪 **`test:beamlayer`** — `board/beamLayerCheck.mjs`, **53** checks, in `test:all`: the live arena hands the clash to the layer and names only the attacker; the five draws in order against a recording renderer; nothing borrowed (materials, layers, camera, clear colour) left changed; an unlit bout draws nothing; the renderer draws it last. Mutation-tested (clash back in the arena, plate on the glow layer, materials not restored, an ADD composite, no depth test, the draw call removed — each fails).
+
+### 🎓 Findings
+- ⚠️ **An ADD composite whites out.** The first bloomed version added the tone-mapped glow onto the canvas; the shield break went to a white sheet (`.scratch/beam-layer/rejected-additive-composite-f026.png`). The arena used to tone-map arena + beam TOGETHER, which rolls off; tone-mapping them apart and adding clips. A screen rolls off the same way — and every pixel it writes is valid premultiplied, so it needs no browser tolerance for super-luminous pixels.
+- ⚠️ **`toneMapped:false` materials go white off the arena canvas.** The arena's OutputPass tone-maps everything after the fact, whatever the material says; on a canvas drawn directly, the clash's `toneMapped:false` glows (shards, shield) skip ACES and read as pure white. Rendering into a target and tone-mapping in the composite sidesteps it.
+- 📌 **What it gives up:** the arena's depth of field no longer blurs the beam (sharp during a focus shot, as the solids are). A stretch of beam physically behind the attacker from the lens (e.g. the first leg out of an amp behind them) also passes behind the print — same geometry as the loop.
+- 📌 **Assertion diffs on three.js objects take minutes.** A failing `assert.equal(meshA, meshB)` prints the whole object graph and reads as a hang; the new check compares identity with `assert.ok(a === b, …)`.
+
+### 🧪 Evidence
+- 🖼️ `.scratch/beam-layer/before-after.png` — the real `mountArena`, one scripted clash on a virtual clock, same frames old vs new (cloud Chromium, SwiftShader). Probe + README there.
+- `test:beamlayer` 53 · `test:arch` 8 (Alex's machine) · `test:sonic` / `test:battledirector` 45 / `test:battlelens` 18 / `test:attacktiles` 28 / `arenaPresentationCheck` / `sonicIntegrationCheck` green (cloud copy of the tree).
+- 🧹 eslint clean on `beamLayer.js`, `arenaVisuals.js`, `arenaRenderer.js`.
+- 🚩 **Full sweep, every suite run (not stopping at the first red): 52 green, 20 red — the SAME 20 that 43-stagefx listed** (engine, legal, eval, transition, battleflow, winconditions, slime, eleven, harness, skilltree, shamisen, bushido, b0, journey, battlejourney, cameradirector, standee, crowdbubble, loadoutui, topview). The board ones (cameradirector 1/92, standee 1/98, topview 1/60) and five others were re-run on a copy of the tree WITHOUT this change: identical failures. `test:dice`, `test:shukuchiui`, `test:bushidoui` need preview files outside `src/` and were run where those exist: green.
+- ⚠️ **Not seen on a real GPU.** The foreground canvas is the `low-power` context; the glow pass adds a bloom there only while the clash is lit.
+
+### ⬅️ NEXT
+- 👀 **Alex: play a Sonic** and watch (1) the rings over the amps, fans and dice, (2) the loop going behind your Spirit on its far side, (3) the hit flashes in front of the Rival. If the glow reads hotter or cooler than it did, the lever is the composite in `beamLayer.js` (the bloom settings are the arena's own).
+- 📌 FPS during a Sonic on a laptop iGPU — the auto-quality drop to Lite also turns the beam's bloom off.
 
 ---
 

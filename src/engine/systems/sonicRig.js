@@ -132,15 +132,52 @@ export function rigRadius(ns = {}, onTurn = false) {
 // the tempDrive/moshDrive cap of 2 because it is not a stackable buff — it is
 // one die, earned by standing in one place, and gone the moment you step off.
 // ⚠️ Not added at eleven: the amp only goes to eleven.
-export function sonicRig(ns = {}, distFromHome, chargeBoost = 0, onTurn = false, spiritId = null, extraDrive = 0) {
-  void distFromHome;void chargeBoost;void onTurn;
+/**
+ * 🎲 WHY THIS MANY DICE — the Drive dial, plus every modifier, named.
+ *
+ * Alex's playtest, 2026-09-30: *"I rolled 5 die even though my Drive was a 4?"*
+ * The rule held — one die per point of Drive — but the HUD dial shows the
+ * STACK's reading and the dice are thrown off the dial PLUS its buffs, and
+ * nothing on screen said which buff. This is the one place that arithmetic
+ * lives: `sonicRig` below is computed FROM it, so the explanation a player
+ * reads and the dice they throw cannot disagree.
+ *
+ * @returns {{ dial:number, power:number, parts:{n:number, label:string}[] }}
+ *   `dial` — what the HUD dial shows; `power` — the dice thrown (before the
+ *   six-note d8 upgrade); `parts` — every non-zero modifier between the two.
+ */
+export function drivePowerBreakdown(ns = {}, spiritId = null, extraDrive = 0) {
   // 🎸 CHORD_VOCABULARY_DESIGN.md: the Drive dial is the Spirit's own reading of
   // the stack (1–10). The 🪐 Intergalactic 0 innate (+1 Drive on a cluster) is
   // GONE (Alex, 2026-09-27: "Lets do away with it").
-  const read=ns.driveStack?.length?readStack(spiritId,ns.driveStack).drive:0;
-  const bonus=Math.min(2,(ns.tempDrive??0)+(ns.moshDrive??0));
+  const dial = ns.driveStack?.length ? readStack(spiritId, ns.driveStack).drive : 0;
   // Empty charge must not fall back to the old, stronger static stat sheet.
-  const power=read?Math.max(0,read+bonus+extraDrive-(ns.instrumentDropped?1:0)):0;
+  if (!dial) return { dial: 0, power: 0, parts: [] };
+  // ⚠️ THE CAP OF 2 IS SHARED by the two stackable buffs; the temp boost is
+  // counted first, so a capped Mosh shows the part of it that actually landed.
+  const temp = Math.min(2, Math.max(0, ns.tempDrive ?? 0));
+  const mosh = Math.min(2 - temp, Math.max(0, ns.moshDrive ?? 0));
+  const parts = [
+    temp ? { n: temp, label: 'Drive boost (from a melody ending on your Drive root, or an event — spent by your next battle)' } : null,
+    mosh ? { n: mosh, label: 'Mosh' } : null,
+    extraDrive ? { n: extraDrive, label: 'standing in your own spotlight' } : null,
+    ns.instrumentDropped ? { n: -1, label: 'dropped instrument' } : null,
+  ].filter(Boolean);
+  const power = Math.max(0, dial + parts.reduce((t, p) => t + p.n, 0));
+  return { dial, power, parts };
+}
+
+/** "5 dice: Drive 4 +1 standing in your own spotlight" — or null when the dice
+ *  are just the dial. For the log and the Sonic button's tooltip. */
+export function drivePowerNote(breakdown) {
+  if (!breakdown?.parts?.length) return null;
+  const mods = breakdown.parts.map(p => `${p.n > 0 ? '+' : '−'}${Math.abs(p.n)} ${p.label}`).join(', ');
+  return `${breakdown.power} dice: Drive ${breakdown.dial} ${mods}`;
+}
+
+export function sonicRig(ns = {}, distFromHome, chargeBoost = 0, onTurn = false, spiritId = null, extraDrive = 0) {
+  void distFromHome;void chargeBoost;void onTurn;
+  const { power } = drivePowerBreakdown(ns, spiritId, extraDrive);
   // ⚠️ THE CHARGE-ZONE CEILING (+2 sides) IS STILL A ROOF, NOT A FLOOR — R8
   // (Phase 2 item 2) is unchanged by the vocabulary work; see git history.
   const ceil=(ns.chargeCeilTurns??0)>0;

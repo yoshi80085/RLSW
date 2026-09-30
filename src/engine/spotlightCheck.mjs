@@ -14,6 +14,7 @@ import {
   poseSpotFor, homeSpotlightDrive, spotlightRelation,
 } from './systems/spotlights.js';
 import { attackParams, rigFor } from './systems/attackParams.js';
+import { sonicRig, drivePowerBreakdown, drivePowerNote } from './systems/sonicRig.js';
 import { startTurnNotes } from './systems/turnFlow.js';
 import { HEX_BY_NUM } from '../board/hexMap.js';
 import { axialDist } from '../board/hexGeometry.js';
@@ -238,6 +239,32 @@ for (const [vibe, want] of [[14, 1], [9, 2], [3, 3], [15, 0]]) {
   const st = fresh().noteStates[RONIN];
   const quiet = startTurnNotes({ ...st, sustainStack: ['C', 'E', 'G', 'B'], pendingSonicAttacks: 0 }, { spiritId: RONIN });
   eq(quiet.patch.sustainStack, ['C', 'E', 'G', 'B'], 'a quiet turn start costs no Sustain');
+}
+
+// ── §13. 🎲 The dice explain themselves (Alex's playtest, 2026-09-30) ────────
+// "I rolled 5 die even though my Drive was a 4?" — one die per Drive point is
+// the rule, and it held: the fifth die was a buff the HUD dial does not show.
+// `drivePowerBreakdown` names every buff, and `sonicRig` is computed FROM it,
+// so the words and the dice cannot drift. Swept over the buff space.
+{
+  const stack = ['C', 'E', 'G', 'B'];   // a four-note stack reads as some dial; the sweep does not care which
+  for (const tempDrive of [0, 1, 2, 3]) for (const moshDrive of [0, 1, 2]) for (const extra of [0, 1])
+    for (const instrumentDropped of [false, true]) {
+      const ns = { driveStack: stack, tempDrive, moshDrive, instrumentDropped };
+      const why = drivePowerBreakdown(ns, RONIN, extra);
+      eq(sonicRig(ns, 0, 0, true, RONIN, extra).power, why.power,
+        `the breakdown's power is the rig's power (temp ${tempDrive}, mosh ${moshDrive}, light ${extra}, dropped ${instrumentDropped})`);
+      eq(why.dial + why.parts.reduce((t, p) => t + p.n, 0), why.power, '…and the named parts add up to it');
+    }
+  const plain = drivePowerBreakdown({ driveStack: stack }, RONIN, 0);
+  eq(plain.parts, [], 'no buffs → nothing to explain');
+  eq(drivePowerNote(plain), null, '…and no log line');
+  eq(sonicRig({ driveStack: stack }, 0, 0, true, RONIN, 0).pool.length, Math.min(8, plain.dial),
+     '⭐ the rule itself: with no buffs, one die per point of the Drive dial');
+  const lit = drivePowerBreakdown({ driveStack: stack }, RONIN, 1);
+  ok(/Drive \d+ \+1 standing in your own spotlight/.test(drivePowerNote(lit)),
+     `the home light names itself (${drivePowerNote(lit)})`);
+  eq(drivePowerBreakdown({ driveStack: [] }, RONIN, 1).power, 0, 'an empty Drive stack throws nothing, spotlight or not');
 }
 
 console.log(`Spotlights: ${checks} checks passed.`);

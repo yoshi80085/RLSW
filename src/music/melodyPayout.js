@@ -32,12 +32,20 @@ import { detectDiatonicRun, detectSkipClimb } from './cadence.js';
 // something out then gives no bonus."* For a Spirit whose identity lives
 // elsewhere it is simply a shaped line finally paying something.
 //
-//   run of 3 → +0    run of 4 → +1    run of 5 or more → +2
+//   run of 3 → +0    run of 4–5 → +1    run of 6 or more → +2
+//
+// 🎚️ THE TOP RUNG MOVED 5 → 6 (Alex, 2026-09-30 playtest: *"I was able to get a
+// full crowd by round 7 or so — lets dial back the fan gain *slightly*"*). A
+// Ronin landing shred + skip + a five-note run banked the maximum 4 fans on
+// nearly every commit, and 28 open seats ÷ 4 is round 7. Of the three dials
+// offered he picked the gentlest: the ceiling is still 4 and the floor is
+// untouched, but the +2 now asks for a SIX-note run — most of an 8-seat track.
 //
 // 📌 BOTH DETECTORS ARE CLEAN-ONLY ALREADY — they index into `currentScale`, so
 // an out-of-scale note breaks the run. Discord still buys movement and nothing
 // else, which is the rule everywhere else in the economy.
-export const CRAFT_FAN_FLOOR = 4;   // the first run length that pays craft
+export const CRAFT_FAN_FLOOR = 4;   // the first run length that pays craft (+1)
+export const CRAFT_FAN_TOP   = 6;   // the run length that pays the cap (+2) — was 5 until 2026-09-30
 export const CRAFT_FAN_CAP   = 2;   // ⚠️ fans feed FAME — see §4.3's bench note
 
 /** The longest clean, same-direction run the line contains, by step OR by
@@ -48,7 +56,10 @@ export function craftRunFor(line, scale) {
 }
 
 export function craftFansFromRun(run) {
-  return Math.min(CRAFT_FAN_CAP, Math.max(0, (run ?? 0) - (CRAFT_FAN_FLOOR - 1)));
+  const r = run ?? 0;
+  // ⚠️ Stays MONOTONIC in `run` — `playFinder`'s fans bound feeds it an upper
+  // bound on the run and relies on a longer run never paying less.
+  return r >= CRAFT_FAN_TOP ? CRAFT_FAN_CAP : r >= CRAFT_FAN_FLOOR ? 1 : 0;
 }
 
 // ── 🎼 THE ENDING LADDER — WHY THE FIFTH PAYS MOST ───────────────────────────

@@ -1,4 +1,6 @@
 import { createIdleFlow } from './idleFlow.js';
+import { createArenaSmoke } from './arenaSmoke.js';
+import { LIMELIGHT_HEX } from '../data/gameConstants.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -101,6 +103,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     environment.setPlanetDistance(RIVEN_WORLD.planetDistance);
     const rivenWorld=createRivenWorld(scene,camera);cleanups.push(()=>rivenWorld.dispose());
     const visuals=createArenaVisuals(scene,{foregroundScene,beamScene:beams.scene});cleanups.push(()=>visuals.dispose());
+    const smoke=createArenaSmoke({foreground,scene,center:arenaPoint(LIMELIGHT_HEX,.1)});cleanups.push(()=>smoke.dispose());
     const crowd=createArenaCrowd(scene);crowd.group.visible=false;cleanups.push(()=>crowd.dispose());
     const crowdSpeaker=document.createElement('div');
     Object.assign(crowdSpeaker.style,{position:'fixed',width:'2px',height:'2px',pointerEvents:'none',opacity:'0'});
@@ -262,7 +265,8 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       reportCamera(topView?'top':sonicCamera.manual?'battle-manual':sonicCamera.active?'sonic':!autoCamera||!cameraShot||cameraShot.mode==='off'?'off':cameraShot.mode,cameraShot?.resumeInMs);
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
-      const stats=visuals.diagnostics(),moving=stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||sonicCamera.active||!!cameraShot?.driving||!!refocus;
+      const smokeState=smoke.update(frame.smoke,elapsed,camera,{reduced});
+      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||sonicCamera.active||!!cameraShot?.driving||!!refocus;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
@@ -284,8 +288,13 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         }else delete crowdSpeaker.dataset.arenaCrowdSpeaker;
         for(const e of emissives)if(e.crack)e.material.emissiveIntensity=e.base*(reduced?1:1+.08*Math.sin(elapsed*.75));
         renderer.info.reset();composer.render();overlay.render(overlayScene,camera);
-        foreground.clear();markSolid([crowd.group,...visuals.solidRoots()]);solid.render(scene,camera);foreground.render(foregroundScene,camera);
-        beams.render(camera,{occluderScene:foregroundScene,occluders:visuals.beamOccluders(),bloom:bloom.enabled});dirty=false;
+        smoke.begin();foreground.clear();markSolid([smoke.vent,crowd.group,...visuals.solidRoots()]);solid.render(scene,camera);foreground.render(foregroundScene,camera);
+        smoke.composite();
+        beams.render(camera,{occluderScene:foregroundScene,occluders:visuals.beamOccluders(),bloom:bloom.enabled});
+        smoke.drawSelf(camera,foregroundScene,visuals.pawnFor(frame.smoke?.selfId));dirty=false;
+        host.dataset.arenaSmokeAmount=smokeState.opacity.toFixed(3);host.dataset.arenaSmokeExtent=smokeState.extent.toFixed(3);
+        host.dataset.arenaSmokeSelf=frame.smoke?.selfId??'';
+        host.dataset.arenaLaserPhase=stats.laserDetail.phase;host.dataset.arenaLaserPods=String(stats.laserDetail.pods);host.dataset.arenaLaserLanes=String(stats.laserDetail.lanes);
         samples++;
         if(now-sampleStart>2500) {
           fps=Math.round(samples*1000/(now-sampleStart));samples=0;sampleStart=now;
@@ -364,3 +373,4 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     };
   } catch(error) {dispose();throw error;}
 }
+

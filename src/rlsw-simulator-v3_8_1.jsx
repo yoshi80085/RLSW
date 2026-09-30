@@ -79,7 +79,7 @@ import { scheduleSonicVolley, scheduleSonicBarrage } from "./board/sonicPresenta
 import { SWING_TIMING, SWING_BEATS, SWING_GATE } from './board/swingTiming.js';
 import { SONIC_SEQUENCE, sonicContactTime } from './board/sonicSequence.js';
 import { playSonicBeamAudio } from "./audio/sonicBeamAudio.js";
-import { sonicRig, rigPoolLabel } from "./engine/systems/sonicRig.js";
+import { sonicRig, rigPoolLabel, drivePowerBreakdown, drivePowerNote } from "./engine/systems/sonicRig.js";
 import AmpDecks from "./board/ampDecks.jsx";
 import { hexRingFromCenter, crowdMultiplier, advanceDB } from "./board/boardHelpers.js";
 import { DEFAULT_SKIN_ID, stageSkinPlateFilter, stageSkinLineMatrix } from "./board/stageSkins.js";
@@ -92,7 +92,8 @@ import { voiceRiff, nearestPositionForKey } from "./riff/guitarMap.js";
 import { isMirrorFacing, MIRROR_SPRITES } from "./ui/GameErrorBoundary.jsx";
 import { useStageEffects } from "./hooks/useStageEffects.js";
 import { STAGE_FX_META, SMOKE_ROUNDS, LASER_ROUNDS, LASER_DAMAGE, PYRO_WAVES, PYRO_DAMAGE, PYRO_BURN_TURNS, ANIMATRONIC_ROUNDS, ANIMATRONIC_DAMAGE } from "./data/stageEffects.js"; // tuning the engine consumes directly (counts/radii/waves) moved with the 6b flip
-import { hexInSmoke, hexInBeams } from "./board/stageFx.js"; // pattern/spawn rolls moved into the engine (Phase 6b)
+import { hexInBeams } from "./board/stageFx.js"; // pattern/spawn rolls moved into the engine (Phase 6b)
+import { smokeViewerId as resolveSmokeViewer, isSmokeHidden } from './board/smokePresentation.js';
 import { StageFXBoardLayer, StageFXBanner } from "./ui/StageFXLayer.jsx";
 import { makeInitialState } from "./engine/state.js";
 import { applyAction } from "./engine/reduce.js";
@@ -107,7 +108,7 @@ import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineM
 // player sees and the hex an ability will accept have to be the same read.
 import { slimeBites, slideTarget, SLIME_VIBE_DAMAGE } from "./engine/systems/slime.js";
 import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX, ELEVEN_DRIVE } from "./data/gameConstants.js";
-import { ABILITY_CD, cooldownLeft, canFire, firePatch, tickShamisen, resetAllCooldowns } from "./engine/systems/cooldowns.js";
+import { ABILITY_CD, ABILITY_DB_COST, cooldownLeft, canFire, firePatch, tickShamisen, resetAllCooldowns } from "./engine/systems/cooldowns.js";
 import { PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
          PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE,
          PSYCHO_BUSHIDO_STACK_COST, psychoBushidoBonus, SHADOW_ILLUSION_TURNS,
@@ -197,7 +198,7 @@ import { fanPawnShape } from "./ui/fanPawnShape.jsx";
 
 import { ENHARMONIC_RESPELL, canonicalRoot, getSpelledPool, pitchIndex, semitonesUpSpelled, buildScale, getIntervalNotes, getFourthFifth, playableScale, NOTE_POOL } from "./music/notes.js";
 
-import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim, crowdSize, crowdGateMet, unlockTargets } from "./music/stackSlots.js";
+import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim, crowdSize, crowdGateMet, unlockTargets, seatOpenedThisRound } from "./music/stackSlots.js";
 // 🔦 The four corner spotlights (Alex, 2026-09-25) — rules in the engine, read here.
 import { poseSpotFor, homeSpotlightDrive } from "./engine/systems/spotlights.js";
 import { SPOTLIGHT_POSE_SUSTAIN_COST, POSE_SUSTAIN_PENALTY, SPOTLIGHT_STEAL_CASUALS } from "./data/gameConstants.js";
@@ -3497,6 +3498,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // Route through envelope
       comp.connect(ampEnv);
       ampEnv.connect(master);
+      const tailNodes = [ampEnv];   // 🧹 unplugged after the echo fade — see below
 
       // ── Echo (slapback delay) ──
       if (kn.echo > 0.02) {
@@ -3508,12 +3510,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         df.gain.exponentialRampToValueAtTime(0.001, now + dur + 0.8 + kn.echo * 1.4);
         ampEnv.connect(dl); dl.connect(fb); fb.connect(dl);
         dl.connect(dg); dg.connect(df); df.connect(master);
+        tailNodes.push(dl, dg, fb, df);
       }
 
       // ── Reverb — send to the SHARED convolver ──
       if (kn.verb > 0.02) {
         const rg = ctx.createGain(); rg.gain.value = kn.verb * 0.85;
         ampEnv.connect(rg); rg.connect(verbBus);
+        tailNodes.push(rg);
       }
 
       // ── Start / stop ──
@@ -3522,6 +3526,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       osc1.stop(now + dur + tail);
       osc2.stop(now + dur + tail);
       sub.stop(now + dur + tail);
+      // 🧹 THE SAME TEARDOWN AS `playAmpNote` (audio/ampVoice.js — read its
+      // note for the measurement). A scratch is the same amp chain, so an
+      // un-unplugged one leaves the same biquads ringing silently for up to
+      // 30 s and helps starve the next melody. Sound-neutral: front cut only
+      // once the oscillators have stopped, the rest after the echo fade.
+      const echoEnd = now + dur + 0.8 + kn.echo * 1.4;
+      osc1.onended = () => {
+        try { comp.disconnect(); } catch { /* already gone */ }
+        setTimeout(() => { for (const n of tailNodes) { try { n.disconnect(); } catch { /* already gone */ } } },
+          Math.max(0, echoEnd - ctx.currentTime) * 1000 + 120);
+      };
     } catch (_) { /* audio unavailable */ }
   }
 
@@ -3646,6 +3661,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         const hint = !locked || !hunting || !rung ? ''
           : !crowdGateMet(actingNoteState ?? {}, rung)
           ? ` 🎤 Fill row ${rung.row} of your crowd (${crowdSize(actingNoteState ?? {})}/${rung.fansRequired} fans) and the hunt for ${rung.label} opens.`
+          : seatOpenedThisRound(actingNoteState ?? {}, dest)
+          ? ` ⏳ This stack already opened a seat this round — the next one can be found from your next turn.`
           : !unlockTargets(actingNoteState ?? {}, acting?.id)[dest]
           ? ` 🎼 These notes don't spell one of your chords yet, so nothing on the board can open the next seat — swap out a stray note (×) and follow the notes that glow in your hand.`
           : ` 🔓 Find the note that makes ${rung.label} on ${hunting} — it's on the board, and it opens the next seat.`;
@@ -6063,10 +6080,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
   }
 
-  // 💨 Is this Spirit hidden inside the smoke cloud? (Purely visual — the acting
-  // Spirit always stays visible so you can play your own turn.)
+  // Offline/hotseat follows the acting player. Online, only that player's own
+  // client gets a private silhouette; rivals and spectators see no covered pawn.
+  const smokeViewerId=resolveSmokeViewer(netRef.current,acting?.id);
   function isHiddenBySmoke(sp) {
-    return !!(smokeFx && sp && acting?.id !== sp.id && hexInSmoke(sp.num, smokeFx.radius));
+    return isSmokeHidden(sp,smokeFx,acting?.id,smokeViewerId);
   }
 
   // ☀️ SUNBEAM BLINDNESS — whose screen is currently white?
@@ -12203,6 +12221,18 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           db: dbPoints,
           fans: (actingNoteState?.casuals ?? 0) + (actingNoteState?.diehards ?? FAN_DIEHARD_START),
           drive: spiritChord(acting.id, actingDriveStack).drive,
+          // 🎲 The dice past the dial, and why (sonicRig.js drivePowerBreakdown).
+          // ⚠️ Not at eleven — the amp SETS the throw there, so a "+1" would lie.
+          ...(() => {
+            if (actingNoteState?.atEleven) return { driveBonus: 0, driveWhy: null };
+            const why = drivePowerBreakdown(actingNoteState ?? {}, acting.id, homeSpotlightDrive(engineState, acting.id));
+            return { driveBonus: why.power - why.dial, driveWhy: drivePowerNote(why) };
+          })(),
+          // 💰 What one ability use costs — the cheapest in this seat's kit.
+          dbCost: (() => {
+            const costs = (actingNoteState?.unlockedSkills ?? []).map(id => ABILITY_DB_COST[id]).filter(Number.isFinite);
+            return costs.length ? Math.min(...costs) : null;
+          })(),
           sustain: spiritChord(acting.id, actingSustainStack).sustain,
           noteCount: canAct ? noteStock.length - usedStockIdx.length : null,
           // 🔑 THE ROOT, FOR THE POCKET'S BADGE. ⚠️ `rootIsNext` IS THE SAME TEST
@@ -13092,6 +13122,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       else if (canSwing) {
                         setAction('swing');
                         addLog('⚔️ SWING — click a rival in your cone to attack! (1 AP)');
+                        // 🎲 Same dice source as the Sonic — say where any extra die came from.
+                        const swingWhy = actingNoteState?.atEleven ? null
+                          : drivePowerNote(drivePowerBreakdown(actingNoteState ?? {}, acting?.id, homeSpotlightDrive(engineState, acting?.id)));
+                        if (swingWhy) addLog(`🎲 ${swingWhy}.`);
                       }
                     }}>
                     ⚔️ Swing{targetCount > 0 ? ` (${targetCount})` : ''} {!canSwing && moveStepsLeft < 1 ? '(1AP)' : ''}
@@ -13159,6 +13193,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               // 🃏 The label shows the armed card's dice — what will be thrown.
               const poolDisplay = cardedRig(actingRig, actingNoteState ?? {}).pool;
               const diceLabel = rigPoolLabel(poolDisplay);
+              // 🎲 WHY THIS MANY DICE — Alex's playtest, 2026-09-30: "I rolled 5
+              // die even though my Drive was a 4?" The dial shows the stack; the
+              // dice are the dial PLUS its buffs. Name them (sonicRig.js).
+              const diceWhy = actingNoteState?.atEleven ? null
+                : drivePowerNote(drivePowerBreakdown(actingNoteState ?? {}, acting?.id, homeSpotlightDrive(engineState, acting?.id)));
               // 📡 Sonic is OFFLINE outside the rig's radius — the button fades.
               // GRAYED = no AP / token spent (mechanical); FADED = out of amp
               // range or no rival in the beam (positional). Hover shows both
@@ -13184,13 +13223,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       : outOfRange
                       ? "The amp is blown. Recover it before firing Sonic."
                       : canSonic
-                      ? `Sonic Attack (2 AP) — the forward volley. ${diceLabel}; Drive wears down rolled Sustain HP; excess strength passes through. Each penetrating ring adds one hex to the final shove. Spends your whole Drive charge. Facing rivals with working amps trigger a RIFF-OFF.`
+                      ? `Sonic Attack (2 AP) — the forward volley. ${diceLabel}${diceWhy ? ` (${diceWhy})` : ''}; Drive wears down rolled Sustain HP; excess strength passes through. Each penetrating ring adds one hex to the final shove. Spends your whole Drive charge. Facing rivals with working amps trigger a RIFF-OFF.`
                       : "Sonic Attack (2 AP) — build Drive and aim at a rival within three hexes directly ahead."}
                     onClick={() => {
                       if (action === 'sonic') { setAction(null); }
                       else if (canSonic) {
                         setAction('sonic');
                         addLog(`🔊 SONIC ATTACK — click a target in your beam! (${diceLabel}; beat their Sustain)`);
+                        if (diceWhy) addLog(`🎲 ${diceWhy}.`);
                       }
                     }}>
                     🔊 Sonic{outOfRange ? ' 📡' : beamCount > 0 ? ` (${beamCount})` : ''} {diceLabel}
@@ -14775,10 +14815,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         // 🎼 A full stack of LOOSE notes has no target at all (it must
                         // spell one of this Spirit's chords) — say so instead of
                         // sending the player to hunt a note that does not exist.
-                        const noTarget = i === seatCap && seatRoot && !crowdShort && stack.length >= seatCap
+                        // ⏳ One found seat per stack per round — say "next round", not "no target".
+                        const roundGated = i === seatCap && seatRoot && !crowdShort && seatOpenedThisRound(actingNoteState ?? {}, side);
+                        const noTarget = i === seatCap && seatRoot && !crowdShort && !roundGated && stack.length >= seatCap
                           && !unlockTargets(actingNoteState ?? {}, acting?.id)[side];
                         const lockTitle = !locked ? undefined
                           : crowdShort ? `🎤 Seat ${i + 1} — fill row ${seatRung.row} of your crowd first (${crowdSize(actingNoteState ?? {})}/${seatRung.fansRequired} fans), then find ${seatRung.label} on the board`
+                          : roundGated ? `⏳ Seat ${i + 1} — this stack already opened a seat this round. Find ${seatRung?.label} on ${seatRoot} from your next turn.`
                           : noTarget ? `🎼 Seat ${i + 1} — these notes don't spell one of your chords yet, so no Lost Chord can open this seat. Swap out a stray note (×) and follow the notes that glow in your hand.`
                           : i === seatCap && seatRoot ? `🔓 Seat ${i + 1} — find the note that makes ${seatRung?.label} on ${seatRoot} on the board`
                           : i === seatCap ? `🔓 Seat ${i + 1} — commit a note to set this stack's root, then hunt ${seatRung?.label} on it`
@@ -14929,7 +14972,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               quality={arenaQuality} onQualityLabel={setArenaQualityLabel} cameraRef={arenaCameraRef}
               sceneFrame={board3D ? arenaFrame({
                 spirits:spirits.filter(s => !isHiddenBySmoke(s)), noteStates, crowdSpirits:spirits,
-                actingId:acting?.id, turn:engineState.turn.count, battle:battleState,
+                actingId:acting?.id, viewerId:smokeViewerId, turn:engineState.turn.count, battle:battleState,
                 slides:slideOffAnimations, flashes:effectFlashes, thump:deckThump,
                 laser:laserFx, pyro:pyroFx, smoke:smokeFx, slime:slimeTiles,
                 fire:flamingHexes, vortex:gravityVortex, bots:animatronics,

@@ -13,7 +13,7 @@
 > |---|---|
 > | **A** | 🧭 **the current handoff** — what just happened and what is next |
 > | **B** | 🎓 **the findings** — lessons that cost real money to learn, kept because each one is now a live defence in the test suite |
-> | **C** | 📇 **the index** — every handoff (78 rows), dated, one line each, pointing into the archive |
+> | **C** | 📇 **the index** — every handoff (79 rows), dated, one line each, pointing into the archive |
 >
 > ⚠️ **NOTHING WAS DELETED.** If a line below is too short to act on, the full
 > text is in the archive under the same section id.
@@ -26,39 +26,44 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-> ✅ **§A IS ONE HANDOFF AGAIN (2026-09-29).** Handoffs 8 → 43 had restacked here since
-> 2026-09-04; they moved **unedited** to `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`
-> and each has a row in §C. **Next session: when you write §A, move this one there too.**
+> ✅ **§A IS ONE HANDOFF (2026-09-29).** Handoffs 8 → 44 live **unedited** in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`
+> (44-beamlayer moved there 2026-09-30) and each has a row in §C. **Next session: when you write §A, move this one there too.**
 
-## 44-beamlayer. The Sonic's rings draw over everything but the Spirit they loop round — 2026-09-30
+## 45-playtest. Melodies stop cutting off, one seat per stack per round, a gentler crowd, dice that say why — 2026-09-30
 
-Alex: *"For the Sonic attack - the sound form rings should be in a layer in front of everything (well... there is a moment when the attack 'circles' the attacking Spirit - it should go 'behind' it at this point) - but it seems like it loses out to some assets and gets cut out sometimes, can you fix this?"*
+Alex, after a playtest: *"1. Some of the melody lines that play out seem like they're getting 'cut off' part way through … 2. I rolled 5 die even though my Drive was a 4? … 3. Drive stack was able to upgraded twice in one round. I wonder if there should be a gate for this? 4. I was able to get a full crowd by round 7 or so - lets dial back the fan gain *slightly*. 5. It doesn't show my Db anywhere - this should be fixed."*
 
-### 🔍 Why it was cut out
-The arena is three stacked layers (arena canvas z 0 · the board's SVG on CSS3D z 1 · the foreground canvas z 2, which re-draws amps/fans/dice/crowd — the solid layer — and draws the standees). The whole Sonic clash lived in the ARENA scene, so everything on the two layers above painted over it: amps, fan stands, dice, and **both standees, always** — the beam never once crossed in front of either Spirit, and its hit flash hid behind the Rival. Its `depthTest:false` / renderOrder 137–145 only ever won inside the arena canvas.
+### 🔍 What each one actually was
+1. 🧹 **The cut-offs were the AUDIO THREAD, not the phrasing.** `playAmpNote` builds a ~25-node graph per note and never disconnected it. Chrome keeps a connected `BiquadFilter` processing for its computed tail — capped at **30 s** — so the tone stack and the 4× waveshapers behind it kept rendering silence long after the oscillators stopped. Measured in cloud Chromium (real `AudioContext`, `/proc` CPU of the browser): **60 KATANA notes burned ~3.3 CPU-s per 4 s for ~25 s after the last note, then fell to idle (0.05)**. A Ronin shred is ~28 notes (tremolo ~48), so a couple of commits plus a barrage stacked hundreds of zombie voices and the next phrase dropped out mid-line. Offline, the heaviest builds already cost ~0.4× real time on their own (shred 0.41, tremolo 0.42).
+2. 🎲 **The fifth die was legal.** One die per Drive point holds (`dicePool.js` `powerPool`). The dial shows the STACK's reading; the dice are the dial **plus** its buffs — the temp Drive boost (a melody ending on your Drive root, or an event), Mosh, and 🔦 **+1 for attacking from under your own spotlight** — and nothing on screen said which. No card was involved.
+3. ⏳ **The double climb was the seat rule's own shape.** The found note sits DOWN in the seat it opens, so opening seat 4 leaves the stack full at 4 — exactly seat 5's "earlier seats filled" condition. With 12+ fans and a second Lost Chord in reach, seat 5 opened the same turn.
+4. 🎚️ **A full crowd by round 7 is the maximum rate.** Ronin: shred 1 + skip 1 + craft 2 = 4 fans a commit; 28 open seats ÷ 4 = 7. (The bot bench grows ~0.7/turn and cannot calibrate a human — used for nothing here.)
+5. 🔎 **The Db IS drawn** — in the SOUND plate, as a **6 px grey `Db` label** beside a bare number (`MatchSurface.jsx` `.match-sound-readout small`). At 1× it reads as nothing.
 
 ### ✅ What shipped
-- 🔊 **`board/beamLayer.js`** (new) — the clash (beams, shield, build rings, shards, HP plate) is its own scene, drawn LAST on the foreground canvas, after the solids and the standees. Depth cleared; the **attacker's print alone** is written back depth-only (alpha-tested, so the cut outline; the clear sheet never writes depth) and every beam material depth-tests against it — so the near side of the loop is in front of the attacker and the far side goes behind, and nothing else (Rival, amps, fans, board) can cover it.
-- ✨ **It keeps its glow.** The additive parts render into a HalfFloat target with the arena's OWN bloom (same strength/radius/threshold; off in Lite like the arena's), are tone-mapped with the renderer's ACES + exposure, and are **screened** onto the canvas (premultiplied, alpha = brightest channel). The normal-blended parts (only the shield's HP plate today) go on `BEAM_FLAT_LAYER` and draw straight on. An unlit bout (the dice beats) costs nothing — no clear, no bloom.
-- 🔌 `arenaVisuals.createArenaVisuals(scene, {foregroundScene, beamScene})` puts the clash there when given one (headless checks without one keep it in the arena, unchanged) and exposes `beamOccluders()` → the attacker's pawn. `arenaRenderer.js` makes the layer from its own bloom's settings and draws it right after `foreground.render(foregroundScene)`.
-- 🧪 **`test:beamlayer`** — `board/beamLayerCheck.mjs`, **53** checks, in `test:all`: the live arena hands the clash to the layer and names only the attacker; the five draws in order against a recording renderer; nothing borrowed (materials, layers, camera, clear colour) left changed; an unlit bout draws nothing; the renderer draws it last. Mutation-tested (clash back in the arena, plate on the glow layer, materials not restored, an ADD composite, no depth test, the draw call removed — each fails).
-
-### 🎓 Findings
-- ⚠️ **An ADD composite whites out.** The first bloomed version added the tone-mapped glow onto the canvas; the shield break went to a white sheet (`.scratch/beam-layer/rejected-additive-composite-f026.png`). The arena used to tone-map arena + beam TOGETHER, which rolls off; tone-mapping them apart and adding clips. A screen rolls off the same way — and every pixel it writes is valid premultiplied, so it needs no browser tolerance for super-luminous pixels.
-- ⚠️ **`toneMapped:false` materials go white off the arena canvas.** The arena's OutputPass tone-maps everything after the fact, whatever the material says; on a canvas drawn directly, the clash's `toneMapped:false` glows (shards, shield) skip ACES and read as pure white. Rendering into a target and tone-mapping in the composite sidesteps it.
-- 📌 **What it gives up:** the arena's depth of field no longer blurs the beam (sharp during a focus shot, as the solids are). A stretch of beam physically behind the attacker from the lens (e.g. the first leg out of an amp behind them) also passes behind the print — same geometry as the loop.
-- 📌 **Assertion diffs on three.js objects take minutes.** A failing `assert.equal(meshA, meshB)` prints the whole object graph and reads as a hang; the new check compares identity with `assert.ok(a === b, …)`.
+- 🧹 **`audio/ampVoice.js` — voice teardown.** The first source's `onended` cuts the front of the chain (`comp.disconnect()`: oscillators, filters, shapers leave the render); a timer then cuts the envelope, echo loop and reverb send once the echo fade has run out. **Stop times unchanged**; A/B offline render with a seeded IR differs by ≤ −49 dB (−57 Ronin), tails only. Same teardown in the monolith's `playScratchAtom` (Zero's scratch build) and `spiritSting.js` `hiss()` (the commit layer's noises). Realtime after: 0.16 → idle within 4 s.
+- ⏳ **`music/stackSlots.js` — one found seat per stack per round** (Alex's ruling: per STACK, so a round can still grow one Drive and one Sustain seat). `applyUnlockClaim` sets `driveSeatOpenedThisTurn` / `sustainSeatOpenedThisTurn`; `turnFlow.js` `startTurnNotes` clears them (one turn-start for engine AND client; a turn is a round for this purpose — you only walk on your own turn). `unlockClaim` and `unlockTargets` honour it; ⚠️ `liveUnlockPcs` passes `turnGate:false` so the board keeps the next hunt pinned instead of letting it drift. New `seatOpenedThisRound` feeds the "stack full" log and the locked-seat tooltip ("⏳ … from your next turn") so a gated stack is not told it has no target. Seeded in `economy.js`.
+- 🎚️ **`music/melodyPayout.js` — the craft +2 needs a SIX-note run** (`CRAFT_FAN_TOP = 6`; was 5). 4–5 → +1, 6+ → +2. Of three dials offered (this / cap 3 fans a commit / craft capped at +1) Alex picked the gentlest. Ceiling still 4; `craftFansFromRun` stays monotonic for the finder's bound.
+- 🎲 **`engine/systems/sonicRig.js` — `drivePowerBreakdown` / `drivePowerNote`.** The one place the dice arithmetic lives; `sonicRig` now computes its power FROM it. Arming a Sonic or a Swing logs e.g. *"🎲 5 dice: Drive 4 +1 standing in your own spotlight."*; the Sonic button's tooltip says the same. Log/tooltip text only — no layout touched.
+- 🎛️ **`.scratch/sound-plate-preview.html` — ⛔ PREVIEW, NOT PORTED.** OLD = the real shipped `MatchSurface`; NEW = the same `Bracket` + `ArenaDial` with levers: Db placement (side column / row under the dials / wallet bar), label text + size, number size, colour, the 5-Db ability price as READY or ticks; the Drive dial's extra dice (none / `+1` chip / ghost blocks / "5 DICE" caption), colour, size, hover source. States: Db 0–40, buffs none/+1/+2/−1, fans, all three pocket widths, zoom. localStorage from the one state chokepoint; a selectable dial-in box marking CHANGED vs default. Bundled from `.cl/soundPreview.jsx` in the session's cloud copy (not in the repo).
 
 ### 🧪 Evidence
-- 🖼️ `.scratch/beam-layer/before-after.png` — the real `mountArena`, one scripted clash on a virtual clock, same frames old vs new (cloud Chromium, SwiftShader). Probe + README there.
-- `test:beamlayer` 53 · `test:arch` 8 (Alex's machine) · `test:sonic` / `test:battledirector` 45 / `test:battlelens` 18 / `test:attacktiles` 28 / `arenaPresentationCheck` / `sonicIntegrationCheck` green (cloud copy of the tree).
-- 🧹 eslint clean on `beamLayer.js`, `arenaVisuals.js`, `arenaRenderer.js`.
-- 🚩 **Full sweep, every suite run (not stopping at the first red): 52 green, 20 red — the SAME 20 that 43-stagefx listed** (engine, legal, eval, transition, battleflow, winconditions, slime, eleven, harness, skilltree, shamisen, bushido, b0, journey, battlejourney, cameradirector, standee, crowdbubble, loadoutui, topview). The board ones (cameradirector 1/92, standee 1/98, topview 1/60) and five others were re-run on a copy of the tree WITHOUT this change: identical failures. `test:dice`, `test:shukuchiui`, `test:bushidoui` need preview files outside `src/` and were run where those exist: green.
-- ⚠️ **Not seen on a real GPU.** The foreground canvas is the `low-power` context; the glow pass adds a bloom there only while the clash is lit.
+- `test:voiceleak` **201** (new — `audio/voiceTeardownCheck.mjs`, in `test:all`; mutation: against the old `ampVoice.js`, 91 fail) · `test:stackslots` **161** (+§5b) · `test:spotlight` **362** (+§13: breakdown power = rig power over the whole buff grid) · `test:playfinder` **822** (§4's 5-note run now pays +1; a 6-note case added) · `test:ronintone` 100 · `test:commitstyles` 838 · `test:spiritsting` 84 · `test:mix` 49 · `test:turnflow` 73 · `test:arch` 8.
+- 🚩 **Full sweep — all 73 suites in `test:all`, each run on its own, HEAD vs HEAD + this change (cloud copy):** 51 green / 22 red, **the same 22 on both sides, each failing on the same first assertion** — 44-beamlayer's 20 plus `test:dice` and `test:shukuchiui` (they read preview files outside `src/`). The one difference is `test:voiceleak`, which is new.
+- `check:bundle` on a copy of Alex's working tree (HEAD + the uncommitted smoke work + this): no errors; its only warnings are the four standee case mismatches below, which the Windows tree does not see. On Alex's machine: `test:voiceleak` / `stackslots` / `spotlight` / `turnflow` / `ronintone` / `commitstyles` / `spiritsting` green. ⚠️ `test:arch` there is red on **3 untracked smoke modules** (`board/arenaSmoke.js`, `smokePresentation.js`, `smokeVolume.js`) from work in progress that is not this session's — green in the cloud without them.
+
+### 🎓 Findings
+- ⚠️ **In WebAudio, `stop()` is not cleanup.** A node graph with a filter in it outlives its source by the filter's tail — up to 30 s in Chrome — and costs full price the whole time. Every per-note graph needs an explicit `disconnect()`; `test:voiceleak` now holds that for `playAmpNote`. 📌 `riffSfx.js` / `unlockSfx.js` still build per-call biquads without teardown — one-shots, rare, left alone.
+- ⚠️ **The output clips.** Offline, a Ronin shred peaks at **~2.6** after the master compressor and the notes fader (1.0 is full scale). Not changed — the tone is dialled — but if a commit still sounds harsh rather than cut off, that is the next place to look.
+- 🧊 **The 7-round crowd was a human maxing every commit.** The bench's bots never get near it; a fan-rate question needs a human playtest, not `bench:bot`.
+- 🚩 **git's case is not the disk's.** `git ls-files src/standees` has `Cosmic_Ronin.png`, `Cosmic_Ronin_mirror.png`, `Metalness_Monster_mirror.png`; the Windows tree and four imports use `cosmic_ronin*.png` / `Metalness_monster_mirror.png` (`core.ignorecase=true`, so the renames never reached the index). A Linux build (Render) cannot resolve them. Reported, not fixed.
+- ⚠️ **The agent shell cannot unlink**, so a plain `git status` leaves `.git/index.lock` behind — it did this session (moved to `_to_delete/`). Use `git --no-optional-locks status` from the agent shell.
 
 ### ⬅️ NEXT
-- 👀 **Alex: play a Sonic** and watch (1) the rings over the amps, fans and dice, (2) the loop going behind your Spirit on its far side, (3) the hit flashes in front of the Rival. If the glow reads hotter or cooler than it did, the lever is the composite in `beamLayer.js` (the bloom settings are the arena's own).
-- 📌 FPS during a Sonic on a laptop iGPU — the auto-quality drop to Lite also turns the beam's bloom off.
+- 👂 **Alex: play two or three commits back to back** — the Ronin's shred especially — and listen for the drop-outs. If one still stutters, say which build (the log names it) and whether the 3D arena is on Lite.
+- ✅ **SOUND plate ported at Alex's dial-in** (same day): `MatchSurface.jsx` — labels 10.5 px, numbers 17 px, gold Db with READY / `/5` (`hud.dbCost`, the kit's own `ABILITY_DB_COST`; Alex's 6 in the preview was a slip, confirmed), a `+N` dice chip on the Drive dial at 10.5 px (`hud.driveBonus` / `hud.driveWhy`). Column 42 → 48 px (44 / 38 at the breakpoints). Verified by rendering the shipped component at the dial-in states; `test:arena` (pocket reads DRIVE…Db…FANS), `test:client`, `test:render`, `check:bundle`, `dialTickCheck` green. 👀 Alex: look at it in a match.
+- 🎚️ Watch the crowd pace next playtest; the next-gentlest dial, if it is still fast, is a 3-fans-a-commit cap.
+- 🚩 Decide the standee filename case (rename in git, or fix the four imports) before the next Render deploy.
 ---
 # B. ✅ Alex's two calls
 
@@ -289,13 +294,14 @@ kernel, because the split lived in the half no headless run reaches (§B2).
 
 ---
 
-# C. 📇 THE INDEX — 78 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
+# C. 📇 THE INDEX — 79 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
 
 Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
-| `44-beamlayer` | 2026-09-30 | **LIVE — §A above.** 🔊 The Sonic clash draws LAST on the foreground canvas with its own bloom, over amps, fans, dice and both standees; only the attacker's print can hide it (the far side of the loop). `test:beamlayer`. |
+| `45-playtest` | 2026-09-30 | **LIVE — §A above.** 🧹 Melodies no longer cut off (every note unplugs itself — connected filters kept ~25 s of silent voices on the audio thread); ⏳ one found seat per stack per round; 🎚️ the craft +2 needs a six-note run; 🎲 extra dice name their buff in the log. 🎛️ Db readout + Drive-bonus badge on a preview, not ported. `test:voiceleak`. |
+| `44-beamlayer` | 2026-09-30 | 🔊 The Sonic clash draws LAST on the foreground canvas with its own bloom, over amps, fans, dice and both standees; only the attacker's print can hide it (the far side of the loop). `test:beamlayer`. Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. |
 | `43-stagefx` | 2026-09-29 | 🗓️ Stage Effects fire on a round schedule (7, then every 5; the last runs to the buzzer) instead of at Fame thresholds; 📱 phone play archived. Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. |
 | `42-phone` | 2026-09-29 | On a phone the whole game was a blank white screen; the sideways phone layout. 🗄️ The layout itself was archived next session (43-stagefx). Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. |
 | `41-title` | 2026-09-29 | The title screen is the real arena, far off and turning. Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. |

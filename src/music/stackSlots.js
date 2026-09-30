@@ -107,9 +107,22 @@ const pcOf = n => (typeof n === 'number' ? ((n % 12) + 12) % 12 : pitchIndex(n))
 /** The two stacks, by the name the note sheet uses. One list, so a third stack
  *  cannot be added in one place and missed in another. */
 export const STACK_KEYS = [
-  { which: 'drive',   stack: 'driveStack',   slots: 'driveSlots'   },
-  { which: 'sustain', stack: 'sustainStack', slots: 'sustainSlots' },
+  { which: 'drive',   stack: 'driveStack',   slots: 'driveSlots',   opened: 'driveSeatOpenedThisTurn'   },
+  { which: 'sustain', stack: 'sustainStack', slots: 'sustainSlots', opened: 'sustainSeatOpenedThisTurn' },
 ];
+
+// ⏳ ONE SEAT PER STACK PER ROUND (Alex, 2026-09-30 playtest: *"Drive stack
+// was able to be upgraded twice in one round. I wonder if there should be a
+// gate for this?"* — ruled: one per stack per round, so a round can still
+// grow one Drive seat AND one Sustain seat).
+// 🎯 HOW IT HAPPENED: the found note sits DOWN in the seat it opens, so seat 4
+// opening makes the stack full at 4 — which is exactly seat 5's "earlier seats
+// filled" condition. With 12+ fans and a second Lost Chord in reach (three
+// Shukuchi landings, or just a short walk) the ladder climbed twice in a turn.
+// 📌 A TURN FLAG IS A ROUND FLAG HERE: seats are only ever found by walking,
+// and you only walk on your own turn, which comes round once a round. The flag
+// is set by `applyUnlockClaim` and cleared by `startTurnNotes` (turnFlow.js),
+// the one turn-start both the engine and the client run.
 
 /** 🎸 The root of a stack: the first note still standing in it. `null` for an
  *  empty stack — and a stack with no root is hunting nothing, which is correct:
@@ -148,10 +161,19 @@ export function crowdGateMet(ns = {}, rung = null) {
   return !!rung && crowdSize(ns) >= rung.fansRequired;
 }
 
+/** ⏳ Has this stack already opened a seat this round? (The gate above.) The
+ *  HUD asks, so a gated stack says "next round" instead of "no target". */
+export function seatOpenedThisRound(ns = {}, which = 'drive') {
+  const key = STACK_KEYS.find(k => k.which === which)?.opened;
+  return !!(key && ns?.[key]);
+}
+
 /** A rung becomes a live board target only after the stack has filled every
- * earlier seat and the Spirit's crowd has filled that rung's row. */
-function canHuntRung(ns = {}, stack = [], rung = null) {
+ * earlier seat and the Spirit's crowd has filled that rung's row — and, with
+ * `turnGate`, only if this stack has not already opened a seat this round. */
+function canHuntRung(ns = {}, stack = [], rung = null, opened = null, turnGate = true) {
   if (!rung) return false;
+  if (turnGate && opened && ns?.[opened]) return false;
   const filled = (stack ?? []).filter(Boolean).length;
   // The capacity immediately before seat N opens is N - 1: 3, 4, then 5.
   return filled >= rung.slot - 1 && crowdGateMet(ns, rung);
@@ -164,14 +186,14 @@ function canHuntRung(ns = {}, stack = [], rung = null) {
  *
  *  @returns { drive: {slot, pcs:Set}|null, sustain: {…}|null, all: Set<number> }
  */
-export function unlockTargets(ns = {}, spiritId = null) {
+export function unlockTargets(ns = {}, spiritId = null, { turnGate = true } = {}) {
   const out = { drive: null, sustain: null, all: new Set() };
-  for (const { which, stack, slots } of STACK_KEYS) {
+  for (const { which, stack, slots, opened } of STACK_KEYS) {
     const earned = ns?.[slots] ?? 0;
     const rung = nextRung(earned);
     if (!rung) continue;
     const chordStack = ns?.[stack] ?? [];
-    if (!canHuntRung(ns, chordStack, rung)) continue;
+    if (!canHuntRung(ns, chordStack, rung, opened, turnGate)) continue;
     const pcs = targetsForStack(chordStack, earned, spiritId);
     if (pcs.size === 0) continue;
     out[which] = { slot: rung.slot, pcs };
@@ -193,7 +215,11 @@ export function unlockTargets(ns = {}, spiritId = null) {
 export function liveUnlockPcs(noteStates = {}) {
   const all = new Set();
   for (const [spiritId, ns] of Object.entries(noteStates || {})) {
-    for (const pc of unlockTargets(ns, spiritId).all) all.add(pc);
+    // ⚠️ `turnGate: false` — the BOARD keeps pinning and spawning a Spirit's
+    // next seat even in the round they just opened one. The gate is about when
+    // you may TAKE it (your next turn), not about whether it exists; without
+    // this the hex you are walking back to could drift away between turns.
+    for (const pc of unlockTargets(ns, spiritId, { turnGate: false }).all) all.add(pc);
   }
   return all;
 }
@@ -211,14 +237,14 @@ export function unlockClaim(ns = {}, note = null, spiritId = null) {
   const pc = pcOf(note);
   if (!(pc >= 0)) return null;
   let best = null;
-  for (const { which, stack, slots } of STACK_KEYS) {
+  for (const { which, stack, slots, opened } of STACK_KEYS) {
     const earned = ns?.[slots] ?? 0;
     const rung = nextRung(earned);
     if (!rung) continue;
     const chordStack = ns?.[stack] ?? [];
-    if (!canHuntRung(ns, chordStack, rung)) continue;
+    if (!canHuntRung(ns, chordStack, rung, opened)) continue;
     if (!targetsForStack(chordStack, earned, spiritId).has(pc)) continue;
-    const claim = { which, slot: rung.slot, slotsKey: slots, stackKey: stack, rung };
+    const claim = { which, slot: rung.slot, slotsKey: slots, stackKey: stack, openedKey: opened, rung };
     // lower seat wins; Drive is first in STACK_KEYS, so a tie keeps Drive
     if (!best || claim.slot < best.slot) best = claim;
   }
@@ -241,6 +267,7 @@ export function applyUnlockClaim(ns = {}, note = null, spiritId = null) {
     patch: {
       [claim.stackKey]: stack,
       [claim.slotsKey]: (ns?.[claim.slotsKey] ?? 0) + 1,
+      [claim.openedKey]: true,   // ⏳ one seat per stack per round — see STACK_KEYS
     },
     which: claim.which,
     slot:  claim.slot,

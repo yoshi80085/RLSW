@@ -175,12 +175,30 @@ export function MatchSurface({ immersive, spirit, turnNumber, step, canAct, ap, 
           <Bracket plate="SOUND" className="match-sound-frame">
           <div className="match-sound-readout">
             <span className="drive" data-immersive-stack="drive" data-dial-value={hud?.drive ?? undefined}
-              role="img" aria-label={`Drive ${hud?.drive ?? "unknown"} of 10`} ref={hud?.driveRef}>
-              <ArenaDial stat="drive" label="DRIVE" value={hud?.drive} snapKey={spirit?.id} /></span>
+              role="img" aria-label={`Drive ${hud?.drive ?? "unknown"} of 10${hud?.driveWhy ? ` — ${hud.driveWhy}` : ''}`} ref={hud?.driveRef}
+              title={hud?.driveWhy ?? undefined}>
+              <ArenaDial stat="drive" label="DRIVE" value={hud?.drive} snapKey={spirit?.id} />
+              {/* 🎲 THE EXTRA DICE (Alex's playtest 2026-09-30: "I rolled 5 die even
+                  though my Drive was a 4?"). The dial is the STACK; the dice add its
+                  buffs (home spotlight, Drive boost, Mosh). The chip is the difference,
+                  and the hover names the source — both from `drivePowerBreakdown`, the
+                  one place the dice arithmetic lives. Dial-in: .scratch/sound-plate-preview.html */}
+              {!!hud?.driveBonus && <span className="match-dice-chip" data-neg={hud.driveBonus < 0 || undefined}>
+                {hud.driveBonus > 0 ? `+${hud.driveBonus}` : `−${-hud.driveBonus}`}</span>}
+            </span>
             <span className="sustain" data-immersive-stack="sustain" data-dial-value={hud?.sustain ?? undefined}
               role="img" aria-label={`Sustain ${hud?.sustain ?? "unknown"} of 10`} ref={hud?.sustainRef}>
               <ArenaDial stat="sustain" label="SUSTAIN" value={hud?.sustain} snapKey={spirit?.id} /></span>
-            <span><small>Db</small><b>{hud?.db ?? '—'}</b></span>
+            {/* 💰 Db YOU CAN READ (playtest: "It doesn't show my Db anywhere" — it did,
+                as a 6 px grey label). Gold like the wallet, and READY the moment an
+                ability can fire. ⚠️ The price is the game's own (`hud.dbCost`, from
+                ABILITY_DB_COST) — a hard-coded number here would say READY at the
+                wrong total the day a price moves. */}
+            <span className="match-db" title={hud?.dbCost ? `${hud?.db ?? 0} Db — an ability use costs ${hud.dbCost}` : undefined}>
+              <small>Db</small><b>{hud?.db ?? '—'}</b>
+              {hud?.dbCost != null && hud?.db != null && <em data-ready={hud.db >= hud.dbCost || undefined}>
+                {hud.db >= hud.dbCost ? 'READY' : `/${hud.dbCost}`}</em>}
+            </span>
             <span><small>FANS</small><b>{hud?.fans ?? '—'}</b></span>
           </div>
           </Bracket>
@@ -288,11 +306,20 @@ const SURFACE_CSS = `
   .match-player-key svg { width:var(--root-hex,52px); height:var(--root-hex,52px) }
   .match-player-key small { font:400 5.6px 'Saira Stencil One',sans-serif;
     letter-spacing:1.7px; color:currentColor; opacity:.92; }
-  .match-sound-readout { padding:10px; display:grid; grid-template-columns:1fr 1fr 42px; grid-template-rows:1fr 1fr; gap:6px; min-height:92px; }
+  /* 🎛️ Alex's dial-in 2026-09-30 (.scratch/sound-plate-preview.html): labels 6 → 10.5 px,
+     numbers 12 → 17 px, Db in the wallet's gold with READY / "/price", a +N chip on the
+     Drive dial at 10.5 px. The third column widened 42 → 48 to hold READY. */
+  .match-sound-readout { padding:10px; display:grid; grid-template-columns:1fr 1fr 48px; grid-template-rows:1fr 1fr; gap:6px; min-height:92px; }
   .match-sound-readout > span { min-width:0; padding-right:6px; border-right:1px solid #93acd21f; }
   .match-sound-readout > span:last-child { border:0; padding:0; }
-  .match-sound-readout small { display:block; color:#7187a4; font-size:6px; letter-spacing:.8px; }
-  .match-sound-readout b { display:block; margin-top:3px; color:#dceaff; font-size:12px; }
+  .match-sound-readout small { display:block; color:#9db1cf; font:400 10.5px 'Saira Stencil One',sans-serif; letter-spacing:1.2px; }
+  .match-sound-readout b { display:block; margin-top:2px; color:#dceaff; font:400 17px/1.1 'Saira Stencil One',sans-serif; }
+  .match-sound-readout .match-db small, .match-sound-readout .match-db b { color:#ffd38a; }
+  .match-sound-readout .match-db em { display:block; font:normal 8.5px 'Saira Stencil One',sans-serif; letter-spacing:1px; color:#8ea0bb; }
+  .match-sound-readout .match-db em[data-ready] { color:#91eab9; }
+  .match-dice-chip { position:absolute; top:2px; right:2px; border:1px solid currentColor; border-radius:3px; padding:0 3px; line-height:1.3;
+    font:400 10.5px 'Saira Stencil One',sans-serif; color:#ffd38a; background:#060b18cc; box-shadow:0 0 6px currentColor; pointer-events:none; }
+  .match-dice-chip[data-neg] { color:#ff6677; }
   .match-sound-readout .drive, .match-sound-readout .sustain { grid-row:1 / 3; position:relative; display:flex; align-items:center; justify-content:center; padding:0 1px; border-right:1px solid #93acd21f; }
   .match-sound-readout .drive { color:#ff6644; }
   .match-sound-readout .sustain { color:#44aaff; }
@@ -490,7 +517,7 @@ const SURFACE_CSS = `
     [data-match-layout="immersive"] .match-board-preparation { inset:12px 16px 68px; }
     .match-player-pocket { top:43px; left:12px; width:208px; }
     [data-match-layout="immersive"] { --root-hex:44px }
-    .match-sound-readout { grid-template-columns:1fr 1fr 34px; }
+    .match-sound-readout { grid-template-columns:1fr 1fr 44px; }
     .match-phase-rail { top:13px; }
     .match-panel-dock { top:43px; }
   }
@@ -510,7 +537,9 @@ const SURFACE_CSS = `
     .match-player-art { display:none; }
     [data-match-layout="immersive"] { --root-hex:38px }
     .match-player-copy strong { margin:3px 0 5px; font-size:10px; }
-    .match-sound-readout { padding:6px; grid-template-columns:1fr 1fr 30px; min-height:76px; }
-    .match-sound-readout b { font-size:9px; }
+    .match-sound-readout { padding:6px; grid-template-columns:1fr 1fr 38px; min-height:76px; }
+    .match-sound-readout small { font-size:8px; }
+    .match-sound-readout b { font-size:13px; }
+    .match-sound-readout .match-db em, .match-dice-chip { font-size:7px; }
   }
 `;

@@ -8,7 +8,6 @@ import { createArenaDiceSequence } from './arenaDiceSequence.js';
 import * as THREE from 'three';
 import { HEX_BY_NUM } from './hexMap.js';
 import { SCALE } from './constants.js';
-import { LIMELIGHT_HEX } from '../data/gameConstants.js';
 import { pitchIndex } from '../music/notes.js';
 import { createSonicSequenceVisuals } from './sonicSequenceVisuals.js';
 import { createSonicDiceVisuals, sonicSceneLabel } from './sonicDiceVisuals.js';
@@ -16,6 +15,7 @@ import { createHeadDials } from './headDialVisuals.js';
 import { createMoveTiles } from './moveTiles.js';
 import { createAttackTiles } from './attackTiles.js';
 import { createMarqueeMarkers } from './marqueeMarkers.js';
+import { createArenaLasers } from './arenaLasers.js';
 import { createStandee, STANDEE, STANDEE_Y, standeeYaw } from './standee.js';
 import { wrapClashStandees, STICK_STANDEE } from './swingStandee.js';
 import { directorShot, placeBattleDice, frontSide, BATTLE_DIRECTOR } from './battleDirector.js';
@@ -285,6 +285,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   const attackTiles=createAttackTiles(root,{pointFor:arenaPoint});
   // 🎪 The marquee spaces: a bulb-ringed neon hex and a floating prize card (marqueeMarkers.js).
   const marqueeMarkers=createMarqueeMarkers(root,{pointFor:arenaPoint});
+  const lasers=createArenaLasers(foregroundScene);
   const clearSonic=()=>{
     if(!sonic)return;
     root.remove(sonic.dice.group);beams.remove(sonic.volley.group);
@@ -385,7 +386,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   };
   function clearEffects() {for(const fx of effects){root.remove(fx.mesh);releaseArenaObject(fx.mesh);}effects.length=0;}
   function updateHazards(next) {
-    const key=JSON.stringify([next.laser,next.pyro,next.smoke,next.slime,next.fire,next.vortices ?? next.vortex,next.bots]);
+    const key=JSON.stringify([next.pyro,next.smoke,next.slime,next.fire,next.vortices ?? next.vortex,next.bots]);
     if(key===hazardKey)return;hazardKey=key;
     for(const o of [...hazards.children]){hazards.remove(o);releaseArenaObject(o);}
     const disc=(num,color,radius=.75,height=.2)=>{
@@ -394,10 +395,6 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
     };
     for(const n of next.slime??[]) {
       const m=disc(n,0x64ff72);if(m)m.userData.kind='slime';
-    }
-    for(const line of next.laser??[]) {
-      const pts=line.map(n=>arenaPoint(n,.7)).filter(Boolean);
-      if(pts.length>1){const m=tube([pts[0],pts.at(-1)],0xff3388,.065);m.userData.kind='laser';hazards.add(m);}
     }
     const burning=new Set([...(next.fire??[]),...(next.pyro?.phase!=='arming'?next.pyro?.hexes??[]:[])]);
     for(const n of next.pyro?.phase==='arming'?next.pyro.hexes:[])disc(n,0xff5522,.7);
@@ -415,16 +412,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       const m=new THREE.Mesh(new THREE.OctahedronGeometry(.48),new THREE.MeshStandardMaterial({color:0x526a7b,metalness:.8,roughness:.28,emissive:bot.color??0x22ccbb,emissiveIntensity:.5}));
       m.position.copy(p);m.userData.kind='bot';hazards.add(m);
     }
-    if(next.smoke) {
-      // The original SVG smoke remains the visibility mask. These puffs add
-      // volume only; they never decide whether a spirit is visible.
-      const center=arenaPoint(LIMELIGHT_HEX,.7);
-      if(center)for(let i=0;i<10;i++) {
-        const m=new THREE.Mesh(new THREE.SphereGeometry(.8,10,8),new THREE.MeshBasicMaterial({color:0x91a1b6,transparent:true,opacity:.13,depthWrite:false}));
-        const r=Math.max(1,next.smoke.radius)*.7;const a=i*2.4;
-        m.position.copy(center).add(new THREE.Vector3(Math.cos(a)*r,.2+(i%3)*.35,Math.sin(a)*r));m.userData.kind='smoke';hazards.add(m);
-      }
-    }
+    // Smoke is a depth-clipped volume on the foreground compositor (arenaSmoke).
   }
   function updatePawns(next) {
     const live=new Set();
@@ -501,6 +489,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       const [fx]=effects.splice(i,1);root.remove(fx.mesh);releaseArenaObject(fx.mesh);
     }
     updateHazards(frame);
+    lasers.update(frame.laser,frame.laserRound,clock);
     updatePawns(frame);
     headDials.update(frame.spirits,clock*1000,{reduced:reducedMotion});
     moveTiles.update(frame.reach,frame.spirits);
@@ -560,6 +549,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
     attachModel,update,
     tick(time,reduced=false,camera=null) {
       const dt=Math.min(.05,Math.max(0,time-lastTick));lastTick=time;clock=time;reducedMotion=reduced;
+      lasers.tick(time,{reduced,lite:frame.lite});
       battleShot=null;
       // 🔭 Warm the battle lens's view of the furniture between bouts (at most
       // every 3 s), so a bout's opening shot does not pay for building it.
@@ -727,7 +717,6 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
         if(kind==='bot')o.rotation.y=t*.5;
         if(kind==='vortex')o.rotation.z=t;
         if(kind==='smoke')o.scale.setScalar(1+Math.sin(t*.5+o.position.x)*.08);
-        if(kind==='laser')o.material.opacity=.65+(reduced?0:Math.sin(t*9)*.12);
       }
       for(let i=effects.length-1;i>=0;i--) {
         const fx=effects[i],t=Math.min(1,(time-fx.start)/fx.duration);
@@ -768,8 +757,9 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       const amount=Math.min(1,since/.6)*Math.min(1,Math.max(0,(AFTERMATH_SECONDS+.6-since)/.6))*BATTLE_DIRECTOR.cheer;
       return {winnerId:w==null?null:st.ids[w],loserId:w==null?null:st.ids[1-w],tie:w==null,amount};
     },
-    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length,headDials:headDials.active(clock*1000),moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics()}),
-    dispose(){disposed=true;clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics()}),
+    dispose(){disposed=true;clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     get disposed(){return disposed;},
   };
 }
+

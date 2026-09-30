@@ -139,6 +139,9 @@ export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
     committedMelody:  null,   // Phase R1: clear last turn's stashed melody
     committedFreq:    null,
     stackCommitsThisTurn: 0,  // 🎸 fresh stack commit budget each turn
+    // ⏳ One found seat per stack per round (`music/stackSlots.js` STACK_KEYS).
+    driveSeatOpenedThisTurn: false,
+    sustainSeatOpenedThisTurn: false,
     // 🌀 THE HOP BUDGET IS PER TURN, THE COOLDOWN IS PER ROUND, and they are
     // different clocks on purpose. One activation buys up to three hops in the
     // turn it was fired; anything left over does NOT carry, or a Ronin could

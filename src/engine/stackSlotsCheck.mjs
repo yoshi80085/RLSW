@@ -28,6 +28,7 @@ import { evaluateChord } from "../music/chords.js";
 import { VOCABULARIES } from "../music/vocabularies.js";
 import { pitchIndex, NOTE_POOL } from "../music/notes.js";
 import { makeInitialNoteState } from "./systems/economy.js";
+import { startTurnNotes } from "./systems/turnFlow.js";
 import { applyTokensDrifted } from "./systems/board.js";
 
 let count = 0;
@@ -232,19 +233,54 @@ console.log("✓ §4 the claim: per stack, lower seat first, ties to Drive, and 
   // …though an emptied stack has no root, so it hunts nothing until it is re-seeded.
   eq([...unlockTargets(emptied).all], [], 'a rootless stack hunts nothing even holding seats');
 
-  // Three finds walk the whole ladder and then stop.
+  // Three finds walk the whole ladder and then stop — ⏳ one per ROUND (§5b),
+  // so each find after the first is on a fresh turn (the flag cleared).
   let walk = { driveStack: ['C','E','G'], driveSlots: 0, sustainStack: [], sustainSlots: 0,
     casuals: 4 };
   for (const [i, note] of ['A#', 'D', 'A'].entries()) {
     walk.casuals = i === 0 ? 4 : i === 1 ? 10 : 16;  // 🎤 crowd rows 1 / 2 / 3
     const step = applyUnlockClaim(walk, note);
     ok(step, `find ${i + 1} (${note}) opens seat ${i + 4}`);
-    walk = { ...walk, ...step.patch };
+    walk = { ...walk, ...step.patch, ...startTurnNotes({ ...walk, ...step.patch }).patch };
   }
   eq(walk.driveSlots, SLOT_LADDER_MAX, 'three finds reach the top of the ladder');
   eq(applyUnlockClaim(walk, 'A#'), null, '…and a fourth find opens nothing');
 }
 console.log("✓ §5 the patch: the seat opens, the note takes it, the chord changes on the spot, and the seat is permanent");
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 5b. ⏳ ONE SEAT PER STACK PER ROUND (Alex, 2026-09-30 playtest).
+//     The found note fills the seat it opened, which leaves the stack FULL at
+//     its new size — exactly the next rung's "earlier seats filled" condition.
+//     With the crowd for it and a second Lost Chord in reach, the Drive stack
+//     climbed two seats in one turn. The gate is per STACK: Sustain may still
+//     open its own seat that same round.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  const ns = { driveStack: ['C','E','G'], driveSlots: 0, sustainStack: ['F','A','C'], sustainSlots: 0,
+    casuals: 10 };   // 🎤 12 fans — rows 1 and 2 both full, so seat 5 is crowd-eligible at once
+  const first = applyUnlockClaim(ns, 'A#');
+  eq(first?.which, 'drive', 'the first find opens a Drive seat');
+  eq(first.patch.driveSeatOpenedThisTurn, true, '⏳ …and marks the Drive stack as having opened one this round');
+  const after = { ...ns, ...first.patch };
+  eq(after.driveStack.length, 4, '(the found note sits down — the stack is full at its new size)');
+  eq(unlockClaim(after, 'D'), null, '⏳ the SAME turn, seat 5 cannot be taken — the double climb from the playtest');
+  eq(unlockTargets(after).drive, null, '⏳ …and the hand does not glow a Drive target it cannot take');
+  ok(liveUnlockPcs({ a: after }).has(pc('D')),
+    '📌 but the BOARD keeps the hunt alive — the D is pinned for next turn, it does not drift away');
+  const sus = unlockClaim(after, 'D#');
+  eq(sus?.which, 'sustain', '⏳ per STACK: the Sustain stack can still open its own seat this round (F7’s E♭)');
+  const both = { ...after, ...applyUnlockClaim(after, 'D#').patch };
+  eq([both.driveSeatOpenedThisTurn, both.sustainSeatOpenedThisTurn], [true, true], 'one of each, and then both are spent');
+  const next = { ...both, ...startTurnNotes(both).patch };
+  eq([next.driveSeatOpenedThisTurn, next.sustainSeatOpenedThisTurn], [false, false],
+     '⏳ your next turn start clears both — the gate is a round, not a lock');
+  eq(unlockClaim(next, 'D')?.slot, 5, '…and seat 5 is yours to take next round');
+  const fresh = makeInitialNoteState?.('cosmic_ronin') ?? {};
+  eq([fresh.driveSeatOpenedThisTurn, fresh.sustainSeatOpenedThisTurn], [false, false],
+     'a fresh sheet starts with neither flag set');
+}
+console.log("✓ §5b the gate: one found seat per stack per round — the other stack may still grow, and turn start reopens it");
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 6. `liveUnlockPcs` — EVERYBODY'S targets, because denial is a real play.

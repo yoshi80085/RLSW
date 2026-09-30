@@ -165,6 +165,9 @@ function hiss(ctx, out, t, type, hz, q, level, length, sweepTo = hz) {
   if (sweepTo !== hz) f.frequency.exponentialRampToValueAtTime(sweepTo, t + length * 0.7);
   const g = env(ctx, t, level, 0.006, length);
   n.connect(f); f.connect(g); g.connect(out); n.start(t); n.stop(t + length + 0.05);
+  // 🧹 Unplug once the noise has stopped — a connected biquad keeps being
+  // processed (silently) for its tail, up to 30 s. See `playAmpNote`'s teardown.
+  n.onended = () => { try { f.disconnect(); g.disconnect(); } catch { /* already gone */ } };
 }
 
 const FX = {

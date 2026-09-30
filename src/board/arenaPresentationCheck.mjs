@@ -66,7 +66,7 @@ visuals.update(arenaFrame({spirits:[]}));assert.equal(visuals.diagnostics().effe
 assert.equal(visuals.diagnostics().liveCabinets,0,'removed owners do not leave phantom rigs');
 const hazards=arenaFrame({...input,laser:{beams:[{hexes:[7,16]}]},pyro:{hexes:[17],phase:'firing'},
   slime:[{num:18}],vortex:{hex:56},bots:[{num:19}],smoke:{radius:2}});
-visuals.update(hazards);const count=visuals.diagnostics().hazards;assert.ok(count>=15,'live hazards create geometry');
+visuals.update(hazards);const count=visuals.diagnostics().hazards;assert.ok(count>=5,'non-smoke hazards create geometry; smoke uses its own volume compositor');
 visuals.update(hazards);assert.equal(visuals.diagnostics().hazards,count,'same hazards do not accumulate meshes');
 visuals.tick(3,true);visuals.update(frame);assert.equal(visuals.diagnostics().hazards,0,'expired hazards are removed');
 visuals.update(arenaFrame({...input,noteStates:{ronin:{rigPool:3,rigPower:2}}}));

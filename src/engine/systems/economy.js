@@ -254,6 +254,10 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     // rule that raises them.
     driveSlots:      0,
     sustainSlots:    0,
+    // ⏳ Set when a stack opens a seat, cleared at your turn start — one seat
+    // per stack per round (`music/stackSlots.js`).
+    driveSeatOpenedThisTurn:   false,
+    sustainSeatOpenedThisTurn: false,
     dbPoints:        0,
     totalDB:         0,
     // Every Spirit chooses one basic signature ability before turn one. The

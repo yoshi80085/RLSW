@@ -1,13 +1,16 @@
 import { rigRadius, rigTiers, ampStacks } from '../engine/systems/sonicRig.js';
 import { playerColor } from '../data/corners.js';
+import { isSmokeHidden, smokeSelfId } from './smokePresentation.js';
 
 const SPOT_CORNERS = ['blue', 'purple', 'yellow', 'red'];
 
-// This is a presentation boundary, not a second engine. Callers remove smoke-
-// hidden spirits BEFORE passing them here; no note stock or hidden state crosses.
-export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, battle,
+// This is a presentation boundary, not a second engine. The client filters smoke
+// for its viewer; this boundary also enforces it before copying actor data.
+export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
   bots = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null, marquees = [] }) {
+  spirits=spirits.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
+  shadowDecoys=shadowDecoys.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   const visible = new Set(spirits.map(s => s.id));
   return {
     crowds:crowdSpirits.filter(s=>!s.knockedOut).map(s=>({id:s.id,corner:s.corner,color:s.color,
@@ -93,8 +96,10 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, turn, batt
       key:f.key, spiritId:f.spiritId, color:f.color })),
     thump:thump && visible.has(thump.id) ? {id:thump.id,key:thump.key} : null,
     laser:laser?.beams?.map(b => [...b.hexes]) ?? [],
+    laserRound:laser?.roundsLeft ?? null,
     pyro:pyro ? {hexes:[...pyro.hexes], phase:pyro.phase} : null,
-    smoke:smoke ? {radius:smoke.radius} : null,
+    smoke:smoke ? {radius:smoke.radius,roundsLeft:smoke.roundsLeft,
+      selfId:smokeSelfId(spirits,smoke,actingId,viewerId)} : null,
     slime:slime.map(s => s.num ?? s.hex), fire:[...(fire?.hexes ?? [])],
     vortex:vortex ? {hex:vortex.hex} : null,
     vortices:vortices.map(v => ({hex:v.hex})),

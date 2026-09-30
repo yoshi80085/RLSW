@@ -437,8 +437,9 @@ export function playAmpNote(ctx, freq, opts = {}) {
       delayFade.connect(dryOut);
     }
     // VERB knob — send to the SHARED convolver (per-note send level)
+    let revGain = null;
     if (kn.verb > 0.02) {
-      const revGain = ctx.createGain();
+      revGain = ctx.createGain();
       revGain.gain.value = kn.verb * 0.85;
       ampEnv.connect(revGain);
       revGain.connect(verbIn);
@@ -456,6 +457,33 @@ export function playAmpNote(ctx, freq, opts = {}) {
     if (oct) oct.stop(now + totalTime + tail);
     if (lfo) { lfo.start(now); lfo.stop(now + totalTime + tail); }
     if (bloomOsc) { bloomOsc.start(now); bloomOsc.stop(now + totalTime + tail); }
+
+    // 🧹 VOICE TEARDOWN — unplug the note once it has finished sounding.
+    // ⚠️ STOPPING THE OSCILLATORS IS NOT ENOUGH, and that was the melody
+    // "cut off part way through" bug (Alex's playtest, 2026-09-30). Chrome
+    // keeps every BiquadFilter "ringing" for its computed tail — capped at
+    // 30 s — and the tone stack, the KATANA's hump/fizz and the waveshapers
+    // behind them keep being processed, silently, for that whole time. Measured
+    // in Chromium: 60 KATANA notes (one Ronin commit, give or take) burned ~0.8
+    // of a CPU core for ~25 s AFTER the last note ended. Two commits and a
+    // barrage later the audio thread cannot keep up and the next phrase drops
+    // out mid-line. Disconnecting the graph drops it out of the render at once.
+    // 🎯 SOUND-NEUTRAL: the sources stop exactly where they always did, the
+    // front of the chain is cut only once they have stopped (behind an
+    // envelope already at −60 dB), and the echo/reverb sends are cut only
+    // after the echo's own fade has run out. `audio/voiceTeardownCheck.mjs`
+    // (`test:voiceleak`) holds the line.
+    const ender = osc1 ?? pluckSrc;
+    const echoEnd = now + totalTime + 0.6 + kn.echo * 1.6;
+    if (ender) ender.onended = () => {
+      try { comp.disconnect(); } catch { /* already gone */ }
+      const wait = Math.max(0, echoEnd - ctx.currentTime) * 1000 + 120;
+      setTimeout(() => {
+        for (const n of [ampEnv, delayNode, delayFb, delayGain, delayFade, revGain]) {
+          try { n?.disconnect(); } catch { /* already gone */ }
+        }
+      }, wait);
+    };
   } catch (_) { /* audio unavailable — silent fail */ }
 }
 

@@ -194,3 +194,30 @@ flat scene. Rebuilding does not need access to Downloads once those copies exist
 No live game modules were edited for this study. Existing gameplay tests were not
 rerun merely for the isolated visual preview. Full client integration needs its
 own gameplay and browser regression checks.
+
+## Smoke integration — 2026-09-30
+
+The Heavy billows study now supplies the live arena smoke. The approved preset is
+in `src/board/smokePresentation.js`: density 1.7, height 3.3, spread
+9.262141693474572, billow .75, turbulence .8, speed .6, softness .95, lighting
+1.05, color #bacbd3. `arenaSmoke.js` composites the volume above the CSS3D board
+using the foreground context's color and depth target; it replaces the old sphere
+placeholders. It adds a small permanent floor grille at the Limelight, with no
+occupancy or gameplay effect.
+
+The engine still owns activation, 2/3/4-ring expansion, the cap and expiry. The
+renderer interpolates entry over a 1.2-second lead plus 3 seconds, eases new rings
+over 3 seconds and retains outgoing wisps for 6 seconds after expiry. The study's
+6-second rounds and 8-second hold are not gameplay timers. The visual envelope
+maps to the actual board hex extents, leaving the outer stage clear. Concealment
+ends on the engine's expiry even while cosmetic wisps remain.
+
+The active player's local client gets a mint silhouette, ring and private label.
+Online rivals and spectators receive no covered pawn in their presentation frame.
+Hotseat follows the active player. Existing 2D fallback smoke is retained; the
+new volume and silhouette belong to the 3D arena.
+
+Testing handoff: the production build completed before the user's request to
+handle testing themselves. Final visual/gameplay verification is left to the
+user; no successful in-game smoke inspection is claimed. One existing arena test
+geometry count was adjusted because ten placeholder spheres were removed.
